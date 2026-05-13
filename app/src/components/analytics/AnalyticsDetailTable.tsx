@@ -22,6 +22,8 @@ interface AnalyticsDetailTableProps<T> {
   tooltip?: string
   /** Optional max height (px) for scrollable table body */
   maxHeight?: number
+  /** When provided, renders the card header with this content instead of the table (upgrade paywall state). */
+  upgradeContent?: ReactNode
 }
 
 /**
@@ -37,16 +39,29 @@ export function AnalyticsDetailTable<T>({
   description,
   tooltip,
   maxHeight,
+  upgradeContent,
 }: AnalyticsDetailTableProps<T>) {
   const t = useTranslations()
+
+  const titleWithTooltip = (
+    <>
+      {title}
+      {tooltip && <InfoTooltip content={tooltip} />}
+    </>
+  )
+
+  if (upgradeContent) {
+    return (
+      <AnalyticsCard title={titleWithTooltip}>
+        {upgradeContent}
+      </AnalyticsCard>
+    )
+  }
 
   if (!data || data.length === 0) {
     return (
       <AnalyticsCard
-        title={<>
-          {title}
-          {tooltip && (<InfoTooltip content={tooltip}/>)}
-        </>}
+        title={titleWithTooltip}
         description={t('builder_analytics_no_data')}
       />
     )
@@ -54,10 +69,7 @@ export function AnalyticsDetailTable<T>({
 
   return (
     <AnalyticsCard
-      title={<>
-        {title}
-        {tooltip && (<InfoTooltip content={tooltip}/>)}
-      </>}
+      title={titleWithTooltip}
       description={description}
     >
       {/* Table */}

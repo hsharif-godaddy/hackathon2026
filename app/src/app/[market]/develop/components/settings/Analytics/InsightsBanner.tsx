@@ -1,6 +1,5 @@
 'use client'
 
-import { Fraunces } from 'next/font/google'
 import { useMemo, useState } from 'react'
 import Box from '@ux/box'
 import Button from '@ux/button'
@@ -20,11 +19,6 @@ import { serializeInsightsFeedbackForKeepalive } from '@/lib/analytics/insights-
 import { pageHostFromUrl } from '@/lib/analytics/page-host-from-url'
 import { parseInsightValue } from '@/lib/analytics/parse-insight-value'
 import type { InsightKind } from '@/types/analytics'
-
-const fraunces = Fraunces({
-  subsets: ['latin'],
-  weight: ['500', '600', '700'],
-})
 
 export interface InsightsBannerItem {
   kind: InsightKind
@@ -159,7 +153,7 @@ export default function InsightsBanner(props: InsightsBannerProps = {}) {
     <div
       role="region"
       aria-label={t('builder_analytics_insights_region_aria', undefined, 'Insights and recommendations carousel')}
-      className="overflow-hidden rounded-xl border border-intents-ux-box-borderColor bg-intents-ux-box-backgroundColor shadow-md transition-shadow hover:shadow-lg"
+      className="overflow-hidden rounded-xl border border-intents-ux-box-borderColor bg-intents-ux-box-backgroundColor"
     >
       <Box gap="sm" className="p-3 sm:p-4">
         <div className="relative overflow-hidden rounded-lg border border-intents-ux-box-borderColor bg-intents-ux-box-backgroundColor p-4 sm:p-5 shadow-sm">
@@ -201,7 +195,7 @@ export default function InsightsBanner(props: InsightsBannerProps = {}) {
               </div>
 
               {content.title ? (
-                <text.strong className={`${fraunces.className} mt-1.5 block text-base leading-snug tracking-tight sm:text-lg`}>
+                <text.strong className="mt-1.5 block text-base leading-snug tracking-tight sm:text-lg">
                   {content.title}
                 </text.strong>
               ) : null}

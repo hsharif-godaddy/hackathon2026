@@ -8,6 +8,22 @@ alwaysApply: false
 
 Before writing or modifying any `intents-ux-` Tailwind classes, read `app/uxcore-tailwind.md` for the complete reference of valid intent names, properties, and prefixes.
 
+## Spacing Scale
+
+This project uses an **8px base unit**. 1 Tailwind spacing unit = 8px (not the default 4px).
+
+When translating Figma px values to Tailwind classes, divide the Figma px value by 8:
+
+- Figma `8px` → `p-1`, `gap-1`, `m-1`
+- Figma `16px` → `p-2`, `gap-2`, `m-2`
+- Figma `24px` → `p-3`, `gap-3`, `m-3`
+- Figma `32px` → `p-4`, `gap-4`, `m-4`
+- Figma `48px` → `p-6`, `gap-6`, `m-6`
+- Figma `64px` → `p-8`, `gap-8`, `m-8`
+
+❌ Figma `16px` → `p-4` (incorrect — assumes default 4px scale)
+✅ Figma `16px` → `p-2` (correct — 16 ÷ 8 = 2)
+
 Common mistakes to avoid:
 
 ❌ `text-intents-ux-error-textColor` → ✅ `text-intents-ux-feedbackHighContrastCritical-feedbackColor`

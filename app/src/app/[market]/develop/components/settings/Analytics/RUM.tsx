@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { useIntl } from 'react-intl'
 import Box from '@ux/box'
 import Collapsible from '@ux/collapsible'
 import AlertIcon from '@ux/icon/alert'
@@ -20,6 +19,7 @@ import { AnalyticsChart } from '@/components/analytics/AnalyticsChart'
 import { AnalyticsDetailTable } from '@/components/analytics/AnalyticsDetailTable'
 import { AnalyticsMultiAreaChart } from '@/components/analytics/AnalyticsMultiAreaChart'
 import { AnalyticsPieChart } from '@/components/analytics/AnalyticsPieChart'
+import { AnalyticsUpgradeBanner, AnalyticsUpgradeInnerBanner } from '@/components/analytics/AnalyticsUpgradeBanner'
 import { MetricCard } from '@/components/analytics/MetricCard'
 import type { StatProgressItem } from '@/components/analytics/StatProgressList'
 import { StatProgressList } from '@/components/analytics/StatProgressList'
@@ -100,9 +100,16 @@ interface CTATableRow { element: string; clicks: number; uniqueClicks: number; c
  *
  * @returns RUM panel component
  */
+const LIVE_DATA_TAB = {
+  TOTAL_VISITORS: 'total-visitors',
+  PAGEVIEWS: 'pageviews',
+  VISITORS: 'visitors',
+  SESSIONS: 'sessions',
+} as const
+type LiveDataTab = typeof LIVE_DATA_TAB[keyof typeof LIVE_DATA_TAB]
+
 export default function RUM() {
   const t = useTranslations()
-  const intl = useIntl()
   const appId = useAppIdFromParams()
   const publishedUrl = usePublishedUrl()
   const isInsightsBannerEnabled = useSwitchboard(SWITCHBOARD_APPBUILDER_INSIGHTS_BANNER) === true
@@ -124,7 +131,7 @@ export default function RUM() {
     }
   }, [selectedPeriod])
 
-  const [liveDataTab, setLiveDataTab] = useState<'total-visitors' | 'pageviews' | 'visitors' | 'sessions'>('total-visitors')
+  const [liveDataTab, setLiveDataTab] = useState<LiveDataTab>(LIVE_DATA_TAB.TOTAL_VISITORS)
   const [visitorInsightsTab, setVisitorInsightsTab] = useState<'clicks' | 'total-sessions'>('clicks')
   const [trendTab, setTrendTab] = useState<'device' | 'browser'>('device')
 
@@ -135,14 +142,13 @@ export default function RUM() {
   const isPro = isProfessionalOrAbove(currentPlan)        // Professional, Ultimate
   const openUpgradeModal = useDevelopPageStore((state) => state.openUpgradeModal)
   const handleMetricUpgrade = () => openUpgradeModal('analytics.metric_card', PAYWALL_ITC.UPGRADE)
+  const handleInnerBannerUpgrade = () => openUpgradeModal('analytics.inner_banner', PAYWALL_ITC.UPGRADE)
 
-  // Reset Pro-gated selections when plan downgrades (e.g. subscription lapses)
+  // Reset plan-gated state when subscription lapses mid-session
   useEffect(() => {
-    if (!isPro) {
-      if (liveDataTab === 'visitors') setLiveDataTab('total-visitors')
-      if (selectedPeriod === '15') setSelectedPeriod('7')
-    }
-  }, [isPro, liveDataTab, selectedPeriod])
+    if (!isPro && selectedPeriod === '15') setSelectedPeriod('7')
+    if (!isStarter && liveDataTab === LIVE_DATA_TAB.VISITORS) setLiveDataTab(LIVE_DATA_TAB.TOTAL_VISITORS)
+  }, [isPro, isStarter, selectedPeriod, liveDataTab])
 
   // Fetch analytics data from insights API (remaining: route count, loading state)
   const {
@@ -492,6 +498,9 @@ export default function RUM() {
     )
   }
 
+  const { totalSessions, bounceSessions, peakHour } = kpiExtras
+  const { viewsPerVisit } = metrics
+
   return (
     <SettingsSection
       title={t('builder_analytics_title')}
@@ -565,173 +574,176 @@ export default function RUM() {
         {isInsightsBannerEnabled && <InsightsBanner />}
 
         <div>
-        {/* ═══════════ OVERVIEW ═══════════ */}
-        <Collapsible
-          id="overview"
-          size="sm"
-          defaultOpen
-          title={<text.span as="title" size={-2}>{t('builder_analytics_overview')}</text.span>}
-        >
-          <CollapsibleContent>
-            <div className="grid grid-cols-2 @lg:grid-cols-4 gap-2">
-              <MetricCard
-                label={t('builder_analytics_pageviews')}
-                value={metrics.pageviews}
-                description={t('builder_analytics_total_page_loads')}
-                caption={metrics.pageviews === 0 ? t('builder_analytics_no_data') : undefined}
-              />
-              <MetricCard
-                label={t('builder_analytics_visitors')}
-                value={metrics.visitors}
-                description={t('builder_analytics_unique_visitors')}
-                caption={metrics.visitors === 0 ? t('builder_analytics_no_data') : undefined}
-              />
-              <MetricCard
-                label={t('builder_analytics_views_per_visit')}
-                value={metrics.viewsPerVisit > 0 ? metrics.viewsPerVisit.toFixed(2) : '0.00'}
-                description={t('builder_analytics_pages_per_visitor')}
-                caption={metrics.viewsPerVisit === 0 ? t('builder_analytics_no_data') : undefined}
-              />
-              <MetricCard
-                label={t('builder_analytics_total_sessions')}
-                value={kpiExtras.totalSessions}
-                description={t('builder_analytics_all_sessions')}
-                caption={kpiExtras.totalSessions === 0 ? t('builder_analytics_no_data') : undefined}
-              />
-              <MetricCard
-                label={t('builder_analytics_engagement_rate')}
-                value={kpiExtras.totalSessions > 0 ? `${Math.round(((kpiExtras.totalSessions - kpiExtras.bounceSessions) / kpiExtras.totalSessions) * 100)}%` : '0%'}
-                description={t('builder_analytics_engaged_sessions', { engaged: kpiExtras.totalSessions - kpiExtras.bounceSessions, total: kpiExtras.totalSessions })}
-                caption={kpiExtras.totalSessions === 0 ? t('builder_analytics_no_data') : undefined}
-              />
-
-              <MetricCard
-                label={t('builder_analytics_total_clicks')}
-                value={metrics.totalClicks}
-                description={t('builder_analytics_all_clicks_tracked')}
-                {...(isPro
-                  ? { caption: metrics.totalClicks === 0 ? t('builder_analytics_no_data') : undefined }
-                  : { needsUpgrade: true as const, onUpgrade: handleMetricUpgrade })}
-              />
-              <MetricCard
-                label={t('builder_analytics_bounce_rate')}
-                value={kpiExtras.bounceRate || '0%'}
-                description={intl.formatMessage({ id: 'builder_analytics_bounce_sessions_count', defaultMessage: '{bounceSessions, plural, one {# single-page session} other {# single-page sessions}}' }, { bounceSessions: kpiExtras.bounceSessions })}
-                {...(isPro
-                  ? { caption: kpiExtras.totalSessions === 0 ? t('builder_analytics_no_data') : undefined }
-                  : { needsUpgrade: true as const, onUpgrade: handleMetricUpgrade })}
-              />
-              <MetricCard
-                label={t('builder_analytics_peak_hour')}
-                value={kpiExtras.peakHour || '--'}
-                description={intl.formatMessage({ id: 'builder_analytics_peak_hour_description', defaultMessage: '{visitors, plural, one {# visitor} other {# visitors}}, {clicks, plural, one {# click} other {# clicks}}' }, { visitors: kpiExtras.peakHourVisitors, clicks: kpiExtras.peakHourClicks })}
-                {...(isPro
-                  ? { caption: (kpiExtras.totalSessions === 0 || !kpiExtras.peakHour) ? t('builder_analytics_no_data') : undefined }
-                  : { needsUpgrade: true as const, onUpgrade: handleMetricUpgrade })}
-              />
-              <MetricCard
-                label={t('builder_analytics_avg_pages_per_session')}
-                value={kpiExtras.avgPagesPerSession > 0 ? kpiExtras.avgPagesPerSession.toFixed(2) : '0.00'}
-                description={t('builder_analytics_pages_viewed_per_session')}
-                {...(isPro
-                  ? { caption: kpiExtras.totalSessions === 0 ? t('builder_analytics_no_data') : undefined }
-                  : { needsUpgrade: true as const, onUpgrade: handleMetricUpgrade })}
-              />
-              <MetricCard
-                label={t('builder_analytics_avg_duration')}
-                value={kpiExtras.avgSessionDuration || '0s'}
-                description={t('builder_analytics_avg_session_length')}
-                {...(isPro
-                  ? { caption: kpiExtras.totalSessions === 0 ? t('builder_analytics_no_data') : undefined }
-                  : { needsUpgrade: true as const, onUpgrade: handleMetricUpgrade })}
-              />
-            </div>
-          </CollapsibleContent>
-        </Collapsible>
-
-        {/* ═══════════ TRAFFIC TRENDS ═══════════ */}
-        <Collapsible
-          id="traffic-trends"
-          size="sm"
-          title={<text.span as="title" size={-2}>{t('builder_analytics_visitors_traffic')}</text.span>}
-        >
-          <CollapsibleContent>
-            <text.p>{t('builder_analytics_tooltip_traffic_trends')}</text.p>
-            <AnalyticsCard
-              data-slot="chart"
-              className="flex flex-col w-full"
-            >
-              <div className="w-full min-w-0">
-                <SegmentedController
-                  radiogroupProps={{ 'aria-label': t('builder_analytics_visitors_traffic') }}
-                  value={liveDataTab}
-                  onSelectionChange={(v) => setLiveDataTab(v)}
-                  className="w-full max-w-full"
-                >
-                  <SegmentedControllerItem value="total-visitors">{t('builder_analytics_visitors')}</SegmentedControllerItem>
-                  {isPro ? (
-                    <SegmentedControllerItem value="visitors">{t('builder_analytics_new_vs_returning')}</SegmentedControllerItem>
-                  ) : null}
-                  <SegmentedControllerItem value="sessions">{t('builder_analytics_total_sessions')}</SegmentedControllerItem>
-                  <SegmentedControllerItem value="pageviews">{t('builder_analytics_page_views')}</SegmentedControllerItem>
-                </SegmentedController>
-              </div>
-              {liveDataTab === 'total-visitors' ? (
-                <AnalyticsChart data={dailyUniqueVisitors} label={t('builder_analytics_visitors')} embedded />
-              ) : liveDataTab === 'pageviews' ? (
-                <AnalyticsChart data={chartData} label={t('builder_analytics_page_views')} embedded />
-              ) : liveDataTab === 'visitors' && isPro ? (
-                <AnalyticsMultiAreaChart
-                  data={newVsReturningData}
+          {/* ═══════════ OVERVIEW ═══════════ */}
+          <Collapsible
+            id="overview"
+            size="sm"
+            defaultOpen
+            title={<text.span as="title" size={-2}>{t('builder_analytics_overview')}</text.span>}
+          >
+            <CollapsibleContent>
+              <div className="grid grid-cols-2 @lg:grid-cols-4 gap-2">
+                <MetricCard
+                  label={t('builder_analytics_pageviews')}
+                  value={metrics.pageviews}
+                  description={t('builder_analytics_total_page_loads')}
+                  caption={metrics.pageviews === 0 ? t('builder_analytics_no_data') : undefined}
+                />
+                <MetricCard
                   label={t('builder_analytics_visitors')}
-                  series={[
-                    { key: 'new_visitors', name: t('builder_analytics_new_visitors'), color: 'var(--color-ai)' },
-                    { key: 'returning_visitors', name: t('builder_analytics_returning_visitors'), color: 'var(--color-ai-muted)', strokeDasharray: '5 5' }
-                  ]}
-                  embedded
+                  value={metrics.visitors}
+                  description={t('builder_analytics_unique_visitors')}
+                  caption={metrics.visitors === 0 ? t('builder_analytics_no_data') : undefined}
                 />
-              ) : (
-                <AnalyticsChart
-                  data={dailyTotalSessions}
-                  label={t('builder_analytics_sessions')}
-                  embedded
+                <MetricCard
+                  label={t('builder_analytics_views_per_visit')}
+                  value={viewsPerVisit > 0 ? viewsPerVisit.toFixed(2) : '0.00'}
+                  description={t('builder_analytics_pages_per_visitor')}
+                  caption={viewsPerVisit === 0 ? t('builder_analytics_no_data') : undefined}
                 />
-              )}
-            </AnalyticsCard>
-          </CollapsibleContent>
-        </Collapsible>
+                <MetricCard
+                  label={t('builder_analytics_total_sessions')}
+                  value={totalSessions}
+                  description={t('builder_analytics_all_sessions')}
+                  caption={totalSessions === 0 ? t('builder_analytics_no_data') : undefined}
+                />
+                <MetricCard
+                  label={t('builder_analytics_engagement_rate')}
+                  value={totalSessions > 0 ? `${Math.round(((totalSessions - bounceSessions) / totalSessions) * 100)}%` : '0%'}
+                  description={t('builder_analytics_engaged_sessions', { engaged: totalSessions - bounceSessions, total: totalSessions })}
+                  caption={totalSessions === 0 ? t('builder_analytics_no_data') : undefined}
+                />
+                {isStarter && (
+                  <>
+                    <MetricCard
+                      label={t('builder_analytics_total_clicks')}
+                      value={metrics.totalClicks}
+                      description={t('builder_analytics_all_clicks_tracked')}
+                      {...(isPro
+                        ? { caption: metrics.totalClicks === 0 ? t('builder_analytics_no_data') : undefined }
+                        : { needsUpgrade: true as const, onUpgrade: handleMetricUpgrade })}
+                    />
+                    <MetricCard
+                      label={t('builder_analytics_bounce_rate')}
+                      value={kpiExtras.bounceRate || '0%'}
+                      description={t('builder_analytics_bounce_sessions_count', { bounceSessions: kpiExtras.bounceSessions })}
+                      {...(isPro
+                        ? { caption: totalSessions === 0 ? t('builder_analytics_no_data') : undefined }
+                        : { needsUpgrade: true as const, onUpgrade: handleMetricUpgrade })}
+                    />
+                    <MetricCard
+                      label={t('builder_analytics_peak_hour')}
+                      value={peakHour || '--'}
+                      description={t('builder_analytics_peak_hour_description', { visitors: kpiExtras.peakHourVisitors, clicks: kpiExtras.peakHourClicks })}
+                      {...(isPro
+                        ? { caption: (totalSessions === 0 || !peakHour) ? t('builder_analytics_no_data') : undefined }
+                        : { needsUpgrade: true as const, onUpgrade: handleMetricUpgrade })}
+                    />
+                    <MetricCard
+                      label={t('builder_analytics_avg_pages_per_session')}
+                      value={kpiExtras.avgPagesPerSession > 0 ? kpiExtras.avgPagesPerSession.toFixed(2) : '0.00'}
+                      description={t('builder_analytics_pages_viewed_per_session')}
+                      {...(isPro
+                        ? { caption: totalSessions === 0 ? t('builder_analytics_no_data') : undefined }
+                        : { needsUpgrade: true as const, onUpgrade: handleMetricUpgrade })}
+                    />
+                    <MetricCard
+                      label={t('builder_analytics_avg_duration')}
+                      value={kpiExtras.avgSessionDuration || '0s'}
+                      description={t('builder_analytics_avg_session_length')}
+                      {...(isPro
+                        ? { caption: totalSessions === 0 ? t('builder_analytics_no_data') : undefined }
+                        : { needsUpgrade: true as const, onUpgrade: handleMetricUpgrade })}
+                    />
+                  </>
+                )}
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
 
-        {/* ═══════════ GEOGRAPHIC ═══════════ */}
-        <Collapsible
-          id="geographic"
-          size="sm"
-          title={<text.span as="title" size={-2}>{t('builder_analytics_geographic')}</text.span>}
-        >
-          <CollapsibleContent>
-            <div className="grid grid-cols-1 @sm:grid-cols-2 gap-2 [&>*]:min-w-0">
-              <StatProgressList
-                items={countryProgressItems}
-                title={t('builder_analytics_visitors_by_country')}
-                tooltip={intl.formatMessage({ id: 'builder_analytics_tooltip_country_distribution', defaultMessage: 'Visitor distribution across countries based on IP geolocation for the selected period.' })}
-                color="var(--color-chart-blue)"
-                maxItems={8}
-              />
-              <StatProgressList
-                items={cityProgressItems}
-                title={t('builder_analytics_city_traffic')}
-                tooltip={intl.formatMessage({ id: 'builder_analytics_tooltip_city_ranking', defaultMessage: 'Top cities ranked by unique visitor count. City-level data is approximate and derived from IP geolocation.' })}
-                color="var(--color-chart-cyan)"
-                maxItems={8}
-              />
-            </div>
+          {/* ═══════════ TRAFFIC TRENDS ═══════════ */}
+          <Collapsible
+            id="traffic-trends"
+            size="sm"
+            title={<text.span as="title" size={-2}>{t('builder_analytics_visitors_traffic')}</text.span>}
+          >
+            <CollapsibleContent>
+              <text.p size={-1}>{t('builder_analytics_tooltip_traffic_trends')}</text.p>
+              <AnalyticsCard
+                data-slot="chart"
+                className="flex flex-col w-full"
+              >
+                <div className="w-full min-w-0">
+                  <SegmentedController
+                    radiogroupProps={{ 'aria-label': t('builder_analytics_visitors_traffic') }}
+                    value={liveDataTab}
+                    onSelectionChange={(v) => setLiveDataTab(v)}
+                    className="w-full max-w-full"
+                  >
+                    <SegmentedControllerItem value={LIVE_DATA_TAB.TOTAL_VISITORS}>{t('builder_analytics_visitors')}</SegmentedControllerItem>
+                    {isStarter && <SegmentedControllerItem value={LIVE_DATA_TAB.VISITORS}>{t('builder_analytics_new_vs_returning')}</SegmentedControllerItem>}
+                    <SegmentedControllerItem value={LIVE_DATA_TAB.SESSIONS}>{t('builder_analytics_total_sessions')}</SegmentedControllerItem>
+                    <SegmentedControllerItem value={LIVE_DATA_TAB.PAGEVIEWS}>{t('builder_analytics_page_views')}</SegmentedControllerItem>
+                  </SegmentedController>
+                </div>
+                {liveDataTab === LIVE_DATA_TAB.TOTAL_VISITORS ? (
+                  <AnalyticsChart data={dailyUniqueVisitors} label={t('builder_analytics_visitors')} embedded />
+                ) : liveDataTab === LIVE_DATA_TAB.PAGEVIEWS ? (
+                  <AnalyticsChart data={chartData} label={t('builder_analytics_page_views')} embedded />
+                ) : liveDataTab === LIVE_DATA_TAB.VISITORS && isPro ? (
+                  <AnalyticsMultiAreaChart
+                    data={newVsReturningData}
+                    label={t('builder_analytics_visitors')}
+                    series={[
+                      { key: 'new_visitors', name: t('builder_analytics_new_visitors'), color: 'var(--color-ai)' },
+                      { key: 'returning_visitors', name: t('builder_analytics_returning_visitors'), color: 'var(--color-ai-muted)', strokeDasharray: '5 5' }
+                    ]}
+                    embedded
+                  />
+                ) : liveDataTab === LIVE_DATA_TAB.VISITORS && isStarter ? (
+                  <AnalyticsUpgradeInnerBanner onUpgrade={handleInnerBannerUpgrade} />
+                ) : (
+                  <AnalyticsChart
+                    data={dailyTotalSessions}
+                    label={t('builder_analytics_sessions')}
+                    embedded
+                  />
+                )}
+              </AnalyticsCard>
+            </CollapsibleContent>
+          </Collapsible>
 
-            {/* Geo - Pro Plan: Detailed table (Professional+) */}
-            {isPro ? (
-              <AnalyticsDetailTable<GeoProPlanRow>
+          {/* ═══════════ GEOGRAPHIC ═══════════ */}
+          <Collapsible
+            id="geographic"
+            size="sm"
+            title={<text.span as="title" size={-2}>{t('builder_analytics_geographic')}</text.span>}
+          >
+            <CollapsibleContent>
+              <div className="grid grid-cols-1 @sm:grid-cols-2 gap-2 [&>*]:min-w-0">
+                <StatProgressList
+                  items={countryProgressItems}
+                  title={t('builder_analytics_visitors_by_country')}
+                  tooltip={t('builder_analytics_tooltip_country_distribution')}
+                  color="var(--color-chart-blue)"
+                  maxItems={8}
+                />
+                <StatProgressList
+                  items={cityProgressItems}
+                  title={t('builder_analytics_city_traffic')}
+                  tooltip={t('builder_analytics_tooltip_city_ranking')}
+                  color="var(--color-chart-cyan)"
+                  maxItems={8}
+                />
+              </div>
+
+              {/* Geo - Pro Plan: Detailed table (Professional+) */}
+              {isStarter && <AnalyticsDetailTable<GeoProPlanRow>
                 data={geoProPlanTableData}
                 title={t('builder_analytics_top_locations')}
-                tooltip={intl.formatMessage({ id: 'builder_analytics_tooltip_city_detail', defaultMessage: 'Detailed city-level visitor data with country attribution. Based on IP geolocation.' })}
+                tooltip={t('builder_analytics_tooltip_city_detail')}
                 maxHeight={400}
+                upgradeContent={!isPro ? <AnalyticsUpgradeInnerBanner onUpgrade={handleInnerBannerUpgrade} /> : undefined}
                 columns={[
                   { key: 'country', header: t('builder_analytics_country'), render: (_v, row) => {
                     const maxVisitors = Math.max(...geoProPlanTableData.map((d) => d.visitors), 1)
@@ -766,75 +778,79 @@ export default function RUM() {
                     <span className="text-xs tabular-nums text-muted-foreground">{Number(v).toLocaleString()}</span>
                   )},
                 ]}
-              />
-            ) : null}
-          </CollapsibleContent>
-        </Collapsible>
+              />}
+            </CollapsibleContent>
+          </Collapsible>
 
-        {/* ═══════════ DEVICE SOURCES ═══════════ */}
-        <Collapsible
-          id="devices-sources"
-          size="sm"
-          title={<text.span as="title" size={-2}>{t('builder_analytics_devices_sources')}</text.span>}
-        >
-          <CollapsibleContent>
-            <div className="grid grid-cols-1 @sm:grid-cols-2 gap-2 [&>*]:min-w-0">
-              <AnalyticsPieChart data={sessionsByDeviceData} label={t('builder_analytics_sessions_by_device')} tooltip={intl.formatMessage({ id: 'builder_analytics_tooltip_device_breakdown', defaultMessage: 'Breakdown of sessions by device type (desktop, mobile, tablet) for the selected period.' })} />
-              <StatProgressList
-                items={referrerProgressItems}
-                title={t('builder_analytics_top_referrers')}
-                tooltip={intl.formatMessage({ id: 'builder_analytics_tooltip_top_referrers', defaultMessage: 'Top websites, search engines, and sources that send visitors to your site for the selected period.' })}
-                color="var(--color-chart-green)"
-                maxItems={8}
-              />
-            </div>
+          {/* ═══════════ DEVICE SOURCES ═══════════ */}
+          <Collapsible
+            id="devices-sources"
+            size="sm"
+            title={<text.span as="title" size={-2}>{t('builder_analytics_devices_sources')}</text.span>}
+          >
+            <CollapsibleContent>
+              <div className="grid grid-cols-1 @sm:grid-cols-2 gap-2 [&>*]:min-w-0">
+                <AnalyticsPieChart data={sessionsByDeviceData} label={t('builder_analytics_sessions_by_device')} tooltip={t('builder_analytics_tooltip_device_breakdown')} />
+                <StatProgressList
+                  items={referrerProgressItems}
+                  title={t('builder_analytics_top_referrers')}
+                  tooltip={t('builder_analytics_tooltip_top_referrers')}
+                  color="var(--color-chart-green)"
+                  maxItems={8}
+                />
+              </div>
 
-            {/* Trend Graph: Device / Browser (Professional+) */}
-            {isPro ? (
-              <AnalyticsCard
+              {/* Trend Graph: Device / Browser (Professional+) */}
+              {isStarter && <AnalyticsCard
                 data-slot="chart"
                 className="flex flex-col w-full"
+                title={isPro ? undefined : `${t('builder_analytics_device_types')} / ${t('builder_analytics_browser_names')}`}
               >
-                <div className="w-full min-w-0">
-                  <SegmentedController
-                    radiogroupProps={{ 'aria-label': t('builder_analytics_devices_sources') }}
-                    value={trendTab}
-                    onSelectionChange={(v) => setTrendTab(v)}
-                    className="w-full max-w-full"
-                  >
-                    <SegmentedControllerItem value="device">{t('builder_analytics_device_types')}</SegmentedControllerItem>
-                    <SegmentedControllerItem value="browser">{t('builder_analytics_browser_names')}</SegmentedControllerItem>
-                  </SegmentedController>
-                </div>
-                {trendTab === 'device' ? (
-                  <AnalyticsMultiAreaChart
-                    data={deviceMixOverTimeData}
-                    label={t('builder_analytics_device_trends')}
-                    series={[
-                      { key: 'laptop', name: t('builder_analytics_desktop_laptop'), color: 'var(--color-ai)' },
-                      { key: 'tablet', name: t('builder_analytics_tablet'), color: 'var(--color-chart-blue)' },
-                      { key: 'mobile', name: t('builder_analytics_mobile'), color: 'var(--color-chart-green)' },
-                    ]}
-                    embedded
-                  />
+                {isPro ? (
+                  <>
+                    <div className="w-full min-w-0">
+                      <SegmentedController
+                        radiogroupProps={{ 'aria-label': t('builder_analytics_devices_sources') }}
+                        value={trendTab}
+                        onSelectionChange={(v) => setTrendTab(v)}
+                        className="w-full max-w-full"
+                      >
+                        <SegmentedControllerItem value="device">{t('builder_analytics_device_types')}</SegmentedControllerItem>
+                        <SegmentedControllerItem value="browser">{t('builder_analytics_browser_names')}</SegmentedControllerItem>
+                      </SegmentedController>
+                    </div>
+                    {trendTab === 'device' ? (
+                      <AnalyticsMultiAreaChart
+                        data={deviceMixOverTimeData}
+                        label={t('builder_analytics_device_trends')}
+                        series={[
+                          { key: 'laptop', name: t('builder_analytics_desktop_laptop'), color: 'var(--color-ai)' },
+                          { key: 'tablet', name: t('builder_analytics_tablet'), color: 'var(--color-chart-blue)' },
+                          { key: 'mobile', name: t('builder_analytics_mobile'), color: 'var(--color-chart-green)' },
+                        ]}
+                        embedded
+                      />
+                    ) : (
+                      <AnalyticsMultiAreaChart
+                        data={browserTrendsOverTimeData}
+                        label={t('builder_analytics_browser_trends')}
+                        series={browserTrendSeries}
+                        embedded
+                      />
+                    )}
+                  </>
                 ) : (
-                  <AnalyticsMultiAreaChart
-                    data={browserTrendsOverTimeData}
-                    label={t('builder_analytics_browser_trends')}
-                    series={browserTrendSeries}
-                    embedded
-                  />
+                  <AnalyticsUpgradeInnerBanner onUpgrade={handleInnerBannerUpgrade} />
                 )}
-              </AnalyticsCard>
-            ) : null}
+              </AnalyticsCard>}
 
-            {/* Referrers Table (Professional+) */}
-            {isPro ? (
-              <AnalyticsDetailTable<ReferrerTableRow>
+              {/* Referrers Table (Professional+) */}
+              {isStarter && <AnalyticsDetailTable<ReferrerTableRow>
                 data={referrerTableData}
                 title={t('builder_analytics_referrers')}
-                tooltip={intl.formatMessage({ id: 'builder_analytics_tooltip_referrer_detail', defaultMessage: 'Traffic sources ranked by visits. Shows unique visitor ratio and landing page visits from each referrer.' })}
+                tooltip={t('builder_analytics_tooltip_referrer_detail')}
                 maxHeight={300}
+                upgradeContent={!isPro ? <AnalyticsUpgradeInnerBanner onUpgrade={handleInnerBannerUpgrade} /> : undefined}
                 columns={[
                   { key: 'referrer', header: t('builder_analytics_referrer'), render: (v, row) => {
                     const maxVisits = Math.max(...referrerTableData.map((d) => d.pageViews), 1)
@@ -872,123 +888,121 @@ export default function RUM() {
                     <span className="text-xs tabular-nums text-muted-foreground">{Number(v).toLocaleString()}</span>
                   )},
                 ]}
-              />
-            ) : null}
-          </CollapsibleContent>
-        </Collapsible>
+              />}
+            </CollapsibleContent>
+          </Collapsible>
 
-        {/* ═══════════ ACTIVITY ═══════════ */}
-        {isStarter && <Collapsible
-          id="activity"
-          size="sm"
-          title={<text.span as="title" size={-2}>{t('builder_analytics_activity')}</text.span>}
-        >
-          <CollapsibleContent>
-            <AnalyticsDetailTable<ActivityHitRow>
-              data={enrichedActivityHits}
-              title={t('builder_analytics_activity_last_20')}
-              description={isActivityEstimated
-                ? intl.formatMessage({ id: 'builder_analytics_activity_estimated', defaultMessage: 'Estimated from aggregated page view data' })
-                : t('builder_analytics_activity_subtitle')}
-              tooltip={intl.formatMessage({ id: 'builder_analytics_tooltip_recent_activity', defaultMessage: 'Most recent page hits showing path, device, location, browser, and traffic source.' })}
-              maxHeight={350}
-              columns={[
-                { key: 'pagePath', header: t('builder_analytics_page_path_name'), render: (_v, row) => (
-                  <div className="flex items-center gap-1.5 min-w-0">
-                    <PageBadge value={row.pagePath || '/'} />
-                    {row.pageName ? <span className="text-[10px] text-muted-foreground">({row.pageName})</span> : null}
+          {/* ═══════════ ACTIVITY ═══════════ */}
+          {isStarter && <Collapsible
+            id="activity"
+            size="sm"
+            title={<text.span as="title" size={-2}>{t('builder_analytics_activity')}</text.span>}
+          >
+            <CollapsibleContent>
+              <AnalyticsDetailTable<ActivityHitRow>
+                data={enrichedActivityHits}
+                title={t('builder_analytics_activity_last_20')}
+                description={isActivityEstimated
+                  ? t('builder_analytics_activity_estimated')
+                  : t('builder_analytics_activity_subtitle')}
+                tooltip={t('builder_analytics_tooltip_recent_activity')}
+                maxHeight={350}
+                columns={[
+                  { key: 'pagePath', header: t('builder_analytics_page_path_name'), render: (_v, row) => (
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <PageBadge value={row.pagePath || '/'} />
+                      {row.pageName ? <span className="text-[10px] text-muted-foreground">({row.pageName})</span> : null}
+                    </div>
+                  )},
+                  { key: 'device', header: t('builder_analytics_device'), render: (v) => {
+                    const d = String(v)
+                    const icon = d.toLowerCase().includes('mobile') ? '📱' : d.toLowerCase().includes('tablet') ? '📋' : '🖥️'
+                    return <span className="text-xs font-medium">{icon} {d}</span>
+                  }},
+                  { key: 'country', header: t('builder_analytics_country'), render: (v) => {
+                    const name = String(v)
+                    const code = countryTrafficWithCodeData.find((c) => c.country === name)?.code
+                    return (
+                      <span className="text-xs inline-flex items-center gap-1.5">
+                        {code && (
+                          <span role="img" aria-label={name} className="text-sm leading-none">{countryCodeToFlag(code)}</span>
+                        )}
+                        <span className="font-medium">{name}</span>
+                      </span>
+                    )
+                  }},
+                  { key: 'browser', header: t('builder_analytics_browser'), render: (v) => <span className="text-xs text-muted-foreground">{String(v)}</span> },
+                  { key: 'referrer', header: t('builder_analytics_referrer'), render: (v) => {
+                    const r = String(v)
+                    const isDirect = r === t('builder_analytics_direct_referrer') || r === '(direct)' || r === ''
+                    return isDirect
+                      ? <span className="text-xs text-muted-foreground italic">{t('builder_analytics_direct_referrer')}</span>
+                      : <span className="text-xs font-medium truncate max-w-[160px] inline-block" title={r}>{r}</span>
+                  }},
+                ]}
+              />
+
+              {/* Page-level path bars */}
+              <div className="grid grid-cols-1 @sm:grid-cols-2 gap-2 [&>*]:min-w-0">
+                <StatProgressList
+                  items={pageViewsByPathData.slice().sort((a, b) => b.value - a.value).slice(0, 10).map((d) => ({ label: d.date === '/' ? t('builder_analytics_home_page') : d.date, value: d.value }))}
+                  title={t('builder_analytics_pageviews_by_path')}
+                  tooltip={t('builder_analytics_tooltip_page_views_by_path')}
+                  color="var(--color-ai)"
+                />
+                <StatProgressList
+                  items={uniqueVisitorsByPageData.slice().sort((a, b) => b.value - a.value).slice(0, 10).map((d) => ({ label: d.date === '/' ? t('builder_analytics_home_page') : d.date, value: d.value }))}
+                  title={t('builder_analytics_unique_visitors_by_page')}
+                  tooltip={t('builder_analytics_tooltip_unique_visitors_page')}
+                  color="var(--color-chart-blue)"
+                />
+              </div>
+            </CollapsibleContent>
+          </Collapsible>}
+
+          {/* ═══════════ ENGAGEMENT ═══════════ */}
+          {isStarter && <Collapsible
+            id="engagement"
+            size="sm"
+            title={<text.span as="title" size={-2}>{t('builder_analytics_engagement')}</text.span>}
+          >
+            <CollapsibleContent>
+              <text.p size={-1}>{t('builder_analytics_tooltip_engagement')}</text.p>
+              <div className="[&>*]:min-w-0">
+                <AnalyticsCard
+                  data-slot="chart"
+                  className="flex flex-col w-full"
+                >
+                  <div className="w-full min-w-0">
+                    <SegmentedController
+                      radiogroupProps={{ 'aria-label': t('builder_analytics_engagement') }}
+                      value={visitorInsightsTab}
+                      onSelectionChange={(v) => setVisitorInsightsTab(v)}
+                      className="w-full max-w-full"
+                    >
+                      <SegmentedControllerItem value="clicks">{t('builder_analytics_click_trends')}</SegmentedControllerItem>
+                      <SegmentedControllerItem value="total-sessions">{t('builder_analytics_total_sessions')}</SegmentedControllerItem>
+                    </SegmentedController>
                   </div>
-                )},
-                { key: 'device', header: t('builder_analytics_device'), render: (v) => {
-                  const d = String(v)
-                  const icon = d.toLowerCase().includes('mobile') ? '📱' : d.toLowerCase().includes('tablet') ? '📋' : '🖥️'
-                  return <span className="text-xs font-medium">{icon} {d}</span>
-                }},
-                { key: 'country', header: t('builder_analytics_country'), render: (v) => {
-                  const name = String(v)
-                  const code = countryTrafficWithCodeData.find((c) => c.country === name)?.code
-                  return (
-                    <span className="text-xs inline-flex items-center gap-1.5">
-                      {code && (
-                        <span role="img" aria-label={name} className="text-sm leading-none">{countryCodeToFlag(code)}</span>
-                      )}
-                      <span className="font-medium">{name}</span>
-                    </span>
-                  )
-                }},
-                { key: 'browser', header: t('builder_analytics_browser'), render: (v) => <span className="text-xs text-muted-foreground">{String(v)}</span> },
-                { key: 'referrer', header: t('builder_analytics_referrer'), render: (v) => {
-                  const r = String(v)
-                  const isDirect = r === t('builder_analytics_direct_referrer') || r === '(direct)' || r === ''
-                  return isDirect
-                    ? <span className="text-xs text-muted-foreground italic">{t('builder_analytics_direct_referrer')}</span>
-                    : <span className="text-xs font-medium truncate max-w-[160px] inline-block" title={r}>{r}</span>
-                }},
-              ]}
-            />
+                  {visitorInsightsTab === 'clicks' ? (
+                    <AnalyticsChart data={clickTrendsData} label={t('builder_analytics_clicks')} embedded />
+                  ) : (
+                    <AnalyticsChart
+                      data={dailyTotalSessions}
+                      label={t('builder_analytics_sessions')}
+                      embedded
+                    />
+                  )}
+                </AnalyticsCard>
+              </div>
 
-            {/* Page-level path bars */}
-            <div className="grid grid-cols-1 @sm:grid-cols-2 gap-2 [&>*]:min-w-0">
-              <StatProgressList
-                items={pageViewsByPathData.slice().sort((a, b) => b.value - a.value).slice(0, 10).map((d) => ({ label: d.date === '/' ? t('builder_analytics_home_page') : d.date, value: d.value }))}
-                title={t('builder_analytics_pageviews_by_path')}
-                tooltip={intl.formatMessage({ id: 'builder_analytics_tooltip_page_views_by_path', defaultMessage: 'Total page loads per URL path. Includes repeat views by the same visitor.' })}
-                color="var(--color-ai)"
-              />
-              <StatProgressList
-                items={uniqueVisitorsByPageData.slice().sort((a, b) => b.value - a.value).slice(0, 10).map((d) => ({ label: d.date === '/' ? t('builder_analytics_home_page') : d.date, value: d.value }))}
-                title={t('builder_analytics_unique_visitors_by_page')}
-                tooltip={intl.formatMessage({ id: 'builder_analytics_tooltip_unique_visitors_page', defaultMessage: 'Distinct visitors per page. Each visitor is counted once regardless of repeat views.' })}
-                color="var(--color-chart-blue)"
-              />
-            </div>
-          </CollapsibleContent>
-        </Collapsible>
-        }
-
-        {/* ═══════════ ENGAGEMENT ═══════════ */}
-        {isStarter && <Collapsible
-          id="engagement"
-          size="sm"
-          title={<text.span as="title" size={-2}>{t('builder_analytics_engagement')}</text.span>}
-        >
-          <CollapsibleContent>
-            <text.p>{t('builder_analytics_tooltip_engagement')}</text.p>
-            <div className="[&>*]:min-w-0">
-              <AnalyticsCard
-                data-slot="chart"
-                className="flex flex-col w-full"
-              >
-                <div className="w-full min-w-0">
-                  <SegmentedController
-                    radiogroupProps={{ 'aria-label': t('builder_analytics_engagement') }}
-                    value={visitorInsightsTab}
-                    onSelectionChange={(v) => setVisitorInsightsTab(v)}
-                    className="w-full max-w-full"
-                  >
-                    <SegmentedControllerItem value="clicks">{t('builder_analytics_click_trends')}</SegmentedControllerItem>
-                    <SegmentedControllerItem value="total-sessions">{t('builder_analytics_total_sessions')}</SegmentedControllerItem>
-                  </SegmentedController>
-                </div>
-                {visitorInsightsTab === 'clicks' ? (
-                  <AnalyticsChart data={clickTrendsData} label={t('builder_analytics_clicks')} embedded />
-                ) : (
-                  <AnalyticsChart
-                    data={dailyTotalSessions}
-                    label={t('builder_analytics_sessions')}
-                    embedded
-                  />
-                )}
-              </AnalyticsCard>
-            </div>
-
-            {/* CTA Table: links + buttons combined (Professional+) */}
-            {isPro ? (
+              {/* CTA Table: links + buttons combined (Professional+) */}
               <AnalyticsDetailTable<CTATableRow>
                 data={ctaTableData}
                 title={t('builder_analytics_ctas_links_buttons')}
-                tooltip={intl.formatMessage({ id: 'builder_analytics_tooltip_click_metrics', defaultMessage: 'Click metrics for links and buttons. Shows total clicks, unique visitors who clicked, and click-per-visitor ratio.' })}
+                tooltip={t('builder_analytics_tooltip_click_metrics')}
                 maxHeight={300}
+                upgradeContent={!isPro ? <AnalyticsUpgradeInnerBanner onUpgrade={handleInnerBannerUpgrade} /> : undefined}
                 columns={[
                   { key: 'element', header: t('builder_analytics_element_name'), render: (v, row) => {
                     const name = String(v)
@@ -997,7 +1011,6 @@ export default function RUM() {
                     return (
                       <div className="flex items-center gap-2.5 min-w-0">
                         <div className="relative flex-1 min-w-0">
-                          {/* Background bar */}
                           <div
                             className="absolute inset-y-0 left-0 rounded-r-sm opacity-[0.08]"
                             style={{ width: `${barPct}%`, background: 'var(--color-ai)' }}
@@ -1017,7 +1030,7 @@ export default function RUM() {
                   )},
                   { key: 'clicksPerSession', header: t('builder_analytics_clicks_per_visitor'), align: 'right' as const, render: (v) => {
                     const val = parseFloat(String(v))
-                    const intensity = Math.min(val / 5, 1) // scale 0–5 to 0–1
+                    const intensity = Math.min(val / 5, 1)
                     return (
                       <span
                         className="inline-flex items-center gap-1 text-xs font-semibold tabular-nums"
@@ -1030,65 +1043,64 @@ export default function RUM() {
                   }},
                 ]}
               />
-            ) : null}
-          </CollapsibleContent>
-        </Collapsible>
-        }
+            </CollapsibleContent>
+          </Collapsible>}
 
-        {/* ═══════════ CONTENT ═══════════ */}
-        {isStarter && <Collapsible
-          id="content"
-          size="sm"
-          title={<text.span as="title" size={-2}>{t('builder_analytics_content')}</text.span>}
-        >
-          <CollapsibleContent>
-            <AnalyticsDetailTable<TopPageRow>
-              data={topPagesData}
-              title={t('builder_analytics_top_pages')}
-              tooltip={intl.formatMessage({ id: 'builder_analytics_tooltip_top_pages', defaultMessage: 'Top pages ranked by traffic. Shows visitors, total views, referral visits, and click counts per page.' })}
-              columns={[
-                { key: 'pagePath', header: t('builder_analytics_page_path'), render: (v, row) => {
-                  const maxViews = Math.max(...topPagesData.map((d) => d.totalViews), 1)
-                  const barPct = (row.totalViews / maxViews) * 100
-                  return (
-                    <div className="flex items-center gap-2 min-w-0">
-                      <div className="relative flex-1 min-w-0">
-                        <div
-                          className="absolute inset-y-0 left-0 rounded-r-sm opacity-[0.08]"
-                          style={{ width: `${barPct}%`, background: 'var(--color-ai)' }}
-                        />
-                        <span className="relative block px-1 py-0.5">
-                          <PageBadge value={String(v)} />
-                        </span>
+          {/* ═══════════ CONTENT ═══════════ */}
+          {isStarter && <Collapsible
+            id="content"
+            size="sm"
+            title={<text.span as="title" size={-2}>{t('builder_analytics_content')}</text.span>}
+          >
+            <CollapsibleContent>
+              <AnalyticsDetailTable<TopPageRow>
+                data={topPagesData}
+                title={t('builder_analytics_top_pages')}
+                tooltip={t('builder_analytics_tooltip_top_pages')}
+                columns={[
+                  { key: 'pagePath', header: t('builder_analytics_page_path'), render: (v, row) => {
+                    const maxViews = Math.max(...topPagesData.map((d) => d.totalViews), 1)
+                    const barPct = (row.totalViews / maxViews) * 100
+                    return (
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div className="relative flex-1 min-w-0">
+                          <div
+                            className="absolute inset-y-0 left-0 rounded-r-sm opacity-[0.08]"
+                            style={{ width: `${barPct}%`, background: 'var(--color-ai)' }}
+                          />
+                          <span className="relative block px-1 py-0.5">
+                            <PageBadge value={String(v)} />
+                          </span>
+                        </div>
                       </div>
-                    </div>
-                  )
-                }},
-                { key: 'pageName', header: t('builder_analytics_page_name'), render: (v) => <span className="text-xs font-medium">{String(v)}</span> },
-                { key: 'visitors', header: t('builder_analytics_visitors'), align: 'right' as const, render: (v) => (
-                  <span className="text-xs font-bold tabular-nums">{Number(v).toLocaleString()}</span>
-                )},
-                { key: 'totalViews', header: t('builder_analytics_total_views'), align: 'right' as const, render: (v) => (
-                  <span className="text-xs font-bold tabular-nums">{Number(v).toLocaleString()}</span>
-                )},
-                { key: 'referralVisits', header: t('builder_analytics_referral_visits'), align: 'right' as const, render: (v) => (
-                  <span className="text-xs tabular-nums text-muted-foreground">{Number(v).toLocaleString()}</span>
-                )},
-                { key: 'clicks', header: t('builder_analytics_clicks'), align: 'right' as const, render: (v) => {
-                  const val = Number(v)
-                  return (
-                    <span className="text-xs font-semibold tabular-nums">
-                      {val.toLocaleString()}
-                      {val >= 50 && <span className="ml-1" title={t('builder_analytics_high_clicks')}>🔥</span>}
-                    </span>
-                  )
-                }},
-              ]}
-            />
-          </CollapsibleContent>
-        </Collapsible>
-        }
+                    )
+                  }},
+                  { key: 'pageName', header: t('builder_analytics_page_name'), render: (v) => <span className="text-xs font-medium">{String(v)}</span> },
+                  { key: 'visitors', header: t('builder_analytics_visitors'), align: 'right' as const, render: (v) => (
+                    <span className="text-xs font-bold tabular-nums">{Number(v).toLocaleString()}</span>
+                  )},
+                  { key: 'totalViews', header: t('builder_analytics_total_views'), align: 'right' as const, render: (v) => (
+                    <span className="text-xs font-bold tabular-nums">{Number(v).toLocaleString()}</span>
+                  )},
+                  { key: 'referralVisits', header: t('builder_analytics_referral_visits'), align: 'right' as const, render: (v) => (
+                    <span className="text-xs tabular-nums text-muted-foreground">{Number(v).toLocaleString()}</span>
+                  )},
+                  { key: 'clicks', header: t('builder_analytics_clicks'), align: 'right' as const, render: (v) => {
+                    const val = Number(v)
+                    return (
+                      <span className="text-xs font-semibold tabular-nums">
+                        {val.toLocaleString()}
+                        {val >= 50 && <span className="ml-1" title={t('builder_analytics_high_clicks')}>🔥</span>}
+                      </span>
+                    )
+                  }},
+                ]}
+              />
+            </CollapsibleContent>
+          </Collapsible>}
         </div>
+
+        {!isPro && <AnalyticsUpgradeBanner onUpgrade={() => openUpgradeModal('analytics.upgrade_banner', PAYWALL_ITC.UPGRADE)} />}
       </Box>
     </SettingsSection>
   )

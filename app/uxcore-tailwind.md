@@ -1,5 +1,27 @@
 # UXCore Tailwind Intents Reference
 
+## Spacing Scale
+
+This project uses an **8px base unit**. 1 Tailwind spacing unit = 8px (not the default 4px).
+
+When translating Figma px values to Tailwind classes, divide the Figma px value by 8:
+
+| Figma px | Tailwind unit | Example classes          |
+| -------- | ------------- | ------------------------ |
+| 4px      | 0.5           | `p-0.5`, `gap-0.5`       |
+| 8px      | 1             | `p-1`, `gap-1`, `m-1`    |
+| 16px     | 2             | `p-2`, `gap-2`, `m-2`    |
+| 24px     | 3             | `p-3`, `gap-3`, `m-3`    |
+| 32px     | 4             | `p-4`, `gap-4`, `m-4`    |
+| 40px     | 5             | `p-5`, `gap-5`, `m-5`    |
+| 48px     | 6             | `p-6`, `gap-6`, `m-6`    |
+| 64px     | 8             | `p-8`, `gap-8`, `m-8`    |
+| 80px     | 10            | `p-10`, `gap-10`, `m-10` |
+| 96px     | 12            | `p-12`, `gap-12`, `m-12` |
+
+❌ Figma `16px` → `p-4` (incorrect — assumes default 4px scale)
+✅ Figma `16px` → `p-2` (correct — 16 ÷ 8 = 2)
+
 ## When to Use Tailwind Intent Classes
 
 Prefer UXCore components over raw Tailwind intent classes when a component can achieve the desired UI. For example, use the `<Text>` component's `emphasis` prop for text color instead of applying `text-intents-ux-*` classes directly. Only reach for Tailwind intent classes when no UXCore component covers the need.
