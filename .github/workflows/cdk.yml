@@ -139,6 +139,15 @@ jobs:
           cp .npmrc lambda/gocode-spend-essp-exporter/.npmrc
           cp .npmrc lambda/langfuse-metrics-essp-exporter/.npmrc
           cp .npmrc lambda/qdrant-tls-bootstrap/.npmrc
+          # investigator is a Docker Lambda image (not esbuild-bundled);
+          # its Dockerfile bind-mounts this .npmrc to install gd-auth-client
+          # from the private GoDaddy Artifactory registry. gd-auth-client
+          # is UNSCOPED, so the @godaddy/@gd-datalake scope redirects above
+          # don't cover it — add a default-registry redirect for this copy
+          # only. Artifactory's node-virt virtual repo proxies public npm
+          # for everything else.
+          cp .npmrc ../investigator/.npmrc
+          echo "registry=https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/" >> ../investigator/.npmrc
 
       - name: Install dependencies
         working-directory: ./cdk

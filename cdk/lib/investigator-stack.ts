@@ -91,13 +91,28 @@ export class AiroInvestigatorStack extends GDStack {
       autoDeleteObjects: config.envName !== 'prod',
     });
 
-    // No Secrets Manager entry — all secrets are per-invocation:
-    //   - gocodeApiKey is supplied by the user in the console UI and
-    //     forwarded in the invoke payload (Claude CLI uses it as
-    //     ANTHROPIC_AUTH_TOKEN)
-    //   - jomaxToken is forwarded from the calling user's session
-    // ANTHROPIC_BASE_URL (the GoCode proxy URL) is a non-secret constant and
-    // is set as a plain Lambda environment variable below.
+    // Per-invocation auth strategy (gated by GOCODE_USE_S2S_AUTH env var):
+    //
+    //   GOCODE_USE_S2S_AUTH=true
+    //     handler.mjs uses gd-auth-client to mint a GoCode IAM JWT directly
+    //     from the Lambda's execution role (the role ARN in the JWT's sub
+    //     claim must be registered with GoCode S2S — see note below). The
+    //     JWT is passed to Claude CLI as ANTHROPIC_AUTH_TOKEN (sent as
+    //     Authorization: Bearer against GoCode's Anthropic-compatible
+    //     /v1/messages endpoint).
+    //
+    //   GOCODE_USE_S2S_AUTH=false (default)
+    //     gocodeApiKey is supplied by the user in the console UI and
+    //     forwarded in the invoke payload; Claude CLI uses it as
+    //     ANTHROPIC_AUTH_TOKEN against the legacy Anthropic proxy endpoint.
+    //
+    // jomaxToken is always per-invocation (forwarded from user's session).
+    //
+    // NOTE: the execution role (${env}-airo-investigator-role) must be
+    // registered with GoCode S2S before GOCODE_USE_S2S_AUTH=true works.
+    // Open a "Register or Update S2S Access" issue in gdcorp-dna/gocode
+    // with the role ARN as the auth identity. See confluence
+    // "Guide for GoCode Service to Service API Calling for Dummies".
 
     // ---- VPC + Direct Connect subnets (resolved from trusted landing zone) ----
     // Mirrors gocaas-spend-lambda-stack.ts and langfuse-metrics-essp-exporter-stack.ts.
@@ -156,6 +171,24 @@ export class AiroInvestigatorStack extends GDStack {
             }),
           ],
         }),
+        // Required so gd-auth-client IamTokenClient can call the GoCode
+        // SSO IAM JWT API Gateway. Without this, token mint returns 403
+        // before GoCode sees the request. Mirrors the iamJwtAccess policy
+        // on the agents gocode-access role (cdk/lib/application-stack.ts):
+        // same action, same resource pattern, same account list sourced
+        // from config.awsIamJwtAccount so dev-p covers both dev + test
+        // GoCode environments.
+        GoCodeSsoIamJwt: new iam.PolicyDocument({
+          statements: [
+            new iam.PolicyStatement({
+              effect: iam.Effect.ALLOW,
+              actions: ['execute-api:Invoke'],
+              resources: config.awsIamJwtAccount.map(
+                (acct) => `arn:aws:execute-api:*:${acct}:*`,
+              ),
+            }),
+          ],
+        }),
       },
     });
 
@@ -204,7 +237,16 @@ export class AiroInvestigatorStack extends GDStack {
       securityGroups: [lambdaSecurityGroup],
       environment: {
         STATE_BUCKET: this.stateBucket.bucketName,
-        ANTHROPIC_BASE_URL: 'https://caas-gocode-prod.caas-prod.prod.onkatana.net',
+        // S2S auth enabled in both envs after GoCode approved the
+        // ${env}-airo-investigator-role registrations (dev-p → GoCode
+        // test, prod → GoCode prod).
+        GOCODE_USE_S2S_AUTH: 'true',
+        // GoCode S2S endpoint (Anthropic + OpenAI compatible, Bearer JWT).
+        // Must match the GoCode env the role was registered with.
+        ANTHROPIC_BASE_URL: config.envName === 'prod'
+          ? 'https://api.gocode.caas.gdcorp.tools'
+          : 'https://api.gocode.caas.test-gdcorp.tools',
+        SSO_HOST: ssoHostForEnv(config.envName),
         // The frontend log searcher honors CONSOLE_BASE. Set it here so
         // dev-private runs hit the test console instead of production.
         CONSOLE_BASE: config.envName === 'prod'
@@ -294,6 +336,24 @@ export class AiroInvestigatorStack extends GDStack {
     });
   }
 }
+
+// Per-env SSO host used by gd-auth-client IamTokenClient to mint the JWT.
+// Dev-private targets the test SSO (matches the pattern agents service
+// uses in dev-p). Prod targets the prod SSO. AiroInvestigatorStack is not
+// deployed to test (see cdk/app/main.ts).
+//
+// This is a 2-way switch on purpose: only `prod` and `dev` (= dev-private)
+// envs deploy this stack today. agents/.../s2s-auth.ts has a 3-way switch
+// because it also serves a separate `test` env. If a future envName like
+// `test` or a fresh dev variant is added here, extend this map FIRST —
+// the catch-all `else` branch will silently route any new env to the
+// test SSO, which only happens to be correct for dev-p by coincidence.
+function ssoHostForEnv(envName: string): string {
+  if (envName === 'prod') return 'sso.godaddy.com';
+  if (envName === 'dev') return 'sso.test-godaddy.com';
+  throw new Error(`ssoHostForEnv: unsupported envName "${envName}" — extend the map before deploying`);
+}
+
 
 function hash(input: string): string {
   let h = 0;

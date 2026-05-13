@@ -48,8 +48,20 @@ COPY docker/claude-template/ /opt/claude-template/
 # Handler
 WORKDIR ${LAMBDA_TASK_ROOT}
 COPY package.json ./
-RUN npm install --omit=dev --no-audit --no-fund
-COPY handler.mjs prompt.mjs events.mjs ./
+# gd-auth-client lives in GoDaddy's private Artifactory registry. The CI
+# pipeline writes `.npmrc` (with auth token) into this build context before
+# calling `cdk deploy`. We bind-mount it for the install only — never
+# COPYing it — so the token does not end up in any image layer.
+#
+# Local dev: drop a valid `.npmrc` (with Artifactory auth) into
+# `investigator/` before running `docker build`. Without it BuildKit
+# aborts with `could not find source path "/.npmrc"` because
+# `type=bind` does not accept `required=false` (that flag only exists
+# for `type=secret`, which would in turn require switching CI to
+# `docker buildx build --secret id=npmrc,...` — out of scope).
+RUN --mount=type=bind,source=.npmrc,target=/root/.npmrc \
+    npm install --omit=dev --no-audit --no-fund
+COPY handler.mjs auth.mjs prompt.mjs events.mjs ./
 
 # Lambda invokes the image as its own least-privileged runtime user, not
 # necessarily the user Docker used during local tests. Make startup/runtime

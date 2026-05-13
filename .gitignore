@@ -1,5 +1,11 @@
 .DS_Store
 
+# npmrc files with Artifactory auth tokens are written at CI time into
+# several dirs for Lambda builds — never commit them.
+.npmrc
+cdk/lambda/*/.npmrc
+investigator/.npmrc
+
 # Dependencies
 node_modules
 .pnpm-store/

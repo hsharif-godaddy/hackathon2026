@@ -101,6 +101,10 @@ export type InvestigationEventType =
   | 'evidence.ready'
   | 'heartbeat'
   | 'report.ready'
+  // Non-fatal warning surfaced from the Lambda (e.g. GoCode SSO
+  // primary-region failure that fell back to secondary). Investigation
+  // continues; operators see it on the SSE stream.
+  | 'investigation.warning'
   | 'investigation.completed'
   | 'investigation.failed'
   | 'investigation.killed';

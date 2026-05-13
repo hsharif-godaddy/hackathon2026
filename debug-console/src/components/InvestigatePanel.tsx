@@ -6,7 +6,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
 import { splitMarkdownBlocks } from '@/lib/investigate/markdown';
-import type { InvestigationEvent } from '@/lib/investigate/types';
+import type { InvestigationEvent, InvestigationEventType } from '@/lib/investigate/types';
 
 const CLIENT_AUTO_FETCH_MAX_BYTES = 50 * 1024 * 1024;
 
@@ -47,7 +47,10 @@ type StatusResponse = {
   reportEtag: string | null;
 };
 
-const GOCODE_KEY_STORAGE = 'airo-investigate.gocodeApiKey';
+// Legacy sessionStorage key from the pre-S2S GoCode API-key flow. Kept
+// here so the one-time cleanup effect can purge stale tokens from users'
+// browsers. Safe to remove this constant after a release cycle.
+const LEGACY_GOCODE_KEY_STORAGE = 'airo-investigate.gocodeApiKey';
 
 type TimelineEvent = InvestigationEvent;
 
@@ -90,6 +93,7 @@ const EVENT_TYPE_LABELS: Record<string, string> = {
   'investigation.started': 'Investigation started',
   'evidence.ready': 'Evidence collected',
   'report.ready': 'Report ready',
+  'investigation.warning': '⚠ Warning',
   'investigation.completed': '✓ Completed',
   'investigation.failed': '✗ Failed',
   'investigation.killed': '⚠ Timed out',
@@ -149,15 +153,13 @@ export default function InvestigatePanel(props: Props = {}) {
   const [feedback, setFeedback] = useState('');
   const [fullstoryUrl, setFullstoryUrl] = useState('');
   const [timeWindow, setTimeWindow] = useState('24h');
-  const [gocodeApiKey, setGocodeApiKey] = useState('');
-  const [gocodeKeyRevealed, setGocodeKeyRevealed] = useState(false);
 
-  // Rehydrate GoCode key from sessionStorage so users paste once per browser
-  // session/tab, without leaving a long-lived billed token in localStorage.
+  // One-time cleanup of the pre-S2S GoCode API key that used to live in
+  // sessionStorage. The Lambda now mints its own IAM JWT so users no
+  // longer paste a key. Safe to delete this effect after a release cycle.
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const stored = window.sessionStorage.getItem(GOCODE_KEY_STORAGE);
-    if (stored) setGocodeApiKey(stored);
+    try { window.sessionStorage.removeItem(LEGACY_GOCODE_KEY_STORAGE); } catch { /* ignore */ }
   }, []);
 
   const [investigationId, setInvestigationId] = useState<string | null>(null);
@@ -404,10 +406,11 @@ export default function InvestigatePanel(props: Props = {}) {
       'evidence.ready',
       'heartbeat',
       'report.ready',
+      'investigation.warning',
       'investigation.completed',
       'investigation.failed',
       'investigation.killed',
-    ]) {
+    ] satisfies InvestigationEventType[]) {
       es.addEventListener(type, handleEvent as EventListener);
     }
     es.addEventListener('close', () => {
@@ -500,10 +503,6 @@ export default function InvestigatePanel(props: Props = {}) {
       setSubmitError('appId, customerId, and feedback are required');
       return;
     }
-    if (!gocodeApiKey.trim()) {
-      setSubmitError('GoCode API key is required');
-      return;
-    }
     setSubmitting(true);
     setStatus(null);
     setInvestigationId(null);
@@ -516,11 +515,6 @@ export default function InvestigatePanel(props: Props = {}) {
     setReportError(null);
     setReportOversized(false);
 
-    // Store only for the current browser session. A malicious extension or XSS
-    // on the debug-console origin could still read it while the tab is active,
-    // but this avoids a long-lived localStorage token billed to the user.
-    try { window.sessionStorage.setItem(GOCODE_KEY_STORAGE, gocodeApiKey.trim()); } catch { /* ignore */ }
-
     try {
       const res = await fetch('/api/investigate', {
         method: 'POST',
@@ -531,7 +525,6 @@ export default function InvestigatePanel(props: Props = {}) {
           feedback: feedback.trim(),
           fullstoryUrl: fullstoryUrl.trim() || null,
           timeWindow: timeWindow.trim() || null,
-          gocodeApiKey: gocodeApiKey.trim(),
         }),
       });
 
@@ -728,39 +721,6 @@ export default function InvestigatePanel(props: Props = {}) {
             style={inputStyle}
           />
           <FullstoryUrlHint value={fullstoryUrl} />
-        </label>
-
-        <label style={{ display: 'grid', gap: 4 }}>
-          <span style={{ fontSize: 13, fontWeight: 500 }}>
-            GoCode API key *
-            <span style={{ color: '#6b7280', fontWeight: 400, marginLeft: 8 }}>
-              (stored for this browser session only — forwarded to the Lambda)
-            </span>
-          </span>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <input
-              type={gocodeKeyRevealed ? 'text' : 'password'}
-              value={gocodeApiKey}
-              onChange={(e) => setGocodeApiKey(e.target.value)}
-              placeholder="Paste your GoCode API key"
-              required
-              autoComplete="off"
-              style={{ ...inputStyle, flex: 1 }}
-            />
-            <button
-              type="button"
-              onClick={() => setGocodeKeyRevealed((v) => !v)}
-              style={smallBtn}
-            >{gocodeKeyRevealed ? 'Hide' : 'Show'}</button>
-            <button
-              type="button"
-              onClick={() => {
-                setGocodeApiKey('');
-                try { window.sessionStorage.removeItem(GOCODE_KEY_STORAGE); } catch { /* ignore */ }
-              }}
-              style={smallBtn}
-            >Clear</button>
-          </div>
         </label>
 
         <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>

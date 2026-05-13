@@ -2,9 +2,15 @@ import { spawn } from 'node:child_process';
 import { promises as fs, createWriteStream } from 'node:fs';
 import path from 'node:path';
 import { S3Client, GetObjectCommand, PutObjectCommand, CopyObjectCommand } from '@aws-sdk/client-s3';
+import gdAuth from 'gd-auth-client';
 
 import { buildPrompt } from './prompt.mjs';
 import { createEventEmitter } from './events.mjs';
+import { decodeJwtExpMs, buildChildEnv } from './auth.mjs';
+// Re-export pure helpers so existing import paths in tests keep working.
+export { decodeJwtExpMs, buildChildEnv };
+
+const { IamTokenClient } = gdAuth;
 
 const REGION = process.env.AWS_REGION || 'us-west-2';
 const STATE_BUCKET = process.env.STATE_BUCKET;
@@ -28,6 +34,94 @@ const MAX_RUN_MS = 14 * 60_000; // leave 1 min buffer under Lambda's 15 min cap
 const HEARTBEAT_MS = 10_000;
 
 const s3 = new S3Client({ region: REGION });
+
+// GoCode S2S JWT cache. The JWT is bound to this Lambda's execution role,
+// so it's safe to reuse across warm-container invocations. Mirrors the
+// caching pattern in packages/ai-lib/src/utils/s2s-auth.ts so a burst of
+// Investigate clicks does not stampede SSO.
+let cachedJwt = null;
+let cachedJwtExpiresAt = 0;
+let jwtRefreshInFlight = null;
+// Reject cached tokens with < this much remaining so Claude CLI never gets
+// a token that could expire mid-run. Investigations run up to ~14 minutes.
+const JWT_MIN_LIFETIME_MS = 16 * 60 * 1000;
+// Fail-fast bound on IamTokenClient.getToken(). Without this, an SSO hang
+// would block the entire Lambda invocation up to the 15-minute cap and
+// surface to the user as a generic timeout. 15s is well above p99 mint
+// latency (typically < 2s) while short enough to convert a genuine outage
+// into a visible "gocode auth failed" in the investigation state.
+const JWT_MINT_TIMEOUT_MS = 15_000;
+
+// Mint (or reuse) a GoCode S2S JWT. gd-auth-client IamTokenClient uses the
+// Lambda's default credential chain (= execution role) to SigV4-sign a call
+// to SSO's IAM-JWT API Gateway and returns a JWT whose `sub` claim is the
+// Lambda's role ARN. That ARN must be pre-registered with GoCode S2S
+// (see README "Deploy" section). The JWT is passed to Claude CLI as
+// ANTHROPIC_AUTH_TOKEN (Bearer).
+// `onBackgroundError` is invoked when gd-auth-client emits a
+// `background_error` event during mint — the SSO call typically still
+// succeeds via the secondary region, but operators want to know about
+// the primary-region failure. The handler wires this to emitEvent so
+// the SSE stream surfaces it as a non-fatal warning instead of leaving
+// the signal in CloudWatch only.
+async function mintGoCodeJwt(onBackgroundError) {
+  const ssoHost = process.env.SSO_HOST;
+  if (!ssoHost) throw new Error('SSO_HOST env var is required');
+
+  const now = Date.now();
+  if (cachedJwt && cachedJwtExpiresAt - now > JWT_MIN_LIFETIME_MS) {
+    return cachedJwt;
+  }
+  if (jwtRefreshInFlight) return jwtRefreshInFlight;
+
+  jwtRefreshInFlight = (async () => {
+    try {
+      const client = new IamTokenClient(ssoHost);
+      client.once('background_error', (err) => {
+        const detail = {
+          ssoHost,
+          message: err?.message,
+          code: err?.code,
+          name: err?.name,
+        };
+        console.error('[investigator] gocode s2s primary region failure', detail);
+        if (typeof onBackgroundError === 'function') {
+          try { onBackgroundError(detail); } catch { /* ignore listener throw */ }
+        }
+      });
+      const jwt = await Promise.race([
+        client.getToken(),
+        new Promise((_resolve, reject) => setTimeout(
+          () => reject(new Error(`IamTokenClient.getToken timed out after ${JWT_MINT_TIMEOUT_MS}ms`)),
+          JWT_MINT_TIMEOUT_MS,
+        ).unref()),
+      ]);
+      const expiresAt = decodeJwtExpMs(jwt);
+      const remainingMs = expiresAt - Date.now();
+      if (remainingMs <= JWT_MIN_LIFETIME_MS) {
+        // Refuse a token that could expire mid-investigation. Returning
+        // it anyway would defeat the JWT_MIN_LIFETIME_MS guarantee the
+        // cache is built around: Claude could spend 14 minutes on a
+        // search and have the proxy 401 the final synthesis call. The
+        // handler-side catch surfaces this as `gocode auth failed`,
+        // which is the right outcome — the user retries and the next
+        // invocation mints a fresh token.
+        cachedJwt = null;
+        cachedJwtExpiresAt = 0;
+        throw new Error(
+          `GoCode S2S returned short-lived JWT (remaining ${remainingMs}ms < min ${JWT_MIN_LIFETIME_MS}ms)`,
+        );
+      }
+      cachedJwt = jwt;
+      cachedJwtExpiresAt = expiresAt;
+      return jwt;
+    } finally {
+      jwtRefreshInFlight = null;
+    }
+  })();
+
+  return jwtRefreshInFlight;
+}
 
 let bootstrapped = false;
 
@@ -57,7 +151,13 @@ async function bootstrap() {
     if (err && err.code !== 'EEXIST') throw err;
   }
 
-  // All secrets are per-invocation (gocodeApiKey, jomaxToken — see handler).
+  // Per-invocation secrets (jomaxToken; gocodeApiKey on the legacy path)
+  // are set on process.env inside the handler and cleared in its finally
+  // block so they never leak into the next warm-container invocation.
+  // The S2S JWT, by contrast, IS reused across warm invocations on
+  // purpose — it is bound to the Lambda execution role, so caching it
+  // avoids stampeding SSO on bursts of Investigate clicks. See
+  // mintGoCodeJwt for the cache + min-lifetime guard.
   // ANTHROPIC_BASE_URL is a non-secret constant set as a plain Lambda env var.
   bootstrapped = true;
 }
@@ -135,7 +235,7 @@ function spawnClaude(prompt, logStream) {
     '--dangerously-skip-permissions',
   ];
   const child = spawn(CLAUDE_BIN, args, {
-    env: process.env,
+    env: buildChildEnv(),
     stdio: ['ignore', 'pipe', 'pipe'],
     detached: true,
   });
@@ -233,13 +333,21 @@ export async function handler(event) {
     return { statusCode: 500, body: 'bootstrap failed' };
   }
 
-  // Per-invocation credentials forwarded from the console:
-  //   - JOMAX token  → scopes all downstream API calls to the caller's user
-  //   - GoCode key   → Claude CLI auth (charged to the user who triggered)
-  // Both live in process env for this invocation only and are cleared in
-  // a finally block at the bottom of this handler — Lambda reuses warm
-  // containers, so if an exception escapes before the cleanup runs, the
-  // next invocation could inherit the previous user's credentials.
+  // Per-invocation credentials:
+  //   - JOMAX token   → forwarded from caller; scopes downstream API calls
+  //                     to the user who triggered this investigation.
+  //   - GoCode auth   → depends on GOCODE_USE_S2S_AUTH:
+  //                       'true'  → mint IAM JWT via gd-auth-client using
+  //                                 the Lambda execution role directly
+  //                                 (no STS assume; ignores gocodeApiKey
+  //                                 from payload). Role must be registered
+  //                                 with GoCode S2S — see README.
+  //                       'false' → use gocodeApiKey from invoke payload
+  //                                 (legacy; kept for fast manual rollback
+  //                                 via Lambda console env var flip).
+  // Both live in process env for this invocation only and are cleared in a
+  // finally block below — Lambda reuses warm containers, so an exception
+  // escaping before cleanup could leak creds into the next invocation.
   if (!jomaxToken || typeof jomaxToken !== 'string') {
     await emitEvent('investigation.failed', { phase: 'credentials', error: 'jomaxToken missing' });
     await tryReleaseLockAsFailed(stateKey, {
@@ -250,49 +358,83 @@ export async function handler(event) {
     });
     return { statusCode: 400, body: 'jomaxToken required' };
   }
-  if (!gocodeApiKey || typeof gocodeApiKey !== 'string') {
-    await emitEvent('investigation.failed', { phase: 'credentials', error: 'gocodeApiKey missing' });
-    await tryReleaseLockAsFailed(stateKey, {
-      status: 'failed',
-      lastEvent: 'missing gocode api key from caller',
-      completedAt: new Date().toISOString(),
-      error: 'gocodeApiKey missing from invoke payload',
-    });
-    return { statusCode: 400, body: 'gocodeApiKey required' };
+
+  const s2sEnabled = process.env.GOCODE_USE_S2S_AUTH === 'true';
+  let gocodeAuthToken;
+  if (s2sEnabled) {
+    try {
+      gocodeAuthToken = await mintGoCodeJwt((detail) => {
+        // Fire-and-forget: don't let SSE delivery latency block the mint
+        // (primary failed; secondary region is what we're awaiting).
+        emitEvent('investigation.warning', {
+          source: 'gocode-s2s',
+          reason: 'primary-region-failure',
+          ...detail,
+        }).catch(() => {});
+      });
+    } catch (err) {
+      console.error('[investigator] gocode s2s jwt mint failed', {
+        investigationId,
+        stateKey,
+        ssoHost: process.env.SSO_HOST,
+        functionName: process.env.AWS_LAMBDA_FUNCTION_NAME,
+        err,
+      });
+      await emitEvent('investigation.failed', {
+        phase: 'credentials',
+        error: err instanceof Error ? err.message : String(err),
+      });
+      await tryReleaseLockAsFailed(stateKey, {
+        status: 'failed',
+        lastEvent: 'failed to mint gocode s2s jwt',
+        completedAt: new Date().toISOString(),
+        durationMs: Date.now() - started,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return { statusCode: 500, body: 'gocode auth failed' };
+    }
+  } else {
+    if (!gocodeApiKey || typeof gocodeApiKey !== 'string') {
+      await emitEvent('investigation.failed', { phase: 'credentials', error: 'gocodeApiKey missing' });
+      await tryReleaseLockAsFailed(stateKey, {
+        status: 'failed',
+        lastEvent: 'missing gocode api key from caller',
+        completedAt: new Date().toISOString(),
+        error: 'gocodeApiKey missing from invoke payload',
+      });
+      return { statusCode: 400, body: 'gocodeApiKey required' };
+    }
+    gocodeAuthToken = gocodeApiKey;
   }
-  process.env.JOMAX_TOKEN = jomaxToken;
-  process.env.ANTHROPIC_AUTH_TOKEN = gocodeApiKey;
-  // Lambda reuses warm containers. If an exception escapes before the
-  // finally at the end of this handler clears these, the next invocation
-  // would inherit the previous user's credentials. Everything from here
-  // down runs inside a try/finally that deletes them regardless of exit
-  // path.
+
   try {
+    process.env.JOMAX_TOKEN = jomaxToken;
+    process.env.ANTHROPIC_AUTH_TOKEN = gocodeAuthToken;
 
-  const workDir = `/tmp/${investigationId}`;
-  await fs.mkdir(workDir, { recursive: true });
-  process.env.REPORT_DIR = workDir;
+    const workDir = `/tmp/${investigationId}`;
+    await fs.mkdir(workDir, { recursive: true });
+    process.env.REPORT_DIR = workDir;
 
-  const traceLocalPath = path.join(workDir, 'trace.jsonl');
-  const logStream = createWriteStream(traceLocalPath);
+    const traceLocalPath = path.join(workDir, 'trace.jsonl');
+    const logStream = createWriteStream(traceLocalPath);
 
-  await mergeState(stateKey, {
-    status: 'running',
-    phase: 'claude-analysis',
-    lastEvent: 'container warm, launching claude search workflow',
-    heartbeatAt: new Date().toISOString(),
-    lambdaRequestId: process.env.AWS_LAMBDA_REQUEST_ID || null,
-  });
-  await emitEvent('phase.started', { phase: 'claude-analysis' });
+    await mergeState(stateKey, {
+      status: 'running',
+      phase: 'claude-analysis',
+      lastEvent: 'container warm, launching claude search workflow',
+      heartbeatAt: new Date().toISOString(),
+      lambdaRequestId: process.env.AWS_LAMBDA_REQUEST_ID || null,
+    });
+    await emitEvent('phase.started', { phase: 'claude-analysis' });
 
-  const prompt = buildPrompt({ appId, feedback, fullstoryUrl, timeWindow });
-  const child = spawnClaude(prompt, logStream);
+    const prompt = buildPrompt({ appId, feedback, fullstoryUrl, timeWindow });
+    const child = spawnClaude(prompt, logStream);
 
-  let latestPhase = 'claude-analysis';
-  let latestEvent = 'claude searching telemetry';
+    let latestPhase = 'claude-analysis';
+    let latestEvent = 'claude searching telemetry';
 
-  // Tap stdout for phase markers. Pipe already handles writing to trace file.
-  child.stdout.on('data', (buf) => {
+    // Tap stdout for phase markers. Pipe already handles writing to trace file.
+    child.stdout.on('data', (buf) => {
     const s = buf.toString('utf-8');
     for (const line of s.split('\n')) {
       const phase = parsePhaseFromLine(line);
@@ -303,80 +445,89 @@ export async function handler(event) {
       }
       if (line.length > 0) latestEvent = line.slice(0, 240);
     }
-  });
-
-  // `finalized` guards the heartbeat against clobbering the terminal write.
-  // `clearInterval` stops scheduling new ticks but an in-flight S3 PUT from
-  // a tick that already fired can still land AFTER the final mergeState
-  // below — mergeState is read-modify-write, so a late tick that read the
-  // pre-terminal state would write `status: running` over `status: completed`
-  // and the UI would poll forever until it marked the heartbeat stale. The
-  // guard lets us reject late writes instead of merging them.
-  let finalized = false;
-  let heartbeatFailures = 0;
-  const heartbeat = setInterval(() => {
-    if (finalized) return;
-    emitEvent('heartbeat', { phase: latestPhase, lastEvent: latestEvent }).catch(() => {});
-    mergeState(stateKey, {
-      heartbeatAt: new Date().toISOString(),
-      phase: latestPhase,
-      lastEvent: latestEvent,
-    }).catch((err) => {
-      // Log the FIRST failure so operators debugging a stale investigation
-      // have a CloudWatch entry to chase; subsequent failures stay silent
-      // so a persistent outage doesn't spam every 10s for 14 minutes.
-      heartbeatFailures += 1;
-      if (heartbeatFailures === 1) {
-        console.error('[investigator] heartbeat write failed (first occurrence)', {
-          stateKey, err,
-        });
-      }
     });
-  }, HEARTBEAT_MS);
 
-  const childRunMs = Math.max(60_000, MAX_RUN_MS - (Date.now() - started));
-  const killTimer = setTimeout(() => {
+    // `finalized` guards the heartbeat against clobbering the terminal write.
+    // `clearInterval` stops scheduling new ticks but an in-flight S3 PUT from
+    // a tick that already fired can still land AFTER the final mergeState
+    // below — mergeState is read-modify-write, so a late tick that read the
+    // pre-terminal state would write `status: running` over `status: completed`
+    // and the UI would poll forever until it marked the heartbeat stale. The
+    // guard lets us reject late writes instead of merging them.
+    let finalized = false;
+    let heartbeatFailures = 0;
+    // Re-log every Nth failure (not just the first) so a persistent S3
+    // outage shows up in CloudWatch as a recurring signature instead of
+    // a single line buried 14 minutes ago. We carry the running count
+    // through to the final state document below so a stranded
+    // investigation surfaces "heartbeat wrote N/M times" without
+    // requiring CloudWatch correlation.
+    const HEARTBEAT_RELOG_EVERY = 10;
+    const heartbeat = setInterval(() => {
+      if (finalized) return;
+      emitEvent('heartbeat', { phase: latestPhase, lastEvent: latestEvent }).catch(() => {});
+      mergeState(stateKey, {
+        heartbeatAt: new Date().toISOString(),
+        phase: latestPhase,
+        lastEvent: latestEvent,
+      }).catch((err) => {
+        heartbeatFailures += 1;
+        if (
+          heartbeatFailures === 1 ||
+          heartbeatFailures % HEARTBEAT_RELOG_EVERY === 0
+        ) {
+          console.error('[investigator] heartbeat write failed', {
+            stateKey,
+            occurrence: heartbeatFailures,
+            err,
+          });
+        }
+      });
+    }, HEARTBEAT_MS);
+
+    const childRunMs = Math.max(60_000, MAX_RUN_MS - (Date.now() - started));
+    const killTimer = setTimeout(() => {
     try { process.kill(-child.pid, 'SIGTERM'); } catch {}
     setTimeout(() => {
       try { process.kill(-child.pid, 'SIGKILL'); } catch {}
     }, 5_000).unref();
-  }, childRunMs);
+    }, childRunMs);
 
-  const exitInfo = await new Promise((resolve) => {
+    const exitInfo = await new Promise((resolve) => {
     child.on('exit', (code, signal) => resolve({ code, signal }));
-  });
+    });
 
-  // Order matters:
-  //   1. flip `finalized` so any already-scheduled heartbeat callback that
-  //      runs during the interval teardown returns early
-  //   2. stop scheduling new heartbeats
-  //   3. wait for the trace stream to flush to disk BEFORE we read it for
-  //      upload — logStream.end() only schedules the final write; without
-  //      awaiting 'finish' we can upload a truncated trace on fast runs.
-  finalized = true;
-  clearInterval(heartbeat);
-  clearTimeout(killTimer);
-  await new Promise((resolve) => {
+    // Order matters:
+    //   1. flip `finalized` so any already-scheduled heartbeat callback that
+    //      runs during the interval teardown returns early
+    //   2. stop scheduling new heartbeats
+    //   3. wait for the trace stream to flush to disk BEFORE we read it for
+    //      upload — logStream.end() only schedules the final write; without
+    //      awaiting 'finish' we can upload a truncated trace on fast runs.
+    finalized = true;
+    clearInterval(heartbeat);
+    clearTimeout(killTimer);
+    await new Promise((resolve) => {
     logStream.once('finish', resolve);
     logStream.end();
-  });
+    });
 
-  // Locate report markdown (skill writes under REPORT_DIR on laptop runs;
-  // in Lambda the skill ends by asking the user whether to save, and nobody
-  // answers, so the file is typically absent).
-  let reportMd = '';
-  let reportName = `${appId}.md`;
-  let entries = [];
-  try {
+    // Locate report markdown (skill writes under REPORT_DIR on laptop runs;
+    // in Lambda the skill ends by asking the user whether to save, and nobody
+    // answers, so the file is typically absent).
+    let reportMd = '';
+    let reportName = `${appId}.md`;
+    let entries = [];
+    try {
     entries = await fs.readdir(workDir);
-  } catch (err) {
+    } catch (err) {
     // readdir fails when workDir is missing — expected on very-early exits.
     if (err && err.code !== 'ENOENT') {
       console.error('[investigator] failed to list REPORT_DIR', workDir, err);
     }
-  }
-  const md = entries.find((f) => f.endsWith('.md'));
-  if (md) {
+    }
+    const md = entries.find((f) => f.endsWith('.md'));
+    if (md) {
     try {
       reportName = md;
       reportMd = await fs.readFile(path.join(workDir, md), 'utf-8');
@@ -387,14 +538,14 @@ export async function handler(event) {
       console.error('[investigator] failed to read report file', md, err);
       reportMd = '';
     }
-  }
+    }
 
-  // Fallback: scrape the final assistant text out of the Claude CLI
-  // stream-json trace. The Slack-ready summary that phase-6-synthesis emits
-  // always ends up in an assistant message; we stitch any assistant text
-  // blocks together and drop the trailing "Want me to save a full report?"
-  // prompt line.
-  if (!reportMd) {
+    // Fallback: scrape the final assistant text out of the Claude CLI
+    // stream-json trace. The Slack-ready summary that phase-6-synthesis emits
+    // always ends up in an assistant message; we stitch any assistant text
+    // blocks together and drop the trailing "Want me to save a full report?"
+    // prompt line.
+    if (!reportMd) {
     try {
       const traceRaw = await fs.readFile(traceLocalPath, 'utf-8');
       const parts = [];
@@ -426,85 +577,89 @@ export async function handler(event) {
         console.error('[investigator] trace fallback read failed', err);
       }
     }
-  }
+    }
 
-  // Exit codes 143 (128+SIGTERM) and 137 (128+SIGKILL) indicate the process
-  // caught the signal and exited with a numeric code instead of dying via the
-  // signal directly. Node's child_process reports signal=null + code=143 in
-  // that case, so we check both paths.
-  const wasKilled =
+    // Exit codes 143 (128+SIGTERM) and 137 (128+SIGKILL) indicate the process
+    // caught the signal and exited with a numeric code instead of dying via the
+    // signal directly. Node's child_process reports signal=null + code=143 in
+    // that case, so we check both paths.
+    const wasKilled =
     exitInfo.signal === 'SIGTERM' || exitInfo.signal === 'SIGKILL' ||
     exitInfo.code === 143 || exitInfo.code === 137;
-  const status = wasKilled
+    const status = wasKilled
     ? 'killed'
     : exitInfo.code === 0
       ? 'completed'
       : 'failed';
 
-  // Upload trace.jsonl — primary forensic artifact. Swallowing failures
-  // silently leaves completed-looking investigations with no debuggable
-  // trace; CloudWatch is the only place that can surface it.
-  const traceKey = `${tracePrefix || historyPrefix + investigationId + '/'}trace.jsonl`;
-  try {
+    // Upload trace.jsonl — primary forensic artifact. Swallowing failures
+    // silently leaves completed-looking investigations with no debuggable
+    // trace; CloudWatch is the only place that can surface it.
+    const traceKey = `${tracePrefix || historyPrefix + investigationId + '/'}trace.jsonl`;
+    try {
     const traceBody = await fs.readFile(traceLocalPath);
     await putText(traceKey, traceBody, 'application/x-ndjson');
-  } catch (err) {
+    } catch (err) {
     console.error('[investigator] trace upload failed', { traceKey, err });
-  }
+    }
 
-  // Upload report. If this fails, still write a terminal state so the UI does
-  // not sit in running/stale with a report that only existed in Lambda memory.
-  let reportUploaded = false;
-  if (reportMd) {
+    // Upload report. If this fails, still write a terminal state so the UI does
+    // not sit in running/stale with a report that only existed in Lambda memory.
+    let reportUploaded = false;
+    if (reportMd) {
     try {
       await putText(resultKey, reportMd, 'text/markdown; charset=utf-8');
       reportUploaded = true;
     } catch (err) {
       console.error('[investigator] report upload failed', { resultKey, err });
     }
-  }
+    }
 
-  if (reportUploaded) {
-    await emitEvent('report.ready', { resultKey, reportFilename: reportName });
-  }
+    if (reportUploaded) {
+      await emitEvent('report.ready', { resultKey, reportFilename: reportName });
+    }
 
-  const terminalType =
-    status === 'completed'
-      ? 'investigation.completed'
-      : status === 'killed'
-        ? 'investigation.killed'
-        : 'investigation.failed';
-  await emitEvent(terminalType, {
-    status,
-    phase: latestPhase,
-    durationMs: Date.now() - started,
-    reason: wasKilled ? 'timeout' : undefined,
-    error: status === 'failed' ? `claude exit code ${exitInfo.code}` : undefined,
-  });
+    const terminalType =
+      status === 'completed'
+        ? 'investigation.completed'
+        : status === 'killed'
+          ? 'investigation.killed'
+          : 'investigation.failed';
+    await emitEvent(terminalType, {
+      status,
+      phase: latestPhase,
+      durationMs: Date.now() - started,
+      reason: wasKilled ? 'timeout' : undefined,
+      error: status === 'failed' ? `claude exit code ${exitInfo.code}` : undefined,
+    });
 
-  const finalState = await mergeState(stateKey, {
-    status,
-    phase: latestPhase,
-    lastEvent: wasKilled
-      ? 'investigation exceeded time limit'
-      : status === 'completed'
-        ? 'report written'
-        : `claude exited with code ${exitInfo.code}`,
-    heartbeatAt: new Date().toISOString(),
-    completedAt: new Date().toISOString(),
-    durationMs: Date.now() - started,
-    resultKey: reportUploaded ? resultKey : null,
-    reportFilename: reportUploaded ? reportName : null,
-    error: status === 'failed' ? `claude exit code ${exitInfo.code}` : null,
-  });
+    const finalState = await mergeState(stateKey, {
+      status,
+      phase: latestPhase,
+      lastEvent: wasKilled
+        ? 'investigation exceeded time limit'
+        : status === 'completed'
+          ? 'report written'
+          : `claude exited with code ${exitInfo.code}`,
+      heartbeatAt: new Date().toISOString(),
+      completedAt: new Date().toISOString(),
+      durationMs: Date.now() - started,
+      resultKey: reportUploaded ? resultKey : null,
+      reportFilename: reportUploaded ? reportName : null,
+      // Carry the heartbeat failure counter so a stranded investigation's
+      // state document tells operators how many heartbeat writes were lost
+      // without requiring a CloudWatch correlation.
+      heartbeatFailures,
+      error: status === 'failed' ? `claude exit code ${exitInfo.code}` : null,
+    });
 
-  // Freeze into history — `active/` is overwritten on the next run for the
-  // same (customer, app), so if these copies silently fail the completed
-  // investigation is unrecoverable. Log to CloudWatch instead of eating
-  // the error; the UI already has the result.md via the active/ slot, so
-  // failure here doesn't block the current user — it only affects future
-  // retrieval of THIS run.
-  if (historyPrefix) {
+    // Freeze into history — `active/` is overwritten on the next run for the
+    // same (customer, app), so if these copies silently fail the completed
+    // investigation is unrecoverable. Log to CloudWatch instead of eating
+    // the error; the UI already has the result.md via the active/ slot, so
+    // failure here doesn't block the current user — it only affects future
+    // retrieval of THIS run.
+    if (historyPrefix) {
     try {
       await snapshotToHistory(stateKey, historyPrefix, investigationId);
     } catch (err) {
@@ -528,18 +683,18 @@ export async function handler(event) {
         });
       }
     }
-  }
+    }
 
-  // Cleanup work dir to keep /tmp healthy across warm invocations. Failure
-  // here isn't fatal — /tmp is 2 GiB and Lambda refreshes it on cold start,
-  // but log it anyway so we notice if something holds the directory open.
-  try {
+    // Cleanup work dir to keep /tmp healthy across warm invocations. Failure
+    // here isn't fatal — /tmp is 2 GiB and Lambda refreshes it on cold start,
+    // but log it anyway so we notice if something holds the directory open.
+    try {
     await fs.rm(workDir, { recursive: true, force: true });
-  } catch (err) {
+    } catch (err) {
     console.error('[investigator] workDir cleanup failed', { workDir, err });
-  }
+    }
 
-  return { statusCode: 200, body: JSON.stringify({ investigationId, status: finalState.status }) };
+    return { statusCode: 200, body: JSON.stringify({ investigationId, status: finalState.status }) };
   } finally {
     // Drop the per-invocation creds regardless of exit path so they don't
     // linger into the next warm-container invocation. `delete` rather

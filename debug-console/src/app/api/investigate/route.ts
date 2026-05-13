@@ -20,11 +20,9 @@ interface InvestigateRequest {
   feedback?: string;
   fullstoryUrl?: string | null;
   timeWindow?: string | null;
-  gocodeApiKey?: string;
 }
 
 const MAX_FEEDBACK_LEN = 4000;
-const MIN_GOCODE_KEY_LEN = 16;
 
 function bad(msg: string, status = 400): NextResponse {
   return NextResponse.json({ error: msg }, { status });
@@ -46,16 +44,12 @@ export const POST = withAuth(async (request, auth) => {
   const appId = body.appId?.trim();
   const customerId = body.customerId?.trim();
   const feedback = body.feedback?.trim();
-  const gocodeApiKey = body.gocodeApiKey?.trim();
 
   if (!appId) return bad('appId is required');
   if (!customerId) return bad('customerId is required');
   if (!feedback) return bad('feedback is required');
   if (feedback.length > MAX_FEEDBACK_LEN) {
     return bad(`feedback exceeds ${MAX_FEEDBACK_LEN} characters`);
-  }
-  if (!gocodeApiKey || gocodeApiKey.length < MIN_GOCODE_KEY_LEN) {
-    return bad('gocodeApiKey is required (paste your GoCode API key)');
   }
 
   // Forward the user's JOMAX token so the Lambda can hit console/agent APIs
@@ -129,7 +123,6 @@ export const POST = withAuth(async (request, auth) => {
       tracePrefix: keys.tracePrefix,
       eventsPrefix: keys.eventsPrefix,
       jomaxToken,
-      gocodeApiKey,
     });
   } catch (error) {
     logger.error('investigate.lambda.invoke.failed', { investigationId, appId }, { error: error as Error });

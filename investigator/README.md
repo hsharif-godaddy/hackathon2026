@@ -33,12 +33,52 @@ Invoked async by the debug-console with this payload:
 
 Lambda env required:
 
-| Var                  | Purpose                                                                                                                                            |
-| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `STATE_BUCKET`       | S3 bucket for state, trace, and report artifacts                                                                                                   |
-| `AWS_REGION`         | region (default us-west-2)                                                                                                                         |
-| `CONSOLE_BASE`       | debug-console base URL used by the skill's console API search scripts                                                                              |
-| `ANTHROPIC_BASE_URL` | GoCode proxy URL; the per-user GoCode API key is forwarded per invocation as `gocodeApiKey` and loaded into `ANTHROPIC_AUTH_TOKEN` only at runtime |
+| Var                   | Purpose                                                                                                                                                          |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `STATE_BUCKET`        | S3 bucket for state, trace, and report artifacts                                                                                                                 |
+| `AWS_REGION`          | region (default us-west-2)                                                                                                                                       |
+| `CONSOLE_BASE`        | debug-console base URL used by the skill's console API search scripts                                                                                            |
+| `GOCODE_USE_S2S_AUTH` | `true` → mint IAM JWT per invocation from the Lambda's own execution role (must be GoCode-S2S-registered); `false` → fall back to `gocodeApiKey` in the payload. |
+| `ANTHROPIC_BASE_URL`  | GoCode S2S endpoint (`api.gocode.caas.*-gdcorp.tools`) when S2S is on; legacy Anthropic proxy (`caas-gocode-*.onkatana.net`) when off.                           |
+| `SSO_HOST`            | SSO host fed to `gd-auth-client` when minting JWT. Ignored when S2S is off.                                                                                      |
+
+The Lambda execution role `${env}-airo-investigator-role` must be
+registered with GoCode S2S before flipping `GOCODE_USE_S2S_AUTH=true`.
+Open a "Register or Update S2S Access" issue in `gdcorp-dna/gocode` with
+the role ARN as the auth identity. See the
+[GoCode JWT Authentication Guide](https://godaddy-corp.atlassian.net/wiki/spaces/BI/pages/3903691501)
+and [Guide for GoCode Service to Service API Calling for
+Dummies](https://godaddy-corp.atlassian.net/wiki/spaces/SECRES/pages/4328456910).
+
+### Rollback
+
+To **restore service** when GoCode S2S is broken, use the **Proper** path
+below. The **Fast** path only stops the Lambda from spending 14 minutes
+on doomed invocations — it does not put users back in business.
+
+**Fast (mute failures, no deploy, ~30s)** — flip the env var on the
+Lambda so the next invocation short-circuits the S2S path. Investigate
+clicks then return `"gocodeApiKey required"` immediately (the UI no
+longer collects an API key, so this is purely a fail-fast). Use this
+while you prepare the proper rollback:
+
+1. AWS console → Lambda → `airo-investigator-<env>` → Configuration →
+   Environment variables → edit `GOCODE_USE_S2S_AUTH` from `true` to
+   `false` → Save.
+2. Next `cdk deploy` will flip this back to `true`; revert the CDK
+   change in code before redeploying.
+
+**Proper (restore service via CDK + UI revert)** — required for users
+to be able to investigate again:
+
+1. Revert the `GOCODE_USE_S2S_AUTH: 'true'` line in
+   `cdk/lib/investigator-stack.ts` (or the whole PR) and redeploy
+   `AiroInvestigatorStack`.
+2. Re-enable the GoCode API-key UI in
+   `debug-console/src/components/InvestigatePanel.tsx` and BFF
+   validation in `debug-console/src/app/api/investigate/route.ts`.
+
+No other CDK stacks are touched either way.
 
 ## Local build
 
