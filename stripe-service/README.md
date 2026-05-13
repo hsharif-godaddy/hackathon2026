@@ -30,6 +30,15 @@ Library packages (no caller wires them in yet):
   raw bytes — decryption belongs in a separate package. Wired into real
   `POST /v1/sandboxes` body and the live-key webhook handler in follow-up PRs.
 
+Library packages (no caller wires them in yet):
+
+- `internal/jwedecrypt` — RSA-OAEP[-256] + A256GCM JWE compact-serialization
+  decrypter for Stripe Managed API Key responses. CEK unwrap delegated to AWS
+  KMS via a narrow interface (asymmetric `RSA_2048` CMK); AES-256-GCM content
+  decryption happens in-process via stdlib `crypto/aes` + `crypto/cipher`. AAD
+  follows RFC 7516 §5.1.10 (raw base64url-encoded protected header bytes).
+  Library only — slotted into the live-key webhook handler in a follow-up PR.
+
 Next PRs:
 
 1. Real `POST /v1/sandboxes` body (Stripe `v2.core.claimableSandboxes.create` + DynamoDB write).
