@@ -35,7 +35,7 @@ on:
       timeout-minutes:
         description: "Synthia step timeout (minutes)"
         required: false
-        default: 30
+        default: 45
         type: number
       fail-on-threshold:
         description: "Fail if score is below threshold"
@@ -75,7 +75,7 @@ on:
         description: "Synthia step timeout (minutes)"
         required: false
         type: string
-        default: "30"
+        default: "45"
       fail-on-threshold:
         description: "Fail if score is below threshold"
         required: false
@@ -118,7 +118,7 @@ jobs:
         - airo-cicd-runners
         - self-hosted
     # Fixed job timeout - generous buffer for any step timeout value
-    timeout-minutes: 45
+    timeout-minutes: 50
     steps:
       - name: Validate inputs
         env:

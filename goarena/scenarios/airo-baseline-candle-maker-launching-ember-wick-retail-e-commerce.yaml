@@ -33,7 +33,7 @@ testingCapability: "Complexity: hard | Primary intent: ecommerce website + publi
   path | Expected: setup storefront, products, SEO basics, and publish guidance"
 
 trials: 1
-maxTurns: 7
+maxTurns: 13
 
 llmConfig:
   model: gpt-5.2

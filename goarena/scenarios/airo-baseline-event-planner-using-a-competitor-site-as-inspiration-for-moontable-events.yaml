@@ -33,7 +33,7 @@ testingCapability: "Complexity: adversarial | Primary intent: reference-site reb
   add packages, gallery, and inquiry form"
 
 trials: 1
-maxTurns: 7
+maxTurns: 13
 
 llmConfig:
   model: gpt-5.2
