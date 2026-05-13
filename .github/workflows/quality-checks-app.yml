@@ -14,8 +14,6 @@ on:
       - "scripts/license-check.sh"
       - ".github/workflows/quality-checks-app.yml"
       - ".github/workflows/_quality-checks.yml"
-  merge_group:
-    branches: [main]
   push:
     branches: [main]
     paths:

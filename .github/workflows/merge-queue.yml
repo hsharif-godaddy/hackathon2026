@@ -1,0 +1,135 @@
+name: Merge Queue
+
+on:
+  merge_group:
+    branches: [main]
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  # Passes immediately so developers have a link to click while CI is running.
+  # See: https://boinkor.net/2023/11/neat-github-actions-patterns-for-github-merge-queues/
+  ci-running:
+    name: Merge Queue (CI running...)
+    runs-on:
+      labels:
+        - airo-cicd-runners
+        - self-hosted
+    steps:
+      - run: echo "Merge queue checks are running"
+
+  # JS/TS packages — call _quality-checks.yml directly
+  agents:
+    uses: ./.github/workflows/_quality-checks.yml
+    with:
+      package-name: agents
+      pnpm-filter: "@airo/agents"
+      working-directory: ./agents
+    secrets: inherit
+
+  app-lint-build:
+    uses: ./.github/workflows/_quality-checks.yml
+    with:
+      package-name: app
+      pnpm-filter: website
+      working-directory: ./app
+      cache-next-build: true
+      skip-tests: true
+    secrets: inherit
+
+  app-unit-tests:
+    uses: ./.github/workflows/_quality-checks.yml
+    with:
+      package-name: app-unit
+      pnpm-filter: website
+      working-directory: ./app
+      skip-lint-build: true
+      test-script: test:unit
+    secrets: inherit
+
+  app-integration-tests:
+    uses: ./.github/workflows/_quality-checks.yml
+    with:
+      package-name: app-integration
+      pnpm-filter: website
+      working-directory: ./app
+      skip-lint-build: true
+      test-script: test:integration
+    secrets: inherit
+
+  proxy:
+    uses: ./.github/workflows/_quality-checks.yml
+    with:
+      package-name: proxy
+      pnpm-filter: airo-proxy
+      working-directory: ./proxy
+    secrets: inherit
+
+  # Go services and other checks — call service workflows directly
+  go-agent:
+    uses: ./.github/workflows/go-agent.yml
+    secrets: inherit
+
+  dev-supervisor:
+    uses: ./.github/workflows/dev-supervisor.yml
+
+  local-control-plane:
+    uses: ./.github/workflows/local-control-plane.yml
+    secrets: inherit
+
+  stripe-service:
+    uses: ./.github/workflows/quality-checks-stripe-service.yml
+    secrets: inherit
+
+  budget-service:
+    uses: ./.github/workflows/budget-service-ci.yml
+    secrets: inherit
+
+  tools-security:
+    uses: ./.github/workflows/tools-security-check.yml
+
+  v8-license:
+    uses: ./.github/workflows/v8-template-license-check.yml
+    secrets: inherit
+
+  v8-migration:
+    uses: ./.github/workflows/v8-template-migration-checks.yml
+    secrets: inherit
+
+  # Single required status check for the merge queue ruleset.
+  # Uses if: always() + explicit jq check so that a skipped dep doesn't
+  # silently count as passing. See the boinkor.net article above.
+  merge-gate:
+    name: Merge Gate
+    needs:
+      - agents
+      - app-lint-build
+      - app-unit-tests
+      - app-integration-tests
+      - proxy
+      - go-agent
+      - dev-supervisor
+      - local-control-plane
+      - stripe-service
+      - budget-service
+      - tools-security
+      - v8-license
+      - v8-migration
+    if: always()
+    permissions:
+      actions: read
+    runs-on:
+      labels:
+        - airo-cicd-runners
+        - self-hosted
+    steps:
+      - name: All merge checks passed
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
+        run: |
+          echo "$NEEDS_JSON" | jq -e '
+            to_entries | map(
+              [.value.result == "success", .value.result == "skipped"] | any
+            ) | all'

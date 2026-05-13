@@ -48,28 +48,8 @@
       "parameters": {
         "strict_required_status_checks_policy": false,
         "required_status_checks": [
-          { "context": "quality-checks-agents / lint-build" },
-          { "context": "quality-checks-agents / test" },
-          { "context": "quality-checks-app-lint-build / lint-build" },
-          { "context": "quality-checks-app-unit-tests / test" },
-          { "context": "quality-checks-app-integration-tests / test" },
-          { "context": "quality-checks-proxy / lint-build" },
-          { "context": "quality-checks-proxy / test" },
-          { "context": "go-agent / Lint" },
-          { "context": "go-agent / Test" },
-          { "context": "dev-supervisor / Lint" },
-          { "context": "dev-supervisor / Test" },
-          { "context": "dev-supervisor / Docker Integration Tests" },
-          { "context": "local-control-plane / Lint" },
-          { "context": "local-control-plane / Test" },
-          { "context": "stripe-service / Lint" },
-          { "context": "stripe-service / Test" },
-          { "context": "budget-service / Lint" },
-          { "context": "budget-service / Test" },
-          { "context": "pnpm audit (high+ advisories)" },
-          { "context": "Check for dangerous process execution" },
-          { "context": "v8-template-license-check" },
-          { "context": "v8-template-migration-checks" }
+          { "context": "Merge Queue (CI running...)" },
+          { "context": "Merge Gate" }
         ]
       }
     },

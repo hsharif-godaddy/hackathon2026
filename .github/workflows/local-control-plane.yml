@@ -11,8 +11,7 @@ on:
     paths:
       - "local-control-plane/**"
       - ".github/workflows/local-control-plane.yml"
-  merge_group:
-    branches: [main]
+  workflow_call:
 
 permissions:
   id-token: write

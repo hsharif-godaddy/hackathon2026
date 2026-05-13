@@ -4,8 +4,7 @@ on:
   pull_request:
     paths:
       - "agents/src/tools/**"
-  merge_group:
-    branches: [main]
+  workflow_call:
   push:
     branches:
       - main

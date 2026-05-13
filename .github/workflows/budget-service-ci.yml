@@ -11,8 +11,7 @@ on:
     paths:
       - "budget-service/**"
       - ".github/workflows/budget-service-ci.yml"
-  merge_group:
-    branches: [main]
+  workflow_call:
 
 permissions:
   id-token: write
