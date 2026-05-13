@@ -14,8 +14,7 @@ export const formatDate = (date: string | Date, detailed = false) => {
     day: 'numeric',
     year: 'numeric',
     hour: detailed ? '2-digit' : undefined,
-    minute: detailed ? '2-digit' : undefined,
-    timeZone: 'UTC',
+    minute: detailed ? '2-digit' : undefined
   }).format(dateObj)
 }
 
