@@ -16,6 +16,8 @@
     "build:all": "turbo run build",
     "typecheck": "turbo run typecheck",
     "lint": "turbo run lint",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
     "test": "./scripts/test.sh",
     "test:e2e": "./scripts/e2e.sh",
     "pr-check": "./scripts/pr-check.sh",

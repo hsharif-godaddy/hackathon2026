@@ -1,0 +1,58 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build output
+dist/
+build/
+.next/
+out/
+.turbo/
+*.tsbuildinfo
+coverage/
+
+# Generated
+**/generated/
+gasket-data.js
+**/intl/*.json
+agents/data/
+
+# Lockfiles
+pnpm-lock.yaml
+package-lock.json
+yarn.lock
+
+# App templates have their own toolchain
+app-templates/
+
+# Go projects (not formatted by prettier)
+dev-supervisor/
+local-control-plane/
+go-agent/
+goarena/
+packages/go-auth/
+
+# Vendored / external
+auth/
+
+# Logs and reports
+*.log
+test-results/
+playwright-report/
+
+# Binary / non-source
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.webp
+*.ico
+*.webm
+*.mp4
+*.pdf
+*.zip
+*.tar
+*.gz
+
+# Markdown — keep prose untouched (avoids reflowing long lines, lists, tables)
+*.md
