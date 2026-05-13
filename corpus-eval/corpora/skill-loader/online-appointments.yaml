@@ -1,0 +1,40 @@
+metadata:
+  name: "Skill Loader - Online Appointments"
+  version: "1.0.0"
+
+cases:
+  - id: "appointments-fitness-001"
+    prompt: "I want to add online booking for fitness classes to my website"
+    expectedSkill: "online-appointments"
+    tags: ["positive", "simple"]
+    rationale: "Clear booking intent - should load skill immediately"
+
+  - id: "appointments-consultation-001"
+    prompt: "I have an appointment booking system that needs Google Calendar integration"
+    expectedSkill: null
+    tags: ["negative", "existing-system"]
+    rationale: "System already exists - just needs integration, not new build"
+
+  - id: "appointments-freight-001"
+    prompt: "I want customers to book our truck online with payment"
+    expectedSkill: "online-appointments"
+    tags: ["positive", "simple"]
+    rationale: "Booking with payment - core use case"
+
+  - id: "appointments-explicit-001"
+    prompt: "add appointment booking"
+    expectedSkill: "online-appointments"
+    tags: ["positive", "minimal"]
+    rationale: "Explicit appointment booking request"
+
+  - id: "appointments-schedule-001"
+    prompt: "I need a scheduling system for my salon"
+    expectedSkill: "online-appointments"
+    tags: ["positive", "simple"]
+    rationale: "Scheduling system - clear use case"
+
+  - id: "appointments-bugfix-001"
+    prompt: "fix the appointment booking form validation"
+    expectedSkill: null
+    tags: ["negative", "maintenance"]
+    rationale: "Bug fix on existing feature - should not load skill"
