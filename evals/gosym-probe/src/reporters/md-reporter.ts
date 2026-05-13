@@ -243,10 +243,12 @@ function formatPercent(
 function scenarioPassCounts(
   result: ScenarioResult,
 ): { passed: number; total: number } {
-  const values = Object.values(result.aggregated);
+  const withPassAtK = Object.values(result.aggregated).filter(
+    (agg) => agg.passAtK !== undefined,
+  );
   return {
-    passed: values.filter((agg) => agg.passAtK).length,
-    total: values.length,
+    passed: withPassAtK.filter((agg) => agg.passAtK).length,
+    total: withPassAtK.length,
   };
 }
 
@@ -254,7 +256,9 @@ function scenarioOverall(
   result: ScenarioResult,
 ): 'pass' | 'fail' {
   const counts = scenarioPassCounts(result);
-  if (counts.total === 0) return 'fail';
+  if (counts.total === 0) {
+    return Object.keys(result.aggregated).length > 0 ? 'pass' : 'fail';
+  }
   return counts.passed / counts.total >= 0.75 ? 'pass' : 'fail';
 }
 

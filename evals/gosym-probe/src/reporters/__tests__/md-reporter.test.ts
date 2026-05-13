@@ -196,6 +196,70 @@ describe('MdReporter', () => {
     expect(content).toContain('| Evaluator | pass | partial | fail | unknown | pass rate |');
   });
 
+  it('counts only pass@k evaluators in scenario pass fraction (excludes score-mode)', () => {
+    const withObservational: ScenarioResult = {
+      ...BASELINED_RESULT,
+      trials: BASELINED_RESULT.trials.map((trial) => ({
+        ...trial,
+        evalResults: [
+          ...trial.evalResults,
+          makeEvalResult('token-usage', 'observed', 42),
+        ],
+      })),
+      aggregated: {
+        ...BASELINED_RESULT.aggregated,
+        'token-usage': {
+          passingTrials: 3,
+          totalTrials: 3,
+          regressionMode: 'score',
+          medianScore: 42,
+        },
+      },
+    };
+    const reporter = new MdReporter();
+    const content = reporter.render('run-001', [withObservational]);
+    const passRateSection = content.split(
+      '### Scenario pass rate (overall)',
+    )[1];
+    expect(passRateSection).toBeDefined();
+    expect(passRateSection).toContain('2/2 (100%)');
+    expect(passRateSection).toContain('| pass | 2/2 (100%)');
+    expect(passRateSection).not.toContain('2/3');
+  });
+
+  it('treats score-mode-only scenarios as overall pass (0/0 fraction)', () => {
+    const scoreOnly: ScenarioResult = {
+      scenarioName: 'latency-only',
+      stabilityLevel: 'medium',
+      trials: [
+        makeTrial(0, [
+          makeEvalResult('token-usage', 'observed', 100),
+          makeEvalResult('llm-cost', 'observed', 0.01),
+        ]),
+      ],
+      aggregated: {
+        'llm-cost': {
+          passingTrials: 1,
+          totalTrials: 1,
+          regressionMode: 'score',
+          medianScore: 0.01,
+        },
+        'token-usage': {
+          passingTrials: 1,
+          totalTrials: 1,
+          regressionMode: 'score',
+          medianScore: 100,
+        },
+      },
+    };
+    const reporter = new MdReporter();
+    const content = reporter.render('run-001', [scoreOnly]);
+    expect(content).toContain('- Scenarios passed: **1** / 1');
+    expect(content).toMatch(
+      /\| latency-only \|[^\n]*\| pass \| 0\/0 \(0%\)/,
+    );
+  });
+
   it('links scenario pass-rate rows to every trial markdown result', () => {
     const reporter = new MdReporter();
     const content = reporter.render('run-001', [BASELINED_RESULT]);
