@@ -91,3 +91,12 @@ all.log
 # Local test runs generate an npm lockfile we do not track.
 investigator/package-lock.json
 investigator/node_modules/
+
+# History Cursor extension
+.history/
+# Vscode data folder
+.vscode/
+# Cursor extension
+.specstory/
+# Cursor extension data
+.cursorindexingignore
