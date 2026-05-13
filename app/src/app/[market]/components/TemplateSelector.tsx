@@ -39,6 +39,7 @@ export default function TemplateSelector({ selectedTemplate, onTemplateChange }:
             selected={selectedTemplate === tmpl.id}
             onSelect={() => onTemplateChange(tmpl.id)}
             data-partial="componentAiro"
+            data-testid={`template-chip-${tmpl.id}`}
             size="sm"
           />
         ))}

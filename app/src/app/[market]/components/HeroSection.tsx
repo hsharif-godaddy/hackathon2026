@@ -452,7 +452,7 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
       <text.h1
         as='heading'
         size={isBelowSmBreakpoint ? 2 : isMdBreakpoint ? 3 : 4}
-        className="text-center max-w-screen-md"
+        className="text-center max-w-screen-lg text-balance"
       >
         {headingText || t('builder_homepage_hero_title')}
       </text.h1>

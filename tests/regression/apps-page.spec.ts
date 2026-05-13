@@ -477,6 +477,42 @@ test.describe('Apps Page & Navigation', () => {
     console.log('🎉 Logo designer template test passed!');
   });
 
+  test('Homepage Template Selector - URL sync persists across reload', async ({ page }) => {
+    console.log('🧭 Step 1: Navigate to homepage with no template param...');
+    await page.goto('/');
+
+    const promptInput = page.getByTestId('homepage-prompt-input');
+    await promptInput.waitFor({ state: 'visible', timeout: LONG_TIMEOUT });
+
+    // Chip selector is gated by the appbuilder-template-selector switchboard flag.
+    // Read it directly from gasket-data so a missing chip means a real render failure,
+    // not "flag off" — only skip when the flag is deterministically off.
+    const flagEnabled = await page.evaluate(
+      () => (window as unknown as { gasketData?: { switchboard?: Record<string, unknown> } }).gasketData?.switchboard?.['appbuilder-template-selector'] === true,
+    );
+    test.skip(!flagEnabled, 'appbuilder-template-selector flag is off in this env');
+
+    const logoChip = page.getByTestId('template-chip-logo-designer');
+    await expect(logoChip).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+
+    console.log('🎨 Step 2: Click "Logo Designer" chip and verify URL updates...');
+    await logoChip.click();
+    await expect(page).toHaveURL(/[?&]template=logo-designer\b/);
+    console.log('  ✓ URL contains ?template=logo-designer');
+
+    console.log('🔄 Step 3: Reload and verify selection persists...');
+    await page.reload();
+    await expect(page).toHaveURL(/[?&]template=logo-designer\b/);
+    console.log('  ✓ Template URL param survived reload');
+
+    console.log('↩️  Step 4: Click "Default" chip removes the param...');
+    await page.getByTestId('template-chip-default').click();
+    await expect(page).not.toHaveURL(/[?&]template=/);
+    console.log('  ✓ Default selection clears the template param');
+
+    console.log('🎉 Template URL sync test passed!');
+  });
+
   test.afterEach(async ({ page }, testInfo) => {
     await logTestResult(page, testInfo);
 

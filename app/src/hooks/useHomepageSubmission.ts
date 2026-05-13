@@ -1,6 +1,6 @@
 'use client'
 
-import { useRouter, useSearchParams } from 'next/navigation'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { HeroSectionRef, LOGO_DESIGNER_TEMPLATE, type UploadedDesignFile, validateTemplate } from '@/app/[market]/components/types'
@@ -27,10 +27,22 @@ export function useHomepageSubmission() {
   const t = useTranslations()
   const [promptText, setPromptText] = useState("")
   const router = useRouter()
+  const pathname = usePathname()
   const searchParams = useSearchParams()
   const templateParam = searchParams.get('template')
-  const [selectedTemplate, setSelectedTemplate] = useState(validateTemplate(templateParam))
+  const selectedTemplate = validateTemplate(templateParam)
   const isLogoMode = templateParam === LOGO_DESIGNER_TEMPLATE
+
+  const setSelectedTemplate = useCallback((template: string) => {
+    const params = new URLSearchParams(searchParams.toString())
+    if (template === 'default') {
+      params.delete('template')
+    } else {
+      params.set('template', template)
+    }
+    const queryString = params.toString()
+    router.replace(queryString ? `${pathname}?${queryString}` : pathname, { scroll: false })
+  }, [pathname, router, searchParams])
   const isTemplateSelectorEnabled = useSwitchboard('appbuilder-template-selector')
   const [uploadedFile, setUploadedFile] = useState<UploadedDesignFile | null>(null)
   const [isLoading, setIsLoading] = useState(false)
@@ -176,15 +188,17 @@ export function useHomepageSubmission() {
     return () => window.removeEventListener('scroll', updateScrollMilestones)
   }, [logAnalytics])
 
+  const siteLocationParam = searchParams.get('site_location')
+  const initialPromptParam = searchParams.get('initialPrompt')
+
   useEffect(() => {
-    const siteLocation = searchParams.get('site_location') || document.referrer;
+    const siteLocation = siteLocationParam || document.referrer;
     if (siteLocation) {
       shipAnalyticsLog('homepage.redirect.source', { siteLocation });
     }
-  }, [searchParams]);
+  }, [siteLocationParam]);
 
   useEffect(() => {
-    const initialPromptParam = searchParams.get('initialPrompt')
     if (initialPromptParam && !promptText) {
       const decoded = decodeURIComponent(initialPromptParam)
       const validated = validateAndClampPrompt(decoded)
@@ -203,7 +217,7 @@ export function useHomepageSubmission() {
         })
       }
     }
-  }, [logAnalytics, searchParams])
+  }, [initialPromptParam, logAnalytics])
 
   useEffect(() => {
     return () => setIsRedirecting(false)
