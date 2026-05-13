@@ -158,9 +158,16 @@ COPY --chown=agent:agent . /app-template
 # Scripts are already marked executable in git, no chmod needed
 RUN mkdir -p /management-scripts
 COPY --from=container-scripts --chown=agent:agent preview/package.json /management-scripts/package.json
+COPY --from=container-scripts --chown=agent:agent preview/package-lock.json /management-scripts/package-lock.json
 COPY --from=container-scripts --chown=agent:agent preview/sync-package-additions.js /management-scripts/sync-package-additions.js
 COPY --from=container-scripts --chown=agent:agent preview/sync-template-files.js /management-scripts/sync-template-files.js
 COPY --from=container-scripts --chown=agent:agent preview/nomad_setup.sh /management-scripts/nomad_setup.sh
+
+# Install management-scripts own dependencies (babel etc. for sync-template-files.js
+# AST transforms). Decoupled from the app template's /node_modules so the scripts
+# work regardless of Docker layer caching of the app deps stage.
+# Uses npm ci for reproducible installs from the committed lockfile.
+RUN cd /management-scripts && npm ci --omit=dev --no-fund --no-audit
 
 # Copy healthcheck script (must be available before switching to non-root user)
 # Copies from container-scripts build context (already executable)
