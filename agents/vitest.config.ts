@@ -39,18 +39,13 @@ export default defineConfig({
       exclude: [
         'node_modules/**',
         'dist/**',
-        '**/*.integration.test.ts' // Exclude integration tests from coverage
-      ]
+        '**/*.integration.test.ts', // Exclude integration tests from coverage
+      ],
     },
     // Test categorization
     include: ['**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts,jsx,tsx}'],
     // Exclude skill template tests - they're meant to run in generated apps, not in agents package
-    exclude: [
-      'node_modules/**',
-      'dist/**',
-      '**/*.integration.test.ts',
-      '**/skills/**/templates/**/__tests__/**'
-    ],
+    exclude: ['node_modules/**', 'dist/**', '**/skills/**/templates/**/__tests__/**'],
     // Timeout configuration
     testTimeout: 30000, // 30s for long-running integration tests
     teardownTimeout: 15000, // Ensure cleanup hooks complete
