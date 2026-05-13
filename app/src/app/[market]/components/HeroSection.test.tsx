@@ -18,6 +18,7 @@ vi.mock('@/hooks/useAnalytics', () => ({
 vi.mock('@/utils/instrumentation', () => ({
   generateClickEID: vi.fn((id) => id),
   logImpressionEvent: vi.fn(() => vi.fn()),
+  logClickEvent: vi.fn(() => vi.fn()),
 }));
 
 vi.mock('@/hooks/useTranslations', () => ({

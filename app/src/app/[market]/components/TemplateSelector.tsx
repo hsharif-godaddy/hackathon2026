@@ -4,6 +4,7 @@ import Chip from '@ux/chip'
 import text from '@ux/text'
 
 import { useTranslations } from '@/hooks/useTranslations'
+import { generateClickEID, logClickEvent } from '@/utils/instrumentation'
 
 interface TemplateSelectorProps {
   selectedTemplate: string
@@ -37,9 +38,13 @@ export default function TemplateSelector({ selectedTemplate, onTemplateChange }:
             key={tmpl.id}
             label={tmpl.label}
             selected={selectedTemplate === tmpl.id}
-            onSelect={() => onTemplateChange(tmpl.id)}
+            onSelect={() => {
+              onTemplateChange(tmpl.id)
+              logClickEvent(`homepage.template_selector.${tmpl.id}`)()
+            }}
             data-partial="componentAiro"
             data-testid={`template-chip-${tmpl.id}`}
+            data-eid={generateClickEID(`homepage.template_selector.${tmpl.id}`)}
             size="sm"
           />
         ))}
