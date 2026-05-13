@@ -4,6 +4,7 @@ import { Check, X } from 'lucide-react';
 import Image from 'next/image';
 import { useCallback } from 'react';
 import Box from '@ux/box';
+import Spinner from '@ux/spinner';
 import text from '@ux/text';
 
 import type { BrandData, BrandDataPalette } from '@/hooks/useBrandData';
@@ -84,6 +85,7 @@ export function LogoSection({
   brand,
   palette,
   logoUrls,
+  isLoading = false,
 }: {
   brand: BrandStyle;
   palette?: BrandDataPalette;
@@ -93,6 +95,7 @@ export function LogoSection({
     verticalSrc?: string;
     horizontalSrc?: string;
   } | null;
+  isLoading?: boolean;
 }) {
   const lightBg = '#FFFFFF';
   const darkBg = '#1C1C1E';
@@ -101,24 +104,22 @@ export function LogoSection({
   const darkSrc = logoUrls?.reversedSrc || primarySrc;
   const downloadImage = useDownloadImage();
 
-  // null = manifest still loading — render nothing
-  if (logoUrls === null) {
-    return (
-      <SectionWrapper palette={palette}>
-        <SectionHeader num="01" label="Primary Mark" title="Logo" brand={brand} />
-      </SectionWrapper>
-    );
-  }
-
-  // undefined = no logo in manifest — show placeholder
-  if (logoUrls === undefined) {
+  // null (manifest loading) or undefined (no logo) — show spinner or placeholder
+  if (!logoUrls) {
     return (
       <SectionWrapper palette={palette}>
         <SectionHeader num="01" label="Primary Mark" title="Logo" brand={brand} />
         <div className={styles.placeholderCard}>
-          <text.span as="paragraph" style={{ opacity: 0.5 }}>
-            Your logo will appear here once generated.
-          </text.span>
+          {isLoading ? (
+            <>
+              <Spinner />
+              <text.span as="caption" style={{ opacity: 0.5 }}>Generating your logo...</text.span>
+            </>
+          ) : (
+            <text.span as="caption" style={{ opacity: 0.5 }}>
+              Your logo will appear here once generated.
+            </text.span>
+          )}
         </div>
       </SectionWrapper>
     );
@@ -179,9 +180,11 @@ export function LogoSection({
 export function ColorSection({
   palette,
   brand,
+  isLoading = false,
 }: {
   palette?: BrandDataPalette;
   brand: BrandStyle;
+  isLoading?: boolean;
 }) {
   // Prefer displayColors when available; fall back to generic swatches
   const swatches = palette?.displayColors && palette.displayColors.length > 0
@@ -231,9 +234,16 @@ export function ColorSection({
         </div>
       ) : (
         <div className={styles.placeholderCard}>
-          <text.span as="caption" style={{ opacity: 0.5 }}>
-            Your color palette will appear here once generated.
-          </text.span>
+          {isLoading ? (
+            <>
+              <Spinner />
+              <text.span as="caption" style={{ opacity: 0.5 }}>Creating your color palette...</text.span>
+            </>
+          ) : (
+            <text.span as="caption" style={{ opacity: 0.5 }}>
+              Your color palette will appear here once generated.
+            </text.span>
+          )}
         </div>
       )}
     </SectionWrapper>
@@ -248,10 +258,12 @@ export function ColorContextsSection({
   palette,
   brand,
   logoUrl,
+  isLoading = false,
 }: {
   palette?: BrandDataPalette;
   brand: BrandStyle;
   logoUrl?: string;
+  isLoading?: boolean;
 }) {
   const displayColors = palette?.displayColors;
   const hasData = displayColors && displayColors.length > 0 && logoUrl;
@@ -281,9 +293,16 @@ export function ColorContextsSection({
         </div>
       ) : (
         <div className={styles.placeholderCard}>
-          <text.span as="caption" style={{ opacity: 0.5 }}>
-            Logo on brand colors will appear here once generated.
-          </text.span>
+          {isLoading ? (
+            <>
+              <Spinner />
+              <text.span as="caption" style={{ opacity: 0.5 }}>Preparing color contexts...</text.span>
+            </>
+          ) : (
+            <text.span as="caption" style={{ opacity: 0.5 }}>
+              Logo on brand colors will appear here once generated.
+            </text.span>
+          )}
         </div>
       )}
     </SectionWrapper>
@@ -298,10 +317,12 @@ export function BrandApplicationsSection({
   brand,
   palette,
   mockupUrl,
+  isLoading = false,
 }: {
   brand: BrandStyle;
   palette?: BrandDataPalette;
   mockupUrl?: string | null;
+  isLoading?: boolean;
 }) {
   const downloadImage = useDownloadImage();
 
@@ -325,9 +346,16 @@ export function BrandApplicationsSection({
         </div>
       ) : (
         <div className={styles.placeholderCard}>
-          <text.span as="caption" style={{ opacity: 0.5 }}>
-            Your brand mockup will appear here once logos are generated.
-          </text.span>
+          {isLoading ? (
+            <>
+              <Spinner />
+              <text.span as="caption" style={{ opacity: 0.5 }}>Creating brand mockups...</text.span>
+            </>
+          ) : (
+            <text.span as="caption" style={{ opacity: 0.5 }}>
+              Your brand mockup will appear here once logos are generated.
+            </text.span>
+          )}
         </div>
       )}
     </SectionWrapper>
@@ -343,11 +371,13 @@ export function TypographySection({
   brand,
   brandName,
   palette,
+  isLoading = false,
 }: {
   data: BrandData | null;
   brand: BrandStyle;
   brandName: string;
   palette?: BrandDataPalette;
+  isLoading?: boolean;
 }) {
   const typo = data?.typography;
 
@@ -392,9 +422,16 @@ export function TypographySection({
         </Box>
       ) : (
         <div className={styles.placeholderCard}>
-          <text.span as="caption" style={{ opacity: 0.5 }}>
-            Your font pairing will appear here once selected.
-          </text.span>
+          {isLoading ? (
+            <>
+              <Spinner />
+              <text.span as="caption" style={{ opacity: 0.5 }}>Selecting your fonts...</text.span>
+            </>
+          ) : (
+            <text.span as="caption" style={{ opacity: 0.5 }}>
+              Your font pairing will appear here once selected.
+            </text.span>
+          )}
         </div>
       )}
     </SectionWrapper>

@@ -8,7 +8,7 @@ import { useBrandData } from '@/hooks/useBrandData';
 import { useMediaManifest } from '@/hooks/useMediaManifest';
 import { logger } from '@/lib/request-context';
 import styles from './brand-book.module.css';
-import { useBrandIntentOverrides, useBrandStyle, useGoogleFonts } from './hooks';
+import { useBrandIntentOverrides, useBrandStyle, useGoogleFonts, useIsBrandGenerating } from './hooks';
 import {
   BrandApplicationsSection,
   ColorContextsSection,
@@ -37,6 +37,9 @@ export default function BrandBookView({ appId }: BrandBookViewProps) {
 
   // Read media manifest to get logo slot URLs (single source of truth for logo images)
   const { manifest, isLoading: isManifestLoading, error: manifestError } = useMediaManifest({ appId });
+
+  // True once any brand tool has started in the current stream
+  const isGenerating = useIsBrandGenerating();
 
   // Track logo preview override from chat selection (logo-select event)
   const [previewLogoUrl, setPreviewLogoUrl] = useState<string | null>(null);
@@ -121,26 +124,31 @@ export default function BrandBookView({ appId }: BrandBookViewProps) {
         brand={brand}
         palette={palette}
         logoUrls={logoUrls}
+        isLoading={isGenerating}
       />
       <BrandApplicationsSection
         brand={brand}
         palette={palette}
         mockupUrl={previewMockupUrl}
+        isLoading={isGenerating}
       />
       <ColorSection
         palette={palette}
         brand={brand}
+        isLoading={isGenerating}
       />
       <ColorContextsSection
         palette={palette}
         brand={brand}
         logoUrl={logoUrls?.primarySrc}
+        isLoading={isGenerating}
       />
       <TypographySection
         data={data}
         brand={brand}
         brandName={brandName}
         palette={palette}
+        isLoading={isGenerating}
       />
       <UsageGuidelinesSection
         palette={palette}

@@ -4,8 +4,24 @@ import { useEffect, useMemo } from 'react';
 import Intents, { toCssCustomProperty } from '@ux/intents';
 
 import type { BrandDataPalette, BrandDataTypography } from '@/hooks/useBrandData';
+import { useStreamingConversationStore } from '@/stores/useStreamingConversationStore';
 import { extractVarName,fontFamily, getContrastColor } from './helpers';
 import type { BrandStyle } from './types';
+
+const BRAND_TOOLS = new Set([
+  'colorScheme',
+  'fontTheme',
+  'media-logo__generate_logo',
+  'media-logo__edit_logo',
+]);
+
+export function useIsBrandGenerating(): boolean {
+  return useStreamingConversationStore((state) => {
+    const toolCalls = state.activeStream?.toolCalls;
+    if (!toolCalls) return false;
+    return toolCalls.some((tc) => BRAND_TOOLS.has(tc.name));
+  });
+}
 
 /** Loads Google Fonts for the brand's heading and body families. */
 export function useGoogleFonts(typo: BrandDataTypography | undefined) {

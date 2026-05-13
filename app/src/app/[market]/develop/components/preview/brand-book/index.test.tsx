@@ -60,6 +60,7 @@ vi.mock('./hooks', () => ({
   useBrandIntentOverrides: vi.fn(() => ({})),
   useBrandStyle: vi.fn(() => ({ primary: '#000', primaryFg: '#fff', headingFont: 'Inter', bodyFont: 'Roboto' })),
   useGoogleFonts: vi.fn(),
+  useIsBrandGenerating: vi.fn(() => false),
 }));
 
 vi.mock('next/image', () => ({
@@ -90,11 +91,11 @@ describe('BrandBookView', function brandBookTests() {
     expect(screen.getByTestId('logo-img-Logo on dark background')).toHaveAttribute('src', 'https://cdn.example.com/logo.png');
   });
 
-  it('does not flash placeholder while manifest is loading', function loadingState() {
+  it('shows placeholder while manifest is loading', function loadingState() {
     mockManifest.value = null;
     mockIsManifestLoading.value = true;
     renderWithProviders(<BrandBookView appId="app-123" />);
-    expect(screen.queryByText('Your logo will appear here once generated.')).not.toBeInTheDocument();
+    expect(screen.queryByText('Your logo will appear here once generated.')).toBeInTheDocument();
   });
 
   it('renders section headers', function sectionHeaders() {
