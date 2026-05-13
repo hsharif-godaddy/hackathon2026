@@ -60,6 +60,17 @@ const HigherPlansUpgradeContainer = ({
   const subscriptionId = subscription?.id
   const hasLoggedImpressionRef = useRef(false)
 
+  // Capture currentPlan at mount time to prevent UPP remount when subscription
+  // data updates during purchase polling (currentPlan is only meant to bust
+  // UPP cache between separate paywall sessions, not mid-purchase).
+  const initialCurrentPlanRef = useRef(subscription?.downgradedPlan ?? subscription?.plan)
+
+  // Defensive: if mounted before subscription loads (bypassing UpgradeContainer's
+  // loading gate), self-heal once subscription becomes available.
+  if (!initialCurrentPlanRef.current && subscription) {
+    initialCurrentPlanRef.current = subscription.downgradedPlan ?? subscription.plan
+  }
+
   useEffect(() => {
     if (!hasLoggedImpressionRef.current) {
       hasLoggedImpressionRef.current = true
@@ -222,7 +233,7 @@ const HigherPlansUpgradeContainer = ({
           />
         )}
         // used for breaking cache between conversions
-        currentPlan={subscription?.downgradedPlan ?? subscription?.plan}
+        currentPlan={initialCurrentPlanRef.current}
       />
     </ErrorBoundary>
   )

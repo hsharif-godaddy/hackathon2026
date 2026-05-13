@@ -87,7 +87,11 @@ vi.mock('@/utils/instrumentation', () => ({
 
 vi.mock('@/lib/cdsEsmDeps', () => ({ default: {} }));
 
-vi.mock('./cdsLoader', () => ({
+let componentLoaderMountCount = 0;
+
+vi.mock('./cdsLoader', async () => {
+  const React = await import('react');
+  return {
   ComponentLoader: (props: {
     type: string;
     loaderMode: string;
@@ -108,6 +112,7 @@ vi.mock('./cdsLoader', () => ({
     errorCallback?: () => void;
     onLoadError?: (error: Error) => void;
   }) => {
+    React.useEffect(() => { componentLoaderMountCount++ }, []);
     return (
       <div data-testid="higher-plans-modal">
         <span data-testid="type">{props.type}</span>
@@ -167,7 +172,7 @@ vi.mock('./cdsLoader', () => ({
       </div>
     );
   },
-}));
+}});
 
 vi.mock('./PaywallLoadingModal', () => ({
   PaywallLoadingModal: () => <div data-testid="loading-modal">Loading...</div>,
@@ -184,6 +189,7 @@ import { logImpressionEvent } from '@/utils/instrumentation';
 describe('HigherPlansUpgradeContainer', function higherPlansUpgradeContainerTests() {
   beforeEach(function setup() {
     vi.clearAllMocks();
+    componentLoaderMountCount = 0;
     vi.mocked(useSubscription).mockReturnValue({
       data: { id: 'test-subscription-123', builderEntitlementId: 'test-entitlement-123', plan: SubscriptionPlan.Professional },
       isLoading: false,
@@ -720,5 +726,120 @@ describe('HigherPlansUpgradeContainer', function higherPlansUpgradeContainerTest
     expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['credit-grants'] });
     expect(resetFocusOnModalClose).toHaveBeenCalled();
     expect(mockOnSuccessClick).not.toHaveBeenCalled();
+  });
+
+  describe('currentPlan stability during purchase polling', function currentPlanStabilityTests() {
+    it('does not change currentPlan when subscription updates after mount', function stableCurrentPlanOnRerender() {
+      const { rerender } = renderWithProviders(
+        <HigherPlansUpgradeContainer
+          onClose={mockOnClose}
+          source="test-source"
+        />
+      );
+
+      expect(screen.getByTestId('current-plan')).toHaveTextContent('professional');
+
+      // Simulate subscription query updating during polling (plan changed on backend)
+      vi.mocked(useSubscription).mockReturnValue({
+        data: {
+          id: 'test-subscription-123',
+          builderEntitlementId: 'test-entitlement-123',
+          plan: SubscriptionPlan.Ultimate,
+        },
+        isLoading: false,
+        isError: false,
+      } as ReturnType<typeof useSubscription>);
+
+      rerender(
+        <HigherPlansUpgradeContainer
+          onClose={mockOnClose}
+          source="test-source"
+        />
+      );
+
+      // currentPlan should remain the initial value to prevent CDS remount
+      expect(screen.getByTestId('current-plan')).toHaveTextContent('professional');
+      // ComponentLoader should only mount once (no remount from prop change)
+      expect(componentLoaderMountCount).toBe(1);
+    });
+
+    it('does not change currentPlan when downgradedPlan appears after mount', function stableCurrentPlanOnDowngrade() {
+      const { rerender } = renderWithProviders(
+        <HigherPlansUpgradeContainer
+          onClose={mockOnClose}
+          source="test-source"
+        />
+      );
+
+      expect(screen.getByTestId('current-plan')).toHaveTextContent('professional');
+
+      // Simulate downgradedPlan appearing in subscription data during polling
+      vi.mocked(useSubscription).mockReturnValue({
+        data: {
+          id: 'test-subscription-123',
+          builderEntitlementId: 'test-entitlement-123',
+          plan: SubscriptionPlan.Professional,
+          downgradedPlan: SubscriptionPlan.Starter,
+        },
+        isLoading: false,
+        isError: false,
+      } as ReturnType<typeof useSubscription>);
+
+      rerender(
+        <HigherPlansUpgradeContainer
+          onClose={mockOnClose}
+          source="test-source"
+        />
+      );
+
+      // currentPlan should remain 'professional' (initial mount value), not switch to 'starter'
+      expect(screen.getByTestId('current-plan')).toHaveTextContent('professional');
+      expect(componentLoaderMountCount).toBe(1);
+    });
+
+    it('uses downgradedPlan as initial currentPlan when present at mount', function usesDowngradedPlanAtMount() {
+      vi.mocked(useSubscription).mockReturnValue({
+        data: {
+          id: 'test-subscription-123',
+          builderEntitlementId: 'test-entitlement-123',
+          plan: SubscriptionPlan.Professional,
+          downgradedPlan: SubscriptionPlan.Starter,
+        },
+        isLoading: false,
+        isError: false,
+      } as ReturnType<typeof useSubscription>);
+
+      const { rerender } = renderWithProviders(
+        <HigherPlansUpgradeContainer
+          onClose={mockOnClose}
+          source="test-source"
+        />
+      );
+
+      // Should use downgradedPlan at mount time
+      expect(screen.getByTestId('current-plan')).toHaveTextContent('starter');
+
+      // Simulate downgrade being cancelled during polling
+      vi.mocked(useSubscription).mockReturnValue({
+        data: {
+          id: 'test-subscription-123',
+          builderEntitlementId: 'test-entitlement-123',
+          plan: SubscriptionPlan.Ultimate,
+        },
+        isLoading: false,
+        isError: false,
+      } as ReturnType<typeof useSubscription>);
+
+      rerender(
+        <HigherPlansUpgradeContainer
+          onClose={mockOnClose}
+          source="test-source"
+        />
+      );
+
+      // Should still show 'starter' from initial mount
+      expect(screen.getByTestId('current-plan')).toHaveTextContent('starter');
+      expect(componentLoaderMountCount).toBe(1);
+    });
   });
 });
