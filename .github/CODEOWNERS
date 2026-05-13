@@ -1,5 +1,5 @@
 # CODEOWNERS
-# Generated from git log as of 2026-04-30.
+# Generated from git log as of 2026-05-12.
 
 # Root files
 #/* @deverton-godaddy @jeichorn-godaddy @jlemay-godaddy @hdewan-godaddy @mlefebvre1-godaddy @ugupta-godaddy @arai1-godaddy @matkinson-godaddy @jundai-godaddy @kra-godaddy
@@ -8,42 +8,50 @@
 /.claude/ @deverton-godaddy @jlemay-godaddy @dmiller1-godaddy
 /.cursor/ @jlemay-godaddy @jundai-godaddy @jeichorn-godaddy
 /.direnv/ @jeichorn-godaddy
-/.github/ @deverton-godaddy @hdewan-godaddy @jeichorn-godaddy
+/.github/ @deverton-godaddy @hdewan-godaddy @jeichorn-godaddy @skilaru-godaddy
 /.husky/ @hdewan-godaddy @deverton-godaddy @dmiller1-godaddy
 
 # Services & packages
 /agentic-qa/ @hdewan-godaddy @deverton-godaddy @jpatel2-godaddy
 /agentic-qa-langfuse/ @abertin-godaddy @deverton-godaddy
 /agents/ @gdcorp-partners/dev-airo-ai-core-agent-squad
+/agents/src/agents/ @gdcorp-partners/dev-airo-ai-core-agent-squad @rrex-godaddy
+/agents/src/server/routes/ @gdcorp-partners/dev-airo-ai-core-agent-squad @hmaheshwari-godaddy
+/agents/src/server/middleware/ @gdcorp-partners/dev-airo-ai-core-agent-squad @hmaheshwari-godaddy @mlefebvre1-godaddy
+/agents/src/utils/ @gdcorp-partners/dev-airo-ai-core-agent-squad @hmaheshwari-godaddy
 /app/ @gdcorp-partners/dev-airo-ai-core-agent-squad
-#/agents/ @jeichorn-godaddy @deverton-godaddy @arai1-godaddy @matkinson-godaddy @hmaheshwari-godaddy @hdewan-godaddy @mlefebvre1-godaddy @jlemay-godaddy @ugupta-godaddy @hgupta2-godaddy
-#/app/ @deverton-godaddy @jeichorn-godaddy @jlemay-godaddy @mlefebvre1-godaddy @hdewan-godaddy @arai1-godaddy @matkinson-godaddy @enelmes-godaddy @hgupta2-godaddy @skemp-godaddy @kra-godaddy
-/app-publish/ @deverton-godaddy @jeichorn-godaddy @matkinson-godaddy
-/app-templates/ @jeichorn-godaddy @deverton-godaddy @matkinson-godaddy
+/app/src/app/ @mlefebvre1-godaddy @deverton-godaddy @jlemay-godaddy @jeichorn-godaddy
+/app/src/app/api/ @deverton-godaddy @mlefebvre1-godaddy @jlemay-godaddy @hdewan-godaddy
+/app/src/components/ @mlefebvre1-godaddy @jlemay-godaddy @deverton-godaddy @arai1-godaddy
+/app/src/lib/ @deverton-godaddy @mlefebvre1-godaddy @jlemay-godaddy @hdewan-godaddy
+/app-publish/ @gdcorp-partners/dev-airo-ai-core-agent-squad
+/app-templates/ @gdcorp-partners/dev-airo-ai-core-agent-squad
 /blog/ @jwatson2-godaddy @nsharkawy-godaddy @dradojkovic-godaddy
 /budget-service/ @mmason2-godaddy @agerard-godaddy @deverton-godaddy
 /cdk/ @ugupta-godaddy @jeichorn-godaddy @deverton-godaddy
-/cli-agent-client/ @jeichorn-godaddy
+/cli-agent-client/ @gdcorp-partners/dev-airo-ai-core-agent-squad
 /container-scripts/ @deverton-godaddy @matkinson-godaddy @hmaheshwari-godaddy
 /corpus-eval/ @rjha3-godaddy @deverton-godaddy @mlefebvre1-godaddy
 /debug-console/ @ugupta-godaddy @deverton-godaddy @hgupta2-godaddy
-/design-data/ @jeichorn-godaddy
-/design-rag/ @jeichorn-godaddy @deverton-godaddy
+/design-data/ @gdcorp-partners/dev-airo-ai-core-agent-squad
+/design-rag/ @gdcorp-partners/dev-airo-ai-core-agent-squad
 /dev-runner/ @deverton-godaddy @jundai-godaddy @matkinson-godaddy
-/dev-supervisor/ @deverton-godaddy @matkinson-godaddy @jeichorn-godaddy
+/dev-supervisor/ @gdcorp-partners/dev-airo-ai-core-agent-squad
 /docs/ @jeichorn-godaddy @deverton-godaddy @hmaheshwari-godaddy
 /e2e/ @mlefebvre1-godaddy @hdewan-godaddy @deverton-godaddy
-/go-agent/ @jeichorn-godaddy @rjha3-godaddy
+/go-agent/ @jeichorn-godaddy @rjha3-godaddy @deverton-godaddy
 /goarena/ @cmachgodaddy
 /image-search-service/ @jeichorn-godaddy @skilaru-godaddy @jundai-godaddy
 /kibana-dashboards/ @hdewan-godaddy @deverton-godaddy
 /knowledge-base/ @arai1-godaddy @deverton-godaddy @skemp-godaddy
 /knowledge-service/ @skilaru-godaddy @kra-godaddy
-/local-control-plane/ @deverton-godaddy @matkinson-godaddy
-/packages/ @deverton-godaddy @jeichorn-godaddy @matkinson-godaddy
+/local-control-plane/ @deverton-godaddy @matkinson-godaddy @bbetts-godaddy
+/packages/ @gdcorp-partners/dev-airo-ai-core-agent-squad
+/packages/ai-lib/ @gdcorp-partners/dev-airo-ai-core-agent-squad @mlefebvre1-godaddy
+/packages/ai-transport/ @deverton-godaddy @matkinson-godaddy @kbader-godaddy @rjain1-godaddy
+/packages/shared/ @mlefebvre1-godaddy @deverton-godaddy @kbader-godaddy
 /proxy/ @deverton-godaddy @arai1-godaddy @ugupta-godaddy
 /release-manager/ @matkinson-godaddy @deverton-godaddy @cmachgodaddy
-/scripts/ @deverton-godaddy @jeichorn-godaddy @hdewan-godaddy
-/tests/ @hdewan-godaddy @deverton-godaddy @kra-godaddy
+/scripts/ @gdcorp-partners/dev-airo-ai-core-agent-squad @hdewan-godaddy
+/tests/ @hdewan-godaddy @deverton-godaddy @kra-godaddy @amarques-godaddy
 /ts-bridge/ @deverton-godaddy @jeichorn-godaddy @mlefebvre1-godaddy
-
