@@ -39,6 +39,16 @@ Library packages (no caller wires them in yet):
   follows RFC 7516 §5.1.10 (raw base64url-encoded protected header bytes).
   Library only — slotted into the live-key webhook handler in a follow-up PR.
 
+Library packages (no caller wires them in yet):
+
+- `internal/kmspubkey` — fetch + validate + cache the RSA public PEM from a
+  KMS asymmetric CMK. Validates `KeySpec=RSA_2048`, `KeyUsage=ENCRYPT_DECRYPT`,
+  and that the CMK supports both `RSAES_OAEP_SHA_1` and `RSAES_OAEP_SHA_256`
+  so JWE decryption (`internal/jwedecrypt`) can match either alg in the
+  response header. Lazy fetch via `sync.Once`; errors cached. PEM-encoded via
+  PKIX (`-----BEGIN PUBLIC KEY-----`). Library only — slotted into
+  `apiKeys.create` calls in the live-key webhook handler PR.
+
 Next PRs:
 
 1. Real `POST /v1/sandboxes` body (Stripe `v2.core.claimableSandboxes.create` + DynamoDB write).
