@@ -9,12 +9,12 @@ Go module: `github.com/gdcorp-partners/airo-app-builder/stripe-service`.
 
 ## Status
 
-Implemented: `/health` (public liveness) and `/v1/_probe` (public diagnostic —
-exercises read-only IAM grants against the CDK-provisioned resources). AWS SDK
-v2 clients for DynamoDB / Secrets Manager / KMS are wired. `POST /v1/sandboxes`
-is a stub that returns 501 but is wrapped in `gd-auth` S2S authentication (AWS
-IAM SSO tokens) to prove the middleware chain works end-to-end. No Stripe SDK
-and no real handler bodies yet.
+Implemented:
+
+- `/health` — public liveness.
+- `/v1/_probe` — public diagnostic, exercises read-only IAM grants against the CDK-provisioned resources.
+- `POST /v1/sandboxes` — stub today, returns 501. Wrapped in `gd-auth` S2S auth (AWS IAM SSO tokens) so the middleware chain is exercised end-to-end.
+- `POST /webhooks/stripe` — receives Stripe webhooks. Public route (no `gd-auth`); Stripe authenticates via the `Stripe-Signature` header. The handler verifies the signature against the secret loaded at startup from Secrets Manager, parses `{id, type}`, and conditionally-`PutItem`s into the `stripe_events` DDB table for idempotency. Duplicate deliveries return 200; bad signatures return 401. **No per-event-type business logic yet** — that lands as the next handful of PRs.
 
 Also landed: `internal/mhpairo` — outbound client for mhp-airo's three
 alloc-management endpoints (POST secrets, PATCH app, POST reload). Library
@@ -22,9 +22,9 @@ only; not wired into any handler yet. See the section below.
 
 Next PRs:
 
-1. Stripe webhook endpoint + signature verification.
-2. Real `POST /v1/sandboxes` body (Stripe `v2.core.claimableSandboxes.create` + DynamoDB write).
-3. `GET /v1/status`, `GET /v1/sandbox/:id/mcp-key`.
+1. Real `POST /v1/sandboxes` body (Stripe `v2.core.claimableSandboxes.create` + DynamoDB write).
+2. `GET /v1/status`, `GET /v1/sandbox/:id/mcp-key`.
+3. Per-event-type webhook handlers: `claimable_sandbox.claimed` (DDB update), `sandbox_details_owner_account_updated` (live-key mint via Managed API Keys + push to mhp-airo), `api_key.rotated` / `api_key.expired` (revoke / re-push).
 4. KMS decrypt + Managed API Keys flow.
 5. Wire `internal/mhpairo` into `postSandboxes` and the go-live webhook handler.
 

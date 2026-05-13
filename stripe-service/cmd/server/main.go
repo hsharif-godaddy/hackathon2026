@@ -19,6 +19,8 @@ import (
 	"github.com/gdcorp-partners/airo-app-builder/stripe-service/internal/api"
 	"github.com/gdcorp-partners/airo-app-builder/stripe-service/internal/awsclients"
 	"github.com/gdcorp-partners/airo-app-builder/stripe-service/internal/config"
+	"github.com/gdcorp-partners/airo-app-builder/stripe-service/internal/store"
+	"github.com/gdcorp-partners/airo-app-builder/stripe-service/internal/webhook"
 )
 
 // version is set via -ldflags at build time. Defaults to "dev" for local builds.
@@ -56,12 +58,34 @@ func main() {
 	}
 	authMW := goauth.NewMiddleware(cfg.AuthType, cfg.SSOHost)
 
+	// Webhook signing secret is read once at startup. A misconfigured /
+	// missing secret means we can't verify any webhook anyway, so failing
+	// at boot is strictly better than silently 401-ing every Stripe
+	// delivery for the lifetime of the process. ParseSigningSecret also
+	// handles the CDK's JSON-wrapped form ({"signingSecret":"whsec_..."})
+	// and rejects the unreplaced REPLACE_ME placeholder.
+	resources := cfg.ResourceNames()
+	rawSecret, err := clients.GetSecretValue(context.Background(), resources.WebhookSigningSecret)
+	if err != nil {
+		slog.Error("stripe_service.webhook.secret_load", "error", err, "secret", resources.WebhookSigningSecret)
+		os.Exit(1)
+	}
+	whsec, err := webhook.ParseSigningSecret(rawSecret)
+	if err != nil {
+		slog.Error("stripe_service.webhook.secret_parse", "error", err, "secret", resources.WebhookSigningSecret)
+		os.Exit(1)
+	}
+	verifier := webhook.NewVerifier(whsec)
+	events := store.NewEvents(clients.DynamoDB(), resources.EventsTable)
+
 	srv := &api.Server{
-		Environment:   string(cfg.Environment),
-		Version:       version,
-		Prober:        clients,
-		ResourceNames: cfg.ResourceNames(),
-		Auth:          authMW,
+		Environment:     string(cfg.Environment),
+		Version:         version,
+		Prober:          clients,
+		ResourceNames:   resources,
+		Auth:            authMW,
+		Events:          events,
+		WebhookVerifier: verifier,
 	}
 	handler := api.NewRouter(srv)
 

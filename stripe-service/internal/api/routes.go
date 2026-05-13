@@ -9,16 +9,19 @@ import (
 	goauth "github.com/gdcorp-partners/airo-app-builder/packages/go-auth"
 	"github.com/gdcorp-partners/airo-app-builder/stripe-service/internal/awsclients"
 	"github.com/gdcorp-partners/airo-app-builder/stripe-service/internal/config"
+	"github.com/gdcorp-partners/airo-app-builder/stripe-service/internal/webhook"
 )
 
 // Server holds handler dependencies. More fields land as real routes arrive
 // (Stripe client, etc.).
 type Server struct {
-	Environment   string
-	Version       string
-	Prober        awsclients.Prober
-	ResourceNames config.ResourceNames
-	Auth          *goauth.Middleware
+	Environment     string
+	Version         string
+	Prober          awsclients.Prober
+	ResourceNames   config.ResourceNames
+	Auth            *goauth.Middleware
+	Events          eventStore
+	WebhookVerifier *webhook.Verifier
 }
 
 // NewRouter returns the top-level http.Handler. /health and /v1/_probe are
@@ -33,6 +36,10 @@ func NewRouter(s *Server) http.Handler {
 	})
 	r.HandleFunc("/health", s.getHealth).Methods(http.MethodGet, http.MethodHead)
 	r.HandleFunc("/v1/_probe", s.getProbe).Methods(http.MethodGet)
+	// Stripe webhook is intentionally public — Stripe authenticates via the
+	// Stripe-Signature header, not gd-auth. Verification happens inside the
+	// handler against the secret loaded from Secrets Manager at startup.
+	r.HandleFunc("/webhooks/stripe", s.postStripeWebhook).Methods(http.MethodPost)
 
 	awsiam := s.Auth.AuthenticateWithKind("awsiam")
 	r.Handle("/v1/sandboxes", awsiam(http.HandlerFunc(s.postSandboxes))).Methods(http.MethodPost)

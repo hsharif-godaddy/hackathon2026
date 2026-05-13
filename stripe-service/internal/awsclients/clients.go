@@ -48,6 +48,13 @@ type Prober interface {
 
 var _ Prober = (*Clients)(nil)
 
+// DynamoDB returns the underlying DynamoDB client for packages that need
+// the raw SDK surface (e.g. internal/store). The accessor pattern keeps
+// the field unexported so construction stays funneled through New() and
+// preserves the non-nil invariant. (Note: this accessor also lands in
+// PR #3667; merge resolution between the two PRs sees identical content.)
+func (c *Clients) DynamoDB() *dynamodb.Client { return c.dynamodb }
+
 func (c *Clients) DescribeTable(ctx context.Context, name string) error {
 	_, err := c.dynamodb.DescribeTable(ctx, &dynamodb.DescribeTableInput{TableName: &name})
 	return err
@@ -56,6 +63,21 @@ func (c *Clients) DescribeTable(ctx context.Context, name string) error {
 func (c *Clients) DescribeSecret(ctx context.Context, nameOrArn string) error {
 	_, err := c.secretsManager.DescribeSecret(ctx, &secretsmanager.DescribeSecretInput{SecretId: &nameOrArn})
 	return err
+}
+
+// GetSecretValue fetches the current ("AWSCURRENT") plaintext value of a
+// Secrets Manager secret. Returns an error if the SDK call fails or if the
+// secret happens to have only a SecretBinary value (which we don't use in
+// stripe-service — every secret here is a string).
+func (c *Clients) GetSecretValue(ctx context.Context, nameOrArn string) (string, error) {
+	out, err := c.secretsManager.GetSecretValue(ctx, &secretsmanager.GetSecretValueInput{SecretId: &nameOrArn})
+	if err != nil {
+		return "", fmt.Errorf("get secret %q: %w", nameOrArn, err)
+	}
+	if out.SecretString == nil {
+		return "", fmt.Errorf("get secret %q: SecretString is nil (binary-only secrets are not supported)", nameOrArn)
+	}
+	return *out.SecretString, nil
 }
 
 func (c *Clients) DescribeKey(ctx context.Context, keyID string) error {
