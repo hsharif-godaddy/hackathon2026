@@ -11,8 +11,10 @@ export interface SetupContext {
 
 export type StabilityLevel = 'low' | 'medium' | 'high';
 
+export const DEFAULT_STABILITY_LEVEL: StabilityLevel = 'low';
+
 export const STABILITY_TRIALS: Record<StabilityLevel, number> = {
-  low: 1,
+  low: 3,
   medium: 5,
   high: 10,
 };

@@ -451,9 +451,9 @@ describe('GraduationRunner', () => {
   });
 
   describe('stability-based trial counts', () => {
-    it('low stability → trialsOverride=1', async () => {
+    it('low stability → trialsOverride=3', async () => {
       mockSuiteRunnerRun.mockResolvedValue([
-        makeScenarioResult(['pass']),
+        makeScenarioResult(['pass', 'pass', 'pass']),
       ]);
 
       const scenario = {
@@ -468,10 +468,10 @@ describe('GraduationRunner', () => {
       const result = await runner.run('run-low');
 
       expect(SuiteRunner).toHaveBeenCalledWith(
-        expect.objectContaining({ trialsOverride: 1 }),
+        expect.objectContaining({ trialsOverride: 3 }),
       );
       expect(result.stabilityLevel).toBe('low');
-      expect(result.stabilityTrials).toBe(1);
+      expect(result.stabilityTrials).toBe(3);
     });
 
     it('medium stability → trialsOverride=5', async () => {
@@ -521,11 +521,11 @@ describe('GraduationRunner', () => {
       );
     });
 
-    it('no stabilityLevel defaults to medium → trialsOverride=5',
+    it('no stabilityLevel defaults to low → trialsOverride=3',
       async () => {
         mockSuiteRunnerRun.mockResolvedValue([
           makeScenarioResult([
-            'pass', 'pass', 'pass', 'pass', 'pass',
+            'pass', 'pass', 'pass',
           ]),
         ]);
 
@@ -538,7 +538,7 @@ describe('GraduationRunner', () => {
         await runner.run('run-default');
 
         expect(SuiteRunner).toHaveBeenCalledWith(
-          expect.objectContaining({ trialsOverride: 5 }),
+          expect.objectContaining({ trialsOverride: 3 }),
         );
       },
     );
@@ -690,7 +690,7 @@ describe('GraduationRunner', () => {
     it('overrides the default when scenario has no stabilityLevel',
       async () => {
         mockSuiteRunnerRun.mockResolvedValue([
-          makeScenarioResult(['pass']),
+          makeScenarioResult(['pass', 'pass', 'pass']),
         ]);
 
         const runner = new GraduationRunner({
@@ -702,10 +702,10 @@ describe('GraduationRunner', () => {
         const result = await runner.run('run-override-default');
 
         expect(SuiteRunner).toHaveBeenCalledWith(
-          expect.objectContaining({ trialsOverride: 1 }),
+          expect.objectContaining({ trialsOverride: 3 }),
         );
         expect(result.stabilityLevel).toBe('low');
-        expect(result.stabilityTrials).toBe(1);
+        expect(result.stabilityTrials).toBe(3);
       },
     );
 

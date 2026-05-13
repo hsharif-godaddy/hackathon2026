@@ -688,9 +688,9 @@ describe('TrialAggregator', () => {
       expect(result.stabilityLevel).toBe('high');
     });
 
-    it('defaults to medium when stabilityLevel is absent', () => {
+    it('defaults to low when stabilityLevel is absent', () => {
       const result = agg.aggregate(makeScenario(), []);
-      expect(result.stabilityLevel).toBe('medium');
+      expect(result.stabilityLevel).toBe('low');
     });
   });
 

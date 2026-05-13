@@ -1,4 +1,5 @@
 import type { EvalResult } from '../evaluators/evaluator.js';
+import { DEFAULT_STABILITY_LEVEL } from '../scenarios/types.js';
 import type { Scenario } from '../scenarios/types.js';
 import type {
   TrialResult,
@@ -85,7 +86,7 @@ export class TrialAggregator {
 
     return {
       scenarioName: scenario.name,
-      stabilityLevel: scenario.stabilityLevel ?? 'medium',
+      stabilityLevel: scenario.stabilityLevel ?? DEFAULT_STABILITY_LEVEL,
       trials,
       aggregated,
     };

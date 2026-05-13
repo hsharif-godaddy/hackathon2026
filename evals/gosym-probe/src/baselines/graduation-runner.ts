@@ -1,5 +1,6 @@
 import { SuiteRunner } from '../runner/suite-runner.js';
 import {
+  DEFAULT_STABILITY_LEVEL,
   STABILITY_TRIALS,
 } from '../scenarios/types.js';
 import type {
@@ -70,7 +71,7 @@ export class GraduationRunner {
     const stabilityLevel =
       this.options.stabilityLevelOverride
       ?? scenario.stabilityLevel
-      ?? 'medium';
+      ?? DEFAULT_STABILITY_LEVEL;
     const threshold =
       config.regression.graduationPassRateThreshold ?? 0.9;
     const totalTrials = STABILITY_TRIALS[stabilityLevel];

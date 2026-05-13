@@ -29,6 +29,7 @@ import {
   findScenariosBySuite,
 } from './cli/args.js';
 import {
+  DEFAULT_STABILITY_LEVEL,
   STABILITY_TRIALS,
 } from './scenarios/types.js';
 import type {
@@ -194,7 +195,7 @@ async function main(): Promise<void> {
       concurrencyOverride ?? config.eval.maxConcurrency ?? 1;
 
     const effectiveLevel = (s: Scenario): StabilityLevel =>
-      stabilityOverride ?? s.stabilityLevel ?? 'medium';
+      stabilityOverride ?? s.stabilityLevel ?? DEFAULT_STABILITY_LEVEL;
 
     const gradStore = new EvalStore(
       undefined, config.storage?.maxRuns,
@@ -306,7 +307,7 @@ async function main(): Promise<void> {
     const runId = randomUUID();
     const level = stabilityOverride
       ?? gradScenario.stabilityLevel
-      ?? 'medium';
+      ?? DEFAULT_STABILITY_LEVEL;
     const trialCount = STABILITY_TRIALS[level];
     console.log(
       `\nGraduation run: ${gradScenario.name} (${runId})`,
