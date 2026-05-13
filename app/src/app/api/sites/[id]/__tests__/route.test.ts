@@ -314,6 +314,10 @@ describe('GET /api/sites/[id] — preview_url airoShareToken injection', () => {
     const body = await res.json();
 
     expect(body.preview_url).toBe(PREVIEW_URL);
+    // Logged at warn level (not error): promoting log level is a behavior
+    // change that needs alerting-team coordination, so the helper's outer
+    // catch stays at `warn` as a safe default. Stack is still attached
+    // for triage value.
     expect(mockLogger.warn).toHaveBeenCalledWith(
       'share.previewUrl.inject.error',
       expect.objectContaining({ appId: APP_ID, error: 'network down' }),
@@ -514,10 +518,12 @@ describe('GET /api/sites/[id] — preview_url airoShareToken injection', () => {
     );
   });
 
-  it('logs recoveryFailed and falls back when 409 retry GET also has no active token', async () => {
-    // 409 path with re-GET also coming back empty — could happen if the
-    // concurrent caller's token was deleted between our POST 409 and
-    // re-GET (rare). Must fall back cleanly with a log.
+  it('logs retryTokenGone and falls back when 409 retry GET succeeds but returns no active token', async () => {
+    // 409 path with re-GET coming back 200 + empty: the concurrent caller's
+    // token was deleted between our POST 409 and re-GET (rare). This case
+    // has its own log (retryTokenGone) distinct from recoveryFailed —
+    // operators searching for "recoveryFailed with retryStatus: 200" would
+    // find a contradiction; retryTokenGone names it clearly.
     mockAgentFetch
       .mockResolvedValueOnce({
         ok: true,
@@ -540,10 +546,17 @@ describe('GET /api/sites/[id] — preview_url airoShareToken injection', () => {
 
     expect(body.preview_url).toBe(PREVIEW_URL); // bare URL fallback
     expect(mockLogger.warn).toHaveBeenCalledWith(
+      'share.previewUrl.mint.retryTokenGone',
+      // replaceActive: false here because this test sets up a first-mint
+      // path (GET returns empty, then POST 409, then retry-GET empty).
+      // Distinguishes from rotation-time 409 recovery in Loki.
+      expect.objectContaining({ appId: APP_ID, replaceActive: false }),
+    );
+    // The contradictory `recoveryFailed` with retryStatus: 200 is NOT emitted
+    // — retryTokenGone owns this case exclusively now.
+    expect(mockLogger.warn).not.toHaveBeenCalledWith(
       'share.previewUrl.mint.recoveryFailed',
-      // retryStatus pinned so a 500-on-retry can be distinguished from
-      // a 200-with-empty-list at triage time.
-      expect.objectContaining({ appId: APP_ID, retryStatus: 200 }),
+      expect.anything(),
     );
   });
 

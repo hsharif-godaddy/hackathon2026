@@ -578,6 +578,95 @@ describe('share POST validation (expiresIn + one-active-link)', () => {
       expect(mockShareTokenRepo.create).toHaveBeenCalled();
     });
   });
+
+  describe('replaceActive opt-in rotation', () => {
+    it('bypasses the 409 guard and creates a new token alongside the existing active one', async () => {
+      // Existing active token — the default behavior would 409 here.
+      mockShareTokenRepo.findByAppId.mockReturnValue([
+        {
+          token: 'existing-active',
+          appId: TEST_APP_ID,
+          expiresAt: FUTURE,
+          createdAt: new Date(),
+          firstUsedAt: null,
+        } as any,
+      ]);
+
+      const app = await mountShareApp();
+      const res = await request(app)
+        .post(`/apps/${TEST_APP_ID}/share`)
+        .send({ replaceActive: true });
+
+      // Create succeeds — caller has explicitly opted into rotation.
+      expect(res.status).toBe(201);
+      expect(mockShareTokenRepo.create).toHaveBeenCalledWith({
+        appId: TEST_APP_ID,
+        expiresIn: 604800,
+      });
+      // The repository's create call signature does NOT delete or expire the
+      // previous token — by design, the previous token continues to live with
+      // its original expiresAt so already-copied URLs keep working.
+    });
+
+    it('still 409s when replaceActive is omitted (default behavior preserved)', async () => {
+      mockShareTokenRepo.findByAppId.mockReturnValue([
+        {
+          token: 'existing-active',
+          appId: TEST_APP_ID,
+          expiresAt: FUTURE,
+          createdAt: new Date(),
+          firstUsedAt: null,
+        } as any,
+      ]);
+
+      const app = await mountShareApp();
+      // No replaceActive in body — UI's manual share-create path.
+      const res = await request(app).post(`/apps/${TEST_APP_ID}/share`).send({});
+
+      expect(res.status).toBe(409);
+      expect(mockShareTokenRepo.create).not.toHaveBeenCalled();
+    });
+
+    it('rejects non-boolean truthy values (falls through to default 409)', async () => {
+      // Strict `=== true` check: only the literal boolean true opts in. A
+      // string "true" or the number 1 must NOT bypass the guard — that would
+      // be a silent UX hazard where someone naively casts a query param.
+      mockShareTokenRepo.findByAppId.mockReturnValue([
+        {
+          token: 'existing-active',
+          appId: TEST_APP_ID,
+          expiresAt: FUTURE,
+          createdAt: new Date(),
+          firstUsedAt: null,
+        } as any,
+      ]);
+
+      const app = await mountShareApp();
+      // String "true" — not the literal boolean. The route's strict `=== true`
+      // check should treat this as not-opted-in.
+      const res = await request(app)
+        .post(`/apps/${TEST_APP_ID}/share`)
+        .send({ replaceActive: 'true' });
+
+      expect(res.status).toBe(409);
+      expect(mockShareTokenRepo.create).not.toHaveBeenCalled();
+    });
+
+    it('creates a token cleanly when no existing active token (replaceActive is a no-op)', async () => {
+      // No existing tokens — the rotation flag should make no difference vs.
+      // the default path. Verifies we don't accidentally introduce a regression
+      // for callers who pass replaceActive defensively.
+      mockShareTokenRepo.findByAppId.mockReturnValue([]);
+
+      const app = await mountShareApp();
+      const res = await request(app)
+        .post(`/apps/${TEST_APP_ID}/share`)
+        .send({ replaceActive: true });
+
+      expect(res.status).toBe(201);
+      expect(mockShareTokenRepo.create).toHaveBeenCalled();
+    });
+  });
 });
 
 describe('share validate (GET /api/share/validate/:token)', () => {

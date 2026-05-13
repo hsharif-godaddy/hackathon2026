@@ -6,6 +6,14 @@ import { getControlPlaneAdapter } from '@/lib/control-plane';
 import { type CustomerAuthContext, withCustomerAuth } from '@/lib/customer-auth';
 import { logger } from '@/lib/request-context';
 import { checkSwitchboardFlag } from '@/lib/switchboard/server';
+import {
+  type AgentsTokenEntry,
+  type RotatedToken,
+  rotateShareTokenForList,
+  ROTATION_COOLDOWN_MS,
+  scanForRotation,
+  shouldAttemptRotation,
+} from './rotation-helpers';
 
 // Force dynamic rendering
 export const dynamic = 'force-dynamic';
@@ -15,6 +23,29 @@ export const dynamic = 'force-dynamic';
  *
  * Returns all active share tokens for the specified app.
  * Requires authentication and feature flag appbuilder-share-links.
+ *
+ * **Auth level 1** (default IAT-based: persistent up to 30 days).
+ *
+ * This handler DOES have a rotation side-effect: when the freshest active
+ * token is past its freshness window, it silently POSTs to agents with
+ * `replaceActive: true` and prepends a newly-minted 7-day token to the
+ * response. The mint is the same operation the sibling POST performs, so
+ * the question arises whether GET should match POST's `{ level: 3 }` gate.
+ * It deliberately doesn't, because:
+ *
+ *   1. The popover that consumes this endpoint is opened frequently;
+ *      gating it at level 3 would force re-auth every 12 hours for any
+ *      shopper on a "remember me" session, even just to read a share
+ *      link. Concrete, high-frequency UX cost.
+ *   2. Rotation is opportunistic — only fires when a stale token already
+ *      exists. A stolen-cookie attacker can't force a mint that wouldn't
+ *      otherwise happen.
+ *   3. The level-3 gate on POST is for explicit credential creation
+ *      (user clicks "Create Share Link"). That's the high-signal,
+ *      attacker-targetable action. Rotation is silent housekeeping.
+ *   4. A stolen builder-session cookie already grants broad read access
+ *      to the customer's data; adding "could trigger a rotation" is a
+ *      marginal capability increase, not a step-change.
  *
  * Path Parameters:
  * - id: The app ID
@@ -109,7 +140,13 @@ export const GET = withCustomerAuth(async (
     // truncated response, etc.) response.json() throws. Translate to a
     // 502 with the upstream status preserved in the log so the failure
     // mode is distinguishable from a generic 500.
-    let data: { tokens?: unknown[] };
+    //
+    // Typed loosely (`Record<string, unknown>` with a known `tokens` field)
+    // so future agents response fields (pagination cursors, summary
+    // counts, etc.) are forwarded to the client transparently. Without
+    // that, a contract addition on agents would silently get dropped
+    // here until someone notices a client-side regression.
+    let data: { tokens?: unknown[] } & Record<string, unknown>;
     try {
       data = await response.json();
     } catch (parseErr) {
@@ -124,12 +161,99 @@ export const GET = withCustomerAuth(async (
       );
     }
 
+    // Auto-rotate when the freshest active token is past the freshness
+    // window. The DomainMenu's "Share Preview" popover uses the FIRST
+    // active token from this response (agents orders by `created_at DESC`,
+    // so freshest first), then the user copies that URL. Without this
+    // step, a 6-day-old token still gets handed out — the recipient gets
+    // a link with ~24h of validity. Mint a fresh one and prepend it so
+    // the popover, and any `useShareTokens` caller, picks it up.
+    //
+    // Fails open: rotation failure leaves the existing list untouched
+    // and the GET still succeeds. The old token continues to work for
+    // any URL that was already copied — by design, agents leaves the
+    // previous token alive when minting via `replaceActive: true`.
+    const tokenList: AgentsTokenEntry[] = Array.isArray(data.tokens)
+      ? (data.tokens as AgentsTokenEntry[])
+      : [];
+    const now = Date.now();
+    const scan = scanForRotation(tokenList, now);
+    let rotated: RotatedToken | undefined;
+    if (scan.kind === 'noParseableCreatedAt') {
+      // Active tokens exist but none have a usable createdAt — silent
+      // rotation-disable scenario (older agents binary, schema drift,
+      // proxy stripped the field). Without this log, rotation could
+      // silently stop fleet-wide for a deploy window with zero signal.
+      // activeTokenCount is carried through from scanForRotation so we
+      // don't re-traverse the list here.
+      logger.warn('share.api.list.rotation.noParseableCreatedAt', {
+        appId,
+        activeTokenCount: scan.activeTokenCount,
+      });
+    } else if (scan.kind === 'stale') {
+      // Collapse same-event bursts (multiple tabs, Strict Mode, etc.)
+      // before they each fire their own replaceActive POST. Without the
+      // cooldown, N concurrent stale-detections create N new tokens in
+      // one burst — proportional growth in share_tokens DB rows for an
+      // effectively single rotation event.
+      if (!shouldAttemptRotation(appId, now)) {
+        logger.info('share.api.list.rotation.cooldown', {
+          appId,
+          freshestAgeMs: scan.freshestAgeMs,
+          cooldownMs: ROTATION_COOLDOWN_MS,
+        });
+      } else {
+        logger.info('share.api.list.rotation.begin', {
+          appId,
+          freshestAgeMs: scan.freshestAgeMs,
+        });
+        rotated = await rotateShareTokenForList(appId, url);
+        if (rotated) {
+          // Carry freshestAgeMs through so a Loki query can correlate the
+          // begin/rotated pair on a single trace. expiresAt mirrors the
+          // POST handler's success log shape for symmetry.
+          logger.info('share.api.list.rotated', {
+            appId,
+            // `rotated.token` is narrowed to `string` by the
+            // rotateShareTokenForList return type (RotatedToken).
+            shareTokenSuffix: tokenSuffix(rotated.token),
+            expiresAt: typeof rotated.expiresAt === 'number' ? rotated.expiresAt : undefined,
+            previousFreshestAgeMs: scan.freshestAgeMs,
+          });
+        }
+      }
+    }
+    // Prepend the rotated token so the new one is first — preserves the
+    // "newest first" ordering callers rely on (matches agents' own
+    // `ORDER BY created_at DESC` from findByAppId). Compose the response
+    // tokens as a new array rather than mutating `data.tokens` in place,
+    // per the const-over-let preference in the engineering guidelines.
+    //
+    // Normalize `firstUsedAt: null` on the rotated entry. The agents POST
+    // response shape lacks `firstUsedAt` (line 247-253 of agents share.ts),
+    // while the list shape includes it as ISO string or null (line 287-294).
+    // Without this normalization, consumers iterating tokens see
+    // `firstUsedAt === undefined` on the rotated entry and `null` on the
+    // rest — a `t.firstUsedAt ? ... : ...` check would behave the same
+    // way, but `t.firstUsedAt === null` would diverge. Pin the contract.
+    const rotatedNormalized: AgentsTokenEntry | undefined = rotated
+      ? { ...rotated, firstUsedAt: null }
+      : undefined;
+    const responseTokens = rotatedNormalized
+      ? [rotatedNormalized, ...tokenList]
+      : tokenList;
+
     logger.info('share.api.list.success', {
       appId,
-      tokenCount: data.tokens?.length || 0,
+      tokenCount: responseTokens.length,
     });
 
-    return NextResponse.json(data);
+    // Spread `data` so any future agents response fields (pagination,
+    // metadata, summary counts, etc.) flow through unchanged; only
+    // `tokens` is overridden to include the rotated entry. Without the
+    // spread, a contract addition on agents would silently get dropped
+    // here until a consumer noticed a regression.
+    return NextResponse.json({ ...data, tokens: responseTokens });
   } catch (error) {
     logger.error('share.api.list.error', {
       appId,

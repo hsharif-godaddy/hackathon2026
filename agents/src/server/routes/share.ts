@@ -158,7 +158,12 @@ router.use('/apps/:id/share', jwtAuthMiddleware.authenticate, validateProductAcc
  * POST /apps/:id/share
  * Create a new share token for an app
  *
- * Body: { expiresIn?: number } (seconds, default: 604800 = 7 days)
+ * Body: {
+ *   expiresIn?: number,         // seconds, default: 604800 = 7 days
+ *   replaceActive?: boolean,    // when true, bypass the one-active-token
+ *                               // guard and mint a new token even if an
+ *                               // active one exists. Default false.
+ * }
  * Response: { token, appId, shareUrl, createdAt, expiresAt }
  */
 router.post('/apps/:id/share', async (req: Request, res: Response) => {
@@ -170,6 +175,14 @@ router.post('/apps/:id/share', async (req: Request, res: Response) => {
 
   try {
     const expiresIn = req.body.expiresIn ?? 604800; // Default: 7 days (604800 seconds)
+    // `replaceActive` is opt-in token rotation. The default (false) keeps
+    // the long-standing "one active token per app" UI invariant intact.
+    // Programmatic callers (currently: app/src/lib/share/inject-preview-token.ts
+    // when an existing token is older than its freshness window) pass true.
+    // Strict `=== true` so any non-boolean payload (a string "true", null,
+    // undefined, etc.) falls through to the safer default behavior — the
+    // caller has to be deliberate to bypass the guard.
+    const replaceActive = req.body.replaceActive === true;
 
     // Validate expiresIn is a number
     if (typeof expiresIn !== 'number' || isNaN(expiresIn)) {
@@ -197,6 +210,7 @@ router.post('/apps/:id/share', async (req: Request, res: Response) => {
     logger.info('share.create.begin', {
       appId,
       expiresIn,
+      replaceActive,
       siteId: authReq.agentContext?.siteId,
     });
 
@@ -215,19 +229,41 @@ router.post('/apps/:id/share', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'App has no preview URL configured' });
     }
 
-    // Enforce one-active-link-at-a-time as a server-side invariant. The UI
-    // gates this too (SharePanel + ShareMenu), but two open tabs, a direct
-    // curl, or a double-click before the React isPending flag flips would
-    // otherwise create duplicate active tokens.
+    // Enforce one-active-link-at-a-time as a server-side invariant for the
+    // default UI flow. The UI gates this too (SharePanel + ShareMenu), but
+    // two open tabs, a direct curl, or a double-click before the React
+    // isPending flag flips would otherwise create duplicate active tokens.
+    //
+    // `replaceActive: true` opts out of the guard for programmatic rotation:
+    // when a copy-friendly link (e.g., the Slack feedback Preview button) is
+    // being generated and the existing token is past its freshness window,
+    // the BFF helper requests a fresh token. The previous token is left in
+    // place to expire on its own schedule — already-copied URLs keep working
+    // until their original 7-day window elapses.
+    //
+    // Hoisted out of the if/else: both branches need the list, so paying
+    // for one DB read covers both paths.
+    const now = Date.now();
     const existingTokens = shareTokenRepository.findByAppId(appId);
-    const existingActive = existingTokens.find((t) => t.expiresAt > Date.now());
-    if (existingActive) {
-      logger.info('share.create.alreadyActive', {
+    const existingActive = existingTokens.find((t) => t.expiresAt > now);
+
+    if (!replaceActive) {
+      if (existingActive) {
+        logger.info('share.create.alreadyActive', {
+          appId,
+          existingExpiresAt: existingActive.expiresAt,
+        });
+        return res.status(409).json({
+          error: 'An active share link already exists for this app',
+        });
+      }
+    } else {
+      // Observability: distinguish a rotation event from a first-create so
+      // operators can see how often programmatic rotation fires per app.
+      const existingActiveCount = existingTokens.filter((t) => t.expiresAt > now).length;
+      logger.info('share.create.replacingActive', {
         appId,
-        existingExpiresAt: existingActive.expiresAt,
-      });
-      return res.status(409).json({
-        error: 'An active share link already exists for this app',
+        existingActiveCount,
       });
     }
 
