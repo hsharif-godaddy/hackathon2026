@@ -3,13 +3,12 @@ import { safePostMessage, isOriginAllowed } from '../utils/postMessage'
 import { captureAndResizeScreenshot, captureViewportScreenshot } from '../utils/screenshot'
 import { useEditMode } from "../hooks/useEditMode";
 import ElementHoverBar from "./ElementHoverBar";
-import { initTranslations } from "../utils/translations";
+import { setTranslations } from "../utils/translations";
 
 export default function DevelopmentMode() {
-  // Load translations from i18n API on mount
-  useEffect(() => { void initTranslations(); }, []);
   const [isEditModeActive, setIsEditModeActive] = useState(false); // off by default, parent enables via EDIT_MODE_ENABLED message
   const [isMultiSelectActive, setIsMultiSelectActive] = useState(false); // off by default, parent enables via MULTI_SELECT_ENABLED message
+  const [translationsLoaded, setTranslationsLoaded] = useState(0); // counter that always changes to force re-render
 
   const { hoveredElement, handleBarMouseEnter, handleBarMouseLeave } = useEditMode(isEditModeActive, isMultiSelectActive)
   const [quickEditActive, setQuickEditActive] = useState(false)
@@ -617,6 +616,14 @@ export default function DevelopmentMode() {
           return
         }
 
+        if (event.data && event.data.type === 'DEVTOOLS_TRANSLATIONS') {
+          // Receive devtools_* translations from parent window (AAB app)
+          if (event.data.translations && typeof event.data.translations === 'object') {
+            setTranslations(event.data.translations);
+            setTranslationsLoaded(v => v + 1); // Increment counter to force re-render
+          }
+          return;
+        }
         if (event.data && event.data.type === 'EDIT_MODE_ENABLED') {
           setIsEditModeActive(true);
           return;

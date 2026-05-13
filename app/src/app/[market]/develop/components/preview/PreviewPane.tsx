@@ -4,6 +4,7 @@ import clsx from 'clsx'
 import { animate, motion, useMotionValue } from 'framer-motion'
 import dynamic from 'next/dynamic'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useIntl } from 'react-intl'
 import { Loader } from '@airo-ux/loader'
 import Button from '@ux/button'
 
@@ -124,6 +125,7 @@ export default function PreviewPane({
   onPublishSnapshot,
 }: PreviewPaneProps) {
   const t = useTranslations();
+  const intl = useIntl();
   const isDomainBarEnabled = useSwitchboard('appbuilder-domain-bar');
   const isTopLevelDomainEnabled = useSwitchboard('appbuilder-domain-top-level');
   /** Switchboard: translucent creation overlay + edit-time processing overlay (fade). Off = main branch UX. */
@@ -653,6 +655,48 @@ export default function PreviewPane({
         // preview app's own script ran, which means the iframe didn't
         // end up on a builder-redirect or CSP-block.
         setIframeBootstrapped(true)
+
+        // Send devtools translations to iframe
+        // Filter and send only keys starting with "devtools_"
+        const allMessages = intl.messages || {}
+        const devtoolsTranslations: Record<string, string> = {}
+        const droppedKeys: string[] = []
+
+        Object.keys(allMessages).forEach((key) => {
+          if (key.startsWith('devtools_')) {
+            const value = allMessages[key]
+            // ICU messages (plurals, selectors) arrive as MessageFormatElement[]
+            // For dev-tools, all strings are guaranteed to be plain text (no ICU syntax)
+            if (typeof value === 'string') {
+              devtoolsTranslations[key] = value
+            } else {
+              // MessageFormatElement[] from ICU - materialize via formatMessage
+              devtoolsTranslations[key] = intl.formatMessage({ id: key })
+              droppedKeys.push(key)
+            }
+          }
+        })
+
+        if (droppedKeys.length > 0) {
+          logger.warn('preview-pane.devtools-translations.non-string-value', {
+            totalMessageCount: Object.keys(allMessages).length,
+            droppedKeys,
+          })
+        }
+
+        if (Object.keys(devtoolsTranslations).length > 0 && iframeRef.current) {
+          postMessageToIframe(iframeRef.current, {
+            type: 'DEVTOOLS_TRANSLATIONS',
+            translations: devtoolsTranslations,
+          })
+          logger.debug('preview-pane.devtools-translations.sent', {
+            count: Object.keys(devtoolsTranslations).length,
+          })
+        } else {
+          logger.warn('preview-pane.devtools-translations.empty', {
+            totalMessageCount: Object.keys(allMessages).length,
+          })
+        }
 
         // Reset mobile inline edit state when iframe reloads.
         // Must reset both flags to stay in sync with page.tsx's sendEditModeMessage(isEditModeEnabled).

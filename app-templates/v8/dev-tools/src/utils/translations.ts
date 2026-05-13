@@ -1,31 +1,18 @@
-const I18N_API_URL =
-  "https://api.i18n.int.gdcorp.tools/api/v2/package/market/en-us/%40airo-app-builder%2Faab";
-
 let translations: Record<string, string> = {};
-let loaded = false;
 
 /**
- * Fetch translations from the GoDaddy i18n API.
- * Called once on dev-tools init; subsequent calls are no-ops.
- * Failures are silent — `t()` falls back to the provided default.
+ * Receive translations from parent window via postMessage.
+ * Called by DEVTOOLS_TRANSLATIONS message handler in DevelopmentMode.
+ * This is the only mechanism for loading translations - parent app provides them.
  */
-export async function initTranslations(): Promise<void> {
-  if (loaded) return;
-  loaded = true;
-
-  try {
-    const response = await fetch(I18N_API_URL);
-    if (response.ok) {
-      translations = await response.json();
-    }
-  } catch {
-    // Silent fail — t() will use fallback strings
-  }
+export function setTranslations(translationData: Record<string, string>): void {
+  translations = { ...translations, ...translationData };
 }
 
 /**
  * Translate a key, falling back to the provided default string.
- * Synchronous — uses translations loaded by `initTranslations()`.
+ * Translations are provided by the parent app via setTranslations().
+ * If no translation exists, returns the fallback value.
  */
 export function t(key: string, fallback: string): string {
   return translations[key] || fallback;
