@@ -3,6 +3,7 @@ package config
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 func clearEnv(t *testing.T) {
@@ -12,6 +13,7 @@ func clearEnv(t *testing.T) {
 		"HTTP_READ_TIMEOUT", "HTTP_WRITE_TIMEOUT", "HTTP_IDLE_TIMEOUT", "SHUTDOWN_TIMEOUT",
 		"SERVER_CERT_PATH", "SERVER_KEY_PATH",
 		"AUTH_TYPE", "SSO_HOST",
+		"MHP_AIRO_BASE_URL", "MHP_AIRO_TIMEOUT", "MHP_AIRO_AUTH",
 	} {
 		t.Setenv(k, "")
 	}
@@ -179,6 +181,7 @@ func TestLoadAuthTypeJwtWithSSOHost(t *testing.T) {
 	clearEnv(t)
 	t.Setenv("AUTH_TYPE", "jwt")
 	t.Setenv("SSO_HOST", "sso.dev-godaddy.com")
+	t.Setenv("MHP_AIRO_BASE_URL", "https://mgmt.nstk.net/api/airo/v1") // required when AUTH_TYPE=jwt
 	cfg, err := Load()
 	if err != nil {
 		t.Fatalf("Load: %v", err)
@@ -272,5 +275,84 @@ func TestLoadAcceptsValidDurations(t *testing.T) {
 	}
 	if cfg.ShutdownTimeout.Seconds() != 20 {
 		t.Errorf("ShutdownTimeout: want 20s, got %s", cfg.ShutdownTimeout)
+	}
+}
+
+func TestLoadMHPAiroDefaultsWithAuthNone(t *testing.T) {
+	clearEnv(t) // sets AUTH_TYPE=none
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if got, want := cfg.MHPAiro.BaseURL, "http://localhost:4100/api/airo/v1"; got != want {
+		t.Errorf("MHPAiro.BaseURL: want %q, got %q", want, got)
+	}
+	if got, want := cfg.MHPAiro.Auth, "none"; got != want {
+		t.Errorf("MHPAiro.Auth: want %q, got %q", want, got)
+	}
+	if cfg.MHPAiro.Timeout != 30*time.Second {
+		t.Errorf("MHPAiro.Timeout: want 30s, got %s", cfg.MHPAiro.Timeout)
+	}
+}
+
+func TestLoadMHPAiroRequiresBaseURLWhenAuthJwt(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("AUTH_TYPE", "jwt")
+	t.Setenv("SSO_HOST", "sso.dev-godaddy.com")
+	// MHP_AIRO_BASE_URL deliberately unset.
+	_, err := Load()
+	if err == nil {
+		t.Fatal("want error when AUTH_TYPE=jwt and MHP_AIRO_BASE_URL is unset")
+	}
+	if !strings.Contains(err.Error(), "MHP_AIRO_BASE_URL") {
+		t.Errorf("error should mention MHP_AIRO_BASE_URL; got %q", err)
+	}
+}
+
+func TestLoadMHPAiroAuthDefaultsToAwsIamWhenJwt(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("AUTH_TYPE", "jwt")
+	t.Setenv("SSO_HOST", "sso.dev-godaddy.com")
+	t.Setenv("MHP_AIRO_BASE_URL", "https://mgmt.nstk.net/api/airo/v1")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if got, want := cfg.MHPAiro.Auth, "awsiam"; got != want {
+		t.Errorf("MHPAiro.Auth: want %q, got %q", want, got)
+	}
+}
+
+func TestLoadMHPAiroRejectsInvalidAuth(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("MHP_AIRO_AUTH", "bearer") // not a valid option
+	_, err := Load()
+	if err == nil {
+		t.Fatal("want error for invalid MHP_AIRO_AUTH")
+	}
+	if !strings.Contains(err.Error(), "MHP_AIRO_AUTH") {
+		t.Errorf("error should mention MHP_AIRO_AUTH; got %q", err)
+	}
+}
+
+func TestLoadMHPAiroRespectsExplicitOverrides(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("AUTH_TYPE", "jwt")
+	t.Setenv("SSO_HOST", "sso.dev-godaddy.com")
+	t.Setenv("MHP_AIRO_BASE_URL", "https://custom.example/api/airo/v1")
+	t.Setenv("MHP_AIRO_AUTH", "none") // override default mapping
+	t.Setenv("MHP_AIRO_TIMEOUT", "7s")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.MHPAiro.BaseURL != "https://custom.example/api/airo/v1" {
+		t.Errorf("MHPAiro.BaseURL: want override, got %q", cfg.MHPAiro.BaseURL)
+	}
+	if cfg.MHPAiro.Auth != "none" {
+		t.Errorf("MHPAiro.Auth: want none (override), got %q", cfg.MHPAiro.Auth)
+	}
+	if cfg.MHPAiro.Timeout.Seconds() != 7 {
+		t.Errorf("MHPAiro.Timeout: want 7s, got %s", cfg.MHPAiro.Timeout)
 	}
 }

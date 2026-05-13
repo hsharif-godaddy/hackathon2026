@@ -16,13 +16,41 @@ is a stub that returns 501 but is wrapped in `gd-auth` S2S authentication (AWS
 IAM SSO tokens) to prove the middleware chain works end-to-end. No Stripe SDK
 and no real handler bodies yet.
 
+Also landed: `internal/mhpairo` — outbound client for mhp-airo's three
+alloc-management endpoints (POST secrets, PATCH app, POST reload). Library
+only; not wired into any handler yet. See the section below.
+
 Next PRs:
 
 1. Stripe webhook endpoint + signature verification.
 2. Real `POST /v1/sandboxes` body (Stripe `v2.core.claimableSandboxes.create` + DynamoDB write).
 3. `GET /v1/status`, `GET /v1/sandbox/:id/mcp-key`.
 4. KMS decrypt + Managed API Keys flow.
-5. mhp-airo callout (awsiam JWT) for alloc env rotation.
+5. Wire `internal/mhpairo` into `postSandboxes` and the go-live webhook handler.
+
+### `internal/mhpairo` (outbound control-plane client)
+
+`internal/mhpairo.Client` wraps `*http.Client` with an `AuthProvider` seam and
+exposes three methods:
+
+- `UpdateSecrets(ctx, subID, sysID, appID, ops)` — `POST /api/airo/v1/subscriptions/:subID/systems/:sysID/apps/:appID/secrets`
+- `UpdateApp(ctx, subID, sysID, appID, update)` — `PATCH /api/airo/v1/subscriptions/:subID/systems/:sysID/apps/:appID`
+- `ReloadApp(ctx, subID, sysID, appID)` — `POST /api/airo/v1/subscriptions/:subID/systems/:sysID/apps/:appID/reload`
+
+All three take the full `(subscriptionId, systemId, appId)` triple — mhp-airo
+has no appId-only endpoint and stripe-service has no customer context to
+resolve one. The caller (future `postSandboxes` + webhook handler) is
+expected to carry the triple alongside `appId`.
+
+Auth is pluggable via `mhpairo.AuthProvider`. `mhpairo.NewAwsIamAuth(gd, sso)`
+wraps `gd-auth-lib`'s AWS-IAM JWT minter for prod; `mhpairo.NoopAuth{}` sends
+no Authorization header and is what you use against local-control-plane.
+
+**Smoke-test locally:**
+
+1. `cd local-control-plane && make run` (listens on `:4100`, SQLite auto-created, no auth required).
+2. In a Go test or REPL: `mhpairo.New(mhpairo.Config{BaseURL: "http://localhost:4100/api/airo/v1", Auth: mhpairo.NoopAuth{}})` and call the three methods against a seeded app.
+3. Inspect `local-control-plane/local-control-plane.db` (SQLite) to confirm the writes landed.
 
 ## Protected routes
 
@@ -65,17 +93,20 @@ so local probes exercise real dev resources without a separate local stack.
 
 ## Env vars
 
-| Var                   | Default | Purpose                                                                                                          |
-| --------------------- | ------- | ---------------------------------------------------------------------------------------------------------------- |
-| `STRIPE_SERVICE_ADDR` | `:8443` | Listen address.                                                                                                  |
-| `SERVER_CERT_PATH`    | _unset_ | TLS cert path. Both cert and key must be set or neither. Container image sets both; local dev serves plain HTTP. |
-| `SERVER_KEY_PATH`     | _unset_ | TLS key path.                                                                                                    |
-| `ENVIRONMENT`         | `local` | `local` \| `dev` \| `test` \| `prod`. Surfaced in `/health`.                                                     |
-| `LOG_LEVEL`           | `info`  | `debug` \| `info` \| `warn` \| `error`.                                                                          |
-| `LOG_FORMAT`          | `json`  | `json` (structured) or `text` (human).                                                                           |
-| `HTTP_READ_TIMEOUT`   | `30s`   | Go-duration format.                                                                                              |
-| `HTTP_WRITE_TIMEOUT`  | `60s`   | Go-duration format.                                                                                              |
-| `HTTP_IDLE_TIMEOUT`   | `120s`  | Go-duration format.                                                                                              |
-| `SHUTDOWN_TIMEOUT`    | `15s`   | Max time to drain in-flight requests on SIGTERM.                                                                 |
-| `AUTH_TYPE`           | `jwt`   | `jwt` enforces AWS IAM SSO tokens on `/v1/*`; `none` bypasses auth (local dev only).                             |
-| `SSO_HOST`            | _unset_ | GoDaddy SSO hostname; required when `AUTH_TYPE=jwt`. `sso.dev-godaddy.com` (dev) / `sso.godaddy.com` (prod).     |
+| Var                   | Default | Purpose                                                                                                                                                                |
+| --------------------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `STRIPE_SERVICE_ADDR` | `:8443` | Listen address.                                                                                                                                                        |
+| `SERVER_CERT_PATH`    | _unset_ | TLS cert path. Both cert and key must be set or neither. Container image sets both; local dev serves plain HTTP.                                                       |
+| `SERVER_KEY_PATH`     | _unset_ | TLS key path.                                                                                                                                                          |
+| `ENVIRONMENT`         | `local` | `local` \| `dev` \| `test` \| `prod`. Surfaced in `/health`.                                                                                                           |
+| `LOG_LEVEL`           | `info`  | `debug` \| `info` \| `warn` \| `error`.                                                                                                                                |
+| `LOG_FORMAT`          | `json`  | `json` (structured) or `text` (human).                                                                                                                                 |
+| `HTTP_READ_TIMEOUT`   | `30s`   | Go-duration format.                                                                                                                                                    |
+| `HTTP_WRITE_TIMEOUT`  | `60s`   | Go-duration format.                                                                                                                                                    |
+| `HTTP_IDLE_TIMEOUT`   | `120s`  | Go-duration format.                                                                                                                                                    |
+| `SHUTDOWN_TIMEOUT`    | `15s`   | Max time to drain in-flight requests on SIGTERM.                                                                                                                       |
+| `AUTH_TYPE`           | `jwt`   | `jwt` enforces AWS IAM SSO tokens on `/v1/*`; `none` bypasses auth (local dev only).                                                                                   |
+| `SSO_HOST`            | _unset_ | GoDaddy SSO hostname; required when `AUTH_TYPE=jwt`. `sso.dev-godaddy.com` (dev) / `sso.godaddy.com` (prod).                                                           |
+| `MHP_AIRO_BASE_URL`   | \*      | mhp-airo API root incl. `/api/airo/v1`. Required when `AUTH_TYPE=jwt`. Defaults to `http://localhost:4100/api/airo/v1` when `AUTH_TYPE=none`.                          |
+| `MHP_AIRO_TIMEOUT`    | `30s`   | Per-request HTTP timeout to mhp-airo.                                                                                                                                  |
+| `MHP_AIRO_AUTH`       | \*      | `awsiam` (mint AWS-IAM JWT via gd-auth-lib) or `none` (no Authorization header; for local-control-plane). Defaults mirror `AUTH_TYPE` (`jwt`→`awsiam`, `none`→`none`). |

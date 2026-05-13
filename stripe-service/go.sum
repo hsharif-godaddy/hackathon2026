@@ -38,6 +38,10 @@ github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/gdcorp-golang/auth v1.0.0 h1:gYht/2zb/TZh7CY6AJPXcp6OOsOjdA9LLlfTDL0wyIw=
 github.com/gdcorp-golang/auth v1.0.0/go.mod h1:BSf+klBtQXZeVmmlUHXmpLzPXvroCjbYgFX8wLsvxdA=
+github.com/gdcorp-identity/gd-auth-lib/go/gd_auth_lib v0.13.0 h1:ZcOqSD9KsgxYzxvmpwcDn9pj43Az2vKsE1m9yGHa26I=
+github.com/gdcorp-identity/gd-auth-lib/go/gd_auth_lib v0.13.0/go.mod h1:lMf4QyqKQacE+7XO2QXtLyZmZkKuQ2exnUZxyQhB0AI=
+github.com/godaddy/cobhan-go v0.4.3 h1:pIkkJ1fr8AA56WR9pUy6Pu2KOVCzgllwS/BX4ucqFJY=
+github.com/godaddy/cobhan-go v0.4.3/go.mod h1:07aRS3E5apQ9gmpSn2e/BmniBDk8AU67QtmQda8uoNI=
 github.com/gorilla/mux v1.8.1 h1:TuBL49tXwgrFYWhqrNgrUNEY92u81SPhu7sTdzQEiWY=
 github.com/gorilla/mux v1.8.1/go.mod h1:AKf9I4AEqPTmMytcMc0KkNouC66V3BtZ4qD5fmWSiMQ=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=

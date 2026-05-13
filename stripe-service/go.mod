@@ -8,6 +8,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/kms v1.51.1
 	github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.41.7
 	github.com/gdcorp-golang/auth v1.0.0
+	github.com/gdcorp-identity/gd-auth-lib/go/gd_auth_lib v0.13.0
 	github.com/gdcorp-partners/airo-app-builder/packages/go-auth v0.0.0
 	github.com/gorilla/mux v1.8.1
 )
@@ -27,6 +28,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.35.21 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sts v1.42.1 // indirect
 	github.com/aws/smithy-go v1.25.1 // indirect
+	github.com/godaddy/cobhan-go v0.4.3 // indirect
 )
 
 replace github.com/gdcorp-partners/airo-app-builder/packages/go-auth => ../packages/go-auth

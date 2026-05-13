@@ -34,6 +34,27 @@ type Config struct {
 	TLSKeyPath       string
 	AuthType         string // "jwt" (default) or "none" (local dev bypass)
 	SSOHost          string // GoDaddy SSO hostname; required when AuthType=jwt
+
+	// MHPAiro groups config for the outbound mhp-airo control-plane client
+	// (see internal/mhpairo). Kept as a sub-struct so future additions
+	// (health-probe path, per-endpoint overrides) don't sprawl at the top.
+	MHPAiro MHPAiroConfig
+}
+
+// MHPAiroConfig is the env-driven config for internal/mhpairo.Client.
+type MHPAiroConfig struct {
+	// BaseURL is the mhp-airo API root, up to and including "/api/airo/v1".
+	// Required when AuthType=jwt; defaults to local-control-plane when unset.
+	BaseURL string
+
+	// Timeout is the per-request HTTP timeout passed to the client.
+	Timeout time.Duration
+
+	// Auth is "awsiam" (mint an AWS-IAM JWT via gd-auth-lib) or "none"
+	// (attach no Authorization header; for local-control-plane dev, which
+	// runs with AUTH_TYPE=none). Defaults mirror the top-level AuthType:
+	// jwt→awsiam, none→none.
+	Auth string
 }
 
 // ResourceNames holds the fully-qualified AWS resource names for this env,
@@ -109,7 +130,55 @@ func Load() (Config, error) {
 	if cfg.AuthType == "jwt" && cfg.SSOHost == "" {
 		return Config{}, fmt.Errorf("SSO_HOST must be set when AUTH_TYPE=jwt")
 	}
+
+	if cfg.MHPAiro, err = loadMHPAiroConfig(cfg.AuthType); err != nil {
+		return Config{}, err
+	}
+
 	return cfg, nil
+}
+
+// loadMHPAiroConfig reads the MHP_AIRO_* env vars. Defaults are env-aware:
+// with AUTH_TYPE=none we assume local-control-plane on :4100; with
+// AUTH_TYPE=jwt a BaseURL must be set explicitly (no sane default to guess
+// between dev/test/prod mhp-airo hosts).
+func loadMHPAiroConfig(authType string) (MHPAiroConfig, error) {
+	out := MHPAiroConfig{
+		BaseURL: strings.TrimSpace(os.Getenv("MHP_AIRO_BASE_URL")),
+		Auth:    strings.ToLower(strings.TrimSpace(os.Getenv("MHP_AIRO_AUTH"))),
+	}
+
+	timeout, err := getEnvDuration("MHP_AIRO_TIMEOUT", 30*time.Second)
+	if err != nil {
+		return MHPAiroConfig{}, err
+	}
+	out.Timeout = timeout
+
+	if out.BaseURL == "" {
+		if authType == "none" {
+			out.BaseURL = "http://localhost:4100/api/airo/v1"
+		} else {
+			return MHPAiroConfig{}, fmt.Errorf("MHP_AIRO_BASE_URL must be set when AUTH_TYPE=jwt")
+		}
+	}
+
+	if out.Auth == "" {
+		// Mirror the top-level auth type: jwt→awsiam (mint real tokens),
+		// none→none (skip auth; matches local-control-plane).
+		if authType == "jwt" {
+			out.Auth = "awsiam"
+		} else {
+			out.Auth = "none"
+		}
+	}
+	switch out.Auth {
+	case "awsiam", "none":
+		// ok
+	default:
+		return MHPAiroConfig{}, fmt.Errorf("MHP_AIRO_AUTH must be one of awsiam|none; got %q", out.Auth)
+	}
+
+	return out, nil
 }
 
 func parseAuthType(s string) (string, error) {
