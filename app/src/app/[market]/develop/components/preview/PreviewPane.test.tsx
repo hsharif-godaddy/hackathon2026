@@ -53,6 +53,8 @@ const mockDevelopPageStore = {
   setPreviewViewMode: vi.fn(),
   publishStates: { 'test-app-123': { isPublishing: false } } as Record<string, { isPublishing: boolean }>,
   isVersionHistoryOpen: false,
+  isMobileInlineEditActive: false,
+  isEditModeEnabled: false,
 };
 
 const mockGitStore = {
@@ -65,9 +67,13 @@ vi.mock('@/stores/useServerPollingStore', () => ({
   useServerPollingStore: (selector: any) => selector(mockServerPollingStore),
 }));
 
-vi.mock('@/stores/useDevelopPageStore', () => ({
-  useDevelopPageStore: (selector: any) => selector(mockDevelopPageStore),
-}));
+vi.mock('@/stores/useDevelopPageStore', () => {
+  const store = (selector: any) => selector(mockDevelopPageStore);
+  store.getState = () => mockDevelopPageStore;
+  store.setState = (partial: any) =>
+    Object.assign(mockDevelopPageStore, typeof partial === 'function' ? partial(mockDevelopPageStore) : partial);
+  return { useDevelopPageStore: store };
+});
 
 vi.mock('@/stores/useGitStore', () => ({
   useGitStore: (selector: any) => selector(mockGitStore),
