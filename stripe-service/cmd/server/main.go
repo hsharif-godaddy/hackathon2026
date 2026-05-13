@@ -1,7 +1,6 @@
 // Command server is the stripe-service HTTP entrypoint. Wires AWS SDK
-// clients, gd-auth S2S middleware, and api.Server, applies graceful shutdown
-// on SIGINT/SIGTERM.
-// Real agent-facing handlers and Stripe client wiring land in follow-up PRs.
+// clients, gd-auth S2S middleware, the Stripe client, and api.Server;
+// applies graceful shutdown on SIGINT/SIGTERM.
 package main
 
 import (
@@ -20,6 +19,7 @@ import (
 	"github.com/gdcorp-partners/airo-app-builder/stripe-service/internal/awsclients"
 	"github.com/gdcorp-partners/airo-app-builder/stripe-service/internal/config"
 	"github.com/gdcorp-partners/airo-app-builder/stripe-service/internal/store"
+	stripeclient "github.com/gdcorp-partners/airo-app-builder/stripe-service/internal/stripe"
 	"github.com/gdcorp-partners/airo-app-builder/stripe-service/internal/webhook"
 )
 
@@ -77,6 +77,8 @@ func main() {
 	}
 	verifier := webhook.NewVerifier(whsec)
 	events := store.NewEvents(clients.DynamoDB(), resources.EventsTable)
+	sandboxes := store.NewSandboxes(clients.DynamoDB(), resources.SandboxesTable)
+	stripeClient := stripeclient.FakeClient{}
 
 	srv := &api.Server{
 		Environment:     string(cfg.Environment),
@@ -84,6 +86,8 @@ func main() {
 		Prober:          clients,
 		ResourceNames:   resources,
 		Auth:            authMW,
+		Stripe:          stripeClient,
+		Sandboxes:       sandboxes,
 		Events:          events,
 		WebhookVerifier: verifier,
 	}

@@ -13,8 +13,11 @@ Implemented:
 
 - `/health` — public liveness.
 - `/v1/_probe` — public diagnostic, exercises read-only IAM grants against the CDK-provisioned resources.
-- `POST /v1/sandboxes` — stub today, returns 501. Wrapped in `gd-auth` S2S auth (AWS IAM SSO tokens) so the middleware chain is exercised end-to-end.
+- `POST /v1/sandboxes` — agent-facing, creates a claimable sandbox (via fake Stripe client) and persists metadata (no credentials) to DynamoDB. Idempotent on `appId`. All three Stripe-issued keys (`sk_test_*`, `pk_test_*`, `ek_test_*`) are **not** persisted — by design they flow only into mhp-airo's alloc env, where the agent reads `STRIPE_MCP_KEY` and preview/publish read `STRIPE_SECRET_KEY` / `STRIPE_PUBLISHABLE_KEY`. Current build drops them on the floor since the mhp-airo push ships in a later PR; see TODO in `internal/api/sandboxes.go`.
+- `GET /v1/status?appId=X` — returns claim state for an app's sandbox.
 - `POST /webhooks/stripe` — receives Stripe webhooks. Public route (no `gd-auth`); Stripe authenticates via the `Stripe-Signature` header. The handler verifies the signature against the secret loaded at startup from Secrets Manager, parses `{id, type}`, and conditionally-`PutItem`s into the `stripe_events` DDB table for idempotency. Duplicate deliveries return 200; bad signatures return 401. **No per-event-type business logic yet** — that lands as the next handful of PRs.
+
+All `/v1/*` endpoints except `/v1/_probe` require an AWS IAM SSO token.
 
 Also landed: `internal/mhpairo` — outbound client for mhp-airo's three
 alloc-management endpoints (POST secrets, PATCH app, POST reload). Library
@@ -29,17 +32,12 @@ Library packages (no caller wires them in yet):
   typed `*StripeError` with `IsRetryable()` predicate. JWE responses surface as
   raw bytes — decryption belongs in a separate package. Wired into real
   `POST /v1/sandboxes` body and the live-key webhook handler in follow-up PRs.
-
-Library packages (no caller wires them in yet):
-
 - `internal/jwedecrypt` — RSA-OAEP[-256] + A256GCM JWE compact-serialization
   decrypter for Stripe Managed API Key responses. CEK unwrap delegated to AWS
   KMS via a narrow interface (asymmetric `RSA_2048` CMK); AES-256-GCM content
   decryption happens in-process via stdlib `crypto/aes` + `crypto/cipher`. AAD
   follows RFC 7516 §5.1.10 (raw base64url-encoded protected header bytes).
   Library only — slotted into the live-key webhook handler in a follow-up PR.
-
-Library packages (no caller wires them in yet):
 
 - `internal/kmspubkey` — fetch + validate + cache the RSA public PEM from a
   KMS asymmetric CMK. Validates `KeySpec=RSA_2048`, `KeyUsage=ENCRYPT_DECRYPT`,
@@ -49,13 +47,20 @@ Library packages (no caller wires them in yet):
   PKIX (`-----BEGIN PUBLIC KEY-----`). Library only — slotted into
   `apiKeys.create` calls in the live-key webhook handler PR.
 
+### Fake Stripe client
+
+The current build uses `internal/stripe.FakeClient`, which returns obvious-fake values
+(every ID prefixed `*_fake_*`, claim URLs under `/fake-claim/`, keys prefixed
+`sk_test_fake_`, `pk_test_fake_`, `ek_test_fake_`). No real Stripe network call. This lets
+the full agent→service→DynamoDB loop be exercised end-to-end before real Stripe credentials
+are provisioned. Swapping in a real SDK-backed client is one line in `cmd/server/main.go`.
+
 Next PRs:
 
-1. Real `POST /v1/sandboxes` body (Stripe `v2.core.claimableSandboxes.create` + DynamoDB write).
-2. `GET /v1/status`, `GET /v1/sandbox/:id/mcp-key`.
-3. Per-event-type webhook handlers: `claimable_sandbox.claimed` (DDB update), `sandbox_details_owner_account_updated` (live-key mint via Managed API Keys + push to mhp-airo), `api_key.rotated` / `api_key.expired` (revoke / re-push).
-4. KMS decrypt + Managed API Keys flow.
-5. Wire `internal/mhpairo` into `postSandboxes` and the go-live webhook handler.
+1. Real Stripe SDK client (`internal/stripe/real.go`) + `STRIPE_CLIENT=fake|real` switch.
+2. `mhp-airo` callout to inject all three Stripe keys (`sk_test_*`, `pk_test_*`, `ek_test_*` as `STRIPE_SECRET_KEY` / `STRIPE_PUBLISHABLE_KEY` / `STRIPE_MCP_KEY`) into the customer-app alloc env. Must run between `claimableSandboxes.create` and the DDB `PutItem` so `claim_status: "provisioned"` implies the alloc env is actually ready; on push failure, abandon the Stripe sandbox and return an error without writing DDB.
+3. Stripe webhook endpoint + signature verification.
+4. Managed API Keys flow on `sandbox_details_owner_account_updated`: three `apiKeys.create` calls (secret / publishable / mcp), JWE-decrypt via KMS for sk/mcp, push all three to mhp-airo as `sk_live_*` / `pk_live_*` / `ek_live_*`. No new stripe-service data store — live credentials follow the same mhp-airo path as the sandbox keys.
 
 ### `internal/mhpairo` (outbound control-plane client)
 

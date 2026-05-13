@@ -48,11 +48,9 @@ type Prober interface {
 
 var _ Prober = (*Clients)(nil)
 
-// DynamoDB returns the underlying DynamoDB client for packages that need
-// the raw SDK surface (e.g. internal/store). The accessor pattern keeps
-// the field unexported so construction stays funneled through New() and
-// preserves the non-nil invariant. (Note: this accessor also lands in
-// PR #3667; merge resolution between the two PRs sees identical content.)
+// DynamoDB returns the underlying DynamoDB client for packages that need the
+// raw SDK surface (e.g. internal/store). Accessor preserves the non-nil
+// invariant that New() enforces and keeps Client construction funneled there.
 func (c *Clients) DynamoDB() *dynamodb.Client { return c.dynamodb }
 
 func (c *Clients) DescribeTable(ctx context.Context, name string) error {
