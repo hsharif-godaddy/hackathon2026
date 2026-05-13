@@ -78,7 +78,6 @@ async function buildDesignSystemPrompt(): Promise<string> {
     .file(paths.getSharedFile('communication.md'))
     .file(paths.getAgentFile('design', 'sections.md'))
     .file(paths.getAgentFile('design', 'memory-usage.md'))
-    .file(paths.getAgentFile('design', 'workflow.md'))
     .template(filesystemTemplate) // Use template instead of file for dynamic path interpolation
     .file(paths.getSharedFile('security.md'));
 

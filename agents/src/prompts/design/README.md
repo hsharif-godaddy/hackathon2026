@@ -4,43 +4,43 @@ This directory contains the modular system prompt for the Design Agent, focused 
 
 ## Prompt Sections
 
-The complete prompt is assembled from these files in order:
+The complete prompt matches `buildDesignSystemPrompt()` in `design-agent.ts` — assembled in this order:
 
-### 1. `core.md` - Core Role & Mission
+### 1. `core.md` (this directory) — Core role and mission
 
 - Agent identity and expertise
 - The 8 design sections overview
 - Core principles (brevity, high-level, context)
-- Workflow summary
+- Workflow (initial creation, updates, viewing, patterns, practices)
 - Success criteria
 
-### 2. `sections.md` - Design Section Specifications
+### 2. `../shared/communication.md` — Communication style
+
+- How to interact with users
+- Response formatting
+- Progress updates
+
+### 3. `sections.md` (this directory) — Design section specifications
 
 - Detailed guidance for each of the 8 sections
 - Content structure and examples for each
 - Length guidelines and formatting rules
 - What to include vs. what to avoid
 
-### 3. `memory-usage.md` - Memory Tool Usage
+### 4. `memory-usage.md` (this directory) — Memory tool usage
 
 - Storage pattern with hierarchical keys
 - How to store, read, and list sections
 - Searching for design inspiration
 - Update workflow patterns
 
-### 4. `workflow.md` - Agent Workflow
+### 5. `../shared/filesystem.md` — Filesystem context (template)
 
-- Initial design creation (5 steps)
-- Updating existing sections
-- Viewing design systems
-- Common patterns for different industries
-- Best practices
+- Loaded as a template (not a raw `.file()`), with `{{persistentPublicPath}}` and `{{persistentPrivatePath}}` filled at build time
 
-### 5. `communication.md` (shared) - Communication Style
+### 6. `../shared/security.md` — Security expectations
 
-- How to interact with users
-- Response formatting
-- Progress updates
+- Shared security rules applied across agents
 
 ## Design Philosophy
 

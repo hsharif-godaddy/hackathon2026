@@ -34,18 +34,22 @@ agents/src/agents/design-agent.ts
 
 ### System Prompt Structure
 
-Modular prompt files in `agents/src/prompts/design/`:
+Prompt assembly follows `buildDesignSystemPrompt()` in `agents/src/agents/design-agent.ts`, in this order:
 
 ```
 agents/src/prompts/design/
-  ├── core.md                    # Core role, responsibilities, design expertise
-  ├── sections.md                # Six design section definitions and structure
+  ├── core.md                    # Core role, workflow, 8 sections overview, practices
+  ├── sections.md                # Eight design section definitions and structure
   ├── memory-usage.md            # How to use memory tool for storing sections
-  ├── rag-inspiration.md         # How to query design inspiration from Qdrant
-  ├── workflow.md                # Section creation and update workflow
-  ├── communication.md           # Interaction style and output format
   └── README.md                  # Documentation for prompt organization
+
+agents/src/prompts/shared/       # Fragments included in the design prompt (not under design/)
+  ├── communication.md         # Interaction style and output format
+  ├── filesystem.md              # Template: persistent public/private paths
+  └── security.md                # Shared security expectations
 ```
+
+Inspiration search uses `memorySearch` (see `memory-usage.md`); there is no separate `rag-inspiration.md` under `design/`.
 
 ## Memory Storage Schema
 
@@ -253,7 +257,7 @@ User: "Create a complete design system for a healthcare application"
 
 Agent workflow:
 1. Acknowledge request
-2. For each of 6 sections:
+2. For each of 8 sections:
    a. Query RAG for relevant inspiration (memorySearch)
    b. Synthesize custom content based on healthcare context
    c. Store in memory (memorySet)
@@ -493,7 +497,7 @@ interface PageSection {
    - Test synthesis quality
 
 3. **Multi-Section Workflow:**
-   - Create all 6 sections
+   - Create all 8 sections
    - Verify consistency across sections
    - Test update propagation
 
@@ -737,14 +741,15 @@ agents/src/
 │       ├── design-agent.test.ts           # Unit tests
 │       └── design-agent.integration.test.ts # Integration tests
 ├── prompts/
-│   └── design/
-│       ├── core.md                        # Core identity and role
-│       ├── sections.md                    # Six section definitions
-│       ├── memory-usage.md                # Memory tool usage guide
-│       ├── rag-inspiration.md             # RAG search patterns
-│       ├── workflow.md                    # Creation/update workflows
-│       ├── communication.md               # Interaction guidelines
-│       └── README.md                      # Prompt documentation
+│   ├── design/
+│   │   ├── core.md                        # Core identity, workflow, 8 sections
+│   │   ├── sections.md                    # Eight section definitions
+│   │   ├── memory-usage.md                # Memory tool usage guide
+│   │   └── README.md                      # Prompt documentation
+│   └── shared/
+│       ├── communication.md               # Loaded into design prompt (order: see design-agent.ts)
+│       ├── filesystem.md                  # Template for path placeholders
+│       └── security.md                    # Shared security fragment
 └── tools/
     └── ai-lib-tools/
         └── index.ts                       # Already exports memory tools
@@ -764,7 +769,7 @@ agents/src/
 
 ## Notes
 
-- Design Agent is **read-heavy** (searches inspiration) but **write-light** (stores 6 sections)
+- Design Agent is **read-heavy** (searches inspiration) but **write-light** (stores 8 sections)
 - Uses higher temperature (0.7) for creative design work vs. develop agent (0.3)
 - Doesn't need file edit tools - focuses on memory storage
 - Can hand off to develop agent for implementation
