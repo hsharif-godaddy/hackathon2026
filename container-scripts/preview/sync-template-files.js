@@ -742,6 +742,48 @@ export const MIGRATIONS = [
     }
   },
   {
+    // entry-server.tsx is a member of the ssrMigration sync group, which is all-or-nothing:
+    // if any sibling (App.tsx / main.tsx / vite.config.ts) carries an unknown hash, the
+    // whole group stays blocked and entry-server.tsx never lands. migrate-to-ssr-entry
+    // below guards on its presence, so the two would deadlock on pre-SSR legacy apps.
+    // This migration breaks the cycle by seeding the file directly from the base template
+    // whenever it's absent — decoupled from hash-group atomicity, same pattern as the
+    // force:true CookieBannerErrorBoundary.tsx sync entry. Runs before
+    // ensure-helmet-provider so the SSR foundation is in place before AST
+    // transforms on main.tsx.
+    id: 'seed-entry-server-tsx',
+    description: 'Seed src/entry-server.tsx from the base template when absent',
+    run(customerDir, _syncedFiles, baseDir) {
+      const entryServerPath = join(customerDir, 'src/entry-server.tsx');
+      if (existsSync(entryServerPath)) {
+        return { status: 'skipped', reason: 'entry_server_exists' };
+      }
+      const templatePath = join(baseDir, 'src/entry-server.tsx');
+      // Guard an unstructured crash: if the base template ever renames or drops
+      // entry-server.tsx, a raw readFileSync ENOENT would abort the whole sync
+      // pass via runMigrations' re-raise. Structured skip keeps startup alive
+      // and the reason is greppable in Loki alongside other skip paths.
+      if (!existsSync(templatePath)) {
+        console.log(`  ⏭️  Template src/entry-server.tsx not found at ${templatePath}`);
+        return { status: 'skipped', reason: 'template_entry_server_missing' };
+      }
+      const content = readFileSync(templatePath, 'utf8');
+      mkdirSync(join(customerDir, 'src'), { recursive: true });
+      writeFileSync(entryServerPath, content, 'utf8');
+      // Include the source path so a misconfigured allocation pointing at the
+      // wrong base template dir is distinguishable from the correct case.
+      console.log(`  Seeded src/entry-server.tsx from ${templatePath}`);
+      console.log(JSON.stringify({
+        event: 'sync.file.seeded',
+        file: 'src/entry-server.tsx',
+        migration: 'seed-entry-server-tsx',
+      }));
+      // Always changed on the apply path: the migration only runs when the
+      // file was absent, so a successful return implies a fresh write.
+      return { status: 'applied', changed: true };
+    }
+  },
+  {
     id: 'ensure-helmet-provider',
     description: 'Wrap render tree in <HelmetProvider> so <Helmet> usages in children/layouts do not throw',
     run(customerDir, _syncedFiles) {
@@ -1211,7 +1253,14 @@ function computeWouldSync(baseDir, customerDir) {
   return { wouldSync, baseContents, customerHashes };
 }
 
-export function runMigrations(customerDir, syncedFiles) {
+export function runMigrations(baseDir, customerDir, syncedFiles) {
+  // Fail fast on a missing baseDir instead of letting seed-entry-server-tsx
+  // surface it as a confusing "Path must be a string. Received undefined"
+  // inside readFileSync. The param is load-bearing for any migration that
+  // reads from the template.
+  if (typeof baseDir !== 'string' || baseDir.length === 0) {
+    throw new Error('runMigrations: baseDir is required');
+  }
   console.log('');
   console.log('=== Running Migrations ===');
 
@@ -1223,7 +1272,7 @@ export function runMigrations(customerDir, syncedFiles) {
     let changed;
     let extra;
     try {
-      const result = migration.run(customerDir, syncedFiles);
+      const result = migration.run(customerDir, syncedFiles, baseDir);
       // Result contract: bare 'skipped' | 'applied' | undefined for backward-
       // compatible paths; { status, reason? } for skipped; { status: 'applied',
       // changed: boolean, extra?: Record<string, unknown> } for applied. `extra`
@@ -1362,7 +1411,7 @@ function sync(baseDir, customerDir) {
   }
 
   // Run migrations after hash-based sync
-  runMigrations(customerDir, syncedFiles);
+  runMigrations(baseDir, customerDir, syncedFiles);
 
   console.log('');
   console.log('=== Summary ===');

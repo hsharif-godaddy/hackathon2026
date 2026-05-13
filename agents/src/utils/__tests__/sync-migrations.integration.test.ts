@@ -327,8 +327,13 @@ async function git(cwd: string, args: string[]): Promise<string> {
 }
 
 describe('sync-template-files black-box migration harness', () => {
+  // Declared order mirrors MIGRATIONS in container-scripts/preview/sync-template-files.js.
+  // seed-entry-server-tsx must run before migrate-to-ssr-entry — the latter guards on
+  // existsSync(entry-server.tsx) and would skip with `entry_server_missing` for any app
+  // whose ssrMigration sync group is blocked (pre-SSR legacy apps, ~1,300 in prod).
   const migrationOrder = [
     'remove-public-assets-gitignore',
+    'seed-entry-server-tsx',
     'ensure-helmet-provider',
     'migrate-to-ssr-entry',
     'normalize-vite-html-entry',
@@ -336,12 +341,19 @@ describe('sync-template-files black-box migration harness', () => {
     'strip-stale-index-title',
   ];
 
+  // Every historical template below predates `src/entry-server.tsx` (see `git cat-file -e
+  // <commit>:app-templates/v8/src/entry-server.tsx` — all six miss the file). With the
+  // PR #3525 known_hashes backfill, the ssrMigration sync group stays green for each
+  // of these templates, so the hash-sync phase creates entry-server.tsx from the base
+  // before migrations run. By the time seed-entry-server-tsx runs the file exists and
+  // it skips with reason=entry_server_exists.
   const historicalTemplateCheckpoints = [
     {
       commit: 'fd075bd82bfa77f2c6d9f5d93c6e99b85e64c0ff',
       label: '2026-03-12 closeBundle plugin era',
       expectedEvents: [
         'migration.remove-public-assets-gitignore.applied',
+        'migration.seed-entry-server-tsx.skipped',
         'migration.ensure-helmet-provider.applied',
         'migration.migrate-to-ssr-entry.applied',
         'migration.normalize-vite-html-entry.skipped',
@@ -354,6 +366,7 @@ describe('sync-template-files black-box migration harness', () => {
       label: '2026-04-14 tsc Vite plugin era',
       expectedEvents: [
         'migration.remove-public-assets-gitignore.applied',
+        'migration.seed-entry-server-tsx.skipped',
         'migration.ensure-helmet-provider.applied',
         'migration.migrate-to-ssr-entry.applied',
         'migration.normalize-vite-html-entry.skipped',
@@ -366,6 +379,7 @@ describe('sync-template-files black-box migration harness', () => {
       label: '2026-04-23 pinned vite-plugin-api-routes',
       expectedEvents: [
         'migration.remove-public-assets-gitignore.applied',
+        'migration.seed-entry-server-tsx.skipped',
         'migration.ensure-helmet-provider.applied',
         'migration.migrate-to-ssr-entry.applied',
         'migration.normalize-vite-html-entry.skipped',
@@ -378,6 +392,7 @@ describe('sync-template-files black-box migration harness', () => {
       label: '2026-04-23 optional db import suppression',
       expectedEvents: [
         'migration.remove-public-assets-gitignore.applied',
+        'migration.seed-entry-server-tsx.skipped',
         'migration.ensure-helmet-provider.applied',
         'migration.migrate-to-ssr-entry.applied',
         'migration.normalize-vite-html-entry.skipped',
@@ -390,6 +405,7 @@ describe('sync-template-files black-box migration harness', () => {
       label: '2026-04-24 latest pre-branch template hash backfill',
       expectedEvents: [
         'migration.remove-public-assets-gitignore.applied',
+        'migration.seed-entry-server-tsx.skipped',
         'migration.ensure-helmet-provider.applied',
         'migration.migrate-to-ssr-entry.applied',
         'migration.normalize-vite-html-entry.skipped',
@@ -402,6 +418,7 @@ describe('sync-template-files black-box migration harness', () => {
       label: '2026-04-30 latest origin/main template',
       expectedEvents: [
         'migration.remove-public-assets-gitignore.applied',
+        'migration.seed-entry-server-tsx.skipped',
         'migration.ensure-helmet-provider.applied',
         'migration.migrate-to-ssr-entry.applied',
         'migration.normalize-vite-html-entry.skipped',
@@ -508,8 +525,13 @@ describe('sync-template-files black-box migration harness', () => {
     expect(stdoutEvents).toHaveLength(migrationOrder.length);
     expect(stdoutEvents.map((event) => event.migrationId)).toEqual(migrationOrder);
 
+    // On this legacy fixture, ssrMigration group members are all absent so the
+    // hash-sync phase creates them from the base (group is trivially green) — which
+    // means seed-entry-server-tsx runs after entry-server.tsx is already in place
+    // and skips. Every other migration applies.
     for (const event of stdoutEvents) {
-      expect(event.event).toBe(`migration.${event.migrationId}.applied`);
+      const suffix = event.migrationId === 'seed-entry-server-tsx' ? 'skipped' : 'applied';
+      expect(event.event).toBe(`migration.${event.migrationId}.${suffix}`);
       expect(typeof event.durationMs).toBe('number');
       expect(event.durationMs).toBeGreaterThanOrEqual(0);
     }
@@ -705,7 +727,18 @@ describe('sync-template-files black-box migration harness', () => {
     expect(parseMigrationEvents(result.stdout).map((event) => event.event)).toContain('migration.migrate-to-ssr-entry.skipped');
   });
 
-  it('skips SSR marker migrations but adds CSS fallback when ssrMigration sync group is blocked by customer-edited vite.config.ts', async () => {
+  it('seeds entry-server.tsx and fully installs SSR even when the ssrMigration sync group is blocked by customer-edited vite.config.ts', async () => {
+    // This is the Bucket A scenario that Work Item A targets. The customer's
+    // vite.config.ts carries a hash outside `known_hashes`, which blocks every
+    // member of the ssrMigration sync group (all-or-nothing), so the hash-sync
+    // phase refuses to place entry-server.tsx. Pre-fix, that cascaded into
+    // migrate-to-ssr-entry skipping with `entry_server_missing`, which left
+    // isSsrInstalled=false and suppressed the HTML marker migrations — the app
+    // stayed pre-SSR forever. Post-fix, seed-entry-server-tsx bypasses the
+    // hash-group gating by reading directly from the base template, so SSR
+    // installs fully and the HTML migrations run. The customer's vite.config.ts
+    // itself stays untouched — group atomicity is still honored for the
+    // customer-modified member; only the always-template file is force-seeded.
     const customerDir = tempDir('sync-migrations-blocked-ssr-group-');
     await copyHistoricalTemplate('497ffb01ce569381625f5a12d1ea7850fd4b9421', customerDir);
     writeFile(customerDir, 'vite.config.ts', 'export default { custom: true };\n');
@@ -718,17 +751,35 @@ describe('sync-template-files black-box migration harness', () => {
     const result = await runSync(customerDir);
     expect(result.exitCode).toBe(0);
 
-    expect(existsSync(join(customerDir, 'src/entry-server.tsx'))).toBe(false);
+    // Seed landed entry-server.tsx verbatim from the base template.
+    const entryServerPath = join(customerDir, 'src/entry-server.tsx');
+    expect(existsSync(entryServerPath)).toBe(true);
+    expect(readFileSync(entryServerPath, 'utf8')).toBe(
+      readFileSync(join(repoRoot, 'app-templates/v8/src/entry-server.tsx'), 'utf8'),
+    );
+
+    // Customer's vite.config.ts is preserved — seed only touches the file it owns.
+    expect(readFileSync(join(customerDir, 'vite.config.ts'), 'utf8')).toBe(
+      'export default { custom: true };\n',
+    );
+
+    // HTML migrations all ran now that isSsrInstalled is true: CSS-link fallback
+    // injected (customer boot script stayed), SSR markers injected, stale
+    // <title> stripped.
     const html = readFileSync(join(customerDir, 'index.html'), 'utf8');
     expect(html).toContain('<link rel="stylesheet" href="/src/styles/globals.css" />');
     expect(html).toContain('import("/custom-entry.tsx")');
-    expect(html).not.toContain('<!--app-head-->');
+    expect(html).toContain('<!--app-head-->');
+    expect(html).toContain('<!--app-html-->');
+    expect(html).not.toMatch(/<title[\s>]/i);
+
     expect(parseMigrationEvents(result.stdout).map((event) => event.event)).toEqual(
       expect.arrayContaining([
-        'migration.migrate-to-ssr-entry.skipped',
+        'migration.seed-entry-server-tsx.applied',
+        'migration.migrate-to-ssr-entry.applied',
         'migration.normalize-vite-html-entry.applied',
-        'migration.inject-ssr-markers.skipped',
-        'migration.strip-stale-index-title.skipped',
+        'migration.inject-ssr-markers.applied',
+        'migration.strip-stale-index-title.applied',
       ]),
     );
   });

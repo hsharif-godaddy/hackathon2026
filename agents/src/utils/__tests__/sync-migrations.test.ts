@@ -1,17 +1,20 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { fileURLToPath } from 'node:url';
 // @ts-expect-error - .js import of plain ESM script outside the TS rootDir
 import { MIGRATIONS, runMigrations, isSsrInstalled } from '../../../../container-scripts/preview/sync-template-files.js';
+
+const TEMPLATE_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '../../../../app-templates/v8');
 
 type MigrationResult = 'applied' | 'skipped' | undefined | { status: 'applied' | 'skipped'; reason?: string };
 
 interface Migration {
   id: string;
   description: string;
-  run: (customerDir: string, syncedFiles: Set<string>) => MigrationResult;
+  run: (customerDir: string, syncedFiles: Set<string>, baseDir: string) => MigrationResult;
 }
 
 function resultStatus(r: MigrationResult): 'applied' | 'skipped' | undefined {
@@ -110,6 +113,82 @@ describe('sync-template-files migrations', () => {
   afterEach(() => {
     rmSync(dir, { recursive: true, force: true });
     vi.restoreAllMocks();
+  });
+
+  describe('seed-entry-server-tsx', () => {
+    const migration = findMigration('seed-entry-server-tsx');
+
+    it('seeds src/entry-server.tsx from the template when absent', () => {
+      const entryServerPath = join(dir, 'src/entry-server.tsx');
+      expect(existsSync(entryServerPath)).toBe(false);
+
+      const result = resultStatus(migration.run(dir, new Set(), TEMPLATE_DIR));
+
+      expect(result).toBe('applied');
+      expect(existsSync(entryServerPath)).toBe(true);
+      const templateContent = readFileSync(join(TEMPLATE_DIR, 'src/entry-server.tsx'), 'utf8');
+      expect(readFileSync(entryServerPath, 'utf8')).toBe(templateContent);
+    });
+
+    it('skips when src/entry-server.tsx is already present', () => {
+      mkdirSync(join(dir, 'src'), { recursive: true });
+      writeFileSync(join(dir, 'src/entry-server.tsx'), 'existing content', 'utf8');
+
+      const result = migration.run(dir, new Set(), TEMPLATE_DIR);
+
+      expect(result).toEqual({ status: 'skipped', reason: 'entry_server_exists' });
+      expect(readFileSync(join(dir, 'src/entry-server.tsx'), 'utf8')).toBe('existing content');
+    });
+
+    it('emits sync.file.seeded structured event when seeding', () => {
+      migration.run(dir, new Set(), TEMPLATE_DIR);
+
+      const seededEvents = consoleLogSpy.mock.calls
+        .map((c) => c[0])
+        .filter((s): s is string => typeof s === 'string' && s.startsWith('{'))
+        .map((s) => { try { return JSON.parse(s) as Record<string, unknown>; } catch { return null; } })
+        .filter((x): x is Record<string, unknown> => x !== null && x['event'] === 'sync.file.seeded');
+
+      expect(seededEvents).toHaveLength(1);
+      expect(seededEvents[0]).toMatchObject({
+        file: 'src/entry-server.tsx',
+        migration: 'seed-entry-server-tsx',
+      });
+    });
+
+    it('skips with template_entry_server_missing when the base template lacks src/entry-server.tsx', () => {
+      // Simulates a template refactor/rename scenario: the base dir exists but
+      // doesn't contain src/entry-server.tsx. A raw readFileSync would abort
+      // the whole sync pass via runMigrations' re-raise; we want a structured
+      // skip so startup stays alive and the skip reason is greppable in Loki.
+      const emptyBaseDir = mkdtempSync(join(tmpdir(), 'sync-migrations-empty-base-'));
+      try {
+        const result = migration.run(dir, new Set(), emptyBaseDir);
+        expect(result).toEqual({ status: 'skipped', reason: 'template_entry_server_missing' });
+        expect(existsSync(join(dir, 'src/entry-server.tsx'))).toBe(false);
+      } finally {
+        rmSync(emptyBaseDir, { recursive: true, force: true });
+      }
+    });
+
+    it('leaves sibling files in src/ untouched when seeding', () => {
+      // Production apps nearly always have a populated src/ when they hit
+      // this migration (legacy App.tsx/main.tsx stay at pre-SSR shape because
+      // the ssrMigration sync group is blocked). The seed's mkdirSync uses
+      // { recursive: true } which is a no-op on existing dirs, but pin the
+      // no-clobber guarantee with an explicit regression test — a future
+      // rewrite that used rmSync or overwrite semantics would corrupt the
+      // customer app silently.
+      mkdirSync(join(dir, 'src'), { recursive: true });
+      const customerAppContents = 'export default function App() { return null; /* customer */ }';
+      writeFileSync(join(dir, 'src/App.tsx'), customerAppContents, 'utf8');
+
+      const result = resultStatus(migration.run(dir, new Set(), TEMPLATE_DIR));
+
+      expect(result).toBe('applied');
+      expect(existsSync(join(dir, 'src/entry-server.tsx'))).toBe(true);
+      expect(readFileSync(join(dir, 'src/App.tsx'), 'utf8')).toBe(customerAppContents);
+    });
   });
 
   describe('migrate-to-ssr-entry', () => {
@@ -392,7 +471,7 @@ describe('sync-template-files migrations', () => {
       setupBareAppWith();
       writeFileSync(join(dir, 'package.json'), '{ not json', 'utf8');
 
-      expect(() => runMigrations(dir, new Set())).toThrow();
+      expect(() => runMigrations(TEMPLATE_DIR, dir, new Set())).toThrow();
 
       // migration.*.failed goes to stderr so transport-level log splitters
       // route it to the error stream alongside the raw stack.
@@ -519,7 +598,7 @@ describe('sync-template-files migrations', () => {
         'utf8',
       );
 
-      runMigrations(dir, new Set());
+      runMigrations(TEMPLATE_DIR, dir, new Set());
 
       const events = parseMigrationEvents(consoleLogSpy);
       const byId = Object.fromEntries(events.map((e) => [e.migrationId, e.event]));
@@ -650,7 +729,7 @@ export default app;
         },
       });
 
-      expect(() => runMigrations(dir, new Set())).not.toThrow();
+      expect(() => runMigrations(TEMPLATE_DIR, dir, new Set())).not.toThrow();
 
       expect(isSsrInstalled(dir)).toBe(true);
       const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'));
@@ -1263,7 +1342,7 @@ export default app;
 
     it('re-throws when a migration fails and logs a migration.<id>.failed event on stderr', () => {
       const syncedFiles = seedMigrateToSsrEntryFailure();
-      expect(() => runMigrations(dir, syncedFiles)).toThrow();
+      expect(() => runMigrations(TEMPLATE_DIR, dir, syncedFiles)).toThrow();
 
       // migration.*.failed is emitted via console.error so transport-level
       // log splitters (Loki / Docker --log-driver) route it to the error
@@ -1291,7 +1370,7 @@ export default app;
       );
       const htmlBefore = readFileSync(join(dir, 'index.html'), 'utf8');
 
-      expect(() => runMigrations(dir, syncedFiles)).toThrow();
+      expect(() => runMigrations(TEMPLATE_DIR, dir, syncedFiles)).toThrow();
 
       const events = parseMigrationEvents(consoleLogSpy);
       const laterIds = ['inject-ssr-markers', 'strip-stale-index-title'];
@@ -1314,7 +1393,7 @@ export default app;
         'utf8',
       );
 
-      runMigrations(dir, new Set());
+      runMigrations(TEMPLATE_DIR, dir, new Set());
 
       const events = parseMigrationEvents(consoleLogSpy);
       const applied = events.find((e) => e.event === 'migration.migrate-to-ssr-entry.applied');
@@ -1326,7 +1405,7 @@ export default app;
 
     it('emits migration.<id>.skipped with durationMs and reason when precondition unmet', () => {
       // Empty dir: remove-public-assets-gitignore skips (no .gitignore file).
-      runMigrations(dir, new Set());
+      runMigrations(TEMPLATE_DIR, dir, new Set());
 
       const events = parseMigrationEvents(consoleLogSpy);
       const skipped = events.find((e) => e.event === 'migration.remove-public-assets-gitignore.skipped');
@@ -1344,7 +1423,7 @@ export default app;
       // entry: migration mutates the file → changed=true.
       writeFileSync(join(dir, '.gitignore'), 'node_modules\n# Public Assets\npublic/assets\n', 'utf8');
 
-      runMigrations(dir, new Set());
+      runMigrations(TEMPLATE_DIR, dir, new Set());
 
       const events = parseMigrationEvents(consoleLogSpy);
       const applied = events.find((e) => e.event === 'migration.remove-public-assets-gitignore.applied');
@@ -1356,7 +1435,7 @@ export default app;
       // gitignore without the legacy entry: migration returns applied with no write.
       writeFileSync(join(dir, '.gitignore'), 'node_modules\ndist\n', 'utf8');
 
-      runMigrations(dir, new Set());
+      runMigrations(TEMPLATE_DIR, dir, new Set());
 
       const events = parseMigrationEvents(consoleLogSpy);
       const applied = events.find((e) => e.event === 'migration.remove-public-assets-gitignore.applied');
@@ -1376,7 +1455,7 @@ export default app;
         extra: { event: 'hijacked', migrationId: 'other', durationMs: -1, custom: 'ok' },
       });
       try {
-        runMigrations(dir, new Set());
+        runMigrations(TEMPLATE_DIR, dir, new Set());
       } finally {
         (original as unknown as { run: unknown }).run = save;
       }
@@ -1400,7 +1479,7 @@ export default app;
       writeFileSync(join(dir, 'vite.config.ts'),
         `import apiRoutes from 'vite-plugin-api-routes';\nexport default { plugins: [apiRoutes()] };\n`, 'utf8');
 
-      runMigrations(dir, new Set());
+      runMigrations(TEMPLATE_DIR, dir, new Set());
 
       const events = parseMigrationEvents(consoleLogSpy);
       const applied = events.find((e) => e.event === 'migration.migrate-to-ssr-entry.applied');
@@ -1408,7 +1487,7 @@ export default app;
     });
 
     it('omits changed on skipped events', () => {
-      runMigrations(dir, new Set());
+      runMigrations(TEMPLATE_DIR, dir, new Set());
       const events = parseMigrationEvents(consoleLogSpy);
       for (const e of events) {
         if (e.event.endsWith('.skipped')) {
@@ -1423,13 +1502,16 @@ export default app;
       // extend this table rather than add a new test per migration.
       const skipCases: Array<{ migrationId: string; reason: string }> = [
         { migrationId: 'remove-public-assets-gitignore', reason: 'gitignore_missing' },
-        { migrationId: 'migrate-to-ssr-entry', reason: 'entry_server_missing' },
+        // seed-entry-server-tsx applies on an empty dir (it seeds the file);
+        // its skip path (entry_server_exists) is covered in its own describe block.
+        { migrationId: 'ensure-helmet-provider', reason: 'main_tsx_missing' },
+        { migrationId: 'migrate-to-ssr-entry', reason: 'server_entry_or_api_missing' },
         { migrationId: 'normalize-vite-html-entry', reason: 'index_html_missing' },
         { migrationId: 'inject-ssr-markers', reason: 'index_html_missing' },
         { migrationId: 'strip-stale-index-title', reason: 'index_html_missing' },
       ];
 
-      runMigrations(dir, new Set());
+      runMigrations(TEMPLATE_DIR, dir, new Set());
       const events = parseMigrationEvents(consoleLogSpy);
 
       for (const { migrationId, reason } of skipCases) {
