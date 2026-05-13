@@ -8,7 +8,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 
 import { renderWithProviders } from '@/tests/test-utils';
-import { getLogoDisplayUrl, getLogoSlotName, getLogoSlotNames, type LogoData } from './logo-utils';
+import { getLogoDisplayUrl, getLogoSlotName, getLogoSlotNames, getLogoSolidDisplayUrl, type LogoData } from './logo-utils';
 import LogoGridWidget from './LogoGridWidget';
 
 const { streamingMocks } = vi.hoisted(() => ({
@@ -108,6 +108,87 @@ describe('LogoGridWidget', function logoGridWidget() {
         verticalTransparentUrl: 'https://cdn.example.com/vt.png',
       };
       expect(getLogoDisplayUrl(logo)).toBe('https://cdn.example.com/vt.png');
+    });
+  });
+
+  describe('#getLogoSolidDisplayUrl', function getLogoSolidDisplayUrlTests() {
+    it('prefers square solid over every other variant', function squareSolidWins() {
+      const logo: LogoData = {
+        id: 'all',
+        solidUrl: 'https://cdn.example.com/s.png',
+        horizontalSolidUrl: 'https://cdn.example.com/hs.png',
+        verticalSolidUrl: 'https://cdn.example.com/vs.png',
+        watermarkedSolidUrl: 'https://cdn.example.com/ws.png',
+        transparentUrl: 'https://cdn.example.com/t.png',
+        horizontalTransparentUrl: 'https://cdn.example.com/ht.png',
+        verticalTransparentUrl: 'https://cdn.example.com/vt.png',
+        url: 'https://cdn.example.com/u.png',
+        watermarkedTransparentUrl: 'https://cdn.example.com/wt.png',
+      };
+      expect(getLogoSolidDisplayUrl(logo)).toBe('https://cdn.example.com/s.png');
+    });
+
+    it('falls back to horizontal solid when square solid is missing', function horizontalSolidFallback() {
+      const logo: LogoData = {
+        id: 'h',
+        horizontalSolidUrl: 'https://cdn.example.com/hs.png',
+        verticalSolidUrl: 'https://cdn.example.com/vs.png',
+        transparentUrl: 'https://cdn.example.com/t.png',
+      };
+      expect(getLogoSolidDisplayUrl(logo)).toBe('https://cdn.example.com/hs.png');
+    });
+
+    it('falls back to vertical solid when square and horizontal solid are missing', function verticalSolidFallback() {
+      const logo: LogoData = {
+        id: 'v',
+        verticalSolidUrl: 'https://cdn.example.com/vs.png',
+        transparentUrl: 'https://cdn.example.com/t.png',
+      };
+      expect(getLogoSolidDisplayUrl(logo)).toBe('https://cdn.example.com/vs.png');
+    });
+
+    it('falls back to watermarked solid before any transparent variant', function watermarkedSolidBeatsTransparent() {
+      const logo: LogoData = {
+        id: 'ws',
+        watermarkedSolidUrl: 'https://cdn.example.com/ws.png',
+        transparentUrl: 'https://cdn.example.com/t.png',
+        horizontalTransparentUrl: 'https://cdn.example.com/ht.png',
+        url: 'https://cdn.example.com/u.png',
+      };
+      expect(getLogoSolidDisplayUrl(logo)).toBe('https://cdn.example.com/ws.png');
+    });
+
+    it('falls through to square transparent when no solid variant is present', function transparentFallback() {
+      const logo: LogoData = {
+        id: 't',
+        transparentUrl: 'https://cdn.example.com/t.png',
+        horizontalTransparentUrl: 'https://cdn.example.com/ht.png',
+        url: 'https://cdn.example.com/u.png',
+        watermarkedTransparentUrl: 'https://cdn.example.com/wt.png',
+      };
+      expect(getLogoSolidDisplayUrl(logo)).toBe('https://cdn.example.com/t.png');
+    });
+
+    it('falls through to legacy url when no solid or oriented transparent is present', function legacyUrlFallback() {
+      const logo: LogoData = {
+        id: 'legacy',
+        url: 'https://cdn.example.com/u.png',
+        watermarkedTransparentUrl: 'https://cdn.example.com/wt.png',
+      };
+      expect(getLogoSolidDisplayUrl(logo)).toBe('https://cdn.example.com/u.png');
+    });
+
+    it('returns watermarked transparent as the last resort', function watermarkedTransparentLast() {
+      const logo: LogoData = {
+        id: 'wt-only',
+        watermarkedTransparentUrl: 'https://cdn.example.com/wt.png',
+      };
+      expect(getLogoSolidDisplayUrl(logo)).toBe('https://cdn.example.com/wt.png');
+    });
+
+    it('returns undefined when no URL fields are populated', function undefinedFallback() {
+      const logo: LogoData = { id: 'empty' };
+      expect(getLogoSolidDisplayUrl(logo)).toBeUndefined();
     });
   });
 

@@ -53,6 +53,25 @@ export function getLogoDisplayUrl(
     || logo.watermarkedSolidUrl;
 }
 
+/**
+ * Solid-first URL preference. Use when the logo will render against a light
+ * surface and a transparent logo with light strokes would disappear — the
+ * solid variant carries its own background.
+ */
+export function getLogoSolidDisplayUrl(
+  logo: LogoData,
+): string | undefined {
+  return logo.solidUrl
+    || logo.horizontalSolidUrl
+    || logo.verticalSolidUrl
+    || logo.watermarkedSolidUrl
+    || logo.transparentUrl
+    || logo.horizontalTransparentUrl
+    || logo.verticalTransparentUrl
+    || logo.url
+    || logo.watermarkedTransparentUrl;
+}
+
 export const DEFAULT_LOGO_SLOT_NAME = 'logo/primary';
 
 /**
