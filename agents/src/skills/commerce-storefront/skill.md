@@ -188,7 +188,7 @@ These are the critical parts that must stay aligned with the reference storefron
   - `storeId: config.storeId`
   - `draftOrderId: orderId`
   - `returnUrl: ${previewUrl}/checkout/cancel`
-  - `successUrl: ${previewUrl}/checkout/success`
+  - `successUrl: ${previewUrl}/checkout/success?orderId=${orderId}` — embed the draft order ID so `Success.tsx` can read it from `?orderId=` via `useSearchParams`. Do **not** use `session_id` or any Stripe-style param.
 
 ### `src/pages/commerce/storefront/Catalog.tsx`
 

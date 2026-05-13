@@ -302,14 +302,20 @@ async function createCheckoutSession(
 		throw new Error("Missing required Commerce STORE_ID");
 	}
 
-	// <Checkout /> reads contactEmail from order.shipping.email.
-	// draftOrder.billing.email is never exposed in the session query, so
-	// mirror billing.email → shipping.email here before sending to GoDaddy.
+	// <Checkout /> reads name/email from order.shipping.*, not order.billing.*.
+	// Mirror any missing shipping fields from billing so prefill works regardless
+	// of which contact object the upstream form populated.
 	const normalizedCustomer = params.customer
 		? {
 				...params.customer,
 				shipping: {
 					...params.customer.shipping,
+					firstName:
+						params.customer.shipping?.firstName ??
+						params.customer.billing?.firstName,
+					lastName:
+						params.customer.shipping?.lastName ??
+						params.customer.billing?.lastName,
 					email:
 						params.customer.shipping?.email ??
 						params.customer.billing?.email,

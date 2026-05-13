@@ -9,8 +9,22 @@ export default function CommerceCheckoutPage() {
   const location = useLocation();
   const product = skuId ? getCommerceProductBySkuId(skuId) : undefined;
   // Contact info forwarded from a prior form (e.g. appointment booking).
-  // The upstream page passes this via: navigate('/checkout/:skuId', { state: { customer } })
-  const customer = (location.state as { customer?: CheckoutCustomer } | null)?.customer;
+  // Prefer location.state (set by navigate()), fall back to sessionStorage for
+  // robustness against page refreshes or direct URL navigation.
+  // Read+remove in a useState lazy initializer so it runs exactly once at mount
+  // (avoids React StrictMode double-invoke dropping the value on the second render).
+  const stateCustomer = (location.state as { customer?: CheckoutCustomer } | null)?.customer;
+  const [storedCustomer] = useState<CheckoutCustomer | undefined>(() => {
+    const raw = sessionStorage.getItem('commerce-checkout-customer');
+    if (!raw) return undefined;
+    sessionStorage.removeItem('commerce-checkout-customer');
+    try {
+      return JSON.parse(raw) as CheckoutCustomer;
+    } catch {
+      return undefined;
+    }
+  });
+  const customer = stateCustomer ?? storedCustomer;
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -30,6 +44,8 @@ export default function CommerceCheckoutPage() {
   const handleCheckout = async () => {
     setIsSubmitting(true);
     setError(null);
+    // Clear any stale order ID from a previous/abandoned checkout attempt.
+    sessionStorage.removeItem('commerce-order-id');
 
     const result = await startOneTimeCommerceCheckout({
       skuId: product.skuId,
@@ -38,6 +54,9 @@ export default function CommerceCheckoutPage() {
     });
 
     if (result.success && result.checkoutUrl) {
+      if (result.draftOrderId) {
+        sessionStorage.setItem('commerce-order-id', result.draftOrderId);
+      }
       window.location.href = result.checkoutUrl;
       return;
     }

@@ -32,7 +32,7 @@ export function StorefrontShell({ children }: PropsWithChildren) {
         channelId: config.channelId,
         draftOrderId: orderId,
         returnUrl: `${previewUrl}/checkout/cancel`,
-        successUrl: `${previewUrl}/checkout/success`,
+        successUrl: `${previewUrl}/checkout/success?orderId=${orderId}`,
       });
 
       if (result.success && result.checkoutUrl) {

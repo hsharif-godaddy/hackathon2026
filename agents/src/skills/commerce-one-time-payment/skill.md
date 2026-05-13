@@ -152,15 +152,18 @@ Update route path types/enums accordingly.
   - call `startOneTimeCommerceCheckout({ skuId, quantity: 1 })`
   - redirect to `result.checkoutUrl` on success
   - show error message on failure
-- **Customer prefill:** `Checkout.tsx` already reads `customer` from React Router `location.state` and forwards it to `startOneTimeCommerceCheckout`. To pre-fill the GoDaddy checkout form, the upstream page (e.g. appointment booking form) must navigate with state:
+- **Customer prefill:** `Checkout.tsx` reads `customer` from two sources (first wins): React Router `location.state`, then `sessionStorage` key `commerce-checkout-customer`. To pre-fill the GoDaddy checkout form, the upstream page (e.g. appointment booking form) must do **both**:
   ```ts
-  navigate(`/checkout/${skuId}`, { state: { customer: { billing: { firstName, lastName, email } } } })
+  const customerPayload = { billing: { firstName, lastName, email } };
+  sessionStorage.setItem('commerce-checkout-customer', JSON.stringify(customerPayload));
+  navigate(`/checkout/${skuId}`, { state: { customer: customerPayload } });
   ```
-  Pass email under either `billing.email` or `shipping.email` — the POST route automatically mirrors `billing.email → shipping.email` because `<Checkout />` reads `order.shipping.email` and `billing.email` is not exposed in the session query response.
+  Writing to both ensures prefill survives page refreshes and direct URL navigation (state is lost on refresh; sessionStorage persists). Pass contact info under `billing` — the POST route automatically mirrors `billing.firstName`, `billing.lastName`, and `billing.email` → `shipping.*` because `<Checkout />` reads prefill values from `order.shipping.*` (`mapOrderToFormValues` in `@godaddy/react`).
   Do **not** remove the `customer` forwarding from `Checkout.tsx` — it must survive any regeneration.
 - Keep `payment-flow.ts` URL behavior:
   - `returnUrl: ${previewUrl}/checkout/cancel`
   - `successUrl: ${previewUrl}/checkout/success`
+- **`Success.tsx` reads `orderId` from `sessionStorage`** (`commerce-order-id` key). `Checkout.tsx` stores `result.draftOrderId` there before redirecting to GoDaddy. GoDaddy does **not** append `orderId` to the redirect URL — do **not** rely on `useSearchParams` to receive the orderId from GoDaddy. `useSearchParams` is used only as a read-after-refresh fallback: after reading from sessionStorage, `Success.tsx` writes `?orderId=` into the URL via `history.replaceState` so a page refresh still shows the order ID.
 
 You may restyle page layout/copy, but keep checkout payload as `lineItems: [{ skuId, quantity }]`.
 
