@@ -103,10 +103,6 @@ describe('golden-light suite', () => {
         expect(scenario.trials).toBe(3);
       });
 
-      it('uses parallel execution', () => {
-        expect(scenario.executionMode).toBe('parallel');
-      });
-
       if (hasStaticFirstMessage) {
         it('has a static first message', () => {
           expect(

@@ -123,7 +123,7 @@ pnpm run eval
 
 **Concurrency:**
 
-Scenarios with `executionMode: 'parallel'` fan out trials concurrently.
+Trial concurrency is governed by `config.eval.maxConcurrency` and `--concurrency`.
 Default `maxConcurrency` per environment:
 
 | Environment  | Default |

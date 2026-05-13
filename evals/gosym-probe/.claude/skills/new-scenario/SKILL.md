@@ -1,8 +1,8 @@
 ---
 name: new-scenario
 description: Design and scaffold a new eval scenario with eval design
-    reasoning. Acts as an eval design partner before generating scenario
-    code, tests, and registry entry.
+  reasoning. Acts as an eval design partner before generating scenario
+  code, tests, and registry entry.
 argument-hint: "<description> [--suite <name>] [--persona beginner|standard] [--visual] [--sequential]"
 ---
 
@@ -36,6 +36,7 @@ The user wants to create a new scenario: $ARGUMENTS
 ### 1. Parse arguments
 
 Extract from `$ARGUMENTS`:
+
 - **description**: everything before any `--` flag (required)
 - **--suite**: suite name (optional)
 - **--persona**: `beginner` or `standard` (optional, auto-selected if
@@ -51,6 +52,7 @@ Before generating any code, reason through the eval design. Read the
 existing scenarios and evaluators to understand current coverage.
 
 **Read these files:**
+
 - `src/scenarios/registry.ts` for the current scenario inventory
 - `src/scenarios/types.ts` for the `Scenario` and `ScenarioGoal` types
 - `src/evaluators/evaluator.ts` for the `Evaluator` interface
@@ -62,6 +64,7 @@ Then work through each substep below and print your reasoning.
 #### 2a. Observable goal design
 
 Design 1-4 goals for the scenario. Each goal needs:
+
 - A `description`: a concrete, observable behavior (not vague intent).
   Good: "The agent creates a page with a visible contact form".
   Bad: "The agent does a good job".
@@ -69,6 +72,7 @@ Design 1-4 goals for the scenario. Each goal needs:
   (behavior must not happen).
 
 **Goal design rules:**
+
 - Goals must be independently verifiable from the transcript or DOM
 - Each goal should test one distinct behavior
 - Use `negative` assertions sparingly, only for known failure modes
@@ -88,28 +92,28 @@ Print the proposed goals in a table:
 Select evaluators using this decision tree. Every scenario gets the
 first two. Add others based on the conditions shown.
 
-| Evaluator               | When to include                     |
-|-------------------------|-------------------------------------|
-| BugHitRateEvaluator     | **Always.** Detects error messages   |
-|                         | and crashes in the transcript.       |
-| PromptEfficiencyEvaluator | **Always.** Measures prompt token  |
-|                         | economy.                             |
-| ToolCallVerificationEvaluator | When the scenario has           |
-|                         | `expectedTools` assertions (agent    |
-|                         | must/must not call specific tools).  |
-| JTBDCompletionEvaluator | When goals involve subjective task   |
-|                         | success that requires LLM judgment.  |
-|                         | This is an LLM-based evaluator.      |
-|                         | Include for most scenarios.          |
-| createBuildQualityEvaluators | When `--visual` flag is set OR  |
-|                         | the scenario involves UI output.     |
-|                         | Factory function returning multiple  |
-|                         | evaluators.                          |
-| TurnDurationEvaluator   | When response latency matters (e.g.  |
-|                         | performance-sensitive flows).        |
-| AgentStepsEvaluator     | When measuring agent efficiency      |
-|                         | (number of tool calls or steps to    |
-|                         | reach the goal).                     |
+| Evaluator                     | When to include                     |
+| ----------------------------- | ----------------------------------- |
+| BugHitRateEvaluator           | **Always.** Detects error messages  |
+|                               | and crashes in the transcript.      |
+| PromptEfficiencyEvaluator     | **Always.** Measures prompt token   |
+|                               | economy.                            |
+| ToolCallVerificationEvaluator | When the scenario has               |
+|                               | `expectedTools` assertions (agent   |
+|                               | must/must not call specific tools). |
+| JTBDCompletionEvaluator       | When goals involve subjective task  |
+|                               | success that requires LLM judgment. |
+|                               | This is an LLM-based evaluator.     |
+|                               | Include for most scenarios.         |
+| createBuildQualityEvaluators  | When `--visual` flag is set OR      |
+|                               | the scenario involves UI output.    |
+|                               | Factory function returning multiple |
+|                               | evaluators.                         |
+| TurnDurationEvaluator         | When response latency matters (e.g. |
+|                               | performance-sensitive flows).       |
+| AgentStepsEvaluator           | When measuring agent efficiency     |
+|                               | (number of tool calls or steps to   |
+|                               | reach the goal).                    |
 
 Print the selected evaluators and why each was included or excluded.
 
@@ -117,8 +121,8 @@ Print the selected evaluators and why each was included or excluded.
 
 Choose a persona based on the scenario's interaction style:
 
-| Persona    | Use when                                      |
-|------------|-----------------------------------------------|
+| Persona    | Use when                                       |
+| ---------- | ---------------------------------------------- |
 | `beginner` | User needs hand-holding, asks clarifying       |
 |            | questions, follows instructions literally.     |
 |            | Best for: guided flows, first-time user paths. |
@@ -150,6 +154,7 @@ Ask yourself: "If this scenario passes all evaluators, does that
 actually prove the behavior works?"
 
 Check for:
+
 - **False positives**: could the scenario pass without the behavior
   actually working? (e.g. goals too vague, evaluators not measuring
   the right thing)
@@ -213,6 +218,7 @@ summary. Do not generate code until the user confirms.
 ### 4. Generate scenario file
 
 Derive the scenario name from the description:
+
 - Convert to kebab-case
 - Keep it short (2-5 words)
 - If in a suite, apply the suite's naming prefix
@@ -255,7 +261,6 @@ export function build<PascalName>Scenario(
       // LLM-based evaluators take gocode as constructor arg
     ],
     trials: 3,
-    executionMode: '<parallel|sequential>',
 
     setup: async () => {
       const { appId, previewUrl } =
@@ -277,11 +282,13 @@ export function build<PascalName>Scenario(
 
 Create `src/scenarios/<suite-dir>/<scenario-name>.ts` following the
 same pattern but with:
+
 - `suite: '<suite-name>'` field
 - Relative imports (one more `../` level)
 - Suite naming prefix on the scenario name
 
 If the suite directory does not exist yet:
+
 1. Create `src/scenarios/<suite-dir>/`
 2. Create `src/scenarios/<suite-dir>/index.ts` that re-exports the
    scenario factory
@@ -290,6 +297,7 @@ If the suite directory already exists, add the export to the existing
 `index.ts`.
 
 **Key rules:**
+
 - Use `.js` extensions on all local imports (ESM convention)
 - Hard-wrap at 80 characters
 - LLM-based evaluators (`JTBDCompletionEvaluator`,

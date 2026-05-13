@@ -56,7 +56,6 @@ export function buildAiroBaselineScenarioFromSyntheticUser(
       }),
     evaluators: useBaselineEvaluators ? createBaselineEvaluators(gocode) : [],
     trials: scenarioDefinition.trials,
-    executionMode: scenarioDefinition.executionMode,
 
     setup: async () => {
       const { appId, previewUrl } = await ctrlPlane.provisionApp();

@@ -136,5 +136,4 @@ judge model is configured.
 If a baseline JSON exists, `RegressionComparator` flags per-evaluator score
 drops and sets `exceeded: true` on regressions.
 
-Trials run sequentially by default (required for AAB due to shared Socket.IO
-state). Parallel mode is available via `scenario.executionMode`.
+Trial concurrency is governed by `config.eval.maxConcurrency`.

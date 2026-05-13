@@ -826,9 +826,6 @@ export class EvalStore {
     return {
       name: scenario.name,
       trials: scenario.trials,
-      ...(scenario.executionMode !== undefined && {
-        executionMode: scenario.executionMode,
-      }),
       persona: personaWithoutPrompt,
       goals: scenario.goals,
       evaluators: scenario.evaluators.map((e) => e.name),

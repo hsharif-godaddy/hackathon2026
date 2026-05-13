@@ -355,7 +355,6 @@ describe('EvalStore', () => {
     it('writes scenario-config.json with serialized scenario', async () => {
       const store = new EvalStore();
       const scenario = makeScenario({
-        executionMode: 'parallel',
         expectedTools: [{ tool: 'search', called: true }],
       });
       const result = makeScenarioResult(scenario, [makeTrialResult()]);
@@ -369,7 +368,6 @@ describe('EvalStore', () => {
       const parsed = JSON.parse(call![1] as string);
       expect(parsed.name).toBe('test-scenario');
       expect(parsed.trials).toBe(2);
-      expect(parsed.executionMode).toBe('parallel');
       expect(parsed.evaluators).toEqual(['test-evaluator']);
       expect(parsed.expectedTools).toEqual([
         { tool: 'search', called: true },
@@ -1437,7 +1435,7 @@ describe('EvalStore', () => {
       'creates scenario dir and writes scenario-config.json',
       async () => {
         const store = new EvalStore();
-        const scenario = makeScenario({ executionMode: 'parallel' });
+        const scenario = makeScenario();
 
         await store.initRun('run-001', [scenario], makeConfig());
 
@@ -1451,7 +1449,6 @@ describe('EvalStore', () => {
         expect(call).toBeDefined();
         const parsed = JSON.parse(call![1] as string);
         expect(parsed.name).toBe('test-scenario');
-        expect(parsed.executionMode).toBe('parallel');
       },
     );
 

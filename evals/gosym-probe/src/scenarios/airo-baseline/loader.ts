@@ -28,7 +28,7 @@ export interface AiroBaselineScenarioDefinition {
   customerSummary: string;
   testingCapability: string;
   trials: number;
-  executionMode: 'sequential' | 'parallel';
+  executionMode?: 'sequential' | 'parallel';
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -59,7 +59,6 @@ const requiredScenarioFields = [
   'customerSummary',
   'testingCapability',
   'trials',
-  'executionMode',
   'llmConfig',
   'browserConfig',
   'evaluators',
@@ -88,7 +87,7 @@ const scenarioDefinitionSchema = z.object({
   customerSummary: nonEmptyString,
   testingCapability: nonEmptyString,
   trials: z.number().int().positive(),
-  executionMode: z.enum(['sequential', 'parallel']),
+  executionMode: z.enum(['sequential', 'parallel']).optional(),
   llmConfig: z.object({}).passthrough(),
   browserConfig: z.object({}).passthrough(),
   evaluators: z.array(z.unknown()).min(1),

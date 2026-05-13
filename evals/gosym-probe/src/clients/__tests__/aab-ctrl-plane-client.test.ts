@@ -10,10 +10,26 @@ const BASE_URL = 'http://localhost:4100';
 function makeClient(overrides?: {
   provisionTimeoutMs?: number;
   pollIntervalMs?: number;
+  retryDelayMs?: number;
+  maxRetries?: number;
 }) {
   return new AABCtrlPlaneClient({
     baseUrl: BASE_URL,
     pollIntervalMs: 0,
+    retryDelayMs: 0,
+    maxRetries: 0,
+    ...overrides,
+  });
+}
+
+function makeRetryClient(overrides?: {
+  pollIntervalMs?: number;
+}) {
+  return new AABCtrlPlaneClient({
+    baseUrl: BASE_URL,
+    pollIntervalMs: 0,
+    retryDelayMs: 0,
+    maxRetries: 3,
     ...overrides,
   });
 }
@@ -229,17 +245,48 @@ describe('AABCtrlPlaneClient', () => {
       );
     });
 
-    it('throws when poll returns non-ok response', async () => {
+    it('recovers from transient poll HTTP error internally', async () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
       mockFetch
         .mockResolvedValueOnce({
           ok: true,
           json: vi.fn().mockResolvedValue({ statusJobId: 'job-1' }),
         })
-        .mockResolvedValueOnce({ ok: false, status: 500 });
+        .mockResolvedValueOnce({ ok: false, status: 500 })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: vi.fn().mockResolvedValue({
+            status: 'completed',
+            apps: [{ id: 'app-1', urls: { preview: 'http://p', agent: 'http://a' } }],
+          }),
+        });
 
-      await expect(client.provisionApp()).rejects.toThrow(
-        /poll.*500/i,
+      const result = await client.provisionApp();
+
+      expect(result.appId).toBe('app-1');
+      expect(mockFetch).toHaveBeenCalledTimes(3);
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('transient HTTP 500'),
       );
+      warnSpy.mockRestore();
+    });
+
+    it('throws non-retryable after consecutive poll HTTP errors', async () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: vi.fn().mockResolvedValue({ statusJobId: 'job-1' }),
+        })
+        .mockResolvedValue({ ok: false, status: 500 });
+
+      const err = await client.provisionApp().catch((e: unknown) => e) as Error & { statusCode?: number; jobId?: string };
+      expect(err.message).toMatch(/poll.*consecutive.*http/i);
+      expect(err.statusCode).toBe(500);
+      expect(err.jobId).toBe('job-1');
+      warnSpy.mockRestore();
     });
 
     it('throws when completed but apps array is empty', async () => {
@@ -296,6 +343,286 @@ describe('AABCtrlPlaneClient', () => {
         });
 
       await expect(client.provisionApp()).rejects.toThrow();
+    });
+  });
+
+  describe('provisionApp() — retry behavior', () => {
+    beforeEach(() => {
+      mockFetch.mockReset();
+    });
+
+    it('retries on transient signup failure and succeeds', async () => {
+      mockFetch
+        .mockResolvedValueOnce({ ok: false, status: 503 })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: vi.fn().mockResolvedValue({ statusJobId: 'job-1' }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: vi.fn().mockResolvedValue({
+            status: 'completed',
+            apps: [{ id: 'app-1', urls: { preview: 'http://p', agent: 'http://a' } }],
+          }),
+        });
+
+      const result = await makeRetryClient().provisionApp();
+
+      expect(result.appId).toBe('app-1');
+      expect(mockFetch).toHaveBeenCalledTimes(3);
+    });
+
+    it('does not re-signup on transient poll HTTP error (handles internally)', async () => {
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: vi.fn().mockResolvedValue({ statusJobId: 'job-1' }),
+        })
+        .mockResolvedValueOnce({ ok: false, status: 500 })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: vi.fn().mockResolvedValue({
+            status: 'completed',
+            apps: [{ id: 'app-1', urls: { preview: 'http://p', agent: 'http://a' } }],
+          }),
+        });
+
+      const result = await makeRetryClient().provisionApp();
+
+      expect(result.appId).toBe('app-1');
+      expect(mockFetch).toHaveBeenCalledTimes(3);
+      const signupCalls = mockFetch.mock.calls.filter(
+        ([url]) => String(url).includes('/signup'),
+      );
+      expect(signupCalls).toHaveLength(1);
+    });
+
+    it('throws after exhausting all 3 retries', async () => {
+      mockFetch.mockResolvedValue({ ok: false, status: 503 });
+
+      await expect(makeRetryClient().provisionApp()).rejects.toThrow(
+        /signup.*503/i,
+      );
+      expect(mockFetch).toHaveBeenCalledTimes(4);
+    });
+
+    it('does not retry on explicit provisioning failure (status: failed)', async () => {
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: vi.fn().mockResolvedValue({ statusJobId: 'job-1' }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: vi.fn().mockResolvedValue({
+            status: 'failed',
+            error: 'Docker pull failed',
+            apps: [],
+          }),
+        });
+
+      await expect(makeRetryClient().provisionApp()).rejects.toThrow(
+        /provisioning failed.*docker pull failed/i,
+      );
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+    });
+
+    it('does not retry signup when poll times out', async () => {
+      const nowSpy = vi.spyOn(Date, 'now')
+        .mockReturnValueOnce(0)      // deadline = 0 + 120_000
+        .mockReturnValueOnce(500)    // first while check: passes
+        .mockReturnValue(200_000);   // second check: exceeds deadline
+
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: vi.fn().mockResolvedValue({ statusJobId: 'job-1' }),
+        })
+        .mockResolvedValue({
+          ok: true,
+          json: vi.fn().mockResolvedValue({ status: 'pending', apps: [] }),
+        });
+
+      await expect(makeRetryClient().provisionApp()).rejects.toThrow(
+        /timed out/i,
+      );
+
+      const signupCalls = mockFetch.mock.calls.filter(
+        ([url]) => String(url).includes('/signup'),
+      );
+      expect(signupCalls).toHaveLength(1);
+      nowSpy.mockRestore();
+    });
+  });
+
+  describe('pollUntilComplete — transient error handling', () => {
+    beforeEach(() => {
+      mockFetch.mockReset();
+    });
+
+    it('recovers from ZodError (malformed poll shape) and completes', async () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: vi.fn().mockResolvedValue({ statusJobId: 'job-1' }),
+        })
+        // First poll: valid HTTP but malformed shape → ZodError
+        .mockResolvedValueOnce({
+          ok: true,
+          json: vi.fn().mockResolvedValue({ unexpected: true }),
+        })
+        // Second poll: success
+        .mockResolvedValueOnce({
+          ok: true,
+          json: vi.fn().mockResolvedValue({
+            status: 'completed',
+            apps: [{ id: 'app-1', urls: { preview: 'http://p', agent: 'http://a' } }],
+          }),
+        });
+
+      const result = await client.provisionApp();
+
+      expect(result.appId).toBe('app-1');
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('transient error'),
+      );
+      warnSpy.mockRestore();
+    });
+
+    it('throws NonRetryableProvisionError after repeated ZodErrors exceed threshold', async () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: vi.fn().mockResolvedValue({ statusJobId: 'job-1' }),
+        })
+        // 4 consecutive ZodErrors (threshold is 3)
+        .mockResolvedValue({
+          ok: true,
+          json: vi.fn().mockResolvedValue({ unexpected: true }),
+        });
+
+      const err = await client.provisionApp().catch((e: unknown) => e) as Error & { jobId?: string };
+      expect(err.message).toMatch(/consecutive errors/i);
+      expect(err.jobId).toBe('job-1');
+      warnSpy.mockRestore();
+    });
+
+    it('recovers from SyntaxError (invalid JSON body) and completes', async () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: vi.fn().mockResolvedValue({ statusJobId: 'job-1' }),
+        })
+        // First poll: response.json() throws SyntaxError
+        .mockResolvedValueOnce({
+          ok: true,
+          json: vi.fn().mockRejectedValue(new SyntaxError('Unexpected token')),
+        })
+        // Second poll: success
+        .mockResolvedValueOnce({
+          ok: true,
+          json: vi.fn().mockResolvedValue({
+            status: 'completed',
+            apps: [{ id: 'app-1', urls: { preview: 'http://p', agent: 'http://a' } }],
+          }),
+        });
+
+      const result = await client.provisionApp();
+
+      expect(result.appId).toBe('app-1');
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('transient error'),
+      );
+      warnSpy.mockRestore();
+    });
+
+    it('recovers from AbortError (per-request timeout) and completes', async () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const abortError = new DOMException('signal timed out', 'AbortError');
+
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: vi.fn().mockResolvedValue({ statusJobId: 'job-1' }),
+        })
+        // First poll: fetch rejects with AbortError
+        .mockRejectedValueOnce(abortError)
+        // Second poll: success
+        .mockResolvedValueOnce({
+          ok: true,
+          json: vi.fn().mockResolvedValue({
+            status: 'completed',
+            apps: [{ id: 'app-1', urls: { preview: 'http://p', agent: 'http://a' } }],
+          }),
+        });
+
+      const result = await client.provisionApp();
+
+      expect(result.appId).toBe('app-1');
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('transient error'),
+      );
+      warnSpy.mockRestore();
+    });
+
+    it('recovers from network TypeError (DNS/ECONNRESET) and completes', async () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: vi.fn().mockResolvedValue({ statusJobId: 'job-1' }),
+        })
+        // First poll: fetch rejects with network TypeError
+        .mockRejectedValueOnce(new TypeError('fetch failed'))
+        // Second poll: success
+        .mockResolvedValueOnce({
+          ok: true,
+          json: vi.fn().mockResolvedValue({
+            status: 'completed',
+            apps: [{ id: 'app-1', urls: { preview: 'http://p', agent: 'http://a' } }],
+          }),
+        });
+
+      const result = await client.provisionApp();
+
+      expect(result.appId).toBe('app-1');
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('transient error'),
+      );
+      warnSpy.mockRestore();
+    });
+
+    it('does not re-signup when poll errors are transient', async () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: vi.fn().mockResolvedValue({ statusJobId: 'job-1' }),
+        })
+        .mockRejectedValueOnce(new TypeError('fetch failed'))
+        .mockResolvedValueOnce({
+          ok: true,
+          json: vi.fn().mockResolvedValue({
+            status: 'completed',
+            apps: [{ id: 'app-1', urls: { preview: 'http://p', agent: 'http://a' } }],
+          }),
+        });
+
+      await makeRetryClient().provisionApp();
+
+      const signupCalls = mockFetch.mock.calls.filter(
+        ([url]) => String(url).includes('/signup'),
+      );
+      expect(signupCalls).toHaveLength(1);
+      warnSpy.mockRestore();
     });
   });
 

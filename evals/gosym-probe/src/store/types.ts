@@ -24,7 +24,6 @@ export interface RunMetadata {
 export interface StoredScenarioConfig {
   name: string;
   trials: number;
-  executionMode?: 'parallel' | 'sequential';
   persona: Omit<Persona, 'systemPrompt'>;
   goals: ScenarioGoal[];
   evaluators: string[];

@@ -76,9 +76,6 @@ export class GraduationRunner {
       config.regression.graduationPassRateThreshold ?? 0.9;
     const totalTrials = STABILITY_TRIALS[stabilityLevel];
 
-    const executionModeOverride =
-      stabilityLevel !== 'low' ? 'parallel' as const : undefined;
-
     const dirName = store
       ? await store.initRun(runId, [scenario], config, {
         concurrencyOverride: this.options.concurrencyOverride,
@@ -96,7 +93,6 @@ export class GraduationRunner {
       trialsOverride: totalTrials,
       concurrencyOverride: this.options.concurrencyOverride,
       maxTurnsOverride: this.options.maxTurnsOverride,
-      executionModeOverride,
       ...(store && dirName && {
         getTrialOutputDir: (scenarioName, trialIndex) =>
           store.ensureTrialDir(dirName, scenarioName, trialIndex),

@@ -12,12 +12,13 @@ import type { DOMSnapshot, Transcript } from './transcript.js';
 import type { BaselineScores } from '../baselines/types.js';
 import type { EvalResult, Evaluator } from '../evaluators/evaluator.js';
 import { normalizeEvalResult } from '../evaluators/normalize-eval-result.js';
+import { effectiveConcurrency } from '../util/concurrency.js';
 
 interface BaselineStore {
   load(scenarioName: string): Promise<BaselineScores | null>;
 }
 
-type RuncappedError<T> = AggregateError & {
+export type RuncappedError<T> = AggregateError & {
   partialResults: (T | undefined)[];
 };
 
@@ -26,6 +27,7 @@ export async function runCapped<T>(
   cap: number,
   fn: (i: number) => Promise<T>,
 ): Promise<T[]> {
+  if (count === 0 || cap <= 0) return [];
   const results: (T | undefined)[] = new Array(count);
   const errors = new Map<number, unknown>();
   let next = 0;
@@ -68,17 +70,11 @@ export interface SuiteRunnerOptions {
   /**
    * Controls how scenarios are executed relative to each other.
    * - `'sequential'` (default): scenarios run one after another;
-   *   per-scenario `executionMode` still governs trial-level parallelism.
+   *   trial-level parallelism is governed by `config.eval.maxConcurrency`.
    * - `'parallel'`: all scenarios fan out concurrently, each forced
    *   to trial=1, capped by `config.eval.maxConcurrency`.
    */
   suiteMode?: 'sequential' | 'parallel';
-  /**
-   * When provided, overrides per-scenario `executionMode` for all
-   * scenarios. Useful for graduation to force parallel trial execution
-   * regardless of how individual scenarios are configured.
-   */
-  executionModeOverride?: 'parallel' | 'sequential';
   /** Fires after each trial is evaluated. */
   onTrialEvaluated?: (
     scenarioName: string,
@@ -107,6 +103,9 @@ export class SuiteRunner {
     const { scenarios, config, trialsOverride, suiteMode } = this.options;
 
     if (suiteMode === 'parallel') {
+      // Scenario-level fan-out uses config.eval.maxConcurrency (hard ceiling).
+      // concurrencyOverride intentionally controls only trial-level parallelism
+      // within each scenario, not the outer scenario fan-out.
       return runCapped(
         scenarios.length,
         config.eval.maxConcurrency ?? 1,
@@ -137,10 +136,17 @@ export class SuiteRunner {
       trialIndicesByScenario,
     } = this.options;
 
-    const mode =
-      this.options.executionModeOverride
-      ?? scenario.executionMode
-      ?? 'sequential';
+    if (!makeAgentClient) {
+      throw new Error(
+        `processScenario: makeAgentClient is required to run scenario "${scenario.name}"`,
+      );
+    }
+    if (!syntheticUser) {
+      throw new Error(
+        `processScenario: syntheticUser is required to run scenario "${scenario.name}"`,
+      );
+    }
+
     const trialIndices = trialIndicesByScenario?.get(scenario.name)
       ?? Array.from({ length: k }, function index(_, i) {
         return i;
@@ -149,16 +155,6 @@ export class SuiteRunner {
     const makeRun = async (
       i: number,
     ): Promise<Transcript> => {
-      if (!makeAgentClient) {
-        throw new Error(
-          `processScenario: makeAgentClient is required to run scenario "${scenario.name}"`,
-        );
-      }
-      if (!syntheticUser) {
-        throw new Error(
-          `processScenario: syntheticUser is required to run scenario "${scenario.name}"`,
-        );
-      }
       const client = await makeAgentClient();
       try {
         scenario.beforeTrial?.(client, i);
@@ -212,17 +208,13 @@ export class SuiteRunner {
       }
     };
 
-    const concurrency =
-      concurrencyOverride
-      ?? config.eval.maxConcurrency
-      ?? 1;
+    const maxConcurrency = config.eval.maxConcurrency ?? 1;
+    const concurrency = effectiveConcurrency(concurrencyOverride, maxConcurrency);
     try {
       const transcripts: Transcript[] =
-        mode === 'parallel'
-          ? await runCapped(trialIndices.length, concurrency, function run(i) {
-            return makeRun(trialIndices[i]);
-          })
-          : await this.runSequential(trialIndices, makeRun);
+        await runCapped(trialIndices.length, concurrency, function run(i) {
+          return makeRun(trialIndices[i]);
+        });
 
       const newTrialResults = await this.evaluateTrials(
         scenario,
@@ -262,17 +254,6 @@ export class SuiteRunner {
     }
   }
 
-  private async runSequential(
-    trialIndices: number[],
-    makeRun: (i: number) => Promise<Transcript>,
-  ): Promise<Transcript[]> {
-    const results: Transcript[] = [];
-    for (const trialIndex of trialIndices) {
-      results.push(await makeRun(trialIndex));
-    }
-    return results;
-  }
-
   private async safeEvaluate(
     evaluator: Evaluator,
     transcript: Transcript,
@@ -288,7 +269,7 @@ export class SuiteRunner {
         'Evaluator threw during safe evaluation.',
         {
           evaluator: evaluator.name,
-          error: err instanceof Error ? err.message : String(err),
+          error: err instanceof Error ? err : String(err),
         },
       );
       return normalizeEvalResult({

@@ -13,6 +13,11 @@ import {
   SuiteRunner,
   runCapped,
 } from './runner/suite-runner.js';
+import type { RuncappedError } from './runner/suite-runner.js';
+import {
+  clampConcurrency,
+  effectiveConcurrency,
+} from './util/concurrency.js';
 import type { TrialResult } from './runner/types.js';
 import { EvalStore } from './store/eval-store.js';
 import { BaselineStore } from './baselines/baseline-store.js';
@@ -191,8 +196,7 @@ async function main(): Promise<void> {
 
     const stabilityOverride = values.stability as
       StabilityLevel | undefined;
-    const cap =
-      concurrencyOverride ?? config.eval.maxConcurrency ?? 1;
+    const maxConcurrency = config.eval.maxConcurrency ?? 1;
 
     const effectiveLevel = (s: Scenario): StabilityLevel =>
       stabilityOverride ?? s.stabilityLevel ?? DEFAULT_STABILITY_LEVEL;
@@ -200,6 +204,10 @@ async function main(): Promise<void> {
     const gradStore = new EvalStore(
       undefined, config.storage?.maxRuns,
     );
+
+    const innerConcurrency: number = values['parallel-suites']
+      ? 1
+      : effectiveConcurrency(concurrencyOverride, maxConcurrency);
 
     const makeGradRunner = (s: Scenario) =>
       new GraduationRunner({
@@ -210,12 +218,9 @@ async function main(): Promise<void> {
         siteCapture,
         baselineStore: new BaselineStore(),
         stabilityLevelOverride: stabilityOverride,
-        concurrencyOverride,
+        concurrencyOverride: innerConcurrency,
         maxTurnsOverride,
         store: gradStore,
-      } as ConstructorParameters<typeof GraduationRunner>[0] & {
-        siteCapture?: unknown;
-        domCapture?: unknown;
       });
 
     const runScenario = async (
@@ -231,25 +236,43 @@ async function main(): Promise<void> {
       return makeGradRunner(gradScenario).run(runId);
     };
 
-    const lowScenarios = suiteScenarios.filter(
-      (s) => effectiveLevel(s) === 'low',
-    );
-    const medHighScenarios = suiteScenarios.filter(
-      (s) => effectiveLevel(s) !== 'low',
-    );
-
-    const lowResults = await runCapped(
-      lowScenarios.length,
-      cap,
-      (i) => runScenario(lowScenarios[i]),
-    );
-
-    const medHighResults: GraduationResult[] = [];
-    for (const gradScenario of medHighScenarios) {
-      medHighResults.push(await runScenario(gradScenario));
+    let allResults: GraduationResult[];
+    if (values['parallel-suites']) {
+      try {
+        allResults = await runCapped(
+          suiteScenarios.length,
+          maxConcurrency,
+          (i) => runScenario(suiteScenarios[i]),
+        );
+      } catch (err) {
+        if (err instanceof AggregateError && 'partialResults' in err) {
+          const partial = (err as RuncappedError<GraduationResult>).partialResults;
+          const completed = partial.filter(
+            (r): r is GraduationResult => r !== undefined,
+          );
+          if (completed.length > 0) {
+            console.error(
+              `\n${err.errors.length} scenario(s) failed. ` +
+              `Printing results for ${completed.length} completed scenario(s):`,
+            );
+            for (const gradResult of completed) {
+              printGraduationResult(gradResult);
+            }
+          }
+          for (const inner of err.errors) {
+            console.error('Scenario error:', inner);
+          }
+          await gradStore.prune();
+          process.exit(1);
+        }
+        throw err;
+      }
+    } else {
+      allResults = [];
+      for (const gradScenario of suiteScenarios) {
+        allResults.push(await runScenario(gradScenario));
+      }
     }
-
-    const allResults = [...lowResults, ...medHighResults];
     let allPromoted = true;
     for (const gradResult of allResults) {
       printGraduationResult(gradResult);
@@ -284,6 +307,7 @@ async function main(): Promise<void> {
 
     const stabilityOverride = values.stability as
       StabilityLevel | undefined;
+    const maxConcurrency = config.eval.maxConcurrency ?? 1;
 
     const singleGradStore = new EvalStore(
       undefined, config.storage?.maxRuns,
@@ -296,12 +320,9 @@ async function main(): Promise<void> {
       siteCapture,
       baselineStore: new BaselineStore(),
       stabilityLevelOverride: stabilityOverride,
-      concurrencyOverride,
+      concurrencyOverride: clampConcurrency(concurrencyOverride, maxConcurrency),
       maxTurnsOverride,
       store: singleGradStore,
-    } as ConstructorParameters<typeof GraduationRunner>[0] & {
-      siteCapture?: unknown;
-      domCapture?: unknown;
     });
 
     const runId = randomUUID();
@@ -428,24 +449,22 @@ async function main(): Promise<void> {
       ` 1 trial each)`,
     );
   } else {
-    const anyParallelTrials = scenarios.some(
-      (s) => s.executionMode === 'parallel',
-    );
+    const cap = config.eval.maxConcurrency ?? 1;
     for (const s of scenarios) {
       const trialCount = trialsOverride ?? s.trials;
-      const mode = s.executionMode ?? 'sequential';
-      const modeStr = anyParallelTrials ? ` [${mode}]` : '';
-      const capStr = mode === 'parallel'
-        ? `, concurrency: ${config.eval.maxConcurrency ?? 1}`
-        : '';
       console.log(
-        `  ${s.name}: ${trialCount} trial(s)${modeStr}${capStr}`,
+        `  ${s.name}: ${trialCount} trial(s), concurrency: ${cap}`,
       );
     }
   }
 
   const pendingWrites: Promise<void>[] = [];
-  let writeFailures = 0;
+  const writeFailures: { scenarioName: string; trialIndex: number; error: unknown }[] = [];
+
+  const maxConcurrency = config.eval.maxConcurrency ?? 1;
+  const resolvedConcurrency: number | undefined = parallelSuites
+    ? 1
+    : clampConcurrency(concurrencyOverride, maxConcurrency);
 
   const runner = new SuiteRunner({
     scenarios,
@@ -454,7 +473,7 @@ async function main(): Promise<void> {
     syntheticUser,
     siteCapture,
     trialsOverride,
-    concurrencyOverride,
+    concurrencyOverride: resolvedConcurrency,
     maxTurnsOverride,
     baselineStore,
     suiteMode: parallelSuites ? 'parallel' : undefined,
@@ -466,7 +485,11 @@ async function main(): Promise<void> {
       const p = store
         .writeTrial(dirName, scenarioName, trial)
         .catch((err: unknown) => {
-          writeFailures++;
+          writeFailures.push({
+            scenarioName,
+            trialIndex: trial.trialIndex,
+            error: err,
+          });
           console.warn(
             'Warning: failed to write trial',
             { trialIndex: trial.trialIndex, scenarioName },
@@ -480,11 +503,14 @@ async function main(): Promise<void> {
   try {
     const results = await runner.run();
     await Promise.all(pendingWrites);
-    if (writeFailures > 0) {
+    if (writeFailures.length > 0) {
       console.error(
-        `Error: ${writeFailures} trial write(s) failed;` +
+        `\nError: ${writeFailures.length} trial write(s) failed;` +
         ` skipping finalization for run directory "${dirName}".`,
       );
+      for (const { scenarioName, trialIndex, error } of writeFailures) {
+        console.error('  - %s trial %d:', scenarioName, trialIndex, error);
+      }
       process.exitCode = 1;
       return;
     }

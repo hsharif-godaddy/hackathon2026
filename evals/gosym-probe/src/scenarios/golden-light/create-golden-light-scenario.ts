@@ -88,7 +88,6 @@ export function createGoldenLightScenario(
     goals: config.goals,
     evaluators: allEvaluators,
     trials: config.trials ?? 3,
-    executionMode: 'parallel',
 
     setup: async () => {
       const { appId, previewUrl } =

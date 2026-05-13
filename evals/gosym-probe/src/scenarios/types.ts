@@ -39,9 +39,6 @@ export interface Scenario {
   evaluators: Evaluator[];
   trials: number;
   stabilityLevel?: StabilityLevel;
-  /** Default: 'sequential'. Use 'parallel' only for stateless/remote
-   *  agents that can handle concurrent access. */
-  executionMode?: 'parallel' | 'sequential';
   referenceSolution?: string | DOMSnapshot;
   expectedTools?: ToolCallAssertion[];
   setup?: () => Promise<SetupContext | void>;

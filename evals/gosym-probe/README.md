@@ -158,11 +158,6 @@ CLI (src/index.ts)
 
 See `src/evaluators/` for the full set of evaluators and their implementations.
 
-**Trial strategy**
-
-- `executionMode: 'sequential'` (default) — one trial at a time.
-- `executionMode: 'parallel'` — `Promise.all(k)` fan-out; for stateless agents.
-
 **Suite-level parallelism**
 
 Pass `--parallel-suites` to fan out all scenarios concurrently instead of
@@ -172,11 +167,9 @@ running them one after another:
 pnpm run eval --suite smoke --parallel-suites
 ```
 
-Each scenario is forced to `trial=1` in this mode — per-scenario
-`executionMode` is ignored. Concurrency is capped by
-`config.eval.maxConcurrency`. Use this for fast sweeps; use
-`executionMode: 'parallel'` on individual scenarios when you need multi-trial
-parallelism within a single scenario. Use when running scenarios at high trial values.
+Each scenario is forced to `trial=1` in this mode. Concurrency is capped by
+`config.eval.maxConcurrency`. Use this for fast sweeps; use `--concurrency N`
+for concurrent multi-trial runs within a single scenario.
 
 **Regression gating**
 

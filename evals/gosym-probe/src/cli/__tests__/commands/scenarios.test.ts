@@ -17,7 +17,6 @@ function makeScenario(
     goals: [],
     evaluators: [],
     trials: 3,
-    executionMode: 'sequential',
     setup: noop,
     teardown: noop,
     ...overrides,
@@ -30,7 +29,6 @@ describe('formatScenariosTable', () => {
     const result = (formatScenariosTable([]));
     expect(result).toContain('Name');
     expect(result).toContain('Trials');
-    expect(result).toContain('Mode');
     expect(result).toContain('Evaluators');
   });
 
@@ -44,16 +42,6 @@ describe('formatScenariosTable', () => {
   it('includes trial count', () => {
     const s = makeScenario({ trials: 5 });
     expect(formatScenariosTable([s])).toContain('5');
-  });
-
-  it('shows sequential as default mode', () => {
-    const s = makeScenario({ executionMode: undefined });
-    expect(formatScenariosTable([s])).toContain('sequential');
-  });
-
-  it('shows parallel execution mode', () => {
-    const s = makeScenario({ executionMode: 'parallel' });
-    expect(formatScenariosTable([s])).toContain('parallel');
   });
 
   it('shows evaluator count', () => {

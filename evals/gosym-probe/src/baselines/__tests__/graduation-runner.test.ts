@@ -587,74 +587,22 @@ describe('GraduationRunner', () => {
         expect.objectContaining({ concurrencyOverride: 4 }),
       );
     });
-  });
 
-  describe('execution mode override', () => {
-    it('low stability → no executionModeOverride', async () => {
+    it('without concurrencyOverride, does not force parallelism', async () => {
       mockSuiteRunnerRun.mockResolvedValue([
-        makeScenarioResult(['pass']),
+        makeScenarioResult(['pass', 'pass', 'pass']),
       ]);
 
-      const scenario = {
-        ...mockScenario,
-        stabilityLevel: 'low' as const,
-      };
       const runner = new GraduationRunner({
-        scenario,
+        scenario: { ...mockScenario, stabilityLevel: 'high' },
         config: mockConfig,
         baselineStore: mockBaselineStore,
+        // no concurrencyOverride
       });
-      await runner.run('run-low-mode');
+      await runner.run('run-no-forced-conc');
 
       expect(SuiteRunner).toHaveBeenCalledWith(
-        expect.objectContaining({ executionModeOverride: undefined }),
-      );
-    });
-
-    it('medium stability → executionModeOverride: parallel', async () => {
-      mockSuiteRunnerRun.mockResolvedValue([
-        makeScenarioResult([
-          'pass', 'pass', 'pass', 'pass', 'pass',
-        ]),
-      ]);
-
-      const scenario = {
-        ...mockScenario,
-        stabilityLevel: 'medium' as const,
-      };
-      const runner = new GraduationRunner({
-        scenario,
-        config: mockConfig,
-        baselineStore: mockBaselineStore,
-      });
-      await runner.run('run-medium-mode');
-
-      expect(SuiteRunner).toHaveBeenCalledWith(
-        expect.objectContaining({ executionModeOverride: 'parallel' }),
-      );
-    });
-
-    it('high stability → executionModeOverride: parallel', async () => {
-      mockSuiteRunnerRun.mockResolvedValue([
-        makeScenarioResult([
-          'pass', 'pass', 'pass', 'pass', 'pass',
-          'pass', 'pass', 'pass', 'pass', 'pass',
-        ]),
-      ]);
-
-      const scenario = {
-        ...mockScenario,
-        stabilityLevel: 'high' as const,
-      };
-      const runner = new GraduationRunner({
-        scenario,
-        config: mockConfig,
-        baselineStore: mockBaselineStore,
-      });
-      await runner.run('run-high-mode');
-
-      expect(SuiteRunner).toHaveBeenCalledWith(
-        expect.objectContaining({ executionModeOverride: 'parallel' }),
+        expect.objectContaining({ concurrencyOverride: undefined }),
       );
     });
   });

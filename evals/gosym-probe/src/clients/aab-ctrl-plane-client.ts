@@ -10,6 +10,8 @@ export interface AABCtrlPlaneClientConfig {
   provisionTimeoutMs?: number;
   pollIntervalMs?: number;
   requestTimeoutMs?: number;
+  retryDelayMs?: number;
+  maxRetries?: number;
 }
 
 interface SignupResponse {
@@ -30,8 +32,25 @@ type PollResponse = z.infer<typeof PollResponseSchema>;
 const DEFAULT_PROVISION_TIMEOUT_MS = 120_000;
 const DEFAULT_POLL_INTERVAL_MS = 2_000;
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
+const DEFAULT_RETRY_DELAY_MS = 30_000;
+const DEFAULT_MAX_RETRIES = 3;
 const LOCAL_SUB = 'local-sub-001';
 const LOCAL_SYS = 'local-sys-001';
+
+class NonRetryableProvisionError extends Error {
+  readonly statusCode?: number;
+  readonly jobId?: string;
+
+  constructor(
+    message: string,
+    opts?: { statusCode?: number; jobId?: string },
+  ) {
+    super(message);
+    this.name = 'NonRetryableProvisionError';
+    this.statusCode = opts?.statusCode;
+    this.jobId = opts?.jobId;
+  }
+}
 
 /**
  * HTTP client for the AAB local-control-plane API.
@@ -43,6 +62,8 @@ export class AABCtrlPlaneClient {
   private readonly provisionTimeoutMs: number;
   private readonly pollIntervalMs: number;
   private readonly requestTimeoutMs: number;
+  private readonly retryDelayMs: number;
+  private readonly maxRetries: number;
 
   constructor(config: AABCtrlPlaneClientConfig) {
     this.baseUrl = config.baseUrl;
@@ -52,13 +73,34 @@ export class AABCtrlPlaneClient {
       config.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
     this.requestTimeoutMs =
       config.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
+    this.retryDelayMs =
+      config.retryDelayMs ?? DEFAULT_RETRY_DELAY_MS;
+    this.maxRetries =
+      config.maxRetries ?? DEFAULT_MAX_RETRIES;
   }
 
   async provisionApp(
     options?: Record<string, unknown>,
   ): Promise<ProvisionResult> {
-    const { statusJobId } = await this.signup(options ?? {});
-    return this.pollUntilComplete(statusJobId);
+    let lastErr: unknown;
+    for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
+      try {
+        const { statusJobId } = await this.signup(options ?? {});
+        return await this.pollUntilComplete(statusJobId);
+      } catch (err) {
+        if (err instanceof NonRetryableProvisionError) throw err;
+        lastErr = err;
+        if (attempt < this.maxRetries) {
+          const msg = err instanceof Error ? err.message : String(err);
+          console.warn(
+            `[AABCtrlPlaneClient] provisionApp attempt ${attempt + 1} failed, ` +
+            `retrying in ${this.retryDelayMs}ms: ${msg}`,
+          );
+          await this.sleep(this.retryDelayMs);
+        }
+      }
+    }
+    throw lastErr;
   }
 
   async deleteApp(appId: string): Promise<void> {
@@ -103,42 +145,77 @@ export class AABCtrlPlaneClient {
   ): Promise<ProvisionResult> {
     const deadline = Date.now() + this.provisionTimeoutMs;
     const url = `${this.baseUrl}/api/airo/v1/jobs/${jobId}/apps`;
+    const maxConsecutiveHttpErrors = 3;
+    let consecutiveHttpErrors = 0;
 
     while (Date.now() < deadline) {
-      const response = await fetch(url, {
-        method: 'GET',
-        signal: AbortSignal.timeout(this.requestTimeoutMs),
-      });
+      try {
+        const response = await fetch(url, {
+          method: 'GET',
+          signal: AbortSignal.timeout(this.requestTimeoutMs),
+        });
 
-      if (!response.ok) {
-        throw new Error(
-          `Poll job '${jobId}' failed: HTTP ${response.status}`,
-        );
-      }
+        if (!response.ok) {
+          consecutiveHttpErrors++;
+          console.warn(
+            `[AABCtrlPlaneClient] poll job '${jobId}' transient HTTP ${response.status} ` +
+            `(${consecutiveHttpErrors}/${maxConsecutiveHttpErrors})`,
+          );
+          if (consecutiveHttpErrors > maxConsecutiveHttpErrors) {
+            throw new NonRetryableProvisionError(
+              `Poll job '${jobId}' failed after ${maxConsecutiveHttpErrors} ` +
+              `consecutive HTTP errors: HTTP ${response.status}`,
+              { statusCode: response.status, jobId },
+            );
+          }
+          await this.sleep(this.pollIntervalMs);
+          continue;
+        }
 
-      const data: PollResponse = PollResponseSchema.parse(await response.json());
+        const data: PollResponse = PollResponseSchema.parse(await response.json());
+        consecutiveHttpErrors = 0;
 
-      if (data.status === 'completed') {
-        if (!data.apps.length) {
-          throw new Error(
-            'Provisioning completed but no app returned',
+        if (data.status === 'completed') {
+          if (!data.apps.length) {
+            throw new NonRetryableProvisionError(
+              'Provisioning completed but no app returned',
+              { jobId },
+            );
+          }
+          const app = data.apps[0];
+          return { appId: app.id, previewUrl: app.urls.preview };
+        }
+
+        if (data.status === 'failed') {
+          throw new NonRetryableProvisionError(
+            `Provisioning failed: ${data.error ?? 'unknown error'}`,
+            { jobId },
           );
         }
-        const app = data.apps[0];
-        return { appId: app.id, previewUrl: app.urls.preview };
-      }
 
-      if (data.status === 'failed') {
-        throw new Error(
-          `Provisioning failed: ${data.error ?? 'unknown error'}`,
+        await this.sleep(this.pollIntervalMs);
+      } catch (err) {
+        if (err instanceof NonRetryableProvisionError) throw err;
+        consecutiveHttpErrors++;
+        const msg = err instanceof Error ? err.message : String(err);
+        console.warn(
+          `[AABCtrlPlaneClient] poll job '${jobId}' transient error ` +
+          `(${consecutiveHttpErrors}/${maxConsecutiveHttpErrors}): ${msg}`,
         );
+        if (consecutiveHttpErrors > maxConsecutiveHttpErrors) {
+          throw new NonRetryableProvisionError(
+            `Poll job '${jobId}' failed after ${maxConsecutiveHttpErrors} ` +
+            `consecutive errors: ${msg}`,
+            { jobId },
+          );
+        }
+        await this.sleep(this.pollIntervalMs);
       }
-
-      await this.sleep(this.pollIntervalMs);
     }
 
-    throw new Error(
+    throw new NonRetryableProvisionError(
       `Provisioning timed out after ${this.provisionTimeoutMs}ms`,
+      { jobId },
     );
   }
 

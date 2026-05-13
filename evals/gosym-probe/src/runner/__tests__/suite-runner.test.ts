@@ -302,7 +302,7 @@ describe('SuiteRunner', () => {
     expect(result.trials[1].trialIndex).toBe(1);
   });
 
-  it('sequential mode: trial N+1 starts after trial N completes', async () => {
+  it('concurrencyOverride: 1 serializes trials', async () => {
     const order: string[] = [];
     mockSimulationRun
       .mockImplementationOnce(async () => {
@@ -318,13 +318,13 @@ describe('SuiteRunner', () => {
 
     const scenario = makeScenario({
       trials: 2,
-      executionMode: 'sequential',
     });
     await new SuiteRunner({
       scenarios: [scenario],
       config: mockConfig,
       makeAgentClient,
       syntheticUser: mockSyntheticUser,
+      concurrencyOverride: 1,
     }).run();
 
     expect(order).toEqual(['start:0', 'end:0', 'start:1']);
@@ -369,7 +369,6 @@ describe('SuiteRunner', () => {
 
     const scenario = makeScenario({
       trials: 2,
-      executionMode: 'parallel',
     });
     const runPromise = new SuiteRunner({
       scenarios: [scenario],
@@ -398,7 +397,7 @@ describe('SuiteRunner', () => {
     expect(createdClients[0]).not.toBe(createdClients[1]);
   });
 
-  it('concurrencyOverride takes precedence over config.eval.maxConcurrency',
+  it('concurrencyOverride is honored when within config.eval.maxConcurrency',
     async () => {
       let maxInFlight = 0;
       let inFlight = 0;
@@ -411,85 +410,23 @@ describe('SuiteRunner', () => {
         return makeTranscript();
       });
 
-      // config says maxConcurrency: 1, but override says 3
+      // cap is 4, override restricts to 2 — override is the binding limit
       const scenario = makeScenario({
         trials: 4,
-        executionMode: 'parallel',
       });
       await new SuiteRunner({
         scenarios: [scenario],
         config: {
           ...mockConfig,
-          eval: { ...mockConfig.eval, maxConcurrency: 1 },
+          eval: { ...mockConfig.eval, maxConcurrency: 4 },
         },
         makeAgentClient,
         syntheticUser: mockSyntheticUser,
-        concurrencyOverride: 3,
+        concurrencyOverride: 2,
       }).run();
 
       expect(maxInFlight).toBeGreaterThan(1);
-      expect(maxInFlight).toBeLessThanOrEqual(3);
-    },
-  );
-
-  it('executionModeOverride: parallel overrides sequential executionMode',
-    async () => {
-      const order: string[] = [];
-      const resolvers: (() => void)[] = [];
-
-      const clientFactory = vi.fn().mockImplementation(async () => ({
-        configure: vi.fn(),
-        send: vi.fn(),
-        onMessage: vi.fn(),
-        disconnect: vi.fn(),
-      }));
-
-      mockSimulationRun
-        .mockImplementationOnce(() => {
-          order.push('start:0');
-          return new Promise<Transcript>((r) =>
-            resolvers.push(() => {
-              order.push('end:0');
-              r(makeTranscript());
-            }),
-          );
-        })
-        .mockImplementationOnce(() => {
-          order.push('start:1');
-          return new Promise<Transcript>((r) =>
-            resolvers.push(() => {
-              order.push('end:1');
-              r(makeTranscript());
-            }),
-          );
-        });
-
-      const scenario = makeScenario({
-        trials: 2,
-        executionMode: 'sequential',
-      });
-      const runPromise = new SuiteRunner({
-        scenarios: [scenario],
-        config: {
-          ...mockConfig,
-          eval: { ...mockConfig.eval, maxConcurrency: 2 },
-        },
-        makeAgentClient: clientFactory,
-        syntheticUser: mockSyntheticUser,
-        executionModeOverride: 'parallel',
-      }).run();
-
-      await Promise.resolve();
-      resolvers.forEach((r) => r());
-      await runPromise;
-
-      // Both trials start before any completes — proves parallel execution
-      expect(order.indexOf('start:0')).toBeLessThan(
-        order.indexOf('end:0'),
-      );
-      expect(order.indexOf('start:1')).toBeLessThan(
-        order.indexOf('end:0'),
-      );
+      expect(maxInFlight).toBeLessThanOrEqual(2);
     },
   );
 
@@ -507,7 +444,6 @@ describe('SuiteRunner', () => {
 
     const scenario = makeScenario({
       trials: 4,
-      executionMode: 'parallel',
     });
     const cappedConfig: Config = {
       ...mockConfig,
@@ -1210,5 +1146,127 @@ describe('SuiteRunner — EvalResult normalization', () => {
     expect(evalResult.reason).toBe('line1 line2 line3');
     expect(evalResult.verdict).toBe('unknown');
     expect(evalResult.score).toBe(0);
+  });
+});
+
+describe('SuiteRunner — no-stacking invariant', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('concurrencyOverride: 1 suppresses parallel trial execution', async () => {
+    let inFlight = 0;
+    let maxInFlight = 0;
+
+    mockSimulationRun.mockImplementation(async () => {
+      inFlight++;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      await Promise.resolve();
+      inFlight--;
+      return makeTranscript();
+    });
+
+    const scenario = makeScenario({
+      trials: 4,
+    });
+
+    await new SuiteRunner({
+      scenarios: [scenario],
+      config: { ...mockConfig, eval: { ...mockConfig.eval, maxConcurrency: 4 } },
+      makeAgentClient,
+      syntheticUser: mockSyntheticUser,
+      concurrencyOverride: 1,
+    }).run();
+
+    expect(maxInFlight).toBeLessThanOrEqual(1);
+  });
+
+  it('concurrencyOverride cannot exceed config.eval.maxConcurrency', async () => {
+    let inFlight = 0;
+    let maxInFlight = 0;
+
+    mockSimulationRun.mockImplementation(async () => {
+      inFlight++;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      await Promise.resolve();
+      inFlight--;
+      return makeTranscript();
+    });
+
+    const scenario = makeScenario({
+      trials: 6,
+    });
+
+    await new SuiteRunner({
+      scenarios: [scenario],
+      config: { ...mockConfig, eval: { ...mockConfig.eval, maxConcurrency: 3 } },
+      makeAgentClient,
+      syntheticUser: mockSyntheticUser,
+      concurrencyOverride: 10,
+    }).run();
+
+    expect(maxInFlight).toBeLessThanOrEqual(3);
+  });
+
+  it('parallel-suites: 5 scenarios cap 3 never exceeds 3 concurrent', async () => {
+    let inFlight = 0;
+    let maxInFlight = 0;
+
+    mockSimulationRun.mockImplementation(async () => {
+      inFlight++;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      await Promise.resolve();
+      inFlight--;
+      return makeTranscript();
+    });
+
+    const scenarios = Array.from({ length: 5 }, (_, i) =>
+      makeScenario({ name: `s${i}`, trials: 2 }),
+    );
+
+    await new SuiteRunner({
+      scenarios,
+      config: { ...mockConfig, eval: { ...mockConfig.eval, maxConcurrency: 3 } },
+      makeAgentClient,
+      syntheticUser: mockSyntheticUser,
+      concurrencyOverride: 3,
+      suiteMode: 'parallel',
+    }).run();
+
+    expect(maxInFlight).toBeLessThanOrEqual(3);
+  });
+
+  it('parallel-suites: 4 scenarios cap 12 all start concurrently', async () => {
+    let inFlight = 0;
+    let peakInFlight = 0;
+    const resolvers: (() => void)[] = [];
+
+    mockSimulationRun.mockImplementation(() => {
+      inFlight++;
+      peakInFlight = Math.max(peakInFlight, inFlight);
+      return new Promise<Transcript>((resolve) => {
+        resolvers.push(() => {
+          inFlight--;
+          resolve(makeTranscript());
+        });
+      });
+    });
+
+    const scenarios = Array.from({ length: 4 }, (_, i) =>
+      makeScenario({ name: `s${i}`, trials: 3 }),
+    );
+
+    const runPromise = new SuiteRunner({
+      scenarios,
+      config: { ...mockConfig, eval: { ...mockConfig.eval, maxConcurrency: 12 } },
+      makeAgentClient,
+      syntheticUser: mockSyntheticUser,
+      suiteMode: 'parallel',
+    }).run();
+
+    await Promise.resolve();
+    expect(peakInFlight).toBe(4);
+    resolvers.forEach((r) => r());
+    await runPromise;
   });
 });

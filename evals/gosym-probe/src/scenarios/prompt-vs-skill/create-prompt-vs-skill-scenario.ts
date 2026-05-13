@@ -71,7 +71,6 @@ export function createPromptVsSkillScenario(
     goals: config.goals,
     evaluators: allEvaluators,
     trials: config.trials ?? 1,
-    executionMode: 'sequential',
 
     setup: async () => {
       const { appId, previewUrl } = await ctrlPlane.provisionApp();

@@ -48,9 +48,9 @@ pnpm run eval          # headless eval with flags (CI / scripting)
 --suite <name>           Filter to scenarios in a named suite
 --env <env>              Override GD_ENV
 --trials <n>             Override per-scenario trial count
---concurrency <n>        Override max concurrent trials
+--concurrency <n>        Cap concurrent trials (clamped to config.eval.maxConcurrency)
 --skip-baseline          Skip baseline comparison
---parallel-suites        Run all scenarios in parallel (1 trial each)
+--parallel-suites        Fan out scenarios in parallel; standard runs use 1 trial each, graduation keeps full stability trial count
 --graduate <name>        Stability check one scenario before promoting
 --graduate-suite <name>  Stability check all scenarios in a suite
 --stability <level>      Override stability level (low|medium|high)

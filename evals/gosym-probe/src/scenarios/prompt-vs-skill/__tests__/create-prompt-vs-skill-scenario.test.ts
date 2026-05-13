@@ -50,15 +50,6 @@ describe("createPromptVsSkillScenario", () => {
       expect(scenario.suite).toBe("prompt-vs-skill");
     });
 
-    it("sets executionMode to 'sequential'", () => {
-      const scenario = createPromptVsSkillScenario(
-        minimalConfig(),
-        makeGocodeClient(),
-        makeCtrlPlaneClient(),
-      );
-      expect(scenario.executionMode).toBe("sequential");
-    });
-
   });
 
   describe("integration seam — evaluator list", () => {
