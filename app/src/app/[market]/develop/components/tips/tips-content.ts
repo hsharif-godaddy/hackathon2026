@@ -9,10 +9,10 @@
  * Translations for title and description are in the i18n tool
  */
 export const tips: string[] = [
-  'be-specific',
-  'iterate-and-refine',
-  'explore-interface',
-  'publish-app'
+  'be_specific',
+  'iterate_and_refine',
+  'start_big_picture',
+  'show_examples'
 ]
 
 /**
