@@ -20,6 +20,16 @@ Also landed: `internal/mhpairo` — outbound client for mhp-airo's three
 alloc-management endpoints (POST secrets, PATCH app, POST reload). Library
 only; not wired into any handler yet. See the section below.
 
+Library packages (no caller wires them in yet):
+
+- `internal/stripeapi` — outbound client for Stripe v2 preview APIs
+  (`v2.core.claimableSandboxes.create`, `v2.iam.apiKeys.create`). Hand-rolled
+  `net/http` wrapper, no `stripe-go` dependency. Bearer auth, configurable
+  `Stripe-Version`, caller-supplied `Idempotency-Key`, optional `Stripe-Context`,
+  typed `*StripeError` with `IsRetryable()` predicate. JWE responses surface as
+  raw bytes — decryption belongs in a separate package. Wired into real
+  `POST /v1/sandboxes` body and the live-key webhook handler in follow-up PRs.
+
 Next PRs:
 
 1. Real `POST /v1/sandboxes` body (Stripe `v2.core.claimableSandboxes.create` + DynamoDB write).
