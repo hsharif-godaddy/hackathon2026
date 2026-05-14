@@ -637,6 +637,7 @@ def build_artifact(
             "f1General": round(f1_general, 6),
             "regularizationC": best_C,
             "threshold": 0.5,
+            "tunedThreshold": round(threshold, 4),
             "pcaDimensions": pca_dims,
             "pcaVarianceRetained": round(pca_variance_retained, 6) if pca_variance_retained is not None else None,
             "trainedAt": datetime.now(timezone.utc).isoformat(),
@@ -897,7 +898,7 @@ def main() -> None:
     # --- Save weights ---
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with open(output_path, "w", encoding="utf-8") as f:
-        json.dump(artifact, f, separators=(",", ":"))
+        json.dump(artifact, f, indent=2)
 
     meta = artifact["metadata"]
     print(f"\n=== Model Saved ===")

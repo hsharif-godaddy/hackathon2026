@@ -48,6 +48,7 @@ interface LRWeights {
     f1General: number
     regularizationC: number
     threshold: number
+    tunedThreshold?: number | null
     pcaDimensions: number | null
     pcaVarianceRetained: number | null
     trainedAt: string
