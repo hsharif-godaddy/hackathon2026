@@ -1,9 +1,10 @@
 'use client'
 
-import { ChoiceList } from '@airo/components/chat/choice-list'
+import { ChoiceList } from '@airo/components/input/choice-list'
 import Box from '@ux/box'
 
 import { useSendUserMessage } from '@/app/[market]/develop/components/chat/ChatContext'
+import { parseChoiceListIndex } from '@/app/[market]/develop/components/tool-renderers/choiceListIndex'
 import type { DefaultToolRendererProps } from '@/app/[market]/develop/components/tool-renderers/DefaultToolRenderer'
 import { useTranslations } from '@/hooks/useTranslations'
 import { useIsActivelyStreaming, useIsLoading } from '@/stores/useStreamingConversationStore'
@@ -55,9 +56,14 @@ export default function SuggestedResponseToolRenderer({
       </div>
 
       <ChoiceList
-        onDecision={(value) => handleSuggestionClick(widgetData.suggestions[parseInt(value, 10)])}
+        onDecision={(value) => {
+          const index = parseChoiceListIndex(value, 'suggested-response')
+          if (index === null) return
+          const suggestion = widgetData.suggestions[index]
+          if (suggestion) handleSuggestionClick(suggestion)
+        }}
         ariaLabel={widgetData.question}
-        variant="minimal"
+        disabled={isProcessing}
         optionDividers
       >
         {widgetData.suggestions.map((suggestion, index) => (

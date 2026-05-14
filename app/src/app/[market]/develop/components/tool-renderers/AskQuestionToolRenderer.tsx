@@ -1,13 +1,16 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { ChoiceList } from '@airo/components/chat/choice-list'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { ChoiceList } from '@airo/components/input/choice-list'
 import Box from '@ux/box'
 
 import { useSendUserMessage } from '@/app/[market]/develop/components/chat/ChatContext'
+import { parseChoiceListIndex } from '@/app/[market]/develop/components/tool-renderers/choiceListIndex'
 import type { DefaultToolRendererProps } from '@/app/[market]/develop/components/tool-renderers/DefaultToolRenderer'
 import DefaultToolRenderer from '@/app/[market]/develop/components/tool-renderers/DefaultToolRenderer'
+import { focusChoiceListOptionByIndex } from '@/app/[market]/develop/components/tool-renderers/focusChoiceListOptionByIndex'
 import OptionInput from '@/app/[market]/develop/components/tool-renderers/OptionInput'
+import { useNumberKeySelection } from '@/app/[market]/develop/components/tool-renderers/useNumberKeySelection'
 import { useTranslations } from '@/hooks/useTranslations'
 import { shipAnalyticsLog } from '@/lib/logging'
 import { prelaunchKindForUserMessage } from '@/lib/post-publish-prelaunch-ask-question'
@@ -79,6 +82,25 @@ export default function AskQuestionToolRenderer({
   }, [currentQuestionIndex, onQuestionChange, result, toolStatus, isLastAssistantMessage])
   const totalQuestionsForHooks = parsedQuestions?.length ?? 0
   const isSubmittedForHooks = totalQuestionsForHooks > 0 && currentQuestionIndex >= totalQuestionsForHooks
+
+  const suggestionCountForKeyboard =
+    ((parsedQuestions?.[currentQuestionIndex]) as Question | undefined)?.suggestions?.length ?? 0
+
+  const choiceListRef = useRef<HTMLDivElement>(null)
+  const focusChoiceOptionByIndex = useCallback(
+    (index: number) => focusChoiceListOptionByIndex(choiceListRef.current, index),
+    [],
+  )
+  useNumberKeySelection({
+    itemCount: suggestionCountForKeyboard,
+    disabled:
+      isProcessing ||
+      hideQuestion === true ||
+      isLastAssistantMessage === false ||
+      toolStatus !== 'completed',
+    onSelect: focusChoiceOptionByIndex,
+    choiceListContainerRef: choiceListRef,
+  })
 
   useEffect(() => {
     if (toolStatus !== 'completed' || !result || isLastAssistantMessage === false) return
@@ -185,14 +207,31 @@ export default function AskQuestionToolRenderer({
   }
 
   function handleOtherSubmit() {
-    if (!otherValue.trim()) return
+    const trimmed = otherValue.trim()
+    if (!trimmed) return
+
+    if (/^\d+$/.test(trimmed)) {
+      const numPressed = parseInt(trimmed, 10)
+      if (numPressed >= 1 && numPressed <= currentQuestion.suggestions.length) {
+        const suggestion = currentQuestion.suggestions[numPressed - 1]
+        const resolved = suggestion.value || suggestion.text
+        logAiroHQEvent({
+          category: 'click',
+          recommendation_task: 'builder_askquestion_suggestion_click',
+          recommendation_type: 'askquestion_suggestion',
+          recommendation_id: `q${currentQuestionIndex}_s${numPressed - 1}`,
+        })()
+        submitAnswer(`${numPressed} - _${resolved}_`)
+        return
+      }
+    }
     logAiroHQEvent({
       category: 'click',
       recommendation_task: 'builder_askquestion_other_submit',
       recommendation_type: 'askquestion_other',
       recommendation_id: `q${currentQuestionIndex}`,
     })()
-    submitAnswer(otherValue.trim())
+    submitAnswer(trimmed)
   }
 
   function handleOtherKeyDown(event: React.KeyboardEvent) {
@@ -216,21 +255,25 @@ export default function AskQuestionToolRenderer({
       )}
 
       <Box orientation="vertical" gap="sm">
-        <ChoiceList
-          onDecision={(value) => {
-            const index = parseInt(value, 10)
-            handleSuggestionClick(currentQuestion.suggestions[index], index)
-          }}
-          ariaLabel={currentQuestion.question}
-          variant="minimal"
-          optionDividers
-        >
-          {currentQuestion.suggestions.map((suggestion, index) => (
-            <ChoiceList.Item key={index} value={String(index)}>
-              {suggestion.text}
-            </ChoiceList.Item>
-          ))}
-        </ChoiceList>
+        <div ref={choiceListRef}>
+          <ChoiceList
+            onDecision={(value) => {
+              const index = parseChoiceListIndex(value, 'ask-question.suggestions')
+              if (index === null) return
+              const suggestion = currentQuestion.suggestions[index]
+              if (suggestion) handleSuggestionClick(suggestion, index)
+            }}
+            ariaLabel={currentQuestion.question}
+            disabled={isProcessing}
+            optionDividers
+          >
+            {currentQuestion.suggestions.map((suggestion, index) => (
+              <ChoiceList.Item key={index} value={String(index)}>
+                {suggestion.text}
+              </ChoiceList.Item>
+            ))}
+          </ChoiceList>
+        </div>
 
         {currentQuestion.allowOther !== false && (
           <OptionInput

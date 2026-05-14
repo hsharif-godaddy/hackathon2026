@@ -3,8 +3,8 @@
  */
 import '@testing-library/jest-dom'
 
-import { beforeEach,describe, expect, it, vi } from 'vitest'
-import { fireEvent,render, screen } from '@testing-library/react'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 
 import AskQuestionToolRenderer from '../AskQuestionToolRenderer'
 
@@ -74,6 +74,7 @@ const defaultProps = {
 describe('AskQuestionToolRenderer', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    Element.prototype.scrollIntoView = vi.fn()
   })
 
   it('returns null when toolStatus is not completed', () => {
@@ -252,6 +253,41 @@ describe('AskQuestionToolRenderer', () => {
     expect(onComplete).toHaveBeenCalled()
   })
 
+  it('Enter key in Other input resolves bare digit like submit', () => {
+    const result = makeResult([
+      makeQuestion('Pick?', [{ text: 'Red' }, { text: 'Blue' }]),
+    ])
+    render(
+      <AskQuestionToolRenderer
+        {...defaultProps}
+        result={result}
+      />,
+    )
+
+    const input = screen.getByRole('textbox')
+    fireEvent.change(input, { target: { value: '2' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+
+    expect(mockSendUserMessage).toHaveBeenCalledWith('2 - _Blue_', { isActionRequest: true })
+  })
+
+  it('Other input: decimal string submits literal (not bare digit)', () => {
+    const result = makeResult([
+      makeQuestion('Pick?', [{ text: 'Red' }]),
+    ])
+    render(
+      <AskQuestionToolRenderer
+        {...defaultProps}
+        result={result}
+      />,
+    )
+
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: '1.' } })
+    fireEvent.click(screen.getByLabelText('builder_common_submit'))
+
+    expect(mockSendUserMessage).toHaveBeenCalledWith('1.', { isActionRequest: true })
+  })
+
   it('Enter key in Other input submits the answer', () => {
     const result = makeResult([
       makeQuestion('What color?', [{ text: 'Red' }]),
@@ -287,5 +323,130 @@ describe('AskQuestionToolRenderer', () => {
     fireEvent.click(screen.getByText('Blue'))
 
     expect(mockSendUserMessage).toHaveBeenCalledWith('color_blue', { isActionRequest: true })
+  })
+
+  it('Other input: bare digits resolve to numbered suggestion message', () => {
+    const result = makeResult([
+      makeQuestion('Pick?', [{ text: 'Red' }, { text: 'Blue' }]),
+    ])
+    render(
+      <AskQuestionToolRenderer
+        {...defaultProps}
+        result={result}
+      />,
+    )
+
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: '2' } })
+    fireEvent.click(screen.getByLabelText('builder_common_submit'))
+
+    expect(mockSendUserMessage).toHaveBeenCalledWith('2 - _Blue_', { isActionRequest: true })
+  })
+
+  it('Other input: bare digits use suggestion value in formatted message', () => {
+    const result = makeResult([
+      makeQuestion('Pick?', [{ text: 'Blue', value: 'color_blue' }]),
+    ])
+    render(
+      <AskQuestionToolRenderer
+        {...defaultProps}
+        result={result}
+      />,
+    )
+
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: '1' } })
+    fireEvent.click(screen.getByLabelText('builder_common_submit'))
+
+    expect(mockSendUserMessage).toHaveBeenCalledWith('1 - _color_blue_', { isActionRequest: true })
+  })
+
+  it('Other input: non-bare numeric string submits literal text', () => {
+    const result = makeResult([
+      makeQuestion('Pick?', [{ text: 'Red' }]),
+    ])
+    render(
+      <AskQuestionToolRenderer
+        {...defaultProps}
+        result={result}
+      />,
+    )
+
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: '1abc' } })
+    fireEvent.click(screen.getByLabelText('builder_common_submit'))
+
+    expect(mockSendUserMessage).toHaveBeenCalledWith('1abc', { isActionRequest: true })
+  })
+
+  it('Other input: index above suggestion count submits literal', () => {
+    const result = makeResult([
+      makeQuestion('Pick?', [{ text: 'Red' }, { text: 'Blue' }]),
+    ])
+    render(
+      <AskQuestionToolRenderer
+        {...defaultProps}
+        result={result}
+      />,
+    )
+
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: '3' } })
+    fireEvent.click(screen.getByLabelText('builder_common_submit'))
+
+    expect(mockSendUserMessage).toHaveBeenCalledWith('3', { isActionRequest: true })
+  })
+
+  it('Other input: zero submits literal', () => {
+    const result = makeResult([
+      makeQuestion('Pick?', [{ text: 'Red' }]),
+    ])
+    render(
+      <AskQuestionToolRenderer
+        {...defaultProps}
+        result={result}
+      />,
+    )
+
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: '0' } })
+    fireEvent.click(screen.getByLabelText('builder_common_submit'))
+
+    expect(mockSendUserMessage).toHaveBeenCalledWith('0', { isActionRequest: true })
+  })
+
+  it('digit key moves listbox active item when focus is inside the list', async function digitActiveItem() {
+    const result = makeResult([
+      makeQuestion('Pick?', [{ text: 'Red' }, { text: 'Blue' }]),
+    ])
+    render(
+      <AskQuestionToolRenderer
+        {...defaultProps}
+        result={result}
+      />,
+    )
+
+    const options = screen.getAllByRole('option')
+    options[0].focus()
+    fireEvent.keyDown(window, { key: '2', code: 'Digit2' })
+
+    await waitFor(() => {
+      expect(screen.getByRole('listbox', { name: 'Pick?' })).toHaveFocus()
+      expect(options[1]).toHaveAttribute('data-visually-focused')
+    })
+  })
+
+  it('does not attach digit-focus shortcuts when hideQuestion is true', () => {
+    const result = makeResult([
+      makeQuestion('Pick?', [{ text: 'Red' }, { text: 'Blue' }]),
+    ])
+    render(
+      <AskQuestionToolRenderer
+        {...defaultProps}
+        result={result}
+        hideQuestion={true}
+      />,
+    )
+
+    const options = screen.getAllByRole('option')
+    fireEvent.keyDown(window, { key: '1', code: 'Digit1' })
+
+    expect(options[0]).not.toHaveFocus()
+    expect(options[1]).not.toHaveFocus()
   })
 })

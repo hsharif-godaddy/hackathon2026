@@ -1,9 +1,9 @@
 'use client'
 
 import { AnimatePresence, motion } from 'framer-motion'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { ChoiceList } from '@airo/components/chat/choice-list'
+import { ChoiceList } from '@airo/components/input/choice-list'
 import { useQueryClient } from '@tanstack/react-query'
 
 import { useSendUserMessage } from '@/app/[market]/develop/components/chat/ChatContext'
@@ -13,9 +13,14 @@ import ThemePreviewInputPanel from '@/app/[market]/develop/components/chat/Theme
 import { useLatestNBAs } from '@/app/[market]/develop/components/chat/useLatestNBAs'
 import ThinkingIndicator from '@/app/[market]/develop/components/ThinkingIndicator'
 import AskQuestionToolRenderer from '@/app/[market]/develop/components/tool-renderers/AskQuestionToolRenderer'
-import OptionButton from '@/app/[market]/develop/components/tool-renderers/OptionButton'
+import { parseChoiceListIndex } from '@/app/[market]/develop/components/tool-renderers/choiceListIndex'
+import { focusChoiceListOptionByIndex } from '@/app/[market]/develop/components/tool-renderers/focusChoiceListOptionByIndex'
 import OptionInput from '@/app/[market]/develop/components/tool-renderers/OptionInput'
 import RebuildPageSelectorToolRenderer from '@/app/[market]/develop/components/tool-renderers/RebuildPageSelectorToolRenderer'
+import {
+  isNonChatTextEntryActive,
+  shouldAllowChoiceListDigitShortcut,
+} from '@/app/[market]/develop/components/tool-renderers/shortcutFocus'
 import { useNumberKeySelection } from '@/app/[market]/develop/components/tool-renderers/useNumberKeySelection'
 import { ViewMode } from '@/app/[market]/develop/components/types'
 import { useAppIdFromParams } from '@/app/[market]/develop/components/utils'
@@ -27,7 +32,6 @@ import { previewFontInIframe } from '@/app/[market]/develop/components/utils/pre
 import { previewThemeInIframe } from '@/app/[market]/develop/components/utils/previewThemeInIframe'
 import { useNextActions } from '@/app/[market]/develop/hooks/useNextActions'
 import { useRebuildPages } from '@/app/[market]/develop/hooks/useRebuildPages'
-import { useIsMobile } from '@/hooks/use-mobile'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
 import { logger } from '@/lib/request-context'
@@ -266,15 +270,17 @@ function InputActionsPanelLegacy() {
   const showOtherInput = nbaData?.source === 'askQuestion' && nbaData?.allowOther
   const isAskQuestionActive = isAskQuestionNBA(nbaData) && !!nbaData?.toolResult
 
+  const nbaCombinedChoiceListRef = useRef<HTMLDivElement>(null)
+  const focusNBAChoiceOptionByIndex = useCallback(
+    (index: number) => focusChoiceListOptionByIndex(nbaCombinedChoiceListRef.current, index),
+    [],
+  )
+
   useNumberKeySelection({
     itemCount: isAskQuestionActive ? 0 : nbaSuggestions.length,
     disabled: isProcessing,
-    onSelect: useCallback((index: number) => {
-      if (!sendUserMessage || index >= nbaSuggestions.length) return
-      const suggestion = nbaSuggestions[index]
-      sendUserMessage(suggestion.value || suggestion.text, { isActionRequest: true })
-      setOtherValue('')
-    }, [nbaSuggestions, sendUserMessage]),
+    onSelect: focusNBAChoiceOptionByIndex,
+    choiceListContainerRef: nbaCombinedChoiceListRef,
   })
 
   function handlePlanItemClick(item: TodoItem) {
@@ -415,18 +421,25 @@ function InputActionsPanelLegacy() {
             )}
 
             {nbaSuggestions.length > 0 && (
-              <ChoiceList
-                onDecision={(value) => handleSuggestionClick(nbaSuggestions[parseInt(value, 10)])}
-                ariaLabel={nbaData?.question ?? t('builder_todo_continue_building')}
-                variant="minimal"
-                optionDividers
-              >
-                {nbaSuggestions.map((suggestion, index) => (
-                  <ChoiceList.Item key={index} value={String(index)}>
-                    {suggestion.text}
-                  </ChoiceList.Item>
-                ))}
-              </ChoiceList>
+              <div ref={nbaCombinedChoiceListRef}>
+                <ChoiceList
+                  onDecision={(value) => {
+                    const index = parseChoiceListIndex(value, 'input-actions-panel.nba-combined')
+                    if (index === null) return
+                    const s = nbaSuggestions[index]
+                    if (s) handleSuggestionClick(s)
+                  }}
+                  ariaLabel={nbaData?.question ?? t('builder_todo_continue_building')}
+                  disabled={isProcessing}
+                  optionDividers
+                >
+                  {nbaSuggestions.map((suggestion, index) => (
+                    <ChoiceList.Item key={index} value={String(index)}>
+                      {suggestion.text}
+                    </ChoiceList.Item>
+                  ))}
+                </ChoiceList>
+              </div>
             )}
 
             {showOtherInput && (
@@ -464,16 +477,25 @@ function InputActionsPanelLegacy() {
         )}
 
         {/* Collapsed: plan preview items; hidden when expanded or when NBAs are active */}
-        {!isAskQuestionActive && nbaSuggestions.length === 0 && !fullPlanExpanded && planPreviewItems.map((item, index) => (
-          <OptionButton
-            key={item.id}
-            text={item.title}
+        {!isAskQuestionActive && nbaSuggestions.length === 0 && !fullPlanExpanded && planPreviewItems.length > 0 && (
+          <ChoiceList
+            onDecision={(value) => {
+              const index = parseChoiceListIndex(value, 'input-actions-panel.plan-preview')
+              if (index === null) return
+              const item = planPreviewItems[index]
+              if (item) handlePlanItemClick(item)
+            }}
+            ariaLabel={t('builder_todo_continue_building')}
             disabled={isProcessing}
-            onClick={() => handlePlanItemClick(item)}
-            animationDelay={(nbaSuggestions.length + index) * 0.1}
-            isSelectable={true}
-          />
-        ))}
+            optionDividers
+          >
+            {planPreviewItems.map((item, index) => (
+              <ChoiceList.Item key={item.id} value={String(index)}>
+                {item.title}
+              </ChoiceList.Item>
+            ))}
+          </ChoiceList>
+        )}
 
         {/* Expanded: full plan section replaces preview items */}
         <AnimatePresence initial={false}>
@@ -559,48 +581,53 @@ function PlanToggleLabel({
   )
 }
 
-/**
- * Plan-sourced OptionButton with a list icon on the right to distinguish from NBAs
- */
 type PlanOptionsListOrientation = 'vertical' | 'horizontal'
 
 function PlanOptionsList({
+  ariaLabel,
+  disabled = false,
   items,
-  disabled,
+  listContainerRef,
   onItemClick,
   orientation = 'vertical',
-  maxKeyboardShortcuts = 4,
-  animationIndexOffset = 0,
 }: {
+  ariaLabel: string
+  disabled?: boolean
   items: TodoItem[]
-  disabled: boolean
+  listContainerRef?: RefObject<HTMLDivElement | null>
   onItemClick: (item: TodoItem) => void
   orientation?: PlanOptionsListOrientation
-  maxKeyboardShortcuts?: number
-  animationIndexOffset?: number
 }) {
   const isHorizontal = orientation === 'horizontal'
-
-  return (
-    <div
-      className={
-        isHorizontal
-          ? 'flex flex-row gap-1.5 overflow-x-auto p-1.5 rounded-md'
-          : 'flex flex-col gap-1'
-      }
+  const list = (
+    <ChoiceList
+      onDecision={(value) => {
+        const index = parseChoiceListIndex(value, 'input-actions-panel.plan-options')
+        if (index === null) return
+        const item = items[index]
+        if (item) onItemClick(item)
+      }}
+      ariaLabel={ariaLabel}
+      disabled={disabled}
+      optionDividers
     >
       {items.map((item, index) => (
-        <OptionButton
-          key={item.id}
-          text={item.title}
-          disabled={disabled}
-          onClick={() => onItemClick(item)}
-          animationDelay={(animationIndexOffset + index) * 0.1}
-          keyboardShortcut={index < maxKeyboardShortcuts ? index + 1 : undefined}
-          compact={isHorizontal}
-          isSelectable={true}
-        />
+        <ChoiceList.Item key={item.id} value={String(index)}>
+          {item.title}
+        </ChoiceList.Item>
       ))}
+    </ChoiceList>
+  )
+  if (!isHorizontal) {
+    return (
+      <div ref={listContainerRef} className="contents">
+        {list}
+      </div>
+    )
+  }
+  return (
+    <div ref={listContainerRef} className="overflow-x-auto rounded-md p-1.5 [&_[role=listbox]]:flex [&_[role=listbox]]:min-h-0 [&_[role=listbox]]:flex-row [&_[role=listbox]]:flex-nowrap [&_[role=listbox]]:gap-1.5 [&_[role=option]]:min-w-0 [&_[role=option]]:flex-shrink-0">
+      {list}
     </div>
   )
 }
@@ -718,17 +745,26 @@ function FullPlanSection({
                 <span className="text-sm line-through text-muted-foreground truncate">{item.title}</span>
               </div>
             ))}
-            {/* Uncompleted items — actionable, with plan icon */}
-            {uncompletedItems.map((item, index) => (
-              <OptionButton
-                key={item.id}
-                text={item.title}
+            {/* Uncompleted items — actionable */}
+            {uncompletedItems.length > 0 && (
+              <ChoiceList
+                onDecision={(value) => {
+                  const index = parseChoiceListIndex(value, 'input-actions-panel.plan-full')
+                  if (index === null) return
+                  const item = uncompletedItems[index]
+                  if (item) onItemClick(item)
+                }}
+                ariaLabel={t('builder_todo_continue_building')}
                 disabled={isProcessing}
-                onClick={() => onItemClick(item)}
-                animationDelay={index * 0.05}
-                isSelectable={true}
-              />
-            ))}
+                optionDividers
+              >
+                {uncompletedItems.map((item, index) => (
+                  <ChoiceList.Item key={item.id} value={String(index)}>
+                    {item.title}
+                  </ChoiceList.Item>
+                ))}
+              </ChoiceList>
+            )}
           </>
         ) : (
           <div className="text-xs text-muted-foreground text-center py-1">
@@ -928,8 +964,8 @@ function InputActionsPanelThemeSelection({
   const isProcessing = isStreaming || isLoading
   const messages = useMessages()
   const viewMode = useDevelopPageStore((state) => state.viewMode)
+  const isMobile = useDevelopPageStore((state) => state.isMobile)
   const appId = useAppIdFromParams()
-  const isMobile = useIsMobile()
   const mayBeRebuildApp = useMemo(() =>
     messages.some(msg =>
       msg.role === 'assistant' &&
@@ -967,6 +1003,8 @@ function InputActionsPanelThemeSelection({
   const [selectedFontIndex, setSelectedFontIndex] = useState<number>(0)
   const [askQuestionCompleted, setAskQuestionCompleted] = useState(false)
   const [currentAskQuestionText, setCurrentAskQuestionText] = useState<string | null>(null)
+  const nbaChoiceShortcutsRef = useRef<HTMLDivElement>(null)
+  const planPreviewShortcutsRef = useRef<HTMLDivElement>(null)
   useEffect(() => { setAskQuestionCompleted(false); setCurrentAskQuestionText(null) }, [nbaData?.toolResult])
   const hasPlan = !!currentList && items.length > 0
   const totalItems = items.length
@@ -1270,9 +1308,6 @@ function InputActionsPanelThemeSelection({
     [isProcessing, sendUserMessage]
   )
 
-  const nbaSuggestionsRef = useRef(nbaSuggestions)
-  nbaSuggestionsRef.current = nbaSuggestions
-
   useEffect(() => {
     if (isProcessing || isModalOpen || showColor || isAskQuestionActive) return
 
@@ -1285,36 +1320,21 @@ function InputActionsPanelThemeSelection({
       if (e.metaKey || e.ctrlKey || e.altKey) return
 
       const activeEl = document.activeElement as HTMLElement | null
-      if (activeEl) {
-        const tagName = activeEl.tagName
-        if (
-          tagName === 'INPUT' ||
-          tagName === 'TEXTAREA' ||
-          activeEl.isContentEditable ||
-          activeEl.closest?.('[contenteditable="true"]')
-        ) {
-          return
-        }
-      }
+      if (isNonChatTextEntryActive(activeEl)) return
+
+      const listRoot = hasNBAShortcuts ? nbaChoiceShortcutsRef.current : planPreviewShortcutsRef.current
+      if (!shouldAllowChoiceListDigitShortcut(activeEl, { current: listRoot })) return
 
       const keyNum = parseInt(e.key, 10)
       if (isNaN(keyNum) || keyNum < 1 || keyNum > itemCount) return
 
       e.preventDefault()
-      if (hasNBAShortcuts) {
-        const suggestion = nbaSuggestionsRef.current[keyNum - 1]
-        if (!suggestion) return
-        const text = suggestion.value || suggestion.text
-        queryClient.removeQueries({ queryKey: ['next-actions', appId] })
-        sendUserMessage(text, { isActionRequest: true })
-      } else {
-        handlePlanItemClickCallback(keyboardEnabledItems[keyNum - 1])
-      }
+      focusChoiceListOptionByIndex(listRoot, keyNum - 1)
     }
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [isProcessing, isModalOpen, showColor, isAskQuestionActive, keyboardEnabledItems, handlePlanItemClickCallback, nbaSuggestions.length, queryClient, appId, sendUserMessage])
+  }, [isProcessing, isModalOpen, showColor, isAskQuestionActive, keyboardEnabledItems, nbaSuggestions.length])
 
   function handleColorCancel() {
     if (activeColorSchemeSuggest) {
@@ -1451,23 +1471,35 @@ function InputActionsPanelThemeSelection({
           hideQuestion={true}
         />
       ) : nbaSuggestions.length > 0 ? (
-        <ChoiceList
-          onDecision={(value) => handleSuggestionClick(nbaSuggestions[parseInt(value, 10)])}
-          ariaLabel={nbaData?.question ?? t('builder_todo_continue_building')}
-          variant="minimal"
-          optionDividers
-        >
-          {nbaSuggestions.map((suggestion, index) => (
-            <ChoiceList.Item key={index} value={String(index)}>
-              {suggestion.text}
-            </ChoiceList.Item>
-          ))}
-        </ChoiceList>
+        <div ref={nbaChoiceShortcutsRef}>
+          <ChoiceList
+            onDecision={(value) => {
+              const index = parseChoiceListIndex(value, 'input-actions-panel.nba-theme')
+              if (index === null) return
+              const s = nbaSuggestions[index]
+              if (s) handleSuggestionClick(s)
+            }}
+            ariaLabel={nbaData?.question ?? t('builder_todo_continue_building')}
+            disabled={isProcessing}
+            optionDividers
+          >
+            {nbaSuggestions.map((suggestion, index) => (
+              <ChoiceList.Item key={index} value={String(index)}>
+                {suggestion.text}
+              </ChoiceList.Item>
+            ))}
+          </ChoiceList>
+        </div>
       ) : !hasPendingPlanItems && nextActionSuggestions.length > 0 ? (
         <ChoiceList
-          onDecision={(value) => handleSuggestionClick(nextActionSuggestions[parseInt(value, 10)].text)}
+          onDecision={(value) => {
+            const index = parseChoiceListIndex(value, 'input-actions-panel.next-actions-theme')
+            if (index === null) return
+            const s = nextActionSuggestions[index]
+            if (s) handleSuggestionClick(s.text)
+          }}
           ariaLabel={t('builder_todo_continue_building')}
-          variant="minimal"
+          disabled={isProcessing}
           optionDividers
         >
           {nextActionSuggestions.map((suggestion, index) => (
@@ -1490,11 +1522,12 @@ function InputActionsPanelThemeSelection({
 
       {!isAskQuestionActive && nbaSuggestions.length === 0 && planPreviewItems.length > 0 && (
         <PlanOptionsList
-          items={planPreviewItems}
+          ariaLabel={t('builder_todo_continue_building')}
           disabled={isProcessing}
+          items={planPreviewItems}
+          listContainerRef={planPreviewShortcutsRef}
           onItemClick={handlePlanItemClickCallback}
           orientation={isMobile ? 'horizontal' : 'vertical'}
-          maxKeyboardShortcuts={MAX_KEYBOARD_SHORTCUTS}
         />
       )}
     </div>

@@ -4,7 +4,7 @@
 import '@testing-library/jest-dom'
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { screen } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
 
 import { ViewMode } from '@/app/[market]/develop/components/types'
 import type { ColorSchemePaletteOption } from '@/app/[market]/develop/components/utils/findLatestColorSchemeSuggest'
@@ -115,7 +115,7 @@ describe('InputActionsPanel', () => {
     vi.mocked(TodoListStore.useViewState).mockReturnValue(null)
     vi.mocked(useLatestNBAsModule.useLatestNBAs).mockReturnValue(null)
     vi.mocked(DevelopPageStore.useDevelopPageStore).mockImplementation((selector: any) =>
-      selector({ viewMode: ViewMode.PREVIEW })
+      selector({ viewMode: ViewMode.PREVIEW, isMobile: false })
     )
   })
 
@@ -586,6 +586,44 @@ describe('InputActionsPanel', () => {
     })
   })
 
+  describe('theme selection PlanOptionsList mobile layout', () => {
+    const mockTodoListPlanOnly = {
+      id: 'list-1',
+      appId: 'test-app-id',
+      name: 'Build Website',
+      items: [
+        { id: 'item-1', listId: 'list-1', title: 'Task A', completed: false },
+        { id: 'item-2', listId: 'list-1', title: 'Task B', completed: false },
+      ],
+    }
+
+    beforeEach(() => {
+      vi.mocked(TodoListStore.useCurrentList).mockReturnValue(mockTodoListPlanOnly)
+      vi.mocked(TodoListStore.useViewState).mockReturnValue(null)
+      vi.mocked(StreamingStore.useMessages).mockReturnValue([
+        { id: 'msg-1', role: 'user', content: 'test', timestamp: new Date() },
+      ])
+      vi.mocked(useLatestNBAsModule.useLatestNBAs).mockReturnValue(null)
+      vi.mocked(DevelopPageStore.useDevelopPageStore).mockImplementation((selector: any) =>
+        selector({ viewMode: ViewMode.PREVIEW, isMobile: true }),
+      )
+    })
+
+    it('wraps plan ChoiceList in horizontal scroll container when isMobile is true', () => {
+      renderWithProviders(<InputActionsPanel />)
+
+      const listbox = screen.getByRole('listbox', { name: 'builder_todo_continue_building' })
+      let scrollWrapper: HTMLElement | null = null
+      for (let node: HTMLElement | null = listbox; node; node = node.parentElement) {
+        if (node.classList.contains('overflow-x-auto')) {
+          scrollWrapper = node
+          break
+        }
+      }
+      expect(scrollWrapper).not.toBeNull()
+    })
+  })
+
   describe('keyboard shortcuts for plan items', () => {
     const mockTodoList = {
       id: 'list-1',
@@ -604,16 +642,35 @@ describe('InputActionsPanel', () => {
       vi.mocked(TodoListStore.useCurrentList).mockReturnValue(mockTodoList)
       vi.mocked(TodoListStore.useViewState).mockReturnValue(null)
       vi.mocked(StreamingStore.useMessages).mockReturnValue([{ id: 'msg-1', role: 'user', content: 'test', timestamp: new Date() }])
+      Element.prototype.scrollIntoView = vi.fn()
     })
 
-    it('should trigger plan item selection when pressing number key 1', async () => {
+    /** Mirrors ChatInput chrome so digit shortcuts match production (empty prompt + card). */
+    function renderInputActionsPanelAsInComposer() {
+      const view = renderWithProviders(
+        <div data-chat-composer-card data-testid="chat-input-card">
+          <div contentEditable id="chat-input-textarea" suppressContentEditableWarning tabIndex={0} />
+          <InputActionsPanel />
+        </div>
+      )
+      document.getElementById('chat-input-textarea')?.focus()
+      return view
+    }
+
+    it('focuses plan item option on number key 1; Enter sends the plan action', async function focusPlanOneEnter() {
       const mockSendMessage = vi.fn()
       vi.mocked(ChatContext.useSendUserMessage).mockReturnValue(mockSendMessage)
 
-      renderWithProviders(<InputActionsPanel />)
-
-      // Simulate pressing '1' key
+      const { user } = renderInputActionsPanelAsInComposer()
       window.dispatchEvent(new KeyboardEvent('keydown', { key: '1' }))
+
+      const options = screen.getAllByRole('option')
+      await waitFor(() => {
+        expect(screen.getByRole('listbox', { name: 'builder_todo_continue_building' })).toHaveFocus()
+        expect(options[0]).toHaveAttribute('data-visually-focused')
+      })
+
+      await user.keyboard('{Enter}')
 
       expect(mockSendMessage).toHaveBeenCalledWith(
         'Create homepage',
@@ -630,13 +687,21 @@ describe('InputActionsPanel', () => {
       )
     })
 
-    it('should trigger plan item selection when pressing number key 2', async () => {
+    it('focuses plan item option on number key 2; Enter sends the plan action', async function focusPlanTwoEnter() {
       const mockSendMessage = vi.fn()
       vi.mocked(ChatContext.useSendUserMessage).mockReturnValue(mockSendMessage)
 
-      renderWithProviders(<InputActionsPanel />)
+      const { user } = renderInputActionsPanelAsInComposer()
 
       window.dispatchEvent(new KeyboardEvent('keydown', { key: '2' }))
+
+      const options = screen.getAllByRole('option')
+      await waitFor(() => {
+        expect(screen.getByRole('listbox', { name: 'builder_todo_continue_building' })).toHaveFocus()
+        expect(options[1]).toHaveAttribute('data-visually-focused')
+      })
+
+      await user.keyboard('{Enter}')
 
       expect(mockSendMessage).toHaveBeenCalledWith(
         'Add contact page',
@@ -653,13 +718,21 @@ describe('InputActionsPanel', () => {
       )
     })
 
-    it('should trigger plan item selection when pressing number key 3', async () => {
+    it('focuses plan item option on number key 3; Enter sends the plan action', async function focusPlanThreeEnter() {
       const mockSendMessage = vi.fn()
       vi.mocked(ChatContext.useSendUserMessage).mockReturnValue(mockSendMessage)
 
-      renderWithProviders(<InputActionsPanel />)
+      const { user } = renderInputActionsPanelAsInComposer()
 
       window.dispatchEvent(new KeyboardEvent('keydown', { key: '3' }))
+
+      const options = screen.getAllByRole('option')
+      await waitFor(() => {
+        expect(screen.getByRole('listbox', { name: 'builder_todo_continue_building' })).toHaveFocus()
+        expect(options[2]).toHaveAttribute('data-visually-focused')
+      })
+
+      await user.keyboard('{Enter}')
 
       expect(mockSendMessage).toHaveBeenCalledWith(
         'Build about section',
@@ -676,13 +749,21 @@ describe('InputActionsPanel', () => {
       )
     })
 
-    it('should trigger plan item selection when pressing number key 4', async () => {
+    it('focuses plan item option on number key 4; Enter sends the plan action', async function focusPlanFourEnter() {
       const mockSendMessage = vi.fn()
       vi.mocked(ChatContext.useSendUserMessage).mockReturnValue(mockSendMessage)
 
-      renderWithProviders(<InputActionsPanel />)
+      const { user } = renderInputActionsPanelAsInComposer()
 
       window.dispatchEvent(new KeyboardEvent('keydown', { key: '4' }))
+
+      const options = screen.getAllByRole('option')
+      await waitFor(() => {
+        expect(screen.getByRole('listbox', { name: 'builder_todo_continue_building' })).toHaveFocus()
+        expect(options[3]).toHaveAttribute('data-visually-focused')
+      })
+
+      await user.keyboard('{Enter}')
 
       expect(mockSendMessage).toHaveBeenCalledWith(
         'Add footer',
@@ -703,7 +784,7 @@ describe('InputActionsPanel', () => {
       const mockSendMessage = vi.fn()
       vi.mocked(ChatContext.useSendUserMessage).mockReturnValue(mockSendMessage)
 
-      renderWithProviders(<InputActionsPanel />)
+      renderInputActionsPanelAsInComposer()
 
       window.dispatchEvent(new KeyboardEvent('keydown', { key: '5' }))
 
@@ -715,7 +796,7 @@ describe('InputActionsPanel', () => {
       vi.mocked(ChatContext.useSendUserMessage).mockReturnValue(mockSendMessage)
       vi.mocked(StreamingStore.useIsActivelyStreaming).mockReturnValue(true)
 
-      renderWithProviders(<InputActionsPanel />)
+      renderInputActionsPanelAsInComposer()
 
       window.dispatchEvent(new KeyboardEvent('keydown', { key: '1' }))
 

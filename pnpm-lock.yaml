@@ -13,8 +13,8 @@ catalogs:
       specifier: ^3.0.10
       version: 3.0.10
     '@airo/components':
-      specifier: ^3.3.0
-      version: 3.3.0
+      specifier: ^4.0.0
+      version: 4.0.0
     '@babel/generator':
       specifier: ^7.29.1
       version: 7.29.1
@@ -593,7 +593,7 @@ importers:
         version: 2.1.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(typescript@5.9.3)
       '@airo/components':
         specifier: 'catalog:'
-        version: 3.3.0(b7994c115a8dcba2488f321fa671ccda)
+        version: 4.0.0(b7994c115a8dcba2488f321fa671ccda)
       '@airo/shared':
         specifier: workspace:*
         version: link:../packages/shared
@@ -1918,8 +1918,8 @@ packages:
       react: 19.1.0
       react-dom: 19.1.0
 
-  '@airo/components@3.3.0':
-    resolution: {integrity: sha512-gwU1XMmqd5rQgQN4NAuON18U55NhneY3Q1EbaIqoUGd/GwgvjcvA4u0jrezL57iO0cKvvRzcj23NyA3VyIA1XA==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@airo/components/-/@airo/components-3.3.0.tgz}
+  '@airo/components@4.0.0':
+    resolution: {integrity: sha512-VrPONgRf9mVYd+p0tnBp+PPQNA7HSw9PYJ8B4vLJJvEGMDBvPn82kMGk+yaWRrPrClmPTo1hcvMDTmp+JseY0g==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/npm-user-experience-local/@airo/components/-/@airo/components-4.0.0.tgz}
     engines: {node: '>=22', npm: '>=10'}
     peerDependencies:
       '@godaddy/antares': ^0.1.0
@@ -14164,7 +14164,7 @@ snapshots:
       - prop-types
       - typescript
 
-  '@airo/components@3.3.0(b7994c115a8dcba2488f321fa671ccda)':
+  '@airo/components@4.0.0(b7994c115a8dcba2488f321fa671ccda)':
     dependencies:
       '@ux/box': 2500.9.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/button': 2500.11.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)

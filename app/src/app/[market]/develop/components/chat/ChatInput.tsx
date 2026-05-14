@@ -406,6 +406,7 @@ export default function ChatInput({
     <div className="px-2 sm:px-3 md:px-0 mt-1 mt-auto pb-1">
       <div id="tour-chat-input" className="relative">
         <div
+          data-chat-composer-card
           data-testid="chat-input-card"
           className={cardClassName}
           onDragEnter={handleDragEnter}
