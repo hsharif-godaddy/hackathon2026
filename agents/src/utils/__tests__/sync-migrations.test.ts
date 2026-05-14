@@ -151,7 +151,7 @@ describe('sync-template-files migrations', () => {
 
       expect(seededEvents).toHaveLength(1);
       expect(seededEvents[0]).toMatchObject({
-        file: 'src/entry-server.tsx',
+        seededFile: 'src/entry-server.tsx',
         migration: 'seed-entry-server-tsx',
       });
     });
