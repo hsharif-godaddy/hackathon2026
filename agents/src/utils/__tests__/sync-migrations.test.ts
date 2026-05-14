@@ -308,7 +308,7 @@ describe('sync-template-files migrations', () => {
       // The preservation guard must match only real import specifiers, not
       // comments or changelog strings — otherwise apps that cleaned up the
       // import but left a "// vite-plugin-api-routes removed YYYY-MM-DD" line
-      // stay stuck with the dep and isSsrInstalled() stays false.
+      // stay stuck with the dep unnecessarily.
       setupBareAppWith({ entry: MARKED_ENTRY });
       writeFileSync(
         join(dir, 'vite.config.ts'),
@@ -1589,7 +1589,7 @@ export default app;
       expect(isSsrInstalled(dir)).toBe(false);
     });
 
-    it('returns false when dependencies still contains vite-plugin-api-routes', () => {
+    it('returns true when vite-plugin-api-routes is intentionally preserved', () => {
       seedInstalledSsr(dir);
       writeFileSync(
         join(dir, 'package.json'),
@@ -1604,18 +1604,18 @@ export default app;
         ) + '\n',
         'utf8',
       );
-      expect(isSsrInstalled(dir)).toBe(false);
+      expect(isSsrInstalled(dir)).toBe(true);
     });
 
-    it('returns false when devDependencies still contains vite-plugin-api-routes', () => {
+    it('returns false when preserved dep is present but --ssr is missing from build', () => {
       seedInstalledSsr(dir);
       writeFileSync(
         join(dir, 'package.json'),
         JSON.stringify(
           {
-            scripts: { build: 'vite build && vite build --ssr src/server/entry.ts' },
-            dependencies: {},
-            devDependencies: { 'vite-plugin-api-routes': '^1.0.0' },
+            scripts: { build: 'vite build' },
+            dependencies: { 'vite-plugin-api-routes': '^1.0.0' },
+            devDependencies: {},
           },
           null,
           2,

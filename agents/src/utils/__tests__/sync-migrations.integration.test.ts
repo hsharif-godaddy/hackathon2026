@@ -784,6 +784,49 @@ describe('sync-template-files black-box migration harness', () => {
     );
   });
 
+  it('preserved vite-plugin-api-routes dep does not block HTML migrations when SSR is otherwise installed', async () => {
+    const customerDir = tempDir('sync-migrations-preserved-dep-');
+    seedSsrCandidateApp(customerDir, {
+      entry: markedEntry,
+      configureJs: false,
+      bundleJs: false,
+      packageJson: {
+        name: 'fixture-app',
+        version: '1.0.0',
+        type: 'module',
+        scripts: { build: 'vite build && vite build --ssr src/server/entry.ts' },
+        dependencies: { 'vite-plugin-api-routes': '^0.1.0' },
+        devDependencies: {},
+      },
+    });
+    writeFile(
+      customerDir,
+      'vite.config.ts',
+      `import apiRoutes from 'vite-plugin-api-routes';\nimport react from '@vitejs/plugin-react';\nexport default { plugins: [react(), apiRoutes()] };\n`,
+    );
+
+    const result = await runSync(customerDir);
+    expect(result.exitCode).toBe(0);
+    expectNoStderr(result.stderr);
+
+    const events = parseMigrationEvents(result.stdout);
+    const byId = Object.fromEntries(events.map((e) => [e.migrationId, e]));
+
+    // Plugin preserved because vite.config.ts imports it.
+    expect(byId['migrate-to-ssr-entry']?.event).toBe('migration.migrate-to-ssr-entry.applied');
+    const pkg = readJson(join(customerDir, 'package.json'));
+    expect(pkg.dependencies['vite-plugin-api-routes']).toBe('^0.1.0');
+
+    // HTML migrations run despite preserved dep — the regression this PR fixes.
+    expect(byId['inject-ssr-markers']?.event).toBe('migration.inject-ssr-markers.applied');
+    expect(byId['strip-stale-index-title']?.event).toBe('migration.strip-stale-index-title.applied');
+
+    const html = readFileSync(join(customerDir, 'index.html'), 'utf8');
+    expect(html).toContain('<!--app-head-->');
+    expect(html).toContain('<!--app-html-->');
+    expect(html).not.toMatch(/<title[\s>]/i);
+  });
+
   it('emits isSsrInstalled read errors on stderr without failing the sync run', async () => {
     const customerDir = tempDir('sync-migrations-ssr-read-error-');
     seedInstalledSsrApp(customerDir);

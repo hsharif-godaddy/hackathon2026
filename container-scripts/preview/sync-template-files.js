@@ -409,8 +409,6 @@ export function isSsrInstalled(customerDir) {
 
     const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
     if (!pkg.scripts?.build?.includes('--ssr')) return false;
-    if (pkg.dependencies?.['vite-plugin-api-routes']) return false;
-    if (pkg.devDependencies?.['vite-plugin-api-routes']) return false;
   } catch (err) {
     // ENOENT on pkgPath is a legitimate "not installed" state — entry.ts
     // exists but package.json doesn't. Silent false for that case.
