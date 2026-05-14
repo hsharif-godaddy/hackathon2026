@@ -65,13 +65,13 @@ export class ASTStyleEditor extends ASTEditorBase {
 
     // Add style-specific data to the result using stored changes
     const changes = this.lastProcessResult || {
-            oldClassName: '',
-            newClassName: '',
-            property: request.property,
-            value: request.value
+      oldClassName: '',
+      newClassName: '',
+      property: request.property,
+      value: request.value
     };
 
-        return {
+    return {
       ...baseResult,
       changes,
       commitHash: (baseResult as any).commitHash
@@ -90,9 +90,15 @@ export class ASTStyleEditor extends ASTEditorBase {
       }
     }
 
-    // Check tag name (using base class helper)
-    const tagName = this.getTagName(element);
-    if (!tagName || tagName.toLowerCase() !== elementInfo.tagName.toLowerCase()) {
+    // Check tag name — handle member expressions (motion.h1 → h1) since DOM only reports the base tag
+    let baseTag = this.getTagName(element);
+    if (!baseTag) {
+      const name = element.openingElement.name;
+      if (this.t.isJSXMemberExpression(name) && this.t.isJSXIdentifier(name.property)) {
+        baseTag = name.property.name;
+      }
+    }
+    if (!baseTag || baseTag.toLowerCase() !== elementInfo.tagName.toLowerCase()) {
       return false;
     }
 
@@ -103,7 +109,7 @@ export class ASTStyleEditor extends ASTEditorBase {
 
     logger.debug('Target element found for AST style edit', {
       component: 'ASTStyleEditor',
-      tagName,
+      tagName: baseTag,
       line: element.loc?.start.line
     });
 
@@ -113,7 +119,7 @@ export class ASTStyleEditor extends ASTEditorBase {
 
       // Check for dynamic className (can't edit these)
       const openingElement = element.openingElement;
-          const classNameAttr = openingElement.attributes.find(
+      const classNameAttr = openingElement.attributes.find(
         (attr: any) => this.t.isJSXAttribute(attr) && attr.name.name === 'className'
       ) as t.JSXAttribute | undefined;
 
@@ -165,8 +171,8 @@ export class ASTStyleEditor extends ASTEditorBase {
     value: string,
     newStyle?: string
   ): void {
-    // Only apply inline styles if we have them
-    if (!newStyle && !['color', 'backgroundColor', 'fontWeight', 'fontStyle'].includes(property)) {
+    // Only apply inline styles for color properties; fontWeight/fontStyle use className
+    if (!newStyle && !['color', 'backgroundColor'].includes(property)) {
       return;
     }
 
@@ -207,8 +213,6 @@ export class ASTStyleEditor extends ASTEditorBase {
       const cssPropertyMap: Record<string, string> = {
         'color': 'color',
         'backgroundColor': 'backgroundColor',
-        'fontWeight': 'fontWeight',
-        'fontStyle': 'fontStyle'
       };
 
       const reactProperty = cssPropertyMap[property];
@@ -297,8 +301,7 @@ export class ASTStyleEditor extends ASTEditorBase {
   private applyStyleChange(
     currentClassName: string,
     property: string,
-    value: string,
-    _newStyle?: string
+    value: string
   ): string {
     const classes = currentClassName.split(/\s+/).filter(Boolean);
 
@@ -323,13 +326,20 @@ export class ASTStyleEditor extends ASTEditorBase {
       }
 
       case 'fontWeight': {
-        // For font weight, we rely on inline styles now, so no className changes needed
-        return currentClassName;
+        const filtered = classes.filter(c => c !== 'font-bold' && c !== 'font-normal');
+        if (value === 'bold') {
+          filtered.push('font-bold');
+        }
+        return filtered.join(' ');
       }
 
-      case 'fontStyle':
-        // For font style (italic), we rely on inline styles now, so no className changes needed
-        return currentClassName;
+      case 'fontStyle': {
+        const filtered = classes.filter(c => c !== 'italic' && c !== 'not-italic');
+        if (value === 'italic') {
+          filtered.push('italic');
+        }
+        return filtered.join(' ');
+      }
 
       case 'color': {
         // Remove existing text color classes (including responsive and state variants)
@@ -368,9 +378,39 @@ export class ASTStyleEditor extends ASTEditorBase {
     }
   }
 
+  /**
+   * Unwrap inline formatting elements when the parent gets the equivalent CSS class.
+   * e.g., adding `italic` to parent → unwrap <em>/<i> children (replace with their contents).
+   * Only runs when ADDING formatting, not when removing.
+   */
+  private normalizeInlineFormattingChildren(
+    element: t.JSXElement,
+    property: string,
+    value: string
+  ): void {
+    const tagsToUnwrap: string[] = [];
+    if (property === 'fontWeight' && value === 'bold') {
+      tagsToUnwrap.push('strong', 'b');
+    } else if (property === 'fontStyle' && value === 'italic') {
+      tagsToUnwrap.push('em', 'i');
+    }
+    if (tagsToUnwrap.length === 0) return;
 
-
-
+    const newChildren: typeof element.children = [];
+    for (const child of element.children) {
+      if (
+        this.t.isJSXElement(child) &&
+        this.t.isJSXIdentifier(child.openingElement.name) &&
+        tagsToUnwrap.includes(child.openingElement.name.name)
+      ) {
+        // Replace the formatting element with its children
+        newChildren.push(...child.children);
+      } else {
+        newChildren.push(child);
+      }
+    }
+    element.children = newChildren;
+  }
 
   /**
    * Process AST to make style changes (implementation of abstract method)
@@ -458,12 +498,14 @@ export class ASTStyleEditor extends ASTEditorBase {
           newClassName = this.applyStyleChange(
             oldClassName,
             request.property,
-            request.value,
-            request.newStyle
+            request.value
           );
 
           // Update the className attribute (always as string literal)
           classNameAttr.value = this.t.stringLiteral(newClassName);
+
+          // Normalize inline formatting children when adding bold/italic
+          this.normalizeInlineFormattingChildren(element, request.property, request.value);
 
           // Apply inline styles for properties that use them
           this.applyInlineStyle(openingElement, request.property, request.value, request.newStyle);

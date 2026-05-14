@@ -181,7 +181,7 @@ export class ASTTextEditor extends ASTEditorBase {
     // Mirror source-mapper's stack-based counter. Each frame represents a
     // JSXElement ancestor and tracks how many same-tag children have been
     // entered beneath it (including those inside expression wrappers).
-    const ancestorStack: Array<{ tagName: string; sameTagChildCount: Map<string, number> }> = [];
+    const ancestorStack: Array<{ tagName: string; ownIndex: number; sameTagChildCount: Map<string, number> }> = [];
 
     this.traverse(ast, {
       JSXElement: {
@@ -196,9 +196,9 @@ export class ASTTextEditor extends ASTEditorBase {
             parentFrame.sameTagChildCount.set(tagName, siblingIndex + 1);
           }
 
-          ancestorStack.push({ tagName, sameTagChildCount: new Map() });
+          ancestorStack.push({ tagName, ownIndex: siblingIndex, sameTagChildCount: new Map() });
 
-          const ancestorChain = ancestorStack.slice(0, -1).map(f => f.tagName).join('>');
+          const ancestorChain = ancestorStack.slice(0, -1).map(f => `${f.tagName}#${f.ownIndex}`).join('>');
           const structuralKey = `${normalizedFile}:${ancestorChain}${ancestorChain ? '>' : ''}${tagName}#${siblingIndex}`;
           devIds.set(node, this.hashStructuralKey(structuralKey));
         },

@@ -475,4 +475,64 @@ describe('jsxSourceMapper — data-dev-id', () => {
     const output = transform('<p data-dev-file="/test" data-dev-line={1}>text</p>');
     expect(output.match(/data-dev-id/g)).toBeNull();
   });
+
+  it('produces different IDs for cousin elements with identical tag paths', () => {
+    // Two <h1> elements nested inside sibling <div> parents — previously collided
+    // because ancestor chain only used tag names without sibling indices
+    const output = transform(`
+      <section>
+        <div><h1>First</h1></div>
+        <div><h1>Second</h1></div>
+      </section>
+    `);
+    const ids = (output.match(/data-dev-id="([0-9a-f]{6})"/g) || []).map(m => m.match(/"(.+)"/)![1]);
+    // section, div#0, h1(in div#0), div#1, h1(in div#1) — 5 elements, all unique
+    expect(ids).toHaveLength(5);
+    expect(new Set(ids).size).toBe(5);
+  });
+
+  it('produces different IDs for deeply nested cousins', () => {
+    // Same structure repeated at depth — ensures ancestor indices propagate
+    const output = transform(`
+      <main>
+        <section><div><p>A</p></div></section>
+        <section><div><p>B</p></div></section>
+      </main>
+    `);
+    const devIdPattern = /data-dev-id="([0-9a-f]{6})"[^>]*>[^<]*(A|B)/g;
+    const ids = new Map<string, string>();
+    let m: RegExpExecArray | null;
+    while ((m = devIdPattern.exec(output)) !== null) { ids.set(m[2], m[1]); }
+    expect(ids.get('A')).not.toBe(ids.get('B'));
+  });
+
+  it('loop-rendered elements share dev-id AND dev-line; cousin collisions differ on dev-line', () => {
+    // .map() elements: single source <li> → one dev-id + one dev-line in output
+    const mapOutput = transform(`
+      <ul>
+        {items.map(item => <li key={item.id}>{item.name}</li>)}
+      </ul>
+    `);
+    // The <li> appears once in source with a single dev-line — verify it has both attributes
+    // Note: source-mapper outputs dev-line as JSX expression {N} not string "N"
+    const liDevLine = mapOutput.match(/<li[^>]*data-dev-line=\{(\d+)\}/)?.[1];
+    const liDevId = mapOutput.match(/<li[^>]*data-dev-id="([0-9a-f]{6})"/)?.[1];
+    expect(liDevLine).toBeDefined();
+    expect(liDevId).toBeDefined();
+
+    // Cousin elements: different source lines → dev-lines differ
+    const cousinOutput = transform(`
+      <section>
+        <div><h1>First</h1></div>
+        <div><h1>Second</h1></div>
+      </section>
+    `);
+    // Extract dev-line for each h1 (source-mapper outputs dev-line as JSX expression {N})
+    const firstH1Line = cousinOutput.match(/<h1[^>]*data-dev-line=\{(\d+)\}[^>]*>First/)?.[1];
+    const secondH1Line = cousinOutput.match(/<h1[^>]*data-dev-line=\{(\d+)\}[^>]*>Second/)?.[1];
+    expect(firstH1Line).toBeDefined();
+    expect(secondH1Line).toBeDefined();
+    // Different source lines — UI uses this to distinguish from loop-rendering
+    expect(firstH1Line).not.toBe(secondH1Line);
+  });
 });

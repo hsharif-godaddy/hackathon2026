@@ -863,6 +863,31 @@ function DevelopPageContent() {
     }
   }, [appId])
 
+  const sendStyleUpdate = useCallback(async (styleData: { selector: string; property: string; value: string; newClassName: string; elementInfo: Record<string, unknown> }) => {
+    if (!appId) return
+
+    logger.info('develop-page.style-update.begin', { appId, property: styleData.property, value: styleData.value })
+
+    const iframe = document.getElementById('preview-iframe') as HTMLIFrameElement | null
+
+    try {
+      const result = await appService.updateStyle(appId, styleData as Parameters<typeof appService.updateStyle>[1]) as { success?: boolean }
+      if (result?.success) {
+        logger.info('develop-page.style-update.success', { appId })
+        if (iframe) postMessageToIframe(iframe, { type: 'STYLE_EDIT_SUCCEEDED' })
+      } else {
+        logger.error('develop-page.style-update.failed', { appId })
+        if (iframe) postMessageToIframe(iframe, { type: 'STYLE_EDIT_FAILED' })
+      }
+    } catch (error) {
+      logger.error('develop-page.style-update.error', {
+        appId,
+        error: error instanceof Error ? error.message : String(error)
+      })
+      if (iframe) postMessageToIframe(iframe, { type: 'STYLE_EDIT_FAILED' })
+    }
+  }, [appId])
+
   // Listen for file edit tool completions to show preview
   useEffect(() => {
     if (!appId || !activeStream) return
@@ -918,6 +943,10 @@ function DevelopPageContent() {
         case 'TEXT_UPDATED':
           logger.info('develop-page.text-updated-from-iframe', { appId })
           sendTextUpdate(event.data.data)
+          break
+        case 'STYLE_UPDATED':
+          logger.info('develop-page.style-updated-from-iframe', { appId })
+          sendStyleUpdate(event.data.data)
           break
         case 'EDIT_WITH_AI':
           if (useDevelopPageStore.getState().isMultiSelectEnabled && event.data.data?.selectionNumber != null) {
@@ -1254,7 +1283,7 @@ function DevelopPageContent() {
 
     window.addEventListener('message', handleMessage)
     return () => window.removeEventListener('message', handleMessage)
-  }, [sendTextUpdate, setAiEditContext, addAiEditContext, ws.actions.send, setInputValue, handleScreenshotUpload, handleEvalViewportScreenshot, setIsAssetManagerOpen, appId, scheduleMicrotask, sendEditModeMessage, isEditModeEnabled, handleAutoImportMediaSlot, sendUserRequestedFix])
+  }, [sendTextUpdate, sendStyleUpdate, setAiEditContext, addAiEditContext, ws.actions.send, setInputValue, handleScreenshotUpload, handleEvalViewportScreenshot, setIsAssetManagerOpen, appId, scheduleMicrotask, sendEditModeMessage, isEditModeEnabled, handleAutoImportMediaSlot, sendUserRequestedFix])
   // Warn user before leaving page with unsaved changes
   useEffect(() => {
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {

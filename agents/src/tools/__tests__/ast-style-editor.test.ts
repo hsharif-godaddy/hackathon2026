@@ -426,6 +426,574 @@ export default function DynamicPage() {
     });
   });
 
+  describe('Font Weight / Font Style (CSS Class Toggle)', () => {
+    it('should add font-bold class when fontWeight is bold', async () => {
+      const component = `import React from 'react';
+
+export default function Page() {
+  return (
+    <div>
+      <h1 data-dev-id="abc123" className="text-3xl text-gray-900">Welcome</h1>
+    </div>
+  );
+}`;
+      await writeFile(testFilePath, component);
+
+      const request = {
+        selector: 'h1',
+        property: 'fontWeight',
+        value: 'bold',
+        newClassName: 'text-3xl text-gray-900 font-bold',
+        elementInfo: {
+          tagName: 'h1',
+          className: 'text-3xl text-gray-900',
+          id: '',
+          textContent: 'Welcome',
+          selector: 'h1',
+          dataId: 'abc123',
+          devContext: {
+            fileName: '/src/frontend/pages/index.page.tsx',
+            componentName: 'Page',
+            lineNumber: 6
+          },
+          rect: { top: 50, left: 0, width: 300, height: 40 },
+          computedStyles: {}
+        }
+      };
+
+      const result = await astEditor.editElementStyle(testAppPath, request);
+
+      expect(result.success).toBe(true);
+      const updatedFile = await readFile(testFilePath, 'utf-8');
+      expect(updatedFile).toContain('font-bold');
+      expect(updatedFile).toContain('text-3xl');
+      expect(updatedFile).toContain('text-gray-900');
+    });
+
+    it('should remove font-bold class when fontWeight is normal', async () => {
+      const component = `import React from 'react';
+
+export default function Page() {
+  return (
+    <div>
+      <h1 data-dev-id="abc123" className="text-3xl font-bold text-gray-900">Welcome</h1>
+    </div>
+  );
+}`;
+      await writeFile(testFilePath, component);
+
+      const request = {
+        selector: 'h1',
+        property: 'fontWeight',
+        value: 'normal',
+        newClassName: 'text-3xl text-gray-900',
+        elementInfo: {
+          tagName: 'h1',
+          className: 'text-3xl font-bold text-gray-900',
+          id: '',
+          textContent: 'Welcome',
+          selector: 'h1',
+          dataId: 'abc123',
+          devContext: {
+            fileName: '/src/frontend/pages/index.page.tsx',
+            componentName: 'Page',
+            lineNumber: 6
+          },
+          rect: { top: 50, left: 0, width: 300, height: 40 },
+          computedStyles: {}
+        }
+      };
+
+      const result = await astEditor.editElementStyle(testAppPath, request);
+
+      expect(result.success).toBe(true);
+      const updatedFile = await readFile(testFilePath, 'utf-8');
+      expect(updatedFile).not.toContain('font-bold');
+      expect(updatedFile).toContain('text-3xl');
+      expect(updatedFile).toContain('text-gray-900');
+    });
+
+    it('should add italic class when fontStyle is italic', async () => {
+      const component = `import React from 'react';
+
+export default function Page() {
+  return (
+    <div>
+      <p data-dev-id="abc123" className="text-base mt-4">Hello world</p>
+    </div>
+  );
+}`;
+      await writeFile(testFilePath, component);
+
+      const request = {
+        selector: 'p',
+        property: 'fontStyle',
+        value: 'italic',
+        newClassName: 'text-base mt-4 italic',
+        elementInfo: {
+          tagName: 'p',
+          className: 'text-base mt-4',
+          id: '',
+          textContent: 'Hello world',
+          selector: 'p',
+          dataId: 'abc123',
+          devContext: {
+            fileName: '/src/frontend/pages/index.page.tsx',
+            componentName: 'Page',
+            lineNumber: 6
+          },
+          rect: { top: 100, left: 0, width: 200, height: 20 },
+          computedStyles: {}
+        }
+      };
+
+      const result = await astEditor.editElementStyle(testAppPath, request);
+
+      expect(result.success).toBe(true);
+      const updatedFile = await readFile(testFilePath, 'utf-8');
+      expect(updatedFile).toContain('italic');
+      expect(updatedFile).toContain('text-base');
+      expect(updatedFile).toContain('mt-4');
+    });
+
+    it('should remove italic class when fontStyle is normal', async () => {
+      const component = `import React from 'react';
+
+export default function Page() {
+  return (
+    <div>
+      <p data-dev-id="abc123" className="text-base italic mt-4">Hello world</p>
+    </div>
+  );
+}`;
+      await writeFile(testFilePath, component);
+
+      const request = {
+        selector: 'p',
+        property: 'fontStyle',
+        value: 'normal',
+        newClassName: 'text-base mt-4',
+        elementInfo: {
+          tagName: 'p',
+          className: 'text-base italic mt-4',
+          id: '',
+          textContent: 'Hello world',
+          selector: 'p',
+          dataId: 'abc123',
+          devContext: {
+            fileName: '/src/frontend/pages/index.page.tsx',
+            componentName: 'Page',
+            lineNumber: 6
+          },
+          rect: { top: 100, left: 0, width: 200, height: 20 },
+          computedStyles: {}
+        }
+      };
+
+      const result = await astEditor.editElementStyle(testAppPath, request);
+
+      expect(result.success).toBe(true);
+      const updatedFile = await readFile(testFilePath, 'utf-8');
+      expect(updatedFile).not.toContain('italic');
+      expect(updatedFile).toContain('text-base');
+      expect(updatedFile).toContain('mt-4');
+    });
+
+    it('should not duplicate font-bold if already present', async () => {
+      const component = `import React from 'react';
+
+export default function Page() {
+  return (
+    <div>
+      <h1 data-dev-id="abc123" className="text-3xl font-bold">Title</h1>
+    </div>
+  );
+}`;
+      await writeFile(testFilePath, component);
+
+      const request = {
+        selector: 'h1',
+        property: 'fontWeight',
+        value: 'bold',
+        newClassName: 'text-3xl font-bold',
+        elementInfo: {
+          tagName: 'h1',
+          className: 'text-3xl font-bold',
+          id: '',
+          textContent: 'Title',
+          selector: 'h1',
+          dataId: 'abc123',
+          devContext: {
+            fileName: '/src/frontend/pages/index.page.tsx',
+            componentName: 'Page',
+            lineNumber: 6
+          },
+          rect: { top: 50, left: 0, width: 300, height: 40 },
+          computedStyles: {}
+        }
+      };
+
+      const result = await astEditor.editElementStyle(testAppPath, request);
+
+      expect(result.success).toBe(true);
+      const updatedFile = await readFile(testFilePath, 'utf-8');
+      const matches = updatedFile.match(/font-bold/g);
+      expect(matches).toHaveLength(1);
+    });
+
+    it('should remove not-italic when adding italic', async () => {
+      const component = `import React from 'react';
+
+export default function Page() {
+  return (
+    <div>
+      <p data-dev-id="abc123" className="text-base not-italic">Reset text</p>
+    </div>
+  );
+}`;
+      await writeFile(testFilePath, component);
+
+      const request = {
+        selector: 'p',
+        property: 'fontStyle',
+        value: 'italic',
+        newClassName: 'text-base italic',
+        elementInfo: {
+          tagName: 'p',
+          className: 'text-base not-italic',
+          id: '',
+          textContent: 'Reset text',
+          selector: 'p',
+          dataId: 'abc123',
+          devContext: {
+            fileName: '/src/frontend/pages/index.page.tsx',
+            componentName: 'Page',
+            lineNumber: 6
+          },
+          rect: { top: 100, left: 0, width: 200, height: 20 },
+          computedStyles: {}
+        }
+      };
+
+      const result = await astEditor.editElementStyle(testAppPath, request);
+
+      expect(result.success).toBe(true);
+      const updatedFile = await readFile(testFilePath, 'utf-8');
+      expect(updatedFile).toContain('italic');
+      expect(updatedFile).not.toContain('not-italic');
+    });
+
+    it('should not add inline style for fontWeight/fontStyle', async () => {
+      const component = `import React from 'react';
+
+export default function Page() {
+  return (
+    <div>
+      <p data-dev-id="abc123" className="text-base">Some text</p>
+    </div>
+  );
+}`;
+      await writeFile(testFilePath, component);
+
+      const request = {
+        selector: 'p',
+        property: 'fontWeight',
+        value: 'bold',
+        newClassName: 'text-base font-bold',
+        elementInfo: {
+          tagName: 'p',
+          className: 'text-base',
+          id: '',
+          textContent: 'Some text',
+          selector: 'p',
+          dataId: 'abc123',
+          devContext: {
+            fileName: '/src/frontend/pages/index.page.tsx',
+            componentName: 'Page',
+            lineNumber: 6
+          },
+          rect: { top: 100, left: 0, width: 200, height: 20 },
+          computedStyles: {}
+        }
+      };
+
+      const result = await astEditor.editElementStyle(testAppPath, request);
+
+      expect(result.success).toBe(true);
+      const updatedFile = await readFile(testFilePath, 'utf-8');
+      expect(updatedFile).not.toContain('style=');
+      expect(updatedFile).toContain('font-bold');
+    });
+  });
+
+  describe('Inline Formatting Normalization (unwrap em/strong/b/i)', () => {
+    it('should unwrap <em> children when adding italic class', async () => {
+      const component = `import React from 'react';
+
+export default function Page() {
+  return (
+    <div>
+      <h1 data-dev-id="abc123" className="text-2xl"><em>Hello World</em></h1>
+    </div>
+  );
+}`;
+      await writeFile(testFilePath, component);
+
+      const request = {
+        selector: 'h1',
+        property: 'fontStyle',
+        value: 'italic',
+        newClassName: 'text-2xl italic',
+        elementInfo: {
+          tagName: 'h1',
+          className: 'text-2xl',
+          id: '',
+          textContent: 'Hello World',
+          selector: 'h1',
+          dataId: 'abc123',
+          devContext: {
+            fileName: '/src/frontend/pages/index.page.tsx',
+            componentName: 'Page',
+            lineNumber: 6
+          },
+          rect: { top: 50, left: 0, width: 300, height: 40 },
+          computedStyles: {}
+        }
+      };
+
+      const result = await astEditor.editElementStyle(testAppPath, request);
+
+      expect(result.success).toBe(true);
+      const updatedFile = await readFile(testFilePath, 'utf-8');
+      expect(updatedFile).toContain('italic');
+      expect(updatedFile).not.toContain('<em>');
+      expect(updatedFile).not.toContain('</em>');
+      expect(updatedFile).toContain('Hello World');
+    });
+
+    it('should unwrap <strong> children when adding font-bold class', async () => {
+      const component = `import React from 'react';
+
+export default function Page() {
+  return (
+    <div>
+      <p data-dev-id="abc123" className="text-base"><strong>Bold text</strong> and normal</p>
+    </div>
+  );
+}`;
+      await writeFile(testFilePath, component);
+
+      const request = {
+        selector: 'p',
+        property: 'fontWeight',
+        value: 'bold',
+        newClassName: 'text-base font-bold',
+        elementInfo: {
+          tagName: 'p',
+          className: 'text-base',
+          id: '',
+          textContent: 'Bold text and normal',
+          selector: 'p',
+          dataId: 'abc123',
+          devContext: {
+            fileName: '/src/frontend/pages/index.page.tsx',
+            componentName: 'Page',
+            lineNumber: 6
+          },
+          rect: { top: 100, left: 0, width: 200, height: 20 },
+          computedStyles: {}
+        }
+      };
+
+      const result = await astEditor.editElementStyle(testAppPath, request);
+
+      expect(result.success).toBe(true);
+      const updatedFile = await readFile(testFilePath, 'utf-8');
+      expect(updatedFile).toContain('font-bold');
+      expect(updatedFile).not.toContain('<strong>');
+      expect(updatedFile).not.toContain('</strong>');
+      expect(updatedFile).toContain('Bold text');
+      expect(updatedFile).toContain('and normal');
+    });
+
+    it('should unwrap <b> and <i> tags the same as <strong> and <em>', async () => {
+      const component = `import React from 'react';
+
+export default function Page() {
+  return (
+    <div>
+      <p data-dev-id="abc123" className="text-base"><b>Legacy bold</b></p>
+    </div>
+  );
+}`;
+      await writeFile(testFilePath, component);
+
+      const request = {
+        selector: 'p',
+        property: 'fontWeight',
+        value: 'bold',
+        newClassName: 'text-base font-bold',
+        elementInfo: {
+          tagName: 'p',
+          className: 'text-base',
+          id: '',
+          textContent: 'Legacy bold',
+          selector: 'p',
+          dataId: 'abc123',
+          devContext: {
+            fileName: '/src/frontend/pages/index.page.tsx',
+            componentName: 'Page',
+            lineNumber: 6
+          },
+          rect: { top: 100, left: 0, width: 200, height: 20 },
+          computedStyles: {}
+        }
+      };
+
+      const result = await astEditor.editElementStyle(testAppPath, request);
+
+      expect(result.success).toBe(true);
+      const updatedFile = await readFile(testFilePath, 'utf-8');
+      expect(updatedFile).toContain('font-bold');
+      expect(updatedFile).not.toContain('<b>');
+      expect(updatedFile).not.toContain('</b>');
+      expect(updatedFile).toContain('Legacy bold');
+    });
+
+    it('should only unwrap bold tags for fontWeight, leave em/i for fontStyle', async () => {
+      const component = `import React from 'react';
+
+export default function Page() {
+  return (
+    <div>
+      <p data-dev-id="abc123" className="text-base"><strong><em>Both</em></strong></p>
+    </div>
+  );
+}`;
+      await writeFile(testFilePath, component);
+
+      const request = {
+        selector: 'p',
+        property: 'fontWeight',
+        value: 'bold',
+        newClassName: 'text-base font-bold',
+        elementInfo: {
+          tagName: 'p',
+          className: 'text-base',
+          id: '',
+          textContent: 'Both',
+          selector: 'p',
+          dataId: 'abc123',
+          devContext: {
+            fileName: '/src/frontend/pages/index.page.tsx',
+            componentName: 'Page',
+            lineNumber: 6
+          },
+          rect: { top: 100, left: 0, width: 200, height: 20 },
+          computedStyles: {}
+        }
+      };
+
+      const result = await astEditor.editElementStyle(testAppPath, request);
+
+      expect(result.success).toBe(true);
+      const updatedFile = await readFile(testFilePath, 'utf-8');
+      expect(updatedFile).toContain('font-bold');
+      expect(updatedFile).not.toContain('<strong>');
+      expect(updatedFile).not.toContain('</strong>');
+      // <em> should remain — it's not related to fontWeight
+      expect(updatedFile).toContain('<em>');
+      expect(updatedFile).toContain('Both');
+    });
+
+    it('should NOT unwrap when removing formatting (fontStyle normal)', async () => {
+      const component = `import React from 'react';
+
+export default function Page() {
+  return (
+    <div>
+      <p data-dev-id="abc123" className="text-base italic"><em>Styled text</em></p>
+    </div>
+  );
+}`;
+      await writeFile(testFilePath, component);
+
+      const request = {
+        selector: 'p',
+        property: 'fontStyle',
+        value: 'normal',
+        newClassName: 'text-base',
+        elementInfo: {
+          tagName: 'p',
+          className: 'text-base italic',
+          id: '',
+          textContent: 'Styled text',
+          selector: 'p',
+          dataId: 'abc123',
+          devContext: {
+            fileName: '/src/frontend/pages/index.page.tsx',
+            componentName: 'Page',
+            lineNumber: 6
+          },
+          rect: { top: 100, left: 0, width: 200, height: 20 },
+          computedStyles: {}
+        }
+      };
+
+      const result = await astEditor.editElementStyle(testAppPath, request);
+
+      expect(result.success).toBe(true);
+      const updatedFile = await readFile(testFilePath, 'utf-8');
+      expect(updatedFile).not.toContain('italic');
+      // <em> should remain — we're removing italic, not adding it
+      expect(updatedFile).toContain('<em>');
+    });
+
+    it('should preserve mixed text and em children when unwrapping', async () => {
+      const component = `import React from 'react';
+
+export default function Page() {
+  return (
+    <div>
+      <h1 data-dev-id="abc123" className="text-2xl"><em>Hello</em> World</h1>
+    </div>
+  );
+}`;
+      await writeFile(testFilePath, component);
+
+      const request = {
+        selector: 'h1',
+        property: 'fontStyle',
+        value: 'italic',
+        newClassName: 'text-2xl italic',
+        elementInfo: {
+          tagName: 'h1',
+          className: 'text-2xl',
+          id: '',
+          textContent: 'Hello World',
+          selector: 'h1',
+          dataId: 'abc123',
+          devContext: {
+            fileName: '/src/frontend/pages/index.page.tsx',
+            componentName: 'Page',
+            lineNumber: 6
+          },
+          rect: { top: 50, left: 0, width: 300, height: 40 },
+          computedStyles: {}
+        }
+      };
+
+      const result = await astEditor.editElementStyle(testAppPath, request);
+
+      expect(result.success).toBe(true);
+      const updatedFile = await readFile(testFilePath, 'utf-8');
+      expect(updatedFile).toContain('italic');
+      expect(updatedFile).not.toContain('<em>');
+      expect(updatedFile).toContain('Hello');
+      expect(updatedFile).toContain('World');
+    });
+  });
+
   describe('data-dev-id matching', () => {
     it('should match by data-dev-id even when line number is wrong', async () => {
       const componentWithDevId = `import React from 'react';
@@ -474,6 +1042,51 @@ export default function Page() {
       const updatedFile = await readFile(testFilePath, 'utf-8');
       expect(updatedFile).toContain('text-base mt-4');
       expect(updatedFile).not.toContain('text-blue-600');
+    });
+  });
+
+  describe('namespaced components (motion.h1, etc.)', () => {
+    it('should match motion.h1 when DOM reports tagName as h1', async () => {
+      const component = `import React from 'react';
+import { motion } from 'framer-motion';
+
+export default function Page() {
+  return (
+    <div>
+      <motion.h1 className="font-heading font-bold text-lg">The Daily</motion.h1>
+    </div>
+  );
+}`;
+      await writeFile(testFilePath, component);
+
+      const request = {
+        selector: 'h1',
+        property: 'fontWeight',
+        value: 'normal',
+        newClassName: 'font-heading text-lg',
+        elementInfo: {
+          tagName: 'h1',
+          className: 'font-heading font-bold text-lg',
+          id: '',
+          textContent: 'The Daily',
+          selector: 'h1',
+          dataId: '',
+          devContext: {
+            fileName: '/src/frontend/pages/index.page.tsx',
+            componentName: 'Page',
+            lineNumber: 7,
+          },
+          rect: { top: 100, left: 0, width: 400, height: 60 },
+          computedStyles: {}
+        }
+      };
+
+      const result = await astEditor.editElementStyle(testAppPath, request);
+
+      expect(result.success).toBe(true);
+      const updatedFile = await readFile(testFilePath, 'utf-8');
+      expect(updatedFile).toContain('font-heading text-lg');
+      expect(updatedFile).not.toContain('font-bold');
     });
   });
 });

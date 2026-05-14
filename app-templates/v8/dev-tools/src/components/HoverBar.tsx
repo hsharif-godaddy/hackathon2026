@@ -44,6 +44,8 @@ interface HoverBarButtonProps {
   icon: React.ReactNode;
   /** When provided, renders a labeled button; omit for icon-only. */
   label?: string;
+  /** When true, renders with active/toggled styling (blue tint). */
+  active?: boolean;
 }
 
 const TOOLTIP_STYLES: React.CSSProperties = {
@@ -69,20 +71,24 @@ const TOOLTIP_STYLES: React.CSSProperties = {
  * Toolbar button for use inside a HoverBar.
  * Labeled (with text + icon) or icon-only depending on whether `label` is provided.
  */
-export function HoverBarButton({ onClick, title, icon, label }: HoverBarButtonProps) {
+export function HoverBarButton({ onClick, title, icon, label, active }: HoverBarButtonProps) {
   const [showTooltip, setShowTooltip] = useState(false);
   const delayRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const baseBackground = active ? "rgba(59, 130, 246, 0.1)" : "rgba(255, 255, 255, 0.9)";
+  const hoverBackground = active ? "rgba(59, 130, 246, 0.18)" : "rgba(245, 245, 245, 0.95)";
+  const textColor = active ? "#2563eb" : "var(--color-text-secondary)";
+
   const handleMouseEnter = useCallback((e: React.MouseEvent<HTMLButtonElement>) => {
-    e.currentTarget.style.background = "rgba(245, 245, 245, 0.95)";
+    e.currentTarget.style.background = hoverBackground;
     delayRef.current = setTimeout(() => setShowTooltip(true), 400);
-  }, []);
+  }, [hoverBackground]);
 
   const handleMouseLeave = useCallback((e: React.MouseEvent<HTMLButtonElement>) => {
-    e.currentTarget.style.background = "rgba(255, 255, 255, 0.9)";
+    e.currentTarget.style.background = baseBackground;
     if (delayRef.current) clearTimeout(delayRef.current);
     setShowTooltip(false);
-  }, []);
+  }, [baseBackground]);
 
   return (
     <button
@@ -94,12 +100,12 @@ export function HoverBarButton({ onClick, title, icon, label }: HoverBarButtonPr
         alignItems: "center",
         gap: label ? "5px" : undefined,
         padding: label ? "6px 10px" : "6px",
-        background: "rgba(255, 255, 255, 0.9)",
+        background: baseBackground,
         border: "none",
         borderRadius: "6px",
         cursor: "pointer",
         boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
-        color: "var(--color-text-secondary)",
+        color: textColor,
         ...(label ? { fontSize: "12px", fontWeight: 600, letterSpacing: "-0.01em" } : {}),
       }}
       onMouseEnter={handleMouseEnter}

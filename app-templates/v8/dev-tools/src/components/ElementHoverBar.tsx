@@ -9,11 +9,14 @@ import {
   getNextSelectionNumber,
 } from "../utils/selection-overlay";
 import type { HoveredElement } from "../hooks/useImageHoverDetection";
-import { Bookmark, Image, Pencil, Pointer, Sparkles } from "lucide-react";
+import { Bold, Bookmark, Image, Italic, Pencil, Pointer, Sparkles } from "lucide-react";
 import { isClickable } from "../utils/element-detection";
 import { t } from "../utils/translations";
 import { HoverBar, HoverBarButton } from "./HoverBar";
 import { QuickEditBar } from "./QuickEditBar";
+
+/** Tags eligible for bold/italic toggle (text-bearing inline/block elements). */
+const TEXT_TAGS = new Set(["p", "h1", "h2", "h3", "h4", "h5", "h6", "span", "a", "label", "li", "blockquote"]);
 
 interface ElementHoverBarProps {
   hoveredElement: HoveredElement;
@@ -34,6 +37,7 @@ export default function ElementHoverBar({
   const isImage = hoveredElement.type === "image";
   const [toolbarMode, setToolbarMode] = useState(false);
   const [quickEditMode, setQuickEditMode] = useState(false);
+  const [, forceRender] = useState(0);
   // Context built when Sparkles is clicked — sent only when Quick Edit is submitted
   const pendingContextRef = useRef<Record<string, unknown> | null>(null);
   // Capture the element reference when toolbar opens so actions use the correct element
@@ -346,6 +350,80 @@ export default function ElementHoverBar({
     }
   }, []);
 
+  // Bold/Italic: show for any text-bearing element (less strict than isTextEditable
+  // which also rejects data-dev-dynamic — we only need class toggle, not text editing).
+  // Suppress for loop-rendered elements (multiple DOM nodes from one source element).
+  const devId = element.getAttribute("data-dev-id");
+  const devLine = element.getAttribute("data-dev-line");
+  const isLoopRendered = !!devId && !!devLine &&
+    document.querySelectorAll(`[data-dev-id="${devId}"][data-dev-line="${devLine}"]`).length > 1;
+  const elementIsText = !isImage && !isLoopRendered && TEXT_TAGS.has(element.tagName.toLowerCase()) && !!element.textContent?.trim();
+  const targetEl = toolbarElementRef.current || element;
+  const isBold = elementIsText && targetEl.classList.contains("font-bold");
+  const isItalic = elementIsText && targetEl.classList.contains("italic");
+
+  const handleToggleFormat = useCallback((property: "fontWeight" | "fontStyle") => {
+    const el = toolbarElementRef.current;
+    const hovered = toolbarHoveredElementRef.current;
+    if (!el || !hovered) return;
+    const isAdding = property === "fontWeight"
+      ? !el.classList.contains("font-bold")
+      : !el.classList.contains("italic");
+
+    const value = property === "fontWeight"
+      ? (isAdding ? "bold" : "normal")
+      : (isAdding ? "italic" : "normal");
+
+    const toggleClass = property === "fontWeight" ? "font-bold" : "italic";
+    const originalClassName = el.className;
+
+    // Optimistic DOM update for instant visual feedback
+    if (isAdding) {
+      el.classList.add(toggleClass);
+    } else {
+      el.classList.remove(toggleClass);
+    }
+    forceRender(n => n + 1);
+
+    // Rollback on backend failure, clean up on success
+    const handleResult = (e: MessageEvent) => {
+      if (e.source !== window.parent) return;
+      if (e.data?.type === "STYLE_EDIT_FAILED") {
+        el.className = originalClassName;
+        forceRender(n => n + 1);
+      }
+      if (e.data?.type === "STYLE_EDIT_FAILED" || e.data?.type === "STYLE_EDIT_SUCCEEDED") {
+        window.removeEventListener("message", handleResult);
+      }
+    };
+    window.addEventListener("message", handleResult);
+
+    const devContext = extractDevContext(el);
+    const preciseSelector = generatePreciseSelector(el);
+    const elRect = el.getBoundingClientRect();
+
+    safePostMessage(window.parent, {
+      type: "STYLE_UPDATED",
+      data: {
+        selector: preciseSelector,
+        property,
+        value,
+        newClassName: el.className,
+        elementInfo: {
+          tagName: el.tagName.toLowerCase(),
+          className: getElementClassName(el),
+          id: el.id,
+          dataId: devContext?.devId || "",
+          textContent: (el.textContent || "").substring(0, 500),
+          selector: preciseSelector,
+          devContext,
+          rect: { top: elRect.top, left: elRect.left, width: elRect.width, height: elRect.height },
+          computedStyles: {},
+        },
+      },
+    });
+  }, []);
+
   if (quickEditMode) {
     return (
       <QuickEditBar
@@ -375,6 +453,22 @@ export default function ElementHoverBar({
             title={t("devtools_image_modify_title", "Modify image")}
             icon={<Pencil width={15} height={15} />}
             label={t("devtools_image_modify", "Modify")}
+          />
+        </>
+      )}
+      {elementIsText && (
+        <>
+          <HoverBarButton
+            onClick={() => handleToggleFormat("fontWeight")}
+            title={t("devtools_toggle_bold_title", "Toggle bold")}
+            icon={<Bold width={15} height={15} />}
+            active={isBold}
+          />
+          <HoverBarButton
+            onClick={() => handleToggleFormat("fontStyle")}
+            title={t("devtools_toggle_italic_title", "Toggle italic")}
+            icon={<Italic width={15} height={15} />}
+            active={isItalic}
           />
         </>
       )}

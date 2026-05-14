@@ -7,6 +7,7 @@ interface PluginOptions {
 
 interface AncestorFrame {
   tagName: string;
+  ownIndex: number;
   sameTagChildCount: Map<string, number>;
 }
 
@@ -217,7 +218,7 @@ export default function jsxSourceMapper(babel: { types: typeof types }): PluginO
           }
 
           // Push frame for this element's children
-          state.ancestorStack.push({ tagName, sameTagChildCount: new Map() });
+          state.ancestorStack.push({ tagName, ownIndex: siblingIndex, sameTagChildCount: new Map() });
 
           // Get source information
           const fileName = state.filename || state.file.opts.filename || 'unknown';
@@ -309,7 +310,7 @@ export default function jsxSourceMapper(babel: { types: typeof types }): PluginO
           const lineNumber = openingElement.loc ? openingElement.loc.start.line : 0;
 
           // Compute structural ID from ancestor chain
-          const ancestorChain = state.ancestorStack.slice(0, -1).map(f => f.tagName).join('>');
+          const ancestorChain = state.ancestorStack.slice(0, -1).map(f => `${f.tagName}#${f.ownIndex}`).join('>');
           const structuralKey = `${normalizeFileName(fileName)}:${ancestorChain}${ancestorChain ? '>' : ''}${tagName}#${siblingIndex}`;
           const devId = hashStructuralKey(structuralKey);
 

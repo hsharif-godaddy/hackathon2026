@@ -812,8 +812,8 @@ export default function HeroPage() {
       const complexPath = join(testAppPath, 'src', 'pages', 'hero.tsx');
       await writeFile(complexPath, complexFixture);
 
-      // devId for h1: structuralKey = "src/pages/hero.tsx:section>h1#0" → DJB2 hash
-      const expectedDevId = 'bf26af';
+      // devId for h1: structuralKey = "src/pages/hero.tsx:section#0>h1#0" → DJB2 hash
+      const expectedDevId = '2f6082';
 
       const { result, updatedContent } = await editAndRead({
         selector: 'h1',
@@ -854,9 +854,9 @@ export default function HeroPage() {
       const mapFixturePath = join(testAppPath, 'src', 'pages', 'hero.tsx');
       await writeFile(mapFixturePath, mapFixture);
 
-      // devId for static h1: structuralKey = "src/pages/hero.tsx:div>h1#1"
+      // devId for static h1: structuralKey = "src/pages/hero.tsx:div#0>h1#1"
       // (siblingIndex=1 because the mapped h1 counts as #0)
-      const expectedDevId = '34655e';
+      const expectedDevId = 'ef02b1';
 
       const { result, updatedContent } = await editAndRead({
         selector: 'h1',

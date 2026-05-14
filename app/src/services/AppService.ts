@@ -66,6 +66,24 @@ export interface TextUpdateData {
   devContext: Record<string, unknown>
 }
 
+export interface StyleUpdateData {
+  selector: string
+  property: string
+  value: string
+  newClassName: string
+  elementInfo: {
+    tagName: string
+    className: string
+    id: string
+    dataId: string
+    textContent: string
+    selector: string
+    devContext: Record<string, unknown>
+    rect: { top: number; left: number; width: number; height: number }
+    computedStyles: Record<string, string>
+  }
+}
+
 export interface ImageReplaceData {
   elementInfo: {
     tagName: string
@@ -412,6 +430,33 @@ export class AppService {
 
     if (!response.ok) {
       throw new Error(`Failed to send text update to API: ${response.status}`)
+    }
+
+    return response.json()
+  }
+
+  /**
+   * Update element style (class toggle for bold/italic)
+   */
+  async updateStyle(appId: string, styleData: StyleUpdateData): Promise<unknown> {
+    const requestBody = {
+      selector: styleData.selector,
+      property: styleData.property,
+      value: styleData.value,
+      newClassName: styleData.newClassName,
+      elementInfo: styleData.elementInfo,
+    }
+
+    const apiUrl = await buildDynamicApiUrl(`styles/edit`, appId)
+    const response = await agentFetch(apiUrl, {
+      siteId: appId,
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(requestBody)
+    })
+
+    if (!response.ok) {
+      throw new Error(`Failed to send style update to API: ${response.status}`)
     }
 
     return response.json()
