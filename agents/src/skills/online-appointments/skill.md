@@ -1,7 +1,7 @@
 ---
 name: online-appointments
 description: Full-featured appointment/booking system for service businesses. Includes date/time selection with availability checking, customer intake form, optional GoDaddy Commerce payment integration (free or paid appointments), email confirmations with calendar invites, admin dashboard for appointment management, and customer portal. Supports single pricing (e.g., "$100 consultation") or multiple pricing tiers (e.g., 30min/$50, 60min/$90, 90min/$120). Handles business hours, working days, timezone-aware scheduling, buffer time between appointments, and customizable appointment durations.
-whenToUse: User wants to CREATE or ADD new booking/appointment functionality. Trigger on "add", "create", "build", "set up", "I want", "I need", combined with "booking", "appointment", "schedule", "reservation". Use for services, classes, consultations, rentals - anything customers book by time slot. Do NOT load for past tense, bug fixes, or modifications to existing systems. Only load when building NEW booking functionality from scratch. Includes free or paid appointments, down payment, tiered pricing, emails, admin dashboard, and customer portal.
+whenToUse: Load for ANY booking, appointment, scheduling, or reservation intent when ADDING or BUILDING a new system. Do NOT load for bug fixes, modifications, or integrating external products. Keywords - "booking", "appointment", "schedule", "reservation", "calendar", "time slot", "class booking". Load immediately — do not evaluate fit or gaps. The skill itself will determine whether to use its templates or recommend custom implementation. Covers services, classes, consultations, rentals, or any time-slot reservations.
 dependencies:
   - date-fns
   - zod
