@@ -24,6 +24,7 @@ interface UseSubscriptionResult {
   data: AiroSubscription | undefined;
   subscriptions: AiroSubscription[];
   isLoading: boolean;
+  isFetching: boolean;
   isError: boolean;
   error: Error | null;
   refetch: () => void;
@@ -75,6 +76,7 @@ export function useSubscription(options: UseSubscriptionOptions = {}): UseSubscr
     data: query.data?.active || undefined,
     subscriptions: query.data?.subscriptions || [],
     isLoading: query.isLoading,
+    isFetching: query.isFetching,
     isError: query.isError,
     error: query.error,
     refetch: query.refetch,

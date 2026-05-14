@@ -38,7 +38,7 @@ import type {
   ActivityHitRow,
   TopPageRow,
 } from '@/lib/insights/clickhouse-types'
-import { isProfessionalOrAbove, PAYWALL_ITC, PLAN_PRIORITY } from '@/lib/paywall/shared'
+import { isProfessionalOrAbove, PAYWALL_ITC } from '@/lib/paywall/shared'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { SubscriptionPlan } from '@/types/credits'
 import { getPlanFromSubscription } from '@/utils/credits'
@@ -66,12 +66,6 @@ function countryCodeToFlag(code: string): string {
   const upper = code.toUpperCase()
   if (upper.length !== 2) return ''
   return String.fromCodePoint(...[...upper].map((c) => 0x1F1E6 - 65 + c.charCodeAt(0)))
-}
-
-/** Helper: returns true if plan is Starter or above (priority >= 4) */
-function isStarterOrAbove(plan: SubscriptionPlan | undefined): boolean {
-  if (!plan) return false
-  return (PLAN_PRIORITY[plan] ?? 0) >= PLAN_PRIORITY[SubscriptionPlan.Starter]
 }
 
 /**
@@ -138,7 +132,6 @@ export default function RUM() {
   // ── Plan-based gating ──────────────────────────────────
   const { data: subscription } = useSubscription()
   const currentPlan = subscription ? getPlanFromSubscription(subscription) : SubscriptionPlan.None
-  const isStarter = isStarterOrAbove(currentPlan)        // Starter, Professional, Ultimate
   const isPro = isProfessionalOrAbove(currentPlan)        // Professional, Ultimate
   const openUpgradeModal = useDevelopPageStore((state) => state.openUpgradeModal)
   const handleMetricUpgrade = () => openUpgradeModal('analytics.metric_card', PAYWALL_ITC.UPGRADE)
@@ -147,8 +140,7 @@ export default function RUM() {
   // Reset plan-gated state when subscription lapses mid-session
   useEffect(() => {
     if (!isPro && selectedPeriod === '15') setSelectedPeriod('7')
-    if (!isStarter && liveDataTab === LIVE_DATA_TAB.VISITORS) setLiveDataTab(LIVE_DATA_TAB.TOTAL_VISITORS)
-  }, [isPro, isStarter, selectedPeriod, liveDataTab])
+  }, [isPro, selectedPeriod])
 
   // Fetch analytics data from insights API (remaining: route count, loading state)
   const {
@@ -480,7 +472,7 @@ export default function RUM() {
   // Show loading state only on initial load (when no data exists)
   // If we have data, show it even if refreshing in background
   if (isLoading && dailyHostPageViews.length === 0 && totalHostPageViews === 0) {
-    return <PanelSkeleton panelType={ChatTab.ANALYTICS} isPublished />
+    return <PanelSkeleton panelType={ChatTab.ANALYTICS} hasContent />
   }
 
   // Show error state with actionable message
@@ -613,50 +605,46 @@ export default function RUM() {
                   description={t('builder_analytics_engaged_sessions', { engaged: totalSessions - bounceSessions, total: totalSessions })}
                   caption={totalSessions === 0 ? t('builder_analytics_no_data') : undefined}
                 />
-                {isStarter && (
-                  <>
-                    <MetricCard
-                      label={t('builder_analytics_total_clicks')}
-                      value={metrics.totalClicks}
-                      description={t('builder_analytics_all_clicks_tracked')}
-                      {...(isPro
-                        ? { caption: metrics.totalClicks === 0 ? t('builder_analytics_no_data') : undefined }
-                        : { needsUpgrade: true as const, onUpgrade: handleMetricUpgrade })}
-                    />
-                    <MetricCard
-                      label={t('builder_analytics_bounce_rate')}
-                      value={kpiExtras.bounceRate || '0%'}
-                      description={t('builder_analytics_bounce_sessions_count', { bounceSessions: kpiExtras.bounceSessions })}
-                      {...(isPro
-                        ? { caption: totalSessions === 0 ? t('builder_analytics_no_data') : undefined }
-                        : { needsUpgrade: true as const, onUpgrade: handleMetricUpgrade })}
-                    />
-                    <MetricCard
-                      label={t('builder_analytics_peak_hour')}
-                      value={peakHour || '--'}
-                      description={t('builder_analytics_peak_hour_description', { visitors: kpiExtras.peakHourVisitors, clicks: kpiExtras.peakHourClicks })}
-                      {...(isPro
-                        ? { caption: (totalSessions === 0 || !peakHour) ? t('builder_analytics_no_data') : undefined }
-                        : { needsUpgrade: true as const, onUpgrade: handleMetricUpgrade })}
-                    />
-                    <MetricCard
-                      label={t('builder_analytics_avg_pages_per_session')}
-                      value={kpiExtras.avgPagesPerSession > 0 ? kpiExtras.avgPagesPerSession.toFixed(2) : '0.00'}
-                      description={t('builder_analytics_pages_viewed_per_session')}
-                      {...(isPro
-                        ? { caption: totalSessions === 0 ? t('builder_analytics_no_data') : undefined }
-                        : { needsUpgrade: true as const, onUpgrade: handleMetricUpgrade })}
-                    />
-                    <MetricCard
-                      label={t('builder_analytics_avg_duration')}
-                      value={kpiExtras.avgSessionDuration || '0s'}
-                      description={t('builder_analytics_avg_session_length')}
-                      {...(isPro
-                        ? { caption: totalSessions === 0 ? t('builder_analytics_no_data') : undefined }
-                        : { needsUpgrade: true as const, onUpgrade: handleMetricUpgrade })}
-                    />
-                  </>
-                )}
+                <MetricCard
+                  label={t('builder_analytics_total_clicks')}
+                  value={metrics.totalClicks}
+                  description={t('builder_analytics_all_clicks_tracked')}
+                  {...(isPro
+                    ? { caption: metrics.totalClicks === 0 ? t('builder_analytics_no_data') : undefined }
+                    : { needsUpgrade: true as const, onUpgrade: handleMetricUpgrade })}
+                />
+                <MetricCard
+                  label={t('builder_analytics_bounce_rate')}
+                  value={kpiExtras.bounceRate || '0%'}
+                  description={t('builder_analytics_bounce_sessions_count', { bounceSessions: kpiExtras.bounceSessions })}
+                  {...(isPro
+                    ? { caption: totalSessions === 0 ? t('builder_analytics_no_data') : undefined }
+                    : { needsUpgrade: true as const, onUpgrade: handleMetricUpgrade })}
+                />
+                <MetricCard
+                  label={t('builder_analytics_peak_hour')}
+                  value={peakHour || '--'}
+                  description={t('builder_analytics_peak_hour_description', { visitors: kpiExtras.peakHourVisitors, clicks: kpiExtras.peakHourClicks })}
+                  {...(isPro
+                    ? { caption: (totalSessions === 0 || !peakHour) ? t('builder_analytics_no_data') : undefined }
+                    : { needsUpgrade: true as const, onUpgrade: handleMetricUpgrade })}
+                />
+                <MetricCard
+                  label={t('builder_analytics_avg_pages_per_session')}
+                  value={kpiExtras.avgPagesPerSession > 0 ? kpiExtras.avgPagesPerSession.toFixed(2) : '0.00'}
+                  description={t('builder_analytics_pages_viewed_per_session')}
+                  {...(isPro
+                    ? { caption: totalSessions === 0 ? t('builder_analytics_no_data') : undefined }
+                    : { needsUpgrade: true as const, onUpgrade: handleMetricUpgrade })}
+                />
+                <MetricCard
+                  label={t('builder_analytics_avg_duration')}
+                  value={kpiExtras.avgSessionDuration || '0s'}
+                  description={t('builder_analytics_avg_session_length')}
+                  {...(isPro
+                    ? { caption: totalSessions === 0 ? t('builder_analytics_no_data') : undefined }
+                    : { needsUpgrade: true as const, onUpgrade: handleMetricUpgrade })}
+                />
               </div>
             </CollapsibleContent>
           </Collapsible>
@@ -681,7 +669,7 @@ export default function RUM() {
                     className="w-full max-w-full"
                   >
                     <SegmentedControllerItem value={LIVE_DATA_TAB.TOTAL_VISITORS}>{t('builder_analytics_visitors')}</SegmentedControllerItem>
-                    {isStarter && <SegmentedControllerItem value={LIVE_DATA_TAB.VISITORS}>{t('builder_analytics_new_vs_returning')}</SegmentedControllerItem>}
+                    <SegmentedControllerItem value={LIVE_DATA_TAB.VISITORS}>{t('builder_analytics_new_vs_returning')}</SegmentedControllerItem>
                     <SegmentedControllerItem value={LIVE_DATA_TAB.SESSIONS}>{t('builder_analytics_total_sessions')}</SegmentedControllerItem>
                     <SegmentedControllerItem value={LIVE_DATA_TAB.PAGEVIEWS}>{t('builder_analytics_page_views')}</SegmentedControllerItem>
                   </SegmentedController>
@@ -700,7 +688,7 @@ export default function RUM() {
                     ]}
                     embedded
                   />
-                ) : liveDataTab === LIVE_DATA_TAB.VISITORS && isStarter ? (
+                ) : liveDataTab === LIVE_DATA_TAB.VISITORS ? (
                   <AnalyticsUpgradeInnerBanner onUpgrade={handleInnerBannerUpgrade} />
                 ) : (
                   <AnalyticsChart
@@ -738,7 +726,7 @@ export default function RUM() {
               </div>
 
               {/* Geo - Pro Plan: Detailed table (Professional+) */}
-              {isStarter && <AnalyticsDetailTable<GeoProPlanRow>
+              <AnalyticsDetailTable<GeoProPlanRow>
                 data={geoProPlanTableData}
                 title={t('builder_analytics_top_locations')}
                 tooltip={t('builder_analytics_tooltip_city_detail')}
@@ -778,7 +766,7 @@ export default function RUM() {
                     <span className="text-xs tabular-nums text-muted-foreground">{Number(v).toLocaleString()}</span>
                   )},
                 ]}
-              />}
+              />
             </CollapsibleContent>
           </Collapsible>
 
@@ -801,7 +789,7 @@ export default function RUM() {
               </div>
 
               {/* Trend Graph: Device / Browser (Professional+) */}
-              {isStarter && <AnalyticsCard
+              <AnalyticsCard
                 data-slot="chart"
                 className="flex flex-col w-full"
                 title={isPro ? undefined : `${t('builder_analytics_device_types')} / ${t('builder_analytics_browser_names')}`}
@@ -842,10 +830,10 @@ export default function RUM() {
                 ) : (
                   <AnalyticsUpgradeInnerBanner onUpgrade={handleInnerBannerUpgrade} />
                 )}
-              </AnalyticsCard>}
+              </AnalyticsCard>
 
               {/* Referrers Table (Professional+) */}
-              {isStarter && <AnalyticsDetailTable<ReferrerTableRow>
+              <AnalyticsDetailTable<ReferrerTableRow>
                 data={referrerTableData}
                 title={t('builder_analytics_referrers')}
                 tooltip={t('builder_analytics_tooltip_referrer_detail')}
@@ -888,12 +876,12 @@ export default function RUM() {
                     <span className="text-xs tabular-nums text-muted-foreground">{Number(v).toLocaleString()}</span>
                   )},
                 ]}
-              />}
+              />
             </CollapsibleContent>
           </Collapsible>
 
           {/* ═══════════ ACTIVITY ═══════════ */}
-          {isStarter && <Collapsible
+          <Collapsible
             id="activity"
             size="sm"
             title={<text.span as="title" size={-2}>{t('builder_analytics_activity')}</text.span>}
@@ -958,10 +946,10 @@ export default function RUM() {
                 />
               </div>
             </CollapsibleContent>
-          </Collapsible>}
+          </Collapsible>
 
           {/* ═══════════ ENGAGEMENT ═══════════ */}
-          {isStarter && <Collapsible
+          <Collapsible
             id="engagement"
             size="sm"
             title={<text.span as="title" size={-2}>{t('builder_analytics_engagement')}</text.span>}
@@ -1044,10 +1032,10 @@ export default function RUM() {
                 ]}
               />
             </CollapsibleContent>
-          </Collapsible>}
+          </Collapsible>
 
           {/* ═══════════ CONTENT ═══════════ */}
-          {isStarter && <Collapsible
+          <Collapsible
             id="content"
             size="sm"
             title={<text.span as="title" size={-2}>{t('builder_analytics_content')}</text.span>}
@@ -1097,7 +1085,7 @@ export default function RUM() {
                 ]}
               />
             </CollapsibleContent>
-          </Collapsible>}
+          </Collapsible>
         </div>
 
         {!isPro && <AnalyticsUpgradeBanner onUpgrade={() => openUpgradeModal('analytics.upgrade_banner', PAYWALL_ITC.UPGRADE)} />}

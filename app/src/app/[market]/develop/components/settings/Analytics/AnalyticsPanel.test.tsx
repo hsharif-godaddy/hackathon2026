@@ -52,17 +52,12 @@ vi.mock('@/hooks/usePaywallModal', () => ({
   }),
 }));
 
+const mockUseSubscription = vi.fn();
+
 // Mock the data hooks RUM depends on so it can render its full UI tree
 // without hitting the network. RUM itself is rendered for real.
 vi.mock('@/hooks/useSubscription', () => ({
-  useSubscription: () => ({
-    data: undefined,
-    subscriptions: [],
-    isLoading: false,
-    isError: false,
-    error: null,
-    refetch: vi.fn(),
-  }),
+  useSubscription: () => mockUseSubscription(),
 }));
 
 vi.mock('@/hooks/useInsightsAnalytics', () => ({
@@ -135,12 +130,22 @@ vi.mock('@/hooks/useClickhouseAnalytics', () => ({
   }),
 }));
 
+const starterSubscription = { plan: 'starter', productId: null, isTrial: false, hadAiroPlus: false };
+
 describe('AnalyticsPanel', () => {
   beforeEach(() => {
     mockUseSwitchboard.mockReturnValue(true);
     mockGetSite.mockReturnValue({ id: 'test-app-123' });
     mockUsePublishedUrl.mockReturnValue('https://example.com');
     mockHasBeenPublished.mockReturnValue(true);
+    mockUseSubscription.mockReturnValue({
+      data: starterSubscription,
+      isFetching: false,
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    });
   });
 
   afterEach(() => {
@@ -171,6 +176,76 @@ describe('AnalyticsPanel', () => {
     expect(screen.getByText('builder_common_loading')).toBeInTheDocument();
     expect(screen.queryByText('builder_analytics_title')).not.toBeInTheDocument();
     expect(screen.queryByText('builder_analytics_empty_title')).not.toBeInTheDocument();
+  });
+
+  it('renders the skeleton while the subscription is loading', () => {
+    mockUseSubscription.mockReturnValue({
+      data: undefined,
+      isFetching: true,
+      isLoading: true,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+
+    renderWithProviders(<AnalyticsPanel />);
+
+    expect(screen.queryByText('builder_analytics_title')).not.toBeInTheDocument();
+    expect(screen.queryByText('builder_analytics_empty_title')).not.toBeInTheDocument();
+    expect(screen.queryByText('builder_analytics_paywall_title')).not.toBeInTheDocument();
+  });
+
+  it('renders the error state when the subscription fetch fails', () => {
+    mockUseSubscription.mockReturnValue({
+      data: undefined,
+      isFetching: false,
+      isLoading: false,
+      isError: true,
+      error: new Error('Network error'),
+      refetch: vi.fn(),
+    });
+
+    renderWithProviders(<AnalyticsPanel />);
+
+    expect(screen.getByText('builder_common_subscription_error_title')).toBeInTheDocument();
+    expect(screen.getByText('builder_common_subscription_error_desc')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'builder_common_retry' })).toBeInTheDocument();
+    expect(screen.queryByText('builder_analytics_paywall_title')).not.toBeInTheDocument();
+    expect(screen.queryByText('builder_analytics_title')).not.toBeInTheDocument();
+  });
+
+  it('disables the retry button while the subscription is refetching', () => {
+    mockUseSubscription.mockReturnValue({
+      data: undefined,
+      isFetching: true,
+      isLoading: false,
+      isError: true,
+      error: new Error('Network error'),
+      refetch: vi.fn(),
+    });
+
+    renderWithProviders(<AnalyticsPanel />);
+
+    expect(screen.getByRole('button', { name: 'builder_common_retry' })).toBeDisabled();
+  });
+
+  it('renders the paywall when the user is below Starter plan', () => {
+    mockUseSubscription.mockReturnValue({
+      data: undefined,
+      isFetching: false,
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+
+    renderWithProviders(<AnalyticsPanel />);
+
+    expect(screen.getByText('builder_analytics_paywall_title')).toBeInTheDocument();
+    expect(screen.getByText('builder_analytics_paywall_desc')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'builder_upgrade_button' })).toBeInTheDocument();
+    expect(screen.queryByText('builder_analytics_empty_title')).not.toBeInTheDocument();
+    expect(screen.queryByText('builder_analytics_title')).not.toBeInTheDocument();
   });
 
   it('renders the empty state when the site has not been published', () => {

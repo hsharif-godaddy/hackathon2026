@@ -6,7 +6,7 @@ import { ChatTab, SettingsSection } from '@/app/[market]/develop/components/type
 
 const ANALYTICS_ROW_WIDTHS = [210, 180, 250, 165, 195, 220] as const
 
-function AnalyticsUnpublishedSkeleton({ className }: { className?: string }) {
+function AnalyticsEmptyStateSkeleton({ className }: { className?: string }) {
   return (
     <div className={`@container flex flex-col gap-4 ${className ?? ''}`.trim()}>
       <div className="bg-intents-ux-box-backgroundColor rounded-lg p-3 @md:p-4 @lg:p-6 flex flex-col items-center gap-4">
@@ -21,7 +21,7 @@ function AnalyticsUnpublishedSkeleton({ className }: { className?: string }) {
   )
 }
 
-function AnalyticsPublishedSkeleton({ className }: { className?: string }) {
+function AnalyticsContentSkeleton({ className }: { className?: string }) {
   return (
     <div className={`@container pb-2 px-1.5 md:px-0.5 flex flex-col gap-4 ${className ?? ''}`.trim()}>
       <div className="flex flex-col gap-3">
@@ -90,15 +90,15 @@ function MediasSkeleton({ className }: { className?: string }) {
   )
 }
 
-export default function PanelSkeleton({ panelType, settingsSection, className, isPublished }: { panelType?: ChatTab, settingsSection?: SettingsSection, className?: string, isPublished?: boolean }) {
+export default function PanelSkeleton({ panelType, settingsSection, className, hasContent }: { panelType?: ChatTab, settingsSection?: SettingsSection, className?: string, hasContent?: boolean }) {
   const skeleton = (() => {
     switch (panelType) {
       case ChatTab.MEDIAS:
         return <MediasSkeleton className={className} />
       case ChatTab.ANALYTICS:
-        return isPublished
-          ? <AnalyticsPublishedSkeleton className={className} />
-          : <AnalyticsUnpublishedSkeleton className={className} />
+        return hasContent
+          ? <AnalyticsContentSkeleton className={className} />
+          : <AnalyticsEmptyStateSkeleton className={className} />
       case ChatTab.HISTORY:
         return <HistorySkeleton className={className} />
       case ChatTab.SETTINGS:

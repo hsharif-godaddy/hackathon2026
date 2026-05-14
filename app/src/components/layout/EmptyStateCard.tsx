@@ -11,6 +11,7 @@ interface EmptyStateCardProps {
   ctaLabel: string;
   onCtaClick: () => void;
   ctaDisabled?: boolean;
+  ctaIcon?: React.ReactNode;
   secondaryCtaLabel?: string;
   onSecondaryCtaClick?: () => void;
 }
@@ -40,6 +41,7 @@ export default function EmptyStateCard(props: EmptyStateCardProps) {
     ctaLabel,
     onCtaClick,
     ctaDisabled = false,
+    ctaIcon,
     secondaryCtaLabel,
     onSecondaryCtaClick,
   } = props;
@@ -69,7 +71,7 @@ export default function EmptyStateCard(props: EmptyStateCardProps) {
           as="paragraph"
           size={0}
           text={description}
-          className="text-center"
+          className="text-center text-pretty"
         />
       </Box>
 
@@ -83,6 +85,7 @@ export default function EmptyStateCard(props: EmptyStateCardProps) {
           text={ctaLabel}
           onClick={onCtaClick}
           disabled={ctaDisabled}
+          icon={ctaIcon}
         />
 
         {secondaryCtaLabel && onSecondaryCtaClick && (

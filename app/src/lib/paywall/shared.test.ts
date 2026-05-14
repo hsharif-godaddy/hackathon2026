@@ -8,11 +8,13 @@ import {
   isPaidPlanForGrants,
   isPlanUpgrade,
   isProfessionalOrAbove,
+  isStarterOrAbove,
   landingItc,
   PAID_PLANS,
   PAYWALL_ITC,
   PLAN_PRIORITY,
   PROFESSIONAL_AND_ABOVE_PLANS,
+  STARTER_AND_ABOVE_PLANS,
 } from './shared';
 
 describe('paywall/shared', function paywallSharedTests() {
@@ -133,6 +135,43 @@ describe('paywall/shared', function paywallSharedTests() {
     it('should return true for null or undefined (no plan = show upgrade)', function handlesNullish() {
       expect(canUpgradePlan(null)).toBe(true);
       expect(canUpgradePlan(undefined)).toBe(true);
+    });
+  });
+
+  describe('STARTER_AND_ABOVE_PLANS', function starterAndAbovePlansTests() {
+    it('should include Starter, Professional, and Ultimate', function includesCorrectPlans() {
+      expect(STARTER_AND_ABOVE_PLANS).toContain(SubscriptionPlan.Starter);
+      expect(STARTER_AND_ABOVE_PLANS).toContain(SubscriptionPlan.Professional);
+      expect(STARTER_AND_ABOVE_PLANS).toContain(SubscriptionPlan.Ultimate);
+    });
+
+    it('should have exactly 3 plans', function exactCount() {
+      expect(STARTER_AND_ABOVE_PLANS).toHaveLength(3);
+    });
+
+    it('should not include lower-tier plans', function excludesLowerTiers() {
+      expect(STARTER_AND_ABOVE_PLANS).not.toContain(SubscriptionPlan.Free);
+      expect(STARTER_AND_ABOVE_PLANS).not.toContain(SubscriptionPlan.AiroPlus);
+      expect(STARTER_AND_ABOVE_PLANS).not.toContain(SubscriptionPlan.None);
+    });
+  });
+
+  describe('isStarterOrAbove', function isStarterOrAboveTests() {
+    it('should return true for Starter, Professional, and Ultimate', function starterAndAbove() {
+      expect(isStarterOrAbove(SubscriptionPlan.Starter)).toBe(true);
+      expect(isStarterOrAbove(SubscriptionPlan.Professional)).toBe(true);
+      expect(isStarterOrAbove(SubscriptionPlan.Ultimate)).toBe(true);
+    });
+
+    it('should return false for lower-tier plans', function lowerTiers() {
+      expect(isStarterOrAbove(SubscriptionPlan.Free)).toBe(false);
+      expect(isStarterOrAbove(SubscriptionPlan.AiroPlus)).toBe(false);
+      expect(isStarterOrAbove(SubscriptionPlan.None)).toBe(false);
+    });
+
+    it('should return false for null or undefined', function handlesNullish() {
+      expect(isStarterOrAbove(null)).toBe(false);
+      expect(isStarterOrAbove(undefined)).toBe(false);
     });
   });
 

@@ -259,6 +259,30 @@ export function canUpgradePlan(
 }
 
 /**
+ * Plans that require Starter tier or above
+ */
+export const STARTER_AND_ABOVE_PLANS = [
+  SubscriptionPlan.Starter,
+  SubscriptionPlan.Professional,
+  SubscriptionPlan.Ultimate,
+] as const;
+
+/**
+ * Check if a plan is Starter or above
+ *
+ * Used for features gated to Starter/Professional/Ultimate tiers (e.g., analytics).
+ *
+ * @param plan - Subscription plan to check
+ * @returns True if plan is Starter, Professional, or Ultimate
+ */
+export function isStarterOrAbove(
+  plan: SubscriptionPlan | undefined | null
+): boolean {
+  if (plan == null) return false;
+  return (STARTER_AND_ABOVE_PLANS as readonly SubscriptionPlan[]).includes(plan);
+}
+
+/**
  * Plans that require Professional tier or above
  */
 export const PROFESSIONAL_AND_ABOVE_PLANS = [
