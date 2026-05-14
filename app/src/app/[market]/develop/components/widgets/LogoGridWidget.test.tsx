@@ -298,6 +298,24 @@ describe('LogoGridWidget', function logoGridWidget() {
       });
     });
 
+    it('does not swap to solid variant when logo has no transparent URLs', async function noSolidFallback() {
+      const solidOnly: LogoData[] = [
+        {
+          id: 'solid-only',
+          solidUrl: 'https://cdn.example.com/s1.png',
+          horizontalSolidUrl: 'https://cdn.example.com/hs1.png',
+        },
+        baseLogos()[0]!,
+      ];
+      const { user } = renderWithProviders(<LogoGridWidget logos={solidOnly} />);
+      const buttons = screen.getAllByRole('button');
+      await user.click(buttons[0]!);
+      await waitFor(() => {
+        expect(screen.getByText('builder_common_error_generic')).toBeInTheDocument();
+      });
+      expect(global.fetch).not.toHaveBeenCalled();
+    });
+
     it('aborts remaining slot swaps after a failure', async function abortsOnFailure() {
       vi.mocked(global.fetch)
         .mockResolvedValueOnce({

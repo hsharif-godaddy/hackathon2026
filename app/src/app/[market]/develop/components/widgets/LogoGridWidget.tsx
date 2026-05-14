@@ -129,12 +129,13 @@ export default function LogoGridWidget({ logos, className = '' }: LogoGridWidget
     }
 
     if (slotsToSwap.length === 0) {
-      const fallbackUrl = getLogoDisplayUrl(logo)
-      if (!fallbackUrl) {
-        setSwapError(t('builder_common_error_generic'))
-        return
-      }
-      slotsToSwap.push({ url: fallbackUrl, slotName: getLogoSlotName(logo) })
+      // Never fall back to solid/reversed variants — those have backgrounds that
+      // produce visible borders on websites. A logo with no transparent variant
+      // is unusable for slot placement (manifest invariant in MediaManifestService
+      // would auto-rewrite it back anyway).
+      logger.warn('logo_grid.slot.no_transparent_variant', { logoId: logo.id })
+      setSwapError(t('builder_common_error_generic'))
+      return
     }
 
     for (const { url, slotName } of slotsToSwap) {

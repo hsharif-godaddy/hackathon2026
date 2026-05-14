@@ -352,6 +352,36 @@ async function copyLocalFileToMedia(
 }
 
 /**
+ * For a logo slot, rewrite a non-transparent currentUrl to its transparent sibling
+ * if one exists in the slot's variant maps. Returns the URL to use.
+ *
+ * Why: solid/reversed variants have backgrounds that produce visible borders when
+ * placed on a website. The slot's solidUrlMap and reversedUrlMap are keyed by the
+ * transparent URL, so a reverse lookup gives us the canonical transparent variant.
+ */
+function resolveTransparentLogoUrl(
+  slot: MediaSlot,
+  candidateUrl: string,
+): { url: string; rewritten: boolean } {
+  if (slot.mediaType !== 'logo') {
+    return { url: candidateUrl, rewritten: false };
+  }
+
+  for (const [transparent, solid] of Object.entries(slot.solidUrlMap || {})) {
+    if (solid === candidateUrl) {
+      return { url: transparent, rewritten: true };
+    }
+  }
+  for (const [transparent, reversed] of Object.entries(slot.reversedUrlMap || {})) {
+    if (reversed === candidateUrl) {
+      return { url: transparent, rewritten: true };
+    }
+  }
+
+  return { url: candidateUrl, rewritten: false };
+}
+
+/**
  * Service for managing the media manifest file with proper locking and git integration
  */
 export class MediaManifestService {
@@ -778,6 +808,25 @@ export class MediaManifestService {
         }
       }
 
+      // Enforce transparent-logo invariant: if newCurrentUrl resolves to a solid or
+      // reversed variant, rewrite to the transparent sibling so generated websites
+      // never render logos with backgrounds.
+      const resolved = resolveTransparentLogoUrl(existingSlot, newCurrentUrl);
+      if (resolved.rewritten) {
+        logger.warn('media_manifest.logo.non_transparent_rewritten', {
+          ...logContext,
+          originalUrl: newCurrentUrl,
+          transparentUrl: resolved.url,
+        });
+        newCurrentUrl = resolved.url;
+        // Drop any duplicate of the rewritten URL from alternatives; keep gettyIds aligned.
+        const keptIndices = newAlternatives
+          .map((url, i) => (url === newCurrentUrl ? -1 : i))
+          .filter((i) => i >= 0);
+        newAlternatives = keptIndices.map((i) => newAlternatives[i]!);
+        newAlternativeGettyIds = keptIndices.map((i) => newAlternativeGettyIds[i] || '');
+      }
+
       // Update the slot
       const updatedSlot: MediaSlot = {
         ...existingSlot,
@@ -1044,6 +1093,19 @@ export class MediaManifestService {
             requestedCount: allGettyIds.length,
           });
         }
+      }
+
+      // Enforce transparent-logo invariant: if currentUrl resolves to a solid or reversed
+      // variant, rewrite to the transparent sibling so generated websites never render
+      // logos with backgrounds.
+      const resolved = resolveTransparentLogoUrl(slot, slot.currentUrl);
+      if (resolved.rewritten) {
+        logger.warn('media_manifest.logo.non_transparent_rewritten', {
+          ...logContext,
+          originalUrl: slot.currentUrl,
+          transparentUrl: resolved.url,
+        });
+        slot.currentUrl = resolved.url;
       }
 
       // Update the slot
