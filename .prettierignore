@@ -1,3 +1,6 @@
+offline-ml/cost-attributtion-classifier/training/**
+offline-ml/cost-attributtion-classifier/verification/**
+
 # Dependencies
 node_modules/
 .pnpm-store/

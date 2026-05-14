@@ -15,6 +15,7 @@ Defined in `app/main.ts` and registered in the `STACK_NAME` input of `.github/wo
 | `AiroStripeServiceStack` | DynamoDB + RSA KMS + Secrets Manager entries for stripe-service     | dev             |
 | `GocaasSpendLambdaStack` | Lambda that syncs GoCode spend logs to ESSP                         | dev, prod       |
 | `EvalSnapshotsStack`     | S3 bucket + IAM for eval snapshots                                  | dev, prod       |
+| `OfflineMLDataS3Stack`   | S3 bucket + IAM for offline ML datasets and artifacts               | dev, test, prod |
 | `FeedbackS3Stack`        | S3 bucket + IAM for user feedback                                   | dev, prod       |
 | `QdrantEcrStack`         | ECR repo for the Qdrant image                                       | dev, prod       |
 | `QdrantVectorDbStack`    | 3-node Qdrant cluster on Fargate (see `docs/stacks/qdrant.md`)      | dev, prod       |

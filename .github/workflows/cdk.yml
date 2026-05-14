@@ -27,6 +27,7 @@ on:
           - "GocaasSpendLambdaStack"
           - "LangfuseMetricsEsspExporterStack"
           - "EvalSnapshotsStack"
+          - "OfflineMLDataS3Stack"
           - "FeedbackS3Stack"
           - "LakeFormationAdminsStack"
           - "QdrantEcrStack"

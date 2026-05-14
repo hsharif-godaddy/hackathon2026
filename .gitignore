@@ -87,6 +87,11 @@ gci-metadata.json
 all.log
 .claude/skills/
 
+# Offline ML LR classifier outputs (train/verify JSON + embedding cache)
+offline-ml/cost-attribution-classifier/weights/
+offline-ml/cost-attribution-classifier/training/
+offline-ml/cost-attribution-classifier/verification/
+
 # investigator/ is a standalone Docker build (not in pnpm workspace).
 # Local test runs generate an npm lockfile we do not track.
 investigator/package-lock.json

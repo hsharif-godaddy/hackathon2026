@@ -11,6 +11,7 @@ import { ImageSearchStack } from "../lib/image-search-stack";
 import { LangfuseMetricsEsspExporterStack } from "../lib/langfuse-metrics-essp-exporter-stack";
 import { EvalSnapshotsStack } from "../lib/eval-snapshots-stack";
 import { FeedbackS3Stack } from "../lib/feedback-s3-stack";
+import { OfflineMLDataS3Stack } from "../lib/offline-ml-data-s3-stack";
 import { LakeFormationAdminsStack } from "../lib/lake-formation-admins-stack";
 import { QdrantStack } from "../lib/qdrant-stack";
 import { QdrantEcrStack } from "../lib/qdrant-ecr-stack";
@@ -70,6 +71,9 @@ async function main() {
 
   // Create Eval Snapshots infrastructure (S3 bucket for evaluation screenshots + data)
   new EvalSnapshotsStack(app, 'EvalSnapshotsStack', { env });
+
+  // Shared S3 bucket for offline ML data (per-model prefixes inside the bucket)
+  new OfflineMLDataS3Stack(app, 'OfflineMLDataS3Stack', { env });
 
   // Create Feedback S3 infrastructure (S3 bucket for user feedback submissions).
   // Deployed to dev and prod only — feedback data is not needed in the test environment.
