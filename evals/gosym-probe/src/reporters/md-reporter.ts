@@ -5,6 +5,8 @@ import type { ScenarioResult, AggregatedResult, TrialResult } from
 import type { EvalResult } from '../evaluators/evaluator.js';
 import type { CompositeBreakdownEntry } from '../evaluators/composite-evaluator.js';
 import type { RegressionEvalResult } from '../baselines/types.js';
+import type { StabilityLevel } from '../scenarios/types.js';
+import { STABILITY_TRIALS } from '../scenarios/types.js';
 import {
   trialDurationMs,
   formatDuration,
@@ -36,6 +38,12 @@ function truncateCell(
   const text = escapePipeForMarkdown(value);
   if (text.length <= maxLength) return text;
   return `${text.slice(0, maxLength - 1)}…`;
+}
+
+function formatPassRate(agg: AggregatedResult): string {
+  if (agg.passAtK === undefined || agg.totalTrials === 0) return '\u2014';
+  const passing = agg.baselinePassingTrials ?? agg.passingTrials;
+  return `${passing}/${agg.totalTrials} (${formatPercent(passing, agg.totalTrials)})`;
 }
 
 function verdictWithScore(r: EvalResult): string {
@@ -290,6 +298,54 @@ function buildEvalIndex(
   return evalIndex;
 }
 
+function renderModeLine(
+  results: ScenarioResult[],
+  options: RenderOptions | undefined,
+): string {
+  const mode = options?.runMode ?? 'eval';
+
+  if (mode === 'graduation') {
+    const counts = new Map<StabilityLevel, number>();
+    for (const r of results) {
+      counts.set(r.stabilityLevel, (counts.get(r.stabilityLevel) ?? 0) + 1);
+    }
+    const stabilityParts = [...counts.entries()].map(([level, n]) => {
+      const trials = STABILITY_TRIALS[level];
+      const trialLabel = trials !== undefined ? ` (${trials} trials)` : '';
+      return n > 1 ? `${level}${trialLabel} × ${n}` : `${level}${trialLabel}`;
+    });
+    const stabilityStr = stabilityParts.length > 0
+      ? ` | **Stability:** ${stabilityParts.join(', ')}`
+      : '';
+    return `**Mode:** graduation${stabilityStr}`;
+  }
+
+  if (options?.skipBaseline) {
+    return `**Mode:** eval | **Baseline:** skipped`;
+  }
+
+  const compared = results.filter((r) => r.baselineFilePath !== undefined).length;
+
+  if (compared === 0) {
+    return `**Mode:** eval | **Baseline:** none`;
+  }
+
+  const without = results.length - compared;
+  const summary = without > 0
+    ? `${compared} compared, ${without} without`
+    : `${compared} compared`;
+
+  const lines = [`**Mode:** eval | **Baselines:** ${summary}`];
+  for (const r of results) {
+    lines.push(
+      r.baselineFilePath
+        ? `- ${r.scenarioName}: \`${r.baselineFilePath}\``
+        : `- ${r.scenarioName}: *(none)*`,
+    );
+  }
+  return lines.join('\n');
+}
+
 function renderCategoryMatrix(results: ScenarioResult[]): string[] {
   if (results.length === 0) return ['*(none)*'];
 
@@ -300,7 +356,7 @@ function renderCategoryMatrix(results: ScenarioResult[]): string[] {
     { length: maxTrials },
     (_, i) => `T${i + 1}`,
   );
-  const cols = ['Scenario', 'Evaluator', 'pass@k', 'pass^k', ...trialHeaders];
+  const cols = ['Scenario', 'Evaluator', 'pass@k', 'pass^k', 'Pass Rate', ...trialHeaders];
   const lines = [
     `| ${cols.join(' | ')} |`,
     `|${cols.map((col) => '-'.repeat(col.length + 2)).join('|')}|`,
@@ -309,11 +365,14 @@ function renderCategoryMatrix(results: ScenarioResult[]): string[] {
   for (const result of results) {
     const evalIndex = buildEvalIndex(result);
     for (const [name, agg] of Object.entries(result.aggregated)) {
+      // passAtK is defined for pass-rate evaluators and enriched score-mode evaluators
+      const rate = formatPassRate(agg);
       const cells = [
         escapePipeForMarkdown(result.scenarioName),
         escapePipeForMarkdown(name),
         passIcon(agg.passAtK),
         passIcon(agg.passToTheK),
+        rate,
       ];
       for (let i = 0; i < maxTrials; i++) {
         cells.push(compactVerdict(evalIndex.get(i)?.get(name)));
@@ -356,26 +415,39 @@ export function renderTrialEvalResultsMarkdown(
 
 // ── MdReporter class ─────────────────────────────────────────
 
+export interface RenderOptions {
+  wallClockMs?: number;
+  runMode?: 'eval' | 'graduation';
+  skipBaseline?: boolean;
+}
+
 export class MdReporter {
   constructor(private readonly resultsDir: string = 'results') {}
 
-  async write(runId: string, results: ScenarioResult[]): Promise<string> {
+  async write(runId: string, results: ScenarioResult[], options?: RenderOptions): Promise<string> {
     await mkdir(this.resultsDir, { recursive: true });
 
     const filePath = join(this.resultsDir, `${runId}.md`);
-    const content = this.render(runId, results);
+    const content = this.render(runId, results, options);
     await writeFile(filePath, content);
     return filePath;
   }
 
-  public render(runId: string, results: ScenarioResult[]): string {
+  public render(runId: string, results: ScenarioResult[], options?: RenderOptions): string {
     const gated = results.filter((r) => r.regressionStatus !== undefined);
     const informational = results.filter((r) => r.regressionStatus === undefined);
     const unknowns = collectUnknowns(results);
 
+    const headerLine = options?.wallClockMs
+      ? `**Generated:** ${new Date().toISOString()} | **Wall Clock:** ${formatDuration(options.wallClockMs)}`
+      : `**Generated:** ${new Date().toISOString()}`;
+
+    const modeLine = renderModeLine(results, options);
+
     const sections: string[] = [
       `# Eval Run: ${runId}`,
-      `**Generated:** ${new Date().toISOString()}`,
+      headerLine,
+      modeLine,
       '',
       '---',
       '',
@@ -608,6 +680,7 @@ export class MdReporter {
 
     let summaryLine =
       `**Trials:** ${k}`
+      + ` | **Duration:** ${formatDuration(timing.totalDurationMs)}`
       + ` | **Avg Duration:** ${formatDuration(timing.avgTrialDurationMs)}`
       + ` | **Avg Turns:** ${Math.round(timing.avgTurnsPerTrial)}`;
     if (toolFailureCount > 0) {
@@ -634,7 +707,7 @@ export class MdReporter {
       result.regressionStatus !== undefined;
 
     const cols: string[] = [
-      'Evaluator', 'pass@k', 'pass^k', 'Mean', 'Range',
+      'Evaluator', 'pass@k', 'pass^k', 'Pass Rate', 'Mean', 'Range',
     ];
     if (hasBaseline) cols.push('vs. baseline');
     cols.push(...trialHeaders);
@@ -699,6 +772,8 @@ export class MdReporter {
       ? '\u2014'
       : agg.passToTheK ? 'pass' : 'fail';
 
+    const passRate = formatPassRate(agg);
+
     const scores: number[] = [];
     for (let i = 0; i < trialCount; i++) {
       const r = evalIndex.get(i)?.get(evaluator);
@@ -711,7 +786,7 @@ export class MdReporter {
       : '\u2014';
 
     const cells: string[] = [
-      evaluator.replace(/\|/g, '\\|'), passAtK, passToTheK, mean, range,
+      evaluator.replace(/\|/g, '\\|'), passAtK, passToTheK, passRate, mean, range,
     ];
     if (baselineCellValue !== undefined) cells.push(baselineCellValue);
     for (let i = 0; i < trialCount; i++) {

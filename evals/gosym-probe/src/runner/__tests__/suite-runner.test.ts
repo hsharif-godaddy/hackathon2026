@@ -610,7 +610,7 @@ describe('SuiteRunner — onTrialEvaluated callback', () => {
 
 describe('SuiteRunner — score-mode enrichment', () => {
   const mockBaselineStore = {
-    load: vi.fn<() => Promise<BaselineScores | null>>().mockResolvedValue(null),
+    load: vi.fn<() => Promise<{ scores: BaselineScores; filePath: string } | null>>().mockResolvedValue(null),
   };
 
   beforeEach(() => {
@@ -632,14 +632,17 @@ describe('SuiteRunner — score-mode enrichment', () => {
       }),
     };
     mockBaselineStore.load.mockResolvedValue({
-      scenarioName: 'test-scenario',
-      runId: 'baseline-run',
-      createdAt: '2026-01-01T00:00:00Z',
+      filePath: 'baselines/test-scenario/baseline.json',
       scores: {
-        'token-count': {
-          passingTrials: 0,
-          totalTrials: 3,
-          medianScore: 100,
+        scenarioName: 'test-scenario',
+        runId: 'baseline-run',
+        createdAt: '2026-01-01T00:00:00Z',
+        scores: {
+          'token-count': {
+            passingTrials: 0,
+            totalTrials: 3,
+            medianScore: 100,
+          },
         },
       },
     });
@@ -686,7 +689,7 @@ describe('SuiteRunner — score-mode enrichment', () => {
 
 describe('SuiteRunner — baseline comparison', () => {
   const mockBaselineStore = {
-    load: vi.fn<() => Promise<BaselineScores | null>>().mockResolvedValue(null),
+    load: vi.fn<() => Promise<{ scores: BaselineScores; filePath: string } | null>>().mockResolvedValue(null),
   };
 
   beforeEach(() => {
@@ -758,15 +761,18 @@ describe('SuiteRunner — baseline comparison', () => {
 
   it('populates regressionStatus when baseline exists', async () => {
     mockBaselineStore.load.mockResolvedValue({
-      scenarioName: 'test-scenario',
-      runId: 'baseline-run',
-      createdAt: '2026-01-01T00:00:00Z',
+      filePath: 'baselines/test-scenario/baseline.json',
       scores: {
-        'test-eval': {
-          passAtK: true,
-          passToTheK: true,
-          passingTrials: 3,
-          totalTrials: 3,
+        scenarioName: 'test-scenario',
+        runId: 'baseline-run',
+        createdAt: '2026-01-01T00:00:00Z',
+        scores: {
+          'test-eval': {
+            passAtK: true,
+            passToTheK: true,
+            passingTrials: 3,
+            totalTrials: 3,
+          },
         },
       },
     });

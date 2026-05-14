@@ -275,6 +275,13 @@ reported but never block. Pass `--skip-baseline` to skip comparison entirely.
   `enrichScoreModePassRates` derives `passAtK`/`passToTheK` by checking
   each trial's score against the baseline median within the threshold.
 
+### Choosing the right metric for gating
+
+See [docs/regression-gating.md](docs/regression-gating.md) for the full
+statistical rationale. Summary: the regression comparator uses **pass rate**
+because it estimates the same underlying quantity regardless of trial count,
+making cross-trial-count comparison valid.
+
 Thresholds are configured per evaluator in `config/environments/*.ts`:
 
 ```typescript

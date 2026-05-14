@@ -432,7 +432,9 @@ async function main(): Promise<void> {
   });
 
   try {
+    const runStartMs = Date.now();
     const results = await runner.run();
+    const wallClockMs = Date.now() - runStartMs;
     await Promise.all(pendingWrites);
     if (writeFailures.length > 0) {
       console.error(
@@ -446,7 +448,7 @@ async function main(): Promise<void> {
       return;
     }
 
-    const runDir = await store.finalizeRun(dirName, runId, results);
+    const runDir = await store.finalizeRun(dirName, runId, results, undefined, { wallClockMs, skipBaseline });
     await store.prune();
 
     console.log('\nResults written to:');

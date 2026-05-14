@@ -32,7 +32,7 @@ function parseRetryAfterMs(headers: Headers | undefined): number | null {
 }
 
 interface BaselineStore {
-  load(scenarioName: string): Promise<BaselineScores | null>;
+  load(scenarioName: string): Promise<{ scores: BaselineScores; filePath: string } | null>;
 }
 
 export type RuncappedError<T> = AggregateError & {
@@ -324,22 +324,23 @@ export class SuiteRunner {
       // aggregated state (without passAtK), and downstream consumers
       // (reporter, store) see the enriched version.
       if (baselineStore) {
-        const baseline = await baselineStore.load(
+        const loaded = await baselineStore.load(
           scenario.name,
         );
-        if (baseline) {
+        if (loaded) {
           const regressionStatus = this.comparator.compare(
             result,
-            baseline,
+            loaded.scores,
             config.regression,
           );
           const enrichedAggregated = enrichScoreModePassRates(
             result,
-            baseline,
+            loaded.scores,
             config.regression,
           );
           result.regressionStatus = regressionStatus;
           result.aggregated = enrichedAggregated;
+          result.baselineFilePath = loaded.filePath;
         }
       }
 

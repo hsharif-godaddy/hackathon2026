@@ -856,7 +856,7 @@ describe('EvalStore', () => {
 
       await store.save('run-001', results, [scenario], makeConfig());
 
-      expect(mockRender).toHaveBeenCalledWith('run-001', results);
+      expect(mockRender).toHaveBeenCalledWith('run-001', results, { runMode: 'eval' });
       const summaryCall = mockWriteFile.mock.calls.find(([p]) =>
         (p as string).endsWith('summary.md'),
       );
@@ -1759,7 +1759,7 @@ describe('EvalStore', () => {
 
       await store.finalizeRun(DIR_NAME, 'run-001', results);
 
-      expect(mockRender).toHaveBeenCalledWith('run-001', results);
+      expect(mockRender).toHaveBeenCalledWith('run-001', results, { runMode: 'eval' });
       const call = mockWriteFile.mock.calls.find(([p]) =>
         (p as string).endsWith('summary.md'),
       );

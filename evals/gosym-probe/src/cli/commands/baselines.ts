@@ -38,7 +38,7 @@ async function viewBaselines(
   const entries = await Promise.all(
     scenarios.map(async (s) => ({
       name: s.name,
-      baseline: await store.load(s.name),
+      baseline: (await store.load(s.name))?.scores ?? null,
     })),
   );
   process.stdout.write('\n');

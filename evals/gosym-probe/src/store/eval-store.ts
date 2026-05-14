@@ -19,6 +19,7 @@ import {
   MdReporter,
   renderTrialEvalResultsMarkdown,
 } from '../reporters/md-reporter.js';
+import type { RenderOptions } from '../reporters/md-reporter.js';
 import { toCompactTimestamp } from '../util/timestamp.js';
 import { sanitizeConfig } from '../util/sanitize.js';
 import type {
@@ -121,6 +122,8 @@ export class EvalStore {
         await this.writeTrial(resolvedDirName, result.scenarioName, trial);
       }
     }
+    // renderOptions intentionally omitted: save() callers (interactive CLI,
+    // graduation runner) do not track wall-clock timing for the full run.
     return this.finalizeRun(resolvedDirName, runId, results, options.kind);
   }
 
@@ -180,6 +183,7 @@ export class EvalStore {
     runId: string,
     results: ScenarioResult[],
     kind?: 'eval' | 'graduation',
+    renderOptions?: RenderOptions,
   ): Promise<string> {
     const runDir = this.runDir(dirName);
 
@@ -192,7 +196,11 @@ export class EvalStore {
     }
 
     const reporter = new MdReporter();
-    const summaryContent = reporter.render(runId, results);
+    const resolvedRenderOptions: RenderOptions = {
+      ...renderOptions,
+      runMode: renderOptions?.runMode ?? (kind === 'graduation' ? 'graduation' : 'eval'),
+    };
+    const summaryContent = reporter.render(runId, results, resolvedRenderOptions);
     await writeFile(join(runDir, 'summary.md'), summaryContent);
 
     const timestamp = new Date().toISOString();

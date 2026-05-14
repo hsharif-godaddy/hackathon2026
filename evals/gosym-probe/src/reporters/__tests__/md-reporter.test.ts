@@ -279,9 +279,9 @@ describe('MdReporter', () => {
     const reporter = new MdReporter();
     const content = reporter.render('run-001', [BASELINED_RESULT]);
 
-    expect(content).toContain('| Scenario | Evaluator | pass@k | pass^k | T1 | T2 | T3 |');
+    expect(content).toContain('| Scenario | Evaluator | pass@k | pass^k | Pass Rate | T1 | T2 | T3 |');
     expect(content).toContain(
-      '| build-landing-page | jtbd-completion | ✓ | ✗ | pass | ⚠️ unknown | partial |',
+      '| build-landing-page | jtbd-completion | ✓ | ✗ | 1/2 (50%) | pass | ⚠️ unknown | partial |',
     );
   });
 
@@ -1450,5 +1450,77 @@ describe('MdReporter — score-mode pass fraction', () => {
     // Only jtbd-completion in denominator → 1/1 (100%), not 1/2 (50%)
     expect(content).toContain('1/1');
     expect(content).toContain('100%');
+  });
+});
+
+// ── Mode line rendering ──────────────────────────────────────────────────────
+
+describe('MdReporter — mode line', () => {
+  it('renders graduation mode with stability counts', () => {
+    const results: ScenarioResult[] = [
+      { ...BASELINED_RESULT, stabilityLevel: 'medium' },
+      { ...NO_BASELINE_RESULT, stabilityLevel: 'medium' },
+    ];
+    const reporter = new MdReporter();
+    const content = reporter.render('run-001', results, { runMode: 'graduation' });
+
+    expect(content).toContain('Mode:');
+    expect(content).toContain('graduation');
+    expect(content).toContain('medium (5 trials)');
+  });
+
+  it('renders skipBaseline mode', () => {
+    const reporter = new MdReporter();
+    const content = reporter.render('run-001', [NO_BASELINE_RESULT], { skipBaseline: true });
+
+    expect(content).toContain('Baseline:');
+    expect(content).toContain('skipped');
+  });
+
+  it('renders no baseline when no results have baselineFilePath', () => {
+    const reporter = new MdReporter();
+    const content = reporter.render('run-001', [NO_BASELINE_RESULT]);
+
+    expect(content).toContain('Baseline:');
+    expect(content).toContain('none');
+  });
+
+  it('renders baseline file paths when results have baselineFilePath', () => {
+    const resultWithBaseline: ScenarioResult = {
+      ...BASELINED_RESULT,
+      baselineFilePath: 'baselines/build-landing-page/2026-01-01T00-00-00.json',
+    };
+    const reporter = new MdReporter();
+    const content = reporter.render('run-001', [resultWithBaseline, NO_BASELINE_RESULT]);
+
+    expect(content).toContain('baselines/build-landing-page/2026-01-01T00-00-00.json');
+    expect(content).toContain('compared');
+  });
+});
+
+// ── RenderOptions integration ───────────────────────────────────────────────
+
+describe('MdReporter — RenderOptions integration', () => {
+  it('includes wall clock duration when wallClockMs is provided', () => {
+    const reporter = new MdReporter();
+    const content = reporter.render('run-001', [NO_BASELINE_RESULT], { wallClockMs: 125000 });
+
+    expect(content).toContain('Wall Clock');
+    expect(content).toContain('2m 5s');
+  });
+
+  it('omits wall clock line when wallClockMs is not provided', () => {
+    const reporter = new MdReporter();
+    const content = reporter.render('run-001', [NO_BASELINE_RESULT]);
+
+    expect(content).not.toContain('Wall Clock');
+  });
+
+  it('renders runMode in mode line via options', () => {
+    const reporter = new MdReporter();
+    const content = reporter.render('run-001', [NO_BASELINE_RESULT], { runMode: 'eval' });
+
+    expect(content).toContain('Mode:');
+    expect(content).toContain('eval');
   });
 });

@@ -407,7 +407,10 @@ describe('BaselineStore', () => {
 
       const result = await store.load('build-landing-page');
 
-      expect(result).toEqual(STORED_BASELINE);
+      expect(result).toEqual({
+        scores: STORED_BASELINE,
+        filePath: `baselines/build-landing-page/${FIXED_COMPACT}_run-001.json`,
+      });
     });
 
     it('returns null when scenario directory is missing (ENOENT)', async () => {

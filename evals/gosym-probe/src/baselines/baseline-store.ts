@@ -189,7 +189,7 @@ export class BaselineStore {
    * versioned files descending (lexicographic on the timestamp prefix)
    * and reading the first entry.
    */
-  async load(scenarioName: string): Promise<BaselineScores | null> {
+  async load(scenarioName: string): Promise<{ scores: BaselineScores; filePath: string } | null> {
     const scenarioDir = join(this.dir, scenarioName);
     let files: string[];
     try {
@@ -216,7 +216,7 @@ export class BaselineStore {
       throw err;
     }
     try {
-      return JSON.parse(raw) as BaselineScores;
+      return { scores: JSON.parse(raw) as BaselineScores, filePath };
     } catch (err) {
       throw new Error(
         `Failed to parse baseline ${filePath}: ${(err as Error).message}`,
@@ -243,10 +243,10 @@ export class BaselineStore {
     if (scoreNames.length === 0 || defaultThreshold === undefined) {
       return undefined;
     }
-    const existing = existingBaseline !== undefined
+    const loadedOrProvided = existingBaseline !== undefined
       ? existingBaseline
-      : await this.load(scenarioName);
-    const existingThresholds = existing?.regressionThresholds ?? {};
+      : (await this.load(scenarioName))?.scores ?? null;
+    const existingThresholds = loadedOrProvided?.regressionThresholds ?? {};
     const thresholds: Record<string, number> = {};
     for (const name of scoreNames) {
       thresholds[name] =

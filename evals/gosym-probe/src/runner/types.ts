@@ -60,4 +60,6 @@ export interface ScenarioResult {
   aggregated: Record<string, AggregatedResult>;
   /** Populated after baseline comparison; absent when skipped. */
   regressionStatus?: RegressionResult;
+  /** Path to the baseline file used for regression comparison, when one was loaded. */
+  baselineFilePath?: string;
 }
