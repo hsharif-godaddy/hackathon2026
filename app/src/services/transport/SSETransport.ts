@@ -10,6 +10,18 @@ function errMessage(err: unknown): string {
 
 interface SSETransportConfig {
   baseUrl: string
+  /**
+   * Number of consecutive non-401 transport errors before entering cooldown.
+   * Prevents the polyfill from hammering a down server indefinitely.
+   */
+  maxConsecutiveErrors?: number
+  /**
+   * Cooldown duration in ms after the error threshold is hit. During cooldown
+   * the EventSource is closed (so the polyfill stops retrying) and reconnect
+   * is gated. A user signal via reconnectIfNeeded() can short-circuit the
+   * cooldown.
+   */
+  cooldownMs?: number
 }
 
 export class SSETransport implements ChatTransport {
@@ -26,8 +38,22 @@ export class SSETransport implements ChatTransport {
   private reconnecting = false
   private eventSubscribers = new Map<string, Set<(data: any) => void>>()
 
+  // Circuit-breaker state. The polyfill's own backoff is unbounded — once it
+  // is in long backoff there is no client signal to "try again now". We
+  // count consecutive non-401 onerror callbacks; on threshold we close the
+  // EventSource and freeze for cooldownMs. reconnectIfNeeded() (called on
+  // visibilitychange / focus) can break the freeze on user activity.
+  private readonly maxConsecutiveErrors: number
+  private readonly cooldownMs: number
+  private consecutiveErrors = 0
+  private cooldownUntil = 0
+  private cooldownTimer: ReturnType<typeof setTimeout> | null = null
+  private visibilityListener: (() => void) | null = null
+
   constructor(config: SSETransportConfig) {
     this.config = config
+    this.maxConsecutiveErrors = config.maxConsecutiveErrors ?? 10
+    this.cooldownMs = config.cooldownMs ?? 60_000
   }
 
   get state(): TransportState {
@@ -42,6 +68,10 @@ export class SSETransport implements ChatTransport {
     this.appId = appId
     this.token = token
     this.conversationId = conversationId ?? null
+    // Fresh session resets any prior cooldown — a connect() call is an
+    // explicit user/app intent that should not be gated by stale failures.
+    this.resetCooldown()
+    this.attachVisibilityListener()
     this.openEventSource()
   }
 
@@ -71,7 +101,15 @@ export class SSETransport implements ChatTransport {
 
   disconnect(): void {
     this.reconnecting = false
+    this.resetCooldown()
     this.closeEventSource()
+    // Detach the listener here so a focus / visibilitychange event after an
+    // explicit disconnect cannot revive the connection via reconnectIfNeeded().
+    // useSSEChat calls disconnect() in its connect-effect cleanup when the
+    // hook's `enabled` flag flips to false; the transport instance lives on
+    // until unmount, so without this any tab focus in that window would
+    // silently re-open SSE. connect() re-attaches.
+    this.detachVisibilityListener()
     this.setState('disconnected')
   }
 
@@ -79,6 +117,92 @@ export class SSETransport implements ChatTransport {
     this.disconnect()
     this.callbacks = null
     this.eventSubscribers.clear()
+  }
+
+  /**
+   * On-demand reconnect. Call this when the user signals activity (tab
+   * regains focus, visibility goes to "visible", a successful API call
+   * implies the network is back). Behavior:
+   *
+   *   - Honors explicit disconnect: no-op if there are no live credentials.
+   *   - In cooldown: short-circuits the freeze and reopens immediately. The
+   *     user's signal is stronger evidence than the timer.
+   *   - EventSource missing (closed without cooldown): reopens.
+   *   - EventSource present: no-op. The polyfill is already retrying or
+   *     connected; a second open from here would race the existing one.
+   */
+  reconnectIfNeeded(): void {
+    if (!this.appId || !this.token || !this.conversationId) return
+    // Defense-in-depth: even though disconnect() detaches the listener, a
+    // caller could invoke reconnectIfNeeded() directly while we're in the
+    // disconnected state. Honour the explicit disconnect rather than reviving.
+    if (this._state === 'disconnected') return
+    if (this.cooldownUntil > 0 && Date.now() < this.cooldownUntil) {
+      this.resetCooldown('manual')
+      this.openEventSource()
+      return
+    }
+    if (!this.eventSource) {
+      this.openEventSource()
+    }
+  }
+
+  private enterCooldown(): void {
+    this.cooldownUntil = Date.now() + this.cooldownMs
+    // Stop the polyfill from continuing to hammer while we wait. It will be
+    // reopened either by the cooldown timer or by reconnectIfNeeded().
+    this.closeEventSource()
+    this.setState('error')
+    logger.warn('sse.transport.cooldown.entered', {
+      appId: this.appId, conversationId: this.conversationId,
+      cooldownMs: this.cooldownMs, errors: this.consecutiveErrors,
+    })
+    this.cooldownTimer = setTimeout(() => {
+      this.cooldownTimer = null
+      // Auto-reopen if credentials still live; the user did not have to
+      // touch the tab for the freeze to end.
+      const hadCredentials = !!(this.appId && this.token && this.conversationId)
+      this.resetCooldown('timer')
+      if (hadCredentials) this.openEventSource()
+    }, this.cooldownMs)
+  }
+
+  private resetCooldown(reason?: 'timer' | 'manual'): void {
+    if (this.cooldownTimer) {
+      clearTimeout(this.cooldownTimer)
+      this.cooldownTimer = null
+    }
+    if (reason && this.cooldownUntil > 0) {
+      logger.info('sse.transport.cooldown.exit', {
+        appId: this.appId, conversationId: this.conversationId, reason,
+      })
+    }
+    this.cooldownUntil = 0
+    this.consecutiveErrors = 0
+  }
+
+  private attachVisibilityListener(): void {
+    if (typeof window === 'undefined') return
+    if (this.visibilityListener) return
+    const handler = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
+      this.reconnectIfNeeded()
+    }
+    this.visibilityListener = handler
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', handler)
+    }
+    window.addEventListener('focus', handler)
+  }
+
+  private detachVisibilityListener(): void {
+    if (typeof window === 'undefined') return
+    if (!this.visibilityListener) return
+    if (typeof document !== 'undefined') {
+      document.removeEventListener('visibilitychange', this.visibilityListener)
+    }
+    window.removeEventListener('focus', this.visibilityListener)
+    this.visibilityListener = null
   }
 
   private get convPath(): string {
@@ -288,19 +412,24 @@ export class SSETransport implements ChatTransport {
         // Close before refresh so the polyfill does not auto-reconnect with
         // the stale token (producing a retry storm) while we wait for the
         // cache to clear and a fresh token to be issued.
+        // 401 is an auth event, not a transport fault — don't bump the
+        // circuit-breaker counter or it would trip on a single token rotation.
         this.closeEventSource()
         void this.refreshTokenAndReopen()
         return
       }
-      // Non-401 errors: let the polyfill reconnect on its own. It preserves
-      // Last-Event-Id from prior `id:` lines and applies exponential backoff.
-      // Log so intermittent transport faults are visible in dev.log instead
-      // of being silently swallowed.
+      this.consecutiveErrors++
+      // Non-401 errors: let the polyfill reconnect on its own until the
+      // threshold trips. After that we close it and freeze for cooldownMs.
       logger.warn('sse.transport.eventsource.error', {
         appId: this.appId, conversationId: this.conversationId,
         status: err?.status, code: err?.code,
         message: err?.message ?? errMessage(err),
+        consecutiveErrors: this.consecutiveErrors,
       })
+      if (this.consecutiveErrors >= this.maxConsecutiveErrors && this.cooldownUntil === 0) {
+        this.enterCooldown()
+      }
     }
 
     this.eventSource.addEventListener('initialize', (e: MessageEvent) => {
@@ -315,6 +444,10 @@ export class SSETransport implements ChatTransport {
         this.callbacks?.onError(new Error('initialize_parse_failed'))
         return
       }
+      // Successful initialize = transport is healthy again. Clear the
+      // circuit-breaker counter so a fresh streak of failures has to occur
+      // before we'd cool down again.
+      this.consecutiveErrors = 0
       this.setState('connected')
 
       if (data.serverConfig) {

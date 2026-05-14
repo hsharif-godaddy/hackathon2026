@@ -24,6 +24,9 @@ vi.mock('@/lib/agent-fetch', () => ({
 
 let eventListeners: Record<string, Array<(e: MessageEvent) => void>> = {}
 let lastEventSourceOptions: any = null
+let lastEventSourceInstance: any = null
+let eventSourceInstances: any[] = []
+let autoFireInitialize = true
 
 vi.mock('eventsource', () => ({
   EventSource: vi.fn().mockImplementation((url: string, options: any) => {
@@ -41,13 +44,17 @@ vi.mock('eventsource', () => ({
       onopen: null as any,
       onmessage: null as any
     }
-    setTimeout(() => {
-      instance.onopen?.({ type: 'open' })
-      const initHandlers = eventListeners['initialize'] ?? []
-      for (const h of initHandlers) {
-        h({ data: JSON.stringify({ serverConfig: { serverVersion: '2.0' }, agents: [] }) } as MessageEvent)
-      }
-    }, 0)
+    lastEventSourceInstance = instance
+    eventSourceInstances.push(instance)
+    if (autoFireInitialize) {
+      setTimeout(() => {
+        instance.onopen?.({ type: 'open' })
+        const initHandlers = eventListeners['initialize'] ?? []
+        for (const h of initHandlers) {
+          h({ data: JSON.stringify({ serverConfig: { serverVersion: '2.0' }, agents: [] }) } as MessageEvent)
+        }
+      }, 0)
+    }
     return instance
   })
 }))
@@ -65,6 +72,9 @@ describe('SSETransport', () => {
   beforeEach(() => {
     eventListeners = {}
     lastEventSourceOptions = null
+    lastEventSourceInstance = null
+    eventSourceInstances = []
+    autoFireInitialize = true
     ;(global.fetch as ReturnType<typeof vi.fn>).mockClear()
     callbacks = {
       onEvent: vi.fn(),
@@ -227,6 +237,235 @@ describe('SSETransport', () => {
     transport.connect('app_1', 'token_123', 'conv_1')
     transport.disconnect()
     expect(transport.state).toBe('disconnected')
+  })
+
+  describe('reconnect cooldown circuit-breaker', () => {
+    function fireError(opts?: { status?: number; code?: string; message?: string }) {
+      const err = opts ?? { message: 'transport_failure' }
+      lastEventSourceInstance?.onerror?.(err)
+    }
+
+    it('enters cooldown after maxConsecutiveErrors and closes the EventSource', () => {
+      autoFireInitialize = false
+      const t = new SSETransport({
+        baseUrl: 'http://localhost:4000',
+        maxConsecutiveErrors: 3,
+        cooldownMs: 1000,
+      })
+      t.on(callbacks)
+      t.connect('app_1', 'token_123', 'conv_1')
+
+      const es = lastEventSourceInstance
+
+      fireError()
+      fireError()
+      expect(es.close).not.toHaveBeenCalled()
+
+      fireError() // threshold trip
+      expect(es.close).toHaveBeenCalled()
+      expect(callbacks.onStateChange).toHaveBeenCalledWith('error')
+
+      t.destroy()
+    })
+
+    it('does not bump the counter on 401 (auth path is separate)', () => {
+      autoFireInitialize = false
+      const t = new SSETransport({
+        baseUrl: 'http://localhost:4000',
+        maxConsecutiveErrors: 2,
+        cooldownMs: 1000,
+      })
+      t.on(callbacks)
+      t.connect('app_1', 'token_123', 'conv_1')
+
+      // Fire 401s up to and past the cooldown threshold.
+      const firstInstance = lastEventSourceInstance
+      firstInstance?.onerror?.({ status: 401 })
+      firstInstance?.onerror?.({ status: 401 })
+      firstInstance?.onerror?.({ status: 401 })
+
+      // Then a single non-401 must NOT trip cooldown — proves the counter
+      // never accumulated 401s. With maxConsecutiveErrors=2, if 401s had
+      // contributed, this single error would push past the threshold.
+      const latestInstance = lastEventSourceInstance
+      latestInstance?.onerror?.({ message: 'transport_failure' })
+
+      expect(callbacks.onStateChange).not.toHaveBeenCalledWith('error')
+      t.destroy()
+    })
+
+    it('reconnectIfNeeded short-circuits cooldown and reopens immediately', async () => {
+      autoFireInitialize = false
+      const t = new SSETransport({
+        baseUrl: 'http://localhost:4000',
+        maxConsecutiveErrors: 2,
+        cooldownMs: 60_000,
+      })
+      t.on(callbacks)
+      t.connect('app_1', 'token_123', 'conv_1')
+      // Flush the queueMicrotask in openEventSource so `reconnecting` clears.
+      await Promise.resolve()
+      const initialCount = eventSourceInstances.length
+
+      fireError()
+      fireError() // trips cooldown
+
+      const afterTripCount = eventSourceInstances.length
+      expect(afterTripCount).toBe(initialCount) // no reopen during cooldown
+
+      t.reconnectIfNeeded()
+
+      expect(eventSourceInstances.length).toBe(afterTripCount + 1)
+      t.destroy()
+    })
+
+    it('cooldown timer auto-reopens when it fires', async () => {
+      autoFireInitialize = false
+      const t = new SSETransport({
+        baseUrl: 'http://localhost:4000',
+        maxConsecutiveErrors: 1,
+        cooldownMs: 30,
+      })
+      t.on(callbacks)
+      t.connect('app_1', 'token_123', 'conv_1')
+      const initialCount = eventSourceInstances.length
+
+      fireError() // trips cooldown immediately
+
+      await new Promise((r) => setTimeout(r, 60))
+
+      expect(eventSourceInstances.length).toBeGreaterThan(initialCount)
+      t.destroy()
+    })
+
+    it('successful initialize resets the consecutive-error counter', async () => {
+      const t = new SSETransport({
+        baseUrl: 'http://localhost:4000',
+        maxConsecutiveErrors: 3,
+        cooldownMs: 1000,
+      })
+      t.on(callbacks)
+      t.connect('app_1', 'token_123', 'conv_1')
+
+      // Wait for the auto-fired initialize to land.
+      await vi.waitFor(() => {
+        expect(callbacks.onStateChange).toHaveBeenCalledWith('connected')
+      })
+
+      // Fire below threshold, then reset, then fire below threshold again.
+      // Without the reset the second batch would trip cooldown.
+      lastEventSourceInstance?.onerror?.({ message: 'a' })
+      lastEventSourceInstance?.onerror?.({ message: 'b' })
+
+      // Re-fire initialize to simulate recovery.
+      const handlers = eventListeners['initialize'] ?? []
+      for (const h of handlers) {
+        h({ data: JSON.stringify({ serverConfig: {}, agents: [] }) } as MessageEvent)
+      }
+
+      lastEventSourceInstance?.onerror?.({ message: 'c' })
+      lastEventSourceInstance?.onerror?.({ message: 'd' })
+
+      expect(lastEventSourceInstance.close).not.toHaveBeenCalled()
+      t.destroy()
+    })
+
+    it('reconnectIfNeeded is a no-op without live credentials', () => {
+      const t = new SSETransport({ baseUrl: 'http://localhost:4000' })
+      t.on(callbacks)
+      const before = eventSourceInstances.length
+      t.reconnectIfNeeded()
+      expect(eventSourceInstances.length).toBe(before)
+      t.destroy()
+    })
+
+    it('reconnectIfNeeded is a no-op when an EventSource is already open and not in cooldown', async () => {
+      const t = new SSETransport({ baseUrl: 'http://localhost:4000' })
+      t.on(callbacks)
+      t.connect('app_1', 'token_123', 'conv_1')
+      await vi.waitFor(() => {
+        expect(callbacks.onStateChange).toHaveBeenCalledWith('connected')
+      })
+
+      const count = eventSourceInstances.length
+      t.reconnectIfNeeded()
+      expect(eventSourceInstances.length).toBe(count)
+      t.destroy()
+    })
+
+    it('disconnect() detaches the visibility listener so focus cannot revive the connection', async () => {
+      // Provide minimal window/document mocks so the listener-detach path
+      // is actually exercised (this test file runs in node, not jsdom).
+      const focusListeners: Array<() => void> = []
+      const visibilityListeners: Array<() => void> = []
+      const mockWindow = {
+        addEventListener: vi.fn((_e: string, fn: () => void) => { focusListeners.push(fn) }),
+        removeEventListener: vi.fn((_e: string, fn: () => void) => {
+          const idx = focusListeners.indexOf(fn)
+          if (idx >= 0) focusListeners.splice(idx, 1)
+        }),
+      }
+      const mockDocument = {
+        visibilityState: 'visible',
+        addEventListener: vi.fn((_e: string, fn: () => void) => { visibilityListeners.push(fn) }),
+        removeEventListener: vi.fn((_e: string, fn: () => void) => {
+          const idx = visibilityListeners.indexOf(fn)
+          if (idx >= 0) visibilityListeners.splice(idx, 1)
+        }),
+      }
+      vi.stubGlobal('window', mockWindow)
+      vi.stubGlobal('document', mockDocument)
+
+      try {
+        const t = new SSETransport({ baseUrl: 'http://localhost:4000' })
+        t.on(callbacks)
+        t.connect('app_1', 'token_123', 'conv_1')
+        await vi.waitFor(() => {
+          expect(callbacks.onStateChange).toHaveBeenCalledWith('connected')
+        })
+
+        // Listener is now attached.
+        expect(mockWindow.addEventListener).toHaveBeenCalledWith('focus', expect.any(Function))
+        expect(mockDocument.addEventListener).toHaveBeenCalledWith('visibilitychange', expect.any(Function))
+
+        const countBefore = eventSourceInstances.length
+        t.disconnect()
+
+        // Detach was called — the key assertion this test exists for.
+        expect(mockWindow.removeEventListener).toHaveBeenCalledWith('focus', expect.any(Function))
+        expect(mockDocument.removeEventListener).toHaveBeenCalledWith('visibilitychange', expect.any(Function))
+
+        // Even if a focus fires (via leftover reference), reconnectIfNeeded
+        // short-circuits on state === 'disconnected' (defense-in-depth).
+        t.reconnectIfNeeded()
+        expect(eventSourceInstances.length).toBe(countBefore)
+        expect(t.state).toBe('disconnected')
+        t.destroy()
+      } finally {
+        vi.unstubAllGlobals()
+      }
+    })
+
+    it('a fresh connect() resets cooldown state', () => {
+      autoFireInitialize = false
+      const t = new SSETransport({
+        baseUrl: 'http://localhost:4000',
+        maxConsecutiveErrors: 1,
+        cooldownMs: 60_000,
+      })
+      t.on(callbacks)
+      t.connect('app_1', 'token_123', 'conv_1')
+
+      fireError() // trips cooldown
+      const closedFirst = lastEventSourceInstance.close.mock.calls.length
+
+      t.connect('app_2', 'token_456', 'conv_2') // fresh session
+
+      // New EventSource constructed and not closed by an old cooldown timer.
+      expect(eventSourceInstances.length).toBeGreaterThan(0)
+      expect(lastEventSourceInstance.close.mock.calls.length).toBeLessThanOrEqual(closedFirst)
+      t.destroy()
+    })
   })
 
   it('forwards validation_message events to onEvent', async () => {
