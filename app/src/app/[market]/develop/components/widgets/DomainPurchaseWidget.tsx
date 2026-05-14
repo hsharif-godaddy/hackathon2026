@@ -2,9 +2,9 @@
 
 import dynamic from 'next/dynamic';
 import type { ComponentType } from 'react';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import AddToCartButton from '@site/buttons/lib/AddToCartButton';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import Alert from '@ux/alert';
 import Box from '@ux/box';
 import Button from '@ux/button';
@@ -18,6 +18,8 @@ import TextInput from '@ux/text-input';
 import { useSendUserMessage } from '@/app/[market]/develop/components/chat/ChatContext';
 import { useAppIdFromParams } from '@/app/[market]/develop/components/utils';
 import { useDomainSearch } from '@/hooks/useDomainSearch';
+import { useIscResolver } from '@/hooks/useIscResolver';
+import { useOfferEligibility } from '@/hooks/useOfferEligibility';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from '@/hooks/useTranslations';
 import { appFetch } from '@/lib/gasket-config';
@@ -72,6 +74,7 @@ export default function DomainPurchaseWidget({
 
   // Feature flag check
   const isDomainPurchaseEnabled = useSwitchboard('appbuilder-domain-purchase');
+  const isOfferIscEnabled = useSwitchboard('appbuilder-domain-offers-isc');
 
   // Fetch API key name from server (avoids NEXT_PUBLIC_ exposure)
   const { data: domainConfig } = useQuery({
@@ -93,7 +96,6 @@ export default function DomainPurchaseWidget({
   const [showCheckout, setShowCheckout] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [checkoutResetGenerations, setCheckoutResetGenerations] = useState<Record<string, number>>({});
-  const [searchFormKey, setSearchFormKey] = useState(0);
   const [showSearchInput, setShowSearchInput] = useState(true);
 
   const getFallbackSearchQuery = (): string => {
@@ -115,6 +117,57 @@ export default function DomainPurchaseWidget({
   const [submittedQuery, setSubmittedQuery] = useState(initialSearchQuery);
   const searchQuery = submittedQuery.trim();
 
+  const { isc: resolvedIsc } = useIscResolver();
+  const { eligible } = useOfferEligibility({ isc: resolvedIsc });
+  const activeIsc = isOfferIscEnabled && eligible ? resolvedIsc : null;
+
+  // Fire on each (ISC, widget mount). Failures are non-blocking: cookie
+  // absence just means SAPI charges standard pricing — same UX as if no
+  // offer were in play. FOS is idempotent on re-mint, so the small number
+  // of redundant POSTs from chat tool re-renders is bounded and cheap.
+  const { mutate: mintIscSession } = useMutation({
+    mutationFn: async (isc: string) => {
+      const response = await appFetch('/api/domains/isc-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isc }),
+      });
+      if (!response.ok) {
+        throw Object.assign(new Error(`mint returned ${response.status}`), {
+          status: response.status,
+        });
+      }
+    },
+    onError: (error: Error & { status?: number }, isc) => {
+      logger.warn('domain-offer.mint.failed', {
+        isc,
+        status: error.status,
+        error: error.message,
+      });
+    },
+  });
+
+  useEffect(() => {
+    if (!activeIsc) return;
+    mintIscSession(activeIsc);
+  }, [activeIsc, mintIscSession]);
+
+  // Focus the search input whenever the form becomes visible. Standard
+  // search-first UX, and also a workaround for a react-focus-lock leak
+  // (used inside @ux/disrupt → @ux/modal) that can leave browser-driven
+  // focus events stuck after an agent-triggered widget remount or a
+  // modal close. Skipped when focus is already on a non-body element so
+  // we don't steal it from the chat textarea or another active input.
+  useEffect(() => {
+    if (!showSearchInput) return;
+    if (typeof window === 'undefined') return;
+    if (document.activeElement && document.activeElement !== document.body) return;
+    const id = window.requestAnimationFrame(() => {
+      document.getElementById('domain-purchase-search')?.focus({ preventScroll: true });
+    });
+    return () => window.cancelAnimationFrame(id);
+  }, [showSearchInput]);
+
   const {
     data: searchResult,
     isLoading: isSearching,
@@ -123,11 +176,15 @@ export default function DomainPurchaseWidget({
     query: searchQuery,
     maxResults: 6,
     enabled: searchQuery.length >= 2,
+    ...(activeIsc ? { isc: activeIsc } : {}),
   });
 
   function runSearch() {
     const q = searchInput.trim();
-    if (q.length >= 2) setSubmittedQuery(q);
+    if (q.length < 2) return;
+    setSubmittedQuery(q);
+    setPurchaseStatus('idle');
+    setSelectedDomain(null);
   }
 
   // Get product info for a domain
@@ -185,6 +242,13 @@ export default function DomainPurchaseWidget({
     setPurchaseStatus('success');
     setShowCheckout(false);
     setBasketId(null);
+
+    // See handleBackFromCheckout for the data-inert workaround rationale.
+    if (typeof window !== 'undefined') {
+      window.requestAnimationFrame(() => {
+        document.body.removeAttribute('data-inert');
+      });
+    }
 
     const purchasedDomain = selectedDomain?.fqdn;
 
@@ -280,7 +344,12 @@ export default function DomainPurchaseWidget({
   }
 
   /**
-   * Go back from checkout - remount the row that was "Added!" so AddToCartButton resets and search stays usable
+   * `@ux/modal` → `@ux/disrupt` mounts react-focus-lock and increments a
+   * `data-inert` counter on `document.body`. After the Express Cart
+   * (`@px/checkouts`) iframe inside the modal unmounts, the `data-inert`
+   * attribute and the focus retention can persist on body, silently
+   * killing keyboard interaction with the search input. Force-clear both
+   * after a frame so React's unmount path runs first.
    */
   function handleBackFromCheckout() {
     const fqdn = selectedDomain?.fqdn ?? null;
@@ -290,12 +359,20 @@ export default function DomainPurchaseWidget({
         [fqdn]: (prev[fqdn] ?? 0) + 1,
       }));
     }
-    setSearchFormKey((k) => k + 1);
+    setSearchInput(submittedQuery);
     setShowSearchInput(true);
     setShowCheckout(false);
     setSelectedDomain(null);
     setBasketId(null);
     setCheckoutError(null);
+
+    if (typeof window !== 'undefined') {
+      window.requestAnimationFrame(() => {
+        document.body.removeAttribute('data-inert');
+        const input = document.getElementById('domain-purchase-search');
+        if (input instanceof HTMLElement) input.focus();
+      });
+    }
   }
 
   /**
@@ -394,7 +471,6 @@ export default function DomainPurchaseWidget({
         {/* Search input and button - API runs only on Search click or Enter */}
         {showSearchInput && (
           <form
-            key={searchFormKey}
             className="flex gap-2 items-end"
             onSubmit={(e) => {
               e.preventDefault();
@@ -491,6 +567,16 @@ export default function DomainPurchaseWidget({
           </Box>
         )}
 
+        {hasResults && activeIsc && (
+          <text.p
+            size={-1}
+            className="text-intents-ux-text-secondary"
+            data-testid="domain-offer-disclaimer"
+          >
+            Offer price. Final price subject to eligibility at checkout.
+          </text.p>
+        )}
+
         {/* Purchase Success Message */}
         {purchaseStatus === 'success' && selectedDomain && (
           <Box
@@ -553,6 +639,13 @@ function DomainRow({
   const t = useTranslations();
   const price = product?.priceInfo;
   const priceLabel = domain.priceDisplay || price?.currentPriceDisplay;
+  // Show the strikethrough list price only when the product is genuinely on
+  // sale and the row uses product-level pricing (not premium/aftermarket
+  // pricing carried on the domain itself, which has no list/current split).
+  const compareAtPrice =
+    !domain.priceDisplay && price?.isOnSale && price.listPriceDisplay !== price.currentPriceDisplay
+      ? price.listPriceDisplay
+      : null;
   const urlOverride = getRootDomain() || 'godaddy.com';
 
   const [rowBasketId, setRowBasketId] = useState<string | null>(() => crypto.randomUUID());
@@ -576,16 +669,34 @@ function DomainRow({
   };
 
   return (
+    // `break-all` on the domain prevents long FQDNs from pushing the
+    // price/button column off-screen.
     <div
-      className={`flex items-center justify-between p-2 gap-2 min-h-[2.75rem] rounded-md ${isExactMatch
+      className={`flex items-center gap-3 p-2 rounded-md ${isExactMatch
         ? 'bg-intents-ux-boxLowContrast-borderColor'
         : 'bg-intents-ux-boxLowContrast-backgroundColor'
         }`}
     >
-      <text.span size={0} className="truncate min-w-0 flex-1">
-        {domain.fqdn}
-      </text.span>
-      <div className="flex flex-shrink-0 [&_.ux-button]:!py-0.5 [&_.ux-button]:!px-1.5">
+      <div className="flex-1 min-w-0 flex flex-col gap-0.5">
+        <text.span size={0} className="break-all">
+          {domain.fqdn}
+        </text.span>
+        {priceLabel && (
+          <div className="flex items-baseline gap-1.5">
+            {compareAtPrice && (
+              <text.span
+                size={-1}
+                className="text-intents-ux-text-secondary line-through"
+                data-testid="domain-compare-at-price"
+              >
+                {compareAtPrice}
+              </text.span>
+            )}
+            <text.strong size={-1}>{priceLabel}</text.strong>
+          </div>
+        )}
+      </div>
+      <div className="flex-shrink-0 [&_.ux-button]:!py-1 [&_.ux-button]:!px-2">
         {domain._raw && apiKeyName && (
           <AddToCartButton
             language={addToCartLanguage}
@@ -595,7 +706,8 @@ function DomainRow({
             trackingCode={PAYWALL_ITC.DOMAIN_PURCHASE}
             basketId={rowBasketId || undefined}
             domain={domain._raw}
-            buttonText={priceLabel || '--'}
+            // TODO: swap to a cart icon once @site/buttons exposes an icon prop.
+            buttonText="+"
             buttonDesign="primary"
             successCallback={handleSuccess}
             failureCallback={onAddToCartError}

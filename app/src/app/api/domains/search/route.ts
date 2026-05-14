@@ -13,7 +13,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { DomainServices } from '@site/domain-services';
 
 import { type CustomerAuthContext, withCustomerAuth } from '@/lib/customer-auth';
+import { normalizeIsc } from '@/lib/domain-offers/isc-config';
 import { logger } from '@/lib/request-context';
+import { checkSwitchboardFlag } from '@/lib/switchboard/server';
 import { detectLocale } from '@/lib/translations';
 
 export const dynamic = 'force-dynamic';
@@ -112,6 +114,18 @@ export const POST = withCustomerAuth(async (
       maxResults = Math.max(1, Math.min(25, Math.floor(body.maxResults)));
     }
 
+    // ISC is gated on `appbuilder-domain-offers-isc` AND the allowlist in
+    // @/lib/domain-offers/isc-config. Anything else gets dropped silently
+    // so the request still succeeds with standard pricing.
+    const offersEnabled = await checkSwitchboardFlag(
+      'appbuilder-domain-offers-isc',
+      request
+    );
+    const normalizedIsc = offersEnabled
+      ? normalizeIsc(typeof body.isc === 'string' ? body.isc : null)
+      : null;
+    const isc = normalizedIsc ?? undefined;
+
     if (!query || typeof query !== 'string') {
       return NextResponse.json(
         { error: 'Query parameter is required' },
@@ -143,15 +157,19 @@ export const POST = withCustomerAuth(async (
       query: sanitizedQuery,
       maxResults,
       market,
+      isc: isc ?? null,
       customerId: authContext.user?.customerId,
     });
 
     // Use Promise.allSettled to ensure both requests complete even if one fails
     const results = await Promise.allSettled([
-      domainServices.findExact({ query: sanitizedQuery }),
+      domainServices.findExact({
+        query: sanitizedQuery,
+        ...(isc ? { extraParams: { isc } } : {}),
+      }),
       domainServices.findSpins({
         query: sanitizedQuery,
-        extraParams: { pagesize: maxResults }
+        extraParams: { pagesize: maxResults, ...(isc ? { isc } : {}) },
       }),
     ]);
 

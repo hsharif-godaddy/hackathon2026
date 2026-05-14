@@ -10,14 +10,21 @@ import { act, screen } from '@testing-library/react';
 import { renderWithProviders } from '@/tests/test-utils';
 import DomainPurchaseWidget from './DomainPurchaseWidget';
 
-const { mockCheckoutProps, mockUseSwitchboard, mockUseDomainSearch } =
-  vi.hoisted(() => ({
-    mockCheckoutProps: { current: null as any },
-    mockUseSwitchboard: vi.fn((): any => (true)),
-    mockUseDomainSearch: vi.fn(
-      (): any => ({ data: null, isLoading: false, error: null })
-    ),
-  }));
+const {
+  mockCheckoutProps,
+  mockUseSwitchboard,
+  mockUseDomainSearch,
+  mockUseIscResolver,
+  mockUseOfferEligibility,
+} = vi.hoisted(() => ({
+  mockCheckoutProps: { current: null as any },
+  mockUseSwitchboard: vi.fn((): any => true),
+  mockUseDomainSearch: vi.fn(
+    (): any => ({ data: null, isLoading: false, error: null })
+  ),
+  mockUseIscResolver: vi.fn((): any => ({ isc: null, source: null })),
+  mockUseOfferEligibility: vi.fn((): any => ({ eligible: false })),
+}));
 
 // -- Hook mocks --
 
@@ -27,6 +34,14 @@ vi.mock('@/hooks/useSwitchboard', () => ({
 
 vi.mock('@/hooks/useDomainSearch', () => ({
   useDomainSearch: mockUseDomainSearch,
+}));
+
+vi.mock('@/hooks/useIscResolver', () => ({
+  useIscResolver: mockUseIscResolver,
+}));
+
+vi.mock('@/hooks/useOfferEligibility', () => ({
+  useOfferEligibility: mockUseOfferEligibility,
 }));
 
 vi.mock('@/app/[market]/develop/components/chat/ChatContext', () => ({
@@ -162,6 +177,12 @@ describe('DomainPurchaseWidget', function () {
     mockUseDomainSearch.mockImplementation(
       (): any => ({ data: null, isLoading: false, error: null })
     );
+    mockUseIscResolver.mockImplementation(
+      (): any => ({ isc: null, source: null })
+    );
+    mockUseOfferEligibility.mockImplementation(
+      (): any => ({ eligible: false })
+    );
     mockCheckoutProps.current = null;
   });
 
@@ -247,5 +268,191 @@ describe('DomainPurchaseWidget', function () {
     expect(
       screen.getByText('builder_domain_purchase_search_button')
     ).toBeInTheDocument();
+  });
+});
+
+describe('DomainPurchaseWidget — ISC offer flow', function () {
+  let mockedAppFetch: ReturnType<typeof vi.fn>;
+
+  beforeEach(async function () {
+    vi.clearAllMocks();
+    mockUseSwitchboard.mockReturnValue(true);
+    mockUseDomainSearch.mockImplementation(
+      (): any => ({ data: null, isLoading: false, error: null })
+    );
+    mockUseIscResolver.mockReturnValue({ isc: null, source: null });
+    mockUseOfferEligibility.mockReturnValue({ eligible: false });
+    const mod = await import('@/lib/gasket-config');
+    mockedAppFetch = vi.mocked(mod.appFetch);
+    mockedAppFetch.mockImplementation((url: string) => {
+      if (typeof url === 'string' && url.includes('/api/domains/config')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ apiKeyName: 'test-api-key' }),
+        } as Response);
+      }
+      if (typeof url === 'string' && url.includes('/api/domains/isc-session')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ ok: true, isc: 'GDWELCOME' }),
+        } as Response);
+      }
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({}),
+      } as Response);
+    });
+  });
+
+  function findIscSessionCalls() {
+    return mockedAppFetch.mock.calls.filter(
+      ([url]) => typeof url === 'string' && url.includes('/api/domains/isc-session')
+    );
+  }
+
+  it('does NOT call /api/domains/isc-session when no ISC is resolved', async function () {
+    mockUseIscResolver.mockReturnValue({ isc: null, source: null });
+    mockUseOfferEligibility.mockReturnValue({ eligible: false });
+
+    renderWithProviders(<DomainPurchaseWidget brandName="testapp" />);
+
+    await act(async () => { await Promise.resolve(); });
+    expect(findIscSessionCalls()).toHaveLength(0);
+  });
+
+  it('does NOT call /api/domains/isc-session when ISC present but ineligible', async function () {
+    mockUseIscResolver.mockReturnValue({ isc: 'GDWELCOME', source: 'url' });
+    mockUseOfferEligibility.mockReturnValue({ eligible: false });
+
+    renderWithProviders(<DomainPurchaseWidget brandName="testapp" />);
+
+    await act(async () => { await Promise.resolve(); });
+    expect(findIscSessionCalls()).toHaveLength(0);
+  });
+
+  it('calls /api/domains/isc-session with the ISC when eligible', async function () {
+    mockUseIscResolver.mockReturnValue({ isc: 'GDWELCOME', source: 'url' });
+    mockUseOfferEligibility.mockReturnValue({ eligible: true });
+
+    renderWithProviders(<DomainPurchaseWidget brandName="testapp" />);
+
+    await act(async () => { await Promise.resolve(); });
+    const calls = findIscSessionCalls();
+    expect(calls).toHaveLength(1);
+    const [, init] = calls[0];
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(init.body)).toEqual({ isc: 'GDWELCOME' });
+  });
+
+  it('passes resolved ISC into useDomainSearch when eligible', async function () {
+    mockUseIscResolver.mockReturnValue({ isc: 'GDWELCOME', source: 'url' });
+    mockUseOfferEligibility.mockReturnValue({ eligible: true });
+
+    renderWithProviders(<DomainPurchaseWidget brandName="testapp" />);
+
+    const lastCall = mockUseDomainSearch.mock.calls.at(-1)?.[0];
+    expect(lastCall).toMatchObject({ isc: 'GDWELCOME' });
+  });
+
+  it('omits ISC from useDomainSearch when ineligible', async function () {
+    mockUseIscResolver.mockReturnValue({ isc: 'GDWELCOME', source: 'url' });
+    mockUseOfferEligibility.mockReturnValue({ eligible: false });
+
+    renderWithProviders(<DomainPurchaseWidget brandName="testapp" />);
+
+    const lastCall = mockUseDomainSearch.mock.calls.at(-1)?.[0];
+    expect(lastCall?.isc).toBeUndefined();
+  });
+
+  it('does not crash when the mint call fails', async function () {
+    mockedAppFetch.mockImplementation((url: string) => {
+      if (typeof url === 'string' && url.includes('/api/domains/config')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ apiKeyName: 'test-api-key' }),
+        } as Response);
+      }
+      if (typeof url === 'string' && url.includes('/api/domains/isc-session')) {
+        return Promise.reject(new Error('upstream timeout'));
+      }
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({}),
+      } as Response);
+    });
+    mockUseIscResolver.mockReturnValue({ isc: 'GDWELCOME', source: 'url' });
+    mockUseOfferEligibility.mockReturnValue({ eligible: true });
+
+    renderWithProviders(<DomainPurchaseWidget brandName="testapp" />);
+
+    await act(async () => { await Promise.resolve(); });
+    expect(
+      screen.getByText('builder_domain_purchase_search_button')
+    ).toBeInTheDocument();
+  });
+
+  it('renders the offer disclaimer when an ISC is active and eligible', async function () {
+    mockUseDomainSearch.mockReturnValue({
+      data: { domains: [mockDomain], products: [mockProduct] },
+      isLoading: false,
+      error: null,
+    });
+    mockUseIscResolver.mockReturnValue({ isc: 'GDWELCOME', source: 'url' });
+    mockUseOfferEligibility.mockReturnValue({ eligible: true });
+
+    renderWithProviders(<DomainPurchaseWidget brandName="testapp" />);
+
+    expect(
+      screen.getByTestId('domain-offer-disclaimer')
+    ).toBeInTheDocument();
+  });
+
+  it('does NOT render the offer disclaimer when no ISC is active', async function () {
+    mockUseDomainSearch.mockReturnValue({
+      data: { domains: [mockDomain], products: [mockProduct] },
+      isLoading: false,
+      error: null,
+    });
+    mockUseIscResolver.mockReturnValue({ isc: null, source: null });
+    mockUseOfferEligibility.mockReturnValue({ eligible: false });
+
+    renderWithProviders(<DomainPurchaseWidget brandName="testapp" />);
+
+    expect(
+      screen.queryByTestId('domain-offer-disclaimer')
+    ).not.toBeInTheDocument();
+  });
+
+  it('treats ISC as inactive when the appbuilder-domain-offers-isc Switchboard flag is off', async function () {
+    // Both the parent appbuilder-domain-purchase (true) and the offer-specific
+    // appbuilder-domain-offers-isc (false). The widget should still render
+    // (parent flag gates rendering), but the offer flow stays dormant.
+    mockUseSwitchboard.mockImplementation((name: string): any => {
+      if (name === 'appbuilder-domain-offers-isc') return false;
+      return true;
+    });
+    mockUseDomainSearch.mockReturnValue({
+      data: { domains: [mockDomain], products: [mockProduct] },
+      isLoading: false,
+      error: null,
+    });
+    mockUseIscResolver.mockReturnValue({ isc: 'GDWELCOME', source: 'url' });
+    mockUseOfferEligibility.mockReturnValue({ eligible: true });
+
+    renderWithProviders(<DomainPurchaseWidget brandName="testapp" />);
+
+    await act(async () => { await Promise.resolve(); });
+
+    // No mint call — would otherwise have fired since isc + eligible
+    expect(findIscSessionCalls()).toHaveLength(0);
+
+    // No ISC threaded into search
+    const searchOpts = mockUseDomainSearch.mock.calls.at(-1)?.[0];
+    expect(searchOpts?.isc).toBeUndefined();
+
+    // No offer disclaimer
+    expect(
+      screen.queryByTestId('domain-offer-disclaimer')
+    ).not.toBeInTheDocument();
   });
 });

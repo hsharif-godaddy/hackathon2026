@@ -6,6 +6,10 @@ import '@testing-library/jest-dom';
 import { NextRequest } from 'next/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+const { mockCheckSwitchboardFlag } = vi.hoisted(() => ({
+  mockCheckSwitchboardFlag: vi.fn(),
+}));
+
 import { POST } from '../route';
 
 const mockFindExact = vi.fn();
@@ -40,6 +44,10 @@ vi.mock('@/lib/translations', () => ({
   detectLocale: vi.fn(() => 'en-US'),
 }));
 
+vi.mock('@/lib/switchboard/server', () => ({
+  checkSwitchboardFlag: mockCheckSwitchboardFlag,
+}));
+
 function createRequest(body: Record<string, unknown>): NextRequest {
   return new NextRequest('http://test/api/domains/search', {
     method: 'POST',
@@ -52,6 +60,8 @@ describe('POST /api/domains/search', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     process.env.DOMAIN_FIND_API_KEY = 'test-api-key-name';
+    // Default the offers flag ON so existing non-ISC tests don't have to care.
+    mockCheckSwitchboardFlag.mockResolvedValue(true);
   });
 
   describe('input validation', () => {
@@ -442,6 +452,73 @@ describe('POST /api/domains/search', () => {
 
       expect(response.status).toBe(500);
       expect(data.error).toBe('Internal server error');
+    });
+  });
+
+  describe('ISC forwarding', () => {
+    beforeEach(() => {
+      mockFindExact.mockResolvedValue(null);
+      mockFindSpins.mockResolvedValue({ RecommendedDomains: [], Products: [] });
+    });
+
+    it('forwards a valid ISC into both findExact and findSpins extraParams', async () => {
+      await POST(createRequest({ query: 'mybrand', isc: 'GDWELCOME' }));
+
+      expect(mockFindExact).toHaveBeenCalledWith(
+        expect.objectContaining({
+          extraParams: expect.objectContaining({ isc: 'GDWELCOME' }),
+        })
+      );
+      expect(mockFindSpins).toHaveBeenCalledWith(
+        expect.objectContaining({
+          extraParams: expect.objectContaining({
+            isc: 'GDWELCOME',
+            pagesize: expect.anything(),
+          }),
+        })
+      );
+    });
+
+    it('uppercases a lowercase ISC against the allowlist', async () => {
+      await POST(createRequest({ query: 'mybrand', isc: 'gdwelcome' }));
+
+      expect(mockFindExact).toHaveBeenCalledWith(
+        expect.objectContaining({
+          extraParams: expect.objectContaining({ isc: 'GDWELCOME' }),
+        })
+      );
+    });
+
+    it('does NOT forward an ISC that is not on the allowlist', async () => {
+      await POST(createRequest({ query: 'mybrand', isc: 'NOTREAL' }));
+
+      const exactArgs = mockFindExact.mock.calls[0][0];
+      expect(exactArgs.extraParams?.isc).toBeUndefined();
+      const spinsArgs = mockFindSpins.mock.calls[0][0];
+      expect(spinsArgs.extraParams?.isc).toBeUndefined();
+    });
+
+    it('does NOT forward ISC when the offer Switchboard flag is disabled', async () => {
+      mockCheckSwitchboardFlag.mockResolvedValueOnce(false);
+
+      await POST(createRequest({ query: 'mybrand', isc: 'GDWELCOME' }));
+
+      const exactArgs = mockFindExact.mock.calls[0][0];
+      expect(exactArgs.extraParams?.isc).toBeUndefined();
+      const spinsArgs = mockFindSpins.mock.calls[0][0];
+      expect(spinsArgs.extraParams?.isc).toBeUndefined();
+    });
+
+    it('still preserves other findSpins extraParams (pagesize) when ISC is dropped', async () => {
+      mockCheckSwitchboardFlag.mockResolvedValueOnce(false);
+
+      await POST(createRequest({ query: 'mybrand', isc: 'GDWELCOME', maxResults: 8 }));
+
+      expect(mockFindSpins).toHaveBeenCalledWith(
+        expect.objectContaining({
+          extraParams: { pagesize: 8 },
+        })
+      );
     });
   });
 });

@@ -23,6 +23,8 @@ export interface UseDomainSearchOptions {
   maxResults?: number;
   /** Whether the query is enabled */
   enabled?: boolean;
+  /** Optional ISC (promo code) to pass through to FIND for offer-adjusted pricing */
+  isc?: string;
 }
 
 /**
@@ -47,11 +49,12 @@ export function useDomainSearch({
   query,
   maxResults = 10,
   enabled = true,
+  isc,
 }: UseDomainSearchOptions) {
   const { locale } = useIntl();
 
   return useQuery({
-    queryKey: ['domainSearch', query, maxResults, locale],
+    queryKey: ['domainSearch', query, maxResults, locale, isc],
     queryFn: async (): Promise<DomainSearchRawResult> => {
       if (!query?.trim()) {
         return { domains: [], products: [] };
@@ -60,12 +63,18 @@ export function useDomainSearch({
       logger.debug('domain-search.fetch.start', {
         query,
         maxResults,
+        isc: isc ?? null,
       });
 
       const response = await appFetch('/api/domains/search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query, maxResults, market: locale }),
+        body: JSON.stringify({
+          query,
+          maxResults,
+          market: locale,
+          ...(isc ? { isc } : {}),
+        }),
       });
 
       if (!response.ok) {
