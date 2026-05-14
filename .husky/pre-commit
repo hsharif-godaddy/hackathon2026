@@ -29,4 +29,7 @@ fi
 # to bypass a noisy lint failure.
 node scripts/validate-template-sync.mjs
 
+# Validate skill structure (skill.md + frontmatter + tools/index.ts).
+node scripts/validate-skill.mjs
+
 npx lint-staged
