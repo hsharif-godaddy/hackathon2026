@@ -8,7 +8,7 @@
  * - Block and line comments
  * - BOM stripping
  * - SQL sanitization rules
- * - Chunk boundary handling
+ * - Chunk boundary handling 
  */
 
 import { describe, it, expect } from 'vitest';
@@ -358,6 +358,96 @@ describe('SqlStatementSplitter', () => {
     });
   });
 
+  describe('sanitization bypass — leading comments', () => {
+    // Security review: `startsWith` checks can be bypassed by prefixing the
+    // statement with a SQL comment. MySQL ignores leading comments at parse
+    // time, so `/* x */ GRANT ...` is still executed as a GRANT. The sanitizer
+    // must strip leading comments/whitespace before matching keywords.
+
+    it('rejects GRANT prefixed by a block comment', () => {
+      expect(
+        SqlStatementSplitter.sanitizeStatement("/* harmless */ GRANT ALL PRIVILEGES ON *.* TO 'x'@'%'"),
+      ).toBeNull();
+    });
+
+    it('rejects GRANT prefixed by a line comment (--)', () => {
+      expect(
+        SqlStatementSplitter.sanitizeStatement("-- harmless\nGRANT ALL PRIVILEGES ON *.* TO 'x'@'%'"),
+      ).toBeNull();
+    });
+
+    it('rejects GRANT prefixed by a hash comment (#)', () => {
+      expect(
+        SqlStatementSplitter.sanitizeStatement("# harmless\nGRANT ALL PRIVILEGES ON *.* TO 'x'@'%'"),
+      ).toBeNull();
+    });
+
+    it('rejects DROP USER prefixed by multiple comments and whitespace', () => {
+      expect(
+        SqlStatementSplitter.sanitizeStatement(
+          "  /* a */ \t-- b\n  /* c */ DROP USER 'victim'@'%'",
+        ),
+      ).toBeNull();
+    });
+
+    it('rejects SET PASSWORD prefixed by a block comment', () => {
+      expect(
+        SqlStatementSplitter.sanitizeStatement("/*x*/ SET PASSWORD FOR 'root'@'%' = 'p'"),
+      ).toBeNull();
+    });
+
+    it('rejects CREATE USER prefixed by a block comment', () => {
+      expect(
+        SqlStatementSplitter.sanitizeStatement("/*evil*/ CREATE USER 'x'@'%' IDENTIFIED BY 'p'"),
+      ).toBeNull();
+    });
+
+    it('rejects CREATE DATABASE prefixed by a line comment', () => {
+      expect(
+        SqlStatementSplitter.sanitizeStatement('-- prefix\nCREATE DATABASE foo'),
+      ).toBeNull();
+    });
+
+    it('rejects USE prefixed by a block comment', () => {
+      expect(
+        SqlStatementSplitter.sanitizeStatement('/*x*/ USE othertenant'),
+      ).toBeNull();
+    });
+
+    it('keeps a legitimate INSERT that mentions GRANT only in a string literal', () => {
+      const stmt = "INSERT INTO log (msg) VALUES ('user asked for GRANT access')";
+      expect(SqlStatementSplitter.sanitizeStatement(stmt)).toBe(stmt);
+    });
+
+    it('rejects GRANT prefixed by an empty MySQL executable comment', () => {
+      // /*!*/ is an executable comment with empty content — MySQL inlines
+      // nothing, then runs the GRANT. The pre-fix code did NOT filter this
+      // (single-line `/* … */` guard required endsWith('*/')); the new
+      // leading-noise loop strips it correctly.
+      expect(
+        SqlStatementSplitter.sanitizeStatement("/*!*/ GRANT ALL PRIVILEGES ON *.* TO 'x'@'%'"),
+      ).toBeNull();
+    });
+
+    it('does not strip `--` without trailing whitespace and does not bypass', () => {
+      // MySQL only treats `--` as a line comment when followed by space/tab/EOL.
+      // The sanitizer matches that rule, so `--GRANT …` is left intact, falls
+      // through the keyword check (head still starts with `--`), and would be
+      // rejected by MySQL's parser as a syntax error. No bypass possible.
+      const stmt = "--GRANT ALL PRIVILEGES ON *.* TO 'x'@'%'";
+      expect(SqlStatementSplitter.sanitizeStatement(stmt)).toBe(stmt);
+    });
+
+    it('rejects GRANT prefixed by a multi-line block comment', () => {
+      // mysqldump-style multi-line block comments must not allow bypass either.
+      expect(
+        SqlStatementSplitter.sanitizeStatement(
+          "/* multi\n   line\n   header */ GRANT ALL PRIVILEGES ON *.* TO 'x'@'%'",
+        ),
+      ).toBeNull();
+    });
+  });
+
   describe('mixed scenarios', () => {
     it('should handle a realistic mysqldump header', () => {
       const splitter = new SqlStatementSplitter();
@@ -384,8 +474,11 @@ describe('SqlStatementSplitter', () => {
       const remaining = splitter.flush();
       const all = [...stmts, ...remaining];
 
-      // Should have: 2 SET statements, DROP, CREATE, INSERT
-      expect(all.length).toBeGreaterThanOrEqual(4);
+      // Comment-only statements (the multi-line `-- header` block and each
+      // `/*!40101 SET ... */;` conditional-execution comment) are now filtered
+      // out by the sanitizer's leading-noise stripping — they carry no effect
+      // when executed anyway. That leaves DROP, CREATE, INSERT.
+      expect(all.length).toBeGreaterThanOrEqual(3);
       expect(all.some(s => s.includes('DROP TABLE'))).toBe(true);
       expect(all.some(s => s.includes('CREATE TABLE'))).toBe(true);
       expect(all.some(s => s.includes("'John;Doe'"))).toBe(true);

@@ -290,18 +290,28 @@ export class SqlStatementSplitter {
    */
   static sanitizeStatement(stmt: string): string | null {
     const trimmed = stmt.trim();
-
-    // Skip empty or comment-only statements
     if (trimmed.length === 0) return null;
-    if (trimmed.startsWith('--') && !trimmed.includes('\n')) return null;
-    if (trimmed.startsWith('/*') && trimmed.endsWith('*/') && !trimmed.includes('\n')) return null;
 
-    const upper = trimmed.toUpperCase();
+    // Strip leading whitespace and SQL comments so the keyword checks below
+    // cannot be bypassed by a leading `/* … */`, `-- …\n`, or `# …\n`. MySQL
+    // ignores these at parse time, so the sanitizer must too.
+    let head = trimmed;
+    while (true) {
+      const before = head;
+      head = head.replace(/^\s+/, '');
+      head = head.replace(/^\/\*[\s\S]*?\*\//, '');
+      head = head.replace(/^--[ \t\r\n][^\n]*(?:\n|$)/, '');
+      head = head.replace(/^#[^\n]*(?:\n|$)/, '');
+      if (head === before) break;
+    }
+    if (head.length === 0) return null;
+
+    const upper = head.toUpperCase();
 
     // Strip statements that should be skipped entirely
     if (upper.startsWith('CREATE DATABASE')) return null;
     if (upper.startsWith('DROP DATABASE')) return null;
-    if (/^USE\s+/i.test(trimmed)) return null;
+    if (/^USE\s+/i.test(head)) return null;
     if (upper.startsWith('LOCK TABLES')) return null;
     if (upper === 'UNLOCK TABLES') return null;
     if (upper.startsWith('SET @@GLOBAL.GTID_PURGED')) return null;
