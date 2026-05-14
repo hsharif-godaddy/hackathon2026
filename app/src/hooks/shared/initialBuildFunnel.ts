@@ -47,7 +47,7 @@ export function trackBuildComplete(commitHash: string): void {
   buildComplete = true
 
   shipAnalyticsLog('funnel.initial_build.complete', { appId: funnelAppId, commitHash })
-  logActionEvent({ eid: 'develop.firstBuild.complete', action: 'custom', customProperties: { appId: funnelAppId ?? '' } })()
+  logActionEvent({ eid: 'develop.firstBuild.complete', action: 'load', customProperties: { appId: funnelAppId ?? '' } })()
 }
 
 export function trackPostInteraction(): void {

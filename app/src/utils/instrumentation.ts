@@ -117,7 +117,7 @@ const DEFAULT_AREA = 'appbuilder';
 
 interface EventActionProps {
   eid: string;
-  action?: 'blur' | 'drag' | 'focus' | 'hover' | 'load' | 'scroll' | 'custom';
+  action?: 'blur' | 'drag' | 'focus' | 'hover' | 'load' | 'scroll';
   customProperties?: Record<string, boolean | string | number>;
 }
 
@@ -134,7 +134,6 @@ interface ElementChannelEvent {
   schema: 'add_click' | 'add_element_action';
   data: {
     element: EventElementProps;
-    custom_properties?: Record<string, boolean | string | number>;
     traffic?: {
       eid: string;
       customProperties?: Record<string, boolean | string | number>;
@@ -247,6 +246,7 @@ export const logActionEvent = ({
   }
   try {
     const mergedProperties = mergeCustomPropertiesWithAppId(customProperties);
+    const fullEid = `${DEFAULT_AREA}.${product}.${section}.${widget}.${action}`;
 
     const eventData: ElementChannelEvent = {
       schema: 'add_element_action',
@@ -258,7 +258,10 @@ export const logActionEvent = ({
           widget,
           action,
         },
-        custom_properties: mergedProperties,
+        traffic: {
+          eid: fullEid,
+          customProperties: mergedProperties,
+        },
       },
       targets: ['fullstory']
     }

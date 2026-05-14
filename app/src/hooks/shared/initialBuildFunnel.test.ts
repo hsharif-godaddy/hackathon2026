@@ -136,7 +136,7 @@ describe('trackBuildComplete', () => {
     expect(mockAction).toHaveBeenCalledTimes(1)
     expect(mockAction).toHaveBeenCalledWith({
       eid: 'develop.firstBuild.complete',
-      action: 'custom',
+      action: 'load',
       customProperties: { appId: 'app-1' },
     })
     expect(isInitialBuildComplete()).toBe(true)

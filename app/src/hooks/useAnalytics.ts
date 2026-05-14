@@ -16,7 +16,7 @@ type AnalyticsEventKind = 'action' | 'click' | 'impression'
 interface AnalyticsEidOptions {
   kind?: AnalyticsEventKind
   eid?: string
-  action?: 'blur' | 'drag' | 'focus' | 'hover' | 'load' | 'scroll' | 'custom'
+  action?: 'blur' | 'drag' | 'focus' | 'hover' | 'load' | 'scroll'
   impressionProps?: Record<string, boolean | string | number>
 }
 
@@ -50,7 +50,7 @@ export function useAnalytics({ experimentId, baseData = {} }: UseAnalyticsOption
         case 'action':
           logActionEvent({
             eid,
-            action: options.action ?? 'custom',
+            action: options.action ?? 'load',
           })()
           break
         case 'impression':

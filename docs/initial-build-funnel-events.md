@@ -11,7 +11,7 @@ Events tracking the initial app creation flow from prompt submission through fir
 | 2   | `funnel.initial_build.question_received`           | shipAnalyticsLog (ES)          | Agent calls `askQuestion` or `suggestedResponse` for the first time |
 | 3   | `funnel.initial_build.handoff`                     | shipAnalyticsLog (ES)          | `handoff` tool completes (InitialAgent → DevelopAgent)              |
 | 4   | `funnel.initial_build.complete`                    | shipAnalyticsLog (ES)          | First `complete` event with a `commitHash` (code committed)         |
-| 4   | `appbuilder.develop.firstBuild.complete.custom`    | logActionEvent (FullStory)     | Same as above                                                       |
+| 4   | `appbuilder.develop.firstBuild.complete.load`      | logActionEvent (FullStory)     | Same as above                                                       |
 | 5   | `funnel.initial_build.post_interaction`            | shipAnalyticsLog (ES)          | First user-initiated message after build complete                   |
 
 ## Flow Diagram
@@ -74,7 +74,7 @@ Each includes `appId` in the data payload. Event 4 also includes `commitHash`.
 ### FullStory
 
 - Impression: `appbuilder.develop.initialBuild.start.impression` — use for Hivemind experiment cohort entry
-- Action: element `{area: appbuilder, product: develop, section: firstBuild, widget: complete, action: custom}` — fires on build complete
+- Action: `appbuilder.develop.firstBuild.complete.load` — fires on build complete (element `{area: appbuilder, product: develop, section: firstBuild, widget: complete, action: load}`)
 
 ## Implementation
 

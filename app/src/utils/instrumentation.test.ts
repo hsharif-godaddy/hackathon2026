@@ -313,13 +313,16 @@ describe('instrumentation utilities', () => {
             widget: 'widget',
             action: 'hover',
           },
-          custom_properties: {},
+          traffic: {
+            eid: 'appbuilder.product.section.widget.hover',
+            customProperties: {},
+          },
         },
         targets: ['fullstory'],
       });
     });
 
-    it('should include custom_properties when provided', () => {
+    it('should include customProperties when provided', () => {
       const logAction = logActionEvent({
         eid: 'product.section.widget',
         action: 'hover',
@@ -338,8 +341,11 @@ describe('instrumentation utilities', () => {
             widget: 'widget',
             action: 'hover',
           },
-          custom_properties: {
-            sessionId: 'abc123',
+          traffic: {
+            eid: 'appbuilder.product.section.widget.hover',
+            customProperties: {
+              sessionId: 'abc123',
+            },
           },
         },
         targets: ['fullstory'],
@@ -353,23 +359,23 @@ describe('instrumentation utilities', () => {
       logAction();
 
       expect(mockDataLayer).toHaveLength(1);
-      expect(mockDataLayer[0].data.custom_properties).toEqual({
+      expect(mockDataLayer[0].data.traffic.customProperties).toEqual({
         appId: VALID_APP_ID_4,
       });
     });
 
-    it('should merge custom_properties with appId when appId is set', () => {
+    it('should merge customProperties with appId when appId is set', () => {
       setInstrumentationAppId(VALID_APP_ID_5);
 
-      const logAction = logActionEvent({ 
-        eid: 'product.section.widget', 
-        action: 'scroll', 
+      const logAction = logActionEvent({
+        eid: 'product.section.widget',
+        action: 'scroll',
         customProperties: { trackingId: 'track456' }
       });
       logAction();
 
       expect(mockDataLayer).toHaveLength(1);
-      expect(mockDataLayer[0].data.custom_properties).toEqual({
+      expect(mockDataLayer[0].data.traffic.customProperties).toEqual({
         trackingId: 'track456',
         appId: VALID_APP_ID_5,
       });
@@ -415,15 +421,15 @@ describe('instrumentation utilities', () => {
 
     it('should not include appId when appId is not set', () => {
       // appId is null by default (set in beforeEach)
-      const logAction = logActionEvent({ 
-        eid: 'product.section.widget', 
-        action: 'hover', 
+      const logAction = logActionEvent({
+        eid: 'product.section.widget',
+        action: 'hover',
         customProperties: { userId: 'user789' }
       });
       logAction();
 
       expect(mockDataLayer).toHaveLength(1);
-      expect(mockDataLayer[0].data.custom_properties).toEqual({
+      expect(mockDataLayer[0].data.traffic.customProperties).toEqual({
         userId: 'user789',
       });
     });
@@ -708,7 +714,7 @@ describe('instrumentation utilities', () => {
 
       expect(mockDataLayer).toHaveLength(3);
       expect(mockDataLayer[0].data.traffic?.customProperties?.appId).toBe(VALID_APP_ID_9);
-      expect(mockDataLayer[1].data.custom_properties?.appId).toBe(VALID_APP_ID_9);
+      expect(mockDataLayer[1].data.traffic?.customProperties?.appId).toBe(VALID_APP_ID_9);
       expect(mockDataLayer[2].data.custom_properties?.appId).toBe(VALID_APP_ID_9);
     });
 
