@@ -387,7 +387,11 @@
   border-radius: 0.75rem;
   border: 1px solid intent('ux.box.borderColor');
   overflow: hidden;
-  padding: 1.5rem;
+}
+
+.colorContextLogoInset {
+  position: absolute;
+  inset: 0.5rem;
 }
 
 .colorContextLabel {

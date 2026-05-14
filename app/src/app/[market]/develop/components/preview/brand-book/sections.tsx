@@ -85,29 +85,21 @@ export function HeroSection({
 export function LogoSection({
   brand,
   palette,
-  logoUrls,
+  logoUrl,
+  reversedLogoUrl,
   isLoading = false,
 }: {
   brand: BrandStyle;
   palette?: BrandDataPalette;
-  logoUrls?: {
-    primarySrc?: string;
-    reversedSrc?: string;
-    verticalSrc?: string;
-    horizontalSrc?: string;
-  } | null;
+  logoUrl?: string;
+  reversedLogoUrl?: string;
   isLoading?: boolean;
 }) {
-  const lightBg = '#FFFFFF';
-  const darkBg = '#1C1C1E';
-
-  const primarySrc = logoUrls?.primarySrc;
-  const darkSrc = logoUrls?.reversedSrc || primarySrc;
   const downloadImage = useDownloadImage();
   const brandClickProps = { flow: 'logo-designer' as const };
 
   // null (manifest loading) or undefined (no logo) — show spinner or placeholder
-  if (!logoUrls) {
+  if (!logoUrl) {
     return (
       <SectionWrapper palette={palette}>
         <SectionHeader num="01" label="Primary Mark" title="Logo" brand={brand} />
@@ -131,14 +123,14 @@ export function LogoSection({
     <SectionWrapper palette={palette}>
       <SectionHeader num="01" label="Primary Mark" title="Logo" brand={brand} />
 
-      {primarySrc ? (
+      {logoUrl ? (
         <Box gap="lg">
           <div className={styles.logoDualPanel}>
-            {/* Light panel */}
+            {/* Light panel — explicit background covers the case where the URL falls back to a transparent variant */}
             <div className={styles.logoPanelCard}>
-              <div className={styles.logoPanelImage} style={{ backgroundColor: lightBg }}>
+              <div className={styles.logoPanelImage} style={{ backgroundColor: '#FFFFFF' }}>
                 <Image
-                  src={primarySrc}
+                  src={logoUrl}
                   alt="Logo on light background"
                   fill
                   unoptimized
@@ -146,16 +138,16 @@ export function LogoSection({
                 />
               </div>
               <div className={styles.logoPanelFooter}>
-                <text.span as="caption" style={{ opacity: 0.5 }}>TRANSPARENT / LIGHT</text.span>
-                <button type="button" className={styles.downloadButton} onClick={() => { logClickEvent('develop.brand.logo_download_light', brandClickProps)(); downloadImage(primarySrc, 'logo-light.png'); }}>DOWNLOAD PNG</button>
+                <text.span as="caption" style={{ opacity: 0.5 }}>SOLID / LIGHT</text.span>
+                <button type="button" className={styles.downloadButton} onClick={() => { logClickEvent('develop.brand.logo_download_light', brandClickProps)(); downloadImage(logoUrl, 'logo-light.png'); }}>DOWNLOAD PNG</button>
               </div>
             </div>
 
-            {/* Dark panel */}
+            {/* Dark panel — falls back to the light logo when no reversed variant is available */}
             <div className={styles.logoPanelCard}>
-              <div className={styles.logoPanelImage} style={{ backgroundColor: darkBg }}>
+              <div className={styles.logoPanelImage} style={{ backgroundColor: '#1C1C1E' }}>
                 <Image
-                  src={darkSrc}
+                  src={reversedLogoUrl || logoUrl}
                   alt="Logo on dark background"
                   fill
                   unoptimized
@@ -164,7 +156,7 @@ export function LogoSection({
               </div>
               <div className={styles.logoPanelFooter}>
                 <text.span as="caption" style={{ opacity: 0.5 }}>REVERSED / DARK</text.span>
-                <button type="button" className={styles.downloadButton} onClick={() => { logClickEvent('develop.brand.logo_download_dark', brandClickProps)(); downloadImage(darkSrc, 'logo-dark.png'); }}>DOWNLOAD PNG</button>
+                <button type="button" className={styles.downloadButton} onClick={() => { logClickEvent('develop.brand.logo_download_dark', brandClickProps)(); downloadImage(reversedLogoUrl || logoUrl, 'logo-dark.png'); }}>DOWNLOAD PNG</button>
               </div>
             </div>
           </div>
@@ -279,13 +271,15 @@ export function ColorContextsSection({
           {displayColors.map((color) => (
             <div key={color.id} className={styles.colorContextCard}>
               <div className={styles.colorContextSwatch} style={{ backgroundColor: color.hex }}>
-                <Image
-                  src={logoUrl}
-                  alt={`Logo on ${color.name}`}
-                  fill
-                  unoptimized
-                  className={styles.logoImage}
-                />
+                <div className={styles.colorContextLogoInset}>
+                  <Image
+                    src={logoUrl}
+                    alt={`Logo on ${color.name}`}
+                    fill
+                    unoptimized
+                    className={styles.logoImage}
+                  />
+                </div>
               </div>
               <text.span as="caption" className={styles.colorContextLabel}>
                 {color.name.toUpperCase()}

@@ -47,6 +47,8 @@ import { logger } from '../../logging/index.js';
 const TRANSPARENT_URL = 'https://logos.example.com/abc-transparent.png';
 const SOLID_URL = 'https://logos.example.com/abc-solid.png';
 const REVERSED_URL = 'https://logos.example.com/abc-reversed.png';
+const REVERSED_SOLID_URL = 'https://logos.example.com/abc-reversed-solid.png';
+const MOCKUP_URL = 'https://logos.example.com/abc-mockup.png';
 
 function makeLogoSlot(overrides: Partial<MediaSlot> = {}): MediaSlot {
   return {
@@ -56,6 +58,8 @@ function makeLogoSlot(overrides: Partial<MediaSlot> = {}): MediaSlot {
     alternatives: [],
     solidUrlMap: { [TRANSPARENT_URL]: SOLID_URL },
     reversedUrlMap: { [TRANSPARENT_URL]: REVERSED_URL },
+    reversedSolidUrlMap: { [TRANSPARENT_URL]: REVERSED_SOLID_URL },
+    mockupUrlMap: { [TRANSPARENT_URL]: MOCKUP_URL },
     userModified: false,
     createdAt: '2026-01-01T00:00:00.000Z',
     lastUpdated: '2026-01-01T00:00:00.000Z',
@@ -104,6 +108,20 @@ describe('MediaManifestService — transparent-logo invariant', () => {
       expect(logger.warn).toHaveBeenCalledWith(
         'media_manifest.logo.non_transparent_rewritten',
         expect.objectContaining({ originalUrl: REVERSED_URL, transparentUrl: TRANSPARENT_URL }),
+      );
+    });
+
+    it('rewrites a reversed-solid currentUrl to its transparent sibling and warns', async () => {
+      vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify({}));
+
+      const slot = makeLogoSlot({ currentUrl: REVERSED_SOLID_URL });
+      const result = await service.setSlot('test-app', 'logo/primary', slot, true);
+
+      expect(result.success).toBe(true);
+      expect(result.slot!.currentUrl).toBe(TRANSPARENT_URL);
+      expect(logger.warn).toHaveBeenCalledWith(
+        'media_manifest.logo.non_transparent_rewritten',
+        expect.objectContaining({ originalUrl: REVERSED_SOLID_URL, transparentUrl: TRANSPARENT_URL }),
       );
     });
 

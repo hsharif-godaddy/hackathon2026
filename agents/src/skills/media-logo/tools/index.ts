@@ -150,21 +150,29 @@ const LAYOUT_URL_GETTERS: Record<LogoLayout, {
   transparent: (l: ProcessedLogo) => string | undefined;
   solid: (l: ProcessedLogo) => string | undefined;
   reversed: (l: ProcessedLogo) => string | undefined;
+  reversedSolid: (l: ProcessedLogo) => string | undefined;
+  mockup: (l: ProcessedLogo) => string | undefined;
 }> = {
   square: {
     transparent: (l) => l.transparentUrl,
     solid: (l) => l.solidUrl,
     reversed: (l) => l.reversedUrl,
+    reversedSolid: (l) => l.reversedSolidUrl,
+    mockup: (l) => l.mockupUrl,
   },
   horizontal: {
     transparent: (l) => l.horizontalTransparentUrl,
     solid: (l) => l.horizontalSolidUrl,
     reversed: (l) => l.horizontalReversedUrl,
+    reversedSolid: (l) => l.horizontalReversedSolidUrl,
+    mockup: (l) => l.horizontalMockupUrl,
   },
   vertical: {
     transparent: (l) => l.verticalTransparentUrl,
     solid: (l) => l.verticalSolidUrl,
     reversed: (l) => l.verticalReversedUrl,
+    reversedSolid: (l) => l.verticalReversedSolidUrl,
+    mockup: (l) => l.verticalMockupUrl,
   },
 };
 
@@ -245,14 +253,20 @@ async function saveLogosToSlots(
 
     const solidUrlMap: Record<string, string> = {};
     const reversedUrlMap: Record<string, string> = {};
+    const reversedSolidUrlMap: Record<string, string> = {};
+    const mockupUrlMap: Record<string, string> = {};
     const logoSourceMap: Record<string, { sessionId: string; logoId: string }> = {};
     for (const logo of logos) {
       const tUrl = getters.transparent(logo);
       const sUrl = getters.solid(logo);
       const rUrl = getters.reversed(logo);
+      const rsUrl = getters.reversedSolid(logo);
+      const mUrl = getters.mockup(logo);
       const logoSessionId = logoSessionIds?.get(logo.id) ?? sessionId;
       if (tUrl && sUrl) solidUrlMap[tUrl] = sUrl;
       if (tUrl && rUrl) reversedUrlMap[tUrl] = rUrl;
+      if (tUrl && rsUrl) reversedSolidUrlMap[tUrl] = rsUrl;
+      if (tUrl && mUrl) mockupUrlMap[tUrl] = mUrl;
       if (tUrl) logoSourceMap[tUrl] = { sessionId: logoSessionId, logoId: logo.id };
     }
 
@@ -262,6 +276,8 @@ async function saveLogosToSlots(
     let mergedAlternatives = transparentUrls.slice(1);
     let mergedSolidUrlMap = { ...solidUrlMap };
     let mergedReversedUrlMap = { ...reversedUrlMap };
+    let mergedReversedSolidUrlMap = { ...reversedSolidUrlMap };
+    let mergedMockupUrlMap = { ...mockupUrlMap };
     let mergedLogoSourceMap = { ...logoSourceMap };
 
     if (existingSlot) {
@@ -271,6 +287,8 @@ async function saveLogosToSlots(
       mergedAlternatives = [...mergedAlternatives, ...oldUrls];
       mergedSolidUrlMap = { ...(existingSlot.solidUrlMap || {}), ...solidUrlMap };
       mergedReversedUrlMap = { ...(existingSlot.reversedUrlMap || {}), ...reversedUrlMap };
+      mergedReversedSolidUrlMap = { ...(existingSlot.reversedSolidUrlMap || {}), ...reversedSolidUrlMap };
+      mergedMockupUrlMap = { ...(existingSlot.mockupUrlMap || {}), ...mockupUrlMap };
       mergedLogoSourceMap = { ...(existingSlot.logoSourceMap || {}), ...logoSourceMap };
     }
 
@@ -283,6 +301,8 @@ async function saveLogosToSlots(
       alternatives: mergedAlternatives,
       solidUrlMap: mergedSolidUrlMap,
       reversedUrlMap: mergedReversedUrlMap,
+      reversedSolidUrlMap: mergedReversedSolidUrlMap,
+      mockupUrlMap: mergedMockupUrlMap,
       logoSourceMap: mergedLogoSourceMap,
       userModified: false,
       createdAt: existingSlot?.createdAt || now,

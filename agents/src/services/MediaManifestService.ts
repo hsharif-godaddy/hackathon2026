@@ -76,6 +76,12 @@ export interface MediaSlot {
   /** Maps transparent URL → reversed (dark mode) URL for logo variants.
    *  Only populated when mediaType === 'logo'. */
   reversedUrlMap?: Record<string, string>;
+  /** Maps transparent URL → reversed solid (dark mode + solid background) URL for logo variants.
+   * Only populated when mediaType === 'logo'. */
+  reversedSolidUrlMap?: Record<string, string>;
+  /** Maps transparent URL → mockup-preview URL for logo variants.
+   *  Only populated when mediaType === 'logo'. */
+  mockupUrlMap?: Record<string, string>;
   /** Maps transparent URL → { sessionId, logoId } for logo edit traceability.
    *  Only populated when mediaType === 'logo'. Allows edit_logo to find the
    *  source session/logo for any saved logo variant. */
@@ -374,6 +380,11 @@ function resolveTransparentLogoUrl(
   }
   for (const [transparent, reversed] of Object.entries(slot.reversedUrlMap || {})) {
     if (reversed === candidateUrl) {
+      return { url: transparent, rewritten: true };
+    }
+  }
+  for (const [transparent, reversedSolid] of Object.entries(slot.reversedSolidUrlMap || {})) {
+    if (reversedSolid === candidateUrl) {
       return { url: transparent, rewritten: true };
     }
   }

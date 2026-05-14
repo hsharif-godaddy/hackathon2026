@@ -46,6 +46,7 @@ export default function BrandBookView({ appId }: BrandBookViewProps) {
 
   // Track logo preview override from chat selection (logo-select event)
   const [previewLogoUrl, setPreviewLogoUrl] = useState<string | null>(null);
+  const [previewSolidUrl, setPreviewSolidUrl] = useState<string | null>(null);
   const [previewReversedUrl, setPreviewReversedUrl] = useState<string | null>(null);
   const [previewMockupUrl, setPreviewMockupUrl] = useState<string | null>(null);
 
@@ -58,10 +59,16 @@ export default function BrandBookView({ appId }: BrandBookViewProps) {
         return;
       }
       setPreviewLogoUrl(url);
-      const reversed = logo?.reversedUrl || logo?.horizontalReversedUrl || logo?.verticalReversedUrl;
-      if (reversed) setPreviewReversedUrl(reversed);
+      // Reset to null when the new logo lacks a variant so the manifest fallback can re-engage —
+      // otherwise the prior logo's state leaks across selections (mismatched light/dark/mockup tuple).
+      const solid = logo?.solidUrl || logo?.horizontalSolidUrl || logo?.verticalSolidUrl;
+      setPreviewSolidUrl(solid || null);
+      const reversed =
+        logo?.reversedSolidUrl || logo?.horizontalReversedSolidUrl || logo?.verticalReversedSolidUrl ||
+        logo?.reversedUrl || logo?.horizontalReversedUrl || logo?.verticalReversedUrl;
+      setPreviewReversedUrl(reversed || null);
       const mockup = logo?.mockupUrl || logo?.horizontalMockupUrl || logo?.verticalMockupUrl;
-      if (mockup) setPreviewMockupUrl(mockup);
+      setPreviewMockupUrl(mockup || null);
 
       if (event.type === 'logo-generated' && !logoViewFiredRef.current) {
         logoViewFiredRef.current = true;
@@ -79,10 +86,8 @@ export default function BrandBookView({ appId }: BrandBookViewProps) {
     };
   }, [appId]);
 
-  // Derive logo URLs from manifest slots.
-  // While manifest is loading, return null (not undefined) so LogoSection can
-  // distinguish "still loading" from "no logo" and avoid flashing the CTA.
-  const logoUrls = useMemo(() => {
+  const primaryLogoUrl = useMemo(() => {
+    if (previewLogoUrl) return previewLogoUrl;
     if (isManifestLoading) return null;
 
     if (manifestError && !manifest) {
@@ -91,30 +96,81 @@ export default function BrandBookView({ appId }: BrandBookViewProps) {
     }
 
     const primarySlot = manifest?.['logo/primary'];
-    if (!primarySlot?.currentUrl && !previewLogoUrl) return undefined;
+    const horizontalSlot = manifest?.['logo/horizontal'];
+    const verticalSlot = manifest?.['logo/vertical'];
 
-    const primarySrc = previewLogoUrl || primarySlot?.currentUrl;
-    if (!primarySrc) return undefined;
+    return primarySlot?.currentUrl || horizontalSlot?.currentUrl || verticalSlot?.currentUrl || undefined;
+  }, [previewLogoUrl, isManifestLoading, manifestError, manifest, appId]);
 
-    const reversedSrc = previewLogoUrl
-      ? previewReversedUrl || undefined
-      : primarySlot?.reversedUrlMap?.[primarySrc];
-    const verticalSrc = manifest?.['logo/vertical']?.currentUrl;
-    const horizontalSrc = manifest?.['logo/horizontal']?.currentUrl;
+  // Solid-variant logo for the brand book light panel (falls back to transparent if no solid mapping exists)
+  const primarySolidLogoUrl = useMemo(() => {
+    if (previewSolidUrl) return previewSolidUrl;
+    if (previewLogoUrl) return previewLogoUrl;
+    if (isManifestLoading) return null;
 
-    return { primarySrc, reversedSrc, verticalSrc, horizontalSrc };
-  }, [manifest, manifestError, isManifestLoading, previewLogoUrl, previewReversedUrl, appId]);
+    if (manifestError && !manifest) return undefined;
+
+    const slots = [manifest?.['logo/primary'], manifest?.['logo/horizontal'], manifest?.['logo/vertical']];
+    for (const slot of slots) {
+      const transparentUrl = slot?.currentUrl;
+      if (!transparentUrl) continue;
+      return slot?.solidUrlMap?.[transparentUrl] || transparentUrl;
+    }
+
+    return undefined;
+  }, [previewSolidUrl, previewLogoUrl, isManifestLoading, manifestError, manifest]);
+
+  const reversedLogoUrl = useMemo(() => {
+    if (previewReversedUrl) return previewReversedUrl;
+    // Fall back to the transparent preview when a chat event lacked a reversed variant —
+    // mirrors primarySolidLogoUrl so the dual panel still renders.
+    if (previewLogoUrl) return previewLogoUrl;
+    if (isManifestLoading) return null;
+
+    if (manifestError && !manifest) {
+      logger.warn('brandBook.manifest.fetchFailed', { appId, error: String(manifestError) });
+      return undefined;
+    }
+
+    const slots = [manifest?.['logo/primary'], manifest?.['logo/horizontal'], manifest?.['logo/vertical']];
+    for (const slot of slots) {
+      const transparentUrl = slot?.currentUrl;
+      if (!transparentUrl) continue;
+      return slot?.reversedSolidUrlMap?.[transparentUrl] || slot?.reversedUrlMap?.[transparentUrl] || transparentUrl;
+    }
+
+    return undefined;
+  }, [previewReversedUrl, previewLogoUrl, isManifestLoading, manifestError, manifest, appId]);
+
+  const primaryMockupUrl = useMemo(() => {
+    if (previewMockupUrl) return previewMockupUrl;
+    if (isManifestLoading) return null;
+
+    if (manifestError && !manifest) {
+      logger.warn('brandBook.manifest.fetchFailed', { appId, error: String(manifestError) });
+      return undefined;
+    }
+
+    const slots = [manifest?.['logo/primary'], manifest?.['logo/horizontal'], manifest?.['logo/vertical']];
+    for (const slot of slots) {
+      const transparentUrl = slot?.currentUrl;
+      if (!transparentUrl) continue;
+      return slot?.mockupUrlMap?.[transparentUrl];
+    }
+
+    return undefined;
+  }, [previewMockupUrl, isManifestLoading, manifestError, manifest, appId]);
 
   // Fire book_view impression once all brand data sections are populated
   useEffect(() => {
     if (bookViewFiredRef.current) return;
-    if (!data?.palette || !data?.typography || !logoUrls) return;
+    if (!data?.palette || !data?.typography || !primaryLogoUrl || !reversedLogoUrl) return;
     bookViewFiredRef.current = true;
     logImpressionEvent('develop.brand.book_view', {
       appId,
       flow: 'logo-designer',
     })();
-  }, [data, logoUrls, appId]);
+  }, [data, primaryLogoUrl, reversedLogoUrl, appId]);
 
   // Genuine API failure after retries — show error state
   if (error && !data && !isLoading) {
@@ -145,13 +201,14 @@ export default function BrandBookView({ appId }: BrandBookViewProps) {
       <LogoSection
         brand={brand}
         palette={palette}
-        logoUrls={logoUrls}
+        logoUrl={primarySolidLogoUrl}
+        reversedLogoUrl={reversedLogoUrl}
         isLoading={isGenerating}
       />
       <BrandApplicationsSection
         brand={brand}
         palette={palette}
-        mockupUrl={previewMockupUrl}
+        mockupUrl={primaryMockupUrl}
         isLoading={isGenerating}
       />
       <ColorSection
@@ -162,7 +219,7 @@ export default function BrandBookView({ appId }: BrandBookViewProps) {
       <ColorContextsSection
         palette={palette}
         brand={brand}
-        logoUrl={logoUrls?.primarySrc}
+        logoUrl={primaryLogoUrl}
         isLoading={isGenerating}
       />
       <TypographySection

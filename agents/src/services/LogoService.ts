@@ -42,16 +42,19 @@ export interface ProcessedLogo {
   transparentUrl?: string;
   solidUrl?: string;
   reversedUrl?: string;
+  reversedSolidUrl?: string;
   mockupUrl?: string;
   // Horizontal layout
   horizontalTransparentUrl?: string;
   horizontalSolidUrl?: string;
   horizontalReversedUrl?: string;
+  horizontalReversedSolidUrl?: string;
   horizontalMockupUrl?: string;
   // Vertical layout
   verticalTransparentUrl?: string;
   verticalSolidUrl?: string;
   verticalReversedUrl?: string;
+  verticalReversedSolidUrl?: string;
   verticalMockupUrl?: string;
 }
 
