@@ -1,12 +1,26 @@
 import { getCoalesceKey, mergeCoalescedData } from '../interfaces.js'
-import type { WebSocketMessage } from './websocket-subscriber.js'
+
+/**
+ * Minimal shape required to participate in coalescing.
+ * Both `WebSocketMessage` and `StreamingEvent` satisfy this — the coalescer is
+ * generic so the same policy serves both transports.
+ */
+export interface CoalesceableMessage {
+  type: string
+  content: string
+  data: Record<string, unknown>
+}
 
 /**
  * Message with coalescing metadata
  */
-export interface CoalescedMessage extends WebSocketMessage {
+export type CoalescedMessage<T extends CoalesceableMessage> = T & {
   /** Number of original events merged into this message (1 = no coalescing) */
   coalescedCount?: number
+}
+
+export interface CoalescerLogger {
+  warn(event: string, data?: Record<string, unknown>): void
 }
 
 /**
@@ -15,11 +29,21 @@ export interface CoalescedMessage extends WebSocketMessage {
 export interface CoalescerConfig {
   /** Base coalescing window in ms (default: 30) */
   baseWindowMs?: number
-  /** Returns current backpressure level (e.g. Socket.IO writeBuffer length).
-   *  Higher values widen the coalescing window.
-   *  Sampled when the flush timer is scheduled (on first push after a flush),
-   *  not when the timer fires. */
+  /** Returns current backpressure level. Higher values widen the coalescing
+   *  window. The thresholds are unitless: > 20 → 60 ms, > 50 → 100 ms. Each
+   *  caller supplies a number on a scale that fits its transport (e.g. WS
+   *  passes Socket.IO `writeBuffer.length`, SSE scales buffered bytes to
+   *  ~1 KB per unit). Sampled when the flush timer is scheduled, not when
+   *  it fires. */
   getBackpressure?: () => number
+  /** Optional logger; receives `coalescer.flush_threw` if a synchronous
+   *  `onFlush` call from the timer path throws. Without this, a synchronous
+   *  throw inside the timer callback would surface as `uncaughtException`. */
+  logger?: CoalescerLogger
+  /** Static fields merged into every log payload — e.g. `{ subscriberId,
+   *  transport }` so operators can identify which subscriber's flush
+   *  failed. */
+  logContext?: Record<string, unknown>
 }
 
 /**
@@ -32,36 +56,40 @@ export interface CoalescerConfig {
  * Adaptive window: if getBackpressure returns > 0, the flush window scales up
  * to reduce emit frequency when the client is falling behind.
  */
-export class EventCoalescer {
-  private pending: WebSocketMessage | null = null
+export class EventCoalescer<T extends CoalesceableMessage> {
+  private pending: T | null = null
   private pendingKey: string | null = null
   private pendingCount = 0
   private flushTimer: ReturnType<typeof setTimeout> | null = null
   private disposed = false
-  private readonly onFlush: (messages: CoalescedMessage[]) => void
+  private readonly onFlush: (messages: CoalescedMessage<T>[]) => void
   private readonly baseWindowMs: number
   private readonly getBackpressure: (() => number) | undefined
+  private readonly logger: CoalescerLogger | undefined
+  private readonly logContext: Record<string, unknown> | undefined
 
   constructor(
-    onFlush: (messages: CoalescedMessage[]) => void,
+    onFlush: (messages: CoalescedMessage<T>[]) => void,
     config: CoalescerConfig = {}
   ) {
     this.onFlush = onFlush
     this.baseWindowMs = config.baseWindowMs ?? 30
     this.getBackpressure = config.getBackpressure
+    this.logger = config.logger
+    this.logContext = config.logContext
   }
 
   /**
    * Accept an event for potential coalescing
    */
-  push(message: WebSocketMessage): void {
+  push(message: T): void {
     if (this.disposed) return
 
     const key = getCoalesceKey(message.type, message.data)
 
     if (key === null) {
       // Non-coalesceable: flush pending + pass through immediately together
-      const batch: CoalescedMessage[] = []
+      const batch: CoalescedMessage<T>[] = []
       if (this.pending) {
         batch.push(this.takePending())
       }
@@ -73,9 +101,14 @@ export class EventCoalescer {
 
     // Coalesceable event
     if (this.pending && this.pendingKey === key) {
-      // Same coalesce key: merge
-      this.pending.content += message.content
-      this.pending.data = mergeCoalescedData(message.type, this.pending.data, message.data)
+      // Last-write-wins for fields beyond content/data (sequence, id, timestamp
+      // on StreamingEvent). Single spread is one allocation and avoids the
+      // ordering trap of mutate-then-restore.
+      this.pending = {
+        ...message,
+        content: this.pending.content + message.content,
+        data: mergeCoalescedData(message.type, this.pending.data, message.data),
+      }
       this.pendingCount++
     } else {
       // Different key: flush previous, start new buffer
@@ -115,7 +148,7 @@ export class EventCoalescer {
     }
   }
 
-  private takePending(): CoalescedMessage {
+  private takePending(): CoalescedMessage<T> {
     const msg = this.pending!
     const count = this.pendingCount
     this.pending = null
@@ -136,8 +169,28 @@ export class EventCoalescer {
     if (this.flushTimer) return // already scheduled
     this.flushTimer = setTimeout(() => {
       this.flushTimer = null
-      if (this.pending) {
-        this.onFlush([this.takePending()])
+      if (!this.pending) return
+      // Caller-side flush sites (push / flush / dispose) run under whatever
+      // try/catch their callers provide. The timer is the unique unguarded
+      // path — a synchronous throw here would surface as `uncaughtException`.
+      // takePending() runs before onFlush, so pending/pendingKey/pendingCount
+      // are already cleared even when onFlush throws — the next push starts
+      // a fresh buffer.
+      const message = this.takePending()
+      try {
+        this.onFlush([message])
+      } catch (err) {
+        // sequence is transport-specific (StreamingEvent has it; WebSocketMessage
+        // doesn't) — include when present so SSE operators see the lost frame's
+        // cursor without forcing the field onto the base CoalesceableMessage.
+        const seq = (message as { sequence?: unknown }).sequence
+        this.logger?.warn('coalescer.flush_threw', {
+          ...this.logContext,
+          error: err instanceof Error ? err.message : String(err),
+          eventType: message.type,
+          coalescedCount: message.coalescedCount ?? 1,
+          ...(typeof seq === 'number' ? { sequence: seq } : {}),
+        })
       }
     }, this.getWindowMs())
   }

@@ -11,6 +11,7 @@ function createMockWriter(): SSEWriter {
     retry: vi.fn(),
     end: vi.fn(() => { closed = true }),
     isClosed: () => closed,
+    getBacklogBytes: () => 0,
   }
 }
 

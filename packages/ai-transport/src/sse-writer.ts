@@ -11,6 +11,12 @@ export interface SSEWriter {
   retry(ms: number): void
   end(): void
   isClosed(): boolean
+  /**
+   * Approximate bytes currently buffered downstream (compressor + socket).
+   * Used by the coalescer to widen its flush window when the client is slow.
+   * Returns 0 when the writer is closed.
+   */
+  getBacklogBytes(): number
 }
 
 export interface SSEWriterLogger {
@@ -72,6 +78,7 @@ export function createSSEWriter(
       retry: (ms) => write(`retry: ${ms}\n\n`),
       end: () => { if (!res.writableEnded) res.end() },
       isClosed,
+      getBacklogBytes: () => isClosed() ? 0 : res.writableLength,
     }
   }
 
@@ -127,5 +134,8 @@ export function createSSEWriter(
     retry: (ms) => write(`retry: ${ms}\n\n`),
     end: () => { if (!stream.destroyed && !stream.writableEnded) stream.end() },
     isClosed: isClosedCompressed,
+    // Backlog can sit in either the zlib input queue or the socket. Sum both
+    // so the coalescer sees the true wall of buffered data.
+    getBacklogBytes: () => isClosedCompressed() ? 0 : stream.writableLength + res.writableLength,
   }
 }

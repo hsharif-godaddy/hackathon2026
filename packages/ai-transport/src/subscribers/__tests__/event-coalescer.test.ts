@@ -7,15 +7,15 @@ function msg(type: string, content: string, data: Record<string, unknown> = {}):
 }
 
 describe('EventCoalescer', () => {
-  let flushed: CoalescedMessage[][]
-  let flushFn: (messages: CoalescedMessage[]) => void
-  let coalescer: EventCoalescer
+  let flushed: CoalescedMessage<WebSocketMessage>[][]
+  let flushFn: (messages: CoalescedMessage<WebSocketMessage>[]) => void
+  let coalescer: EventCoalescer<WebSocketMessage>
 
   beforeEach(() => {
     vi.useFakeTimers()
     flushed = []
     flushFn = (msgs) => flushed.push([...msgs])
-    coalescer = new EventCoalescer(flushFn, { baseWindowMs: 30 })
+    coalescer = new EventCoalescer<WebSocketMessage>(flushFn, { baseWindowMs: 30 })
   })
 
   afterEach(() => {
@@ -224,7 +224,7 @@ describe('EventCoalescer', () => {
   describe('adaptive window', () => {
     it('uses backpressure function to widen window', () => {
       const backpressure = vi.fn().mockReturnValue(55)
-      const adaptive = new EventCoalescer(flushFn, {
+      const adaptive = new EventCoalescer<WebSocketMessage>(flushFn, {
         baseWindowMs: 30,
         getBackpressure: backpressure
       })
@@ -241,7 +241,7 @@ describe('EventCoalescer', () => {
 
     it('uses mid-tier 60ms window when backpressure is moderate', () => {
       const backpressure = vi.fn().mockReturnValue(30) // > 20 && <= 50
-      const adaptive = new EventCoalescer(flushFn, {
+      const adaptive = new EventCoalescer<WebSocketMessage>(flushFn, {
         baseWindowMs: 30,
         getBackpressure: backpressure
       })
@@ -258,7 +258,7 @@ describe('EventCoalescer', () => {
 
     it('uses base window when backpressure is low', () => {
       const backpressure = vi.fn().mockReturnValue(5)
-      const adaptive = new EventCoalescer(flushFn, {
+      const adaptive = new EventCoalescer<WebSocketMessage>(flushFn, {
         baseWindowMs: 30,
         getBackpressure: backpressure
       })
@@ -268,6 +268,84 @@ describe('EventCoalescer', () => {
       expect(flushed).toHaveLength(1)
 
       adaptive.dispose()
+    })
+  })
+
+  describe('timer-path flush errors', () => {
+    it('catches synchronous Error throws from onFlush and reports with context', () => {
+      const warn = vi.fn()
+      const throwing = new EventCoalescer<WebSocketMessage>(
+        () => { throw new Error('downstream blew up') },
+        {
+          baseWindowMs: 30,
+          logger: { warn },
+          logContext: { subscriberId: 'sub-1', transport: 'ws' },
+        },
+      )
+
+      throwing.push(msg('chunk', 'a'))
+      throwing.push(msg('chunk', 'b'))
+      throwing.push(msg('chunk', 'c'))
+      expect(() => vi.advanceTimersByTime(30)).not.toThrow()
+
+      expect(warn).toHaveBeenCalledWith('coalescer.flush_threw', expect.objectContaining({
+        subscriberId: 'sub-1',
+        transport: 'ws',
+        error: 'downstream blew up',
+        eventType: 'chunk',
+        coalescedCount: 3,
+      }))
+
+      throwing.dispose()
+    })
+
+    it('coerces non-Error throws via String() so the logger payload is always a string', () => {
+      const warn = vi.fn()
+      const throwing = new EventCoalescer<WebSocketMessage>(
+        () => { throw 'plain string failure' },
+        { baseWindowMs: 30, logger: { warn } },
+      )
+
+      throwing.push(msg('chunk', 'x'))
+      expect(() => vi.advanceTimersByTime(30)).not.toThrow()
+
+      expect(warn).toHaveBeenCalledWith('coalescer.flush_threw', expect.objectContaining({
+        error: 'plain string failure',
+      }))
+
+      throwing.dispose()
+    })
+
+    it('clears pending state after a timer-path throw so the next push starts fresh', () => {
+      const warn = vi.fn()
+      let shouldThrow = true
+      const flushed_local: CoalescedMessage<WebSocketMessage>[][] = []
+      const throwing = new EventCoalescer<WebSocketMessage>(
+        (msgs) => {
+          if (shouldThrow) {
+            shouldThrow = false
+            throw new Error('first flush fails')
+          }
+          flushed_local.push([...msgs])
+        },
+        { baseWindowMs: 30, logger: { warn } },
+      )
+
+      throwing.push(msg('chunk', 'lost'))
+      vi.advanceTimersByTime(30)
+      expect(warn).toHaveBeenCalledOnce()
+      expect(flushed_local).toHaveLength(0)
+
+      // Recovery: next push should buffer + flush as a fresh event, not merge
+      // with the dropped one.
+      throwing.push(msg('chunk', 'recovered'))
+      vi.advanceTimersByTime(30)
+
+      expect(flushed_local).toHaveLength(1)
+      expect(flushed_local[0][0].content).toBe('recovered')
+      expect(flushed_local[0][0].coalescedCount).toBeUndefined()
+
+      throwing.dispose()
     })
   })
 

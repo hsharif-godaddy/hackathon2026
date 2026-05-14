@@ -1125,7 +1125,9 @@ export class WebSocketServer {
       socket,
       (id: string) => this.stateManager.isDisconnected(id),
       {
-        getBackpressure: () => (socket as any).conn?.writeBuffer?.length ?? 0
+        getBackpressure: () => (socket as any).conn?.writeBuffer?.length ?? 0,
+        logger: { warn: (event, data) => this.logger.warn(event, data) },
+        logContext: { socketId: socket.id, transport: 'ws' },
       }
     )
     if (!socket.data) socket.data = {}

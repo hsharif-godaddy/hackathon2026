@@ -61,6 +61,16 @@ describe('createSSEWriter — identity encoding', () => {
     res.destroyed = true
     expect(writer.isClosed()).toBe(true)
   })
+
+  it('reports res.writableLength as the backlog and 0 once closed', () => {
+    const res = makeMockRes()
+    res.writableLength = 4096
+    const writer = createSSEWriter(makeReq(), res)
+    expect(writer.getBacklogBytes()).toBe(4096)
+
+    res.destroyed = true
+    expect(writer.getBacklogBytes()).toBe(0)
+  })
 })
 
 describe('createSSEWriter — compressed encoding (gzip)', () => {
@@ -134,6 +144,19 @@ describe('createSSEWriter — compressed encoding (gzip)', () => {
       encoding: 'gzip',
       error: 'zlib internal error',
     }))
+  })
+
+  it('reports backlog as compressor + socket buffered bytes, and 0 once closed', () => {
+    const res = makeMockRes()
+    res.writableLength = 1024
+    const writer = createSSEWriter(makeReq('gzip'), res)
+    const stream = res._src as zlib.Gzip
+    Object.defineProperty(stream, 'writableLength', { value: 2048, configurable: true })
+
+    expect(writer.getBacklogBytes()).toBe(3072)
+
+    stream.destroy()
+    expect(writer.getBacklogBytes()).toBe(0)
   })
 
   it('swallows synchronous stream.write throws and logs sse.writer.write_failed', () => {

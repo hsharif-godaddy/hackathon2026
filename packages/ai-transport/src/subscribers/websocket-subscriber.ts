@@ -25,7 +25,7 @@ export type IsDisconnectedFn = (socketId: string) => boolean
 export class WebSocketSubscriber extends BaseEventSubscriber {
   private socket: any // Socket.IO socket
   private isDisconnected: IsDisconnectedFn
-  private coalescer: EventCoalescer
+  private coalescer: EventCoalescer<WebSocketMessage>
 
   constructor(
     socket: any,
@@ -35,7 +35,7 @@ export class WebSocketSubscriber extends BaseEventSubscriber {
     super(`websocket-${socket.id}`)
     this.socket = socket
     this.isDisconnected = isDisconnected
-    this.coalescer = new EventCoalescer(
+    this.coalescer = new EventCoalescer<WebSocketMessage>(
       (messages) => this.emitMessages(messages),
       coalescerConfig
     )
@@ -84,17 +84,15 @@ export class WebSocketSubscriber extends BaseEventSubscriber {
     }
   }
 
-  private emitMessages(messages: CoalescedMessage[]): void {
+  private emitMessages(messages: CoalescedMessage<WebSocketMessage>[]): void {
     if (!this.socket.connected) return
-    try {
-      for (const msg of messages) {
-        // Strip coalescedCount — internal metadata, not part of the wire protocol
-        const { coalescedCount: _, ...wireMessage } = msg
-        this.socket.emit('message', wireMessage)
-      }
-    } catch {
-      // Swallow emit errors in timer callback to prevent uncaught exceptions.
-      // The event channel has all events buffered for recovery regardless.
+    // Throws from socket.emit propagate to the coalescer's timer-path catch
+    // (event-coalescer.ts) which logs `coalescer.flush_threw` if a logger is
+    // configured. Event channel has all events buffered for recovery.
+    for (const msg of messages) {
+      // Strip coalescedCount — internal metadata, not part of the wire protocol
+      const { coalescedCount: _, ...wireMessage } = msg
+      this.socket.emit('message', wireMessage)
     }
   }
 }
