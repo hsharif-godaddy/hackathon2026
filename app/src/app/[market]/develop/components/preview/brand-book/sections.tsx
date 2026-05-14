@@ -9,6 +9,7 @@ import text from '@ux/text';
 
 import type { BrandData, BrandDataPalette } from '@/hooks/useBrandData';
 import { logger } from '@/lib/request-context';
+import { logClickEvent } from '@/utils/instrumentation';
 import styles from './brand-book.module.css';
 import { SectionHeader, SectionWrapper } from './shared-components';
 import type { BrandStyle } from './types';
@@ -103,6 +104,7 @@ export function LogoSection({
   const primarySrc = logoUrls?.primarySrc;
   const darkSrc = logoUrls?.reversedSrc || primarySrc;
   const downloadImage = useDownloadImage();
+  const brandClickProps = { flow: 'logo-designer' as const };
 
   // null (manifest loading) or undefined (no logo) — show spinner or placeholder
   if (!logoUrls) {
@@ -145,7 +147,7 @@ export function LogoSection({
               </div>
               <div className={styles.logoPanelFooter}>
                 <text.span as="caption" style={{ opacity: 0.5 }}>TRANSPARENT / LIGHT</text.span>
-                <button type="button" className={styles.downloadButton} onClick={() => downloadImage(primarySrc, 'logo-light.png')}>DOWNLOAD PNG</button>
+                <button type="button" className={styles.downloadButton} onClick={() => { logClickEvent('develop.brand.logo_download_light', brandClickProps)(); downloadImage(primarySrc, 'logo-light.png'); }}>DOWNLOAD PNG</button>
               </div>
             </div>
 
@@ -162,7 +164,7 @@ export function LogoSection({
               </div>
               <div className={styles.logoPanelFooter}>
                 <text.span as="caption" style={{ opacity: 0.5 }}>REVERSED / DARK</text.span>
-                <button type="button" className={styles.downloadButton} onClick={() => downloadImage(darkSrc, 'logo-dark.png')}>DOWNLOAD PNG</button>
+                <button type="button" className={styles.downloadButton} onClick={() => { logClickEvent('develop.brand.logo_download_dark', brandClickProps)(); downloadImage(darkSrc, 'logo-dark.png'); }}>DOWNLOAD PNG</button>
               </div>
             </div>
           </div>
@@ -325,6 +327,7 @@ export function BrandApplicationsSection({
   isLoading?: boolean;
 }) {
   const downloadImage = useDownloadImage();
+  const brandClickProps = { flow: 'logo-designer' as const };
 
   return (
     <SectionWrapper palette={palette}>
@@ -341,7 +344,7 @@ export function BrandApplicationsSection({
           />
           <div className={styles.mockupPreviewFooter}>
             <text.span as="caption" style={{ opacity: 0.5 }}>BRAND MOCKUP PREVIEW</text.span>
-            <button type="button" className={styles.downloadButton} onClick={() => downloadImage(mockupUrl, 'logo-mockup.png')}>Download Mockup</button>
+            <button type="button" className={styles.downloadButton} onClick={() => { logClickEvent('develop.brand.mockup_download', brandClickProps)(); downloadImage(mockupUrl, 'logo-mockup.png'); }}>Download Mockup</button>
           </div>
         </div>
       ) : (

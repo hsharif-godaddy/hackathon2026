@@ -1,12 +1,13 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Box from '@ux/box';
 import text from '@ux/text';
 
 import { useBrandData } from '@/hooks/useBrandData';
 import { useMediaManifest } from '@/hooks/useMediaManifest';
 import { logger } from '@/lib/request-context';
+import { logImpressionEvent } from '@/utils/instrumentation';
 import styles from './brand-book.module.css';
 import { useBrandIntentOverrides, useBrandStyle, useGoogleFonts, useIsBrandGenerating } from './hooks';
 import {
@@ -23,6 +24,8 @@ import type { BrandBookViewProps } from './types';
 
 export default function BrandBookView({ appId }: BrandBookViewProps) {
   const { data, isLoading, error } = useBrandData(appId);
+  const logoViewFiredRef = useRef(false);
+  const bookViewFiredRef = useRef(false);
 
   const brandName = data?.brandName || 'Your Brand';
 
@@ -59,6 +62,14 @@ export default function BrandBookView({ appId }: BrandBookViewProps) {
       if (reversed) setPreviewReversedUrl(reversed);
       const mockup = logo?.mockupUrl || logo?.horizontalMockupUrl || logo?.verticalMockupUrl;
       if (mockup) setPreviewMockupUrl(mockup);
+
+      if (event.type === 'logo-generated' && !logoViewFiredRef.current) {
+        logoViewFiredRef.current = true;
+        logImpressionEvent('develop.brand.logo_view', {
+          appId,
+          flow: 'logo-designer',
+        })();
+      }
     }
     window.addEventListener('logo-select', handleLogoEvent);
     window.addEventListener('logo-generated', handleLogoEvent);
@@ -66,7 +77,7 @@ export default function BrandBookView({ appId }: BrandBookViewProps) {
       window.removeEventListener('logo-select', handleLogoEvent);
       window.removeEventListener('logo-generated', handleLogoEvent);
     };
-  }, []);
+  }, [appId]);
 
   // Derive logo URLs from manifest slots.
   // While manifest is loading, return null (not undefined) so LogoSection can
@@ -93,6 +104,17 @@ export default function BrandBookView({ appId }: BrandBookViewProps) {
 
     return { primarySrc, reversedSrc, verticalSrc, horizontalSrc };
   }, [manifest, manifestError, isManifestLoading, previewLogoUrl, previewReversedUrl, appId]);
+
+  // Fire book_view impression once all brand data sections are populated
+  useEffect(() => {
+    if (bookViewFiredRef.current) return;
+    if (!data?.palette || !data?.typography || !logoUrls) return;
+    bookViewFiredRef.current = true;
+    logImpressionEvent('develop.brand.book_view', {
+      appId,
+      flow: 'logo-designer',
+    })();
+  }, [data, logoUrls, appId]);
 
   // Genuine API failure after retries — show error state
   if (error && !data && !isLoading) {

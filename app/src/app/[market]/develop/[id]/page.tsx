@@ -164,6 +164,17 @@ function DevelopPageContent() {
     }
   }, [init.ui.templateId, isBrandBookEnabled, isVentureHomeLogo, appId])
 
+  const brandViewFiredRef = useRef(false)
+  useEffect(() => {
+    if (brandViewFiredRef.current) return
+    if (!appId || !isLogoDesignerApp(appId)) return
+    brandViewFiredRef.current = true
+    logImpressionEvent('develop.brand.view', {
+      appId,
+      flow: 'logo-designer',
+    })()
+  }, [appId])
+
   // Logo-designer handoff → website build: switch Brand → Preview when the
   // first page file edit lands. localStorage-gated per appId so a reload after
   // we've already switched once doesn't re-hijack a tab the user has since

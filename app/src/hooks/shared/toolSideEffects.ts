@@ -13,6 +13,7 @@ import { logger } from '@/lib/request-context'
 import { type FileOperationType, useCodeSyncStore } from '@/stores/useCodeSyncStore'
 import { useStreamingConversationStore } from '@/stores/useStreamingConversationStore'
 import { useTodoListStore } from '@/stores/useTodoListStore'
+import { logImpressionEvent } from '@/utils/instrumentation'
 
 const BRAND_UPDATE_TOOLS = new Set(['colorScheme', 'fontTheme', 'setProjectName', 'brandBook'])
 
@@ -196,6 +197,20 @@ export async function handleToolResultSideEffects(
   if (!hasError && (BRAND_UPDATE_TOOLS.has(tool.name) || isBrandMemorySet(tool))) {
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent(BRAND_DATA_UPDATED_EVENT, { detail: { appId } }))
+    }
+  }
+
+  // Brand EID instrumentation — track when brand tools complete
+  if (!hasError && typeof window !== 'undefined') {
+    const brandEidProps = { appId, flow: 'logo-designer' }
+    if (tool.name === 'brandBook') {
+      logImpressionEvent('develop.brand.identity_set', brandEidProps)()
+    } else if (tool.name === 'colorScheme') {
+      logImpressionEvent('develop.brand.colors_set', brandEidProps)()
+    } else if (tool.name === 'fontTheme') {
+      logImpressionEvent('develop.brand.fonts_set', brandEidProps)()
+    } else if (tool.name === 'media-logo__edit_logo') {
+      logImpressionEvent('develop.brand.logo_edit', brandEidProps)()
     }
   }
 

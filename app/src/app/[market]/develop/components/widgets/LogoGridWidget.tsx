@@ -10,6 +10,7 @@ import { useTranslations } from '@/hooks/useTranslations'
 import { regenerateToken } from '@/lib/jwt-regeneration'
 import { logger } from '@/lib/request-context'
 import { useIsActivelyStreaming, useIsLoading } from '@/stores/useStreamingConversationStore'
+import { logClickEvent } from '@/utils/instrumentation'
 import { postMessageToIframe } from '@/utils/postMessage'
 import { getLogoDisplayUrl, getLogoSlotName, getLogoSolidDisplayUrl, LogoData } from './logo-utils';
 
@@ -163,7 +164,7 @@ export default function LogoGridWidget({ logos, className = '' }: LogoGridWidget
         {logos.map((logo, index) => (
           <button
             key={logo.id || index}
-            onClick={() => handleLogoClick(logo, index)}
+            onClick={() => { logClickEvent('develop.brand.logo_select', { appId, flow: 'logo-designer' })(); handleLogoClick(logo, index) }}
             disabled={isSwapping || isProcessing}
             className={clsx(
               "w-full group cursor-pointer overflow-hidden rounded-md border-2 transition-all duration-200 hover:shadow-md bg-intents-ux-boxLowContrast-backgroundColor",

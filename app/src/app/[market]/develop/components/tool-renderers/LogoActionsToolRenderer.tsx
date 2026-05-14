@@ -9,6 +9,7 @@ import { useIsEmbedded } from '@/hooks/useIsEmbedded'
 import { useTranslations } from '@/hooks/useTranslations'
 import { logger } from '@/lib/request-context'
 import { fetchAsDataUrl } from '@/utils/image'
+import { logClickEvent } from '@/utils/instrumentation'
 
 export default function LogoActionsToolRenderer({
   toolStatus,
@@ -52,6 +53,7 @@ export default function LogoActionsToolRenderer({
       const parentOrigin = getParentOrigin()
       if (!parentOrigin) return
       setBusy(true)
+      logClickEvent('develop.brand.logo_set', { flow: 'logo-designer' })()
       const action = 'set-as-logo'
       try {
         const dataUrl = await fetchAsDataUrl(imageUrl)
