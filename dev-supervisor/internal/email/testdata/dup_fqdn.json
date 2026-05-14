@@ -1,0 +1,34 @@
+{
+  "DOMAINS": {
+    "SYSTEM_MANAGED": true,
+    "VALUE": [
+      {
+        "fqdn": "acme.com",
+        "domainType": "fqdn",
+        "prefix": null,
+        "isPrimary": true,
+        "status": "active",
+        "createdAt": "2026-01-01T00:00:00Z",
+        "updatedAt": "2026-01-01T00:00:00Z"
+      },
+      {
+        "fqdn": "ACME.com",
+        "domainType": "fqdn",
+        "prefix": null,
+        "isPrimary": false,
+        "status": "active",
+        "createdAt": "2026-01-02T00:00:00Z",
+        "updatedAt": "2026-01-02T00:00:00Z"
+      },
+      {
+        "fqdn": "acme.com",
+        "domainType": "fqdn",
+        "prefix": null,
+        "isPrimary": false,
+        "status": "active",
+        "createdAt": "2026-01-03T00:00:00Z",
+        "updatedAt": "2026-01-03T00:00:00Z"
+      }
+    ]
+  }
+}

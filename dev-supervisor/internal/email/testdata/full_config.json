@@ -1,0 +1,73 @@
+{
+  "DATABASE": {
+    "SYSTEM_MANAGED": true,
+    "VALUE": {
+      "HOST": "10.0.0.1",
+      "IP": "10.0.0.1",
+      "NAME": "db_test",
+      "PASSWORD": "redacted",
+      "PORT": 3306,
+      "USERNAME": "db_test",
+      "VARIANT": ""
+    }
+  },
+  "DOMAINS": {
+    "SYSTEM_MANAGED": true,
+    "VALUE": [
+      {
+        "fqdn": "shop.acme.com",
+        "domainType": "fqdn",
+        "prefix": null,
+        "isPrimary": true,
+        "status": "active",
+        "createdAt": "2026-01-01T00:00:00Z",
+        "updatedAt": "2026-01-02T00:00:00Z"
+      },
+      {
+        "fqdn": "acme.shop",
+        "domainType": "fqdn",
+        "prefix": null,
+        "isPrimary": false,
+        "status": "active",
+        "createdAt": "2026-01-03T00:00:00Z",
+        "updatedAt": "2026-01-04T00:00:00Z"
+      },
+      {
+        "fqdn": "domaindemo.tacopizza.space",
+        "domainType": "fqdn",
+        "prefix": null,
+        "isPrimary": false,
+        "status": "error",
+        "createdAt": "2026-01-05T00:00:00Z",
+        "updatedAt": "2026-01-06T00:00:00Z"
+      },
+      {
+        "fqdn": "abc1234567.dev.airoapp.ai",
+        "domainType": "prefix",
+        "prefix": "abc1234567",
+        "isPrimary": false,
+        "status": "active",
+        "createdAt": "2026-01-07T00:00:00Z",
+        "updatedAt": "2026-01-08T00:00:00Z"
+      },
+      {
+        "fqdn": "pending.example.com",
+        "domainType": "fqdn",
+        "prefix": null,
+        "isPrimary": false,
+        "status": "pending",
+        "createdAt": "2026-01-09T00:00:00Z",
+        "updatedAt": "2026-01-10T00:00:00Z"
+      },
+      {
+        "fqdn": "bücher.example",
+        "domainType": "fqdn",
+        "prefix": null,
+        "isPrimary": false,
+        "status": "active",
+        "createdAt": "2026-01-11T00:00:00Z",
+        "updatedAt": "2026-01-12T00:00:00Z"
+      }
+    ]
+  }
+}

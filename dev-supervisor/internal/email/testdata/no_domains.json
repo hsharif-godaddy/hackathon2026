@@ -1,0 +1,14 @@
+{
+  "DATABASE": {
+    "SYSTEM_MANAGED": true,
+    "VALUE": {
+      "HOST": "10.0.0.1",
+      "IP": "10.0.0.1",
+      "NAME": "db_test",
+      "PASSWORD": "redacted",
+      "PORT": 3306,
+      "USERNAME": "db_test",
+      "VARIANT": ""
+    }
+  }
+}

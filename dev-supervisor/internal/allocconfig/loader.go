@@ -51,6 +51,19 @@ type DatabaseConfig struct {
 	Variant  string `json:"VARIANT"`
 }
 
+// Domain represents one entry in the DOMAINS system-managed secret. Shape
+// is set by mhp-core's RefreshDomainsSecretTask
+// (gdcorp-partners/mhp-core/.../refresh_domains_secret_task.go).
+type Domain struct {
+	Fqdn       string    `json:"fqdn"`
+	DomainType string    `json:"domainType"` // "fqdn" or "prefix"
+	Prefix     *string   `json:"prefix"`
+	IsPrimary  bool      `json:"isPrimary"`
+	Status     string    `json:"status"` // "active", "pending", "error", ...
+	CreatedAt  time.Time `json:"createdAt"`
+	UpdatedAt  time.Time `json:"updatedAt"`
+}
+
 // validEnvKey matches allowed environment variable names (POSIX-style).
 var validEnvKey = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9_]*$`)
 
@@ -59,6 +72,7 @@ var validEnvKey = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9_]*$`)
 // CustomerEnv holds top-level keys that are Secret[string] with SYSTEM_MANAGED=false (reloaded with config).
 type Config struct {
 	Database       *Secret[DatabaseConfig] `json:"DATABASE"`
+	Domains        *Secret[[]Domain]       `json:"DOMAINS"`
 	JWTRedirectURL *Secret[string]         `json:"JWT_REDIRECT_URL"`
 	ProductID      *Secret[string]         `json:"PRODUCT_ID"`
 	CustomerEnv    map[string]string       `json:"-"` // Populated from other top-level entries; not from JSON tag
@@ -93,6 +107,14 @@ func (c *Config) Copy() *Config {
 	if c.Database != nil {
 		dbCopy := *c.Database
 		configCopy.Database = &dbCopy
+	}
+
+	if c.Domains != nil {
+		domainsCopy := Secret[[]Domain]{
+			SystemManaged: c.Domains.SystemManaged,
+			Value:         append([]Domain(nil), c.Domains.Value...),
+		}
+		configCopy.Domains = &domainsCopy
 	}
 
 	if c.JWTRedirectURL != nil {
@@ -212,6 +234,12 @@ func (l *Loader) Load() (*Config, error) {
 					continue
 				}
 				config.Database = &s
+			case "DOMAINS":
+				var s Secret[[]Domain]
+				if err := json.Unmarshal(v, &s); err != nil {
+					continue
+				}
+				config.Domains = &s
 			case "JWT_REDIRECT_URL":
 				var s Secret[string]
 				if err := json.Unmarshal(v, &s); err != nil {
