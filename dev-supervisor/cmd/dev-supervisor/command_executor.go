@@ -7,8 +7,11 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
+	"strings"
+	"syscall"
 	"time"
 
+	"github.com/airo-ai-builder/dev-supervisor/internal/process"
 	"github.com/airo-ai-builder/dev-supervisor/internal/sandbox"
 	"github.com/airo-ai-builder/dev-supervisor/internal/validation"
 )
@@ -32,9 +35,18 @@ type CommandExecutor struct {
 	defaultWorkDir   string
 	sandboxEnabled   bool
 	sharedStorageDir string
+	// pid1Mgr, when non-nil, is used to atomically Start+Register every
+	// spawned child so the PID1 orphan reaper cannot waitid(2) a short-lived
+	// command before we reach cmd.Wait(). See PID1Manager.StartAndRegister.
+	pid1Mgr *process.PID1Manager
 }
 
-func NewCommandExecutor() *CommandExecutor {
+// NewCommandExecutor constructs a CommandExecutor.
+//
+// pid1Mgr may be nil (used by unit tests and non-PID1 callers). When it is
+// set, every child spawned by Execute is registered with the PID1 manager
+// before it can exit so the orphan reaper does not steal its exit status.
+func NewCommandExecutor(pid1Mgr *process.PID1Manager) *CommandExecutor {
 	// Use current working directory as default, fallback to /tmp
 	defaultDir, err := os.Getwd()
 	if err != nil {
@@ -44,6 +56,7 @@ func NewCommandExecutor() *CommandExecutor {
 	return &CommandExecutor{
 		defaultTimeout: 30, // 30 seconds default
 		defaultWorkDir: defaultDir,
+		pid1Mgr:        pid1Mgr,
 	}
 }
 
@@ -124,27 +137,44 @@ func (ce *CommandExecutor) Execute(req validation.CommandRequest) (*CommandResul
 		"capture_output", req.CaptureOutput,
 	)
 
-	// Execute command (with status-pipe handling when sandboxed)
+	// Execute command (with status-pipe handling when sandboxed).
+	//
+	// Every path must use startCommand() (rather than cmd.Start() / cmd.Run()
+	// directly) so the PID1 orphan reaper does not race this exec and steal
+	// the child's exit status before cmd.Wait() runs. See PID1Manager.StartAndRegister.
 	var err error
 	var sandboxFatal string
-	if statusRead != nil {
-		if startErr := cmd.Start(); startErr != nil {
-			_ = statusRead.Close()
-			sandbox.ReleaseStatusWrite(cmd)
-			err = startErr
-		} else {
-			sandbox.ReleaseStatusWrite(cmd)
-			fatalCh := make(chan string, 1)
-			go func() {
-				fatalCh <- sandbox.ReadFatal(statusRead)
-				_ = statusRead.Close()
-			}()
-			err = cmd.Wait()
-			sandboxFatal = <-fatalCh
-		}
-	} else {
-		err = cmd.Run()
+
+	if err = ce.startCommand(cmd); err == nil {
+		// Defer unregistering the command with the PID1 manager until after Wait returns,
+		// to ensure the reaper doesn't steal the exit status if the command is short-lived. See PID1Manager.StartAndRegister.
+		defer ce.unregisterCommand(cmd.Process.Pid)
 	}
+
+	// If we errored at command start, and we have an open status pipe,
+	// close it and release the write end so the sandbox doesn't leak resources or block on writes.
+	if err != nil && statusRead != nil {
+		_ = statusRead.Close()
+		sandbox.ReleaseStatusWrite(cmd)
+	}
+
+	// If we did not error out, and we are not sandboxed, then we can simply wait for command completion.
+	if err == nil && statusRead == nil {
+		err = cmd.Wait()
+	}
+
+	// If we did not error out, and we are sand boxed, then we to release the status write.
+	if err == nil && statusRead != nil {
+		sandbox.ReleaseStatusWrite(cmd)
+		fatalCh := make(chan string, 1)
+		go func() {
+			fatalCh <- sandbox.ReadFatal(statusRead)
+			_ = statusRead.Close()
+		}()
+		err = cmd.Wait()
+		sandboxFatal = <-fatalCh
+	}
+
 	duration := time.Since(startTime)
 
 	// Ensure duration is at least 1ms to avoid 0 values for very fast commands
@@ -215,6 +245,19 @@ func (ce *CommandExecutor) Execute(req validation.CommandRequest) (*CommandResul
 
 	switch {
 	case result.ExitCode == -1:
+		// ECHILD ("no child processes") is the PID1 reaper-race signature —
+		// log it distinctly so a regression in any unconverted exec path is
+		// visibly different from a generic Start failure. See
+		// PID1Manager.StartAndRegister.
+		if err != nil && (errors.Is(err, syscall.ECHILD) || strings.Contains(err.Error(), "no child processes")) {
+			slog.Error("command_executor.execute.reaper_race",
+				"command_preview", commandPreview,
+				"duration_ms", result.Duration,
+				"stdout_length", len(result.Stdout),
+				"error", err,
+			)
+			break
+		}
 		slog.Error("command_executor.execute.failed",
 			"command_preview", commandPreview,
 			"exit_code", result.ExitCode,
@@ -243,6 +286,43 @@ func (ce *CommandExecutor) Execute(req validation.CommandRequest) (*CommandResul
 	}
 
 	return result, nil
+}
+
+// startCommand starts cmd using the PID1 manager (when available) so the
+// orphan reaper cannot consume the child's exit status before cmd.Wait()
+// runs. Falls back to plain cmd.Start() only when pid1Mgr is nil — production
+// always wires it up in main.go; the fallback exists for unit tests.
+func (ce *CommandExecutor) startCommand(cmd *exec.Cmd) error {
+	if ce.pid1Mgr != nil {
+		return ce.pid1Mgr.StartAndRegister(cmd, nil)
+	}
+	return cmd.Start()
+}
+
+// unregisterCommand drops the PID from the PID1 manager's tracking map after
+// cmd.Wait() returns (zero-exit, non-zero-exit, or error — all reap the
+// process). Safe to call when pid1Mgr is nil or pid is zero.
+func (ce *CommandExecutor) unregisterCommand(pid int) {
+	if ce.pid1Mgr == nil || pid == 0 {
+		return
+	}
+	ce.pid1Mgr.UnregisterChildProcess(pid)
+}
+
+// runShortLivedCommand runs cmd to completion using the PID1 manager (when
+// wired up) so the orphan reaper cannot consume the child's exit status before
+// cmd.Wait() runs. Equivalent to cmd.Run() but reaper-safe; intended for
+// one-shot exec sites (file/grep, health checks). Falls back to cmd.Run() only
+// when pid1Mgr is nil (tests).
+func (s *Server) runShortLivedCommand(cmd *exec.Cmd) error {
+	if s.pid1Mgr == nil {
+		return cmd.Run()
+	}
+	if err := s.pid1Mgr.StartAndRegister(cmd, nil); err != nil {
+		return err
+	}
+	defer s.pid1Mgr.UnregisterChildProcess(cmd.Process.Pid)
+	return cmd.Wait()
 }
 
 // ExecuteAsync is not needed for LLM usage - removed for simplicity

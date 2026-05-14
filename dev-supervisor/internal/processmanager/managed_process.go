@@ -28,6 +28,20 @@ const defaultTmpDir = "/tmp"
 // kernel (e.g. Landlock syscall hang) so process creation can't deadlock.
 const sandboxStartupTimeout = 10 * time.Second
 
+// drainGracePeriod is how long Stop waits for the rest of the process group
+// to exit on its own after the leader has been reaped, before escalating to
+// SIGKILL. Group members that already received SIGTERM and are wrapping up
+// usually finish in single-digit milliseconds; this leaves room for slow
+// shutdown handlers without making Stop sluggish.
+//
+// drainHardCap bounds the post-SIGKILL drain. SIGKILL is uncatchable, so
+// the kernel only needs time to deliver and reap; this is a safety budget
+// so Stop never blocks indefinitely if /proc reaping stalls.
+const (
+	drainGracePeriod = 250 * time.Millisecond
+	drainHardCap     = 250 * time.Millisecond
+)
+
 // ManagedProcess represents a single process instance with its own lifecycle.
 type ManagedProcess struct {
 	cmd       *exec.Cmd
@@ -120,6 +134,11 @@ func NewManagedProcess(
 		process.Dir = workDir
 	}
 
+	// Make the spawned shell its own process group leader so Stop() can signal
+	// the entire subtree (sh + every child it forks for `&&`, `|`, etc.) and
+	// not leak orphaned processes when sh exits before its children.
+	applyProcessGroup(process)
+
 	process.Env = env
 
 	// Attach sandbox status pipe (fd 3) so wrapper-level failures surface distinctly
@@ -171,7 +190,12 @@ func (mp *ManagedProcess) Start(
 	}
 
 	// Start the process.
-	if err := mp.cmd.Start(); err != nil {
+	if pid1Mgr != nil {
+		err = pid1Mgr.StartAndRegister(mp.cmd, mp)
+	} else {
+		err = mp.cmd.Start()
+	}
+	if err != nil {
 		if mp.sandboxStatus != nil {
 			_ = mp.sandboxStatus.Close()
 			mp.sandboxStatus = nil
@@ -182,6 +206,11 @@ func (mp *ManagedProcess) Start(
 		mp.info.Error = err.Error()
 		mp.infoMu.Unlock()
 		return fmt.Errorf("failed to start process: %w", err)
+	}
+
+	// Register with PID 1 manager before starting the wait goroutine.
+	if pid1Mgr != nil {
+		mp.usePID1Wait = pid1Mgr.ShouldManageChildLifecycle(mp)
 	}
 
 	// Release the parent's copy of the sandbox status-pipe write end so EOF
@@ -230,11 +259,6 @@ func (mp *ManagedProcess) Start(
 	mp.info.PID = mp.cmd.Process.Pid
 	mp.info.State = ProcessStateRunning
 	mp.infoMu.Unlock()
-
-	// Register with PID 1 manager before starting the wait goroutine.
-	if pid1Mgr != nil {
-		mp.usePID1Wait = pid1Mgr.RegisterChildProcess(mp.cmd.Process, mp)
-	}
 
 	// Start log streaming if enabled.
 	if logMgr != nil && enableLogging {
@@ -287,8 +311,16 @@ func (mp *ManagedProcess) Stop(signal string, timeout int) error {
 		timeoutDuration = time.Duration(timeout) * time.Second
 	}
 
-	// Send signal to process (can block on OS scheduling, no lock held)
-	if err := mp.cmd.Process.Signal(sig); err != nil {
+	// Capture pgid once while the leader is still alive. Stop signals the
+	// whole group via kill(-pgid, …); reading mp.cmd.Process.Pid after Wait
+	// has reaped the leader risks PID reuse aliasing onto an unrelated
+	// process group.
+	pgid := mp.cmd.Process.Pid
+
+	// Send signal to the entire process group (can block on OS scheduling, no
+	// lock held). Targets the shell + everything it forked, so multi-command
+	// shell strings (`a && b`, pipelines, etc.) don't leak orphans.
+	if err := signalProcessGroup(pgid, sig); err != nil {
 		return fmt.Errorf("failed to send signal: %w", err)
 	}
 
@@ -301,14 +333,21 @@ func (mp *ManagedProcess) Stop(signal string, timeout int) error {
 	var waitErr error
 	select {
 	case waitErr = <-done:
-		// Process exited gracefully
+		// Leader exited. Other group members (backgrounded subshells, pipeline
+		// tails, anything that ignored or trapped the initial signal) are
+		// still in this pgid and will be reparented to PID 1 if we do nothing.
+		// Drain the group before reporting stop complete so survivors can't
+		// keep holding ports / fds.
+		drainProcessGroup(pgid, drainGracePeriod, drainHardCap)
 	case <-time.After(timeoutDuration):
-		// Timeout exceeded, force kill
-		if err := mp.cmd.Process.Kill(); err != nil {
+		// Timeout exceeded, force kill the entire process group.
+		if err := signalProcessGroup(pgid, syscall.SIGKILL); err != nil {
 			return fmt.Errorf("failed to force kill process: %w", err)
 		}
-		// Wait for kill to complete
+		// Wait for the leader's reap; pollGroupEmpty then confirms the rest
+		// of the group is gone too (cmd.Wait only reaps the leader).
 		waitErr = <-done
+		pollGroupEmpty(pgid, drainHardCap)
 	}
 
 	// Update final state under lock

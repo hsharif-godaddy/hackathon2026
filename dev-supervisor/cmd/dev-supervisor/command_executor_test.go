@@ -6,12 +6,13 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/airo-ai-builder/dev-supervisor/internal/process"
 	"github.com/airo-ai-builder/dev-supervisor/internal/validation"
 )
 
 func TestCommandExecutor_NewCommandExecutor(t *testing.T) {
 	t.Parallel()
-	executor := NewCommandExecutor()
+	executor := NewCommandExecutor(nil)
 
 	if executor == nil {
 		t.Fatal("Expected non-nil CommandExecutor")
@@ -35,7 +36,7 @@ func TestCommandExecutor_NewCommandExecutor(t *testing.T) {
 
 func TestCommandExecutor_Execute(t *testing.T) {
 	t.Parallel()
-	executor := NewCommandExecutor()
+	executor := NewCommandExecutor(nil)
 
 	// Create temp directory for testing (auto-cleaned up by t.TempDir)
 	tempDir := t.TempDir()
@@ -253,7 +254,7 @@ func TestCommandExecutor_Execute(t *testing.T) {
 
 func TestCommandExecutor_ExecuteDefaults(t *testing.T) {
 	t.Parallel()
-	executor := NewCommandExecutor()
+	executor := NewCommandExecutor(nil)
 
 	// Test with minimal request (should use defaults)
 	request := validation.CommandRequest{
@@ -274,9 +275,34 @@ func TestCommandExecutor_ExecuteDefaults(t *testing.T) {
 	// without making assumptions about the environment
 }
 
+// TestCommandExecutor_Execute_RegistersAndUnregistersWithPID1Manager verifies
+// that Execute uses the PID1 manager's StartAndRegister + Unregister around
+// every spawned child. Guards against future refactors that drop the
+// unregister call (the sandboxed branch had zero coverage previously).
+func TestCommandExecutor_Execute_RegistersAndUnregistersWithPID1Manager(t *testing.T) {
+	t.Parallel()
+	pm := process.NewPID1Manager()
+	executor := NewCommandExecutor(pm)
+
+	result, err := executor.Execute(validation.CommandRequest{
+		Command:       "echo registered",
+		CaptureOutput: true,
+		Timeout:       5,
+	})
+	if err != nil {
+		t.Fatalf("Execute failed: %v", err)
+	}
+	if result.ExitCode != 0 {
+		t.Fatalf("expected exit 0, got %d (stderr=%q)", result.ExitCode, result.Stderr)
+	}
+	if got := pm.GetChildProcessCount(); got != 0 {
+		t.Fatalf("expected zero tracked processes after Execute, got %d", got)
+	}
+}
+
 func TestCommandExecutor_ExecuteComplexCommands(t *testing.T) {
 	t.Parallel()
-	executor := NewCommandExecutor()
+	executor := NewCommandExecutor(nil)
 
 	// Create temp directory for testing (auto-cleaned up by t.TempDir)
 	tempDir := t.TempDir()

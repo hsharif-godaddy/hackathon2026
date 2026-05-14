@@ -55,6 +55,12 @@ func TestPortReuseAfterRestart(t *testing.T) {
 		serverDone <- server.StartWithConfig(config)
 	}()
 
+	t.Cleanup(func() {
+		server.procMgr.StopAllProcesses()
+		server.Shutdown()
+		<-serverDone
+	})
+
 	// Wait for server to be ready
 	if err := server.waitForServerReady(socketPath, false); err != nil {
 		t.Fatalf("Server failed to start: %v", err)
@@ -110,11 +116,6 @@ func TestPortReuseAfterRestart(t *testing.T) {
 	}
 
 	t.Logf("All %d restarts completed successfully", numRestarts)
-
-	// Clean up - stop the process
-	if err := server.procMgr.Stop(processmanager.ProcessStopRequest{Signal: "SIGTERM", Timeout: 10}); err != nil {
-		t.Errorf("Failed to stop process: %v", err)
-	}
 }
 
 func TestConcurrentRestarts(t *testing.T) {
@@ -134,11 +135,18 @@ func TestConcurrentRestarts(t *testing.T) {
 	}
 
 	// Start server in a goroutine
+	serverDone := make(chan error, 1)
 	go func() {
-		if err := server.StartWithConfig(config); err != nil {
+		serverDone <- server.StartWithConfig(config)
+	}()
+
+	t.Cleanup(func() {
+		server.procMgr.StopAllProcesses()
+		server.Shutdown()
+		if err := <-serverDone; err != nil {
 			t.Errorf("Server failed to start: %v", err)
 		}
-	}()
+	})
 
 	// Wait for server to be ready
 	if err := server.waitForServerReady(socketPath, false); err != nil {
@@ -147,10 +155,7 @@ func TestConcurrentRestarts(t *testing.T) {
 
 	// Find an available port for testing
 	testPort := findAvailablePort(t)
-	testCommand := fmt.Sprintf(
-		"python3 -c 'import http.server; import socketserver; handler = http.server.SimpleHTTPRequestHandler; httpd = socketserver.TCPServer((\"\", %d), handler); httpd.serve_forever()'",
-		testPort,
-	)
+	testCommand := fmt.Sprintf("python3 -m http.server %d", testPort)
 
 	// Start initial process
 	startReq := validation.ProcessStartRequest{
@@ -223,11 +228,6 @@ func TestConcurrentRestarts(t *testing.T) {
 			status.Error,
 			status.PID,
 		)
-	}
-
-	// Clean up
-	if err := server.procMgr.Stop(processmanager.ProcessStopRequest{Signal: "SIGTERM", Timeout: 10}); err != nil {
-		t.Errorf("Failed to stop process: %v", err)
 	}
 }
 

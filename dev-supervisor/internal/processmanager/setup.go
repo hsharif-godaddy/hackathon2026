@@ -85,19 +85,29 @@ func RunSetupScriptInternal(scriptPath string, timeout time.Duration, pid1Mgr *p
 
 	// Start the command first, then start streaming goroutines
 	// This prevents goroutine leaks if cmd.Start() fails
-	if err = cmd.Start(); err != nil {
+	if pid1Mgr != nil {
+		// Register with PID1 manager so the orphan reaper skips this process.
+		// nil managedProcess = tracked in map (reaper skips it) but no lifecycle watcher.
+
+		// Defer starting to pid manager so any race conditions between start and register are prevented via mutex.
+		err = pid1Mgr.StartAndRegister(cmd, nil)
+	} else {
+		err = cmd.Start()
+	}
+	if err != nil {
 		return fmt.Errorf("failed to start setup script: %w", err)
 	}
 
-	// Register with PID1 manager so the orphan reaper skips this process.
-	// nil managedProcess = tracked in map (reaper skips it) but no lifecycle watcher.
-	//
-	// Note: there is a tiny window between cmd.Start() and RegisterChildProcess() where a
-	// very short-lived script could exit and be reaped before registration. In practice this
-	// is negligible (microseconds) and only affects scripts that exit immediately. The previous
-	// code had no registration at all, so this is a substantial improvement.
+	// The process is already registered with the PID1 manager so the orphan reaper skips this process.
+	// Now that it is registered, we need to ensure it is unregistered once we are done performing our operations.
+	// We run the defer statement here because the process Pid should be known at this stage.
+	// If we were to perform this afterthefact then the pid could be unknown due to the kernal cleaning it.
+	// Go evaluates the arguments to a deferred call at the moment the defer statement runs, not when the
+	// deferred call actually fires. So cmd.Process.Pid is read immediately after cmd.Start succeeded, the integer
+	// value is captured, and that captured int is what gets passed to unregisterCommand later when the surrounding
+	// function returns (after cmd.Wait() finishes).
 	if pid1Mgr != nil {
-		pid1Mgr.RegisterChildProcess(cmd.Process, nil)
+		defer pid1Mgr.UnregisterChildProcess(cmd.Process.Pid)
 	}
 
 	var wg sync.WaitGroup
@@ -116,11 +126,6 @@ func RunSetupScriptInternal(scriptPath string, timeout time.Duration, pid1Mgr *p
 	wg.Wait()
 
 	err = cmd.Wait()
-
-	// Unregister AFTER Wait so the reaper cannot steal the exit status while we're waiting.
-	if pid1Mgr != nil {
-		pid1Mgr.UnregisterChildProcess(cmd.Process.Pid)
-	}
 
 	if err != nil {
 		// Check if it was canceled due to timeout or signal

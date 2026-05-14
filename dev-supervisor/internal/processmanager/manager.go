@@ -121,11 +121,15 @@ type SetupStatus struct {
 }
 
 func NewProcessManager(logMgr logs.Logger, pid1Mgr *process.PID1Manager) *ProcessManager {
+	healthMon := health.NewMonitor(logMgr)
+	// Route command health checks through the PID1 manager so the orphan reaper
+	// does not race short-lived `sh -c` probes. See PID1Manager.StartAndRegister.
+	healthMon.SetPID1Manager(pid1Mgr)
 	return &ProcessManager{
 		logMgr:                logMgr,
 		pid1Mgr:               pid1Mgr,
 		portDiscovery:         ports.NewDiscovery(),
-		healthMon:             health.NewMonitor(logMgr),
+		healthMon:             healthMon,
 		enableLogging:         true,                               // Default: enable child process logging
 		outputToStructuredLog: config.GetProcessLoggingToStdout(), // Default: enable structured logging output, configurable via env
 		stateChangeCh:         make(chan struct{}),                // Initialize state change broadcast channel

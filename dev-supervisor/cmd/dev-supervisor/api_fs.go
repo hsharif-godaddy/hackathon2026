@@ -743,7 +743,10 @@ func (s *Server) executeRipgrep(
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
-	err := cmd.Run()
+	// Use the PID1 manager (when available) so the orphan reaper does not race
+	// this short-lived rg call. Falls back to plain Run() in tests where pid1Mgr
+	// is unset. See PID1Manager.StartAndRegister.
+	err := s.runShortLivedCommand(cmd)
 	// rg exits 1 when no matches found, 2 for usage/pattern errors, other codes for internal errors
 	if err != nil {
 		var exitErr *exec.ExitError

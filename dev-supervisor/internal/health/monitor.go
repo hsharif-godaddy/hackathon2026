@@ -1,6 +1,7 @@
 package health
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -15,6 +16,7 @@ import (
 	"time"
 
 	"github.com/airo-ai-builder/dev-supervisor/internal/logs"
+	"github.com/airo-ai-builder/dev-supervisor/internal/process"
 )
 
 // Duration is a custom type that can unmarshal from JSON duration strings like "30s", "5m"
@@ -141,6 +143,10 @@ type Monitor struct {
 	startTime     time.Time
 	restartCh     chan struct{} // Buffered channel for restart requests
 	httpClient    *http.Client  // HTTP client for health checks (keep-alives disabled)
+	// pid1Mgr, when non-nil, is used to atomically Start+Register short-lived
+	// command-health-check children so the orphan reaper cannot consume their
+	// exit status before cmd.Wait() runs. See PID1Manager.StartAndRegister.
+	pid1Mgr *process.PID1Manager
 }
 
 // NewMonitor creates a new health monitor with disabled status.
@@ -164,6 +170,13 @@ func NewMonitor(logMgr logs.Logger) *Monitor {
 		logMgr:     logMgr,
 		httpClient: &http.Client{Transport: transport},
 	}
+}
+
+// SetPID1Manager wires the PID1 manager so command health checks use
+// StartAndRegister rather than racing the orphan reaper. Safe to call once
+// during startup; tests can leave it unset.
+func (hm *Monitor) SetPID1Manager(pid1Mgr *process.PID1Manager) {
+	hm.pid1Mgr = pid1Mgr
 }
 
 func (hm *Monitor) Configure(healthCheck *HealthCheck, restartPolicy *RestartPolicy) {
@@ -392,8 +405,28 @@ func (hm *Monitor) performCommandCheck(ctx context.Context, healthCheck *HealthC
 	//nolint:gosec // G204: Command execution is the intended functionality for health checks
 	// nosemgrep: go.lang.security.audit.dangerous-exec-command.dangerous-exec-command
 	cmd := exec.CommandContext(timeoutCtx, "sh", "-c", healthCheck.Command)
-	output, err := cmd.CombinedOutput()
 
+	// Mirror cmd.CombinedOutput() but route through the PID1 manager (when
+	// wired up) so the orphan reaper does not race short-lived health probes.
+	// Falls back to plain Run() in tests where pid1Mgr is unset. See
+	// PID1Manager.StartAndRegister.
+	var buf bytes.Buffer
+	cmd.Stdout = &buf
+	cmd.Stderr = &buf
+
+	var err error
+	if hm.pid1Mgr != nil {
+		if startErr := hm.pid1Mgr.StartAndRegister(cmd, nil); startErr != nil {
+			err = startErr
+		} else {
+			defer hm.pid1Mgr.UnregisterChildProcess(cmd.Process.Pid)
+			err = cmd.Wait()
+		}
+	} else {
+		err = cmd.Run()
+	}
+
+	output := buf.Bytes()
 	if err != nil {
 		return false, string(output), err
 	}

@@ -3,8 +3,10 @@
 package process
 
 import (
+	"errors"
 	"log/slog"
 	"os"
+	"os/exec"
 	"os/signal"
 	"sync"
 	"syscall"
@@ -58,13 +60,21 @@ func (pm *PID1Manager) RegisterChildProcess(process *os.Process, managedProcess 
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
 
+	return pm.registerChildLocked(process, managedProcess)
+}
+
+// registerChildLocked inserts the child into the tracking map and starts any
+// managed watcher. Caller MUST hold pm.mu.Lock(). Split out of
+// RegisterChildProcess so StartAndRegister can hold the lock across cmd.Start()
+// and the map insert in a single critical section.
+func (pm *PID1Manager) registerChildLocked(process *os.Process, managedProcess ManagedProcess) bool {
 	pm.childProcesses[process.Pid] = &childProcessInfo{
 		process:        process,
 		managedProcess: managedProcess,
 	}
 	slog.Debug("registered child process", "pid", process.Pid)
 
-	managedLifecycle := pm.shouldManageChildLifecycle(managedProcess)
+	managedLifecycle := pm.ShouldManageChildLifecycle(managedProcess)
 	if managedLifecycle {
 		pm.startManagedWatcher(process.Pid, managedProcess)
 	}
@@ -72,6 +82,48 @@ func (pm *PID1Manager) RegisterChildProcess(process *os.Process, managedProcess 
 	return managedLifecycle
 }
 
+// StartAndRegister runs cmd.Start() atomically with registration in the
+// tracking map. Closes the race where the orphan reaper can waitid(2) a
+// short-lived child before it has been registered — otherwise cmd.Wait()
+// later fails with ECHILD ("waitid: no child processes") because the reaper
+// already consumed the exit status.
+//
+// Holds pm.mu across cmd.Start() and the map insert, which makes the
+// reaper's "is this PID tracked?" check (under pm.mu.RLock) wait until the
+// PID is either registered or Start() has failed.
+//
+// managedProcess controls who is responsible for unregistering the PID:
+//   - nil (typical one-shot commands): caller MUST call UnregisterChildProcess(pid)
+//     after cmd.Wait() returns.
+//   - non-nil: registerChildLocked starts a managed watcher that calls
+//     UnregisterChildProcess itself when SafeWait returns. Caller MUST NOT
+//     also unregister or the map will be touched twice.
+//
+// Throughput note: holding the write lock across fork(2)+exec(2) serializes
+// concurrent StartAndRegister calls. Fine for the current LLM-driven workload
+// (low fan-out, ms-scale exec), but worth revisiting if exec concurrency grows
+// — fork+exec is not free.
+func (pm *PID1Manager) StartAndRegister(cmd *exec.Cmd, managedProcess ManagedProcess) error {
+	if cmd == nil {
+		slog.Error("pid1.start_and_register.nil_cmd")
+		return errors.New("StartAndRegister: nil cmd")
+	}
+
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+
+	pm.registerChildLocked(cmd.Process, managedProcess)
+	return nil
+}
+
+// UnregisterChildProcess Takes in a Process ID (PID) and removes the process from the list of managed processes.
+// It is important to never add additional behavior, such as performing an operation given the PID.
+// In the event you were to do so, you'd open up race conditions where the pid has already been cleared by the kernel
+// and is possibly being used by a new process.
 func (pm *PID1Manager) UnregisterChildProcess(pid int) {
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
@@ -80,15 +132,16 @@ func (pm *PID1Manager) UnregisterChildProcess(pid int) {
 	slog.Debug("unregistered child process", "pid", pid)
 }
 
-func (pm *PID1Manager) shouldManageChildLifecycle(managedProcess ManagedProcess) bool {
+func (pm *PID1Manager) ShouldManageChildLifecycle(managedProcess ManagedProcess) bool {
 	return pm.isPID1 && managedProcess != nil
 }
 
 func (pm *PID1Manager) startManagedWatcher(pid int, managedProcess ManagedProcess) {
 	go func() {
+		// Ensure that we always unregister the child process, even in cases of panics.
+		defer pm.UnregisterChildProcess(pid)
 		err := managedProcess.SafeWait()
 		managedProcess.NotifyPID1WaitResult(err)
-		pm.UnregisterChildProcess(pid)
 	}()
 }
 

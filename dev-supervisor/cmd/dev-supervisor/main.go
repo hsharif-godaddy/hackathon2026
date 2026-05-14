@@ -113,6 +113,9 @@ type Server struct {
 	processLogging         bool       // Current process logging configuration
 	processLoggingToStdout bool       // Current structured logging configuration
 	pruneMu                sync.Mutex // Serialize prune operations
+
+	shutdownCh   chan struct{} // Closed by Shutdown to trigger programmatic graceful exit
+	shutdownOnce sync.Once
 	// execCmdSeq hands out monotonically increasing IDs for each /exec
 	// invocation. The ID is stamped on every log entry mirrored for that
 	// command and returned to the caller on the HTTP response, so consumers
@@ -158,12 +161,13 @@ func NewServer() *Server {
 		logMgr:                 logMgr,
 		pid1Mgr:                pid1Mgr,
 		procMgr:                procMgr,
-		cmdExec:                NewCommandExecutor(),
+		cmdExec:                NewCommandExecutor(pid1Mgr),
 		envMgr:                 NewEnvironmentManager(),
 		smtpProxy:              smtpproxy.New(),
 		startTime:              time.Now(),
 		processLogging:         true,                               // Default: enable child process logging
 		processLoggingToStdout: config.GetProcessLoggingToStdout(), // Default: enable structured output, configurable via env
+		shutdownCh:             make(chan struct{}),
 	}
 
 	s.setupRoutes()
@@ -453,7 +457,10 @@ func (s *Server) startUnixServer(socketPath string, shutdownTimeout time.Duratio
 	if os.Getpid() != 1 {
 		quit := make(chan os.Signal, 1)
 		signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-		<-quit
+		select {
+		case <-quit:
+		case <-s.shutdownCh:
+		}
 
 		slog.Info("shutting down server")
 
@@ -571,7 +578,10 @@ func (s *Server) startTCPServer(port string, shutdownTimeout time.Duration) erro
 	if os.Getpid() != 1 {
 		quit := make(chan os.Signal, 1)
 		signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-		<-quit
+		select {
+		case <-quit:
+		case <-s.shutdownCh:
+		}
 
 		slog.Info("shutting down TCP server")
 
@@ -628,6 +638,15 @@ func (s *Server) WaitForShutdown() {
 	// Stop all managed processes
 	s.procMgr.StopAllProcesses()
 	slog.Info("server stopped")
+}
+
+// Shutdown triggers a graceful shutdown of a server started via StartWithConfig.
+// Idempotent and safe to call from any goroutine. Returns immediately; the
+// blocking StartWithConfig call returns once cleanup completes.
+func (s *Server) Shutdown() {
+	s.shutdownOnce.Do(func() {
+		close(s.shutdownCh)
+	})
 }
 
 func parseFlags() *Config {
