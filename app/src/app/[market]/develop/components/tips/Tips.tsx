@@ -6,6 +6,10 @@ import { Loader } from '@airo-ux/loader'
 import Box from '@ux/box'
 
 import { shuffleArray, tips } from '@/app/[market]/develop/components/tips/tips-content'
+import {
+  maxNaturalTipHeightsPx,
+  verticalLazyInnerFloorPx,
+} from '@/app/[market]/develop/components/tips/tips-stack-measures'
 import { useBreakpoints } from '@/hooks/useBreakpoints'
 import { useTranslations } from '@/hooks/useTranslations'
 import { logger } from '@/lib/request-context'
@@ -32,25 +36,56 @@ const VISIBLE_STACK_SLOTS = 3
 /** Window rendered from `orderedTips`: visible slots + one hidden slot for the card recycling in. */
 const STACK_WINDOW_SIZE = VISIBLE_STACK_SLOTS + 1
 
-/** Horizontal stack: visible sliver of adjacent cards below md breakpoint. */
-const CARD_SIDE_PEEK_PX = 14
+/** Horizontal strip (<md): gap between full-width cards; `translateX` uses `calc(n*100% + n*gap)`. */
+const HORIZONTAL_STRIP_GAP_PX = 8
+/**
+ * Subpixel slack after the inner body floor + `TIP_CARD_SHELL_VERTICAL_CHROME_PX` on
+ * each `motion` shell. Horizontal and vertical both use that sum for `unifiedStackMinHeightPx`;
+ * vertical deck vertical extent (translateY steps) is added separately on the ghost spacer.
+ */
+const TIP_STACK_UNIFORM_SLACK_PX = 6
+
+/**
+ * Inner body measure → add to `height` on the `motion` shell (`box-border`):
+ * Tailwind `py-2` (16px) + 1px borders (2px) + 4px for descenders / sub-pixel
+ * rounding under `overflow-hidden`. Do not reduce to 18 without re-checking clipping.
+ */
+const TIP_CARD_SHELL_VERTICAL_CHROME_PX = 22
+
+/** Ease reflow when viewport width changes tip wrapping (not Framer slot motion). */
+const TIP_CARD_SHELL_BASE_CLASS =
+  'absolute inset-x-0 top-0 box-border overflow-hidden rounded-lg border border-intents-ux-box-borderColor bg-intents-ux-box-backgroundColor px-2.5 py-2'
+
+const TIP_CARD_HEIGHT_RESIZE_EASE_CLASS =
+  'transition-[height] duration-300 ease-out'
+
+/** Vertical deck: translateY offset between resting stack slots. */
+const VERTICAL_STACK_STEP_PX = 12
+/** Stronger `translateZ` per slot behind the front (parent uses a short `perspective`). */
+const VERTICAL_STACK_DEPTH_Z_STEP_PX = 26
+/** Slight scale-down per depth step so the deck reads like physical cards. */
+const VERTICAL_STACK_DEPTH_SCALE_SECOND = 0.988
+const VERTICAL_STACK_DEPTH_SCALE_THIRD = 0.974
+const VERTICAL_STACK_DEPTH_SCALE_HIDDEN = 0.96
+/** Shorter = more dramatic foreshortening; vertical stack only (see track `style`). */
+const VERTICAL_STACK_PERSPECTIVE_PX = 580
 
 const verticalCardVariants = {
   front: {
-    x: 0, y: 0, z: 0,
+    x: 0, y: 0, z: 6,
     scale: 1, opacity: 1, filter: 'blur(0px)', zIndex: 40,
   },
   second: {
-    x: 0, y: 12, z: -14,
-    scale: 0.95, opacity: 0.92, filter: 'blur(0px)', zIndex: 30,
+    x: 0, y: VERTICAL_STACK_STEP_PX, z: -VERTICAL_STACK_DEPTH_Z_STEP_PX,
+    scale: VERTICAL_STACK_DEPTH_SCALE_SECOND, opacity: 0.92, filter: 'blur(0px)', zIndex: 30,
   },
   third: {
-    x: 0, y: 24, z: -28,
-    scale: 0.9, opacity: 0.82, filter: 'blur(0px)', zIndex: 20,
+    x: 0, y: VERTICAL_STACK_STEP_PX * 2, z: -2 * VERTICAL_STACK_DEPTH_Z_STEP_PX,
+    scale: VERTICAL_STACK_DEPTH_SCALE_THIRD, opacity: 0.82, filter: 'blur(0px)', zIndex: 20,
   },
   hidden: {
-    x: 0, y: 36, z: -42,
-    scale: 0.85, opacity: 0, filter: 'blur(0px)', zIndex: 10,
+    x: 0, y: VERTICAL_STACK_STEP_PX * 3, z: -3 * VERTICAL_STACK_DEPTH_Z_STEP_PX,
+    scale: VERTICAL_STACK_DEPTH_SCALE_HIDDEN, opacity: 0, filter: 'blur(0px)', zIndex: 10,
   },
   exitFront: {
     x: 0, y: -16, z: 28,
@@ -60,23 +95,31 @@ const verticalCardVariants = {
 
 const horizontalCardVariants = {
   front: {
-    x: '0%', y: 0, z: 0,
+    x: 0, y: 0, z: 0,
     scale: 1, opacity: 1, filter: 'blur(0px)', zIndex: 40,
   },
   second: {
-    x: `calc(100% - ${CARD_SIDE_PEEK_PX}px)`, y: 0, z: -14,
-    scale: 0.95, opacity: 0.92, filter: 'blur(0px)', zIndex: 30,
+    x: `calc(100% + ${HORIZONTAL_STRIP_GAP_PX}px)`,
+    y: 0,
+    z: 0,
+    scale: VERTICAL_STACK_DEPTH_SCALE_SECOND, opacity: 1, filter: 'blur(0px)', zIndex: 30,
   },
   third: {
-    x: `calc(200% - ${2 * CARD_SIDE_PEEK_PX}px)`, y: 0, z: -28,
-    scale: 0.9, opacity: 0.82, filter: 'blur(0px)', zIndex: 20,
+    x: `calc(200% + ${2 * HORIZONTAL_STRIP_GAP_PX}px)`,
+    y: 0,
+    z: 0,
+    scale: VERTICAL_STACK_DEPTH_SCALE_THIRD, opacity: 1, filter: 'blur(0px)', zIndex: 20,
   },
   hidden: {
-    x: `calc(300% - ${3 * CARD_SIDE_PEEK_PX}px)`, y: 0, z: -42,
-    scale: 0.85, opacity: 0, filter: 'blur(0px)', zIndex: 10,
+    x: `calc(300% + ${3 * HORIZONTAL_STRIP_GAP_PX}px)`,
+    y: 0,
+    z: 0,
+    scale: VERTICAL_STACK_DEPTH_SCALE_HIDDEN, opacity: 0, filter: 'blur(0px)', zIndex: 10,
   },
   exitFront: {
-    x: `calc(-100% + ${CARD_SIDE_PEEK_PX}px)`, y: 0, z: 28,
+    x: `calc(-100% - ${HORIZONTAL_STRIP_GAP_PX}px)`,
+    y: 0,
+    z: 28,
     scale: 1.08, opacity: 0, filter: 'blur(2px)', zIndex: 50,
   },
 }
@@ -96,6 +139,27 @@ function getSlot(index: number): SlotName {
   return 'hidden'
 }
 
+/** At rest: only front (index 0) mounts tip copy; during exit, outgoing + next-up (slot 1). */
+function stackLazyShowBody(exitingTip: string | null, index: number) {
+  if (exitingTip === null) {
+    return index === 0
+  }
+  return index <= 1
+}
+
+function naturalHeightsPxEqual(
+  prev: Partial<Record<string, number>>,
+  next: Partial<Record<string, number>>,
+): boolean {
+  for (const k of Object.keys(next)) {
+    if (prev[k] !== next[k]) return false
+  }
+  for (const k of Object.keys(prev)) {
+    if (prev[k] !== next[k]) return false
+  }
+  return true
+}
+
 interface TipsProps {
   buildingMessage?: string | null
   buildingDescription?: string | null
@@ -112,7 +176,9 @@ interface TipsProps {
  * (front/second/third) plus a hidden recycle slot. Additional entries in
  * `tips-content.ts` are safe — only the first 4 animate per cycle.
  *
- * Desktop: vertical z-stack. Mobile: horizontal fan.
+ * Desktop (md+): vertical z-stack with depth. Mobile (<md): full-width cards in a
+ * horizontal strip (only the front panel is in view; next panels sit off-screen).
+ * Both layouts lazy-mount tip copy on the front at rest (next mounts when rotation starts).
  */
 export default function Tips({
   buildingMessage = null,
@@ -145,7 +211,76 @@ export default function Tips({
     () => orderedTips.slice(0, Math.min(orderedTips.length, STACK_WINDOW_SIZE)),
     [orderedTips],
   )
+  const visibleTipsKey = useMemo(() => visibleTips.join('\0'), [visibleTips])
   const spacerTip = orderedTips[exitingTip ? 1 : 0] ?? tips[0]
+
+  const naturalMeasureHostByTipRef = useRef<Map<string, HTMLDivElement>>(new Map())
+  const naturalMeasureBindByTipRef = useRef<Map<string, (el: HTMLDivElement | null) => void>>(new Map())
+
+  function measureHostRef(tip: string) {
+    let bind = naturalMeasureBindByTipRef.current.get(tip)
+    if (!bind) {
+      bind = function bindMeasureHost(el: HTMLDivElement | null) {
+        const hosts = naturalMeasureHostByTipRef.current
+        if (el) hosts.set(tip, el)
+        else hosts.delete(tip)
+      }
+      naturalMeasureBindByTipRef.current.set(tip, bind)
+    }
+    return bind
+  }
+
+  const stackTrackRef = useRef<HTMLDivElement>(null)
+
+  const [naturalHeightsPx, setNaturalHeightsPx] = useState<Partial<Record<string, number>>>({})
+
+  const unifiedStackMinHeightPx = useMemo(() => {
+    if (isHorizontalStack) {
+      const inner = maxNaturalTipHeightsPx(visibleTips, naturalHeightsPx)
+      return inner > 0
+        ? Math.ceil(inner) + TIP_CARD_SHELL_VERTICAL_CHROME_PX + TIP_STACK_UNIFORM_SLACK_PX
+        : 0
+    }
+    const inner = verticalLazyInnerFloorPx(visibleTips, naturalHeightsPx, exitingTip)
+    return inner > 0
+      ? Math.ceil(inner) + TIP_CARD_SHELL_VERTICAL_CHROME_PX + TIP_STACK_UNIFORM_SLACK_PX
+      : 0
+  }, [isHorizontalStack, visibleTips, naturalHeightsPx, exitingTip])
+
+  useLayoutEffect(function syncTipNaturalHeightMeasures() {
+    function updateNaturalHeights() {
+      const next: Partial<Record<string, number>> = {}
+      naturalMeasureHostByTipRef.current.forEach((el, tip) => {
+        next[tip] = Math.ceil(
+          Math.max(el.getBoundingClientRect().height, el.scrollHeight),
+        )
+      })
+      setNaturalHeightsPx((prev) => (naturalHeightsPxEqual(prev, next) ? prev : next))
+    }
+
+    updateNaturalHeights()
+    if (typeof ResizeObserver === 'undefined') {
+      logger.warn('tips.resize-observer.unavailable', {})
+      function onWindowResize() {
+        updateNaturalHeights()
+      }
+      window.addEventListener('resize', onWindowResize)
+      return () => {
+        window.removeEventListener('resize', onWindowResize)
+      }
+    }
+    const ro = new ResizeObserver(updateNaturalHeights)
+    const track = stackTrackRef.current
+    if (track) {
+      ro.observe(track)
+    }
+    naturalMeasureHostByTipRef.current.forEach((el) => {
+      ro.observe(el)
+    })
+    return () => {
+      ro.disconnect()
+    }
+  }, [visibleTipsKey, showTips, isHorizontalStack, exitingTip])
 
   useLayoutEffect(() => {
     orderedTipsRef.current = orderedTips
@@ -208,9 +343,13 @@ export default function Tips({
     } catch (error) {
       exitingTipRef.current = null
       setExitingTip(null)
-      logger.error('tips.rotation.complete-failed', {
-        error: error instanceof Error ? error.message : String(error),
-      })
+      logger.error(
+        'tips.rotation.complete-failed',
+        undefined,
+        {
+          error: error instanceof Error ? error : new Error(String(error)),
+        },
+      )
       scheduleNextRotation()
     }
   }, [scheduleNextRotation])
@@ -286,6 +425,13 @@ export default function Tips({
         : `${baseTitle}${'.'.repeat(ellipsisPhase)}${ELLIPSIS_PAD.repeat(ELLIPSIS_SLOT_COUNT - ellipsisPhase)}`
       : t('builder_tips_message')
 
+  const ghostStackHeightPx =
+    unifiedStackMinHeightPx > 0
+      ? isHorizontalStack
+        ? unifiedStackMinHeightPx
+        : VERTICAL_STACK_STEP_PX * (STACK_WINDOW_SIZE - 1) + unifiedStackMinHeightPx
+      : undefined
+
   return (
     <Box className="h-full mt-6" blockAlignChildren="center" inlineAlignChildren="center" gap="xl">
       <Loader
@@ -315,14 +461,34 @@ export default function Tips({
               {t(`builder_tips_${visibleTips[0]}_title`)}
             </div>
           )}
-          <Box
-            className="relative min-h-40 overflow-x-hidden md:overflow-x-visible"
-            style={{ perspective: '1200px', transformStyle: 'preserve-3d' }}
+          <div
+            ref={stackTrackRef}
+            className="relative w-full min-h-40 overflow-x-hidden md:overflow-x-visible"
+            style={
+              isHorizontalStack
+                ? undefined
+                : {
+                    perspective: `${VERTICAL_STACK_PERSPECTIVE_PX}px`,
+                    perspectiveOrigin: '50% 32%',
+                    transformStyle: 'preserve-3d',
+                  }
+            }
           >
-            {visibleTips.map((tip, index) => (
+            {visibleTips.map((tip, index) => {
+              const showTipBody = stackLazyShowBody(exitingTip, index)
+              const cardReflowEaseClass =
+                unifiedStackMinHeightPx > 0 && !reduceMotion
+                  ? TIP_CARD_HEIGHT_RESIZE_EASE_CLASS
+                  : ''
+              const cardClassName = [TIP_CARD_SHELL_BASE_CLASS, cardReflowEaseClass]
+                .filter((c) => c.length > 0)
+                .join(' ')
+              return (
               <motion.div
                 key={tip}
-                className="absolute inset-x-0 top-0 rounded-lg border border-intents-ux-box-borderColor bg-intents-ux-box-backgroundColor px-2.5 py-2"
+                data-testid="tip-card"
+                aria-hidden={!showTipBody ? true : undefined}
+                className={cardClassName}
                 initial={false}
                 animate={
                   exitingTip === null
@@ -333,26 +499,40 @@ export default function Tips({
                 }
                 variants={cardVariants}
                 transition={cardTransition}
-                style={{ transformStyle: 'preserve-3d' }}
+                style={{
+                  transformOrigin: '50% 0%',
+                  transformStyle: 'preserve-3d',
+                  ...(unifiedStackMinHeightPx > 0 ? { height: unifiedStackMinHeightPx } : {}),
+                }}
                 onAnimationComplete={
                   index === 0 && exitingTip !== null ? onFrontStackAnimationComplete : undefined
                 }
               >
-                <div className="text-base font-semibold">
-                  {t(`builder_tips_${tip}_title`)}
+                {showTipBody ? (
+                <div ref={measureHostRef(tip)} className="w-full">
+                  <div className="text-base font-semibold">
+                    {t(`builder_tips_${tip}_title`)}
+                  </div>
+                  <div className="text-sm">
+                    {t(`builder_tips_${tip}_description`)}
+                  </div>
                 </div>
-                <div className="text-sm">
-                  {t(`builder_tips_${tip}_description`)}
-                </div>
+                ) : (
+                  <div className="min-h-0 w-full" aria-hidden />
+                )}
               </motion.div>
-            ))}
-            {/*
-              Ghost spacer sizes the container to the tallest front-card content.
-              Only the current front tip is measured — tips rotating in with longer
-              translations may temporarily overflow. A future enhancement could use
-              ResizeObserver across all visible cards to track the max height.
-            */}
-            <div aria-hidden="true" className="pointer-events-none opacity-0 rounded-lg border border-transparent px-2.5 py-2">
+              )
+            })}
+            <div
+              aria-hidden="true"
+              className={[
+                'pointer-events-none box-border opacity-0 rounded-lg border border-transparent px-2.5 py-2',
+                ghostStackHeightPx != null && !reduceMotion ? TIP_CARD_HEIGHT_RESIZE_EASE_CLASS : '',
+              ]
+                .filter((c) => c.length > 0)
+                .join(' ')}
+              style={ghostStackHeightPx != null ? { height: ghostStackHeightPx } : undefined}
+            >
               <div className="text-base font-semibold">
                 {t(`builder_tips_${spacerTip}_title`)}
               </div>
@@ -360,7 +540,7 @@ export default function Tips({
                 {t(`builder_tips_${spacerTip}_description`)}
               </div>
             </div>
-          </Box>
+          </div>
         </Box>
       )}
     </Box>

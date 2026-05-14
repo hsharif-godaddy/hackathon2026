@@ -92,6 +92,7 @@ describe('Tips', () => {
     mockIsMdBreakpoint = true
     mockShuffleStrategy = 'identity'
     frontCardAnimationCallback.current = null
+    vi.clearAllMocks()
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'setTimeout', 'clearTimeout'] })
   })
 
@@ -148,17 +149,20 @@ describe('Tips', () => {
     expect(screen.getByTestId('loader-description')).toHaveTextContent('Please wait')
   })
 
-  it('renders the first four tips as stacked cards (front + second + third + hidden recycle)', () => {
+  it('renders four tip shells; lazy copy only on the front at rest (md+)', () => {
     renderWithProviders(<Tips />)
 
+    const cards = screen.getAllByTestId('tip-card')
+    expect(cards.length).toBe(4)
     expect(screen.getAllByText(`builder_tips_${tips[0]}_title`).length).toBeGreaterThanOrEqual(1)
-    expect(screen.getByText(`builder_tips_${tips[1]}_title`)).toBeInTheDocument()
-    expect(screen.getByText(`builder_tips_${tips[2]}_title`)).toBeInTheDocument()
-    expect(screen.getByText(`builder_tips_${tips[3]}_title`)).toBeInTheDocument()
+    expect(within(cards[0] as HTMLElement).getByText(`builder_tips_${tips[0]}_title`)).toBeInTheDocument()
+    expect(screen.queryByText(`builder_tips_${tips[1]}_title`)).not.toBeInTheDocument()
+    expect(screen.queryByText(`builder_tips_${tips[2]}_title`)).not.toBeInTheDocument()
+    expect(screen.queryByText(`builder_tips_${tips[3]}_title`)).not.toBeInTheDocument()
   })
 
   it('rotates the front card to tips[1] after the exit animation completes', () => {
-    const { container } = renderWithProviders(<Tips />)
+    renderWithProviders(<Tips />)
 
     act(() => {
       vi.advanceTimersByTime(CARD_DWELL_MS)
@@ -168,7 +172,7 @@ describe('Tips', () => {
       frontCardAnimationCallback.current?.()
     })
 
-    const cards = container.querySelectorAll('.absolute.inset-x-0')
+    const cards = screen.getAllByTestId('tip-card')
     expect(cards.length).toBeGreaterThan(0)
     expect(
       within(cards[0] as HTMLElement).getByText(`builder_tips_${tips[1]}_title`),
@@ -176,18 +180,18 @@ describe('Tips', () => {
   })
 
   it('does not register an exit-animation callback before the dwell timeout fires', () => {
-    const { container } = renderWithProviders(<Tips />)
+    renderWithProviders(<Tips />)
 
     expect(frontCardAnimationCallback.current).toBeNull()
 
-    const cards = container.querySelectorAll('.absolute.inset-x-0')
+    const cards = screen.getAllByTestId('tip-card')
     expect(
       within(cards[0] as HTMLElement).getByText(`builder_tips_${tips[0]}_title`),
     ).toBeInTheDocument()
   })
 
   it('continues rotating to tips[2] on the next cycle (scheduleNextRotation re-arms inside complete)', () => {
-    const { container } = renderWithProviders(<Tips />)
+    renderWithProviders(<Tips />)
 
     act(() => {
       vi.advanceTimersByTime(CARD_DWELL_MS)
@@ -209,7 +213,7 @@ describe('Tips', () => {
       frontCardAnimationCallback.current?.()
     })
 
-    const cards = container.querySelectorAll('.absolute.inset-x-0')
+    const cards = screen.getAllByTestId('tip-card')
     expect(cards.length).toBeGreaterThan(0)
     expect(
       within(cards[0] as HTMLElement).getByText(`builder_tips_${tips[2]}_title`),
@@ -222,9 +226,9 @@ describe('Tips', () => {
   it('rotates from the shuffled order, not the module-level tips constant', () => {
     mockShuffleStrategy = 'reverse'
     const reversedTips = [...tips].reverse()
-    const { container } = renderWithProviders(<Tips />)
+    renderWithProviders(<Tips />)
 
-    const initialCards = container.querySelectorAll('.absolute.inset-x-0')
+    const initialCards = screen.getAllByTestId('tip-card')
     expect(
       within(initialCards[0] as HTMLElement).getByText(
         `builder_tips_${reversedTips[0]}_title`,
@@ -238,7 +242,7 @@ describe('Tips', () => {
       frontCardAnimationCallback.current?.()
     })
 
-    const cards = container.querySelectorAll('.absolute.inset-x-0')
+    const cards = screen.getAllByTestId('tip-card')
     expect(
       within(cards[0] as HTMLElement).getByText(
         `builder_tips_${reversedTips[1]}_title`,
@@ -247,7 +251,7 @@ describe('Tips', () => {
   })
 
   it('force-completes rotation via the watchdog when Framer Motion never fires onAnimationComplete', () => {
-    const { container } = renderWithProviders(<Tips />)
+    renderWithProviders(<Tips />)
 
     act(() => {
       vi.advanceTimersByTime(CARD_DWELL_MS)
@@ -258,7 +262,7 @@ describe('Tips', () => {
       vi.advanceTimersByTime(1700)
     })
 
-    const cards = container.querySelectorAll('.absolute.inset-x-0')
+    const cards = screen.getAllByTestId('tip-card')
     expect(cards.length).toBeGreaterThan(0)
     expect(
       within(cards[0] as HTMLElement).getByText(`builder_tips_${tips[1]}_title`),
@@ -266,7 +270,7 @@ describe('Tips', () => {
   })
 
   it('continues rotating to tips[2] across two consecutive watchdog-driven cycles (complete() re-arms scheduleNextRotation in the watchdog path)', () => {
-    const { container } = renderWithProviders(<Tips />)
+    renderWithProviders(<Tips />)
 
     act(() => {
       vi.advanceTimersByTime(CARD_DWELL_MS)
@@ -282,7 +286,7 @@ describe('Tips', () => {
       vi.advanceTimersByTime(1700)
     })
 
-    const cards = container.querySelectorAll('.absolute.inset-x-0')
+    const cards = screen.getAllByTestId('tip-card')
     expect(cards.length).toBeGreaterThan(0)
     expect(
       within(cards[0] as HTMLElement).getByText(`builder_tips_${tips[2]}_title`),
@@ -311,7 +315,7 @@ describe('Tips', () => {
     }) as typeof globalThis.setTimeout
 
     try {
-      const { container } = renderWithProviders(<Tips />)
+      renderWithProviders(<Tips />)
 
       act(() => {
         vi.advanceTimersByTime(CARD_DWELL_MS)
@@ -322,7 +326,10 @@ describe('Tips', () => {
 
       expect(logger.error).toHaveBeenCalledWith(
         'tips.rotation.complete-failed',
-        expect.objectContaining({ error: 'rearm blocked' }),
+        undefined,
+        {
+          error: expect.objectContaining({ message: 'rearm blocked' }),
+        },
       )
 
       frontCardAnimationCallback.current = null
@@ -334,7 +341,7 @@ describe('Tips', () => {
         frontCardAnimationCallback.current?.()
       })
 
-      const cards = container.querySelectorAll('.absolute.inset-x-0')
+      const cards = screen.getAllByTestId('tip-card')
       expect(cards.length).toBeGreaterThan(0)
       expect(
         within(cards[0] as HTMLElement).getByText(`builder_tips_${tips[2]}_title`),
@@ -398,6 +405,33 @@ describe('Tips', () => {
     ).toBeInTheDocument()
   })
 
+  it('mounts next-up tip copy on slot 1 when exit starts, before animation complete', () => {
+    renderWithProviders(<Tips />)
+
+    act(() => {
+      vi.advanceTimersByTime(CARD_DWELL_MS)
+    })
+
+    const cards = screen.getAllByTestId('tip-card')
+    expect(cards.length).toBe(4)
+    expect(
+      within(cards[0] as HTMLElement).getByText(`builder_tips_${tips[0]}_title`),
+    ).toBeInTheDocument()
+    expect(
+      within(cards[1] as HTMLElement).getByText(`builder_tips_${tips[1]}_title`),
+    ).toBeInTheDocument()
+  })
+
+  it('sets aria-hidden on lazy empty shells at rest', () => {
+    renderWithProviders(<Tips />)
+
+    const cards = screen.getAllByTestId('tip-card')
+    expect(cards[0]?.getAttribute('aria-hidden')).not.toBe('true')
+    expect(cards[1]?.getAttribute('aria-hidden')).toBe('true')
+    expect(cards[2]?.getAttribute('aria-hidden')).toBe('true')
+    expect(cards[3]?.getAttribute('aria-hidden')).toBe('true')
+  })
+
   it('does not omit the tips container when rendered (no mounted gate)', () => {
     const { container } = renderWithProviders(<Tips />)
 
@@ -422,7 +456,7 @@ describe('Tips', () => {
     })
 
     it('watchdog-driven: still rotates when prefers-reduced-motion is set', () => {
-      const { container } = renderWithProviders(<Tips />)
+      renderWithProviders(<Tips />)
 
       act(() => {
         vi.advanceTimersByTime(CARD_DWELL_MS)
@@ -440,7 +474,7 @@ describe('Tips', () => {
         frontCardAnimationCallback.current?.()
       })
 
-      const cards = container.querySelectorAll('.absolute.inset-x-0')
+      const cards = screen.getAllByTestId('tip-card')
       expect(cards.length).toBeGreaterThan(0)
       expect(
         within(cards[0] as HTMLElement).getByText(`builder_tips_${tips[1]}_title`),
@@ -455,7 +489,7 @@ describe('Tips', () => {
     })
 
     it('force-completes rotation via the 0ms watchdog without invoking the FM callback', () => {
-      const { container } = renderWithProviders(<Tips />)
+      renderWithProviders(<Tips />)
 
       act(() => {
         vi.advanceTimersByTime(CARD_DWELL_MS)
@@ -465,11 +499,31 @@ describe('Tips', () => {
         vi.advanceTimersByTime(1)
       })
 
-      const cards = container.querySelectorAll('.absolute.inset-x-0')
+      const cards = screen.getAllByTestId('tip-card')
       expect(cards.length).toBeGreaterThan(0)
       expect(
         within(cards[0] as HTMLElement).getByText(`builder_tips_${tips[1]}_title`),
       ).toBeInTheDocument()
+    })
+
+    it('does not add height transition ease on tip shells when a fixed stack height applies', () => {
+      const gbr = HTMLElement.prototype.getBoundingClientRect
+      HTMLElement.prototype.getBoundingClientRect = function stubHeight(this: HTMLElement) {
+        const base = gbr.call(this)
+        return { ...base, height: 96 } as DOMRect
+      }
+      try {
+        renderWithProviders(<Tips />)
+        act(() => {})
+
+        const cards = screen.getAllByTestId('tip-card')
+        expect(cards.length).toBe(4)
+        for (const card of cards) {
+          expect(card.className).not.toMatch(/transition-\[height\]/)
+        }
+      } finally {
+        HTMLElement.prototype.getBoundingClientRect = gbr
+      }
     })
   })
 
@@ -478,18 +532,92 @@ describe('Tips', () => {
       mockIsMdBreakpoint = false
     })
 
-    // NOTE: the framer-motion mock strips `animate`/`variants`/`transition`, so the
-    // horizontalCardVariants branch cannot be asserted from the DOM. This test only
-    // confirms card count under the horizontal layout — variant selection is a
-    // mock-framework blind spot.
-    it('renders all four tip cards in the horizontal stack layout', () => {
+    // NOTE: the framer-motion mock strips `animate`/`variants`/`transition`, so
+    // horizontal strip positions (translateX) are not asserted from the DOM.
+    it('shows only the front tip copy; back shells are aria-hidden at rest', () => {
       renderWithProviders(<Tips />)
 
-      expect(screen.getAllByText(`builder_tips_${tips[0]}_title`).length).toBeGreaterThanOrEqual(1)
-      expect(screen.getByText(`builder_tips_${tips[1]}_title`)).toBeInTheDocument()
-      expect(screen.getByText(`builder_tips_${tips[2]}_title`)).toBeInTheDocument()
-      expect(screen.getByText(`builder_tips_${tips[3]}_title`)).toBeInTheDocument()
+      const cards = screen.getAllByTestId('tip-card')
+      expect(cards.length).toBe(4)
+      expect(
+        within(cards[0] as HTMLElement).getByText(`builder_tips_${tips[0]}_title`),
+      ).toBeInTheDocument()
+      expect(screen.queryByText(`builder_tips_${tips[1]}_title`)).not.toBeInTheDocument()
+      expect(screen.queryByText(`builder_tips_${tips[2]}_title`)).not.toBeInTheDocument()
+      expect(screen.queryByText(`builder_tips_${tips[3]}_title`)).not.toBeInTheDocument()
+
+      expect(cards[0]?.getAttribute('aria-hidden')).not.toBe('true')
+      expect(cards[1]?.getAttribute('aria-hidden')).toBe('true')
+      expect(cards[2]?.getAttribute('aria-hidden')).toBe('true')
+      expect(cards[3]?.getAttribute('aria-hidden')).toBe('true')
     })
+
+    it('mounts slot-1 copy when exit starts, before animation completes', () => {
+      renderWithProviders(<Tips />)
+
+      act(() => {
+        vi.advanceTimersByTime(CARD_DWELL_MS)
+      })
+
+      const cards = screen.getAllByTestId('tip-card')
+      expect(
+        within(cards[0] as HTMLElement).getByText(`builder_tips_${tips[0]}_title`),
+      ).toBeInTheDocument()
+      expect(
+        within(cards[1] as HTMLElement).getByText(`builder_tips_${tips[1]}_title`),
+      ).toBeInTheDocument()
+    })
+
+    it('advances the front to tips[1] after the exit animation completes', () => {
+      renderWithProviders(<Tips />)
+
+      act(() => {
+        vi.advanceTimersByTime(CARD_DWELL_MS)
+      })
+      act(() => {
+        frontCardAnimationCallback.current?.()
+      })
+
+      const cards = screen.getAllByTestId('tip-card')
+      expect(
+        within(cards[0] as HTMLElement).getByText(`builder_tips_${tips[1]}_title`),
+      ).toBeInTheDocument()
+    })
+
+    it('watchdog completes rotation when the exit callback never fires', () => {
+      renderWithProviders(<Tips />)
+
+      act(() => {
+        vi.advanceTimersByTime(CARD_DWELL_MS)
+      })
+      act(() => {
+        vi.advanceTimersByTime(1700)
+      })
+
+      const cards = screen.getAllByTestId('tip-card')
+      expect(
+        within(cards[0] as HTMLElement).getByText(`builder_tips_${tips[1]}_title`),
+      ).toBeInTheDocument()
+    })
+  })
+
+  it('warns when ResizeObserver is unavailable and still mounts the stack', () => {
+    const RO = window.ResizeObserver
+    Reflect.deleteProperty(window, 'ResizeObserver')
+    try {
+      renderWithProviders(<Tips />)
+      expect(logger.warn).toHaveBeenCalledWith(
+        'tips.resize-observer.unavailable',
+        expect.anything(),
+      )
+      expect(screen.getAllByTestId('tip-card').length).toBe(4)
+    } finally {
+      Object.defineProperty(window, 'ResizeObserver', {
+        configurable: true,
+        writable: true,
+        value: RO,
+      })
+    }
   })
 
   describe('with showTips=false', () => {
