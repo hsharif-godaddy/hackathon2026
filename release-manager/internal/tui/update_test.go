@@ -9,6 +9,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/airo-ai-builder/release-manager/internal/config"
+	"github.com/airo-ai-builder/release-manager/internal/gh"
 	"github.com/airo-ai-builder/release-manager/internal/pipeline"
 )
 
@@ -313,11 +314,31 @@ func TestContinueAfterRetrySuccessCompletesProd(t *testing.T) {
 		t.Fatalf("expected groupCompleteMsg, got %T", rawMsg)
 	}
 
-	result, _ = m.handleGroupComplete(msg)
+	result, cmd = m.handleGroupComplete(msg)
+	m = result.(Model)
+
+	// startReleaseCreation always enters phaseCreatingRelease (so handlers
+	// can guard against late messages racing with ctrl+c).
+	if m.phase != phaseCreatingRelease {
+		t.Fatalf("phase = %v, want phaseCreatingRelease, got %v", m.phase, m.phase)
+	}
+
+	// Release config is not set in the test model, so startReleaseCreation
+	// short-circuits with a releaseCreatedMsg{} that triggers the completion
+	// form once processed.
+	if cmd == nil {
+		t.Fatal("expected releaseCreatedMsg command after all envs complete")
+	}
+	rawMsg = cmd()
+	relMsg, ok := rawMsg.(releaseCreatedMsg)
+	if !ok {
+		t.Fatalf("expected releaseCreatedMsg, got %T", rawMsg)
+	}
+	result, _ = m.Update(relMsg)
 	m = result.(Model)
 
 	if m.phase != phaseComplete {
-		t.Fatalf("phase = %v, want phaseComplete", m.phase)
+		t.Fatalf("phase after releaseCreatedMsg = %v, want phaseComplete", m.phase)
 	}
 	if m.form == nil {
 		t.Fatal("expected completion form")
@@ -332,7 +353,7 @@ func TestStartExitCleanupShowsProgressInsteadOfQuitHint(t *testing.T) {
 	})
 	m.pipeline.BuildStages("test")
 
-	result, cmd := m.startExitCleanup(true, true)
+	result, cmd := m.startExitCleanup(true)
 	m = result
 
 	if cmd == nil {
@@ -341,10 +362,10 @@ func TestStartExitCleanupShowsProgressInsteadOfQuitHint(t *testing.T) {
 	if m.phase != phaseCleanup {
 		t.Fatalf("phase = %v, want phaseCleanup", m.phase)
 	}
-	for _, want := range []string{"creating GitHub release", "releasing deploy lock"} {
-		if !strings.Contains(m.statusMessage, want) {
-			t.Fatalf("expected %q in status message, got %q", want, m.statusMessage)
-		}
+	// Release creation moved to phaseCreatingRelease, so the cleanup status
+	// only mentions Slack + lock release now.
+	if !strings.Contains(m.statusMessage, "releasing deploy lock") {
+		t.Fatalf("expected %q in status message, got %q", "releasing deploy lock", m.statusMessage)
 	}
 
 	view := m.View().Content
@@ -360,7 +381,7 @@ func TestStartExitCleanupNoWorkReturnsQuitWithoutCleanupPhase(t *testing.T) {
 	m := newTestModel()
 	before := m.phase
 
-	result, cmd := m.startExitCleanup(false, false)
+	result, cmd := m.startExitCleanup(false)
 
 	if cmd == nil {
 		t.Fatal("expected quit command when no cleanup work is needed")
@@ -927,6 +948,46 @@ func TestSlackMessageComplete(t *testing.T) {
 	}
 }
 
+func TestSlackMessageFinishedWithReleaseTag(t *testing.T) {
+	m := newTestModel(func(m *Model) {
+		m.startTime = time.Now().Add(-15 * time.Second)
+		m.releaseTag = "v2026.05.14.1"
+		m.releaseURL = "https://github.com/org/app/releases/tag/v2026.05.14.1"
+	})
+
+	msg := m.slackMessage(true)
+
+	want := ":label: [v2026.05.14.1](https://github.com/org/app/releases/tag/v2026.05.14.1)"
+	if !strings.Contains(msg, want) {
+		t.Errorf("expected release link %q in finished message, got:\n%s", want, msg)
+	}
+}
+
+func TestSlackMessageFinishedWithoutReleaseTagOmitsLink(t *testing.T) {
+	m := newTestModel(func(m *Model) {
+		m.startTime = time.Now().Add(-15 * time.Second)
+	})
+
+	msg := m.slackMessage(true)
+
+	if strings.Contains(msg, ":label:") {
+		t.Errorf("did not expect :label: marker without releaseTag, got:\n%s", msg)
+	}
+}
+
+func TestSlackMessageInProgressOmitsReleaseTag(t *testing.T) {
+	m := newTestModel(func(m *Model) {
+		m.releaseTag = "v2026.05.14.1"
+		m.releaseURL = "https://example/v"
+	})
+
+	msg := m.slackMessage(false)
+
+	if strings.Contains(msg, ":label:") {
+		t.Errorf("in-progress message should not include release link, got:\n%s", msg)
+	}
+}
+
 func TestSlackMessageAborted(t *testing.T) {
 	m := newTestModel(func(m *Model) {
 		m.phase = phaseAborted
@@ -1030,6 +1091,416 @@ func newProdFailureModel(t *testing.T) Model {
 		deferredFailures: []int{1},
 	}
 }
+
+func TestBuildReleaseBodyStripsHeaderAndConvertsEmoji(t *testing.T) {
+	slackText := ":rocket: **op** is deploying `main`\n" +
+		"\u200b\n" +
+		":white_check_mark: stage one\n" +
+		":x: stage two\n"
+
+	body := buildReleaseBody(slackText, "")
+
+	if strings.Contains(body, ":rocket:") || strings.Contains(body, "**op** is deploying") {
+		t.Errorf("expected header line to be stripped, got:\n%s", body)
+	}
+	if strings.Contains(body, "\u200b") {
+		t.Errorf("expected blankLine zero-width char to be removed, got:\n%s", body)
+	}
+	if strings.Contains(body, ":white_check_mark:") || strings.Contains(body, ":x:") {
+		t.Errorf("expected slack emoji shortcodes to be converted, got:\n%s", body)
+	}
+}
+
+func TestBuildReleaseBodyAppendsPermalink(t *testing.T) {
+	slackText := "header line\n\nbody content"
+
+	body := buildReleaseBody(slackText, "https://example.slack.com/p123")
+
+	want := "[Slack thread](https://example.slack.com/p123)"
+	if !strings.Contains(body, want) {
+		t.Errorf("expected %q in body, got:\n%s", want, body)
+	}
+	if !strings.Contains(body, "---") {
+		t.Errorf("expected --- separator before Slack thread link, got:\n%s", body)
+	}
+}
+
+func TestBuildReleaseBodyOmitsPermalinkWhenEmpty(t *testing.T) {
+	slackText := "header\n\nbody"
+
+	body := buildReleaseBody(slackText, "")
+
+	if strings.Contains(body, "Slack thread") {
+		t.Errorf("did not expect Slack thread link when permalink is empty, got:\n%s", body)
+	}
+}
+
+func TestHandleReleaseCreatedLateAbortMessageDoesNotMutateState(t *testing.T) {
+	// Simulate ctrl+c-during-phaseCreatingRelease where the gh CLI was
+	// canceled (no tag returned): phase has already transitioned to
+	// phaseCleanup (because m.startExitCleanup overwrites phaseAborted with
+	// phaseCleanup when there's cleanup work). A late releaseCreatedMsg with
+	// no tag must not clobber that state and must not dispatch a delete.
+	m := newTestModel(func(m *Model) {
+		m.phase = phaseCleanup
+		m.statusMessage = "Finalizing: releasing deploy lock..."
+	})
+
+	result, cmd := m.handleReleaseCreated(releaseCreatedMsg{err: context.Canceled})
+	m = result.(Model)
+
+	if m.phase != phaseCleanup {
+		t.Fatalf("phase = %v, want phaseCleanup (handler must not transition out of cleanup)", m.phase)
+	}
+	if m.releaseTag != "" || m.releaseURL != "" {
+		t.Errorf("late releaseCreatedMsg should not populate releaseTag/URL after abort, got tag=%q url=%q", m.releaseTag, m.releaseURL)
+	}
+	if cmd != nil {
+		t.Errorf("expected nil cmd from ignored late error message, got non-nil")
+	}
+	if m.form != nil {
+		t.Error("late releaseCreatedMsg should not build a completion form during cleanup")
+	}
+}
+
+func TestHandleReleaseCreatedLateSuccessMessageDispatchesCompensatingDelete(t *testing.T) {
+	// Simulate the ctrl+c-during-creation race where gh release create
+	// already succeeded on GitHub before m.cancel() killed the goroutine.
+	// The model has moved past phaseCreatingRelease, but the release exists
+	// on GitHub. handleReleaseCreated must dispatch a compensating delete
+	// rather than leaving an orphaned release on the repo.
+	deleteCalled := false
+	var deletedTag string
+	runner := &capturingRunner{
+		deleteFn: func(_ context.Context, _, tag string) error {
+			deleteCalled = true
+			deletedTag = tag
+			return nil
+		},
+	}
+
+	cfg := &config.Config{
+		Pipeline: config.PipelineConfig{
+			Environments: map[string]*config.EnvironmentConfig{
+				"test": {Stages: []config.Stage{{ID: "deploy", Name: "Deploy"}}},
+			},
+		},
+		Release: config.ReleaseConfig{Repo: "org/app", Enabled: true},
+	}
+	p := pipeline.New(cfg, runner, true, "main", nil)
+	m := Model{
+		config:         cfg,
+		runner:         runner,
+		pipeline:       p,
+		branch:         "main",
+		operator:       "testuser",
+		envOrder:       []string{"test"},
+		fv:             &formValues{},
+		failedStageIdx: -1,
+		phase:          phaseCleanup, // already aborted into cleanup
+		statusMessage:  "Finalizing: releasing deploy lock...",
+	}
+	m.ctx, m.cancel = context.WithCancel(context.Background())
+	// Mimic ctrl+c — parent ctx is canceled, but compensation should still run.
+	m.cancel()
+
+	result, cmd := m.handleReleaseCreated(releaseCreatedMsg{tag: "v2026.05.14.1", url: "https://example/v"})
+	m = result.(Model)
+
+	if m.phase != phaseCleanup {
+		t.Fatalf("phase = %v, want phaseCleanup (handler must not transition out of cleanup)", m.phase)
+	}
+	if m.releaseTag != "" || m.releaseURL != "" {
+		t.Errorf("late releaseCreatedMsg should not populate releaseTag/URL on the model, got tag=%q url=%q", m.releaseTag, m.releaseURL)
+	}
+	if cmd == nil {
+		t.Fatal("expected compensating delete cmd for orphaned release, got nil")
+	}
+
+	flushBatch(t, cmd)
+
+	if !deleteCalled {
+		t.Fatal("expected runner.DeleteRelease to be invoked for orphaned release")
+	}
+	if deletedTag != "v2026.05.14.1" {
+		t.Errorf("DeleteRelease tag = %q, want %q", deletedTag, "v2026.05.14.1")
+	}
+}
+
+func TestHandleReleaseCreatedIgnoresLateMessageAfterCleanupDone(t *testing.T) {
+	m := newTestModel(func(m *Model) {
+		m.phase = phaseCleanupDone
+	})
+
+	result, cmd := m.handleReleaseCreated(releaseCreatedMsg{err: context.Canceled})
+	m = result.(Model)
+
+	if m.phase != phaseCleanupDone {
+		t.Fatalf("phase = %v, want phaseCleanupDone", m.phase)
+	}
+	if cmd != nil {
+		t.Errorf("expected nil cmd from late error message after cleanupDone, got non-nil")
+	}
+}
+
+func TestExitCleanupDoneMsgPreservesPreExistingCleanupWarning(t *testing.T) {
+	// When release creation failed earlier, handleReleaseCreated set
+	// cleanupWarning. If the subsequent cleanup goroutine succeeds (warning
+	// is empty), the exitCleanupDoneMsg handler must preserve the existing
+	// warning rather than render a green success indicator over a real
+	// failure.
+	m := newTestModel(func(m *Model) {
+		m.phase = phaseCleanup
+		m.cleanupWarning = "GitHub release creation failed; check logs."
+	})
+
+	result, _ := m.Update(exitCleanupDoneMsg{}) // empty warning = cleanup OK
+	m = result.(Model)
+
+	if m.phase != phaseCleanupDone {
+		t.Fatalf("phase = %v, want phaseCleanupDone", m.phase)
+	}
+	if m.cleanupWarning != "GitHub release creation failed; check logs." {
+		t.Errorf("cleanupWarning was overwritten, got %q", m.cleanupWarning)
+	}
+	if m.statusMessage != "GitHub release creation failed; check logs." {
+		t.Errorf("statusMessage = %q, want it to surface the existing warning", m.statusMessage)
+	}
+}
+
+func TestExitCleanupDoneMsgUsesNewWarningWhenProvided(t *testing.T) {
+	// Cleanup itself failed (msg.warning != ""): the new warning takes
+	// precedence over any prior one.
+	m := newTestModel(func(m *Model) {
+		m.phase = phaseCleanup
+		m.cleanupWarning = "old warning"
+	})
+
+	result, _ := m.Update(exitCleanupDoneMsg{warning: "Final cleanup may not have completed; check logs."})
+	m = result.(Model)
+
+	if m.cleanupWarning != "Final cleanup may not have completed; check logs." {
+		t.Errorf("cleanupWarning = %q, want the new warning", m.cleanupWarning)
+	}
+}
+
+func TestExitCleanupDoneMsgShowsSuccessWhenNoWarnings(t *testing.T) {
+	m := newTestModel(func(m *Model) {
+		m.phase = phaseCleanup
+	})
+
+	result, _ := m.Update(exitCleanupDoneMsg{})
+	m = result.(Model)
+
+	if m.cleanupWarning != "" {
+		t.Errorf("cleanupWarning = %q, want empty for success path", m.cleanupWarning)
+	}
+	if m.statusMessage != "Final cleanup complete." {
+		t.Errorf("statusMessage = %q, want 'Final cleanup complete.'", m.statusMessage)
+	}
+}
+
+func TestDeleteReleaseCmdSurvivesParentCancellation(t *testing.T) {
+	// Verify that ctrl+c during phaseRollbackRunning (which cancels m.ctx)
+	// does NOT abort the in-flight gh release delete. The compensating
+	// delete is finalization — it must complete (or hit the timeout) even
+	// when the parent context is canceled.
+	deleteCalled := false
+	var deletedTag string
+	runner := &capturingRunner{
+		deleteFn: func(ctx context.Context, _, tag string) error {
+			// If WithoutCancel is wired correctly, ctx.Err() is nil here even
+			// though the parent was canceled before this ran.
+			if ctx.Err() != nil {
+				t.Errorf("DeleteRelease context inherited cancellation: %v", ctx.Err())
+			}
+			deleteCalled = true
+			deletedTag = tag
+			return nil
+		},
+	}
+
+	cfg := &config.Config{Release: config.ReleaseConfig{Repo: "org/app", Enabled: true}}
+	p := pipeline.New(cfg, runner, true, "main", nil)
+
+	parent, cancel := context.WithCancel(context.Background())
+	cancel() // Cancel BEFORE the cmd runs, simulating ctrl+c-then-delete-fires
+
+	cmd := deleteReleaseCmd(p, parent, "v2026.05.14.1")
+	if cmd == nil {
+		t.Fatal("expected non-nil cmd")
+	}
+	cmd() // Run synchronously
+
+	if !deleteCalled {
+		t.Fatal("expected runner.DeleteRelease to be invoked despite parent cancellation")
+	}
+	if deletedTag != "v2026.05.14.1" {
+		t.Errorf("DeleteRelease tag = %q, want %q", deletedTag, "v2026.05.14.1")
+	}
+}
+
+func TestRollbackConfirmTriggersDeleteReleaseAndClearsTag(t *testing.T) {
+	deleteCalled := false
+	var deletedRepo, deletedTag string
+	runner := &capturingRunner{
+		deleteFn: func(_ context.Context, repo, tag string) error {
+			deleteCalled = true
+			deletedRepo = repo
+			deletedTag = tag
+			return nil
+		},
+	}
+
+	cfg := &config.Config{
+		Pipeline: config.PipelineConfig{
+			Environments: map[string]*config.EnvironmentConfig{
+				"test": {Stages: []config.Stage{{ID: "deploy", Name: "Deploy App to Test"}}},
+			},
+			Rollback: config.RollbackConfig{Steps: []config.Stage{{ID: "rollback", Name: "Rollback"}}},
+		},
+		Release: config.ReleaseConfig{Repo: "org/app", Enabled: true},
+	}
+	p := pipeline.New(cfg, runner, true, "main", nil)
+	m := Model{
+		config:         cfg,
+		runner:         runner,
+		pipeline:       p,
+		branch:         "main",
+		operator:       "testuser",
+		envOrder:       []string{"test"},
+		fv:             &formValues{confirm: true},
+		failedStageIdx: -1,
+		phase:          phaseRollbackConfirm,
+		releaseTag:     "v2026.05.14.1",
+		releaseURL:     "https://github.com/org/app/releases/tag/v2026.05.14.1",
+	}
+	m.ctx, m.cancel = context.WithCancel(context.Background())
+	defer m.cancel()
+
+	result, cmd := m.handleFormDone()
+	m = result.(Model)
+
+	if m.phase != phaseRollbackRunning {
+		t.Fatalf("phase = %v, want phaseRollbackRunning", m.phase)
+	}
+	if m.releaseTag != "" || m.releaseURL != "" {
+		t.Errorf("expected releaseTag/URL to be cleared on rollback confirm, got tag=%q url=%q", m.releaseTag, m.releaseURL)
+	}
+	if cmd == nil {
+		t.Fatal("expected batch command including delete")
+	}
+
+	// Drain the batch — at least one of its sub-commands must invoke
+	// runner.DeleteRelease. Bubble Tea's tea.Batch returns a BatchMsg whose
+	// elements are the sub-commands; we run them all to flush side effects.
+	flushBatch(t, cmd)
+
+	if !deleteCalled {
+		t.Fatal("expected runner.DeleteRelease to be called when rollback is confirmed with a release tag")
+	}
+	if deletedRepo != "org/app" || deletedTag != "v2026.05.14.1" {
+		t.Errorf("DeleteRelease args = (%q, %q), want (%q, %q)", deletedRepo, deletedTag, "org/app", "v2026.05.14.1")
+	}
+}
+
+func TestRollbackConfirmWithoutReleaseTagSkipsDelete(t *testing.T) {
+	deleteCalled := false
+	runner := &capturingRunner{
+		deleteFn: func(_ context.Context, _, _ string) error {
+			deleteCalled = true
+			return nil
+		},
+	}
+
+	cfg := &config.Config{
+		Pipeline: config.PipelineConfig{
+			Environments: map[string]*config.EnvironmentConfig{
+				"test": {Stages: []config.Stage{{ID: "deploy", Name: "Deploy"}}},
+			},
+			Rollback: config.RollbackConfig{Steps: []config.Stage{{ID: "rollback", Name: "Rollback"}}},
+		},
+		Release: config.ReleaseConfig{Repo: "org/app", Enabled: true},
+	}
+	p := pipeline.New(cfg, runner, true, "main", nil)
+	m := Model{
+		config:         cfg,
+		runner:         runner,
+		pipeline:       p,
+		branch:         "main",
+		operator:       "testuser",
+		envOrder:       []string{"test"},
+		fv:             &formValues{confirm: true},
+		failedStageIdx: -1,
+		phase:          phaseRollbackConfirm,
+	}
+	m.ctx, m.cancel = context.WithCancel(context.Background())
+	defer m.cancel()
+
+	_, cmd := m.handleFormDone()
+	flushBatch(t, cmd)
+
+	if deleteCalled {
+		t.Fatal("DeleteRelease should not be invoked when no release tag is set")
+	}
+}
+
+// flushBatch executes a tea.Cmd, recursively walking BatchMsg payloads so
+// that all sub-command side effects (e.g., runner calls) run synchronously
+// in the test. Panics are converted to t.Fatal.
+func flushBatch(t *testing.T, cmd tea.Cmd) {
+	t.Helper()
+	if cmd == nil {
+		return
+	}
+	msg := cmd()
+	switch v := msg.(type) {
+	case tea.BatchMsg:
+		for _, sub := range v {
+			flushBatch(t, sub)
+		}
+	}
+}
+
+// capturingRunner is a minimal gh.Runner used by rollback-delete tests. Most
+// methods are no-ops; deleteFn captures the DeleteRelease call.
+type capturingRunner struct {
+	deleteFn func(ctx context.Context, repo, tag string) error
+}
+
+func (r *capturingRunner) Trigger(_ context.Context, _, _, _ string, _ map[string]string) (string, error) {
+	return "", nil
+}
+func (r *capturingRunner) Status(_ context.Context, _ string, _ int64) (*gh.RunStatus, error) {
+	return &gh.RunStatus{Status: "completed", Conclusion: "success"}, nil
+}
+func (r *capturingRunner) Logs(_ context.Context, _ string, _ int64) (string, error) {
+	return "", nil
+}
+func (r *capturingRunner) ListRuns(_ context.Context, _, _, _ string, _ int) ([]gh.RunListEntry, error) {
+	return nil, nil
+}
+func (r *capturingRunner) Compare(_ context.Context, _, _, _ string) (*gh.CompareResult, error) {
+	return &gh.CompareResult{}, nil
+}
+func (r *capturingRunner) ListReleases(_ context.Context, _ string, _ int) ([]gh.ReleaseEntry, error) {
+	return nil, nil
+}
+func (r *capturingRunner) CreateRelease(_ context.Context, _, _, _, _, _ string) (string, error) {
+	return "", nil
+}
+func (r *capturingRunner) DeleteRelease(ctx context.Context, repo, tag string) error {
+	if r.deleteFn != nil {
+		return r.deleteFn(ctx, repo, tag)
+	}
+	return nil
+}
+func (r *capturingRunner) ResolveCommit(_ context.Context, _, ref string) (string, error) {
+	return ref, nil
+}
+func (r *capturingRunner) Version(_ context.Context) (string, error)         { return "2.87.0", nil }
+func (r *capturingRunner) AuthStatus(_ context.Context) error                { return nil }
+func (r *capturingRunner) CheckRepoAccess(_ context.Context, _ string) error { return nil }
 
 func TestPreflightStringOptionalFailureShowsHint(t *testing.T) {
 	m := Model{

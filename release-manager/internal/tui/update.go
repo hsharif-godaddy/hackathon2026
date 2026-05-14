@@ -44,9 +44,9 @@ func (m Model) slackUpdateCmd(finished bool) tea.Cmd {
 	}
 }
 
-func (m Model) startExitCleanup(sendSlack bool, createRelease bool) (Model, tea.Cmd) {
-	cmd := m.exitCleanupCmd(sendSlack, createRelease)
-	message := m.cleanupStatus(sendSlack, createRelease)
+func (m Model) startExitCleanup(sendSlack bool) (Model, tea.Cmd) {
+	cmd := m.exitCleanupCmd(sendSlack)
+	message := m.cleanupStatus(sendSlack)
 	if message == "" {
 		return m, cmd
 	}
@@ -57,11 +57,8 @@ func (m Model) startExitCleanup(sendSlack bool, createRelease bool) (Model, tea.
 	return m, tea.Batch(m.spinner.Tick, cmd)
 }
 
-func (m Model) cleanupStatus(sendSlack bool, createRelease bool) string {
+func (m Model) cleanupStatus(sendSlack bool) string {
 	var actions []string
-	if createRelease && !m.noRelease && m.config != nil && m.config.Release.Enabled && m.config.Release.Repo != "" {
-		actions = append(actions, "creating GitHub release")
-	}
 	if sendSlack && m.slack != nil && m.pipeline != nil && len(m.pipeline.Stages()) > 0 {
 		actions = append(actions, "updating Slack")
 	}
@@ -74,59 +71,29 @@ func (m Model) cleanupStatus(sendSlack bool, createRelease bool) string {
 	return "Finalizing: " + strings.Join(actions, ", ") + "..."
 }
 
-// exitCleanupCmd runs final Slack update, optional GitHub release creation,
-// and lock release in a background goroutine, then sends exitCleanupDoneMsg
-// to trigger tea.Quit. This avoids blocking the Bubble Tea event loop
-// during cleanup I/O.
-func (m Model) exitCleanupCmd(sendSlack bool, createRelease bool) tea.Cmd {
+// exitCleanupCmd runs final Slack update and lock release in a background
+// goroutine, then sends exitCleanupDoneMsg to trigger tea.Quit. GitHub
+// release creation now happens earlier (at phaseCreatingRelease, before the
+// Done/Rollback prompt) so that closing the terminal at the prompt does not
+// strand the release.
+func (m Model) exitCleanupCmd(sendSlack bool) tea.Cmd {
 	n := m.slack
 	p := m.pipeline
 	lockCfg := m.config.Lock
 	lockHeld := m.lockHeld
-	releaseCfg := m.config.Release
-
-	wantRelease := createRelease && !m.noRelease && releaseCfg.Enabled && releaseCfg.Repo != ""
 
 	var slackText string
-	if ((sendSlack && n != nil) || wantRelease) && len(p.Stages()) > 0 {
+	if sendSlack && n != nil && p != nil && len(p.Stages()) > 0 {
 		slackText = m.slackMessage(true)
 	}
 
-	if slackText == "" && !wantRelease && (!lockHeld || lockCfg.SSMParameter == "") {
+	if slackText == "" && (!lockHeld || lockCfg.SSMParameter == "") {
 		return tea.Quit
 	}
 
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), cleanupTimeout)
 		defer cancel()
-
-		if wantRelease && slackText == "" {
-			logger.Log("release.skip: no message content available for release body")
-		}
-		if wantRelease && slackText != "" {
-			tag, err := p.GenerateReleaseTag(ctx)
-			if err != nil {
-				logger.Log("release.error: generating tag: %s", err)
-			} else {
-				releaseText := slackText
-				if i := strings.Index(releaseText, "\n"); i >= 0 {
-					releaseText = strings.TrimLeft(releaseText[i+1:], "\n")
-				}
-				releaseText = slackEmojiToUnicode(releaseText)
-				releaseText = strings.ReplaceAll(releaseText, blankLine, "")
-				if n != nil {
-					if permalink := n.Permalink(); permalink != "" {
-						releaseText += fmt.Sprintf("\n\n---\n[Slack thread](%s)", permalink)
-					}
-				}
-				releaseURL, err := p.CreateRelease(ctx, tag, tag, releaseText)
-				if err != nil {
-					logger.Log("release.error: creating release: %s", err)
-				} else {
-					slackText += fmt.Sprintf("\n\n:label: [%s](%s)", tag, releaseURL)
-				}
-			}
-		}
 
 		if slackText != "" && n != nil {
 			n.Update(ctx, slackText)
@@ -140,6 +107,97 @@ func (m Model) exitCleanupCmd(sendSlack bool, createRelease bool) tea.Cmd {
 		}
 		return exitCleanupDoneMsg{}
 	}
+}
+
+// shouldCreateRelease mirrors the predicate that exitCleanupCmd previously
+// used to gate inline release creation. Returns true if a GitHub release
+// should be cut at the "Complete" moment.
+func (m Model) shouldCreateRelease() bool {
+	if m.noRelease || m.config == nil || !m.config.Release.Enabled || m.config.Release.Repo == "" {
+		return false
+	}
+	if m.pipeline == nil || len(m.pipeline.Stages()) == 0 {
+		return false
+	}
+	return true
+}
+
+// startReleaseCreation enters phaseCreatingRelease and dispatches the GH
+// release creation in a background command. If release creation is disabled,
+// it short-circuits with a no-op releaseCreatedMsg so the rest of the flow
+// always funnels through handleReleaseCreated. Both paths use
+// phaseCreatingRelease so handleReleaseCreated's phase guard rejects late
+// messages that arrive after ctrl+c has flipped the phase.
+func (m Model) startReleaseCreation() (Model, tea.Cmd) {
+	m.phase = phaseCreatingRelease
+	if !m.shouldCreateRelease() {
+		m.statusMessage = "Finalizing..."
+		return m, func() tea.Msg { return releaseCreatedMsg{} }
+	}
+	m.statusMessage = "Finalizing: creating GitHub release..."
+	slackText := m.slackMessage(true)
+	return m, tea.Batch(m.spinner.Tick, createReleaseAtCompleteCmd(m.pipeline, m.slack, m.ctx, slackText))
+}
+
+// createReleaseAtCompleteCmd generates a release tag and cuts the GitHub
+// release using slackText (without the not-yet-existent release link) as the
+// source for the release body.
+func createReleaseAtCompleteCmd(p *pipeline.Pipeline, n *slack.Notifier, parent context.Context, slackText string) tea.Cmd {
+	var permalink string
+	if n != nil {
+		permalink = n.Permalink()
+	}
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(parent, cleanupTimeout)
+		defer cancel()
+
+		tag, err := p.GenerateReleaseTag(ctx)
+		if err != nil {
+			return releaseCreatedMsg{err: fmt.Errorf("generating tag: %w", err)}
+		}
+
+		body := buildReleaseBody(slackText, permalink)
+
+		url, err := p.CreateRelease(ctx, tag, tag, body)
+		if err != nil {
+			return releaseCreatedMsg{err: fmt.Errorf("creating release: %w", err)}
+		}
+
+		return releaseCreatedMsg{tag: tag, url: url}
+	}
+}
+
+// deleteReleaseCmd compensates for a release cut at "Complete" when the
+// operator confirms rollback or aborts after creation succeeded. Uses
+// context.WithoutCancel so a parent cancellation (ctrl+c during
+// phaseRollbackRunning, for example) does NOT abort the in-flight gh release
+// delete — the compensation must run to completion or hit the timeout. The
+// cmd is fire-and-forget; errors are logged, never returned as a message.
+func deleteReleaseCmd(p *pipeline.Pipeline, parent context.Context, tag string) tea.Cmd {
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.WithoutCancel(parent), cleanupTimeout)
+		defer cancel()
+		if err := p.DeleteRelease(ctx, tag); err != nil {
+			logger.Log("release.delete.error: tag=%s err=%s", tag, err)
+		}
+		return nil
+	}
+}
+
+// buildReleaseBody transforms a Slack message string into a GitHub release
+// body: strips the operator/header line, converts Slack emoji to unicode,
+// removes blankLine zero-width characters, and appends a Slack thread link
+// when permalink is non-empty.
+func buildReleaseBody(slackText, permalink string) string {
+	if i := strings.Index(slackText, "\n"); i >= 0 {
+		slackText = strings.TrimLeft(slackText[i+1:], "\n")
+	}
+	slackText = slackEmojiToUnicode(slackText)
+	slackText = strings.ReplaceAll(slackText, blankLine, "")
+	if permalink != "" {
+		slackText += fmt.Sprintf("\n\n---\n[Slack thread](%s)", permalink)
+	}
+	return slackText
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -176,7 +234,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.phase = phaseAborted
 			m.statusMessage = "Aborted by user"
 			logger.Log("USER: aborted via %s", msg.String())
-			return m.startExitCleanup(true, false)
+			return m.startExitCleanup(true)
 		}
 
 	case slackCredentialsMsg:
@@ -193,9 +251,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case exitCleanupDoneMsg:
 		m.phase = phaseCleanupDone
-		m.cleanupWarning = msg.warning
+		// Don't overwrite a pre-existing cleanupWarning. The release-create
+		// failure path (handleReleaseCreated) sets cleanupWarning before the
+		// exit-cleanup goroutine even runs; if cleanup itself succeeded
+		// (msg.warning == ""), unconditionally clobbering it would render the
+		// success checkmark over a real warning.
 		if msg.warning != "" {
-			m.statusMessage = msg.warning
+			m.cleanupWarning = msg.warning
+		}
+		if m.cleanupWarning != "" {
+			m.statusMessage = m.cleanupWarning
 		} else {
 			m.statusMessage = "Final cleanup complete."
 		}
@@ -205,6 +270,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case cleanupQuitMsg:
 		return m, tea.Quit
+
+	case releaseCreatedMsg:
+		return m.handleReleaseCreated(msg)
 
 	case snapshotResultMsg:
 		return m.handleSnapshotResult(msg)
@@ -273,7 +341,7 @@ func (m Model) handleFormDone() (tea.Model, tea.Cmd) {
 			m.statusMessage = "Aborted: rollback values not confirmed"
 			m.form = nil
 			logger.Log("snapshot: user declined rollback values — aborting")
-			return m.startExitCleanup(false, false)
+			return m.startExitCleanup(false)
 		}
 		m.form = nil
 		logger.Log("snapshot: user confirmed rollback values")
@@ -286,7 +354,7 @@ func (m Model) handleFormDone() (tea.Model, tea.Cmd) {
 			m.statusMessage = "Aborted: deployment declined"
 			m.form = nil
 			logger.Log("release-notes: user declined deployment — aborting")
-			return m.startExitCleanup(false, false)
+			return m.startExitCleanup(false)
 		}
 		m.form = nil
 		m.phase = phaseRunning
@@ -302,7 +370,7 @@ func (m Model) handleFormDone() (tea.Model, tea.Cmd) {
 			m.statusMessage = "Aborted: production deploy declined"
 			m.form = nil
 			logger.Log("gate: user declined deploy to %s — aborting", m.envOrder[m.currentEnvIdx+1])
-			return m.startExitCleanup(true, false)
+			return m.startExitCleanup(true)
 		}
 		m.form = nil
 		m.currentEnvIdx++
@@ -358,7 +426,7 @@ func (m Model) handleFormDone() (tea.Model, tea.Cmd) {
 		case "abort":
 			m.phase = phaseAborted
 			m.statusMessage = "Aborted by user"
-			return m.startExitCleanup(true, false)
+			return m.startExitCleanup(true)
 		}
 
 	case phaseComplete:
@@ -370,7 +438,9 @@ func (m Model) handleFormDone() (tea.Model, tea.Cmd) {
 			cmd := m.buildRollbackConfirmForm()
 			return m, cmd
 		}
-		m, cleanupCmd := m.startExitCleanup(true, true)
+		// Release was already cut at phaseCreatingRelease; only Slack and lock
+		// remain.
+		m, cleanupCmd := m.startExitCleanup(true)
 		return m, tea.Batch(
 			printAbove(m.theme.SuccessMessageStyle.Render(fmt.Sprintf("Release complete! (%s)", m.elapsed()))),
 			cleanupCmd,
@@ -392,8 +462,17 @@ func (m Model) handleFormDone() (tea.Model, tea.Cmd) {
 		m.phase = phaseRollbackRunning
 		logger.Log("rollback: user confirmed — starting rollback")
 		m.pipeline.BuildRollbackStages()
-		cmd := m.runRollback()
-		return m, tea.Batch(cmd, m.slackUpdateCmd(false))
+		cmds := []tea.Cmd{m.runRollback(), m.slackUpdateCmd(false)}
+		// If a release was cut at "Complete", remove it now (best-effort).
+		// Clear releaseTag/URL immediately so subsequent Slack updates don't
+		// reference a release we're tearing down.
+		if m.releaseTag != "" {
+			logger.Log("release.delete.scheduled: tag=%s (rollback confirmed)", m.releaseTag)
+			cmds = append(cmds, deleteReleaseCmd(m.pipeline, m.ctx, m.releaseTag))
+			m.releaseTag = ""
+			m.releaseURL = ""
+		}
+		return m, tea.Batch(cmds...)
 	}
 
 	m.form = nil
@@ -528,7 +607,7 @@ func (m Model) handleSnapshotResult(msg snapshotResultMsg) (tea.Model, tea.Cmd) 
 		m.phase = phaseAborted
 		m.statusMessage = fmt.Sprintf("Failed to fetch rollback snapshot: %s", msg.err)
 		logger.Log("snapshot: FAILED — %s", msg.err)
-		m, cleanupCmd := m.startExitCleanup(false, false)
+		m, cleanupCmd := m.startExitCleanup(false)
 		return m, tea.Batch(
 			printAbove(m.theme.FailedMessageStyle.Render(m.statusMessage)),
 			cleanupCmd,
@@ -628,20 +707,63 @@ func (m Model) handleGroupComplete(msg groupCompleteMsg) (tea.Model, tea.Cmd) {
 	return m, m.runGroup()
 }
 
+// handleReleaseCreated finalizes the "Complete" moment after the GitHub
+// release attempt resolves (success, error, or skip). On success it stores
+// the tag/URL on the model so slackMessage(true) can include the link in the
+// Slack "Complete" update. On error it logs and continues without a link.
+// Then it routes interactive vs autoApprove just like the old
+// advanceEnvironment did.
+func (m Model) handleReleaseCreated(msg releaseCreatedMsg) (tea.Model, tea.Cmd) {
+	// Only act on this message if we're still in phaseCreatingRelease. If
+	// ctrl+c hit during release creation, phase will already have transitioned
+	// (phaseAborted → phaseCleanup) and we must not clobber that state by
+	// re-entering phaseComplete + spawning a second cleanup or overwriting
+	// the abort Slack message.
+	if m.phase != phaseCreatingRelease {
+		// gh release create may have already succeeded on GitHub before the
+		// operator's ctrl+c canceled m.ctx — the goroutine returns the URL
+		// even though we're now aborting. Compensate by deleting the orphaned
+		// release so it doesn't sit on the repo as a "ghost" release that
+		// nobody asked for. deleteReleaseCmd uses WithoutCancel so the
+		// already-canceled m.ctx doesn't kill the compensating delete.
+		if msg.tag != "" {
+			logger.Log("release.delete.scheduled: tag=%s url=%s (orphaned by abort during creation)", msg.tag, msg.url)
+			return m, deleteReleaseCmd(m.pipeline, m.ctx, msg.tag)
+		}
+		return m, nil
+	}
+
+	if msg.err != nil {
+		logger.Log("release.error: %s (continuing without release link)", msg.err)
+		m.cleanupWarning = "GitHub release creation failed; check logs."
+	} else if msg.tag != "" {
+		m.releaseTag = msg.tag
+		m.releaseURL = msg.url
+		logger.Log("release.created: tag=%s url=%s", msg.tag, msg.url)
+	}
+
+	m.phase = phaseComplete
+
+	if m.autoApprove {
+		m, cleanupCmd := m.startExitCleanup(true)
+		return m, tea.Batch(
+			printAbove(m.theme.SuccessMessageStyle.Render(fmt.Sprintf("Release complete! (%s)", m.elapsed()))),
+			cleanupCmd,
+		)
+	}
+
+	cmd := m.buildCompleteForm()
+	return m, tea.Batch(cmd, m.slackUpdateCmd(true))
+}
+
 func (m Model) advanceEnvironment() (tea.Model, tea.Cmd) {
 	nextEnvIdx := m.currentEnvIdx + 1
 	if nextEnvIdx >= len(m.envOrder) {
-		m.phase = phaseComplete
 		logger.Log("pipeline: all environments complete")
-		if m.autoApprove {
-			m, cleanupCmd := m.startExitCleanup(true, true)
-			return m, tea.Batch(
-				printAbove(m.theme.SuccessMessageStyle.Render(fmt.Sprintf("Release complete! (%s)", m.elapsed()))),
-				cleanupCmd,
-			)
-		}
-		cmd := m.buildCompleteForm()
-		return m, tea.Batch(cmd, m.slackUpdateCmd(true))
+		// Cut the GitHub release now (before Done/Rollback prompt) so closing
+		// the terminal at the prompt does not strand it. Outcome lands in
+		// handleReleaseCreated, which routes interactive vs autoApprove.
+		return m.startReleaseCreation()
 	}
 
 	if m.autoApprove {
@@ -1073,7 +1195,7 @@ func (m Model) handleRollbackDone(msg rollbackDoneMsg) (tea.Model, tea.Cmd) {
 		m.phase = phaseAborted
 		m.statusMessage = "Rollback had failures — check output above"
 		logger.Log("rollback: FAILED — rollback had errors")
-		m, cleanupCmd := m.startExitCleanup(true, false)
+		m, cleanupCmd := m.startExitCleanup(true)
 		return m, tea.Batch(
 			printAbove(m.theme.FailedMessageStyle.Render(m.statusMessage)),
 			cleanupCmd,
@@ -1082,7 +1204,7 @@ func (m Model) handleRollbackDone(msg rollbackDoneMsg) (tea.Model, tea.Cmd) {
 	m.phase = phaseComplete
 	m.statusMessage = "Rollback complete!"
 	logger.Log("rollback: completed successfully")
-	m, cleanupCmd := m.startExitCleanup(true, false)
+	m, cleanupCmd := m.startExitCleanup(true)
 	return m, tea.Batch(
 		printAbove(m.theme.SuccessMessageStyle.Render(fmt.Sprintf("Rollback complete! (%s)", m.elapsed()))),
 		cleanupCmd,

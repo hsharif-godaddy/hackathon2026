@@ -77,6 +77,9 @@ func (m Model) View() tea.View {
 			sb.WriteString("\n" + m.form.View())
 		}
 
+	case phaseCreatingRelease:
+		sb.WriteString("  " + m.theme.SuccessMessageStyle.Render(m.spinner.View()+" "+m.statusMessage) + "\n")
+
 	case phaseCleanup:
 		sb.WriteString("  " + m.theme.SuccessMessageStyle.Render(m.spinner.View()+" "+m.statusMessage) + "\n")
 
@@ -460,6 +463,9 @@ func (m Model) slackMessage(finished bool) string {
 		sb.WriteString(fmt.Sprintf("\n%s\n:no_entry: **%s** (%s)", blankLine, m.statusMessage, m.elapsed()))
 	} else if finished {
 		sb.WriteString(fmt.Sprintf("\n%s\n:checkered_flag: **Complete** (%s)", blankLine, m.elapsed()))
+		if m.releaseTag != "" {
+			sb.WriteString(fmt.Sprintf("\n\n:label: [%s](%s)", m.releaseTag, m.releaseURL))
+		}
 	} else {
 		sb.WriteString(fmt.Sprintf("\n%s\n:spinner_: *In progress...*", blankLine))
 	}

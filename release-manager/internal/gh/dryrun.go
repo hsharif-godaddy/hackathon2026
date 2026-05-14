@@ -53,6 +53,14 @@ func (d *DryRunner) ResolveCommit(ctx context.Context, repo, ref string) (string
 	return d.Real.ResolveCommit(ctx, repo, ref)
 }
 
+// DeleteRelease delegates to Real so dry-run draft releases (created by
+// DryRunner.CreateRelease) can actually be removed if the operator chooses
+// rollback during a dry-run. Note: CreateRelease intentionally does *not*
+// delegate to Real (it issues `--draft` directly), but cleanup is real.
+func (d *DryRunner) DeleteRelease(ctx context.Context, repo, tag string) error {
+	return d.Real.DeleteRelease(ctx, repo, tag)
+}
+
 // CreateRelease creates a real draft release so the output can be verified
 // on GitHub. Draft releases are not visible publicly and can be deleted
 // with: gh release delete <tag> --repo <repo> --yes

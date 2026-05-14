@@ -64,3 +64,13 @@ func (p *Pipeline) CreateRelease(ctx context.Context, tag, title, body string) (
 	logger.Log("release.created: tag=%s url=%s target=%s", tag, url, target)
 	return url, nil
 }
+
+// DeleteRelease removes a previously cut GitHub release. Used to compensate
+// when the operator chooses rollback after the release was cut at "Complete".
+func (p *Pipeline) DeleteRelease(ctx context.Context, tag string) error {
+	if err := p.Runner.DeleteRelease(ctx, p.Config.Release.Repo, tag); err != nil {
+		return err
+	}
+	logger.Log("release.deleted: tag=%s", tag)
+	return nil
+}

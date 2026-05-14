@@ -269,6 +269,7 @@ type mockRunner struct {
 	compareFn       func(ctx context.Context, repo, base, head string) (*CompareResult, error)
 	listReleasesFn  func(ctx context.Context, repo string, limit int) ([]ReleaseEntry, error)
 	createReleaseFn func(ctx context.Context, repo, tag, target, title, body string) (string, error)
+	deleteReleaseFn func(ctx context.Context, repo, tag string) error
 	resolveCommitFn func(ctx context.Context, repo, ref string) (string, error)
 }
 
@@ -340,6 +341,13 @@ func (m *mockRunner) CreateRelease(ctx context.Context, repo, tag, target, title
 		return m.createReleaseFn(ctx, repo, tag, target, title, body)
 	}
 	return "", nil
+}
+
+func (m *mockRunner) DeleteRelease(ctx context.Context, repo, tag string) error {
+	if m.deleteReleaseFn != nil {
+		return m.deleteReleaseFn(ctx, repo, tag)
+	}
+	return nil
 }
 
 func (m *mockRunner) ResolveCommit(ctx context.Context, repo, ref string) (string, error) {

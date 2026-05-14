@@ -148,6 +148,31 @@ func TestDryRunnerCreateReleaseDraftNotDelegated(t *testing.T) {
 	}
 }
 
+func TestDryRunnerDeleteReleaseDelegated(t *testing.T) {
+	called := false
+	var gotRepo, gotTag string
+	real := &mockRunner{
+		deleteReleaseFn: func(_ context.Context, repo, tag string) error {
+			called = true
+			gotRepo = repo
+			gotTag = tag
+			return nil
+		},
+	}
+
+	dry := &DryRunner{Real: real}
+	if err := dry.DeleteRelease(context.Background(), "org/repo", "v2026.04.03.1"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !called {
+		t.Error("DryRunner.DeleteRelease should delegate to Real.DeleteRelease")
+	}
+	if gotRepo != "org/repo" || gotTag != "v2026.04.03.1" {
+		t.Errorf("delegated args = (%q, %q), want (%q, %q)", gotRepo, gotTag, "org/repo", "v2026.04.03.1")
+	}
+}
+
 func TestDryRunnerPropagatesErrors(t *testing.T) {
 	real := &mockRunner{
 		versionFn: func(_ context.Context) (string, error) {

@@ -68,6 +68,7 @@ type Runner interface {
 	Compare(ctx context.Context, repo, base, head string) (*CompareResult, error)
 	ListReleases(ctx context.Context, repo string, limit int) ([]ReleaseEntry, error)
 	CreateRelease(ctx context.Context, repo, tag, target, title, body string) (url string, err error)
+	DeleteRelease(ctx context.Context, repo, tag string) error
 	ResolveCommit(ctx context.Context, repo, ref string) (fullSHA string, err error)
 	Version(ctx context.Context) (string, error)
 	AuthStatus(ctx context.Context) error
@@ -223,6 +224,21 @@ func (r *LiveRunner) CreateRelease(ctx context.Context, repo, tag, target, title
 		return "", fmt.Errorf("creating release %s in %s: %w", tag, repo, err)
 	}
 	return strings.TrimSpace(output), nil
+}
+
+// DeleteRelease removes a GitHub release and its associated tag. Used to
+// compensate when an operator chooses rollback after the release was already
+// cut at "Complete" time.
+func (r *LiveRunner) DeleteRelease(ctx context.Context, repo, tag string) error {
+	_, err := execute(ctx, "release", "delete", tag,
+		"--repo", repo,
+		"--yes",
+		"--cleanup-tag",
+	)
+	if err != nil {
+		return fmt.Errorf("deleting release %s in %s: %w", tag, repo, err)
+	}
+	return nil
 }
 
 func (r *LiveRunner) ResolveCommit(ctx context.Context, repo, ref string) (string, error) {

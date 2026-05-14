@@ -34,6 +34,7 @@ const (
 	phaseChecklist
 	phaseFailurePrompt
 	phaseComplete
+	phaseCreatingRelease
 	phaseCleanup
 	phaseCleanupDone
 	phaseRollbackConfirm
@@ -93,6 +94,12 @@ type Model struct {
 	releaseNotes    []pipeline.ReleaseNote
 	releaseNotesURL string
 	releaseNotesErr string
+
+	// Populated when the GitHub release is cut at the "Complete" moment.
+	// Cleared when the operator confirms rollback so subsequent Slack updates
+	// don't reference a release that's being torn down.
+	releaseTag string
+	releaseURL string
 
 	checklistStageIdx   int
 	failedStageIdx      int
@@ -268,6 +275,12 @@ type lockAcquireMsg struct {
 
 type exitCleanupDoneMsg struct {
 	warning string
+}
+
+type releaseCreatedMsg struct {
+	tag string
+	url string
+	err error
 }
 
 type cleanupQuitMsg struct{}
