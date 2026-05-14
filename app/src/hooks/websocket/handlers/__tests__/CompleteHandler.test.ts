@@ -49,6 +49,7 @@ const mockMaybeShowFeedbackBanner = vi.fn()
 const mockMaybeFireEvalSnapshot = vi.fn()
 const mockScheduleUsageRefresh = vi.fn()
 const mockTrackInitialBuildComplete = vi.fn()
+const mockPostInitialBuildEvent = vi.fn()
 vi.mock('@/hooks/shared/completionSideEffects', async (importOriginal) => {
   const actual = await importOriginal() as Record<string, unknown>
   return {
@@ -59,6 +60,7 @@ vi.mock('@/hooks/shared/completionSideEffects', async (importOriginal) => {
     maybeShowFeedbackBanner: (...args: unknown[]) => mockMaybeShowFeedbackBanner(...args),
     maybeFireEvalSnapshot: (...args: unknown[]) => mockMaybeFireEvalSnapshot(...args),
     scheduleUsageRefresh: (...args: unknown[]) => mockScheduleUsageRefresh(...args),
+    postInitialBuildEvent: (...args: unknown[]) => mockPostInitialBuildEvent(...args),
   }
 })
 
@@ -346,6 +348,43 @@ describe('CompleteHandler', () => {
     )
 
     expect(mockScheduleUsageRefresh).toHaveBeenCalledTimes(1)
+  })
+
+  describe('postInitialBuildEvent', () => {
+    beforeEach(() => {
+      mockStore.getState.mockReturnValue({
+        connectionRetry: { isRetrying: false },
+        clearConnectionRetry: vi.fn(),
+        messages: [],
+      })
+    })
+
+    it('should call postInitialBuildEvent with appId when commitHash is present', async () => {
+      await handler.handle(
+        { type: 'complete', content: '', data: { commitHash: 'abc123' } },
+        createMockMessageContext(),
+      )
+
+      expect(mockPostInitialBuildEvent).toHaveBeenCalledWith('app-123')
+    })
+
+    it('should not call postInitialBuildEvent when commitHash is absent', async () => {
+      await handler.handle(
+        { type: 'complete', content: '', data: {} },
+        createMockMessageContext(),
+      )
+
+      expect(mockPostInitialBuildEvent).not.toHaveBeenCalled()
+    })
+
+    it('should not call postInitialBuildEvent when appId is null', async () => {
+      await handler.handle(
+        { type: 'complete', content: '', data: { commitHash: 'abc123' } },
+        createMockMessageContext({ currentAppId: null }),
+      )
+
+      expect(mockPostInitialBuildEvent).not.toHaveBeenCalled()
+    })
   })
 
   describe('trace ID dispatch', () => {

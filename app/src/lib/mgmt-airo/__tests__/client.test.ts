@@ -1369,4 +1369,79 @@ describe('AiroMgmtClient', () => {
       );
     });
   });
+
+  describe('#recordEvent', () => {
+    const MOCK_EVENT_PAYLOAD = {
+      eventType: 'build.initial_build_completed',
+      occurredAt: '2026-01-15T10:00:00Z',
+      idempotencyKey: 'app-789:build.initial_build_completed',
+    };
+
+    const MOCK_EVENT_RESPONSE = {
+      id: 'evt-123',
+      appId: 'app-789',
+      eventType: 'build.initial_build_completed',
+      occurredAt: '2026-01-15T10:00:00Z',
+    };
+
+    it('should POST to the correct URL with the event payload', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => MOCK_EVENT_RESPONSE,
+      });
+
+      const result = await client.recordEvent('sub-123', 'sys-456', 'app-789', MOCK_EVENT_PAYLOAD);
+
+      expect(result).toEqual(MOCK_EVENT_RESPONSE);
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://mgmt.test.com/api/airo/v1/subscriptions/sub-123/systems/sys-456/apps/app-789/events',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify(MOCK_EVENT_PAYLOAD),
+        }),
+      );
+    });
+
+    it('should include optional metadata in the payload when provided', async () => {
+      const payloadWithMetadata = {
+        ...MOCK_EVENT_PAYLOAD,
+        metadata: { source: 'websocket', buildDuration: 42 },
+      };
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => MOCK_EVENT_RESPONSE,
+      });
+
+      await client.recordEvent('sub-123', 'sys-456', 'app-789', payloadWithMetadata);
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          body: JSON.stringify(payloadWithMetadata),
+        }),
+      );
+    });
+
+    it('should throw AiroHttpError on HTTP failure', async () => {
+      mockFetch.mockResolvedValue({
+        ok: false,
+        status: 500,
+        statusText: 'Internal Server Error',
+        text: async () => 'Internal Server Error',
+      });
+
+      await expect(
+        client.recordEvent('sub-123', 'sys-456', 'app-789', MOCK_EVENT_PAYLOAD),
+      ).rejects.toThrow(AiroHttpError);
+    });
+
+    it('should throw on network error', async () => {
+      mockFetch.mockRejectedValue(new Error('Network error'));
+
+      await expect(
+        client.recordEvent('sub-123', 'sys-456', 'app-789', MOCK_EVENT_PAYLOAD),
+      ).rejects.toThrow('Network error');
+    });
+  });
 });

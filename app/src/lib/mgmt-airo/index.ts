@@ -32,6 +32,8 @@ export type {
   AiroDomainError,
   AiroDomainErrorResponse,
   AiroDomainJobResponse,
+  AiroEventPayload,
+  AiroEventResponse,
   AiroGetCreditGrantsResponse,
   AiroImageStatus,
   AiroImageStatusEntry,

@@ -39,6 +39,7 @@ import {
   invalidateMediaManifestIfNeeded,
   maybeFireEvalSnapshot,
   maybeShowFeedbackBanner,
+  postInitialBuildEvent,
   scheduleUsageRefresh,
   trackCompletion,
   trackError,
@@ -400,6 +401,7 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
                         error: err instanceof Error ? err.message : String(err),
                       })
                     })
+                    postInitialBuildEvent(activeAppId)
                   } else {
                     checkNewPageCreation().catch(err => {
                       logger.warn('sse.complete.check_new_page_failed', {

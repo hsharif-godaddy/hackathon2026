@@ -26,6 +26,8 @@ import {
   type AiroDomainDnsOwnershipResponse,
   type AiroDomainErrorResponse,
   type AiroDomainJobResponse,
+  type AiroEventPayload,
+  type AiroEventResponse,
   type AiroGetCreditGrantsResponse,
   AiroHttpError,
   type AiroImageStatusResponse,
@@ -1247,6 +1249,20 @@ export class AiroMgmtClient {
       });
       return null;
     }
+  }
+
+  async recordEvent(
+    subscriptionId: string,
+    systemId: string,
+    appId: string,
+    payload: AiroEventPayload,
+  ): Promise<AiroEventResponse> {
+    return this.request<AiroEventResponse>(
+      'POST',
+      `/api/airo/v1/subscriptions/${subscriptionId}/systems/${systemId}/apps/${appId}/events`,
+      payload,
+      { logEvent: 'mgmt-airo.record-event' },
+    );
   }
 
   /**

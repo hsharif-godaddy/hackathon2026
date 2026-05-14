@@ -273,6 +273,20 @@ vi.mock('@/services/websocket/toolDeltaBuffer', () => ({
 }))
 
 // ---------------------------------------------------------------------------
+// completionSideEffects mock
+// ---------------------------------------------------------------------------
+
+const mockPostInitialBuildEvent = vi.fn()
+
+vi.mock('@/hooks/shared/completionSideEffects', async (importOriginal) => {
+  const actual = await importOriginal() as Record<string, unknown>
+  return {
+    ...actual,
+    postInitialBuildEvent: (...args: unknown[]) => mockPostInitialBuildEvent(...args),
+  }
+})
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
@@ -344,6 +358,7 @@ describe('useSSEChat', () => {
     vi.mocked(logger.info).mockClear()
     vi.mocked(logger.warn).mockClear()
     vi.mocked(logger.error).mockClear()
+    mockPostInitialBuildEvent.mockClear()
   })
 
   afterEach(() => {
@@ -508,6 +523,45 @@ describe('useSSEChat', () => {
 
     expect(mockFlushStoreUpdateBufferImmediate).toHaveBeenCalled()
     expect(mockFinalizeStream).toHaveBeenCalled()
+  })
+
+  describe('postInitialBuildEvent', () => {
+    it('should call postInitialBuildEvent with appId when complete event has a commitHash', async () => {
+      await setupHook('test-app-123')
+
+      act(() => {
+        lastTransport.callbacks?.onEvent({
+          type: 'complete',
+          data: { commitHash: 'abc123' },
+        })
+      })
+
+      expect(mockPostInitialBuildEvent).toHaveBeenCalledWith('test-app-123')
+    })
+
+    it('should not call postInitialBuildEvent when complete event has no commitHash', async () => {
+      await setupHook('test-app-123')
+
+      act(() => {
+        lastTransport.callbacks?.onEvent({ type: 'complete', data: {} })
+      })
+
+      expect(mockPostInitialBuildEvent).not.toHaveBeenCalled()
+    })
+
+    it('should not call postInitialBuildEvent when appId is null', async () => {
+      await setupHook()
+      currentAppId = null
+
+      act(() => {
+        lastTransport.callbacks?.onEvent({
+          type: 'complete',
+          data: { commitHash: 'abc123' },
+        })
+      })
+
+      expect(mockPostInitialBuildEvent).not.toHaveBeenCalled()
+    })
   })
 
   it('error event calls store.markUpstreamError', async () => {

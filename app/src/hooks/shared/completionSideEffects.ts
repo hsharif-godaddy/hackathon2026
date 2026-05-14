@@ -18,6 +18,7 @@ import { useSitesStore } from '@/stores/useSitesStore'
 import { useSiteStore } from '@/stores/useSiteStore'
 import { useStreamingConversationStore } from '@/stores/useStreamingConversationStore'
 import { logImpressionEvent } from '@/utils/instrumentation'
+import { safeGetItem, safeSetItem } from '@/utils/localStorage'
 
 /**
  * Handle commit completion: invalidate git history, update selected commit,
@@ -147,6 +148,46 @@ export function scheduleUsageRefresh(): void {
       )
     }, delay)
   }
+}
+
+// --- Initial build event ---
+
+const INITIAL_BUILD_EVENT_SENT_KEY = 'airo_initial_build_event_sent_';
+
+export function postInitialBuildEvent(appId: string): void {
+  const storageKey = `${INITIAL_BUILD_EVENT_SENT_KEY}${appId}`;
+
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  if (safeGetItem(storageKey) === 'true') {
+    return;
+  }
+
+  appFetch(`/api/apps/${appId}/events`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      eventType: 'build.initial_build_completed',
+      occurredAt: new Date().toISOString(),
+      idempotencyKey: crypto.randomUUID(),
+    }),
+  }).then((response: Response) => {
+    if (response.ok) {
+      safeSetItem(storageKey, 'true');
+    } else {
+      logger.warn('completionSideEffects.initial-build-event.http-error', {
+        appId,
+        status: response.status,
+      });
+    }
+  }).catch((error: unknown) => {
+    logger.warn('completionSideEffects.initial-build-event.failed', {
+      appId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  });
 }
 
 // --- Analytics & tracking side effects ---

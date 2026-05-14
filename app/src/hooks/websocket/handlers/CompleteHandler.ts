@@ -4,6 +4,7 @@ import {
   invalidateMediaManifestIfNeeded,
   maybeFireEvalSnapshot,
   maybeShowFeedbackBanner,
+  postInitialBuildEvent,
   scheduleUsageRefresh,
   trackCompletion,
   trackInitialBuildComplete,
@@ -72,6 +73,7 @@ export class CompleteHandler implements MessageHandler {
 
       if (commitHash) {
         await context.helpers.handleCommitComplete(commitHash)
+        postInitialBuildEvent(appId)
       } else {
         await checkNewPageCreation()
       }

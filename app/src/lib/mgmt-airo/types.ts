@@ -98,6 +98,26 @@ export interface AiroApp {
 }
 
 /**
+ * Payload for recording a lifecycle event against an app in mgmt-airo
+ */
+export interface AiroEventPayload {
+  eventType: string;
+  occurredAt: string;
+  idempotencyKey: string;
+  metadata?: Record<string, unknown>;
+}
+
+/**
+ * Response from mgmt-airo when an event is recorded
+ */
+export interface AiroEventResponse {
+  id: string;
+  appId: string;
+  eventType: string;
+  occurredAt: string;
+}
+
+/**
  * Domain status values
  */
 export enum DomainStatus {
