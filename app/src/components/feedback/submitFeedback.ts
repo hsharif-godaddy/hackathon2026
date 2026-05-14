@@ -157,6 +157,27 @@ export function storeToS3(payload: FeedbackStorePayload): void {
     });
 }
 
+export interface CrmCaseClientInput {
+  description: string;
+  followUp: boolean;
+  appId: string | null;
+}
+
+export async function openCrmCaseForIssue(
+  input: CrmCaseClientInput,
+): Promise<{ caseId?: string; caseNumber?: string }> {
+  if (isLocalDev()) return {};
+  const res = await fetch('/api/crm/case', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) {
+    throw new Error(`CRM case creation failed: ${res.status}`);
+  }
+  return res.json();
+}
+
 export async function saveToCompanionHub(
   feedbackId: string,
   data: Record<string, any>,

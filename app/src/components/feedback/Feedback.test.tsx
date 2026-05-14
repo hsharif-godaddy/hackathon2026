@@ -212,6 +212,7 @@ vi.mock('./submitFeedback', () => ({
   sendFeedbackToSlack: vi.fn(() => Promise.resolve()),
   saveToCompanionHub: vi.fn(() => Promise.resolve()),
   storeToS3: vi.fn(),
+  openCrmCaseForIssue: vi.fn(() => Promise.resolve({})),
 }));
 
 vi.mock('./slackBuilders', () => ({
@@ -229,7 +230,7 @@ import { renderWithProviders } from '@/tests/test-utils';
 import { isLocalDev } from '@/utils/is-local-dev';
 import { Feedback } from './Feedback';
 import { buildBugReportBlocks, buildFeedbackBlocks, buildSupportRequestBlocks } from './slackBuilders';
-import { fetchDiagnosticContext, saveToCompanionHub, sendFeedbackToSlack, storeToS3 } from './submitFeedback';
+import { fetchDiagnosticContext, openCrmCaseForIssue, saveToCompanionHub, sendFeedbackToSlack, storeToS3 } from './submitFeedback';
 import { getAppIdFromUrl } from './utils';
 
 const defaultProps = {
@@ -557,10 +558,38 @@ describe('Feedback', function feedbackTests() {
           expect.objectContaining({ isInternalUser: false }),
         );
         expect(saveToCompanionHub).toHaveBeenCalled();
+        expect(openCrmCaseForIssue).toHaveBeenCalled();
         expect(sendFeedbackToSlack).toHaveBeenCalled();
         expect(storeToS3).not.toHaveBeenCalled();
         expect(mockLogImpressionEvent).toHaveBeenCalledWith('feedback.support.submitSuccess');
       });
+    });
+
+    // Same isolation contract as the issue flow — a CRM failure must not
+    // block Slack delivery or downgrade the support submit outcome.
+    it('should still submit to Slack and report success when CRM case creation fails for support', async function supportCrmFailureIsolated() {
+      vi.mocked(openCrmCaseForIssue).mockRejectedValueOnce(new Error('CRM case creation failed: 502'));
+      mockAuth('basic');
+      renderWithProviders(<Feedback {...defaultProps} />);
+      await navigateToSupport();
+
+      fireEvent.click(screen.getByText('builder_feedback_support_topic_domain'));
+      fireEvent.change(
+        screen.getByPlaceholderText('builder_feedback_support_description_placeholder'),
+        { target: { value: 'My domain is not resolving' } },
+      );
+
+      fireEvent.click(screen.getByText('builder_feedback_support_submit'));
+
+      await waitFor(() => {
+        expect(openCrmCaseForIssue).toHaveBeenCalled();
+        expect(sendFeedbackToSlack).toHaveBeenCalled();
+        expect(mockLogImpressionEvent).toHaveBeenCalledWith('feedback.support.submitSuccess');
+      });
+      expect(mockShipAnalyticsLog).toHaveBeenCalledWith(
+        'feedback.support.submit',
+        expect.objectContaining({ outcome: 'success' }),
+      );
     });
   });
 
@@ -620,6 +649,35 @@ describe('Feedback', function feedbackTests() {
         expect(storeToS3).not.toHaveBeenCalled();
         expect(mockLogImpressionEvent).toHaveBeenCalledWith('feedback.issue.submitSuccess');
       });
+    });
+
+    // CRM case creation is best-effort — profile fetch, SSO mint, and CRM POST
+    // all run server-side, and any of them can fail without affecting the user.
+    // This test pins the contract: a 5xx (or any throw) from /api/crm/case must
+    // not block Slack delivery or downgrade the success outcome.
+    it('should still submit to Slack and report success when CRM case creation fails', async function issueCrmFailureIsolated() {
+      vi.mocked(openCrmCaseForIssue).mockRejectedValueOnce(new Error('CRM case creation failed: 502'));
+      mockAuth('basic');
+      renderWithProviders(<Feedback {...defaultProps} />);
+      await navigateToIssue();
+
+      fireEvent.click(screen.getByText('builder_feedback_issue_topic_ai'));
+      fireEvent.change(
+        screen.getByPlaceholderText('builder_feedback_issue_description_placeholder'),
+        { target: { value: 'The assistant stopped responding' } },
+      );
+
+      fireEvent.click(screen.getByText('builder_feedback_issue_submit'));
+
+      await waitFor(() => {
+        expect(openCrmCaseForIssue).toHaveBeenCalled();
+        expect(sendFeedbackToSlack).toHaveBeenCalled();
+        expect(mockLogImpressionEvent).toHaveBeenCalledWith('feedback.issue.submitSuccess');
+      });
+      expect(mockShipAnalyticsLog).toHaveBeenCalledWith(
+        'feedback.issue.submit',
+        expect.objectContaining({ outcome: 'success' }),
+      );
     });
   });
 

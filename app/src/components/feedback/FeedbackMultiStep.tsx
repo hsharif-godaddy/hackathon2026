@@ -5,6 +5,7 @@ import text from '@ux/text';
 
 import { useExperimentsLine } from '@/components/feedback/experimentsLine';
 import { useAuthContext } from '@/components/providers/AuthProvider';
+import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from '@/hooks/useTranslations';
 import { shipAnalyticsLog } from '@/lib/logging';
 import { logger } from '@/lib/request-context';
@@ -18,7 +19,7 @@ import { CategorySelectStep } from './steps/CategorySelectStep';
 import { GetSupportStep } from './steps/GetSupportStep';
 import { ReportIssueStep } from './steps/ReportIssueStep';
 import { ShareFeedbackStep } from './steps/ShareFeedbackStep';
-import { fetchDiagnosticContext, saveToCompanionHub, sendFeedbackToSlack, storeToS3 } from './submitFeedback';
+import { fetchDiagnosticContext, openCrmCaseForIssue, saveToCompanionHub, sendFeedbackToSlack, storeToS3 } from './submitFeedback';
 import type {
   FeedbackCategory,
   FeedbackProps,
@@ -71,6 +72,7 @@ export function FeedbackMultiStep(props: FeedbackProps) {
   const isInternalUser = shopperId?.length === 3;
 
   const experimentsLine = useExperimentsLine();
+  const isCrmCaseEnabled = useSwitchboard('appbuilder-crm-case-create') === true;
 
   // initialStep lets callers (e.g. FeedbackBanner) skip the category screen
   const [step, setStep] = useState<FeedbackStep>(initialStep ?? 'category');
@@ -124,6 +126,28 @@ export function FeedbackMultiStep(props: FeedbackProps) {
         });
       }
 
+      // Best-effort CRM case creation; failure must not block Slack delivery.
+      // Same shape as handleIssueSubmit — Get Support is the customer's
+      // explicit ask for help, so we mirror it through CRM as well.
+      if (!isInternalUser && isCrmCaseEnabled) {
+        try {
+          const result = await openCrmCaseForIssue({
+            description: data.description,
+            followUp: data.followUp,
+            appId: currentAppId,
+          });
+          logger.info('feedback.crm.case.created', {
+            appId: currentAppId,
+            caseId: result.caseId,
+          });
+        } catch (err) {
+          logger.warn('feedback.crm.case.save_failed', {
+            appId: currentAppId,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      }
+
       await sendFeedbackToSlack(blockMessage, currentAppId);
       outcome = 'success';
       // Durable Loki record for Grafana runbooks — shipAnalyticsLog is a best-effort
@@ -146,7 +170,7 @@ export function FeedbackMultiStep(props: FeedbackProps) {
         outcome,
       });
     }
-  }, [currentAppId, experimentsLine, getSite, isInternalUser, isImpersonating, origin, userInfo]);
+  }, [currentAppId, experimentsLine, getSite, isInternalUser, isImpersonating, isCrmCaseEnabled, origin, userInfo]);
 
   const handleIssueSubmit = useCallback(async (data: IssueFormData) => {
     let outcome: 'success' | 'failed' = 'failed';
@@ -171,6 +195,28 @@ export function FeedbackMultiStep(props: FeedbackProps) {
         });
       }
 
+      // Best-effort CRM case creation; failure must not block Slack delivery.
+      // Gated by appbuilder-crm-case-create during rollout. Internal TLA accounts
+      // are excluded client-side (the route also 403s them defensively).
+      if (!isInternalUser && isCrmCaseEnabled) {
+        try {
+          const result = await openCrmCaseForIssue({
+            description: data.description,
+            followUp: data.followUp,
+            appId: currentAppId,
+          });
+          logger.info('feedback.crm.case.created', {
+            appId: currentAppId,
+            caseId: result.caseId,
+          });
+        } catch (err) {
+          logger.warn('feedback.crm.case.save_failed', {
+            appId: currentAppId,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      }
+
       await sendFeedbackToSlack(blockMessage, currentAppId);
       outcome = 'success';
       logger.info('feedback.issue.submit.success', { appId: currentAppId });
@@ -188,7 +234,7 @@ export function FeedbackMultiStep(props: FeedbackProps) {
         outcome,
       });
     }
-  }, [currentAppId, experimentsLine, getSite, isInternalUser, isImpersonating, origin, userInfo]);
+  }, [currentAppId, experimentsLine, getSite, isInternalUser, isImpersonating, isCrmCaseEnabled, origin, userInfo]);
 
   const handleFeedbackSubmit = useCallback(async (data: ShareFeedbackFormData) => {
     let outcome: 'success' | 'failed' = 'failed';
