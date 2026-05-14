@@ -5,6 +5,7 @@ import {
   createFileInputFromBuffer,
   processFile,
   type ProcessedFile,
+  type SupportedFileType,
   type SessionStateManager,
   createSessionStateManager
 } from '@airo/ai-lib'
@@ -12,6 +13,7 @@ import {
 import { createAgentTelemetryLogger } from '../utils/agent-logger.js'
 import { Logger } from '../logging/index.js'
 import { getAgentModelWithName } from '../utils/model-selection.js'
+import { resizeForVision } from '../utils/image-resize.js'
 import type { SiteMetadata } from '../types/rebuild.js'
 import { normalizeSiteType } from './site-type-helpers.js'
 import { parseScreenshotDataUrl, screenshotFilenameForMime } from './screenshot-data-url.js'
@@ -199,10 +201,15 @@ export class SiteAnalyzerAgent {
       const parsed = parseScreenshotDataUrl(screenshotBase64)
       if (parsed) {
         try {
-          const fileInput = createFileInputFromBuffer(
+          const { buffer: resizedBuffer, mimeType: resizedMimeType } = await resizeForVision(
             parsed.buffer,
-            parsed.mimeType,
-            screenshotFilenameForMime(parsed.mimeType)
+            parsed.mimeType
+          )
+          const mimeType = resizedMimeType as SupportedFileType
+          const fileInput = createFileInputFromBuffer(
+            resizedBuffer,
+            mimeType,
+            screenshotFilenameForMime(mimeType)
           )
           const processed = await processFile(fileInput)
           generateArgs.files = [processed]
