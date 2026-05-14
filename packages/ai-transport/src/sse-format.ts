@@ -45,3 +45,33 @@ export function safeFormatSSEEvent(
     return null
   }
 }
+
+/**
+ * Build a stream_error fallback frame for a single event whose payload could
+ * not be serialized. Used by SSESubscriber when safeFormatSSEEvent returns
+ * null on a normal event: without this, the client never sees the failure
+ * and hangs waiting for stream_complete. The payload shape is fixed and
+ * primitive-only so it cannot itself fail JSON.stringify.
+ *
+ * The fallback frame carries the original event's sequence so the client's
+ * Last-Event-Id advances past the unformattable frame on reconnect.
+ *
+ * INVARIANT: every field below must be a primitive (string | number | boolean).
+ * No object/array/BigInt fields, ever. This helper calls the unsafe
+ * formatSSEEvent directly (not safeFormatSSEEvent) precisely because we rely
+ * on the shape being total — wrapping it in safeFormatSSEEvent would convert a
+ * future serialization throw into another null-on-the-wire and re-introduce
+ * the bug this helper exists to fix.
+ */
+export function formatStreamErrorFallback(originalKind: string, sequence: number): string {
+  return formatSSEEvent(
+    'stream_error',
+    {
+      error: 'event_format_failed',
+      kind: originalKind,
+      sequence,
+      timestamp: new Date().toISOString(),
+    },
+    sequence,
+  )
+}

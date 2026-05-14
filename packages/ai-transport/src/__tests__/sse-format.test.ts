@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { formatSSEEvent, safeFormatSSEEvent } from '../sse-format.js'
+import { formatSSEEvent, formatStreamErrorFallback, safeFormatSSEEvent } from '../sse-format.js'
 
 describe('formatSSEEvent', () => {
   it('emits event + data without id when id is omitted', () => {
@@ -53,5 +53,23 @@ describe('safeFormatSSEEvent', () => {
 
   it('does not throw when logger is absent', () => {
     expect(() => safeFormatSSEEvent('chunk', { big: BigInt(1) })).not.toThrow()
+  })
+})
+
+describe('formatStreamErrorFallback', () => {
+  it('formats a stream_error frame carrying the original kind and sequence', () => {
+    const text = formatStreamErrorFallback('chunk', 42)
+    expect(text).toContain('id: 42\n')
+    expect(text).toContain('event: stream_error\n')
+    expect(text).toContain('"error":"event_format_failed"')
+    expect(text).toContain('"kind":"chunk"')
+    expect(text).toContain('"sequence":42')
+  })
+
+  it('produces a primitive-only payload that cannot itself fail JSON.stringify', () => {
+    // Sanity: the fallback formatter is the last line of defence — exercising
+    // it on every event type must not throw.
+    expect(() => formatStreamErrorFallback('chunk', 0)).not.toThrow()
+    expect(() => formatStreamErrorFallback('tool_input_delta', 999_999)).not.toThrow()
   })
 })

@@ -160,21 +160,31 @@ describe('SSESubscriber', () => {
     expect(a.id).not.toBe(b.id)
   })
 
-  it('swallows formatSSEEvent serialization errors and logs via safeFormatSSEEvent', async () => {
+  it('emits a synthetic stream_error and advances lastSequence when format fails', async () => {
     const writer = makeWriter()
     const warn = vi.fn()
     const sub = new SSESubscriber(writer, 'app1', { warn })
 
-    await expect(sub.onEvent(makeEvent({ data: { huge: BigInt(1) } }))).resolves.toBeUndefined()
-    vi.runAllTimers()
+    await expect(
+      sub.onEvent(makeEvent({ sequence: 5, type: NON_COALESCEABLE, data: { huge: BigInt(1) } })),
+    ).resolves.toBeUndefined()
 
-    expect(writer.write).not.toHaveBeenCalled()
     expect(warn).toHaveBeenCalledWith('sse.format_failed', expect.objectContaining({
-      kind: 'chunk',
+      kind: NON_COALESCEABLE,
       sequence: 5,
       subscriberId: sub.id,
     }))
-    expect(sub.lastSequence).toBe(-1)
+
+    // Synthetic stream_error frame written in place of the unformattable event.
+    expect(writer.write).toHaveBeenCalledOnce()
+    const written = (writer.write as any).mock.calls[0][0] as string
+    expect(written).toContain('event: stream_error')
+    expect(written).toContain('id: 5')
+    expect(written).toContain('"error":"event_format_failed"')
+    expect(written).toContain(`"kind":"${NON_COALESCEABLE}"`)
+
+    // Sequence advances so a Last-Event-Id reconnect skips past the bad frame.
+    expect(sub.lastSequence).toBe(5)
   })
 
   it('merges consecutive chunk events into a single write on timer flush', async () => {
@@ -323,6 +333,72 @@ describe('SSESubscriber', () => {
 
     vi.advanceTimersByTime(80) // total 110ms > 100ms widened window
     expect(writer.write).toHaveBeenCalledOnce()
+  })
+
+  // Sustained-failure case for safeWrite: every write throws but the
+  // producer must keep moving. This exercises the same "producer never
+  // blocks" invariant as the format-fallback path below, just from the
+  // healthy-format / failing-socket angle rather than the failing-format
+  // angle.
+  it('does not block the producer when writer.write throws on every event', async () => {
+    const writer = makeWriter()
+    ;(writer.write as any).mockImplementation(() => { throw new Error('socket gone') })
+    const logger = { warn: vi.fn() }
+    const sub = new SSESubscriber(writer, 'app1', logger)
+
+    // 100 non-coalesceable events so each goes straight to writer.write.
+    // All onEvent calls must resolve (no rejection, no hang).
+    for (let i = 0; i < 100; i++) {
+      await expect(
+        sub.onEvent(makeEvent({ sequence: i, type: NON_COALESCEABLE })),
+      ).resolves.toBeUndefined()
+    }
+
+    expect(writer.write).toHaveBeenCalledTimes(100)
+    expect(sub.lastSequence).toBe(-1) // no successful write advanced it
+    expect(logger.warn).toHaveBeenCalled()
+  })
+
+  it('logs sse.subscriber.fallback_write_failed when both the original and the fallback fail to write', async () => {
+    const writer = makeWriter()
+    // First call (original event) would format fine but never reaches write
+    // because the BigInt below makes safeFormatSSEEvent return null.
+    // Second call (the fallback frame) throws, so the client is stranded.
+    ;(writer.write as any).mockImplementation(() => { throw new Error('socket gone') })
+    const warn = vi.fn()
+    const sub = new SSESubscriber(writer, 'app1', { warn })
+
+    await expect(
+      sub.onEvent(makeEvent({ sequence: 9, type: NON_COALESCEABLE, data: { huge: BigInt(1) } })),
+    ).resolves.toBeUndefined()
+
+    expect(warn).toHaveBeenCalledWith('sse.format_failed', expect.objectContaining({
+      kind: NON_COALESCEABLE, sequence: 9,
+    }))
+    expect(warn).toHaveBeenCalledWith('sse.subscriber.fallback_write_failed', expect.objectContaining({
+      subscriberId: sub.id, kind: NON_COALESCEABLE, sequence: 9,
+    }))
+    expect(sub.lastSequence).toBe(-1)
+  })
+
+  it('continues delivering after a fallback frame — clean event at seq+1 advances lastSequence', async () => {
+    const writer = makeWriter()
+    const sub = new SSESubscriber(writer, 'app1')
+
+    // seq=20: format fails → synthetic stream_error frame written.
+    await sub.onEvent(makeEvent({ sequence: 20, type: NON_COALESCEABLE, data: { huge: BigInt(1) } }))
+    expect(sub.lastSequence).toBe(20)
+    expect(writer.write).toHaveBeenCalledOnce()
+    expect((writer.write as any).mock.calls[0][0]).toContain('event: stream_error')
+
+    // seq=21: clean event must still be delivered — subscriber must not
+    // enter a sticky error state after a fallback.
+    await sub.onEvent(makeEvent({ sequence: 21, type: NON_COALESCEABLE, content: 'after-fallback' }))
+    expect(writer.write).toHaveBeenCalledTimes(2)
+    const second = (writer.write as any).mock.calls[1][0] as string
+    expect(second).toContain(`event: ${NON_COALESCEABLE}`)
+    expect(second).toContain('"content":"after-fallback"')
+    expect(sub.lastSequence).toBe(21)
   })
 
   it('uses mid-tier flush window for moderate backlog (>20, ≤50 units)', async () => {

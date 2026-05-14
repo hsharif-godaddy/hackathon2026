@@ -1,6 +1,6 @@
 import type { StreamingEvent } from '../interfaces.js'
 import { randomUUID } from 'node:crypto'
-import { safeFormatSSEEvent } from '../sse-format.js'
+import { formatStreamErrorFallback, safeFormatSSEEvent } from '../sse-format.js'
 import type { SSEWriter } from '../sse-writer.js'
 import { EventCoalescer, type CoalescerConfig } from './event-coalescer.js'
 import { BaseEventSubscriber } from './base-subscriber.js'
@@ -87,9 +87,30 @@ export class SSESubscriber extends BaseEventSubscriber {
       agentName: event.agentName,
     }
     const sseText = safeFormatSSEEvent(event.type, payload, event.sequence, this.logger, { subscriberId: this.id })
-    if (sseText && this.safeWrite(sseText, { kind: event.type, sequence: event.sequence })) {
-      this._lastSequence = event.sequence
+    if (sseText) {
+      if (this.safeWrite(sseText, { kind: event.type, sequence: event.sequence })) {
+        this._lastSequence = event.sequence
+      }
+      return
     }
+    // Format failed (BigInt, circular ref, etc). Emit a synthetic stream_error
+    // so the client doesn't hang waiting for stream_complete, and advance
+    // _lastSequence so a Last-Event-Id reconnect doesn't replay the
+    // unformattable frame.
+    const fallback = formatStreamErrorFallback(event.type, event.sequence)
+    if (this.safeWrite(fallback, { kind: 'stream_error', sequence: event.sequence })) {
+      this._lastSequence = event.sequence
+      return
+    }
+    // Doubly-failed: the client is now definitively stranded — the original
+    // event was unformattable AND we couldn't deliver the fallback frame.
+    // Emit a dedicated log so this is greppable independently of the
+    // generic write_failed events from healthy stream_error frames.
+    this.logger?.warn('sse.subscriber.fallback_write_failed', {
+      subscriberId: this.id,
+      kind: event.type,
+      sequence: event.sequence,
+    })
   }
 
   protected async deliver(event: StreamingEvent): Promise<void> {
