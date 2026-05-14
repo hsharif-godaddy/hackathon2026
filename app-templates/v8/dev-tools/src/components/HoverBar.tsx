@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useCallback, useRef, useState } from "react";
 
 /** Shared glass-morphism pill container used by all hover bars. */
 export const HOVER_BAR_CONTAINER_STYLES: React.CSSProperties = {
@@ -46,16 +46,50 @@ interface HoverBarButtonProps {
   label?: string;
 }
 
+const TOOLTIP_STYLES: React.CSSProperties = {
+  position: "absolute",
+  bottom: "calc(100% + 6px)",
+  left: "50%",
+  transform: "translateX(-50%)",
+  padding: "4px 8px",
+  background: "rgba(30, 30, 30, 0.9)",
+  backdropFilter: "blur(8px)",
+  WebkitBackdropFilter: "blur(8px)",
+  color: "#fff",
+  fontSize: "11px",
+  fontWeight: 500,
+  borderRadius: "5px",
+  whiteSpace: "nowrap",
+  pointerEvents: "none",
+  opacity: 0,
+  transition: "opacity 0.15s ease",
+};
+
 /**
  * Toolbar button for use inside a HoverBar.
  * Labeled (with text + icon) or icon-only depending on whether `label` is provided.
  */
 export function HoverBarButton({ onClick, title, icon, label }: HoverBarButtonProps) {
+  const [showTooltip, setShowTooltip] = useState(false);
+  const delayRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleMouseEnter = useCallback((e: React.MouseEvent<HTMLButtonElement>) => {
+    e.currentTarget.style.background = "rgba(245, 245, 245, 0.95)";
+    delayRef.current = setTimeout(() => setShowTooltip(true), 400);
+  }, []);
+
+  const handleMouseLeave = useCallback((e: React.MouseEvent<HTMLButtonElement>) => {
+    e.currentTarget.style.background = "rgba(255, 255, 255, 0.9)";
+    if (delayRef.current) clearTimeout(delayRef.current);
+    setShowTooltip(false);
+  }, []);
+
   return (
     <button
       type="button"
-      title={title}
+      {...(label ? {} : { 'aria-label': title })}
       style={{
+        position: "relative",
         display: "flex",
         alignItems: "center",
         gap: label ? "5px" : undefined,
@@ -68,12 +102,13 @@ export function HoverBarButton({ onClick, title, icon, label }: HoverBarButtonPr
         color: "var(--color-text-secondary)",
         ...(label ? { fontSize: "12px", fontWeight: 600, letterSpacing: "-0.01em" } : {}),
       }}
-      onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(245, 245, 245, 0.95)"; }}
-      onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(255, 255, 255, 0.9)"; }}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
       onClick={(e) => { e.stopPropagation(); onClick(); }}
     >
       {icon}
       {label}
+      <span aria-hidden="true" style={{ ...TOOLTIP_STYLES, opacity: showTooltip ? 1 : 0 }}>{title}</span>
     </button>
   );
 }
