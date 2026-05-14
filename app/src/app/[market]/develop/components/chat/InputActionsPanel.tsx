@@ -1005,6 +1005,7 @@ function InputActionsPanelThemeSelection({
   const [currentAskQuestionText, setCurrentAskQuestionText] = useState<string | null>(null)
   const nbaChoiceShortcutsRef = useRef<HTMLDivElement>(null)
   const planPreviewShortcutsRef = useRef<HTMLDivElement>(null)
+  const nextActionShortcutsRef = useRef<HTMLDivElement>(null)
   useEffect(() => { setAskQuestionCompleted(false); setCurrentAskQuestionText(null) }, [nbaData?.toolResult])
   const hasPlan = !!currentList && items.length > 0
   const totalItems = items.length
@@ -1311,8 +1312,22 @@ function InputActionsPanelThemeSelection({
   useEffect(() => {
     if (isProcessing || isModalOpen || showColor || isAskQuestionActive) return
 
+    // Priority order matches the JSX render branches in the composer body:
+    // NBAs win over plan-preview items, which win over next-action
+    // suggestions ("continue building" mode when no NBAs and no pending plan
+    // items exist). Without the third branch, pressing a digit while only
+    // next-action suggestions are visible silently no-ops.
     const hasNBAShortcuts = nbaSuggestions.length > 0
-    const itemCount = hasNBAShortcuts ? Math.min(nbaSuggestions.length, MAX_KEYBOARD_SHORTCUTS) : keyboardEnabledItems.length
+    const hasPlanShortcuts = !hasNBAShortcuts && keyboardEnabledItems.length > 0
+    const hasNextActionShortcuts =
+      !hasNBAShortcuts && !hasPlanShortcuts && !hasPendingPlanItems && nextActionSuggestions.length > 0
+    const itemCount = hasNBAShortcuts
+      ? Math.min(nbaSuggestions.length, MAX_KEYBOARD_SHORTCUTS)
+      : hasPlanShortcuts
+        ? keyboardEnabledItems.length
+        : hasNextActionShortcuts
+          ? Math.min(nextActionSuggestions.length, MAX_KEYBOARD_SHORTCUTS)
+          : 0
     if (itemCount === 0) return
 
     function handleKeyDown(e: KeyboardEvent) {
@@ -1322,7 +1337,11 @@ function InputActionsPanelThemeSelection({
       const activeEl = document.activeElement as HTMLElement | null
       if (isNonChatTextEntryActive(activeEl)) return
 
-      const listRoot = hasNBAShortcuts ? nbaChoiceShortcutsRef.current : planPreviewShortcutsRef.current
+      const listRoot = hasNBAShortcuts
+        ? nbaChoiceShortcutsRef.current
+        : hasPlanShortcuts
+          ? planPreviewShortcutsRef.current
+          : nextActionShortcutsRef.current
       if (!shouldAllowChoiceListDigitShortcut(activeEl, { current: listRoot })) return
 
       const keyNum = parseInt(e.key, 10)
@@ -1334,7 +1353,7 @@ function InputActionsPanelThemeSelection({
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [isProcessing, isModalOpen, showColor, isAskQuestionActive, keyboardEnabledItems, nbaSuggestions.length])
+  }, [isProcessing, isModalOpen, showColor, isAskQuestionActive, keyboardEnabledItems, nbaSuggestions.length, nextActionSuggestions.length, hasPendingPlanItems])
 
   function handleColorCancel() {
     if (activeColorSchemeSuggest) {
@@ -1491,23 +1510,25 @@ function InputActionsPanelThemeSelection({
           </ChoiceList>
         </div>
       ) : !hasPendingPlanItems && nextActionSuggestions.length > 0 ? (
-        <ChoiceList
-          onDecision={(value) => {
-            const index = parseChoiceListIndex(value, 'input-actions-panel.next-actions-theme')
-            if (index === null) return
-            const s = nextActionSuggestions[index]
-            if (s) handleSuggestionClick(s.text)
-          }}
-          ariaLabel={t('builder_todo_continue_building')}
-          disabled={isProcessing}
-          optionDividers
-        >
-          {nextActionSuggestions.map((suggestion, index) => (
-            <ChoiceList.Item key={index} value={String(index)}>
-              {suggestion.text}
-            </ChoiceList.Item>
-          ))}
-        </ChoiceList>
+        <div ref={nextActionShortcutsRef}>
+          <ChoiceList
+            onDecision={(value) => {
+              const index = parseChoiceListIndex(value, 'input-actions-panel.next-actions-theme')
+              if (index === null) return
+              const s = nextActionSuggestions[index]
+              if (s) handleSuggestionClick(s.text)
+            }}
+            ariaLabel={t('builder_todo_continue_building')}
+            disabled={isProcessing}
+            optionDividers
+          >
+            {nextActionSuggestions.map((suggestion, index) => (
+              <ChoiceList.Item key={index} value={String(index)}>
+                {suggestion.text}
+              </ChoiceList.Item>
+            ))}
+          </ChoiceList>
+        </div>
       ) : null}
 
       {hasRebuildPages && rebuildPagesData && nbaData?.source !== 'askQuestion' && (

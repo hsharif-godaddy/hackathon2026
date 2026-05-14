@@ -1,4 +1,5 @@
 import ArrowRight from '@ux/icon/arrow-right'
+import Tag from '@ux/tag'
 
 interface OptionInputProps {
   value: string
@@ -27,19 +28,15 @@ export default function OptionInput({
 }: OptionInputProps) {
   const canSubmit = value.trim().length > 0
 
+  // Match @airo/components ChoiceList row: p-1 (0.25rem) row, 0.5rem column gap,
+  // @ux/tag letter badge (size="sm", emphasis="passive"). Keeps the Other row
+  // visually aligned with the ChoiceList items above it.
   return (
-    <div className="flex items-center gap-1.5 px-2 py-1 bg-intents-ux-box-backgroundColor rounded-md border border-border w-full">
-      {keyboardShortcut !== undefined ? (
-        <span
-          className="flex-shrink-0 size-2.5 rounded text-[11px] font-medium flex items-center justify-center bg-muted text-muted-foreground"
-          aria-hidden="true"
-        >
-          {keyboardShortcut}
-        </span>
-      ) : (
-        <div className="flex-shrink-0" aria-hidden="true">
-          <div className="size-2 rounded-full border-2 border-border/50 flex items-center justify-center" />
-        </div>
+    <div className="flex items-center gap-2 p-1 bg-intents-ux-box-backgroundColor rounded-md border border-border w-full">
+      {keyboardShortcut !== undefined && (
+        <Tag size="sm" emphasis="passive" aria-hidden="true">
+          {String(keyboardShortcut)}
+        </Tag>
       )}
       <div className="flex-1 flex items-center gap-1">
         <input

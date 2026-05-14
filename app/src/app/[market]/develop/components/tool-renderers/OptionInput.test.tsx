@@ -153,28 +153,18 @@ describe('OptionInput', () => {
     expect(button).toBeDisabled()
   })
 
-  it('should show dot indicator when no keyboardShortcut', () => {
-    const { container } = renderWithProviders(<OptionInput {...mockProps} />)
+  it('should not show any indicator when no keyboardShortcut', () => {
+    const { queryByText } = renderWithProviders(<OptionInput {...mockProps} />)
 
-    const dot = container.querySelector('.size-2.rounded-full')
-    expect(dot).toBeInTheDocument()
+    expect(queryByText('1')).not.toBeInTheDocument()
   })
 
   it('should show numbered badge when keyboardShortcut is provided', () => {
-    const { container } = renderWithProviders(
+    const { getByText } = renderWithProviders(
       <OptionInput {...mockProps} keyboardShortcut={2} />
     )
 
-    const badge = container.querySelector('.size-2\\.5')
-    expect(badge).toBeInTheDocument()
-    expect(badge).toHaveTextContent('2')
-  })
-
-  it('should hide indicator from screen readers', () => {
-    const { container } = renderWithProviders(<OptionInput {...mockProps} />)
-
-    const radioContainer = container.querySelector('[aria-hidden="true"]')
-    expect(radioContainer).toBeInTheDocument()
+    expect(getByText('2')).toBeInTheDocument()
   })
 
   it('should set input aria-label', () => {
@@ -198,7 +188,7 @@ describe('OptionInput', () => {
   it('should apply base container styles', () => {
     const { container } = renderWithProviders(<OptionInput {...mockProps} />)
 
-    const wrapper = container.querySelector('.flex.items-center.gap-1\\.5')
+    const wrapper = container.querySelector('.flex.items-center.gap-2')
     expect(wrapper).toHaveClass('bg-intents-ux-box-backgroundColor')
     expect(wrapper).toHaveClass('rounded-md')
   })

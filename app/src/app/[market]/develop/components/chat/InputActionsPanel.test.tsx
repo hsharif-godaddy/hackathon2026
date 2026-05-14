@@ -9,6 +9,7 @@ import { screen, waitFor } from '@testing-library/react'
 import { ViewMode } from '@/app/[market]/develop/components/types'
 import type { ColorSchemePaletteOption } from '@/app/[market]/develop/components/utils/findLatestColorSchemeSuggest'
 import { previewThemeInIframe } from '@/app/[market]/develop/components/utils/previewThemeInIframe'
+import * as useNextActionsModule from '@/app/[market]/develop/hooks/useNextActions'
 import * as Switchboard from '@/hooks/useSwitchboard'
 import * as DevelopPageStore from '@/stores/useDevelopPageStore'
 import * as StreamingStore from '@/stores/useStreamingConversationStore'
@@ -837,6 +838,90 @@ describe('InputActionsPanel', () => {
       textarea.focus()
 
       window.dispatchEvent(new KeyboardEvent('keydown', { key: '1', bubbles: true }))
+
+      expect(mockSendMessage).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('keyboard shortcuts for next-action suggestions', () => {
+    // "Continue building" mode: no askQuestion is active, no plan items are
+    // pending, but the agent has surfaced next-action suggestions. Earlier
+    // versions of the inline composer keyboard handler only branched on NBAs
+    // and plan items; nextActionSuggestions silently no-op'd, leaving this
+    // mode without keyboard nav even though the same ChoiceList row was
+    // visible.
+    beforeEach(() => {
+      vi.mocked(TodoListStore.useCurrentList).mockReturnValue(null)
+      vi.mocked(TodoListStore.useViewState).mockReturnValue(null)
+      vi.mocked(StreamingStore.useMessages).mockReturnValue([
+        { id: 'msg-1', role: 'user', content: 'test', timestamp: new Date() },
+      ])
+      vi.mocked(useLatestNBAsModule.useLatestNBAs).mockReturnValue(null)
+      vi.mocked(useNextActionsModule.useNextActions).mockReturnValue({
+        data: {
+          suggestions: [
+            { text: 'Add a hero section' },
+            { text: 'Add a footer' },
+            { text: 'Tweak the color palette' },
+          ],
+        },
+        isLoading: false,
+        isError: false,
+      } as ReturnType<typeof useNextActionsModule.useNextActions>)
+      Element.prototype.scrollIntoView = vi.fn()
+    })
+
+    function renderInputActionsPanelAsInComposer() {
+      const view = renderWithProviders(
+        <div data-chat-composer-card data-testid="chat-input-card">
+          <div contentEditable id="chat-input-textarea" suppressContentEditableWarning tabIndex={0} />
+          <InputActionsPanel />
+        </div>
+      )
+      document.getElementById('chat-input-textarea')?.focus()
+      return view
+    }
+
+    it('focuses the matching next-action option on number key 1', async () => {
+      renderInputActionsPanelAsInComposer()
+
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: '1' }))
+
+      const options = screen.getAllByRole('option')
+      await waitFor(() => {
+        expect(screen.getByRole('listbox', { name: 'builder_todo_continue_building' })).toHaveFocus()
+        expect(options[0]).toHaveAttribute('data-visually-focused')
+      })
+    })
+
+    it('focuses the matching next-action option on number key 2; Enter sends the suggestion', async () => {
+      const mockSendMessage = vi.fn()
+      vi.mocked(ChatContext.useSendUserMessage).mockReturnValue(mockSendMessage)
+
+      const { user } = renderInputActionsPanelAsInComposer()
+
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: '2' }))
+
+      const options = screen.getAllByRole('option')
+      await waitFor(() => {
+        expect(options[1]).toHaveAttribute('data-visually-focused')
+      })
+
+      await user.keyboard('{Enter}')
+
+      expect(mockSendMessage).toHaveBeenCalledWith(
+        'Add a footer',
+        expect.objectContaining({ isActionRequest: true }),
+      )
+    })
+
+    it('does not trigger when number is out of range', async () => {
+      const mockSendMessage = vi.fn()
+      vi.mocked(ChatContext.useSendUserMessage).mockReturnValue(mockSendMessage)
+
+      renderInputActionsPanelAsInComposer()
+
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: '9' }))
 
       expect(mockSendMessage).not.toHaveBeenCalled()
     })

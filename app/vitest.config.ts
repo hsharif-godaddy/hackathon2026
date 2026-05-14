@@ -1,8 +1,42 @@
+import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
 import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
+
+/**
+ * True when the root `package.json` `pnpm.overrides` points `@airo/components`
+ * (or any related `@airo/*`) at a `link:` path. In that dev setup the
+ * components' peer deps (@ux/*, react) live in the linked repo's own
+ * node_modules and get resolved through a symlink chain that vite's
+ * default `realpath` rewriting breaks — so we flip `preserveSymlinks` to
+ * keep the chain intact. For the normal catalog path this stays false
+ * because `preserveSymlinks=true` breaks pnpm's `.pnpm` hoisting of
+ * transitive peers (e.g. `use-isomorphic-layout-effect`, `@lexical/utils`).
+ *
+ * **Known trade-off on the link path:** a few unrelated suites that rely on
+ * pnpm's symlink-walk to find transitive peers (useAppArchiveRestore,
+ * LexicalChatEditor, useInitialization.test) will fail while the override
+ * is active. Run those specific suites on the catalog path (remove the
+ * override) or scope your `vitest run` to the suites you're iterating on.
+ */
+function hasLinkedAiroComponents(): boolean {
+  try {
+    const pkgPath = path.resolve(__dirname, '..', 'package.json');
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8')) as {
+      pnpm?: { overrides?: Record<string, string> };
+    };
+    const overrides = pkg.pnpm?.overrides ?? {};
+    return Object.entries(overrides).some(
+      ([name, value]) => name.startsWith('@airo/') && typeof value === 'string' && value.startsWith('link:'),
+    );
+  } catch {
+    return false;
+  }
+}
+
+const USING_LINKED_AIRO_COMPONENTS = hasLinkedAiroComponents();
 
 const SCSS_STUB_PREFIX = '\0vitest-scss-stub:';
 
@@ -59,8 +93,21 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
+      // Hard-alias react entrypoints to the consumer's copy so any linked /
+      // overridden dep (e.g. `@airo/components` via pnpm.overrides `link:` to
+      // a sibling repo with its own node_modules) resolves every `react` /
+      // `react/jsx-runtime` import to this single React instance.
+      react: path.resolve(__dirname, 'node_modules/react'),
+      'react-dom': path.resolve(__dirname, 'node_modules/react-dom'),
+      'react/jsx-runtime': path.resolve(__dirname, 'node_modules/react/jsx-runtime.js'),
+      'react/jsx-dev-runtime': path.resolve(__dirname, 'node_modules/react/jsx-dev-runtime.js'),
     },
-    conditions: ['import', 'module', 'browser', 'default']
+    conditions: ['import', 'module', 'browser', 'default'],
+    dedupe: ['react', 'react-dom'],
+    // Only enabled when a dev has overridden @airo/components to a local
+    // link (see `hasLinkedAiroComponents` above). Never set on the catalog
+    // path because it breaks pnpm's `.pnpm` hoisting of transitive peers.
+    preserveSymlinks: USING_LINKED_AIRO_COMPONENTS,
   },
   test: {
     globals: true,
@@ -87,9 +134,21 @@ export default defineConfig({
     },
     // Limit concurrent tests within each file
     maxConcurrency: 5,
-    // Inline workspace packages so Vitest resolves subpath exports correctly
-    deps: {
-      inline: ['@airo/ai-lib'],
+    // Inline workspace packages so Vitest resolves subpath exports correctly.
+    // @airo/components is included so its (linked/overridden) dist reuses the
+    // app's single React instance via vite's module graph. @ux/* is also
+    // included because when @airo/components resolves from a linked repo
+    // (pnpm.overrides `link:`), its @ux/* peer deps live under the linked
+    // repo's node_modules and must go through vite's transform to share
+    // React with the consumer — otherwise Node resolves a second copy.
+    server: {
+      deps: {
+        inline: [
+          '@airo/ai-lib',
+          '@airo/components',
+          /^@ux\//,
+        ],
+      },
     },
     coverage: {
       provider: 'v8',

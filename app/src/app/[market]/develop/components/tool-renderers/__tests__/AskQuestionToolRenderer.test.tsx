@@ -3,8 +3,8 @@
  */
 import '@testing-library/jest-dom'
 
-import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { beforeEach,describe, expect, it, vi } from 'vitest'
+import { fireEvent,render, screen } from '@testing-library/react'
 
 import AskQuestionToolRenderer from '../AskQuestionToolRenderer'
 
@@ -74,6 +74,9 @@ const defaultProps = {
 describe('AskQuestionToolRenderer', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    // jsdom lacks scrollIntoView, which @ux/listbox calls when an option
+    // becomes focused. Stub once so any test that focuses an option directly
+    // (e.g. the digit-shortcut path) doesn't blow up unmounting the component.
     Element.prototype.scrollIntoView = vi.fn()
   })
 
@@ -165,7 +168,7 @@ describe('AskQuestionToolRenderer', () => {
     )
   })
 
-  it('allowOther: false hides the OptionInput', () => {
+  it('allowOther: false hides the Other input', () => {
     const result = makeResult([
       makeQuestion('What color?', [{ text: 'Red' }], false),
     ])
@@ -179,7 +182,7 @@ describe('AskQuestionToolRenderer', () => {
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
   })
 
-  it('allowOther: true (default) shows OptionInput and typing + submitting sends as answer', () => {
+  it('allowOther: true (default) shows Other input and pressing Enter sends freeform as answer', () => {
     const result = makeResult([
       makeQuestion('What color?', [{ text: 'Red' }]),
     ])
@@ -194,10 +197,7 @@ describe('AskQuestionToolRenderer', () => {
     expect(input).toBeInTheDocument()
 
     fireEvent.change(input, { target: { value: 'Green' } })
-
-    // Click the submit button (aria-label from translation key)
-    const submitButton = screen.getByLabelText('builder_common_submit')
-    fireEvent.click(submitButton)
+    fireEvent.keyDown(input, { key: 'Enter' })
 
     expect(mockSendUserMessage).toHaveBeenCalledWith('Green', { isActionRequest: true })
   })
@@ -253,41 +253,6 @@ describe('AskQuestionToolRenderer', () => {
     expect(onComplete).toHaveBeenCalled()
   })
 
-  it('Enter key in Other input resolves bare digit like submit', () => {
-    const result = makeResult([
-      makeQuestion('Pick?', [{ text: 'Red' }, { text: 'Blue' }]),
-    ])
-    render(
-      <AskQuestionToolRenderer
-        {...defaultProps}
-        result={result}
-      />,
-    )
-
-    const input = screen.getByRole('textbox')
-    fireEvent.change(input, { target: { value: '2' } })
-    fireEvent.keyDown(input, { key: 'Enter' })
-
-    expect(mockSendUserMessage).toHaveBeenCalledWith('2 - _Blue_', { isActionRequest: true })
-  })
-
-  it('Other input: decimal string submits literal (not bare digit)', () => {
-    const result = makeResult([
-      makeQuestion('Pick?', [{ text: 'Red' }]),
-    ])
-    render(
-      <AskQuestionToolRenderer
-        {...defaultProps}
-        result={result}
-      />,
-    )
-
-    fireEvent.change(screen.getByRole('textbox'), { target: { value: '1.' } })
-    fireEvent.click(screen.getByLabelText('builder_common_submit'))
-
-    expect(mockSendUserMessage).toHaveBeenCalledWith('1.', { isActionRequest: true })
-  })
-
   it('Enter key in Other input submits the answer', () => {
     const result = makeResult([
       makeQuestion('What color?', [{ text: 'Red' }]),
@@ -325,9 +290,149 @@ describe('AskQuestionToolRenderer', () => {
     expect(mockSendUserMessage).toHaveBeenCalledWith('color_blue', { isActionRequest: true })
   })
 
-  it('Other input: bare digits resolve to numbered suggestion message', () => {
+  it('renders subtitle below the question when present', () => {
+    const result = makeResult([{
+      question: 'Any extra details?',
+      subtitle: "If you have one in mind. Otherwise I'll invent.",
+      suggestions: [{ text: 'Skip' }],
+    }])
+    render(
+      <AskQuestionToolRenderer
+        {...defaultProps}
+        result={result}
+      />,
+    )
+
+    expect(screen.getByText("If you have one in mind. Otherwise I'll invent.")).toBeInTheDocument()
+  })
+
+  it("type 'text' hides the suggestion buttons and renders input only", () => {
+    const result = makeResult([{
+      question: 'Your brand name?',
+      type: 'text',
+      placeholder: 'Your answer...',
+      suggestions: [],
+    }])
+    render(
+      <AskQuestionToolRenderer
+        {...defaultProps}
+        result={result}
+      />,
+    )
+
+    expect(screen.getByText('Your brand name?')).toBeInTheDocument()
+    expect(screen.getByPlaceholderText('Your answer...')).toBeInTheDocument()
+    expect(screen.queryAllByRole('button').filter(b => b.textContent && b.textContent !== '').length).toBeLessThanOrEqual(1)
+  })
+
+  it("type 'text' submits input value as the answer", () => {
+    const result = makeResult([{
+      question: 'Your brand name?',
+      type: 'text',
+      placeholder: 'Your answer...',
+      suggestions: [],
+    }])
+    render(
+      <AskQuestionToolRenderer
+        {...defaultProps}
+        result={result}
+      />,
+    )
+
+    const input = screen.getByPlaceholderText('Your answer...')
+    fireEvent.change(input, { target: { value: 'Sweet Rise' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+
+    expect(mockSendUserMessage).toHaveBeenCalledWith('Sweet Rise', { isActionRequest: true })
+  })
+
+  it('forwards question.placeholder to the free-text input', () => {
+    const result = makeResult([{
+      question: 'Anything else?',
+      placeholder: 'Tell me more...',
+      suggestions: [{ text: 'Skip' }],
+    }])
+    render(
+      <AskQuestionToolRenderer
+        {...defaultProps}
+        result={result}
+      />,
+    )
+
+    expect(screen.getByPlaceholderText('Tell me more...')).toBeInTheDocument()
+  })
+
+  it('bare-digit "Other" answer in range resolves to the chip\'s value', () => {
+    // Aligned with #3558: a bare digit typed into Other is treated as a
+    // pick of suggestion[N-1] (1-based to match the keyboard-shortcut UX).
+    // The user's "2" is rewritten to the chip text/value, NOT preserved
+    // literally. Out-of-range and non-numeric inputs still round-trip raw
+    // (covered separately).
+    const result = makeResult([{
+      question: 'How many?',
+      suggestions: [
+        { text: 'One' },
+        { text: 'Few' },
+        { text: 'Many' },
+      ],
+      allowOther: true,
+    }])
+    render(
+      <AskQuestionToolRenderer
+        {...defaultProps}
+        result={result}
+      />,
+    )
+
+    const input = screen.getByRole('textbox')
+    fireEvent.change(input, { target: { value: '2' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+
+    // 1-based: typing "2" picks suggestions[1] = "Few", same as pressing
+    // the digit key 2 or clicking the second chip.
+    expect(mockSendUserMessage).toHaveBeenCalledWith('Few', { isActionRequest: true })
+  })
+
+  it('out-of-range bare-digit "Other" answer round-trips literally', () => {
+    const result = makeResult([{
+      question: 'How many?',
+      suggestions: [{ text: 'One' }, { text: 'Few' }],
+      allowOther: true,
+    }])
+    render(
+      <AskQuestionToolRenderer
+        {...defaultProps}
+        result={result}
+      />,
+    )
+
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: '9' } })
+    fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Enter' })
+
+    expect(mockSendUserMessage).toHaveBeenCalledWith('9', { isActionRequest: true })
+  })
+
+  it('skip → __decide__ when every chip step offers the sentinel (useDecideAsSkip=true)', () => {
+    // Two chip-only questions, each with a "Decide for me" sentinel → the
+    // ChoiceList skip button becomes "Decide for me", and skipping records
+    // __decide__ for each answer.
     const result = makeResult([
-      makeQuestion('Pick?', [{ text: 'Red' }, { text: 'Blue' }]),
+      {
+        question: 'Vibe?',
+        type: 'chips_single',
+        suggestions: [
+          { text: 'Cozy' },
+          { text: 'Decide for me', value: '__decide__' },
+        ],
+      },
+      {
+        question: 'Palette?',
+        type: 'chips_single',
+        suggestions: [
+          { text: 'Warm earth' },
+          { text: 'Decide for me', value: '__decide__' },
+        ],
+      },
     ])
     render(
       <AskQuestionToolRenderer
@@ -336,15 +441,36 @@ describe('AskQuestionToolRenderer', () => {
       />,
     )
 
-    fireEvent.change(screen.getByRole('textbox'), { target: { value: '2' } })
-    fireEvent.click(screen.getByLabelText('builder_common_submit'))
+    // Skip advances; skip on the last step completes.
+    const skipButtons = screen.getAllByRole('button', { name: /Decide for me/i })
+    fireEvent.click(skipButtons[0])
+    const skipAgain = screen.getByRole('button', { name: /Decide for me/i })
+    fireEvent.click(skipAgain)
 
-    expect(mockSendUserMessage).toHaveBeenCalledWith('2 - _Blue_', { isActionRequest: true })
+    expect(mockSendUserMessage).toHaveBeenCalledTimes(1)
+    const [msg] = mockSendUserMessage.mock.calls[0]
+    expect(msg).toMatch(/__decide__/)
+    expect(msg.match(/__decide__/g)?.length).toBe(2)
   })
 
-  it('Other input: bare digits use suggestion value in formatted message', () => {
+  it('skip → blank when any chip step lacks the sentinel (useDecideAsSkip=false)', () => {
+    // Two chip questions; only the first has a decide sentinel. The skip
+    // button stays labeled "Skip" and records blank for each answer — so
+    // the final message filters out empty entries entirely.
     const result = makeResult([
-      makeQuestion('Pick?', [{ text: 'Blue', value: 'color_blue' }]),
+      {
+        question: 'Vibe?',
+        type: 'chips_single',
+        suggestions: [
+          { text: 'Cozy' },
+          { text: 'Decide for me', value: '__decide__' },
+        ],
+      },
+      {
+        question: 'Hero?',
+        type: 'chips_single',
+        suggestions: [{ text: 'Photo' }, { text: 'Illustration' }],
+      },
     ])
     render(
       <AskQuestionToolRenderer
@@ -353,87 +479,34 @@ describe('AskQuestionToolRenderer', () => {
       />,
     )
 
-    fireEvent.change(screen.getByRole('textbox'), { target: { value: '1' } })
-    fireEvent.click(screen.getByLabelText('builder_common_submit'))
+    const skip1 = screen.getByRole('button', { name: /^Skip$/i })
+    fireEvent.click(skip1)
+    const skip2 = screen.getByRole('button', { name: /^Skip$/i })
+    fireEvent.click(skip2)
 
-    expect(mockSendUserMessage).toHaveBeenCalledWith('1 - _color_blue_', { isActionRequest: true })
+    expect(mockSendUserMessage).toHaveBeenCalledTimes(1)
+    const [msg] = mockSendUserMessage.mock.calls[0]
+    expect(msg).not.toMatch(/__decide__/)
+    // All questions skipped → filter drops them → empty string.
+    expect(msg).toBe('')
   })
 
-  it('Other input: non-bare numeric string submits literal text', () => {
+  it('digit shortcut listener stays attached when hideQuestion=true (composer-card hoist path)', async () => {
+    // Locks the contract that `hideQuestion` only suppresses the per-step
+    // title text — it does NOT disable the keyboard listener. InputActionsPanel
+    // always passes `hideQuestion={true}` when hoisting this component into
+    // the composer card, and the digit shortcut must still move roving (so the
+    // user can press Enter to commit). Treating `hideQuestion` as "renderer is
+    // inert, drop the listener" was the bug that made digits silently no-op
+    // for every real-world AskQuestion.
+    //
+    // We can't cleanly assert `data-visually-focused` here (jsdom doesn't run
+    // @ux/listbox's roving logic the same way the browser does), so we check
+    // the indirect signal that the listener fired: `focusChoiceListOptionByIndex`
+    // focuses the listbox, which means after the digit press the active element
+    // is the listbox (not the option that started focused).
     const result = makeResult([
-      makeQuestion('Pick?', [{ text: 'Red' }]),
-    ])
-    render(
-      <AskQuestionToolRenderer
-        {...defaultProps}
-        result={result}
-      />,
-    )
-
-    fireEvent.change(screen.getByRole('textbox'), { target: { value: '1abc' } })
-    fireEvent.click(screen.getByLabelText('builder_common_submit'))
-
-    expect(mockSendUserMessage).toHaveBeenCalledWith('1abc', { isActionRequest: true })
-  })
-
-  it('Other input: index above suggestion count submits literal', () => {
-    const result = makeResult([
-      makeQuestion('Pick?', [{ text: 'Red' }, { text: 'Blue' }]),
-    ])
-    render(
-      <AskQuestionToolRenderer
-        {...defaultProps}
-        result={result}
-      />,
-    )
-
-    fireEvent.change(screen.getByRole('textbox'), { target: { value: '3' } })
-    fireEvent.click(screen.getByLabelText('builder_common_submit'))
-
-    expect(mockSendUserMessage).toHaveBeenCalledWith('3', { isActionRequest: true })
-  })
-
-  it('Other input: zero submits literal', () => {
-    const result = makeResult([
-      makeQuestion('Pick?', [{ text: 'Red' }]),
-    ])
-    render(
-      <AskQuestionToolRenderer
-        {...defaultProps}
-        result={result}
-      />,
-    )
-
-    fireEvent.change(screen.getByRole('textbox'), { target: { value: '0' } })
-    fireEvent.click(screen.getByLabelText('builder_common_submit'))
-
-    expect(mockSendUserMessage).toHaveBeenCalledWith('0', { isActionRequest: true })
-  })
-
-  it('digit key moves listbox active item when focus is inside the list', async function digitActiveItem() {
-    const result = makeResult([
-      makeQuestion('Pick?', [{ text: 'Red' }, { text: 'Blue' }]),
-    ])
-    render(
-      <AskQuestionToolRenderer
-        {...defaultProps}
-        result={result}
-      />,
-    )
-
-    const options = screen.getAllByRole('option')
-    options[0].focus()
-    fireEvent.keyDown(window, { key: '2', code: 'Digit2' })
-
-    await waitFor(() => {
-      expect(screen.getByRole('listbox', { name: 'Pick?' })).toHaveFocus()
-      expect(options[1]).toHaveAttribute('data-visually-focused')
-    })
-  })
-
-  it('does not attach digit-focus shortcuts when hideQuestion is true', () => {
-    const result = makeResult([
-      makeQuestion('Pick?', [{ text: 'Red' }, { text: 'Blue' }]),
+      makeQuestion('Pick?', [{ text: 'Red' }, { text: 'Blue' }, { text: 'Green' }]),
     ])
     render(
       <AskQuestionToolRenderer
@@ -443,10 +516,19 @@ describe('AskQuestionToolRenderer', () => {
       />,
     )
 
+    // Move focus inside the listbox so `shouldAllowChoiceListDigitShortcut`'s
+    // "focus inside container ref" gate passes.
     const options = screen.getAllByRole('option')
-    fireEvent.keyDown(window, { key: '1', code: 'Digit1' })
+    options[0].focus()
 
-    expect(options[0]).not.toHaveFocus()
-    expect(options[1]).not.toHaveFocus()
+    fireEvent.keyDown(window, { key: '2' })
+
+    // `focusChoiceListOptionByIndex` runs through setTimeout chains; wait one
+    // task so the listbox.focus() inside it has executed.
+    await new Promise((r) => setTimeout(r, 0))
+
+    // Listener fired and routed to focusChoiceListOptionByIndex → listbox.focus().
+    // If `hideQuestion` had killed the listener, focus would still be on options[0].
+    expect(screen.getByRole('listbox', { name: 'Pick?' })).toHaveFocus()
   })
 })

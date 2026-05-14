@@ -23,14 +23,63 @@ export const suggestionSchema = z.union([
 )
 
 /**
+ * Input mode for a question. Optional; when omitted, legacy behavior applies
+ * (suggestion buttons plus free-text input when allowOther is true).
+ * - chips_single: single-select suggestion buttons, requires ≥1 suggestion
+ * - chips_multi:  multi-select suggestion buttons, requires ≥1 suggestion
+ * - text:         free-text input only, suggestions may be empty
+ */
+export const questionTypeSchema = z.enum(['chips_single', 'chips_multi', 'text'])
+
+/**
  * Question schema
+ *
+ * `suggestions` requires at least 1 entry unless `type === 'text'`, in which
+ * case the buttons grid is hidden and an empty array is allowed.
  */
 export const questionSchema = z.object({
   question: z.string().describe('The question to ask the user'),
-  suggestions: z.array(suggestionSchema).min(1).describe('Array of suggested answers (minimum 1)'),
+  subtitle: z.string().optional().describe('Optional helper text rendered below the question'),
+  type: questionTypeSchema.optional().describe('Optional input mode: chips_single, chips_multi, or text. When omitted, legacy rendering is used.'),
+  placeholder: z.string().optional().describe('Optional placeholder for the free-text input'),
+  suggestions: z.array(suggestionSchema).describe('Array of suggested answers'),
   allowOther: z.boolean().default(true).describe('Whether to show "Other" option for free text input'),
   multiSelect: z.boolean().default(false).describe('Whether to allow selecting multiple answers (checkboxes) or single answer (radio buttons)'),
   metadata: z.record(z.string(), z.unknown()).optional().describe('Optional metadata for tracking')
+}).superRefine((q, ctx) => {
+  if (q.type !== 'text' && q.suggestions.length < 1) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['suggestions'],
+      message: 'Array of suggested answers must contain at least 1 entry unless type is "text"'
+    })
+  }
+  // Reject an unanswerable step: no chips AND no freeform input.
+  if (q.suggestions.length === 0 && q.allowOther === false) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['allowOther'],
+      message: 'A question with suggestions=[] requires allowOther=true — otherwise the step has no input mechanism and users can only skip'
+    })
+  }
+  // `type` is authoritative when present; `multiSelect` must not contradict.
+  // `{ type: "chips_single", multiSelect: true }` would render as multi-select
+  // in legacy code paths and as single in the new renderer — reject the
+  // ambiguity so callers pick one.
+  if (q.type === 'chips_single' && q.multiSelect === true) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['multiSelect'],
+      message: 'type: "chips_single" is incompatible with multiSelect: true — pick type: "chips_multi" instead',
+    })
+  }
+  if (q.type === 'text' && q.multiSelect === true) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['multiSelect'],
+      message: 'type: "text" is incompatible with multiSelect: true',
+    })
+  }
 })
 
 /**
@@ -38,6 +87,22 @@ export const questionSchema = z.object({
  */
 export const askQuestionInputSchema = z.object({
   questions: z.array(questionSchema).min(1).max(10).describe('Array of questions to ask (minimum 1, maximum 10)')
+}).superRefine((input, ctx) => {
+  // `allowOther` is applied at the ChoiceList root (single prop for the whole
+  // multi-step flow — there is no per-step equivalent in the current
+  // components version). A mix of `true` and `false` across steps would
+  // either let freeform leak onto authoritative-pick steps or make
+  // free-text steps unanswerable, depending on which way the renderer
+  // collapses. Reject mixed values at the tool boundary so callers must
+  // commit to a single stance for the whole call.
+  const allowOtherValues = new Set(input.questions.map(q => q.allowOther))
+  if (allowOtherValues.size > 1) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['questions'],
+      message: 'All questions in one askQuestion call must share the same `allowOther` value — mixed values are not supported by the current renderer',
+    })
+  }
 })
 
 /**

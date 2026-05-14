@@ -914,6 +914,24 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
     }
   }, [isWaitingForFirstEdit, activeStream?.segments?.length, send])
 
+  // EFFECT: Reset failsafe timeout on user interaction with askQuestion widget
+  // The agent goes quiet while it waits for the user to answer multi-step
+  // askQuestion flows, so segment-count tracking above never fires and the
+  // 5-min failsafe can dismiss the "Building" overlay mid-flow. Any consumer
+  // (currently AskQuestionToolRenderer) dispatches `airo:user-activity` on
+  // step advance / back / submit, and we treat that the same as agent
+  // activity: re-enter `waitingForFirstEdit` to reset the `after` timer.
+  useEffect(() => {
+    if (!isWaitingForFirstEdit) return
+    const onUserActivity = () => {
+      send({ type: 'AGENT_ACTIVITY' })
+    }
+    window.addEventListener('airo:user-activity', onUserActivity)
+    return () => {
+      window.removeEventListener('airo:user-activity', onUserActivity)
+    }
+  }, [isWaitingForFirstEdit, send])
+
   // EFFECT: When stream completes with incomplete tools only (e.g. token limit),
   // transition to active so the "Building your App" overlay hides and the user sees the preview.
   // For other cases (error, no tools) we keep old behaviour: overlay stays until 5-min timeout.
