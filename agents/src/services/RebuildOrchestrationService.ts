@@ -218,7 +218,23 @@ export class RebuildOrchestrationService {
       const nonBlogPages = discoveryResult.pages.filter(p => !p.isBlog);
       const blogPagesCount = discoveryResult.pages.length - nonBlogPages.length;
 
-      const pagesToScrape = nonBlogPages;
+      // Dedupe by slug before scraping — prevents fetching the same page twice
+      // (e.g., cross-domain redirects where foo.com and bar.com/ both → slug "homepage")
+      // and eliminates concurrent writes to the same JSON file downstream.
+      // Keep last occurrence: discovery prepends the input URL first, canonical comes later.
+      const slugMap = new Map<string, typeof nonBlogPages[number]>();
+      for (const page of nonBlogPages) {
+        slugMap.set(this.urlToSlug(page.url, state.rootPath), page);
+      }
+      const pagesToScrape = [...slugMap.values()];
+
+      if (pagesToScrape.length < nonBlogPages.length) {
+        logger.info('rebuild-orchestration.slug-dedup', {
+          appId,
+          before: nonBlogPages.length,
+          after: pagesToScrape.length
+        });
+      }
 
       logger.info('rebuild-orchestration.pages-discovered', {
         appId,
@@ -816,6 +832,7 @@ export class RebuildOrchestrationService {
       return 'page';
     }
   }
+
 
   /**
    * Check if URL is the homepage (root of the rebuild)
