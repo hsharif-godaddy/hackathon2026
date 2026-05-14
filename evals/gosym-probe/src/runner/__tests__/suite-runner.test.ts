@@ -4,17 +4,21 @@ const { mockSimulationRun } = vi.hoisted(() => ({
   mockSimulationRun: vi.fn(),
 }));
 
-vi.mock('../simulation.js', () => ({
-  Simulation: vi.fn().mockImplementation(() => ({
-    run: mockSimulationRun,
-  })),
-}));
+vi.mock('../simulation.js', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../simulation.js')>();
+  return {
+    ...original,
+    Simulation: vi.fn().mockImplementation(() => ({
+      run: mockSimulationRun,
+    })),
+  };
+});
 
 import { SuiteRunner, runCapped } from '../suite-runner.js';
 import type { Scenario } from '../../scenarios/types.js';
 import type { Persona } from '../../personas/types.js';
 import type { Evaluator, EvalResult } from '../../evaluators/evaluator.js';
-import type { Config } from '../../../config/environments/types.js';
+import type { ResolvedConfig } from '../../../config/index.js';
 import type { AgentClient } from '../../clients/agent-client.js';
 import type { SyntheticUserAgent } from '../synthetic-user.js';
 import type { Transcript } from '../transcript.js';
@@ -38,7 +42,7 @@ const mockPersona: Persona = {
   systemPrompt: '',
 };
 
-const mockConfig: Config = {
+const mockConfig: ResolvedConfig = {
   env: 'local.test',
   aab: {
     socketUrl: 'http://localhost:4000',
@@ -46,7 +50,14 @@ const mockConfig: Config = {
     controlPlaneUrl: 'http://localhost:4001',
   },
   gocode: { baseUrl: 'http://gocode', apiKey: 'key', model: 'test-model' },
-  eval: { defaultTrials: 3, maxTurns: 10, turnTimeoutMs: 5_000 },
+  eval: {
+    defaultTrials: 3,
+    maxTurns: 10,
+    turnTimeoutMs: 5_000,
+    firstTurnInactivityMs: 600_000,
+    maxFirstTurnRetries: 2,
+    maxConcurrency: 1,
+  },
   playwright: { ignoreHttpsErrors: true },
   regression: { thresholds: {}, defaultThreshold: 0.1 },
 };
@@ -445,7 +456,7 @@ describe('SuiteRunner', () => {
     const scenario = makeScenario({
       trials: 4,
     });
-    const cappedConfig: Config = {
+    const cappedConfig: ResolvedConfig = {
       ...mockConfig,
       eval: { ...mockConfig.eval, maxConcurrency: 2 },
     };
@@ -880,7 +891,7 @@ describe('SuiteRunner — suiteMode: parallel', () => {
     const scenarios = Array.from({ length: 5 }, (_, i) =>
       makeScenario({ name: `s${i}`, trials: 3 }),
     );
-    const cappedConfig: Config = {
+    const cappedConfig: ResolvedConfig = {
       ...mockConfig,
       eval: { ...mockConfig.eval, maxConcurrency: 2 },
     };
@@ -1344,5 +1355,154 @@ describe('SuiteRunner — no-stacking invariant', () => {
     expect(peakInFlight).toBe(4);
     resolvers.forEach((r) => r());
     await runPromise;
+  });
+});
+
+describe('first-turn inactivity retry', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('retries on InactivityTimeoutError up to maxFirstTurnRetries', async () => {
+    const { InactivityTimeoutError } = await import('../simulation.js');
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    mockSimulationRun
+      .mockRejectedValueOnce(new InactivityTimeoutError(600_000))
+      .mockRejectedValueOnce(new InactivityTimeoutError(600_000))
+      .mockResolvedValue(makeTranscript());
+
+    const config: ResolvedConfig = {
+      ...mockConfig,
+      eval: { ...mockConfig.eval, maxFirstTurnRetries: 2 },
+    };
+    const scenario = makeScenario({ trials: 1 });
+
+    const results = await new SuiteRunner({
+      scenarios: [scenario],
+      config,
+      makeAgentClient,
+      syntheticUser: mockSyntheticUser,
+    }).run();
+
+    expect(mockSimulationRun).toHaveBeenCalledTimes(3);
+    expect(results).toHaveLength(1);
+    expect(warnSpy).toHaveBeenCalledTimes(2);
+    expect(warnSpy.mock.calls[0]).toEqual([
+      'Trial retry: first-turn inactivity timeout.',
+      {
+        scenarioName: 'test-scenario',
+        trialIndex: 0,
+        attempt: 1,
+        maxAttempts: 3,
+      },
+    ]);
+    expect(warnSpy.mock.calls[1]).toEqual([
+      'Trial retry: first-turn inactivity timeout.',
+      {
+        scenarioName: 'test-scenario',
+        trialIndex: 0,
+        attempt: 2,
+        maxAttempts: 3,
+      },
+    ]);
+    warnSpy.mockRestore();
+  });
+
+  it('fails permanently after exhausting retries', async () => {
+    const { InactivityTimeoutError } = await import('../simulation.js');
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    mockSimulationRun.mockRejectedValue(
+      new InactivityTimeoutError(600_000),
+    );
+
+    const config: ResolvedConfig = {
+      ...mockConfig,
+      eval: { ...mockConfig.eval, maxFirstTurnRetries: 2 },
+    };
+    const scenario = makeScenario({ trials: 1 });
+
+    await expect(
+      new SuiteRunner({
+        scenarios: [scenario],
+        config,
+        makeAgentClient,
+        syntheticUser: mockSyntheticUser,
+      }).run(),
+    ).rejects.toBeInstanceOf(AggregateError);
+
+    // 1 initial + 2 retries = 3 total attempts
+    expect(mockSimulationRun).toHaveBeenCalledTimes(3);
+    expect(warnSpy).toHaveBeenCalledTimes(2);
+    warnSpy.mockRestore();
+  });
+
+  it('does not retry on non-inactivity errors', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    mockSimulationRun.mockRejectedValue(
+      new Error('some other failure'),
+    );
+
+    const config: ResolvedConfig = {
+      ...mockConfig,
+      eval: { ...mockConfig.eval, maxFirstTurnRetries: 2 },
+    };
+    const scenario = makeScenario({ trials: 1 });
+
+    await expect(
+      new SuiteRunner({
+        scenarios: [scenario],
+        config,
+        makeAgentClient,
+        syntheticUser: mockSyntheticUser,
+      }).run(),
+    ).rejects.toBeInstanceOf(AggregateError);
+
+    expect(mockSimulationRun).toHaveBeenCalledTimes(1);
+    expect(warnSpy).not.toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+
+  it('creates a fresh AgentClient for each retry attempt', async () => {
+    const { InactivityTimeoutError } = await import('../simulation.js');
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    mockSimulationRun
+      .mockRejectedValueOnce(new InactivityTimeoutError(600_000))
+      .mockRejectedValueOnce(new InactivityTimeoutError(600_000))
+      .mockResolvedValue(makeTranscript());
+
+    const clients: Array<ReturnType<typeof vi.fn>> = [];
+    const makeAgentClientSpy = vi.fn(async () => {
+      const client = {
+        configure: vi.fn(),
+        send: vi.fn(),
+        onMessage: vi.fn(),
+        disconnect: vi.fn(),
+      };
+      clients.push(client.disconnect);
+      return client;
+    });
+
+    const config: ResolvedConfig = {
+      ...mockConfig,
+      eval: { ...mockConfig.eval, maxFirstTurnRetries: 2 },
+    };
+    const scenario = makeScenario({ trials: 1 });
+
+    await new SuiteRunner({
+      scenarios: [scenario],
+      config,
+      makeAgentClient: makeAgentClientSpy,
+      syntheticUser: mockSyntheticUser,
+    }).run();
+
+    expect(makeAgentClientSpy).toHaveBeenCalledTimes(3);
+    for (const disconnectFn of clients) {
+      expect(disconnectFn).toHaveBeenCalledOnce();
+    }
+    warnSpy.mockRestore();
   });
 });

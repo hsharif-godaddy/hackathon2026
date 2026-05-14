@@ -7,7 +7,7 @@ import type {
   Scenario,
   StabilityLevel,
 } from '../scenarios/types.js';
-import type { Config } from '../../config/environments/types.js';
+import type { ResolvedConfig } from '../../config/index.js';
 import type { AgentClient } from '../clients/agent-client.js';
 import type { SyntheticUserAgent } from '../runner/synthetic-user.js';
 import type { SiteCapture } from '../clients/dom-capture.js';
@@ -25,7 +25,7 @@ interface BaselineStore {
 
 export interface GraduationRunnerOptions {
   scenario: Scenario;
-  config: Config;
+  config: ResolvedConfig;
   makeAgentClient?: () => Promise<AgentClient>;
   syntheticUser?: SyntheticUserAgent;
   siteCapture?: SiteCapture;

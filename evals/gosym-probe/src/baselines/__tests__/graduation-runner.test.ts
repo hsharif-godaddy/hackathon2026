@@ -19,7 +19,7 @@ import type {
   TrialResult,
 } from '../../runner/types.js';
 import type { Scenario } from '../../scenarios/types.js';
-import type { Config } from '../../../config/environments/types.js';
+import type { ResolvedConfig } from '../../../config/index.js';
 import type { Transcript } from '../../runner/transcript.js';
 import type { EvalResult } from '../../evaluators/evaluator.js';
 
@@ -106,7 +106,7 @@ const mockScenario: Scenario = {
   trials: 3,
 };
 
-const mockConfig: Config = {
+const mockConfig: ResolvedConfig = {
   env: 'local.test',
   aab: {
     socketUrl: 'http://localhost:4000',
@@ -114,7 +114,14 @@ const mockConfig: Config = {
     controlPlaneUrl: 'http://localhost:4001',
   },
   gocode: { baseUrl: 'http://gc', apiKey: 'k', model: 'm' },
-  eval: { defaultTrials: 3, maxTurns: 10, turnTimeoutMs: 60_000 },
+  eval: {
+    defaultTrials: 3,
+    maxTurns: 10,
+    turnTimeoutMs: 5_000,
+    firstTurnInactivityMs: 600_000,
+    maxFirstTurnRetries: 2,
+    maxConcurrency: 1,
+  },
   playwright: { ignoreHttpsErrors: true },
   regression: {
     thresholds: {},

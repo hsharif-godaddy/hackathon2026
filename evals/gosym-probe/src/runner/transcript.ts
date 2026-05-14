@@ -30,6 +30,8 @@ export interface Transcript {
   snapshots: DOMSnapshot[];
   capturedSite?: CapturedSite;
   errors: string[];
+  /** Number of retries before the trial succeeded (0 means first attempt). */
+  retryCount?: number;
 }
 
 export class TranscriptBuilder {

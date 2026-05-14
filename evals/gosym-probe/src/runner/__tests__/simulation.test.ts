@@ -1,5 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { Simulation, isFatalError } from '../simulation.js';
+import {
+  Simulation,
+  isFatalError,
+  InactivityTimeoutError,
+  InactivityGuard,
+} from '../simulation.js';
 import type { SimulationCaptureContext } from '../simulation.js';
 import { GoalTracker } from '../goal-tracker.js';
 import type { AgentClient, AgentEvent } from '../../clients/agent-client.js';
@@ -10,7 +15,7 @@ import type {
   SetupContext,
 } from '../../scenarios/types.js';
 import type { Persona } from '../../personas/types.js';
-import type { Config } from '../../../config/environments/types.js';
+import type { ResolvedConfig } from '../../../config/index.js';
 
 // Controllable mock — call .emit() to push events into the simulation.
 class MockAgentClient implements AgentClient {
@@ -43,7 +48,7 @@ const mockPersona: Persona = {
   systemPrompt: '',
 };
 
-const mockConfig: Config = {
+const mockConfig: ResolvedConfig = {
   env: 'local.test',
   aab: {
     socketUrl: 'http://localhost:4000',
@@ -55,7 +60,14 @@ const mockConfig: Config = {
     apiKey: 'key',
     model: 'claude-sonnet-4-6',
   },
-  eval: { defaultTrials: 1, maxTurns: 5, turnTimeoutMs: 5_000 },
+  eval: {
+    defaultTrials: 1,
+    maxTurns: 5,
+    turnTimeoutMs: 5_000,
+    firstTurnInactivityMs: 600_000,
+    maxFirstTurnRetries: 2,
+    maxConcurrency: 1,
+  },
   playwright: { ignoreHttpsErrors: true },
   regression: { thresholds: {}, defaultThreshold: 0.1 },
 };
@@ -218,7 +230,7 @@ describe('Simulation', () => {
   it('terminates after maxTurns even if syntheticUser keeps responding', async () => {
     const config = {
       ...mockConfig,
-      eval: { defaultTrials: 1, maxTurns: 2, turnTimeoutMs: 5_000 },
+      eval: { ...mockConfig.eval, defaultTrials: 1, maxTurns: 2, turnTimeoutMs: 5_000 },
     };
     const scenario = makeScenario();
     const syntheticUser: SyntheticUserAgent = {
@@ -1816,5 +1828,199 @@ describe('GoalTracker integration', () => {
     }).run(0);
 
     expect(transcript.turns).toHaveLength(0);
+  });
+});
+
+describe('first-turn inactivity timeout', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('throws InactivityTimeoutError when no events arrive on first turn', async () => {
+    vi.useFakeTimers();
+    const config: ResolvedConfig = {
+      ...mockConfig,
+      eval: {
+        ...mockConfig.eval,
+        turnTimeoutMs: 900_000,
+        firstTurnInactivityMs: 10_000,
+      },
+    };
+    const scenario = makeScenario();
+    const syntheticUser: SyntheticUserAgent = {
+      nextMessage: vi.fn().mockResolvedValue('hello'),
+    };
+    const agent = new MockAgentClient();
+    agent.send = vi.fn();
+
+    const runPromise = new Simulation({
+      scenario,
+      agentClient: agent,
+      syntheticUser,
+      config,
+    }).run(0);
+
+    const assertion = expect(runPromise).rejects.toThrow(
+      InactivityTimeoutError,
+    );
+    await vi.advanceTimersByTimeAsync(10_000);
+    await assertion;
+
+    expect(scenario.teardown).toHaveBeenCalledOnce();
+  });
+
+  it('resets the timer when an event arrives', async () => {
+    vi.useFakeTimers();
+    const config: ResolvedConfig = {
+      ...mockConfig,
+      eval: {
+        ...mockConfig.eval,
+        turnTimeoutMs: 900_000,
+        firstTurnInactivityMs: 10_000,
+      },
+    };
+    const scenario = makeScenario();
+    const syntheticUser: SyntheticUserAgent = {
+      nextMessage: vi.fn().mockResolvedValue('hello'),
+    };
+    const agent = new MockAgentClient();
+    agent.send = vi.fn();
+
+    const runPromise = new Simulation({
+      scenario,
+      agentClient: agent,
+      syntheticUser,
+      config,
+    }).run(0);
+
+    // Advance to just before the deadline and emit an event
+    await vi.advanceTimersByTimeAsync(9_000);
+    agent.emit({ type: 'chunk', content: 'hi' });
+
+    // Advance past the original deadline (10_000) but within reset window
+    await vi.advanceTimersByTimeAsync(5_000);
+    // No error yet since timer was reset at 9_000
+
+    // Advance to trigger the reset deadline (9_000 + 10_000 = 19_000)
+    const assertion = expect(runPromise).rejects.toThrow(
+      InactivityTimeoutError,
+    );
+    await vi.advanceTimersByTimeAsync(5_000);
+    await assertion;
+  });
+
+  it('does not apply inactivity timeout on subsequent turns', async () => {
+    vi.useFakeTimers();
+    const config: ResolvedConfig = {
+      ...mockConfig,
+      eval: {
+        ...mockConfig.eval,
+        maxTurns: 2,
+        turnTimeoutMs: 20_000,
+        firstTurnInactivityMs: 5_000,
+      },
+    };
+    const scenario = makeScenario();
+    const syntheticUser: SyntheticUserAgent = {
+      nextMessage: vi.fn().mockResolvedValue('hello'),
+    };
+    // Turn 1: responds immediately. Turn 2: never responds.
+    let callCount = 0;
+    const agent = new MockAgentClient();
+    agent.send = vi.fn().mockImplementation(() => {
+      callCount++;
+      if (callCount === 1) {
+        Promise.resolve().then(() => {
+          agent.emit({ type: 'complete', content: 'done' });
+        });
+      }
+      // Turn 2: silence
+    });
+
+    const runPromise = new Simulation({
+      scenario,
+      agentClient: agent,
+      syntheticUser,
+      config,
+    }).run(0);
+
+    // Advance past inactivity timeout but not hard timeout
+    await vi.advanceTimersByTimeAsync(10_000);
+    // If inactivity applied to turn 2, it would have fired at 5_000ms.
+    // Instead, it should wait for the hard timeout at 20_000ms.
+
+    const assertion = expect(runPromise).rejects.toThrow(
+      'timed out after 20000ms',
+    );
+    await vi.advanceTimersByTimeAsync(10_000);
+    await assertion;
+  });
+
+  it('hard timeout fires first when smaller than inactivity timeout', async () => {
+    vi.useFakeTimers();
+    const config: ResolvedConfig = {
+      ...mockConfig,
+      eval: {
+        ...mockConfig.eval,
+        turnTimeoutMs: 3_000,
+        firstTurnInactivityMs: 10_000,
+      },
+    };
+    const scenario = makeScenario();
+    const syntheticUser: SyntheticUserAgent = {
+      nextMessage: vi.fn().mockResolvedValue('hello'),
+    };
+    const agent = new MockAgentClient();
+    agent.send = vi.fn();
+
+    const runPromise = new Simulation({
+      scenario,
+      agentClient: agent,
+      syntheticUser,
+      config,
+    }).run(0);
+
+    const assertion = expect(runPromise).rejects.toThrow(
+      'timed out after 3000ms',
+    );
+    await vi.advanceTimersByTimeAsync(3_000);
+    await assertion;
+  });
+});
+
+describe('InactivityGuard', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('arm() after dispose() is a no-op', async () => {
+    vi.useFakeTimers();
+    const onTimeout = vi.fn();
+    const guard = new InactivityGuard(1_000, onTimeout);
+
+    guard.arm();
+    guard.dispose();
+    guard.arm();
+
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(onTimeout).not.toHaveBeenCalled();
+  });
+
+  it('arm() resets the timer on each call', async () => {
+    vi.useFakeTimers();
+    const onTimeout = vi.fn();
+    const guard = new InactivityGuard(10_000, onTimeout);
+
+    guard.arm();
+    await vi.advanceTimersByTimeAsync(9_000);
+    guard.arm();
+    await vi.advanceTimersByTimeAsync(9_000);
+
+    expect(onTimeout).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(onTimeout).toHaveBeenCalledOnce();
+
+    guard.dispose();
   });
 });

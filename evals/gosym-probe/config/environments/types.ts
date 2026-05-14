@@ -16,6 +16,12 @@ export interface Config {
     defaultTrials: number;
     maxTurns: number;
     turnTimeoutMs: number;
+    firstTurnInactivityMs?: number;
+    /**
+     * Maximum number of retries when the first turn hits an inactivity
+     * timeout. Total attempts = maxFirstTurnRetries + 1.
+     */
+    maxFirstTurnRetries?: number;
     maxConcurrency?: number;
   };
   playwright: {

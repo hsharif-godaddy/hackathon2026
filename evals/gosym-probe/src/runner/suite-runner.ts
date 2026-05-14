@@ -1,11 +1,11 @@
-import { Simulation } from './simulation.js';
+import { Simulation, InactivityTimeoutError } from './simulation.js';
 import type { SimulationCaptureContext } from './simulation.js';
 import { TrialAggregator } from './trial-aggregator.js';
 import { RegressionComparator } from '../baselines/regression-comparator.js';
 import { enrichScoreModePassRates } from '../baselines/score-mode-enricher.js';
 import type { Scenario } from '../scenarios/types.js';
 import type { ScenarioResult, TrialResult } from './types.js';
-import type { Config } from '../../config/environments/types.js';
+import type { ResolvedConfig } from '../../config/index.js';
 import type { AgentClient } from '../clients/agent-client.js';
 import type { SyntheticUserAgent } from './synthetic-user.js';
 import type { SiteCapture } from '../clients/dom-capture.js';
@@ -58,7 +58,7 @@ export async function runCapped<T>(
 
 export interface SuiteRunnerOptions {
   scenarios: Scenario[];
-  config: Config;
+  config: ResolvedConfig;
   /** Per-trial async factory; each Simulation owns its connection. */
   makeAgentClient?: () => Promise<AgentClient>;
   syntheticUser?: SyntheticUserAgent;
@@ -210,12 +210,46 @@ export class SuiteRunner {
       }
     };
 
-    const maxConcurrency = config.eval.maxConcurrency ?? 1;
-    const concurrency = effectiveConcurrency(concurrencyOverride, maxConcurrency);
+    const maxRetries = config.eval.maxFirstTurnRetries;
+    const makeRunWithRetry = async (
+      trialIndex: number,
+    ): Promise<Transcript> => {
+      for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        try {
+          const transcript = await makeRun(trialIndex);
+          if (attempt > 0) {
+            transcript.retryCount = attempt;
+          }
+          return transcript;
+        } catch (err) {
+          if (
+            err instanceof InactivityTimeoutError &&
+            attempt < maxRetries
+          ) {
+            console.warn(
+              'Trial retry: first-turn inactivity timeout.',
+              {
+                scenarioName: scenario.name,
+                trialIndex,
+                attempt: attempt + 1,
+                maxAttempts: maxRetries + 1,
+              },
+            );
+            continue;
+          }
+          throw err;
+        }
+      }
+      throw new Error(
+        `[${scenario.name}] Trial ${trialIndex}: retry loop exited unexpectedly`,
+      );
+    };
+
+    const concurrency = effectiveConcurrency(concurrencyOverride, config.eval.maxConcurrency);
     try {
       const transcripts: Transcript[] =
         await runCapped(trialIndices.length, concurrency, function run(i) {
-          return makeRun(trialIndices[i]);
+          return makeRunWithRetry(trialIndices[i]);
         });
 
       const newTrialResults = await this.evaluateTrials(

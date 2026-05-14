@@ -1,4 +1,4 @@
-import type { Config } from '../../config/environments/types.js';
+import type { ResolvedConfig } from '../../config/index.js';
 import type {
   AgentClient,
   AgentEvent,
@@ -15,6 +15,39 @@ export class FatalAABError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'FatalAABError';
+  }
+}
+
+export class InactivityTimeoutError extends Error {
+  constructor(timeoutMs: number) {
+    super(
+      `Turn 1 inactivity timeout: no events received within ${timeoutMs}ms window`,
+    );
+    this.name = 'InactivityTimeoutError';
+  }
+}
+
+export class InactivityGuard {
+  private timer: ReturnType<typeof setTimeout> | undefined;
+  private disposed = false;
+
+  constructor(
+    private readonly timeoutMs: number,
+    private readonly onTimeout: () => void,
+  ) {}
+
+  arm(): void {
+    if (this.disposed) return;
+    if (this.timer !== undefined) clearTimeout(this.timer);
+    this.timer = setTimeout(() => this.onTimeout(), this.timeoutMs);
+  }
+
+  dispose(): void {
+    this.disposed = true;
+    if (this.timer !== undefined) {
+      clearTimeout(this.timer);
+      this.timer = undefined;
+    }
   }
 }
 
@@ -45,13 +78,14 @@ export interface SimulationOptions {
    * writes artifacts to the resolved trial directory.
    */
   captureContext?: SimulationCaptureContext;
-  config: Config;
+  config: ResolvedConfig;
   maxTurnsOverride?: number;
 }
 
 interface RunState {
   resolveTurn: ((content: string) => void) | null;
   rejectTurn: ((error: Error) => void) | null;
+  inactivityGuard: InactivityGuard | null;
   currentTurnTools: Map<string, ToolCall>;
   inputDeltas: Map<string, string>;
   lastStepContent: string;
@@ -76,6 +110,7 @@ export class Simulation {
     const state: RunState = {
       resolveTurn: null,
       rejectTurn: null,
+      inactivityGuard: null,
       currentTurnTools: new Map(),
       inputDeltas: new Map(),
       lastStepContent: '',
@@ -170,6 +205,7 @@ export class Simulation {
     trialIndex: number,
   ): (event: AgentEvent) => void {
     return (event) => {
+      state.inactivityGuard?.arm();
       if (event.type === 'step_start') {
         state.currentAgentId = event.agentName;
       } else if (event.type === 'tool_start') {
@@ -299,25 +335,40 @@ export class Simulation {
     state.lastDurationMs = undefined;
 
     const turnTimeout = config.eval.turnTimeoutMs;
-    let timer: ReturnType<typeof setTimeout>;
-    const content = await Promise.race([
-      new Promise<string>((resolve, reject) => {
-        state.resolveTurn = resolve;
-        state.rejectTurn = reject;
-        agentClient.send(message);
-      }),
-      new Promise<never>((_, reject) => {
-        timer = setTimeout(
-          () => reject(
-            new Error(
-              `Turn ${turnCount + 1} timed out ` +
-              `after ${turnTimeout}ms`,
-            ),
+    const isFirstTurn = turnCount === 0;
+    const inactivityMs = config.eval.firstTurnInactivityMs;
+
+    const hardTimer = setTimeout(
+      () => {
+        state.rejectTurn?.(
+          new Error(
+            `Turn ${turnCount + 1} timed out ` +
+            `after ${turnTimeout}ms`,
           ),
-          turnTimeout,
         );
-      }),
-    ]).finally(() => clearTimeout(timer!));
+      },
+      turnTimeout,
+    );
+
+    const content = await new Promise<string>((resolve, reject) => {
+      state.resolveTurn = resolve;
+      state.rejectTurn = reject;
+      if (isFirstTurn) {
+        const guard = new InactivityGuard(
+          inactivityMs,
+          () => state.rejectTurn?.(
+            new InactivityTimeoutError(inactivityMs),
+          ),
+        );
+        state.inactivityGuard = guard;
+      }
+      agentClient.send(message);
+      if (isFirstTurn) state.inactivityGuard?.arm();
+    }).finally(() => {
+      clearTimeout(hardTimer);
+      state.inactivityGuard?.dispose();
+      state.inactivityGuard = null;
+    });
     state.resolveTurn = null;
     state.rejectTurn = null;
     return content;
