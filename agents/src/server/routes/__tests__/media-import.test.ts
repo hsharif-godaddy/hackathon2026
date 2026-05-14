@@ -14,7 +14,7 @@ vi.mock("../../middleware/app-ownership.js", () => ({
 
 vi.mock("../../../logging/index.js", () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
-  Logger: class {},
+  Logger: { create: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }) },
 }));
 
 vi.mock("../../../services/FileUploadService.js", () => ({

@@ -114,6 +114,7 @@
     "@ux/progress-steps": "^2500.11.2",
     "@ux/quantity-selector": "^2500.11.3",
     "@ux/radio": "^2500.9.0",
+    "@ux/search": "^2500.11.3",
     "@ux/select": "^2500.11.1",
     "@ux/select-input": "^2500.11.1",
     "@ux/sibling-set": "^2500.11.3",

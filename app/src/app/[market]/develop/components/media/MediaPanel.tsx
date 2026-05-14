@@ -178,7 +178,7 @@ export default function MediaPanel() {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto pr-1">
         <MediaSlotsGrid
           manifest={manifest}
           slotNames={slotNames}

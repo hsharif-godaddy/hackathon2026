@@ -8,7 +8,7 @@ vi.mock("../../middleware/app-ownership.js", () => ({
 
 vi.mock("../../../logging/index.js", () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
-  Logger: class {},
+  Logger: { create: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }) },
 }));
 
 vi.mock("../../../services/FileUploadService.js", () => ({
@@ -31,6 +31,10 @@ vi.mock("../../../services/MediaManifestService.js", () => ({
 
 vi.mock("../../../database/repositories/AppRepository.js", () => ({
   AppRepository: vi.fn().mockImplementation(() => ({})),
+}));
+
+vi.mock("../../../services/image-search/normalize.js", () => ({
+  normalizeSearchQuery: vi.fn((q: string) => Promise.resolve(q)),
 }));
 
 const { default: mediaRouter } = await import("../media.js");
@@ -203,6 +207,19 @@ describe("GET /media/:appId/search", () => {
 
     const [calledUrl] = mockFetch.mock.calls[0] as [string];
     expect(calledUrl).toContain("page_size=24");
+  });
+
+  it("normalizes long queries before sending to Getty", async () => {
+    const { normalizeSearchQuery } = await import("../../../services/image-search/normalize.js");
+    const mockNormalize = vi.mocked(normalizeSearchQuery);
+    mockNormalize.mockResolvedValueOnce("sunset mountains");
+    mockFetch.mockResolvedValueOnce(makeGettyResponse([]));
+
+    await request(app).get("/media/test-app/search?q=a+beautiful+hero+image+of+a+sunset+over+mountains");
+
+    const [calledUrl] = mockFetch.mock.calls[0] as [string];
+    expect(calledUrl).toContain("phrase=sunset+mountains");
+    expect(mockNormalize).toHaveBeenCalledWith("a beautiful hero image of a sunset over mountains");
   });
 
   it("omits Authorization header when no token is configured", async () => {

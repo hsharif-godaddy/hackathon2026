@@ -9,6 +9,7 @@ import ChevronUpIcon from '@ux/icon/chevron-up'
 import CropIcon from '@ux/icon/crop'
 import RefreshIcon from '@ux/icon/refresh'
 import SearchIcon from '@ux/icon/search'
+import Search from '@ux/search'
 import Skeleton from '@ux/skeleton'
 import Tag from '@ux/tag'
 
@@ -591,7 +592,7 @@ export function MediaSlotDetail({
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto pr-1">
         {isLoading ? (
           <SkeletonContent />
         ) : error ? (
@@ -718,33 +719,40 @@ export function MediaSlotDetail({
                     {/* Search input + filters — image/video slots only */}
                     {showSearchSection && (
                       <>
-                        {/* Search bar: icon-inside, no border, follows PreviewCode pattern */}
-                        <div className="flex items-center rounded-md bg-intents-ux-box-backgroundColor h-7">
-                          <button
-                            type="button"
-                            onClick={() => { void triggerSearch() }}
-                            disabled={!searchQuery.trim() || isSearching}
-                            className="flex items-center justify-center w-7 h-7 flex-shrink-0 disabled:opacity-40 hover:cursor-pointer"
-                            aria-label={t('builder_domain_purchase_search_button')}
-                            data-testid="media-search-button"
-                            data-eid={generateClickEID("develop.media_slot_detail.search_button")}
-                          >
-                            {isSearching
-                              ? <RefreshIcon className="size-2.5 animate-spin" />
-                              : <SearchIcon className="size-2.5" />
-                            }
-                          </button>
-                          <input
-                            type="text"
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            onKeyDown={(e) => { if (e.key === 'Enter') void triggerSearch() }}
-                            placeholder={t('builder_mediaslot_search_images')}
-                            className="flex-1 bg-transparent outline-none text-sm h-7 pr-2"
-                            data-testid="media-search-input"
-                            data-eid={generateClickEID("develop.media_slot_detail.search_input")}
-                          />
-                        </div>
+                        {/* Search bar: @ux/search with search icon button, no clear X */}
+                        <Search
+                          id="media-search-input"
+                          visualSize="sm"
+                          className="[&_.ux-search-clear-button]:!hidden [&_.ux-text-input:only-child]:!rounded-r-none"
+                          value={searchQuery}
+                          onChange={(value: string) => setSearchQuery(value)}
+                          onConfirm={() => { void triggerSearch() }}
+                          clearable={false}
+                          placeholder={t('builder_mediaslot_search_images')}
+                          data-testid="media-search-input"
+                          aria-label={t('builder_mediaslot_search_images')}
+                          data-eid={generateClickEID("develop.media_slot_detail.search_input")}
+                          button={
+                            <Button
+                              design="primary"
+                              size="small"
+                              className="!px-2"
+                              onClick={() => {
+                                if (!searchQuery.trim() || isSearching) return
+                                void triggerSearch()
+                              }}
+                              disabled={!searchQuery.trim() || isSearching}
+                              aria-label={t('builder_domain_purchase_search_button')}
+                              data-testid="media-search-button"
+                              data-eid={generateClickEID("develop.media_slot_detail.search_button")}
+                            >
+                              {isSearching
+                                ? <RefreshIcon className="size-2.5 animate-spin" />
+                                : <span className="flex items-center gap-1"><SearchIcon className="size-2.5" /> {t('builder_domain_purchase_search_button')}</span>
+                              }
+                            </Button>
+                          }
+                        />
                       </>
                     )}
 

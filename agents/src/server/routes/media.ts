@@ -15,7 +15,7 @@ import path from 'path';
 import fs from 'fs/promises';
 import { mediaManifestService } from '../../services/MediaManifestService.js';
 import { imageProcessingService } from '../../services/ImageProcessingService.js';
-import { fileUploadService } from '../../services/FileUploadService.js';
+import { fileUploadService } from '../../services/FileUploadService.js';import { normalizeSearchQuery } from '../../services/image-search/normalize.js';
 import { AppRepository } from '../../database/repositories/AppRepository.js';
 import { logger } from '../../logging/index.js';
 import { validateAppOwnership } from '../middleware/app-ownership.js';
@@ -249,6 +249,9 @@ router.get('/:appId/search', async (req: Request, res: Response) => {
     return res.status(400).json({ success: false, error: 'Query parameter q is required' });
   }
 
+  // Normalize verbose queries into concise Getty-friendly search terms
+  const phrase = await normalizeSearchQuery(q);
+
   const page = Math.max(1, parseInt(String(req.query.page || '1'), 10) || 1);
   const pageSize = Math.min(24, Math.max(1, parseInt(String(req.query.pageSize || '9'), 10) || 9));
   const orientations = typeof req.query.orientations === 'string' && req.query.orientations !== 'any'
@@ -268,7 +271,7 @@ router.get('/:appId/search', async (req: Request, res: Response) => {
     : '';
 
   const params = new URLSearchParams({
-    phrase: q,
+    phrase,
     page: String(page),
     page_size: String(pageSize),
   });
@@ -276,7 +279,7 @@ router.get('/:appId/search', async (req: Request, res: Response) => {
     params.append('orientations', orientations);
   }
 
-  logger.info('route.media.search', { appId, q, page, pageSize, orientations });
+  logger.info('route.media.search', { appId, q, phrase, page, pageSize, orientations });
 
   try {
     const response = await fetch(`${gettyBaseUrl}/v1/search?${params.toString()}`, {
