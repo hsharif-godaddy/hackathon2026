@@ -72,8 +72,8 @@ export interface SuiteRunnerOptions {
    * Controls how scenarios are executed relative to each other.
    * - `'sequential'` (default): scenarios run one after another;
    *   trial-level parallelism is governed by `config.eval.maxConcurrency`.
-   * - `'parallel'`: all scenarios fan out concurrently, each forced
-   *   to trial=1, capped by `config.eval.maxConcurrency`.
+   * - `'parallel'`: all scenarios fan out concurrently, each running its
+   *   full trial count, capped by `config.eval.maxConcurrency`.
    */
   suiteMode?: 'sequential' | 'parallel';
   /** Fires after each trial is evaluated. */
@@ -110,7 +110,7 @@ export class SuiteRunner {
       return runCapped(
         scenarios.length,
         config.eval.maxConcurrency ?? 1,
-        (i) => this.processScenario(scenarios[i], 1),
+        (i) => this.processScenario(scenarios[i], trialsOverride ?? scenarios[i].trials),
       );
     }
 

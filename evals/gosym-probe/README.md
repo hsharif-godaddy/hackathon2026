@@ -45,7 +45,7 @@ Options:
   --env <env>               Override GD_ENV (local.dev | local.test | local.prod)
   --trials <n>              Override per-scenario trial count
   --skip-baseline           Skip baseline regression gating
-  --parallel-suites         Run all scenarios concurrently, 1 trial each
+  --fan-out                 Fan out all scenarios concurrently, full trial count each
   --concurrency <n>         Override max concurrent trials
   --graduate <name>         Run stability check before promoting to regression
   --graduate-suite <name>   Graduate all scenarios in a suite
@@ -161,16 +161,30 @@ See `src/evaluators/` for the full set of evaluators and their implementations.
 
 **Suite-level parallelism**
 
-Pass `--parallel-suites` to fan out all scenarios concurrently instead of
+Pass `--fan-out` to fan out all scenarios concurrently instead of
 running them one after another:
 
 ```bash
-pnpm run eval --suite smoke --parallel-suites
+pnpm run eval --suite smoke --fan-out
 ```
 
-Each scenario is forced to `trial=1` in this mode. Concurrency is capped by
-`config.eval.maxConcurrency`. Use this for fast sweeps; use `--concurrency N`
-for concurrent multi-trial runs within a single scenario.
+Each scenario runs its full trial count sequentially within the scenario.
+Concurrency is capped by `config.eval.maxConcurrency`.
+
+**Flag interactions**
+
+| Flag combo                       | `--trials N`        | `--concurrency M`          |
+| -------------------------------- | ------------------- | -------------------------- |
+| Standard eval                    | controls trials     | controls trial parallelism |
+| Standard + `--fan-out`           | controls trials     | ignored (forced to 1)      |
+| `--graduate`                     | ignored (stability) | controls trial parallelism |
+| `--graduate-suite`               | ignored (stability) | controls trial parallelism |
+| `--graduate-suite` + `--fan-out` | ignored (stability) | ignored (forced to 1)      |
+
+Graduation trial counts are driven solely by stability level
+(`low`=3, `medium`=5, `high`=10). `--trials` has no effect in
+graduation paths. `--fan-out` forces trial-level concurrency to 1
+(trials run sequentially within each scenario; scenarios fan out).
 
 **Regression gating**
 

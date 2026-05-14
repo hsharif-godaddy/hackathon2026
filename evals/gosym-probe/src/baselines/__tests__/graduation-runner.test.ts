@@ -11,7 +11,7 @@ vi.mock('../../runner/suite-runner.js', () => ({
   })),
 }));
 
-import { GraduationRunner } from '../graduation-runner.js';
+import { GraduationRunner, isDeferredResult } from '../graduation-runner.js';
 import { SuiteRunner } from '../../runner/suite-runner.js';
 import type {
   ScenarioResult,
@@ -91,6 +91,15 @@ function makeScenarioResult(
     aggregated: {
       'bug-hit-rate': makeAgg(passing, verdicts.length),
     },
+  };
+}
+
+function makeMockStore() {
+  return {
+    save: vi.fn<EvalStore['save']>().mockResolvedValue('/path'),
+    initRun: vi.fn<EvalStore['initRun']>().mockResolvedValue('mock-dir'),
+    ensureTrialDir: vi.fn<EvalStore['ensureTrialDir']>().mockResolvedValue('/tmp/trial'),
+    writeTrial: vi.fn<EvalStore['writeTrial']>().mockResolvedValue(undefined),
   };
 }
 
@@ -685,6 +694,178 @@ describe('GraduationRunner', () => {
 
       expect(mockBaselineStore.save).toHaveBeenCalledOnce();
       expect(result.baselineSaved).toBe(true);
+    });
+  });
+
+  describe('shared run folder (dirName + skipFinalize)', () => {
+    it('throws when skipFinalize is true without dirName', () => {
+      expect(() => new GraduationRunner({
+        scenario: mockScenario,
+        config: mockConfig,
+        baselineStore: mockBaselineStore,
+        skipFinalize: true,
+        store: makeMockStore() as unknown as EvalStore,
+      } as any)).toThrow('skipFinalize requires dirName');
+    });
+
+    it('skips initRun when dirName is provided', async () => {
+      mockSuiteRunnerRun.mockResolvedValue([
+        makeScenarioResult(['pass', 'pass', 'pass']),
+      ]);
+
+      const mockStore = makeMockStore();
+      const runner = new GraduationRunner({
+        scenario: mockScenario,
+        config: mockConfig,
+        baselineStore: mockBaselineStore,
+        store: mockStore as unknown as EvalStore,
+        dirName: 'shared-dir',
+        skipFinalize: true,
+      });
+      await runner.run('shared-run-id');
+
+      expect(mockStore.initRun).not.toHaveBeenCalled();
+    });
+
+    it('writes trials directly instead of calling save when skipFinalize is true', async () => {
+      const scenarioResult = makeScenarioResult(['pass', 'fail', 'pass']);
+      mockSuiteRunnerRun.mockResolvedValue([scenarioResult]);
+
+      const mockStore = makeMockStore();
+      const runner = new GraduationRunner({
+        scenario: mockScenario,
+        config: mockConfig,
+        baselineStore: mockBaselineStore,
+        store: mockStore as unknown as EvalStore,
+        dirName: 'shared-dir',
+        skipFinalize: true,
+      });
+      await runner.run('shared-run-id');
+
+      expect(mockStore.save).not.toHaveBeenCalled();
+      expect(mockStore.writeTrial).toHaveBeenCalledTimes(3);
+      for (let i = 0; i < 3; i++) {
+        expect(mockStore.writeTrial).toHaveBeenCalledWith(
+          'shared-dir',
+          'test-scenario',
+          expect.objectContaining({ trialIndex: i }),
+        );
+      }
+    });
+
+    it('returns scenarioResult when skipFinalize is true', async () => {
+      mockSuiteRunnerRun.mockResolvedValue([
+        makeScenarioResult(['pass', 'pass', 'pass']),
+      ]);
+
+      const mockStore = makeMockStore();
+      const runner = new GraduationRunner({
+        scenario: mockScenario,
+        config: mockConfig,
+        baselineStore: mockBaselineStore,
+        store: mockStore as unknown as EvalStore,
+        dirName: 'shared-dir',
+        skipFinalize: true,
+      });
+      const result = await runner.run('shared-run-id');
+
+      expect(result.scenarioResult).toBeDefined();
+      expect(result.scenarioResult!.scenarioName).toBe('test-scenario');
+      expect(result.scenarioResult!.trials).toHaveLength(3);
+    });
+
+    it('does not return scenarioResult when skipFinalize is false', async () => {
+      mockSuiteRunnerRun.mockResolvedValue([
+        makeScenarioResult(['pass', 'pass', 'pass']),
+      ]);
+
+      const runner = new GraduationRunner({
+        scenario: mockScenario,
+        config: mockConfig,
+        baselineStore: mockBaselineStore,
+      });
+      const result = await runner.run('run-no-skip');
+
+      expect(result.scenarioResult).toBeUndefined();
+    });
+
+    it('still saves baseline when skipFinalize is true', async () => {
+      mockSuiteRunnerRun.mockResolvedValue([
+        makeScenarioResult(['pass', 'pass', 'pass']),
+      ]);
+
+      const mockStore = makeMockStore();
+      const runner = new GraduationRunner({
+        scenario: mockScenario,
+        config: mockConfig,
+        baselineStore: mockBaselineStore,
+        store: mockStore as unknown as EvalStore,
+        dirName: 'shared-dir',
+        skipFinalize: true,
+      });
+      await runner.run('shared-run-id');
+
+      expect(mockBaselineStore.save).toHaveBeenCalledWith(
+        'shared-run-id',
+        expect.objectContaining({ scenarioName: 'test-scenario' }),
+        { defaultThreshold: 0.1 },
+      );
+    });
+
+    it('uses provided dirName for ensureTrialDir', async () => {
+      mockSuiteRunnerRun.mockResolvedValue([
+        makeScenarioResult(['pass', 'pass', 'pass']),
+      ]);
+
+      const mockStore = makeMockStore();
+      const runner = new GraduationRunner({
+        scenario: mockScenario,
+        config: mockConfig,
+        baselineStore: mockBaselineStore,
+        store: mockStore as unknown as EvalStore,
+        dirName: 'pre-created-dir',
+        skipFinalize: true,
+      });
+      await runner.run('shared-run-id');
+
+      // SuiteRunner should have been constructed with getTrialOutputDir
+      // that uses the provided dirName
+      const suiteRunnerOpts = vi.mocked(SuiteRunner).mock.calls[0][0];
+      expect(suiteRunnerOpts.getTrialOutputDir).toBeDefined();
+    });
+  });
+
+  describe('isDeferredResult type guard', () => {
+    it('returns true when scenarioResult is present', async () => {
+      mockSuiteRunnerRun.mockResolvedValue([
+        makeScenarioResult(['pass', 'pass', 'pass']),
+      ]);
+
+      const mockStore = makeMockStore();
+      const runner = new GraduationRunner({
+        scenario: mockScenario,
+        config: mockConfig,
+        baselineStore: mockBaselineStore,
+        store: mockStore as unknown as EvalStore,
+        dirName: 'shared-dir',
+        skipFinalize: true,
+      });
+      const result = await runner.run('run-deferred');
+      expect(isDeferredResult(result)).toBe(true);
+    });
+
+    it('returns false when scenarioResult is undefined', async () => {
+      mockSuiteRunnerRun.mockResolvedValue([
+        makeScenarioResult(['pass', 'pass', 'pass']),
+      ]);
+
+      const runner = new GraduationRunner({
+        scenario: mockScenario,
+        config: mockConfig,
+        baselineStore: mockBaselineStore,
+      });
+      const result = await runner.run('run-standalone');
+      expect(isDeferredResult(result)).toBe(false);
     });
   });
 

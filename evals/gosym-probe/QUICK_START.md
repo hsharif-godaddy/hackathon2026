@@ -91,35 +91,25 @@ Docker resource allocation and concurrency tuning.
 
 Run from `evals/gosym-probe/`, or use `pnpm --filter gosym-probe run` from root.
 
-**Single scenario, 3 trials (default):**
-
-```bash
-pnpm run eval --scenario build-landing-page
-```
-
-**Override trial count:**
+**Smoke test (single scenario, 1 trial):**
 
 ```bash
 pnpm run eval --scenario build-landing-page --trials 1
 ```
 
-**All scenarios in a suite:**
+Use `build-landing-page` to verify the harness is wired up correctly. It
+runs a single lightweight turn and confirms end-to-end connectivity.
+
+**Regression gate (golden-light suite):**
 
 ```bash
-pnpm run eval --suite smoke
+pnpm run eval --suite golden-light --fan-out
 ```
 
-**All scenarios in a suite, running concurrently (1 trial each):**
-
-```bash
-pnpm run eval --suite smoke --parallel-suites
-```
-
-**All scenarios:**
-
-```bash
-pnpm run eval
-```
+`golden-light` is the signal-dense suite for gating agent regressions on
+new code changes. Covers portfolio, business site, multipage catalog, and
+ambiguity handling with evaluators tuned for structural correctness, JTBD
+completion, and prompt efficiency. Drop `--fan-out` to run sequentially.
 
 **Concurrency:**
 
@@ -135,7 +125,7 @@ Default `maxConcurrency` per environment:
 Override for a single run with `--concurrency N`:
 
 ```bash
-pnpm run eval --suite smoke --concurrency 4
+pnpm run eval --suite golden-light --concurrency 4
 ```
 
 The override applies to that run only and is recorded in
@@ -162,55 +152,46 @@ keyboard reference.
 
 ---
 
-## 6. Graduate a Scenario
+## 6. Bootstrap Regression Testing
 
-New scenarios have no baseline and are informational (results never block
-runs). Once behavior is stable, **graduate** the scenario to save a
-baseline. From that point on the scenario gates future runs automatically
-— no code change required.
+Graduation records a baseline from a known-good AAB branch (your control).
+Future eval runs compare against that baseline to detect regressions in a
+test branch.
 
-```bash
-pnpm run eval --graduate build-landing-page
-```
+**Step 1: Graduate against the control branch**
 
-By default graduation uses the scenario's stability level (`medium` = 5
-trials). Override with `--stability` for more or fewer trials:
+Start AAB on the branch you trust (e.g. `main`):
 
 ```bash
-pnpm run eval --graduate build-landing-page --stability high   # 10 trials
-pnpm run eval --graduate build-landing-page --stability low    # 1 trial
+# repo root, on main
+SOCKET_DIAGNOSTICS=true AUTH_TYPE=mock pnpm run dev
 ```
 
-To graduate all scenarios in a suite:
+Graduate the golden-light suite to save baselines:
 
 ```bash
-pnpm run eval --graduate-suite smoke
+pnpm run eval --graduate-suite golden-light --fan-out
 ```
 
-Graduation runs N trials, computes a pass rate per evaluator, and
-**saves a baseline only on successful promotion**. If every evaluator
-reaches the pass-rate threshold (default 90%), the scenario is promoted:
+**Step 2: Gate the test branch**
 
-```
-✓ Scenario "build-landing-page" promoted [medium / 5 trials]
-  Baseline saved.
-  Min pass rate: 100% (threshold: 90%)
-```
+Switch AAB to the branch under test and restart:
 
-If the threshold is not met, no baseline is saved and per-evaluator
-rates are shown:
-
-```
-✗ Scenario "build-landing-page" not promoted [medium / 5 trials]
-  Baseline not saved (scenario did not meet pass-rate threshold).
-  Per-evaluator pass rates (threshold: 90%):
-    bug-hit-rate: 100% ✓
-    jtbd-completion: 60% ✗
+```bash
+# repo root, on your feature branch
+SOCKET_DIAGNOSTICS=true AUTH_TYPE=mock pnpm run dev
 ```
 
-Improve the failing evaluators and rerun graduation. See
-[Graduating a Scenario](README.md#graduating-a-scenario) in the README
-for full details.
+Run the suite against the saved baselines:
+
+```bash
+pnpm run eval --suite golden-light --fan-out
+```
+
+Regressions are flagged automatically per-evaluator against the
+graduated baseline. See
+[Graduating a Scenario](README.md#graduating-a-scenario) for stability
+levels, pass-rate thresholds, and per-evaluator output.
 
 ---
 

@@ -11,9 +11,7 @@ import {
 import { GocodeSyntheticUser } from './runner/gocode-synthetic-user.js';
 import {
   SuiteRunner,
-  runCapped,
 } from './runner/suite-runner.js';
-import type { RuncappedError } from './runner/suite-runner.js';
 import {
   clampConcurrency,
   effectiveConcurrency,
@@ -25,6 +23,8 @@ import {
   GraduationRunner,
 } from './baselines/graduation-runner.js';
 import type { GraduationResult } from './baselines/graduation-runner.js';
+import { GraduationSuiteRunner } from './baselines/graduation-suite-runner.js';
+import type { GraduationSuiteRunResult } from './baselines/graduation-suite-runner.js';
 import { createAllScenarios } from './scenarios/registry.js';
 import {
   validateRunFlags,
@@ -34,7 +34,7 @@ import {
   findScenariosBySuite,
 } from './cli/args.js';
 import {
-  DEFAULT_STABILITY_LEVEL,
+  resolveStabilityLevel,
   STABILITY_TRIALS,
 } from './scenarios/types.js';
 import type {
@@ -89,7 +89,7 @@ async function main(): Promise<void> {
       concurrency:        { type: 'string' },
       'max-turns':        { type: 'string' },
       'skip-baseline':    { type: 'boolean' },
-      'parallel-suites':  { type: 'boolean' },
+      'fan-out':          { type: 'boolean' },
       graduate:           { type: 'string' },
       'graduate-suite':   { type: 'string' },
       resume:             { type: 'string' },
@@ -162,81 +162,62 @@ async function main(): Promise<void> {
       StabilityLevel | undefined;
     const maxConcurrency = config.eval.maxConcurrency ?? 1;
 
-    const effectiveLevel = (s: Scenario): StabilityLevel =>
-      stabilityOverride ?? s.stabilityLevel ?? DEFAULT_STABILITY_LEVEL;
-
     const gradStore = new EvalStore(
       undefined, config.storage?.maxRuns,
     );
 
-    const innerConcurrency: number = values['parallel-suites']
+    const fanOut = values['fan-out'] ?? false;
+    const trialConcurrency: number = fanOut
       ? 1
       : effectiveConcurrency(concurrencyOverride, maxConcurrency);
 
-    const makeGradRunner = (s: Scenario) =>
-      new GraduationRunner({
-        scenario: s,
-        config,
-        makeAgentClient,
-        syntheticUser,
-        siteCapture,
-        baselineStore: new BaselineStore(),
-        stabilityLevelOverride: stabilityOverride,
-        concurrencyOverride: innerConcurrency,
-        maxTurnsOverride,
-        store: gradStore,
-      });
+    const runId = randomUUID();
+    const suiteRunner = new GraduationSuiteRunner({
+      scenarios: suiteScenarios,
+      config,
+      makeAgentClient,
+      syntheticUser,
+      siteCapture,
+      stabilityLevelOverride: stabilityOverride,
+      trialConcurrency,
+      maxScenarioConcurrency: fanOut ? undefined : 1,
+      baselineStoreFactory: () => new BaselineStore(),
+      maxTurnsOverride,
+      store: gradStore,
+    });
 
-    const runScenario = async (
-      gradScenario: Scenario,
-    ): Promise<GraduationResult> => {
-      const level = effectiveLevel(gradScenario);
-      const trialCount = STABILITY_TRIALS[level];
-      const runId = randomUUID();
-      console.log(
-        `\nGraduation run: ${gradScenario.name} (${runId})`,
-      );
-      console.log(`Stability: ${level} (${trialCount} trials)`);
-      return makeGradRunner(gradScenario).run(runId);
-    };
+    const suiteResult: GraduationSuiteRunResult = await suiteRunner.run(runId);
 
-    let allResults: GraduationResult[];
-    if (values['parallel-suites']) {
-      try {
-        allResults = await runCapped(
-          suiteScenarios.length,
-          maxConcurrency,
-          (i) => runScenario(suiteScenarios[i]),
+    if (suiteResult.errors.length > 0) {
+      const { results: completed, errors } = suiteResult;
+      if (completed.length > 0) {
+        console.error(
+          `\n${errors.length} scenario(s) failed. ` +
+          `Printing results for ${completed.length} completed scenario(s):`,
         );
-      } catch (err) {
-        if (err instanceof AggregateError && 'partialResults' in err) {
-          const partial = (err as RuncappedError<GraduationResult>).partialResults;
-          const completed = partial.filter(
-            (r): r is GraduationResult => r !== undefined,
-          );
-          if (completed.length > 0) {
-            console.error(
-              `\n${err.errors.length} scenario(s) failed. ` +
-              `Printing results for ${completed.length} completed scenario(s):`,
-            );
-            for (const gradResult of completed) {
-              printGraduationResult(gradResult);
-            }
-          }
-          for (const inner of err.errors) {
-            console.error('Scenario error:', inner);
-          }
-          await gradStore.prune();
-          process.exit(1);
+        for (const gradResult of completed) {
+          printGraduationResult(gradResult);
         }
-        throw err;
       }
-    } else {
-      allResults = [];
-      for (const gradScenario of suiteScenarios) {
-        allResults.push(await runScenario(gradScenario));
+      for (const inner of errors) {
+        console.error('Scenario error:', inner);
       }
+      if (suiteResult.finalizationError) {
+        console.error(
+          `Run finalization also failed: ${suiteResult.finalizationError.message}`,
+        );
+      }
+      await gradStore.prune();
+      process.exit(1);
     }
+    if (suiteResult.finalizationError) {
+      console.error(
+        `\nError: run finalization failed: ${suiteResult.finalizationError.message}`,
+      );
+      await gradStore.prune();
+      process.exit(1);
+    }
+    const allResults = suiteResult.results;
     for (const gradResult of allResults) {
       printGraduationResult(gradResult);
     }
@@ -289,9 +270,7 @@ async function main(): Promise<void> {
     });
 
     const runId = randomUUID();
-    const level = stabilityOverride
-      ?? gradScenario.stabilityLevel
-      ?? DEFAULT_STABILITY_LEVEL;
+    const level = resolveStabilityLevel(stabilityOverride, gradScenario);
     const trialCount = STABILITY_TRIALS[level];
     console.log(
       `\nGraduation run: ${gradScenario.name} (${runId})`,
@@ -307,7 +286,7 @@ async function main(): Promise<void> {
 
   const baselineStore = skipBaseline ? undefined : new BaselineStore();
 
-  const parallelSuites = values['parallel-suites'] ?? false;
+  const fanOut = values['fan-out'] ?? false;
 
   const store = new EvalStore(undefined, config.storage?.maxRuns);
   let runId: string = randomUUID();
@@ -403,29 +382,18 @@ async function main(): Promise<void> {
     console.log(`Max turns override: ${maxTurnsOverride}`);
   }
 
-  if (parallelSuites) {
-    const cap = config.eval.maxConcurrency ?? 1;
-    console.log(
-      `Suite mode: parallel` +
-      ` (${scenarios.length} scenarios,` +
-      ` concurrency: ${cap},` +
-      ` 1 trial each)`,
-    );
-  } else {
-    const cap = config.eval.maxConcurrency ?? 1;
-    for (const s of scenarios) {
-      const trialCount = trialsOverride ?? s.trials;
-      console.log(
-        `  ${s.name}: ${trialCount} trial(s), concurrency: ${cap}`,
-      );
-    }
+  const cap = config.eval.maxConcurrency ?? 1;
+  for (const s of scenarios) {
+    const trialCount = trialsOverride ?? s.trials;
+    const mode = fanOut ? ' [fan-out]' : '';
+    console.log(`  ${s.name}: ${trialCount} trial(s)${mode}, concurrency: ${cap}`);
   }
 
   const pendingWrites: Promise<void>[] = [];
   const writeFailures: { scenarioName: string; trialIndex: number; error: unknown }[] = [];
 
   const maxConcurrency = config.eval.maxConcurrency ?? 1;
-  const resolvedConcurrency: number | undefined = parallelSuites
+  const resolvedConcurrency: number | undefined = fanOut
     ? 1
     : clampConcurrency(concurrencyOverride, maxConcurrency);
 
@@ -439,7 +407,7 @@ async function main(): Promise<void> {
     concurrencyOverride: resolvedConcurrency,
     maxTurnsOverride,
     baselineStore,
-    suiteMode: parallelSuites ? 'parallel' : undefined,
+    suiteMode: fanOut ? 'parallel' : undefined,
     existingTrialsByScenario,
     trialIndicesByScenario,
     getTrialOutputDir: (scenarioName, trialIndex) =>

@@ -51,12 +51,27 @@ pnpm run eval          # headless eval with flags (CI / scripting)
 --concurrency <n>        Cap concurrent trials (clamped to config.eval.maxConcurrency)
 --max-turns <n>          Override max turns per simulation
 --skip-baseline          Skip baseline comparison
---parallel-suites        Fan out scenarios in parallel; standard runs use 1 trial each, graduation keeps full stability trial count
+--fan-out                Fan out scenarios in parallel (capped by maxConcurrency); each scenario runs its full trial count sequentially
 --graduate <name>        Stability check one scenario before promoting
 --graduate-suite <name>  Stability check all scenarios in a suite
 --stability <level>      Override stability level (low|medium|high)
 --resume <run-id>        Resume a previous incomplete run
 ```
+
+### Flag interactions
+
+| Flag combo                     | `--trials N`        | `--concurrency M`          |
+| ------------------------------ | ------------------- | -------------------------- |
+| Standard eval                  | controls trials     | controls trial parallelism |
+| Standard + `--fan-out`         | controls trials     | ignored (forced to 1)      |
+| `--graduate`                   | ignored (stability) | controls trial parallelism |
+| `--graduate-suite`             | ignored (stability) | controls trial parallelism |
+| `--graduate-suite` + `--fan-out` | ignored (stability) | ignored (forced to 1)    |
+
+Graduation trial counts are driven solely by stability level
+(`low`=3, `medium`=5, `high`=10). `--trials` has no effect in
+graduation paths. `--fan-out` forces trial-level concurrency to 1
+(trials run sequentially within each scenario; scenarios fan out).
 
 ### `pnpm run save-baseline` usage
 
@@ -81,7 +96,7 @@ src/evaluators/   Evaluator interface + concrete evaluators
 src/scenarios/    Scenario types + registry + concrete scenarios
                   (prompt-vs-skill/ suite)
 src/baselines/    BaselineStore, RegressionComparator, GraduationRunner,
-                  ScoreModeEnricher, threshold utils
+                  GraduationSuiteRunner, ScoreModeEnricher, threshold utils
 src/reporters/    Markdown run reporter
 src/store/        EvalStore (run results persistence)
 src/personas/     Persona types (e.g. beginner)

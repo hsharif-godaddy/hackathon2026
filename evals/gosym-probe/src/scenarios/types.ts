@@ -19,6 +19,13 @@ export const STABILITY_TRIALS: Record<StabilityLevel, number> = {
   high: 10,
 };
 
+export function resolveStabilityLevel(
+  override: StabilityLevel | undefined,
+  scenario: Pick<Scenario, 'stabilityLevel'>,
+): StabilityLevel {
+  return override ?? scenario.stabilityLevel ?? DEFAULT_STABILITY_LEVEL;
+}
+
 export interface ScenarioGoal {
   description: string;
   assertion: 'positive' | 'negative';

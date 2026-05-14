@@ -794,7 +794,7 @@ describe('SuiteRunner — suiteMode: parallel', () => {
     mockSimulationRun.mockResolvedValue(makeTranscript());
   });
 
-  it('forces trials to 1 per scenario', async () => {
+  it('runs full scenario.trials per scenario', async () => {
     const s0 = makeScenario({ name: 's0', trials: 3 });
     const s1 = makeScenario({ name: 's1', trials: 3 });
 
@@ -803,13 +803,14 @@ describe('SuiteRunner — suiteMode: parallel', () => {
       config: mockConfig,
       makeAgentClient,
       syntheticUser: mockSyntheticUser,
+      concurrencyOverride: 1,
       suiteMode: 'parallel',
     }).run();
 
-    expect(mockSimulationRun).toHaveBeenCalledTimes(2);
+    expect(mockSimulationRun).toHaveBeenCalledTimes(6);
   });
 
-  it('forces trials to 1 even with trialsOverride', async () => {
+  it('respects trialsOverride per scenario', async () => {
     const s0 = makeScenario({ name: 's0', trials: 3 });
     const s1 = makeScenario({ name: 's1', trials: 3 });
 
@@ -819,10 +820,11 @@ describe('SuiteRunner — suiteMode: parallel', () => {
       makeAgentClient,
       syntheticUser: mockSyntheticUser,
       trialsOverride: 5,
+      concurrencyOverride: 1,
       suiteMode: 'parallel',
     }).run();
 
-    expect(mockSimulationRun).toHaveBeenCalledTimes(2);
+    expect(mockSimulationRun).toHaveBeenCalledTimes(10);
   });
 
   it('runs scenarios concurrently (both start before any complete)', async () => {
@@ -901,6 +903,7 @@ describe('SuiteRunner — suiteMode: parallel', () => {
       config: cappedConfig,
       makeAgentClient,
       syntheticUser: mockSyntheticUser,
+      concurrencyOverride: 1,
       suiteMode: 'parallel',
     }).run();
 
@@ -1295,7 +1298,7 @@ describe('SuiteRunner — no-stacking invariant', () => {
     expect(maxInFlight).toBeLessThanOrEqual(3);
   });
 
-  it('parallel-suites: 5 scenarios cap 3 never exceeds 3 concurrent', async () => {
+  it('fan-out: 5 scenarios cap 3 never exceeds 3 concurrent', async () => {
     let inFlight = 0;
     let maxInFlight = 0;
 
@@ -1316,45 +1319,42 @@ describe('SuiteRunner — no-stacking invariant', () => {
       config: { ...mockConfig, eval: { ...mockConfig.eval, maxConcurrency: 3 } },
       makeAgentClient,
       syntheticUser: mockSyntheticUser,
-      concurrencyOverride: 3,
+      concurrencyOverride: 1,
       suiteMode: 'parallel',
     }).run();
 
     expect(maxInFlight).toBeLessThanOrEqual(3);
   });
 
-  it('parallel-suites: 4 scenarios cap 12 all start concurrently', async () => {
+  it('fan-out: 4 scenarios cap 12 all start concurrently, full trials per scenario', async () => {
     let inFlight = 0;
     let peakInFlight = 0;
-    const resolvers: (() => void)[] = [];
 
-    mockSimulationRun.mockImplementation(() => {
+    mockSimulationRun.mockImplementation(async () => {
       inFlight++;
       peakInFlight = Math.max(peakInFlight, inFlight);
-      return new Promise<Transcript>((resolve) => {
-        resolvers.push(() => {
-          inFlight--;
-          resolve(makeTranscript());
-        });
-      });
+      await Promise.resolve();
+      inFlight--;
+      return makeTranscript();
     });
 
     const scenarios = Array.from({ length: 4 }, (_, i) =>
       makeScenario({ name: `s${i}`, trials: 3 }),
     );
 
-    const runPromise = new SuiteRunner({
+    await new SuiteRunner({
       scenarios,
       config: { ...mockConfig, eval: { ...mockConfig.eval, maxConcurrency: 12 } },
       makeAgentClient,
       syntheticUser: mockSyntheticUser,
+      concurrencyOverride: 1,
       suiteMode: 'parallel',
     }).run();
 
-    await Promise.resolve();
+    // All 4 scenarios × 3 trials = 12 total simulations
+    expect(mockSimulationRun).toHaveBeenCalledTimes(12);
+    // All 4 scenarios ran their first trial concurrently
     expect(peakInFlight).toBe(4);
-    resolvers.forEach((r) => r());
-    await runPromise;
   });
 });
 

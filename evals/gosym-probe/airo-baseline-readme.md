@@ -38,20 +38,18 @@ pnpm --filter gosym-probe eval --suite airo-baseline --skip-baseline --max-turns
 
 ## Run In Parallel
 
-Use `--parallel-suites` to fan out scenarios concurrently:
+Use `--fan-out` to fan out scenarios concurrently:
 
 ```bash
 GD_AIRO_BASELINE_ENABLE=1 \
 GD_AIRO_BASELINE_USE_BASELINE_EVALUATORS=1 \
 PROBE_DEBUG_EVENTS=1 \
-pnpm --filter gosym-probe eval --suite airo-baseline --parallel-suites --skip-baseline --max-turns 15
+pnpm --filter gosym-probe eval --suite airo-baseline --fan-out --skip-baseline --max-turns 15
 ```
-
-Note: `--parallel-suites` forces one trial per scenario.
 
 ## Run Multiple Trials
 
-To run multiple trials per scenario, omit `--parallel-suites`:
+To run multiple trials per scenario:
 
 ```bash
 GD_AIRO_BASELINE_ENABLE=1 \
@@ -90,7 +88,7 @@ Resume skips completed trial indices and writes missing trials into the same run
 - `--suite airo-baseline`: runs only the Airo baseline suite.
 - `--skip-baseline`: skips saved-regression-baseline checks while iterating.
 - `--max-turns <n>`: caps conversation turns.
-- `--trials <n>`: runs multiple trials per scenario when not using `--parallel-suites`.
+- `--trials <n>`: overrides per-scenario trial count.
 - `--resume <run-id-or-run-dir>`: resumes an existing run.
 
 ## Override Synthetic Users Path

@@ -57,8 +57,8 @@ export function validateRunFlags(flags: RunFlags): string | null {
       '--graduate-suite cannot be combined with --graduate.'
     );
   }
-  if (flags.stability && !flags.graduate) {
-    return '--stability requires --graduate.';
+  if (flags.stability && !flags.graduate && !flags.graduateSuite) {
+    return '--stability requires --graduate or --graduate-suite.';
   }
   if (
     flags.stability

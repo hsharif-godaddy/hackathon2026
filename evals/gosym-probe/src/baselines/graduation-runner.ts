@@ -1,6 +1,6 @@
 import { SuiteRunner } from '../runner/suite-runner.js';
 import {
-  DEFAULT_STABILITY_LEVEL,
+  resolveStabilityLevel,
   STABILITY_TRIALS,
 } from '../scenarios/types.js';
 import type {
@@ -23,7 +23,7 @@ interface BaselineStore {
   ): Promise<void>;
 }
 
-export interface GraduationRunnerOptions {
+interface GraduationRunnerOptionsBase {
   scenario: Scenario;
   config: ResolvedConfig;
   makeAgentClient?: () => Promise<AgentClient>;
@@ -33,23 +33,46 @@ export interface GraduationRunnerOptions {
   stabilityLevelOverride?: StabilityLevel;
   concurrencyOverride?: number;
   maxTurnsOverride?: number;
-  store?: EvalStore;
+  log?: (message: string, ...args: unknown[]) => void;
 }
+
+export type GraduationRunnerOptions = GraduationRunnerOptionsBase & (
+  | { skipFinalize?: false; dirName?: string; store?: EvalStore }
+  | { skipFinalize: true; dirName: string; store: EvalStore }
+);
 
 /**
  * Result of a graduation run. The baseline is saved after N stability trials
  * complete unless all trials produced only unknown verdicts (indicating
  * infrastructure failure rather than meaningful eval data).
  */
-export interface GraduationResult {
+interface GraduationResultBase {
   scenarioName: string;
   stabilityLevel: StabilityLevel;
   stabilityTrials: number;
   baselineSaved: boolean;
 }
 
+export interface DeferredGraduationResult extends GraduationResultBase {
+  scenarioResult: ScenarioResult;
+}
+
+export interface StandaloneGraduationResult extends GraduationResultBase {
+  scenarioResult?: undefined;
+}
+
+export type GraduationResult = DeferredGraduationResult | StandaloneGraduationResult;
+
+export function isDeferredResult(r: GraduationResult): r is DeferredGraduationResult {
+  return r.scenarioResult !== undefined;
+}
+
 export class GraduationRunner {
-  constructor(private readonly options: GraduationRunnerOptions) {}
+  constructor(private readonly options: GraduationRunnerOptions) {
+    if (options.skipFinalize === true && !options.dirName) {
+      throw new Error('skipFinalize requires dirName to be provided');
+    }
+  }
 
   async run(runId: string): Promise<GraduationResult> {
     const {
@@ -61,20 +84,22 @@ export class GraduationRunner {
       baselineStore,
       store,
     } = this.options;
+    const log = this.options.log ?? console.warn;
 
-    const stabilityLevel =
-      this.options.stabilityLevelOverride
-      ?? scenario.stabilityLevel
-      ?? DEFAULT_STABILITY_LEVEL;
+    const stabilityLevel = resolveStabilityLevel(
+      this.options.stabilityLevelOverride,
+      scenario,
+    );
     const totalTrials = STABILITY_TRIALS[stabilityLevel];
 
-    const dirName = store
-      ? await store.initRun(runId, [scenario], config, {
-        concurrencyOverride: this.options.concurrencyOverride,
-        maxTurnsOverride: this.options.maxTurnsOverride,
-        kind: 'graduation',
-      })
-      : undefined;
+    const dirName = this.options.dirName
+      ?? (store
+        ? await store.initRun(runId, [scenario], config, {
+          concurrencyOverride: this.options.concurrencyOverride,
+          maxTurnsOverride: this.options.maxTurnsOverride,
+          kind: 'graduation',
+        })
+        : undefined);
 
     const runner = new SuiteRunner({
       scenarios: [scenario],
@@ -94,13 +119,21 @@ export class GraduationRunner {
     const [result] = await runner.run();
     result.stabilityLevel = stabilityLevel;
 
-    if (this.options.store && dirName) {
-      await this.options.store.save(runId, [result], [scenario], config, {
-        concurrencyOverride: this.options.concurrencyOverride,
-        maxTurnsOverride: this.options.maxTurnsOverride,
-        kind: 'graduation',
-        dirName,
-      });
+    if (store && dirName) {
+      if (this.options.skipFinalize) {
+        await Promise.all(
+          result.trials.map((trial) =>
+            store.writeTrial(dirName, result.scenarioName, trial),
+          ),
+        );
+      } else {
+        await store.save(runId, [result], [scenario], config, {
+          concurrencyOverride: this.options.concurrencyOverride,
+          maxTurnsOverride: this.options.maxTurnsOverride,
+          kind: 'graduation',
+          dirName,
+        });
+      }
     }
 
     const hasValidResults = result.trials.some((trial) =>
@@ -112,18 +145,23 @@ export class GraduationRunner {
         defaultThreshold: config.regression.defaultThreshold,
       });
     } else {
-      console.warn(
+      log(
         '[GraduationRunner] All trials produced unknown verdicts; skipping baseline save.',
         { scenarioName: scenario.name, runId },
       );
     }
 
-    return {
+    const base: GraduationResultBase = {
       scenarioName: scenario.name,
       stabilityLevel,
       stabilityTrials: totalTrials,
       baselineSaved: hasValidResults,
     };
+
+    if (this.options.skipFinalize) {
+      return { ...base, scenarioResult: result };
+    }
+    return base;
   }
 }
 
