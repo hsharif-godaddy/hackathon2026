@@ -592,7 +592,7 @@ func TestCreateBudgetSessionWithMetadata(t *testing.T) {
 	}
 	meta := []byte(`{"key":"value"}`)
 	sessionID := uuid.NewString()
-	if err := st.CreateBudgetSession(ctx, budgetID, sessionID, meta); err != nil {
+	if err := st.CreateBudgetSession(ctx, budgetID, sessionID, meta, false); err != nil {
 		t.Fatal(err)
 	}
 	d, err := st.GetBudgetSession(ctx, sessionID)
@@ -606,7 +606,7 @@ func TestCreateBudgetSessionWithMetadata(t *testing.T) {
 
 func TestCreateBudgetSessionInvalidBudgetUUID(t *testing.T) {
 	st := testIntegrationStore(t)
-	err := st.CreateBudgetSession(context.Background(), "not-a-uuid", uuid.NewString(), nil)
+	err := st.CreateBudgetSession(context.Background(), "not-a-uuid", uuid.NewString(), nil, false)
 	if err == nil {
 		t.Fatal("expected error for invalid UUID")
 	}
@@ -614,7 +614,7 @@ func TestCreateBudgetSessionInvalidBudgetUUID(t *testing.T) {
 
 func TestCreateBudgetSessionInvalidSessionUUID(t *testing.T) {
 	st := testIntegrationStore(t)
-	err := st.CreateBudgetSession(context.Background(), uuid.NewString(), "not-a-uuid", nil)
+	err := st.CreateBudgetSession(context.Background(), uuid.NewString(), "not-a-uuid", nil, false)
 	if err == nil {
 		t.Fatal("expected error for invalid UUID")
 	}

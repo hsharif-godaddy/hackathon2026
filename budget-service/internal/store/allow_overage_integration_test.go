@@ -29,7 +29,7 @@ func TestCreateSessionReportAllowOverageAppends(t *testing.T) {
 	}
 
 	sessionID := uuid.NewString()
-	if err := st.CreateBudgetSession(ctx, budgetID, sessionID, nil); err != nil {
+	if err := st.CreateBudgetSession(ctx, budgetID, sessionID, nil, false); err != nil {
 		t.Fatal(err)
 	}
 
@@ -127,7 +127,7 @@ func TestCreateSessionReportAllowOverageMultiItem(t *testing.T) {
 	}
 
 	sessionID := uuid.NewString()
-	if err := st.CreateBudgetSession(ctx, budgetID, sessionID, nil); err != nil {
+	if err := st.CreateBudgetSession(ctx, budgetID, sessionID, nil, false); err != nil {
 		t.Fatal(err)
 	}
 
@@ -219,11 +219,11 @@ func TestCreateSessionReportAllowOverageZeroBudget(t *testing.T) {
 
 	// Create both sessions while budget has capacity
 	sessionID1 := uuid.NewString()
-	if err := st.CreateBudgetSession(ctx, budgetID, sessionID1, nil); err != nil {
+	if err := st.CreateBudgetSession(ctx, budgetID, sessionID1, nil, false); err != nil {
 		t.Fatal(err)
 	}
 	sessionID2 := uuid.NewString()
-	if err := st.CreateBudgetSession(ctx, budgetID, sessionID2, nil); err != nil {
+	if err := st.CreateBudgetSession(ctx, budgetID, sessionID2, nil, false); err != nil {
 		t.Fatal(err)
 	}
 
@@ -307,7 +307,7 @@ func TestCreateSessionReportAllowOverageNoOverageWhenSufficient(t *testing.T) {
 	}
 
 	sessionID := uuid.NewString()
-	if err := st.CreateBudgetSession(ctx, budgetID, sessionID, nil); err != nil {
+	if err := st.CreateBudgetSession(ctx, budgetID, sessionID, nil, false); err != nil {
 		t.Fatal(err)
 	}
 
@@ -351,7 +351,7 @@ func TestCreateSessionReportDefaultStrictRejectsOverage(t *testing.T) {
 	}
 
 	sessionID := uuid.NewString()
-	if err := st.CreateBudgetSession(ctx, budgetID, sessionID, nil); err != nil {
+	if err := st.CreateBudgetSession(ctx, budgetID, sessionID, nil, false); err != nil {
 		t.Fatal(err)
 	}
 

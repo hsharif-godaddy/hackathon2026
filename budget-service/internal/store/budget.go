@@ -833,7 +833,12 @@ func applyCreditAdjustment(ctx context.Context, tx *sql.Tx, itemID, creditsTotal
 	return err
 }
 
-func (s *Store) CreateBudgetSession(ctx context.Context, budgetID, sessionID string, metadataJSON []byte) error {
+// CreateBudgetSession opens a session against budgetID. With allowOverage=false (the default for
+// the public API), the call returns ErrNoSessionCapacity when budget_items exist but none are
+// currently consumable. With allowOverage=true, that gate is skipped so callers can open a session
+// even when credits are exhausted; ErrNoBudgetItems (no rows at all) still surfaces because the
+// per-line ledger walk has nothing to bind to.
+func (s *Store) CreateBudgetSession(ctx context.Context, budgetID, sessionID string, metadataJSON []byte, allowOverage bool) error {
 	if _, err := uuid.Parse(budgetID); err != nil {
 		return err
 	}
@@ -862,7 +867,7 @@ func (s *Store) CreateBudgetSession(ctx context.Context, budgetID, sessionID str
 	if err != nil {
 		return err
 	}
-	if !budgetHasConsumableCapacity(states, time.Now()) {
+	if !allowOverage && !budgetHasConsumableCapacity(states, time.Now()) {
 		return ErrNoSessionCapacity
 	}
 

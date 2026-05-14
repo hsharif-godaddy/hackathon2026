@@ -26,7 +26,7 @@ func TestAppendSessionItemsBasicSuccess(t *testing.T) {
 		t.Fatal(err)
 	}
 	sessionID := uuid.NewString()
-	if err := st.CreateBudgetSession(ctx, budgetID, sessionID, nil); err != nil {
+	if err := st.CreateBudgetSession(ctx, budgetID, sessionID, nil, false); err != nil {
 		t.Fatal(err)
 	}
 
@@ -63,10 +63,10 @@ func TestAppendSessionItemsConcurrentSessionsSerialize(t *testing.T) {
 
 	sess1 := uuid.NewString()
 	sess2 := uuid.NewString()
-	if err := st.CreateBudgetSession(ctx, budgetID, sess1, nil); err != nil {
+	if err := st.CreateBudgetSession(ctx, budgetID, sess1, nil, false); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.CreateBudgetSession(ctx, budgetID, sess2, nil); err != nil {
+	if err := st.CreateBudgetSession(ctx, budgetID, sess2, nil, false); err != nil {
 		t.Fatal(err)
 	}
 
@@ -132,12 +132,12 @@ func TestAppendSessionItemsSpoilerContentionSucceeds(t *testing.T) {
 		t.Fatal(err)
 	}
 	sessionID := uuid.NewString()
-	if err := st.CreateBudgetSession(ctx, budgetID, sessionID, nil); err != nil {
+	if err := st.CreateBudgetSession(ctx, budgetID, sessionID, nil, false); err != nil {
 		t.Fatal(err)
 	}
 
 	spoilerSess := uuid.NewString()
-	if err := st.CreateBudgetSession(ctx, budgetID, spoilerSess, nil); err != nil {
+	if err := st.CreateBudgetSession(ctx, budgetID, spoilerSess, nil, false); err != nil {
 		t.Fatal(err)
 	}
 
@@ -189,7 +189,7 @@ func TestAppendRacesReconciliation(t *testing.T) {
 		t.Fatal(err)
 	}
 	sessionID := uuid.NewString()
-	if err := st.CreateBudgetSession(ctx, budgetID, sessionID, nil); err != nil {
+	if err := st.CreateBudgetSession(ctx, budgetID, sessionID, nil, false); err != nil {
 		t.Fatal(err)
 	}
 	if _, _, err := st.AppendSessionItems(ctx, sessionID, []SessionLine{
@@ -231,7 +231,7 @@ func TestCreateSessionReportConcurrentExactlyOneWins(t *testing.T) {
 		t.Fatal(err)
 	}
 	sessionID := uuid.NewString()
-	if err := st.CreateBudgetSession(ctx, budgetID, sessionID, nil); err != nil {
+	if err := st.CreateBudgetSession(ctx, budgetID, sessionID, nil, false); err != nil {
 		t.Fatal(err)
 	}
 	if _, _, err := st.AppendSessionItems(ctx, sessionID, []SessionLine{

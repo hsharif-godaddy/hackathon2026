@@ -23,7 +23,7 @@ func TestCreateBudgetSessionSuccess(t *testing.T) {
 	}
 
 	sessionID := uuid.NewString()
-	err := st.CreateBudgetSession(ctx, budgetID, sessionID, nil)
+	err := st.CreateBudgetSession(ctx, budgetID, sessionID, nil, false)
 	if err != nil {
 		t.Fatalf("CreateBudgetSession: %v", err)
 	}
@@ -33,7 +33,7 @@ func TestCreateBudgetSessionBudgetNotFound(t *testing.T) {
 	st := testIntegrationStore(t)
 	ctx := context.Background()
 
-	err := st.CreateBudgetSession(ctx, uuid.NewString(), uuid.NewString(), nil)
+	err := st.CreateBudgetSession(ctx, uuid.NewString(), uuid.NewString(), nil, false)
 	if !errors.Is(err, ErrNotFound) {
 		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
@@ -53,7 +53,7 @@ func TestGetBudgetSession(t *testing.T) {
 		t.Fatal(err)
 	}
 	sessionID := uuid.NewString()
-	if err := st.CreateBudgetSession(ctx, budgetID, sessionID, nil); err != nil {
+	if err := st.CreateBudgetSession(ctx, budgetID, sessionID, nil, false); err != nil {
 		t.Fatal(err)
 	}
 
@@ -86,7 +86,7 @@ func TestAppendSessionItemsSuccess(t *testing.T) {
 		t.Fatal(err)
 	}
 	sessionID := uuid.NewString()
-	if err := st.CreateBudgetSession(ctx, budgetID, sessionID, nil); err != nil {
+	if err := st.CreateBudgetSession(ctx, budgetID, sessionID, nil, false); err != nil {
 		t.Fatal(err)
 	}
 
@@ -122,7 +122,7 @@ func TestAppendSessionItemsDuplicateCallRequestID(t *testing.T) {
 		t.Fatal(err)
 	}
 	sessionID := uuid.NewString()
-	if err := st.CreateBudgetSession(ctx, budgetID, sessionID, nil); err != nil {
+	if err := st.CreateBudgetSession(ctx, budgetID, sessionID, nil, false); err != nil {
 		t.Fatal(err)
 	}
 
@@ -150,7 +150,7 @@ func TestCreateSessionReportSuccess(t *testing.T) {
 		t.Fatal(err)
 	}
 	sessionID := uuid.NewString()
-	if err := st.CreateBudgetSession(ctx, budgetID, sessionID, nil); err != nil {
+	if err := st.CreateBudgetSession(ctx, budgetID, sessionID, nil, false); err != nil {
 		t.Fatal(err)
 	}
 	if _, _, err := st.AppendSessionItems(ctx, sessionID, []SessionLine{
@@ -184,7 +184,7 @@ func TestCreateSessionReportAlreadyReconciled(t *testing.T) {
 		t.Fatal(err)
 	}
 	sessionID := uuid.NewString()
-	if err := st.CreateBudgetSession(ctx, budgetID, sessionID, nil); err != nil {
+	if err := st.CreateBudgetSession(ctx, budgetID, sessionID, nil, false); err != nil {
 		t.Fatal(err)
 	}
 	if _, _, err := st.AppendSessionItems(ctx, sessionID, []SessionLine{
@@ -222,7 +222,7 @@ func TestGetSessionReport(t *testing.T) {
 		t.Fatal(err)
 	}
 	sessionID := uuid.NewString()
-	if err := st.CreateBudgetSession(ctx, budgetID, sessionID, nil); err != nil {
+	if err := st.CreateBudgetSession(ctx, budgetID, sessionID, nil, false); err != nil {
 		t.Fatal(err)
 	}
 	if _, _, err := st.AppendSessionItems(ctx, sessionID, []SessionLine{
@@ -272,7 +272,7 @@ func TestListSessionReports(t *testing.T) {
 	// Create 2 sessions, each with a report
 	for i := 0; i < 2; i++ {
 		sessionID := uuid.NewString()
-		if err := st.CreateBudgetSession(ctx, budgetID, sessionID, nil); err != nil {
+		if err := st.CreateBudgetSession(ctx, budgetID, sessionID, nil, false); err != nil {
 			t.Fatal(err)
 		}
 		if _, _, err := st.AppendSessionItems(ctx, sessionID, []SessionLine{
@@ -316,7 +316,7 @@ func TestCreateSessionReportAllowOverage(t *testing.T) {
 		t.Fatal(err)
 	}
 	sessionID := uuid.NewString()
-	if err := st.CreateBudgetSession(ctx, budgetID, sessionID, nil); err != nil {
+	if err := st.CreateBudgetSession(ctx, budgetID, sessionID, nil, false); err != nil {
 		t.Fatal(err)
 	}
 	if _, _, err := st.AppendSessionItems(ctx, sessionID, []SessionLine{
@@ -342,5 +342,98 @@ func TestCreateSessionReportAllowOverage(t *testing.T) {
 	}
 	if reportID == "" {
 		t.Fatal("expected non-empty reportID")
+	}
+}
+
+// exhaustBudget creates a session against budgetID, files a report that consumes the full
+// CreditsTotal, and reconciles. The returned budget has budget_items rows but no consumable
+// capacity — the exact precondition that ErrNoSessionCapacity gates against.
+func exhaustBudget(t *testing.T, st *Store, budgetID, totalUSD string) {
+	t.Helper()
+	ctx := context.Background()
+	exhaustSession := uuid.NewString()
+	if err := st.CreateBudgetSession(ctx, budgetID, exhaustSession, nil, false); err != nil {
+		t.Fatalf("exhaust session create: %v", err)
+	}
+	if _, _, err := st.CreateSessionReport(ctx, exhaustSession, []ReportLineInput{
+		{BudgetCost: totalUSD, ProductCost: "0.000000", Label: "exhaust"},
+	}, false); err != nil {
+		t.Fatalf("exhaust report: %v", err)
+	}
+}
+
+func TestCreateBudgetSessionNoCapacityFails(t *testing.T) {
+	st := testIntegrationStore(t)
+	ctx := context.Background()
+	pk := "session-no-capacity-" + uuid.NewString()
+	if _, err := st.CreateProduct(ctx, pk); err != nil {
+		t.Fatal(err)
+	}
+	budgetID := uuid.NewString()
+	if err := st.CreateBudget(ctx, budgetID, pk, []ItemInput{
+		{CreditsTotal: "10.000000", CostCreditRatio: "1.000000"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	exhaustBudget(t, st, budgetID, "10.000000")
+
+	err := st.CreateBudgetSession(ctx, budgetID, uuid.NewString(), nil, false)
+	if !errors.Is(err, ErrNoSessionCapacity) {
+		t.Fatalf("expected ErrNoSessionCapacity, got %v", err)
+	}
+}
+
+func TestCreateBudgetSessionAllowOverageOpensWhenExhausted(t *testing.T) {
+	st := testIntegrationStore(t)
+	ctx := context.Background()
+	pk := "session-overage-open-" + uuid.NewString()
+	if _, err := st.CreateProduct(ctx, pk); err != nil {
+		t.Fatal(err)
+	}
+	budgetID := uuid.NewString()
+	if err := st.CreateBudget(ctx, budgetID, pk, []ItemInput{
+		{CreditsTotal: "10.000000", CostCreditRatio: "1.000000"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	exhaustBudget(t, st, budgetID, "10.000000")
+
+	sessionID := uuid.NewString()
+	if err := st.CreateBudgetSession(ctx, budgetID, sessionID, nil, true); err != nil {
+		t.Fatalf("CreateBudgetSession with allowOverage: %v", err)
+	}
+
+	d, err := st.GetBudgetSession(ctx, sessionID)
+	if err != nil {
+		t.Fatalf("GetBudgetSession: %v", err)
+	}
+	if d.BudgetID != budgetID {
+		t.Fatalf("BudgetID = %q want %q", d.BudgetID, budgetID)
+	}
+	if d.ReconciledAt != nil {
+		t.Fatal("new overage session should not be reconciled")
+	}
+}
+
+// allowOverage opens past an exhausted-but-populated budget, but a budget with zero budget_items
+// still rejects: the per-line ledger walk has nothing to bind to. Verifies the asymmetry between
+// ErrNoSessionCapacity (gated) and ErrNoBudgetItems (always surfaces).
+func TestCreateBudgetSessionAllowOverageStillRequiresBudgetItems(t *testing.T) {
+	st := testIntegrationStore(t)
+	ctx := context.Background()
+	pk := "session-overage-empty-" + uuid.NewString()
+	if _, err := st.CreateProduct(ctx, pk); err != nil {
+		t.Fatal(err)
+	}
+	budgetID := uuid.NewString()
+	if err := st.CreateBudget(ctx, budgetID, pk, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	err := st.CreateBudgetSession(ctx, budgetID, uuid.NewString(), nil, true)
+	if !errors.Is(err, ErrNoBudgetItems) {
+		t.Fatalf("expected ErrNoBudgetItems, got %v", err)
 	}
 }

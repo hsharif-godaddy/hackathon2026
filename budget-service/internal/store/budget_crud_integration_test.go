@@ -297,7 +297,7 @@ func TestSoftDeleteBudgetWithUnreconciledSession(t *testing.T) {
 		t.Fatal(err)
 	}
 	sessionID := uuid.NewString()
-	if err := st.CreateBudgetSession(ctx, budgetID, sessionID, nil); err != nil {
+	if err := st.CreateBudgetSession(ctx, budgetID, sessionID, nil, false); err != nil {
 		t.Fatal(err)
 	}
 
@@ -430,7 +430,7 @@ func TestDebugSessionCreditsReplay(t *testing.T) {
 		t.Fatal(err)
 	}
 	sessionID := uuid.NewString()
-	if err := st.CreateBudgetSession(ctx, budgetID, sessionID, nil); err != nil {
+	if err := st.CreateBudgetSession(ctx, budgetID, sessionID, nil, false); err != nil {
 		t.Fatal(err)
 	}
 	if _, _, err := st.AppendSessionItems(ctx, sessionID, []SessionLine{
@@ -463,7 +463,7 @@ func TestSumReportItemCostsByLabelAndProduct(t *testing.T) {
 		t.Fatal(err)
 	}
 	sessionID := uuid.NewString()
-	if err := st.CreateBudgetSession(ctx, budgetID, sessionID, nil); err != nil {
+	if err := st.CreateBudgetSession(ctx, budgetID, sessionID, nil, false); err != nil {
 		t.Fatal(err)
 	}
 	if _, _, err := st.AppendSessionItems(ctx, sessionID, []SessionLine{
@@ -646,7 +646,7 @@ func TestSoftDeleteBudgetItemWithOpenSession(t *testing.T) {
 		t.Fatal(err)
 	}
 	d, _ := st.GetBudget(ctx, budgetID, false)
-	if err := st.CreateBudgetSession(ctx, budgetID, uuid.NewString(), nil); err != nil {
+	if err := st.CreateBudgetSession(ctx, budgetID, uuid.NewString(), nil, false); err != nil {
 		t.Fatal(err)
 	}
 

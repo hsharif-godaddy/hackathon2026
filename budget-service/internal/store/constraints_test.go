@@ -66,7 +66,7 @@ func TestBudgetSessionItemsCallRequestIDLengthCheck(t *testing.T) {
 			// can never coincidentally satisfy a "reject" case via a 23505 collision
 			// from a prior subtest's value.
 			sessionID := uuid.NewString()
-			if err := st.CreateBudgetSession(ctx, budgetID, sessionID, nil); err != nil {
+			if err := st.CreateBudgetSession(ctx, budgetID, sessionID, nil, false); err != nil {
 				t.Fatal(err)
 			}
 			_, err := st.db.ExecContext(ctx, `
@@ -88,7 +88,7 @@ func TestBudgetSessionItemsCallRequestIDLengthCheck(t *testing.T) {
 	// `NULL BETWEEN 1 AND 256` evaluates to UNKNOWN, not FALSE.
 	t.Run("null_rejected", func(t *testing.T) {
 		sessionID := uuid.NewString()
-		if err := st.CreateBudgetSession(ctx, budgetID, sessionID, nil); err != nil {
+		if err := st.CreateBudgetSession(ctx, budgetID, sessionID, nil, false); err != nil {
 			t.Fatal(err)
 		}
 		_, err := st.db.ExecContext(ctx, `

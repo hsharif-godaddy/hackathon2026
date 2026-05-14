@@ -143,7 +143,7 @@ func TestCreateBudgetSessionAppliesDueResetAndIsIdempotent(t *testing.T) {
 		t.Fatalf("resets_at should be due, got %s", oldResetsAt.Time.Format(time.RFC3339Nano))
 	}
 
-	if err := st.CreateBudgetSession(ctx, budgetID, uuid.NewString(), nil); err != nil {
+	if err := st.CreateBudgetSession(ctx, budgetID, uuid.NewString(), nil, false); err != nil {
 		t.Fatal(err)
 	}
 
@@ -161,7 +161,7 @@ func TestCreateBudgetSessionAppliesDueResetAndIsIdempotent(t *testing.T) {
 		t.Fatalf("periodic_reset rows = %d want 1", got)
 	}
 
-	if err := st.CreateBudgetSession(ctx, budgetID, uuid.NewString(), nil); err != nil {
+	if err := st.CreateBudgetSession(ctx, budgetID, uuid.NewString(), nil, false); err != nil {
 		t.Fatal(err)
 	}
 	if got := periodicResetCount(t, st, itemID); got != 1 {
@@ -764,7 +764,7 @@ func TestCreateSessionReportTriggersExhaustedWebhook(t *testing.T) {
 
 	// Create session
 	sessionID := uuid.NewString()
-	if err := st.CreateBudgetSession(ctx, budgetID, sessionID, nil); err != nil {
+	if err := st.CreateBudgetSession(ctx, budgetID, sessionID, nil, false); err != nil {
 		t.Fatal(err)
 	}
 
@@ -817,7 +817,7 @@ func TestCreateSessionReportNoExhaustedWebhookWhenNotFullyConsumed(t *testing.T)
 
 	// Create session
 	sessionID := uuid.NewString()
-	if err := st.CreateBudgetSession(ctx, budgetID, sessionID, nil); err != nil {
+	if err := st.CreateBudgetSession(ctx, budgetID, sessionID, nil, false); err != nil {
 		t.Fatal(err)
 	}
 
@@ -865,7 +865,7 @@ func TestCreateSessionReportNoExhaustedWebhookWhenAlreadyExhausted(t *testing.T)
 
 	// Open session while the pool still has capacity (CreateBudgetSession rejects 402 when nothing is left).
 	sessionID := uuid.NewString()
-	if err := st.CreateBudgetSession(ctx, budgetID, sessionID, nil); err != nil {
+	if err := st.CreateBudgetSession(ctx, budgetID, sessionID, nil, false); err != nil {
 		t.Fatal(err)
 	}
 

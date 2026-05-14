@@ -43,7 +43,7 @@ func TestGetSessionReportAllocationsSingleQueryParity(t *testing.T) {
 	itemB := budget.Items[1].ID
 
 	sessionID := uuid.NewString()
-	if err := st.CreateBudgetSession(ctx, budgetID, sessionID, nil); err != nil {
+	if err := st.CreateBudgetSession(ctx, budgetID, sessionID, nil, false); err != nil {
 		t.Fatal(err)
 	}
 

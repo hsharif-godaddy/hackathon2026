@@ -29,7 +29,7 @@ func TestSumReportAggregateIncludesSoftDeletedBudget(t *testing.T) {
 	}
 
 	sessionID := uuid.NewString()
-	if err := st.CreateBudgetSession(ctx, budgetID, sessionID, nil); err != nil {
+	if err := st.CreateBudgetSession(ctx, budgetID, sessionID, nil, false); err != nil {
 		t.Fatal(err)
 	}
 

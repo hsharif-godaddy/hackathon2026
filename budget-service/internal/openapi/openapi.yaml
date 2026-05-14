@@ -555,7 +555,13 @@ paths:
   /api/v1/sessions:
     post:
       tags: [v1]
-      summary: Open session (402 if no consumable capacity)
+      summary: Open session (402 if no consumable capacity, unless allowOverage=true)
+      description: >
+        By default, the budget must have at least one consumable budget item; otherwise the call
+        returns **402** with `code` **NO_BUDGET_CAPACITY**. Set `allowOverage: true` to bypass that
+        gate and open the session even when credits are exhausted (spend during the session is still
+        allocated against any available credits; uncovered USD is captured at session close via
+        `allowOverage` on the report). A budget with no budget_items at all still rejects with 402.
       requestBody:
         required: true
         content:
@@ -572,6 +578,12 @@ paths:
                   nullable: true
                   additionalProperties: true
                   description: Optional opaque JSON
+                allowOverage:
+                  type: boolean
+                  default: false
+                  description: >
+                    When true, opens the session even if the budget has no consumable capacity.
+                    A budget with zero budget_items still rejects with 402.
       responses:
         "201":
           description: Created

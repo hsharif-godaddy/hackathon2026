@@ -996,6 +996,81 @@ func TestPostSessionReturns402WhenBudgetExhausted(t *testing.T) {
 	}
 }
 
+// HTTP-level twin of the store TestCreateBudgetSessionAllowOverageOpensWhenExhausted: verifies the
+// allowOverage field deserializes from JSON and is threaded through postBudgetSession to the store.
+func TestPostSessionAllowOverageOpensWhenExhausted(t *testing.T) {
+	ctx := context.Background()
+	st := testStore(t)
+	key := "session-overage-http-" + uuid.NewString()
+	if _, err := st.CreateProduct(ctx, key); err != nil {
+		t.Fatal(err)
+	}
+	budgetID := uuid.NewString()
+	if err := st.CreateBudget(ctx, budgetID, key, []store.ItemInput{
+		{CreditsTotal: "1.000000", CostCreditRatio: "1.000000"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	auth := auth.NewMiddleware("none", nil, nil)
+	h := NewRouter(&Server{Store: st}, auth)
+
+	// Open + reconcile a first session to drain credits.
+	reqS1 := httptest.NewRequest(http.MethodPost, "/api/v1/sessions", strings.NewReader(`{"budgetId":"`+budgetID+`"}`))
+	reqS1.Header.Set("Content-Type", "application/json")
+	recS1 := httptest.NewRecorder()
+	h.ServeHTTP(recS1, reqS1)
+	if recS1.Code != http.StatusCreated {
+		t.Fatalf("first post session: %d %s", recS1.Code, recS1.Body.String())
+	}
+	var s1 struct {
+		SessionID string `json:"sessionId"`
+	}
+	if err := json.Unmarshal(recS1.Body.Bytes(), &s1); err != nil {
+		t.Fatal(err)
+	}
+	repBody := `{"reportItems":[{"budgetCost":"1","productCost":"0","label":"close"}]}`
+	reqRep := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+s1.SessionID+"/reports", strings.NewReader(repBody))
+	reqRep.Header.Set("Content-Type", "application/json")
+	recRep := httptest.NewRecorder()
+	h.ServeHTTP(recRep, reqRep)
+	if recRep.Code != http.StatusCreated {
+		t.Fatalf("post report: %d %s", recRep.Code, recRep.Body.String())
+	}
+
+	// Without allowOverage: 402 (mirrors TestPostSessionReturns402WhenBudgetExhausted; sanity check
+	// the fixture is actually exhausted before testing the override).
+	reqDeny := httptest.NewRequest(http.MethodPost, "/api/v1/sessions", strings.NewReader(`{"budgetId":"`+budgetID+`"}`))
+	reqDeny.Header.Set("Content-Type", "application/json")
+	recDeny := httptest.NewRecorder()
+	h.ServeHTTP(recDeny, reqDeny)
+	if recDeny.Code != http.StatusPaymentRequired {
+		t.Fatalf("deny without allowOverage: status %d want 402, body %s", recDeny.Code, recDeny.Body.String())
+	}
+
+	// With allowOverage: 201, and the response carries the same shape as session GET.
+	reqAllow := httptest.NewRequest(http.MethodPost, "/api/v1/sessions",
+		strings.NewReader(`{"budgetId":"`+budgetID+`","allowOverage":true}`))
+	reqAllow.Header.Set("Content-Type", "application/json")
+	recAllow := httptest.NewRecorder()
+	h.ServeHTTP(recAllow, reqAllow)
+	if recAllow.Code != http.StatusCreated {
+		t.Fatalf("allow with allowOverage: status %d want 201, body %s", recAllow.Code, recAllow.Body.String())
+	}
+	var s2 struct {
+		BudgetID  string `json:"budgetId"`
+		SessionID string `json:"sessionId"`
+	}
+	if err := json.Unmarshal(recAllow.Body.Bytes(), &s2); err != nil {
+		t.Fatal(err)
+	}
+	if s2.SessionID == "" {
+		t.Fatal("expected non-empty sessionId in response")
+	}
+	if s2.BudgetID != budgetID {
+		t.Fatalf("budgetId = %q want %q", s2.BudgetID, budgetID)
+	}
+}
+
 func TestPatchReconciledSessionReturns409(t *testing.T) {
 	ctx := context.Background()
 	st := testStore(t)

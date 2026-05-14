@@ -971,8 +971,9 @@ func (s *Server) deleteBudgetItem(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) postBudgetSession(w http.ResponseWriter, r *http.Request) {
 	var postSess struct {
-		BudgetID string          `json:"budgetId"`
-		Metadata json.RawMessage `json:"metadata"`
+		BudgetID     string          `json:"budgetId"`
+		Metadata     json.RawMessage `json:"metadata"`
+		AllowOverage bool            `json:"allowOverage"`
 	}
 	if !decodeJSONBody(w, r, &postSess, false) {
 		return
@@ -1004,7 +1005,7 @@ func (s *Server) postBudgetSession(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sessionID := uuid.NewString()
-	if err := s.Store.CreateBudgetSession(r.Context(), budgetID, sessionID, metaBytes); err != nil {
+	if err := s.Store.CreateBudgetSession(r.Context(), budgetID, sessionID, metaBytes, postSess.AllowOverage); err != nil {
 		writeBudgetStoreError(w, "budget.post_budget_session", err)
 		return
 	}

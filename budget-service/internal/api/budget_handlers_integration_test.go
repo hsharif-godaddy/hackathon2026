@@ -146,7 +146,7 @@ func TestPatchBudgetSessionHappyPath(t *testing.T) {
 		t.Fatal(err)
 	}
 	sessionID := uuid.NewString()
-	if err := st.CreateBudgetSession(ctx, budgetID, sessionID, nil); err != nil {
+	if err := st.CreateBudgetSession(ctx, budgetID, sessionID, nil, false); err != nil {
 		t.Fatal(err)
 	}
 
@@ -190,7 +190,7 @@ func TestPatchBudgetSessionDuplicateCallRequestId(t *testing.T) {
 		t.Fatal(err)
 	}
 	sessionID := uuid.NewString()
-	if err := st.CreateBudgetSession(ctx, budgetID, sessionID, nil); err != nil {
+	if err := st.CreateBudgetSession(ctx, budgetID, sessionID, nil, false); err != nil {
 		t.Fatal(err)
 	}
 
@@ -223,7 +223,7 @@ func TestGetBudgetSessionHappyPath(t *testing.T) {
 		t.Fatal(err)
 	}
 	sessionID := uuid.NewString()
-	if err := st.CreateBudgetSession(ctx, budgetID, sessionID, nil); err != nil {
+	if err := st.CreateBudgetSession(ctx, budgetID, sessionID, nil, false); err != nil {
 		t.Fatal(err)
 	}
 
@@ -290,7 +290,7 @@ func TestPostBudgetSessionReportHappyPath(t *testing.T) {
 		t.Fatal(err)
 	}
 	sessionID := uuid.NewString()
-	if err := st.CreateBudgetSession(ctx, budgetID, sessionID, nil); err != nil {
+	if err := st.CreateBudgetSession(ctx, budgetID, sessionID, nil, false); err != nil {
 		t.Fatal(err)
 	}
 	callID := uuid.NewString()
@@ -339,7 +339,7 @@ func TestPostBudgetSessionReportAlreadyReconciled(t *testing.T) {
 		t.Fatal(err)
 	}
 	sessionID := uuid.NewString()
-	if err := st.CreateBudgetSession(ctx, budgetID, sessionID, nil); err != nil {
+	if err := st.CreateBudgetSession(ctx, budgetID, sessionID, nil, false); err != nil {
 		t.Fatal(err)
 	}
 	callID := uuid.NewString()
@@ -387,7 +387,7 @@ func TestGetBudgetSessionReportHappyPath(t *testing.T) {
 		t.Fatal(err)
 	}
 	sessionID := uuid.NewString()
-	if err := st.CreateBudgetSession(ctx, budgetID, sessionID, nil); err != nil {
+	if err := st.CreateBudgetSession(ctx, budgetID, sessionID, nil, false); err != nil {
 		t.Fatal(err)
 	}
 	callID := uuid.NewString()
@@ -442,7 +442,7 @@ func TestGetBudgetSessionReportNotFound(t *testing.T) {
 		t.Fatal(err)
 	}
 	sessionID := uuid.NewString()
-	if err := st.CreateBudgetSession(ctx, budgetID, sessionID, nil); err != nil {
+	if err := st.CreateBudgetSession(ctx, budgetID, sessionID, nil, false); err != nil {
 		t.Fatal(err)
 	}
 	// Reconcile the session so it exists.
@@ -486,7 +486,7 @@ func TestPatchBudgetSessionWithDebug(t *testing.T) {
 		t.Fatal(err)
 	}
 	sessionID := uuid.NewString()
-	if err := st.CreateBudgetSession(ctx, budgetID, sessionID, nil); err != nil {
+	if err := st.CreateBudgetSession(ctx, budgetID, sessionID, nil, false); err != nil {
 		t.Fatal(err)
 	}
 
@@ -526,7 +526,7 @@ func TestGetBudgetSessionWithDebug(t *testing.T) {
 		t.Fatal(err)
 	}
 	sessionID := uuid.NewString()
-	if err := st.CreateBudgetSession(ctx, budgetID, sessionID, nil); err != nil {
+	if err := st.CreateBudgetSession(ctx, budgetID, sessionID, nil, false); err != nil {
 		t.Fatal(err)
 	}
 	if _, _, err := st.AppendSessionItems(ctx, sessionID, []store.SessionLine{
