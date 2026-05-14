@@ -159,7 +159,7 @@ export class SitemapDiscoveryService {
       }
 
       const pagesWithSourceUrl: DiscoveredPage[] = [
-        { url: this.baseUrl, priority: 1.0, source: 'crawl' },
+        { url: canonicalBaseUrl, priority: 1.0, source: 'crawl' },
         ...pages
       ];
 
@@ -615,6 +615,7 @@ export class SitemapDiscoveryService {
     try {
       const urlObj = new URL(url);
       urlObj.hash = '';
+      urlObj.search = '';
       if (urlObj.pathname.endsWith('/')) {
         urlObj.pathname = urlObj.pathname.slice(0, -1);
       }
