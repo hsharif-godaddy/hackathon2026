@@ -34,7 +34,7 @@ import { logger } from '@/lib/request-context'
  * Timeout for waiting for first file edit after prompt is sent
  * If agent crashes or never responds, transition to active after this timeout
  */
-const FIRST_EDIT_TIMEOUT_MS = 300000 // 5 minutes
+const FIRST_EDIT_TIMEOUT_MS = 600000 // 10 minutes
 
 // ============================================================================
 // TYPES
@@ -242,7 +242,7 @@ export const initializationMachine = setup({
     logFirstEditTimeout: ({ context }) => {
       logger.warn('initialization.first_edit.timeout', {
         appId: context.appId,
-        message: 'Timeout waiting for first file edit after 5 minutes, proceeding to active state',
+        message: 'Timeout waiting for first file edit after 10 minutes, proceeding to active state',
       })
     },
 
@@ -419,7 +419,7 @@ export const initializationMachine = setup({
 
         // Prompt sent, waiting for agent to make first file edit
         // INTENTIONAL: No escape hatch for errors/disconnects - overlay stays visible to hide
-        // template app unless FIRST_FILE_EDIT_SEEN, 5-min timeout, or (narrowly) incomplete tool.
+        // template app unless FIRST_FILE_EDIT_SEEN, 10-min timeout, or (narrowly) incomplete tool.
         waitingForFirstEdit: {
           // Safety timeout to prevent infinite hang (Issue 4.2)
           // If agent crashes or never responds, transition to active after timeout

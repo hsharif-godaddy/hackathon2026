@@ -250,7 +250,7 @@ describe('initializationMachine', () => {
       beforeEach(() => vi.useFakeTimers())
       afterEach(() => vi.useRealTimers())
 
-      it('should reset the 5-min failsafe timer on AGENT_ACTIVITY', () => {
+      it('should reset the 10-min failsafe timer on AGENT_ACTIVITY', () => {
         const actor = createActor(initializationMachine, {
           input: { appId: null, isJobId: false, hasInitialPrompt: false },
         })
@@ -266,19 +266,19 @@ describe('initializationMachine', () => {
 
         expect(getSubPhaseFromState(actor.getSnapshot())).toBe('waitingForFirstEdit')
 
-        // Advance 4 minutes (just under the 5-min timeout)
-        vi.advanceTimersByTime(4 * 60 * 1000)
+        // Advance 9 minutes (just under the 10-min timeout)
+        vi.advanceTimersByTime(9 * 60 * 1000)
         expect(getSubPhaseFromState(actor.getSnapshot())).toBe('waitingForFirstEdit')
 
-        // Agent activity at 4 minutes — should reset the timer
+        // Agent activity at 9 minutes — should reset the timer
         actor.send({ type: 'AGENT_ACTIVITY' })
         expect(getSubPhaseFromState(actor.getSnapshot())).toBe('waitingForFirstEdit')
 
-        // Advance another 4 minutes (8 min total, but only 4 since last activity)
-        vi.advanceTimersByTime(4 * 60 * 1000)
+        // Advance another 9 minutes (18 min total, but only 9 since last activity)
+        vi.advanceTimersByTime(9 * 60 * 1000)
         expect(getSubPhaseFromState(actor.getSnapshot())).toBe('waitingForFirstEdit')
 
-        // Advance 1 more minute (5 min since last activity) — failsafe should fire
+        // Advance 1 more minute (10 min since last activity) — failsafe should fire
         vi.advanceTimersByTime(1 * 60 * 1000)
         expect(getSubPhaseFromState(actor.getSnapshot())).toBe('active')
         expect(actor.getSnapshot().context.hasSeenFirstFileEdit).toBe(true)

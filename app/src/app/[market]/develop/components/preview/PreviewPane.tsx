@@ -8,6 +8,7 @@ import { useIntl } from 'react-intl'
 import { Loader } from '@airo-ux/loader'
 import Button from '@ux/button'
 
+import { useLatestNBAs } from '@/app/[market]/develop/components/chat/useLatestNBAs'
 import DomainBar from '@/app/[market]/develop/components/layout/DomainBar'
 import BrandBookView from '@/app/[market]/develop/components/preview/brand-book'
 import { getDevicePreset } from '@/app/[market]/develop/components/preview/devicePresets'
@@ -131,6 +132,13 @@ export default function PreviewPane({
   /** Switchboard: translucent creation overlay + edit-time processing overlay (fade). Off = main branch UX. */
   const isPreviewEnhancedOverlaysEnabled =
     useSwitchboard('appbuilder-preview-enhanced-overlays') === true;
+  /** Switchboard: when true, swap building-overlay text while askQuestion is awaiting input. */
+  const isBuildOverlayQuestionMessageEnabled =
+    useSwitchboard('appbuilder-build-overlay-question-message') === true;
+
+  const latestNBA = useLatestNBAs();
+  const isAwaitingAskQuestion =
+    isBuildOverlayQuestionMessageEnabled && latestNBA?.source === 'askQuestion';
 
   const getServerState = useServerPollingStore((state) => state.getServerState)
   const isPollingServer = useServerPollingStore((state) => state.isPollingServer)
@@ -1141,7 +1149,27 @@ export default function PreviewPane({
                       : 'bg-intents-ux-boxLowContrast-backgroundColor'
                   )}
                 >
-                  <Tips buildingMessage={t('builder_preview_building_app')} />
+                  {isAwaitingAskQuestion ? (
+                    <Tips
+                      buildingMessage={t(
+                        'builder_preview_question_title',
+                        undefined,
+                        'Action needed to continue',
+                      )}
+                      staticTipTitle={t(
+                        'builder_preview_question_heading',
+                        undefined,
+                        'Answer a few questions',
+                      )}
+                      staticTipDescription={t(
+                        'builder_preview_question_paragraph',
+                        undefined,
+                        'Answer the questions in chat so we can tailor this for you. We’ll build as you go.',
+                      )}
+                    />
+                  ) : (
+                    <Tips buildingMessage={t('builder_preview_building_app')} />
+                  )}
                 </div>
               )}
               <div

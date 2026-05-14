@@ -100,6 +100,8 @@ interface TipsProps {
   buildingMessage?: string | null
   buildingDescription?: string | null
   showTips?: boolean
+  staticTipTitle?: string | null
+  staticTipDescription?: string | null
 }
 
 /**
@@ -112,7 +114,14 @@ interface TipsProps {
  *
  * Desktop: vertical z-stack. Mobile: horizontal fan.
  */
-export default function Tips({ buildingMessage = null, buildingDescription = null, showTips = true }: TipsProps) {
+export default function Tips({
+  buildingMessage = null,
+  buildingDescription = null,
+  showTips = true,
+  staticTipTitle = null,
+  staticTipDescription = null,
+}: TipsProps) {
+  const hasStaticTip = staticTipTitle != null && staticTipDescription != null
   const t = useTranslations()
   const { isMdBreakpoint } = useBreakpoints()
   const reduceMotion = useReducedMotion()
@@ -284,7 +293,22 @@ export default function Tips({ buildingMessage = null, buildingDescription = nul
         description={buildingDescription ?? undefined}
       />
 
-      {showTips && (
+      {showTips && hasStaticTip && (
+        <Box className="w-full max-w-2xl px-3" gap="md">
+          <Box className="relative min-h-40">
+            <div
+              className="rounded-lg border border-intents-ux-box-borderColor bg-intents-ux-box-backgroundColor px-2.5 py-2"
+              role="status"
+              aria-live="polite"
+            >
+              <div className="text-base font-semibold">{staticTipTitle}</div>
+              <div className="text-sm">{staticTipDescription}</div>
+            </div>
+          </Box>
+        </Box>
+      )}
+
+      {showTips && !hasStaticTip && (
         <Box className="w-full max-w-2xl px-3" gap="md">
           {visibleTips.length > 0 && (
             <div role="status" aria-live="polite" className="sr-only">
