@@ -19,6 +19,7 @@ import {
 } from '@godaddy/goknowb-client';
 
 import { log, Logger, logger as rootLogger } from '../../../logging/index.js';
+import { decodeJwtExp } from '../../../utils/jwt-expiry.js';
 
 /**
  * Options for KnowB search
@@ -113,58 +114,6 @@ export interface KnowBDeleteResult {
   error?: string;
 }
 
-/**
- * Assumed TTL (seconds) for GoDaddy JWTs that omit the standard `exp` claim.
- * Mirrors the fallback used by @airo/ai-lib's s2s-auth.ts:266:
- *   expiresAt: payload.exp ? payload.exp * 1000 : (payload.iat + 30 * 60) * 1000
- * GoDaddy SSO tokens (typ=jomax|idp|cert) often ship with `iat` + `vat` but
- * no `exp`; ai-lib treats these as 30-min TTL and we match so the two caches
- * agree on when a refresh is needed.
- */
-const NO_EXP_TTL_SECONDS = 30 * 60;
-
-/**
- * Decode the effective expiry (unix seconds) from a JWT without verifying
- * the signature. Returns null if the token is unparseable OR if neither
- * `exp` nor `iat` is present.
- *
- * Precedence: standard `exp` → `iat + NO_EXP_TTL_SECONDS`. We do NOT use
- * GoDaddy-specific `vat` because ai-lib's cache ignores it too; using
- * different expiry sources would cause the two layers to disagree.
- *
- * Signature verification is the server's job at the other end of the
- * request. We only care about WHEN to proactively refetch.
- */
-function decodeJwtExp(jwt: string): number | null {
-  if (typeof jwt !== 'string') return null;
-  const parts = jwt.split('.');
-  if (parts.length !== 3) return null;
-  const payload = parts[1];
-  if (!payload) return null;
-  try {
-    // Base64url -> base64
-    const b64 = payload.replace(/-/g, '+').replace(/_/g, '/');
-    const pad = b64.length % 4 === 0 ? '' : '='.repeat(4 - (b64.length % 4));
-    const json = Buffer.from(b64 + pad, 'base64').toString('utf-8');
-    const claims = JSON.parse(json) as { exp?: number; iat?: number };
-    if (typeof claims.exp === 'number') return claims.exp;
-    if (typeof claims.iat === 'number') return claims.iat + NO_EXP_TTL_SECONDS;
-    return null;
-  } catch (error) {
-    // Unexpected decode/JSON failure — a JWT-format regression here disables
-    // proactive refresh entirely and silently reintroduces the 1h-expiry bug
-    // we're fixing. Log so the fallback is visible in Loki.
-    rootLogger.warn('knowb-driver.token.exp_decode_failed', {
-      message: error instanceof Error ? error.message : String(error),
-    });
-    return null;
-  }
-}
-
-/**
- * Seconds of headroom before JWT `exp` at which we proactively refetch.
- * 5 minutes gives ample slack for clock skew + request latency.
- */
 const TOKEN_REFRESH_BUFFER_SECONDS = 300;
 
 /**
@@ -210,7 +159,11 @@ class KnowBTokenProvider implements TokenProvider {
       ? await refreshS2SToken({ ssoHost: this.ssoHost })
       : await getS2SToken({ ssoHost: this.ssoHost });
     this.cachedS2SToken = token;
-    this.cachedTokenExpSeconds = decodeJwtExp(token);
+    this.cachedTokenExpSeconds = decodeJwtExp(token, (err) => {
+      rootLogger.warn('knowb-driver.token.exp_decode_failed', {
+        message: err instanceof Error ? err.message : String(err),
+      });
+    });
   }
 
   /**

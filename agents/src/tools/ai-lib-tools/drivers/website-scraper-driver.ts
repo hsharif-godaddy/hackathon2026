@@ -1,12 +1,6 @@
-/**
- * Website Scraper Driver
- *
- * Handles website content scraping and screenshot capture through the web-scraper API
- * Uses SSO JWT for authentication similar to Getty implementation
- */
 import { log } from '../../../logging/index.js';
 
-import { BaseDriver } from './base-driver.js';
+import { BaseDriverV2 } from './base-driver-v2.js';
 
 // ============================================================================
 // Configuration Constants
@@ -17,11 +11,8 @@ import { BaseDriver } from './base-driver.js';
  * Controls how many pages are scraped simultaneously
  */
 const DEFAULT_SCRAPE_CONCURRENCY = 5;
-
-/**
- * Default rate limit delay between batches (in milliseconds)
- */
 const DEFAULT_RATE_LIMIT_MS = 1000;
+const USER_AGENT = process.env.USER_AGENT || 'airo-agents/1.0';
 
 // ============================================================================
 // Base Types
@@ -161,53 +152,20 @@ interface ScrapeAPIResponse {
   error?: string;
 }
 
-/**
- * Website Scraper Driver
- * Handles website content extraction and screenshot capture with shared infrastructure
- */
-export class WebsiteScraperDriver extends BaseDriver {
-  private rawSsoJwt: string;
-
+export class WebsiteScraperDriver extends BaseDriverV2 {
   constructor() {
     super({
       serviceName: 'website-scraper-driver',
-      defaultBaseUrl: 'https://web-scraper.api.int.test-gdcorp.tools',
+      // dev-gdcorp is intentional: web-scraper fallback URL for local env
+      baseUrl: process.env.WEB_SCRAPER_URL || 'https://web-scraper.api.int.dev-gdcorp.tools',
       appKeyEnvVar: 'WEB_SCRAPER_APP_KEY',
       defaultAppKey: 'airo-app-builder',
     });
-
-    // Store raw JWT for different auth formats
-    this.rawSsoJwt = process.env.SSO_JWT || '';
-
-    // Override: Web scraper doesn't support Getty proxy, always use direct SSO_JWT
-    // This bypasses the BaseDriver's GETTY_TOKEN priority
-    if (this.rawSsoJwt) {
-      this.ssoJwt = 'sso-jwt ' + this.rawSsoJwt;
-      this.useProxy = false;
-      
-      this.logger.info('website-scraper-driver.auth-override', {
-        message: 'Using SSO_JWT for direct access (bypassing Getty proxy)',
-        hasAuth: !!this.ssoJwt
-      });
-    } else if (!this.ssoJwt) {
-      this.logger.warn('website-scraper-driver.auth-missing', {
-        message: 'SSO_JWT not set - web scraper requires direct authentication'
-      });
-    }
-
-    // Override base URL if WEB_SCRAPER_BASE_URL is set
-    if (process.env.WEB_SCRAPER_BASE_URL) {
-      this.apiBaseUrl = process.env.WEB_SCRAPER_BASE_URL;
-      
-      this.logger.info('website-scraper-driver.url-override', {
-        baseUrl: this.apiBaseUrl
-      });
-    }
   }
 
   /**
    * Scrape website and capture screenshot in parallel
-   * 
+   *
    * @param options - Scraping options containing the target URL
    * @returns Promise resolving to combined scrape and screenshot results
    */
@@ -235,7 +193,7 @@ export class WebsiteScraperDriver extends BaseDriver {
       if (!this.hasAuth()) {
         return {
           success: false,
-          error: this.getAuthErrorMessage()
+          error: 'No authentication configured. Set GOCODE_USE_S2S_AUTH=true for hosted or SSO_JWT for local.',
         };
       }
 
@@ -320,7 +278,7 @@ export class WebsiteScraperDriver extends BaseDriver {
       log.error(this.logger, 'website-scraper.request.error', error as Error, {
         url: options.url
       });
-      
+
       return {
         success: false,
         error: `Website scraping failed: ${error instanceof Error ? error.message : String(error)}`
@@ -343,27 +301,25 @@ export class WebsiteScraperDriver extends BaseDriver {
         endpoint: '/v1/scrape-website'
       });
 
-      const response = await this.get('/v1/scrape-website', queryParams);
+      const response = await this.get('/v1/scrape-website', queryParams, {
+        'User-Agent': USER_AGENT,
+      });
 
       if (!response.ok) {
-        // Check content type to avoid logging binary data
         const contentType = response.headers.get('content-type') || '';
         let errorText = '';
-        
-        if (contentType.includes('application/json')) {
-          try {
-            const errorJson = await response.json();
-            errorText = JSON.stringify(errorJson);
-          } catch {
-            errorText = await response.text();
+
+        if (contentType.includes('application/json') || contentType.includes('text/')) {
+          const raw = await response.text();
+          if (contentType.includes('application/json')) {
+            try { errorText = JSON.stringify(JSON.parse(raw)); } catch { errorText = raw; }
+          } else {
+            errorText = raw;
           }
-        } else if (contentType.includes('text/')) {
-          errorText = await response.text();
         } else {
-          // Binary response - don't log the content
           errorText = `[Binary response: ${contentType}]`;
         }
-        
+
         throw new Error(`Scrape API request failed: ${response.status} ${errorText}`);
       }
 
@@ -402,26 +358,30 @@ export class WebsiteScraperDriver extends BaseDriver {
     try {
       this.logger.info('website-scraper.blob-conversion.begin', { blobUrl });
 
-      const response = await fetch(blobUrl, {
-        method: 'GET',
-        headers: this.getHeaders()
-      });
+      const isSameOrigin = new URL(blobUrl).origin === new URL(this.apiBaseUrl).origin;
+      const headers: Record<string, string> = { 'Accept': '*/*', 'User-Agent': USER_AGENT };
+
+      const response = isSameOrigin
+        ? await this.withRetryOn401('blob-conversion', { blobUrl }, async () => {
+            const res = await this.fetchWithNetworkLogging(blobUrl, {
+              method: 'GET',
+              headers: this.getHeaders(headers),
+            });
+            if (res.status === 401) {
+              throw Object.assign(new Error(`Blob auth failed: 401`), { response: { status: 401 } });
+            }
+            return res;
+          })
+        : await this.fetchWithNetworkLogging(blobUrl, { method: 'GET', headers });
 
       if (!response.ok) {
         throw new Error(`Failed to fetch blob: ${response.status} ${response.statusText}`);
       }
 
-      // Get the image as array buffer
       const arrayBuffer = await response.arrayBuffer();
-      
-      // Convert to base64
       const buffer = Buffer.from(arrayBuffer);
       const base64 = buffer.toString('base64');
-      
-      // Get content type from response headers, default to png
       const contentType = response.headers.get('content-type') || 'image/png';
-      
-      // Create data URI
       const dataUri = `data:${contentType};base64,${base64}`;
 
       this.logger.info('website-scraper.blob-conversion.success', {
@@ -484,44 +444,40 @@ export class WebsiteScraperDriver extends BaseDriver {
     url: string,
     extraParams?: Record<string, string>
   ): Promise<{ buffer: Buffer; contentType: string } | null> {
-    const params = new URLSearchParams({ url, ...extraParams });
-    const screenshotUrl = `${this.apiBaseUrl}/v1/screenshot-website?${params.toString()}`;
-
-    const response = await fetch(screenshotUrl, {
-      method: 'GET',
-      headers: this.getHeaders(),
-    });
+    const response = await this.get(
+      '/v1/screenshot-website',
+      new URLSearchParams({ url, ...extraParams }),
+      { 'Accept': '*/*', 'User-Agent': USER_AGENT },
+    );
 
     if (!response.ok) {
       const contentType = response.headers.get('content-type') || '';
       let errorText = '';
-      if (contentType.includes('application/json')) {
-        try {
-          errorText = JSON.stringify(await response.json());
-        } catch {
-          errorText = await response.text();
+      if (contentType.includes('application/json') || contentType.includes('text/')) {
+        const raw = await response.text();
+        if (contentType.includes('application/json')) {
+          try { errorText = JSON.stringify(JSON.parse(raw)); } catch { errorText = raw; }
+        } else {
+          errorText = raw;
         }
-      } else if (contentType.includes('text/')) {
-        errorText = await response.text();
       }
       throw new Error(`Screenshot API request failed: ${response.status} ${errorText}`.trim());
     }
 
     const rawContentType = response.headers.get('content-type') || 'image/png';
-    const contentType = (rawContentType.split(';')[0] ?? 'image/png').trim();
-    const buffer = Buffer.from(await response.arrayBuffer());
+    const contentType = rawContentType.split(';')[0]!.trim();
 
-    return { buffer, contentType };
+    return { buffer: Buffer.from(await response.arrayBuffer()), contentType };
   }
 
   /**
    * Scrape multiple pages with concurrency control
-   * 
+   *
    * @param options - Multi-page scraping options
    * @returns Promise resolving to multi-page scrape results
    */
   async scrapeMultiplePages(options: MultiPageScraperOptions): Promise<MultiPageScraperResult> {
-    const { urls, includeAssets = false, rateLimit = 1000 } = options;
+    const { urls, includeAssets = false, rateLimit = DEFAULT_RATE_LIMIT_MS } = options;
     const allAssets: ExtractedAsset[] = [];
     const concurrencyLimit =
       options.concurrency && options.concurrency > 0
@@ -537,10 +493,10 @@ export class WebsiteScraperDriver extends BaseDriver {
 
     // Process URLs in batches with concurrency limit
     const pages: PageScrapeResult[] = [];
-    
+
     for (let i = 0; i < urls.length; i += concurrencyLimit) {
       const batch = urls.slice(i, i + concurrencyLimit);
-      
+
       this.logger.info('website-scraper.multi-page.batch', {
         batchNumber: Math.floor(i / concurrencyLimit) + 1,
         batchSize: batch.length,
@@ -590,22 +546,20 @@ export class WebsiteScraperDriver extends BaseDriver {
       const batchPages = batchResults
         .filter(r => r.status === 'fulfilled')
         .map(r => r.value.pageResult);
-      
+
       const batchAssets = batchResults
         .filter(r => r.status === 'fulfilled')
         .flatMap(r => r.value.assets);
-      
+
       pages.push(...batchPages);
       allAssets.push(...batchAssets);
-      
+
       // Log any rejected promises (shouldn't happen due to try/catch, but handle anyway)
       const batchErrors = batchResults.filter(r => r.status === 'rejected');
       if (batchErrors.length > 0) {
-        batchErrors.forEach(error => {
-          this.logger.error('website-scraper.multi-page.batch-error', {
-            error: error.reason
-          });
-        });
+        for (const rejected of batchErrors) {
+          log.error(this.logger, 'website-scraper.multi-page.batch-error', rejected.reason as Error);
+        }
       }
 
       // Add delay between batches (not between individual requests in a batch)
@@ -636,7 +590,7 @@ export class WebsiteScraperDriver extends BaseDriver {
 
   /**
    * Extract assets from HTML content
-   * 
+   *
    * @param content - HTML or sanitized content
    * @param sourceUrl - Source page URL
    * @returns Array of extracted assets
@@ -650,7 +604,7 @@ export class WebsiteScraperDriver extends BaseDriver {
     const srcCount = (content.match(/src=/gi) || []).length;
     const srcsetCount = (content.match(/srcset=/gi) || []).length;
     const dataSrcCount = (content.match(/data-src=/gi) || []).length;
-    
+
     this.logger.info('website-scraper.extract-assets-begin', {
       sourceUrl,
       contentLength: content.length,
@@ -667,13 +621,13 @@ export class WebsiteScraperDriver extends BaseDriver {
       if (!url || seenUrls.has(url)) return;
       if (!this.isValidAssetUrl(url)) return;
       seenUrls.add(url);
-      
+
       this.logger.debug('website-scraper.asset-added', {
         url: url.substring(0, 150),
         type,
         hasAlt: !!altText
       });
-      
+
       assets.push({ url, type, altText, sourceUrl });
     };
 
@@ -682,7 +636,7 @@ export class WebsiteScraperDriver extends BaseDriver {
     let imgMatch;
     while ((imgMatch = imgTagRegex.exec(content)) !== null) {
       const attrs = imgMatch[1] || '';
-      
+
       // Extract alt text
       const altMatch = attrs.match(/alt=["']([^"']*)["']/i);
       const altText = altMatch?.[1];
@@ -772,40 +726,40 @@ export class WebsiteScraperDriver extends BaseDriver {
 
   /**
    * Check if a URL is a valid asset URL (not a placeholder or invalid)
-   * 
+   *
    * @param url - URL to validate
    * @returns true if valid asset URL
    */
   private isValidAssetUrl(url: string): boolean {
     let reason = '';
-    
+
     // Skip data URIs (already embedded)
     if (url.startsWith('data:')) reason = 'data URI';
-    
+
     // Skip blob URLs
     else if (url.startsWith('blob:')) reason = 'blob URL';
-    
+
     // Skip javascript: URLs
     // eslint-disable-next-line no-script-url
     else if (url.startsWith('javascript:')) reason = 'javascript URL';
-    
+
     // Skip template placeholders (common in SSR/CSR frameworks)
     else if (url.includes('{{') || url.includes('}}')) reason = 'template placeholder {{}}';
     else if (url.includes('${')) reason = 'template placeholder ${}';
     else if (url.includes('%7B') || url.includes('%7D')) reason = 'encoded template placeholder';
-    
+
     // Skip about: and chrome: URLs
     else if (url.startsWith('about:') || url.startsWith('chrome:')) reason = 'browser URL';
-    
+
     // Skip empty or whitespace-only URLs
     else if (!url.trim()) reason = 'empty URL';
-    
+
     // Skip very short URLs that are likely placeholders
     else if (url.length < 5) reason = 'too short';
-    
+
     // Skip URLs with only hash
     else if (url === '#' || url.startsWith('#')) reason = 'hash only';
-    
+
     if (reason) {
       this.logger.debug('website-scraper.asset-url-rejected', {
         url: url.substring(0, 100),
@@ -813,14 +767,14 @@ export class WebsiteScraperDriver extends BaseDriver {
       });
       return false;
     }
-    
+
     // Valid URL
     return true;
   }
 
   /**
    * Resolve relative URLs to absolute
-   * 
+   *
    * @param url - URL to resolve
    * @param baseUrl - Base URL for resolution
    * @returns Resolved absolute URL or null
@@ -829,7 +783,7 @@ export class WebsiteScraperDriver extends BaseDriver {
     try {
       // Skip data URIs - they're embedded content
       if (url.startsWith('data:')) return null;
-      
+
       // Handle Next.js image optimization URLs - extract the real image URL
       if (url.includes('/_next/image?url=')) {
         const match = url.match(/[?&]url=([^&]+)/);
@@ -849,7 +803,7 @@ export class WebsiteScraperDriver extends BaseDriver {
           }
         }
       }
-      
+
       // Skip Next.js internal URLs (static chunks, build artifacts)
       if (url.includes('/_next/static/') || url.includes('/_next/data/')) {
         this.logger.debug('website-scraper.nextjs-internal-skipped', {
@@ -857,17 +811,17 @@ export class WebsiteScraperDriver extends BaseDriver {
         });
         return null;
       }
-      
+
       // Handle protocol-relative URLs
       if (url.startsWith('//')) return `https:${url}`;
-      
+
       // Already absolute
       if (url.startsWith('http')) return url;
-      
+
       // Resolve relative URL against base
       const base = new URL(baseUrl);
       const resolved = new URL(url, base.origin).href;
-      
+
       return resolved;
     } catch (error) {
       this.logger.debug('website-scraper.url-resolve-failed', {
@@ -881,11 +835,10 @@ export class WebsiteScraperDriver extends BaseDriver {
 
   /**
    * Delay helper for rate limiting
-   * 
+   *
    * @param ms - Milliseconds to delay
    */
   private delay(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
   }
 }
-
