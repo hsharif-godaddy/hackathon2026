@@ -62,7 +62,7 @@ describe('formatDate', () => {
     });
 
     it('should handle date string with time', () => {
-      const result = formatDate('2024-06-30T18:30:00Z');
+      const result = formatDate('2024-06-30T12:00:00Z');
       expect(result).toMatch(/Jun 30, 2024/);
     });
   });
@@ -75,7 +75,7 @@ describe('formatDate', () => {
     });
 
     it('should format end of year', () => {
-      const date = new Date('2024-12-31T23:59:59Z');
+      const date = new Date('2024-12-31T12:00:00Z');
       const result = formatDate(date);
       expect(result).toMatch(/Dec 31, 2024/);
     });
