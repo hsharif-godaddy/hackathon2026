@@ -17,6 +17,21 @@ interface MessageContentRendererProps {
   showThinking?: boolean
 }
 
+// Stable key derived from underlying tool ids so that adding a new block to
+// the message (and the resulting reordering of tool/tool-group/action-group
+// transitions in the chronological stream) doesn't remount unrelated
+// subtrees. Text blocks have no stable id; index keys are fine because they
+// hold no local state worth preserving.
+function blockKey(block: ContentBlock, index: number): string {
+  if (block.type === 'tool' && block.toolCall) {
+    return `tool-${block.toolCall.id}`
+  }
+  if ((block.type === 'tool-group' || block.type === 'action-group') && block.toolCalls?.length) {
+    return `${block.type}-${block.toolCalls[0]!.id}`
+  }
+  return `text-${index}`
+}
+
 function MessageContentRenderer({ blocks, isActiveStream = false, isLastAssistantMessage = false, showThinking = false }: MessageContentRendererProps) {
   const toolCallArraysCacheRef = useRef<Map<string, ToolCall[]>>(new Map())
 
@@ -38,7 +53,7 @@ function MessageContentRenderer({ blocks, isActiveStream = false, isLastAssistan
           : null
 
         return (
-          <div key={`block-${index}`}>
+          <div key={blockKey(block, index)}>
             {block.type === 'text' && block.content && (
               <MarkdownRenderer
                 content={block.content}

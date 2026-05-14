@@ -1,7 +1,6 @@
 'use client'
 
 import { SquareTerminal } from 'lucide-react'
-import { useState } from 'react'
 
 import MarkdownRenderer from '@/app/[market]/develop/components/MarkdownRenderer'
 import type { DefaultToolRendererProps } from '@/app/[market]/develop/components/tool-renderers/DefaultToolRenderer'
@@ -10,6 +9,7 @@ import ToolHeader from '@/app/[market]/develop/components/tool-renderers/ToolHea
 import ToolModal from '@/app/[market]/develop/components/tool-renderers/ToolModal'
 import { useTranslations } from '@/hooks/useTranslations'
 import { logger } from '@/lib/request-context'
+import { useToolDetailsModal } from '@/stores/useToolDetailsModalStore'
 
 /**
  * Custom renderer for terminalCommand tool
@@ -20,12 +20,13 @@ import { logger } from '@/lib/request-context'
 export default function TerminalCommandToolRenderer({
   toolName: _toolName,
   toolStatus,
+  toolId,
   input,
   result
 }: DefaultToolRendererProps) {
   const t = useTranslations();
 
-  const [isModalOpen, setIsModalOpen] = useState(false)
+  const [isModalOpen, setIsModalOpen] = useToolDetailsModal(toolId)
 
   // Parse result - can be JSON (new format) or Markdown (old format)
   let parsedResult: any = null

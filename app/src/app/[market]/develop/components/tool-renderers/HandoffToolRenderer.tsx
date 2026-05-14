@@ -1,12 +1,13 @@
 'use client'
 
 import { Bot } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import Collapsible from '@ux/collapsible'
 
 import MarkdownRenderer from '@/app/[market]/develop/components/MarkdownRenderer'
 import { completePartialJson } from '@/app/[market]/develop/components/tool-renderers/json-completion-utils'
 import { useTranslations } from '@/hooks/useTranslations'
+import { useToolDetailsModal } from '@/stores/useToolDetailsModalStore'
 import type { DefaultToolRendererProps } from './DefaultToolRenderer'
 import KeyValueTable from './KeyValueTable'
 import ToolHeader from './ToolHeader'
@@ -87,12 +88,13 @@ function parseStreamingHandoff(input: string): { planTitle: string | null; wordC
 export default function HandoffToolRenderer({
   toolName: _toolName,
   toolStatus,
+  toolId,
   input,
   result,
   partialInput
 }: DefaultToolRendererProps) {
   const t = useTranslations()
-  const [isModalOpen, setIsModalOpen] = useState(false)
+  const [isModalOpen, setIsModalOpen] = useToolDetailsModal(toolId)
   const lastWordCountRef = useRef<number | null>(null)
   const lastPlanTitleRef = useRef<string | null>(null)
   const lastTargetAgentRef = useRef<string | null>(null)

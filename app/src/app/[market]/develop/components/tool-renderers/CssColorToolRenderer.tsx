@@ -8,6 +8,7 @@ import type { DefaultToolRendererProps } from '@/app/[market]/develop/components
 import ToolHeader from '@/app/[market]/develop/components/tool-renderers/ToolHeader'
 import ColorPaletteWidget from '@/app/[market]/develop/components/widgets/ColorPaletteWidget'
 import { useTranslations } from '@/hooks/useTranslations'
+import { useToolDetailsModal } from '@/stores/useToolDetailsModalStore'
 
 /**
  * Custom renderer for cssColor tool
@@ -22,12 +23,13 @@ import { useTranslations } from '@/hooks/useTranslations'
 export default function CssColorToolRenderer({
   toolName: _toolName,
   toolStatus,
+  toolId,
   input,
   result
 }: DefaultToolRendererProps) {
   const t = useTranslations();
   const [isVisible, setIsVisible] = useState(true)
-  const [isModalOpen, setIsModalOpen] = useState(false)
+  const [isModalOpen, setIsModalOpen] = useToolDetailsModal(toolId)
 
   // Extract palette name and mode from result or input
   const isGenerateOnly = input?.generateOnly === true

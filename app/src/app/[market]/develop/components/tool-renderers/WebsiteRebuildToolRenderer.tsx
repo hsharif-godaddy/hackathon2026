@@ -8,6 +8,7 @@ import Tag from '@ux/tag'
 import text from '@ux/text'
 
 import { useTranslations } from '@/hooks/useTranslations'
+import { useToolDetailsModal } from '@/stores/useToolDetailsModalStore'
 import type { DefaultToolRendererProps } from './DefaultToolRenderer'
 import ToolHeader from './ToolHeader'
 import ToolModal from './ToolModal'
@@ -21,11 +22,12 @@ import ToolModal from './ToolModal'
 export default function WebsiteRebuildToolRenderer({
   toolName: _toolName,
   toolStatus,
+  toolId,
   input,
   result
 }: DefaultToolRendererProps) {
   const t = useTranslations()
-  const [isModalOpen, setIsModalOpen] = useState(false)
+  const [isModalOpen, setIsModalOpen] = useToolDetailsModal(toolId)
   const [isPromptModalOpen, setIsPromptModalOpen] = useState(false)
 
   // Extract data from input/result

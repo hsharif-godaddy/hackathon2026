@@ -6,6 +6,7 @@ import Pagination from '@ux/pagination'
 import TextInput from '@ux/text-input'
 
 import { logger } from '@/lib/request-context'
+import { useToolDetailsModal } from '@/stores/useToolDetailsModalStore'
 import type { DefaultToolRendererProps } from './DefaultToolRenderer'
 import ToolHeader from './ToolHeader'
 import ToolModal from './ToolModal'
@@ -370,10 +371,11 @@ function renderSkillInstall(
 export default function SkillToolRenderer({
   toolName: _toolName,
   toolStatus,
+  toolId,
   input,
   result
 }: DefaultToolRendererProps) {
-  const [isModalOpen, setIsModalOpen] = useState(false)
+  const [isModalOpen, setIsModalOpen] = useToolDetailsModal(toolId)
 
   // Parse result
   let parsedResult: SkillResult | null = null

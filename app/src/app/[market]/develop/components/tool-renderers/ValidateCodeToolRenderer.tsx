@@ -1,12 +1,12 @@
 'use client'
 
 import { FileCode } from 'lucide-react'
-import { useState } from 'react'
 
 import MarkdownRenderer from '@/app/[market]/develop/components/MarkdownRenderer'
 import ToolHeader from '@/app/[market]/develop/components/tool-renderers/ToolHeader'
 import ToolModal from '@/app/[market]/develop/components/tool-renderers/ToolModal'
 import { useTranslations } from '@/hooks/useTranslations'
+import { useToolDetailsModal } from '@/stores/useToolDetailsModalStore'
 import type { DefaultToolRendererProps } from './DefaultToolRenderer'
 
 function getDiagnostics(result: DefaultToolRendererProps['result']): string {
@@ -17,11 +17,12 @@ function getDiagnostics(result: DefaultToolRendererProps['result']): string {
 
 export default function ValidateCodeToolRenderer({
   toolStatus,
+  toolId,
   result,
   error
 }: DefaultToolRendererProps) {
   const t = useTranslations()
-  const [isModalOpen, setIsModalOpen] = useState(false)
+  const [isModalOpen, setIsModalOpen] = useToolDetailsModal(toolId)
   const displayName = toolStatus === 'running'
     ? t('builder_tools_validate_code_running', undefined, 'Validating Code')
     : t('builder_tools_validate_code_title', undefined, 'Validate Code')

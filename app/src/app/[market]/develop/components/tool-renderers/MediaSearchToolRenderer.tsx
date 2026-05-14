@@ -9,6 +9,7 @@ import type { DefaultToolRendererProps } from '@/app/[market]/develop/components
 import ToolHeader from '@/app/[market]/develop/components/tool-renderers/ToolHeader'
 import { useTranslations } from '@/hooks/useTranslations'
 import { logger } from '@/lib/request-context'
+import { useToolDetailsModal } from '@/stores/useToolDetailsModalStore'
 
 interface ImageAnalysis {
   description: string
@@ -43,11 +44,12 @@ interface VideoResult {
 export default function MediaSearchToolRenderer({
   toolName: _toolName,
   toolStatus,
+  toolId,
   input: _input,
   result
 }: DefaultToolRendererProps) {
   const t = useTranslations();
-  const [isModalOpen, setIsModalOpen] = useState(false)
+  const [isModalOpen, setIsModalOpen] = useToolDetailsModal(toolId)
   const [selectedImageIndex, setSelectedImageIndex] = useState(0)
   const [isPlaying, setIsPlaying] = useState(false)
   const inlineVideoRef = useRef<HTMLVideoElement>(null)

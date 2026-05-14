@@ -11,17 +11,19 @@ import FontPaletteWidget from '@/app/[market]/develop/components/widgets/FontPal
 import FontThemeGridWidget from '@/app/[market]/develop/components/widgets/FontThemeGridWidget'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
+import { useToolDetailsModal } from '@/stores/useToolDetailsModalStore'
 
 /** @deprecated Remove when `airo-builder-font-selection-chat` is permanently on */
 function FontThemeToolRendererLegacy({
   toolName: _toolName,
   toolStatus,
+  toolId,
   input,
   result,
   error
 }: DefaultToolRendererProps) {
   const t = useTranslations()
-  const [isModalOpen, setIsModalOpen] = useState(false)
+  const [isModalOpen, setIsModalOpen] = useToolDetailsModal(toolId)
   const [isErrorModalOpen, setIsErrorModalOpen] = useState(false)
 
   const mode = input?.mode as 'suggest' | 'apply' | undefined

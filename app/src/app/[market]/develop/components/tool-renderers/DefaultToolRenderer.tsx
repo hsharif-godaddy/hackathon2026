@@ -1,13 +1,13 @@
 'use client'
 
 import { Wrench } from 'lucide-react'
-import { useState } from 'react'
 
 import MarkdownRenderer from '@/app/[market]/develop/components/MarkdownRenderer'
 import ToolHeader from '@/app/[market]/develop/components/tool-renderers/ToolHeader'
 import ToolModal from '@/app/[market]/develop/components/tool-renderers/ToolModal'
 import type { ToolStatus } from '@/app/[market]/develop/components/types'
 import { useTranslations } from '@/hooks/useTranslations'
+import { useToolDetailsModal } from '@/stores/useToolDetailsModalStore'
 import { getToolDisplayName } from '@/utils/toolNameMapping'
 
 /**
@@ -44,6 +44,7 @@ export interface DefaultToolRendererProps {
 export default function DefaultToolRenderer({
   toolName,
   toolStatus,
+  toolId,
   duration,
   input,
   result,
@@ -52,7 +53,7 @@ export default function DefaultToolRenderer({
   endTime: _endTime
 }: DefaultToolRendererProps) {
   const t = useTranslations();
-  const [isModalOpen, setIsModalOpen] = useState(false)
+  const [isModalOpen, setIsModalOpen] = useToolDetailsModal(toolId)
 
   const hasDetails = Boolean(result || error || (input && Object.keys(input).length > 0))
 

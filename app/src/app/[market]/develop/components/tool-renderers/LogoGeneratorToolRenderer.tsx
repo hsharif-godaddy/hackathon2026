@@ -9,6 +9,7 @@ import ToolHeader from '@/app/[market]/develop/components/tool-renderers/ToolHea
 import { getLogoDisplayUrl, type LogoData } from '@/app/[market]/develop/components/widgets/logo-utils'
 import LogoGridWidget from '@/app/[market]/develop/components/widgets/LogoGridWidget'
 import { logger } from '@/lib/request-context'
+import { useToolDetailsModal } from '@/stores/useToolDetailsModalStore'
 
 type LogoResult = LogoData
 
@@ -21,10 +22,11 @@ type LogoResult = LogoData
 export default function LogoGeneratorToolRenderer({
   toolName,
   toolStatus,
+  toolId,
   input: _input,
   result
 }: DefaultToolRendererProps) {
-  const [isModalOpen, setIsModalOpen] = useState(false)
+  const [isModalOpen, setIsModalOpen] = useToolDetailsModal(toolId)
   const [selectedLogoIndex, setSelectedLogoIndex] = useState(0)
   const thumbnailRefs = useRef<(HTMLButtonElement | null)[]>([])
 

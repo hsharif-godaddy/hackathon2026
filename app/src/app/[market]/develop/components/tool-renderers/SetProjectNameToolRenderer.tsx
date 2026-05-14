@@ -2,10 +2,11 @@
 
 import { FileText } from 'lucide-react'
 import { useParams } from 'next/navigation'
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 
 import { useTranslations } from '@/hooks/useTranslations'
 import { logger } from '@/lib/request-context'
+import { useToolDetailsModal } from '@/stores/useToolDetailsModalStore'
 import type { DefaultToolRendererProps } from './DefaultToolRenderer'
 import KeyValueTable from './KeyValueTable'
 import ToolHeader from './ToolHeader'
@@ -23,11 +24,12 @@ import ToolModal from './ToolModal'
 export default function SetProjectNameToolRenderer({
   toolName: _toolName,
   toolStatus,
+  toolId,
   input,
   result
 }: DefaultToolRendererProps) {
   const t = useTranslations();
-  const [isModalOpen, setIsModalOpen] = useState(false)
+  const [isModalOpen, setIsModalOpen] = useToolDetailsModal(toolId)
   const params = useParams()
   const appId = params?.id as string | undefined
 

@@ -1,7 +1,6 @@
 'use client'
 
 import { File } from 'lucide-react'
-import { useState } from 'react'
 
 import MarkdownRenderer from '@/app/[market]/develop/components/MarkdownRenderer'
 import type { DefaultToolRendererProps } from '@/app/[market]/develop/components/tool-renderers/DefaultToolRenderer'
@@ -9,6 +8,7 @@ import KeyValueTable from '@/app/[market]/develop/components/tool-renderers/KeyV
 import ToolHeader from '@/app/[market]/develop/components/tool-renderers/ToolHeader'
 import ToolModal from '@/app/[market]/develop/components/tool-renderers/ToolModal'
 import { useTranslations } from '@/hooks/useTranslations'
+import { useToolDetailsModal } from '@/stores/useToolDetailsModalStore'
 
 /**
  * Extract filename from path
@@ -47,11 +47,12 @@ function stripLineNumbers(content: string): string {
 export default function ReadFileToolRenderer({
   toolName: _toolName,
   toolStatus,
+  toolId,
   input,
   result
 }: DefaultToolRendererProps) {
   const t = useTranslations();
-  const [isModalOpen, setIsModalOpen] = useState(false)
+  const [isModalOpen, setIsModalOpen] = useToolDetailsModal(toolId)
 
   // Extract file info from input and result
   let filePath = ''

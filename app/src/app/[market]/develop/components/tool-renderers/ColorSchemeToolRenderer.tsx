@@ -1,7 +1,6 @@
 'use client'
 
 import { Palette } from 'lucide-react'
-import { useState } from 'react'
 
 import ColorPaletteModal from '@/app/[market]/develop/components/tool-renderers/ColorPaletteModal'
 import type { DefaultToolRendererProps } from '@/app/[market]/develop/components/tool-renderers/DefaultToolRenderer'
@@ -11,6 +10,7 @@ import ColorPaletteGridWidget from '@/app/[market]/develop/components/widgets/Co
 import ColorPaletteWidget from '@/app/[market]/develop/components/widgets/ColorPaletteWidget'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
+import { useToolDetailsModal } from '@/stores/useToolDetailsModalStore'
 
 export default function ColorSchemeToolRenderer(props: DefaultToolRendererProps) {
   const isThemeSelectionChatEnabled = useSwitchboard('airo-builder-theme-selection-chat')
@@ -23,11 +23,12 @@ export default function ColorSchemeToolRenderer(props: DefaultToolRendererProps)
 /** @deprecated Remove when `airo-builder-theme-selection-chat` is permanently on */
 function ColorSchemeToolRendererLegacy({
   toolStatus,
+  toolId,
   input,
   result
 }: DefaultToolRendererProps) {
   const t = useTranslations()
-  const [isModalOpen, setIsModalOpen] = useState(false)
+  const [isModalOpen, setIsModalOpen] = useToolDetailsModal(toolId)
 
   const mode = input?.mode as 'suggest' | 'apply' | 'set' | undefined
   const isSuggestMode = mode === 'suggest'

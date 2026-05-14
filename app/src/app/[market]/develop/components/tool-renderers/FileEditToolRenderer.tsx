@@ -14,6 +14,7 @@ import ToolHeader from '@/app/[market]/develop/components/tool-renderers/ToolHea
 import ToolModal from '@/app/[market]/develop/components/tool-renderers/ToolModal'
 import { useTranslations } from '@/hooks/useTranslations'
 import { logger } from '@/lib/request-context'
+import { useToolDetailsModal } from '@/stores/useToolDetailsModalStore'
 
 /**
  * Extract filename from path
@@ -308,13 +309,14 @@ function shouldDisplayAsBatch(
 export default function FileEditToolRenderer({
   toolName: _toolName,
   toolStatus,
+  toolId,
   input,
   result,
   partialInput,
   error: toolCallError
 }: DefaultToolRendererProps) {
   const t = useTranslations();
-  const [isModalOpen, setIsModalOpen] = useState(false)
+  const [isModalOpen, setIsModalOpen] = useToolDetailsModal(toolId)
   const lastSuccessfulEstimateRef = useRef<{ additions: number; deletions: number } | null>(null)
   const [streamingEstimate, setStreamingEstimate] = useState<{ additions: number; deletions: number } | null>(null)
 

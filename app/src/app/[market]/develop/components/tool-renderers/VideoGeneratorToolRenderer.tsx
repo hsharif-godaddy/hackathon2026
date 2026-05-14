@@ -7,6 +7,7 @@ import type { DefaultToolRendererProps } from '@/app/[market]/develop/components
 import MediaModal from '@/app/[market]/develop/components/tool-renderers/MediaModal'
 import ToolHeader from '@/app/[market]/develop/components/tool-renderers/ToolHeader'
 import { logger } from '@/lib/request-context'
+import { useToolDetailsModal } from '@/stores/useToolDetailsModalStore'
 
 interface VideoResult {
   url: string
@@ -21,10 +22,11 @@ interface VideoResult {
 export default function VideoGeneratorToolRenderer({
   toolName: _toolName,
   toolStatus,
+  toolId,
   input: _input,
   result
 }: DefaultToolRendererProps) {
-  const [isModalOpen, setIsModalOpen] = useState(false)
+  const [isModalOpen, setIsModalOpen] = useToolDetailsModal(toolId)
   const [isPlaying, setIsPlaying] = useState(false)
   const inlineVideoRef = useRef<HTMLVideoElement>(null)
   const modalVideoRef = useRef<HTMLVideoElement>(null)

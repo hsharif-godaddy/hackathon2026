@@ -1,9 +1,9 @@
 'use client'
 
 import { ShoppingBag } from 'lucide-react'
-import { useState } from 'react'
 
 import { useTranslations } from '@/hooks/useTranslations'
+import { useToolDetailsModal } from '@/stores/useToolDetailsModalStore'
 import { getToolDisplayName } from '@/utils/toolNameMapping'
 import type { DefaultToolRendererProps } from './DefaultToolRenderer'
 import ToolHeader from './ToolHeader'
@@ -75,12 +75,13 @@ function parseResult(raw: unknown): {
 export default function CommerceToolRenderer({
   toolName,
   toolStatus,
+  toolId,
   input,
   result,
   error,
 }: DefaultToolRendererProps) {
   const t = useTranslations()
-  const [isModalOpen, setIsModalOpen] = useState(false)
+  const [isModalOpen, setIsModalOpen] = useToolDetailsModal(toolId)
 
   const displayName = getToolDisplayName(toolName)
   const parsed = result ? parseResult(result) : null

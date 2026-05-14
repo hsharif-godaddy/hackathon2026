@@ -9,6 +9,7 @@ import ToolHeader from '@/app/[market]/develop/components/tool-renderers/ToolHea
 import ToolModal from '@/app/[market]/develop/components/tool-renderers/ToolModal'
 import { useTranslations } from '@/hooks/useTranslations'
 import { logger } from '@/lib/request-context'
+import { useToolDetailsModal } from '@/stores/useToolDetailsModalStore'
 
 /**
  * Get operation display message
@@ -233,11 +234,12 @@ function renderItemsHTML(items: any[], title: string, listName?: string): React.
 export default function TodoListToolRenderer({
   toolName: _toolName,
   toolStatus,
+  toolId,
   input,
   result
 }: DefaultToolRendererProps) {
   const t = useTranslations();
-  const [isModalOpen, setIsModalOpen] = useState(false)
+  const [isModalOpen, setIsModalOpen] = useToolDetailsModal(toolId)
   const [isVisible, setIsVisible] = useState(true)
 
   // Parse result - can be JSON (new format) or Markdown (old format)

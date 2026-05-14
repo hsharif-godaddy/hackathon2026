@@ -1,7 +1,6 @@
 'use client'
 
 import { Palette } from 'lucide-react'
-import { useState } from 'react'
 
 import ColorPaletteModal from '@/app/[market]/develop/components/tool-renderers/ColorPaletteModal'
 import type { DefaultToolRendererProps } from '@/app/[market]/develop/components/tool-renderers/DefaultToolRenderer'
@@ -10,6 +9,7 @@ import type { PaletteData } from '@/app/[market]/develop/components/types/colorS
 import ColorPaletteGridWidget from '@/app/[market]/develop/components/widgets/ColorPaletteGridWidget'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
+import { useToolDetailsModal } from '@/stores/useToolDetailsModalStore'
 
 /**
  * Custom renderer for cssSuggest tool
@@ -29,10 +29,11 @@ export default function CssSuggestToolRenderer(props: DefaultToolRendererProps) 
 /** @deprecated Remove when `airo-builder-theme-selection-chat` is permanently on */
 function CssSuggestToolRendererLegacy({
   toolStatus,
+  toolId,
   result
 }: DefaultToolRendererProps) {
   const t = useTranslations()
-  const [isModalOpen, setIsModalOpen] = useState(false)
+  const [isModalOpen, setIsModalOpen] = useToolDetailsModal(toolId)
 
   let palettes: PaletteData[] = []
   if (toolStatus === 'completed' && result && typeof result === 'object') {
@@ -83,10 +84,11 @@ function CssSuggestToolRendererLegacy({
 
 function CssSuggestToolRendererModern({
   toolStatus,
+  toolId,
   result
 }: DefaultToolRendererProps) {
   const t = useTranslations();
-  const [isModalOpen, setIsModalOpen] = useState(false)
+  const [isModalOpen, setIsModalOpen] = useToolDetailsModal(toolId)
 
   // Extract palettes from result
   let palettes: PaletteData[] = []

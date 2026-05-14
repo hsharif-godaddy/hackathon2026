@@ -9,6 +9,7 @@ import StatusIndicator from '@/app/[market]/develop/components/tool-renderers/St
 import { getToolIcon } from '@/app/[market]/develop/components/tool-renderers/toolIcons'
 import type { ToolStatus } from '@/app/[market]/develop/components/types'
 import type { ToolCall } from '@/stores/useStreamingConversationStore'
+import { useToolDetailsModalStore } from '@/stores/useToolDetailsModalStore'
 import MessageToolCallsRenderer from './MessageToolCallsRenderer'
 
 interface ActionToolGroupRendererProps {
@@ -37,12 +38,24 @@ export default function ActionToolGroupRenderer({
   isActiveStream = false,
   isLastAssistantMessage = false
 }: ActionToolGroupRendererProps) {
-  const [isExpanded, setIsExpanded] = useState(false)
+  const openToolId = useToolDetailsModalStore((s) => s.openToolId)
+  const visibleToolCalls = useMemo(() => toolCalls.filter((tc) => !isHiddenToolCall(tc)), [toolCalls])
+  const containsOpenTool = useMemo(
+    () => !!openToolId && visibleToolCalls.some((tc) => tc.id === openToolId),
+    [visibleToolCalls, openToolId]
+  )
+  const [isExpanded, setIsExpanded] = useState(() => containsOpenTool)
   const [justUpdated, setJustUpdated] = useState(false)
   const expandedContentRef = useRef<HTMLDivElement>(null)
   const prevCountRef = useRef(0)
 
-  const visibleToolCalls = useMemo(() => toolCalls.filter((tc) => !isHiddenToolCall(tc)), [toolCalls])
+  // Force expand when a contained tool's details modal opens, so the inner
+  // renderer mounts and the modal has a host. Don't auto-collapse on close —
+  // collapsing is reserved for explicit user action.
+  useEffect(() => {
+    if (containsOpenTool) setIsExpanded(true)
+  }, [containsOpenTool])
+
   const aggregateStatus = useMemo(() => getAggregateStatus(visibleToolCalls), [visibleToolCalls])
 
   useEffect(() => {

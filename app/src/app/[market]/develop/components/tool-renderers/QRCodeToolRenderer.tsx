@@ -1,7 +1,6 @@
 'use client'
 
 import { Download, QrCode } from 'lucide-react'
-import { useState } from 'react'
 import Button from '@ux/button'
 import Modal from '@ux/modal'
 
@@ -9,6 +8,7 @@ import type { DefaultToolRendererProps } from '@/app/[market]/develop/components
 import ToolHeader from '@/app/[market]/develop/components/tool-renderers/ToolHeader'
 import { useTranslations } from '@/hooks/useTranslations'
 import { logger } from '@/lib/request-context'
+import { useToolDetailsModal } from '@/stores/useToolDetailsModalStore'
 
 interface QRCodeResult {
   success: boolean
@@ -29,11 +29,12 @@ interface QRCodeResult {
 export default function QRCodeToolRenderer({
   toolName: _toolName,
   toolStatus,
+  toolId,
   input: _input,
   result
 }: DefaultToolRendererProps) {
   const t = useTranslations()
-  const [isModalOpen, setIsModalOpen] = useState(false)
+  const [isModalOpen, setIsModalOpen] = useToolDetailsModal(toolId)
 
   // Parse result
   let parsedResult: QRCodeResult | null = null

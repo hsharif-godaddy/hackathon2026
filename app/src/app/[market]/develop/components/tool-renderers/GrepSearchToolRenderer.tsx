@@ -5,12 +5,12 @@
  */
 
 import { TextSearch } from 'lucide-react'
-import { useState } from 'react'
 
 import type { DefaultToolRendererProps } from '@/app/[market]/develop/components/tool-renderers/DefaultToolRenderer'
 import ToolHeader from '@/app/[market]/develop/components/tool-renderers/ToolHeader'
 import ToolModal from '@/app/[market]/develop/components/tool-renderers/ToolModal'
 import { useTranslations } from '@/hooks/useTranslations'
+import { useToolDetailsModal } from '@/stores/useToolDetailsModalStore'
 
 /**
  * Grep Search Tool Renderer Component
@@ -21,10 +21,11 @@ import { useTranslations } from '@/hooks/useTranslations'
 export default function GrepSearchToolRenderer({
   input,
   result,
-  toolStatus
+  toolStatus,
+  toolId
 }: DefaultToolRendererProps) {
   const t = useTranslations();
-  const [isModalOpen, setIsModalOpen] = useState(false)
+  const [isModalOpen, setIsModalOpen] = useToolDetailsModal(toolId)
 
   // Parse the result to extract match count and file count
   let matchCount = 0
