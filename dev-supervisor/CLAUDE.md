@@ -2,7 +2,7 @@
 
 Go-based containerized service acting as PID1 in development Docker containers. Provides process lifecycle management, health monitoring, HTTP/SMTP proxying, JWT authentication, and log streaming via Unix socket API.
 
-**Key characteristics:** Pure Go (no Node.js/pnpm), Go 1.25, cross-platform with Linux-optimized features, statically linked binary.
+**Key characteristics:** Pure Go (no Node.js/pnpm), Go 1.25, Linux-only (no Windows support intended), statically linked binary.
 
 ## Integration with Monorepo
 
@@ -47,12 +47,14 @@ Enabled: gosec, errcheck, revive, gocritic, gocyclo (max 15), goconst, govet, st
 
 ## Platform-Specific Code
 
+**Target platform is Linux only.** Windows is not supported and never will be. macOS fallback stubs exist solely to enable `go build` and unit tests on developer machines — they are not a production path.
+
 Uses build tags for platform separation — not runtime `GOOS` checks.
 
 ```
-feature.go                  # Cross-platform
-feature_linux.go            # //go:build linux
-feature_fallback.go         # //go:build !linux
+feature.go                  # Cross-platform interface
+feature_linux.go            # //go:build linux — production implementation
+feature_fallback.go         # //go:build !linux — dev-time stub (macOS)
 ```
 
 Linux-specific features (auto-skipped on macOS): port discovery via `/proc`, zombie reaping, SELinux peer validation.
