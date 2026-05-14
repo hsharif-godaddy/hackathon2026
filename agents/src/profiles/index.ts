@@ -11,11 +11,13 @@ export { profileValue, profileFlag, hasActiveProfile, activeProfileName } from '
 // When adding a new profile, import it here and add it to the rawProfiles array.
 import experimentalProfile from './experimental.json' with { type: 'json' }
 import newInitialAgentProfile from './new-initial-agent.json' with { type: 'json' }
+import initialAgentV1Profile from './initial-agent-v1.json' with { type: 'json' }
 import initialAgentV3Profile from './initial-agent-v3.json' with { type: 'json' }
 
 const rawProfiles: unknown[] = [
   experimentalProfile,
   newInitialAgentProfile,
+  initialAgentV1Profile,
   initialAgentV3Profile,
 ]
 

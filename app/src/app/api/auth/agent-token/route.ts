@@ -11,6 +11,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isEmployeeAuthType, type ProductType } from '@airo/shared/auth';
 
+import { EXPERIMENT_IDS, INITIAL_AGENT_COHORT_TO_PROFILE } from '@/config/experiments';
 import { checkBmsMigration, getMigrationDate, shouldCheckBmsMigration } from '@/lib/bms-migration';
 import { getControlPlaneAdapter } from '@/lib/control-plane';
 import { createCustomerAuthError, type CustomerAuthContext, customerHasAccount, type CustomerUser, withCustomerAuth } from '@/lib/customer-auth';
@@ -24,6 +25,7 @@ import { checkSwitchboardFlag, checkSwitchboardValue } from '@/lib/switchboard/s
 import { trafficPathwaySessionId } from '@/utils/traffic-signals';
 import { visitorIdFromVisitorCookieRaw } from '@/utils/visitor-id';
 import { getSiteValidationFromCache, setSiteValidationCache } from './site-validation-cache';
+import gasket from '../../../../../gasket';
 
 export interface CreateAgentTokenRequest {
   siteId: string;
@@ -276,7 +278,11 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       modelOverride = rawModelOverride && rawModelOverride !== 'default' ? rawModelOverride : undefined;
       agentProfileSelectorEnabled = resolveBooleanFlag(agentProfileSelectorResult, 'agent-token.agent-profile-selector-flag-check-failed', body.siteId, user.customerId);
       const rawAgentProfile = resolveStringFlag(agentProfileResult, 'agent-token.agent-profile-flag-check-failed', body.siteId, user.customerId);
-      agentProfile = rawAgentProfile && rawAgentProfile !== 'default' ? rawAgentProfile : undefined;
+      // Sentinels 'default' and 'hivemind' both mean "no operator override — let the
+      // initial-agent Hivemind experiment decide". Any other value is an explicit
+      // operator override (deployed default OR a targeted internal-account override)
+      // and wins over the experiment.
+      agentProfile = rawAgentProfile && rawAgentProfile !== 'default' && rawAgentProfile !== 'hivemind' ? rawAgentProfile : undefined;
       costAttributionDryRun = resolveBooleanFlag(costAttributionDryRunResult, 'agent-token.cost-attribution-dry-run-flag-check-failed', body.siteId, user.customerId);
     } else {
       // Cache miss: run site validation, paywall, switchboard, and subscription lookup all in parallel
@@ -328,8 +334,56 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       modelOverride = rawModelOverride && rawModelOverride !== 'default' ? rawModelOverride : undefined;
       agentProfileSelectorEnabled = resolveBooleanFlag(agentProfileSelectorResult, 'agent-token.agent-profile-selector-flag-check-failed', body.siteId, user.customerId);
       const rawAgentProfile = resolveStringFlag(agentProfileResult, 'agent-token.agent-profile-flag-check-failed', body.siteId, user.customerId);
-      agentProfile = rawAgentProfile && rawAgentProfile !== 'default' ? rawAgentProfile : undefined;
+      // Sentinels 'default' and 'hivemind' both mean "no operator override — let the
+      // initial-agent Hivemind experiment decide". Any other value is an explicit
+      // operator override (deployed default OR a targeted internal-account override)
+      // and wins over the experiment.
+      agentProfile = rawAgentProfile && rawAgentProfile !== 'default' && rawAgentProfile !== 'hivemind' ? rawAgentProfile : undefined;
       costAttributionDryRun = resolveBooleanFlag(costAttributionDryRunResult, 'agent-token.cost-attribution-dry-run-flag-check-failed', body.siteId, user.customerId);
+    }
+
+    // Hivemind initial-agent experiment: cohort → agent profile.
+    //
+    // Precedence (top wins):
+    //   1. Per-project frontend override          (applied agent-side by resolveProfile)
+    //   2. appbuilder-agent-profile switchboard    (real profile name only)
+    //   3. Hivemind cohort mapping                 (when switchboard is undefined or
+    //                                              returned a 'default' / 'hivemind' sentinel)
+    //   4. (no profile)
+    //
+    // The switchboard sentinels 'default' and 'hivemind' are filtered to undefined
+    // above, which is what allows the experiment to run for normal users while
+    // targeted internal-account overrides (real profile names) keep working.
+    //
+    // We resolve the cohort regardless of whether we end up applying the mapping so
+    // that every assigned user is logged as triggered for the experiment denominator.
+    try {
+      const getExperimentCohorts = gasket.actions.getExperimentCohorts;
+      if (typeof getExperimentCohorts === 'function') {
+        const headersObj: Record<string, string> = {};
+        request.headers.forEach((value, key) => { headersObj[key] = value; });
+        const cohorts = await getExperimentCohorts({ headers: headersObj });
+        const cohort = cohorts?.[EXPERIMENT_IDS.initialAgent] as string | undefined;
+        if (cohort && cohort !== 'ineligible' && cohort !== 'unassigned' && cohort !== 'not_bucketed') {
+          logger.info('hivemind.experiment.triggered', {
+            experimentId: EXPERIMENT_IDS.initialAgent,
+            cohortId: cohort,
+            siteId: body.siteId,
+            customerId: user.customerId,
+          });
+          if (!agentProfile) {
+            const mappedProfile = INITIAL_AGENT_COHORT_TO_PROFILE[cohort];
+            if (mappedProfile) {
+              agentProfile = mappedProfile;
+            }
+          }
+        }
+      }
+    } catch (error) {
+      logger.warn('hivemind.experiment.error', {
+        experimentId: EXPERIMENT_IDS.initialAgent,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
 
     // PaaS has its own billing model outside of the Airo Plus paywall, so the
