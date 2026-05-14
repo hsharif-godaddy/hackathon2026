@@ -45,6 +45,11 @@ type StatusResponse = {
   reportFilename: string | null;
   reportSize: number | null;
   reportEtag: string | null;
+  cost: {
+    totalUsd: number;
+    inputTokens: number;
+    outputTokens: number;
+  } | null;
 };
 
 // Legacy sessionStorage key from the pre-S2S GoCode API-key flow. Kept
@@ -391,6 +396,7 @@ export default function InvestigatePanel(props: Props = {}) {
           reportFilename: null,
           reportSize: null,
           reportEtag: null,
+          cost: null,
         });
       } catch {
         /* ignore malformed */
@@ -565,6 +571,7 @@ export default function InvestigatePanel(props: Props = {}) {
         reportFilename: null,
         reportSize: null,
         reportEtag: null,
+        cost: null,
       });
       openStream(data.investigationId, appId.trim(), customerId.trim());
       // Embedded: collapse the form so the user sees the live progress +
@@ -987,6 +994,25 @@ export default function InvestigatePanel(props: Props = {}) {
                       />
                     );
                   })}
+                </div>
+              )}
+
+              {status?.cost && (
+                <div style={{
+                  marginTop: 16,
+                  padding: '12px 14px',
+                  background: '#f9fafb',
+                  border: '1px solid #e5e7eb',
+                  borderRadius: 6,
+                  fontSize: 13,
+                  color: '#374151',
+                  display: 'flex',
+                  gap: 24,
+                  flexWrap: 'wrap',
+                }}>
+                  <div><strong>Total cost:</strong> ${status.cost.totalUsd.toFixed(4)}</div>
+                  <div><strong>Input tokens:</strong> {status.cost.inputTokens.toLocaleString()}</div>
+                  <div><strong>Output tokens:</strong> {status.cost.outputTokens.toLocaleString()}</div>
                 </div>
               )}
 

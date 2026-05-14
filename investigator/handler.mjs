@@ -603,6 +603,38 @@ export async function handler(event) {
     console.error('[investigator] trace upload failed', { traceKey, err });
     }
 
+    // Extract cost/usage from the final stream-json `result` event so the
+    // console UI can render a cost block beneath the report. Walk lines
+    // from the end — the result event is the last non-blank line on a
+    // clean exit. Best-effort; missing cost is non-fatal.
+    let cost = null;
+    try {
+      const traceRaw = await fs.readFile(traceLocalPath, 'utf-8');
+      const lines = traceRaw.split('\n');
+      for (let i = lines.length - 1; i >= 0; i--) {
+        const line = lines[i];
+        if (!line) continue;
+        let evt;
+        try { evt = JSON.parse(line); } catch { continue; }
+        if (evt.type !== 'result') continue;
+        const u = evt.usage || {};
+        const inputTokens =
+          (u.input_tokens || 0) +
+          (u.cache_creation_input_tokens || 0) +
+          (u.cache_read_input_tokens || 0);
+        const outputTokens = u.output_tokens || 0;
+        const totalUsd = typeof evt.total_cost_usd === 'number' ? evt.total_cost_usd : null;
+        if (totalUsd != null) {
+          cost = { totalUsd, inputTokens, outputTokens };
+        }
+        break;
+      }
+    } catch (err) {
+      if (err && err.code !== 'ENOENT') {
+        console.error('[investigator] cost extraction failed', err);
+      }
+    }
+
     // Upload report. If this fails, still write a terminal state so the UI does
     // not sit in running/stale with a report that only existed in Lambda memory.
     let reportUploaded = false;
@@ -650,6 +682,7 @@ export async function handler(event) {
       // state document tells operators how many heartbeat writes were lost
       // without requiring a CloudWatch correlation.
       heartbeatFailures,
+      cost,
       error: status === 'failed' ? `claude exit code ${exitInfo.code}` : null,
     });
 

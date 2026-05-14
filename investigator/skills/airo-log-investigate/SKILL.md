@@ -7,6 +7,15 @@ description: Use when investigating Airo Builder log issues for a specific appId
 
 Investigate one Airo app through registered log sources. The skill uses the console-owned evidence endpoint so auth and observability config stay in debug-console while the Lambda stores raw artifacts and compact indexes locally.
 
+## Output discipline
+
+The Lambda runs `claude -p --output-format=stream-json` and either reads a saved report file or, as a fallback, stitches every assistant text block from the trace into the final report. **Anything you say in chat ends up in the saved report.** Therefore:
+
+- Do not narrate intent before each phase ("I'll start by reading the phase-0 instructions...", "Good — sources complete", "Let me drill into raw refs", "All evidence collected. Writing the synthesis report").
+- Do not echo intermediate findings, observations, or summaries into chat.
+- Do the work silently. Read phase files, run scripts, read raw refs, then write the final report to `${REPORT_DIR}/{appId}.md` and exit.
+- One short progress line per phase marker (`phase-0-gather`, `phase-1-analyze`, `phase-2-synthesis`) is allowed for the heartbeat tracker. Anything beyond that stays out of chat.
+
 ## Inputs
 
 Required:

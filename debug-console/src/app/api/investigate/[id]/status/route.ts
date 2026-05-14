@@ -84,5 +84,6 @@ export const GET = withAuth<{ id: string }>(async (request, _auth, context) => {
     reportSize,
     reportEtag,
     evidence: state.evidence ?? null,
+    cost: state.cost ?? null,
   });
 });

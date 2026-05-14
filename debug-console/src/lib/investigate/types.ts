@@ -47,6 +47,11 @@ export interface InvestigationState {
     };
     error?: string;
   };
+  cost?: {
+    totalUsd: number;
+    inputTokens: number;
+    outputTokens: number;
+  } | null;
   error: string | null;
 }
 
