@@ -2833,6 +2833,12 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
       const isHandshakeAuth = socket.handshake.auth?.agentContext && !socket.handshake.auth?.pendingAuth;
 
       if (isHandshakeAuth) {
+        // Register early so existing grants (reconnection) are available for first LLM call
+        const agentCtx = socket.handshake.auth.agentContext;
+        if (agentCtx?.subscriptionId && !agentCtx?.budgetServiceEnabled) {
+          grantSessionManager.registerSession(socket.id, agentCtx.subscriptionId);
+        }
+
         socket.on('authenticate', () => {
           socket.emit('authenticateSuccess', {
             siteId: socket.handshake.auth.agentContext.siteId,
@@ -2929,6 +2935,11 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           }, { tags: ['security'] });
 
           registerTokenRefreshHandler(socket);
+
+          // Register early so existing grants (reconnection) are available for first LLM call
+          if (authResult.agentContext?.subscriptionId && !authResult.agentContext?.budgetServiceEnabled) {
+            grantSessionManager.registerSession(socket.id, authResult.agentContext.subscriptionId);
+          }
 
           if (!socket.connected) {
             logger.warn('websocket.auth.disconnected_during_auth', {

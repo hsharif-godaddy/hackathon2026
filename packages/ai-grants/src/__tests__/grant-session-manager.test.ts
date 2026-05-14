@@ -953,4 +953,74 @@ describe('grant-session-manager', function tests() {
       expect(result).toBe(false)
     })
   })
+
+  describe('#registerSession', function registerSessionTests() {
+    it('should map socketId to subscriptionId', function mapSocket() {
+      sessionManager.registerSession('session-1', 'sub-1')
+
+      // hasGrants returns false because no grant state exists yet
+      expect(sessionManager.hasGrants('session-1')).toBe(false)
+    })
+
+    it('should enable grant lookup when subscription already has grants', function reconnection() {
+      // Simulate first connection: grants indexed under sub-1
+      const grants = [createGrant({ subscriptionId: 'sub-1' })]
+      sessionManager.setGrants('old-session', grants)
+
+      // Old session disconnects
+      sessionManager.removeSession('old-session')
+
+      // New session registers at auth time (before grant_context arrives)
+      sessionManager.registerSession('new-session', 'sub-1')
+
+      // Grants should be immediately available via the new session
+      expect(sessionManager.hasGrants('new-session')).toBe(true)
+      expect(sessionManager.getCurrentUserId('new-session')).toBe('airo-builder:grant:grant-1')
+    })
+
+    it('should be idempotent with subsequent setGrants call', function idempotent() {
+      sessionManager.registerSession('session-1', 'sub-1')
+
+      const grants = [createGrant({ subscriptionId: 'sub-1' })]
+      sessionManager.setGrants('session-1', grants)
+
+      // Should still work correctly
+      expect(sessionManager.hasGrants('session-1')).toBe(true)
+      expect(sessionManager.getCurrentUserId('session-1')).toBe('airo-builder:grant:grant-1')
+    })
+
+    it('should not register when subscriptionId is empty', function noEmpty() {
+      sessionManager.registerSession('session-1', '')
+      expect(sessionManager.hasGrants('session-1')).toBe(false)
+    })
+
+    it('should not be cleared by setGrants with empty grants', function emptyGrantsPreserveMapping() {
+      // Simulate reconnection: grants exist for subscription from prior socket
+      const grants = [createGrant({ subscriptionId: 'sub-1' })]
+      sessionManager.setGrants('old-session', grants)
+      sessionManager.removeSession('old-session')
+
+      // New socket registers at auth time
+      sessionManager.registerSession('new-session', 'sub-1')
+      expect(sessionManager.hasGrants('new-session')).toBe(true)
+
+      // Frontend sends empty grant_context (grantCount: 0) before real grants arrive
+      sessionManager.setGrants('new-session', [])
+
+      // Mapping should still be intact
+      expect(sessionManager.hasGrants('new-session')).toBe(true)
+      expect(sessionManager.getCurrentUserId('new-session')).toBe('airo-builder:grant:grant-1')
+    })
+
+    it('should be cleaned up by removeSession', function cleanup() {
+      sessionManager.registerSession('session-1', 'sub-1')
+      sessionManager.removeSession('session-1')
+
+      // After removal, new setGrants on different session works independently
+      const grants = [createGrant({ subscriptionId: 'sub-1' })]
+      sessionManager.setGrants('session-2', grants)
+      expect(sessionManager.hasGrants('session-1')).toBe(false)
+      expect(sessionManager.hasGrants('session-2')).toBe(true)
+    })
+  })
 })

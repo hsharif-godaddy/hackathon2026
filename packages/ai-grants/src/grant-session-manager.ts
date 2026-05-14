@@ -100,6 +100,25 @@ export class GrantSessionManager {
   }
 
   /**
+   * Register a socket session's subscriptionId mapping at auth time.
+   * Enables immediate grant lookup if grants already exist for this subscription
+   * (reconnection case). Idempotent — setGrants() with non-empty grants will
+   * overwrite with the same mapping. Empty grants leave this mapping untouched.
+   */
+  registerSession(sessionId: string, subscriptionId: string): void {
+    if (!subscriptionId) {
+      logger.info('grants.session.register_skipped', { sessionId, reason: 'no_subscriptionId' })
+      return
+    }
+    this.sessionToSubscription.set(sessionId, subscriptionId)
+    logger.debug('grants.session.registered', {
+      sessionId,
+      subscriptionId,
+      hasExistingGrants: this.subscriptionSessions.has(subscriptionId),
+    })
+  }
+
+  /**
    * Request a grant refresh and wait for new grants to arrive
    *
    * This method:
@@ -207,11 +226,9 @@ export class GrantSessionManager {
 
     const subscriptionId = sortedGrants[0]?.subscriptionId
     if (!subscriptionId) {
-      // Clean up existing mapping to avoid inconsistent state
-      if (this.sessionToSubscription.has(sessionId)) {
-        this.sessionToSubscription.delete(sessionId)
-        logger.debug('grants.session.mapping_cleared', { sessionId, reason: 'empty_grants' })
-      }
+      // Empty grants received — preserve existing mapping (may have been set by
+      // registerSession at auth time) so reconnection grant lookup still works.
+      // The mapping will be updated when non-empty grants arrive.
       logger.warn('grants.session.no_subscription_id', { sessionId })
       return
     }
