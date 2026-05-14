@@ -83,9 +83,9 @@ catalog:
   openai: ^6.37.0
   parquetjs: ^0.11.2
   prettier: 3.8.3
-  react: ^19.2.4
+  react: ^19.2.6
   react-device-detect: ^2.2.3
-  react-dom: ^19.2.4
+  react-dom: ^19.2.6
   react-filerobot-image-editor: 5.0.0-beta.156
   react-focus-lock: ^2.13.7
   react-markdown: ^10.1.0
