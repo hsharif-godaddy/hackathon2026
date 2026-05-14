@@ -14,7 +14,12 @@ vi.mock('../simulation.js', async (importOriginal) => {
   };
 });
 
+vi.mock('../../util/sleep.js', () => ({
+  sleep: vi.fn().mockResolvedValue(undefined),
+}));
+
 import { SuiteRunner, runCapped } from '../suite-runner.js';
+import { sleep } from '../../util/sleep.js';
 import type { Scenario } from '../../scenarios/types.js';
 import type { Persona } from '../../personas/types.js';
 import type { Evaluator, EvalResult } from '../../evaluators/evaluator.js';
@@ -1394,7 +1399,7 @@ describe('first-turn inactivity retry', () => {
         scenarioName: 'test-scenario',
         trialIndex: 0,
         attempt: 1,
-        maxAttempts: 3,
+        maxAttempts: 2,
       },
     ]);
     expect(warnSpy.mock.calls[1]).toEqual([
@@ -1403,7 +1408,7 @@ describe('first-turn inactivity retry', () => {
         scenarioName: 'test-scenario',
         trialIndex: 0,
         attempt: 2,
-        maxAttempts: 3,
+        maxAttempts: 2,
       },
     ]);
     warnSpy.mockRestore();
@@ -1503,6 +1508,213 @@ describe('first-turn inactivity retry', () => {
     for (const disconnectFn of clients) {
       expect(disconnectFn).toHaveBeenCalledOnce();
     }
+    warnSpy.mockRestore();
+  });
+});
+
+describe('rate limit (429) retry', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  async function makeRateLimitError(): Promise<Error> {
+    const { RateLimitError } = await import('openai');
+    return new RateLimitError(
+      429,
+      { message: 'Too many tokens', type: 'throttling_error' },
+      'Too many tokens, please wait before trying again.',
+      new Headers(),
+    );
+  }
+
+  it('retries on RateLimitError and succeeds on next attempt', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const rateLimitErr = await makeRateLimitError();
+
+    mockSimulationRun
+      .mockRejectedValueOnce(rateLimitErr)
+      .mockResolvedValue(makeTranscript());
+
+    const scenario = makeScenario({ trials: 1 });
+
+    const results = await new SuiteRunner({
+      scenarios: [scenario],
+      config: mockConfig,
+      makeAgentClient,
+      syntheticUser: mockSyntheticUser,
+    }).run();
+
+    expect(mockSimulationRun).toHaveBeenCalledTimes(2);
+    expect(results).toHaveLength(1);
+    expect(results[0].trials[0].transcript.retryCount).toBe(1);
+    expect(sleep).toHaveBeenCalledWith(30_000);
+    expect(warnSpy).toHaveBeenCalledWith(
+      'Trial retry: rate limit (429).',
+      expect.objectContaining({
+        scenarioName: 'test-scenario',
+        trialIndex: 0,
+        attempt: 1,
+        maxAttempts: 10,
+        waitSeconds: 30,
+      }),
+    );
+    warnSpy.mockRestore();
+  });
+
+  it('exhausts MAX_RATE_LIMIT_RETRIES and throws', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const rateLimitErr = await makeRateLimitError();
+
+    mockSimulationRun.mockRejectedValue(rateLimitErr);
+
+    const scenario = makeScenario({ trials: 1 });
+
+    await expect(
+      new SuiteRunner({
+        scenarios: [scenario],
+        config: mockConfig,
+        makeAgentClient,
+        syntheticUser: mockSyntheticUser,
+      }).run(),
+    ).rejects.toBeInstanceOf(AggregateError);
+
+    // 1 initial + 10 retries = 11 total attempts
+    expect(mockSimulationRun).toHaveBeenCalledTimes(11);
+    // 10 per-retry warnings + 1 budget-exhaustion warning
+    expect(warnSpy).toHaveBeenCalledTimes(11);
+    expect(warnSpy).toHaveBeenLastCalledWith(
+      'Trial failed: rate-limit retry budget exhausted.',
+      expect.objectContaining({
+        scenarioName: 'test-scenario',
+        trialIndex: 0,
+        totalAttempts: 11,
+      }),
+    );
+    warnSpy.mockRestore();
+  });
+
+  it('uses independent budgets for inactivity and rate limit retries', async () => {
+    const { InactivityTimeoutError } = await import('../simulation.js');
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const rateLimitErr = await makeRateLimitError();
+
+    mockSimulationRun
+      .mockRejectedValueOnce(new InactivityTimeoutError(600_000))
+      .mockRejectedValueOnce(rateLimitErr)
+      .mockRejectedValueOnce(new InactivityTimeoutError(600_000))
+      .mockRejectedValueOnce(rateLimitErr)
+      .mockResolvedValue(makeTranscript());
+
+    const config: ResolvedConfig = {
+      ...mockConfig,
+      eval: { ...mockConfig.eval, maxFirstTurnRetries: 2 },
+    };
+    const scenario = makeScenario({ trials: 1 });
+
+    const results = await new SuiteRunner({
+      scenarios: [scenario],
+      config,
+      makeAgentClient,
+      syntheticUser: mockSyntheticUser,
+    }).run();
+
+    expect(mockSimulationRun).toHaveBeenCalledTimes(5);
+    expect(results).toHaveLength(1);
+    // Total retries: 2 inactivity + 2 rate limit = 4
+    expect(results[0].trials[0].transcript.retryCount).toBe(4);
+    warnSpy.mockRestore();
+  });
+
+  it('respects Retry-After header from server', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { RateLimitError } = await import('openai');
+    const errWithHeader = new RateLimitError(
+      429,
+      { message: 'Too many tokens', type: 'throttling_error' },
+      'Too many tokens, please wait before trying again.',
+      new Headers({ 'retry-after': '10' }),
+    );
+
+    mockSimulationRun
+      .mockRejectedValueOnce(errWithHeader)
+      .mockResolvedValue(makeTranscript());
+
+    const scenario = makeScenario({ trials: 1 });
+
+    await new SuiteRunner({
+      scenarios: [scenario],
+      config: mockConfig,
+      makeAgentClient,
+      syntheticUser: mockSyntheticUser,
+    }).run();
+
+    expect(sleep).toHaveBeenCalledWith(10_000);
+    expect(warnSpy).toHaveBeenCalledWith(
+      'Trial retry: rate limit (429).',
+      expect.objectContaining({ attempt: 1, waitSeconds: 10 }),
+    );
+    warnSpy.mockRestore();
+  });
+
+  it.each([
+    ['zero', '0', 30_000],
+    ['negative', '-5', 30_000],
+    ['non-numeric', 'abc', 30_000],
+    ['empty string', '', 30_000],
+  ])('falls back to default when Retry-After is %s', async (_label, headerValue, expectedMs) => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { RateLimitError } = await import('openai');
+    const headers = headerValue === ''
+      ? new Headers({ 'retry-after': '' })
+      : new Headers({ 'retry-after': headerValue });
+    const err = new RateLimitError(
+      429,
+      { message: 'Too many tokens', type: 'throttling_error' },
+      'Too many tokens, please wait before trying again.',
+      headers,
+    );
+
+    mockSimulationRun
+      .mockRejectedValueOnce(err)
+      .mockResolvedValue(makeTranscript());
+
+    const scenario = makeScenario({ trials: 1 });
+
+    await new SuiteRunner({
+      scenarios: [scenario],
+      config: mockConfig,
+      makeAgentClient,
+      syntheticUser: mockSyntheticUser,
+    }).run();
+
+    expect(sleep).toHaveBeenCalledWith(expectedMs);
+    warnSpy.mockRestore();
+  });
+
+  it('caps Retry-After at 300s to prevent absurd waits', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { RateLimitError } = await import('openai');
+    const err = new RateLimitError(
+      429,
+      { message: 'Too many tokens', type: 'throttling_error' },
+      'Too many tokens, please wait before trying again.',
+      new Headers({ 'retry-after': '86400' }),
+    );
+
+    mockSimulationRun
+      .mockRejectedValueOnce(err)
+      .mockResolvedValue(makeTranscript());
+
+    const scenario = makeScenario({ trials: 1 });
+
+    await new SuiteRunner({
+      scenarios: [scenario],
+      config: mockConfig,
+      makeAgentClient,
+      syntheticUser: mockSyntheticUser,
+    }).run();
+
+    expect(sleep).toHaveBeenCalledWith(300_000);
     warnSpy.mockRestore();
   });
 });

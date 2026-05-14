@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { sleep } from '../util/sleep.js';
 
 export interface ProvisionResult {
   appId: string;
@@ -96,7 +97,7 @@ export class AABCtrlPlaneClient {
             `[AABCtrlPlaneClient] provisionApp attempt ${attempt + 1} failed, ` +
             `retrying in ${this.retryDelayMs}ms: ${msg}`,
           );
-          await this.sleep(this.retryDelayMs);
+          await sleep(this.retryDelayMs);
         }
       }
     }
@@ -168,7 +169,7 @@ export class AABCtrlPlaneClient {
               { statusCode: response.status, jobId },
             );
           }
-          await this.sleep(this.pollIntervalMs);
+          await sleep(this.pollIntervalMs);
           continue;
         }
 
@@ -193,7 +194,7 @@ export class AABCtrlPlaneClient {
           );
         }
 
-        await this.sleep(this.pollIntervalMs);
+        await sleep(this.pollIntervalMs);
       } catch (err) {
         if (err instanceof NonRetryableProvisionError) throw err;
         consecutiveHttpErrors++;
@@ -209,7 +210,7 @@ export class AABCtrlPlaneClient {
             { jobId },
           );
         }
-        await this.sleep(this.pollIntervalMs);
+        await sleep(this.pollIntervalMs);
       }
     }
 
@@ -219,7 +220,4 @@ export class AABCtrlPlaneClient {
     );
   }
 
-  private sleep(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
-  }
 }

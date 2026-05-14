@@ -1,3 +1,4 @@
+import { RateLimitError } from 'openai';
 import { Simulation, InactivityTimeoutError } from './simulation.js';
 import type { SimulationCaptureContext } from './simulation.js';
 import { TrialAggregator } from './trial-aggregator.js';
@@ -14,6 +15,21 @@ import type { BaselineScores } from '../baselines/types.js';
 import type { EvalResult, Evaluator } from '../evaluators/evaluator.js';
 import { normalizeEvalResult } from '../evaluators/normalize-eval-result.js';
 import { effectiveConcurrency } from '../util/concurrency.js';
+import { sleep } from '../util/sleep.js';
+
+// Fallback wait when the server omits Retry-After. Promote to config
+// if per-environment tuning becomes necessary (e.g. CI wants fewer retries).
+const RATE_LIMIT_WAIT_MS = 30_000;
+const MAX_RATE_LIMIT_RETRIES = 10;
+const MAX_RETRY_WAIT_MS = 300_000; // 5 min cap per-sleep to guard against absurd server values
+
+function parseRetryAfterMs(headers: Headers | undefined): number | null {
+  const raw = headers?.get('retry-after');
+  if (!raw) return null;
+  const seconds = Number(raw);
+  if (!Number.isFinite(seconds) || seconds <= 0) return null;
+  return Math.min(seconds * 1000, MAX_RETRY_WAIT_MS);
+}
 
 interface BaselineStore {
   load(scenarioName: string): Promise<BaselineScores | null>;
@@ -214,35 +230,69 @@ export class SuiteRunner {
     const makeRunWithRetry = async (
       trialIndex: number,
     ): Promise<Transcript> => {
-      for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      let inactivityAttempts = 0;
+      let rateLimitAttempts = 0;
+      // Independent budgets: inactivity (AAB unresponsive) and rate-limit
+      // (GoCode throttled) are orthogonal failure modes. Each gets its own
+      // counter so one transient issue doesn't eat the other's budget.
+      // Every iteration exits via return, continue, or throw err.
+      for (;;) {
         try {
           const transcript = await makeRun(trialIndex);
-          if (attempt > 0) {
-            transcript.retryCount = attempt;
+          const totalRetries = inactivityAttempts + rateLimitAttempts;
+          if (totalRetries > 0) {
+            transcript.retryCount = totalRetries;
           }
           return transcript;
         } catch (err) {
           if (
             err instanceof InactivityTimeoutError &&
-            attempt < maxRetries
+            inactivityAttempts < maxRetries
           ) {
+            inactivityAttempts++;
             console.warn(
               'Trial retry: first-turn inactivity timeout.',
               {
                 scenarioName: scenario.name,
                 trialIndex,
-                attempt: attempt + 1,
-                maxAttempts: maxRetries + 1,
+                attempt: inactivityAttempts,
+                maxAttempts: maxRetries,
               },
             );
             continue;
           }
+          if (
+            err instanceof RateLimitError &&
+            rateLimitAttempts < MAX_RATE_LIMIT_RETRIES
+          ) {
+            rateLimitAttempts++;
+            const waitMs = parseRetryAfterMs(err.headers) ?? RATE_LIMIT_WAIT_MS;
+            console.warn(
+              'Trial retry: rate limit (429).',
+              {
+                scenarioName: scenario.name,
+                trialIndex,
+                attempt: rateLimitAttempts,
+                maxAttempts: MAX_RATE_LIMIT_RETRIES,
+                waitSeconds: waitMs / 1000,
+              },
+            );
+            await sleep(waitMs);
+            continue;
+          }
+          if (err instanceof RateLimitError) {
+            console.warn(
+              'Trial failed: rate-limit retry budget exhausted.',
+              {
+                scenarioName: scenario.name,
+                trialIndex,
+                totalAttempts: rateLimitAttempts + 1,
+              },
+            );
+          }
           throw err;
         }
       }
-      throw new Error(
-        `[${scenario.name}] Trial ${trialIndex}: retry loop exited unexpectedly`,
-      );
     };
 
     const concurrency = effectiveConcurrency(concurrencyOverride, config.eval.maxConcurrency);
