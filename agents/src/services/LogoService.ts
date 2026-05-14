@@ -31,6 +31,7 @@ export interface LogoGenerateInput {
   count?: number;
   layout?: string;
   // Caller context (not sent in body)
+  appId: string;
   customerId: string;
   budgetUserId: string;
 }
@@ -66,6 +67,7 @@ export interface LogoEditInput {
   layout?: string;
   count?: number;
   // Caller context (not sent in body)
+  appId: string;
   customerId: string;
   budgetUserId: string;
 }
@@ -103,7 +105,7 @@ const LOG_EVENTS = {
 class LogoService {
   private readonly appKey = 'airo-app-builder';
 
-  private async callLogoApi(endpoint: string, body: Record<string, unknown>, customerId: string, budgetUserId: string, operation: keyof typeof LOG_EVENTS): Promise<LogoGenerateResult> {
+  private async callLogoApi(endpoint: string, body: Record<string, unknown>, appId: string, customerId: string, budgetUserId: string, operation: keyof typeof LOG_EVENTS): Promise<LogoGenerateResult> {
     const baseUrl = getLogoApiBaseUrl();
     const url = `${baseUrl}${endpoint}`;
 
@@ -115,6 +117,7 @@ class LogoService {
         Accept: 'application/json',
         Authorization: `Bearer ${token}`,
         'x-app-key': this.appKey,
+        'x-app-builder-app-id': appId,
         'x-customer-id': customerId,
         'x-budget-user-id': budgetUserId,
       };
@@ -200,7 +203,7 @@ class LogoService {
       ...(input.layout && { layout: input.layout }),
     };
 
-    return this.callLogoApi('/api/logo', body, input.customerId, input.budgetUserId, 'generate');
+    return this.callLogoApi('/api/logo', body, input.appId, input.customerId, input.budgetUserId, 'generate');
   }
 
   async editLogos(input: LogoEditInput): Promise<LogoGenerateResult> {
@@ -220,7 +223,7 @@ class LogoService {
       ...(input.count && { count: input.count }),
     };
 
-    return this.callLogoApi('/api/logo/edit', body, input.customerId, input.budgetUserId, 'edit');
+    return this.callLogoApi('/api/logo/edit', body, input.appId, input.customerId, input.budgetUserId, 'edit');
   }
 }
 

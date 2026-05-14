@@ -337,8 +337,13 @@ export const generateLogoTool: SkillToolDefinition = {
       appId,
     });
 
+    if (!appId) {
+      logger.error('skills.media-logo.tools.generate_logo.no_app_id');
+      return { error: 'Unable to determine app id for logo generation' };
+    }
+
     // 1. Get customer context from app database
-    const app = appId ? appRepository.findById(appId) : null;
+    const app = appRepository.findById(appId);
     const customerId = app?.customerId;
 
     if (!customerId) {
@@ -392,6 +397,7 @@ export const generateLogoTool: SkillToolDefinition = {
           symbol: variation.symbol,
           layout: input.layout,
           count: 1,
+          appId,
           customerId,
           budgetUserId,
         })
@@ -513,8 +519,13 @@ export const editLogoTool: SkillToolDefinition = {
       appId,
     });
 
+    if (!appId) {
+      logger.error('skills.media-logo.tools.edit_logo.no_app_id');
+      return { error: 'Unable to determine app id for logo editing' };
+    }
+
     // 1. Get customer context from app database
-    const app = appId ? appRepository.findById(appId) : null;
+    const app = appRepository.findById(appId);
     const customerId = app?.customerId;
 
     if (!customerId) {
@@ -536,9 +547,6 @@ export const editLogoTool: SkillToolDefinition = {
     let { sourceSessionId, sourceLogoId } = input;
 
     if (!sourceSessionId || !sourceLogoId) {
-      if (!appId) {
-        return { error: 'Cannot auto-resolve logo source: no appId available. Provide sourceSessionId and sourceLogoId explicitly.' };
-      }
       try {
         // Check all orientation slots for a logo with source tracking
         const slotPathsToCheck = Object.values(LOGO_SLOT_PATHS);
@@ -596,6 +604,7 @@ export const editLogoTool: SkillToolDefinition = {
       prompt: input.prompt,
       layout: input.layout,
       count: input.count,
+      appId,
       customerId,
       budgetUserId,
     });

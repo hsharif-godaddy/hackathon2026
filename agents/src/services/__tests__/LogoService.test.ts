@@ -64,6 +64,7 @@ describe('LogoService', () => {
       brandName: 'Test Brand',
       brandDescription: 'A test brand',
       style: 'flat',
+      appId: 'app-test-1',
       customerId: 'cust-123',
       budgetUserId: 'budget-user-456',
     });
@@ -75,6 +76,7 @@ describe('LogoService', () => {
         headers: expect.objectContaining({
           'Content-Type': 'application/json',
           'x-app-key': 'airo-app-builder',
+          'x-app-builder-app-id': 'app-test-1',
           'x-customer-id': 'cust-123',
           'x-budget-user-id': 'budget-user-456',
           Authorization: 'Bearer mock-s2s-token',
@@ -111,6 +113,7 @@ describe('LogoService', () => {
       brandName: 'Test',
       brandDescription: 'Test',
       style: 'flat',
+      appId: 'app-test-1',
       customerId: 'cust-123',
       budgetUserId: 'budget-user-abc',
     });
@@ -133,6 +136,7 @@ describe('LogoService', () => {
         brandName: 'Test',
         brandDescription: 'Test',
         style: 'flat',
+        appId: 'app-test-1',
         customerId: 'cust-123',
         budgetUserId: 'budget-user-1',
       })
@@ -149,6 +153,7 @@ describe('LogoService', () => {
         brandName: 'Test',
         brandDescription: 'Test',
         style: 'flat',
+        appId: 'app-test-1',
         customerId: 'cust-123',
         budgetUserId: 'budget-user-1',
       })
@@ -175,6 +180,7 @@ describe('LogoService', () => {
       brandColors: 'warm earth tones',
       symbol: 'coffee cup',
       count: 2,
+      appId: 'app-test-1',
       customerId: 'cust-123',
       budgetUserId: 'budget-user-1',
     });
@@ -210,6 +216,7 @@ describe('LogoService', () => {
       brandName: 'Test',
       brandDescription: 'Test',
       style: 'flat',
+      appId: 'app-test-1',
       customerId: 'cust-123',
       budgetUserId: 'budget-user-1',
     });
@@ -217,5 +224,55 @@ describe('LogoService', () => {
     expect(mockFetch.mock.calls[0][0]).toBe(
       'https://logo-agent.mvci.api.dev-godaddy.com/api/logo'
     );
+  });
+
+  it('should call POST /api/logo/edit with x-app-builder-app-id header', async () => {
+    const { logoService } = await import('../LogoService.js');
+
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () =>
+        Promise.resolve({
+          sessionId: 'sess-edit-1',
+          logos: [
+            {
+              id: 'logo-edit-1',
+              transparentUrl: 'https://example.com/edited.png',
+            },
+          ],
+        }),
+    });
+
+    const result = await logoService.editLogos({
+      sourceSessionId: 'sess-source-1',
+      sourceLogoId: 'logo-source-1',
+      prompt: 'Make it blue',
+      appId: 'app-test-edit',
+      customerId: 'cust-123',
+      budgetUserId: 'budget-user-edit',
+    });
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      'https://logo-agent.mvci.api.dev-godaddy.com/api/logo/edit',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          'x-app-key': 'airo-app-builder',
+          'x-app-builder-app-id': 'app-test-edit',
+          'x-customer-id': 'cust-123',
+          'x-budget-user-id': 'budget-user-edit',
+          Authorization: 'Bearer mock-s2s-token',
+        }),
+      })
+    );
+
+    const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+    expect(body).toEqual({
+      sourceSessionId: 'sess-source-1',
+      sourceLogoId: 'logo-source-1',
+      prompt: 'Make it blue',
+    });
+
+    expect(result.sessionId).toBe('sess-edit-1');
   });
 });

@@ -105,6 +105,7 @@ describe('editLogoTool', () => {
         sourceSessionId: 'sess-123',
         sourceLogoId: 'logo-1',
         prompt: 'Make the logo blue',
+        appId: 'app-123',
         customerId: 'cust-abc',
         budgetUserId: 'budget-user-111',
       })
@@ -212,6 +213,25 @@ describe('editLogoTool', () => {
       },
       createdAt: '2026-01-01T00:00:00.000Z',
     }));
+  });
+
+  it('should return error when appId is missing from context metadata', async () => {
+    const { editLogoTool } = await import('../index.js');
+
+    const result = await editLogoTool.execute(
+      {
+        sourceSessionId: 'sess-123',
+        sourceLogoId: 'logo-1',
+        prompt: 'Make it blue',
+      },
+      { socketId: 'socket-1' }
+    );
+
+    expect(result).toEqual({
+      error: 'Unable to determine app id for logo editing',
+    });
+    expect(mockFindById).not.toHaveBeenCalled();
+    expect(mockEditLogos).not.toHaveBeenCalled();
   });
 
   it('should return error when customerId not found', async () => {

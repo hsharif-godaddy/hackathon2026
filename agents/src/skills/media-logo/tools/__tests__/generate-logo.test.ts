@@ -120,6 +120,7 @@ describe('generateLogoTool', () => {
         brandName: 'My Brand',
         brandDescription: 'A cool brand',
         style: 'glyph',
+        appId: 'app-123',
         customerId: 'cust-abc',
         budgetUserId: 'budget-user-111',
         count: 1,
@@ -247,6 +248,26 @@ describe('generateLogoTool', () => {
       logoCount: 1,
       sessionId: 'sess-no-urls',
     }));
+  });
+
+  it('should return error when appId is missing from context metadata', async () => {
+    const { generateLogoTool } = await import('../index.js');
+
+    const result = await generateLogoTool.execute(
+      {
+        brandName: 'Test',
+        brandDescription: 'Test',
+        variations: [{ style: 'glyph' }],
+      },
+      { socketId: 'socket-1' }
+    );
+
+    expect(result).toEqual({
+      error: 'Unable to determine app id for logo generation',
+    });
+    expect(mockFindById).not.toHaveBeenCalled();
+    expect(mockGenerateLogos).not.toHaveBeenCalled();
+    expect(mockSetSlot).not.toHaveBeenCalled();
   });
 
   it('should return error when customerId not found', async () => {

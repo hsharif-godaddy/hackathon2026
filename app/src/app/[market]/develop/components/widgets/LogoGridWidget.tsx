@@ -11,7 +11,7 @@ import { regenerateToken } from '@/lib/jwt-regeneration'
 import { logger } from '@/lib/request-context'
 import { useIsActivelyStreaming, useIsLoading } from '@/stores/useStreamingConversationStore'
 import { postMessageToIframe } from '@/utils/postMessage'
-import { getLogoDisplayUrl, getLogoSlotName, getLogoSolidDisplayUrl, type LogoData } from './logo-utils'
+import { getLogoDisplayUrl, getLogoSlotName, getLogoSolidDisplayUrl, LogoData } from './logo-utils';
 
 export { getLogoDisplayUrl, getLogoSlotName, getLogoSlotNames, getLogoSolidDisplayUrl, type LogoData } from './logo-utils'
 
