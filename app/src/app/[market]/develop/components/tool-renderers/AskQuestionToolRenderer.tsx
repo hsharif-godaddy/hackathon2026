@@ -185,14 +185,15 @@ export default function AskQuestionToolRenderer({
 
   // allowOther is root-level — disable globally if any question opts out so
   // freeform doesn't leak into authoritative-pick questions. Placeholders
-  // are per-step via ChoiceList.Step (requires @airo/components >= 3.4);
-  // for backwards compatibility we also set a best-effort root-level
-  // placeholder so a single-question flow still shows its hint on
-  // @airo/components 3.3 where the step-level prop is ignored.
+  // are per-step via ChoiceList.Step (@airo/components >= 4.0). The root
+  // `otherPlaceholder` is the fallback that ChoiceList uses on any step
+  // that doesn't set its own — so it must be a generic default. Earlier
+  // versions of this code seeded the root from the first question with a
+  // placeholder for back-compat with components 3.3, but that bleeds one
+  // step's hint onto every other step in a multi-question call (e.g. a
+  // brand-name placeholder showing on a "what should shoppers do" step).
   const allowOtherGlobal = questions.every(q => q.allowOther !== false)
-  const defaultOtherPlaceholder = t('builder_tools_askquestion_other_placeholder')
-  const rootOtherPlaceholder =
-    questions.find(q => q.placeholder)?.placeholder ?? defaultOtherPlaceholder
+  const rootOtherPlaceholder = t('builder_tools_askquestion_other_placeholder')
 
   // Use the decide sentinel as the skip label when it applies to every step
   // in the flow. `skipLabel` is a root-level ChoiceList prop — it shows on
