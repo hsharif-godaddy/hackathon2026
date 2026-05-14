@@ -1,5 +1,6 @@
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { createSSEContextLoader, type SSEContextLoaderDeps } from '../context-loader.js'
+import { skillToolManager } from '../../../tools/skill-tool-manager.js'
 
 function makeDeps(overrides: Partial<SSEContextLoaderDeps> = {}): SSEContextLoaderDeps {
   return {
@@ -196,7 +197,44 @@ describe('createSSEContextLoader', () => {
 
     const result = await loader({ metadata: { appId: 'app-1' } })
 
-    expect(result.contextMessages).toBe(messages)
+    expect(result.contextMessages).toStrictEqual(messages)
     expect(result.formattedContexts).toBe(formatted)
+  })
+
+  describe('pinned-skill injection (SSE parity with WS)', () => {
+    const conv = 'sse-conv-pin-1'
+
+    beforeEach(() => {
+      for (const s of skillToolManager.getPinnedSkills(conv)) {
+        skillToolManager.unpinSkill(conv, s)
+      }
+    })
+
+    it('appends pinned-skill context messages when conversationId is on metadata', async () => {
+      skillToolManager.pinSkill(conv, 'seo')
+      const deps = makeDeps()
+      const loader = createSSEContextLoader(deps)
+
+      const result = await loader({ metadata: { appId: 'app-1', conversationId: conv } })
+
+      const pinnedMsg = result.contextMessages.find(
+        (m: any) => typeof m.content === 'string' && m.content.includes('Pinned skill: seo'),
+      )
+      expect(pinnedMsg).toBeDefined()
+      expect((pinnedMsg as any).insertionOrder).toBe('before_history')
+    })
+
+    it('does not inject pinned context when conversationId is missing', async () => {
+      skillToolManager.pinSkill(conv, 'seo')
+      const deps = makeDeps()
+      const loader = createSSEContextLoader(deps)
+
+      const result = await loader({ metadata: { appId: 'app-1' } })
+
+      const pinnedMsg = result.contextMessages.find(
+        (m: any) => typeof m.content === 'string' && m.content.includes('Pinned skill:'),
+      )
+      expect(pinnedMsg).toBeUndefined()
+    })
   })
 })

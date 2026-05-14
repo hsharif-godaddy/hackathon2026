@@ -14,10 +14,10 @@ import { logger } from '../../logging/index.js';
  * - install: Directly copy skill template files to app directory
  */
 export const skillAITool: Tool = createTool(
-  'Manage skills - list, load, unload, or install. Skills provide specialized knowledge and tools. Use "list" to discover skills, "load" to activate skill instructions and tools, "unload" to remove skill tools, "install" to copy templates.',
+  'Manage skills - list, load, unload, pin, unpin, or install. Skills provide specialized knowledge and tools. Pinning keeps a skill loaded for the entire conversation and injects its instructions into every turn (used for mode-style skills like deep-build).',
   z.object({
-    action: z.enum(['list', 'load', 'unload', 'install']).describe('Action: "list" (show skills), "load" (activate skill+tools), "unload" (remove tools), "install" (copy templates)'),
-    skill: z.string().optional().describe('Skill name (required for load, unload, install)'),
+    action: z.enum(['list', 'load', 'unload', 'pin', 'unpin', 'install']).describe('Action to perform'),
+    skill: z.string().optional().describe('Skill name (required for load, unload, pin, unpin, install)'),
   }),
   async (input, context?: AgentContext) => {
     const skillLoader = new SkillLoaderTool();
@@ -25,7 +25,11 @@ export const skillAITool: Tool = createTool(
 
     // List action - show all available skills
     if (input.action === 'list') {
-      const result = await skillLoader.listSkills();
+      const conversationId = context?.metadata?.conversationId as string | undefined;
+      const pinned = conversationId
+        ? new Set(skillToolManager.getPinnedSkills(conversationId))
+        : undefined;
+      const result = await skillLoader.listSkills({ pinned });
 
       if (!result.success) {
         throw new Error(result.error || 'Failed to list skills');
@@ -99,12 +103,60 @@ export const skillAITool: Tool = createTool(
       };
     }
 
+    if (input.action === 'pin') {
+      const conversationId = context?.metadata?.conversationId as string | undefined;
+      if (!conversationId) {
+        throw new Error('Conversation ID not found in context. Pin action requires conversation context.');
+      }
+      const pinAppId = context?.metadata?.appId as string | undefined;
+      const pinAppPath = pinAppId ? appRepo.findById(pinAppId)?.path : undefined;
+      const pinResult = skillToolManager.pinSkill(conversationId, input.skill, pinAppPath);
+      if (!pinResult.success) {
+        return {
+          success: false,
+          skill: input.skill,
+          pinned: false,
+          message: `Failed to pin skill '${input.skill}': ${pinResult.error}`
+        };
+      }
+      return {
+        success: true,
+        skill: input.skill,
+        pinned: true,
+        message: `Skill '${input.skill}' is now pinned for this conversation. Its instructions will be included on every turn until it is unpinned.`
+      };
+    }
+
+    if (input.action === 'unpin') {
+      const conversationId = context?.metadata?.conversationId as string | undefined;
+      if (!conversationId) {
+        throw new Error('Conversation ID not found in context. Unpin action requires conversation context.');
+      }
+      const unpinAppId = context?.metadata?.appId as string | undefined;
+      const unpinAppPath = unpinAppId ? appRepo.findById(unpinAppId)?.path : undefined;
+      skillToolManager.unpinSkill(conversationId, input.skill, unpinAppPath);
+      return {
+        success: true,
+        skill: input.skill,
+        pinned: false,
+        message: `Skill '${input.skill}' has been unpinned.`
+      };
+    }
+
     // NEW: Unload action - manually remove skill tools
     if (input.action === 'unload') {
       const conversationId = context?.metadata?.conversationId as string | undefined;
 
       if (!conversationId) {
         throw new Error('Conversation ID not found in context. Unload action requires conversation context.');
+      }
+
+      if (skillToolManager.isPinned(conversationId, input.skill)) {
+        return {
+          success: false,
+          skill: input.skill,
+          message: `Skill '${input.skill}' is pinned and cannot be unloaded. Call action 'unpin' first.`
+        };
       }
 
       const success = skillToolManager.unloadSkill(input.skill, conversationId);

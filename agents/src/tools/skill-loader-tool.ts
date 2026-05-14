@@ -126,6 +126,8 @@ export interface SkillListItem {
   description: string;
   whenToUse?: string;
   enablementId?: string;
+  /** True when this skill is pinned for the current conversation. */
+  pinned?: boolean;
 }
 
 /**
@@ -591,7 +593,7 @@ export class SkillLoaderTool {
    * List all available skills with their descriptions from YAML frontmatter
    * Only reads the frontmatter, not the full skill.md content
    */
-  async listSkills(): Promise<{ success: boolean; skills?: SkillListItem[]; error?: string }> {
+  async listSkills(options?: { pinned?: Set<string> }): Promise<{ success: boolean; skills?: SkillListItem[]; error?: string }> {
     this.logger.info('skill.list.start', {});
 
     try {
@@ -654,6 +656,9 @@ export class SkillLoaderTool {
         }
         if (enablementId) {
           skillItem.enablementId = enablementId;
+        }
+        if (options?.pinned?.has(skillItem.name)) {
+          skillItem.pinned = true;
         }
         return skillItem;
       });

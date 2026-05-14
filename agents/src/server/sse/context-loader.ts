@@ -12,6 +12,10 @@
  */
 
 import type { AgentContextPreferences } from '../../agents/ai-lib-agents/types.js'
+import { buildPinnedSkillsContextMessages } from '../pinned-skills-context.js'
+import { selectCacheConversationId } from '../budget-report-conversation-id.js'
+import { logger } from '../../logging/index.js'
+import type { AgentsAppContext } from '../../types/websocket-context.js'
 
 export interface SSEContextLoaderDeps {
   agentFactory: {
@@ -29,6 +33,12 @@ export interface SSEContextLoaderDeps {
     ) => Promise<{ contextMessages: any[]; formattedContexts?: any[] }>
   }
   hasUnbuiltRebuildPages: (appId: string) => Promise<boolean>
+  /**
+   * Resolve workspace path for the given app. Optional — when omitted (or
+   * when it returns undefined for an appId), pinned-skill state still works
+   * in-memory but is not persisted to `.airo/pinned-skills.json`.
+   */
+  getAppPath?: (appId: string) => string | undefined
 }
 
 export interface SSEContextLoaderResult {
@@ -83,6 +93,30 @@ export function createSSEContextLoader(
       rebuildPagesPromise,
     ])
     metadata.hasUnbuiltRebuildPages = hasRebuildPages
-    return { contextMessages: result.contextMessages, formattedContexts: result.formattedContexts }
+
+    // Mirror the WS transport: inject pinned-skill mode context so pinned
+    // skills work identically across SSE and WS. See
+    // `packages/ai-transport/CLAUDE.md` — cross-transport behavior must
+    // match. Pinned content is tagged `before_history` to bucket with
+    // leading system messages.
+    // Use the same conversationId resolution as WS (`selectCacheConversationId`)
+    // so a future SSE path that delivers conversationId via `conversation`
+    // instead of `metadata` does not silently no-op pinned context. See
+    // `agents/CLAUDE.md` "conversationId for cost-attribution context".
+    const pinSelection = selectCacheConversationId(context as AgentsAppContext)
+    const contextMessages = [...result.contextMessages]
+    if (pinSelection.value) {
+      const pinAppPath = appId && deps.getAppPath ? deps.getAppPath(appId) : undefined
+      const pinnedMessages = await buildPinnedSkillsContextMessages(pinSelection.value, pinAppPath)
+      for (const msg of pinnedMessages) {
+        contextMessages.push(msg)
+      }
+    } else {
+      logger.warn('skill.pinned.context.no_conversation_id', {
+        metadataKeys: Object.keys(metadata),
+        transport: 'sse',
+      })
+    }
+    return { contextMessages, formattedContexts: result.formattedContexts }
   }
 }

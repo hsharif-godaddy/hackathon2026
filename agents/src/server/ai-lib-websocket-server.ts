@@ -99,6 +99,7 @@ import {
 } from './context-builders.js'
 import { GitHookService } from '../services/git-hook-service.js'
 import { buildSharedPostStreamValidator } from './post-stream-validator.js'
+import { buildPinnedSkillsContextMessages } from './pinned-skills-context.js'
 import {
   runStartGitHook, runStartAssessment, runMessageEndHooks,
   LifecycleSessionStore,
@@ -887,6 +888,26 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
               content: dynamicDataMessage.content,
               insertionOrder: dynamicDataMessage.insertionOrder
             })
+          }
+
+          // Append pinned-skill mode context (deep-build, etc.) so pinned skill
+          // instructions are present on every turn without requiring the agent
+          // to re-load them. These are system-role messages tagged
+          // `insertionOrder: 'before_history'` so they bucket with the leading
+          // system messages — Anthropic rejects system messages interleaved
+          // between user/assistant turns.
+          const pinSelection = selectCacheConversationId(agentsAppContext);
+          if (pinSelection.value) {
+            const pinAppId = agentsAppContext.metadata?.appId as string | undefined;
+            const pinAppPath = pinAppId ? appRepo.findById(pinAppId)?.path : undefined;
+            const pinnedMessages = await buildPinnedSkillsContextMessages(pinSelection.value, pinAppPath);
+            for (const msg of pinnedMessages) {
+              allMessages.push(msg);
+            }
+          } else {
+            logger.warn('skill.pinned.context.no_conversation_id', {
+              metadataKeys: Object.keys(agentsAppContext.metadata ?? {})
+            });
           }
 
           return allMessages

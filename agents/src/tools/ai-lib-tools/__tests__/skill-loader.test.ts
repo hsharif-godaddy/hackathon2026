@@ -32,7 +32,9 @@ vi.mock('../../skill-tool-manager.js', () => ({
   skillToolManager: {
     runHook: mockRunHook,
     registerSkill: mockRegisterSkill,
-    unloadSkill: mockUnloadSkill
+    unloadSkill: mockUnloadSkill,
+    isPinned: vi.fn().mockReturnValue(false),
+    getPinnedSkills: vi.fn().mockReturnValue([])
   }
 }));
 

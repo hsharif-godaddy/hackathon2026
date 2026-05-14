@@ -241,6 +241,7 @@ function getOrCreateSSEExecutionService(): MessageExecutionService | null {
   if (!eventChannel || !agentFactory) return null
 
   const contextMgr = new AILibContextManager()
+  const sseAppRepo = new AppRepository()
 
   sseExecutionService = new MessageExecutionService({
     getAgent: (agentId?: string) => agentFactory.agents.get((agentId ?? 'develop') as any),
@@ -249,6 +250,7 @@ function getOrCreateSSEExecutionService(): MessageExecutionService | null {
         agentFactory: agentFactory as any,
         contextMgr: contextMgr as any,
         hasUnbuiltRebuildPages,
+        getAppPath: (id: string) => sseAppRepo.findById(id)?.path,
       }),
     },
     loadConversationHistory: async (conversationId, appId, agentName) => {

@@ -6,10 +6,15 @@ import { validateAppOwnershipFromBody, validateConversationOwnership } from '../
 import type { AuthenticatedRequest } from '../middleware/jwt-auth.js';
 import { workspaceScopeFromAppId } from '../../memory/interfaces/scope.js';
 import { BYPASS_SITE_IDS } from '../../services/features.js';
+import { ConversationRepository } from '../../database/repositories/ConversationRepository.js';
+import { AppRepository } from '../../database/repositories/AppRepository.js';
+import { skillToolManager } from '../../tools/skill-tool-manager.js';
 
 const router: IRouter = Router();
 const lifecycle = getConversationLifecycleStore();
 const messages = getMessageStore();
+const chatConversationRepo = new ConversationRepository();
+const chatAppRepo = new AppRepository();
 
 // Helper function to extract error message
 const getErrorMessage = (error: unknown): string => {
@@ -306,7 +311,23 @@ router.delete('/conversations/:conversationId', validateConversationOwnership('c
   const conversationId = req.params.conversationId!; // Validated by validateConversationOwnership middleware
 
   try {
+    // Resolve appPath BEFORE delete so we can persist the pinned-skills
+    // file removal even if the manager has not yet observed this conv.
+    let pinAppPath: string | undefined;
+    try {
+      const conversation = await chatConversationRepo.getById(conversationId);
+      if (conversation?.appId) {
+        pinAppPath = chatAppRepo.findById(conversation.appId)?.path;
+      }
+    } catch (error) {
+      logger.warn('conversation.delete.pin_path_lookup_failed', {
+        conversationId,
+        error: getErrorMessage(error)
+      });
+    }
+
     await lifecycle.delete(conversationId);
+    skillToolManager.clearConversation(conversationId, pinAppPath);
     res.json({ message: 'Conversation deleted successfully' });
   } catch (error) {
     logger.error('conversation.delete.failure', {
