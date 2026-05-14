@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import type { ProfileData } from "../../profiles/types.js";
 
 describe("features", () => {
   const originalEnv = process.env;
@@ -314,6 +315,99 @@ describe("features", () => {
         const uniqueValues = new Set(BYPASS_SITE_IDS);
         expect(uniqueValues.size).toBe(BYPASS_SITE_IDS.length);
       });
+    });
+  });
+
+  describe("skills - profile-aware gating", () => {
+    const testProfile: ProfileData = {
+      name: "test-profile",
+      description: "Test profile for skill gating",
+      properties: {
+        "skill.gated-skill.enabled": true,
+        "skill.disabled-skill.enabled": false,
+      },
+    };
+
+    it("returns static config value for skills in enabledSkills", async () => {
+      process.env.ENABLE_SOCIAL = "true";
+
+      const { skills } = await import("../features.js");
+      expect(skills.isEnabled("social")).toBe(true);
+    });
+
+    it("returns false for static config when env var is not set", async () => {
+      delete process.env.ENABLE_SOCIAL;
+
+      const { skills } = await import("../features.js");
+      expect(skills.isEnabled("social")).toBe(false);
+    });
+
+    it("returns true for profile-gated skill when profile enables it", async () => {
+      const { skills, profileGatedSkills } = await import("../features.js");
+      const { runWithProfile } = await import("../../profiles/profile-context.js");
+      profileGatedSkills.add("gated-skill");
+
+      const result = runWithProfile(testProfile, () => skills.isEnabled("gated-skill"));
+      expect(result).toBe(true);
+
+      profileGatedSkills.delete("gated-skill");
+    });
+
+    it("returns false for profile-gated skill when profile disables it", async () => {
+      const { skills, profileGatedSkills } = await import("../features.js");
+      const { runWithProfile } = await import("../../profiles/profile-context.js");
+      profileGatedSkills.add("disabled-skill");
+
+      const result = runWithProfile(testProfile, () => skills.isEnabled("disabled-skill"));
+      expect(result).toBe(false);
+
+      profileGatedSkills.delete("disabled-skill");
+    });
+
+    it("returns false for profile-gated skill when no profile is active", async () => {
+      const { skills, profileGatedSkills } = await import("../features.js");
+      profileGatedSkills.add("gated-skill");
+
+      expect(skills.isEnabled("gated-skill")).toBe(false);
+
+      profileGatedSkills.delete("gated-skill");
+    });
+
+    it("returns false for unknown skillIds not in static or profile config", async () => {
+      const { skills } = await import("../features.js");
+      expect(skills.isEnabled("nonexistent")).toBe(false);
+    });
+
+    it("static config takes priority over profile flag", async () => {
+      process.env.ENABLE_SOCIAL = "false";
+
+      const { skills, profileGatedSkills } = await import("../features.js");
+      const { runWithProfile } = await import("../../profiles/profile-context.js");
+      profileGatedSkills.add("social");
+
+      const profileWithSocial: ProfileData = {
+        name: "social-test",
+        description: "Test",
+        properties: { "skill.social.enabled": true },
+      };
+      const result = runWithProfile(profileWithSocial, () => skills.isEnabled("social"));
+      expect(result).toBe(false);
+
+      profileGatedSkills.delete("social");
+    });
+
+    it("isProfileGated returns true for registered skills", async () => {
+      const { skills, profileGatedSkills } = await import("../features.js");
+      profileGatedSkills.add("my-skill");
+
+      expect(skills.isProfileGated("my-skill")).toBe(true);
+
+      profileGatedSkills.delete("my-skill");
+    });
+
+    it("isProfileGated returns false for unregistered skills", async () => {
+      const { skills } = await import("../features.js");
+      expect(skills.isProfileGated("unknown")).toBe(false);
     });
   });
 });

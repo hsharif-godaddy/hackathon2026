@@ -260,6 +260,18 @@ export class SkillLoaderTool {
         };
       }
 
+      // Check enablement via frontmatter (prevents bypass of listSkills filter)
+      const { data: frontmatter } = matter(instructions);
+      const loadEnablementId = typeof frontmatter.enablementId === 'string' ? frontmatter.enablementId : undefined;
+      if (loadEnablementId && !skills.isEnabled(loadEnablementId)) {
+        this.logger.warn('skill.load.feature_disabled', { skill, enablementId: loadEnablementId });
+        return {
+          success: false,
+          skill,
+          error: `Skill '${skill}' is not available.`
+        };
+      }
+
       // Load template files if templates directory exists - using helper for safety
       const templatesDir = this.getSkillPath(skill, 'templates');
       let templates: TemplateFile[] = [];
@@ -620,18 +632,18 @@ export class SkillLoaderTool {
           if (typeof data.whenToUse === 'string' && data.whenToUse.trim()) {
             whenToUse = data.whenToUse.trim();
           }
-          enablementId = data.enablementId;
+          enablementId = typeof data.enablementId === 'string' ? data.enablementId : undefined;
 
           // If enablementId is provided, check if the feature is enabled
           if (enablementId) {
             const features = getFeatures();
 
-            // Warn if enablementId doesn't exist in configuration (typo detection)
-            if (!(enablementId in features.enabledSkills)) {
+            // Warn if enablementId doesn't exist in any known configuration (typo detection)
+            if (!(enablementId in features.enabledSkills) && !skills.isProfileGated(enablementId)) {
               this.logger.warn('skill.list.unknown_feature_flag', {
                 skill: skillName,
                 enablementId,
-                message: `Skill references unknown feature flag '${enablementId}'. Check features.ts configuration.`
+                message: `Skill references unknown feature flag '${enablementId}'. Check features.ts configuration or add to profileGatedSkills.`
               });
             }
 

@@ -4,6 +4,7 @@
  */
 
 import { Logger } from '../logging/index.js';
+import { profileFlag } from '../profiles/profile-accessor.js';
 import { getPersistentPrivateDir } from '../utils/persistent-assets.js';
 
 const logger = Logger.create({ component: 'features' });
@@ -328,13 +329,39 @@ export const agents = {
 } as const
 
 /**
+ * Skills gated via agent profile properties rather than static env vars.
+ * The skill loader checks `skill.{enablementId}.enabled` on the active profile.
+ * The enablementId in a skill's frontmatter must match an entry here.
+ * This set also suppresses the "unknown feature flag" warning for these IDs.
+ */
+export const profileGatedSkills: Set<string> = new Set([
+  // Add skill enablementIds here as they adopt profile-based gating.
+]);
+
+/**
  * Skill enablement helper functions
  */
 export const skills = {
-  /** Check if a specific skill is enabled */
+  /**
+   * Check if a specific skill is enabled.
+   * Resolution: static config (env var) > profile flag > default (false).
+   */
   isEnabled: (skillId: string): boolean => {
-    const features = getFeatures();
-    return features.enabledSkills[skillId as keyof typeof features.enabledSkills] ?? false;
+    const featureConfig = getFeatures();
+
+    if (skillId in featureConfig.enabledSkills) {
+      return featureConfig.enabledSkills[skillId as keyof typeof featureConfig.enabledSkills];
+    }
+
+    if (profileGatedSkills.has(skillId)) {
+      return profileFlag(`skill.${skillId}.enabled`, false);
+    }
+
+    return false;
+  },
+
+  isProfileGated: (skillId: string): boolean => {
+    return profileGatedSkills.has(skillId);
   }
 } as const
 

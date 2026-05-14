@@ -653,4 +653,114 @@ whenToUse:
       }
     });
   });
+
+  describe('#listSkills and #loadSkill - profile-gated enablement', function profileGatedTests() {
+    let tool: SkillLoaderTool;
+    let tempDir: string;
+    let skillsDir: string;
+
+    beforeEach(async () => {
+      tool = new SkillLoaderTool();
+      tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'skill-profile-test-'));
+      skillsDir = path.join(tempDir, 'skills');
+      await fs.mkdir(skillsDir, { recursive: true });
+      (tool as any).skillsDir = skillsDir;
+    });
+
+    afterEach(async () => {
+      await fs.rm(tempDir, { recursive: true, force: true });
+      vi.restoreAllMocks();
+    });
+
+    async function createSkillFile(skillName: string, content: string): Promise<void> {
+      const skillDir = path.join(skillsDir, skillName);
+      await fs.mkdir(skillDir, { recursive: true });
+      await fs.writeFile(path.join(skillDir, 'skill.md'), content);
+    }
+
+    it('listSkills excludes a profile-gated skill when disabled', async function listExcludes() {
+      await createSkillFile('gated-skill', `---
+name: gated-skill
+description: A gated skill
+enablementId: my-gated
+---
+# Gated Skill
+`);
+
+      // Mock skills.isEnabled to return false for 'my-gated'
+      const featuresModule = await import('../../services/features.js');
+      vi.spyOn(featuresModule.skills, 'isEnabled').mockReturnValue(false);
+      vi.spyOn(featuresModule.skills, 'isProfileGated').mockReturnValue(true);
+
+      const result = await tool.listSkills();
+      expect(result.success).toBe(true);
+      expect(result.skills).toHaveLength(0);
+    });
+
+    it('listSkills includes a profile-gated skill when enabled', async function listIncludes() {
+      await createSkillFile('gated-skill', `---
+name: gated-skill
+description: A gated skill
+enablementId: my-gated
+---
+# Gated Skill
+`);
+
+      const featuresModule = await import('../../services/features.js');
+      vi.spyOn(featuresModule.skills, 'isEnabled').mockReturnValue(true);
+      vi.spyOn(featuresModule.skills, 'isProfileGated').mockReturnValue(true);
+
+      const result = await tool.listSkills();
+      expect(result.success).toBe(true);
+      expect(result.skills).toHaveLength(1);
+      expect(result.skills![0].name).toBe('gated-skill');
+    });
+
+    it('loadSkill rejects a disabled skill', async function loadRejects() {
+      await createSkillFile('disabled-skill', `---
+name: disabled-skill
+description: A disabled skill
+enablementId: my-disabled
+---
+# Disabled Skill
+`);
+
+      const featuresModule = await import('../../services/features.js');
+      vi.spyOn(featuresModule.skills, 'isEnabled').mockReturnValue(false);
+
+      const result = await tool.loadSkill({ skill: 'disabled-skill' });
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('not available');
+    });
+
+    it('loadSkill allows a skill without enablementId', async function loadAllowsNoId() {
+      await createSkillFile('open-skill', `---
+name: open-skill
+description: An ungated skill
+---
+# Open Skill
+`);
+
+      const result = await tool.loadSkill({ skill: 'open-skill' });
+      expect(result.success).toBe(true);
+      expect(result.instructions).toContain('# Open Skill');
+    });
+
+    it('loadSkill allows an enabled skill', async function loadAllowsEnabled() {
+      await createSkillFile('enabled-skill', `---
+name: enabled-skill
+description: An enabled skill
+enablementId: my-enabled
+---
+# Enabled Skill
+`);
+
+      const featuresModule = await import('../../services/features.js');
+      vi.spyOn(featuresModule.skills, 'isEnabled').mockReturnValue(true);
+
+      const result = await tool.loadSkill({ skill: 'enabled-skill' });
+      expect(result.success).toBe(true);
+      expect(result.instructions).toContain('# Enabled Skill');
+    });
+  });
 });
