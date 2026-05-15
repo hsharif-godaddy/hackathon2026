@@ -1,3 +1,5 @@
+@CLAUDE.local.md
+
 # gosym-probe
 
 Eval harness for the Airo App Builder (AAB) agent. Drives a synthetic

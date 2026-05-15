@@ -6,3 +6,4 @@ runs/
 .claude/settings.local.json
 .claude/worktrees/
 # baselines/ committed as shared golden snapshots (regression gates)
+CLAUDE.local.md
