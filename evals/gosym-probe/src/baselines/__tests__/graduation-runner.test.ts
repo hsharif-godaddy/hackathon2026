@@ -129,6 +129,7 @@ const mockConfig: ResolvedConfig = {
     maxTurns: 10,
     turnTimeoutMs: 5_000,
     firstTurnInactivityMs: 600_000,
+    firstTurnRetryScheduleMs: [600_000, 120_000, 120_000, 120_000],
     maxFirstTurnRetries: 2,
     maxConcurrency: 1,
   },
@@ -276,7 +277,7 @@ describe('GraduationRunner', () => {
   });
 
   describe('concurrency passthrough', () => {
-    it('passes concurrencyOverride to SuiteRunner', async () => {
+    it('passes trialConcurrency to SuiteRunner', async () => {
       mockSuiteRunnerRun.mockResolvedValue([
         makeScenarioResult(['pass']),
       ]);
@@ -285,16 +286,16 @@ describe('GraduationRunner', () => {
         scenario: mockScenario,
         config: mockConfig,
         baselineStore: mockBaselineStore,
-        concurrencyOverride: 4,
+        trialConcurrency: 4,
       });
       await runner.run('run-conc');
 
       expect(SuiteRunner).toHaveBeenCalledWith(
-        expect.objectContaining({ concurrencyOverride: 4 }),
+        expect.objectContaining({ trialConcurrency: 4 }),
       );
     });
 
-    it('without concurrencyOverride, does not force parallelism', async () => {
+    it('without trialConcurrency, does not force parallelism', async () => {
       mockSuiteRunnerRun.mockResolvedValue([
         makeScenarioResult(['pass', 'pass', 'pass']),
       ]);
@@ -303,12 +304,12 @@ describe('GraduationRunner', () => {
         scenario: { ...mockScenario, stabilityLevel: 'high' },
         config: mockConfig,
         baselineStore: mockBaselineStore,
-        // no concurrencyOverride
+        // no trialConcurrency
       });
       await runner.run('run-no-forced-conc');
 
       expect(SuiteRunner).toHaveBeenCalledWith(
-        expect.objectContaining({ concurrencyOverride: undefined }),
+        expect.objectContaining({ trialConcurrency: undefined }),
       );
     });
   });

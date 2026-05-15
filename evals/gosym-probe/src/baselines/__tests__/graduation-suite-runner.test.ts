@@ -20,9 +20,14 @@ vi.mock('../../runner/suite-runner.js', () => ({
   runCapped: mockRunCapped,
 }));
 
+vi.mock('../../util/sleep.js', () => ({
+  sleep: vi.fn().mockResolvedValue(undefined),
+}));
+
 import { GraduationSuiteRunner } from '../graduation-suite-runner.js';
 import type { GraduationSuiteRunResult } from '../graduation-suite-runner.js';
 import { GraduationRunner } from '../graduation-runner.js';
+import { sleep } from '../../util/sleep.js';
 import type { GraduationResult } from '../graduation-runner.js';
 import type { RuncappedError } from '../../runner/suite-runner.js';
 import type { Scenario } from '../../scenarios/types.js';
@@ -47,7 +52,7 @@ function makeConfig(overrides?: Partial<ResolvedConfig>): ResolvedConfig {
     env: 'local.dev',
     aab: { socketUrl: 'ws://localhost:4000', bffUrl: 'http://localhost:3000', controlPlaneUrl: 'http://localhost:4100' },
     gocode: { baseUrl: 'http://localhost', apiKey: 'key', model: 'test' },
-    eval: { defaultTrials: 3, maxTurns: 30, turnTimeoutMs: 30000, maxConcurrency: 2, firstTurnInactivityMs: 600_000, maxFirstTurnRetries: 2 },
+    eval: { defaultTrials: 3, maxTurns: 30, turnTimeoutMs: 30000, maxConcurrency: 2, firstTurnInactivityMs: 600_000, firstTurnRetryScheduleMs: [600_000, 120_000, 120_000, 120_000], maxFirstTurnRetries: 2 },
     playwright: { ignoreHttpsErrors: true },
     regression: { defaultThreshold: 0.25, thresholds: {} },
     ...overrides,
@@ -147,7 +152,7 @@ describe('GraduationSuiteRunner', () => {
     );
   });
 
-  it('uses explicit maxScenarioConcurrency=1 over config.eval.maxConcurrency', async () => {
+  it('uses explicit scenarioConcurrency=1 over config.eval.maxConcurrency', async () => {
     const scenarios = [makeScenario('alpha'), makeScenario('beta')];
     const results = scenarios.map((s) => makeGraduationResult(s.name));
     mockRunCapped.mockResolvedValue(results);
@@ -156,32 +161,32 @@ describe('GraduationSuiteRunner', () => {
       scenarios,
       config,
       store,
-      maxScenarioConcurrency: 1,
+      scenarioConcurrency: 1,
     });
 
     await runner.run('run-seq');
 
     expect(mockRunCapped).toHaveBeenCalledWith(
       2,
-      1, // explicit maxScenarioConcurrency takes precedence
+      1, // explicit scenarioConcurrency takes precedence
       expect.any(Function),
     );
   });
 
-  it('falls back to config.eval.maxConcurrency when maxScenarioConcurrency is undefined', async () => {
+  it('falls back to config.eval.maxConcurrency when scenarioConcurrency is undefined', async () => {
     const scenarios = [makeScenario('alpha'), makeScenario('beta')];
     const results = scenarios.map((s) => makeGraduationResult(s.name));
     mockRunCapped.mockResolvedValue(results);
 
     const customConfig = makeConfig({
-      eval: { defaultTrials: 3, maxTurns: 30, turnTimeoutMs: 30000, firstTurnInactivityMs: 30000, maxFirstTurnRetries: 2, maxConcurrency: 5 },
+      eval: { defaultTrials: 3, maxTurns: 30, turnTimeoutMs: 30000, firstTurnInactivityMs: 30000, firstTurnRetryScheduleMs: [600_000, 120_000, 120_000, 120_000], maxFirstTurnRetries: 2, maxConcurrency: 5 },
     });
 
     const runner = new GraduationSuiteRunner({
       scenarios,
       config: customConfig,
       store,
-      maxScenarioConcurrency: undefined,
+      scenarioConcurrency: undefined,
     });
 
     await runner.run('run-fallback');
@@ -339,7 +344,7 @@ describe('GraduationSuiteRunner', () => {
     expect(store.finalizeRun).not.toHaveBeenCalled();
   });
 
-  it('passes trialConcurrency as concurrencyOverride to GraduationRunner', async () => {
+  it('passes trialConcurrency to GraduationRunner', async () => {
     const scenarios = [makeScenario('alpha')];
     mockRunCapped.mockImplementation(
       async (_count: number, _cap: number, fn: (i: number) => Promise<GraduationResult>) => {
@@ -359,7 +364,7 @@ describe('GraduationSuiteRunner', () => {
 
     expect(GraduationRunner).toHaveBeenCalledWith(
       expect.objectContaining({
-        concurrencyOverride: 1,
+        trialConcurrency: 1,
         dirName: '20260513_abc123',
         skipFinalize: true,
       }),
@@ -552,6 +557,40 @@ describe('GraduationSuiteRunner', () => {
     expect(output.results).toEqual([completedResult]);
     expect(output.errors).toEqual([betaError]);
     expect(output.finalizationError).toBeUndefined();
+  });
+
+  it('staggered init: sleep called with (i % maxConcurrency) * 1000 per scenario slot', async () => {
+    // Un-mock runCapped for this test only so the real work-stealing loop
+    // executes and the stagger sleeps are actually invoked. GraduationRunner
+    // stays mocked so no real evals run.
+    const { runCapped: realRunCapped } =
+      await vi.importActual<typeof import('../../runner/suite-runner.js')>('../../runner/suite-runner.js');
+    mockRunCapped.mockImplementation(realRunCapped);
+
+    mockGraduationRunnerRun.mockResolvedValue(makeGraduationResult('scenario'));
+
+    const scenarios = [
+      makeScenario('alpha'),
+      makeScenario('beta'),
+      makeScenario('gamma'),
+    ];
+    const staggerConfig: ResolvedConfig = {
+      ...config,
+      eval: { ...config.eval, maxConcurrency: 3 },
+    };
+
+    const runner = new GraduationSuiteRunner({
+      scenarios,
+      config: staggerConfig,
+      store,
+    });
+
+    await runner.run('run-stagger');
+
+    // Slot 0 (delay=0) is guarded — sleep is not called for zero-delay slots.
+    expect(sleep).not.toHaveBeenCalledWith(0);
+    expect(sleep).toHaveBeenCalledWith(1_000);
+    expect(sleep).toHaveBeenCalledWith(2_000);
   });
 
   describe('onTrialEvaluated forwarding', () => {

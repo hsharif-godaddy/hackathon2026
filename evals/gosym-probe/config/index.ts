@@ -20,11 +20,15 @@ export function loadConfig(): ResolvedConfig {
     throw new Error(`Unknown GD_ENV: "${env}"`);
   }
   const config = creator();
+  const retrySchedule =
+    config.eval.firstTurnRetryScheduleMs ?? EVAL_DEFAULTS.firstTurnRetryScheduleMs;
   return {
     ...config,
     eval: {
       ...EVAL_DEFAULTS,
       ...config.eval,
+      maxFirstTurnRetries: retrySchedule.length,
+      firstTurnRetryScheduleMs: retrySchedule,
     },
   };
 }

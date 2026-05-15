@@ -80,6 +80,7 @@ export interface SimulationOptions {
   captureContext?: SimulationCaptureContext;
   config: ResolvedConfig;
   maxTurnsOverride?: number;
+  firstTurnInactivityMsOverride?: number;
   /**
    * Fires after the conversation loop completes, before capture begins.
    * Awaited so the caller can flush conversation data to disk before the
@@ -350,7 +351,9 @@ export class Simulation {
 
     const turnTimeout = config.eval.turnTimeoutMs;
     const isFirstTurn = turnCount === 0;
-    const inactivityMs = config.eval.firstTurnInactivityMs;
+    const inactivityMs =
+      this.options.firstTurnInactivityMsOverride
+      ?? config.eval.firstTurnInactivityMs;
 
     const hardTimer = setTimeout(
       () => {

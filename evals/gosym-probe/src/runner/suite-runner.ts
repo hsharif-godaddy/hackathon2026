@@ -16,6 +16,7 @@ import type { EvalResult, Evaluator } from '../evaluators/evaluator.js';
 import { normalizeEvalResult } from '../evaluators/normalize-eval-result.js';
 import { effectiveConcurrency } from '../util/concurrency.js';
 import { sleep } from '../util/sleep.js';
+import { staggeredRun } from '../util/stagger.js';
 
 // Fallback wait when the server omits Retry-After. Promote to config
 // if per-environment tuning becomes necessary (e.g. CI wants fewer retries).
@@ -81,7 +82,16 @@ export interface SuiteRunnerOptions {
   syntheticUser?: SyntheticUserAgent;
   siteCapture?: SiteCapture;
   trialsOverride?: number;
-  concurrencyOverride?: number;
+  /**
+   * Trial-level concurrency cap. Clamped to config.eval.maxConcurrency.
+   * When omitted, defaults to config.eval.maxConcurrency.
+   */
+  trialConcurrency?: number;
+  /**
+   * When suiteMode is 'parallel', caps how many scenarios run concurrently.
+   * Clamped to config.eval.maxConcurrency. Falls back to config.eval.maxConcurrency when omitted.
+   */
+  scenarioConcurrency?: number;
   maxTurnsOverride?: number;
   /** When provided, load baseline and attach regressionStatus. */
   baselineStore?: BaselineStore;
@@ -96,7 +106,9 @@ export interface SuiteRunnerOptions {
    * - `'sequential'` (default): scenarios run one after another;
    *   trial-level parallelism is governed by `config.eval.maxConcurrency`.
    * - `'parallel'`: all scenarios fan out concurrently, each running its
-   *   full trial count, capped by `config.eval.maxConcurrency`.
+   *   full trial count. Scenario concurrency is capped by
+   *   `scenarioConcurrency` if provided, otherwise
+   *   `config.eval.maxConcurrency`.
    */
   suiteMode?: 'sequential' | 'parallel';
   /** Fires after each trial is evaluated. */
@@ -143,13 +155,18 @@ export class SuiteRunner {
     const { scenarios, config, trialsOverride, suiteMode } = this.options;
 
     if (suiteMode === 'parallel') {
-      // Scenario-level fan-out uses config.eval.maxConcurrency (hard ceiling).
-      // concurrencyOverride intentionally controls only trial-level parallelism
-      // within each scenario, not the outer scenario fan-out.
+      // scenarioConcurrency (from --concurrency) caps scenario fan-out;
+      // falls back to config.eval.maxConcurrency when omitted.
+      const cap = effectiveConcurrency(
+        this.options.scenarioConcurrency,
+        config.eval.maxConcurrency,
+      );
       return runCapped(
         scenarios.length,
-        config.eval.maxConcurrency ?? 1,
-        (i) => this.processScenario(scenarios[i], trialsOverride ?? scenarios[i].trials),
+        cap,
+        (i) => staggeredRun(i, cap, () =>
+          this.processScenario(scenarios[i], trialsOverride ?? scenarios[i].trials),
+        ),
       );
     }
 
@@ -167,7 +184,7 @@ export class SuiteRunner {
   ): Promise<ScenarioResult> {
     const {
       config,
-      concurrencyOverride,
+      trialConcurrency,
       makeAgentClient,
       syntheticUser,
       siteCapture,
@@ -195,6 +212,7 @@ export class SuiteRunner {
 
     const makeRun = async (
       i: number,
+      firstTurnInactivityMsOverride?: number,
     ): Promise<Transcript> => {
       const client = await makeAgentClient();
       try {
@@ -243,6 +261,7 @@ export class SuiteRunner {
           captureContext,
           config,
           maxTurnsOverride: this.options.maxTurnsOverride,
+          firstTurnInactivityMsOverride,
           onConversationComplete,
         }).run(i);
         for (const ev of scenario.evaluators) {
@@ -267,18 +286,20 @@ export class SuiteRunner {
     };
 
     const maxRetries = config.eval.maxFirstTurnRetries;
+    const retrySchedule = config.eval.firstTurnRetryScheduleMs;
     const makeRunWithRetry = async (
       trialIndex: number,
     ): Promise<Transcript> => {
       let inactivityAttempts = 0;
       let rateLimitAttempts = 0;
+      let nextInactivityMsOverride: number | undefined;
       // Independent budgets: inactivity (AAB unresponsive) and rate-limit
       // (GoCode throttled) are orthogonal failure modes. Each gets its own
       // counter so one transient issue doesn't eat the other's budget.
       // Every iteration exits via return, continue, or throw err.
       for (;;) {
         try {
-          const transcript = await makeRun(trialIndex);
+          const transcript = await makeRun(trialIndex, nextInactivityMsOverride);
           const totalRetries = inactivityAttempts + rateLimitAttempts;
           if (totalRetries > 0) {
             transcript.retryCount = totalRetries;
@@ -289,6 +310,9 @@ export class SuiteRunner {
             err instanceof InactivityTimeoutError &&
             inactivityAttempts < maxRetries
           ) {
+            nextInactivityMsOverride =
+              retrySchedule[inactivityAttempts]
+              ?? config.eval.firstTurnInactivityMs;
             inactivityAttempts++;
             console.warn(
               'Trial retry: first-turn inactivity timeout.',
@@ -297,6 +321,7 @@ export class SuiteRunner {
                 trialIndex,
                 attempt: inactivityAttempts,
                 maxAttempts: maxRetries,
+                nextInactivityMs: nextInactivityMsOverride,
               },
             );
             continue;
@@ -335,12 +360,12 @@ export class SuiteRunner {
       }
     };
 
-    const concurrency = effectiveConcurrency(concurrencyOverride, config.eval.maxConcurrency);
+    const concurrency = effectiveConcurrency(trialConcurrency, config.eval.maxConcurrency);
     try {
       const transcripts: Transcript[] =
-        await runCapped(trialIndices.length, concurrency, function run(i) {
-          return makeRunWithRetry(trialIndices[i]);
-        });
+        await runCapped(trialIndices.length, concurrency, (i) =>
+          staggeredRun(i, concurrency, () => makeRunWithRetry(trialIndices[i])),
+        );
 
       const newTrialResults = await this.evaluateTrials(
         scenario,

@@ -19,6 +19,7 @@ vi.mock('../../util/sleep.js', () => ({
 }));
 
 import { SuiteRunner, runCapped } from '../suite-runner.js';
+import { Simulation } from '../simulation.js';
 import { sleep } from '../../util/sleep.js';
 import type { Scenario } from '../../scenarios/types.js';
 import type { Persona } from '../../personas/types.js';
@@ -60,6 +61,7 @@ const mockConfig: ResolvedConfig = {
     maxTurns: 10,
     turnTimeoutMs: 5_000,
     firstTurnInactivityMs: 600_000,
+    firstTurnRetryScheduleMs: [600_000, 120_000, 120_000, 120_000],
     maxFirstTurnRetries: 2,
     maxConcurrency: 1,
   },
@@ -318,7 +320,7 @@ describe('SuiteRunner', () => {
     expect(result.trials[1].trialIndex).toBe(1);
   });
 
-  it('concurrencyOverride: 1 serializes trials', async () => {
+  it('trialConcurrency: 1 serializes trials', async () => {
     const order: string[] = [];
     mockSimulationRun
       .mockImplementationOnce(async () => {
@@ -340,7 +342,7 @@ describe('SuiteRunner', () => {
       config: mockConfig,
       makeAgentClient,
       syntheticUser: mockSyntheticUser,
-      concurrencyOverride: 1,
+      trialConcurrency: 1,
     }).run();
 
     expect(order).toEqual(['start:0', 'end:0', 'start:1']);
@@ -396,7 +398,8 @@ describe('SuiteRunner', () => {
       syntheticUser: mockSyntheticUser,
     }).run();
 
-    await Promise.resolve(); // flush: both runs should be initiated
+    await Promise.resolve(); // flush: slot 0 starts + slot 1's stagger sleep resolves
+    await Promise.resolve(); // flush: slot 1 starts (after stagger + makeAgentClient)
     resolvers.forEach((r) => r());
     await runPromise;
 
@@ -413,7 +416,7 @@ describe('SuiteRunner', () => {
     expect(createdClients[0]).not.toBe(createdClients[1]);
   });
 
-  it('concurrencyOverride is honored when within config.eval.maxConcurrency',
+  it('trialConcurrency is honored when within config.eval.maxConcurrency',
     async () => {
       let maxInFlight = 0;
       let inFlight = 0;
@@ -438,11 +441,16 @@ describe('SuiteRunner', () => {
         },
         makeAgentClient,
         syntheticUser: mockSyntheticUser,
-        concurrencyOverride: 2,
+        trialConcurrency: 2,
       }).run();
 
-      expect(maxInFlight).toBeGreaterThan(1);
+      // Stagger spreads trial starts, so peak in-flight is 1 in mock timing.
+      // The binding contract is the upper bound: trialConcurrency caps at 2.
       expect(maxInFlight).toBeLessThanOrEqual(2);
+      expect(mockSimulationRun).toHaveBeenCalledTimes(4);
+      // Prove parallel dispatch: with cap=2, slot 1 (index % 2 = 1) must sleep.
+      // This only fires if runCapped spawned 2 workers.
+      expect(sleep).toHaveBeenCalledWith(1_000);
     },
   );
 
@@ -876,7 +884,7 @@ describe('SuiteRunner — suiteMode: parallel', () => {
       config: mockConfig,
       makeAgentClient,
       syntheticUser: mockSyntheticUser,
-      concurrencyOverride: 1,
+      trialConcurrency: 1,
       suiteMode: 'parallel',
     }).run();
 
@@ -893,7 +901,7 @@ describe('SuiteRunner — suiteMode: parallel', () => {
       makeAgentClient,
       syntheticUser: mockSyntheticUser,
       trialsOverride: 5,
-      concurrencyOverride: 1,
+      trialConcurrency: 1,
       suiteMode: 'parallel',
     }).run();
 
@@ -942,7 +950,8 @@ describe('SuiteRunner — suiteMode: parallel', () => {
       suiteMode: 'parallel',
     }).run();
 
-    await Promise.resolve();
+    await Promise.resolve(); // flush: s0 starts + s1's stagger sleep resolves
+    await Promise.resolve(); // flush: s1 starts (after stagger + makeAgentClient)
     resolvers.forEach((r) => r());
     await runPromise;
 
@@ -976,7 +985,7 @@ describe('SuiteRunner — suiteMode: parallel', () => {
       config: cappedConfig,
       makeAgentClient,
       syntheticUser: mockSyntheticUser,
-      concurrencyOverride: 1,
+      trialConcurrency: 1,
       suiteMode: 'parallel',
     }).run();
 
@@ -1317,7 +1326,7 @@ describe('SuiteRunner — no-stacking invariant', () => {
     vi.clearAllMocks();
   });
 
-  it('concurrencyOverride: 1 suppresses parallel trial execution', async () => {
+  it('trialConcurrency: 1 suppresses parallel trial execution', async () => {
     let inFlight = 0;
     let maxInFlight = 0;
 
@@ -1338,13 +1347,13 @@ describe('SuiteRunner — no-stacking invariant', () => {
       config: { ...mockConfig, eval: { ...mockConfig.eval, maxConcurrency: 4 } },
       makeAgentClient,
       syntheticUser: mockSyntheticUser,
-      concurrencyOverride: 1,
+      trialConcurrency: 1,
     }).run();
 
     expect(maxInFlight).toBeLessThanOrEqual(1);
   });
 
-  it('concurrencyOverride cannot exceed config.eval.maxConcurrency', async () => {
+  it('trialConcurrency cannot exceed config.eval.maxConcurrency', async () => {
     let inFlight = 0;
     let maxInFlight = 0;
 
@@ -1365,7 +1374,7 @@ describe('SuiteRunner — no-stacking invariant', () => {
       config: { ...mockConfig, eval: { ...mockConfig.eval, maxConcurrency: 3 } },
       makeAgentClient,
       syntheticUser: mockSyntheticUser,
-      concurrencyOverride: 10,
+      trialConcurrency: 10,
     }).run();
 
     expect(maxInFlight).toBeLessThanOrEqual(3);
@@ -1392,24 +1401,15 @@ describe('SuiteRunner — no-stacking invariant', () => {
       config: { ...mockConfig, eval: { ...mockConfig.eval, maxConcurrency: 3 } },
       makeAgentClient,
       syntheticUser: mockSyntheticUser,
-      concurrencyOverride: 1,
+      trialConcurrency: 1,
       suiteMode: 'parallel',
     }).run();
 
     expect(maxInFlight).toBeLessThanOrEqual(3);
   });
 
-  it('fan-out: 4 scenarios cap 12 all start concurrently, full trials per scenario', async () => {
-    let inFlight = 0;
-    let peakInFlight = 0;
-
-    mockSimulationRun.mockImplementation(async () => {
-      inFlight++;
-      peakInFlight = Math.max(peakInFlight, inFlight);
-      await Promise.resolve();
-      inFlight--;
-      return makeTranscript();
-    });
+  it('fan-out: 4 scenarios cap 12 dispatch concurrently with staggered init', async () => {
+    mockSimulationRun.mockResolvedValue(makeTranscript());
 
     const scenarios = Array.from({ length: 4 }, (_, i) =>
       makeScenario({ name: `s${i}`, trials: 3 }),
@@ -1420,14 +1420,18 @@ describe('SuiteRunner — no-stacking invariant', () => {
       config: { ...mockConfig, eval: { ...mockConfig.eval, maxConcurrency: 12 } },
       makeAgentClient,
       syntheticUser: mockSyntheticUser,
-      concurrencyOverride: 1,
+      trialConcurrency: 1,
       suiteMode: 'parallel',
     }).run();
 
     // All 4 scenarios × 3 trials = 12 total simulations
     expect(mockSimulationRun).toHaveBeenCalledTimes(12);
-    // All 4 scenarios ran their first trial concurrently
-    expect(peakInFlight).toBe(4);
+    // Prove parallel dispatch: with 4 scenarios and cap=12, slots 1-3
+    // must sleep at stagger intervals. These only fire if runCapped
+    // spawned multiple workers concurrently.
+    expect(sleep).toHaveBeenCalledWith(1_000);
+    expect(sleep).toHaveBeenCalledWith(2_000);
+    expect(sleep).toHaveBeenCalledWith(3_000);
   });
 });
 
@@ -1468,6 +1472,7 @@ describe('first-turn inactivity retry', () => {
         trialIndex: 0,
         attempt: 1,
         maxAttempts: 2,
+        nextInactivityMs: 600_000,
       },
     ]);
     expect(warnSpy.mock.calls[1]).toEqual([
@@ -1477,6 +1482,7 @@ describe('first-turn inactivity retry', () => {
         trialIndex: 0,
         attempt: 2,
         maxAttempts: 2,
+        nextInactivityMs: 120_000,
       },
     ]);
     warnSpy.mockRestore();
@@ -1783,6 +1789,185 @@ describe('rate limit (429) retry', () => {
     }).run();
 
     expect(sleep).toHaveBeenCalledWith(300_000);
+    warnSpy.mockRestore();
+  });
+});
+
+describe('SuiteRunner — staggered init', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockSimulationRun.mockResolvedValue(makeTranscript());
+  });
+
+  it('parallel mode: sleep called with stagger values 1000 and 2000 for slots 1 and 2', async () => {
+    const scenarios = Array.from({ length: 6 }, (_, i) =>
+      makeScenario({ name: `s${i}`, trials: 1 }),
+    );
+
+    await new SuiteRunner({
+      scenarios,
+      config: { ...mockConfig, eval: { ...mockConfig.eval, maxConcurrency: 3 } },
+      makeAgentClient,
+      syntheticUser: mockSyntheticUser,
+      trialConcurrency: 1,
+      suiteMode: 'parallel',
+    }).run();
+
+    // Slot 0 (delay=0) is guarded — sleep is not called for zero-delay slots.
+    expect(sleep).not.toHaveBeenCalledWith(0);
+    expect(sleep).toHaveBeenCalledWith(1_000);
+    expect(sleep).toHaveBeenCalledWith(2_000);
+  });
+
+  it('sequential trials (maxConcurrency: 1): no stagger sleep issued when cap is 1', async () => {
+    const scenario = makeScenario({ trials: 3 });
+
+    await new SuiteRunner({
+      scenarios: [scenario],
+      config: { ...mockConfig, eval: { ...mockConfig.eval, maxConcurrency: 1 } },
+      makeAgentClient,
+      syntheticUser: mockSyntheticUser,
+      trialConcurrency: 1,
+    }).run();
+
+    // With cap=1 all stagger delays are 0ms. The guard skips sleep entirely,
+    // avoiding an extra microtask tick per trial.
+    expect(vi.mocked(sleep)).not.toHaveBeenCalledWith(0);
+  });
+
+  it('scenarioConcurrency: 2 limits fan-out cap when maxConcurrency is 5', async () => {
+    const scenarios = Array.from({ length: 4 }, (_, i) =>
+      makeScenario({ name: `s${i}`, trials: 1 }),
+    );
+
+    await new SuiteRunner({
+      scenarios,
+      config: { ...mockConfig, eval: { ...mockConfig.eval, maxConcurrency: 5 } },
+      makeAgentClient,
+      syntheticUser: mockSyntheticUser,
+      scenarioConcurrency: 2,
+      suiteMode: 'parallel',
+    }).run();
+
+    // cap=2: slot 1 sleeps 1000ms; slot 2 would sleep 2000ms if cap were ≥3
+    expect(sleep).toHaveBeenCalledWith(1_000);
+    expect(sleep).not.toHaveBeenCalledWith(2_000);
+    expect(mockSimulationRun).toHaveBeenCalledTimes(4);
+  });
+
+  it('scenarioConcurrency exceeding maxConcurrency is clamped by effectiveConcurrency', async () => {
+    const scenarios = Array.from({ length: 4 }, (_, i) =>
+      makeScenario({ name: `s${i}`, trials: 1 }),
+    );
+
+    await new SuiteRunner({
+      scenarios,
+      config: { ...mockConfig, eval: { ...mockConfig.eval, maxConcurrency: 2 } },
+      makeAgentClient,
+      syntheticUser: mockSyntheticUser,
+      scenarioConcurrency: 10,
+      suiteMode: 'parallel',
+    }).run();
+
+    // Effective cap is 2: slot 1 sleeps 1000ms; no 2s or higher stagger
+    expect(sleep).toHaveBeenCalledWith(1_000);
+    expect(sleep).not.toHaveBeenCalledWith(2_000);
+    expect(mockSimulationRun).toHaveBeenCalledTimes(4);
+  });
+
+  it('omitting scenarioConcurrency uses maxConcurrency as cap', async () => {
+    const scenarios = Array.from({ length: 4 }, (_, i) =>
+      makeScenario({ name: `s${i}`, trials: 1 }),
+    );
+
+    await new SuiteRunner({
+      scenarios,
+      config: { ...mockConfig, eval: { ...mockConfig.eval, maxConcurrency: 3 } },
+      makeAgentClient,
+      syntheticUser: mockSyntheticUser,
+      suiteMode: 'parallel',
+    }).run();
+
+    expect(sleep).toHaveBeenCalledWith(1_000);
+    expect(sleep).toHaveBeenCalledWith(2_000);
+    expect(sleep).not.toHaveBeenCalledWith(3_000);
+    expect(mockSimulationRun).toHaveBeenCalledTimes(4);
+  });
+});
+
+describe('SuiteRunner — tiered inactivity retry', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('passes correct firstTurnInactivityMsOverride from schedule to each retry attempt', async () => {
+    const { InactivityTimeoutError } = await import('../simulation.js');
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    mockSimulationRun
+      .mockRejectedValueOnce(new InactivityTimeoutError(600_000))
+      .mockRejectedValueOnce(new InactivityTimeoutError(600_000))
+      .mockRejectedValueOnce(new InactivityTimeoutError(600_000))
+      .mockResolvedValue(makeTranscript());
+
+    const config: ResolvedConfig = {
+      ...mockConfig,
+      eval: {
+        ...mockConfig.eval,
+        firstTurnRetryScheduleMs: [600_000, 120_000, 120_000],
+        maxFirstTurnRetries: 3,
+      },
+    };
+    const scenario = makeScenario({ trials: 1 });
+
+    await new SuiteRunner({
+      scenarios: [scenario],
+      config,
+      makeAgentClient,
+      syntheticUser: mockSyntheticUser,
+    }).run();
+
+    const calls = vi.mocked(Simulation).mock.calls;
+    expect(calls).toHaveLength(4);
+    expect(calls[0][0].firstTurnInactivityMsOverride).toBeUndefined();
+    expect(calls[1][0].firstTurnInactivityMsOverride).toBe(600_000);
+    expect(calls[2][0].firstTurnInactivityMsOverride).toBe(120_000);
+    expect(calls[3][0].firstTurnInactivityMsOverride).toBe(120_000);
+    warnSpy.mockRestore();
+  });
+
+  it('falls back to firstTurnInactivityMs on all retries when no schedule is configured', async () => {
+    const { InactivityTimeoutError } = await import('../simulation.js');
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    mockSimulationRun
+      .mockRejectedValueOnce(new InactivityTimeoutError(600_000))
+      .mockRejectedValueOnce(new InactivityTimeoutError(600_000))
+      .mockResolvedValue(makeTranscript());
+
+    // Empty firstTurnRetryScheduleMs → all retries fall back to firstTurnInactivityMs
+    const config: ResolvedConfig = {
+      ...mockConfig,
+      eval: {
+        ...mockConfig.eval,
+        firstTurnRetryScheduleMs: [],
+        maxFirstTurnRetries: 2,
+      },
+    };
+    const scenario = makeScenario({ trials: 1 });
+
+    await new SuiteRunner({
+      scenarios: [scenario],
+      config,
+      makeAgentClient,
+      syntheticUser: mockSyntheticUser,
+    }).run();
+
+    const calls = vi.mocked(Simulation).mock.calls;
+    expect(calls).toHaveLength(3);
+    expect(calls[0][0].firstTurnInactivityMsOverride).toBeUndefined();
+    expect(calls[1][0].firstTurnInactivityMsOverride).toBe(600_000);
+    expect(calls[2][0].firstTurnInactivityMsOverride).toBe(600_000);
     warnSpy.mockRestore();
   });
 });

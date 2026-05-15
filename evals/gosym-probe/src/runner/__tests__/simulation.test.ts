@@ -66,6 +66,7 @@ const mockConfig: ResolvedConfig = {
     maxTurns: 5,
     turnTimeoutMs: 5_000,
     firstTurnInactivityMs: 600_000,
+    firstTurnRetryScheduleMs: [600_000, 120_000, 120_000, 120_000],
     maxFirstTurnRetries: 2,
     maxConcurrency: 1,
   },

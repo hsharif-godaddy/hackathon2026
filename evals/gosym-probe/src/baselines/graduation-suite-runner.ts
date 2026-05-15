@@ -1,5 +1,6 @@
 import { runCapped } from '../runner/suite-runner.js';
 import type { RuncappedError } from '../runner/suite-runner.js';
+import { staggeredRun } from '../util/stagger.js';
 import { GraduationRunner, isDeferredResult } from './graduation-runner.js';
 import type { GraduationResult } from './graduation-runner.js';
 import { BaselineStore } from './baseline-store.js';
@@ -33,8 +34,16 @@ export interface GraduationSuiteRunnerOptions {
   syntheticUser?: SyntheticUserAgent;
   siteCapture?: SiteCapture;
   stabilityLevelOverride?: StabilityLevel;
+  /**
+   * Trial-level concurrency cap passed to inner SuiteRunner.
+   * Clamped to config.eval.maxConcurrency. Defaults to 1 when omitted.
+   */
   trialConcurrency?: number;
-  maxScenarioConcurrency?: number;
+  /**
+   * Caps how many scenarios run concurrently during graduation.
+   * Clamped to config.eval.maxConcurrency. Falls back to config.eval.maxConcurrency when omitted.
+   */
+  scenarioConcurrency?: number;
   baselineStoreFactory?: () => BaselineStore;
   maxTurnsOverride?: number;
   onTrialEvaluated?: (scenarioName: string, trial: TrialResult) => void;
@@ -54,16 +63,15 @@ export class GraduationSuiteRunner {
   }
 
   async run(runId: string): Promise<GraduationSuiteRunResult> {
-    const maxConcurrency = this.options.maxScenarioConcurrency
-      ?? this.options.config.eval.maxConcurrency
-      ?? 1;
+    const maxConcurrency = this.options.scenarioConcurrency
+      ?? this.options.config.eval.maxConcurrency;
 
     const sharedDirName = await this.options.store.initRun(
       runId,
       this.options.scenarios,
       this.options.config,
       {
-        concurrencyOverride: this.trialConcurrency,
+        concurrencyOverride: this.trialConcurrency,  // store metadata: raw CLI value
         maxTurnsOverride: this.options.maxTurnsOverride,
         kind: 'graduation',
       },
@@ -75,7 +83,7 @@ export class GraduationSuiteRunner {
       const results = await runCapped<GraduationResult>(
         this.options.scenarios.length,
         maxConcurrency,
-        (i) => this.runScenario(i, runId, sharedDirName),
+        (i) => staggeredRun(i, maxConcurrency, () => this.runScenario(i, runId, sharedDirName)),
       );
 
       const finalizationError = await this.safeFinalize(results, sharedDirName, runId);
@@ -111,7 +119,7 @@ export class GraduationSuiteRunner {
       siteCapture: this.options.siteCapture,
       baselineStore: this.options.baselineStoreFactory?.() ?? new BaselineStore(),
       stabilityLevelOverride: this.options.stabilityLevelOverride,
-      concurrencyOverride: this.trialConcurrency,
+      trialConcurrency: this.trialConcurrency,
       maxTurnsOverride: this.options.maxTurnsOverride,
       onTrialEvaluated: this.options.onTrialEvaluated,
       store: this.options.store,

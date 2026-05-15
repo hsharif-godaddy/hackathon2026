@@ -208,7 +208,7 @@ async function main(): Promise<void> {
       siteCapture,
       stabilityLevelOverride: stabilityOverride,
       trialConcurrency,
-      maxScenarioConcurrency: fanOut ? undefined : 1,
+      scenarioConcurrency: fanOut ? clampConcurrency(concurrencyOverride, maxConcurrency) : 1,
       baselineStoreFactory: () => new BaselineStore(),
       maxTurnsOverride,
       onTrialEvaluated: makeProgressCallback(suiteReporter),
@@ -303,7 +303,7 @@ async function main(): Promise<void> {
       siteCapture,
       baselineStore: new BaselineStore(),
       stabilityLevelOverride: stabilityOverride,
-      concurrencyOverride: clampConcurrency(concurrencyOverride, maxConcurrency),
+      trialConcurrency: concurrencyOverride,
       maxTurnsOverride,
       onTrialEvaluated: makeProgressCallback(gradReporter),
       store: singleGradStore,
@@ -432,7 +432,8 @@ async function main(): Promise<void> {
     console.log(`Max turns override: ${maxTurnsOverride}`);
   }
 
-  const cap = config.eval.maxConcurrency ?? 1;
+  const maxConcurrency = config.eval.maxConcurrency ?? 1;
+  const cap = effectiveConcurrency(concurrencyOverride, maxConcurrency);
   for (const s of scenarios) {
     const trialCount = trialsOverride ?? s.trials;
     const mode = fanOut ? ' [fan-out]' : '';
@@ -457,10 +458,11 @@ async function main(): Promise<void> {
   const pendingWrites: Promise<void>[] = [];
   const writeFailures: { scenarioName: string; trialIndex: number; error: unknown }[] = [];
 
-  const maxConcurrency = config.eval.maxConcurrency ?? 1;
-  const resolvedConcurrency: number | undefined = fanOut
-    ? 1
-    : clampConcurrency(concurrencyOverride, maxConcurrency);
+  // fanOut: trial-level is always 1; --concurrency controls scenario-level
+  const trialConcurrency: number | undefined = fanOut ? 1 : concurrencyOverride;
+  const scenarioConcurrency: number | undefined = fanOut
+    ? concurrencyOverride
+    : undefined;
 
   const runner = new SuiteRunner({
     scenarios,
@@ -469,7 +471,8 @@ async function main(): Promise<void> {
     syntheticUser,
     siteCapture,
     trialsOverride,
-    concurrencyOverride: resolvedConcurrency,
+    trialConcurrency,
+    scenarioConcurrency,
     maxTurnsOverride,
     baselineStore,
     baselineRunId: values.baseline,

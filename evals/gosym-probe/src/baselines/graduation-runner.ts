@@ -31,7 +31,11 @@ interface GraduationRunnerOptionsBase {
   siteCapture?: SiteCapture;
   baselineStore: BaselineStore;
   stabilityLevelOverride?: StabilityLevel;
-  concurrencyOverride?: number;
+  /**
+   * Trial-level concurrency cap passed to the inner SuiteRunner.
+   * Clamped to config.eval.maxConcurrency.
+   */
+  trialConcurrency?: number;
   maxTurnsOverride?: number;
   onTrialEvaluated?: (scenarioName: string, trial: TrialResult) => void;
   log?: (message: string, ...args: unknown[]) => void;
@@ -96,7 +100,7 @@ export class GraduationRunner {
     const dirName = this.options.dirName
       ?? (store
         ? await store.initRun(runId, [scenario], config, {
-          concurrencyOverride: this.options.concurrencyOverride,
+          concurrencyOverride: this.options.trialConcurrency,
           maxTurnsOverride: this.options.maxTurnsOverride,
           kind: 'graduation',
         })
@@ -109,7 +113,7 @@ export class GraduationRunner {
       syntheticUser,
       siteCapture,
       trialsOverride: totalTrials,
-      concurrencyOverride: this.options.concurrencyOverride,
+      trialConcurrency: this.options.trialConcurrency,
       maxTurnsOverride: this.options.maxTurnsOverride,
       onTrialEvaluated: this.options.onTrialEvaluated,
       ...(store && dirName && {
@@ -132,7 +136,7 @@ export class GraduationRunner {
         );
       } else {
         await store.save(runId, [result], [scenario], config, {
-          concurrencyOverride: this.options.concurrencyOverride,
+          concurrencyOverride: this.options.trialConcurrency,
           maxTurnsOverride: this.options.maxTurnsOverride,
           kind: 'graduation',
           dirName,
