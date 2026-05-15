@@ -11,7 +11,7 @@ import type { ResolvedConfig } from '../../config/index.js';
 import type { AgentClient } from '../clients/agent-client.js';
 import type { SyntheticUserAgent } from '../runner/synthetic-user.js';
 import type { SiteCapture } from '../clients/dom-capture.js';
-import type { ScenarioResult } from '../runner/types.js';
+import type { ScenarioResult, TrialResult } from '../runner/types.js';
 import type { EvalStore } from '../store/eval-store.js';
 import type { ThresholdOptions } from './baseline-store.js';
 
@@ -33,6 +33,7 @@ interface GraduationRunnerOptionsBase {
   stabilityLevelOverride?: StabilityLevel;
   concurrencyOverride?: number;
   maxTurnsOverride?: number;
+  onTrialEvaluated?: (scenarioName: string, trial: TrialResult) => void;
   log?: (message: string, ...args: unknown[]) => void;
 }
 
@@ -110,6 +111,7 @@ export class GraduationRunner {
       trialsOverride: totalTrials,
       concurrencyOverride: this.options.concurrencyOverride,
       maxTurnsOverride: this.options.maxTurnsOverride,
+      onTrialEvaluated: this.options.onTrialEvaluated,
       ...(store && dirName && {
         getTrialOutputDir: (scenarioName, trialIndex) =>
           store.ensureTrialDir(dirName, scenarioName, trialIndex),

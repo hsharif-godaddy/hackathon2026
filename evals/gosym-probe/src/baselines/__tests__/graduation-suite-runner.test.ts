@@ -553,4 +553,50 @@ describe('GraduationSuiteRunner', () => {
     expect(output.errors).toEqual([betaError]);
     expect(output.finalizationError).toBeUndefined();
   });
+
+  describe('onTrialEvaluated forwarding', () => {
+    it('forwards onTrialEvaluated to GraduationRunner when provided', async () => {
+      const scenarios = [makeScenario('alpha')];
+      const onTrialEvaluated = vi.fn();
+      mockRunCapped.mockImplementation(
+        async (_count: number, _cap: number, fn: (i: number) => Promise<GraduationResult>) => {
+          return [await fn(0)];
+        },
+      );
+      mockGraduationRunnerRun.mockResolvedValue(makeGraduationResult('alpha'));
+
+      const runner = new GraduationSuiteRunner({
+        scenarios,
+        config,
+        store,
+        onTrialEvaluated,
+      });
+      await runner.run('run-cb-suite');
+
+      expect(GraduationRunner).toHaveBeenCalledWith(
+        expect.objectContaining({ onTrialEvaluated }),
+      );
+    });
+
+    it('does not pass onTrialEvaluated to GraduationRunner when omitted', async () => {
+      const scenarios = [makeScenario('alpha')];
+      mockRunCapped.mockImplementation(
+        async (_count: number, _cap: number, fn: (i: number) => Promise<GraduationResult>) => {
+          return [await fn(0)];
+        },
+      );
+      mockGraduationRunnerRun.mockResolvedValue(makeGraduationResult('alpha'));
+
+      const runner = new GraduationSuiteRunner({
+        scenarios,
+        config,
+        store,
+      });
+      await runner.run('run-no-cb-suite');
+
+      expect(GraduationRunner).toHaveBeenCalledWith(
+        expect.not.objectContaining({ onTrialEvaluated: expect.anything() }),
+      );
+    });
+  });
 });

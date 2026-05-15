@@ -961,4 +961,42 @@ describe('GraduationRunner', () => {
       );
     });
   });
+
+  describe('onTrialEvaluated forwarding', () => {
+    it('forwards onTrialEvaluated to SuiteRunner when provided', async () => {
+      const onTrialEvaluated = vi.fn();
+      mockSuiteRunnerRun.mockResolvedValue([
+        makeScenarioResult(['pass', 'pass', 'pass']),
+      ]);
+
+      const runner = new GraduationRunner({
+        scenario: mockScenario,
+        config: mockConfig,
+        baselineStore: mockBaselineStore,
+        onTrialEvaluated,
+      });
+      await runner.run('run-cb');
+
+      expect(SuiteRunner).toHaveBeenCalledWith(
+        expect.objectContaining({ onTrialEvaluated }),
+      );
+    });
+
+    it('does not pass onTrialEvaluated to SuiteRunner when omitted', async () => {
+      mockSuiteRunnerRun.mockResolvedValue([
+        makeScenarioResult(['pass', 'pass', 'pass']),
+      ]);
+
+      const runner = new GraduationRunner({
+        scenario: mockScenario,
+        config: mockConfig,
+        baselineStore: mockBaselineStore,
+      });
+      await runner.run('run-no-cb');
+
+      expect(SuiteRunner).toHaveBeenCalledWith(
+        expect.not.objectContaining({ onTrialEvaluated: expect.anything() }),
+      );
+    });
+  });
 });

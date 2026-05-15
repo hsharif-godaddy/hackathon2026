@@ -37,10 +37,18 @@ import {
   resolveStabilityLevel,
   STABILITY_TRIALS,
 } from './scenarios/types.js';
+import { ProgressReporter } from './util/progress-reporter.js';
 import type {
   Scenario,
   StabilityLevel,
 } from './scenarios/types.js';
+
+function makeProgressCallback(
+  reporter: ProgressReporter | null,
+): (scenarioName: string, trial: TrialResult) => void {
+  return (scenarioName, trial) =>
+    reporter?.trialCompleted(scenarioName, trial.trialIndex);
+}
 
 function printGraduationResult(result: GraduationResult): void {
   const { scenarioName, stabilityLevel, stabilityTrials, baselineSaved } = result;
@@ -171,6 +179,23 @@ async function main(): Promise<void> {
       ? 1
       : effectiveConcurrency(concurrencyOverride, maxConcurrency);
 
+    const suiteScenarioTrialCounts = new Map(
+      suiteScenarios.map((s) => {
+        const level = resolveStabilityLevel(stabilityOverride, s);
+        return [s.name, STABILITY_TRIALS[level]] as [string, number];
+      }),
+    );
+    const suiteTotalTrials = Array.from(suiteScenarioTrialCounts.values()).reduce(
+      (sum, n) => sum + n,
+      0,
+    );
+    const suiteReporter = suiteTotalTrials > 0
+      ? new ProgressReporter({
+          total: suiteTotalTrials,
+          scenarioTrialCounts: suiteScenarioTrialCounts,
+        })
+      : null;
+
     const runId = randomUUID();
     const suiteRunner = new GraduationSuiteRunner({
       scenarios: suiteScenarios,
@@ -183,10 +208,12 @@ async function main(): Promise<void> {
       maxScenarioConcurrency: fanOut ? undefined : 1,
       baselineStoreFactory: () => new BaselineStore(),
       maxTurnsOverride,
+      onTrialEvaluated: makeProgressCallback(suiteReporter),
       store: gradStore,
     });
 
     const suiteResult: GraduationSuiteRunResult = await suiteRunner.run(runId);
+    suiteReporter?.finish();
 
     if (suiteResult.errors.length > 0) {
       const { results: completed, errors } = suiteResult;
@@ -256,6 +283,15 @@ async function main(): Promise<void> {
     const singleGradStore = new EvalStore(
       undefined, config.storage?.maxRuns,
     );
+
+    const runId = randomUUID();
+    const level = resolveStabilityLevel(stabilityOverride, gradScenario);
+    const trialCount = STABILITY_TRIALS[level];
+    const gradReporter = new ProgressReporter({
+      total: trialCount,
+      scenarioTrialCounts: new Map([[gradScenario.name, trialCount]]),
+    });
+
     const gradRunner = new GraduationRunner({
       scenario: gradScenario,
       config,
@@ -266,18 +302,17 @@ async function main(): Promise<void> {
       stabilityLevelOverride: stabilityOverride,
       concurrencyOverride: clampConcurrency(concurrencyOverride, maxConcurrency),
       maxTurnsOverride,
+      onTrialEvaluated: makeProgressCallback(gradReporter),
       store: singleGradStore,
     });
 
-    const runId = randomUUID();
-    const level = resolveStabilityLevel(stabilityOverride, gradScenario);
-    const trialCount = STABILITY_TRIALS[level];
     console.log(
       `\nGraduation run: ${gradScenario.name} (${runId})`,
     );
     console.log(`Stability: ${level} (${trialCount} trials)`);
 
     const gradResult = await gradRunner.run(runId);
+    gradReporter.finish();
 
     printGraduationResult(gradResult);
     await singleGradStore.prune();
@@ -389,6 +424,21 @@ async function main(): Promise<void> {
     console.log(`  ${s.name}: ${trialCount} trial(s)${mode}, concurrency: ${cap}`);
   }
 
+  const evalTrialCounts = new Map(
+    scenarios.map((s) => [s.name, trialsOverride ?? s.trials]),
+  );
+  // evalTotal counts remaining trials (progress denominator) while
+  // evalTrialCounts stores full per-scenario counts (display "trial n/k").
+  const evalTotal = values.resume
+    ? Array.from(trialIndicesByScenario.values()).reduce(
+        (sum, indices) => sum + indices.length,
+        0,
+      )
+    : scenarios.reduce((sum, s) => sum + (trialsOverride ?? s.trials), 0);
+  const evalReporter = evalTotal > 0
+    ? new ProgressReporter({ total: evalTotal, scenarioTrialCounts: evalTrialCounts })
+    : null;
+
   const pendingWrites: Promise<void>[] = [];
   const writeFailures: { scenarioName: string; trialIndex: number; error: unknown }[] = [];
 
@@ -418,6 +468,7 @@ async function main(): Promise<void> {
       writeFailures.push({ scenarioName, trialIndex, error });
     },
     onTrialEvaluated: (scenarioName, trial) => {
+      evalReporter?.trialCompleted(scenarioName, trial.trialIndex);
       const p = store
         .writeTrial(dirName, scenarioName, trial)
         .catch((err: unknown) => {
@@ -439,6 +490,7 @@ async function main(): Promise<void> {
   try {
     const runStartMs = Date.now();
     const results = await runner.run();
+    evalReporter?.finish();
     const wallClockMs = Date.now() - runStartMs;
     await Promise.all(pendingWrites);
     if (writeFailures.length > 0) {

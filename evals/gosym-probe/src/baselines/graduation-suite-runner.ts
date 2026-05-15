@@ -16,6 +16,7 @@ import type { AgentClient } from '../clients/agent-client.js';
 import type { SyntheticUserAgent } from '../runner/synthetic-user.js';
 import type { SiteCapture } from '../clients/dom-capture.js';
 import type { EvalStore } from '../store/eval-store.js';
+import type { TrialResult } from '../runner/types.js';
 
 export interface GraduationSuiteRunResult {
   results: GraduationResult[];
@@ -36,6 +37,7 @@ export interface GraduationSuiteRunnerOptions {
   maxScenarioConcurrency?: number;
   baselineStoreFactory?: () => BaselineStore;
   maxTurnsOverride?: number;
+  onTrialEvaluated?: (scenarioName: string, trial: TrialResult) => void;
   store: EvalStore;
   log?: Logger;
 }
@@ -111,6 +113,7 @@ export class GraduationSuiteRunner {
       stabilityLevelOverride: this.options.stabilityLevelOverride,
       concurrencyOverride: this.trialConcurrency,
       maxTurnsOverride: this.options.maxTurnsOverride,
+      onTrialEvaluated: this.options.onTrialEvaluated,
       store: this.options.store,
       dirName: sharedDirName,
       skipFinalize: true,
