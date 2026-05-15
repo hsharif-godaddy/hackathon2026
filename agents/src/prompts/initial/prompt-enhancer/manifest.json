@@ -1,0 +1,11 @@
+{
+  "base": "3.0",
+  "files": [
+    { "src": "base", "file": "identity.md" },
+    { "src": "variant", "file": "questioning.md" },
+    { "src": "variant", "file": "prompt-enhancer.md" },
+    { "src": "base", "file": "project-name.md" },
+    { "src": "base", "file": "feature-list.md" },
+    { "src": "variant", "file": "handoff-template.md" }
+  ]
+}

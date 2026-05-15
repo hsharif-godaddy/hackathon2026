@@ -1,0 +1,7 @@
+{
+  "name": "prompt-enhancer",
+  "description": "Initial agent variant: single-form questioning (3-6 tailored chip/text questions), then synthesizes an authoritative enhanced brief before handoff",
+  "properties": {
+    "initial.promptVersion": "prompt-enhancer"
+  }
+}

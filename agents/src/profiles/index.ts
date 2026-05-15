@@ -13,12 +13,14 @@ import experimentalProfile from './experimental.json' with { type: 'json' }
 import newInitialAgentProfile from './new-initial-agent.json' with { type: 'json' }
 import initialAgentV1Profile from './initial-agent-v1.json' with { type: 'json' }
 import initialAgentV3Profile from './initial-agent-v3.json' with { type: 'json' }
+import promptEnhancerProfile from './prompt-enhancer.json' with { type: 'json' }
 
 const rawProfiles: unknown[] = [
   experimentalProfile,
   newInitialAgentProfile,
   initialAgentV1Profile,
   initialAgentV3Profile,
+  promptEnhancerProfile,
 ]
 
 let registry: Map<string, ProfileData> | null = null
