@@ -42,6 +42,11 @@ export interface GraduationSuiteRunnerOptions {
   /**
    * Caps how many scenarios run concurrently during graduation.
    * Clamped to config.eval.maxConcurrency. Falls back to config.eval.maxConcurrency when omitted.
+   *
+   * Convention: pass `1` for sequential (non-fan-out) mode, `undefined` or a value > 1 for
+   * fan-out mode. `logRunHeader` uses `scenarioConcurrency !== 1` to detect fan-out.
+   * The edge case `--fan-out --concurrency 1` is treated as sequential — fan-out with
+   * concurrency 1 is indistinguishable from non-fan-out anyway.
    */
   scenarioConcurrency?: number;
   baselineStoreFactory?: () => BaselineStore;
@@ -169,6 +174,19 @@ export class GraduationSuiteRunner {
     this.log(
       `Scenarios: ${this.options.scenarios.map((s) => s.name).join(', ')}`,
     );
+
+    // scenarioConcurrency === 1 → sequential (non-fan-out); anything else → fan-out.
+    // See GraduationSuiteRunnerOptions.scenarioConcurrency for the full convention.
+    const isFanOut = this.options.scenarioConcurrency !== 1;
+    if (isFanOut) {
+      const cap = this.options.scenarioConcurrency
+        ?? this.options.config.eval.maxConcurrency;
+      const actualParallelism = Math.min(cap, this.options.scenarios.length);
+      this.log(
+        `Fan-out: ${actualParallelism} of ${this.options.scenarios.length} scenarios concurrently (1 trial at a time per scenario)`,
+      );
+    }
+
     for (const s of this.options.scenarios) {
       const level = resolveStabilityLevel(this.options.stabilityLevelOverride, s);
       this.log(`  ${s.name}: ${level} (${STABILITY_TRIALS[level]} trials)`);

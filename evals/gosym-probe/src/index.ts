@@ -434,10 +434,17 @@ async function main(): Promise<void> {
 
   const maxConcurrency = config.eval.maxConcurrency ?? 1;
   const cap = effectiveConcurrency(concurrencyOverride, maxConcurrency);
+
+  if (fanOut) {
+    const actualParallelism = Math.min(cap, scenarios.length);
+    console.log(
+      `Fan-out: ${actualParallelism} of ${scenarios.length} scenarios concurrently (1 trial at a time per scenario)`,
+    );
+  }
+
   for (const s of scenarios) {
     const trialCount = trialsOverride ?? s.trials;
-    const mode = fanOut ? ' [fan-out]' : '';
-    console.log(`  ${s.name}: ${trialCount} trial(s)${mode}, concurrency: ${cap}`);
+    console.log(`  ${s.name}: ${trialCount} trial(s)`);
   }
 
   const evalTrialCounts = new Map(
