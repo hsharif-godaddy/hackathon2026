@@ -4,12 +4,16 @@ import type { LogSourceConfig } from '@/lib/log-sources';
 import {
   buildEvidenceIndex,
   buildLokiEvidenceQuery,
+  buildMergedLokiQuery,
   collectElasticsearchEvidence,
   collectFullstoryEvidence,
   collectInvestigateEvidence,
   collectLangfuseEvidence,
   collectLokiEvidence,
+  collectMergedLokiSources,
+  extractClusterFromUrl,
   normalizeEvidenceRequest,
+  resolveAppCluster,
 } from '../evidence';
 
 const lokiSource = {
@@ -737,5 +741,391 @@ describe('investigate evidence collection', () => {
     } finally {
       process.env = originalEnv;
     }
+  });
+
+  it('extracts cluster from airoapp.ai agent URL', () => {
+    expect(extractClusterFromUrl('https://abc123.agent.c37.airoapp.ai')).toBe('c37');
+    expect(extractClusterFromUrl('abc123.preview.c42.airoapp.ai')).toBe('c42');
+    expect(extractClusterFromUrl('https://abc123.agent.c37.airoapp.ai/some/path')).toBe('c37');
+  });
+
+  it('returns null for non-airoapp.ai URLs', () => {
+    expect(extractClusterFromUrl('https://grafana.monitoring.gd3p.tools')).toBeNull();
+    expect(extractClusterFromUrl('')).toBeNull();
+    expect(extractClusterFromUrl('not-a-url')).toBeNull();
+    expect(extractClusterFromUrl('abc123.agent.c37.example.com')).toBeNull();
+  });
+
+  it('builds merged Loki query without cluster', () => {
+    const q = buildMergedLokiQuery(null, 'prod', 'app123');
+    expect(q).toBe(
+      '{job=~"(airo-agents|airo-preview-application|airo-publish-application)",env="prod"} |= "\\"app_id\\":\\"app123\\""',
+    );
+  });
+
+  it('builds merged Loki query with cluster', () => {
+    const q = buildMergedLokiQuery('c37', 'prod', 'app123');
+    expect(q).toBe(
+      '{job=~"(airo-agents|airo-preview-application|airo-publish-application)",cluster="c37",env="prod"} |= "\\"app_id\\":\\"app123\\""',
+    );
+  });
+
+  it('escapes special characters in merged Loki query fields', () => {
+    const q = buildMergedLokiQuery('c"37', 'pr"od', 'app"123');
+    expect(q).toContain('cluster="c\\"37"');
+    expect(q).toContain('env="pr\\"od"');
+    expect(q).toContain('\\"app_id\\":\\"app\\"123\\"');
+  });
+
+  it('collectMergedLokiSources splits merged results back into three source results', async () => {
+    const lokiResponse = {
+      status: 'success',
+      data: {
+        result: [
+          {
+            stream: { job: 'airo-agents', env: 'prod' },
+            values: [
+              ['1000000000', '{"app_id":"app123","level":"INFO","message":"agent log"}'],
+            ],
+          },
+          {
+            stream: { job: 'airo-preview-application', env: 'prod' },
+            values: [
+              ['2000000000', '{"app_id":"app123","level":"ERROR","message":"preview log"}'],
+            ],
+          },
+          {
+            stream: { job: 'airo-publish-application', env: 'prod' },
+            values: [
+              ['3000000000', '{"app_id":"app123","level":"INFO","message":"publish log"}'],
+            ],
+          },
+        ],
+      },
+    };
+
+    let capturedQuery: string | null = null;
+    const fakeFetch = async (url: string | URL | Request) => {
+      capturedQuery = new URL(String(url)).searchParams.get('query');
+      return new Response(JSON.stringify(lokiResponse), { status: 200 });
+    };
+
+    const originalEnv = process.env;
+    process.env = { ...originalEnv, LOKI_ENDPOINT: 'https://loki.test', ENVIRONMENT_NAME: 'prod' };
+    try {
+      const results = await collectMergedLokiSources({
+        appId: 'app123',
+        timeWindow: '1h',
+        cluster: 'c37',
+        bucketHours: 6,
+        fetchImpl: fakeFetch,
+      });
+
+      expect(results.map((r) => r.sourceId).sort()).toEqual(
+        ['airo-agents', 'airo-preview', 'airo-publish'],
+      );
+
+      const agentsResult = results.find((r) => r.sourceId === 'airo-agents')!;
+      expect(agentsResult.rawPages.flatMap((p) => p.logs).map((l) => l.message)).toEqual(['agent log']);
+      expect(agentsResult.rawPages.flatMap((p) => p.logs).every((l) => l.sourceId === 'airo-agents')).toBe(true);
+
+      const previewResult = results.find((r) => r.sourceId === 'airo-preview')!;
+      expect(previewResult.rawPages.flatMap((p) => p.logs).map((l) => l.message)).toEqual(['preview log']);
+
+      const publishResult = results.find((r) => r.sourceId === 'airo-publish')!;
+      expect(publishResult.rawPages.flatMap((p) => p.logs).map((l) => l.message)).toEqual(['publish log']);
+
+      // Verify merged query was actually used
+      expect(capturedQuery).toContain('job=~');
+      expect(capturedQuery).toContain('cluster="c37"');
+    } finally {
+      process.env = originalEnv;
+    }
+  });
+
+  it('collectMergedLokiSources marks all three sources incomplete on Loki 502', async () => {
+    const fakeFetch = async () => new Response('bad gateway', { status: 502 });
+
+    const originalEnv = process.env;
+    process.env = { ...originalEnv, LOKI_ENDPOINT: 'https://loki.test', ENVIRONMENT_NAME: 'prod' };
+    try {
+      const results = await collectMergedLokiSources({
+        appId: 'app123',
+        timeWindow: '1h',
+        cluster: null,
+        bucketHours: 6,
+        fetchImpl: fakeFetch,
+      });
+
+      expect(results.every((r) => r.complete === false)).toBe(true);
+      expect(results.every((r) => r.index.coverage.incomplete.length > 0)).toBe(true);
+    } finally {
+      process.env = originalEnv;
+    }
+  });
+
+  it('resolveAppCluster returns null when mgmt adapter throws', async () => {
+    const result = await resolveAppCluster('app123', async () => {
+      throw new Error('mgmt unavailable');
+    });
+    expect(result).toBeNull();
+  });
+
+  it('resolveAppCluster parses cluster from agent URL', async () => {
+    const result = await resolveAppCluster('app123', async () => 'https://app123.agent.c42.airoapp.ai');
+    expect(result).toBe('c42');
+  });
+
+  it('resolveAppCluster returns null for non-airoapp.ai agent URL', async () => {
+    const result = await resolveAppCluster('app123', async () => 'https://custom-domain.example.com');
+    expect(result).toBeNull();
+  });
+
+  it('collectInvestigateEvidence uses merged Loki path when all three sources requested', async () => {
+    let capturedQuery: string | null = null;
+
+    const fakeFetch = async (url: string | URL | Request) => {
+      capturedQuery = new URL(String(url)).searchParams.get('query');
+      return new Response(
+        JSON.stringify({
+          status: 'success',
+          data: {
+            result: [
+              {
+                stream: { job: 'airo-agents', env: 'prod' },
+                values: [['1000000000', '{"app_id":"app123","level":"INFO","message":"agent log"}']],
+              },
+              {
+                stream: { job: 'airo-preview-application', env: 'prod' },
+                values: [['2000000000', '{"app_id":"app123","level":"INFO","message":"preview log"}']],
+              },
+              {
+                stream: { job: 'airo-publish-application', env: 'prod' },
+                values: [['3000000000', '{"app_id":"app123","level":"INFO","message":"publish log"}']],
+              },
+            ],
+          },
+        }),
+        { status: 200 },
+      );
+    };
+
+    const originalEnv = process.env;
+    process.env = { ...originalEnv, LOKI_ENDPOINT: 'https://loki.test', ENVIRONMENT_NAME: 'prod' };
+    try {
+      const result = await collectInvestigateEvidence(
+        {
+          appId: 'app123',
+          timeWindow: '1h',
+          sources: ['airo-agents', 'airo-preview', 'airo-publish'],
+          bucketHours: 6,
+        },
+        {
+          fetchImpl: fakeFetch,
+          resolveCluster: async () => 'c37',
+        },
+      );
+
+      // Merged query has job regex and cluster
+      expect(capturedQuery).toContain('job=~');
+      expect(capturedQuery).toContain('cluster="c37"');
+
+      // All three sources returned
+      expect(result.sources.map((s) => s.sourceId).sort()).toEqual(
+        ['airo-agents', 'airo-preview', 'airo-publish'],
+      );
+
+      const agentsLogs = result.sources
+        .find((s) => s.sourceId === 'airo-agents')!
+        .rawPages.flatMap((p) => p.logs);
+      expect(agentsLogs.map((l) => l.message)).toContain('agent log');
+    } finally {
+      process.env = originalEnv;
+    }
+  });
+
+  it('collectInvestigateEvidence uses individual queries when only two Loki sources requested', async () => {
+    let queryCount = 0;
+    const fakeFetch = async () => {
+      queryCount++;
+      return new Response(
+        JSON.stringify({ status: 'success', data: { result: [] } }),
+        { status: 200 },
+      );
+    };
+
+    const originalEnv = process.env;
+    process.env = { ...originalEnv, LOKI_ENDPOINT: 'https://loki.test', ENVIRONMENT_NAME: 'prod' };
+    try {
+      await collectInvestigateEvidence(
+        {
+          appId: 'app123',
+          timeWindow: '1h',
+          sources: ['airo-agents', 'airo-preview'],
+          bucketHours: 6,
+        },
+        {
+          fetchImpl: fakeFetch,
+          resolveCluster: async () => 'c37',
+        },
+      );
+      // Only 2 of 3 Loki sources → individual path → 2 separate query_range calls
+      expect(queryCount).toBe(2);
+    } finally {
+      process.env = originalEnv;
+    }
+  });
+
+  it('collectInvestigateEvidence falls back to individual queries when merged path throws', async () => {
+    let queryCount = 0;
+    const fakeFetch = async () => {
+      queryCount++;
+      return new Response(
+        JSON.stringify({ status: 'success', data: { result: [] } }),
+        { status: 200 },
+      );
+    };
+
+    const originalEnv = process.env;
+    process.env = { ...originalEnv, LOKI_ENDPOINT: 'https://loki.test', ENVIRONMENT_NAME: 'prod' };
+    try {
+      const result = await collectInvestigateEvidence(
+        {
+          appId: 'app123',
+          timeWindow: '1h',
+          sources: ['airo-agents', 'airo-preview', 'airo-publish'],
+          bucketHours: 6,
+        },
+        {
+          fetchImpl: fakeFetch,
+          // Force merged path to throw by rejecting cluster resolver promise
+          resolveCluster: async () => { throw new Error('cluster lookup failed'); },
+        },
+      );
+      // Merged path threw during resolveCluster → falls back → 3 individual calls
+      expect(queryCount).toBe(3);
+      expect(result.sources.map((s) => s.sourceId).sort()).toEqual(
+        ['airo-agents', 'airo-preview', 'airo-publish'],
+      );
+    } finally {
+      process.env = originalEnv;
+    }
+  });
+
+  it('collectMergedLokiSources routes on _loki_stream_job not parsed-JSON job field', async () => {
+    // Log line has a "job" field in the JSON payload that differs from the stream label.
+    // The split must use the stream label (airo-agents), not the parsed JSON value (some-other-job).
+    const lokiResponse = {
+      status: 'success',
+      data: {
+        result: [
+          {
+            stream: { job: 'airo-agents', env: 'prod' },
+            values: [
+              ['1000000000', '{"app_id":"app123","level":"INFO","message":"agent","job":"some-other-job"}'],
+            ],
+          },
+        ],
+      },
+    };
+
+    const fakeFetch = async () => new Response(JSON.stringify(lokiResponse), { status: 200 });
+
+    const originalEnv = process.env;
+    process.env = { ...originalEnv, LOKI_ENDPOINT: 'https://loki.test', ENVIRONMENT_NAME: 'prod' };
+    try {
+      const results = await collectMergedLokiSources({
+        appId: 'app123',
+        timeWindow: '1h',
+        cluster: null,
+        bucketHours: 6,
+        fetchImpl: fakeFetch,
+      });
+
+      const agentsLogs = results.find((r) => r.sourceId === 'airo-agents')!.rawPages.flatMap((p) => p.logs);
+      const previewLogs = results.find((r) => r.sourceId === 'airo-preview')!.rawPages.flatMap((p) => p.logs);
+      // Log routed to airo-agents (stream label), not dropped or misrouted
+      expect(agentsLogs).toHaveLength(1);
+      expect(agentsLogs[0].message).toBe('agent');
+      expect(previewLogs).toHaveLength(0);
+    } finally {
+      process.env = originalEnv;
+    }
+  });
+
+  it('collectMergedLokiSources drops logs with unknown job stream label silently', async () => {
+    const lokiResponse = {
+      status: 'success',
+      data: {
+        result: [
+          {
+            stream: { job: 'unknown-job', env: 'prod' },
+            values: [['1000000000', '{"app_id":"app123","level":"INFO","message":"mystery"}']],
+          },
+          {
+            stream: { job: 'airo-agents', env: 'prod' },
+            values: [['2000000000', '{"app_id":"app123","level":"INFO","message":"known"}']],
+          },
+        ],
+      },
+    };
+
+    const fakeFetch = async () => new Response(JSON.stringify(lokiResponse), { status: 200 });
+
+    const originalEnv = process.env;
+    process.env = { ...originalEnv, LOKI_ENDPOINT: 'https://loki.test', ENVIRONMENT_NAME: 'prod' };
+    try {
+      const results = await collectMergedLokiSources({
+        appId: 'app123',
+        timeWindow: '1h',
+        cluster: null,
+        bucketHours: 6,
+        fetchImpl: fakeFetch,
+      });
+
+      const agentsLogs = results.find((r) => r.sourceId === 'airo-agents')!.rawPages.flatMap((p) => p.logs);
+      const allLogs = results.flatMap((r) => r.rawPages.flatMap((p) => p.logs));
+      expect(agentsLogs.map((l) => l.message)).toEqual(['known']);
+      // unknown-job log dropped — not attributed to any source
+      expect(allLogs.map((l) => l.message)).not.toContain('mystery');
+    } finally {
+      process.env = originalEnv;
+    }
+  });
+
+  it('Langfuse trace detail retries on 500 and succeeds on second attempt', async () => {
+    let callCount = 0;
+    const fakeFetch = async (url: string | URL | Request) => {
+      const urlStr = String(url);
+      if (urlStr.includes('/api/public/traces?')) {
+        return new Response(
+          JSON.stringify({
+            data: [{ id: 'trace-abc' }],
+            meta: { page: 1, limit: 100, totalItems: 1, totalPages: 1 },
+          }),
+          { status: 200 },
+        );
+      }
+      // Trace detail: first call 500, second call 200
+      callCount++;
+      if (callCount === 1) return new Response('server error', { status: 500 });
+      return new Response(
+        JSON.stringify({ id: 'trace-abc', name: 'test-trace', timestamp: '2026-01-01T00:00:00Z', observations: [] }),
+        { status: 200 },
+      );
+    };
+
+    const result = await collectLangfuseEvidence({
+      appId: 'app123',
+      startTime: new Date('2026-01-01T00:00:00Z'),
+      endTime: new Date('2026-01-01T01:00:00Z'),
+      langfuse: { baseUrl: 'https://langfuse.test', authHeader: 'Basic fake' },
+      fetchImpl: fakeFetch,
+      timeoutMs: 5_000,
+    });
+
+    expect(callCount).toBe(2);
+    expect(result.complete).toBe(true);
+    expect(result.rawPages.flatMap((p) => p.logs)).toHaveLength(1);
   });
 });

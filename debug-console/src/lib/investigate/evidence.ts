@@ -9,6 +9,8 @@ import {
   type FullstoryMcpConfig,
 } from '@/lib/fullstory-mcp-client';
 import { parseTimeRange } from '@/lib/time-range';
+import mgmtControlPlaneAdapter from '@/lib/mgmt-control-plane-adapter';
+import { logger } from '@/lib/logger';
 
 export const DEFAULT_EVIDENCE_SOURCE_IDS = [
   'airo-app',
@@ -26,6 +28,11 @@ const KNOWN_EVIDENCE_SOURCE_IDS = new Set<string>(DEFAULT_EVIDENCE_SOURCE_IDS);
 const MAX_WINDOW_HOURS = 24 * 7;
 const DEFAULT_BUCKET_HOURS = 6;
 const LOKI_LIMIT = 5000;
+const LOKI_JOB_TO_SOURCE_ID: Record<string, string> = {
+  'airo-agents': 'airo-agents',
+  'airo-preview-application': 'airo-preview',
+  'airo-publish-application': 'airo-publish',
+};
 const ES_PAGE_SIZE = 1000;
 const LANGFUSE_PAGE_SIZE = 100;
 const LANGFUSE_DETAIL_BATCH_SIZE = 20;
@@ -201,6 +208,50 @@ export function buildLokiEvidenceQuery(sourceConfig: LogSourceConfig, appId: str
   return `${selector} |= "\\"app_id\\":\\"${escapeLogQLString(appId)}\\""`;
 }
 
+export function extractClusterFromUrl(url: string): string | null {
+  try {
+    const normalized = url.includes('://') ? url : `https://${url}`;
+    const { hostname } = new URL(normalized);
+    // Expected pattern: <appId>.<service>.<cluster>.airoapp.ai
+    const parts = hostname.split('.');
+    if (
+      parts.length >= 4 &&
+      parts[parts.length - 2] === 'airoapp' &&
+      parts[parts.length - 1] === 'ai'
+    ) {
+      return parts[parts.length - 3] || null;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+const MERGED_LOKI_JOB_PATTERN = 'airo-agents|airo-preview-application|airo-publish-application';
+
+export function buildMergedLokiQuery(
+  cluster: string | null,
+  env: string,
+  appId: string,
+): string {
+  const labels: string[] = [`job=~"(${MERGED_LOKI_JOB_PATTERN})"`];
+  if (cluster) labels.push(`cluster="${escapeLogQLString(cluster)}"`);
+  labels.push(`env="${escapeLogQLString(env)}"`);
+  return `{${labels.join(',')}} |= "\\"app_id\\":\\"${escapeLogQLString(appId)}\\""`;
+}
+
+export async function resolveAppCluster(
+  appId: string,
+  getAgentUrl: (appId: string) => Promise<string> = (id) => mgmtControlPlaneAdapter.getAgentUrl(id),
+): Promise<string | null> {
+  try {
+    const url = await getAgentUrl(appId);
+    return extractClusterFromUrl(url);
+  } catch {
+    return null;
+  }
+}
+
 function parseLokiLog(timestampNs: string, line: string, stream: Record<string, string>, sourceId: string): EvidenceLog {
   let parsed: Record<string, unknown> = {};
   try {
@@ -222,6 +273,10 @@ function parseLokiLog(timestampNs: string, line: string, stream: Record<string, 
       ...parsed,
       '@timestamp': nsToIso(timestampNs),
       _loki_timestamp_ns: timestampNs,
+      // Preserve stream labels after parsed-JSON spread so routing logic
+      // (e.g. LOKI_JOB_TO_SOURCE_ID) always reads the Loki label, not a
+      // customer app field that happens to be named 'job'.
+      _loki_stream_job: stream.job,
     },
   };
 }
@@ -235,6 +290,7 @@ export async function collectLokiEvidence(params: {
   limit?: number;
   timeoutMs?: number;
   fetchImpl?: FetchImpl;
+  queryOverride?: string;
 }): Promise<{ complete: boolean; logs: EvidenceLog[]; rawPages: EvidenceRawPage[]; diagnostics: EvidenceDiagnostics; incomplete: EvidenceIndex['coverage']['incomplete'] }> {
   const started = Date.now();
   const fetchImpl = params.fetchImpl || fetch;
@@ -242,7 +298,7 @@ export async function collectLokiEvidence(params: {
   const endpoint = (params.sourceConfig.lokiEndpoint || '').replace(/\/+$/, '');
   if (!endpoint) throw new Error(`Loki endpoint not configured for ${params.sourceConfig.id}`);
 
-  const query = buildLokiEvidenceQuery(params.sourceConfig, params.appId);
+  const query = params.queryOverride ?? buildLokiEvidenceQuery(params.sourceConfig, params.appId);
   const endNs = BigInt(toNs(params.endTime));
   let cursorNs = BigInt(toNs(params.startTime));
   let previousCursorLines = new Set<string>();
@@ -356,6 +412,101 @@ export async function collectLokiEvidence(params: {
       ...(incomplete[0]?.error ? { error: incomplete[0].error } : {}),
     },
   };
+}
+
+export async function collectMergedLokiSources(params: {
+  appId: string;
+  timeWindow: string;
+  cluster: string | null;
+  bucketHours?: number;
+  fetchImpl?: FetchImpl;
+}): Promise<EvidenceSourceResult[]> {
+  const { startTime, endTime } = parseTimeRange(params.timeWindow);
+  const window = { label: params.timeWindow, start: startTime.toISOString(), end: endTime.toISOString() };
+  const buckets = buildEvidenceBuckets(startTime, endTime, params.bucketHours || DEFAULT_BUCKET_HOURS);
+
+  const agentsConfig = getLogSourceConfig('airo-agents');
+  const previewConfig = getLogSourceConfig('airo-preview');
+  const publishConfig = getLogSourceConfig('airo-publish');
+  if (!agentsConfig || !previewConfig || !publishConfig) {
+    throw new Error('Loki source config missing for merged query');
+  }
+  const env = agentsConfig.environment || 'prod';
+  const mergedQuery = buildMergedLokiQuery(params.cluster, env, params.appId);
+
+  // Synthetic source config: carries endpoint + apiKey, but lokiLabels unused (queryOverride takes precedence)
+  const mergedSourceConfig: LogSourceConfig = {
+    ...agentsConfig,
+    id: 'merged-loki',
+    lokiLabels: {},
+  };
+
+  const collectedParts = await Promise.all(
+    buckets.map((bucket) =>
+      collectLokiEvidence({
+        sourceConfig: mergedSourceConfig,
+        appId: params.appId,
+        startTime: bucket.startTime,
+        endTime: bucket.endTime,
+        bucketLabel: bucket.label,
+        fetchImpl: params.fetchImpl,
+        queryOverride: mergedQuery,
+      }),
+    ),
+  );
+
+  const merged = mergeCollected(collectedParts);
+
+  // Split rawPages back into per-source buckets using the `job` stream label
+  const pagesBySource = new Map<string, EvidenceRawPage[]>([
+    ['airo-agents', []],
+    ['airo-preview', []],
+    ['airo-publish', []],
+  ]);
+
+  for (const rawPage of merged.rawPages) {
+    const bySource = new Map<string, EvidenceLog[]>([
+      ['airo-agents', []],
+      ['airo-preview', []],
+      ['airo-publish', []],
+    ]);
+    for (const log of rawPage.logs) {
+      const job = String((log.raw as Record<string, unknown>)._loki_stream_job || '');
+      const sid = LOKI_JOB_TO_SOURCE_ID[job];
+      if (!sid) continue;
+      bySource.get(sid)!.push({ ...log, sourceId: sid });
+    }
+    for (const [sid, logs] of bySource) {
+      if (logs.length > 0) {
+        pagesBySource.get(sid)!.push({ ...rawPage, logs });
+      }
+    }
+  }
+
+  const sourceConfigs: Record<string, LogSourceConfig> = {
+    'airo-agents': agentsConfig,
+    'airo-preview': previewConfig,
+    'airo-publish': publishConfig,
+  };
+
+  return ['airo-agents', 'airo-preview', 'airo-publish'].map((sid) => {
+    const rawPages = pagesBySource.get(sid)!;
+    const sourceConfig = sourceConfigs[sid];
+    const index = buildEvidenceIndex({
+      source: sourceConfig,
+      appId: params.appId,
+      window,
+      rawPages,
+      incomplete: merged.incomplete,
+      diagnostics: { ...merged.diagnostics, query: mergedQuery },
+    });
+    return {
+      sourceId: sid,
+      complete: merged.complete && index.coverage.complete,
+      rawPages,
+      index,
+    };
+  });
 }
 
 function buildSignature(message: string): string {
@@ -754,22 +905,31 @@ export async function collectLangfuseEvidence(params: {
     for (let offset = 0; offset < traceIds.length; offset += LANGFUSE_DETAIL_BATCH_SIZE) {
       const batch = traceIds.slice(offset, offset + LANGFUSE_DETAIL_BATCH_SIZE);
       const results = await Promise.all(batch.map(async (traceId): Promise<LangfuseTraceDetailResult> => {
-        try {
-          const detailResponse = await fetchImpl(`${endpoint}/api/public/traces/${encodeURIComponent(traceId)}`, {
-            headers: {
-              Authorization: params.langfuse.authHeader,
-              'Accept-Encoding': 'gzip, deflate, br',
-            },
-            signal: AbortSignal.timeout(params.timeoutMs || 60_000),
-          });
-          if (!detailResponse.ok) {
-            const body = await detailResponse.text().catch(() => '<body read failed>');
-            throw new Error(`trace detail ${traceId} HTTP ${detailResponse.status}: ${body.slice(0, 120)}`);
+        for (let attempt = 0; attempt <= 1; attempt++) {
+          try {
+            if (attempt > 0) await new Promise((r) => setTimeout(r, 2000));
+            const detailResponse = await fetchImpl(`${endpoint}/api/public/traces/${encodeURIComponent(traceId)}`, {
+              headers: {
+                Authorization: params.langfuse.authHeader,
+                'Accept-Encoding': 'gzip, deflate, br',
+              },
+              signal: AbortSignal.timeout(params.timeoutMs || 60_000),
+            });
+            if (!detailResponse.ok) {
+              const body = await detailResponse.text().catch(() => '<body read failed>');
+              const msg = `trace detail ${traceId} HTTP ${detailResponse.status}: ${body.slice(0, 120)}`;
+              // 5xx: transient — retry once. 4xx: permanent — return error immediately.
+              if (detailResponse.status >= 500 && attempt === 0) continue;
+              return { error: msg };
+            }
+            return { trace: await detailResponse.json() as LangfuseTraceDetail };
+          } catch (err) {
+            // Network/timeout error — retry once then give up
+            if (attempt === 0) continue;
+            return { error: err instanceof Error ? err.message : String(err) };
           }
-          return { trace: await detailResponse.json() as LangfuseTraceDetail };
-        } catch (err) {
-          return { error: err instanceof Error ? err.message : String(err) };
         }
+        return { error: `trace detail ${traceId}: unreachable` };
       }));
       for (const result of results) {
         if (result.trace) {
@@ -1222,41 +1382,80 @@ function fallbackSourceConfig(sourceId: string): LogSourceConfig {
   };
 }
 
-export async function collectInvestigateEvidence(request: NormalizedEvidenceRequest): Promise<{ appId: string; timeWindow: string; complete: boolean; sources: EvidenceSourceResult[] }> {
-  const sources = await Promise.all(request.sources.map(async (sourceId) => {
+export async function collectInvestigateEvidence(
+  request: NormalizedEvidenceRequest,
+  opts?: {
+    fetchImpl?: FetchImpl;
+    resolveCluster?: (appId: string) => Promise<string | null>;
+  },
+): Promise<{ appId: string; timeWindow: string; complete: boolean; sources: EvidenceSourceResult[] }> {
+  const fetchImpl = opts?.fetchImpl;
+  const clusterResolver = opts?.resolveCluster ?? resolveAppCluster;
+
+  const MERGED_LOKI_SOURCE_IDS = new Set(['airo-agents', 'airo-preview', 'airo-publish']);
+  const requestedLokiCount = request.sources.filter((s) => MERGED_LOKI_SOURCE_IDS.has(s)).length;
+  const allMergedRequested = requestedLokiCount === MERGED_LOKI_SOURCE_IDS.size;
+
+  let mergedResultsBySourceId: Map<string, EvidenceSourceResult> | null = null;
+
+  if (allMergedRequested) {
     try {
-      return await collectEvidenceForSource({
-        sourceId,
+      const cluster = await clusterResolver(request.appId);
+      const mergedResults = await collectMergedLokiSources({
         appId: request.appId,
         timeWindow: request.timeWindow,
+        cluster,
         bucketHours: request.bucketHours,
-        fullstoryUrl: request.fullstoryUrl,
+        fetchImpl,
       });
+      mergedResultsBySourceId = new Map(mergedResults.map((r) => [r.sourceId, r]));
     } catch (err) {
-      let fallbackSource: EvidenceSourceConfig;
-      try {
-        fallbackSource = sourceId === 'fullstory'
-          ? fullstorySourceConfig()
-          : sourceId === 'langfuse'
-            ? langfuseSourceConfig()
-            : getLogSourceConfig(sourceId) || fallbackSourceConfig(sourceId);
-      } catch {
-        fallbackSource = fallbackSourceConfig(sourceId);
-      }
-      const fallbackWindow = parseTimeRange(request.timeWindow);
-      const start = fallbackWindow.startTime.toISOString();
-      const end = fallbackWindow.endTime.toISOString();
-      const index = buildEvidenceIndex({
-        source: fallbackSource,
-        appId: request.appId,
-        window: { label: request.timeWindow, start, end },
-        rawPages: [],
-        incomplete: [{ bucket: 'source', start, end, error: err instanceof Error ? err.message : String(err) }],
-        diagnostics: { elapsedMs: 0, pageCount: 0, query: '', truncated: true, error: err instanceof Error ? err.message : String(err) },
-      });
-      return { sourceId, complete: false, rawPages: [], index };
+      logger.warn('investigate.evidence.merged_loki_failed', { appId: request.appId }, { error: err as Error });
+      mergedResultsBySourceId = null;
     }
-  }));
+  }
+
+  const sources = await Promise.all(
+    request.sources.map(async (sourceId) => {
+      if (mergedResultsBySourceId?.has(sourceId)) {
+        return mergedResultsBySourceId.get(sourceId)!;
+      }
+      try {
+        return await collectEvidenceForSource({
+          sourceId,
+          appId: request.appId,
+          timeWindow: request.timeWindow,
+          bucketHours: request.bucketHours,
+          fullstoryUrl: request.fullstoryUrl,
+          fetchImpl,
+        });
+      } catch (err) {
+        let fallbackSource: EvidenceSourceConfig;
+        try {
+          fallbackSource = sourceId === 'fullstory'
+            ? fullstorySourceConfig()
+            : sourceId === 'langfuse'
+              ? langfuseSourceConfig()
+              : getLogSourceConfig(sourceId) || fallbackSourceConfig(sourceId);
+        } catch {
+          fallbackSource = fallbackSourceConfig(sourceId);
+        }
+        const fallbackWindow = parseTimeRange(request.timeWindow);
+        const start = fallbackWindow.startTime.toISOString();
+        const end = fallbackWindow.endTime.toISOString();
+        const index = buildEvidenceIndex({
+          source: fallbackSource,
+          appId: request.appId,
+          window: { label: request.timeWindow, start, end },
+          rawPages: [],
+          incomplete: [{ bucket: 'source', start, end, error: err instanceof Error ? err.message : String(err) }],
+          diagnostics: { elapsedMs: 0, pageCount: 0, query: '', truncated: true, error: err instanceof Error ? err.message : String(err) },
+        });
+        return { sourceId, complete: false, rawPages: [], index };
+      }
+    }),
+  );
+
   return {
     appId: request.appId,
     timeWindow: request.timeWindow,
