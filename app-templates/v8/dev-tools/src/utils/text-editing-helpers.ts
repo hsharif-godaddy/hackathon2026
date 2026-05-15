@@ -667,20 +667,38 @@ const SYSTEM_FONTS = new Set([
   "Georgia", "Times New Roman", "Courier New",
 ]);
 
+/**
+ * Ensure both regular (400) and bold (700) weights are available for the
+ * element's font. Pages often ship only the weight they use, so toggling
+ * font-bold can be a no-op visually if the OTHER weight isn't loaded
+ * (the browser falls back to the closest available weight).
+ */
 export function ensureBoldFontLoaded(element: HTMLElement) {
   const fontFamily = window.getComputedStyle(element).fontFamily;
   const primaryFont = fontFamily.split(",")[0].replace(/['"]/g, "").trim();
   if (!primaryFont || loadedBoldFonts.has(primaryFont)) return;
-  loadedBoldFonts.add(primaryFont);
-  if (SYSTEM_FONTS.has(primaryFont)) return;
+  // System fonts need no loading; cache to skip on future hovers.
+  if (SYSTEM_FONTS.has(primaryFont)) {
+    loadedBoldFonts.add(primaryFont);
+    return;
+  }
 
   const link = document.createElement("link");
   link.rel = "stylesheet";
-  link.href = `https://fonts.googleapis.com/css2?family=${primaryFont.replace(/\s+/g, "+")}:wght@700&display=swap`;
+  link.href = `https://fonts.googleapis.com/css2?family=${primaryFont.replace(/\s+/g, "+")}:wght@400;700&display=swap`;
   link.onload = () => {
-    document.fonts.load(`700 1em "${primaryFont}"`).catch((err) => {
+    // Mark as loaded only on success so transient failures (offline, CSP, 404)
+    // don't poison the cache for the whole session.
+    loadedBoldFonts.add(primaryFont);
+    Promise.all([
+      document.fonts.load(`400 1em "${primaryFont}"`),
+      document.fonts.load(`700 1em "${primaryFont}"`),
+    ]).catch((err) => {
       console.warn('[ensureBoldFontLoaded] font load failed', primaryFont, err);
     });
+  };
+  link.onerror = () => {
+    console.warn('[ensureBoldFontLoaded] stylesheet failed to load', primaryFont);
   };
   document.head.appendChild(link);
 }

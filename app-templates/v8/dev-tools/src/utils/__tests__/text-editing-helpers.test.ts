@@ -17,6 +17,7 @@ import {
   mergeOriginalClasses,
   mergeRootAttrsOntoOverlay,
   extractThemeColors,
+  ensureBoldFontLoaded,
   INLINE_TAGS,
 } from "../text-editing-helpers";
 
@@ -794,5 +795,75 @@ describe("INLINE_TAGS", () => {
     for (const tag of ["div", "p", "h1", "section"]) {
       expect(INLINE_TAGS.has(tag)).toBe(false);
     }
+  });
+});
+
+// ── ensureBoldFontLoaded ──
+
+describe("ensureBoldFontLoaded", () => {
+  let fontsLoadMock: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    document.head.innerHTML = "";
+    document.body.innerHTML = "";
+    fontsLoadMock = vi.fn().mockResolvedValue([]);
+    (document as any).fonts = { load: fontsLoadMock };
+  });
+
+  function makeElement(fontFamily: string): HTMLElement {
+    const el = document.createElement("div");
+    el.style.fontFamily = fontFamily;
+    document.body.appendChild(el);
+    return el;
+  }
+
+  // Each test uses a unique font name so the module-level dedupe cache stays
+  // clean across runs without exposing a private reset helper.
+  const uniqueName = () => `TestFont${Math.random().toString(36).slice(2)}`;
+
+  it("requests both regular (400) and bold (700) weights from Google Fonts", () => {
+    const name = uniqueName();
+    ensureBoldFontLoaded(makeElement(`"${name}"`));
+    const link = document.head.querySelector('link[rel="stylesheet"]') as HTMLLinkElement;
+    expect(link).not.toBeNull();
+    expect(link.href).toContain(name);
+    expect(link.href).toContain("wght@400;700");
+  });
+
+  it("loads both 400 and 700 via document.fonts.load on stylesheet load", () => {
+    const name = uniqueName();
+    ensureBoldFontLoaded(makeElement(`"${name}"`));
+    const link = document.head.querySelector('link[rel="stylesheet"]') as HTMLLinkElement;
+    link.onload?.(new Event("load"));
+    expect(fontsLoadMock).toHaveBeenCalledWith(`400 1em "${name}"`);
+    expect(fontsLoadMock).toHaveBeenCalledWith(`700 1em "${name}"`);
+  });
+
+  it("does not inject a link for system fonts", () => {
+    ensureBoldFontLoaded(makeElement("Arial, sans-serif"));
+    expect(document.head.querySelector('link[rel="stylesheet"]')).toBeNull();
+  });
+
+  it("does not double-load after a successful load", () => {
+    const name = uniqueName();
+    const el = makeElement(`"${name}"`);
+    ensureBoldFontLoaded(el);
+    const link = document.head.querySelector('link[rel="stylesheet"]') as HTMLLinkElement;
+    link.onload?.(new Event("load"));
+    ensureBoldFontLoaded(el);
+    expect(document.head.querySelectorAll('link[rel="stylesheet"]').length).toBe(1);
+  });
+
+  it("retries after a failed stylesheet load (does not poison cache)", () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const name = uniqueName();
+    const el = makeElement(`"${name}"`);
+    ensureBoldFontLoaded(el);
+    const firstLink = document.head.querySelector('link[rel="stylesheet"]') as HTMLLinkElement;
+    firstLink.onerror?.(new Event("error"));
+    // Second call after failure should inject another link
+    ensureBoldFontLoaded(el);
+    expect(document.head.querySelectorAll('link[rel="stylesheet"]').length).toBe(2);
+    warnSpy.mockRestore();
   });
 });

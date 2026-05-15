@@ -11,6 +11,7 @@ import {
 import type { HoveredElement } from "../hooks/useImageHoverDetection";
 import { Bold, Bookmark, Image, Italic, Pencil, Pointer, Sparkles } from "lucide-react";
 import { isClickable } from "../utils/element-detection";
+import { ensureBoldFontLoaded } from "../utils/text-editing-helpers";
 import { t } from "../utils/translations";
 import { HoverBar, HoverBarButton } from "./HoverBar";
 import { QuickEditBar } from "./QuickEditBar";
@@ -436,6 +437,11 @@ export default function ElementHoverBar({
   const targetEl = toolbarElementRef.current || element;
   const isBold = elementIsText && targetEl.classList.contains("font-bold");
   const isItalic = elementIsText && targetEl.classList.contains("italic");
+  // Pages often ship only the weight they use; preload both 400 and 700 so the
+  // bold toggle has a visible effect in either direction. Helper dedupes per font.
+  useEffect(() => {
+    if (elementIsText) ensureBoldFontLoaded(targetEl);
+  }, [elementIsText, targetEl]);
 
   // Toggle the picker. When opening, extract theme colors and snapshot the
   // element's current inline color synchronously (before the next render) so
