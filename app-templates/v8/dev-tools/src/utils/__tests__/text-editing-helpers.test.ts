@@ -16,6 +16,7 @@ import {
   injectEditorCss,
   mergeOriginalClasses,
   mergeRootAttrsOntoOverlay,
+  extractThemeColors,
   INLINE_TAGS,
 } from "../text-editing-helpers";
 
@@ -716,6 +717,67 @@ describe("mergeRootAttrsOntoOverlay", () => {
     const source = document.createElement("div");
     mergeRootAttrsOntoOverlay(target, source);
     expect(target.style.top).toBe("10px");
+  });
+});
+
+// ── extractThemeColors ──
+
+describe("extractThemeColors", () => {
+  it("pads with fallback palette to always return maxColors entries", () => {
+    // No content elements → page palette is empty, so the result is purely fallbacks.
+    const result = extractThemeColors();
+    expect(result.length).toBe(6);
+  });
+
+  it("returns hex colors derived from getComputedStyle", () => {
+    html('<p style="color: rgb(255, 0, 0)">Hello</p>');
+    const result = extractThemeColors();
+    expect(result).toContain("#ff0000");
+  });
+
+  it("dedupes and ranks by frequency (text colors first)", () => {
+    html(
+      '<p style="color: rgb(255, 0, 0)">A</p>' +
+      '<p style="color: rgb(255, 0, 0)">B</p>' +
+      '<p style="color: rgb(0, 0, 255)">C</p>'
+    );
+    const result = extractThemeColors();
+    expect(result[0]).toBe("#ff0000");
+    expect(result).toContain("#0000ff");
+  });
+
+  it("respects the maxColors cap", () => {
+    html(
+      '<p style="color: rgb(255, 0, 0)">A</p>' +
+      '<p style="color: rgb(0, 255, 0)">B</p>' +
+      '<p style="color: rgb(0, 0, 255)">C</p>'
+    );
+    expect(extractThemeColors(2).length).toBe(2);
+  });
+
+  it("skips elements inside dev-tools UI (data-dev-tools)", () => {
+    html('<div data-dev-tools="true"><span style="color: rgb(123, 45, 67)">DevTool</span></div>');
+    expect(extractThemeColors()).not.toContain("#7b2d43");
+  });
+
+  it("skips elements inside dev-tools UI (data-airo-dev-tools)", () => {
+    // The HoverBar tree uses the airo-prefixed marker. extractThemeColors must
+    // skip it so HoverBar button colors don't pollute the theme palette.
+    html('<div data-airo-dev-tools=""><button style="background-color: rgb(45, 67, 89)"></button></div>');
+    expect(extractThemeColors()).not.toContain("#2d4359");
+  });
+
+  it("skips text-element entries with empty trimmed text", () => {
+    // Pure-empty text elements don't contribute their text color.
+    html('<p style="color: rgb(11, 22, 33)">   </p>');
+    // The paragraph still has a default white background so it'll show up via
+    // background scanning in jsdom, but the color #0b1621 (text) must not.
+    expect(extractThemeColors()).not.toContain("#0b1621");
+  });
+
+  it("includes background colors from non-text elements", () => {
+    html('<section style="background-color: rgb(11, 22, 33)"></section>');
+    expect(extractThemeColors()).toContain("#0b1621");
   });
 });
 

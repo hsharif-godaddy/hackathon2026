@@ -12,6 +12,8 @@ export interface ColorPickerProps {
   onClickOutside?: () => void;
   /** Optional slot rendered between the hex input and bottom of the picker (e.g. swatches). */
   children?: ReactNode;
+  /** Optional palette to render as a "Theme Color" row above the SV canvas. */
+  themeColors?: string[];
 }
 
 interface HsvState {
@@ -32,8 +34,8 @@ function SatValCanvas({ hue, sat, val, onChangeSV, onChangeEnd }: {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const dragging = useRef(false);
 
-  const WIDTH = 176;
-  const HEIGHT = 130;
+  const WIDTH = 220;
+  const HEIGHT = 120;
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -130,8 +132,8 @@ function HueSlider({ hue, onChangeHue, onChangeEnd }: {
   const trackRef = useRef<HTMLDivElement>(null);
   const dragging = useRef(false);
 
-  const WIDTH = 176;
-  const HEIGHT = 14;
+  const WIDTH = 220;
+  const HEIGHT = 18;
 
   const hueFromEvent = (e: React.PointerEvent<HTMLDivElement>): number | null => {
     const track = trackRef.current;
@@ -184,10 +186,10 @@ function HueSlider({ hue, onChangeHue, onChangeEnd }: {
         position: 'absolute',
         top: '-3px',
         left: thumbLeft,
-        width: '14px',
-        height: '20px',
-        borderRadius: '4px',
-        border: '2px solid white',
+        width: '24px',
+        height: '24px',
+        borderRadius: '50%',
+        border: '3px solid white',
         boxShadow: '0 0 0 1px rgba(0,0,0,0.3)',
         transform: 'translateX(-50%)',
         pointerEvents: 'none',
@@ -230,15 +232,8 @@ function HexInput({ hex, onCommitHex }: {
   };
 
   return (
-    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-      <div style={{
-        width: '28px',
-        height: '28px',
-        borderRadius: '4px',
-        background: hex,
-        border: '1px solid #ddd',
-        flexShrink: 0,
-      }} />
+    <div style={{ display: 'flex', gap: '8px', alignItems: 'center', justifyContent: 'space-between' }}>
+      <span style={{ fontSize: '13px', color: '#374151', fontWeight: 500 }}>Hex</span>
       <input
         type="text"
         value={draft}
@@ -246,13 +241,14 @@ function HexInput({ hex, onCommitHex }: {
         onBlur={commit}
         onKeyDown={handleKeyDown}
         style={{
-          flex: 1,
-          padding: '5px 8px',
+          width: '100px',
+          padding: '6px 10px',
           border: '1px solid #ddd',
           borderRadius: '4px',
           fontFamily: 'monospace',
           fontSize: '12px',
           color: '#333',
+          textAlign: 'right',
           outline: 'none',
           minWidth: 0,
         }}
@@ -261,9 +257,64 @@ function HexInput({ hex, onCommitHex }: {
   );
 }
 
+// --- ThemeColorRow ---
+
+function ThemeColorRow({ colors, value, onPick }: {
+  colors: string[];
+  value: string;
+  onPick: (hex: string) => void;
+}) {
+  const normalizedValue = normalizeHex(value);
+  return (
+    <div style={{
+      display: 'grid',
+      gridTemplateColumns: `repeat(${colors.length}, 1fr)`,
+      gap: '6px',
+    }}>
+      {colors.map((color) => {
+        const normalized = normalizeHex(color);
+        const isSelected = normalized !== null && normalized === normalizedValue;
+        return (
+          <button
+            key={color}
+            type="button"
+            aria-label={`Theme color ${color}`}
+            aria-pressed={isSelected}
+            onPointerDown={(e) => { e.preventDefault(); onPick(color); }}
+            style={{
+              width: '100%',
+              height: '28px',
+              borderRadius: '4px',
+              background: color,
+              border: '1px solid #e5e7eb',
+              cursor: 'pointer',
+              padding: 0,
+              outline: isSelected ? '2px dashed #6b7280' : 'none',
+              outlineOffset: '2px',
+            }}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+// --- SectionLabel ---
+
+function SectionLabel({ children }: { children: ReactNode }) {
+  return (
+    <div style={{
+      fontSize: '13px',
+      fontWeight: 600,
+      color: '#374151',
+      marginBottom: '2px',
+    }}>{children}</div>
+  );
+}
+
 // --- Main Component ---
 
-export default function ColorPicker({ value, onChange, onChangeEnd, onClickOutside, children }: ColorPickerProps) {
+export default function ColorPicker({ value, onChange, onChangeEnd, onClickOutside, children, themeColors }: ColorPickerProps) {
   const [hsv, setHsv] = useState<HsvState>(() => hexToHsv(value));
   const lastEmittedRef = useRef(value);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -324,7 +375,12 @@ export default function ColorPicker({ value, onChange, onChangeEnd, onClickOutsi
     onChangeEnd?.(hex);
   }, [onChange, onChangeEnd]);
 
+  const handleThemePick = useCallback((hex: string): void => {
+    handleHexCommit(hex);
+  }, [handleHexCommit]);
+
   const currentHex = hsvToHex(hsv.h, hsv.s, hsv.v);
+  const themePalette = themeColors && themeColors.length > 0 ? themeColors : null;
 
   return (
     <div
@@ -335,17 +391,26 @@ export default function ColorPicker({ value, onChange, onChangeEnd, onClickOutsi
       style={{
         display: 'flex',
         flexDirection: 'column',
-        gap: '10px',
-        padding: '12px',
+        gap: '12px',
+        padding: '16px',
         background: '#fff',
         borderRadius: '8px',
         boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
-        width: '200px',
+        width: '252px',
       }}
     >
-      <SatValCanvas hue={hsv.h} sat={hsv.s} val={hsv.v} onChangeSV={handleSVChange} onChangeEnd={emitEnd} />
-      <HueSlider hue={hsv.h} onChangeHue={handleHueChange} onChangeEnd={emitEnd} />
-      <HexInput hex={currentHex} onCommitHex={handleHexCommit} />
+      {themePalette && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          <SectionLabel>Theme Color</SectionLabel>
+          <ThemeColorRow colors={themePalette} value={currentHex} onPick={handleThemePick} />
+        </div>
+      )}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+        {themePalette && <SectionLabel>Custom Color</SectionLabel>}
+        <SatValCanvas hue={hsv.h} sat={hsv.s} val={hsv.v} onChangeSV={handleSVChange} onChangeEnd={emitEnd} />
+        <HueSlider hue={hsv.h} onChangeHue={handleHueChange} onChangeEnd={emitEnd} />
+        <HexInput hex={currentHex} onCommitHex={handleHexCommit} />
+      </div>
       {children}
     </div>
   );

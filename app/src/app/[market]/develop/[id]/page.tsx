@@ -863,28 +863,33 @@ function DevelopPageContent() {
     }
   }, [appId])
 
-  const sendStyleUpdate = useCallback(async (styleData: { selector: string; property: string; value: string; newClassName: string; elementInfo: Record<string, unknown> }) => {
+  const sendStyleUpdate = useCallback(async (styleData: { commitId?: string; selector: string; property: string; value: string; newClassName: string; elementInfo: Record<string, unknown> }) => {
     if (!appId) return
 
     logger.info('develop-page.style-update.begin', { appId, property: styleData.property, value: styleData.value })
 
     const iframe = document.getElementById('preview-iframe') as HTMLIFrameElement | null
+    // Echo the commitId back so the iframe-side listener can correlate this
+    // reply to the specific in-flight commit it's waiting on. Prevents
+    // cross-talk when multiple style commits are in flight (e.g. drag-end
+    // immediately followed by a swatch click).
+    const commitId = styleData.commitId
 
     try {
       const result = await appService.updateStyle(appId, styleData as Parameters<typeof appService.updateStyle>[1]) as { success?: boolean }
       if (result?.success) {
         logger.info('develop-page.style-update.success', { appId })
-        if (iframe) postMessageToIframe(iframe, { type: 'STYLE_EDIT_SUCCEEDED' })
+        if (iframe) postMessageToIframe(iframe, { type: 'STYLE_EDIT_SUCCEEDED', commitId })
       } else {
         logger.error('develop-page.style-update.failed', { appId })
-        if (iframe) postMessageToIframe(iframe, { type: 'STYLE_EDIT_FAILED' })
+        if (iframe) postMessageToIframe(iframe, { type: 'STYLE_EDIT_FAILED', commitId })
       }
     } catch (error) {
       logger.error('develop-page.style-update.error', {
         appId,
         error: error instanceof Error ? error.message : String(error)
       })
-      if (iframe) postMessageToIframe(iframe, { type: 'STYLE_EDIT_FAILED' })
+      if (iframe) postMessageToIframe(iframe, { type: 'STYLE_EDIT_FAILED', commitId })
     }
   }, [appId])
 

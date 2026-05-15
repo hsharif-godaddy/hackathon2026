@@ -1,5 +1,6 @@
-import { isTextEditable } from "./element-detection";
+import { isDevToolsElement, isTextEditable } from "./element-detection";
 import { t } from "./translations";
+import { rgbToHex } from "./color";
 
 export const INDICATOR_MS = 1500;
 
@@ -516,6 +517,68 @@ export function mergeRootAttrsOntoOverlay(target: HTMLElement, source: HTMLEleme
     const merged = [existing, sourceClass].filter(Boolean).join(" ");
     target.setAttribute("class", merged);
   }
+}
+
+// ── Theme color extraction ──
+
+const THEME_TEXT_SELECTOR = "p, h1, h2, h3, h4, h5, h6, span, a, li, button, label";
+const THEME_BG_SELECTOR = "header, footer, nav, section, main, article, div, button, a";
+const RGB_RE = /^rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)$/;
+// Sensible neutral defaults so the row always has 6 swatches even when
+// the page palette is sparse.
+const FALLBACK_PALETTE = ["#000000", "#ffffff", "#6b7280", "#3b82f6", "#10b981", "#ef4444"];
+
+function parseRgbToHex(computed: string): string | null {
+  const m = RGB_RE.exec(computed);
+  if (!m) return null;
+  const alpha = m[4] !== undefined ? parseFloat(m[4]) : 1;
+  if (alpha === 0) return null;
+  return rgbToHex(parseInt(m[1], 10), parseInt(m[2], 10), parseInt(m[3], 10));
+}
+
+/**
+ * Walk visible elements in the document and return the most-used colors as
+ * hex strings. Pulls from text `color` AND `background-color` so the swatch
+ * row reflects the broader page palette (brand backgrounds, accent fills,
+ * etc.), not just text colors. Pads with fallback neutrals so the row always
+ * has `maxColors` entries.
+ */
+export function extractThemeColors(maxColors = 6): string[] {
+  const counts = new Map<string, number>();
+  const bump = (hex: string | null, weight: number) => {
+    if (!hex) return;
+    counts.set(hex, (counts.get(hex) || 0) + weight);
+  };
+
+  // Text colors (weighted by occurrence in text-bearing elements).
+  for (const el of document.querySelectorAll(THEME_TEXT_SELECTOR)) {
+    const htmlEl = el as HTMLElement;
+    if (isDevToolsElement(htmlEl)) continue;
+    if (!htmlEl.textContent?.trim()) continue;
+    bump(parseRgbToHex(getComputedStyle(htmlEl).color), 2);
+  }
+
+  // Background colors (slightly lower weight; many backgrounds are transparent
+  // and skipped, but solid fills like brand panels surface here).
+  for (const el of document.querySelectorAll(THEME_BG_SELECTOR)) {
+    const htmlEl = el as HTMLElement;
+    if (isDevToolsElement(htmlEl)) continue;
+    bump(parseRgbToHex(getComputedStyle(htmlEl).backgroundColor), 1);
+  }
+
+  const ranked = Array.from(counts.entries())
+    .sort((a, b) => b[1] - a[1])
+    .map(([hex]) => hex);
+
+  // Pad with fallbacks (deduped) up to maxColors.
+  const seen = new Set(ranked);
+  for (const fallback of FALLBACK_PALETTE) {
+    if (ranked.length >= maxColors) break;
+    if (seen.has(fallback)) continue;
+    ranked.push(fallback);
+    seen.add(fallback);
+  }
+  return ranked.slice(0, maxColors);
 }
 
 // ── Class merging ──

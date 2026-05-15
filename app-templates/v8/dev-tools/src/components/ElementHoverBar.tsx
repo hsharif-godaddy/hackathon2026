@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { safePostMessage } from "../utils/postMessage";
 import { generatePreciseSelector, extractDevContext, getElementClassName } from "../utils/element-helpers";
 import { isTouchDevice } from "../utils/device";
@@ -14,9 +14,29 @@ import { isClickable } from "../utils/element-detection";
 import { t } from "../utils/translations";
 import { HoverBar, HoverBarButton } from "./HoverBar";
 import { QuickEditBar } from "./QuickEditBar";
+import ColorPicker from "./ColorPicker";
+import { extractThemeColors } from "../utils/text-editing-helpers";
+import { rgbToHex, normalizeHex } from "../utils/color";
 
 /** Tags eligible for bold/italic toggle (text-bearing inline/block elements). */
 const TEXT_TAGS = new Set(["p", "h1", "h2", "h3", "h4", "h5", "h6", "span", "a", "label", "li", "blockquote"]);
+
+/** Generate a unique id per style commit so the iframe-side listener can
+ *  correlate a STYLE_EDIT_SUCCEEDED / STYLE_EDIT_FAILED reply to the specific
+ *  in-flight commit it's responding to (prevents cross-talk when multiple
+ *  commits are in flight, e.g. drag-end immediately followed by a swatch click).
+ *  Falls back to time+random if `crypto.randomUUID` is unavailable. */
+function makeCommitId(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+/** Listener auto-cleanup window. If the parent never replies (timeout, iframe
+ *  navigation, channel break), the listener detaches itself instead of
+ *  leaking for the rest of the session. */
+const STYLE_REPLY_TIMEOUT_MS = 30_000;
 
 interface ElementHoverBarProps {
   hoveredElement: HoveredElement;
@@ -37,6 +57,8 @@ export default function ElementHoverBar({
   const isImage = hoveredElement.type === "image";
   const [toolbarMode, setToolbarMode] = useState(false);
   const [quickEditMode, setQuickEditMode] = useState(false);
+  const [showColorPicker, setShowColorPicker] = useState(false);
+  const [themeColors, setThemeColors] = useState<string[]>([]);
   const [, forceRender] = useState(0);
   // Context built when Sparkles is clicked — sent only when Quick Edit is submitted
   const pendingContextRef = useRef<Record<string, unknown> | null>(null);
@@ -44,6 +66,29 @@ export default function ElementHoverBar({
   // even if hover moves away (e.g., mouse enters toolbar, causing parent to track a new hover)
   const toolbarElementRef = useRef<HTMLElement | null>(null);
   const toolbarHoveredElementRef = useRef<HoveredElement | null>(null);
+  // Snapshot of the element's pre-edit inline color, captured ONCE when the
+  // picker opens. Used by handleColorCommit to roll back on agent failure.
+  // Capturing per-call would snapshot the previous drag pixel's color and
+  // make rollback land somewhere mid-drag instead of at the original.
+  const originalColorRef = useRef<string>("");
+  // Last color the user actually committed (drag-end / hex / swatch) during
+  // the current picker session. On close we revert el.style.color to this so
+  // a mid-drag close doesn't leave an uncommitted preview stuck on the
+  // element. `null` means "no active picker session" — the revert paths must
+  // gate on that to avoid wiping a customer-set inline color (e.g. v8's
+  // `style={{ color: "hsl(var(--accent-foreground))" }}`) when the toolbar is
+  // dismissed without ever opening the picker.
+  const lastCommittedColorRef = useRef<string | null>(null);
+  // Saved value of `el.style.transition` from before the picker opened, so we
+  // can restore it on close. While the picker is open we set a `color 200ms`
+  // transition so both drag updates and discrete swatch/hex commits glide
+  // instead of snapping. `null` ⇒ no active picker session.
+  const prevTransitionRef = useRef<string | null>(null);
+  // Tracks computed-color values we've already warned about (one log per
+  // distinct unparseable value). Without dedupe, hovering across many
+  // elements with the same unparseable value (currentcolor, color-mix,
+  // system colors, etc.) would spam the console.
+  const warnedColorsRef = useRef<Set<string>>(new Set());
 
   // Outline overlay + pointer cursor on the hovered element.
   // Uses a fixed-position div so the outline stays visible even when
@@ -84,6 +129,21 @@ export default function ElementHoverBar({
   useEffect(() => {
     setToolbarMode(false);
     setQuickEditMode(false);
+    // Revert any uncommitted color preview before tearing down picker state.
+    // Gate on a non-null ref so we only touch elements that had an active
+    // picker session — otherwise we'd wipe customer-authored inline colors.
+    const el = toolbarElementRef.current;
+    const lastCommitted = lastCommittedColorRef.current;
+    if (el && lastCommitted !== null && el.style.color !== lastCommitted) {
+      el.style.color = lastCommitted;
+    }
+    if (el && prevTransitionRef.current !== null) {
+      el.style.transition = prevTransitionRef.current;
+    }
+    prevTransitionRef.current = null;
+    lastCommittedColorRef.current = null;
+    setShowColorPicker(false);
+    setThemeColors([]);
     pendingContextRef.current = null;
   }, [element]);
 
@@ -144,6 +204,21 @@ export default function ElementHoverBar({
       if (target.closest("[data-dev-tools]") || target.closest("[data-airo-dev-tools]")) return;
       setToolbarMode(false);
       setQuickEditMode(false);
+      // Revert any uncommitted color preview before closing the picker so a
+      // mid-drag dismiss doesn't leave an unsaved color stuck on the element.
+      // Null ref ⇒ no picker session, so leave inline color alone.
+      const el = toolbarElementRef.current;
+      const lastCommitted = lastCommittedColorRef.current;
+      if (el && lastCommitted !== null && el.style.color !== lastCommitted) {
+        el.style.color = lastCommitted;
+      }
+      if (el && prevTransitionRef.current !== null) {
+        el.style.transition = prevTransitionRef.current;
+      }
+      prevTransitionRef.current = null;
+      lastCommittedColorRef.current = null;
+      setShowColorPicker(false);
+      setThemeColors([]);
       pendingContextRef.current = null;
     };
     document.addEventListener("mousedown", handleClickOutside);
@@ -362,6 +437,147 @@ export default function ElementHoverBar({
   const isBold = elementIsText && targetEl.classList.contains("font-bold");
   const isItalic = elementIsText && targetEl.classList.contains("italic");
 
+  // Toggle the picker. When opening, extract theme colors and snapshot the
+  // element's current inline color synchronously (before the next render) so
+  // the first frame of the open popover has correct state — avoids the brief
+  // flash where the Theme Color section appears empty then populates.
+  const toggleColorPicker = useCallback(() => {
+    setShowColorPicker((open: boolean) => {
+      if (open) {
+        // Closing via the toolbar button — same revert path as click-outside.
+        const el = toolbarElementRef.current;
+        const lastCommitted = lastCommittedColorRef.current;
+        if (el && lastCommitted !== null && el.style.color !== lastCommitted) {
+          el.style.color = lastCommitted;
+          forceRender(n => n + 1);
+        }
+        if (el && prevTransitionRef.current !== null) {
+          el.style.transition = prevTransitionRef.current;
+        }
+        prevTransitionRef.current = null;
+        lastCommittedColorRef.current = null;
+        setThemeColors([]);
+        return false;
+      }
+      setThemeColors(extractThemeColors());
+      if (toolbarElementRef.current) {
+        originalColorRef.current = toolbarElementRef.current.style.color;
+        lastCommittedColorRef.current = originalColorRef.current;
+        prevTransitionRef.current = toolbarElementRef.current.style.transition;
+        toolbarElementRef.current.style.transition = "color 200ms ease";
+      }
+      return true;
+    });
+  }, []);
+
+  // Resolve the element's current text color as a hex string for the picker.
+  // getComputedStyle().color is normalized to rgb()/rgba() on every modern
+  // engine today, but unusual serializations (currentcolor, color-mix, system
+  // colors, future formats) may not match. When that happens we fall back to
+  // black and warn — once per unique unparseable value — so the picker
+  // opening on the wrong baseline is at least debuggable.
+  //
+  // Memoized on [targetEl, elementIsText, showColorPicker]: during a drag,
+  // handleColorPreview calls forceRender on every pixel; without memoization
+  // we'd re-run getComputedStyle (and force a style flush) per frame. The
+  // toolbar button's color indicator stays stale during the drag — fine,
+  // since the user is looking at the picker swatch row — and resyncs when
+  // showColorPicker flips back to false on close.
+  const currentColorHex = useMemo(() => {
+    if (!elementIsText) return "#000000";
+    const computed = getComputedStyle(targetEl).color;
+    const m = /^rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(computed);
+    if (!m) {
+      if (!warnedColorsRef.current.has(computed)) {
+        warnedColorsRef.current.add(computed);
+        console.warn("[dev-tools] Could not parse current text color; picker falling back to #000000.", { computed, tag: targetEl.tagName.toLowerCase() });
+      }
+      return "#000000";
+    }
+    return normalizeHex(rgbToHex(parseInt(m[1], 10), parseInt(m[2], 10), parseInt(m[3], 10))) || "#000000";
+  }, [targetEl, elementIsText, showColorPicker]);
+
+  // Optimistic visual update only — fires on every drag pixel from the picker.
+  // Does NOT send STYLE_UPDATED so we don't spam the agent with one edit per
+  // drag pixel (would result in dozens of git commits per drag).
+  const handleColorPreview = useCallback((hex: string) => {
+    const el = toolbarElementRef.current;
+    if (!el) return;
+    el.style.color = hex;
+    forceRender(n => n + 1);
+  }, []);
+
+  // Persist + optimistic update — fires on drag end / hex commit / theme swatch
+  // click. This is the only path that talks to the agent.
+  const handleColorCommit = useCallback((hex: string) => {
+    const el = toolbarElementRef.current;
+    const hovered = toolbarHoveredElementRef.current;
+    if (!el || !hovered) return;
+
+    // Transition is set on the element when the picker opens and restored
+    // on close (see toggleColorPicker), so all color assignments — drag
+    // previews, swatch clicks, hex commits — interpolate uniformly.
+    el.style.color = hex;
+    // Optimistically advance the "last committed" baseline. If the agent
+    // later replies FAILED, the listener below rolls all the way back to
+    // originalColorRef (the pre-picker color), and we resync here too.
+    lastCommittedColorRef.current = hex;
+    forceRender(n => n + 1);
+
+    // Per-commit id: lets the listener match its own reply when multiple
+    // commits are in flight (drag-end + swatch click). Without correlation,
+    // an earlier reply would prematurely fire/clean up unrelated listeners.
+    const commitId = makeCommitId();
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    const handleResult = (e: MessageEvent) => {
+      if (e.source !== window.parent) return;
+      const type = e.data?.type;
+      if (type !== "STYLE_EDIT_FAILED" && type !== "STYLE_EDIT_SUCCEEDED") return;
+      // Only act on the reply tagged with our commit id.
+      if (e.data?.commitId !== commitId) return;
+      if (timeoutId !== null) clearTimeout(timeoutId);
+      window.removeEventListener("message", handleResult);
+      if (type === "STYLE_EDIT_FAILED") {
+        // Roll back to the color the element had when the picker first opened,
+        // not whatever a later commit may have just painted on top.
+        el.style.color = originalColorRef.current;
+        lastCommittedColorRef.current = originalColorRef.current;
+        forceRender(n => n + 1);
+      }
+    };
+    window.addEventListener("message", handleResult);
+    timeoutId = setTimeout(() => {
+      window.removeEventListener("message", handleResult);
+      console.warn("[dev-tools] STYLE_UPDATED reply timed out; listener detached", { commitId, property: "color" });
+    }, STYLE_REPLY_TIMEOUT_MS);
+
+    const devContext = extractDevContext(el);
+    const preciseSelector = generatePreciseSelector(el);
+    const elRect = el.getBoundingClientRect();
+
+    safePostMessage(window.parent, {
+      type: "STYLE_UPDATED",
+      data: {
+        commitId,
+        selector: preciseSelector,
+        property: "color",
+        value: hex,
+        newClassName: el.className,
+        elementInfo: {
+          tagName: el.tagName.toLowerCase(),
+          className: getElementClassName(el),
+          id: el.id,
+          dataId: devContext?.devId || "",
+          textContent: (el.textContent || "").substring(0, 500),
+          selector: preciseSelector,
+          devContext,
+          rect: { top: elRect.top, left: elRect.left, width: elRect.width, height: elRect.height },
+          computedStyles: {},
+        },
+      },
+    });
+  }, []);
+
   const handleToggleFormat = useCallback((property: "fontWeight" | "fontStyle") => {
     const el = toolbarElementRef.current;
     const hovered = toolbarHoveredElementRef.current;
@@ -385,18 +601,28 @@ export default function ElementHoverBar({
     }
     forceRender(n => n + 1);
 
-    // Rollback on backend failure, clean up on success
+    // Per-commit id: see handleColorCommit for rationale. With multiple style
+    // edits possibly in flight (e.g. user toggles bold then immediately picks
+    // a color), a reply must be matched to its commit before any DOM rollback.
+    const commitId = makeCommitId();
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
     const handleResult = (e: MessageEvent) => {
       if (e.source !== window.parent) return;
-      if (e.data?.type === "STYLE_EDIT_FAILED") {
+      const type = e.data?.type;
+      if (type !== "STYLE_EDIT_FAILED" && type !== "STYLE_EDIT_SUCCEEDED") return;
+      if (e.data?.commitId !== commitId) return;
+      if (timeoutId !== null) clearTimeout(timeoutId);
+      window.removeEventListener("message", handleResult);
+      if (type === "STYLE_EDIT_FAILED") {
         el.className = originalClassName;
         forceRender(n => n + 1);
       }
-      if (e.data?.type === "STYLE_EDIT_FAILED" || e.data?.type === "STYLE_EDIT_SUCCEEDED") {
-        window.removeEventListener("message", handleResult);
-      }
     };
     window.addEventListener("message", handleResult);
+    timeoutId = setTimeout(() => {
+      window.removeEventListener("message", handleResult);
+      console.warn("[dev-tools] STYLE_UPDATED reply timed out; listener detached", { commitId, property });
+    }, STYLE_REPLY_TIMEOUT_MS);
 
     const devContext = extractDevContext(el);
     const preciseSelector = generatePreciseSelector(el);
@@ -405,6 +631,7 @@ export default function ElementHoverBar({
     safePostMessage(window.parent, {
       type: "STYLE_UPDATED",
       data: {
+        commitId,
         selector: preciseSelector,
         property,
         value,
@@ -470,6 +697,42 @@ export default function ElementHoverBar({
             icon={<Italic width={15} height={15} />}
             active={isItalic}
           />
+          <div style={{ position: "relative" }}>
+            <HoverBarButton
+              onClick={toggleColorPicker}
+              title={t("devtools_text_color_title", "Text color")}
+              icon={
+                <span style={{
+                  display: "block",
+                  width: "17px",
+                  height: "17px",
+                  borderRadius: "50%",
+                  background: currentColorHex,
+                  border: "1px solid rgba(0,0,0,0.15)",
+                  boxSizing: "border-box",
+                }} />
+              }
+              active={showColorPicker}
+            />
+            {showColorPicker && (
+              <div
+                data-airo-dev-tools=""
+                style={{
+                  position: "absolute",
+                  top: "calc(100% + 4px)",
+                  left: 0,
+                  zIndex: 100002,
+                }}
+              >
+                <ColorPicker
+                  value={currentColorHex}
+                  onChange={handleColorPreview}
+                  onChangeEnd={handleColorCommit}
+                  themeColors={themeColors}
+                />
+              </div>
+            )}
+          </div>
         </>
       )}
       <HoverBarButton

@@ -91,4 +91,56 @@ describe('ColorPicker', () => {
     // At hue ~180 (cyan area), red channel should be low
     expect(emittedHex).not.toBe('#ff0000');
   });
+
+  it('does not render Theme Color section when themeColors is omitted', () => {
+    render(createElement(ColorPicker, { value: '#ff0000', onChange: vi.fn() }));
+    expect(screen.queryByText('Theme Color')).toBeNull();
+    expect(screen.queryByText('Custom Color')).toBeNull();
+  });
+
+  it('does not render Theme Color section for empty themeColors', () => {
+    render(createElement(ColorPicker, { value: '#ff0000', onChange: vi.fn(), themeColors: [] }));
+    expect(screen.queryByText('Theme Color')).toBeNull();
+  });
+
+  it('renders one swatch per theme color and the Custom Color header', () => {
+    render(createElement(ColorPicker, {
+      value: '#ff0000',
+      onChange: vi.fn(),
+      themeColors: ['#ff0000', '#00ff00', '#0000ff'],
+    }));
+    expect(screen.getByText('Theme Color')).not.toBeNull();
+    expect(screen.getByText('Custom Color')).not.toBeNull();
+    const swatches = screen.getAllByRole('button').filter(
+      (el) => (el.getAttribute('aria-label') || '').startsWith('Theme color ')
+    );
+    expect(swatches).toHaveLength(3);
+  });
+
+  it('marks the swatch matching value as selected', () => {
+    render(createElement(ColorPicker, {
+      value: '#00ff00',
+      onChange: vi.fn(),
+      themeColors: ['#ff0000', '#00ff00', '#0000ff'],
+    }));
+    const greenSwatch = screen.getByLabelText('Theme color #00ff00');
+    expect(greenSwatch.getAttribute('aria-pressed')).toBe('true');
+    const redSwatch = screen.getByLabelText('Theme color #ff0000');
+    expect(redSwatch.getAttribute('aria-pressed')).toBe('false');
+  });
+
+  it('fires onChange and onChangeEnd when a theme swatch is clicked', () => {
+    const onChange = vi.fn();
+    const onChangeEnd = vi.fn();
+    render(createElement(ColorPicker, {
+      value: '#ff0000',
+      onChange,
+      onChangeEnd,
+      themeColors: ['#ff0000', '#00ff00', '#0000ff'],
+    }));
+    const blueSwatch = screen.getByLabelText('Theme color #0000ff');
+    fireEvent.pointerDown(blueSwatch);
+    expect(onChange).toHaveBeenCalledWith('#0000ff');
+    expect(onChangeEnd).toHaveBeenCalledWith('#0000ff');
+  });
 });
