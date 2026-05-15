@@ -565,13 +565,100 @@ describe('SuiteRunner — onTrialEvaluated callback', () => {
     }).run();
 
     expect(onTrialEvaluated).toHaveBeenCalledTimes(2);
-    expect(onTrialEvaluated).toHaveBeenNthCalledWith(
-      1,
+    expect(onTrialEvaluated).toHaveBeenCalledWith(
       'my-scenario',
       expect.objectContaining({ trialIndex: 0 }),
     );
-    expect(onTrialEvaluated).toHaveBeenNthCalledWith(
-      2,
+    expect(onTrialEvaluated).toHaveBeenCalledWith(
+      'my-scenario',
+      expect.objectContaining({ trialIndex: 1 }),
+    );
+  });
+
+  it('fires incrementally — delivers before all simulations complete', async () => {
+    const onTrialEvaluated = vi.fn();
+    const ev = makeEvaluator('ev', makePassResult('ev'));
+    const scenario = makeScenario({
+      name: 'my-scenario',
+      trials: 3,
+      evaluators: [ev],
+    });
+
+    type Resolver = (t: Transcript) => void;
+    const resolvers: Resolver[] = [];
+    // Each call parks in a deferred promise; resolvers are collected for
+    // manual control in the test.
+    mockSimulationRun.mockImplementation(
+      () =>
+        new Promise<Transcript>((resolve) => {
+          resolvers.push(resolve);
+        }),
+    );
+
+    const runPromise = new SuiteRunner({
+      scenarios: [scenario],
+      config: { ...mockConfig, eval: { ...mockConfig.eval, maxConcurrency: 2 } },
+      makeAgentClient,
+      syntheticUser: mockSyntheticUser,
+      onTrialEvaluated,
+    }).run();
+
+    // Wait until both concurrent workers have parked in simulation.run().
+    // runCapped spawns min(cap, count)=2 workers; each calls staggeredRun
+    // (worker i=0 skips sleep, worker i=1 sleeps once — both mocked immediate),
+    // makeRunWithRetry, makeAgentClient, then simulation.run() which registers
+    // a resolver.
+    await vi.waitFor(() => expect(resolvers.length).toBeGreaterThanOrEqual(2));
+
+    // Resolve the SECOND simulation (trial index 1) before the first, to
+    // prove out-of-order delivery: the callback must fire immediately for
+    // whichever trial completes first, regardless of trial index ordering.
+    resolvers[1](makeTranscript('my-scenario', 1));
+
+    // Flush through: transcript resolution → evaluateTrial → Promise.all
+    // → onTrialEvaluated. Each await in the chain needs one tick.
+    for (let tick = 0; tick < 10; tick++) {
+      await Promise.resolve();
+    }
+
+    // onTrialEvaluated must have fired once — incremental, not burst.
+    expect(onTrialEvaluated).toHaveBeenCalledTimes(1);
+    // The first callback must carry trialIndex 1 (out-of-order delivery).
+    expect(onTrialEvaluated.mock.calls[0][1].trialIndex).toBe(1);
+
+    // Resolve remaining simulations and let the runner finish.
+    resolvers[0](makeTranscript('my-scenario', 0));
+    resolvers[2](makeTranscript('my-scenario', 2));
+    await runPromise;
+
+    expect(onTrialEvaluated).toHaveBeenCalledTimes(3);
+  });
+
+  it('fires for successful trials even when another trial throws', async () => {
+    const onTrialEvaluated = vi.fn();
+    const ev = makeEvaluator('ev', makePassResult('ev'));
+    const scenario = makeScenario({
+      name: 'my-scenario',
+      trials: 2,
+      evaluators: [ev],
+    });
+
+    mockSimulationRun
+      .mockRejectedValueOnce(new Error('sim failed'))
+      .mockResolvedValueOnce(makeTranscript('my-scenario', 1));
+
+    const runPromise = new SuiteRunner({
+      scenarios: [scenario],
+      config: { ...mockConfig, eval: { ...mockConfig.eval, maxConcurrency: 2 } },
+      makeAgentClient,
+      syntheticUser: mockSyntheticUser,
+      onTrialEvaluated,
+    }).run();
+
+    await expect(runPromise).rejects.toThrow();
+
+    expect(onTrialEvaluated).toHaveBeenCalledTimes(1);
+    expect(onTrialEvaluated).toHaveBeenCalledWith(
       'my-scenario',
       expect.objectContaining({ trialIndex: 1 }),
     );

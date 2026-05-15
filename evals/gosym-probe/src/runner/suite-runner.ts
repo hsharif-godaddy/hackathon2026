@@ -111,7 +111,14 @@ export interface SuiteRunnerOptions {
    *   `config.eval.maxConcurrency`.
    */
   suiteMode?: 'sequential' | 'parallel';
-  /** Fires after each trial is evaluated. */
+  /**
+   * Fires incrementally as each trial completes, not in a burst at the end.
+   * Delivery order matches worker completion order, which is non-deterministic
+   * when more than one trial runs concurrently. Concurrency is the effective
+   * value resolved from `trialConcurrency` (defaults to
+   * `config.eval.maxConcurrency` when unset). Do not assume in-index-order
+   * delivery.
+   */
   onTrialEvaluated?: (
     scenarioName: string,
     trial: TrialResult,
@@ -362,15 +369,11 @@ export class SuiteRunner {
 
     const concurrency = effectiveConcurrency(trialConcurrency, config.eval.maxConcurrency);
     try {
-      const transcripts: Transcript[] =
-        await runCapped(trialIndices.length, concurrency, (i) =>
-          staggeredRun(i, concurrency, () => makeRunWithRetry(trialIndices[i])),
-        );
-
-      const newTrialResults = await this.evaluateTrials(
-        scenario,
-        transcripts,
-        trialIndices,
+      const newTrialResults = await runCapped(trialIndices.length, concurrency, (i) =>
+        staggeredRun(i, concurrency, async () => {
+          const transcript = await makeRunWithRetry(trialIndices[i]);
+          return this.evaluateTrial(scenario, transcript, trialIndices[i]);
+        }),
       );
       const trialResults = [
         ...(existingTrialsByScenario?.get(scenario.name) ?? []),
@@ -452,33 +455,32 @@ export class SuiteRunner {
     }
   }
 
-  private async evaluateTrials(
+  private async evaluateTrial(
     scenario: Scenario,
-    transcripts: Transcript[],
-    trialIndices: number[],
-  ): Promise<TrialResult[]> {
-    const trialResults: TrialResult[] = [];
+    transcript: Transcript,
+    trialIndex: number,
+  ): Promise<TrialResult> {
+    const snaps = transcript.snapshots;
+    const lastSnapshot = snaps.length > 0
+      ? snaps[snaps.length - 1]
+      : undefined;
 
-    for (let i = 0; i < transcripts.length; i++) {
-      const transcript = transcripts[i];
-      const trialIndex = trialIndices[i];
+    const evalResults = await Promise.all(
+      scenario.evaluators.map((evaluator) =>
+        this.safeEvaluate(evaluator, transcript, scenario, lastSnapshot),
+      ),
+    );
 
-      const snaps = transcript.snapshots;
-      const lastSnapshot = snaps.length > 0
-        ? snaps[snaps.length - 1]
-        : undefined;
-
-      const evalResults = await Promise.all(
-        scenario.evaluators.map((evaluator) =>
-          this.safeEvaluate(evaluator, transcript, scenario, lastSnapshot),
-        ),
-      );
-
-      const trialResult = { trialIndex, transcript, evalResults };
-      trialResults.push(trialResult);
+    const trialResult = { trialIndex, transcript, evalResults };
+    try {
       this.options.onTrialEvaluated?.(scenario.name, trialResult);
+    } catch (err) {
+      console.error('onTrialEvaluated callback threw.', {
+        scenarioName: scenario.name,
+        trialIndex,
+        error: err instanceof Error ? err : String(err),
+      });
     }
-
-    return trialResults.sort((a, b) => a.trialIndex - b.trialIndex);
+    return trialResult;
   }
 }
