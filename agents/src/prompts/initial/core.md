@@ -380,7 +380,7 @@ BUILD ORDER:
 Phase 1 — Setup (run these in parallel):
 - Search for images (hero, services, gallery, etc.)
 - Set font stack using the fontTheme tool (choose fonts that match design direction)
-- Set color scheme using the colorScheme tool (choose colors that match design direction)
+- Apply color scheme using the colorScheme tool. If VISUAL DIRECTION above lists explicit hex values for colors (e.g., cream (#F5F0E8) as background), call the tool with mode 'apply' and pass each hex through (primary, background, secondary, accent, muted, etc.) so the palette matches the spec exactly. Only use mode 'set' with a description when no hex values were given — set mode discards everything except primary and background.
 
 Phase 2 — Structure (run these in parallel, after Phase 1):
 - Build header with navigation
@@ -462,7 +462,7 @@ BUILD ORDER:
 Phase 1 — Setup (run these in parallel):
 - Remove header and footer from RootLayout.tsx (this app needs fullscreen space)
 - Set font stack using the fontTheme tool (choose fonts that match design direction)
-- Set color scheme using the colorScheme tool (choose colors that match design direction)
+- Apply color scheme using the colorScheme tool. If VISUAL DIRECTION above lists explicit hex values for colors (e.g., cream (#F5F0E8) as background), call the tool with mode 'apply' and pass each hex through (primary, background, secondary, accent, muted, etc.) so the palette matches the spec exactly. Only use mode 'set' with a description when no hex values were given — set mode discards everything except primary and background.
 
 Phase 2 — Page (after Phase 1):
 - Build main app structure (index.tsx) with [app-specific layout] and animations

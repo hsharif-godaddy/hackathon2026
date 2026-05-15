@@ -257,6 +257,11 @@ This tool has three modes:
 - Uses AI to choose one palette based on the description
 - Applies the palette immediately without showing options
 - Use for automated flows, rebuilds, or initial setup
+- IMPORTANT: set mode only honors primary + background from the description.
+  Secondary, accent, muted, etc. are derived algorithmically by hue-shifting
+  off the primary. If the design direction lists explicit hex values for
+  secondary/accent/etc., DO NOT use set mode — use apply mode and pass each
+  hex through verbatim, otherwise those colors will be discarded.
 
 **SUGGEST MODE** - Generate color palette options:
 - Uses AI to create diverse, beautiful color schemes
@@ -271,8 +276,12 @@ This tool has three modes:
 
 WHEN TO USE SET MODE:
 - Automated flows where you should choose and apply colors directly
-- Initial build or rebuild flows after content/design direction is known
+- Initial build or rebuild flows where the design direction is described
+  emotionally/qualitatively (no specific hex values listed)
 - User asks you to pick colors rather than show options
+- DO NOT use set mode when the spec lists specific hex values for any role
+  beyond primary/background — set mode will discard them. Use apply mode
+  instead and pass the hex values through.
 
 WHEN TO USE SUGGEST MODE:
 - User asks for color options: "show me some purple color schemes"
@@ -289,6 +298,10 @@ WHEN TO USE APPLY MODE:
 - User selects a palette from the widget (by clicking "Apply")
 - User specifies exact colors: "use #9333EA as primary"
 - User requests a specific named theme: "apply the dracula theme"
+- The design direction or build spec lists explicit hex values for any of
+  primary/background/secondary/accent/muted — pass each one through so the
+  palette matches the spec exactly. This is the right call for initial
+  builds whenever the prompt-enhancer or user provided concrete hex values.
 
 WORKFLOW FOR SET MODE (automated flows):
 1. Agent: colorScheme({ mode: 'set', description: 'warm purple tones for bakery' })
