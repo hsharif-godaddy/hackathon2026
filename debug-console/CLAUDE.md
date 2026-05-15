@@ -1,13 +1,13 @@
 # debug-console
 
-Internal Next.js + Express dashboard the dev team uses to inspect agent traces, scheduler runs, app context, and Loki/ES logs. **Not customer-facing.**
+Internal Next.js + Express dashboard the dev/support teams uses to inspect agent traces, app context, and Loki/ES logs. **Not customer-facing.**
 
 ## Audience & Operational Context
 
-- **Users:** Airo Builder dev team only (~10–20 engineers)
-- **Deployment:** Single internal instance behind GoDaddy SSO
-- **SLAs:** None. No on-call rotation, no PagerDuty, no customer impact when this is down or degraded
-- **Failure mode:** Worst case is "data shows up 15 minutes late in our internal dashboard" — recoverable on the next scheduler tick
+- **Users:** Airo Builder dev team only (~100–200 engineers, 10-20 leaders)
+- **Deployment:** Internal cluster behind GoDaddy SSO
+- **SLAs:** 99% availability, Tier 3 service. No on-call rotation, no PagerDuty, no customer impact when this is down or degraded
+- **Failure mode:** Support teams are impacted and it can impact their SLAs
 
 This context determines the review rigor bar (see below). Production customer-facing services (`agents/`, `app/`, `dev-supervisor/`) follow stricter standards documented in their own CLAUDE.md.
 
@@ -29,7 +29,7 @@ pnpm --filter debug-console lint
 
 ## Review Rigor
 
-**Apply pragmatic review.** This is an internal tool with no SLA — perfect-world observability and exhaustive edge-case coverage are not required.
+**Apply pragmatic review.** This is an internal tool with lite SLA — perfect-world observability and exhaustive edge-case coverage are not required.
 
 ### Worth flagging
 
@@ -51,5 +51,3 @@ pnpm --filter debug-console lint
 - Hypothetical-regression tests (testing catch blocks for bugs that don't exist yet) — code review would catch the regression
 - Comments explaining "why this could fail" beyond a one-line note
 - Re-running the review pipeline against fix commits to surface successively smaller issues
-
-When a finding could go either way, prefer NOT flagging it for this service.
