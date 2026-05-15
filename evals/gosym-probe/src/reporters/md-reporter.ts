@@ -474,6 +474,8 @@ export class MdReporter {
       sections.push('', renderUnknowns(unknowns));
     }
 
+    sections.push('', this.renderTrialLinksSection(results));
+
     return sections.join('\n');
   }
 
@@ -522,8 +524,8 @@ export class MdReporter {
     results: ScenarioResult[],
   ): string[] {
     const lines = [
-      '| Scenario ID | Scenario name | Overall | Evaluators passed | Links |',
-      '|------------|---------------|---------|------------------|-------|',
+      '| Scenario ID | Scenario name | Overall | Evaluators passed |',
+      '|------------|---------------|---------|------------------|',
     ];
 
     for (const result of results) {
@@ -533,8 +535,7 @@ export class MdReporter {
         + ` | ${truncateCell(result.scenarioName, 120)}`
         + ` | ${scenarioOverall(result)}`
         + ` | ${counts.passed}/${counts.total} `
-        + `(${formatPercent(counts.passed, counts.total)})`
-        + ` | ${renderTrialLinks(result)} |`,
+        + `(${formatPercent(counts.passed, counts.total)}) |`,
       );
     }
 
@@ -600,6 +601,30 @@ export class MdReporter {
     }
 
     return lines;
+  }
+
+  // ── Trial links ─────────────────────────────────────────
+
+  private renderTrialLinksSection(
+    results: ScenarioResult[],
+  ): string {
+    if (results.length === 0) return '';
+
+    const lines = [
+      '## Trial Links',
+      '',
+      '| Scenario | Trials |',
+      '|----------|--------|',
+    ];
+
+    for (const result of results) {
+      lines.push(
+        `| ${escapePipeForMarkdown(result.scenarioName)}`
+        + ` | ${renderTrialLinks(result)} |`,
+      );
+    }
+
+    return lines.join('\n');
   }
 
   // ── Run details ──────────────────────────────────────────

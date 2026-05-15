@@ -45,6 +45,7 @@ Options:
   --env <env>               Override GD_ENV (local.dev | local.test | local.prod)
   --trials <n>              Override per-scenario trial count
   --skip-baseline           Skip baseline regression gating
+  --baseline <run-id>       Compare against a specific baseline run instead of the most recent
   --fan-out                 Fan out all scenarios concurrently, full trial count each
   --concurrency <n>         Override max concurrent trials
   --graduate <name>         Run stability check before promoting to regression
@@ -256,6 +257,23 @@ different machines or configurations.
 
 Each scenario with a saved baseline is compared against it. The most recent
 file in each directory is loaded automatically.
+
+**Pinning to a specific baseline.** Pass `--baseline <run-id>` to compare
+against a specific prior run instead of the most recent:
+
+```bash
+pnpm run eval --baseline abc-1234-uuid
+```
+
+The run ID must match a file in `baselines/{scenario-name}/` for every
+scenario being evaluated. If any scenario is missing that baseline, the
+eval exits immediately with an error before running any trials:
+
+```
+Error: baseline run "abc-1234-uuid" not found for scenario "build-landing-page".
+```
+
+`--baseline` and `--skip-baseline` are mutually exclusive.
 
 **What a baseline stores:** aggregated `passAtK`, `passToTheK`,
 `passingTrials`, `totalTrials`, and `medianScore` (for score-mode

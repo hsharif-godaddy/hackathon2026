@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   validateRunFlags,
+  validateBaselineRunId,
   filterScenarios,
   findScenario,
   buildScenarioIndex,
@@ -114,6 +115,54 @@ describe('validateRunFlags()', () => {
         stability: undefined,
       }),
     ).toBeNull();
+  });
+
+  it('returns null when only baseline is set', () => {
+    expect(
+      validateRunFlags({
+        skipBaseline: false,
+        baseline: 'some-run-id',
+        graduate: undefined,
+        graduateSuite: undefined,
+        stability: undefined,
+      }),
+    ).toBeNull();
+  });
+
+  it('returns error when baseline is combined with skip-baseline', () => {
+    const err = validateRunFlags({
+      skipBaseline: true,
+      baseline: 'some-run-id',
+      graduate: undefined,
+      graduateSuite: undefined,
+      stability: undefined,
+    });
+    expect(err).toContain('--baseline');
+    expect(err).toContain('--skip-baseline');
+  });
+
+  it('returns error when baseline is combined with graduate', () => {
+    const err = validateRunFlags({
+      skipBaseline: false,
+      baseline: 'some-run-id',
+      graduate: 'build-landing-page',
+      graduateSuite: undefined,
+      stability: undefined,
+    });
+    expect(err).toContain('--baseline');
+    expect(err).toContain('--graduate');
+  });
+
+  it('returns error when baseline is combined with graduate-suite', () => {
+    const err = validateRunFlags({
+      skipBaseline: false,
+      baseline: 'some-run-id',
+      graduate: undefined,
+      graduateSuite: 'smoke',
+      stability: undefined,
+    });
+    expect(err).toContain('--baseline');
+    expect(err).toContain('--graduate-suite');
   });
 
   it('returns null when only graduate is set', () => {
@@ -470,5 +519,58 @@ describe('findScenario()', () => {
     expect(result.error).toContain('"nonexistent"');
     expect(result.error).toContain('build-landing-page');
     expect(result.error).toContain('fix-bug');
+  });
+});
+
+// ── validateBaselineRunId ─────────────────────────────────────────────────────
+
+describe('validateBaselineRunId()', () => {
+  const RUN_ID = 'abc-1234';
+
+  it('returns null when all scenarios have the baseline', async () => {
+    const store = {
+      loadByRunId: async () => ({ scores: {}, filePath: '/some/path' }),
+    };
+    const err = await validateBaselineRunId(ALL, store, RUN_ID);
+    expect(err).toBeNull();
+  });
+
+  it('returns null for an empty scenario list', async () => {
+    const store = { loadByRunId: async () => null };
+    const err = await validateBaselineRunId([], store, RUN_ID);
+    expect(err).toBeNull();
+  });
+
+  it('returns an error message when a scenario baseline is missing', async () => {
+    const store = { loadByRunId: async () => null };
+    const err = await validateBaselineRunId([S_LANDING], store, RUN_ID);
+    expect(err).toContain(RUN_ID);
+    expect(err).toContain(S_LANDING.name);
+  });
+
+  it('reports all missing scenarios', async () => {
+    const store = {
+      loadByRunId: async (name: string) =>
+        name === S_LANDING.name ? { scores: {}, filePath: '/p' } : null,
+    };
+    const err = await validateBaselineRunId(ALL, store, RUN_ID);
+    expect(err).toContain(S_FIX_BUG.name);
+    expect(err).not.toContain(S_LANDING.name);
+    for (const scenario of ALL) {
+      if (scenario.name !== S_LANDING.name) {
+        expect(err).toContain(scenario.name);
+      }
+    }
+  });
+
+  it('propagates errors thrown by the store', async () => {
+    const store = {
+      loadByRunId: async () => {
+        throw new Error('disk error');
+      },
+    };
+    await expect(
+      validateBaselineRunId([S_LANDING], store, RUN_ID),
+    ).rejects.toThrow('disk error');
   });
 });

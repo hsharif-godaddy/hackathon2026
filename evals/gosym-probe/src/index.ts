@@ -28,6 +28,7 @@ import type { GraduationSuiteRunResult } from './baselines/graduation-suite-runn
 import { createAllScenarios } from './scenarios/registry.js';
 import {
   validateRunFlags,
+  validateBaselineRunId,
   buildScenarioIndex,
   filterScenarios,
   findScenario,
@@ -97,6 +98,7 @@ async function main(): Promise<void> {
       concurrency:        { type: 'string' },
       'max-turns':        { type: 'string' },
       'skip-baseline':    { type: 'boolean' },
+      baseline:           { type: 'string' },
       'fan-out':          { type: 'boolean' },
       graduate:           { type: 'string' },
       'graduate-suite':   { type: 'string' },
@@ -113,6 +115,7 @@ async function main(): Promise<void> {
 
   const flagError = validateRunFlags({
     skipBaseline,
+    baseline: values.baseline,
     graduate: values.graduate,
     graduateSuite: values['graduate-suite'],
     stability: values.stability,
@@ -321,6 +324,18 @@ async function main(): Promise<void> {
 
   const baselineStore = skipBaseline ? undefined : new BaselineStore();
 
+  if (values.baseline) {
+    const baselineError = await validateBaselineRunId(
+      scenarios,
+      baselineStore!,
+      values.baseline,
+    );
+    if (baselineError) {
+      console.error(`Error: ${baselineError}`);
+      process.exit(1);
+    }
+  }
+
   const fanOut = values['fan-out'] ?? false;
 
   const store = new EvalStore(undefined, config.storage?.maxRuns);
@@ -457,6 +472,7 @@ async function main(): Promise<void> {
     concurrencyOverride: resolvedConcurrency,
     maxTurnsOverride,
     baselineStore,
+    baselineRunId: values.baseline,
     suiteMode: fanOut ? 'parallel' : undefined,
     existingTrialsByScenario,
     trialIndicesByScenario,

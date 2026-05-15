@@ -51,6 +51,7 @@ pnpm run eval          # headless eval with flags (CI / scripting)
 --concurrency <n>        Cap concurrent trials (clamped to config.eval.maxConcurrency)
 --max-turns <n>          Override max turns per simulation
 --skip-baseline          Skip baseline comparison
+--baseline <run-id>      Compare against a specific baseline run instead of the most recent
 --fan-out                Fan out scenarios in parallel (capped by maxConcurrency); each scenario runs its full trial count sequentially
 --graduate <name>        Stability check one scenario before promoting
 --graduate-suite <name>  Stability check all scenarios in a suite
@@ -72,6 +73,10 @@ Graduation trial counts are driven solely by stability level
 (`low`=3, `medium`=5, `high`=10). `--trials` has no effect in
 graduation paths. `--fan-out` forces trial-level concurrency to 1
 (trials run sequentially within each scenario; scenarios fan out).
+
+`--baseline` and `--skip-baseline` are mutually exclusive. `--baseline`
+pins comparison to a specific prior run; omitting both flags loads the
+most recent baseline for each scenario.
 
 ### `pnpm run save-baseline` usage
 
@@ -107,7 +112,7 @@ config/
                   local.prod.ts
   index.ts        loadConfig() — reads GD_ENV, returns Config
 
-baselines/        Local-only baseline snapshots (gitignored, per-developer)
+baselines/        Shared golden baseline snapshots (committed, regression gates)
 runs/             Run output — gitignored
 ```
 

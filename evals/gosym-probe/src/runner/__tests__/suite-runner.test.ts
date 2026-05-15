@@ -611,6 +611,7 @@ describe('SuiteRunner — onTrialEvaluated callback', () => {
 describe('SuiteRunner — score-mode enrichment', () => {
   const mockBaselineStore = {
     load: vi.fn<() => Promise<{ scores: BaselineScores; filePath: string } | null>>().mockResolvedValue(null),
+    loadByRunId: vi.fn<() => Promise<{ scores: BaselineScores; filePath: string } | null>>().mockResolvedValue(null),
   };
 
   beforeEach(() => {
@@ -690,6 +691,7 @@ describe('SuiteRunner — score-mode enrichment', () => {
 describe('SuiteRunner — baseline comparison', () => {
   const mockBaselineStore = {
     load: vi.fn<() => Promise<{ scores: BaselineScores; filePath: string } | null>>().mockResolvedValue(null),
+    loadByRunId: vi.fn<() => Promise<{ scores: BaselineScores; filePath: string } | null>>().mockResolvedValue(null),
   };
 
   beforeEach(() => {
@@ -796,6 +798,66 @@ describe('SuiteRunner — baseline comparison', () => {
     expect(result.regressionStatus).toBeDefined();
     expect(result.regressionStatus!.gate).toBe('pass');
     expect(result.regressionStatus!.scenarioName).toBe('test-scenario');
+  });
+
+  it('throws when baselineRunId is set but loadByRunId returns null', async () => {
+    mockBaselineStore.loadByRunId.mockResolvedValue(null);
+    const scenario = makeScenario({ name: 'my-scenario', trials: 1 });
+
+    await expect(
+      new SuiteRunner({
+        scenarios: [scenario],
+        config: mockConfig,
+        makeAgentClient,
+        syntheticUser: mockSyntheticUser,
+        baselineStore: mockBaselineStore,
+        baselineRunId: 'missing-run-id',
+      }).run(),
+    ).rejects.toThrow(
+      'Baseline run "missing-run-id" not found for scenario "my-scenario".',
+    );
+  });
+
+  it('uses loadByRunId when baselineRunId is set', async () => {
+    const pinned = {
+      filePath: 'baselines/my-scenario/20260101_pinned-run.json',
+      scores: {
+        scenarioName: 'my-scenario',
+        runId: 'pinned-run',
+        createdAt: '2026-01-01T00:00:00Z',
+        scores: {
+          'test-eval': {
+            passAtK: true,
+            passToTheK: true,
+            passingTrials: 3,
+            totalTrials: 3,
+          },
+        },
+      },
+    };
+    mockBaselineStore.loadByRunId.mockResolvedValue(pinned);
+    const evaluator = makeEvaluator('test-eval', makePassResult('test-eval'));
+    const scenario = makeScenario({
+      name: 'my-scenario',
+      trials: 1,
+      evaluators: [evaluator],
+    });
+
+    const [result] = await new SuiteRunner({
+      scenarios: [scenario],
+      config: mockConfig,
+      makeAgentClient,
+      syntheticUser: mockSyntheticUser,
+      baselineStore: mockBaselineStore,
+      baselineRunId: 'pinned-run',
+    }).run();
+
+    expect(mockBaselineStore.loadByRunId).toHaveBeenCalledWith(
+      'my-scenario',
+      'pinned-run',
+    );
+    expect(mockBaselineStore.load).not.toHaveBeenCalled();
+    expect(result.baselineFilePath).toBe(pinned.filePath);
   });
 });
 

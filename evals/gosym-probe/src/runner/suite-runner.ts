@@ -33,6 +33,7 @@ function parseRetryAfterMs(headers: Headers | undefined): number | null {
 
 interface BaselineStore {
   load(scenarioName: string): Promise<{ scores: BaselineScores; filePath: string } | null>;
+  loadByRunId(scenarioName: string, runId: string): Promise<{ scores: BaselineScores; filePath: string } | null>;
 }
 
 export type RuncappedError<T> = AggregateError & {
@@ -84,6 +85,12 @@ export interface SuiteRunnerOptions {
   maxTurnsOverride?: number;
   /** When provided, load baseline and attach regressionStatus. */
   baselineStore?: BaselineStore;
+  /**
+   * When set, pin baseline comparison to this specific runId instead of
+   * loading the most recent baseline. Has no effect when `baselineStore`
+   * is absent.
+   */
+  baselineRunId?: string;
   /**
    * Controls how scenarios are executed relative to each other.
    * - `'sequential'` (default): scenarios run one after another;
@@ -165,6 +172,7 @@ export class SuiteRunner {
       syntheticUser,
       siteCapture,
       baselineStore,
+      baselineRunId,
       existingTrialsByScenario,
       trialIndicesByScenario,
     } = this.options;
@@ -356,9 +364,14 @@ export class SuiteRunner {
       // aggregated state (without passAtK), and downstream consumers
       // (reporter, store) see the enriched version.
       if (baselineStore) {
-        const loaded = await baselineStore.load(
-          scenario.name,
-        );
+        const loaded = baselineRunId
+          ? await baselineStore.loadByRunId(scenario.name, baselineRunId)
+          : await baselineStore.load(scenario.name);
+        if (loaded === null && baselineRunId) {
+          throw new Error(
+            `Baseline run "${baselineRunId}" not found for scenario "${scenario.name}".`,
+          );
+        }
         if (loaded) {
           const regressionStatus = this.comparator.compare(
             result,

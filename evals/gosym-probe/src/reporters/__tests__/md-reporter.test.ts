@@ -260,19 +260,27 @@ describe('MdReporter', () => {
     );
   });
 
-  it('links scenario pass-rate rows to every trial markdown result', () => {
+  it('renders trial links in a separate section at bottom (not inline in pass rate table)', () => {
     const reporter = new MdReporter();
     const content = reporter.render('run-001', [BASELINED_RESULT]);
 
-    expect(content).toContain(
+    // Links appear under the Trial Links heading
+    const trialLinksSection = content.split('## Trial Links')[1];
+    expect(trialLinksSection).toBeDefined();
+    expect(trialLinksSection).toContain(
       '[T1](scenarios/build-landing-page/trials/0/eval-results.md)',
     );
-    expect(content).toContain(
+    expect(trialLinksSection).toContain(
       '[T2](scenarios/build-landing-page/trials/1/eval-results.md)',
     );
-    expect(content).toContain(
+    expect(trialLinksSection).toContain(
       '[T3](scenarios/build-landing-page/trials/2/eval-results.md)',
     );
+
+    // Pass rate table should not have a Links column
+    const passRateSection = content.split('### Scenario pass rate (overall)')[1]
+      ?.split('###')[0];
+    expect(passRateSection).not.toContain('| Links |');
   });
 
   it('includes an evaluator matrix', () => {

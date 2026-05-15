@@ -1,0 +1,108 @@
+{
+  "scenarioName": "business-site",
+  "runId": "13445c29-615a-4784-855e-ccff183333fd",
+  "createdAt": "2026-05-15T03:01:38.449Z",
+  "stabilityLevel": "high",
+  "stabilityTrials": 10,
+  "scores": {
+    "bug-hit-rate": {
+      "passAtK": true,
+      "passToTheK": true,
+      "passingTrials": 10,
+      "totalTrials": 10
+    },
+    "tool-failure-rate": {
+      "passingTrials": 0,
+      "totalTrials": 10,
+      "medianScore": 0,
+      "lowerIsBetter": true
+    },
+    "prompt-efficiency": {
+      "passingTrials": 0,
+      "totalTrials": 10,
+      "medianScore": 0.9168273035060777,
+      "evalVersion": "1.0",
+      "lowerIsBetter": false
+    },
+    "jtbd-completion": {
+      "passAtK": true,
+      "passToTheK": true,
+      "passingTrials": 10,
+      "totalTrials": 10
+    },
+    "output-quality": {
+      "passingTrials": 10,
+      "totalTrials": 10,
+      "medianScore": 0.8251427453736202,
+      "evalVersion": "accessibility-coverage:1.0+component-decomposition:1.0+content-substance:1.0+heading-hierarchy:1.0+inline-style-ratio:1.0+link-quality:1.0+responsive-readiness:1.0+semantic-density:1.0+visual-coherence:1.0"
+    },
+    "agent-steps": {
+      "passingTrials": 0,
+      "totalTrials": 10,
+      "medianScore": 0.9168273035060777,
+      "evalVersion": "1.0",
+      "lowerIsBetter": false
+    },
+    "latency": {
+      "passingTrials": 0,
+      "totalTrials": 10,
+      "medianScore": 0.22312474453346512
+    },
+    "tool-parallelism": {
+      "passingTrials": 0,
+      "totalTrials": 10,
+      "medianScore": 0.05242809364548495,
+      "lowerIsBetter": false
+    },
+    "turn-duration": {
+      "passingTrials": 0,
+      "totalTrials": 10,
+      "medianScore": 355515.5,
+      "lowerIsBetter": true
+    },
+    "token-usage": {
+      "passingTrials": 0,
+      "totalTrials": 10,
+      "medianScore": 917255.5,
+      "lowerIsBetter": true
+    },
+    "intent-to-output-alignment": {
+      "passAtK": true,
+      "passToTheK": false,
+      "passingTrials": 9,
+      "totalTrials": 10,
+      "evalVersion": "1.0"
+    },
+    "implicit-feature-gap": {
+      "passAtK": true,
+      "passToTheK": false,
+      "passingTrials": 6,
+      "totalTrials": 10,
+      "evalVersion": "1.0"
+    },
+    "scope-drift-overgeneration": {
+      "passAtK": true,
+      "passToTheK": false,
+      "passingTrials": 7,
+      "totalTrials": 10,
+      "evalVersion": "1.0"
+    },
+    "silent-hallucination": {
+      "passAtK": true,
+      "passToTheK": true,
+      "passingTrials": 10,
+      "totalTrials": 10,
+      "evalVersion": "1.0"
+    }
+  },
+  "regressionThresholds": {
+    "tool-failure-rate": 0.25,
+    "prompt-efficiency": 0.25,
+    "output-quality": 0.25,
+    "agent-steps": 0.25,
+    "latency": 0.25,
+    "tool-parallelism": 0.25,
+    "turn-duration": 0.25,
+    "token-usage": 0.25
+  }
+}

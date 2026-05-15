@@ -769,6 +769,105 @@ describe('BaselineStore', () => {
     );
   });
 
+  describe('loadByRunId()', () => {
+    it('returns the matching baseline when file exists', async () => {
+      const store = new BaselineStore();
+      mockReaddir.mockResolvedValueOnce([
+        '20260412091512_run-old.json',
+        '20260413143025_run-001.json',
+      ]);
+      mockReadFile.mockResolvedValueOnce(JSON.stringify(STORED_BASELINE));
+
+      const result = await store.loadByRunId('build-landing-page', 'run-001');
+
+      expect(mockReadFile).toHaveBeenCalledWith(
+        'baselines/build-landing-page/20260413143025_run-001.json',
+        'utf-8',
+      );
+      expect(result).toEqual({
+        scores: STORED_BASELINE,
+        filePath: 'baselines/build-landing-page/20260413143025_run-001.json',
+      });
+    });
+
+    it('returns null when no file matches the given runId', async () => {
+      const store = new BaselineStore();
+      mockReaddir.mockResolvedValueOnce([
+        '20260412091512_run-old.json',
+        '20260413143025_run-new.json',
+      ]);
+
+      const result = await store.loadByRunId('build-landing-page', 'run-missing');
+
+      expect(result).toBeNull();
+      expect(mockReadFile).not.toHaveBeenCalled();
+    });
+
+    it('returns null when scenario directory is missing (ENOENT)', async () => {
+      const store = new BaselineStore();
+      mockReaddir.mockRejectedValueOnce(
+        Object.assign(new Error('not found'), { code: 'ENOENT' }),
+      );
+
+      const result = await store.loadByRunId('nonexistent-scenario', 'run-001');
+
+      expect(result).toBeNull();
+    });
+
+    it('re-throws non-ENOENT errors from readdir', async () => {
+      const store = new BaselineStore();
+      const err = Object.assign(new Error('permission denied'), {
+        code: 'EACCES',
+      });
+      mockReaddir.mockRejectedValueOnce(err);
+
+      await expect(
+        store.loadByRunId('build-landing-page', 'run-001'),
+      ).rejects.toThrow('permission denied');
+    });
+
+    it('throws descriptive error on corrupt JSON', async () => {
+      const store = new BaselineStore();
+      mockReaddir.mockResolvedValueOnce([
+        `${FIXED_COMPACT}_run-001.json`,
+      ]);
+      mockReadFile.mockResolvedValueOnce('{ truncated');
+
+      await expect(
+        store.loadByRunId('build-landing-page', 'run-001'),
+      ).rejects.toThrow(/Failed to parse baseline.*build-landing-page/);
+    });
+
+    it('respects custom baselines directory', async () => {
+      const store = new BaselineStore('/custom/baselines');
+      mockReaddir.mockResolvedValueOnce([
+        `${FIXED_COMPACT}_run-001.json`,
+      ]);
+      mockReadFile.mockResolvedValueOnce(JSON.stringify(STORED_BASELINE));
+
+      await store.loadByRunId('build-landing-page', 'run-001');
+
+      expect(mockReadFile).toHaveBeenCalledWith(
+        `/custom/baselines/build-landing-page/${FIXED_COMPACT}_run-001.json`,
+        'utf-8',
+      );
+    });
+
+    it('returns null when file is deleted between readdir and readFile', async () => {
+      const store = new BaselineStore();
+      mockReaddir.mockResolvedValueOnce([
+        `${FIXED_COMPACT}_run-001.json`,
+      ]);
+      mockReadFile.mockRejectedValueOnce(
+        Object.assign(new Error('not found'), { code: 'ENOENT' }),
+      );
+
+      const result = await store.loadByRunId('build-landing-page', 'run-001');
+
+      expect(result).toBeNull();
+    });
+  });
+
   describe('saveFromStored()', () => {
     it('writes versioned file to scenario subdirectory', async () => {
       const store = new BaselineStore();

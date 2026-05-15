@@ -5,4 +5,4 @@ runs/
 .DS_Store
 .claude/settings.local.json
 .claude/worktrees/
-/baselines/
+# baselines/ committed as shared golden snapshots (regression gates)

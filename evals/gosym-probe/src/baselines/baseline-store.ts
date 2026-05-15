@@ -190,6 +190,29 @@ export class BaselineStore {
    * and reading the first entry.
    */
   async load(scenarioName: string): Promise<{ scores: BaselineScores; filePath: string } | null> {
+    return this.loadFile(scenarioName, (jsonFiles) => {
+      if (jsonFiles.length === 0) return undefined;
+      return [...jsonFiles].sort().reverse()[0];
+    });
+  }
+
+  /**
+   * Loads a baseline by exact runId. Scans the scenario directory for a
+   * file ending with `_${runId}.json` and returns it, or null if not found.
+   */
+  async loadByRunId(
+    scenarioName: string,
+    runId: string,
+  ): Promise<{ scores: BaselineScores; filePath: string } | null> {
+    return this.loadFile(scenarioName, (jsonFiles) => {
+      return jsonFiles.find((f) => f.endsWith(`_${runId}.json`));
+    });
+  }
+
+  private async loadFile(
+    scenarioName: string,
+    selectFile: (jsonFiles: string[]) => string | undefined,
+  ): Promise<{ scores: BaselineScores; filePath: string } | null> {
     const scenarioDir = join(this.dir, scenarioName);
     let files: string[];
     try {
@@ -202,10 +225,10 @@ export class BaselineStore {
     }
 
     const jsonFiles = files.filter((f) => f.endsWith('.json'));
-    if (jsonFiles.length === 0) return null;
+    const selected = selectFile(jsonFiles);
+    if (!selected) return null;
 
-    const latest = [...jsonFiles].sort().reverse()[0];
-    const filePath = join(scenarioDir, latest);
+    const filePath = join(scenarioDir, selected);
     let raw: string;
     try {
       raw = await readFile(filePath, 'utf-8');

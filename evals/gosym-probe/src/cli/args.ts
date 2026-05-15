@@ -39,6 +39,7 @@ export function buildScenarioIndex(
 
 export interface RunFlags {
   skipBaseline: boolean;
+  baseline?: string;
   graduate: string | undefined;
   graduateSuite: string | undefined;
   stability: string | undefined;
@@ -52,6 +53,12 @@ export interface RunFlags {
  * Returns an error message string, or null if flags are valid.
  */
 export function validateRunFlags(flags: RunFlags): string | null {
+  if (flags.baseline && flags.skipBaseline) {
+    return '--baseline cannot be combined with --skip-baseline.';
+  }
+  if (flags.baseline && (flags.graduate || flags.graduateSuite)) {
+    return '--baseline cannot be combined with --graduate or --graduate-suite.';
+  }
   if (flags.graduateSuite && flags.graduate) {
     return (
       '--graduate-suite cannot be combined with --graduate.'
@@ -155,6 +162,37 @@ export function filterScenarios(
   }
 
   return { scenarios, error: null };
+}
+
+export interface BaselineLoader {
+  loadByRunId: (
+    scenarioName: string,
+    runId: string,
+  ) => Promise<unknown>;
+}
+
+/**
+ * Pre-flight check: verifies a pinned runId exists for every scenario.
+ * Returns an error message listing all missing scenarios, or null if all
+ * baselines are found.
+ */
+export async function validateBaselineRunId(
+  scenarios: Scenario[],
+  baselineStore: BaselineLoader,
+  runId: string,
+): Promise<string | null> {
+  const missing: string[] = [];
+  for (const scenario of scenarios) {
+    const found = await baselineStore.loadByRunId(scenario.name, runId);
+    if (!found) {
+      missing.push(scenario.name);
+    }
+  }
+  if (missing.length === 0) {
+    return null;
+  }
+  const quoted = missing.map((name) => `"${name}"`).join(", ");
+  return `baseline run "${runId}" not found for scenarios: ${quoted}.`;
 }
 
 /**
