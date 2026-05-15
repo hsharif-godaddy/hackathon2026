@@ -230,12 +230,22 @@ export function extractNewPageRoute(toolCalls: ToolCall[]): string | null {
     if (tc.status !== 'completed' || tc.error) continue
 
     for (const pagePath of extractCreatedPagePaths(tc)) {
+      // If the agent created src/pages/index.tsx in this batch, suppress
+      // per-page navigation so the caller falls back to a full preview
+      // refresh (which lands on /). Otherwise we would navigate to a
+      // sibling placeholder page instead of the new home.
+      if (isIndexPagePath(pagePath)) return null
       const route = pagePathToRoute(pagePath)
       if (route) lastRoute = route
     }
   }
 
   return lastRoute
+}
+
+function isIndexPagePath(filePath: string): boolean {
+  const match = filePath.match(PAGE_FILE_PATTERN)
+  return match?.[1].toLowerCase() === 'index'
 }
 
 function extractCreatedPagePaths(tc: ToolCall): string[] {

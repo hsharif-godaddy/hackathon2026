@@ -326,6 +326,40 @@ describe('extractNewPageRoute', function extract() {
 
       expect(result).toBeNull()
     })
+
+    it('should return null when index.tsx is created alongside other pages (index wins)', function indexWithOthers() {
+      const result = extractNewPageRoute([
+        toolCall({ id: 'tc-1', name: 'textEditor', input: { command: 'create', path: 'src/pages/coming-soon.tsx' } }),
+        toolCall({ id: 'tc-2', name: 'textEditor', input: { command: 'create', path: 'src/pages/index.tsx' } }),
+      ])
+
+      expect(result).toBeNull()
+    })
+
+    it('should return null when index.tsx is created first followed by another page', function indexFirst() {
+      const result = extractNewPageRoute([
+        toolCall({ id: 'tc-1', name: 'textEditor', input: { command: 'create', path: 'src/pages/index.tsx' } }),
+        toolCall({ id: 'tc-2', name: 'textEditor', input: { command: 'create', path: 'src/pages/coming-soon.tsx' } }),
+      ])
+
+      expect(result).toBeNull()
+    })
+
+    it('should return null when fileEdit batch contains an index.tsx create operation', function fileEditWithIndex() {
+      const result = extractNewPageRoute([
+        toolCall({
+          name: 'fileEdit',
+          input: {
+            operations: [
+              { type: 'create', path: 'src/pages/coming-soon.tsx' },
+              { type: 'create', path: 'src/pages/index.tsx' },
+            ],
+          },
+        }),
+      ])
+
+      expect(result).toBeNull()
+    })
   })
 
   describe('edge cases', function edgeCaseTests() {
