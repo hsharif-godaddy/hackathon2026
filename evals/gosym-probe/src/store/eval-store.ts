@@ -15,6 +15,7 @@ import type { Config } from '../../config/environments/types.js';
 import type { EvalResult } from '../evaluators/evaluator.js';
 import type { Scenario } from '../scenarios/types.js';
 import type { ScenarioResult, TrialResult } from '../runner/types.js';
+import type { Transcript } from '../runner/transcript.js';
 import {
   MdReporter,
   renderTrialEvalResultsMarkdown,
@@ -608,6 +609,36 @@ export class EvalStore {
   }
 
   /**
+   * Writes conversation data (transcript, tool calls, artifacts) to disk
+   * without eval results or snapshot metadata. Called after the conversation
+   * loop completes but before capture, so data is more likely to survive if
+   * capture times out or the run is aborted.
+   *
+   * Note: files are written sequentially (not atomically). A process kill
+   * mid-write may leave an incomplete set of files in the trial directory.
+   * The subsequent writeTrial call overwrites with complete data on success.
+   *
+   * Throws on I/O failure after logging the error.
+   */
+  async writePartialTrial(
+    dirName: string,
+    scenarioName: string,
+    trialIndex: number,
+    transcript: Transcript,
+  ): Promise<void> {
+    const runDir = this.runDir(dirName);
+    const trialDir = this.trialDirFrom(runDir, scenarioName, trialIndex);
+
+    try {
+      await mkdir(trialDir, { recursive: true });
+      await this.writeConversationData(trialDir, transcript, transcript.snapshots.length);
+    } catch (err) {
+      console.error('writePartialTrial: write failed', { trialDir, scenarioName, trialIndex }, err);
+      throw err;
+    }
+  }
+
+  /**
    * Creates the trial directory ahead of trial completion so
    * pre-teardown hooks can write artifacts directly to the final
    * location. Returns the absolute path.
@@ -630,28 +661,17 @@ export class EvalStore {
     trialDir: string,
     trial: TrialResult,
   ): Promise<void> {
-    // Compute pure render before any I/O so a render failure
+    // Compute eval markdown before any I/O so a render failure
     // occurs before any files have been written.
-    const conversationJson = renderConversation(
-      trial.transcript.turns,
-      trial.transcript.scenarioName,
-      trial.transcript.trialIndex,
-    );
     const evalResultsMd = renderTrialEvalResultsMarkdown(trial);
 
     const snapshotsDir = join(trialDir, 'snapshots');
     await mkdir(snapshotsDir, { recursive: true });
 
-    const transcript: StoredTranscript = {
-      scenarioName: trial.transcript.scenarioName,
-      trialIndex: trial.transcript.trialIndex,
-      turns: trial.transcript.turns,
-      snapshotCount: trial.transcript.snapshots.length,
-      errors: trial.transcript.errors,
-    };
-    await writeFile(
-      join(trialDir, 'transcript.json'),
-      JSON.stringify(transcript, null, 2),
+    await this.writeConversationData(
+      trialDir,
+      trial.transcript,
+      trial.transcript.snapshots.length,
     );
 
     await writeFile(
@@ -662,35 +682,6 @@ export class EvalStore {
       join(trialDir, 'eval-results.md'),
       evalResultsMd,
     );
-
-    const toolCallSummary = summarizeToolCalls(
-      trial.transcript.turns,
-    );
-    await writeFile(
-      join(trialDir, 'tool_calls.json'),
-      JSON.stringify(toolCallSummary, null, 2),
-    );
-
-    await writeFile(
-      join(trialDir, 'conversation.json'),
-      JSON.stringify(conversationJson, null, 2),
-    );
-
-    const artifacts = extractArtifacts(trial.transcript.turns);
-    if (artifacts.length > 0) {
-      const artifactsDir = join(trialDir, 'artifacts');
-      await mkdir(artifactsDir, { recursive: true });
-      for (const artifact of artifacts) {
-        await writeFile(
-          join(artifactsDir, artifact.filename),
-          artifact.content,
-        );
-      }
-      await writeFile(
-        join(artifactsDir, 'artifacts.json'),
-        JSON.stringify(buildArtifactManifest(artifacts), null, 2),
-      );
-    }
 
     // Snapshot PNG + HTML are written directly to disk by SiteCapture
     // before this method runs; here we only persist the in-memory
@@ -728,6 +719,61 @@ export class EvalStore {
       await writeFile(
         join(snapshotsDir, 'capture.json'),
         JSON.stringify(capturedSite, null, 2),
+      );
+    }
+  }
+
+  /**
+   * Shared helper: writes transcript.json, tool_calls.json,
+   * conversation.json, and artifacts/ to the given trial directory.
+   */
+  private async writeConversationData(
+    trialDir: string,
+    transcript: Transcript,
+    snapshotCount: number,
+  ): Promise<void> {
+    const conversationJson = renderConversation(
+      transcript.turns,
+      transcript.scenarioName,
+      transcript.trialIndex,
+    );
+
+    const storedTranscript: StoredTranscript = {
+      scenarioName: transcript.scenarioName,
+      trialIndex: transcript.trialIndex,
+      turns: transcript.turns,
+      snapshotCount,
+      errors: transcript.errors,
+    };
+    await writeFile(
+      join(trialDir, 'transcript.json'),
+      JSON.stringify(storedTranscript, null, 2),
+    );
+
+    const toolCallSummary = summarizeToolCalls(transcript.turns);
+    await writeFile(
+      join(trialDir, 'tool_calls.json'),
+      JSON.stringify(toolCallSummary, null, 2),
+    );
+
+    await writeFile(
+      join(trialDir, 'conversation.json'),
+      JSON.stringify(conversationJson, null, 2),
+    );
+
+    const artifacts = extractArtifacts(transcript.turns);
+    if (artifacts.length > 0) {
+      const artifactsDir = join(trialDir, 'artifacts');
+      await mkdir(artifactsDir, { recursive: true });
+      for (const artifact of artifacts) {
+        await writeFile(
+          join(artifactsDir, artifact.filename),
+          artifact.content,
+        );
+      }
+      await writeFile(
+        join(artifactsDir, 'artifacts.json'),
+        JSON.stringify(buildArtifactManifest(artifacts), null, 2),
       );
     }
   }

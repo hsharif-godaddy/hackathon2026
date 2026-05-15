@@ -6,6 +6,7 @@ import {
   InactivityGuard,
 } from '../simulation.js';
 import type { SimulationCaptureContext } from '../simulation.js';
+import type { Transcript } from '../transcript.js';
 import { GoalTracker } from '../goal-tracker.js';
 import type { AgentClient, AgentEvent } from '../../clients/agent-client.js';
 import type { SyntheticUserAgent } from '../synthetic-user.js';
@@ -1985,6 +1986,117 @@ describe('first-turn inactivity timeout', () => {
     );
     await vi.advanceTimersByTimeAsync(3_000);
     await assertion;
+  });
+});
+
+describe('onConversationComplete callback', () => {
+  it('fires after conversation loop completes but before capture', async () => {
+    const callOrder: string[] = [];
+    const scenario = makeScenario({
+      setup: vi.fn().mockResolvedValue({ appId: 'app' }),
+    });
+    const syntheticUser: SyntheticUserAgent = {
+      nextMessage: vi
+        .fn()
+        .mockResolvedValueOnce('hello')
+        .mockResolvedValue(null),
+    };
+    const onConversationComplete = vi.fn().mockImplementation(async () => {
+      callOrder.push('callback');
+    });
+    const mockSiteCapture = {
+      capture: vi.fn().mockImplementation(async () => {
+        callOrder.push('capture');
+        return { snapshot: makeSnapshotMeta() };
+      }),
+    };
+    const agent = makeAutoAgent();
+    const captureContext: SimulationCaptureContext = {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      siteCapture: mockSiteCapture as any,
+      getTrialOutputDir: vi.fn().mockResolvedValue('/tmp/trials/0'),
+    };
+
+    await new Simulation({
+      scenario,
+      agentClient: agent,
+      syntheticUser,
+      captureContext,
+      config: mockConfig,
+      onConversationComplete,
+    }).run(0);
+
+    expect(callOrder).toEqual(['callback', 'capture']);
+  });
+
+  it('receives partial transcript with turns but empty snapshots', async () => {
+    const scenario = makeScenario({
+      setup: vi.fn().mockResolvedValue({ appId: 'app' }),
+    });
+    const syntheticUser: SyntheticUserAgent = {
+      nextMessage: vi
+        .fn()
+        .mockResolvedValueOnce('hello')
+        .mockResolvedValue(null),
+    };
+    let capturedTranscript: Transcript | undefined;
+    const onConversationComplete = vi
+      .fn()
+      .mockImplementation(async (_idx: number, t: Transcript) => {
+        capturedTranscript = t;
+      });
+    const agent = makeAutoAgent('agent response');
+    const mockSiteCapture = {
+      capture: vi.fn().mockResolvedValue({ snapshot: makeSnapshotMeta() }),
+    };
+    const captureContext: SimulationCaptureContext = {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      siteCapture: mockSiteCapture as any,
+      getTrialOutputDir: vi.fn().mockResolvedValue('/tmp/trials/0'),
+    };
+
+    await new Simulation({
+      scenario,
+      agentClient: agent,
+      syntheticUser,
+      captureContext,
+      config: mockConfig,
+      onConversationComplete,
+    }).run(2);
+
+    expect(capturedTranscript).toBeDefined();
+    expect(capturedTranscript!.turns.length).toBeGreaterThan(0);
+    expect(capturedTranscript!.snapshots).toHaveLength(0);
+    // trialIndex should match what was passed to run()
+    expect(capturedTranscript!.trialIndex).toBe(2);
+  });
+
+  it('propagates onConversationComplete rejection to caller', async () => {
+    const scenario = makeScenario({
+      setup: vi.fn().mockResolvedValue({ appId: 'app' }),
+    });
+    const syntheticUser: SyntheticUserAgent = {
+      nextMessage: vi
+        .fn()
+        .mockResolvedValueOnce('hello')
+        .mockResolvedValue(null),
+    };
+    const onConversationComplete = vi
+      .fn()
+      .mockRejectedValue(new Error('write failed'));
+    const agent = makeAutoAgent();
+
+    await expect(
+      new Simulation({
+        scenario,
+        agentClient: agent,
+        syntheticUser,
+        config: mockConfig,
+        onConversationComplete,
+      }).run(0),
+    ).rejects.toThrow('write failed');
+
+    expect(scenario.teardown).toHaveBeenCalledOnce();
   });
 });
 

@@ -100,6 +100,7 @@ function makeMockStore() {
     initRun: vi.fn<EvalStore['initRun']>().mockResolvedValue('mock-dir'),
     ensureTrialDir: vi.fn<EvalStore['ensureTrialDir']>().mockResolvedValue('/tmp/trial'),
     writeTrial: vi.fn<EvalStore['writeTrial']>().mockResolvedValue(undefined),
+    writePartialTrial: vi.fn<EvalStore['writePartialTrial']>().mockResolvedValue(undefined),
   };
 }
 
@@ -893,5 +894,71 @@ describe('GraduationRunner', () => {
         expect(savedResult).not.toHaveProperty('persona');
       },
     );
+  });
+
+  describe('partial trial persistence (writePartialTrial)', () => {
+    it('passes writePartialTrial to SuiteRunner when store and dirName are available', async () => {
+      mockSuiteRunnerRun.mockResolvedValue([
+        makeScenarioResult(['pass', 'pass', 'pass']),
+      ]);
+
+      const mockStore = makeMockStore();
+      const runner = new GraduationRunner({
+        scenario: mockScenario,
+        config: mockConfig,
+        baselineStore: mockBaselineStore,
+        store: mockStore as unknown as EvalStore,
+        dirName: 'partial-dir',
+        skipFinalize: true,
+      });
+      await runner.run('run-partial');
+
+      const suiteRunnerOpts = vi.mocked(SuiteRunner).mock.calls[0][0];
+      expect(suiteRunnerOpts.writePartialTrial).toBeDefined();
+    });
+
+    it('does not pass writePartialTrial to SuiteRunner when no store', async () => {
+      mockSuiteRunnerRun.mockResolvedValue([
+        makeScenarioResult(['pass', 'pass', 'pass']),
+      ]);
+
+      const runner = new GraduationRunner({
+        scenario: mockScenario,
+        config: mockConfig,
+        baselineStore: mockBaselineStore,
+      });
+      await runner.run('run-no-partial');
+
+      const suiteRunnerOpts = vi.mocked(SuiteRunner).mock.calls[0][0];
+      expect(suiteRunnerOpts.writePartialTrial).toBeUndefined();
+    });
+
+    it('writePartialTrial callback delegates to store.writePartialTrial with dirName', async () => {
+      mockSuiteRunnerRun.mockResolvedValue([
+        makeScenarioResult(['pass', 'pass', 'pass']),
+      ]);
+
+      const mockStore = makeMockStore();
+      mockStore.writePartialTrial = vi.fn().mockResolvedValue(undefined);
+      const runner = new GraduationRunner({
+        scenario: mockScenario,
+        config: mockConfig,
+        baselineStore: mockBaselineStore,
+        store: mockStore as unknown as EvalStore,
+        dirName: 'delegate-dir',
+        skipFinalize: true,
+      });
+      await runner.run('run-delegate');
+
+      const suiteRunnerOpts = vi.mocked(SuiteRunner).mock.calls[0][0];
+      const fakeTranscript = makeTranscript(0);
+      await suiteRunnerOpts.writePartialTrial!(
+        'test-scenario', 0, fakeTranscript,
+      );
+
+      expect(mockStore.writePartialTrial).toHaveBeenCalledWith(
+        'delegate-dir', 'test-scenario', 0, fakeTranscript,
+      );
+    });
   });
 });

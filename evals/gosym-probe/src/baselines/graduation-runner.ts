@@ -113,6 +113,8 @@ export class GraduationRunner {
       ...(store && dirName && {
         getTrialOutputDir: (scenarioName, trialIndex) =>
           store.ensureTrialDir(dirName, scenarioName, trialIndex),
+        writePartialTrial: (scenarioName, trialIndex, transcript) =>
+          store.writePartialTrial(dirName, scenarioName, trialIndex, transcript),
       }),
     });
 

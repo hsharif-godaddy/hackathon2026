@@ -1724,3 +1724,60 @@ describe('rate limit (429) retry', () => {
     warnSpy.mockRestore();
   });
 });
+
+describe('SuiteRunner — writePartialTrial error handling', () => {
+  beforeEach(() => {
+    mockSimulationRun.mockReset();
+    mockClient.configure.mockClear();
+    mockClient.disconnect.mockClear();
+    mockClient.onMessage.mockClear();
+  });
+
+  it('writePartialTrial failure invokes onPartialWriteFailed and run completes', async () => {
+    const { Simulation } = await import('../simulation.js');
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const writeErr = new Error('ENOSPC: no space left');
+    const writePartialTrial = vi.fn().mockRejectedValue(writeErr);
+    const onPartialWriteFailed = vi.fn();
+
+    // Override Simulation mock to invoke onConversationComplete during run
+    (Simulation as unknown as ReturnType<typeof vi.fn>).mockImplementation(
+      (opts: { onConversationComplete?: (idx: number, t: Transcript) => Promise<void> }) => ({
+        run: async (trialIndex: number) => {
+          if (opts.onConversationComplete) {
+            await opts.onConversationComplete(trialIndex, makeTranscript());
+          }
+          return makeTranscript();
+        },
+      }),
+    );
+
+    const scenario = makeScenario({ trials: 1 });
+    const results = await new SuiteRunner({
+      scenarios: [scenario],
+      config: mockConfig,
+      makeAgentClient,
+      syntheticUser: mockSyntheticUser,
+      writePartialTrial,
+      onPartialWriteFailed,
+    }).run();
+
+    expect(results).toHaveLength(1);
+    expect(writePartialTrial).toHaveBeenCalledWith(
+      'test-scenario', 0, expect.any(Object),
+    );
+    expect(onPartialWriteFailed).toHaveBeenCalledWith(
+      'test-scenario', 0, writeErr,
+    );
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('writePartialTrial failed'),
+      expect.anything(), expect.anything(), expect.anything(),
+    );
+
+    // Restore default mock behavior for subsequent tests
+    (Simulation as unknown as ReturnType<typeof vi.fn>).mockImplementation(() => ({
+      run: mockSimulationRun,
+    }));
+    warnSpy.mockRestore();
+  });
+});

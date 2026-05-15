@@ -1888,6 +1888,214 @@ describe('EvalStore', () => {
     });
   });
 
+  describe('writePartialTrial()', () => {
+    const DIR_NAME = `${FIXED_COMPACT}_run-001`;
+
+    it('writes transcript.json with snapshotCount 0 and empty errors', async () => {
+      const store = new EvalStore();
+      const transcript = makeTrialResult(0).transcript;
+
+      await store.writePartialTrial(DIR_NAME, 'test-scenario', 0, transcript);
+
+      const call = mockWriteFile.mock.calls.find(([p]) =>
+        (p as string).endsWith('transcript.json'),
+      );
+      expect(call).toBeDefined();
+      const parsed = JSON.parse(call![1] as string) as StoredTranscript;
+      expect(parsed.scenarioName).toBe('test-scenario');
+      expect(parsed.trialIndex).toBe(0);
+      expect(parsed.turns).toHaveLength(2);
+      expect(parsed.snapshotCount).toBe(0);
+      expect(parsed.errors).toEqual([]);
+    });
+
+    it('writes conversation.json via renderConversation', async () => {
+      const store = new EvalStore();
+      const transcript = makeTrialResult(0).transcript;
+
+      await store.writePartialTrial(DIR_NAME, 'test-scenario', 0, transcript);
+
+      const call = mockWriteFile.mock.calls.find(([p]) =>
+        (p as string).endsWith('conversation.json'),
+      );
+      expect(call).toBeDefined();
+      expect(mockRenderConversation).toHaveBeenCalledWith(
+        transcript.turns,
+        transcript.scenarioName,
+        transcript.trialIndex,
+      );
+    });
+
+    it('writes tool_calls.json via summarizeToolCalls', async () => {
+      const store = new EvalStore();
+      const transcript = makeTrialResult(0).transcript;
+
+      await store.writePartialTrial(DIR_NAME, 'test-scenario', 0, transcript);
+
+      const call = mockWriteFile.mock.calls.find(([p]) =>
+        (p as string).endsWith('tool_calls.json'),
+      );
+      expect(call).toBeDefined();
+      const parsed = JSON.parse(
+        call![1] as string,
+      ) as StoredToolCallSummary;
+      expect(parsed).toHaveProperty('sequence');
+      expect(parsed).toHaveProperty('totalCount');
+    });
+
+    it('writes artifacts when extractable tool calls exist', async () => {
+      const store = new EvalStore();
+      const transcript = makeTrialResultWithReadFile(0).transcript;
+
+      await store.writePartialTrial(DIR_NAME, 'test-scenario', 0, transcript);
+
+      expect(mockMkdir).toHaveBeenCalledWith(
+        expect.stringContaining('trials/0/artifacts'),
+        { recursive: true },
+      );
+      const artifactCall = mockWriteFile.mock.calls.find(([p]) =>
+        (p as string).endsWith('0-Header.tsx'),
+      );
+      expect(artifactCall).toBeDefined();
+      const manifestCall = mockWriteFile.mock.calls.find(([p]) =>
+        (p as string).endsWith('artifacts/artifacts.json'),
+      );
+      expect(manifestCall).toBeDefined();
+    });
+
+    it('does NOT write eval-results.json', async () => {
+      const store = new EvalStore();
+      const transcript = makeTrialResult(0).transcript;
+
+      await store.writePartialTrial(DIR_NAME, 'test-scenario', 0, transcript);
+
+      const call = mockWriteFile.mock.calls.find(([p]) =>
+        (p as string).endsWith('eval-results.json'),
+      );
+      expect(call).toBeUndefined();
+    });
+
+    it('does NOT write eval-results.md', async () => {
+      const store = new EvalStore();
+      const transcript = makeTrialResult(0).transcript;
+
+      await store.writePartialTrial(DIR_NAME, 'test-scenario', 0, transcript);
+
+      const call = mockWriteFile.mock.calls.find(([p]) =>
+        (p as string).endsWith('eval-results.md'),
+      );
+      expect(call).toBeUndefined();
+    });
+
+    it('does NOT write snapshot metadata', async () => {
+      const store = new EvalStore();
+      const transcript = makeTrialResult(0).transcript;
+
+      await store.writePartialTrial(DIR_NAME, 'test-scenario', 0, transcript);
+
+      const metaCall = mockWriteFile.mock.calls.find(([p]) =>
+        (p as string).endsWith('.meta.json'),
+      );
+      const consoleLogsCall = mockWriteFile.mock.calls.find(([p]) =>
+        (p as string).endsWith('.console-logs.json'),
+      );
+      expect(metaCall).toBeUndefined();
+      expect(consoleLogsCall).toBeUndefined();
+    });
+
+    it('handles empty transcript (0 turns) producing valid JSON', async () => {
+      const store = new EvalStore();
+      const transcript = {
+        scenarioName: 'test-scenario',
+        trialIndex: 0,
+        turns: [],
+        snapshots: [],
+        errors: [],
+      };
+
+      await store.writePartialTrial(DIR_NAME, 'test-scenario', 0, transcript);
+
+      const transcriptCall = mockWriteFile.mock.calls.find(([p]) =>
+        (p as string).endsWith('transcript.json'),
+      );
+      expect(transcriptCall).toBeDefined();
+      const parsed = JSON.parse(transcriptCall![1] as string);
+      expect(parsed.turns).toEqual([]);
+      expect(parsed.snapshotCount).toBe(0);
+
+      const toolCallsCall = mockWriteFile.mock.calls.find(([p]) =>
+        (p as string).endsWith('tool_calls.json'),
+      );
+      expect(toolCallsCall).toBeDefined();
+      const toolCalls = JSON.parse(toolCallsCall![1] as string);
+      expect(toolCalls.totalCount).toBe(0);
+      expect(toolCalls.sequence).toEqual([]);
+    });
+
+    it('subsequent writeTrial overwrites partial data cleanly', async () => {
+      const store = new EvalStore();
+      const trial = makeTrialResult(0);
+
+      await store.writePartialTrial(
+        DIR_NAME, 'test-scenario', 0, trial.transcript,
+      );
+
+      vi.clearAllMocks();
+      mockMkdir.mockResolvedValue(undefined);
+      mockWriteFile.mockResolvedValue(undefined);
+      mockRenderTrialEvalResultsMarkdown.mockReturnValue(
+        '## mock eval results\n',
+      );
+      mockRenderConversation.mockReturnValue({
+        scenarioName: 'test-scenario',
+        trial: 1,
+        turns: [{ role: 'user', content: 'hello', durationSeconds: 0 }],
+        summary: { messageCount: 1, totalElapsedSeconds: 0 },
+      });
+
+      await store.writeTrial(DIR_NAME, 'test-scenario', trial);
+
+      const transcriptCall = mockWriteFile.mock.calls.find(([p]) =>
+        (p as string).endsWith('transcript.json'),
+      );
+      expect(transcriptCall).toBeDefined();
+
+      const evalResultsCall = mockWriteFile.mock.calls.find(([p]) =>
+        (p as string).endsWith('eval-results.json'),
+      );
+      expect(evalResultsCall).toBeDefined();
+
+      const evalMdCall = mockWriteFile.mock.calls.find(([p]) =>
+        (p as string).endsWith('eval-results.md'),
+      );
+      expect(evalMdCall).toBeDefined();
+    });
+
+    it('logs console.error and rejects on I/O failure', async () => {
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const store = new EvalStore();
+      const transcript = makeTrialResult(0).transcript;
+      const ioError = new Error('ENOSPC: no space left on device');
+
+      mockWriteFile.mockRejectedValueOnce(ioError);
+
+      await expect(
+        store.writePartialTrial(DIR_NAME, 'test-scenario', 0, transcript),
+      ).rejects.toThrow('ENOSPC: no space left on device');
+
+      expect(errorSpy).toHaveBeenCalledWith(
+        'writePartialTrial: write failed',
+        expect.objectContaining({
+          scenarioName: 'test-scenario',
+          trialIndex: 0,
+        }),
+        ioError,
+      );
+
+      errorSpy.mockRestore();
+    });
+  });
+
   describe('load methods', () => {
     // Helper: seed the index so findRunDir can resolve run-001
     function seedIndex(): void {

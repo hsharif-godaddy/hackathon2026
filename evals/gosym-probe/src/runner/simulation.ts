@@ -80,6 +80,16 @@ export interface SimulationOptions {
   captureContext?: SimulationCaptureContext;
   config: ResolvedConfig;
   maxTurnsOverride?: number;
+  /**
+   * Fires after the conversation loop completes, before capture begins.
+   * Awaited so the caller can flush conversation data to disk before the
+   * 90-second capture window starts. Must not throw; SuiteRunner
+   * guarantees this for the standard wiring by wrapping in try/catch.
+   */
+  onConversationComplete?: (
+    trialIndex: number,
+    partialTranscript: Transcript,
+  ) => Promise<void>;
 }
 
 interface RunState {
@@ -175,6 +185,10 @@ export class Simulation {
         history.push(assistantTurn);
 
         assistantTurnCount++;
+      }
+
+      if (this.options.onConversationComplete) {
+        await this.options.onConversationComplete(trialIndex, builder.build());
       }
 
       await this.runCapture(trialIndex, setupResult, builder);

@@ -108,6 +108,22 @@ export interface SuiteRunnerOptions {
     scenarioName: string,
     trialIndex: number,
   ) => Promise<string>;
+  /**
+   * Persists conversation data after the conversation loop and before capture.
+   * Receives the scenario name, trial index, and partial transcript (no snapshot).
+   * Fires whenever provided, regardless of capture configuration.
+   */
+  writePartialTrial?: (
+    scenarioName: string,
+    trialIndex: number,
+    transcript: Transcript,
+  ) => Promise<void>;
+  /** Invoked when writePartialTrial fails, for failure tracking. */
+  onPartialWriteFailed?: (
+    scenarioName: string,
+    trialIndex: number,
+    error: unknown,
+  ) => void;
 }
 
 export class SuiteRunner {
@@ -197,6 +213,21 @@ export class SuiteRunner {
                 getTrialOutputDir(scenario.name, trialIndex),
             }
             : undefined;
+        const { writePartialTrial } = this.options;
+        const onConversationComplete = writePartialTrial
+          ? async (trialIndex: number, partialTranscript: Transcript) => {
+              try {
+                await writePartialTrial(scenario.name, trialIndex, partialTranscript);
+              } catch (err) {
+                const msg = err instanceof Error ? err.message : String(err);
+                console.warn(
+                  '[SuiteRunner] writePartialTrial failed for %s trial %d: %s',
+                  scenario.name, trialIndex, msg,
+                );
+                this.options.onPartialWriteFailed?.(scenario.name, trialIndex, err);
+              }
+            }
+          : undefined;
         const transcript = await new Simulation({
           scenario,
           agentClient: client,
@@ -204,6 +235,7 @@ export class SuiteRunner {
           captureContext,
           config,
           maxTurnsOverride: this.options.maxTurnsOverride,
+          onConversationComplete,
         }).run(i);
         for (const ev of scenario.evaluators) {
           try {

@@ -412,6 +412,11 @@ async function main(): Promise<void> {
     trialIndicesByScenario,
     getTrialOutputDir: (scenarioName, trialIndex) =>
       store.ensureTrialDir(dirName, scenarioName, trialIndex),
+    writePartialTrial: (scenarioName, trialIndex, transcript) =>
+      store.writePartialTrial(dirName, scenarioName, trialIndex, transcript),
+    onPartialWriteFailed: (scenarioName, trialIndex, error) => {
+      writeFailures.push({ scenarioName, trialIndex, error });
+    },
     onTrialEvaluated: (scenarioName, trial) => {
       const p = store
         .writeTrial(dirName, scenarioName, trial)
