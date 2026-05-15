@@ -24,7 +24,7 @@ import { TokenUsageCollector }
 import { TokenUsageEvaluator }
   from '../../evaluators/token-usage.js';
 
-import type { GocodeClient }
+import type { IGocodeClient }
   from '../../clients/gocode-client.js';
 import type { AABCtrlPlaneClient }
   from '../../clients/aab-ctrl-plane-client.js';
@@ -47,7 +47,7 @@ export interface GoldenLightConfig {
 
 export function createGoldenLightScenario(
   config: GoldenLightConfig,
-  gocode: GocodeClient,
+  gocode: IGocodeClient,
   ctrlPlane: AABCtrlPlaneClient,
 ): Scenario {
   if (config.trials !== undefined

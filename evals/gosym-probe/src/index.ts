@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { loadConfig } from '../config/index.js';
 import { AABClient } from './clients/aab-client.js';
 import { AABCtrlPlaneClient } from './clients/aab-ctrl-plane-client.js';
-import { GocodeClient } from './clients/gocode-client.js';
+import { PerTrialGocodeClient } from './clients/per-trial-gocode-client.js';
 import {
   SetupContextResolver,
   SiteCapture,
@@ -151,7 +151,7 @@ async function main(): Promise<void> {
     resolver: new SetupContextResolver(),
     ignoreHttpsErrors: config.playwright.ignoreHttpsErrors,
   });
-  const gocodeClient  = new GocodeClient(config.gocode);
+  const gocodeClient  = new PerTrialGocodeClient(config.gocode);
   const syntheticUser = new GocodeSyntheticUser(gocodeClient);
 
   const ALL_SCENARIOS = createAllScenarios(gocodeClient, ctrlPlane);
@@ -211,6 +211,7 @@ async function main(): Promise<void> {
       scenarioConcurrency: fanOut ? clampConcurrency(concurrencyOverride, maxConcurrency) : 1,
       baselineStoreFactory: () => new BaselineStore(),
       maxTurnsOverride,
+      trialLifecycle: gocodeClient,
       onTrialEvaluated: makeProgressCallback(suiteReporter),
       store: gradStore,
     });
@@ -305,6 +306,7 @@ async function main(): Promise<void> {
       stabilityLevelOverride: stabilityOverride,
       trialConcurrency: concurrencyOverride,
       maxTurnsOverride,
+      trialLifecycle: gocodeClient,
       onTrialEvaluated: makeProgressCallback(gradReporter),
       store: singleGradStore,
     });
@@ -493,6 +495,7 @@ async function main(): Promise<void> {
     onPartialWriteFailed: (scenarioName, trialIndex, error) => {
       writeFailures.push({ scenarioName, trialIndex, error });
     },
+    trialLifecycle: gocodeClient,
     onTrialEvaluated: (scenarioName, trial) => {
       evalReporter?.trialCompleted(scenarioName, trial.trialIndex);
       const p = store

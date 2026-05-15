@@ -52,10 +52,6 @@ export class LLMCostEvaluator implements Evaluator {
     );
   }
 
-  // In parallel execution mode, the shared GocodeClient accumulator may
-  // include tokens from concurrent trials. Probe deltas are approximate
-  // when trials overlap. Accurate per-trial isolation requires per-trial
-  // GocodeClient instances.
   afterSimulation(trialIndex: number): void {
     this.afterSnapshots.set(trialIndex, this.options.gocodeClient.getAccumulatedUsage());
   }

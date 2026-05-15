@@ -1,5 +1,5 @@
 import type { Evaluator, EvalResult } from '../evaluator.js';
-import type { GocodeClient } from '../../clients/gocode-client.js';
+import type { IGocodeClient } from '../../clients/gocode-client.js';
 import type { DOMSnapshot, Transcript } from '../../runner/transcript.js';
 import type { Scenario } from '../../scenarios/types.js';
 import {
@@ -209,7 +209,7 @@ function assertNever(value: never): never {
   throw new Error(`Unsupported alignment evaluator score type: ${String(value)}`);
 }
 
-function createEvaluatorFromSpec(gocode: GocodeClient, spec: AlignmentSpec): Evaluator {
+function createEvaluatorFromSpec(gocode: IGocodeClient, spec: AlignmentSpec): Evaluator {
   const canEvaluate = (transcript: Transcript): boolean => transcript.turns.length > 0;
 
   const validateEvidence = async (
@@ -248,6 +248,6 @@ function createEvaluatorFromSpec(gocode: GocodeClient, spec: AlignmentSpec): Eva
   return assertNever(spec);
 }
 
-export function createAlignmentLLMEvaluators(gocode: GocodeClient): Evaluator[] {
+export function createAlignmentLLMEvaluators(gocode: IGocodeClient): Evaluator[] {
   return SPECS.map((spec) => createEvaluatorFromSpec(gocode, spec));
 }

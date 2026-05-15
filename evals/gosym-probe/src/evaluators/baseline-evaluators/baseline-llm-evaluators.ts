@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { z } from 'zod';
 
 import type { Evaluator, EvalResult } from '../evaluator.js';
-import type { GocodeClient } from '../../clients/gocode-client.js';
+import type { IGocodeClient } from '../../clients/gocode-client.js';
 import type { DOMSnapshot, Transcript } from '../../runner/transcript.js';
 import type { Scenario } from '../../scenarios/types.js';
 
@@ -440,7 +440,7 @@ const BASELINE_SPEC_BY_NAME = new Map<BaselineEvaluatorName, BaselineEvaluatorSp
 );
 
 function createEvaluatorFromSpec(
-  gocode: GocodeClient,
+  gocode: IGocodeClient,
   spec: BaselineEvaluatorSpec,
 ): Evaluator {
   if (spec.scoreType === 'numerical') {
@@ -479,13 +479,13 @@ function createEvaluatorFromSpec(
 }
 
 export function createBaselineLLMEvaluators(
-  gocode: GocodeClient,
+  gocode: IGocodeClient,
 ): Evaluator[] {
   return BASELINE_SPECS.map((spec) => createEvaluatorFromSpec(gocode, spec));
 }
 
 export function createSelectiveBaselineLLMEvaluators(
-  gocode: GocodeClient,
+  gocode: IGocodeClient,
   names: readonly BaselineEvaluatorName[],
 ): Evaluator[] {
   const unknown = names.filter((n) => !BASELINE_SPEC_BY_NAME.has(n));

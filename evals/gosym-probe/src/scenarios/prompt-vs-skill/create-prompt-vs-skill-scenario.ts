@@ -15,7 +15,7 @@ import { TurnDurationEvaluator }
   from '../../evaluators/turn-duration.js';
 import { createTokenEvaluators }
   from '../../evaluators/create-token-evaluators.js';
-import type { GocodeClient }
+import type { IGocodeClient }
   from '../../clients/gocode-client.js';
 import type { AABCtrlPlaneClient }
   from '../../clients/aab-ctrl-plane-client.js';
@@ -34,7 +34,7 @@ export interface PromptVsSkillConfig {
 
 export function createPromptVsSkillScenario(
   config: PromptVsSkillConfig,
-  gocode: GocodeClient,
+  gocode: IGocodeClient,
   ctrlPlane: AABCtrlPlaneClient,
 ): Scenario {
   if (config.trials !== undefined

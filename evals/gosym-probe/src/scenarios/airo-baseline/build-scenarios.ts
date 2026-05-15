@@ -1,5 +1,5 @@
 import type { AABCtrlPlaneClient } from '../../clients/aab-ctrl-plane-client.js';
-import type { GocodeClient } from '../../clients/gocode-client.js';
+import type { IGocodeClient } from '../../clients/gocode-client.js';
 import type { Scenario } from '../types.js';
 import {
   canLoadAiroBaselineScenarios,
@@ -80,7 +80,7 @@ function validatePairing(
 }
 
 export function buildAiroBaselineScenarios(
-  gocode: GocodeClient,
+  gocode: IGocodeClient,
   ctrlPlane: AABCtrlPlaneClient,
 ): Scenario[] {
   if (!shouldEnableAiroBaseline()) return [];

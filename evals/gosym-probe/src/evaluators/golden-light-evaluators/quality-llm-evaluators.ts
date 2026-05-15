@@ -1,5 +1,5 @@
 import type { Evaluator, EvalResult } from '../evaluator.js';
-import type { GocodeClient } from '../../clients/gocode-client.js';
+import type { IGocodeClient } from '../../clients/gocode-client.js';
 import type { DOMSnapshot, Transcript } from '../../runner/transcript.js';
 import type { Scenario } from '../../scenarios/types.js';
 import {
@@ -89,7 +89,7 @@ async function contentSubstancePrompt(
   ].join('\n');
 }
 
-export function createQualityLLMEvaluators(gocode: GocodeClient): Evaluator[] {
+export function createQualityLLMEvaluators(gocode: IGocodeClient): Evaluator[] {
   const visualCoherence = new LLMJsonEvaluator(gocode, {
     name: 'visual-coherence',
     evalVersion: '1.0',

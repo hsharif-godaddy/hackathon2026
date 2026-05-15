@@ -19,6 +19,13 @@ export interface ProbeUsageSource {
   getAccumulatedUsage(): ProbeUsage;
 }
 
+/** Full interface for GoCode LLM clients used by the eval harness. */
+export interface IGocodeClient extends ProbeUsageSource {
+  complete(messages: Message[]): Promise<string>;
+  getModel(): string;
+  resetAccumulatedUsage(): void;
+}
+
 const ZERO_USAGE: ProbeUsage = {
   promptTokens: 0,
   completionTokens: 0,
@@ -26,7 +33,7 @@ const ZERO_USAGE: ProbeUsage = {
   calls: 0,
 };
 
-export class GocodeClient {
+export class GocodeClient implements IGocodeClient {
   private client: OpenAI;
   private model: string;
   private accumulated: ProbeUsage = { ...ZERO_USAGE };

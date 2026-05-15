@@ -1,7 +1,7 @@
 import { standardPersona } from '../personas/standard.js';
 import { LatencyEvaluator } from '../evaluators/latency-evaluator.js';
 import { createTokenEvaluators } from '../evaluators/create-token-evaluators.js';
-import type { GocodeClient } from '../clients/gocode-client.js';
+import type { IGocodeClient } from '../clients/gocode-client.js';
 import type {
   AABCtrlPlaneClient,
 } from '../clients/aab-ctrl-plane-client.js';
@@ -24,7 +24,7 @@ const COMPLEX_PROMPT = [
 ].join('\n');
 
 export function complexPromptLatencyScenario(
-  gocode: GocodeClient,
+  gocode: IGocodeClient,
   ctrlPlane: AABCtrlPlaneClient,
 ): Scenario {
   const tokenEvaluators = createTokenEvaluators(gocode);

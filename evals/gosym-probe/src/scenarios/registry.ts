@@ -15,14 +15,14 @@ import {
   symptomModuleNotFoundScenario,
   multiTurnPublishFlowScenario,
 } from './prompt-vs-skill/index.js';
-import type { GocodeClient } from '../clients/gocode-client.js';
+import type { IGocodeClient } from '../clients/gocode-client.js';
 import type {
   AABCtrlPlaneClient,
 } from '../clients/aab-ctrl-plane-client.js';
 import type { Scenario } from './types.js';
 
 export function createAllScenarios(
-  gocode: GocodeClient,
+  gocode: IGocodeClient,
   ctrlPlane: AABCtrlPlaneClient,
 ): Scenario[] {
   return [

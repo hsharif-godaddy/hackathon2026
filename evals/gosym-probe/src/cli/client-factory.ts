@@ -1,5 +1,5 @@
 import { loadConfig } from '../../config/index.js';
-import { GocodeClient } from '../clients/gocode-client.js';
+import { PerTrialGocodeClient } from '../clients/per-trial-gocode-client.js';
 import { AABCtrlPlaneClient } from '../clients/aab-ctrl-plane-client.js';
 import { createAllScenarios } from '../scenarios/registry.js';
 import { EvalStore } from '../store/eval-store.js';
@@ -19,7 +19,7 @@ export function createCliDeps(): CliDeps {
   const ctrlPlane = new AABCtrlPlaneClient({
     baseUrl: config.aab.controlPlaneUrl,
   });
-  const gocodeClient = new GocodeClient(config.gocode);
+  const gocodeClient = new PerTrialGocodeClient(config.gocode);
   const scenarios = createAllScenarios(gocodeClient, ctrlPlane);
   const evalStore = new EvalStore();
   const baselineStore = new BaselineStore();

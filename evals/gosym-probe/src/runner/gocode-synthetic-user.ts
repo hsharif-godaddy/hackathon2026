@@ -1,5 +1,5 @@
 import type { SyntheticUserAgent } from './synthetic-user.js';
-import type { GocodeClient } from '../clients/gocode-client.js';
+import type { IGocodeClient } from '../clients/gocode-client.js';
 import type { GoalTracker } from './goal-tracker.js';
 import type { Scenario } from '../scenarios/types.js';
 import type { Turn } from './transcript.js';
@@ -7,7 +7,7 @@ import type { Turn } from './transcript.js';
 const DONE_SIGNAL = 'DONE';
 
 export class GocodeSyntheticUser implements SyntheticUserAgent {
-  constructor(private readonly client: GocodeClient) {}
+  constructor(private readonly client: IGocodeClient) {}
 
   async nextMessage(
     history: Turn[],

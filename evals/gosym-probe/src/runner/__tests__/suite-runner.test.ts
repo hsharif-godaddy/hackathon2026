@@ -627,6 +627,8 @@ describe('SuiteRunner — onTrialEvaluated callback', () => {
     expect(onTrialEvaluated.mock.calls[0][1].trialIndex).toBe(1);
 
     // Resolve remaining simulations and let the runner finish.
+    // Wait for the third worker to park (it starts after trial 1 completes).
+    await vi.waitFor(() => expect(resolvers.length).toBeGreaterThanOrEqual(3));
     resolvers[0](makeTranscript('my-scenario', 0));
     resolvers[2](makeTranscript('my-scenario', 2));
     await runPromise;

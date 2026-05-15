@@ -1,5 +1,5 @@
 import type { Evaluator } from '../evaluator.js';
-import type { GocodeClient } from '../../clients/gocode-client.js';
+import type { IGocodeClient } from '../../clients/gocode-client.js';
 
 import { createBaselineLLMEvaluators } from './baseline-llm-evaluators.js';
 import {
@@ -9,7 +9,7 @@ import {
 } from './structure-checks.js';
 import { TotalTimeTakenEvaluator } from './operational-efficiency.js';
 
-export function createBaselineEvaluators(gocode: GocodeClient): Evaluator[] {
+export function createBaselineEvaluators(gocode: IGocodeClient): Evaluator[] {
   return [
     ...createBaselineLLMEvaluators(gocode),
     new TotalTimeTakenEvaluator(),

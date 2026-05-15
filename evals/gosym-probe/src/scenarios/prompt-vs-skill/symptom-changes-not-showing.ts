@@ -1,12 +1,12 @@
 import { createPromptVsSkillScenario } from './create-prompt-vs-skill-scenario.js';
-import type { GocodeClient }
+import type { IGocodeClient }
   from '../../clients/gocode-client.js';
 import type { AABCtrlPlaneClient }
   from '../../clients/aab-ctrl-plane-client.js';
 import type { Scenario } from '../types.js';
 
 export function symptomChangesNotShowingScenario(
-  gocode: GocodeClient,
+  gocode: IGocodeClient,
   ctrlPlane: AABCtrlPlaneClient,
 ): Scenario {
   return createPromptVsSkillScenario(

@@ -14,6 +14,7 @@ import type { SiteCapture } from '../clients/dom-capture.js';
 import type { ScenarioResult, TrialResult } from '../runner/types.js';
 import type { EvalStore } from '../store/eval-store.js';
 import type { ThresholdOptions } from './baseline-store.js';
+import type { TrialLifecycle } from '../clients/trial-lifecycle.js';
 
 interface BaselineStore {
   save(
@@ -37,6 +38,7 @@ interface GraduationRunnerOptionsBase {
    */
   trialConcurrency?: number;
   maxTurnsOverride?: number;
+  trialLifecycle?: TrialLifecycle;
   onTrialEvaluated?: (scenarioName: string, trial: TrialResult) => void;
   log?: (message: string, ...args: unknown[]) => void;
 }
@@ -115,6 +117,7 @@ export class GraduationRunner {
       trialsOverride: totalTrials,
       trialConcurrency: this.options.trialConcurrency,
       maxTurnsOverride: this.options.maxTurnsOverride,
+      trialLifecycle: this.options.trialLifecycle,
       onTrialEvaluated: this.options.onTrialEvaluated,
       ...(store && dirName && {
         getTrialOutputDir: (scenarioName, trialIndex) =>

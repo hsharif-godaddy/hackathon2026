@@ -10,7 +10,7 @@ import {
   makeGocodeClient,
   makeCtrlPlaneClient,
 } from '../../__tests__/scenario-test-helpers.js';
-import type { GocodeClient }
+import type { IGocodeClient }
   from '../../../clients/gocode-client.js';
 import type { AABCtrlPlaneClient }
   from '../../../clients/aab-ctrl-plane-client.js';
@@ -31,7 +31,7 @@ const REQUIRED_EVALUATORS = [
 ];
 
 type ScenarioBuilder = (
-  gocode: GocodeClient,
+  gocode: IGocodeClient,
   ctrlPlane: AABCtrlPlaneClient,
 ) => Scenario;
 

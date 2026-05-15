@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 import type { EvalResult, Evaluator } from '../evaluator.js';
-import type { GocodeClient } from '../../clients/gocode-client.js';
+import type { IGocodeClient } from '../../clients/gocode-client.js';
 import type { DOMSnapshot, Transcript } from '../../runner/transcript.js';
 import type { Scenario } from '../../scenarios/types.js';
 import { clamp01 } from './shared.js';
@@ -60,7 +60,7 @@ export class LLMJsonEvaluator<T> implements Evaluator {
   readonly evalVersion?: string;
 
   constructor(
-    private readonly gocode: GocodeClient,
+    private readonly gocode: IGocodeClient,
     private readonly config: LLMJsonEvaluatorConfig<T>,
   ) {
     this.name = config.name;

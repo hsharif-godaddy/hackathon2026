@@ -1,14 +1,14 @@
 import { createGoldenLightScenario }
   from './golden-light/create-golden-light-scenario.js';
 import { beginnerPersona } from '../personas/beginner.js';
-import type { GocodeClient }
+import type { IGocodeClient }
   from '../clients/gocode-client.js';
 import type { AABCtrlPlaneClient }
   from '../clients/aab-ctrl-plane-client.js';
 import type { Scenario } from './types.js';
 
 export function buildLandingPageScenario(
-  gocode: GocodeClient,
+  gocode: IGocodeClient,
   ctrlPlane: AABCtrlPlaneClient,
 ): Scenario {
   return createGoldenLightScenario(

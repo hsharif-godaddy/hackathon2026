@@ -1,10 +1,10 @@
-import type { GocodeClient }
+import type { IGocodeClient }
   from '../../clients/gocode-client.js';
 import type { AABCtrlPlaneClient }
   from '../../clients/aab-ctrl-plane-client.js';
 
-export function makeGocodeClient(): GocodeClient {
-  const mock: Pick<GocodeClient, 'complete' | 'getModel' | 'getAccumulatedUsage'> = {
+export function makeGocodeClient(): IGocodeClient {
+  const mock: IGocodeClient = {
     complete: async () => '',
     getModel: () => 'claude-sonnet-4-6',
     getAccumulatedUsage: () => ({
@@ -13,8 +13,9 @@ export function makeGocodeClient(): GocodeClient {
       totalTokens: 0,
       calls: 0,
     }),
+    resetAccumulatedUsage: () => {},
   };
-  return mock as unknown as GocodeClient;
+  return mock;
 }
 
 export function makeCtrlPlaneClient(): AABCtrlPlaneClient {

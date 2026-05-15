@@ -1,5 +1,5 @@
 import type { AABCtrlPlaneClient } from '../../clients/aab-ctrl-plane-client.js';
-import type { GocodeClient } from '../../clients/gocode-client.js';
+import type { IGocodeClient } from '../../clients/gocode-client.js';
 import { createBaselineEvaluators } from '../../evaluators/baseline-evaluators/index.js';
 import {
   buildAiroBaselinePersona,
@@ -33,7 +33,7 @@ function shouldUseBaselineEvaluators(): boolean {
 
 export function buildAiroBaselineScenarioFromSyntheticUser(
   user: AiroBaselineSyntheticUser,
-  gocode: GocodeClient,
+  gocode: IGocodeClient,
   ctrlPlane: AABCtrlPlaneClient,
   scenarioDefinition: AiroBaselineScenarioDefinition,
 ): Scenario {
@@ -87,7 +87,7 @@ export function buildAiroBaselineScenarioFromSyntheticUser(
 
 export function buildAiroBaselineScenarioById(
   syntheticId: string,
-  gocode: GocodeClient,
+  gocode: IGocodeClient,
   ctrlPlane: AABCtrlPlaneClient,
 ): Scenario {
   const user = loadAiroBaselineSyntheticUsers().find(

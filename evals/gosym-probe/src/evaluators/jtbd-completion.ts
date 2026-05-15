@@ -1,7 +1,7 @@
 import type { EvalResult, Evaluator } from './evaluator.js';
 import type { DOMSnapshot, Transcript } from '../runner/transcript.js';
 import type { Scenario } from '../scenarios/types.js';
-import type { GocodeClient } from '../clients/gocode-client.js';
+import type { IGocodeClient } from '../clients/gocode-client.js';
 import { readSnapshotHtml, truncate, LLM_PROMPT_HTML_MAX_CHARS } from './shared.js';
 
 function buildTranscriptText(transcript: Transcript): string {
@@ -56,7 +56,7 @@ function parseVerdict(response: string): EvalResult['verdict'] {
 export class JTBDCompletionEvaluator implements Evaluator {
   readonly name = 'jtbd-completion';
 
-  constructor(private readonly gocodeClient: GocodeClient) {}
+  constructor(private readonly gocodeClient: IGocodeClient) {}
 
   async evaluate(
     transcript: Transcript,

@@ -1,6 +1,6 @@
 import { createGoldenLightScenario }
   from './create-golden-light-scenario.js';
-import type { GocodeClient }
+import type { IGocodeClient }
   from '../../clients/gocode-client.js';
 import type { AABCtrlPlaneClient }
   from '../../clients/aab-ctrl-plane-client.js';
@@ -20,7 +20,7 @@ const STATIC_PROMPT = [
 ].join('\n');
 
 export function businessSiteScenario(
-  gocode: GocodeClient,
+  gocode: IGocodeClient,
   ctrlPlane: AABCtrlPlaneClient,
 ): Scenario {
   return createGoldenLightScenario(
