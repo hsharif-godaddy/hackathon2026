@@ -6,10 +6,22 @@ import (
 	"sync"
 )
 
+// chromiumUnsafePorts lists ports that Chromium-based browsers refuse to
+// navigate to (net::ERR_UNSAFE_PORT). Derived from Chromium source
+// net/base/port_util.cc. Only ports reachable by our allocation ranges are
+// included. Ports 6566, 6665-6669, 6697 are also Chromium-blocked but
+// unreachable given supervisor ranges start at 8877+.
+var chromiumUnsafePorts = map[int]struct{}{
+	5060:  {}, // SIP
+	5061:  {}, // SIP-TLS
+	6000:  {}, // X11
+	10080: {}, // Amanda
+}
+
 // PortAllocator manages port allocation for app containers.
 // Matches TypeScript PortManager ranges:
 //   - Preview HTTP: 5000-5499
-//   - Publish HTTP: 5500-5999 (avoids 6000 which Chrome blocks)
+//   - Publish HTTP: 5500-5999
 //   - Preview supervisor TCP: 8877+
 //   - Publish supervisor TCP: 9000+
 type PortAllocator struct {
@@ -63,6 +75,9 @@ func (p *PortAllocator) Allocate() (preview, publish, supervisor, publishSupervi
 
 func (p *PortAllocator) findAvailable(start int) (int, error) {
 	for port := start; port < start+100; port++ {
+		if _, unsafe := chromiumUnsafePorts[port]; unsafe {
+			continue
+		}
 		ln, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
 		if err == nil {
 			_ = ln.Close()

@@ -66,6 +66,41 @@ func TestAllocateMultipleNoCollisions(t *testing.T) {
 	}
 }
 
+func TestAllocateSkipsChromiumUnsafePorts(t *testing.T) {
+	t.Run("preview skips 5060/5061", func(t *testing.T) {
+		pa := NewPortAllocator()
+		// Start directly at an unsafe port so the skip logic must fire
+		pa.nextPreview = 5060
+
+		preview, _, _, _, err := pa.Allocate()
+		if err != nil {
+			t.Fatalf("Allocate: %v", err)
+		}
+
+		if _, unsafe := chromiumUnsafePorts[preview]; unsafe {
+			t.Errorf("allocated Chromium-unsafe port %d for preview", preview)
+		}
+		if preview < 5062 {
+			t.Errorf("expected port >= 5062 (skipping 5060/5061), got %d", preview)
+		}
+	})
+
+	t.Run("publish skips 6000", func(t *testing.T) {
+		pa := NewPortAllocator()
+		// Position publish allocator so 6000 is the next candidate
+		pa.nextPublish = 5999
+
+		_, publish, _, _, err := pa.Allocate()
+		if err != nil {
+			t.Fatalf("Allocate: %v", err)
+		}
+
+		if publish == 6000 {
+			t.Errorf("allocated Chromium-unsafe port 6000 for publish")
+		}
+	})
+}
+
 func TestAllocateSequentialIncrement(t *testing.T) {
 	pa := NewPortAllocator()
 
