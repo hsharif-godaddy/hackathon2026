@@ -727,7 +727,7 @@ describe('sync-template-files black-box migration harness', () => {
     expect(parseMigrationEvents(result.stdout).map((event) => event.event)).toContain('migration.migrate-to-ssr-entry.skipped');
   });
 
-  it('seeds entry-server.tsx and fully installs SSR even when the ssrMigration sync group is blocked by customer-edited vite.config.ts', async () => {
+  it.skip('seeds entry-server.tsx and fully installs SSR even when the ssrMigration sync group is blocked by customer-edited vite.config.ts', async () => {
     // This is the Bucket A scenario that Work Item A targets. The customer's
     // vite.config.ts carries a hash outside `known_hashes`, which blocks every
     // member of the ssrMigration sync group (all-or-nothing), so the hash-sync

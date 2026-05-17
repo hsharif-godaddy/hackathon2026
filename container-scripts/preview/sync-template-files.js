@@ -752,6 +752,18 @@ export const MIGRATIONS = [
     id: 'seed-entry-server-tsx',
     description: 'Seed src/entry-server.tsx from the base template when absent',
     run(customerDir, _syncedFiles, baseDir) {
+      // Disabled unconditionally (not gated on vite-plugin-api-routes presence):
+      // force-seeding entry-server.tsx onto apps whose ssrMigration sync group is
+      // blocked causes migrate-to-ssr-entry to run on those apps. That migration
+      // deletes configure.js while vite-plugin-api-routes is still active, crashing
+      // Vite on the next restart. A conditional gate on isVitePluginApiRoutesReferenced
+      // would be functionally equivalent — if vite-plugin-api-routes is already gone,
+      // the ssrMigration group has landed and entry-server.tsx already exists, so the
+      // existsSync check below would skip anyway. Unconditional disable is simpler and
+      // avoids any risk from edge cases in that detection logic.
+      // Revisit once the cohort of apps broken by the configure.js deletion clears up.
+      return { status: 'skipped', reason: 'seeding_disabled' };
+
       const entryServerPath = join(customerDir, 'src/entry-server.tsx');
       if (existsSync(entryServerPath)) {
         return { status: 'skipped', reason: 'entry_server_exists' };

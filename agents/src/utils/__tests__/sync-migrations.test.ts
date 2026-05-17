@@ -118,7 +118,7 @@ describe('sync-template-files migrations', () => {
   describe('seed-entry-server-tsx', () => {
     const migration = findMigration('seed-entry-server-tsx');
 
-    it('seeds src/entry-server.tsx from the template when absent', () => {
+    it.skip('seeds src/entry-server.tsx from the template when absent', () => {
       const entryServerPath = join(dir, 'src/entry-server.tsx');
       expect(existsSync(entryServerPath)).toBe(false);
 
@@ -130,7 +130,7 @@ describe('sync-template-files migrations', () => {
       expect(readFileSync(entryServerPath, 'utf8')).toBe(templateContent);
     });
 
-    it('skips when src/entry-server.tsx is already present', () => {
+    it.skip('skips when src/entry-server.tsx is already present', () => {
       mkdirSync(join(dir, 'src'), { recursive: true });
       writeFileSync(join(dir, 'src/entry-server.tsx'), 'existing content', 'utf8');
 
@@ -140,7 +140,7 @@ describe('sync-template-files migrations', () => {
       expect(readFileSync(join(dir, 'src/entry-server.tsx'), 'utf8')).toBe('existing content');
     });
 
-    it('emits sync.file.seeded structured event when seeding', () => {
+    it.skip('emits sync.file.seeded structured event when seeding', () => {
       migration.run(dir, new Set(), TEMPLATE_DIR);
 
       const seededEvents = consoleLogSpy.mock.calls
@@ -156,7 +156,7 @@ describe('sync-template-files migrations', () => {
       });
     });
 
-    it('skips with template_entry_server_missing when the base template lacks src/entry-server.tsx', () => {
+    it.skip('skips with template_entry_server_missing when the base template lacks src/entry-server.tsx', () => {
       // Simulates a template refactor/rename scenario: the base dir exists but
       // doesn't contain src/entry-server.tsx. A raw readFileSync would abort
       // the whole sync pass via runMigrations' re-raise; we want a structured
@@ -171,7 +171,7 @@ describe('sync-template-files migrations', () => {
       }
     });
 
-    it('leaves sibling files in src/ untouched when seeding', () => {
+    it.skip('leaves sibling files in src/ untouched when seeding', () => {
       // Production apps nearly always have a populated src/ when they hit
       // this migration (legacy App.tsx/main.tsx stay at pre-SSR shape because
       // the ssrMigration sync group is blocked). The seed's mkdirSync uses
@@ -1502,10 +1502,11 @@ export default app;
       // extend this table rather than add a new test per migration.
       const skipCases: Array<{ migrationId: string; reason: string }> = [
         { migrationId: 'remove-public-assets-gitignore', reason: 'gitignore_missing' },
-        // seed-entry-server-tsx applies on an empty dir (it seeds the file);
-        // its skip path (entry_server_exists) is covered in its own describe block.
+        // seed-entry-server-tsx is unconditionally disabled to prevent configure.js
+        // deletion on apps whose ssrMigration sync group is blocked (see seeding_disabled).
+        { migrationId: 'seed-entry-server-tsx', reason: 'seeding_disabled' },
         { migrationId: 'ensure-helmet-provider', reason: 'main_tsx_missing' },
-        { migrationId: 'migrate-to-ssr-entry', reason: 'server_entry_or_api_missing' },
+        { migrationId: 'migrate-to-ssr-entry', reason: 'entry_server_missing' },
         { migrationId: 'normalize-vite-html-entry', reason: 'index_html_missing' },
         { migrationId: 'inject-ssr-markers', reason: 'index_html_missing' },
         { migrationId: 'strip-stale-index-title', reason: 'index_html_missing' },
