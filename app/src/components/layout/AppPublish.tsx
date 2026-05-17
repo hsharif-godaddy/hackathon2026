@@ -104,7 +104,7 @@ function PublishFailedMessage({
 
 export default function AppPublish({ location = 'develop' }: { location?: string }) {
   const t = useTranslations();
-  const publishPreLaunchCheckLabel = 'Check SEO, QA, and Security';
+
   const [open, setOpen] = useState(false);
   const [publishResult, setPublishResult] = useState<'success' | 'failed' | null>(null);
   const [isFixingBuildError, setIsFixingBuildError] = useState(false);
@@ -792,19 +792,19 @@ export default function AppPublish({ location = 'develop' }: { location?: string
               !isFirstTimePublishing && (
               <Button
                 className='w-full'
-                design='tertiary'
+                design='secondary'
                 size='sm'
                 data-eid={generateClickEID(`${location}.header.publish_go_live_chat`)}
                 onClick={handleGoLiveInChat}
                 disabled={isPreLaunchCheckFromPublishDisabled}
-                text={publishPreLaunchCheckLabel}
+                text={t('builder_publish_prelaunch_check_button')}
               />
             )}
 
             {isAiroSubdomain(fqdn) && !isFirstTimePublishing && (
               <Button
                 className='w-full'
-                design='control'
+                design='secondary'
                 size='sm'
                 onClick={handleViewDomain}
                 text={t('builder_common_custom_domain_button')}

@@ -213,7 +213,7 @@ test.describe('Publish Flow', () => {
     ).toBeVisible({ timeout: DEFAULT_TIMEOUT });
 
     const preLaunchCheck = page.getByRole('button', {
-      name: /Check SEO, QA, and Security|Run Pre-Launch Check/i,
+      name: /Check SEO, QA, and Security|Run Pre-Launch Check|builder_publish_prelaunch_check_button/i,
     });
 
     const isPreLaunchVisible = await preLaunchCheck.isVisible({ timeout: DEFAULT_TIMEOUT }).catch(() => false);
