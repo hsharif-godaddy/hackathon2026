@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 import { NextRequest, NextResponse } from 'next/server';
 
 import { DEBUG_CONSOLE_ALLOWED_GROUPS } from '@/lib/ad-groups';
@@ -6,6 +8,57 @@ import { logger } from './logger';
 import { getRootDomainFromHeaders } from './getRootDomain';
 
 const AD_MEMBERSHIP_PATH = '/v1/api/jomax/my/ad_membership';
+
+// AD-group membership cache: SSO returns the same set for the duration of a
+// JWT, so re-fetching on every API call is pure overhead — a single Dashboard
+// load was firing ~20 redundant calls. Cache by SHA-256(token) so we never
+// hold raw tokens in memory; TTL is short enough that revoked group access
+// takes effect within a minute.
+const AD_GROUPS_CACHE_TTL_MS = 60_000;
+const AD_GROUPS_CACHE_MAX_ENTRIES = 200;
+interface AdGroupsCacheEntry {
+    groups: string[];
+    expiresAt: number;
+}
+const adGroupsCache = new Map<string, AdGroupsCacheEntry>();
+// Coalesce concurrent requests for the same token so 12 parallel API routes
+// in one page load fire one upstream call, not 12.
+const adGroupsInFlight = new Map<string, Promise<AdMembershipFetchResult>>();
+
+function tokenCacheKey(token: string): string {
+    return createHash('sha256').update(token).digest('hex');
+}
+
+function getCachedAdGroups(key: string): string[] | undefined {
+    const hit = adGroupsCache.get(key);
+    if (!hit) return undefined;
+    if (Date.now() >= hit.expiresAt) {
+        adGroupsCache.delete(key);
+        return undefined;
+    }
+    return hit.groups;
+}
+
+function setCachedAdGroups(key: string, groups: string[]): void {
+    // Naive LRU-by-insertion-order: when full, drop the oldest entry. Maps
+    // preserve insertion order, so deleting the first key is O(1).
+    if (adGroupsCache.size >= AD_GROUPS_CACHE_MAX_ENTRIES) {
+        const oldest = adGroupsCache.keys().next().value;
+        if (oldest !== undefined) adGroupsCache.delete(oldest);
+    }
+    adGroupsCache.set(key, { groups, expiresAt: Date.now() + AD_GROUPS_CACHE_TTL_MS });
+}
+
+/**
+ * Test-only: clear the cache + in-flight maps so each test sees a clean
+ * slate. Without this, tests that share a JWT token would all hit the cache
+ * after the first test runs. Not exported via the public surface — intended
+ * to be called from `beforeEach` in api-auth.test.ts.
+ */
+export function __clearAdGroupsCacheForTests(): void {
+    adGroupsCache.clear();
+    adGroupsInFlight.clear();
+}
 
 export interface AuthUser {
     shopperId?: string;
@@ -100,10 +153,15 @@ type AdMembershipFetchResult =
     | { ok: false; status: number; needsFresherJwt?: boolean; reason: string };
 
 /**
- * Fetches the caller's AD group membership from SSO.
+ * Fetches the caller's AD group membership from SSO, with an in-memory TTL
+ * cache and in-flight coalescing.
  *
- * Reusable across withAuth and the /api/auth/membership endpoint so the same
- * request only goes to SSO once per call site.
+ * Reusable across withAuth and the /api/auth/membership endpoint. Without
+ * the cache, every API request fired its own SSO round-trip — a single page
+ * load could trigger 20+ identical calls.
+ *
+ * Failures are NOT cached: a transient SSO outage shouldn't keep returning
+ * "forbidden" for 60 seconds after it recovers.
  */
 export async function fetchUserAdGroups(request: NextRequest, token: string): Promise<AdMembershipFetchResult> {
     const rootDomain = getRootDomainFromHeaders(request.headers);
@@ -111,25 +169,45 @@ export async function fetchUserAdGroups(request: NextRequest, token: string): Pr
         return { ok: false, status: 403, reason: 'Unable to determine the root domain from the request headers' };
     }
 
-    const url = `https://sso.${rootDomain}${AD_MEMBERSHIP_PATH}`;
-    try {
-        const response = await fetch(url, { headers: { Authorization: `sso-jwt ${token}` } });
-        if (!response.ok) {
-            const errorBody: { code?: number } = await response.json().catch(() => ({}));
-            logger.error('api-auth.fetchUserAdGroups.error', { url, status: response.status, code: errorBody.code });
-            if (errorBody.code === -92) {
-                return { ok: false, status: 401, needsFresherJwt: true, reason: 'Requires a fresher JWT' };
-            }
-            return { ok: false, status: 403, reason: 'Failed to verify AD group membership' };
-        }
-        const body = await response.json();
-        const groups: string[] = Array.isArray(body?.data?.groups) ? body.data.groups : [];
-        logger.info('api-auth.fetchUserAdGroups.success', { groupCount: groups.length });
-        return { ok: true, groups };
-    } catch (error) {
-        logger.error('api-auth.fetchUserAdGroups.catch', {}, { error: error as Error });
-        return { ok: false, status: 403, reason: 'AD group membership check failed' };
+    const cacheKey = tokenCacheKey(token);
+    const cached = getCachedAdGroups(cacheKey);
+    if (cached) {
+        return { ok: true, groups: cached };
     }
+
+    // Coalesce: if another request for the same token is already fetching,
+    // await its result instead of firing another SSO call.
+    const inFlight = adGroupsInFlight.get(cacheKey);
+    if (inFlight) {
+        return inFlight;
+    }
+
+    const url = `https://sso.${rootDomain}${AD_MEMBERSHIP_PATH}`;
+    const promise = (async (): Promise<AdMembershipFetchResult> => {
+        try {
+            const response = await fetch(url, { headers: { Authorization: `sso-jwt ${token}` } });
+            if (!response.ok) {
+                const errorBody: { code?: number } = await response.json().catch(() => ({}));
+                logger.error('api-auth.fetchUserAdGroups.error', { url, status: response.status, code: errorBody.code });
+                if (errorBody.code === -92) {
+                    return { ok: false, status: 401, needsFresherJwt: true, reason: 'Requires a fresher JWT' };
+                }
+                return { ok: false, status: 403, reason: 'Failed to verify AD group membership' };
+            }
+            const body = await response.json();
+            const groups: string[] = Array.isArray(body?.data?.groups) ? body.data.groups : [];
+            setCachedAdGroups(cacheKey, groups);
+            logger.info('api-auth.fetchUserAdGroups.success', { groupCount: groups.length, cached: false });
+            return { ok: true, groups };
+        } catch (error) {
+            logger.error('api-auth.fetchUserAdGroups.catch', {}, { error: error as Error });
+            return { ok: false, status: 403, reason: 'AD group membership check failed' };
+        } finally {
+            adGroupsInFlight.delete(cacheKey);
+        }
+    })();
+    adGroupsInFlight.set(cacheKey, promise);
+    return promise;
 }
 
 /**

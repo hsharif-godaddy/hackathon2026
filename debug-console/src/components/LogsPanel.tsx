@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { formatTimestamp } from '@/lib/date-utils';
 import {
@@ -9,6 +9,11 @@ import {
   resolveSyncedPreset,
   type RangeMode,
 } from '@/lib/log-time-range';
+import {
+  isMergedLokiSource,
+  MERGED_LOKI_SOURCE_ID,
+  MERGED_LOKI_SOURCE_IDS,
+} from '@/lib/loki-source-ids';
 
 export interface LogSource {
   id: string;
@@ -69,51 +74,17 @@ const INITIAL_COLUMN_WIDTHS = {
   source: 80
 };
 
-// Source-specific field mappings
-const SOURCE_FIELD_MAPPINGS: Record<string, {
-  idField: string;
-  idLabel: string;
-  getIdValue: (log: LogEntry) => string | undefined;
-  appIdFilterMode: 'field' | 'query' | 'none'; // 'field' = filter by specific field, 'query' = free-text search, 'none' = no filter
-}> = {
-  'airo-agents': {
-    idField: 'appId',
-    idLabel: 'App ID',
-    getIdValue: (log) => log.appId,
-    appIdFilterMode: 'field'
-  },
-  'airo-app': {
-    idField: 'customerId',
-    idLabel: 'Customer ID',
-    getIdValue: (log) => (log.raw?.customerId as string) || (log.raw?.['customer.id'] as string) || (log.raw?.['user.id'] as string) || ((log.raw?.data as Record<string, unknown>)?.customerId as string) || undefined,
-    appIdFilterMode: 'field'
-  },
-  'airo-preview': {
-    idField: 'appId',
-    idLabel: 'App ID',
-    getIdValue: (log) => log.appId,
-    appIdFilterMode: 'field'
-  },
-  'airo-publish': {
-    idField: 'appId',
-    idLabel: 'App ID',
-    getIdValue: (log) => log.appId,
-    appIdFilterMode: 'field'
-  },
-  'control_plane': {
-    idField: 'appId',
-    idLabel: 'App ID',
-    getIdValue: (log) => log.appId,
-    appIdFilterMode: 'field'
-  }
+// Source-specific field mappings (minimal — only `appIdFilterMode` is read by
+// the panel; the rest are kept for future use / parity with the old API)
+const SOURCE_FIELD_MAPPINGS: Record<string, { appIdFilterMode: 'field' | 'query' | 'none' }> = {
+  'airo-agents': { appIdFilterMode: 'field' },
+  'airo-app': { appIdFilterMode: 'field' },
+  'airo-preview': { appIdFilterMode: 'field' },
+  'airo-publish': { appIdFilterMode: 'field' },
+  'control_plane': { appIdFilterMode: 'field' }
 };
 
-const DEFAULT_FIELD_MAPPING = {
-  idField: 'appId',
-  idLabel: 'App ID',
-  getIdValue: (log: LogEntry) => log.appId,
-  appIdFilterMode: 'field' as const
-};
+const DEFAULT_FIELD_MAPPING = { appIdFilterMode: 'field' as const };
 
 const SOURCE_LABELS: Record<string, string> = {
   'airo-agents': 'Agent',
@@ -121,7 +92,20 @@ const SOURCE_LABELS: Record<string, string> = {
   'airo-publish': 'Publish',
   'airo-app': 'UI Client',
   'control_plane': 'CP',
+  'loki-merged': 'Loki (Agent + Preview + Publish)',
 };
+
+// `MERGED_LOKI_SOURCE_IDS`, `MERGED_LOKI_SOURCE_ID`, and `isMergedLokiSource`
+// are imported above from `@/lib/loki-source-ids` (shared with the server-
+// side merged-Loki helper).
+
+// Sentinel `selectedSource` value meaning "fan out across every configured
+// source (using merged Loki when all 3 Loki sources are present)".
+const ALL_SOURCES = 'all';
+
+// localStorage key for the dropdown selection. Survives reloads so a user
+// who's debugging one source repeatedly doesn't have to reselect it.
+const SELECTED_SOURCE_STORAGE_KEY = 'debug-console.logs.selectedSource';
 
 // Convert ISO string to datetime-local input value (YYYY-MM-DDTHH:MM)
 function isoToLocalInput(iso: string): string {
@@ -134,6 +118,149 @@ function localInputToIso(local: string): string {
   return new Date(local).toISOString();
 }
 
+/**
+ * Tiny CSS spinner used inline in buttons (alongside text). Reuses the
+ * `spin` keyframe defined in globals.css.
+ */
+function InlineSpinner({ color = '#374151' }: { color?: string }) {
+  return (
+    <span
+      aria-hidden
+      style={{
+        display: 'inline-block',
+        width: '12px',
+        height: '12px',
+        border: `2px solid ${color === 'white' ? 'rgba(255,255,255,0.4)' : '#e5e7eb'}`,
+        borderTopColor: color,
+        borderRadius: '50%',
+        animation: 'spin 0.8s linear infinite',
+        flexShrink: 0,
+      }}
+    />
+  );
+}
+
+/**
+ * Standard debounce hook: returns the latest `value` after `delayMs` of
+ * stillness. Used so a user typing in the filter input doesn't fire one
+ * `Promise.all` of network requests per keystroke.
+ */
+function useDebouncedValue<T>(value: T, delayMs: number): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(value), delayMs);
+    return () => clearTimeout(t);
+  }, [value, delayMs]);
+  return debounced;
+}
+
+interface LogRowProps {
+  log: LogEntry;
+  isSelected: boolean;
+  fallbackSourceId: string;
+  onToggle: () => void;
+}
+
+/**
+ * Memoized row. The previous implementation re-ran `formatLogJson(log.raw)`
+ * for every row on every render — selecting a row caused 50 JSON.stringify
+ * calls. With React.memo + useMemo keyed on `log.id` we only do that work
+ * once per log.
+ */
+const LogRow = React.memo(function LogRow({
+  log,
+  isSelected,
+  fallbackSourceId,
+  onToggle,
+}: LogRowProps) {
+  const logJson = useMemo(() => formatLogJson(log.raw), [log.id, log.raw]);
+  const prettyJson = useMemo(
+    () => (isSelected ? JSON.stringify(JSON.parse(logJson), null, 2) : ''),
+    [isSelected, logJson]
+  );
+  const sourceLabel = SOURCE_LABELS[log.sourceId || fallbackSourceId] || log.sourceId || fallbackSourceId;
+
+  return (
+    <>
+      <tr
+        onClick={onToggle}
+        style={{
+          cursor: 'pointer',
+          transition: 'background-color 0.15s',
+          borderBottom: isSelected ? 'none' : '1px solid #f3f4f6',
+          backgroundColor: isSelected ? '#eff6ff' : 'transparent',
+          borderLeft: isSelected ? '3px solid #3b82f6' : '3px solid transparent',
+          // F — virtualize via the platform: rows scrolled off-screen skip
+          // layout/paint and report a 60 px placeholder (rough average for
+          // wrapped JSON log rows) so the scroll height stays approximately
+          // accurate. The browser substitutes the measured height once the
+          // row enters the viewport. The selected row opts out — its
+          // expanded `<pre>` is variable-height and we want it to render
+          // even when scrolled to the edge.
+          contentVisibility: isSelected ? undefined : 'auto',
+          containIntrinsicSize: '0 60px',
+        } as React.CSSProperties}
+        onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.backgroundColor = '#f9fafb'; }}
+        onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.backgroundColor = 'transparent'; }}
+      >
+        <td style={{
+          padding: '0.5rem 0.75rem', fontFamily: 'monospace',
+          whiteSpace: 'nowrap', fontSize: '0.7rem',
+          color: isSelected ? '#1e40af' : '#6b7280'
+        }}>
+          {formatTimestamp(log.timestamp)}
+        </td>
+        <td style={{ padding: '0.5rem 0.5rem', fontSize: '0.65rem', fontWeight: 600, color: '#6b7280', whiteSpace: 'nowrap' }}>
+          {sourceLabel}
+        </td>
+        <td style={{
+          padding: '0.5rem 0.75rem', fontFamily: 'monospace', fontSize: '0.75rem',
+          // Wrap full log JSON inline. `break-all` covers very long unbroken
+          // strings (URLs, base64 blobs, single-token JSON values) that
+          // `break-word` won't split.
+          whiteSpace: 'pre-wrap', wordBreak: 'break-all',
+          color: isSelected ? '#1e40af' : '#374151'
+        }}>
+          {logJson}
+        </td>
+      </tr>
+      {isSelected && (
+        <tr>
+          <td colSpan={3} style={{ padding: 0, borderBottom: '1px solid #e5e7eb' }}>
+            <pre style={{
+              margin: 0, padding: '0.5rem 0.75rem',
+              backgroundColor: '#1e293b', color: '#e2e8f0',
+              fontSize: '0.7rem', lineHeight: 1.5,
+              fontFamily: 'monospace', overflow: 'auto',
+              maxHeight: '300px', whiteSpace: 'pre-wrap', wordBreak: 'break-all'
+            }}>
+              {prettyJson}
+            </pre>
+          </td>
+        </tr>
+      )}
+    </>
+  );
+});
+
+/**
+ * Per-request pagination state. Each requestId (one of the configured source
+ * ids, or the synthetic `loki-merged`) tracks its own page-2 cursor and any
+ * known total. Loki responses set `nextCursor` (oldest seen timestamp_ns) but
+ * have no total; ES responses set both `total` and `nextCursor` (next `from`).
+ *
+ * `warning` is set when a request soft-failed (the server returns HTTP 200 +
+ * `{logs: [], warning, details}` for upstream Loki/ES errors so unaffected
+ * sources still surface their results). The UI renders a per-source warning
+ * strip with a Retry button when this is set.
+ */
+interface RequestState {
+  logs: LogEntry[];
+  nextCursor?: string;
+  total?: number;
+  warning?: string;
+}
+
 export default function LogsPanel({
   sources,
   globalAppId,
@@ -142,15 +269,22 @@ export default function LogsPanel({
   refreshKey = 0,
   onRefresh
 }: LogsPanelProps) {
-  const [selectedSource, setSelectedSource] = useState<string>('all');
-  const [selectedLogIndex, setSelectedLogIndex] = useState<number | null>(null);
-  const [page, setPage] = useState(0);
-  const [accumulatedLogs, setAccumulatedLogs] = useState<LogEntry[]>([]);
+  // Per-requestId state. The merged log list is derived from this map.
+  const [requestStates, setRequestStates] = useState<Record<string, RequestState>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [total, setTotal] = useState(0);
+  const [selectedLogIndex, setSelectedLogIndex] = useState<number | null>(null);
   const [filterText, setFilterText] = useState('');
   const [levelFilters, setLevelFilters] = useState({ error: true, warn: false });
+  // Single-select source picker. Defaults to "all" (every configured source);
+  // initial value comes from localStorage so the user's last pick survives
+  // reloads. SSR-safe: `typeof window` guard means the server-render path
+  // sees the default and the client hydrates with the persisted value on
+  // first effect tick.
+  const [selectedSource, setSelectedSource] = useState<string>(() => {
+    if (typeof window === 'undefined') return ALL_SOURCES;
+    return localStorage.getItem(SELECTED_SOURCE_STORAGE_KEY) || ALL_SOURCES;
+  });
 
   // Date range state: preset dropdown OR custom absolute start/end
   const [rangeMode, setRangeMode] = useState<RangeMode>('preset');
@@ -162,6 +296,25 @@ export default function LogsPanel({
   });
   const [customEnd, setCustomEnd] = useState<string>(() => isoToLocalInput(new Date().toISOString()));
 
+  // Once sources are loaded, validate the persisted dropdown value: if the
+  // saved id no longer matches a configured source (renamed, removed, or
+  // initial pick was made before sources arrived), fall back to "all". This
+  // also handles the SSR seam where the initial state defaulted to "all"
+  // before localStorage was readable.
+  useEffect(() => {
+    if (sources.length === 0) return;
+    if (selectedSource === ALL_SOURCES) return;
+    const known = sources.some((s) => s.id === selectedSource);
+    if (!known) setSelectedSource(ALL_SOURCES);
+  }, [sources, selectedSource]);
+
+  // Persist dropdown changes to localStorage so the next session restores
+  // the same pick.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    localStorage.setItem(SELECTED_SOURCE_STORAGE_KEY, selectedSource);
+  }, [selectedSource]);
+
   // Keep the local preset in sync when the parent Dashboard changes its
   // top-level time-range selector. Custom ranges are user-owned and aren't
   // overwritten by parent updates. `presetValue` is intentionally not in the
@@ -172,9 +325,9 @@ export default function LogsPanel({
     if (next !== null) setPresetValue(next);
   }, [timeRange, rangeMode]);
 
-  const PAGE_SIZE = 50;
-  const panelRef = useRef<HTMLDivElement>(null);
-  const tableContainerRef = useRef<HTMLDivElement>(null);
+  // C — Debounce filter text. Without this, every keystroke fires a
+  // Promise.all of N upstream queries.
+  const debouncedFilterText = useDebouncedValue(filterText, 300);
 
   // Column resizing state
   const [columnWidths, setColumnWidths] = useState(INITIAL_COLUMN_WIDTHS);
@@ -261,16 +414,24 @@ export default function LogsPanel({
     params.set('endTime', now.toISOString());
   }, [rangeMode, presetValue, customStart, customEnd]);
 
-  const fetchSingleSource = useCallback(async function fetchSingle(sourceId: string): Promise<{ logs: LogEntry[]; total: number }> {
-    const fm = SOURCE_FIELD_MAPPINGS[sourceId] || DEFAULT_FIELD_MAPPING;
+  /**
+   * Fetch one page from a single requestId. Used both for the initial fetch
+   * (cursor undefined) and Load More (cursor = previous response's nextCursor).
+   *
+   * Returns the per-page response shape; the caller is responsible for
+   * merging into the per-requestId state map.
+   */
+  const fetchPage = useCallback(async function fetchPageInternal(
+    requestId: string,
+    cursor?: string,
+  ): Promise<{ logs: LogEntry[]; nextCursor?: string; total?: number; warning?: string }> {
+    const fm = SOURCE_FIELD_MAPPINGS[requestId] || DEFAULT_FIELD_MAPPING;
     const urlParams = new URLSearchParams();
-    urlParams.set('source', sourceId);
-    urlParams.set('size', PAGE_SIZE.toString());
-    urlParams.set('from', (page * PAGE_SIZE).toString());
+    urlParams.set('source', requestId);
 
-    // Combine level checkboxes + filter text + external query as free-text search
+    // Combine level checkboxes + filter text + external query as free-text search.
     const levelTerms = Object.entries(levelFilters).filter(([, on]) => on).map(([k]) => k).join(' ');
-    const searchTerms = [levelTerms, filterText, query].filter(Boolean).join(' ');
+    const searchTerms = [levelTerms, debouncedFilterText, query].filter(Boolean).join(' ');
 
     if (globalAppId && fm.appIdFilterMode !== 'none') {
       if (fm.appIdFilterMode === 'field') {
@@ -284,6 +445,7 @@ export default function LogsPanel({
       urlParams.set('query', searchTerms);
     }
     buildTimeParams(urlParams);
+    if (cursor) urlParams.set('cursor', cursor);
 
     const response = await fetch(`/api/es-logs?${urlParams.toString()}`);
     if (!response.ok) {
@@ -297,61 +459,282 @@ export default function LogsPanel({
       throw new Error(errorMessage);
     }
     const data = await response.json();
-    const logs = (data.logs || []).map((log: LogEntry) => ({ ...log, sourceId }));
-    return { logs, total: data.total || 0 };
-  }, [filterText, levelFilters, query, globalAppId, page, buildTimeParams]);
+    const logs: LogEntry[] = (data.logs || []).map((log: LogEntry) =>
+      log.sourceId ? log : { ...log, sourceId: requestId }
+    );
+    // The server returns HTTP 200 + `warning` for soft upstream failures.
+    // Combine `warning` and `details` for a more useful message.
+    const warningText = data.warning
+      ? data.details ? `${data.warning}: ${data.details}` : data.warning as string
+      : undefined;
+    return {
+      logs,
+      nextCursor: data.nextCursor as string | undefined,
+      total: typeof data.total === 'number' ? data.total : undefined,
+      warning: warningText,
+    };
+  }, [debouncedFilterText, levelFilters, query, globalAppId, buildTimeParams]);
 
-  const fetchLogs = useCallback(async function fetchLogsInternal() {
+  // "All" → fan out across every configured source, swapping the three
+  // Loki sources for one merged-Loki request when all three are configured.
+  // Single-source picks fire just that one request.
+  const requestSourceIds = useMemo(() => {
+    if (selectedSource === ALL_SOURCES) {
+      const allIds = sources.map((s) => s.id);
+      const lokiIds = allIds.filter(isMergedLokiSource);
+      if (lokiIds.length === MERGED_LOKI_SOURCE_IDS.length) {
+        return [MERGED_LOKI_SOURCE_ID, ...allIds.filter((id) => !isMergedLokiSource(id))];
+      }
+      return allIds;
+    }
+    return [selectedSource];
+  }, [sources, selectedSource]);
+
+  // Generation counter — every `fetchInitial` (e.g. filter change, refresh)
+  // bumps it. In-flight fetches (initial / Load More / Retry) capture the
+  // value at the start and only commit their result if the generation still
+  // matches. Without this, two rapid filter changes can land out of order
+  // and the slower fetch would overwrite the newer result with stale data.
+  const fetchGenRef = useRef(0);
+
+  // Initial / refresh fetch: clear all state, fetch first page from every
+  // active requestId in parallel.
+  const fetchInitial = useCallback(async function fetchInitialInternal() {
+    if (requestSourceIds.length === 0) {
+      setRequestStates({});
+      setSelectedLogIndex(null);
+      setLoading(false);
+      setError(null);
+      return;
+    }
+
+    const gen = ++fetchGenRef.current;
     setLoading(true);
     setError(null);
-
     try {
-      if (selectedSource === 'all') {
-        const results = await Promise.all(sources.map(s => fetchSingleSource(s.id)));
-        const merged = results.flatMap(r => r.logs)
-          .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-        const totalSum = results.reduce((sum, r) => sum + r.total, 0);
-        setTotal(totalSum);
-        if (page === 0) {
-          setAccumulatedLogs(merged);
-        } else {
-          setAccumulatedLogs(prev => [...prev, ...merged].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
-        }
-      } else {
-        const result = await fetchSingleSource(selectedSource);
-        setTotal(result.total);
-        if (page === 0) {
-          setAccumulatedLogs(result.logs);
-        } else {
-          setAccumulatedLogs(prev => [...prev, ...result.logs]);
-        }
+      const entries = await Promise.all(
+        requestSourceIds.map(async (id) => [id, await fetchPage(id)] as const),
+      );
+      if (gen !== fetchGenRef.current) return; // superseded by a newer fetch
+      const next: Record<string, RequestState> = {};
+      for (const [id, page] of entries) {
+        next[id] = {
+          logs: page.logs,
+          nextCursor: page.nextCursor,
+          total: page.total,
+          warning: page.warning,
+        };
       }
+      setRequestStates(next);
+      setSelectedLogIndex(null);
     } catch (err) {
+      if (gen !== fetchGenRef.current) return;
       setError(err instanceof Error ? err.message : 'Failed to fetch logs');
-      console.error('Error fetching logs:', err);
     } finally {
-      setLoading(false);
+      if (gen === fetchGenRef.current) setLoading(false);
     }
-  }, [selectedSource, sources, fetchSingleSource, page]); // refreshKey triggers via reset effect → page=0 → re-fetch
+  }, [requestSourceIds, fetchPage]);
 
   useEffect(() => {
-    fetchLogs();
-  }, [fetchLogs]);
+    fetchInitial();
+  }, [fetchInitial, refreshKey]);
 
+  // Reset selection when the result set is about to change shape. (The fetch
+  // effect above will overwrite requestStates anyway, but selection index is
+  // an offset into a list whose contents are about to be replaced.)
   useEffect(() => {
-    setPage(0);
-    setAccumulatedLogs([]);
-  }, [selectedSource, filterText, levelFilters, query, rangeMode, presetValue, customStart, customEnd, globalAppId, refreshKey]);
+    setSelectedLogIndex(null);
+  }, [globalAppId, timeRange, rangeMode, presetValue, customStart, customEnd, debouncedFilterText, levelFilters, selectedSource]);
 
-  const loadMore = () => {
-    if (!loading && accumulatedLogs.length < total) {
-      setPage((prev) => prev + 1);
+  // Flatten + sort all per-request log buckets for display.
+  const allLogs = useMemo(() => {
+    // Dedupe by `log.id` while merging across requestId buckets.
+    //
+    // Loki ids are server-generated as `${timestampNs}-${entryIndex}-${first50}`
+    // and are unique only within ONE /api/es-logs response. The same line
+    // emitted by Nomad's runtime (e.g. a heartbeat starting with
+    // `{"com.hashicorp.nomad.job_id":"airo-<appId>"…}`) lands in both the
+    // airo-agents and airo-preview Loki streams at the same nanosecond, so
+    // two separate per-source queries can each return it as their first log
+    // — same timestampNs, same entryIndex 0, same leading content, identical
+    // id. Without this dedupe React throws a duplicate-key error during
+    // checkbox transitions that flip from merged to per-source mode.
+    const seen = new Map<string, LogEntry>();
+    for (const id of requestSourceIds) {
+      const bucket = requestStates[id];
+      if (!bucket) continue;
+      for (const log of bucket.logs) {
+        if (!seen.has(log.id)) seen.set(log.id, log);
+      }
     }
-  };
+    const merged = Array.from(seen.values());
+    merged.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    return merged;
+  }, [requestSourceIds, requestStates]);
+
+  const hasMore = useMemo(
+    () => requestSourceIds.some((id) => requestStates[id]?.nextCursor),
+    [requestSourceIds, requestStates],
+  );
+
+  /**
+   * Latest values of `loadMore` / `hasMore` / `loading`, kept in refs so the
+   * IntersectionObserver callback always reads current state without needing
+   * to re-attach the observer on every state flip.
+   */
+  const loadMoreRef = useRef<() => void>(() => undefined);
+  const hasMoreRef = useRef(false);
+  const loadingRef = useRef(false);
+
+  const loadMore = useCallback(async function loadMoreInternal() {
+    const ids = requestSourceIds.filter((id) => requestStates[id]?.nextCursor);
+    if (ids.length === 0) return;
+    const gen = fetchGenRef.current;
+    setLoading(true);
+    setError(null);
+    // `allSettled` so one failed source doesn't drop the others' pages on
+    // the floor — partial successes still get applied. Failed legs keep
+    // their existing nextCursor so they can be retried on the next click.
+    const settled = await Promise.allSettled(
+      ids.map(async (id) => {
+        const cursor = requestStates[id]?.nextCursor;
+        const page = await fetchPage(id, cursor);
+        return [id, page] as const;
+      }),
+    );
+    if (gen !== fetchGenRef.current) return; // superseded by a fetchInitial
+
+    const updates: Array<readonly [string, Awaited<ReturnType<typeof fetchPage>>]> = [];
+    const errors: string[] = [];
+    for (const result of settled) {
+      if (result.status === 'fulfilled') {
+        updates.push(result.value);
+      } else {
+        errors.push(result.reason instanceof Error ? result.reason.message : String(result.reason));
+      }
+    }
+    if (updates.length > 0) {
+      setRequestStates((prev) => {
+        const out = { ...prev };
+        for (const [id, page] of updates) {
+          const existing = out[id] ?? { logs: [] };
+          out[id] = {
+            logs: [...existing.logs, ...page.logs],
+            nextCursor: page.nextCursor,
+            total: page.total ?? existing.total,
+            warning: page.warning,
+          };
+        }
+        return out;
+      });
+    }
+    // Surface an error only when EVERY load failed — partial failures will
+    // already render via the per-source warning strip on the next refresh.
+    if (errors.length > 0 && updates.length === 0) {
+      setError(errors[0]);
+    }
+    setLoading(false);
+  }, [requestSourceIds, requestStates, fetchPage]);
+
+  /**
+   * Re-fire the first page of a single requestId. Used by the per-source
+   * Retry button shown when a soft failure (HTTP 200 + warning) lands.
+   * Only the affected source is re-fetched; the other sources' results
+   * remain untouched.
+   */
+  const retryRequest = useCallback(async function retryRequestInternal(requestId: string) {
+    const gen = fetchGenRef.current;
+    setLoading(true);
+    setError(null);
+    try {
+      const page = await fetchPage(requestId);
+      if (gen !== fetchGenRef.current) return; // superseded
+      setRequestStates((prev) => ({
+        ...prev,
+        [requestId]: {
+          logs: page.logs,
+          nextCursor: page.nextCursor,
+          total: page.total,
+          warning: page.warning,
+        },
+      }));
+    } catch (err) {
+      if (gen !== fetchGenRef.current) return;
+      setError(err instanceof Error ? err.message : 'Failed to retry');
+    } finally {
+      if (gen === fetchGenRef.current) setLoading(false);
+    }
+  }, [fetchPage]);
+
+  // Per-source warnings derived from current state. Filtered by
+  // `requestSourceIds` so a stale warning from a no-longer-active source
+  // doesn't linger on screen after the user changes the dropdown.
+  const warnings = useMemo(() => {
+    const out: { id: string; message: string }[] = [];
+    for (const id of requestSourceIds) {
+      const w = requestStates[id]?.warning;
+      if (w) out.push({ id, message: w });
+    }
+    return out;
+  }, [requestSourceIds, requestStates]);
+
+  // Mirror the latest values into refs for the IntersectionObserver callback.
+  useEffect(() => { loadMoreRef.current = loadMore; }, [loadMore]);
+  useEffect(() => { hasMoreRef.current = hasMore; }, [hasMore]);
+  useEffect(() => { loadingRef.current = loading; }, [loading]);
+
+  /**
+   * Auto-load on scroll: a ref callback attached to the Load More sentinel
+   * wires up an IntersectionObserver. When the sentinel scrolls within 200 px
+   * of the viewport bottom AND there's more to load AND we're not already
+   * fetching, fire `loadMore()` automatically. The button stays in place as
+   * a manual fallback.
+   *
+   * `root: null` watches the viewport rather than the table's overflow
+   * container — this avoids depending on ref-ordering between the inner
+   * sentinel and the outer container during commit, and matches user-
+   * perceived "is the sentinel actually visible?".
+   */
+  const observerRef = useRef<IntersectionObserver | null>(null);
+  const sentinelRefCallback = useCallback((node: HTMLDivElement | null) => {
+    // Tear down a previous observer first — happens when the sentinel
+    // unmounts (hasMore→false) or remounts.
+    if (observerRef.current) {
+      observerRef.current.disconnect();
+      observerRef.current = null;
+    }
+    if (!node) return;
+    observerRef.current = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting && hasMoreRef.current && !loadingRef.current) {
+            loadMoreRef.current();
+          }
+        }
+      },
+      { root: null, rootMargin: '200px 0px', threshold: 0 },
+    );
+    observerRef.current.observe(node);
+  }, []);
+  useEffect(() => () => {
+    if (observerRef.current) {
+      observerRef.current.disconnect();
+      observerRef.current = null;
+    }
+  }, []);
 
   const toggleLog = (index: number) => {
-    setSelectedLogIndex(selectedLogIndex === index ? null : index);
+    setSelectedLogIndex((prev) => (prev === index ? null : index));
   };
+
+  // Stable per-row toggle callbacks — avoids invalidating React.memo on every render.
+  const toggleByIndex = useMemo(() => {
+    const cache: Record<number, () => void> = {};
+    return (index: number) => {
+      if (!cache[index]) cache[index] = () => toggleLog(index);
+      return cache[index];
+    };
+  }, []);
 
   if (sources.length === 0) {
     return (
@@ -368,7 +751,6 @@ export default function LogsPanel({
 
   return (
     <div
-      ref={panelRef}
       style={{
         backgroundColor: 'white',
         padding: '1rem',
@@ -379,7 +761,7 @@ export default function LogsPanel({
         position: 'relative'
       }}
     >
-      {/* Header with source selector, level filters and refresh button */}
+      {/* Header: source checkboxes, level filters, filter input, time-range, refresh */}
       <div style={{
         display: 'flex',
         justifyContent: 'space-between',
@@ -388,7 +770,7 @@ export default function LogsPanel({
         flexWrap: 'wrap',
         gap: '0.5rem'
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
           <select
             value={selectedSource}
             onChange={(e) => setSelectedSource(e.target.value)}
@@ -400,16 +782,17 @@ export default function LogsPanel({
               backgroundColor: 'white',
               cursor: 'pointer',
               color: '#374151',
-              fontWeight: 500
+              fontWeight: 500,
             }}
+            title="Source"
           >
-            <option value="all">All Sources</option>
-            {sources.map(s => (
+            <option value={ALL_SOURCES}>All Sources</option>
+            {sources.map((s) => (
               <option key={s.id} value={s.id}>{s.name}</option>
             ))}
           </select>
-          <span style={{ fontSize: '0.875rem', color: '#6b7280' }}>
-            {accumulatedLogs.length} of {total.toLocaleString()} logs
+          <span style={{ fontSize: '0.875rem', color: '#6b7280', marginLeft: '0.5rem' }}>
+            {allLogs.length.toLocaleString()} logs
             {globalAppId && ` for ${globalAppId}`}
           </span>
         </div>
@@ -506,16 +889,52 @@ export default function LogsPanel({
                 cursor: loading ? 'not-allowed' : 'pointer',
                 fontSize: '0.875rem',
                 fontWeight: 500,
-                opacity: loading ? 0.6 : 1
+                opacity: loading ? 0.85 : 1,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.5rem',
               }}
             >
-              Refresh
+              {loading && <InlineSpinner color="white" />}
+              {loading ? 'Refreshing…' : 'Refresh'}
             </button>
           )}
         </div>
       </div>
 
-      {/* Error state */}
+      {/* Indeterminate progress bar — visible on every fetch so the user has
+          an in-flight signal even when results are already on screen and only
+          the data underneath is changing. */}
+      <div
+        aria-hidden
+        style={{
+          position: 'relative',
+          height: '2px',
+          backgroundColor: '#f3f4f6',
+          borderRadius: '2px',
+          overflow: 'hidden',
+          marginBottom: '0.5rem',
+          opacity: loading ? 1 : 0,
+          transition: 'opacity 150ms ease',
+        }}
+      >
+        {loading && (
+          <div
+            style={{
+              position: 'absolute',
+              inset: 0,
+              width: '25%',
+              backgroundColor: '#3b82f6',
+              borderRadius: '2px',
+              animation: 'indeterminateProgress 1.1s ease-in-out infinite',
+            }}
+          />
+        )}
+      </div>
+
+      {/* Error state — fatal, the entire fetch threw (e.g. network down or
+          /api/es-logs returned non-2xx). Per-source soft failures use the
+          warnings strip below. */}
       {error && (
         <div style={{
           border: '1px solid #ef4444',
@@ -533,8 +952,58 @@ export default function LogsPanel({
         </div>
       )}
 
+      {/* Per-source warning strip. The server returns HTTP 200 + warning
+          for soft upstream failures so the working sources still surface
+          their data. Each entry has its own Retry button so the user can
+          re-fire just the failing leg without losing the other sources'
+          results. */}
+      {warnings.length > 0 && (
+        <div style={{
+          border: '1px solid #f59e0b',
+          borderRadius: '8px',
+          padding: '0.75rem 1rem',
+          marginBottom: '0.75rem',
+          backgroundColor: '#fffbeb',
+        }}>
+          <p style={{ margin: '0 0 0.5rem 0', fontWeight: 600, color: '#92400e', fontSize: '0.875rem' }}>
+            Some sources failed to load
+          </p>
+          <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
+            {warnings.map(({ id, message }) => (
+              <li key={id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem' }}>
+                <span style={{ fontSize: '0.813rem', color: '#78350f', flex: 1, minWidth: 0, wordBreak: 'break-word' }}>
+                  <strong>{SOURCE_LABELS[id] || id}:</strong> {message}
+                </span>
+                <button
+                  onClick={() => retryRequest(id)}
+                  disabled={loading}
+                  style={{
+                    padding: '0.25rem 0.75rem',
+                    backgroundColor: '#f59e0b',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: loading ? 'not-allowed' : 'pointer',
+                    fontSize: '0.75rem',
+                    fontWeight: 500,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.375rem',
+                    flexShrink: 0,
+                    opacity: loading ? 0.7 : 1,
+                  }}
+                >
+                  {loading && <InlineSpinner color="white" />}
+                  Retry
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {/* Loading state */}
-      {loading && accumulatedLogs.length === 0 && (
+      {loading && allLogs.length === 0 && (
         <div style={{
           display: 'flex',
           flexDirection: 'column',
@@ -555,8 +1024,9 @@ export default function LogsPanel({
         </div>
       )}
 
-      {/* Empty state */}
-      {!loading && !error && accumulatedLogs.length === 0 && (
+      {/* Empty state — only when there are also no warnings, otherwise the
+          warning strip is the more accurate explanation of "why empty?". */}
+      {!loading && !error && allLogs.length === 0 && warnings.length === 0 && (
         <div style={{
           textAlign: 'center',
           padding: '4rem 2rem',
@@ -573,7 +1043,7 @@ export default function LogsPanel({
       )}
 
       {/* Logs table */}
-      {accumulatedLogs.length > 0 && (
+      {allLogs.length > 0 && (
         <div style={{
           display: 'flex',
           border: '1px solid #e5e7eb',
@@ -582,7 +1052,6 @@ export default function LogsPanel({
           minHeight: '200px'
         }}>
           <div
-            ref={tableContainerRef}
             style={{
               flex: 1,
               overflow: 'auto',
@@ -595,6 +1064,11 @@ export default function LogsPanel({
               borderCollapse: 'collapse',
               tableLayout: 'fixed'
             }}>
+              <colgroup>
+                <col style={{ width: `${columnWidths.timestamp}px` }} />
+                <col style={{ width: `${columnWidths.source}px` }} />
+                <col />
+              </colgroup>
               <thead style={{
                 backgroundColor: '#f9fafb',
                 borderBottom: '1px solid #e5e7eb',
@@ -607,7 +1081,6 @@ export default function LogsPanel({
                     textAlign: 'left',
                     padding: '0.75rem 1rem',
                     fontWeight: 600,
-                    width: `${columnWidths.timestamp}px`,
                     color: '#374151',
                     position: 'relative',
                     borderRight: '1px solid #e5e7eb'
@@ -642,7 +1115,6 @@ export default function LogsPanel({
                     textAlign: 'left',
                     padding: '0.75rem 1rem',
                     fontWeight: 600,
-                    width: `${columnWidths.source}px`,
                     color: '#374151',
                     position: 'relative',
                     borderRight: '1px solid #e5e7eb'
@@ -684,65 +1156,24 @@ export default function LogsPanel({
                 </tr>
               </thead>
               <tbody>
-                {accumulatedLogs.map((log, index) => {
-                  const isSelected = selectedLogIndex === index;
-                  const logJson = formatLogJson(log.raw);
-                  return (
-                    <React.Fragment key={log.id}>
-                      <tr
-                        onClick={() => toggleLog(index)}
-                        style={{
-                          cursor: 'pointer',
-                          transition: 'background-color 0.15s',
-                          borderBottom: isSelected ? 'none' : '1px solid #f3f4f6',
-                          backgroundColor: isSelected ? '#eff6ff' : 'transparent',
-                          borderLeft: isSelected ? '3px solid #3b82f6' : '3px solid transparent'
-                        }}
-                        onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.backgroundColor = '#f9fafb'; }}
-                        onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.backgroundColor = 'transparent'; }}
-                      >
-                        <td style={{
-                          padding: '0.5rem 0.75rem', fontFamily: 'monospace',
-                          whiteSpace: 'nowrap', fontSize: '0.7rem',
-                          color: isSelected ? '#1e40af' : '#6b7280'
-                        }}>
-                          {formatTimestamp(log.timestamp)}
-                        </td>
-                        <td style={{ padding: '0.5rem 0.5rem', fontSize: '0.65rem', fontWeight: 600, color: '#6b7280', whiteSpace: 'nowrap' }}>
-                          {SOURCE_LABELS[log.sourceId || selectedSource] || log.sourceId || selectedSource}
-                        </td>
-                        <td style={{
-                          padding: '0.5rem 0.75rem', fontFamily: 'monospace', fontSize: '0.75rem',
-                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                          color: isSelected ? '#1e40af' : '#374151'
-                        }}>
-                          {logJson}
-                        </td>
-                      </tr>
-                      {isSelected && (
-                        <tr>
-                          <td colSpan={3} style={{ padding: 0, borderBottom: '1px solid #e5e7eb' }}>
-                            <pre style={{
-                              margin: 0, padding: '0.5rem 0.75rem',
-                              backgroundColor: '#1e293b', color: '#e2e8f0',
-                              fontSize: '0.7rem', lineHeight: 1.5,
-                              fontFamily: 'monospace', overflow: 'auto',
-                              maxHeight: '300px', whiteSpace: 'pre-wrap', wordBreak: 'break-all'
-                            }}>
-                              {JSON.stringify(JSON.parse(logJson), null, 2)}
-                            </pre>
-                          </td>
-                        </tr>
-                      )}
-                    </React.Fragment>
-                  );
-                })}
+                {allLogs.map((log, index) => (
+                  <LogRow
+                    key={log.id}
+                    log={log}
+                    isSelected={selectedLogIndex === index}
+                    fallbackSourceId={log.sourceId || requestSourceIds[0] || ''}
+                    onToggle={toggleByIndex(index)}
+                  />
+                ))}
               </tbody>
             </table>
 
-            {/* Load more */}
-            {accumulatedLogs.length < total && (
-              <div style={{
+            {/* Load more — visible whenever any active source has a server-side
+                cursor for the next page. The container is also the
+                IntersectionObserver sentinel, so scrolling near the bottom
+                auto-fires loadMore(); the button is a manual fallback. */}
+            {hasMore && (
+              <div ref={sentinelRefCallback} style={{
                 padding: '1rem',
                 borderTop: '1px solid #e5e7eb',
                 textAlign: 'center',
@@ -758,10 +1189,14 @@ export default function LogsPanel({
                     borderRadius: '6px',
                     cursor: loading ? 'not-allowed' : 'pointer',
                     fontSize: '0.875rem',
-                    fontWeight: 500
+                    fontWeight: 500,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.5rem',
                   }}
                 >
-                  {loading ? 'Loading...' : `Load More (${total - accumulatedLogs.length} remaining)`}
+                  {loading && <InlineSpinner />}
+                  {loading ? 'Loading more…' : 'Load More'}
                 </button>
               </div>
             )}

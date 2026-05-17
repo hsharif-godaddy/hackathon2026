@@ -27,3 +27,15 @@ body {
     opacity: 0.5;
   }
 }
+
+/* Indeterminate progress bar: a 30%-wide blue strip slides L→R across the
+   container. Used at the top of panels that are mid-fetch so even keystroke-
+   driven reloads have a visible "in flight" signal. */
+@keyframes indeterminateProgress {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(400%);
+  }
+}

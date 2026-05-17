@@ -13,10 +13,45 @@ This context determines the review rigor bar (see below). Production customer-fa
 
 ## Architecture
 
-- `src/app/api/` — Next.js App Router routes (support-bundle, screenshots, app-context, etc.)
-- `src/lib/analytics/` — Scheduler that pulls events from Loki (and Katana app errors from a separate ES cluster) into the local airobuilde ES index for dashboards
-- `src/lib/loki-client.ts` — Loki query helper used across the app
-- `src/app/`, `src/components/` — UI (Next.js App Router)
+High-level only — read source for specifics.
+
+```
+Browser (Dashboard.tsx)  ── /api/* ──▶  Next.js routes  ── fetch ──▶  upstream APIs
+                                                                        ├── Grafana → Loki  (agent / preview / publish logs)
+                                                                        ├── ES (airobuilde, pioneermgt, traces-apm, llm_spend)
+                                                                        ├── mgmt control plane (apps, subscriptions, image-status)
+                                                                        ├── SSO (auth, AD groups)
+                                                                        ├── Langfuse (traces / sessions)
+                                                                        └── S3 (investigate events / reports, feedback, screenshots)
+```
+
+### Code layout
+
+- `src/app/api/` — Next.js App Router routes. Heavy aggregators live here (`app-context`, `es-logs`, `support-bundle`, `investigate/*`).
+- `src/lib/loki-client.ts` — low-level Loki query builder/runner.
+- `src/lib/loki-merged.ts` — single-query helper covering `airo-agents` + `airo-preview` + `airo-publish` with cluster scoping; reused by Logs API and app-context.
+- `src/lib/api-auth.ts` — `withAuth` wrapper + AD-group membership cache (60s TTL, coalesced).
+- `src/lib/mgmt-control-plane-adapter.ts` — read-through cache (30s TTL) over mgmt-airo. `getAppDetails` always fetches the full version so lite callers reuse it.
+- `src/lib/investigate/` — investigate flow (evidence collection across Loki/ES/Langfuse, S3-backed event log, SSE streaming).
+- `src/lib/analytics/` — direct Loki/Katana queries powering the `/analytics` charts; the legacy ES-rollup scheduler was removed (see `analysis/` for research notes).
+- `src/components/`, `src/pages/Dashboard.tsx` — UI. Tabs are lazy-mounted on first visit (`visitedTabs` set).
+- `src/hooks/useAppContext.ts` — client-side cache + section-gated fetcher for `/api/app-context` (60s TTL, in-flight coalescing).
+
+### Caching layers (top-to-bottom)
+
+| Where | What | TTL | Why |
+|---|---|---|---|
+| `useAppContext` (client) | Whole `/api/app-context` response, keyed by `appId+timeRange+sections` | 60 s | Avoid refetching on tab switches and short navigations |
+| `route-cache.ts` | Analytics endpoints (langfuse, c1, feedback, e2e-runs) | per-call | Spread heavy ES rollups across many concurrent users |
+| `mgmt-control-plane-adapter.memoizeRead` | mgmt API reads | 30 s | One page load fans out to the same `apps/{id}` from multiple routes |
+| `api-auth.fetchUserAdGroups` | SSO AD-group membership | 60 s | Every API request used to call SSO; one-per-token now |
+
+Caches are in-process. Restarts purge them. Dev-only changes (e.g. heap snapshots) reset everything.
+
+### Dev tooling
+
+- `DEBUG_FETCH=1 pnpm dev` activates `dev-fetch-instrumentation.ts`, which monkey-patches `globalThis.fetch` to log every outbound call with timing, repeat-detection, and a periodic top-15 summary. Snapshot endpoint at `/api/dev/fetch-stats`. Use this when chasing fan-out / leak issues — observable counts beat guessing.
+- AWS SDK clients (S3, Lambda, Secrets Manager) bypass `globalThis.fetch`, so the probe doesn't see them. If suspected, add a separate probe.
 
 ## Key Commands
 
@@ -26,6 +61,20 @@ pnpm --filter debug-console typecheck
 pnpm --filter debug-console test
 pnpm --filter debug-console lint
 ```
+
+## PR checklist
+
+Every PR that touches debug-console should answer: **does this change anything in CLAUDE.md still describe?**
+
+Update CLAUDE.md when the PR:
+
+- adds, removes, or repurposes a top-level directory
+- adds or removes a caching layer, scheduler, or background worker
+- adds or removes an upstream dependency category (a new ES cluster, queue, etc.)
+- changes the dev-mode workflow (new env vars, instrumentation, opt-in flags)
+- changes the audience / SLA / review-rigor framing
+
+Skip the update when the change is a bug fix, a UI tweak, a new internal helper that fits an existing layer, or anything else a maintainer can derive from the source. **Aim for a small, durable doc** — not exhaustive coverage. If you're unsure, leave it.
 
 ## Review Rigor
 

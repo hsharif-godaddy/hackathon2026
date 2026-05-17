@@ -72,7 +72,6 @@ export const GET = withAuth(async (request, _auth) => {
             startTime: startTime.toISOString(),
             endTime: endTime.toISOString(),
             size: 1000,
-            from: 0
           }, {
             lokiEndpoint: sourceConfig.lokiEndpoint,
             lokiApiKey: sourceConfig.lokiApiKey,

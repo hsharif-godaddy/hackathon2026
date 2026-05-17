@@ -6,6 +6,12 @@ import { createServer, type Server as HttpServer } from 'node:http';
 import type { Server as HttpsServer } from 'node:https';
 import next from 'next';
 
+// Patch globalThis.fetch FIRST, before any module that might capture a
+// reference to the unpatched fetch (Next.js, undici, gd-auth-client, etc.).
+// No-op unless DEBUG_FETCH=1 is set.
+import { installDevFetchInstrumentation } from './src/lib/dev-fetch-instrumentation';
+installDevFetchInstrumentation();
+
 import { logger } from './src/lib/logger';
 
 const __filename = fileURLToPath(import.meta.url);

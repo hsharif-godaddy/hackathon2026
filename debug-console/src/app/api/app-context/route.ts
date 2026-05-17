@@ -5,6 +5,11 @@ import { logger } from '@/lib/logger';
 import { buildAppIdQuery, DEFAULT_SUMMARY_SOURCE_IDS, getAllLogSources, getNestedValue } from '@/lib/log-sources';
 import type { FieldMapping } from '@/lib/log-sources';
 import { buildLokiQuery, queryLoki, transformLokiResponse } from '@/lib/loki-client';
+import {
+  partitionMergedLokiSources,
+  queryMergedLokiSources,
+  shouldUseMergedLokiQuery,
+} from '@/lib/loki-merged';
 import { parseTimeRange } from '@/lib/time-range';
 
 export const dynamic = 'force-dynamic';
@@ -83,6 +88,34 @@ interface APMTracesResult {
     page: number;
     pageSize: number;
   };
+}
+
+/**
+ * Sections of the app-context response. Each maps to one or more upstream
+ * fetches; callers pass `?sections=metadata,errors` to opt into only the
+ * pieces they need. Omitting `sections` returns all of them — preserves
+ * the legacy single-call behavior for callers that haven't been updated.
+ *
+ * - `metadata`  → lifetimeStats + subscriptionId resolution (small)
+ * - `activity`  → recent logs, activityStats, conversations (1 query × N sources)
+ * - `errors`    → errorSummary (1 merged Loki + per-ES query × N sources)
+ * - `traces`    → APM traces (1 ES query)
+ */
+type AppContextSection = 'metadata' | 'activity' | 'errors' | 'traces';
+const ALL_SECTIONS: readonly AppContextSection[] = ['metadata', 'activity', 'errors', 'traces'];
+
+function parseSections(raw: string | null): Set<AppContextSection> {
+  if (!raw) return new Set(ALL_SECTIONS);
+  const requested = new Set<AppContextSection>();
+  for (const part of raw.split(',')) {
+    const trimmed = part.trim() as AppContextSection;
+    if ((ALL_SECTIONS as readonly string[]).includes(trimmed)) {
+      requested.add(trimmed);
+    }
+  }
+  // Empty/all-invalid input behaves like the default rather than returning
+  // nothing — avoids a confusing "fetch returned blank object" footgun.
+  return requested.size > 0 ? requested : new Set(ALL_SECTIONS);
 }
 
 interface LifetimeActivityStats {
@@ -166,7 +199,46 @@ async function fetchLogsForApp(
 
   const { startTime, endTime } = parseTimeRange(timeRange, { customStartTime, customEndTime });
 
+  // Fire one merged Loki query covering airo-agents + airo-preview + airo-publish
+  // if all three are requested. This collapses 3 separate `query_range` round-trips
+  // into 1 and lets us scope by `cluster` (resolved from the agent URL) — both
+  // changes the Loki team flagged as the major perf wins.
+  let lokiSourceIdsHandled = new Set<string>();
+  if (shouldUseMergedLokiQuery(sourceIds)) {
+    try {
+      const { logs: mergedLogs } = await queryMergedLokiSources({
+        appId,
+        startTime: startTime.toISOString(),
+        endTime: endTime.toISOString(),
+        size: 1000,
+      });
+      const agentsConfig = sources.find((s) => s.id === 'airo-agents');
+      for (const log of mergedLogs) {
+        const sid = log.sourceId || 'airo-agents';
+        const sourceConfig = sources.find((s) => s.id === sid) || agentsConfig;
+        if (!sourceConfig) continue;
+        allLogs.push({
+          _id: log.id,
+          _source: {
+            '@timestamp': log.timestamp,
+            level: log.level,
+            message: log.message,
+            event: log.event,
+            ...log.raw,
+          },
+          _sourceId: sid,
+          _fieldMapping: sourceConfig.fieldMapping,
+        });
+      }
+      lokiSourceIdsHandled = new Set(partitionMergedLokiSources(sourceIds).mergedLokiIds);
+    } catch (error) {
+      logger.error('app-context.logs.loki.merged.failed', { appId }, { error: error as Error });
+      // Fall through to per-source loop below — it still works, just slower.
+    }
+  }
+
   for (const sourceId of sourceIds) {
+    if (lokiSourceIdsHandled.has(sourceId)) continue;
     const sourceConfig = sources.find((s) => s.id === sourceId);
     if (!sourceConfig) continue;
 
@@ -183,7 +255,6 @@ async function fetchLogsForApp(
           startTime: startTime.toISOString(),
           endTime: endTime.toISOString(),
           size: 1000,
-          from: 0,
         }, {
           lokiEndpoint: sourceConfig.lokiEndpoint,
           lokiApiKey: sourceConfig.lokiApiKey,
@@ -363,7 +434,32 @@ async function fetchErrorSummary(
   let last24HoursCount = 0;
   const messageCountMap: ErrorMessageMap = new Map();
 
+  // Merged Loki query for the three jobs — same optimization as the logs
+  // fetch above. Slimmer per-app-context call by ~2 round-trips.
+  let lokiSourceIdsHandled = new Set<string>();
+  if (shouldUseMergedLokiQuery(sourceIds)) {
+    try {
+      const { logs: mergedLogs } = await queryMergedLokiSources({
+        appId,
+        levelsFilter: 'error',
+        startTime: startTime.toISOString(),
+        endTime: endTime.toISOString(),
+        size: 1000,
+      });
+      totalErrors += mergedLogs.length;
+      for (const log of mergedLogs) {
+        if (log.level !== 'error') continue;
+        if (new Date(log.timestamp) >= last24Hours) last24HoursCount++;
+        mergeErrorEntry(messageCountMap, log.message, log.timestamp, log.event);
+      }
+      lokiSourceIdsHandled = new Set(partitionMergedLokiSources(sourceIds).mergedLokiIds);
+    } catch (error) {
+      logger.error('app-context.errorSummary.loki.merged.failed', { appId }, { error: error as Error });
+    }
+  }
+
   for (const sourceId of sourceIds) {
+    if (lokiSourceIdsHandled.has(sourceId)) continue;
     const sourceConfig = sources.find((s) => s.id === sourceId);
     if (!sourceConfig) continue;
 
@@ -377,7 +473,6 @@ async function fetchErrorSummary(
           startTime: startTime.toISOString(),
           endTime: endTime.toISOString(),
           size: 1000,
-          from: 0
         }, {
           lokiEndpoint: sourceConfig.lokiEndpoint,
           lokiApiKey: sourceConfig.lokiApiKey,
@@ -629,7 +724,30 @@ async function fetchLifetimeStats(
   const sources = getAllLogSources();
   let lastActivity: string | undefined;
 
+  // One merged Loki query for last-activity across all three jobs. We only
+  // need the most recent log overall (max of all three streams), so size: 1
+  // is sufficient and the merge collapses 3 round-trips into 1.
+  let lokiSourceIdsHandled = new Set<string>();
+  if (shouldUseMergedLokiQuery(sourceIds)) {
+    try {
+      const LIFETIME_LOOKBACK_MS = 30 * 24 * 60 * 60 * 1000;
+      const now = Date.now();
+      const { logs } = await queryMergedLokiSources({
+        appId,
+        startTime: new Date(now - LIFETIME_LOOKBACK_MS).toISOString(),
+        endTime: new Date(now).toISOString(),
+        size: 1,
+      });
+      const sourceLastActivity = logs[0]?.timestamp;
+      if (sourceLastActivity) lastActivity = sourceLastActivity;
+      lokiSourceIdsHandled = new Set(partitionMergedLokiSources(sourceIds).mergedLokiIds);
+    } catch (error) {
+      logger.error('app-context.lifetimeStats.loki.merged.failed', { appId }, { error: error as Error });
+    }
+  }
+
   for (const sourceId of sourceIds) {
+    if (lokiSourceIdsHandled.has(sourceId)) continue;
     const sourceConfig = sources.find((s) => s.id === sourceId);
     if (!sourceConfig) continue;
 
@@ -653,7 +771,6 @@ async function fetchLifetimeStats(
           startTime: new Date(now - LIFETIME_LOOKBACK_MS).toISOString(),
           endTime: new Date(now).toISOString(),
           size: 1,
-          from: 0,
         }, {
           lokiEndpoint: sourceConfig.lokiEndpoint,
           lokiApiKey: sourceConfig.lokiApiKey,
@@ -1126,6 +1243,7 @@ export const GET = withAuth(async (request, _auth) => {
     }
 
     const sourcesParam = searchParams.get('sources');
+    const sections = parseSections(searchParams.get('sections'));
     const traceIdsPage = clampPageParam(searchParams.get('traceIdsPage'), 0, MAX_PAGE_INDEX);
     const traceIdsPageSize = clampPageParam(searchParams.get('traceIdsPageSize'), 100, MAX_PAGE_SIZE);
     const spansPage = clampPageParam(searchParams.get('spansPage'), 0, MAX_PAGE_INDEX);
@@ -1145,12 +1263,33 @@ export const GET = withAuth(async (request, _auth) => {
     const customStartTime = startTimeParam || undefined;
     const customEndTime = endTimeParam || undefined;
 
+    // Only fire the upstream fetches for sections the caller asked for.
+    // The shared `logs` array drives both `activity` (recentActivity,
+    // activityStats, conversations) and the `metadata.lastActivity` /
+    // subscriptionId fallback paths, so we fetch it whenever either
+    // section is requested.
+    const needsLogs = sections.has('activity') || sections.has('metadata');
+    const needsTraces = sections.has('traces');
+    const needsErrors = sections.has('errors');
+    const needsLifetime = sections.has('metadata');
+    const needsSubscription = sections.has('metadata');
+
     const [logs, apmTracesResult, lifetimeStats, errorSummary, subscriptionInfo] = await Promise.all([
-      fetchLogsForApp(appId, sourceIds, timeRange, customStartTime, customEndTime),
-      fetchAPMTraces(appId, timeRange, traceIdsPage, traceIdsPageSize, spansPage, spansPageSize, customStartTime, customEndTime),
-      fetchLifetimeStats(appId, sourceIds),
-      fetchErrorSummary(appId, sourceIds, timeRange),
-      fetchSubscriptionInfo(appId)
+      needsLogs
+        ? fetchLogsForApp(appId, sourceIds, timeRange, customStartTime, customEndTime)
+        : Promise.resolve([] as LogEntryWithSourceConfig[]),
+      needsTraces
+        ? fetchAPMTraces(appId, timeRange, traceIdsPage, traceIdsPageSize, spansPage, spansPageSize, customStartTime, customEndTime)
+        : Promise.resolve({ traces: [], pagination: { hasMore: false, total: 0, page: 0, pageSize: spansPageSize } } as APMTracesResult),
+      needsLifetime
+        ? fetchLifetimeStats(appId, sourceIds)
+        : Promise.resolve({} as LifetimeActivityStats),
+      needsErrors
+        ? fetchErrorSummary(appId, sourceIds, timeRange)
+        : Promise.resolve({ total: 0, last24Hours: 0, errorGroups: [] } as ErrorSummaryResult),
+      needsSubscription
+        ? fetchSubscriptionInfo(appId)
+        : Promise.resolve({} as { subscriptionId?: string }),
     ]);
 
     if (logs.length === 0) {
@@ -1320,29 +1459,37 @@ export const GET = withAuth(async (request, _auth) => {
       raw: trace
     }));
 
+    // Sections that weren't requested return their zero/empty defaults so
+    // the response shape stays stable for clients regardless of what they
+    // asked for. The upstream fetches above were also skipped, so this is
+    // genuine work-avoided, not just hidden.
     const context: AppContext = {
       appId,
-      metadata: {
+      metadata: sections.has('metadata') ? {
         name: appId,
         lastActivity: lastActivityLog?._source['@timestamp'],
         version: lastActivityLog?._source.version,
         status: 'active',
         subscriptionId: subscriptionInfo.subscriptionId,
-      },
-      recentActivity,
-      errorSummary,
-      activityStats: {
+      } : { name: appId },
+      recentActivity: sections.has('activity') ? recentActivity : [],
+      errorSummary: sections.has('errors') ? errorSummary : { total: 0, last24Hours: 0, errorGroups: [] },
+      activityStats: sections.has('activity') ? {
         totalLogs: logs.length,
         byLevel: levelCounts,
         byService: serviceCounts,
         byEvent: eventCounts
-      },
-      lifetimeStats,
-      conversations,
-      apmTraces: {
+      } : { totalLogs: 0, byLevel: {}, byService: {}, byEvent: {} },
+      lifetimeStats: sections.has('metadata') ? lifetimeStats : {},
+      conversations: sections.has('activity') ? conversations : [],
+      apmTraces: sections.has('traces') ? {
         total: apmTracesResult.pagination.total,
         traces: formattedTraces,
         pagination: apmTracesResult.pagination
+      } : {
+        total: 0,
+        traces: [],
+        pagination: { hasMore: false, total: 0, page: 0, pageSize: spansPageSize }
       }
     };
 

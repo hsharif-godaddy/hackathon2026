@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "NODE_OPTIONS=--max-old-space-size=2048 tsx watch server.ts",
+    "dev": "NEXT_TELEMETRY_DISABLED=1 tsx watch server.ts",
     "build": "next build",
     "start": "tsx server.ts",
     "typecheck": "tsc --noEmit",

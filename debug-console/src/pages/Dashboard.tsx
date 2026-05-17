@@ -6,6 +6,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import AppDetailsPanel from "@/components/AppDetailsPanel";
 import CarePanel from "@/components/CarePanel";
 import ConversationsPanel, { type ConversationsSource } from "@/components/ConversationsPanel";
+import { useAppContext, type AppContextSection } from "@/hooks/useAppContext";
 import type {
   MgmtAppDetails,
   MgmtCustomerApp,
@@ -75,9 +76,10 @@ export default function Dashboard() {
   const [timeRange, setTimeRange] = useState("24h");
   const [activeTab, setActiveTab] = useState<TabId>("details");
   const [sources, setSources] = useState<LogSource[]>([]);
-  const [context, setContext] = useState<AppContext | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // app-context payload: only the sections this Dashboard actually reads
+  // (metadata for lastActivity/subscriptionId, errors for the summary block).
+  // Other panels fetch their own data via mgmt/agent endpoints.
+  const APP_CONTEXT_SECTIONS: readonly AppContextSection[] = ['metadata', 'errors'];
   const [expandedError, setExpandedError] = useState<string | null>(null);
   const [errorDetails, setErrorDetails] = useState<
     Record<
@@ -266,46 +268,20 @@ export default function Dashboard() {
     return () => controller.abort();
   }, [submittedCustomerId, customerAppsRefresh]);
 
-  // Fetch app context when appId is submitted
-  const fetchContext = useCallback(async () => {
-    if (!submittedAppId) {
-      setContext(null);
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-
-    try {
-      const url = `/api/app-context?appId=${encodeURIComponent(submittedAppId)}&timeRange=${timeRange}`;
-      const response = await fetch(url);
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Failed to fetch app details");
-      }
-
-      const data = await response.json();
-      setContext(data);
-    } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Failed to fetch app details",
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, [submittedAppId, timeRange]);
-
-  useEffect(() => {
-    fetchContext();
-  }, [fetchContext]);
-
-  // Re-fetch summary when refresh key changes
-  useEffect(() => {
-    if (refreshKeys.summary > 0) {
-      fetchContext();
-    }
-  }, [refreshKeys.summary]); // eslint-disable-line react-hooks/exhaustive-deps
+  // App-context fetcher — cached client-side (60s TTL), section-gated. The
+  // `summary` refresh key bumps the hook's `refreshKey` to bypass the cache
+  // and refetch on demand. Errors and loading state are surfaced from the
+  // hook directly; we don't need separate useState for them.
+  const {
+    data: context,
+    loading,
+    error,
+  } = useAppContext<AppContext>({
+    appId: submittedAppId || null,
+    timeRange,
+    sections: APP_CONTEXT_SECTIONS,
+    refreshKey: refreshKeys.summary,
+  });
 
   // Reset mgmt data when the app changes
   useEffect(() => {
@@ -521,7 +497,6 @@ export default function Dashboard() {
     setSubmittedCustomerId("");
     setCustomerApps([]);
     setCustomerAppsError(null);
-    setContext(null);
     setShopperId(null);
     setLoadedAppDomains([]);
     setSearchError(null);
@@ -537,7 +512,6 @@ export default function Dashboard() {
 
   const handleBackToCustomerApps = () => {
     setSubmittedAppId("");
-    setContext(null);
     setActiveTab("details");
     updateUrl({ appId: null, tab: "details" });
   };

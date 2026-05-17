@@ -24,7 +24,7 @@ describe('loki-client', () => {
 
       expect(result.query).toBe('{job="airo-agents",env="prod"}');
       expect(result.direction).toBe('backward');
-      expect(result.limit).toBe(5000); // fetch all logs up to cap
+      expect(result.limit).toBe(500); // MAX_LOKI_FETCH default
     });
 
     it('should add case-insensitive line filter for single level filter', async () => {
@@ -45,16 +45,70 @@ describe('loki-client', () => {
       expect(result.query).toContain('|~ "(?i)[{,]\\"level\\":\\"(error|warn)\\""');
     });
 
-    it('should add line filter for app_id without a cluster label', async () => {
+    it('should add line filter for app_id and omit cluster when not provided', async () => {
       const result = await buildLokiQuery(
         { appId: 'abc123' },
         mockConfig
       );
 
-      // Cluster lookup was removed; query must not constrain by cluster so that
-      // apps whose allocation migrated still surface logs.
+      // mockConfig has no `cluster` key in lokiLabels — query must not
+      // constrain by cluster so apps whose allocation migrated still surface
+      // logs. The route layer adds cluster only when an appId resolves to one.
       expect(result.query).not.toContain('cluster=');
       expect(result.query).toContain('|= "\\"app_id\\":\\"abc123\\""');
+    });
+
+    it('should add cluster label when present in lokiLabels', async () => {
+      const result = await buildLokiQuery(
+        { appId: 'abc123' },
+        { ...mockConfig, lokiLabels: { ...mockConfig.lokiLabels, cluster: 'c37' } }
+      );
+
+      expect(result.query).toContain('cluster="c37"');
+      expect(result.query).toContain('|= "\\"app_id\\":\\"abc123\\""');
+    });
+
+    it('should escape special characters in label values', async () => {
+      // Labels come from runtime sources (cluster from agent URL parse) so we
+      // can't trust them to be free of LogQL string-literal characters.
+      const result = await buildLokiQuery(
+        {},
+        { ...mockConfig, lokiLabels: { ...mockConfig.lokiLabels, cluster: 'c"37\\bad' } }
+      );
+
+      expect(result.query).toContain('cluster="c\\"37\\\\bad"');
+    });
+
+    it('should build merged-streams query with job regex matcher', async () => {
+      const result = await buildLokiQuery(
+        { appId: 'abc123' },
+        {
+          lokiEndpoint: 'https://loki.example.com',
+          lokiLabels: { env: 'prod', cluster: 'c37' },
+          lokiJobsRegex: ['airo-agents', 'airo-preview-application', 'airo-publish-application']
+        }
+      );
+
+      expect(result.query).toContain('job=~"(airo-agents|airo-preview-application|airo-publish-application)"');
+      expect(result.query).toContain('cluster="c37"');
+      expect(result.query).toContain('env="prod"');
+      expect(result.query).toContain('|= "\\"app_id\\":\\"abc123\\""');
+    });
+
+    it('should ignore lokiLabels.job when lokiJobsRegex is set', async () => {
+      const result = await buildLokiQuery(
+        {},
+        {
+          lokiEndpoint: 'https://loki.example.com',
+          lokiLabels: { job: 'airo-agents', env: 'prod' },
+          lokiJobsRegex: ['airo-agents', 'airo-preview-application']
+        }
+      );
+
+      expect(result.query).toContain('job=~"(airo-agents|airo-preview-application)"');
+      // Must not also emit `job="airo-agents"` from lokiLabels — that would
+      // produce conflicting matchers and zero results.
+      expect(result.query).not.toMatch(/job="airo-agents"/);
     });
 
     it('should add case-sensitive line filters for search query', async () => {
@@ -87,6 +141,7 @@ describe('loki-client', () => {
         mockConfig
       );
 
+      // mockConfig has no cluster in lokiLabels.
       expect(result.query).not.toContain('cluster=');
       expect(result.query).toContain('|~ "(?i)[{,]\\"level\\":\\"(error)\\""');
       expect(result.query).toContain('|= "\\"app_id\\":\\"abc123\\""');
@@ -119,17 +174,17 @@ describe('loki-client', () => {
 
     it('should honor caller-specified size', async () => {
       const result = await buildLokiQuery(
-        { size: 50, from: 100 },
+        { size: 50 },
         mockConfig
       );
 
       expect(result.limit).toBe(50);
     });
 
-    it('should default to 5000 when size is omitted', async () => {
-      const result = await buildLokiQuery({ from: 0 }, mockConfig);
+    it('should default to MAX_LOKI_FETCH (500) when size is omitted', async () => {
+      const result = await buildLokiQuery({}, mockConfig);
 
-      expect(result.limit).toBe(5000);
+      expect(result.limit).toBe(500);
     });
 
     it('should handle empty config labels gracefully', async () => {
@@ -597,6 +652,43 @@ describe('loki-client', () => {
       // Should only include the valid entry
       expect(result).toHaveLength(1);
       expect(result[0].message).toBe('Valid entry');
+    });
+
+    it('should resolve sourceId per stream via function', () => {
+      // Merged-streams mode returns logs from multiple `job` labels in one
+      // response — the resolver picks the per-log sourceId from stream labels.
+      const lokiResponse: LokiQueryResponse = {
+        status: 'success',
+        data: {
+          resultType: 'streams',
+          result: [
+            {
+              stream: { job: 'airo-agents' },
+              values: [['1712484000000000000', '{"message":"agent log"}']]
+            },
+            {
+              stream: { job: 'airo-preview-application' },
+              values: [['1712484001000000000', '{"message":"preview log"}']]
+            }
+          ]
+        }
+      };
+
+      const jobToSourceId: Record<string, string> = {
+        'airo-agents': 'airo-agents',
+        'airo-preview-application': 'airo-preview',
+      };
+
+      const result = transformLokiResponse(
+        lokiResponse,
+        mockFieldMapping,
+        (labels) => jobToSourceId[labels.job] || 'unknown'
+      );
+
+      expect(result).toHaveLength(2);
+      const bySource = new Map(result.map(r => [r.message, r.sourceId]));
+      expect(bySource.get('agent log')).toBe('airo-agents');
+      expect(bySource.get('preview log')).toBe('airo-preview');
     });
 
     it('should extract data field as object', () => {

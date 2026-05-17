@@ -1,4 +1,76 @@
+import { logger } from '@/lib/logger';
 import mgmtSSOClient from '@/lib/mgmt-sso-client';
+
+// Short-lived dedup cache for read endpoints that get hit many times during a
+// single page load (e.g. `getAppDetails(appId)` is called by app-context,
+// agent-client `getAgentUrl`, and the per-app /api/mgmt/apps/[id] route —
+// instrumentation showed 6 calls for the same appId in 30s). Keep the TTL
+// short so reload-after-deploy still reflects fresh state quickly.
+const READ_CACHE_TTL_MS = 30_000;
+const READ_CACHE_MAX_ENTRIES = 500;
+interface ReadCacheEntry { value: unknown; expiresAt: number }
+const readCache = new Map<string, ReadCacheEntry>();
+const readInFlight = new Map<string, Promise<unknown>>();
+
+function readCacheGet<T>(key: string): T | undefined {
+    const hit = readCache.get(key);
+    if (!hit) return undefined;
+    if (Date.now() >= hit.expiresAt) {
+        readCache.delete(key);
+        return undefined;
+    }
+    return hit.value as T;
+}
+
+function readCacheSet<T>(key: string, value: T): void {
+    if (readCache.size >= READ_CACHE_MAX_ENTRIES) {
+        const oldest = readCache.keys().next().value;
+        if (oldest !== undefined) readCache.delete(oldest);
+    }
+    readCache.set(key, { value, expiresAt: Date.now() + READ_CACHE_TTL_MS });
+}
+
+/**
+ * Memoize a read-only mgmt API call by `cacheKey`. Coalesces concurrent
+ * fetches for the same key so 12 parallel routes triggered by one page load
+ * fire one upstream call, not 12. Use only for endpoints where a 30s stale
+ * read is acceptable.
+ */
+function readInFlightGet<T>(key: string): Promise<T> | undefined {
+    const p = readInFlight.get(key);
+    return p as Promise<T> | undefined;
+}
+
+async function memoizeRead<T>(cacheKey: string, loader: () => Promise<T>): Promise<T> {
+    const cached = readCacheGet<T>(cacheKey);
+    if (cached !== undefined) return cached;
+
+    const inFlight = readInFlight.get(cacheKey);
+    if (inFlight) return inFlight as Promise<T>;
+
+    const promise = (async () => {
+        try {
+            const value = await loader();
+            readCacheSet(cacheKey, value);
+            return value;
+        } finally {
+            readInFlight.delete(cacheKey);
+        }
+    })();
+    readInFlight.set(cacheKey, promise);
+    return promise;
+}
+
+/**
+ * Drop all cached entries whose key starts with the given prefix. Used by
+ * write paths (e.g. `reloadApp`) to invalidate stale read snapshots so the
+ * next read sees the post-mutation state.
+ */
+function invalidateReadCache(prefix: string): void {
+    for (const key of readCache.keys()) {
+        if (key.startsWith(prefix)) readCache.delete(key);
+    }
+}
 
 // Re-export all types so existing server-side imports continue to work
 export {
@@ -76,15 +148,23 @@ export class MgmtControlPlaneAdapter {
         return response.json() as Promise<T>;
     }
 
-    getAppDetails(appId: string, opts?: { includeResources?: boolean }): Promise<MgmtAppDetails> {
-        const includeResources = opts?.includeResources ?? true;
-        let path = `/api/airo/v1/apps/${encodeURIComponent(appId)}`;
-        path += includeResources ? '?includeResources=true' : '';
-        return this.request(path);
+    /**
+     * Always fetches with `?includeResources=true` — the full response is a
+     * strict superset of the lite one, so lite-only consumers (`getAgentUrl`,
+     * credit-pack flows, etc.) read what they need and ignore the extras.
+     * Telemetry showed two near-simultaneous fetches for the same appId
+     * 3-6ms apart when the lite/full distinction was honored: the lite call
+     * firing first defeated cache + in-flight coalescing for the full call.
+     * The extra ~2-5× payload is cheap relative to the mgmt round-trip.
+     */
+    getAppDetails(appId: string): Promise<MgmtAppDetails> {
+        const cacheKey = `getAppDetails:${appId}`;
+        const path = `/api/airo/v1/apps/${encodeURIComponent(appId)}?includeResources=true`;
+        return memoizeRead(cacheKey, () => this.request<MgmtAppDetails>(path));
     }
 
     async getAgentUrl(appId: string): Promise<string> {
-        const details = await this.getAppDetails(appId, { includeResources: false });
+        const details = await this.getAppDetails(appId);
         const url = details.urls?.agent;
         if (!url) {
             throw new AgentUrlNotFoundError(appId);
@@ -128,6 +208,9 @@ export class MgmtControlPlaneAdapter {
             ? `/api/airo/v1/subscriptions/${encodeURIComponent(opts.subscriptionId)}/systems/${encodeURIComponent(opts.systemId)}/apps/${encodeURIComponent(appId)}/reload`
             : `/api/hosting/v1/apps/${encodeURIComponent(appId)}/reload`;
 
+        // Reload mutates the app's deployed state — drop any cached snapshot
+        // for this app so the next read fetches fresh.
+        invalidateReadCache(`getAppDetails:${appId}`);
         return this.request(path, { method: 'POST', body: '{}' });
     }
 
@@ -163,9 +246,17 @@ export class MgmtControlPlaneAdapter {
             const resolved = await Promise.all(
                 batch.map(async (app): Promise<MgmtCustomerApp> => {
                     try {
-                        const details = await this.getAppDetails(app.appId, { includeResources: false });
+                        const details = await this.getAppDetails(app.appId);
                         return { ...app, published: details.published };
-                    } catch {
+                    } catch (error) {
+                        // Per-app lookup failure → fall back to the tree's
+                        // (known stale) `published` value so the customer
+                        // page still renders. Log so an operator can see the
+                        // regression without changing behavior.
+                        logger.warn('mgmt.getCustomerApps.appLookupFailed', {
+                            appId: app.appId,
+                            error: error instanceof Error ? error.message : String(error),
+                        });
                         return app;
                     }
                 })

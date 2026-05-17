@@ -17,7 +17,7 @@ vi.mock('@/lib/logger', () => ({
 }));
 
 import { gdAuthService } from '@/lib/gd-auth-service';
-import { intersectGroupsCaseInsensitive, validateApiAuth } from '@/lib/api-auth';
+import { __clearAdGroupsCacheForTests, intersectGroupsCaseInsensitive, validateApiAuth } from '@/lib/api-auth';
 
 describe('api-auth', () => {
     describe('#intersectGroupsCaseInsensitive', () => {
@@ -75,6 +75,7 @@ describe('api-auth', () => {
         let originalFetch: typeof globalThis.fetch;
 
         beforeEach(() => {
+            __clearAdGroupsCacheForTests();
             vi.mocked(gdAuthService.extractTokenFromRequest).mockReturnValue('jwt-token');
             vi.mocked(gdAuthService.authenticate).mockResolvedValue({
                 valid: true,
@@ -86,6 +87,7 @@ describe('api-auth', () => {
         afterEach(() => {
             globalThis.fetch = originalFetch;
             vi.clearAllMocks();
+            __clearAdGroupsCacheForTests();
         });
 
         it('grants access when the user is in the default allowlist', async () => {
@@ -168,6 +170,46 @@ describe('api-auth', () => {
                 expect(result.error.status).toBe(401);
             }
             expect(vi.mocked(gdAuthService.authenticate)).not.toHaveBeenCalled();
+        });
+
+        it('caches AD group lookup so concurrent requests share one SSO call', async () => {
+            // The fetch storm in dev was 36 SSO calls in 30s for the same user.
+            // Cache must dedupe both serial and concurrent calls for the same JWT.
+            const fetchMock = vi.fn().mockResolvedValue({
+                ok: true,
+                json: async () => ({ data: { groups: ['CRM_Skip'] } }),
+            }) as unknown as typeof fetch;
+            globalThis.fetch = fetchMock;
+
+            const [a, b, c] = await Promise.all([
+                validateApiAuth(fakeRequest),
+                validateApiAuth(fakeRequest),
+                validateApiAuth(fakeRequest),
+            ]);
+            const d = await validateApiAuth(fakeRequest);
+
+            expect(a.authenticated).toBe(true);
+            expect(b.authenticated).toBe(true);
+            expect(c.authenticated).toBe(true);
+            expect(d.authenticated).toBe(true);
+            expect(fetchMock).toHaveBeenCalledTimes(1);
+        });
+
+        it('does not cache failures so transient SSO outages recover immediately', async () => {
+            const fetchMock = vi.fn()
+                .mockResolvedValueOnce({ ok: false, status: 503, json: async () => ({}) })
+                .mockResolvedValueOnce({
+                    ok: true,
+                    json: async () => ({ data: { groups: ['CRM_Skip'] } }),
+                }) as unknown as typeof fetch;
+            globalThis.fetch = fetchMock;
+
+            const first = await validateApiAuth(fakeRequest);
+            expect(first.authenticated).toBe(false);
+
+            const second = await validateApiAuth(fakeRequest);
+            expect(second.authenticated).toBe(true);
+            expect(fetchMock).toHaveBeenCalledTimes(2);
         });
     });
 });

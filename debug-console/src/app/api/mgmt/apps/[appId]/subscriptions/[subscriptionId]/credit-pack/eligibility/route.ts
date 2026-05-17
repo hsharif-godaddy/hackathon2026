@@ -19,7 +19,7 @@ export const GET = withAuth<{ appId: string, subscriptionId: string }>(async fun
     if (invalid) return invalid;
 
     try {
-        const appDetails = await mgmtControlPlaneAdapter.getAppDetails(appId, { includeResources: false });
+        const appDetails = await mgmtControlPlaneAdapter.getAppDetails(appId);
         if (appDetails.subscriptionId !== subscriptionId) {
             return NextResponse.json({ error: 'Invalid subscription ID' }, { status: 400 });
         }

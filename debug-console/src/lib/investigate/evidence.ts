@@ -240,16 +240,77 @@ export function buildMergedLokiQuery(
   return `{${labels.join(',')}} |= "\\"app_id\\":\\"${escapeLogQLString(appId)}\\""`;
 }
 
+// Cluster IDs are derived from the agent URL (`<appId>.<svc>.<cluster>.airoapp.ai`)
+// and effectively never change for a given app. The mgmt roundtrip costs ~3.5s
+// on a cold call — well above the 30s shared cache in mgmt-control-plane-adapter
+// (which gets evicted between page loads at the Logs tab cadence). A dedicated
+// 5-min cache here means a refreshed Logs tab pays the cost once per session
+// instead of every fetch. Cache `null` too — a non-matching URL pattern (or a
+// failed lookup) won't quietly fix itself in 5 min, and re-paying 3.5s per
+// query for a flaky upstream is worse than briefly serving a stale `null`.
+const CLUSTER_CACHE_TTL_MS = 5 * 60_000;
+// Bound on entries — support engineers can browse hundreds of distinct apps
+// per session and Map.size only shrinks at TTL expiry. 500 covers a long
+// debugging session while keeping memory bounded; oldest-insertion eviction
+// matches the pattern used in mgmt-control-plane-adapter and useAppContext.
+const CLUSTER_CACHE_MAX_ENTRIES = 500;
+interface ClusterCacheEntry { value: string | null; expiresAt: number }
+const clusterCache = new Map<string, ClusterCacheEntry>();
+const clusterInFlight = new Map<string, Promise<string | null>>();
+
+function setClusterCache(appId: string, value: string | null): void {
+  if (clusterCache.size >= CLUSTER_CACHE_MAX_ENTRIES) {
+    const oldest = clusterCache.keys().next().value;
+    if (oldest !== undefined) clusterCache.delete(oldest);
+  }
+  clusterCache.set(appId, { value, expiresAt: Date.now() + CLUSTER_CACHE_TTL_MS });
+}
+
+/** Test-only: clear the resolveAppCluster cache so tests don't leak state. */
+export function __clearClusterCacheForTests(): void {
+  clusterCache.clear();
+  clusterInFlight.clear();
+}
+
 export async function resolveAppCluster(
   appId: string,
-  getAgentUrl: (appId: string) => Promise<string> = (id) => mgmtControlPlaneAdapter.getAgentUrl(id),
+  getAgentUrl?: (appId: string) => Promise<string>,
 ): Promise<string | null> {
-  try {
-    const url = await getAgentUrl(appId);
-    return extractClusterFromUrl(url);
-  } catch {
-    return null;
+  // Bypass the cache when a custom resolver is supplied (tests pass a mocked
+  // URL fetcher; treating those as cacheable would make the second test see
+  // the first test's cluster).
+  if (getAgentUrl) {
+    try {
+      return extractClusterFromUrl(await getAgentUrl(appId));
+    } catch {
+      return null;
+    }
   }
+
+  const hit = clusterCache.get(appId);
+  if (hit && Date.now() < hit.expiresAt) return hit.value;
+
+  const inFlight = clusterInFlight.get(appId);
+  if (inFlight) return inFlight;
+
+  const promise = (async (): Promise<string | null> => {
+    try {
+      const url = await mgmtControlPlaneAdapter.getAgentUrl(appId);
+      return extractClusterFromUrl(url);
+    } catch {
+      return null;
+    }
+  })()
+    .then((value) => {
+      setClusterCache(appId, value);
+      return value;
+    })
+    .finally(() => {
+      clusterInFlight.delete(appId);
+    });
+
+  clusterInFlight.set(appId, promise);
+  return promise;
 }
 
 function parseLokiLog(timestampNs: string, line: string, stream: Record<string, string>, sourceId: string): EvidenceLog {
