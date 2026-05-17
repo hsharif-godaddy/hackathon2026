@@ -349,18 +349,12 @@ function generateEntryApiBlocks(entries) {
 
 const VITE_CONFIG_CANDIDATES = ['vite.config.ts', 'vite.config.js', 'vite.config.mjs', 'vite.config.cjs'];
 
-// Match only actual import/require specifier contexts — not comments, string
-// literals in unrelated code, or changelog references. Allows single or
-// double quotes; permits optional path suffix (we're matching the package
-// name only, so no suffix is the common case).
-const VITE_PLUGIN_IMPORT_RE =
-  /(?:from\s*['"]vite-plugin-api-routes['"]|require\s*\(\s*['"]vite-plugin-api-routes['"]\s*\)|import\s*\(\s*['"]vite-plugin-api-routes['"]\s*\))/;
-
 /**
- * Returns true if any vite.config.* file still imports `vite-plugin-api-routes`.
- * Read-only; swallows unexpected read errors (a misread as "still referenced"
- * would preserve the dep — safer fallback than removing it and crashing the
- * preview container).
+ * Returns true if any vite.config.* file references `vite-plugin-api-routes`.
+ * Uses a plain string search rather than a regex — the previous regex missed
+ * agent-generated variants like `import("vite-plugin-api-routes" as string)`.
+ * False positives (package name in a comment) only over-preserve the dep,
+ * which is harmless. False negatives cause crash loops.
  */
 function isVitePluginApiRoutesReferenced(customerDir) {
   for (const name of VITE_CONFIG_CANDIDATES) {
@@ -368,12 +362,8 @@ function isVitePluginApiRoutesReferenced(customerDir) {
     if (!existsSync(p)) continue;
     try {
       const content = readFileSync(p, 'utf8');
-      if (VITE_PLUGIN_IMPORT_RE.test(content)) return true;
+      if (content.includes('vite-plugin-api-routes')) return true;
     } catch (err) {
-      // Be conservative: unreadable config could still import the plugin.
-      // Emit a structured event so ops can correlate a preserved dep with a
-      // specific fs error (EACCES / EIO / symlink loop) rather than an
-      // unobservable silent-true — preservation stays safe either way.
       console.error(JSON.stringify({
         event: 'vite-config.read-error',
         file: name,
@@ -826,6 +816,43 @@ export const MIGRATIONS = [
     }
   },
   {
+    // Recovery is two-phase: this migration writes the dep to package.json,
+    // but npm install already ran earlier in nomad_setup.sh (gated on missing
+    // node_modules). The dep lands in node_modules on the next allocation
+    // (image release triggers realloc → fresh npm install).
+    id: 'restore-vite-plugin-api-routes-dep',
+    description: 'Re-add vite-plugin-api-routes to package.json when vite.config still references it (crash-loop recovery)',
+    run(customerDir) {
+      if (!isVitePluginApiRoutesReferenced(customerDir)) {
+        return { status: 'skipped', reason: 'no_vite_plugin_reference' };
+      }
+      const pkgPath = join(customerDir, 'package.json');
+      if (!existsSync(pkgPath)) {
+        return { status: 'skipped', reason: 'package_json_missing' };
+      }
+      let pkg;
+      try {
+        pkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
+      } catch (err) {
+        console.error(JSON.stringify({
+          event: 'restore-vite-plugin-api-routes-dep.parse-failed',
+          error: err instanceof Error ? err.message : String(err),
+        }));
+        return { status: 'skipped', reason: 'package_json_unparseable' };
+      }
+      const inDeps = !!(pkg.dependencies && 'vite-plugin-api-routes' in pkg.dependencies);
+      const inDevDeps = !!(pkg.devDependencies && 'vite-plugin-api-routes' in pkg.devDependencies);
+      if (inDeps || inDevDeps) {
+        return { status: 'skipped', reason: 'dep_already_present' };
+      }
+      if (!pkg.devDependencies) pkg.devDependencies = {};
+      pkg.devDependencies['vite-plugin-api-routes'] = '1.2.6';
+      writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n', 'utf8');
+      console.log('  Restored vite-plugin-api-routes to devDependencies (recovery completes on next allocation)');
+      return { status: 'applied', changed: true };
+    }
+  },
+  {
     id: 'migrate-to-ssr-entry',
     description: 'Generate src/server/entry.ts API registrations, drop vite-plugin-api-routes/esbuild, delete configure.js',
     run(customerDir, _syncedFiles) {
@@ -1025,7 +1052,7 @@ export const MIGRATIONS = [
       //   - bundle.js: legacy post-build esbuild step, superseded by vite
       //     build --ssr. Build-script normalisation above already strips
       //     `&& node bundle.js` from scripts.build.
-      if (entryHasMarkers && buildHasSsr) {
+      if (entryHasMarkers && buildHasSsr && !vitePluginPreserved) {
         const configurePath = join(customerDir, 'src/server/configure.js');
         if (existsSync(configurePath)) {
           unlinkSync(configurePath);

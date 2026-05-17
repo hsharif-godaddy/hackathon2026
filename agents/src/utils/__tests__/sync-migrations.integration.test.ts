@@ -335,6 +335,7 @@ describe('sync-template-files black-box migration harness', () => {
     'remove-public-assets-gitignore',
     'seed-entry-server-tsx',
     'ensure-helmet-provider',
+    'restore-vite-plugin-api-routes-dep',
     'migrate-to-ssr-entry',
     'normalize-vite-html-entry',
     'inject-ssr-markers',
@@ -355,6 +356,7 @@ describe('sync-template-files black-box migration harness', () => {
         'migration.remove-public-assets-gitignore.applied',
         'migration.seed-entry-server-tsx.skipped',
         'migration.ensure-helmet-provider.applied',
+        'migration.restore-vite-plugin-api-routes-dep.skipped',
         'migration.migrate-to-ssr-entry.applied',
         'migration.normalize-vite-html-entry.skipped',
         'migration.inject-ssr-markers.skipped',
@@ -368,6 +370,7 @@ describe('sync-template-files black-box migration harness', () => {
         'migration.remove-public-assets-gitignore.applied',
         'migration.seed-entry-server-tsx.skipped',
         'migration.ensure-helmet-provider.applied',
+        'migration.restore-vite-plugin-api-routes-dep.skipped',
         'migration.migrate-to-ssr-entry.applied',
         'migration.normalize-vite-html-entry.skipped',
         'migration.inject-ssr-markers.skipped',
@@ -381,6 +384,7 @@ describe('sync-template-files black-box migration harness', () => {
         'migration.remove-public-assets-gitignore.applied',
         'migration.seed-entry-server-tsx.skipped',
         'migration.ensure-helmet-provider.applied',
+        'migration.restore-vite-plugin-api-routes-dep.skipped',
         'migration.migrate-to-ssr-entry.applied',
         'migration.normalize-vite-html-entry.skipped',
         'migration.inject-ssr-markers.skipped',
@@ -394,6 +398,7 @@ describe('sync-template-files black-box migration harness', () => {
         'migration.remove-public-assets-gitignore.applied',
         'migration.seed-entry-server-tsx.skipped',
         'migration.ensure-helmet-provider.applied',
+        'migration.restore-vite-plugin-api-routes-dep.skipped',
         'migration.migrate-to-ssr-entry.applied',
         'migration.normalize-vite-html-entry.skipped',
         'migration.inject-ssr-markers.skipped',
@@ -407,6 +412,7 @@ describe('sync-template-files black-box migration harness', () => {
         'migration.remove-public-assets-gitignore.applied',
         'migration.seed-entry-server-tsx.skipped',
         'migration.ensure-helmet-provider.applied',
+        'migration.restore-vite-plugin-api-routes-dep.skipped',
         'migration.migrate-to-ssr-entry.applied',
         'migration.normalize-vite-html-entry.skipped',
         'migration.inject-ssr-markers.skipped',
@@ -420,6 +426,7 @@ describe('sync-template-files black-box migration harness', () => {
         'migration.remove-public-assets-gitignore.applied',
         'migration.seed-entry-server-tsx.skipped',
         'migration.ensure-helmet-provider.applied',
+        'migration.restore-vite-plugin-api-routes-dep.skipped',
         'migration.migrate-to-ssr-entry.applied',
         'migration.normalize-vite-html-entry.skipped',
         'migration.inject-ssr-markers.skipped',
@@ -529,8 +536,9 @@ describe('sync-template-files black-box migration harness', () => {
     // hash-sync phase creates them from the base (group is trivially green) — which
     // means seed-entry-server-tsx runs after entry-server.tsx is already in place
     // and skips. Every other migration applies.
+    const skippedMigrations = ['seed-entry-server-tsx', 'restore-vite-plugin-api-routes-dep'];
     for (const event of stdoutEvents) {
-      const suffix = event.migrationId === 'seed-entry-server-tsx' ? 'skipped' : 'applied';
+      const suffix = skippedMigrations.includes(event.migrationId) ? 'skipped' : 'applied';
       expect(event.event).toBe(`migration.${event.migrationId}.${suffix}`);
       expect(typeof event.durationMs).toBe('number');
       expect(event.durationMs).toBeGreaterThanOrEqual(0);
