@@ -19,6 +19,12 @@ const mockLogger = vi.hoisted(() => ({
 
 vi.mock('@/lib/gasket-config', () => ({
   appFetch: (...args: unknown[]) => mockAppFetch(...args),
+  AuthDismissedError: class AuthDismissedError extends Error {
+    constructor() { super('Authentication dismissed'); this.name = 'AuthDismissedError'; }
+  },
+  AuthSessionExpiredError: class AuthSessionExpiredError extends Error {
+    constructor() { super('Authentication session expired'); this.name = 'AuthSessionExpiredError'; }
+  },
 }));
 
 vi.mock('@/lib/request-context', () => ({
@@ -223,6 +229,59 @@ describe('useDeploymentsQuery', function useDeploymentsQueryTests() {
         'deployments-query.fetch.failure',
         expect.objectContaining({ appId: 'app-123' })
       );
+    });
+  });
+
+  // The retry predicate is the load-bearing fix preventing React Query from
+  // re-firing polls while the SSO modal is still open. If a future refactor
+  // drops one of the instanceof checks we need a direct test to catch it.
+  describe('retry predicate', function retryPredicateTests() {
+    it('does not retry when fetch returns 401 (auth flow drives the modal)', async function noRetryOnAuthExpired() {
+      mockGetPublishState.mockReturnValue({
+        deploymentInProgressId: 'dep-polling',
+        firstPublishDeployPending: true,
+      });
+
+      mockAppFetch.mockResolvedValue(createMockResponse({}, 401));
+
+      renderHookWithProviders(() =>
+        useDeploymentsQuery({ appId: 'app-123' })
+      );
+
+      await waitFor(() => {
+        expect(mockSetDeploymentInProgressId).toHaveBeenCalledWith('app-123', null);
+      });
+
+      // With default retry (3) we'd see 4 calls; with retry: 1 we'd see 2.
+      // The predicate short-circuits on AuthSessionExpiredError → exactly 1.
+      // Settle pending microtasks before asserting.
+      await Promise.resolve();
+      expect(mockAppFetch).toHaveBeenCalledTimes(1);
+    });
+
+    it('retries exactly once on a generic 500 (predicate falls through to failureCount < 1)', async function retriesOnceOnServerError() {
+      mockGetPublishState.mockReturnValue({
+        deploymentInProgressId: 'dep-polling',
+        firstPublishDeployPending: true,
+      });
+
+      mockAppFetch.mockResolvedValue(createMockResponse({}, 500));
+
+      renderHookWithProviders(() =>
+        useDeploymentsQuery({ appId: 'app-123' })
+      );
+
+      await waitFor(() => {
+        expect(mockLogger.error).toHaveBeenCalledWith(
+          'deployments-query.fetch.failure',
+          expect.objectContaining({ appId: 'app-123' })
+        );
+      });
+
+      // Predicate returns failureCount < 1 → original + one retry = 2 calls.
+      await waitFor(() => {
+        expect(mockAppFetch).toHaveBeenCalledTimes(2);
+      });
     });
   });
 });

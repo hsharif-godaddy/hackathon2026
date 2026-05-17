@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { getSwitchboardFlag } from '@/hooks/useSwitchboard';
-import { appFetch } from '@/lib/gasket-config';
+import { appFetch, AuthDismissedError, AuthSessionExpiredError } from '@/lib/gasket-config';
 import { shipAnalyticsLog } from '@/lib/logging';
 import type { AiroDeployment } from '@/lib/mgmt-airo';
 import { DeploymentStatus } from '@/lib/mgmt-airo/types';
@@ -111,9 +111,15 @@ export function useDeploymentsQuery({
         includeJobData,
       });
 
+      // handle401 routes a 401 through resolveAuth's single-flight mutex so a
+      // burst of poll requests during a publish flow share one SSO modal
+      // instead of stacking up. If re-auth succeeds appFetch retries the
+      // request once; if the user dismisses, AuthDismissedError surfaces and
+      // the retry predicate below stops React Query from re-firing.
       const response = await appFetch(
         `/api/apps/${appId}/deployments?${queryParams.toString()}`,
-        { cache: 'no-store' }
+        { cache: 'no-store' },
+        { handle401: true }
       );
 
       if (!response.ok) {
@@ -129,12 +135,16 @@ export function useDeploymentsQuery({
           setFirstPublishDeployPending(appId, false);
         }
         const errorMessage = `Failed to fetch deployments: ${response.status} ${response.statusText}`;
-        if (response.status !== 401) {
-          logger.error('deployments-query.fetch.failure', {
-            message: errorMessage,
-            appId,
-          });
+        if (response.status === 401) {
+          // appFetch already drove the SSO modal via handle401; surface a
+          // typed error so the retry predicate can short-circuit instead of
+          // re-firing the poll while the user is still authenticating.
+          throw new AuthSessionExpiredError();
         }
+        logger.error('deployments-query.fetch.failure', {
+          message: errorMessage,
+          appId,
+        });
         throw new Error(errorMessage);
       }
 
@@ -144,6 +154,14 @@ export function useDeploymentsQuery({
       return deployments;
     },
     enabled: enabled && !!appId,
+    // Auth failures are funneled through resolveAuth (single-flight). React
+    // Query must not retry them: re-firing the request while the modal is
+    // still open stacks 401s and races SSO completion.
+    retry: (failureCount, error) => {
+      if (error instanceof AuthDismissedError) return false;
+      if (error instanceof AuthSessionExpiredError) return false;
+      return failureCount < 1;
+    },
     refetchInterval: (query) => {
           const data = query.state.data;
 

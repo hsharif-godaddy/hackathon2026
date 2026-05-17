@@ -166,7 +166,7 @@ describe('authPreflight', () => {
     expect(useAuthUIStore.getState().isSsoLoginOpen).toBe(true);
     expect(useAuthUIStore.getState().ssoAuthReason).toBeNull();
     expect(logger.warn).toHaveBeenCalledWith(
-      'app-fetch.auth-preflight.body-parse-failed',
+      'app-fetch.auth-resolve.body-parse-failed',
       expect.objectContaining({ level: 3, status: 401 }),
     );
 
@@ -270,7 +270,7 @@ describe('authPreflight', () => {
 
     expect(result).toBe(resp401);
     expect(logger.warn).toHaveBeenCalledWith(
-      'app-fetch.auth-preflight.redirect-url-failed',
+      'app-fetch.auth-resolve.redirect-url-failed',
       expect.objectContaining({ level: 3 }),
     );
   });

@@ -222,6 +222,17 @@ export interface AppFetchOptions {
    * On SSO dismiss or timeout, returns the 401 response.
    */
   authLevel?: 1 | 2 | 3;
+  /**
+   * When set, a 401 from the request is funneled through resolveAuth and the
+   * request is retried once on successful re-auth. Use this for endpoints that
+   * are not gated by an authLevel preflight (e.g. polling endpoints) so that
+   * concurrent 401s collapse into a single SSO modal instead of racing.
+   *
+   * `true` probes at level 2 (default for IAT-based failures). Pass
+   * `{ level: 3 }` for level-3 endpoints so HBI failures route to /hbi
+   * instead of being masked by a level-2 probe that succeeds.
+   */
+  handle401?: boolean | { level: 1 | 2 | 3 };
 }
 
 export class AuthDismissedError extends Error {
@@ -245,7 +256,21 @@ export class AuthSessionExpiredError extends Error {
 
 export const AUTH_PREFLIGHT_TIMEOUT_MS = 5 * 60 * 1000;
 export const SSO_TIMEOUT_OVERRIDE_KEY = '__airo_sso_timeout';
-let pendingSsoPromise: Promise<'success' | 'dismiss'> | null = null;
+// Round-trip to /api/auth/validate. Short because the user is not in the loop;
+// the modal-wait below has its own 5-minute timeout.
+export const AUTH_PROBE_TIMEOUT_MS = 5_000;
+
+/**
+ * Outcome of resolveAuth(). The mutex collapses concurrent 401s into one of
+ * these results so every caller sees the same decision.
+ */
+export type AuthResolution =
+  | { kind: 'valid' }                         // probe says token is fine; original 401 was transient
+  | { kind: 'reauthed' }                      // SSO completed and verify confirmed the new cookie
+  | { kind: 'dismissed' }                     // user closed the modal without authenticating
+  | { kind: 'failed'; response: Response };   // probe returned non-401, or post-SSO verify failed
+
+let pendingResolution: Promise<AuthResolution> | null = null;
 
 function waitForSsoOutcome(): Promise<'success' | 'dismiss'> {
   return new Promise((resolve, reject) => {
@@ -280,31 +305,116 @@ function waitForSsoOutcome(): Promise<'success' | 'dismiss'> {
   });
 }
 
-export async function authPreflight(level: 1 | 2 | 3): Promise<Response | null> {
-  if (typeof window === 'undefined') return null;
-
-  const response = await fetch(
-    `/api/auth/validate?level=${level}`,
-    { method: 'GET', credentials: 'include' }
-  );
-
-  if (response.ok) return null;
-  if (response.status !== 401) return response;
-
-  const body = await response.clone().json().catch((parseErr) => {
-    // WAF / proxy 401 pages are HTML, not JSON -- flag so proxy errors are
-    // diagnosable separately from "backend responded with no authReason".
-    logger.warn('app-fetch.auth-preflight.body-parse-failed', {
-      level,
-      status: response.status,
-      error: parseErr instanceof Error ? parseErr.message : String(parseErr),
+/**
+ * Probe /api/auth/validate?level=N with a short timeout. Returns 'timeout'
+ * rather than throwing so the caller can choose a fallback.
+ */
+async function probeAuthValidate(level: 1 | 2 | 3): Promise<Response | 'timeout'> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), AUTH_PROBE_TIMEOUT_MS);
+  try {
+    return await fetch(`/api/auth/validate?level=${level}`, {
+      method: 'GET',
+      credentials: 'include',
+      signal: controller.signal,
     });
-    return null;
-  });
-  const authReason = typeof body?.authReason === 'number' ? body.authReason : null;
+  } catch (err) {
+    if (controller.signal.aborted) return 'timeout';
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
-  logger.info('app-fetch.auth-preflight.reauth-required', { level, authReason });
+export interface ResolveAuthOptions {
+  /**
+   * Level to probe at. Defaults to 2. Pass 3 to detect HBI step-up failures
+   * for sensitive operations.
+   */
+  level?: 1 | 2 | 3;
+}
 
+/**
+ * Single source of truth for "what should happen next when auth is in question."
+ *
+ * The whole sequence -- probe → modal → verify -- runs under one in-flight
+ * promise (`pendingResolution`). Concurrent callers join the same promise so a
+ * burst of 401s during e.g. a publish flow collapses to one probe + one modal
+ * + one verify, instead of N modals racing each other and reloading the page
+ * mid-render.
+ *
+ * The probe drives `pageToLoad` selection: a level-3 401 returns `authReason:
+ * 2` (HBI), which routes the SsoDeck to /hbi instead of /login. Picking the
+ * page from the probe response also covers paths where the original 401 had
+ * no parseable body (WAF/proxy HTML, control-plane re-throws, raw fetches
+ * outside appFetch).
+ */
+export async function resolveAuth(options: ResolveAuthOptions = {}): Promise<AuthResolution> {
+  if (typeof window === 'undefined') return { kind: 'valid' };
+
+  if (pendingResolution) return pendingResolution;
+
+  const level = options.level ?? 2;
+
+  pendingResolution = (async () => {
+    try {
+      const probe = await probeAuthValidate(level);
+
+      if (probe === 'timeout') {
+        // Couldn't reach validate. Open the modal as a safe default with a
+        // null authReason → /login. Better an occasional spurious prompt than
+        // surfacing "we don't know if you're authed."
+        logger.warn('app-fetch.auth-resolve.probe-timeout', { level });
+        return openModalAndVerify(level, null);
+      }
+
+      if (probe.ok) {
+        // Token is valid at this level — original 401 was transient or
+        // server-side. Caller may retry.
+        return { kind: 'valid' };
+      }
+
+      if (probe.status !== 401) {
+        return { kind: 'failed', response: probe };
+      }
+
+      const body = await probe.clone().json().catch((parseErr: unknown) => {
+        // WAF / proxy 401 pages are HTML, not JSON -- flag so proxy errors are
+        // diagnosable separately from "backend responded with no authReason".
+        // Narrow to SyntaxError so unexpected error classes (e.g. body already
+        // consumed) bubble up rather than silently being treated as "no JSON."
+        if (parseErr instanceof SyntaxError) {
+          logger.warn('app-fetch.auth-resolve.body-parse-failed', {
+            level,
+            status: probe.status,
+            error: parseErr.message,
+          });
+          return null;
+        }
+        logger.error('app-fetch.auth-resolve.body-parse-error', {
+          level,
+          status: probe.status,
+          error: parseErr instanceof Error ? parseErr.message : String(parseErr),
+        });
+        return null;
+      });
+      const authReason = typeof body?.authReason === 'number' ? body.authReason : null;
+      logger.info('app-fetch.auth-resolve.reauth-required', { level, authReason });
+
+      return openModalAndVerify(level, authReason, probe);
+    } finally {
+      pendingResolution = null;
+    }
+  })();
+
+  return pendingResolution;
+}
+
+async function openModalAndVerify(
+  level: 1 | 2 | 3,
+  authReason: number | null,
+  probeResponse?: Response,
+): Promise<AuthResolution> {
   // Env gate mirrors useSsoSignIn: prod (sso.godaddy.com is public) and local
   // dev (localhost) can render the SSO Deck iframe; deployed test/dev must do
   // a full-page redirect because Chrome's Private Network Access check blocks
@@ -316,54 +426,79 @@ export async function authPreflight(level: 1 | 2 | 3): Promise<Response | null> 
     try {
       window.location.href = await getLoginUrl(window.location.href);
     } catch (err) {
-      logger.warn('app-fetch.auth-preflight.redirect-url-failed', {
+      logger.warn('app-fetch.auth-resolve.redirect-url-failed', {
         level,
         reason: err instanceof Error ? err.message : String(err),
       });
-      return response;
+      const failureResponse = probeResponse ?? new Response(null, { status: 401 });
+      return { kind: 'failed', response: failureResponse };
     }
-    // Return a never-resolving promise; the browser is navigating away.
-    return new Promise<Response | null>(() => {});
+    // Browser is navigating away — never resolve so callers don't continue.
+    // Release the mutex synchronously so a later call (e.g. navigation
+    // failed mid-flight, popup blocked) starts a fresh probe instead of
+    // joining this dead promise. The IIFE's finally won't run because the
+    // never-resolving promise prevents it from settling.
+    pendingResolution = null;
+    return new Promise<AuthResolution>(() => {});
   }
 
-  if (!pendingSsoPromise) {
-    const store = useAuthUIStore.getState();
-    store.setSsoAuthReason(authReason);
-    if (!store.redirectUrl) {
-      store.setRedirectUrl(window.location.href);
-    }
-    if (store.isSsoLoginOpen) {
-      logger.warn('app-fetch.auth-preflight.modal-already-open', { level, authReason });
-    }
-    store.openSsoLogin();
-    pendingSsoPromise = waitForSsoOutcome().finally(() => { pendingSsoPromise = null; });
-  } else {
-    logger.info('app-fetch.auth-preflight.joining-pending-sso', { level, authReason });
+  const store = useAuthUIStore.getState();
+  store.setSsoAuthReason(authReason);
+  if (!store.redirectUrl) {
+    store.setRedirectUrl(window.location.href);
   }
+  if (store.isSsoLoginOpen) {
+    logger.warn('app-fetch.auth-resolve.modal-already-open', { level, authReason });
+  }
+  store.openSsoLogin();
 
   let outcome: 'success' | 'dismiss';
   try {
-    outcome = await pendingSsoPromise;
+    outcome = await waitForSsoOutcome();
   } catch (err) {
-    logger.warn('app-fetch.auth-preflight.sso-wait-failed', {
+    logger.warn('app-fetch.auth-resolve.sso-wait-failed', {
       level,
       reason: err instanceof Error ? err.message : String(err),
     });
-    return response;
+    const failureResponse = probeResponse ?? new Response(null, { status: 401 });
+    return { kind: 'failed', response: failureResponse };
   }
 
   if (outcome === 'dismiss') {
-    logger.info('app-fetch.auth-preflight.sso-dismissed', { level });
-    throw new AuthDismissedError();
+    logger.info('app-fetch.auth-resolve.sso-dismissed', { level });
+    return { kind: 'dismissed' };
   }
 
-  const retryResponse = await fetch(
-    `/api/auth/validate?level=${level}`,
-    { method: 'GET', credentials: 'include' }
-  );
+  // Verify cookie propagated. Optimistic on timeout: assume the login worked
+  // and let the caller retry. If the cookie really is bad, the retry will 401
+  // and the next resolveAuth() call will sort it out.
+  const verify = await probeAuthValidate(level);
+  if (verify === 'timeout') {
+    logger.warn('app-fetch.auth-resolve.verify-timeout', { level });
+    return { kind: 'reauthed' };
+  }
+  if (!verify.ok) return { kind: 'failed', response: verify };
+  return { kind: 'reauthed' };
+}
 
-  if (!retryResponse.ok) return retryResponse;
-  return null;
+/**
+ * Backward-compatible proactive preflight. Validate at `level` before making
+ * the original request. Thin wrapper over resolveAuth that adapts to the
+ * legacy return contract (null = ok, Response = give up, throw = dismissed).
+ */
+export async function authPreflight(level: 1 | 2 | 3): Promise<Response | null> {
+  if (typeof window === 'undefined') return null;
+
+  const result = await resolveAuth({ level });
+  switch (result.kind) {
+    case 'valid':
+    case 'reauthed':
+      return null;
+    case 'dismissed':
+      throw new AuthDismissedError();
+    case 'failed':
+      return result.response;
+  }
 }
 
 /**
@@ -376,7 +511,7 @@ export async function appFetch(
   options?: RequestInit,
   appOptions?: AppFetchOptions
 ): Promise<Response> {
-  const { authLevel } = appOptions || {};
+  const { authLevel, handle401 } = appOptions || {};
 
   if (authLevel) {
     const preflightResult = await authPreflight(authLevel);
@@ -388,10 +523,35 @@ export async function appFetch(
       ? new URL(url, window.location.origin).toString()
       : url;
 
-  const response = await fetch(resolvedUrl, {
+  let response = await fetch(resolvedUrl, {
     ...options,
     credentials: 'include'
   });
+
+  // Reactive 401 handling: route through resolveAuth (single-flight) and
+  // retry once on successful re-auth. Skipped if the caller already did a
+  // proactive preflight at authLevel — preflight + handle401 would double
+  // up the modal flow.
+  if (handle401 && response.status === 401 && !authLevel && typeof window !== 'undefined') {
+    const handle401Level = typeof handle401 === 'object' ? handle401.level : 2;
+    const result = await resolveAuth({ level: handle401Level });
+    if (result.kind === 'reauthed' || result.kind === 'valid') {
+      response = await fetch(resolvedUrl, {
+        ...options,
+        credentials: 'include'
+      });
+    } else if (result.kind === 'dismissed') {
+      throw new AuthDismissedError();
+    } else {
+      // kind: 'failed' — probe couldn't classify the failure (e.g. /api/auth/validate
+      // is itself returning 5xx). Surface the original 401 to the caller's normal
+      // error path; log so backend outages on validate are diagnosable.
+      logger.warn('app-fetch.auth-resolve.probe-failed', {
+        url: typeof url === 'string' ? url : '<non-string>',
+        probeStatus: result.response.status,
+      });
+    }
+  }
 
   // Check specifically for shopper ID authorization failure (403 only)
   if (response.status === 403) {
