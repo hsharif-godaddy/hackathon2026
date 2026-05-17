@@ -32,7 +32,7 @@ const BASE_VERSIONS: Record<WorkspaceNamespaceKey, string> = {
   runtime: '1-partial',
   diagnostics: '1-logs-only',
   tasks: '1-sync-only',
-  files: '0-stubbed',
+  files: '8-live',
   artifacts: '0-stubbed',
   imports: '0-stubbed',
   deployments: '0-partial',
@@ -56,10 +56,14 @@ const COMMON_METHODS = {
   'tasks.get': 'stubbed',
   'tasks.output': 'stubbed',
   'tasks.cancel': 'stubbed',
-  'files.tree': 'stubbed',
-  'files.view': 'stubbed',
-  'files.search': 'stubbed',
-  'files.applyEdits': 'stubbed',
+  'files.tree': 'live',
+  'files.view': 'live',
+  'files.search': 'live',
+  'files.write': 'live',
+  'files.edit': 'live',
+  'files.delete': 'live',
+  'files.move': 'live',
+  'files.upload': 'live',
   'artifacts.createSourceBundle': 'stubbed',
   'artifacts.createBuildBundle': 'stubbed',
   'artifacts.upload': 'stubbed',
@@ -139,7 +143,7 @@ export class HttpWorkspaceClient implements WorkspaceClient {
     public readonly variant: WorkspaceVariant,
     client: DevSupervisorClient,
   ) {
-    this.files = new HttpFiles();
+    this.files = new HttpFiles(client);
     this.tasks = new HttpTasks(client);
     this.runtime = new HttpRuntime(client);
     this.diagnostics = new HttpDiagnostics(client);

@@ -224,18 +224,21 @@ func (s *Server) setupRoutes() {
 	s.router.HandleFunc("/publish/status", s.handlePublishStatus).Methods("GET")
 	s.router.HandleFunc("/unpublish", s.handleUnpublish).Methods("POST")
 
-	// Filesystem operation endpoints
-	fsRouter := s.router.PathPrefix("/fs").Subrouter()
-	fsRouter.Use(fsMaxBodyMiddleware)
-	fsRouter.HandleFunc("/read", s.handleFsRead).Methods("POST")
-	fsRouter.HandleFunc("/write", s.handleFsWrite).Methods("POST")
-	fsRouter.HandleFunc("/stat", s.handleFsStat).Methods("POST")
-	fsRouter.HandleFunc("/readdir", s.handleFsReaddir).Methods("POST")
-	fsRouter.HandleFunc("/mkdir", s.handleFsMkdir).Methods("POST")
-	fsRouter.HandleFunc("/unlink", s.handleFsUnlink).Methods("POST")
-	fsRouter.HandleFunc("/rename", s.handleFsRename).Methods("POST")
-	fsRouter.HandleFunc("/exists", s.handleFsExists).Methods("POST")
-	fsRouter.HandleFunc("/grep", s.handleFsGrep).Methods("POST")
+	// Workspace files API (intent-based, replaces legacy /fs)
+	wsFilesRouter := s.router.PathPrefix("/workspace/files").Subrouter()
+	wsFilesRouter.Use(wsFilesMaxBodyMiddleware)
+	wsFilesRouter.HandleFunc("/tree", s.handleWorkspaceFilesTree).Methods("POST")
+	wsFilesRouter.HandleFunc("/view", s.handleWorkspaceFilesView).Methods("POST")
+	wsFilesRouter.HandleFunc("/search", s.handleWorkspaceFilesSearch).Methods("POST")
+	wsFilesRouter.HandleFunc("/write", s.handleWorkspaceFilesWrite).Methods("POST")
+	wsFilesRouter.HandleFunc("/edit", s.handleWorkspaceFilesEdit).Methods("POST")
+	wsFilesRouter.HandleFunc("/delete", s.handleWorkspaceFilesDelete).Methods("POST")
+	wsFilesRouter.HandleFunc("/move", s.handleWorkspaceFilesMove).Methods("POST")
+
+	// Binary upload registered separately — needs 100MB limit, not the 10MB JSON limit
+	s.router.Handle("/workspace/files/upload", wsFilesUploadMiddleware(
+		http.HandlerFunc(s.handleWorkspaceFilesUpload),
+	)).Methods("PUT")
 }
 
 func (s *Server) getConfiguredAddress() string {

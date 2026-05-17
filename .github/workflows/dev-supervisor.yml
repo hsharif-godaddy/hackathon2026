@@ -5,12 +5,12 @@ on:
     branches:
       - main
     paths:
-      - "dev-supervisor/**"
-      - ".github/workflows/dev-supervisor.yml"
+      - 'dev-supervisor/**'
+      - '.github/workflows/dev-supervisor.yml'
   pull_request:
     paths:
-      - "dev-supervisor/**"
-      - ".github/workflows/dev-supervisor.yml"
+      - 'dev-supervisor/**'
+      - '.github/workflows/dev-supervisor.yml'
   workflow_call:
 
 jobs:
@@ -26,7 +26,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
         with:
-          go-version: "1.25"
+          go-version: '1.25'
           cache-dependency-path: dev-supervisor/go.sum
 
       - name: golangci-lint
@@ -61,8 +61,13 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
         with:
-          go-version: "1.25"
+          go-version: '1.25'
           cache-dependency-path: dev-supervisor/go.sum
+
+      - name: Install ripgrep
+        run: command -v rg || sudo apt-get install -y ripgrep
+        env:
+          DEBIAN_FRONTEND: noninteractive
 
       - name: Download dependencies
         working-directory: dev-supervisor
@@ -116,7 +121,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
         with:
-          go-version: "1.25"
+          go-version: '1.25'
           cache-dependency-path: dev-supervisor/go.sum
 
       - name: Download dependencies

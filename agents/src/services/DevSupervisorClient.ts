@@ -829,34 +829,37 @@ export class DevSupervisorClient {
   /**
    * Make HTTP request to dev-supervisor over Unix socket or TCP
    */
-  private makeRequest(method: string, path: string, data?: any, timeoutMs?: number): Promise<any> {
+  private makeRequest(
+    method: string,
+    path: string,
+    data?: any,
+    timeoutMs?: number,
+    rawBody?: Buffer | Uint8Array,
+  ): Promise<any> {
     return new Promise((resolve, reject) => {
+      const contentType = rawBody ? 'application/octet-stream' : 'application/json';
+      const headers: Record<string, string | number> = { 'Content-Type': contentType };
+      if (rawBody) {
+        headers['Content-Length'] = rawBody.length;
+      }
+
       let options: http.RequestOptions;
 
       if (this.useTcp) {
-        // TCP connection
         const url = new URL(this.connectionPath);
-        const port = parseInt(url.port) || 8080;
-        const host = url.hostname || 'localhost';
-
         options = {
-          hostname: host,
-          port: port,
+          hostname: url.hostname || 'localhost',
+          port: parseInt(url.port) || 8080,
           method,
           path,
-          headers: {
-            'Content-Type': 'application/json',
-          },
+          headers,
         };
       } else {
-        // Unix socket connection
         options = {
           socketPath: this.connectionPath,
           method,
           path,
-          headers: {
-            'Content-Type': 'application/json',
-          },
+          headers,
         };
       }
 
@@ -900,12 +903,29 @@ export class DevSupervisorClient {
         req.destroy(new Error(`Request timeout after ${timeout}ms: ${method} ${path}`));
       }, timeout);
 
-      if (data) {
+      if (rawBody) {
+        req.write(rawBody);
+      } else if (data) {
         req.write(JSON.stringify(data));
       }
 
       req.end();
     });
+  }
+
+  /**
+   * Generic POST to a supervisor endpoint. Used by workspace adapters for
+   * the /workspace/* API surface.
+   */
+  post(path: string, body: unknown): Promise<unknown> {
+    return this.makeRequest('POST', path, body);
+  }
+
+  /**
+   * Raw PUT with binary body. Used for binary uploads to workspace.
+   */
+  putRaw(path: string, data: Buffer | Uint8Array): Promise<unknown> {
+    return this.makeRequest('PUT', path, undefined, undefined, data);
   }
 }
 
