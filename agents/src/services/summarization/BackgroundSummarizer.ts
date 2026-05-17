@@ -641,8 +641,8 @@ export class BackgroundSummarizer {
                 content: segment.content,
               });
             } else if (segment.type === 'tool_call' && segment.tool_call) {
-              if (segment.tool_call.tool_result) {
-                const toolArgs = segment.tool_call.tool_args || {};
+              if (segment.tool_call.toolResult) {
+                const toolArgs = segment.tool_call.toolArgs || {};
                 llmMessages.push({
                   role: 'assistant',
                   content: '',
@@ -651,7 +651,7 @@ export class BackgroundSummarizer {
                       id: segment.tool_call.id,
                       type: 'function',
                       function: {
-                        name: segment.tool_call.tool_name,
+                        name: segment.tool_call.toolName,
                         arguments: safeStringify(toolArgs),
                       },
                     },
@@ -661,11 +661,11 @@ export class BackgroundSummarizer {
                 llmMessages.push({
                   role: 'tool',
                   content:
-                    typeof segment.tool_call.tool_result === 'string'
-                      ? segment.tool_call.tool_result
-                      : safeStringify(segment.tool_call.tool_result),
+                    typeof segment.tool_call.toolResult === 'string'
+                      ? segment.tool_call.toolResult
+                      : safeStringify(segment.tool_call.toolResult),
                   tool_call_id: segment.tool_call.id,
-                  name: segment.tool_call.tool_name,
+                  name: segment.tool_call.toolName,
                 });
               }
             }

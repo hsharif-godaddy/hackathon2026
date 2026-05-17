@@ -392,22 +392,25 @@ func generateAppEnvSpecific(projectRoot string) error {
 
 func generateAgentsEnvSpecific(projectRoot string) error {
 	envs := []struct {
-		relPath, jwksURL, ssoHost string
+		relPath, jwksURL, ssoHost, asmBaseURL string
 	}{
 		{
-			relPath: "agents/.env.local.dev",
-			jwksURL: "https://local.gasket.dev-godaddy.com:8443/.well-known/jwks.json",
-			ssoHost: "sso.dev-godaddy.com",
+			relPath:    "agents/.env.local.dev",
+			jwksURL:    "https://local.gasket.dev-godaddy.com:8443/.well-known/jwks.json",
+			ssoHost:    "sso.dev-godaddy.com",
+			asmBaseURL: "https://asm-dp.api.int.dev-godaddy.com",
 		},
 		{
-			relPath: "agents/.env.local.test",
-			jwksURL: "https://airo-builder.test-godaddy.com/.well-known/jwks.json",
-			ssoHost: "sso.test-godaddy.com",
+			relPath:    "agents/.env.local.test",
+			jwksURL:    "https://airo-builder.test-godaddy.com/.well-known/jwks.json",
+			ssoHost:    "sso.test-godaddy.com",
+			asmBaseURL: "https://asm.api.int.test-godaddy.com",
 		},
 		{
-			relPath: "agents/.env.local.prod",
-			jwksURL: "https://airo-builder.godaddy.com/.well-known/jwks.json",
-			ssoHost: "sso.godaddy.com",
+			relPath:    "agents/.env.local.prod",
+			jwksURL:    "https://airo-builder.godaddy.com/.well-known/jwks.json",
+			ssoHost:    "sso.godaddy.com",
+			asmBaseURL: "https://asm.api.int.godaddy.com",
 		},
 	}
 
@@ -416,6 +419,7 @@ func generateAgentsEnvSpecific(projectRoot string) error {
 		managed := []struct{ key, value string }{
 			{"JWKS_URL", cfg.jwksURL},
 			{"SSO_HOST", cfg.ssoHost},
+			{"ASM_BASE_URL", cfg.asmBaseURL},
 		}
 
 		if err := writeOrUpsertManagedEnv(fullPath, cfg.relPath, managed); err != nil {

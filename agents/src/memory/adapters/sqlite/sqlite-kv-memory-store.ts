@@ -1,6 +1,6 @@
-import { MemoryRepository } from '../../database/repositories/MemoryRepository.js';
-import type { KvMemoryStore } from '../interfaces/kv-memory-store.js';
-import type { WorkspaceScope } from '../interfaces/scope.js';
+import { MemoryRepository } from '../../../database/repositories/MemoryRepository.js';
+import type { KvMemoryStore } from '../../interfaces/kv-memory-store.js';
+import type { WorkspaceScope } from '../../interfaces/scope.js';
 
 /**
  * SQLite-backed KvMemoryStore adapter.

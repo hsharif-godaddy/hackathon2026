@@ -81,7 +81,7 @@ export class MessageSegmentManager {
     return this.segments
       .filter(s => s.type === 'tool_call' && s.tool_call)
       .map(s => s.tool_call!)
-      .sort((a, b) => (a.start_time || 0) - (b.start_time || 0));
+      .sort((a, b) => (a.startTime || 0) - (b.startTime || 0));
   }
 
   /**
@@ -140,9 +140,9 @@ export class MessageSegmentManager {
     return this.segments.map(segment => ({
       timestamp: segment.timestamp,
       type: segment.type,
-      summary: segment.type === 'content' 
+      summary: segment.type === 'content'
         ? `Content: ${(segment.content || '').substring(0, 50)}...`
-        : `Tool: ${segment.tool_call?.tool_name} (${segment.tool_call?.status})`
+        : `Tool: ${segment.tool_call?.toolName} (${segment.tool_call?.status})`
     }));
   }
 }

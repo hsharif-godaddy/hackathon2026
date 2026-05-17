@@ -10,13 +10,14 @@ export interface AgentToolCallPayload {
   toolName?: string
   status?: 'running' | 'completed' | 'error' | string
   input?: Record<string, unknown>
+  toolArgs?: Record<string, unknown>
   result?: Record<string, unknown> | string
+  toolResult?: Record<string, unknown> | string
   error?: string
   startTime?: number
   endTime?: number
   duration?: number
-  start_time?: number
-  end_time?: number
+  durationMs?: number
   partialInput?: string
   partial_input?: string
 }

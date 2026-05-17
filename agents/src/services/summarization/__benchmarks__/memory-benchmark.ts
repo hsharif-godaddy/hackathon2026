@@ -76,12 +76,12 @@ function createMessages(count: number, startId: number = 0, conversationId: stri
         timestamp: new Date(),
         tool_call: {
           id: `call-${id}`,
-          tool_name: 'str_replace_based_edit_tool',
-          tool_args: {
+          toolName: 'str_replace_based_edit_tool',
+          toolArgs: {
             command: 'str_replace',
             path: `src/file-${id % 20}.ts`,
           },
-          tool_result: {
+          toolResult: {
             success: true,
             filesModified: [`src/file-${id % 20}.ts`],
             linesChanged: 30

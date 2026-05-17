@@ -117,9 +117,9 @@ func TestAppLocalEnvCheck_Pass(t *testing.T) {
 // app-side test for the rationale.
 func TestAgentsLocalEnvCheck_WrongSSOHostForEnv(t *testing.T) {
 	root := t.TempDir()
-	writeLocalEnvFile(t, root, "agents", "dev", "SSO_HOST=sso.test-godaddy.com\n") // wrong
-	writeLocalEnvFile(t, root, "agents", "test", "SSO_HOST=sso.godaddy.com\n")     // wrong
-	writeLocalEnvFile(t, root, "agents", "prod", "SSO_HOST=sso.godaddy.com\n")     // correct
+	writeLocalEnvFile(t, root, "agents", "dev", "SSO_HOST=sso.test-godaddy.com\nASM_BASE_URL=https://asm-dp.api.int.dev-godaddy.com\n") // wrong SSO_HOST
+	writeLocalEnvFile(t, root, "agents", "test", "SSO_HOST=sso.godaddy.com\nASM_BASE_URL=https://asm.api.int.test-godaddy.com\n")       // wrong SSO_HOST
+	writeLocalEnvFile(t, root, "agents", "prod", "SSO_HOST=sso.godaddy.com\nASM_BASE_URL=https://asm.api.int.godaddy.com\n")            // correct
 
 	c := &AgentsLocalEnvCheck{}
 	result := c.Run(context.Background(), root)

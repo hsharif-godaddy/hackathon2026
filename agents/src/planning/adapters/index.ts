@@ -1,4 +1,4 @@
-import { SqliteTodoListStore } from './sqlite-todo-list-store.js';
+import { SqliteTodoListStore } from './sqlite/sqlite-todo-list-store.js';
 
 /**
  * Singleton is initialized lazily on first access so that importing this

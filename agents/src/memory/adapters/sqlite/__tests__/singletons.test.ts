@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 
-vi.mock('../../../database/connection.js', () => ({
+vi.mock('../../../../database/connection.js', () => ({
   getDatabase: vi.fn(() => ({
     prepare: vi.fn(() => ({
       run: vi.fn(),
@@ -11,7 +11,7 @@ vi.mock('../../../database/connection.js', () => ({
   })),
 }));
 
-vi.mock('../../../logging/index.js', () => ({
+vi.mock('../../../../logging/index.js', () => ({
   Logger: {
     create: () => ({
       info: vi.fn(),
@@ -30,7 +30,7 @@ vi.mock('../../../logging/index.js', () => ({
 
 describe('memory adapter singletons', function singletonTests() {
   it('should return the same instance on repeated calls', async function identity() {
-    const { getConversationLifecycleStore, getMessageStore, getConversationTokenStore, getKvMemoryStore, getSummaryStore } = await import('../index.js');
+    const { getConversationLifecycleStore, getMessageStore, getConversationTokenStore, getKvMemoryStore, getSummaryStore } = await import('../../index.js');
 
     expect(getConversationLifecycleStore()).toBe(getConversationLifecycleStore());
     expect(getMessageStore()).toBe(getMessageStore());

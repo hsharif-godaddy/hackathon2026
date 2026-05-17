@@ -476,9 +476,9 @@ describe('BackgroundSummarizer', () => {
             timestamp: new Date(),
             tool_call: {
               id: 'call1',
-              tool_name: 'str_replace_based_edit_tool',
-              tool_args: { command: 'str_replace', path: 'test.js' },
-              tool_result: { success: true }
+              toolName: 'str_replace_based_edit_tool',
+              toolArgs: { command: 'str_replace', path: 'test.js' },
+              toolResult: { success: true }
             }
           }]
         }

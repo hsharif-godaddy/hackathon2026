@@ -120,6 +120,50 @@ describe('normalizeConversationMessages', () => {
     expect(message.segments?.[0].toolCall?.partialInput).toBe('delta')
   })
 
+  it('normalizes camelCase internal format (toolArgs/toolResult/durationMs) from segments', () => {
+    const [message] = normalizeConversationMessages([
+      {
+        id: 'assistant-3',
+        sender: 'assistant',
+        createdAt: '2024-01-04T00:00:00.000Z',
+        segments: [
+          {
+            id: 'seg-internal',
+            type: 'tool_result',
+            toolCall: {
+              id: 'tool-3',
+              toolName: 'writeFile',
+              toolArgs: { path: '/app/index.ts', content: 'hello' },
+              toolResult: { success: true },
+              durationMs: 1200,
+              status: 'completed'
+            }
+          }
+        ],
+        toolCalls: [
+          {
+            id: 'tool-3',
+            toolName: 'writeFile',
+            toolArgs: { path: '/app/index.ts', content: 'hello' },
+            toolResult: { success: true },
+            durationMs: 1200,
+            status: 'completed'
+          }
+        ]
+      }
+    ])
+
+    expect(message.segments?.[0].toolCall?.name).toBe('writeFile')
+    expect(message.segments?.[0].toolCall?.input).toEqual({ path: '/app/index.ts', content: 'hello' })
+    expect(message.segments?.[0].toolCall?.result).toEqual({ success: true })
+    expect(message.segments?.[0].toolCall?.duration).toBe(1200)
+
+    expect(message.toolCalls?.[0].name).toBe('writeFile')
+    expect(message.toolCalls?.[0].input).toEqual({ path: '/app/index.ts', content: 'hello' })
+    expect(message.toolCalls?.[0].result).toEqual({ success: true })
+    expect(message.toolCalls?.[0].duration).toBe(1200)
+  })
+
   it('handles missing or invalid payloads safely', () => {
     expect(normalizeConversationMessages(undefined)).toEqual([])
     expect(normalizeConversationMessages(null as unknown as any[])).toEqual([])

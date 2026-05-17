@@ -22,6 +22,7 @@ import type { AgentRouterParams, AgentStateManager } from '../agent-router.js'
 
 import { sseSessionKey } from './session-key.js'
 import { asyncHandler } from '../middleware/async-handler.js'
+import { mapToolCallsToUI } from '../tool-call-mapper.js'
 
 const HEARTBEAT_INTERVAL_MS = 15_000
 const RETRY_MS = 1000
@@ -311,7 +312,7 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
           content: msg.content,
           createdAt: msg.createdAt.toISOString(),
           ...(msg.messageType != null && { messageType: msg.messageType }),
-          ...(msg.toolCalls != null && { toolCalls: msg.toolCalls }),
+          ...(msg.toolCalls != null && { toolCalls: mapToolCallsToUI(msg.toolCalls as any) }),
           ...(msg.segments != null && { segments: msg.segments }),
           ...(metadata != null && { metadata }),
           ...(msg.contextAttachments != null && { contextAttachments: msg.contextAttachments }),

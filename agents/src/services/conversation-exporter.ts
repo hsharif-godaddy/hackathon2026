@@ -4,17 +4,17 @@ import { safeStringify } from '@airo/shared';
 export type ExportDetail = 'summary' | 'full';
 
 /**
- * Normalize a tool call from either camelCase (raw DB) or snake_case (typed) format.
- * The DB stores tool calls as {name, input, result, duration, status: 'completed'}
- * but the TypeScript interface uses {tool_name, tool_args, tool_result, duration_ms, status: 'success'}.
+ * Normalize a tool call from either camelCase (current) or legacy snake_case format.
+ * The DB may store tool calls as {name, input, result, duration, status: 'completed'}
+ * but the TypeScript interface uses {toolName, toolArgs, toolResult, durationMs, status: 'success'}.
  */
 function normalizeToolCall(tc: any): { toolName: string; toolArgs: any; toolResult: any; durationMs: number | undefined; status: string; error: string | undefined; id: string } {
   return {
     id: tc.id,
-    toolName: tc.tool_name || tc.name || 'unknown',
-    toolArgs: tc.tool_args ?? tc.input,
-    toolResult: tc.tool_result ?? tc.result,
-    durationMs: tc.duration_ms ?? tc.duration,
+    toolName: tc.toolName || tc.tool_name || tc.name || 'unknown',
+    toolArgs: tc.toolArgs ?? tc.tool_args ?? tc.input,
+    toolResult: tc.toolResult ?? tc.tool_result ?? tc.result,
+    durationMs: tc.durationMs ?? tc.duration_ms ?? tc.duration,
     status: tc.status === 'completed' ? 'success' : (tc.status || 'unknown'),
     error: tc.error,
   };

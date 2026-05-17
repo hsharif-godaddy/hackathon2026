@@ -389,7 +389,7 @@ export class ConversationRepository {
       sender: row.sender,
       content: row.content,
       messageType: row.message_type,
-      toolCalls: row.tool_calls ? JSON.parse(row.tool_calls) : undefined,
+      toolCalls: row.tool_calls ? this.normalizeToolCalls(JSON.parse(row.tool_calls)) : undefined,
       segments: row.segments ? JSON.parse(row.segments) : undefined,
       metadata: row.metadata ? JSON.parse(row.metadata) : undefined,
       contextAttachments: row.context_attachments ? JSON.parse(row.context_attachments) : undefined,
@@ -533,7 +533,7 @@ export class ConversationRepository {
         sender: row.sender,
         content: row.content,
         messageType: row.message_type,
-        toolCalls: row.tool_calls ? JSON.parse(row.tool_calls) : undefined,
+        toolCalls: row.tool_calls ? this.normalizeToolCalls(JSON.parse(row.tool_calls)) : undefined,
         segments,
         metadata: row.metadata ? JSON.parse(row.metadata) : undefined,
         contextAttachments: row.context_attachments ? JSON.parse(row.context_attachments) : undefined,
@@ -650,7 +650,7 @@ export class ConversationRepository {
         sender: row.sender,
         content: row.content,
         messageType: row.message_type,
-        toolCalls: row.tool_calls ? JSON.parse(row.tool_calls) : undefined,
+        toolCalls: row.tool_calls ? this.normalizeToolCalls(JSON.parse(row.tool_calls)) : undefined,
         segments,
         metadata: row.metadata ? JSON.parse(row.metadata) : undefined,
         contextAttachments: row.context_attachments ? JSON.parse(row.context_attachments) : undefined,
@@ -663,7 +663,7 @@ export class ConversationRepository {
   }
 
   /**
-   * Normalize segments to support both camelCase (database) and snake_case (schema) formats
+   * Normalize segments to support both camelCase and legacy snake_case formats from database
    * Keeps both formats for backward compatibility with API clients
    */
   private normalizeSegments(segments: any[]): any[] {
@@ -673,9 +673,9 @@ export class ConversationRepository {
         if (toolCall) {
           const normalizedToolCall = {
             ...toolCall,
-            tool_name: toolCall.name || toolCall.tool_name,
-            tool_args: toolCall.input || toolCall.tool_args,
-            tool_result: toolCall.result || toolCall.output || toolCall.tool_result
+            toolName: toolCall.name || toolCall.tool_name || toolCall.toolName,
+            toolArgs: toolCall.input || toolCall.tool_args || toolCall.toolArgs,
+            toolResult: toolCall.result || toolCall.output || toolCall.tool_result || toolCall.toolResult,
           };
 
           return {
@@ -689,9 +689,38 @@ export class ConversationRepository {
     });
   }
 
+  private normalizeToolCalls(toolCalls: unknown[]): ToolCall[] {
+    return toolCalls.map((raw) => {
+      const tc = raw as Record<string, unknown>;
+      const toolResult = tc.tool_result ?? tc.toolResult ?? tc.result ?? tc.output;
+      const hasResult = toolResult !== undefined && toolResult !== null;
+      let status: 'running' | 'success' | 'error';
+      if (tc.status === 'completed' || tc.status === 'success') {
+        status = 'success';
+      } else if (tc.status === 'error') {
+        status = 'error';
+      } else if (tc.status === 'running') {
+        status = 'running';
+      } else {
+        status = hasResult ? 'success' : 'running';
+      }
+      return {
+        id: tc.id as string,
+        toolName: (tc.tool_name ?? tc.toolName ?? tc.name ?? 'unknown') as string,
+        toolArgs: tc.tool_args ?? tc.toolArgs ?? tc.input ?? {},
+        toolResult,
+        error: tc.error as string | undefined,
+        startTime: (tc.start_time ?? tc.startTime) as number | undefined,
+        endTime: (tc.end_time ?? tc.endTime) as number | undefined,
+        durationMs: (tc.duration_ms ?? tc.durationMs ?? tc.duration) as number | undefined,
+        status,
+      };
+    });
+  }
+
   /**
    * Get messages for conversation history processing (LLM context)
-   * Returns normalized format with snake_case field names
+   * Returns normalized format with camelCase field names
    *
    * This method is specifically for history loading and ensures consistent
    * field naming regardless of how data is stored in the database.
@@ -707,9 +736,9 @@ export class ConversationRepository {
       content?: string;
       tool_call?: {
         id: string;
-        tool_name: string;
-        tool_args: any;
-        tool_result?: any;
+        toolName: string;
+        toolArgs: any;
+        toolResult?: any;
         error?: string;
         status?: 'running' | 'success' | 'error';
       };
@@ -751,9 +780,9 @@ export class ConversationRepository {
             if (toolCall) {
               normalized.tool_call = {
                 id: toolCall.id,
-                tool_name: toolCall.name || toolCall.tool_name,
-                tool_args: toolCall.input || toolCall.tool_args,
-                tool_result: toolCall.result || toolCall.output || toolCall.tool_result,
+                toolName: toolCall.name || toolCall.tool_name || toolCall.toolName,
+                toolArgs: toolCall.input || toolCall.tool_args || toolCall.toolArgs,
+                toolResult: toolCall.result || toolCall.output || toolCall.tool_result || toolCall.toolResult,
                 error: toolCall.error
               };
             }
@@ -794,7 +823,7 @@ export class ConversationRepository {
         sender: row.sender,
         content: row.content,
         messageType: row.message_type,
-        toolCalls: row.tool_calls ? JSON.parse(row.tool_calls) : undefined,
+        toolCalls: row.tool_calls ? this.normalizeToolCalls(JSON.parse(row.tool_calls)) : undefined,
         segments,
         metadata: row.metadata ? JSON.parse(row.metadata) : undefined,
         origin: row.origin,
@@ -942,9 +971,9 @@ export class ConversationRepository {
             if (toolCall) {
               normalized.tool_call = {
                 id: toolCall.id,
-                tool_name: toolCall.name || toolCall.tool_name,
-                tool_args: toolCall.input || toolCall.tool_args,
-                tool_result: toolCall.result || toolCall.output || toolCall.tool_result,
+                toolName: toolCall.name || toolCall.tool_name || toolCall.toolName,
+                toolArgs: toolCall.input || toolCall.tool_args || toolCall.toolArgs,
+                toolResult: toolCall.result || toolCall.output || toolCall.tool_result || toolCall.toolResult,
                 error: toolCall.error
               };
             }

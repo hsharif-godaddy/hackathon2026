@@ -47,16 +47,25 @@ func writeLocalEnvFile(t *testing.T, projectRoot, service, envName, content stri
 }
 
 // helper to seed the per-environment .env.local.{dev,test,prod} files under
-// root/service/ with the correct per-env SSO_HOST — the shape the local-env
-// checks require to reach Pass.
+// root/service/ with the correct per-env managed vars — the shape the
+// local-env checks require to reach Pass.
 func writeLocalEnvFiles(t *testing.T, projectRoot, service string) {
 	t.Helper()
-	for envName, ssoHost := range map[string]string{
-		"dev":  "sso.dev-godaddy.com",
-		"test": "sso.test-godaddy.com",
-		"prod": "sso.godaddy.com",
-	} {
-		writeLocalEnvFile(t, projectRoot, service, envName, "SSO_HOST="+ssoHost+"\n")
+	type envConfig struct {
+		ssoHost    string
+		asmBaseURL string
+	}
+	configs := map[string]envConfig{
+		"dev":  {"sso.dev-godaddy.com", "https://asm-dp.api.int.dev-godaddy.com"},
+		"test": {"sso.test-godaddy.com", "https://asm.api.int.test-godaddy.com"},
+		"prod": {"sso.godaddy.com", "https://asm.api.int.godaddy.com"},
+	}
+	for envName, cfg := range configs {
+		content := "SSO_HOST=" + cfg.ssoHost + "\n"
+		if service == "agents" {
+			content += "ASM_BASE_URL=" + cfg.asmBaseURL + "\n"
+		}
+		writeLocalEnvFile(t, projectRoot, service, envName, content)
 	}
 }
 

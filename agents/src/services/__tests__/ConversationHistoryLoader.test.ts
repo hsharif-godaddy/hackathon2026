@@ -47,9 +47,9 @@ describe('ConversationHistoryLoader', () => {
           content: seg.content,
           tool_call: seg.toolCall ? {
             id: seg.toolCall.id,
-            tool_name: seg.toolCall.name,
-            tool_args: seg.toolCall.input,
-            tool_result: seg.toolCall.result,
+            toolName: seg.toolCall.name,
+            toolArgs: seg.toolCall.input,
+            toolResult: seg.toolCall.result,
             error: seg.toolCall.error
           } : undefined,
           timestamp: new Date(seg.timestamp)
@@ -200,9 +200,9 @@ describe('ConversationHistoryLoader', () => {
               type: 'tool_call' as const,
               tool_call: {
                 id: 'tool1',
-                tool_name: 'search',
-                tool_args: { query: 'test' },
-                tool_result: 'Found 3 results'
+                toolName: 'search',
+                toolArgs: { query: 'test' },
+                toolResult: 'Found 3 results'
               },
               timestamp: new Date('2025-01-01T00:00:01.000Z')
             }
@@ -260,8 +260,8 @@ describe('ConversationHistoryLoader', () => {
               type: 'tool_call' as const,
               tool_call: {
                 id: 'tool1',
-                tool_name: 'search',
-                tool_args: { query: 'test' }
+                toolName: 'search',
+                toolArgs: { query: 'test' }
               },
               timestamp: new Date()
             }
@@ -290,9 +290,9 @@ describe('ConversationHistoryLoader', () => {
           content: seg.content,
           tool_call: seg.toolCall ? {
             id: seg.toolCall.id,
-            tool_name: seg.toolCall.name,
-            tool_args: seg.toolCall.input,
-            tool_result: seg.toolCall.result,
+            toolName: seg.toolCall.name,
+            toolArgs: seg.toolCall.input,
+            toolResult: seg.toolCall.result,
             error: seg.toolCall.error
           } : undefined,
           timestamp: new Date(seg.timestamp)

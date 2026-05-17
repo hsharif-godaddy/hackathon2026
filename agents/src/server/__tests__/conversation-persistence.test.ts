@@ -357,7 +357,7 @@ describe('AgentsMessagePersistence', function packageTests() {
       expect(segments[1].type).toBe('content')
       expect(segments[1].content).toBe('\n\nNarration continued:')
       expect(segments[2].type).toBe('tool_call')
-      expect(segments[2].toolCall.name).toBe('setProjectName')
+      expect(segments[2].toolCall.toolName).toBe('setProjectName')
     })
   })
 
@@ -371,8 +371,8 @@ describe('AgentsMessagePersistence', function packageTests() {
 
       const toolSegments = segments.filter(s => s.type === 'tool_call')
       expect(toolSegments).toHaveLength(1)
-      expect(toolSegments[0].toolCall.status).toBe('completed')
-      expect(toolSegments[0].toolCall.name).toBe('textEditor')
+      expect(toolSegments[0].toolCall.status).toBe('success')
+      expect(toolSegments[0].toolCall.toolName).toBe('textEditor')
     })
 
     it('should save all tool results to the toolCalls array on the message', async function toolCallsArray() {
@@ -386,7 +386,7 @@ describe('AgentsMessagePersistence', function packageTests() {
       const [, updates] = mockUpdateMessage.mock.calls[0]
 
       expect(updates.toolCalls).toHaveLength(2)
-      expect(updates.toolCalls.map((t: any) => t.name)).toEqual(
+      expect(updates.toolCalls.map((t: any) => t.toolName)).toEqual(
         expect.arrayContaining(['textEditor', 'setProjectName'])
       )
     })

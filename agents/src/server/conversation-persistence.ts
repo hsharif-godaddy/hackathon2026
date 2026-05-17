@@ -270,6 +270,8 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
         sessionId: context.sessionId
       },
       origin,
+      customerId: customerIdFromContext(context as { metadata?: Record<string, unknown> }),
+      agentId: context.agentName,
       ...(filteredAttachments && filteredAttachments.length > 0 && { contextAttachments: filteredAttachments })
     })
 
@@ -316,7 +318,9 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
         appId: context.appId,
         inProgress: true
       },
-      origin
+      origin,
+      customerId: customerIdFromContext(context as { metadata?: Record<string, unknown> }),
+      agentId: context.agentName,
     })
     if (activeConversation) {
       // Finalize the previous agent message before starting a new turn.
@@ -470,6 +474,8 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
         sessionId: context.sessionId
       },
       origin,
+      customerId: customerIdFromContext(context as { metadata?: Record<string, unknown> }),
+      agentId: context.agentName,
       ...(filteredAttachments && filteredAttachments.length > 0 && { contextAttachments: filteredAttachments })
     })
 
@@ -558,9 +564,9 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
             const toolId = event.data.tool.id || nanoid(8)
             const toolData = {
               id: toolId,
-              name: event.data.tool.name,
-              input: event.data.tool.input,
-              status: 'running',
+              toolName: event.data.tool.name,
+              toolArgs: event.data.tool.input,
+              status: 'running' as const,
               startTime: timestamp
             }
 
@@ -592,19 +598,19 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
             const existingTool = toolsMap.get(toolId)
 
             if (existingTool) {
-              existingTool.input = event.data.tool.input || existingTool.input
-              existingTool.result = event.data.tool.output || event.content || event.data.tool.result
+              existingTool.toolArgs = event.data.tool.input || existingTool.toolArgs
+              existingTool.toolResult = event.data.tool.output || event.content || event.data.tool.result
               const hasError = event.data.tool.error || event.data.tool.is_error
               existingTool.error = event.data.tool.error
-              existingTool.status = hasError ? 'error' : 'completed'
+              existingTool.status = hasError ? 'error' : 'success'
               existingTool.endTime = timestamp
 
               if (existingTool.startTime && timestamp) {
-                const startTime = new Date(existingTool.startTime).getTime()
-                const endTime = new Date(timestamp).getTime()
-                existingTool.duration = endTime - startTime
+                const startMs = new Date(existingTool.startTime).getTime()
+                const endMs = new Date(timestamp).getTime()
+                existingTool.durationMs = endMs - startMs
               } else {
-                existingTool.duration = event.data.tool.duration || undefined
+                existingTool.durationMs = event.data.tool.duration || undefined
               }
 
               const segmentIndex = segments.findIndex(s =>
@@ -629,7 +635,7 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
       contentLength: accumulatedContent.length,
       segmentsCount: segments.length,
       toolCallsCount: toolCalls.length,
-      toolNames: toolCalls.map(t => t.name)
+      toolNames: toolCalls.map(t => t.toolName)
     })
 
     const activeConversation = this.activeConversations.get(context.socketId)
@@ -668,7 +674,9 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
           usedFreeGrants,
           ...traceIds
         },
-        origin: fallbackOrigin
+        origin: fallbackOrigin,
+        customerId: customerIdFromContext(context as { metadata?: Record<string, unknown> }),
+        agentId: context.agentName,
       })
       contextLogger.info('conversation.agent_response.saved', {})
     }
@@ -681,20 +689,20 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
     if (toolCalls.length > 0 && context.appId) {
       await Promise.all(
         toolCalls
-          .filter((toolCall) => toolCall.name === 'handoff' && toolCall.result)
+          .filter((toolCall) => toolCall.toolName === 'handoff' && toolCall.toolResult)
           .map(async (toolCall) => {
             try {
               // Parse the handoff result to extract usage data
               let handoffResult: any;
-              if (typeof toolCall.result === 'string') {
+              if (typeof toolCall.toolResult === 'string') {
                 try {
-                  handoffResult = JSON.parse(toolCall.result);
+                  handoffResult = JSON.parse(toolCall.toolResult);
                 } catch {
                   // If parsing fails, try to extract from the string
-                  handoffResult = toolCall.result;
+                  handoffResult = toolCall.toolResult;
                 }
               } else {
-                handoffResult = toolCall.result;
+                handoffResult = toolCall.toolResult;
               }
 
               // Extract usage from handoff result
@@ -755,7 +763,7 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
               logger.warn('conversation.handoff_usage.parse_failed', {
                 conversationId,
                 appId: context.appId,
-                toolName: toolCall.name,
+                toolName: toolCall.toolName,
                 error: handoffError instanceof Error ? handoffError.message : String(handoffError),
               });
             }

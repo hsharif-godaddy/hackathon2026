@@ -20,9 +20,9 @@ export interface DatabaseMessage {
     content?: string;
     tool_call?: {
       id: string;
-      tool_name: string;
-      tool_args: unknown;
-      tool_result?: unknown;
+      toolName: string;
+      toolArgs: unknown;
+      toolResult?: unknown;
       error?: string;
       status?: 'running' | 'success' | 'error';
     };

@@ -8,23 +8,21 @@
 
 /**
  * Normalized tool call structure for LLM processing
- * Always uses snake_case to match TypeScript schema conventions
  */
 export interface NormalizedToolCall {
   id: string;
-  tool_name: string;
-  tool_args: any;
-  tool_result?: any;
+  toolName: string;
+  toolArgs: any;
+  toolResult?: any;
   error?: string;
-  start_time?: number;
-  end_time?: number;
-  duration_ms?: number;
+  startTime?: number;
+  endTime?: number;
+  durationMs?: number;
   status: 'running' | 'success' | 'error';
 }
 
 /**
  * Normalized message segment for LLM processing
- * Always uses snake_case to match TypeScript schema conventions
  */
 export interface NormalizedMessageSegment {
   id: string;

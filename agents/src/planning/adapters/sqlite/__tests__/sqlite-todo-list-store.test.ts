@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 import { SqliteTodoListStore } from '../sqlite-todo-list-store.js';
-import type { WorkspaceScope } from '../../../memory/interfaces/scope.js';
+import type { WorkspaceScope } from '../../../../memory/interfaces/scope.js';
 
 describe('SqliteTodoListStore', function storeTests() {
   const mockRepo = {

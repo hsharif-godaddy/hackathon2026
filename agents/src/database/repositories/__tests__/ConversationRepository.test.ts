@@ -660,4 +660,80 @@ describe('getMessagesAfterMessageId', () => {
       expect(result.messages[1].origin).toBe('support')
     })
   })
+
+  describe('normalizeToolCalls (legacy shape migration)', () => {
+    it('should normalize legacy "name" field to "toolName"', async () => {
+      createApp('app-123')
+      const conv = await repo.create('app-123', 'develop', 'Test')
+
+      const legacyToolCalls = JSON.stringify([
+        { id: 'tc-1', name: 'readFile', input: { path: '/tmp' }, result: { data: 'ok' }, status: 'completed' }
+      ])
+      testDb.prepare(`
+        INSERT INTO conversation_messages (id, conversation_id, sender, content, tool_calls, created_at)
+        VALUES (?, ?, ?, ?, ?, datetime('now'))
+      `).run('msg-legacy', conv.id, 'agent', 'done', legacyToolCalls)
+
+      const messages = await repo.getMessages(conv.id)
+      const msg = messages.find(m => m.id === 'msg-legacy')!
+      expect(msg.toolCalls).toHaveLength(1)
+      expect(msg.toolCalls![0].toolName).toBe('readFile')
+      expect(msg.toolCalls![0].toolArgs).toEqual({ path: '/tmp' })
+      expect(msg.toolCalls![0].toolResult).toEqual({ data: 'ok' })
+      expect(msg.toolCalls![0].status).toBe('success')
+    })
+
+    it('should normalize "completed" status to "success"', async () => {
+      createApp('app-123')
+      const conv = await repo.create('app-123', 'develop', 'Test')
+
+      const toolCalls = JSON.stringify([
+        { id: 'tc-1', tool_name: 'git', tool_args: {}, status: 'completed' }
+      ])
+      testDb.prepare(`
+        INSERT INTO conversation_messages (id, conversation_id, sender, content, tool_calls, created_at)
+        VALUES (?, ?, ?, ?, ?, datetime('now'))
+      `).run('msg-status', conv.id, 'agent', 'done', toolCalls)
+
+      const messages = await repo.getMessages(conv.id)
+      const msg = messages.find(m => m.id === 'msg-status')!
+      expect(msg.toolCalls![0].status).toBe('success')
+    })
+
+    it('should infer status from presence of result when status is missing', async () => {
+      createApp('app-123')
+      const conv = await repo.create('app-123', 'develop', 'Test')
+
+      const toolCalls = JSON.stringify([
+        { id: 'tc-1', tool_name: 'exec', tool_args: {}, tool_result: { output: 'hi' } },
+        { id: 'tc-2', tool_name: 'exec', tool_args: {} }
+      ])
+      testDb.prepare(`
+        INSERT INTO conversation_messages (id, conversation_id, sender, content, tool_calls, created_at)
+        VALUES (?, ?, ?, ?, ?, datetime('now'))
+      `).run('msg-infer', conv.id, 'agent', 'done', toolCalls)
+
+      const messages = await repo.getMessages(conv.id)
+      const msg = messages.find(m => m.id === 'msg-infer')!
+      expect(msg.toolCalls![0].status).toBe('success')
+      expect(msg.toolCalls![1].status).toBe('running')
+    })
+
+    it('should normalize legacy "output" field as toolResult fallback', async () => {
+      createApp('app-123')
+      const conv = await repo.create('app-123', 'develop', 'Test')
+
+      const toolCalls = JSON.stringify([
+        { id: 'tc-1', tool_name: 'exec', tool_args: {}, output: { stdout: 'hello' }, status: 'success' }
+      ])
+      testDb.prepare(`
+        INSERT INTO conversation_messages (id, conversation_id, sender, content, tool_calls, created_at)
+        VALUES (?, ?, ?, ?, ?, datetime('now'))
+      `).run('msg-output', conv.id, 'agent', 'done', toolCalls)
+
+      const messages = await repo.getMessages(conv.id)
+      const msg = messages.find(m => m.id === 'msg-output')!
+      expect(msg.toolCalls![0].toolResult).toEqual({ stdout: 'hello' })
+    })
+  })
 })

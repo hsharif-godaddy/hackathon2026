@@ -7,6 +7,7 @@ import { exportConversations } from '../../services/conversation-exporter.js';
 import type { ExportDetail } from '../../services/conversation-exporter.js';
 import { validateAppOwnershipFromQuery, validateConversationOwnership, type ConversationRequest } from '../middleware/app-ownership.js';
 import type { AuthenticatedRequest } from '../middleware/jwt-auth.js';
+import { mapToolCallsToUI } from '../tool-call-mapper.js';
 
 const router: RouterType = Router();
 const logger = Logger.create({ component: 'conversations-routes' });
@@ -199,7 +200,7 @@ router.get('/api/conversations/:id/messages/paginated', validateConversationOwne
         content: msg.content,
         createdAt: msg.createdAt.toISOString(),
         ...(msg.messageType != null && { messageType: msg.messageType }),
-        ...(msg.toolCalls != null && { toolCalls: msg.toolCalls }),
+        ...(msg.toolCalls != null && { toolCalls: mapToolCallsToUI(msg.toolCalls as any) }),
         ...(msg.segments != null && { segments: msg.segments }),
         ...(msg.metadata != null && { metadata: msg.metadata }),
         ...(msg.contextAttachments != null && { contextAttachments: msg.contextAttachments }),

@@ -1,5 +1,5 @@
-import { ConversationRepository } from '../../database/repositories/ConversationRepository.js';
-import { logger } from '../../logging/index.js';
+import { ConversationRepository } from '../../../database/repositories/ConversationRepository.js';
+import { logger } from '../../../logging/index.js';
 import type {
   ConversationLifecycleStore,
   ConversationTokenStore,
@@ -7,9 +7,10 @@ import type {
   MessageAddedHook,
   MessageStore,
   PaginatedMessagesResult,
-} from '../interfaces/conversation-store.js';
-import type { WorkspaceScope } from '../interfaces/scope.js';
-import type { Conversation, ConversationMessage, ToolCall, MessageSegment } from '../../database/schema.js';
+  StoredContextAttachment,
+} from '../../interfaces/conversation-store.js';
+import type { WorkspaceScope } from '../../interfaces/scope.js';
+import type { Conversation, ConversationMessage, ToolCall, MessageSegment } from '../../../database/schema.js';
 
 /**
  * SQLite-backed conversation store adapter.
@@ -79,14 +80,10 @@ export class SqliteMessageStore implements MessageStore {
       toolCalls?: ToolCall[];
       segments?: MessageSegment[];
       metadata?: Record<string, unknown>;
-      contextAttachments?: Array<{
-        type: string;
-        data: unknown;
-        metadata?: Record<string, unknown>;
-        persistence?: 'save' | 'ephemeral';
-        renderStrategy?: 'before_prompt' | 'after_prompt' | 'replace_prompt' | 'hidden';
-      }>;
+      contextAttachments?: StoredContextAttachment[];
       origin?: 'support' | 'customer';
+      customerId?: string;
+      agentId?: string;
     }
   ) {
     return this.repo.addMessage(conversationId, sender, content, options);

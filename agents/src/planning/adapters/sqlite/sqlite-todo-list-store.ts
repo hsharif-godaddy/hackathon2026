@@ -1,12 +1,12 @@
-import { TodoListRepository } from '../../database/repositories/TodoListRepository.js';
+import { TodoListRepository } from '../../../database/repositories/TodoListRepository.js';
 import type {
   PlanningCreateItemInput,
   PlanningTodoItem,
   PlanningTodoList,
   TodoItemUpdatableFields,
   TodoListStore,
-} from '../interfaces/todo-list-store.js';
-import type { WorkspaceScope } from '../../memory/interfaces/scope.js';
+} from '../../interfaces/todo-list-store.js';
+import type { WorkspaceScope } from '../../../memory/interfaces/scope.js';
 
 /**
  * SQLite-backed TodoListStore adapter.

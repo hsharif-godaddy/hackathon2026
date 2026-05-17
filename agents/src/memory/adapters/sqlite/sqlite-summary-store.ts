@@ -1,7 +1,7 @@
-import { SummaryRepository } from '../../database/repositories/SummaryRepository.js';
-import type { SummaryStore } from '../interfaces/summary-store.js';
-import type { SummarizationResult } from '../../services/summarization/SummarizationStrategy.js';
-import type { WorkspaceScope } from '../interfaces/scope.js';
+import { SummaryRepository } from '../../../database/repositories/SummaryRepository.js';
+import type { SummaryStore } from '../../interfaces/summary-store.js';
+import type { SummarizationResult } from '../../../services/summarization/SummarizationStrategy.js';
+import type { WorkspaceScope } from '../../interfaces/scope.js';
 
 /**
  * SQLite-backed SummaryStore adapter.

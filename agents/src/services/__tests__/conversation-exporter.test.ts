@@ -32,8 +32,8 @@ describe('exportConversations', () => {
           sender: 'agent',
           content: 'I will create a landing page for you.',
           toolCalls: [
-            { id: 'tc-1', tool_name: 'generateCode', tool_args: { file: 'index.html' }, tool_result: 'ok', status: 'success', duration_ms: 1200 },
-            { id: 'tc-2', tool_name: 'editFile', tool_args: { file: 'style.css' }, tool_result: 'ok', status: 'success', duration_ms: 300 },
+            { id: 'tc-1', toolName: 'generateCode', toolArgs: { file: 'index.html' }, toolResult: 'ok', status: 'success', durationMs: 1200 },
+            { id: 'tc-2', toolName: 'editFile', toolArgs: { file: 'style.css' }, toolResult: 'ok', status: 'success', durationMs: 300 },
           ],
           createdAt: new Date('2026-03-09T10:01:00Z'),
         }),
@@ -64,7 +64,7 @@ describe('exportConversations', () => {
           sender: 'agent',
           content: 'Creating files.',
           toolCalls: [
-            { id: 'tc-1', tool_name: 'generateCode', tool_args: { file: 'index.html' }, tool_result: { created: true }, status: 'success', duration_ms: 1500 },
+            { id: 'tc-1', toolName: 'generateCode', toolArgs: { file: 'index.html' }, toolResult: { created: true }, status: 'success', durationMs: 1500 },
           ],
           createdAt: new Date('2026-03-09T10:01:00Z'),
         }),

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 import { SqliteKvMemoryStore } from '../sqlite-kv-memory-store.js';
-import type { WorkspaceScope } from '../../interfaces/scope.js';
+import type { WorkspaceScope } from '../../../interfaces/scope.js';
 
 describe('SqliteKvMemoryStore', function storeTests() {
   const mockRepo = {

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 import { SqliteSummaryStore } from '../sqlite-summary-store.js';
-import type { WorkspaceScope } from '../../interfaces/scope.js';
+import type { WorkspaceScope } from '../../../interfaces/scope.js';
 
 describe('SqliteSummaryStore', function storeTests() {
   const mockRepo = {

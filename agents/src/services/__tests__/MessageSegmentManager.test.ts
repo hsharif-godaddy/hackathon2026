@@ -22,20 +22,20 @@ describe('MessageSegmentManager', () => {
     // Add a tool call
     const toolCall: ToolCall = {
       id: 'call_123',
-      tool_name: 'list_files',
-      tool_args: { path: '.' },
-      start_time: Date.now(),
+      toolName: 'list_files',
+      toolArgs: { path: '.' },
+      startTime: Date.now(),
       status: 'running'
     };
     const toolSegment = segmentManager.addToolCallSegment(toolCall);
-    
+
     // Add more content after tool call
     segmentManager.addContentSegment('Here are the files I found:');
-    
+
     // Update tool call with results
     segmentManager.updateToolCallSegment(toolSegment.id, {
-      tool_result: 'file1.txt\nfile2.js',
-      end_time: Date.now(),
+      toolResult: 'file1.txt\nfile2.js',
+      endTime: Date.now(),
       status: 'success'
     });
     
@@ -49,7 +49,7 @@ describe('MessageSegmentManager', () => {
     expect(segments[0].type).toBe('content');
     expect(segments[0].content).toBe('I will help you with that.');
     expect(segments[1].type).toBe('tool_call');
-    expect(segments[1].tool_call?.tool_name).toBe('list_files');
+    expect(segments[1].tool_call?.toolName).toBe('list_files');
     expect(segments[2].type).toBe('content');
     expect(segments[2].content).toBe('Here are the files I found:');
     expect(segments[3].type).toBe('content');
@@ -66,8 +66,8 @@ describe('MessageSegmentManager', () => {
     segmentManager.addContentSegment('Test content');
     segmentManager.addToolCallSegment({
       id: 'call_456',
-      tool_name: 'test_tool',
-      tool_args: {},
+      toolName: 'test_tool',
+      toolArgs: {},
       status: 'success'
     });
 
@@ -77,7 +77,7 @@ describe('MessageSegmentManager', () => {
       content: 'Test content',
       segments: expect.arrayContaining([
         expect.objectContaining({ type: 'content', content: 'Test content' }),
-        expect.objectContaining({ type: 'tool_call', tool_call: expect.objectContaining({ tool_name: 'test_tool' }) })
+        expect.objectContaining({ type: 'tool_call', tool_call: expect.objectContaining({ toolName: 'test_tool' }) })
       ]),
       metadata: { isStreaming: false }
     });
@@ -96,8 +96,8 @@ describe('MessageSegmentManager', () => {
         type: 'tool_call',
         tool_call: {
           id: 'call_789',
-          tool_name: 'existing_tool',
-          tool_args: {},
+          toolName: 'existing_tool',
+          toolArgs: {},
           status: 'success'
         },
         timestamp: new Date('2025-01-01T10:01:00Z')
@@ -109,14 +109,14 @@ describe('MessageSegmentManager', () => {
     const segments = segmentManager.getSegments();
     expect(segments).toHaveLength(2);
     expect(segments[0].content).toBe('Existing content');
-    expect(segments[1].tool_call?.tool_name).toBe('existing_tool');
+    expect(segments[1].tool_call?.toolName).toBe('existing_tool');
   });
 
   it('should find tool call segment by ID', () => {
     const toolCall: ToolCall = {
       id: 'find_me',
-      tool_name: 'find_tool',
-      tool_args: {},
+      toolName: 'find_tool',
+      toolArgs: {},
       status: 'running'
     };
     
@@ -127,7 +127,7 @@ describe('MessageSegmentManager', () => {
     const foundSegment = segmentManager.findToolCallSegment('find_me');
     
     expect(foundSegment).not.toBeNull();
-    expect(foundSegment?.tool_call?.tool_name).toBe('find_tool');
+    expect(foundSegment?.tool_call?.toolName).toBe('find_tool');
   });
 
   it('should generate timeline for debugging', () => {
@@ -135,8 +135,8 @@ describe('MessageSegmentManager', () => {
     
     const toolCall: ToolCall = {
       id: 'timeline_test',
-      tool_name: 'timeline_tool', 
-      tool_args: {},
+      toolName: 'timeline_tool',
+      toolArgs: {},
       status: 'success'
     };
     segmentManager.addToolCallSegment(toolCall);

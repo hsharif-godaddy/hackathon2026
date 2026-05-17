@@ -5,7 +5,7 @@ import {
   SqliteMessageStore,
   SqliteConversationTokenStore,
 } from '../sqlite-conversation-store.js';
-import type { WorkspaceScope } from '../../interfaces/scope.js';
+import type { WorkspaceScope } from '../../../interfaces/scope.js';
 
 describe('SqliteConversationLifecycleStore', function lifecycleTests() {
   const mockRepo = {

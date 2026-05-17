@@ -338,13 +338,13 @@ const normalizeToolCall = (toolCall?: AgentToolCallPayload): ToolCall | undefine
   return {
     id: toolCall.id ?? generateId(),
     name: toolCall.name ?? toolCall.toolName ?? 'unknown-tool',
-    input: toolCall.input ?? {},
-    result: toolCall.result,
+    input: toolCall.input ?? toolCall.toolArgs ?? {},
+    result: toolCall.result ?? toolCall.toolResult,
     status: (toolCall.status ?? 'running') as ToolCall['status'],
     error: toolCall.error,
-    startTime: toolCall.startTime ?? toolCall.start_time,
-    endTime: toolCall.endTime ?? toolCall.end_time,
-    duration: toolCall.duration,
+    startTime: toolCall.startTime,
+    endTime: toolCall.endTime,
+    duration: toolCall.duration ?? toolCall.durationMs,
     partialInput: toolCall.partialInput ?? toolCall.partial_input
   }
 }

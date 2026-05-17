@@ -17,9 +17,9 @@ export interface HistoryMessage {
     content?: string;
     tool_call?: {
       id: string;
-      tool_name: string;
-      tool_args: unknown;
-      tool_result?: unknown;
+      toolName: string;
+      toolArgs: unknown;
+      toolResult?: unknown;
       error?: string;
       status?: 'running' | 'success' | 'error';
     };
@@ -61,6 +61,14 @@ export interface ConversationLifecycleStore {
 // Message operations
 // ---------------------------------------------------------------------------
 
+export interface StoredContextAttachment {
+  type: string;
+  data: unknown;
+  metadata?: Record<string, unknown>;
+  persistence?: 'save' | 'ephemeral';
+  renderStrategy?: 'before_prompt' | 'after_prompt' | 'replace_prompt' | 'hidden';
+}
+
 export interface MessageStore {
   addMessage(
     conversationId: string,
@@ -71,14 +79,10 @@ export interface MessageStore {
       toolCalls?: ToolCall[];
       segments?: MessageSegment[];
       metadata?: Record<string, unknown>;
-      contextAttachments?: Array<{
-        type: string;
-        data: unknown;
-        metadata?: Record<string, unknown>;
-        persistence?: 'save' | 'ephemeral';
-        renderStrategy?: 'before_prompt' | 'after_prompt' | 'replace_prompt' | 'hidden';
-      }>;
+      contextAttachments?: StoredContextAttachment[];
       origin?: 'support' | 'customer';
+      customerId?: string;
+      agentId?: string;
     }
   ): Promise<ConversationMessage>;
 

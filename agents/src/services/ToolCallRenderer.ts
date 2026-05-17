@@ -10,9 +10,9 @@ import { safeStringify } from '@airo/shared';
 
 export interface ToolCallResult {
   id: string
-  tool_name: string
-  tool_args: unknown
-  tool_result: unknown
+  toolName: string
+  toolArgs: unknown
+  toolResult: unknown
   error?: string | undefined
 }
 
@@ -28,14 +28,14 @@ export class ToolCallRenderer {
    * Render a tool call result into a formatted string for the LLM
    */
   static renderToolCall(toolCall: ToolCallResult): RenderedToolCall {
-    const renderer = this.getRenderer(toolCall.tool_name)
+    const renderer = this.getRenderer(toolCall.toolName)
     const formattedContent = renderer(toolCall)
-    
+
     return {
       role: 'tool',
       content: formattedContent,
       tool_call_id: toolCall.id,
-      name: toolCall.tool_name
+      name: toolCall.toolName
     }
   }
 
@@ -66,8 +66,8 @@ export class ToolCallRenderer {
       return `Failed to read file: ${toolCall.error}`;
     }
 
-    const args = toolCall.tool_args as Record<string, unknown>;
-    const result = toolCall.tool_result;
+    const args = toolCall.toolArgs as Record<string, unknown>;
+    const result = toolCall.toolResult;
     const filePath = (args?.target_file as string) || (args?.file_path as string) || (args?.path as string) || 'unknown';
 
     if (!result || typeof result !== 'string') {
@@ -104,8 +104,8 @@ export class ToolCallRenderer {
       return `Failed to edit file: ${toolCall.error}`;
     }
 
-    const args = toolCall.tool_args as Record<string, unknown>;
-    const rawResult = toolCall.tool_result;
+    const args = toolCall.toolArgs as Record<string, unknown>;
+    const rawResult = toolCall.toolResult;
 
     let result: Record<string, unknown> | undefined;
     if (typeof rawResult === 'string') {
@@ -215,8 +215,8 @@ export class ToolCallRenderer {
       return `Failed to read file: ${toolCall.error}`
     }
 
-    const args = toolCall.tool_args as Record<string, unknown>
-    const result = toolCall.tool_result
+    const args = toolCall.toolArgs as Record<string, unknown>
+    const result = toolCall.toolResult
     const filePath = (args?.target_file as string) || (args?.file_path as string) || 'unknown'
 
     if (!result || typeof result !== 'string') {
@@ -249,8 +249,8 @@ ${hasMore ? `*Full file content available (${lineCount} total lines)*` : '*Compl
       return `Failed to list directory: ${toolCall.error}`
     }
 
-    const args = toolCall.tool_args as Record<string, unknown>
-    const result = toolCall.tool_result
+    const args = toolCall.toolArgs as Record<string, unknown>
+    const result = toolCall.toolResult
     const dirPath = (args?.target_directory as string) || (args?.path as string) || 'unknown'
 
     if (!result || !Array.isArray(result)) {
@@ -291,12 +291,12 @@ ${hasMore ? `*Full file content available (${lineCount} total lines)*` : '*Compl
       return `Tool execution failed: ${toolCall.error}`
     }
 
-    const args = safeStringify(toolCall.tool_args, 2)
-    const result = typeof toolCall.tool_result === 'string'
-      ? toolCall.tool_result
-      : safeStringify(toolCall.tool_result, 2)
+    const args = safeStringify(toolCall.toolArgs, 2)
+    const result = typeof toolCall.toolResult === 'string'
+      ? toolCall.toolResult
+      : safeStringify(toolCall.toolResult, 2)
 
-    return `🔧 **Tool: \`${toolCall.tool_name}\`**
+    return `🔧 **Tool: \`${toolCall.toolName}\`**
 
 **Arguments:**
 \`\`\`json

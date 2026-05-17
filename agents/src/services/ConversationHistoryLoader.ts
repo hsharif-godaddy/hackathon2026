@@ -333,9 +333,9 @@ export class ConversationHistoryLoader {
       content?: string;
       tool_call?: {
         id: string;
-        tool_name: string;
-        tool_args: any;
-        tool_result?: any;
+        toolName: string;
+        toolArgs: any;
+        toolResult?: any;
         error?: string;
         status?: 'running' | 'success' | 'error';
       };
@@ -369,11 +369,11 @@ export class ConversationHistoryLoader {
           continue;
         }
 
-        if (!segment.tool_call.tool_result) {
+        if (!segment.tool_call.toolResult) {
           logger.warn('conversation.history.loader.tool_call_skipped', {
             conversationId,
             toolCallId: segment.tool_call.id,
-            toolName: segment.tool_call.tool_name,
+            toolName: segment.tool_call.toolName,
             reason: 'no_result',
           });
           continue;
@@ -398,16 +398,16 @@ export class ConversationHistoryLoader {
         });
 
         const toolContent =
-          typeof segment.tool_call.tool_result === 'string'
-            ? segment.tool_call.tool_result.trim()
-            : safeStringify(segment.tool_call.tool_result);
+          typeof segment.tool_call.toolResult === 'string'
+            ? segment.tool_call.toolResult.trim()
+            : safeStringify(segment.tool_call.toolResult);
 
         if (toolContent && toolContent !== '{}' && toolContent !== 'null') {
           messages.push({
             role: 'tool',
             content: toolContent,
             tool_call_id: segment.tool_call.id,
-            name: segment.tool_call.tool_name === 'textEditor' ? 'str_replace_based_edit_tool' : segment.tool_call.tool_name,
+            name: segment.tool_call.toolName === 'textEditor' ? 'str_replace_based_edit_tool' : segment.tool_call.toolName,
           });
         }
       }
@@ -1026,9 +1026,9 @@ export class ConversationHistoryLoader {
    */
   private convertSingleToolCall(toolCall: {
     id: string;
-    tool_name: string;
-    tool_args: any;
-    tool_result?: any;
+    toolName: string;
+    toolArgs: any;
+    toolResult?: any;
     error?: string;
     status?: 'running' | 'success' | 'error';
   }): {
@@ -1043,8 +1043,8 @@ export class ConversationHistoryLoader {
       id: toolCall.id,
       type: 'function',
       function: {
-        name: toolCall.tool_name === 'textEditor' ? 'str_replace_based_edit_tool' : toolCall.tool_name,
-        arguments: typeof toolCall.tool_args === 'string' ? toolCall.tool_args : safeStringify(toolCall.tool_args),
+        name: toolCall.toolName === 'textEditor' ? 'str_replace_based_edit_tool' : toolCall.toolName,
+        arguments: typeof toolCall.toolArgs === 'string' ? toolCall.toolArgs : safeStringify(toolCall.toolArgs),
       },
     };
   }

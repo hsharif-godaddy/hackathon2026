@@ -122,6 +122,7 @@ import {
 } from './assessment-executor.js'
 import { ConversationEventChannel } from '@airo/ai-transport'
 import { getSSERegistry } from './sse/registry-singleton.js'
+import { mapToolCallsToUI } from './tool-call-mapper.js'
 
 /**
  * Shared AppRepository instance to avoid repeated initialization
@@ -1077,7 +1078,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
               persistedMsg.messageType = msg.messageType
             }
             if (msg.toolCalls != null) {
-              persistedMsg.toolCalls = msg.toolCalls
+              persistedMsg.toolCalls = mapToolCallsToUI(msg.toolCalls as any)
             }
             if (msg.segments != null) {
               persistedMsg.segments = msg.segments
