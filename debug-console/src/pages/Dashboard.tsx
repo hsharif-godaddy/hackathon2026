@@ -6,16 +6,14 @@ import React, { useCallback, useEffect, useState } from "react";
 import AppDetailsPanel from "@/components/AppDetailsPanel";
 import CarePanel from "@/components/CarePanel";
 import ConversationsPanel, { type ConversationsSource } from "@/components/ConversationsPanel";
-import { useAppContext, type AppContextSection } from "@/hooks/useAppContext";
 import type {
   MgmtAppDetails,
   MgmtCustomerApp,
   MgmtSubscriptionGrants,
 } from "@/lib/mgmt-types";
 import type { LlmSpendData } from "@/lib/spend-types";
-import { formatTimestamp } from "@/lib/date-utils";
 import { CUSTOMER_ID_RE, SHOPPER_ID_RE } from "@/lib/mgmt-helpers";
-import LogsPanel, { type LogSource } from "@/components/LogsPanel";
+import LogsPanel, { type LogSource, type LogsView } from "@/components/LogsPanel";
 import TrafficPanel from "@/components/TrafficPanel";
 import InvestigatePanel from "@/components/InvestigatePanel";
 import UserMenu from "@/components/UserMenu";
@@ -31,34 +29,24 @@ const VALID_TIME_RANGE_VALUES = TIME_RANGES.map(
   (r) => r.value,
 ) as readonly string[];
 
-interface ErrorSummary {
-  total: number;
-  last24Hours: number;
-  errorGroups: Array<{
-    message: string;
-    count: number;
-    lastSeen?: string;
-    event?: string;
-  }>;
-}
-
-interface AppContext {
-  appId: string;
-  metadata: {
-    lastActivity?: string;
-    subscriptionId?: string;
-  };
-  errorSummary: ErrorSummary;
-}
-
 type TabId =
   | "details"
-  | "summary"
   | "conversations"
   | "care"
   | "logs"
   | "traffic"
   | "investigate";
+
+const VALID_TAB_IDS: readonly TabId[] = [
+  "details",
+  "conversations",
+  "care",
+  "logs",
+  "traffic",
+  "investigate",
+];
+
+const VALID_LOGS_VIEWS: readonly LogsView[] = ["logs", "summary"];
 
 export default function Dashboard() {
   const router = useRouter();
@@ -75,24 +63,11 @@ export default function Dashboard() {
   const [customerAppsRefresh, setCustomerAppsRefresh] = useState(0);
   const [timeRange, setTimeRange] = useState("24h");
   const [activeTab, setActiveTab] = useState<TabId>("details");
+  // Sub-view for the Logs tab. Replaces the old standalone Summary tab —
+  // the picker lives inside LogsPanel and persists via the `logsView` URL
+  // param so links survive a reload.
+  const [logsView, setLogsView] = useState<LogsView>("logs");
   const [sources, setSources] = useState<LogSource[]>([]);
-  // app-context payload: only the sections this Dashboard actually reads
-  // (metadata for lastActivity/subscriptionId, errors for the summary block).
-  // Other panels fetch their own data via mgmt/agent endpoints.
-  const APP_CONTEXT_SECTIONS: readonly AppContextSection[] = ['metadata', 'errors'];
-  const [expandedError, setExpandedError] = useState<string | null>(null);
-  const [errorDetails, setErrorDetails] = useState<
-    Record<
-      string,
-      Array<{
-        timestamp: string;
-        message: string;
-        event?: string;
-        service?: string;
-        raw: Record<string, unknown>;
-      }>
-    >
-  >({});
   const [llmSpend, setLlmSpend] = useState<LlmSpendData | null>(null);
   const [llmSpendLoading, setLlmSpendLoading] = useState(false);
   const [llmSpendError, setLlmSpendError] = useState<string | null>(null);
@@ -113,7 +88,6 @@ export default function Dashboard() {
 
   const [refreshKeys, setRefreshKeys] = useState({
     details: 0,
-    summary: 0,
     conversations: 0,
     care: 0,
     logs: 0,
@@ -202,10 +176,12 @@ export default function Dashboard() {
     } else if (urlTab === "aiAgent") {
       setActiveTab("conversations");
       setConversationsSource("agent");
-    } else if (
-      urlTab &&
-      ["details", "summary", "conversations", "care", "logs", "investigate"].includes(urlTab)
-    ) {
+    } else if (urlTab === "summary") {
+      // Legacy: Summary used to be its own tab. Now it's a sub-view of Logs.
+      // Honor old links by routing into Logs with logsView=summary.
+      setActiveTab("logs");
+      setLogsView("summary");
+    } else if (urlTab && (VALID_TAB_IDS as readonly string[]).includes(urlTab)) {
       setActiveTab(urlTab as TabId);
       if (
         urlTab === "conversations" &&
@@ -213,6 +189,10 @@ export default function Dashboard() {
       ) {
         setConversationsSource(urlSource);
       }
+    }
+    const urlLogsView = searchParams?.get("logsView");
+    if (urlLogsView && (VALID_LOGS_VIEWS as readonly string[]).includes(urlLogsView)) {
+      setLogsView(urlLogsView as LogsView);
     }
     if (urlTimeRange && VALID_TIME_RANGE_VALUES.includes(urlTimeRange)) {
       setTimeRange(urlTimeRange);
@@ -267,21 +247,6 @@ export default function Dashboard() {
 
     return () => controller.abort();
   }, [submittedCustomerId, customerAppsRefresh]);
-
-  // App-context fetcher — cached client-side (60s TTL), section-gated. The
-  // `summary` refresh key bumps the hook's `refreshKey` to bypass the cache
-  // and refetch on demand. Errors and loading state are surfaced from the
-  // hook directly; we don't need separate useState for them.
-  const {
-    data: context,
-    loading,
-    error,
-  } = useAppContext<AppContext>({
-    appId: submittedAppId || null,
-    timeRange,
-    sections: APP_CONTEXT_SECTIONS,
-    refreshKey: refreshKeys.summary,
-  });
 
   // Reset mgmt data when the app changes
   useEffect(() => {
@@ -341,6 +306,7 @@ export default function Dashboard() {
       tab?: TabId;
       timeRange?: string;
       source?: ConversationsSource;
+      logsView?: LogsView;
     }) => {
       const params = new URLSearchParams();
       const effectiveCustomerId =
@@ -350,6 +316,7 @@ export default function Dashboard() {
       const effectiveTab = opts?.tab ?? activeTab;
       const effectiveTimeRange = opts?.timeRange ?? timeRange;
       const effectiveSource = opts?.source ?? conversationsSource;
+      const effectiveLogsView = opts?.logsView ?? logsView;
 
       if (effectiveCustomerId) {
         params.set("customerId", effectiveCustomerId);
@@ -369,6 +336,9 @@ export default function Dashboard() {
       ) {
         params.set("source", effectiveSource);
       }
+      if (effectiveTab === "logs" && effectiveLogsView === "summary") {
+        params.set("logsView", "summary");
+      }
 
       const query = params.toString();
       router.push(query ? `/?${query}` : "/", { scroll: false });
@@ -380,6 +350,7 @@ export default function Dashboard() {
       activeTab,
       timeRange,
       conversationsSource,
+      logsView,
     ],
   );
 
@@ -500,7 +471,7 @@ export default function Dashboard() {
     setShopperId(null);
     setLoadedAppDomains([]);
     setSearchError(null);
-    setActiveTab("summary");
+    setActiveTab("details");
     router.push("/", { scroll: false });
   };
 
@@ -530,35 +501,18 @@ export default function Dashboard() {
     }
   };
 
-  const handleExpandError = async (errorMessage: string) => {
-    if (expandedError === errorMessage) {
-      setExpandedError(null);
-      return;
-    }
-
-    setExpandedError(errorMessage);
-
-    if (!errorDetails[errorMessage] && submittedAppId) {
-      try {
-        const response = await fetch(
-          `/api/error-details?appId=${encodeURIComponent(submittedAppId)}&message=${encodeURIComponent(errorMessage)}&timeRange=${timeRange}`,
-        );
-        if (response.ok) {
-          const data = await response.json();
-          setErrorDetails((prev) => ({
-            ...prev,
-            [errorMessage]: data.errors || [],
-          }));
-        }
-      } catch (err) {
-        console.error("Failed to fetch error details:", err);
+  const handleLogsViewChange = useCallback(
+    (next: LogsView) => {
+      setLogsView(next);
+      if (submittedAppId) {
+        updateUrl({ tab: "logs", logsView: next });
       }
-    }
-  };
+    },
+    [submittedAppId, updateUrl],
+  );
 
   const tabs: { id: TabId; label: string; icon: string }[] = [
     { id: "details", label: "Details", icon: "🗂️" },
-    { id: "summary", label: "Summary", icon: "📊" },
     { id: "conversations", label: "Conversations", icon: "💬" },
     { id: "logs", label: "Logs", icon: "📋" },
     { id: "traffic", label: "Traffic", icon: "🌐" },
@@ -705,11 +659,6 @@ export default function Dashboard() {
               {resolvingShopper ? "Resolving…" : "Search"}
             </button>
           </div>
-          {loading && (
-            <span style={{ fontSize: "0.75rem", color: "#6b7280" }}>
-              Loading...
-            </span>
-          )}
           {searchError && (
             <span
               style={{
@@ -1124,21 +1073,6 @@ export default function Dashboard() {
 
             {/* Tab Content */}
             <div style={{ padding: "0.75rem", flex: 1 }}>
-              {error && (
-                <div
-                  style={{
-                    backgroundColor: "#fef2f2",
-                    color: "#991b1b",
-                    padding: "0.5rem 0.75rem",
-                    borderRadius: "4px",
-                    marginBottom: "0.5rem",
-                    fontSize: "0.813rem",
-                  }}
-                >
-                  {error}
-                </div>
-              )}
-
               {/* Details Tab — lazy-mounted on first visit */}
               {visitedTabs.has("details") && (
               <div
@@ -1313,466 +1247,6 @@ export default function Dashboard() {
               </div>
               )}
 
-              {/* Summary Tab — lazy-mounted on first visit */}
-              {visitedTabs.has("summary") && (
-              <div
-                style={{
-                  display: activeTab === "summary" ? "flex" : "none",
-                  flexDirection: "column",
-                  gap: "1rem",
-                }}
-              >
-                {/* Time range + Refresh */}
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "flex-end",
-                    alignItems: "center",
-                    gap: "0.5rem",
-                  }}
-                >
-                  <label
-                    style={{
-                      fontSize: "0.813rem",
-                      color: "#6b7280",
-                    }}
-                  >
-                    Time range:
-                  </label>
-                  <select
-                    value={timeRange}
-                    onChange={(e) => {
-                      setTimeRange(e.target.value);
-                      updateUrl({ timeRange: e.target.value });
-                    }}
-                    style={{
-                      padding: "0.375rem 0.5rem",
-                      borderRadius: "4px",
-                      border: "1px solid #d1d5db",
-                      fontSize: "0.875rem",
-                      backgroundColor: "white",
-                      cursor: "pointer",
-                    }}
-                  >
-                    {TIME_RANGES.map((range) => (
-                      <option key={range.value} value={range.value}>
-                        {range.label}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    onClick={() => handleRefreshTab("summary")}
-                    disabled={loading}
-                    style={{
-                      padding: "0.625rem 1.25rem",
-                      backgroundColor: loading ? "#9ca3af" : "#3b82f6",
-                      color: "white",
-                      border: "none",
-                      borderRadius: "6px",
-                      cursor: loading ? "not-allowed" : "pointer",
-                      fontSize: "0.875rem",
-                      fontWeight: 500,
-                      opacity: loading ? 0.6 : 1,
-                    }}
-                  >
-                    Refresh
-                  </button>
-                </div>
-
-                {/* Loading State */}
-                {loading || !context ? (
-                  <div
-                    style={{
-                      padding: "3rem 2rem",
-                      textAlign: "center",
-                      backgroundColor: "#f9fafb",
-                      borderRadius: "6px",
-                      border: "1px solid #e5e7eb",
-                    }}
-                  >
-                    <div
-                      style={{ fontSize: "1.5rem", marginBottom: "0.75rem" }}
-                    >
-                      ⏳
-                    </div>
-                    <p
-                      style={{
-                        margin: 0,
-                        color: "#6b7280",
-                        fontSize: "0.875rem",
-                      }}
-                    >
-                      Loading error summary...
-                    </p>
-                  </div>
-                ) : (
-                  <>
-                    {/* Error Summary Header */}
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                        padding: "1rem",
-                        backgroundColor: context.errorSummary?.total
-                          ? "#fef2f2"
-                          : "#f0fdf4",
-                        borderRadius: "6px",
-                        border: context.errorSummary?.total
-                          ? "1px solid #fecaca"
-                          : "1px solid #bbf7d0",
-                      }}
-                    >
-                      <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-                        <h3
-                          style={{
-                            margin: 0,
-                            fontSize: "1rem",
-                            fontWeight: 600,
-                            color: context.errorSummary?.total
-                              ? "#991b1b"
-                              : "#166534",
-                          }}
-                        >
-                          Error Summary
-                        </h3>
-                        <div
-                          style={{
-                            fontSize: "0.75rem",
-                            fontStyle: "italic",
-                            color: context.errorSummary?.total
-                              ? "#991b1b"
-                              : "#166534",
-                            opacity: 0.75,
-                          }}
-                        >
-                          Errors don&apos;t mean the user wasted credits — correlate with chats to confirm.
-                        </div>
-                      </div>
-                      <div
-                        style={{
-                          display: "flex",
-                          gap: "1.5rem",
-                          fontSize: "0.875rem",
-                          fontWeight: 500,
-                        }}
-                      >
-                        <div style={{ textAlign: "center" }}>
-                          <div
-                            style={{
-                              fontSize: "1.5rem",
-                              fontWeight: 700,
-                              color: context.errorSummary?.total
-                                ? "#dc2626"
-                                : "#16a34a",
-                            }}
-                          >
-                            {context.errorSummary?.total ?? 0}
-                          </div>
-                          <div
-                            style={{ fontSize: "0.75rem", color: "#6b7280" }}
-                          >
-                            Total Errors
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Error Groups */}
-                    {context.errorSummary?.errorGroups &&
-                    context.errorSummary.errorGroups.length > 0 ? (
-                      <div
-                        style={{
-                          padding: "1rem",
-                          backgroundColor: "#f9fafb",
-                          borderRadius: "6px",
-                          border: "1px solid #e5e7eb",
-                        }}
-                      >
-                        <h4
-                          style={{
-                            margin: "0 0 0.75rem 0",
-                            fontSize: "0.875rem",
-                            fontWeight: 600,
-                            color: "#374151",
-                          }}
-                        >
-                          Errors by Message
-                        </h4>
-                        <div
-                          style={{
-                            display: "flex",
-                            flexDirection: "column",
-                            gap: "0.5rem",
-                          }}
-                        >
-                          {context.errorSummary.errorGroups.map(
-                            (group, index) => (
-                              <div key={index}>
-                                <div
-                                  onClick={() =>
-                                    handleExpandError(group.message)
-                                  }
-                                  style={{
-                                    display: "flex",
-                                    justifyContent: "space-between",
-                                    alignItems: "center",
-                                    padding: "0.75rem 1rem",
-                                    backgroundColor:
-                                      expandedError === group.message
-                                        ? "#fef2f2"
-                                        : "white",
-                                    borderRadius:
-                                      expandedError === group.message
-                                        ? "4px 4px 0 0"
-                                        : "4px",
-                                    border: "1px solid #e5e7eb",
-                                    cursor: "pointer",
-                                  }}
-                                >
-                                  <div
-                                    style={{
-                                      flex: 1,
-                                      fontSize: "0.875rem",
-                                      color: "#374151",
-                                      wordBreak: "break-word",
-                                      marginRight: "1rem",
-                                    }}
-                                  >
-                                    <div
-                                      style={{
-                                        display: "flex",
-                                        alignItems: "center",
-                                        gap: "0.5rem",
-                                      }}
-                                    >
-                                      <span
-                                        style={{
-                                          fontSize: "0.75rem",
-                                          color: "#6b7280",
-                                        }}
-                                      >
-                                        {expandedError === group.message
-                                          ? "▼"
-                                          : "▶"}
-                                      </span>
-                                      <div>
-                                        {group.event && (
-                                          <span
-                                            style={{
-                                              fontSize: "0.7rem",
-                                              fontFamily: "monospace",
-                                              color: "#6366f1",
-                                              backgroundColor: "#eef2ff",
-                                              padding: "0.125rem 0.375rem",
-                                              borderRadius: "3px",
-                                              marginRight: "0.5rem",
-                                            }}
-                                          >
-                                            {group.event}
-                                          </span>
-                                        )}
-                                        {group.message}
-                                      </div>
-                                    </div>
-                                    {group.lastSeen && (
-                                      <div
-                                        style={{
-                                          fontSize: "0.7rem",
-                                          color: "#6b7280",
-                                          marginTop: "0.25rem",
-                                          fontFamily: "monospace",
-                                          marginLeft: "1.25rem",
-                                        }}
-                                      >
-                                        Last seen:{" "}
-                                        {formatTimestamp(group.lastSeen)}
-                                      </div>
-                                    )}
-                                  </div>
-                                  <div
-                                    style={{
-                                      fontSize: "0.875rem",
-                                      fontWeight: 600,
-                                      color: "#dc2626",
-                                      backgroundColor: "#fef2f2",
-                                      padding: "0.25rem 0.75rem",
-                                      borderRadius: "9999px",
-                                      whiteSpace: "nowrap",
-                                    }}
-                                  >
-                                    {group.count}×
-                                  </div>
-                                </div>
-                                {expandedError === group.message && (
-                                  <div
-                                    style={{
-                                      padding: "0.75rem 1rem",
-                                      backgroundColor: "#f9fafb",
-                                      borderRadius: "0 0 4px 4px",
-                                      border: "1px solid #e5e7eb",
-                                      borderTop: "none",
-                                    }}
-                                  >
-                                    {!errorDetails[group.message] ? (
-                                      <div
-                                        style={{
-                                          fontSize: "0.75rem",
-                                          color: "#6b7280",
-                                        }}
-                                      >
-                                        Loading details...
-                                      </div>
-                                    ) : errorDetails[group.message].length ===
-                                      0 ? (
-                                      <div
-                                        style={{
-                                          fontSize: "0.75rem",
-                                          color: "#6b7280",
-                                        }}
-                                      >
-                                        No detailed instances found
-                                      </div>
-                                    ) : (
-                                      <div
-                                        style={{
-                                          display: "flex",
-                                          flexDirection: "column",
-                                          gap: "0.5rem",
-                                        }}
-                                      >
-                                        {errorDetails[group.message]
-                                          .slice(0, 5)
-                                          .map((detail, idx) => (
-                                            <div
-                                              key={idx}
-                                              style={{
-                                                padding: "0.5rem",
-                                                backgroundColor: "white",
-                                                borderRadius: "4px",
-                                                border: "1px solid #e5e7eb",
-                                                fontSize: "0.75rem",
-                                              }}
-                                            >
-                                              <div
-                                                style={{
-                                                  display: "flex",
-                                                  gap: "1rem",
-                                                  marginBottom: "0.25rem",
-                                                }}
-                                              >
-                                                <span
-                                                  style={{
-                                                    color: "#6b7280",
-                                                    fontFamily: "monospace",
-                                                  }}
-                                                >
-                                                  {formatTimestamp(
-                                                    detail.timestamp,
-                                                  )}
-                                                </span>
-                                                {detail.event && (
-                                                  <span
-                                                    style={{ color: "#3b82f6" }}
-                                                  >
-                                                    {detail.event}
-                                                  </span>
-                                                )}
-                                                {detail.service && (
-                                                  <span
-                                                    style={{ color: "#059669" }}
-                                                  >
-                                                    {detail.service}
-                                                  </span>
-                                                )}
-                                              </div>
-                                              <div
-                                                style={{
-                                                  color: "#374151",
-                                                  wordBreak: "break-word",
-                                                }}
-                                              >
-                                                {detail.message}
-                                              </div>
-                                              {!!detail.raw?.data && (
-                                                <details
-                                                  style={{
-                                                    marginTop: "0.25rem",
-                                                  }}
-                                                >
-                                                  <summary
-                                                    style={{
-                                                      cursor: "pointer",
-                                                      color: "#6b7280",
-                                                      fontSize: "0.7rem",
-                                                    }}
-                                                  >
-                                                    View raw data
-                                                  </summary>
-                                                  <pre
-                                                    style={{
-                                                      marginTop: "0.25rem",
-                                                      padding: "0.5rem",
-                                                      backgroundColor:
-                                                        "#1f2937",
-                                                      color: "#f3f4f6",
-                                                      borderRadius: "4px",
-                                                      fontSize: "0.65rem",
-                                                      overflow: "auto",
-                                                      maxHeight: "200px",
-                                                    }}
-                                                  >
-                                                    {JSON.stringify(
-                                                      detail.raw.data,
-                                                      null,
-                                                      2,
-                                                    )}
-                                                  </pre>
-                                                </details>
-                                              )}
-                                            </div>
-                                          ))}
-                                        {errorDetails[group.message].length >
-                                          5 && (
-                                          <div
-                                            style={{
-                                              fontSize: "0.7rem",
-                                              color: "#6b7280",
-                                              textAlign: "center",
-                                            }}
-                                          >
-                                            Showing 5 of{" "}
-                                            {errorDetails[group.message].length}{" "}
-                                            instances
-                                          </div>
-                                        )}
-                                      </div>
-                                    )}
-                                  </div>
-                                )}
-                              </div>
-                            ),
-                          )}
-                        </div>
-                      </div>
-                    ) : context.errorSummary?.total === 0 ? (
-                      <div
-                        style={{
-                          padding: "2rem",
-                          textAlign: "center",
-                          color: "#166534",
-                          backgroundColor: "#f0fdf4",
-                          borderRadius: "6px",
-                          border: "1px solid #bbf7d0",
-                        }}
-                      >
-                        ✓ No errors found in the selected time range
-                      </div>
-                    ) : null}
-                  </>
-                )}
-              </div>
-              )}
 
               {/* Conversations Tab (Langfuse + Agent) — lazy-mounted on first visit */}
               {visitedTabs.has("conversations") && (
@@ -1802,7 +1276,9 @@ export default function Dashboard() {
                 </div>
               )}
 
-              {/* Logs Tab — lazy-mounted on first visit */}
+              {/* Logs Tab — lazy-mounted on first visit. Hosts both the
+                  raw log table and the error-summary view (toggle inside
+                  LogsPanel; sub-view persisted in the `logsView` URL param). */}
               {visitedTabs.has("logs") && (
                 <div style={{ display: activeTab === "logs" ? "block" : "none" }}>
                   <LogsPanel
@@ -1811,6 +1287,8 @@ export default function Dashboard() {
                     timeRange={timeRange}
                     refreshKey={refreshKeys.logs}
                     onRefresh={() => handleRefreshTab("logs")}
+                    view={logsView}
+                    onViewChange={handleLogsViewChange}
                   />
                 </div>
               )}

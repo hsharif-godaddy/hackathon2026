@@ -3,45 +3,20 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { formatTimestamp } from '@/lib/date-utils';
+import type { LogEntry, LogSource } from '@/lib/log-types';
 import {
   LOG_TIME_PRESETS,
   resolveInitialPreset,
   resolveSyncedPreset,
   type RangeMode,
 } from '@/lib/log-time-range';
-import {
-  isMergedLokiSource,
-  MERGED_LOKI_SOURCE_ID,
-  MERGED_LOKI_SOURCE_IDS,
-} from '@/lib/loki-source-ids';
+import { useLogFetcher } from '@/hooks/useLogFetcher';
+import LogsSummaryView from './LogsSummaryView';
+import WarningStrip from './WarningStrip';
 
-export interface LogSource {
-  id: string;
-  name: string;
-  description: string;
-  kibanaUrl?: string;
-}
+export type LogsView = 'logs' | 'summary';
 
-export interface LogEntry {
-  id: string;
-  timestamp: string;
-  level: string;
-  message: string;
-  event?: string;
-  appId?: string;
-  logger?: string;
-  service?: string;
-  hostname?: string;
-  environment?: string;
-  region?: string;
-  version?: string;
-  sourceId?: string;
-  data?: {
-    message?: string;
-    [key: string]: unknown;
-  };
-  raw: Record<string, unknown>;
-}
+export type { LogEntry, LogSource };
 
 // Prepare log JSON for display: remove timestamp, promote message/data/error to top
 function formatLogJson(raw: Record<string, unknown>): string {
@@ -67,24 +42,19 @@ interface LogsPanelProps {
   query?: string;
   refreshKey?: number;
   onRefresh?: () => void;
+  /**
+   * View mode. `logs` shows the table; `summary` swaps in the error-summary
+   * aggregation. Source picker, time range, and refresh button are shared
+   * across both.
+   */
+  view?: LogsView;
+  onViewChange?: (view: LogsView) => void;
 }
 
 const INITIAL_COLUMN_WIDTHS = {
   timestamp: 160,
   source: 80
 };
-
-// Source-specific field mappings (minimal — only `appIdFilterMode` is read by
-// the panel; the rest are kept for future use / parity with the old API)
-const SOURCE_FIELD_MAPPINGS: Record<string, { appIdFilterMode: 'field' | 'query' | 'none' }> = {
-  'airo-agents': { appIdFilterMode: 'field' },
-  'airo-app': { appIdFilterMode: 'field' },
-  'airo-preview': { appIdFilterMode: 'field' },
-  'airo-publish': { appIdFilterMode: 'field' },
-  'control_plane': { appIdFilterMode: 'field' }
-};
-
-const DEFAULT_FIELD_MAPPING = { appIdFilterMode: 'field' as const };
 
 const SOURCE_LABELS: Record<string, string> = {
   'airo-agents': 'Agent',
@@ -95,13 +65,15 @@ const SOURCE_LABELS: Record<string, string> = {
   'loki-merged': 'Loki (Agent + Preview + Publish)',
 };
 
-// `MERGED_LOKI_SOURCE_IDS`, `MERGED_LOKI_SOURCE_ID`, and `isMergedLokiSource`
-// are imported above from `@/lib/loki-source-ids` (shared with the server-
-// side merged-Loki helper).
-
 // Sentinel `selectedSource` value meaning "fan out across every configured
-// source (using merged Loki when all 3 Loki sources are present)".
+// source (using merged Loki when all 3 Loki sources are present)". The
+// merged-Loki coordination itself lives inside `useLogFetcher`.
 const ALL_SOURCES = 'all';
+
+// Frozen at module scope so it has stable identity across renders. Passing
+// a fresh `{ error: true, warn: false }` object literal every render would
+// thrash the hook's deps.
+const SUMMARY_LEVELS = { error: true, warn: false } as const;
 
 // localStorage key for the dropdown selection. Survives reloads so a user
 // who's debugging one source repeatedly doesn't have to reselect it.
@@ -243,36 +215,17 @@ const LogRow = React.memo(function LogRow({
   );
 });
 
-/**
- * Per-request pagination state. Each requestId (one of the configured source
- * ids, or the synthetic `loki-merged`) tracks its own page-2 cursor and any
- * known total. Loki responses set `nextCursor` (oldest seen timestamp_ns) but
- * have no total; ES responses set both `total` and `nextCursor` (next `from`).
- *
- * `warning` is set when a request soft-failed (the server returns HTTP 200 +
- * `{logs: [], warning, details}` for upstream Loki/ES errors so unaffected
- * sources still surface their results). The UI renders a per-source warning
- * strip with a Retry button when this is set.
- */
-interface RequestState {
-  logs: LogEntry[];
-  nextCursor?: string;
-  total?: number;
-  warning?: string;
-}
-
 export default function LogsPanel({
   sources,
   globalAppId,
   timeRange = '1h',
   query = '',
   refreshKey = 0,
-  onRefresh
+  onRefresh,
+  view = 'logs',
+  onViewChange,
 }: LogsPanelProps) {
-  // Per-requestId state. The merged log list is derived from this map.
-  const [requestStates, setRequestStates] = useState<Record<string, RequestState>>({});
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const isSummary = view === 'summary';
   const [selectedLogIndex, setSelectedLogIndex] = useState<number | null>(null);
   const [filterText, setFilterText] = useState('');
   const [levelFilters, setLevelFilters] = useState({ error: true, warn: false });
@@ -392,190 +345,72 @@ export default function LogsPanel({
     };
   }, [handleColumnMouseMove, handleColumnMouseUp]);
 
-  const buildTimeParams = useCallback(function buildTime(params: URLSearchParams) {
-    if (rangeMode === 'custom') {
-      if (customStart) params.set('startTime', localInputToIso(customStart));
-      if (customEnd) params.set('endTime', localInputToIso(customEnd));
-      return;
-    }
+  // Pre-compute the absolute ISO bounds for custom ranges so the hook's
+  // cache key sees stable input strings (the user-facing inputs are local
+  // datetime; the hook keys on UTC ISO).
+  const customStartIso = rangeMode === 'custom' && customStart ? localInputToIso(customStart) : null;
+  const customEndIso = rangeMode === 'custom' && customEnd ? localInputToIso(customEnd) : null;
 
-    if (presetValue === 'all') return;
+  // Logs view: respects the user's level checkboxes + filter text + parent
+  // query. Disabled (frozen state, no fetch) while the Summary view is
+  // active.
+  const logsHook = useLogFetcher({
+    sources,
+    selectedSource,
+    appId: globalAppId,
+    rangeMode,
+    presetValue,
+    customStartIso,
+    customEndIso,
+    levels: levelFilters,
+    filterText: debouncedFilterText,
+    query,
+    refreshKey,
+    enabled: !isSummary,
+  });
 
-    const now = new Date();
-    const value = parseInt(presetValue.slice(0, -1), 10);
-    const unit = presetValue.slice(-1);
-    const startTime = new Date(now);
-    switch (unit) {
-      case 'm': startTime.setMinutes(startTime.getMinutes() - value); break;
-      case 'h': startTime.setHours(startTime.getHours() - value); break;
-      case 'd': startTime.setDate(startTime.getDate() - value); break;
-    }
-    params.set('startTime', startTime.toISOString());
-    params.set('endTime', now.toISOString());
-  }, [rangeMode, presetValue, customStart, customEnd]);
+  // Summary view: forces level=error, no free-text. When the user happens
+  // to also have only "error" checked in Logs view, this hook hits the same
+  // cache entries as `logsHook` — toggling between views is a no-op. Both
+  // are mounted always; the `enabled` flag gates fetching.
+  const summaryHook = useLogFetcher({
+    sources,
+    selectedSource,
+    appId: globalAppId,
+    rangeMode,
+    presetValue,
+    customStartIso,
+    customEndIso,
+    levels: SUMMARY_LEVELS,
+    filterText: '',
+    query: '',
+    refreshKey,
+    enabled: isSummary,
+  });
 
-  /**
-   * Fetch one page from a single requestId. Used both for the initial fetch
-   * (cursor undefined) and Load More (cursor = previous response's nextCursor).
-   *
-   * Returns the per-page response shape; the caller is responsible for
-   * merging into the per-requestId state map.
-   */
-  const fetchPage = useCallback(async function fetchPageInternal(
-    requestId: string,
-    cursor?: string,
-  ): Promise<{ logs: LogEntry[]; nextCursor?: string; total?: number; warning?: string }> {
-    const fm = SOURCE_FIELD_MAPPINGS[requestId] || DEFAULT_FIELD_MAPPING;
-    const urlParams = new URLSearchParams();
-    urlParams.set('source', requestId);
+  const {
+    requestSourceIds,
+    allLogs,
+    hasMore,
+    loading,
+    error,
+    warnings,
+    loadMore,
+    retryRequest,
+  } = logsHook;
 
-    // Combine level checkboxes + filter text + external query as free-text search.
-    const levelTerms = Object.entries(levelFilters).filter(([, on]) => on).map(([k]) => k).join(' ');
-    const searchTerms = [levelTerms, debouncedFilterText, query].filter(Boolean).join(' ');
+  // Loading state for the shared header controls (Refresh button text + the
+  // indeterminate progress bar). Reads from whichever hook is currently
+  // backing the active view so a refresh in summary mode actually shows the
+  // user something is happening.
+  const activeLoading = isSummary ? summaryHook.loading : loading;
 
-    if (globalAppId && fm.appIdFilterMode !== 'none') {
-      if (fm.appIdFilterMode === 'field') {
-        urlParams.set('appId', globalAppId);
-        if (searchTerms) urlParams.set('query', searchTerms);
-      } else if (fm.appIdFilterMode === 'query') {
-        const combined = globalAppId ? `${searchTerms} ${globalAppId}`.trim() : searchTerms;
-        if (combined) urlParams.set('query', combined);
-      }
-    } else if (searchTerms) {
-      urlParams.set('query', searchTerms);
-    }
-    buildTimeParams(urlParams);
-    if (cursor) urlParams.set('cursor', cursor);
-
-    const response = await fetch(`/api/es-logs?${urlParams.toString()}`);
-    if (!response.ok) {
-      let errorMessage = 'Failed to fetch logs';
-      try {
-        const errorData = await response.json();
-        errorMessage = errorData.error || errorData.details || errorMessage;
-      } catch {
-        errorMessage = `Server error: ${response.status} ${response.statusText}`;
-      }
-      throw new Error(errorMessage);
-    }
-    const data = await response.json();
-    const logs: LogEntry[] = (data.logs || []).map((log: LogEntry) =>
-      log.sourceId ? log : { ...log, sourceId: requestId }
-    );
-    // The server returns HTTP 200 + `warning` for soft upstream failures.
-    // Combine `warning` and `details` for a more useful message.
-    const warningText = data.warning
-      ? data.details ? `${data.warning}: ${data.details}` : data.warning as string
-      : undefined;
-    return {
-      logs,
-      nextCursor: data.nextCursor as string | undefined,
-      total: typeof data.total === 'number' ? data.total : undefined,
-      warning: warningText,
-    };
-  }, [debouncedFilterText, levelFilters, query, globalAppId, buildTimeParams]);
-
-  // "All" → fan out across every configured source, swapping the three
-  // Loki sources for one merged-Loki request when all three are configured.
-  // Single-source picks fire just that one request.
-  const requestSourceIds = useMemo(() => {
-    if (selectedSource === ALL_SOURCES) {
-      const allIds = sources.map((s) => s.id);
-      const lokiIds = allIds.filter(isMergedLokiSource);
-      if (lokiIds.length === MERGED_LOKI_SOURCE_IDS.length) {
-        return [MERGED_LOKI_SOURCE_ID, ...allIds.filter((id) => !isMergedLokiSource(id))];
-      }
-      return allIds;
-    }
-    return [selectedSource];
-  }, [sources, selectedSource]);
-
-  // Generation counter — every `fetchInitial` (e.g. filter change, refresh)
-  // bumps it. In-flight fetches (initial / Load More / Retry) capture the
-  // value at the start and only commit their result if the generation still
-  // matches. Without this, two rapid filter changes can land out of order
-  // and the slower fetch would overwrite the newer result with stale data.
-  const fetchGenRef = useRef(0);
-
-  // Initial / refresh fetch: clear all state, fetch first page from every
-  // active requestId in parallel.
-  const fetchInitial = useCallback(async function fetchInitialInternal() {
-    if (requestSourceIds.length === 0) {
-      setRequestStates({});
-      setSelectedLogIndex(null);
-      setLoading(false);
-      setError(null);
-      return;
-    }
-
-    const gen = ++fetchGenRef.current;
-    setLoading(true);
-    setError(null);
-    try {
-      const entries = await Promise.all(
-        requestSourceIds.map(async (id) => [id, await fetchPage(id)] as const),
-      );
-      if (gen !== fetchGenRef.current) return; // superseded by a newer fetch
-      const next: Record<string, RequestState> = {};
-      for (const [id, page] of entries) {
-        next[id] = {
-          logs: page.logs,
-          nextCursor: page.nextCursor,
-          total: page.total,
-          warning: page.warning,
-        };
-      }
-      setRequestStates(next);
-      setSelectedLogIndex(null);
-    } catch (err) {
-      if (gen !== fetchGenRef.current) return;
-      setError(err instanceof Error ? err.message : 'Failed to fetch logs');
-    } finally {
-      if (gen === fetchGenRef.current) setLoading(false);
-    }
-  }, [requestSourceIds, fetchPage]);
-
-  useEffect(() => {
-    fetchInitial();
-  }, [fetchInitial, refreshKey]);
-
-  // Reset selection when the result set is about to change shape. (The fetch
-  // effect above will overwrite requestStates anyway, but selection index is
-  // an offset into a list whose contents are about to be replaced.)
+  // Reset selection when the result set is about to change shape. The hook
+  // refetches on its own when these change; here we just clear the row
+  // selection so the index isn't an orphan offset into the new list.
   useEffect(() => {
     setSelectedLogIndex(null);
   }, [globalAppId, timeRange, rangeMode, presetValue, customStart, customEnd, debouncedFilterText, levelFilters, selectedSource]);
-
-  // Flatten + sort all per-request log buckets for display.
-  const allLogs = useMemo(() => {
-    // Dedupe by `log.id` while merging across requestId buckets.
-    //
-    // Loki ids are server-generated as `${timestampNs}-${entryIndex}-${first50}`
-    // and are unique only within ONE /api/es-logs response. The same line
-    // emitted by Nomad's runtime (e.g. a heartbeat starting with
-    // `{"com.hashicorp.nomad.job_id":"airo-<appId>"…}`) lands in both the
-    // airo-agents and airo-preview Loki streams at the same nanosecond, so
-    // two separate per-source queries can each return it as their first log
-    // — same timestampNs, same entryIndex 0, same leading content, identical
-    // id. Without this dedupe React throws a duplicate-key error during
-    // checkbox transitions that flip from merged to per-source mode.
-    const seen = new Map<string, LogEntry>();
-    for (const id of requestSourceIds) {
-      const bucket = requestStates[id];
-      if (!bucket) continue;
-      for (const log of bucket.logs) {
-        if (!seen.has(log.id)) seen.set(log.id, log);
-      }
-    }
-    const merged = Array.from(seen.values());
-    merged.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-    return merged;
-  }, [requestSourceIds, requestStates]);
-
-  const hasMore = useMemo(
-    () => requestSourceIds.some((id) => requestStates[id]?.nextCursor),
-    [requestSourceIds, requestStates],
-  );
 
   /**
    * Latest values of `loadMore` / `hasMore` / `loading`, kept in refs so the
@@ -585,98 +420,6 @@ export default function LogsPanel({
   const loadMoreRef = useRef<() => void>(() => undefined);
   const hasMoreRef = useRef(false);
   const loadingRef = useRef(false);
-
-  const loadMore = useCallback(async function loadMoreInternal() {
-    const ids = requestSourceIds.filter((id) => requestStates[id]?.nextCursor);
-    if (ids.length === 0) return;
-    const gen = fetchGenRef.current;
-    setLoading(true);
-    setError(null);
-    // `allSettled` so one failed source doesn't drop the others' pages on
-    // the floor — partial successes still get applied. Failed legs keep
-    // their existing nextCursor so they can be retried on the next click.
-    const settled = await Promise.allSettled(
-      ids.map(async (id) => {
-        const cursor = requestStates[id]?.nextCursor;
-        const page = await fetchPage(id, cursor);
-        return [id, page] as const;
-      }),
-    );
-    if (gen !== fetchGenRef.current) return; // superseded by a fetchInitial
-
-    const updates: Array<readonly [string, Awaited<ReturnType<typeof fetchPage>>]> = [];
-    const errors: string[] = [];
-    for (const result of settled) {
-      if (result.status === 'fulfilled') {
-        updates.push(result.value);
-      } else {
-        errors.push(result.reason instanceof Error ? result.reason.message : String(result.reason));
-      }
-    }
-    if (updates.length > 0) {
-      setRequestStates((prev) => {
-        const out = { ...prev };
-        for (const [id, page] of updates) {
-          const existing = out[id] ?? { logs: [] };
-          out[id] = {
-            logs: [...existing.logs, ...page.logs],
-            nextCursor: page.nextCursor,
-            total: page.total ?? existing.total,
-            warning: page.warning,
-          };
-        }
-        return out;
-      });
-    }
-    // Surface an error only when EVERY load failed — partial failures will
-    // already render via the per-source warning strip on the next refresh.
-    if (errors.length > 0 && updates.length === 0) {
-      setError(errors[0]);
-    }
-    setLoading(false);
-  }, [requestSourceIds, requestStates, fetchPage]);
-
-  /**
-   * Re-fire the first page of a single requestId. Used by the per-source
-   * Retry button shown when a soft failure (HTTP 200 + warning) lands.
-   * Only the affected source is re-fetched; the other sources' results
-   * remain untouched.
-   */
-  const retryRequest = useCallback(async function retryRequestInternal(requestId: string) {
-    const gen = fetchGenRef.current;
-    setLoading(true);
-    setError(null);
-    try {
-      const page = await fetchPage(requestId);
-      if (gen !== fetchGenRef.current) return; // superseded
-      setRequestStates((prev) => ({
-        ...prev,
-        [requestId]: {
-          logs: page.logs,
-          nextCursor: page.nextCursor,
-          total: page.total,
-          warning: page.warning,
-        },
-      }));
-    } catch (err) {
-      if (gen !== fetchGenRef.current) return;
-      setError(err instanceof Error ? err.message : 'Failed to retry');
-    } finally {
-      if (gen === fetchGenRef.current) setLoading(false);
-    }
-  }, [fetchPage]);
-
-  // Per-source warnings derived from current state. Filtered by
-  // `requestSourceIds` so a stale warning from a no-longer-active source
-  // doesn't linger on screen after the user changes the dropdown.
-  const warnings = useMemo(() => {
-    const out: { id: string; message: string }[] = [];
-    for (const id of requestSourceIds) {
-      const w = requestStates[id]?.warning;
-      if (w) out.push({ id, message: w });
-    }
-    return out;
-  }, [requestSourceIds, requestStates]);
 
   // Mirror the latest values into refs for the IntersectionObserver callback.
   useEffect(() => { loadMoreRef.current = loadMore; }, [loadMore]);
@@ -771,6 +514,46 @@ export default function LogsPanel({
         gap: '0.5rem'
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+          {/* [Logs | Summary] segmented control. Hidden when no callback is
+              passed (back-compat for any other consumer of LogsPanel). */}
+          {onViewChange && (
+            <div
+              role="tablist"
+              aria-label="View mode"
+              style={{
+                display: 'inline-flex',
+                border: '1px solid #d1d5db',
+                borderRadius: '6px',
+                overflow: 'hidden',
+                backgroundColor: 'white',
+              }}
+            >
+              {(['logs', 'summary'] as const).map((mode) => {
+                const active = view === mode;
+                return (
+                  <button
+                    key={mode}
+                    type="button"
+                    role="tab"
+                    aria-selected={active}
+                    onClick={() => onViewChange(mode)}
+                    style={{
+                      padding: '0.375rem 0.875rem',
+                      backgroundColor: active ? '#3b82f6' : 'white',
+                      color: active ? 'white' : '#374151',
+                      border: 'none',
+                      cursor: 'pointer',
+                      fontSize: '0.813rem',
+                      fontWeight: 500,
+                      textTransform: 'capitalize',
+                    }}
+                  >
+                    {mode}
+                  </button>
+                );
+              })}
+            </div>
+          )}
           <select
             value={selectedSource}
             onChange={(e) => setSelectedSource(e.target.value)}
@@ -791,13 +574,15 @@ export default function LogsPanel({
               <option key={s.id} value={s.id}>{s.name}</option>
             ))}
           </select>
-          <span style={{ fontSize: '0.875rem', color: '#6b7280', marginLeft: '0.5rem' }}>
-            {allLogs.length.toLocaleString()} logs
-            {globalAppId && ` for ${globalAppId}`}
-          </span>
+          {!isSummary && (
+            <span style={{ fontSize: '0.875rem', color: '#6b7280', marginLeft: '0.5rem' }}>
+              {allLogs.length.toLocaleString()} logs
+              {globalAppId && ` for ${globalAppId}`}
+            </span>
+          )}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          {(['error', 'warn'] as const).map((lvl) => (
+          {!isSummary && (['error', 'warn'] as const).map((lvl) => (
             <label key={lvl} style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.813rem', color: '#6b7280', cursor: 'pointer', textTransform: 'capitalize' }}>
               <input
                 type="checkbox"
@@ -808,19 +593,21 @@ export default function LogsPanel({
               {lvl}
             </label>
           ))}
-          <input
-            type="text"
-            value={filterText}
-            onChange={(e) => setFilterText(e.target.value)}
-            placeholder="Filter..."
-            style={{
-              padding: '0.375rem 0.625rem',
-              borderRadius: '4px',
-              border: '1px solid #d1d5db',
-              fontSize: '0.813rem',
-              width: '150px'
-            }}
-          />
+          {!isSummary && (
+            <input
+              type="text"
+              value={filterText}
+              onChange={(e) => setFilterText(e.target.value)}
+              placeholder="Filter..."
+              style={{
+                padding: '0.375rem 0.625rem',
+                borderRadius: '4px',
+                border: '1px solid #d1d5db',
+                fontSize: '0.813rem',
+                width: '150px'
+              }}
+            />
+          )}
           <select
             value={rangeMode === 'custom' ? 'custom' : presetValue}
             onChange={(e) => {
@@ -879,32 +666,35 @@ export default function LogsPanel({
           {onRefresh && (
             <button
               onClick={onRefresh}
-              disabled={loading}
+              disabled={activeLoading}
               style={{
                 padding: '0.625rem 1.25rem',
-                backgroundColor: loading ? '#9ca3af' : '#3b82f6',
+                backgroundColor: activeLoading ? '#9ca3af' : '#3b82f6',
                 color: 'white',
                 border: 'none',
                 borderRadius: '6px',
-                cursor: loading ? 'not-allowed' : 'pointer',
+                cursor: activeLoading ? 'not-allowed' : 'pointer',
                 fontSize: '0.875rem',
                 fontWeight: 500,
-                opacity: loading ? 0.85 : 1,
+                opacity: activeLoading ? 0.85 : 1,
                 display: 'inline-flex',
                 alignItems: 'center',
                 gap: '0.5rem',
               }}
             >
-              {loading && <InlineSpinner color="white" />}
-              {loading ? 'Refreshing…' : 'Refresh'}
+              {activeLoading && <InlineSpinner color="white" />}
+              {activeLoading ? 'Refreshing…' : 'Refresh'}
             </button>
           )}
         </div>
       </div>
 
-      {/* Indeterminate progress bar — visible on every fetch so the user has
-          an in-flight signal even when results are already on screen and only
-          the data underneath is changing. */}
+      {/* Indeterminate progress bar — visible on every fetch (Logs or
+          Summary) so the user has an in-flight signal even when stale
+          results are already on screen and only the data underneath is
+          being refetched. Drives off `activeLoading` so refresh in summary
+          mode shows feedback. Sits directly under the header so it reads
+          as "the toolbar is working" regardless of which view is active. */}
       <div
         aria-hidden
         style={{
@@ -914,11 +704,11 @@ export default function LogsPanel({
           borderRadius: '2px',
           overflow: 'hidden',
           marginBottom: '0.5rem',
-          opacity: loading ? 1 : 0,
+          opacity: activeLoading ? 1 : 0,
           transition: 'opacity 150ms ease',
         }}
       >
-        {loading && (
+        {activeLoading && (
           <div
             style={{
               position: 'absolute',
@@ -932,10 +722,41 @@ export default function LogsPanel({
         )}
       </div>
 
+      {/* Summary view — error aggregation derived from logs the hook just
+          fetched. Same source picker drives both views; when filter shapes
+          match (user has only "error" checked), the underlying cache is
+          shared with the Logs view and toggling between them is free. */}
+      {isSummary && globalAppId && (
+        <LogsSummaryView
+          allLogs={summaryHook.allLogs}
+          loading={summaryHook.loading}
+          error={summaryHook.error}
+          hasMore={summaryHook.hasMore}
+          warnings={summaryHook.warnings}
+          loadMore={summaryHook.loadMore}
+          retryRequest={summaryHook.retryRequest}
+          sourceLabels={SOURCE_LABELS}
+        />
+      )}
+      {isSummary && !globalAppId && (
+        <div
+          style={{
+            padding: '2rem',
+            textAlign: 'center',
+            color: '#6b7280',
+            backgroundColor: '#f9fafb',
+            borderRadius: '6px',
+            border: '1px solid #e5e7eb',
+          }}
+        >
+          Enter an app ID to see the error summary.
+        </div>
+      )}
+
       {/* Error state — fatal, the entire fetch threw (e.g. network down or
           /api/es-logs returned non-2xx). Per-source soft failures use the
           warnings strip below. */}
-      {error && (
+      {!isSummary && error && (
         <div style={{
           border: '1px solid #ef4444',
           borderRadius: '8px',
@@ -952,58 +773,17 @@ export default function LogsPanel({
         </div>
       )}
 
-      {/* Per-source warning strip. The server returns HTTP 200 + warning
-          for soft upstream failures so the working sources still surface
-          their data. Each entry has its own Retry button so the user can
-          re-fire just the failing leg without losing the other sources'
-          results. */}
-      {warnings.length > 0 && (
-        <div style={{
-          border: '1px solid #f59e0b',
-          borderRadius: '8px',
-          padding: '0.75rem 1rem',
-          marginBottom: '0.75rem',
-          backgroundColor: '#fffbeb',
-        }}>
-          <p style={{ margin: '0 0 0.5rem 0', fontWeight: 600, color: '#92400e', fontSize: '0.875rem' }}>
-            Some sources failed to load
-          </p>
-          <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
-            {warnings.map(({ id, message }) => (
-              <li key={id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem' }}>
-                <span style={{ fontSize: '0.813rem', color: '#78350f', flex: 1, minWidth: 0, wordBreak: 'break-word' }}>
-                  <strong>{SOURCE_LABELS[id] || id}:</strong> {message}
-                </span>
-                <button
-                  onClick={() => retryRequest(id)}
-                  disabled={loading}
-                  style={{
-                    padding: '0.25rem 0.75rem',
-                    backgroundColor: '#f59e0b',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '4px',
-                    cursor: loading ? 'not-allowed' : 'pointer',
-                    fontSize: '0.75rem',
-                    fontWeight: 500,
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '0.375rem',
-                    flexShrink: 0,
-                    opacity: loading ? 0.7 : 1,
-                  }}
-                >
-                  {loading && <InlineSpinner color="white" />}
-                  Retry
-                </button>
-              </li>
-            ))}
-          </ul>
-        </div>
+      {!isSummary && (
+        <WarningStrip
+          warnings={warnings}
+          loading={loading}
+          onRetry={retryRequest}
+          sourceLabels={SOURCE_LABELS}
+        />
       )}
 
       {/* Loading state */}
-      {loading && allLogs.length === 0 && (
+      {!isSummary && loading && allLogs.length === 0 && (
         <div style={{
           display: 'flex',
           flexDirection: 'column',
@@ -1026,7 +806,7 @@ export default function LogsPanel({
 
       {/* Empty state — only when there are also no warnings, otherwise the
           warning strip is the more accurate explanation of "why empty?". */}
-      {!loading && !error && allLogs.length === 0 && warnings.length === 0 && (
+      {!isSummary && !loading && !error && allLogs.length === 0 && warnings.length === 0 && (
         <div style={{
           textAlign: 'center',
           padding: '4rem 2rem',
@@ -1043,7 +823,7 @@ export default function LogsPanel({
       )}
 
       {/* Logs table */}
-      {allLogs.length > 0 && (
+      {!isSummary && allLogs.length > 0 && (
         <div style={{
           display: 'flex',
           border: '1px solid #e5e7eb',
