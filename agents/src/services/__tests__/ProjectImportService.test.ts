@@ -14,6 +14,10 @@ import { ImportJobRepository } from '../../database/repositories/ImportJobReposi
 import { appRestartService } from '../AppRestartService.js';
 import type { DevSupervisorClient } from '../DevSupervisorClient.js';
 import * as fs from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { projectSourceDetectionService } from '../ProjectSourceDetectionService.js';
+import { zipSecurityService } from '../ZipSecurityService.js';
+import { codeSyncFileCleanupService } from '../CodeSyncFileCleanupService.js';
 
 // Mock dependencies
 vi.mock('../../utils/dev-supervisor-client-factory.js');
@@ -36,6 +40,30 @@ vi.mock('../AppRestartService.js', async (importOriginal) => {
 vi.mock('../ZipSecurityService.js');
 vi.mock('../GitCloneService.js');
 vi.mock('../CodeSyncFileCleanupService.js');
+vi.mock('../ProjectSourceDetectionService.js', () => ({
+  projectSourceDetectionService: {
+    detectAndLogInBackground: vi.fn(),
+  },
+}));
+vi.mock('../ZipSecurityService.js', () => ({
+  zipSecurityService: {
+    validate: vi.fn(),
+  },
+}));
+vi.mock('node:fs', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs')>();
+  return {
+    ...actual,
+    existsSync: vi.fn(),
+  };
+});
+vi.mock('../../utils/container-metrics.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../utils/container-metrics.js')>();
+  return {
+    ...actual,
+    measureAppDirSize: vi.fn().mockResolvedValue(0),
+  };
+});
 vi.mock('../ViteConfigModifier.js');
 vi.mock('../ExpressPortInjector.js');
 vi.mock('../../tools/git-tool.js');
@@ -894,6 +922,85 @@ describe('ProjectImportService', () => {
       // This ensures `|| true` only applies to public cleanup, not main cleanup
       expect(cleanupCommand).toContain('&& {'); // Opening brace after main cleanup
       expect(cleanupCommand).toMatch(/\|\|\s*true\s*;\s*\}/); // Closing brace with || true inside
+    });
+  });
+
+  describe('project source detection', () => {
+    let service: ProjectImportService;
+    const testAppId = 'test-app-detect';
+    const testJobId = 'test-job-detect';
+    const testAppPath = `/tmp/apps/${testAppId}/app`;
+
+    beforeEach(() => {
+      vi.clearAllMocks();
+
+      const mockDevSupervisor = {
+        exec: vi.fn().mockResolvedValue({ success: true, stdout: '', stderr: '', exit_code: 0 }),
+        stopProcess: vi.fn(),
+        restartProcess: vi.fn(),
+        startProcess: vi.fn(),
+      };
+
+      vi.mocked(DevSupervisorClientFactory.createForApp).mockReturnValue(mockDevSupervisor as any);
+      vi.mocked(AppRepository).mockImplementation(() => ({
+        findById: vi.fn().mockReturnValue({
+          id: testAppId,
+          path: testAppPath,
+          status: 'created',
+        }),
+        updateStatus: vi.fn(),
+      }) as any);
+      vi.mocked(ImportJobRepository).mockImplementation(() => ({
+        update: vi.fn(),
+        updateStatus: vi.fn(),
+        markCompleted: vi.fn(),
+        markFailed: vi.fn(),
+      }) as any);
+      vi.mocked(existsSync).mockReturnValue(true);
+      vi.mocked(zipSecurityService.validate).mockResolvedValue({
+        valid: true,
+        errors: [],
+        stats: { fileCount: 1, totalSize: 100, compressionRatio: 1 },
+      });
+      vi.mocked(codeSyncFileCleanupService.deleteCleanablePatterns).mockResolvedValue({ success: true });
+      vi.mocked(codeSyncFileCleanupService.createWarnings).mockReturnValue([]);
+      vi.mocked(appRestartService.stopDevServer).mockResolvedValue({ success: true });
+      vi.mocked(appRestartService.runInstall).mockResolvedValue({ success: true });
+      vi.mocked(appRestartService.runBuild).mockResolvedValue({ success: true });
+      vi.mocked(appRestartService.createPaasConfig).mockResolvedValue();
+      vi.mocked(appRestartService.restartDevServer).mockResolvedValue({ success: true });
+      vi.mocked(fs.cp).mockResolvedValue(undefined);
+      vi.mocked(fs.unlink).mockResolvedValue(undefined);
+
+      service = new ProjectImportService();
+      vi.spyOn(service as any, 'extractZipInContainer').mockResolvedValue({ success: true });
+      vi.spyOn(service as any, 'validateProjectInContainer').mockResolvedValue({
+        valid: true,
+        packageManager: 'npm',
+        hasBuildScript: false,
+        hasDevScript: false,
+        projectRoot: '/app/.import-extract',
+      });
+      vi.spyOn(service as any, 'copyFilesInContainer').mockResolvedValue({ success: true });
+      vi.spyOn(service as any, 'gitCommit').mockResolvedValue({ success: true });
+      vi.spyOn(service as any, 'cleanupContainerFiles').mockResolvedValue(undefined);
+      vi.spyOn(service as any, 'cleanupZipFile').mockResolvedValue(undefined);
+    });
+
+    it('calls detectAndLogInBackground after copy during zip import', async () => {
+      await (service as any).processImport(testJobId, {
+        appId: testAppId,
+        appName: 'test',
+        sourceType: 'zip',
+        zipPath: '/tmp/test.zip',
+      });
+
+      expect(projectSourceDetectionService.detectAndLogInBackground).toHaveBeenCalledWith({
+        appId: testAppId,
+        appPath: testAppPath,
+        jobId: testJobId,
+        trigger: 'zip_import',
+      });
     });
   });
 

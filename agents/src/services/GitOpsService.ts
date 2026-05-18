@@ -15,6 +15,7 @@ import { appRestartService, type BuildToolType } from './AppRestartService.js';
 import { modifyViteConfig } from './ViteConfigModifier.js';
 import { injectPortHandling } from './ExpressPortInjector.js';
 import { codeSyncFileCleanupService } from './CodeSyncFileCleanupService.js';
+import { projectSourceDetectionService } from './ProjectSourceDetectionService.js';
 import { Logger } from '../logging/index.js';
 import { getErrorMessage } from '../utils/error.js';
 import { bytesToMB } from '../utils/container-metrics.js';
@@ -470,6 +471,13 @@ export class GitOpsService {
       // Exclude .git/ — it must be preserved for subsequent pulls to work.
       await codeSyncFileCleanupService.deleteCleanablePatterns(devSupervisor, '/app', ['.git/']);
       logger.info('git-ops.pull.cleanup-files.complete', { appId, jobId });
+
+      projectSourceDetectionService.detectAndLogInBackground({
+        appId,
+        appPath,
+        jobId,
+        trigger: 'git_pull',
+      });
 
       // Always use Node.js build tool type (Vite detection removed)
       const buildToolType: BuildToolType = 'nodejs';

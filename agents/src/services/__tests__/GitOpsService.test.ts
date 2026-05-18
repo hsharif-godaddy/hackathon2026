@@ -58,6 +58,12 @@ vi.mock('../ExpressPortInjector.js', () => ({
   injectPortHandling: vi.fn().mockResolvedValue({ modified: false }),
 }));
 
+vi.mock('../ProjectSourceDetectionService.js', () => ({
+  projectSourceDetectionService: {
+    detectAndLogInBackground: vi.fn(),
+  },
+}));
+
 const mockLogger = vi.hoisted(() => ({
   info: vi.fn(),
   warn: vi.fn(),
@@ -77,6 +83,7 @@ import { GitTool } from '../../tools/git-tool.js';
 import { DevSupervisorClientFactory } from '../../utils/dev-supervisor-client-factory.js';
 import { isSupportedProjectOnHost, matchesBuildToolOnHost } from '../../server/middleware/git-import-validation.js';
 import { appRestartService } from '../AppRestartService.js';
+import { projectSourceDetectionService } from '../ProjectSourceDetectionService.js';
 
 describe('GitOpsService', () => {
   let service: GitOpsService;
@@ -281,6 +288,23 @@ describe('GitOpsService', () => {
       const commitCall = gitCalls.find((call) => call[1].operation === 'commit');
       expect(commitCall).toBeDefined();
       expect(commitCall[1].message).toBe('Post-pull state commit');
+    });
+
+    it('calls detectAndLogInBackground after post-pull cleanup', async () => {
+      await service.startPull({
+        appId: testAppId,
+        token: 'ghp_test_token',
+        repoUrl: 'https://github.com/user/repo.git',
+      });
+
+      await vi.runAllTimersAsync();
+
+      expect(projectSourceDetectionService.detectAndLogInBackground).toHaveBeenCalledWith({
+        appId: testAppId,
+        appPath: testAppPath,
+        jobId: testJobId,
+        trigger: 'git_pull',
+      });
     });
 
     it('should NOT commit when restart fails and should mark job as FAILED', async () => {

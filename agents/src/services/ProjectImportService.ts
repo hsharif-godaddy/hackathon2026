@@ -15,6 +15,7 @@ import { AppRepository } from '../database/repositories/AppRepository.js';
 import { zipSecurityService } from './ZipSecurityService.js';
 import { gitCloneService } from './GitCloneService.js';
 import { codeSyncFileCleanupService } from './CodeSyncFileCleanupService.js';
+import { projectSourceDetectionService } from './ProjectSourceDetectionService.js';
 import { modifyViteConfig } from './ViteConfigModifier.js';
 import {
   appRestartService,
@@ -408,6 +409,13 @@ export class ProjectImportService {
         '/app',
         validation.hasGitignoreFile ?? false
       );
+
+      projectSourceDetectionService.detectAndLogInBackground({
+        appId,
+        appPath: app.path,
+        jobId,
+        trigger: 'zip_import',
+      });
 
       // Phase 7a: Inject PORT handling for entry file if provided
       if (params.entryFile) {
