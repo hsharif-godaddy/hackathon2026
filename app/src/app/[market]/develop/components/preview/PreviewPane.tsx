@@ -103,6 +103,7 @@ interface PreviewPaneProps {
   imageReloadFailed?: boolean
   onRetryImageReload?: () => void
   onPublishSnapshot?: (screenshotDataUrl: string, detail: PublishSnapshotRequestDetail) => void
+  onAskAiroToFix?: () => void
 }
 
 export default function PreviewPane({
@@ -124,6 +125,7 @@ export default function PreviewPane({
   imageReloadFailed = false,
   onRetryImageReload,
   onPublishSnapshot,
+  onAskAiroToFix,
 }: PreviewPaneProps) {
   const t = useTranslations();
   const intl = useIntl();
@@ -989,7 +991,12 @@ export default function PreviewPane({
     return <PreviewLoadingState message={loadingMessage} isMobile={isMobile} />
   }
 
-  // Error state when server failed
+  // Error state when server failed — show "Ask Airo to fix" alongside "Try Again"
+  // for any failure surface the user reaches here, including BFF/network errors
+  // (status='error' from the polling catch block) and the crash-loop escalation.
+  // The user can't easily tell which path triggered the error UI, and Airo can
+  // investigate broadly via the viewLogs tool even when the root cause turns
+  // out to be infra-side.
   if (serverState?.status === 'failed' || serverState?.status === 'error') {
     return (
       <PreviewError
@@ -997,6 +1004,9 @@ export default function PreviewPane({
         error={serverState.error || t('builder_preview_server_error_text')}
         buttonText={t('builder_common_try_again')}
         buttonOnClick={handleManualRetry}
+        secondaryButtonText={onAskAiroToFix ? t('builder_preview_ask_airo_to_fix') : undefined}
+        secondaryButtonOnClick={onAskAiroToFix}
+        secondaryButtonDisabled={isProcessing}
       />
     )
   }
@@ -1036,6 +1046,9 @@ export default function PreviewPane({
         error={t('builder_preview_error_text')}
         buttonText={t('builder_preview_error_button')}
         buttonOnClick={handleManualRetry}
+        secondaryButtonText={onAskAiroToFix ? t('builder_preview_ask_airo_to_fix') : undefined}
+        secondaryButtonOnClick={onAskAiroToFix}
+        secondaryButtonDisabled={isProcessing}
       />
     )
   }

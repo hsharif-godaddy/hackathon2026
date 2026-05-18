@@ -18,11 +18,28 @@ vi.mock('./PreviewCode', () => ({
 }));
 
 vi.mock('./PreviewError', () => ({
-  default: ({ title, error, buttonText, buttonOnClick }: any) => (
+  default: ({
+    title,
+    error,
+    buttonText,
+    buttonOnClick,
+    secondaryButtonText,
+    secondaryButtonOnClick,
+    secondaryButtonDisabled,
+  }: any) => (
     <div data-testid="preview-error">
       <h1>{title}</h1>
       <p>{error}</p>
       <button onClick={buttonOnClick}>{buttonText}</button>
+      {secondaryButtonText && secondaryButtonOnClick && (
+        <button
+          data-testid="preview-error-secondary"
+          onClick={secondaryButtonOnClick}
+          disabled={secondaryButtonDisabled}
+        >
+          {secondaryButtonText}
+        </button>
+      )}
     </div>
   ),
 }));
@@ -841,5 +858,98 @@ describe('restoreIframeState', function restoreTests() {
       url: '/products?category=bakery&sort=price',
       scrollPosition: { x: 0, y: 200 }
     });
+  });
+});
+
+describe('PreviewPane — Ask Airo to fix button', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockDevelopPageStore.viewMode = ViewMode.PREVIEW;
+  });
+
+  it('shows "Ask Airo to fix" alongside Try Again when failureKind is crash-loop', async () => {
+    mockServerPollingStore.getServerState = vi.fn(() => ({
+      isReady: false,
+      url: null,
+      status: 'failed',
+      failureKind: 'crash-loop',
+      error: undefined,
+    }));
+    const onAskAiroToFix = vi.fn();
+    const { user } = renderWithProviders(
+      <PreviewPane onPreviewRefresh={vi.fn()} onAskAiroToFix={onAskAiroToFix} />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('preview-error')).toBeInTheDocument();
+    });
+
+    const secondary = screen.getByTestId('preview-error-secondary');
+    expect(secondary).toBeInTheDocument();
+
+    await user.click(secondary);
+    expect(onAskAiroToFix).toHaveBeenCalledOnce();
+  });
+
+  it('shows "Ask Airo to fix" on any status=error|failed (incl. BFF/network failures)', async () => {
+    mockServerPollingStore.getServerState = vi.fn(() => ({
+      isReady: false,
+      url: null,
+      status: 'error',
+      error: 'Network error',
+    }));
+    const onAskAiroToFix = vi.fn();
+    const { user } = renderWithProviders(
+      <PreviewPane onPreviewRefresh={vi.fn()} onAskAiroToFix={onAskAiroToFix} />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('preview-error')).toBeInTheDocument();
+    });
+
+    const secondary = screen.getByTestId('preview-error-secondary');
+    expect(secondary).toBeInTheDocument();
+
+    await user.click(secondary);
+    expect(onAskAiroToFix).toHaveBeenCalledOnce();
+  });
+
+  it('does NOT show "Ask Airo to fix" when onAskAiroToFix prop is not provided', async () => {
+    mockServerPollingStore.getServerState = vi.fn(() => ({
+      isReady: false,
+      url: null,
+      status: 'failed',
+      failureKind: 'crash-loop',
+    }));
+    renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('preview-error')).toBeInTheDocument();
+    });
+
+    expect(screen.queryByTestId('preview-error-secondary')).not.toBeInTheDocument();
+  });
+
+  it('disables "Ask Airo to fix" button while agent is processing', async () => {
+    mockServerPollingStore.getServerState = vi.fn(() => ({
+      isReady: false,
+      url: null,
+      status: 'failed',
+      failureKind: 'crash-loop',
+    }));
+    renderWithProviders(
+      <PreviewPane
+        onPreviewRefresh={vi.fn()}
+        onAskAiroToFix={vi.fn()}
+        isProcessing={true}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('preview-error')).toBeInTheDocument();
+    });
+
+    const secondary = screen.getByTestId('preview-error-secondary');
+    expect(secondary).toBeDisabled();
   });
 });

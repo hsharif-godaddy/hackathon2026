@@ -736,6 +736,36 @@ function DevelopPageContent() {
     })
   }, [scheduleMicrotask, setInputValue, ws.actions, t])
 
+  // Triggered from the builder-side PreviewError surface when vite is
+  // crash-looping or the iframe failed to load. Mirrors sendUserRequestedFix
+  // but originates from the builder rather than the iframe overlay, since
+  // the iframe couldn't load to surface its own overlay.
+  const sendPreviewFixRequest = useCallback(() => {
+    if (isProcessingRef.current) {
+      logger.info('develop-page.preview-fix-request.skipped-processing', { appId })
+      return
+    }
+    const promptText = t(
+      'builder_develop_fix_preview',
+      undefined,
+      "My preview isn't working — it's either not loading or failing to start. Please check the container logs and fix the issue."
+    )
+    setInputValue(promptText)
+    scheduleMicrotask(() => {
+      void ws.actions.send({
+        content: promptText,
+        aiEditContext: null,
+        isActionRequest: false,
+        customContext: {
+          type: 'preview_fix',
+          data: { appId, timestamp: Date.now() },
+          persistence: 'ephemeral',
+          source: 'preview-error-button',
+        }
+      })
+    })
+  }, [scheduleMicrotask, setInputValue, ws.actions, t, appId])
+
   const handleScreenshotUpload = useCallback(async (screenshotDataUrl: string) => {
     if (!appId) return
 
@@ -1546,6 +1576,7 @@ function DevelopPageContent() {
                     onRetryImageReload={() => imageReadiness.retry()}
                     isMobile={false}
                     onPublishSnapshot={handlePublishSnapshot}
+                    onAskAiroToFix={sendPreviewFixRequest}
                   />
                 </div>
               </div>
@@ -1628,6 +1659,7 @@ function DevelopPageContent() {
                         onRetryImageReload={() => imageReadiness.retry()}
                         isMobile={true}
                         onPublishSnapshot={handlePublishSnapshot}
+                        onAskAiroToFix={sendPreviewFixRequest}
                       />
                     </div>
 

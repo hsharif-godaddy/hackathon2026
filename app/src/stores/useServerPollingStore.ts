@@ -90,6 +90,15 @@ export const HEALTH_PROBE_TIMEOUT_MS = 2000
 // failure mode this PR exists to fix.
 export const WAKEUP_TIMEOUT_MS = 100000
 
+// Window after which a server reporting "running" but never passing the
+// preview health probe is treated as failed. 5 minutes is generous to
+// tolerate cold-start install + build phases (especially fresh image
+// updates with no node_modules cache), but bounded so users aren't left
+// staring at a loading state indefinitely. Covers both rapid crash-loop
+// (vite keeps dying — /airo/health returns 200 reason:autostart) and
+// slow-startup-failed (vite never finishes initializing — 503).
+export const HEALTH_STUCK_ESCALATION_MS = 300000
+
 // Bootstrap-fetch retry — sets the cross-domain `preview_auth` cookie via
 // dev-supervisor's `/airo/auth-check` endpoint, with a small retry budget
 // for transient failures. CRITICAL: the bootstrap targets `/airo/auth-check`
@@ -357,12 +366,13 @@ export interface ServerState {
   appId: string
   port: number | null
   url: string | null
-  status: 'pending' | 'running' | 'stopped' | 'failed' | 'error'
+  status: 'pending' | 'running' | 'starting' | 'stopped' | 'failed' | 'error'
   lastActivity?: string
   isReady: boolean
   healthCheckPassed: boolean
   cookieVerified?: boolean
   error?: string
+  failureKind?: 'crash-loop'
 }
 
 interface PollingState {
@@ -373,6 +383,7 @@ interface PollingState {
   timeoutId: NodeJS.Timeout | null
   lastPollTime: number | null
   realAppId: string | null  // Resolved app ID for auth/health checks (null until transition)
+  healthStuckSince: number | null  // Timestamp when status=running but !healthCheckPassed first observed
 }
 
 interface ServerPollingStore {
@@ -442,7 +453,18 @@ export const useServerPollingStore = create<ServerPollingStore>()(
           // Reset cookieVerified so retry starts with clean state
           if (existingState.server) {
             existingState.server.cookieVerified = undefined
+            existingState.server.failureKind = undefined
+            // Clear the failure status immediately so PreviewError doesn't
+            // flicker behind PreviewLoadingState while we wait for the
+            // first poll (~50-200ms). 'starting' renders the loading state
+            // via PreviewPane's isPolling && !isReady branch.
+            if (existingState.server.status === 'failed' || existingState.server.status === 'error') {
+              existingState.server.status = 'starting'
+              existingState.server.isReady = false
+              existingState.server.error = undefined
+            }
           }
+          existingState.healthStuckSince = null
         } else {
           // Create new state
           state.servers.set(appId, {
@@ -452,7 +474,8 @@ export const useServerPollingStore = create<ServerPollingStore>()(
             currentInterval: POLLING_INTERVALS.initial,
             timeoutId: null,
             lastPollTime: null,
-            realAppId: null
+            realAppId: null,
+            healthStuckSince: null
           })
         }
       })
@@ -575,6 +598,57 @@ export const useServerPollingStore = create<ServerPollingStore>()(
             currentState.lastPollTime = Date.now()
           }
         })
+
+        // Stuck-state escalation: when agents reports running with a URL
+        // and vite health probes keep failing past the threshold, treat it
+        // as a crash-loop. Distinct from `status: 'failed'` (Nomad-level
+        // failure reported by agents) and `status: 'error'` (BFF/network
+        // error caught below).
+        //
+        // The "accumulate" guard mirrors the health-check precondition
+        // exactly: `status === 'running' && !!serverData.url`. Without the
+        // URL guard, transient cold-start states where BFF reports
+        // `status: 'running'` before allocating a preview URL would start
+        // the timer unconditionally even though no probe was attempted.
+        //
+        // The "reset" branch fires on ANY non-stuck state — recovery
+        // (healthCheckPassed=true), transient 'starting' transitions, or
+        // even `status='running'` with no URL yet. This avoids accumulating
+        // stale elapsed time across state bounces (e.g. running → starting
+        // → running during a legitimate restart, per PR #3537).
+        const stuckTracking = get().servers.get(appId)
+        if (stuckTracking) {
+          const isStuck = serverData.status === 'running' && !!serverData.url && !healthCheckPassed
+          if (isStuck) {
+            if (stuckTracking.healthStuckSince === null) {
+              set((state) => {
+                const s = state.servers.get(appId)
+                if (s) s.healthStuckSince = Date.now()
+              })
+            } else if (Date.now() - stuckTracking.healthStuckSince > HEALTH_STUCK_ESCALATION_MS) {
+              logger.warn('server-polling.crash-loop-escalation', {
+                message: 'Vite health probes failing past escalation threshold; marking failed',
+                appId: effectiveAppId,
+                stuckMs: Date.now() - stuckTracking.healthStuckSince,
+              })
+              set((state) => {
+                const s = state.servers.get(appId)
+                if (s?.server) {
+                  s.server.status = 'failed'
+                  s.server.failureKind = 'crash-loop'
+                  s.server.isReady = false
+                }
+              })
+              get().stopPollingForServer(appId)
+              return
+            }
+          } else if (stuckTracking.healthStuckSince !== null) {
+            set((state) => {
+              const s = state.servers.get(appId)
+              if (s) s.healthStuckSince = null
+            })
+          }
+        }
 
         // Stop polling only if server is ready AND health check passed
         if (serverData.status === 'running' && serverData.url && healthCheckPassed) {

@@ -48,6 +48,14 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+// Hoisted by vitest; placed at top alongside imports for discoverability.
+// Mocks appFetch (used inside the store's _pollServer for /api/servers/{id})
+// so the escalation describe block can drive _pollServer with controlled
+// upstream state without a real BFF round-trip.
+vi.mock('@/lib/gasket-config', () => ({
+  appFetch: vi.fn(),
+}));
+
 import {
   BOOTSTRAP_BACKOFF_BASE_MS,
   BOOTSTRAP_FETCH_TIMEOUT_MS,
@@ -56,6 +64,7 @@ import {
   HEALTH_POLL_TIMEOUT_MS,
   HEALTH_PROBE_TIMEOUT_MS,
   MAX_BOOTSTRAP_ATTEMPTS,
+  useServerPollingStore,
   waitForViteReady,
   WAKEUP_TIMEOUT_MS,
 } from './useServerPollingStore';
@@ -487,3 +496,312 @@ describe('bootstrapWithRetry', () => {
     expect(BOOTSTRAP_FETCH_TIMEOUT_MS).toBe(5000);
   });
 });
+
+describe('crash-loop escalation', () => {
+  // Pre-populate PollingState to a "stuck" condition (status running, health
+  // probes failing), then call `_pollServer` once with mocks that keep it
+  // stuck. The escalation logic compares `Date.now() - healthStuckSince` to
+  // HEALTH_STUCK_ESCALATION_MS; by varying the pre-set timestamp we exercise
+  // each branch without simulating a real 5-minute poll cycle.
+
+  beforeEach(async () => {
+    // Reset store state.
+    useServerPollingStore.setState({ servers: new Map() });
+
+    // Mock appFetch to return a "running" server. This is what _pollServer
+    // fetches at the start of each poll.
+    const { appFetch } = await import('@/lib/gasket-config');
+    vi.mocked(appFetch).mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          server: {
+            appId: 'app-1',
+            status: 'running',
+            port: 5000,
+            url: 'https://preview.example.com',
+            lastActivity: new Date().toISOString(),
+          },
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ),
+    );
+
+    // Override _checkUrlHealth on the store to skip the real fetch chain
+    // and return unhealthy directly. The test installs this fresh in each
+    // case so it can override to "healthy" for the recovery test.
+    useServerPollingStore.setState({
+      _checkUrlHealth: vi.fn().mockResolvedValue({ healthy: false }),
+    });
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('escalates to status=failed with failureKind=crash-loop after threshold', async () => {
+    // Stuck for 301s — just past the 5-minute threshold.
+    useServerPollingStore.setState((state) => {
+      state.servers.set('app-1', {
+        server: {
+          appId: 'app-1',
+          port: 5000,
+          url: 'https://preview.example.com',
+          status: 'running',
+          isReady: false,
+          healthCheckPassed: false,
+        },
+        isPolling: true,
+        pollCount: 30,
+        currentInterval: 15000,
+        timeoutId: null,
+        lastPollTime: Date.now() - 15000,
+        realAppId: null,
+        healthStuckSince: Date.now() - 301_000,
+      });
+    });
+
+    await useServerPollingStore.getState()._pollServer('app-1');
+
+    const state = useServerPollingStore.getState().getServerState('app-1');
+    expect(state?.status).toBe('failed');
+    expect(state?.failureKind).toBe('crash-loop');
+    expect(state?.isReady).toBe(false);
+    expect(useServerPollingStore.getState().isPollingServer('app-1')).toBe(false);
+  });
+
+  it('does NOT escalate before threshold (stuck only 200s)', async () => {
+    useServerPollingStore.setState((state) => {
+      state.servers.set('app-1', {
+        server: {
+          appId: 'app-1',
+          port: 5000,
+          url: 'https://preview.example.com',
+          status: 'running',
+          isReady: false,
+          healthCheckPassed: false,
+        },
+        isPolling: true,
+        pollCount: 20,
+        currentInterval: 5000,
+        timeoutId: null,
+        lastPollTime: Date.now() - 5000,
+        realAppId: null,
+        healthStuckSince: Date.now() - 200_000,
+      });
+    });
+
+    await useServerPollingStore.getState()._pollServer('app-1');
+
+    const state = useServerPollingStore.getState().getServerState('app-1');
+    expect(state?.status).toBe('running');
+    expect(state?.failureKind).toBeUndefined();
+    expect(useServerPollingStore.getState().isPollingServer('app-1')).toBe(true);
+  });
+
+  it('sets healthStuckSince on first stuck observation when previously null', async () => {
+    const beforeNow = Date.now();
+    useServerPollingStore.setState((state) => {
+      state.servers.set('app-1', {
+        server: null,
+        isPolling: true,
+        pollCount: 0,
+        currentInterval: 1000,
+        timeoutId: null,
+        lastPollTime: null,
+        realAppId: null,
+        healthStuckSince: null,
+      });
+    });
+
+    await useServerPollingStore.getState()._pollServer('app-1');
+
+    const pollingState = useServerPollingStore.getState().servers.get('app-1');
+    expect(pollingState?.healthStuckSince).not.toBeNull();
+    expect(pollingState?.healthStuckSince).toBeGreaterThanOrEqual(beforeNow);
+    // Still polling — only one observation, no escalation yet.
+    expect(useServerPollingStore.getState().isPollingServer('app-1')).toBe(true);
+  });
+
+  it('resets healthStuckSince when health check passes (recovery)', async () => {
+    // Pre-stuck for 100s, but this poll cycle will see healthy.
+    useServerPollingStore.setState((state) => {
+      state.servers.set('app-1', {
+        server: {
+          appId: 'app-1',
+          port: 5000,
+          url: 'https://preview.example.com',
+          status: 'running',
+          isReady: false,
+          healthCheckPassed: false,
+        },
+        isPolling: true,
+        pollCount: 10,
+        currentInterval: 5000,
+        timeoutId: null,
+        lastPollTime: Date.now() - 5000,
+        realAppId: null,
+        healthStuckSince: Date.now() - 100_000,
+      });
+
+      // Override _checkUrlHealth to return healthy this time.
+      state._checkUrlHealth = vi.fn().mockResolvedValue({ healthy: true });
+    });
+
+    await useServerPollingStore.getState()._pollServer('app-1');
+
+    const pollingState = useServerPollingStore.getState().servers.get('app-1');
+    expect(pollingState?.healthStuckSince).toBeNull();
+    const serverState = useServerPollingStore.getState().getServerState('app-1');
+    expect(serverState?.isReady).toBe(true);
+    // Polling stops on successful ready transition.
+    expect(useServerPollingStore.getState().isPollingServer('app-1')).toBe(false);
+  });
+
+  it('startPollingForServer resets failureKind and healthStuckSince on retry', () => {
+    // Set up a previously-failed state.
+    useServerPollingStore.setState((state) => {
+      state.servers.set('app-1', {
+        server: {
+          appId: 'app-1',
+          port: 5000,
+          url: 'https://preview.example.com',
+          status: 'failed',
+          isReady: false,
+          healthCheckPassed: false,
+          failureKind: 'crash-loop',
+        },
+        isPolling: false,
+        pollCount: 60,
+        currentInterval: 15000,
+        timeoutId: null,
+        lastPollTime: Date.now(),
+        realAppId: null,
+        healthStuckSince: Date.now() - 400_000,
+      });
+    });
+
+    // startPollingForServer fires _pollServer async; we assert the
+    // synchronous state-reset side effects which happen in the set() block
+    // before _pollServer's first await.
+    useServerPollingStore.getState().startPollingForServer('app-1');
+
+    const pollingState = useServerPollingStore.getState().servers.get('app-1');
+    expect(pollingState?.healthStuckSince).toBeNull();
+    expect(pollingState?.server?.failureKind).toBeUndefined();
+    expect(pollingState?.isPolling).toBe(true);
+  });
+
+  it('does NOT start the timer when BFF reports status=running without a URL', async () => {
+    // Transient cold-start state — BFF flips to 'running' before allocating
+    // a preview URL. The health check is skipped (gated on url being truthy),
+    // so healthCheckPassed stays false. The escalation block must NOT
+    // accumulate elapsed time during this window — only real probe failures
+    // (status=running AND url) should drive the timer.
+    const { appFetch } = await import('@/lib/gasket-config');
+    vi.mocked(appFetch).mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          server: { appId: 'app-1', status: 'running', port: 5000, url: null },
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ),
+    );
+
+    useServerPollingStore.setState((state) => {
+      state.servers.set('app-1', {
+        server: null,
+        isPolling: true,
+        pollCount: 0,
+        currentInterval: 1000,
+        timeoutId: null,
+        lastPollTime: null,
+        realAppId: null,
+        healthStuckSince: null,
+      });
+    });
+
+    await useServerPollingStore.getState()._pollServer('app-1');
+
+    const pollingState = useServerPollingStore.getState().servers.get('app-1');
+    expect(pollingState?.healthStuckSince).toBeNull();
+  });
+
+  it('resets the timer when status transitions running → starting', async () => {
+    // 'starting' is a legitimate transient state during restarts (PR #3537);
+    // elapsed time spent there shouldn't count toward escalation. The reset
+    // branch fires on any non-stuck state.
+    const { appFetch } = await import('@/lib/gasket-config');
+    vi.mocked(appFetch).mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          server: { appId: 'app-1', status: 'starting', port: 5000, url: 'https://preview.example.com' },
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ),
+    );
+
+    useServerPollingStore.setState((state) => {
+      state.servers.set('app-1', {
+        server: {
+          appId: 'app-1',
+          port: 5000,
+          url: 'https://preview.example.com',
+          status: 'running',
+          isReady: false,
+          healthCheckPassed: false,
+        },
+        isPolling: true,
+        pollCount: 5,
+        currentInterval: 5000,
+        timeoutId: null,
+        lastPollTime: Date.now() - 5000,
+        realAppId: null,
+        healthStuckSince: Date.now() - 100_000,
+      });
+    });
+
+    await useServerPollingStore.getState()._pollServer('app-1');
+
+    const pollingState = useServerPollingStore.getState().servers.get('app-1');
+    expect(pollingState?.healthStuckSince).toBeNull();
+  });
+
+  it('clears server.status to "starting" on retry to prevent PreviewError flicker', () => {
+    // After escalation, server.status='failed' with failureKind='crash-loop'.
+    // When user clicks Try Again, startPollingForServer reuses the existing
+    // entry. Without this fix, the PreviewError overlay stays rendered
+    // until the first poll arrives (~50-200ms). Clearing status here moves
+    // the UI to the loading state immediately.
+    useServerPollingStore.setState((state) => {
+      state.servers.set('app-1', {
+        server: {
+          appId: 'app-1',
+          port: 5000,
+          url: 'https://preview.example.com',
+          status: 'failed',
+          isReady: false,
+          healthCheckPassed: false,
+          failureKind: 'crash-loop',
+          error: 'something broke',
+        },
+        isPolling: false,
+        pollCount: 60,
+        currentInterval: 15000,
+        timeoutId: null,
+        lastPollTime: Date.now(),
+        realAppId: null,
+        healthStuckSince: Date.now() - 400_000,
+      });
+    });
+
+    useServerPollingStore.getState().startPollingForServer('app-1');
+
+    const pollingState = useServerPollingStore.getState().servers.get('app-1');
+    expect(pollingState?.server?.status).toBe('starting');
+    expect(pollingState?.server?.error).toBeUndefined();
+    expect(pollingState?.server?.failureKind).toBeUndefined();
+    expect(pollingState?.server?.isReady).toBe(false);
+  });
+
+});
+

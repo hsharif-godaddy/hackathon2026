@@ -82,4 +82,52 @@ describe('PreviewError', () => {
     const wrapper = container.firstChild as HTMLElement;
     expect(wrapper).toHaveClass('flex', 'flex-col', 'items-center', 'justify-center');
   });
+
+  it('should render only the primary button when no secondary button props are provided', () => {
+    renderWithProviders(<PreviewError {...defaultProps} />);
+
+    const buttons = screen.getAllByRole('button');
+    expect(buttons).toHaveLength(1);
+    expect(buttons[0]).toHaveAccessibleName(/Retry/i);
+  });
+
+  it('should render both buttons and wire their clicks when secondary props are provided', async () => {
+    const primaryClick = vi.fn();
+    const secondaryClick = vi.fn();
+    const { user } = renderWithProviders(
+      <PreviewError
+        {...defaultProps}
+        buttonOnClick={primaryClick}
+        secondaryButtonText="Ask Airo to fix"
+        secondaryButtonOnClick={secondaryClick}
+      />
+    );
+
+    const buttons = screen.getAllByRole('button');
+    expect(buttons).toHaveLength(2);
+    const primary = screen.getByRole('button', { name: /Retry/i });
+    const secondary = screen.getByRole('button', { name: /Ask Airo to fix/i });
+
+    await user.click(primary);
+    await user.click(secondary);
+
+    await waitFor(() => {
+      expect(primaryClick).toHaveBeenCalledOnce();
+      expect(secondaryClick).toHaveBeenCalledOnce();
+    });
+  });
+
+  it('disables the secondary button when secondaryButtonDisabled is true', () => {
+    renderWithProviders(
+      <PreviewError
+        {...defaultProps}
+        secondaryButtonText="Ask Airo to fix"
+        secondaryButtonOnClick={vi.fn()}
+        secondaryButtonDisabled={true}
+      />
+    );
+
+    const secondary = screen.getByRole('button', { name: /Ask Airo to fix/i });
+    expect(secondary).toBeDisabled();
+  });
 });
