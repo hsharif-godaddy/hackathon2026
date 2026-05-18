@@ -175,7 +175,13 @@ export default function BrandBookView({ appId }: BrandBookViewProps) {
   // Genuine API failure after retries — show error state
   if (error && !data && !isLoading) {
     return (
-      <Box inlineAlignChildren="center" blockAlignChildren="center" stretch data-testid="brand-book-error">
+      <Box
+        inlineAlignChildren="center"
+        blockAlignChildren="center"
+        stretch
+        className="bg-intents-ux-boxLowContrast-backgroundColor"
+        data-testid="brand-book-error"
+      >
         <text.span as="paragraph">Unable to load brand data. Try refreshing the page.</text.span>
       </Box>
     );
@@ -184,7 +190,10 @@ export default function BrandBookView({ appId }: BrandBookViewProps) {
   // Loading, or no data yet (agent hasn't written brand data during initial creation)
   if (!data) {
     return (
-      <div className="h-full flex items-center justify-center" data-testid="brand-book-loading">
+      <div
+        className="h-full flex items-center justify-center bg-intents-ux-boxLowContrast-backgroundColor"
+        data-testid="brand-book-loading"
+      >
         <text.span as="paragraph">Creating your logo &amp; brand...</text.span>
       </div>
     );
