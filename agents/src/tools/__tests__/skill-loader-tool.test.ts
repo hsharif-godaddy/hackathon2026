@@ -7,10 +7,17 @@ import { fileURLToPath } from 'node:url';
 
 import { SkillLoaderTool, buildSkillsPromptSection } from '../skill-loader-tool.js';
 
-// Mock the terminal and dev supervisor dependencies
+// Mock the terminal and dev supervisor dependencies.
+// We capture every command issued so tests can assert on the exact
+// `npm install` / `npm install --save-dev` invocations.
+const capturedCommands: string[] = [];
+
 vi.mock('../terminal.js', () => ({
   TerminalTool: vi.fn().mockImplementation(() => ({
-    executeCommand: vi.fn().mockResolvedValue({ success: true, exitCode: 0 })
+    executeCommand: vi.fn().mockImplementation(async (_path: string, opts: { command: string }) => {
+      capturedCommands.push(opts.command);
+      return { success: true, exitCode: 0 };
+    })
   }))
 }));
 
@@ -138,7 +145,7 @@ describe('skill-loader-tool', function packageTests() {
     });
   });
 
-  describe('#parseSkillDependencies', function parseTests() {
+  describe('#parseSkillPackageList (dependencies)', function parseTests() {
     let tool: SkillLoaderTool;
     let tempDir: string;
     let skillsDir: string;
@@ -159,7 +166,7 @@ describe('skill-loader-tool', function packageTests() {
 
     // Access private method for testing
     async function parse(skillName: string): Promise<string[]> {
-      return (tool as any).parseSkillDependencies(skillName);
+      return (tool as any).parseSkillPackageList(skillName, 'dependencies');
     }
 
     async function createSkillFile(skillName: string, content: string): Promise<void> {
@@ -282,6 +289,80 @@ dependencies:
     });
   });
 
+  describe('#parseSkillPackageList (devDependencies)', function parseDevTests() {
+    let tool: SkillLoaderTool;
+    let tempDir: string;
+    let skillsDir: string;
+
+    beforeEach(async () => {
+      tool = new SkillLoaderTool();
+      tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'skill-dev-test-'));
+      skillsDir = path.join(tempDir, 'skills');
+      await fs.mkdir(skillsDir, { recursive: true });
+      (tool as any).skillsDir = skillsDir;
+    });
+
+    afterEach(async () => {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    });
+
+    async function parseDev(skillName: string): Promise<string[]> {
+      return (tool as any).parseSkillPackageList(skillName, 'devDependencies');
+    }
+
+    async function createSkillFile(skillName: string, content: string): Promise<void> {
+      const skillDir = path.join(skillsDir, skillName);
+      await fs.mkdir(skillDir, { recursive: true });
+      await fs.writeFile(path.join(skillDir, 'skill.md'), content);
+    }
+
+    it('should parse devDependencies separately from dependencies', async function separateLists() {
+      await createSkillFile('email-like', `---
+name: email-like
+description: Skill that needs runtime deps and type-only devDeps
+dependencies:
+  - nodemailer
+devDependencies:
+  - "@types/nodemailer"
+---
+# Email-like
+`);
+
+      const deps = await (tool as any).parseSkillPackageList('email-like', 'dependencies');
+      const devDeps = await parseDev('email-like');
+      expect(deps).toEqual(['nodemailer']);
+      expect(devDeps).toEqual(['@types/nodemailer']);
+    });
+
+    it('should return empty list when only dependencies are declared', async function noDevDeps() {
+      await createSkillFile('prod-only', `---
+name: prod-only
+description: Runtime deps only
+dependencies:
+  - lodash
+---
+# Prod Only
+`);
+
+      expect(await parseDev('prod-only')).toEqual([]);
+    });
+
+    it('should validate package names just like prod dependencies', async function validateDevNames() {
+      await createSkillFile('bad-dev-deps', `---
+name: bad-dev-deps
+description: Skill with malicious dev deps
+devDependencies:
+  - "@types/node"
+  - "../malicious"
+  - "lodash; rm -rf /"
+---
+# Bad Dev Deps
+`);
+
+      expect(await parseDev('bad-dev-deps')).toEqual(['@types/node']);
+    });
+  });
+
   describe('#validateSkillName', function validateSkillTests() {
     let tool: SkillLoaderTool;
 
@@ -396,6 +477,46 @@ description: Test skill
       expect(entry).toContain('import health_get_1 from "./api/health/GET";');
       expect(entry).toContain('app.get("/api", get_0);');
       expect(entry).toContain('app.get("/api/health", health_get_1);');
+    });
+
+    it('runs npm install and npm install --save-dev for the two frontmatter groups', async function devDepsInstall() {
+      const skillDir = path.join(skillsDir, 'with-types');
+      await fs.mkdir(skillDir, { recursive: true });
+      await fs.writeFile(
+        path.join(skillDir, 'skill.md'),
+        `---
+name: with-types
+description: Skill that needs runtime + type-only deps
+dependencies:
+  - nodemailer
+devDependencies:
+  - "@types/nodemailer"
+---
+# With Types
+`,
+        'utf8',
+      );
+
+      capturedCommands.length = 0;
+
+      const result = await tool.installTemplates({
+        skill: 'with-types',
+        appPath: appDir,
+        appId: 'test-app',
+      });
+
+      expect(result.success).toBe(true);
+      expect(capturedCommands).toContain('npm install nodemailer');
+      expect(capturedCommands).toContain('npm install --save-dev @types/nodemailer');
+
+      expect(result.dependenciesInstalled).toEqual([
+        expect.objectContaining({ package: 'nodemailer', success: true }),
+      ]);
+      expect(result.devDependenciesInstalled).toEqual([
+        expect.objectContaining({ package: '@types/nodemailer', success: true }),
+      ]);
+      expect(result.dependenciesFailed).toBeUndefined();
+      expect(result.devDependenciesFailed).toBeUndefined();
     });
   });
 

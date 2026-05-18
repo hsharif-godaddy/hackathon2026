@@ -106,7 +106,11 @@ export interface InstallTemplatesResult {
   dependenciesInstalled?: DependencyInstallResult[];
   /** Number of dependencies that failed to install */
   dependenciesFailed?: number;
-  /** True if some dependencies failed but templates succeeded */
+  /** Dev-dependencies installation results (installed via `npm install --save-dev`) */
+  devDependenciesInstalled?: DependencyInstallResult[];
+  /** Number of dev-dependencies that failed to install */
+  devDependenciesFailed?: number;
+  /** True if some deps (prod or dev) failed but templates succeeded */
   partialSuccess?: boolean;
   /** List of skill dependencies that were installed (from skill-deps) */
   skillDependenciesInstalled?: string[];
@@ -401,8 +405,9 @@ export class SkillLoaderTool {
       }
 
       // Install npm dependencies from skill.md frontmatter (before templates,
-      // so skills with only dependencies and no templates still work)
-      const dependencyResults = await this.installDependencies(skill, appPath, appId);
+      // so skills with only dependencies and no templates still work).
+      const dependencyResults = await this.installDependencyGroup(skill, appPath, appId, 'prod');
+      const devDependencyResults = await this.installDependencyGroup(skill, appPath, appId, 'dev');
 
       // Use helper to safely construct paths (validates internally)
       const templatesDir = this.getSkillPath(skill, 'templates');
@@ -512,6 +517,7 @@ export class SkillLoaderTool {
       }
 
       const failedDeps = dependencyResults.filter(r => !r.success).length;
+      const failedDevDeps = devDependencyResults.filter(r => !r.success).length;
 
       this.logger.info('skill.install.success', {
         skill,
@@ -519,6 +525,8 @@ export class SkillLoaderTool {
         filesSkipped,
         dependenciesInstalled: dependencyResults.length,
         dependenciesFailed: failedDeps,
+        devDependenciesInstalled: devDependencyResults.length,
+        devDependenciesFailed: failedDevDeps,
         skillDependenciesInstalled: installedSkillDeps.length
       });
 
@@ -534,9 +542,18 @@ export class SkillLoaderTool {
         result.dependenciesInstalled = dependencyResults;
       }
 
+      if (devDependencyResults.length > 0) {
+        result.devDependenciesInstalled = devDependencyResults;
+      }
+
       if (failedDeps > 0) {
         result.dependenciesFailed = failedDeps;
         // Indicate partial success: templates installed but some deps failed
+        result.partialSuccess = true;
+      }
+
+      if (failedDevDeps > 0) {
+        result.devDependenciesFailed = failedDevDeps;
         result.partialSuccess = true;
       }
 
@@ -708,23 +725,30 @@ export class SkillLoaderTool {
   }
 
   /**
-   * Parse dependencies from skill.md frontmatter
-   * Validates package names to prevent malicious package installation
+   * Parse a list of package names from a frontmatter array field.
+   * Validates package names to prevent malicious package installation.
+   * Field is `dependencies` for runtime deps, `devDependencies` for type packages
+   * and other build-time-only deps that must land in package.json devDependencies.
    * @private
    */
-  private async parseSkillDependencies(skill: string): Promise<string[]> {
+  private async parseSkillPackageList(
+    skill: string,
+    field: 'dependencies' | 'devDependencies'
+  ): Promise<string[]> {
     try {
       const skillFile = this.getSkillPath(skill, 'skill.md');
       const skillContent = await fs.readFile(skillFile, 'utf-8');
       const { data } = matter(skillContent);
 
-      if (Array.isArray(data.dependencies)) {
-        return data.dependencies
+      const value = data[field];
+      if (Array.isArray(value)) {
+        return value
           .filter((dep: unknown) => typeof dep === 'string')
           .filter((dep: string) => {
             if (!this.validatePackageName(dep)) {
               this.logger.warn('skill.dependencies.invalid_name', {
                 skill,
+                field,
                 packageName: dep
               });
               return false;
@@ -737,6 +761,7 @@ export class SkillLoaderTool {
     } catch (error) {
       this.logger.warn('skill.dependencies.parse_failed', {
         skill,
+        field,
         error: error instanceof Error ? error.message : String(error)
       });
       return [];
@@ -744,15 +769,18 @@ export class SkillLoaderTool {
   }
 
   /**
-   * Install a single npm package with retries using TerminalTool
+   * Install a single npm package with retries using TerminalTool.
+   * When `group` is 'dev', the package is installed with `--save-dev` so it
+   * lands in package.json `devDependencies` instead of `dependencies`.
    * @private
    */
   private async installPackage(
     packageName: string,
     appPath: string,
     appId: string,
-    maxRetries: number = 3
+    options: { group?: 'prod' | 'dev'; maxRetries?: number } = {}
   ): Promise<DependencyInstallResult> {
+    const { group = 'prod', maxRetries = 3 } = options;
     let lastError: string | undefined;
 
     // Get dev supervisor client for the app
@@ -761,7 +789,8 @@ export class SkillLoaderTool {
     if (!devSupervisorClient) {
       this.logger.warn('skill.dependencies.no_dev_supervisor', {
         package: packageName,
-        appId
+        appId,
+        group
       });
       return {
         package: packageName,
@@ -772,17 +801,21 @@ export class SkillLoaderTool {
     }
 
     const terminalTool = new TerminalTool(devSupervisorClient);
+    const installCommand = group === 'dev'
+      ? `npm install --save-dev ${packageName}`
+      : `npm install ${packageName}`;
 
     for (let attempt = 0; attempt < maxRetries; attempt++) {
       this.logger.info('skill.dependencies.install_attempt', {
         package: packageName,
+        group,
         attempt: attempt + 1,
         maxRetries
       });
 
       try {
         const result = await terminalTool.executeCommand(appPath, {
-          command: `npm install ${packageName}`,
+          command: installCommand,
           timeout: 60000 // 60 seconds for npm install
         });
 
@@ -842,31 +875,36 @@ export class SkillLoaderTool {
   }
 
   /**
-   * Install all skill dependencies using TerminalTool
+   * Install all packages from one frontmatter group (dependencies or devDependencies).
+   * Dev-group packages are installed with `--save-dev` so they end up in
+   * package.json devDependencies. Used internally by installTemplates().
    * @private
    */
-  private async installDependencies(
+  private async installDependencyGroup(
     skill: string,
     appPath: string,
-    appId: string
+    appId: string,
+    group: 'prod' | 'dev'
   ): Promise<DependencyInstallResult[]> {
-    const dependencies = await this.parseSkillDependencies(skill);
+    const field = group === 'dev' ? 'devDependencies' : 'dependencies';
+    const packages = await this.parseSkillPackageList(skill, field);
 
-    if (dependencies.length === 0) {
-      this.logger.info('skill.dependencies.none', { skill });
+    if (packages.length === 0) {
+      this.logger.info('skill.dependencies.none', { skill, group });
       return [];
     }
 
     this.logger.info('skill.dependencies.start', {
       skill,
-      dependencies,
-      count: dependencies.length
+      group,
+      dependencies: packages,
+      count: packages.length
     });
 
     const results: DependencyInstallResult[] = [];
 
-    for (const dep of dependencies) {
-      const result = await this.installPackage(dep, appPath, appId);
+    for (const pkg of packages) {
+      const result = await this.installPackage(pkg, appPath, appId, { group });
       results.push(result);
     }
 
@@ -875,7 +913,8 @@ export class SkillLoaderTool {
 
     this.logger.info('skill.dependencies.complete', {
       skill,
-      total: dependencies.length,
+      group,
+      total: packages.length,
       success: successCount,
       failed: failCount
     });

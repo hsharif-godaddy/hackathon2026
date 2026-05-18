@@ -261,6 +261,24 @@ export const skillAITool: Tool = createTool(
         response.dependenciesFailed = result.dependenciesFailed;
       }
 
+      if (result.devDependenciesInstalled && result.devDependenciesInstalled.length > 0) {
+        response.devDependenciesInstalled = result.devDependenciesInstalled;
+        const devSuccessCount = result.devDependenciesInstalled.filter(d => d.success).length;
+        // Only append to the prod-deps message when prod deps existed (otherwise
+        // the base "files copied to /path" message dangles awkwardly). For the
+        // devDeps-only case, replace the base message with the deps-style format
+        // the prod branch uses, mirroring its shape.
+        if (result.dependenciesInstalled && result.dependenciesInstalled.length > 0) {
+          response.message = `${response.message} ${devSuccessCount}/${result.devDependenciesInstalled.length} dev packages installed.`;
+        } else {
+          response.message = `Skill '${result.skill}' installed successfully. ${result.filesInstalled} files copied, ${devSuccessCount}/${result.devDependenciesInstalled.length} dev packages installed.`;
+        }
+      }
+
+      if (result.devDependenciesFailed && result.devDependenciesFailed > 0) {
+        response.devDependenciesFailed = result.devDependenciesFailed;
+      }
+
       // Include skill dependencies (from skill-deps) if available
       if (result.skillDependenciesInstalled && result.skillDependenciesInstalled.length > 0) {
         response.skillDependenciesInstalled = result.skillDependenciesInstalled;

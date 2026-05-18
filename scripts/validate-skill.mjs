@@ -107,6 +107,49 @@ const FRONTMATTER_NAME = /^name:\s*\S/m;
 const FRONTMATTER_DESCRIPTION = /^description:\s*\S/m;
 const FRONTMATTER_WHEN_TO_USE = /^whenToUse:\s*\S/m;
 
+// Regex-based extraction of YAML list items under a top-level frontmatter key.
+// Used to detect packages duplicated across `dependencies:` and `devDependencies:`.
+// Tolerates indented dashes with optional surrounding quotes; flow-style lists
+// (`[a, b]`), comments, and multi-line strings are not parsed (fine for skill
+// files, which use the conventional block-list shape).
+const FRONTMATTER_DEPENDENCIES_BLOCK = /^dependencies:\s*\n((?:[ \t]+-[^\n]*\n?)*)/m;
+const FRONTMATTER_DEV_DEPENDENCIES_BLOCK = /^devDependencies:\s*\n((?:[ \t]+-[^\n]*\n?)*)/m;
+const LIST_ITEM = /[ \t]+-\s+["']?([^"'\n]+?)["']?\s*$/gm;
+
+/**
+ * Strip the version suffix from an npm spec to get the bare package name.
+ * "lodash@^4.0.0" → "lodash" ; "@scope/name@1.2" → "@scope/name" ; "lodash" → "lodash"
+ */
+function bareName(spec) {
+  if (spec.startsWith('@')) {
+    const slash = spec.indexOf('/');
+    if (slash === -1) return spec;
+    const at = spec.slice(slash + 1).indexOf('@');
+    return at === -1 ? spec : spec.slice(0, slash + 1 + at);
+  }
+  const at = spec.indexOf('@');
+  return at === -1 ? spec : spec.slice(0, at);
+}
+
+/**
+ * Extract the list of items under a `key:` block in YAML frontmatter.
+ * Returns the raw item strings (possibly version-qualified). Returns []
+ * when the key is absent, missing a list, or not a recognized list shape.
+ */
+function extractList(content, blockRe) {
+  const block = content.match(blockRe);
+  if (!block) return [];
+  const items = [];
+  // Construct a fresh RegExp per call — sharing global RegExp state across
+  // calls would carry lastIndex and silently skip items on subsequent runs.
+  const re = new RegExp(LIST_ITEM.source, 'gm');
+  let m;
+  while ((m = re.exec(block[1])) !== null) {
+    items.push(m[1].trim());
+  }
+  return items;
+}
+
 function main() {
   const skillDirs = getStagedSkillDirs();
   if (skillDirs === null) return 0; // git unavailable; warning already logged
@@ -183,6 +226,22 @@ function main() {
         skill: skillName,
         error: 'tools/ has staged changes but tools/index.ts is missing',
         fix: `Create agents/src/skills/${skillName}/tools/index.ts and export at least one SkillToolDefinition.`,
+      });
+    }
+
+    // Check 4: no package may appear in both `dependencies` and `devDependencies`.
+    // The skill loader installs each list with a separate `npm install` invocation —
+    // dev runs second with `--save-dev`, so npm's last-write-wins quietly moves the
+    // package to devDependencies and removes it from runtime. Authoring mistake;
+    // catch it before review rather than as a silent runtime regression.
+    const deps = extractList(content, FRONTMATTER_DEPENDENCIES_BLOCK).map(bareName);
+    const devDeps = extractList(content, FRONTMATTER_DEV_DEPENDENCIES_BLOCK).map(bareName);
+    const overlap = deps.filter(d => devDeps.includes(d));
+    if (overlap.length > 0) {
+      failures.push({
+        skill: skillName,
+        error: `Package(s) listed in both dependencies and devDependencies: ${overlap.join(', ')}`,
+        fix: 'Remove the duplicate(s) from one list. The dev install runs second, so npm would silently move the package to devDependencies and runtime imports would break.',
       });
     }
 

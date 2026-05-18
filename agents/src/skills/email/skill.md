@@ -4,6 +4,8 @@ description: Send emails via Nodemailer and local SMTP relay
 whenToUse: User wants to send emails, add email functionality, or implement notifications via email. Phrases like "send email", "email notification", "nodemailer", "contact form", "email when", "smtp", "email relay", "transactional email".
 dependencies:
   - nodemailer
+devDependencies:
+  - '@types/nodemailer'
 ---
 
 # Email with Nodemailer
@@ -31,7 +33,7 @@ Load when users need to:
 skill({ action: 'install', skill: 'email' });
 ```
 
-This installs the `nodemailer` dependency.
+Installs `nodemailer` (runtime) and `@types/nodemailer` (devDependency). Nodemailer ships no bundled type declarations, so the types package is required for TypeScript validation — the skill installer handles both automatically.
 
 ---
 
