@@ -243,6 +243,30 @@ func generatePreviewEnvironment(app *store.App) map[string]string {
 
 		// Persistent assets mount location (matches container volume mount)
 		"SHARED_STORAGE_DIR": "/shared-storage",
+
+		// SMTP proxy (dev-supervisor): forward outbound mail to Mailpit on
+		// the macOS host by default so a local app's sendmail traffic
+		// shows up in the Mailpit UI (http://127.0.0.1:8025) instead of
+		// trying to reach GoDaddy's production relay (which a local
+		// container has no auth or network path to). Override via
+		// SMTP_DESTINATION on the local-control-plane process if you
+		// want a different sink. AIRO_DEFAULT_SENDER_DOMAIN drives the
+		// canonical sender used when customer code claims a domain it
+		// doesn't own — set to test-airoapp.ai so canonical fallbacks
+		// look like prod-shaped non-prod addresses.
+		"SMTP_DESTINATION": getEnvOrDefault(
+			"SMTP_DESTINATION", "host.docker.internal:1025",
+		),
+		"AIRO_DEFAULT_SENDER_DOMAIN": getEnvOrDefault(
+			"AIRO_DEFAULT_SENDER_DOMAIN", "test-airoapp.ai",
+		),
+		// dev-supervisor's default policy is to skip the SMTP proxy in
+		// preview tasks — that's correct in production unified jobs
+		// (preview and publish share a network namespace; publish owns
+		// port 25). In local dev, preview and publish run as SEPARATE
+		// containers, so the skip just leaves preview without any 127.0.0.1:25
+		// listener, breaking nodemailer-style customer code. Opt back in.
+		"DEV_SUPERVISOR_ENABLE_SMTP_FOR_PREVIEW": "true",
 	}
 
 	if authType == "mock" || authType == "none" {
@@ -278,8 +302,24 @@ func generatePublishEnvironment(app *store.App) map[string]string {
 		"DEV_SUPERVISOR_SETUP_SCRIPT": "",
 		"GOMEMLIMIT":                  fmt.Sprintf("%dMiB", goMemLimitMB),
 
+		// Site identity. Same as preview's SITE_ID — drives the canonical
+		// sender's local-part (<AppID>@<PrimaryDomain>) and the
+		// X-SITE-UID header dev-supervisor injects on every outbound mail.
+		// Without this, publish's CanonicalSender falls through to the
+		// "unknown" sentinel and audit logs lose app correlation.
+		"SITE_ID": app.ID,
+
 		// Persistent assets mount location (matches container volume mount)
 		"SHARED_STORAGE_DIR": "/shared-storage",
+
+		// SMTP proxy: same redirect to Mailpit as preview. See the preview
+		// env-block comment for the full reasoning.
+		"SMTP_DESTINATION": getEnvOrDefault(
+			"SMTP_DESTINATION", "host.docker.internal:1025",
+		),
+		"AIRO_DEFAULT_SENDER_DOMAIN": getEnvOrDefault(
+			"AIRO_DEFAULT_SENDER_DOMAIN", "test-airoapp.ai",
+		),
 	}
 
 	if v := projectenv.Resolve("GODADDY_API_BASE_URL"); v != "" {

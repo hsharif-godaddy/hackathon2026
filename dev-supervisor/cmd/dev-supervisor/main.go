@@ -406,8 +406,10 @@ func (s *Server) startUnixServer(socketPath string, shutdownTimeout time.Duratio
 		return err
 	}
 
-	// Start SMTP proxy (skip for preview task in unified job)
-	if os.Getenv("NOMAD_TASK_NAME") != config.PreviewTaskName {
+	// Start SMTP proxy. Default skips preview tasks (publish owns port 25
+	// in unified-job production); local dev opts in via
+	// DEV_SUPERVISOR_ENABLE_SMTP_FOR_PREVIEW. See config.ShouldStartSMTPProxy.
+	if config.ShouldStartSMTPProxy() {
 		if err := s.smtpProxy.Start(); err != nil {
 			slog.Warn("failed to start SMTP proxy", "error", err)
 		}
@@ -530,8 +532,10 @@ func (s *Server) startTCPServer(port string, shutdownTimeout time.Duration) erro
 		return err
 	}
 
-	// Start SMTP proxy (skip for preview task in unified job)
-	if os.Getenv("NOMAD_TASK_NAME") != "preview" {
+	// Start SMTP proxy. Default skips preview tasks (publish owns port 25
+	// in unified-job production); local dev opts in via
+	// DEV_SUPERVISOR_ENABLE_SMTP_FOR_PREVIEW. See config.ShouldStartSMTPProxy.
+	if config.ShouldStartSMTPProxy() {
 		if err := s.smtpProxy.Start(); err != nil {
 			slog.Warn("failed to start SMTP proxy", "error", err)
 		}

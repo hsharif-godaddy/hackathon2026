@@ -2,6 +2,7 @@ package email
 
 import (
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"golang.org/x/net/idna"
@@ -71,6 +72,11 @@ func identityFromConfig(cfg *allocconfig.Config, appID, defaultDomain string) Id
 		return id
 	}
 	seen := make(map[string]struct{}, len(cfg.Domains.Value))
+	// acceptedPrimaries collects the A-label form of every isPrimary row
+	// that survives the acceptDomain filter (deduped). We expect exactly
+	// zero or one — anything else is an mhp-core contract violation we
+	// want logged so somebody can investigate.
+	var acceptedPrimaries []string
 	for _, d := range cfg.Domains.Value {
 		name, ok := acceptDomain(d)
 		if !ok {
@@ -86,7 +92,23 @@ func identityFromConfig(cfg *allocconfig.Config, appID, defaultDomain string) Id
 			// last-wins on the off chance more than one is set, which
 			// degrades safely (we still pick a valid attached entry).
 			id.PrimaryDomain = name
+			acceptedPrimaries = append(acceptedPrimaries, name)
 		}
+	}
+	if len(acceptedPrimaries) > 1 {
+		// Contract violation: mhp-core's RefreshDomainsSecretTask is
+		// supposed to keep at most one isPrimary row. We don't fail —
+		// last-wins keeps mail flowing on a still-valid attached
+		// domain — but we log loudly so an operator sees the anomaly
+		// in Loki and can chase down the source. Volume is bounded by
+		// the loader's cache TTL (default 5s), so a persistent multi-
+		// primary state will still be visible without flooding.
+		slog.Warn("smtp.identity.multiple_primary",
+			"app_id", appID,
+			"count", len(acceptedPrimaries),
+			"candidates", acceptedPrimaries,
+			"selected", id.PrimaryDomain,
+		)
 	}
 	return id
 }

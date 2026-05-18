@@ -7,6 +7,59 @@ import (
 	"github.com/airo-ai-builder/dev-supervisor/internal/config"
 )
 
+func TestShouldStartSMTPProxy(t *testing.T) {
+	tests := []struct {
+		name           string
+		taskName       string
+		previewSMTPVar string
+		want           bool
+	}{
+		{
+			name:     "non-preview task always starts SMTP",
+			taskName: "publish",
+			want:     true,
+		},
+		{
+			name:     "empty task name (no Nomad context) starts SMTP",
+			taskName: "",
+			want:     true,
+		},
+		{
+			name:     "preview task skips SMTP by default (production unified-job behavior)",
+			taskName: "preview",
+			want:     false,
+		},
+		{
+			name:           "preview task starts SMTP when explicitly enabled (local dev)",
+			taskName:       "preview",
+			previewSMTPVar: "true",
+			want:           true,
+		},
+		{
+			name:           "preview task with explicitly disabled flag still skips",
+			taskName:       "preview",
+			previewSMTPVar: "false",
+			want:           false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("NOMAD_TASK_NAME", tt.taskName)
+			if tt.previewSMTPVar != "" {
+				t.Setenv("DEV_SUPERVISOR_ENABLE_SMTP_FOR_PREVIEW", tt.previewSMTPVar)
+			} else {
+				_ = os.Unsetenv("DEV_SUPERVISOR_ENABLE_SMTP_FOR_PREVIEW")
+			}
+
+			got := config.ShouldStartSMTPProxy()
+			if got != tt.want {
+				t.Errorf("ShouldStartSMTPProxy() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestLoadConfig_SetupScript_PreviewTask(t *testing.T) {
 	tests := []struct {
 		name            string

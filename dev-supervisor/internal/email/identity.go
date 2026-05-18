@@ -117,9 +117,15 @@ type Identity struct {
 	// the value (deployment-environment-specific); this package treats it
 	// as opaque.
 	//
-	// Match semantics: exact-match. Subdomains of DefaultDomain do NOT
-	// pass the allow check — the platform domain is ours, subdomains of
-	// it are not customer territory.
+	// Match semantics: exact-match on the domain part AND the local-part
+	// must equal AppID (case-insensitively). Subdomains of DefaultDomain
+	// do NOT pass the allow check — the platform domain is ours, and
+	// subdomains of it are not customer territory. The local-part is
+	// also pinned so a customer can't claim "support@<DefaultDomain>",
+	// "noreply@<DefaultDomain>", or other platform-shaped addresses;
+	// their only legitimate identity on the platform domain is the
+	// canonical "<AppID>@<DefaultDomain>". Customers who want other
+	// sender names must attach their own domain.
 	DefaultDomain string
 }
 
@@ -128,16 +134,30 @@ type Identity struct {
 //
 // addr can be either a bare addr-spec ("user@example.com") or a name-addr
 // ("Acme Support <support@acme.com>") — the implementation parses with
-// net/mail to extract the domain. Comparison is case-insensitive and
-// whitespace-trimmed; empty entries in AttachedDomains never match
-// anything.
+// net/mail to extract the local and domain parts.
+//
+// Match rules:
+//
+//   - DefaultDomain branch: domain must equal DefaultDomain (case-
+//     insensitive) AND the local-part must equal AppID (case-
+//     insensitive). The local-part pinning prevents a customer from
+//     claiming platform-shaped addresses like "support@<DefaultDomain>"
+//     on our own domain.
+//   - AttachedDomains branch: domain must exact-match any entry. The
+//     customer attached and verified the whole name; any local-part
+//     within it is theirs to use.
+//
+// Empty entries in AttachedDomains never match anything; an empty
+// AppID disables the DefaultDomain branch entirely (no local-part
+// to anchor against).
 func (id Identity) IsAllowedSender(addr string) bool {
-	domain := domainOf(addr)
+	local, domain := localAndDomain(addr)
 	if domain == "" {
 		return false
 	}
 	if domainMatches(domain, id.DefaultDomain) {
-		return true
+		appID := strings.TrimSpace(id.AppID)
+		return appID != "" && strings.EqualFold(local, appID)
 	}
 	for _, attached := range id.AttachedDomains {
 		if domainMatches(domain, attached) {
@@ -190,31 +210,34 @@ func (id Identity) EnforceSender(claimed string) (string, bool) {
 	return id.CanonicalSender(), true
 }
 
-// domainOf parses an RFC 5322 address and returns the lowercased A-label
-// domain part, or "" if parsing failed, the address has no host part, or
-// the domain cannot be converted to A-label form.
+// localAndDomain parses an RFC 5322 address and returns its local-part
+// (verbatim, no normalization — local-parts are case-sensitive per RFC 5321
+// even though most receivers treat them case-insensitively in practice;
+// callers compare with strings.EqualFold) and the lowercased A-label
+// domain part. Returns ("", "") if parsing failed, the address has no host
+// part, or the domain cannot be converted to A-label form.
 //
-// IDNA Lookup conversion mirrors what the constructor does to attached
-// entries (see acceptDomain): a U-label claim like "noreply@bücher.example"
-// over an SMTPUTF8-enabled session is normalized to its A-label form
-// ("xn--bcher-kva.example") before comparison so it can match the stored
-// entry. Without this, the asymmetry would silently fail-closed for any
-// IDN customer.
-func domainOf(addr string) string {
+// IDNA Lookup conversion on the domain mirrors what the constructor does
+// to attached entries (see acceptDomain): a U-label claim like
+// "noreply@bücher.example" over an SMTPUTF8-enabled session is normalized
+// to its A-label form ("xn--bcher-kva.example") before comparison so it
+// can match the stored entry. Without this, the asymmetry would silently
+// fail-closed for any IDN customer.
+func localAndDomain(addr string) (string, string) {
 	parsed, err := mail.ParseAddress(strings.TrimSpace(addr))
 	if err != nil {
-		return ""
+		return "", ""
 	}
 	at := strings.LastIndex(parsed.Address, "@")
 	if at < 0 || at == len(parsed.Address)-1 {
-		return ""
+		return "", ""
 	}
-	domain := parsed.Address[at+1:]
-	ascii, err := idna.Lookup.ToASCII(domain)
+	rawDomain := parsed.Address[at+1:]
+	ascii, err := idna.Lookup.ToASCII(rawDomain)
 	if err != nil {
-		return ""
+		return "", ""
 	}
-	return strings.ToLower(ascii)
+	return parsed.Address[:at], strings.ToLower(ascii)
 }
 
 // normalizeDomain trims whitespace and lowercases for comparison. Returns ""

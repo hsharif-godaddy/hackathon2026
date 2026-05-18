@@ -13,6 +13,27 @@ const PreviewTaskName = "preview"
 // DefaultPreviewSetupScript is the default setup script path for preview containers.
 const DefaultPreviewSetupScript = "/management-scripts/nomad_setup.sh"
 
+// ShouldStartSMTPProxy reports whether dev-supervisor should bind the SMTP
+// proxy listener in this process.
+//
+// Default policy mirrors production unified-job topology: preview tasks
+// skip the proxy because publish (running in the same Nomad task, sharing
+// a network namespace) owns port 25 to avoid a bind conflict.
+//
+// The DEV_SUPERVISOR_ENABLE_SMTP_FOR_PREVIEW env var inverts this for
+// non-unified topologies: in local dev, preview and publish run in
+// SEPARATE containers (separate net namespaces, no port conflict), so
+// suppressing preview's SMTP proxy just leaves customer-app code with no
+// 127.0.0.1:25 listener to send mail through. local-control-plane sets
+// this var on every preview container so SMTP-using customer code works
+// during local iteration.
+func ShouldStartSMTPProxy() bool {
+	if os.Getenv("NOMAD_TASK_NAME") != PreviewTaskName {
+		return true
+	}
+	return GetEnvBoolWithDefault("DEV_SUPERVISOR_ENABLE_SMTP_FOR_PREVIEW", false)
+}
+
 // Config holds all configuration for dev-supervisor
 type Config struct {
 	SocketPath             string

@@ -1,7 +1,10 @@
 package email_test
 
 import (
+	"bytes"
+	"log/slog"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -96,8 +99,11 @@ func TestIdentityFromAllocConfig_NoDomainsField(t *testing.T) {
 	if got := id.CanonicalSender(); got != "abc1234567@airoapp.ai" {
 		t.Errorf("CanonicalSender = %q, want abc1234567@airoapp.ai", got)
 	}
-	if !id.IsAllowedSender("noreply@airoapp.ai") {
-		t.Error("DefaultDomain claim should be allowed")
+	if !id.IsAllowedSender("abc1234567@airoapp.ai") {
+		t.Error("canonical claim on DefaultDomain should be allowed")
+	}
+	if id.IsAllowedSender("noreply@airoapp.ai") {
+		t.Error("non-canonical local-part on DefaultDomain should be rejected")
 	}
 }
 
@@ -208,6 +214,84 @@ func TestIdentityFromAllocConfig_DefaultDomainEmpty(t *testing.T) {
 	}
 	if got := id.CanonicalSender(); got != "abc1234567@airoapp.ai" {
 		t.Errorf("CanonicalSender = %q, want abc1234567@airoapp.ai (hard fallback)", got)
+	}
+}
+
+// TestIdentityFromAllocConfig_MultiplePrimaryWarns pins the
+// observability hook for an mhp-core contract violation: more than
+// one isPrimary row in DOMAINS. The Identity itself still works
+// (last-wins on PrimaryDomain, all rows still in AttachedDomains)
+// so mail keeps flowing — but a WARN log fires so an operator can
+// see the anomaly in Loki and chase down the source.
+//
+// Not t.Parallel: we replace slog.Default for log capture, which is
+// process-global state.
+func TestIdentityFromAllocConfig_MultiplePrimaryWarns(t *testing.T) {
+	var buf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn})))
+	defer slog.SetDefault(prev)
+
+	loader := loaderForFixture(t, "multiple_primary.json")
+	id, err := email.IdentityFromAllocConfig(loader, "abc1234567", "airoapp.ai")
+	if err != nil {
+		t.Fatalf("IdentityFromAllocConfig: %v", err)
+	}
+
+	// Last-wins on PrimaryDomain — fixture has first.com, second.com,
+	// and third.com (third is not isPrimary). Second is the last
+	// isPrimary=true row, so PrimaryDomain should be second.com.
+	if id.PrimaryDomain != "second.com" {
+		t.Errorf("PrimaryDomain = %q, want %q (last-wins on multi-isPrimary)",
+			id.PrimaryDomain, "second.com")
+	}
+	// All three active fqdn rows survive acceptDomain.
+	if len(id.AttachedDomains) != 3 {
+		t.Errorf("AttachedDomains length = %d, want 3 — got %v", len(id.AttachedDomains), id.AttachedDomains)
+	}
+	// All three are still legitimate sender claims; the multi-primary
+	// anomaly doesn't disable any of them.
+	for _, d := range []string{"first.com", "second.com", "third.com"} {
+		if !id.IsAllowedSender("hello@" + d) {
+			t.Errorf("%s should still be allowed despite multi-primary anomaly", d)
+		}
+	}
+
+	logOutput := buf.String()
+	if !strings.Contains(logOutput, "smtp.identity.multiple_primary") {
+		t.Errorf("expected smtp.identity.multiple_primary WARN, got log:\n%s", logOutput)
+	}
+	// Both isPrimary candidates should appear in the log so the
+	// operator knows which rows to investigate.
+	for _, d := range []string{"first.com", "second.com"} {
+		if !strings.Contains(logOutput, d) {
+			t.Errorf("expected primary candidate %q in log, got:\n%s", d, logOutput)
+		}
+	}
+	// third.com is not isPrimary, so it should NOT be in the
+	// candidates list (though it may appear elsewhere in the log).
+	// Spot-check the "candidates" field specifically.
+	if !strings.Contains(logOutput, `"candidates":["first.com","second.com"]`) {
+		t.Errorf("expected candidates=[first.com, second.com] in log, got:\n%s", logOutput)
+	}
+}
+
+// TestIdentityFromAllocConfig_SinglePrimaryNoWarn pins the
+// negative case: a config with exactly one isPrimary row must not
+// emit the multi-primary WARN, otherwise the signal is useless.
+func TestIdentityFromAllocConfig_SinglePrimaryNoWarn(t *testing.T) {
+	var buf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn})))
+	defer slog.SetDefault(prev)
+
+	loader := loaderForFixture(t, "full_config.json")
+	if _, err := email.IdentityFromAllocConfig(loader, "abc1234567", "airoapp.ai"); err != nil {
+		t.Fatalf("IdentityFromAllocConfig: %v", err)
+	}
+
+	if strings.Contains(buf.String(), "smtp.identity.multiple_primary") {
+		t.Errorf("multi-primary WARN fired on single-primary config:\n%s", buf.String())
 	}
 }
 

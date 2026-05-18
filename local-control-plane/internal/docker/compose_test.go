@@ -97,6 +97,14 @@ func TestGeneratePreviewEnvironment(t *testing.T) {
 		"VITE_PARENT_ORIGIN":             "https://test.example.com",
 		"DEV_SUPERVISOR_AGENTS_BASE_URL": "http://agents:4000",
 		"NOMAD_TASK_NAME":                "preview",
+		// SMTP proxy redirected to Mailpit (default) so local apps' mail
+		// shows up in the Mailpit UI instead of trying to reach the prod
+		// relay. ENABLE_SMTP_FOR_PREVIEW overrides dev-supervisor's
+		// default preview-skip so the proxy actually binds 127.0.0.1:25
+		// inside the preview container.
+		"SMTP_DESTINATION":                       "host.docker.internal:1025",
+		"AIRO_DEFAULT_SENDER_DOMAIN":             "test-airoapp.ai",
+		"DEV_SUPERVISOR_ENABLE_SMTP_FOR_PREVIEW": "true",
 	}
 
 	for key, expected := range checks {
@@ -108,6 +116,21 @@ func TestGeneratePreviewEnvironment(t *testing.T) {
 		if got != expected {
 			t.Errorf("env[%q] = %q, want %q", key, got, expected)
 		}
+	}
+}
+
+func TestGeneratePreviewEnvironment_SMTPOverride(t *testing.T) {
+	t.Setenv("SMTP_DESTINATION", "smtp.example.com:587")
+	t.Setenv("AIRO_DEFAULT_SENDER_DOMAIN", "custom.example")
+
+	app := &store.App{ID: "test123", PreviewPort: 5000, SupervisorPort: 8877}
+	env := generatePreviewEnvironment(app)
+
+	if got := env["SMTP_DESTINATION"]; got != "smtp.example.com:587" {
+		t.Errorf("SMTP_DESTINATION = %q, want override value", got)
+	}
+	if got := env["AIRO_DEFAULT_SENDER_DOMAIN"]; got != "custom.example" {
+		t.Errorf("AIRO_DEFAULT_SENDER_DOMAIN = %q, want override value", got)
 	}
 }
 
@@ -140,6 +163,15 @@ func TestGeneratePublishEnvironment(t *testing.T) {
 	}
 	if env["DEV_SUPERVISOR_PROXY_PORT"] != "5500" {
 		t.Errorf("expected proxy port 5500, got %q", env["DEV_SUPERVISOR_PROXY_PORT"])
+	}
+	if env["SMTP_DESTINATION"] != "host.docker.internal:1025" {
+		t.Errorf("publish SMTP_DESTINATION should default to Mailpit, got %q", env["SMTP_DESTINATION"])
+	}
+	if env["AIRO_DEFAULT_SENDER_DOMAIN"] != "test-airoapp.ai" {
+		t.Errorf("publish AIRO_DEFAULT_SENDER_DOMAIN should default to test-airoapp.ai, got %q", env["AIRO_DEFAULT_SENDER_DOMAIN"])
+	}
+	if env["SITE_ID"] != "test123" {
+		t.Errorf("publish SITE_ID = %q, want %q (drives canonical sender + audit headers)", env["SITE_ID"], "test123")
 	}
 }
 

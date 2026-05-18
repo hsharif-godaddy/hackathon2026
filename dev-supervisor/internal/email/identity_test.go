@@ -17,10 +17,27 @@ func TestIdentity_IsAllowedSender(t *testing.T) {
 		want bool
 	}{
 		{
-			name: "address on default domain — allowed",
+			name: "canonical claim on default domain — allowed",
+			id:   email.Identity{AppID: "abc1234567", DefaultDomain: "airoapp.ai"},
+			// The only legitimate local-part on the platform domain is
+			// the AppID — the canonical sender form.
+			addr: "abc1234567@airoapp.ai",
+			want: true,
+		},
+		{
+			name: "non-canonical local-part on default domain — rejected",
+			id:   email.Identity{AppID: "abc1234567", DefaultDomain: "airoapp.ai"},
+			// Customers can't claim platform-shaped addresses like
+			// "support@airoapp.ai" on our own domain; these names belong
+			// to the platform, not any individual app.
+			addr: "support@airoapp.ai",
+			want: false,
+		},
+		{
+			name: "noreply on default domain — rejected",
 			id:   email.Identity{AppID: "abc1234567", DefaultDomain: "airoapp.ai"},
 			addr: "noreply@airoapp.ai",
-			want: true,
+			want: false,
 		},
 		{
 			name: "address on attached custom domain — allowed",
@@ -124,10 +141,19 @@ func TestIdentity_IsAllowedSender(t *testing.T) {
 			want: false,
 		},
 		{
-			name: "case-insensitive domain match",
+			name: "case-insensitive domain match (canonical local-part)",
+			id:   email.Identity{AppID: "abc1234567", DefaultDomain: "airoapp.ai"},
+			// Domain compared case-insensitively; local-part also case-
+			// insensitive (RFC 5321 says local-parts are technically
+			// case-sensitive but mainstream receivers don't enforce it).
+			addr: "ABC1234567@AIROAPP.AI",
+			want: true,
+		},
+		{
+			name: "case-insensitive domain match with non-canonical local-part — rejected",
 			id:   email.Identity{AppID: "abc1234567", DefaultDomain: "airoapp.ai"},
 			addr: "Hello@AIROAPP.AI",
-			want: true,
+			want: false,
 		},
 		{
 			name: "name-addr form — domain extracted from addr-spec",
@@ -220,16 +246,24 @@ func TestIdentity_IsAllowedSender(t *testing.T) {
 			want: false,
 		},
 		{
-			name: "non-prod default domain accepted",
+			name: "non-prod default domain accepted (canonical local-part)",
 			id:   email.Identity{AppID: "xyz0987654", DefaultDomain: "test-airoapp.ai"},
-			addr: "noreply@test-airoapp.ai",
+			addr: "xyz0987654@test-airoapp.ai",
 			want: true,
 		},
 		{
 			name: "default domain with surrounding whitespace in identity",
 			id:   email.Identity{AppID: "abc1234567", DefaultDomain: "  airoapp.ai  "},
-			addr: "noreply@airoapp.ai",
+			addr: "abc1234567@airoapp.ai",
 			want: true,
+		},
+		{
+			name: "default domain with empty AppID — rejected (no local-part to anchor)",
+			id:   email.Identity{DefaultDomain: "airoapp.ai"},
+			// Empty AppID disables the DefaultDomain branch entirely;
+			// without a known canonical local-part, nothing can match.
+			addr: "anything@airoapp.ai",
+			want: false,
 		},
 		{
 			name: "attached domain with mixed case in identity",
@@ -401,14 +435,26 @@ func TestIdentity_EnforceSender(t *testing.T) {
 		wantWasRewritten bool
 	}{
 		{
-			name: "claimed on default domain — passes through",
+			name: "canonical claim on default domain — passes through",
 			id: email.Identity{
 				AppID:         "abc1234567",
 				DefaultDomain: "airoapp.ai",
 			},
-			claimed:          "noreply@airoapp.ai",
-			wantFinal:        "noreply@airoapp.ai",
+			claimed:          "abc1234567@airoapp.ai",
+			wantFinal:        "abc1234567@airoapp.ai",
 			wantWasRewritten: false,
+		},
+		{
+			name: "non-canonical local-part on default domain — rewritten to canonical",
+			id: email.Identity{
+				AppID:         "abc1234567",
+				DefaultDomain: "airoapp.ai",
+			},
+			// Customer can't claim platform-shaped addresses on our own
+			// domain — gets rewritten back to canonical.
+			claimed:          "noreply@airoapp.ai",
+			wantFinal:        "abc1234567@airoapp.ai",
+			wantWasRewritten: true,
 		},
 		{
 			name: "claimed on attached domain — passes through, display name preserved",
