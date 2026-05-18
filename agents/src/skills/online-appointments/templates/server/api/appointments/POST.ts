@@ -252,10 +252,14 @@ export default async function handler(req: Request, res: Response) {
           tierLabel: tier.label,
         });
 
-        // Create payment session
+        // Create payment session.
+        // NOTE: For GoDaddy Commerce the actual checkout currency is determined by the
+        // SKU itself (the store's product catalog) — `currency` here is advisory and
+        // exists for non-GoDaddy provider implementations (e.g. Stripe). We pass
+        // config.currency for parity but the GoDaddy provider does not forward it.
         const session = await paymentProvider.createPaymentSession({
           amount: body.amount,
-          currency: 'USD',
+          currency: config.currency,
           description: `${config.serviceName} appointment - ${body.date} at ${body.time}`,
           returnUrl: `${baseUrl}/appointments`,
           successUrl: `${baseUrl}/appointments/success?appointmentId=${id}`,
@@ -350,6 +354,7 @@ export default async function handler(req: Request, res: Response) {
       serviceName: config.serviceName,
       duration: config.duration,
       requiresPayment: body.requiresPayment || false,
+      currency: config.currency,
     };
 
     // Include payment info if applicable

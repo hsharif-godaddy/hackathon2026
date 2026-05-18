@@ -12,7 +12,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { AppointmentInputSchema } from '../appointments';
+import { AppointmentInputSchema, AppointmentsConfigSchema, formatMoney } from '../appointments';
 
 describe('AppointmentInputSchema', () => {
 	describe('refinement: requiresPayment validation', () => {
@@ -161,5 +161,79 @@ describe('AppointmentInputSchema', () => {
 				expect(result.error.issues[0].path).toContain('time');
 			}
 		});
+	});
+});
+
+describe('AppointmentsConfigSchema currency validation', () => {
+	const baseConfig = {
+		serviceName: 'Consultation',
+		duration: 60,
+		businessHoursStart: '09:00',
+		businessHoursEnd: '17:00',
+		workingDays: [1, 2, 3, 4, 5],
+	};
+
+	it('accepts USD', () => {
+		const result = AppointmentsConfigSchema.safeParse({ ...baseConfig, currency: 'USD' });
+		expect(result.success).toBe(true);
+	});
+
+	it('accepts JPY', () => {
+		const result = AppointmentsConfigSchema.safeParse({ ...baseConfig, currency: 'JPY' });
+		expect(result.success).toBe(true);
+	});
+
+	it('rejects "us1" (digit, not three letters)', () => {
+		const result = AppointmentsConfigSchema.safeParse({ ...baseConfig, currency: 'us1' });
+		expect(result.success).toBe(false);
+		if (!result.success) {
+			expect(result.error.issues[0].path).toContain('currency');
+		}
+	});
+
+	it('rejects "usd" (lowercase)', () => {
+		const result = AppointmentsConfigSchema.safeParse({ ...baseConfig, currency: 'usd' });
+		expect(result.success).toBe(false);
+	});
+
+	it('rejects "USDD" (four letters)', () => {
+		const result = AppointmentsConfigSchema.safeParse({ ...baseConfig, currency: 'USDD' });
+		expect(result.success).toBe(false);
+	});
+
+	it('defaults to USD when omitted', () => {
+		const result = AppointmentsConfigSchema.safeParse(baseConfig);
+		expect(result.success).toBe(true);
+		if (result.success) {
+			expect(result.data.currency).toBe('USD');
+		}
+	});
+});
+
+describe('formatMoney', () => {
+	it('formats USD with two fraction digits', () => {
+		// 8000 minor units = $80.00
+		expect(formatMoney(8000, 'USD', 'en-US')).toBe('$80.00');
+	});
+
+	it('formats JPY with zero fraction digits (yen has no minor unit)', () => {
+		// 1000 minor units = ¥1,000 (no division by 100)
+		const formatted = formatMoney(1000, 'JPY', 'en-US');
+		expect(formatted).toContain('1,000');
+		expect(formatted).not.toContain('10.00');
+	});
+
+	it('formats KWD with three fraction digits (fils)', () => {
+		// 1500 minor units = 1.500 KWD (division by 1000, not 100)
+		const formatted = formatMoney(1500, 'KWD', 'en-US');
+		expect(formatted).toContain('1.500');
+	});
+
+	it('formats EUR with two fraction digits', () => {
+		expect(formatMoney(8000, 'EUR', 'en-US')).toBe('€80.00');
+	});
+
+	it('formats zero amount', () => {
+		expect(formatMoney(0, 'USD', 'en-US')).toBe('$0.00');
 	});
 });

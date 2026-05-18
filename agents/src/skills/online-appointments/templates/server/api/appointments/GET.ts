@@ -98,6 +98,7 @@ export default async function handler(req: Request, res: Response) {
 					notes: apt.notes || undefined,
 					requiresPayment: apt.requiresPayment || false,
 					amount: apt.amount || undefined,
+					currency: config.currency,
 					orderId: apt.orderId || undefined,
 					createdAt: apt.createdAt,
 					serviceName: config.serviceName,

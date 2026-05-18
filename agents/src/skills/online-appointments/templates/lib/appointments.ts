@@ -27,6 +27,21 @@ export const AppointmentsConfigSchema = z.object({
   businessHoursStart: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/, 'Use HH:mm format'),
   businessHoursEnd: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/, 'Use HH:mm format'),
   workingDays: z.array(z.number().int().min(0).max(6)).min(1, 'At least one working day required'),
+  /**
+   * ISO 4217 currency code used for display formatting and SKU lookup hints.
+   *
+   * IMPORTANT: This must match the currency the SKUs in your GoDaddy Commerce store are
+   * priced in. GoDaddy Commerce derives the checkout currency from the SKU itself — this
+   * config field is for our display layer only.
+   *
+   * Validated as three uppercase letters (ISO 4217 alphabetic). Rejecting malformed values
+   * here is cheaper than discovering them later when `formatMoney` throws RangeError on the
+   * first booking.
+   */
+  currency: z
+    .string()
+    .regex(/^[A-Z]{3}$/, 'Use ISO 4217 currency code (3 uppercase letters, e.g. USD, EUR, JPY)')
+    .default('USD'),
   /** Pricing tiers with SKU mappings. Optional only for free appointments (no payment). */
   pricingTiers: z.array(PricingTierSchema).min(1).optional(),
 }).refine(
@@ -57,6 +72,7 @@ const defaultConfig: AppointmentsConfig = {
   businessHoursStart: '09:00',
   businessHoursEnd: '17:00',
   workingDays: [1, 2, 3, 4, 5],
+  currency: 'USD',
 };
 
 /**
@@ -153,6 +169,8 @@ export interface Appointment {
   createdAt: Date;
   requiresPayment: boolean;
   amount?: number;
+  /** ISO 4217 currency code (display only — actual checkout currency is determined by the SKU). */
+  currency: string;
   orderId?: string;
 }
 
@@ -329,6 +347,28 @@ export function formatAppointmentTime(date: Date): string {
  */
 export function formatAppointmentDate(date: Date): string {
   return format(date, 'EEEE, MMMM d, yyyy');
+}
+
+/**
+ * Format a money amount for display.
+ *
+ * `amountMinor` is in the smallest currency unit (cents for USD, yen for JPY, fils for KWD).
+ * The CLDR data behind Intl.NumberFormat knows the right number of fraction digits per
+ * currency, so we divide by 10^fractionDigits to get the major-unit value before formatting.
+ *
+ * Server callers should pass an explicit `locale`. Browser callers can omit it to use the
+ * user's locale.
+ *
+ * @example
+ * formatMoney(8000, 'USD', 'en-US')   // "$80.00"
+ * formatMoney(8000, 'EUR', 'de-DE')   // "80,00 €"
+ * formatMoney(1000, 'JPY', 'ja-JP')   // "￥1,000"
+ * formatMoney(1500, 'KWD', 'ar-KW')   // "1.500 د.ك."
+ */
+export function formatMoney(amountMinor: number, currency: string, locale?: string): string {
+  const fmt = new Intl.NumberFormat(locale, { style: 'currency', currency });
+  const fractionDigits = fmt.resolvedOptions().maximumFractionDigits ?? 2;
+  return fmt.format(amountMinor / Math.pow(10, fractionDigits));
 }
 
 /**

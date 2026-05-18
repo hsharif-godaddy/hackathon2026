@@ -27,6 +27,13 @@ export interface CreateAppointmentResponse {
   status: 'confirmed';
   serviceName: string;
   duration: number;
+  /** ISO 4217 currency code from config (display formatting). */
+  currency?: string;
+  requiresPayment?: boolean;
+  /** GoDaddy Commerce checkout URL — present when payment is required. */
+  checkoutUrl?: string;
+  /** Draft order id from the payment provider — present when payment is required. */
+  orderId?: string;
 }
 
 export interface ApiError {

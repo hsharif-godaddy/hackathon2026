@@ -26,9 +26,16 @@ export interface OrderStatus {
 	orderId: string;
 	/** Current status */
 	status: "pending" | "paid" | "failed" | "refunded" | "cancelled";
-	/** Amount in smallest currency unit (cents for USD) */
+	/** Amount in the smallest unit of `currency` (cents for USD, yen for JPY, fils for KWD). */
 	amount: number;
-	/** Currency code (USD, EUR, etc.) */
+	/**
+	 * ISO 4217 currency code reported by the provider for this order.
+	 *
+	 * For GoDaddy Commerce this is the SKU's native currency — it is the source of truth
+	 * for what the customer actually paid in. Use this on the read path (success page,
+	 * admin dashboard) when you need the authoritative currency rather than the
+	 * `config.currency` display hint.
+	 */
 	currency: string;
 	/** When the order/payment was created */
 	createdAt?: string;
@@ -42,9 +49,18 @@ export interface OrderStatus {
  * Parameters for creating a payment session
  */
 export interface CreatePaymentSessionParams {
-	/** Amount in smallest currency unit (cents for USD) */
+	/** Amount in the smallest unit of `currency` (cents for USD, yen for JPY, fils for KWD). */
 	amount: number;
-	/** Currency code (USD, EUR, etc.) */
+	/**
+	 * ISO 4217 currency code (e.g. 'USD', 'EUR', 'JPY').
+	 *
+	 * IMPORTANT: For the GoDaddy Commerce provider this field is **advisory only** —
+	 * the actual checkout currency is determined by the SKU in the merchant's store
+	 * catalog and our handler does not forward this value to the upstream API. We keep
+	 * the field on the interface for parity with other payment providers (Stripe et al.)
+	 * which do accept currency on session creation, and so callers can validate that the
+	 * configured currency matches what they expect their SKUs to be priced in.
+	 */
 	currency: string;
 	/** Human-readable description of what's being purchased */
 	description: string;
