@@ -133,6 +133,7 @@ vi.mock('@/contexts/WebSocketContext', () => ({
 }));
 
 const mockSwitchboardResults: Record<string, boolean> = {};
+const EDITING_CHIP_FLAG = 'appbuilder-preview-enhanced-overlays';
 
 vi.mock('@/hooks/useSwitchboard', () => ({
   useSwitchboard: (feature: string) => mockSwitchboardResults[feature] ?? false,
@@ -197,6 +198,10 @@ describe('PreviewPane', () => {
     for (const key of Object.keys(mockSwitchboardResults)) {
       delete mockSwitchboardResults[key];
     }
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('should render without crashing', () => {
@@ -293,6 +298,98 @@ describe('PreviewPane', () => {
     expect(iframe).toHaveAttribute('aria-hidden', 'true');
     expect(iframe).toHaveAttribute('tabindex', '-1');
     expect(iframe).toHaveAttribute('inert');
+  });
+
+  it('should render editing chip when all visibility conditions are met', async () => {
+    mockSwitchboardResults[EDITING_CHIP_FLAG] = true;
+
+    renderWithProviders(
+      <PreviewPane
+        onPreviewRefresh={vi.fn()}
+        isProcessing={true}
+        isMutatingFiles={true}
+        showBuildingOverlay={false}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('preview-editing-chip')).toBeInTheDocument();
+    });
+  });
+
+  it.each([
+    {
+      name: 'flag is false',
+      setup: () => { mockSwitchboardResults[EDITING_CHIP_FLAG] = false; },
+      props: { isProcessing: true, isMutatingFiles: true, showBuildingOverlay: false },
+    },
+    {
+      name: 'processing is false',
+      setup: () => { mockSwitchboardResults[EDITING_CHIP_FLAG] = true; },
+      props: { isProcessing: false, isMutatingFiles: true, showBuildingOverlay: false },
+    },
+    {
+      name: 'mutating files is false',
+      setup: () => { mockSwitchboardResults[EDITING_CHIP_FLAG] = true; },
+      props: { isProcessing: true, isMutatingFiles: false, showBuildingOverlay: false },
+    },
+    {
+      name: 'building overlay is true',
+      setup: () => { mockSwitchboardResults[EDITING_CHIP_FLAG] = true; },
+      props: { isProcessing: true, isMutatingFiles: true, showBuildingOverlay: true },
+    },
+    {
+      name: 'preview surface is not visible',
+      setup: () => {
+        mockSwitchboardResults[EDITING_CHIP_FLAG] = true;
+        mockDevelopPageStore.viewMode = ViewMode.CODE;
+      },
+      props: { isProcessing: true, isMutatingFiles: true, showBuildingOverlay: false },
+    },
+  ])('should not render editing chip when $name', async ({ setup, props }) => {
+    setup();
+    renderWithProviders(
+      <PreviewPane
+        onPreviewRefresh={vi.fn()}
+        isProcessing={props.isProcessing}
+        isMutatingFiles={props.isMutatingFiles}
+        showBuildingOverlay={props.showBuildingOverlay}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('preview-editing-chip')).not.toBeInTheDocument();
+    });
+  });
+
+  it('should dismiss editing chip on file-saved preview refresh message', async () => {
+    mockSwitchboardResults[EDITING_CHIP_FLAG] = true;
+
+    renderWithProviders(
+      <PreviewPane
+        onPreviewRefresh={vi.fn()}
+        isProcessing={true}
+        isMutatingFiles={true}
+        showBuildingOverlay={false}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('preview-editing-chip')).toBeInTheDocument();
+    });
+
+    window.dispatchEvent(new MessageEvent('message', {
+      data: { type: 'file-saved' },
+      origin: window.location.origin,
+      source: window,
+    }));
+
+    await waitFor(
+      () => {
+        expect(screen.getByTestId('preview-editing-chip')).toHaveStyle({ opacity: '0' });
+      },
+      { timeout: 2000 }
+    );
   });
 
   it('should set mobile preview mode when isMobile is true', () => {

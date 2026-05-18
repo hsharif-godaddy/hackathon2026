@@ -1,9 +1,10 @@
 'use client'
 
 import clsx from 'clsx'
-import { animate, motion, useMotionValue } from 'framer-motion'
+import { animate, AnimatePresence, motion, useMotionValue } from 'framer-motion'
 import dynamic from 'next/dynamic'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useIntl } from 'react-intl'
 import { Loader } from '@airo-ux/loader'
 import Button from '@ux/button'
@@ -18,6 +19,7 @@ import PreviewLoadingState from '@/app/[market]/develop/components/preview/Previ
 import PreviewSkeleton from '@/app/[market]/develop/components/preview/PreviewSkeleton'
 import ThinkingIndicator from '@/app/[market]/develop/components/ThinkingIndicator'
 import Tips from '@/app/[market]/develop/components/tips/Tips'
+import SpinnerIcon from '@/app/[market]/develop/components/tool-renderers/SpinnerIcon'
 import { MobileMode, PreviewViewMode, ViewMode } from '@/app/[market]/develop/components/types'
 import { useAppIdFromParams } from '@/app/[market]/develop/components/utils'
 import ErrorBoundary from '@/components/ErrorBoundary'
@@ -39,6 +41,7 @@ const DomainPanel = dynamic(
 const REFRESH_DEBOUNCE_MS = 500 // Debounce rapid refresh requests
 const PROCESSING_OVERLAY_FALLBACK_MS = 3000
 const STATE_RESTORE_FALLBACK_MS = 3000 // Fallback timeout if iframe doesn't send ready signal
+const SCROLL_LISTENER_OPTIONS = { capture: true, passive: true } as const;
 /** Eval snapshot: IFRAME_READY means the iframe has registered its message listener; HMR-only builds use fallback */
 const EVAL_SNAPSHOT_IFRAME_FALLBACK_MS = 8000
 // Bootstrap-race recovery (Layer 3): if the iframe doesn't post
@@ -131,7 +134,7 @@ export default function PreviewPane({
   const intl = useIntl();
   const isDomainBarEnabled = useSwitchboard('appbuilder-domain-bar');
   const isTopLevelDomainEnabled = useSwitchboard('appbuilder-domain-top-level');
-  /** Switchboard: translucent creation overlay + edit-time processing overlay (fade). Off = main branch UX. */
+  /** Switchboard: translucent creation overlay + edit chip behavior. */
   const isPreviewEnhancedOverlaysEnabled =
     useSwitchboard('appbuilder-preview-enhanced-overlays') === true;
   /** Switchboard: when true, swap building-overlay text while askQuestion is awaiting input. */
@@ -199,6 +202,7 @@ export default function PreviewPane({
   // and gives the user another 3 auto-attempts.
   const [bootstrapRetryCount, setBootstrapRetryCount] = useState(0)
   const iframeRef = useRef<HTMLIFrameElement>(null)
+  const previewShellRef = useRef<HTMLDivElement>(null)
 
   // State preservation for iframe navigation and scroll position
   const [pendingStateRestore, setPendingStateRestore] = useState<{
@@ -222,6 +226,11 @@ export default function PreviewPane({
   const evalFullHeightFallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const [showProcessingOverlay, setShowProcessingOverlay] = useState(false)
+  const [editingChipPosition, setEditingChipPosition] = useState<{
+    left: number
+    top: number
+  } | null>(null)
+  const [isPortalReady, setIsPortalReady] = useState(false)
   const prevIsProcessingRef = useRef(isProcessing)
   const prevIsMutatingFilesRef = useRef(isMutatingFiles)
   const processingOverlayHydratedRef = useRef(false)
@@ -238,6 +247,69 @@ export default function PreviewPane({
   useEffect(() => {
     dismissProcessingOverlayRef.current = dismissProcessingOverlay
   }, [dismissProcessingOverlay])
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return
+    setIsPortalReady(true)
+  }, [])
+
+  const updateEditingChipPosition = useCallback(function updateEditingChipPosition() {
+    if (!previewShellRef.current) {
+      setEditingChipPosition(null)
+      return
+    }
+
+    const { left, top, width } = previewShellRef.current.getBoundingClientRect()
+    setEditingChipPosition({
+      top: top + 16,
+      left: left + (width / 2),
+    })
+  }, [])
+
+  useEffect(() => {
+    const shouldTrackEditingChipPosition = Boolean(
+      isPortalReady &&
+      isPreviewEnhancedOverlaysEnabled &&
+      showProcessingOverlay &&
+      !showBuildingOverlay
+    )
+
+    if (!shouldTrackEditingChipPosition) {
+      setEditingChipPosition(null)
+      return
+    }
+
+    updateEditingChipPosition()
+
+    if (!previewShellRef.current) return
+    const resizeObserver = new ResizeObserver(function handleResize() {
+      updateEditingChipPosition()
+    })
+    resizeObserver.observe(previewShellRef.current)
+
+    function handleWindowResize() {
+      updateEditingChipPosition()
+    }
+
+    function handleWindowScroll() {
+      updateEditingChipPosition()
+    }
+
+    window.addEventListener('resize', handleWindowResize)
+    window.addEventListener('scroll', handleWindowScroll, SCROLL_LISTENER_OPTIONS)
+
+    return () => {
+      resizeObserver.disconnect()
+      window.removeEventListener('resize', handleWindowResize)
+      window.removeEventListener('scroll', handleWindowScroll, SCROLL_LISTENER_OPTIONS)
+    }
+  }, [
+    isPortalReady,
+    isPreviewEnhancedOverlaysEnabled,
+    showBuildingOverlay,
+    showProcessingOverlay,
+    updateEditingChipPosition,
+  ])
 
   // Track previous viewMode to determine animation direction
   const previousViewModeRef = useRef<ViewMode>(viewMode)
@@ -1055,6 +1127,14 @@ export default function PreviewPane({
 
   // Success state - show the preview
   if (previewUrl && serverState?.isReady) {
+    const isPreviewSurfaceVisible = viewMode !== ViewMode.CODE && viewMode !== ViewMode.BRAND
+    const showEditingChip = Boolean(
+      isPreviewEnhancedOverlaysEnabled &&
+      isPreviewSurfaceVisible &&
+      !showBuildingOverlay &&
+      showProcessingOverlay &&
+      editingChipPosition
+    )
     return (
       <div className="h-full flex flex-col pr-e md:pe-2.5 ps-1">
         <div className="inset-0 relative h-full">
@@ -1088,6 +1168,7 @@ export default function PreviewPane({
 
                   <div className="flex-1 flex items-center justify-center pb-1 md:pb-0 px-1 md:px-0">
                     <div
+                      ref={previewShellRef}
                       className={clsx(
                         'relative border rounded-lg md:rounded-b-none bg-intents-ux-boxLowContrast-backgroundColor overflow-hidden', {
                           'w-full h-full': isFullSize || isMobile,
@@ -1185,20 +1266,42 @@ export default function PreviewPane({
                   )}
                 </div>
               )}
-              <div
-                className={clsx(
-                  'absolute inset-0 flex items-center justify-center rounded-lg transition-opacity duration-300',
-                  isPreviewEnhancedOverlaysEnabled &&
-                    'bg-intents-ux-boxLowContrastOverlay-backgroundColor backdrop-blur-sm',
-                  showProcessingOverlay &&
-                    !showBuildingOverlay &&
-                    isPreviewEnhancedOverlaysEnabled
-                    ? 'opacity-100'
-                    : 'opacity-0 pointer-events-none'
-                )}
-              >
-                <Loader title={t('builder_preview_editing_app', undefined, 'Editing your app…')} />
-              </div>
+              {isPortalReady && createPortal(
+                <AnimatePresence>
+                  {showEditingChip && editingChipPosition && (
+                    <motion.div
+                      key="preview-editing-chip"
+                      data-testid="preview-editing-chip"
+                      className="fixed z-50"
+                      style={{
+                        left: editingChipPosition.left,
+                        top: editingChipPosition.top,
+                      }}
+                      initial={{ opacity: 0, x: '-50%', y: -4 }}
+                      animate={{ opacity: 1, x: '-50%', y: 0 }}
+                      exit={{ opacity: 0, x: '-50%', y: -4, transition: { duration: 0.25 } }}
+                      transition={{ duration: 0.175 }}
+                    >
+                      {/* TODO: Inline style needed to override opacity compositing in portal context.
+                          Replace with design-system tokens once status-pill intent is available. */}
+                      {/* @ux/chip internal structure does not provide a unified pill background for this status indicator */}
+                      <div
+                        className="flex items-center gap-1.5 whitespace-nowrap rounded-full border border-gray-200 bg-white px-3 py-1.5 shadow-lg"
+                        style={{
+                          backgroundColor: '#ffffff',
+                          opacity: 1,
+                        }}
+                      >
+                        <SpinnerIcon className="size-3 text-[#613EA3]" />
+                        <span className="text-sm font-medium text-gray-700">
+                          {t('builder_preview_editing', undefined, 'Editing…')}
+                        </span>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>,
+                document.body
+              )}
             </div>
           </div>
         </div>
