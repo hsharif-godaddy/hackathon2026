@@ -97,6 +97,29 @@ describe('createS2SFetchWrapper header injection', () => {
     const id2 = headersFromCall(1).get('x-correlation-id')
     expect(id1).toBe(id2)
   })
+
+  // GoCode (authz-gdjwt-all) requires `Authorization: sso-jwt <jwt>`; Bearer is
+  // rejected by the API gateway.
+  it('sends Authorization with sso-jwt scheme (not Bearer) on initial request', async () => {
+    await wrapper('https://api.example.com/v1/chat', { method: 'POST', body: '{}' })
+    const auth = headersFromCall(0).get('Authorization')
+    expect(auth).toBe('sso-jwt test-token')
+    expect(auth).not.toMatch(/^Bearer /)
+  })
+
+  it.each([
+    { status: 401, label: '401 unauthorized' },
+    { status: 403, label: '403 forbidden' },
+  ])('sends Authorization with sso-jwt scheme on $label refresh retry', async ({ status }) => {
+    fetchSpy
+      .mockResolvedValueOnce(new Response('auth failure', { status }))
+      .mockResolvedValueOnce(new Response('{}', { status: 200 }))
+
+    await wrapper('https://api.example.com/v1/chat', { method: 'POST', body: '{}' })
+
+    expect(fetchSpy).toHaveBeenCalledTimes(2)
+    expect(headersFromCall(1).get('Authorization')).toBe('sso-jwt refreshed-token')
+  })
 })
 
 describe('model provider defaults middleware', () => {

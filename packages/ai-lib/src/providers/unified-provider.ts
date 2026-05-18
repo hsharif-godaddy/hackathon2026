@@ -365,9 +365,11 @@ async function handleBudgetExceededWithGrantFallback(
 
 /**
  * Create a fetch wrapper that injects current S2S token on every request
- * and handles token refresh on authentication errors
- * Also injects litellm_metadata for cost tracking when available
- * Optionally blocks specific anthropic-beta headers for proxy compatibility
+ * and handles token refresh on authentication errors. GoCode requires
+ * `Authorization: sso-jwt <jwt>` (authz-gdjwt-all standard); `Bearer` is
+ * rejected by the API gateway.
+ * Also injects litellm_metadata for cost tracking when available.
+ * Optionally blocks specific anthropic-beta headers for proxy compatibility.
  */
 function createS2SFetchWrapper(s2sAuthConfig?: S2SAuthConfig, options?: { blockedBetaHeaders?: string[] }): typeof fetch {
   return async (url: RequestInfo | URL, init?: RequestInit) => {
@@ -376,7 +378,7 @@ function createS2SFetchWrapper(s2sAuthConfig?: S2SAuthConfig, options?: { blocke
 
     // Always inject the current valid token before making the request
     const currentToken = await getS2SToken(s2sAuthConfig)
-    headers.set('Authorization', `Bearer ${currentToken}`)
+    headers.set('Authorization', `sso-jwt ${currentToken}`)
 
     filterAnthropicBetaHeaders(headers, options?.blockedBetaHeaders)
 
@@ -458,7 +460,7 @@ function createS2SFetchWrapper(s2sAuthConfig?: S2SAuthConfig, options?: { blocke
       // Refresh token and retry. modifiedInit shares the headers object so the
       // original x-correlation-id is preserved -- do not clone headers here.
       const newToken = await refreshS2SToken(s2sAuthConfig)
-      headers.set('Authorization', `Bearer ${newToken}`)
+      headers.set('Authorization', `sso-jwt ${newToken}`)
       return await llmFetch(url, modifiedInit)
     }
 

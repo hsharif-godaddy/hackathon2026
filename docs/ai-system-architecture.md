@@ -210,7 +210,7 @@ All LLM calls route through `packages/ai-lib/src/providers/unified-provider.ts` 
 flowchart TD
     GetModel["getModel(shortName)"] --> Normalize["normalizeModelName()<br/>Resolve alias to canonical ID"]
     Normalize --> Route["Route Claude model<br/>to GoCode proxy"]
-    Route --> S2S["createS2SFetchWrapper()<br/>Inject Authorization: Bearer token"]
+    Route --> S2S["createS2SFetchWrapper()<br/>Inject Authorization: sso-jwt token"]
     S2S --> GoCode["GoCode S2S endpoint<br/>Anthropic-compatible API"]
     GoCode --> Bedrock["AWS Bedrock<br/>(Claude)"]
 ```
@@ -229,7 +229,7 @@ GoCode exposes an Anthropic-compatible API. The agent service connects using S2S
 
 ### S2S Authentication
 
-A custom fetch wrapper (`createS2SFetchWrapper()`) injects `Authorization: Bearer {token}` on every LLM request. The JWT is obtained from `gd-auth-client`'s `IamTokenClient` and cached with a 60-second refresh buffer before expiry. On 401/403, the token is refreshed and the request retried once.
+A custom fetch wrapper (`createS2SFetchWrapper()`) injects `Authorization: sso-jwt {token}` on every LLM request. GoCode requires this scheme (authz-gdjwt-all standard); `Bearer` is rejected by the API gateway. The JWT is obtained from `gd-auth-client`'s `IamTokenClient` and cached with a 60-second refresh buffer before expiry. On 401/403, the token is refreshed and the request retried once.
 
 Key files: `packages/ai-lib/src/utils/s2s-auth.ts` (`getS2SToken()`, `refreshS2SToken()`, `isS2SAuthEnabled()`).
 

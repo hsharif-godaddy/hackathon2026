@@ -162,9 +162,10 @@ async function demonstrateS2SAnthropicAuth() {
     })
     
     if (s2sProviderConfig) {
+      const sampleToken = await getS2SToken()
       console.log(`✅ Successfully configured S2S authentication`)
       console.log(`   GoCode Endpoint: ${s2sProviderConfig.baseURL}`)
-      console.log(`   Authorization: Bearer ${s2sProviderConfig.headers.Authorization.substring(7, 57)}...`)
+      console.log(`   Authorization: sso-jwt ${sampleToken.substring(0, 50)}...`)
       
       // Show token cache info
       const cacheInfo = getTokenCacheInfo()
@@ -205,7 +206,7 @@ async function demonstrateS2SAnthropicAuth() {
         
         // Get a model that will use S2S authentication
         // The getModel function will automatically use S2S auth when enabled
-        // It will use GoCode endpoint with Bearer token authentication
+        // It will use GoCode endpoint with `Authorization: sso-jwt <jwt>` (authz-gdjwt-all)
         const model = await getModel(modelInfo.name, {
           // S2S config uses environment-based defaults
           // Override only if needed for specific environments

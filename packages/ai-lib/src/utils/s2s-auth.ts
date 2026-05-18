@@ -62,7 +62,9 @@ function getDefaultSsoHost(): string {
 
 /**
  * Get default GoCode endpoint based on NODE_ENV
- * These endpoints are specifically for S2S authentication with Bearer tokens
+ * These endpoints are specifically for S2S authentication using the
+ * `Authorization: sso-jwt <jwt>` scheme (authz-gdjwt-all standard for the
+ * new GoCode API gateway).
  */
 function getDefaultGoCodeEndpoint(): string {
   const env = process.env.NODE_ENV || 'dev';
@@ -128,7 +130,7 @@ export function isS2SAuthEnabled(): boolean {
 export { getDefaultSsoHost };
 
 /**
- * Get the default GoCode endpoint for the current environment (S2S Bearer token auth)
+ * Get the default GoCode endpoint for the current environment (S2S sso-jwt auth)
  * Based on NODE_ENV: dev -> api.gocode.caas.dev-gdcorp.tools, test -> api.gocode.caas.test-gdcorp.tools, prod -> api.gocode.caas.gdcorp.tools
  */
 export { getDefaultGoCodeEndpoint };
@@ -313,6 +315,6 @@ export async function getS2SProviderConfig(s2sConfig?: S2SAuthConfig): Promise<{
   const finalConfig = { ...getDefaultS2SConfig(), ...s2sConfig };
   return {
     baseURL: finalConfig.goCodeEndpoint,
-    apiKey: 'gocode-s2s-placeholder' // Placeholder API key since auth is via Bearer token
+    apiKey: 'gocode-s2s-placeholder' // Placeholder; real auth is injected by createS2SFetchWrapper
   };
 }
