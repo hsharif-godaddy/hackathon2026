@@ -1,0 +1,249 @@
+# GitHub Actions Workflow: Run Brand Logo Eval Scenarios
+# Runs browser-based brand/logo testing scenarios using Synthia
+
+name: Run Brand Logo Eval Scenarios
+
+on:
+  workflow_dispatch:
+    inputs:
+      agent-name:
+        description: 'Agent to test'
+        required: true
+        default: 'TEST_EB_AiroAppBuilder_regression'
+        type: choice
+        options:
+          - TEST_EB_AiroAppBuilder_regression
+      config-file:
+        description: 'Suite configuration file'
+        required: true
+        default: 'goarena/brand_logo_eval_suite.yaml'
+        type: choice
+        options:
+          - goarena/brand_logo_eval_suite.yaml
+      synthia-env:
+        description: 'Synthia environment'
+        required: false
+        default: 'test'
+        type: choice
+        options:
+          - test
+      wait-for-completion:
+        description: 'Wait for results'
+        required: false
+        default: true
+        type: boolean
+      timeout-minutes:
+        description: 'Synthia step timeout (minutes)'
+        required: false
+        default: 45
+        type: number
+      fail-on-threshold:
+        description: 'Fail if score is below threshold'
+        required: false
+        default: true
+        type: boolean
+      score-threshold:
+        description: 'Minimum overall score to pass (0-100)'
+        required: false
+        default: '70'
+        type: string
+
+  workflow_call:
+    inputs:
+      agent-name:
+        description: 'Agent to test'
+        required: false
+        type: string
+        default: 'TEST_EB_AiroAppBuilder_regression'
+      config-file:
+        description: 'Suite configuration file'
+        required: false
+        type: string
+        default: 'goarena/brand_logo_eval_suite.yaml'
+      synthia-env:
+        description: 'Synthia environment'
+        required: false
+        type: string
+        default: 'test'
+      wait-for-completion:
+        description: 'Wait for results'
+        required: false
+        type: boolean
+        default: true
+      timeout-minutes:
+        description: 'Synthia step timeout (minutes)'
+        required: false
+        type: string
+        default: '45'
+      fail-on-threshold:
+        description: 'Fail if score is below threshold'
+        required: false
+        type: boolean
+        default: true
+      score-threshold:
+        description: 'Minimum overall score to pass (0-100)'
+        required: false
+        type: string
+        default: '70'
+
+permissions:
+  contents: read
+  # Required: Synthia actions use OIDC to authenticate with the Synthia service.
+  # The load-* and run-scenarios actions exchange the GitHub OIDC token for
+  # Synthia API credentials.
+  id-token: write
+
+# Limit concurrent runs to prevent exhausting self-hosted runner capacity
+# Include github.workflow to separate manual runs from workflow_call invocations
+# (prevents manual runs from blocking prod promotion gates)
+concurrency:
+  group: brand-logo-evaluation-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # Top up TEST subscription credits before running scenarios so a low balance
+  # doesn't silently fail the run mid-way. The refill workflow is a no-op when
+  # all subscriptions are above the threshold, so this is safe to run every time.
+  refill-credits:
+    name: Refill TEST subscription credits
+    uses: ./.github/workflows/refill-test-credits.yml
+    permissions:
+      contents: read
+
+  run-brand-logo-scenarios:
+    needs: refill-credits
+    runs-on:
+      labels:
+        - airo-cicd-runners
+        - self-hosted
+    timeout-minutes: 50
+    steps:
+      - name: Validate inputs
+        env:
+          AGENT_NAME: ${{ inputs.agent-name }}
+          CONFIG_FILE: ${{ inputs.config-file }}
+          SYNTHIA_ENV: ${{ inputs.synthia-env }}
+          FAIL_ON_THRESHOLD: ${{ inputs.fail-on-threshold }}
+        run: |
+          ALLOWED_AGENTS="TEST_EB_AiroAppBuilder_regression"
+          ALLOWED_CONFIGS="goarena/brand_logo_eval_suite.yaml"
+          ALLOWED_ENVS="test"
+
+          error=0
+          if [[ ! " $ALLOWED_AGENTS " =~ " $AGENT_NAME " ]]; then
+            echo "::error::Invalid agent-name '$AGENT_NAME'. Allowed: $ALLOWED_AGENTS"
+            error=1
+          fi
+          if [[ ! " $ALLOWED_CONFIGS " =~ " $CONFIG_FILE " ]]; then
+            echo "::error::Invalid config-file '$CONFIG_FILE'. Allowed: $ALLOWED_CONFIGS"
+            error=1
+          fi
+          if [[ ! " $ALLOWED_ENVS " =~ " $SYNTHIA_ENV " ]]; then
+            echo "::error::Invalid synthia-env '$SYNTHIA_ENV'. Allowed: $ALLOWED_ENVS"
+            error=1
+          fi
+          # Validate fail-on-threshold is a real boolean (GitHub coerces invalid strings to false)
+          if [[ "$FAIL_ON_THRESHOLD" != "true" && "$FAIL_ON_THRESHOLD" != "false" ]]; then
+            echo "::error::Invalid fail-on-threshold '$FAIL_ON_THRESHOLD'. Must be 'true' or 'false'."
+            error=1
+          fi
+          if [ $error -eq 1 ]; then
+            exit 1
+          fi
+          echo "All inputs validated"
+
+      - name: Checkout code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Load Synthetic Users
+        id: load-users
+        uses: gdcorp-dna/synthia/actions/load-synthetic-users@f11b73e55b89458c729d78f8f10cb9cb4a92528c # release-1.1.1
+        with:
+          config-path: goarena/synthetic-users/brand-logo
+          synthia-env: ${{ inputs.synthia-env }}
+
+      - name: Load Evaluators
+        id: load-evaluators
+        uses: gdcorp-dna/synthia/actions/load-evaluators@f11b73e55b89458c729d78f8f10cb9cb4a92528c # release-1.1.1
+        with:
+          config-path: goarena/evaluators/brand-logo
+          synthia-env: ${{ inputs.synthia-env }}
+
+      - name: Load Scenarios
+        id: load-scenarios
+        uses: gdcorp-dna/synthia/actions/load-scenarios@f11b73e55b89458c729d78f8f10cb9cb4a92528c # release-1.1.1
+        with:
+          config-path: goarena/scenarios/brand-logo
+          agent-name: ${{ inputs.agent-name }}
+          synthia-env: ${{ inputs.synthia-env }}
+
+      - name: Run Brand Logo Scenarios
+        id: synthia
+        uses: gdcorp-dna/synthia/actions/run-scenarios@f11b73e55b89458c729d78f8f10cb9cb4a92528c # release-1.1.1
+        with:
+          config-path: ${{ inputs.config-file }}
+          agent-name: ${{ inputs.agent-name }}
+          synthia-env: ${{ inputs.synthia-env }}
+          wait-for-completion: ${{ inputs.wait-for-completion }}
+          timeout-minutes: ${{ inputs.timeout-minutes }}
+          fail-on-threshold: ${{ inputs.fail-on-threshold }}
+          score-threshold: ${{ inputs.score-threshold }}
+
+      - name: Show outputs and write summary
+        if: always()
+        env:
+          SYNTHIA_CONCLUSION: ${{ steps.synthia.conclusion }}
+          RUN_ID: ${{ steps.synthia.outputs.run-id }}
+          SIMULATION_IDS: ${{ steps.synthia.outputs.simulation-ids }}
+          STATUS: ${{ steps.synthia.outputs.status }}
+          TOTAL_SIMULATIONS: ${{ steps.synthia.outputs.total-simulations }}
+          COMPLETED_SIMULATIONS: ${{ steps.synthia.outputs.completed-simulations }}
+          FAILED_SIMULATIONS: ${{ steps.synthia.outputs.failed-simulations }}
+          SUMMARY_MARKDOWN: ${{ steps.synthia.outputs.summary-markdown }}
+          RESULTS_JSON: ${{ steps.synthia.outputs.results-json }}
+        run: |
+          echo "Run ID: $RUN_ID"
+          echo "Simulation IDs: $SIMULATION_IDS"
+          echo "Status: $STATUS"
+          echo "Total Simulations: $TOTAL_SIMULATIONS"
+          echo "Completed: $COMPLETED_SIMULATIONS"
+          echo "Failed: $FAILED_SIMULATIONS"
+
+          if [ "$SYNTHIA_CONCLUSION" != "success" ]; then
+            echo "## Brand Logo Eval Run Failed" >> "$GITHUB_STEP_SUMMARY"
+            echo "Synthia step did not complete successfully (conclusion: $SYNTHIA_CONCLUSION)" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          if [ -n "$SUMMARY_MARKDOWN" ]; then
+            printf '%s\n' "$SUMMARY_MARKDOWN" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "No summary available (Synthia may have failed or timed out)" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          echo "### Results JSON" >> "$GITHUB_STEP_SUMMARY"
+          echo '```json' >> "$GITHUB_STEP_SUMMARY"
+          if [ -z "$RESULTS_JSON" ]; then
+            echo "No results returned (empty output)" >> "$GITHUB_STEP_SUMMARY"
+          elif jq_err=$(echo "$RESULTS_JSON" | jq empty 2>&1); then
+            echo "$RESULTS_JSON" | jq . >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::error::Invalid JSON returned from Synthia: $jq_err"
+            echo "Error: Invalid JSON returned from Synthia" >> "$GITHUB_STEP_SUMMARY"
+            echo "$RESULTS_JSON" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+      # Independent assertion that Synthia completed successfully
+      # This catches edge cases where the action exits 0 but conclusion != success
+      - name: Assert Synthia succeeded
+        if: always()
+        env:
+          SYNTHIA_CONCLUSION: ${{ steps.synthia.conclusion }}
+        run: |
+          if [ "$SYNTHIA_CONCLUSION" != "success" ]; then
+            echo "::error::Synthia step did not complete successfully (conclusion: $SYNTHIA_CONCLUSION)"
+            exit 1
+          fi
