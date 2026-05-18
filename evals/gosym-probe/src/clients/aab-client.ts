@@ -40,6 +40,7 @@ export class AABClient implements AgentClient {
   private readonly socketUrl: string;
   private handlers: ((event: AgentEvent) => void)[] = [];
   private appId?: string;
+  private templateId?: string;
   private conversationId: string | undefined;
   private accumulatedChunks = '';
 
@@ -332,6 +333,7 @@ export class AABClient implements AgentClient {
 
   configure(ctx: SetupContext): void {
     this.appId = ctx.appId;
+    this.templateId = typeof ctx.templateId === 'string' ? ctx.templateId : undefined;
     this.conversationId = undefined;
   }
 
@@ -353,6 +355,7 @@ export class AABClient implements AgentClient {
           userId: 'current-user',
           sessionId: this.socket.id,
           userTimezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+          ...(this.templateId && { templateId: this.templateId }),
         },
         conversation: {
           conversationId: this.conversationId,

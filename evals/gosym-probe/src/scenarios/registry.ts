@@ -9,6 +9,7 @@ import { buildLandingPageScenario } from './build-landing-page.js';
 import {
   complexPromptLatencyScenario,
 } from './complex-prompt-latency.js';
+import { brandLogoScenario } from './brand-logo.js';
 import {
   symptomBlankPageScenario,
   symptomChangesNotShowingScenario,
@@ -36,6 +37,7 @@ export function createAllScenarios(
     symptomModuleNotFoundScenario(gocode, ctrlPlane),
     multiTurnPublishFlowScenario(gocode, ctrlPlane),
     complexPromptLatencyScenario(gocode, ctrlPlane),
+    brandLogoScenario(gocode, ctrlPlane),
     ...buildAiroBaselineScenarios(gocode, ctrlPlane),
   ];
 }

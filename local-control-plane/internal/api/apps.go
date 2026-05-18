@@ -697,12 +697,23 @@ func (s *Server) registerWithAgent(app *store.App) error {
 		agentsURL = "http://localhost:4000"
 	}
 
+	// EVAL_CUSTOMER_ID overrides the customer identity sent to the agents service
+	// during registration. This may differ from the customer ID stored in the
+	// control-plane's own SQLite (resolved via customerIDFromRequest). The divergence
+	// is intentional: the agents-side record is what external APIs (e.g. logo generation)
+	// use for entitlement checks, while the control-plane record is only used locally.
+	customerID := strings.TrimSpace(os.Getenv("EVAL_CUSTOMER_ID"))
+	if customerID == "" {
+		customerID = store.DefaultCustomerID
+	}
+
 	payload := map[string]any{
 		"siteId":     app.ID,
 		"name":       fmt.Sprintf("App %s", app.ID),
 		"appPath":    s.TemplateSetup.GetBasePath(app.ID) + "/preview",
 		"port":       app.PreviewPort,
 		"previewUrl": fmt.Sprintf("https://local.gasket.dev-godaddy.com:%d", app.PreviewPort),
+		"customerId": customerID,
 	}
 
 	if app.SupervisorPort > 0 {

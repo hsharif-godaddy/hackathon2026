@@ -219,3 +219,19 @@ is not found, run `npx playwright install chromium`.
 
 `GD_ENV` selects the config file (`local.dev` → `config/environments/local.dev.ts`).
 Override with `--env local.test` or set `GD_ENV` in `.env`.
+
+**Brand-logo scenario**
+
+The `brand-logo` scenario calls an external logo generation API (via S2S)
+that checks customer entitlements before generating. With mock auth, no
+real customer ID is stored on the app record, so the entitlement check
+fails. To fix this, set `EVAL_CUSTOMER_ID` in `local-control-plane/.env`:
+
+```dotenv
+EVAL_CUSTOMER_ID=<entitled-customer-id>
+```
+
+Also ensure `AUTH_TYPE=none` in `local-control-plane/.env` (not `mock` —
+the control plane only understands `none` or `jwt`).
+
+See `src/scenarios/brand-logo/README.md` for full details.
