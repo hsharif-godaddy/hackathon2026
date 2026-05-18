@@ -7,34 +7,42 @@ import { safePostMessage } from "../utils/postMessage";
 import { addStyleEditListener, StyleMessageEventType } from "../utils/elementStyleListeners";
 import { extractDevContext, generatePreciseSelector, getElementClassName } from "../utils/element-helpers";
 
-type Alignment = "left" | "center" | "right" | "justify";
+enum TextAlign {
+  Left = "left",
+  Center = "center",
+  Right = "right",
+  Justify = "justify",
+}
 
-const ALIGNMENT_CLASSES: Record<Alignment, string> = {
-  left: "text-left",
-  center: "text-center",
-  right: "text-right",
-  justify: "text-justify",
+const ALIGN_ICONS: Record<TextAlign, LucideIcon> = {
+  [TextAlign.Left]: AlignLeft,
+  [TextAlign.Center]: AlignCenter,
+  [TextAlign.Right]: AlignRight,
+  [TextAlign.Justify]: AlignJustify,
 };
-
-const ALIGN_ICONS: Record<Alignment, LucideIcon> = {
-  left: AlignLeft,
-  center: AlignCenter,
-  right: AlignRight,
-  justify: AlignJustify,
-};
-
-const ALIGNMENTS: readonly Alignment[] = ["left", "center", "right", "justify"];
 
 /** Returns the alignment class currently on the element, or null if none is set
  *  (the element is using its inherited / default alignment). Returning null on
  *  "no class" is intentional — defaulting to "left" would lie about state for
  *  RTL pages or for elements that inherit alignment from a parent. */
-function getCurrentAlignment(el: HTMLElement | null): Alignment | null {
-  if (!el) return null;
-  const entry = (Object.entries(ALIGNMENT_CLASSES) as [Alignment, string][]).find(
-    ([, cls]) => el.classList.contains(cls),
-  );
-  return entry?.[0] ?? null;
+function getTextAlign(selectedElement?: HTMLElement | null): TextAlign | null {
+  if (selectedElement?.classList.contains("text-center")) {
+    return TextAlign.Center;
+  }
+
+  if (selectedElement?.classList.contains("text-right")) {
+    return TextAlign.Right;
+  }
+
+  if (selectedElement?.classList.contains("text-justify")) {
+    return TextAlign.Justify;
+  }
+
+  if (selectedElement?.classList.contains("text-left")) {
+    return TextAlign.Left;
+  }
+  
+  return null;
 }
 
 interface TextAlignButtonProps {
@@ -56,89 +64,88 @@ export default function TextAlignButton({ selectedElement }: TextAlignButtonProp
   // active state reflect the new alignment without waiting on the parent.
   const [, forceRender] = useState(0);
 
-  const currentAlignment = getCurrentAlignment(selectedElement);
-  const CurrentIcon = currentAlignment ? ALIGN_ICONS[currentAlignment] : AlignLeft;
+  const currentTextAlign: TextAlign | null = getTextAlign(selectedElement);
+  const CurrentIcon = currentTextAlign ? ALIGN_ICONS[currentTextAlign] : AlignLeft;
 
-  const handleSetAlignment = useCallback((next: Alignment | null) => {
-    const el = selectedElement;
-    if (!el) return;
+  const handleTextAlignChange = useCallback(
+    (newTextAlign: TextAlign | null) => {
+      if (!selectedElement) return;
 
-    const originalClassName = el.className;
-
-    // Optimistic DOM update: remove any existing alignment class, then add the new one.
-    for (const cls of Object.values(ALIGNMENT_CLASSES)) el.classList.remove(cls);
-    if (next) el.classList.add(ALIGNMENT_CLASSES[next]);
-    forceRender(n => n + 1);
-    setShowMenu(false);
-
-    const commitId = addStyleEditListener((event) => {
-      if (event.data.type === StyleMessageEventType.EDIT_FAILED) {
-        el.className = originalClassName;
-        forceRender(n => n + 1);
+      const originalClassName = selectedElement.className;
+      // Optimistic DOM update: remove any existing alignment class, then add the new one.
+      Object.values(TextAlign).forEach((align => selectedElement.classList.remove(`text-${align}`)))
+      
+      if (newTextAlign) {
+        selectedElement.classList.add(`text-${newTextAlign}`);
       }
-    });
+  
+      forceRender((n: number) => n + 1);
+      setShowMenu(false);
 
-    const devContext = extractDevContext(el);
-    const preciseSelector = generatePreciseSelector(el);
-    const elRect = el.getBoundingClientRect();
+      const commitId = addStyleEditListener((event: MessageEvent) => {
+        if (event.data.type === StyleMessageEventType.EDIT_FAILED) {
+          selectedElement.className = originalClassName;
+          forceRender((n: number) => n + 1);
+        }
+      });
 
-    safePostMessage(window.parent, {
-      type: StyleMessageEventType.UPDATED,
-      data: {
-        commitId,
-        selector: preciseSelector,
-        property: "textAlign",
-        value: next ?? "",
-        newClassName: el.className,
-        elementInfo: {
-          tagName: el.tagName.toLowerCase(),
-          className: getElementClassName(el),
-          id: el.id,
-          dataId: devContext?.devId || "",
-          textContent: (el.textContent || "").substring(0, 500),
+      const devContext = extractDevContext(selectedElement);
+      const preciseSelector = generatePreciseSelector(selectedElement);
+
+      safePostMessage(window.parent, {
+        type: StyleMessageEventType.UPDATED,
+        data: {
+          commitId,
           selector: preciseSelector,
-          devContext,
-          rect: { top: elRect.top, left: elRect.left, width: elRect.width, height: elRect.height },
-          computedStyles: {},
+          property: "textAlign",
+          value: newTextAlign ?? "",
+          newClassName: selectedElement.className,
+          elementInfo: {
+            tagName: selectedElement.tagName.toLowerCase(),
+            className: getElementClassName(selectedElement),
+            id: selectedElement.id,
+            dataId: devContext?.devId || "",
+            textContent: selectedElement.textContent?.substring(0, 500) || "",
+            selector: preciseSelector,
+            devContext,
+            rect: selectedElement.getBoundingClientRect(),
+            computedStyles: {},
+          },
         },
-      },
-    });
-  }, [selectedElement]);
+      });
+    },
+    [selectedElement],
+  );
 
   return (
-    <div style={{ position: "relative" }}>
+    <div className="relative">
       <HoverBarButton
-        onClick={() => setShowMenu(open => !open)}
+        onClick={() => setShowMenu((open: boolean) => !open)}
         title={t("devtools_text_align_title", "Text alignment")}
         icon={<CurrentIcon width={15} height={15} />}
-        active={showMenu || !!currentAlignment}
+        active={showMenu || !!currentTextAlign}
       />
       {showMenu && (
         <div
           data-airo-dev-tools=""
+          className="flex gap-1 p-1 rounded-xl absolute bg-white"
           style={{
-            position: "absolute",
             top: "calc(100% + 4px)",
             left: 0,
             zIndex: 100002,
-            display: "flex",
-            gap: "2px",
-            padding: "4px",
-            background: "white",
             border: "1px solid rgba(0,0,0,0.1)",
-            borderRadius: "6px",
             boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
           }}
         >
-          {ALIGNMENTS.map(a => {
-            const Icon = ALIGN_ICONS[a];
+          {Object.values(TextAlign).map((align) => {
+            const Icon = ALIGN_ICONS[align];
             return (
               <HoverBarButton
-                key={a}
-                onClick={() => handleSetAlignment(currentAlignment === a ? null : a)}
-                title={t(`devtools_align_${a}_title`, `Align ${a}`)}
+                key={align}
+                onClick={() => handleTextAlignChange(currentTextAlign === align ? null : align)}
+                title={t(`devtools_align_${align}_title`, `Align ${align}`)}
                 icon={<Icon width={15} height={15} />}
-                active={currentAlignment === a}
+                active={currentTextAlign === align}
               />
             );
           })}

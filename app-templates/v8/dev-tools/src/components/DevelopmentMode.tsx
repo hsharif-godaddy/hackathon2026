@@ -8,7 +8,7 @@ import { setTranslations } from "../utils/translations";
 export default function DevelopmentMode() {
   const [isEditModeActive, setIsEditModeActive] = useState(false); // off by default, parent enables via EDIT_MODE_ENABLED message
   const [isMultiSelectActive, setIsMultiSelectActive] = useState(false); // off by default, parent enables via MULTI_SELECT_ENABLED message
-  const [translationsLoaded, setTranslationsLoaded] = useState(0); // counter that always changes to force re-render
+  const [, setTranslationsLoaded] = useState(0); // counter that always changes to force re-render
 
   const { hoveredElement, handleBarMouseEnter, handleBarMouseLeave } = useEditMode(isEditModeActive, isMultiSelectActive)
   const [quickEditActive, setQuickEditActive] = useState(false)

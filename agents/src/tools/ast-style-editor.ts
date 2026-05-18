@@ -343,8 +343,9 @@ export class ASTStyleEditor extends ASTEditorBase {
 
       case 'textAlign': {
         const alignmentPattern = /^text-(left|center|right|justify)$/;
-        const filtered = classes.filter(c => !alignmentPattern.test(c));
-        if (value === 'left' || value === 'center' || value === 'right' || value === 'justify') {
+        const filtered = classes.filter(className => !alignmentPattern.test(className));
+
+        if (value && alignmentPattern.test(`text-${value}`)) {
           filtered.push(`text-${value}`);
         }
         return filtered.join(' ');
