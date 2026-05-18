@@ -4,7 +4,7 @@
  * Consolidated test that creates ONE app and exercises all critical features
  * sequentially. Designed for fast validation (post-deploy, CI, manual).
  *
- * Coverage (11 sequential steps, see test.step blocks below):
+ * Coverage (12 sequential steps, see test.step blocks below):
  *  1. Homepage + SSO Login + App Creation
  *  2. Verify develop page components (header, preview, chat)
  *  3. Preview controls (refresh, device selector) + auto-publish verification
@@ -15,7 +15,8 @@
  *  8. Code view + unified search
  *  9. Publish button verification
  * 10. Manual feedback trigger category step
- * 11. Page refresh recovery
+ * 11. Custom domain (e2e.airotesting.shop) — attach, verify DNS records, disconnect
+ * 12. Page refresh recovery
  *
  * Strategy:
  * - Single login, single app, single continuous flow
@@ -34,6 +35,7 @@ import {
   AI_RESPONSE_TIMEOUT_MS,
   CHAT_INPUT_TIMEOUT,
   DEFAULT_TIMEOUT,
+  DEPLOYMENT_TIMEOUT_MS,
   E2E_NO_DELETE,
   LONG_TIMEOUT,
   PREVIEW_TIMEOUT,
@@ -458,7 +460,139 @@ test.describe('E2E - Critical Path', () => {
       console.log('  Modal closed');
     });
 
-    await test.step('Step 11: Page refresh recovery', async () => {
+    await test.step('Step 11: Custom domain (e2e.airotesting.shop) — attach, verify DNS, disconnect', async () => {
+      const TARGET_DOMAIN = 'e2e.airotesting.shop';
+
+      await dismissOverlays(page);
+      await ensureAuthenticated(page);
+
+      // Open the Domain settings panel via the desktop user-flow path:
+      // header Publish button -> "Connect a Custom Domain" button in the
+      // resulting popover. The button calls `handleViewDomain` in
+      // `app/src/components/layout/AppPublish.tsx`, which sets
+      // `activeChatTab=SETTINGS` + `activeSettingsSection=DOMAIN`. The
+      // button only renders when the app is on an Airo subdomain AND has
+      // published at least once — both true here after Step 1 + Step 3.
+      await expect(publishButton).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+      await publishButton.click();
+
+      // Translation key first as a safety net in case the rendered string
+      // changes; English copy second as the runtime label.
+      const connectCustomDomainButton = page.getByRole('button', {
+        name: /Connect a Custom Domain|builder_common_custom_domain_button/i,
+      });
+      await expect(connectCustomDomainButton).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+      await connectCustomDomainButton.click();
+
+      // Use the heading role (renders as `text.h3` in SettingsSection.tsx)
+      // with an anchored regex. A bare `getByText(/Custom Domain/i).first()`
+      // would also match a hidden chat-suggestion `<p>` that contains the
+      // phrase, which is never visible — timing out the assertion.
+      await expect(
+        page.getByRole('heading', { name: /^Custom Domain$/i }),
+      ).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+
+      const customDomainInput = page.locator('#custom-domain-slug');
+      await expect(customDomainInput).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+      await expect(customDomainInput).toBeEnabled();
+      await customDomainInput.fill(TARGET_DOMAIN);
+
+      // Add stays disabled until the 500ms input debounce elapses AND the
+      // validation API returns available=true. Asserting toBeEnabled (not
+      // just toBeVisible) before clicking is the #1 defense against flake
+      // here — clicking a still-disabled button silently no-ops.
+      const addButton = page.locator('[data-eid*="settings.domains.add_domain"]');
+      await expect(addButton).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+      await expect(addButton).toBeEnabled({ timeout: LONG_TIMEOUT });
+      await addButton.click();
+
+      await expect(
+        page.getByText(/builder_custom_domain_modal_title|Are you sure/i),
+      ).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+
+      const continueButton = page.locator(
+        '[data-eid*="settings.domains.connect_continue"]',
+      );
+      await expect(continueButton).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+      await expect(continueButton).toBeEnabled();
+      await continueButton.click();
+
+      // Wait for the modal close transition before probing the next state,
+      // otherwise the row-appears assertion can race the modal teardown.
+      await expect(
+        page.getByText(/builder_custom_domain_modal_title|Are you sure/i),
+      ).not.toBeVisible({ timeout: DEFAULT_TIMEOUT });
+
+      // Scope the row locator: filter divs to those containing BOTH the
+      // domain text AND the row's Options button. A bare getByText(TARGET_DOMAIN)
+      // is ambiguous once DNS records render. The DNS card has no Options
+      // button, so the dual filter uniquely picks the row Card.
+      // TARGET_DOMAIN is escaped before being interpolated into the regex
+      // so the `.` chars in `e2e.airotesting.shop` are matched literally,
+      // not as the regex "any char" metachar.
+      const escapedTarget = TARGET_DOMAIN.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const domainRowContainer = page
+        .locator('div')
+        .filter({ has: page.getByText(new RegExp(`^${escapedTarget}`)) })
+        .filter({
+          has: page.getByRole('button', { name: /builder_common_options|^Options$/i }),
+        })
+        .last();
+      await expect(domainRowContainer).toBeVisible({ timeout: DEPLOYMENT_TIMEOUT_MS });
+
+      // DNS instructions panel renders when the domain is external. Anchor
+      // on the i18n key (untranslated) or the English fallback.
+      const dnsRegion = page
+        .locator('div')
+        .filter({
+          has: page.getByText(/builder_domain_dns_instructions|To finish connecting/i),
+        })
+        .first();
+      await expect(dnsRegion).toBeVisible({ timeout: DEPLOYMENT_TIMEOUT_MS });
+
+      // Assert the A record renders — `getDnsRecords` in @/utils/domain
+      // always returns an aRecord regardless of root-vs-subdomain or DCV
+      // flag state, so this is the only DNS card guaranteed to be present
+      // across environments. CNAME presence varies:
+      //   - root domain → always a www CNAME (cnameRecord)
+      //   - subdomain   → no www CNAME; DCV CNAME only if appbuilder-domain-dcv
+      //                   is on AND the backend populated certificateValidationCname
+      // The row + DNS-panel scoping above already proves the panel belongs
+      // to TARGET_DOMAIN; asserting fqdn text inside the panel also doesn't
+      // work for subdomains since `getDnsRecords` only puts the subdomain
+      // segment (e.g. `e2e`) in the A-record name, not the full fqdn.
+      await expect(dnsRegion.getByText(/^A$/, { exact: true }).first())
+        .toBeVisible({ timeout: DEFAULT_TIMEOUT });
+      console.log('  Custom domain attached and DNS records visible');
+
+      // Scope the options button to THIS row so we don't hit the auto-prefix
+      // domain or any other available-customer-domain rows.
+      const optionsButton = domainRowContainer.getByRole('button', {
+        name: /builder_common_options|^Options$/i,
+      });
+      await expect(optionsButton).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+      await optionsButton.click();
+
+      // Note hyphen variant ("settings-domains") — distinct from the dotted
+      // "settings.domains.*" used by Add/Continue.
+      const disconnectButton = page.locator(
+        '[data-eid*="settings-domains.custom_domain.disconnect"]',
+      );
+      await expect(disconnectButton).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+      await expect(disconnectButton).toBeEnabled();
+      // Disconnect has no confirmation dialog; the click fires the
+      // modify-domains DELETE immediately.
+      await disconnectButton.click();
+
+      // `not.toBeAttached()` (vs `not.toBeVisible()`) verifies the row was
+      // unmounted from the DOM, not just CSS-hidden — catches a regression
+      // that would hide-but-keep the row in DOM.
+      await expect(domainRowContainer).not.toBeAttached({ timeout: DEPLOYMENT_TIMEOUT_MS });
+      await expect(customDomainInput).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+      console.log('  Custom domain disconnected and input restored');
+    });
+
+    await test.step('Step 12: Page refresh recovery', async () => {
       await page.reload();
 
       // The SSO Deck iframe keeps VAT (info_idp_vat_time) fresh via heartbeat;
@@ -469,6 +603,16 @@ test.describe('E2E - Critical Path', () => {
       // session is still valid; the next heartbeat refreshes VAT. Handle the
       // bounce instead of failing the refresh step.
       await ensureAuthenticated(page);
+
+      // Step 11 (custom domain) leaves the page on `?tab=settings`. The
+      // toHaveURL check below requires the path to NOT contain query params
+      // (anchored on [^?#]*), and the chat-input / preview-iframe visibility
+      // checks below also depend on the develop tab being active, not the
+      // settings panel. Normalize the URL before asserting.
+      const currentUrl = new URL(page.url());
+      if (currentUrl.searchParams.get('tab') === 'settings') {
+        await page.goto(`${currentUrl.origin}${currentUrl.pathname}`, { waitUntil: 'load' });
+      }
 
       // After ensureAuthenticated returns we should be back on the develop
       // page; guard against landing on the root or any other post-SSO target
