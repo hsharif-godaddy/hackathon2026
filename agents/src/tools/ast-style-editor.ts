@@ -341,6 +341,15 @@ export class ASTStyleEditor extends ASTEditorBase {
         return filtered.join(' ');
       }
 
+      case 'textAlign': {
+        const alignmentPattern = /^text-(left|center|right|justify)$/;
+        const filtered = classes.filter(c => !alignmentPattern.test(c));
+        if (value === 'left' || value === 'center' || value === 'right' || value === 'justify') {
+          filtered.push(`text-${value}`);
+        }
+        return filtered.join(' ');
+      }
+
       case 'color': {
         // Remove existing text color classes (including responsive and state variants)
         const filteredColor = classes.filter(c => !c.match(/^(\w+:)*text-\w+-\d+$/));

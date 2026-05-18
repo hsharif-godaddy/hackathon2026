@@ -726,6 +726,222 @@ export default function Page() {
     });
   });
 
+  describe('Text Alignment (Tailwind Classes)', () => {
+    it('should add text-center class when textAlign is center', async () => {
+      const component = `import React from 'react';
+
+export default function Page() {
+  return (
+    <div>
+      <p data-dev-id="abc123" className="text-base mt-4">Hello world</p>
+    </div>
+  );
+}`;
+      await writeFile(testFilePath, component);
+
+      const request = {
+        selector: 'p',
+        property: 'textAlign',
+        value: 'center',
+        newClassName: 'text-base mt-4 text-center',
+        elementInfo: {
+          tagName: 'p',
+          className: 'text-base mt-4',
+          id: '',
+          textContent: 'Hello world',
+          selector: 'p',
+          dataId: 'abc123',
+          devContext: {
+            fileName: '/src/frontend/pages/index.page.tsx',
+            componentName: 'Page',
+            lineNumber: 6
+          },
+          rect: { top: 100, left: 0, width: 200, height: 20 },
+          computedStyles: {}
+        }
+      };
+
+      const result = await astEditor.editElementStyle(testAppPath, request);
+
+      expect(result.success).toBe(true);
+      const updatedFile = await readFile(testFilePath, 'utf-8');
+      expect(updatedFile).toContain('text-center');
+      expect(updatedFile).toContain('text-base');
+      expect(updatedFile).toContain('mt-4');
+    });
+
+    it('should swap text-left for text-right when textAlign changes', async () => {
+      const component = `import React from 'react';
+
+export default function Page() {
+  return (
+    <div>
+      <p data-dev-id="abc123" className="text-base text-left mt-4">Hello</p>
+    </div>
+  );
+}`;
+      await writeFile(testFilePath, component);
+
+      const request = {
+        selector: 'p',
+        property: 'textAlign',
+        value: 'right',
+        newClassName: 'text-base text-right mt-4',
+        elementInfo: {
+          tagName: 'p',
+          className: 'text-base text-left mt-4',
+          id: '',
+          textContent: 'Hello',
+          selector: 'p',
+          dataId: 'abc123',
+          devContext: {
+            fileName: '/src/frontend/pages/index.page.tsx',
+            componentName: 'Page',
+            lineNumber: 6
+          },
+          rect: { top: 100, left: 0, width: 200, height: 20 },
+          computedStyles: {}
+        }
+      };
+
+      const result = await astEditor.editElementStyle(testAppPath, request);
+
+      expect(result.success).toBe(true);
+      const updatedFile = await readFile(testFilePath, 'utf-8');
+      expect(updatedFile).toContain('text-right');
+      expect(updatedFile).not.toContain('text-left');
+      expect(updatedFile).toContain('text-base');
+      expect(updatedFile).toContain('mt-4');
+    });
+
+    it('should remove alignment classes when textAlign value is empty', async () => {
+      const component = `import React from 'react';
+
+export default function Page() {
+  return (
+    <div>
+      <p data-dev-id="abc123" className="text-base text-center mt-4">Hello</p>
+    </div>
+  );
+}`;
+      await writeFile(testFilePath, component);
+
+      const request = {
+        selector: 'p',
+        property: 'textAlign',
+        value: '',
+        newClassName: 'text-base mt-4',
+        elementInfo: {
+          tagName: 'p',
+          className: 'text-base text-center mt-4',
+          id: '',
+          textContent: 'Hello',
+          selector: 'p',
+          dataId: 'abc123',
+          devContext: {
+            fileName: '/src/frontend/pages/index.page.tsx',
+            componentName: 'Page',
+            lineNumber: 6
+          },
+          rect: { top: 100, left: 0, width: 200, height: 20 },
+          computedStyles: {}
+        }
+      };
+
+      const result = await astEditor.editElementStyle(testAppPath, request);
+
+      expect(result.success).toBe(true);
+      const updatedFile = await readFile(testFilePath, 'utf-8');
+      expect(updatedFile).not.toMatch(/text-(left|center|right|justify)/);
+      expect(updatedFile).toContain('text-base');
+      expect(updatedFile).toContain('mt-4');
+    });
+
+    it('should support text-justify', async () => {
+      const component = `import React from 'react';
+
+export default function Page() {
+  return (
+    <div>
+      <p data-dev-id="abc123" className="text-base">A long paragraph that should justify across the line.</p>
+    </div>
+  );
+}`;
+      await writeFile(testFilePath, component);
+
+      const request = {
+        selector: 'p',
+        property: 'textAlign',
+        value: 'justify',
+        newClassName: 'text-base text-justify',
+        elementInfo: {
+          tagName: 'p',
+          className: 'text-base',
+          id: '',
+          textContent: 'A long paragraph that should justify across the line.',
+          selector: 'p',
+          dataId: 'abc123',
+          devContext: {
+            fileName: '/src/frontend/pages/index.page.tsx',
+            componentName: 'Page',
+            lineNumber: 6
+          },
+          rect: { top: 100, left: 0, width: 200, height: 20 },
+          computedStyles: {}
+        }
+      };
+
+      const result = await astEditor.editElementStyle(testAppPath, request);
+
+      expect(result.success).toBe(true);
+      const updatedFile = await readFile(testFilePath, 'utf-8');
+      expect(updatedFile).toContain('text-justify');
+    });
+
+    it('should preserve text-base/text-lg/etc. (not confuse font-size with alignment)', async () => {
+      const component = `import React from 'react';
+
+export default function Page() {
+  return (
+    <div>
+      <h2 data-dev-id="abc123" className="text-2xl text-gray-900">Heading</h2>
+    </div>
+  );
+}`;
+      await writeFile(testFilePath, component);
+
+      const request = {
+        selector: 'h2',
+        property: 'textAlign',
+        value: 'center',
+        newClassName: 'text-2xl text-gray-900 text-center',
+        elementInfo: {
+          tagName: 'h2',
+          className: 'text-2xl text-gray-900',
+          id: '',
+          textContent: 'Heading',
+          selector: 'h2',
+          dataId: 'abc123',
+          devContext: {
+            fileName: '/src/frontend/pages/index.page.tsx',
+            componentName: 'Page',
+            lineNumber: 6
+          },
+          rect: { top: 50, left: 0, width: 300, height: 40 },
+          computedStyles: {}
+        }
+      };
+
+      const result = await astEditor.editElementStyle(testAppPath, request);
+
+      expect(result.success).toBe(true);
+      const updatedFile = await readFile(testFilePath, 'utf-8');
+      expect(updatedFile).toContain('text-center');
+      expect(updatedFile).toContain('text-2xl');
+      expect(updatedFile).toContain('text-gray-900');
+    });
+  });
+
   describe('Inline Formatting Normalization (unwrap em/strong/b/i)', () => {
     it('should unwrap <em> children when adding italic class', async () => {
       const component = `import React from 'react';

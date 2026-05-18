@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { safePostMessage } from "../utils/postMessage";
+import { addStyleEditListener, StyleMessageEventType } from "../utils/elementStyleListeners";
 import { generatePreciseSelector, extractDevContext, getElementClassName } from "../utils/element-helpers";
 import { isTouchDevice } from "../utils/device";
 import {
@@ -16,28 +17,15 @@ import { t } from "../utils/translations";
 import { HoverBar, HoverBarButton } from "./HoverBar";
 import { QuickEditBar } from "./QuickEditBar";
 import ColorPicker from "./ColorPicker";
+import TextAlignButton from "./TextAlignButton";
 import { extractThemeColors } from "../utils/text-editing-helpers";
 import { rgbToHex, normalizeHex } from "../utils/color";
 
 /** Tags eligible for bold/italic toggle (text-bearing inline/block elements). */
 const TEXT_TAGS = new Set(["p", "h1", "h2", "h3", "h4", "h5", "h6", "span", "a", "label", "li", "blockquote"]);
 
-/** Generate a unique id per style commit so the iframe-side listener can
- *  correlate a STYLE_EDIT_SUCCEEDED / STYLE_EDIT_FAILED reply to the specific
- *  in-flight commit it's responding to (prevents cross-talk when multiple
- *  commits are in flight, e.g. drag-end immediately followed by a swatch click).
- *  Falls back to time+random if `crypto.randomUUID` is unavailable. */
-function makeCommitId(): string {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-    return crypto.randomUUID();
-  }
-  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-}
-
-/** Listener auto-cleanup window. If the parent never replies (timeout, iframe
- *  navigation, channel break), the listener detaches itself instead of
- *  leaking for the rest of the session. */
-const STYLE_REPLY_TIMEOUT_MS = 30_000;
+/** Subset of TEXT_TAGS that are block-level — eligible for text-align (which is meaningless on inline tags). */
+const BLOCK_TEXT_TAGS = new Set(["p", "h1", "h2", "h3", "h4", "h5", "h6", "li", "blockquote"]);
 
 interface ElementHoverBarProps {
   hoveredElement: HoveredElement;
@@ -434,6 +422,7 @@ export default function ElementHoverBar({
   const isLoopRendered = !!devId && !!devLine &&
     document.querySelectorAll(`[data-dev-id="${devId}"][data-dev-line="${devLine}"]`).length > 1;
   const elementIsText = !isImage && !isLoopRendered && TEXT_TAGS.has(element.tagName.toLowerCase()) && !!element.textContent?.trim();
+  const elementIsBlockText = elementIsText && BLOCK_TEXT_TAGS.has(element.tagName.toLowerCase());
   const targetEl = toolbarElementRef.current || element;
   const isBold = elementIsText && targetEl.classList.contains("font-bold");
   const isItalic = elementIsText && targetEl.classList.contains("italic");
@@ -530,39 +519,22 @@ export default function ElementHoverBar({
     lastCommittedColorRef.current = hex;
     forceRender(n => n + 1);
 
-    // Per-commit id: lets the listener match its own reply when multiple
-    // commits are in flight (drag-end + swatch click). Without correlation,
-    // an earlier reply would prematurely fire/clean up unrelated listeners.
-    const commitId = makeCommitId();
-    let timeoutId: ReturnType<typeof setTimeout> | null = null;
-    const handleResult = (e: MessageEvent) => {
-      if (e.source !== window.parent) return;
-      const type = e.data?.type;
-      if (type !== "STYLE_EDIT_FAILED" && type !== "STYLE_EDIT_SUCCEEDED") return;
-      // Only act on the reply tagged with our commit id.
-      if (e.data?.commitId !== commitId) return;
-      if (timeoutId !== null) clearTimeout(timeoutId);
-      window.removeEventListener("message", handleResult);
-      if (type === "STYLE_EDIT_FAILED") {
+    const commitId = addStyleEditListener((event) => {
+      if (event.data.type === StyleMessageEventType.EDIT_FAILED) {
         // Roll back to the color the element had when the picker first opened,
         // not whatever a later commit may have just painted on top.
         el.style.color = originalColorRef.current;
         lastCommittedColorRef.current = originalColorRef.current;
         forceRender(n => n + 1);
       }
-    };
-    window.addEventListener("message", handleResult);
-    timeoutId = setTimeout(() => {
-      window.removeEventListener("message", handleResult);
-      console.warn("[dev-tools] STYLE_UPDATED reply timed out; listener detached", { commitId, property: "color" });
-    }, STYLE_REPLY_TIMEOUT_MS);
+    });
 
     const devContext = extractDevContext(el);
     const preciseSelector = generatePreciseSelector(el);
     const elRect = el.getBoundingClientRect();
 
     safePostMessage(window.parent, {
-      type: "STYLE_UPDATED",
+      type: StyleMessageEventType.UPDATED,
       data: {
         commitId,
         selector: preciseSelector,
@@ -607,35 +579,19 @@ export default function ElementHoverBar({
     }
     forceRender(n => n + 1);
 
-    // Per-commit id: see handleColorCommit for rationale. With multiple style
-    // edits possibly in flight (e.g. user toggles bold then immediately picks
-    // a color), a reply must be matched to its commit before any DOM rollback.
-    const commitId = makeCommitId();
-    let timeoutId: ReturnType<typeof setTimeout> | null = null;
-    const handleResult = (e: MessageEvent) => {
-      if (e.source !== window.parent) return;
-      const type = e.data?.type;
-      if (type !== "STYLE_EDIT_FAILED" && type !== "STYLE_EDIT_SUCCEEDED") return;
-      if (e.data?.commitId !== commitId) return;
-      if (timeoutId !== null) clearTimeout(timeoutId);
-      window.removeEventListener("message", handleResult);
-      if (type === "STYLE_EDIT_FAILED") {
+    const commitId = addStyleEditListener((event) => {
+      if (event.data.type === StyleMessageEventType.EDIT_FAILED) {
         el.className = originalClassName;
         forceRender(n => n + 1);
       }
-    };
-    window.addEventListener("message", handleResult);
-    timeoutId = setTimeout(() => {
-      window.removeEventListener("message", handleResult);
-      console.warn("[dev-tools] STYLE_UPDATED reply timed out; listener detached", { commitId, property });
-    }, STYLE_REPLY_TIMEOUT_MS);
+    });
 
     const devContext = extractDevContext(el);
     const preciseSelector = generatePreciseSelector(el);
     const elRect = el.getBoundingClientRect();
 
     safePostMessage(window.parent, {
-      type: "STYLE_UPDATED",
+      type: StyleMessageEventType.UPDATED,
       data: {
         commitId,
         selector: preciseSelector,
@@ -739,6 +695,7 @@ export default function ElementHoverBar({
               </div>
             )}
           </div>
+          {elementIsBlockText && <TextAlignButton selectedElement={targetEl} />}
         </>
       )}
       <HoverBarButton
