@@ -5,7 +5,9 @@
  * By default, it searches for images. Use mediaType to specify video search or image generation.
  *
  * Configuration:
- * - Image/Video Search: Requires SSO_JWT, GETTY_API_URL, and GETTY_APP_KEY environment variables
+ * - Image/Video Search: Requires either GOCODE_USE_S2S_AUTH=true (hosted) or SSO_JWT (local).
+ *   GETTY_IMAGE_PROXY_URL is optional (defaults: test uses getty-images-proxy for jomax SSO, api.test gateway when S2S-only; prod uses api.godaddy.com/getty-proxy).
+ *   GETTY_APP_KEY defaults to 'airo-app-builder'.
  * - Image Generation: Uses OpenAI DALL-E via ai-lib unified provider
  *
  * Usage:

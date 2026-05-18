@@ -69,10 +69,13 @@ describe("GET /media/:appId/search", () => {
     app = createApp();
     mockFetch = vi.fn();
     vi.stubGlobal("fetch", mockFetch);
+    process.env.SSO_JWT = 'test-jwt';
   });
 
   afterEach(() => {
     vi.unstubAllGlobals();
+    delete process.env.SSO_JWT;
+    delete process.env.GOCODE_USE_S2S_AUTH;
   });
 
   it("returns 400 when q param is missing", async () => {
@@ -223,8 +226,9 @@ describe("GET /media/:appId/search", () => {
   });
 
   it("omits Authorization header when no token is configured", async () => {
-    delete process.env.GETTY_TOKEN;
     delete process.env.SSO_JWT;
+    delete process.env.GOCODE_USE_S2S_AUTH;
+    delete process.env.GETTY_TOKEN;
     mockFetch.mockResolvedValueOnce(makeGettyResponse([]));
 
     await request(app).get("/media/test-app/search?q=dogs");

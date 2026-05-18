@@ -1,13 +1,22 @@
 /**
  * Getty Upload Service
  *
- * Calls our Getty proxy's /v1/upload endpoint to download licensed images
- * to CDN (isteam/S3) and optionally report usage to Getty.
- *
+ * Calls the GoDaddy Getty Images proxy `/v1/upload` endpoint to download
+ * licensed images to CDN (isteam/S3) and optionally report usage to Getty.
  * Used at image placement time (setSlot/updateSlot) to replace preview URLs
  * with permanent CDN URLs.
+ *
+ * Auth and HTTP lifecycle use `BaseDriverV2` (same as `GettyMediaDriver`):
+ * `GOCODE_USE_S2S_AUTH` and `SSO_HOST` from env.
+ *
+ * The legacy `GETTY_TOKEN` Bearer path has been removed.
  */
 
+import { BaseDriverV2 } from '../tools/ai-lib-tools/drivers/base-driver-v2.js';
+import {
+  GETTY_CONFIG_LEGACY_TOKEN_NOTICE,
+  GETTY_CONFIG_MEDIA_AUTH_MISSING,
+} from '../tools/ai-lib-tools/drivers/getty-config-messages.js';
 import { logger } from '../logging/index.js';
 
 export interface UploadResult {
@@ -16,24 +25,33 @@ export interface UploadResult {
   dimensions?: { height: number; width: number };
 }
 
-export class GettyUploadService {
-  private apiBaseUrl: string;
-  private authHeader: string;
-  private appKey: string;
-
+export class GettyUploadService extends BaseDriverV2 {
   constructor() {
-    this.apiBaseUrl = this.parseBaseUrl(process.env.GETTY_API_URL || '');
-    this.authHeader = process.env.GETTY_TOKEN ? `Bearer ${process.env.GETTY_TOKEN}` : '';
-    this.appKey = process.env.GETTY_APP_KEY || 'airo-app-builder';
-  }
+    if (process.env.GETTY_TOKEN) {
+      logger.warn('getty_upload.config.getty_token_ignored', {
+        message: GETTY_CONFIG_LEGACY_TOKEN_NOTICE,
+      });
+    }
 
-  private parseBaseUrl(baseUrl: string): string {
-    if (!baseUrl) return '';
-    try {
-      const urlObj = new URL(baseUrl);
-      return `${urlObj.protocol}//${urlObj.host}`;
-    } catch {
-      return baseUrl.replace(/\/.*$/, '');
+    const configuredUrl =
+      process.env.GETTY_IMAGE_PROXY_URL || 'https://getty-images-proxy.api.dev-godaddy.com';
+    super({
+      serviceName: 'getty-upload',
+      baseUrl: configuredUrl,
+      appKeyEnvVar: 'GETTY_APP_KEY',
+      defaultAppKey: 'airo-app-builder',
+    });
+
+    logger.info('getty_upload.config.initialized', {
+      configuredUrl,
+      apiBaseUrl: this.apiBaseUrl,
+      configured: this.hasAuth(),
+    });
+
+    if (!this.hasAuth()) {
+      logger.warn('getty_upload.auth.missing', {
+        message: GETTY_CONFIG_MEDIA_AUTH_MISSING,
+      });
     }
   }
 
@@ -47,10 +65,10 @@ export class GettyUploadService {
   async uploadAndReport(gettyIds: string[]): Promise<UploadResult[]> {
     if (!gettyIds.length) return [];
 
-    if (!this.apiBaseUrl || !this.authHeader) {
+    if (!this.apiBaseUrl || !this.hasAuth()) {
       logger.warn('getty_upload.missing_config', {
-        hasBaseUrl: !!this.apiBaseUrl,
-        hasAuth: !!this.authHeader,
+        baseUrlConfigured: !!this.apiBaseUrl,
+        configured: this.hasAuth(),
       });
       return [];
     }
@@ -61,29 +79,20 @@ export class GettyUploadService {
         count: gettyIds.length,
       });
 
-      const url = `${this.apiBaseUrl}/v1/upload?reportUsage=true`;
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Authorization': this.authHeader,
-          'x-app-key': this.appKey,
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: JSON.stringify({ ids: gettyIds }),
-      });
+      const response = await this.post('/v1/upload?reportUsage=true', { ids: gettyIds });
 
       if (!response.ok) {
         const errorText = await response.text();
-        logger.warn('getty_upload.upstream_error', {
+        logger.error('getty_upload.upstream_error', {
           status: response.status,
+          statusText: response.statusText,
           error: errorText,
           ids: gettyIds,
         });
         return [];
       }
 
-      const data = await response.json() as UploadResult[];
+      const data = (await response.json()) as UploadResult[];
 
       logger.info('getty_upload.success', {
         ids: gettyIds,
@@ -92,9 +101,10 @@ export class GettyUploadService {
 
       return data;
     } catch (error) {
-      logger.warn('getty_upload.error', {
+      logger.error('getty_upload.error', {
         ids: gettyIds,
         error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
       });
       return [];
     }
@@ -105,26 +115,32 @@ export class GettyUploadService {
    * Fire-and-forget — does not block on response.
    */
   reportUsage(gettyIds: string[]): void {
-    if (!gettyIds.length || !this.apiBaseUrl || !this.authHeader) return;
+    if (!gettyIds.length || !this.apiBaseUrl || !this.hasAuth()) {
+      return;
+    }
 
     logger.info('getty_usage_report.begin', { ids: gettyIds, count: gettyIds.length });
 
-    const url = `${this.apiBaseUrl}/v1/usage`;
-    fetch(url, {
-      method: 'PUT',
-      headers: {
-        'Authorization': this.authHeader,
-        'x-app-key': this.appKey,
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-      },
-      body: JSON.stringify({ ids: gettyIds }),
-    }).catch(error => {
+    void this.reportUsageAsync(gettyIds);
+  }
+
+  private async reportUsageAsync(gettyIds: string[]): Promise<void> {
+    try {
+      const response = await this.put('/v1/usage', { ids: gettyIds });
+
+      if (!response.ok) {
+        logger.warn('getty_usage_report.upstream_error', {
+          ids: gettyIds,
+          status: response.status,
+          statusText: response.statusText,
+        });
+      }
+    } catch (error) {
       logger.warn('getty_usage_report.error', {
         ids: gettyIds,
         error: error instanceof Error ? error.message : String(error),
       });
-    });
+    }
   }
 }
 

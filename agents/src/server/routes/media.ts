@@ -7,6 +7,7 @@
  * - Uploading custom images to slots
  */
 
+import { getS2SToken, isS2SAuthEnabled } from '@airo/ai-lib';
 import { Router, Request, Response, IRouter } from 'express';
 import multer from 'multer';
 import rateLimit from 'express-rate-limit';
@@ -15,7 +16,8 @@ import path from 'path';
 import fs from 'fs/promises';
 import { mediaManifestService } from '../../services/MediaManifestService.js';
 import { imageProcessingService } from '../../services/ImageProcessingService.js';
-import { fileUploadService } from '../../services/FileUploadService.js';import { normalizeSearchQuery } from '../../services/image-search/normalize.js';
+import { fileUploadService } from '../../services/FileUploadService.js';
+import { normalizeSearchQuery } from '../../services/image-search/normalize.js';
 import { AppRepository } from '../../database/repositories/AppRepository.js';
 import { logger } from '../../logging/index.js';
 import { validateAppOwnership } from '../middleware/app-ownership.js';
@@ -258,17 +260,15 @@ router.get('/:appId/search', async (req: Request, res: Response) => {
     ? req.query.orientations
     : null;
 
-  const gettyBaseUrl = (process.env.GETTY_API_URL || 'https://getty-images-proxy.api.test-godaddy.com')
-    .replace(/\/(v1|img).*$/, '');
-  const gettyToken = process.env.GETTY_TOKEN;
-  const ssoJwt = process.env.SSO_JWT;
+  const gettyBaseUrl = (process.env.GETTY_IMAGE_PROXY_URL || 'https://getty-images-proxy.api.dev-godaddy.com')
   const appKey = process.env.GETTY_APP_KEY || 'airo-app-builder';
 
-  const authHeader = gettyToken
-    ? `Bearer ${gettyToken}`
-    : ssoJwt
-    ? `sso-jwt ${ssoJwt}`
-    : '';
+  let authHeader = '';
+  if (isS2SAuthEnabled()) {
+    authHeader = `sso-jwt ${await getS2SToken({ ssoHost: process.env.SSO_HOST || 'sso.test-godaddy.com' })}`;
+  } else if (process.env.SSO_JWT) {
+    authHeader = `sso-jwt ${process.env.SSO_JWT}`;
+  }
 
   const params = new URLSearchParams({
     phrase,
@@ -577,7 +577,7 @@ router.post(
       );
 
       if (!updateResult.success) {
-        await fs.unlink(filePath).catch(() => {}); // nosemgrep: path-traversal
+        await fs.unlink(filePath).catch(() => { }); // nosemgrep: path-traversal
         return res.status(500).json({
           success: false,
           error: updateResult.error || 'Failed to update manifest',
@@ -947,7 +947,7 @@ router.post(
           error: updateResult.error,
         });
         // Clean up the written file on failure
-        await fs.unlink(filePath).catch(() => {});
+        await fs.unlink(filePath).catch(() => { });
         return res.status(500).json({
           success: false,
           error: updateResult.error || 'Failed to update manifest',

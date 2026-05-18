@@ -78,7 +78,7 @@ QDRANT_COLLECTION=image_analyses
 QDRANT_API_KEY=
 
 GETTY_AUTH_TYPE=sso-jwt
-GETTY_UPSTREAM=https://getty-images-proxy.api.godaddy.com
+GETTY_UPSTREAM=https://api.godaddy.com/getty-proxy
 GETTY_X_APP_KEY=airo-app-builder
 GETTY_CERT_PATH=%s
 GETTY_KEY_PATH=%s

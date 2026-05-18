@@ -2,41 +2,28 @@ package checks
 
 import (
 	"context"
-	"fmt"
-	"net/http"
-	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/airo-ai-builder/dev-runner/internal/preflight"
 )
 
-func TestGettyCheck_NotEnabled(t *testing.T) {
+func TestGettyCheck_SkipWhenNoGettySignals(t *testing.T) {
 	root := t.TempDir()
 	writeAgentsEnv(t, root, "NODE_ENV=development\n")
 
 	result := (&GettyCheck{}).Run(context.Background(), root)
-	if result.Status != preflight.StatusFail {
-		t.Errorf("expected Fail, got %v: %s", result.Status, result.Message)
+	if result.Status != preflight.StatusSkip {
+		t.Errorf("expected Skip, got %v: %s", result.Status, result.Message)
 	}
-	if !result.FixAvailable {
-		t.Error("expected FixAvailable=true when IMAGE_SEARCH_DRIVER is not set")
+	if result.FixAvailable {
+		t.Error("expected FixAvailable=false when Getty is not in scope")
 	}
 }
 
-func TestGettyCheck_EnabledWithCreds(t *testing.T) {
-	// Start a test server that returns 200 for valid tokens
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("Authorization") == "Bearer test-token" {
-			w.WriteHeader(http.StatusOK)
-			fmt.Fprint(w, `{"result_count":0,"images":[]}`)
-			return
-		}
-		w.WriteHeader(http.StatusUnauthorized)
-	}))
-	defer ts.Close()
-
+func TestGettyCheck_WithGettyURLOnlyNoDriver(t *testing.T) {
 	root := t.TempDir()
-	writeAgentsEnv(t, root, fmt.Sprintf("IMAGE_SEARCH_DRIVER=getty\nGETTY_API_URL=%s\nGETTY_TOKEN=test-token\n", ts.URL))
+	writeAgentsEnv(t, root, "GETTY_IMAGE_PROXY_URL=https://getty-images-proxy.api.test-godaddy.com\nGOCODE_USE_S2S_AUTH=true\n")
 
 	result := (&GettyCheck{}).Run(context.Background(), root)
 	if result.Status != preflight.StatusPass {
@@ -44,32 +31,57 @@ func TestGettyCheck_EnabledWithCreds(t *testing.T) {
 	}
 }
 
-func TestGettyCheck_EnabledExpiredToken(t *testing.T) {
-	// Start a test server that rejects the token
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusUnauthorized)
-	}))
-	defer ts.Close()
-
+func TestGettyCheck_UnsplashWithGettyURLStillValidatesAuth(t *testing.T) {
 	root := t.TempDir()
-	writeAgentsEnv(t, root, fmt.Sprintf("IMAGE_SEARCH_DRIVER=getty\nGETTY_API_URL=%s\nGETTY_TOKEN=expired-token\n", ts.URL))
+	writeAgentsEnv(t, root, "IMAGE_SEARCH_DRIVER=unsplash\nGETTY_IMAGE_PROXY_URL=https://example.com/getty\n")
 
 	result := (&GettyCheck{}).Run(context.Background(), root)
 	if result.Status != preflight.StatusWarn {
-		t.Errorf("expected Warn, got %v: %s", result.Status, result.Message)
-	}
-	if !result.FixAvailable {
-		t.Error("expected FixAvailable=true for expired token")
+		t.Errorf("expected Warn for missing auth, got %v: %s", result.Status, result.Message)
 	}
 }
 
-func TestGettyCheck_EnabledMissingCreds(t *testing.T) {
+func TestGettyCheck_EnabledWithS2S(t *testing.T) {
+	root := t.TempDir()
+	writeAgentsEnv(t, root, "IMAGE_SEARCH_DRIVER=getty\nGOCODE_USE_S2S_AUTH=true\n")
+
+	result := (&GettyCheck{}).Run(context.Background(), root)
+	if result.Status != preflight.StatusPass {
+		t.Errorf("expected Pass, got %v: %s", result.Status, result.Message)
+	}
+	if !strings.Contains(result.Message, "GOCODE_USE_S2S_AUTH") {
+		t.Errorf("expected message to mention auth mode, got: %s", result.Message)
+	}
+}
+
+func TestGettyCheck_EnabledMissingAuth(t *testing.T) {
 	root := t.TempDir()
 	writeAgentsEnv(t, root, "IMAGE_SEARCH_DRIVER=getty\n")
 
 	result := (&GettyCheck{}).Run(context.Background(), root)
 	if result.Status != preflight.StatusWarn {
 		t.Errorf("expected Warn, got %v: %s", result.Status, result.Message)
+	}
+	if !result.FixAvailable {
+		t.Error("expected FixAvailable=true when auth vars are missing")
+	}
+	if !strings.Contains(result.Message, "GOCODE_USE_S2S_AUTH") {
+		t.Errorf("expected message to mention GOCODE_USE_S2S_AUTH, got: %s", result.Message)
+	}
+}
+
+func TestGettyCheck_LegacyGettyTokenWarns(t *testing.T) {
+	root := t.TempDir()
+	writeAgentsEnv(t, root,
+		"IMAGE_SEARCH_DRIVER=getty\nGOCODE_USE_S2S_AUTH=true\nGETTY_TOKEN=legacy\n",
+	)
+
+	result := (&GettyCheck{}).Run(context.Background(), root)
+	if result.Status != preflight.StatusWarn {
+		t.Errorf("expected Warn for legacy GETTY_TOKEN, got %v: %s", result.Status, result.Message)
+	}
+	if !strings.Contains(result.Message, "GETTY_TOKEN") {
+		t.Errorf("expected message to mention GETTY_TOKEN, got: %s", result.Message)
 	}
 }
 

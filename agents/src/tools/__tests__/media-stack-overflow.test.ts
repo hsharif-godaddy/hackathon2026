@@ -11,6 +11,14 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // --- Mocks that must be hoisted ---
 
+vi.mock('@airo/ai-lib', async () => {
+  const actual = await vi.importActual<Record<string, unknown>>('@airo/ai-lib');
+  return {
+    ...actual,
+    getS2SToken: vi.fn().mockResolvedValue('mock-s2s-token'),
+  };
+});
+
 // Mock AppRepository before any import pulls it in
 vi.mock('../../database/repositories/AppRepository.js', () => ({
   AppRepository: class {
@@ -90,8 +98,10 @@ describe('Media tool stack overflow diagnostic', () => {
   const originalEnv = { ...process.env };
 
   beforeEach(() => {
-    process.env.GETTY_TOKEN = 'test-token';
-    process.env.GETTY_API_URL = 'http://fake-getty';
+    process.env.GOCODE_USE_S2S_AUTH = 'true';
+    process.env.GETTY_IMAGE_PROXY_URL = 'http://fake-getty';
+    delete process.env.SSO_JWT;
+    delete process.env.GETTY_TOKEN;
     vi.spyOn(console, 'error').mockImplementation(() => {});
     vi.spyOn(console, 'info').mockImplementation(() => {});
     vi.spyOn(console, 'warn').mockImplementation(() => {});

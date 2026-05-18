@@ -2,6 +2,37 @@
 
 ## Unreleased
 
+### Internal Changes
+
+- **Direct Getty Auth (Agents)**: `GettyMediaDriver` and `GettyUploadService`
+  call the GoDaddy Getty Images proxy directly (no `airo-proxy` hop from
+  agents). HTTP and S2S token lifecycle use **`BaseDriverV2`** (same pattern as
+  other GoCode-backed drivers: cached IAM JWT, proactive refresh, one 401
+  retry via `refreshS2SToken`).
+  - **Hosted / local IAM**: Set `GOCODE_USE_S2S_AUTH=true` and use an AWS SSO
+    profile so `getS2SToken()` can mint `Authorization: sso-jwt <jwt>`.
+    **`SSO_HOST`** selects the SSO issuer (e.g. from Gasket local dev); when
+    unset, drivers default to `sso.test-godaddy.com`.
+  - **Local jomax JWT**: Set `SSO_JWT=<jwt>` instead of S2S when you are not
+    using IAM for that process.
+  - **Env rename**: `GETTY_API_URL` is replaced by **`GETTY_IMAGE_PROXY_URL`**
+    (proxy base only; paths such as `/v1/search` are appended by the driver).
+  - **`GETTY_IMAGE_PROXY_URL`** is optional; when unset, agents default to the
+    dev direct proxy **`https://getty-images-proxy.api.dev-godaddy.com`**
+    (aligned with dev-runner Getty fixer / preflight). Override for other
+    environments (e.g. `https://api.test-godaddy.com/getty-proxy` or prod
+    gateway) as needed.
+  - **`GETTY_TOKEN` (Bearer) is no longer used** for these flows. If it remains
+    in env, **`GettyUploadService`** logs a warning on construction so stale
+    deploy secrets are obvious. Remove it to clear the warning.
+  - User-facing setup copy for logs/errors lives in
+    `agents/src/tools/ai-lib-tools/drivers/getty-config-messages.ts` (keep in
+    sync with dev-runner Getty messaging).
+  - Affects: `GettyMediaDriver`, `GettyUploadService`, `BaseDriverV2`, dev-runner
+    Getty preflight checks/fixers. The `proxy/` service is unchanged but no
+    longer called from agents for this path. `image-search-service` (Go) still
+    goes via airo-proxy and will be migrated separately.
+
 ### Public Facing Changes
 
 - **Improved Tool Response Quality**: Tools now follow Anthropic best practices with consistent error handling, actionable hints, and token-efficient responses
@@ -20,6 +51,7 @@
 ### Internal Changes
 
 - **Video Generation Tool**: Added AI video generation capability using OpenAI Sora-2 model
+
   - Added `VideoGenerationTool`: Generate videos from text prompts with customizable duration and resolution
   - Supports video durations: 4, 8, or 12 seconds
   - Supports resolutions: 720x1280, 1280x720, 1080x1920, 1920x1080 (portrait and landscape)
@@ -31,6 +63,7 @@
   - Test suite included with vitest
 
 - **KnowB Knowledge Base Integration**: Added semantic search capability for querying GoDaddy documentation and knowledge bases
+
   - Added `KnowBSearchTool`: AI-lib compatible tool for semantic document search with configurable result limits and score thresholds
   - Added `knowb-client` to proxy service: HTTP client with mTLS certificate authentication for KnowB API
   - Added `knowb-driver` to agents: Dual-mode driver supporting both proxy (GETTY_TOKEN) and direct (SSO_JWT) authentication
@@ -40,6 +73,7 @@
   - Environment variables: `KNOWB_UPSTREAM` (defaults to test environment)
 
 - **Event-Driven WebSocket Architecture with Connection Recovery**: Introduced pub/sub event channel system for reliable WebSocket streaming with connection recovery
+
   - Added `ConversationEventChannel`: Central event bus managing per-conversation event buffers with circular buffer implementation
     - Circular buffer with fixed capacity (1,000 events) and automatic overflow handling prevents unbounded memory growth
     - Per-conversation isolation with monotonic sequence numbering for reliable event ordering
@@ -61,6 +95,7 @@
   - No integration yet - infrastructure only, ready for WebSocket server integration in future PRs
 
 - **File Edit Tool - Universal Batch Format**: Standardized file edit system on batch operations format to eliminate dual code paths
+
   - Converted `editFile()` to thin wrapper around `editFiles()` - zero code duplication, all logic flows through single implementation
   - Backward compatibility maintained: REST API endpoints and Memory Service continue using `editFile()` wrapper
   - Enhanced compression strategies to support both batch and legacy formats:
@@ -79,6 +114,7 @@
   - Added deprecation notice to `editFile()` method
 
 - **BREAKING (AI Tool Only): File Edit Tool - Multi-File Operations**: Enhanced fileEdit tool to support multiple file operations in a single tool call
+
   - Added batch operation mode with `operations` array (minimum 1 operation required)
   - Implements fail-fast execution: stops on first error, returns partial results with error details
   - Batches git commits for all successful operations into single commit with auto-generated or custom message
@@ -104,6 +140,7 @@
     - `ToolCallRenderer`: Displays "Files: 2 created, 3 edited" instead of falling back to "unknown"
 
 - **Standardized Tool Response System**: Implemented shared response envelope pattern following Anthropic's tool design guidance
+
   - Created `tool-response.ts` with standardized `ToolResponse<T>` interface and helper functions (`ok`, `fail`, `needAuth`)
   - Consistent error structure across all tools with `code`, `message`, `hint`, and `retryable` fields
   - Unified authentication handling with `ToolRequires` and `ToolAuthRequirement` interfaces
@@ -113,6 +150,7 @@
   - All commerce tools updated to return standardized envelopes instead of mixed response shapes
 
 - **HTTP Proxy for HTTPS Termination**: Integrated HTTP proxy into dev-supervisor for HTTPS termination in local development
+
   - HTTP proxy integrated into dev-supervisor with TLS termination and WebSocket support for Vite HMR
   - App containers run on internal port 8080 (HTTP only), dev-supervisor handles SSL on allocated external port (5001+)
   - Removed HTTPS configuration from vite.config.ts in v8 template: Simplified to HTTP-only internally
@@ -123,6 +161,7 @@
   - Maintains production parity with standard reverse proxy architecture pattern
 
 - **Commerce Product Catalog Integration**: New Commerce Agent for GoDaddy Commerce API integration with product catalog capabilities
+
   - Added `CommerceProductTool`: OAuth 2.0 client credentials flow with GraphQL API integration for product retrieval
   - Added `getProductsAITool`: AI-Lib compatible tool wrapper for fetching product catalogs (SKU ID, title, description, price)
   - Added `CommerceAgent`: Specialized agent with minimal toolset (getProducts only) - no HTML rendering or file operations
@@ -134,6 +173,7 @@
   - Updated tool registry with commerce tools group and updated agent exports
 
 - **Shared MySQL Database Architecture**: Consolidated per-app MySQL containers to a single shared MySQL instance for better resource utilization and production parity
+
   - Added `SharedMySQLService`: Manages database and user provisioning in the shared MySQL instance
     - Each app gets unique database (airo*{appId}) and user (user_airo*{appId}) with isolated permissions
     - Automatic database/user creation on app start, cleanup on app deletion
@@ -166,6 +206,7 @@
     - Updated docker-compose-generator.ts and documentation
 
 - **Conversation History Management System**: Intelligent context loading with compression strategies for massive token savings and improved agent performance
+
   - Added `ConversationHistoryLoader`: Clean Unix pipe-like architecture for loading conversation history with verification at each step
   - Methods: `loadDatabaseMessages()` → `convertToLLMMessages()` → `compressMessages()` → `applyTokenLimit()`
   - Added `MessageCompressor`: Flexible strategy pattern for pluggable compression algorithms without spaghetti code
@@ -195,6 +236,7 @@
     - Identify and compress tools where inputs/outputs overlap (e.g., file edit operations)
 
 - **Commerce Checkout Email Removed**: Simplified checkout flow by removing email requirement from frontend and backend
+
   - **Removed email field** from `CreateCheckoutSessionRequest` interface in POST.ts
   - **Removed email parameter** from `CreateCheckoutSessionParams` in commerce-client.ts
   - **Removed email from function call** in POST.ts (line 336-341)
@@ -207,6 +249,7 @@
   - Cleaner, faster checkout experience for customers
 
 - **Commerce Checkout Complete Field Support**: Added all required GraphQL mutation fields for comprehensive checkout session creation
+
   - **Expanded GraphQL Input**: Added 14+ additional fields to createCheckoutSession mutation
   - Added `environment: "dev"` for proper environment context
   - Added `storeName: "My Store"` for display purposes
@@ -220,6 +263,7 @@
   - Matches Commerce API specification for complete checkout session creation
 
 - **Commerce Checkout HTTPS to HTTP Conversion for Redirect URLs**: Converts only returnUrl and successUrl to HTTP for local development
+
   - **Selective HTTPS to HTTP Conversion**: POST.ts converts `returnUrl` and `successUrl` from `https://` to `http://`
   - **OAuth and GraphQL remain HTTPS**: Commerce API calls (OAuth, GraphQL mutations) continue using HTTPS with proper SSL
   - **Localhost Hostname Replacement**: Automatically replaces `localhost` with `success.preview.dev-godaddy.com` in redirect URLs
@@ -253,6 +297,7 @@
   - All 16 verification tests passing for commerce checkout documentation
 
 - **Commerce Checkout Integration**: Complete GoDaddy Commerce Checkout API integration for generated applications with secure payment flows
+
   - Added backend API route template: `app-templates/v8/src/api/commerce/create-checkout-session/POST.ts`
     - Handles OAuth 2.0 client credentials flow for Commerce API authentication
     - Creates checkout sessions via GraphQL mutation to GoDaddy Commerce Checkout API
@@ -301,6 +346,7 @@
   - Non-allowed origins now receive 200 OK without CORS headers (browser blocks), instead of 500 error
   - This is the standard and correct CORS rejection behavior
 - **CORS Security Audit Tools**: Comprehensive tooling for auditing and verifying CORS configurations to prevent security misconfigurations
+
   - Added `scripts/audit-cors-config.js`: Static analysis tool that scans codebase for CORS security issues
   - Added `scripts/verify-cors-production.js`: Live testing tool to verify production CORS headers from multiple origins
   - Added `scripts/README.md`: Comprehensive guide covering all scripts (CORS, security, JWT, licenses)
@@ -312,6 +358,7 @@
   - Confirms current agents CORS implementation is secure: explicit origin validation, environment-aware defaults, no fail-open behavior
 
 - **Workspace Configuration & Docker Build Improvements**: Fixed pnpm workspace issues and modernized Docker builds with security enhancements
+
   - Removed problematic `postinstall` script from agents/package.json (workspace root handles better-sqlite3 compilation)
   - Updated all documentation to show correct workspace commands: `pnpm --filter <package> <command>`
   - Added direnv protection: blocks `pnpm install` in workspace subdirectories with helpful error messages
@@ -327,6 +374,7 @@
   - Added CI automation to verify v8 template lockfile stays current with clear error messages
 
 - **AI-Lib S2S Authentication**: Complete Service-to-Service authentication implementation for ai-lib using AWS IAM credentials and JWT tokens
+
   - Added optional S2S authentication via `GOCODE_USE_S2S_AUTH=true` environment variable
   - Integrated gd-auth-client for JWT token generation from AWS IAM credentials with 24-hour token lifespan
   - Environment-specific configuration supporting dev/test/prod SSO hosts and GoCode endpoints
@@ -336,6 +384,7 @@
   - Backward compatible implementation with zero breaking changes to existing API key authentication
 
 - **Security Enhancement**: Removed unsafe command execution from file-edit tool to enforce proper container isolation
+
   - Removed `runBuildCommand()` and `getSafeBuildCommand()` methods that executed commands in agent container via unsafe `exec()` calls
   - Removed `autoBuild` and `dryRun` parameters from FileEditTool interface and ai-lib-tools wrapper
   - All tool command execution now properly routes through dev-supervisor API for security compliance
@@ -358,6 +407,7 @@
 - Added Daily Limit of default value $10 for usage
 
 - Homepage updates:
+
   - Examples with screenshots and "Try this" buttons.
   - Require login before writing a prompt. (This is a temporary measure, to make sure people don't lose work.)
   - Ask the develop agent to view error logs after making changes

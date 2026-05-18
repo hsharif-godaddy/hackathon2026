@@ -1,13 +1,18 @@
 /**
  * Getty Media Driver
  *
- * Handles both image and video search through Getty Images API.
+ * Handles both image and video search through the GoDaddy Getty Images proxy
+ * (`api.{test-,}godaddy.com/getty-proxy` or env-configured base). Auth and
+ * S2S token lifecycle live in `BaseDriverV2` (`GOCODE_USE_S2S_AUTH`,
+ * `SSO_HOST`). Proxy base URL: `GETTY_IMAGE_PROXY_URL` or dev direct proxy default.
+ *
  * Implements the shared MediaDriver interface for unified access.
  */
 import { log } from '../../../logging/index.js';
 import { toolImageSearchEvents, toolVideoSearchEvents } from '../../../logging/events/index.js';
 
-import { BaseDriver } from './base-driver.js';
+import { BaseDriverV2 } from './base-driver-v2.js';
+import { GETTY_CONFIG_MEDIA_AUTH_MISSING } from './getty-config-messages.js';
 import type { MediaDriver, MediaDriverSearchOptions, MediaResult, MediaItem } from './media-driver.js';
 
 // Re-export shared types under legacy names for backward compatibility
@@ -58,14 +63,27 @@ interface DisplaySize {
  * Handles both image and video search with shared infrastructure.
  * Implements MediaDriver for unified access from MediaSearchTool.
  */
-export class GettyMediaDriver extends BaseDriver implements MediaDriver {
+export class GettyMediaDriver extends BaseDriverV2 implements MediaDriver {
   constructor() {
+    const baseUrl = (
+      process.env.GETTY_IMAGE_PROXY_URL || 'https://getty-images-proxy.api.dev-godaddy.com'
+    ).replace(/\/+$/, '');
     super({
-      serviceName: 'getty-media-driver',
-      defaultBaseUrl: 'https://getty-images-proxy.api.test-godaddy.com',
+      serviceName: 'getty-media-driver-v2',
+      baseUrl,
       appKeyEnvVar: 'GETTY_APP_KEY',
       defaultAppKey: 'airo-app-builder',
     });
+
+    this.logger.info('getty-media-driver.config.initialized', {
+      baseUrl: this.apiBaseUrl,
+    });
+
+    if (!this.hasAuth()) {
+      this.logger.warn('getty-media-driver.auth.missing', {
+        message: GETTY_CONFIG_MEDIA_AUTH_MISSING,
+      });
+    }
   }
 
   /**
@@ -91,35 +109,35 @@ export class GettyMediaDriver extends BaseDriver implements MediaDriver {
     name: string;
     drop: Set<(typeof GettyMediaDriver.DROPPABLE_FILTER_KEYS)[number]>;
   }> = [
-    { name: 'all-filters', drop: new Set() },
-    { name: 'drop-moods', drop: new Set(['moods']) },
-    { name: 'drop-moods-orientations', drop: new Set(['moods', 'orientations']) },
-    {
-      name: 'drop-advanced',
-      drop: new Set([
-        'moods',
-        'orientations',
-        'numberOfPeople',
-        'ethnicity',
-        'ageOfPeople',
-        'minimumSize',
-      ]),
-    },
-    {
-      name: 'query-only',
-      drop: new Set([
-        'moods',
-        'orientations',
-        'compositions',
-        'graphicalStyles',
-        'numberOfPeople',
-        'ethnicity',
-        'ageOfPeople',
-        'minimumSize',
-        'color',
-      ]),
-    },
-  ];
+      { name: 'all-filters', drop: new Set() },
+      { name: 'drop-moods', drop: new Set(['moods']) },
+      { name: 'drop-moods-orientations', drop: new Set(['moods', 'orientations']) },
+      {
+        name: 'drop-advanced',
+        drop: new Set([
+          'moods',
+          'orientations',
+          'numberOfPeople',
+          'ethnicity',
+          'ageOfPeople',
+          'minimumSize',
+        ]),
+      },
+      {
+        name: 'query-only',
+        drop: new Set([
+          'moods',
+          'orientations',
+          'compositions',
+          'graphicalStyles',
+          'numberOfPeople',
+          'ethnicity',
+          'ageOfPeople',
+          'minimumSize',
+          'color',
+        ]),
+      },
+    ];
 
   /**
    * Search for media (images or videos) using Getty API.
@@ -145,23 +163,20 @@ export class GettyMediaDriver extends BaseDriver implements MediaDriver {
       if (!this.hasAuth()) {
         return {
           success: false,
-          error: this.getAuthErrorMessage(),
+          error: GETTY_CONFIG_MEDIA_AUTH_MISSING,
         };
       }
 
       const endpoint = mediaType === 'image' ? '/v1/search' : '/v1/videos/search';
 
-      const imageEventLogger = toolImageSearchEvents;
-      const videoEventLogger = toolVideoSearchEvents;
-
       if (mediaType === 'video') {
-        videoEventLogger.begin(this.logger, {
+        toolVideoSearchEvents.begin(this.logger, {
           toolName: 'GettyMediaDriver',
           prompt: query,
           provider: 'getty',
         });
       } else {
-        imageEventLogger.begin(this.logger, {
+        toolImageSearchEvents.begin(this.logger, {
           toolName: 'GettyMediaDriver',
           prompt: query,
           count,
@@ -169,7 +184,6 @@ export class GettyMediaDriver extends BaseDriver implements MediaDriver {
         });
       }
 
-      // Try each relaxation level until we get results
       const levels = GettyMediaDriver.FILTER_RELAXATION_LEVELS;
       let previousQueryString: string | null = null;
 
@@ -179,7 +193,6 @@ export class GettyMediaDriver extends BaseDriver implements MediaDriver {
         const queryParams = this.buildQueryParams(options, level.drop);
         const queryString = queryParams.toString();
 
-        // Skip levels that produce identical query params
         if (previousQueryString !== null && previousQueryString === queryString) {
           continue;
         }
@@ -229,7 +242,6 @@ export class GettyMediaDriver extends BaseDriver implements MediaDriver {
             continue;
           }
 
-          // Final level still no results
           this.logger.warn('getty-media.no-results', {
             mediaType,
             phrase: query,
@@ -251,14 +263,14 @@ export class GettyMediaDriver extends BaseDriver implements MediaDriver {
         }
 
         if (mediaType === 'video') {
-          videoEventLogger.success(this.logger, {
+          toolVideoSearchEvents.success(this.logger, {
             toolName: 'GettyMediaDriver',
             prompt: query,
             provider: 'getty',
             resultUrl: items[0]?.display_sizes?.[0]?.uri || '',
           });
         } else {
-          imageEventLogger.success(this.logger, {
+          toolImageSearchEvents.success(this.logger, {
             toolName: 'GettyMediaDriver',
             prompt: query,
             count,
@@ -270,7 +282,6 @@ export class GettyMediaDriver extends BaseDriver implements MediaDriver {
         return this.processSearchResults(data, items, mediaType, query);
       }
 
-      // All levels exhausted (should not reach here given loop structure)
       return {
         success: false,
         error: `No ${mediaType}s found matching your search criteria`,

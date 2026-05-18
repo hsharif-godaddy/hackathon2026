@@ -111,6 +111,57 @@ export abstract class BaseDriver {
   }
 
   /**
+   * Wrap `fetch` so that network-level failures (DNS, TCP, TLS) are logged
+   * with structured context before the error propagates. Without this,
+   * undici surfaces only `TypeError: fetch failed` and the underlying
+   * cause is buried in `error.cause`, which the outer tool layer drops.
+   *
+   * Logs `request.network_failed` with the URL, method, and the underlying
+   * errno/code (e.g. `ENOTFOUND`, `ECONNREFUSED`, `UND_ERR_CONNECT_TIMEOUT`).
+   * Re-throws unchanged so existing error handling stays intact.
+   */
+  private async fetchWithNetworkLogging(
+    url: string,
+    init: RequestInit,
+  ): Promise<Response> {
+    try {
+      return await fetch(url, init);
+    } catch (error) {
+      const cause =
+        error instanceof Error && (error as Error & { cause?: unknown }).cause
+          ? ((error as Error & { cause?: unknown }).cause as
+              | Error
+              | { code?: string; errno?: string; message?: string })
+          : undefined;
+      const causeRecord =
+        cause && typeof cause === 'object' ? (cause as Record<string, unknown>) : {};
+      const errorName = error instanceof Error ? error.name : 'Error';
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const causeName =
+        cause instanceof Error ? cause.name : (causeRecord.name as string | undefined);
+      const causeMessage =
+        cause instanceof Error
+          ? cause.message
+          : (causeRecord.message as string | undefined);
+      const causeCode = causeRecord.code as string | undefined;
+      const causeErrno = causeRecord.errno as string | undefined;
+
+      this.logger.error('request.network_failed', {
+        method: init.method,
+        url,
+        baseUrl: this.apiBaseUrl,
+        errorName,
+        errorMessage,
+        causeName,
+        causeMessage,
+        causeCode,
+        causeErrno,
+      });
+      throw error;
+    }
+  }
+
+  /**
    * Make authenticated GET request
    */
   protected async get(
@@ -122,7 +173,7 @@ export abstract class BaseDriver {
       ? `${this.apiBaseUrl}${endpoint}?${queryParams.toString()}`
       : `${this.apiBaseUrl}${endpoint}`;
 
-    return fetch(url, {
+    return this.fetchWithNetworkLogging(url, {
       method: 'GET',
       headers: this.getHeaders(additionalHeaders),
     });
@@ -138,7 +189,7 @@ export abstract class BaseDriver {
   ): Promise<Response> {
     const url = `${this.apiBaseUrl}${endpoint}`;
 
-    return fetch(url, {
+    return this.fetchWithNetworkLogging(url, {
       method: 'POST',
       headers: this.getHeaders({
         'Content-Type': 'application/json',
@@ -158,7 +209,7 @@ export abstract class BaseDriver {
   ): Promise<Response> {
     const url = `${this.apiBaseUrl}${endpoint}`;
 
-    return fetch(url, {
+    return this.fetchWithNetworkLogging(url, {
       method: 'PUT',
       headers: this.getHeaders({
         'Content-Type': 'application/json',
@@ -182,4 +233,3 @@ export abstract class BaseDriver {
     return 'Authentication not configured. Set GETTY_TOKEN for proxy or SSO_JWT for direct access.';
   }
 }
-

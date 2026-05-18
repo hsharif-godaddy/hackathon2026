@@ -6,19 +6,57 @@ The media search tool provides professional stock images and videos using the Ge
 
 ### Configuration
 
-Requires the following environment variables in `agents/.env`:
+Agents call the GoDaddy Getty Images proxy **directly** (no `airo-proxy` hop on
+this path). Common bases include `https://getty-images-proxy.api.dev-godaddy.com`
+(dev direct), `https://api.test-godaddy.com/getty-proxy`, and
+`https://api.godaddy.com/getty-proxy`. Set **`GETTY_IMAGE_PROXY_URL`** when the
+default below is wrong for your environment.
+
+**Authentication** — `GettyMediaDriver` and `GettyUploadService` use
+**`BaseDriverV2`** (`agents/src/tools/ai-lib-tools/drivers/base-driver-v2.ts`):
+
+- **IAM / S2S**: `GOCODE_USE_S2S_AUTH=true`. JWTs come from `getS2SToken()` /
+  `refreshS2SToken()` with **`SSO_HOST`** as the issuer host when set, otherwise
+  **`sso.test-godaddy.com`**. Local dev usually relies on Gasket’s `SSO_HOST`
+  (for example `sso.dev-godaddy.com`) plus an AWS SSO profile such as
+  `airobuild-dev-private-sso` after `aws sso login` (see dev-runner Getty
+  preflight).
+- **Raw jomax JWT**: `SSO_JWT=<token>` sends `Authorization: sso-jwt <token>`
+  without IAM minting.
+
+User-facing log/search error copy for missing setup lives in
+**`agents/src/tools/ai-lib-tools/drivers/getty-config-messages.ts`** — keep it
+aligned with dev-runner Getty messaging.
 
 ```bash
-# Getty Images Proxy Configuration
-GETTY_API_URL=https://getty-images-proxy.api.test-godaddy.com
-GETTY_TOKEN=your-getty-token-here
+# Required: enable the Getty driver
 IMAGE_SEARCH_DRIVER=getty
 
-# Optional: Legacy SSO JWT (if not using GETTY_TOKEN)
-# SSO_JWT=your-sso-jwt-token
+# Recommended (matches dev-runner Getty fixer / agents defaults):
+GOCODE_USE_S2S_AUTH=true
+# AWS_PROFILE=airobuild-dev-private-sso
+
+# Issuer host for IAM mint (optional; Gasket local.dev often sets this)
+# SSO_HOST=sso.dev-godaddy.com
+
+# Instead of IAM, use a GoDaddy jomax JWT for this process:
+# SSO_JWT=<your-jomax-jwt>
+
+# Proxy base URL (optional). Base only; trailing slashes are stripped.
+# When unset, agents default to:
+#   https://getty-images-proxy.api.dev-godaddy.com
+# GETTY_IMAGE_PROXY_URL=https://api.test-godaddy.com/getty-proxy
+# GETTY_IMAGE_PROXY_URL=https://api.godaddy.com/getty-proxy
+
+# GETTY_APP_KEY=airo-app-builder
 ```
 
-**Note:** `GETTY_API_URL` should be the base URL of the proxy without any path suffixes (e.g., `/img/search`). The paths `/v1/search`, `/v1/videos/search`, and `/v1/videos/upload` are automatically appended by the driver.
+**`GETTY_API_URL`**: replaced by **`GETTY_IMAGE_PROXY_URL`** (same role: proxy
+base only).
+
+**`GETTY_TOKEN` (legacy Bearer)**: not used by `BaseDriverV2` Getty flows. If it
+is still set, **`GettyUploadService`** logs a warning on construction; remove
+it to clear the warning.
 
 ### Implementation
 
@@ -51,7 +89,12 @@ The tool supports two media types:
 
 The underlying Getty API integration is implemented in `GettyMediaDriver`. This driver handles:
 
-1. **Authentication**: Uses `GETTY_TOKEN` or `SSO_JWT` for API authentication
+1. **Authentication**: With `GOCODE_USE_S2S_AUTH=true`, an IAM JWT is minted and
+   sent as `Authorization: sso-jwt <jwt>`; with `SSO_JWT` set, that value is sent
+   directly. Token lifecycle (cache, expiry refresh, one 401 retry) lives in
+   `BaseDriverV2`. User-facing setup strings live in
+   `agents/src/tools/ai-lib-tools/drivers/getty-config-messages.ts` (keep in
+   sync with dev-runner Getty preflight).
 2. **Image Search**: Direct search and retrieval of image URLs
 3. **Video Search**: Two-step process
    - Step 1: Search for videos via `/v1/videos/search` endpoint
@@ -66,6 +109,8 @@ The proxy exposes these endpoints for Getty integration:
 - `GET /v1/search` - Search for images
 - `GET /v1/videos/search` - Search for videos (returns video ID)
 - `POST /v1/videos/upload` - Upload video ID to get final video URL
+- `POST /v1/upload` - Upload images to CDN (used by `GettyUploadService`)
+- `PUT /v1/usage` - Report image usage (used by `GettyUploadService`)
 
 ### Usage Examples
 

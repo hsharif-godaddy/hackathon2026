@@ -576,7 +576,7 @@ git commit -m "feat: add LogoService for server-side logo API calls with S2S aut
 
 ### Task 4: Add Logo API Environment Config
 
-**Context:** Add the `LOGO_API_URL` environment variable to the agents config, following the existing pattern for `GETTY_API_URL`.
+**Context:** Add the `LOGO_API_URL` environment variable to the agents config, following the existing pattern for `GETTY_IMAGE_PROXY_URL`.
 
 **Files:**
 - Modify: `agents/.env.example`

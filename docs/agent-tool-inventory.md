@@ -911,7 +911,7 @@ async function mcpToolAdapter(mcpServerUrl: string, toolName: string) {
 
 ```bash
 IMAGE_SEARCH_DRIVER=getty
-GETTY_API_URL=...
+GETTY_IMAGE_PROXY_URL=...
 SSO_JWT=...
 UNSPLASH_ACCESS_KEY=...
 ```
@@ -1199,7 +1199,7 @@ DB_CONNECTION_TIMEOUT=10000     # Connection timeout (ms)
 
 # Image Services
 IMAGE_SEARCH_DRIVER=getty
-GETTY_API_URL=...
+GETTY_IMAGE_PROXY_URL=...
 UNSPLASH_ACCESS_KEY=...
 ```
 
@@ -1716,7 +1716,7 @@ While all tools are in-house, some integrate with external services:
 
 **Image Services**:
 
-- Getty Images: Requires `SSO_JWT` and `GETTY_API_URL`
+- Getty Images: Requires `SSO_JWT` and `GETTY_IMAGE_PROXY_URL`
 - Unsplash: Requires `UNSPLASH_ACCESS_KEY`
 - OpenAI: Requires `OPENAI_API_KEY`
 
