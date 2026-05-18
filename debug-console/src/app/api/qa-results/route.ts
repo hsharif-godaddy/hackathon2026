@@ -1,6 +1,7 @@
 import { Client } from '@elastic/elasticsearch';
 import { NextResponse } from 'next/server';
 
+import { searchRunSummaries } from '@/app/api/qa-results/run-summaries';
 import { withAuth } from '@/lib/api-auth';
 
 export const dynamic = 'force-dynamic';
@@ -52,7 +53,10 @@ function utcSevenDayWindow(): { gte: string; lte: string } {
 }
 
 function runNumberClause(runNumber: string): Record<string, unknown> {
-  const clauses: Record<string, unknown>[] = [{ term: { runNumber } }];
+  const clauses: Record<string, unknown>[] = [
+    { term: { 'runNumber.keyword': runNumber } },
+    { term: { runNumber } },
+  ];
   const n = Number.parseInt(runNumber, 10);
   if (!Number.isNaN(n) && String(n) === runNumber.trim()) {
     clauses.push({ term: { runNumber: n } });
@@ -241,70 +245,7 @@ export const GET = withAuth(async (request, _auth) => {
 
       case 'run-summaries': {
         const { gte, lte } = utcSevenDayWindow();
-        const result = await client.search({
-          index: QA_INDEX,
-          size: 0,
-          body: {
-            query: { range: { timestamp: { gte, lte } } },
-            aggs: {
-              runs: {
-                terms: {
-                  field: 'runNumber',
-                  size: 80,
-                  order: { max_ts: 'desc' },
-                },
-                aggs: {
-                  max_ts: { max: { field: 'timestamp' } },
-                  passed: { filter: { term: { success: true } } },
-                  failed: { filter: { term: { success: false } } },
-                  sample: {
-                    top_hits: {
-                      size: 1,
-                      sort: [{ timestamp: 'desc' }],
-                      _source: {
-                        includes: [
-                          'environment',
-                          'eventName',
-                          'triggerActor',
-                          'actor',
-                          'workflow',
-                          'timestamp',
-                        ],
-                      },
-                    },
-                  },
-                },
-              },
-            },
-          },
-        });
-
-        const runsAgg = (result.aggregations as { runs?: { buckets?: Array<{
-          key: number | string;
-          max_ts?: { value_as_string?: string; value?: number | null };
-          passed?: FilterAgg;
-          failed?: FilterAgg;
-          sample?: { hits?: { hits?: Array<{ _source?: Record<string, unknown> }> } };
-        }> } } | undefined)?.runs?.buckets ?? [];
-
-        const runs = runsAgg.map(function mapRun(b) {
-          const hit = b.sample?.hits?.hits?.[0]?._source ?? {};
-          const env = typeof hit.environment === 'string' ? hit.environment : 'unknown';
-          const eventName = typeof hit.eventName === 'string' ? hit.eventName : '';
-          const triggerActor = typeof hit.triggerActor === 'string' ? hit.triggerActor : '';
-          const actor = typeof hit.actor === 'string' ? hit.actor : '';
-          const ts = typeof hit.timestamp === 'string' ? hit.timestamp : (b.max_ts?.value_as_string ?? '');
-          return {
-            runNumber: String(b.key),
-            timestamp: ts,
-            passed: b.passed?.doc_count ?? 0,
-            failed: b.failed?.doc_count ?? 0,
-            environment: env,
-            eventName,
-            triggerActor: triggerActor || actor,
-          };
-        });
-
+        const runs = await searchRunSummaries(client, gte, lte);
         return NextResponse.json({ gte, lte, runs });
       }
 

@@ -92,10 +92,10 @@ export interface RisqKpiSnapshot {
   e2e: {
     loading: boolean;
     error?: string;
-    prodPass: boolean | null;
-    testPass: boolean | null;
-    prodStatus?: string | null;
-    testStatus?: string | null;
+    passed: number;
+    failed: number;
+    total: number;
+    running: number;
   };
 }
 
@@ -133,12 +133,6 @@ function kpiShell(
       {children}
     </div>
   );
-}
-
-function checkGlyph(ok: boolean | null): string {
-  if (ok === true) return '✅';
-  if (ok === false) return '✗';
-  return '—';
 }
 
 export default function RisqKpiRow({
@@ -182,31 +176,17 @@ export default function RisqKpiRow({
         ? '#dc2626'
         : '#111827';
 
-  const e2eBothPass =
-    !e2e.loading &&
-    !e2e.error &&
-    e2e.prodPass === true &&
-    e2e.testPass === true;
-  const e2eAnyFail =
-    !e2e.loading &&
-    !e2e.error &&
-    (e2e.prodPass === false || e2e.testPass === false);
-
-  function ghWorkflowActive(status: string | null | undefined): boolean {
-    const s = (status ?? '').toLowerCase();
-    return s === 'queued' || s === 'in_progress' || s === 'waiting' || s === 'requested' || s === 'pending';
-  }
-
-  const e2eWorkflowRunning =
-    !e2e.loading && !e2e.error && (ghWorkflowActive(e2e.testStatus) || ghWorkflowActive(e2e.prodStatus));
+  const e2eMain =
+    e2e.loading ? '…' : e2e.error ? '—' : e2e.total > 0 ? `${e2e.passed}/${e2e.total}` : '—';
+  const e2eMainColor =
+    e2e.loading || e2e.error
+      ? '#64748b'
+      : e2e.failed > 0
+        ? '#dc2626'
+        : '#16a34a';
 
   return (
     <div className={polish.kpiGrid}>
-      <style
-        dangerouslySetInnerHTML={{
-          __html: '@keyframes risqKpiE2eSpin{to{transform:rotate(360deg)}}',
-        }}
-      />
       {kpiShell(Boolean(onFeedbackClick), onFeedbackClick, (
         <>
           <div style={titleStyle}>Customer feedback</div>
@@ -243,102 +223,18 @@ export default function RisqKpiRow({
       {kpiShell(Boolean(onE2eClick), onE2eClick, (
         <>
           <div style={titleStyle}>E2E tests</div>
-          {e2e.loading ? (
-            <>
-              <div style={{ fontSize: '1.65rem', fontWeight: 800, color: '#16a34a', lineHeight: 1.12, flex: 1 }}>—</div>
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.4rem',
-                  fontSize: '0.72rem',
-                  color: '#64748b',
-                  marginTop: '0.22rem',
-                  fontWeight: 600,
-                }}
-              >
-                <span
-                  aria-hidden
-                  style={{
-                    display: 'inline-block',
-                    width: 11,
-                    height: 11,
-                    border: '2px solid #bbf7d0',
-                    borderTopColor: '#16a34a',
-                    borderRadius: '50%',
-                    animation: 'risqKpiE2eSpin 0.65s linear infinite',
-                    flexShrink: 0,
-                  }}
-                />
-                Loading…
-              </div>
-              {pill('live', 'LOADING')}
-            </>
+          <div style={{ fontSize: '1.65rem', fontWeight: 800, color: e2eMainColor, lineHeight: 1.12, flex: 1 }}>{e2eMain}</div>
+          {subMuted('Last 10 prod runs')}
+          {e2e.error ? (
+            pill('error', 'UNAVAILABLE')
+          ) : e2e.loading ? null : e2e.total === 0 ? (
+            pill('neutral', 'NO DATA')
+          ) : e2e.running > 0 ? (
+            pill('negative', `${e2e.running} RUNNING`)
+          ) : e2e.failed > 0 ? (
+            pill('error', `${e2e.failed} FAILURES`)
           ) : (
-            <>
-              <div
-                style={{
-                  fontSize: '1.65rem',
-                  fontWeight: 800,
-                  color: e2e.error
-                    ? '#64748b'
-                    : e2eWorkflowRunning
-                      ? '#ea580c'
-                      : e2eBothPass
-                        ? '#16a34a'
-                        : e2eAnyFail
-                          ? '#dc2626'
-                          : '#64748b',
-                  lineHeight: 1.12,
-                  flex: 1,
-                }}
-                aria-hidden
-              >
-                {e2e.error ? '…' : e2eWorkflowRunning ? '⏳' : e2eBothPass ? '✓' : e2eAnyFail ? '✗' : '—'}
-              </div>
-              <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '0.22rem', fontWeight: 600 }}>
-                <span
-                  style={{
-                    color: ghWorkflowActive(e2e.testStatus)
-                      ? '#ea580c'
-                      : e2e.testPass === true
-                        ? '#15803d'
-                        : e2e.testPass === false
-                          ? '#b91c1c'
-                          : '#94a3b8',
-                  }}
-                >
-                  {ghWorkflowActive(e2e.testStatus) ? '⏳' : checkGlyph(e2e.testPass)}
-                </span>{' '}
-                <span style={{ color: '#94a3b8' }}>TEST</span>
-                <span style={{ color: '#cbd5e1', margin: '0 0.35rem' }}>·</span>
-                <span
-                  style={{
-                    color: ghWorkflowActive(e2e.prodStatus)
-                      ? '#ea580c'
-                      : e2e.prodPass === true
-                        ? '#15803d'
-                        : e2e.prodPass === false
-                          ? '#b91c1c'
-                          : '#94a3b8',
-                  }}
-                >
-                  {ghWorkflowActive(e2e.prodStatus) ? '⏳' : checkGlyph(e2e.prodPass)}
-                </span>{' '}
-                <span style={{ color: '#94a3b8' }}>PROD</span>
-              </div>
-              {e2e.error ? (
-                pill('error', 'UNAVAILABLE')
-              ) : e2eWorkflowRunning ? (
-                pill('negative', 'RUNNING')
-              ) : e2eBothPass ? (
-                pill('green', 'PASS')
-              ) : e2eAnyFail ? (
-                pill('error', 'FAIL')
-              ) : (
-                pill('neutral', 'NO DATA')
-              )}
-            </>
+            pill('green', 'ALL PASS')
           )}
         </>
       ), qualityPanelSelection === 'e2e')}

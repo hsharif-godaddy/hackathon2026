@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, type CSSProperties } from 'react';
+import { useMemo, type CSSProperties, type ReactNode } from 'react';
 
 import C1AnalyticsPanel from '@/components/C1AnalyticsPanel';
 import LangfuseInsightsPanel from '@/components/LangfuseInsightsPanel';
@@ -181,6 +181,22 @@ const tabs: ReadonlyArray<{ id: RisqSignalsTab; line: string }> = [
   { id: 'layer5', line: 'Layer 5: Apps & tools' },
 ];
 
+function SignalsTabPanel({
+  tabId,
+  activeTab,
+  children,
+}: {
+  tabId: RisqSignalsTab;
+  activeTab: RisqSignalsTab;
+  children: ReactNode;
+}) {
+  return (
+    <div hidden={activeTab !== tabId} role="tabpanel">
+      {children}
+    </div>
+  );
+}
+
 export default function RisqSignalsSection({ signalsTab, onSignalsTabChange }: RisqSignalsSectionProps) {
   const lfWindow = useMemo(function computeLfWindow() {
     const end = new Date();
@@ -231,10 +247,16 @@ export default function RisqSignalsSection({ signalsTab, onSignalsTabChange }: R
         </div>
 
         <div style={{ padding: '1.05rem 1rem 1.2rem', width: '100%', boxSizing: 'border-box' }}>
-          {signalsTab === 'langfuse' ? <LangfuseInsightsPanel fromTimestamp={lfWindow.from} toTimestamp={lfWindow.to} /> : null}
-          {signalsTab === 'c1' ? <C1AnalyticsPanel /> : null}
-          {signalsTab === 'feedback' ? <RisqCustomerFeedbackPanel /> : null}
-          {signalsTab === 'layer5' ? (
+          <SignalsTabPanel tabId="langfuse" activeTab={signalsTab}>
+            <LangfuseInsightsPanel fromTimestamp={lfWindow.from} toTimestamp={lfWindow.to} />
+          </SignalsTabPanel>
+          <SignalsTabPanel tabId="c1" activeTab={signalsTab}>
+            <C1AnalyticsPanel />
+          </SignalsTabPanel>
+          <SignalsTabPanel tabId="feedback" activeTab={signalsTab}>
+            <RisqCustomerFeedbackPanel />
+          </SignalsTabPanel>
+          <SignalsTabPanel tabId="layer5" activeTab={signalsTab}>
             <div
               style={{
                 width: 'calc(100% + 2rem)',
@@ -282,7 +304,7 @@ export default function RisqSignalsSection({ signalsTab, onSignalsTabChange }: R
                 })}
               </div>
             </div>
-          ) : null}
+          </SignalsTabPanel>
         </div>
       </div>
     </div>

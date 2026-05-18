@@ -52,10 +52,6 @@ function isProdRunTitle(title: string): boolean {
   return /E2E Tests\s*-\s*prod\b/i.test(title);
 }
 
-function isNonProdEnvRunTitle(title: string): boolean {
-  return /E2E Tests\s*-\s*(test|dev|pre-test)\b/i.test(title);
-}
-
 function parseEnvLabel(title: string): string {
   const m = /E2E Tests\s*-\s*([^(]+)/i.exec(title);
   if (!m?.[1]) return '—';
@@ -89,29 +85,23 @@ function mapRun(run: GhWorkflowRun) {
   };
 }
 
-function pickSummaryRuns(runs: GhWorkflowRun[]) {
-  let prod: GhWorkflowRun | undefined;
-  let test: GhWorkflowRun | undefined;
-  for (const run of runs) {
-    const title = runTitle(run);
-    if (!prod && isProdRunTitle(title)) prod = run;
-    if (!test && isNonProdEnvRunTitle(title)) test = run;
-    if (prod && test) break;
+const PROD_RUNS_KPI_LIMIT = 10;
+
+function summarizeLastProdRuns(runs: GhWorkflowRun[]) {
+  const prodOnly = runs.filter((run) => isProdRunTitle(runTitle(run))).slice(0, PROD_RUNS_KPI_LIMIT);
+  let passed = 0;
+  let failed = 0;
+  let running = 0;
+  for (const run of prodOnly) {
+    const st = (run.status ?? '').toLowerCase();
+    if (st !== 'completed') {
+      running++;
+      continue;
+    }
+    if (run.conclusion === 'success') passed++;
+    else failed++;
   }
-  const conclusionPass = function pass(run: GhWorkflowRun | undefined): boolean | null {
-    if (!run) return null;
-    const c = run.conclusion;
-    if (c == null || run.status !== 'completed') return null;
-    return c === 'success';
-  };
-  return {
-    prodPass: conclusionPass(prod),
-    testPass: conclusionPass(test),
-    prodRunNumber: prod?.run_number != null ? String(prod.run_number) : null,
-    testRunNumber: test?.run_number != null ? String(test.run_number) : null,
-    prodStatus: prod && typeof prod.status === 'string' ? prod.status : null,
-    testStatus: test && typeof test.status === 'string' ? test.status : null,
-  };
+  return { passed, failed, total: prodOnly.length, running };
 }
 
 export const GET = withAuth(async (request, _auth) => {
@@ -126,11 +116,11 @@ export const GET = withAuth(async (request, _auth) => {
 
   try {
     if (action === 'summary') {
-      const data = await routeCached('github_e2e_runs_summary_v2', 45_000, async () => {
-        const qs = new URLSearchParams({ per_page: '40' });
+      const data = await routeCached('github_e2e_runs_summary_v3', 45_000, async () => {
+        const qs = new URLSearchParams({ per_page: '100' });
         const body = (await ghGetJson(`${wfPath}?${qs}`, token)) as GhListResponse;
         const runs = Array.isArray(body.workflow_runs) ? body.workflow_runs : [];
-        return pickSummaryRuns(runs);
+        return summarizeLastProdRuns(runs);
       });
       return NextResponse.json(data);
     }

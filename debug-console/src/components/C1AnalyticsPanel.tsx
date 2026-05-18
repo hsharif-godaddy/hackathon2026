@@ -237,7 +237,7 @@ export default function C1AnalyticsPanel({ period: periodFromParent }: C1Analyti
                   ● MULTI-SOURCE
                 </span>
                 <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 500, lineHeight: 1.4 }}>
-                  C1 analytics • QuickSight • FullStory • Console data
+                  C1 analytics • Clickhouse
                 </span>
               </div>
             </div>

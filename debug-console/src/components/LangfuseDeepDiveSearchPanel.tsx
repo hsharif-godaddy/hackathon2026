@@ -272,6 +272,11 @@ export default function LangfuseDeepDiveSearchPanel() {
             style={{
               ...btn,
               marginTop: '0.55rem',
+              alignSelf: 'flex-start',
+              width: 'auto',
+              padding: '0.35rem 0.7rem',
+              fontSize: '0.74rem',
+              borderRadius: 6,
               opacity: appId.trim() ? 1 : 0.55,
               cursor: appId.trim() ? 'pointer' : 'not-allowed',
             }}
@@ -282,7 +287,7 @@ export default function LangfuseDeepDiveSearchPanel() {
           >
             {appLoading ? 'Loading…' : 'Fetch app details'}
           </button>
-          <p style={{ ...caption, alignSelf: 'stretch', marginTop: '0.55rem' }}>
+          <p style={{ ...caption, alignSelf: 'stretch', marginTop: '0.45rem', fontSize: '0.68rem' }}>
             Loads management API app record (composition, URLs, cell, domains, etc.).
           </p>
           {appErr ? <div style={errText}>{appErr}</div> : null}

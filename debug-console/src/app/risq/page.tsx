@@ -22,12 +22,27 @@ function badgeShell(children: ReactNode) {
   return <div className={polish.badge}>{children}</div>;
 }
 
+function RisqMark() {
+  return (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <circle cx="12" cy="12" r="10" stroke="#1a73e8" strokeWidth="2" />
+      <path
+        d="M8 12l3 3 5-5"
+        stroke="#1e8e3e"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 const kpiInitial: RisqKpiSnapshot = {
   feedback: { loading: true, negative: 0, total: 0 },
   traces: { loading: true, total: 0 },
   wau: { loading: true, curr_wau: 0, pct_change: 0 },
   agenticQa: { loading: true, passed: 0, failed: 0, total: 0 },
-  e2e: { loading: true, prodPass: null, testPass: null, prodStatus: null, testStatus: null },
+  e2e: { loading: true, passed: 0, failed: 0, total: 0, running: 0 },
 };
 
 function RisqContent() {
@@ -140,26 +155,26 @@ function RisqContent() {
 
       const e2eJson = (await e2eRes.json().catch(() => ({}))) as {
         error?: string;
-        prodPass?: boolean | null;
-        testPass?: boolean | null;
-        prodStatus?: string | null;
-        testStatus?: string | null;
+        passed?: number;
+        failed?: number;
+        total?: number;
+        running?: number;
       };
       const e2e: RisqKpiSnapshot['e2e'] = e2eRes.ok
         ? {
             loading: false,
-            prodPass: e2eJson.prodPass ?? null,
-            testPass: e2eJson.testPass ?? null,
-            prodStatus: e2eJson.prodStatus ?? null,
-            testStatus: e2eJson.testStatus ?? null,
+            passed: e2eJson.passed ?? 0,
+            failed: e2eJson.failed ?? 0,
+            total: e2eJson.total ?? 0,
+            running: e2eJson.running ?? 0,
           }
         : {
             loading: false,
             error: typeof e2eJson.error === 'string' ? e2eJson.error : `HTTP ${e2eRes.status}`,
-            prodPass: null,
-            testPass: null,
-            prodStatus: null,
-            testStatus: null,
+            passed: 0,
+            failed: 0,
+            total: 0,
+            running: 0,
           };
 
       const fbJson = (await fbRes.json().catch(() => ({}))) as {
@@ -230,9 +245,17 @@ function RisqContent() {
                 fontWeight: 800,
                 letterSpacing: '-0.02em',
                 color: '#1e293b',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                flexWrap: 'wrap',
               }}
             >
-              Airo Builder <span style={{ color: '#5b21b6' }}>RISQ</span>
+              <RisqMark />
+              <span>
+                Airo Builder{' '}
+                <span style={{ color: '#5b21b6' }}>RISQ</span>
+              </span>
             </h1>
             <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.8rem', color: '#64748b', fontWeight: 500 }}>
               Release Intelligence, Signals & Quality
@@ -330,9 +353,9 @@ function RisqContent() {
           />
         </div>
 
-        {qualityPanel === 'agentic' ? (
-          <div
-            id="risq-kpi-detail-panel"
+        <div
+          hidden={qualityPanel !== 'agentic'}
+          id="risq-kpi-detail-agentic"
             className={polish.detailPanel}
             style={{
               marginBottom: '1.15rem',
@@ -382,15 +405,18 @@ function RisqContent() {
               <RisqAgenticQaPanel />
             </div>
           </div>
-        ) : qualityPanel === 'e2e' ? (
-          <div id="risq-kpi-detail-panel" className={polish.detailPanel} style={{ marginBottom: '1.15rem', scrollMarginTop: '0.75rem' }}>
-            <RisqE2ePanel
-              onDismiss={function dismissE2ePanel() {
-                setQualityPanel(null);
-              }}
-            />
-          </div>
-        ) : null}
+        <div
+          hidden={qualityPanel !== 'e2e'}
+          id="risq-kpi-detail-e2e"
+          className={polish.detailPanel}
+          style={{ marginBottom: '1.15rem', scrollMarginTop: '0.75rem' }}
+        >
+          <RisqE2ePanel
+            onDismiss={function dismissE2ePanel() {
+              setQualityPanel(null);
+            }}
+          />
+        </div>
 
         {(releaseErr || modelErr) && (
           <div
