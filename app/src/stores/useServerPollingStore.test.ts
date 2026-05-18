@@ -234,6 +234,7 @@ describe('waitForViteReady', () => {
     it('handles 503 → autostart transition: keeps polling then fires wake-up', async () => {
       fetchSpy
         .mockResolvedValueOnce(healthResponse(503, { status: 'unhealthy' }))
+        .mockResolvedValueOnce(new Response(null, { status: 200 })) // keepalive HEAD (fire-and-forget)
         .mockResolvedValueOnce(healthResponse(200, { status: 'healthy', reason: 'autostart' }))
         .mockResolvedValueOnce(new Response(null, { status: 200 })); // wake-up succeeds
 
@@ -241,9 +242,14 @@ describe('waitForViteReady', () => {
       await vi.advanceTimersByTimeAsync(HEALTH_POLL_INTERVAL_MS * 2);
 
       await expect(promise).resolves.toBe(true);
-      expect(fetchSpy).toHaveBeenCalledTimes(3);
+      expect(fetchSpy).toHaveBeenCalledTimes(4);
+      // Second call is the keepalive HEAD (fire-and-forget).
+      const [keepaliveUrl, keepaliveInit] = fetchSpy.mock.calls[1]!;
+      expect(keepaliveUrl).toBe(URL);
+      expect((keepaliveInit as RequestInit).method).toBe('HEAD');
+      expect((keepaliveInit as RequestInit).headers).toEqual({ 'Authorization': 'Bearer tok' });
       // Last call should be the wake-up (HEAD to root).
-      const [lastUrl, lastInit] = fetchSpy.mock.calls[2]!;
+      const [lastUrl, lastInit] = fetchSpy.mock.calls[3]!;
       expect(lastUrl).toBe(URL);
       expect((lastInit as RequestInit).method).toBe('HEAD');
     });

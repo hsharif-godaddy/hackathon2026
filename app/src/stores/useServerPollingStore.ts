@@ -190,6 +190,7 @@ async function triggerWakeup(url: string, token: string): Promise<boolean> {
 export async function waitForViteReady(url: string, token: string | null): Promise<boolean> {
   const healthUrl = new URL('/airo/health', url).toString()
   const deadline = Date.now() + HEALTH_POLL_TIMEOUT_MS
+  let keepaliveInflight = false
   while (Date.now() < deadline) {
     try {
       const { ok, body } = await probeHealth(healthUrl)
@@ -233,6 +234,21 @@ export async function waitForViteReady(url: string, token: string | null): Promi
     } catch {
       // Network error / abort on the health probe itself — keep polling
       // until the deadline.
+    }
+    // HEAD through proxy resets idle timer (/airo/health is excluded from activity tracking)
+    if (token && !keepaliveInflight) {
+      keepaliveInflight = true
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 2000)
+      fetch(url, {
+        method: 'HEAD',
+        headers: { 'Authorization': `Bearer ${token}` },
+        signal: controller.signal,
+      }).catch((e: unknown) => {
+        if (!controller.signal.aborted) {
+          logger.debug('server-polling.keepalive-error', { error: e instanceof Error ? e.message : String(e) })
+        }
+      }).finally(() => { clearTimeout(timeoutId); keepaliveInflight = false })
     }
     await new Promise(r => setTimeout(r, HEALTH_POLL_INTERVAL_MS))
   }

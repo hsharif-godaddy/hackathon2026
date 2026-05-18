@@ -260,6 +260,8 @@ func (s *Server) handleExec(w http.ResponseWriter, r *http.Request) {
 	req.Command = validation.SanitizeCommand(req.Command)
 	commandPreview := commandLogPreview(req.Command)
 
+	s.procMgr.UpdateActivity()
+
 	// Always capture output for LLM usage
 	req.CaptureOutput = true
 	slog.Debug("exec.command.execution.start",
