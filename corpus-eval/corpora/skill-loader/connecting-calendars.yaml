@@ -1,0 +1,140 @@
+metadata:
+  name: Skill Loader - Connecting Calendars
+  version: 1.0.0
+
+cases:
+  # --- Positive: connecting-calendars skill should load ---
+
+  - id: calendar-integration-explicit
+    prompt: "I want to integrate Google Calendar with my app"
+    expectedSkill: connecting-calendars
+    tags: [positive]
+    rationale: Direct calendar integration request — clearest signal to load connecting-calendars skill
+
+
+
+  - id: calendar-sync
+    prompt: "Connect my Outlook calendar so bookings appear automatically"
+    expectedSkill: connecting-calendars
+    tags: [positive]
+    rationale: Explicit Outlook calendar connection request covered by the skill
+
+  - id: availability-checking
+    prompt: "Sync with Google Calendar to check my availability and show free time slots"
+    expectedSkill: connecting-calendars
+    tags: [positive]
+    rationale: Free/busy from external calendar service with explicit sync language
+
+  - id: two-way-calendar-sync
+    prompt: "Set up two-way calendar sync so cancellations update my app automatically"
+    expectedSkill: connecting-calendars
+    tags: [positive]
+    rationale: Two-way sync is a key feature of the connecting-calendars skill
+
+  - id: icloud-calendar
+    prompt: "Connect Apple iCloud calendar to send event invites"
+    expectedSkill: connecting-calendars
+    tags: [positive]
+    rationale: Apple iCloud is one of the supported providers
+
+  - id: calendar-notifications
+    prompt: "Connect to Outlook to receive calendar notifications when meetings are updated"
+    expectedSkill: connecting-calendars
+    tags: [positive]
+    rationale: Calendar notifications from external provider with explicit connection language
+
+  - id: event-creation
+    prompt: "When someone books a consultation, sync it to my Google Calendar automatically"
+    expectedSkill: connecting-calendars
+    tags: [positive]
+    rationale: One-way sync to external calendar provider with explicit sync language
+
+  # --- Negative: no skill should be loaded ---
+  # The agent runs against a minimal app (bare package.json). For these cases the agent
+  # will attempt to explore the project and begin the task before stopping at maxSteps (4).
+  # Skill loading is a routing decision made in the first 1-2 steps, so 4 steps is enough
+  # to confirm the agent correctly avoids loading any skill.
+
+  - id: add-event-list
+    prompt: "Display a list of upcoming events on the homepage"
+    expectedSkill: null
+    tags: [negative]
+    rationale: Static event listing — no calendar integration needed
+
+  - id: date-picker-ui
+    prompt: "Add a date picker to my booking form"
+    expectedSkill: null
+    tags: [negative]
+    rationale: UI component for date selection — not calendar integration
+
+  - id: show-business-hours
+    prompt: "Display my business hours on the contact page"
+    expectedSkill: null
+    tags: [negative]
+    rationale: Static information display — no calendar sync involved
+
+  - id: format-dates
+    prompt: "Format the date display to show 'MM/DD/YYYY' instead of ISO format"
+    expectedSkill: null
+    tags: [negative]
+    rationale: Date formatting logic — no calendar integration
+
+  - id: create-events-page
+    prompt: "Create an events page showing our conference schedule"
+    expectedSkill: null
+    tags: [negative]
+    rationale: Static content page — no live calendar integration
+  
+  - id: booking-appointments
+    prompt: "Add appointment booking functionality to my site"
+    expectedSkill: "online-appointments"
+    tags: [negative]
+    rationale: Standalone booking system without calendar integration — should not trigger connecting-calendars
+
+  - id: calendar-sync-integration
+    prompt: "Connect to Google Calendar API so events sync automatically in both directions"
+    expectedSkill: connecting-calendars
+    tags: [positive]
+    rationale: Explicit calendar connection and sync language with external provider — no booking/scheduler context
+
+  - id: calendar-webhooks
+    prompt: "Set up webhooks to receive Microsoft 365 calendar changes in real-time"
+    expectedSkill: connecting-calendars
+    tags: [positive]
+    rationale: Calendar webhooks with external provider explicitly mentioned in whenToUse
+
+  - id: calendar-oauth
+    prompt: "Implement OAuth authentication for Outlook calendar access"
+    expectedSkill: connecting-calendars
+    tags: [positive]
+    rationale: Calendar OAuth/authentication with external provider explicitly mentioned in whenToUse
+
+  - id: calendar-api-integration
+    prompt: "Integrate with iCloud Calendar API to push booking updates"
+    expectedSkill: connecting-calendars
+    tags: [positive]
+    rationale: Calendar API integration language + external provider + push updates
+
+  - id: scheduling-system
+    prompt: "I need to add scheduling to my app so customers can book time slots"
+    expectedSkill: "online-appointments"
+    tags: [negative]
+    rationale: Standalone scheduling system without external calendar integration — should not trigger connecting-calendars
+
+  - id: time-slot-picker
+    prompt: "Create a time slot picker for my booking page"
+    expectedSkill: "online-appointments"
+    tags: [negative]
+    rationale: UI component for time selection without calendar integration context
+
+  - id: build-booking-system
+    prompt: "Build an appointment booking system for my business"
+    expectedSkill: "online-appointments"
+    tags: [negative]
+    rationale: Building a booking system without calendar integration — should not trigger connecting-calendars
+
+  - id: calendar-integration-focus
+    prompt: "I already have a booking system, now I need to connect it to Microsoft 365 calendar"
+    expectedSkill: connecting-calendars
+    tags: [positive]
+    rationale: Clear focus on calendar connection/integration, not building a booking system
