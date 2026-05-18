@@ -93,12 +93,23 @@ vi.mock('@/lib/request-context', () => ({
   logger: mockLogger,
 }));
 
-import DomainMenu, { resolveShareUrl } from './DomainMenu';
+// Mock UXCore Button to properly handle onClick in tests
+vi.mock('@ux/button', () => ({
+  default: ({ onClick, disabled, icon, children, ...props }: any) => (
+    <button onClick={onClick} disabled={disabled} {...props}>
+      {icon}
+      {children}
+    </button>
+  ),
+}));
+
+import DomainMenu, { getShareLabel, resolveShareUrl } from './DomainMenu';
 
 const FUTURE = Date.now() + 7 * 24 * 60 * 60 * 1000;
 const PAST = Date.now() - 60 * 1000;
 
-const mockClipboard = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
+// Mock clipboard API at module scope
+const mockWriteText = vi.fn().mockResolvedValue(undefined);
 
 describe('DomainMenu', () => {
   beforeEach(() => {
@@ -132,16 +143,20 @@ describe('DomainMenu', () => {
       hasNeverBeenPublished: false,
       isError: false,
     });
-    mockClipboard.mockResolvedValue(undefined);
     mockLogClickEvent.mockImplementation(() => vi.fn());
-    Object.defineProperty(navigator, 'clipboard', {
-      value: { writeText: mockClipboard },
-      writable: true,
-      configurable: true,
+    mockWriteText.mockClear();
+    mockWriteText.mockResolvedValue(undefined);
+    // Stub the clipboard API for each test
+    vi.stubGlobal('navigator', {
+      ...navigator,
+      clipboard: {
+        writeText: mockWriteText,
+      },
     });
   });
 
   afterEach(() => {
+    vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
 
@@ -246,44 +261,32 @@ describe('DomainMenu', () => {
   });
 
   describe('Published Link', () => {
-    it('shows published row always (even when not published)', async () => {
-      renderWithProviders(<DomainMenu />);
-      fireEvent.click(screen.getByTestId('header-view-share-button'));
-
-      await waitFor(() => {
-        expect(screen.getByTestId('header-view-share-published')).toBeInTheDocument();
-      });
-    });
-
-    it('shows published row as inactive when not published', async () => {
+    it('hides published row when not published', async () => {
       mockHasBeenPublished.mockReturnValue(false);
 
       renderWithProviders(<DomainMenu />);
       fireEvent.click(screen.getByTestId('header-view-share-button'));
 
-      const publishedRow = await screen.findByTestId('header-view-share-published');
-      // When not published, the row is a div (not a button) with opacity-50
-      expect(publishedRow.tagName).toBe('DIV');
-      expect(publishedRow).toHaveClass('opacity-50');
+      await waitFor(() => {
+        expect(screen.queryByTestId('header-view-share-published')).not.toBeInTheDocument();
+      });
     });
 
-    it('enables published row when published', async () => {
+    it('shows published row when published', async () => {
       mockHasBeenPublished.mockReturnValue(true);
 
       renderWithProviders(<DomainMenu />);
       fireEvent.click(screen.getByTestId('header-view-share-button'));
 
       const publishedRow = await screen.findByTestId('header-view-share-published');
-      expect(publishedRow).not.toBeDisabled();
+      expect(publishedRow).toBeInTheDocument();
     });
 
-    it('shows "Up to date" when in sync', async () => {
+    it('shows "No changes" when in sync', async () => {
       mockHasBeenPublished.mockReturnValue(true);
       mockUsePublishSyncState.mockReturnValue({
-        isInSync: true,
         changesSincePublish: 0,
         isLoading: false,
-        hasNeverBeenPublished: false,
         isError: false,
       });
 
@@ -291,24 +294,22 @@ describe('DomainMenu', () => {
       fireEvent.click(screen.getByTestId('header-view-share-button'));
 
       const publishedRow = await screen.findByTestId('header-view-share-published');
-      expect(publishedRow).toHaveTextContent('builder_view_share_published_sync');
+      expect(publishedRow).toHaveTextContent('builder_view_share_published_no_changes');
     });
 
     it('shows changes count when out of sync', async () => {
       mockHasBeenPublished.mockReturnValue(true);
       mockUsePublishSyncState.mockReturnValue({
-        isInSync: false,
         changesSincePublish: 3,
         isLoading: false,
-        hasNeverBeenPublished: false,
+        isError: false,
       });
 
       renderWithProviders(<DomainMenu />);
       fireEvent.click(screen.getByTestId('header-view-share-button'));
 
-      await waitFor(() => {
-        expect(screen.getByTestId('header-view-share-published')).toBeInTheDocument();
-      });
+      const publishedRow = await screen.findByTestId('header-view-share-published');
+      expect(publishedRow).toHaveTextContent('builder_view_share_published_stale');
     });
 
     it('opens published URL in new tab on click', async () => {
@@ -340,46 +341,29 @@ describe('DomainMenu', () => {
       await waitFor(() => {
         expect(screen.getByTestId('header-view-share-popover')).toBeInTheDocument();
       });
-      expect(screen.queryByTestId('header-view-share-create')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('header-view-share-input')).not.toBeInTheDocument();
       expect(screen.queryByTestId('header-view-share-copy')).not.toBeInTheDocument();
     });
 
-    it('shows create share link row when no active token', async () => {
+    it('shows text input and copy button when feature flag is on', async () => {
       renderWithProviders(<DomainMenu />);
       fireEvent.click(screen.getByTestId('header-view-share-button'));
 
       await waitFor(() => {
-        expect(screen.getByTestId('header-view-share-create')).toBeInTheDocument();
-      });
-      expect(screen.queryByTestId('header-view-share-copy')).not.toBeInTheDocument();
-    });
-
-    it('shows copy button when active token exists', async () => {
-      mockUseShareTokens.mockReturnValue({
-        data: [
-          {
-            token: 'active-token',
-            appId: 'app-123',
-            shareUrl: 'https://share.example.com/abc',
-            expiresAt: FUTURE,
-            createdAt: new Date().toISOString(),
-          },
-        ],
-        isLoading: false,
-        isError: false,
-        refetch: vi.fn(),
-      });
-
-      renderWithProviders(<DomainMenu />);
-      fireEvent.click(screen.getByTestId('header-view-share-button'));
-
-      await waitFor(() => {
+        expect(screen.getByTestId('header-view-share-input')).toBeInTheDocument();
         expect(screen.getByTestId('header-view-share-copy')).toBeInTheDocument();
       });
-      expect(screen.queryByTestId('header-view-share-create')).not.toBeInTheDocument();
     });
 
-    it('shows expiration timestamp when active token exists', async () => {
+    it('shows cosmetic URL when no active token', async () => {
+      renderWithProviders(<DomainMenu />);
+      fireEvent.click(screen.getByTestId('header-view-share-button'));
+
+      const input = await screen.findByTestId('header-view-share-input');
+      expect(input).toHaveValue('https://preview.example.com/...');
+    });
+
+    it('shows real share URL when active token exists', async () => {
       mockUseShareTokens.mockReturnValue({
         data: [
           {
@@ -398,12 +382,43 @@ describe('DomainMenu', () => {
       renderWithProviders(<DomainMenu />);
       fireEvent.click(screen.getByTestId('header-view-share-button'));
 
-      await waitFor(() => {
-        expect(screen.getByTestId('header-view-share-expiry')).toBeInTheDocument();
-      });
+      const input = await screen.findByTestId('header-view-share-input');
+      expect(input).toHaveValue('https://share.example.com/abc');
     });
 
-    it('filters out expired tokens', async () => {
+    it('shows countdown label with days remaining when token exists', async () => {
+      mockUseShareTokens.mockReturnValue({
+        data: [
+          {
+            token: 'active-token',
+            appId: 'app-123',
+            shareUrl: 'https://share.example.com/abc',
+            expiresAt: FUTURE,
+            createdAt: new Date().toISOString(),
+          },
+        ],
+        isLoading: false,
+        isError: false,
+        refetch: vi.fn(),
+      });
+
+      renderWithProviders(<DomainMenu />);
+      fireEvent.click(screen.getByTestId('header-view-share-button'));
+
+      const countdown = await screen.findByTestId('header-view-share-countdown');
+      // Should show days countdown (7 days from FUTURE)
+      expect(countdown).toHaveTextContent('builder_view_share_link_label_days');
+    });
+
+    it('shows 7 days label when no token exists', async () => {
+      renderWithProviders(<DomainMenu />);
+      fireEvent.click(screen.getByTestId('header-view-share-button'));
+
+      const countdown = await screen.findByTestId('header-view-share-countdown');
+      expect(countdown).toHaveTextContent('builder_view_share_link_label_days');
+    });
+
+    it('filters out expired tokens and shows cosmetic URL', async () => {
       mockUseShareTokens.mockReturnValue({
         data: [
           {
@@ -422,72 +437,43 @@ describe('DomainMenu', () => {
       renderWithProviders(<DomainMenu />);
       fireEvent.click(screen.getByTestId('header-view-share-button'));
 
-      await waitFor(() => {
-        expect(screen.getByTestId('header-view-share-create')).toBeInTheDocument();
-      });
-      expect(screen.queryByTestId('header-view-share-copy')).not.toBeInTheDocument();
+      const input = await screen.findByTestId('header-view-share-input');
+      expect(input).toHaveValue('https://preview.example.com/...');
     });
 
-    it('calls createToken.mutateAsync when create is clicked', async () => {
-      renderWithProviders(<DomainMenu />);
-      fireEvent.click(screen.getByTestId('header-view-share-button'));
+    it('creates token on copy click when no token exists (lazy creation)', async () => {
+      const newToken = {
+        token: 'new-token',
+        appId: 'app-123',
+        shareUrl: 'https://share.example.com/new',
+        expiresAt: FUTURE,
+        createdAt: new Date().toISOString(),
+      };
+      mockMutateAsync.mockResolvedValue(newToken);
 
-      const createRow = await screen.findByTestId('header-view-share-create');
-      fireEvent.click(createRow);
-
-      await waitFor(() => {
-        expect(mockMutateAsync).toHaveBeenCalledWith({ appId: 'app-123', expiresInDays: 7 });
-      });
-    });
-
-    it('shows error message when tokens fetch fails', async () => {
-      mockUseShareTokens.mockReturnValue({
-        data: [],
-        isLoading: false,
-        isError: true,
-        refetch: vi.fn(),
-      });
-
-      renderWithProviders(<DomainMenu />);
-      fireEvent.click(screen.getByTestId('header-view-share-button'));
+      const { user } = renderWithProviders(<DomainMenu />);
+      await user.click(screen.getByTestId('header-view-share-button'));
 
       await waitFor(() => {
-        expect(screen.getByTestId('header-view-share-error')).toBeInTheDocument();
-      });
-    });
-
-    it('shows loading state when tokens are initially loading', async () => {
-      mockUseShareTokens.mockReturnValue({
-        data: [],
-        isLoading: true,
-        isError: false,
-        refetch: vi.fn(),
+        expect(screen.getByTestId('header-view-share-copy')).toBeInTheDocument();
       });
 
-      renderWithProviders(<DomainMenu />);
-      fireEvent.click(screen.getByTestId('header-view-share-button'));
+      // Get the copy button and verify it's not disabled
+      const copyButton = screen.getByTestId('header-view-share-copy');
+      expect(copyButton).not.toBeDisabled();
 
-      const createButton = await screen.findByTestId('header-view-share-create');
-      expect(createButton).toBeDisabled();
-      expect(createButton).toHaveTextContent('builder_common_loading');
-    });
+      // Click the copy button
+      await user.click(copyButton);
 
-    it('shows creating state when mutation is pending', async () => {
-      mockUseCreateShareToken.mockReturnValue({
-        mutateAsync: mockMutateAsync,
-        isPending: true,
-        isError: false,
+      // Wait for the create analytics event which is logged after mutateAsync completes
+      await waitFor(() => {
+        expect(mockLogClickEvent).toHaveBeenCalledWith('develop.header.view_share.create', expect.anything());
       });
-
-      renderWithProviders(<DomainMenu />);
-      fireEvent.click(screen.getByTestId('header-view-share-button'));
-
-      const createButton = await screen.findByTestId('header-view-share-create');
-      expect(createButton).toBeDisabled();
-      expect(createButton).toHaveTextContent('builder_view_share_btn_creating');
+      // Verify the copy event is also logged (happens after clipboard write)
+      expect(mockLogClickEvent).toHaveBeenCalledWith('develop.header.view_share.copy', expect.anything());
     });
 
-    it('shows Copied feedback after copy click', async () => {
+    it('copies to clipboard when token exists without creating new token', async () => {
       mockUseShareTokens.mockReturnValue({
         data: [
           {
@@ -503,17 +489,91 @@ describe('DomainMenu', () => {
         refetch: vi.fn(),
       });
 
+      const { user } = renderWithProviders(<DomainMenu />);
+      await user.click(screen.getByTestId('header-view-share-button'));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('header-view-share-copy')).toBeInTheDocument();
+      });
+
+      const copyButton = screen.getByTestId('header-view-share-copy');
+      expect(copyButton).not.toBeDisabled();
+
+      await user.click(copyButton);
+
+      // Wait for the copy success - the copy analytics event gets logged after clipboard write
+      await waitFor(() => {
+        expect(mockLogClickEvent).toHaveBeenCalledWith('develop.header.view_share.copy', expect.anything());
+      });
+      // Should not create a new token
+      expect(mockMutateAsync).not.toHaveBeenCalled();
+    });
+
+    it('shows spinner when token creation is pending', async () => {
+      mockUseCreateShareToken.mockReturnValue({
+        mutateAsync: mockMutateAsync,
+        isPending: true,
+        isError: false,
+      });
+
       renderWithProviders(<DomainMenu />);
       fireEvent.click(screen.getByTestId('header-view-share-button'));
 
       const copyButton = await screen.findByTestId('header-view-share-copy');
-      fireEvent.click(copyButton);
+      expect(copyButton).toBeDisabled();
+    });
 
-      await waitFor(() => {
-        expect(copyButton).toHaveTextContent('builder_common_copied');
+    it('shows error message when token fetch fails but keeps button enabled', async () => {
+      mockUseShareTokens.mockReturnValue({
+        data: [],
+        isLoading: false,
+        isError: true,
+        refetch: vi.fn(),
       });
-      // Button remains clickable to allow re-copying
+
+      renderWithProviders(<DomainMenu />);
+      fireEvent.click(screen.getByTestId('header-view-share-button'));
+
+      const copyButton = await screen.findByTestId('header-view-share-copy');
+      // Button should still be enabled (error message is enough feedback)
       expect(copyButton).not.toBeDisabled();
+      // Error message should be shown
+      expect(screen.getByTestId('header-view-share-error')).toHaveTextContent('builder_view_share_error_load');
+    });
+
+    it('resets error state when popover reopens', async () => {
+      mockUseShareTokens.mockReturnValue({
+        data: [],
+        isLoading: false,
+        isError: true,
+        refetch: vi.fn(),
+      });
+
+      const { user } = renderWithProviders(<DomainMenu />);
+      await user.click(screen.getByTestId('header-view-share-button'));
+
+      // Error should be shown
+      await waitFor(() => {
+        expect(screen.getByTestId('header-view-share-error')).toBeInTheDocument();
+      });
+
+      // Close popover
+      await user.keyboard('{Escape}');
+
+      // Reopen - mock success this time
+      mockUseShareTokens.mockReturnValue({
+        data: [],
+        isLoading: false,
+        isError: false,
+        refetch: vi.fn(),
+      });
+
+      await user.click(screen.getByTestId('header-view-share-button'));
+
+      // Error should be cleared
+      await waitFor(() => {
+        expect(screen.queryByTestId('header-view-share-error')).not.toBeInTheDocument();
+      });
     });
   });
 
@@ -551,20 +611,153 @@ describe('DomainMenu', () => {
       mockOpen.mockRestore();
     });
 
-    it('logs create share link event', async () => {
+    it('logs create and copy events when token is created on copy click', async () => {
+      mockMutateAsync.mockResolvedValue({
+        token: 'new-token',
+        appId: 'app-123',
+        shareUrl: 'https://share.example.com/new',
+        expiresAt: FUTURE,
+        createdAt: new Date().toISOString(),
+      });
+
       renderWithProviders(<DomainMenu />);
       fireEvent.click(screen.getByTestId('header-view-share-button'));
 
-      const createRow = await screen.findByTestId('header-view-share-create');
-      fireEvent.click(createRow);
+      const copyButton = await screen.findByTestId('header-view-share-copy');
+      fireEvent.click(copyButton);
 
       await waitFor(() => {
         expect(mockLogClickEvent).toHaveBeenCalledWith(
           'develop.header.view_share.create',
           expect.anything()
         );
+        expect(mockLogClickEvent).toHaveBeenCalledWith(
+          'develop.header.view_share.copy',
+          expect.anything()
+        );
       });
     });
+
+    it('logs only copy event when token already exists', async () => {
+      mockUseShareTokens.mockReturnValue({
+        data: [
+          {
+            token: 'active-token',
+            appId: 'app-123',
+            shareUrl: 'https://share.example.com/abc',
+            expiresAt: FUTURE,
+            createdAt: new Date().toISOString(),
+          },
+        ],
+        isLoading: false,
+        isError: false,
+        refetch: vi.fn(),
+      });
+
+      renderWithProviders(<DomainMenu />);
+      fireEvent.click(screen.getByTestId('header-view-share-button'));
+
+      const copyButton = await screen.findByTestId('header-view-share-copy');
+      fireEvent.click(copyButton);
+
+      await waitFor(() => {
+        expect(mockLogClickEvent).toHaveBeenCalledWith(
+          'develop.header.view_share.copy',
+          expect.anything()
+        );
+      });
+      // Should not log create event
+      expect(mockLogClickEvent).not.toHaveBeenCalledWith(
+        'develop.header.view_share.create',
+        expect.anything()
+      );
+    });
+  });
+});
+
+describe('getShareLabel', () => {
+  const mockT = (key: string, values?: Record<string, unknown>) => {
+    if (values) {
+      return Object.entries(values).reduce(
+        (str, [k, v]) => str.replace(`{${k}}`, String(v)),
+        key
+      );
+    }
+    return key;
+  };
+
+  it('returns 7 days label when no token', () => {
+    expect(getShareLabel(undefined, mockT)).toBe('builder_view_share_link_label_days');
+  });
+
+  it('returns days label when more than 24 hours remaining', () => {
+    const token = {
+      token: 'test',
+      appId: 'app-123',
+      expiresAt: Date.now() + 3 * 24 * 60 * 60 * 1000, // 3 days
+      createdAt: new Date().toISOString(),
+    };
+    expect(getShareLabel(token, mockT)).toBe('builder_view_share_link_label_days');
+  });
+
+  it('returns singular day label when 1 day remaining', () => {
+    const token = {
+      token: 'test',
+      appId: 'app-123',
+      expiresAt: Date.now() + 1 * 24 * 60 * 60 * 1000, // Exactly 1 day
+      createdAt: new Date().toISOString(),
+    };
+    expect(getShareLabel(token, mockT)).toBe('builder_view_share_link_label_day');
+  });
+
+  it('returns hours label when less than 24 hours but more than 1 hour', () => {
+    const token = {
+      token: 'test',
+      appId: 'app-123',
+      expiresAt: Date.now() + 12 * 60 * 60 * 1000, // 12 hours
+      createdAt: new Date().toISOString(),
+    };
+    expect(getShareLabel(token, mockT)).toBe('builder_view_share_link_label_hours');
+  });
+
+  it('returns singular hour label when 1 hour remaining', () => {
+    const token = {
+      token: 'test',
+      appId: 'app-123',
+      expiresAt: Date.now() + 1 * 60 * 60 * 1000, // Exactly 1 hour
+      createdAt: new Date().toISOString(),
+    };
+    expect(getShareLabel(token, mockT)).toBe('builder_view_share_link_label_hour');
+  });
+
+  it('returns minutes label when less than 1 hour', () => {
+    const token = {
+      token: 'test',
+      appId: 'app-123',
+      expiresAt: Date.now() + 30 * 60 * 1000, // 30 minutes
+      createdAt: new Date().toISOString(),
+    };
+    expect(getShareLabel(token, mockT)).toBe('builder_view_share_link_label_mins');
+  });
+
+  it('returns singular minute label when 1 minute remaining', () => {
+    const token = {
+      token: 'test',
+      appId: 'app-123',
+      expiresAt: Date.now() + 1 * 60 * 1000, // Exactly 1 minute
+      createdAt: new Date().toISOString(),
+    };
+    expect(getShareLabel(token, mockT)).toBe('builder_view_share_link_label_min');
+  });
+
+  it('returns 0 minutes when token is expired', () => {
+    const token = {
+      token: 'test',
+      appId: 'app-123',
+      expiresAt: Date.now() - 1000, // Expired
+      createdAt: new Date().toISOString(),
+    };
+    expect(getShareLabel(token, mockT)).toBe('builder_view_share_link_label_mins');
   });
 });
 

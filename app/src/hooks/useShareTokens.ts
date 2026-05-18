@@ -5,6 +5,20 @@ import { appFetch } from '@/lib/gasket-config';
 import { logger } from '@/lib/request-context';
 
 /**
+ * Custom error class that preserves HTTP status for error handling.
+ * Allows callers to distinguish between different failure modes (e.g., 409 conflict).
+ */
+export class ShareTokenError extends Error {
+  constructor(
+    message: string,
+    public readonly status: number
+  ) {
+    super(message);
+    this.name = 'ShareTokenError';
+  }
+}
+
+/**
  * Query key factory for share token operations
  * Centralizes query key generation for consistency across hooks
  */
@@ -205,7 +219,7 @@ export function useCreateShareToken() {
           status: response.status,
           error: errorMessage,
         });
-        throw new Error(errorMessage);
+        throw new ShareTokenError(errorMessage, response.status);
       }
 
       // Same success-path JSON guard as the fetch query.

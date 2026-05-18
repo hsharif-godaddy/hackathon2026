@@ -1,8 +1,14 @@
 # View & Share Link
 
+**Author:** Rahul Rahate - Director, User Experience  
+**Date last updated:** 2026-05-11  
+**Version:** Current (v2)
+
 ## Overview
 
-A menu button (window icon) that consolidates all ways to access the app into three link types: a private session preview (available to anyone whilst the session is active), the published production URL, and a publicly shareable link.
+A menu button (window icon) that consolidates all ways to access the app. The popover is organized into two sections separated by a divider: **Preview** (private view + public share) and **Published Site**.
+
+**Tooltip:** "See and share"
 
 **Component:** `app/src/app/[market]/develop/components/layout/DomainMenu.tsx`
 
@@ -10,6 +16,8 @@ A menu button (window icon) that consolidates all ways to access the app into th
 
 - Extend `DomainMenu.tsx` to include share link functionality
 - Deprecate/remove `ShareMenu.tsx` after migration
+- Group Preview and Share publicly in same section
+- Move Published Site below separator
 
 **Feature Flag:** `appbuilder-share-links` (for shareable link feature)
 
@@ -20,96 +28,148 @@ A menu button (window icon) that consolidates all ways to access the app into th
 ```
                                               ┌─────────┐
                                               │   [⧉]   │  ← Window icon (single button)
-                                              │  View & │
-                                              │  Share  │
-                                              └────┬────┘
+                                              └────┬────┘     Tooltip: "See and share"
                                                    │
                                                    ▼
 ```
 
-### Popover
+### Popover (Before Publish)
 
 ```
 ┌───────────────────────────────────────────────┐
 │                                               │
 │  ┌─────────────────────────────────────────┐  │
-│  │  View Preview                        ⧉  │  │  ← Session-authenticated preview
-│  │  Includes your recent edits             │  │
+│  │  Preview Site                        ⧉  │  │  ← Session-authenticated preview
+│  │  See your recent edits before publish   │  │     (always available)
 │  └─────────────────────────────────────────┘  │
 │                                               │
-│  ┌─────────────────────────────────────────┐  │
-│  │  View Published Site                 ⧉  │  │  ← Production URL (active)
-│  │  Up to date                             │  │     OR "3 changes since last publish"
-│  └─────────────────────────────────────────┘  │
-│                                               │
-│  ─── OR when not published ──────────────────│
-│                                               │
-│  ┌─────────────────────────────────────────┐  │
-│  │  View Published Site                 ⧉  │  │  ← Inactive (opacity-50)
-│  │  Publish to activate                    │  │
-│  └─────────────────────────────────────────┘  │
-│                                               │
-│  ─────────────────────────────────────────────│  ← Separator
-│                                               │
-│  Share Preview              [VALID 7 DAYS]   │  ← Title + Tag (tag hidden when token exists)
-│  Create a link so anyone can view your       │  ← Helper text (before token)
-│  project                                     │
-│                                               │
-│  ┌─────────────────────────────────────────┐  │
-│  │ [🔗] Create share link                  │  │  ← Secondary button (before token)
-│  └─────────────────────────────────────────┘  │
-│                                               │
-│  ─────────── When share link exists ─────────│
-│                                               │
-│  Share Preview                               │  ← Title (no tag)
-│  Anyone with a link can view                 │  ← Helper text (after token)
-│                                               │
-│  ┌─────────────────────────────────────────┐  │
-│  │ [📋] Copy link                          │  │  ← Secondary button
-│  └─────────────────────────────────────────┘  │
-│  Expires: May 11, 10:30 AM                   │  ← Caption, light gray
+│  Share this link for 7 days                   │  ← Label with countdown
+│  ┌───────────────────────────────────────┬─┐  │
+│  │ https://preview.app.com/...           │📋│  │  ← Text input + Copy inside
+│  └───────────────────────────────────────┴─┘  │
 │                                               │
 └───────────────────────────────────────────────┘
     Width: 300px
 ```
 
+### Popover (After Publish)
+
+```
+┌───────────────────────────────────────────────┐
+│                                               │
+│  ┌─────────────────────────────────────────┐  │
+│  │  Preview Site                        ⧉  │  │  ← Session-authenticated preview
+│  │  See your recent edits before publish   │  │     (always available)
+│  └─────────────────────────────────────────┘  │
+│                                               │
+│  Share this link for 7 days                   │  ← Label with countdown
+│  ┌───────────────────────────────────────┬─┐  │
+│  │ https://preview.app.com/...           │📋│  │  ← Text input + Copy inside
+│  └───────────────────────────────────────┴─┘  │
+│                                               │
+│  ─────────────────────────────────────────────│  ← Separator (only when published)
+│                                               │
+│  ┌─────────────────────────────────────────┐  │
+│  │  See Published Site                 ⧉  │  │  ← Production URL
+│  │  3 changes since last publish           │  │     (only when published)
+│  └─────────────────────────────────────────┘  │
+│                                               │
+└───────────────────────────────────────────────┘
+    Width: 300px
+```
+
+### Share Publicly States
+
+The label dynamically shows time remaining: "Share this link for X days/hours/mins"
+
+**Initial state (no token exists):**
+
+```
+Share this link for 7 days
+┌─────────────────────────────────┬───────┐
+│ https://preview.app.com/...     │  📋   │  ← Cosmetic URL preview, Copy icon
+└─────────────────────────────────┴───────┘
+```
+
+**Creating token (user clicked Copy):**
+
+```
+Share this link for 7 days
+┌─────────────────────────────────┬───────┐
+│ https://preview.app.com/...     │  ⏳   │  ← Spinner while creating
+└─────────────────────────────────┴───────┘
+```
+
+**Success (token created + copied):**
+
+```
+Share this link for 7 days
+┌─────────────────────────────────┬───────┐
+│ https://preview.app.com?tok=xyz │  ✓    │  ← Real URL, Checkmark
+└─────────────────────────────────┴───────┘
+```
+
+**After 2 seconds (ready for re-copy):**
+
+```
+Share this link for 7 days
+┌─────────────────────────────────┬───────┐
+│ https://preview.app.com?tok=xyz │  📋   │  ← Copy icon restored
+└─────────────────────────────────┴───────┘
+```
+
+**Subsequent popover opens (token exists, time elapsed):**
+
+```
+Share this link for 6 days
+┌─────────────────────────────────┬───────┐
+│ https://preview.app.com?tok=xyz │  📋   │  ← Shows remaining time
+└─────────────────────────────────┴───────┘
+```
+
+**Countdown format logic:**
+| Time Remaining | Label Display |
+| -------------- | -------------------------------- |
+| ≥ 24 hours | "Share this link for X days" |
+| < 24 hours | "Share this link for X hours" |
+| < 1 hour | "Share this link for X mins" |
+| No token yet | "Share this link for 7 days" |
+
 ## Link Types
 
-| Link Type      | Icon | Visibility             | TTL              | Auth Required | Purpose                             |
-| -------------- | ---- | ---------------------- | ---------------- | ------------- | ----------------------------------- |
-| **Preview**    | 🔒   | Always (if URL exists) | Session duration | Yes           | Private preview for logged-in owner |
-| **Published**  | 🌐   | Only if published      | Permanent        | No            | Public production site              |
-| **Share Link** | 🔗   | On-demand              | 7 days           | No            | Public preview for anyone           |
+| Link Type          | Icon | Visibility             | TTL              | Auth Required | Purpose                                                  |
+| ------------------ | ---- | ---------------------- | ---------------- | ------------- | -------------------------------------------------------- |
+| **Preview Site**   | 🔒   | Always (if URL exists) | Session duration | Yes           | Private preview for logged-in owner                      |
+| **Share publicly** | 🔗   | Always                 | 7 days           | No            | Public preview for anyone (same content as Preview Site) |
+| **Published**      | 🌐   | Only if published      | Permanent        | No            | Public production site                                   |
 
 ### 1. Preview Link
 
 The owner's private preview, authenticated via their login session.
 
-| Attribute            | Value                                 |
-| -------------------- | ------------------------------------- |
-| **Label**            | "View preview"                        |
-| **Helper text**      | "Includes your recent edits"          |
-| **Source**           | `site.preview_url` from control plane |
-| **Auth**             | Requires active SSO session           |
-| **TTL**              | Valid as long as user is logged in    |
-| **Behavior**         | Opens in new tab                      |
-| **When unavailable** | Row hidden                            |
+| Attribute            | Value                                            |
+| -------------------- | ------------------------------------------------ |
+| **Label**            | "Preview Site"                                   |
+| **Helper text**      | "See your recent edits before they're published" |
+| **Source**           | `site.preview_url` from control plane            |
+| **Auth**             | Requires active SSO session                      |
+| **TTL**              | Valid as long as user is logged in               |
+| **Behavior**         | Opens in new tab                                 |
+| **When unavailable** | Row hidden                                       |
 
 ### 2. Published Link
 
 The public production URL after the app has been published.
 
-| Attribute                  | Value                                                      |
-| -------------------------- | ---------------------------------------------------------- |
-| **Label**                  | "Visit published app"                                      |
-| **Helper text (in sync)**  | "Up to date"                                               |
-| **Helper text (stale)**    | "X changes since last publish"                             |
-| **Helper text (inactive)** | "Publish app to activate"                                  |
-| **Source**                 | `site.published_url` from control plane                    |
-| **Auth**                   | Public (no auth required)                                  |
-| **TTL**                    | Permanent (until unpublished)                              |
-| **Visibility**             | Always visible (disabled if not published)                 |
-| **When not published**     | Show disabled with helper text + optional [Publish] button |
+| Attribute              | Value                                                                             |
+| ---------------------- | --------------------------------------------------------------------------------- |
+| **Label**              | "See Published Site"                                                              |
+| **Helper text**        | "{X} changes since last publish" (when X=0, show "No changes since last publish") |
+| **Source**             | `site.published_url` from control plane                                           |
+| **Auth**               | Public (no auth required)                                                         |
+| **TTL**                | Permanent (until unpublished)                                                     |
+| **Visibility**         | Only visible when published                                                       |
+| **When not published** | Hidden (section not shown)                                                        |
 
 **Visibility logic:**
 
@@ -120,19 +180,24 @@ hasBeenPublished(site) checks:
 2. Fallback: variants.includes('publish')
 ```
 
-### 3. Share Link
+### 3. Share Publicly
 
-A publicly accessible preview link for sharing with others (stakeholders, clients, etc.).
+A publicly accessible preview link for sharing with others (stakeholders, clients, etc.). Points to the same live preview as "Preview Site" but with a token that bypasses authentication.
 
-| Attribute        | Value                                          |
-| ---------------- | ---------------------------------------------- |
-| **Label**        | "Share preview link"                           |
-| **Helper text**  | "Anyone with link can view"                    |
-| **Source**       | `POST /api/apps/[id]/share` → `token.shareUrl` |
-| **Fallback URL** | `${origin}?airoShareToken=${token.token}`      |
-| **Auth**         | Public (anyone with link can view)             |
-| **TTL**          | 7 days (fixed)                                 |
-| **Limit**        | One active token per app                       |
+| Attribute        | Value                                              |
+| ---------------- | -------------------------------------------------- |
+| **Label**        | "Share publicly"                                   |
+| **UI**           | Text input with attached Copy button               |
+| **Source**       | `POST /api/apps/[id]/share` → `token.shareUrl`     |
+| **Fallback URL** | `${origin}?airoShareToken=${token.token}`          |
+| **Auth**         | Public (anyone with link can view)                 |
+| **TTL**          | 7 days (fixed)                                     |
+| **Limit**        | One active token per app                           |
+| **Countdown**    | Shows "X days" to right of label when token exists |
+
+**Token creation:** Lazy — token is created on first Copy click, not on popover open. Subsequent opens fetch existing token.
+
+**Same content as Preview Site:** Both links point to the same live preview container. Share link just appends `?airoShareToken={token}` to bypass SSO. No sync delay — changes are reflected immediately in both.
 
 **TTL & Hibernation:**
 
@@ -160,26 +225,49 @@ A publicly accessible preview link for sharing with others (stakeholders, client
 | **Creating Token**   | Token creation in progress           | Spinner on share row            |
 | **Token Error**      | Failed to create/fetch token         | Error message                   |
 
-### Share Link Button States
+### Share Publicly Copy Button States
 
-The share link button uses a state machine with six states:
+The Copy button (attached to text input) uses a state machine:
 
-| State           | Condition                        | Text                | Icon          | Disabled | Loading |
-| --------------- | -------------------------------- | ------------------- | ------------- | -------- | ------- |
-| **unavailable** | No `appId` OR tokens fetch error | "Create share link" | LinkIcon      | Yes      | No      |
-| **loading**     | Tokens fetching                  | "Loading…"          | —             | Yes      | Yes     |
-| **creating**    | Token creation in progress       | "Creating link…"    | —             | Yes      | Yes     |
-| **create**      | No active token, ready           | "Create share link" | LinkIcon      | No       | No      |
-| **copy**        | Active token exists              | "Copy link"         | CopyIcon      | No       | No      |
-| **copied**      | Just copied (2s)                 | "Copied"            | CheckmarkIcon | No       | No      |
+| State        | Condition                   | Icon          | Disabled | Text Input Shows     | Label Shows              |
+| ------------ | --------------------------- | ------------- | -------- | -------------------- | ------------------------ |
+| **ready**    | No token exists yet         | CopyIcon      | No       | Cosmetic URL preview | "...for 7 days"          |
+| **creating** | Token creation in progress  | Spinner       | Yes      | Cosmetic URL preview | "...for 7 days"          |
+| **copied**   | Just copied (2s duration)   | CheckmarkIcon | No       | Real URL with token  | "...for X days/hrs/mins" |
+| **idle**     | Token exists, ready to copy | CopyIcon      | No       | Real URL with token  | "...for X days/hrs/mins" |
+| **error**    | Token fetch/create failed   | CopyIcon      | Yes      | Cosmetic URL preview | "...for 7 days"          |
 
-State priority (evaluated in order): `unavailable` → `loading` → `creating` → `copied`/`copy` → `create`
+**State transitions:**
 
-**Error states** are shown separately below the button (not as button states):
+1. `ready` → (click Copy) → `creating` → (success) → `copied` → (2s) → `idle`
+2. `idle` → (click Copy) → `copied` → (2s) → `idle`
+3. `creating` → (error) → `error`
 
-- `builder_view_share_error_load` — Token fetch failed
-- `builder_view_share_error_create` — Token creation failed
-- `builder_view_share_error_copy` — Clipboard write failed
+**Countdown in label:** The label text dynamically shows time remaining:
+
+- No token: "Share this link for 7 days"
+- Token exists: "Share this link for X days/hours/mins" (based on expiry)
+
+| Time Remaining | Format                   |
+| -------------- | ------------------------ |
+| ≥ 24 hours     | "X days" (rounded down)  |
+| < 24 hours     | "X hours" (rounded down) |
+| < 1 hour       | "X mins" (rounded down)  |
+
+**Error handling:** Errors display via TextInput's `errorMessage` prop (appears as helper text below the input):
+
+| Error                  | i18n Key                          | Message                      |
+| ---------------------- | --------------------------------- | ---------------------------- |
+| Token creation failed  | `builder_view_share_error_create` | "Couldn't create share link" |
+| Clipboard write failed | `builder_view_share_error_copy`   | "Couldn't copy to clipboard" |
+
+```
+Share this link for 7 days
+┌─────────────────────────────────┬───────┐
+│ https://preview.app.com/...     │  📋   │
+└─────────────────────────────────┴───────┘
+Couldn't create share link                    ← errorMessage prop
+```
 
 **Published site sync state** shows one of:
 
@@ -190,15 +278,15 @@ State priority (evaluated in order): `unavailable` → `loading` → `creating` 
 
 ## Interactions
 
-| Action                     | Result                                   |
-| -------------------------- | ---------------------------------------- |
-| Click icon                 | Opens popover                            |
-| Click "Preview"            | Opens `previewUrl` in new tab            |
-| Click "Published"          | Opens `publishedUrl` in new tab          |
-| Click "Share preview link" | Creates token, shows copy UI             |
-| Click "Copy share link"    | Copies URL to clipboard, shows "Copied!" |
-| Click outside popover      | Closes popover                           |
-| Press Escape               | Closes popover                           |
+| Action                     | Result                                                                  |
+| -------------------------- | ----------------------------------------------------------------------- |
+| Click icon                 | Opens popover                                                           |
+| Click "Preview Site"       | Opens `previewUrl` in new tab                                           |
+| Click "See Published Site" | Opens `publishedUrl` in new tab                                         |
+| Click Copy (no token)      | Creates token → copies to clipboard → shows checkmark → shows countdown |
+| Click Copy (token exists)  | Copies to clipboard → shows checkmark (2s) → reverts to copy icon       |
+| Click outside popover      | Closes popover                                                          |
+| Press Escape               | Closes popover                                                          |
 
 ## Data Dependencies
 
@@ -262,22 +350,22 @@ Extract logic from `VersionHistory.tsx` into a shared hook (e.g., `usePublishSyn
 - [ ] Published click opens correct URL in new tab
 - [ ] Published row shows globe icon indicating public
 
-### Share Link
+### Share Publicly
 
-- [x] Share section hidden when `appbuilder-share-links` flag is off
-- [x] "Create share link" shown when no active token
-- [x] "Copy link" shown when active token exists
-- [x] Token created successfully on create click
-- [x] Link copied to clipboard on copy click
-- [x] "Copied" feedback shown for 2 seconds (button remains clickable)
-- [x] Expiration date displayed in user's locale
-- [x] Expiration is 7 days from creation
-- [x] "Loading…" state shown while fetching tokens
-- [x] "Creating link…" state shown while creating token
-- [x] Button disabled in unavailable/loading/creating states
-- [x] Error message shown when token fetch fails
-- [x] Error message shown when token creation fails
-- [ ] 409 (token exists) handled gracefully
+- [ ] Share section hidden when `appbuilder-share-links` flag is off
+- [ ] Text input shows cosmetic URL preview when no token exists
+- [ ] Copy button shows Copy icon in ready state
+- [ ] Click Copy creates token (lazy creation)
+- [ ] Spinner shown while creating token
+- [ ] Checkmark shown after successful copy (2s duration)
+- [ ] Real URL with token populates text input after creation
+- [ ] Countdown ("X days") appears to right of label after token exists
+- [ ] Checkmark reverts to Copy icon after 2 seconds
+- [ ] Subsequent popover opens show real URL + countdown immediately
+- [ ] Copy button disabled during token creation
+- [ ] Error message shown when token creation fails
+- [ ] Error message shown when clipboard write fails
+- [ ] 409 (token exists) handled gracefully — fetch and display existing token
 
 ### Integration
 
@@ -315,32 +403,52 @@ Share link continues to work during warm hibernation:
 
 ## i18n Keys
 
-| Key                                 | Usage                        |
-| ----------------------------------- | ---------------------------- |
-| `builder_view_share_title`          | Popover title "View & Share" |
-| `builder_view_share_preview`        | "Preview" row label          |
-| `builder_view_share_preview_desc`   | "Valid while logged in"      |
-| `builder_view_share_published`      | "Published" row label        |
-| `builder_view_share_published_desc` | "Your live site"             |
-| `builder_view_share_create`         | "Share preview link" button  |
-| `builder_view_share_create_desc`    | "Anyone with link can view"  |
-| `builder_view_share_copy`           | "Copy share link" button     |
-| `builder_common_copied`             | "Copied!" feedback           |
-| `builder_view_share_expires`        | "Expires:" label             |
-| `builder_view_share_error`          | Error message                |
+### New keys (v2)
+
+| Key                                       | Value                                            |
+| ----------------------------------------- | ------------------------------------------------ |
+| `builder_view_share_tooltip`              | "See and share"                                  |
+| `builder_view_share_preview`              | "Preview Site"                                   |
+| `builder_view_share_preview_desc`         | "See your recent edits before they're published" |
+| `builder_view_share_published`            | "See Published Site"                             |
+| `builder_view_share_published_stale`      | "{count} changes since last publish"             |
+| `builder_view_share_published_no_changes` | "No changes since last publish"                  |
+| `builder_view_share_published_status_unavailable` | "Status unavailable"                     |
+| `builder_view_share_link_label_days`      | "Share this link for {count} days"               |
+| `builder_view_share_link_label_day`       | "Share this link for 1 day"                      |
+| `builder_view_share_link_label_hours`     | "Share this link for {count} hours"              |
+| `builder_view_share_link_label_hour`      | "Share this link for 1 hour"                     |
+| `builder_view_share_link_label_mins`      | "Share this link for {count} mins"               |
+| `builder_view_share_link_label_min`       | "Share this link for 1 min"                      |
+| `builder_view_share_error_load`           | "Couldn't load share link"                       |
+| `builder_view_share_error_create`         | "Couldn't create share link"                     |
+| `builder_view_share_error_copy`           | "Couldn't copy to clipboard"                     |
+
+### Keys to remove (from v1)
+
+| Key                                 | Reason                                      |
+| ----------------------------------- | ------------------------------------------- |
+| `builder_view_share_title`          | No popover title in v2                      |
+| `builder_view_share_published_desc` | Replaced by `_changes` / `_no_changes` keys |
+| `builder_view_share_create`         | No "Create share link" button in v2         |
+| `builder_view_share_create_desc`    | No helper text for create button in v2      |
+| `builder_view_share_copy`           | No "Copy link" button text in v2            |
+| `builder_common_copied`             | Checkmark icon used instead of text         |
+| `builder_view_share_expires`        | Expiry now in label, not separate           |
+| `builder_view_share_error`          | Split into `_error_load` / `_error_create` / `_error_copy` |
 
 ## Data Test IDs
 
-| Test ID                       | Element                  |
-| ----------------------------- | ------------------------ |
-| `header-view-share-button`    | Icon button              |
-| `header-view-share-popover`   | Popover container        |
-| `header-view-share-preview`   | Preview link row         |
-| `header-view-share-published` | Published link row       |
-| `header-view-share-create`    | Create share link button |
-| `header-view-share-copy`      | Copy share link button   |
-| `header-view-share-expiry`    | Expiration timestamp     |
-| `header-view-share-error`     | Error message            |
+| Test ID                       | Element                   |
+| ----------------------------- | ------------------------- |
+| `header-view-share-button`    | Icon button (trigger)     |
+| `header-view-share-popover`   | Popover container         |
+| `header-view-share-preview`   | Preview Site row          |
+| `header-view-share-published` | See Published Site row    |
+| `header-view-share-input`     | Share publicly text input |
+| `header-view-share-copy`      | Copy button               |
+| `header-view-share-countdown` | Days/hours/mins countdown |
+| `header-view-share-error`     | Error message             |
 
 ## Migration Notes
 
