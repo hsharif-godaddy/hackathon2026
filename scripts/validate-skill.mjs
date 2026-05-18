@@ -32,6 +32,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import matter from 'gray-matter';
 
 const RED = '\x1b[31m';
 const CYAN = '\x1b[36m';
@@ -94,27 +95,18 @@ function getStagedSkillDirs() {
 }
 
 /**
- * Check if the YAML frontmatter block contains a field with a non-empty value.
- * Accepts a hardcoded regex rather than a field string to avoid dynamic RegExp construction.
+ * Parse frontmatter from skill.md content using gray-matter.
+ * Returns { kind: 'ok', data } on success, { kind: 'missing' } when no
+ * frontmatter fence exists, or { kind: 'invalid', message } on parse error.
  */
-function hasFrontmatterField(content, fieldRegex) {
-  const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
-  if (!match) return false;
-  return fieldRegex.test(match[1]);
+function parseFrontmatter(content) {
+  if (!content.startsWith('---')) return { kind: 'missing' };
+  try {
+    return { kind: 'ok', data: matter(content).data };
+  } catch (err) {
+    return { kind: 'invalid', message: err instanceof Error ? err.message : String(err) };
+  }
 }
-
-const FRONTMATTER_NAME = /^name:\s*\S/m;
-const FRONTMATTER_DESCRIPTION = /^description:\s*\S/m;
-const FRONTMATTER_WHEN_TO_USE = /^whenToUse:\s*\S/m;
-
-// Regex-based extraction of YAML list items under a top-level frontmatter key.
-// Used to detect packages duplicated across `dependencies:` and `devDependencies:`.
-// Tolerates indented dashes with optional surrounding quotes; flow-style lists
-// (`[a, b]`), comments, and multi-line strings are not parsed (fine for skill
-// files, which use the conventional block-list shape).
-const FRONTMATTER_DEPENDENCIES_BLOCK = /^dependencies:\s*\n((?:[ \t]+-[^\n]*\n?)*)/m;
-const FRONTMATTER_DEV_DEPENDENCIES_BLOCK = /^devDependencies:\s*\n((?:[ \t]+-[^\n]*\n?)*)/m;
-const LIST_ITEM = /[ \t]+-\s+["']?([^"'\n]+?)["']?\s*$/gm;
 
 /**
  * Strip the version suffix from an npm spec to get the bare package name.
@@ -132,22 +124,13 @@ function bareName(spec) {
 }
 
 /**
- * Extract the list of items under a `key:` block in YAML frontmatter.
- * Returns the raw item strings (possibly version-qualified). Returns []
- * when the key is absent, missing a list, or not a recognized list shape.
+ * Extract string items from a parsed frontmatter array field.
+ * Returns [] when the field is absent or not an array.
  */
-function extractList(content, blockRe) {
-  const block = content.match(blockRe);
-  if (!block) return [];
-  const items = [];
-  // Construct a fresh RegExp per call — sharing global RegExp state across
-  // calls would carry lastIndex and silently skip items on subsequent runs.
-  const re = new RegExp(LIST_ITEM.source, 'gm');
-  let m;
-  while ((m = re.exec(block[1])) !== null) {
-    items.push(m[1].trim());
-  }
-  return items;
+function getStringList(data, field) {
+  const value = data?.[field];
+  if (!Array.isArray(value)) return [];
+  return value.filter(item => typeof item === 'string');
 }
 
 function main() {
@@ -188,34 +171,58 @@ function main() {
     }
 
     const content = readFileSync(skillMdPath, 'utf8');
+    const parsed = parseFrontmatter(content);
 
     // Check 2: frontmatter block must exist with name + description + whenToUse
-    if (!content.startsWith('---')) {
+    if (parsed.kind === 'missing') {
       failures.push({
         skill: skillName,
         error: 'skill.md is missing YAML frontmatter (--- block)',
         fix: 'Add a frontmatter block at the top:\n    ---\n    name: your-skill\n    description: What this skill does.\n    ---',
       });
+    } else if (parsed.kind === 'invalid') {
+      failures.push({
+        skill: skillName,
+        error: `skill.md has invalid YAML frontmatter: ${parsed.message}`,
+        fix: 'Fix the YAML syntax error in the frontmatter block.',
+      });
     } else {
-      if (!hasFrontmatterField(content, FRONTMATTER_NAME)) {
+      const frontmatter = parsed.data;
+      if (typeof frontmatter.name !== 'string' || !frontmatter.name.trim()) {
         failures.push({
           skill: skillName,
           error: 'skill.md frontmatter is missing required field: name',
           fix: `Add  name: ${skillName}  to the frontmatter block.`,
         });
       }
-      if (!hasFrontmatterField(content, FRONTMATTER_DESCRIPTION)) {
+      if (typeof frontmatter.description !== 'string' || !frontmatter.description.trim()) {
         failures.push({
           skill: skillName,
           error: 'skill.md frontmatter is missing required field: description',
           fix: 'Add a one-sentence  description:  field to the frontmatter block.',
         });
       }
-      if (!hasFrontmatterField(content, FRONTMATTER_WHEN_TO_USE)) {
+      if (typeof frontmatter.whenToUse !== 'string' || !frontmatter.whenToUse.trim()) {
         failures.push({
           skill: skillName,
           error: 'skill.md frontmatter is missing required field: whenToUse',
           fix: 'Add a one-sentence  whenToUse:  field to the frontmatter block.',
+        });
+      }
+
+      // Check 4: no package may appear in both `dependencies` and `devDependencies`.
+      // The skill loader installs each list with a separate `npm install` invocation —
+      // dev runs second with `--save-dev`, so npm's last-write-wins quietly moves the
+      // package to devDependencies and removes it from runtime. Authoring mistake;
+      // catch it before review rather than as a silent runtime regression.
+      const deps = getStringList(frontmatter, 'dependencies').map(bareName);
+      const devDeps = getStringList(frontmatter, 'devDependencies').map(bareName);
+      const overlap = deps.filter(d => devDeps.includes(d));
+      if (overlap.length > 0) {
+        failures.push({
+          skill: skillName,
+          error: `Package(s) listed in both dependencies and devDependencies: ${overlap.join(', ')}`,
+          fix: 'Remove the duplicate(s) from one list. The dev install runs second, so npm would silently move the package to devDependencies and runtime imports would break.',
         });
       }
     }
@@ -226,22 +233,6 @@ function main() {
         skill: skillName,
         error: 'tools/ has staged changes but tools/index.ts is missing',
         fix: `Create agents/src/skills/${skillName}/tools/index.ts and export at least one SkillToolDefinition.`,
-      });
-    }
-
-    // Check 4: no package may appear in both `dependencies` and `devDependencies`.
-    // The skill loader installs each list with a separate `npm install` invocation —
-    // dev runs second with `--save-dev`, so npm's last-write-wins quietly moves the
-    // package to devDependencies and removes it from runtime. Authoring mistake;
-    // catch it before review rather than as a silent runtime regression.
-    const deps = extractList(content, FRONTMATTER_DEPENDENCIES_BLOCK).map(bareName);
-    const devDeps = extractList(content, FRONTMATTER_DEV_DEPENDENCIES_BLOCK).map(bareName);
-    const overlap = deps.filter(d => devDeps.includes(d));
-    if (overlap.length > 0) {
-      failures.push({
-        skill: skillName,
-        error: `Package(s) listed in both dependencies and devDependencies: ${overlap.join(', ')}`,
-        fix: 'Remove the duplicate(s) from one list. The dev install runs second, so npm would silently move the package to devDependencies and runtime imports would break.',
       });
     }
 
