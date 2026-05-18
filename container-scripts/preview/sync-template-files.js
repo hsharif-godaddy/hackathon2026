@@ -1461,6 +1461,11 @@ function sync(baseDir, customerDir) {
 const isEntrypoint = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
 
 if (isEntrypoint) {
+  // Disabled: migrate-to-ssr-entry deletes configure.js while vite-plugin-api-routes
+  // is still active, crashing Vite on restart. See docs/INC-configure-js-deletion-bug.md.
+  // Re-enable once the affected cohort is cleared and a safe migration path is in place.
+  process.exit(0);
+
   const args = process.argv.slice(2);
 
   if (args.length !== 2) {

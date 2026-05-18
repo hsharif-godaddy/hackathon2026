@@ -326,7 +326,7 @@ async function git(cwd: string, args: string[]): Promise<string> {
   return result.stdout.trim();
 }
 
-describe('sync-template-files black-box migration harness', () => {
+describe.skip('sync-template-files black-box migration harness', () => {
   // Declared order mirrors MIGRATIONS in container-scripts/preview/sync-template-files.js.
   // seed-entry-server-tsx must run before migrate-to-ssr-entry — the latter guards on
   // existsSync(entry-server.tsx) and would skip with `entry_server_missing` for any app
