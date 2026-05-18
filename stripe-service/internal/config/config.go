@@ -20,6 +20,16 @@ const (
 	EnvProd  Environment = "prod"
 )
 
+// StripeClientKind selects which internal/stripe.Client implementation
+// is wired at boot. Validated by parseStripeClient; downstream callers
+// use the constants instead of bare strings to avoid silent typos.
+type StripeClientKind string
+
+const (
+	StripeClientFake StripeClientKind = "fake"
+	StripeClientReal StripeClientKind = "real"
+)
+
 // Config is process env for the HTTP server.
 type Config struct {
 	Addr             string
@@ -39,6 +49,24 @@ type Config struct {
 	// (see internal/mhpairo). Kept as a sub-struct so future additions
 	// (health-probe path, per-endpoint overrides) don't sprawl at the top.
 	MHPAiro MHPAiroConfig
+
+	// StripeClient selects which internal/stripe.Client implementation
+	// the server wires in: "fake" (deterministic synthetic IDs, no
+	// network) or "real" (real Stripe v2 via internal/stripeapi).
+	// Forced to "fake" when Environment=local — local dev never hits
+	// real Stripe even with stale env vars.
+	StripeClient StripeClientKind
+
+	// StripeAPIBaseURL is passed through to stripeapi.Config.BaseURL.
+	// Empty (the default) falls back to stripeapi's default of
+	// https://api.stripe.com.
+	StripeAPIBaseURL string
+
+	// StripeAPIVersion is passed through to stripeapi.Config.StripeVersion
+	// (the Stripe-Version header). Empty falls back to stripeapi's
+	// pinned default; override only when Stripe rotates us to a new
+	// preview version.
+	StripeAPIVersion string
 }
 
 // MHPAiroConfig is the env-driven config for internal/mhpairo.Client.
@@ -135,7 +163,40 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 
+	if cfg.StripeClient, err = parseStripeClient(getEnv("STRIPE_CLIENT", "fake"), cfg.Environment); err != nil {
+		return Config{}, err
+	}
+	cfg.StripeAPIBaseURL = strings.TrimSpace(os.Getenv("STRIPE_API_BASE_URL"))
+	cfg.StripeAPIVersion = strings.TrimSpace(os.Getenv("STRIPE_API_VERSION"))
+
 	return cfg, nil
+}
+
+// parseStripeClient validates the STRIPE_CLIENT enum and applies the
+// local-env safety belt. Local environments are forced to "fake" even
+// when the env var is set to "real" — local dev should never hit real
+// Stripe by accident, and the override would surprise developers who
+// expect ENVIRONMENT=local to mean "no external side effects".
+//
+// Coercion is logged at WARN so a developer expecting the live path
+// gets a visible breadcrumb instead of silently seeing *_fake_* IDs.
+func parseStripeClient(s string, env Environment) (StripeClientKind, error) {
+	normalized := StripeClientKind(strings.ToLower(strings.TrimSpace(s)))
+	switch normalized {
+	case StripeClientFake, StripeClientReal:
+		// ok
+	default:
+		return "", fmt.Errorf("STRIPE_CLIENT must be one of fake|real; got %q", s)
+	}
+	if env == EnvLocal && normalized == StripeClientReal {
+		slog.Warn("stripe_service.config.stripe_client.coerced_to_fake",
+			"requested", string(normalized),
+			"environment", string(env),
+			"reason", "ENVIRONMENT=local forces STRIPE_CLIENT=fake (safety belt)",
+		)
+		return StripeClientFake, nil
+	}
+	return normalized, nil
 }
 
 // loadMHPAiroConfig reads the MHP_AIRO_* env vars. Defaults are env-aware:

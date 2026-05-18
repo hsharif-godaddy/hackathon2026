@@ -14,6 +14,7 @@ func clearEnv(t *testing.T) {
 		"SERVER_CERT_PATH", "SERVER_KEY_PATH",
 		"AUTH_TYPE", "SSO_HOST",
 		"MHP_AIRO_BASE_URL", "MHP_AIRO_TIMEOUT", "MHP_AIRO_AUTH",
+		"STRIPE_CLIENT", "STRIPE_API_BASE_URL", "STRIPE_API_VERSION",
 	} {
 		t.Setenv(k, "")
 	}
@@ -354,5 +355,118 @@ func TestLoadMHPAiroRespectsExplicitOverrides(t *testing.T) {
 	}
 	if cfg.MHPAiro.Timeout.Seconds() != 7 {
 		t.Errorf("MHPAiro.Timeout: want 7s, got %s", cfg.MHPAiro.Timeout)
+	}
+}
+
+func TestLoadStripeClientDefaultsToFake(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("ENVIRONMENT", "dev")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.StripeClient != "fake" {
+		t.Errorf("StripeClient: want fake (default), got %q", cfg.StripeClient)
+	}
+}
+
+func TestLoadStripeClientAcceptsReal(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("ENVIRONMENT", "dev")
+	t.Setenv("STRIPE_CLIENT", "real")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.StripeClient != "real" {
+		t.Errorf("StripeClient: want real, got %q", cfg.StripeClient)
+	}
+}
+
+func TestLoadStripeClientNormalizesCaseAndWhitespace(t *testing.T) {
+	cases := []struct {
+		raw  string
+		want StripeClientKind
+	}{
+		{"  REAL  ", StripeClientReal},
+		{"Real", StripeClientReal},
+		{"  FAKE  ", StripeClientFake},
+		{"Fake", StripeClientFake},
+	}
+	for _, c := range cases {
+		t.Run(c.raw, func(t *testing.T) {
+			clearEnv(t)
+			t.Setenv("ENVIRONMENT", "dev")
+			t.Setenv("STRIPE_CLIENT", c.raw)
+			cfg, err := Load()
+			if err != nil {
+				t.Fatalf("Load(%q): %v", c.raw, err)
+			}
+			if cfg.StripeClient != c.want {
+				t.Errorf("StripeClient(%q): want %q, got %q", c.raw, c.want, cfg.StripeClient)
+			}
+		})
+	}
+}
+
+func TestLoadStripeClientRejectsInvalidEnum(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("ENVIRONMENT", "dev")
+	t.Setenv("STRIPE_CLIENT", "mock")
+	_, err := Load()
+	if err == nil {
+		t.Fatal("want error for STRIPE_CLIENT=mock")
+	}
+	if !strings.Contains(err.Error(), "STRIPE_CLIENT") {
+		t.Errorf("error should mention STRIPE_CLIENT; got %q", err)
+	}
+}
+
+func TestLoadStripeClientForcesFakeInLocalEnv(t *testing.T) {
+	// Safety belt: even if the env var says "real", local env coerces
+	// to fake so a stale .env file doesn't accidentally hit Stripe.
+	clearEnv(t)
+	t.Setenv("ENVIRONMENT", "local")
+	t.Setenv("STRIPE_CLIENT", "real")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.StripeClient != "fake" {
+		t.Errorf("StripeClient (local): want fake (forced), got %q", cfg.StripeClient)
+	}
+}
+
+func TestLoadStripeAPIBaseURLAndVersionPassThrough(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("ENVIRONMENT", "dev")
+	t.Setenv("STRIPE_API_BASE_URL", "https://api.stripe.test")
+	t.Setenv("STRIPE_API_VERSION", "2024-12-01.preview")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.StripeAPIBaseURL != "https://api.stripe.test" {
+		t.Errorf("StripeAPIBaseURL: got %q", cfg.StripeAPIBaseURL)
+	}
+	if cfg.StripeAPIVersion != "2024-12-01.preview" {
+		t.Errorf("StripeAPIVersion: got %q", cfg.StripeAPIVersion)
+	}
+}
+
+func TestLoadStripeAPIDefaultsAreEmpty(t *testing.T) {
+	// Empty defaults so the wiring layer falls back to stripeapi's
+	// own defaults (https://api.stripe.com, pinned preview version).
+	clearEnv(t)
+	t.Setenv("ENVIRONMENT", "dev")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.StripeAPIBaseURL != "" {
+		t.Errorf("StripeAPIBaseURL: want empty default, got %q", cfg.StripeAPIBaseURL)
+	}
+	if cfg.StripeAPIVersion != "" {
+		t.Errorf("StripeAPIVersion: want empty default, got %q", cfg.StripeAPIVersion)
 	}
 }

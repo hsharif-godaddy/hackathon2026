@@ -47,20 +47,21 @@ Library packages (no caller wires them in yet):
   PKIX (`-----BEGIN PUBLIC KEY-----`). Library only — slotted into
   `apiKeys.create` calls in the live-key webhook handler PR.
 
-### Fake Stripe client
+### Stripe client selection
 
-The current build uses `internal/stripe.FakeClient`, which returns obvious-fake values
-(every ID prefixed `*_fake_*`, claim URLs under `/fake-claim/`, keys prefixed
-`sk_test_fake_`, `pk_test_fake_`, `ek_test_fake_`). No real Stripe network call. This lets
-the full agent→service→DynamoDB loop be exercised end-to-end before real Stripe credentials
-are provisioned. Swapping in a real SDK-backed client is one line in `cmd/server/main.go`.
+`STRIPE_CLIENT` selects which `internal/stripe.Client` implementation the server wires in:
+
+- **`fake` (default)** — `internal/stripe.FakeClient`. Returns obvious-fake values (every ID prefixed `*_fake_*`, claim URLs under `/fake-claim/`, keys prefixed `sk_test_fake_` / `pk_test_fake_` / `ek_test_fake_`). No real Stripe network call. Lets the full agent→service→DynamoDB loop be exercised end-to-end before real Stripe credentials are provisioned.
+- **`real`** — `internal/stripe.RealClient`, an adapter over `internal/stripeapi.Client`. Loads the platform secret key (`sk_test_*` / `sk_live_*`) from Secrets Manager (`{env}-airo-stripe-platform-key`) at startup; fails fast on a missing/placeholder secret. Issues real Stripe v2 `claimableSandboxes.create` calls. Until the preview API is enabled for the GoDaddy account, Stripe rejects with `invalid_request_error`, which the handler maps to `502 STRIPE_CREATE_FAILED` — the agent skill (separate PR) pattern-matches that for graceful degradation.
+
+`Environment=local` forces `fake` regardless of the env var — local dev never hits real Stripe by accident.
 
 Next PRs:
 
-1. Real Stripe SDK client (`internal/stripe/real.go`) + `STRIPE_CLIENT=fake|real` switch.
-2. `mhp-airo` callout to inject all three Stripe keys (`sk_test_*`, `pk_test_*`, `ek_test_*` as `STRIPE_SECRET_KEY` / `STRIPE_PUBLISHABLE_KEY` / `STRIPE_MCP_KEY`) into the customer-app alloc env. Must run between `claimableSandboxes.create` and the DDB `PutItem` so `claim_status: "provisioned"` implies the alloc env is actually ready; on push failure, abandon the Stripe sandbox and return an error without writing DDB.
-3. Stripe webhook endpoint + signature verification.
-4. Managed API Keys flow on `sandbox_details_owner_account_updated`: three `apiKeys.create` calls (secret / publishable / mcp), JWE-decrypt via KMS for sk/mcp, push all three to mhp-airo as `sk_live_*` / `pk_live_*` / `ek_live_*`. No new stripe-service data store — live credentials follow the same mhp-airo path as the sandbox keys.
+1. `mhp-airo` callout to inject all three Stripe keys (`sk_test_*`, `pk_test_*`, `ek_test_*` as `STRIPE_SECRET_KEY` / `STRIPE_PUBLISHABLE_KEY` / `STRIPE_MCP_KEY`) into the customer-app alloc env. Must run between `claimableSandboxes.create` and the DDB `PutItem` so `claim_status: "provisioned"` implies the alloc env is actually ready; on push failure, abandon the Stripe sandbox and return an error without writing DDB.
+2. Per-event-type webhook handlers: `claimable_sandbox.claimed` (DDB update), `sandbox_details_owner_account_updated` (live-key mint via Managed API Keys + push to mhp-airo), `api_key.rotated` / `api_key.expired` (revoke / re-push).
+3. Managed API Keys flow on `sandbox_details_owner_account_updated`: three `apiKeys.create` calls (secret / publishable / mcp), JWE-decrypt via KMS for sk/mcp, push all three to mhp-airo as `sk_live_*` / `pk_live_*` / `ek_live_*`. No new stripe-service data store — live credentials follow the same mhp-airo path as the sandbox keys.
+4. Wire `internal/mhpairo` into `postSandboxes` and the go-live webhook handler.
 
 ### `internal/mhpairo` (outbound control-plane client)
 
@@ -144,3 +145,6 @@ so local probes exercise real dev resources without a separate local stack.
 | `MHP_AIRO_BASE_URL`   | \*      | mhp-airo API root incl. `/api/airo/v1`. Required when `AUTH_TYPE=jwt`. Defaults to `http://localhost:4100/api/airo/v1` when `AUTH_TYPE=none`.                          |
 | `MHP_AIRO_TIMEOUT`    | `30s`   | Per-request HTTP timeout to mhp-airo.                                                                                                                                  |
 | `MHP_AIRO_AUTH`       | \*      | `awsiam` (mint AWS-IAM JWT via gd-auth-lib) or `none` (no Authorization header; for local-control-plane). Defaults mirror `AUTH_TYPE` (`jwt`→`awsiam`, `none`→`none`). |
+| `STRIPE_CLIENT`       | `fake`  | `fake` (deterministic synthetic IDs, no network) or `real` (real Stripe v2 via `internal/stripeapi`). Forced to `fake` when `ENVIRONMENT=local`.                       |
+| `STRIPE_API_BASE_URL` | _unset_ | Override for `internal/stripeapi`'s default (`https://api.stripe.com`). Tests / staging environments only.                                                             |
+| `STRIPE_API_VERSION`  | _unset_ | Override for `internal/stripeapi`'s pinned `Stripe-Version` header. Set when Stripe rotates us to a new preview version.                                               |

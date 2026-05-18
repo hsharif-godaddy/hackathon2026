@@ -6,6 +6,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -20,6 +21,7 @@ import (
 	"github.com/gdcorp-partners/airo-app-builder/stripe-service/internal/config"
 	"github.com/gdcorp-partners/airo-app-builder/stripe-service/internal/store"
 	stripeclient "github.com/gdcorp-partners/airo-app-builder/stripe-service/internal/stripe"
+	"github.com/gdcorp-partners/airo-app-builder/stripe-service/internal/stripeapi"
 	"github.com/gdcorp-partners/airo-app-builder/stripe-service/internal/webhook"
 )
 
@@ -78,7 +80,17 @@ func main() {
 	verifier := webhook.NewVerifier(whsec)
 	events := store.NewEvents(clients.DynamoDB(), resources.EventsTable)
 	sandboxes := store.NewSandboxes(clients.DynamoDB(), resources.SandboxesTable)
-	stripeClient := stripeclient.FakeClient{}
+
+	// Stripe client: STRIPE_CLIENT=real wires the live stripeapi-backed
+	// client (loads the platform sk_*_* from Secrets Manager, fails fast
+	// on a missing/placeholder secret); anything else (default) uses the
+	// deterministic fake. config.parseStripeClient already coerces local
+	// envs to "fake" so a stale env var can't accidentally hit Stripe.
+	stripeClient, err := buildStripeClient(cfg, clients, resources)
+	if err != nil {
+		slog.Error("stripe_service.stripe_client.build", "error", err, "stripeClient", cfg.StripeClient)
+		os.Exit(1)
+	}
 
 	srv := &api.Server{
 		Environment:     string(cfg.Environment),
@@ -107,6 +119,7 @@ func main() {
 		"version", version,
 		"tls", cfg.TLSCertPath != "" && cfg.TLSKeyPath != "",
 		"authType", cfg.AuthType,
+		"stripeClient", cfg.StripeClient,
 	)
 
 	quit := make(chan os.Signal, 1)
@@ -166,4 +179,44 @@ func setupLogger(level, format string) {
 		handler = slog.NewJSONHandler(os.Stdout, opts)
 	}
 	slog.SetDefault(slog.New(handler))
+}
+
+// buildStripeClient resolves cfg.StripeClient to a concrete
+// stripe.Client. Extracted from main() so the boot sequence stays
+// scannable: the real path requires a Secrets Manager round-trip plus
+// stripeapi.New, all of which can fail before the HTTP server starts.
+func buildStripeClient(cfg config.Config, clients *awsclients.Clients, resources config.ResourceNames) (stripeclient.Client, error) {
+	switch cfg.StripeClient {
+	case config.StripeClientFake:
+		return stripeclient.FakeClient{}, nil
+	case config.StripeClientReal:
+		// fall through to real-client construction below
+	default:
+		// parseStripeClient validates the enum at config.Load time, so this
+		// is only reachable if a future enum value is added without updating
+		// this switch. Fail loud rather than silently fall back to fake.
+		return nil, fmt.Errorf("unsupported StripeClient value %q", cfg.StripeClient)
+	}
+
+	rawKey, err := clients.GetSecretValue(context.Background(), resources.PlatformKeySecret)
+	if err != nil {
+		return nil, fmt.Errorf("load platform key from %s: %w", resources.PlatformKeySecret, err)
+	}
+	apiKey, err := stripeclient.ParsePlatformKey(rawKey)
+	if err != nil {
+		return nil, fmt.Errorf("parse platform key from %s: %w", resources.PlatformKeySecret, err)
+	}
+	sapi, err := stripeapi.New(stripeapi.Config{
+		APIKey:        apiKey,
+		BaseURL:       cfg.StripeAPIBaseURL,
+		StripeVersion: cfg.StripeAPIVersion,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("construct stripeapi client: %w", err)
+	}
+	real, err := stripeclient.NewRealClient(sapi)
+	if err != nil {
+		return nil, fmt.Errorf("construct real stripe client: %w", err)
+	}
+	return real, nil
 }
