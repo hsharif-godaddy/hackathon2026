@@ -1,6 +1,7 @@
 import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 
 import { INVESTIGATE_CONFIG } from './config';
+import { ensureSummary } from './summaries';
 import { isStaleHeartbeat, isTerminal, readState, writeState } from './state';
 import type { AcquireLockResult, InvestigationState } from './types';
 
@@ -57,11 +58,21 @@ export async function acquireLock(
   // the race is observable.
 
   if (isTerminal(existing.status)) {
+    try {
+      await ensureSummary(existing);
+    } catch {
+      // Don't block lock takeover on summary failures.
+    }
     await writeState(stateKey, newState);
     return { acquired: true };
   }
 
   if (isStaleHeartbeat(existing)) {
+    // Zombie is always non-terminal (isTerminal() already returned above).
+    // Promote to killed so the summary captures a terminal status.
+    try {
+      await ensureSummary({ ...existing, status: 'killed', error: existing.error ?? 'zombie heartbeat — taken over by new run' });
+    } catch { /* swallow — don't block lock takeover */ }
     await writeState(stateKey, newState);
     return { acquired: true, tookOverZombie: true };
   }

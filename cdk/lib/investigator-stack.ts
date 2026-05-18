@@ -28,6 +28,9 @@ import config from './config';
  *   history/<customerId>/<appId>/<investigationId>/result.md      frozen report
  *   history/<customerId>/<appId>/<investigationId>/trace.jsonl    claude stream log
  *   events/<customerId>/<appId>/<investigationId>/NNNNNN.json     append-only event log (SSE source)
+ *   summaries/<yyyy-mm-dd>/<investigationId>.json  durable per-investigation summary card
+ *   summaries/_meta/<investigationId>.pointer.json id → date pointer for direct lookup
+ *   analysis/<customerId>/<appId>/<investigationId>.json  structured analysis sidecar (Lambda-written)
  *
  * The Lambda is invoked async (InvocationType=Event) by the debug-console API.
  */
@@ -313,14 +316,28 @@ export class AiroInvestigatorStack extends GDStack {
         principals,
       }));
 
+      // Summary cards written by debug-console on terminal observation.
+      // analysis/ is written by the Lambda but read by debug-console when
+      // building summaries (readAnalysis in ensureSummary).
       this.stateBucket.addToResourcePolicy(new iam.PolicyStatement({
-        sid: 'ConsoleListActiveAndEventsPrefix',
+        sid: 'ConsoleReadWriteSummariesPrefix',
+        effect: iam.Effect.ALLOW,
+        actions: ['s3:GetObject', 's3:PutObject'],
+        resources: [
+          `${this.stateBucket.bucketArn}/summaries/*`,
+          `${this.stateBucket.bucketArn}/analysis/*`,
+        ],
+        principals,
+      }));
+
+      this.stateBucket.addToResourcePolicy(new iam.PolicyStatement({
+        sid: 'ConsoleListActiveEventsAndSummariesPrefix',
         effect: iam.Effect.ALLOW,
         actions: ['s3:ListBucket'],
         resources: [this.stateBucket.bucketArn],
         principals,
         conditions: {
-          StringLike: { 's3:prefix': ['active/*', 'events/*'] },
+          StringLike: { 's3:prefix': ['active/*', 'events/*', 'summaries/*'] },
         },
       }));
     }

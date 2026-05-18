@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 
 import { withAuth } from '@/lib/api-auth';
 import { INVESTIGATE_CONFIG } from '@/lib/investigate/config';
+import { ensureSummaryAfterTerminal } from '@/lib/investigate/summaries';
 import { headResult, presignResultUrl, readState } from '@/lib/investigate/state';
 import { keysFor } from '@/lib/investigate/types';
 import { logger } from '@/lib/logger';
@@ -59,6 +60,10 @@ export const GET = withAuth<{ id: string }>(async (request, _auth, context) => {
     if (!head) {
       return NextResponse.json({ error: 'report_missing' }, { status: 404 });
     }
+    // Floating promise — safe because debug-console is a long-lived Node process.
+    // If this ever runs on Vercel/edge (frozen after response), the write would be
+    // silently dropped. Await the call instead if the deploy target changes.
+    ensureSummaryAfterTerminal(state, { reportSize: head.size, reportEtag: head.etag });
     signedUrl = await presignResultUrl(
       state.resultKey,
       INVESTIGATE_CONFIG.presignedReportTtlSec,

@@ -13,6 +13,24 @@ Honour the caps below. They exist so the on-call dev can read the whole report i
 ## Output rules (must follow)
 
 - **Write the report to a file at `${REPORT_DIR}/{appId}.md`. Do not print the report contents in chat.**
+- **Also write a machine-readable analysis to `${REPORT_DIR}/{appId}.analysis.json`.** This file is consumed by the debug-console dashboard to populate listing fields. Write it immediately after writing the markdown report. Contents:
+
+  ```json
+  {
+    "v": 1,
+    "sentiment": "negative",
+    "confidence": 0.85,
+    "rootCause": "<exact TL;DR sentence from the report>",
+    "category": "publish-failure"
+  }
+  ```
+
+  Rules for each field:
+  - `sentiment`: classify the *customer feedback input* (not the investigation findings) as `"positive"`, `"neutral"`, or `"negative"`.
+  - `confidence`: your confidence in the sentiment classification as a float 0–1.
+  - `rootCause`: copy the TL;DR sentence verbatim from the report (the single sentence under `## TL;DR`).
+  - `category`: a short kebab-case tag describing the primary failure mode, e.g. `"publish-failure"`, `"websocket-error"`, `"build-failure"`, `"auth-failure"`, `"no-clear-failure"`. Use `"no-clear-failure"` when no failure is apparent.
+  - Do not add any other fields. Do not print this JSON in chat.
 - **Do not narrate the work in chat.** No "I'll start by reading...", no "Good — sources complete", no "Let me drill into raw refs", no "All evidence collected. Writing the synthesis report." Such lines leak into the saved report through the trace fallback. Stay silent in chat once analysis starts; do the work, write the file, exit.
 - One short status line per phase marker (`phase-N-name`) is fine for progress tracking. Anything else stays out of chat.
 

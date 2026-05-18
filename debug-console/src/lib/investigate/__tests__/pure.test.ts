@@ -10,7 +10,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { isStaleHeartbeat, isTerminal } from '../state';
-import { keysFor } from '../types';
+import { keysFor, keysForSummary, keysForSummaryPointer } from '../types';
 import type { InvestigationState } from '../types';
 
 function mkState(overrides: Partial<InvestigationState> = {}): InvestigationState {
@@ -97,5 +97,29 @@ describe('keysFor', () => {
   it('URL-encodes spaces and special characters', () => {
     const keys = keysFor('cust id', 'app+id?x');
     expect(keys.stateKey).toBe('active/cust%20id/app%2Bid%3Fx/state.json');
+  });
+});
+
+describe('keysForSummary', () => {
+  it('builds yyyy-mm-dd partitioned key', () => {
+    expect(keysForSummary('2026-05-14', 'inv-2026-05-14-deadbeef'))
+      .toBe('summaries/2026-05-14/inv-2026-05-14-deadbeef.json');
+  });
+
+  it('rejects malformed dates', () => {
+    expect(() => keysForSummary('2026/05/14', 'inv-x')).toThrow(/yyyy-mm-dd/);
+    expect(() => keysForSummary('not-a-date', 'inv-x')).toThrow(/yyyy-mm-dd/);
+  });
+
+  it('rejects malformed investigationIds', () => {
+    expect(() => keysForSummary('2026-05-14', '../../etc/passwd')).toThrow(/investigationId/);
+    expect(() => keysForSummary('2026-05-14', '')).toThrow(/investigationId/);
+  });
+});
+
+describe('keysForSummaryPointer', () => {
+  it('builds pointer key under _meta', () => {
+    expect(keysForSummaryPointer('inv-2026-05-14-deadbeef'))
+      .toBe('summaries/_meta/inv-2026-05-14-deadbeef.pointer.json');
   });
 });

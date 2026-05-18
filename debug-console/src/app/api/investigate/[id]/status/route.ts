@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 
 import { withAuth } from '@/lib/api-auth';
+import { ensureSummaryAfterTerminal } from '@/lib/investigate/summaries';
 import { headResult, isStaleHeartbeat, isTerminal, readState } from '@/lib/investigate/state';
 import { keysFor } from '@/lib/investigate/types';
 import { logger } from '@/lib/logger';
@@ -65,6 +66,11 @@ export const GET = withAuth<{ id: string }>(async (request, _auth, context) => {
       );
     }
   }
+
+  // Floating promise — safe because debug-console is a long-lived Node process.
+  // If this ever runs on Vercel/edge (frozen after response), the write would be
+  // silently dropped. Await the call instead if the deploy target changes.
+  ensureSummaryAfterTerminal(state, { reportSize, reportEtag });
 
   return NextResponse.json({
     investigationId: state.investigationId,

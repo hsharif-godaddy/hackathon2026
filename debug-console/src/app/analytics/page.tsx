@@ -11,6 +11,7 @@ import { ChartEmptyState, ChartLoadingState } from '@/components/analytics/Chart
 import { CloudflareChartsGrid, formatBandwidth } from '@/components/analytics/CloudflareChartsGrid';
 import { EChartsMiniChart } from '@/components/analytics/EChartsMiniChart';
 import { HelpBadge, type HelpInfo } from '@/components/analytics/HelpBadge';
+import InvestigationsByDatePanel from '@/components/analytics/InvestigationsByDatePanel';
 
 import type { C1Period } from '@/lib/c1-analytics-server';
 import type { CloudflareBucketInterval, CloudflareOverview } from '@/lib/analytics/cloudflare-db';
@@ -344,7 +345,7 @@ function resolveCloudflareWindow(
   return { startMs: start.getTime(), endMs: end.getTime(), bucketInterval };
 }
 
-const ANALYTICS_TAB_IDS = ['apps', 'cloudflare', 'langfuse', 'c1', 'feedback'] as const;
+const ANALYTICS_TAB_IDS = ['apps', 'cloudflare', 'langfuse', 'c1', 'feedback', 'investigations'] as const;
 type AnalyticsTabId = (typeof ANALYTICS_TAB_IDS)[number];
 
 function parseAnalyticsTab(value: string | null | undefined): AnalyticsTabId {
@@ -361,6 +362,7 @@ const ANALYTICS_TABS: ReadonlyArray<{ id: AnalyticsTabId; label: string }> = [
   { id: 'langfuse', label: 'Langfuse' },
   { id: 'c1', label: 'C1 (ClickHouse)' },
   { id: 'feedback', label: 'Feedback' },
+  { id: 'investigations', label: 'Investigations' },
 ];
 
 interface PdnaSnapshot {
@@ -2230,6 +2232,17 @@ function AnalyticsContent() {
               onCustomApply={() => { /* FeedbackAnalyticsPanel props drive the fetch */ }}
             />
             <FeedbackAnalyticsPanel datePreset={feedbackDatePreset} customStart={feedbackCustomStart} customEnd={feedbackCustomEnd} />
+          </div>
+        )}
+
+        {activeTab === 'investigations' && (
+          <div
+            id="analytics-panel-investigations"
+            role="tabpanel"
+            aria-labelledby="analytics-tab-investigations"
+            style={{ marginBottom: '1.25rem' }}
+          >
+            <InvestigationsByDatePanel />
           </div>
         )}
 

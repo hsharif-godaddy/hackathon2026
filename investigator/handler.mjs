@@ -540,6 +540,19 @@ export async function handler(event) {
     }
     }
 
+    // Read analysis sidecar written by the synthesis phase. Best-effort —
+    // missing file is normal for failed/killed runs or pre-feature invocations.
+    let analysisSidecar = null;
+    const analysisFile = entries.find((f) => f.endsWith('.analysis.json'));
+    if (analysisFile) {
+      try {
+        const raw = await fs.readFile(path.join(workDir, analysisFile), 'utf-8');
+        analysisSidecar = JSON.parse(raw);
+      } catch (err) {
+        console.error('[investigator] failed to read analysis sidecar', analysisFile, err);
+      }
+    }
+
     // Fallback: scrape the final assistant text out of the Claude CLI
     // stream-json trace. The Slack-ready summary that phase-6-synthesis emits
     // always ends up in an assistant message; we stitch any assistant text
@@ -649,6 +662,18 @@ export async function handler(event) {
 
     if (reportUploaded) {
       await emitEvent('report.ready', { resultKey, reportFilename: reportName });
+    }
+
+    // Upload analysis sidecar so debug-console can populate sentiment/rootCause
+    // fields in the investigation summary listing. Best-effort — failure here
+    // does NOT affect the investigation result.
+    if (analysisSidecar && status === 'completed') {
+      const analysisKey = `analysis/${encodeURIComponent(customerId)}/${encodeURIComponent(appId)}/${investigationId}.json`;
+      try {
+        await putJson(analysisKey, analysisSidecar);
+      } catch (err) {
+        console.error('[investigator] analysis sidecar upload failed', { analysisKey, err });
+      }
     }
 
     const terminalType =

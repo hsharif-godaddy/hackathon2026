@@ -141,3 +141,75 @@ export function seqFromKey(key: string): number | null {
 export function eventKey(eventsPrefix: string, seq: number): string {
   return `${eventsPrefix}${String(seq).padStart(6, '0')}.json`;
 }
+
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const INV_ID_RE = /^[A-Za-z0-9_.-]+$/;
+
+export function keysForSummary(date: string, investigationId: string): string {
+  if (!DATE_RE.test(date)) {
+    throw new Error(`keysForSummary: date must be yyyy-mm-dd, got "${date}"`);
+  }
+  if (!investigationId || !INV_ID_RE.test(investigationId)) {
+    throw new Error(`keysForSummary: investigationId must match ${INV_ID_RE}`);
+  }
+  return `summaries/${date}/${investigationId}.json`;
+}
+
+// Latest-per-app key: overwritten on each run. Powers the scalable listing
+// path — 1 object per (date, appId) regardless of investigation count.
+export function keysForLatestSummary(date: string, appId: string): string {
+  if (!DATE_RE.test(date)) {
+    throw new Error(`keysForLatestSummary: date must be yyyy-mm-dd, got "${date}"`);
+  }
+  if (!appId) {
+    throw new Error('keysForLatestSummary: appId is required');
+  }
+  // appId is encodeURIComponent'd (prevents path traversal). INV_ID_RE not
+  // enforced here because appIds can contain chars outside that set; encoding
+  // is the safety mechanism instead of charset restriction.
+  return `summaries/latest/${date}/${encodeURIComponent(appId)}.json`;
+}
+
+export function keysForSummaryPointer(investigationId: string): string {
+  if (!investigationId || !INV_ID_RE.test(investigationId)) {
+    throw new Error(`keysForSummaryPointer: investigationId must match ${INV_ID_RE}`);
+  }
+  return `summaries/_meta/${investigationId}.pointer.json`;
+}
+
+export interface SummaryPointer {
+  v: 1;
+  investigationId: string;
+  date: string; // yyyy-mm-dd
+  appId: string;
+  customerId: string;
+}
+
+export interface InvestigationSummary {
+  v: 1;
+  investigationId: string;
+  appId: string;
+  customerId: string;
+  status: 'completed' | 'failed' | 'killed';
+  startedAt: string;
+  completedAt: string;
+  durationMs: number | null;
+  startedBy: string;
+  feedbackExcerpt: string;
+  fullstoryUrl: string | null;
+  reportAvailable: boolean;
+  reportSize: number | null;
+  reportEtag: string | null;
+  evidence: {
+    artifactCount: number | null;
+    uploadedCount: number | null;
+    failedCount: number | null;
+  } | null;
+  cost: { totalUsd: number; inputTokens: number; outputTokens: number } | null;
+  sentiment: 'positive' | 'neutral' | 'negative' | null;
+  confidence: number | null;
+  rootCause: string | null;
+  category: string | null;
+  error: string | null;
+  schemaCompleted: boolean;
+}
