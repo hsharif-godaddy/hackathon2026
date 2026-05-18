@@ -647,6 +647,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
                 budgetServiceEnabled?: boolean
                 subscriptionId?: string
                 bmsBudgetId?: string
+                useAtlasCrawler?: boolean
               } | undefined
               // Use authType to distinguish employee sessions (e2s, e2s2s, etc.) from delegate (s2s)
               const isEmployeeSession = isEmployeeAuthType(agentContext?.authType)
@@ -738,6 +739,10 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
                   useTestBudget,
                   subscriptionId: agentsAppContext.metadata.subscriptionId,
                 })
+              }
+
+              if (agentContext?.useAtlasCrawler) {
+                agentsAppContext.metadata.useAtlasCrawler = true
               }
 
               // NOTE: SSO JWT is NOT passed through context for security reasons.

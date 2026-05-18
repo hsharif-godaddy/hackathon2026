@@ -39,6 +39,7 @@ export interface JWTClaims {
   agentProfile?: string; // When set, activate the named agent profile (switchboard: appbuilder-agent-profile)
   agentProfileSelectorEnabled?: boolean; // When true, allow per-project profile selection from frontend (switchboard: appbuilder-agent-profile-selector)
   costAttributionDryRun?: boolean; // When true, run cost attribution analysis and log results but skip BMS reconciliation (switchboard: appbuilder-cost-attribution-dry-run)
+  useAtlasCrawler?: boolean; // When true, route rebuild scraping through the Atlas REST API instead of the external web-scraper API (switchboard: appbuilder-atlas-crawler)
 }
 
 /**

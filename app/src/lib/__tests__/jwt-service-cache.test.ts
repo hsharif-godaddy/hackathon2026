@@ -78,4 +78,11 @@ describe('JWTService cache key separation', function cacheKeySuite() {
 
     expect(createTokenSpy).toHaveBeenCalledTimes(1);
   });
+
+  it('produces different cache entries for different useAtlasCrawler values', async function separatesUseAtlasCrawler() {
+    await service.getToken({ ...baseOptions, useAtlasCrawler: true });
+    await service.getToken({ ...baseOptions, useAtlasCrawler: false });
+
+    expect(createTokenSpy).toHaveBeenCalledTimes(2);
+  });
 });

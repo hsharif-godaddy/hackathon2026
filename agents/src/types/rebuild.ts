@@ -26,6 +26,19 @@ export interface StylePreferences {
 export type SiteType = 'content' | 'app' | 'commerce' | 'dashboard';
 
 /**
+ * Aggregated contact info extracted from the source site (Atlas SSM).
+ * Site-level: same data appears on every page's footer; we persist once on
+ * SiteMetadata and surface it where the prompt needs it (Visit Us, footer).
+ */
+export interface SiteContactInfo {
+  phones?: { number: string; type?: string }[];
+  emails?: { address: string; type?: string }[];
+  addresses?: { formatted: string; street?: string; city?: string; state?: string; zip?: string; country?: string }[];
+  hours?: { day: string; open: string; close: string }[];
+  social?: { platform: string; url: string }[];
+}
+
+/**
  * Overall site metadata
  */
 export interface SiteMetadata {
@@ -48,6 +61,10 @@ export interface SiteMetadata {
     headingFonts: string[];
     bodyFonts: string[];
   };
+  /** Site-level contact info (phones, emails, addresses, hours, social). Atlas-only. */
+  contact?: SiteContactInfo;
+  /** Footer nav. Site-wide; populated from Atlas navigation.footer when present. */
+  footerNavigation?: NavigationItem[];
   scrapedAt: string;
   version: string;
 }
@@ -106,6 +123,8 @@ export interface PageMetadata {
   title: string;
   description?: string;
   keywords?: string[];
+  ogTitle?: string;
+  ogDescription?: string;
   ogImage?: string;
   canonicalUrl?: string;
 }

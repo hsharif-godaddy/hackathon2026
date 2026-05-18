@@ -970,7 +970,7 @@ function InputActionsPanelThemeSelection({
     messages.some(msg =>
       msg.role === 'assistant' &&
       msg.toolCalls?.some(tc =>
-        tc.name === 'rebuildPageSelector' || tc.name === 'websiteScraper'
+        tc.name === 'rebuildPageSelector' || tc.name === 'websiteScraper' || tc.name === 'websiteRebuild'
       )
     ),
     [messages]

@@ -8,6 +8,7 @@ import {
   asRebuildError,
   createRebuildError,
   type AssetManifest,
+  type NavigationItem,
   type PageContent,
   type RebuildWorkflowState,
   type SiteMetadata,
@@ -18,7 +19,10 @@ import {
 } from '../types/rebuild.js';
 import type { PageScrapeResult } from '../tools/ai-lib-tools/drivers/website-scraper-driver.js';
 import { WebsiteScraperDriver } from '../tools/ai-lib-tools/drivers/website-scraper-driver.js';
+import { resizeForVision } from '../utils/image-resize.js';
+import { isRebuildHomepage, normalizeRebuildPageKey, rebuildUrlToSlug } from '../utils/rebuild-utils.js';
 import { AssetProcessingService } from './AssetProcessingService.js';
+import { AtlasCrawlerAdapter } from './AtlasCrawlerAdapter.js';
 import { SitemapDiscoveryService, type SitemapDiscoveryResult } from './SitemapDiscoveryService.js';
 
 const logger = Logger.create({ component: 'rebuild-orchestration-service' });
@@ -44,15 +48,6 @@ function readRebuildScrapeConcurrency(): number | undefined {
   return n;
 }
 
-function normalizeRebuildPageKey(pageUrl: string): string {
-  try {
-    const u = new URL(pageUrl);
-    const path = u.pathname.replace(/\/$/, '') || '/';
-    return `${u.origin}${path}`;
-  } catch {
-    return pageUrl;
-  }
-}
 
 function dedupeExtractedAssetRows<T extends { url: string }>(rows: T[]): T[] {
   const seen = new Set<string>();
@@ -74,15 +69,21 @@ function dedupeExtractedAssetRows<T extends { url: string }>(rows: T[]): T[] {
  * 3. Collect style preferences
  * 4. Generate page build prompts
  */
+export interface RebuildOrchestrationOptions {
+  useAtlasCrawler?: boolean;
+}
+
 export class RebuildOrchestrationService {
   private appPath: string;
   private sourceSiteDir: string;
   private stateFilePath: string;
+  private options: RebuildOrchestrationOptions;
 
-  constructor(appPath: string) {
+  constructor(appPath: string, options: RebuildOrchestrationOptions = {}) {
     this.appPath = appPath;
     this.sourceSiteDir = path.join(appPath, '.source-site');
     this.stateFilePath = path.join(this.sourceSiteDir, 'workflow-state.json');
+    this.options = options;
   }
 
   /**
@@ -141,7 +142,8 @@ export class RebuildOrchestrationService {
   private async persistOneScrapedPage(
     appId: string,
     page: PageScrapeResult,
-    rootPath: string
+    rootPath: string,
+    navigation: NavigationItem[] = []
   ): Promise<void> {
     const sanitized = page.sanitizedContent;
     if (!sanitized) {
@@ -161,22 +163,32 @@ export class RebuildOrchestrationService {
         html: page.html,
         screenshotBase64: page.screenshotBase64
       },
-      rootPath
+      rootPath,
+      navigation
     );
   }
 
   private async persistScrapedPages(
     appId: string,
     pages: PageScrapeResult[],
-    rootPath: string
+    rootPath: string,
+    navigation: NavigationItem[] = []
   ): Promise<void> {
-    const toPersist = pages.filter(p => p.success && p.sanitizedContent);
-    if (toPersist.length === 0) {
+    const withContent = pages.filter(p => p.success && p.sanitizedContent);
+    if (withContent.length === 0) {
       return;
     }
 
+    // Dedupe by slug — prevents concurrent writes to the same file when
+    // multiple URLs resolve to the same slug (e.g., cross-domain redirects)
+    const slugMap = new Map<string, PageScrapeResult>();
+    for (const page of withContent) {
+      slugMap.set(rebuildUrlToSlug(page.url, rootPath), page);
+    }
+    const toPersist = [...slugMap.values()];
+
     await Promise.all(
-      toPersist.map(page => this.persistOneScrapedPage(appId, page, rootPath))
+      toPersist.map(page => this.persistOneScrapedPage(appId, page, rootPath, navigation))
     );
   }
 
@@ -186,7 +198,16 @@ export class RebuildOrchestrationService {
    * @param appId - Application ID
    * @param sourceUrl - URL to scrape
    */
+  private useAtlas(): boolean {
+    return this.options.useAtlasCrawler === true || process.env.USE_ATLAS_CRAWLER === 'true';
+  }
+
   private async scrapeAndAnalyze(appId: string, sourceUrl: string): Promise<void> {
+    if (this.useAtlas()) {
+      await this.scrapeAndAnalyzeWithAtlas(appId, sourceUrl);
+      return;
+    }
+
     try {
       const state = await this.getStatus(appId);
 
@@ -224,7 +245,7 @@ export class RebuildOrchestrationService {
       // Keep last occurrence: discovery prepends the input URL first, canonical comes later.
       const slugMap = new Map<string, typeof nonBlogPages[number]>();
       for (const page of nonBlogPages) {
-        slugMap.set(this.urlToSlug(page.url, state.rootPath), page);
+        slugMap.set(rebuildUrlToSlug(page.url, state.rootPath), page);
       }
       const pagesToScrape = [...slugMap.values()];
 
@@ -297,7 +318,7 @@ export class RebuildOrchestrationService {
       const sitemapData: SitemapData = {
         pages: discoveryResult.pages.map(p => ({
           url: p.url,
-          slug: this.urlToSlug(p.url, state.rootPath),
+          slug: rebuildUrlToSlug(p.url, state.rootPath),
           priority: p.priority,
           changefreq: p.changefreq,
           lastmod: p.lastmod,
@@ -331,7 +352,7 @@ export class RebuildOrchestrationService {
 
       await this.persistScrapedPages(appId, multiPageResult.pages, state.rootPath);
 
-      const homePage = multiPageResult.pages.find(p => p.success && this.isHomepage(p.url, state.rootPath));
+      const homePage = multiPageResult.pages.find(p => p.success && isRebuildHomepage(p.url, state.rootPath));
 
       if (!homePage?.sanitizedContent) {
         logger.error('rebuild-orchestration.homepage-analysis-skipped', {
@@ -341,7 +362,7 @@ export class RebuildOrchestrationService {
           successfulUrls: multiPageResult.pages.filter(p => p.success).map(p => p.url),
           homepageCandidates: multiPageResult.pages.map(page => ({
             url: page.url,
-            isHomepage: this.isHomepage(page.url, state.rootPath),
+            isHomepage: isRebuildHomepage(page.url, state.rootPath),
             success: page.success,
             hasContent: !!page.sanitizedContent,
             error: page.error
@@ -453,8 +474,179 @@ export class RebuildOrchestrationService {
   }
 
   /**
+   * Atlas-based scrape and analyze pipeline.
+   * Uses local Puppeteer crawler instead of external web-scraper API.
+   */
+  private async scrapeAndAnalyzeWithAtlas(appId: string, sourceUrl: string): Promise<void> {
+    try {
+      const state = await this.getStatus(appId);
+      const rebuildPipelineStartedAt = Date.now();
+
+      logger.info('rebuild-orchestration.atlas-start', { appId, sourceUrl, rootPath: state.rootPath });
+
+      const adapter = new AtlasCrawlerAdapter();
+      const crawlOutput = await adapter.crawlSite(sourceUrl, {
+        maxPages: MAX_PAGES_TO_SCRAPE,
+        rootPath: state.rootPath,
+      });
+
+      // Sitemap and page-content lists must agree on rootPath, otherwise the
+      // rebuild page selector lists URLs whose JSON content was never written.
+      const inRootPath = (url: string): boolean => {
+        if (state.rootPath === '/') return true;
+        try {
+          const pathname = new URL(url).pathname;
+          return pathname === state.rootPath || pathname.startsWith(state.rootPath + '/');
+        } catch { return false; }
+      };
+
+      const nonBlogPages = crawlOutput.sitemapData.pages.filter(p => !p.isBlog && inRootPath(p.url));
+      const filteredSitemapData: SitemapData = {
+        ...crawlOutput.sitemapData,
+        pages: nonBlogPages,
+        totalPages: nonBlogPages.length,
+      };
+
+      const filteredPages = crawlOutput.pages.filter(p => inRootPath(p.url));
+
+      const successfulPages = filteredPages.filter(p => p.success && (p.sanitizedContent || p.html));
+
+      if (successfulPages.length === 0) {
+        throw createRebuildError('Failed to scrape any pages from the source website', {
+          code: 'import_failed',
+          userMessage: WEBSITE_REBUILD_IMPORT_FAILED_USER_MESSAGE,
+          isUserFacingError: true,
+        });
+      }
+
+      state.scrapingProgress.total = successfulPages.length;
+      state.scrapingProgress.completed = successfulPages.length;
+      state.status = 'analyzing';
+      await this.saveState(state);
+      await this.saveSitemap(filteredSitemapData);
+
+      logger.info('rebuild-orchestration.atlas-pages-scraped', {
+        appId,
+        totalPages: successfulPages.length,
+        blogPagesExcluded: crawlOutput.sitemapData.pages.length - nonBlogPages.length,
+      });
+
+      await this.persistScrapedPages(appId, successfulPages, state.rootPath, crawlOutput.navigation);
+
+      // Find homepage
+      const homePage = successfulPages.find(p => isRebuildHomepage(p.url, state.rootPath));
+      if (!homePage || (!homePage.sanitizedContent && !homePage.html)) {
+        logger.error('rebuild-orchestration.atlas-homepage-not-found', {
+          appId,
+          rootPath: state.rootPath,
+          successfulUrls: successfulPages.map(p => p.url),
+          allPageUrls: crawlOutput.pages.map(p => ({ url: p.url, hasContent: !!p.sanitizedContent, hasHtml: !!p.html })),
+        });
+        throw createRebuildError('Homepage could not be analyzed from scraped pages', {
+          code: 'import_failed',
+          userMessage: WEBSITE_REBUILD_IMPORT_FAILED_USER_MESSAGE,
+          isUserFacingError: true,
+        });
+      }
+
+      // Run SiteAnalyzerAgent for siteType classification
+      const analyzer = new SiteAnalyzerAgent();
+      await analyzer.initialize();
+
+      const screenshotForAnalysis = crawlOutput.homepageScreenshotBase64 || homePage.screenshotBase64;
+      if (crawlOutput.atlasReportedScreenshot && !screenshotForAnalysis) {
+        // Atlas told us it had a homepage screenshot but the fetch failed (timeout, 4xx,
+        // size cap). SiteAnalyzer and PagePromptAgent will run text-only — surface this
+        // here so the regression is visible in Loki rather than as silently lower quality.
+        // failureReason is propagated from the adapter so a single Loki query splits
+        // timeouts from 4xx from cap rejections.
+        logger.warn('rebuild-orchestration.atlas-screenshot-missing', {
+          appId,
+          homepageUrl: homePage.url,
+          failureReason: crawlOutput.homepageScreenshotFailureReason,
+        });
+      }
+      const homepageContent = homePage.sanitizedContent || homePage.html || '';
+
+      const aiMetadata = await analyzer.analyze(homepageContent, screenshotForAnalysis);
+      await analyzer.cleanup();
+
+      // Merge: atlas design tokens + atlas-extracted contact/footerNav override AI guesses
+      const finalMetadata: SiteMetadata = {
+        ...aiMetadata,
+        sourceUrl,
+        siteType: aiMetadata.siteType,
+        colorPalette: crawlOutput.designTokenMetadata.colorPalette || aiMetadata.colorPalette,
+        typography: crawlOutput.designTokenMetadata.typography || aiMetadata.typography,
+        ...(crawlOutput.contact ? { contact: crawlOutput.contact } : {}),
+        ...(crawlOutput.footerNavigation.length > 0 ? { footerNavigation: crawlOutput.footerNavigation } : {}),
+      };
+
+      await this.saveMetadata(finalMetadata);
+
+      // Process assets
+      const assetService = new AssetProcessingService(this.appPath);
+      const assetMap = new Map<string, string[]>();
+      for (const asset of crawlOutput.assets) {
+        if (!assetMap.has(asset.url)) {
+          assetMap.set(asset.url, []);
+        }
+        assetMap.get(asset.url)!.push(asset.sourceUrl);
+      }
+
+      const homeKey = normalizeRebuildPageKey(homePage.url);
+      const homeAssets = crawlOutput.assets.filter(a => normalizeRebuildPageKey(a.sourceUrl) === homeKey);
+      const otherAssets = crawlOutput.assets.filter(a => normalizeRebuildPageKey(a.sourceUrl) !== homeKey);
+
+      if (homeAssets.length > 0) {
+        const manifest = await assetService.process(homeAssets, assetMap, { merge: false });
+        try {
+          await assetService.analyzePageAssets(homePage.url, manifest);
+        } catch (error) {
+          logger.warn('rebuild-orchestration.atlas-home-assets-analysis-failed', {
+            appId,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
+
+      if (otherAssets.length > 0) {
+        await assetService.process(otherAssets, assetMap, { merge: true });
+      }
+
+      state.status = 'style_questions';
+      state.updatedAt = new Date().toISOString();
+      await this.saveState(state);
+
+      logger.info('rebuild-orchestration.atlas-complete', {
+        appId,
+        pagesScraped: successfulPages.length,
+        assetsFound: crawlOutput.assets.length,
+        hasDesignTokens: Object.keys(crawlOutput.designTokenMetadata).length > 0,
+        rebuildPipelineDurationMs: Date.now() - rebuildPipelineStartedAt,
+      });
+    } catch (error) {
+      const rebuildError = asRebuildError(error);
+
+      logger.error('rebuild-orchestration.atlas-error', {
+        appId,
+        error: rebuildError.message,
+        errorCode: rebuildError.code,
+      });
+
+      const state = await this.getStatus(appId);
+      state.status = 'error';
+      state.error = rebuildError.message;
+      state.errorCode = rebuildError.code;
+      state.userMessage = rebuildError.userMessage;
+      state.updatedAt = new Date().toISOString();
+      await this.saveState(state);
+    }
+  }
+
+  /**
    * Submit style preferences
-   * 
+   *
    * @param appId - Application ID
    * @param preferences - User's style preferences
    * @returns Promise resolving to updated state
@@ -555,6 +747,19 @@ export class RebuildOrchestrationService {
         generatedAt: new Date().toISOString()
       };
 
+      // Load homepage screenshot for visual reference (first page only)
+      let screenshotBase64: string | undefined;
+      if (isFirstPage) {
+        const screenshotPath = path.join(this.sourceSiteDir, 'screenshots', 'homepage.png');
+        try {
+          const raw = await readFile(screenshotPath);
+          const { buffer: resized, mimeType } = await resizeForVision(raw, 'image/png');
+          screenshotBase64 = `data:${mimeType};base64,${resized.toString('base64')}`;
+        } catch {
+          logger.info('rebuild-orchestration.homepage-screenshot-not-found', { appId, pageSlug });
+        }
+      }
+
       // Create agent with the correct mode (first page vs inner page)
       const promptAgent = new PagePromptAgent({ isFirstPage });
       await promptAgent.initialize();
@@ -564,7 +769,8 @@ export class RebuildOrchestrationService {
         pageContent,
         state.stylePreferences,
         pageAssetManifest,
-        isFirstPage
+        isFirstPage,
+        screenshotBase64
       );
 
       await promptAgent.cleanup();
@@ -687,14 +893,21 @@ export class RebuildOrchestrationService {
    */
   private async savePage(
     page: { url: string; sanitizedContent?: string; html?: string; screenshotBase64?: string },
-    rootPath: string = '/'
+    rootPath: string = '/',
+    navigation: NavigationItem[] = []
   ): Promise<void> {
-    const slug = this.urlToSlug(page.url, rootPath);
+    const slug = rebuildUrlToSlug(page.url, rootPath);
+
+    const effectiveNavigation = navigation.length > 0
+      ? navigation
+      : this.extractNavigationFromHtml(page.html, page.url);
+
+    const title = this.extractTitle(page.sanitizedContent || '');
 
     const pageContent: PageContent = {
       url: page.url,
       slug,
-      title: this.extractTitle(page.sanitizedContent || ''),
+      title,
       content: page.sanitizedContent || '',
       sanitizedContent: page.sanitizedContent || '',
       structure: {
@@ -702,11 +915,9 @@ export class RebuildOrchestrationService {
         hasFooter: true,
         hasSidebar: false,
         sections: [],
-        navigation: []
+        navigation: effectiveNavigation
       },
-      metadata: {
-        title: this.extractTitle(page.sanitizedContent || '')
-      },
+      metadata: { title },
       scrapedAt: new Date().toISOString()
     };
 
@@ -797,60 +1008,6 @@ export class RebuildOrchestrationService {
     }
   }
 
-  /**
-   * Convert URL to slug
-   *
-   * @param url - URL to convert
-   * @param rootPath - Root path for this rebuild (default: "/")
-   * @returns Slug
-   */
-  private urlToSlug(url: string, rootPath: string = '/'): string {
-    try {
-      const urlObj = new URL(url);
-      let pathname = urlObj.pathname.replace(/^\/|\/$/g, '');
-
-      // Remove root path prefix for sub-path rebuilds
-      const rootPrefix = rootPath.replace(/^\/|\/$/g, '');
-      if (rootPrefix && pathname.startsWith(rootPrefix)) {
-        pathname = pathname.slice(rootPrefix.length).replace(/^\//, '');
-      } else if (rootPrefix && pathname !== rootPrefix) {
-        // URL doesn't match expected rootPath prefix - log for debugging
-        logger.warn('rebuild-orchestration.slug-prefix-mismatch', {
-          url,
-          pathname,
-          rootPath,
-          message: 'URL does not start with expected rootPath prefix'
-        });
-      }
-
-      if (!pathname || pathname === '') {
-        return 'homepage';
-      }
-
-      return pathname.replace(/\//g, '-');
-    } catch {
-      return 'page';
-    }
-  }
-
-
-  /**
-   * Check if URL is the homepage (root of the rebuild)
-   *
-   * @param url - URL to check
-   * @param rootPath - Root path for this rebuild (default: "/")
-   * @returns True if this is the homepage
-   */
-  private isHomepage(url: string, rootPath: string = '/'): boolean {
-    try {
-      const urlObj = new URL(url);
-      const normalizedPath = urlObj.pathname.replace(/\/$/, '') || '/';
-      const normalizedRoot = rootPath.replace(/\/$/, '') || '/';
-      return normalizedPath === normalizedRoot;
-    } catch {
-      return false;
-    }
-  }
 
   /**
    * Extract title from content
@@ -870,5 +1027,53 @@ export class RebuildOrchestrationService {
     }
 
     return 'Untitled Page';
+  }
+
+  private extractNavigationFromHtml(html: string | undefined, pageUrl: string): NavigationItem[] {
+    if (!html) return [];
+
+    const navBlockRegex = /<nav[^>]*>([\s\S]*?)<\/nav>/gi;
+    const seen = new Set<string>();
+    const items: NavigationItem[] = [];
+
+    let navMatch: RegExpExecArray | null;
+    while ((navMatch = navBlockRegex.exec(html)) !== null) {
+      const navHtml = navMatch[1] ?? '';
+      const linkRegex = /<a[^>]+href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+
+      let linkMatch: RegExpExecArray | null;
+      while ((linkMatch = linkRegex.exec(navHtml)) !== null) {
+        const href = linkMatch[1] ?? '';
+        const text = (linkMatch[2] ?? '').replace(/<[^>]+>/g, '').trim();
+
+        if (!text || text.length > 50) continue;
+        if (href === '#' || href.startsWith('#') || href === '/') continue;
+
+        let resolvedPath: string;
+        try {
+          const resolved = new URL(href, pageUrl);
+          const pageOrigin = new URL(pageUrl).origin;
+          if (resolved.origin !== pageOrigin) {
+            if (!seen.has(href)) {
+              seen.add(href);
+              items.push({ label: text, url: href, isExternal: true });
+            }
+            continue;
+          }
+          resolvedPath = resolved.pathname.replace(/\/$/, '') || '/';
+        } catch {
+          resolvedPath = href;
+        }
+
+        if (resolvedPath === '/' || seen.has(resolvedPath)) continue;
+        seen.add(resolvedPath);
+
+        items.push({ label: text, url: resolvedPath, isExternal: false });
+      }
+
+      if (items.length > 0) break;
+    }
+
+    return items.slice(0, 15);
   }
 }

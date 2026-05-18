@@ -102,7 +102,8 @@ This tool starts the website rebuild process:
       throw new Error(`App not found: ${appId}`)
     }
 
-    const service = new RebuildOrchestrationService(app.path)
+    const useAtlasCrawler = context?.metadata?.useAtlasCrawler === true
+    const service = new RebuildOrchestrationService(app.path, { useAtlasCrawler })
 
     // Start the rebuild process
     const initialState = await service.startRebuild(appId, input.url)

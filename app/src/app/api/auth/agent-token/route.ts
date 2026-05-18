@@ -237,11 +237,12 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
     let agentProfileSelectorEnabled = false;
     let agentProfile: string | undefined;
     let costAttributionDryRun = false;
+    let useAtlasCrawler = false;
 
     if (siteValidationCacheHit) {
       // Cache hit: skip site validation, run paywall + switchboard + subscription lookup in parallel
       const parallelStart = Date.now();
-      const [paywallResult, domainPurchaseResult, testBudgetResult, budgetServiceResult, bmsExistingResult, siteInfoResult, assessmentAgentResult, assessmentOverrideResult, assessmentClassifierResult, modelSelectorResult, modelOverrideResult, agentProfileSelectorResult, agentProfileResult, costAttributionDryRunResult] = await Promise.allSettled([
+      const [paywallResult, domainPurchaseResult, testBudgetResult, budgetServiceResult, bmsExistingResult, siteInfoResult, assessmentAgentResult, assessmentOverrideResult, assessmentClassifierResult, modelSelectorResult, modelOverrideResult, agentProfileSelectorResult, agentProfileResult, costAttributionDryRunResult, useAtlasCrawlerResult] = await Promise.allSettled([
         checkPaywallEligibility(
           new ServerPaywallProvider(authContext.jwt || '', user.customerId, request.headers),
           body.siteId,
@@ -260,6 +261,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
         checkSwitchboardFlag('appbuilder-agent-profile-selector', request),
         checkSwitchboardValue('appbuilder-agent-profile', request),
         checkSwitchboardFlag('appbuilder-cost-attribution-dry-run', request),
+        checkSwitchboardFlag('appbuilder-atlas-crawler', request),
       ]);
       timing.parallelChecksMs = Date.now() - parallelStart;
 
@@ -284,10 +286,11 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       // and wins over the experiment.
       agentProfile = rawAgentProfile && rawAgentProfile !== 'default' && rawAgentProfile !== 'hivemind' ? rawAgentProfile : undefined;
       costAttributionDryRun = resolveBooleanFlag(costAttributionDryRunResult, 'agent-token.cost-attribution-dry-run-flag-check-failed', body.siteId, user.customerId);
+      useAtlasCrawler = resolveBooleanFlag(useAtlasCrawlerResult, 'agent-token.atlas-crawler-flag-check-failed', body.siteId, user.customerId);
     } else {
       // Cache miss: run site validation, paywall, switchboard, and subscription lookup all in parallel
       const parallelStart = Date.now();
-      const [siteResult, paywallResult, domainPurchaseResult, testBudgetResult, budgetServiceResult, bmsExistingResult, siteInfoResult, assessmentAgentResult, assessmentOverrideResult, assessmentClassifierResult, modelSelectorResult, modelOverrideResult, agentProfileSelectorResult, agentProfileResult, costAttributionDryRunResult] = await Promise.allSettled([
+      const [siteResult, paywallResult, domainPurchaseResult, testBudgetResult, budgetServiceResult, bmsExistingResult, siteInfoResult, assessmentAgentResult, assessmentOverrideResult, assessmentClassifierResult, modelSelectorResult, modelOverrideResult, agentProfileSelectorResult, agentProfileResult, costAttributionDryRunResult, useAtlasCrawlerResult] = await Promise.allSettled([
         validateSiteAccess(body.siteId, user, authContext.jwt || '', body.owningProduct),
         checkPaywallEligibility(
           new ServerPaywallProvider(authContext.jwt || '', user.customerId, request.headers),
@@ -307,6 +310,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
         checkSwitchboardFlag('appbuilder-agent-profile-selector', request),
         checkSwitchboardValue('appbuilder-agent-profile', request),
         checkSwitchboardFlag('appbuilder-cost-attribution-dry-run', request),
+        checkSwitchboardFlag('appbuilder-atlas-crawler', request),
       ]);
       timing.parallelChecksMs = Date.now() - parallelStart;
 
@@ -340,6 +344,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       // and wins over the experiment.
       agentProfile = rawAgentProfile && rawAgentProfile !== 'default' && rawAgentProfile !== 'hivemind' ? rawAgentProfile : undefined;
       costAttributionDryRun = resolveBooleanFlag(costAttributionDryRunResult, 'agent-token.cost-attribution-dry-run-flag-check-failed', body.siteId, user.customerId);
+      useAtlasCrawler = resolveBooleanFlag(useAtlasCrawlerResult, 'agent-token.atlas-crawler-flag-check-failed', body.siteId, user.customerId);
     }
 
     // Hivemind initial-agent experiment: cohort → agent profile.
@@ -519,6 +524,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       agentProfileSelectorEnabled,
       agentProfile,
       costAttributionDryRun,
+      useAtlasCrawler,
     };
 
     const result = body.expiresInSeconds

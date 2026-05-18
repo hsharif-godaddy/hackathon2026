@@ -2,6 +2,9 @@ import {
   createAgentFactory,
   type AgentConfig,
   createPromptBuilder,
+  createFileInputFromBuffer,
+  processFile,
+  type ProcessedFile,
   type SessionStateManager,
   createSessionStateManager
 } from '@airo/ai-lib'
@@ -9,8 +12,9 @@ import {
 import { createAgentTelemetryLogger } from '../utils/agent-logger.js'
 import { Logger } from '../logging/index.js'
 import { getAgentModelWithName } from '../utils/model-selection.js'
-import type { AssetInfo, PageContent, SiteMetadata, StylePreferences, AssetManifest } from '../types/rebuild.js'
+import type { AssetInfo, PageContent, SiteContactInfo, SiteMetadata, StylePreferences, AssetManifest } from '../types/rebuild.js'
 import { buildSiteTypeRules } from './site-type-helpers.js'
+import { parseScreenshotDataUrl, screenshotFilenameForMime } from './screenshot-data-url.js'
 
 const logger = Logger.create({ component: 'page-prompt-agent' })
 
@@ -72,7 +76,19 @@ Format like:
 
 Be specific about structure:
 - Section order and content (matching source structure)
-- Responsive behavior`)
+- Responsive behavior
+
+### Visual Reference (Homepage Screenshot)
+
+When a homepage screenshot is attached, use it as the PRIMARY reference for layout:
+- Describe the EXACT visual arrangement you see — section order, component placement, spacing
+- Note the hero composition (text placement, image placement, background treatment)
+- Note the navigation style (horizontal, hamburger, sticky, centered, left-aligned)
+- Note how content sections are arranged (grid, cards, stacked, alternating, full-bleed)
+- Note the footer structure (columns, density, placement of links vs contact info)
+- Replicate the layout faithfully — don't invent a new arrangement
+- Include specific layout instructions like "full-width hero with text overlaid on left, image right" or "3-column feature grid below a centered headline"`)
+
 
   // First page gets full setup instructions
   if (isFirstPage) {
@@ -330,7 +346,8 @@ export class PagePromptAgent {
     pageContent: PageContent,
     stylePreferences: StylePreferences,
     assetManifest: AssetManifest,
-    isFirstPage: boolean = true
+    isFirstPage: boolean = true,
+    screenshotBase64?: string
   ): Promise<string> {
     const agent = this.getAgent()
 
@@ -350,11 +367,15 @@ export class PagePromptAgent {
           : 'unknown size'
 
         const sizeCategory = this.getSizeCategory(a.dimensions)
-        
+
+        // Alt text is the strongest signal we have for logos and named images
+        // (often contains the literal brand name). Surface it before the
+        // AI-generated description so the LLM can disambiguate.
+        const altNote = a.altText ? ` - alt: "${a.altText}"` : ''
         const compositionNote = a.composition ? ` - COMPOSITION: ${a.composition}` : ''
         const descriptionNote = a.description ? ` - ${a.description}` : ''
 
-        return `- ${publicPath} [${dims}] (${a.type}, ${sizeCategory}${compositionNote}${descriptionNote})`
+        return `- ${publicPath} [${dims}] (${a.type}, ${sizeCategory}${altNote}${compositionNote}${descriptionNote})`
       })
       .join('\n')
 
@@ -366,7 +387,7 @@ export class PagePromptAgent {
     const extractedContent = this.extractKeyContent(pageContent.sanitizedContent)
 
     // Build color preference instructions (only for first page)
-    const colorInstructions = isFirstPage 
+    const colorInstructions = isFirstPage
       ? this.buildColorInstructions(stylePreferences, siteMetadata)
       : ''
 
@@ -404,7 +425,20 @@ ${designInstructions}
 PAGE CONTENT TO REBUILD:
 - Title: ${pageContent.title}
 - URL: ${pageContent.url}
+${pageContent.structure.navigation.length > 0 ? `
+=== HEADER NAVIGATION (use EXACT paths and URLs) ===
+${pageContent.structure.navigation.map(n => `- "${n.label}" → ${n.url}${n.isExternal ? ' (EXTERNAL — keep full URL, open in new tab)' : ''}`).join('\n')}
 
+**CRITICAL: Use the exact URL paths above for navigation links. Do NOT rename or simplify paths (e.g., if the source has "/about-us", use "/about-us", NOT "/about").**
+- External links should be implemented with target="_blank" rel="noopener noreferrer"
+- Only the homepage is being built right now. The other paths will be built later when the user picks them from the rebuild page selector — leaving them unrouted (so they fall through to the 404 page) is the correct behavior for this turn.
+` : ''}${isFirstPage && siteMetadata.footerNavigation && siteMetadata.footerNavigation.length > 0 ? `
+=== FOOTER NAVIGATION (separate set of links for the site footer) ===
+${siteMetadata.footerNavigation.map(n => `- "${n.label}" → ${n.url}${n.isExternal ? ' (external)' : ''}`).join('\n')}
+` : ''}${isFirstPage && siteMetadata.contact ? `
+=== CONTACT INFORMATION (from source site — use ONLY what's listed) ===
+${this.buildContactBlock(siteMetadata.contact)}
+` : ''}
 === EXTRACTED KEY CONTENT (use this for the rebuild) ===
 ${extractedContent}
 
@@ -459,7 +493,28 @@ ${isFirstPage ? `6. **HOMEPAGE STRUCTURE**:
 
 ${isFirstPage ? 'Generate a comprehensive, actionable prompt (400-1000 words)' : 'Generate a focused, actionable prompt (300-600 words)'} that enables the develop agent to rebuild this page with the REAL content optimized for the ${isFirstPage ? 'new' : 'existing'} design.`
 
-    const result = await agent.generate(prompt);
+    const generateArgs: { files?: ProcessedFile[] } = {}
+
+    if (screenshotBase64) {
+      const parsed = parseScreenshotDataUrl(screenshotBase64)
+      if (parsed) {
+        try {
+          const fileInput = createFileInputFromBuffer(
+            parsed.buffer,
+            parsed.mimeType,
+            screenshotFilenameForMime(parsed.mimeType)
+          )
+          const processed = await processFile(fileInput)
+          generateArgs.files = [processed]
+        } catch (error) {
+          logger.warn('page-prompt-agent.screenshot-processing-failed', {
+            error: error instanceof Error ? error.message : String(error)
+          })
+        }
+      }
+    }
+
+    const result = await agent.generate(prompt, generateArgs);
 
     return result.content;
   }
@@ -529,13 +584,13 @@ ${isFirstPage ? 'Generate a comprehensive, actionable prompt (400-1000 words)' :
      * - 555.123.4567
      * - +1-555-123-4567
      * - +1 (555) 123-4567
-     * 
+     *
      * Uses word boundaries (\b) to prevent matching:
      * - Numbers within longer numeric sequences
      * - IDs or codes that happen to contain 10 digits
      */
     const US_PHONE_NUMBER_PATTERN = /\b(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b/g
-    
+
     const phonePatterns = contentWithoutUrls.match(US_PHONE_NUMBER_PATTERN) || []
     if (phonePatterns.length > 0) {
       const uniquePhones = [...new Set(phonePatterns)]
@@ -614,8 +669,8 @@ ${isFirstPage ? 'Generate a comprehensive, actionable prompt (400-1000 words)' :
       // Airo decides - provide guidance for the LLM to pick colors
       return `COLOR DIRECTION (Airo's Choice - YOU must pick specific colors):
 Since the user chose "Let Airo Decide" for colors, YOU must select an appropriate color scheme.
-Based on the site purpose "${metadata.sitePurpose}" and brand voice "${metadata.brandVoice}", 
-choose colors that create the right emotional impact. Do NOT tell the develop agent to "choose colors" - 
+Based on the site purpose "${metadata.sitePurpose}" and brand voice "${metadata.brandVoice}",
+choose colors that create the right emotional impact. Do NOT tell the develop agent to "choose colors" -
 instead, specify exact hex codes in your prompt.
 
 Consider:
@@ -683,7 +738,7 @@ Section-Specific Guidance:
 
 Differentiation Element (include ONE):
 - Oversized typography that breaks the grid
-- Bento-style layout with varied card sizes  
+- Bento-style layout with varied card sizes
 - Diagonal or curved section breaks
 - Bold use of asymmetric whitespace
 - Unexpected color application
@@ -724,6 +779,48 @@ Create a striking, attention-grabbing design.
     }
 
     return ''
+  }
+
+  /**
+   * Render the source-extracted contact info as prompt-friendly bullets.
+   * Atlas (or whichever extractor) is the source of truth — we only surface
+   * fields that were actually present.
+   */
+  private buildContactBlock(contact: SiteContactInfo): string {
+    const lines: string[] = []
+
+    if (contact.phones?.length) {
+      const phones = contact.phones
+        .map(p => `${p.number}${p.type ? ` (${p.type})` : ''}`)
+        .join(', ')
+      lines.push(`- Phone: ${phones}`)
+    }
+    if (contact.emails?.length) {
+      const emails = contact.emails
+        .map(e => `${e.address}${e.type ? ` (${e.type})` : ''}`)
+        .join(', ')
+      lines.push(`- Email: ${emails}`)
+    }
+    if (contact.addresses?.length) {
+      for (const a of contact.addresses) {
+        lines.push(`- Address: ${a.formatted}`)
+      }
+    }
+    if (contact.hours?.length) {
+      lines.push('- Hours:')
+      for (const h of contact.hours) {
+        const isClosed = h.open === '00:00' && h.close === '00:00'
+        lines.push(`    ${h.day}: ${isClosed ? 'Closed' : `${h.open}–${h.close}`}`)
+      }
+    }
+    if (contact.social?.length) {
+      lines.push('- Social:')
+      for (const s of contact.social) {
+        lines.push(`    ${s.platform}: ${s.url}`)
+      }
+    }
+
+    return lines.length > 0 ? lines.join('\n') : '(no contact info extracted)'
   }
 
   /**
@@ -772,8 +869,11 @@ Create a striking, attention-grabbing design.
         ? `${asset.dimensions.width}x${asset.dimensions.height}`
         : '?x?'
 
+      // Alt text first — it's the strongest disambiguator for logos and named
+      // images. AI-generated description (from vision pass) comes after.
+      const alt = asset.altText ? ` alt:"${asset.altText}"` : ''
       const desc = asset.description ? ` - ${asset.description.substring(0, 50)}` : ''
-      const entry = `${publicPath} [${dims}]${desc}`
+      const entry = `${publicPath} [${dims}]${alt}${desc}`
 
       if (!asset.dimensions) {
         unknownImages.push(entry)
