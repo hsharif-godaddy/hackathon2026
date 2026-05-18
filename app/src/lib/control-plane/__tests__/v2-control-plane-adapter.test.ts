@@ -802,6 +802,118 @@ describe('V2ControlPlaneAdapter', () => {
         expect(requestBody).not.toHaveProperty('itc');
       });
     });
+
+    describe('fqdn passthrough', () => {
+      it('should include top-level fqdn and variables.fqdn in signup payload when provided', async () => {
+        process.env.ALWAYS_NEW_SUBSCRIPTION = 'true';
+        mockCheckSwitchboardFlag.mockResolvedValue(false);
+
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            statusJobId: MOCK_JOB_ID,
+            subscriptionId: 'new-sub-xyz789'
+          })
+        });
+
+        await adapter.createSite({
+          accountId: MOCK_ACCOUNT_ID,
+          prompt: MOCK_PROMPT,
+          jwt: MOCK_JWT,
+          fqdn: 'somedomain.com'
+        });
+
+        const signupCall = mockFetch.mock.calls[0];
+        const requestBody = JSON.parse(signupCall[1].body);
+        expect(requestBody.fqdn).toBe('somedomain.com');
+        expect(requestBody.appConfigs[0].variables.fqdn).toBe('somedomain.com');
+
+        delete process.env.ALWAYS_NEW_SUBSCRIPTION;
+      });
+
+      it('should omit fqdn from signup payload when not provided', async () => {
+        process.env.ALWAYS_NEW_SUBSCRIPTION = 'true';
+        mockCheckSwitchboardFlag.mockResolvedValue(false);
+
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            statusJobId: MOCK_JOB_ID,
+            subscriptionId: 'new-sub-xyz789'
+          })
+        });
+
+        await adapter.createSite({
+          accountId: MOCK_ACCOUNT_ID,
+          prompt: MOCK_PROMPT,
+          jwt: MOCK_JWT
+        });
+
+        const signupCall = mockFetch.mock.calls[0];
+        const requestBody = JSON.parse(signupCall[1].body);
+        expect(requestBody).not.toHaveProperty('fqdn');
+        expect(requestBody.appConfigs[0].variables).not.toHaveProperty('fqdn');
+
+        delete process.env.ALWAYS_NEW_SUBSCRIPTION;
+      });
+
+      it('should include top-level fqdn and variables.fqdn in createApp payload when provided', async () => {
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          json: async () => [{ id: 'existing-sub-123', status: 'active' }]
+        });
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          json: async () => [{ id: 'sys-456' }]
+        });
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ statusJobId: MOCK_JOB_ID })
+        });
+
+        await adapter.createSite({
+          accountId: MOCK_ACCOUNT_ID,
+          prompt: MOCK_PROMPT,
+          jwt: MOCK_JWT,
+          fqdn: 'somedomain.com'
+        });
+
+        const createAppCall = mockFetch.mock.calls.find(
+          ([url]) => typeof url === 'string' && url.includes('/apps')
+        );
+        const requestBody = JSON.parse(createAppCall![1].body);
+        expect(requestBody.fqdn).toBe('somedomain.com');
+        expect(requestBody.variables.fqdn).toBe('somedomain.com');
+      });
+
+      it('should omit fqdn from createApp payload when not provided', async () => {
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          json: async () => [{ id: 'existing-sub-123', status: 'active' }]
+        });
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          json: async () => [{ id: 'sys-456' }]
+        });
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ statusJobId: MOCK_JOB_ID })
+        });
+
+        await adapter.createSite({
+          accountId: MOCK_ACCOUNT_ID,
+          prompt: MOCK_PROMPT,
+          jwt: MOCK_JWT
+        });
+
+        const createAppCall = mockFetch.mock.calls.find(
+          ([url]) => typeof url === 'string' && url.includes('/apps')
+        );
+        const requestBody = JSON.parse(createAppCall![1].body);
+        expect(requestBody).not.toHaveProperty('fqdn');
+        expect(requestBody.variables).not.toHaveProperty('fqdn');
+      });
+    });
   });
 
   describe('getSite - Job ID Polling', () => {

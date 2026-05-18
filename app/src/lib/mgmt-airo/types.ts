@@ -196,6 +196,8 @@ export interface AiroSignupPayload {
   /** Request BMS integration for new subscription (requires feature flag) */
   bmsActive?: boolean;
   itc?: string;
+  /** Optional FQDN for parallel domain-attach at signup. */
+  fqdn?: string;
 }
 
 /**
@@ -214,6 +216,8 @@ export interface AiroCreateAppPayload {
   variants?: string[];
   variables: Record<string, any>;
   datacenter?: string;
+  /** Optional FQDN for parallel domain-attach at app create. */
+  fqdn?: string;
 }
 
 /**

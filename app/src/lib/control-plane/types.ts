@@ -180,6 +180,8 @@ export interface CreateSiteParams {
   datacenter?: string;
   headers?: Headers; // Request headers for feature flag checks
   itc?: string;
+  /** Optional FQDN to attach in parallel with app creation. */
+  fqdn?: string;
 }
 
 /**

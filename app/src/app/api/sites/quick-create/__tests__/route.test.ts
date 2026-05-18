@@ -114,6 +114,89 @@ describe('/api/sites/quick-create ITC validation', () => {
   });
 });
 
+describe('/api/sites/quick-create fqdn', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockCreateSite.mockResolvedValue({
+      success: true, siteId: 'app-1', name: 'Test', status: 'active',
+      type: 'job', account_id: 'acc-1',
+    });
+  });
+
+  it('passes valid fqdn to createSite', async () => {
+    const { POST } = await import('../route');
+    await POST(makeRequest({ initialPrompt: 'test', fqdn: 'somedomain.com' }));
+
+    expect(mockCreateSite).toHaveBeenCalledWith(
+      expect.objectContaining({ fqdn: 'somedomain.com' })
+    );
+  });
+
+  it('lowercases and trims fqdn', async () => {
+    const { POST } = await import('../route');
+    await POST(makeRequest({ initialPrompt: 'test', fqdn: '  Some-Domain.COM  ' }));
+
+    expect(mockCreateSite).toHaveBeenCalledWith(
+      expect.objectContaining({ fqdn: 'some-domain.com' })
+    );
+  });
+
+  it('drops non-string fqdn', async () => {
+    const { POST } = await import('../route');
+    await POST(makeRequest({ initialPrompt: 'test', fqdn: 12345 }));
+
+    expect(mockCreateSite).toHaveBeenCalledWith(
+      expect.not.objectContaining({ fqdn: expect.anything() })
+    );
+  });
+
+  it('drops empty fqdn', async () => {
+    const { POST } = await import('../route');
+    await POST(makeRequest({ initialPrompt: 'test', fqdn: '   ' }));
+
+    expect(mockCreateSite).toHaveBeenCalledWith(
+      expect.not.objectContaining({ fqdn: expect.anything() })
+    );
+  });
+
+  it('drops fqdn with invalid characters', async () => {
+    const { POST } = await import('../route');
+    await POST(makeRequest({ initialPrompt: 'test', fqdn: 'bad domain!.com' }));
+
+    expect(mockCreateSite).toHaveBeenCalledWith(
+      expect.not.objectContaining({ fqdn: expect.anything() })
+    );
+  });
+
+  it('drops fqdn without TLD', async () => {
+    const { POST } = await import('../route');
+    await POST(makeRequest({ initialPrompt: 'test', fqdn: 'localhost' }));
+
+    expect(mockCreateSite).toHaveBeenCalledWith(
+      expect.not.objectContaining({ fqdn: expect.anything() })
+    );
+  });
+
+  it('drops fqdn exceeding 253 chars', async () => {
+    const { POST } = await import('../route');
+    const longFqdn = `${'a'.repeat(250)}.com`;
+    await POST(makeRequest({ initialPrompt: 'test', fqdn: longFqdn }));
+
+    expect(mockCreateSite).toHaveBeenCalledWith(
+      expect.not.objectContaining({ fqdn: expect.anything() })
+    );
+  });
+
+  it('omits fqdn when not provided', async () => {
+    const { POST } = await import('../route');
+    await POST(makeRequest({ initialPrompt: 'test' }));
+
+    expect(mockCreateSite).toHaveBeenCalledWith(
+      expect.not.objectContaining({ fqdn: expect.anything() })
+    );
+  });
+});
+
 describe('/api/sites/quick-create datacenter', () => {
   beforeEach(() => {
     vi.clearAllMocks();

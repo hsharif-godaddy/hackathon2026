@@ -88,6 +88,24 @@ describe('fetchQuickCreate', () => {
     const body = JSON.parse(mockAppFetch.mock.calls[0][1].body)
     expect(body).not.toHaveProperty('productId')
   })
+
+  it('includes fqdn when provided', async () => {
+    mockGetItcOverride.mockReturnValue(null)
+
+    await fetchQuickCreate('test', undefined, { fqdn: 'somedomain.com' })
+
+    const body = JSON.parse(mockAppFetch.mock.calls[0][1].body)
+    expect(body.fqdn).toBe('somedomain.com')
+  })
+
+  it('omits fqdn when not provided', async () => {
+    mockGetItcOverride.mockReturnValue(null)
+
+    await fetchQuickCreate('test')
+
+    const body = JSON.parse(mockAppFetch.mock.calls[0][1].body)
+    expect(body).not.toHaveProperty('fqdn')
+  })
 })
 
 describe('extractApiError', () => {

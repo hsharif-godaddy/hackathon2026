@@ -9,6 +9,7 @@ import {
   setSpanAppId,
   setSpanJobId,
   withCustomerAuth} from '@/lib/customer-auth';
+import { validateDomainName } from '@/lib/domain-validation';
 import { mgmtAiro401Response } from '@/lib/mgmt-airo/auth-error';
 import { AIRO_PRODUCT_IDS } from '@/lib/mgmt-airo/types';
 import { logger } from '@/lib/request-context';
@@ -19,10 +20,21 @@ import { getByteLength, MAX_PROMPT_BYTES } from '@/lib/waf-validation';
 export const POST = withCustomerAuth(async (request: NextRequest, authContext: CustomerAuthContext) => {
   try {
     const body = await request.json();
-    const { prompt, initialPrompt, productId, itc: rawItc, datacenter: rawDatacenter } = body;
+    const { prompt, initialPrompt, productId, itc: rawItc, datacenter: rawDatacenter, fqdn: rawFqdn } = body;
     const validItc = typeof rawItc === 'string' && rawItc.length > 0 && rawItc.length <= 128 && /^[a-zA-Z0-9_-]+$/.test(rawItc) ? rawItc : undefined;
     const validDatacenter =
       typeof rawDatacenter === 'string' && rawDatacenter.trim().length > 0 ? rawDatacenter.trim() : undefined;
+    const validFqdn = (() => {
+      if (typeof rawFqdn !== 'string') return undefined;
+      const trimmed = rawFqdn.trim().toLowerCase();
+      if (!trimmed) return undefined;
+      const result = validateDomainName(trimmed);
+      if (!result.valid) {
+        logger.warn('sites.quick-create.fqdn.invalid', { reason: result.error });
+        return undefined;
+      }
+      return trimmed;
+    })();
     const { user } = authContext;
 
     // Validate productId if provided
@@ -96,6 +108,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       headers: request.headers,
       ...(validItc && { itc: validItc }),
       ...(validDatacenter && { datacenter: validDatacenter }),
+      ...(validFqdn && { fqdn: validFqdn }),
     };
 
     const result = await adapter.createSite(createSiteParams);

@@ -1,7 +1,7 @@
 'use client'
 
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { HeroSectionRef, LOGO_DESIGNER_TEMPLATE, type UploadedDesignFile, validateTemplate } from '@/app/[market]/components/types'
 import { useAuthContext } from '@/components/providers/AuthProvider'
@@ -13,6 +13,7 @@ import { useSafariClass } from '@/hooks/useSafariClass'
 import { useSsoSignIn } from '@/hooks/useSsoSignIn'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
+import { validateDomainName } from '@/lib/domain-validation'
 import { getErrorMessage } from '@/lib/errors'
 import { shipAnalyticsLog } from '@/lib/logging'
 import { buildDevelopUrl, extractApiError, fetchQuickCreate, type QuickCreateResponse, setQuickCreateSessionFlags, storeUploadedFile } from '@/lib/quick-create'
@@ -61,6 +62,7 @@ export function useHomepageSubmission() {
   } | null>(null)
   const promptTextRef = useRef(promptText)
   const submitSourceRef = useRef<SubmitSource>('text')
+  const fqdnRef = useRef<string | undefined>(undefined)
   promptTextRef.current = promptText
 
   const { isAuthenticated, isLoading: authIsLoading } = useAuthContext()
@@ -190,6 +192,23 @@ export function useHomepageSubmission() {
 
   const siteLocationParam = searchParams.get('site_location')
   const initialPromptParam = searchParams.get('initialPrompt')
+  const fqdnParam = searchParams.get('fqdn')
+
+  const fqdnValidation = useMemo<{ fqdn?: string; invalidReason?: string }>(() => {
+    if (!fqdnParam) return {}
+    const trimmed = fqdnParam.trim().toLowerCase()
+    if (!trimmed) return {}
+    const result = validateDomainName(trimmed)
+    if (!result.valid) return { invalidReason: result.error }
+    return { fqdn: trimmed }
+  }, [fqdnParam])
+  fqdnRef.current = fqdnValidation.fqdn
+
+  useEffect(() => {
+    if (fqdnValidation.invalidReason) {
+      logger.warn('homepage.fqdn.invalid', { reason: fqdnValidation.invalidReason })
+    }
+  }, [fqdnValidation.invalidReason])
 
   useEffect(() => {
     const siteLocation = siteLocationParam || document.referrer;
@@ -223,18 +242,24 @@ export function useHomepageSubmission() {
     return () => setIsRedirecting(false)
   }, [])
 
-  const savePromptForRetry = useCallback((prompt: string, context: 'login' | 'session-refresh') => {
+  const savePromptForRetry = useCallback((prompt: string, context: 'login' | 'session-refresh', fqdn?: string) => {
     try {
       localStorage.setItem('airo-pending-prompt', prompt);
-      logger.info('homepage.prompt.save', { context, promptLength: prompt.length });
+      if (fqdn) {
+        localStorage.setItem('airo-pending-fqdn', fqdn);
+      } else {
+        localStorage.removeItem('airo-pending-fqdn');
+      }
+      logger.info('homepage.prompt.save', { context, promptLength: prompt.length, hasFqdn: !!fqdn });
     } catch (error) {
       logger.warn('homepage.prompt.save.error', { context, error: getErrorMessage(error) });
     }
   }, [])
 
-  const handleStartBuilding = useCallback(async (overridePrompt?: string) => {
+  const handleStartBuilding = useCallback(async (overridePrompt?: string, overrideFqdn?: string) => {
     let promptToUse = (typeof overridePrompt === 'string' ? overridePrompt : promptTextRef.current).trim()
     promptToUse = promptToUse.replace(/https?:\/\/example\.com\s*/gi, '').trim()
+    const fqdnToUse = typeof overrideFqdn === 'string' ? overrideFqdn : fqdnRef.current
 
     if (!promptToUse || isRedirecting || isLoading) return
 
@@ -290,7 +315,7 @@ export function useHomepageSubmission() {
     try {
       if (!isAuthenticated) {
         logger.info('page.auth.sso-login', { action: 'showing-sso-login' });
-        savePromptForRetry(promptToUse, 'login');
+        savePromptForRetry(promptToUse, 'login', fqdnToUse);
         logAnalytics('homepage.auth_gate.shown', { submitSource }, { kind: 'action', eid: 'homepage.auth.gate', action: 'load' })
         authGateShownAtRef.current = Date.now()
         signIn({ onShowMockLogin: () => setShowMockLogin(true) });
@@ -299,12 +324,16 @@ export function useHomepageSubmission() {
         return;
       }
 
-      const createSiteResponse = await fetchQuickCreate(promptToUse)
+      const createSiteResponse = await fetchQuickCreate(
+        promptToUse,
+        undefined,
+        fqdnToUse ? { fqdn: fqdnToUse } : undefined,
+      )
 
       if (!createSiteResponse.ok) {
         if (createSiteResponse.status === 401) {
           logger.info('homepage.auth-required', { action: 'triggering-sso-login', phase: 'quick-create' });
-          savePromptForRetry(promptToUse, 'session-refresh');
+          savePromptForRetry(promptToUse, 'session-refresh', fqdnToUse);
           logAnalytics('homepage.auth_gate.shown', { submitSource }, { kind: 'action', eid: 'homepage.auth.gate', action: 'load' })
           authGateShownAtRef.current = Date.now()
           signIn({ onShowMockLogin: () => setShowMockLogin(true) });
@@ -387,6 +416,20 @@ export function useHomepageSubmission() {
       const validated = validateAndClampPrompt(savedPrompt)
       setPromptText(validated.text)
       localStorage.removeItem('airo-pending-prompt')
+
+      const savedFqdn = localStorage.getItem('airo-pending-fqdn')
+      localStorage.removeItem('airo-pending-fqdn')
+      let restoredFqdn: string | undefined
+      if (savedFqdn) {
+        const normalizedSavedFqdn = savedFqdn.trim().toLowerCase()
+        const fqdnResult = validateDomainName(normalizedSavedFqdn)
+        if (fqdnResult.valid) {
+          restoredFqdn = normalizedSavedFqdn
+        } else {
+          logger.warn('homepage.fqdn.restore.invalid', { reason: fqdnResult.error })
+        }
+      }
+
       logAnalytics('homepage.auth_prompt.restored')
 
       if (validated.wasClipped) {
@@ -397,7 +440,7 @@ export function useHomepageSubmission() {
         })
       }
 
-      handleStartBuilding(validated.text)
+      handleStartBuilding(validated.text, restoredFqdn)
     }
   }, [authIsLoading, handleStartBuilding, isAuthenticated, logAnalytics, promptText])
 

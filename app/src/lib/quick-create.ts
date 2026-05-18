@@ -13,6 +13,7 @@ export interface QuickCreateResponse {
 
 interface FetchQuickCreateOptions {
   productId?: string
+  fqdn?: string
 }
 
 export async function fetchQuickCreate(prompt: string, fetchOptions?: AppFetchOptions, options?: FetchQuickCreateOptions) {
@@ -23,6 +24,7 @@ export async function fetchQuickCreate(prompt: string, fetchOptions?: AppFetchOp
       initialPrompt: prompt,
       itc: getItcOverride() ?? undefined,
       ...(options?.productId && { productId: options.productId }),
+      ...(options?.fqdn && { fqdn: options.fqdn }),
     }),
   }, fetchOptions)
 }

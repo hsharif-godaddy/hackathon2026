@@ -160,9 +160,19 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
           variables: {
             initialPrompt: params.prompt,
             title: generatedTitle,
-            airoSubscriptionId: selectedSubscription.id
+            airoSubscriptionId: selectedSubscription.id,
+            ...(params.fqdn && { fqdn: params.fqdn })
           },
-          datacenter: resolvedDatacenter
+          datacenter: resolvedDatacenter,
+          ...(params.fqdn && { fqdn: params.fqdn })
+        });
+
+        logger.info('v2-control-plane.create-site.createApp.success', {
+          jobId: response.statusJobId,
+          subscriptionId: selectedSubscription.id,
+          fqdn: !!params.fqdn,
+        }, {
+          tags: ['security']
         });
 
         const createdAt = new Date();
@@ -201,16 +211,19 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
           variants: ['preview'],
           variables: {
             initialPrompt: params.prompt,
-            title: generatedTitle
+            title: generatedTitle,
+            ...(params.fqdn && { fqdn: params.fqdn })
           }
         }],
         bmsActive: isBmsEnabled,
         ...(params.itc && { itc: params.itc }),
+        ...(params.fqdn && { fqdn: params.fqdn }),
       });
 
       logger.info('v2-control-plane.create-site.signup.success', {
         jobId: response.statusJobId,
         bmsActive: isBmsEnabled,
+        fqdn: !!params.fqdn,
       }, {
         tags: ['security']
       });
