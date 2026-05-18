@@ -29,6 +29,10 @@ test.describe('View & Share Menu', () => {
     logTestStart(testInfo);
   });
 
+  test.afterEach(async ({ page }, testInfo) => {
+    await logTestResult(page, testInfo);
+  });
+
   test('View & Share button visible and opens popover', async ({ page }) => {
     // Create a simple app
     console.log('📱 Creating test app...');
@@ -78,8 +82,6 @@ test.describe('View & Share Menu', () => {
     await page.keyboard.press('Escape');
     await expect(popover).not.toBeVisible();
     console.log('  ✓ Popover closes on Escape');
-
-    logTestResult('View & Share button visible and opens popover', true);
   });
 
   test('Preview link opens in new window', async ({ page, context }) => {
@@ -129,7 +131,6 @@ test.describe('View & Share Menu', () => {
     console.log('  ✓ Popover closed after click');
 
     await newPage.close();
-    logTestResult('Preview link opens in new window', true);
   });
 
   test('Share publicly section shows text input and copy button', async ({ page }) => {
@@ -187,7 +188,5 @@ test.describe('View & Share Menu', () => {
       test.skip();
       return;
     }
-
-    logTestResult('Share publicly section shows text input and copy button', true);
   });
 });
