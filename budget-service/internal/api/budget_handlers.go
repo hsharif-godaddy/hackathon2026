@@ -300,14 +300,18 @@ func (s *Server) hydrateMissingBudgetItemUpdateFields(ctx context.Context, budge
 		*resetInterval = &interval
 	}
 	if missingLabel {
-		if existing.Label != nil {
-			v := *existing.Label
-			*label = &v
-		} else {
-			*label = nil
-		}
+		*label = copyStringPtr(existing.Label)
 	}
 	return nil
+}
+
+// copyStringPtr returns a *string copy of src (nil-safe).
+func copyStringPtr(src *string) *string {
+	if src == nil {
+		return nil
+	}
+	v := *src
+	return &v
 }
 
 type budgetItemBody struct {
@@ -356,36 +360,14 @@ func (b budgetItemBody) toItemInput(validateCreate bool) (store.ItemInput, strin
 		formattedCreditsTotal = credits.Format(ct)
 	}
 
-	// Parse creditsUsed (optional on create; requires creditsUsedReason on update).
-	var formattedCreditsUsed string
-	if b.CreditsUsed != nil && strings.TrimSpace(string(*b.CreditsUsed)) != "" {
-		cu, err := credits.ParseNonNegative(strings.TrimSpace(string(*b.CreditsUsed)))
-		if err != nil {
-			return store.ItemInput{}, "creditsUsed must be a valid NUMERIC(20,6) non-negative value"
-		}
-		formattedCreditsUsed = credits.Format(cu)
-		// Validate creditsUsed <= creditsTotal
-		if formattedCreditsTotal != "" {
-			ct, _ := credits.ParseNonNegative(formattedCreditsTotal)
-			if cu.GreaterThan(ct) {
-				return store.ItemInput{}, "creditsUsed cannot exceed creditsTotal"
-			}
-		}
+	formattedCreditsUsed, msg := parseCreditsUsed(b.CreditsUsed, formattedCreditsTotal)
+	if msg != "" {
+		return store.ItemInput{}, msg
 	}
 
-	ratioStr := "1"
-	if !validateCreate && hasMissingFlexAmountValue(b.CostToCreditRatio) {
-		ratioStr = ""
-	} else if b.CostToCreditRatio != nil && strings.TrimSpace(string(*b.CostToCreditRatio)) != "" {
-		ratioStr = strings.TrimSpace(string(*b.CostToCreditRatio))
-	}
-	csr := ""
-	if ratioStr != "" {
-		var err error
-		csr, err = parseCostToCreditRatio(ratioStr)
-		if err != nil {
-			return store.ItemInput{}, "costToCreditRatio must be a valid NUMERIC(20,6) positive value"
-		}
+	csr, msg := resolveRatio(b.CostToCreditRatio, validateCreate)
+	if msg != "" {
+		return store.ItemInput{}, msg
 	}
 	if b.Label != nil {
 		trimmed := strings.TrimSpace(*b.Label)
@@ -407,6 +389,44 @@ func (b budgetItemBody) toItemInput(validateCreate bool) (store.ItemInput, strin
 		Label:           b.Label,
 	}
 	return out, ""
+}
+
+// parseCreditsUsed validates and formats the optional creditsUsed field,
+// returning the formatted value and an error message (empty on success).
+func parseCreditsUsed(raw *flexAmount, formattedCreditsTotal string) (string, string) {
+	if raw == nil || strings.TrimSpace(string(*raw)) == "" {
+		return "", ""
+	}
+	cu, err := credits.ParseNonNegative(strings.TrimSpace(string(*raw)))
+	if err != nil {
+		return "", "creditsUsed must be a valid NUMERIC(20,6) non-negative value"
+	}
+	formatted := credits.Format(cu)
+	if formattedCreditsTotal != "" {
+		ct, _ := credits.ParseNonNegative(formattedCreditsTotal)
+		if cu.GreaterThan(ct) {
+			return "", "creditsUsed cannot exceed creditsTotal"
+		}
+	}
+	return formatted, ""
+}
+
+// resolveRatio determines and validates the costToCreditRatio string.
+func resolveRatio(ratio *flexAmount, validateCreate bool) (string, string) {
+	ratioStr := "1"
+	if !validateCreate && hasMissingFlexAmountValue(ratio) {
+		ratioStr = ""
+	} else if ratio != nil && strings.TrimSpace(string(*ratio)) != "" {
+		ratioStr = strings.TrimSpace(string(*ratio))
+	}
+	if ratioStr == "" {
+		return "", ""
+	}
+	csr, err := parseCostToCreditRatio(ratioStr)
+	if err != nil {
+		return "", "costToCreditRatio must be a valid NUMERIC(20,6) positive value"
+	}
+	return csr, ""
 }
 
 func budgetItemToResponse(r store.BudgetItemRow) map[string]any {

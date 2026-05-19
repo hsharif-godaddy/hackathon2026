@@ -1,0 +1,104 @@
+version: '2'
+
+run:
+  go: '1.25'
+
+linters:
+  enable:
+    - errcheck
+    - govet
+    - staticcheck
+    - revive
+    - gocritic
+    - gocyclo
+    - gosec
+  settings:
+    gocyclo:
+      min-complexity: 25
+    govet:
+      disable:
+        - fieldalignment
+    revive:
+      rules:
+        - name: exported
+          disabled: true
+    staticcheck:
+      checks:
+        - all
+        # ST1000: missing package comment
+        - -ST1000
+        # ST1003: var/method naming (renaming would break API contract)
+        - -ST1003
+        # QF1001: De Morgan's law (cosmetic)
+        - -QF1001
+        # QF1012: WriteString(fmt.Sprintf(...)) -> Fprintf (cosmetic)
+        - -QF1012
+  exclusions:
+    presets:
+      - std-error-handling
+      - common-false-positives
+    rules:
+      - path: '_test\.go'
+        linters:
+          - errcheck
+          - gosec
+          - gocyclo
+          - gocritic
+          - staticcheck
+      # budget-service: local dev tools use operator-supplied flags, not network input
+      - path: 'cmd/dev-budget-ui/'
+        linters:
+          - gosec
+        text: 'G112'
+      - path: 'cmd/mint-cert-jwt/'
+        linters:
+          - gosec
+        text: 'G703|G704'
+      # budget-service: E2E webhook sink is a test fixture
+      - path: 'e2e/webhook-sink/'
+        linters:
+          - gosec
+        text: 'G114|G706'
+      # budget-service: advisory-lock keys, parameterized placeholders, provably in-range indices
+      - path: 'internal/store/budget\.go'
+        linters:
+          - gosec
+        text: 'G115|G202|G602'
+      # local-control-plane: docker/git subprocesses validated by caller
+      - path: 'internal/docker/'
+        linters:
+          - gosec
+        text: 'G204|G702|G703|G306'
+      - path: 'internal/setup/template\.go'
+        linters:
+          - gosec
+        text: 'G204|G304|G301|G306|G703'
+      # local-control-plane: outbound HTTP to user's own containers, template path ops
+      - path: 'internal/api/apps\.go'
+        linters:
+          - gosec
+        text: 'G703|G704'
+      - path: 'internal/api/secrets\.go'
+        linters:
+          - gosec
+        text: 'G703'
+      - path: 'internal/projectenv/'
+        linters:
+          - gosec
+        text: 'G304|G703'
+      # local-control-plane: secret name string, not a credential
+      - path: 'internal/auth/jwt\.go'
+        linters:
+          - gosec
+        text: 'G101'
+      - path: 'internal/docker/compose\.go'
+        linters:
+          - gosec
+        text: 'G703'
+
+formatters:
+  enable:
+    - gofmt
+  settings:
+    gofmt:
+      simplify: true

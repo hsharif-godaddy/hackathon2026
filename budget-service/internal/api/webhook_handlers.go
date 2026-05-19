@@ -187,11 +187,9 @@ func (s *Server) deliverWebhook(ctx context.Context, wh store.WebhookRow, payloa
 		if !isAllowedWebhookDomain(host) {
 			return fmt.Errorf("webhook URL domain not in allowlist")
 		}
-	} else {
+	} else if strings.EqualFold(parsedURL.Scheme, "http") && !isLoopback(host) {
 		// Local dev: allow HTTP for loopback only
-		if strings.EqualFold(parsedURL.Scheme, "http") && !isLoopback(host) {
-			return fmt.Errorf("HTTP webhooks only allowed for loopback addresses in local dev")
-		}
+		return fmt.Errorf("HTTP webhooks only allowed for loopback addresses in local dev")
 	}
 
 	// Get auth token if available

@@ -9,7 +9,7 @@ import (
 	"github.com/gorilla/mux"
 )
 
-// NewRouter: /health open; /api/v1 uses authMW (IAM / Cert / Cert2S when auth enabled).
+// NewRouter wires routes: /health is open; /api/v1 uses authMW (IAM / Cert / Cert2S when auth enabled).
 func NewRouter(s *Server, authMW *auth.Middleware) http.Handler {
 	r := mux.NewRouter()
 	r.NotFoundHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

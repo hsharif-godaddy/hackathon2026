@@ -29,35 +29,37 @@ type payloadResponse struct {
 }
 
 func main() {
+	if err := run(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
 	_ = godotenv.Load()
 
 	ssoHost := os.Getenv("SSO_HOST")
 	if ssoHost == "" {
-		fmt.Fprintln(os.Stderr, "mint-cert-jwt: set SSO_HOST (e.g. sso.dev-godaddy.com), same as budget-service")
-		os.Exit(2)
+		return fmt.Errorf("mint-cert-jwt: set SSO_HOST (e.g. sso.dev-godaddy.com), same as budget-service")
 	}
 	certPath := os.Getenv("CERT_PEM_PATH")
 	keyPath := os.Getenv("CERT_KEY_PATH")
 	if certPath == "" || keyPath == "" {
-		fmt.Fprintln(os.Stderr, "mint-cert-jwt: set CERT_PEM_PATH and CERT_KEY_PATH (e.g. ./.certs/cert.pem and ./.certs/key.pem)")
-		os.Exit(2)
+		return fmt.Errorf("mint-cert-jwt: set CERT_PEM_PATH and CERT_KEY_PATH (e.g. ./.certs/cert.pem and ./.certs/key.pem)")
 	}
 
 	certPEM, err := os.ReadFile(certPath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "mint-cert-jwt: read cert: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("mint-cert-jwt: read cert: %w", err)
 	}
 	keyPEM, err := os.ReadFile(keyPath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "mint-cert-jwt: read key: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("mint-cert-jwt: read key: %w", err)
 	}
 
 	pair, err := tls.X509KeyPair(certPEM, keyPEM)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "mint-cert-jwt: X509KeyPair: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("mint-cert-jwt: X509KeyPair: %w", err)
 	}
 
 	client := &http.Client{
@@ -76,33 +78,29 @@ func main() {
 	url := fmt.Sprintf("https://%s/v1/secure/api/token", ssoHost)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, strings.NewReader("realm=cert"))
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "mint-cert-jwt: request: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("mint-cert-jwt: request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
 	resp, err := client.Do(req)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "mint-cert-jwt: %s: %v\n", url, err)
-		os.Exit(1)
+		return fmt.Errorf("mint-cert-jwt: %s: %w", url, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "mint-cert-jwt: read body: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("mint-cert-jwt: read body: %w", err)
 	}
 
 	var res payloadResponse
 	if err := json.Unmarshal(body, &res); err != nil {
-		fmt.Fprintf(os.Stderr, "mint-cert-jwt: JSON: %v (body: %s)\n", err, string(body))
-		os.Exit(1)
+		return fmt.Errorf("mint-cert-jwt: JSON: %w (body: %s)", err, string(body))
 	}
 	if res.Data == "" {
-		fmt.Fprintf(os.Stderr, "mint-cert-jwt: empty token (HTTP %s): %s\n", resp.Status, string(body))
-		os.Exit(1)
+		return fmt.Errorf("mint-cert-jwt: empty token (HTTP %s): %s", resp.Status, string(body))
 	}
 
 	fmt.Println(res.Data)
+	return nil
 }

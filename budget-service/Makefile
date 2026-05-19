@@ -1,6 +1,6 @@
 # budget-service — see README.md, docs/budget-service-spec.md, docs/local-e2e.md
 
-.PHONY: build dev test coverage clean up down logs otel e2e-up e2e-down e2e-local dev-budget-ui verify-iam-auth \
+.PHONY: build dev test coverage clean lint fmt fmt-fix vet check up down logs otel e2e-up e2e-down e2e-local dev-budget-ui verify-iam-auth \
        load-test load-test-contention load-test-throughput load-test-lifecycle load-test-monitor \
        bench-baseline bench-candidate bench-diff
 
@@ -42,6 +42,25 @@ coverage:
 
 clean:
 	rm -rf bin/ tmp/
+
+lint:
+	golangci-lint run
+
+fmt:
+	@if [ -n "$$(gofmt -s -l .)" ]; then \
+		echo "The following files are not properly formatted:"; \
+		gofmt -s -l .; \
+		echo "Run 'make fmt-fix' to fix."; \
+		exit 1; \
+	fi
+
+fmt-fix:
+	gofmt -s -w .
+
+vet:
+	go vet ./...
+
+check: fmt vet lint test
 
 e2e-up:
 	$(_COMPOSE) up -d postgres

@@ -180,7 +180,7 @@ type OutboxEvent struct {
 	CreatedAt      time.Time
 }
 
-// InsertOutboxEvent inserts a webhook event into the outbox within an existing transaction.
+// InsertOutboxEventTx inserts a webhook event into the outbox within an existing transaction.
 // ON CONFLICT DO NOTHING ensures idempotency.
 func InsertOutboxEventTx(ctx context.Context, tx *sql.Tx, eventType, productKey string, payload any, idempotencyKey string) error {
 	payloadJSON, err := json.Marshal(payload)

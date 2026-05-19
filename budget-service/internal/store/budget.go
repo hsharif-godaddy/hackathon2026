@@ -1152,6 +1152,199 @@ func (s *Store) GetBudgetSession(ctx context.Context, sessionID string) (*Budget
 	return &d, rows.Err()
 }
 
+// reportLineResult holds per-line output from processReportLineItem.
+type reportLineResult struct {
+	storedBudgetCost decimal.Decimal
+	productCost      decimal.Decimal
+	overage          decimal.Decimal
+	payload          ReportItemPayload
+}
+
+// processReportLineItem handles a single report line: parse costs, consume budget, insert item + allocations + ledger rows.
+func processReportLineItem(ctx context.Context, tx *sql.Tx, item ReportLineInput, reportID string, allowOverage bool, budgetItems []budgetConsumptionState, now time.Time) (reportLineResult, error) {
+	bc, err := credits.ParseNonNegative(item.BudgetCost)
+	if err != nil {
+		return reportLineResult{}, err
+	}
+	pc, err := credits.ParseNonNegative(item.ProductCost)
+	if err != nil {
+		return reportLineResult{}, err
+	}
+
+	var chunks []budgetCreditChunk
+	if allowOverage {
+		chunks, err = consumeBudgetCostUSDSession(bc, budgetItems, now)
+	} else {
+		chunks, err = consumeBudgetCostUSD(bc, budgetItems, now)
+	}
+	if err != nil {
+		return reportLineResult{}, err
+	}
+
+	storedBudgetCost := bc
+	var overage decimal.Decimal
+	if allowOverage {
+		var allocated decimal.Decimal
+		for j := range chunks {
+			allocated = allocated.Add(chunks[j].usdChunk)
+		}
+		overage = bc.Sub(allocated)
+		storedBudgetCost = allocated
+	}
+
+	itemID := uuid.NewString()
+	_, err = tx.ExecContext(ctx, `
+		INSERT INTO budget_session_report_items (id, report_id, budget_cost, product_cost, label)
+		VALUES ($1, $2, $3, $4, $5)
+	`, itemID, reportID, credits.Format(storedBudgetCost), credits.Format(pc), strings.TrimSpace(item.Label))
+	if err != nil {
+		return reportLineResult{}, err
+	}
+
+	allocations, err := insertReportLineAllocations(ctx, tx, itemID, chunks)
+	if err != nil {
+		return reportLineResult{}, err
+	}
+
+	return reportLineResult{
+		storedBudgetCost: storedBudgetCost,
+		productCost:      pc,
+		overage:          overage,
+		payload: ReportItemPayload{
+			ReportItemID: itemID,
+			BudgetCost:   credits.Format(storedBudgetCost),
+			ProductCost:  credits.Format(pc),
+			Label:        strings.TrimSpace(item.Label),
+			CreatedAt:    now,
+			BudgetItems:  allocations,
+		},
+	}, nil
+}
+
+// insertReportLineAllocations bulk-inserts allocation and ledger rows for a single report item's chunks.
+func insertReportLineAllocations(ctx context.Context, tx *sql.Tx, itemID string, chunks []budgetCreditChunk) ([]ReportItemAllocationPayload, error) {
+	allocations := make([]ReportItemAllocationPayload, 0, len(chunks))
+	if len(chunks) == 0 {
+		return allocations, nil
+	}
+
+	allocPlaceholders := make([]string, 0, len(chunks))
+	allocArgs := make([]any, 0, 3*len(chunks))
+	ledPlaceholders := make([]string, 0, len(chunks))
+	ledArgs := make([]any, 0, 4*len(chunks))
+	a := 1
+	b := 1
+	for j := range chunks {
+		takeStr := credits.Format(chunks[j].credits)
+		allocations = append(allocations, ReportItemAllocationPayload{
+			BudgetItemID: chunks[j].budgetItemID,
+			CreditsUsed:  takeStr,
+		})
+		allocPlaceholders = append(allocPlaceholders, fmt.Sprintf("($%d,$%d,$%d)", a, a+1, a+2))
+		allocArgs = append(allocArgs, itemID, chunks[j].budgetItemID, takeStr)
+		a += 3
+		ledPlaceholders = append(ledPlaceholders, fmt.Sprintf("($%d,$%d,'session_spend',$%d,$%d)", b, b+1, b+2, b+3))
+		ledArgs = append(ledArgs, uuid.NewString(), chunks[j].budgetItemID, takeStr, itemID)
+		b += 4
+	}
+	_, err := tx.ExecContext(ctx, `
+		INSERT INTO budget_session_report_item_allocations (report_item_id, budget_item_id, credits_used)
+		VALUES `+strings.Join(allocPlaceholders, ","), allocArgs...)
+	if err != nil {
+		return nil, err
+	}
+	_, err = tx.ExecContext(ctx, `
+		INSERT INTO budget_item_credit_ledger (id, budget_item_id, entry_kind, credits_delta, report_item_id)
+		VALUES `+strings.Join(ledPlaceholders, ","), ledArgs...)
+	if err != nil {
+		return nil, err
+	}
+	return allocations, nil
+}
+
+// reportExhaustionState holds credits remaining and items that became exhausted during a report.
+type reportExhaustionState struct {
+	creditsAvailable decimal.Decimal
+	newlyExhausted   []budgetConsumptionState
+}
+
+// computeExhaustionState calculates remaining credits and identifies items that transitioned to exhausted.
+func computeExhaustionState(budgetItems []budgetConsumptionState, notYetExhausted map[string]bool) reportExhaustionState {
+	var st reportExhaustionState
+	for _, bi := range budgetItems {
+		remaining := bi.total.Sub(bi.used)
+		if remaining.IsPositive() {
+			st.creditsAvailable = st.creditsAvailable.Add(remaining)
+		} else if notYetExhausted[bi.id] {
+			st.newlyExhausted = append(st.newlyExhausted, bi)
+		}
+	}
+	return st
+}
+
+// insertOverageItem inserts the overage line item and returns the updated totals and appended payload.
+func insertOverageItem(ctx context.Context, tx *sql.Tx, reportID string, overageRemainder decimal.Decimal, now time.Time) (ReportItemPayload, error) {
+	overageItemID := uuid.NewString()
+	zero := decimal.Zero
+	_, err := tx.ExecContext(ctx, `
+		INSERT INTO budget_session_report_items (id, report_id, budget_cost, product_cost, label)
+		VALUES ($1, $2, $3, $4, $5)
+	`, overageItemID, reportID, credits.Format(zero), credits.Format(overageRemainder), "allowed-overage")
+	if err != nil {
+		return ReportItemPayload{}, err
+	}
+	return ReportItemPayload{
+		ReportItemID: overageItemID,
+		BudgetCost:   credits.Format(zero),
+		ProductCost:  credits.Format(overageRemainder),
+		Label:        "allowed-overage",
+		CreatedAt:    now,
+		BudgetItems:  nil,
+	}, nil
+}
+
+type reportOutboxInput struct {
+	productKey       string
+	budgetID         string
+	sessionID        string
+	reportID         string
+	newlyExhausted   []budgetConsumptionState
+	budgetCostTotal  decimal.Decimal
+	productCostTotal decimal.Decimal
+	creditsAvailable decimal.Decimal
+	reportItems      []ReportItemPayload
+}
+
+// insertReportOutboxEvents inserts webhook outbox events for exhausted budget items and the report.created event.
+func insertReportOutboxEvents(ctx context.Context, tx *sql.Tx, in reportOutboxInput) error {
+	for _, bi := range in.newlyExhausted {
+		exhaustedPayload := ExhaustedResult{
+			BudgetItemID: bi.id,
+			BudgetID:     in.budgetID,
+			SessionID:    in.sessionID,
+			ReportID:     in.reportID,
+			CreditsTotal: bi.total,
+		}
+		idempotencyKey := "budget-item.exhausted:" + bi.id + ":" + in.reportID
+		if err := InsertOutboxEventTx(ctx, tx, "budget-item.exhausted", in.productKey, exhaustedPayload.ToPayload(), idempotencyKey); err != nil {
+			return err
+		}
+	}
+
+	payload := ReportCreatedPayload{
+		ProductKey:       in.productKey,
+		BudgetID:         in.budgetID,
+		SessionID:        in.sessionID,
+		ReportID:         in.reportID,
+		BudgetCostTotal:  in.budgetCostTotal,
+		ProductCostTotal: in.productCostTotal,
+		CreditsAvailable: in.creditsAvailable,
+		ReportItems:      in.reportItems,
+	}
+	idempotencyKey := "report.created:" + in.reportID
+	return InsertOutboxEventTx(ctx, tx, "report.created", in.productKey, payload.ToPayload(), idempotencyKey)
+}
+
 // CreateSessionReport applies each report line's budgetCost USD using the same per-item consumption rules as session PATCH.
 func (s *Store) CreateSessionReport(ctx context.Context, sessionID string, items []ReportLineInput, allowOverage bool) (string, string, error) {
 	if _, err := uuid.Parse(sessionID); err != nil {
@@ -1217,111 +1410,23 @@ func (s *Store) CreateSessionReport(ctx context.Context, sessionID string, items
 	reportItemsPayload := make([]ReportItemPayload, 0, len(items))
 
 	for i := range items {
-		bc, err := credits.ParseNonNegative(items[i].BudgetCost)
+		result, err := processReportLineItem(ctx, tx, items[i], reportID, allowOverage, budgetItems, now)
 		if err != nil {
 			return "", "", err
 		}
-		pc, err := credits.ParseNonNegative(items[i].ProductCost)
-		if err != nil {
-			return "", "", err
-		}
-
-		var chunks []budgetCreditChunk
-		if allowOverage {
-			chunks, err = consumeBudgetCostUSDSession(bc, budgetItems, now)
-		} else {
-			chunks, err = consumeBudgetCostUSD(bc, budgetItems, now)
-		}
-		if err != nil {
-			return "", "", err
-		}
-
-		storedBudgetCost := bc
-		if allowOverage {
-			var allocated decimal.Decimal
-			for j := range chunks {
-				allocated = allocated.Add(chunks[j].usdChunk)
-			}
-			overageRemainder = overageRemainder.Add(bc.Sub(allocated))
-			storedBudgetCost = allocated
-		}
-
-		budgetCostTotal = budgetCostTotal.Add(storedBudgetCost)
-		productCostTotal = productCostTotal.Add(pc)
-
-		itemID := uuid.NewString()
-		_, err = tx.ExecContext(ctx, `
-			INSERT INTO budget_session_report_items (id, report_id, budget_cost, product_cost, label)
-			VALUES ($1, $2, $3, $4, $5)
-		`, itemID, reportID, credits.Format(storedBudgetCost), credits.Format(pc), strings.TrimSpace(items[i].Label))
-		if err != nil {
-			return "", "", err
-		}
-
-		allocations := make([]ReportItemAllocationPayload, 0, len(chunks))
-		if len(chunks) > 0 {
-			allocPlaceholders := make([]string, 0, len(chunks))
-			allocArgs := make([]any, 0, 3*len(chunks))
-			ledPlaceholders := make([]string, 0, len(chunks))
-			ledArgs := make([]any, 0, 4*len(chunks))
-			a := 1
-			b := 1
-			for j := range chunks {
-				takeStr := credits.Format(chunks[j].credits)
-				allocations = append(allocations, ReportItemAllocationPayload{
-					BudgetItemID: chunks[j].budgetItemID,
-					CreditsUsed:  takeStr,
-				})
-				allocPlaceholders = append(allocPlaceholders, fmt.Sprintf("($%d,$%d,$%d)", a, a+1, a+2))
-				allocArgs = append(allocArgs, itemID, chunks[j].budgetItemID, takeStr)
-				a += 3
-				ledPlaceholders = append(ledPlaceholders, fmt.Sprintf("($%d,$%d,'session_spend',$%d,$%d)", b, b+1, b+2, b+3))
-				ledArgs = append(ledArgs, uuid.NewString(), chunks[j].budgetItemID, takeStr, itemID)
-				b += 4
-			}
-			_, err = tx.ExecContext(ctx, `
-				INSERT INTO budget_session_report_item_allocations (report_item_id, budget_item_id, credits_used)
-				VALUES `+strings.Join(allocPlaceholders, ","), allocArgs...)
-			if err != nil {
-				return "", "", err
-			}
-			_, err = tx.ExecContext(ctx, `
-				INSERT INTO budget_item_credit_ledger (id, budget_item_id, entry_kind, credits_delta, report_item_id)
-				VALUES `+strings.Join(ledPlaceholders, ","), ledArgs...)
-			if err != nil {
-				return "", "", err
-			}
-		}
-
-		reportItemsPayload = append(reportItemsPayload, ReportItemPayload{
-			ReportItemID: itemID,
-			BudgetCost:   credits.Format(storedBudgetCost),
-			ProductCost:  credits.Format(pc),
-			Label:        strings.TrimSpace(items[i].Label),
-			CreatedAt:    now,
-			BudgetItems:  allocations,
-		})
+		budgetCostTotal = budgetCostTotal.Add(result.storedBudgetCost)
+		productCostTotal = productCostTotal.Add(result.productCost)
+		overageRemainder = overageRemainder.Add(result.overage)
+		reportItemsPayload = append(reportItemsPayload, result.payload)
 	}
 
 	if allowOverage && overageRemainder.IsPositive() {
-		overageItemID := uuid.NewString()
-		zero := decimal.Zero
-		_, err = tx.ExecContext(ctx, `
-			INSERT INTO budget_session_report_items (id, report_id, budget_cost, product_cost, label)
-			VALUES ($1, $2, $3, $4, $5)
-		`, overageItemID, reportID, credits.Format(zero), credits.Format(overageRemainder), "allowed-overage")
+		overagePayload, err := insertOverageItem(ctx, tx, reportID, overageRemainder, now)
 		if err != nil {
 			return "", "", err
 		}
 		productCostTotal = productCostTotal.Add(overageRemainder)
-		reportItemsPayload = append(reportItemsPayload, ReportItemPayload{
-			ReportItemID: overageItemID,
-			BudgetCost:   credits.Format(zero),
-			ProductCost:  credits.Format(overageRemainder),
-			Label:        "allowed-overage",
-			CreatedAt:    now,
-			BudgetItems:  nil,
-		})
+		reportItemsPayload = append(reportItemsPayload, overagePayload)
 	}
 
 	if _, err := tx.ExecContext(ctx, `
@@ -1335,50 +1440,20 @@ func (s *Store) CreateSessionReport(ctx context.Context, sessionID string, items
 		return "", "", err
 	}
 
-	// Calculate credits available after all allocations and detect newly exhausted items
-	var creditsAvailable decimal.Decimal
-	var newlyExhausted []budgetConsumptionState
-	for _, bi := range budgetItems {
-		remaining := bi.total.Sub(bi.used)
-		if remaining.IsPositive() {
-			creditsAvailable = creditsAvailable.Add(remaining)
-		} else if notYetExhausted[bi.id] {
-			// Item transitioned from non-exhausted to exhausted in this report
-			newlyExhausted = append(newlyExhausted, bi)
-		}
-	}
+	exhaustion := computeExhaustionState(budgetItems, notYetExhausted)
 
-	// Insert outbox events for webhook delivery if productKey exists
 	if productKey.Valid && productKey.String != "" {
-		// Insert exhausted events for items that became fully consumed
-		for _, bi := range newlyExhausted {
-			exhaustedPayload := ExhaustedResult{
-				BudgetItemID: bi.id,
-				BudgetID:     budgetID,
-				SessionID:    sessionID,
-				ReportID:     reportID,
-				CreditsTotal: bi.total,
-			}
-			// Idempotency key: {event-type}:{itemId}:{reportId} - prevents duplicate webhooks for same exhaustion
-			idempotencyKey := "budget-item.exhausted:" + bi.id + ":" + reportID
-			if err := InsertOutboxEventTx(ctx, tx, "budget-item.exhausted", productKey.String, exhaustedPayload.ToPayload(), idempotencyKey); err != nil {
-				return "", "", err
-			}
-		}
-
-		payload := ReportCreatedPayload{
-			ProductKey:       productKey.String,
-			BudgetID:         budgetID,
-			SessionID:        sessionID,
-			ReportID:         reportID,
-			BudgetCostTotal:  budgetCostTotal,
-			ProductCostTotal: productCostTotal,
-			CreditsAvailable: creditsAvailable,
-			ReportItems:      reportItemsPayload,
-		}
-
-		idempotencyKey := "report.created:" + reportID
-		if err := InsertOutboxEventTx(ctx, tx, "report.created", productKey.String, payload.ToPayload(), idempotencyKey); err != nil {
+		if err := insertReportOutboxEvents(ctx, tx, reportOutboxInput{
+			productKey:       productKey.String,
+			budgetID:         budgetID,
+			sessionID:        sessionID,
+			reportID:         reportID,
+			newlyExhausted:   exhaustion.newlyExhausted,
+			budgetCostTotal:  budgetCostTotal,
+			productCostTotal: productCostTotal,
+			creditsAvailable: exhaustion.creditsAvailable,
+			reportItems:      reportItemsPayload,
+		}); err != nil {
 			return "", "", err
 		}
 	}
