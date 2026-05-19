@@ -19,6 +19,7 @@ import {
 } from '@airo/ai-transport'
 import { grantSessionManager, type GrantContextPayload, BudgetOverride, resolveBmsSubscriptionId } from '@airo/ai-grants'
 import { getBudgetServiceClient } from '../services/budget-service-instance.js'
+import { maybeEmitDebugTurnStats } from './debug-stats-emit.js'
 import { performBudgetPreCheck } from './budget-pre-check.js'
 import {
   toBudgetUpdatePayload,
@@ -1290,6 +1291,21 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
             contextWindowUtilization: contextUtilization,
             cacheHitRate: cacheMetrics.cacheHitRate,
             hasConversation: !!metadata.conversationId
+          })
+
+          maybeEmitDebugTurnStats({
+            appId: metadata.appId,
+            conversationId: typeof metadata.conversationId === 'string' ? metadata.conversationId : 'unknown',
+            agentName: metadata.agentName,
+            modelName: metadata.modelName,
+            inputTokens: usage.inputTokens,
+            outputTokens: usage.outputTokens,
+            totalTokens: usage.totalTokens,
+            cachedInputTokens: usage.cachedInputTokens || 0,
+            cacheWriteInputTokens: usage.cacheWriteInputTokens || 0,
+            cacheHitRate: cacheMetrics.cacheHitRate,
+            contextWindowUtilization: contextUtilization,
+            costUsd: costEstimate.totalCost,
           })
 
           if (backgroundSummarizer) {

@@ -248,7 +248,11 @@ describe('agent-token', function packageTests() {
         agentProfileSelectorEnabled: false,
         agentProfile: undefined,
         costAttributionDryRun: false,
+
         useAtlasCrawler: false,
+
+        debugStatsEnabled: false,
+
       });
     });
 
@@ -393,7 +397,7 @@ describe('agent-token', function packageTests() {
         expect(response.status).toBe(200);
         expect(data.expiresInSeconds).toBe(expiresInSeconds);
         expect(mockJWTService.createToken).toHaveBeenCalledWith(
-          { siteId: MOCK_SITE_ID, customerId: 'customer-789', canDownload: false, canPublish: false, canPurchaseDomain: false, authType: 'basic', isE2S: false, useTestBudget: false, budgetServiceEnabled: false, subscriptionId: undefined, bmsBudgetId: undefined, enableAssessmentAgent: false, enableAssessmentOverride: false, assessmentClassifier: undefined, product: 'AiroAppBuilder', modelSelectorEnabled: false, modelOverride: undefined, agentProfileSelectorEnabled: false, agentProfile: undefined, costAttributionDryRun: false, useAtlasCrawler: false },
+          { siteId: MOCK_SITE_ID, customerId: 'customer-789', canDownload: false, canPublish: false, canPurchaseDomain: false, authType: 'basic', isE2S: false, useTestBudget: false, budgetServiceEnabled: false, subscriptionId: undefined, bmsBudgetId: undefined, enableAssessmentAgent: false, enableAssessmentOverride: false, assessmentClassifier: undefined, product: 'AiroAppBuilder', modelSelectorEnabled: false, modelOverride: undefined, agentProfileSelectorEnabled: false, agentProfile: undefined, costAttributionDryRun: false, useAtlasCrawler: false, debugStatsEnabled: false },
           expiresInSeconds
         );
         expect(mockJWTService.getToken).not.toHaveBeenCalled();
@@ -480,7 +484,11 @@ describe('agent-token', function packageTests() {
           agentProfileSelectorEnabled: false,
           agentProfile: undefined,
           costAttributionDryRun: false,
+
           useAtlasCrawler: false,
+
+          debugStatsEnabled: false,
+
         });
       });
 
@@ -522,7 +530,11 @@ describe('agent-token', function packageTests() {
           agentProfileSelectorEnabled: false,
           agentProfile: undefined,
           costAttributionDryRun: false,
+
           useAtlasCrawler: false,
+
+          debugStatsEnabled: false,
+
         });
       });
     });

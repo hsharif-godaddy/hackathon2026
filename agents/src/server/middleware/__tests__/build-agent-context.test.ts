@@ -47,6 +47,7 @@ describe('buildAgentContext', function suite() {
       modelSelectorEnabled: true,
       agentProfile: 'experimental',
       agentProfileSelectorEnabled: true,
+      debugStatsEnabled: false,
       exp: 1700000000,
       iat: 1699999000,
     });

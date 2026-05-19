@@ -53,6 +53,7 @@ export interface JWTClaims {
   modelOverride?: string;
   modelSelectorEnabled?: boolean;
   costAttributionDryRun?: boolean;
+  debugStatsEnabled?: boolean;
 }
 
 export interface ValidationResult {

@@ -55,6 +55,7 @@ export interface AgentContext {
   modelSelectorEnabled?: boolean; // Allow per-project model selection from frontend (switchboard: appbuilder-model-selector)
   agentProfile?: string; // Active agent profile identifier
   agentProfileSelectorEnabled?: boolean; // Allow per-project agent profile selection from frontend
+  debugStatsEnabled?: boolean; // Allow per-LLM-call debug stats events to flow to this client (switchboard: appbuilder-debug-drawer)
   exp: number;
   iat: number;
 }
@@ -93,6 +94,7 @@ export function buildAgentContext(raw: Record<string, unknown>): AgentContext {
     modelSelectorEnabled: (raw.modelSelectorEnabled as boolean) ?? false,
     agentProfile: raw.agentProfile as string | undefined,
     agentProfileSelectorEnabled: (raw.agentProfileSelectorEnabled as boolean) ?? false,
+    debugStatsEnabled: (raw.debugStatsEnabled as boolean) ?? false,
     exp: (raw.exp as number) || 0,
     iat: (raw.iat as number) || 0,
   };

@@ -12,12 +12,15 @@ import ChatBanners from '@/app/[market]/develop/components/chat/banners/ChatBann
 import { ChatContext, type SendMessageOptions as SendChatMessageOptions } from '@/app/[market]/develop/components/chat/ChatContext'
 import ChatInput, { type StagedChatFile } from '@/app/[market]/develop/components/chat/ChatInput'
 import ChatToolbar from '@/app/[market]/develop/components/chat/ChatToolbar'
+import { DebugStatsProvider, useDebugStats } from '@/app/[market]/develop/components/chat/DebugStatsContext'
+import { DebugStatsPanel } from '@/app/[market]/develop/components/chat/DebugStatsDrawer'
 import { UploadedFile } from '@/app/[market]/develop/components/chat/FileUploadButton'
 import {
   getStagedFilePreviewUrl,
   revokeStagedFilePreviewIfCached,
 } from '@/app/[market]/develop/components/chat/stagedFilePreviewUrl'
 import { uploadChatFiles } from '@/app/[market]/develop/components/chat/uploadChatFiles'
+import { useDebugStatsBridge } from '@/app/[market]/develop/components/chat/useDebugStatsBridge'
 import PanelSkeleton from '@/app/[market]/develop/components/PanelSkeleton'
 import PersistentTodoList from '@/app/[market]/develop/components/PersistentTodoList'
 import PlanTracker from '@/app/[market]/develop/components/PlanTracker'
@@ -180,7 +183,15 @@ function stagedIdsForSuccessfulUploads(
   return ids
 }
 
-export default function ChatPane({
+export default function ChatPane(props: ChatPaneProps) {
+  return (
+    <DebugStatsProvider>
+      <ChatPaneInner {...props} />
+    </DebugStatsProvider>
+  )
+}
+
+function ChatPaneInner({
   sendMessage,
   stopGeneration,
   isCreateFlowSession = false,
@@ -190,6 +201,8 @@ export default function ChatPane({
   initialPromptText = null,
 }: ChatPaneProps) {
   const t = useTranslations();
+  const { dispatch: debugStatsDispatch } = useDebugStats()
+  useDebugStatsBridge()
   const messages = useMessages()
   const userMessages = useMemo(
     () => messages.filter(m => m.role === 'user' && m.content.trim()).map(m => m.content),
@@ -200,6 +213,16 @@ export default function ChatPane({
   const isLoading = useIsLoading()
   const currentAppId = useCurrentAppId()
   const isStreaming = useIsActivelyStreaming()
+  // Seal the in-flight debug stats turn when the agent's response finishes
+  // streaming, so the drawer reflects the prompt the user just saw rather
+  // than waiting until the next prompt is sent.
+  const wasStreamingRef = useRef(false)
+  useEffect(() => {
+    if (wasStreamingRef.current && !isStreaming) {
+      debugStatsDispatch({ type: 'USER_MESSAGE_SENT', sealedAt: new Date().toISOString() })
+    }
+    wasStreamingRef.current = isStreaming
+  }, [isStreaming, debugStatsDispatch])
   const developmentPlan = useDevelopmentPlan()
   const aiEditContext = useAiEditContext()
   const buildErrorContext = useBuildErrorContext()
@@ -753,6 +776,7 @@ export default function ChatPane({
 
   // Handle sending a message - accepts optional content for programmatic sends
   const handleSendMessage = useCallback(async (content?: string, options?: SendChatMessageOptions) => {
+    debugStatsDispatch({ type: 'USER_MESSAGE_SENT', sealedAt: new Date().toISOString() })
     const messageToSend = content ?? inputValue
     const userInitiated = content === undefined
     const hasText = Boolean(messageToSend?.trim())
@@ -927,6 +951,7 @@ export default function ChatPane({
       }
     }
   }, [
+    debugStatsDispatch,
     inputValue,
     sendMessage,
     currentAppId,
@@ -1253,7 +1278,7 @@ export default function ChatPane({
   if (isMobile) {
     return (
       <ChatContext.Provider value={chatContextValue}>
-        <div className="flex-1 flex flex-col min-h-0 overflow-x-hidden">
+        <div className="flex-1 flex flex-col min-h-0 overflow-x-hidden relative">
           <PlanTracker
             developmentPlan={developmentPlan}
             expandedPlan={expandedPlan}
@@ -1310,6 +1335,7 @@ export default function ChatPane({
             onLargePasteDetected={handleLargePasteDetected}
             userMessages={userMessages}
           />
+          <DebugStatsPanel />
         </div>
       </ChatContext.Provider>
     )
@@ -1326,7 +1352,7 @@ export default function ChatPane({
 
         {/* Chat Tab - Keep mounted, hide with CSS */}
         <div
-          className="flex flex-col flex-1 min-h-0"
+          className="flex flex-col flex-1 min-h-0 relative"
           style={{ display: activeChatTab === ChatTab.CHAT ? 'flex' : 'none' }}
         >
           {!areChatPlansEnabled && <PersistentTodoList />}
@@ -1419,6 +1445,7 @@ export default function ChatPane({
               userMessages={userMessages}
             />
           </div>
+          <DebugStatsPanel />
         </div>
 
         {/* History Tab - Mount on first visit, then CSS-hide to preserve state */}

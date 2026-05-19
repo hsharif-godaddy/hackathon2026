@@ -14,6 +14,7 @@ import AssetInline, { AssetMode } from '@/app/[market]/develop/components/chat/A
 import { AssetManagerItem, MediaType } from '@/app/[market]/develop/components/chat/AssetTypes'
 import ChatAttachmentMenu from '@/app/[market]/develop/components/chat/ChatAttachmentMenu'
 import type { SendMessageOptions } from '@/app/[market]/develop/components/chat/ChatContext'
+import { DebugStatsToggleButton } from '@/app/[market]/develop/components/chat/DebugStatsDrawer'
 import InputActionsPanel from '@/app/[market]/develop/components/chat/InputActionsPanel'
 import LexicalChatEditor, { type LexicalChatEditorHandle } from '@/app/[market]/develop/components/chat/LexicalChatEditor'
 import UsageGauge from '@/app/[market]/develop/components/chat/usage-gauge/UsageGauge'
@@ -558,6 +559,7 @@ export default function ChatInput({
                   disabled={(isDisabled && !isStreaming) || isBudgetExceeded || !canAddAsset}
                 />
               )}
+              <DebugStatsToggleButton />
               {isChatGaugeEnabled && <UsageGauge appId={appId} />}
             </div>
 

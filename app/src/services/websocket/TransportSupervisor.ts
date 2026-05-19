@@ -14,6 +14,7 @@
 import { EventEmitter } from 'events'
 import type { DisconnectDescription, Socket } from 'socket.io-client'
 import type { BudgetUpdatePayload } from '@airo/shared/budget'
+import { DEBUG_TURN_STATS_EVENT, type DebugTurnStatsEvent } from '@airo/shared/websocket'
 
 import {
   AgentsAvailableHandler,
@@ -474,6 +475,13 @@ export class TransportSupervisor extends EventEmitter {
       }
     })
 
+    // Debug turn stats — bridged to React via window CustomEvent so the
+    // DebugStatsDrawer can consume them without coupling to this supervisor.
+    socket.on(DEBUG_TURN_STATS_EVENT, (data: DebugTurnStatsEvent) => {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('airo:debug-turn-stats', { detail: data }))
+      }
+    })
 
     socket.on('message', async (data: { type: string; content: string; data?: any }, ack?: () => void) => {
       if (data.data?.conversationId && messageContext.currentAppId && typeof data.data.conversationId === 'string') {
