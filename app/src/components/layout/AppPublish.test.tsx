@@ -90,7 +90,9 @@ vi.mock('next/navigation', () => ({
 }));
 
 vi.mock('@/hooks/useTranslations', () => ({
-  useTranslations: () => (key: string) => key,
+  useTranslations: () =>
+    (key: string, _values?: Record<string, unknown>, defaultMessage?: string) =>
+      defaultMessage ?? key,
 }));
 
 const mockSetActiveChatTab = vi.fn();
@@ -638,7 +640,7 @@ describe('AppPublish', () => {
       expect(screen.getByText('builder_publish_popover_title')).toBeInTheDocument();
     });
 
-    expect(screen.queryByRole('button', { name: /builder_publish_prelaunch_check_button/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Check SEO and Health' })).not.toBeInTheDocument();
   });
 
   it('should show Go Live button when app was published and post-publish flag is on', async function goLiveButton() {
@@ -655,7 +657,7 @@ describe('AppPublish', () => {
     await user.click(trigger);
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /builder_publish_prelaunch_check_button/ })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Check SEO and Health' })).toBeInTheDocument();
     });
   });
 
@@ -672,7 +674,7 @@ describe('AppPublish', () => {
     const trigger = await screen.findByRole('button', { name: 'builder_publish_button' });
     await user.click(trigger);
 
-    const goLive = await screen.findByRole('button', { name: /builder_publish_prelaunch_check_button/ });
+    const goLive = await screen.findByRole('button', { name: 'Check SEO and Health' });
     await user.click(goLive);
 
     expect(vi.mocked(openPostPublishFeatureSelectionInChat)).toHaveBeenCalledWith('app-123');
@@ -695,7 +697,7 @@ describe('AppPublish', () => {
     const trigger = await screen.findByRole('button', { name: /builder_publish_button/ });
     await user.click(trigger);
 
-    const goLive = await screen.findByRole('button', { name: /builder_publish_prelaunch_check_button/ });
+    const goLive = await screen.findByRole('button', { name: 'Check SEO and Health' });
     expect(goLive).toBeDisabled();
     await user.click(goLive);
     expect(vi.mocked(openPostPublishFeatureSelectionInChat)).not.toHaveBeenCalled();
@@ -715,7 +717,7 @@ describe('AppPublish', () => {
     const trigger = await screen.findByRole('button', { name: 'builder_publish_button' });
     await user.click(trigger);
 
-    const goLive = await screen.findByRole('button', { name: /builder_publish_prelaunch_check_button/ });
+    const goLive = await screen.findByRole('button', { name: 'Check SEO and Health' });
     expect(goLive).toBeDisabled();
     await user.click(goLive);
     expect(vi.mocked(openPostPublishFeatureSelectionInChat)).not.toHaveBeenCalled();
@@ -735,7 +737,7 @@ describe('AppPublish', () => {
     const trigger = await screen.findByRole('button', { name: 'builder_publish_button' });
     await user.click(trigger);
 
-    const goLive = await screen.findByRole('button', { name: /builder_publish_prelaunch_check_button/ });
+    const goLive = await screen.findByRole('button', { name: 'Check SEO and Health' });
     expect(goLive).toBeDisabled();
     await user.click(goLive);
     expect(vi.mocked(openPostPublishFeatureSelectionInChat)).not.toHaveBeenCalled();
@@ -754,7 +756,7 @@ describe('AppPublish', () => {
     const trigger = await screen.findByRole('button', { name: 'builder_publish_button' });
     await user.click(trigger);
 
-    expect(screen.queryByRole('button', { name: /builder_publish_prelaunch_check_button/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Check SEO and Health' })).not.toBeInTheDocument();
   });
 
   it('should add success growl with feedback CTA when publish completes while popover closed', async function successGrowlIncludesFeedback() {

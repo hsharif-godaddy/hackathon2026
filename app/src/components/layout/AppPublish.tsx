@@ -104,7 +104,6 @@ function PublishFailedMessage({
 
 export default function AppPublish({ location = 'develop' }: { location?: string }) {
   const t = useTranslations();
-
   const [open, setOpen] = useState(false);
   const [publishResult, setPublishResult] = useState<'success' | 'failed' | null>(null);
   const [isFixingBuildError, setIsFixingBuildError] = useState(false);
@@ -797,7 +796,7 @@ export default function AppPublish({ location = 'develop' }: { location?: string
                 data-eid={generateClickEID(`${location}.header.publish_go_live_chat`)}
                 onClick={handleGoLiveInChat}
                 disabled={isPreLaunchCheckFromPublishDisabled}
-                text={t('builder_publish_prelaunch_check_button')}
+                text={t('builder_publish_prelaunch_check_button', {}, 'Check SEO and Health')}
               />
             )}
 
