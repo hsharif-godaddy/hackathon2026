@@ -85,7 +85,8 @@ dev-supervisor/
 │   ├── process/                # Exit codes, zombie reaping
 │   ├── processmanager/         # Process lifecycle management
 │   ├── proxy/http/             # TLS reverse proxy, WebSocket, persistent assets
-│   ├── proxy/smtp/             # SMTP proxy with header injection (localhost:2525 only)
+│   ├── proxy/smtp/             # SMTP proxy with header injection + sender enforcement (localhost:25)
+│   ├── proxy/emailhttp/        # HTTP email gateway, POST /api/email/send (localhost:2525)
 │   ├── sandbox/                # Sandbox config, profiles, command wrapping
 │   └── validation/             # Input validation (path traversal, env vars)
 ├── docs/SANDBOX.md             # Sandbox architecture and configuration

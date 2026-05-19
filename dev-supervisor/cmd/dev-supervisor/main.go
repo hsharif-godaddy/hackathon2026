@@ -26,6 +26,7 @@ import (
 	"github.com/airo-ai-builder/dev-supervisor/internal/middleware"
 	"github.com/airo-ai-builder/dev-supervisor/internal/process"
 	"github.com/airo-ai-builder/dev-supervisor/internal/processmanager"
+	emailhttp "github.com/airo-ai-builder/dev-supervisor/internal/proxy/emailhttp"
 	httpproxy "github.com/airo-ai-builder/dev-supervisor/internal/proxy/http"
 	smtpproxy "github.com/airo-ai-builder/dev-supervisor/internal/proxy/smtp"
 	"github.com/airo-ai-builder/dev-supervisor/internal/sandbox"
@@ -107,6 +108,7 @@ type Server struct {
 	logMgr                 *logs.Manager
 	pid1Mgr                *process.PID1Manager
 	smtpProxy              *smtpproxy.Proxy
+	emailGateway           *emailhttp.Gateway
 	httpProxy              *httpproxy.HTTPProxy
 	startTime              time.Time
 	config                 *Config
@@ -164,6 +166,7 @@ func NewServer() *Server {
 		cmdExec:                NewCommandExecutor(pid1Mgr),
 		envMgr:                 NewEnvironmentManager(),
 		smtpProxy:              smtpproxy.New(),
+		emailGateway:           emailhttp.New(),
 		startTime:              time.Now(),
 		processLogging:         true,                               // Default: enable child process logging
 		processLoggingToStdout: config.GetProcessLoggingToStdout(), // Default: enable structured output, configurable via env
@@ -415,6 +418,14 @@ func (s *Server) startUnixServer(socketPath string, shutdownTimeout time.Duratio
 		}
 	}
 
+	// Start HTTP email gateway. Loopback-only (127.0.0.1:2525) so the
+	// preview/publish port-conflict the SMTP proxy worries about doesn't
+	// apply — each container has its own loopback. Forwards to the same
+	// SMTP_DESTINATION the SMTP proxy uses.
+	if err := s.emailGateway.Start(); err != nil {
+		slog.Warn("failed to start email gateway", "error", err)
+	}
+
 	// Create HTTP server with SELinux enforcement for Unix socket mode
 	// Only processes with allowed SELinux types can access the API via SO_PEERSEC
 	allowedSELinuxTypes := config.GetAllowedSELinuxTypes()
@@ -507,6 +518,11 @@ func (s *Server) startUnixServer(socketPath string, shutdownTimeout time.Duratio
 		slog.Warn("failed to stop SMTP proxy", "error", err)
 	}
 
+	// Stop email gateway
+	if err := s.emailGateway.Stop(); err != nil {
+		slog.Warn("failed to stop email gateway", "error", err)
+	}
+
 	// Clean up socket file
 	if err := os.Remove(socketPath); err != nil && !os.IsNotExist(err) {
 		slog.Warn("failed to clean up socket file", "path", socketPath, "error", err)
@@ -539,6 +555,11 @@ func (s *Server) startTCPServer(port string, shutdownTimeout time.Duration) erro
 		if err := s.smtpProxy.Start(); err != nil {
 			slog.Warn("failed to start SMTP proxy", "error", err)
 		}
+	}
+
+	// Start HTTP email gateway. See startUnixServer for the rationale.
+	if err := s.emailGateway.Start(); err != nil {
+		slog.Warn("failed to start email gateway", "error", err)
 	}
 
 	// Create HTTP server
@@ -628,6 +649,11 @@ func (s *Server) startTCPServer(port string, shutdownTimeout time.Duration) erro
 	// Stop SMTP proxy
 	if err := s.smtpProxy.Stop(); err != nil {
 		slog.Warn("failed to stop SMTP proxy", "error", err)
+	}
+
+	// Stop email gateway
+	if err := s.emailGateway.Stop(); err != nil {
+		slog.Warn("failed to stop email gateway", "error", err)
 	}
 
 	slog.Info("TCP server stopped")
@@ -729,14 +755,28 @@ func parseFlags() *Config {
 		fmt.Fprintf(os.Stderr, "  DEV_SUPERVISOR_PROXY_KEY_PATH     Path to TLS private key\n")
 		fmt.Fprintf(
 			os.Stderr,
-			"  SMTP_DESTINATION                  SMTP server destination for proxy (default: relay-hosting.secureserver.net:25)\n",
+			"  SMTP_DESTINATION                  SMTP server destination shared by SMTP proxy + HTTP email gateway (default: relay-hosting.secureserver.net:25)\n",
+		)
+		fmt.Fprintf(
+			os.Stderr,
+			"  EMAIL_GATEWAY_LISTEN_ADDR         HTTP email gateway listen addr (default: 127.0.0.1:2525)\n",
+		)
+		fmt.Fprintf(
+			os.Stderr,
+			"  AIRO_DEFAULT_SENDER_DOMAIN        Platform sender domain — drives canonical fallback (default: airoapp.ai)\n",
 		)
 		fmt.Fprintf(os.Stderr, "\n")
-		fmt.Fprintf(os.Stderr, "SMTP Proxy Headers (automatically injected):\n")
+		fmt.Fprintf(
+			os.Stderr,
+			"Outbound Email Tracking Headers (automatically injected on both SMTP and HTTP paths):\n",
+		)
 		fmt.Fprintf(os.Stderr, "  SITE_ID                     Sets X-SITE-UID header (default: unknown)\n")
 		fmt.Fprintf(os.Stderr, "  PRODUCT                     Sets X-PRODUCT header (default: airo-app-builder)\n")
 		fmt.Fprintf(os.Stderr, "  NODE_ENV                    Sets X-ENVIRONMENT header (default: unknown)\n")
 		fmt.Fprintf(os.Stderr, "  NOMAD_DC                    Sets X-DATACENTER header (default: unknown)\n")
+		fmt.Fprintf(os.Stderr, "  ACCOUNT_CREATED_DATE        Sets X-ACCOUNT-CREATED-DATE (omitted when empty)\n")
+		fmt.Fprintf(os.Stderr, "  SHOPPER_ID                  Sets X-SHOPPER-ID (omitted when empty)\n")
+		fmt.Fprintf(os.Stderr, "  ORIGINATING_IP              Sets X-Originating-IP (omitted when empty)\n")
 		fmt.Fprintf(os.Stderr, "\n")
 		fmt.Fprintf(os.Stderr, "Examples:\n")
 		fmt.Fprintf(

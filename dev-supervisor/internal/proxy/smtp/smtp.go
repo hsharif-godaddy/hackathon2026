@@ -90,16 +90,15 @@ func NewForTesting(
 // stop the server, call LoadHeaders(), then start again.
 //
 // Thread-safe: Multiple concurrent calls to LoadHeaders() are safe (uses mutex protection).
+//
+// The actual header set comes from email.LoadTrackingHeaders, which the
+// HTTP email gateway also consumes — keeps the relay's spam-attribution
+// pipeline seeing a single shape regardless of submission path.
 func (p *Proxy) LoadHeaders() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	p.customHeaders = map[string]string{
-		"X-SITE-UID":    config.GetEnvStringWithDefault("SITE_ID", "unknown"),
-		"X-PRODUCT":     config.GetEnvStringWithDefault("PRODUCT", "airo-app-builder"),
-		"X-ENVIRONMENT": config.GetEnvStringWithDefault("NODE_ENV", "unknown"),
-		"X-DATACENTER":  config.GetEnvStringWithDefault("NOMAD_DC", "unknown"),
-	}
+	p.customHeaders = email.LoadTrackingHeaders()
 
 	slog.Info("loaded SMTP custom headers", "count", len(p.customHeaders))
 }
@@ -315,35 +314,8 @@ func (s *proxySession) Data(r io.Reader) error {
 
 	modifiedData := injectHeaders(enforced, s.backend.customHeaders)
 
-	client, err := smtp.Dial(s.backend.destinationAddr)
-	if err != nil {
-		return fmt.Errorf("failed to connect to destination SMTP server: %w", err)
-	}
-	defer client.Close()
-
-	if mailErr := client.Mail(s.from, nil); mailErr != nil {
-		return fmt.Errorf("failed to send MAIL FROM: %w", mailErr)
-	}
-
-	for _, rcpt := range s.to {
-		if rcptErr := client.Rcpt(rcpt, nil); rcptErr != nil {
-			return fmt.Errorf("failed to send RCPT TO: %w", rcptErr)
-		}
-	}
-
-	w, err := client.Data()
-	if err != nil {
-		return fmt.Errorf("failed to start DATA: %w", err)
-	}
-
-	if _, err := w.Write(modifiedData); err != nil {
-		//nolint:gosec // G104: Intentionally ignoring error
-		w.Close()
-		return fmt.Errorf("failed to write email data: %w", err)
-	}
-
-	if err := w.Close(); err != nil {
-		return fmt.Errorf("failed to close DATA writer: %w", err)
+	if err := email.ForwardSMTP(s.backend.destinationAddr, s.from, s.to, modifiedData); err != nil {
+		return err
 	}
 
 	slog.Info("email proxied successfully", "from", s.from, "to", s.to, "destination", s.backend.destinationAddr)

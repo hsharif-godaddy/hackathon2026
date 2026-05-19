@@ -481,6 +481,9 @@ linters:
       - path: 'internal/proxy/smtp/enforce_test.go'
         linters:
           - testpackage # Tests unexported header-rewrite helpers directly
+      - path: 'internal/proxy/emailhttp/message_test.go'
+        linters:
+          - testpackage # Tests unexported message-builder helpers (preparedMessage, buildMessage, addrSpec)
       - path: '_test\.go'
         linters:
           - bodyclose
