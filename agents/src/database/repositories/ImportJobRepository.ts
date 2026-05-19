@@ -241,6 +241,37 @@ export class ImportJobRepository {
   }
 
   /**
+   * Return failure details from the latest import attempt for an app, when that
+   * attempt failed within the given time window.
+   *
+   * Only considers the most recent import_jobs row (by created_at) so a later
+   * successful re-import does not surface stale errors from an earlier failure.
+   * Used by diagnose when dev-supervisor container logs are not yet available.
+   */
+  async findRecentFailedByAppId(appId: string, since: Date): Promise<ImportJob | null> {
+    try {
+      const latest = await this.findByAppId(appId);
+      if (!latest || latest.status !== ImportJobStatus.FAILED) {
+        return null;
+      }
+
+      const activityAt = latest.completedAt ?? latest.updatedAt ?? latest.createdAt;
+      if (activityAt < since) {
+        return null;
+      }
+
+      return latest;
+    } catch (error) {
+      this.logger.error('import-job.findRecentFailedByAppId.failed', {
+        appId,
+        since: since.toISOString(),
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    }
+  }
+
+  /**
    * Find all import jobs for an app
    *
    * @param appId - App ID

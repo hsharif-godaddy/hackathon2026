@@ -13,14 +13,14 @@ import { z } from 'zod';
 
 import { Logger } from '../../logging/index.js';
 import { AppRepository } from '../../database/repositories/AppRepository.js';
+import { ImportJobRepository } from '../../database/repositories/ImportJobRepository.js';
+import { AgentOperationLogsService } from '../../services/AgentOperationLogsService.js';
 import { CustomerLogsService } from '../../services/customer-logs-service.js';
 import { LogSanitizer } from '../../services/log-sanitizer.js';
 import {
   PaaSDiagnoseService,
-  PatternClassifier,
   LlmClassifier,
   DiagnoseLlmClient,
-  PAAS_ALL_PATTERNS,
   buildUnknownAnalysis,
 } from '../../services/diagnose/index.js';
 import type {
@@ -38,13 +38,17 @@ let _diagnoseService: DiagnoseService | null = null;
 function getDiagnoseService(): DiagnoseService {
   if (!_diagnoseService) {
     const appRepo = new AppRepository();
-    const customerLogsService = new CustomerLogsService(appRepo, new LogSanitizer());
-    const patternClassifier = new PatternClassifier(PAAS_ALL_PATTERNS);
+    const logSanitizer = new LogSanitizer();
+    const customerLogsService = new CustomerLogsService(appRepo, logSanitizer);
+    const agentOperationLogsService = new AgentOperationLogsService(
+      new ImportJobRepository(),
+      logSanitizer
+    );
     const llmClient = new DiagnoseLlmClient();
     const llmClassifier = new LlmClassifier(llmClient);
     _diagnoseService = new PaaSDiagnoseService({
       customerLogsService,
-      patternClassifier,
+      agentOperationLogsService,
       llmClassifier,
     });
   }
@@ -107,7 +111,7 @@ router.post('/:id/diagnose', async (req: Request, res: Response) => {
   logger.info('route.diagnose.request', {
     appId,
     target: request.target,
-    tier: request.tier ?? 'pattern',
+    tier: request.tier ?? 'llm',
   });
 
   try {
@@ -147,10 +151,9 @@ router.post('/:id/diagnose', async (req: Request, res: Response) => {
 
 const DiagnoseRequestBodySchema = z.object({
   target: z.enum(['preview', 'publish']),
-  // 'embedding' is reserved in DiagnoseTier but not implemented, so it is
-  // rejected at the HTTP boundary. The service keeps a runtime guard for
-  // non-HTTP callers (defense-in-depth).
-  tier: z.enum(['pattern', 'llm']).optional(),
+  // 'embedding' and legacy 'pattern' are reserved — rejected at the HTTP boundary.
+  // The service keeps a runtime guard for non-HTTP callers (defense-in-depth).
+  tier: z.enum(['llm']).optional(),
 });
 
 function errorCodeToStatus(code: DiagnoseErrorCode): number {

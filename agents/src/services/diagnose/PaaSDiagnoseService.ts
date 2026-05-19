@@ -1,6 +1,11 @@
 import { Logger } from '../../logging/index.js';
 import { toIsoDateString } from '../../utils/date-utils.js';
+import {
+  shouldUseAgentImportLogs,
+  type AgentOperationLogsService,
+} from '../AgentOperationLogsService.js';
 import type { CustomerLogsService, CustomerLogsResponse } from '../customer-logs-service.js';
+import type { SanitizedLogEntry } from '../log-sanitizer.js';
 import type { DiagnoseService } from './DiagnoseService.js';
 import type {
   Analysis,
@@ -23,7 +28,7 @@ import type {
  */
 export interface PaaSDiagnoseServiceDeps {
   customerLogsService: Pick<CustomerLogsService, 'getLogs'>;
-  patternClassifier: Classifier;
+  agentOperationLogsService?: Pick<AgentOperationLogsService, 'getFailureLogs'>;
   llmClassifier: Classifier;
   /** Injectable clock for deterministic timing in tests. */
   clock?: () => number;
@@ -47,14 +52,12 @@ const logger = Logger.create({ component: 'diagnose.service' });
  * PaaS (Node.js Hosting) implementation of the DiagnoseService contract.
  *
  * Orchestrates the diagnose pipeline:
- *   fetch logs → Tier 1 (pattern) → Tier 3 (LLM) → assemble response.
+ *   fetch logs → LLM classification → assemble response.
  *
- * The orchestration itself (tiered classification, in-flight dedupe, early-exit
- * when no failure signal is present) is product-neutral. What makes this class
- * PaaS-scoped is the dependencies wired into it at the route layer:
- *   - patternClassifier bound to PAAS_ALL_PATTERNS (PaaS-tuned remediation wording)
- *   - llmClassifier whose prompt schema is shaped for Node.js Hosting
- *     ("guideline-compliance checker", symptom mapping, requirement docs)
+ * The orchestration itself (in-flight dedupe, early-exit when no failure signal
+ * is present) is product-neutral. What makes this class PaaS-scoped is the
+ * llmClassifier wired at the route layer — its prompt schema is shaped for
+ * Node.js Hosting ("guideline-compliance checker", symptom mapping, requirement docs).
  *
  * Tenant/product enforcement (PRODUCT_NOT_ALLOWED) happens at the HTTP route,
  * not here.
@@ -68,7 +71,7 @@ const logger = Logger.create({ component: 'diagnose.service' });
  */
 export class PaaSDiagnoseService implements DiagnoseService {
   private readonly customerLogsService: PaaSDiagnoseServiceDeps['customerLogsService'];
-  private readonly patternClassifier: Classifier;
+  private readonly agentOperationLogsService: PaaSDiagnoseServiceDeps['agentOperationLogsService'];
   private readonly llmClassifier: Classifier;
   private readonly clock: () => number;
   private readonly defaultLines: number;
@@ -80,7 +83,7 @@ export class PaaSDiagnoseService implements DiagnoseService {
 
   constructor(deps: PaaSDiagnoseServiceDeps) {
     this.customerLogsService = deps.customerLogsService;
-    this.patternClassifier = deps.patternClassifier;
+    this.agentOperationLogsService = deps.agentOperationLogsService;
     this.llmClassifier = deps.llmClassifier;
     this.clock = deps.clock ?? Date.now;
     this.defaultLines = deps.defaultLines ?? DEFAULT_LINES;
@@ -109,7 +112,7 @@ export class PaaSDiagnoseService implements DiagnoseService {
 
   private async runAnalysis(request: DiagnoseRequest): Promise<DiagnoseResponse> {
     const startedAt = this.clock();
-    const requestedTier: DiagnoseTier = request.tier ?? 'pattern';
+    const requestedTier: DiagnoseTier = request.tier ?? 'llm';
     logger.info('diagnose.invocation.start', {
       appId: request.appId,
       target: request.target,
@@ -153,115 +156,115 @@ export class PaaSDiagnoseService implements DiagnoseService {
       return this.buildErrorResponse(request, logsResponse, startedAt);
     }
 
+    let logs = logsResponse.logs;
+    let logsAnalyzed = logsResponse.total;
+    let logSource: 'customer' | 'import_job' = 'customer';
+    const checkedAgentImportLogs = Boolean(this.agentOperationLogsService);
+
+    if (this.agentOperationLogsService) {
+      const agentLogs = await this.agentOperationLogsService.getFailureLogs({
+        appId: request.appId,
+        since: sinceIso,
+        lines: this.defaultLines,
+      });
+      if (shouldUseAgentImportLogs(agentLogs)) {
+        logs = agentLogs.logs;
+        logsAnalyzed = agentLogs.total;
+        logSource = 'import_job';
+        logger.info('diagnose.logs.source', {
+          appId: request.appId,
+          target: request.target,
+          logSource,
+          errorStage: agentLogs.errorStage,
+          lineCount: agentLogs.total,
+        });
+      }
+    }
+
     // Early exit: no failure signal in the fetched window → skip classifiers entirely.
-    const hasFailureSignal = logsResponse.logs.some(
-      (l) => l.level === 'error' || ERROR_TOKEN_RE.test(l.message),
-    );
+    const hasFailureSignal = hasFailureSignalInLogs(logs);
     if (!hasFailureSignal) {
       logger.info('diagnose.early_exit.no_failure', {
         appId: request.appId,
         target: request.target,
-        logCount: logsResponse.logs.length,
+        logCount: logs.length,
+        logSource,
+        checkedAgentImportLogs,
       });
       return {
         success: true,
         analysis: buildNoErrorLogAnalysis({
-          logsAnalyzed: logsResponse.total,
+          logsAnalyzed,
           startedAt,
           clock: this.clock,
+          checkedAgentImportLogs,
         }),
       };
     }
 
     const appContext: AppContext = { appId: request.appId, target: request.target };
-    let tierUsed: DiagnoseTier = 'llm';
-    let winning: ClassifierResult | null = null;
 
-    if (requestedTier === 'pattern') {
-      try {
-        const patternResult = await this.patternClassifier.classify(logsResponse.logs, appContext);
-        if (patternResult.handled && patternResult.issues.length > 0) {
-          logger.info('diagnose.tier.pattern.hit', {
-            appId: request.appId,
-            issueCount: patternResult.issues.length,
-          });
-          tierUsed = 'pattern';
-          winning = patternResult;
-        }
-      } catch (error) {
-        logger.warn('diagnose.tier.pattern.failure', {
-          appId: request.appId,
-          error: error instanceof Error ? error.message : String(error),
-          stack: error instanceof Error ? error.stack : undefined,
-        });
-        // Fall through to LLM tier.
-      }
+    // LlmClassifier's internal contract is never-throw: both prompt-load and
+    // LLM-call branches return a ClassifierResult with `degraded: true` on
+    // failure. This try/catch enforces the invariant at the callsite so a
+    // test double or refactor bug cannot downgrade the response from 500
+    // LLM_FAILURE (structured) to 500 UNKNOWN (the route's outer catch).
+    let llmResult: ClassifierResult;
+    try {
+      llmResult = await this.llmClassifier.classify(logs, appContext);
+    } catch (error) {
+      logger.warn('diagnose.tier.llm.unexpected_throw', {
+        appId: request.appId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      llmResult = {
+        handled: true,
+        degraded: true,
+        issues: [
+          {
+            id: 'llm-failure',
+            category: 'Analyzer Unavailable',
+            severity: 'warning',
+            message: 'Unable to analyze logs automatically — the LLM tier failed.',
+            recommendation:
+              'Review the raw logs manually or retry the analysis in a few moments.',
+            confidence: 0,
+            source: 'llm',
+          },
+        ],
+      };
     }
 
-    if (!winning) {
-      // LlmClassifier's internal contract is never-throw: both prompt-load and
-      // LLM-call branches return a ClassifierResult with `degraded: true` on
-      // failure. This try/catch enforces the invariant at the callsite so a
-      // test double or refactor bug cannot downgrade the response from 500
-      // LLM_FAILURE (structured) to 500 UNKNOWN (the route's outer catch).
-      let llmResult: ClassifierResult;
-      try {
-        llmResult = await this.llmClassifier.classify(logsResponse.logs, appContext);
-      } catch (error) {
-        logger.warn('diagnose.tier.llm.unexpected_throw', {
-          appId: request.appId,
-          error: error instanceof Error ? error.message : String(error),
-        });
-        llmResult = {
-          handled: true,
-          degraded: true,
-          issues: [
-            {
-              id: 'llm-failure',
-              category: 'Analyzer Unavailable',
-              severity: 'warning',
-              message: 'Unable to analyze logs automatically — the LLM tier failed.',
-              recommendation:
-                'Review the raw logs manually or retry the analysis in a few moments.',
-              confidence: 0,
-              source: 'llm',
-            },
-          ],
-        };
-      }
-      const llmFailure = llmResult.degraded === true;
-      logger.info('diagnose.tier.llm.hit', {
-        appId: request.appId,
-        issueCount: llmResult.issues.length,
-        llmFailure,
-      });
-      tierUsed = 'llm';
-      winning = llmResult;
+    const llmFailure = llmResult.degraded === true;
+    logger.info('diagnose.tier.llm.hit', {
+      appId: request.appId,
+      issueCount: llmResult.issues.length,
+      llmFailure,
+    });
 
-      // LLM tier is degraded (ENOENT prompt, upstream failure, etc.). Surface as a
-      // failure response so callers get HTTP 500 + errorCode LLM_FAILURE instead of
-      // success=true with a confidence-0 sentinel. The assembled analysis is still
-      // returned so clients can display the degraded issue for context.
-      if (llmFailure) {
-        const analysis = this.assembleAnalysis({
-          result: winning,
-          tierUsed,
-          logsAnalyzed: logsResponse.total,
-          startedAt,
-        });
-        return {
-          success: false,
-          errorCode: 'LLM_FAILURE',
-          error: winning.issues[0]?.message ?? 'LLM analyzer is currently unavailable.',
-          analysis,
-        };
-      }
+    // LLM tier is degraded (ENOENT prompt, upstream failure, etc.). Surface as a
+    // failure response so callers get HTTP 500 + errorCode LLM_FAILURE instead of
+    // success=true with a confidence-0 sentinel. The assembled analysis is still
+    // returned so clients can display the degraded issue for context.
+    if (llmFailure) {
+      const analysis = this.assembleAnalysis({
+        result: llmResult,
+        tierUsed: 'llm',
+        logsAnalyzed,
+        startedAt,
+      });
+      return {
+        success: false,
+        errorCode: 'LLM_FAILURE',
+        error: llmResult.issues[0]?.message ?? 'LLM analyzer is currently unavailable.',
+        analysis,
+      };
     }
 
     const analysis = this.assembleAnalysis({
-      result: winning,
-      tierUsed,
-      logsAnalyzed: logsResponse.total,
+      result: llmResult,
+      tierUsed: 'llm',
+      logsAnalyzed,
       startedAt,
     });
 
@@ -339,7 +342,7 @@ export function buildUnknownAnalysis(clock: () => number, startedAt: number): An
     },
     metadata: {
       logsAnalyzed: 0,
-      tierUsed: 'pattern',
+      tierUsed: 'llm',
       analysisTimeMs: Math.max(0, clock() - startedAt),
     },
   };
@@ -349,7 +352,12 @@ export function buildNoErrorLogAnalysis(args: {
   logsAnalyzed: number;
   startedAt: number;
   clock: () => number;
+  checkedAgentImportLogs?: boolean;
 }): Analysis {
+  const agentCheckedSuffix = args.checkedAgentImportLogs
+    ? ' Agent import/build history was also checked.'
+    : '';
+
   return {
     status: 'noerrlog',
     issues: [
@@ -360,11 +368,12 @@ export function buildNoErrorLogAnalysis(args: {
         message:
           'No error-level or error-token log entries were found in the last 3 hours. ' +
           'Possible reasons: (a) the deployment succeeded, (b) the failure is older than 3 hours, ' +
-          '(c) the container is still starting up.',
+          '(c) the container is still starting up.' +
+          agentCheckedSuffix,
         recommendation:
           'Wait a few minutes and retry, or re-trigger the failure to produce fresh logs.',
         confidence: 100,
-        source: 'pattern',
+        source: 'llm',
       },
     ],
     // Summary counters must match issues[] so consumers that render badges
@@ -374,14 +383,19 @@ export function buildNoErrorLogAnalysis(args: {
       errors: 0,
       warnings: 1,
       primaryRecommendation:
-        'No error signals found in the last 3 hours. Retry in a few minutes or re-trigger the failure.',
+        'No error signals found in the last 3 hours. Retry in a few minutes or re-trigger the failure.' +
+        agentCheckedSuffix,
     },
     metadata: {
       logsAnalyzed: args.logsAnalyzed,
-      tierUsed: 'pattern',
+      tierUsed: 'llm',
       analysisTimeMs: Math.max(0, args.clock() - args.startedAt),
     },
   };
+}
+
+function hasFailureSignalInLogs(logs: SanitizedLogEntry[]): boolean {
+  return logs.some((l) => l.level === 'error' || ERROR_TOKEN_RE.test(l.message));
 }
 
 function mapLogsErrorCode(code: string | undefined): DiagnoseErrorCode {

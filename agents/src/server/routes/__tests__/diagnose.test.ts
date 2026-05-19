@@ -35,7 +35,7 @@ function healthyAnalysis() {
     status: 'healthy' as const,
     issues: [],
     summary: { totalIssues: 0, errors: 0, warnings: 0, primaryRecommendation: 'x' },
-    metadata: { logsAnalyzed: 5, tierUsed: 'pattern' as const, analysisTimeMs: 10 },
+    metadata: { logsAnalyzed: 5, tierUsed: 'llm' as const, analysisTimeMs: 10 },
   };
 }
 
@@ -151,6 +151,19 @@ describe('diagnose route', () => {
       expect(res.body.errorCode).toBe('VALIDATION_ERROR');
       expect(service.diagnose).not.toHaveBeenCalled();
     });
+
+    it('400 when tier is legacy "pattern"', async () => {
+      const service = { diagnose: vi.fn() };
+      const app = buildApp(service);
+
+      const res = await request(app)
+        .post(`/apps/${APP_ID}/diagnose`)
+        .send({ target: 'publish', tier: 'pattern' });
+
+      expect(res.status).toBe(400);
+      expect(res.body.errorCode).toBe('VALIDATION_ERROR');
+      expect(service.diagnose).not.toHaveBeenCalled();
+    });
   });
 
   describe('product gating', () => {
@@ -200,7 +213,7 @@ describe('diagnose route', () => {
           status: 'unknown',
           issues: [],
           summary: { totalIssues: 0, errors: 0, warnings: 0, primaryRecommendation: 'x' },
-          metadata: { logsAnalyzed: 0, tierUsed: 'pattern', analysisTimeMs: 1 },
+          metadata: { logsAnalyzed: 0, tierUsed: 'llm', analysisTimeMs: 1 },
         },
       }) };
 

@@ -5,8 +5,8 @@ import type { DiagnoseRequest, DiagnoseResponse } from './types.js';
  *
  * Takes a DiagnoseRequest (appId + target) and returns a structured Analysis of
  * the app's recent logs. Implementations may differ in how they classify
- * failures (pattern tier, LLM tier, future tiers) and which domain-specific
- * prompts or rule bundles they load.
+ * failures (LLM classification today; future tiers may be added) and which
+ * domain-specific prompts they load.
  *
  * Current implementations:
  *   - PaaSDiagnoseService (Node.js Hosting) — the only implementation today.

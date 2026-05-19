@@ -60,7 +60,7 @@ export interface Analysis {
 export interface DiagnoseRequest {
   appId: string;
   target: DiagnoseTarget;
-  /** Starting tier. Default 'pattern'. 'embedding' is reserved but not yet implemented. */
+  /** Analysis tier. Only 'llm' is supported; 'pattern' is legacy. 'embedding' is reserved. */
   tier?: DiagnoseTier;
 }
 
