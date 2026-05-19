@@ -142,6 +142,7 @@ async function buildDevelopSystemPrompt(_appPath?: string): Promise<string> {
   promptBuilder
     .file(paths.getAgentFile('develop', 'core.md'))
     .file(paths.getSharedFile('communication.md'))
+    .file(paths.getSharedFile('security.md'))
     .file(paths.getAgentFile('develop', 'claude-behavior.md'))
     .template(filesystemTemplate) // Use template instead of file for dynamic path interpolation
     .file(paths.getAgentFile('develop', 'font-theme.md')) // Font theme tool documentation
@@ -161,8 +162,6 @@ async function buildDevelopSystemPrompt(_appPath?: string): Promise<string> {
     .file(paths.getAgentFile('develop', 'frontend.md'))
     .file(paths.getAgentFile('develop', 'seo.md'))
     .file(paths.getAgentFile('develop', 'secrets.md')) // Secrets management for API keys and credentials
-
-  promptBuilder.file(paths.getSharedFile('security.md'));
 
   // Skills section at end of prompt for emphasis — agent decides from this list directly
   if (skillsSection) {

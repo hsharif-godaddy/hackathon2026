@@ -638,6 +638,7 @@ whenToUse:
         '→ database ',
         '→ ai-agent ',
         '→ stripe |',
+        '→ custom-domain |',
         // seo is the terminal entry in the intent map; '\n' is the
         // end-of-line anchor. Update this assertion if a route is
         // added after seo (the fragment would silently stop matching).
@@ -690,6 +691,10 @@ whenToUse:
         'CRUD',
         // ai-agent
         'AI chatbot',
+        // custom-domain — generic intents (no fqdn required)
+        'buy domain',
+        'want domain',
+        'purchase domain',
         // seo
         'search rankings',
         'meta tags',

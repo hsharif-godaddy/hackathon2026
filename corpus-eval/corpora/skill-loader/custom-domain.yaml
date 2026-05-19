@@ -6,43 +6,61 @@ cases:
   # --- Positive: custom-domain skill should load ---
 
   - id: attach-domain-explicit
-    prompt: "I want to attach my domain to this site"
+    prompt: 'I want to attach my domain to this site'
     expectedSkill: custom-domain
     tags: [positive]
     rationale: Direct attach request — clearest signal to load the custom-domain skill
 
   - id: connect-domain
-    prompt: "Connect mydomain.com to my app"
+    prompt: 'Connect mydomain.com to my app'
     expectedSkill: custom-domain
     tags: [positive]
     rationale: Connect a specific domain — explicit attach intent
 
   - id: user-purchased-domain
-    prompt: "I just purchased mysite.com, proceed"
+    prompt: 'I just purchased mysite.com, proceed'
     expectedSkill: custom-domain
     tags: [positive]
     rationale: User already owns the domain and wants to attach it
 
   - id: buy-domain
-    prompt: "I need to buy a domain for my site"
+    prompt: 'I need to buy a domain for my site'
     expectedSkill: custom-domain
     tags: [positive]
     rationale: Domain purchase intent — should load the custom-domain skill
 
+  - id: buy-domain-minimal-phrasing
+    prompt: 'i want to buy a domain'
+    expectedSkill: custom-domain
+    tags: [positive, regression]
+    rationale: Minimal purchase intent with no fqdn — must route to skill, not Manage Plan canned reply
+
+  - id: purchase-domain-minimal-phrasing
+    prompt: 'I want to purchase a domain'
+    expectedSkill: custom-domain
+    tags: [positive, regression]
+    rationale: Generic purchase wording without fqdn must still load the skill, not billing-only replies
+
+  - id: purchase-domain-with-fqdn-and-help
+    prompt: "I'd like to purchase the domain tempflow.com for my website. Can you help me get started?"
+    expectedSkill: custom-domain
+    tags: [positive]
+    rationale: fqdn plus purchase wording should load skill (parity anchor for vaguer buys above)
+
   - id: find-domain-suggestions
-    prompt: "Can you help me find a good domain name for my bakery?"
+    prompt: 'Can you help me find a good domain name for my bakery?'
     expectedSkill: custom-domain
     tags: [positive]
     rationale: Asking for domain suggestions triggers the purchase flow
 
   - id: custom-domain-phrase
-    prompt: "How do I add a custom domain?"
+    prompt: 'How do I add a custom domain?'
     expectedSkill: custom-domain
     tags: [positive]
     rationale: Custom domain is the canonical user phrase for this feature
 
   - id: dns-configuration
-    prompt: "What DNS settings do I need to point my domain at this site?"
+    prompt: 'What DNS settings do I need to point my domain at this site?'
     expectedSkill: custom-domain
     tags: [positive]
     rationale: DNS configuration questions are covered by the custom-domain skill
@@ -54,7 +72,7 @@ cases:
     rationale: Troubleshooting a connected domain requires the custom-domain skill
 
   - id: use-existing-domain
-    prompt: "I already have a domain at GoDaddy — can I use it here?"
+    prompt: 'I already have a domain at GoDaddy — can I use it here?'
     expectedSkill: custom-domain
     tags: [positive]
     rationale: Attaching an existing GoDaddy domain is the attach flow
@@ -62,37 +80,37 @@ cases:
   # --- Positive: harder cases (no literal "domain" or buried intent) ---
 
   - id: custom-url
-    prompt: "I want my site to be reachable at www.sweetdelights.com"
+    prompt: 'I want my site to be reachable at www.sweetdelights.com'
     expectedSkill: custom-domain
     tags: [positive, hard]
     rationale: User states a URL without saying "domain" — intent is attach
 
   - id: own-address
-    prompt: "How do I get my own web address for this app?"
+    prompt: 'How do I get my own web address for this app?'
     expectedSkill: custom-domain
     tags: [positive, hard]
     rationale: Web address is a layperson synonym for domain — no literal keyword
 
   - id: point-url
-    prompt: "I bought myshop.com on Namecheap, how do I point it here?"
+    prompt: 'I bought myshop.com on Namecheap, how do I point it here?'
     expectedSkill: custom-domain
     tags: [positive, hard]
-    rationale: "Point it here + an FQDN is attach intent; the word domain never appears"
+    rationale: 'Point it here + an FQDN is attach intent; the word domain never appears'
 
   - id: dns-records-no-keyword
-    prompt: "What A record or CNAME do I need to set up for this site?"
+    prompt: 'What A record or CNAME do I need to set up for this site?'
     expectedSkill: custom-domain
     tags: [positive, hard]
     rationale: DNS record types without the word domain — still custom-domain skill territory
 
   - id: godaddy-registrar
-    prompt: "I have a .com at GoDaddy I want to use for this project"
+    prompt: 'I have a .com at GoDaddy I want to use for this project'
     expectedSkill: custom-domain
     tags: [positive, hard]
     rationale: Mentions a registrar and TLD, no "domain" keyword — attach intent
 
   - id: branded-url
-    prompt: "Can I make this site available at mybusiness.co instead of the preview URL?"
+    prompt: 'Can I make this site available at mybusiness.co instead of the preview URL?'
     expectedSkill: custom-domain
     tags: [positive, hard]
     rationale: Wants to replace the preview URL with a real FQDN - attach flow
@@ -100,13 +118,13 @@ cases:
   # --- Negative: tricky near-misses that should NOT load the skill ---
 
   - id: email-domain-confusion
-    prompt: "Can you add a contact email with our company address to the footer?"
+    prompt: 'Can you add a contact email with our company address to the footer?'
     expectedSkill: null
     tags: [negative, hard]
-    rationale: "Company address and email are not domain attachment"
+    rationale: 'Company address and email are not domain attachment'
 
   - id: url-path-not-domain
-    prompt: "Change the URL path from /about-us to /about"
+    prompt: 'Change the URL path from /about-us to /about'
     expectedSkill: null
     tags: [negative, hard]
     rationale: URL path routing, not domain attachment
@@ -118,31 +136,31 @@ cases:
   # to confirm the agent correctly avoids loading any skill.
 
   - id: add-hero-section
-    prompt: "Add a hero section with a background image to my homepage"
+    prompt: 'Add a hero section with a background image to my homepage'
     expectedSkill: null
     tags: [negative]
     rationale: Pure UI feature — no domain intent
 
   - id: fix-mobile-layout
-    prompt: "The mobile layout is broken, please fix it"
+    prompt: 'The mobile layout is broken, please fix it'
     expectedSkill: null
     tags: [negative]
     rationale: Layout bug fix — no domain intent
 
   - id: change-color-scheme
-    prompt: "Change the color scheme to something more professional"
+    prompt: 'Change the color scheme to something more professional'
     expectedSkill: null
     tags: [negative]
     rationale: Design change — no domain intent
 
   - id: add-contact-form
-    prompt: "Add a contact form to my site"
+    prompt: 'Add a contact form to my site'
     expectedSkill: null
     tags: [negative]
     rationale: Feature addition — no domain intent
 
   - id: create-about-page
-    prompt: "Create an About page with our team bios"
+    prompt: 'Create an About page with our team bios'
     expectedSkill: null
     tags: [negative]
     rationale: New page creation — no domain intent
