@@ -65,6 +65,7 @@ catalog:
   echarts: ^6.0.0
   echarts-for-react: ^3.0.6
   eslint: 9.39.4
+  events: ^3.3.0
   execa: ^9.6.1
   express: ^4.22.1
 

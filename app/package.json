@@ -143,6 +143,7 @@
     "clsx": "^2.1.1",
     "concurrently": "^9.2.1",
     "diff": "catalog:",
+    "events": "catalog:",
     "eventsource": "^4.1.0",
     "execa": "catalog:",
     "framer-motion": "^12.38.0",

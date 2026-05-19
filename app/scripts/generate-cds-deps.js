@@ -18,6 +18,7 @@ const manualDeps = [
   { specifier: 'react-device-detect', importName: 'reactDeviceDetect', importPath: 'react-device-detect' },
   { specifier: 'react-focus-lock', importName: 'reactFocusLock', importPath: 'react-focus-lock' },
   { specifier: 'react-transition-group', importName: 'reactTransitionGroup', importPath: 'react-transition-group' },
+  { specifier: 'events', importName: 'events', importPath: '../src/lib/cdsEventsShim' }, // shim provides named export for cds-loader data-URL gen
 ]
 
 generateCdsDependencies({ componentTypes, depsPath })
