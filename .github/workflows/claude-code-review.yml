@@ -9,14 +9,50 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  check-back-merge:
+    runs-on: ubuntu-latest
+    outputs:
+      skip: ${{ steps.detect.outputs.skip }}
+    steps:
+      - uses: actions/checkout@v4
+        if: github.event.action == 'synchronize'
+        with:
+          fetch-depth: 0
+      - id: detect
+        env:
+          EVENT_ACTION: ${{ github.event.action }}
+          BEFORE_SHA: ${{ github.event.before }}
+          AFTER_SHA: ${{ github.event.after }}
+        run: |
+          if [ "$EVENT_ACTION" != "synchronize" ]; then
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Skip if the PR's effective diff vs main is unchanged — no new code to review.
+          # Use github.event.before/after (explicit prev/cur PR head SHAs for synchronize events)
+          # git diff-tree outputs stable blob object hashes (not content), avoiding whitespace sensitivity.
+          before=$(git diff-tree -r --no-commit-id "$(git merge-base origin/main "$BEFORE_SHA")" "$BEFORE_SHA" | sha256sum) \
+            || { echo "skip=false" >> "$GITHUB_OUTPUT"; exit 0; }
+          after=$(git diff-tree -r --no-commit-id "$(git merge-base origin/main "$AFTER_SHA")" "$AFTER_SHA" | sha256sum) \
+            || { echo "skip=false" >> "$GITHUB_OUTPUT"; exit 0; }
+          if [ "$before" = "$after" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
   claude-review:
-    if: github.event.pull_request.draft == false && github.event.sender.type != 'Bot'
+    needs: check-back-merge
+    if: >
+      needs.check-back-merge.outputs.skip != 'true' &&
+      github.event.pull_request.draft == false &&
+      github.event.sender.type != 'Bot'
     uses: gdcorp-actions/gd-claude-code-action/.github/workflows/secure-claude-code.yml@1ca40c7d1b80196caae3f2d845e7a809837df6f2 # v2.15.0
     with:
       runner_group: ${{ vars.CLAUDE_RUNNER_GROUP }}
       runner_labels_json: '["self-hosted"]'
       gocode_environment: prod
-      track_progress: "true"
+      track_progress: 'true'
       plugin_marketplaces: |
         https://github.com/anthropics/claude-plugins-official.git
       plugins: |
