@@ -1,7 +1,15 @@
 ---
 name: ai-agent
-description: Add a streaming AI chatbot or agent to your app. Supports simple Q&A chat, multi-turn conversations, and autonomous agents with tool use (API calls, database queries, real-time data lookups). Providers: OpenAI, Anthropic, Google.
-whenToUse: User wants to add a chatbot, AI assistant, conversational AI, or an agent that can call tools and APIs. Phrases like "add a chatbot", "AI chat", "chat with AI", "add an AI assistant", "build an agent", "AI agent", "agent that can call APIs", "agent that can search my data", "chat feature", "AI that can answer questions about my app".
+description: >-
+  Add a streaming AI chatbot or agent to your app. Supports simple Q&A chat,
+  multi-turn conversations, and autonomous agents with tool use (API calls,
+  database queries, real-time data lookups). Providers: OpenAI, Anthropic, Google.
+whenToUse: >-
+  User wants to add a chatbot, AI assistant, conversational AI, or an agent
+  that can call tools and APIs. Phrases like "add a chatbot", "AI chat",
+  "chat with AI", "add an AI assistant", "build an agent", "AI agent",
+  "agent that can call APIs", "agent that can search my data", "chat feature",
+  "AI that can answer questions about my app".
 dependencies:
   - ai
 ---

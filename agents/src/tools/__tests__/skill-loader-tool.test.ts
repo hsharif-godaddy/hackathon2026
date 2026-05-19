@@ -889,4 +889,36 @@ enablementId: my-enabled
       expect(result.instructions).toContain('# Enabled Skill');
     });
   });
+
+  describe('skill frontmatter parsing regression', function frontmatterRegression() {
+    it('every shipped skill.md should have a parseable name and description', async function allSkillsParse() {
+      const matter = await import('gray-matter');
+      const skillsDir = path.resolve(
+        path.dirname(fileURLToPath(import.meta.url)),
+        '../../skills'
+      );
+      const entries = await fs.readdir(skillsDir, { withFileTypes: true });
+      const skillDirs = entries.filter(e => e.isDirectory()).map(e => e.name);
+
+      const failures: string[] = [];
+      for (const skillName of skillDirs) {
+        const skillMdPath = path.join(skillsDir, skillName, 'skill.md');
+        let content: string;
+        try {
+          content = await fs.readFile(skillMdPath, 'utf-8');
+        } catch {
+          continue;
+        }
+        try {
+          const { data } = matter.default(content);
+          if (!data.name) failures.push(`${skillName}/skill.md: missing 'name'`);
+          if (!data.description) failures.push(`${skillName}/skill.md: missing 'description'`);
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : String(err);
+          failures.push(`${skillName}/skill.md: YAML parse error - ${msg}`);
+        }
+      }
+      expect(failures, `Skill frontmatter failures:\n${failures.join('\n')}`).toHaveLength(0);
+    });
+  });
 });
