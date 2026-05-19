@@ -17,9 +17,9 @@ import PreviewCode from '@/app/[market]/develop/components/preview/PreviewCode'
 import PreviewError from '@/app/[market]/develop/components/preview/PreviewError'
 import PreviewLoadingState from '@/app/[market]/develop/components/preview/PreviewLoadingState'
 import PreviewSkeleton from '@/app/[market]/develop/components/preview/PreviewSkeleton'
+import StatusPill from '@/app/[market]/develop/components/preview/StatusPill'
 import ThinkingIndicator from '@/app/[market]/develop/components/ThinkingIndicator'
 import Tips from '@/app/[market]/develop/components/tips/Tips'
-import SpinnerIcon from '@/app/[market]/develop/components/tool-renderers/SpinnerIcon'
 import { MobileMode, PreviewViewMode, ViewMode } from '@/app/[market]/develop/components/types'
 import { useAppIdFromParams } from '@/app/[market]/develop/components/utils'
 import ErrorBoundary from '@/components/ErrorBoundary'
@@ -41,7 +41,7 @@ const DomainPanel = dynamic(
 const REFRESH_DEBOUNCE_MS = 500 // Debounce rapid refresh requests
 const PROCESSING_OVERLAY_FALLBACK_MS = 3000
 const STATE_RESTORE_FALLBACK_MS = 3000 // Fallback timeout if iframe doesn't send ready signal
-const SCROLL_LISTENER_OPTIONS = { capture: true, passive: true } as const;
+const SCROLL_LISTENER_OPTIONS = { capture: true, passive: true } as const
 /** Eval snapshot: IFRAME_READY means the iframe has registered its message listener; HMR-only builds use fallback */
 const EVAL_SNAPSHOT_IFRAME_FALLBACK_MS = 8000
 // Bootstrap-race recovery (Layer 3): if the iframe doesn't post
@@ -136,7 +136,7 @@ export default function PreviewPane({
   const isTopLevelDomainEnabled = useSwitchboard('appbuilder-domain-top-level');
   /** Switchboard: translucent creation overlay + edit chip behavior. */
   const isPreviewEnhancedOverlaysEnabled =
-    useSwitchboard('appbuilder-preview-enhanced-overlays') === true;
+    useSwitchboard('appbuilder-preview-enhanced-overlays') === true
   /** Switchboard: when true, swap building-overlay text while askQuestion is awaiting input. */
   const isBuildOverlayQuestionMessageEnabled =
     useSwitchboard('appbuilder-build-overlay-question-message') === true;
@@ -259,15 +259,16 @@ export default function PreviewPane({
       return
     }
 
-    const { left, top, width } = previewShellRef.current.getBoundingClientRect()
+    const { left, width, bottom } = previewShellRef.current.getBoundingClientRect()
     setEditingChipPosition({
-      top: top + 16,
+      top: bottom - 64,
       left: left + (width / 2),
     })
   }, [])
 
   useEffect(() => {
     const shouldTrackEditingChipPosition = Boolean(
+      !isMobile &&
       isPortalReady &&
       isPreviewEnhancedOverlaysEnabled &&
       showProcessingOverlay &&
@@ -305,6 +306,7 @@ export default function PreviewPane({
     }
   }, [
     isPortalReady,
+    isMobile,
     isPreviewEnhancedOverlaysEnabled,
     showBuildingOverlay,
     showProcessingOverlay,
@@ -1129,6 +1131,7 @@ export default function PreviewPane({
   if (previewUrl && serverState?.isReady) {
     const isPreviewSurfaceVisible = viewMode !== ViewMode.CODE && viewMode !== ViewMode.BRAND
     const showEditingChip = Boolean(
+      !isMobile &&
       isPreviewEnhancedOverlaysEnabled &&
       isPreviewSurfaceVisible &&
       !showBuildingOverlay &&
@@ -1198,8 +1201,11 @@ export default function PreviewPane({
                     </div>
                   </div>
 
-                  {/* Thinking indicator for mobile preview mode */}
-                  {isMobile && mobileMode === MobileMode.PREVIEW && isProcessing && !showBuildingOverlay && (
+                  {/* Thinking/editing indicator for mobile preview mode */}
+                  {isMobile &&
+                    mobileMode === MobileMode.PREVIEW &&
+                    !showBuildingOverlay &&
+                    (isPreviewEnhancedOverlaysEnabled ? (isProcessing || isMutatingFiles) : isProcessing) && (
                     <div
                       className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 cursor-pointer"
                       onClick={() => handleMobileModeChange(MobileMode.TOOLS)}
@@ -1213,9 +1219,20 @@ export default function PreviewPane({
                         }
                       }}
                     >
-                      <div className="bg-intents-ux-box-backgroundColor rounded-full px-2 pt-0.5 pb-0 shadow-lg border">
-                        <ThinkingIndicator active={true} inline={true} />
-                      </div>
+                      {isPreviewEnhancedOverlaysEnabled ? (
+                        <StatusPill
+                          data-testid="preview-mobile-status-pill"
+                          label={
+                            isMutatingFiles
+                              ? t('builder_preview_editing', undefined, 'Editing…')
+                              : t('builder_agent_thinking', undefined, 'Thinking…')
+                          }
+                        />
+                      ) : (
+                        <div className="bg-intents-ux-box-backgroundColor rounded-full px-2 pt-0.5 pb-0 shadow-lg border">
+                          <ThinkingIndicator active={true} inline={true} />
+                        </div>
+                      )}
                     </div>
                   )}
                 </motion.div>
@@ -1282,21 +1299,9 @@ export default function PreviewPane({
                       exit={{ opacity: 0, x: '-50%', y: -4, transition: { duration: 0.25 } }}
                       transition={{ duration: 0.175 }}
                     >
-                      {/* TODO: Inline style needed to override opacity compositing in portal context.
-                          Replace with design-system tokens once status-pill intent is available. */}
-                      {/* @ux/chip internal structure does not provide a unified pill background for this status indicator */}
-                      <div
-                        className="flex items-center gap-1.5 whitespace-nowrap rounded-full border border-gray-200 bg-white px-3 py-1.5 shadow-lg"
-                        style={{
-                          backgroundColor: '#ffffff',
-                          opacity: 1,
-                        }}
-                      >
-                        <SpinnerIcon className="size-3 text-[#613EA3]" />
-                        <span className="text-sm font-medium text-gray-700">
-                          {t('builder_preview_editing', undefined, 'Editing…')}
-                        </span>
-                      </div>
+                      <StatusPill
+                        label={t('builder_preview_editing', undefined, 'Editing…')}
+                      />
                     </motion.div>
                   )}
                 </AnimatePresence>,

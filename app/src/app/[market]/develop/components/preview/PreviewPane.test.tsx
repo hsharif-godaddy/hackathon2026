@@ -5,12 +5,12 @@ import '@testing-library/jest-dom';
 
 import type React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, fireEvent, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 
 import { renderWithProviders } from '@/tests/test-utils';
 import { postMessageToIframe } from '@/utils/postMessage';
 import PreviewPane, { restoreIframeState } from './PreviewPane';
-import { PreviewViewMode, ViewMode } from '../types';
+import { MobileMode, PreviewViewMode, ViewMode } from '../types';
 
 // Mock child components
 vi.mock('./PreviewCode', () => ({
@@ -67,6 +67,8 @@ const mockServerPollingStore = {
 const mockDevelopPageStore = {
   previewViewMode: PreviewViewMode.DESKTOP,
   viewMode: ViewMode.PREVIEW,
+  mobileMode: MobileMode.PREVIEW,
+  handleMobileModeChange: vi.fn(),
   setPreviewViewMode: vi.fn(),
   publishStates: { 'test-app-123': { isPublishing: false } } as Record<string, { isPublishing: boolean }>,
   isVersionHistoryOpen: false,
@@ -190,6 +192,7 @@ describe('PreviewPane', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockDevelopPageStore.viewMode = ViewMode.PREVIEW;
+    mockDevelopPageStore.mobileMode = MobileMode.PREVIEW;
     mockDevelopPageStore.publishStates = { 'test-app-123': { isPublishing: false } };
     mockServerPollingStore.getServerState = vi.fn(() => ({ isReady: true, url: 'http://localhost:3000' }));
     mockGitHistoryData = { commits: [] };
@@ -392,6 +395,36 @@ describe('PreviewPane', () => {
     );
   });
 
+  it('should dismiss editing chip on preview-refresh message', async () => {
+    mockSwitchboardResults[EDITING_CHIP_FLAG] = true;
+
+    renderWithProviders(
+      <PreviewPane
+        onPreviewRefresh={vi.fn()}
+        isProcessing={true}
+        isMutatingFiles={true}
+        showBuildingOverlay={false}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('preview-editing-chip')).toBeInTheDocument();
+    });
+
+    window.dispatchEvent(new MessageEvent('message', {
+      data: { type: 'preview-refresh' },
+      origin: window.location.origin,
+      source: window,
+    }));
+
+    await waitFor(
+      () => {
+        expect(screen.getByTestId('preview-editing-chip')).toHaveStyle({ opacity: '0' });
+      },
+      { timeout: 2000 }
+    );
+  });
+
   it('should set mobile preview mode when isMobile is true', () => {
     renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} isMobile={true} />);
 
@@ -412,6 +445,168 @@ describe('PreviewPane', () => {
 
     // Should now set DESKTOP mode
     expect(mockDevelopPageStore.setPreviewViewMode).toHaveBeenCalledWith(PreviewViewMode.DESKTOP);
+  });
+
+  it('should keep ThinkingIndicator on mobile when enhanced overlays flag is off', () => {
+    mockSwitchboardResults[EDITING_CHIP_FLAG] = false;
+
+    renderWithProviders(
+      <PreviewPane
+        onPreviewRefresh={vi.fn()}
+        isMobile={true}
+        isProcessing={true}
+        isMutatingFiles={false}
+        showBuildingOverlay={false}
+      />
+    );
+
+    expect(screen.getByText('builder_agent_thinking')).toBeInTheDocument();
+    expect(screen.queryByTestId('preview-mobile-status-pill')).not.toBeInTheDocument();
+  });
+
+  it('should show mobile StatusPill with Thinking label when enhanced overlays flag is on and not mutating', () => {
+    mockSwitchboardResults[EDITING_CHIP_FLAG] = true;
+
+    renderWithProviders(
+      <PreviewPane
+        onPreviewRefresh={vi.fn()}
+        isMobile={true}
+        isProcessing={true}
+        isMutatingFiles={false}
+        showBuildingOverlay={false}
+      />
+    );
+
+    const mobileStatusPill = screen.getByTestId('preview-mobile-status-pill');
+
+    expect(mobileStatusPill).toBeInTheDocument();
+    expect(within(mobileStatusPill).getByText('Thinking…')).toBeInTheDocument();
+  });
+
+  it('should show mobile StatusPill with Editing label when enhanced overlays flag is on and mutating', () => {
+    mockSwitchboardResults[EDITING_CHIP_FLAG] = true;
+
+    renderWithProviders(
+      <PreviewPane
+        onPreviewRefresh={vi.fn()}
+        isMobile={true}
+        isProcessing={true}
+        isMutatingFiles={true}
+        showBuildingOverlay={false}
+      />
+    );
+
+    const mobileStatusPill = screen.getByTestId('preview-mobile-status-pill');
+
+    expect(mobileStatusPill).toBeInTheDocument();
+    expect(within(mobileStatusPill).getByText('Editing…')).toBeInTheDocument();
+    expect(within(mobileStatusPill).queryByText('Thinking…')).not.toBeInTheDocument();
+  });
+
+  it('should open mobile tools when mobile status pill wrapper is clicked', () => {
+    mockSwitchboardResults[EDITING_CHIP_FLAG] = true;
+
+    renderWithProviders(
+      <PreviewPane
+        onPreviewRefresh={vi.fn()}
+        isMobile={true}
+        isProcessing={true}
+        isMutatingFiles={false}
+        showBuildingOverlay={false}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'devtools_open' }));
+
+    expect(mockDevelopPageStore.handleMobileModeChange).toHaveBeenCalledWith(MobileMode.TOOLS);
+  });
+
+  it('should not render desktop portal editing chip on mobile when enhanced overlays flag is on', async () => {
+    mockSwitchboardResults[EDITING_CHIP_FLAG] = true;
+
+    renderWithProviders(
+      <PreviewPane
+        onPreviewRefresh={vi.fn()}
+        isMobile={true}
+        isProcessing={true}
+        isMutatingFiles={true}
+        showBuildingOverlay={false}
+      />
+    );
+
+    expect(screen.getByTestId('preview-mobile-status-pill')).toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('preview-editing-chip')).not.toBeInTheDocument();
+    });
+  });
+
+  it('should not show mobile status pill when not processing', () => {
+    mockSwitchboardResults[EDITING_CHIP_FLAG] = true;
+
+    renderWithProviders(
+      <PreviewPane
+        onPreviewRefresh={vi.fn()}
+        isMobile={true}
+        isProcessing={false}
+        isMutatingFiles={false}
+        showBuildingOverlay={false}
+      />
+    );
+
+    expect(screen.queryByTestId('preview-mobile-status-pill')).not.toBeInTheDocument();
+  });
+
+  it('should show mobile status pill with editing label when mutating without processing', () => {
+    mockSwitchboardResults[EDITING_CHIP_FLAG] = true;
+
+    renderWithProviders(
+      <PreviewPane
+        onPreviewRefresh={vi.fn()}
+        isMobile={true}
+        isProcessing={false}
+        isMutatingFiles={true}
+        showBuildingOverlay={false}
+      />
+    );
+
+    const mobileStatusPill = screen.getByTestId('preview-mobile-status-pill');
+
+    expect(mobileStatusPill).toBeInTheDocument();
+    expect(within(mobileStatusPill).getByText('Editing…')).toBeInTheDocument();
+  });
+
+  it('should not show mobile status pill during building overlay', () => {
+    mockSwitchboardResults[EDITING_CHIP_FLAG] = true;
+
+    renderWithProviders(
+      <PreviewPane
+        onPreviewRefresh={vi.fn()}
+        isMobile={true}
+        isProcessing={true}
+        isMutatingFiles={true}
+        showBuildingOverlay={true}
+      />
+    );
+
+    expect(screen.queryByTestId('preview-mobile-status-pill')).not.toBeInTheDocument();
+  });
+
+  it('should not show mobile status pill when mobile mode is not preview', () => {
+    mockSwitchboardResults[EDITING_CHIP_FLAG] = true;
+    mockDevelopPageStore.mobileMode = MobileMode.TOOLS;
+
+    renderWithProviders(
+      <PreviewPane
+        onPreviewRefresh={vi.fn()}
+        isMobile={true}
+        isProcessing={true}
+        isMutatingFiles={true}
+        showBuildingOverlay={false}
+      />
+    );
+
+    expect(screen.queryByTestId('preview-mobile-status-pill')).not.toBeInTheDocument();
   });
 
   it('should show cookie-blocked overlay when cookieVerified is false', () => {
