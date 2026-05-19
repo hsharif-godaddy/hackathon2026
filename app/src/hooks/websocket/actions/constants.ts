@@ -9,6 +9,7 @@ export const CLIENT_ACTIONS = {
   GET_SITE_DATA: 'getSiteData',
   ATTACH_DOMAIN: 'attachDomain',
   MCP_CALL: 'mcp_call',
+  CONVERSATIONS_CALL: 'conversationsCall',
 } as const
 
 export type ClientAction = typeof CLIENT_ACTIONS[keyof typeof CLIENT_ACTIONS]

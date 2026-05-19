@@ -7,6 +7,7 @@
 
 export * from './attachDomainAction'
 export * from './constants'
+export * from './conversationsAction'
 export * from './getSiteDataAction'
 export * from './mcpCallAction'
 export * from './publishAction'
@@ -14,6 +15,7 @@ export * from './types'
 
 import { attachDomainAction } from './attachDomainAction'
 import { CLIENT_ACTIONS } from './constants'
+import { conversationsAction } from './conversationsAction'
 import { getSiteDataAction } from './getSiteDataAction'
 import { mcpCallAction } from './mcpCallAction'
 import { publishAction } from './publishAction'
@@ -29,4 +31,5 @@ export const clientActionExecutors: Record<string, ClientActionExecutor> = {
   [CLIENT_ACTIONS.GET_SITE_DATA]: getSiteDataAction,
   [CLIENT_ACTIONS.ATTACH_DOMAIN]: attachDomainAction,
   [CLIENT_ACTIONS.MCP_CALL]: mcpCallAction,
+  [CLIENT_ACTIONS.CONVERSATIONS_CALL]: conversationsAction,
 }
