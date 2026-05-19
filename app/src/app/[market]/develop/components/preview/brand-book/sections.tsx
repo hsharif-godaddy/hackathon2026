@@ -132,9 +132,11 @@ export function LogoSection({
                 <Image
                   src={logoUrl}
                   alt="Logo on light background"
-                  fill
+                  width={0}
+                  height={0}
+                  sizes="(max-width: 768px) 100vw, 50vw"
                   unoptimized
-                  className={styles.logoImage}
+                  className={styles.logoPanelMedia}
                 />
               </div>
               <div className={styles.logoPanelFooter}>
@@ -149,9 +151,11 @@ export function LogoSection({
                 <Image
                   src={reversedLogoUrl || logoUrl}
                   alt="Logo on dark background"
-                  fill
+                  width={0}
+                  height={0}
+                  sizes="(max-width: 768px) 100vw, 50vw"
                   unoptimized
-                  className={styles.logoImage}
+                  className={styles.logoPanelMedia}
                 />
               </div>
               <div className={styles.logoPanelFooter}>
