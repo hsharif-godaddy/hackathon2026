@@ -27,6 +27,7 @@ describe('adaptBudgetToGrants', () => {
       budgetItemId: 'item-1',
       creditsTotal: '1000.00',
       creditsUsed: '500.00',
+      costToCreditRatio: '1.000000',
       expiresAt: FUTURE_DATE,
       startsAt: '2026-04-01T00:00:00.000Z',
       resetInterval: null,

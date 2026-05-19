@@ -4,7 +4,9 @@ import { Rocket } from 'lucide-react'
 import { useEffect, useRef } from 'react'
 
 import ToolHeader from '@/app/[market]/develop/components/tool-renderers/ToolHeader'
+import { usePaywallEligibility } from '@/hooks/usePaywallEligibility'
 import { useTranslations } from '@/hooks/useTranslations'
+import { PAYWALL_ITC } from '@/lib/paywall/shared'
 import { logger } from '@/lib/request-context'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import type { DefaultToolRendererProps } from './DefaultToolRenderer'
@@ -65,7 +67,9 @@ export default function PublishClientToolRenderer({
   const t = useTranslations()
   const currentAppId = useDevelopPageStore((state) => state.currentAppId)
   const requestPublishPopoverOpen = useDevelopPageStore((state) => state.requestPublishPopoverOpen)
-  const hasRequestedOpenRef = useRef(false)
+  const openUpgradeModal = useDevelopPageStore((state) => state.openUpgradeModal)
+  const { showPaywall, isLoading: isPaywallLoading } = usePaywallEligibility()
+  const hasHandledRef = useRef(false)
   const lastLoggedErrorRef = useRef<string | null>(null)
 
   // Parse input with proper typing
@@ -75,7 +79,7 @@ export default function PublishClientToolRenderer({
   const commitHash = extractCommitHash(result, inputData)
 
   useEffect(() => {
-    hasRequestedOpenRef.current = false
+    hasHandledRef.current = false
   }, [toolId])
 
   useEffect(() => {
@@ -83,13 +87,19 @@ export default function PublishClientToolRenderer({
       !currentAppId ||
       !isLastAssistantMessage ||
       toolStatus !== 'running' ||
-      hasRequestedOpenRef.current
+      isPaywallLoading ||
+      hasHandledRef.current
     ) {
       return
     }
-    requestPublishPopoverOpen(currentAppId)
-    hasRequestedOpenRef.current = true
-  }, [currentAppId, isLastAssistantMessage, requestPublishPopoverOpen, toolStatus])
+    hasHandledRef.current = true
+
+    if (showPaywall) {
+      openUpgradeModal('publish', PAYWALL_ITC.PUBLISH)
+    } else {
+      requestPublishPopoverOpen(currentAppId)
+    }
+  }, [currentAppId, isLastAssistantMessage, isPaywallLoading, openUpgradeModal, requestPublishPopoverOpen, showPaywall, toolStatus])
 
   useEffect(() => {
     if (!currentAppId || !error || error === lastLoggedErrorRef.current) return
@@ -97,7 +107,8 @@ export default function PublishClientToolRenderer({
     lastLoggedErrorRef.current = error
   }, [currentAppId, error, toolStatus])
 
-  // Determine display text based on status
+  const resultFailed = typeof result === 'object' && result && (result as Record<string, unknown>).success === false
+
   const getDisplayText = () => {
     if (toolStatus === 'running') {
       return commitHash
@@ -105,7 +116,7 @@ export default function PublishClientToolRenderer({
         : t('builder_tools_publish_running', void 0, 'Publishing...')
     }
 
-    if (toolStatus === 'error') {
+    if (toolStatus === 'error' || resultFailed) {
       return t('builder_tools_publish_failed', void 0, 'Publish failed')
     }
 

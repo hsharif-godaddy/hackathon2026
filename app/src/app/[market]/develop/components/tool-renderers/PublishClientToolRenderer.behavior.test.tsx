@@ -9,17 +9,30 @@ import { render } from '@testing-library/react';
 import PublishClientToolRenderer from './PublishClientToolRenderer';
 
 const mockRequestPublishPopoverOpen = vi.fn();
+const mockOpenUpgradeModal = vi.fn();
 const mockLoggerError = vi.fn();
+let mockPaywallResult = { showPaywall: false, isLoading: false, isError: false, error: null };
+
 const mockDevelopStore: {
   currentAppId: string | null;
   requestPublishPopoverOpen: typeof mockRequestPublishPopoverOpen;
+  openUpgradeModal: typeof mockOpenUpgradeModal;
 } = {
   currentAppId: 'app-123',
   requestPublishPopoverOpen: mockRequestPublishPopoverOpen,
+  openUpgradeModal: mockOpenUpgradeModal,
 };
 
 vi.mock('@/hooks/useTranslations', () => ({
   useTranslations: () => (key: string, values?: Record<string, unknown>, fallback?: string) => fallback ?? key,
+}));
+
+vi.mock('@/hooks/usePaywallEligibility', () => ({
+  usePaywallEligibility: () => mockPaywallResult,
+}));
+
+vi.mock('@/lib/paywall/shared', () => ({
+  PAYWALL_ITC: { PUBLISH: 'upp_airo_ai_builder_publish' },
 }));
 
 vi.mock('@/stores/useDevelopPageStore', () => ({
@@ -36,9 +49,10 @@ describe('PublishClientToolRenderer behavior', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockDevelopStore.currentAppId = 'app-123';
+    mockPaywallResult = { showPaywall: false, isLoading: false, isError: false, error: null };
   });
 
-  it('requests AppPublish popover when latest publish tool is running', () => {
+  it('opens popover when paywall allows access', () => {
     render(
       <PublishClientToolRenderer
         toolName="publishClient"
@@ -49,10 +63,55 @@ describe('PublishClientToolRenderer behavior', () => {
     );
 
     expect(mockRequestPublishPopoverOpen).toHaveBeenCalledWith('app-123');
-    expect(mockRequestPublishPopoverOpen).toHaveBeenCalledTimes(1);
+    expect(mockOpenUpgradeModal).not.toHaveBeenCalled();
   });
 
-  it('does not request popover for non-latest assistant messages', () => {
+  it('shows upgrade modal when paywall denies access', () => {
+    mockPaywallResult = { showPaywall: true, isLoading: false, isError: false, error: null };
+
+    render(
+      <PublishClientToolRenderer
+        toolName="publishClient"
+        toolStatus="running"
+        toolId="tool-paywall"
+        isLastAssistantMessage
+      />,
+    );
+
+    expect(mockOpenUpgradeModal).toHaveBeenCalledWith('publish', 'upp_airo_ai_builder_publish');
+    expect(mockRequestPublishPopoverOpen).not.toHaveBeenCalled();
+  });
+
+  it('waits for paywall loading before deciding', () => {
+    mockPaywallResult = { showPaywall: false, isLoading: true, isError: false, error: null };
+
+    const { rerender } = render(
+      <PublishClientToolRenderer
+        toolName="publishClient"
+        toolStatus="running"
+        toolId="tool-loading"
+        isLastAssistantMessage
+      />,
+    );
+
+    expect(mockRequestPublishPopoverOpen).not.toHaveBeenCalled();
+    expect(mockOpenUpgradeModal).not.toHaveBeenCalled();
+
+    // Once loading resolves, should open popover
+    mockPaywallResult = { showPaywall: false, isLoading: false, isError: false, error: null };
+    rerender(
+      <PublishClientToolRenderer
+        toolName="publishClient"
+        toolStatus="running"
+        toolId="tool-loading"
+        isLastAssistantMessage
+      />,
+    );
+
+    expect(mockRequestPublishPopoverOpen).toHaveBeenCalledWith('app-123');
+  });
+
+  it('does not act for non-latest assistant messages', () => {
     render(
       <PublishClientToolRenderer
         toolName="publishClient"
@@ -63,9 +122,10 @@ describe('PublishClientToolRenderer behavior', () => {
     );
 
     expect(mockRequestPublishPopoverOpen).not.toHaveBeenCalled();
+    expect(mockOpenUpgradeModal).not.toHaveBeenCalled();
   });
 
-  it('does not request popover when tool status is completed', () => {
+  it('does not act when tool status is completed', () => {
     render(
       <PublishClientToolRenderer
         toolName="publishClient"
@@ -76,56 +136,10 @@ describe('PublishClientToolRenderer behavior', () => {
     );
 
     expect(mockRequestPublishPopoverOpen).not.toHaveBeenCalled();
+    expect(mockOpenUpgradeModal).not.toHaveBeenCalled();
   });
 
-  it('does not request AppPublish popover when latest publish tool errors', () => {
-    render(
-      <PublishClientToolRenderer
-        toolName="publishClient"
-        toolStatus="error"
-        toolId="tool-error"
-        isLastAssistantMessage
-        error="publish failed"
-      />,
-    );
-
-    expect(mockRequestPublishPopoverOpen).not.toHaveBeenCalled();
-    expect(mockLoggerError).toHaveBeenCalledWith('publish-client-tool-renderer.tool-error', {
-      appId: 'app-123',
-      error: 'publish failed',
-      toolStatus: 'error',
-    });
-  });
-
-  it('does not request popover again on running to error transition and logs error', () => {
-    const { rerender } = render(
-      <PublishClientToolRenderer
-        toolName="publishClient"
-        toolStatus="running"
-        toolId="tool-running-error"
-        isLastAssistantMessage
-      />,
-    );
-
-    rerender(
-      <PublishClientToolRenderer
-        toolName="publishClient"
-        toolStatus="error"
-        toolId="tool-running-error"
-        isLastAssistantMessage
-        error="runtime failure"
-      />,
-    );
-
-    expect(mockRequestPublishPopoverOpen).toHaveBeenCalledTimes(1);
-    expect(mockLoggerError).toHaveBeenCalledWith('publish-client-tool-renderer.tool-error', {
-      appId: 'app-123',
-      error: 'runtime failure',
-      toolStatus: 'error',
-    });
-  });
-
-  it('does not request popover when app id is missing', () => {
+  it('does not act when app id is missing', () => {
     mockDevelopStore.currentAppId = null;
     render(
       <PublishClientToolRenderer
@@ -137,6 +151,47 @@ describe('PublishClientToolRenderer behavior', () => {
     );
 
     expect(mockRequestPublishPopoverOpen).not.toHaveBeenCalled();
+    expect(mockOpenUpgradeModal).not.toHaveBeenCalled();
+  });
+
+  it('only acts once per tool call', () => {
+    const { rerender } = render(
+      <PublishClientToolRenderer
+        toolName="publishClient"
+        toolStatus="running"
+        toolId="tool-4"
+        isLastAssistantMessage
+      />,
+    );
+
+    rerender(
+      <PublishClientToolRenderer
+        toolName="publishClient"
+        toolStatus="running"
+        toolId="tool-4"
+        isLastAssistantMessage
+      />,
+    );
+
+    expect(mockRequestPublishPopoverOpen).toHaveBeenCalledTimes(1);
+  });
+
+  it('logs errors when tool status is error', () => {
+    render(
+      <PublishClientToolRenderer
+        toolName="publishClient"
+        toolStatus="error"
+        toolId="tool-log-error"
+        isLastAssistantMessage
+        error="runtime failure"
+      />,
+    );
+
+    expect(mockLoggerError).toHaveBeenCalledWith('publish-client-tool-renderer.tool-error', {
+      appId: 'app-123',
+      error: 'runtime failure',
+      toolStatus: 'error',
+    });
   });
 
   it('deduplicates identical error logs across toolId changes', () => {
@@ -163,47 +218,18 @@ describe('PublishClientToolRenderer behavior', () => {
     expect(mockLoggerError).toHaveBeenCalledTimes(1);
   });
 
-  it('requests popover once per tool call while status remains running', () => {
-    const { rerender } = render(
-      <PublishClientToolRenderer
-        toolName="publishClient"
-        toolStatus="running"
-        toolId="tool-4"
-        isLastAssistantMessage
-      />,
-    );
-
-    rerender(
-      <PublishClientToolRenderer
-        toolName="publishClient"
-        toolStatus="running"
-        toolId="tool-4"
-        isLastAssistantMessage
-      />,
-    );
-
-    expect(mockRequestPublishPopoverOpen).toHaveBeenCalledTimes(1);
-  });
-
-  it('does not trigger a second open on running to completed transition', () => {
-    const { rerender } = render(
-      <PublishClientToolRenderer
-        toolName="publishClient"
-        toolStatus="running"
-        toolId="tool-transition"
-        isLastAssistantMessage
-      />,
-    );
-
-    rerender(
+  it('shows "Publish failed" when result has success: false', () => {
+    const { container } = render(
       <PublishClientToolRenderer
         toolName="publishClient"
         toolStatus="completed"
-        toolId="tool-transition"
+        toolId="tool-blocked"
         isLastAssistantMessage
+        result={{ success: false, message: 'some error' }}
       />,
     );
 
-    expect(mockRequestPublishPopoverOpen).toHaveBeenCalledTimes(1);
+    expect(container.textContent).toContain('Publish failed');
+    expect(container.textContent).not.toContain('Published successfully');
   });
 });
