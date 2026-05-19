@@ -215,6 +215,37 @@ describe('editLogoTool', () => {
     }));
   });
 
+  it('should persist landscapeMockupUrlMap when edit result includes landscapeMockupUrl', async () => {
+    mockEditLogos.mockResolvedValue({
+      sessionId: 'edit-sess-456',
+      logos: [
+        {
+          id: 'edited-logo-1',
+          transparentUrl: 'https://cdn/et1.png',
+          solidUrl: 'https://cdn/es1.png',
+          mockupUrl: 'https://cdn/em1.png',
+          landscapeMockupUrl: 'https://cdn/elm1.png',
+        },
+      ],
+    });
+
+    const { editLogoTool } = await import('../index.js');
+
+    await editLogoTool.execute(
+      {
+        sourceSessionId: 'sess-123',
+        sourceLogoId: 'logo-1',
+        prompt: 'Make the logo blue',
+      },
+      { socketId: 'socket-1', metadata: { appId: 'app-123' } }
+    );
+
+    expect(mockSetSlot).toHaveBeenCalledWith('app-123', 'logo/primary', expect.objectContaining({
+      mockupUrlMap: { 'https://cdn/et1.png': 'https://cdn/em1.png' },
+      landscapeMockupUrlMap: { 'https://cdn/et1.png': 'https://cdn/elm1.png' },
+    }));
+  });
+
   it('should return error when appId is missing from context metadata', async () => {
     const { editLogoTool } = await import('../index.js');
 

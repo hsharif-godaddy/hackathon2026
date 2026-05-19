@@ -152,6 +152,7 @@ const LAYOUT_URL_GETTERS: Record<LogoLayout, {
   reversed: (l: ProcessedLogo) => string | undefined;
   reversedSolid: (l: ProcessedLogo) => string | undefined;
   mockup: (l: ProcessedLogo) => string | undefined;
+  landscapeMockup: (l: ProcessedLogo) => string | undefined;
 }> = {
   square: {
     transparent: (l) => l.transparentUrl,
@@ -159,6 +160,7 @@ const LAYOUT_URL_GETTERS: Record<LogoLayout, {
     reversed: (l) => l.reversedUrl,
     reversedSolid: (l) => l.reversedSolidUrl,
     mockup: (l) => l.mockupUrl,
+    landscapeMockup: (l) => l.landscapeMockupUrl,
   },
   horizontal: {
     transparent: (l) => l.horizontalTransparentUrl,
@@ -166,6 +168,7 @@ const LAYOUT_URL_GETTERS: Record<LogoLayout, {
     reversed: (l) => l.horizontalReversedUrl,
     reversedSolid: (l) => l.horizontalReversedSolidUrl,
     mockup: (l) => l.horizontalMockupUrl,
+    landscapeMockup: (l) => l.horizontalLandscapeMockupUrl,
   },
   vertical: {
     transparent: (l) => l.verticalTransparentUrl,
@@ -173,6 +176,7 @@ const LAYOUT_URL_GETTERS: Record<LogoLayout, {
     reversed: (l) => l.verticalReversedUrl,
     reversedSolid: (l) => l.verticalReversedSolidUrl,
     mockup: (l) => l.verticalMockupUrl,
+    landscapeMockup: (l) => l.verticalLandscapeMockupUrl,
   },
 };
 
@@ -255,6 +259,7 @@ async function saveLogosToSlots(
     const reversedUrlMap: Record<string, string> = {};
     const reversedSolidUrlMap: Record<string, string> = {};
     const mockupUrlMap: Record<string, string> = {};
+    const landscapeMockupUrlMap: Record<string, string> = {};
     const logoSourceMap: Record<string, { sessionId: string; logoId: string }> = {};
     for (const logo of logos) {
       const tUrl = getters.transparent(logo);
@@ -262,11 +267,13 @@ async function saveLogosToSlots(
       const rUrl = getters.reversed(logo);
       const rsUrl = getters.reversedSolid(logo);
       const mUrl = getters.mockup(logo);
+      const lmUrl = getters.landscapeMockup(logo);
       const logoSessionId = logoSessionIds?.get(logo.id) ?? sessionId;
       if (tUrl && sUrl) solidUrlMap[tUrl] = sUrl;
       if (tUrl && rUrl) reversedUrlMap[tUrl] = rUrl;
       if (tUrl && rsUrl) reversedSolidUrlMap[tUrl] = rsUrl;
       if (tUrl && mUrl) mockupUrlMap[tUrl] = mUrl;
+      if (tUrl && lmUrl) landscapeMockupUrlMap[tUrl] = lmUrl;
       if (tUrl) logoSourceMap[tUrl] = { sessionId: logoSessionId, logoId: logo.id };
     }
 
@@ -278,6 +285,7 @@ async function saveLogosToSlots(
     let mergedReversedUrlMap = { ...reversedUrlMap };
     let mergedReversedSolidUrlMap = { ...reversedSolidUrlMap };
     let mergedMockupUrlMap = { ...mockupUrlMap };
+    let mergedLandscapeMockupUrlMap = { ...landscapeMockupUrlMap };
     let mergedLogoSourceMap = { ...logoSourceMap };
 
     if (existingSlot) {
@@ -289,6 +297,7 @@ async function saveLogosToSlots(
       mergedReversedUrlMap = { ...(existingSlot.reversedUrlMap || {}), ...reversedUrlMap };
       mergedReversedSolidUrlMap = { ...(existingSlot.reversedSolidUrlMap || {}), ...reversedSolidUrlMap };
       mergedMockupUrlMap = { ...(existingSlot.mockupUrlMap || {}), ...mockupUrlMap };
+      mergedLandscapeMockupUrlMap = { ...(existingSlot.landscapeMockupUrlMap || {}), ...landscapeMockupUrlMap };
       mergedLogoSourceMap = { ...(existingSlot.logoSourceMap || {}), ...logoSourceMap };
     }
 
@@ -303,6 +312,7 @@ async function saveLogosToSlots(
       reversedUrlMap: mergedReversedUrlMap,
       reversedSolidUrlMap: mergedReversedSolidUrlMap,
       mockupUrlMap: mergedMockupUrlMap,
+      landscapeMockupUrlMap: mergedLandscapeMockupUrlMap,
       logoSourceMap: mergedLogoSourceMap,
       userModified: false,
       createdAt: existingSlot?.createdAt || now,

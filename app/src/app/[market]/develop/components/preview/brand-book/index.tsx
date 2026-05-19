@@ -67,7 +67,8 @@ export default function BrandBookView({ appId }: BrandBookViewProps) {
         logo?.reversedSolidUrl || logo?.horizontalReversedSolidUrl || logo?.verticalReversedSolidUrl ||
         logo?.reversedUrl || logo?.horizontalReversedUrl || logo?.verticalReversedUrl;
       setPreviewReversedUrl(reversed || null);
-      const mockup = logo?.mockupUrl || logo?.horizontalMockupUrl || logo?.verticalMockupUrl;
+      const mockup = logo?.landscapeMockupUrl || logo?.horizontalLandscapeMockupUrl || logo?.verticalLandscapeMockupUrl
+        || logo?.mockupUrl || logo?.horizontalMockupUrl || logo?.verticalMockupUrl;
       setPreviewMockupUrl(mockup || null);
 
       if (event.type === 'logo-generated' && !logoViewFiredRef.current) {
@@ -155,7 +156,7 @@ export default function BrandBookView({ appId }: BrandBookViewProps) {
     for (const slot of slots) {
       const transparentUrl = slot?.currentUrl;
       if (!transparentUrl) continue;
-      return slot?.mockupUrlMap?.[transparentUrl];
+      return slot?.landscapeMockupUrlMap?.[transparentUrl] || slot?.mockupUrlMap?.[transparentUrl];
     }
 
     return undefined;

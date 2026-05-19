@@ -437,6 +437,83 @@ describe('generateLogoTool', () => {
     }));
   });
 
+  it('should persist landscapeMockupUrlMap when logo includes landscapeMockupUrl', async () => {
+    mockGenerateLogos.mockResolvedValue({
+      sessionId: 'sess-123',
+      logos: [
+        {
+          id: 'logo-1',
+          transparentUrl: 'https://cdn/t1.png',
+          solidUrl: 'https://cdn/s1.png',
+          mockupUrl: 'https://cdn/m1.png',
+          landscapeMockupUrl: 'https://cdn/lm1.png',
+        },
+      ],
+    });
+
+    mockGetSlot.mockResolvedValue({ success: false });
+
+    const { generateLogoTool } = await import('../index.js');
+
+    await generateLogoTool.execute(
+      {
+        brandName: 'My Brand',
+        brandDescription: 'A cool brand',
+        variations: [{ style: 'glyph' }],
+      },
+      { socketId: 'socket-1', metadata: { appId: 'app-123' } }
+    );
+
+    expect(mockSetSlot).toHaveBeenCalledWith('app-123', 'logo/primary', expect.objectContaining({
+      mockupUrlMap: { 'https://cdn/t1.png': 'https://cdn/m1.png' },
+      landscapeMockupUrlMap: { 'https://cdn/t1.png': 'https://cdn/lm1.png' },
+    }));
+  });
+
+  it('should merge landscapeMockupUrlMap with existing slot that only has mockupUrlMap', async () => {
+    mockGenerateLogos.mockResolvedValue({
+      sessionId: 'sess-123',
+      logos: [
+        {
+          id: 'logo-1',
+          transparentUrl: 'https://cdn/t1.png',
+          solidUrl: 'https://cdn/s1.png',
+          mockupUrl: 'https://cdn/m1.png',
+          landscapeMockupUrl: 'https://cdn/lm1.png',
+        },
+      ],
+    });
+
+    mockGetSlot.mockResolvedValue({
+      success: true,
+      slot: {
+        mediaType: 'logo',
+        currentUrl: 'https://cdn/old-t1.png',
+        alternatives: [],
+        mockupUrlMap: { 'https://cdn/old-t1.png': 'https://cdn/old-m1.png' },
+      },
+    });
+
+    const { generateLogoTool } = await import('../index.js');
+
+    await generateLogoTool.execute(
+      {
+        brandName: 'My Brand',
+        brandDescription: 'A cool brand',
+        variations: [{ style: 'glyph' }],
+      },
+      { socketId: 'socket-1', metadata: { appId: 'app-123' } }
+    );
+
+    expect(mockSetSlot).toHaveBeenCalledWith('app-123', 'logo/primary', expect.objectContaining({
+      mockupUrlMap: {
+        'https://cdn/old-t1.png': 'https://cdn/old-m1.png',
+        'https://cdn/t1.png': 'https://cdn/m1.png',
+      },
+      landscapeMockupUrlMap: { 'https://cdn/t1.png': 'https://cdn/lm1.png' },
+    }));
+  });
+
   it('should pass layout parameter to logoService', async () => {
     const { generateLogoTool } = await import('../index.js');
 

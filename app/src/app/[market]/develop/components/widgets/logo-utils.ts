@@ -8,16 +8,19 @@ export interface LogoData {
   solidUrl?: string
   reversedUrl?: string
   mockupUrl?: string
+  landscapeMockupUrl?: string
   // Horizontal layout URLs
   horizontalTransparentUrl?: string
   horizontalSolidUrl?: string
   horizontalReversedUrl?: string
   horizontalMockupUrl?: string
+  horizontalLandscapeMockupUrl?: string
   // Vertical layout URLs
   verticalTransparentUrl?: string
   verticalSolidUrl?: string
   verticalReversedUrl?: string
   verticalMockupUrl?: string
+  verticalLandscapeMockupUrl?: string
   // V1 Extra Urls when not entitled or deprecated
   watermarkedTransparentUrl?: string
   watermarkedSolidUrl?: string

@@ -82,6 +82,9 @@ export interface MediaSlot {
   /** Maps transparent URL → mockup-preview URL for logo variants.
    *  Only populated when mediaType === 'logo'. */
   mockupUrlMap?: Record<string, string>;
+  /** Maps transparent URL → landscape mockup URL for logo variants.
+   *  Only populated when mediaType === 'logo'. */
+  landscapeMockupUrlMap?: Record<string, string>;
   /** Maps transparent URL → { sessionId, logoId } for logo edit traceability.
    *  Only populated when mediaType === 'logo'. Allows edit_logo to find the
    *  source session/logo for any saved logo variant. */

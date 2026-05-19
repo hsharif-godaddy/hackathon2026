@@ -44,18 +44,21 @@ export interface ProcessedLogo {
   reversedUrl?: string;
   reversedSolidUrl?: string;
   mockupUrl?: string;
+  landscapeMockupUrl?: string;
   // Horizontal layout
   horizontalTransparentUrl?: string;
   horizontalSolidUrl?: string;
   horizontalReversedUrl?: string;
   horizontalReversedSolidUrl?: string;
   horizontalMockupUrl?: string;
+  horizontalLandscapeMockupUrl?: string;
   // Vertical layout
   verticalTransparentUrl?: string;
   verticalSolidUrl?: string;
   verticalReversedUrl?: string;
   verticalReversedSolidUrl?: string;
   verticalMockupUrl?: string;
+  verticalLandscapeMockupUrl?: string;
 }
 
 export interface LogoGenerateResult {
