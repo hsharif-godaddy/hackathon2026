@@ -12,6 +12,8 @@ import {
   multiTurnPublishFlowScenario,
 } from '../prompt-vs-skill/index.js';
 import { complexPromptLatencyScenario } from '../complex-prompt-latency.js';
+import { buildWithExplicitNameScenario } from '../todo-lifecycle/build-with-explicit-name.js';
+import { reAskInToolCallScenario } from '../todo-lifecycle/re-ask-in-tool-call.js';
 import {
   makeGocodeClient,
   makeCtrlPlaneClient,
@@ -112,5 +114,21 @@ describe('scenario shapes', () => {
       complexPromptLatencyScenario(gocode, ctrlPlane),
       'complex-prompt-latency',
     );
+  });
+
+  it('build-with-explicit-name has todo-lifecycle evaluator and 5 trials', () => {
+    const scenario = buildWithExplicitNameScenario(gocode, ctrlPlane);
+    expect(scenario.name).toBe('build-with-explicit-name');
+    expect(scenario.goals.length).toBeGreaterThan(0);
+    expect(scenario.evaluators.map((e) => e.name)).toContain('todo-lifecycle');
+    expect(scenario.trials).toBe(5);
+  });
+
+  it('re-ask-in-tool-call has todo-lifecycle evaluator and 5 trials', () => {
+    const scenario = reAskInToolCallScenario(gocode, ctrlPlane);
+    expect(scenario.name).toBe('re-ask-in-tool-call');
+    expect(scenario.goals.length).toBeGreaterThan(0);
+    expect(scenario.evaluators.map((e) => e.name)).toContain('todo-lifecycle');
+    expect(scenario.trials).toBe(5);
   });
 });

@@ -27,7 +27,7 @@ interface BaselineStore {
 interface GraduationRunnerOptionsBase {
   scenario: Scenario;
   config: ResolvedConfig;
-  makeAgentClient?: () => Promise<AgentClient>;
+  makeAgentClient?: (scenario?: Scenario) => Promise<AgentClient>;
   syntheticUser?: SyntheticUserAgent;
   siteCapture?: SiteCapture;
   baselineStore: BaselineStore;

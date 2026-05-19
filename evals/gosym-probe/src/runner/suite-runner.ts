@@ -78,8 +78,10 @@ export async function runCapped<T>(
 export interface SuiteRunnerOptions {
   scenarios: Scenario[];
   config: ResolvedConfig;
-  /** Per-trial async factory; each Simulation owns its connection. */
-  makeAgentClient?: () => Promise<AgentClient>;
+  /** Per-trial async factory; each Simulation owns its connection.
+   *  Receives the scenario so the factory can inject auth context
+   *  (e.g. agentProfile) into the socket handshake. */
+  makeAgentClient?: (scenario?: Scenario) => Promise<AgentClient>;
   syntheticUser?: SyntheticUserAgent;
   siteCapture?: SiteCapture;
   trialsOverride?: number;
@@ -233,7 +235,7 @@ export class SuiteRunner {
       i: number,
       firstTurnInactivityMsOverride?: number,
     ): Promise<Transcript> => {
-      const client = await makeAgentClient();
+      const client = await makeAgentClient(scenario);
       try {
         return await this.runInScope(scenario.name, i, async () => {
           scenario.beforeTrial?.(client, i);

@@ -139,8 +139,19 @@ async function main(): Promise<void> {
     ? parseInt(values['max-turns'], 10)
     : undefined;
 
-  const makeAgentClient = async () => {
-    const client = new AABClient({ socketUrl: config.aab.socketUrl });
+  const makeAgentClient = async (scenario?: Scenario) => {
+    const client = new AABClient({
+      socketUrl: config.aab.socketUrl,
+      ...(scenario?.agentProfile ? {
+        auth: {
+          agentContext: {
+            siteId: 'bypass-site',
+            agentProfile: scenario.agentProfile,
+            agentProfileSelectorEnabled: true,
+          },
+        },
+      } : {}),
+    });
     await client.waitForConnection();
     return client;
   };

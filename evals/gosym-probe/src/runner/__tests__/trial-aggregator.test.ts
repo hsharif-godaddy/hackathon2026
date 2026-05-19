@@ -767,4 +767,75 @@ describe('TrialAggregator', () => {
       warnSpy.mockRestore();
     });
   });
+
+  describe('evaluatorFailed exclusion', () => {
+    function makeFailedTrial(trialIndex: number, evalName: string): TrialResult {
+      return {
+        trialIndex,
+        transcript: {
+          scenarioName: 'test-scenario',
+          trialIndex,
+          turns: [],
+          snapshots: [],
+          errors: [],
+        },
+        evalResults: [{
+          evaluator: evalName,
+          score: 0,
+          verdict: 'unknown',
+          reason: 'judge parse error',
+          evaluatorFailed: true,
+        }],
+      };
+    }
+
+    it('excludes evaluatorFailed trials from totalTrials and passAtK', () => {
+      const trials = [
+        makeTrial(0, { eval: 'pass' }),
+        makeFailedTrial(1, 'eval'),
+        makeFailedTrial(2, 'eval'),
+      ];
+      const result = agg.aggregate(makeScenario(), trials);
+      expect(result.aggregated['eval'].totalTrials).toBe(1);
+      expect(result.aggregated['eval'].passingTrials).toBe(1);
+      expect(result.aggregated['eval'].passAtK).toBe(true);
+      expect(result.aggregated['eval'].passToTheK).toBe(true);
+      expect(result.aggregated['eval'].failedTrials).toBe(2);
+    });
+
+    it('passAtK is false when all non-failed trials fail', () => {
+      const trials = [
+        makeTrial(0, { eval: 'fail' }),
+        makeFailedTrial(1, 'eval'),
+        makeFailedTrial(2, 'eval'),
+      ];
+      const result = agg.aggregate(makeScenario(), trials);
+      expect(result.aggregated['eval'].totalTrials).toBe(1);
+      expect(result.aggregated['eval'].passingTrials).toBe(0);
+      expect(result.aggregated['eval'].passAtK).toBe(false);
+      expect(result.aggregated['eval'].failedTrials).toBe(2);
+    });
+
+    it('all trials failed produces totalTrials 0 and passAtK false', () => {
+      const trials = [
+        makeFailedTrial(0, 'eval'),
+        makeFailedTrial(1, 'eval'),
+      ];
+      const result = agg.aggregate(makeScenario(), trials);
+      expect(result.aggregated['eval'].totalTrials).toBe(0);
+      expect(result.aggregated['eval'].passAtK).toBe(false);
+      expect(result.aggregated['eval'].passToTheK).toBe(false);
+      expect(result.aggregated['eval'].failedTrials).toBe(2);
+    });
+
+    it('does not emit failedTrials when none failed', () => {
+      const trials = [
+        makeTrial(0, { eval: 'pass' }),
+        makeTrial(1, { eval: 'fail' }),
+      ];
+      const result = agg.aggregate(makeScenario(), trials);
+      expect(result.aggregated['eval'].failedTrials).toBeUndefined();
+      expect(result.aggregated['eval'].totalTrials).toBe(2);
+    });
+  });
 });

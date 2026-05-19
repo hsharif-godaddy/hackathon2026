@@ -5,6 +5,8 @@ import {
   multipageCatalogScenario,
   simplePortfolioScenario,
 } from './golden-light/index.js';
+import { buildWithExplicitNameScenario } from './todo-lifecycle/build-with-explicit-name.js';
+import { reAskInToolCallScenario } from './todo-lifecycle/re-ask-in-tool-call.js';
 import { buildLandingPageScenario } from './build-landing-page.js';
 import {
   complexPromptLatencyScenario,
@@ -31,6 +33,8 @@ export function createAllScenarios(
   return [
     simplePortfolioScenario(gocode, ctrlPlane),
     businessSiteScenario(gocode, ctrlPlane),
+    buildWithExplicitNameScenario(gocode, ctrlPlane),
+    reAskInToolCallScenario(gocode, ctrlPlane),
     multipageCatalogScenario(gocode, ctrlPlane),
     cleaningBizAmbiguityScenario(gocode, ctrlPlane),
     buildLandingPageScenario(gocode, ctrlPlane, config),

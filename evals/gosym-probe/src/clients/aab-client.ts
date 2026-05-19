@@ -35,6 +35,19 @@ interface RawAgentEntry {
   name: string;
 }
 
+export interface AgentContext {
+  siteId: string;
+  agentProfile: string;
+  agentProfileSelectorEnabled: boolean;
+}
+
+export interface AABClientOptions {
+  socketUrl: Config['aab']['socketUrl'];
+  auth?: {
+    agentContext?: AgentContext;
+  };
+}
+
 export class AABClient implements AgentClient {
   private socket: Socket;
   private readonly socketUrl: string;
@@ -44,11 +57,12 @@ export class AABClient implements AgentClient {
   private conversationId: string | undefined;
   private accumulatedChunks = '';
 
-  constructor(config: Pick<Config['aab'], 'socketUrl'>) {
+  constructor(config: AABClientOptions) {
     this.socketUrl = config.socketUrl;
     this.socket = io(config.socketUrl, {
       transports: ['websocket'],
       reconnection: false,
+      ...(config.auth ? { auth: config.auth } : {}),
     });
     this.registerSocketHandlers();
   }

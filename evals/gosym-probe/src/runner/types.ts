@@ -34,8 +34,10 @@ export interface AggregatedResult {
    * baseline comparison.
    */
   baselinePassingTrials?: number;
-  /** Total number of trials run (includes all verdicts). */
+  /** Total number of trials run (excludes evaluator-failed trials). */
   totalTrials: number;
+  /** Number of trials where the evaluator itself failed (e.g. judge parse error). */
+  failedTrials?: number;
   /** Median score across non-unknown trials; present only for score-mode evaluators. */
   medianScore?: number;
   /**

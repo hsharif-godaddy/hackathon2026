@@ -11,6 +11,7 @@ import { median } from '../util/median.js';
 type EvalData = {
   verdicts: EvalResult['verdict'][];
   scores: number[];
+  failed: boolean[];
   versions: Set<string>;
   versionedResults: number;
 };
@@ -39,11 +40,13 @@ export class TrialAggregator {
           ?? {
             verdicts: [],
             scores: [],
+            failed: [],
             versions: new Set<string>(),
             versionedResults: 0,
           };
         data.verdicts.push(r.verdict);
         data.scores.push(r.score);
+        data.failed.push(r.evaluatorFailed === true);
         if (r.evalVersion) {
           data.versions.add(r.evalVersion);
           data.versionedResults++;
@@ -53,12 +56,13 @@ export class TrialAggregator {
     }
 
     const aggregated: Record<string, AggregatedResult> = {};
-    for (const [name, { verdicts, scores, versions, versionedResults }] of evalDataMap) {
-      const passingTrials = verdicts.filter((v) => v === 'pass').length;
-      const totalTrials = verdicts.length;
+    for (const [name, { verdicts, scores, failed, versions, versionedResults }] of evalDataMap) {
+      const failedCount = failed.filter(Boolean).length;
+      const passingTrials = verdicts.filter((v, i) => v === 'pass' && !failed[i]).length;
+      const totalTrials = verdicts.length - failedCount;
       const mode = modeMap.get(name);
       const filteredMedian = mode === 'score'
-        ? median(scores.filter((_, i) => verdicts[i] !== 'unknown'))
+        ? median(scores.filter((_, i) => verdicts[i] !== 'unknown' && !failed[i]))
         : null;
       const lowerIsBetter = lowerIsBetterMap.get(name);
 
@@ -76,10 +80,11 @@ export class TrialAggregator {
         }),
         passingTrials,
         totalTrials,
+        ...(failedCount > 0 && { failedTrials: failedCount }),
         ...(filteredMedian != null && { medianScore: filteredMedian }),
         ...(mode !== undefined && { regressionMode: mode }),
         ...(versions.size === 1 &&
-          versionedResults === totalTrials && { evalVersion: [...versions][0] }),
+          versionedResults === verdicts.length && { evalVersion: [...versions][0] }),
         ...(mode === 'score' && lowerIsBetter !== undefined && { lowerIsBetter }),
       };
     }

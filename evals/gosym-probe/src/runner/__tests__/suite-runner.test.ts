@@ -36,7 +36,7 @@ const mockClient = {
   onMessage: vi.fn(),
   disconnect: vi.fn(),
 };
-const makeAgentClient = async () => mockClient;
+const makeAgentClient = async (_scenario?: Scenario) => mockClient;
 
 const mockSyntheticUser: SyntheticUserAgent = {
   nextMessage: vi.fn().mockResolvedValue(null),

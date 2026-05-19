@@ -42,6 +42,7 @@ export interface Scenario {
   name: string;
   suite?: string;
   persona: Persona;
+  agentProfile?: string;
   goals: ScenarioGoal[];
   evaluators: Evaluator[];
   trials: number;

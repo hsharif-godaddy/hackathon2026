@@ -36,6 +36,7 @@ import type { Evaluator } from '../../evaluators/evaluator.js';
 
 export interface GoldenLightConfig {
   name: string;
+  agentProfile?: string;
   goals: [ScenarioGoal, ...ScenarioGoal[]];
 
   staticFirstMessage?: string;
@@ -84,6 +85,7 @@ export function createGoldenLightScenario(
       ? undefined
       : (config.suite ?? 'golden-light'),
     persona: config.persona ?? standardPersona,
+    agentProfile: config.agentProfile ?? undefined,
     staticFirstMessage: config.staticFirstMessage,
     goals: config.goals,
     evaluators: allEvaluators,
