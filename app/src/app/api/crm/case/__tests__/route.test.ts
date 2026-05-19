@@ -79,7 +79,7 @@ describe('/api/crm/case POST', () => {
 
   it('returns 200 and caseId on happy path', async () => {
     mockOpenCrmCase.mockResolvedValue({ caseId: 'case-1', caseNumber: '000001' });
-    const res = await callRoute({ description: 'broken', followUp: true, appId: 'app-1' });
+    const res = await callRoute({ description: 'broken', appId: 'app-1' });
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body).toEqual({ success: true, caseId: 'case-1', caseNumber: '000001' });
@@ -87,7 +87,6 @@ describe('/api/crm/case POST', () => {
       customerId: 'cust-jwt',
       shopperId: 'shop-jwt',
       description: 'broken',
-      followUp: true,
       appId: 'app-1',
     }));
   });
@@ -178,10 +177,12 @@ describe('/api/crm/case POST', () => {
     );
   });
 
-  it('coerces non-boolean followUp to safe default', async () => {
+  it('does not forward followUp from the request body to openCrmCase', async () => {
+    // Stale browser tabs may still POST followUp; the BFF must drop it so
+    // it never reaches the CRM payload.
     mockOpenCrmCase.mockResolvedValue({ caseId: 'c' });
-    await callRoute({ description: 'x', followUp: 'truthy' });
+    await callRoute({ description: 'x', followUp: true });
     const passed = mockOpenCrmCase.mock.calls[0]?.[0];
-    expect(passed.followUp).toBe(false);
+    expect(passed.followUp).toBeUndefined();
   });
 });

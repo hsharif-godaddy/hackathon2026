@@ -16,7 +16,7 @@ vi.mock('../airo-cert-token', () => ({
 }));
 
 import { airoCertTokenService } from '../airo-cert-token';
-import { buildCaseBody, type OpenCaseInput,openCrmCase } from '../case-client';
+import { buildCaseBody, type OpenCaseInput, openCrmCase } from '../case-client';
 import type { CustomerProfile } from '../profile-client';
 
 const FAKE_TOKEN = 'fake-sso-jwt';
@@ -25,7 +25,6 @@ const INPUT: OpenCaseInput = {
   customerId: 'cust-1',
   shopperId: 'shop-1',
   description: 'my site is not working',
-  followUp: true,
   appId: 'app-123',
 };
 
@@ -33,27 +32,51 @@ const PROFILE: CustomerProfile = {
   firstName: 'Jane',
   lastName: 'Doe',
   email: 'jane@example.com',
-  phone: '+1-5551234',
+  phone: '15551234',
 };
 
 describe('buildCaseBody', () => {
-  it('populates contact, category, severity S2, and additionalData', () => {
+  it('populates contact, category, severity, and CRM-spec additionalData', () => {
     const body = buildCaseBody(INPUT, PROFILE);
     expect(body.contactName).toBe('Jane Doe');
     expect(body.contactFirstName).toBe('Jane');
     expect(body.contactLastName).toBe('Doe');
     expect(body.contactEmail).toBe('jane@example.com');
-    expect(body.contactPhone).toBe('+1-5551234');
+    expect(body.contactPhone).toBe('15551234');
     expect(body.shopperId).toBe('shop-1');
     expect(body.primaryCategory).toBe('Websites');
     expect(body.secondaryCategory).toBe('Airo AI Builder');
     expect(body.issue).toBe('General Support');
     expect(body.recordType).toBe('standard');
-    expect(body.additionalData.severity).toBe('S2');
-    expect(body.additionalData.followUpConsent).toBe('TRUE');
-    expect(body.additionalData.appId).toBe('app-123');
-    expect(body.additionalData['Escalation Details']).toBe('my site is not working');
-    expect(body.caseNotes[0]?.note).toContain('my site is not working');
+    expect(body.additionalData).toEqual({
+      permissionToMakeChanges: 'true',
+      severity: 'S2',
+      escalated: 'true',
+      type: 'Complete',
+      escalationDetails: 'my site is not working',
+    });
+  });
+
+  it('does not include legacy or non-spec keys in additionalData', () => {
+    const body = buildCaseBody(INPUT, PROFILE);
+    // CRM silently drops keys whose case or wording doesn't match the spec —
+    // lock against any legacy variant slipping back in.
+    expect(body.additionalData).not.toHaveProperty('Permission to Make Changes');
+    expect(body.additionalData).not.toHaveProperty('Type');
+    expect(body.additionalData).not.toHaveProperty('Escalation Details');
+    expect(body.additionalData).not.toHaveProperty('followUpConsent');
+    expect(body.additionalData).not.toHaveProperty('appId');
+  });
+
+  it('formats note as "Comment : (appid - <appId>) <description>" when appId is present', () => {
+    const body = buildCaseBody(INPUT, PROFILE);
+    expect(body.caseNotes[0]?.note).toBe('Comment : (appid - app-123) my site is not working');
+  });
+
+  it('omits the appid segment from the note when appId is null', () => {
+    const body = buildCaseBody({ ...INPUT, appId: null }, PROFILE);
+    expect(body.caseNotes[0]?.note).toBe('Comment : my site is not working');
+    expect(body.caseNotes[0]?.note).not.toContain('appid');
   });
 
   it('omits contactPhone when profile phone is null', () => {
@@ -61,20 +84,15 @@ describe('buildCaseBody', () => {
     expect(body.contactPhone).toBeUndefined();
   });
 
-  it('omits appId when not provided', () => {
-    const body = buildCaseBody({ ...INPUT, appId: null }, PROFILE);
-    expect(body.additionalData.appId).toBeUndefined();
-  });
-
-  it('sets followUpConsent FALSE when followUp is false', () => {
-    const body = buildCaseBody({ ...INPUT, followUp: false }, PROFILE);
-    expect(body.additionalData.followUpConsent).toBe('FALSE');
-  });
-
-  it('truncates very long descriptions in caseNotes', () => {
+  it('truncates very long descriptions in caseNotes and escalationDetails', () => {
     const longDesc = 'x'.repeat(5000);
     const body = buildCaseBody({ ...INPUT, description: longDesc }, PROFILE);
-    expect(body.caseNotes[0]?.note.length).toBeLessThanOrEqual(4000 + 'Airo AI Builder : Customer reported : '.length);
+    const prefix = 'Comment : (appid - app-123) ';
+    expect(body.caseNotes[0]?.note.length).toBeLessThanOrEqual(4000 + prefix.length);
+    // Lock that truncation runs on the description before composition, so
+    // the prefix stays intact at the front of the note.
+    expect(body.caseNotes[0]?.note.startsWith(prefix)).toBe(true);
+    expect(body.additionalData.escalationDetails.length).toBeLessThanOrEqual(4000);
   });
 });
 
@@ -134,6 +152,10 @@ describe('openCrmCase', () => {
     expect(sentBody.shopperId).toBe('shop-1');
     expect(sentBody.primaryCategory).toBe('Websites');
     expect(sentBody.additionalData.severity).toBe('S2');
+    // Locks formatPhone end-to-end: profile { code: '1', number: '5551234' }
+    // must serialize to digits-only '15551234' on the CRM body. Reverting to
+    // '+1-5551234' would now fail this assertion.
+    expect(sentBody.contactPhone).toBe('15551234');
 
     expect(result).toEqual({ caseId: 'case-xyz', caseNumber: '000123' });
   });
@@ -197,12 +219,4 @@ describe('openCrmCase', () => {
     );
   });
 
-  // The route accepts an unbounded description; CRM body must cap both
-  // caseNotes and additionalData.Escalation Details so a multi-MB submission
-  // can't reach CRM verbatim.
-  it('truncates Escalation Details with the same MAX_NOTE_CHARS cap as caseNotes', () => {
-    const longDesc = 'x'.repeat(5000);
-    const body = buildCaseBody({ ...INPUT, description: longDesc }, PROFILE);
-    expect(body.additionalData['Escalation Details'].length).toBeLessThanOrEqual(4000);
-  });
 });

@@ -49,7 +49,8 @@ function unwrapProfile(json: unknown): RawProfile {
 function formatPhone(phones: ProfilePhone[] | undefined): string | null {
   const first = phones?.[0];
   if (!first?.code || !first?.number) return null;
-  return `+${first.code}-${first.number}`;
+  // CRM expects digits only, no '+' or '-' separators.
+  return `${first.code}${first.number}`;
 }
 
 export async function fetchCustomerProfile(

@@ -159,7 +159,6 @@ export function storeToS3(payload: FeedbackStorePayload): void {
 
 export interface CrmCaseClientInput {
   description: string;
-  followUp: boolean;
   appId: string | null;
 }
 

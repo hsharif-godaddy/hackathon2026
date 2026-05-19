@@ -23,9 +23,11 @@ export const dynamic = 'force-dynamic';
 const FEATURE_FLAG = 'appbuilder-crm-case-create';
 const LOG_DOMAIN = 'feedback.crm.case';
 
+// `followUp` is intentionally NOT declared here: stale browser tabs may
+// still send it, and we want the BFF to silently drop it rather than 400.
+// The route test pins this drop behavior.
 interface CrmCaseRequestBody {
   description?: unknown;
-  followUp?: unknown;
   appId?: unknown;
 }
 
@@ -86,7 +88,6 @@ export const POST = withCustomerAuth(async (
     return NextResponse.json({ error: 'description-required' }, { status: 400 });
   }
 
-  const followUp = raw.followUp === true;
   const appId = typeof raw.appId === 'string' && raw.appId.length > 0 ? raw.appId : null;
 
   logger.info(`${LOG_DOMAIN}.submit.start`, { customerId, appId });
@@ -96,7 +97,6 @@ export const POST = withCustomerAuth(async (
       customerId,
       shopperId,
       description,
-      followUp,
       appId,
     });
     logger.info(`${LOG_DOMAIN}.submit.success`, {

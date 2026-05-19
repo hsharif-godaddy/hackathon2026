@@ -99,16 +99,18 @@ Field mapping (constants in `case-client.ts`):
 | `primaryCategory` | `'Websites'` |
 | `secondaryCategory` | `'Airo AI Builder'` |
 | `issue` | `'General Support'` |
-| `caseNotes[0].note` | `Airo AI Builder : Customer reported : ${truncatedDescription}` |
+| `caseNotes[0].note` | `Comment : (appid - ${appId}) ${truncatedDescription}` when appId present, otherwise `Comment : ${truncatedDescription}` |
 | `additionalData.severity` | `'S2'` (pinned for v1) |
-| `additionalData.escalated` | `'TRUE'` |
-| `additionalData['Permission to Make Changes']` | `'True'` |
-| `additionalData.Type` | `'Complete'` |
-| `additionalData['Escalation Details']` | `truncatedDescription` |
-| `additionalData.followUpConsent` | `'TRUE' \| 'FALSE'` (from form) |
-| `additionalData.appId` | when present |
-| `contactName/FirstName/LastName/Email/Phone` | from Profile API |
+| `additionalData.escalated` | `'true'` |
+| `additionalData.permissionToMakeChanges` | `'true'` |
+| `additionalData.type` | `'Complete'` |
+| `additionalData.escalationDetails` | `truncatedDescription` |
+| `contactName/FirstName/LastName/Email/Phone` | from Profile API (phone is digits-only, e.g. `15551234`) |
 | `shopperId` | from JWT |
+
+**`additionalData` is case-sensitive.** CRM silently drops keys that don't match the spec exactly — `Type`, `Permission to Make Changes`, `Escalation Details` all fail. Field names are camelCase, boolean-style values are lowercase strings (`'true'`, not `'TRUE'`).
+
+`appId` is embedded in the `caseNotes[0].note` (rather than `additionalData`) so support agents see it inline when reading the case. The `(appid - ...)` segment is omitted entirely for sessions without an active app (e.g. landing-page Get Support submits) — there is no placeholder. The `followUp` form field is captured by Slack and Companion Hub for the dev team but is not sent to CRM.
 
 `truncatedDescription` is `input.description.slice(0, 4000)` (with ellipsis). The textarea has no client-side maxLength yet — a follow-up will add it; the server cap is the safety net.
 

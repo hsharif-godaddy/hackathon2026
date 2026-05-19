@@ -4,11 +4,8 @@
  * Opens a standard support case in GoDaddy CRM on the customer's behalf.
  * Runs entirely server-side: mints a cert-based SSO JWT, pulls contact info
  * from the Profile API, then POSTs the case body to the CRM
- * case-management endpoint.
- *
- * Body shape matches the working reference in
- * debug-console/scripts/crm-case-create-test.ts. Severity is pinned to S2
- * for v1; revisit after we see submission volume.
+ * case-management endpoint. Severity is pinned to S2 for v1; revisit after
+ * we see submission volume.
  */
 
 import { logger } from '@/lib/request-context';
@@ -26,7 +23,6 @@ export interface OpenCaseInput {
   customerId: string;
   shopperId: string;
   description: string;
-  followUp: boolean;
   appId: string | null;
 }
 
@@ -44,14 +40,16 @@ function truncate(value: string, max: number): string {
   return `${value.slice(0, max - 1)}…`;
 }
 
+// Field names and string values must match CRM's spec exactly — keys are
+// camelCase, boolean-style values are lowercase ('true' not 'TRUE'). CRM
+// silently drops keys that don't match the spec (e.g. capitalized 'Type',
+// 'Permission to Make Changes', or 'Escalation Details').
 interface AdditionalData {
-  'Permission to Make Changes': 'True';
+  permissionToMakeChanges: 'true';
   severity: 'S2';
-  escalated: 'TRUE';
-  Type: 'Complete';
-  'Escalation Details': string;
-  followUpConsent: 'TRUE' | 'FALSE';
-  appId?: string;
+  escalated: 'true';
+  type: 'Complete';
+  escalationDetails: string;
 }
 
 interface CrmCaseBody {
@@ -78,16 +76,19 @@ interface CrmCaseBody {
 export function buildCaseBody(input: OpenCaseInput, profile: CustomerProfile): CrmCaseBody {
   const truncatedDescription = truncate(input.description, MAX_NOTE_CHARS);
   const additionalData: AdditionalData = {
-    'Permission to Make Changes': 'True',
+    permissionToMakeChanges: 'true',
     severity: 'S2',
-    escalated: 'TRUE',
-    Type: 'Complete',
+    escalated: 'true',
+    type: 'Complete',
     // Same cap as caseNotes — the route accepts an unbounded description, so
     // multi-MB textarea submissions could otherwise reach CRM verbatim.
-    'Escalation Details': truncatedDescription,
-    followUpConsent: input.followUp ? 'TRUE' : 'FALSE',
+    escalationDetails: truncatedDescription,
   };
-  if (input.appId) additionalData.appId = input.appId;
+
+  // Note shape is a CRM contract: support tooling looks for the literal
+  // "Comment :" prefix and the `(appid - <id>)` segment when triaging.
+  const appIdSegment = input.appId ? `(appid - ${input.appId}) ` : '';
+  const note = `Comment : ${appIdSegment}${truncatedDescription}`;
 
   const body: CrmCaseBody = {
     contactName: `${profile.firstName} ${profile.lastName}`.trim(),
@@ -103,7 +104,7 @@ export function buildCaseBody(input: OpenCaseInput, profile: CustomerProfile): C
     issue: 'General Support',
     caseNotes: [
       {
-        note: `Airo AI Builder : Customer reported : ${truncatedDescription}`,
+        note,
         noteType: 'Status Change',
         noteTypeDetails: 'Escalation',
       },

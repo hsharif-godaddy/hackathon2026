@@ -133,7 +133,6 @@ export function FeedbackMultiStep(props: FeedbackProps) {
         try {
           const result = await openCrmCaseForIssue({
             description: data.description,
-            followUp: data.followUp,
             appId: currentAppId,
           });
           logger.info('feedback.crm.case.created', {
@@ -202,7 +201,6 @@ export function FeedbackMultiStep(props: FeedbackProps) {
         try {
           const result = await openCrmCaseForIssue({
             description: data.description,
-            followUp: data.followUp,
             appId: currentAppId,
           });
           logger.info('feedback.crm.case.created', {
