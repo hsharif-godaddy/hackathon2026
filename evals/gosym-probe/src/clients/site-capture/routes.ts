@@ -1,5 +1,5 @@
 import type { Page } from 'playwright';
-import { Agent } from 'undici';
+import { Agent, fetch } from 'undici';
 
 import type { DiscoveredRoute, RouteStatus } from './types.js';
 
@@ -44,16 +44,14 @@ async function httpCheck(
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), HTTP_CHECK_TIMEOUT_MS);
   try {
-    const fetchOptions: RequestInit = {
+    const resp = await fetch(url, {
       method: 'GET',
       redirect: 'follow',
       signal: controller.signal,
-    };
-    if (ignoreHttpsErrors) {
-      (fetchOptions as RequestInit & { dispatcher: unknown }).dispatcher =
-        new Agent({ connect: { rejectUnauthorized: false } }); // nosemgrep: problem-based-packs.insecure-transport.js-node.bypass-tls-verification.bypass-tls-verification
-    }
-    const resp = await fetch(url, fetchOptions);
+      dispatcher: ignoreHttpsErrors
+        ? new Agent({ connect: { rejectUnauthorized: false } }) // nosemgrep: problem-based-packs.insecure-transport.js-node.bypass-tls-verification.bypass-tls-verification
+        : undefined,
+    });
     // Cancel body stream immediately — we only need the status code.
     resp.body?.cancel();
     return { status: classifyStatus(resp.status), httpStatus: resp.status };

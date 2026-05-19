@@ -65,6 +65,39 @@ describe('PerTrialGocodeClient', () => {
   });
 
   // ---------------------------------------------------------------------------
+  // Signal forwarding
+  // ---------------------------------------------------------------------------
+  describe('signal forwarding', () => {
+    it('forwards abort signal to inner GocodeClient', async () => {
+      mockCreate.mockResolvedValue(USAGE_RESPONSE);
+      const client = makeClient();
+      const controller = new AbortController();
+
+      await client.runInScope(SCENARIO, 0, async () => {
+        await client.complete(MESSAGES, { signal: controller.signal });
+      });
+
+      expect(mockCreate).toHaveBeenCalledWith(
+        expect.objectContaining({ model: TEST_CONFIG.model }),
+        { signal: controller.signal },
+      );
+    });
+
+    it('does not pass options when signal is absent', async () => {
+      mockCreate.mockResolvedValue(USAGE_RESPONSE);
+      const client = makeClient();
+
+      await client.runInScope(SCENARIO, 0, async () => {
+        await client.complete(MESSAGES);
+      });
+
+      expect(mockCreate).toHaveBeenCalledWith(
+        expect.objectContaining({ model: TEST_CONFIG.model }),
+      );
+    });
+  });
+
+  // ---------------------------------------------------------------------------
   // Validation boundary: nested scope routing
   // ---------------------------------------------------------------------------
   describe('nested scope routing', () => {

@@ -20,18 +20,20 @@ import type { IGocodeClient } from '../clients/gocode-client.js';
 import type {
   AABCtrlPlaneClient,
 } from '../clients/aab-ctrl-plane-client.js';
+import type { Config } from '../../config/environments/types.js';
 import type { Scenario } from './types.js';
 
 export function createAllScenarios(
   gocode: IGocodeClient,
   ctrlPlane: AABCtrlPlaneClient,
+  config?: Config,
 ): Scenario[] {
   return [
     simplePortfolioScenario(gocode, ctrlPlane),
     businessSiteScenario(gocode, ctrlPlane),
     multipageCatalogScenario(gocode, ctrlPlane),
     cleaningBizAmbiguityScenario(gocode, ctrlPlane),
-    buildLandingPageScenario(gocode, ctrlPlane),
+    buildLandingPageScenario(gocode, ctrlPlane, config),
     symptomBlankPageScenario(gocode, ctrlPlane),
     symptomChangesNotShowingScenario(gocode, ctrlPlane),
     symptomModuleNotFoundScenario(gocode, ctrlPlane),

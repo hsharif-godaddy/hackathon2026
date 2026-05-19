@@ -5,7 +5,7 @@ import type {
 } from '../clients/agent-client.js';
 import type { SiteCapture } from '../clients/dom-capture.js';
 import type { Scenario, SetupContext } from '../scenarios/types.js';
-import { Agent } from 'undici';
+import { Agent, fetch } from 'undici';
 import { GoalTracker } from './goal-tracker.js';
 import type { SyntheticUserAgent } from './synthetic-user.js';
 import type { Transcript, ToolCall, Turn } from './transcript.js';
@@ -322,15 +322,12 @@ export class Simulation {
       captureContext &&
       typeof setupResult?.previewUrl === 'string'
     ) {
-      const url = setupResult.previewUrl as string;
-      const fetchOptions: RequestInit = {
+      fetch(setupResult.previewUrl, {
         signal: AbortSignal.timeout(5_000),
-      };
-      if (this.options.config.playwright.ignoreHttpsErrors) {
-        (fetchOptions as RequestInit & { dispatcher: unknown }).dispatcher =
-          new Agent({ connect: { rejectUnauthorized: false } }); // nosemgrep: problem-based-packs.insecure-transport.js-node.bypass-tls-verification.bypass-tls-verification
-      }
-      fetch(url, fetchOptions).catch(() => {});
+        dispatcher: this.options.config.playwright.ignoreHttpsErrors
+          ? new Agent({ connect: { rejectUnauthorized: false } }) // nosemgrep: problem-based-packs.insecure-transport.js-node.bypass-tls-verification.bypass-tls-verification
+          : undefined,
+      }).catch(() => {});
     }
 
     return setupResult;

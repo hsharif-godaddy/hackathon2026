@@ -154,7 +154,7 @@ async function main(): Promise<void> {
   const gocodeClient  = new PerTrialGocodeClient(config.gocode);
   const syntheticUser = new GocodeSyntheticUser(gocodeClient);
 
-  const ALL_SCENARIOS = createAllScenarios(gocodeClient, ctrlPlane);
+  const ALL_SCENARIOS = createAllScenarios(gocodeClient, ctrlPlane, config);
   const scenarioIndex = buildScenarioIndex(ALL_SCENARIOS);
 
   if (values['graduate-suite']) {

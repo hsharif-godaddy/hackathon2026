@@ -2,6 +2,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { discoverRoutes } from '../routes.js';
 
+const mockFetch = vi.fn();
+vi.mock('undici', () => ({
+  Agent: vi.fn(),
+  fetch: (...args: unknown[]) => mockFetch(...args),
+}));
+
 interface FakePage {
   evaluate: ReturnType<typeof vi.fn>;
 }
@@ -19,11 +25,11 @@ function makePage(overrides: Partial<FakePage> = {}): FakePage {
 
 describe('util/routes', () => {
   beforeEach(() => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(makeFetchResponse(200)));
+    mockFetch.mockResolvedValue(makeFetchResponse(200));
   });
 
   afterEach(() => {
-    vi.unstubAllGlobals();
+    mockFetch.mockReset();
   });
 
   describe('discoverRoutes', () => {
@@ -79,11 +85,8 @@ describe('util/routes', () => {
         'https://example.com/missing': 404,
         'https://example.com/boom': 500,
       };
-      vi.stubGlobal(
-        'fetch',
-        vi.fn().mockImplementation((url: string) =>
-          Promise.resolve(makeFetchResponse(statusByUrl[url] ?? 200)),
-        ),
+      mockFetch.mockImplementation((url: string) =>
+        Promise.resolve(makeFetchResponse(statusByUrl[url] ?? 200)),
       );
       const page = makePage({
         evaluate: vi.fn().mockResolvedValue(['/redir', '/missing', '/boom']),
@@ -103,15 +106,12 @@ describe('util/routes', () => {
     });
 
     it('marks routes unreachable when the fetch rejects', async () => {
-      vi.stubGlobal(
-        'fetch',
-        vi.fn().mockImplementation((url: string) => {
-          if (url.endsWith('/broken')) {
-            return Promise.reject(new Error('DNS failure'));
-          }
-          return Promise.resolve(makeFetchResponse(200));
-        }),
-      );
+      mockFetch.mockImplementation((url: string) => {
+        if (url.endsWith('/broken')) {
+          return Promise.reject(new Error('DNS failure'));
+        }
+        return Promise.resolve(makeFetchResponse(200));
+      });
       const page = makePage({
         evaluate: vi.fn().mockResolvedValue(['/broken']),
       });
@@ -129,18 +129,15 @@ describe('util/routes', () => {
     });
 
     it('marks routes unreachable on timeout', async () => {
-      vi.stubGlobal(
-        'fetch',
-        vi.fn().mockImplementation((_url: string, opts: RequestInit) => {
-          return new Promise((_resolve, reject) => {
-            opts.signal?.addEventListener('abort', () => {
-              const err = new Error('This operation was aborted');
-              err.name = 'AbortError';
-              reject(err);
-            });
+      mockFetch.mockImplementation((_url: string, opts: RequestInit) => {
+        return new Promise((_resolve, reject) => {
+          opts.signal?.addEventListener('abort', () => {
+            const err = new Error('This operation was aborted');
+            err.name = 'AbortError';
+            reject(err);
           });
-        }),
-      );
+        });
+      });
       const page = makePage({
         evaluate: vi.fn().mockResolvedValue(['/slow']),
       });
@@ -162,13 +159,10 @@ describe('util/routes', () => {
 
     it('cancels the response body after reading the status', async () => {
       const cancelFn = vi.fn();
-      vi.stubGlobal(
-        'fetch',
-        vi.fn().mockResolvedValue({
-          status: 200,
-          body: { cancel: cancelFn },
-        } as unknown as Response),
-      );
+      mockFetch.mockResolvedValue({
+        status: 200,
+        body: { cancel: cancelFn },
+      } as unknown as Response);
       const page = makePage();
 
       await discoverRoutes({
@@ -198,15 +192,12 @@ describe('util/routes', () => {
 
     it('fires all HTTP checks concurrently', async () => {
       const callOrder: string[] = [];
-      vi.stubGlobal(
-        'fetch',
-        vi.fn().mockImplementation(async (url: string) => {
-          callOrder.push(`start:${url}`);
-          await new Promise((r) => setTimeout(r, 10));
-          callOrder.push(`end:${url}`);
-          return makeFetchResponse(200);
-        }),
-      );
+      mockFetch.mockImplementation(async (url: string) => {
+        callOrder.push(`start:${url}`);
+        await new Promise((r) => setTimeout(r, 10));
+        callOrder.push(`end:${url}`);
+        return makeFetchResponse(200);
+      });
       const page = makePage({
         evaluate: vi.fn().mockResolvedValue(['/a', '/b']),
       });

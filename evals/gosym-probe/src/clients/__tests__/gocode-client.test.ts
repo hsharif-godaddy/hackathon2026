@@ -66,12 +66,13 @@ describe('GocodeClient', () => {
       );
     });
 
-    it('returns empty string when content is null', async () => {
+    it('throws when content is null', async () => {
       mockCreate.mockResolvedValue({
         choices: [{ message: { content: null } }],
       });
-      const result = await client.complete(messages);
-      expect(result).toBe('');
+      await expect(client.complete(messages)).rejects.toThrow(
+        'GoCode API returned null content',
+      );
     });
 
     it('supports multi-turn messages', async () => {
@@ -116,6 +117,65 @@ describe('GocodeClient', () => {
           { role: 'user', content: 'safetext' },
           { role: 'assistant', content: 'prepost' },
         ],
+      });
+    });
+
+    it('sanitizes ContentPart[] messages, stripping unsafe text parts and preserving non-text parts', async () => {
+      const bmpPrivateUse = '\uE001';
+      const imagePart = { type: 'image_url' as const, image_url: { url: 'data:image/png;base64,abc' } };
+      const dirtyMessages: Message[] = [
+        {
+          role: 'user',
+          content: [
+            { type: 'text' as const, text: `dirty${bmpPrivateUse}text` },
+            imagePart,
+          ],
+        },
+      ];
+      mockCreate.mockResolvedValue({
+        choices: [{ message: { content: 'ok' } }],
+      });
+
+      await client.complete(dirtyMessages);
+
+      expect(mockCreate).toHaveBeenCalledWith({
+        model: TEST_CONFIG.model,
+        messages: [
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: 'dirtytext' },
+              imagePart,
+            ],
+          },
+        ],
+      });
+    });
+
+    it('passes signal option to the OpenAI client', async () => {
+      const controller = new AbortController();
+      mockCreate.mockResolvedValue({
+        choices: [{ message: { content: 'ok' } }],
+      });
+
+      await client.complete(messages, { signal: controller.signal });
+
+      expect(mockCreate).toHaveBeenCalledWith(
+        { model: TEST_CONFIG.model, messages },
+        { signal: controller.signal },
+      );
+    });
+
+    it('does not pass options object when signal is undefined', async () => {
+      mockCreate.mockResolvedValue({
+        choices: [{ message: { content: 'ok' } }],
+      });
+
+      await client.complete(messages);
+
+      expect(mockCreate).toHaveBeenCalledWith({
+        model: TEST_CONFIG.model,
+        messages,
       });
     });
   });
@@ -238,6 +298,39 @@ describe('GocodeClient', () => {
         totalTokens: 6,
         calls: 1,
       });
+    });
+  });
+
+  describe('withModel()', () => {
+    it('returns a new GocodeClient with the specified model', () => {
+      const derived = client.withModel('gpt-4o');
+      expect(derived.getModel()).toBe('gpt-4o');
+    });
+
+    it('does not mutate the original client model', () => {
+      client.withModel('gpt-4o');
+      expect(client.getModel()).toBe(TEST_CONFIG.model);
+    });
+
+    it('derived client creates a fresh OpenAI instance with same baseUrl/apiKey', () => {
+      client.withModel('gpt-4o');
+      expect(OpenAI).toHaveBeenLastCalledWith({
+        baseURL: TEST_CONFIG.baseUrl,
+        apiKey: TEST_CONFIG.apiKey,
+      });
+    });
+
+    it('derived client has independent usage accumulation', async () => {
+      mockCreate.mockResolvedValue({
+        choices: [{ message: { content: 'x' } }],
+        usage: { prompt_tokens: 7, completion_tokens: 3, total_tokens: 10 },
+      });
+
+      const derived = client.withModel('gpt-4o');
+      await derived.complete([{ role: 'user', content: 'hi' }]);
+
+      expect(derived.getAccumulatedUsage().calls).toBe(1);
+      expect(client.getAccumulatedUsage().calls).toBe(0);
     });
   });
 });

@@ -6,7 +6,7 @@ import type {
   BrowserContext,
   Page,
 } from 'playwright';
-import { Agent } from 'undici';
+import { Agent, fetch } from 'undici';
 
 import type { SetupContext } from '../scenarios/types.js';
 import { captureRoutes } from './site-capture/capture.js';
@@ -168,22 +168,17 @@ export class AABPreviewUrlResolver implements PreviewUrlResolver {
     // local AAB instances on :8443 which use self-signed certs.
     // ignoreHttpsErrors must be explicitly set true in config to reach
     // this branch; it is never enabled in production environments.
-    let res: Response;
-    if (this.config.ignoreHttpsErrors) {
-      res = await fetch(url, {
-        signal: AbortSignal.timeout(5_000),
-        dispatcher: new Agent({
-          connect: { rejectUnauthorized: false }, // nosemgrep: problem-based-packs.insecure-transport.js-node.bypass-tls-verification.bypass-tls-verification
-        }),
-      } as RequestInit).catch((err: unknown) => {
-        const reason = err instanceof Error ? err.message : String(err);
-        throw new Error(
-          `Failed to resolve preview URL for app '${appId}': ${reason}`,
-        );
-      });
-    } else {
-      res = await fetch(url);
-    }
+    const res = await fetch(url, {
+      signal: AbortSignal.timeout(5_000),
+      dispatcher: this.config.ignoreHttpsErrors
+        ? new Agent({ connect: { rejectUnauthorized: false } }) // nosemgrep: problem-based-packs.insecure-transport.js-node.bypass-tls-verification.bypass-tls-verification
+        : undefined,
+    }).catch((err: unknown) => {
+      const reason = err instanceof Error ? err.message : String(err);
+      throw new Error(
+        `Failed to resolve preview URL for app '${appId}': ${reason}`,
+      );
+    });
     if (!res.ok) {
       const body = await res.text().catch(() => '');
       throw new Error(

@@ -52,8 +52,11 @@ export class PerTrialGocodeClient implements IGocodeClient, TrialLifecycle {
     return instance;
   }
 
-  async complete(messages: Message[]): Promise<string> {
-    return this.resolve().complete(messages);
+  async complete(
+    messages: Message[],
+    options?: { signal?: AbortSignal },
+  ): Promise<string> {
+    return this.resolve().complete(messages, options);
   }
 
   getAccumulatedUsage(): ProbeUsage {
@@ -62,6 +65,10 @@ export class PerTrialGocodeClient implements IGocodeClient, TrialLifecycle {
 
   getModel(): string {
     return this.config.model;
+  }
+
+  withModel(model: string): IGocodeClient {
+    return new GocodeClient({ ...this.config, model });
   }
 
   resetAccumulatedUsage(): void {

@@ -11,6 +11,7 @@ export interface Config {
     baseUrl: string;
     apiKey: string;
     model: string;
+    visionModel?: string;
   };
   eval: {
     defaultTrials: number;

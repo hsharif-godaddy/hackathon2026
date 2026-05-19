@@ -18,6 +18,12 @@ import type {
 import type { Persona } from '../../personas/types.js';
 import type { ResolvedConfig } from '../../../config/index.js';
 
+const mockUndiciFetch = vi.fn();
+vi.mock('undici', () => ({
+  Agent: vi.fn(),
+  fetch: (...args: unknown[]) => mockUndiciFetch(...args),
+}));
+
 // Controllable mock — call .emit() to push events into the simulation.
 class MockAgentClient implements AgentClient {
   private handlers: ((e: AgentEvent) => void)[] = [];
@@ -1526,16 +1532,16 @@ describe('Simulation', () => {
 
 describe('preview URL pre-warm', () => {
   let agentClient: MockAgentClient;
-  let fetchSpy: ReturnType<typeof vi.fn>;
+  let fetchSpy: typeof mockUndiciFetch;
 
   beforeEach(() => {
     agentClient = new MockAgentClient();
-    fetchSpy = vi.fn().mockResolvedValue(new Response());
-    vi.stubGlobal('fetch', fetchSpy);
+    fetchSpy = mockUndiciFetch;
+    fetchSpy.mockResolvedValue(new Response());
   });
 
   afterEach(() => {
-    vi.unstubAllGlobals();
+    fetchSpy.mockReset();
   });
 
   it(

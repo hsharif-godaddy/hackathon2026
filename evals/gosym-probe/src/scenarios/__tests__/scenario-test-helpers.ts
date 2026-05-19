@@ -7,6 +7,7 @@ export function makeGocodeClient(): IGocodeClient {
   const mock: IGocodeClient = {
     complete: async () => '',
     getModel: () => 'claude-sonnet-4-6',
+    withModel: () => mock,
     getAccumulatedUsage: () => ({
       promptTokens: 0,
       completionTokens: 0,

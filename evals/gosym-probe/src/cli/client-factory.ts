@@ -20,7 +20,7 @@ export function createCliDeps(): CliDeps {
     baseUrl: config.aab.controlPlaneUrl,
   });
   const gocodeClient = new PerTrialGocodeClient(config.gocode);
-  const scenarios = createAllScenarios(gocodeClient, ctrlPlane);
+  const scenarios = createAllScenarios(gocodeClient, ctrlPlane, config);
   const evalStore = new EvalStore();
   const baselineStore = new BaselineStore();
   return { config, scenarios, evalStore, baselineStore };

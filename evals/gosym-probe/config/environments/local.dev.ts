@@ -16,6 +16,7 @@ export function createConfig(): Config {
       baseUrl: process.env.OPENAI_BASE_URL ?? '',
       apiKey: process.env.OPENAI_API_KEY ?? '',
       model: process.env.OPENAI_MODEL ?? '',
+      visionModel: process.env.OPENAI_VISION_MODEL || process.env.OPENAI_MODEL || undefined,
     },
     eval: {
       defaultTrials: 1,
