@@ -234,6 +234,11 @@ const pendingBudgetOverrides = new Map<string, string>()
 // Set in onMessageStart, consumed in onBudgetReport, cleaned up after createReport/onDisconnection.
 const effectiveSubscriptionIds = new Map<string, string>()
 
+// Cache agentContext per socket so mid-turn LLM steps can read JWT fields
+// even if the socket disconnects during execution. Set in onMessageStart,
+// cleaned up in onMessageComplete, onBudgetReport, onError, and onDisconnection.
+const cachedAgentContexts = new Map<string, Record<string, unknown>>()
+
 // Cache last user message per socket for assessment multi-turn context
 const lastUserMessageCache = new Map<string, string>()
 
@@ -638,10 +643,10 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           if (appId) {
             const app = appRepo.findById(appId)
             if (app) {
-              // Get socket to check for auth type and test budget flag
+              // Get agentContext from socket (live) or cached (if socket disconnected mid-turn)
               const socketId = (context as any).socketId as string | undefined
               const socket = socketId && ioInstance ? ioInstance.sockets.sockets.get(socketId) : null
-              const agentContext = socket?.handshake?.auth?.agentContext as {
+              const agentContext = (socket?.handshake?.auth?.agentContext ?? (socketId ? cachedAgentContexts.get(socketId) : undefined)) as {
                 isE2S?: boolean
                 authType?: TokenAuthType
                 useTestBudget?: boolean
@@ -1353,6 +1358,9 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         const socket = socketId ? getSocket(socketId) : null
         if (socket?.handshake?.auth?.agentContext) {
           agentContext = socket.handshake.auth.agentContext
+        } else if (socketId) {
+          // Socket disconnected mid-turn — use cached agentContext from turn start
+          agentContext = cachedAgentContexts.get(socketId) ?? null
         }
 
         if (agentContext) {
@@ -1408,6 +1416,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
             if (now - state.createdAt > MAX_ASSESSMENT_STATE_AGE_MS) {
               parallelAssessmentStates.delete(id)
               effectiveSubscriptionIds.delete(id)
+              cachedAgentContexts.delete(id)
               // Warn-level so operators can correlate with budget.report.assessment_outcome_missing
               // hadOutcome distinguishes true leaks (false) from potential billing attribution loss (true)
               logger.warn('assessment.parallel_mode.stale_entry_pruned', {
@@ -1584,6 +1593,12 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         // contextProvider enriches metadata later, but pre-check runs before that.
         const preCheckSocket = getSocket(socketId)
         const preCheckAgentContext = preCheckSocket?.handshake?.auth?.agentContext
+
+        // Cache agentContext for the duration of this turn so contextProvider/contextExtractor
+        // can read JWT fields even if the socket disconnects mid-execution.
+        if (preCheckAgentContext) {
+          cachedAgentContexts.set(socketId, preCheckAgentContext)
+        }
         const budgetResult = await performBudgetPreCheck(
           {
             budgetServiceEnabled: preCheckAgentContext?.budgetServiceEnabled,
@@ -2072,6 +2087,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           blockingAssessmentOutcomes.delete(socketId)
         }
         pendingBudgetOverrides.delete(socketId)
+        cachedAgentContexts.delete(socketId)
         wsResetPostStreamRetries(socketId)
 
         if (appId) {
@@ -2153,6 +2169,9 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
       },
 
       onBudgetReport: async (budgetId: string, sessionId: string, socketId: string, originalSocketId: string, steps?: ExecutionStep[], wasUserAborted?: boolean) => {
+        // Turn complete — agentContext cache no longer needed for this socket
+        cachedAgentContexts.delete(originalSocketId)
+
         const client = getBudgetServiceClient()
         if (!client) {
           budgetReportConversationCache.delete(originalSocketId)
@@ -2457,6 +2476,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         // Clear on disconnect; late onBudgetReport can miss conversationId.
         budgetReportConversationCache.delete(socketId)
         pendingBudgetOverrides.delete(socketId)
+        cachedAgentContexts.delete(socketId)
         lifecycleSessionStore.clearSession(socketId)
         wsResetPostStreamRetries(socketId)
 
@@ -2578,6 +2598,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         // Assessment state cleanup: In BMS mode, preserved for onBudgetReport.
         // In grants/blocking mode, clean up since no budget report follows.
         pendingBudgetOverrides.delete(socketId)
+        cachedAgentContexts.delete(socketId)
         wsResetPostStreamRetries(socketId)
         const budgetServiceEnabled = typedContext?.metadata?.budgetServiceEnabled === true
         const { preserved } = cleanupAssessmentStateOnError(

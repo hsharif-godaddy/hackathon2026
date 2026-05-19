@@ -367,3 +367,53 @@ describe('createSelectiveBetaHeaderFetch header injection', () => {
     expect(id1).not.toBe(id2)
   })
 })
+
+describe('resolveCurrentUser fallback behavior', () => {
+  let wrapper: typeof fetch
+
+  beforeEach(async () => {
+    fetchSpy.mockClear()
+    fetchSpy.mockResolvedValue(new Response('{}', { status: 200 }))
+    const { grantSessionManager } = await import('@airo/ai-grants')
+    vi.mocked(grantSessionManager.getCurrentUserId).mockReset()
+    const { __test__ } = await import('../unified-provider.js')
+    wrapper = __test__.createS2SFetchWrapper()
+  })
+
+  it('uses metadata.user when socket mapping is gone (not customerId)', async () => {
+    // Simulates: socket disconnected, getCurrentUserId returns undefined (no mapping)
+    const { grantSessionManager } = await import('@airo/ai-grants')
+    vi.mocked(grantSessionManager.getCurrentUserId).mockReturnValue(undefined)
+
+    const metadata: LitellmMetadata = {
+      user: 'airo-builder:grant:original-grant-id',
+      tags: ['appId:test'],
+      _internal: { socketId: 'dead-socket', customerId: 'cust-uuid-should-not-appear' },
+    }
+
+    await llmMetadataContext.run(metadata, () =>
+      wrapper('https://api.example.com/v1/chat', { method: 'POST', body: '{}' })
+    )
+
+    const body = JSON.parse(fetchSpy.mock.calls[0][1]?.body as string)
+    expect(body.litellm_metadata.user).toBe('airo-builder:grant:original-grant-id')
+  })
+
+  it('uses grant userId when getCurrentUserId returns it', async () => {
+    const { grantSessionManager } = await import('@airo/ai-grants')
+    vi.mocked(grantSessionManager.getCurrentUserId).mockReturnValue('airo-builder:grant:active-grant')
+
+    const metadata: LitellmMetadata = {
+      user: 'airo-builder:grant:original-grant-id',
+      tags: ['appId:test'],
+      _internal: { socketId: 'live-socket', customerId: 'cust-uuid' },
+    }
+
+    await llmMetadataContext.run(metadata, () =>
+      wrapper('https://api.example.com/v1/chat', { method: 'POST', body: '{}' })
+    )
+
+    const body = JSON.parse(fetchSpy.mock.calls[0][1]?.body as string)
+    expect(body.litellm_metadata.user).toBe('airo-builder:grant:active-grant')
+  })
+})

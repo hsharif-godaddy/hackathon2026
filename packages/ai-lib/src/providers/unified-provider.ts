@@ -225,10 +225,22 @@ export { llmMetadataContext, type LitellmMetadata } from '@airo/ai-common'
  * Resolve the current grant userId for an LLM request.
  * Reads from the grant session manager to reflect any mid-stream grant advances,
  * falling back to the original metadata.user if no session context is available.
+ *
+ * Does NOT pass customerId as fallback to getCurrentUserId — if the socket mapping
+ * is gone (disconnect mid-turn), we fall back to metadata.user (the grant userId
+ * set at turn start) rather than the bare customerId which has infinite budget.
  */
 function resolveCurrentUser(metadata: LitellmMetadata): string | undefined {
   if (metadata._internal?.socketId) {
-    return grantSessionManager.getCurrentUserId(metadata._internal.socketId, metadata._internal.customerId) ?? metadata.user
+    const grantUserId = grantSessionManager.getCurrentUserId(metadata._internal.socketId)
+    if (!grantUserId && metadata.user) {
+      logger.warn('grants.resolve_user.fallback_to_metadata', {
+        socketId: metadata._internal.socketId,
+        metadataUser: metadata.user,
+        reason: 'getCurrentUserId returned undefined — socket mapping likely removed on disconnect',
+      })
+    }
+    return grantUserId ?? metadata.user
   }
   return metadata.user
 }
@@ -426,13 +438,16 @@ function createS2SFetchWrapper(s2sAuthConfig?: S2SAuthConfig, options?: { blocke
     // Make request with Headers instance and modified body
     let response = await llmFetch(url, modifiedInit)
 
-    if (metadata?.budgetSessionId) {
+    if (metadata) {
       const correlationId = response.headers.get('x-correlation-id')
-      logger.info('budget.gocode.response', {
-        sessionId: metadata.budgetSessionId,
+      const litellmCallId = response.headers.get('x-litellm-call-id')
+      logger.info('gocode.response', {
+        user: resolveCurrentUser(metadata),
         correlationId,
+        litellmCallId,
         status: response.status,
         url: typeof url === 'string' ? url : url.toString(),
+        ...(metadata.budgetSessionId && { budgetSessionId: metadata.budgetSessionId }),
       })
     }
 

@@ -323,7 +323,7 @@ export function buildLitellmMetadataFromContext(
       userId: prefixedSubscriptionId,
       tags,
       source: options?.source ?? LlmCallSource.UserChat,
-      reason: socketId ? 'feature_disabled' : 'no_socket',
+      reason: socketId ? 'no_grants_in_session' : 'no_socket',
     })
     return metadata
   }
