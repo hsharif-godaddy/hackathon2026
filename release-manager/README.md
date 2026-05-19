@@ -20,6 +20,10 @@ make build && ./dist/release-manager
 - **Go 1.24+**
 - **gh CLI >= 2.87.0** — authenticated with access to both deployment repos
 - **AWS CLI** — authenticated via SSO for Slack notifications and deploy locking
+- **Access** — request the following before running releases:
+  - **AWS Access:** either `JOMAX\DEV-Airo-Builders` or `JOMAX\SRE-Airo-Builders` ([ServiceNow request](https://godaddy.service-now.com/esc?id=sc_cat_item&sys_id=3bcb6decdb0f4dd0f1e6eba813961906))
+  - **GitHub orgs:** `JOMAX\gdcorp-partners` and `JOMAX\gdcorp-commerce` ([ServiceNow request](https://godaddy.service-now.com/esc?id=sc_cat_item&sys_id=3bcb6decdb0f4dd0f1e6eba813961906))
+  - After `gdcorp-commerce` access is granted, request membership to the [pioneer](https://github.com/orgs/gdcorp-commerce/teams/pioneer) team
 
 ```bash
 # Authenticate AWS SSO (required before deploying)
