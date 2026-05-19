@@ -519,6 +519,7 @@ describe('share POST validation (expiresIn + one-active-link)', () => {
       expect(mockShareTokenRepo.create).toHaveBeenCalledWith({
         appId: TEST_APP_ID,
         expiresIn: 3600,
+        purpose: 'user',
       });
     });
 
@@ -534,6 +535,7 @@ describe('share POST validation (expiresIn + one-active-link)', () => {
       expect(mockShareTokenRepo.create).toHaveBeenCalledWith({
         appId: TEST_APP_ID,
         expiresIn: 604800,
+        purpose: 'user',
       });
     });
   });
@@ -602,6 +604,7 @@ describe('share POST validation (expiresIn + one-active-link)', () => {
       expect(mockShareTokenRepo.create).toHaveBeenCalledWith({
         appId: TEST_APP_ID,
         expiresIn: 604800,
+        purpose: 'user',
       });
       // The repository's create call signature does NOT delete or expire the
       // previous token — by design, the previous token continues to live with

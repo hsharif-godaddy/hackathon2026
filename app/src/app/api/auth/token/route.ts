@@ -18,8 +18,22 @@
  * The browser won't send the builder app's auth_idp cookie to preview domains,
  * so we generate a site-scoped JWT that can be passed via Authorization header.
  *
- * Security: This endpoint validates that the authenticated user owns the requested
- * site before issuing a token, preventing authorization bypass attacks.
+ * Authentication: two caller forms.
+ *
+ * 1. Customer auth (cookie OR `Authorization: sso-jwt <basic|e2s|s2s>`).
+ *    Mints with the original authType and the default 12h TTL.
+ *
+ * 2. Cert2s service-caller delegation (`Authorization: sso-jwt <cert2s-token>`),
+ *    used by mhp-core hosting on behalf of the app owner for pre-archive
+ *    screenshot capture. Mints with `authType: 'cert2s'` and a 15-min TTL cap
+ *    so a compromised hosting cert can't sit on a long-lived owner token.
+ *
+ * The cert2s mint requires BOTH the sso-jwt header form AND authType=cert2s —
+ * either side alone returns 403. This locks the cert2s path to the delegated
+ * form bound to a real owner (no plain cert-realm, no arbitrary s2s).
+ *
+ * Site ownership is validated via the control-plane adapter for both forms,
+ * preventing authorization bypass.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -28,6 +42,7 @@ import { getControlPlaneAdapter } from '@/lib/control-plane';
 import { createCustomerAuthError, type CustomerAuthContext, customerHasAccount, type CustomerUser, withCustomerAuth } from '@/lib/customer-auth';
 import { getJWTService } from '@/lib/jwt-service';
 import { AIRO_OWNER_PRODUCTS, type AiroOwnerProduct } from '@/lib/mgmt-airo';
+import { logger } from '@/lib/request-context';
 
 export const dynamic = 'force-dynamic';
 
@@ -35,6 +50,10 @@ const NO_CACHE_HEADERS = {
   'Cache-Control': 'no-store, no-cache, must-revalidate',
   'Pragma': 'no-cache'
 };
+
+// Long enough for the downstream share-mint + screenshot-render hops, short
+// enough that a leak can't produce a long-lived owner-scoped token.
+const CERT2S_AIROAPP_TTL_SECONDS = 15 * 60;
 
 function parseOwningProduct(owningProduct: string | null): { owningProduct?: AiroOwnerProduct; error?: NextResponse } {
   if (owningProduct === null) {
@@ -78,6 +97,16 @@ async function validateSiteAccess(siteId: string, user: CustomerUser, jwt: strin
   return null;
 }
 
+/**
+ * `withCustomerAuth` accepts both the auth_idp cookie and the sso-jwt header
+ * form, so this is how the route distinguishes them and applies different
+ * policy (cert2s mints require the sso-jwt form).
+ */
+function isSsoJwtCaller(request: NextRequest): boolean {
+  const authHeader = request.headers.get('authorization');
+  return !!authHeader && authHeader.toLowerCase().startsWith('sso-jwt ');
+}
+
 export const GET = withCustomerAuth(async (request: NextRequest, authContext: CustomerAuthContext): Promise<NextResponse> => {
   try {
     const { user } = authContext;
@@ -100,13 +129,31 @@ export const GET = withCustomerAuth(async (request: NextRequest, authContext: Cu
       return owningProductResult.error;
     }
 
-    // Validate user owns this site (CRITICAL: prevents authorization bypass)
+    // The cert2s mint requires BOTH sso-jwt header form AND authType=cert2s.
+    // Either side alone is rejected — the property is load-bearing, not
+    // coincidental.
+    const ssoJwtCaller = isSsoJwtCaller(request);
+    const isCert2s = ssoJwtCaller && user.authType === 'cert2s';
+    if (ssoJwtCaller !== (user.authType === 'cert2s')) {
+      logger.warn('auth.token.cert2s.gateMismatch', {
+        ssoJwtCaller,
+        authType: user.authType,
+        siteId,
+      }, { tags: ['security'] });
+      return NextResponse.json({ error: 'Forbidden' }, {
+        status: 403,
+        headers: NO_CACHE_HEADERS
+      });
+    }
+
+    // CRITICAL: prevents authorization bypass. Cert2s flows through the same
+    // control-plane lookup, confirming the shopperId claim owns the siteId.
     const validationError = await validateSiteAccess(siteId, user, authContext.jwt || '', owningProductResult.owningProduct);
     if (validationError) {
       return validationError;
     }
 
-    // Generate site-scoped JWT
+    // Cert2s mints get a 15-min TTL override (12h default otherwise).
     const jwtService = getJWTService();
     const result = await jwtService.createToken({
       siteId,
@@ -114,7 +161,15 @@ export const GET = withCustomerAuth(async (request: NextRequest, authContext: Cu
       canPublish: false,   // Preview apps don't need publish permission
       authType: user.authType || 'basic',
       isE2S: user.isE2S ?? false
-    });
+    }, isCert2s ? CERT2S_AIROAPP_TTL_SECONDS : undefined);
+
+    if (isCert2s) {
+      logger.info('auth.token.cert2s.minted', {
+        siteId,
+        shopperId: user.shopperId,
+        ttlSeconds: CERT2S_AIROAPP_TTL_SECONDS,
+      }, { tags: ['security'] });
+    }
 
     return NextResponse.json(
       { token: result.token },

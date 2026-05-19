@@ -1,7 +1,7 @@
 import { tokenSuffix } from '@airo/shared';
 
 import { getDatabase } from '../connection.js';
-import type { ShareToken } from '../schema.js';
+import type { ShareToken, ShareTokenPurpose } from '../schema.js';
 import { generateShareToken } from '../../utils/share-token-generator.js';
 import { Logger } from '../../logging/index.js';
 
@@ -11,6 +11,7 @@ interface ShareTokenRow {
   token: string;
   app_id: string;
   expires_at: number;
+  purpose: string | null;
   created_at: string;
   first_used_at: string | null;
 }
@@ -18,6 +19,7 @@ interface ShareTokenRow {
 export interface CreateShareTokenParams {
   appId: string;
   expiresIn: number; // Duration in seconds (default: 7 days = 604800)
+  purpose?: ShareTokenPurpose; // default 'user'
 }
 
 export class ShareTokenRepository {
@@ -34,30 +36,34 @@ export class ShareTokenRepository {
     const token = generateShareToken(12);
     const now = Date.now();
     const expiresAt = now + params.expiresIn * 1000;
+    const purpose: ShareTokenPurpose = params.purpose ?? 'user';
 
     logger.info('share.token.create.begin', {
       appId: params.appId,
       expiresIn: params.expiresIn,
       expiresAt,
+      purpose,
     });
 
     try {
       const stmt = this.db.prepare(`
-        INSERT INTO share_tokens (token, app_id, expires_at, created_at)
-        VALUES (?, ?, ?, ?)
+        INSERT INTO share_tokens (token, app_id, expires_at, purpose, created_at)
+        VALUES (?, ?, ?, ?, ?)
       `);
 
-      stmt.run(token, params.appId, expiresAt, new Date(now).toISOString());
+      stmt.run(token, params.appId, expiresAt, purpose, new Date(now).toISOString());
 
       logger.info('share.token.create.success', {
         appId: params.appId,
         tokenSuffix: tokenSuffix(token),
+        purpose,
       });
 
       return {
         token,
         appId: params.appId,
         expiresAt,
+        purpose,
         createdAt: new Date(now),
         firstUsedAt: null,
       };
@@ -77,21 +83,29 @@ export class ShareTokenRepository {
    * @param appId App ID to query
    * @returns Array of ShareTokens
    */
-  findByAppId(appId: string): ShareToken[] {
-    logger.debug('share.token.find_by_app.begin', { appId });
+  findByAppId(appId: string, purpose?: ShareTokenPurpose): ShareToken[] {
+    logger.debug('share.token.find_by_app.begin', { appId, purpose });
 
     try {
-      const stmt = this.db.prepare(`
-        SELECT token, app_id, expires_at, created_at, first_used_at
-        FROM share_tokens
-        WHERE app_id = ?
-        ORDER BY created_at DESC
-      `);
+      const stmt = purpose
+        ? this.db.prepare(`
+            SELECT token, app_id, expires_at, purpose, created_at, first_used_at
+            FROM share_tokens
+            WHERE app_id = ? AND purpose = ?
+            ORDER BY created_at DESC
+          `)
+        : this.db.prepare(`
+            SELECT token, app_id, expires_at, purpose, created_at, first_used_at
+            FROM share_tokens
+            WHERE app_id = ?
+            ORDER BY created_at DESC
+          `);
 
-      const rows = stmt.all(appId) as ShareTokenRow[];
+      const rows = (purpose ? stmt.all(appId, purpose) : stmt.all(appId)) as ShareTokenRow[];
 
       logger.debug('share.token.find_by_app.success', {
         appId,
+        purpose,
         count: rows.length,
       });
 
@@ -99,6 +113,7 @@ export class ShareTokenRepository {
     } catch (error) {
       logger.error('share.token.find_by_app.error', {
         appId,
+        purpose,
         error: error instanceof Error ? error.message : String(error),
       });
       throw error;
@@ -115,7 +130,7 @@ export class ShareTokenRepository {
   findByToken(token: string): ShareToken | null {
     try {
       const stmt = this.db.prepare(`
-        SELECT token, app_id, expires_at, created_at, first_used_at
+        SELECT token, app_id, expires_at, purpose, created_at, first_used_at
         FROM share_tokens
         WHERE token = ?
       `);
@@ -236,10 +251,25 @@ export class ShareTokenRepository {
    * Converts snake_case columns to camelCase properties
    */
   private mapRowToToken(row: ShareTokenRow): ShareToken {
+    // Coerce null (legacy pre-migration row) and unknown (future schema
+    // downgrade or DB corruption) to 'user'. Unknown values warn so a
+    // privileged purpose rolled back into an older deploy doesn't silently
+    // surface as a user token.
+    const isKnown = row.purpose === 'user' || row.purpose === 'archive_snapshot';
+    const isLegacyNull = row.purpose === null || row.purpose === undefined;
+    if (!isKnown && !isLegacyNull) {
+      logger.warn('share.token.unknownPurpose', {
+        tokenSuffix: tokenSuffix(row.token),
+        appId: row.app_id,
+        rawPurpose: row.purpose,
+      });
+    }
+    const purpose: ShareTokenPurpose = row.purpose === 'archive_snapshot' ? 'archive_snapshot' : 'user';
     return {
       token: row.token,
       appId: row.app_id,
       expiresAt: row.expires_at,
+      purpose,
       createdAt: new Date(row.created_at),
       firstUsedAt: row.first_used_at ? new Date(row.first_used_at) : null,
     };

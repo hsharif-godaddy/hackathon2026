@@ -153,7 +153,8 @@ export async function authenticateCustomer(request: NextRequest, level?: 1 | 2 |
 
     // Extract customer information from JWT payload
     const shopperId = result.payload.shopperId as string;
-    const customerId = result.payload.cid as string;
+    const rawCustomerId = result.payload.cid as string | undefined;
+    const authType = result.payload.authType || 'basic';
 
     if (!shopperId) {
       return {
@@ -162,6 +163,11 @@ export async function authenticateCustomer(request: NextRequest, level?: 1 | 2 |
         error: 'Invalid token: missing shopper ID'
       };
     }
+
+    // cert2s SSO tokens identify the bound owner via shopperId — they may not
+    // carry a `cid` claim. Fall back to shopperId so downstream code keeps a
+    // stable customer identifier without rejecting valid hosting delegations.
+    const customerId = rawCustomerId ?? (authType === 'cert2s' ? shopperId : undefined);
 
     if (!customerId) {
       return {
@@ -173,8 +179,6 @@ export async function authenticateCustomer(request: NextRequest, level?: 1 | 2 |
 
     // Derive accountId from customerId (pure mapping, no persistence)
     const account = getOrCreateAccount(shopperId, customerId);
-
-    const authType = result.payload.authType || 'basic';
     const now = Math.floor(Date.now() / 1000);
     const user: CustomerUser = {
       shopperId,

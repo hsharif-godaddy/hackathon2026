@@ -198,10 +198,22 @@ export interface GitRemoteConfig {
  * Allows time-limited access to preview apps without authentication
  * Tokens are cryptographically secure and expire after 7 days
  */
+/**
+ * Share token purpose. Determines who can mint, with what TTL cap, and how the
+ * one-active-token-per-app guard scopes itself.
+ *
+ * - 'user': UI-driven preview share (default). 1h–7d TTL, gated by replaceActive.
+ * - 'archive_snapshot': pre-archive screenshot capture from hosting. Cert2s callers
+ *   only, fixed 15-minute TTL, lives in its own one-active slot (so a UI-issued
+ *   user link and an archive snapshot can coexist).
+ */
+export type ShareTokenPurpose = 'user' | 'archive_snapshot';
+
 export interface ShareToken {
   token: string;
   appId: string;
   expiresAt: number; // Unix timestamp (milliseconds)
+  purpose: ShareTokenPurpose;
   createdAt: Date;
   firstUsedAt: Date | null; // Track first access only
 }
@@ -560,6 +572,7 @@ function createShareTokensTable(db: Database): void {
       token TEXT PRIMARY KEY,
       app_id TEXT NOT NULL,
       expires_at INTEGER NOT NULL,
+      purpose TEXT NOT NULL DEFAULT 'user',
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       first_used_at DATETIME,
       FOREIGN KEY (app_id) REFERENCES apps(id) ON DELETE CASCADE
@@ -1324,6 +1337,59 @@ function applyMigrations(db: Database): void {
 
   // Migrate status CHECK constraint to include pushing and pulling statuses
   migrateImportJobsStatusConstraint(db);
+
+  // Add purpose column to share_tokens for archive-snapshot share tokens
+  migrateShareTokensPurpose(db);
+}
+
+/**
+ * Migration: Add purpose column to share_tokens.
+ *
+ * Distinguishes UI-issued share links ('user') from system-issued archive
+ * snapshot tokens ('archive_snapshot'). The one-active-token-per-app guard is
+ * scoped per (app_id, purpose) at the route layer so the two can coexist.
+ *
+ * Existing rows backfill to 'user' via the column DEFAULT — preserves UI
+ * behavior on upgrade.
+ */
+function migrateShareTokensPurpose(db: Database): void {
+  try {
+    const tableExists = db.prepare(`
+      SELECT name FROM sqlite_master WHERE type='table' AND name='share_tokens'
+    `).get() as { name: string } | undefined;
+
+    if (!tableExists) {
+      logger.info('database.migration.share-tokens-purpose.skipped', {
+        reason: 'share_tokens table does not exist yet',
+      });
+      return;
+    }
+
+    const columnInfo = db.prepare(`
+      SELECT name FROM pragma_table_info('share_tokens') WHERE name = 'purpose'
+    `).get() as { name: string } | undefined;
+
+    if (columnInfo) {
+      logger.info('database.migration.share-tokens-purpose.skipped', {
+        reason: 'purpose column already exists',
+      });
+      return;
+    }
+
+    logger.info('database.migration.share-tokens-purpose.start', {
+      reason: 'Adding purpose column for archive snapshot share tokens',
+    });
+
+    db.exec(`ALTER TABLE share_tokens ADD COLUMN purpose TEXT NOT NULL DEFAULT 'user'`);
+
+    logger.info('database.migration.share-tokens-purpose.complete', {
+      success: true,
+    });
+  } catch (err) {
+    logger.error('database.migration.share-tokens-purpose.failed', {
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
 }
 
 /**

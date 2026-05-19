@@ -11,9 +11,23 @@ import { jwtAuthMiddleware } from '../middleware/jwt-auth.js';
 import { validateAppOwnership } from '../middleware/app-ownership.js';
 import { validateProductAccess } from '../middleware/product-access.js';
 import { appRepository, shareTokenRepository } from '../../database/repositories/index.js';
+import type { ShareTokenPurpose } from '../../database/schema.js';
 import { isValidShareTokenFormat } from '../../utils/share-token-generator.js';
 import { Logger } from '../../logging/index.js';
 import { getErrorMessage } from '../../utils/error.js';
+
+// Per-purpose TTL bounds. 'user' preserves the long-standing 1h–7d UI window.
+// 'archive_snapshot' is a hosting-driven mint with a single fixed 15-min TTL —
+// long enough for screenshot-generator to render and persist, short enough that
+// the token isn't a useful piece of long-lived loot if the URL leaks.
+const PURPOSE_TTL_BOUNDS: Record<ShareTokenPurpose, { minSec: number; maxSec: number; defaultSec: number }> = {
+  user: { minSec: 3600, maxSec: 604800, defaultSec: 604800 },
+  archive_snapshot: { minSec: 60, maxSec: 900, defaultSec: 900 },
+};
+
+function isShareTokenPurpose(value: unknown): value is ShareTokenPurpose {
+  return value === 'user' || value === 'archive_snapshot';
+}
 
 const router: IRouter = Router();
 const logger = Logger.create({ component: 'share-routes' });
@@ -159,12 +173,19 @@ router.use('/apps/:id/share', jwtAuthMiddleware.authenticate, validateProductAcc
  * Create a new share token for an app
  *
  * Body: {
- *   expiresIn?: number,         // seconds, default: 604800 = 7 days
+ *   expiresIn?: number,         // seconds, defaults to per-purpose default
  *   replaceActive?: boolean,    // when true, bypass the one-active-token
  *                               // guard and mint a new token even if an
  *                               // active one exists. Default false.
+ *   purpose?: 'user' | 'archive_snapshot',
+ *                               // 'user' (default): UI-driven preview share,
+ *                               //   1h–7d TTL.
+ *                               // 'archive_snapshot': hosting-driven snapshot
+ *                               //   for the pre-archive screenshot capture.
+ *                               //   Allowed only when the caller's JWT
+ *                               //   authType === 'cert2s'. 60s–15min TTL.
  * }
- * Response: { token, appId, shareUrl, createdAt, expiresAt }
+ * Response: { token, appId, shareUrl, createdAt, expiresAt, purpose }
  */
 router.post('/apps/:id/share', async (req: Request, res: Response) => {
   const authReq = req as AuthenticatedRequest;
@@ -174,15 +195,36 @@ router.post('/apps/:id/share', async (req: Request, res: Response) => {
   // authReq.agentContext.siteId === appId is guaranteed
 
   try {
-    const expiresIn = req.body.expiresIn ?? 604800; // Default: 7 days (604800 seconds)
-    // `replaceActive` is opt-in token rotation. The default (false) keeps
-    // the long-standing "one active token per app" UI invariant intact.
-    // Programmatic callers (currently: app/src/lib/share/inject-preview-token.ts
-    // when an existing token is older than its freshness window) pass true.
-    // Strict `=== true` so any non-boolean payload (a string "true", null,
-    // undefined, etc.) falls through to the safer default behavior — the
-    // caller has to be deliberate to bypass the guard.
-    const replaceActive = req.body.replaceActive === true;
+    // Validate before coercion so an invalid value can't reach `purpose` —
+    // otherwise a future refactor that drops the 400 would silently coerce
+    // bad input to 'user' and bypass the cert2s gate below.
+    const rawPurpose = req.body.purpose;
+    if (rawPurpose !== undefined && !isShareTokenPurpose(rawPurpose)) {
+      logger.warn('share.create.invalidPurpose', { appId, purpose: rawPurpose });
+      return res.status(400).json({
+        error: 'Invalid purpose. Must be "user" or "archive_snapshot"',
+      });
+    }
+    const purpose: ShareTokenPurpose = rawPurpose ?? 'user';
+
+    // Non-default purpose is gated on the caller's JWT auth type — only
+    // cert2s (the delegation form hosting uses) can mint archive_snapshot.
+    if (purpose !== 'user' && authReq.agentContext?.authType !== 'cert2s') {
+      logger.warn('share.create.purposeNotAllowed', {
+        appId,
+        purpose,
+        authType: authReq.agentContext?.authType,
+      });
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    const ttl = PURPOSE_TTL_BOUNDS[purpose];
+    const expiresIn = req.body.expiresIn ?? ttl.defaultSec;
+    // archive_snapshot bypasses the one-active guard so hosting can re-mint
+    // on SM retry. For user purpose, `replaceActive: true` is opt-in rotation
+    // (Slack feedback Preview button); `=== true` is strict so a non-boolean
+    // payload falls through to the safer default.
+    const replaceActive = purpose === 'archive_snapshot' || req.body.replaceActive === true;
 
     // Validate expiresIn is a number
     if (typeof expiresIn !== 'number' || isNaN(expiresIn)) {
@@ -196,19 +238,24 @@ router.post('/apps/:id/share', async (req: Request, res: Response) => {
       });
     }
 
-    // Validate expiresIn range (1 hour to 7 days in seconds)
-    if (expiresIn < 3600 || expiresIn > 604800) {
+    // Per-purpose expiresIn range. 'user' is 1h–7d; 'archive_snapshot' is
+    // 60s–15min. Bounds come from PURPOSE_TTL_BOUNDS so a future purpose can
+    // be added without forking the validation.
+    if (expiresIn < ttl.minSec || expiresIn > ttl.maxSec) {
       logger.warn('share.create.invalidExpiration', {
         appId,
+        purpose,
         expiresIn,
+        bounds: ttl,
       });
       return res.status(400).json({
-        error: 'Invalid expiresIn. Must be between 3600 (1 hour) and 604800 (7 days) seconds',
+        error: `Invalid expiresIn for purpose "${purpose}". Must be between ${ttl.minSec} and ${ttl.maxSec} seconds`,
       });
     }
 
     logger.info('share.create.begin', {
       appId,
+      purpose,
       expiresIn,
       replaceActive,
       siteId: authReq.agentContext?.siteId,
@@ -229,28 +276,20 @@ router.post('/apps/:id/share', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'App has no preview URL configured' });
     }
 
-    // Enforce one-active-link-at-a-time as a server-side invariant for the
-    // default UI flow. The UI gates this too (SharePanel + ShareMenu), but
-    // two open tabs, a direct curl, or a double-click before the React
-    // isPending flag flips would otherwise create duplicate active tokens.
-    //
-    // `replaceActive: true` opts out of the guard for programmatic rotation:
-    // when a copy-friendly link (e.g., the Slack feedback Preview button) is
-    // being generated and the existing token is past its freshness window,
-    // the BFF helper requests a fresh token. The previous token is left in
-    // place to expire on its own schedule — already-copied URLs keep working
-    // until their original 7-day window elapses.
-    //
-    // Hoisted out of the if/else: both branches need the list, so paying
-    // for one DB read covers both paths.
+    // One-active-link-at-a-time is a server-side invariant for the default
+    // UI flow — the UI also gates this, but two tabs / a direct curl / a
+    // double-click before React's isPending flips would otherwise create
+    // duplicate active tokens. Scoped per-purpose so a 'user' link and an
+    // 'archive_snapshot' token coexist.
     const now = Date.now();
-    const existingTokens = shareTokenRepository.findByAppId(appId);
+    const existingTokens = shareTokenRepository.findByAppId(appId, purpose);
     const existingActive = existingTokens.find((t) => t.expiresAt > now);
 
     if (!replaceActive) {
       if (existingActive) {
         logger.info('share.create.alreadyActive', {
           appId,
+          purpose,
           existingExpiresAt: existingActive.expiresAt,
         });
         return res.status(409).json({
@@ -263,6 +302,7 @@ router.post('/apps/:id/share', async (req: Request, res: Response) => {
       const existingActiveCount = existingTokens.filter((t) => t.expiresAt > now).length;
       logger.info('share.create.replacingActive', {
         appId,
+        purpose,
         existingActiveCount,
       });
     }
@@ -270,12 +310,14 @@ router.post('/apps/:id/share', async (req: Request, res: Response) => {
     const shareToken = shareTokenRepository.create({
       appId,
       expiresIn,
+      purpose,
     });
 
     const shareUrl = buildShareUrl(appId, baseUrl, shareToken.token);
 
     logger.info('share.create.success', {
       appId,
+      purpose,
       shareTokenSuffix: tokenSuffix(shareToken.token),
       expiresAt: shareToken.expiresAt,
     });
@@ -284,6 +326,7 @@ router.post('/apps/:id/share', async (req: Request, res: Response) => {
       token: shareToken.token,
       appId,
       shareUrl,
+      purpose: shareToken.purpose,
       createdAt: shareToken.createdAt.toISOString(),
       expiresAt: new Date(shareToken.expiresAt).getTime(), // Unix timestamp in ms
     });
@@ -324,6 +367,7 @@ router.get('/apps/:id/share', async (req: Request, res: Response) => {
       token: token.token,
       appId: token.appId,
       shareUrl: baseUrl ? buildShareUrl(appId, baseUrl, token.token) : undefined,
+      purpose: token.purpose,
       createdAt: token.createdAt.toISOString(),
       expiresAt: new Date(token.expiresAt).getTime(), // Unix timestamp in ms
       firstUsedAt: token.firstUsedAt ? token.firstUsedAt.toISOString() : null,

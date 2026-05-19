@@ -52,8 +52,10 @@ export type SupportedAuthType = (typeof SUPPORTED_AUTH_TYPES)[number]
  * - basic: Normal customer authentication
  * - e2s: Employee-to-shopper (care agent impersonation)
  * - s2s: Shopper-to-shopper delegation
+ * - cert2s: Certificate-to-shopper (service caller acting on behalf of a shopper,
+ *   e.g. mhp-core hosting minting a token for archive screenshot capture)
  */
-export type AuthType = 'basic' | 'e2s' | 's2s'
+export type AuthType = 'basic' | 'e2s' | 's2s' | 'cert2s'
 
 /**
  * Product IDs for Airo products.

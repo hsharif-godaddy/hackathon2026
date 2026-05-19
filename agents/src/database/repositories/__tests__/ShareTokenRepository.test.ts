@@ -45,6 +45,7 @@ describe('ShareTokenRepository', () => {
     token: testToken,
     app_id: testAppId,
     expires_at: futureExpiry,
+    purpose: 'user' as const,
     created_at: testCreatedAt,
     first_used_at: null,
   };
@@ -53,6 +54,7 @@ describe('ShareTokenRepository', () => {
     token: testToken,
     appId: testAppId,
     expiresAt: futureExpiry,
+    purpose: 'user',
     createdAt: new Date(testCreatedAt),
     firstUsedAt: null,
   };
@@ -110,12 +112,14 @@ describe('ShareTokenRepository', () => {
         testToken,
         testAppId,
         expect.any(Number),
+        'user', // purpose defaults to 'user' when not specified
         expect.any(String),
       );
 
       expect(result).toMatchObject({
         token: testToken,
         appId: testAppId,
+        purpose: 'user',
         firstUsedAt: null,
       });
       expect(result.expiresAt).toBeGreaterThan(Date.now());
@@ -454,6 +458,7 @@ describe('ShareTokenRepository', () => {
         expect.any(String),
         longAppId,
         expect.any(Number),
+        'user', // purpose
         expect.any(String),
       );
     });
@@ -538,6 +543,95 @@ describe('ShareTokenRepository', () => {
       // Should not throw
       repository.markFirstUsed(testToken);
       repository.markFirstUsed(testToken);
+    });
+  });
+
+  describe('purpose handling', () => {
+    it('passes provided purpose to the INSERT and returns it on the token', () => {
+      const result = repository.create({
+        appId: testAppId,
+        expiresIn: 900,
+        purpose: 'archive_snapshot',
+      });
+
+      expect(mockStatement.run).toHaveBeenCalledWith(
+        testToken,
+        testAppId,
+        expect.any(Number),
+        'archive_snapshot',
+        expect.any(String),
+      );
+      expect(result.purpose).toBe('archive_snapshot');
+    });
+
+    it('defaults purpose to "user" when omitted', () => {
+      const result = repository.create({ appId: testAppId, expiresIn: 604800 });
+
+      expect(mockStatement.run).toHaveBeenCalledWith(
+        testToken,
+        testAppId,
+        expect.any(Number),
+        'user',
+        expect.any(String),
+      );
+      expect(result.purpose).toBe('user');
+    });
+
+    it('findByAppId(appId, purpose) filters by purpose in the query', () => {
+      mockStatement.all.mockReturnValue([
+        { ...mockDbRow, purpose: 'archive_snapshot' },
+      ]);
+
+      repository.findByAppId(testAppId, 'archive_snapshot');
+
+      expect(mockDb.prepare).toHaveBeenCalledWith(
+        expect.stringContaining('AND purpose = ?'),
+      );
+      expect(mockStatement.all).toHaveBeenCalledWith(testAppId, 'archive_snapshot');
+    });
+
+    it('findByAppId without a purpose returns all purposes', () => {
+      mockStatement.all.mockReturnValue([
+        { ...mockDbRow, purpose: 'user' },
+        { ...mockDbRow, token: 'snap-token', purpose: 'archive_snapshot' },
+      ]);
+
+      const result = repository.findByAppId(testAppId);
+
+      expect(mockDb.prepare).toHaveBeenCalledWith(
+        expect.not.stringContaining('AND purpose = ?'),
+      );
+      expect(result.map(t => t.purpose).sort()).toEqual(['archive_snapshot', 'user']);
+    });
+
+    it('findByToken returns the row purpose', () => {
+      mockStatement.get.mockReturnValue({ ...mockDbRow, purpose: 'archive_snapshot' });
+
+      const result = repository.findByToken(testToken);
+
+      expect(result?.purpose).toBe('archive_snapshot');
+    });
+
+    it('falls back to "user" purpose for legacy rows missing the column value', () => {
+      // Backfill safety: rows persisted before the migration ran would deserialize
+      // with purpose=null (or absent) at the row level. Repository must coerce
+      // these to the column DEFAULT instead of leaking null up the stack.
+      mockStatement.get.mockReturnValue({ ...mockDbRow, purpose: null });
+
+      const result = repository.findByToken(testToken);
+
+      expect(result?.purpose).toBe('user');
+    });
+
+    it('coerces unknown purpose values to "user" without leaking them up the stack', () => {
+      // Defends against downgrade rollouts (a future schema knows 'foo', the
+      // current binary doesn't) and manual DB corruption. Ship the safer 'user'
+      // default to consumers rather than the unknown raw string.
+      mockStatement.get.mockReturnValue({ ...mockDbRow, purpose: 'foo' });
+
+      const result = repository.findByToken(testToken);
+
+      expect(result?.purpose).toBe('user');
     });
   });
 });

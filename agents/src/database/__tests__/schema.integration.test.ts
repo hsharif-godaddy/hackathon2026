@@ -330,12 +330,96 @@ describe('Database Schema Integration Tests', () => {
 
       // Should not throw errors and schema should still be correct
       const tables = testDb.prepare(`
-        SELECT name FROM sqlite_master 
+        SELECT name FROM sqlite_master
         WHERE type='table' AND name NOT LIKE 'sqlite_%'
         ORDER BY name
       `).all() as { name: string }[];
 
       expect(tables).toHaveLength(13); // Should still have exactly 13 tables
+    });
+
+    it('backfills share_tokens.purpose to "user" on a pre-existing populated table', () => {
+      // Simulate the pre-purpose schema: share_tokens table without the column.
+      // Mirrors what a deployed prod DB looks like before this migration runs.
+      // apps row exists too because share_tokens has a FK to apps(id).
+      testDb.exec(`
+        CREATE TABLE apps (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          path TEXT NOT NULL DEFAULT '/tmp',
+          port INTEGER NOT NULL DEFAULT 5000,
+          status TEXT NOT NULL DEFAULT 'created',
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE TABLE share_tokens (
+          token TEXT PRIMARY KEY,
+          app_id TEXT NOT NULL,
+          expires_at INTEGER NOT NULL,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          first_used_at DATETIME,
+          FOREIGN KEY (app_id) REFERENCES apps(id) ON DELETE CASCADE
+        );
+      `);
+
+      testDb.prepare(`INSERT INTO apps (id, name) VALUES (?, ?)`).run('app-legacy', 'Legacy');
+      const future = Date.now() + 7 * 24 * 60 * 60 * 1000;
+      testDb.prepare(`
+        INSERT INTO share_tokens (token, app_id, expires_at) VALUES (?, ?, ?)
+      `).run('legacy-token-1', 'app-legacy', future);
+      testDb.prepare(`
+        INSERT INTO share_tokens (token, app_id, expires_at) VALUES (?, ?, ?)
+      `).run('legacy-token-2', 'app-legacy', future);
+
+      initializeSchema(testDb);
+
+      // Column exists on the table now.
+      const cols = testDb.prepare(`PRAGMA table_info(share_tokens)`).all() as Array<{ name: string }>;
+      expect(cols.map(c => c.name)).toContain('purpose');
+
+      // Existing rows backfilled to 'user' via the column DEFAULT — preserves
+      // the per-purpose one-active-link guard's read of legacy rows as
+      // user-purpose links. If this regresses, the guard would either treat
+      // every legacy link as belonging to no purpose (NULL ≠ any compared
+      // value, so the 409 check would silently stop matching) or surface NULL
+      // up the API — neither is a behavior we want.
+      const rows = testDb.prepare(`
+        SELECT token, purpose FROM share_tokens ORDER BY token
+      `).all() as Array<{ token: string; purpose: string }>;
+      expect(rows).toEqual([
+        { token: 'legacy-token-1', purpose: 'user' },
+        { token: 'legacy-token-2', purpose: 'user' },
+      ]);
+    });
+
+    it('share_tokens.purpose migration is idempotent', () => {
+      // Run end-to-end three times against the same DB. The second/third
+      // invocations hit the pragma_table_info short-circuit inside
+      // migrateShareTokensPurpose — must not throw, must not duplicate the
+      // column, must not corrupt existing rows.
+      initializeSchema(testDb);
+
+      testDb.prepare(`INSERT INTO apps (id, name, path, port) VALUES (?, ?, ?, ?)`)
+        .run('app-idem', 'App', '/tmp', 5000);
+      testDb.prepare(`
+        INSERT INTO share_tokens (token, app_id, expires_at, purpose)
+        VALUES (?, ?, ?, ?)
+      `).run('snap-token', 'app-idem', Date.now() + 60_000, 'archive_snapshot');
+
+      initializeSchema(testDb);
+      initializeSchema(testDb);
+
+      // Column count unchanged.
+      const cols = testDb.prepare(`PRAGMA table_info(share_tokens)`).all() as Array<{ name: string }>;
+      const purposeCols = cols.filter(c => c.name === 'purpose');
+      expect(purposeCols).toHaveLength(1);
+
+      // Row preserved with its original purpose — re-running migrations must
+      // not rewrite an archive_snapshot row to 'user'.
+      const row = testDb.prepare(`
+        SELECT purpose FROM share_tokens WHERE token = ?
+      `).get('snap-token') as { purpose: string };
+      expect(row.purpose).toBe('archive_snapshot');
     });
   });
 

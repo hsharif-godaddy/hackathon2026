@@ -104,6 +104,61 @@ describe('authenticateCustomer level passthrough', () => {
   });
 });
 
+describe('authenticateCustomer cert2s without cid claim', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockExtractToken.mockReturnValue('cert2s-token');
+  });
+
+  it('falls back to shopperId for customerId when authType=cert2s and cid is absent', async () => {
+    mockAuthenticate.mockResolvedValue({
+      valid: true,
+      payload: {
+        shopperId: 'shopper-cert2s',
+        // No cid claim — cert2s tokens identify the bound owner via shopperId.
+        exp: Math.floor(Date.now() / 1000) + 900,
+        iat: Math.floor(Date.now() / 1000),
+        authType: 'cert2s',
+      },
+    });
+
+    const { authenticateCustomer } = await import('./customer-auth');
+    const request = new NextRequest('http://localhost/api/test', {
+      headers: { Authorization: 'sso-jwt cert2s-token' },
+    });
+
+    const result = await authenticateCustomer(request);
+
+    expect(result.isAuthenticated).toBe(true);
+    if (result.isAuthenticated) {
+      expect(result.user.shopperId).toBe('shopper-cert2s');
+      expect(result.user.customerId).toBe('shopper-cert2s');
+      expect(result.user.authType).toBe('cert2s');
+    }
+  });
+
+  it('still 401s a non-cert2s token that has no cid claim', async () => {
+    mockAuthenticate.mockResolvedValue({
+      valid: true,
+      payload: {
+        shopperId: 'shopper-x',
+        exp: Math.floor(Date.now() / 1000) + 900,
+        iat: Math.floor(Date.now() / 1000),
+        authType: 'basic',
+      },
+    });
+
+    const { authenticateCustomer } = await import('./customer-auth');
+    const request = new NextRequest('http://localhost/api/test', {
+      headers: { cookie: 'auth_idp=test-token' },
+    });
+
+    const result = await authenticateCustomer(request);
+
+    expect(result.isAuthenticated).toBe(false);
+  });
+});
+
 describe('authenticateCustomer authReason propagation', () => {
   beforeEach(() => {
     vi.clearAllMocks();
