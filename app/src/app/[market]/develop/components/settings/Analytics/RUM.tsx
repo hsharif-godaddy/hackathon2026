@@ -708,7 +708,7 @@ export default function RUM() {
             title={<text.span as="title" size={-2}>{t('builder_analytics_geographic')}</text.span>}
           >
             <CollapsibleContent>
-              <div className="grid grid-cols-1 @sm:grid-cols-2 gap-2 [&>*]:min-w-0">
+              <div className="grid grid-cols-1 @xl:grid-cols-2 gap-2 [&>*]:min-w-0">
                 <StatProgressList
                   items={countryProgressItems}
                   title={t('builder_analytics_visitors_by_country')}
@@ -777,7 +777,7 @@ export default function RUM() {
             title={<text.span as="title" size={-2}>{t('builder_analytics_devices_sources')}</text.span>}
           >
             <CollapsibleContent>
-              <div className="grid grid-cols-1 @sm:grid-cols-2 gap-2 [&>*]:min-w-0">
+              <div className="grid grid-cols-1 @xl:grid-cols-2 gap-2 [&>*]:min-w-0">
                 <AnalyticsPieChart data={sessionsByDeviceData} label={t('builder_analytics_sessions_by_device')} tooltip={t('builder_analytics_tooltip_device_breakdown')} />
                 <StatProgressList
                   items={referrerProgressItems}
@@ -931,7 +931,7 @@ export default function RUM() {
               />
 
               {/* Page-level path bars */}
-              <div className="grid grid-cols-1 @sm:grid-cols-2 gap-2 [&>*]:min-w-0">
+              <div className="grid grid-cols-1 @xl:grid-cols-2 gap-2 [&>*]:min-w-0">
                 <StatProgressList
                   items={pageViewsByPathData.slice().sort((a, b) => b.value - a.value).slice(0, 10).map((d) => ({ label: d.date === '/' ? t('builder_analytics_home_page') : d.date, value: d.value }))}
                   title={t('builder_analytics_pageviews_by_path')}
