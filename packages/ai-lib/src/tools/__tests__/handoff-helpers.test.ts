@@ -84,8 +84,20 @@ describe('createHandoffTool', () => {
         { sessionId: 'test-session' }
       )
 
-      expect(result.success).toBe(true)
-      expect(result.targetAgent).toBe('marketing')
+      // Verify new minimal format (no internal details exposed)
+      expect(result).toEqual({
+        success: true,
+        message: 'Handoff complete',
+        timestamp: expect.any(String)
+      })
+      // Verify fields are NOT present (security requirement)
+      expect(result).not.toHaveProperty('targetAgent')
+      expect(result).not.toHaveProperty('prompt')
+      // Verify prompt is not leaked in any field (security requirement)
+      expect(result.message).not.toContain('Need SEO help')
+      expect(result.message).not.toContain('marketing')
+      expect(JSON.stringify(result)).not.toContain('Need SEO help')
+      // Verify state manager still receives the data (not lost)
       expect(mockStateManager.switchAgent).toHaveBeenCalledWith(
         'test-session',
         'marketing',
@@ -149,7 +161,14 @@ describe('createHandoffTool', () => {
 
       expect(result.success).toBe(true)
       expect(result.warning).toContain('No state manager')
-      expect(result.targetAgent).toBe('develop')
+      expect(result.timestamp).toBeDefined()
+      // Verify fields are NOT present (even in no-state-manager case)
+      expect(result).not.toHaveProperty('targetAgent')
+      expect(result).not.toHaveProperty('prompt')
+      // Verify prompt is not leaked in any field
+      expect(result.message).not.toContain('Initial setup complete')
+      expect(result.message).not.toContain('develop')
+      expect(JSON.stringify(result)).not.toContain('Initial setup complete')
     })
 
     it('should still block self-handoff even without state manager', async () => {

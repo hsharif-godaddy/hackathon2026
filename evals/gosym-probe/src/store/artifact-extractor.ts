@@ -81,14 +81,21 @@ function extractReadFile(
   };
 }
 
+/**
+ * Extract handoff prompt from tool call input.
+ *
+ * Note: Legacy eval transcripts captured before 2026-05-18 stored the prompt
+ * on `tc.output` instead of `tc.input`. Those transcripts will extract zero
+ * handoff artifacts after this change. Regenerate baselines if needed.
+ */
 function extractHandoff(
   tc: Turn['toolCalls'][number],
   index: number,
   turnIndex: number,
 ): ExtractedArtifact | null {
-  if (tc.output === undefined || tc.output === null) return null;
+  if (tc.input === undefined || tc.input === null) return null;
 
-  const prompt = resolveHandoffPrompt(tc.output);
+  const prompt = resolveHandoffPrompt(tc.input);
   if (prompt === null) return null;
 
   const filename = `${index}-handoff-prompt.txt`;
@@ -101,15 +108,15 @@ function extractHandoff(
   };
 }
 
-function resolveHandoffPrompt(output: unknown): string | null {
-  if (typeof output === 'object' && output !== null) {
-    const obj = output as Record<string, unknown>;
+function resolveHandoffPrompt(toolCallInput: unknown): string | null {
+  if (typeof toolCallInput === 'object' && toolCallInput !== null) {
+    const obj = toolCallInput as Record<string, unknown>;
     return typeof obj.prompt === 'string' ? obj.prompt : null;
   }
 
-  if (typeof output === 'string') {
+  if (typeof toolCallInput === 'string') {
     try {
-      const parsed = JSON.parse(output) as Record<string, unknown>;
+      const parsed = JSON.parse(toolCallInput) as Record<string, unknown>;
       return typeof parsed.prompt === 'string' ? parsed.prompt : null;
     } catch {
       return null;

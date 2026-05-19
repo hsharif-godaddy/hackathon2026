@@ -109,19 +109,14 @@ export default function HandoffToolRenderer({
     }
   }, [toolStatus, partialInput])
 
-  // Extract target agent from final input/result, falling back to streaming value
+  // Extract target agent from final input (not result), falling back to streaming value
   let targetAgent: string | null = null
   if (input && typeof input === 'object') {
     const inputObj = input as any
     const rawAgent = inputObj.targetAgent || inputObj.target_agent || ''
     if (rawAgent) targetAgent = getAgentDisplayName(rawAgent, t)
   }
-  if (result && typeof result === 'object') {
-    const resultObj = result as any
-    if (resultObj.targetAgent) {
-      targetAgent = getAgentDisplayName(resultObj.targetAgent, t)
-    }
-  }
+  // Fallback to streaming value if not in input
   if (!targetAgent && lastTargetAgentRef.current) {
     targetAgent = getAgentDisplayName(lastTargetAgentRef.current, t)
   }

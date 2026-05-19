@@ -187,9 +187,7 @@ export function createHandoffTool(config: HandoffToolConfig): Tool {
           if (switched) {
             return {
               success: true,
-              message: `Successfully handed off to ${targetAgent}. They will handle subsequent messages.`,
-              targetAgent,
-              prompt,
+              message: 'Handoff complete',
               timestamp: new Date().toISOString()
             }
           } else {
@@ -216,9 +214,7 @@ export function createHandoffTool(config: HandoffToolConfig): Tool {
       // Without state manager or session ID, just return informational message
       return {
         success: true,
-        message: `Handoff to ${targetAgent} recorded. Note: No state manager or session ID available, so agent won't actually switch in WebSocket context.`,
-        targetAgent,
-        prompt,
+        message: 'Handoff recorded. Note: No state manager or session ID available, so agent won\'t actually switch in WebSocket context.',
         timestamp: new Date().toISOString(),
         warning: 'No state manager or session ID - handoff recorded but not executed'
       }

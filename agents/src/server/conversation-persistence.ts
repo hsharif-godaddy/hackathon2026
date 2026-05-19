@@ -709,7 +709,8 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
               if (handoffResult?.result?.usage) {
                 const handoffUsage = handoffResult.result.usage;
                 const handoffCaching = handoffResult.result.caching;
-                const targetAgent = handoffResult.targetAgent || 'unknown';
+                // Read targetAgent from tool input (what was sent TO the tool), not output
+                const targetAgent = (toolCall.toolArgs as any)?.targetAgent ?? 'unknown';
                 // Get model name from target agent metadata
                 const targetMetadata = aiLibAgentMetadata[targetAgent] as AILibAgentMetadata & { modelName?: string };
                 const modelName = targetMetadata?.modelName || 'claude-sonnet-4-6';

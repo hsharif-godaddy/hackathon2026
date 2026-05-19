@@ -125,10 +125,11 @@ describe('extractArtifacts()', () => {
   });
 
   describe('handoff extraction', () => {
-    it('extracts handoff with JSON string output containing prompt', () => {
+    it('extracts handoff with JSON string input containing prompt', () => {
       const prompt = 'Design a hero section with dark theme';
       const tc = makeToolCall('handoff', {
-        output: JSON.stringify({ prompt }),
+        input: JSON.stringify({ prompt }),
+        output: { success: true },
       });
 
       const result = extractArtifacts([makeTurn([tc])]);
@@ -139,10 +140,11 @@ describe('extractArtifacts()', () => {
       expect(result[0].entry.toolName).toBe('handoff');
     });
 
-    it('extracts handoff with object output containing prompt', () => {
+    it('extracts handoff with object input containing prompt', () => {
       const prompt = 'Design a hero section with dark theme';
       const tc = makeToolCall('handoff', {
-        output: { prompt } as unknown,
+        input: { prompt } as unknown,
+        output: { success: true },
       });
 
       const result = extractArtifacts([makeTurn([tc])]);
@@ -150,17 +152,10 @@ describe('extractArtifacts()', () => {
       expect(result[0].content).toBe(prompt);
     });
 
-    it('skips handoff with invalid JSON string output', () => {
-      const tc = makeToolCall('handoff', { output: 'not valid json' });
-
-      const result = extractArtifacts([makeTurn([tc])]);
-
-      expect(result).toHaveLength(0);
-    });
-
-    it('skips handoff when output has no prompt field', () => {
+    it('skips handoff with invalid JSON string input', () => {
       const tc = makeToolCall('handoff', {
-        output: JSON.stringify({ result: 'done' }),
+        input: 'not valid json',
+        output: { success: true },
       });
 
       const result = extractArtifacts([makeTurn([tc])]);
@@ -168,7 +163,18 @@ describe('extractArtifacts()', () => {
       expect(result).toHaveLength(0);
     });
 
-    it('skips handoff with no output', () => {
+    it('skips handoff when input has no prompt field', () => {
+      const tc = makeToolCall('handoff', {
+        input: JSON.stringify({ result: 'done' }),
+        output: { success: true },
+      });
+
+      const result = extractArtifacts([makeTurn([tc])]);
+
+      expect(result).toHaveLength(0);
+    });
+
+    it('skips handoff with no input', () => {
       const tc = makeToolCall('handoff');
 
       const result = extractArtifacts([makeTurn([tc])]);
