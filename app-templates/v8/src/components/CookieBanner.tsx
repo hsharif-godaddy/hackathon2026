@@ -147,6 +147,7 @@ export default function CookieBanner() {
 
   function saveConsent(analytics: boolean) {
     localStorage.setItem(COOKIE_CONSENT_KEY, JSON.stringify({ analytics, timestamp: Date.now() }));
+    window.dispatchEvent(new CustomEvent('cookie-consent-changed', { detail: { consented: analytics } }));
     if (analytics) initC2Tracking();
     setShowBanner(false);
   }
@@ -154,6 +155,7 @@ export default function CookieBanner() {
   function revokeConsent() {
     if (typeof window === 'undefined') return;
     localStorage.removeItem(COOKIE_CONSENT_KEY);
+    window.dispatchEvent(new CustomEvent('cookie-consent-changed', { detail: { consented: false } }));
     setShowBanner(true);
   }
 
