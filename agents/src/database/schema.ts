@@ -298,7 +298,7 @@ export function initializeSchema(db: Database): void {
 function configureDatabaseSettings(db: Database): void {
   // Enable WAL mode for better concurrency
   db.exec('PRAGMA journal_mode = WAL');
-  db.exec('PRAGMA synchronous = NORMAL');
+  db.exec('PRAGMA synchronous = FULL');
   db.exec('PRAGMA cache_size = 1000');
   db.exec('PRAGMA foreign_keys = ON');
 }

@@ -205,7 +205,7 @@ import { workspaceScopeFromAppId } from '../memory/interfaces/scope.js';
 import { ConversationContextManager } from '../services/ConversationContextManager.js';
 import { getTemplateIds } from '../agents/template-registry.js';
 import { createAgentRouter } from './agent-router.js';
-import { getDatabase } from '../database/index.js';
+import { closeDatabase, getDatabase } from '../database/index.js';
 import { AppRepository } from '../database/repositories/AppRepository.js';
 import { destroyLlmDispatcher } from '@airo/ai-lib';
 
@@ -808,6 +808,16 @@ async function shutdown() {
         setTimeout(() => reject(new Error('server.close() timed out')), SERVER_CLOSE_TIMEOUT_MS)
       )
     ]);
+
+    try {
+      closeDatabase();
+      logger.info('server.shutdown.database.success', { service: serviceName });
+    } catch (error) {
+      logger.warn('server.shutdown.database.failure', {
+        service: serviceName,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
 
     await destroyLlmDispatcher();
 

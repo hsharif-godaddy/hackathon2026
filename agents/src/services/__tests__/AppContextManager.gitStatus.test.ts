@@ -23,13 +23,16 @@ vi.mock('util', async (importOriginal) => {
   };
 });
 
-// Mock fs.existsSync
-const mockExistsSync = vi.fn();
+// Mock fs.existsSync — vi.hoisted() ensures the variable is available when the
+// hoisted vi.mock() factory runs, before any module-level imports execute.
+const { mockExistsSync } = vi.hoisted(() => ({
+  mockExistsSync: vi.fn().mockReturnValue(false),
+}));
 vi.mock('fs', async (importOriginal) => {
   const actual = await importOriginal() as any;
   return {
     ...actual,
-    existsSync: (...args: any[]) => mockExistsSync(...args)
+    existsSync: (...args: any[]) => mockExistsSync(...args),
   };
 });
 
