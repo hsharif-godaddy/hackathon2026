@@ -175,15 +175,18 @@ export function MediaSlotDetail({
     hasAutoSearchedRef.current = false
   }, [slotName])
 
-  // Pre-populate search query from the slot's stored search query and auto-run it once
+  // Pre-populate search query from the slot's stored search query and auto-run it once.
+  // Skip for logo/generated slots — their alternatives are generated logos, not Getty images.
+  const isGeneratedContent = slot?.mediaType === 'logo' || slot?.mediaType === 'generated'
   useEffect(function initSearchQuery() {
     if (!isImageSearchEnabled) return
+    if (isGeneratedContent) return
     if (slot?.searchQuery && !hasAutoSearchedRef.current) {
       hasAutoSearchedRef.current = true
       setSearchQuery(slot.searchQuery)
       void triggerSearchRef.current({ query: slot.searchQuery })
     }
-  }, [slot?.searchQuery, isImageSearchEnabled])
+  }, [slot?.searchQuery, isGeneratedContent, isImageSearchEnabled])
 
   const isEmbedded = useIsEmbedded()
   const getServerState = useServerPollingStore((state) => state.getServerState)
@@ -447,12 +450,16 @@ export function MediaSlotDetail({
     ...extraGettyImages.filter((url) => !gettyImages.includes(url)),
   ]
 
-  // Whether the grid is currently showing search results vs. default alternatives
-  const showingSearchResults = searchResults.length > 0
+  // Whether the grid is currently showing search results vs. default alternatives.
+  // Never override for logo/generated slots — their grid should always show generated alternatives.
+  const showingSearchResults = searchResults.length > 0 && !isGeneratedContent
   const allGridImages = showingSearchResults ? searchResults : allGettyImages
-  const gridImages = allGridImages.slice(0, displayedCount)
+  // Logo/generated slots show all alternatives (no pagination); image slots paginate.
+  const gridImages = isGeneratedContent
+    ? allGridImages
+    : allGridImages.slice(0, displayedCount)
 
-  const showMoreButton = !!isImageSearchEnabled && slot?.mediaType !== 'logo' && (
+  const showMoreButton = !!isImageSearchEnabled && !isGeneratedContent && (
     showingSearchResults
       ? searchResults.length > displayedCount || !searchExhausted
       : allGettyImages.length > displayedCount || (!!slot?.searchQuery && !alternativesExhausted && allGettyImages.length > 0)

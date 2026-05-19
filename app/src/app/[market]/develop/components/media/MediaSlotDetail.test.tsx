@@ -355,6 +355,82 @@ describe('MediaSlotDetail', () => {
     });
   });
 
+  describe('logo/generated slot search isolation', () => {
+    it('does not auto-search for logo slots even when searchQuery exists', async () => {
+      const { agentFetch } = await import('@/lib/agent-fetch');
+
+      vi.mocked(useMediaSlot).mockReturnValue({
+        slot: {
+          currentUrl: 'https://logos.example.com/logo1.png',
+          alternatives: [
+            'https://logos.example.com/logo2.png',
+            'https://logos.example.com/logo3.png',
+            'https://logos.example.com/logo4.png',
+          ],
+          mediaType: 'logo',
+          searchQuery: 'Acme Corp',
+        },
+        isLoading: false,
+        error: null,
+        refetch: mockRefetch,
+      } as unknown as ReturnType<typeof useMediaSlot>);
+
+      renderWithProviders(<MediaSlotDetail appId={mockAppId} slotName="logo/primary" />);
+
+      // Wait a tick to allow effects to fire
+      await waitFor(() => {
+        expect(agentFetch).not.toHaveBeenCalled();
+      });
+    });
+
+    it('shows all logo alternatives without pagination (no slice to 3)', async () => {
+      vi.mocked(useMediaSlot).mockReturnValue({
+        slot: {
+          currentUrl: 'https://logos.example.com/logo1.png',
+          alternatives: [
+            'https://logos.example.com/logo2.png',
+            'https://logos.example.com/logo3.png',
+            'https://logos.example.com/logo4.png',
+          ],
+          mediaType: 'logo',
+          searchQuery: 'Acme Corp',
+        },
+        isLoading: false,
+        error: null,
+        refetch: mockRefetch,
+      } as unknown as ReturnType<typeof useMediaSlot>);
+
+      renderWithProviders(<MediaSlotDetail appId={mockAppId} slotName="logo/primary" />);
+
+      // All alternatives should be rendered as grid buttons (not sliced to 3)
+      const buttons = await screen.findAllByRole('button', { pressed: false });
+      // 3 alternative images should appear as unselected buttons
+      expect(buttons.length).toBeGreaterThanOrEqual(3);
+    });
+
+    it('does not auto-search for generated slots', async () => {
+      const { agentFetch } = await import('@/lib/agent-fetch');
+
+      vi.mocked(useMediaSlot).mockReturnValue({
+        slot: {
+          currentUrl: 'https://generated.example.com/img1.png',
+          alternatives: ['https://generated.example.com/img2.png'],
+          mediaType: 'generated',
+          searchQuery: 'abstract background',
+        },
+        isLoading: false,
+        error: null,
+        refetch: mockRefetch,
+      } as unknown as ReturnType<typeof useMediaSlot>);
+
+      renderWithProviders(<MediaSlotDetail appId={mockAppId} slotName="generated/bg" />);
+
+      await waitFor(() => {
+        expect(agentFetch).not.toHaveBeenCalled();
+      });
+    });
+  });
+
 });
 
 describe('formatSlotName', () => {
