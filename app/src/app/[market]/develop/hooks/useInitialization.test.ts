@@ -9,7 +9,20 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { deriveIsAwaitingStream, getEditPaths, isCompletedFileEdit, isSiteForCurrentApp, resetStaleAppContext } from './useInitialization';
+import { SiteStatus } from '@/lib/control-plane/types';
+import type { Site } from '@/stores/useSitesStore';
+import { checkHasInitialPrompt, deriveIsAwaitingStream, getEditPaths, isCompletedFileEdit, isSiteForCurrentApp, resetStaleAppContext } from './useInitialization';
+
+function makeSite(overrides: Partial<Site>): Site {
+  return {
+    id: 'app-1',
+    status: SiteStatus.Running,
+    account_id: 'cust-1',
+    created_at: new Date(),
+    updated_at: new Date(),
+    ...overrides,
+  } as Site;
+}
 
 describe('useInitialization', function hookTests() {
   
@@ -522,6 +535,54 @@ describe('useInitialization', function hookTests() {
 
     it('returns false when both appId and realAppId are null', function bothNull() {
       expect(isSiteForCurrentApp({ id: 'app-1' }, null, null)).toBe(false);
+    });
+  });
+
+  describe('checkHasInitialPrompt', function checkHasInitialPromptTests() {
+    beforeEach(() => {
+      sessionStorage.clear();
+    });
+
+    it('returns false when neither sessionStorage flags nor site are set', function emptyState() {
+      expect(checkHasInitialPrompt(null, 'app-1', null, null)).toBe(false);
+    });
+
+    it('returns true when sessionStorage flags are set on initialJobId', function jobIdFlags() {
+      sessionStorage.setItem('initial-prompt-pending-job-1', 'true');
+      sessionStorage.setItem('in-creation-flow-job-1', 'true');
+      expect(checkHasInitialPrompt('job-1', 'app-1', null, null)).toBe(true);
+    });
+
+    it('returns true when sessionStorage flags are set on appId (rebuild mode)', function appIdFlags() {
+      sessionStorage.setItem('initial-prompt-pending-app-1', 'true');
+      sessionStorage.setItem('in-creation-flow-app-1', 'true');
+      expect(checkHasInitialPrompt(null, 'app-1', null, null)).toBe(true);
+    });
+
+    it('returns true when site has initial_prompt for current app and flags are absent (DPP cold redirect)', function siteAware() {
+      const site = makeSite({ id: 'app-1', initial_prompt: 'Build me a portfolio' });
+      expect(checkHasInitialPrompt(null, 'app-1', site, null)).toBe(true);
+    });
+
+    it('site-aware branch matches via realAppId during job→app conversion', function siteAwareRealAppId() {
+      const site = makeSite({ id: 'app-1', initial_prompt: 'Build me a portfolio' });
+      expect(checkHasInitialPrompt(null, 'job-xyz', site, 'app-1')).toBe(true);
+    });
+
+    it('site-aware branch is gated by isSiteForCurrentApp staleness guard', function staleSiteGuard() {
+      // Previous app's site lingers in store while jobId for a new app is in URL
+      const stalePrevSite = makeSite({ id: 'app-prev', initial_prompt: 'Previous app prompt' });
+      expect(checkHasInitialPrompt(null, 'job-2', stalePrevSite, null)).toBe(false);
+    });
+
+    it('site-aware branch returns false when site has no initial_prompt', function siteWithoutPrompt() {
+      const site = makeSite({ id: 'app-1' });
+      expect(checkHasInitialPrompt(null, 'app-1', site, null)).toBe(false);
+    });
+
+    it('site-aware branch returns false when initial_prompt is empty string', function emptyPrompt() {
+      const site = makeSite({ id: 'app-1', initial_prompt: '' });
+      expect(checkHasInitialPrompt(null, 'app-1', site, null)).toBe(false);
     });
   });
 });

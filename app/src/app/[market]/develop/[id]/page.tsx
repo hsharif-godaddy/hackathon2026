@@ -1364,21 +1364,32 @@ function DevelopPageContent() {
     if (searchParams.get('message')) return // Don't auto-send if there's a URL message
 
     if (init.ui.shouldAutoSendPrompt && init.ui.autoSendPromptText && !pendingAutoSendRef.current) {
-      const wasTriggered = autoSendInitialMessage(init.ui.autoSendPromptText, appId)
+      // Provenance-neutral FQDN preamble for external-entry redirects (e.g. DPP).
+      // The home-page flow does not populate site.fqdn, so its presence is the gate.
+      // Lowercased to match RFC-canonical form — mgmt-airo doesn't normalize on write.
+      // The adapter already type-guards site.fqdn to `string | undefined`; the
+      // typeof check here is defense-in-depth so a regression in the contract
+      // can't surface as a runtime crash on an LLM-bound code path.
+      const fqdn = typeof site?.fqdn === 'string' ? site.fqdn.toLowerCase() : undefined
+      const firstMessage = fqdn
+        ? `This site is for ${fqdn}. ${init.ui.autoSendPromptText}`
+        : init.ui.autoSendPromptText
+      const wasTriggered = autoSendInitialMessage(firstMessage, appId)
 
       if (wasTriggered) {
-        pendingAutoSendRef.current = init.ui.autoSendPromptText
+        pendingAutoSendRef.current = firstMessage
         setIsCreateFlowSession(true)
         logger.info('develop-page.auto-send.triggered', {
           message: 'Auto-sending initial message for new app',
           appId,
-          promptPreview: init.ui.autoSendPromptText.substring(0, 50) + '...'
+          hasFqdn: !!fqdn,
+          promptPreview: firstMessage.substring(0, 50) + '...'
         })
 
         // Funnel event: Initial prompt sent from client - correlate with APM using appId
         shipAnalyticsLog('funnel.initial_prompt.sent', {
           appId,
-          promptLength: init.ui.autoSendPromptText.length,
+          promptLength: firstMessage.length,
         })
 
         activateInitialBuildFunnel(appId)
@@ -1427,6 +1438,7 @@ function DevelopPageContent() {
     ws.connection.isConnected,
     messages.length,
     setInputValue,
+    site,
   ])
 
   useEffect(() => {

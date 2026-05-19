@@ -960,10 +960,174 @@ describe('V2ControlPlaneAdapter', () => {
       expect(site?.status).toBe('running');
       expect(site?.name).toBe('Todo App');
       expect(site?.system_id).toBe(MOCK_SYSTEM_ID);
-      
+
       // URLs should be constructed with new V2 pattern
       expect(site?.agent_url).toContain(MOCK_APP_ID);
       expect(site?.agent_url).toContain('test-airoapp.ai');
+    });
+
+    it('should map app.variables.fqdn through to site.fqdn (DPP entry point)', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          apps: [{
+            id: MOCK_APP_ID,
+            status: 'active',
+            systemId: MOCK_SYSTEM_ID,
+            subscriptionId: 'sub-123',
+            cellId: 'c4-dev-sxb1-eu-central-1',
+            variables: {
+              title: 'Studio Sketch',
+              initialPrompt: 'Build me a portfolio for a freelance illustrator',
+              fqdn: 'studiosketch.com'
+            },
+            createdAt: '2025-10-02T10:30:00Z',
+            updatedAt: '2025-10-02T10:35:00Z'
+          }]
+        })
+      });
+
+      const site = await adapter.getSite(MOCK_JOB_ID, MOCK_JWT);
+
+      expect(site?.fqdn).toBe('studiosketch.com');
+      expect(site?.initial_prompt).toBe('Build me a portfolio for a freelance illustrator');
+    });
+
+    it('should leave site.fqdn undefined when variables.fqdn is not a string', async () => {
+      // Guards the SiteInfo `fqdn?: string` contract against raw-JSON breakage —
+      // a non-string value would crash `.toLowerCase()` on the read side.
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          apps: [{
+            id: MOCK_APP_ID,
+            status: 'active',
+            systemId: MOCK_SYSTEM_ID,
+            subscriptionId: 'sub-123',
+            cellId: 'c4-dev-sxb1-eu-central-1',
+            variables: {
+              title: 'Bad fqdn type',
+              initialPrompt: MOCK_PROMPT,
+              fqdn: 12345
+            },
+            createdAt: '2025-10-02T10:30:00Z',
+            updatedAt: '2025-10-02T10:35:00Z'
+          }]
+        })
+      });
+
+      const site = await adapter.getSite(MOCK_JOB_ID, MOCK_JWT);
+
+      expect(site?.fqdn).toBeUndefined();
+    });
+
+    it('should leave site.fqdn undefined when variables.fqdn is an empty/whitespace string', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          apps: [{
+            id: MOCK_APP_ID,
+            status: 'active',
+            systemId: MOCK_SYSTEM_ID,
+            subscriptionId: 'sub-123',
+            cellId: 'c4-dev-sxb1-eu-central-1',
+            variables: {
+              title: 'Empty fqdn',
+              initialPrompt: MOCK_PROMPT,
+              fqdn: '   '
+            },
+            createdAt: '2025-10-02T10:30:00Z',
+            updatedAt: '2025-10-02T10:35:00Z'
+          }]
+        })
+      });
+
+      const site = await adapter.getSite(MOCK_JOB_ID, MOCK_JWT);
+
+      expect(site?.fqdn).toBeUndefined();
+    });
+
+    it('should leave site.fqdn undefined when variables.fqdn exceeds the DNS length cap', async () => {
+      const oversizedFqdn = 'a'.repeat(254) + '.com';
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          apps: [{
+            id: MOCK_APP_ID,
+            status: 'active',
+            systemId: MOCK_SYSTEM_ID,
+            subscriptionId: 'sub-123',
+            cellId: 'c4-dev-sxb1-eu-central-1',
+            variables: {
+              title: 'Oversized fqdn',
+              initialPrompt: MOCK_PROMPT,
+              fqdn: oversizedFqdn
+            },
+            createdAt: '2025-10-02T10:30:00Z',
+            updatedAt: '2025-10-02T10:35:00Z'
+          }]
+        })
+      });
+
+      const site = await adapter.getSite(MOCK_JOB_ID, MOCK_JWT);
+
+      expect(site?.fqdn).toBeUndefined();
+    });
+
+    it('should leave site.fqdn undefined when variables.fqdn is absent', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          apps: [{
+            id: MOCK_APP_ID,
+            status: 'active',
+            systemId: MOCK_SYSTEM_ID,
+            subscriptionId: 'sub-123',
+            cellId: 'c4-dev-sxb1-eu-central-1',
+            variables: {
+              title: 'Todo App',
+              initialPrompt: MOCK_PROMPT
+            },
+            createdAt: '2025-10-02T10:30:00Z',
+            updatedAt: '2025-10-02T10:35:00Z'
+          }]
+        })
+      });
+
+      const site = await adapter.getSite(MOCK_JOB_ID, MOCK_JWT);
+
+      expect(site?.fqdn).toBeUndefined();
+    });
+
+    it('should length-clamp initial_prompt at the BFF response boundary', async () => {
+      // 7400 bytes is MAX_PROMPT_BYTES; build an oversized ASCII prompt.
+      const oversized = 'a'.repeat(8000);
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          apps: [{
+            id: MOCK_APP_ID,
+            status: 'active',
+            systemId: MOCK_SYSTEM_ID,
+            subscriptionId: 'sub-123',
+            cellId: 'c4-dev-sxb1-eu-central-1',
+            variables: {
+              title: 'Oversized',
+              initialPrompt: oversized
+            },
+            createdAt: '2025-10-02T10:30:00Z',
+            updatedAt: '2025-10-02T10:35:00Z'
+          }]
+        })
+      });
+
+      const site = await adapter.getSite(MOCK_JOB_ID, MOCK_JWT);
+
+      expect(site?.initial_prompt).toBeDefined();
+      expect(site?.initial_prompt!.length).toBeLessThanOrEqual(7400);
+      expect(site?.initial_prompt!.length).toBeLessThan(oversized.length);
     });
   });
 

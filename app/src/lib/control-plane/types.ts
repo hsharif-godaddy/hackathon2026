@@ -143,6 +143,8 @@ export interface SiteInfo {
   status: SiteStatus;
   account_id: string;
   initial_prompt?: string;
+  /** FQDN attached to this app at create time (e.g. via DPP). Provenance-neutral. */
+  fqdn?: string;
   agent_url?: string;
   backend_url?: string;
   preview_url?: string;
