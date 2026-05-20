@@ -25,6 +25,7 @@ import { createForWorkspace } from '../../workspace/index.js';
 import { FileEditTool } from '../../tools/file-edit.js';
 import { ASTStyleEditor } from '../../tools/ast-style-editor.js';
 import { ASTTextEditor } from '../../tools/ast-text-editor.js';
+import { TextFixAgent } from '../../agents/text-fix-agent.js';
 import { astImageEditor } from '../../tools/ast-image-editor.js';
 import { mediaManifestService } from '../../services/MediaManifestService.js';
 
@@ -866,6 +867,73 @@ router.post('/:id/text/edit', async (req: Request, res: Response) => {
   } catch (error) {
     const contextLogger = req.params.id ? log.forApp(req.params.id) : logger;
     log.error(contextLogger, 'route.apps.text-edit.error', error as Error, {});
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /apps/:id/text/fix - Run a typo/grammar correction over the supplied text.
+ *
+ * Pure transformation — does NOT write to disk. Returns `{newText, changed}` so
+ * the client can render a diff preview and the user can confirm before the
+ * actual file edit goes through the existing `/text/edit` endpoint.
+ */
+/**
+ * Hard cap on `oldText` to bound LLM cost and avoid output-token truncation.
+ * 8000 chars covers any realistic visible UI element (a hero block is ~1k);
+ * paired with `maxOutputTokens: 4000` in TextFixAgent, the model has headroom
+ * for the JSON envelope without truncating mid-string.
+ */
+const MAX_FIX_INPUT_LENGTH = 8000;
+
+router.post('/:id/text/fix', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { oldText } = req.body;
+
+    if (!id) {
+      return res.status(400).json({ error: 'App ID is required' });
+    }
+
+    if (typeof oldText !== 'string' || !oldText.trim()) {
+      return res.status(400).json({ error: 'oldText is required' });
+    }
+
+    if (oldText.length > MAX_FIX_INPUT_LENGTH) {
+      return res.status(400).json({
+        error: `oldText exceeds maximum length of ${MAX_FIX_INPUT_LENGTH} characters`,
+      });
+    }
+
+    const app = appRepo.findById(id);
+    if (!app) {
+      return res.status(404).json({ error: 'App not found' });
+    }
+
+    const contextLogger = log.forApp(id);
+    contextLogger.info('route.apps.text-fix.begin', { textLength: oldText.length });
+
+    const agent = new TextFixAgent();
+    let result;
+    try {
+      await agent.initialize();
+      result = await agent.correct(oldText);
+    } finally {
+      await agent.cleanup();
+    }
+
+    contextLogger.info('route.apps.text-fix.success', { changed: result.changed });
+
+    return res.json({
+      success: true,
+      data: {
+        newText: result.newText,
+        changed: result.changed,
+      },
+    });
+  } catch (error) {
+    const contextLogger = req.params.id ? log.forApp(req.params.id) : logger;
+    log.error(contextLogger, 'route.apps.text-fix.error', error as Error, {});
     return res.status(500).json({ error: 'Internal server error' });
   }
 });

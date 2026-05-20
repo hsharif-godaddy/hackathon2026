@@ -46,6 +46,8 @@ interface HoverBarButtonProps {
   label?: string;
   /** When true, renders with active/toggled styling (blue tint). */
   active?: boolean;
+  /** Optional `data-testid` for E2E selectors. */
+  testId?: string;
 }
 
 const TOOLTIP_STYLES: React.CSSProperties = {
@@ -71,7 +73,7 @@ const TOOLTIP_STYLES: React.CSSProperties = {
  * Toolbar button for use inside a HoverBar.
  * Labeled (with text + icon) or icon-only depending on whether `label` is provided.
  */
-export function HoverBarButton({ onClick, title, icon, label, active }: HoverBarButtonProps) {
+export function HoverBarButton({ onClick, title, icon, label, active, testId }: HoverBarButtonProps) {
   const [showTooltip, setShowTooltip] = useState(false);
   const delayRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -94,6 +96,7 @@ export function HoverBarButton({ onClick, title, icon, label, active }: HoverBar
     <button
       type="button"
       {...(label ? {} : { 'aria-label': title })}
+      {...(testId ? { 'data-testid': testId } : {})}
       style={{
         position: "relative",
         display: "flex",

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { safePostMessage } from "../utils/postMessage";
 import { generatePreciseSelector, extractDevContext, getElementClassName } from "../utils/element-helpers";
 import { isTouchDevice } from "../utils/device";
@@ -14,6 +14,10 @@ import { isClickable, isTextElement, isTextBlockElement } from "../utils/element
 import { t } from "../utils/translations";
 import { HoverBar, HoverBarButton } from "./HoverBar";
 import { QuickEditBar } from "./QuickEditBar";
+import { TextFixPopover } from "./TextFixPopover";
+import TextFixButton from "./TextFixButton";
+import { useTextFix } from "../hooks/useTextFix";
+import { htmlStringToDisplayText } from "../utils/text-fix-helpers";
 import TextAlignButton from "./TextAlignButton";
 import BoldButton from "./BoldButton";
 import ItalicButton from "./ItalicButton";
@@ -45,6 +49,14 @@ export default function ElementHoverBar({
   // even if hover moves away (e.g., mouse enters toolbar, causing parent to track a new hover)
   const toolbarElementRef = useRef<HTMLElement | null>(null);
   const toolbarHoveredElementRef = useRef<HoveredElement | null>(null);
+
+  // ── Text-fix (proofread) lifecycle ──
+  // The button posts TEXT_FIX_REQUESTED to the parent, which calls a small
+  // LLM and replies with TEXT_FIX_RESULT. We render a diff popover for review;
+  // on Accept the hook emits the standard TEXT_UPDATED payload through the
+  // existing AST text-edit pipeline. State + request lifecycle live in the
+  // hook; the button render lives in TextFixButton.
+  const fix = useTextFix();
 
   // Outline overlay + pointer cursor on the hovered element.
   // Uses a fixed-position div so the outline stays visible even when
@@ -86,7 +98,13 @@ export default function ElementHoverBar({
     setToolbarMode(false);
     setQuickEditMode(false);
     pendingContextRef.current = null;
-  }, [element]);
+    // Cancel any in-flight fix request — the captured toolbarElementRef is
+    // about to point at a different element, so a pending result would be stale.
+    fix.reset();
+    // Dep on `fix.reset` (a stable useCallback), NOT `fix` — the hook returns
+    // a fresh object every render, so depending on `fix` would re-run this
+    // effect every render and close the toolbar before it's visible.
+  }, [element, fix.reset]);
 
   // Auto-open toolbar on mobile (skip the click requirement)
   useEffect(() => {
@@ -114,7 +132,16 @@ export default function ElementHoverBar({
   // Clicking the element opens the toolbar.
   // Registered at document capture phase so it fires alongside useTextEditing's
   // capture handler — text editing still activates normally on the same click.
-  useEffect(() => {
+  //
+  // useLayoutEffect (not useEffect) so closure re-registration happens
+  // synchronously during commit. Pairs with the mousedown→flushSync handler
+  // in useImageHoverDetection: when the user clicks within the hover-detect
+  // showBarTimer window, that handler flushes the pending `hoveredElement`
+  // state, React commits + runs this layout effect, the new closure (with the
+  // fresh `element` prop) is attached — all before the click event fires.
+  // With plain useEffect, the cleanup/reattach would be deferred past the
+  // click and the stale closure would still bail on the target check.
+  useLayoutEffect(() => {
     const handleClick = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
       if (!target) return;
@@ -145,21 +172,36 @@ export default function ElementHoverBar({
       if (target.closest("[data-dev-tools]") || target.closest("[data-airo-dev-tools]")) return;
       setToolbarMode(false);
       setQuickEditMode(false);
+      fix.reset();
       pendingContextRef.current = null;
     };
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [toolbarMode, quickEditMode, element]);
+    // Dep on `fix.reset` (stable useCallback), not `fix` — see the
+    // element-change effect above for the explanation.
+  }, [toolbarMode, quickEditMode, element, fix.reset]);
 
-  // Track toolbar position, updating on scroll/resize so it follows the element
+  // Track toolbar/popover position, updating on scroll/resize so it follows
+  // the element. Both surfaces share the same computed style so the popover
+  // replaces the toolbar at the exact same anchor — clicking Fix and seeing
+  // the diff appear in a different part of the page breaks the action↔result
+  // visual link.
+  //
+  // The clearance threshold is 200px (the popover's worst-case height) —
+  // larger than the toolbar strictly needs, but using a single threshold
+  // keeps both surfaces consistent. Trade-off: for an element 80px from the
+  // viewport top, the toolbar will render below it instead of squeezing
+  // above. That's acceptable; the alternative (toolbar above, popover below)
+  // is the bug we're fixing here.
   const [barStyle, setBarStyle] = useState<React.CSSProperties>({});
   useEffect(() => {
+    const MIN_CLEARANCE_ABOVE = 200;
     const computeBarStyle = (): React.CSSProperties => {
       const r = element.getBoundingClientRect();
       const GAP = 8;
       const EDGE_MARGIN = 16; // Minimum distance from viewport edge
       const centerX = r.left + r.width / 2;
-      const hasSpaceAbove = r.top > 50;
+      const hasSpaceAbove = r.top > MIN_CLEARANCE_ABOVE;
 
       // Estimate bar width (approximate, can be adjusted based on actual measurements)
       const estimatedBarWidth = 300;
@@ -351,6 +393,22 @@ export default function ElementHoverBar({
     }
   }, []);
 
+  // Fix (proofread): see useTextFix for the request lifecycle. We capture the
+  // toolbar's element ref at click time so the action targets the element the
+  // user clicked, not whatever the cursor has since hovered onto.
+  const handleFix = useCallback(() => {
+    const el = toolbarElementRef.current;
+    if (!el) return;
+    fix.request(el);
+  }, [fix.request]);
+
+  const handleFixAccept = useCallback(() => {
+    const el = toolbarElementRef.current;
+    if (!el) return;
+    fix.accept(el);
+    setToolbarMode(false);
+  }, [fix.accept]);
+
   // Bold/Italic: show for any text-bearing element (less strict than isTextEditable
   // which also rejects data-dev-dynamic — we only need class toggle, not text editing).
   // Suppress for loop-rendered elements (multiple DOM nodes from one source element).
@@ -360,6 +418,11 @@ export default function ElementHoverBar({
     document.querySelectorAll(`[data-dev-id="${devId}"][data-dev-line="${devLine}"]`).length > 1;
   const elementIsText = !isImage && !isLoopRendered && isTextElement(element) && !!element.textContent?.trim();
   const targetEl = toolbarElementRef.current || element;
+  // Fix is available on any text element with non-trivial text content. The
+  // agent prompt handles HTML preservation, and the commit always goes
+  // through the `newHtml` path, so nested inline elements (`<br>`, `<span>`,
+  // `<strong>`, `<a>`, etc.) round-trip without a special-case gate here.
+  const fixEligible = elementIsText && (targetEl.textContent || "").trim().length > 2;
 
 
   if (quickEditMode) {
@@ -368,6 +431,29 @@ export default function ElementHoverBar({
         style={barStyle}
         onSubmit={handleQuickEditSubmit}
         onDismiss={handleQuickEditDismiss}
+        onMouseEnter={onMouseEnter}
+        onMouseLeave={onMouseLeave}
+      />
+    );
+  }
+
+  // The Fix-flow diff popover replaces the toolbar at the same anchor point —
+  // same pattern as QuickEditBar — so the user's eye doesn't have to track to
+  // a different spot to choose Accept/Reject. Both share `barStyle`, which
+  // uses the popover's clearance threshold so they always agree on placement.
+  if (fix.state.status === "preview") {
+    // The popover diffs the human-readable text view of each HTML string —
+    // tags would be noise in the diff. `htmlStringToDisplayText` parses the
+    // HTML and recursively flattens, treating `<br>` as `\n`.
+    const oldDisplay = htmlStringToDisplayText(fix.state.oldHtml);
+    const newDisplay = htmlStringToDisplayText(fix.state.newHtml);
+    return (
+      <TextFixPopover
+        style={barStyle}
+        oldText={oldDisplay}
+        newText={newDisplay}
+        onAccept={handleFixAccept}
+        onReject={fix.reject}
         onMouseEnter={onMouseEnter}
         onMouseLeave={onMouseLeave}
       />
@@ -400,6 +486,7 @@ export default function ElementHoverBar({
           <ItalicButton selectedElement={targetEl} />
           <TextColorButton selectedElement={targetEl} />
           {isTextBlockElement(element) && <TextAlignButton selectedElement={targetEl} />}
+          {fixEligible && <TextFixButton state={fix.state} onFix={handleFix} />}
         </>
       )}
       <HoverBarButton

@@ -436,6 +436,29 @@ export class AppService {
   }
 
   /**
+   * Run a typo/grammar correction over the supplied text.
+   *
+   * Pure transformation — does not write to disk. The caller renders a diff
+   * preview and, on user confirmation, sends the resulting text through the
+   * existing `updateText` flow to commit.
+   */
+  async fixText(appId: string, payload: { oldText: string }): Promise<{ success: boolean; data: { newText: string; changed: boolean } }> {
+    const apiUrl = await buildDynamicApiUrl(`text/fix`, appId)
+    const response = await agentFetch(apiUrl, {
+      siteId: appId,
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+
+    if (!response.ok) {
+      throw new Error(`Failed to fix text: ${response.status}`)
+    }
+
+    return response.json()
+  }
+
+  /**
    * Update element style (class toggle for bold/italic)
    */
   async updateStyle(appId: string, styleData: StyleUpdateData): Promise<unknown> {

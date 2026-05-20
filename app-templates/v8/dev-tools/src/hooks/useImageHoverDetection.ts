@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from "react";
+import { flushSync } from "react-dom";
 import { isDevToolsElement, isContentElement, detectImage, getMediaSlotPath } from "../utils/element-detection";
 import { isTouchDevice } from "../utils/device";
 
@@ -227,11 +228,49 @@ export function useImageHoverDetection(
       }, 300);
     };
 
+    // The mouseover handler refs (`hoveredElementRef` / `hoveredImageRef`) are
+    // updated synchronously, but the corresponding React state lags by a
+    // SHOW_DELAY_MS / 150ms timer to avoid bar flicker on accidental hovers.
+    // If the user clicks fast enough that mousedown fires before the timer,
+    // ElementHoverBar's click handler — whose closure reads `element` from
+    // props — sees a stale value and bails. Flush pending hover state
+    // synchronously here so the click that follows lands on a re-rendered
+    // ElementHoverBar with a fresh closure.
+    //
+    // Capture phase + flushSync (not the batched setState path): React's
+    // automatic batching would defer the commit until after `click` had
+    // already dispatched, which defeats the purpose. flushSync forces commit
+    // + useLayoutEffect synchronously, so ElementHoverBar's click listener
+    // (also useLayoutEffect) re-registers with the correct `element` before
+    // the click event reaches it.
+    const handleMouseDown = (e: MouseEvent) => {
+      if (!showBarTimerRef.current) return;
+      const target = e.target as HTMLElement | null;
+      if (!target || isDevToolsElement(target)) return;
+
+      clearTimeout(showBarTimerRef.current);
+      showBarTimerRef.current = null;
+
+      const elemRefValue = hoveredElementRef.current;
+      const imgRefValue = hoveredImageRef.current;
+      if (!elemRefValue && !imgRefValue) return;
+
+      flushSync(() => {
+        if (imgRefValue) {
+          updateHoveredImage(imgRefValue);
+        } else if (elemRefValue) {
+          updateHoveredElement(elemRefValue);
+        }
+      });
+    };
+
     document.addEventListener("mouseover", handleMouseOver);
     document.addEventListener("mouseout", handleMouseOut);
+    document.addEventListener("mousedown", handleMouseDown, true);
     return () => {
       document.removeEventListener("mouseover", handleMouseOver);
       document.removeEventListener("mouseout", handleMouseOut);
+      document.removeEventListener("mousedown", handleMouseDown, true);
       if (showBarTimerRef.current) clearTimeout(showBarTimerRef.current);
       if (hideBarTimerRef.current) clearTimeout(hideBarTimerRef.current);
     };

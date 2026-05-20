@@ -893,6 +893,41 @@ function DevelopPageContent() {
     }
   }, [appId])
 
+  const sendTextFix = useCallback(async (data: { requestId?: string; oldText: string }) => {
+    if (!appId) return
+
+    const { requestId, oldText } = data
+    const iframe = document.getElementById('preview-iframe') as HTMLIFrameElement | null
+
+    logger.info('develop-page.text-fix.begin', {
+      appId,
+      requestId,
+      textLength: oldText?.length || 0,
+    })
+
+    try {
+      const result = await appService.fixText(appId, { oldText })
+      if (result?.success) {
+        logger.info('develop-page.text-fix.success', { appId, requestId, changed: result.data.changed })
+        if (iframe) postMessageToIframe(iframe, {
+          type: 'TEXT_FIX_RESULT',
+          requestId,
+          data: result.data,
+        })
+      } else {
+        logger.error('develop-page.text-fix.failed', { appId, requestId })
+        if (iframe) postMessageToIframe(iframe, { type: 'TEXT_FIX_FAILED', requestId })
+      }
+    } catch (error) {
+      logger.error('develop-page.text-fix.error', {
+        appId,
+        requestId,
+        error: error instanceof Error ? error.message : String(error),
+      })
+      if (iframe) postMessageToIframe(iframe, { type: 'TEXT_FIX_FAILED', requestId })
+    }
+  }, [appId])
+
   const sendStyleUpdate = useCallback(async (styleData: { commitId?: string; selector: string; property: string; value: string; newClassName: string; elementInfo: Record<string, unknown> }) => {
     if (!appId) return
 
@@ -978,6 +1013,24 @@ function DevelopPageContent() {
         case 'TEXT_UPDATED':
           logger.info('develop-page.text-updated-from-iframe', { appId })
           sendTextUpdate(event.data.data)
+          break
+        case 'TEXT_FIX_REQUESTED':
+          logger.info('develop-page.text-fix-requested-from-iframe', { appId })
+          sendTextFix(event.data.data)
+          break
+        case 'TEXT_FIX_ACCEPTED':
+          logger.info('develop-page.text-fix.accepted', {
+            appId,
+            oldLength: event.data.data?.oldLength,
+            newLength: event.data.data?.newLength,
+          })
+          break
+        case 'TEXT_FIX_REJECTED':
+          logger.info('develop-page.text-fix.rejected', {
+            appId,
+            oldLength: event.data.data?.oldLength,
+            newLength: event.data.data?.newLength,
+          })
           break
         case 'STYLE_UPDATED':
           logger.info('develop-page.style-updated-from-iframe', { appId })
@@ -1318,7 +1371,7 @@ function DevelopPageContent() {
 
     window.addEventListener('message', handleMessage)
     return () => window.removeEventListener('message', handleMessage)
-  }, [sendTextUpdate, sendStyleUpdate, setAiEditContext, addAiEditContext, ws.actions.send, setInputValue, handleScreenshotUpload, handleEvalViewportScreenshot, setIsAssetManagerOpen, appId, scheduleMicrotask, sendEditModeMessage, isEditModeEnabled, handleAutoImportMediaSlot, sendUserRequestedFix])
+  }, [sendTextUpdate, sendTextFix, sendStyleUpdate, setAiEditContext, addAiEditContext, ws.actions.send, setInputValue, handleScreenshotUpload, handleEvalViewportScreenshot, setIsAssetManagerOpen, appId, scheduleMicrotask, sendEditModeMessage, isEditModeEnabled, handleAutoImportMediaSlot, sendUserRequestedFix])
   // Warn user before leaving page with unsaved changes
   useEffect(() => {
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {
