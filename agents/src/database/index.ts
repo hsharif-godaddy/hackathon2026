@@ -1,3 +1,4 @@
+export * from './db-recovery.js';
 export * from './schema.js';
 export * from './connection.js';
 export * from './repositories/AppRepository.js';

@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, unlinkSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
+import { ensureDatabaseHealth } from './db-recovery.js';
 import { initializeSchema } from './schema.js';
 import { Logger } from '../logging/index.js';
 
@@ -62,6 +63,11 @@ export function getDatabase(): Database.Database {
     }
 
     removeStaleShmFile(dbPath);
+
+    const recovery = ensureDatabaseHealth(dbPath);
+    if (recovery.status === 'failed') {
+      throw new Error(`Database unrecoverable: ${recovery.error}`);
+    }
 
     db = new Database(dbPath);
 
