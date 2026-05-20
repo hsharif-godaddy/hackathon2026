@@ -81,6 +81,21 @@ drains. `--concurrency M` sets the worker pool size, capped by MAX_CONCURRENCY.
 pins comparison to a specific prior run; omitting both flags loads the
 most recent baseline for each scenario.
 
+### Resume behavior
+
+`--resume <run-id>` re-runs only missing trial indices into the same run
+directory; completed trials are reused. Accepted run-ref formats: UUID
+(`runId` from `run-metadata.json`) or directory name under `results/runs/`.
+
+**Scenario-filter requirement.** Pass the same `--suite`/`--scenario` filter
+as the original run. The harness validates that the resolved scenario names
+match what was recorded; a mismatch exits with an error before running any
+trials.
+
+**Graduation incompatibility.** `--graduate`/`--graduate-suite` silently
+supersede `--resume` — the graduation code path runs and the resume is
+ignored. Use one or the other.
+
 ### `pnpm run save-baseline` usage
 
 ```bash

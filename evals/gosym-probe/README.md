@@ -51,6 +51,7 @@ Options:
   --graduate <name>         Run stability check before promoting to regression
   --graduate-suite <name>   Graduate all scenarios in a suite
   --stability <level>       Override stability level (low | medium | high)
+  --resume <run-id>         Resume a previous incomplete run (re-runs missing trials only)
 ```
 
 **Adding a scenario:** implement `Scenario` in `src/scenarios/` and register it
@@ -181,6 +182,7 @@ Concurrency is capped by `config.eval.maxConcurrency`.
 | `--graduate`                     | ignored (stability) | controls trial parallelism |
 | `--graduate-suite`               | ignored (stability) | controls trial parallelism |
 | `--graduate-suite` + `--fan-out` | ignored (stability) | ignored (forced to 1)      |
+| `--resume`                       | caps/extends trials | controls trial parallelism |
 
 Graduation trial counts are driven solely by stability level
 (`low`=3, `medium`=5, `high`=10). `--trials` has no effect in
@@ -311,6 +313,57 @@ regression: {
   defaultThreshold: 0.25,         // fallback for unlisted evaluators
 }
 ```
+
+---
+
+## Resuming an Incomplete Run
+
+Pass `--resume <run-id>` to continue a run that was interrupted before all
+trials finished. Only missing trial indices are re-run; completed trials are
+loaded from the existing run directory and combined with new results.
+
+```bash
+pnpm run eval --resume abc-1234-uuid
+pnpm run eval --resume abc-1234-uuid --suite smoke
+pnpm run eval --resume abc-1234-uuid --trials 5
+```
+
+### Run reference formats
+
+`--resume` accepts either:
+- **UUID** — the `runId` from `run-metadata.json` (e.g. `abc-1234-uuid`)
+- **Directory name** — the directory under `results/runs/` (e.g.
+  `2026-05-20T10-30-00_abc-1234`)
+
+Both forms resolve to the same run directory.
+
+### Constraints
+
+**Scenario filter must match the original run.** You must pass the same
+`--suite` and/or `--scenario` filter that produced the original run.
+The harness stores which scenario names were recorded, not which filter
+flags were used; if the resolved scenario set differs, the eval exits with
+an error:
+
+```
+Error: cannot resume "abc-1234-uuid". Current scenario set does not match
+the resumed run. Missing from current run: build-landing-page.
+```
+
+**Incompatible with `--graduate` and `--graduate-suite`.** Passing
+`--graduate` or `--graduate-suite` together with `--resume` silently
+supersedes the resume -- the graduation code path runs instead and
+`--resume` is ignored. Use one or the other, not both.
+
+### Trials and concurrency on resume
+
+`--trials N` extends or caps the trial count relative to the original run.
+The harness resolves trial count as:
+`--trials` override → original run's trials override → scenario default.
+Trials that already completed are reused; only the missing indices run.
+
+`--fan-out`, `--concurrency`, and `--max-turns` are fully honored for the
+resumed trials.
 
 ---
 
