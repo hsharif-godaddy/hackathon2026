@@ -277,6 +277,8 @@ const prodConfig: Config = {
     'arn:aws:iam::506695300582:role/pioneerc1-custom-pioneerc1-hybrid-instance-c36-onegroup',
     'arn:aws:iam::506695300582:role/pioneerc1-custom-pioneerc1-hybrid-instance-c37-onegroup',
     'arn:aws:iam::506695300582:role/pioneerc1-custom-pioneerc1-hybrid-instance-c38-onegroup',
+    'arn:aws:iam::506695300582:role/pioneerc1-custom-pioneerc1-hybrid-instance-c39-onegroup',
+    'arn:aws:iam::506695300582:role/pioneerc1-custom-pioneerc1-hybrid-instance-c40-onegroup',
     'arn:aws:iam::644094189644:role/airobuilde-custom-prod-gocode-spend-sync-role',
     'arn:aws:iam::644094189644:role/airobuilde-custom-KatanaEnvironment9535GlobalEcsTaskRoleAAF08999'
   ],
@@ -286,6 +288,8 @@ const prodConfig: Config = {
     'arn:aws:iam::506695300582:role/pioneerc1-custom-pioneerc1-hybrid-instance-c36-onegroup',
     'arn:aws:iam::506695300582:role/pioneerc1-custom-pioneerc1-hybrid-instance-c37-onegroup',
     'arn:aws:iam::506695300582:role/pioneerc1-custom-pioneerc1-hybrid-instance-c38-onegroup',
+    'arn:aws:iam::506695300582:role/pioneerc1-custom-pioneerc1-hybrid-instance-c39-onegroup',
+    'arn:aws:iam::506695300582:role/pioneerc1-custom-pioneerc1-hybrid-instance-c40-onegroup',
     'arn:aws:iam::644094189644:role/airobuilde-custom-prod-gocode-spend-sync-role',
     'arn:aws:iam::644094189644:role/airobuilde-custom-KatanaEnvironment9535GlobalEcsTaskRoleAAF08999'
   ],
