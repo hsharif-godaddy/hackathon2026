@@ -8,8 +8,6 @@ interface MonitoringConfig {
   ecsServiceName?: string;
   /** ALB ARN for the app/frontend load balancer (optional) */
   appAlbArn?: string;
-  /** ALB ARN for the proxy/backend load balancer (optional) */
-  proxyAlbArn?: string;
   /** RDS cluster identifier to monitor */
   rdsClusterIdentifier: string;
   /** Thresholds for various alarm metrics */
@@ -156,7 +154,6 @@ const devConfig: Config = {
   monitoring: {
     ecsClusterName: 'katanaRuntime',
     rdsClusterIdentifier: 'dev-mysql-v2-cluster',
-    proxyAlbArn: 'arn:aws:elasticloadbalancing:us-west-2:694282668781:loadbalancer/app/airobuildeproxydevprivatc822c546/f5995fa15ce542e9',
     appAlbArn: 'arn:aws:elasticloadbalancing:us-west-2:694282668781:loadbalancer/app/airobuildeappdevprivatee66716e84/34f28f40a512e6fa',
     alarmThresholds: {
       alb5xxThreshold: 10,
@@ -229,7 +226,6 @@ const testConfig: Config = {
   monitoring: {
     ecsClusterName: 'katanaRuntime',
     rdsClusterIdentifier: 'test-mysql-v2-cluster',
-    proxyAlbArn: 'arn:aws:elasticloadbalancing:us-west-2:694282668781:loadbalancer/app/airobuildeproxytestpubli81c42a37/c783043b3e0df23b',
     appAlbArn: 'arn:aws:elasticloadbalancing:us-west-2:694282668781:loadbalancer/app/airobuildeapptestdirectc6743dcfc/239795c4eebe32af',
     alarmThresholds: {
       alb5xxThreshold: 15,

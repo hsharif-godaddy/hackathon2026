@@ -20,8 +20,6 @@ services:
       - QDRANT_API_KEY=${QDRANT_API_KEY:-}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-    depends_on:
-      - proxy
     networks:
       - airo-network
     restart: unless-stopped
@@ -48,26 +46,6 @@ services:
     networks:
       - airo-network
     restart: unless-stopped
-
-  proxy:
-    platform: linux/amd64 # Force x64 platform for consistent native module compilation
-    build:
-      context: ./
-      dockerfile: ./proxy/Dockerfile
-      platforms:
-        - linux/amd64
-    container_name: airo-proxy
-    ports:
-      - "8888:8888"
-    environment:
-      - API_SECRET=${OPENAI_API_KEY:-<apikey>}
-      - VALID_TOKENS=token1,token2,token3
-      - GETTY_CERT=${GETTY_CERT}
-      - GETTY_KEY=${GETTY_KEY}
-      - AGENT_SSO_HOST=sso.dev-godaddy.com
-    restart: unless-stopped
-    networks:
-      - airo-network
 
   # MySQL database for local control plane app containers
   # Per-app databases are provisioned dynamically by local-control-plane

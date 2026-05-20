@@ -4,9 +4,6 @@
  * Centralized exports for all API drivers
  */
 
-export { BaseDriver } from './base-driver.js';
-export type { BaseDriverConfig } from './base-driver.js';
-
 export { BaseDriverV2 } from './base-driver-v2.js';
 export type { BaseDriverV2Config } from './base-driver-v2.js';
 

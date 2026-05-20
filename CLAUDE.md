@@ -45,7 +45,6 @@ if (options.token && options.repoUrl) {
 | **app/**                   | `website`            | 3000 | Next.js BFF + builder UI                                                        |
 | **dev-supervisor/**        | Go binary            | —    | PID1, process lifecycle, HTTP proxy, JWT auth                                   |
 | **local-control-plane/**   | Go binary            | 4100 | Local mgmt-airo API, SQLite + Docker                                            |
-| **proxy/**                 | `airo-proxy`         | —    | Getty Images API proxy                                                          |
 | **packages/shared/**       | `@airo/shared`       | —    | Shared types and pure utilities (grants, context-attachment, social, websocket) |
 | **packages/ai-lib/**       | `@airo/ai-lib`       | —    | AI SDK wrapper, consumed by agents                                              |
 | **packages/ai-transport/** | `@airo/ai-transport` | —    | Transport-agnostic shared code for WS + SSE servers (loop, processor, events)   |

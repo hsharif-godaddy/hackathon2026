@@ -5,7 +5,7 @@ name: Merge Queue
 # if: condition below); the sentinel sees all-skipped and passes immediately,
 # satisfying the required status check. On merge_group the full suite runs.
 #
-# Scope: the queue gates only the JS/TS surface (agents, app, proxy) plus the
+# Scope: the queue gates only the JS/TS surface (agents, app) plus the
 # v8 template checks that interact with agents via template sync. Go services
 # and other independent checks are validated by their per-service path-filtered
 # PR workflows; they don't need re-validation in the queue because their PRs
@@ -77,15 +77,6 @@ jobs:
       test-script: test:integration
     secrets: inherit
 
-  proxy:
-    if: github.event_name == 'merge_group'
-    uses: ./.github/workflows/_quality-checks.yml
-    with:
-      package-name: proxy
-      pnpm-filter: airo-proxy
-      working-directory: ./proxy
-    secrets: inherit
-
   # v8 template checks — gated because template changes flow into agents via
   # the sync scripts, so a v8 change can break agents in a way that only shows
   # up when both land together.
@@ -110,7 +101,6 @@ jobs:
       - app-lint-build
       - app-unit-tests
       - app-integration-tests
-      - proxy
       - v8-license
       - v8-migration
     if: always()

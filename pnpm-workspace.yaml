@@ -5,7 +5,6 @@ packages:
   - "packages/*"
   - "setup"
   - "cdk"
-  - "proxy"
   - "debug-console"
   - "agentic-qa"
   - "agentic-qa-langfuse"

@@ -57,9 +57,6 @@
       "bash -c 'cd app && pnpm lint --fix'",
       "node scripts/validate-i18n.mjs"
     ],
-    "proxy/**/*.{ts,tsx,js,jsx}": [
-      "pnpm --filter proxy lint:fix"
-    ],
     "packages/ai-lib/**/*.{ts,tsx,js,jsx}": [
       "pnpm --filter @airo/ai-lib lint:fix"
     ],

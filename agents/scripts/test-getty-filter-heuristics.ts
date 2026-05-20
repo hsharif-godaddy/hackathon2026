@@ -9,8 +9,8 @@
  *   pnpm --filter @airo/agents tsx scripts/test-getty-filter-heuristics.ts
  *
  * Environment:
- *   SSO_JWT or GETTY_TOKEN   Authentication token
- *   GETTY_API_URL             Proxy URL (optional)
+ *   SSO_JWT                   Authentication token
+ *   GETTY_IMAGE_PROXY_URL     Getty proxy URL (optional)
  */
 
 import { config } from 'dotenv';
@@ -67,29 +67,21 @@ interface TrialResult {
 // ---------------------------------------------------------------------------
 
 function getAuthHeaders(): Record<string, string> {
-  const token = process.env.GETTY_TOKEN;
   const ssoJwt = process.env.SSO_JWT;
 
-  let authorization = '';
-  if (token) {
-    authorization = 'Bearer ' + token;
-  } else if (ssoJwt) {
-    authorization = 'sso-jwt ' + ssoJwt;
-  }
-
-  if (!authorization) {
-    throw new Error('Set GETTY_TOKEN or SSO_JWT environment variable');
+  if (!ssoJwt) {
+    throw new Error('Set SSO_JWT environment variable');
   }
 
   return {
-    Authorization: authorization,
+    Authorization: 'sso-jwt ' + ssoJwt,
     'x-app-key': process.env.GETTY_APP_KEY || 'airo-app-builder',
     Accept: 'application/json',
   };
 }
 
 function getBaseUrl(): string {
-  const url = process.env.GETTY_API_URL || 'https://getty-images-proxy.api.test-godaddy.com';
+  const url = process.env.GETTY_IMAGE_PROXY_URL || 'https://getty-images-proxy.api.test-godaddy.com';
   try {
     const u = new URL(url);
     return `${u.protocol}//${u.host}`;
@@ -405,7 +397,7 @@ async function main() {
   console.log('Getty Filter Heuristics Test Harness');
   console.log(`Testing ${TEST_CASES.length} search queries with systematic filter removal\n`);
   console.log(`Base URL: ${getBaseUrl()}`);
-  console.log(`Auth: ${process.env.GETTY_TOKEN ? 'GETTY_TOKEN' : process.env.SSO_JWT ? 'SSO_JWT' : 'NONE'}`);
+  console.log(`Auth: ${process.env.SSO_JWT ? 'SSO_JWT' : 'NONE'}`);
 
   const results: { slot: string; trials: TrialResult[] }[] = [];
 

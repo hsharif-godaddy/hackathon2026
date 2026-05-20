@@ -50,7 +50,7 @@
 /packages/ai-lib/ @gdcorp-partners/dev-airo-ai-core-agent-squad @mlefebvre1-godaddy
 /packages/ai-transport/ @deverton-godaddy @matkinson-godaddy @kbader-godaddy @rjain1-godaddy
 /packages/shared/ @mlefebvre1-godaddy @deverton-godaddy @kbader-godaddy
-/proxy/ @deverton-godaddy @arai1-godaddy @ugupta-godaddy
+
 /release-manager/ @matkinson-godaddy @deverton-godaddy @cmachgodaddy
 /scripts/ @gdcorp-partners/dev-airo-ai-core-agent-squad @hdewan-godaddy
 /tests/ @hdewan-godaddy @deverton-godaddy @kra-godaddy @amarques-godaddy

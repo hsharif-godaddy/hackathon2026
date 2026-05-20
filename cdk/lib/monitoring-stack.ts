@@ -20,7 +20,6 @@ import config from './config';
  * ```typescript
  * new MonitoringStack(app, 'MonitoringStack', {
  *   env: { account: '123456789', region: 'us-west-2' },
- *   proxyAlbArn: 'arn:aws:elasticloadbalancing:...',
  *   appAlbArn: 'arn:aws:elasticloadbalancing:...',
  *   ecsClusterName: 'airo-builder-cluster',
  *   rdsClusterIdentifier: 'airo-builder-db',
@@ -33,8 +32,6 @@ export interface MonitoringStackProps extends GDStackProps {
   ecsClusterName: string;
   /** Name of the ECS service to monitor */
   ecsServiceName?: string;
-  /** ARN of the proxy/backend Application Load Balancer to monitor */
-  proxyAlbArn?: string;
   /** ARN of the app/frontend Application Load Balancer to monitor */
   appAlbArn?: string;
   /** Identifier of the RDS Aurora cluster to monitor */
@@ -56,11 +53,6 @@ export class MonitoringStack extends GDStack {
 
   constructor(scope: Construct, id: string, props: MonitoringStackProps) {
     super(scope, id, props);
-
-    // Create ALB alarms for proxy (backend) if provided
-    if (props.proxyAlbArn) {
-      this.createAlbAlarms(props.proxyAlbArn, 'Proxy');
-    }
 
     // Create ALB alarms for app (frontend) if provided
     if (props.appAlbArn) {

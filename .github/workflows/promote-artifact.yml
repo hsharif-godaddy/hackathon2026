@@ -15,7 +15,6 @@ on:
           - "debug-console"
           - "image-search-service"
           - "knowledge-service"
-          - "proxy"
       environment:
         description: "Environment to promote to"
         required: true
@@ -97,12 +96,6 @@ jobs:
               "knowledge-service": {
                 "dev-private": "dev-private",
                 "prod": "prod"
-              },
-              "proxy": {
-                "dev-private": "dev-private-ecs",
-                "pre-test": "pre-test",
-                "test": "test",
-                "prod": "prod-ecs"
               }
             }
         run: |

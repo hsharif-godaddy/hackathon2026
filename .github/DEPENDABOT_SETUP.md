@@ -19,7 +19,7 @@ Public packages are still available when the virtual repository proxies the publ
 Dependabot will:
 
 - ✅ **Scan weekly** - Every Monday morning (staggered times in UTC)
-- ✅ **Monitor all workspace packages** - root, agents, app, cdk, proxy, packages/ai-lib, packages/design-extractor, setup, bedrock-log-viewer, debug-console
+- ✅ **Monitor all workspace packages** - root, agents, app, cdk, packages/ai-lib, packages/design-extractor, setup, bedrock-log-viewer, debug-console
 - ✅ **Resolve npm dependencies via Artifactory** - Public (proxied) and internal packages, subject to virtual repo composition and auth
 - ✅ **Create grouped PRs** - Related updates bundled together
 - ✅ **Monitor GitHub Actions** - Also checks for workflow dependency updates (no npm registry)

@@ -87,7 +87,6 @@ mgmt-airo-compatible API backed by SQLite.
 | `agents/`              | 4000 | Express API, AI agents, SQLite, WebSocket     |
 | `local-control-plane/` | 4100 | Local mgmt-airo API (Go, SQLite, Docker)      |
 | `dev-supervisor/`      | --   | PID1, process lifecycle, HTTP proxy, JWT auth |
-| `proxy/`               | --   | Getty Images API proxy                        |
 
 ### Directory Structure
 
@@ -99,7 +98,6 @@ airo-app-builder/
   budget-service/        # Go budget microservice
   dev-supervisor/        # Go PID1 process manager
   local-control-plane/   # Go local mgmt-airo API
-  proxy/                 # Getty Images proxy
   packages/
     shared/              # Types shared across services
     ai-lib/              # AI SDK wrapper (Vercel AI)
@@ -137,7 +135,7 @@ Build order is dependency-aware via `turbo.json`.
 | mgmt-airo             | Control plane (prod)            | `MGMT_AIRO_BASE_URL`                |
 | GoDaddy SSO           | Authentication                  | `SSO_LOGIN_URL`                     |
 | Switchboard           | Feature flags                   | Gasket plugin                       |
-| Getty Images          | Stock photo search              | Proxied through `proxy/`            |
+| Getty Images          | Stock photo search              | Direct via GoDaddy Getty proxy      |
 
 ---
 
@@ -255,7 +253,7 @@ pnpm lint                 # Turborepo-cached lint
 pnpm test                 # all package tests
 ```
 
-Test filtering (Vitest for agents/app/packages; Jest for proxy/cdk):
+Test filtering (Vitest for agents/app/packages):
 
 ```bash
 pnpm --filter @airo/agents test:unit "pattern"
