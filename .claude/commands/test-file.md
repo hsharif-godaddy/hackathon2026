@@ -1,0 +1,1 @@
+Run tests for the file I'm currently working on. Determine the correct package filter and test pattern from the file path. If the file is a test file, run it directly. If it's a source file, find and run any co-located test files (e.g., `__tests__/filename.test.ts` or `filename.test.ts`). Report failures with context.

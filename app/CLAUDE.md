@@ -151,11 +151,15 @@ XState v5 machine at `src/app/develop/hooks/initializationMachine.ts` (+ `useIni
 
 When running locally (`GASKET_ENV=local.*`), all stdout/stderr is automatically written to `app/dev.log` (ANSI codes stripped). The file is truncated on each restart. Use this log to troubleshoot issues — read it to see recent errors, startup failures, or unexpected behavior.
 
-## Testing
+## Commands
 
 ```bash
-pnpm --filter website test "pattern"           # By file path
-pnpm --filter website test -- -t "test name"   # By test name
+pnpm --filter website typecheck                # Type check
+pnpm --filter website lint                     # Lint
+pnpm --filter website lint:fix                 # Lint with auto-fix
+pnpm --filter website build                    # Build (runs gasket build + next build)
+pnpm --filter website test "pattern"           # Test by file path
+pnpm --filter website test -- -t "test name"   # Test by name
 ```
 
 Vitest, forks pool. Default environment is `node` — add `@vitest-environment jsdom` docblock for tests that render React, use `@testing-library/react`, or touch DOM APIs. Keep API route / utility / adapter tests on `node`.

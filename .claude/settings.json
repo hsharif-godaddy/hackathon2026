@@ -1,5 +1,29 @@
 {
+  "permissions": {
+    "deny": [
+      "Edit(**/node_modules/**)",
+      "Edit(**/dist/**)",
+      "Edit(**/.next/**)",
+      "Edit(**/.turbo/**)",
+      "Write(**/node_modules/**)",
+      "Write(**/dist/**)",
+      "Write(**/.next/**)",
+      "Write(**/.turbo/**)"
+    ]
+  },
   "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/post-edit-lint.sh",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
     "WorktreeCreate": [
       {
         "hooks": [

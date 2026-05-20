@@ -1,0 +1,1 @@
+Run typecheck for the package containing the file I'm currently working on. If unclear which package, run `pnpm typecheck` (root-level Turborepo). Report only errors, not the command output on success.

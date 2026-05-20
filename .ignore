@@ -1,0 +1,15 @@
+# Claude Code search exclusions
+# Direct Read of specific paths still works — this only affects bulk search/grep.
+
+node_modules/
+dist/
+.next/
+.turbo/
+coverage/
+*.min.js
+*.min.css
+*.bundle.js
+*.bundle.cjs
+*.bundle.mjs
+*.map
+pnpm-lock.yaml

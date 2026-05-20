@@ -44,11 +44,12 @@ Transport-agnostic infrastructure shared by the WebSocket and SSE servers. The t
 
 On the client, `app/src/hooks/shared/` (`completionSideEffects.ts`, `toolMappers.ts`, `toolSideEffects.ts`) plays the same role for the WS and SSE handlers. The same rule applies there: behavior common to both transports goes in `hooks/shared/`, not duplicated into each handler.
 
-## Build & test
+## Commands
 
 ```bash
-pnpm --filter @airo/ai-transport run build
-pnpm --filter @airo/ai-transport test
+pnpm --filter @airo/ai-transport typecheck     # Type check
+pnpm --filter @airo/ai-transport build         # Build
+pnpm --filter @airo/ai-transport test          # Tests
 ```
 
 See [`README.md`](./README.md) for the event-channel architecture diagrams.

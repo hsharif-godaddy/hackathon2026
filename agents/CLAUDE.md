@@ -109,13 +109,17 @@ OpenTelemetry + Langfuse via `@signals/otel-sdk`, `@godaddy/agent-otel-sdk`, `@g
 
 When running locally (`GASKET_ENV=local.*`), all stdout/stderr is automatically written to `agents/dev.log` (ANSI codes stripped). The file is truncated on each restart. Use this log to troubleshoot issues — read it to see recent errors, startup failures, or unexpected behavior.
 
-## Testing
+## Commands
 
 ```bash
-pnpm --filter @airo/agents test:unit
-pnpm --filter @airo/agents test:unit "pattern"       # File filter
-pnpm --filter @airo/agents test:unit -t "test name"   # Test name filter
-pnpm --filter @airo/agents test:integration
+pnpm --filter @airo/agents typecheck                   # Type check
+pnpm --filter @airo/agents lint                        # Lint
+pnpm --filter @airo/agents lint:fix                    # Lint with auto-fix
+pnpm --filter @airo/agents build                       # Build
+pnpm --filter @airo/agents test:unit                   # All unit tests
+pnpm --filter @airo/agents test:unit "pattern"         # File filter
+pnpm --filter @airo/agents test:unit -t "test name"    # Test name filter
+pnpm --filter @airo/agents test:integration            # Integration tests (need real services)
 ```
 
 Authorization tests: `src/server/middleware/__tests__/app-ownership.test.ts`, `src/server/routes/__tests__/authorization-security.integration.test.ts`.
