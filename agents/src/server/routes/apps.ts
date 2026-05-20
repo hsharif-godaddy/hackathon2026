@@ -990,7 +990,10 @@ router.post('/:id/styles/edit', async (req: Request, res: Response) => {
       className: newClassName?.trim() || 'inline-styles',
     });
 
-    // Use AST-based style editor to make the actual file changes
+    // Use AST-based style editor to make the actual file changes.
+    // Pass appId so editTemplate fires per-app git commits on success —
+    // without it the commit step silently skips and Hover Bar edits leave
+    // uncommitted changes in the working tree.
     const editResult = await astStyleEditor.editElementStyle(app.path, {
       selector,
       property,
@@ -998,7 +1001,7 @@ router.post('/:id/styles/edit', async (req: Request, res: Response) => {
       newClassName,
       newStyle,
       elementInfo
-    });
+    }, app.id);
 
     if (!editResult.success) {
       contextLogger.error('route.apps.style-edit.failed', {

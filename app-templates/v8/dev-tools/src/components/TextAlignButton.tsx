@@ -47,6 +47,10 @@ function getTextAlign(selectedElement?: HTMLElement | null): TextAlign | null {
 
 interface TextAlignButtonProps {
   selectedElement: HTMLElement | null;
+  /** Controlled popover state — parent (`ElementHoverBar`) coordinates so
+   *  Color Picker / Size Stepper / Text Align never stack on top of each other. */
+  isOpen: boolean;
+  onOpenChange: (open: boolean) => void;
 }
 
 /**
@@ -58,8 +62,7 @@ interface TextAlignButtonProps {
  * Parent (`ElementHoverBar`) is responsible for gating to block-level tags —
  * `text-align` has no effect on inline elements like span/a/label.
  */
-export default function TextAlignButton({ selectedElement }: TextAlignButtonProps) {
-  const [showMenu, setShowMenu] = useState(false);
+export default function TextAlignButton({ selectedElement, isOpen, onOpenChange }: TextAlignButtonProps) {
   // Used to re-render after we mutate classList directly so the icon and
   // active state reflect the new alignment without waiting on the parent.
   const [, forceRender] = useState(0);
@@ -80,7 +83,7 @@ export default function TextAlignButton({ selectedElement }: TextAlignButtonProp
       }
   
       forceRender((n: number) => n + 1);
-      setShowMenu(false);
+      onOpenChange(false);
 
       const commitId = addStyleEditListener((event: MessageEvent) => {
         if (event.data.type === StyleMessageEventType.EDIT_FAILED) {
@@ -120,12 +123,12 @@ export default function TextAlignButton({ selectedElement }: TextAlignButtonProp
   return (
     <div className="relative flex items-stretch">
       <HoverBarButton
-        onClick={() => setShowMenu((open: boolean) => !open)}
+        onClick={() => onOpenChange(!isOpen)}
         title={t("devtools_text_align_title", "Text alignment")}
         icon={<CurrentIcon width={15} height={15} />}
-        active={showMenu || !!currentTextAlign}
+        active={isOpen || !!currentTextAlign}
       />
-      {showMenu && (
+      {isOpen && (
         <div
           data-airo-dev-tools=""
           className="flex gap-1 p-1 rounded-xl absolute bg-white"

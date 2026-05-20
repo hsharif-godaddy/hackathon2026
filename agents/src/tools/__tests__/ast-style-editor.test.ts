@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { readFile, writeFile, mkdir, rmdir } from 'fs/promises';
 import { join } from 'path';
 import { existsSync } from 'fs';
@@ -131,6 +131,41 @@ export default function HomePage() {
   });
 
   describe('Font Size Changes (Tailwind Classes)', () => {
+    it('places the new size class at the FRONT of the className (locks ordering contract)', async () => {
+      // Existing fontSize tests use toContain, which would still pass if a
+      // refactor accidentally pushed the new size to the end. The contract
+      // is "new size at the front" so it visually leads typography utilities
+      // — this assertion locks it.
+      const request = {
+        selector: 'h1',
+        property: 'fontSize',
+        value: 'text-5xl',
+        newClassName: 'text-3xl font-bold text-gray-900',
+        elementInfo: {
+          tagName: 'h1',
+          className: 'text-3xl font-bold text-gray-900',
+          id: '',
+          textContent: 'Welcome',
+          selector: 'h1',
+          dataId: 'dev-selected-order-1',
+          devContext: {
+            fileName: '/src/frontend/pages/index.page.tsx',
+            componentName: 'HomePage',
+            lineNumber: 5,
+          },
+          rect: { top: 50, left: 0, width: 300, height: 40 },
+          computedStyles: {},
+        },
+      };
+
+      const result = await astEditor.editElementStyle(testAppPath, request);
+
+      expect(result.success).toBe(true);
+      const updatedFile = await readFile(testFilePath, 'utf-8');
+      // text-5xl must be the FIRST class in the className string
+      expect(updatedFile).toMatch(/className="text-5xl /);
+    });
+
     it('should change heading from text-3xl to text-4xl', async () => {
       const request = {
         selector: 'h1.text-3xl',
@@ -203,6 +238,459 @@ export default function HomePage() {
       const updatedFile = await readFile(testFilePath, 'utf-8');
       expect(updatedFile).toContain('text-base text-gray-500');
       expect(updatedFile).not.toContain('text-sm text-gray-500');
+    });
+
+    it('should step up from text-5xl to text-6xl without stacking', async () => {
+      const component = `import React from 'react';
+
+export default function Page() {
+  return (
+    <h1 data-dev-id="big-heading" className="text-5xl text-gray-900 text-center">Big</h1>
+  );
+}`;
+      await writeFile(testFilePath, component);
+
+      const request = {
+        selector: 'h1',
+        property: 'fontSize',
+        value: 'text-6xl',
+        newClassName: 'text-6xl text-gray-900 text-center',
+        elementInfo: {
+          tagName: 'h1',
+          className: 'text-5xl text-gray-900 text-center',
+          id: '',
+          textContent: 'Big',
+          selector: 'h1',
+          dataId: 'big-heading',
+          devContext: {
+            fileName: '/src/frontend/pages/index.page.tsx',
+            componentName: 'Page',
+            lineNumber: 5,
+          },
+          rect: { top: 0, left: 0, width: 100, height: 40 },
+          computedStyles: {},
+        },
+      };
+
+      const result = await astEditor.editElementStyle(testAppPath, request);
+
+      expect(result.success).toBe(true);
+      const updatedFile = await readFile(testFilePath, 'utf-8');
+      expect(updatedFile).toContain('text-6xl');
+      expect(updatedFile).not.toContain('text-5xl');
+      // Color and alignment must survive
+      expect(updatedFile).toContain('text-gray-900');
+      expect(updatedFile).toContain('text-center');
+    });
+
+    it('removes fontSize from JSX style={{...}} object literal when applying a fontSize class', async () => {
+      // Real-world repro (Cole's PR review on AIROBUILD-1745): hero h1 has
+      // style={{ fontFamily: "Bebas Neue", fontSize: "clamp(56px, 10vw, 120px)", ... }}.
+      // The stepper used to disable itself entirely; now the AST also strips
+      // the inline fontSize so the new text-{size} class wins. Other inline
+      // properties (font-family, line-height, etc.) must survive.
+      const component = `import React from 'react';
+
+export default function Page() {
+  return (
+    <h1 data-dev-id="hero" className="mb-6" style={{ fontFamily: "Bebas Neue", fontSize: "clamp(56px, 10vw, 120px)", lineHeight: "1" }}>Hero</h1>
+  );
+}`;
+      await writeFile(testFilePath, component);
+
+      const request = {
+        selector: 'h1',
+        property: 'fontSize',
+        value: 'text-7xl',
+        newClassName: 'mb-6',
+        elementInfo: {
+          tagName: 'h1',
+          className: 'mb-6',
+          id: '',
+          textContent: 'Hero',
+          selector: 'h1',
+          dataId: 'hero',
+          devContext: {
+            fileName: '/src/frontend/pages/index.page.tsx',
+            componentName: 'Page',
+            lineNumber: 5,
+          },
+          rect: { top: 0, left: 0, width: 100, height: 40 },
+          computedStyles: {},
+        },
+      };
+
+      const result = await astEditor.editElementStyle(testAppPath, request);
+
+      expect(result.success).toBe(true);
+      const updatedFile = await readFile(testFilePath, 'utf-8');
+      // New size class applied
+      expect(updatedFile).toContain('text-7xl');
+      // Inline fontSize stripped
+      expect(updatedFile).not.toContain('fontSize:');
+      expect(updatedFile).not.toContain('clamp(56px');
+      // Other inline properties preserved
+      expect(updatedFile).toContain('Bebas Neue');
+      expect(updatedFile).toContain('lineHeight');
+    });
+
+    it('drops the entire style={{...}} attribute when fontSize was its only property', async () => {
+      const component = `import React from 'react';
+
+export default function Page() {
+  return (
+    <h1 data-dev-id="solo" className="mb-6" style={{ fontSize: "clamp(2rem, 5vw, 4rem)" }}>Solo</h1>
+  );
+}`;
+      await writeFile(testFilePath, component);
+
+      const request = {
+        selector: 'h1',
+        property: 'fontSize',
+        value: 'text-5xl',
+        newClassName: 'mb-6',
+        elementInfo: {
+          tagName: 'h1',
+          className: 'mb-6',
+          id: '',
+          textContent: 'Solo',
+          selector: 'h1',
+          dataId: 'solo',
+          devContext: {
+            fileName: '/src/frontend/pages/index.page.tsx',
+            componentName: 'Page',
+            lineNumber: 5,
+          },
+          rect: { top: 0, left: 0, width: 100, height: 40 },
+          computedStyles: {},
+        },
+      };
+
+      const result = await astEditor.editElementStyle(testAppPath, request);
+
+      expect(result.success).toBe(true);
+      const updatedFile = await readFile(testFilePath, 'utf-8');
+      expect(updatedFile).toContain('text-5xl');
+      // Whole style attribute gone
+      expect(updatedFile).not.toMatch(/style=\{/);
+    });
+
+    it('returns INLINE_STYLE_NOT_EDITABLE when JSX style is a variable reference', async () => {
+      // Defensive: when the source is `style={heroStyle}` (variable ref), we
+      // can't safely remove a key without touching the variable's declaration
+      // site. Bail with a specific error code so the frontend can surface
+      // "ask the agent" UX instead of silently committing a className-only
+      // edit that won't visually change anything.
+      const component = `import React from 'react';
+
+const heroStyle = { fontSize: "clamp(2rem, 5vw, 4rem)" };
+
+export default function Page() {
+  return (
+    <h1 data-dev-id="dynstyle" className="mb-6" style={heroStyle}>Dyn</h1>
+  );
+}`;
+      await writeFile(testFilePath, component);
+
+      const request = {
+        selector: 'h1',
+        property: 'fontSize',
+        value: 'text-5xl',
+        newClassName: 'mb-6',
+        elementInfo: {
+          tagName: 'h1',
+          className: 'mb-6',
+          id: '',
+          textContent: 'Dyn',
+          selector: 'h1',
+          dataId: 'dynstyle',
+          devContext: {
+            fileName: '/src/frontend/pages/index.page.tsx',
+            componentName: 'Page',
+            lineNumber: 7,
+          },
+          rect: { top: 0, left: 0, width: 100, height: 40 },
+          computedStyles: {},
+        },
+      };
+
+      const result = await astEditor.editElementStyle(testAppPath, request);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('INLINE_STYLE_NOT_EDITABLE');
+      // Source must be untouched on failure — no half-edit
+      const updatedFile = await readFile(testFilePath, 'utf-8');
+      expect(updatedFile).not.toContain('text-5xl');
+    });
+
+    it('preserves spread expressions while removing fontSize when both are present', async () => {
+      const component = `import React from 'react';
+
+const baseStyle = { transition: "all 0.3s" };
+
+export default function Page() {
+  return (
+    <h1 data-dev-id="spread" className="mb-6" style={{ ...baseStyle, fontSize: "clamp(2rem, 5vw, 4rem)" }}>Mix</h1>
+  );
+}`;
+      await writeFile(testFilePath, component);
+
+      const request = {
+        selector: 'h1',
+        property: 'fontSize',
+        value: 'text-5xl',
+        newClassName: 'mb-6',
+        elementInfo: {
+          tagName: 'h1',
+          className: 'mb-6',
+          id: '',
+          textContent: 'Mix',
+          selector: 'h1',
+          dataId: 'spread',
+          devContext: {
+            fileName: '/src/frontend/pages/index.page.tsx',
+            componentName: 'Page',
+            lineNumber: 7,
+          },
+          rect: { top: 0, left: 0, width: 100, height: 40 },
+          computedStyles: {},
+        },
+      };
+
+      const result = await astEditor.editElementStyle(testAppPath, request);
+
+      expect(result.success).toBe(true);
+      const updatedFile = await readFile(testFilePath, 'utf-8');
+      expect(updatedFile).toContain('text-5xl');
+      expect(updatedFile).not.toContain('fontSize:');
+      // Spread must survive
+      expect(updatedFile).toMatch(/\.\.\.baseStyle/);
+    });
+
+    it('should strip arbitrary text-[<length>] classes so the new size class wins the cascade', async () => {
+      // Real-world repro: hero h1 with text-[clamp(4rem,12vw,9rem)] for
+      // responsive typography. The stepper applies a text-{size} class, but
+      // without stripping the arbitrary class the cascade keeps it winning,
+      // so visually nothing changes.
+      const component = `import React from 'react';
+
+export default function Page() {
+  return (
+    <h1 data-dev-id="hero" className="font-heading text-[clamp(4rem,12vw,9rem)] leading-none text-white">Hero</h1>
+  );
+}`;
+      await writeFile(testFilePath, component);
+
+      const request = {
+        selector: 'h1',
+        property: 'fontSize',
+        value: 'text-7xl',
+        newClassName: 'font-heading text-[clamp(4rem,12vw,9rem)] leading-none text-white',
+        elementInfo: {
+          tagName: 'h1',
+          className: 'font-heading text-[clamp(4rem,12vw,9rem)] leading-none text-white',
+          id: '',
+          textContent: 'Hero',
+          selector: 'h1',
+          dataId: 'hero',
+          devContext: {
+            fileName: '/src/frontend/pages/index.page.tsx',
+            componentName: 'Page',
+            lineNumber: 5,
+          },
+          rect: { top: 0, left: 0, width: 100, height: 40 },
+          computedStyles: {},
+        },
+      };
+
+      const result = await astEditor.editElementStyle(testAppPath, request);
+
+      expect(result.success).toBe(true);
+      const updatedFile = await readFile(testFilePath, 'utf-8');
+      expect(updatedFile).toContain('text-7xl');
+      expect(updatedFile).not.toContain('text-[clamp');
+      // Other classes preserved
+      expect(updatedFile).toContain('font-heading');
+      expect(updatedFile).toContain('leading-none');
+      expect(updatedFile).toContain('text-white');
+    });
+
+    it('should NOT strip arbitrary text-[<color>] classes when stepping fontSize', async () => {
+      // Defensive: text-[#ff0000] / text-[red] are color utilities, not size
+      // overrides. Stripping them on a fontSize edit would silently remove
+      // the user's color choice.
+      const component = `import React from 'react';
+
+export default function Page() {
+  return (
+    <h1 data-dev-id="colored" className="text-3xl text-[#ff0000] font-bold">Title</h1>
+  );
+}`;
+      await writeFile(testFilePath, component);
+
+      const request = {
+        selector: 'h1',
+        property: 'fontSize',
+        value: 'text-4xl',
+        newClassName: 'text-3xl text-[#ff0000] font-bold',
+        elementInfo: {
+          tagName: 'h1',
+          className: 'text-3xl text-[#ff0000] font-bold',
+          id: '',
+          textContent: 'Title',
+          selector: 'h1',
+          dataId: 'colored',
+          devContext: {
+            fileName: '/src/frontend/pages/index.page.tsx',
+            componentName: 'Page',
+            lineNumber: 5,
+          },
+          rect: { top: 0, left: 0, width: 100, height: 40 },
+          computedStyles: {},
+        },
+      };
+
+      const result = await astEditor.editElementStyle(testAppPath, request);
+
+      expect(result.success).toBe(true);
+      const updatedFile = await readFile(testFilePath, 'utf-8');
+      expect(updatedFile).toContain('text-4xl');
+      expect(updatedFile).not.toContain('text-3xl');
+      expect(updatedFile).toContain('text-[#ff0000]'); // color survives
+      expect(updatedFile).toContain('font-bold');
+    });
+
+    it('should strip arbitrary length classes carrying responsive variants (md:text-[clamp(...)])', async () => {
+      const component = `import React from 'react';
+
+export default function Page() {
+  return (
+    <h1 data-dev-id="resp-arb" className="text-3xl md:text-[clamp(2rem,5vw,4rem)] font-bold">Title</h1>
+  );
+}`;
+      await writeFile(testFilePath, component);
+
+      const request = {
+        selector: 'h1',
+        property: 'fontSize',
+        value: 'text-5xl',
+        newClassName: 'text-3xl md:text-[clamp(2rem,5vw,4rem)] font-bold',
+        elementInfo: {
+          tagName: 'h1',
+          className: 'text-3xl md:text-[clamp(2rem,5vw,4rem)] font-bold',
+          id: '',
+          textContent: 'Title',
+          selector: 'h1',
+          dataId: 'resp-arb',
+          devContext: {
+            fileName: '/src/frontend/pages/index.page.tsx',
+            componentName: 'Page',
+            lineNumber: 5,
+          },
+          rect: { top: 0, left: 0, width: 100, height: 40 },
+          computedStyles: {},
+        },
+      };
+
+      const result = await astEditor.editElementStyle(testAppPath, request);
+
+      expect(result.success).toBe(true);
+      const updatedFile = await readFile(testFilePath, 'utf-8');
+      expect(updatedFile).toContain('text-5xl');
+      expect(updatedFile).not.toContain('text-3xl');
+      expect(updatedFile).not.toContain('md:text-[clamp');
+      expect(updatedFile).toContain('font-bold');
+    });
+
+    it('should strip responsive size variants (md:text-3xl) when stepping the base size', async () => {
+      // Real-world case: an element generated by the agent often has both a
+      // base size and a responsive-variant size (e.g. `md:text-3xl text-3xl`).
+      // The stepper must remove the responsive variant too — otherwise the
+      // user-chosen base size is visually overridden at md+ breakpoints.
+      const component = `import React from 'react';
+
+export default function Page() {
+  return (
+    <h3 data-dev-id="resp-heading" className="md:text-3xl font-heading font-bold text-foreground mb-1 text-3xl">Heading</h3>
+  );
+}`;
+      await writeFile(testFilePath, component);
+
+      const request = {
+        selector: 'h3',
+        property: 'fontSize',
+        value: 'text-2xl',
+        newClassName: 'md:text-3xl font-heading font-bold text-foreground mb-1 text-3xl',
+        elementInfo: {
+          tagName: 'h3',
+          className: 'md:text-3xl font-heading font-bold text-foreground mb-1 text-3xl',
+          id: '',
+          textContent: 'Heading',
+          selector: 'h3',
+          dataId: 'resp-heading',
+          devContext: {
+            fileName: '/src/frontend/pages/index.page.tsx',
+            componentName: 'Page',
+            lineNumber: 5,
+          },
+          rect: { top: 0, left: 0, width: 100, height: 40 },
+          computedStyles: {},
+        },
+      };
+
+      const result = await astEditor.editElementStyle(testAppPath, request);
+
+      expect(result.success).toBe(true);
+      const updatedFile = await readFile(testFilePath, 'utf-8');
+      // Base + responsive size both gone, replaced with the new size only
+      expect(updatedFile).toContain('text-2xl');
+      expect(updatedFile).not.toContain('md:text-3xl');
+      expect(updatedFile).not.toMatch(/(?<!md:)text-3xl/); // no bare text-3xl either
+      // Non-size classes preserved
+      expect(updatedFile).toContain('font-heading');
+      expect(updatedFile).toContain('font-bold');
+      expect(updatedFile).toContain('text-foreground');
+      expect(updatedFile).toContain('mb-1');
+    });
+
+    it('should not stack font-size classes across the wider scale (text-7xl → text-9xl)', async () => {
+      const component = `import React from 'react';
+
+export default function Page() {
+  return (
+    <h1 data-dev-id="huge" className="text-7xl">Huge</h1>
+  );
+}`;
+      await writeFile(testFilePath, component);
+
+      const request = {
+        selector: 'h1',
+        property: 'fontSize',
+        value: 'text-9xl',
+        newClassName: 'text-9xl',
+        elementInfo: {
+          tagName: 'h1',
+          className: 'text-7xl',
+          id: '',
+          textContent: 'Huge',
+          selector: 'h1',
+          dataId: 'huge',
+          devContext: {
+            fileName: '/src/frontend/pages/index.page.tsx',
+            componentName: 'Page',
+            lineNumber: 5,
+          },
+          rect: { top: 0, left: 0, width: 100, height: 40 },
+          computedStyles: {},
+        },
+      };
+
+      const result = await astEditor.editElementStyle(testAppPath, request);
+
+      expect(result.success).toBe(true);
+      const updatedFile = await readFile(testFilePath, 'utf-8');
+      expect(updatedFile).toContain('text-9xl');
+      expect(updatedFile).not.toContain('text-7xl');
     });
   });
 
@@ -1303,6 +1791,195 @@ export default function Page() {
       const updatedFile = await readFile(testFilePath, 'utf-8');
       expect(updatedFile).toContain('font-heading text-lg');
       expect(updatedFile).not.toContain('font-bold');
+    });
+  });
+
+  describe('regex parity with dev-tools optimistic strip', () => {
+    // Drift guard: dev-tools' TextSizeStepperButton mirrors the AST-side
+    // strip in the browser so the optimistic DOM state matches the eventual
+    // file edit. Because dev-tools is excluded from the workspace (it ships
+    // bundled into customer preview containers), the patterns are duplicated
+    // rather than shared via a package. This test fails if either side
+    // adds/removes a unit without updating the other.
+
+    it('BARE_SIZE / BARE_ARBITRARY / LENGTH_SHAPE literals match between agents and dev-tools', async () => {
+      const agentsSrc = await readFile(
+        join(process.cwd(), 'src/tools/ast-style-editor.ts'),
+        'utf-8',
+      );
+      const devToolsSrc = await readFile(
+        join(
+          process.cwd(),
+          '../app-templates/v8/dev-tools/src/components/TextSizeStepperButton.tsx',
+        ),
+        'utf-8',
+      );
+
+      // Extract the three regex literals from each file. The assertion
+      // shape is: each regex appears in BOTH files. We don't assert
+      // exact literal equality character-by-character because variable
+      // naming differs (lengthShape vs LENGTH_SHAPE) — instead we extract
+      // the regex source and compare those.
+      const lengthShape = /\/\\d\(\?:\\\.\\d\+\)\?[^/]+min\|max\)\\s\*\\\(\/i/;
+      const bareSize = /\/\^text-\(\?:xs\|sm\|base\|lg[^/]+9xl\)\$\//;
+      const bareArbitrary = /\/\^text-\\\[\(\[\^\\\]\]\+\)\\\]\$\//;
+
+      expect(agentsSrc).toMatch(lengthShape);
+      expect(devToolsSrc).toMatch(lengthShape);
+      expect(agentsSrc).toMatch(bareSize);
+      expect(devToolsSrc).toMatch(bareSize);
+      expect(agentsSrc).toMatch(bareArbitrary);
+      expect(devToolsSrc).toMatch(bareArbitrary);
+    });
+  });
+
+  describe('commit message format', () => {
+    // The commit message lands in per-app git history that users browse
+    // through the in-app version-history UI. source-mapper sometimes can't
+    // resolve the parent component and reports componentName: "unknown",
+    // which produced unreadable messages like "Update h1 fontSize to
+    // text-8xl in unknown". Fall back to the source file name when the
+    // component name is missing or literally "unknown".
+
+    it('omits the "in <component>" suffix when the component name is "unknown"', () => {
+      const message = (astEditor as unknown as {
+        generateCommitMessage: (c: unknown, r: unknown) => string;
+      }).generateCommitMessage({}, {
+        selector: 'h1',
+        property: 'fontSize',
+        value: 'text-8xl',
+        newClassName: 'text-8xl',
+        elementInfo: {
+          tagName: 'h1',
+          className: 'text-8xl',
+          id: '',
+          textContent: '',
+          selector: 'h1',
+          dataId: '',
+          devContext: {
+            fileName: 'src/pages/index.tsx',
+            componentName: 'unknown',
+            lineNumber: 5,
+          },
+          rect: { top: 0, left: 0, width: 0, height: 0 },
+          computedStyles: {},
+        },
+      });
+
+      expect(message).not.toContain('unknown');
+      // Falls back to the file name so git history is still navigable
+      expect(message).toContain('index.tsx');
+      // Core info is still present
+      expect(message).toContain('h1');
+      expect(message).toContain('text-8xl');
+    });
+
+    it('keeps the component name when it is a real identifier', () => {
+      const message = (astEditor as unknown as {
+        generateCommitMessage: (c: unknown, r: unknown) => string;
+      }).generateCommitMessage({}, {
+        selector: 'h1',
+        property: 'fontSize',
+        value: 'text-4xl',
+        newClassName: 'text-4xl',
+        elementInfo: {
+          tagName: 'h1',
+          className: 'text-4xl',
+          id: '',
+          textContent: '',
+          selector: 'h1',
+          dataId: '',
+          devContext: {
+            fileName: 'src/pages/index.tsx',
+            componentName: 'HomePage',
+            lineNumber: 5,
+          },
+          rect: { top: 0, left: 0, width: 0, height: 0 },
+          computedStyles: {},
+        },
+      });
+
+      expect(message).toContain('HomePage');
+      expect(message).not.toContain('index.tsx');
+    });
+  });
+
+  describe('git commit capture', () => {
+    // The hover-bar requirement is that every stepper / class-toggle click
+    // produces a per-app git commit so users can revert via the existing
+    // version history. ASTEditorBase only commits when both shouldCommit
+    // is true AND appId is present. editElementStyle had been calling
+    // editTemplate without an appId, silently skipping the commit even on
+    // success. This regression guard keeps the appId threaded through.
+
+    it('invokes commitChanges with the supplied appId on a successful edit', async () => {
+      const commitSpy = vi
+        .spyOn(astEditor as unknown as { commitChanges: () => Promise<string | undefined> }, 'commitChanges')
+        .mockResolvedValue('faked-commit-hash');
+
+      const request = {
+        selector: 'h1.text-3xl',
+        property: 'fontSize',
+        value: 'text-4xl',
+        newClassName: 'text-4xl font-bold text-gray-900',
+        elementInfo: {
+          tagName: 'h1',
+          className: 'text-3xl font-bold text-gray-900',
+          id: '',
+          textContent: 'Welcome',
+          selector: 'h1.text-3xl',
+          dataId: 'dev-selected-commit-1',
+          devContext: {
+            fileName: '/src/frontend/pages/index.page.tsx',
+            componentName: 'HomePage',
+            lineNumber: 5,
+          },
+          rect: { top: 50, left: 0, width: 300, height: 40 },
+          computedStyles: {},
+        },
+      };
+
+      const result = await astEditor.editElementStyle(testAppPath, request, 'commit-test-app');
+
+      expect(result.success).toBe(true);
+      expect(commitSpy).toHaveBeenCalledTimes(1);
+      const callArgs = commitSpy.mock.calls[0];
+      expect(callArgs[3]).toBe('commit-test-app'); // appId is the 4th arg
+      expect(callArgs[2]).toContain('fontSize'); // commit message includes the property
+      expect(result.commitHash).toBe('faked-commit-hash');
+    });
+
+    it('skips commitChanges when no appId is provided (legacy callers / tests)', async () => {
+      const commitSpy = vi
+        .spyOn(astEditor as unknown as { commitChanges: () => Promise<string | undefined> }, 'commitChanges')
+        .mockResolvedValue('faked-commit-hash');
+
+      const request = {
+        selector: 'h1.text-3xl',
+        property: 'fontSize',
+        value: 'text-4xl',
+        newClassName: 'text-4xl font-bold text-gray-900',
+        elementInfo: {
+          tagName: 'h1',
+          className: 'text-3xl font-bold text-gray-900',
+          id: '',
+          textContent: 'Welcome',
+          selector: 'h1.text-3xl',
+          dataId: 'dev-selected-commit-2',
+          devContext: {
+            fileName: '/src/frontend/pages/index.page.tsx',
+            componentName: 'HomePage',
+            lineNumber: 5,
+          },
+          rect: { top: 50, left: 0, width: 300, height: 40 },
+          computedStyles: {},
+        },
+      };
+
+      const result = await astEditor.editElementStyle(testAppPath, request);
+
+      expect(result.success).toBe(true);
+      expect(commitSpy).not.toHaveBeenCalled();
     });
   });
 });

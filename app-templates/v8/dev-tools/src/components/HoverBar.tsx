@@ -46,6 +46,8 @@ interface HoverBarButtonProps {
   label?: string;
   /** When true, renders with active/toggled styling (blue tint). */
   active?: boolean;
+  /** When true, renders dimmed and ignores clicks. */
+  disabled?: boolean;
   /** Optional `data-testid` for E2E selectors. */
   testId?: string;
 }
@@ -73,7 +75,7 @@ const TOOLTIP_STYLES: React.CSSProperties = {
  * Toolbar button for use inside a HoverBar.
  * Labeled (with text + icon) or icon-only depending on whether `label` is provided.
  */
-export function HoverBarButton({ onClick, title, icon, label, active, testId }: HoverBarButtonProps) {
+export function HoverBarButton({ onClick, title, icon, label, active, disabled, testId }: HoverBarButtonProps) {
   const [showTooltip, setShowTooltip] = useState(false);
   const delayRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -82,9 +84,15 @@ export function HoverBarButton({ onClick, title, icon, label, active, testId }: 
   const textColor = active ? "#2563eb" : "var(--color-text-secondary)";
 
   const handleMouseEnter = useCallback((e: React.MouseEvent<HTMLButtonElement>) => {
-    e.currentTarget.style.background = hoverBackground;
+    // Skip the hover-background tint on disabled buttons (no interaction
+    // affordance), but DO show the tooltip — when the stepper is disabled
+    // because the element has an inline font-size override, the tooltip
+    // is the only signal users have for *why* + and − are greyed out.
+    if (!disabled) {
+      e.currentTarget.style.background = hoverBackground;
+    }
     delayRef.current = setTimeout(() => setShowTooltip(true), 400);
-  }, [hoverBackground]);
+  }, [hoverBackground, disabled]);
 
   const handleMouseLeave = useCallback((e: React.MouseEvent<HTMLButtonElement>) => {
     e.currentTarget.style.background = baseBackground;
@@ -95,6 +103,12 @@ export function HoverBarButton({ onClick, title, icon, label, active, testId }: 
   return (
     <button
       type="button"
+      // aria-disabled (not the native `disabled` attribute): some browsers
+      // — Firefox most notably — suppress all pointer events on natively-
+      // disabled buttons, which means the explanatory tooltip never fires.
+      // We gate clicks ourselves below, so aria-disabled is enough for
+      // semantics + keyboard behavior while keeping mouseenter/leave alive.
+      aria-disabled={disabled || undefined}
       {...(label ? {} : { 'aria-label': title })}
       {...(testId ? { 'data-testid': testId } : {})}
       style={{
@@ -106,14 +120,15 @@ export function HoverBarButton({ onClick, title, icon, label, active, testId }: 
         background: baseBackground,
         border: "none",
         borderRadius: "6px",
-        cursor: "pointer",
+        cursor: disabled ? "not-allowed" : "pointer",
         boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
         color: textColor,
+        opacity: disabled ? 0.4 : 1,
         ...(label ? { fontSize: "12px", fontWeight: 600, letterSpacing: "-0.01em" } : {}),
       }}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
-      onClick={(e) => { e.stopPropagation(); onClick(); }}
+      onClick={(e) => { e.stopPropagation(); if (!disabled) onClick(); }}
     >
       {icon}
       {label}

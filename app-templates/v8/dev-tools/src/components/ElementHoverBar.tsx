@@ -22,6 +22,8 @@ import TextAlignButton from "./TextAlignButton";
 import BoldButton from "./BoldButton";
 import ItalicButton from "./ItalicButton";
 import TextColorButton from "./TextColorButton";
+import TextSizeStepperButton from "./TextSizeStepperButton";
+import { nextOpenMenu, type HoverBarMenuId } from "../utils/popover-coordinator";
 
 
 interface ElementHoverBarProps {
@@ -43,6 +45,17 @@ export default function ElementHoverBar({
   const isImage = hoveredElement.type === "image";
   const [toolbarMode, setToolbarMode] = useState(false);
   const [quickEditMode, setQuickEditMode] = useState(false);
+  // Single source of truth for which Hover Bar popover is open (Color Picker /
+  // Size Stepper / Text Align). Children are controlled — opening one
+  // implicitly closes any other so they never stack on screen.
+  const [openMenu, setOpenMenu] = useState<HoverBarMenuId | null>(null);
+  const menuController = useCallback(
+    (id: HoverBarMenuId) => ({
+      isOpen: openMenu === id,
+      onOpenChange: (open: boolean) => setOpenMenu((curr) => nextOpenMenu(curr, id, open)),
+    }),
+    [openMenu],
+  );
   // Context built when Sparkles is clicked — sent only when Quick Edit is submitted
   const pendingContextRef = useRef<Record<string, unknown> | null>(null);
   // Capture the element reference when toolbar opens so actions use the correct element
@@ -97,6 +110,7 @@ export default function ElementHoverBar({
   useEffect(() => {
     setToolbarMode(false);
     setQuickEditMode(false);
+    setOpenMenu(null);
     pendingContextRef.current = null;
     // Cancel any in-flight fix request — the captured toolbarElementRef is
     // about to point at a different element, so a pending result would be stale.
@@ -484,8 +498,11 @@ export default function ElementHoverBar({
         <>
           <BoldButton selectedElement={targetEl} />
           <ItalicButton selectedElement={targetEl} />
-          <TextColorButton selectedElement={targetEl} />
-          {isTextBlockElement(element) && <TextAlignButton selectedElement={targetEl} />}
+          <TextColorButton selectedElement={targetEl} {...menuController("color")} />
+          <TextSizeStepperButton selectedElement={targetEl} {...menuController("size")} />
+          {isTextBlockElement(element) && (
+            <TextAlignButton selectedElement={targetEl} {...menuController("align")} />
+          )}
           {fixEligible && <TextFixButton state={fix.state} onFix={handleFix} />}
         </>
       )}

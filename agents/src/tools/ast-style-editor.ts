@@ -49,18 +49,25 @@ export class ASTStyleEditor extends ASTEditorBase {
   } | null = null;
 
   /**
-   * Edit element styles using AST parsing and manipulation
+   * Edit element styles using AST parsing and manipulation.
+   *
+   * @param appId - When provided, each successful edit produces a per-app git
+   *   commit so users can revert via version history. Required to actually
+   *   capture commits — without it, ASTEditorBase silently skips the commit
+   *   step (see `shouldCommit && appId` guard in editTemplate).
    */
   async editElementStyle(
     appPath: string,
-    request: StyleEditRequest
+    request: StyleEditRequest,
+    appId?: string
   ): Promise<StyleEditResult> {
     const baseResult = await this.editTemplate<StyleEditRequest, StyleEditResult>(
       appPath,
       request,
       (req) => req.elementInfo.devContext.fileName,
       true, // Commit style changes
-      'style' // editType
+      'style', // editType
+      appId
     );
 
     // Add style-specific data to the result using stored changes
@@ -74,7 +81,7 @@ export class ASTStyleEditor extends ASTEditorBase {
     return {
       ...baseResult,
       changes,
-      commitHash: (baseResult as any).commitHash
+      commitHash: baseResult.commitHash
     };
   }
 
@@ -160,6 +167,72 @@ export class ASTStyleEditor extends ASTEditorBase {
     }
 
     return true; // If we've passed all checks, consider it a match
+  }
+
+  /**
+   * Strip an inline `fontSize` property from a JSX `style={{...}}` object
+   * literal. Used by the fontSize edit path so the new text-{size} class
+   * isn't silently overridden by an inline value (e.g. clamp()).
+   *
+   * Returns:
+   *   - 'NO_STYLE' — no `style` attribute on the element. Nothing to do.
+   *   - 'NO_FONTSIZE' — `style` exists but doesn't carry a `fontSize` key. Nothing to do.
+   *   - 'REMOVED' — the `fontSize` key was removed (and the whole `style`
+   *     attribute removed if it was the only key).
+   *   - 'NOT_EDITABLE' — the `style` attribute is a non-object expression
+   *     (variable ref, ternary, function call, etc.) we can't safely mutate
+   *     without touching the variable's declaration site. Caller should
+   *     bail with INLINE_STYLE_NOT_EDITABLE.
+   */
+  private removeInlineFontSize(
+    openingElement: t.JSXOpeningElement
+  ): 'NO_STYLE' | 'NO_FONTSIZE' | 'REMOVED' | 'NOT_EDITABLE' {
+    const styleAttrIndex = openingElement.attributes.findIndex(
+      (attr: any) => this.t.isJSXAttribute(attr) && attr.name.name === 'style'
+    );
+    if (styleAttrIndex === -1) return 'NO_STYLE';
+
+    const styleAttr = openingElement.attributes[styleAttrIndex] as t.JSXAttribute;
+
+    // String-literal style="..." — rare in JSX, treat as non-editable rather
+    // than try to parse and mutate a CSS string.
+    if (!styleAttr.value || !this.t.isJSXExpressionContainer(styleAttr.value)) {
+      return 'NOT_EDITABLE';
+    }
+
+    const expr = styleAttr.value.expression;
+
+    // style={null} / style={undefined} → no inline value to worry about.
+    if (this.t.isNullLiteral(expr) ||
+        (this.t.isIdentifier(expr) && expr.name === 'undefined')) {
+      return 'NO_FONTSIZE';
+    }
+
+    // style={someVar} / style={cond ? a : b} / style={fn()} → can't safely
+    // edit without chasing the binding. Bail.
+    if (!this.t.isObjectExpression(expr)) {
+      return 'NOT_EDITABLE';
+    }
+
+    // style={{ ...spread, fontSize: ..., otherKey: ... }}
+    const properties = expr.properties;
+    const fontSizeIdx = properties.findIndex((prop: any) =>
+      this.t.isObjectProperty(prop) &&
+      ((this.t.isIdentifier(prop.key) && prop.key.name === 'fontSize') ||
+       (this.t.isStringLiteral(prop.key) && prop.key.value === 'fontSize'))
+    );
+
+    if (fontSizeIdx === -1) return 'NO_FONTSIZE';
+
+    properties.splice(fontSizeIdx, 1);
+
+    // If the object is now empty (no spreads, no other keys), drop the
+    // whole `style` attribute so the JSX doesn't carry a useless `style={{}}`.
+    if (properties.length === 0) {
+      openingElement.attributes.splice(styleAttrIndex, 1);
+    }
+
+    return 'REMOVED';
   }
 
   /**
@@ -307,22 +380,49 @@ export class ASTStyleEditor extends ASTEditorBase {
 
     switch (property) {
       case 'fontSize': {
-        // Replace existing font size classes while maintaining order
-        const fontSizePattern = /^text-(xs|sm|base|lg|xl|2xl|3xl|4xl)$/;
-        let replacedFontSize = false;
-        const updatedClasses = classes.map(c => {
-          if (fontSizePattern.test(c)) {
-            replacedFontSize = true;
-            return value && value.startsWith('text-') ? value : '';
+        // Strip both base (`text-lg`) and variant-prefixed (`md:text-lg`,
+        // `lg:hover:text-lg`) size classes. An element with `md:text-3xl
+        // text-3xl` would otherwise keep the variant winning at md+ widths.
+        // Also strip Tailwind arbitrary-value sizes (`text-[clamp(...)]`,
+        // `md:text-[2rem]`) since they outrank standard classes too —
+        // distinguished from arbitrary COLORS (`text-[#ff0000]`) by the
+        // length-shape heuristic.
+        //
+        // Implementation: peel variants imperatively (each step strips
+        // one `<variant>:` prefix), then test the bare suffix with simple
+        // anchored regexes. Avoids the nested `(?:...:)*` repetition that
+        // Semgrep flags as ReDoS-prone.
+        const peelVariantPrefixes = (cls: string): string => {
+          let bare = cls;
+          while (true) {
+            // Trailing `i` flag is a no-op for lowercase content but is
+            // required for scripts/check-tools-security.js to recognize
+            // this as a regex literal rather than a process-spawning call.
+            const match = /^[a-z0-9-]+:/i.exec(bare);
+            if (!match) return bare;
+            bare = bare.slice(match[0].length);
           }
-          return c;
-        }).filter(Boolean);
-
-        // If no existing font size class was found, add the new one at the beginning
-        if (!replacedFontSize && value && value.startsWith('text-')) {
-          updatedClasses.unshift(value);
+        };
+        const baseSizePattern = /^text-(?:xs|sm|base|lg|xl|2xl|3xl|4xl|5xl|6xl|7xl|8xl|9xl)$/;
+        const baseArbitraryPattern = /^text-\[([^\]]+)\]$/;
+        // Length-shape heuristic — keep in sync with the copy in
+        // app-templates/v8/dev-tools/src/components/TextSizeStepperButton.tsx
+        // (no shared package between agents/ and dev-tools/, so the pattern
+        // is duplicated rather than imported). If you add a unit here,
+        // mirror it there or the optimistic DOM strip will diverge from
+        // the AST commit.
+        const lengthShape = /\d(?:\.\d+)?\s*(?:px|rem|em|vw|vh|%|ch|ex|cm|mm|in|pt|pc)\b|\b(?:clamp|calc|min|max)\s*\(/i;
+        const isFontSizeClass = (cls: string): boolean => {
+          const bare = peelVariantPrefixes(cls);
+          if (baseSizePattern.test(bare)) return true;
+          const m = bare.match(baseArbitraryPattern);
+          return !!m && lengthShape.test(m[1] ?? '');
+        };
+        const filtered = classes.filter(c => !isFontSizeClass(c));
+        if (value && baseSizePattern.test(value)) {
+          filtered.unshift(value);
         }
-        return updatedClasses.join(' ');
+        return filtered.join(' ');
       }
 
       case 'fontWeight': {
@@ -447,6 +547,7 @@ export class ASTStyleEditor extends ASTEditorBase {
     let oldClassName = '';
     let newClassName = '';
     let dynamicClassNameError: string | null = null;
+    let inlineStyleError: string | null = null;
 
     logger.debug('Starting AST traversal for style edit', {
       component: 'ASTStyleEditor',
@@ -476,6 +577,29 @@ export class ASTStyleEditor extends ASTEditorBase {
 
           // Get the opening element
           const openingElement = element.openingElement;
+
+          // Pre-flight check for fontSize edits: if the JSX `style` attribute
+          // is a non-object expression (variable ref, ternary, etc.), we
+          // can't safely strip an inline fontSize without chasing the
+          // binding. Bail BEFORE mutating className so the source stays
+          // intact and the frontend rolls back its optimistic update.
+          if (request.property === 'fontSize') {
+            const styleAttr = openingElement.attributes.find(
+              (attr: any) => this.t.isJSXAttribute(attr) && attr.name.name === 'style'
+            ) as t.JSXAttribute | undefined;
+            if (styleAttr && this.t.isJSXExpressionContainer(styleAttr.value)) {
+              const expr = styleAttr.value.expression;
+              const isEditableShape =
+                this.t.isObjectExpression(expr) ||
+                this.t.isNullLiteral(expr) ||
+                (this.t.isIdentifier(expr) && expr.name === 'undefined');
+              if (!isEditableShape) {
+                inlineStyleError = `INLINE_STYLE_NOT_EDITABLE: cannot safely strip inline fontSize at line ${elementInfo.devContext.lineNumber} — style attribute is not an object literal.`;
+                path.stop();
+                return;
+              }
+            }
+          }
 
           // Find or create className attribute
           let classNameAttr = openingElement.attributes.find(
@@ -520,11 +644,25 @@ export class ASTStyleEditor extends ASTEditorBase {
           // Apply inline styles for properties that use them
           this.applyInlineStyle(openingElement, request.property, request.value, request.newStyle);
 
+          // For fontSize edits, also strip any inline `fontSize` so the new
+          // text-{size} class isn't silently overridden by the inline value.
+          // Pre-flight already verified the style shape is editable.
+          if (request.property === 'fontSize') {
+            this.removeInlineFontSize(openingElement);
+          }
+
           // Stop traversing once we find the element
           path.stop();
         }
       }
     });
+
+    if (inlineStyleError) {
+      return {
+        success: false,
+        error: inlineStyleError
+      };
+    }
 
     if (dynamicClassNameError) {
       return {
@@ -565,11 +703,20 @@ export class ASTStyleEditor extends ASTEditorBase {
   }
 
   /**
-   * Generate commit message for style changes
+   * Generate commit message for style changes. source-mapper reports
+   * componentName as the literal string "unknown" when it can't resolve a
+   * parent component, which used to produce messages like "Update h1
+   * fontSize to text-8xl in unknown" in the per-app git history UI. Fall
+   * back to the source file's basename so the commit is still navigable.
    */
-  protected generateCommitMessage(changes: any, request: StyleEditRequest): string {
+  protected generateCommitMessage(_changes: any, request: StyleEditRequest): string {
     const { elementInfo } = request;
-    return `Update ${elementInfo.tagName} ${request.property} to ${request.value} in ${elementInfo.devContext.componentName}`;
+    const { componentName, fileName } = elementInfo.devContext;
+    const hasResolvedComponent = !!componentName && componentName !== 'unknown';
+    const location = hasResolvedComponent
+      ? componentName
+      : (fileName.split('/').pop() || fileName);
+    return `Update ${elementInfo.tagName} ${request.property} to ${request.value} in ${location}`;
   }
 
 }

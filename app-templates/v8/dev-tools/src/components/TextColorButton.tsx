@@ -12,6 +12,10 @@ const DEFAULT_COLOR = "#000000";
 
 interface TextColorButtonProps {
   selectedElement: HTMLElement | null;
+  /** Controlled popover state — parent (`ElementHoverBar`) coordinates so
+   *  Color Picker / Size Stepper / Text Align never stack on top of each other. */
+  isOpen: boolean;
+  onOpenChange: (open: boolean) => void;
 }
 
 /**
@@ -47,8 +51,7 @@ function parseComputedColor(computed: string): string | null {
  *
  * Parent (`ElementHoverBar`) is responsible for gating to text elements.
  */
-export default function TextColorButton({ selectedElement }: TextColorButtonProps) {
-  const [showMenu, setShowMenu] = useState(false);
+export default function TextColorButton({ selectedElement, isOpen, onOpenChange }: TextColorButtonProps) {
   const [themeColors, setThemeColors] = useState<string[]>([]);
   const [, forceRender] = useState(0);
 
@@ -104,7 +107,7 @@ export default function TextColorButton({ selectedElement }: TextColorButtonProp
   // Memoized: during a drag, handleColorPreview calls forceRender on every
   // pixel — the memo stays cached so we skip getComputedStyle per frame.
   // The swatch button color stays stale while the picker is open (fine, the
-  // user is looking at the picker) and resyncs when showMenu flips to false.
+  // user is looking at the picker) and resyncs when isOpen flips to false.
   const currentColor = useMemo((): string => {
     if (!selectedElement) {
       return DEFAULT_COLOR;
@@ -126,28 +129,27 @@ export default function TextColorButton({ selectedElement }: TextColorButtonProp
     }
   
     return DEFAULT_COLOR;
-  }, [selectedElement, showMenu]);
+  }, [selectedElement, isOpen]);
 
   const toggleMenu = useCallback(() => {
-    setShowMenu((isOpen: boolean) => {
-      if (isOpen) {
-        revertPickerState(selectedElement);
-        setThemeColors([]);
-        return false;
-      }
+    if (isOpen) {
+      revertPickerState(selectedElement);
+      setThemeColors([]);
+      onOpenChange(false);
+      return;
+    }
 
-      // Opening — extract theme swatches, snapshot the current color, and
-      // inject a smooth transition so drag previews and commits animate.
-      setThemeColors(extractThemeColors());
-      if (selectedElement) {
-        originalColorRef.current = selectedElement.style.color;
-        lastCommittedColorRef.current = originalColorRef.current;
-        prevTransitionRef.current = selectedElement.style.transition;
-        selectedElement.style.transition = "color 200ms ease";
-      }
-      return true;
-    });
-  }, [selectedElement, revertPickerState]);
+    // Opening — extract theme swatches, snapshot the current color, and
+    // inject a smooth transition so drag previews and commits animate.
+    setThemeColors(extractThemeColors());
+    if (selectedElement) {
+      originalColorRef.current = selectedElement.style.color;
+      lastCommittedColorRef.current = originalColorRef.current;
+      prevTransitionRef.current = selectedElement.style.transition;
+      selectedElement.style.transition = "color 200ms ease";
+    }
+    onOpenChange(true);
+  }, [isOpen, selectedElement, revertPickerState, onOpenChange]);
 
   // Optimistic visual update only — fires on every drag pixel from ColorPicker.
   // Does NOT send STYLE_UPDATED so we don't produce a git commit per pixel.
@@ -221,9 +223,9 @@ export default function TextColorButton({ selectedElement }: TextColorButtonProp
             boxSizing: "border-box",
           }} />
         }
-        active={showMenu}
+        active={isOpen}
       />
-      {showMenu && (
+      {isOpen && (
         <div
           data-airo-dev-tools=""
           style={{
