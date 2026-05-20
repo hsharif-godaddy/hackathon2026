@@ -72,6 +72,11 @@ describe('buildSummary', () => {
     expect(s.error).toBe('boom');
   });
 
+  it('marks schemaCompleted=true for failed/killed (sidecar never produced for those)', () => {
+    expect(buildSummary({ ...baseState, status: 'failed', error: 'boom' }, {}).schemaCompleted).toBe(true);
+    expect(buildSummary({ ...baseState, status: 'killed', error: 'taken over' }, {}).schemaCompleted).toBe(true);
+  });
+
   it('overlays analysis fields when provided', () => {
     const s = buildSummary(baseState, {
       analysis: { sentiment: 'negative', confidence: 0.9, rootCause: 'bad publish', category: 'publish-failure' },
@@ -255,5 +260,60 @@ describe('ensureSummary with readAnalysis', () => {
     const saved = JSON.parse(store[summaryKey!]) as { sentiment: null; schemaCompleted: boolean };
     expect(saved.sentiment).toBeNull();
     expect(saved.schemaCompleted).toBe(false);
+  });
+
+  it('re-writes summary when existing one is schema-incomplete and sidecar later arrives', async () => {
+    // First call: no sidecar, summary written with schemaCompleted=false.
+    const { store, s3 } = fakeS3();
+    await ensureSummary(baseState, { s3, bucket: 'b' });
+    const summaryKey = Object.keys(store).find((k) => k.startsWith('summaries/') && k.endsWith('.json') && !k.includes('_meta') && !k.includes('latest'))!;
+    const latestKey = Object.keys(store).find((k) => k.startsWith('summaries/latest/'))!;
+    expect(JSON.parse(store[summaryKey]!).schemaCompleted).toBe(false);
+    expect(JSON.parse(store[latestKey]!).sentiment).toBeNull();
+
+    // Sidecar arrives, second ensureSummary call should fold it in.
+    const sidecar = { v: 1, sentiment: 'negative', confidence: 0.9, rootCause: 'bad publish', category: 'publish-failure' };
+    const analysisKey = `analysis/${encodeURIComponent('cust1')}/${encodeURIComponent('app1')}/inv-2026-05-14-deadbeef.json`;
+    store[analysisKey] = JSON.stringify(sidecar);
+
+    await ensureSummary(baseState, { s3, bucket: 'b' });
+    expect(JSON.parse(store[summaryKey]!).sentiment).toBe('negative');
+    expect(JSON.parse(store[summaryKey]!).schemaCompleted).toBe(true);
+    expect(JSON.parse(store[latestKey]!).sentiment).toBe('negative');
+  });
+
+  it('skips re-write when existing summary is already schema-complete', async () => {
+    const sidecar = { v: 1, sentiment: 'negative', confidence: 0.9, rootCause: 'bad publish', category: 'publish-failure' };
+    const analysisKey = `analysis/${encodeURIComponent('cust1')}/${encodeURIComponent('app1')}/inv-2026-05-14-deadbeef.json`;
+    const { store, s3, calls } = fakeS3({ [analysisKey]: JSON.stringify(sidecar) });
+    await ensureSummary(baseState, { s3, bucket: 'b' });
+    const writesAfterFirst = calls.filter((c) => c.type === 'PutObjectCommand').length;
+
+    await ensureSummary(baseState, { s3, bucket: 'b' });
+    const writesAfterSecond = calls.filter((c) => c.type === 'PutObjectCommand').length;
+    expect(writesAfterSecond).toBe(writesAfterFirst);
+    expect(JSON.parse(store[Object.keys(store).find((k) => k.includes('summaries/2026-05-15/'))!]!).schemaCompleted).toBe(true);
+  });
+
+  it('self-heals when existing summary blob is corrupt JSON (treats as schema-incomplete)', async () => {
+    // Pre-populate per-id key with garbage that JSON.parse will reject.
+    const corruptKey = 'summaries/2026-05-15/inv-2026-05-14-deadbeef.json';
+    const { store, s3 } = fakeS3({ [corruptKey]: '{not valid json' });
+    await ensureSummary(baseState, { s3, bucket: 'b' });
+    // Latest-key (what listing reads) was written → listing recovers.
+    const latestKey = Object.keys(store).find((k) => k.startsWith('summaries/latest/'))!;
+    expect(latestKey).toBeDefined();
+    expect(() => JSON.parse(store[latestKey]!)).not.toThrow();
+  });
+
+  it('skips re-write for failed/killed (sidecar never expected — no infinite re-PUT loop)', async () => {
+    const failedState = { ...baseState, status: 'failed' as const, error: 'boom' };
+    const { s3, calls } = fakeS3();
+    await ensureSummary(failedState, { s3, bucket: 'b' });
+    const writesAfterFirst = calls.filter((c) => c.type === 'PutObjectCommand').length;
+
+    await ensureSummary(failedState, { s3, bucket: 'b' });
+    const writesAfterSecond = calls.filter((c) => c.type === 'PutObjectCommand').length;
+    expect(writesAfterSecond).toBe(writesAfterFirst);
   });
 });

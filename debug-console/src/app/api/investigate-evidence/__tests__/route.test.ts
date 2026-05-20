@@ -24,6 +24,14 @@ function makeRequest(body: unknown): NextRequest {
   });
 }
 
+function makeRequestWithHeaders(body: unknown, headers: Record<string, string>): NextRequest {
+  return new NextRequest('https://localhost/api/investigate-evidence', {
+    method: 'POST',
+    body: JSON.stringify(body),
+    headers,
+  });
+}
+
 describe('investigate-evidence route POST', () => {
   it('returns structured JSON when evidence collection fails unexpectedly', async () => {
     collectInvestigateEvidenceMock.mockRejectedValueOnce(new Error('index build failed'));
@@ -39,5 +47,39 @@ describe('investigate-evidence route POST', () => {
       error: 'Evidence collection failed',
       details: 'index build failed',
     });
+  });
+
+  it('gzips success response when Accept-Encoding includes gzip', async () => {
+    collectInvestigateEvidenceMock.mockResolvedValueOnce({
+      appId: 'app123', timeWindow: '24h', complete: true, sources: [],
+    });
+
+    const { POST } = await import('../route');
+    const response = await (POST as unknown as (req: NextRequest) => Promise<Response>)(
+      makeRequestWithHeaders(
+        { appId: 'app123', timeWindow: '24h', sources: ['airo-app'] },
+        { 'accept-encoding': 'gzip, deflate' },
+      ),
+    );
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-encoding')).toBe('gzip');
+    expect(response.headers.get('cache-control')).toContain('no-store');
+  });
+
+  it('returns plain JSON when Accept-Encoding omits gzip', async () => {
+    collectInvestigateEvidenceMock.mockResolvedValueOnce({
+      appId: 'app123', timeWindow: '24h', complete: true, sources: [],
+    });
+
+    const { POST } = await import('../route');
+    const response = await (POST as unknown as (req: NextRequest) => Promise<Response>)(
+      makeRequestWithHeaders(
+        { appId: 'app123', timeWindow: '24h', sources: ['airo-app'] },
+        { 'accept-encoding': 'identity' },
+      ),
+    );
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-encoding')).toBeNull();
+    await expect(response.json()).resolves.toMatchObject({ appId: 'app123' });
   });
 });

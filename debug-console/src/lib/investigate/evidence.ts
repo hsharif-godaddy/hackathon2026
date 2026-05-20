@@ -26,8 +26,32 @@ export type EvidenceSourceId = typeof DEFAULT_EVIDENCE_SOURCE_IDS[number];
 
 const KNOWN_EVIDENCE_SOURCE_IDS = new Set<string>(DEFAULT_EVIDENCE_SOURCE_IDS);
 const MAX_WINDOW_HOURS = 24 * 7;
-const DEFAULT_BUCKET_HOURS = 6;
+const DEFAULT_BUCKET_HOURS = 3;
 const LOKI_LIMIT = 5000;
+// Cap parallel bucket fetches so a 7d window (56 buckets at 3h each) doesn't
+// fan out 56 concurrent Loki queries — that risks rate-limit 429s and balloons
+// console memory holding every response buffer at once. 8 keeps Loki happy
+// while still finishing 7d in ~7×slowest-bucket wall time.
+const BUCKET_FETCH_CONCURRENCY = 8;
+
+export async function mapWithConcurrency<T, R>(
+  items: readonly T[],
+  limit: number,
+  fn: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const out: R[] = new Array(items.length);
+  let cursor = 0;
+  const workerCount = Math.min(Math.max(1, limit), items.length);
+  const workers = Array.from({ length: workerCount }, async () => {
+    while (true) {
+      const idx = cursor++;
+      if (idx >= items.length) return;
+      out[idx] = await fn(items[idx], idx);
+    }
+  });
+  await Promise.all(workers);
+  return out;
+}
 const LOKI_JOB_TO_SOURCE_ID: Record<string, string> = {
   'airo-agents': 'airo-agents',
   'airo-preview-application': 'airo-preview',
@@ -502,18 +526,16 @@ export async function collectMergedLokiSources(params: {
     lokiLabels: {},
   };
 
-  const collectedParts = await Promise.all(
-    buckets.map((bucket) =>
-      collectLokiEvidence({
-        sourceConfig: mergedSourceConfig,
-        appId: params.appId,
-        startTime: bucket.startTime,
-        endTime: bucket.endTime,
-        bucketLabel: bucket.label,
-        fetchImpl: params.fetchImpl,
-        queryOverride: mergedQuery,
-      }),
-    ),
+  const collectedParts = await mapWithConcurrency(buckets, BUCKET_FETCH_CONCURRENCY, (bucket) =>
+    collectLokiEvidence({
+      sourceConfig: mergedSourceConfig,
+      appId: params.appId,
+      startTime: bucket.startTime,
+      endTime: bucket.endTime,
+      bucketLabel: bucket.label,
+      fetchImpl: params.fetchImpl,
+      queryOverride: mergedQuery,
+    }),
   );
 
   const merged = mergeCollected(collectedParts);
@@ -1390,7 +1412,7 @@ export async function collectEvidenceForSource(params: {
   const sourceConfig = getLogSourceConfig(params.sourceId);
   if (!sourceConfig) throw new Error(`Unknown log source: ${params.sourceId}`);
   const buckets = buildEvidenceBuckets(startTime, endTime, params.bucketHours || DEFAULT_BUCKET_HOURS);
-  const collectedParts = await Promise.all(buckets.map((bucket) => (
+  const collectedParts = await mapWithConcurrency(buckets, BUCKET_FETCH_CONCURRENCY, (bucket) => (
     sourceConfig.backendType === 'loki'
       ? collectLokiEvidence({
         sourceConfig,
@@ -1408,7 +1430,7 @@ export async function collectEvidenceForSource(params: {
         bucketLabel: bucket.label,
         fetchImpl: params.fetchImpl,
       })
-  )));
+  ));
   const collected = mergeCollected(collectedParts);
   const index = buildEvidenceIndex({
     source: sourceConfig,

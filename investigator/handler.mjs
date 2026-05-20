@@ -231,7 +231,7 @@ function spawnClaude(prompt, logStream) {
     '--model', 'claude-sonnet-4-6',
     '--output-format=stream-json',
     '--verbose',
-    '--max-turns', '35',
+    '--max-turns', '50',
     '--dangerously-skip-permissions',
   ];
   const child = spawn(CLAUDE_BIN, args, {

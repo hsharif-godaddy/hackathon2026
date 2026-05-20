@@ -1,6 +1,5 @@
 import {
   GetObjectCommand,
-  HeadObjectCommand,
   ListObjectsV2Command,
   PutObjectCommand,
   S3Client,
@@ -52,12 +51,18 @@ export function buildSummary(state: InvestigationState, opts: BuildSummaryOption
   const excerpt = feedback.length > FEEDBACK_EXCERPT_MAX ? feedback.slice(0, FEEDBACK_EXCERPT_MAX) : feedback;
   const reportAvailable = state.status === 'completed' && !!state.resultKey;
   const analysis = opts.analysis ?? null;
-  const schemaCompleted = !!(
-    analysis &&
-    analysis.sentiment != null &&
-    analysis.confidence != null &&
-    analysis.rootCause != null
-  );
+  // Sidecar is only produced for successful runs (readAnalysis is gated to
+  // status='completed' upstream). Treat failed/killed as inherently complete
+  // so ensureSummary's schema-incomplete re-write path doesn't loop forever
+  // on every poll for terminal-but-unanalyzed investigations.
+  const schemaCompleted = state.status !== 'completed'
+    ? true
+    : !!(
+      analysis &&
+      analysis.sentiment != null &&
+      analysis.confidence != null &&
+      analysis.rootCause != null
+    );
 
   return {
     v: 1,
@@ -237,21 +242,37 @@ export async function ensureSummary(
   }
   const { s3: s3Inst, bucket } = resolved(opts);
 
-  // Skip the entire pipeline if the summary already exists. This prevents
-  // repeated S3 writes (analysis GET + 3 PUTs) on every status/report poll
-  // against a terminal investigation. The lazy-write description is only true
-  // when we actually skip; without this check every poll pays the full cost.
+  // Skip the entire pipeline only when an existing summary is already
+  // schema-complete. Otherwise re-run so a late-arriving analysis sidecar
+  // (sentiment/confidence/rootCause) can be folded into the per-id object
+  // AND the latest-per-app pointer that the listing reads — without this,
+  // sentiment is frozen null for any investigation whose sidecar landed
+  // after the first status/report poll.
   const previewDate =
     pickDate(state.completedAt) ??
     pickDate(state.startedAt) ??
     new Date().toISOString().slice(0, 10);
   const existingKey = keysForSummary(previewDate, state.investigationId);
   try {
-    await s3Inst.send(new HeadObjectCommand({ Bucket: bucket, Key: existingKey }));
-    return { wrote: false, date: previewDate };
+    const existingRes = (await s3Inst.send(new GetObjectCommand({ Bucket: bucket, Key: existingKey }))) as { Body: AsyncIterable<Uint8Array> };
+    const existingBuf = await readAll(existingRes.Body);
+    let existing: InvestigationSummary | null = null;
+    try {
+      existing = JSON.parse(existingBuf.toString('utf-8')) as InvestigationSummary;
+    } catch {
+      // Corrupt/truncated existing blob (only from manual S3 edits in
+      // practice). Fall through to re-write — the latest-key unconditional
+      // PUT will self-heal the listing path; the per-id IfNoneMatch:* PUT
+      // returns wrote=false but doesn't error.
+      existing = null;
+    }
+    if (existing?.schemaCompleted) {
+      return { wrote: false, date: previewDate };
+    }
+    // Schema incomplete or unparseable — fall through to re-read analysis and re-write.
   } catch (err) {
     const e = err as { name?: string; $metadata?: { httpStatusCode?: number } };
-    if (e?.name !== 'NotFound' && e?.name !== 'NoSuchKey' && e?.$metadata?.httpStatusCode !== 404) {
+    if (e?.name !== 'NoSuchKey' && e?.$metadata?.httpStatusCode !== 404) {
       throw err;
     }
     // 404 = doesn't exist yet, proceed to write.

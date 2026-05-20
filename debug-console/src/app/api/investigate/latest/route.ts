@@ -82,5 +82,7 @@ export const GET = withAuth(async (request) => {
     reportFilename: state.reportFilename,
     reportSize,
     reportEtag,
+    evidence: state.evidence ?? null,
+    cost: state.cost ?? null,
   });
 });

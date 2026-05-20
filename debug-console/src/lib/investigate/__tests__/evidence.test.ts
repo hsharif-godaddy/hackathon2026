@@ -12,6 +12,7 @@ import {
   collectLokiEvidence,
   collectMergedLokiSources,
   extractClusterFromUrl,
+  mapWithConcurrency,
   normalizeEvidenceRequest,
   resolveAppCluster,
 } from '../evidence';
@@ -401,7 +402,7 @@ describe('investigate evidence collection', () => {
     expect(normalized.appId).toBe('app123');
     expect(normalized.timeWindow).toBe('7d');
     expect(normalized.sources).toEqual(['airo-preview', 'control_plane', 'langfuse', 'fullstory']);
-    expect(normalized.bucketHours).toBe(6);
+    expect(normalized.bucketHours).toBe(3);
     expect(normalized.fullstoryUrl).toBe('https://app.fullstory.com/ui/YKBRC/session/111:222');
   });
 
@@ -1127,5 +1128,35 @@ describe('investigate evidence collection', () => {
     expect(callCount).toBe(2);
     expect(result.complete).toBe(true);
     expect(result.rawPages.flatMap((p) => p.logs)).toHaveLength(1);
+  });
+});
+
+describe('mapWithConcurrency', () => {
+  it('caps in-flight tasks at the given limit and preserves input order in results', async () => {
+    const items = Array.from({ length: 20 }, (_, i) => i);
+    let inFlight = 0;
+    let peak = 0;
+    const results = await mapWithConcurrency(items, 5, async (i) => {
+      inFlight++;
+      peak = Math.max(peak, inFlight);
+      // Yield twice so multiple workers genuinely overlap before any resolves.
+      await new Promise((r) => setImmediate(r));
+      await new Promise((r) => setImmediate(r));
+      inFlight--;
+      return i * 2;
+    });
+    expect(peak).toBeLessThanOrEqual(5);
+    expect(peak).toBeGreaterThan(1); // sanity: did parallelize
+    expect(results).toEqual(items.map((i) => i * 2));
+  });
+
+  it('handles items.length < limit without spawning idle workers', async () => {
+    const results = await mapWithConcurrency([1, 2, 3], 100, async (n) => n + 10);
+    expect(results).toEqual([11, 12, 13]);
+  });
+
+  it('handles empty input', async () => {
+    const results = await mapWithConcurrency([], 8, async (n: number) => n);
+    expect(results).toEqual([]);
   });
 });
