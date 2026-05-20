@@ -16,6 +16,7 @@ import { LakeFormationAdminsStack } from "../lib/lake-formation-admins-stack";
 import { QdrantStack } from "../lib/qdrant-stack";
 import { QdrantEcrStack } from "../lib/qdrant-ecr-stack";
 import { LambdaBaseEcrStack } from "../lib/lambda-base-ecr-stack";
+import { FeedbackAutomationStack } from "../lib/feedback-automation-stack";
 import { AiroInvestigatorStack } from "../lib/investigator-stack";
 
 /**
@@ -74,6 +75,9 @@ async function main() {
 
   // Shared S3 bucket for offline ML data (per-model prefixes inside the bucket)
   new OfflineMLDataS3Stack(app, 'OfflineMLDataS3Stack', { env });
+
+  // Create Feedback Automation IAM role with Secrets Manager list + read access
+  new FeedbackAutomationStack(app, 'FeedbackAutomationStack', { env });
 
   // Create Feedback S3 infrastructure (S3 bucket for user feedback submissions).
   // Deployed to dev and prod only — feedback data is not needed in the test environment.

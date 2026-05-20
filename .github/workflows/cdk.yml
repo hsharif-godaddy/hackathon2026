@@ -1,48 +1,49 @@
 name: CDK Workflow
-run-name: "CDK ${{ github.event.inputs.DEFAULT_ACTION }} - ${{ github.event.inputs.STACK_NAME }} (${{ github.event.inputs.ENV_NAME }})"
+run-name: 'CDK ${{ github.event.inputs.DEFAULT_ACTION }} - ${{ github.event.inputs.STACK_NAME }} (${{ github.event.inputs.ENV_NAME }})'
 
 on:
   workflow_dispatch:
     inputs:
       ENV_NAME:
-        description: "Environment to deploy the CDK stack"
+        description: 'Environment to deploy the CDK stack'
         required: true
         type: choice
         options:
-          - "dev"
-          - "test"
-          - "prod"
-        default: "dev"
+          - 'dev'
+          - 'test'
+          - 'prod'
+        default: 'dev'
       STACK_NAME:
-        description: "Stack to deploy"
+        description: 'Stack to deploy'
         required: true
         type: choice
         options:
-          - "--all"
-          - "AiroBuilderStack"
-          - "MySQLV2Stack"
-          - "PostgresStack"
-          - "AiroJWTKeyStack"
-          - "AiroStripeServiceStack"
-          - "GocaasSpendLambdaStack"
-          - "LangfuseMetricsEsspExporterStack"
-          - "EvalSnapshotsStack"
-          - "OfflineMLDataS3Stack"
-          - "FeedbackS3Stack"
-          - "LakeFormationAdminsStack"
-          - "QdrantEcrStack"
-          - "QdrantVectorDbStack"
-          - "LambdaBaseEcrStack"
-          - "AiroInvestigatorStack"
-        default: "--all"
+          - '--all'
+          - 'AiroBuilderStack'
+          - 'MySQLV2Stack'
+          - 'PostgresStack'
+          - 'AiroJWTKeyStack'
+          - 'AiroStripeServiceStack'
+          - 'GocaasSpendLambdaStack'
+          - 'LangfuseMetricsEsspExporterStack'
+          - 'EvalSnapshotsStack'
+          - 'OfflineMLDataS3Stack'
+          - 'FeedbackAutomationStack'
+          - 'FeedbackS3Stack'
+          - 'LakeFormationAdminsStack'
+          - 'QdrantEcrStack'
+          - 'QdrantVectorDbStack'
+          - 'LambdaBaseEcrStack'
+          - 'AiroInvestigatorStack'
+        default: '--all'
       DEFAULT_ACTION:
-        description: "Default action to take"
+        description: 'Default action to take'
         required: true
         type: choice
         options:
-          - "diff"
-          - "deploy"
-        default: "diff"
+          - 'diff'
+          - 'deploy'
+        default: 'diff'
 
 permissions:
   id-token: write # required for artifactory token login
@@ -170,7 +171,7 @@ jobs:
           STACK_NAME: ${{ env.STACK_NAME }}
           DEFAULT_ACTION: ${{ env.DEFAULT_ACTION }}
           # Enable BuildKit for Docker asset builds.
-          DOCKER_BUILDKIT: "1"
+          DOCKER_BUILDKIT: '1'
         run: |
           # Ensure pipeline failures are detected (grep was swallowing exit codes)
           set -o pipefail
