@@ -11,6 +11,8 @@ export const EXPERIMENT_IDS = {
   ventureHomeLogo: 'vh_dashboard_logo_to_airo_builder_redirect',
   /** Initial agent selection: maps cohort → agent profile. Only one agent-config experiment should run at a time. */
   initialAgent: 'airo-builder-initial-agent',
+  /** Build overlay question: show "Action needed" text when askQuestion is pending during initial build */
+  buildOverlayQuestion: 'aab_first_build_action_needed_copy',
 } as const
 
 /**
@@ -37,3 +39,7 @@ export const HOMEPAGE_ENGAGEMENT_LIGHT_COHORT = 'light_homepage' as const
 export const HOMEPAGE_ENGAGEMENT_ABSTRACT_ANIMATION_COHORT = 'abstract_animation' as const
 
 export const INELIGIBLE_COHORT = 'ineligible' as const
+
+/** Binary experiment cohorts for simple on/off Hivemind experiments. */
+export const COHORT_ON = 'on' as const
+export const COHORT_OFF = 'off' as const

@@ -24,6 +24,10 @@ import { MobileMode, PreviewViewMode, ViewMode } from '@/app/[market]/develop/co
 import { useAppIdFromParams } from '@/app/[market]/develop/components/utils'
 import ErrorBoundary from '@/components/ErrorBoundary'
 import { buildDynamicApiUrl } from '@/config/dynamic-api'
+import { COHORT_OFF, COHORT_ON, EXPERIMENT_IDS, INELIGIBLE_COHORT } from '@/config/experiments'
+import { isInitialBuildComplete, isInitialBuildFunnelActive } from '@/hooks/shared/initialBuildFunnel'
+import { useHivemind } from '@/hooks/useHivemind'
+import { useImpression } from '@/hooks/useImpression'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
 import { agentFetch } from '@/lib/agent-fetch'
@@ -136,14 +140,25 @@ export default function PreviewPane({
   const isTopLevelDomainEnabled = useSwitchboard('appbuilder-domain-top-level');
   /** Switchboard: translucent creation overlay + edit chip behavior. */
   const isPreviewEnhancedOverlaysEnabled =
-    useSwitchboard('appbuilder-preview-enhanced-overlays') === true
-  /** Switchboard: when true, swap building-overlay text while askQuestion is awaiting input. */
+    useSwitchboard('appbuilder-preview-enhanced-overlays') === true;
   const isBuildOverlayQuestionMessageEnabled =
     useSwitchboard('appbuilder-build-overlay-question-message') === true;
+  const { cohort: buildOverlayCohort } = useHivemind(EXPERIMENT_IDS.buildOverlayQuestion);
 
   const latestNBA = useLatestNBAs();
   const isAwaitingAskQuestion =
-    isBuildOverlayQuestionMessageEnabled && latestNBA?.source === 'askQuestion';
+    isBuildOverlayQuestionMessageEnabled && buildOverlayCohort === COHORT_ON && latestNBA?.source === 'askQuestion';
+
+  const isExposureEligible =
+    isBuildOverlayQuestionMessageEnabled &&
+    (buildOverlayCohort === COHORT_ON || buildOverlayCohort === COHORT_OFF) &&
+    latestNBA?.source === 'askQuestion';
+
+  // Funnel state is non-reactive (module-level); latestNBA re-renders ensure freshness here.
+  useImpression('develop.initialBuild.overlayQuestion', {
+    enabled: isExposureEligible && isInitialBuildFunnelActive() && !isInitialBuildComplete(),
+    customProperties: { cohort: buildOverlayCohort ?? INELIGIBLE_COHORT },
+  });
 
   const getServerState = useServerPollingStore((state) => state.getServerState)
   const isPollingServer = useServerPollingStore((state) => state.isPollingServer)
@@ -1059,9 +1074,14 @@ export default function PreviewPane({
   }
 
   if (!serverState || (isPollingServer(appId) && !serverState.isReady)) {
-    const loadingMessage = showBuildingOverlay
-      ? t('builder_preview_building_app')
-      : t('builder_preview_loading_app')
+    let loadingMessage: string;
+    if (showBuildingOverlay && isAwaitingAskQuestion) {
+      loadingMessage = t('builder_preview_question_title', undefined, 'Action needed to continue');
+    } else if (showBuildingOverlay) {
+      loadingMessage = t('builder_preview_building_app');
+    } else {
+      loadingMessage = t('builder_preview_loading_app');
+    }
     return <PreviewLoadingState message={loadingMessage} isMobile={isMobile} />
   }
 
