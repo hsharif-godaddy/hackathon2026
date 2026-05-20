@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ChoiceList } from '@airo/components/input/choice-list'
 
 import { useSendUserMessage } from '@/app/[market]/develop/components/chat/ChatContext'
@@ -160,6 +160,53 @@ export default function AskQuestionToolRenderer({
     onSelect: focusChoiceOptionByIndex,
     choiceListContainerRef: choiceListRef,
   })
+
+  // Memoize the step children so the array passed to ChoiceList is reference-
+  // stable across parent re-renders (streaming/loading store ticks).
+  // @airo/components ChoiceList tracks `children` through useMemo → activeStep
+  // / collected → a reset effect that clears the in-progress "Other" draft.
+  // Without this memo, every parent render produces fresh `<ChoiceList.Step>`
+  // elements and that effect fires on every tick, wiping whatever the user
+  // has typed so far. ChoiceList iterates children with `Children.forEach` and
+  // matches by `child.type === ChoiceListStep`, so the memoized value MUST be
+  // a flat array of step elements (no wrapper component / Fragment around it).
+  // Computed up-front from `widgetDataPeek` so the hook always runs unconditionally.
+  const peekQuestions = widgetDataPeek?.questions
+  const stepChildren = useMemo(
+    () =>
+      peekQuestions
+        ? peekQuestions.map((q, i) => {
+            const titleNode = hideQuestion ? null : q.subtitle ? (
+              <>
+                {q.question}
+                <div className="text-xs text-intents-ux-textSubtle-textColor mt-1">
+                  {q.subtitle}
+                </div>
+              </>
+            ) : (
+              q.question
+            )
+            const visible = visibleSuggestions(q)
+            return (
+              <ChoiceList.Step
+                key={i}
+                id={String(i)}
+                title={titleNode}
+                ariaLabel={q.question}
+                selectionMode={isMultiSelectQuestion(q) ? 'multiple' : 'single'}
+                {...(q.placeholder ? { otherPlaceholder: q.placeholder } : {})}
+              >
+                {visible.map((s, idx) => (
+                  <ChoiceList.Item key={idx} value={chipValue(idx)}>
+                    {s.text}
+                  </ChoiceList.Item>
+                ))}
+              </ChoiceList.Step>
+            )
+          })
+        : null,
+    [peekQuestions, hideQuestion],
+  )
 
   if (toolStatus === 'error') {
     return (
@@ -337,35 +384,7 @@ export default function AskQuestionToolRenderer({
         stepIndicatorLabel={(cur, tot) => `${cur}/${tot}`}
         {...(skipLabel ? { skipLabel } : {})}
       >
-      {questions.map((q, i) => {
-        const titleNode = hideQuestion ? null : q.subtitle ? (
-          <>
-            {q.question}
-            <div className="text-xs text-intents-ux-textSubtle-textColor mt-1">
-              {q.subtitle}
-            </div>
-          </>
-        ) : (
-          q.question
-        )
-        const visible = visibleSuggestions(q)
-        return (
-          <ChoiceList.Step
-            key={i}
-            id={String(i)}
-            title={titleNode}
-            ariaLabel={q.question}
-            selectionMode={isMultiSelectQuestion(q) ? 'multiple' : 'single'}
-            {...(q.placeholder ? { otherPlaceholder: q.placeholder } : {})}
-          >
-            {visible.map((s, idx) => (
-              <ChoiceList.Item key={idx} value={chipValue(idx)}>
-                {s.text}
-              </ChoiceList.Item>
-            ))}
-          </ChoiceList.Step>
-        )
-      })}
+        {stepChildren}
       </ChoiceList>
     </div>
   )

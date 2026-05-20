@@ -491,6 +491,75 @@ describe('AskQuestionToolRenderer', () => {
     expect(msg).toBe('')
   })
 
+  it('digit press on focused Other input does not trigger a ChoiceList pick', async () => {
+    // Regression: a user who has clicked into the freeform "Other" input is
+    // about to type a custom answer (which may legitimately start with a
+    // digit). The window-level digit shortcut must not steal that keystroke
+    // — even when the field is still empty. The previous behavior ran a
+    // direct `onSelect` for empty fields, which surprised users who'd
+    // deliberately moved focus to the input.
+    const result = makeResult([
+      makeQuestion('Pick?', [{ text: 'Red' }, { text: 'Blue' }, { text: 'Green' }]),
+    ])
+    render(
+      <AskQuestionToolRenderer
+        {...defaultProps}
+        result={result}
+      />,
+    )
+
+    const otherInput = screen.getByRole('textbox') as HTMLInputElement
+    otherInput.focus()
+    expect(otherInput.value).toBe('')
+
+    fireEvent.keyDown(window, { key: '2' })
+    await new Promise((r) => setTimeout(r, 0))
+
+    // Listener bailed out — focus stays on the Other input, not the listbox
+    // (which would mean the digit shortcut had hijacked the keystroke).
+    expect(otherInput).toHaveFocus()
+    expect(mockSendUserMessage).not.toHaveBeenCalled()
+  })
+
+  it('Other input keeps typed text across parent re-renders with the same result', () => {
+    // Regression: @airo/components ChoiceList runs an internal reset effect
+    // whose deps include `activeStep` and `collected`, both derived from the
+    // `children` prop via useMemo. If the parent rebuilds the JSX children on
+    // every render (the natural shape: `<ChoiceList>{questions.map(...)}</ChoiceList>`),
+    // those internal memos invalidate every tick and the effect clears the
+    // freeform "Other" draft to "". In production the parent re-renders every
+    // few seconds (streaming/loading store ticks, store array re-emits), so
+    // the user sees their in-progress text wiped out repeatedly.
+    //
+    // The fix memoizes the step-children array on the parent side. This test
+    // forces a re-render with the SAME `result` reference and asserts the
+    // typed text survives.
+    const result = makeResult([
+      makeQuestion('What color?', [{ text: 'Red' }, { text: 'Blue' }]),
+    ])
+    const { rerender } = render(
+      <AskQuestionToolRenderer
+        {...defaultProps}
+        result={result}
+      />,
+    )
+
+    const input = screen.getByRole('textbox') as HTMLInputElement
+    fireEvent.change(input, { target: { value: 'Purple' } })
+    expect(input.value).toBe('Purple')
+
+    rerender(
+      <AskQuestionToolRenderer
+        {...defaultProps}
+        result={result}
+      />,
+    )
+
+    // Same DOM input, same content. Without the parent-side memo on the
+    // ChoiceList children, the rerender wipes the input back to "".
+    expect((screen.getByRole('textbox') as HTMLInputElement).value).toBe('Purple')
+  })
+
   it('digit shortcut listener stays attached when hideQuestion=true (composer-card hoist path)', async () => {
     // Locks the contract that `hideQuestion` only suppresses the per-step
     // title text — it does NOT disable the keyboard listener. InputActionsPanel
