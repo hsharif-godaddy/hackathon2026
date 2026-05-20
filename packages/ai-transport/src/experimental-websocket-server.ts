@@ -2761,7 +2761,19 @@ export class WebSocketServer {
           }
           // No router result - fall through so explicit agent/default logic can run
         } else {
-          // Same app or no metadata tracking – honor the session-controlled agent
+          // Same app – if router explicitly routed to a different agent (e.g. profile
+          // upgrade from develop → develop-{profile}), respect it. The router already
+          // incorporates session state in its decision, so its result is authoritative.
+          if (routedAgent) {
+            if (routedAgent !== currentAgent) {
+              this.logger.debug('session.router_override', {
+                socketId,
+                currentAgent,
+                routedAgent,
+              })
+            }
+            return routedAgent
+          }
           return currentAgent
         }
       }
