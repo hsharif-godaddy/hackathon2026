@@ -41,6 +41,7 @@ export interface JWTClaims {
   costAttributionDryRun?: boolean; // When true, run cost attribution analysis and log results but skip BMS reconciliation (switchboard: appbuilder-cost-attribution-dry-run)
   useAtlasCrawler?: boolean; // When true, route rebuild scraping through the Atlas REST API instead of the external web-scraper API (switchboard: appbuilder-atlas-crawler)
   debugStatsEnabled?: boolean; // When true, agents service emits per-LLM-call debug_turn_stats events to this client (switchboard: appbuilder-debug-drawer)
+  googleReviewsEnabled?: boolean; // When true, enable Google Reviews feature (switchboard: appbuilder-google-reviews)
 }
 
 /**

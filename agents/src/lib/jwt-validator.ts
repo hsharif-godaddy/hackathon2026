@@ -55,6 +55,7 @@ export interface JWTClaims {
   costAttributionDryRun?: boolean;
   useAtlasCrawler?: boolean;
   debugStatsEnabled?: boolean;
+  googleReviewsEnabled?: boolean;
 }
 
 export interface ValidationResult {

@@ -1,5 +1,5 @@
 import { logger } from '@/lib/request-context'
-import type { SocialConnection, SocialPublishResult } from '@/types/social'
+import type { GoogleReview, SocialConnection, SocialPublishResult } from '@/types/social'
 import { FacebookMediaType, SocialPlatform, SocialPlatformKey } from '@/types/social'
 import { getRootDomain } from '@/utils/getRootDomain'
 import { validatePlatformScheduleTime } from '@/utils/social/scheduling'
@@ -320,6 +320,28 @@ export class SocialV2Client {
     }
 
     return allLocations
+  }
+
+  async getGoogleReviews(userTokenId: string, locationId: string, pageSize = 10): Promise<GoogleReview[]> {
+    const url = `${SOCIAL_V2_BASE_URL}/google/proxy/mybusinessreviews/v1/locations/${locationId}/reviews?pageSize=${pageSize}`
+
+    const response = await fetch(url, {
+      credentials: 'include',
+      headers: {
+        'X-Token-Id': userTokenId,
+        'Accept': 'application/json',
+      },
+    })
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch Google reviews: ${response.status}`)
+    }
+
+    const data = await response.json()
+    if (!Array.isArray(data.reviews)) {
+      throw new Error(`Unexpected response shape from Google reviews API: missing reviews array`)
+    }
+    return data.reviews
   }
 
   async getYelpBusiness(userTokenId: string, businessId: string): Promise<YelpBusiness> {

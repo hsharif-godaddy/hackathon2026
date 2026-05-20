@@ -4,7 +4,8 @@
  * frontend-specific (lowercase values vs agents' uppercase).
  */
 
-export { CONNECT_REQUEST_FROM_PUBLISH } from '@airo/shared/social'
+export type { GoogleReview } from '@airo/shared/social'
+export { CONNECT_REQUEST_FROM_PUBLISH, GOOGLE_REVIEWS_READY } from '@airo/shared/social'
 
 export enum SocialPlatform {
   FACEBOOK = 'facebook',
@@ -266,3 +267,4 @@ export type PendingPublishData = LegacyPendingPublish | MultiPlatformPendingPubl
 export function isMultiPlatformPublish(data: PendingPublishData): data is MultiPlatformPendingPublish {
   return 'platforms' in data && Array.isArray(data.platforms)
 }
+

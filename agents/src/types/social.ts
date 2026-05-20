@@ -49,4 +49,4 @@ export function getAllPostStates(): PostState[] {
   return Object.values(PostState);
 }
 
-export { CONNECT_REQUEST_FROM_PUBLISH } from '@airo/shared/social'
+export { CONNECT_REQUEST_FROM_PUBLISH, GOOGLE_REVIEWS_READY } from '@airo/shared/social'

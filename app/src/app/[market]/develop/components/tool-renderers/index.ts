@@ -18,6 +18,7 @@ import DomainToolRenderer from './DomainToolRenderer'
 import EndConversationToolRenderer from './EndConversationToolRenderer'
 import FileEditToolRenderer from './FileEditToolRenderer'
 import FontThemeToolRenderer from './FontThemeToolRenderer'
+import GoogleReviewsToolRenderer from './GoogleReviewsToolRenderer'
 import GrepSearchToolRenderer from './GrepSearchToolRenderer'
 import HandoffToolRenderer from './HandoffToolRenderer'
 import ImageGeneratorToolRenderer from './ImageGeneratorToolRenderer'
@@ -76,6 +77,7 @@ export const toolRendererRegistry = {
   socialPostCreate: SocialPostCreateToolRenderer,
   socialPostPublish: SocialPublishToolRenderer,
   end_conversation: EndConversationToolRenderer,
+  googleReviews: GoogleReviewsToolRenderer,
   grepSearch: GrepSearchToolRenderer,
   handoff: HandoffToolRenderer,
   readFile: ReadFileToolRenderer,
@@ -155,6 +157,7 @@ export {
   EndConversationToolRenderer,
   FileEditToolRenderer,
   FontThemeToolRenderer,
+  GoogleReviewsToolRenderer,
   GrepSearchToolRenderer,
   HandoffToolRenderer,
   ImageGeneratorToolRenderer,

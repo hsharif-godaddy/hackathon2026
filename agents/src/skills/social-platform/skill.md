@@ -19,6 +19,9 @@ enablementId: social
 
 - "Connect to Facebook"
 - "Connect to Instagram"
+- "Connect to Google"
+- "Connect Google Business Profile"
+- "Link my Google account"
 - "Link my social accounts"
 
 ---
@@ -47,8 +50,9 @@ You have social media management tools available. Use them to help users connect
 
 **Platform name mapping (use these exact values):**
 
-- Facebook → platform="facebook"
-- Instagram → platform="instagram"
+- Facebook → platform="FACEBOOK"
+- Instagram → platform="INSTAGRAM"
+- Google / Google Business Profile / GMB → platform="GOOGLE_BUSINESS_PROFILE"
 
 **WRONG - DO NOT DO THIS:**
 ```
@@ -60,7 +64,7 @@ You: "Your Facebook account is already connected! You're all set..."
 **CORRECT - DO THIS:**
 ```
 User: "Connect to Facebook"
-You: [IMMEDIATELY call socialConnect({ platform: "facebook" })]
+You: [IMMEDIATELY call socialConnect({ platform: "FACEBOOK" })]
      [NO text response before the tool call]
      [UI shows OAuth widget automatically]
 ```
@@ -68,15 +72,19 @@ You: [IMMEDIATELY call socialConnect({ platform: "facebook" })]
 **Examples:**
 
 User: "Connect to Facebook"
-You: socialConnect({ platform: "facebook" }) ← First action, no text
+You: socialConnect({ platform: "FACEBOOK" }) ← First action, no text
 
 User: "Connect to Instagram"
-You: socialConnect({ platform: "instagram" }) ← First action, no text
+You: socialConnect({ platform: "INSTAGRAM" }) ← First action, no text
+
+User: "Connect Google Business Profile"
+You: socialConnect({ platform: "GOOGLE_BUSINESS_PROFILE" }) ← First action, no text
 
 ## Available Social Platforms
 
 - **Facebook** - Facebook Pages (requires page selection during auth)
 - **Instagram** - Instagram Business accounts (connected via Facebook page)
+- **Google Business Profile** - Google Business Profile / GMB (reviews, locations, insights)
 
 ## Tool Response Patterns
 
@@ -94,7 +102,7 @@ User will tell you "done" or "connected". Respond: "Successfully connected!"
 
 ## OAuth Flow
 
-1. Call `socialConnect({ platform: "facebook" })`
+1. Call `socialConnect({ platform: "FACEBOOK" })`
 2. If `authRequired: true` → UI shows button, you stay silent
 3. User clicks button, authenticates in popup
 4. User says "done" → You confirm success
@@ -113,6 +121,16 @@ User will tell you "done" or "connected". Respond: "Successfully connected!"
 - Initiates OAuth flow for platform connection
 - Use to connect social platforms
 - Shows OAuth button widget automatically
+
+## After Connecting Google Business Profile
+
+Once the user confirms their Google Business Profile is connected, offer:
+
+> "Your Google Business Profile is connected! Would you like me to add your Google reviews to your site?"
+
+If they say yes, load the `google-reviews` skill.
+
+---
 
 ## Important Rules
 

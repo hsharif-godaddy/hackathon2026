@@ -5,6 +5,7 @@
     "model.default": "claude-opus-4-6",
     "model.fast": "claude-haiku-4-5",
     "feature.commerce.enabled": true,
-    "context.maxHistoryMessages": 50
+    "context.maxHistoryMessages": 50,
+    "skill.googleReviews.enabled": true
   }
 }

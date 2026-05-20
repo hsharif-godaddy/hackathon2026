@@ -21,6 +21,7 @@ export const socialConnect: Tool = createTool(
   AVAILABLE PLATFORMS:
   - Facebook (Facebook Pages)
   - Instagram (Instagram Business accounts via Facebook page)
+  - Google Business Profile / GMB (reviews, locations, insights)
 
   USAGE WORKFLOW:
   1. When user asks to connect, call socialConnect({ platform })

@@ -57,6 +57,7 @@ export interface AgentContext {
   agentProfileSelectorEnabled?: boolean; // Allow per-project agent profile selection from frontend
   useAtlasCrawler?: boolean; // Route rebuild scraping through Atlas REST API instead of legacy WebsiteScraperDriver (switchboard: appbuilder-atlas-crawler)
   debugStatsEnabled?: boolean; // Allow per-LLM-call debug stats events to flow to this client (switchboard: appbuilder-debug-drawer)
+  googleReviewsEnabled?: boolean; // Enable Google Reviews feature (switchboard: appbuilder-google-reviews)
   exp: number;
   iat: number;
 }
@@ -97,6 +98,7 @@ export function buildAgentContext(raw: Record<string, unknown>): AgentContext {
     agentProfileSelectorEnabled: (raw.agentProfileSelectorEnabled as boolean) ?? false,
     useAtlasCrawler: (raw.useAtlasCrawler as boolean) ?? false,
     debugStatsEnabled: (raw.debugStatsEnabled as boolean) ?? false,
+    googleReviewsEnabled: (raw.googleReviewsEnabled as boolean) ?? false,
     exp: (raw.exp as number) || 0,
     iat: (raw.iat as number) || 0,
   };

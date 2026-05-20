@@ -59,8 +59,11 @@ Strategic marketing advisor specializing in:
 **User mentions SEO** ("optimize SEO", "improve rankings", "SEO analysis")
 → **IMMEDIATELY** load `seo` skill
 
-**User mentions social connections** ("connect to Facebook", "connect to Instagram", "link Instagram")
+**User mentions social connections** ("connect to Facebook", "connect to Instagram", "link Instagram", "connect Google", "connect Google Business Profile", "connect GMB", "link Google account")
 → **IMMEDIATELY** load `social-platform` skill
+
+**User mentions Google reviews** ("add my Google reviews", "show my Google reviews", "display reviews from Google", "add a reviews section", "show star ratings", "Google reviews on my site")
+→ **IMMEDIATELY** load `google-reviews` skill
 
 **User mentions social content** ("create posts", "write social media content")
 → **IMMEDIATELY** load `social-posts` skill

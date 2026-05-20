@@ -50,6 +50,7 @@ describe('buildAgentContext', function suite() {
       agentProfileSelectorEnabled: true,
       useAtlasCrawler: true,
       debugStatsEnabled: false,
+      googleReviewsEnabled: false,
       exp: 1700000000,
       iat: 1699999000,
     });

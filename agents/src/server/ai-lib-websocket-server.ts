@@ -39,7 +39,7 @@ import { createAgentContext } from '@godaddy/agent-otel-sdk'
 import { safeProcessBudgetReport, type BudgetReportResult } from './budget-report-handler.js'
 import { auth, AuthType, BYPASS_SITE_IDS } from '../services/features.js'
 import { getTemplateIds } from '../agents/template-registry.js'
-import { isEmployeeAuthType, type AuthType as TokenAuthType, type ProductType } from '@airo/shared/auth'
+import { isEmployeeAuthType, type ProductType } from '@airo/shared/auth'
 import apm from 'elastic-apm-node'
 import type { Socket, Server as SocketIOServer } from 'socket.io'
 
@@ -747,6 +747,10 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
 
               if (agentContext?.useAtlasCrawler) {
                 agentsAppContext.metadata.useAtlasCrawler = true
+              }
+
+              if (agentContext?.googleReviewsEnabled) {
+                agentsAppContext.metadata.googleReviewsEnabled = true
               }
 
               // NOTE: SSO JWT is NOT passed through context for security reasons.

@@ -36,6 +36,8 @@ export { seoAnalyze } from './seo-analyze.js';
 export { oauthConnect } from './oauth-tool.js';
 export { requestSecrets } from './secrets-tool.js';
 export { socialConnect } from './social-connect.js';
+export { socialRead } from './social-read.js';
+export { googleReviews } from './google-reviews.js';
 export { socialPostCreateAITool } from './social-post-create.js';
 export { socialPostPublish } from './social-post-publish.js';
 export { colorSchemeAITool } from './color-scheme.js';
@@ -83,6 +85,8 @@ import { seoAnalyze } from './seo-analyze.js';
 import { oauthConnect } from './oauth-tool.js';
 import { requestSecrets } from './secrets-tool.js';
 import { socialConnect } from './social-connect.js';
+import { socialRead } from './social-read.js';
+import { googleReviews } from './google-reviews.js';
 import { socialPostCreateAITool } from './social-post-create.js';
 import { socialPostPublish } from './social-post-publish.js';
 import { colorSchemeAITool } from './color-scheme.js';
@@ -133,6 +137,8 @@ export const allAILibTools: Record<string, Tool> = {
   oauthConnect: oauthConnect,
   requestSecrets: requestSecrets,
   socialConnect: socialConnect,
+  socialRead: socialRead,
+  googleReviews: googleReviews,
   socialPostCreate: socialPostCreateAITool,
   socialPostPublish: socialPostPublish,
   skill: skillAITool,
@@ -203,6 +209,8 @@ export const toolGroups: Record<string, Record<string, Tool>> = {
   marketing: {
     seoAnalysis: seoAnalyze,
     socialConnect: socialConnect,
+    socialRead: socialRead,
+    googleReviews: googleReviews,
     socialPostCreate: socialPostCreateAITool,
     socialPostPublish: socialPostPublish,
   },
