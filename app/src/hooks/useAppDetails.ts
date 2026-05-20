@@ -30,6 +30,8 @@ export interface AppDetailsResponse {
   domains?: AppDomain[];
   variants?: string[];
   variantsWithLifecycle?: SiteVariant[];
+  initial_prompt?: string;
+  fqdn?: string;
   [key: string]: any;
 }
 

@@ -3,6 +3,7 @@ import { logger } from '@/lib/request-context';
 import { checkSwitchboardFlag } from '@/lib/switchboard/server';
 import { getDatacenterFromMarketId } from '@/lib/utils/dc-mapping';
 import { extractCustomerId } from '@/lib/utils/jwt-utils';
+import { truncateToByteLimit } from '@/lib/waf-validation';
 import { useSubscriptionCacheStore } from '@/stores/useSubscriptionCacheStore';
 import { ArchiveRestoreResponse, ArchiveStatusResponse, CreateSiteParams, CreateSiteResult, DeploySiteOptions, DomainStatus, DomainType, IControlPlaneAdapter, ImageStatusResponse, ReloadImagesResponse, SecretOperations, SecretOperationsResult, SecretsDiffResult, SecretsResponse, SecretUpdate, SiteDomain, SiteInfo, SiteStatus, SiteVariant } from './types';
 import gasket from '../../../gasket.ts';
@@ -1266,12 +1267,37 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
         published_url = `https://${prefixDomain.fqdn}`;
       }
     }
+    // Length-clamp initial_prompt for parity with home-page WAF protection.
+    // External direct-write entry points (e.g. DPP via mgmt-airo) bypass the
+    // BFF, so the clamp lives here to keep the contract uniform across all
+    // consumers of site.initial_prompt.
+    const rawInitialPrompt = app.variables?.initialPrompt;
+    const initial_prompt = typeof rawInitialPrompt === 'string'
+      ? truncateToByteLimit(rawInitialPrompt)
+      : undefined;
+
+    // app.variables is an untyped JSON blob (anything could be written via
+    // direct mgmt-airo PATCH). Enforce the SiteInfo contract here so every
+    // consumer can rely on `string | undefined` — without this guard, a
+    // non-string fqdn would crash `.toLowerCase()` on the read side.
+    // 253 is the practical DNS FQDN length cap; values longer than that are
+    // not real domains and would only bloat the agent's first-message context.
+    // Length is checked against the trimmed value to match the BFF's
+    // validateFqdn write-side rule (route.ts) — otherwise a value with leading/
+    // trailing whitespace could pass the route and be silently dropped here.
+    const rawFqdn = app.variables?.fqdn;
+    const trimmedFqdn = typeof rawFqdn === 'string' ? rawFqdn.trim() : '';
+    const fqdn = trimmedFqdn.length > 0 && trimmedFqdn.length <= 253
+      ? trimmedFqdn
+      : undefined;
+
     return {
       id: app.id,
       name: app.variables?.title || app.id,
       status: this.mapAppStatus(app.status),
       account_id: customerId || 'customer', // Use provided customerId or fallback to 'customer'
-      initial_prompt: app.variables?.initialPrompt,
+      initial_prompt,
+      fqdn,
       agent_url,
       preview_url,
       published_url,
