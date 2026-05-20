@@ -68,9 +68,13 @@ function isDecideSuggestion(s: Suggestion): boolean {
   return s.value === DECIDE_SENTINEL
 }
 
-function getDecideValue(q: Question): string | undefined {
+// User-facing text for the decide chip — emitted in the assembled message
+// instead of the raw `__decide__` sentinel value, since the message renders
+// in chat. The enhancer prompt matches on this text (case-insensitive) to
+// decide which fields to commit to.
+function getDecideText(q: Question): string | undefined {
   const d = q.suggestions.find(isDecideSuggestion)
-  return d ? d.value || d.text : undefined
+  return d?.text
 }
 
 function visibleSuggestions(q: Question): Suggestion[] {
@@ -242,26 +246,27 @@ export default function AskQuestionToolRenderer({
   const allowOtherGlobal = questions.every(q => q.allowOther !== false)
   const rootOtherPlaceholder = t('builder_tools_askquestion_other_placeholder')
 
-  // Use the decide sentinel as the skip label when it applies to every step
-  // in the flow. `skipLabel` is a root-level ChoiceList prop — it shows on
-  // every step including text-type ones, so enabling "Decide for me" when
-  // any text question exists would mislabel skip on those steps (skip on a
-  // text question means "I have no answer", not "decide for me"). Gate on:
-  // (a) at least one chip question, (b) every chip question offers the
-  // sentinel, AND (c) no text questions in the flow.
+  // Use the decide sentinel as the skip label when every chip step offers it.
+  // `skipLabel` is a root-level ChoiceList prop — it applies to every step
+  // including text-type ones. That's intentional for the prompt-enhancer
+  // flow, where the agent designs the whole form (chips + optional trailing
+  // text questions like LOCATION / KEY DETAILS / NAMING) around "Decide for
+  // me" semantics. We submit the same "Decide for me" string for skipped
+  // text steps too (see handleCompleteSelections) so the enhancer's
+  // decide-for-me rule kicks in for those fields rather than the
+  // omit-skipped-fields rule — matches the button's promise to the user.
   const chipQuestions = questions.filter(q => q.type !== 'text')
-  const hasTextQuestion = questions.some(q => q.type === 'text')
   const useDecideAsSkip =
-    !hasTextQuestion &&
-    chipQuestions.length > 0 &&
-    chipQuestions.every(q => getDecideValue(q) !== undefined)
+    chipQuestions.length > 0 && chipQuestions.every(q => getDecideText(q) !== undefined)
   // Derive the label from the actual sentinel suggestion rather than a
   // magic string, so renaming "Decide for me" in prompts doesn't silently
-  // leave the skip button on the old copy.
-  const decideSuggestionText = useDecideAsSkip
-    ? chipQuestions[0].suggestions.find(isDecideSuggestion)?.text
+  // leave the skip button on the old copy. Text questions don't carry a
+  // decide chip themselves; the chip-side text is the source of truth and
+  // applies to every step.
+  const decideText = useDecideAsSkip
+    ? (chipQuestions[0].suggestions.find(isDecideSuggestion)?.text ?? 'Decide for me')
     : undefined
-  const skipLabel = decideSuggestionText ?? (useDecideAsSkip ? 'Decide for me' : undefined)
+  const skipLabel = decideText
 
   function handleStepChange(stepId: string, value: string | string[] | null) {
     pingUserActivity()
@@ -324,16 +329,21 @@ export default function AskQuestionToolRenderer({
     setSubmitted(true)
     pingUserActivity()
 
-    // Skip → `__decide__` only when the skip button is acting as "Decide for
-    // me" (useDecideAsSkip). When the label is the default "Skip", a skipped
-    // step means the user omitted an optional answer — record blank so the
-    // enhancer omits that dimension instead of silently treating it as
-    // decide-for-me.
+    // Skip emits the "Decide for me" display text only when the skip button
+    // is acting as "Decide for me" (useDecideAsSkip). The same text is
+    // emitted for every step type — including text-only steps that don't
+    // carry a decide chip of their own — so the enhancer's decide-for-me
+    // rule fires for the LOCATION / KEY DETAILS / NAMING fields rather than
+    // the omit-skipped-fields rule. Otherwise the button's "Decide for me"
+    // promise wouldn't be kept on those steps.
+    // When the label is the default "Skip", a skipped step means the user
+    // omitted an optional answer — record blank so the enhancer omits that
+    // dimension instead of silently treating it as decide-for-me.
     const perQuestion = questions.map((q, i) => {
       const sel = selections[String(i)]
       const visible = visibleSuggestions(q)
       if (sel == null) {
-        return useDecideAsSkip ? (getDecideValue(q) ?? '') : ''
+        return useDecideAsSkip ? (decideText ?? '') : ''
       }
       if (Array.isArray(sel)) {
         return sel.map(v => resolveSelection(v, visible)).join(', ')

@@ -412,10 +412,11 @@ describe('AskQuestionToolRenderer', () => {
     expect(mockSendUserMessage).toHaveBeenCalledWith('9', { isActionRequest: true })
   })
 
-  it('skip → __decide__ when every chip step offers the sentinel (useDecideAsSkip=true)', () => {
+  it('skip → "Decide for me" text when every chip step offers the sentinel (useDecideAsSkip=true)', () => {
     // Two chip-only questions, each with a "Decide for me" sentinel → the
-    // ChoiceList skip button becomes "Decide for me", and skipping records
-    // __decide__ for each answer.
+    // ChoiceList skip button becomes "Decide for me", and skipping emits the
+    // chip's user-facing text into the message (not the raw `__decide__`
+    // sentinel value, which would render as gibberish in the chat).
     const result = makeResult([
       {
         question: 'Vibe?',
@@ -449,8 +450,53 @@ describe('AskQuestionToolRenderer', () => {
 
     expect(mockSendUserMessage).toHaveBeenCalledTimes(1)
     const [msg] = mockSendUserMessage.mock.calls[0]
-    expect(msg).toMatch(/__decide__/)
-    expect(msg.match(/__decide__/g)?.length).toBe(2)
+    expect(msg).not.toMatch(/__decide__/)
+    expect(msg.match(/Decide for me/g)?.length).toBe(2)
+  })
+
+  it('"Decide for me" applies to text steps too in the prompt-enhancer flow', () => {
+    // Regression for the prompt-enhancer variant: the agent emits chip
+    // questions with the decide sentinel followed by trailing text questions
+    // (LOCATION / KEY DETAILS / NAMING). When useDecideAsSkip is true, the
+    // skip label must read "Decide for me" on every step AND skipping a
+    // text step must emit "Decide for me" into the assembled message — not
+    // blank. Otherwise the enhancer's omit-skipped-fields rule would drop
+    // the field, breaking the button's promise to the user.
+    const result = makeResult([
+      {
+        question: 'Vibe?',
+        type: 'chips_single',
+        suggestions: [
+          { text: 'Cozy' },
+          { text: 'Decide for me', value: '__decide__' },
+        ],
+      },
+      {
+        question: 'Where is the shop located?',
+        type: 'text',
+        suggestions: [],
+      },
+    ])
+    render(
+      <AskQuestionToolRenderer
+        {...defaultProps}
+        result={result}
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: /Decide for me/i })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Skip$/i })).not.toBeInTheDocument()
+
+    // Skip both steps and confirm both produce "Decide for me" in the message.
+    const skip1 = screen.getByRole('button', { name: /Decide for me/i })
+    fireEvent.click(skip1)
+    const skip2 = screen.getByRole('button', { name: /Decide for me/i })
+    fireEvent.click(skip2)
+
+    expect(mockSendUserMessage).toHaveBeenCalledTimes(1)
+    const [msg] = mockSendUserMessage.mock.calls[0]
+    expect(msg.match(/Decide for me/g)?.length).toBe(2)
+    expect(msg).not.toMatch(/__decide__/)
   })
 
   it('skip → blank when any chip step lacks the sentinel (useDecideAsSkip=false)', () => {

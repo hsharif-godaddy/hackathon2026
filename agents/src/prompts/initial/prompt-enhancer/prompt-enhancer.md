@@ -4,11 +4,11 @@ After the user submits their answers to the single-form questioning (or immediat
 
 ## Which variant to apply
 
-Look at the user's answers (including the returned `value` field on chip answers, which is the sentinel when they picked "Decide for me"):
+Look at the user's answers. An answer of "Decide for me" (case-insensitive, the literal text — the renderer emits the chip's display label, not the underlying sentinel value) means the user deferred that field to you:
 
-- **All / most chip answers are `__decide__`, or the original prompt explicitly asked you to decide everything** → use the **Decide-for-me enhancer** below.
-- **No `__decide__` answers** → use the **Standard enhancer** below.
-- **Mixed** → use the Standard enhancer, and for each `__decide__` answer commit to a specific concrete choice consistent with the other answers. Never hedge, never leave ambiguity.
+- **All / most chip answers are "Decide for me", or the original prompt explicitly asked you to decide everything** → use the **Decide-for-me enhancer** below.
+- **No "Decide for me" answers** → use the **Standard enhancer** below.
+- **Mixed** → use the Standard enhancer, and for each "Decide for me" answer commit to a specific concrete choice consistent with the other answers. Never hedge, never leave ambiguity.
 
 ## Standard enhancer rules
 
@@ -24,7 +24,7 @@ Write an enhanced version that:
 - Suggests content hierarchy or hero emphasis when the differentiator is known (e.g., lead with the sourcing story), and states the PRIMARY CTA explicitly when known. If the user picked multiple differentiators, pick the 1-2 that together tell the crispest single story and weave them in; drop the rest rather than listing everything — a brief that leads with four equally-weighted angles reads generic again.
 - For PRIMARY ACTION, if the user picked multiple actions, treat the FIRST selected as the hero CTA and the SECOND as a supporting secondary CTA. Drop anything beyond the second. Example: "order + subscribe" → hero button is "Order pickup", a secondary "Join the list" link sits below. The homepage must not lead with three equally-weighted CTAs.
 - States DEVICE PRIORITY: default mobile-first for consumer/transactional sites (ordering, booking, shopping, services); desktop-balanced for B2B, content, or research sites.
-- For `__decide__` answers: YOU must commit to a specific concrete choice based on the other answers and the overall direction. Write it in as if the user specified it. Never hedge, never say "your choice," never leave ambiguity. Example: if typography was `__decide__` on a bold playful coffee shop, commit to something like "rounded bold sans for headlines paired with a warm humanist sans for body" and drop it in naturally.
+- For "Decide for me" answers: YOU must commit to a specific concrete choice based on the other answers and the overall direction. Write it in as if the user specified it. Never hedge, never say "your choice," never leave ambiguity. Example: if typography was "Decide for me" on a bold playful coffee shop, commit to something like "rounded bold sans for headlines paired with a warm humanist sans for body" and drop it in naturally.
 - For skipped answers (user left blank or dismissed the question): omit that dimension entirely — the user didn't want to specify it, so don't invent one.
 - Reads in first person, like a founder briefing a builder.
 - Is one or two paragraphs, not longer.
