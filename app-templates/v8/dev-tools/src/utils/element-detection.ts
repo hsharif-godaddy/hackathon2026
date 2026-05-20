@@ -1,3 +1,45 @@
+// ─── Tag sets (composed smallest → largest) ──────────────────────────────────
+
+export const HEADING_TAGS = new Set(["h1", "h2", "h3", "h4", "h5", "h6"]);
+
+export const INLINE_TEXT_TAGS = new Set(["span", "a", "label"]);
+
+/** Block-level text: headings + semantic block elements. */
+export const BLOCK_TEXT_TAGS = new Set([...HEADING_TAGS, "p", "li", "blockquote"]);
+
+/** All text formatting targets — inline (INLINE_TEXT_TAGS) + block (BLOCK_TEXT_TAGS). */
+export const TEXT_TAGS = new Set([...INLINE_TEXT_TAGS, ...BLOCK_TEXT_TAGS]);
+
+/** List container elements. */
+export const LIST_TAGS = new Set(["ul", "ol"]);
+
+/**
+ * Returns true for elements that carry user-visible text and support inline
+ * formatting actions (bold, italic, color, font size).
+ * Includes both inline (span, a, label) and
+ * block-level (p, h1–h6, li, blockquote) tags.
+ */
+export function isTextElement(element: HTMLElement): boolean {
+  return TEXT_TAGS.has(element.tagName.toLowerCase());
+}
+
+/**
+ * Returns true for block-level text elements that support block-level
+ * formatting actions (e.g. text-align). Inline tags (span, a, label)
+ * are excluded because block-level formatting has no effect on them.
+ */
+export function isTextBlockElement(element: HTMLElement): boolean {
+  return BLOCK_TEXT_TAGS.has(element.tagName.toLowerCase());
+}
+
+/**
+ * Returns true for list container elements (ul, ol).
+ * Use alongside isTextElement to gate list-type formatting controls.
+ */
+export function isListElement(element: HTMLElement): boolean {
+  return LIST_TAGS.has(element.tagName.toLowerCase());
+}
+
 /** Check if an element is interactive (clicks should pass through) */
 export function isClickable(element: HTMLElement): boolean {
   const tag = element.tagName.toLowerCase();
@@ -8,7 +50,7 @@ export function isClickable(element: HTMLElement): boolean {
   return false;
 }
 
-/** Tags where block-level formatting (alignment, lists) makes sense for inline editing. */
+/** Returns true for elements where block-level formatting (alignment, lists) makes sense for inline editing. */
 export function isBodyTextElement(element: HTMLElement): boolean {
   const tag = element.tagName.toLowerCase();
   return tag === "p" || tag === "li" || tag === "ul" || tag === "ol";

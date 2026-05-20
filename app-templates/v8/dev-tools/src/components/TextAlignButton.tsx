@@ -118,7 +118,7 @@ export default function TextAlignButton({ selectedElement }: TextAlignButtonProp
   );
 
   return (
-    <div className="relative">
+    <div className="relative flex items-stretch">
       <HoverBarButton
         onClick={() => setShowMenu((open: boolean) => !open)}
         title={t("devtools_text_align_title", "Text alignment")}

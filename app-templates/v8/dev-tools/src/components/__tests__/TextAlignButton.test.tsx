@@ -4,13 +4,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 import { createElement } from 'react';
-import TextAlignButton from '../components/TextAlignButton';
+import TextAlignButton from '../TextAlignButton';
 
-vi.mock('../utils/postMessage', () => ({
+vi.mock('../../utils/postMessage', () => ({
   safePostMessage: vi.fn(),
 }));
 
-vi.mock('../utils/elementStyleListeners', () => ({
+vi.mock('../../utils/elementStyleListeners', () => ({
   StyleMessageEventType: {
     UPDATED: 'STYLE_UPDATED',
     EDIT_FAILED: 'STYLE_EDIT_FAILED',
@@ -18,18 +18,18 @@ vi.mock('../utils/elementStyleListeners', () => ({
   addStyleEditListener: vi.fn(() => 'mock-commit-id'),
 }));
 
-vi.mock('../utils/element-helpers', () => ({
+vi.mock('../../utils/element-helpers', () => ({
   extractDevContext: vi.fn(() => ({ devId: 'test-id', fileName: 'test.tsx', lineNumber: 1, componentName: 'Test' })),
   generatePreciseSelector: vi.fn(() => 'div > p'),
   getElementClassName: vi.fn((el: HTMLElement) => el.className),
 }));
 
-vi.mock('../utils/translations', () => ({
+vi.mock('../../utils/translations', () => ({
   t: vi.fn((_: string, fallback: string) => fallback),
 }));
 
-import { safePostMessage } from '../utils/postMessage';
-import { addStyleEditListener, StyleMessageEventType } from '../utils/elementStyleListeners';
+import { safePostMessage } from '../../utils/postMessage';
+import { addStyleEditListener, StyleMessageEventType } from '../../utils/elementStyleListeners';
 
 function makeParagraph(className = ''): HTMLElement {
   const paragraph = document.createElement('p');
