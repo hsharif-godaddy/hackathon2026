@@ -12,12 +12,16 @@ vi.mock('../graduation-runner.js', () => ({
   isDeferredResult: (r: { scenarioResult?: unknown }) => r.scenarioResult !== undefined,
 }));
 
-const { mockRunCapped } = vi.hoisted(() => ({
+const { mockRunCapped, mockSuiteRunnerRun } = vi.hoisted(() => ({
   mockRunCapped: vi.fn(),
+  mockSuiteRunnerRun: vi.fn(),
 }));
 
 vi.mock('../../runner/suite-runner.js', () => ({
   runCapped: mockRunCapped,
+  SuiteRunner: vi.fn().mockImplementation(() => ({
+    run: mockSuiteRunnerRun,
+  })),
 }));
 
 vi.mock('../../util/sleep.js', () => ({
@@ -27,12 +31,15 @@ vi.mock('../../util/sleep.js', () => ({
 import { GraduationSuiteRunner } from '../graduation-suite-runner.js';
 import type { GraduationSuiteRunResult } from '../graduation-suite-runner.js';
 import { GraduationRunner } from '../graduation-runner.js';
+import { SuiteRunner } from '../../runner/suite-runner.js';
 import { sleep } from '../../util/sleep.js';
 import type { GraduationResult } from '../graduation-runner.js';
 import type { RuncappedError } from '../../runner/suite-runner.js';
 import type { Scenario } from '../../scenarios/types.js';
 import type { ResolvedConfig } from '../../../config/index.js';
-import type { ScenarioResult } from '../../runner/types.js';
+import type { ScenarioResult, TrialResult } from '../../runner/types.js';
+import type { Transcript } from '../../runner/transcript.js';
+import type { TrialLifecycle } from '../../clients/trial-lifecycle.js';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -82,8 +89,37 @@ function makeMockStore(): EvalStore {
   return {
     initRun: vi.fn().mockResolvedValue('20260513_abc123'),
     finalizeRun: vi.fn().mockResolvedValue('runs/20260513_abc123'),
+    writeTrial: vi.fn().mockResolvedValue(undefined),
+    writePartialTrial: vi.fn().mockResolvedValue(undefined),
+    ensureTrialDir: vi.fn().mockResolvedValue('/tmp/trial'),
     prune: vi.fn().mockResolvedValue([]),
   } as unknown as EvalStore;
+}
+
+function makeTranscript(scenarioName = 'test', trialIndex = 0): Transcript {
+  return { scenarioName, trialIndex, turns: [], snapshots: [], errors: [] };
+}
+
+function makeTrialResult(overrides?: Partial<TrialResult>): TrialResult {
+  return {
+    trialIndex: 0,
+    transcript: makeTranscript(),
+    evalResults: [{ evaluator: 'test', score: 1, verdict: 'pass', reason: 'ok' }],
+    ...overrides,
+  };
+}
+
+function makeScenarioResult(
+  scenarioName: string,
+  overrides?: Partial<ScenarioResult>,
+): ScenarioResult {
+  return {
+    scenarioName,
+    stabilityLevel: 'low',
+    trials: [makeTrialResult()],
+    aggregated: {},
+    ...overrides,
+  };
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -637,5 +673,294 @@ describe('GraduationSuiteRunner', () => {
         expect.not.objectContaining({ onTrialEvaluated: expect.anything() }),
       );
     });
+  });
+});
+
+describe('GraduationSuiteRunner — suiteMode: parallel', () => {
+  let store: ReturnType<typeof makeMockStore>;
+  let config: ResolvedConfig;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    store = makeMockStore();
+    config = makeConfig();
+    mockSuiteRunnerRun.mockResolvedValue([]);
+  });
+
+  it('uses SuiteRunner in parallel mode instead of GraduationRunner', async () => {
+    const scenarios = [makeScenario('alpha'), makeScenario('beta')];
+    mockSuiteRunnerRun.mockResolvedValue([
+      makeScenarioResult('alpha'),
+      makeScenarioResult('beta'),
+    ]);
+
+    const runner = new GraduationSuiteRunner({
+      scenarios,
+      config,
+      store,
+      suiteMode: 'parallel',
+      scenarioConcurrency: 2,
+    });
+
+    await runner.run('run-parallel');
+
+    expect(SuiteRunner).toHaveBeenCalledWith(
+      expect.objectContaining({ suiteMode: 'parallel' }),
+    );
+    expect(GraduationRunner).not.toHaveBeenCalled();
+    expect(mockRunCapped).not.toHaveBeenCalled();
+  });
+
+  it('applies stability trial counts as scenario.trials overrides', async () => {
+    const scenarios = [
+      makeScenario('alpha', { stabilityLevel: 'low' }),   // 3 trials
+      makeScenario('beta', { stabilityLevel: 'high' }),    // 10 trials
+    ];
+    mockSuiteRunnerRun.mockResolvedValue([
+      makeScenarioResult('alpha'),
+      makeScenarioResult('beta'),
+    ]);
+
+    const runner = new GraduationSuiteRunner({
+      scenarios,
+      config,
+      store,
+      suiteMode: 'parallel',
+    });
+
+    await runner.run('run-stability');
+
+    const [call] = vi.mocked(SuiteRunner).mock.calls;
+    const passedScenarios = (call[0] as { scenarios: Scenario[] }).scenarios;
+    expect(passedScenarios.find((s) => s.name === 'alpha')?.trials).toBe(3);
+    expect(passedScenarios.find((s) => s.name === 'beta')?.trials).toBe(10);
+  });
+
+  it('saves baseline for each scenario with valid results', async () => {
+    const scenarios = [makeScenario('alpha'), makeScenario('beta')];
+    const mockBaselineStore = { save: vi.fn().mockResolvedValue(undefined) };
+    mockSuiteRunnerRun.mockResolvedValue([
+      makeScenarioResult('alpha'),
+      makeScenarioResult('beta'),
+    ]);
+
+    const runner = new GraduationSuiteRunner({
+      scenarios,
+      config,
+      store,
+      suiteMode: 'parallel',
+      baselineStoreFactory: () => mockBaselineStore as never,
+    });
+
+    await runner.run('run-baseline');
+
+    expect(mockBaselineStore.save).toHaveBeenCalledTimes(2);
+    expect(mockBaselineStore.save).toHaveBeenCalledWith(
+      'run-baseline',
+      expect.objectContaining({ scenarioName: 'alpha' }),
+      expect.objectContaining({ defaultThreshold: config.regression.defaultThreshold }),
+    );
+  });
+
+  it('skips baseline save when all trial verdicts are unknown', async () => {
+    const scenarios = [makeScenario('alpha')];
+    const mockBaselineStore = { save: vi.fn() };
+    mockSuiteRunnerRun.mockResolvedValue([
+      makeScenarioResult('alpha', {
+        trials: [makeTrialResult({ evalResults: [{ evaluator: 'test', score: 0, verdict: 'unknown', reason: '' }] })],
+      }),
+    ]);
+
+    const runner = new GraduationSuiteRunner({
+      scenarios,
+      config,
+      store,
+      suiteMode: 'parallel',
+      baselineStoreFactory: () => mockBaselineStore as never,
+    });
+
+    await runner.run('run-unknown');
+
+    expect(mockBaselineStore.save).not.toHaveBeenCalled();
+  });
+
+  it('writes trials to store for each scenario', async () => {
+    const scenarios = [makeScenario('alpha')];
+    const trial = makeTrialResult({ trialIndex: 0 });
+    mockSuiteRunnerRun.mockResolvedValue([
+      makeScenarioResult('alpha', { trials: [trial] }),
+    ]);
+
+    const runner = new GraduationSuiteRunner({
+      scenarios,
+      config,
+      store,
+      suiteMode: 'parallel',
+    });
+
+    await runner.run('run-write');
+
+    expect(store.writeTrial).toHaveBeenCalledWith(
+      '20260513_abc123',
+      'alpha',
+      trial,
+    );
+  });
+
+  it('calls finalizeRun with all scenario results', async () => {
+    const scenarios = [makeScenario('alpha'), makeScenario('beta')];
+    const alphaResult = makeScenarioResult('alpha');
+    const betaResult = makeScenarioResult('beta');
+    mockSuiteRunnerRun.mockResolvedValue([alphaResult, betaResult]);
+
+    const runner = new GraduationSuiteRunner({
+      scenarios,
+      config,
+      store,
+      suiteMode: 'parallel',
+    });
+
+    await runner.run('run-finalize');
+
+    expect(store.finalizeRun).toHaveBeenCalledWith(
+      '20260513_abc123',
+      'run-finalize',
+      expect.arrayContaining([alphaResult, betaResult]),
+      'graduation',
+    );
+  });
+
+  it('returns GraduationResult[] with correct stabilityLevel and baselineSaved', async () => {
+    const scenarios = [makeScenario('alpha', { stabilityLevel: 'medium' })];
+    mockSuiteRunnerRun.mockResolvedValue([makeScenarioResult('alpha')]);
+
+    const runner = new GraduationSuiteRunner({
+      scenarios,
+      config,
+      store,
+      suiteMode: 'parallel',
+    });
+
+    const output = await runner.run('run-result');
+
+    expect(output.errors).toEqual([]);
+    expect(output.results).toHaveLength(1);
+    expect(output.results[0]).toMatchObject({
+      scenarioName: 'alpha',
+      stabilityLevel: 'medium',
+      stabilityTrials: 5,
+      baselineSaved: true,
+    });
+  });
+
+  it('logRunHeader shows round-robin banner for parallel mode', async () => {
+    const scenarios = [makeScenario('alpha'), makeScenario('beta'), makeScenario('gamma')];
+    mockSuiteRunnerRun.mockResolvedValue(scenarios.map((s) => makeScenarioResult(s.name)));
+
+    const logSpy = vi.fn();
+    const runner = new GraduationSuiteRunner({
+      scenarios,
+      config: makeConfig({ eval: { ...config.eval, maxConcurrency: 3 } }),
+      store,
+      suiteMode: 'parallel',
+      scenarioConcurrency: 2,
+      log: logSpy,
+    });
+
+    await runner.run('run-banner');
+
+    const allLogs = logSpy.mock.calls.map((c) => c[0] as string);
+    expect(allLogs.some((m) => m.includes('round-robin'))).toBe(true);
+    expect(allLogs.every((m) => !m.includes('1 trial at a time'))).toBe(true);
+  });
+
+  it('forwards trialLifecycle to SuiteRunner in parallel mode', async () => {
+    const scenarios = [makeScenario('alpha')];
+    mockSuiteRunnerRun.mockResolvedValue([makeScenarioResult('alpha')]);
+
+    const trialLifecycle: TrialLifecycle = {
+      runInScope: vi.fn().mockImplementation((_, __, fn: () => Promise<unknown>) => fn()),
+      release: vi.fn(),
+    };
+
+    const runner = new GraduationSuiteRunner({
+      scenarios,
+      config,
+      store,
+      suiteMode: 'parallel',
+      trialLifecycle,
+    });
+
+    await runner.run('run-trial-lifecycle');
+
+    expect(SuiteRunner).toHaveBeenCalledWith(
+      expect.objectContaining({ trialLifecycle }),
+    );
+  });
+
+  it('catches AggregateError from SuiteRunner.run() and returns structured result', async () => {
+    const scenarios = [makeScenario('alpha'), makeScenario('beta')];
+    const error1 = new Error('alpha failed completely');
+    const aggError = new AggregateError([error1], 'SuiteRunner abort');
+    mockSuiteRunnerRun.mockRejectedValue(aggError);
+
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const runner = new GraduationSuiteRunner({
+      scenarios,
+      config,
+      store,
+      suiteMode: 'parallel',
+    });
+
+    const output = await runner.run('run-agg-err');
+
+    expect(output.results).toEqual([]);
+    expect(output.errors).toHaveLength(1);
+    expect(output.errors[0]).toBe(error1);
+    expect(output.finalizationError).toBeUndefined();
+    // safeFinalize is called but finalizeCompleted skips store.finalizeRun
+    // when there are zero deferred results (empty results array)
+    expect(store.finalizeRun).not.toHaveBeenCalled();
+
+    warnSpy.mockRestore();
+  });
+
+  it('re-throws non-AggregateError from SuiteRunner.run() without finalizing', async () => {
+    const scenarios = [makeScenario('alpha')];
+    const genericError = new Error('unexpected crash');
+    mockSuiteRunnerRun.mockRejectedValue(genericError);
+
+    const runner = new GraduationSuiteRunner({
+      scenarios,
+      config,
+      store,
+      suiteMode: 'parallel',
+    });
+
+    await expect(runner.run('run-generic-err')).rejects.toThrow('unexpected crash');
+    expect(store.finalizeRun).not.toHaveBeenCalled();
+  });
+
+  it('re-throws non-AggregateError from finalizeScenarioGraduation loop', async () => {
+    const scenarios = [makeScenario('alpha'), makeScenario('beta')];
+    const alphaResult = makeScenarioResult('alpha');
+    const betaResult = makeScenarioResult('beta');
+    mockSuiteRunnerRun.mockResolvedValue([alphaResult, betaResult]);
+
+    const writeError = new Error('disk write failed');
+    store.writeTrial = vi.fn()
+      .mockResolvedValueOnce(undefined) // alpha succeeds
+      .mockRejectedValueOnce(writeError); // beta throws during finalization
+
+    const runner = new GraduationSuiteRunner({
+      scenarios,
+      config,
+      store,
+      suiteMode: 'parallel',
+    });
+
+    await expect(runner.run('run-finalize-throw')).rejects.toThrow('disk write failed');
+    expect(store.finalizeRun).not.toHaveBeenCalled();
   });
 });

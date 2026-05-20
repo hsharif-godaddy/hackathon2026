@@ -1,0 +1,8 @@
+{
+  "scenarioName": "alpha",
+  "runId": "run-stability",
+  "createdAt": "2026-05-16T00:29:48.082Z",
+  "stabilityLevel": "low",
+  "stabilityTrials": 1,
+  "scores": {}
+}

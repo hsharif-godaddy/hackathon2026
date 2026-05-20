@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const { mockSimulationRun } = vi.hoisted(() => ({
   mockSimulationRun: vi.fn(),
@@ -29,6 +29,7 @@ import type { AgentClient } from '../../clients/agent-client.js';
 import type { SyntheticUserAgent } from '../synthetic-user.js';
 import type { Transcript } from '../transcript.js';
 import type { BaselineScores } from '../../baselines/types.js';
+import type { TrialLifecycle } from '../../clients/trial-lifecycle.js';
 
 const mockClient = {
   configure: vi.fn(),
@@ -1028,8 +1029,10 @@ describe('SuiteRunner — suiteMode: parallel', () => {
         );
       });
 
-    const s0 = makeScenario({ name: 's0', trials: 3 });
-    const s1 = makeScenario({ name: 's1', trials: 3 });
+    // 1 trial per scenario so the queue has exactly 2 items matching the 2 mock calls.
+    // Round-robin with cap=2 starts both concurrently (staggered).
+    const s0 = makeScenario({ name: 's0', trials: 1 });
+    const s1 = makeScenario({ name: 's1', trials: 1 });
 
     const runPromise = new SuiteRunner({
       scenarios: [s0, s1],
@@ -1673,6 +1676,42 @@ describe('first-turn inactivity retry', () => {
     }
     warnSpy.mockRestore();
   });
+
+  it('calls unhookTrial between retry attempts to release evaluator state', async () => {
+    const { InactivityTimeoutError } = await import('../simulation.js');
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    mockSimulationRun
+      .mockRejectedValueOnce(new InactivityTimeoutError(600_000))
+      .mockRejectedValueOnce(new InactivityTimeoutError(600_000))
+      .mockResolvedValue(makeTranscript());
+
+    const unhookTrialSpy = vi.fn();
+    const evaluator: Evaluator = {
+      name: 'hook-tracker',
+      evaluate: vi.fn().mockResolvedValue(makePassResult('hook-tracker')),
+      hookClient: vi.fn(),
+      unhookTrial: unhookTrialSpy,
+    };
+
+    const config: ResolvedConfig = {
+      ...mockConfig,
+      eval: { ...mockConfig.eval, maxFirstTurnRetries: 2 },
+    };
+    const scenario = makeScenario({ trials: 1, evaluators: [evaluator] });
+
+    await new SuiteRunner({
+      scenarios: [scenario],
+      config,
+      makeAgentClient,
+      syntheticUser: mockSyntheticUser,
+    }).run();
+
+    // 2 failed attempts → 2 inter-retry unhooks + 1 final cleanup = 3
+    expect(unhookTrialSpy).toHaveBeenCalledTimes(3);
+    expect(unhookTrialSpy).toHaveBeenCalledWith(0);
+    warnSpy.mockRestore();
+  });
 });
 
 describe('rate limit (429) retry', () => {
@@ -2114,6 +2153,615 @@ describe('SuiteRunner — writePartialTrial error handling', () => {
     (Simulation as unknown as ReturnType<typeof vi.fn>).mockImplementation(() => ({
       run: mockSimulationRun,
     }));
+    warnSpy.mockRestore();
+  });
+});
+
+describe('SuiteRunner — fan-out round-robin', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockSimulationRun.mockResolvedValue(makeTranscript());
+  });
+
+  afterEach(() => {
+    (Simulation as unknown as ReturnType<typeof vi.fn>).mockImplementation(() => ({
+      run: mockSimulationRun,
+    }));
+  });
+
+  it('builds queue in trial-ordinal order across 4 scenarios', async () => {
+    const callOrder: Array<{ scenarioName: string; trialIndex: number }> = [];
+
+    (Simulation as unknown as ReturnType<typeof vi.fn>).mockImplementation(
+      (opts: { scenario: Scenario }) => ({
+        run: async (trialIndex: number): Promise<Transcript> => {
+          callOrder.push({ scenarioName: opts.scenario.name, trialIndex });
+          return makeTranscript(opts.scenario.name, trialIndex);
+        },
+      }),
+    );
+
+    const scenarios = [
+      makeScenario({ name: 's0', trials: 2 }),
+      makeScenario({ name: 's1', trials: 2 }),
+      makeScenario({ name: 's2', trials: 2 }),
+      makeScenario({ name: 's3', trials: 2 }),
+    ];
+
+    await new SuiteRunner({
+      scenarios,
+      config: { ...mockConfig, eval: { ...mockConfig.eval, maxConcurrency: 1 } },
+      makeAgentClient,
+      syntheticUser: mockSyntheticUser,
+      suiteMode: 'parallel',
+    }).run();
+
+    expect(callOrder).toEqual([
+      { scenarioName: 's0', trialIndex: 0 },
+      { scenarioName: 's1', trialIndex: 0 },
+      { scenarioName: 's2', trialIndex: 0 },
+      { scenarioName: 's3', trialIndex: 0 },
+      { scenarioName: 's0', trialIndex: 1 },
+      { scenarioName: 's1', trialIndex: 1 },
+      { scenarioName: 's2', trialIndex: 1 },
+      { scenarioName: 's3', trialIndex: 1 },
+    ]);
+  });
+
+  it('keeps all workers busy until the queue drains (4 scenarios × 10 trials, cap 3)', async () => {
+    let inFlight = 0;
+    let maxInFlight = 0;
+
+    // Track via mockSimulationRun to avoid extra Promise ticks from Simulation constructor.
+    mockSimulationRun.mockImplementation(async () => {
+      inFlight++;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      await Promise.resolve();
+      inFlight--;
+      return makeTranscript();
+    });
+
+    const scenarios = Array.from({ length: 4 }, (_, i) =>
+      makeScenario({ name: `s${i}`, trials: 10 }),
+    );
+
+    const results = await new SuiteRunner({
+      scenarios,
+      config: { ...mockConfig, eval: { ...mockConfig.eval, maxConcurrency: 3 } },
+      makeAgentClient,
+      syntheticUser: mockSyntheticUser,
+      suiteMode: 'parallel',
+    }).run();
+
+    expect(maxInFlight).toBeGreaterThanOrEqual(2); // concurrency is happening
+    expect(maxInFlight).toBeLessThanOrEqual(3);    // cap is respected
+    expect(mockSimulationRun).toHaveBeenCalledTimes(40);
+    expect(results.flatMap((r) => r.trials)).toHaveLength(40);
+  });
+
+  it('unequal trial counts — shorter scenario exhausted, tail dispatches solo', async () => {
+    const callOrder: Array<{ scenarioName: string; trialIndex: number }> = [];
+
+    (Simulation as unknown as ReturnType<typeof vi.fn>).mockImplementation(
+      (opts: { scenario: Scenario }) => ({
+        run: async (trialIndex: number): Promise<Transcript> => {
+          callOrder.push({ scenarioName: opts.scenario.name, trialIndex });
+          return makeTranscript(opts.scenario.name, trialIndex);
+        },
+      }),
+    );
+
+    const s0 = makeScenario({ name: 's0', trials: 5 });
+    const s1 = makeScenario({ name: 's1', trials: 2 });
+
+    await new SuiteRunner({
+      scenarios: [s0, s1],
+      config: { ...mockConfig, eval: { ...mockConfig.eval, maxConcurrency: 1 } },
+      makeAgentClient,
+      syntheticUser: mockSyntheticUser,
+      suiteMode: 'parallel',
+    }).run();
+
+    expect(callOrder).toEqual([
+      { scenarioName: 's0', trialIndex: 0 },
+      { scenarioName: 's1', trialIndex: 0 },
+      { scenarioName: 's0', trialIndex: 1 },
+      { scenarioName: 's1', trialIndex: 1 },
+      { scenarioName: 's0', trialIndex: 2 },
+      { scenarioName: 's0', trialIndex: 3 },
+      { scenarioName: 's0', trialIndex: 4 },
+    ]);
+  });
+
+  it('partial failure — scenarios with completed trials produce results', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    (Simulation as unknown as ReturnType<typeof vi.fn>).mockImplementation(
+      (opts: { scenario: Scenario }) => ({
+        run: async (trialIndex: number): Promise<Transcript> => {
+          if (opts.scenario.name === 's0' && trialIndex === 0) {
+            throw new Error('trial failed');
+          }
+          return makeTranscript(opts.scenario.name, trialIndex);
+        },
+      }),
+    );
+
+    const s0 = makeScenario({ name: 's0', trials: 2 });
+    const s1 = makeScenario({ name: 's1', trials: 2 });
+
+    const results = await new SuiteRunner({
+      scenarios: [s0, s1],
+      config: { ...mockConfig, eval: { ...mockConfig.eval, maxConcurrency: 1 } },
+      makeAgentClient,
+      syntheticUser: mockSyntheticUser,
+      suiteMode: 'parallel',
+    }).run();
+
+    expect(results).toHaveLength(2);
+    const s0Result = results.find((r) => r.scenarioName === 's0');
+    const s1Result = results.find((r) => r.scenarioName === 's1');
+    expect(s0Result?.trials).toHaveLength(1); // only trial 1 succeeded
+    expect(s1Result?.trials).toHaveLength(2); // both trials succeeded
+    expect(warnSpy).toHaveBeenCalledWith(
+      'Fan-out trials failed.',
+      expect.objectContaining({
+        failedTrials: [{ scenarioName: 's0', trialIndex: 0 }],
+        errors: ['trial failed'],
+      }),
+    );
+
+    warnSpy.mockRestore();
+  });
+
+  it('resume: trialIndicesByScenario sparse indices produce correct round-robin order', async () => {
+    const callOrder: Array<{ scenarioName: string; trialIndex: number }> = [];
+
+    (Simulation as unknown as ReturnType<typeof vi.fn>).mockImplementation(
+      (opts: { scenario: Scenario }) => ({
+        run: async (trialIndex: number): Promise<Transcript> => {
+          callOrder.push({ scenarioName: opts.scenario.name, trialIndex });
+          return makeTranscript(opts.scenario.name, trialIndex);
+        },
+      }),
+    );
+
+    const s0 = makeScenario({ name: 's0', trials: 5 });
+    const s1 = makeScenario({ name: 's1', trials: 5 });
+
+    const trialIndicesByScenario = new Map<string, number[]>([
+      ['s0', [2, 4]],
+      ['s1', [1, 3]],
+    ]);
+
+    await new SuiteRunner({
+      scenarios: [s0, s1],
+      config: { ...mockConfig, eval: { ...mockConfig.eval, maxConcurrency: 1 } },
+      makeAgentClient,
+      syntheticUser: mockSyntheticUser,
+      suiteMode: 'parallel',
+      trialIndicesByScenario,
+    }).run();
+
+    expect(callOrder).toEqual([
+      { scenarioName: 's0', trialIndex: 2 },
+      { scenarioName: 's1', trialIndex: 1 },
+      { scenarioName: 's0', trialIndex: 4 },
+      { scenarioName: 's1', trialIndex: 3 },
+    ]);
+  });
+
+  it('stagger applied only to first cap items — subsequent items dispatch without sleep', async () => {
+    // 4 scenarios × 3 trials = 12 queue items; cap=3
+    // Items 0–2 get stagger delays 0ms (guard skips), 1000ms, 2000ms.
+    // Items 3–11 get delay=0 (i >= cap) — guard skips sleep entirely.
+    const scenarios = Array.from({ length: 4 }, (_, i) =>
+      makeScenario({ name: `s${i}`, trials: 3 }),
+    );
+
+    await new SuiteRunner({
+      scenarios,
+      config: { ...mockConfig, eval: { ...mockConfig.eval, maxConcurrency: 3 } },
+      makeAgentClient,
+      syntheticUser: mockSyntheticUser,
+      suiteMode: 'parallel',
+    }).run();
+
+    expect(vi.mocked(sleep)).toHaveBeenCalledWith(1_000);
+    expect(vi.mocked(sleep)).toHaveBeenCalledWith(2_000);
+    expect(vi.mocked(sleep)).not.toHaveBeenCalledWith(0);
+    expect(vi.mocked(sleep)).toHaveBeenCalledTimes(2);
+  });
+
+  it('completely failed scenario aborts runFanOut with AggregateError', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    (Simulation as unknown as ReturnType<typeof vi.fn>).mockImplementation(
+      (opts: { scenario: Scenario }) => ({
+        run: async (trialIndex: number): Promise<Transcript> => {
+          if (opts.scenario.name === 's0') {
+            throw new Error('s0 always fails');
+          }
+          return makeTranscript(opts.scenario.name, trialIndex);
+        },
+      }),
+    );
+
+    const s0 = makeScenario({ name: 's0', trials: 2 });
+    const s1 = makeScenario({ name: 's1', trials: 2 });
+
+    const runner = new SuiteRunner({
+      scenarios: [s0, s1],
+      config: { ...mockConfig, eval: { ...mockConfig.eval, maxConcurrency: 1 } },
+      makeAgentClient,
+      syntheticUser: mockSyntheticUser,
+      suiteMode: 'parallel',
+    });
+
+    await expect(runner.run()).rejects.toThrow();
+
+    try {
+      await runner.run();
+    } catch (err) {
+      expect(err).toBeInstanceOf(AggregateError);
+      expect((err as AggregateError & { partialResults: unknown[] }).partialResults).toBeDefined();
+    }
+
+    warnSpy.mockRestore();
+  });
+
+  it('droppedTrials is populated on partial failure', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    (Simulation as unknown as ReturnType<typeof vi.fn>).mockImplementation(
+      (opts: { scenario: Scenario }) => ({
+        run: async (trialIndex: number): Promise<Transcript> => {
+          if (opts.scenario.name === 's0' && trialIndex === 0) {
+            throw new Error('trial failed');
+          }
+          return makeTranscript(opts.scenario.name, trialIndex);
+        },
+      }),
+    );
+
+    const s0 = makeScenario({ name: 's0', trials: 3 });
+    const s1 = makeScenario({ name: 's1', trials: 2 });
+
+    const results = await new SuiteRunner({
+      scenarios: [s0, s1],
+      config: { ...mockConfig, eval: { ...mockConfig.eval, maxConcurrency: 1 } },
+      makeAgentClient,
+      syntheticUser: mockSyntheticUser,
+      suiteMode: 'parallel',
+    }).run();
+
+    expect(results).toHaveLength(2);
+    const s0Result = results.find((r) => r.scenarioName === 's0');
+    const s1Result = results.find((r) => r.scenarioName === 's1');
+    expect(s0Result?.droppedTrials).toBe(1);
+    expect(s1Result?.droppedTrials).toBeFalsy();
+
+    warnSpy.mockRestore();
+  });
+
+  it('retry-exhaustion in fan-out classifies the trial as droppedTrials', async () => {
+    const { InactivityTimeoutError } = await import('../simulation.js');
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    // s0 trial 1 always throws InactivityTimeoutError (exhausts retries).
+    // All other trials succeed.
+    (Simulation as unknown as ReturnType<typeof vi.fn>).mockImplementation(
+      (opts: { scenario: Scenario }) => ({
+        run: async (trialIndex: number): Promise<Transcript> => {
+          if (opts.scenario.name === 's0' && trialIndex === 1) {
+            throw new InactivityTimeoutError(600_000);
+          }
+          return makeTranscript(opts.scenario.name, trialIndex);
+        },
+      }),
+    );
+
+    const s0 = makeScenario({ name: 's0', trials: 2 });
+    const s1 = makeScenario({ name: 's1', trials: 2 });
+
+    const config: ResolvedConfig = {
+      ...mockConfig,
+      eval: { ...mockConfig.eval, maxConcurrency: 1, maxFirstTurnRetries: 1 },
+    };
+
+    const results = await new SuiteRunner({
+      scenarios: [s0, s1],
+      config,
+      makeAgentClient,
+      syntheticUser: mockSyntheticUser,
+      suiteMode: 'parallel',
+    }).run();
+
+    expect(results).toHaveLength(2);
+
+    const s0Result = results.find((r) => r.scenarioName === 's0')!;
+    const s1Result = results.find((r) => r.scenarioName === 's1')!;
+
+    // s0 trial 1 exhausted retries and was dropped
+    expect(s0Result.droppedTrials).toBe(1);
+    // s0 trial 0 succeeded and is present
+    expect(s0Result.trials).toHaveLength(1);
+    expect(s0Result.trials[0].trialIndex).toBe(0);
+
+    // s1 is unaffected
+    expect(s1Result.droppedTrials).toBeFalsy();
+    expect(s1Result.trials).toHaveLength(2);
+
+    warnSpy.mockRestore();
+  });
+});
+
+describe('SuiteRunner — trialLifecycle integration', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockSimulationRun.mockResolvedValue(makeTranscript());
+  });
+
+  afterEach(() => {
+    (Simulation as unknown as ReturnType<typeof vi.fn>).mockImplementation(() => ({
+      run: mockSimulationRun,
+    }));
+  });
+
+  it('calls runInScope with correct scenario name and trial index', async () => {
+    const calls: Array<{ scenario: string; trialIndex: number }> = [];
+    const trialLifecycle: TrialLifecycle = {
+      runInScope: <T>(scenario: string, trialIndex: number, fn: () => Promise<T>): Promise<T> => {
+        calls.push({ scenario, trialIndex });
+        return fn();
+      },
+      release: vi.fn(),
+    };
+
+    const scenario = makeScenario({ name: 'scoped-scenario', trials: 2 });
+
+    await new SuiteRunner({
+      scenarios: [scenario],
+      config: mockConfig,
+      makeAgentClient,
+      syntheticUser: mockSyntheticUser,
+      trialLifecycle,
+    }).run();
+
+    // runInScope is called twice per trial: once for the trial bracket
+    // (executeTrialWithCleanup) and once for evaluator execution (evaluateTrial).
+    expect(calls).toHaveLength(4);
+    expect(calls).toContainEqual({ scenario: 'scoped-scenario', trialIndex: 0 });
+    expect(calls).toContainEqual({ scenario: 'scoped-scenario', trialIndex: 1 });
+  });
+
+  it('executes the fn argument passed to runInScope (simulation runs inside scope)', async () => {
+    const executionOrder: string[] = [];
+    let callCount = 0;
+    const trialLifecycle: TrialLifecycle = {
+      runInScope: <T>(_scenario: string, _trialIndex: number, fn: () => Promise<T>): Promise<T> => {
+        callCount++;
+        // Only trace the outer (trial-bracket) scope, not the nested evaluator scope
+        if (callCount === 1) executionOrder.push('scope-enter');
+        const p = fn();
+        if (callCount === 1) {
+          return p.then((result) => {
+            executionOrder.push('scope-exit');
+            return result;
+          });
+        }
+        return p;
+      },
+      release: vi.fn(),
+    };
+
+    mockSimulationRun.mockImplementation(async () => {
+      executionOrder.push('simulation-run');
+      return makeTranscript();
+    });
+
+    const scenario = makeScenario({ name: 'exec-scenario', trials: 1 });
+
+    await new SuiteRunner({
+      scenarios: [scenario],
+      config: mockConfig,
+      makeAgentClient,
+      syntheticUser: mockSyntheticUser,
+      trialLifecycle,
+    }).run();
+
+    expect(executionOrder).toEqual(['scope-enter', 'simulation-run', 'scope-exit']);
+  });
+
+  it('calls release after trial completes successfully', async () => {
+    const release = vi.fn();
+    const trialLifecycle: TrialLifecycle = {
+      runInScope: <T>(_s: string, _i: number, fn: () => Promise<T>): Promise<T> => fn(),
+      release,
+    };
+
+    const scenario = makeScenario({ name: 'release-scenario', trials: 2 });
+
+    await new SuiteRunner({
+      scenarios: [scenario],
+      config: mockConfig,
+      makeAgentClient,
+      syntheticUser: mockSyntheticUser,
+      trialLifecycle,
+    }).run();
+
+    expect(release).toHaveBeenCalledTimes(2);
+    expect(release).toHaveBeenCalledWith('release-scenario', 0);
+    expect(release).toHaveBeenCalledWith('release-scenario', 1);
+  });
+
+  it('calls release even when the simulation throws (finally semantics)', async () => {
+    const release = vi.fn();
+    const trialLifecycle: TrialLifecycle = {
+      runInScope: <T>(_s: string, _i: number, fn: () => Promise<T>): Promise<T> => fn(),
+      release,
+    };
+
+    mockSimulationRun.mockRejectedValue(new Error('simulation exploded'));
+
+    const scenario = makeScenario({ name: 'failing-scenario', trials: 1 });
+
+    await expect(
+      new SuiteRunner({
+        scenarios: [scenario],
+        config: mockConfig,
+        makeAgentClient,
+        syntheticUser: mockSyntheticUser,
+        trialLifecycle,
+      }).run(),
+    ).rejects.toThrow();
+
+    expect(release).toHaveBeenCalledTimes(1);
+    expect(release).toHaveBeenCalledWith('failing-scenario', 0);
+  });
+
+  it('calls release in fan-out mode even when a trial fails', async () => {
+    const release = vi.fn();
+    const trialLifecycle: TrialLifecycle = {
+      runInScope: <T>(_s: string, _i: number, fn: () => Promise<T>): Promise<T> => fn(),
+      release,
+    };
+
+    (Simulation as unknown as ReturnType<typeof vi.fn>).mockImplementation(
+      (opts: { scenario: Scenario }) => ({
+        run: async (trialIndex: number): Promise<Transcript> => {
+          if (opts.scenario.name === 's0' && trialIndex === 0) {
+            throw new Error('fan-out trial exploded');
+          }
+          return makeTranscript(opts.scenario.name, trialIndex);
+        },
+      }),
+    );
+
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const s0 = makeScenario({ name: 's0', trials: 2 });
+    const s1 = makeScenario({ name: 's1', trials: 1 });
+
+    await new SuiteRunner({
+      scenarios: [s0, s1],
+      config: { ...mockConfig, eval: { ...mockConfig.eval, maxConcurrency: 1 } },
+      makeAgentClient,
+      syntheticUser: mockSyntheticUser,
+      trialLifecycle,
+      suiteMode: 'parallel',
+    }).run();
+
+    // All 3 trials should have release called (including the failed one)
+    expect(release).toHaveBeenCalledTimes(3);
+    expect(release).toHaveBeenCalledWith('s0', 0);
+    expect(release).toHaveBeenCalledWith('s0', 1);
+    expect(release).toHaveBeenCalledWith('s1', 0);
+
+    warnSpy.mockRestore();
+  });
+});
+
+describe('SuiteRunner — afterSimFailures annotation', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockSimulationRun.mockResolvedValue(makeTranscript());
+  });
+
+  it('annotates evalResult with afterSimulationFailed when afterSimulation throws', async () => {
+    const throwingEvaluator: Evaluator = {
+      name: 'throwing-eval',
+      evaluate: vi.fn().mockResolvedValue(makePassResult('throwing-eval')),
+      afterSimulation: vi.fn().mockImplementation(() => {
+        throw new Error('afterSim boom');
+      }),
+    };
+    const scenario = makeScenario({ trials: 1, evaluators: [throwingEvaluator] });
+
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const results = await new SuiteRunner({
+      scenarios: [scenario],
+      config: mockConfig,
+      makeAgentClient,
+      syntheticUser: mockSyntheticUser,
+    }).run();
+    warnSpy.mockRestore();
+
+    expect(results).toHaveLength(1);
+    const evalResult = results[0].trials[0].evalResults[0];
+    expect(evalResult.details?.afterSimulationFailed).toBe(true);
+  });
+
+  it('non-throwing evaluators are not annotated with afterSimulationFailed', async () => {
+    const okEvaluator: Evaluator = {
+      name: 'ok-eval',
+      evaluate: vi.fn().mockResolvedValue(makePassResult('ok-eval')),
+      afterSimulation: vi.fn(),
+    };
+    const throwingEvaluator: Evaluator = {
+      name: 'throwing-eval',
+      evaluate: vi.fn().mockResolvedValue(makePassResult('throwing-eval')),
+      afterSimulation: vi.fn().mockImplementation(() => {
+        throw new Error('afterSim boom');
+      }),
+    };
+    const scenario = makeScenario({ trials: 1, evaluators: [okEvaluator, throwingEvaluator] });
+
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const results = await new SuiteRunner({
+      scenarios: [scenario],
+      config: mockConfig,
+      makeAgentClient,
+      syntheticUser: mockSyntheticUser,
+    }).run();
+    warnSpy.mockRestore();
+
+    expect(results).toHaveLength(1);
+    const [okResult, throwingResult] = results[0].trials[0].evalResults;
+    expect(okResult.details?.afterSimulationFailed).toBeUndefined();
+    expect(throwingResult.details?.afterSimulationFailed).toBe(true);
+  });
+
+  // Uses private-method cast intentionally: tests a defensive internal
+  // contract (clear-before-populate on retry) that is not reachable through
+  // the public run() API. Retries only trigger when the simulation itself
+  // throws, at which point afterSimulation never ran, so no stale entry
+  // exists. Keeping the cast ensures the invariant is locked in.
+  it('clear-before-populate: successful retry clears stale failure entries', async () => {
+    let callCount = 0;
+    const flakyEvaluator: Evaluator = {
+      name: 'flaky-eval',
+      evaluate: vi.fn().mockResolvedValue(makePassResult('flaky-eval')),
+      afterSimulation: vi.fn().mockImplementation(() => {
+        callCount++;
+        if (callCount === 1) {
+          throw new Error('first attempt fails');
+        }
+      }),
+    };
+    const scenario = makeScenario({ trials: 1, evaluators: [flakyEvaluator] });
+    const runner = new SuiteRunner({
+      scenarios: [scenario],
+      config: mockConfig,
+      makeAgentClient,
+      syntheticUser: mockSyntheticUser,
+    });
+
+    const afterSimFailures = new Set<string>();
+
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    // Attempt 1: afterSimulation throws, entry added
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (runner as any).runSingleTrial(scenario, 0, makeAgentClient, mockSyntheticUser, undefined, afterSimFailures);
+    expect(afterSimFailures.has('flaky-eval:0')).toBe(true);
+
+    // Attempt 2 (simulated retry): afterSimulation succeeds, stale entry cleared
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (runner as any).runSingleTrial(scenario, 0, makeAgentClient, mockSyntheticUser, undefined, afterSimFailures);
+    expect(afterSimFailures.has('flaky-eval:0')).toBe(false);
+    expect(afterSimFailures.size).toBe(0);
+
     warnSpy.mockRestore();
   });
 });

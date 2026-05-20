@@ -64,4 +64,6 @@ export interface ScenarioResult {
   regressionStatus?: RegressionResult;
   /** Path to the baseline file used for regression comparison, when one was loaded. */
   baselineFilePath?: string;
+  /** Number of trials that failed during execution and were dropped from aggregation. */
+  droppedTrials?: number;
 }

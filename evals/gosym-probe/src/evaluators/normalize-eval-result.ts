@@ -63,5 +63,6 @@ export function normalizeEvalResult(
     reason,
     ...(raw.details !== undefined && { details: raw.details }),
     ...(raw.evalVersion !== undefined && { evalVersion: raw.evalVersion }),
+    ...(raw.evaluatorFailed !== undefined && { evaluatorFailed: raw.evaluatorFailed }),
   };
 }

@@ -283,7 +283,8 @@ export class TodoLifecycleEvaluator implements Evaluator {
       };
     }
 
-    if (!parsed || typeof parsed !== 'object' || !Array.isArray((parsed as Record<string, unknown>).questions)) {
+    const obj = parsed as Record<string, unknown>;
+    if (!obj || typeof obj !== 'object' || !Array.isArray(obj.questions)) {
       return {
         evaluator: this.name,
         score: 0,
@@ -294,7 +295,8 @@ export class TodoLifecycleEvaluator implements Evaluator {
       };
     }
 
-    const obj = parsed as { questions: unknown[]; overall?: string };
+    const questions = obj.questions as unknown[];
+    const overall = typeof obj.overall === 'string' ? obj.overall : undefined;
     const questionLookup = new Map(
       CHECKLIST_SECTIONS.flatMap((s) => s.questions).map((q) => [q.id, q.question]),
     );
@@ -303,7 +305,7 @@ export class TodoLifecycleEvaluator implements Evaluator {
     const passes: string[] = [];
     const parsedQuestions: ParsedQuestion[] = [];
 
-    for (const entry of obj.questions) {
+    for (const entry of questions) {
       if (!entry || typeof entry !== 'object') continue;
       const e = entry as Record<string, unknown>;
       const id = typeof e.id === 'string' ? e.id : '';
@@ -342,8 +344,8 @@ export class TodoLifecycleEvaluator implements Evaluator {
       .filter((q) => !answeredIds.has(q.id))
       .map((q) => q.id);
 
-    const overallVerdict = typeof obj.overall === 'string'
-      ? obj.overall.toLowerCase()
+    const overallVerdict = overall !== undefined
+      ? overall.toLowerCase()
       : (flags.length > 0 || missingIds.length > 0 ? 'flag' : 'pass');
 
     const score = passes.length / totalExpected;

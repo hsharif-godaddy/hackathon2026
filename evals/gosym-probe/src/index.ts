@@ -189,8 +189,9 @@ async function main(): Promise<void> {
     );
 
     const fanOut = values['fan-out'] ?? false;
-    const trialConcurrency: number = fanOut
-      ? 1
+    // fanOut: SuiteRunner handles trial dispatch via runFanOut; trialConcurrency unused.
+    const trialConcurrency: number | undefined = fanOut
+      ? undefined
       : effectiveConcurrency(concurrencyOverride, maxConcurrency);
 
     const suiteScenarioTrialCounts = new Map(
@@ -220,6 +221,7 @@ async function main(): Promise<void> {
       stabilityLevelOverride: stabilityOverride,
       trialConcurrency,
       scenarioConcurrency: fanOut ? clampConcurrency(concurrencyOverride, maxConcurrency) : 1,
+      suiteMode: fanOut ? 'parallel' : undefined,
       baselineStoreFactory: () => new BaselineStore(),
       maxTurnsOverride,
       trialLifecycle: gocodeClient,
@@ -264,9 +266,21 @@ async function main(): Promise<void> {
       printGraduationResult(gradResult);
     }
 
+    const degradedGradScenarios = allResults.filter(
+      (r) => r.scenarioResult?.droppedTrials !== undefined && r.scenarioResult.droppedTrials > 0,
+    );
+    if (degradedGradScenarios.length > 0) {
+      for (const r of degradedGradScenarios) {
+        console.warn(
+          `Warning: ${r.scenarioResult!.droppedTrials} trial(s) dropped for "${r.scenarioName}"` +
+          ` due to execution failures.`,
+        );
+      }
+    }
+
     await gradStore.prune();
     const anyUnsaved = allResults.some((r) => !r.baselineSaved);
-    process.exit(anyUnsaved ? 1 : 0);
+    process.exit(anyUnsaved || degradedGradScenarios.length > 0 ? 1 : 0);
   }
 
   const { scenarios, error: filterError } = filterScenarios(
@@ -449,9 +463,14 @@ async function main(): Promise<void> {
   const cap = effectiveConcurrency(concurrencyOverride, maxConcurrency);
 
   if (fanOut) {
-    const actualParallelism = Math.min(cap, scenarios.length);
+    const totalTrials = values.resume
+      ? Array.from(trialIndicesByScenario.values()).reduce(
+          (sum, indices) => sum + indices.length, 0,
+        )
+      : scenarios.reduce((sum, s) => sum + (trialsOverride ?? s.trials), 0);
+    const actualParallelism = Math.min(cap, totalTrials);
     console.log(
-      `Fan-out: ${actualParallelism} of ${scenarios.length} scenarios concurrently (1 trial at a time per scenario)`,
+      `Fan-out: ${actualParallelism} workers, round-robin across ${scenarios.length} scenarios`,
     );
   }
 
@@ -478,11 +497,9 @@ async function main(): Promise<void> {
   const pendingWrites: Promise<void>[] = [];
   const writeFailures: { scenarioName: string; trialIndex: number; error: unknown }[] = [];
 
-  // fanOut: trial-level is always 1; --concurrency controls scenario-level
-  const trialConcurrency: number | undefined = fanOut ? 1 : concurrencyOverride;
-  const scenarioConcurrency: number | undefined = fanOut
-    ? concurrencyOverride
-    : undefined;
+  // fanOut: --concurrency controls the worker pool size (runFanOut uses scenarioConcurrency)
+  const trialConcurrency: number | undefined = fanOut ? undefined : concurrencyOverride;
+  const scenarioConcurrency: number | undefined = fanOut ? concurrencyOverride : undefined;
 
   const runner = new SuiteRunner({
     scenarios,
@@ -543,6 +560,19 @@ async function main(): Promise<void> {
       }
       process.exitCode = 1;
       return;
+    }
+
+    const degradedScenarios = results.filter(
+      (r) => r.droppedTrials !== undefined && r.droppedTrials > 0,
+    );
+    if (degradedScenarios.length > 0) {
+      for (const r of degradedScenarios) {
+        console.warn(
+          `Warning: ${r.droppedTrials} trial(s) dropped for "${r.scenarioName}"` +
+          ` due to execution failures.`,
+        );
+      }
+      process.exitCode = 1;
     }
 
     const runDir = await store.finalizeRun(dirName, runId, results, undefined, { wallClockMs, skipBaseline });
@@ -616,6 +646,7 @@ async function main(): Promise<void> {
       }
     }
   } finally {
+    await Promise.all(pendingWrites);
     await releaseLock();
   }
 }

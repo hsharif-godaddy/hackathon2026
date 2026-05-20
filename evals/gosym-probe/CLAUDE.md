@@ -50,11 +50,11 @@ pnpm run eval          # headless eval with flags (CI / scripting)
 --suite <name>           Filter to scenarios in a named suite
 --env <env>              Override GD_ENV
 --trials <n>             Override per-scenario trial count
---concurrency <n>        Cap concurrency (trials in standard mode, scenarios in --fan-out mode; clamped to config.eval.maxConcurrency)
+--concurrency <n>        Cap concurrency (trials in standard mode, worker pool size in --fan-out mode; clamped to config.eval.maxConcurrency)
 --max-turns <n>          Override max turns per simulation
 --skip-baseline          Skip baseline comparison
 --baseline <run-id>      Compare against a specific baseline run instead of the most recent
---fan-out                Fan out scenarios in parallel (capped by maxConcurrency); each scenario runs its full trial count sequentially
+--fan-out                Dispatch trials round-robin across a worker pool (capped by maxConcurrency); workers stay busy until the queue drains
 --graduate <name>        Stability check one scenario before promoting
 --graduate-suite <name>  Stability check all scenarios in a suite
 --stability <level>      Override stability level (low|medium|high)
@@ -66,16 +66,16 @@ pnpm run eval          # headless eval with flags (CI / scripting)
 | Flag combo                     | `--trials N`        | `--concurrency M`                                      |
 | ------------------------------ | ------------------- | ------------------------------------------------------ |
 | Standard eval                  | controls trials     | controls trial parallelism                             |
-| Standard + `--fan-out`         | controls trials     | controls scenario parallelism (capped by MAX_CONCURRENCY) |
+| Standard + `--fan-out`         | controls trials     | controls worker pool (round-robin trial dispatch, capped by MAX_CONCURRENCY) |
 | `--graduate`                   | ignored (stability) | controls trial parallelism                             |
 | `--graduate-suite`             | ignored (stability) | controls trial parallelism                             |
-| `--graduate-suite` + `--fan-out` | ignored (stability) | controls scenario parallelism (capped by MAX_CONCURRENCY) |
+| `--graduate-suite` + `--fan-out` | ignored (stability) | controls worker pool (round-robin trial dispatch, capped by MAX_CONCURRENCY) |
 
 Graduation trial counts are driven solely by stability level
 (`low`=3, `medium`=5, `high`=10). `--trials` has no effect in
-graduation paths. `--fan-out` forces trial-level concurrency to 1
-(trials run sequentially within each scenario). `--concurrency M`
-controls how many scenarios run concurrently, capped by MAX_CONCURRENCY.
+graduation paths. `--fan-out` dispatches trials round-robin across all
+workers (A1,B1,C1,A2,B2,C2,...), keeping workers busy until the queue
+drains. `--concurrency M` sets the worker pool size, capped by MAX_CONCURRENCY.
 
 `--baseline` and `--skip-baseline` are mutually exclusive. `--baseline`
 pins comparison to a specific prior run; omitting both flags loads the

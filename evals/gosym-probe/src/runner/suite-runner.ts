@@ -16,7 +16,7 @@ import type { EvalResult, Evaluator } from '../evaluators/evaluator.js';
 import { normalizeEvalResult } from '../evaluators/normalize-eval-result.js';
 import { effectiveConcurrency } from '../util/concurrency.js';
 import { sleep } from '../util/sleep.js';
-import { staggeredRun } from '../util/stagger.js';
+import { staggeredRun, computeStaggerDelay } from '../util/stagger.js';
 import type { TrialLifecycle } from '../clients/trial-lifecycle.js';
 
 // Fallback wait when the server omits Retry-After. Promote to config
@@ -36,6 +36,11 @@ function parseRetryAfterMs(headers: Headers | undefined): number | null {
 interface BaselineStore {
   load(scenarioName: string): Promise<{ scores: BaselineScores; filePath: string } | null>;
   loadByRunId(scenarioName: string, runId: string): Promise<{ scores: BaselineScores; filePath: string } | null>;
+}
+
+interface WorkItem {
+  scenarioIndex: number;
+  trialIndex: number;
 }
 
 export type RuncappedError<T> = AggregateError & {
@@ -105,15 +110,13 @@ export interface SuiteRunnerOptions {
    */
   baselineRunId?: string;
   /**
-   * Controls how scenarios are executed relative to each other.
-   * - `'sequential'` (default): scenarios run one after another;
-   *   trial-level parallelism is governed by `config.eval.maxConcurrency`.
-   * - `'parallel'`: all scenarios fan out concurrently, each running its
-   *   full trial count. Scenario concurrency is capped by
-   *   `scenarioConcurrency` if provided, otherwise
-   *   `config.eval.maxConcurrency`.
+   * When `'parallel'`, scenarios fan out as individual (scenario, trial) pairs
+   * dispatched round-robin across a fixed worker pool. Worker pool size is
+   * capped by `scenarioConcurrency` or `config.eval.maxConcurrency`.
+   * When omitted, scenarios run sequentially with trial-level parallelism
+   * governed by `config.eval.maxConcurrency`.
    */
-  suiteMode?: 'sequential' | 'parallel';
+  suiteMode?: 'parallel';
   /**
    * Fires incrementally as each trial completes, not in a burst at the end.
    * Delivery order matches worker completion order, which is non-deterministic
@@ -168,22 +171,21 @@ export class SuiteRunner {
   constructor(private readonly options: SuiteRunnerOptions) {}
 
   async run(): Promise<ScenarioResult[]> {
-    const { scenarios, config, trialsOverride, suiteMode } = this.options;
+    const { scenarios, config, trialsOverride, suiteMode, siteCapture, getTrialOutputDir } = this.options;
+
+    if (siteCapture && !getTrialOutputDir) {
+      console.warn(
+        '[SuiteRunner] siteCapture provided without getTrialOutputDir; snapshot capture will be disabled.',
+      );
+    }
+    if (!siteCapture && getTrialOutputDir) {
+      console.warn(
+        '[SuiteRunner] getTrialOutputDir provided without siteCapture; snapshot capture will be disabled.',
+      );
+    }
 
     if (suiteMode === 'parallel') {
-      // scenarioConcurrency (from --concurrency) caps scenario fan-out;
-      // falls back to config.eval.maxConcurrency when omitted.
-      const cap = effectiveConcurrency(
-        this.options.scenarioConcurrency,
-        config.eval.maxConcurrency,
-      );
-      return runCapped(
-        scenarios.length,
-        cap,
-        (i) => staggeredRun(i, cap, () =>
-          this.processScenario(scenarios[i], trialsOverride ?? scenarios[i].trials),
-        ),
-      );
+      return this.runFanOut();
     }
 
     const results: ScenarioResult[] = [];
@@ -191,6 +193,217 @@ export class SuiteRunner {
       const k = trialsOverride ?? scenario.trials;
       results.push(await this.processScenario(scenario, k));
     }
+    return results;
+  }
+
+  /**
+   * Builds a round-robin WorkItem queue: trial ordinal first, then scenario.
+   * A0, B0, C0, A1, B1, C1, ... Scenarios with fewer trials are exhausted
+   * and dropped from subsequent ordinals.
+   */
+  private buildRoundRobinQueue(
+    trialIndicesPerScenario: number[][],
+  ): WorkItem[] {
+    if (trialIndicesPerScenario.length === 0) return [];
+    let maxTrials = 0;
+    for (const t of trialIndicesPerScenario) {
+      if (t.length > maxTrials) maxTrials = t.length;
+    }
+    const queue: WorkItem[] = [];
+    for (let ordinal = 0; ordinal < maxTrials; ordinal++) {
+      for (let scenarioIndex = 0; scenarioIndex < trialIndicesPerScenario.length; scenarioIndex++) {
+        if (ordinal < trialIndicesPerScenario[scenarioIndex].length) {
+          queue.push({
+            scenarioIndex,
+            trialIndex: trialIndicesPerScenario[scenarioIndex][ordinal],
+          });
+        }
+      }
+    }
+    return queue;
+  }
+
+  /**
+   * Loads baseline data for a scenario and attaches regression status + enriched
+   * aggregated scores to the result. Shared between runFanOut and processScenario.
+   */
+  private async applyBaselineComparison(
+    scenario: Scenario,
+    result: ScenarioResult,
+  ): Promise<void> {
+    const { baselineStore, baselineRunId, config } = this.options;
+    if (!baselineStore) return;
+
+    const loaded = baselineRunId
+      ? await baselineStore.loadByRunId(scenario.name, baselineRunId)
+      : await baselineStore.load(scenario.name);
+    if (loaded === null && baselineRunId) {
+      throw new Error(
+        `Baseline run "${baselineRunId}" not found for scenario "${scenario.name}".`,
+      );
+    }
+    if (loaded) {
+      const regressionStatus = this.comparator.compare(
+        result,
+        loaded.scores,
+        config.regression,
+      );
+      const enrichedAggregated = enrichScoreModePassRates(
+        result,
+        loaded.scores,
+        config.regression,
+      );
+      result.regressionStatus = regressionStatus;
+      result.aggregated = enrichedAggregated;
+      result.baselineFilePath = loaded.filePath;
+    }
+  }
+
+  /**
+   * Fan-out mode: dispatches individual (scenario, trial) pairs in round-robin
+   * trial-ordinal order across a fixed worker pool. All workers stay busy until
+   * the queue drains. Partial failures are tolerated: scenarios with at least
+   * one completed trial proceed to evaluation; only fully-failed scenarios abort.
+   */
+  private async runFanOut(): Promise<ScenarioResult[]> {
+    const {
+      scenarios,
+      config,
+      trialsOverride,
+      scenarioConcurrency,
+      existingTrialsByScenario,
+      trialIndicesByScenario,
+    } = this.options;
+
+    if (scenarios.length === 0) return [];
+
+    const { makeAgentClient, syntheticUser } = this.options;
+    if (!makeAgentClient) {
+      throw new Error('runFanOut: makeAgentClient is required');
+    }
+    if (!syntheticUser) {
+      throw new Error('runFanOut: syntheticUser is required');
+    }
+
+    const cap = effectiveConcurrency(scenarioConcurrency, config.eval.maxConcurrency);
+
+    const trialIndicesPerScenario: number[][] = scenarios.map((s) =>
+      trialIndicesByScenario?.get(s.name)
+        ?? Array.from({ length: trialsOverride ?? s.trials }, (_, i) => i),
+    );
+
+    const queue = this.buildRoundRobinQueue(trialIndicesPerScenario);
+
+    // trialResultsByScenario[scenarioIndex][trialIndex] = TrialResult
+    const trialResultsByScenario: Map<number, Map<number, TrialResult>> = new Map(
+      scenarios.map((_, i) => [i, new Map<number, TrialResult>()]),
+    );
+
+    function getTrialMap(scenarioIndex: number): Map<number, TrialResult> {
+      const map = trialResultsByScenario.get(scenarioIndex);
+      if (!map) {
+        throw new Error(`[SuiteRunner] No trial map for scenario index ${scenarioIndex}`);
+      }
+      return map;
+    }
+
+    // Tracks how many trials were dropped per scenario (scenarioIndex -> count).
+    // Populated in the catch block when partial failures occur.
+    const droppedByScenario = new Map<number, number>();
+
+    try {
+      const fanOutResults = await runCapped(
+        queue.length,
+        cap,
+        async (i: number) => {
+          const delay = computeStaggerDelay(i, cap);
+          if (delay > 0) {
+            await sleep(delay);
+          }
+          const item = queue[i];
+          const scenario = scenarios[item.scenarioIndex];
+          const { trialIndex } = item;
+          const afterSimFailures = new Set<string>();
+          return this.executeTrialWithCleanup(
+            scenario, trialIndex, makeAgentClient, syntheticUser, afterSimFailures,
+          );
+        },
+      );
+      for (let i = 0; i < queue.length; i++) {
+        const item = queue[i];
+        getTrialMap(item.scenarioIndex).set(item.trialIndex, fanOutResults[i]);
+      }
+    } catch (err) {
+      if (
+        !(err instanceof AggregateError) ||
+        !(err as RuncappedError<TrialResult>).partialResults
+      ) {
+        throw err;
+      }
+      const agg = err as RuncappedError<TrialResult>;
+      const partial = agg.partialResults;
+
+      const failedTrials: Array<{ scenarioName: string; trialIndex: number }> = [];
+      for (let i = 0; i < queue.length; i++) {
+        const trialResult = partial[i];
+        const item = queue[i];
+        if (trialResult !== undefined) {
+          getTrialMap(item.scenarioIndex).set(item.trialIndex, trialResult);
+        } else {
+          failedTrials.push({
+            scenarioName: scenarios[item.scenarioIndex].name,
+            trialIndex: item.trialIndex,
+          });
+          const prev = droppedByScenario.get(item.scenarioIndex) ?? 0;
+          droppedByScenario.set(item.scenarioIndex, prev + 1);
+        }
+      }
+
+      if (failedTrials.length > 0) {
+        console.warn('Fan-out trials failed.', {
+          failedTrials,
+          errors: agg.errors.map((e: unknown) =>
+            e instanceof Error ? e.message : String(e),
+          ),
+        });
+      }
+
+      // Abort only if every trial in some scenario failed — no data to aggregate.
+      // Guard: scenarios with 0 queued trials (already complete during resume) are not failures.
+      const hasCompletelyFailedScenario = scenarios.some(
+        (_, i) => trialIndicesPerScenario[i].length > 0 && getTrialMap(i).size === 0,
+      );
+      if (hasCompletelyFailedScenario) {
+        throw err;
+      }
+    }
+
+    const results: ScenarioResult[] = [];
+
+    for (let scenarioIndex = 0; scenarioIndex < scenarios.length; scenarioIndex++) {
+      const scenario = scenarios[scenarioIndex];
+      const completedMap = getTrialMap(scenarioIndex);
+      const existingTrials = existingTrialsByScenario?.get(scenario.name) ?? [];
+
+      if (completedMap.size === 0 && existingTrials.length === 0) continue;
+
+      const pairs = [...completedMap.entries()].sort(([a], [b]) => a - b);
+      const newTrialResults = pairs.map(([, t]) => t);
+
+      const trialResults = [
+        ...existingTrials,
+        ...newTrialResults,
+      ].sort((a, b) => a.trialIndex - b.trialIndex);
+
+      const result = this.aggregator.aggregate(scenario, trialResults);
+      const dropped = droppedByScenario.get(scenarioIndex);
+      if (dropped !== undefined && dropped > 0) {
+        result.droppedTrials = dropped;
+      }
+      await this.applyBaselineComparison(scenario, result);
+      results.push(result);
+    }
+
     return results;
   }
 
@@ -203,9 +416,6 @@ export class SuiteRunner {
       trialConcurrency,
       makeAgentClient,
       syntheticUser,
-      siteCapture,
-      baselineStore,
-      baselineRunId,
       existingTrialsByScenario,
       trialIndicesByScenario,
     } = this.options;
@@ -229,190 +439,22 @@ export class SuiteRunner {
     // Tracks evaluators whose afterSimulation hook threw, keyed by
     // `${evaluatorName}:${trialIndex}`. Propagated to eval results so
     // consumers can detect potentially degraded measurements.
+    //
+    // Shared across all concurrent trials within this scenario. Safe because
+    // keys include trialIndex, preventing cross-trial collision. The fan-out
+    // path (runFanOut) uses per-work-item isolated Sets for stronger isolation;
+    // both approaches are correct given the key-scoped access pattern.
     const afterSimFailures = new Set<string>();
 
-    const makeRun = async (
-      i: number,
-      firstTurnInactivityMsOverride?: number,
-    ): Promise<Transcript> => {
-      const client = await makeAgentClient(scenario);
-      try {
-        return await this.runInScope(scenario.name, i, async () => {
-          scenario.beforeTrial?.(client, i);
-          for (const ev of scenario.evaluators) {
-            ev.hookClient?.(client, i);
-          }
-          const { getTrialOutputDir } = this.options;
-          if (siteCapture && !getTrialOutputDir) {
-            console.warn(
-              '[SuiteRunner] siteCapture provided without getTrialOutputDir; snapshot capture will be disabled.',
-            );
-          }
-          if (!siteCapture && getTrialOutputDir) {
-            console.warn(
-              '[SuiteRunner] getTrialOutputDir provided without siteCapture; snapshot capture will be disabled.',
-            );
-          }
-          const captureContext: SimulationCaptureContext | undefined =
-            siteCapture && getTrialOutputDir
-              ? {
-                siteCapture,
-                getTrialOutputDir: (trialIndex: number) =>
-                  getTrialOutputDir(scenario.name, trialIndex),
-              }
-              : undefined;
-          const { writePartialTrial } = this.options;
-          const onConversationComplete = writePartialTrial
-            ? async (trialIndex: number, partialTranscript: Transcript) => {
-                try {
-                  await writePartialTrial(scenario.name, trialIndex, partialTranscript);
-                } catch (err) {
-                  const msg = err instanceof Error ? err.message : String(err);
-                  console.warn(
-                    '[SuiteRunner] writePartialTrial failed for %s trial %d: %s',
-                    scenario.name, trialIndex, msg,
-                  );
-                  this.options.onPartialWriteFailed?.(scenario.name, trialIndex, err);
-                }
-              }
-            : undefined;
-          const transcript = await new Simulation({
-            scenario,
-            agentClient: client,
-            syntheticUser,
-            captureContext,
-            config,
-            maxTurnsOverride: this.options.maxTurnsOverride,
-            firstTurnInactivityMsOverride,
-            onConversationComplete,
-          }).run(i);
-          // Clear stale entries from prior retry attempts so a successful
-          // retry does not inherit afterSimulation failures from earlier.
-          for (const ev of scenario.evaluators) {
-            afterSimFailures.delete(`${ev.name}:${i}`);
-          }
-          for (const ev of scenario.evaluators) {
-            try {
-              ev.afterSimulation?.(i);
-            } catch (err) {
-              const msg = err instanceof Error ? err.message : String(err);
-              console.warn(
-                'afterSimulation failed.',
-                {
-                  evaluator: ev.name,
-                  scenarioName: scenario.name,
-                  trialIndex: i,
-                  error: msg,
-                },
-              );
-              afterSimFailures.add(`${ev.name}:${i}`);
-            }
-          }
-          return transcript;
-        });
-      } finally {
-        client.disconnect();
-      }
-    };
-
-    const maxRetries = config.eval.maxFirstTurnRetries;
-    const retrySchedule = config.eval.firstTurnRetryScheduleMs;
-    const makeRunWithRetry = async (
-      trialIndex: number,
-    ): Promise<Transcript> => {
-      let inactivityAttempts = 0;
-      let rateLimitAttempts = 0;
-      let nextInactivityMsOverride: number | undefined;
-      // Independent budgets: inactivity (AAB unresponsive) and rate-limit
-      // (GoCode throttled) are orthogonal failure modes. Each gets its own
-      // counter so one transient issue doesn't eat the other's budget.
-      // Every iteration exits via return, continue, or throw err.
-      for (;;) {
-        try {
-          const transcript = await makeRun(trialIndex, nextInactivityMsOverride);
-          const totalRetries = inactivityAttempts + rateLimitAttempts;
-          if (totalRetries > 0) {
-            transcript.retryCount = totalRetries;
-          }
-          return transcript;
-        } catch (err) {
-          if (
-            err instanceof InactivityTimeoutError &&
-            inactivityAttempts < maxRetries
-          ) {
-            nextInactivityMsOverride =
-              retrySchedule[inactivityAttempts]
-              ?? config.eval.firstTurnInactivityMs;
-            inactivityAttempts++;
-            console.warn(
-              'Trial retry: first-turn inactivity timeout.',
-              {
-                scenarioName: scenario.name,
-                trialIndex,
-                attempt: inactivityAttempts,
-                maxAttempts: maxRetries,
-                nextInactivityMs: nextInactivityMsOverride,
-              },
-            );
-            continue;
-          }
-          if (
-            err instanceof RateLimitError &&
-            rateLimitAttempts < MAX_RATE_LIMIT_RETRIES
-          ) {
-            rateLimitAttempts++;
-            const waitMs = parseRetryAfterMs(err.headers) ?? RATE_LIMIT_WAIT_MS;
-            console.warn(
-              'Trial retry: rate limit (429).',
-              {
-                scenarioName: scenario.name,
-                trialIndex,
-                attempt: rateLimitAttempts,
-                maxAttempts: MAX_RATE_LIMIT_RETRIES,
-                waitSeconds: waitMs / 1000,
-              },
-            );
-            await sleep(waitMs);
-            continue;
-          }
-          if (err instanceof RateLimitError) {
-            console.warn(
-              'Trial failed: rate-limit retry budget exhausted.',
-              {
-                scenarioName: scenario.name,
-                trialIndex,
-                totalAttempts: rateLimitAttempts + 1,
-              },
-            );
-          }
-          throw err;
-        }
-      }
-    };
-
     const concurrency = effectiveConcurrency(trialConcurrency, config.eval.maxConcurrency);
-    const newTrialResults = await runCapped(trialIndices.length, concurrency, (i) =>
-      staggeredRun(i, concurrency, async () => {
-        try {
-          const transcript = await makeRunWithRetry(trialIndices[i]);
-          return this.evaluateTrial(scenario, transcript, trialIndices[i], afterSimFailures);
-        } finally {
-          for (const ev of scenario.evaluators) {
-            try {
-              ev.unhookTrial?.(trialIndices[i]);
-            } catch (err) {
-              console.warn('unhookTrial threw.', {
-                evaluator: ev.name,
-                scenarioName: scenario.name,
-                trialIndex: trialIndices[i],
-                error: err instanceof Error ? err.message : String(err),
-              });
-            }
-          }
-          this.options.trialLifecycle?.release(scenario.name, trialIndices[i]);
-        }
-      }),
-    );
+    const newTrialResults = await runCapped(trialIndices.length, concurrency, (i) => {
+      const trialIndex = trialIndices[i];
+      return staggeredRun(i, concurrency, () =>
+        this.executeTrialWithCleanup(
+          scenario, trialIndex, makeAgentClient, syntheticUser, afterSimFailures,
+        ),
+      );
+    });
     const trialResults = [
       ...(existingTrialsByScenario?.get(scenario.name) ?? []),
       ...newTrialResults,
@@ -422,38 +464,7 @@ export class SuiteRunner {
       trialResults,
     );
 
-    // Ordering contract: the comparator reads result.aggregated FIRST to
-    // detect score regressions, then enrichScoreModePassRates produces a
-    // NEW aggregated record with passAtK/passToTheK derived from per-trial
-    // baseline comparison. The enriched record replaces result.aggregated
-    // AFTER the comparator finishes. The comparator must see the raw
-    // aggregated state (without passAtK), and downstream consumers
-    // (reporter, store) see the enriched version.
-    if (baselineStore) {
-      const loaded = baselineRunId
-        ? await baselineStore.loadByRunId(scenario.name, baselineRunId)
-        : await baselineStore.load(scenario.name);
-      if (loaded === null && baselineRunId) {
-        throw new Error(
-          `Baseline run "${baselineRunId}" not found for scenario "${scenario.name}".`,
-        );
-      }
-      if (loaded) {
-        const regressionStatus = this.comparator.compare(
-          result,
-          loaded.scores,
-          config.regression,
-        );
-        const enrichedAggregated = enrichScoreModePassRates(
-          result,
-          loaded.scores,
-          config.regression,
-        );
-        result.regressionStatus = regressionStatus;
-        result.aggregated = enrichedAggregated;
-        result.baselineFilePath = loaded.filePath;
-      }
-    }
+    await this.applyBaselineComparison(scenario, result);
 
     return result;
   }
@@ -468,6 +479,224 @@ export class SuiteRunner {
       return trialLifecycle.runInScope(scenarioName, trialIndex, fn);
     }
     return fn();
+  }
+
+  /**
+   * Executes a single trial: creates an agent client, runs lifecycle hooks,
+   * runs the simulation, and tears down the client.
+   */
+  private async runSingleTrial(
+    scenario: Scenario,
+    trialIndex: number,
+    makeAgentClient: (scenario?: Scenario) => Promise<AgentClient>,
+    syntheticUser: SyntheticUserAgent,
+    firstTurnInactivityMsOverride?: number,
+    afterSimFailures?: Set<string>,
+  ): Promise<Transcript> {
+    const { siteCapture, config } = this.options;
+    const client = await makeAgentClient(scenario);
+    try {
+      scenario.beforeTrial?.(client, trialIndex);
+      for (const ev of scenario.evaluators) {
+        ev.hookClient?.(client, trialIndex);
+      }
+      const { getTrialOutputDir } = this.options;
+      const captureContext: SimulationCaptureContext | undefined =
+        siteCapture && getTrialOutputDir
+          ? {
+            siteCapture,
+            getTrialOutputDir: (idx: number) =>
+              getTrialOutputDir(scenario.name, idx),
+          }
+          : undefined;
+      const { writePartialTrial } = this.options;
+      const onConversationComplete = writePartialTrial
+        ? async (idx: number, partialTranscript: Transcript) => {
+            try {
+              await writePartialTrial(scenario.name, idx, partialTranscript);
+            } catch (err) {
+              const msg = err instanceof Error ? err.message : String(err);
+              console.warn(
+                '[SuiteRunner] writePartialTrial failed for %s trial %d: %s',
+                scenario.name, idx, msg,
+              );
+              this.options.onPartialWriteFailed?.(scenario.name, idx, err);
+            }
+          }
+        : undefined;
+      const transcript = await new Simulation({
+        scenario,
+        agentClient: client,
+        syntheticUser,
+        captureContext,
+        config,
+        maxTurnsOverride: this.options.maxTurnsOverride,
+        firstTurnInactivityMsOverride,
+        onConversationComplete,
+      }).run(trialIndex);
+      // Clear stale entries from prior retry attempts so a successful
+      // retry does not inherit afterSimulation failures from earlier.
+      for (const ev of scenario.evaluators) {
+        afterSimFailures?.delete(`${ev.name}:${trialIndex}`);
+      }
+      for (const ev of scenario.evaluators) {
+        try {
+          ev.afterSimulation?.(trialIndex);
+        } catch (err) {
+          console.warn(
+            'afterSimulation failed.',
+            {
+              evaluator: ev.name,
+              scenarioName: scenario.name,
+              trialIndex,
+              error: err instanceof Error ? err.message : String(err),
+            },
+          );
+          afterSimFailures?.add(`${ev.name}:${trialIndex}`);
+        }
+      }
+      return transcript;
+    } finally {
+      client.disconnect();
+    }
+  }
+
+  /**
+   * Runs a single trial inside its isolation scope, then unconditionally
+   * unhooks evaluators and releases the trial lifecycle slot. Both
+   * `runFanOut` and `processScenario` share this bracket.
+   */
+  private async executeTrialWithCleanup(
+    scenario: Scenario,
+    trialIndex: number,
+    makeAgentClient: (scenario?: Scenario) => Promise<AgentClient>,
+    syntheticUser: SyntheticUserAgent,
+    afterSimFailures: Set<string>,
+  ): Promise<TrialResult> {
+    try {
+      return await this.runInScope(scenario.name, trialIndex, async () => {
+        const transcript = await this.runSingleTrialWithRetry(
+          scenario,
+          trialIndex,
+          makeAgentClient,
+          syntheticUser,
+          afterSimFailures,
+        );
+        return this.evaluateTrial(scenario, transcript, trialIndex, afterSimFailures);
+      });
+    } finally {
+      this.unhookAllEvaluators(scenario, trialIndex);
+      this.options.trialLifecycle?.release(scenario.name, trialIndex);
+    }
+  }
+
+  /**
+   * Wraps runSingleTrial with retry logic for inactivity timeouts and
+   * rate-limit (429) errors. Each failure mode has an independent budget.
+   */
+  private async runSingleTrialWithRetry(
+    scenario: Scenario,
+    trialIndex: number,
+    makeAgentClient: (scenario?: Scenario) => Promise<AgentClient>,
+    syntheticUser: SyntheticUserAgent,
+    afterSimFailures?: Set<string>,
+  ): Promise<Transcript> {
+    const { config } = this.options;
+    const maxRetries = config.eval.maxFirstTurnRetries;
+    const retrySchedule = config.eval.firstTurnRetryScheduleMs;
+    let inactivityAttempts = 0;
+    let rateLimitAttempts = 0;
+    let nextInactivityMsOverride: number | undefined;
+    // Independent budgets: inactivity (AAB unresponsive) and rate-limit
+    // (GoCode throttled) are orthogonal failure modes. Each gets its own
+    // counter so one transient issue doesn't eat the other's budget.
+    // Every iteration exits via return, continue, or throw err.
+    for (;;) {
+      try {
+        const transcript = await this.runSingleTrial(scenario, trialIndex, makeAgentClient, syntheticUser, nextInactivityMsOverride, afterSimFailures);
+        const totalRetries = inactivityAttempts + rateLimitAttempts;
+        if (totalRetries > 0) {
+          transcript.retryCount = totalRetries;
+        }
+        return transcript;
+      } catch (err) {
+        if (
+          err instanceof InactivityTimeoutError &&
+          inactivityAttempts < maxRetries
+        ) {
+          nextInactivityMsOverride =
+            retrySchedule[inactivityAttempts]
+            ?? config.eval.firstTurnInactivityMs;
+          inactivityAttempts++;
+          console.warn(
+            'Trial retry: first-turn inactivity timeout.',
+            {
+              scenarioName: scenario.name,
+              trialIndex,
+              attempt: inactivityAttempts,
+              maxAttempts: maxRetries,
+              nextInactivityMs: nextInactivityMsOverride,
+            },
+          );
+          this.unhookAllEvaluators(scenario, trialIndex);
+          continue;
+        }
+        if (
+          err instanceof RateLimitError &&
+          rateLimitAttempts < MAX_RATE_LIMIT_RETRIES
+        ) {
+          rateLimitAttempts++;
+          const waitMs = parseRetryAfterMs(err.headers) ?? RATE_LIMIT_WAIT_MS;
+          console.warn(
+            'Trial retry: rate limit (429).',
+            {
+              scenarioName: scenario.name,
+              trialIndex,
+              attempt: rateLimitAttempts,
+              maxAttempts: MAX_RATE_LIMIT_RETRIES,
+              waitSeconds: waitMs / 1000,
+            },
+          );
+          await sleep(waitMs);
+          this.unhookAllEvaluators(scenario, trialIndex);
+          continue;
+        }
+        if (err instanceof RateLimitError) {
+          console.warn(
+            'Trial failed: rate-limit retry budget exhausted.',
+            {
+              scenarioName: scenario.name,
+              trialIndex,
+              totalAttempts: rateLimitAttempts + 1,
+            },
+          );
+        }
+        throw err;
+      }
+    }
+  }
+
+  private unhookFailures = 0;
+
+  get unhookFailureCount(): number {
+    return this.unhookFailures;
+  }
+
+  private unhookAllEvaluators(scenario: Scenario, trialIndex: number): void {
+    for (const ev of scenario.evaluators) {
+      try {
+        ev.unhookTrial?.(trialIndex);
+      } catch (err) {
+        this.unhookFailures++;
+        console.warn('unhookTrial threw.', {
+          evaluator: ev.name,
+          scenarioName: scenario.name,
+          trialIndex,
+          error: err instanceof Error ? err.message : String(err),
+          totalUnhookFailures: this.unhookFailures,
+        });
+      }
+    }
   }
 
   private async safeEvaluate(

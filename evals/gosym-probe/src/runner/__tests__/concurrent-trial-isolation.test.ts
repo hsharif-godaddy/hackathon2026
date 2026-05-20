@@ -44,6 +44,7 @@ vi.mock('../../util/stagger.js', () => ({
   staggeredRun: vi.fn().mockImplementation(
     (_i: number, _cap: number, fn: () => Promise<unknown>) => fn(),
   ),
+  computeStaggerDelay: vi.fn().mockReturnValue(0),
   STAGGER_INTERVAL_MS: 0,
 }));
 
@@ -59,6 +60,7 @@ import type { SyntheticUserAgent } from '../synthetic-user.js';
 import type { Message } from '../../clients/gocode-client.js';
 import type { Transcript } from '../transcript.js';
 import type { Evaluator } from '../../evaluators/evaluator.js';
+import type { TrialLifecycle } from '../../clients/trial-lifecycle.js';
 
 // ---------------------------------------------------------------------------
 // Test fixtures
@@ -244,12 +246,12 @@ describe('TokenUsageEvaluator probe delta isolation via SuiteRunner', () => {
       syntheticUser: MOCK_SYNTHETIC_USER,
       trialConcurrency: 2,
       trialLifecycle: {
-        runInScope: (s, i, fn) => gocodeClient.runInScope(s, i, fn),
-        release: (s, i) => {
+        runInScope: <T>(s: string, i: number, fn: () => Promise<T>) => gocodeClient.runInScope(s, i, fn),
+        release: (s: string, i: number) => {
           releasedKeys.push(`${s}:${i}`);
           gocodeClient.release(s, i);
         },
-      },
+      } as TrialLifecycle,
     }).run();
 
     expect(releasedKeys).toHaveLength(2);
@@ -303,6 +305,52 @@ describe('TokenUsageEvaluator probe delta isolation via SuiteRunner', () => {
     }
   });
 
+  it('suiteMode parallel: afterSimulationFailed flag set in fan-out path', async () => {
+    const collector = new TokenUsageCollector();
+    const tokenEval = new TokenUsageEvaluator({ collector, gocodeClient });
+
+    const throwingEvaluator: Evaluator = {
+      name: 'throwing-eval',
+      evaluate: async () => ({ evaluator: 'throwing-eval', score: 1, verdict: 'pass' as const, reason: 'ok' }),
+      afterSimulation: () => { throw new Error('afterSim boom'); },
+    };
+
+    const scenario: Scenario = {
+      name: 'test-scenario',
+      persona: { name: 'test', description: 'test', systemPrompt: 'test' },
+      goals: [{ description: 'done', assertion: 'positive' }],
+      evaluators: [tokenEval, throwingEvaluator],
+      trials: 2,
+    };
+
+    const [result] = await new SuiteRunner({
+      scenarios: [scenario],
+      config: EVAL_CONFIG,
+      makeAgentClient: async (): Promise<AgentClient> => ({
+        configure: vi.fn(),
+        send: vi.fn(),
+        onMessage: vi.fn(),
+        disconnect: vi.fn(),
+      }),
+      syntheticUser: MOCK_SYNTHETIC_USER,
+      suiteMode: 'parallel',
+      trialLifecycle: gocodeClient,
+    }).run();
+
+    // Both trials complete despite the throwing evaluator.
+    expect(result.trials).toHaveLength(2);
+
+    for (const trial of result.trials) {
+      const throwingResult = trial.evalResults.find((r) => r.evaluator === 'throwing-eval');
+      const tokenResult = trial.evalResults.find((r) => r.evaluator === 'token-usage');
+
+      // Fan-out path: throwing evaluator's result is annotated with afterSimulationFailed.
+      expect(throwingResult?.details?.afterSimulationFailed).toBe(true);
+      // Non-throwing evaluator does NOT have the flag.
+      expect(tokenResult?.details?.afterSimulationFailed).toBeUndefined();
+    }
+  });
+
   it('release is still called on trial failure', async () => {
     const releasedKeys: string[] = [];
     const collector = new TokenUsageCollector();
@@ -342,12 +390,12 @@ describe('TokenUsageEvaluator probe delta isolation via SuiteRunner', () => {
       syntheticUser: MOCK_SYNTHETIC_USER,
       trialConcurrency: 1,
       trialLifecycle: {
-        runInScope: (s, i, fn) => gocodeClient.runInScope(s, i, fn),
-        release: (s, i) => {
+        runInScope: <T>(s: string, i: number, fn: () => Promise<T>) => gocodeClient.runInScope(s, i, fn),
+        release: (s: string, i: number) => {
           releasedKeys.push(`${s}:${i}`);
           gocodeClient.release(s, i);
         },
-      },
+      } as TrialLifecycle,
     });
 
     try {
@@ -444,5 +492,8 @@ describe('TokenUsageEvaluator probe delta isolation via SuiteRunner', () => {
     const probeB1 = probeDetails(resultB, 1);
     expect(probeB0).toMatchObject({ calls: 3, totalTokens: 45 });
     expect(probeB1).toMatchObject({ calls: 4, totalTokens: 60 });
+
+    // All per-trial instances must be released after the run completes.
+    expect(gocodeClient['instances'].size).toBe(0);
   });
 });

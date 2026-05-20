@@ -338,6 +338,9 @@ export class Simulation {
     message: string,
     turnCount: number,
   ): Promise<string> {
+    if (state.resolveTurn) {
+      throw new Error('sendAndAwaitTurn called while a previous turn is still pending');
+    }
     const { agentClient, config } = this.options;
     state.currentTurnTools.clear();
     state.inputDeltas.clear();

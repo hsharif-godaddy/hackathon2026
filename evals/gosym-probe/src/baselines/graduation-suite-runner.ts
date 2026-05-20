@@ -1,4 +1,4 @@
-import { runCapped } from '../runner/suite-runner.js';
+import { runCapped, SuiteRunner } from '../runner/suite-runner.js';
 import type { RuncappedError } from '../runner/suite-runner.js';
 import { staggeredRun } from '../util/stagger.js';
 import { GraduationRunner, isDeferredResult } from './graduation-runner.js';
@@ -17,7 +17,7 @@ import type { AgentClient } from '../clients/agent-client.js';
 import type { SyntheticUserAgent } from '../runner/synthetic-user.js';
 import type { SiteCapture } from '../clients/dom-capture.js';
 import type { EvalStore } from '../store/eval-store.js';
-import type { TrialResult } from '../runner/types.js';
+import type { ScenarioResult, TrialResult } from '../runner/types.js';
 import type { TrialLifecycle } from '../clients/trial-lifecycle.js';
 
 export interface GraduationSuiteRunResult {
@@ -31,7 +31,7 @@ export type Logger = (message: string, ...args: unknown[]) => void;
 export interface GraduationSuiteRunnerOptions {
   scenarios: Scenario[];
   config: ResolvedConfig;
-  makeAgentClient?: () => Promise<AgentClient>;
+  makeAgentClient?: (scenario?: Scenario) => Promise<AgentClient>;
   syntheticUser?: SyntheticUserAgent;
   siteCapture?: SiteCapture;
   stabilityLevelOverride?: StabilityLevel;
@@ -56,6 +56,12 @@ export interface GraduationSuiteRunnerOptions {
   onTrialEvaluated?: (scenarioName: string, trial: TrialResult) => void;
   store: EvalStore;
   log?: Logger;
+  /**
+   * When 'parallel', dispatches trials round-robin across a worker pool via
+   * SuiteRunner (same as the regular fan-out eval path). scenarioConcurrency
+   * caps the worker pool size. trialConcurrency is unused in this mode.
+   */
+  suiteMode?: 'parallel';
 }
 
 export class GraduationSuiteRunner {
@@ -70,9 +76,6 @@ export class GraduationSuiteRunner {
   }
 
   async run(runId: string): Promise<GraduationSuiteRunResult> {
-    const maxConcurrency = this.options.scenarioConcurrency
-      ?? this.options.config.eval.maxConcurrency;
-
     const sharedDirName = await this.options.store.initRun(
       runId,
       this.options.scenarios,
@@ -85,6 +88,13 @@ export class GraduationSuiteRunner {
     );
 
     this.logRunHeader(runId);
+
+    if (this.options.suiteMode === 'parallel') {
+      return this.runFanOut(sharedDirName, runId);
+    }
+
+    const maxConcurrency = this.options.scenarioConcurrency
+      ?? this.options.config.eval.maxConcurrency;
 
     try {
       const results = await runCapped<GraduationResult>(
@@ -112,6 +122,97 @@ export class GraduationSuiteRunner {
     }
   }
 
+  /**
+   * Fan-out mode: dispatches trials round-robin across a worker pool via
+   * SuiteRunner, then runs per-scenario graduation finalization (baseline
+   * save, stability metadata) after all trials complete.
+   */
+  private async runFanOut(
+    sharedDirName: string,
+    runId: string,
+  ): Promise<GraduationSuiteRunResult> {
+    const {
+      scenarios,
+      config,
+      makeAgentClient,
+      syntheticUser,
+      siteCapture,
+      scenarioConcurrency,
+      stabilityLevelOverride,
+      maxTurnsOverride,
+      trialLifecycle,
+      onTrialEvaluated,
+      store,
+    } = this.options;
+
+    // Override each scenario's trial count with its stability-derived value so
+    // SuiteRunner.runFanOut builds the right round-robin queue.
+    const scenariosWithStabilityTrials = scenarios.map((s) => ({
+      ...s,
+      trials: STABILITY_TRIALS[resolveStabilityLevel(stabilityLevelOverride, s)],
+    }));
+
+    const suiteRunner = new SuiteRunner({
+      scenarios: scenariosWithStabilityTrials,
+      config,
+      makeAgentClient,
+      syntheticUser,
+      siteCapture,
+      scenarioConcurrency,
+      suiteMode: 'parallel',
+      maxTurnsOverride,
+      trialLifecycle,
+      onTrialEvaluated,
+      getTrialOutputDir: (scenarioName, trialIndex) =>
+        store.ensureTrialDir(sharedDirName, scenarioName, trialIndex),
+      writePartialTrial: (scenarioName, trialIndex, transcript) =>
+        store.writePartialTrial(sharedDirName, scenarioName, trialIndex, transcript),
+    });
+
+    let scenarioResults: ScenarioResult[];
+    const errors: Error[] = [];
+    try {
+      scenarioResults = await suiteRunner.run();
+    } catch (err) {
+      // SuiteRunner.runFanOut re-throws when an entire scenario has zero
+      // completed trials. Unlike the sequential path (which gets partial
+      // GraduationResults from runCapped), the parallel path aborts before
+      // evaluation, so no ScenarioResults are recoverable.
+      //
+      // TODO: Partial trial transcripts are persisted via writePartialTrial
+      // during execution, so data is not lost on disk. Planned self-healing
+      // resume will detect stalled/failed trials (e.g. locked resources) and
+      // auto-trigger --resume to recover without discarding completed work.
+      if (err instanceof AggregateError) {
+        const validatedErrors: Error[] = err.errors.map((e: unknown) =>
+          e instanceof Error ? e : new Error(String(e)),
+        );
+        console.warn(
+          'Graduation parallel aborted: one or more scenarios had zero completed trials. ' +
+            'Completed work from other scenarios was discarded. ' +
+            'Partial transcripts are persisted on disk — use --resume to recover.',
+          {
+            scenarios: scenarios.map((s) => s.name),
+            errorCount: validatedErrors.length,
+            errors: validatedErrors.map((e) => e.message),
+          },
+        );
+        const finalizationError = await this.safeFinalize([], sharedDirName, runId);
+        return { results: [], errors: validatedErrors, finalizationError };
+      }
+      throw err;
+    }
+
+    const gradResults: GraduationResult[] = [];
+    for (const result of scenarioResults) {
+      const gradResult = await this.finalizeScenarioGraduation(result, sharedDirName, runId);
+      gradResults.push(gradResult);
+    }
+
+    const finalizationError = await this.safeFinalize(gradResults, sharedDirName, runId);
+    return { results: gradResults, errors, finalizationError };
+  }
+
   private runScenario(
     index: number,
     runId: string,
@@ -136,6 +237,58 @@ export class GraduationSuiteRunner {
       log: this.log,
     });
     return runner.run(runId);
+  }
+
+  /**
+   * Persists trial data, saves baseline (if valid), and builds a GraduationResult
+   * for a single scenario. Shared finalization logic for both sequential and
+   * parallel graduation paths.
+   */
+  private async finalizeScenarioGraduation(
+    result: ScenarioResult,
+    sharedDirName: string,
+    runId: string,
+  ): Promise<GraduationResult> {
+    const { scenarios, stabilityLevelOverride, store, config, baselineStoreFactory } = this.options;
+
+    const scenario = scenarios.find((s) => s.name === result.scenarioName);
+    if (!scenario) {
+      throw new Error(
+        `[GraduationSuiteRunner] No matching scenario for result "${result.scenarioName}"`,
+      );
+    }
+    const stabilityLevel = resolveStabilityLevel(stabilityLevelOverride, scenario);
+    result.stabilityLevel = stabilityLevel;
+
+    await Promise.all(
+      result.trials.map((trial) =>
+        store.writeTrial(sharedDirName, result.scenarioName, trial),
+      ),
+    );
+
+    const hasValidResults = result.trials.some((t) =>
+      t.evalResults.some((e) => e.verdict !== 'unknown'),
+    );
+
+    if (hasValidResults) {
+      const baselineStore = baselineStoreFactory?.() ?? new BaselineStore();
+      await baselineStore.save(runId, result, {
+        defaultThreshold: config.regression.defaultThreshold,
+      });
+    } else {
+      this.log(
+        '[GraduationSuiteRunner] All trials produced unknown verdicts; skipping baseline save.',
+        { scenarioName: result.scenarioName, runId },
+      );
+    }
+
+    return {
+      scenarioName: result.scenarioName,
+      stabilityLevel,
+      stabilityTrials: STABILITY_TRIALS[stabilityLevel],
+      baselineSaved: hasValidResults,
+      scenarioResult: result,
+    };
   }
 
   private async safeFinalize(
@@ -178,13 +331,23 @@ export class GraduationSuiteRunner {
       `Scenarios: ${this.options.scenarios.map((s) => s.name).join(', ')}`,
     );
 
-    // scenarioConcurrency === 1 → sequential (non-fan-out); anything else → fan-out.
-    // See GraduationSuiteRunnerOptions.scenarioConcurrency for the full convention.
-    const isFanOut = this.options.scenarioConcurrency !== 1;
-    if (isFanOut) {
-      const cap = this.options.scenarioConcurrency
-        ?? this.options.config.eval.maxConcurrency;
+    const cap = this.options.scenarioConcurrency
+      ?? this.options.config.eval.maxConcurrency;
+
+    if (this.options.suiteMode === 'parallel') {
+      const totalTrials = this.options.scenarios.reduce(
+        (sum, s) => sum + STABILITY_TRIALS[resolveStabilityLevel(this.options.stabilityLevelOverride, s)],
+        0,
+      );
+      const workerCount = Math.min(cap, totalTrials);
+      this.log(
+        `Fan-out: ${workerCount} workers, round-robin across ${this.options.scenarios.length} scenarios`,
+      );
+    } else if (this.options.scenarioConcurrency !== 1) {
       const actualParallelism = Math.min(cap, this.options.scenarios.length);
+      // Legacy per-scenario fan-out (scenarioConcurrency > 1, no suiteMode).
+      // scenarioConcurrency === 1 → sequential; anything else → fan-out.
+      // See GraduationSuiteRunnerOptions.scenarioConcurrency for the full convention.
       this.log(
         `Fan-out: ${actualParallelism} of ${this.options.scenarios.length} scenarios concurrently (1 trial at a time per scenario)`,
       );

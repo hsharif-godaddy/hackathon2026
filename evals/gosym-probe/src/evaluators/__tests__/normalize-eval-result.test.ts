@@ -264,6 +264,18 @@ describe('normalizeEvalResult', () => {
     });
   });
 
+  it('preserves evaluatorFailed when true', () => {
+    const output = normalizeEvalResult(
+      makeResult({ evaluatorFailed: true }),
+    );
+    expect(output.evaluatorFailed).toBe(true);
+  });
+
+  it('omits evaluatorFailed when undefined', () => {
+    const output = normalizeEvalResult(makeResult());
+    expect(output).not.toHaveProperty('evaluatorFailed');
+  });
+
   it('returns a new object (no mutation)', () => {
     const input = makeResult();
     const output = normalizeEvalResult(input);
