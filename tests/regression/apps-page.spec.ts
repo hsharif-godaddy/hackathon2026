@@ -208,6 +208,18 @@ test.describe('Apps Page & Navigation', () => {
     const countBefore = await page.getByTestId('app-card-edit-button').count();
     console.log(`  Apps before delete: ${countBefore}`);
 
+    // The apps grid paginates at APPS_GRID_PAGE_SIZE (11 in app code). When the
+    // account holds more apps than the page size, the visible card count stays
+    // flat after delete because the next app shifts in from page 2 — so a
+    // count-based assertion can never go below the page size. Identify the
+    // specific card we're about to delete via its aria-label so the assertion
+    // is pagination-independent.
+    const deletedCardLabel = await page.getByTestId('app-card-edit-button').first().getAttribute('aria-label');
+    expect(deletedCardLabel, 'expected first app card to expose an aria-label so we can verify it disappears').toBeTruthy();
+    const escapedLabel = deletedCardLabel!.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+    const deletedCardLocator = page.locator(`[data-testid="app-card-edit-button"][aria-label="${escapedLabel}"]`);
+    const matchingBefore = await deletedCardLocator.count();
+
     await dismissBanners(page);
     await page.getByTestId('app-card-menu-button').first().click();
     await page.getByTestId('app-card-delete-button').waitFor({ state: 'visible', timeout: 10000 });
@@ -224,8 +236,8 @@ test.describe('Apps Page & Navigation', () => {
 
     // Verify deletion
     await expect(page.getByTestId('inline-confirmation')).not.toBeVisible();
-    await expect(page.getByTestId('app-card-edit-button')).toHaveCount(countBefore - 1);
-    console.log(`  ✓ App deleted - now ${countBefore - 1} apps remain`);
+    await expect(deletedCardLocator).toHaveCount(matchingBefore - 1, { timeout: 10000 });
+    console.log(`  ✓ App deleted (card "${deletedCardLabel}" removed from grid)`);
 
     console.log('🎉 All apps page tests passed!');
   });
