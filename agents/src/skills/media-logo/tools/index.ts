@@ -713,3 +713,78 @@ export const offerLogoActionsTool: SkillToolDefinition = {
     };
   },
 };
+
+// ============================================================================
+// Set Venture Logo Tool
+// ============================================================================
+
+/**
+ * Reads the current horizontal and square logo slot URLs and returns them so
+ * the matching client renderer (SetVentureLogoToolRenderer) can post both
+ * versions to the Venture Home iframe parent.
+ *
+ * Caller contract — see `agents/src/prompts/initial/templates/logo-designer/core.md`
+ * ("Set as my logo" branch in Step 7). The prompt runs
+ * `edit_logo({ layout: "square" })` immediately before this tool so the primary
+ * slot reflects the user's currently-selected logo. Reordering that branch
+ * without updating this comment will cause the tool to silently return stale
+ * URLs.
+ */
+export const setVentureLogoTool: SkillToolDefinition = {
+  name: 'set_venture_logo',
+  description:
+    'Sends the current horizontal and square logos to the Venture Home dashboard via the chat-side renderer. ' +
+    'Call this only after edit_logo has produced a fresh square version. No arguments required.',
+  parameters: z.object({}),
+  async execute(_input, context?: unknown) {
+    const appId = (context as { metadata?: { appId?: string } })?.metadata?.appId;
+
+    if (!appId) {
+      logger.error('skills.media-logo.tools.set_venture_logo.no_app_id');
+      return { error: 'Unable to determine app id for set_venture_logo' };
+    }
+
+    logger.info('skills.media-logo.tools.set_venture_logo.start', { appId });
+
+    let horizontalResult: Awaited<ReturnType<typeof mediaManifestService.getSlot>>;
+    let squareResult: Awaited<ReturnType<typeof mediaManifestService.getSlot>>;
+    try {
+      [horizontalResult, squareResult] = await Promise.all([
+        mediaManifestService.getSlot(appId, LOGO_SLOT_PATHS.horizontal),
+        mediaManifestService.getSlot(appId, LOGO_SLOT_PATHS.square),
+      ]);
+    } catch (e) {
+      logger.error('skills.media-logo.tools.set_venture_logo.slot_lookup_failed', {
+        appId,
+        error: e instanceof Error ? e.message : String(e),
+      });
+      return { error: 'Failed to look up the current logos. Please try again.' };
+    }
+
+    const horizontalUrl = horizontalResult.success ? horizontalResult.slot?.currentUrl : undefined;
+    const squareUrl = squareResult.success ? squareResult.slot?.currentUrl : undefined;
+
+    if (!horizontalUrl || !squareUrl) {
+      logger.warn('skills.media-logo.tools.set_venture_logo.slot_missing', {
+        appId,
+        hasHorizontal: !!horizontalUrl,
+        hasSquare: !!squareUrl,
+      });
+      return {
+        error:
+          'Could not find both horizontal and square logos. Generate a logo first, then run edit_logo with layout: "square".',
+      };
+    }
+
+    logger.info('skills.media-logo.tools.set_venture_logo.success', {
+      appId,
+      hasHorizontal: true,
+      hasSquare: true,
+    });
+
+    return {
+      text: 'Sent horizontal and square logos to the venture dashboard.',
+      structuredContent: { horizontalUrl, squareUrl },
+    };
+  },
+};

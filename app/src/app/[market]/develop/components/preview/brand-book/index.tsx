@@ -203,7 +203,11 @@ export default function BrandBookView({ appId }: BrandBookViewProps) {
   const palette = data?.palette;
 
   return (
-    <div className={styles.root} style={intentOverrides} data-testid="brand-book-view">
+    <div
+      className={`${styles.root} bg-intents-ux-boxLowContrast-backgroundColor`}
+      style={intentOverrides}
+      data-testid="brand-book-view"
+    >
       <HeroSection
         brandName={brandName}
         palette={palette}

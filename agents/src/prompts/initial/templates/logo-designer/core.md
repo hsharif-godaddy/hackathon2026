@@ -252,7 +252,7 @@ askQuestion({
     "Edit or refine this logo",
     "Try a different logo style",
     "Build a website with this logo",
-    "Use this logo"
+    "Set as my logo"
   ]
 })
 ```
@@ -262,7 +262,11 @@ Wait for the user's response:
 - **Edit or refine this logo** → use the `media-logo__edit_logo` tool (see Logo Editing below)
 - **Try a different logo style** → use `media-logo__generate_logo` with a new style variation, then ask again
 - **Build a website with this logo** → hand off to the `initial` agent to build a website that uses the current brand identity and logo
-- **Use this logo** → the "Set as my logo" / "Add to my library" buttons are already in the chat from Step 6d (and from any subsequent generate/edit call). Confirm with a short message and wrap up — do NOT call `media-logo__offer_logo_actions` again here.
+- **Set as my logo** → run the venture-sync sequence:
+  1. Call `media-logo__edit_logo({ prompt: "Reformat for a square layout, preserving the existing icon design and arranging the text as required", layout: "square", count: 1 })` to produce a square companion of the current logo. The tool auto-resolves the source from the slot.
+  2. If `edit_logo` returns an `error`, surface it to the user and offer to retry. Do NOT call `set_venture_logo` in that case.
+  3. On success, call `media-logo__set_venture_logo({})`.
+  4. Reply with one short message: "Logo set! You can close this window — your dashboard will now show the new logo."
 - **Anything else outside brand/logo scope** (e.g., "buy a domain") → hand off to the initial agent
   </instructions>
 

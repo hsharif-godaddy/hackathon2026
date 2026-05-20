@@ -1,21 +1,33 @@
 /* ═══════════════════════════════════════════════════════════════════════════ */
-/*  BrandBookView — Intent-based styles                                      */
-/*  Uses @ux/postcss-intents for theme-aware colors.                         */
+/*  BrandBookView styles                                                     */
+/*  Chrome (borders, muted backgrounds, hover states) uses the app-builder   */
+/*  theme variables defined in src/styles/globals.scss (`--border`,          */
+/*  `--muted`, `--accent`, `--destructive`). Brand-driven content (palette   */
+/*  swatches, hero) is themed at the JSX level via inline styles or         */
+/*  `useBrandIntentOverrides` setting brand-palette CSS custom properties    */
+/*  on the root element.                                                     */
+/*                                                                           */
+/*  Do NOT use `intent('ux.*')` here: `@ux/postcss-intents` is not in the   */
+/*  PostCSS pipeline, so it would ship to the browser literally and fail.   */
+/*  Semantic feedback colors (success/critical) live on the JSX via the     */
+/*  `bg-intents-ux-feedback*-feedbackColor` Tailwind classes from           */
+/*  `@ux/tailwind-intents/plugin` (loaded in globals.scss).                  */
 /*  All directional properties use CSS logical properties for RTL support.   */
 /* ═══════════════════════════════════════════════════════════════════════════ */
 
-/* Root scroll container */
+/* Root scroll container.
+ * Background color is applied via the `bg-intents-ux-boxLowContrast-backgroundColor`
+ * Tailwind class on the consuming JSX. */
 .root {
   block-size: 100%;
   overflow-y: auto;
-  background-color: intent('ux.boxLowContrast.backgroundColor');
 }
 
 /* ── Section layout ─────────────────────────────────────────────────────── */
 
 .sectionDivider {
   border: none;
-  border-top: 1px solid intent('ux.box.borderColor');
+  border-top: 1px solid var(--border);
   margin: 0 auto;
   width: 100%;
   max-width: 960px;
@@ -100,7 +112,7 @@
 .logoPanelImage {
   position: relative;
   border-radius: 0.75rem;
-  border: 1px solid intent('ux.box.borderColor');
+  border: 1px solid var(--border);
   overflow: hidden;
 }
 
@@ -128,14 +140,14 @@
   text-decoration: none;
   border: none;
   border-radius: 0.375rem;
-  background-color: intent('ux.boxLowContrast.backgroundColor');
+  background-color: var(--muted);
   color: inherit;
   cursor: pointer;
   transition: background-color 0.15s;
 }
 
 .downloadButton:hover {
-  background-color: intent('ux.boxHighContrastOverlay.backgroundColor');
+  background-color: var(--accent);
 }
 
 .mockupPreview {
@@ -143,7 +155,7 @@
   aspect-ratio: 16 / 9;
   border-radius: 0.75rem;
   overflow: hidden;
-  border: 1px solid intent('ux.box.borderColor');
+  border: 1px solid var(--border);
 }
 
 .mockupImage {
@@ -159,8 +171,8 @@
   justify-content: space-between;
   align-items: center;
   padding: 0.75rem 1rem;
-  background: linear-gradient(transparent, intent('ux.boxHighContrastOverlay.backgroundColor'));
-  color: intent('ux.boxHighContrast.foregroundColor');
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.6));
+  color: #fff;
 }
 
 .mockupPlaceholder {
@@ -169,8 +181,8 @@
   justify-content: center;
   aspect-ratio: 16 / 7;
   border-radius: 0.75rem;
-  background-color: intent('ux.boxLowContrast.backgroundColor');
-  border: 1px dashed intent('ux.box.borderColor');
+  background-color: var(--muted);
+  border: 1px dashed var(--border);
 }
 
 .placeholderCard {
@@ -181,8 +193,8 @@
   gap: 0.5rem;
   padding: 3rem;
   border-radius: 0.75rem;
-  background-color: intent('ux.boxLowContrast.backgroundColor');
-  border: 1px dashed intent('ux.box.borderColor');
+  background-color: var(--muted);
+  border: 1px dashed var(--border);
 }
 
 .logoImage {
@@ -205,8 +217,8 @@
 .swatchSquare {
   aspect-ratio: 1;
   border-radius: 0.75rem;
-  border: 1px solid intent('ux.box.borderColor');
-  box-shadow: 0 1px 3px intent('ux.boxHighContrastOverlay.backgroundColor');
+  border: 1px solid var(--border);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
 .swatchInfo {
@@ -236,7 +248,7 @@
 /* ── Typography ─────────────────────────────────────────────────────────── */
 
 .typeScaleRow {
-  border-block-end: 1px solid intent('ux.box.borderColor');
+  border-block-end: 1px solid var(--border);
   padding-block: 1.25rem;
 }
 
@@ -254,7 +266,7 @@
 .softCard {
   border-radius: 0.75rem;
   padding: 1.5rem;
-  background-color: intent('ux.boxLowContrast.backgroundColor');
+  background-color: var(--muted);
 }
 
 .softCardSpaced {
@@ -281,7 +293,7 @@
 .toneRow {
   border-radius: 0.75rem;
   padding: 1rem 1.25rem;
-  background-color: intent('ux.boxLowContrast.backgroundColor');
+  background-color: var(--muted);
 }
 
 .toneRowContext {
@@ -303,19 +315,12 @@
 }
 
 /* ── Voice icons ───────────────────────────────────────────────────────── */
+/* Icon color is applied via Tailwind classes on the JSX
+   (`text-intents-ux-feedbackSuccess-feedbackColor` /
+    `text-intents-ux-feedbackCritical-feedbackColor`). */
 
 .voiceIcon {
   flex-shrink: 0;
-}
-
-.voiceCheckIcon {
-  composes: voiceIcon;
-  color: intent('ux.feedbackSuccess.feedbackColor');
-}
-
-.voiceCrossIcon {
-  composes: voiceIcon;
-  color: intent('ux.feedbackCritical.feedbackColor');
 }
 
 /* ── Footer ────────────────────────────────────────────────────────────── */
@@ -365,7 +370,7 @@
   display: inline-block;
   width: 0.25rem;
   height: 0.25rem;
-  background-color: intent('ux.box.borderColor');
+  background-color: var(--border);
   border-radius: 50%;
   opacity: 0.6;
   margin: 0 0.5rem;
@@ -391,7 +396,7 @@
   width: 100%;
   aspect-ratio: 1;
   border-radius: 0.75rem;
-  border: 1px solid intent('ux.box.borderColor');
+  border: 1px solid var(--border);
   overflow: hidden;
 }
 
@@ -420,7 +425,7 @@
   flex-direction: column;
   border-radius: 0.75rem;
   overflow: hidden;
-  border: 1px solid intent('ux.box.borderColor');
+  border: 1px solid var(--border);
 }
 
 .mockupCardImage {
@@ -428,7 +433,7 @@
   align-items: center;
   justify-content: center;
   aspect-ratio: 16 / 10;
-  background-color: intent('ux.boxLowContrast.backgroundColor');
+  background-color: var(--muted);
 }
 
 .mockupCardInfo {
@@ -444,6 +449,9 @@
 }
 
 /* ── Usage guidelines ──────────────────────────────────────────────────── */
+/* Dot color is applied via Tailwind classes on the JSX
+   (`bg-intents-ux-feedbackSuccess-feedbackColor` /
+    `bg-intents-ux-feedbackCritical-feedbackColor`). */
 
 .guidelinesGrid {
   display: grid;
@@ -469,16 +477,6 @@
   width: 0.5rem;
   height: 0.5rem;
   border-radius: 50%;
-}
-
-.guidelinesDotDo {
-  composes: guidelinesDot;
-  background-color: intent('ux.feedbackSuccess.feedbackColor');
-}
-
-.guidelinesDotDont {
-  composes: guidelinesDot;
-  background-color: intent('ux.feedbackCritical.feedbackColor');
 }
 
 .guidelinesItem {

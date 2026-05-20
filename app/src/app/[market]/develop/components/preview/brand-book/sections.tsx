@@ -473,12 +473,12 @@ export function UsageGuidelinesSection({
       <div className={styles.guidelinesGrid}>
         <div className={styles.guidelinesColumn}>
           <div className={styles.guidelinesHeader}>
-            <span className={styles.guidelinesDotDo} />
+            <span className={`${styles.guidelinesDot} bg-intents-ux-feedbackSuccess-feedbackColor`} />
             <text.span as="caption" className={styles.sectionLabel} style={{ fontSize: '0.6rem' }}>DO</text.span>
           </div>
           {doItems.map((item) => (
             <div key={item} className={styles.guidelinesItem}>
-              <Check size={14} className={styles.voiceCheckIcon} />
+              <Check size={14} className={`${styles.voiceIcon} text-intents-ux-feedbackSuccess-feedbackColor`} />
               <text.span as="paragraph" size={0}>{item}</text.span>
             </div>
           ))}
@@ -486,12 +486,12 @@ export function UsageGuidelinesSection({
 
         <div className={styles.guidelinesColumn}>
           <div className={styles.guidelinesHeader}>
-            <span className={styles.guidelinesDotDont} />
+            <span className={`${styles.guidelinesDot} bg-intents-ux-feedbackCritical-feedbackColor`} />
             <text.span as="caption" className={styles.sectionLabel} style={{ fontSize: '0.6rem' }}>DON&apos;T</text.span>
           </div>
           {dontItems.map((item) => (
             <div key={item} className={styles.guidelinesItem}>
-              <X size={14} className={styles.voiceCrossIcon} />
+              <X size={14} className={`${styles.voiceIcon} text-intents-ux-feedbackCritical-feedbackColor`} />
               <text.span as="paragraph" size={0}>{item}</text.span>
             </div>
           ))}

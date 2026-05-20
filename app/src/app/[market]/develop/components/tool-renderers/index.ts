@@ -32,6 +32,7 @@ import ReadFileToolRenderer from './ReadFileToolRenderer'
 import RebuildPageSelectorToolRenderer from './RebuildPageSelectorToolRenderer'
 import SecretsToolRenderer from './SecretsToolRenderer'
 import SetProjectNameToolRenderer from './SetProjectNameToolRenderer'
+import SetVentureLogoToolRenderer from './SetVentureLogoToolRenderer'
 import SkillToolRenderer from './SkillToolRenderer'
 import SocialConnectToolRenderer from './SocialConnectToolRenderer'
 import SocialPostCreateToolRenderer from './SocialPostCreateToolRenderer'
@@ -100,6 +101,7 @@ export const toolRendererRegistry = {
   'media-logo__generate_logo': LogoGeneratorToolRenderer,
   'media-logo__edit_logo': LogoGeneratorToolRenderer,
   'media-logo__offer_logo_actions': LogoActionsToolRenderer,
+  'media-logo__set_venture_logo': SetVentureLogoToolRenderer,
   'media-image__generate_image': ImageGeneratorToolRenderer,
   'media-image__edit_image': ImageGeneratorToolRenderer,
   'media-video__generate_video': VideoGeneratorToolRenderer,
