@@ -245,7 +245,7 @@ describe('agent-router', function agentRouterTests() {
       expect(id).toBe('develop')
     })
 
-    it('returns develop when session is develop but profile has no develop.* keys', async function sessionDevelopNoFlags() {
+    it('returns develop when session is develop but profile has no develop.* or skill.* keys', async function sessionDevelopNoFlags() {
       resolveProfileSpy.mockReturnValue(profile({
         name: 'plain',
         properties: { 'initial.promptVersion': '3.0' },
@@ -258,6 +258,37 @@ describe('agent-router', function agentRouterTests() {
       })
       expect(id).toBe('develop')
     })
+
+    it('returns develop-<profile> when session is develop and profile has skill.* flags', async function sessionToDevelopVariantSkillFlags() {
+      resolveProfileSpy.mockReturnValue(profile({
+        name: 'skillonly',
+        properties: { 'skill.conversations.enabled': true },
+      }))
+
+      const id = await resolveAgent({
+        appId,
+        agentContext: { agentProfile: 'skillonly' },
+        session: sessionWithAgent('develop'),
+      })
+      expect(id).toBe('develop-skillonly')
+    })
+  })
+
+  it('routes to develop-<profile> for existing app when profile has skill.* flags', async function existingAppSkillFlags() {
+    const resolveAgentWithMessages = createAgentRouter({
+      hasMessagesForApp: () => true,
+      getTemplateIds: () => [],
+    })
+    resolveProfileSpy.mockReturnValue(profile({
+      name: 'skillonly',
+      properties: { 'skill.conversations.enabled': true },
+    }))
+
+    const id = await resolveAgentWithMessages({
+      appId: 'app_existing',
+      agentContext: { agentProfile: 'skillonly' },
+    })
+    expect(id).toBe('develop-skillonly')
   })
 
   it('router prefers modular branch when both modularPromptFiles and promptVersion 2.0 are set', async function modularBeatsV2InRouter() {

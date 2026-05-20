@@ -70,12 +70,14 @@ export async function createUnifiedAgentFactory(options?: {
 
   const developConfig = await createDevelopAgent()
 
-  // Pre-build develop variants for profiles that have develop.* properties.
+  // Pre-build develop variants for profiles that have develop.* or skill.* properties.
   // profileFlag() reads from AsyncLocalStorage, so we wrap each build in runWithProfile
   // so the flags resolve correctly at construction time.
   const profileDevelopConfigs: Record<string, AgentConfig> = {}
   for (const [name, profile] of getProfileRegistry()) {
-    const hasDevelopFlags = Object.keys(profile.properties).some(k => k.startsWith('develop.'))
+    const hasDevelopFlags = Object.keys(profile.properties).some(k =>
+      k.startsWith('develop.') || k.startsWith('skill.')
+    )
     if (!hasDevelopFlags) continue
 
     try {
@@ -221,7 +223,9 @@ export async function createUnifiedAgentFactory(options?: {
   // the same promptVersion AND both have develop.* flags, the last one wins. To support
   // that case, clone the initial config per profile before mutating.
   for (const [name, profile] of getProfileRegistry()) {
-    const hasDevelopFlags = Object.keys(profile.properties).some(k => k.startsWith('develop.'))
+    const hasDevelopFlags = Object.keys(profile.properties).some(k =>
+      k.startsWith('develop.') || k.startsWith('skill.')
+    )
     if (!hasDevelopFlags) continue
 
     const promptVersion = runWithProfile(profile, () => profileValue('initial.promptVersion', '' as string))

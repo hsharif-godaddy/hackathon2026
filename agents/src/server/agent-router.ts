@@ -56,7 +56,7 @@ export function createAgentRouter(deps: AgentRouterDeps) {
       const sessionAppId = stateManager.getSessionMetadata?.(sessionId)?.appId as string | undefined
 
       if (currentAgent && sessionAppId === appId) {
-        // If session says 'develop' but a profile has develop flags, reroute to the variant.
+        // If session says 'develop' but a profile has develop/skill flags, reroute to the variant.
         // This handles the handoff case: initial agent hands off to 'develop', but the
         // profile-specific variant should be used instead.
         if (currentAgent === 'develop') {
@@ -66,7 +66,9 @@ export function createAgentRouter(deps: AgentRouterDeps) {
             jwtAgentProfile: agentContext?.agentProfile,
           })
           if (profile) {
-            const hasDevelopFlags = Object.keys(profile.properties).some(k => k.startsWith('develop.'))
+            const hasDevelopFlags = Object.keys(profile.properties).some(k =>
+              k.startsWith('develop.') || k.startsWith('skill.')
+            )
             if (hasDevelopFlags) {
               logger.debug('agent_router.session_develop_variant', { sessionId, appId, profileName: profile.name })
               return `develop-${profile.name}`
@@ -167,7 +169,9 @@ export function createAgentRouter(deps: AgentRouterDeps) {
       jwtAgentProfile: agentContext?.agentProfile,
     })
     if (profile) {
-      const hasDevelopFlags = Object.keys(profile.properties).some(k => k.startsWith('develop.'))
+      const hasDevelopFlags = Object.keys(profile.properties).some(k =>
+        k.startsWith('develop.') || k.startsWith('skill.')
+      )
       if (hasDevelopFlags) {
         logger.debug('agent_router.develop_variant', { appId, profileName: profile.name })
         return `develop-${profile.name}`
