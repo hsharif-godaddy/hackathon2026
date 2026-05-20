@@ -1,12 +1,12 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import Box from '@ux/box';
 import text from '@ux/text';
 
 import { useBrandData } from '@/hooks/useBrandData';
 import { useMediaManifest } from '@/hooks/useMediaManifest';
 import { logger } from '@/lib/request-context';
+import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import { logImpressionEvent } from '@/utils/instrumentation';
 import styles from './brand-book.module.css';
 import { useBrandIntentOverrides, useBrandStyle, useGoogleFonts, useIsBrandGenerating } from './hooks';
@@ -23,7 +23,12 @@ import { Footer } from './shared-components';
 import type { BrandBookViewProps } from './types';
 
 export default function BrandBookView({ appId }: BrandBookViewProps) {
-  const { data, isLoading, error } = useBrandData(appId);
+  // Wait for develop-page hydration before hitting the agent — calling /brand-data
+  // before the app/alloc exists returns 401 and creates a flurry of failed requests.
+  const isAppHydrated = useDevelopPageStore(
+    (state) => state.currentAppId === appId && state.loadingPhase === 'ready',
+  );
+  const { data } = useBrandData(appId, { enabled: isAppHydrated });
   const logoViewFiredRef = useRef(false);
   const bookViewFiredRef = useRef(false);
 
@@ -173,22 +178,8 @@ export default function BrandBookView({ appId }: BrandBookViewProps) {
     })();
   }, [data, primaryLogoUrl, reversedLogoUrl, appId]);
 
-  // Genuine API failure after retries — show error state
-  if (error && !data && !isLoading) {
-    return (
-      <Box
-        inlineAlignChildren="center"
-        blockAlignChildren="center"
-        stretch
-        className="bg-intents-ux-boxLowContrast-backgroundColor"
-        data-testid="brand-book-error"
-      >
-        <text.span as="paragraph">Unable to load brand data. Try refreshing the page.</text.span>
-      </Box>
-    );
-  }
-
-  // Loading, or no data yet (agent hasn't written brand data during initial creation)
+  // Loading, or no data yet (agent hasn't written brand data during initial creation).
+  // API failures fall through to the same loading state — defaults render once data arrives.
   if (!data) {
     return (
       <div
