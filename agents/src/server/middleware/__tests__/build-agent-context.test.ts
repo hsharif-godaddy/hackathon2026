@@ -20,6 +20,7 @@ describe('buildAgentContext', function suite() {
     modelSelectorEnabled: true,
     agentProfile: 'experimental',
     agentProfileSelectorEnabled: true,
+    useAtlasCrawler: true,
     exp: 1700000000,
     iat: 1699999000,
   };
@@ -47,6 +48,7 @@ describe('buildAgentContext', function suite() {
       modelSelectorEnabled: true,
       agentProfile: 'experimental',
       agentProfileSelectorEnabled: true,
+      useAtlasCrawler: true,
       debugStatsEnabled: false,
       exp: 1700000000,
       iat: 1699999000,
@@ -131,5 +133,46 @@ describe('buildAgentContext', function suite() {
 
   it('handles empty object without throwing', function emptyObject() {
     expect(() => buildAgentContext({})).not.toThrow();
+  });
+
+  it('passes through useAtlasCrawler when true', function atlasTrue() {
+    expect(buildAgentContext({ useAtlasCrawler: true }).useAtlasCrawler).toBe(true);
+  });
+
+  it('passes through useAtlasCrawler when false', function atlasFalse() {
+    expect(buildAgentContext({ useAtlasCrawler: false }).useAtlasCrawler).toBe(false);
+  });
+
+  it('defaults useAtlasCrawler to false when missing', function atlasDefault() {
+    expect(buildAgentContext({}).useAtlasCrawler).toBe(false);
+  });
+
+  // Guardrail: every Switchboard-driven claim that the BFF mints (and that
+  // agent code is expected to read) must be carried through buildAgentContext.
+  // The previous omission of useAtlasCrawler silently disabled the
+  // appbuilder-atlas-crawler rollout because the field was dropped here.
+  // If you add a new Switchboard claim, add it to this list.
+  it('maps every Switchboard-driven JWT claim to AgentContext', function guardrail() {
+    const requiredClaims = [
+      'canDownload',
+      'canPublish',
+      'canPurchaseDomain',
+      'useTestBudget',
+      'budgetServiceEnabled',
+      'enableAssessmentAgent',
+      'enableAssessmentOverride',
+      'assessmentClassifier',
+      'modelOverride',
+      'modelSelectorEnabled',
+      'agentProfile',
+      'agentProfileSelectorEnabled',
+      'debugStatsEnabled',
+      'useAtlasCrawler',
+    ] as const;
+
+    const ctx = buildAgentContext({});
+    for (const claim of requiredClaims) {
+      expect(ctx, `missing claim ${claim} in AgentContext`).toHaveProperty(claim);
+    }
   });
 });

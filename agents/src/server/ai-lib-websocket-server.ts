@@ -646,15 +646,13 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
               // Get agentContext from socket (live) or cached (if socket disconnected mid-turn)
               const socketId = (context as any).socketId as string | undefined
               const socket = socketId && ioInstance ? ioInstance.sockets.sockets.get(socketId) : null
-              const agentContext = (socket?.handshake?.auth?.agentContext ?? (socketId ? cachedAgentContexts.get(socketId) : undefined)) as {
-                isE2S?: boolean
-                authType?: TokenAuthType
-                useTestBudget?: boolean
-                budgetServiceEnabled?: boolean
-                subscriptionId?: string
-                bmsBudgetId?: string
-                useAtlasCrawler?: boolean
-              } | undefined
+              // Both sources hold the buildAgentContext output — the typed
+              // AgentContext is authoritative. An inline cast here previously
+              // claimed fields that buildAgentContext didn't actually map
+              // (e.g. useAtlasCrawler), which silently broke the
+              // appbuilder-atlas-crawler rollout. Read through AgentContext
+              // so omissions surface as compile errors.
+              const agentContext = (socket?.handshake?.auth?.agentContext ?? (socketId ? cachedAgentContexts.get(socketId) : undefined)) as AgentContext | undefined
               // Use authType to distinguish employee sessions (e2s, e2s2s, etc.) from delegate (s2s)
               const isEmployeeSession = isEmployeeAuthType(agentContext?.authType)
               const useTestBudget = agentContext?.useTestBudget === true
