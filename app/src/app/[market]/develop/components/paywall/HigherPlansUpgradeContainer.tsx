@@ -5,6 +5,7 @@ import { useQueryClient } from '@tanstack/react-query'
 
 import ErrorBoundary from '@/components/ErrorBoundary'
 import { useAuth } from '@/hooks/useAuth'
+import { useCreditGrants } from '@/hooks/useCreditGrants'
 import { useGasketData } from '@/hooks/useGasketData'
 import { useSubscription } from '@/hooks/useSubscription'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
@@ -15,8 +16,7 @@ import { shipAnalyticsLog } from '@/lib/logging'
 import { AiroSubscription } from '@/lib/mgmt-airo/types';
 import { isPlanUpgrade } from '@/lib/paywall/shared'
 import { invalidatePlanQueries } from '@/lib/query-utils'
-import type { CreditGrant } from '@/types/credits';
-import { GrantType, SubscriptionPlan } from '@/types/credits';
+import { GrantType, SubscriptionPlan } from '@/types/credits'
 import { resetFocusOnModalClose } from '@/utils/focus'
 import { logImpressionEvent } from '@/utils/instrumentation'
 import { CDS_TYPE_ESM, CDS_TYPE_UMD, PAYWALL_UMD_FALLBACK } from './cdsConfig'
@@ -58,6 +58,9 @@ const HigherPlansUpgradeContainer = ({
 
   const entitlementId = subscription?.builderEntitlementId
   const subscriptionId = subscription?.id
+
+  const { data: grants } = useCreditGrants({ subscriptionId })
+
   const hasLoggedImpressionRef = useRef(false)
 
   // Capture currentPlan at mount time to prevent UPP remount when subscription
@@ -65,10 +68,21 @@ const HigherPlansUpgradeContainer = ({
   // UPP cache between separate paywall sessions, not mid-purchase).
   const initialCurrentPlanRef = useRef(subscription?.downgradedPlan ?? subscription?.plan)
 
+  const initialCreditsMaxRef = useRef(
+    grants?.find((g) => g.type === GrantType.PlanMonthly && g.isAvailable)?.creditsMax
+  )
+
   // Defensive: if mounted before subscription loads (bypassing UpgradeContainer's
   // loading gate), self-heal once subscription becomes available.
   if (!initialCurrentPlanRef.current && subscription) {
     initialCurrentPlanRef.current = subscription.downgradedPlan ?? subscription.plan
+  }
+
+  if (typeof initialCreditsMaxRef.current !== 'number' && grants) {
+    const planMonthlyGrant = grants.find((g) => g.type === GrantType.PlanMonthly && g.isAvailable)
+    if (planMonthlyGrant && typeof planMonthlyGrant.creditsMax === 'number') {
+      initialCreditsMaxRef.current = planMonthlyGrant.creditsMax
+    }
   }
 
   useEffect(() => {
@@ -120,16 +134,6 @@ const HigherPlansUpgradeContainer = ({
     // - Downgrade: scheduled for term end, poll until downgradedAt/downgradedPlan are set
     const isUpgrade = isPlanUpgrade(planBeforePurchase, planAfterPurchase)
 
-    // Capture the current plan-monthly grant ID at the moment of purchase
-    let initialPlanMonthlyGrantId: string | undefined
-    if (isUpgrade && subscriptionId) {
-      const cachedGrants = queryClient.getQueryData<CreditGrant[]>(['credit-grants', subscriptionId, true])
-      const planMonthlyGrant = cachedGrants?.find(
-        (g) => g.type === GrantType.PlanMonthly && g.isAvailable
-      )
-      initialPlanMonthlyGrantId = planMonthlyGrant?.id
-    }
-
     // Fire and forget - don't await. The polling modal will show via useIsUpgradePolling()
     // and the mutation's onSettled will handle query invalidation.
     handlePurchaseSuccess(
@@ -140,7 +144,7 @@ const HigherPlansUpgradeContainer = ({
       source,
       productId,
       isUpgrade ? subscriptionId : undefined,
-      initialPlanMonthlyGrantId
+      isUpgrade ? initialCreditsMaxRef.current : undefined
     ).then(({ planAfterPurchase: polledPlan, updated, grantUpdated }) => {
       const changeType = isUpgrade ? 'upgrade' : 'downgrade'
 

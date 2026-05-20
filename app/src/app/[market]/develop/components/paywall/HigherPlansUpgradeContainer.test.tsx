@@ -58,6 +58,26 @@ vi.mock('@/hooks/useSubscription', () => ({
   })),
 }));
 
+vi.mock('@/hooks/useCreditGrants', () => ({
+  useCreditGrants: vi.fn(() => ({
+    data: [
+      {
+        id: 'initial-plan-monthly-grant-id',
+        type: 'plan-monthly',
+        isAvailable: true,
+        creditsMax: 500,
+        subscriptionId: 'test-subscription-123',
+      },
+    ],
+    source: undefined,
+    isLoading: false,
+    isFetching: false,
+    isError: false,
+    error: null,
+    refetch: vi.fn(),
+  })),
+}));
+
 
 vi.mock('@/hooks/useUpgradePurchase', () => ({
   useUpgradePurchase: () => ({
@@ -181,6 +201,7 @@ vi.mock('./PaywallLoadingModal', () => ({
   },
 }));
 
+import { useCreditGrants } from '@/hooks/useCreditGrants';
 import { useSubscription } from '@/hooks/useSubscription';
 import { shipAnalyticsLog } from '@/lib/logging';
 import { resetFocusOnModalClose } from '@/utils/focus';
@@ -195,8 +216,25 @@ describe('HigherPlansUpgradeContainer', function higherPlansUpgradeContainerTest
       isLoading: false,
       isError: false,
     } as ReturnType<typeof useSubscription>);
+    vi.mocked(useCreditGrants).mockReturnValue({
+      data: [
+        {
+          id: 'initial-plan-monthly-grant-id',
+          type: 'plan-monthly',
+          isAvailable: true,
+          creditsMax: 500,
+          subscriptionId: 'test-subscription-123',
+        },
+      ],
+      source: undefined,
+      isLoading: false,
+      isFetching: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    } as ReturnType<typeof useCreditGrants>);
     mockHandlePurchaseSuccess.mockResolvedValue({ planAfterPurchase: 'ultimate', updated: true, grantUpdated: true });
-    // Mock getQueryData to return different data based on query key
+    // Mock getQueryData for subscriptions cache (used in handleSuccess)
     mockGetQueryData.mockImplementation((queryKey: unknown[]) => {
       if (queryKey[0] === 'subscriptions') {
         return {
@@ -205,16 +243,6 @@ describe('HigherPlansUpgradeContainer', function higherPlansUpgradeContainerTest
             downgradedPlan: undefined,
           },
         };
-      }
-      if (queryKey[0] === 'credit-grants') {
-        return [
-          {
-            id: 'initial-plan-monthly-grant-id',
-            type: 'plan-monthly',
-            isAvailable: true,
-            subscriptionId: 'test-subscription-123',
-          },
-        ];
       }
       return undefined;
     });
@@ -321,7 +349,7 @@ describe('HigherPlansUpgradeContainer', function higherPlansUpgradeContainerTest
       'test-source',
       expect.any(String),
       'test-subscription-123', // subscriptionId for grant polling
-      'initial-plan-monthly-grant-id' // initialPlanMonthlyGrantId for grant polling
+      500 // initialCreditsMax
     );
     expect(logImpressionEvent).toHaveBeenCalledWith('plan.purchase_ultimate.success');
     expect(shipAnalyticsLog).toHaveBeenCalledWith('plan.purchase_ultimate.in-app', expect.objectContaining({
@@ -352,7 +380,7 @@ describe('HigherPlansUpgradeContainer', function higherPlansUpgradeContainerTest
       'test-source',
       expect.any(String),
       undefined, // no subscriptionId for downgrades (no grant polling)
-      undefined // no initialPlanMonthlyGrantId for downgrades
+      undefined // no initialCreditsMax for downgrades
     );
     expect(mockOnSuccessClick).not.toHaveBeenCalled();
   });
@@ -500,19 +528,17 @@ describe('HigherPlansUpgradeContainer', function higherPlansUpgradeContainerTest
     expect(screen.getByTestId('override-itc')).toHaveTextContent('');
   });
 
-  it('passes undefined for initialPlanMonthlyGrantId when grants cache is empty', async function coldCachePassesUndefined() {
-    mockGetQueryData.mockImplementation((queryKey: unknown[]) => {
-      if (queryKey[0] === 'subscriptions') {
-        return {
-          active: {
-            plan: 'professional',
-            downgradedPlan: undefined,
-          },
-        };
-      }
-      // credit-grants cache is empty/undefined
-      return undefined;
-    });
+  it('passes undefined for initialCreditsMax when grants are not loaded', async function coldCachePassesUndefined() {
+    // Simulate grants not yet loaded (hook returns undefined data)
+    vi.mocked(useCreditGrants).mockReturnValue({
+      data: undefined,
+      source: undefined,
+      isLoading: true,
+      isFetching: true,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    } as ReturnType<typeof useCreditGrants>);
 
     renderWithProviders(
       <HigherPlansUpgradeContainer
@@ -531,11 +557,12 @@ describe('HigherPlansUpgradeContainer', function higherPlansUpgradeContainerTest
       'test-source',
       expect.any(String),
       'test-subscription-123',
-      undefined // initialPlanMonthlyGrantId should be undefined when cache is cold
+      undefined // initialCreditsMax should be undefined when grants not loaded
     );
   });
 
   it('includes downgradedPlan from cached data when re-upgrading', async function includesDowngradedPlan() {
+    // Override subscriptions cache to include downgradedPlan
     mockGetQueryData.mockImplementation((queryKey: unknown[]) => {
       if (queryKey[0] === 'subscriptions') {
         return {
@@ -544,16 +571,6 @@ describe('HigherPlansUpgradeContainer', function higherPlansUpgradeContainerTest
             downgradedPlan: 'starter', // user had previously scheduled downgrade to starter
           },
         };
-      }
-      if (queryKey[0] === 'credit-grants') {
-        return [
-          {
-            id: 'initial-plan-monthly-grant-id',
-            type: 'plan-monthly',
-            isAvailable: true,
-            subscriptionId: 'test-subscription-123',
-          },
-        ];
       }
       return undefined;
     });
@@ -575,7 +592,7 @@ describe('HigherPlansUpgradeContainer', function higherPlansUpgradeContainerTest
       'test-source',
       expect.any(String),
       'test-subscription-123', // subscriptionId for grant polling
-      'initial-plan-monthly-grant-id' // initialPlanMonthlyGrantId for grant polling
+      500 // initialCreditsMax from cached grant
     );
   });
 

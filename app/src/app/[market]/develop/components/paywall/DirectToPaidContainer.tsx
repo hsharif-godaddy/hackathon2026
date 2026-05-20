@@ -172,7 +172,7 @@ const DirectToPaidContainer = ({
       source,
       productId,
       subscriptionId,
-      undefined // No initial grant ID
+      undefined // No initial creditsMax (D2P has no prior grant, grant polling skipped)
     ).then(({ planAfterPurchase: polledPlan, updated, grantUpdated }) => {
       if (updated && polledPlan) {
         logImpressionEvent(`plan.d2p_${polledPlan}.success`)()

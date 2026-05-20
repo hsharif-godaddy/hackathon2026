@@ -3,8 +3,7 @@ import { useIsMutating, useMutation, useQueryClient } from '@tanstack/react-quer
 import { getErrorMessage } from '@/lib/errors'
 import { invalidatePlanQueries, waitForQueryUpdate } from '@/lib/query-utils'
 import { logger } from '@/lib/request-context'
-import type { CreditGrant } from '@/types/credits'
-import { GrantType } from '@/types/credits'
+import { type CreditGrant, GrantType } from '@/types/credits'
 
 const PLAN_CHANGE_MUTATION_KEY = ['plan-change-polling'] as const
 
@@ -24,7 +23,7 @@ interface PlanChangeParams {
   source: string | undefined
   productId: string
   subscriptionId: string | undefined
-  initialPlanMonthlyGrantId: string | undefined
+  initialCreditsMax: number | undefined
 }
 
 interface PlanChangeResult {
@@ -46,7 +45,7 @@ interface UseUpgradePurchaseResult {
     source: string | undefined,
     productId: string,
     subscriptionId: string | undefined,
-    initialPlanMonthlyGrantId: string | undefined
+    initialCreditsMax: number | undefined
   ) => Promise<PlanChangeResult>
   isPolling: boolean
 }
@@ -64,7 +63,7 @@ export function useUpgradePurchase(): UseUpgradePurchaseResult {
       source,
       productId,
       subscriptionId,
-      initialPlanMonthlyGrantId,
+      initialCreditsMax,
     }: PlanChangeParams): Promise<PlanChangeResult> => {
       const changeType = isUpgrade ? 'upgrade' : 'downgrade'
       logger.info(`plan.${changeType}.polling-start`, {
@@ -72,7 +71,7 @@ export function useUpgradePurchase(): UseUpgradePurchaseResult {
         planAfterPurchase,
         source,
         productId,
-        ...(isUpgrade && { subscriptionId, initialPlanMonthlyGrantId }),
+        ...(isUpgrade && { subscriptionId, initialCreditsMax }),
       })
 
       const updated = await waitForQueryUpdate<SubscriptionData>(
@@ -109,21 +108,26 @@ export function useUpgradePurchase(): UseUpgradePurchaseResult {
         })
       }
 
-      // For upgrades: poll for the new plan-monthly grant after subscription is updated
-      // A new grant is created on the backend when upgrading, so we wait for it to appear
-      // Skip grant polling for D2P/new subscriptions (planBeforePurchase is undefined) since there's no existing grant
+      // For upgrades: poll for grant creditsMax to increase after subscription is updated
+      // Works for both BMS (same grant, creditsMax increases) and legacy (new grant with higher creditsMax)
       let grantUpdated = false
-      if (isUpgrade && updated && subscriptionId && planBeforePurchase !== undefined) {
-        if (!initialPlanMonthlyGrantId) {
-          // Grant cache was cold or no plan-monthly grant found at purchase time
+      if (isUpgrade && updated && subscriptionId) {
+        if (planBeforePurchase === undefined) {
+          // D2P/new subscription - no prior grant to compare against, skip grant polling
+          logger.info('plan.upgrade.grant-polling-skipped', {
+            subscriptionId,
+            reason: 'new_subscription',
+          })
+        } else if (typeof initialCreditsMax !== 'number') {
           logger.warn('plan.upgrade.grant-polling-skipped', {
             subscriptionId,
-            reason: 'initial_grant_not_found',
+            reason: 'initial_credits_max_not_found',
+            initialCreditsMax,
           })
         } else {
           logger.info('plan.upgrade.grant-polling-start', {
             subscriptionId,
-            initialPlanMonthlyGrantId,
+            initialCreditsMax,
           })
 
           grantUpdated = await waitForQueryUpdate<CreditGrant[]>(
@@ -136,15 +140,28 @@ export function useUpgradePurchase(): UseUpgradePurchaseResult {
                 (g) => g.type === GrantType.PlanMonthly && g.isAvailable
               )
 
-              return !!currentPlanMonthlyGrant && currentPlanMonthlyGrant.id !== initialPlanMonthlyGrantId
+              if (!currentPlanMonthlyGrant) return false
+
+              // Unified check: creditsMax increases after upgrade (works for both BMS and legacy)
+              if (typeof currentPlanMonthlyGrant.creditsMax !== 'number') return false
+              return currentPlanMonthlyGrant.creditsMax > initialCreditsMax
             },
             { maxAttempts: 15, intervalMs: 2000 }
           )
 
-          if (!grantUpdated) {
+          if (grantUpdated) {
+            logger.info('plan.upgrade.grant-polling-complete', {
+              subscriptionId,
+            })
+          } else {
+            const finalGrants = queryClient.getQueryData<CreditGrant[]>(['credit-grants', subscriptionId, true])
+            const finalCreditsMax = finalGrants?.find(
+              (g) => g.type === GrantType.PlanMonthly && g.isAvailable
+            )?.creditsMax
             logger.warn('plan.upgrade.grant-polling-timeout', {
               subscriptionId,
-              initialPlanMonthlyGrantId,
+              initialCreditsMax,
+              finalCreditsMax,
             })
           }
         }
@@ -172,7 +189,7 @@ export function useUpgradePurchase(): UseUpgradePurchaseResult {
     source: string | undefined,
     productId: string,
     subscriptionId: string | undefined,
-    initialPlanMonthlyGrantId: string | undefined
+    initialCreditsMax: number | undefined
   ): Promise<PlanChangeResult> => {
     try {
       return await mutation.mutateAsync({
@@ -183,9 +200,12 @@ export function useUpgradePurchase(): UseUpgradePurchaseResult {
         source,
         productId,
         subscriptionId,
-        initialPlanMonthlyGrantId,
+        initialCreditsMax,
       })
-    } catch {
+    } catch (error) {
+      logger.error('plan.purchase.handle-success-failed', {
+        error: getErrorMessage(error),
+      })
       return { planAfterPurchase: undefined, updated: false, grantUpdated: false }
     }
   }

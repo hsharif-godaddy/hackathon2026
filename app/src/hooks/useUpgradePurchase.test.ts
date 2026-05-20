@@ -288,7 +288,7 @@ describe('useUpgradePurchase', function useUpgradePurchaseTests() {
       });
     });
 
-    it('polls for grant changes after successful upgrade when grant ID provided', async function grantPollingOnUpgrade() {
+    it('polls for creditsMax change after successful upgrade', async function grantPollingOnUpgrade() {
       // First call for subscription, second call for grants
       vi.mocked(waitForQueryUpdate)
         .mockResolvedValueOnce(true) // subscription poll succeeds
@@ -307,7 +307,7 @@ describe('useUpgradePurchase', function useUpgradePurchaseTests() {
           'test-source',
           'test-product',
           'sub-123',
-          'initial-grant-id'
+          1000 // initialCreditsMax
         );
       });
 
@@ -315,7 +315,7 @@ describe('useUpgradePurchase', function useUpgradePurchaseTests() {
       expect(pollResult?.grantUpdated).toBe(true);
       expect(logger.info).toHaveBeenCalledWith('plan.upgrade.grant-polling-start', {
         subscriptionId: 'sub-123',
-        initialPlanMonthlyGrantId: 'initial-grant-id',
+        initialCreditsMax: 1000,
       });
     });
 
@@ -335,7 +335,7 @@ describe('useUpgradePurchase', function useUpgradePurchaseTests() {
           'test-source',
           'test-product',
           'sub-123',
-          'initial-grant-id'
+          1000
         );
       });
 
@@ -345,7 +345,7 @@ describe('useUpgradePurchase', function useUpgradePurchaseTests() {
       expect(logger.info).not.toHaveBeenCalledWith('plan.upgrade.grant-polling-start', expect.any(Object));
     });
 
-    it('logs warning and skips grant polling when initial grant ID is undefined (cold cache)', async function coldCacheSkipsGrantPolling() {
+    it('skips grant polling for D2P (new subscription) with info log', async function d2pSkipsGrantPolling() {
       vi.mocked(waitForQueryUpdate).mockResolvedValue(true); // subscription poll succeeds
 
       const { result } = renderHookWithProviders(() => useUpgradePurchase());
@@ -354,23 +354,55 @@ describe('useUpgradePurchase', function useUpgradePurchaseTests() {
 
       await act(async () => {
         pollResult = await result.current.handlePurchaseSuccess(
+          undefined, // D2P - no plan before purchase
           'professional',
+          undefined,
+          true,
+          'test-source',
+          'test-product',
+          'sub-123',
+          undefined // No initial creditsMax for D2P
+        );
+      });
+
+      expect(pollResult?.updated).toBe(true);
+      expect(pollResult?.grantUpdated).toBe(false);
+      // Should log info (not warn) for D2P - this is expected behavior
+      expect(logger.info).toHaveBeenCalledWith('plan.upgrade.grant-polling-skipped', {
+        subscriptionId: 'sub-123',
+        reason: 'new_subscription',
+      });
+      // Should NOT log a warning for D2P
+      expect(logger.warn).not.toHaveBeenCalledWith('plan.upgrade.grant-polling-skipped', expect.any(Object));
+    });
+
+    it('skips grant polling with warning when initialCreditsMax is undefined (cold cache)', async function coldCacheSkipsGrantPolling() {
+      vi.mocked(waitForQueryUpdate).mockResolvedValue(true); // subscription poll succeeds
+
+      const { result } = renderHookWithProviders(() => useUpgradePurchase());
+
+      let pollResult: { planAfterPurchase: string | undefined; updated: boolean; grantUpdated: boolean } | undefined;
+
+      await act(async () => {
+        pollResult = await result.current.handlePurchaseSuccess(
+          'professional', // Existing subscription
           'ultimate',
           undefined,
           true,
           'test-source',
           'test-product',
           'sub-123',
-          undefined // initial grant ID is undefined (cold cache)
+          undefined // initialCreditsMax is undefined (cold cache)
         );
       });
 
       expect(pollResult?.updated).toBe(true);
       expect(pollResult?.grantUpdated).toBe(false);
-      // Should log warning about skipped grant polling
+      // Should log warning about skipped grant polling for cold cache
       expect(logger.warn).toHaveBeenCalledWith('plan.upgrade.grant-polling-skipped', {
         subscriptionId: 'sub-123',
-        reason: 'initial_grant_not_found',
+        reason: 'initial_credits_max_not_found',
+        initialCreditsMax: undefined,
       });
       // Should not have attempted grant polling
       expect(logger.info).not.toHaveBeenCalledWith('plan.upgrade.grant-polling-start', expect.any(Object));
@@ -390,7 +422,7 @@ describe('useUpgradePurchase', function useUpgradePurchaseTests() {
           'test-source',
           'test-product',
           'sub-123',
-          'initial-grant-id'
+          1000
         );
       });
 
@@ -416,7 +448,7 @@ describe('useUpgradePurchase', function useUpgradePurchaseTests() {
           'test-source',
           'test-product',
           'sub-123',
-          'initial-grant-id'
+          1000
         );
       });
 
@@ -424,8 +456,179 @@ describe('useUpgradePurchase', function useUpgradePurchaseTests() {
       expect(pollResult?.grantUpdated).toBe(false);
       expect(logger.warn).toHaveBeenCalledWith('plan.upgrade.grant-polling-timeout', {
         subscriptionId: 'sub-123',
-        initialPlanMonthlyGrantId: 'initial-grant-id',
+        initialCreditsMax: 1000,
       });
+    });
+
+    it('polls until creditsMax increases (unified check for BMS and legacy)', async function unifiedCreditsMaxPolling() {
+      let capturedCondition: ((data: unknown) => boolean) | undefined;
+
+      vi.mocked(waitForQueryUpdate).mockImplementation(async (_queryClient, queryKey, condition) => {
+        // Only capture the grant polling condition (not subscription)
+        if (Array.isArray(queryKey) && queryKey[0] === 'credit-grants') {
+          capturedCondition = condition as (data: unknown) => boolean;
+        }
+        return true;
+      });
+
+      const { result } = renderHookWithProviders(() => useUpgradePurchase());
+
+      await act(async () => {
+        await result.current.handlePurchaseSuccess(
+          'professional',
+          'ultimate',
+          undefined,
+          true,
+          'test-source',
+          'test-product',
+          'sub-123',
+          1000 // initialCreditsMax
+        );
+      });
+
+      expect(capturedCondition).toBeDefined();
+
+      // Should return false when creditsMax hasn't increased
+      const resultFalse = capturedCondition!(
+        [{ id: 'some-grant', type: 'plan-monthly', isAvailable: true, creditsMax: 1000 }]
+      );
+      expect(resultFalse).toBe(false);
+
+      // Should return true when creditsMax has increased (works for both BMS and legacy)
+      const resultTrue = capturedCondition!(
+        [{ id: 'new-grant', type: 'plan-monthly', isAvailable: true, creditsMax: 2000 }]
+      );
+      expect(resultTrue).toBe(true);
+
+      // Should return false when grants array is empty
+      const resultEmpty = capturedCondition!([]);
+      expect(resultEmpty).toBe(false);
+
+      // Should return false when no plan-monthly grant exists
+      const resultNoMatch = capturedCondition!(
+        [{ id: 'other-grant', type: 'message-bonus', isAvailable: true, creditsMax: 5000 }]
+      );
+      expect(resultNoMatch).toBe(false);
+    });
+
+    it('returns false when current creditsMax is null (malformed API response)', async function nullCreditsMaxInPolling() {
+      let capturedCondition: ((data: unknown) => boolean) | undefined;
+
+      vi.mocked(waitForQueryUpdate).mockImplementation(async (_queryClient, queryKey, condition) => {
+        if (Array.isArray(queryKey) && queryKey[0] === 'credit-grants') {
+          capturedCondition = condition as (data: unknown) => boolean;
+        }
+        return true;
+      });
+
+      const { result } = renderHookWithProviders(() => useUpgradePurchase());
+
+      await act(async () => {
+        await result.current.handlePurchaseSuccess(
+          'professional',
+          'ultimate',
+          undefined,
+          true,
+          'test-source',
+          'test-product',
+          'sub-123',
+          1000
+        );
+      });
+
+      expect(capturedCondition).toBeDefined();
+
+      // Should return false when creditsMax is null (malformed API response)
+      const resultFalse = capturedCondition!(
+        [{ id: 'some-grant', type: 'plan-monthly', isAvailable: true, creditsMax: null }]
+      );
+      expect(resultFalse).toBe(false);
+    });
+
+    it('skips grant polling with warning when initialCreditsMax is null', async function nullInitialCreditsMax() {
+      vi.mocked(waitForQueryUpdate).mockResolvedValue(true);
+
+      const { result } = renderHookWithProviders(() => useUpgradePurchase());
+
+      let pollResult: { planAfterPurchase: string | undefined; updated: boolean; grantUpdated: boolean } | undefined;
+
+      await act(async () => {
+        pollResult = await result.current.handlePurchaseSuccess(
+          'professional',
+          'ultimate',
+          undefined,
+          true,
+          'test-source',
+          'test-product',
+          'sub-123',
+          null as unknown as number // Simulate null from malformed API
+        );
+      });
+
+      expect(pollResult?.updated).toBe(true);
+      expect(pollResult?.grantUpdated).toBe(false);
+      expect(logger.warn).toHaveBeenCalledWith('plan.upgrade.grant-polling-skipped', {
+        subscriptionId: 'sub-123',
+        reason: 'initial_credits_max_not_found',
+        initialCreditsMax: null,
+      });
+    });
+
+    it('logs successful grant polling completion', async function grantPollingComplete() {
+      vi.mocked(waitForQueryUpdate)
+        .mockResolvedValueOnce(true) // subscription poll succeeds
+        .mockResolvedValueOnce(true); // grant poll succeeds
+
+      const { result } = renderHookWithProviders(() => useUpgradePurchase());
+
+      await act(async () => {
+        await result.current.handlePurchaseSuccess(
+          'professional',
+          'ultimate',
+          undefined,
+          true,
+          'test-source',
+          'test-product',
+          'sub-123',
+          1000
+        );
+      });
+
+      expect(logger.info).toHaveBeenCalledWith('plan.upgrade.grant-polling-complete', {
+        subscriptionId: 'sub-123',
+      });
+    });
+
+    it('polls for grant when initialCreditsMax is 0 (free-tier transition)', async function zeroInitialCreditsMax() {
+      vi.mocked(waitForQueryUpdate)
+        .mockResolvedValueOnce(true) // subscription poll succeeds
+        .mockResolvedValueOnce(true); // grant poll succeeds
+
+      const { result } = renderHookWithProviders(() => useUpgradePurchase());
+
+      let pollResult: { planAfterPurchase: string | undefined; updated: boolean; grantUpdated: boolean } | undefined;
+
+      await act(async () => {
+        pollResult = await result.current.handlePurchaseSuccess(
+          'starter',
+          'professional',
+          undefined,
+          true,
+          'test-source',
+          'test-product',
+          'sub-123',
+          0 // Free-tier with 0 creditsMax
+        );
+      });
+
+      expect(pollResult?.updated).toBe(true);
+      expect(pollResult?.grantUpdated).toBe(true);
+      // Should start polling, not skip with warning
+      expect(logger.info).toHaveBeenCalledWith('plan.upgrade.grant-polling-start', {
+        subscriptionId: 'sub-123',
+        initialCreditsMax: 0,
+      });
+      expect(logger.warn).not.toHaveBeenCalledWith('plan.upgrade.grant-polling-skipped', expect.any(Object));
     });
   });
 });
