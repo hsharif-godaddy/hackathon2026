@@ -326,6 +326,53 @@ describe('HeroSection', () => {
     });
   });
 
+  describe('uploaded file card', () => {
+    const mockFileChange = vi.fn();
+    const uploadedFile = {
+      name: 'design.md',
+      content: '---\ncolors:\n---\nbody',
+      isDesignMd: true,
+    };
+
+    it('should render the file card when uploadedFile is provided', () => {
+      renderWithProviders(
+        <HeroSection {...defaultProps} uploadedFile={uploadedFile} onFileChange={mockFileChange} />
+      );
+
+      expect(screen.getByText('design.md')).toBeInTheDocument();
+    });
+
+    it('should not render the file card when uploadedFile is null', () => {
+      renderWithProviders(
+        <HeroSection {...defaultProps} uploadedFile={null} onFileChange={mockFileChange} />
+      );
+
+      expect(screen.queryByText('design.md')).not.toBeInTheDocument();
+    });
+
+    it('should call onFileChange(null) when the remove button is clicked', async function remove() {
+      const { user } = renderWithProviders(
+        <HeroSection {...defaultProps} uploadedFile={uploadedFile} onFileChange={mockFileChange} />
+      );
+
+      const removeButton = screen.getByRole('button', { name: 'builder_common_remove_file' });
+      await user.click(removeButton);
+
+      await waitFor(() => {
+        expect(mockFileChange).toHaveBeenCalledWith(null);
+      });
+    });
+
+    it('should disable the remove button when isLoading is true', () => {
+      renderWithProviders(
+        <HeroSection {...defaultProps} uploadedFile={uploadedFile} onFileChange={mockFileChange} isLoading />
+      );
+
+      const removeButton = screen.getByRole('button', { name: 'builder_common_remove_file' });
+      expect(removeButton).toBeDisabled();
+    });
+  });
+
   describe('error display', () => {
     it('should display error when provided', () => {
       renderWithProviders(<HeroSection {...defaultProps} error="Something went wrong" />);

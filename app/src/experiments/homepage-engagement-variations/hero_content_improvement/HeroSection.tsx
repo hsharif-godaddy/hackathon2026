@@ -9,7 +9,7 @@ import SendIcon from '@ux/icon/send'
 import Spinner from '@ux/spinner'
 import { text } from '@ux/text'
 
-import DesignFileUpload, { DesignFileUploadBadge } from '@/app/[market]/components/DesignFileUpload'
+import DesignFileUpload, { DesignFileUploadCard } from '@/app/[market]/components/DesignFileUpload'
 import TemplateSelector from '@/app/[market]/components/TemplateSelector'
 import type { HeroSectionProps, HeroSectionRef } from '@/app/[market]/components/types'
 import { useAuthContext } from '@/components/providers/AuthProvider'
@@ -507,6 +507,15 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
               elevation="float"
               gap={isBelowSmBreakpoint ? 'sm' : 'md'}
             >
+              {/* Uploaded File Card */}
+              {uploadedFile && onFileChange && (
+                <DesignFileUploadCard
+                  uploadedFile={uploadedFile}
+                  onRemove={() => onFileChange(null)}
+                  disabled={isLoading}
+                />
+              )}
+
               {/* Prompt Textarea */}
               <textarea
                 ref={promptTextareaRef}
@@ -677,15 +686,6 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
               </Box>
             </Box>
           </div>
-
-          {/* Uploaded file badge */}
-          {uploadedFile && onFileChange && (
-            <DesignFileUploadBadge
-              uploadedFile={uploadedFile}
-              onRemove={() => onFileChange(null)}
-              disabled={isLoading}
-            />
-          )}
 
           {/* Template Selector */}
           {/* Template selector is used for internal experiments in TLA accounts only; customers won't see it. */}
