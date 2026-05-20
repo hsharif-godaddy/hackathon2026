@@ -2,7 +2,7 @@
 # Generated from git log as of 2026-05-12.
 
 # Root files
-#/* @deverton-godaddy @jeichorn-godaddy @jlemay-godaddy @hdewan-godaddy @mlefebvre1-godaddy @ugupta-godaddy @arai1-godaddy @matkinson-godaddy @jundai-godaddy @kra-godaddy
+#/* @deverton-godaddy @jeichorn-godaddy @hdewan-godaddy @mlefebvre1-godaddy @ugupta-godaddy @arai1-godaddy @matkinson-godaddy @jundai-godaddy @kra-godaddy
 
 # Config dirs
 /.claude/ @deverton-godaddy @jlemay-godaddy @dmiller1-godaddy
@@ -20,10 +20,11 @@
 /agents/src/server/middleware/ @gdcorp-partners/dev-airo-ai-core-agent-squad @hmaheshwari-godaddy @mlefebvre1-godaddy
 /agents/src/utils/ @gdcorp-partners/dev-airo-ai-core-agent-squad @hmaheshwari-godaddy
 /app/ @gdcorp-partners/dev-airo-ai-core-agent-squad
-/app/src/app/ @mlefebvre1-godaddy @deverton-godaddy @jlemay-godaddy @jeichorn-godaddy
-/app/src/app/api/ @deverton-godaddy @mlefebvre1-godaddy @jlemay-godaddy @hdewan-godaddy
-/app/src/components/ @mlefebvre1-godaddy @jlemay-godaddy @deverton-godaddy @arai1-godaddy
-/app/src/lib/ @deverton-godaddy @mlefebvre1-godaddy @jlemay-godaddy @hdewan-godaddy
+/app/src/app/ @mlefebvre1-godaddy @deverton-godaddy @jeichorn-godaddy
+/app/src/app/api/ @deverton-godaddy @mlefebvre1-godaddy @hdewan-godaddy
+/app/src/components/ @mlefebvre1-godaddy @deverton-godaddy @arai1-godaddy
+/app/src/lib/ @deverton-godaddy @mlefebvre1-godaddy @hdewan-godaddy
+/app/src/styles/ @jlemay-godaddy @mlefebvre1-godaddy @arai1-godaddy
 /app-publish/ @gdcorp-partners/dev-airo-ai-core-agent-squad
 /app-templates/ @gdcorp-partners/dev-airo-ai-core-agent-squad
 /blog/ @jwatson2-godaddy @nsharkawy-godaddy @dradojkovic-godaddy
