@@ -1,10 +1,10 @@
-import { join, resolve, basename, extname, relative } from 'node:path';
+import { basename, extname } from 'node:path';
 
-import type { FileSystemOperations } from '../filesystem/index.js';
-import { LocalFileSystemOperations } from '../filesystem/index.js';
+import type { WorkspaceFiles } from '../workspace/files.js';
 
-import { BINARY_FILE_REGEX, DOCUMENT_FILE_EXTENSIONS, IMAGE_FILE_EXTENSIONS, OTHER_BINARY_EXTENSIONS, TEXT_FILE_REGEX, isBinaryFile } from '../utils/file-types.js';
-import { translateDockerPath, deriveAssetsDir, validateNoEscapingSymlinks } from '../utils/path-helper.js';
+import { BINARY_FILE_REGEX, DOCUMENT_FILE_EXTENSIONS, IMAGE_FILE_EXTENSIONS, OTHER_BINARY_EXTENSIONS } from '../utils/file-types.js';
+import { getErrorMessage } from '../utils/error.js';
+import { translateDockerPath } from '../utils/path-helper.js';
 
 export interface ReadFileOptions {
   /** Path to the file to read (relative to app root) */
@@ -31,10 +31,10 @@ export interface ReadFileResult {
     start: number;
     end: number;
   };
+  /** True when the response was capped by the server's line limit */
+  truncated?: boolean;
   /** Error message if operation failed */
   error?: string;
-  /** File size in bytes */
-  fileSize?: number;
 }
 
 /**
@@ -122,87 +122,30 @@ export function isFileBlocked(filePath: string): { blocked: boolean; reason?: st
   return { blocked: false };
 }
 
-/**
- * Tool for reading file contents with optional line range support
- */
 export class ReadFileTool {
-  constructor(private readonly fs: FileSystemOperations = new LocalFileSystemOperations()) {}
+  constructor(private readonly files: WorkspaceFiles) {}
 
-  /**
-   * Validate that a file path is within the app directory and check for escaping symlinks.
-   * Allows symlinks to the known assets directory for bind mount compatibility.
-   */
-  private isPathSafe(filePath: string, appPath: string): boolean {
-    try {
-      const resolved = resolve(filePath);
-
-      const rel = relative(appPath, resolved);
-      if (rel.startsWith('..')) {
-        return false;
-      }
-
-      const assetsDir = deriveAssetsDir(appPath);
-      validateNoEscapingSymlinks(resolved, appPath, assetsDir ? [assetsDir] : []);
-
-      return true;
-    } catch (error) {
-      return false;
-    }
-  }
-
-  /**
-   * Create a summary of the file read operation for conversation history
-   */
   summarizeOperation(options: ReadFileOptions, result: ReadFileResult): string {
     if (!result.success) {
       return `Failed to read ${result.path}: ${result.error}`;
     }
 
     const fileName = result.path.split('/').pop() || result.path;
-    const sizeInfo = result.fileSize ? this.formatFileSize(result.fileSize) : '';
 
     if (result.linesRead) {
-      // Partial read with line range
       const lineRange = result.linesRead.start === result.linesRead.end
         ? `line ${result.linesRead.start}`
         : `lines ${result.linesRead.start}-${result.linesRead.end}`;
-      return `Read ${fileName} ${lineRange} of ${result.totalLines}${sizeInfo ? ' (' + sizeInfo + ')' : ''}`;
-    } else {
-      // Full file read (always includes line numbers)
-      return `Read ${fileName} (${result.totalLines} lines${sizeInfo ? ', ' + sizeInfo : ''})`;
+      const suffix = result.truncated ? ' (truncated)' : '';
+      return `Read ${fileName} ${lineRange} of ${result.totalLines}${suffix}`;
     }
+    return `Read ${fileName} (${result.totalLines} lines)`;
   }
 
-  /**
-   * Format file size in human readable format
-   */
-  private formatFileSize(bytes: number): string {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-    return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
-  }
-
-  /**
-   * Read a file with optional line range
-   */
-  async readFile(options: ReadFileOptions, appPath: string): Promise<ReadFileResult> {
+  async readFile(options: ReadFileOptions): Promise<ReadFileResult> {
     try {
       const normalizedPath = translateDockerPath(options.path);
-      const fullPath = resolve(join(appPath, normalizedPath));
-      
-      // Security check: ensure the path is within the app directory and no escaping symlinks
-      if (!this.isPathSafe(fullPath, resolve(appPath))) {
-        return {
-          success: false,
-          path: options.path,
-          content: '',
-          totalLines: 0,
-          error: 'Access denied: path outside app directory or unsafe symlinks',
-        };
-      }
 
-      // AI Development Guardrails: Check if file should be blocked
       const blockCheck = isFileBlocked(normalizedPath);
       if (blockCheck.blocked) {
         return {
@@ -214,20 +157,13 @@ export class ReadFileTool {
         };
       }
 
-      // Check if file exists
-      if (!(await this.fs.exists(fullPath))) {
-        return {
-          success: false,
-          path: options.path,
-          content: '',
-          totalLines: 0,
-          error: 'File does not exist',
-        };
-      }
+      const startLine = Math.max(1, options.startLine || 1);
+      const offset = startLine - 1;
+      const limit = options.numLines;
 
-      // Fallback: sniff first 8KB for null bytes — only for files with unknown extensions.
-      // Skips known binary (already blocked above) and known text extensions to avoid redundant I/O.
-      if (!BINARY_FILE_REGEX.test(normalizedPath) && !TEXT_FILE_REGEX.test(normalizedPath) && !(OTHER_BINARY_EXTENSIONS as readonly string[]).includes(extname(normalizedPath).slice(1).toLowerCase()) && await isBinaryFile(fullPath, this.fs)) {
+      const result = await this.files.view({ path: normalizedPath, offset, limit });
+
+      if (result.encoding === 'base64') {
         return {
           success: false,
           path: options.path,
@@ -237,17 +173,8 @@ export class ReadFileTool {
         };
       }
 
-      // Read the file
-      const fileContent = await this.fs.readFile(fullPath, 'utf-8');
-      const lines = fileContent.split('\n');
-      const totalLines = lines.length;
+      const totalLines = result.lines;
 
-      // Get file stats for size
-      const stats = await this.fs.stat(fullPath);
-      const fileSize = stats.size;
-
-      // Validate line range parameters (if provided)
-      const startLine = Math.max(1, options.startLine || 1);
       if (options.startLine && startLine > totalLines) {
         return {
           success: false,
@@ -258,40 +185,34 @@ export class ReadFileTool {
         };
       }
 
-      // Calculate end line
+      let content: string;
       let endLine: number;
-      if (options.numLines) {
-        endLine = Math.min(totalLines, startLine + options.numLines - 1);
+
+      if (options.raw) {
+        content = result.content;
+        endLine = Math.min(offset + result.content.split('\n').length, totalLines);
       } else {
-        endLine = totalLines;
+        const lines = result.content.split('\n');
+        endLine = Math.min(offset + lines.length, totalLines);
+        content = lines
+          .map((line, index) => `${String(startLine + index).padStart(6)}|${line}`)
+          .join('\n');
       }
 
-      // Extract the requested lines (convert to 0-indexed)
-      const startIndex = startLine - 1;
-      const endIndex = endLine;
-      const selectedLines = lines.slice(startIndex, endIndex);
-
-      // Format content with line numbers for AI code editing workflow (default)
-      // Use raw option for programmatic consumers (UI file editor, JSON parsing)
-      const content = options.raw
-        ? selectedLines.join('\n')
-        : selectedLines
-            .map((line, index) => `${String(startLine + index).padStart(6)}|${line}`)
-            .join('\n');
+      const includeRange = options.startLine || options.numLines || result.truncated;
 
       return {
         success: true,
         path: options.path,
         content,
         totalLines,
-        // Only include linesRead if a range was explicitly requested
-        ...(options.startLine || options.numLines ? {
+        ...(includeRange ? {
           linesRead: {
             start: startLine,
             end: endLine,
           }
         } : {}),
-        fileSize,
+        ...(result.truncated ? { truncated: true } : {}),
       };
     } catch (error) {
       return {
@@ -299,7 +220,7 @@ export class ReadFileTool {
         path: options.path,
         content: '',
         totalLines: 0,
-        error: error instanceof Error ? error.message : 'Unknown error occurred',
+        error: getErrorMessage(error),
       };
     }
   }

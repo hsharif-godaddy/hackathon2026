@@ -29,6 +29,7 @@ export interface ViewResult {
   content: string;
   encoding: 'utf-8' | 'base64';
   lines: number;
+  size: number;
   truncated: boolean;
 }
 

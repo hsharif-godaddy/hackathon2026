@@ -148,6 +148,7 @@ type wsFilesViewResponse struct {
 	Content   string `json:"content"`
 	Encoding  string `json:"encoding"`
 	Lines     int    `json:"lines"`     // total line count in file
+	Size      int64  `json:"size"`      // file size in bytes
 	Truncated bool   `json:"truncated"` // whether content was clipped
 }
 
@@ -462,6 +463,7 @@ func (s *Server) handleWorkspaceFilesView(w http.ResponseWriter, r *http.Request
 			Content:   base64.StdEncoding.EncodeToString(data),
 			Encoding:  wsFilesEncodingBase64,
 			Lines:     0,
+			Size:      info.Size(),
 			Truncated: false,
 		}); encErr != nil {
 			slog.Error("workspace.files.view.encode_failed", "error", encErr)
@@ -499,6 +501,7 @@ func (s *Server) handleWorkspaceFilesView(w http.ResponseWriter, r *http.Request
 		Content:   resultContent,
 		Encoding:  wsFilesEncodingUTF8,
 		Lines:     totalLines,
+		Size:      info.Size(),
 		Truncated: truncated,
 	}); err != nil {
 		slog.Error("workspace.files.view.encode_failed", "error", err)

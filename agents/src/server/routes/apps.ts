@@ -21,7 +21,7 @@ import multer from 'multer';
 import { AppRepository } from '../../database/index.js';
 import type { CreateAppRequest, UpdateAppRequest } from '../../database/index.js';
 import { DirectoryListingTool } from '../../tools/directory-listing.js';
-import { ReadFileTool } from '../../tools/read-file.js';
+import { createForWorkspace } from '../../workspace/index.js';
 import { FileEditTool } from '../../tools/file-edit.js';
 import { ASTStyleEditor } from '../../tools/ast-style-editor.js';
 import { ASTTextEditor } from '../../tools/ast-text-editor.js';
@@ -41,7 +41,6 @@ const router: IRouter = Router();
 
 const appRepo = new AppRepository();
 const directoryTool = new DirectoryListingTool();
-const readFileTool = new ReadFileTool();
 const fileEditTool = new FileEditTool();
 const astStyleEditor = new ASTStyleEditor();
 const astTextEditor = new ASTTextEditor();
@@ -587,18 +586,27 @@ router.get('/:id/files/read', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'File path is required' });
     }
 
-    const app = appRepo.findById(id);
-    if (!app) {
+    const workspace = createForWorkspace(id, 'preview');
+    if (!workspace) {
       return res.status(404).json({ error: 'App not found' });
     }
 
-    const result = await readFileTool.readFile({ path: filePath, raw: true }, app.path);
+    const result = await workspace.files.view({ path: filePath });
 
-    if (!result.success) {
-      return res.status(404).json({ error: result.error });
+    if (result.encoding === 'base64') {
+      return res.status(422).json({ error: 'Binary file — not readable as text', encoding: 'base64', path: result.path });
     }
 
-    return res.json(result);
+    const linesReturned = result.content.split('\n').length;
+
+    return res.json({
+      success: true,
+      path: result.path,
+      content: result.content,
+      totalLines: result.lines,
+      truncated: result.truncated,
+      ...(result.truncated ? { linesRead: { start: 1, end: linesReturned } } : {}),
+    });
   } catch (error) {
     const contextLogger = req.params.id ? log.forApp(req.params.id) : logger;
     log.error(contextLogger, 'route.apps.files.read.error', error as Error, {});
