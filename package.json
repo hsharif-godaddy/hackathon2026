@@ -47,7 +47,7 @@
     "husky": "^8.0.3",
     "lint-staged": "^15.5.2",
     "prettier": "catalog:",
-    "turbo": "^2.9.12"
+    "turbo": "^2.9.14"
   },
   "lint-staged": {
     "agents/**/*.{ts,tsx,js,jsx}": [
