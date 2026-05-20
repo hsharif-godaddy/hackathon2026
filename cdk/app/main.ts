@@ -19,6 +19,7 @@ import { QdrantEcrStack } from "../lib/qdrant-ecr-stack";
 import { LambdaBaseEcrStack } from "../lib/lambda-base-ecr-stack";
 import { FeedbackAutomationStack } from "../lib/feedback-automation-stack";
 import { AiroInvestigatorStack } from "../lib/investigator-stack";
+import { S2sIamJwtStack } from "../lib/s2s-iam-jwt-stack";
 
 /**
  * Main function to execute the CDK app
@@ -43,6 +44,9 @@ async function main() {
 
   // Create application stack with IAM roles
   new AiroBuilderStack(app, 'AiroBuilderStack', { env });
+
+  // Generic S2S IAM JWT role (replaces gocode-specific role for multi-service use)
+  new S2sIamJwtStack(app, 'S2sIamJwtStack', { env });
 
   // Create monitoring stack with CloudWatch alarms
   // Configuration is dynamically loaded from config based on ENV_NAME

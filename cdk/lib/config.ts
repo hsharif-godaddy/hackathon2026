@@ -68,6 +68,7 @@ interface Config {
   postgresServerlessV2MaxCapacity: number;
   postgresReadersCount: number;
   gocodeAssumeRoleArns: string[];
+  s2sIamJwtAssumeRoleArns: string[];
   katanaEcsTaskRoleArn: string[];  // Katana ECS Task Role for JWT access
   /**
    * Katana ECS task role ARN(s) for the stripe-service Go microservice.
@@ -115,6 +116,13 @@ const devConfig: Config = {
   postgresServerlessV2MaxCapacity: 4,
   postgresReadersCount: 0,
   gocodeAssumeRoleArns: [
+    'arn:aws:iam::418549769352:role/pioneerc1-custom-pioneerc1-hybrid-instance-c4-onegroup',
+    'arn:aws:iam::418549769352:role/GD-AWS-USA-GD-PioneerC1-Dev-Private-PowerUser',
+    'arn:aws:iam::418549769352:role/GD-AWS-USA-GD-PioneerC1-Ops',
+    'arn:aws:iam::694282668781:role/airobuilde-custom-dev-gocode-spend-sync-role',
+    'arn:aws:iam::694282668781:role/airobuilde-custom-KatanaEnvironment9411GlobalEcsTaskRole438D3922'
+  ],
+  s2sIamJwtAssumeRoleArns: [
     'arn:aws:iam::418549769352:role/pioneerc1-custom-pioneerc1-hybrid-instance-c4-onegroup',
     'arn:aws:iam::418549769352:role/GD-AWS-USA-GD-PioneerC1-Dev-Private-PowerUser',
     'arn:aws:iam::418549769352:role/GD-AWS-USA-GD-PioneerC1-Ops',
@@ -200,6 +208,11 @@ const testConfig: Config = {
     'arn:aws:iam::418549769352:role/GD-AWS-USA-GD-PioneerC1-Dev-Private-PowerUser',
     'arn:aws:iam::418549769352:role/GD-AWS-USA-GD-PioneerC1-Ops'
   ],
+  s2sIamJwtAssumeRoleArns: [
+    'arn:aws:iam::418549769352:role/pioneerc1-custom-pioneerc1-hybrid-instance-c4-onegroup',
+    'arn:aws:iam::418549769352:role/GD-AWS-USA-GD-PioneerC1-Dev-Private-PowerUser',
+    'arn:aws:iam::418549769352:role/GD-AWS-USA-GD-PioneerC1-Ops'
+  ],
   katanaEcsTaskRoleArn: [
     'arn:aws:iam::694282668781:role/airobuilde-custom-KatanaEnvironment5808GlobalEcsTaskRoleF525C3A7', // airo builder ui test
     'arn:aws:iam::269423819739:role/airobuilde-custom-KatanaEnvironment9636GlobalEcsTaskRoleC9421049', // budget-service test
@@ -263,6 +276,15 @@ const prodConfig: Config = {
   postgresServerlessV2MaxCapacity: 16,
   postgresReadersCount: 1,
   gocodeAssumeRoleArns: [
+    'arn:aws:iam::506695300582:role/pioneerc1-custom-pioneerc1-hybrid-instance-c24-onegroup',
+    'arn:aws:iam::506695300582:role/pioneerc1-custom-pioneerc1-hybrid-instance-c35-onegroup',
+    'arn:aws:iam::506695300582:role/pioneerc1-custom-pioneerc1-hybrid-instance-c36-onegroup',
+    'arn:aws:iam::506695300582:role/pioneerc1-custom-pioneerc1-hybrid-instance-c37-onegroup',
+    'arn:aws:iam::506695300582:role/pioneerc1-custom-pioneerc1-hybrid-instance-c38-onegroup',
+    'arn:aws:iam::644094189644:role/airobuilde-custom-prod-gocode-spend-sync-role',
+    'arn:aws:iam::644094189644:role/airobuilde-custom-KatanaEnvironment9535GlobalEcsTaskRoleAAF08999'
+  ],
+  s2sIamJwtAssumeRoleArns: [
     'arn:aws:iam::506695300582:role/pioneerc1-custom-pioneerc1-hybrid-instance-c24-onegroup',
     'arn:aws:iam::506695300582:role/pioneerc1-custom-pioneerc1-hybrid-instance-c35-onegroup',
     'arn:aws:iam::506695300582:role/pioneerc1-custom-pioneerc1-hybrid-instance-c36-onegroup',

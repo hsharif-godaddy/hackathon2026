@@ -74,7 +74,6 @@ export class ImageSearchStack extends GDStack {
       principals: [
         // Allow PowerUser role from the account
         new iam.ArnPrincipal(`arn:aws:iam::${cdk.Aws.ACCOUNT_ID}:role/GD-AWS-USA-GD-AiroBuilde-Ops`),
-        // Allow the GoCode access roles
         ...config.gocodeAssumeRoleArns.map(arn => new iam.ArnPrincipal(arn)),
       ],
     });
