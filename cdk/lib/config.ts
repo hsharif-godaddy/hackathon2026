@@ -94,6 +94,8 @@ interface Config {
   };
   qdrant: QdrantConfig;
   dataLakeAdminRoleNames: string[];
+  /** Cross-account DPaaS EMR batch roles with read/write on the events bucket. */
+  eventsEmrBatchRoleArns: string[];
 }
 
 const devConfig: Config = {
@@ -174,6 +176,7 @@ const devConfig: Config = {
     'GD-AWS-USA-GD-AiroBuilde-Ops',
     'GD-AWS-USA-GD-AiroBuilde-Dev-Private-PowerUser',
   ],
+  eventsEmrBatchRoleArns: [],
 };
 
 const testConfig: Config = {
@@ -240,6 +243,7 @@ const testConfig: Config = {
   dataLakeAdminRoleNames: [
     'GD-AWS-USA-GD-AiroBuilde-Ops',
   ],
+  eventsEmrBatchRoleArns: [],
 };
 
 const prodConfig: Config = {
@@ -307,6 +311,9 @@ const prodConfig: Config = {
   },
   dataLakeAdminRoleNames: [
     'GD-AWS-USA-GD-AiroBuilde-Ops',
+  ],
+  eventsEmrBatchRoleArns: [
+    'arn:aws:iam::664289052486:role/dpaas-custom-enterprise-batch-EMRInstanceRole',
   ],
 };
 

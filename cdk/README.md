@@ -17,6 +17,7 @@ Defined in `app/main.ts` and registered in the `STACK_NAME` input of `.github/wo
 | `EvalSnapshotsStack`     | S3 bucket + IAM for eval snapshots                                  | dev, prod       |
 | `OfflineMLDataS3Stack`   | S3 bucket + IAM for offline ML datasets and artifacts               | dev, test, prod |
 | `FeedbackS3Stack`        | S3 bucket + IAM for user feedback                                   | dev, prod       |
+| `EventsS3Stack`          | S3 bucket + IAM for airo builder events (`airo_builder_events_cln`) | dev, test, prod |
 | `QdrantEcrStack`         | ECR repo for the Qdrant image                                       | dev, prod       |
 | `QdrantVectorDbStack`    | 3-node Qdrant cluster on Fargate (see `docs/stacks/qdrant.md`)      | dev, prod       |
 | `ImageSearchStack`       | IAM + Secrets Manager for image-search-service                      | dev             |

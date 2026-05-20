@@ -10,6 +10,7 @@ import { GocaasSpendLambdaStack } from "../lib/gocaas-spend-lambda-stack";
 import { ImageSearchStack } from "../lib/image-search-stack";
 import { LangfuseMetricsEsspExporterStack } from "../lib/langfuse-metrics-essp-exporter-stack";
 import { EvalSnapshotsStack } from "../lib/eval-snapshots-stack";
+import { EventsS3Stack } from "../lib/events-s3-stack";
 import { FeedbackS3Stack } from "../lib/feedback-s3-stack";
 import { OfflineMLDataS3Stack } from "../lib/offline-ml-data-s3-stack";
 import { LakeFormationAdminsStack } from "../lib/lake-formation-admins-stack";
@@ -85,6 +86,9 @@ async function main() {
   if (config.envName === 'dev' || config.envName === 'prod') {
     new FeedbackS3Stack(app, 'FeedbackS3Stack', { env });
   }
+
+  // Dedicated S3 bucket for product-analytics events (dev-private, test, prod).
+  new EventsS3Stack(app, 'EventsS3Stack', { env });
 
   // Register Lake Formation data lake administrators and provision the Athena results bucket.
   // Deployed to all environments — Lake Formation admin settings are required in test

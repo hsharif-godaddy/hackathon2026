@@ -28,6 +28,7 @@ on:
           - 'LangfuseMetricsEsspExporterStack'
           - 'EvalSnapshotsStack'
           - 'OfflineMLDataS3Stack'
+          - 'EventsS3Stack'
           - 'FeedbackAutomationStack'
           - 'FeedbackS3Stack'
           - 'LakeFormationAdminsStack'
