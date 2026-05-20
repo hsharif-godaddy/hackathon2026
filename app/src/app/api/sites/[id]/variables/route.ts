@@ -15,33 +15,7 @@ import {
 } from '@/lib/customer-auth'
 import { logger } from '@/lib/request-context'
 
-const ALLOWED_VARIABLE_KEYS = new Set(['lastInteractionAt', 'title', 'initialPrompt', 'airoSubscriptionId', 'fqdn'])
-
-const FQDN_MAX_LENGTH = 253 // practical DNS FQDN length cap
-
-/**
- * Validate fqdn updates: must be a non-empty string ≤253 chars. The adapter
- * read side already type-guards, but we reject malformed writes at the BFF so
- * downstream consumers never see them and so the API returns a clear 400
- * instead of silently dropping the field.
- *
- * Returns the normalized fqdn string on success, or a `{ error: string }`
- * object on rejection. Callers narrow with `typeof result === 'string'` —
- * a primitive type guard that always narrows reliably across TS configs.
- */
-function validateFqdn(value: unknown): string | { error: string } {
-  if (typeof value !== 'string') {
-    return { error: 'fqdn must be a string' }
-  }
-  const trimmed = value.trim()
-  if (trimmed.length === 0) {
-    return { error: 'fqdn must not be empty' }
-  }
-  if (trimmed.length > FQDN_MAX_LENGTH) {
-    return { error: `fqdn must be at most ${FQDN_MAX_LENGTH} characters` }
-  }
-  return trimmed
-}
+const ALLOWED_VARIABLE_KEYS = new Set(['lastInteractionAt', 'title', 'initialPrompt', 'airoSubscriptionId'])
 
 // PATCH /api/sites/[id]/variables - Update site variables
 export const PATCH = withCustomerAuth(async (request: NextRequest, authContext: CustomerAuthContext, { params }: { params: Promise<{ id: string }> }) => {
@@ -53,15 +27,7 @@ export const PATCH = withCustomerAuth(async (request: NextRequest, authContext: 
     }
     const variableUpdates: Record<string, unknown> = {}
     for (const key of Object.keys(rawUpdates)) {
-      if (!ALLOWED_VARIABLE_KEYS.has(key)) continue
-      if (key === 'fqdn') {
-        const result = validateFqdn(rawUpdates[key])
-        if (typeof result === 'string') {
-          variableUpdates[key] = result
-        } else {
-          return NextResponse.json({ error: result.error }, { status: 400 })
-        }
-      } else {
+      if (ALLOWED_VARIABLE_KEYS.has(key)) {
         variableUpdates[key] = rawUpdates[key]
       }
     }
