@@ -1,6 +1,7 @@
-import type { ConversationEventChannel, ConversationMessage, PersistenceStreamingEvent, ConversationContext, ValidationMessageEventData } from '@airo/ai-transport'
+import type { ConversationEventChannel, ConversationMessage, PersistenceStreamingEvent, ConversationContext, ValidationMessageEventData, StreamTimingData } from '@airo/ai-transport'
 import {
   StreamPartProcessor,
+  StreamTimingTracker,
   executeAgentLoop,
   buildChatSignalsTraceContext,
   createAgentInvocation,
@@ -289,8 +290,18 @@ export class MessageExecutionService {
       )
     }
 
+    // emit is a no-op: tracker diagnostics surface via logger.warn, not the event channel.
+    const tracker = new StreamTimingTracker({
+      socket: { id: sseSocketId, emit: () => {} },
+      agentName,
+      modelName: 'unknown',
+      logger,
+      abortController: { signal: abortSignal },
+    })
+
     const processor = new StreamPartProcessor({
       onTextDelta: (text) => {
+        tracker.recordTextChunk()
         publish({ conversationId, type: 'chunk', content: text, data: {}, agentName })
         streamingEvents.push({ type: 'chunk', content: text, timestamp: new Date() })
       },
@@ -310,6 +321,7 @@ export class MessageExecutionService {
         })
       },
       onToolCall: (toolCallId, toolName, parsedInput) => {
+        tracker.pauseGapTracking(toolName)
         publish({
           conversationId, type: 'tool_call',
           content: `${toolName} input ready`,
@@ -318,6 +330,7 @@ export class MessageExecutionService {
         })
       },
       onToolResult: (toolCallId, result) => {
+        tracker.resumeGapTracking()
         const toolCall = processor.getToolCall(toolCallId)
         publish({
           conversationId, type: 'tool_result',
@@ -328,6 +341,7 @@ export class MessageExecutionService {
         streamingEvents.push({ type: 'tool_result', data: { tool: { id: toolCallId, name: toolCall?.name ?? toolCallId, input: toolCall?.input, output: result } }, timestamp: new Date() })
       },
       onToolError: (toolCallId, error) => {
+        tracker.resumeGapTracking()
         const toolCall = processor.getToolCall(toolCallId)
         publish({
           conversationId, type: 'tool_result',
@@ -448,6 +462,7 @@ export class MessageExecutionService {
             const { done, value } = await reader.read()
             if (done) break
             if (value?.part) {
+              tracker.recordChunk()
               processor.processPart(value.part)
               await Promise.all(pendingPublishes.splice(0))
             }
@@ -459,11 +474,15 @@ export class MessageExecutionService {
       } else {
         for await (const chunk of streamResult.textStream) {
           if (abortSignal.aborted) break
+          tracker.recordChunk()
           processor.processPart({ type: 'text-delta', text: chunk })
           await Promise.all(pendingPublishes.splice(0))
         }
         if (pendingPublishes.length > 0) await Promise.all(pendingPublishes.splice(0))
       }
+
+      const timingData: StreamTimingData = tracker.finalize()
+      logger.info('sse.stream.timing', { appId, conversationId, agentName, ...timingData })
 
       let finishReason = 'complete'
       let finalResult: any
@@ -981,6 +1000,13 @@ export class MessageExecutionService {
       let usedFreeGrants: boolean = persistenceContext.usedFreeGrants ?? false
 
       if (!loopAborted && bmsBudgetId && budgetSessionId) {
+        const reconcileTimer = setTimeout(() => {
+          this.publishNonTerminal(appId, conversationId, {
+            conversationId, type: 'budget_status', content: '',
+            data: { status: 'reconciling' }, agentName: 'system',
+          })
+        }, 10_000)
+        if (typeof reconcileTimer === 'object' && 'unref' in reconcileTimer) reconcileTimer.unref()
         try {
           const budgetClient = getBudgetServiceClient()
           if (budgetClient) {
@@ -1037,6 +1063,8 @@ export class MessageExecutionService {
           }
         } catch (err) {
           logger.error('budget.report.failed', { appId, budgetId: bmsBudgetId, sessionId: budgetSessionId, ...errorFields(err) })
+        } finally {
+          clearTimeout(reconcileTimer)
         }
       }
 

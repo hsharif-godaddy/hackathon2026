@@ -182,6 +182,26 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
           hasActiveStream: deps.executionService?.hasActiveStream(conversationId) === true,
         })
 
+        // Avoids a separate HTTP round-trip for the client to reload history.
+        let historyMessages: Awaited<ReturnType<typeof deps.messages.getMessagesPaginated>>['messages'] = []
+        let historyHasMore = false
+        let historyNextCursor: string | null = null
+        if (plan.lossDetected) {
+          try {
+            const customerId = (req as AuthenticatedRequest).agentContext?.customerId
+            const paginatedResult = await deps.messages.getMessagesPaginated(
+              workspaceScopeFromAppId(appId, customerId),
+              conversationId,
+              { limit: 20 }
+            )
+            historyMessages = paginatedResult.messages
+            historyHasMore = paginatedResult.hasMore
+            historyNextCursor = paginatedResult.nextCursor
+          } catch (err) {
+            logger.warn('sse.recovery.history_load_failed', { appId, conversationId, ...errorFields(err) })
+          }
+        }
+
         writeFormatted('recovery_status', {
           hasBufferedEvents: plan.eventsToReplay.length > 0,
           bufferedCount: plan.eventsToReplay.length,
@@ -191,7 +211,35 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
           lossDetected: plan.lossDetected,
           lostEventCount: plan.lostEventCount,
           recoveryMode: clientHasNoState ? 'initial' : 'delta',
+          historyStreaming: historyMessages.length > 0,
+          historyMessageCount: historyMessages.length,
+          historyHasMore,
+          historyNextCursor,
         })
+
+        for (const msg of historyMessages) {
+          const sender = msg.sender === 'agent' ? 'assistant' : msg.sender
+          const metadata = plan.streamCompleted && msg.metadata?.inProgress
+            ? { ...msg.metadata, inProgress: false }
+            : msg.metadata
+
+          writeFormatted('history_message', {
+            data: {
+              id: msg.id,
+              conversationId: msg.conversationId,
+              sender,
+              content: msg.content,
+              createdAt: msg.createdAt.toISOString(),
+              ...(msg.messageType != null && { messageType: msg.messageType }),
+              ...(msg.toolCalls != null && { toolCalls: mapToolCallsToUI(msg.toolCalls as any) }),
+              ...(msg.segments != null && { segments: msg.segments }),
+              ...(metadata != null && { metadata }),
+              ...(msg.contextAttachments != null && { contextAttachments: msg.contextAttachments }),
+              ...(msg.origin != null && { origin: msg.origin }),
+            },
+            isPagination: false,
+          })
+        }
 
         for (const event of plan.eventsToReplay) {
           writeFormatted(event.type, {

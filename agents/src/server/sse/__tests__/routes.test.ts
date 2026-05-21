@@ -466,6 +466,158 @@ describe('SSE routes', () => {
       expect(capturedData).toContain('event: replay_complete')
     })
 
+    it('streams history_message events with full fields when buffer loss detected', async () => {
+      // Simulate buffer loss: client's Last-Event-ID is before the buffer's firstSequence
+      deps.getEventChannel.mockReturnValue({
+        getEventsSince: vi.fn().mockReturnValue([]),
+        getMetadata: vi.fn().mockReturnValue({ pendingMessageIds: [], firstSequence: 100, lastSequence: 120 }),
+      })
+      ;(deps as any).executionService = {
+        subscribeStream: vi.fn(),
+        hasActiveStream: vi.fn().mockReturnValue(false),
+      }
+      deps.messages.getMessagesPaginated.mockResolvedValueOnce({
+        messages: [
+          {
+            id: 'msg_1', conversationId: 'conv_1', sender: 'user', content: 'hello',
+            createdAt: new Date('2026-01-01T00:00:00Z'), origin: 'customer',
+            segments: null, metadata: null, toolCalls: null, messageType: null, contextAttachments: null,
+          },
+          {
+            id: 'msg_2', conversationId: 'conv_1', sender: 'agent', content: 'hi there',
+            createdAt: new Date('2026-01-01T00:00:01Z'), origin: 'support',
+            segments: [{ id: 's1', type: 'content', content: 'hi there', timestamp: new Date() }],
+            metadata: { inProgress: true }, toolCalls: [{ id: 'tc1', name: 'test', input: {} }],
+            messageType: null, contextAttachments: null,
+          },
+        ],
+        hasMore: true,
+        nextCursor: 'msg_1',
+        total: 5,
+      })
+
+      let capturedData = ''
+      await request(app)
+        .get('/api/conversations/abcdefghij/conv_1/stream')
+        .set('Accept', 'text/event-stream')
+        .set('Last-Event-ID', '50')
+        .buffer(false)
+        .parse((res: any, callback: any) => {
+          res.on('data', (chunk: Buffer) => { capturedData += chunk.toString() })
+          setTimeout(() => { res.destroy(); callback(null, capturedData) }, 100)
+        })
+
+      // recovery_status includes loss + history pagination info
+      expect(capturedData).toContain('"lossDetected":true')
+      expect(capturedData).toContain('"historyStreaming":true')
+      expect(capturedData).toContain('"historyMessageCount":2')
+      expect(capturedData).toContain('"historyHasMore":true')
+      expect(capturedData).toContain('"historyNextCursor":"msg_1"')
+
+      // history_message events emitted
+      expect(capturedData).toContain('event: history_message')
+      // sender normalization: 'agent' → 'assistant'
+      expect(capturedData).toContain('"sender":"assistant"')
+      expect(capturedData).toContain('"sender":"user"')
+      // inProgress cleared because stream is completed
+      expect(capturedData).toContain('"inProgress":false')
+      // segments included
+      expect(capturedData).toContain('"segments":[')
+    })
+
+    it('does not stream history_message when no buffer loss', async () => {
+      // Normal replay with no loss — history should not be loaded
+      const mockEvents = [
+        { id: 'e1', type: 'text_delta', sequence: 42, conversationId: 'conv_1', content: 'hi', data: {} },
+      ]
+      deps.getEventChannel.mockReturnValue({
+        getEventsSince: vi.fn().mockReturnValue(mockEvents),
+        getMetadata: vi.fn().mockReturnValue({ pendingMessageIds: [], firstSequence: 42, lastSequence: 42 }),
+      })
+
+      let capturedData = ''
+      await request(app)
+        .get('/api/conversations/abcdefghij/conv_1/stream')
+        .set('Accept', 'text/event-stream')
+        .set('Last-Event-ID', '41')
+        .buffer(false)
+        .parse((res: any, callback: any) => {
+          res.on('data', (chunk: Buffer) => { capturedData += chunk.toString() })
+          setTimeout(() => { res.destroy(); callback(null, capturedData) }, 100)
+        })
+
+      expect(capturedData).not.toContain('event: history_message')
+      expect(capturedData).toContain('"lossDetected":false')
+      expect(deps.messages.getMessagesPaginated).not.toHaveBeenCalled()
+    })
+
+    it('emits replay_complete without history_message when getMessagesPaginated rejects', async () => {
+      deps.getEventChannel.mockReturnValue({
+        getEventsSince: vi.fn().mockReturnValue([]),
+        getMetadata: vi.fn().mockReturnValue({ pendingMessageIds: [], firstSequence: 100, lastSequence: 120 }),
+      })
+      ;(deps as any).executionService = {
+        subscribeStream: vi.fn(),
+        hasActiveStream: vi.fn().mockReturnValue(false),
+      }
+      deps.messages.getMessagesPaginated.mockRejectedValueOnce(new Error('DB connection lost'))
+
+      let capturedData = ''
+      await request(app)
+        .get('/api/conversations/abcdefghij/conv_1/stream')
+        .set('Accept', 'text/event-stream')
+        .set('Last-Event-ID', '50')
+        .buffer(false)
+        .parse((res: any, callback: any) => {
+          res.on('data', (chunk: Buffer) => { capturedData += chunk.toString() })
+          setTimeout(() => { res.destroy(); callback(null, capturedData) }, 100)
+        })
+
+      expect(capturedData).toContain('"lossDetected":true')
+      expect(capturedData).toContain('"historyStreaming":false')
+      expect(capturedData).toContain('"historyMessageCount":0')
+      expect(capturedData).not.toContain('event: history_message')
+      expect(capturedData).toContain('event: replay_complete')
+    })
+
+    it('preserves inProgress:true when stream is still active', async () => {
+      deps.getEventChannel.mockReturnValue({
+        getEventsSince: vi.fn().mockReturnValue([]),
+        getMetadata: vi.fn().mockReturnValue({ pendingMessageIds: [], firstSequence: 100, lastSequence: 120 }),
+      })
+      ;(deps as any).executionService = {
+        subscribeStream: vi.fn(),
+        hasActiveStream: vi.fn().mockReturnValue(true),
+      }
+      deps.messages.getMessagesPaginated.mockResolvedValueOnce({
+        messages: [
+          {
+            id: 'msg_1', conversationId: 'conv_1', sender: 'agent', content: 'streaming...',
+            createdAt: new Date('2026-01-01T00:00:00Z'), origin: 'support',
+            segments: null, metadata: { inProgress: true }, toolCalls: null, messageType: null, contextAttachments: null,
+          },
+        ],
+        hasMore: false,
+        nextCursor: null,
+        total: 1,
+      })
+
+      let capturedData = ''
+      await request(app)
+        .get('/api/conversations/abcdefghij/conv_1/stream')
+        .set('Accept', 'text/event-stream')
+        .set('Last-Event-ID', '50')
+        .buffer(false)
+        .parse((res: any, callback: any) => {
+          res.on('data', (chunk: Buffer) => { capturedData += chunk.toString() })
+          setTimeout(() => { res.destroy(); callback(null, capturedData) }, 100)
+        })
+
+      // inProgress preserved because stream is still active
+      expect(capturedData).toContain('"inProgress":true')
+      expect(capturedData).toContain('event: history_message')
+    })
+
     it('returns 403 when conversation belongs to different app', async () => {
       deps.lifecycle.getById.mockResolvedValueOnce({ id: 'conv_1', appId: 'other_app' })
 

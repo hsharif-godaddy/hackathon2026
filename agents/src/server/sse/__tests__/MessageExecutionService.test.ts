@@ -63,6 +63,10 @@ vi.mock('../../message-lifecycle.js', () => ({
   runMessageEndHooks: (...args: any[]) => mockRunMessageEndHooks(...args),
 }))
 
+vi.mock('../../services/budget-service-instance.js', () => ({
+  getBudgetServiceClient: vi.fn(() => null),
+}))
+
 // Mock context-builders to avoid heavy dependency chain (AppRepository, KnowB, Langfuse)
 vi.mock('../../context-builders.js', () => ({
   buildDynamicDataMessage: vi.fn().mockReturnValue({
@@ -659,6 +663,54 @@ describe('MessageExecutionService', () => {
         'conv_1',
         expect.objectContaining({ type: 'complete', data: expect.objectContaining({ finishReason: 'error' }) })
       )
+    })
+  })
+
+  describe('StreamTimingTracker wiring', () => {
+    it('calls tracker lifecycle methods and logs timing on completion', async () => {
+      const { StreamTimingTracker } = await import('@airo/ai-transport')
+      const loggerMod = await import('../../../logging/index.js')
+      const recordChunkSpy = vi.spyOn(StreamTimingTracker.prototype, 'recordChunk')
+      const recordTextChunkSpy = vi.spyOn(StreamTimingTracker.prototype, 'recordTextChunk')
+      const pauseSpy = vi.spyOn(StreamTimingTracker.prototype, 'pauseGapTracking')
+      const resumeSpy = vi.spyOn(StreamTimingTracker.prototype, 'resumeGapTracking')
+      const finalizeSpy = vi.spyOn(StreamTimingTracker.prototype, 'finalize').mockReturnValue({
+        chunksRead: 5, streamDurationMs: 1200, averageGapMs: 50, maxGapMs: 200, slowGapCount: 0,
+      } as any)
+      const infoSpy = vi.spyOn(loggerMod.logger, 'info')
+
+      deps = createMockDeps([
+        { type: 'text-delta', text: 'hi' },
+        { type: 'tool-input-start', id: 'tc1', toolName: 'readFile' },
+        { type: 'tool-input-delta', id: 'tc1', toolName: 'readFile', delta: '{}' },
+        { type: 'tool-call', id: 'tc1', toolName: 'readFile', input: {} },
+        { type: 'tool-result', id: 'tc1', toolName: 'readFile', result: 'ok' },
+        { type: 'text-delta', text: ' world' },
+      ])
+      service = new MessageExecutionService(deps as any)
+
+      await service.execute(DEFAULT_PARAMS)
+
+      expect(recordTextChunkSpy).toHaveBeenCalled()
+      expect(recordChunkSpy).toHaveBeenCalled()
+      expect(pauseSpy).toHaveBeenCalledWith('readFile')
+      expect(resumeSpy).toHaveBeenCalled()
+      expect(finalizeSpy).toHaveBeenCalled()
+
+      expect(infoSpy).toHaveBeenCalledWith('sse.stream.timing', expect.objectContaining({
+        appId: 'app_1',
+        conversationId: 'conv_1',
+        agentName: 'develop',
+        chunksRead: 5,
+        streamDurationMs: 1200,
+      }))
+
+      recordChunkSpy.mockRestore()
+      recordTextChunkSpy.mockRestore()
+      pauseSpy.mockRestore()
+      resumeSpy.mockRestore()
+      finalizeSpy.mockRestore()
+      infoSpy.mockRestore()
     })
   })
 
@@ -1474,6 +1526,48 @@ describe('MessageExecutionService', () => {
       expect(execContext?.metadata).toEqual(expect.objectContaining({
         subscriptionId: 'sub-123',
       }))
+    })
+  })
+
+  describe('budget_status event', () => {
+    it('does not publish budget_status for fast reconciliation (timer cleared)', async () => {
+      deps = createMockDeps()
+      service = new MessageExecutionService(deps as any)
+
+      // getBudgetServiceClient returns null → budget block completes instantly,
+      // timer is cleared before 10s fires
+      await service.execute({
+        ...DEFAULT_PARAMS,
+        bmsBudgetId: 'budget-abc',
+        budgetSessionId: 'session-xyz',
+      })
+
+      const publishCalls = (deps.eventChannel.publish as ReturnType<typeof vi.fn>).mock.calls
+      const budgetStatusCall = publishCalls.find(
+        ([, event]: [string, any]) => event.type === 'budget_status'
+      )
+      expect(budgetStatusCall).toBeUndefined()
+    })
+
+    it('creates a 10s delayed timer for budget_status (matching WS gating)', async () => {
+      deps = createMockDeps()
+      service = new MessageExecutionService(deps as any)
+
+      const setTimeoutSpy = vi.spyOn(global, 'setTimeout')
+
+      await service.execute({
+        ...DEFAULT_PARAMS,
+        bmsBudgetId: 'budget-abc',
+        budgetSessionId: 'session-xyz',
+      })
+
+      // Verify setTimeout was called with 10_000ms for budget reconciliation
+      const budgetTimerCall = setTimeoutSpy.mock.calls.find(
+        ([, delay]) => delay === 10_000
+      )
+      expect(budgetTimerCall).toBeDefined()
+
+      setTimeoutSpy.mockRestore()
     })
   })
 

@@ -102,6 +102,10 @@ export { coalesceEvents } from './coalesce-events.js'
 export { StreamPartProcessor } from './stream-part-processor.js'
 export type { PartProcessorCallbacks, PartProcessorState, ToolCallRecord } from './stream-part-processor.js'
 
+// Stream Timing Tracker (shared WS + SSE diagnostics)
+export { StreamTimingTracker, SLOW_CHUNK_GAP_THRESHOLD_MS } from './stream-timing-tracker.js'
+export type { StreamTimingData, StreamTimingDeps } from './stream-timing-tracker.js'
+
 // Skill output redaction (shared by WS + SSE transports before emitting tool-result)
 export { redactSkillOutput } from './redact-skill-output.js'
 
