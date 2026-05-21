@@ -16,12 +16,9 @@ import (
 const (
 	defaultBaseURL = "https://api.stripe.com"
 	defaultTimeout = 30 * time.Second
-	// defaultStripeVersion pins the preview API version. The integration
-	// plan §11 calls for a specific preview version but doesn't record
-	// which one yet; this default is a placeholder until Stripe CS confirms
-	// it. Override via Config.StripeVersion to bump without redeploying.
-	// TODO(stripe-cs): replace with the exact preview version Stripe pins us to.
-	defaultStripeVersion = "2024-11-20.preview"
+	// defaultStripeVersion pins the preview API version. Override via
+	// Config.StripeVersion or the STRIPE_API_VERSION env var.
+	defaultStripeVersion = "2026-04-22.preview"
 	errorBodyLimit       = 512
 )
 

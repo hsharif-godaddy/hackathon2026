@@ -41,10 +41,14 @@ func TestNewRealClient_RejectsNil(t *testing.T) {
 func TestRealClient_CreateClaimableSandbox_TranslatesInput(t *testing.T) {
 	fc := &fakeCreator{
 		out: &stripeapi.CreateClaimableSandboxResponse{
-			ID:       "clmsbx_real_X",
-			Account:  stripeapi.SandboxAccount{ID: "acct_real_X"},
-			APIKeys:  stripeapi.SandboxAPIKeys{Secret: "sk_test_X", Publishable: "pk_test_X", MCP: "ek_test_X"},
-			ClaimURL: "https://dashboard.stripe.com/claim/clmsbx_real_X",
+			ID: "clmsbx_real_X",
+			SandboxDetails: stripeapi.SandboxDetails{
+				Account: "acct_real_X",
+				APIKeys: stripeapi.SandboxAPIKeys{Secret: "sk_test_X", Publishable: "pk_test_X", MCP: "ek_test_X"},
+			},
+			OnboardingLinkDetails: stripeapi.OnboardingLinkResponseDetails{
+				URL: "https://dashboard.stripe.com/claim/clmsbx_real_X",
+			},
 		},
 	}
 	rc, err := NewRealClient(fc)
@@ -64,8 +68,8 @@ func TestRealClient_CreateClaimableSandbox_TranslatesInput(t *testing.T) {
 	if fc.callCount != 1 {
 		t.Errorf("call count: want 1, got %d", fc.callCount)
 	}
-	if fc.lastIdemKey != "sandbox-app-1" {
-		t.Errorf("idempotency key: want sandbox-app-1, got %q", fc.lastIdemKey)
+	if fc.lastIdemKey != "sandbox-app-1-founder@example.com" {
+		t.Errorf("idempotency key: want sandbox-app-1-founder@example.com, got %q", fc.lastIdemKey)
 	}
 	if fc.lastReq.Prefill == nil {
 		t.Fatalf("Prefill: want non-nil")
@@ -73,21 +77,80 @@ func TestRealClient_CreateClaimableSandbox_TranslatesInput(t *testing.T) {
 	if fc.lastReq.Prefill.Email != "founder@example.com" {
 		t.Errorf("Prefill.Email: want founder@example.com, got %q", fc.lastReq.Prefill.Email)
 	}
-	if fc.lastReq.Prefill.Country != "US" {
-		t.Errorf("Prefill.Country: want US, got %q", fc.lastReq.Prefill.Country)
+	if fc.lastReq.Prefill.Country != "us" {
+		t.Errorf("Prefill.Country: want us (lowercased), got %q", fc.lastReq.Prefill.Country)
+	}
+	if fc.lastReq.Prefill.Name != "GoDaddy Airo App: app-1" {
+		t.Errorf("Prefill.Name: want %q, got %q", "GoDaddy Airo App: app-1", fc.lastReq.Prefill.Name)
 	}
 	if !fc.lastReq.EnableMcpAccess {
 		t.Errorf("EnableMcpAccess: want true (the agent needs the MCP key)")
+	}
+	// AppChannel and OnboardingLinkDetails.RefreshURL are the integration
+	// constants Stripe currently demands; missing or wrong values produce
+	// the 500 api_error this PR fixed. Asserted explicitly so a regression
+	// surfaces here instead of in a live-fire Stripe call.
+	if fc.lastReq.AppChannel != "testing" {
+		t.Errorf("AppChannel: want %q, got %q", "testing", fc.lastReq.AppChannel)
+	}
+	if fc.lastReq.OnboardingLinkDetails == nil {
+		t.Fatalf("OnboardingLinkDetails: want non-nil")
+	}
+	if fc.lastReq.OnboardingLinkDetails.RefreshURL != "https://airo-builder.godaddy.com" {
+		t.Errorf("OnboardingLinkDetails.RefreshURL: want %q, got %q",
+			"https://airo-builder.godaddy.com", fc.lastReq.OnboardingLinkDetails.RefreshURL)
+	}
+}
+
+// Pin: incidental case/whitespace differences in the email don't fragment
+// the dedupe window. Two requests for the same app+email-modulo-normalization
+// must produce the same idempotency key so Stripe replays the cached
+// response on retry instead of minting a second sandbox.
+func TestRealClient_CreateClaimableSandbox_NormalizesEmailInIdempotencyKey(t *testing.T) {
+	cases := []struct {
+		name, email string
+	}{
+		{"lowercase canonical", "founder@example.com"},
+		{"mixed case", "Founder@Example.COM"},
+		{"surrounding whitespace", "  founder@example.com  "},
+		{"both", "  Founder@Example.COM  "},
+	}
+	const wantKey = "sandbox-app-1-founder@example.com"
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			fc := &fakeCreator{
+				out: &stripeapi.CreateClaimableSandboxResponse{ID: "clmsbx_X"},
+			}
+			rc, err := NewRealClient(fc)
+			if err != nil {
+				t.Fatalf("NewRealClient: %v", err)
+			}
+			if _, err := rc.CreateClaimableSandbox(context.Background(), CreateSandboxInput{
+				AppID:   "app-1",
+				Email:   c.email,
+				Country: "US",
+			}); err != nil {
+				t.Fatalf("CreateClaimableSandbox: %v", err)
+			}
+			if fc.lastIdemKey != wantKey {
+				t.Errorf("idempotency key: want %q, got %q", wantKey, fc.lastIdemKey)
+			}
+		})
 	}
 }
 
 func TestRealClient_CreateClaimableSandbox_TranslatesOutput(t *testing.T) {
 	fc := &fakeCreator{
 		out: &stripeapi.CreateClaimableSandboxResponse{
-			ID:       "clmsbx_real_X",
-			Account:  stripeapi.SandboxAccount{ID: "acct_real_X"},
-			APIKeys:  stripeapi.SandboxAPIKeys{Secret: "sk_test_X", Publishable: "pk_test_X", MCP: "ek_test_X"},
-			ClaimURL: "https://dashboard.stripe.com/claim/clmsbx_real_X",
+			ID: "clmsbx_real_X",
+			SandboxDetails: stripeapi.SandboxDetails{
+				Account: "acct_real_X",
+				APIKeys: stripeapi.SandboxAPIKeys{Secret: "sk_test_X", Publishable: "pk_test_X", MCP: "ek_test_X"},
+			},
+			OnboardingLinkDetails: stripeapi.OnboardingLinkResponseDetails{
+				URL: "https://dashboard.stripe.com/claim/clmsbx_real_X",
+			},
 		},
 	}
 	rc, _ := NewRealClient(fc)
