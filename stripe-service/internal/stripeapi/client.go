@@ -119,18 +119,24 @@ func (c *Client) do(
 	headers requestHeaders,
 	body any,
 ) ([]byte, error) {
-	encoded, err := json.Marshal(body)
-	if err != nil {
-		return nil, fmt.Errorf("stripeapi %s %s: marshal body: %w", method, path, err)
+	var reqBody io.Reader = http.NoBody
+	if body != nil {
+		encoded, err := json.Marshal(body)
+		if err != nil {
+			return nil, fmt.Errorf("stripeapi %s %s: marshal body: %w", method, path, err)
+		}
+		reqBody = bytes.NewReader(encoded)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, bytes.NewReader(encoded))
+	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, reqBody)
 	if err != nil {
 		return nil, fmt.Errorf("stripeapi %s %s: build request: %w", method, path, err)
 	}
 	req.Header.Set("Authorization", "Bearer "+c.apiKey)
 	req.Header.Set("Stripe-Version", c.stripeVersion)
-	req.Header.Set("Content-Type", "application/json")
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
 	req.Header.Set("Accept", "application/json")
 	if headers.idempotencyKey != "" {
 		req.Header.Set("Idempotency-Key", headers.idempotencyKey)

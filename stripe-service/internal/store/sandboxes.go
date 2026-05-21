@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -59,6 +60,7 @@ type DynamoDBAPI interface {
 	PutItem(ctx context.Context, in *dynamodb.PutItemInput, opts ...func(*dynamodb.Options)) (*dynamodb.PutItemOutput, error)
 	GetItem(ctx context.Context, in *dynamodb.GetItemInput, opts ...func(*dynamodb.Options)) (*dynamodb.GetItemOutput, error)
 	Query(ctx context.Context, in *dynamodb.QueryInput, opts ...func(*dynamodb.Options)) (*dynamodb.QueryOutput, error)
+	UpdateItem(ctx context.Context, in *dynamodb.UpdateItemInput, opts ...func(*dynamodb.Options)) (*dynamodb.UpdateItemOutput, error)
 }
 
 // Sandboxes reads and writes the stripe_sandboxes DynamoDB table.
@@ -106,6 +108,108 @@ func (s *Sandboxes) GetBySandboxID(ctx context.Context, sandboxID string) (Sandb
 		return Sandbox{}, ErrSandboxNotFound
 	}
 	return fromItem(out.Item), nil
+}
+
+// UpdateClaimStatus advances a sandbox's lifecycle state via a single
+// DynamoDB UpdateItem with a monotonic-progression condition expression.
+// Concurrent webhook events (e.g. claimed + owner_account_updated for the
+// same sandbox) cannot clobber each other: the condition rejects any
+// downgrade (live → claimed) and re-applying the same status is a no-op.
+//
+// Returns ErrSandboxNotFound when no row exists — a webhook event for an
+// unknown sandbox is either a routing mistake or a stale replay; the caller
+// logs and ACKs without retrying. A condition rejection caused by the
+// monotonic guard returns nil (no-op), since the sandbox is already in a
+// valid downstream state.
+//
+// liveAccountID is only persisted when non-empty; pass "" to leave it
+// untouched. This lets the `claimed` handler advance status without
+// overwriting a later-arriving owner_account, and lets the
+// `owner_account_updated` handler set the field while relying on
+// idempotency for the status.
+func (s *Sandboxes) UpdateClaimStatus(ctx context.Context, sandboxID string, status ClaimStatus, liveAccountID string) error {
+	allowed := allowedSourceStatuses(status)
+	if len(allowed) == 0 {
+		return fmt.Errorf("update sandbox %q: invalid target status %q", sandboxID, status)
+	}
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	exprNames := map[string]string{
+		"#cs": "claim_status",
+		"#ua": "updated_at",
+	}
+	exprValues := map[string]types.AttributeValue{
+		":s": &types.AttributeValueMemberS{Value: string(status)},
+		":u": &types.AttributeValueMemberS{Value: now},
+	}
+	setExprs := []string{"#cs = :s", "#ua = :u"}
+	if liveAccountID != "" {
+		exprNames["#la"] = "live_account_id"
+		exprValues[":l"] = &types.AttributeValueMemberS{Value: liveAccountID}
+		setExprs = append(setExprs, "#la = :l")
+	}
+
+	placeholders := make([]string, 0, len(allowed))
+	for i, src := range allowed {
+		ph := fmt.Sprintf(":a%d", i)
+		exprValues[ph] = &types.AttributeValueMemberS{Value: string(src)}
+		placeholders = append(placeholders, ph)
+	}
+
+	updateExpr := "SET " + strings.Join(setExprs, ", ")
+	condExpr := fmt.Sprintf("attribute_exists(sandbox_id) AND #cs IN (%s)", strings.Join(placeholders, ", "))
+
+	_, err := s.ddb.UpdateItem(ctx, &dynamodb.UpdateItemInput{
+		TableName: &s.table,
+		Key: map[string]types.AttributeValue{
+			"sandbox_id": &types.AttributeValueMemberS{Value: sandboxID},
+		},
+		UpdateExpression:          aws.String(updateExpr),
+		ConditionExpression:       aws.String(condExpr),
+		ExpressionAttributeNames:  exprNames,
+		ExpressionAttributeValues: exprValues,
+	})
+	if err != nil {
+		var ccf *types.ConditionalCheckFailedException
+		if errors.As(err, &ccf) {
+			// Discriminate "row missing" from "monotonic guard rejected".
+			// The latter is a normal race outcome — the sandbox is already
+			// at or past target — so callers ACK without retry.
+			if _, getErr := s.GetBySandboxID(ctx, sandboxID); errors.Is(getErr, ErrSandboxNotFound) {
+				return ErrSandboxNotFound
+			} else if getErr != nil {
+				slog.Warn("store.sandboxes.update_post_condition_get_failed",
+					"sandbox_id", sandboxID, "error", getErr)
+			} else {
+				slog.Info("store.sandboxes.update_skipped_monotonic_guard",
+					"sandbox_id", sandboxID, "target_status", string(status))
+			}
+			return nil
+		}
+		return fmt.Errorf("update sandbox %q: %w", sandboxID, err)
+	}
+	return nil
+}
+
+// allowedSourceStatuses returns the set of current claim_status values from
+// which a transition to target is permitted. Lifecycle is monotonic —
+// provisioned → claimed → live, with revoked as a terminal override.
+// Idempotent re-application of the same status is always allowed (target
+// is included in its own allowed-source set).
+func allowedSourceStatuses(target ClaimStatus) []ClaimStatus {
+	switch target {
+	case ClaimStatusClaimed:
+		return []ClaimStatus{ClaimStatusProvisioned, ClaimStatusClaimed}
+	case ClaimStatusLive:
+		return []ClaimStatus{ClaimStatusProvisioned, ClaimStatusClaimed, ClaimStatusLive}
+	case ClaimStatusRevoked:
+		return []ClaimStatus{ClaimStatusProvisioned, ClaimStatusClaimed, ClaimStatusLive, ClaimStatusRevoked}
+	case ClaimStatusProvisioned:
+		// Initial state — only set via Put, never via UpdateClaimStatus.
+		return nil
+	default:
+		return nil
+	}
 }
 
 // QueryByAppID returns all sandboxes whose app_id attribute equals appID via

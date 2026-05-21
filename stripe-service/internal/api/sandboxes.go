@@ -26,6 +26,7 @@ const maxSandboxBody = 1 << 20 // 1 MiB
 type sandboxStore interface {
 	Put(ctx context.Context, s store.Sandbox) error
 	QueryByAppID(ctx context.Context, appID string) ([]store.Sandbox, error)
+	UpdateClaimStatus(ctx context.Context, sandboxID string, status store.ClaimStatus, liveAccountID string) error
 }
 
 type createSandboxRequest struct {

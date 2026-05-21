@@ -48,15 +48,26 @@ func (f *fakeStripe) CreateClaimableSandbox(_ context.Context, in stripeclient.C
 
 // fakeStore is a test double for the api-internal sandboxStore interface.
 type fakeStore struct {
-	byApp    map[string][]store.Sandbox
-	puts     []store.Sandbox
-	putErr   error
-	queryErr error
+	byApp          map[string][]store.Sandbox
+	bySandboxID    map[string]store.Sandbox
+	puts           []store.Sandbox
+	updates        []fakeStoreUpdate
+	putErr         error
+	queryErr       error
+	updateErr      error
+	updateNotFound bool
+}
+
+type fakeStoreUpdate struct {
+	SandboxID     string
+	ClaimStatus   store.ClaimStatus
+	LiveAccountID string
 }
 
 func newFakeStore() *fakeStore {
 	return &fakeStore{
-		byApp: map[string][]store.Sandbox{},
+		byApp:       map[string][]store.Sandbox{},
+		bySandboxID: map[string]store.Sandbox{},
 	}
 }
 
@@ -66,6 +77,7 @@ func (f *fakeStore) Put(_ context.Context, s store.Sandbox) error {
 	}
 	f.puts = append(f.puts, s)
 	f.byApp[s.AppID] = append(f.byApp[s.AppID], s)
+	f.bySandboxID[s.SandboxID] = s
 	return nil
 }
 
@@ -74,6 +86,17 @@ func (f *fakeStore) QueryByAppID(_ context.Context, appID string) ([]store.Sandb
 		return nil, f.queryErr
 	}
 	return f.byApp[appID], nil
+}
+
+func (f *fakeStore) UpdateClaimStatus(_ context.Context, sandboxID string, status store.ClaimStatus, liveAccountID string) error {
+	if f.updateErr != nil {
+		return f.updateErr
+	}
+	if f.updateNotFound {
+		return store.ErrSandboxNotFound
+	}
+	f.updates = append(f.updates, fakeStoreUpdate{SandboxID: sandboxID, ClaimStatus: status, LiveAccountID: liveAccountID})
+	return nil
 }
 
 // TestPostSandboxesRequiresAuth — auth layer rejects before handler logic runs.

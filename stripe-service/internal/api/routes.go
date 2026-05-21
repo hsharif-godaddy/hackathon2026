@@ -24,6 +24,10 @@ type Server struct {
 	Sandboxes       sandboxStore
 	Events          eventStore
 	WebhookVerifier *webhook.Verifier
+	// EventFetcher expands thin v2 event IDs into full payloads via GET
+	// /v2/core/events/{id}. Nil when STRIPE_CLIENT=fake — dispatch handlers
+	// log a warning and return early when it is nil.
+	EventFetcher eventFetcher
 }
 
 // NewRouter returns the top-level http.Handler. /health and /v1/_probe are

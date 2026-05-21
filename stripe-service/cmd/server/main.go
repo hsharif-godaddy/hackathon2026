@@ -86,7 +86,7 @@ func main() {
 	// on a missing/placeholder secret); anything else (default) uses the
 	// deterministic fake. config.parseStripeClient already coerces local
 	// envs to "fake" so a stale env var can't accidentally hit Stripe.
-	stripeClient, err := buildStripeClient(cfg, clients, resources)
+	stripeClient, stripeAPIClient, err := buildStripeClient(cfg, clients, resources)
 	if err != nil {
 		slog.Error("stripe_service.stripe_client.build", "error", err, "stripeClient", cfg.StripeClient)
 		os.Exit(1)
@@ -102,6 +102,7 @@ func main() {
 		Sandboxes:       sandboxes,
 		Events:          events,
 		WebhookVerifier: verifier,
+		EventFetcher:    stripeAPIClient, // nil when STRIPE_CLIENT=fake
 	}
 	handler := api.NewRouter(srv)
 
@@ -181,30 +182,30 @@ func setupLogger(level, format string) {
 	slog.SetDefault(slog.New(handler))
 }
 
-// buildStripeClient resolves cfg.StripeClient to a concrete
-// stripe.Client. Extracted from main() so the boot sequence stays
-// scannable: the real path requires a Secrets Manager round-trip plus
-// stripeapi.New, all of which can fail before the HTTP server starts.
-func buildStripeClient(cfg config.Config, clients *awsclients.Clients, resources config.ResourceNames) (stripeclient.Client, error) {
+// buildStripeClient resolves cfg.StripeClient to a concrete stripe.Client.
+// The second return value is the underlying *stripeapi.Client, non-nil only
+// when StripeClientReal so the caller can wire EventFetcher for webhook
+// event expansion. Fake mode returns nil for the stripeapi client.
+func buildStripeClient(cfg config.Config, clients *awsclients.Clients, resources config.ResourceNames) (stripeclient.Client, *stripeapi.Client, error) {
 	switch cfg.StripeClient {
 	case config.StripeClientFake:
-		return stripeclient.FakeClient{}, nil
+		return stripeclient.FakeClient{}, nil, nil
 	case config.StripeClientReal:
 		// fall through to real-client construction below
 	default:
 		// parseStripeClient validates the enum at config.Load time, so this
 		// is only reachable if a future enum value is added without updating
 		// this switch. Fail loud rather than silently fall back to fake.
-		return nil, fmt.Errorf("unsupported StripeClient value %q", cfg.StripeClient)
+		return nil, nil, fmt.Errorf("unsupported StripeClient value %q", cfg.StripeClient)
 	}
 
 	rawKey, err := clients.GetSecretValue(context.Background(), resources.PlatformKeySecret)
 	if err != nil {
-		return nil, fmt.Errorf("load platform key from %s: %w", resources.PlatformKeySecret, err)
+		return nil, nil, fmt.Errorf("load platform key from %s: %w", resources.PlatformKeySecret, err)
 	}
 	apiKey, err := stripeclient.ParsePlatformKey(rawKey)
 	if err != nil {
-		return nil, fmt.Errorf("parse platform key from %s: %w", resources.PlatformKeySecret, err)
+		return nil, nil, fmt.Errorf("parse platform key from %s: %w", resources.PlatformKeySecret, err)
 	}
 	sapi, err := stripeapi.New(stripeapi.Config{
 		APIKey:        apiKey,
@@ -212,11 +213,11 @@ func buildStripeClient(cfg config.Config, clients *awsclients.Clients, resources
 		StripeVersion: cfg.StripeAPIVersion,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("construct stripeapi client: %w", err)
+		return nil, nil, fmt.Errorf("construct stripeapi client: %w", err)
 	}
 	real, err := stripeclient.NewRealClient(sapi)
 	if err != nil {
-		return nil, fmt.Errorf("construct real stripe client: %w", err)
+		return nil, nil, fmt.Errorf("construct real stripe client: %w", err)
 	}
-	return real, nil
+	return real, sapi, nil
 }
