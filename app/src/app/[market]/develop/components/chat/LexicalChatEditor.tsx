@@ -496,7 +496,7 @@ const LexicalChatEditorInner = forwardRef<LexicalChatEditorHandle, LexicalChatEd
             <ContentEditable
               id="chat-input-textarea"
               data-testid="chat-input-textarea"
-              className="w-full h-full resize-none border-0 focus:ring-0 focus:outline-none text-base md:text-sm chat-input-text min-h-[4.5rem] outline-none"
+              className="w-full h-full resize-none border-0 focus:ring-0 focus:outline-none text-base md:text-sm chat-input-text min-h-[4.5rem] max-h-[210px] overflow-y-auto outline-none"
               aria-disabled={disabled}
               aria-placeholder={props.placeholder}
               placeholder={

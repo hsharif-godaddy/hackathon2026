@@ -4,7 +4,7 @@
 import '@testing-library/jest-dom'
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { screen, waitFor } from '@testing-library/react'
+import { fireEvent, screen, waitFor } from '@testing-library/react'
 
 import { ViewMode } from '@/app/[market]/develop/components/types'
 import type { ColorSchemePaletteOption } from '@/app/[market]/develop/components/utils/findLatestColorSchemeSuggest'
@@ -924,6 +924,124 @@ describe('InputActionsPanel', () => {
       window.dispatchEvent(new KeyboardEvent('keydown', { key: '9' }))
 
       expect(mockSendMessage).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('shouldCollapse rising-edge logic', () => {
+    const mockTodoList = {
+      id: 'list-1',
+      appId: 'test-app-id',
+      name: 'Build Website',
+      items: [
+        { id: 'item-1', listId: 'list-1', title: 'Full menu page', completed: false, order: 0, createdAt: new Date(), updatedAt: new Date() },
+        { id: 'item-2', listId: 'list-1', title: 'Location & hours page', completed: false, order: 1, createdAt: new Date(), updatedAt: new Date() },
+      ],
+      createdAt: new Date('2024-01-01T00:00:00.000Z'),
+      updatedAt: new Date('2024-01-01T00:00:00.000Z'),
+    }
+
+    beforeEach(() => {
+      // Setup mocks to render the CollapsibleChatInputSection
+      vi.mocked(TodoListStore.useCurrentList).mockReturnValue(mockTodoList)
+      vi.mocked(TodoListStore.useViewState).mockReturnValue(null)
+      vi.mocked(useLatestNBAsModule.useLatestNBAs).mockReturnValue(null)
+    })
+
+    it('should collapse the panel when shouldCollapse transitions from false to true', () => {
+      const { rerender } = renderWithProviders(
+        <InputActionsPanel shouldCollapse={false} />
+      )
+
+      // Initially, the collapsible section should be expanded (continueBuildingExpanded=true)
+      const collapsibleSection = screen.getByTestId('collapsible-section-continue-building')
+      const chevronButton = collapsibleSection.querySelector('button[aria-expanded]') as HTMLButtonElement
+      expect(chevronButton).toBeInTheDocument()
+      expect(chevronButton.getAttribute('aria-expanded')).toBe('true')
+
+      // Trigger rising edge: false → true
+      rerender(<InputActionsPanel shouldCollapse={true} />)
+
+      // Should collapse (continueBuildingExpanded flipped to false)
+      expect(chevronButton.getAttribute('aria-expanded')).toBe('false')
+    })
+
+    it('should not collapse when shouldCollapse stays true (no rising edge)', () => {
+      const { rerender } = renderWithProviders(
+        <InputActionsPanel shouldCollapse={true} />
+      )
+
+      const collapsibleSection = screen.getByTestId('collapsible-section-continue-building')
+
+      // Initially expanded (prevRef starts as true, so no rising edge: true → true)
+      const chevronButton = collapsibleSection.querySelector('button[aria-expanded]') as HTMLButtonElement
+      expect(chevronButton).toBeInTheDocument()
+      expect(chevronButton.getAttribute('aria-expanded')).toBe('true')
+
+      // User manually collapses
+      fireEvent.click(chevronButton)
+
+      // Should now be collapsed
+      expect(chevronButton.getAttribute('aria-expanded')).toBe('false')
+
+      // shouldCollapse stays true (no rising edge: true → true)
+      rerender(<InputActionsPanel shouldCollapse={true} />)
+
+      // Should remain collapsed (no auto-expand because no effect on falling edge or steady state)
+      expect(chevronButton.getAttribute('aria-expanded')).toBe('false')
+    })
+
+    it('should allow re-collapse on subsequent rising edge after user re-expands', () => {
+      const { rerender } = renderWithProviders(
+        <InputActionsPanel shouldCollapse={false} />
+      )
+
+      const collapsibleSection = screen.getByTestId('collapsible-section-continue-building')
+      const chevronButton = collapsibleSection.querySelector('button[aria-expanded]') as HTMLButtonElement
+      expect(chevronButton).toBeInTheDocument()
+
+      // Initially expanded
+      expect(chevronButton.getAttribute('aria-expanded')).toBe('true')
+
+      // First rising edge: false → true
+      rerender(<InputActionsPanel shouldCollapse={true} />)
+      expect(chevronButton.getAttribute('aria-expanded')).toBe('false')
+
+      // User manually re-expands
+      fireEvent.click(chevronButton)
+      expect(chevronButton.getAttribute('aria-expanded')).toBe('true')
+
+      // Reset: true → false
+      rerender(<InputActionsPanel shouldCollapse={false} />)
+      expect(chevronButton.getAttribute('aria-expanded')).toBe('true')
+
+      // Second rising edge: false → true
+      rerender(<InputActionsPanel shouldCollapse={true} />)
+
+      // Should collapse again (new rising edge detected)
+      expect(chevronButton.getAttribute('aria-expanded')).toBe('false')
+    })
+
+    it('should not affect collapse state when shouldCollapse transitions from true to false', () => {
+      const { rerender } = renderWithProviders(
+        <InputActionsPanel shouldCollapse={true} />
+      )
+
+      const collapsibleSection = screen.getByTestId('collapsible-section-continue-building')
+
+      // Initially expanded (prevRef starts as true, so no rising edge: true → true)
+      const chevronButton = collapsibleSection.querySelector('button[aria-expanded]') as HTMLButtonElement
+      expect(chevronButton).toBeInTheDocument()
+      expect(chevronButton.getAttribute('aria-expanded')).toBe('true')
+
+      // User manually collapses
+      fireEvent.click(chevronButton)
+      expect(chevronButton.getAttribute('aria-expanded')).toBe('false')
+
+      // Falling edge: true → false (no effect on collapse state)
+      rerender(<InputActionsPanel shouldCollapse={false} />)
+
+      // Should remain collapsed (falling edge doesn't expand)
+      expect(chevronButton.getAttribute('aria-expanded')).toBe('false')
     })
   })
 })

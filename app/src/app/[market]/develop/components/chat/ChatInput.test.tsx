@@ -4,7 +4,7 @@
 import '@testing-library/jest-dom';
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 
 import { MediaType } from '@/app/[market]/develop/components/chat/AssetTypes';
 import { EXPERIMENT_IDS } from '@/config/experiments';
@@ -23,6 +23,7 @@ const mockDevelopStore = {
 const mockUseSwitchboard = vi.hoisted(() => vi.fn((feature: string) => {
   if (feature === 'appbuilder-image-manager') return true;
   if (feature === 'appbuilder-chat-gauge') return true;
+  if (feature === 'airo-builder-chat-collapse-multiline-input') return true;
   return false;
 }));
 
@@ -82,6 +83,12 @@ vi.mock('@/hooks/useSpeechRecognition', () => ({
   }),
 }));
 
+// Mock InputActionsPanel to spy on shouldCollapse prop
+const mockInputActionsPanel = vi.hoisted(() => vi.fn((props: any) => null));
+vi.mock('@/app/[market]/develop/components/chat/InputActionsPanel', () => ({
+  default: mockInputActionsPanel,
+}));
+
 describe('ChatInput', () => {
   const defaultProps = {
     inputValue: '',
@@ -98,6 +105,7 @@ describe('ChatInput', () => {
     mockUseSwitchboard.mockImplementation((feature: string) => {
       if (feature === 'appbuilder-image-manager') return true;
       if (feature === 'appbuilder-chat-gauge') return true;
+      if (feature === 'airo-builder-chat-collapse-multiline-input') return true;
       return false;
     });
     mockUseHivemind.mockReset();
@@ -565,7 +573,7 @@ describe('ChatInput', () => {
 
     const textarea = screen.getByRole('textbox');
     expect(textarea).toHaveAttribute('id', 'chat-input-textarea');
-    expect(textarea).toHaveAttribute('rows', '3');
+    expect(textarea).toHaveAttribute('rows', '1'); // Changed from 3 to 1 for auto-grow behavior
   });
 
   it('should have correct send button attributes and log send on click', async () => {
@@ -957,6 +965,550 @@ describe('ChatInput', () => {
       });
       expect(mockStopSpeech).not.toHaveBeenCalled();
       expect(mockResetTranscript).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('InputActionsPanel collapse behavior', () => {
+    let resizeObserverCallback: ResizeObserverCallback | null = null;
+
+    // Helper to safely get shouldCollapse prop from last mock call
+    const getLastShouldCollapse = () => {
+      const calls = mockInputActionsPanel.mock.calls;
+      expect(calls.length).toBeGreaterThan(0);
+      const lastCall = calls[calls.length - 1];
+      expect(lastCall).toBeDefined();
+      expect(lastCall[0]).toBeDefined();
+      return lastCall[0].shouldCollapse as boolean;
+    };
+
+    // Helper to trigger ResizeObserver callback and advance debounce timer
+    const triggerResize = (element: HTMLTextAreaElement | HTMLElement) => {
+      if (resizeObserverCallback) {
+        act(() => {
+          resizeObserverCallback(
+            [{ target: element as Element, contentRect: {} as DOMRectReadOnly, borderBoxSize: [], contentBoxSize: [], devicePixelContentBoxSize: [] }],
+            {} as ResizeObserver
+          );
+          // Advance timer to trigger debounced checkLines (100ms debounce)
+          vi.advanceTimersByTime(100);
+        });
+      }
+    };
+
+    // Helper to create mock AiEditContext
+    const createMockContext = (number: number, tagName: string = 'div') => ({
+      screenshot: null,
+      elementInfo: { tagName, textContent: null, className: '', id: '', selector: '', rect: { top: 0, left: 0, width: 0, height: 0 }, computedStyles: {} },
+      number,
+      selector: `element-${number}`,
+      devContext: null,
+    });
+
+    beforeEach(() => {
+      resizeObserverCallback = null;
+      mockInputActionsPanel.mockReturnValue(null);
+      vi.useFakeTimers();
+
+      // Mock document.getElementById to find element by data-testid if id lookup fails
+      const originalGetElementById = document.getElementById.bind(document);
+      document.getElementById = vi.fn((id: string) => {
+        const elem = originalGetElementById(id);
+        if (elem) return elem;
+        // Fallback: find by data-testid if id attribute not set yet
+        if (id === 'chat-input-textarea') {
+          return document.querySelector('[data-testid="chat-input-textarea"]') as HTMLElement;
+        }
+        return null;
+      }) as any;
+
+      // Mock getComputedStyle to return valid CSS values
+      window.getComputedStyle = vi.fn(() => ({
+        lineHeight: '21px',
+        paddingTop: '0px',
+        paddingBottom: '0px',
+        getPropertyValue: vi.fn((prop: string) => {
+          if (prop === 'line-height') return '21px';
+          if (prop === 'padding-top') return '0px';
+          if (prop === 'padding-bottom') return '0px';
+          return '';
+        }),
+      })) as any;
+
+      // Install controllable ResizeObserver mock
+      vi.stubGlobal(
+        'ResizeObserver',
+        class ResizeObserverStub {
+          constructor(callback: ResizeObserverCallback) {
+            resizeObserverCallback = callback;
+          }
+          observe = vi.fn();
+          unobserve = vi.fn();
+          disconnect = vi.fn();
+        }
+      );
+
+      // Enable chat plans and multiline collapse feature flags
+      mockUseSwitchboard.mockImplementation((feature: string) => {
+        if (feature === 'airo-builder-chat-plans') return true;
+        if (feature === 'airo-builder-chat-collapse-multiline-input') return true;
+        if (feature === 'appbuilder-image-manager') return true;
+        if (feature === 'appbuilder-chat-gauge') return true;
+        return false;
+      });
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+      vi.unstubAllGlobals();
+    });
+
+    it('should pass shouldCollapse=false to InputActionsPanel when lines <= 3', () => {
+      renderWithProviders(
+        <ChatInput {...defaultProps} inputValue="" />
+      );
+
+      const textarea = screen.getByTestId('chat-input-textarea') as HTMLTextAreaElement;
+
+      // Mock scrollHeight for 2 lines (lineHeight ~21px, so 2 lines = ~42px)
+      Object.defineProperty(textarea, 'scrollHeight', {
+        configurable: true,
+        value: 42,
+      });
+
+      triggerResize(textarea);
+
+      // Verify InputActionsPanel receives shouldCollapse=false
+      expect(getLastShouldCollapse()).toBe(false);
+    });
+
+    it('should pass shouldCollapse=true when transitioning from <=3 to >3 lines', () => {
+      renderWithProviders(
+        <ChatInput {...defaultProps} inputValue="" />
+      );
+
+      const textarea = screen.getByTestId('chat-input-textarea') as HTMLTextAreaElement;
+
+      // Start with 2 lines
+      Object.defineProperty(textarea, 'scrollHeight', {
+        configurable: true,
+        value: 42,
+      });
+
+      triggerResize(textarea);
+
+      // Verify shouldCollapse is false initially
+      expect(getLastShouldCollapse()).toBe(false);
+
+      // Transition to 4 lines
+      Object.defineProperty(textarea, 'scrollHeight', {
+        configurable: true,
+        value: 85,
+      });
+
+      triggerResize(textarea);
+
+      // Verify shouldCollapse is now true (rising edge detected)
+      expect(getLastShouldCollapse()).toBe(true);
+    });
+
+    it('should reset collapse trigger when lines go back to <=3', () => {
+      renderWithProviders(
+        <ChatInput {...defaultProps} inputValue="" />
+      );
+
+      const textarea = screen.getByTestId('chat-input-textarea') as HTMLTextAreaElement;
+      textarea.id = 'chat-input-textarea';
+
+      // Start with 4 lines (collapsed)
+      Object.defineProperty(textarea, 'scrollHeight', {
+        configurable: true,
+        value: 85,
+      });
+
+      triggerResize(textarea);
+
+      // Verify shouldCollapse is true
+      expect(getLastShouldCollapse()).toBe(true);
+
+      // Go back to 2 lines
+      Object.defineProperty(textarea, 'scrollHeight', {
+        configurable: true,
+        value: 42,
+      });
+
+      triggerResize(textarea);
+
+      // Verify shouldCollapse is now false (reset)
+      expect(getLastShouldCollapse()).toBe(false);
+    });
+
+    it('should trigger collapse again on subsequent transitions from <=3 to >3', () => {
+      renderWithProviders(
+        <ChatInput {...defaultProps} inputValue="" />
+      );
+
+      const textarea = screen.getByTestId('chat-input-textarea') as HTMLTextAreaElement;
+      textarea.id = 'chat-input-textarea';
+
+      // First transition: 2 → 4 lines
+      Object.defineProperty(textarea, 'scrollHeight', {
+        configurable: true,
+        value: 42,
+      });
+      triggerResize(textarea);
+      expect(getLastShouldCollapse()).toBe(false);
+
+      Object.defineProperty(textarea, 'scrollHeight', {
+        configurable: true,
+        value: 85,
+      });
+      triggerResize(textarea);
+      expect(getLastShouldCollapse()).toBe(true);
+
+      // Go back to 1 line (resets trigger)
+      Object.defineProperty(textarea, 'scrollHeight', {
+        configurable: true,
+        value: 21,
+      });
+      triggerResize(textarea);
+      expect(getLastShouldCollapse()).toBe(false);
+
+      // Second transition: 1 → 4 lines (should trigger collapse again)
+      Object.defineProperty(textarea, 'scrollHeight', {
+        configurable: true,
+        value: 85,
+      });
+      triggerResize(textarea);
+      expect(getLastShouldCollapse()).toBe(true);
+    });
+
+    it('should not trigger collapse when staying above 3 lines', () => {
+      renderWithProviders(
+        <ChatInput {...defaultProps} inputValue="" />
+      );
+
+      const textarea = screen.getByTestId('chat-input-textarea') as HTMLTextAreaElement;
+      textarea.id = 'chat-input-textarea';
+
+      // Start with 4 lines
+      Object.defineProperty(textarea, 'scrollHeight', {
+        configurable: true,
+        value: 85,
+      });
+      triggerResize(textarea);
+
+      expect(getLastShouldCollapse()).toBe(true);
+
+      // Change to 5 lines (still > 3)
+      Object.defineProperty(textarea, 'scrollHeight', {
+        configurable: true,
+        value: 106,
+      });
+      triggerResize(textarea);
+
+      // Should remain true, not re-trigger (no new render expected for shouldCollapse change)
+      expect(getLastShouldCollapse()).toBe(true);
+    });
+
+    it('should not collapse when feature flag is off', () => {
+      // Override beforeEach to disable the flag
+      mockUseSwitchboard.mockImplementation((feature: string) => {
+        if (feature === 'airo-builder-chat-plans') return true;
+        if (feature === 'airo-builder-chat-collapse-multiline-input') return false; // Flag OFF
+        if (feature === 'appbuilder-image-manager') return true;
+        if (feature === 'appbuilder-chat-gauge') return true;
+        return false;
+      });
+
+      renderWithProviders(
+        <ChatInput {...defaultProps} inputValue="" />
+      );
+
+      const textarea = screen.getByTestId('chat-input-textarea') as HTMLTextAreaElement;
+
+      // Start with 2 lines
+      Object.defineProperty(textarea, 'scrollHeight', {
+        configurable: true,
+        value: 42,
+      });
+      triggerResize(textarea);
+
+      // Transition to 5 lines (way over threshold)
+      Object.defineProperty(textarea, 'scrollHeight', {
+        configurable: true,
+        value: 106,
+      });
+      triggerResize(textarea);
+
+      // shouldCollapse should stay false because the feature flag is off
+      expect(getLastShouldCollapse()).toBe(false);
+    });
+
+    describe('with Lexical editor and element mentions', () => {
+      it('should count lines correctly with element mentions', () => {
+        renderWithProviders(
+          <ChatInput
+            {...defaultProps}
+            inputValue=""
+            isMultiElementSelect={true}
+            aiEditContexts={[createMockContext(1)]}
+          />
+        );
+
+        // For Lexical editor, the element needs to have the id set
+        const elem = document.querySelector('[data-testid="chat-input-textarea"]') as HTMLElement;
+        expect(elem).toBeInTheDocument();
+        elem.id = 'chat-input-textarea';
+
+        const lexicalEditor = document.getElementById('chat-input-textarea') as HTMLElement;
+        expect(lexicalEditor).toBeTruthy();
+
+        // Mock scrollHeight for content with mentions (mentions take up space too)
+        Object.defineProperty(lexicalEditor, 'scrollHeight', {
+          configurable: true,
+          value: 85, // ~4 lines
+        });
+
+        triggerResize(lexicalEditor);
+
+        // Should trigger collapse when > 3 lines even with mentions
+        expect(getLastShouldCollapse()).toBe(true);
+      });
+
+      it('should trigger collapse with multiline text and mentions', () => {
+        renderWithProviders(
+          <ChatInput
+            {...defaultProps}
+            inputValue=""
+            isMultiElementSelect={true}
+            aiEditContexts={[]}
+          />
+        );
+
+        const elem = document.querySelector('[data-testid="chat-input-textarea"]') as HTMLElement;
+        elem.id = 'chat-input-textarea';
+        const lexicalEditor = document.getElementById('chat-input-textarea') as HTMLElement;
+
+        // Start with 2 lines
+        Object.defineProperty(lexicalEditor, 'scrollHeight', {
+          configurable: true,
+          value: 42,
+        });
+        triggerResize(lexicalEditor);
+
+        expect(getLastShouldCollapse()).toBe(false);
+
+        // Add mentions and more text → 4 lines
+        Object.defineProperty(lexicalEditor, 'scrollHeight', {
+          configurable: true,
+          value: 85,
+        });
+        triggerResize(lexicalEditor);
+
+        // Should trigger collapse
+        expect(getLastShouldCollapse()).toBe(true);
+      });
+
+      it('should handle mentions in single line without triggering collapse', () => {
+        renderWithProviders(
+          <ChatInput
+            {...defaultProps}
+            inputValue=""
+            isMultiElementSelect={true}
+            aiEditContexts={[createMockContext(1, 'button')]}
+          />
+        );
+
+        const elem = document.querySelector('[data-testid="chat-input-textarea"]') as HTMLElement;
+        elem.id = 'chat-input-textarea';
+        const lexicalEditor = document.getElementById('chat-input-textarea') as HTMLElement;
+
+        // Single line with mention
+        Object.defineProperty(lexicalEditor, 'scrollHeight', {
+          configurable: true,
+          value: 21, // ~1 line
+        });
+        triggerResize(lexicalEditor);
+
+        // Should NOT trigger collapse (only 1 line)
+        expect(getLastShouldCollapse()).toBe(false);
+      });
+
+      it('should trigger collapse when adding mentions causes overflow', () => {
+        renderWithProviders(
+          <ChatInput
+            {...defaultProps}
+            inputValue=""
+            isMultiElementSelect={true}
+            aiEditContexts={[]}
+          />
+        );
+
+        const elem = document.querySelector('[data-testid="chat-input-textarea"]') as HTMLElement;
+        elem.id = 'chat-input-textarea';
+        const lexicalEditor = document.getElementById('chat-input-textarea') as HTMLElement;
+
+        // Start with 3 lines of text, no mentions
+        Object.defineProperty(lexicalEditor, 'scrollHeight', {
+          configurable: true,
+          value: 64, // Exactly 3 lines
+        });
+        triggerResize(lexicalEditor);
+
+        expect(getLastShouldCollapse()).toBe(false);
+
+        // Add a mention that pushes it to 4 lines
+        Object.defineProperty(lexicalEditor, 'scrollHeight', {
+          configurable: true,
+          value: 85, // 4 lines now
+        });
+        triggerResize(lexicalEditor);
+
+        // Should trigger collapse when crossing threshold
+        expect(getLastShouldCollapse()).toBe(true);
+      });
+
+      it('should reset collapse trigger when removing mentions reduces lines', () => {
+        renderWithProviders(
+          <ChatInput
+            {...defaultProps}
+            inputValue=""
+            isMultiElementSelect={true}
+            aiEditContexts={[]}
+          />
+        );
+
+        const elem = document.querySelector('[data-testid="chat-input-textarea"]') as HTMLElement;
+        elem.id = 'chat-input-textarea';
+        const lexicalEditor = document.getElementById('chat-input-textarea') as HTMLElement;
+
+        // Start with 4 lines including mentions
+        Object.defineProperty(lexicalEditor, 'scrollHeight', {
+          configurable: true,
+          value: 85,
+        });
+        triggerResize(lexicalEditor);
+
+        expect(getLastShouldCollapse()).toBe(true);
+
+        // Remove mentions, goes back to 2 lines
+        Object.defineProperty(lexicalEditor, 'scrollHeight', {
+          configurable: true,
+          value: 42,
+        });
+        triggerResize(lexicalEditor);
+
+        // Should reset collapse trigger (back to ≤3 lines)
+        expect(getLastShouldCollapse()).toBe(false);
+      });
+    });
+
+    describe('width resize scenarios', () => {
+      it('should trigger collapse when pane width shrinks and causes text to wrap to >3 lines', async () => {
+        const onInputChange = vi.fn();
+        renderWithProviders(
+          <ChatInput {...defaultProps} inputValue="" onInputChange={onInputChange} />
+        );
+
+        const textarea = screen.getByTestId('chat-input-textarea') as HTMLTextAreaElement;
+
+        // Start with a long single line of text (wide pane, 2 lines visually)
+        Object.defineProperty(textarea, 'scrollHeight', {
+          configurable: true,
+          value: 42, // 2 lines
+        });
+
+        triggerResize(textarea);
+
+        // Verify shouldCollapse is false initially
+        expect(getLastShouldCollapse()).toBe(false);
+
+        // Simulate pane width shrinking - same text now wraps to 4 lines
+        Object.defineProperty(textarea, 'scrollHeight', {
+          configurable: true,
+          value: 85, // 4 lines after wrapping
+        });
+
+        triggerResize(textarea);
+
+        // Should trigger collapse (2 → 4 lines due to width change)
+        expect(getLastShouldCollapse()).toBe(true);
+      });
+
+      it('should reset collapse when pane width expands and text unwraps to ≤3 lines', async () => {
+        const onInputChange = vi.fn();
+        renderWithProviders(
+          <ChatInput {...defaultProps} inputValue="" onInputChange={onInputChange} />
+        );
+
+        const textarea = screen.getByTestId('chat-input-textarea') as HTMLTextAreaElement;
+
+        // Start with text wrapped to 4 lines (narrow pane)
+        Object.defineProperty(textarea, 'scrollHeight', {
+          configurable: true,
+          value: 85, // 4 lines when wrapped
+        });
+
+        triggerResize(textarea);
+
+        // Verify shouldCollapse is true
+        expect(getLastShouldCollapse()).toBe(true);
+
+        // Simulate pane width expanding - same text now fits on 2 lines
+        Object.defineProperty(textarea, 'scrollHeight', {
+          configurable: true,
+          value: 42, // 2 lines after unwrapping
+        });
+
+        triggerResize(textarea);
+
+        // Should reset collapse trigger (4 → 2 lines due to width change)
+        expect(getLastShouldCollapse()).toBe(false);
+      });
+
+      it('should handle rapid resize events with debouncing', async () => {
+        const onInputChange = vi.fn();
+        renderWithProviders(
+          <ChatInput
+            {...defaultProps}
+            inputValue="Some text that will wrap differently"
+            onInputChange={onInputChange}
+          />
+        );
+
+        const textarea = screen.getByTestId('chat-input-textarea') as HTMLTextAreaElement;
+
+        // Simulate rapid resize events (should be debounced)
+        // Start at 2 lines
+        Object.defineProperty(textarea, 'scrollHeight', {
+          configurable: true,
+          value: 42,
+        });
+
+        triggerResize(textarea);
+        expect(getLastShouldCollapse()).toBe(false);
+
+        // Resize to 3 lines
+        Object.defineProperty(textarea, 'scrollHeight', {
+          configurable: true,
+          value: 64,
+        });
+
+        triggerResize(textarea);
+        expect(getLastShouldCollapse()).toBe(false);
+
+        // Resize to 4 lines (should trigger collapse)
+        Object.defineProperty(textarea, 'scrollHeight', {
+          configurable: true,
+          value: 85,
+        });
+
+        triggerResize(textarea);
+
+        // Debouncing should handle these rapid changes efficiently
+        // Only the final transition (≤3 → 4) should trigger collapse
+        expect(getLastShouldCollapse()).toBe(true);
+      });
     });
   });
 });

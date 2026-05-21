@@ -144,6 +144,7 @@ export default function ChatInput({
   const { locale } = useIntl();
   const isChatGaugeEnabledBySwitchboard = useSwitchboard('appbuilder-chat-gauge');
   const areChatPlansEnabled = useSwitchboard('airo-builder-chat-plans');
+  const isMultilineCollapseEnabled = useSwitchboard('airo-builder-chat-collapse-multiline-input');
   const attachmentSlotsUsed = selectedAssets.length + stagedFiles.length
   const canAddAsset = attachmentSlotsUsed < maxAssets;
 
@@ -155,6 +156,9 @@ export default function ChatInput({
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const lexicalEditorRef = useRef<LexicalChatEditorHandle>(null)
   const [isFileDragOver, setIsFileDragOver] = useState(false)
+  const [shouldCollapseUI, setShouldCollapseUI] = useState(false)
+  const previousLinesRef = useRef(0)
+  const resizeTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   const { handleArrowUp, handleArrowDown, resetNavigation, exitNavigationMode, navRevision } =
     useChatHistoryNavigation({
@@ -172,6 +176,71 @@ export default function ChatInput({
       textareaRef.current.setSelectionRange(len, len)
     }
   }, [navRevision])
+
+  // Track input height changes using ResizeObserver (more efficient than useEffect on inputValue)
+  useEffect(() => {
+    // Only enable collapse behavior if feature flag is on
+    if (!isMultilineCollapseEnabled) return
+
+    const editorElement = document.getElementById('chat-input-textarea') as HTMLElement
+    if (!editorElement) return
+
+    const checkLines = () => {
+      // Calculate number of lines based on height
+      const lineHeight = parseFloat(getComputedStyle(editorElement).lineHeight)
+      const paddingTop = parseFloat(getComputedStyle(editorElement).paddingTop)
+      const paddingBottom = parseFloat(getComputedStyle(editorElement).paddingBottom)
+      const scrollHeight = editorElement.scrollHeight || editorElement.clientHeight
+      const contentHeight = scrollHeight - paddingTop - paddingBottom
+      const numberOfLines = Math.max(1, Math.round(contentHeight / lineHeight))
+
+      const previousLines = previousLinesRef.current
+
+      // Only update state if we detect a meaningful transition
+      if (previousLines <= 3 && numberOfLines > 3) {
+        setShouldCollapseUI(true)
+      } else if (numberOfLines <= 3 && previousLines > 3) {
+        setShouldCollapseUI(false)
+      }
+
+      // Update the ref for next comparison
+      previousLinesRef.current = numberOfLines
+    }
+
+    // Use ResizeObserver for efficient height tracking
+    const resizeObserver = new ResizeObserver(() => {
+      // Debounce the check to avoid excessive updates
+      if (resizeTimeoutRef.current) {
+        clearTimeout(resizeTimeoutRef.current)
+      }
+      resizeTimeoutRef.current = setTimeout(checkLines, 100)
+    })
+
+    resizeObserver.observe(editorElement)
+
+    // Initial check
+    checkLines()
+
+    return () => {
+      resizeObserver.disconnect()
+      if (resizeTimeoutRef.current) {
+        clearTimeout(resizeTimeoutRef.current)
+      }
+    }
+  }, [isMultiElementSelect, isMultilineCollapseEnabled])
+
+  // Auto-resize textarea (only for regular textarea, not Lexical)
+  useEffect(() => {
+    if (!isMultiElementSelect && textareaRef.current) {
+      const textarea = textareaRef.current
+      textarea.style.height = 'auto'
+      // Cap at ~10 lines (210px) - reasonable max before scrolling
+      const maxHeight = 210
+      const newHeight = Math.min(textarea.scrollHeight, maxHeight)
+      textarea.style.height = `${newHeight}px`
+      textarea.style.overflowY = textarea.scrollHeight > maxHeight ? 'auto' : 'hidden'
+    }
+  }, [inputValue, isMultiElementSelect])
 
   // Sync mentions in Lexical editor with aiEditContexts (multi-select mode)
   const prevContextNumbersRef = useRef(new Set<number>())
@@ -419,6 +488,7 @@ export default function ChatInput({
             <InputActionsPanel
               activeColorSchemeSuggest={activeColorSchemeSuggest}
               activeFontThemeSuggest={activeFontThemeSuggest}
+              shouldCollapse={isMultilineCollapseEnabled ? shouldCollapseUI : false}
             />
           ) : null}
 
@@ -539,9 +609,9 @@ export default function ChatInput({
                   onPaste={handlePaste}
                   onKeyDown={onKeyDown}
                   placeholder={getPlaceholder()}
-                  rows={3}
+                  rows={1}
                   disabled={(isDisabled && !isStreaming) || isListening || isBudgetExceeded}
-                  className={`w-full h-full resize-none border-0 focus:ring-0 focus:outline-none text-base md:text-sm chat-input-text placeholder:text-intents-ux-controlVoid-foregroundColor`}
+                  className={`w-full resize-none border-0 focus:ring-0 focus:outline-none text-base md:text-sm chat-input-text placeholder:text-intents-ux-controlVoid-foregroundColor`}
                 />
               )}
             </div>

@@ -58,6 +58,8 @@ const MAX_COMBINED_ITEMS = 4
 type InputActionsPanelProps = {
   activeColorSchemeSuggest?: ActiveColorSchemeSuggest | null
   activeFontThemeSuggest?: ActiveFontThemeSuggest | null
+  /** External trigger to collapse the panel (e.g., when chat input grows) */
+  shouldCollapse?: boolean
 }
 
 function isAskQuestionToolResult(toolResult: unknown): boolean {
@@ -82,8 +84,11 @@ function isAskQuestionNBA(nbaData: ReturnType<typeof useLatestNBAs>): boolean {
 }
 
 
-/** @deprecated Remove when `airo-builder-theme-selection-chat` is permanently on */
-function InputActionsPanelLegacy() {
+/**
+ * @deprecated Remove when `airo-builder-theme-selection-chat` is permanently on
+ * @param shouldCollapse - Accepted but ignored. Legacy component does not implement collapse behavior.
+ */
+function InputActionsPanelLegacy({ shouldCollapse: _shouldCollapse }: { shouldCollapse?: boolean }) {
   const t = useTranslations()
   const sendUserMessage = useSendUserMessage()
   const nbaData = useLatestNBAs()
@@ -952,6 +957,7 @@ function TodoListModal({
 function InputActionsPanelThemeSelection({
   activeColorSchemeSuggest = null,
   activeFontThemeSuggest = null,
+  shouldCollapse = false,
 }: InputActionsPanelProps) {
   const t = useTranslations()
   const queryClient = useQueryClient()
@@ -999,6 +1005,21 @@ function InputActionsPanelThemeSelection({
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [dismissedColorSuggestId, setDismissedColorSuggestId] = useState<string | null>(null)
   const [dismissedFontSuggestId, setDismissedFontSuggestId] = useState<string | null>(null)
+
+  // Track previous shouldCollapse to detect rising edge (false → true transition)
+  const prevShouldCollapseRef = useRef(shouldCollapse)
+
+  // Collapse when external trigger fires (e.g., chat input grows beyond 3 lines)
+  // Only collapse on the rising edge (false → true), not continuously while true
+  // This allows user to manually re-expand even when input is still >3 lines
+  useEffect(() => {
+    const risingEdge = !prevShouldCollapseRef.current && shouldCollapse
+    prevShouldCollapseRef.current = shouldCollapse
+
+    if (risingEdge && continueBuildingExpanded) {
+      setContinueBuildingExpanded(false)
+    }
+  }, [shouldCollapse, continueBuildingExpanded])
   const [selectedThemeIndex, setSelectedThemeIndex] = useState<number>(0)
   const [selectedFontIndex, setSelectedFontIndex] = useState<number>(0)
   const [askQuestionCompleted, setAskQuestionCompleted] = useState(false)
@@ -1575,6 +1596,7 @@ function InputActionsPanelThemeSelection({
                   expanded={continueBuildingExpanded}
                   onExpandedChange={setContinueBuildingExpanded}
                   footer={footer}
+                  data-testid="collapsible-section-continue-building"
                 >
                   {body}
                 </CollapsibleChatInputSection>
@@ -1596,6 +1618,7 @@ function InputActionsPanelThemeSelection({
                   expanded={continueBuildingExpanded}
                   footer={footer}
                   onExpandedChange={setContinueBuildingExpanded}
+                  data-testid="collapsible-section-continue-building"
                 >
                   {body}
                 </CollapsibleChatInputSection>
@@ -1606,6 +1629,7 @@ function InputActionsPanelThemeSelection({
               title={<span className="text-foreground">{currentAskQuestionText || nbaData.question}</span>}
               expanded={continueBuildingExpanded}
               onExpandedChange={setContinueBuildingExpanded}
+              data-testid="collapsible-section-continue-building"
             >
               {continueBuildingTodoBody}
             </CollapsibleChatInputSection>
@@ -1615,6 +1639,7 @@ function InputActionsPanelThemeSelection({
               expanded={continueBuildingExpanded}
               onExpandedChange={setContinueBuildingExpanded}
               headerRight={progressButton}
+              data-testid="collapsible-section-continue-building"
             >
               {continueBuildingTodoBody}
             </CollapsibleChatInputSection>
@@ -1638,6 +1663,7 @@ function InputActionsPanelThemeSelection({
 export default function InputActionsPanel({
   activeColorSchemeSuggest = null,
   activeFontThemeSuggest = null,
+  shouldCollapse = false,
 }: InputActionsPanelProps) {
   const isThemeSelectionChatEnabled = useSwitchboard('airo-builder-theme-selection-chat')
   const isFontSelectionChatEnabled = useSwitchboard('airo-builder-font-selection-chat')
@@ -1646,8 +1672,10 @@ export default function InputActionsPanel({
       <InputActionsPanelThemeSelection
         activeColorSchemeSuggest={activeColorSchemeSuggest}
         activeFontThemeSuggest={activeFontThemeSuggest}
+        shouldCollapse={shouldCollapse}
       />
     )
   }
-  return <InputActionsPanelLegacy />
+  // Legacy path: shouldCollapse passed but not implemented (component is deprecated)
+  return <InputActionsPanelLegacy shouldCollapse={shouldCollapse} />
 }
