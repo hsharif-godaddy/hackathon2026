@@ -56,9 +56,9 @@ func writeLocalEnvFiles(t *testing.T, projectRoot, service string) {
 		asmBaseURL string
 	}
 	configs := map[string]envConfig{
-		"dev":  {"sso.dev-godaddy.com", "https://asm-dp.api.int.dev-godaddy.com"},
-		"test": {"sso.test-godaddy.com", "https://asm.api.int.test-godaddy.com"},
-		"prod": {"sso.godaddy.com", "https://asm.api.int.godaddy.com"},
+		"dev":  {"sso.dev-godaddy.com", "https://asm-dp.api.int.dev-godaddy.com/v1/conversation/graphql"},
+		"test": {"sso.test-godaddy.com", "https://asm.api.int.test-godaddy.com/v1/conversation/graphql"},
+		"prod": {"sso.godaddy.com", "https://asm.api.int.godaddy.com/v1/conversation/graphql"},
 	}
 	for envName, cfg := range configs {
 		content := "SSO_HOST=" + cfg.ssoHost + "\n"

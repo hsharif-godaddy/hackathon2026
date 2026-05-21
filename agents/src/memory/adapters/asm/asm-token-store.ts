@@ -1,10 +1,10 @@
+import type { Message, SearchFilter } from '@gd-asm/asm-client';
 import { logger } from '../../../logging/index.js';
 import type { ConversationTokenStore, HistoryMessage } from '../../interfaces/conversation-store.js';
 import type { WorkspaceScope } from '../../interfaces/scope.js';
-import { AsmClient } from './asm-client.js';
+import type { AsmClientWrapper } from './asm-client-wrapper.js';
 import { walkLinearChain } from './asm-chain.js';
-import type { AsmMessage, AsmSearchFilter } from './asm-types.js';
-import { LABEL_APP_ID, labelFilter } from './asm-types.js';
+import { LABEL_APP_ID, labelFilter } from './asm-conversation-store.js';
 
 const CHARS_PER_TOKEN_ESTIMATE = 4;
 const ASM_SEARCH_PAGE_SIZE = 100;
@@ -14,7 +14,7 @@ const MAX_MESSAGE_PAGES = 10;
 export class AsmConversationTokenStore implements ConversationTokenStore {
   private lastSeenTimestamp: string | null = null;
 
-  constructor(private readonly client: AsmClient) {}
+  constructor(private readonly client: AsmClientWrapper) {}
 
   async getEstimatedTokensAfterMessageId(scope: WorkspaceScope, afterMessageId: string): Promise<number | null> {
     const messages = await this.getMessagesAfterMessageId(scope, afterMessageId);
@@ -60,8 +60,8 @@ export class AsmConversationTokenStore implements ConversationTokenStore {
   // Private
   // ---------------------------------------------------------------------------
 
-  private async fetchAllMessages(conversationId: string): Promise<AsmMessage[]> {
-    const allMessages: AsmMessage[] = [];
+  private async fetchAllMessages(conversationId: string): Promise<Message[]> {
+    const allMessages: Message[] = [];
     let before: string | undefined;
 
     for (let page = 0; page < MAX_MESSAGE_PAGES; page++) {
@@ -70,7 +70,7 @@ export class AsmConversationTokenStore implements ConversationTokenStore {
       if (!edges || edges.length === 0) break;
 
       for (const edge of edges) {
-        allMessages.push(edge.node);
+        if (edge?.node) allMessages.push(edge.node);
       }
 
       const pageInfo = conv?.messages?.pageInfo;
@@ -82,7 +82,7 @@ export class AsmConversationTokenStore implements ConversationTokenStore {
   }
 
   private async searchByAppId(appId: string): Promise<string[]> {
-    const filter: AsmSearchFilter = {
+    const filter: SearchFilter = {
       matchAll: labelFilter(LABEL_APP_ID, appId),
     };
     const resp = await this.client.searchConversations(filter, { first: ASM_SEARCH_PAGE_SIZE });
@@ -101,15 +101,15 @@ export class AsmConversationTokenStore implements ConversationTokenStore {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function getTextFromContents(contents?: AsmMessage['contents']): string {
+function getTextFromContents(contents?: Message['contents']): string {
   if (!contents) return '';
   for (const c of contents) {
-    if (c.__typename === 'TextContent') return c.text;
+    if ('text' in c) return (c as { text: string }).text;
   }
   return '';
 }
 
-function mapAsmToHistoryMessage(asmMsg: AsmMessage, conversationId: string): HistoryMessage {
+function mapAsmToHistoryMessage(asmMsg: Message, conversationId: string): HistoryMessage {
   const sender: 'user' | 'agent' = asmMsg.participant.type === 'USER' ? 'user' : 'agent';
   const text = getTextFromContents(asmMsg.contents);
 
@@ -119,6 +119,10 @@ function mapAsmToHistoryMessage(asmMsg: AsmMessage, conversationId: string): His
     sender,
     content: text,
     origin: sender === 'user' ? 'customer' : 'support',
-    createdAt: asmMsg.messageCreatedAt ? new Date(asmMsg.messageCreatedAt) : new Date(asmMsg.createdAt),
+    createdAt: asmMsg.messageCreatedAt instanceof Date
+      ? asmMsg.messageCreatedAt
+      : asmMsg.createdAt instanceof Date
+        ? asmMsg.createdAt
+        : new Date(asmMsg.createdAt as unknown as string),
   };
 }

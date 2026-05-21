@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { AsmMessageStore } from '../asm-message-store.js';
-import type { AsmClient } from '../asm-client.js';
-import type { AsmMessage } from '../asm-types.js';
+import type { AsmClientWrapper } from '../asm-client-wrapper.js';
+import type { Message } from '@gd-asm/asm-client';
 
 describe('AsmMessageStore', function storeTests() {
   let mockClient: {
@@ -11,19 +11,19 @@ describe('AsmMessageStore', function storeTests() {
   };
   let store: AsmMessageStore;
 
-  function makeAsmMessage(id: string, text: string, participantType: string, responseTo?: string[]): AsmMessage {
+  function makeAsmMessage(id: string, text: string, participantType: string, responseTo?: string[]): Message {
     return {
       id,
       createdAt: '2024-01-01T00:00:00Z',
       messageCreatedAt: '2024-01-01T00:00:00Z',
-      contents: [{ __typename: 'TextContent', text }],
+      contents: [{ text }],
       participant: { id: participantType.toLowerCase(), type: participantType as 'USER' | 'AGENT' },
       responseTo,
       metadata: { conversationId: 'conv-1' },
-    };
+    } as unknown as Message;
   }
 
-  function makeConversationResponse(messages: AsmMessage[]) {
+  function makeConversationResponse(messages: Message[]) {
     return {
       id: 'conv-1',
       status: 'ACTIVE',
@@ -43,7 +43,7 @@ describe('AsmMessageStore', function storeTests() {
       addMessages: vi.fn().mockResolvedValue({ success: true, id: 'conv-1' }),
       searchConversations: vi.fn().mockResolvedValue({ conversationIds: [], pageInfo: {} }),
     };
-    store = new AsmMessageStore(mockClient as unknown as AsmClient);
+    store = new AsmMessageStore(mockClient as unknown as AsmClientWrapper);
   });
 
   it('should buffer in-progress messages and flush on completion', async function inProgressBuffer() {
@@ -55,10 +55,8 @@ describe('AsmMessageStore', function storeTests() {
     await store.updateMessage(msg.id, { content: 'final', metadata: { inProgress: false } });
     expect(mockClient.addMessages).toHaveBeenCalledTimes(1);
     expect(mockClient.addMessages).toHaveBeenCalledWith(
-      expect.objectContaining({
-        conversationId: 'conv-1',
-        messages: [expect.objectContaining({ id: msg.id })],
-      })
+      'conv-1',
+      [expect.objectContaining({ id: msg.id })],
     );
   });
 
@@ -69,11 +67,11 @@ describe('AsmMessageStore', function storeTests() {
 
   it('should set responseTo on subsequent messages', async function responseToTracking() {
     await store.addMessage('conv-1', 'user', 'first');
-    const firstCallMsgs = mockClient.addMessages.mock.calls[0][0].messages;
+    const firstCallMsgs = mockClient.addMessages.mock.calls[0][1];
     expect(firstCallMsgs[0].responseTo).toBeUndefined();
 
     await store.addMessage('conv-1', 'agent', 'second');
-    const secondCallMsgs = mockClient.addMessages.mock.calls[1][0].messages;
+    const secondCallMsgs = mockClient.addMessages.mock.calls[1][1];
     expect(secondCallMsgs[0].responseTo).toEqual([firstCallMsgs[0].id]);
   });
 
@@ -81,10 +79,9 @@ describe('AsmMessageStore', function storeTests() {
     const m1 = makeAsmMessage('m1', 'hello', 'USER');
     const m2 = makeAsmMessage('m2', 'hi', 'AGENT', ['m1']);
     const m4 = makeAsmMessage('m4', 'orphan', 'USER', ['nonexistent']);
-    m4.createdAt = '2024-01-01T00:00:01Z';
-    // m3 is most recent — chain walks m3→m2→m1
+    (m4 as unknown as { createdAt: string }).createdAt = '2024-01-01T00:00:01Z';
     const m3 = makeAsmMessage('m3', 'thanks', 'USER', ['m2']);
-    m3.createdAt = '2024-01-01T00:00:02Z';
+    (m3 as unknown as { createdAt: string }).createdAt = '2024-01-01T00:00:02Z';
 
     mockClient.getConversation.mockResolvedValue(makeConversationResponse([m1, m2, m4, m3]));
 
@@ -176,24 +173,30 @@ describe('AsmMessageStore', function storeTests() {
     });
 
     await store.addMessage('conv-1', 'user', 'new msg');
-    const addCall = mockClient.addMessages.mock.calls[0][0];
-    expect(addCall.messages[0].responseTo).toEqual(['existing-msg']);
+    const addCallMsgs = mockClient.addMessages.mock.calls[0][1];
+    expect(addCallMsgs[0].responseTo).toEqual(['existing-msg']);
+  });
+
+  it('should propagate seedLastMessageId failure to prevent orphaned messages', async function seedFailurePropagates() {
+    mockClient.getConversation.mockRejectedValue(new Error('ASM unavailable'));
+    await expect(store.addMessage('conv-1', 'user', 'hello')).rejects.toThrow('ASM unavailable');
+    expect(mockClient.addMessages).not.toHaveBeenCalled();
   });
 
   it('should aggregate tool-only agent messages into preceding agent message', async function toolAggregation() {
     const agentText = makeAsmMessage('a1', 'thinking...', 'AGENT');
-    const toolOnly: AsmMessage = {
+    const toolOnly: Message = {
       id: 'a2',
       createdAt: '2024-01-01T00:00:01Z',
       messageCreatedAt: '2024-01-01T00:00:01Z',
       contents: [
-        { __typename: 'ToolRequestContent', toolRequestId: 'tr1', toolName: 'readFile', parameters: { path: '/tmp' } },
-        { __typename: 'ToolResultContent', toolRequestId: 'tr1', toolName: 'readFile', result: { content: 'data' }, failed: false },
+        { toolRequestId: 'tr1', toolName: 'readFile', parameters: { path: '/tmp' } },
+        { toolRequestId: 'tr1', toolName: 'readFile', result: { content: 'data' }, failed: false },
       ],
       participant: { id: 'agent', type: 'AGENT' },
       responseTo: ['a1'],
       metadata: { conversationId: 'conv-1' },
-    };
+    } as unknown as Message;
     mockClient.getConversation.mockResolvedValue(makeConversationResponse([agentText, toolOnly]));
     const messages = await store.getMessages('conv-1');
     expect(messages).toHaveLength(1);
@@ -204,18 +207,18 @@ describe('AsmMessageStore', function storeTests() {
   });
 
   it('should default toolName to "unknown" when ASM content has empty toolName', async function missingToolName() {
-    const msg: AsmMessage = {
+    const msg: Message = {
       id: 'a1',
       createdAt: '2024-01-01T00:00:00Z',
       messageCreatedAt: '2024-01-01T00:00:00Z',
       contents: [
-        { __typename: 'TextContent', text: 'hi' },
-        { __typename: 'ToolRequestContent', toolRequestId: 'tr-1', toolName: '', parameters: {} },
-        { __typename: 'ToolResultContent', toolRequestId: 'tr-1', toolName: '', result: { ok: true }, failed: false },
+        { text: 'hi' },
+        { toolRequestId: 'tr-1', toolName: '', parameters: {} },
+        { toolRequestId: 'tr-1', toolName: '', result: { ok: true }, failed: false },
       ],
       participant: { id: 'agent', type: 'AGENT' },
       metadata: { conversationId: 'conv-1' },
-    };
+    } as unknown as Message;
     mockClient.getConversation.mockResolvedValue(makeConversationResponse([msg]));
     const messages = await store.getMessages('conv-1');
     expect(messages[0].toolCalls).toHaveLength(1);
@@ -223,17 +226,17 @@ describe('AsmMessageStore', function storeTests() {
   });
 
   it('should handle extractToolCalls with ToolResultContent arriving without prior ToolRequestContent', async function orphanResult() {
-    const msg: AsmMessage = {
+    const msg: Message = {
       id: 'a1',
       createdAt: '2024-01-01T00:00:00Z',
       messageCreatedAt: '2024-01-01T00:00:00Z',
       contents: [
-        { __typename: 'TextContent', text: 'done' },
-        { __typename: 'ToolResultContent', toolRequestId: 'tr-orphan', toolName: 'exec', result: { output: 'ok' }, failed: false },
+        { text: 'done' },
+        { toolRequestId: 'tr-orphan', toolName: 'exec', result: { output: 'ok' }, failed: false },
       ],
       participant: { id: 'agent', type: 'AGENT' },
       metadata: { conversationId: 'conv-1' },
-    };
+    } as unknown as Message;
     mockClient.getConversation.mockResolvedValue(makeConversationResponse([msg]));
     const messages = await store.getMessages('conv-1');
     expect(messages[0].toolCalls).toHaveLength(1);
@@ -243,11 +246,11 @@ describe('AsmMessageStore', function storeTests() {
   });
 
   it('should normalize legacy snake_case segment tool calls on read', async function segmentNormalize() {
-    const msg: AsmMessage = {
+    const msg: Message = {
       id: 'a1',
       createdAt: '2024-01-01T00:00:00Z',
       messageCreatedAt: '2024-01-01T00:00:00Z',
-      contents: [{ __typename: 'TextContent', text: 'done' }],
+      contents: [{ text: 'done' }],
       participant: { id: 'agent', type: 'AGENT' },
       metadata: {
         conversationId: 'conv-1',
@@ -266,7 +269,7 @@ describe('AsmMessageStore', function storeTests() {
           },
         ],
       },
-    };
+    } as unknown as Message;
     mockClient.getConversation.mockResolvedValue(makeConversationResponse([msg]));
     const messages = await store.getMessages('conv-1');
     expect(messages[0].segments).toHaveLength(2);
@@ -280,14 +283,14 @@ describe('AsmMessageStore', function storeTests() {
   });
 
   it('should not leak internal metadata keys onto public message', async function metadataStrip() {
-    const msg: AsmMessage = {
+    const msg: Message = {
       id: 'a1',
       createdAt: '2024-01-01T00:00:00Z',
       messageCreatedAt: '2024-01-01T00:00:00Z',
-      contents: [{ __typename: 'TextContent', text: 'hi' }],
+      contents: [{ text: 'hi' }],
       participant: { id: 'user', type: 'USER' },
       metadata: { conversationId: 'conv-1', messageType: 'status', segments: [], contextAttachments: [], customField: 'kept' },
-    };
+    } as unknown as Message;
     mockClient.getConversation.mockResolvedValue(makeConversationResponse([msg]));
     const messages = await store.getMessages('conv-1');
     expect(messages[0].metadata).toEqual({ customField: 'kept' });
@@ -364,17 +367,15 @@ describe('AsmMessageStore', function storeTests() {
 
     await store.addMessage('conv-1', 'agent', 'done', { segments, toolCalls });
 
-    const textCall = mockClient.addMessages.mock.calls[0][0].messages[0];
-    const storedSegments = textCall.metadata.segments;
+    const textCallMsgs = mockClient.addMessages.mock.calls[0][1];
+    const storedSegments = textCallMsgs[0].metadata.segments;
     expect(storedSegments).toHaveLength(1);
     expect(storedSegments[0].tool_call.toolName).toBe('readFile');
     expect(storedSegments[0].tool_call.id).toBe('tc-1');
     expect(storedSegments[0].tool_call.status).toBe('success');
     expect(storedSegments[0].tool_call.durationMs).toBe(100);
-    // Full payload fields should NOT be in the stored segment metadata
     expect(storedSegments[0].tool_call.toolArgs).toBeUndefined();
     expect(storedSegments[0].tool_call.toolResult).toBeUndefined();
-    // Original toolCall/tool_call keys with full data should be stripped
     expect(storedSegments[0].toolCall).toBeUndefined();
   });
 
@@ -389,49 +390,49 @@ describe('AsmMessageStore', function storeTests() {
     const allCalls = mockClient.addMessages.mock.calls;
     expect(allCalls.length).toBe(3);
 
-    const textMsg = allCalls[0][0].messages[0];
+    const textMsg = allCalls[0][1][0];
     expect(textMsg.contents[0].withTextContent.text).toBe('Here are the results:');
 
-    const tc1Msg = allCalls[1][0].messages[0];
+    const tc1Msg = allCalls[1][1][0];
     expect(tc1Msg.contents[0].withToolRequestContent.toolName).toBe('readFile');
     expect(tc1Msg.contents[1].withToolResultContent.toolName).toBe('readFile');
 
-    const tc2Msg = allCalls[2][0].messages[0];
+    const tc2Msg = allCalls[2][1][0];
     expect(tc2Msg.contents[0].withToolRequestContent.toolName).toBe('writeFile');
 
-    const asmMessages: AsmMessage[] = [
+    const asmMessages: Message[] = [
       {
         id: textMsg.id,
         createdAt: '2024-01-01T00:00:00Z',
         messageCreatedAt: '2024-01-01T00:00:00Z',
-        contents: [{ __typename: 'TextContent', text: 'Here are the results:' }],
+        contents: [{ text: 'Here are the results:' }],
         participant: { id: 'agent', type: 'AGENT' },
         metadata: { conversationId: 'conv-1' },
-      },
+      } as unknown as Message,
       {
         id: tc1Msg.id,
         createdAt: '2024-01-01T00:00:01Z',
         messageCreatedAt: '2024-01-01T00:00:01Z',
         contents: [
-          { __typename: 'ToolRequestContent', toolRequestId: 'tc-1', toolName: 'readFile', parameters: { path: '/tmp/foo' } },
-          { __typename: 'ToolResultContent', toolRequestId: 'tc-1', toolName: 'readFile', result: { content: 'data' }, failed: false },
+          { toolRequestId: 'tc-1', toolName: 'readFile', parameters: { path: '/tmp/foo' } },
+          { toolRequestId: 'tc-1', toolName: 'readFile', result: { content: 'data' }, failed: false },
         ],
         participant: { id: 'agent', type: 'AGENT' },
         responseTo: [textMsg.id],
         metadata: { conversationId: 'conv-1', toolName: 'readFile' },
-      },
+      } as unknown as Message,
       {
         id: tc2Msg.id,
         createdAt: '2024-01-01T00:00:02Z',
         messageCreatedAt: '2024-01-01T00:00:02Z',
         contents: [
-          { __typename: 'ToolRequestContent', toolRequestId: 'tc-2', toolName: 'writeFile', parameters: { path: '/tmp/bar', content: 'x' } },
-          { __typename: 'ToolResultContent', toolRequestId: 'tc-2', toolName: 'writeFile', result: { success: true }, failed: false },
+          { toolRequestId: 'tc-2', toolName: 'writeFile', parameters: { path: '/tmp/bar', content: 'x' } },
+          { toolRequestId: 'tc-2', toolName: 'writeFile', result: { success: true }, failed: false },
         ],
         participant: { id: 'agent', type: 'AGENT' },
         responseTo: [tc1Msg.id],
         metadata: { conversationId: 'conv-1', toolName: 'writeFile' },
-      },
+      } as unknown as Message,
     ];
 
     mockClient.getConversation.mockResolvedValue(makeConversationResponse(asmMessages));

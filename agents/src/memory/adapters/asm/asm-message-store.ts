@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import type { Message, SearchFilter, MessageInput, ContentInput } from '@gd-asm/asm-client';
 import { logger } from '../../../logging/index.js';
 import type { ConversationMessage, ToolCall, MessageSegment } from '../../../database/schema.js';
 import type {
@@ -9,10 +10,9 @@ import type {
   StoredContextAttachment,
 } from '../../interfaces/conversation-store.js';
 import type { WorkspaceScope } from '../../interfaces/scope.js';
-import { AsmClient } from './asm-client.js';
+import type { AsmClientWrapper } from './asm-client-wrapper.js';
 import { walkLinearChain } from './asm-chain.js';
-import type { AsmMessage, AsmMessageInput, AsmSearchFilter, AsmContentInput } from './asm-types.js';
-import { LABEL_APP_ID, labelFilter } from './asm-types.js';
+import { LABEL_APP_ID, labelFilter } from './asm-conversation-store.js';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -46,7 +46,7 @@ export class AsmMessageStore implements MessageStore {
   private readonly lastMessageIdByConversation: Map<string, string> = new Map();
   private readonly hasMessagesCache: Map<string, boolean> = new Map();
 
-  constructor(private readonly client: AsmClient) {}
+  constructor(private readonly client: AsmClientWrapper) {}
 
   async addMessage(
     conversationId: string,
@@ -166,10 +166,9 @@ export class AsmMessageStore implements MessageStore {
 
   async hasMessagesForApp(scope: WorkspaceScope): Promise<boolean> {
     if (!scope.appId) return false;
-    // Once we know messages exist for an app, the answer never reverts to false.
     if (this.hasMessagesCache.get(scope.appId)) return true;
 
-    const filter: AsmSearchFilter = {
+    const filter: SearchFilter = {
       matchAll: labelFilter(LABEL_APP_ID, scope.appId),
     };
     const resp = await this.client.searchConversations(filter, { first: 1 });
@@ -272,10 +271,9 @@ export class AsmMessageStore implements MessageStore {
 
     let lastFlushedId: string | undefined;
     for (const asmMsg of asmMessages) {
-      const payload = { conversationId, messages: [asmMsg] };
       let payloadJson: string;
       try {
-        payloadJson = JSON.stringify(payload);
+        payloadJson = JSON.stringify({ conversationId, messages: [asmMsg] });
       } catch (serErr) {
         logger.error('asm.message.serialize_failed', {
           messageId: message.id,
@@ -285,19 +283,20 @@ export class AsmMessageStore implements MessageStore {
         throw serErr;
       }
 
-      const resp = await this.client.addMessages(payload);
-      if (!resp.success) {
-        const err = new Error(`ASM addMessages failed: ${resp.message ?? 'unknown'}`);
+      const resp = await this.client.addMessages(conversationId, [asmMsg]);
+      if (!resp?.success) {
+        const reason = resp?.message ?? 'unknown';
+        const err = new Error(`ASM addMessages failed: ${reason}`);
         logger.error('asm.message.flush_rejected', {
-          messageId: asmMsg.id,
+          messageId: asmMsg.id ?? message.id,
           conversationId,
           sender: message.sender,
-          asmMessage: resp.message,
+          response: resp,
           payloadBytes: payloadJson.length,
         });
         throw err;
       }
-      lastFlushedId = asmMsg.id;
+      lastFlushedId = asmMsg.id ?? undefined;
     }
 
     if (lastFlushedId) {
@@ -311,22 +310,15 @@ export class AsmMessageStore implements MessageStore {
   }
 
   private async seedLastMessageId(conversationId: string): Promise<void> {
-    try {
-      const conv = await this.client.getConversation(conversationId, { last: 1 });
-      const lastEdge = conv?.messages?.edges?.[0];
-      if (lastEdge) {
-        this.lastMessageIdByConversation.set(conversationId, lastEdge.node.id);
-      }
-    } catch (err) {
-      logger.warn('asm.message.seed_last_id_failed', {
-        conversationId,
-        error: err instanceof Error ? err.message : String(err),
-      });
+    const conv = await this.client.getConversation(conversationId, { last: 1 });
+    const lastEdge = conv?.messages?.edges?.[0];
+    if (lastEdge?.node) {
+      this.lastMessageIdByConversation.set(conversationId, lastEdge.node.id);
     }
   }
 
-  private async getLinearChain(conversationId: string): Promise<AsmMessage[]> {
-    const allMessages: AsmMessage[] = [];
+  private async getLinearChain(conversationId: string): Promise<Message[]> {
+    const allMessages: Message[] = [];
     let before: string | undefined;
 
     for (let page = 0; page < MAX_MESSAGE_PAGES; page++) {
@@ -335,7 +327,7 @@ export class AsmMessageStore implements MessageStore {
       if (!edges || edges.length === 0) break;
 
       for (const edge of edges) {
-        allMessages.push(edge.node);
+        if (edge?.node) allMessages.push(edge.node);
       }
 
       const pageInfo = conv?.messages?.pageInfo;
@@ -364,19 +356,13 @@ export class AsmMessageStore implements MessageStore {
 }
 
 
-/**
- * Re-aggregates split tool-call messages back into their parent agent message.
- * On write, each tool call is stored as a separate ASM message. On read, consecutive
- * AGENT messages that only contain tool content are merged into the preceding AGENT
- * message that has TextContent (or the first agent message in the run if there's no text).
- */
-function aggregateToolMessages(chain: AsmMessage[]): AsmMessage[] {
-  const result: AsmMessage[] = [];
+function aggregateToolMessages(chain: Message[]): Message[] {
+  const result: Message[] = [];
 
   for (const msg of chain) {
-    const hasText = msg.contents?.some((c) => c.__typename === 'TextContent') ?? false;
+    const hasText = msg.contents?.some((c) => 'text' in c) ?? false;
     const isToolOnly = !hasText && (msg.contents?.some((c) =>
-      c.__typename === 'ToolRequestContent' || c.__typename === 'ToolResultContent'
+      'toolRequestId' in c && ('parameters' in c || 'result' in c)
     ) ?? false);
     const isAgent = msg.participant.type === 'AGENT';
 
@@ -398,41 +384,43 @@ function aggregateToolMessages(chain: AsmMessage[]): AsmMessage[] {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function getTextFromContents(contents?: AsmMessage['contents']): string | null {
+function getTextFromContents(contents?: Message['contents']): string | null {
   if (!contents) return null;
   for (const c of contents) {
-    if (c.__typename === 'TextContent') return c.text;
+    if ('text' in c) return (c as { text: string }).text;
   }
   return null;
 }
 
-function extractToolCalls(contents?: AsmMessage['contents']): ToolCall[] {
+function extractToolCalls(contents?: Message['contents']): ToolCall[] {
   if (!contents) return [];
   const requests = new Map<string, ToolCall>();
 
   for (const c of contents) {
-    if (c.__typename === 'ToolRequestContent') {
-      requests.set(c.toolRequestId, {
-        id: c.toolRequestId,
-        toolName: c.toolName || 'unknown',
-        toolArgs: c.parameters,
+    if ('toolRequestId' in c && 'parameters' in c && !('result' in c)) {
+      const req = c as { toolRequestId: string; toolName: string; parameters: unknown };
+      requests.set(req.toolRequestId, {
+        id: req.toolRequestId,
+        toolName: req.toolName || 'unknown',
+        toolArgs: req.parameters,
         status: 'running',
       });
-    } else if (c.__typename === 'ToolResultContent') {
-      const existing = requests.get(c.toolRequestId);
+    } else if ('toolRequestId' in c && 'result' in c) {
+      const res = c as { toolRequestId: string; toolName: string; result: unknown; failed?: boolean };
+      const existing = requests.get(res.toolRequestId);
       if (existing) {
-        existing.toolResult = c.result;
-        existing.status = c.failed ? 'error' : 'success';
+        existing.toolResult = res.result;
+        existing.status = res.failed ? 'error' : 'success';
         if (!existing.toolName || existing.toolName === 'unknown') {
-          existing.toolName = c.toolName || existing.toolName;
+          existing.toolName = res.toolName || existing.toolName;
         }
       } else {
-        requests.set(c.toolRequestId, {
-          id: c.toolRequestId,
-          toolName: c.toolName || 'unknown',
+        requests.set(res.toolRequestId, {
+          id: res.toolRequestId,
+          toolName: res.toolName || 'unknown',
           toolArgs: {},
-          toolResult: c.result,
-          status: c.failed ? 'error' : 'success',
+          toolResult: res.result,
+          status: res.failed ? 'error' : 'success',
         });
       }
     }
@@ -449,7 +437,7 @@ function mapConversationMessageToAsmInputs(
   msg: ConversationMessage,
   responseTo?: string[],
   participantContext?: ParticipantContext,
-): AsmMessageInput[] {
+): MessageInput[] {
   const {
     segments: _segments,
     contextAttachments: _ctx,
@@ -481,9 +469,8 @@ function mapConversationMessageToAsmInputs(
     ? { withCustomer: { id: participantContext?.customerId ?? 'unknown' } }
     : { withAgent: { id: participantContext?.agentId ?? 'airo-agent', name: 'airo-agent' } };
 
-  const results: AsmMessageInput[] = [];
+  const results: MessageInput[] = [];
 
-  // Text content as the primary message (carries the original message ID and metadata)
   if (msg.content) {
     results.push({
       id: msg.id,
@@ -491,18 +478,17 @@ function mapConversationMessageToAsmInputs(
       participant,
       responseTo,
       metadata: baseMetadata,
-      messageCreatedAt: msg.createdAt.toISOString(),
+      messageCreatedAt: msg.createdAt,
     });
   }
 
-  // Each tool call as a separate message chained to the previous
   if (msg.toolCalls) {
     for (const tc of msg.toolCalls) {
       const toolName = tc.toolName;
       const toolArgs = tc.toolArgs;
       const toolResult = tc.toolResult;
 
-      const contents: AsmContentInput[] = [
+      const contents: ContentInput[] = [
         {
           withToolRequestContent: {
             toolRequestId: tc.id,
@@ -531,12 +517,11 @@ function mapConversationMessageToAsmInputs(
         participant,
         responseTo: tcResponseTo,
         metadata: { conversationId: msg.conversationId, toolName },
-        messageCreatedAt: msg.createdAt.toISOString(),
+        messageCreatedAt: msg.createdAt,
       });
     }
   }
 
-  // If no content and no tool calls, produce a single empty message
   if (results.length === 0) {
     logger.error('asm.message.empty_contents', {
       messageId: msg.id,
@@ -550,7 +535,7 @@ function mapConversationMessageToAsmInputs(
       participant,
       responseTo,
       metadata: baseMetadata,
-      messageCreatedAt: msg.createdAt.toISOString(),
+      messageCreatedAt: msg.createdAt,
     });
   }
 
@@ -561,7 +546,7 @@ const ASM_INTERNAL_METADATA_KEYS = new Set([
   'conversationId', 'messageType', 'segments', 'contextAttachments', 'toolName',
 ]);
 
-function mapAsmMessageToConversationMessage(asmMsg: AsmMessage, conversationId: string): ConversationMessage {
+function mapAsmMessageToConversationMessage(asmMsg: Message, conversationId: string): ConversationMessage {
   const sender: 'user' | 'agent' = asmMsg.participant.type === 'USER' ? 'user' : 'agent';
   const text = getTextFromContents(asmMsg.contents) ?? '';
   const toolCalls = extractToolCalls(asmMsg.contents);
@@ -592,7 +577,11 @@ function mapAsmMessageToConversationMessage(asmMsg: AsmMessage, conversationId: 
     contextAttachments: rawMetadata?.contextAttachments as ConversationMessage['contextAttachments'],
     metadata: publicMetadata,
     origin: sender === 'user' ? 'customer' : 'support',
-    createdAt: asmMsg.messageCreatedAt ? new Date(asmMsg.messageCreatedAt) : new Date(asmMsg.createdAt),
+    createdAt: asmMsg.messageCreatedAt instanceof Date
+      ? asmMsg.messageCreatedAt
+      : asmMsg.createdAt instanceof Date
+        ? asmMsg.createdAt
+        : new Date(asmMsg.createdAt as unknown as string),
   };
 }
 
@@ -653,7 +642,7 @@ function ensureJsonObject(value: unknown): Record<string, unknown> | null {
   return { value };
 }
 
-function mapAsmMessageToHistoryMessage(asmMsg: AsmMessage, conversationId: string): HistoryMessage {
+function mapAsmMessageToHistoryMessage(asmMsg: Message, conversationId: string): HistoryMessage {
   const sender: 'user' | 'agent' = asmMsg.participant.type === 'USER' ? 'user' : 'agent';
   const text = getTextFromContents(asmMsg.contents) ?? '';
   const metadata = asmMsg.metadata as Record<string, unknown> | undefined;
@@ -672,6 +661,10 @@ function mapAsmMessageToHistoryMessage(asmMsg: AsmMessage, conversationId: strin
       timestamp: new Date(s.timestamp),
     })),
     origin: sender === 'user' ? 'customer' : 'support',
-    createdAt: asmMsg.messageCreatedAt ? new Date(asmMsg.messageCreatedAt) : new Date(asmMsg.createdAt),
+    createdAt: asmMsg.messageCreatedAt instanceof Date
+      ? asmMsg.messageCreatedAt
+      : asmMsg.createdAt instanceof Date
+        ? asmMsg.createdAt
+        : new Date(asmMsg.createdAt as unknown as string),
   };
 }

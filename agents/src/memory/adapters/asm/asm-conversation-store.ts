@@ -1,19 +1,34 @@
 import { randomUUID } from 'node:crypto';
+import type { Conversation as AsmConversationResponse, SearchFilter, FilterCondition } from '@gd-asm/asm-client';
+import { FilterOperator, PrincipalType, Scope, TimeInterval } from '@gd-asm/asm-client';
 import { logger } from '../../../logging/index.js';
 import type { Conversation } from '../../../database/schema.js';
 import type { ConversationLifecycleStore } from '../../interfaces/conversation-store.js';
 import type { WorkspaceScope } from '../../interfaces/scope.js';
-import { AsmClient } from './asm-client.js';
-import type { AsmConversation, AsmSearchFilter } from './asm-types.js';
-import { LABEL_APP_ID, LABEL_CUSTOMER_ID, LABEL_AGENT_ID, LABEL_TITLE, labelFilter } from './asm-types.js';
+import type { AsmClientWrapper } from './asm-client-wrapper.js';
+
+const LABEL_APP_ID = 'appId';
+const LABEL_CUSTOMER_ID = 'customerId';
+const LABEL_AGENT_ID = 'agentId';
+const LABEL_TITLE = 'title';
 
 const ASM_SEARCH_PAGE_SIZE = 100;
 const MAX_SEARCH_PAGES = 5;
-const ASM_ACCESS_GROUP = 'airo-app-builder';
+const ASM_READ_GROUP = 'AiroBuilderReadOnlyGroup';
+const ASM_WRITE_GROUP = 'AiroBuilderWriteGroup';
 const ASM_RETENTION_DAYS = 730;
 
+export { LABEL_APP_ID, LABEL_CUSTOMER_ID, LABEL_AGENT_ID, LABEL_TITLE };
+
+export function labelFilter(key: string, value: unknown): FilterCondition[] {
+  return [
+    { condition: { field: 'labels.key', operator: FilterOperator.Equals, value: key } },
+    { condition: { field: 'labels.value', operator: FilterOperator.Equals, value } },
+  ];
+}
+
 export class AsmConversationLifecycleStore implements ConversationLifecycleStore {
-  constructor(private readonly client: AsmClient, private readonly serviceId: string) {}
+  constructor(private readonly client: AsmClientWrapper, private readonly serviceId: string) {}
 
   async create(scope: WorkspaceScope, agentId: string, title?: string, id?: string): Promise<Conversation> {
     const conversationId = id ?? randomUUID();
@@ -36,10 +51,14 @@ export class AsmConversationLifecycleStore implements ConversationLifecycleStore
         { withSystem: { id: this.serviceId } },
       ],
       messages: [],
-      enrichmentStrategy: { techniques: ['TITLE_DESCRIPTION'] },
-      retentionPolicy: { interval: 'DAY', value: ASM_RETENTION_DAYS },
+      // No ASM enrichment — we manage titles via labels/updateTitle().
+      // The SDK only exposes RUNNING_SUMMARY and COMPOSITE_SENTIMENT; the old
+      // TITLE_DESCRIPTION technique is not available in the typed enum.
+      enrichmentStrategy: { techniques: [] },
+      retentionPolicy: { interval: TimeInterval.Day, value: ASM_RETENTION_DAYS },
       acl: [
-        { principal: ASM_ACCESS_GROUP, scopes: ['READ', 'WRITE'], type: 'ACCESS_GROUP' },
+        { principal: ASM_READ_GROUP, scopes: [Scope.Read], type: PrincipalType.AccessGroup },
+        { principal: ASM_WRITE_GROUP, scopes: [Scope.Read, Scope.Write], type: PrincipalType.AccessGroup },
       ],
     });
 
@@ -112,7 +131,7 @@ export class AsmConversationLifecycleStore implements ConversationLifecycleStore
   }
 
   async findByAppAndAgent(scope: WorkspaceScope, agentId: string): Promise<Conversation[]> {
-    const filter: AsmSearchFilter = {
+    const filter: SearchFilter = {
       matchAll: [
         ...labelFilter(LABEL_APP_ID, scope.appId),
         ...labelFilter(LABEL_AGENT_ID, agentId),
@@ -132,17 +151,30 @@ export class AsmConversationLifecycleStore implements ConversationLifecycleStore
   }
 
   async updateTitle(conversationId: string, title: string): Promise<void> {
-    await this.client.updateLabels({
+    const resp = await this.client.updateLabels({
       conversationId,
       labels: { [LABEL_TITLE]: title },
     });
+    if (resp && !resp.success) {
+      logger.warn('asm.conversation.updateTitle_failed', {
+        conversationId,
+        message: resp.message,
+      });
+    }
   }
 
   async updateAgentId(conversationId: string, agentId: string): Promise<void> {
-    await this.client.updateLabels({
+    const resp = await this.client.updateLabels({
       conversationId,
       labels: { [LABEL_AGENT_ID]: agentId },
     });
+    if (resp && !resp.success) {
+      logger.warn('asm.conversation.updateAgentId_failed', {
+        conversationId,
+        agentId,
+        message: resp.message,
+      });
+    }
   }
 
   async getOrCreateForApp(
@@ -159,7 +191,13 @@ export class AsmConversationLifecycleStore implements ConversationLifecycleStore
   }
 
   async delete(conversationId: string): Promise<void> {
-    await this.client.closeConversation(conversationId);
+    const resp = await this.client.closeConversation(conversationId);
+    if (resp && !resp.success) {
+      logger.warn('asm.conversation.delete_failed', {
+        conversationId,
+        message: resp.message,
+      });
+    }
   }
 
   async getConversationsWithMessageCount(
@@ -203,7 +241,7 @@ export class AsmConversationLifecycleStore implements ConversationLifecycleStore
   // ---------------------------------------------------------------------------
 
   private async searchByAppId(appId: string, limit?: number): Promise<string[]> {
-    const filter: AsmSearchFilter = {
+    const filter: SearchFilter = {
       matchAll: labelFilter(LABEL_APP_ID, appId),
     };
 
@@ -245,14 +283,14 @@ export class AsmConversationLifecycleStore implements ConversationLifecycleStore
 // Mappers
 // ---------------------------------------------------------------------------
 
-function mapToConversation(conv: AsmConversation): Conversation {
-  const labels = conv.labels ?? {};
+function mapToConversation(conv: AsmConversationResponse): Conversation {
+  const labels = (conv.labels ?? {}) as Record<string, unknown>;
   return {
     id: conv.id,
     appId: (labels[LABEL_APP_ID] as string) ?? '',
     agentId: (labels[LABEL_AGENT_ID] as string) ?? '',
-    title: (labels[LABEL_TITLE] as string) ?? conv.enrichedContext?.title_description?.title,
-    createdAt: new Date(conv.createdAt),
-    updatedAt: new Date(conv.updatedAt),
+    title: (labels[LABEL_TITLE] as string) ?? undefined,
+    createdAt: conv.createdAt instanceof Date ? conv.createdAt : new Date(conv.createdAt as unknown as string),
+    updatedAt: conv.updatedAt instanceof Date ? conv.updatedAt : new Date(conv.updatedAt as unknown as string),
   };
 }

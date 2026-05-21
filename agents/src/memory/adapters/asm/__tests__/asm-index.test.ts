@@ -5,10 +5,16 @@ vi.mock('@airo/ai-lib', () => ({
   isS2SAuthEnabled: vi.fn().mockReturnValue(false),
 }));
 
-vi.mock('../asm-client.js', () => ({
-  AsmClient: vi.fn().mockImplementation((opts: { baseUrl: string; getAuthToken: () => Promise<string> }) => ({
+vi.mock('@gd-asm/asm-client', () => ({
+  ASMClient: vi.fn().mockImplementation((_baseUrl: string, opts: { jwtTokenProvider: { getToken: () => Promise<string> } }) => ({
     _opts: opts,
-    getAuthToken: opts.getAuthToken,
+  })),
+}));
+
+vi.mock('../asm-client-wrapper.js', () => ({
+  AsmClientWrapper: vi.fn().mockImplementation((_client: unknown) => ({
+    _type: 'wrapper',
+    _client,
   })),
 }));
 
@@ -16,6 +22,11 @@ vi.mock('../asm-conversation-store.js', () => ({
   AsmConversationLifecycleStore: vi.fn().mockImplementation((_client: unknown, _serviceId: string) => ({
     _type: 'lifecycle',
   })),
+  LABEL_APP_ID: 'appId',
+  LABEL_CUSTOMER_ID: 'customerId',
+  LABEL_AGENT_ID: 'agentId',
+  LABEL_TITLE: 'title',
+  labelFilter: vi.fn(),
 }));
 
 vi.mock('../asm-message-store.js', () => ({
@@ -60,9 +71,10 @@ describe('asm/index auth wiring', function asmIndexTests() {
     const { getAsmConversationLifecycleStore } = await import('../index.js');
     getAsmConversationLifecycleStore();
 
-    const { AsmClient } = await import('../asm-client.js');
-    const clientCall = vi.mocked(AsmClient).mock.calls[0]![0] as { getAuthToken: () => Promise<string> };
-    const token = await clientCall.getAuthToken();
+    const { ASMClient } = await import('@gd-asm/asm-client');
+    const clientCall = vi.mocked(ASMClient).mock.calls[0]! as unknown[];
+    const opts = clientCall[1] as { jwtTokenProvider: { getToken: () => Promise<string> } };
+    const token = await opts.jwtTokenProvider.getToken();
     expect(token).toBe('s2s-token-456');
   });
 
@@ -74,9 +86,10 @@ describe('asm/index auth wiring', function asmIndexTests() {
     const { getAsmConversationLifecycleStore } = await import('../index.js');
     getAsmConversationLifecycleStore();
 
-    const { AsmClient } = await import('../asm-client.js');
-    const clientCall = vi.mocked(AsmClient).mock.calls[0]![0] as { getAuthToken: () => Promise<string> };
-    const token = await clientCall.getAuthToken();
+    const { ASMClient } = await import('@gd-asm/asm-client');
+    const clientCall = vi.mocked(ASMClient).mock.calls[0]! as unknown[];
+    const opts = clientCall[1] as { jwtTokenProvider: { getToken: () => Promise<string> } };
+    const token = await opts.jwtTokenProvider.getToken();
     expect(token).toBe('sso-jwt-789');
   });
 
@@ -88,9 +101,10 @@ describe('asm/index auth wiring', function asmIndexTests() {
     const { getAsmConversationLifecycleStore } = await import('../index.js');
     getAsmConversationLifecycleStore();
 
-    const { AsmClient } = await import('../asm-client.js');
-    const clientCall = vi.mocked(AsmClient).mock.calls[0]![0] as { getAuthToken: () => Promise<string> };
-    await expect(clientCall.getAuthToken()).rejects.toThrow('No ASM authentication configured');
+    const { ASMClient } = await import('@gd-asm/asm-client');
+    const clientCall = vi.mocked(ASMClient).mock.calls[0]! as unknown[];
+    const opts = clientCall[1] as { jwtTokenProvider: { getToken: () => Promise<string> } };
+    await expect(opts.jwtTokenProvider.getToken()).rejects.toThrow('No ASM authentication configured');
   });
 
   it('should wire messageAdded hook from message store to token store', async function hookWiring() {

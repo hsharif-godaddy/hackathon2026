@@ -31,6 +31,7 @@ catalog:
   '@babel/types': ^7.29.0
   '@domains/domain-recommendations': ^1.4.0
   '@elastic/elasticsearch': ^8.19.1
+  '@gd-asm/asm-client': ^1.9.0
   '@godaddy/agent-observability-events': ^2.2.0
   '@godaddy/agent-otel-sdk': ^2.4.1
   '@godaddy/goknowb-client': ^1.0.9

@@ -162,15 +162,15 @@ var (
 	agentsLocalEnvExpectations = []localEnvExpectation{
 		{"agents/.env.local.dev", map[string]string{
 			"SSO_HOST":     "sso.dev-godaddy.com",
-			"ASM_BASE_URL": "https://asm-dp.api.int.dev-godaddy.com",
+			"ASM_BASE_URL": "https://asm-dp.api.int.dev-godaddy.com/v1/conversation/graphql",
 		}},
 		{"agents/.env.local.test", map[string]string{
 			"SSO_HOST":     "sso.test-godaddy.com",
-			"ASM_BASE_URL": "https://asm.api.int.test-godaddy.com",
+			"ASM_BASE_URL": "https://asm.api.int.test-godaddy.com/v1/conversation/graphql",
 		}},
 		{"agents/.env.local.prod", map[string]string{
 			"SSO_HOST":     "sso.godaddy.com",
-			"ASM_BASE_URL": "https://asm.api.int.godaddy.com",
+			"ASM_BASE_URL": "https://asm.api.int.godaddy.com/v1/conversation/graphql",
 		}},
 	}
 )

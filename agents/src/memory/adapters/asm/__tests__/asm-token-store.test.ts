@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { AsmConversationTokenStore } from '../asm-token-store.js';
-import type { AsmClient } from '../asm-client.js';
-import type { AsmMessage } from '../asm-types.js';
+import type { AsmClientWrapper } from '../asm-client-wrapper.js';
+import type { Message } from '@gd-asm/asm-client';
 
 describe('AsmConversationTokenStore', function tokenStoreTests() {
   let mockClient: {
@@ -12,15 +12,15 @@ describe('AsmConversationTokenStore', function tokenStoreTests() {
 
   const scope = { kind: 'resolved' as const, appId: 'app-1', customerId: 'cust-1', siteId: 'site-1' };
 
-  function makeMsg(id: string, text: string, type: 'USER' | 'AGENT', responseTo?: string[]): AsmMessage {
+  function makeMsg(id: string, text: string, type: 'USER' | 'AGENT', responseTo?: string[]): Message {
     return {
       id,
       createdAt: '2024-01-01T00:00:00Z',
       messageCreatedAt: '2024-01-01T00:00:00Z',
-      contents: [{ __typename: 'TextContent', text }],
+      contents: [{ text }],
       participant: { id: type.toLowerCase(), type },
       responseTo,
-    };
+    } as unknown as Message;
   }
 
   beforeEach(function setup() {
@@ -28,7 +28,7 @@ describe('AsmConversationTokenStore', function tokenStoreTests() {
       getConversation: vi.fn(),
       searchConversations: vi.fn().mockResolvedValue({ conversationIds: ['conv-1'] }),
     };
-    store = new AsmConversationTokenStore(mockClient as unknown as AsmClient);
+    store = new AsmConversationTokenStore(mockClient as unknown as AsmClientWrapper);
   });
 
   it('should return null for getLastMessageTimestamp when no messages recorded', async function noTimestamp() {

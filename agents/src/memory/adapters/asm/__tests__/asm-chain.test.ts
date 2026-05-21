@@ -1,15 +1,15 @@
 import { describe, it, expect } from 'vitest';
 import { walkLinearChain } from '../asm-chain.js';
-import type { AsmMessage } from '../asm-types.js';
+import type { Message } from '@gd-asm/asm-client';
 
-function makeMsg(id: string, responseTo?: string[], createdAt?: string): AsmMessage {
+function makeMsg(id: string, responseTo?: string[], createdAt?: string): Message {
   return {
     id,
     createdAt: createdAt ?? '2024-01-01T00:00:00Z',
-    contents: [{ __typename: 'TextContent', text: id }],
+    contents: [{ text: id }],
     participant: { id: 'user', type: 'USER' },
     responseTo,
-  };
+  } as unknown as Message;
 }
 
 describe('walkLinearChain', function chainTests() {

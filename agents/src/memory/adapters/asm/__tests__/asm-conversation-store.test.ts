@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { AsmConversationLifecycleStore } from '../asm-conversation-store.js';
-import type { AsmClient } from '../asm-client.js';
+import type { AsmClientWrapper } from '../asm-client-wrapper.js';
 import type { WorkspaceScope } from '../../../interfaces/scope.js';
 
 describe('AsmConversationLifecycleStore', function storeTests() {
@@ -32,7 +32,7 @@ describe('AsmConversationLifecycleStore', function storeTests() {
       updateLabels: vi.fn().mockResolvedValue({ success: true, id: 'c1' }),
       addMessages: vi.fn().mockResolvedValue({ success: true, id: 'c1' }),
     };
-    store = new AsmConversationLifecycleStore(mockClient as unknown as AsmClient, 'svc-1');
+    store = new AsmConversationLifecycleStore(mockClient as unknown as AsmClientWrapper, 'svc-1');
   });
 
   it('should create a conversation with correct labels', async function createConv() {
@@ -77,7 +77,7 @@ describe('AsmConversationLifecycleStore', function storeTests() {
         { condition: { field: 'labels.key', operator: 'EQUALS', value: 'appId' } },
         { condition: { field: 'labels.value', operator: 'EQUALS', value: 'app-1' } },
       ] },
-      expect.anything()
+      { first: 100, after: undefined },
     );
   });
 
@@ -127,7 +127,7 @@ describe('AsmConversationLifecycleStore', function storeTests() {
     expect(mockClient.searchConversations).toHaveBeenCalledTimes(2);
     expect(mockClient.searchConversations).toHaveBeenCalledWith(
       expect.anything(),
-      { first: 100, after: 'cursor-99' }
+      { first: 100, after: 'cursor-99' },
     );
     expect(result.length).toBeLessThanOrEqual(102);
   });
@@ -142,7 +142,7 @@ describe('AsmConversationLifecycleStore', function storeTests() {
     expect(mockClient.searchConversations).toHaveBeenCalledTimes(1);
     expect(mockClient.searchConversations).toHaveBeenCalledWith(
       expect.anything(),
-      { first: 5 }
+      { first: 5 },
     );
   });
 
@@ -195,7 +195,7 @@ describe('AsmConversationLifecycleStore', function storeTests() {
     await store.findByAppAndAgent(scope, 'agent-1');
     expect(mockClient.searchConversations).toHaveBeenCalledWith(
       expect.anything(),
-      { first: 100 }
+      { first: 100 },
     );
   });
 });

@@ -79,6 +79,7 @@
     "@babel/parser": "catalog:",
     "@babel/traverse": "catalog:",
     "@babel/types": "catalog:",
+    "@gd-asm/asm-client": "catalog:",
     "@godaddy/agent-observability-events": "catalog:",
     "@godaddy/agent-otel-sdk": "catalog:",
     "@godaddy/goknowb-client": "catalog:",

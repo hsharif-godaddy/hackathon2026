@@ -1,14 +1,14 @@
-import type { AsmMessage } from './asm-types.js';
+import type { Message } from '@gd-asm/asm-client';
 
 /**
  * Walks the responseTo pointers from HEAD back to root and returns messages
  * in chronological order (oldest first). Includes cycle detection to guard
  * against corrupt data.
  */
-export function walkLinearChain(messages: AsmMessage[]): AsmMessage[] {
+export function walkLinearChain(messages: Message[]): Message[] {
   if (messages.length === 0) return [];
 
-  const byId = new Map<string, AsmMessage>();
+  const byId = new Map<string, Message>();
   const referencedIds = new Set<string>();
 
   for (const msg of messages) {
@@ -17,7 +17,7 @@ export function walkLinearChain(messages: AsmMessage[]): AsmMessage[] {
     if (parentId) referencedIds.add(parentId);
   }
 
-  let head: AsmMessage | undefined;
+  let head: Message | undefined;
   for (const msg of messages) {
     if (!referencedIds.has(msg.id)) {
       if (!head || msg.createdAt > head.createdAt) {
@@ -30,9 +30,9 @@ export function walkLinearChain(messages: AsmMessage[]): AsmMessage[] {
     head = messages[messages.length - 1];
   }
 
-  const chain: AsmMessage[] = [];
+  const chain: Message[] = [];
   const seen = new Set<string>();
-  let current: AsmMessage | undefined = head;
+  let current: Message | undefined = head;
 
   while (current) {
     if (seen.has(current.id)) break;
