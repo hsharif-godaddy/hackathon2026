@@ -18,6 +18,7 @@ vi.mock('@/app/[market]/develop/components/utils', () => ({
 
 const mockSetActiveChatTab = vi.fn();
 const mockHandleMobileModeChange = vi.fn();
+let mockActiveChatTab: ChatTab = ChatTab.MEDIAS;
 
 vi.mock('@/hooks/useChatTabs', () => ({
   useChatTabs: () => ({
@@ -42,14 +43,14 @@ vi.mock('@/hooks/useMediaManifest', () => ({
 
 vi.mock('@/stores/useDevelopPageStore', () => {
   const mockGetState = vi.fn(() => ({
-    activeChatTab: ChatTab.MEDIAS,
+    activeChatTab: mockActiveChatTab,
     chatPaneWidth: 400,
     setChatPaneWidth: vi.fn(),
     handleMobileModeChange: mockHandleMobileModeChange,
   }));
   const mockUseDevelopPageStore = vi.fn((selector: (s: Record<string, unknown>) => unknown) =>
     selector({
-      activeChatTab: ChatTab.MEDIAS,
+      activeChatTab: mockActiveChatTab,
       chatPaneWidth: 400,
     })
   ) as unknown as { getState: typeof mockGetState };
@@ -100,6 +101,7 @@ describe('MediaPanel', () => {
     mockMediaSlotDialogStore.mediaReturnTab = null;
     mockMediaSlotDialogStore.mediaReturnMobileMode = null;
     mockMediaSlotDialogStore.openEditorForSlot = null;
+    mockActiveChatTab = ChatTab.MEDIAS;
   });
 
   it('renders grid by default', () => {
@@ -168,5 +170,35 @@ describe('MediaPanel', () => {
 
     expect(screen.getByTestId('media-slots-grid')).toBeInTheDocument();
     expect(mockMediaSlotDialogStore.clearPanelSlot).toHaveBeenCalled();
+  });
+
+  it('grid view has no back button when no return tab is set', () => {
+    renderWithProviders(<MediaPanel />);
+    expect(screen.getByTestId('media-slots-grid')).toBeInTheDocument();
+    expect(screen.queryByText('builder_common_back')).toBeNull();
+  });
+
+  it('grid view shows back button when entered via See-all carrot, restores tab + mode on click', async () => {
+    mockMediaSlotDialogStore.panelSlotName = '__GRID__';
+    mockMediaSlotDialogStore.mediaReturnTab = ChatTab.CHAT;
+    mockMediaSlotDialogStore.mediaReturnMobileMode = MobileMode.TOOLS;
+
+    const { user } = renderWithProviders(<MediaPanel />);
+
+    await user.click(screen.getByText('builder_common_back'));
+
+    expect(mockSetActiveChatTab).toHaveBeenCalledWith(ChatTab.CHAT);
+    expect(mockHandleMobileModeChange).toHaveBeenCalledWith(MobileMode.TOOLS);
+    expect(mockMediaSlotDialogStore.clearMediaReturnState).toHaveBeenCalled();
+  });
+
+  it('clears stale mediaReturnTab when the user leaves the Media tab by another route', () => {
+    mockActiveChatTab = ChatTab.CHAT;
+    mockMediaSlotDialogStore.mediaReturnTab = ChatTab.CHAT;
+    mockMediaSlotDialogStore.mediaReturnMobileMode = MobileMode.TOOLS;
+
+    renderWithProviders(<MediaPanel />);
+
+    expect(mockMediaSlotDialogStore.clearMediaReturnState).toHaveBeenCalled();
   });
 });

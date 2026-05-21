@@ -12,8 +12,8 @@ interface MediaSlotDialogState {
   panelSlotName: string | null;
 
   /**
-   * Tab active when navigateToSlot was called for a real slot; used by MediaPanel back
-   * to restore the previous tab. Cleared for __GRID__ and after consume.
+   * Tab active when navigateToSlot was called; used by MediaPanel back to
+   * restore the previous tab. Cleared after consume.
    */
   mediaReturnTab: ChatTab | null;
 
@@ -29,7 +29,12 @@ interface MediaSlotDialogState {
    */
   openEditorForSlot: string | null;
 
-  /** Navigate the media panel to a specific slot (does not open the sheet dialog) */
+  /**
+   * Navigate the media panel to a specific slot (or `__GRID__` for the
+   * grid view). Snapshots the active chat tab + mobileMode synchronously
+   * — call BEFORE `setActiveChatTab(MEDIAS)` so the source tab is
+   * captured, not the destination.
+   */
   navigateToSlot: (slotName: string, options?: { openEditor?: boolean }) => void;
   /** Clear the panel navigation slot (consumed by MediaPanel) */
   clearPanelSlot: () => void;
@@ -45,21 +50,14 @@ export const useMediaSlotDialogStore = create<MediaSlotDialogState>((set) => ({
   openEditorForSlot: null,
 
   navigateToSlot: (slotName: string, options?: { openEditor?: boolean }) => {
-    if (slotName === '__GRID__') {
-      set({
-        panelSlotName: slotName,
-        mediaReturnTab: null,
-        mediaReturnMobileMode: null,
-        openEditorForSlot: null,
-      });
-      return;
-    }
+    // Snapshot source tab for back-breadcrumb. `openEditor` is real-slot only.
     const develop = useDevelopPageStore.getState();
     set({
       panelSlotName: slotName,
       mediaReturnTab: develop.activeChatTab,
       mediaReturnMobileMode: develop.mobileMode,
-      openEditorForSlot: options?.openEditor ? slotName : null,
+      openEditorForSlot:
+        slotName !== '__GRID__' && options?.openEditor ? slotName : null,
     });
   },
 

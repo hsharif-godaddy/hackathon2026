@@ -77,6 +77,15 @@ export default function MediaPanel() {
     }
   }, [activeChatTab, isEditorOpen])
 
+  // Drop a stale return tab if the user leaves the Media tab any way other
+  // than the grid back button — otherwise a later manual visit shows a
+  // breadcrumb pointing somewhere they no longer came from.
+  useEffect(function clearStaleMediaReturnTab() {
+    if (activeChatTab !== ChatTab.MEDIAS && mediaReturnTab != null) {
+      clearMediaReturnState()
+    }
+  }, [activeChatTab, mediaReturnTab, clearMediaReturnState])
+
   const handleSelectSlot = useCallback((slotName: string) => {
     clearMediaReturnState()
     setActiveSlotName(slotName)
@@ -120,6 +129,18 @@ export default function MediaPanel() {
     setIsEditorOpen(false)
     setEditorImageUrl(null)
   }, [])
+
+  // Grid-view back handler — used when the grid was entered externally
+  // (e.g. the chat "See all" carrot). Restores the captured tab + mode.
+  const handleBackFromGrid = useCallback(() => {
+    if (mediaReturnTab != null) {
+      setActiveChatTab(mediaReturnTab)
+      if (mediaReturnMobileMode != null) {
+        useDevelopPageStore.getState().handleMobileModeChange(mediaReturnMobileMode)
+      }
+    }
+    clearMediaReturnState()
+  }, [mediaReturnTab, mediaReturnMobileMode, setActiveChatTab, clearMediaReturnState])
 
   const handleEditorDone = useCallback(() => {
     // Bust the thumbnail cache for upload thumbnails that were overwritten in-place.
@@ -176,8 +197,20 @@ export default function MediaPanel() {
     )
   }
 
+  const showGridBackButton = mediaReturnTab != null
+
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full min-h-0 px-2 md:px-0 md:pt-0 pb-2 gap-2">
+      {showGridBackButton && (
+        <button
+          type="button"
+          onClick={handleBackFromGrid}
+          className="shrink-0 flex items-center gap-1 text-sm text-intents-ux-textSubtle-textColor hover:text-intents-ux-text-textColor transition-colors hover:cursor-pointer"
+        >
+          <ChevronLeftIcon className="size-2 rtl:scale-x-[-1]" />
+          <span>{t('builder_common_back')}</span>
+        </button>
+      )}
       <div className="flex-1 overflow-y-auto pr-1">
         <MediaSlotsGrid
           manifest={manifest}
