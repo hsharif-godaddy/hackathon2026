@@ -94,15 +94,21 @@ export default function ElementHoverBar({
     updatePos();
     document.body.appendChild(overlay);
     outlineRef.current = overlay;
-    // Update position on scroll/resize
+    // Update on viewport scroll/resize AND when the element itself changes
+    // size — the stepper, color picker, and other class-toggle controls can
+    // mutate the element's bounding box without firing a window resize, and
+    // the outline used to stay anchored to the pre-mutation rect.
     window.addEventListener("scroll", updatePos, true);
     window.addEventListener("resize", updatePos);
+    const elementResizeObserver = new ResizeObserver(updatePos);
+    elementResizeObserver.observe(element);
     return () => {
       overlay.remove();
       outlineRef.current = null;
       element.style.cursor = "";
       window.removeEventListener("scroll", updatePos, true);
       window.removeEventListener("resize", updatePos);
+      elementResizeObserver.disconnect();
     };
   }, [element]);
 
@@ -257,9 +263,15 @@ export default function ElementHoverBar({
     const update = () => setBarStyle(computeBarStyle());
     window.addEventListener("scroll", update, true);
     window.addEventListener("resize", update);
+    // Track element size changes (stepper / class toggles can grow or shrink
+    // the bounding box without firing a window resize) so the bar stays
+    // pinned above/below the element instead of drifting.
+    const elementResizeObserver = new ResizeObserver(update);
+    elementResizeObserver.observe(element);
     return () => {
       window.removeEventListener("scroll", update, true);
       window.removeEventListener("resize", update);
+      elementResizeObserver.disconnect();
     };
   }, [element]);
 
