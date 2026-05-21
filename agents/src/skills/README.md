@@ -293,7 +293,7 @@ Current skills (22):
 - **commerce-storefront** - Storefront setup and product display
 - **custom-domain** - Purchase new domains or attach existing ones to the app
 - **database** - SQL database operations for application data
-- **email** - Send emails via Nodemailer and local SMTP relay
+- **email** - Send transactional email through the Airo email gateway
 - **google-maps** - Google Maps integration and location features
 - **i18n** - Internationalization and multi-language support
 - **media-logo** - AI logo generation with transparent/solid variants
