@@ -193,6 +193,15 @@ describe('DevelopHeader', () => {
     expect(codeButton).toBeDisabled();
   });
 
+  it('should disable edit button when version history is open', () => {
+    mockDevelopStore.isVersionHistoryOpen = true;
+
+    renderWithProviders(<DevelopHeader />);
+
+    const editButton = screen.getByLabelText('builder_preview_button_edit');
+    expect(editButton).toBeDisabled();
+  });
+
   it('should disable device selector when in code mode', () => {
     mockDevelopStore.viewMode = ViewMode.CODE;
 

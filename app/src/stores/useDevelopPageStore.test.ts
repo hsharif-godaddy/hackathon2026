@@ -951,6 +951,63 @@ describe('useDevelopPageStore', function useDevelopPageStoreTests() {
     });
   });
 
+  describe('#setIsVersionHistoryOpen', function setIsVersionHistoryOpenTests() {
+    beforeEach(function resetVersionHistoryState() {
+      act(function reset() {
+        useDevelopPageStore.setState({
+          isVersionHistoryOpen: false,
+          viewMode: ViewMode.PREVIEW,
+          isEditModeEnabled: false,
+        });
+      });
+    });
+
+    it('should force viewMode to PREVIEW and disable edit mode when opening history from edit', function lockToPreviewFromEdit() {
+      act(function setup() {
+        useDevelopPageStore.setState({
+          viewMode: ViewMode.EDIT,
+          isEditModeEnabled: true,
+        });
+      });
+
+      act(function openHistory() {
+        useDevelopPageStore.getState().setIsVersionHistoryOpen(true);
+      });
+
+      const state = useDevelopPageStore.getState();
+      expect(state.isVersionHistoryOpen).toBe(true);
+      expect(state.viewMode).toBe(ViewMode.PREVIEW);
+      expect(state.isEditModeEnabled).toBe(false);
+    });
+
+    it('should not change viewMode when opening history from preview', function keepPreview() {
+      act(function openHistory() {
+        useDevelopPageStore.getState().setIsVersionHistoryOpen(true);
+      });
+
+      const state = useDevelopPageStore.getState();
+      expect(state.isVersionHistoryOpen).toBe(true);
+      expect(state.viewMode).toBe(ViewMode.PREVIEW);
+    });
+
+    it('should not change viewMode when closing history', function closeHistoryNoSwitch() {
+      act(function setup() {
+        useDevelopPageStore.setState({
+          isVersionHistoryOpen: true,
+          viewMode: ViewMode.PREVIEW,
+        });
+      });
+
+      act(function closeHistory() {
+        useDevelopPageStore.getState().setIsVersionHistoryOpen(false);
+      });
+
+      const state = useDevelopPageStore.getState();
+      expect(state.isVersionHistoryOpen).toBe(false);
+      expect(state.viewMode).toBe(ViewMode.PREVIEW);
+    });
+  });
+
   describe('#selectedModel', function selectedModelTests() {
     it('should default to null', function defaultsNull() {
       expect(useDevelopPageStore.getState().selectedModel).toBeNull();

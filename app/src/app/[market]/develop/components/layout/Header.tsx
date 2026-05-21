@@ -132,6 +132,7 @@ export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) 
                     value={ViewMode.BRAND}
                     icon={<ColorPaletteIcon className="size-2.5" />}
                     label="Logo & Brand"
+                    disabled={isVersionHistoryOpen}
                   />
                 )}
                 <ButtonGroup.Item
@@ -143,6 +144,7 @@ export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) 
                   value={ViewMode.EDIT}
                   icon={<WandIcon className="size-2.5" />}
                   label={t('builder_preview_button_edit')}
+                  disabled={isVersionHistoryOpen}
                 />
                 <ButtonGroup.Item
                   value={ViewMode.CODE}

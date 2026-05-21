@@ -519,7 +519,15 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
         get().handleMobileModeChange(MobileMode.TOOLS)
       }
     },
-    setIsVersionHistoryOpen: (open) => set((state) => { state.isVersionHistoryOpen = open }),
+    setIsVersionHistoryOpen: (open) => {
+      set((state) => { state.isVersionHistoryOpen = open })
+      // Lock viewMode to PREVIEW while history is open so users can't edit
+      // a historical snapshot. false: skip unsaved-changes confirm — same
+      // pattern as handleMobileModeChange.
+      if (open && get().viewMode !== ViewMode.PREVIEW) {
+        get().handleViewModeChange(ViewMode.PREVIEW, false)
+      }
+    },
     setIsPreviewVisible: (visible) => set((state) => { state.isPreviewVisible = visible }),
 
     toggleMobileInlineEdit: () => {
@@ -1013,7 +1021,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
 
     toggleVersionHistory: () => {
       const newIsVersionHistoryOpen = !get().isVersionHistoryOpen
-      set((state) => { state.isVersionHistoryOpen = newIsVersionHistoryOpen })
+      get().setIsVersionHistoryOpen(newIsVersionHistoryOpen)
     },
 
     handleViewModeChange: (newMode: ViewMode, hasUnsavedChanges: boolean) => {
