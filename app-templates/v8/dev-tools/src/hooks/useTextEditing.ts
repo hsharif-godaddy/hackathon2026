@@ -10,6 +10,7 @@ import {
   generateSelector,
   isBodyTextElement,
   resolveContentKey,
+  isInsideNavSurface,
 } from "../utils/element-detection";
 import InlineLexicalEditor from "../components/InlineLexicalEditor";
 import { htmlToJsxStructured } from "../utils/html-to-jsx";
@@ -476,6 +477,11 @@ export function useTextEditing(isEditModeActive: boolean) {
       if (!e.isTrusted) return; // Let synthetic events (e.g. Follow button) through
       const rawTarget = e.target as HTMLElement;
       if (!rawTarget || isDevToolsElement(rawTarget)) return;
+
+      // Nav links pass through to native navigation in Edit mode. Bail out
+      // before we preventDefault or open the inline editor so the SPA router
+      // handles the click cleanly.
+      if (isInsideNavSurface(rawTarget)) return;
 
       // Always block navigation on clickable elements (links, buttons) in edit mode
       if (rawTarget.closest("a, button, [role='button']")) {

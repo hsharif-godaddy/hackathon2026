@@ -12,6 +12,7 @@ import {
   isListElement,
   isContentElement,
   isClickable,
+  isInsideNavSurface,
   HEADING_TAGS,
   INLINE_TEXT_TAGS,
   BLOCK_TEXT_TAGS,
@@ -182,6 +183,65 @@ describe('element-detection', () => {
       expect(isClickable(buildElement('<p>text</p>'))).toBe(false);
       expect(isClickable(buildElement('<div>container</div>'))).toBe(false);
       expect(isClickable(buildElement('<span>inline</span>'))).toBe(false);
+    });
+  });
+
+  // ─── isInsideNavSurface ───────────────────────────────────────────────────────────────
+
+  describe('isInsideNavSurface', () => {
+    it('returns true for an <a> inside <nav>', () => {
+      const nav = buildElement('<nav><a href="/about">About</a></nav>');
+      const anchor = nav.querySelector('a') as HTMLElement;
+      expect(isInsideNavSurface(anchor)).toBe(true);
+    });
+
+    it('returns true for a span inside <nav> (target-agnostic)', () => {
+      const nav = buildElement('<nav><a href="/x"><span>label</span></a></nav>');
+      const span = nav.querySelector('span') as HTMLElement;
+      expect(isInsideNavSurface(span)).toBe(true);
+    });
+
+    it('returns true for an anchor inside breadcrumb <nav>', () => {
+      const nav = buildElement('<nav aria-label="breadcrumb"><a href="/home">Home</a></nav>');
+      const anchor = nav.querySelector('a') as HTMLElement;
+      expect(isInsideNavSurface(anchor)).toBe(true);
+    });
+
+    it('returns true for the <nav> element itself', () => {
+      const nav = buildElement('<nav><a>x</a></nav>');
+      expect(isInsideNavSurface(nav)).toBe(true);
+    });
+
+    it('returns false for a standalone <a>', () => {
+      expect(isInsideNavSurface(buildElement('<a href="#">link</a>'))).toBe(false);
+    });
+
+    it('returns false for an <a> inside <header> with no <nav>', () => {
+      const header = buildElement('<header><a href="/x">link</a></header>');
+      const anchor = header.querySelector('a') as HTMLElement;
+      expect(isInsideNavSurface(anchor)).toBe(false);
+    });
+
+    it('returns false for a body-content <p>', () => {
+      expect(isInsideNavSurface(buildElement('<p>body text</p>'))).toBe(false);
+    });
+
+    it('returns true for an item inside [role="menu"] (Radix dropdown portal)', () => {
+      const menu = buildElement('<div role="menu"><a href="/x">Item</a></div>');
+      const anchor = menu.querySelector('a') as HTMLElement;
+      expect(isInsideNavSurface(anchor)).toBe(true);
+    });
+
+    it('returns true for an item inside [role="menubar"]', () => {
+      const bar = buildElement('<div role="menubar"><a href="/x">Item</a></div>');
+      const anchor = bar.querySelector('a') as HTMLElement;
+      expect(isInsideNavSurface(anchor)).toBe(true);
+    });
+
+    it('returns true for an item inside [role="navigation"] without <nav>', () => {
+      const region = buildElement('<div role="navigation"><a href="/x">Link</a></div>');
+      const anchor = region.querySelector('a') as HTMLElement;
+      expect(isInsideNavSurface(anchor)).toBe(true);
     });
   });
 

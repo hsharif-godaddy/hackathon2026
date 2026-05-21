@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { flushSync } from "react-dom";
-import { isDevToolsElement, isContentElement, detectImage, getMediaSlotPath } from "../utils/element-detection";
+import { isDevToolsElement, isContentElement, detectImage, getMediaSlotPath, isInsideNavSurface } from "../utils/element-detection";
 import { isTouchDevice } from "../utils/device";
 
 export interface HoveredImage {
@@ -55,6 +55,14 @@ export function useImageHoverDetection(
     const handleMouseOver = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
       if (!target || isDevToolsElement(target)) return;
+      if (isInsideNavSurface(target)) {
+        // Nav links navigate; never show hover bar for them
+        if (showBarTimerRef.current) {
+          clearTimeout(showBarTimerRef.current);
+          showBarTimerRef.current = null;
+        }
+        return;
+      }
 
       if (editingStateRef.current?.editingElement?.contains(target)) return;
 

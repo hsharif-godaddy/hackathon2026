@@ -50,6 +50,23 @@ export function isClickable(element: HTMLElement): boolean {
   return false;
 }
 
+/** True when the element is inside a navigation surface — a <nav>, or any
+ *  ARIA navigation/menu/menubar. Used in Edit mode to let nav clicks pass
+ *  through to the SPA router instead of opening the Hover Bar / inline editor.
+ *
+ *  Target-agnostic: a child span inside a nav anchor returns true too,
+ *  which matches how mouseover/click events often land on inner elements.
+ *
+ *  The role selectors cover navigation surfaces that may live outside a
+ *  <nav> element — e.g. agent-authored markup using `role='navigation'`
+ *  instead of the semantic tag, Radix DropdownMenu (portalled,
+ *  role='menu'), or Radix Menubar (role='menubar'). Menu items are
+ *  aria-defined as action triggers, never editable text content, so this
+ *  broadening is safe. */
+export function isInsideNavSurface(element: HTMLElement): boolean {
+  return !!element.closest("nav, [role='navigation'], [role='menu'], [role='menubar']");
+}
+
 /** Returns true for elements where block-level formatting (alignment, lists) makes sense for inline editing. */
 export function isBodyTextElement(element: HTMLElement): boolean {
   const tag = element.tagName.toLowerCase();
