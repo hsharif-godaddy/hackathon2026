@@ -51,7 +51,7 @@ import {
   type StreamTimingData,
 } from './stream-timing-tracker.js'
 import { ChunkTimeoutGuard } from './chunk-timeout-guard.js'
-import { runPostStreamValidation, type ValidationMessageEventData } from './post-stream-validation-runner.js'
+import { runPostStreamValidation, turnEndedWithStopAfterTool, type ValidationMessageEventData } from './post-stream-validation-runner.js'
 import { invokeBudgetRecoveryCallback, buildContinuationPrompt, MAX_BUDGET_RETRIES } from './budget-recovery.js'
 
 /**
@@ -2358,6 +2358,9 @@ export class WebSocketServer {
               ...(tc.input !== undefined && { args: tc.input })
             }))
             : []
+
+          const stopAfterTools = this.config.agents.getConfig?.(name)?.stopAfterTools
+          if (turnEndedWithStopAfterTool(validatorToolCalls, stopAfterTools)) return
           const resolvedAgentName = name || this.config.defaultAgent || 'unknown'
           const conversation = this.getConversation(socketId)
 

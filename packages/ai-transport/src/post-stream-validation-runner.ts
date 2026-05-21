@@ -1,3 +1,15 @@
+/** Returns true when the last tool call's name matches a configured stop-after tool,
+ *  meaning the agent intentionally paused for user interaction and post-stream
+ *  validation should be skipped. */
+export function turnEndedWithStopAfterTool(
+  toolCalls: Array<{ toolName: string }>,
+  stopAfterTools: string[] | undefined,
+): boolean {
+  if (!stopAfterTools || stopAfterTools.length === 0 || toolCalls.length === 0) return false
+  const lastTool = toolCalls[toolCalls.length - 1]!
+  return stopAfterTools.includes(lastTool.toolName)
+}
+
 export type ValidationStatus = 'running' | 'completed' | 'failed' | 'error'
 
 export interface ValidationMessageEventData {

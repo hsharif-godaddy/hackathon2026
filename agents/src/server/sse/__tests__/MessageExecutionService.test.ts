@@ -1542,4 +1542,44 @@ describe('MessageExecutionService', () => {
       )
     })
   })
+
+  describe('postStreamValidator + stopAfterTools', () => {
+    it('skips validation when last tool call is a stop-after tool', async () => {
+      const postStreamValidator = vi.fn().mockResolvedValue(undefined)
+      deps = createMockDeps([
+        { type: 'tool-input-start', id: 'tid-ask', toolName: 'askQuestion' },
+        { type: 'tool-call', id: 'tid-ask', toolName: 'askQuestion', args: JSON.stringify({ question: 'What theme?' }) },
+      ])
+      deps.getAgent.mockReturnValue({
+        streamGenerate: deps.getAgent().streamGenerate,
+        getName: vi.fn().mockReturnValue('AI Developer'),
+        getConfig: vi.fn().mockReturnValue({ stopAfterTools: ['askQuestion'] }),
+      })
+      ;(deps as any).postStreamValidator = postStreamValidator
+      service = new MessageExecutionService(deps as any)
+
+      await service.execute(DEFAULT_PARAMS)
+
+      expect(postStreamValidator).not.toHaveBeenCalled()
+    })
+
+    it('runs validation when last tool call is NOT a stop-after tool', async () => {
+      const postStreamValidator = vi.fn().mockResolvedValue(undefined)
+      deps = createMockDeps([
+        { type: 'tool-input-start', id: 'tid-edit', toolName: 'editFile' },
+        { type: 'tool-call', id: 'tid-edit', toolName: 'editFile', args: JSON.stringify({ path: 'index.ts' }) },
+      ])
+      deps.getAgent.mockReturnValue({
+        streamGenerate: deps.getAgent().streamGenerate,
+        getName: vi.fn().mockReturnValue('AI Developer'),
+        getConfig: vi.fn().mockReturnValue({ stopAfterTools: ['askQuestion'] }),
+      })
+      ;(deps as any).postStreamValidator = postStreamValidator
+      service = new MessageExecutionService(deps as any)
+
+      await service.execute(DEFAULT_PARAMS)
+
+      expect(postStreamValidator).toHaveBeenCalled()
+    })
+  })
 })

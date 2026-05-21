@@ -9,6 +9,7 @@ import {
   emitTurnError,
   classifyTurnError,
   runPostStreamValidation,
+  turnEndedWithStopAfterTool,
   withBudgetRecovery,
 } from '@airo/ai-transport'
 import type { ResponseMetadata } from '@airo/ai-transport'
@@ -849,6 +850,10 @@ export class MessageExecutionService {
             const toolCalls = streamingEvents
               .filter((e: any) => e.type === 'tool_start' && e.data?.tool)
               .map((e: any) => ({ toolName: e.data.tool.name, args: e.data.tool.input }))
+
+            const agent = this.deps.getAgent(agentName)
+            const stopAfterTools = agent?.getConfig?.()?.stopAfterTools
+            if (turnEndedWithStopAfterTool(toolCalls, stopAfterTools)) return
 
             const result = await runPostStreamValidation({
               validator: this.deps.postStreamValidator!,

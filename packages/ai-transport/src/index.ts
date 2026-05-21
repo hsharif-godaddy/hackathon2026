@@ -155,7 +155,7 @@ export { ClientActionRegistry } from './client-action-registry.js'
 export type { ClientActionHandler, ClientActionRequest, ClientActionResult } from './client-action-registry.js'
 
 // Post-stream validator orchestration (shared WS + SSE)
-export { runPostStreamValidation } from './post-stream-validation-runner.js'
+export { runPostStreamValidation, turnEndedWithStopAfterTool } from './post-stream-validation-runner.js'
 export type {
   ValidationStatus,
   ValidationMessageEventData,

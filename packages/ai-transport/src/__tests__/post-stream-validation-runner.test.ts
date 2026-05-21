@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
   runPostStreamValidation,
+  turnEndedWithStopAfterTool,
   type PostStreamValidatorFn,
   type ValidationMessageEventData,
 } from '../post-stream-validation-runner.js'
@@ -260,5 +261,39 @@ describe('runPostStreamValidation', () => {
       expect.objectContaining({ error: 'db down' }))
     expect(calls[1]?.data.metadata.validationStatus).toBe('failed')
     expect(calls[1]?.data.messageId).toBeUndefined()
+  })
+})
+
+describe('turnEndedWithStopAfterTool', () => {
+  it('returns true when last tool is in stopAfterTools', () => {
+    const toolCalls = [{ toolName: 'editFile' }, { toolName: 'askQuestion' }]
+    expect(turnEndedWithStopAfterTool(toolCalls, ['askQuestion', 'handoff'])).toBe(true)
+  })
+
+  it('returns false when last tool is not in stopAfterTools', () => {
+    const toolCalls = [{ toolName: 'askQuestion' }, { toolName: 'editFile' }]
+    expect(turnEndedWithStopAfterTool(toolCalls, ['askQuestion', 'handoff'])).toBe(false)
+  })
+
+  it('returns false when stopAfterTools is undefined', () => {
+    expect(turnEndedWithStopAfterTool([{ toolName: 'askQuestion' }], undefined)).toBe(false)
+  })
+
+  it('returns false when stopAfterTools is empty', () => {
+    expect(turnEndedWithStopAfterTool([{ toolName: 'askQuestion' }], [])).toBe(false)
+  })
+
+  it('returns false when toolCalls is empty', () => {
+    expect(turnEndedWithStopAfterTool([], ['askQuestion'])).toBe(false)
+  })
+
+  it('returns true for handoff as last tool', () => {
+    const toolCalls = [{ toolName: 'editFile' }, { toolName: 'handoff' }]
+    expect(turnEndedWithStopAfterTool(toolCalls, ['askQuestion', 'handoff'])).toBe(true)
+  })
+
+  it('returns false when stop-after tool is not the last call', () => {
+    const toolCalls = [{ toolName: 'handoff' }, { toolName: 'editFile' }]
+    expect(turnEndedWithStopAfterTool(toolCalls, ['askQuestion', 'handoff'])).toBe(false)
   })
 })

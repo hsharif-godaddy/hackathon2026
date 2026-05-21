@@ -3860,6 +3860,40 @@ describe('WebSocketServer - postStreamValidator continuation', () => {
 
     server.close()
   })
+
+  it('skips validation when the last tool call is a stop-after tool', async () => {
+    ;(mockAgent.streamGenerate as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce(mockSingleShotStream('asking user'))
+
+    const postStreamValidator = vi.fn().mockResolvedValueOnce({ continuationPrompt: 'should not fire' })
+
+    const agentsWithConfig = {
+      ...mockAgents,
+      getConfig: vi.fn().mockReturnValue({ stopAfterTools: ['askQuestion'] }),
+    }
+
+    const { server, messageHandler } = await setupServerWithConnection(httpServer, {
+      agents: agentsWithConfig,
+      defaultAgent: 'test-agent',
+      postStreamValidator
+    } as any)
+
+    const origGetConversation = (server as any).getConversation.bind(server)
+    ;(server as any).getConversation = (id: string) => {
+      const conv = origGetConversation(id)
+      if (conv) {
+        conv.pendingToolCalls = new Map([['call-1', { name: 'askQuestion', input: { question: 'What theme?' } }]])
+      }
+      return conv
+    }
+
+    await messageHandler({ message: 'initial', agentId: 'test-agent' })
+
+    expect(postStreamValidator).not.toHaveBeenCalled()
+    expect(mockAgent.streamGenerate).toHaveBeenCalledTimes(1)
+
+    server.close()
+  })
 })
 
 describe('createChunkTimeoutGuard (private factory)', () => {
