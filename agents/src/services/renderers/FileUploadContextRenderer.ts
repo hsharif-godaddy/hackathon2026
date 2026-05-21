@@ -1,12 +1,12 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
-import { dirname } from 'path'
-import { join } from 'path'
+import { mkdirSync, writeFileSync } from 'fs'
+import { dirname, join } from 'path'
 import { getModel } from '@airo/ai-lib'
 import { generateText } from 'ai'
 import type { ContextAttachment, ContextAttachmentRenderer, RenderedContext } from '@airo/shared/context-attachment'
 import { AppRepository } from '../../database/repositories/AppRepository.js'
 import { logger } from '../../logging/index.js'
 import { resizeForVision } from '../../utils/image-resize.js'
+import { createForWorkspace } from '../../workspace/index.js'
 
 const appRepo = new AppRepository()
 
@@ -173,10 +173,27 @@ export class FileUploadContextRenderer implements ContextAttachmentRenderer {
     const ext = fileName.substring(fileName.lastIndexOf('.')).toLowerCase()
     const isImage = data.isImage || IMAGE_EXTENSIONS.includes(ext)
 
+    const workspace = createForWorkspace(appId!, 'preview')
+    if (!workspace) {
+      logger.warn('context.renderer.file_upload.workspace_unavailable', { appId })
+      return {
+        content: `File "${fileName}" was uploaded but workspace is unavailable.`,
+        role: 'user',
+        insertionOrder: 'after_history',
+      }
+    }
+
     if (isImage) {
-      const filePath = join(appPath, 'src', 'assets', fileName)
-      if (!existsSync(filePath)) {
-        logger.warn('context.renderer.file_upload.image_not_found', { appId, filePath })
+      let buffer: Buffer
+      try {
+        const downloadResult = await workspace.files.download({ path: `src/assets/${fileName}` })
+        buffer = downloadResult.data
+      } catch (err) {
+        logger.warn('context.renderer.file_upload.image_not_found', {
+          appId,
+          fileName,
+          error: err instanceof Error ? err.message : String(err),
+        })
         return {
           content: `Image file "${fileName}" was uploaded but not found on disk.`,
           role: 'user',
@@ -184,7 +201,6 @@ export class FileUploadContextRenderer implements ContextAttachmentRenderer {
         }
       }
 
-      const buffer = readFileSync(filePath)
       const result = await classifyImage(buffer, fileName, userPrompt)
 
       if (result) {
@@ -238,17 +254,22 @@ export class FileUploadContextRenderer implements ContextAttachmentRenderer {
     }
 
     // Text file
-    const filePath = join(appPath, 'docs', fileName)
-    if (!existsSync(filePath)) {
-      logger.warn('context.renderer.file_upload.text_not_found', { appId, fileName, filePath })
+    let content: string
+    try {
+      const viewResult = await workspace.files.view({ path: `docs/${fileName}`, limit: 10000 })
+      content = viewResult.content
+    } catch (err) {
+      logger.warn('context.renderer.file_upload.text_not_found', {
+        appId,
+        fileName,
+        error: err instanceof Error ? err.message : String(err),
+      })
       return {
         content: `File "${fileName}" was uploaded but not found on disk at \`docs/${fileName}\`.`,
         role: 'user',
         insertionOrder: 'after_history',
       }
     }
-
-    const content = readFileSync(filePath, 'utf-8')
     const classification = await classifyText(content, fileName, userPrompt)
 
     if (classification) {

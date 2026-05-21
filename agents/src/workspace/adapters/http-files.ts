@@ -14,6 +14,8 @@ import type {
   DeleteOptions,
   MoveOptions,
   FileUploadOptions,
+  DownloadOptions,
+  DownloadResult,
 } from '../files.js';
 
 export class HttpFiles implements WorkspaceFiles {
@@ -61,5 +63,16 @@ export class HttpFiles implements WorkspaceFiles {
       options.data,
     );
     return response as WriteResult;
+  }
+
+  async download(options: DownloadOptions): Promise<DownloadResult> {
+    const encodedPath = options.path.split('/').map(encodeURIComponent).join('/');
+    const response = await this.client.getRaw(
+      `/workspace/files/download?path=${encodedPath}`,
+    );
+    return {
+      data: response.data,
+      contentType: response.contentType,
+    };
   }
 }

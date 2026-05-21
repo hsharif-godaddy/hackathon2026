@@ -242,6 +242,9 @@ func (s *Server) setupRoutes() {
 	s.router.Handle("/workspace/files/upload", wsFilesUploadMiddleware(
 		http.HandlerFunc(s.handleWorkspaceFilesUpload),
 	)).Methods("PUT")
+
+	// Binary download — raw file streaming (no body size middleware needed)
+	s.router.HandleFunc("/workspace/files/download", s.handleWorkspaceFilesDownload).Methods("GET")
 }
 
 func (s *Server) getConfiguredAddress() string {

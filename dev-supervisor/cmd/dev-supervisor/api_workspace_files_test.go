@@ -427,6 +427,103 @@ func TestWorkspaceFilesUpload_MissingPath(t *testing.T) {
 	}
 }
 
+// --- Download tests ---
+
+func getRaw(t *testing.T, handler http.HandlerFunc, path string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodGet, "/workspace/files/download?path="+path, nil)
+	w := httptest.NewRecorder()
+	handler(w, req)
+	return w
+}
+
+func TestWorkspaceFilesDownload_TextFile(t *testing.T) {
+	server, dir := newTestServerWithDir(t)
+	content := "hello world\nline two\n"
+	os.WriteFile(filepath.Join(dir, "readme.txt"), []byte(content), 0o644)
+
+	w := getRaw(t, server.handleWorkspaceFilesDownload, "readme.txt")
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if ct := w.Header().Get("Content-Type"); ct != "text/plain; charset=utf-8" {
+		t.Errorf("expected text/plain; charset=utf-8, got %s", ct)
+	}
+	if w.Body.String() != content {
+		t.Errorf("body mismatch: got %q", w.Body.String())
+	}
+}
+
+func TestWorkspaceFilesDownload_BinaryFile(t *testing.T) {
+	server, dir := newTestServerWithDir(t)
+	pngData := []byte{0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A}
+	os.WriteFile(filepath.Join(dir, "img.png"), pngData, 0o644)
+
+	w := getRaw(t, server.handleWorkspaceFilesDownload, "img.png")
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if ct := w.Header().Get("Content-Type"); ct != "image/png" {
+		t.Errorf("expected image/png, got %s", ct)
+	}
+	if cl := w.Header().Get("Content-Length"); cl != "8" {
+		t.Errorf("expected Content-Length 8, got %s", cl)
+	}
+	if !bytes.Equal(w.Body.Bytes(), pngData) {
+		t.Error("body doesn't match PNG data")
+	}
+}
+
+func TestWorkspaceFilesDownload_NotFound(t *testing.T) {
+	server, _ := newTestServerWithDir(t)
+	w := getRaw(t, server.handleWorkspaceFilesDownload, "nonexistent.txt")
+	if w.Code != http.StatusNotFound {
+		t.Errorf("expected 404, got %d", w.Code)
+	}
+}
+
+func TestWorkspaceFilesDownload_PathTraversal(t *testing.T) {
+	server, _ := newTestServerWithDir(t)
+	w := getRaw(t, server.handleWorkspaceFilesDownload, "../../../etc/passwd")
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for path traversal, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestWorkspaceFilesDownload_MissingPath(t *testing.T) {
+	server, _ := newTestServerWithDir(t)
+	req := httptest.NewRequest(http.MethodGet, "/workspace/files/download", nil)
+	w := httptest.NewRecorder()
+	server.handleWorkspaceFilesDownload(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for missing path, got %d", w.Code)
+	}
+}
+
+func TestWorkspaceFilesDownload_TooLarge(t *testing.T) {
+	server, dir := newTestServerWithDir(t)
+	f, _ := os.Create(filepath.Join(dir, "huge.bin"))
+	f.Truncate(11 * 1024 * 1024) // 11MB > 10MB limit
+	f.Close()
+
+	w := getRaw(t, server.handleWorkspaceFilesDownload, "huge.bin")
+	if w.Code != http.StatusRequestEntityTooLarge {
+		t.Errorf("expected 413, got %d", w.Code)
+	}
+}
+
+func TestWorkspaceFilesDownload_Directory(t *testing.T) {
+	server, dir := newTestServerWithDir(t)
+	os.MkdirAll(filepath.Join(dir, "subdir"), 0o755)
+
+	w := getRaw(t, server.handleWorkspaceFilesDownload, "subdir")
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for directory, got %d", w.Code)
+	}
+}
+
 // --- Search tests ---
 
 func TestWorkspaceFilesSearch_EmptyPattern(t *testing.T) {

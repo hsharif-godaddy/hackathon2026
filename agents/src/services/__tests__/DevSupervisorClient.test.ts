@@ -372,6 +372,105 @@ describe('utility functions', () => {
   });
 });
 
+describe('DevSupervisorClient getRaw', () => {
+  let client: DevSupervisorClient;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    client = new DevSupervisorClient('/tmp/test.sock');
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('returns buffered data and content type on success', async () => {
+    const body = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
+      const mockRequest = createMockStreamRequest(200, body, {
+        'content-type': 'image/png',
+        'content-length': '4',
+      });
+      vi.mocked(http.request).mockReturnValue(mockRequest as any);
+
+      const result = await client.getRaw('/workspace/files/download?path=img.png');
+
+      expect(result.contentType).toBe('image/png');
+      expect(Buffer.isBuffer(result.data)).toBe(true);
+      expect(result.data.length).toBe(4);
+      expect(result.data[0]).toBe(0x89);
+    });
+
+  it('rejects with parsed error on 404 JSON response', async () => {
+    const errorBody = JSON.stringify({ error: 'not_found', message: 'file not found' });
+    const mockRequest = createMockStreamRequest(404, Buffer.from(errorBody), {
+      'content-type': 'application/json',
+    });
+    vi.mocked(http.request).mockReturnValue(mockRequest as any);
+
+    await expect(client.getRaw('/workspace/files/download?path=nope'))
+      .rejects.toThrow('HTTP 404: not_found: file not found');
+  });
+
+  it('rejects with raw body on non-JSON error response', async () => {
+    const mockRequest = createMockStreamRequest(500, Buffer.from('internal error'), {});
+    vi.mocked(http.request).mockReturnValue(mockRequest as any);
+
+    await expect(client.getRaw('/workspace/files/download?path=x'))
+      .rejects.toThrow('HTTP 500: internal error');
+  });
+});
+
+// Helper function to create mock HTTP request that simulates streaming response.
+// For success (2xx): emits data/end asynchronously AFTER the response callback fires,
+// giving callers time to attach stream listeners.
+// For error (non-2xx): emits data/end immediately (consumed inside requestStream).
+function createMockStreamRequest(
+  statusCode: number,
+  body: Buffer,
+  headers: Record<string, string>,
+) {
+  const mockRequest = {
+    write: vi.fn(),
+    end: vi.fn(),
+    destroy: vi.fn(),
+    on: vi.fn(),
+  };
+
+  setTimeout(() => {
+    const dataCallbacks: Array<(chunk: Buffer) => void> = [];
+    const endCallbacks: Array<() => void> = [];
+
+    const mockResponse = {
+      statusCode,
+      headers,
+      on: vi.fn((event: string, callback: (...args: any[]) => void) => {
+        if (event === 'data') dataCallbacks.push(callback);
+        else if (event === 'end') endCallbacks.push(callback);
+        else if (event === 'error') { /* stored but unused */ }
+      }),
+    };
+
+    const requestCall = vi.mocked(http.request).mock.calls[vi.mocked(http.request).mock.calls.length - 1];
+    if (requestCall && requestCall[1]) {
+      (requestCall[1] as (res: any) => void)(mockResponse);
+
+      if (statusCode >= 200 && statusCode < 300) {
+        // For success: emit data/end asynchronously so callers can attach listeners
+        setTimeout(() => {
+          for (const cb of dataCallbacks) cb(body);
+          for (const cb of endCallbacks) cb();
+        }, 0);
+      } else {
+        // For errors: requestStream consumes the body inline
+        for (const cb of dataCallbacks) cb(body);
+        for (const cb of endCallbacks) cb();
+      }
+    }
+  }, 0);
+
+  return mockRequest;
+}
+
 // Helper function to create mock HTTP request
 function createMockRequest(statusCode: number, responseData: any) {
   const mockRequest = {

@@ -1,4 +1,3 @@
-import { readFile } from 'fs/promises';
 import { existsSync } from 'fs';
 import { resolve, join } from 'path';
 import { execFile } from 'child_process';
@@ -15,6 +14,7 @@ import { AppRepository } from '../database/repositories/AppRepository.js';
 import { getKvMemoryStore } from '../memory/adapters/index.js';
 import type { KvMemoryStore } from '../memory/interfaces/index.js';
 import { customerIdFromContext, workspaceScopeFromAppId } from '../memory/interfaces/scope.js';
+import { createForWorkspace } from '../workspace/index.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -146,18 +146,21 @@ export class AppContextManager {
     dependenciesInstalled: boolean;
   } | null> {
     const appId = context.metadata?.appId as string;
-    const appPath = context.metadata?.appPath as string;
 
-    if (!appPath || !appId) {
+    if (!appId) {
       return null;
     }
 
     appContextEvents.packageBegin(logger, { appId });
 
     try {
-      const packageJsonPath = resolve(join(appPath, 'package.json'));
-      const packageContent = await readFile(packageJsonPath, 'utf-8');
-      const packageJson = JSON.parse(packageContent);
+      const workspace = createForWorkspace(appId, 'preview');
+      if (!workspace) {
+        appContextEvents.packageFailure(logger, new Error('workspace unavailable'), { appId, packageJsonFound: false });
+        return null;
+      }
+      const viewResult = await workspace.files.view({ path: 'package.json', limit: 10000 });
+      const packageJson = JSON.parse(viewResult.content);
 
       // Check if dependencies are installed by comparing lock file modification time
       const dependenciesInstalled = await this.checkDependenciesInstalled(context);

@@ -58,6 +58,9 @@ vi.mock('../../database/repositories/AppRepository.js', () => ({
 vi.mock('fs/promises', () => ({
   readFile: vi.fn().mockRejectedValue(new Error('not found'))
 }));
+vi.mock('../../workspace/index.js', () => ({
+  createForWorkspace: vi.fn().mockReturnValue(null),
+}));
 vi.mock('child_process', () => ({
   execFile: vi.fn()
 }));

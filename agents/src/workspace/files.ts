@@ -85,6 +85,15 @@ export interface FileUploadOptions {
   data: Buffer | Uint8Array;
 }
 
+export interface DownloadOptions {
+  path: string;
+}
+
+export interface DownloadResult {
+  data: Buffer;
+  contentType: string;
+}
+
 export interface WorkspaceFiles {
   tree(options?: TreeOptions): Promise<TreeResult>;
   view(options: ViewOptions): Promise<ViewResult>;
@@ -94,4 +103,5 @@ export interface WorkspaceFiles {
   delete(options: DeleteOptions): Promise<void>;
   move(options: MoveOptions): Promise<void>;
   upload(options: FileUploadOptions): Promise<WriteResult>;
+  download(options: DownloadOptions): Promise<DownloadResult>;
 }

@@ -42,9 +42,13 @@ vi.mock('../../database/connection.js', () => ({
     }),
   }),
 }));
+vi.mock('../../workspace/index.js', () => ({
+  createForWorkspace: vi.fn(),
+}));
 
 import { AppContextManager } from '../AppContextManager.js';
 import { AppRepository } from '../../database/repositories/AppRepository.js';
+import { createForWorkspace } from '../../workspace/index.js';
 
 describe('AppContextManager publish state', () => {
   let manager: AppContextManager;
@@ -106,6 +110,84 @@ describe('AppContextManager publish state', () => {
 
     it('should return null when input is null', () => {
       const result = (manager as any).formatPublishStateSection(null);
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('getPackageInfo', () => {
+    const mockView = vi.fn();
+
+    beforeEach(() => {
+      (createForWorkspace as ReturnType<typeof vi.fn>).mockReturnValue({
+        files: { view: mockView },
+      });
+    });
+
+    it('should return package info via workspace.files.view()', async () => {
+      mockView.mockResolvedValue({
+        path: 'package.json',
+        content: JSON.stringify({
+          name: 'test-app',
+          version: '1.0.0',
+          description: 'A test app',
+          dependencies: { react: '^18.0.0', 'react-dom': '^18.0.0' },
+          devDependencies: { vitest: '^1.0.0' },
+          scripts: { dev: 'vite', build: 'vite build' },
+        }),
+        encoding: 'utf-8',
+        lines: 12,
+        size: 200,
+        truncated: false,
+      });
+
+      const context = {
+        metadata: { appId: 'app-123', appPath: '/app' },
+      } as any;
+
+      const result = await (manager as any).getPackageInfo(context);
+
+      expect(createForWorkspace).toHaveBeenCalledWith('app-123', 'preview');
+      expect(mockView).toHaveBeenCalledWith({ path: 'package.json', limit: 10000 });
+      expect(result).toMatchObject({
+        name: 'test-app',
+        version: '1.0.0',
+        dependencies: ['react', 'react-dom'],
+        devDependencies: ['vitest'],
+        scripts: ['dev', 'build'],
+      });
+    });
+
+    it('should return null when workspace is unavailable', async () => {
+      (createForWorkspace as ReturnType<typeof vi.fn>).mockReturnValue(null);
+
+      const context = { metadata: { appId: 'app-123' } } as any;
+      const result = await (manager as any).getPackageInfo(context);
+
+      expect(result).toBeNull();
+    });
+
+    it('should return null when view throws (e.g. file not found)', async () => {
+      mockView.mockRejectedValue(new Error('HTTP 404: not_found'));
+
+      const context = { metadata: { appId: 'app-123' } } as any;
+      const result = await (manager as any).getPackageInfo(context);
+
+      expect(result).toBeNull();
+    });
+
+    it('should return null when JSON.parse fails', async () => {
+      mockView.mockResolvedValue({
+        path: 'package.json',
+        content: 'not valid json {{{',
+        encoding: 'utf-8',
+        lines: 1,
+        size: 18,
+        truncated: false,
+      });
+
+      const context = { metadata: { appId: 'app-123' } } as any;
+      const result = await (manager as any).getPackageInfo(context);
+
       expect(result).toBeNull();
     });
   });

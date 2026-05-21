@@ -927,6 +927,102 @@ export class DevSupervisorClient {
   putRaw(path: string, data: Buffer | Uint8Array): Promise<unknown> {
     return this.makeRequest('PUT', path, undefined, undefined, data);
   }
+
+  /**
+   * Low-level streaming request. Returns the response stream directly for callers
+   * that want to pipe or process incrementally. Non-2xx responses are rejected
+   * with the error body consumed and parsed.
+   */
+  private requestStream(
+    method: string,
+    requestPath: string,
+    headers?: Record<string, string>,
+  ): Promise<{ stream: http.IncomingMessage; contentType: string; contentLength: number }> {
+    return new Promise((resolve, reject) => {
+      const reqHeaders: Record<string, string> = { ...headers };
+
+      let options: http.RequestOptions;
+
+      if (this.useTcp) {
+        const url = new URL(this.connectionPath);
+        options = {
+          hostname: url.hostname || 'localhost',
+          port: parseInt(url.port) || 8080,
+          method,
+          path: requestPath,
+          headers: reqHeaders,
+        };
+      } else {
+        options = {
+          socketPath: this.connectionPath,
+          method,
+          path: requestPath,
+          headers: reqHeaders,
+        };
+      }
+
+      const req = http.request(options, (res) => {
+        clearTimeout(timer);
+
+        if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
+          const contentType = res.headers['content-type'] || 'application/octet-stream';
+          const contentLength = parseInt(res.headers['content-length'] || '0', 10);
+          resolve({ stream: res, contentType, contentLength });
+        } else {
+          // Consume error body and reject
+          const chunks: Buffer[] = [];
+          res.on('data', (chunk: Buffer) => chunks.push(chunk));
+          res.on('error', (err: Error) => reject(err));
+          res.on('end', () => {
+            const body = Buffer.concat(chunks).toString();
+            try {
+              const response = JSON.parse(body);
+              const errorDetail = [response.error, response.message].filter(Boolean).join(': ');
+              reject(new Error(`HTTP ${res.statusCode}: ${errorDetail || 'Request failed'}`));
+            } catch {
+              reject(new Error(`HTTP ${res.statusCode}: ${body}`));
+            }
+          });
+        }
+      });
+
+      req.on('error', (error) => {
+        clearTimeout(timer);
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+          reject(new Error(`dev-supervisor not available at ${this.connectionPath}`));
+        } else if ((error as NodeJS.ErrnoException).code === 'ECONNREFUSED') {
+          reject(new Error(`dev-supervisor TCP connection refused at ${this.connectionPath}`));
+        } else {
+          reject(error);
+        }
+      });
+
+      const timeout = DEFAULT_REQUEST_TIMEOUT_MS;
+      const timer = setTimeout(() => {
+        req.destroy(new Error(`Request timeout after ${timeout}ms: ${method} ${requestPath}`));
+      }, timeout);
+
+      req.end();
+    });
+  }
+
+  /**
+   * Raw GET returning response body as a Buffer. For callers that need the full
+   * binary content in memory (e.g. image classification). For streaming to an
+   * HTTP response, use requestStream() directly.
+   */
+  async getRaw(path: string): Promise<{ data: Buffer; contentType: string }> {
+    const { stream, contentType } = await this.requestStream('GET', path, {
+      Accept: 'application/octet-stream',
+    });
+
+    return new Promise((resolve, reject) => {
+      const chunks: Buffer[] = [];
+      stream.on('data', (chunk: Buffer) => chunks.push(chunk));
+      stream.on('end', () => resolve({ data: Buffer.concat(chunks), contentType }));
+      stream.on('error', reject);
+    });
+  }
 }
 
 /**

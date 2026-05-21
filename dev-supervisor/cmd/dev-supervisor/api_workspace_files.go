@@ -11,10 +11,12 @@ import (
 	"io"
 	"io/fs"
 	"log/slog"
+	"mime"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -957,6 +959,58 @@ func (s *Server) handleWorkspaceFilesUpload(w http.ResponseWriter, r *http.Reque
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(wsFilesWriteResponse{BytesWritten: written}); err != nil {
 		slog.Error("workspace.files.upload.encode_failed", "error", err)
+	}
+}
+
+func (s *Server) handleWorkspaceFilesDownload(w http.ResponseWriter, r *http.Request) {
+	path := r.URL.Query().Get("path")
+	if path == "" {
+		s.sendError(w, http.StatusBadRequest, "validation_failed", "path query parameter is required")
+		return
+	}
+
+	resolved, err := validation.ValidateFilePath(path, s.fsBaseDir())
+	if err != nil {
+		s.sendError(w, http.StatusBadRequest, "validation_failed", err.Error())
+		return
+	}
+
+	f, err := os.Open(resolved)
+	if err != nil {
+		s.sendWsFilesError(w, "workspace.files.download", path, err)
+		return
+	}
+	defer f.Close()
+
+	info, err := f.Stat()
+	if err != nil {
+		s.sendWsFilesError(w, "workspace.files.download", path, err)
+		return
+	}
+	if info.IsDir() {
+		s.sendError(w, http.StatusBadRequest, "validation_failed", "path is a directory")
+		return
+	}
+	if info.Size() > wsFilesMaxReadBytes {
+		s.sendError(
+			w, http.StatusRequestEntityTooLarge, "file_too_large",
+			fmt.Sprintf("file size %d exceeds maximum %d", info.Size(), wsFilesMaxReadBytes),
+		)
+		return
+	}
+
+	contentType := mime.TypeByExtension(filepath.Ext(resolved))
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+
+	slog.Debug("workspace.files.download.start", "path", path, "size", info.Size())
+
+	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("Content-Length", strconv.FormatInt(info.Size(), 10))
+
+	if _, err := io.Copy(w, f); err != nil {
+		slog.Error("workspace.files.download.stream_failed", "path", path, "error", err)
 	}
 }
 
