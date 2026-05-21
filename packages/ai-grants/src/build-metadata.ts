@@ -123,6 +123,7 @@ export function buildLitellmMetadataFromContext(
   tags.push(`appId:${appId}`)
   tags.push(`source:${options?.source ?? LlmCallSource.UserChat}`)
   if (options?.agentId) tags.push(`agent:${options.agentId}`)
+  tags.push(metadata.budgetServiceEnabled ? 'mode:bms' : 'mode:grants')
 
   // BMS session fields for GoCode cost reporting (x-gocode-budget-* headers)
   // Only present when budget service is enabled and session was created

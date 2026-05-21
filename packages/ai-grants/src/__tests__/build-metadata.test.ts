@@ -164,6 +164,40 @@ describe('build-metadata', function tests() {
 
       expect(result?.tags).toContain('agent:test-agent')
     })
+
+    it('should include mode:grants tag when budgetServiceEnabled is false', function modeGrants() {
+      const context = {
+        socketId: 'test-session',
+        metadata: {
+          appId: 'app-1',
+          customerId: 'customer-123',
+        },
+      }
+
+      const result = buildLitellmMetadataFromContext(context, {
+        source: LlmCallSource.UserChat,
+      })
+      expect(result?.tags).toContain('mode:grants')
+    })
+
+    it('should include mode:bms tag when budgetServiceEnabled is true', function modeBms() {
+      const context = {
+        socketId: 'test-session',
+        metadata: {
+          appId: 'app-1',
+          customerId: 'customer-123',
+          subscriptionId: 'sub-1',
+          budgetServiceEnabled: true,
+          bmsBudgetId: 'budget-1',
+          budgetSessionId: 'session-1',
+        },
+      }
+
+      const result = buildLitellmMetadataFromContext(context, {
+        source: LlmCallSource.UserChat,
+      })
+      expect(result?.tags).toContain('mode:bms')
+    })
   })
 
   describe('#isGrantsExhausted', function exhaustedTests() {
