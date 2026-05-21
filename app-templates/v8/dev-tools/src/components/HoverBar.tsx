@@ -123,15 +123,25 @@ export function HoverBarButton({ onClick, title, icon, label, active, disabled, 
         cursor: disabled ? "not-allowed" : "pointer",
         boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
         color: textColor,
-        opacity: disabled ? 0.4 : 1,
         ...(label ? { fontSize: "12px", fontWeight: 600, letterSpacing: "-0.01em" } : {}),
       }}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
       onClick={(e) => { e.stopPropagation(); if (!disabled) onClick(); }}
     >
-      {icon}
-      {label}
+      {/* Disabled dimming lives on a wrapper around icon+label only.
+          CSS `opacity` cascades to ALL descendants and a child can't override
+          it, so applying it to the <button> made the tooltip translucent too.
+          Scope to this span and the tooltip stays fully opaque. */}
+      <span style={{
+        display: "flex",
+        alignItems: "center",
+        gap: label ? "5px" : undefined,
+        opacity: disabled ? 0.4 : 1,
+      }}>
+        {icon}
+        {label}
+      </span>
       <span aria-hidden="true" style={{ ...TOOLTIP_STYLES, opacity: showTooltip ? 1 : 0 }}>{title}</span>
     </button>
   );
