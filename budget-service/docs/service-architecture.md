@@ -10,7 +10,10 @@ Deployment (Katana, artifacts, Kibana) is in [DevOps](devops.md). API behavior a
 ```mermaid
 flowchart TB
   clients[CallerServices]
-  edge[Ingress_TLS]
+  subgraph efd [Edge_Front_Door]
+    api_gw[API_Gateway]
+    internal_gw[Internal_Gateway]
+  end
   subgraph process [budget_service_process]
     api[HTTP_API]
     worker[BackgroundWorker]
@@ -20,8 +23,10 @@ flowchart TB
   wh[WebhookEndpoints]
   otel[OTel_Collector]
 
-  clients -->|TLS| edge
-  edge -->|"JWT on /api/v1"| api
+  clients -->|TLS| api_gw
+  clients -->|TLS| internal_gw
+  api_gw -->|"JWT on /api/v1"| api
+  internal_gw -->|"JWT on /api/v1"| api
   api --> db
   api -->|token_validation| sso
   api -->|"OTLP (metrics + traces)"| otel
@@ -30,6 +35,22 @@ flowchart TB
 ```
 
 `webhook_outbox` and all OLTP tables live inside PostgreSQL; the API inserts outbox rows in transactions, and the worker drains them. `/openapi.yaml`, `/swagger/`, and `/health` are served by the same mux without JWT; `/api/v1/*` applies authentication middleware.
+
+## Edge Front Door (EFD)
+
+Public traffic does not reach the service directly. [Edge Front Door](https://github.com/gdcorp-engineering/frontdoor-config) (Envoy-based) terminates TLS, applies per-route RBAC, and proxies to the Katana upstream. budget-service is fronted by two virtual hosts that target the same upstream but serve different caller populations:
+
+| Gateway              | Hostname (prod)                      | Purpose                                                                                                                                             | Per-route filters                         |
+|----------------------|--------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------|-------------------------------------------|
+| **API Gateway**      | `bms.api.int.godaddy.com`            | Entry point for callers in GCN-MAH (the hosting network where customer workloads run — treated as close-to-internet). Restricted by CIDR allowlist. | `authz-noauth` + `rbac-allowlist-gcn-mah` |
+| **Internal Gateway** | `budget-service.api.int.godaddy.com` | Service-to-service calls from the trusted internal GoDaddy network. No IP filter — internal callers route here.                                     | `authz-noauth`                            |
+
+`/health` is exempt from the RBAC filter on both gateways so Katana liveness probes succeed. JWT validation is enforced by the service itself via [gd-auth-lib](https://github.com/gdcorp-identity/gd-auth-lib) (`authz-noauth` disables EFD's authz filter — the edge does not validate tokens). Both gateways forward to the same Katana upstream (`airobuilde-budget-service-{env}.airobuilde-{env}.prod.onkatana.net`).
+
+Config lives in [Edge Front Door](https://github.com/gdcorp-engineering/frontdoor-config):
+
+- API Gateway: `config/gateway/{development,test,production}/budget-service/config.yml`
+- Internal Gateway: `config/internal-gateway/{development,test,production}/budget-service/config.yml`
 
 ## Request flow
 

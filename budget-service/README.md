@@ -27,15 +27,25 @@ Standalone service with its own deploy pipeline — not part of the agents/app/p
 - [Local Development](docs/local-development.md) — run, build, JFrog Artifactory, JWT minting, Postgres
 - [Local E2E](docs/local-e2e.md) — Docker webhook sink, scripted flow, dev UI
 - [Testing](docs/testing.md) — strategy, CI jobs, running tests
+- [Load Tests](load-test/README.md) — k6 scenarios for contention, throughput, and lifecycle
 
 ## Quick start
 
+Launch the service locally with a test Postgres instance and auth disabled:
+
 ```bash
-make up                     # Local Postgres
 export DATABASE_URL='postgres://budget:budget@localhost:5432/budget_test?sslmode=disable'
 export LOCAL_AUTH_DISABLE=true
-make dev                    # Air hot-reload, sources .env.local / .env
+make up     # Launch local Postgres
+make dev    # Launch service with Air hot-reload; sources .env.local / .env
 # Open http://localhost:8080/swagger/
+```
+
+In a separate terminal, launch the Dev UI that proxies to the local service:
+
+```bash
+make dev-budget-ui
+# Open http://localhost:9980/ (default DEV_BUDGET_UI_ADDR)
 ```
 
 For setup details (JFrog Artifactory, JWT minting, Postgres baseline, Makefile targets), see [Local Development](docs/local-development.md).

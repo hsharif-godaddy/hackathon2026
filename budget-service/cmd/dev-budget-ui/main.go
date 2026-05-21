@@ -55,7 +55,23 @@ func main() {
 		}
 	})
 	log.Printf("dev-budget-ui listening %s proxy-> %s", listenAddr, upstream.Redacted())
+	log.Printf("Budget Service Dev UI: %s", browserURL(listenAddr))
 	log.Fatal((&http.Server{Addr: listenAddr, Handler: h}).ListenAndServe())
+}
+
+// browserURL turns a listen address (":9980", "0.0.0.0:9980", "127.0.0.1:9980") into a clickable localhost URL.
+func browserURL(listen string) string {
+	host, port, err := net.SplitHostPort(listen)
+	if err != nil {
+		if strings.HasPrefix(listen, ":") {
+			return "http://localhost:" + strings.TrimPrefix(listen, ":") + "/"
+		}
+		return "http://" + listen + "/"
+	}
+	if host == "" || host == "0.0.0.0" || host == "::" {
+		host = "localhost"
+	}
+	return "http://" + host + ":" + port + "/"
 }
 
 func serveEmbed(w http.ResponseWriter, r *http.Request, name, contentType string) {
