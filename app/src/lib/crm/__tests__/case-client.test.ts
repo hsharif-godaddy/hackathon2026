@@ -24,6 +24,7 @@ const FAKE_TOKEN = 'fake-sso-jwt';
 const INPUT: OpenCaseInput = {
   customerId: 'cust-1',
   shopperId: 'shop-1',
+  category: 'issue',
   description: 'my site is not working',
   appId: 'app-123',
 };
@@ -36,47 +37,61 @@ const PROFILE: CustomerProfile = {
 };
 
 describe('buildCaseBody', () => {
-  it('populates contact, category, severity, and CRM-spec additionalData', () => {
+  it('populates contact, category, severity S2, and additionalData per CRM spec', () => {
     const body = buildCaseBody(INPUT, PROFILE);
     expect(body.contactName).toBe('Jane Doe');
     expect(body.contactFirstName).toBe('Jane');
     expect(body.contactLastName).toBe('Doe');
     expect(body.contactEmail).toBe('jane@example.com');
+    // PROFILE.phone is already digits-only (formatted by profile-client).
     expect(body.contactPhone).toBe('15551234');
     expect(body.shopperId).toBe('shop-1');
     expect(body.primaryCategory).toBe('Websites');
     expect(body.secondaryCategory).toBe('Airo AI Builder');
     expect(body.issue).toBe('General Support');
     expect(body.recordType).toBe('standard');
-    expect(body.additionalData).toEqual({
-      permissionToMakeChanges: 'true',
-      severity: 'S2',
-      escalated: 'true',
-      type: 'Complete',
-      escalationDetails: 'my site is not working',
-    });
+    expect(body.additionalData.severity).toBe('S2');
+    expect(body.additionalData.permissionToMakeChanges).toBe('true');
+    expect(body.additionalData.escalated).toBe('true');
+    expect(body.additionalData.type).toBe('Complete');
+    // Category routing prefix is embedded in escalationDetails because CRM
+    // silently drops unsupported additionalData keys (e.g. `flow`).
+    expect(body.additionalData.escalationDetails).toBe('[ISSUE] my site is not working');
+    expect(body.caseNotes[0]?.note).toBe('Comment : (appid - app-123) [ISSUE] my site is not working');
   });
 
-  it('does not include legacy or non-spec keys in additionalData', () => {
+  it('opts into CMAPI async creation by sending externalSystemId', () => {
     const body = buildCaseBody(INPUT, PROFILE);
-    // CRM silently drops keys whose case or wording doesn't match the spec —
-    // lock against any legacy variant slipping back in.
-    expect(body.additionalData).not.toHaveProperty('Permission to Make Changes');
+    // externalSystemId triggers CMAPI's async path so we don't block on
+    // Salesforce. Shape: airo-{customerId}-{appId|na}-{epochMs}-{uuid8}.
+    // The customerId + uuid suffix together prevent collisions on rapid
+    // double-submit (same shopper, same ms) and on cross-customer 'na'
+    // appId submissions (onboarding flow).
+    expect(body.externalSystemId).toMatch(
+      /^airo-cust-1-app-123-\d+-[a-f0-9]{8}$/,
+    );
+  });
+
+  it('externalSystemId is unique across rapid back-to-back calls (same input)', () => {
+    // Defense-in-depth: even if Date.now() collides (sub-ms double-click),
+    // the random suffix makes the ID unique. Without this guarantee, CMAPI's
+    // idempotency layer can either silently merge the second case into the
+    // first or attach the second's note to the wrong case.
+    const a = buildCaseBody(INPUT, PROFILE).externalSystemId;
+    const b = buildCaseBody(INPUT, PROFILE).externalSystemId;
+    expect(a).not.toBe(b);
+  });
+
+  // Regression-lock: legacy keys / unsupported keys must not appear — CRM
+  // silently drops them, so their presence would mask a contract drift.
+  it('omits all legacy and unsupported additionalData keys', () => {
+    const body = buildCaseBody(INPUT, PROFILE);
     expect(body.additionalData).not.toHaveProperty('Type');
+    expect(body.additionalData).not.toHaveProperty('Permission to Make Changes');
     expect(body.additionalData).not.toHaveProperty('Escalation Details');
     expect(body.additionalData).not.toHaveProperty('followUpConsent');
+    expect(body.additionalData).not.toHaveProperty('flow');
     expect(body.additionalData).not.toHaveProperty('appId');
-  });
-
-  it('formats note as "Comment : (appid - <appId>) <description>" when appId is present', () => {
-    const body = buildCaseBody(INPUT, PROFILE);
-    expect(body.caseNotes[0]?.note).toBe('Comment : (appid - app-123) my site is not working');
-  });
-
-  it('omits the appid segment from the note when appId is null', () => {
-    const body = buildCaseBody({ ...INPUT, appId: null }, PROFILE);
-    expect(body.caseNotes[0]?.note).toBe('Comment : my site is not working');
-    expect(body.caseNotes[0]?.note).not.toContain('appid');
   });
 
   it('omits contactPhone when profile phone is null', () => {
@@ -84,15 +99,21 @@ describe('buildCaseBody', () => {
     expect(body.contactPhone).toBeUndefined();
   });
 
+  it('uses Comment-only note format when appId is null', () => {
+    const body = buildCaseBody({ ...INPUT, appId: null }, PROFILE);
+    expect(body.caseNotes[0]?.note).toBe('Comment : [ISSUE] my site is not working');
+    expect(body.caseNotes[0]?.note).not.toContain('appid');
+  });
+
   it('truncates very long descriptions in caseNotes and escalationDetails', () => {
     const longDesc = 'x'.repeat(5000);
     const body = buildCaseBody({ ...INPUT, description: longDesc }, PROFILE);
-    const prefix = 'Comment : (appid - app-123) ';
+    const prefix = 'Comment : (appid - app-123) [ISSUE] ';
     expect(body.caseNotes[0]?.note.length).toBeLessThanOrEqual(4000 + prefix.length);
     // Lock that truncation runs on the description before composition, so
     // the prefix stays intact at the front of the note.
     expect(body.caseNotes[0]?.note.startsWith(prefix)).toBe(true);
-    expect(body.additionalData.escalationDetails.length).toBeLessThanOrEqual(4000);
+    expect(body.additionalData.escalationDetails.length).toBeLessThanOrEqual(4000 + '[ISSUE] '.length);
   });
 });
 
@@ -160,6 +181,38 @@ describe('openCrmCase', () => {
     expect(result).toEqual({ caseId: 'case-xyz', caseNumber: '000123' });
   });
 
+  it('returns referenceId as caseId for the async CMAPI ACCEPTED shape', async () => {
+    // CMAPI's primary shape after Feb 2026:
+    //   { status: "ACCEPTED", referenceId: "EXT-...", message, timestamp }
+    // The legacy `id` field is absent. Without explicit coverage a
+    // regression that ignored `referenceId` would silently `incomplete`
+    // every async submission (review S-5).
+    mockFetchSequence(
+      {
+        ok: true,
+        status: 200,
+        text: async () => '',
+        json: async () => ({
+          firstName: 'Jane', lastName: 'Doe', email: 'jane@example.com', phoneNumbers: [],
+        }),
+      },
+      {
+        ok: true,
+        status: 202,
+        text: async () => JSON.stringify({
+          status: 'ACCEPTED',
+          referenceId: 'EXT-airo-cust-1-app-123-1700000000000-deadbeef',
+          message: 'queued',
+        }),
+      },
+    );
+    const result = await openCrmCase(INPUT);
+    expect(result.caseId).toBe('EXT-airo-cust-1-app-123-1700000000000-deadbeef');
+    // Async mode does not return a Salesforce caseNumber; that's fetched
+    // later via GET ?externalId=<referenceId>.
+    expect(result.caseNumber).toBeUndefined();
+  });
+
   it('throws with status in message when CRM returns non-2xx', async () => {
     mockFetchSequence(
       {
@@ -212,11 +265,129 @@ describe('openCrmCase', () => {
       { ok: true, status: 200, text: async () => '<html>broken proxy</html>' },
     );
     const result = await openCrmCase(INPUT);
-    expect(result).toEqual({});
+    // 2xx with non-JSON body → return `incomplete: true` so the route can
+    // surface a `crmIncomplete` warning. Distinct from the throw on 5xx
+    // (which sets `crmFailed: true`) and from a 2xx-with-id success.
+    expect(result).toEqual({ incomplete: true });
     expect(logger.warn).toHaveBeenCalledWith(
       'feedback.crm.case-client.post.parse_failed',
       expect.objectContaining({ status: 200 }),
     );
   });
 
+  it('returns incomplete and logs no_case_id when CRM returns 2xx JSON with no recognized id', async () => {
+    const { logger } = await import('@/lib/request-context');
+    mockFetchSequence(
+      {
+        ok: true,
+        status: 200,
+        text: async () => '',
+        json: async () => ({ firstName: 'Jane', lastName: 'Doe', email: 'jane@example.com', phoneNumbers: [] }),
+      },
+      // Parseable JSON but no `id` / `caseId` / `referenceId` /
+      // `externalSystemId` field — case may have been filed but we have
+      // no audit-trail link. Distinct from parse_failed so dashboards
+      // can disambiguate.
+      { ok: true, status: 200, text: async () => JSON.stringify({ status: 'ACCEPTED', message: 'queued' }) },
+    );
+    const result = await openCrmCase(INPUT);
+    expect(result).toEqual({ incomplete: true });
+    expect(logger.warn).toHaveBeenCalledWith(
+      'feedback.crm.case-client.post.no_case_id',
+      expect.objectContaining({ status: 200 }),
+    );
+  });
+});
+
+const PROFILE_ADA: CustomerProfile = {
+  firstName: 'Ada',
+  lastName: 'Lovelace',
+  email: 'ada@example.com',
+  phone: '555-0100',
+};
+
+// Category routing is encoded in escalationDetails text (CRM strips
+// unsupported additionalData keys like `flow`). The literal `[ISSUE]` /
+// `[SUPPORT]` / `[FEEDBACK NPS X]` marker is the routing contract.
+describe('buildCaseBody — category variants', () => {
+  it('issue: escalationDetails prefixed [ISSUE]', () => {
+    const input: OpenCaseInput = {
+      customerId: 'cust-1',
+      shopperId: 'shop-1',
+      category: 'issue',
+      description: 'It broke',
+      appId: 'app-1',
+      topics: [],
+    };
+    const body = buildCaseBody(input, PROFILE_ADA);
+    expect(body.additionalData.severity).toBe('S2');
+    expect(body.additionalData.escalationDetails).toBe('[ISSUE] It broke');
+    expect(body.caseNotes[0].note).toBe('Comment : (appid - app-1) [ISSUE] It broke');
+  });
+
+  it('support: escalationDetails prefixed [SUPPORT] with topics inline', () => {
+    const input: OpenCaseInput = {
+      customerId: 'cust-1',
+      shopperId: 'shop-1',
+      category: 'support',
+      description: 'Cannot publish',
+      appId: 'app-2',
+      topics: ['publish', 'errors'],
+    };
+    const body = buildCaseBody(input, PROFILE_ADA);
+    expect(body.additionalData.severity).toBe('S2');
+    expect(body.additionalData.escalationDetails).toBe(
+      '[SUPPORT] Cannot publish | Topics: publish, errors',
+    );
+    expect(body.caseNotes[0].note).toBe(
+      'Comment : (appid - app-2) [SUPPORT] Cannot publish | Topics: publish, errors',
+    );
+  });
+
+  it('feedback: escalationDetails prefixed [FEEDBACK NPS X | consent=yes] with rating + consent + topics', () => {
+    const input: OpenCaseInput = {
+      customerId: 'cust-1',
+      shopperId: 'shop-1',
+      category: 'feedback',
+      description: 'Slow generation',
+      appId: 'app-3',
+      topics: ['speed'],
+      rating: 2,
+      customerConsent: true,
+    };
+    const body = buildCaseBody(input, PROFILE_ADA);
+    expect(body.additionalData.severity).toBe('S2');
+    // Consent marker (`consent=yes` / `consent=no`) is part of the
+    // routing prefix so support agents see at a glance whether the
+    // customer opted in for follow-up.
+    expect(body.additionalData.escalationDetails).toBe(
+      '[FEEDBACK NPS 2 | consent=yes] Slow generation | Topics: speed',
+    );
+    expect(body.caseNotes[0].note).toBe(
+      'Comment : (appid - app-3) [FEEDBACK NPS 2 | consent=yes] Slow generation | Topics: speed',
+    );
+  });
+
+  it('feedback: declined consent renders [FEEDBACK NPS X | consent=no]', () => {
+    const input: OpenCaseInput = {
+      customerId: 'cust-1',
+      shopperId: 'shop-1',
+      category: 'feedback',
+      description: 'meh',
+      appId: 'app-3',
+      topics: [],
+      rating: 3,
+      customerConsent: false,
+    };
+    const body = buildCaseBody(input, PROFILE_ADA);
+    expect(body.additionalData.escalationDetails).toBe(
+      '[FEEDBACK NPS 3 | consent=no] meh',
+    );
+  });
+
+  // Discriminated union now forbids `feedback` without `rating` +
+  // `customerConsent` at compile time — the previous `[FEEDBACK NPS ?]`
+  // fallback branch is gone (review F-6). A test for it would need an
+  // `as unknown as` cast that defeats the type check the union exists
+  // to enforce, so this scenario is covered by the typecheck instead.
 });

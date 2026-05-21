@@ -152,11 +152,57 @@ export default function Dashboard() {
     }
   }, [submittedAppId, bundleWindow]);
 
-  // Initialize from URL params on mount only
+  // Initialize from URL params on mount only.
+  //
+  // Two URL formats are supported here:
+  //   1. Multi-param (legacy + manual links): `?customerId=X&appId=Y&tab=investigate`
+  //   2. Single base64url blob (CRM-generated links): `?ctx=eyJjIjoi...`
+  //
+  // The `?ctx=` form was introduced because CMAPI HTML-escapes case
+  // note bodies, so multi-param URLs round-trip as `?customerId=X&amp;
+  // appId=Y&amp;tab=investigate`. When a support agent copy-pastes
+  // from the CRM UI into a browser, Chrome doesn't decode the HTML
+  // entities and the URL parses as one giant `customerId` value.
+  // base64url has no characters that need escaping, so the URL
+  // survives the round-trip intact. Mirrors the encoder in
+  // `app/src/lib/feedback/investigate-url.ts:encodeInvestigateCtx` and
+  // `investigator/handler.mjs:encodeInvestigateCtx` — keep all three in
+  // lockstep if the shape changes.
+  //
+  // Explicit query params win over decoded ctx values when both are
+  // present, so a manual `?ctx=...&tab=conversations` overrides ctx's
+  // tab field for ad-hoc support workflows.
   useEffect(() => {
-    const urlAppId = searchParams?.get("appId");
-    const urlCustomerId = searchParams?.get("customerId");
-    const urlTab = searchParams?.get("tab");
+    const ctxRaw = searchParams?.get("ctx");
+    let ctxCustomerId: string | undefined;
+    let ctxAppId: string | undefined;
+    let ctxTab: string | undefined;
+    if (ctxRaw) {
+      try {
+        // base64url → base64: convert URL-safe alphabet back and re-pad.
+        // `atob` only accepts standard base64; Node Buffer isn't available
+        // in the browser bundle, so do the conversion inline.
+        const padded = ctxRaw.replace(/-/g, "+").replace(/_/g, "/")
+          + "=".repeat((4 - (ctxRaw.length % 4)) % 4);
+        const json = decodeURIComponent(
+          Array.prototype.map.call(
+            atob(padded),
+            (ch: string) => `%${("00" + ch.charCodeAt(0).toString(16)).slice(-2)}`,
+          ).join(""),
+        );
+        const decoded = JSON.parse(json) as { c?: unknown; a?: unknown; t?: unknown };
+        if (typeof decoded.c === "string") ctxCustomerId = decoded.c;
+        if (typeof decoded.a === "string") ctxAppId = decoded.a;
+        if (typeof decoded.t === "string") ctxTab = decoded.t;
+      } catch {
+        // Malformed ctx (truncated copy-paste, garbage param) — fall
+        // through to multi-param parsing. Don't crash the dashboard.
+      }
+    }
+
+    const urlAppId = searchParams?.get("appId") ?? ctxAppId;
+    const urlCustomerId = searchParams?.get("customerId") ?? ctxCustomerId;
+    const urlTab = searchParams?.get("tab") ?? ctxTab;
     const urlTimeRange = searchParams?.get("timeRange");
     const urlSource = searchParams?.get("source");
     if (urlCustomerId) {

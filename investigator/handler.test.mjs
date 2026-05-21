@@ -13,10 +13,12 @@ describe('handler', function handlerTests() {
         timeWindow: '7d',
       });
 
+      // Multi-source prompt (5 evidence sources fanned out into the
+      // skill accelerator). Earlier revisions scoped the prompt to
+      // airo-app only; the assertion below tracks the as-shipped form.
       assert.match(promptText, /^\/airo-log-investigate app123/);
-      assert.match(promptText, /Only investigate source=airo-app/);
-      assert.match(promptText, /Fetch all available bounded raw logs to \/tmp/);
-      assert.match(promptText, /Read the compact index first/);
+      assert.match(promptText, /Fetch bounded raw logs for airo-app, control_plane, airo-agents, airo-preview, and airo-publish/);
+      assert.match(promptText, /Read compact indexes first and drill into only relevant rawRef files\/rows/);
       assert.match(promptText, /Do not paste huge raw files into context/);
     });
 

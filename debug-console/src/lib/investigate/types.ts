@@ -53,6 +53,17 @@ export interface InvestigationState {
     outputTokens: number;
   } | null;
   error: string | null;
+  source?: 'console' | 'feedback';
+  /**
+   * Mirrors `app/src/lib/feedback/category.ts:FeedbackCategory`. debug-console
+   * doesn't depend on `@airo/shared` so it keeps an inline literal; if a
+   * 4th category is added there, update both sites.
+   */
+  category?: 'issue' | 'support' | 'feedback';
+  rating?: number;
+  topics?: string[];
+  crmCaseId?: string;
+  crmCaseNumber?: string;
 }
 
 export interface AcquireLockResult {

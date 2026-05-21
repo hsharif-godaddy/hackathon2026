@@ -19,7 +19,7 @@ import { CategorySelectStep } from './steps/CategorySelectStep';
 import { GetSupportStep } from './steps/GetSupportStep';
 import { ReportIssueStep } from './steps/ReportIssueStep';
 import { ShareFeedbackStep } from './steps/ShareFeedbackStep';
-import { fetchDiagnosticContext, openCrmCaseForIssue, saveToCompanionHub, sendFeedbackToSlack, storeToS3 } from './submitFeedback';
+import { fetchDiagnosticContext, openCrmCaseForIssue, saveToCompanionHub, sendFeedbackToSlack, storeToS3, submitFeedbackFanout } from './submitFeedback';
 import type {
   FeedbackCategory,
   FeedbackProps,
@@ -73,6 +73,7 @@ export function FeedbackMultiStep(props: FeedbackProps) {
 
   const experimentsLine = useExperimentsLine();
   const isCrmCaseEnabled = useSwitchboard('appbuilder-crm-case-create') === true;
+  const isFanoutEnabled = useSwitchboard('appbuilder-feedback-fanout') === true;
 
   // initialStep lets callers (e.g. FeedbackBanner) skip the category screen
   const [step, setStep] = useState<FeedbackStep>(initialStep ?? 'category');
@@ -126,32 +127,56 @@ export function FeedbackMultiStep(props: FeedbackProps) {
         });
       }
 
-      // Best-effort CRM case creation; failure must not block Slack delivery.
-      // Same shape as handleIssueSubmit — Get Support is the customer's
-      // explicit ask for help, so we mirror it through CRM as well.
-      if (!isInternalUser && isCrmCaseEnabled) {
-        try {
-          const result = await openCrmCaseForIssue({
-            description: data.description,
-            appId: currentAppId,
-          });
-          logger.info('feedback.crm.case.created', {
-            appId: currentAppId,
-            caseId: result.caseId,
-          });
-        } catch (err) {
-          logger.warn('feedback.crm.case.save_failed', {
-            appId: currentAppId,
-            error: err instanceof Error ? err.message : String(err),
-          });
-        }
-      }
+      // CRM case creation: pick fan-out OR legacy, never both. Earlier this
+      // ran legacy + fan-out sequentially when both flags were on, producing
+      // two CRM cases (and two escalation emails) per support submission.
+      // Mirror the handleIssueSubmit ternary so support submits the same
+      // way: fan-out wins when enabled, otherwise fall back to the legacy
+      // /api/crm/case route. followUp is dropped from the legacy CRM call
+      // (CMAPI spec rejected it) but kept on the fan-out request for
+      // Slack/Hub paths.
+      // Attach .catch at creation time. fanoutPromise starts executing
+      // synchronously; if sendFeedbackToSlack below throws, control jumps
+      // to outer catch and `await ...catch(() => null)` is never reached,
+      // leaving a rejecting Promise with no handler (UnhandledPromiseRejection).
+      const supportFanoutPromise = (!isInternalUser
+        ? isFanoutEnabled
+          ? submitFeedbackFanout({
+              category: 'support',
+              description: data.description,
+              followUp: data.followUp,
+              topics: data.topics,
+              appId: currentAppId,
+              fullStoryUrl: ctx.fullStoryUrl,
+            })
+          : isCrmCaseEnabled
+            ? openCrmCaseForIssue({
+                description: data.description,
+                appId: currentAppId,
+              }).then((r) => ({
+                success: true as const,
+                caseId: r.caseId ?? null,
+                caseNumber: r.caseNumber ?? null,
+                investigationId: null,
+              }))
+            : Promise.resolve(null)
+        : Promise.resolve(null)
+      ).catch(() => null);
 
       await sendFeedbackToSlack(blockMessage, currentAppId);
       outcome = 'success';
       // Durable Loki record for Grafana runbooks — shipAnalyticsLog is a best-effort
       // client-side queue (ClientLogBuffer) that drops events under degraded conditions.
       logger.info('feedback.support.submit.success', { appId: currentAppId });
+
+      const supportFanoutResult = await supportFanoutPromise;
+      if (supportFanoutResult?.caseId) {
+        logger.info('feedback.crm.case.created', {
+          appId: currentAppId,
+          caseId: supportFanoutResult.caseId,
+        });
+      }
+
       return true;
     } catch (err) {
       logger.error('feedback.support.submit.failed', {
@@ -169,7 +194,7 @@ export function FeedbackMultiStep(props: FeedbackProps) {
         outcome,
       });
     }
-  }, [currentAppId, experimentsLine, getSite, isInternalUser, isImpersonating, isCrmCaseEnabled, origin, userInfo]);
+  }, [currentAppId, experimentsLine, getSite, isInternalUser, isImpersonating, isCrmCaseEnabled, isFanoutEnabled, origin, userInfo]);
 
   const handleIssueSubmit = useCallback(async (data: IssueFormData) => {
     let outcome: 'success' | 'failed' = 'failed';
@@ -194,30 +219,49 @@ export function FeedbackMultiStep(props: FeedbackProps) {
         });
       }
 
-      // Best-effort CRM case creation; failure must not block Slack delivery.
-      // Gated by appbuilder-crm-case-create during rollout. Internal TLA accounts
-      // are excluded client-side (the route also 403s them defensively).
-      if (!isInternalUser && isCrmCaseEnabled) {
-        try {
-          const result = await openCrmCaseForIssue({
-            description: data.description,
-            appId: currentAppId,
-          });
-          logger.info('feedback.crm.case.created', {
-            appId: currentAppId,
-            caseId: result.caseId,
-          });
-        } catch (err) {
-          logger.warn('feedback.crm.case.save_failed', {
-            appId: currentAppId,
-            error: err instanceof Error ? err.message : String(err),
-          });
-        }
-      }
+      // Fan-out: when appbuilder-feedback-fanout is on, use the new unified
+      // route. Falls back to the legacy CRM direct call when only
+      // appbuilder-crm-case-create is on. Internal TLA accounts are excluded
+      // client-side (the route also 403s them defensively). followUp is no
+      // longer in the CRM payload (CMAPI spec rejected it) — kept on the
+      // fanout request for Slack/Hub paths only.
+      // Attach .catch at creation time — see support handler above for rationale.
+      const fanoutPromise = (!isInternalUser
+        ? isFanoutEnabled
+          ? submitFeedbackFanout({
+              category: 'issue',
+              description: data.description,
+              followUp: data.followUp,
+              topics: data.topics,
+              appId: currentAppId,
+              fullStoryUrl: ctx.fullStoryUrl,
+            })
+          : isCrmCaseEnabled
+            ? openCrmCaseForIssue({
+                description: data.description,
+                appId: currentAppId,
+              }).then((r) => ({
+                success: true as const,
+                caseId: r.caseId ?? null,
+                caseNumber: r.caseNumber ?? null,
+                investigationId: null,
+              }))
+            : Promise.resolve(null)
+        : Promise.resolve(null)
+      ).catch(() => null);
 
       await sendFeedbackToSlack(blockMessage, currentAppId);
       outcome = 'success';
       logger.info('feedback.issue.submit.success', { appId: currentAppId });
+
+      const fanoutResult = await fanoutPromise;
+      if (fanoutResult?.caseId) {
+        logger.info('feedback.crm.case.created', {
+          appId: currentAppId,
+          caseId: fanoutResult.caseId,
+        });
+      }
+
       return true;
     } catch (err) {
       logger.error('feedback.issue.submit.failed', {
@@ -232,7 +276,7 @@ export function FeedbackMultiStep(props: FeedbackProps) {
         outcome,
       });
     }
-  }, [currentAppId, experimentsLine, getSite, isInternalUser, isImpersonating, isCrmCaseEnabled, origin, userInfo]);
+  }, [currentAppId, experimentsLine, getSite, isInternalUser, isImpersonating, isCrmCaseEnabled, isFanoutEnabled, onSubmitSuccess, origin, userInfo]);
 
   const handleFeedbackSubmit = useCallback(async (data: ShareFeedbackFormData) => {
     let outcome: 'success' | 'failed' = 'failed';
@@ -295,6 +339,19 @@ export function FeedbackMultiStep(props: FeedbackProps) {
         app_publish_flag: appPublishFlag,
         publish_url: appPublishFlag === true && publishedUrlRaw ? publishedUrlRaw : null,
       });
+
+      if (isFanoutEnabled && data.rating !== null && data.rating < 5) {
+        void submitFeedbackFanout({
+          category: 'feedback',
+          comment: data.comment,
+          rating: data.rating,
+          topics: data.topics,
+          customerConsent: data.customerConsent,
+          appId: currentAppId,
+          fullStoryUrl: ctx.fullStoryUrl,
+        });
+      }
+
       return true;
     } catch (err) {
       logger.error('feedback.share.submit.failed', {
@@ -324,7 +381,7 @@ export function FeedbackMultiStep(props: FeedbackProps) {
         ratingBucket,
       });
     }
-  }, [currentAppId, experimentsLine, getSite, isInternalUser, isImpersonating, origin, feedbackId, userInfo]);
+  }, [currentAppId, experimentsLine, getSite, isInternalUser, isImpersonating, isFanoutEnabled, origin, feedbackId, userInfo]);
 
   // CRM skip / impersonation sessions cannot submit any feedback.
   // Mirror the legacy Feedback.tsx contract: show a read-only message and no form.

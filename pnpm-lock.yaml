@@ -15,6 +15,9 @@ catalogs:
     '@airo/components':
       specifier: ^4.6.0
       version: 4.6.0
+    '@aws-sdk/client-lambda':
+      specifier: ^3.1045.0
+      version: 3.1045.0
     '@babel/generator':
       specifier: ^7.29.1
       version: 7.29.1
@@ -604,6 +607,9 @@ importers:
       '@airo/shared':
         specifier: workspace:*
         version: link:../packages/shared
+      '@aws-sdk/client-lambda':
+        specifier: 'catalog:'
+        version: 3.1045.0
       '@aws-sdk/client-s3':
         specifier: ^3.1034.0
         version: 3.1045.0
@@ -1877,7 +1883,7 @@ packages:
       react-dom: 19.1.0
 
   '@airo/components@4.6.0':
-    resolution: {integrity: sha512-HEYrJJCqyEES9oZn1NRqGbUkmOxxr1JEZSIDCMmmhj4zCI/KscH4AQ9L8/Ik+NnUssCgp8T1aKaAHJqV0NfcjQ==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/npm-user-experience-local/@airo/components/-/@airo/components-4.6.0.tgz}
+    resolution: {integrity: sha512-HEYrJJCqyEES9oZn1NRqGbUkmOxxr1JEZSIDCMmmhj4zCI/KscH4AQ9L8/Ik+NnUssCgp8T1aKaAHJqV0NfcjQ==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@airo/components/-/@airo/components-4.6.0.tgz}
     engines: {node: '>=22', npm: '>=10'}
     peerDependencies:
       '@godaddy/antares': ^0.1.0
@@ -2023,7 +2029,6 @@ packages:
   '@aws-sdk/core@3.974.10':
     resolution: {integrity: sha512-ZGFFlYynBR78Y/F8b/7y4i4sgW/iGwJSjoM7AZo5Et6vyr4/L0bunN+uzKMsvecCZyqcPp4RRK7Rs17l0kMujg==}
     engines: {node: '>=20.0.0'}
-    deprecated: Deprecated due to an error deserialization bug in JSON 1.0 protocol services, see https://github.com/aws/aws-sdk-js-v3/pull/8031. Newer version available.
 
   '@aws-sdk/core@3.974.8':
     resolution: {integrity: sha512-njR2qoG6ZuB0kvAS2FyICsFZJ6gmCcf2X/7JcD14sUvGDm26wiZ5BrA6LOiUxKFEF+IVe7kdroxyE00YlkiYsw==}
@@ -5874,7 +5879,6 @@ packages:
   '@smithy/core@3.24.0':
     resolution: {integrity: sha512-rZ5YfycIXX6puoGjthnDiMpUgtKNOq3c7CndQYkCNYQTv26AiCrZQOJPy7ANSfZ6Okk3UvCRnmO1OYWlLnYZgg==}
     engines: {node: '>=18.0.0'}
-    deprecated: Deprecated due to incompatibility with Node.js 18 in some environments https://github.com/smithy-lang/smithy-typescript/issues/2022
 
   '@smithy/core@3.24.2':
     resolution: {integrity: sha512-IKS7qX59fAGCYBmt5JChcDswQDupZqT2Yn2ZBA3UgTlsjRNNkQzZobbn95xoAAdtTyJmBiJB3Y02qR3rgy3Zog==}
@@ -20063,12 +20067,12 @@ snapshots:
 
   '@types/better-sqlite3@7.6.13':
     dependencies:
-      '@types/node': 22.19.18
+      '@types/node': 24.12.3
 
   '@types/body-parser@1.19.6':
     dependencies:
       '@types/connect': 3.4.38
-      '@types/node': 22.19.18
+      '@types/node': 24.12.3
 
   '@types/bunyan@1.8.11':
     dependencies:
@@ -20088,7 +20092,7 @@ snapshots:
   '@types/compression@1.8.1':
     dependencies:
       '@types/express': 4.17.25
-      '@types/node': 22.19.18
+      '@types/node': 24.12.3
 
   '@types/connect@3.4.38':
     dependencies:
@@ -20098,7 +20102,7 @@ snapshots:
 
   '@types/cors@2.8.19':
     dependencies:
-      '@types/node': 22.19.18
+      '@types/node': 24.12.3
 
   '@types/d3-array@3.2.2': {}
 
@@ -20152,7 +20156,7 @@ snapshots:
 
   '@types/express-serve-static-core@4.19.8':
     dependencies:
-      '@types/node': 22.19.18
+      '@types/node': 24.12.3
       '@types/qs': 6.15.1
       '@types/range-parser': 1.2.7
       '@types/send': 1.2.1
@@ -20181,7 +20185,7 @@ snapshots:
 
   '@types/jsdom@21.1.7':
     dependencies:
-      '@types/node': 22.19.18
+      '@types/node': 24.12.3
       '@types/tough-cookie': 4.0.5
       parse5: 7.3.0
 
@@ -20231,12 +20235,12 @@ snapshots:
 
   '@types/node-fetch@2.6.13':
     dependencies:
-      '@types/node': 22.19.18
+      '@types/node': 24.12.3
       form-data: 4.0.5
 
   '@types/node-forge@1.3.14':
     dependencies:
-      '@types/node': 22.19.18
+      '@types/node': 24.12.3
 
   '@types/node@18.19.130':
     dependencies:
@@ -20256,7 +20260,7 @@ snapshots:
 
   '@types/pdf-parse@1.1.5':
     dependencies:
-      '@types/node': 22.19.18
+      '@types/node': 24.12.3
 
   '@types/pg-pool@2.0.6':
     dependencies:
@@ -20280,7 +20284,7 @@ snapshots:
 
   '@types/qrcode@1.5.6':
     dependencies:
-      '@types/node': 22.19.18
+      '@types/node': 24.12.3
 
   '@types/qs@6.15.1': {}
 
@@ -20312,7 +20316,7 @@ snapshots:
 
   '@types/readdir-glob@1.1.5':
     dependencies:
-      '@types/node': 22.19.18
+      '@types/node': 24.12.3
 
   '@types/retry@0.12.0': {}
 
@@ -20330,7 +20334,7 @@ snapshots:
   '@types/serve-static@1.15.10':
     dependencies:
       '@types/http-errors': 2.0.5
-      '@types/node': 22.19.18
+      '@types/node': 24.12.3
       '@types/send': 0.17.6
 
   '@types/shimmer@1.2.0': {}
@@ -20339,7 +20343,7 @@ snapshots:
     dependencies:
       '@types/cookiejar': 2.1.5
       '@types/methods': 1.1.4
-      '@types/node': 22.19.18
+      '@types/node': 24.12.3
       form-data: 4.0.5
 
   '@types/supertest@7.2.0':
@@ -20366,11 +20370,11 @@ snapshots:
 
   '@types/ws@8.18.1':
     dependencies:
-      '@types/node': 22.19.18
+      '@types/node': 24.12.3
 
   '@types/yauzl@2.10.3':
     dependencies:
-      '@types/node': 22.19.18
+      '@types/node': 24.12.3
 
   '@typescript-eslint/eslint-plugin@8.59.2(@typescript-eslint/parser@8.59.2(eslint@9.28.0(jiti@2.7.0))(typescript@5.9.3))(eslint@9.28.0(jiti@2.7.0))(typescript@5.9.3)':
     dependencies:
@@ -22282,7 +22286,7 @@ snapshots:
 
   chrome-launcher@1.2.1:
     dependencies:
-      '@types/node': 22.19.18
+      '@types/node': 24.12.3
       escape-string-regexp: 4.0.0
       is-wsl: 2.2.0
       lighthouse-logger: 2.0.2
@@ -22952,7 +22956,7 @@ snapshots:
   engine.io@6.6.7(bufferutil@4.1.0):
     dependencies:
       '@types/cors': 2.8.19
-      '@types/node': 22.19.18
+      '@types/node': 24.12.3
       '@types/ws': 8.18.1
       accepts: 1.3.8
       base64id: 2.0.0
@@ -27859,7 +27863,7 @@ snapshots:
 
   speedline-core@1.4.3:
     dependencies:
-      '@types/node': 22.19.18
+      '@types/node': 24.12.3
       image-ssim: 0.2.0
       jpeg-js: 0.4.4
 

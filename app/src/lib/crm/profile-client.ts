@@ -68,7 +68,7 @@ export async function fetchCustomerProfile(
       authorization: `sso-jwt ${token}`,
       'X-App-Key': X_APP_KEY,
     },
-    signal: AbortSignal.timeout(10_000),
+    signal: AbortSignal.timeout(15_000),
   });
 
   if (!res.ok) {

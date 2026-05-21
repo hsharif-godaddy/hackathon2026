@@ -82,9 +82,70 @@ interface Config {
    * Scoped narrowly (only the console role) — the broader
    * `katanaEcsTaskRoleArn` list is for JWT access and doesn't need invoke
    * permission on the investigator.
+   *
+   * NOTE: only put roles here that need full S3 R/W on active/, summaries/,
+   * analysis/ and read on events/. The website BFF doesn't need any of
+   * these — for a role that only reads `active/<id>/state.json` for the
+   * fan-out lock, use `investigatorBffReaderRoleArns` instead.
    */
   investigatorInvokerRoleArns: string[];
+  /**
+   * ARNs of the website BFF Katana ECS task role(s) that need to invoke
+   * the investigator Lambda AND read the active-investigation lock file
+   * — and nothing else. Granted only:
+   *   - `lambda:InvokeFunction` on the investigator Lambda
+   *   - `s3:GetObject` on `active/<customerId>/<appId>/state.json` keys
+   * History, events, summaries, and analysis prefixes stay off-limits so a
+   * compromised website role can't forge or wipe other customers'
+   * investigations. Empty list = no BFF reader principals attached.
+   */
+  investigatorBffReaderRoleArns: string[];
   awsIamJwtAccount: string[];
+  /** Base URL for the CRM API (mTLS endpoint). */
+  crmApiBase: string;
+  /**
+   * Secret path name for the Katana-managed AIRO_CLIENT_CERT secret.
+   * Used as both Lambda env var (CRM_CERT_SECRET_ARN) and SecretId in GetSecretValue.
+   * Dev:  /Katana/Secrets/airobuilde/app/pre-test/AIRO_CLIENT_CERT
+   * Prod: /Katana/Secrets/airobuilde/app/prod-ecs/AIRO_CLIENT_CERT
+   */
+  crmCertSecretArn: string;
+  /**
+   * Secret path name for the Katana-managed AIRO_CLIENT_KEY secret.
+   * Dev:  /Katana/Secrets/airobuilde/app/pre-test/AIRO_CLIENT_KEY
+   * Prod: /Katana/Secrets/airobuilde/app/prod-ecs/AIRO_CLIENT_KEY
+   */
+  crmKeySecretArn: string;
+  /**
+   * Additional secret path prefixes to allow in IAM GetSecretValue.
+   * Dev grants both pre-test and test Katana envs so either can be used.
+   */
+  crmExtraSecretPrefixes?: string[];
+  /** Loki endpoint for direct log queries from the investigator Lambda. */
+  lokiEndpoint: string;
+  /** EB Langfuse base URL for direct trace queries. */
+  ebLangfuseBaseUrl: string;
+  /** Airo-app ES endpoint for frontend log queries. */
+  airoBuilderEsEndpoint: string;
+  /** Control-plane ES endpoint for mgmt log queries. */
+  controlPlaneEsEndpoint: string;
+  /**
+   * ASM secret path names for direct evidence query credentials.
+   * Lambda reads these at runtime; all are plain-string secrets.
+   */
+  lokiApiKeySecret: string;
+  ebLangfusePublicKeySecret: string;
+  ebLangfuseSecretKeySecret: string;
+  airoBuilderEsApiKeySecret: string;
+  controlPlaneEsApiKeySecret: string;
+  /** ASM secret path for the FullStory API key used in evidence collection. */
+  fullstoryApiKeySecret: string;
+  /** FullStory MCP endpoint URL (default: https://api.fullstory.com/mcp/fullstory). */
+  fullstoryMcpUrl: string;
+  /** Public base URL for the debug-console service in this environment. */
+  debugConsoleBaseUrl: string;
+  /** Full URL for the GoDaddy SSO token endpoint (used by investigator to mint JWTs). */
+  ssoEndpoint: string;
   monitoring: MonitoringConfig;
   jwt: {
     rotationIntervalDays: number;
@@ -141,6 +202,32 @@ const devConfig: Config = {
   investigatorInvokerRoleArns: [
     'arn:aws:iam::694282668781:role/airobuilde-custom-KatanaEnvironment7794GlobalEcsTaskRole03DD121F', // console-service dev-private
   ],
+  // Website BFF — fan-out lock reader only. Granted Invoke + GetObject on
+  // active/*/state.json so duplicate-submit detection works, with no
+  // ListBucket / no PutObject / no access to history/events/summaries/
+  // analysis. See investigator-stack.ts BffReaderInvoke + BffReaderActive
+  // policies.
+  investigatorBffReaderRoleArns: [
+    'arn:aws:iam::694282668781:role/airobuilde-custom-KatanaEnvironment1046GlobalEcsTaskRoleCA367FA5', // website pre-test
+    'arn:aws:iam::694282668781:role/airobuilde-custom-KatanaEnvironment5808GlobalEcsTaskRoleF525C3A7', // website test
+  ],
+  crmApiBase: process.env.CRM_API_BASE ?? 'https://crm.int.test-godaddy.com',
+  crmCertSecretArn: '/Katana/Secrets/airobuilde/app/pre-test/AIRO_CLIENT_CERT',
+  crmKeySecretArn: '/Katana/Secrets/airobuilde/app/pre-test/AIRO_CLIENT_KEY',
+  crmExtraSecretPrefixes: ['/Katana/Secrets/airobuilde/app/test/AIRO_CLIENT_'],
+  lokiEndpoint: 'https://grafana.monitoring.gd3p.tools/api/datasources/proxy/uid/ff18mpwxpc7wgd',
+  ebLangfuseBaseUrl: 'https://agentobser-agent-obs-langfuse-test.agentobser-test.prod.onkatana.net',
+  airoBuilderEsEndpoint: 'https://airobuilde-non-prod-usw2.es.us-west-2.aws.found.io:9243',
+  controlPlaneEsEndpoint: 'https://pioneermgt-non-prod-usw2.es.us-west-2.aws.found.io:9243',
+  lokiApiKeySecret: '/Katana/Secrets/airobuilde/console/dev-private/LOKI_API_KEY',
+  ebLangfusePublicKeySecret: '/Katana/Secrets/airobuilde/console/dev-private/EB_LANGFUSE_PUBLIC_KEY',
+  ebLangfuseSecretKeySecret: '/Katana/Secrets/airobuilde/console/dev-private/EB_LANGFUSE_SECRET_KEY',
+  airoBuilderEsApiKeySecret: '/Katana/Secrets/airobuilde/console/dev-private/AIRO_BUILDER_ES_API_KEY',
+  controlPlaneEsApiKeySecret: '/Katana/Secrets/airobuilde/console/dev-private/CONTROL_PLANE_ES_API_KEY',
+  fullstoryApiKeySecret: '/Katana/Secrets/airobuilde/console/dev-private/FULLSTORY_API_KEY',
+  fullstoryMcpUrl: 'https://api.fullstory.com/mcp/fullstory',
+  debugConsoleBaseUrl: 'https://console.airo-builder.test-godaddy.com',
+  ssoEndpoint: 'https://sso.test-godaddy.com/v1/secure/api/token',
   vpnIps: {
     "165.1.180.132/31": "Prisma External (India West)",
     "160.153.26.244/30": "Prisma NAT",
@@ -218,9 +305,27 @@ const testConfig: Config = {
   // AiroStripeServiceStack isn't deployed in test yet (see main.ts). Populate
   // before widening the stack's env gate.
   stripeServiceTaskRoleArns: [],
-  // AiroInvestigatorStack isn't deployed in test (see main.ts), so this is a
-  // safe empty list; kept here to satisfy the type contract.
+  // AiroInvestigatorStack isn't deployed in test (see main.ts), so these are
+  // safe empty lists; kept here to satisfy the type contract.
   investigatorInvokerRoleArns: [],
+  investigatorBffReaderRoleArns: [],
+  crmApiBase: process.env.CRM_API_BASE ?? 'https://crm.int.test-godaddy.com',
+  crmCertSecretArn: '/Katana/Secrets/airobuilde/app/pre-test/AIRO_CLIENT_CERT',
+  crmKeySecretArn: '/Katana/Secrets/airobuilde/app/pre-test/AIRO_CLIENT_KEY',
+  crmExtraSecretPrefixes: ['/Katana/Secrets/airobuilde/app/test/AIRO_CLIENT_'],
+  lokiEndpoint: 'https://grafana.monitoring.gd3p.tools/api/datasources/proxy/uid/ff18mpwxpc7wgd',
+  ebLangfuseBaseUrl: 'https://agentobser-agent-obs-langfuse-test.agentobser-test.prod.onkatana.net',
+  airoBuilderEsEndpoint: 'https://airobuilde-non-prod-usw2.es.us-west-2.aws.found.io:9243',
+  controlPlaneEsEndpoint: 'https://pioneermgt-non-prod-usw2.es.us-west-2.aws.found.io:9243',
+  lokiApiKeySecret: '/Katana/Secrets/airobuilde/console/dev-private/LOKI_API_KEY',
+  ebLangfusePublicKeySecret: '/Katana/Secrets/airobuilde/console/dev-private/EB_LANGFUSE_PUBLIC_KEY',
+  ebLangfuseSecretKeySecret: '/Katana/Secrets/airobuilde/console/dev-private/EB_LANGFUSE_SECRET_KEY',
+  airoBuilderEsApiKeySecret: '/Katana/Secrets/airobuilde/console/dev-private/AIRO_BUILDER_ES_API_KEY',
+  controlPlaneEsApiKeySecret: '/Katana/Secrets/airobuilde/console/dev-private/CONTROL_PLANE_ES_API_KEY',
+  fullstoryApiKeySecret: '/Katana/Secrets/airobuilde/console/dev-private/FULLSTORY_API_KEY',
+  fullstoryMcpUrl: 'https://api.fullstory.com/mcp/fullstory',
+  debugConsoleBaseUrl: 'https://console.airo-builder.test-godaddy.com',
+  ssoEndpoint: 'https://sso.test-godaddy.com/v1/secure/api/token',
   vpnIps: {},
   awsIamJwtAccount: ['333184933228'],
   monitoring: {
@@ -304,6 +409,26 @@ const prodConfig: Config = {
   investigatorInvokerRoleArns: [
     'arn:aws:iam::644094189644:role/airobuilde-custom-KatanaEnvironment7797GlobalEcsTaskRole2CAC93CD', // console-service prod
   ],
+  // Website BFF — fan-out lock reader only (see comment in devConfig).
+  investigatorBffReaderRoleArns: [
+    'arn:aws:iam::644094189644:role/airobuilde-custom-KatanaEnvironment6030GlobalEcsTaskRole99409837', // website prod-ecs
+  ],
+  crmApiBase: process.env.CRM_API_BASE ?? 'https://crm.int.godaddy.com',
+  crmCertSecretArn: '/Katana/Secrets/airobuilde/app/prod-ecs/AIRO_CLIENT_CERT',
+  crmKeySecretArn: '/Katana/Secrets/airobuilde/app/prod-ecs/AIRO_CLIENT_KEY',
+  lokiEndpoint: 'https://grafana.monitoring.gd3p.tools/api/datasources/proxy/uid/ff18mpwxpc7wgd',
+  ebLangfuseBaseUrl: 'https://agentobser-langfuse.int.godaddy.com',
+  airoBuilderEsEndpoint: 'https://airobuilde-prod-usw2.es.us-west-2.aws.found.io:9243',
+  controlPlaneEsEndpoint: 'https://pioneermgt-prod-usw2.es.us-west-2.aws.found.io:9243',
+  lokiApiKeySecret: '/Katana/Secrets/airobuilde/console/prod/LOKI_API_KEY',
+  ebLangfusePublicKeySecret: '/Katana/Secrets/airobuilde/console/prod/EB_LANGFUSE_PUBLIC_KEY',
+  ebLangfuseSecretKeySecret: '/Katana/Secrets/airobuilde/console/prod/EB_LANGFUSE_SECRET_KEY',
+  airoBuilderEsApiKeySecret: '/Katana/Secrets/airobuilde/console/prod/AIRO_BUILDER_ES_API_KEY',
+  controlPlaneEsApiKeySecret: '/Katana/Secrets/airobuilde/console/prod/CONTROL_PLANE_ES_API_KEY',
+  fullstoryApiKeySecret: '/Katana/Secrets/airobuilde/console/prod/FULLSTORY_API_KEY',
+  fullstoryMcpUrl: 'https://api.fullstory.com/mcp/fullstory',
+  debugConsoleBaseUrl: 'https://console.airo-builder.godaddy.com',
+  ssoEndpoint: 'https://sso.godaddy.com/v1/secure/api/token',
   vpnIps: {},
   awsIamJwtAccount: ['377100941779'],
   monitoring: {

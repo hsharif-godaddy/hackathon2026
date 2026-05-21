@@ -1,3 +1,4 @@
+import type { FanoutSubmitRequest, FanoutSubmitResponse } from '@/lib/feedback/fanout-types';
 import { logger } from '@/lib/request-context';
 import { formatSlackBlockMessage, type SlackBlockMessage } from '@/lib/slack-webhook';
 import { SubscriptionPlan, SubscriptionStatus } from '@/types/credits';
@@ -208,4 +209,40 @@ export async function saveToCompanionHub(
     throw new Error(`Failed to save feedback: ${response.status}`);
   }
   // Response body intentionally not consumed.
+}
+
+export async function submitFeedbackFanout(
+  payload: FanoutSubmitRequest,
+): Promise<FanoutSubmitResponse | null> {
+  if (isLocalDev()) return null;
+  let res: Response;
+  try {
+    res = await fetch('/api/feedback/submit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+  } catch (err) {
+    logger.warn('feedback.fanout.client.network_error', {
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return null;
+  }
+  if (!res.ok) {
+    logger.warn('feedback.fanout.client.bad_status', { status: res.status });
+    return null;
+  }
+  try {
+    return (await res.json()) as FanoutSubmitResponse;
+  } catch (err) {
+    // 200 with garbled body is distinct from "200 with null payload" —
+    // a missing log here would mask a real BFF shape regression. Warn
+    // (not error) because the client side has no recovery action; the
+    // submission already succeeded as far as the BFF is concerned.
+    logger.warn('feedback.fanout.client.parse_failed', {
+      status: res.status,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return null;
+  }
 }

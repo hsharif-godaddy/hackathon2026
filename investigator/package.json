@@ -6,11 +6,12 @@
   "description": "Lambda runner that executes the airo frontend investigator skill via Claude CLI.",
   "scripts": {
     "build": "docker build -t airo-investigator:dev .",
-    "lint": "node --check handler.mjs && node --check auth.mjs && node --check prompt.mjs && python3 -m py_compile skills/airo-log-investigate/search_frontend_logs.py",
-    "test": "node --test *.test.mjs && python3 -m unittest frontend_log_search_test.py"
+    "lint": "node --check handler.mjs && node --check auth.mjs && node --check prompt.mjs && node --check cert-loader.mjs && node --check crm-token.mjs && node --check crm-casenote.mjs && python3 -m py_compile skills/airo-log-investigate/search_frontend_logs.py",
+    "test": "node --test auth.test.mjs events.test.mjs handler.bootstrap.test.mjs handler.test.mjs && node --experimental-test-module-mocks --test cert-loader.test.mjs crm-casenote.test.mjs && python3 -m unittest frontend_log_search_test.py"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.600.0",
+    "@aws-sdk/client-secrets-manager": "^3.1048.0",
     "gd-auth-client": "^2.1.1"
   }
 }

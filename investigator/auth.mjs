@@ -19,6 +19,17 @@
 // An earlier revision threw on missing `exp` to surface JWT-shape drift,
 // but that broke against real GoCode tokens; the iat-based assumption
 // is the correct invariant for this issuer.
+//
+// NOTE: cross-reference for the three near-identical decoders in this
+// codebase. Divergence is intentional:
+//   - `app/src/lib/crm/airo-cert-token.ts` — cert-realm SSO (BFF). Returns
+//     null on missing `exp`, falls back to FALLBACK_TTL_MS (50 min).
+//   - `investigator/crm-token.mjs` — cert-realm SSO (Lambda). Same null +
+//     FALLBACK_TTL_MS semantics as the BFF.
+//   - This file — GoCode S2S (Lambda). Different issuer; `exp` provably
+//     absent. THROWS when both `exp` and `iat` are missing rather than
+//     silently caching, because for this issuer "no claims" is a real
+//     shape-drift signal worth surfacing loud.
 const GOCODE_JWT_LIFETIME_MS = 30 * 60 * 1000;
 
 export function decodeJwtExpMs(jwt) {
@@ -57,6 +68,21 @@ export function buildChildEnv() {
     'JOMAX_TOKEN',
     'REPORT_DIR',
     'CONSOLE_BASE',
+    // Direct evidence mode (source=feedback): bypasses console, queries
+    // Loki / EB Langfuse / ES / FullStory directly using these credentials.
+    'INVESTIGATION_DIRECT_MODE',
+    'LOKI_ENDPOINT',
+    'LOKI_API_KEY',
+    'EB_LANGFUSE_BASE_URL',
+    'EB_LANGFUSE_PUBLIC_KEY',
+    'EB_LANGFUSE_SECRET_KEY',
+    'AIRO_BUILDER_ES_ENDPOINT',
+    'AIRO_BUILDER_ES_API_KEY',
+    'CONTROL_PLANE_ES_ENDPOINT',
+    'CONTROL_PLANE_ES_API_KEY',
+    'FULLSTORY_API_KEY',
+    'FULLSTORY_MCP_URL',
+    'ENVIRONMENT_NAME',
     // Node runtime flags (source maps for traces).
     'NODE_OPTIONS',
   ];

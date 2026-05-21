@@ -20,6 +20,12 @@ interface InvestigateRequest {
   feedback?: string;
   fullstoryUrl?: string | null;
   timeWindow?: string | null;
+  source?: 'console' | 'feedback';
+  category?: 'issue' | 'support' | 'feedback';
+  rating?: number;
+  topics?: string[];
+  crmCaseId?: string;
+  crmCaseNumber?: string;
 }
 
 const MAX_FEEDBACK_LEN = 4000;
@@ -88,6 +94,12 @@ export const POST = withAuth(async (request, auth) => {
     durationMs: null,
     lambdaRequestId: null,
     error: null,
+    source: body.source ?? 'console',
+    category: body.category,
+    rating: body.rating,
+    topics: body.topics,
+    crmCaseId: body.crmCaseId,
+    crmCaseNumber: body.crmCaseNumber,
   };
 
   const lock = await acquireLock(keys.stateKey, state);
@@ -123,6 +135,12 @@ export const POST = withAuth(async (request, auth) => {
       tracePrefix: keys.tracePrefix,
       eventsPrefix: keys.eventsPrefix,
       jomaxToken,
+      source: body.source ?? 'console',
+      category: body.category,
+      rating: body.rating,
+      topics: body.topics,
+      crmCaseId: body.crmCaseId,
+      crmCaseNumber: body.crmCaseNumber,
     });
   } catch (error) {
     logger.error('investigate.lambda.invoke.failed', { investigationId, appId }, { error: error as Error });

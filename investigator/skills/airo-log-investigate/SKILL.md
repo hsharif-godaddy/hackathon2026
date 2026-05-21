@@ -79,8 +79,14 @@ Every source must preserve this contract:
 - Fetch raw logs to `/tmp`; do not paste large raw JSON into context.
 - Use the generated index as the map: bucket counts, top signatures, rare errors, status codes, and raw refs.
 - Prefer `jq`, `python3 -c`, `head`, and `tail` for targeted raw extraction.
+- When you sort or compare lists of dicts in `python3 -c`, always pass an explicit `key=` (e.g. `sorted(items, key=lambda x: x['count'], reverse=True)`). Plain `sorted(list_of_dicts)` raises `TypeError: '<' not supported between instances of 'dict' and 'dict'` in Python 3 and burns turns retrying.
 - Stop after enough cited evidence exists for the answer; do not browse unrelated sources.
 
 ## Out of Scope
 
 If the answer requires source code analysis or a source not present in the evidence bundle, say it is outside this run and name the missing source. FullStory session replays are in scope via the `fullstory` evidence source.
+
+## Operational Notes
+
+- **Direct-mode pagination caps.** `_LOKI_MAX_PAGES = 5` × `_LOKI_BUCKET_LIMIT = 5000` = 25K lines per bucket per source. With 3h buckets over a 24h window that's 8 buckets × 25K = 200K lines per source ceiling. Above realistic per-app volume; tune both knobs together if a real workload starts hitting the cap (the bucket continuation logic logs `[direct] loki bucket … hit page cap` to stderr when this fires).
+- **Child-process env exposes evidence keys.** `buildChildEnv` in `handler.mjs` allowlists `LOKI_API_KEY`, `EB_LANGFUSE_*`, `*_ES_API_KEY`, and `FULLSTORY_API_KEY` so this Python skill can reach them. Combined with `--dangerously-skip-permissions` on the Claude CLI, a prompt-injection inside a log line could in theory shell out and read those keys (the env is null-prototype but the values are still in `os.environ`). Lambda VPC egress is the main containment — there's no inbound to attacker-controlled hosts. If this skill ever processes logs with looser sandboxing, treat the evidence keys as in scope for redaction before adding fields here.

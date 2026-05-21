@@ -28,6 +28,13 @@ RUN dnf install -y \
   && dnf clean all \
   && rm -rf /var/cache/dnf
 
+# urllib3 / certifi via pip was attempted for connection pooling + Retry +
+# gzip on the direct evidence collector but the Lambda Node base ships
+# Python 3.9 with stripped stdlib (missing `_sha512`), which breaks pip's
+# bootstrap. Falling back to the stdlib code path in search_frontend_logs.py
+# (urllib.request) — feature-flagged via the _URLLIB3_AVAILABLE try/except.
+# Move to a Python-base Lambda or rebuild the stdlib if we need pooling.
+
 # Claude Code CLI — pin to a concrete version so two rebuilds of the same
 # commit produce identical runtime behavior. `@latest` previously drifted
 # between builds; that's how CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS had
@@ -61,7 +68,9 @@ COPY package.json ./
 # `docker buildx build --secret id=npmrc,...` — out of scope).
 RUN --mount=type=bind,source=.npmrc,target=/root/.npmrc \
     npm install --omit=dev --no-audit --no-fund
-COPY handler.mjs auth.mjs prompt.mjs events.mjs ./
+COPY handler.mjs auth.mjs prompt.mjs events.mjs \
+     cert-loader.mjs crm-token.mjs crm-casenote.mjs \
+     evidence-loader.mjs ./
 
 # Lambda invokes the image as its own least-privileged runtime user, not
 # necessarily the user Docker used during local tests. Make startup/runtime

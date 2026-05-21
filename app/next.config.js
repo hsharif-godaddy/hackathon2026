@@ -3,7 +3,23 @@ import 'tsx';
 const gasket = (await import('./gasket.ts')).default;
 
 export default gasket.actions.getNextConfig({
-  serverExternalPackages: ['@azure/functions-core', '@godaddy/gd-auth-lib', 'parquetjs'],
+  // AWS SDK clients are huge module graphs (hundreds of files per client).
+  // Listing them here tells Next/webpack to require them at runtime instead
+  // of bundling, which keeps the server-side compilation memory footprint
+  // bounded — without this, adding a single new SDK client (e.g.
+  // @aws-sdk/client-lambda for the feedback fan-out invoke path) tips the
+  // build over the default 2GB heap. They're always resolved at runtime
+  // from node_modules on the server, so externalising them is purely a
+  // build-time optimisation, not a runtime change.
+  serverExternalPackages: [
+    '@azure/functions-core',
+    '@godaddy/gd-auth-lib',
+    'parquetjs',
+    '@aws-sdk/client-lambda',
+    '@aws-sdk/client-s3',
+    '@aws-sdk/client-secrets-manager',
+    '@aws-sdk/client-sts',
+  ],
   outputFileTracingIncludes: {
     '/explore/[name]/[[...lang]]': ['./src/data/landing-pages/**/*.yaml'],
   },

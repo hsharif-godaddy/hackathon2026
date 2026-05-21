@@ -245,5 +245,54 @@ class FrontendLogSearchTest(unittest.TestCase):
         self.assertEqual(index["buckets"][0]["rawRefs"][0], "/tmp/airo-log-investigate/app123/b000-p000.json#$.logs[*]")
 
 
+class AssertHttpUrlSsrfTest(unittest.TestCase):
+    """Pin the SSRF guard at `_assert_http_url`.
+
+    The Lambda image runs Python 3.9 where the cold-start `pip install
+    urllib3` is broken (see Dockerfile note + commit 1d098a03e). Production
+    therefore takes the `urllib.request.urlopen` fallback path inside
+    `_request_via_pool`, which happily honours `file://` URLs unless we
+    intercept first. These tests lock the allowlist in place so a future
+    edit cannot silently widen it.
+    """
+
+    def test_https_url_passes(self):
+        # Sanity: the only allowed scheme returns None (no raise).
+        self.assertIsNone(
+            search_frontend_logs._assert_http_url("https://example.com/v1/foo")
+        )
+
+    def test_file_scheme_rejected(self):
+        # The original Semgrep concern — local-file exfiltration via urllib.
+        with self.assertRaises(ValueError) as ctx:
+            search_frontend_logs._assert_http_url("file:///etc/passwd")
+        self.assertIn("disallowed scheme", str(ctx.exception))
+
+    def test_plain_http_rejected(self):
+        # https-only allowlist: even http://internal.host is refused so a
+        # corrupted env var can't downgrade the connection.
+        with self.assertRaises(ValueError):
+            search_frontend_logs._assert_http_url("http://example.com/")
+
+    def test_ftp_scheme_rejected(self):
+        with self.assertRaises(ValueError):
+            search_frontend_logs._assert_http_url("ftp://example.com/")
+
+    def test_inline_credentials_rejected(self):
+        # `https://attacker:x@host` is a classic confused-deputy vector —
+        # the netloc parses cleanly but the userinfo can be interpreted by
+        # downstream proxies. Reject before urllib sees it.
+        with self.assertRaises(ValueError) as ctx:
+            search_frontend_logs._assert_http_url("https://attacker:secret@example.com/")
+        self.assertIn("inline credentials", str(ctx.exception))
+
+    def test_empty_netloc_rejected(self):
+        # `https:relative` or `https:` parses to a https-scheme URL with no
+        # host. urllib treats it as a same-origin relative URL on some
+        # platforms; reject explicitly.
+        with self.assertRaises(ValueError):
+            search_frontend_logs._assert_http_url("https:relative")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -6,6 +6,7 @@ import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as ecrAssets from 'aws-cdk-lib/aws-ecr-assets';
+import { createHash } from 'node:crypto';
 import * as path from 'node:path';
 import { GDStack, GDStackProps } from '@gd-safeguard/godaddy-constructs';
 
@@ -263,19 +264,97 @@ export class AiroInvestigatorStack extends GDStack {
         // stable, proxy-compatible payloads go out.
         CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS: '1',
         NODE_OPTIONS: '--enable-source-maps',
+        // CRM integration env vars. CRM_CERT_SECRET_ARN may be empty until
+        // the cert is provisioned — handler checks at runtime and skips
+        // the CRM patch when it's absent.
+        CRM_API_BASE: config.crmApiBase,
+        CRM_CERT_SECRET_ARN: config.crmCertSecretArn,
+        CRM_KEY_SECRET_ARN: config.crmKeySecretArn,
+        DEBUG_CONSOLE_BASE_URL: config.debugConsoleBaseUrl,
+        AIRO_SSO_ENDPOINT: config.ssoEndpoint,
+        // Direct evidence query URLs (no secrets — plain env vars)
+        LOKI_ENDPOINT: config.lokiEndpoint,
+        EB_LANGFUSE_BASE_URL: config.ebLangfuseBaseUrl,
+        AIRO_BUILDER_ES_ENDPOINT: config.airoBuilderEsEndpoint,
+        CONTROL_PLANE_ES_ENDPOINT: config.controlPlaneEsEndpoint,
+        // ASM secret path names — Lambda reads values at runtime
+        LOKI_API_KEY_SECRET: config.lokiApiKeySecret,
+        EB_LANGFUSE_PUBLIC_KEY_SECRET: config.ebLangfusePublicKeySecret,
+        EB_LANGFUSE_SECRET_KEY_SECRET: config.ebLangfuseSecretKeySecret,
+        AIRO_BUILDER_ES_API_KEY_SECRET: config.airoBuilderEsApiKeySecret,
+        CONTROL_PLANE_ES_API_KEY_SECRET: config.controlPlaneEsApiKeySecret,
+        FULLSTORY_API_KEY_SECRET: config.fullstoryApiKeySecret,
+        FULLSTORY_MCP_URL: config.fullstoryMcpUrl,
       },
       logGroup,
     });
 
-    // ---- Allow debug-console's app role to invoke this Lambda ----
-    // Narrowly scoped to the console Katana ECS task role(s) for this env
-    // (see config.investigatorInvokerRoleArns). `addPermission` creates an
-    // explicit AWS::Lambda::Permission / resource-policy entry; using
-    // `grantInvoke` on a role imported via `fromRoleArn({ mutable: false })`
-    // can silently skip attaching the resource policy, leaving the Lambda
-    // unreachable from the calling role.
-    for (const roleArn of config.investigatorInvokerRoleArns ?? []) {
-      this.investigatorFn.addPermission(`InvokeFromConsole-${hash(roleArn)}`, {
+    // ---- Secrets Manager read for CRM mTLS cert + key (Katana-managed secrets) ----
+    // Reads existing Katana ASM secrets directly — no new secrets needed.
+    // crmCertSecretArn / crmKeySecretArn are secret path names (used as SecretId
+    // in GetSecretValue and as Lambda env vars). IAM resources use ARN format with
+    // wildcard suffix to match the random suffix ASM appends on creation.
+    // Dev also grants the test Katana env via crmExtraSecretPrefixes.
+    if (config.crmCertSecretArn && config.crmKeySecretArn) {
+      const arnPrefix = `arn:aws:secretsmanager:${this.region}:${this.account}:secret:`;
+      const primaryResources = [
+        `${arnPrefix}${config.crmCertSecretArn}*`,
+        `${arnPrefix}${config.crmKeySecretArn}*`,
+      ];
+      const extraResources = (config.crmExtraSecretPrefixes ?? []).map(
+        (prefix) => `${arnPrefix}${prefix}*`,
+      );
+      this.investigatorFn.addToRolePolicy(new iam.PolicyStatement({
+        sid: 'CrmCertKeySecretRead',
+        actions: ['secretsmanager:GetSecretValue'],
+        resources: [...primaryResources, ...extraResources],
+      }));
+    }
+
+    // ---- Secrets Manager read for direct evidence query credentials ----
+    // Loki API key, EB Langfuse keys, ES API keys — all Katana-managed.
+    const evidenceSecretPaths = [
+      config.lokiApiKeySecret,
+      config.ebLangfusePublicKeySecret,
+      config.ebLangfuseSecretKeySecret,
+      config.airoBuilderEsApiKeySecret,
+      config.controlPlaneEsApiKeySecret,
+      config.fullstoryApiKeySecret,
+    ].filter(Boolean);
+    if (evidenceSecretPaths.length > 0) {
+      const arnPrefix = `arn:aws:secretsmanager:${this.region}:${this.account}:secret:`;
+      this.investigatorFn.addToRolePolicy(new iam.PolicyStatement({
+        sid: 'EvidenceSecretsRead',
+        actions: ['secretsmanager:GetSecretValue'],
+        resources: evidenceSecretPaths.map((p) => `${arnPrefix}${p}*`),
+      }));
+    }
+
+    // ---- Allow debug-console + website BFF to invoke this Lambda ----
+    // `addPermission` creates an explicit AWS::Lambda::Permission /
+    // resource-policy entry; using `grantInvoke` on a role imported via
+    // `fromRoleArn({ mutable: false })` can silently skip attaching the
+    // resource policy, leaving the Lambda unreachable from the calling
+    // role. Both lists get Invoke; only investigatorInvokerRoleArns gets
+    // the broader S3 grants below.
+    // De-dupe with a Set: the same role ARN appearing in both
+    // `investigatorInvokerRoleArns` and `investigatorBffReaderRoleArns`
+    // would produce identical hash-based logical IDs, which `cdk synth`
+    // rejects with a duplicate-id error rather than a clear message.
+    // Set avoids that footgun for an operator who copy-pastes a role
+    // into both lists. Both lists still get Invoke; only the
+    // investigatorInvokerRoleArns subset gets the broader S3 grants below.
+    const invokeRoleArns = [
+      ...new Set([
+        ...(config.investigatorInvokerRoleArns ?? []),
+        ...(config.investigatorBffReaderRoleArns ?? []),
+      ]),
+    ];
+    // Hash collision space stays well below the working set: sha256 keyed
+    // on the full ARN means InvokeFromCaller-<12 hex chars> is unique
+    // across both lists.
+    for (const roleArn of invokeRoleArns) {
+      this.investigatorFn.addPermission(`InvokeFromCaller-${hash(roleArn)}`, {
         principal: new iam.ArnPrincipal(roleArn),
         action: 'lambda:InvokeFunction',
       });
@@ -342,6 +421,33 @@ export class AiroInvestigatorStack extends GDStack {
       }));
     }
 
+    // ---- Website BFF: read-only lock check ----
+    // The fan-out feedback route reads the active investigation state.json
+    // to short-circuit duplicate Lambda invokes for the same
+    // (customerId, appId) pair within the lock window. It needs:
+    //   - lambda:InvokeFunction (granted above via invokeRoleArns)
+    //   - s3:GetObject on active/<customer>/<app>/state.json
+    // and nothing else — no PutObject (Lambda is the sole writer of
+    // active/*), no ListBucket, no access to history/events/summaries/
+    // analysis. A compromised website Katana role must NOT be able to
+    // forge or wipe other customers' investigations.
+    if ((config.investigatorBffReaderRoleArns ?? []).length > 0) {
+      const bffPrincipals = config.investigatorBffReaderRoleArns.map(
+        (arn) => new iam.ArnPrincipal(arn),
+      );
+      this.stateBucket.addToResourcePolicy(new iam.PolicyStatement({
+        sid: 'BffReadActiveStateOnly',
+        effect: iam.Effect.ALLOW,
+        actions: ['s3:GetObject'],
+        // Constrain to the state.json filename only — the BFF has no
+        // legitimate reason to fetch trace.jsonl, result.md, or any other
+        // active-prefix object. Wildcard prefix `active/*/state.json`
+        // matches every (customer, app) tuple's lock file.
+        resources: [`${this.stateBucket.bucketArn}/active/*/state.json`],
+        principals: bffPrincipals,
+      }));
+    }
+
     // ---- Outputs ----
     new cdk.CfnOutput(this, 'InvestigatorFnName', {
       value: this.investigatorFn.functionName,
@@ -372,11 +478,9 @@ function ssoHostForEnv(envName: string): string {
 }
 
 
+// 12 hex chars of sha256 = ~48 bits of entropy. Plenty for the handful of
+// invoker ARNs we configure per env, and immune to the trivial collisions
+// the previous fnv-style 32-bit hash could produce in theory.
 function hash(input: string): string {
-  let h = 0;
-  for (let i = 0; i < input.length; i++) {
-    h = (h << 5) - h + input.charCodeAt(i);
-    h |= 0;
-  }
-  return Math.abs(h).toString(16).slice(0, 8);
+  return createHash('sha256').update(input).digest('hex').slice(0, 12);
 }

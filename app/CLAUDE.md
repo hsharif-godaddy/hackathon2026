@@ -83,6 +83,13 @@ Local dev inherits the Switchboard Reader dev grant when `AWS_PROFILE=airobuild-
 
 **Flag naming convention:** `appbuilder-{feature}` in kebab-case (e.g. `appbuilder-share-links`, `appbuilder-model-selector`).
 
+**Active flags (non-exhaustive):**
+
+| Flag | Default | Purpose | Env |
+| ---- | ------- | ------- | --- |
+| `appbuilder-crm-case-create` | `false` | Gates direct CRM case creation from the feedback form (legacy path, superseded by `appbuilder-feedback-fanout`) | dev, test, prod |
+| `appbuilder-feedback-fanout` | `false` | Gates the unified fan-out endpoint `/api/feedback/submit` for issue/support/feedback submissions with rating < 5: opens a CRM case via CMAPI **and** invokes the AiroInvestigator Lambda (`INVESTIGATE_LAMBDA_FN`). When the flag is off the client falls back to the legacy `/api/crm/case` route gated by `appbuilder-crm-case-create` (CRM-only, no investigation). Must be registered in dev, test, and prod Switchboard before deploying the fan-out feature. | dev, test, prod |
+
 **Setting up a flag for local development:**
 
 1. Make sure `AWS_PROFILE=airobuild-dev-private-sso` is set — without it, all flags resolve to `false`/`null`.

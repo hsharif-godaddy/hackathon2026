@@ -96,7 +96,30 @@ describe('airoCertTokenService', () => {
       expect(https.request).toHaveBeenCalledTimes(1);
     });
 
-    it('mints a fresh token on every call (no cache)', async () => {
+    it('caches the token across calls within MIN_LIFETIME_MS', async () => {
+      // The service caches the SSO JWT keyed off its `exp` claim with a
+      // 5-minute safety margin so a burst of CRM submissions doesn't
+      // stampede SSO. Two back-to-back calls must hit only one mint.
+      // (Test must not have a `before` ENV that lets `decodeJwtExpMs`
+      // succeed — the dummy 'tok-N' string above isn't a JWT, so the
+      // service falls back to FALLBACK_TTL_MS = 50min.)
+      process.env.AIRO_CLIENT_CERT = '-----CERT-----';
+      process.env.AIRO_CLIENT_KEY = '-----KEY-----';
+      queueResponse({ body: JSON.stringify({ data: 'tok-1' }) });
+
+      const svc = await freshService();
+      const a = await svc.getToken();
+      const b = await svc.getToken();
+      expect(a).toBe('tok-1');
+      expect(b).toBe('tok-1');
+      expect(https.request).toHaveBeenCalledTimes(1);
+    });
+
+    it('mints a fresh token after the cache is reset', async () => {
+      // Same scenario as above but with an explicit cache reset between
+      // calls — verifies the cache miss path still mints fresh and the
+      // second token is plumbed through. `_resetCacheForTests` is the
+      // documented test seam; production code never calls it.
       process.env.AIRO_CLIENT_CERT = '-----CERT-----';
       process.env.AIRO_CLIENT_KEY = '-----KEY-----';
       queueResponse({ body: JSON.stringify({ data: 'tok-1' }) });
@@ -104,6 +127,7 @@ describe('airoCertTokenService', () => {
 
       const svc = await freshService();
       const a = await svc.getToken();
+      svc._resetCacheForTests();
       const b = await svc.getToken();
       expect(a).toBe('tok-1');
       expect(b).toBe('tok-2');
@@ -148,6 +172,44 @@ describe('airoCertTokenService', () => {
 
       const svc = await freshService();
       await expect(svc.getToken()).rejects.toThrow(/SSO authentication failed with status 401/);
+    });
+
+    it('caches with the JWT exp-claim TTL when a real-shape token is returned', async () => {
+      // The previous "caches across calls" test fed a non-JWT string and
+      // exercised only the FALLBACK_TTL_MS branch. This test feeds a real
+      // base64url-encoded JWT with `exp` set to 1h in the future, so the
+      // exp-driven path is the one being asserted (review S-6).
+      process.env.AIRO_CLIENT_CERT = '-----CERT-----';
+      process.env.AIRO_CLIENT_KEY = '-----KEY-----';
+      const expSeconds = Math.floor(Date.now() / 1000) + 3600;
+      const header = Buffer.from('{"alg":"none"}').toString('base64url');
+      const body = Buffer.from(JSON.stringify({ exp: expSeconds })).toString('base64url');
+      const realJwt = `${header}.${body}.sig`;
+      queueResponse({ body: JSON.stringify({ data: realJwt }) });
+
+      const svc = await freshService();
+      const a = await svc.getToken();
+      const b = await svc.getToken();
+      expect(a).toBe(realJwt);
+      expect(b).toBe(realJwt);
+      expect(https.request).toHaveBeenCalledTimes(1);
+    });
+
+    it('coalesces concurrent getToken() callers into a single SSO mint', async () => {
+      // A burst of feedback submissions arriving at the same warm BFF
+      // process must not stampede SSO. The service uses an in-flight
+      // Promise; without it three parallel callers would fire three
+      // mints (review S-6).
+      process.env.AIRO_CLIENT_CERT = '-----CERT-----';
+      process.env.AIRO_CLIENT_KEY = '-----KEY-----';
+      queueResponse({ body: JSON.stringify({ data: 'shared-tok' }) });
+
+      const svc = await freshService();
+      const [a, b, c] = await Promise.all([svc.getToken(), svc.getToken(), svc.getToken()]);
+      expect(a).toBe('shared-tok');
+      expect(b).toBe('shared-tok');
+      expect(c).toBe('shared-tok');
+      expect(https.request).toHaveBeenCalledTimes(1);
     });
   });
 });
