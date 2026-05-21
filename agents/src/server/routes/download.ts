@@ -189,9 +189,10 @@ router.get('/apps/:id/zip', validateAppOwnership, requirePermission('canDownload
     });
 
     // Stream the zip file to the client
-    const appName = app.name || id;
+    const rawName = app.name || id;
+    const safeName = rawName.replace(/[^a-zA-Z0-9 ]/g, '').trim() || id;
     res.setHeader('Content-Type', 'application/zip');
-    res.setHeader('Content-Disposition', `attachment; filename="${appName}.zip"`);
+    res.setHeader('Content-Disposition', `attachment; filename="${safeName}.zip"`);
 
     const fileStream = createReadStream(zipPath);
     fileStream.pipe(res);
