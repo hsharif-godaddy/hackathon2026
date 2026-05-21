@@ -1,7 +1,7 @@
 import nextCoreWebVitals from "eslint-config-next/core-web-vitals";
 import nextTypescript from "eslint-config-next/typescript";
 import simpleImportSort from "eslint-plugin-simple-import-sort";
-import airoConfig from "@airo/eslint-config";
+import { airoRules, prettierConfig } from "@airo/eslint-config";
 
 const config = [
   // Global ignores
@@ -20,12 +20,15 @@ const config = [
     ],
   },
 
-  // Shared base config (native flat config)
-  ...airoConfig,
-
-  // Next.js configs (native flat config from eslint-config-next@16)
+  // Next.js configs (registers eslint:recommended + typescript-eslint + react plugins)
   ...nextCoreWebVitals,
   ...nextTypescript,
+
+  // Shared Airo rules (no plugin registration — avoids duplicate plugin conflict)
+  airoRules,
+
+  // Prettier disables conflicting format rules — must come after other rule configs
+  prettierConfig,
 
   // App-level overrides
   {

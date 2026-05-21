@@ -208,7 +208,7 @@
     "@vitest/coverage-v8": "catalog:",
     "@vitest/ui": "catalog:",
     "eslint": "catalog:",
-    "eslint-config-next": "16.2.3",
+    "eslint-config-next": "16.2.6",
     "eslint-plugin-simple-import-sort": "^12.1.1",
     "react-device-detect": "catalog:",
     "react-focus-lock": "catalog:",
