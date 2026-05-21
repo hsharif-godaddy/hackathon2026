@@ -81,4 +81,4 @@ template: |
   In the reasoning, compare requested outcome vs visible output directly.
 scoreConfig:
   min: 0
-  max: 5
+  max: 100

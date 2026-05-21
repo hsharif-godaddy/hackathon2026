@@ -83,4 +83,4 @@ template: |
   Cite 2-3 concrete moments from the conversation in your reasoning.
 scoreConfig:
   min: 0
-  max: 5
+  max: 100

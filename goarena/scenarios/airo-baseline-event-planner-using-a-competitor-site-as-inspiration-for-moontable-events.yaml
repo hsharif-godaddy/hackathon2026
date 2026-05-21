@@ -44,6 +44,10 @@ browserConfig:
   browserAuth:
     type: form
     credentialsSecretId: goarena/airo/login02
+    loginUrl: https://sso.test-godaddy.com
+    passwordSelector: "#password"
+    submitSelector: "#submitBtn"
+    usernameSelector: "#username"
   requiresPerTurnScreenshots: true
   qualityEval:
     enabled: true
