@@ -370,6 +370,9 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
                     })
                   })
                 }
+              } else if (type === 'stream_retry') {
+                flushStoreUpdateBufferImmediate()
+                store.clearStreamForRetry()
               } else if (type === 'validation_message') {
                 const { toolCall, isTerminal } = buildValidationToolCallFromEvent(event.data, event.content)
                 flushStoreUpdateBufferImmediate()

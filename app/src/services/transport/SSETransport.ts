@@ -461,7 +461,7 @@ export class SSETransport implements ChatTransport {
     const eventTypes = [
       'chunk', 'tool_start', 'tool_input_delta', 'tool_call', 'tool_result',
       'step_start', 'step_complete', 'complete', 'error', 'stream_error',
-      'budget_update',
+      'budget_update', 'stream_retry',
       'validation_message',
       'history_message', 'history_loaded', 'history_complete',
       'recovery_status', 'replay_complete', 'catchup_status', 'catchup_complete',

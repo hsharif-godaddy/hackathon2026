@@ -52,6 +52,7 @@ import {
 } from './stream-timing-tracker.js'
 import { ChunkTimeoutGuard } from './chunk-timeout-guard.js'
 import { runPostStreamValidation, type ValidationMessageEventData } from './post-stream-validation-runner.js'
+import { invokeBudgetRecoveryCallback, buildContinuationPrompt, MAX_BUDGET_RETRIES } from './budget-recovery.js'
 
 /**
  * APM agent type for tool execution tracking
@@ -4001,8 +4002,11 @@ Please try again with corrected formatting.`
         return { steps: executionSteps }
       }
 
-      // Mid-stream budget exceeded during stream processing: attempt grant advancement and retry
-      if (BudgetExceededError.isInstance(postStreamError) && this.config.onBudgetExhaustedMidStream && midStreamRetryCount < 3) {
+      // Mid-stream budget exceeded: attempt grant advancement and retry.
+      // WS keeps Layer 2/3 branching inline (not via withBudgetRecovery) because it
+      // manages transport-specific state: pendingSegments, pendingToolCalls, invocation
+      // tagging with finishReason, and recursive streamAgentResponse calls.
+      if (BudgetExceededError.isInstance(postStreamError) && this.config.onBudgetExhaustedMidStream && midStreamRetryCount < MAX_BUDGET_RETRIES) {
         const conv = this.getConversation(socket.id)
         const executedToolNames = conv?.pendingToolCalls
           ? Array.from(conv.pendingToolCalls.values())
@@ -4017,27 +4021,19 @@ Please try again with corrected formatting.`
           executedToolCount: executedToolNames.length,
         })
 
-        const MID_STREAM_CALLBACK_TIMEOUT_MS = 10_000
-        const callbackPromise = this.config.onBudgetExhaustedMidStream(socket.id, postStreamError, executedToolNames)
-        let timeoutHandle: ReturnType<typeof setTimeout>
-        let timedOut = false
-        const timeoutPromise = new Promise<never>((_, reject) => {
-          timeoutHandle = setTimeout(() => { timedOut = true; reject(new Error('onBudgetExhaustedMidStream timed out')) }, MID_STREAM_CALLBACK_TIMEOUT_MS)
-        })
-        let result: { retry: boolean; newUserId?: string; hasNonIdempotentTools: boolean }
-        try {
-          result = await Promise.race([callbackPromise, timeoutPromise])
-          clearTimeout(timeoutHandle!)
-        } catch (callbackErr) {
-          clearTimeout(timeoutHandle!)
-          this.logger.error(timedOut ? 'budget.mid_stream.callback_timeout' : 'budget.mid_stream.callback_error', {
-            socketId: socket.id,
-            agentName,
-            ...(timedOut ? { timeoutMs: MID_STREAM_CALLBACK_TIMEOUT_MS } : { error: callbackErr instanceof Error ? callbackErr.message : String(callbackErr) }),
-          })
+        const result = await invokeBudgetRecoveryCallback(
+          this.config.onBudgetExhaustedMidStream,
+          socket.id,
+          postStreamError,
+          executedToolNames,
+          this.logger,
+        )
+
+        if (!result) {
           invocation.endError(postStreamError)
           throw postStreamError
         }
+
         if (result.retry && result.newUserId) {
           this.logger.info('budget.mid_stream.recovery_granted', {
             socketId: socket.id,
@@ -4049,9 +4045,7 @@ Please try again with corrected formatting.`
           const metadata = context && typeof (context as any).metadata === 'object' ? (context as any).metadata : null
           if (!metadata) {
             this.logger.error('budget.mid_stream.context_missing_metadata', {
-              socketId: socket.id,
-              agentName,
-              hasContext: !!context,
+              socketId: socket.id, agentName, hasContext: !!context,
             })
             invocation.endError(postStreamError)
             throw postStreamError
@@ -4061,8 +4055,7 @@ Please try again with corrected formatting.`
           if (!result.hasNonIdempotentTools) {
             // Layer 2: Clean retry (no non-idempotent tools ran)
             await this.publishToEventChannel(socket.id, 'stream_retry', '', {
-              reason: 'budget_exceeded_grant_advanced',
-              agentName,
+              reason: 'budget_exceeded_grant_advanced', agentName,
             }, agentName)
 
             if (conv) {
@@ -4073,25 +4066,14 @@ Please try again with corrected formatting.`
             }
 
             invocation.endError(postStreamError, { finishReason: 'budget_retry' })
-
-            try {
-              return await this.streamAgentResponse(socket, agent, data, context, agentName, startTime, shouldComplete, midStreamRetryCount + 1, originalPrompt)
-            } catch (retryError) {
-              this.logger.error('budget.mid_stream.retry_failed', { socketId: socket.id, agentName, midStreamRetryCount, error: retryError instanceof Error ? retryError.message : String(retryError) })
-              throw retryError
-            }
+            return await this.streamAgentResponse(socket, agent, data, context, agentName, startTime, shouldComplete, midStreamRetryCount + 1, originalPrompt)
           } else {
             // Layer 3: Continuation (non-idempotent tools ran)
-            const partialContent = conv?.accumulatedContent || ''
-            const toolHistory = executedToolNames.length > 0
-              ? `The following tool calls already completed successfully: ${executedToolNames.join(', ')}. Do not re-execute them.`
-              : ''
-            const continuationContext = [
-              `The user's original request: "${originalPrompt}"`,
-              toolHistory,
-              partialContent ? `You were in the middle of responding. Your partial response so far: "${partialContent.slice(-500)}"` : '',
-              'Continue the task from where you left off.',
-            ].filter(Boolean).join('\n\n')
+            const continuationContext = buildContinuationPrompt(
+              originalPrompt,
+              executedToolNames,
+              conv?.accumulatedContent || '',
+            )
 
             if (conv) {
               conv.pendingToolCalls?.clear()
@@ -4100,34 +4082,26 @@ Please try again with corrected formatting.`
             }
 
             invocation.endError(postStreamError, { finishReason: 'budget_continuation' })
-
             const continuationData: ChatMessage = { ...data, message: continuationContext }
-            try {
-              return await this.streamAgentResponse(socket, agent, continuationData, context, agentName, startTime, shouldComplete, midStreamRetryCount + 1, originalPrompt)
-            } catch (retryError) {
-              this.logger.error('budget.mid_stream.continuation_failed', { socketId: socket.id, agentName, midStreamRetryCount, error: retryError instanceof Error ? retryError.message : String(retryError) })
-              throw retryError
-            }
+            return await this.streamAgentResponse(socket, agent, continuationData, context, agentName, startTime, shouldComplete, midStreamRetryCount + 1, originalPrompt)
           }
         }
 
-        if (result?.retry && !result.newUserId) {
+        if (result.retry && !result.newUserId) {
           this.logger.error('budget.mid_stream.retry_true_no_userid', {
             socketId: socket.id,
             agentName,
+            reason: 'callback returned retry:true without newUserId — contract violation',
           })
         }
-
         this.logger.warn('budget.mid_stream.recovery_failed', {
           socketId: socket.id,
           agentName,
-          reason: result?.retry && !result.newUserId ? 'contract_violation_no_userid' : 'grants_exhausted',
+          reason: result.retry && !result.newUserId ? 'no_userid' : 'grants_exhausted',
         })
-      } else if (BudgetExceededError.isInstance(postStreamError) && this.config.onBudgetExhaustedMidStream && midStreamRetryCount >= 3) {
+      } else if (BudgetExceededError.isInstance(postStreamError) && this.config.onBudgetExhaustedMidStream && midStreamRetryCount >= MAX_BUDGET_RETRIES) {
         this.logger.warn('budget.mid_stream.retry_cap_reached', {
-          socketId: socket.id,
-          agentName,
-          midStreamRetryCount,
+          socketId: socket.id, agentName, midStreamRetryCount,
         })
       }
 

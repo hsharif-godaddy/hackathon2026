@@ -9,9 +9,12 @@ import {
   emitTurnError,
   classifyTurnError,
   runPostStreamValidation,
+  withBudgetRecovery,
 } from '@airo/ai-transport'
 import type { ResponseMetadata } from '@airo/ai-transport'
 import { BudgetExceededError, containsBudgetExceededPattern } from '@airo/ai-common'
+import { grantSessionManager } from '@airo/ai-grants'
+import { createGrantBudgetRecoveryCallback } from '../grant-budget-recovery-callback.js'
 import { context as otelContext, trace } from '@opentelemetry/api'
 import type { AgentsMessagePersistence } from '../conversation-persistence.js'
 import type { EventStreamRegistry } from './EventStreamRegistry.js'
@@ -511,7 +514,11 @@ export class MessageExecutionService {
 
       return { accumulatedContent, currentStep, finalResult, finishReason, responseMetadata: finalMetadata }
     } catch (err) {
-      invocation.endError(err)
+      if (BudgetExceededError.isInstance(err)) {
+        invocation.endError(err, { finishReason: 'budget_exceeded' })
+      } else {
+        invocation.endError(err)
+      }
       throw err
     }
   }
@@ -560,10 +567,9 @@ export class MessageExecutionService {
     // Run message-start hooks (git branch + assessment classification).
     // Failures are logged inside the helpers; neither throws out of here.
     //
-    // SSE is BMS-only (see PR #3577: client gates SSE behind budgetServiceEnabled).
-    // That means cost attribution is driven by the post-turn BMS report, not by a
-    // pre-turn subscriptionId override — so we fire the classifier non-blocking
-    // and await it right before runMessageEndHooks / safeProcessBudgetReport.
+    // Cost attribution is driven by the post-turn BMS report (when BMS is active)
+    // or by mid-stream grant recovery (when in grants mode). We fire the classifier
+    // non-blocking and await it right before runMessageEndHooks / safeProcessBudgetReport.
     let assessmentOutcome: AssessmentOutcome | undefined
     let assessmentHandle: ParallelAssessmentHandle | undefined
     if (this.deps.lifecycle) {
@@ -733,6 +739,15 @@ export class MessageExecutionService {
     // Set session metadata so handoff tool can find the session
     this.deps.stateManager.setSessionMetadata(sseSocketId, { appId })
 
+    // Budget recovery for grants-mode (non-BMS) sessions
+    const useGrantRecovery = !bmsBudgetId && !budgetSessionId && !!subscriptionId
+    const budgetRecoveryCallback = useGrantRecovery
+      ? createGrantBudgetRecoveryCallback({ logger })
+      : undefined
+    if (useGrantRecovery) {
+      grantSessionManager.registerSession(sseSocketId, subscriptionId!)
+    }
+
     try {
       let lastTurnResult: Awaited<ReturnType<typeof this.streamAgentTurn>> | undefined
       let currentIteration = 0
@@ -742,13 +757,10 @@ export class MessageExecutionService {
         streamAgentTurn: async (agent, agentName, message, iteration) => {
           currentIteration = iteration
           if (iteration > 0) {
-            // Update persistence context for the new agent
             persistenceContext.agentName = agentName
             try {
               await this.deps.conversationPersistence.startAgentTurn(conversationId, persistenceContext)
             } catch (err) {
-              // Tag handoff-turn persistence failures distinctly so they don't
-              // get lumped under the generic sse.execution.error bucket.
               logger.error('sse.execution.persistence_handoff_turn_failed', {
                 appId, conversationId, iteration, agentName, ...errorFields(err),
               })
@@ -756,11 +768,48 @@ export class MessageExecutionService {
             }
           }
 
-          lastTurnResult = await this.streamAgentTurn(agent, agentName, message, {
+          const doStream = async (prompt: string) => this.streamAgentTurn(agent, agentName, prompt, {
             conversationId, appId, siteId, sseSocketId,
             abortSignal: abortController.signal,
             streamingEvents, executionContext, streamState,
           })
+
+          if (budgetRecoveryCallback) {
+            lastTurnResult = await withBudgetRecovery(doStream, message, agentName, {
+              sessionId: sseSocketId,
+              onBudgetExhausted: budgetRecoveryCallback,
+              setUserId: (newUserId: string) => {
+                const meta = executionContext.metadata as Record<string, unknown>
+                meta.user = newUserId
+              },
+              getExecutedToolNames: () => {
+                const erroredToolIds = new Set(
+                  streamingEvents
+                    .filter((e) => e.type === 'tool_result' && e.data?.tool?.is_error)
+                    .map((e) => e.data.tool.id as string),
+                )
+                return streamingEvents
+                  .filter((e) => e.type === 'tool_start' && e.data?.tool?.name && !erroredToolIds.has(e.data.tool.id as string))
+                  .map((e) => e.data.tool.name as string)
+              },
+              getAccumulatedContent: () => streamingEvents
+                .filter((e) => e.type === 'chunk')
+                .map((e) => e.content ?? '')
+                .join(''),
+              clearTurnState: () => { streamingEvents.length = 0 },
+              publishStreamRetry: async (name: string) => {
+                await this.deps.eventChannel.publish(conversationId, {
+                  conversationId, type: 'stream_retry', content: '',
+                  data: { reason: 'budget_exceeded_grant_advanced', agentName: name }, agentName: name,
+                }).catch((err: unknown) => {
+                  logger.warn('sse.stream_retry.publish_failed', { conversationId, error: err instanceof Error ? err.message : String(err) })
+                })
+              },
+              logger,
+            })
+          } else {
+            lastTurnResult = await doStream(message)
+          }
         },
         getAutoContinuation: () => {
           const meta = executionContext.metadata as any
@@ -1094,6 +1143,11 @@ export class MessageExecutionService {
         })
       }
     } finally {
+      // Clean up grant session registration to prevent stale mappings
+      if (useGrantRecovery) {
+        grantSessionManager.removeSession(sseSocketId)
+      }
+
       // If a racing execute() replaced the registry slot, it owns the
       // session seed data (lastUserMessage / lastAssessmentTaskType) —
       // touching any of it would corrupt the next turn.

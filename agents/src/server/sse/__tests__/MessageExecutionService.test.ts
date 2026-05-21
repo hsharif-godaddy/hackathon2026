@@ -1476,4 +1476,70 @@ describe('MessageExecutionService', () => {
       }))
     })
   })
+
+  describe('grant budget recovery wiring', () => {
+    it('registers grant session and wraps stream with recovery when grants-mode active', async () => {
+      const { grantSessionManager } = await import('@airo/ai-grants')
+      vi.spyOn(grantSessionManager, 'registerSession').mockImplementation(() => {})
+      vi.spyOn(grantSessionManager, 'removeSession').mockImplementation(() => {})
+
+      deps = createMockDeps()
+      service = new MessageExecutionService(deps as any)
+
+      await service.execute({
+        ...DEFAULT_PARAMS,
+        subscriptionId: 'sub-grant-1',
+        // No bmsBudgetId or budgetSessionId → grants mode
+      })
+
+      expect(grantSessionManager.registerSession).toHaveBeenCalledWith(
+        expect.stringContaining('sse:'),
+        'sub-grant-1',
+      )
+      expect(grantSessionManager.removeSession).toHaveBeenCalledWith(
+        expect.stringContaining('sse:'),
+      )
+    })
+
+    it('skips grant registration when BMS session is active', async () => {
+      const { grantSessionManager } = await import('@airo/ai-grants')
+      vi.spyOn(grantSessionManager, 'registerSession').mockImplementation(() => {})
+      vi.spyOn(grantSessionManager, 'removeSession').mockImplementation(() => {})
+
+      deps = createMockDeps()
+      service = new MessageExecutionService(deps as any)
+
+      await service.execute({
+        ...DEFAULT_PARAMS,
+        subscriptionId: 'sub-bms-1',
+        bmsBudgetId: 'bms-budget-id',
+        budgetSessionId: 'bms-session-id',
+      })
+
+      expect(grantSessionManager.registerSession).not.toHaveBeenCalled()
+      expect(grantSessionManager.removeSession).not.toHaveBeenCalled()
+    })
+
+    it('cleans up grant session even when execution throws', async () => {
+      const { grantSessionManager } = await import('@airo/ai-grants')
+      vi.spyOn(grantSessionManager, 'registerSession').mockImplementation(() => {})
+      vi.spyOn(grantSessionManager, 'removeSession').mockImplementation(() => {})
+
+      deps = createMockDeps()
+      deps.getAgent.mockReturnValue({
+        streamGenerate: vi.fn().mockRejectedValue(new Error('stream exploded')),
+        getName: vi.fn().mockReturnValue('AI Developer'),
+      })
+      service = new MessageExecutionService(deps as any)
+
+      await service.execute({
+        ...DEFAULT_PARAMS,
+        subscriptionId: 'sub-grant-2',
+      })
+
+      expect(grantSessionManager.removeSession).toHaveBeenCalledWith(
+        expect.stringContaining('sse:'),
+      )
+    })
+  })
 })

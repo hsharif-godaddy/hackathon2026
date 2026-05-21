@@ -404,6 +404,7 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
     }
 
     const sseSocketId = sseSessionKey(conversationId)
+
     const stateManager = deps.getStateManager()
     const resolvedAgentId = await deps.resolveAgent({
       appId, agentId, agentProfile, templateId, agentContext,

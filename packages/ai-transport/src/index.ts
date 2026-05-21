@@ -108,6 +108,10 @@ export { redactSkillOutput } from './redact-skill-output.js'
 // Non-idempotent tool detection (for mid-stream budget retry decisions)
 export { hasNonIdempotentTools } from './non-idempotent-tools.js'
 
+// Mid-stream budget recovery (shared by WS + SSE transports)
+export { withBudgetRecovery, invokeBudgetRecoveryCallback, buildContinuationPrompt, MAX_BUDGET_RETRIES, BudgetRecoveryTimeoutError } from './budget-recovery.js'
+export type { BudgetRecoveryCallback, BudgetRecoveryResult, BudgetRecoveryStreamOptions } from './budget-recovery.js'
+
 // OTel trace/span ID capture (for correlating client feedback to Langfuse)
 export { getCurrentTraceIds } from './otel-trace-ids.js'
 export type { TraceIds } from './otel-trace-ids.js'
