@@ -5,6 +5,8 @@ export interface ProgressReporterOptions {
   scenarioTrialCounts: Map<string, number>;
   /** Output stream. Defaults to process.stderr. */
   stream?: NodeJS.WriteStream;
+  /** Already-completed trials from a prior run. Clamped to [0, total]. Defaults to 0. */
+  offset?: number;
 }
 
 const BAR_WIDTH = 20;
@@ -28,7 +30,7 @@ export class ProgressReporter {
     this.total = options.total;
     this.scenarioTrialCounts = options.scenarioTrialCounts;
     this.stream = options.stream ?? process.stderr;
-    this.completed = 0;
+    this.completed = Math.min(Math.max(options.offset ?? 0, 0), options.total);
     this.barRendered = false;
     this.disabled = false;
     if (this.stream.isTTY) {

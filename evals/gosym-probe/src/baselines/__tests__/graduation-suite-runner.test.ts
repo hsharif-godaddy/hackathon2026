@@ -34,7 +34,7 @@ import { GraduationRunner } from '../graduation-runner.js';
 import { SuiteRunner } from '../../runner/suite-runner.js';
 import { sleep } from '../../util/sleep.js';
 import type { GraduationResult } from '../graduation-runner.js';
-import type { RuncappedError } from '../../runner/suite-runner.js';
+import type { RuncappedError, SuiteRunnerOptions } from '../../runner/suite-runner.js';
 import type { Scenario } from '../../scenarios/types.js';
 import type { ResolvedConfig } from '../../../config/index.js';
 import type { ScenarioResult, TrialResult } from '../../runner/types.js';
@@ -898,13 +898,11 @@ describe('GraduationSuiteRunner — suiteMode: parallel', () => {
     );
   });
 
-  it('catches AggregateError from SuiteRunner.run() and returns structured result', async () => {
+  it('detects missing scenarios from partial SuiteRunner results and adds to errors', async () => {
+    // SuiteRunner returns only alpha (beta had 0 trials — absent from results)
     const scenarios = [makeScenario('alpha'), makeScenario('beta')];
-    const error1 = new Error('alpha failed completely');
-    const aggError = new AggregateError([error1], 'SuiteRunner abort');
-    mockSuiteRunnerRun.mockRejectedValue(aggError);
-
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const alphaResult = makeScenarioResult('alpha');
+    mockSuiteRunnerRun.mockResolvedValue([alphaResult]);
 
     const runner = new GraduationSuiteRunner({
       scenarios,
@@ -913,17 +911,33 @@ describe('GraduationSuiteRunner — suiteMode: parallel', () => {
       suiteMode: 'parallel',
     });
 
-    const output = await runner.run('run-agg-err');
+    const output = await runner.run('run-missing-beta');
+
+    expect(output.results).toHaveLength(1);
+    expect(output.results[0].scenarioName).toBe('alpha');
+    expect(output.errors).toHaveLength(1);
+    expect(output.errors[0].message).toContain('beta');
+    expect(output.finalizationError).toBeUndefined();
+  });
+
+  it('all scenarios absent from SuiteRunner results: results empty, one error per scenario', async () => {
+    const scenarios = [makeScenario('alpha'), makeScenario('beta')];
+    mockSuiteRunnerRun.mockResolvedValue([]);
+
+    const runner = new GraduationSuiteRunner({
+      scenarios,
+      config,
+      store,
+      suiteMode: 'parallel',
+    });
+
+    const output = await runner.run('run-all-fail');
 
     expect(output.results).toEqual([]);
-    expect(output.errors).toHaveLength(1);
-    expect(output.errors[0]).toBe(error1);
-    expect(output.finalizationError).toBeUndefined();
-    // safeFinalize is called but finalizeCompleted skips store.finalizeRun
-    // when there are zero deferred results (empty results array)
+    expect(output.errors).toHaveLength(2);
+    expect(output.errors.some((e) => e.message.includes('alpha'))).toBe(true);
+    expect(output.errors.some((e) => e.message.includes('beta'))).toBe(true);
     expect(store.finalizeRun).not.toHaveBeenCalled();
-
-    warnSpy.mockRestore();
   });
 
   it('re-throws non-AggregateError from SuiteRunner.run() without finalizing', async () => {
@@ -942,7 +956,7 @@ describe('GraduationSuiteRunner — suiteMode: parallel', () => {
     expect(store.finalizeRun).not.toHaveBeenCalled();
   });
 
-  it('re-throws non-AggregateError from finalizeScenarioGraduation loop', async () => {
+  it('per-scenario finalization failure isolated: sibling preserved, error in errors array', async () => {
     const scenarios = [makeScenario('alpha'), makeScenario('beta')];
     const alphaResult = makeScenarioResult('alpha');
     const betaResult = makeScenarioResult('beta');
@@ -950,8 +964,8 @@ describe('GraduationSuiteRunner — suiteMode: parallel', () => {
 
     const writeError = new Error('disk write failed');
     store.writeTrial = vi.fn()
-      .mockResolvedValueOnce(undefined) // alpha succeeds
-      .mockRejectedValueOnce(writeError); // beta throws during finalization
+      .mockResolvedValueOnce(undefined) // alpha finalization succeeds
+      .mockRejectedValueOnce(writeError); // beta finalization throws
 
     const runner = new GraduationSuiteRunner({
       scenarios,
@@ -960,7 +974,222 @@ describe('GraduationSuiteRunner — suiteMode: parallel', () => {
       suiteMode: 'parallel',
     });
 
-    await expect(runner.run('run-finalize-throw')).rejects.toThrow('disk write failed');
-    expect(store.finalizeRun).not.toHaveBeenCalled();
+    const output = await runner.run('run-finalize-isolated');
+
+    expect(output.results).toHaveLength(1);
+    expect(output.results[0].scenarioName).toBe('alpha');
+    expect(output.errors).toHaveLength(1);
+    expect(output.errors[0]).toBe(writeError);
+    expect(output.finalizationError).toBeUndefined();
+  });
+
+  it('fire-and-forget writeTrial called via onTrialEvaluated before finalization', async () => {
+    const scenarios = [makeScenario('alpha')];
+    const trial = makeTrialResult({ trialIndex: 0 });
+
+    let capturedCallback: ((scenarioName: string, trial: TrialResult) => void) | undefined;
+    vi.mocked(SuiteRunner).mockImplementationOnce(((opts: SuiteRunnerOptions) => {
+      capturedCallback = opts.onTrialEvaluated;
+      return { run: mockSuiteRunnerRun };
+    }) as never);
+    mockSuiteRunnerRun.mockImplementation(async () => {
+      capturedCallback?.('alpha', trial);
+      return [makeScenarioResult('alpha', { trials: [trial] })];
+    });
+
+    const runner = new GraduationSuiteRunner({
+      scenarios,
+      config,
+      store,
+      suiteMode: 'parallel',
+    });
+
+    await runner.run('run-fanout-persist');
+
+    // Called once in onTrialEvaluated (fire-and-forget). Finalization skips
+    // because the trial is already in the persistedTrials set.
+    expect(store.writeTrial).toHaveBeenCalledWith('20260513_abc123', 'alpha', trial);
+    expect(store.writeTrial).toHaveBeenCalledTimes(1);
+  });
+
+  it('fire-and-forget writeTrial failure does not reject the run', async () => {
+    const scenarios = [makeScenario('alpha')];
+    const trial = makeTrialResult({ trialIndex: 0 });
+
+    let capturedCallback: ((scenarioName: string, trial: TrialResult) => void) | undefined;
+    vi.mocked(SuiteRunner).mockImplementationOnce(((opts: SuiteRunnerOptions) => {
+      capturedCallback = opts.onTrialEvaluated;
+      return { run: mockSuiteRunnerRun };
+    }) as never);
+    mockSuiteRunnerRun.mockImplementation(async () => {
+      capturedCallback?.('alpha', trial);
+      return [makeScenarioResult('alpha', { trials: [trial] })];
+    });
+
+    // First call (fire-and-forget) rejects, second call (finalization) succeeds
+    store.writeTrial = vi.fn()
+      .mockRejectedValueOnce(new Error('transient write error'))
+      .mockResolvedValueOnce(undefined);
+
+    const runner = new GraduationSuiteRunner({
+      scenarios,
+      config,
+      store,
+      suiteMode: 'parallel',
+    });
+
+    const output = await runner.run('run-persist-fail');
+    expect(output.results).toHaveLength(1);
+    expect(output.errors).toHaveLength(0);
+  });
+});
+
+describe('GraduationSuiteRunner — resume support', () => {
+  let store: ReturnType<typeof makeMockStore>;
+  let config: ResolvedConfig;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    store = makeMockStore();
+    config = makeConfig();
+    mockSuiteRunnerRun.mockResolvedValue([]);
+  });
+
+  it('skips store.initRun when dirName is provided (parallel mode)', async () => {
+    const scenarios = [makeScenario('alpha')];
+    mockSuiteRunnerRun.mockResolvedValue([makeScenarioResult('alpha')]);
+
+    const runner = new GraduationSuiteRunner({
+      scenarios,
+      config,
+      store,
+      suiteMode: 'parallel',
+      dirName: 'existing-run-dir',
+    });
+
+    await runner.run('run-resume');
+
+    expect(store.initRun).not.toHaveBeenCalled();
+  });
+
+  it('skips store.initRun when dirName is provided (sequential mode)', async () => {
+    const scenarios = [makeScenario('alpha')];
+    mockRunCapped.mockResolvedValue([makeGraduationResult('alpha')]);
+
+    const runner = new GraduationSuiteRunner({
+      scenarios,
+      config,
+      store,
+      dirName: 'existing-run-dir',
+    });
+
+    await runner.run('run-resume-seq');
+
+    expect(store.initRun).not.toHaveBeenCalled();
+  });
+
+  it('passes existingTrialsByScenario to inner SuiteRunner (parallel mode)', async () => {
+    const scenarios = [makeScenario('alpha')];
+    const existingTrial = makeTrialResult({ trialIndex: 0 });
+    const existingTrialsByScenario = new Map([['alpha', [existingTrial]]]);
+    mockSuiteRunnerRun.mockResolvedValue([makeScenarioResult('alpha', { trials: [existingTrial] })]);
+
+    const runner = new GraduationSuiteRunner({
+      scenarios,
+      config,
+      store,
+      suiteMode: 'parallel',
+      dirName: 'existing-run-dir',
+      existingTrialsByScenario,
+    });
+
+    await runner.run('run-resume-existing');
+
+    const [call] = vi.mocked(SuiteRunner).mock.calls;
+    expect((call[0] as SuiteRunnerOptions).existingTrialsByScenario).toBe(existingTrialsByScenario);
+  });
+
+  it('passes trialIndicesByScenario to inner SuiteRunner (parallel mode)', async () => {
+    const scenarios = [makeScenario('alpha')];
+    const trialIndicesByScenario = new Map([['alpha', [1, 2]]]);
+    mockSuiteRunnerRun.mockResolvedValue([makeScenarioResult('alpha')]);
+
+    const runner = new GraduationSuiteRunner({
+      scenarios,
+      config,
+      store,
+      suiteMode: 'parallel',
+      dirName: 'existing-run-dir',
+      trialIndicesByScenario,
+    });
+
+    await runner.run('run-resume-indices');
+
+    const [call] = vi.mocked(SuiteRunner).mock.calls;
+    expect((call[0] as SuiteRunnerOptions).trialIndicesByScenario).toBe(trialIndicesByScenario);
+  });
+
+  it('all scenarios already complete: SuiteRunner receives maps, finalization runs for all', async () => {
+    const scenarios = [makeScenario('alpha'), makeScenario('beta')];
+    const existingAlpha = makeTrialResult({ trialIndex: 0 });
+    const existingBeta = makeTrialResult({ trialIndex: 0 });
+    const existingTrialsByScenario = new Map([
+      ['alpha', [existingAlpha]],
+      ['beta', [existingBeta]],
+    ]);
+    const trialIndicesByScenario = new Map<string, number[]>([
+      ['alpha', []],
+      ['beta', []],
+    ]);
+
+    // SuiteRunner returns results for both scenarios from existing trials
+    mockSuiteRunnerRun.mockResolvedValue([
+      makeScenarioResult('alpha', { trials: [existingAlpha] }),
+      makeScenarioResult('beta', { trials: [existingBeta] }),
+    ]);
+
+    const runner = new GraduationSuiteRunner({
+      scenarios,
+      config,
+      store,
+      suiteMode: 'parallel',
+      dirName: 'existing-run-dir',
+      existingTrialsByScenario,
+      trialIndicesByScenario,
+    });
+
+    const output = await runner.run('run-all-done');
+
+    expect(output.results).toHaveLength(2);
+    expect(output.errors).toHaveLength(0);
+    expect(store.initRun).not.toHaveBeenCalled();
+  });
+
+  it('finalization isolation preserved when dirName provided', async () => {
+    const scenarios = [makeScenario('alpha'), makeScenario('beta')];
+    const alphaResult = makeScenarioResult('alpha');
+    const betaResult = makeScenarioResult('beta');
+    mockSuiteRunnerRun.mockResolvedValue([alphaResult, betaResult]);
+
+    const writeError = new Error('disk write failed on beta');
+    store.writeTrial = vi.fn()
+      .mockResolvedValueOnce(undefined) // alpha finalization writeTrial succeeds
+      .mockRejectedValueOnce(writeError); // beta finalization writeTrial throws
+
+    const runner = new GraduationSuiteRunner({
+      scenarios,
+      config,
+      store,
+      suiteMode: 'parallel',
+      dirName: 'existing-run-dir',
+    });
+
+    const output = await runner.run('run-resume-isolated');
+
+    expect(output.results).toHaveLength(1);
+    expect(output.results[0].scenarioName).toBe('alpha');
+    expect(output.errors).toHaveLength(1);
+    expect(output.errors[0]).toBe(writeError);
+    expect(store.initRun).not.toHaveBeenCalled();
   });
 });

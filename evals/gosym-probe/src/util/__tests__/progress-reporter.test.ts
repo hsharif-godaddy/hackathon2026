@@ -48,6 +48,70 @@ describe('ProgressReporter validation boundary', () => {
   });
 });
 
+// -- offset validation boundary ------------------------------------------------
+
+describe('ProgressReporter offset validation boundary', () => {
+  it('clamps negative offset to 0 — initial bar shows 0/total', () => {
+    const stream = makeStream(true);
+    new ProgressReporter({
+      total: 5,
+      scenarioTrialCounts: new Map([['s', 5]]),
+      stream,
+      offset: -3,
+    });
+    const output = (stream.write as ReturnType<typeof vi.fn>).mock.calls
+      .map((c: unknown[]) => c[0] as string)
+      .join('');
+    expect(output).toContain('0/5');
+    expect(output).toContain('0%');
+  });
+
+  it('treats offset = 0 as no offset — initial bar shows 0/total', () => {
+    const stream = makeStream(true);
+    new ProgressReporter({
+      total: 5,
+      scenarioTrialCounts: new Map([['s', 5]]),
+      stream,
+      offset: 0,
+    });
+    const output = (stream.write as ReturnType<typeof vi.fn>).mock.calls
+      .map((c: unknown[]) => c[0] as string)
+      .join('');
+    expect(output).toContain('0/5');
+    expect(output).toContain('0%');
+  });
+
+  it('clamps offset exceeding total to total — initial bar shows total/total', () => {
+    const stream = makeStream(true);
+    new ProgressReporter({
+      total: 5,
+      scenarioTrialCounts: new Map([['s', 5]]),
+      stream,
+      offset: 99,
+    });
+    const output = (stream.write as ReturnType<typeof vi.fn>).mock.calls
+      .map((c: unknown[]) => c[0] as string)
+      .join('');
+    expect(output).toContain('5/5');
+    expect(output).toContain('100%');
+  });
+
+  it('accepts offset equal to total — initial bar shows total/total', () => {
+    const stream = makeStream(true);
+    new ProgressReporter({
+      total: 5,
+      scenarioTrialCounts: new Map([['s', 5]]),
+      stream,
+      offset: 5,
+    });
+    const output = (stream.write as ReturnType<typeof vi.fn>).mock.calls
+      .map((c: unknown[]) => c[0] as string)
+      .join('');
+    expect(output).toContain('5/5');
+    expect(output).toContain('100%');
+  });
+});
+
 // -- error paths ---------------------------------------------------------------
 
 describe('ProgressReporter error paths', () => {
@@ -269,5 +333,73 @@ describe('ProgressReporter non-TTY fallback', () => {
     (stream.write as ReturnType<typeof vi.fn>).mockClear();
     reporter.finish();
     expect(stream.write).not.toHaveBeenCalled();
+  });
+});
+
+// -- offset core behavior ------------------------------------------------------
+
+describe('ProgressReporter offset core behavior', () => {
+  it('renders initial bar at offset position on TTY (offset=2, total=5 → 2/5 40%)', () => {
+    const stream = makeStream(true);
+    new ProgressReporter({
+      total: 5,
+      scenarioTrialCounts: new Map([['s', 5]]),
+      stream,
+      offset: 2,
+    });
+    const output = (stream.write as ReturnType<typeof vi.fn>).mock.calls
+      .map((c: unknown[]) => c[0] as string)
+      .join('');
+    expect(output).toContain('2/5');
+    expect(output).toContain('40%');
+  });
+
+  it('trialCompleted increments from offset (offset=34, total=40 → first call shows 35/40)', () => {
+    const stream = makeStream(true);
+    const reporter = new ProgressReporter({
+      total: 40,
+      scenarioTrialCounts: new Map([['s', 40]]),
+      stream,
+      offset: 34,
+    });
+    (stream.write as ReturnType<typeof vi.fn>).mockClear();
+    reporter.trialCompleted('s', 34);
+    const output = (stream.write as ReturnType<typeof vi.fn>).mock.calls
+      .map((c: unknown[]) => c[0] as string)
+      .join('');
+    expect(output).toContain('35/40');
+    expect(output).toContain('88%');
+  });
+
+  it('does not render initial bar in non-TTY even with offset', () => {
+    const stream = makeStream(false);
+    new ProgressReporter({
+      total: 5,
+      scenarioTrialCounts: new Map([['s', 5]]),
+      stream,
+      offset: 2,
+    });
+    const output = (stream.write as ReturnType<typeof vi.fn>).mock.calls
+      .map((c: unknown[]) => c[0] as string)
+      .join('');
+    expect(output).not.toContain('Progress:');
+  });
+
+  it('non-TTY trialCompleted still increments from offset', () => {
+    const stream = makeStream(false);
+    const reporter = new ProgressReporter({
+      total: 5,
+      scenarioTrialCounts: new Map([['s', 5]]),
+      stream,
+      offset: 3,
+    });
+    reporter.trialCompleted('s', 3);
+    reporter.trialCompleted('s', 4);
+    // No second trialCompleted call should push beyond total (5/5)
+    const output = (stream.write as ReturnType<typeof vi.fn>).mock.calls
+      .map((c: unknown[]) => c[0] as string)
+      .join('');
+    expect(output).toContain('s: trial 4/5 complete');
+    expect(output).toContain('s: trial 5/5 complete');
   });
 });

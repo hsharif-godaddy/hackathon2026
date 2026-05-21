@@ -170,6 +170,16 @@ export class SuiteRunner {
 
   constructor(private readonly options: SuiteRunnerOptions) {}
 
+  /**
+   * Execute all scenarios and return aggregated results.
+   *
+   * **Fan-out partial-result contract:** In fan-out mode (`suiteMode: 'parallel'`),
+   * scenarios are excluded from the returned array only when they have zero completed
+   * trials in this run AND zero existing trials from a prior resume. Callers must
+   * compare the returned scenario names against the expected set to detect
+   * completely-failed scenarios. This preserves partial results for resume workflows
+   * instead of discarding an entire run on isolated failures.
+   */
   async run(): Promise<ScenarioResult[]> {
     const { scenarios, config, trialsOverride, suiteMode, siteCapture, getTrialOutputDir } = this.options;
 
@@ -369,13 +379,22 @@ export class SuiteRunner {
         });
       }
 
-      // Abort only if every trial in some scenario failed — no data to aggregate.
+      // Warn when a scenario has 0 completed trials; the aggregation loop below
+      // skips those scenarios so callers receive partial results. Callers are
+      // responsible for detecting which scenarios are missing.
       // Guard: scenarios with 0 queued trials (already complete during resume) are not failures.
-      const hasCompletelyFailedScenario = scenarios.some(
-        (_, i) => trialIndicesPerScenario[i].length > 0 && getTrialMap(i).size === 0,
-      );
-      if (hasCompletelyFailedScenario) {
-        throw err;
+      const completelyFailedScenarios = scenarios
+        .filter(
+          (s, i) =>
+            trialIndicesPerScenario[i].length > 0 &&
+            getTrialMap(i).size === 0 &&
+            (existingTrialsByScenario?.get(s.name)?.length ?? 0) === 0,
+        )
+        .map((s) => s.name);
+      if (completelyFailedScenarios.length > 0) {
+        console.warn('Fan-out: scenario(s) had zero completed trials and will be absent from results.', {
+          scenarios: completelyFailedScenarios,
+        });
       }
     }
 

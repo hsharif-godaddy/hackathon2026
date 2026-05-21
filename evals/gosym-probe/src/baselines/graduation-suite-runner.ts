@@ -62,6 +62,22 @@ export interface GraduationSuiteRunnerOptions {
    * caps the worker pool size. trialConcurrency is unused in this mode.
    */
   suiteMode?: 'parallel';
+  /**
+   * Pre-existing run directory. When provided, run() uses this dirName
+   * instead of calling store.initRun(). Used for graduation resume.
+   */
+  dirName?: string;
+  /**
+   * Pre-loaded trials from a prior run. Merged with newly completed trials
+   * in the inner SuiteRunner. Only used in parallel (fan-out) mode.
+   */
+  existingTrialsByScenario?: Map<string, TrialResult[]>;
+  /**
+   * Specific trial indices to execute. Empty array means the scenario is
+   * fully complete (SuiteRunner will skip running new trials but can still
+   * aggregate existing ones). Only used in parallel (fan-out) mode.
+   */
+  trialIndicesByScenario?: Map<string, number[]>;
 }
 
 export class GraduationSuiteRunner {
@@ -76,7 +92,7 @@ export class GraduationSuiteRunner {
   }
 
   async run(runId: string): Promise<GraduationSuiteRunResult> {
-    const sharedDirName = await this.options.store.initRun(
+    const sharedDirName = this.options.dirName ?? await this.options.store.initRun(
       runId,
       this.options.scenarios,
       this.options.config,
@@ -143,6 +159,8 @@ export class GraduationSuiteRunner {
       trialLifecycle,
       onTrialEvaluated,
       store,
+      existingTrialsByScenario,
+      trialIndicesByScenario,
     } = this.options;
 
     // Override each scenario's trial count with its stability-derived value so
@@ -151,6 +169,31 @@ export class GraduationSuiteRunner {
       ...s,
       trials: STABILITY_TRIALS[resolveStabilityLevel(stabilityLevelOverride, s)],
     }));
+
+    // Track which trials have been successfully persisted by the fire-and-forget
+    // path. Finalization skips trials in this set to avoid concurrent writes to
+    // the same directory.
+    const persistedTrials = new Set<string>();
+    const pendingWrites: Promise<void>[] = [];
+
+    // Wrap onTrialEvaluated to fire-and-forget writeTrial as each trial completes.
+    // This persists eval results to disk before finalization, enabling resume to
+    // find completed trials via listCompletedTrialIndices even if finalization
+    // is never reached (e.g. on a partial fan-out failure).
+    const onTrialEvaluatedWithPersistence = (scenarioName: string, trial: TrialResult): void => {
+      const key = `${scenarioName}:${trial.trialIndex}`;
+      const writePromise = store.writeTrial(sharedDirName, scenarioName, trial).then(() => {
+        persistedTrials.add(key);
+      }).catch((err) => {
+        this.log('[GraduationSuiteRunner] writeTrial fire-and-forget failed', {
+          scenarioName,
+          trialIndex: trial.trialIndex,
+          err,
+        });
+      });
+      pendingWrites.push(writePromise);
+      onTrialEvaluated?.(scenarioName, trial);
+    };
 
     const suiteRunner = new SuiteRunner({
       scenarios: scenariosWithStabilityTrials,
@@ -162,55 +205,57 @@ export class GraduationSuiteRunner {
       suiteMode: 'parallel',
       maxTurnsOverride,
       trialLifecycle,
-      onTrialEvaluated,
+      onTrialEvaluated: onTrialEvaluatedWithPersistence,
+      existingTrialsByScenario,
+      trialIndicesByScenario,
       getTrialOutputDir: (scenarioName, trialIndex) =>
         store.ensureTrialDir(sharedDirName, scenarioName, trialIndex),
       writePartialTrial: (scenarioName, trialIndex, transcript) =>
         store.writePartialTrial(sharedDirName, scenarioName, trialIndex, transcript),
     });
 
+    // SuiteRunner returns partial results when a scenario has zero completed
+    // trials — those scenarios are absent from the array. Detect them and
+    // include a descriptive error so callers know which scenarios to resume.
     let scenarioResults: ScenarioResult[];
-    const errors: Error[] = [];
     try {
       scenarioResults = await suiteRunner.run();
-    } catch (err) {
-      // SuiteRunner.runFanOut re-throws when an entire scenario has zero
-      // completed trials. Unlike the sequential path (which gets partial
-      // GraduationResults from runCapped), the parallel path aborts before
-      // evaluation, so no ScenarioResults are recoverable.
-      //
-      // TODO: Partial trial transcripts are persisted via writePartialTrial
-      // during execution, so data is not lost on disk. Planned self-healing
-      // resume will detect stalled/failed trials (e.g. locked resources) and
-      // auto-trigger --resume to recover without discarding completed work.
-      if (err instanceof AggregateError) {
-        const validatedErrors: Error[] = err.errors.map((e: unknown) =>
-          e instanceof Error ? e : new Error(String(e)),
-        );
-        console.warn(
-          'Graduation parallel aborted: one or more scenarios had zero completed trials. ' +
-            'Completed work from other scenarios was discarded. ' +
-            'Partial transcripts are persisted on disk — use --resume to recover.',
-          {
-            scenarios: scenarios.map((s) => s.name),
-            errorCount: validatedErrors.length,
-            errors: validatedErrors.map((e) => e.message),
-          },
-        );
-        const finalizationError = await this.safeFinalize([], sharedDirName, runId);
-        return { results: [], errors: validatedErrors, finalizationError };
-      }
-      throw err;
+    } finally {
+      // Wait for all fire-and-forget writes to settle so persistedTrials is
+      // fully populated before finalization begins — even if run() throws,
+      // because the caller releases the lock immediately after us.
+      await Promise.all(pendingWrites);
     }
 
+    const completedNames = new Set(scenarioResults.map((r) => r.scenarioName));
+    const missingScenarioErrors: Error[] = scenariosWithStabilityTrials
+      .filter((s) => !completedNames.has(s.name))
+      .map(
+        (s) =>
+          new Error(
+            `[GraduationSuiteRunner] Scenario "${s.name}" produced zero completed trials`,
+          ),
+      );
+
     const gradResults: GraduationResult[] = [];
+    const finalizationErrors: Error[] = [];
     for (const result of scenarioResults) {
-      const gradResult = await this.finalizeScenarioGraduation(result, sharedDirName, runId);
-      gradResults.push(gradResult);
+      try {
+        const gradResult = await this.finalizeScenarioGraduation(
+          result, sharedDirName, runId, persistedTrials,
+        );
+        gradResults.push(gradResult);
+      } catch (err) {
+        finalizationErrors.push(err instanceof Error ? err : new Error(String(err)));
+      }
     }
 
     const finalizationError = await this.safeFinalize(gradResults, sharedDirName, runId);
-    return { results: gradResults, errors, finalizationError };
+    return {
+      results: gradResults,
+      errors: [...missingScenarioErrors, ...finalizationErrors],
+      finalizationError,
+    };
   }
 
   private runScenario(
@@ -243,11 +288,16 @@ export class GraduationSuiteRunner {
    * Persists trial data, saves baseline (if valid), and builds a GraduationResult
    * for a single scenario. Shared finalization logic for both sequential and
    * parallel graduation paths.
+   *
+   * @param persistedTrials - Set of `scenarioName:trialIndex` keys already
+   *   written to disk by the fire-and-forget path. Trials in this set are
+   *   skipped to avoid redundant concurrent writes. Omit for the sequential path.
    */
   private async finalizeScenarioGraduation(
     result: ScenarioResult,
     sharedDirName: string,
     runId: string,
+    persistedTrials?: ReadonlySet<string>,
   ): Promise<GraduationResult> {
     const { scenarios, stabilityLevelOverride, store, config, baselineStoreFactory } = this.options;
 
@@ -260,8 +310,14 @@ export class GraduationSuiteRunner {
     const stabilityLevel = resolveStabilityLevel(stabilityLevelOverride, scenario);
     result.stabilityLevel = stabilityLevel;
 
+    const trialsToWrite = persistedTrials
+      ? result.trials.filter(
+          (trial) => !persistedTrials.has(`${result.scenarioName}:${trial.trialIndex}`),
+        )
+      : result.trials;
+
     await Promise.all(
-      result.trials.map((trial) =>
+      trialsToWrite.map((trial) =>
         store.writeTrial(sharedDirName, result.scenarioName, trial),
       ),
     );

@@ -70,6 +70,7 @@ pnpm run eval          # headless eval with flags (CI / scripting)
 | `--graduate`                   | ignored (stability) | controls trial parallelism                             |
 | `--graduate-suite`             | ignored (stability) | controls trial parallelism                             |
 | `--graduate-suite` + `--fan-out` | ignored (stability) | controls worker pool (round-robin trial dispatch, capped by MAX_CONCURRENCY) |
+| `--graduate-suite` + `--fan-out` + `--resume` | ignored (stability) | controls worker pool (round-robin trial dispatch, capped by MAX_CONCURRENCY) |
 
 Graduation trial counts are driven solely by stability level
 (`low`=3, `medium`=5, `high`=10). `--trials` has no effect in
@@ -92,9 +93,18 @@ as the original run. The harness validates that the resolved scenario names
 match what was recorded; a mismatch exits with an error before running any
 trials.
 
-**Graduation incompatibility.** `--graduate`/`--graduate-suite` silently
-supersede `--resume` — the graduation code path runs and the resume is
-ignored. Use one or the other.
+**Graduation resume.** `--graduate-suite <name> --fan-out --resume <run-id>`
+resumes an incomplete graduation fan-out run. The harness validates that the
+stored run has `kind: graduation` and matches the requested scenario names,
+then runs only the remaining trials for incomplete scenarios (fan-out mode
+only). Completed scenarios are finalized (baselines saved) as they finish.
+Pass the same `--suite` filter as the original run.
+
+Sequential graduation (`--graduate-suite` without `--fan-out`) does not
+support `--resume` — the sequential path re-runs each scenario entirely and
+cannot resume partial scenario work. Use `--fan-out` for graduation runs that
+may need recovery. `--graduate` (single-scenario) also does not support
+`--resume`.
 
 ### `pnpm run save-baseline` usage
 
@@ -148,6 +158,11 @@ main.ts / index.ts
        ├─ ScoreModeEnricher  →  passAtK from per-trial baseline delta
        └─ MdReporter  →  runs/{runId}/
 ```
+
+In graduation paths (`--graduate` / `--graduate-suite`), `onTrialEvaluated`
+persists each trial's transcript and eval results to disk as it completes.
+This ensures trial data survives a partial failure and is available to
+`--resume` without re-running completed work.
 
 ---
 

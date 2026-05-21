@@ -2373,7 +2373,7 @@ describe('SuiteRunner — fan-out round-robin', () => {
     expect(vi.mocked(sleep)).toHaveBeenCalledTimes(2);
   });
 
-  it('completely failed scenario aborts runFanOut with AggregateError', async () => {
+  it('completely failed scenario returns partial results without aborting', async () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     (Simulation as unknown as ReturnType<typeof vi.fn>).mockImplementation(
@@ -2390,22 +2390,58 @@ describe('SuiteRunner — fan-out round-robin', () => {
     const s0 = makeScenario({ name: 's0', trials: 2 });
     const s1 = makeScenario({ name: 's1', trials: 2 });
 
-    const runner = new SuiteRunner({
+    const results = await new SuiteRunner({
       scenarios: [s0, s1],
       config: { ...mockConfig, eval: { ...mockConfig.eval, maxConcurrency: 1 } },
       makeAgentClient,
       syntheticUser: mockSyntheticUser,
       suiteMode: 'parallel',
-    });
+    }).run();
 
-    await expect(runner.run()).rejects.toThrow();
+    // s0 absent (0 completed trials), s1 present with both trials
+    expect(results).toHaveLength(1);
+    expect(results[0].scenarioName).toBe('s1');
+    expect(results[0].trials).toHaveLength(2);
+    expect(warnSpy).toHaveBeenCalled();
 
-    try {
-      await runner.run();
-    } catch (err) {
-      expect(err).toBeInstanceOf(AggregateError);
-      expect((err as AggregateError & { partialResults: unknown[] }).partialResults).toBeDefined();
-    }
+    warnSpy.mockRestore();
+  });
+
+  it('droppedTrials populated for partial failures alongside a completely failed scenario', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    (Simulation as unknown as ReturnType<typeof vi.fn>).mockImplementation(
+      (opts: { scenario: Scenario }) => ({
+        run: async (trialIndex: number): Promise<Transcript> => {
+          if (opts.scenario.name === 's0') {
+            throw new Error('s0 always fails');
+          }
+          if (opts.scenario.name === 's1' && trialIndex === 0) {
+            throw new Error('s1 trial 0 fails');
+          }
+          return makeTranscript(opts.scenario.name, trialIndex);
+        },
+      }),
+    );
+
+    const s0 = makeScenario({ name: 's0', trials: 2 });
+    const s1 = makeScenario({ name: 's1', trials: 2 });
+    const s2 = makeScenario({ name: 's2', trials: 2 });
+
+    const results = await new SuiteRunner({
+      scenarios: [s0, s1, s2],
+      config: { ...mockConfig, eval: { ...mockConfig.eval, maxConcurrency: 1 } },
+      makeAgentClient,
+      syntheticUser: mockSyntheticUser,
+      suiteMode: 'parallel',
+    }).run();
+
+    // s0 absent, s1 and s2 present
+    expect(results).toHaveLength(2);
+    const s1Result = results.find((r) => r.scenarioName === 's1');
+    const s2Result = results.find((r) => r.scenarioName === 's2');
+    expect(s1Result?.droppedTrials).toBe(1);
+    expect(s2Result?.droppedTrials).toBeFalsy();
 
     warnSpy.mockRestore();
   });

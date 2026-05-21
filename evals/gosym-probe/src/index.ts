@@ -18,6 +18,8 @@ import {
 } from './util/concurrency.js';
 import type { TrialResult } from './runner/types.js';
 import { EvalStore } from './store/eval-store.js';
+import { resolveResumeState } from './store/resolve-resume-state.js';
+import type { ResumeState } from './store/resolve-resume-state.js';
 import { BaselineStore } from './baselines/baseline-store.js';
 import {
   GraduationRunner,
@@ -64,28 +66,6 @@ function printGraduationResult(result: GraduationResult): void {
   }
 }
 
-function scenarioSetMismatch(
-  savedScenarioNames: string[],
-  scenarios: Scenario[],
-): string | null {
-  const currentScenarioNames = scenarios.map((scenario) => scenario.name);
-  const saved = new Set(savedScenarioNames);
-  const current = new Set(currentScenarioNames);
-  const missing = savedScenarioNames.filter((name) => !current.has(name));
-  const extra = currentScenarioNames.filter((name) => !saved.has(name));
-
-  if (missing.length === 0 && extra.length === 0) return null;
-
-  return [
-    'Current scenario set does not match the resumed run.',
-    missing.length > 0
-      ? `Missing from current run: ${missing.join(', ')}.`
-      : '',
-    extra.length > 0
-      ? `Extra in current run: ${extra.join(', ')}.`
-      : '',
-  ].filter(Boolean).join(' ');
-}
 
 async function main(): Promise<void> {
   const { values } = parseArgs({
@@ -204,83 +184,127 @@ async function main(): Promise<void> {
       (sum, n) => sum + n,
       0,
     );
-    const suiteReporter = suiteTotalTrials > 0
-      ? new ProgressReporter({
-          total: suiteTotalTrials,
-          scenarioTrialCounts: suiteScenarioTrialCounts,
-        })
-      : null;
+    if (values.resume && !fanOut) {
+      console.error(
+        'Error: graduation resume requires --fan-out. ' +
+        'Sequential graduation does not support --resume.',
+      );
+      process.exit(1);
+    }
 
-    const runId = randomUUID();
-    const suiteRunner = new GraduationSuiteRunner({
-      scenarios: suiteScenarios,
-      config,
-      makeAgentClient,
-      syntheticUser,
-      siteCapture,
-      stabilityLevelOverride: stabilityOverride,
-      trialConcurrency,
-      scenarioConcurrency: fanOut ? clampConcurrency(concurrencyOverride, maxConcurrency) : 1,
-      suiteMode: fanOut ? 'parallel' : undefined,
-      baselineStoreFactory: () => new BaselineStore(),
-      maxTurnsOverride,
-      trialLifecycle: gocodeClient,
-      onTrialEvaluated: makeProgressCallback(suiteReporter),
-      store: gradStore,
-    });
+    const gradResumeState: ResumeState | undefined = values.resume
+      ? await (async () => {
+          const result = await resolveResumeState({
+            store: gradStore,
+            runRef: values.resume!,
+            scenarios: suiteScenarios,
+            getTrialCount: (s) => STABILITY_TRIALS[resolveStabilityLevel(stabilityOverride, s)],
+            expectedKind: 'graduation',
+          });
+          if (typeof result === 'string') {
+            console.error(`Error: ${result}`);
+            process.exit(1);
+          }
+          return result;
+        })()
+      : undefined;
 
-    const suiteResult: GraduationSuiteRunResult = await suiteRunner.run(runId);
-    suiteReporter?.finish();
+    const gradRunId = gradResumeState?.runId ?? randomUUID();
+    const releaseGradLockFn = async (): Promise<void> => {
+      await gradResumeState?.releaseLock();
+    };
 
-    if (suiteResult.errors.length > 0) {
-      const { results: completed, errors } = suiteResult;
-      if (completed.length > 0) {
-        console.error(
-          `\n${errors.length} scenario(s) failed. ` +
-          `Printing results for ${completed.length} completed scenario(s):`,
-        );
-        for (const gradResult of completed) {
-          printGraduationResult(gradResult);
+    try {
+      const gradCompletedOffset = gradResumeState
+        ? Array.from(gradResumeState.existingTrialsByScenario.values()).reduce(
+            (sum, trials) => sum + trials.length,
+            0,
+          )
+        : 0;
+      const suiteReporter = suiteTotalTrials - gradCompletedOffset > 0
+        ? new ProgressReporter({
+            total: suiteTotalTrials,
+            scenarioTrialCounts: suiteScenarioTrialCounts,
+            offset: gradCompletedOffset,
+          })
+        : null;
+
+      const suiteRunner = new GraduationSuiteRunner({
+        scenarios: suiteScenarios,
+        config,
+        makeAgentClient,
+        syntheticUser,
+        siteCapture,
+        stabilityLevelOverride: stabilityOverride,
+        trialConcurrency,
+        scenarioConcurrency: fanOut ? clampConcurrency(concurrencyOverride, maxConcurrency) : 1,
+        suiteMode: fanOut ? 'parallel' : undefined,
+        baselineStoreFactory: () => new BaselineStore(),
+        maxTurnsOverride,
+        trialLifecycle: gocodeClient,
+        onTrialEvaluated: makeProgressCallback(suiteReporter),
+        store: gradStore,
+        dirName: gradResumeState?.dirName,
+        existingTrialsByScenario: gradResumeState?.existingTrialsByScenario,
+        trialIndicesByScenario: gradResumeState?.trialIndicesByScenario,
+      });
+
+      const suiteResult: GraduationSuiteRunResult = await suiteRunner.run(gradRunId).finally(releaseGradLockFn);
+      suiteReporter?.finish();
+
+      if (suiteResult.errors.length > 0) {
+        const { results: completed, errors } = suiteResult;
+        if (completed.length > 0) {
+          console.error(
+            `\n${errors.length} scenario(s) failed. ` +
+            `Printing results for ${completed.length} completed scenario(s):`,
+          );
+          for (const gradResult of completed) {
+            printGraduationResult(gradResult);
+          }
         }
-      }
-      for (const inner of errors) {
-        console.error('Scenario error:', inner);
+        for (const inner of errors) {
+          console.error('Scenario error:', inner);
+        }
+        if (suiteResult.finalizationError) {
+          console.error(
+            `Run finalization also failed: ${suiteResult.finalizationError.message}`,
+          );
+        }
+        await gradStore.prune();
+        process.exit(1);
       }
       if (suiteResult.finalizationError) {
         console.error(
-          `Run finalization also failed: ${suiteResult.finalizationError.message}`,
+          `\nError: run finalization failed: ${suiteResult.finalizationError.message}`,
         );
+        await gradStore.prune();
+        process.exit(1);
       }
-      await gradStore.prune();
-      process.exit(1);
-    }
-    if (suiteResult.finalizationError) {
-      console.error(
-        `\nError: run finalization failed: ${suiteResult.finalizationError.message}`,
+      const allResults = suiteResult.results;
+      for (const gradResult of allResults) {
+        printGraduationResult(gradResult);
+      }
+
+      const degradedGradScenarios = allResults.filter(
+        (r) => r.scenarioResult?.droppedTrials !== undefined && r.scenarioResult.droppedTrials > 0,
       );
-      await gradStore.prune();
-      process.exit(1);
-    }
-    const allResults = suiteResult.results;
-    for (const gradResult of allResults) {
-      printGraduationResult(gradResult);
-    }
-
-    const degradedGradScenarios = allResults.filter(
-      (r) => r.scenarioResult?.droppedTrials !== undefined && r.scenarioResult.droppedTrials > 0,
-    );
-    if (degradedGradScenarios.length > 0) {
-      for (const r of degradedGradScenarios) {
-        console.warn(
-          `Warning: ${r.scenarioResult!.droppedTrials} trial(s) dropped for "${r.scenarioName}"` +
-          ` due to execution failures.`,
-        );
+      if (degradedGradScenarios.length > 0) {
+        for (const r of degradedGradScenarios) {
+          console.warn(
+            `Warning: ${r.scenarioResult!.droppedTrials} trial(s) dropped for "${r.scenarioName}"` +
+            ` due to execution failures.`,
+          );
+        }
       }
-    }
 
-    await gradStore.prune();
-    const anyUnsaved = allResults.some((r) => !r.baselineSaved);
-    process.exit(anyUnsaved || degradedGradScenarios.length > 0 ? 1 : 0);
+      await gradStore.prune();
+      const anyUnsaved = allResults.some((r) => !r.baselineSaved);
+      process.exit(anyUnsaved || degradedGradScenarios.length > 0 ? 1 : 0);
+    } catch (err) {
+      await releaseGradLockFn();
+      throw err;
+    }
   }
 
   const { scenarios, error: filterError } = filterScenarios(
@@ -366,83 +390,34 @@ async function main(): Promise<void> {
   const fanOut = values['fan-out'] ?? false;
 
   const store = new EvalStore(undefined, config.storage?.maxRuns);
-  let runId: string = randomUUID();
-  let dirName: string;
-  const existingTrialsByScenario = new Map<string, TrialResult[]>();
-  const trialIndicesByScenario = new Map<string, number[]>();
-  let releaseRunLock: (() => Promise<void>) | undefined;
-  const releaseLock = async (): Promise<void> => {
-    if (!releaseRunLock) return;
-    const release = releaseRunLock;
-    releaseRunLock = undefined;
-    await release();
-  };
 
-  if (values.resume) {
-    const resumeDirName = await store.resolveRunDirName(values.resume);
-    if (!resumeDirName) {
-      console.error(`Error: run not found for --resume "${values.resume}".`);
-      process.exit(1);
-    }
-
-    dirName = resumeDirName;
-    const metadata = await store.loadRunMetadataByDirName(dirName);
-    if (!metadata) {
-      console.error(
-        `Error: run metadata missing for --resume "${values.resume}"` +
-        ` in "${dirName}". Cannot resume an incomplete run directory.`,
-      );
-      process.exit(1);
-    }
-    runId = metadata.runId;
-    const mismatch = scenarioSetMismatch(metadata.scenarios, scenarios);
-    if (mismatch) {
-      console.error(
-        `Error: cannot resume "${values.resume}". ${mismatch}`,
-      );
-      process.exit(1);
-    }
-    releaseRunLock = await store.acquireRunLock(dirName);
-
-    try {
-      for (const scenario of scenarios) {
-        const trialCount =
-          trialsOverride
-          ?? metadata.trialsOverride
-          ?? scenario.trials;
-        const completed = await store.listCompletedTrialIndices(
-          dirName,
-          scenario.name,
-        );
-        const existing: TrialResult[] = [];
-        for (const trialIndex of completed.filter((i) => i < trialCount)) {
-          const trial = await store.loadTrialResultByDirName(
-            dirName,
-            scenario.name,
-            trialIndex,
-          );
-          if (trial) existing.push(trial);
+  const evalResumeState: ResumeState | undefined = values.resume
+    ? await (async () => {
+        const result = await resolveResumeState({
+          store,
+          runRef: values.resume!,
+          scenarios,
+          getTrialCount: (s, metaOverride) => trialsOverride ?? metaOverride ?? s.trials,
+        });
+        if (typeof result === 'string') {
+          console.error(`Error: ${result}`);
+          process.exit(1);
         }
+        return result;
+      })()
+    : undefined;
 
-        existingTrialsByScenario.set(scenario.name, existing);
-        trialIndicesByScenario.set(
-          scenario.name,
-          Array.from({ length: trialCount }, function index(_, i) {
-            return i;
-          }).filter((i) => !completed.includes(i)),
-        );
-      }
-    } catch (error) {
-      await releaseLock();
-      throw error;
-    }
-  } else {
-    dirName = await store.initRun(runId, scenarios, config, {
-      trialsOverride,
-      concurrencyOverride,
-      maxTurnsOverride,
-    });
-  }
+  const runId = evalResumeState?.runId ?? randomUUID();
+  const dirName = evalResumeState?.dirName ?? await store.initRun(runId, scenarios, config, {
+    trialsOverride,
+    concurrencyOverride,
+    maxTurnsOverride,
+  });
+  const existingTrialsByScenario = evalResumeState?.existingTrialsByScenario ?? new Map<string, TrialResult[]>();
+  const trialIndicesByScenario = evalResumeState?.trialIndicesByScenario ?? new Map<string, number[]>();
+  const releaseLock = async (): Promise<void> => {
+    await evalResumeState?.releaseLock();
+  };
 
   console.log(`Starting eval run: ${runId}`);
   if (values.resume) {
@@ -480,18 +455,28 @@ async function main(): Promise<void> {
   }
 
   const evalTrialCounts = new Map(
-    scenarios.map((s) => [s.name, trialsOverride ?? s.trials]),
+    scenarios.map((s) => {
+      const existing = existingTrialsByScenario.get(s.name);
+      const remaining = trialIndicesByScenario.get(s.name);
+      const count = (existing && remaining)
+        ? existing.length + remaining.length
+        : trialsOverride ?? s.trials;
+      return [s.name, count];
+    }),
   );
-  // evalTotal counts remaining trials (progress denominator) while
-  // evalTrialCounts stores full per-scenario counts (display "trial n/k").
-  const evalTotal = values.resume
-    ? Array.from(trialIndicesByScenario.values()).reduce(
-        (sum, indices) => sum + indices.length,
+  const evalTotal = Array.from(evalTrialCounts.values()).reduce((sum, n) => sum + n, 0);
+  const completedOffset = values.resume
+    ? Array.from(existingTrialsByScenario.values()).reduce(
+        (sum, trials) => sum + trials.length,
         0,
       )
-    : scenarios.reduce((sum, s) => sum + (trialsOverride ?? s.trials), 0);
-  const evalReporter = evalTotal > 0
-    ? new ProgressReporter({ total: evalTotal, scenarioTrialCounts: evalTrialCounts })
+    : 0;
+  const evalReporter = evalTotal - completedOffset > 0
+    ? new ProgressReporter({
+        total: evalTotal,
+        scenarioTrialCounts: evalTrialCounts,
+        offset: completedOffset,
+      })
     : null;
 
   const pendingWrites: Promise<void>[] = [];
