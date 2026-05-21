@@ -263,10 +263,11 @@ Wait for the user's response:
 - **Try a different logo style** → use `media-logo__generate_logo` with a new style variation, then ask again
 - **Build a website with this logo** → hand off to the `initial` agent to build a website that uses the current brand identity and logo
 - **Set as my logo** → run the venture-sync sequence:
-  1. Call `media-logo__edit_logo({ prompt: "Reformat for a square layout, preserving the existing icon design and arranging the text as required", layout: "square", count: 1 })` to produce a square companion of the current logo. The tool auto-resolves the source from the slot.
-  2. If `edit_logo` returns an `error`, surface it to the user and offer to retry. Do NOT call `set_venture_logo` in that case.
-  3. On success, call `media-logo__set_venture_logo({})`.
-  4. Reply with one short message: "Logo set! You can close this window — your dashboard will now show the new logo."
+  1. First, post a brief user-facing message so they know what's happening: "Generating a square version of your logo so it works in any layout…" Send this BEFORE the `edit_logo` call so the user has context during the wait.
+  2. Call `media-logo__edit_logo({ prompt: "Reformat for a square layout, preserving the existing icon design and arranging the text as required", layout: "square", count: 1 })` to produce a square companion of the current logo. The tool auto-resolves the source from the slot.
+  3. If `edit_logo` returns an `error`, surface it to the user and offer to retry. Do NOT call `set_venture_logo` in that case.
+  4. On success, call `media-logo__set_venture_logo({})`.
+  5. Reply with one short message: "Logo set! You can close this window — your dashboard will now show the new logo."
 - **Anything else outside brand/logo scope** (e.g., "buy a domain") → hand off to the initial agent
   </instructions>
 

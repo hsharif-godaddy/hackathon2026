@@ -112,6 +112,20 @@ export function useBrandIntentOverrides(
     set(ix.boxHighContrast.foregroundColor, palette.background);
     set(ix.boxLowContrast.backgroundColor, palette.muted);
 
+    // Shadcn-style chrome variables consumed by brand-book.module.css
+    // (.softCard, .toneRow, .mockupPlaceholder, .swatchSquare borders, etc.).
+    // Without these, the chrome falls back to the builder's neutral theme from
+    // app/src/styles/globals.scss and ignores the brand palette.
+    const setVar = (name: string, value: string | undefined) => {
+      if (value) overrides[name] = value;
+    };
+    setVar('--muted', palette.muted);
+    setVar('--border', palette.border);
+    setVar('--accent', palette.muted);
+    setVar('--destructive', palette.destructive);
+    setVar('--background', palette.background);
+    setVar('--foreground', palette.foreground);
+
     // Feedback intents — semantic colors
     set(ix.feedbackCritical.feedbackColor, palette.destructive);
     set(ix.feedbackCritical.onFeedbackColor, palette.destructiveForeground);
