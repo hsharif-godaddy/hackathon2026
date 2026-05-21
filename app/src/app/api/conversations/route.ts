@@ -42,25 +42,15 @@ interface ConversationsRequest {
   body?: unknown;
 }
 
-function reamazeHost(requestHost: string): string {
-  if (requestHost.includes('dev-godaddy.com') || requestHost.includes('localhost')) {
-    return 'reamaze.dev-godaddy.com';
-  }
-  if (requestHost.includes('test-godaddy.com')) {
-    return 'reamaze.test-godaddy.com';
-  }
-  return 'reamaze.godaddy.com';
+function getReamazeHost(): string {
+  const environmentName = process.env.ENVIRONMENT_NAME || '';
+  if (environmentName === 'production') return 'reamaze.godaddy.com';
+  if (environmentName === 'test') return 'reamaze.test-godaddy.com';
+  return 'reamaze.dev-godaddy.com';
 }
 
-function reamazeBffHost(requestHost: string): string {
-  if (requestHost.includes('dev-godaddy.com') || requestHost.includes('localhost')) {
-    return 'api.reamaze.dev-godaddy.com';
-  }
-  if (requestHost.includes('test-godaddy.com')) {
-    return 'api.reamaze.test-godaddy.com';
-  }
-  return 'api.reamaze.godaddy.com';
-}
+const REAMAZE_HOST = getReamazeHost();
+const REAMAZE_BFF_HOST = `api.${REAMAZE_HOST}`;
 
 function resolveRequest(req: ConversationsRequest): { method: 'GET' | 'POST' | 'PUT'; path: string } | { error: string } {
   switch (req.operation) {
@@ -115,14 +105,11 @@ export const POST = withCustomerAuth(async (
     return NextResponse.json({ error: resolved.error }, { status: 400 });
   }
 
-  const requestHost = request.headers.get('host') || '';
-  const host = reamazeHost(requestHost);
   let url: string;
   if (isAccountLevel) {
-    const bffHost = reamazeBffHost(requestHost);
-    url = `https://${bffHost}/bff/${resolved.path.replace(/^\//, '')}`;
+    url = `https://${REAMAZE_BFF_HOST}/bff/${resolved.path.replace(/^\//, '')}`;
   } else {
-    url = `https://${body.brandId}.${host}/api/v2/${resolved.path.replace(/^\//, '')}`;
+    url = `https://${body.brandId}.${REAMAZE_HOST}/api/v2/${resolved.path.replace(/^\//, '')}`;
   }
   const hasBody = resolved.method !== 'GET' && body.body !== undefined;
 

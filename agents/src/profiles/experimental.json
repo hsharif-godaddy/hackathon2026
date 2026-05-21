@@ -6,6 +6,7 @@
     "model.fast": "claude-haiku-4-5",
     "feature.commerce.enabled": true,
     "context.maxHistoryMessages": 50,
-    "skill.googleReviews.enabled": true
+    "skill.googleReviews.enabled": true,
+    "skill.conversations.enabled": true
   }
 }

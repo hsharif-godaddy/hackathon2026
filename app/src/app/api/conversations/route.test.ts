@@ -18,6 +18,8 @@ vi.mock('@/utils/api-errors', () => ({
 const mockFetch = vi.fn();
 vi.stubGlobal('fetch', mockFetch);
 
+vi.stubEnv('ENVIRONMENT_NAME', 'development');
+
 const { POST } = await import('./route');
 
 describe('POST /api/conversations', () => {
@@ -120,45 +122,19 @@ describe('POST /api/conversations', () => {
   // --------------------------------------------------------------------------
 
   describe('host resolution', () => {
-    it('uses dev host for dev-godaddy.com requests', async () => {
+    it('uses dev host for brand-scoped operations in non-production', async () => {
       mockFetch.mockResolvedValue(new Response(JSON.stringify({}), { status: 200 }));
       const request = makeRequest(
         { operation: 'list_embeddables', brandId: '550e8400-e29b-41d4-a716-446655440000' },
-        'local.gasket.dev-godaddy.com:8443',
       );
       await POST(request, createAuthContext('jwt-token'));
       const url = mockFetch.mock.calls[0][0] as string;
       expect(url).toContain('reamaze.dev-godaddy.com');
     });
 
-    it('uses test host for test-godaddy.com requests', async () => {
+    it('uses dev BFF host for account-level operations in non-production', async () => {
       mockFetch.mockResolvedValue(new Response(JSON.stringify({}), { status: 200 }));
-      const request = makeRequest(
-        { operation: 'list_embeddables', brandId: '550e8400-e29b-41d4-a716-446655440000' },
-        'app.test-godaddy.com',
-      );
-      await POST(request, createAuthContext('jwt-token'));
-      const url = mockFetch.mock.calls[0][0] as string;
-      expect(url).toContain('reamaze.test-godaddy.com');
-    });
-
-    it('uses production host for other requests', async () => {
-      mockFetch.mockResolvedValue(new Response(JSON.stringify({}), { status: 200 }));
-      const request = makeRequest(
-        { operation: 'list_embeddables', brandId: '550e8400-e29b-41d4-a716-446655440000' },
-        'app.godaddy.com',
-      );
-      await POST(request, createAuthContext('jwt-token'));
-      const url = mockFetch.mock.calls[0][0] as string;
-      expect(url).toContain('reamaze.godaddy.com');
-    });
-
-    it('uses BFF host for list_accounts (account-level)', async () => {
-      mockFetch.mockResolvedValue(new Response(JSON.stringify({}), { status: 200 }));
-      const request = makeRequest(
-        { operation: 'list_accounts' },
-        'local.gasket.dev-godaddy.com:8443',
-      );
+      const request = makeRequest({ operation: 'list_accounts' });
       await POST(request, createAuthContext('jwt-token'));
       const url = mockFetch.mock.calls[0][0] as string;
       expect(url).toContain('api.reamaze.dev-godaddy.com');
