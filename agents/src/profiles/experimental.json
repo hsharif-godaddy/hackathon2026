@@ -7,6 +7,7 @@
     "feature.commerce.enabled": true,
     "context.maxHistoryMessages": 50,
     "skill.googleReviews.enabled": true,
+    "skill.complianceDocs.enabled": true,
     "skill.conversations.enabled": true
   }
 }

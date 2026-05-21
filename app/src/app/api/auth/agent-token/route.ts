@@ -401,6 +401,15 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       });
     }
 
+    // Searchable log of the resolved agent profile from Switchboard/Hivemind.
+    // Grep: `agent-token.profile.resolved`
+    logger.info('agent-token.profile.resolved', {
+      siteId: body.siteId,
+      customerId: user.customerId,
+      shopperId: user.shopperId,
+      agentProfile: agentProfile ?? null,
+    });
+
     // PaaS has its own billing model outside of the Airo Plus paywall, so the
     // AAB paywall must not gate publishes for PaaS apps. canDownload and other
     // paywall-derived flags stay as computed.

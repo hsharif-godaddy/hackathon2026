@@ -168,6 +168,19 @@ export class JWTAuthMiddleware {
 
       if (authType === AuthType.MOCK) {
         const now = Math.floor(Date.now() / 1000);
+        // In mock mode, decode (without validating) the Bearer token to extract
+        // fields the BFF sets (agentProfile, etc.) so profile-gated features work
+        // in local dev. Falls back to defaults if no token or decode fails.
+        let tokenClaims: Record<string, unknown> = {};
+        const authHeader = req.headers.authorization;
+        if (authHeader?.startsWith('Bearer ')) {
+          try {
+            const payload = authHeader.slice(7).split('.')[1];
+            if (payload) {
+              tokenClaims = JSON.parse(Buffer.from(payload, 'base64url').toString());
+            }
+          } catch { /* ignore decode failures in mock mode */ }
+        }
         (req as AuthenticatedRequest).agentContext = {
           siteId: auth.getSiteId(AuthType.MOCK),
           canDownload: true,
@@ -177,6 +190,7 @@ export class JWTAuthMiddleware {
           product: 'AiroAppBuilder',
           modelSelectorEnabled: true,
           agentProfileSelectorEnabled: true,
+          agentProfile: tokenClaims.agentProfile as string | undefined,
           exp: now + 3600,
           iat: now
         };

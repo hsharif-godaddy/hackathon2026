@@ -3199,6 +3199,18 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         if (authType === AuthType.MOCK) {
           const siteId = auth.getSiteId(AuthType.MOCK);
           const now = Math.floor(Date.now() / 1000);
+          // In mock mode, decode (without validating) the token to extract fields
+          // the BFF sets (agentProfile, etc.) so profile-gated features work locally.
+          let tokenClaims: Record<string, unknown> = {};
+          const token = socket.handshake.auth?.token as string | undefined;
+          if (token) {
+            try {
+              const payload = token.split('.')[1];
+              if (payload) {
+                tokenClaims = JSON.parse(Buffer.from(payload, 'base64url').toString());
+              }
+            } catch { /* ignore decode failures in mock mode */ }
+          }
           socket.handshake.auth = {
             ...socket.handshake.auth,
             siteId,
@@ -3211,6 +3223,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
               product: 'AiroAppBuilder' as ProductType,
               modelSelectorEnabled: true,
               agentProfileSelectorEnabled: true,
+              agentProfile: tokenClaims.agentProfile as string | undefined,
               exp: now + 3600,
               iat: now
             }
