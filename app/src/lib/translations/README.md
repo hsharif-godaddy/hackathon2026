@@ -6,7 +6,7 @@ Comprehensive guide to using translations in both Client Components and Server C
 
 **Want to add or update translations?** Use the GoDaddy i18n Management UI:
 
-**[https://i18n.int.gdcorp.tools/org/hcx/app/aab](https://i18n.int.gdcorp.tools/org/hcx/app/aab)**
+**[https://i18n.int.gdcorp.tools/org/airo-app-builder/app/aab](https://i18n.int.gdcorp.tools/org/airo-app-builder/app/aab)**
 
 **NOTE: you must first add yourself to the `PARTNERSTRANSLATIONS` ad group**
 
