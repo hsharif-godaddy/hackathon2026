@@ -74,6 +74,7 @@ export interface FinalizeStreamData {
   totalSteps?: number
   finishReason?: string
   usedFreeGrants?: boolean
+  commitHash?: string
 }
 
 /**

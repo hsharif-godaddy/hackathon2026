@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-import { DevSupervisorClient } from '../services/DevSupervisorClient.js';
+import { DevSupervisorClient } from '../services/index.js';
 import { logger } from '../logging/index.js';
 import { buildShellCommand } from './shell-utils.js';
 
@@ -327,6 +327,24 @@ export class GitUtils {
   }
 
   /**
+   * Restore the index and working tree to the contents of a specific commit.
+   * Runs `git restore --source=<hash> --staged --worktree .` — does not rewrite
+   * history or move the branch pointer. Goes through executeGitCommand so
+   * concurrent `.git/index.lock` contention is handled by attemptGitRecovery.
+   */
+  async restoreFromCommit(
+    repoPath: string,
+    commitHash: string,
+    options: GitCommandOptions = {}
+  ): Promise<GitCommandResult> {
+    return this.executeGitCommand(
+      ['restore', `--source=${commitHash}`, '--staged', '--worktree', '.'],
+      repoPath,
+      options
+    );
+  }
+
+  /**
    * Delete a branch
    * Uses -D flag to force delete (even if not fully merged, since we've already squash merged)
    *
@@ -469,6 +487,128 @@ export class GitUtils {
   async hasUncommittedChanges(repoPath: string, options: GitCommandOptions = {}): Promise<boolean> {
     const status = await this.getStatus(repoPath, options);
     return status.hasChanges;
+  }
+
+  /**
+   * Stash uncommitted working-tree changes (including untracked files).
+   *
+   * Used by the chat undo button when the user bails on an in-flight or
+   * stopped agent turn — preferred over a hard discard because the stash
+   * is a recoverable git commit. The returned `stashHash` and `diff` are
+   * stamped onto the synthetic 'undo' user-action notice so the transcript
+   * can render what was rolled back.
+   *
+   * Returns `hasChanges: false` and no stash when the working tree is
+   * already clean — the call is a no-op in that case, never an error.
+   */
+  async stashUncommittedChanges(
+    repoPath: string,
+    options: GitCommandOptions & { message?: string; } = {}
+  ): Promise<{
+    hasChanges: boolean;
+    stashHash: string | null;
+  }> {
+    const { message, ...commandOptions } = options;
+
+    const stashArgs = ['stash', 'push', '--include-untracked'];
+    if (message) {
+      stashArgs.push('-m', message);
+    }
+    const stashResult = await this.executeGitCommand(stashArgs, repoPath, commandOptions);
+    if (!stashResult.success) {
+      throw new Error(`Failed to stash uncommitted changes: ${stashResult.stderr}`);
+    }
+
+    // `git stash push` on a clean tree prints "No local changes to save" and
+    // exits 0 — we treat that as a success no-op rather than an error.
+    if (/no local changes to save/i.test(stashResult.stdout) || /no local changes to save/i.test(stashResult.stderr)) {
+      return { hasChanges: false, stashHash: null };
+    }
+
+    const hashResult = await this.executeGitCommand(['rev-parse', 'stash@{0}'], repoPath, commandOptions);
+    if (!hashResult.success) {
+      // The stash apparently happened, but we can't resolve its hash. Surface
+      // this so the caller can fall back without claiming a bogus reference.
+      throw new Error(`Stashed changes but could not resolve stash hash: ${hashResult.stderr}`);
+    }
+    const stashHash = hashResult.stdout.trim();
+
+    return { hasChanges: true, stashHash };
+  }
+
+  /**
+   * Compute a unified diff between two commit refs and return the captured
+   * text along with a truncation marker if the diff exceeds `diffMaxBytes`.
+   *
+   * Used by the restore route to record what changed when the user rolled
+   * back to a previous commit, so the synthetic 'restore' notice can render
+   * the diff just like undo does for stashes.
+   *
+   * Both refs must be resolvable; `null` is returned when the diff command
+   * itself fails (e.g. invalid ref) so the caller can fall back to omitting
+   * the diff rather than aborting the surrounding operation.
+   */
+  async getCommitDiff(
+    repoPath: string,
+    fromRef: string,
+    toRef: string,
+    options: GitCommandOptions & { diffMaxBytes?: number } = {}
+  ): Promise<{ diff: string | null; diffTruncated: boolean }> {
+    const { diffMaxBytes = 50_000, ...commandOptions } = options;
+
+    // -M enables rename detection so renames render as renames instead of
+    // delete + add pairs. The double-dot range form (`from..to`) is the
+    // standard way to ask for the diff *between* two snapshots.
+    const diffResult = await this.executeGitCommand(
+      ['--no-pager', 'diff', '-R', '-M', `${fromRef}..${toRef}`],
+      repoPath,
+      commandOptions,
+    );
+
+    if (!diffResult.success) {
+      return { diff: null, diffTruncated: false };
+    }
+
+    const raw = diffResult.stdout;
+    if (Buffer.byteLength(raw, 'utf8') > diffMaxBytes) {
+      return { diff: raw.slice(0, diffMaxBytes) + '\n\n... (diff truncated)', diffTruncated: true };
+    }
+    return { diff: raw, diffTruncated: false };
+  }
+
+  /**
+   * Compute the diff captured in a stash. Wraps `git stash show -u -p <ref>`,
+   * which emits a unified diff against the stash's first parent (the HEAD at
+   * stash time) and includes untracked files when the stash was created with
+   * `--include-untracked` (the `-u` flag is git 2.32+).
+   *
+   * Used by the user-action diff route to render what was rolled back when a
+   * mid-stream / dirty-tree undo stashed in-flight changes. Returns
+   * `{ diff: null }` instead of throwing when the ref can't be resolved, so
+   * the surrounding endpoint can degrade gracefully without 500ing.
+   */
+  async getStashDiff(
+    repoPath: string,
+    stashHash: string,
+    options: GitCommandOptions & { diffMaxBytes?: number } = {}
+  ): Promise<{ diff: string | null; diffTruncated: boolean }> {
+    const { diffMaxBytes = 50_000, ...commandOptions } = options;
+
+    const result = await this.executeGitCommand(
+      ['--no-pager', 'stash', 'show', '-u', '-R', '-p', stashHash],
+      repoPath,
+      commandOptions,
+    );
+
+    if (!result.success) {
+      return { diff: null, diffTruncated: false };
+    }
+
+    const raw = result.stdout;
+    if (Buffer.byteLength(raw, 'utf8') > diffMaxBytes) {
+      return { diff: raw.slice(0, diffMaxBytes) + '\n\n... (diff truncated)', diffTruncated: true };
+    }
+    return { diff: raw, diffTruncated: false };
   }
 
   /**

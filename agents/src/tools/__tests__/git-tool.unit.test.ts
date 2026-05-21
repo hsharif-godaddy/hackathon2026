@@ -27,7 +27,12 @@ vi.mock('../../utils/git.js', () => ({
     setRemoteUrl: vi.fn().mockResolvedValue({ success: true }),
     getCurrentBranch: vi.fn().mockResolvedValue('main'),
     pull: vi.fn().mockResolvedValue({ success: true, stdout: 'Already up to date.' }),
-    push: vi.fn().mockResolvedValue({ success: true, stdout: 'Everything up-to-date' })
+    push: vi.fn().mockResolvedValue({ success: true, stdout: 'Everything up-to-date' }),
+    switchBranch: vi.fn().mockResolvedValue({ success: true, stdout: '', stderr: '' }),
+    restoreFromCommit: vi.fn().mockResolvedValue({ success: true, stdout: '', stderr: '' }),
+    commit: vi.fn().mockResolvedValue({ success: true, stdout: '', stderr: '' }),
+    reset: vi.fn().mockResolvedValue({ success: true, stdout: '', stderr: '' }),
+    getCommitHistory: vi.fn().mockResolvedValue([])
   }))
 }));
 
@@ -492,6 +497,143 @@ describe('GitTool', () => {
       expect(result.success).toBe(false);
       expect(result.operation).toBe('commit');
       expect(result.error).toBe('Commit message is required');
+    });
+  });
+
+  describe('Restore Operation', () => {
+    const appPath = '/tmp/apps/test-app-id/app';
+    const commitHash = 'abcdef1234567890abcdef1234567890abcdef12';
+
+    const getMockedGitUtils = async () => {
+      const { GitUtils } = await import('../../utils/git.js');
+      return vi.mocked(GitUtils).mock.results[0]?.value;
+    };
+
+    const mockDirtyWorktree = (mockGitUtils: any) => {
+      mockGitUtils.getStatus.mockResolvedValue({
+        branch: 'main',
+        ahead: 0,
+        behind: 0,
+        isClean: false,
+        hasChanges: true,
+        stagedFiles: 1,
+        modifiedFiles: 0,
+        untrackedFiles: 0
+      });
+    };
+
+    it('should return error when commit hash is missing', async () => {
+      const result = await gitTool.executeGitOperation(appPath, {
+        operation: 'restore'
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.operation).toBe('restore');
+      expect(result.error).toContain('Commit hash is required');
+    });
+
+    it('should return error when switchBranch to main fails', async () => {
+      const mockGitUtils = await getMockedGitUtils();
+      mockGitUtils.switchBranch.mockResolvedValueOnce({
+        success: false,
+        stdout: '',
+        stderr: 'cannot switch branches'
+      });
+
+      const result = await gitTool.executeGitOperation(appPath, {
+        operation: 'restore',
+        options: { hash: commitHash }
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.operation).toBe('restore');
+      expect(result.error).toContain('Failed to checkout main branch');
+      expect(mockGitUtils.restoreFromCommit).not.toHaveBeenCalled();
+    });
+
+    it('should return error when restoreFromCommit fails without mutating worktree', async () => {
+      const mockGitUtils = await getMockedGitUtils();
+      mockGitUtils.restoreFromCommit.mockResolvedValueOnce({
+        success: false,
+        stdout: '',
+        stderr: 'pathspec did not match any file'
+      });
+
+      const result = await gitTool.executeGitOperation(appPath, {
+        operation: 'restore',
+        options: { hash: commitHash }
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.operation).toBe('restore');
+      expect(result.error).toContain('pathspec did not match');
+      // No restore → no commit attempt, no rescue reset needed.
+      expect(mockGitUtils.commit).not.toHaveBeenCalled();
+      expect(mockGitUtils.reset).not.toHaveBeenCalled();
+    });
+
+    it('should hard-reset and surface error when commit fails after a successful restore', async () => {
+      const mockGitUtils = await getMockedGitUtils();
+      mockDirtyWorktree(mockGitUtils);
+      mockGitUtils.commit.mockResolvedValueOnce({
+        success: false,
+        stdout: '',
+        stderr: 'pre-commit hook rejected the changes'
+      });
+
+      const result = await gitTool.executeGitOperation(appPath, {
+        operation: 'restore',
+        options: { hash: commitHash }
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.operation).toBe('restore');
+      expect(result.error).toContain('pre-commit hook rejected');
+      // Critical: worktree must be unwound so the staged restore does not leak
+      // into the next agent commit.
+      expect(mockGitUtils.reset).toHaveBeenCalledWith(appPath, { mode: 'hard' });
+    });
+
+    it('should hard-reset and propagate error when commit throws', async () => {
+      const mockGitUtils = await getMockedGitUtils();
+      mockDirtyWorktree(mockGitUtils);
+      mockGitUtils.commit.mockRejectedValueOnce(new Error('unexpected crash'));
+
+      const result = await gitTool.executeGitOperation(appPath, {
+        operation: 'restore',
+        options: { hash: commitHash }
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.operation).toBe('restore');
+      expect(result.error).toContain('unexpected crash');
+      expect(mockGitUtils.reset).toHaveBeenCalledWith(appPath, { mode: 'hard' });
+    });
+
+    it('should return success with combined output on happy path', async () => {
+      const mockGitUtils = await getMockedGitUtils();
+      mockDirtyWorktree(mockGitUtils);
+      mockGitUtils.restoreFromCommit.mockResolvedValueOnce({
+        success: true,
+        stdout: 'restored 3 files',
+        stderr: ''
+      });
+      mockGitUtils.commit.mockResolvedValueOnce({
+        success: true,
+        stdout: '[main f00dbee] Restore: Changes from commit ABCDEF1',
+        stderr: ''
+      });
+
+      const result = await gitTool.executeGitOperation(appPath, {
+        operation: 'restore',
+        options: { hash: commitHash }
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.operation).toBe('restore');
+      expect(result.output).toContain('Successfully restored files from commit abcdef1');
+      expect(result.output).toContain('restored 3 files');
+      expect(mockGitUtils.reset).not.toHaveBeenCalled();
     });
   });
 });

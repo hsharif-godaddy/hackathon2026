@@ -852,13 +852,13 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
     }
   }, [])
 
-  const stop = useCallback(() => {
-    transportRef.current?.stopGeneration().catch(err => {
+  const stop = useCallback(async (): Promise<void> => {
+    const ack = transportRef.current?.stopGeneration().catch(err => {
       const appId = useStreamingConversationStore.getState().currentAppId
       logger.warn('sse.stop.failed', {
         appId, error: err instanceof Error ? err.message : String(err),
       })
-    })
+    }) ?? Promise.resolve()
 
     // Server goes silent if the turn ended; finalize locally so Stop always works.
     const store = useStreamingConversationStore.getState()
@@ -866,6 +866,8 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
       flushStoreUpdateBufferImmediate()
       store.finalizeStream({ finishReason: 'user_stopped' })
     }
+
+    await ack
   }, [])
 
   const reconnect = useCallback(async (): Promise<void> => {

@@ -1,3 +1,5 @@
+import { isRestoreMetadata, type RestoreActionMetadata } from '@airo/shared/websocket'
+
 import { buildApiUrl } from '@/config/api'
 import { buildDynamicAgentUrl, buildDynamicApiUrl } from '@/config/dynamic-api'
 import { agentFetch } from '@/lib/agent-fetch'
@@ -51,6 +53,41 @@ export interface GitHistoryResponse {
   commits: GitCommit[]
   currentCommit: string | null
   hasMore: boolean
+}
+
+/**
+ * The persisted user-action notice row returned by `/git/restore`. Mirrors the
+ * shape `useStreamingConversationStore.addCompletedMessage` expects so the
+ * caller can drop it straight into the transcript without a re-fetch.
+ */
+export interface RestoreNotice {
+  id: string
+  role: 'user' | 'assistant'
+  content: string
+  createdAt: string
+  metadata: RestoreActionMetadata | null
+}
+
+function parseRestoreNotice(value: unknown): RestoreNotice | null {
+  if (!value || typeof value !== 'object') return null
+  const v = value as {
+    id?: unknown
+    sender?: unknown
+    role?: unknown
+    content?: unknown
+    createdAt?: unknown
+    metadata?: unknown
+  }
+  if (typeof v.id !== 'string' || typeof v.content !== 'string') return null
+  // Server uses `sender`; tolerate either field name to keep the contract loose.
+  const role = v.role === 'assistant' || v.sender === 'agent' ? 'assistant' : 'user'
+  const createdAt = typeof v.createdAt === 'string'
+    ? v.createdAt
+    : v.createdAt instanceof Date
+      ? v.createdAt.toISOString()
+      : new Date().toISOString()
+  const metadata = isRestoreMetadata(v.metadata) ? v.metadata : null
+  return { id: v.id, role, content: v.content, createdAt, metadata }
 }
 
 export interface AppConfig {
@@ -315,23 +352,80 @@ export class AppService {
   }
 
   /**
-   * Restore files from a specific commit
+   * Unified rewind: stashes any uncommitted changes (always), then optionally
+   * restores onto a target commit. The endpoint also persists a synthetic
+   * user-action notice so the next agent turn sees the rollback; the saved
+   * row is returned in `notice` so the caller can mirror it directly into
+   * the local transcript store without a follow-up fetch.
+   *
+   * Diff text is fetched lazily by `UserActionDiffRenderer` via
+   * `getUserActionDiff` when the user expands the card — it intentionally
+   * does not ride on this response.
+   *
+   * Pass `commitHash` to rewind onto an older commit. Omit it (or pass the
+   * current HEAD) to do a stash-only call — used by the chat undo button
+   * mid-stream / on a dirty tree where there is no older commit to target.
    */
-  async restoreCommit(appId: string, commitHash: string): Promise<{ success: boolean; message?: string }> {
+  async restoreCommit(appId: string, commitHash?: string): Promise<{
+    success: boolean
+    message?: string
+    hasChanges: boolean
+    stashHash: string | null
+    notice: RestoreNotice | null
+  }> {
     const apiUrl = await buildDynamicAgentUrl(`apps/${appId}/git/restore`, appId)
     const response = await agentFetch(apiUrl, {
       siteId: appId,
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ commitHash })
+      body: JSON.stringify(commitHash ? { commitHash } : {})
     })
 
     if (!response.ok) {
-      throw new Error(`Failed to restore files from commit: ${response.status}`)
+      throw new Error(`Failed to rewind working tree: ${response.status}`)
     }
 
-    return response.json()
+    const data = await response.json()
+    return {
+      success: Boolean(data?.success),
+      message: typeof data?.message === 'string' ? data.message : undefined,
+      hasChanges: Boolean(data?.hasChanges),
+      stashHash: typeof data?.stashHash === 'string' ? data.stashHash : null,
+      notice: parseRestoreNotice(data?.notice),
+    }
   }
+
+  /**
+   * Fetch the combined diff for a user-action notice. Pass whichever hashes
+   * are present on the notice metadata (`commitHash`, `stashHash`, or both)
+   * and the agents service returns a single concatenated unified diff —
+   * stash content first (uncommitted-work side), then the commit's intrinsic
+   * `commitHash^..commitHash` diff. Used by `UserActionDiffRenderer` to
+   * render rolled-back changes inline in the transcript without bloating
+   * the persisted message.
+   */
+  async getUserActionDiff(
+    appId: string,
+    args: { commitHash?: string; stashHash?: string }
+  ): Promise<{ diff: string | null; diffTruncated: boolean }> {
+    const params = new URLSearchParams()
+    if (args.commitHash) params.set('commitHash', args.commitHash)
+    if (args.stashHash) params.set('stashHash', args.stashHash)
+
+    const apiUrl = await buildDynamicApiUrl(`git/diff?${params.toString()}`, appId)
+    const response = await agentFetch(apiUrl, { siteId: appId })
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch user-action diff: ${response.status}`)
+    }
+
+    const data = await response.json()
+    return {
+      diff: typeof data?.diff === 'string' ? data.diff : null,
+      diffTruncated: Boolean(data?.diffTruncated),
+    }
+  }
+
 
   /**
    * Edit the latest commit message on the main branch

@@ -24,9 +24,17 @@ interface StreamingIntegratedResponseProps {
   startTime?: Date
   streamingState?: 'idle' | 'streaming' | 'completing' | 'retrying' | 'error'
   showThinking?: boolean
+  /** When provided, the response footer renders an undo button next to copy. */
+  onUndo?: () => void
+  /** When provided, the response footer renders a restore button next to copy. */
+  onRestore?: () => void
 }
 
-export default function StreamingIntegratedResponse({ message, isActiveStream = false, isLastAssistantMessage = false, startTime, streamingState, showThinking = false }: StreamingIntegratedResponseProps) {
+export default function StreamingIntegratedResponse({
+  message, isActiveStream = false, isLastAssistantMessage = false, startTime, streamingState, showThinking = false,
+  onUndo,
+  onRestore,
+}: StreamingIntegratedResponseProps) {
   const t = useTranslations();
   const areChatPlansEnabled = useSwitchboard('airo-builder-chat-plans');
   const { tokenAuthType } = useAuthContext()
@@ -308,12 +316,14 @@ export default function StreamingIntegratedResponse({ message, isActiveStream = 
         />
       )}
 
-      {/* Response metadata - timing and copy */}
+      {/* Response metadata - timing, copy, and undo/restore */}
       {isComplete && startTime && (
         <ResponseMetadata
           duration={message.timestamp.getTime() - startTime.getTime()}
           content={getFullResponseText()}
           usedFreeGrants={message.usedFreeGrants}
+          onUndo={onUndo}
+          onRestore={onRestore}
         />
       )}
     </div>

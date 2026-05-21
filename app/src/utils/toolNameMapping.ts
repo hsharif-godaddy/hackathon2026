@@ -73,6 +73,8 @@ export function getToolDisplayName(toolName: string): string {
       return 'Social Post Create'
     case 'websiteScraper':
       return 'Website Details'
+    case 'restore':
+      return 'User Restore Commit'
     default: {
       // Skill-namespaced tools use `skill__tool` — collapse the `__` separator
       // into a single space so we don't render redundant double-spaces.

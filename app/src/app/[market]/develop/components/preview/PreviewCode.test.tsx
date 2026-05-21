@@ -87,6 +87,7 @@ vi.mock('@/stores/useServerPollingStore', () => ({
 
 const mockCodeSyncState = {
   changeVersion: 0,
+  restoreVersion: 0,
   clearFileChange: vi.fn(),
   addConflict: vi.fn(),
   resolveConflict: vi.fn(),

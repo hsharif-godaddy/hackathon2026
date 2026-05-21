@@ -149,6 +149,41 @@ describe('GitUtils', () => {
     });
   });
 
+  describe('restoreFromCommit', () => {
+    it('should invoke git restore with --source, --staged, --worktree and the current dir', async () => {
+      mockDevSupervisor.exec.mockResolvedValueOnce({
+        success: true,
+        exit_code: 0,
+        stdout: '',
+        stderr: ''
+      });
+
+      const result = await gitUtils.restoreFromCommit('/app', 'abcdef1');
+
+      expect(result.success).toBe(true);
+      const callArgs = mockDevSupervisor.exec.mock.calls[0][0];
+      expect(callArgs.command).toContain('restore');
+      expect(callArgs.command).toContain('--source=abcdef1');
+      expect(callArgs.command).toContain('--staged');
+      expect(callArgs.command).toContain('--worktree');
+      expect(callArgs.command).toContain("'.'");
+    });
+
+    it('should surface git failure when the commit does not exist', async () => {
+      mockDevSupervisor.exec.mockResolvedValueOnce({
+        success: false,
+        exit_code: 128,
+        stdout: '',
+        stderr: "fatal: bad revision 'deadbeef'"
+      });
+
+      const result = await gitUtils.restoreFromCommit('/app', 'deadbeef');
+
+      expect(result.success).toBe(false);
+      expect(result.stderr).toContain('bad revision');
+    });
+  });
+
   describe('getTreeHash', () => {
     it('should resolve tree hash for a ref', async () => {
       mockDevSupervisor.exec.mockResolvedValueOnce({

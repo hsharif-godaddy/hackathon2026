@@ -2,10 +2,12 @@
 
 import clsx from 'clsx'
 import { AnimatePresence, motion } from 'framer-motion'
+import { Undo2 } from 'lucide-react'
 import { useRef, useState } from 'react'
 import CheckIcon from '@ux/icon/checkmark'
 import ClipboardIcon from '@ux/icon/copy'
 import OkIcon from '@ux/icon/ok'
+import RevertIcon from '@ux/icon/revert'
 
 import { useTranslations } from '@/hooks/useTranslations'
 import { logger } from '@/lib/request-context'
@@ -14,26 +16,34 @@ interface ResponseMetadataProps {
   duration: number
   content: string
   usedFreeGrants?: boolean
+  /**
+   * When provided, an undo button is rendered next to the copy button. Used
+   * on the most recent completed assistant turn — the click stashes any
+   * uncommitted work or rolls back to the prior turn's commit. `onUndo`
+   * takes precedence over `onRestore`: callers pass at most one.
+   */
+  onUndo?: () => void
+  /**
+   * When provided, a restore button is rendered next to the copy button.
+   * Used on older assistant turns (anything not the most recent). Invoked
+   * with no arguments — callers bind the target commit hash.
+   */
+  onRestore?: () => void
 }
 
 /**
- * Display response metadata including completion time and copy functionality
- *
- * Shows the time taken to complete a response and provides a copy button
- * to copy the response content to clipboard.
+ * Display response metadata: completion time and a hover-revealed copy button.
  *
  * @param duration - Time taken to complete the response in milliseconds
  * @param content - The response content to copy to clipboard
- *
- * @example
- * ```tsx
- * <ResponseMetadata
- *   duration={2500}
- *   content="Response text to copy"
- * />
- * ```
  */
-export default function ResponseMetadata({ duration, content, usedFreeGrants }: ResponseMetadataProps) {
+export default function ResponseMetadata({
+  duration,
+  content,
+  usedFreeGrants,
+  onUndo,
+  onRestore,
+}: ResponseMetadataProps) {
   const t = useTranslations()
   const [copiedToClipboard, setCopiedToClipboard] = useState(false)
   const [isHovered, setIsHovered] = useState(false)
@@ -42,7 +52,6 @@ export default function ResponseMetadata({ duration, content, usedFreeGrants }: 
   const completedText = usedFreeGrants
     ? t('builder_chat_completed_free')
     : t('builder_chat_completed')
-
 
   /**
    * Format duration in milliseconds to human-readable string
@@ -99,16 +108,16 @@ export default function ResponseMetadata({ duration, content, usedFreeGrants }: 
   }
 
   return (
-    <button
+    <div
+      data-testid="response-metadata"
       className={clsx(
-        'group flex items-center justify-between mt-1.5 text-xs cursor-pointer w-full',
+        'group flex items-center justify-between mt-1.5 text-xs w-full',
         usedFreeGrants ? 'text-intents-ux-feedbackHighContrastSuccess-feedbackColor' : 'text-foreground/50'
       )}
-      onClick={handleCopyResponse}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={handleMouseLeave}
-      title={t('builder_chat_copy_clipboard')}
     >
+      {/* Left side: ok icon + completed text + animated duration */}
       <div className="flex gap-1 items-center">
         <OkIcon className="w-2 h-2" />
         <div className={clsx(
@@ -131,29 +140,60 @@ export default function ResponseMetadata({ duration, content, usedFreeGrants }: 
           </AnimatePresence>
         </div>
       </div>
-      <AnimatePresence>
-        {isHovered && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.15 }}
-          >
-            {copiedToClipboard ? (
-              <motion.div
-                initial={{ scale: 0.5 }}
-                animate={{ scale: [0.5, 1.2, 1] }}
-                transition={{ duration: 0.3, ease: 'easeOut' }}
+
+      <div className="flex shrink-0 gap-1 items-center text-foreground">
+        <AnimatePresence>
+          {/* Restore + copy: visible on hover */}
+          {isHovered && (
+            <motion.div
+              key="actions"
+              className="flex gap-1 items-center"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.15 }}
+            >
+              <button
+                type="button"
+                onClick={handleCopyResponse}
+                title={t('builder_chat_copy_clipboard')}
+                className="cursor-pointer text-muted-foreground hover:text-foreground underline-offset-2 hover:underline"
               >
-                <CheckIcon className="w-2 h-2" />
-              </motion.div>
-            ) : (
-              <ClipboardIcon className="w-2 h-2" />
-            )}
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </button>
+                {copiedToClipboard ? (
+                  <motion.div
+                    initial={{ scale: 0.5 }}
+                    animate={{ scale: [0.5, 1.2, 1] }}
+                    transition={{ duration: 0.3, ease: 'easeOut' }}
+                  >
+                    <CheckIcon className="w-2 h-2" />
+                  </motion.div>
+                ) : (
+                  <ClipboardIcon className="w-2 h-2" />
+                )}
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
+        {onUndo ? (
+          <button
+            type="button"
+            onClick={onUndo}
+            title={t('builder_chat_undo', undefined, 'Undo')}
+            className="cursor-pointer text-muted-foreground hover:text-foreground"
+          >
+            <Undo2 className="w-2 h-2" />
+          </button>
+        ) : onRestore ? (
+          <button
+            type="button"
+            onClick={onRestore}
+            title={t('builder_chat_restore', undefined, 'Restore')}
+            className="cursor-pointer text-muted-foreground hover:text-foreground"
+          >
+            <RevertIcon className="w-2 h-2" />
+          </button>
+        ) : null}
+      </div>
+    </div>
   )
 }
-

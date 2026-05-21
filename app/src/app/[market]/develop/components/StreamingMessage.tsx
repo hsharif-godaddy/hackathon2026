@@ -4,6 +4,7 @@ import clsx from 'clsx'
 import { Check, ClipboardCopy, Expand, Headset, Paperclip } from 'lucide-react'
 import type { ComponentType } from 'react'
 import { useEffect, useRef, useState } from 'react'
+import { isRestoreMetadata } from '@airo/shared/websocket'
 import Button from '@ux/button'
 import Modal from '@ux/modal'
 
@@ -25,6 +26,24 @@ interface StreamingMessageProps {
   isLastAssistantMessage?: boolean
   startTime?: Date
   showThinking?: boolean
+  /**
+   * The commit hash at the point of message send.
+   */
+  commitHash?: string
+  /**
+   * Undo handler invoked from the assistant response footer on the most
+   * recent completed turn. The parent only sets this when undo is the
+   * applicable action; absence falls back to onRestore (or no button).
+   * Takes precedence over onRestore — the response footer renders one or
+   * the other.
+   */
+  onUndo?: () => void
+  /**
+   * Restore handler invoked from the assistant response footer when its
+   * commit is older than HEAD. The parent only sets this when restore is
+   * applicable; absence suppresses the button.
+   */
+  onRestore?: (commitHash: string) => void
 }
 
 // Helper function to determine if message should be rendered
@@ -52,11 +71,21 @@ function isValidationMessage(message: ChatMessage | StreamingMessageType): boole
   return message.metadata?.source === 'post_stream_validator' && message.metadata?.displayAs === 'validation'
 }
 
+/**
+ * Synthetic notice injected when the user performs a restore
+ * from the UI. Rendered inline as a tool-call-style card so the transcript
+ * visibly shows that the working tree has been tampered with outside
+ * the agent's control.
+ */
+function isRestoreMessage(message: ChatMessage | StreamingMessageType): boolean {
+  return isRestoreMetadata(message.metadata)
+}
+
 // Helper function to get message styling classes (matching Message.tsx)
 function getMessageClasses(message: ChatMessage | StreamingMessageType, isSupport: boolean): string {
   const baseClasses = 'rounded-lg'
 
-  if (isValidationMessage(message)) {
+  if (isValidationMessage(message) || isRestoreMessage(message)) {
     return clsx(baseClasses, 'max-w-full p-0')
   }
 
@@ -205,9 +234,11 @@ interface RenderMessageContentOptions {
   startTime?: Date
   streamingState?: 'idle' | 'streaming' | 'completing' | 'retrying' | 'error'
   showThinking?: boolean
+  onUndo?: () => void
+  onRestore?: () => void
 }
 
-function renderMessageContent({ message, isActiveStream, isLastAssistantMessage, startTime, streamingState, showThinking }: RenderMessageContentOptions) {
+function renderMessageContent({ message, isActiveStream, isLastAssistantMessage, startTime, streamingState, showThinking, onUndo, onRestore }: RenderMessageContentOptions) {
   if (isValidationMessage(message)) {
     const validationStatus = parseValidationStatus(message.metadata?.validationStatus)
     const ValidateCodeToolRenderer = getToolRenderer('validateCode') as ComponentType<DefaultToolRendererProps>
@@ -229,8 +260,38 @@ function renderMessageContent({ message, isActiveStream, isLastAssistantMessage,
     )
   }
 
+  if (isRestoreMetadata(message.metadata)) {
+    const { commitHash, stashHash, restoredCommitHash } = message.metadata
+
+    const toolName = 'restore'
+    const UserActionRenderer = getToolRenderer(toolName) as ComponentType<DefaultToolRendererProps>
+
+    return (
+      <UserActionRenderer
+        toolName={toolName}
+        toolStatus="completed"
+        result={{
+          commitHash,
+          stashHash: stashHash ?? null,
+          restoredCommitHash: restoredCommitHash ?? null,
+          detail: message.content,
+        }}
+        size="regular"
+      />
+    )
+  }
+
   if (message.role === 'assistant') {
-    return <StreamingIntegratedResponse message={message} isActiveStream={isActiveStream} isLastAssistantMessage={isLastAssistantMessage} startTime={startTime} streamingState={streamingState} showThinking={showThinking} />
+    return <StreamingIntegratedResponse
+      message={message}
+      isActiveStream={isActiveStream}
+      isLastAssistantMessage={isLastAssistantMessage}
+      startTime={startTime}
+      streamingState={streamingState}
+      showThinking={showThinking}
+      onUndo={onUndo}
+      onRestore={onRestore}
+    />
   }
 
   if (message.role === 'user') {
@@ -244,30 +305,41 @@ function renderMessageContent({ message, isActiveStream, isLastAssistantMessage,
   )
 }
 
-export default function StreamingMessage({ message, isActiveStream = false, isLastAssistantMessage = false, startTime, showThinking = false }: StreamingMessageProps) {
+export default function StreamingMessage({
+  message, isActiveStream = false, isLastAssistantMessage = false, startTime, showThinking = false,
+  commitHash, onUndo, onRestore
+}: StreamingMessageProps) {
   const streamingState = useStreamingState()
   const showSupportIndicator = useSwitchboard('airo-builder-support-chat-ui')
   const isSupport = showSupportIndicator === true && message.origin === 'support'
   const isValidation = isValidationMessage(message)
+  const isUserAction = isRestoreMessage(message)
+  const isCardStyle = isValidation || isUserAction
 
   // Don't render messages that shouldn't be displayed
   if (!shouldRenderMessage(message)) {
     return null
   }
 
+  // Bind the message's commitHash to onRestore so that if the renderer
+  // wants to provide a restore option, it can easily do so.
+  const assistantRestore = commitHash && onRestore
+    ? () => onRestore(commitHash)
+    : undefined
+
   return (
     <div className={clsx('flex w-full', {
-      'justify-end': message.role === 'user' && !isValidation,
-      'justify-start': message.role !== 'user' || isValidation
+      'justify-end': message.role === 'user' && !isCardStyle,
+      'justify-start': message.role !== 'user' || isCardStyle
     })}>
-      <div className={clsx({
-        'order-2 flex flex-col items-end': message.role === 'user' && !isValidation,
-        'order-1 w-full': message.role !== 'user' || isValidation
+      <div className={clsx('group/message', {
+        'order-2 flex flex-col items-end': message.role === 'user' && !isCardStyle,
+        'order-1 w-full': message.role !== 'user' || isCardStyle
       })}>
         <div className={getMessageClasses(message, isSupport)}>
-          {renderMessageContent({ message, isActiveStream, isLastAssistantMessage, startTime, streamingState, showThinking })}
+          {renderMessageContent({ message, isActiveStream, isLastAssistantMessage, startTime, streamingState, showThinking, onUndo, onRestore: assistantRestore })}
         </div>
-        {isSupport && message.role === 'user' && !isValidation && <SupportBadge />}
+        {isSupport && message.role === 'user' && !isCardStyle && <SupportBadge />}
       </div>
     </div>
   )

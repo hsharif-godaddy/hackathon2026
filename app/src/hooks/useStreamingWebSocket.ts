@@ -427,10 +427,15 @@ export function useStreamingWebSocket({ enabled = true }: { enabled?: boolean } 
   )
 
   /**
-   * Stop generation - abort the current agent turn
+   * Stop generation - abort the current agent turn.
+   *
+   * Returns a Promise that resolves once the server has acked the abort —
+   * callers that need to act against a quiescent agent (e.g. chat Undo
+   * rolling back the tree) should await it. Fire-and-forget Stop-button
+   * callers can ignore the return value.
    */
-  const stopGeneration = useCallback(() => {
-    controllerRef.current?.stopGeneration()
+  const stopGeneration = useCallback(async (): Promise<void> => {
+    const ack = controllerRef.current?.stopGeneration() ?? Promise.resolve()
 
     // Server goes silent if the turn ended; finalize locally so Stop always works.
     const store = useStreamingConversationStore.getState()
@@ -439,6 +444,8 @@ export function useStreamingWebSocket({ enabled = true }: { enabled?: boolean } 
       flushStoreUpdateBufferImmediate()
       store.finalizeStream({ finishReason: 'user_stopped' })
     }
+
+    await ack
   }, [])
 
   /**

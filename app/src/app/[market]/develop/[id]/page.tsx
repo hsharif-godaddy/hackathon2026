@@ -1532,7 +1532,7 @@ function DevelopPageContent() {
     typeof document !== 'undefined' && document.documentElement.dir === 'rtl'
 
   return (
-    <WebSocketProvider sendMessage={ws.actions.send} loadHistory={ws.actions.loadHistory}>
+    <WebSocketProvider sendMessage={ws.actions.send} loadHistory={ws.actions.loadHistory} stopGeneration={ws.actions.stop}>
       <div
         className={cn("absolute inset-0 flex flex-col overflow-hidden bg-develop-bg", {
           "ios-fixed-container": isMobile

@@ -18,6 +18,7 @@ import DomainToolRenderer from './DomainToolRenderer'
 import EndConversationToolRenderer from './EndConversationToolRenderer'
 import FileEditToolRenderer from './FileEditToolRenderer'
 import FontThemeToolRenderer from './FontThemeToolRenderer'
+import GitRestoreDiffRenderer from './GitRestoreDiffRenderer.tsx'
 import GoogleReviewsToolRenderer from './GoogleReviewsToolRenderer'
 import GrepSearchToolRenderer from './GrepSearchToolRenderer'
 import HandoffToolRenderer from './HandoffToolRenderer'
@@ -89,6 +90,7 @@ export const toolRendererRegistry = {
   mediaSearch: MediaSearchToolRenderer,
   todoList: TodoListToolRenderer,
   validateCode: ValidateCodeToolRenderer,
+  restore: GitRestoreDiffRenderer,
   suggestedResponse: SuggestedResponseToolRenderer,
   oauthConnect: OAuthToolRenderer,
   qrCode: QRCodeToolRenderer,
@@ -157,6 +159,7 @@ export {
   EndConversationToolRenderer,
   FileEditToolRenderer,
   FontThemeToolRenderer,
+  GitRestoreDiffRenderer,
   GoogleReviewsToolRenderer,
   GrepSearchToolRenderer,
   HandoffToolRenderer,

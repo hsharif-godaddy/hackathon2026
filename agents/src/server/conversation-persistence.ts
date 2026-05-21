@@ -69,6 +69,35 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
   }
 
   /**
+   * Resolve the current HEAD commit for an app, used to stamp user messages
+   * with a deterministic rollback target before the agent processes them.
+   *
+   * Returns null when:
+   *   - no appId is on the context (PaaS-style headless flows where the app
+   *     row may not exist yet),
+   *   - the app row can't be located,
+   *   - or git itself is unreachable (uninitialized repo, dev-supervisor down).
+   *
+   * Failure is non-fatal at every layer: persistence proceeds without the
+   * field, and the frontend falls back to the previous walk-forward heuristic.
+   */
+  private async resolveCurrentCommitHash(appId: string | undefined): Promise<string | null> {
+    if (!appId) return null
+    try {
+      const app = this.appRepository.findById(appId)
+      if (!app?.path) return null
+      const devSupervisor = DevSupervisorClientFactory.createForApp(appId)
+      const gitUtils = new GitUtils(devSupervisor || undefined)
+      return await gitUtils.getCurrentCommit(app.path)
+    } catch (error) {
+      log.forApp(appId).warn('conversation.user_message.pre_commit_hash_unresolved', {
+        error: error instanceof Error ? error.message : String(error),
+      })
+      return null
+    }
+  }
+
+  /**
    * Track token usage in APM for monitoring and analytics using custom transactions
    *
    * Creates a dedicated APM transaction with token metrics and accurate total cost.
@@ -260,6 +289,14 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
         ? context.messageMetadata
         : undefined
 
+    // Capture HEAD before the agent processes this turn so the synthetic
+    // user-action notice for an undo of this prompt has an unambiguous
+    // rollback target. Walking forward from a prompt to the next assistant
+    // message's commitHash works for the happy path, but breaks down when
+    // the agent's turn errors before committing, when an undo created a
+    // synthetic restore commit between turns, etc.
+    const commitHash = await this.resolveCurrentCommitHash(context.appId)
+
     const savedMessage = await this.messageStore.addMessage(conversationId, 'user', message, {
       metadata: {
         ...messageMetadata,
@@ -267,7 +304,8 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
         agentName: context.agentName,
         appId: context.appId,
         userId: context.userId,
-        sessionId: context.sessionId
+        sessionId: context.sessionId,
+        ...(commitHash && { commitHash })
       },
       origin,
       customerId: customerIdFromContext(context as { metadata?: Record<string, unknown> }),
@@ -310,13 +348,15 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
     // Inherit origin from the triggering user message so agent responses share the same visibility
     const activeConversation = this.activeConversations.get(context.socketId)
     const origin = activeConversation?.origin || this.getOriginFromContext(context)
+    const commitHash = await this.resolveCurrentCommitHash(context.appId)
 
     const message = await this.messageStore.addMessage(conversationId, 'agent', '', {
       metadata: {
         socketId: context.socketId,
         agentName: context.agentName,
         appId: context.appId,
-        inProgress: true
+        inProgress: true,
+        ...(commitHash && { commitHash })
       },
       origin,
       customerId: customerIdFromContext(context as { metadata?: Record<string, unknown> }),
@@ -465,13 +505,19 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
 
     const origin = this.getOriginFromContext(context)
 
+    // Same pre-send HEAD capture as continueConversation (see comment there).
+    // Stored on the user message so the undo button can roll back to a
+    // deterministic target rather than guessing from the agent's commits.
+    const commitHash = await this.resolveCurrentCommitHash(context.appId)
+
     await this.messageStore.addMessage(conversationId, 'user', message, {
       metadata: {
         socketId: context.socketId,
         agentName: context.agentName,
         appId: context.appId,
         userId: context.userId,
-        sessionId: context.sessionId
+        sessionId: context.sessionId,
+        ...(commitHash && { commitHash })
       },
       origin,
       customerId: customerIdFromContext(context as { metadata?: Record<string, unknown> }),
@@ -642,11 +688,16 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
 
     // Get usedFreeGrants from context (set by beforeMessageComplete callback)
     const usedFreeGrants = (context as { usedFreeGrants?: boolean }).usedFreeGrants ?? false
+    // Get the commit hash from the context, but if it's not provided, resolve it to ensure we always have the commit for context.
+    const commitHash = (context as { commitHash?: string }).commitHash ?? await this.resolveCurrentCommitHash(context.appId) ?? null
 
     const traceIds = getCurrentTraceIds()
 
+    let persistedAgentMessageId: string | null = null
+
     if (activeConversation?.agentMessageId) {
-      await this.messageStore.updateMessage(activeConversation.agentMessageId, {
+      persistedAgentMessageId = activeConversation.agentMessageId
+      await this.messageStore.updateMessage(persistedAgentMessageId, {
         content: accumulatedContent,
         segments,
         toolCalls,
@@ -656,7 +707,8 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
           streamingEvents: streamingEvents.length,
           inProgress: false,
           usedFreeGrants,
-          ...traceIds
+          ...traceIds,
+          ...(commitHash && { commitHash })
         }
       })
       contextLogger.info('conversation.agent_response.updated', {
@@ -664,7 +716,7 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
       })
     } else {
       const fallbackOrigin = activeConversation?.origin || this.getOriginFromContext(context)
-      await this.messageStore.addMessage(conversationId, 'agent', accumulatedContent, {
+      const saved = await this.messageStore.addMessage(conversationId, 'agent', accumulatedContent, {
         segments,
         toolCalls,
         metadata: {
@@ -672,12 +724,14 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
           finalResult: result,
           streamingEvents: streamingEvents.length,
           usedFreeGrants,
-          ...traceIds
+          ...traceIds,
+          ...(commitHash && { commitHash })
         },
         origin: fallbackOrigin,
         customerId: customerIdFromContext(context as { metadata?: Record<string, unknown> }),
         agentId: context.agentName,
       })
+      persistedAgentMessageId = saved.id
       contextLogger.info('conversation.agent_response.saved', {})
     }
 
@@ -800,6 +854,30 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
       (context as any).commitHash = null;
     }
 
+    const contextCommitHash = (context as { commitHash?: string | null }).commitHash
+    const hashAfterEndCommit = typeof contextCommitHash === 'string' ? contextCommitHash : null
+
+    if (
+      persistedAgentMessageId &&
+      hashAfterEndCommit &&
+      hashAfterEndCommit !== commitHash
+    ) {
+      try {
+        await this.messageStore.updateMessageMetadata(persistedAgentMessageId, {
+          commitHash: hashAfterEndCommit,
+        })
+        contextLogger.debug('conversation.agent_response.commit_hash_metadata_patched', {
+          messageId: persistedAgentMessageId,
+          commitHash: hashAfterEndCommit.substring(0, 7),
+        })
+      } catch (error) {
+        contextLogger.error('conversation.agent_response.commit_hash_update_failed', {
+          messageId: persistedAgentMessageId,
+          error: error instanceof Error ? error.message : String(error)
+        })
+      }
+    }
+
     this.activeConversations.delete(context.socketId)
   }
 
@@ -875,14 +953,14 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
     if (activeConversation?.agentMessageId) {
       try {
         const message = await this.messageStore.getMessageById(activeConversation.agentMessageId);
-        
+
         if (message?.metadata?.inProgress) {
           logger.info('websocket.disconnection.clearing_inprogress', {
             conversationId: activeConversation.conversationId,
             messageId: activeConversation.agentMessageId,
             socketId
           });
-          
+
           await this.messageStore.updateMessageMetadata(activeConversation.agentMessageId, {
             inProgress: false
           });

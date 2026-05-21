@@ -168,4 +168,22 @@ describe('normalizeConversationMessages', () => {
     expect(normalizeConversationMessages(undefined)).toEqual([])
     expect(normalizeConversationMessages(null as unknown as any[])).toEqual([])
   })
+
+  it('should extract commitHash from message metadata during normalization', () => {
+    const rawMessages = [{
+      id: 'msg-1', sender: 'agent', content: 'Done', createdAt: Date.now(),
+      metadata: { agentId: 'develop', commitHash: 'abc123def456' },
+    }]
+    const normalized = normalizeConversationMessages(rawMessages)
+    expect(normalized[0].commitHash).toBe('abc123def456')
+  })
+
+  it('should handle messages without commitHash in metadata', () => {
+    const rawMessages = [{
+      id: 'msg-2', sender: 'agent', content: 'No commit', createdAt: Date.now(),
+      metadata: { agentId: 'develop' },
+    }]
+    const normalized = normalizeConversationMessages(rawMessages)
+    expect(normalized[0].commitHash).toBeUndefined()
+  })
 })

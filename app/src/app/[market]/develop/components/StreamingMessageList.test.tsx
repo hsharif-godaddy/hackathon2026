@@ -9,13 +9,61 @@ import { act, fireEvent, screen } from '@testing-library/react';
 import { renderWithProviders } from '@/tests/test-utils';
 import StreamingMessageList from './StreamingMessageList';
 
+vi.mock('next/navigation', () => ({
+  usePathname: () => '/develop/mock',
+}));
+
+const {
+  mockSelectCommit,
+  mockSetSelectedCommitHash,
+  mockSetActiveChatTab,
+  mockNavigatePreviewToRoute,
+  mockIsHistoryDisabled,
+} = vi.hoisted(() => ({
+  mockSelectCommit: vi.fn().mockResolvedValue({ previewRoute: null }),
+  mockSetSelectedCommitHash: vi.fn(),
+  mockSetActiveChatTab: vi.fn(),
+  mockNavigatePreviewToRoute: vi.fn(),
+  // Boxed so individual tests can flip the value mid-render without losing
+  // the reference the hook mock closes over.
+  mockIsHistoryDisabled: { value: false },
+}));
+
+vi.mock('@/stores/useGitStore', () => ({
+  useGitStore: (
+    selector: (s: {
+      selectCommit: typeof mockSelectCommit
+      setSelectedCommitHash: typeof mockSetSelectedCommitHash
+    }) => unknown,
+  ) =>
+    selector({
+      selectCommit: mockSelectCommit,
+      setSelectedCommitHash: mockSetSelectedCommitHash,
+    }),
+}));
+
+vi.mock('@/hooks/useIsHistoryDisabled', () => ({
+  useIsHistoryDisabled: () => ({ isDisabled: mockIsHistoryDisabled.value, isPublishing: false }),
+}));
+
 vi.mock('./StreamingMessage', () => ({
-  default: ({ message, startTime }: any) => (
+  default: ({ message, startTime, commitHash, onUndo, onRestore }: any) => (
     <div
       data-testid={`message-${message.id}`}
       data-start-time={startTime ? 'present' : 'absent'}
+      data-commit-hash={commitHash ?? ''}
+      data-has-on-undo={String(Boolean(onUndo))}
+      data-has-on-restore={String(Boolean(onRestore))}
     >
       {message.role}: {message.content}
+      {onRestore && (
+        <button
+          data-testid={`restore-${message.id}`}
+          onClick={() => onRestore(commitHash)}
+        >
+          restore
+        </button>
+      )}
     </div>
   ),
 }));
@@ -31,7 +79,12 @@ vi.mock('@/contexts/WebSocketContext', () => ({
   useWebSocketContext: () => ({
     sendMessage: vi.fn(),
     loadHistory: mockLoadHistory,
+    stopGeneration: vi.fn(),
   }),
+}));
+
+vi.mock('@/hooks/useChatTabs', () => ({
+  useChatTabs: () => ({ setActiveChatTab: mockSetActiveChatTab }),
 }));
 
 vi.mock('@/hooks/useSound', () => ({
@@ -42,8 +95,31 @@ vi.mock('@/hooks/useTranslations', () => ({
   useTranslations: () => (key: string) => key,
 }));
 
+const { mockUndoAction } = vi.hoisted(() => ({
+  mockUndoAction: {
+    isLocked: false,
+    isPending: false,
+    error: null as string | null,
+    clearError: vi.fn(),
+    triggerUndo: vi.fn(),
+  },
+}));
+
+vi.mock('@/hooks/useUndoAction', () => ({
+  useUndoAction: () => mockUndoAction,
+}));
+
 vi.mock('@/lib/logging', () => ({
   shipAnalyticsLog: vi.fn(),
+}));
+
+vi.mock('@/lib/request-context', () => ({
+  logger: {
+    info: vi.fn(),
+    error: vi.fn(),
+    warn: vi.fn(),
+    debug: vi.fn(),
+  },
 }));
 
 const mockStreamingStore = {
@@ -69,6 +145,12 @@ const mockStreamingStore = {
 
 const mockDevelopPageStore = {
   loadingPhase: 'ready',
+  activeChatTab: 'chat',
+  activeSettingsSection: 'domain',
+  chatTabsInitializedForPathname: '/develop/mock',
+  setActiveChatTab: vi.fn(),
+  setActiveSettingsSection: vi.fn(),
+  markChatTabsInitialized: vi.fn(),
 };
 
 // Mock the appIdFromParams to simulate URL param matching
@@ -76,6 +158,8 @@ let mockAppIdFromParams = 'test-app-123';
 let mockWebSocketConnected = true;
 
 vi.mock('./utils', () => ({
+  navigatePreviewAfterCheckout: vi.fn(),
+  navigatePreviewToRoute: mockNavigatePreviewToRoute,
   useAppIdFromParams: () => mockAppIdFromParams,
 }));
 
@@ -119,6 +203,15 @@ describe('StreamingMessageList', function packageTests() {
     mockStreamingStore.setHistoryLoadingMore.mockImplementation((v: boolean) => { mockStreamingStore.historyLoadingMore = v });
     mockStreamingStore.setHistoryLoadingComplete.mockImplementation((v: boolean) => { mockStreamingStore.historyLoadingComplete = v });
     mockLoadHistory.mockReturnValue(true);
+    mockSelectCommit.mockResolvedValue({ previewRoute: null });
+    mockSetSelectedCommitHash.mockReset();
+    mockIsHistoryDisabled.value = false;
+    mockStreamingStore.isActivelyStreaming = false;
+    mockUndoAction.isLocked = false;
+    mockUndoAction.isPending = false;
+    mockUndoAction.error = null;
+    mockUndoAction.triggerUndo.mockReset();
+    mockUndoAction.clearError.mockReset();
   });
 
   describe('empty state', function emptyState() {
@@ -863,6 +956,288 @@ describe('StreamingMessageList', function packageTests() {
       expect(screen.queryByText('Loading older messages...')).not.toBeInTheDocument();
       expect(screen.queryByText('builder_messages_pagination_failed')).not.toBeInTheDocument();
       expect(screen.getByTestId('message-msg-1')).toBeInTheDocument();
+    });
+  });
+
+  describe('per-prompt action wiring', () => {
+    const userMsg = (id: string, content = 'hi') => ({
+      id,
+      role: 'user' as const,
+      content,
+      timestamp: new Date(),
+    });
+    const assistantMsg = (id: string, commitHash?: string) => ({
+      id,
+      role: 'assistant' as const,
+      content: 'response',
+      timestamp: new Date(),
+      ...(commitHash ? { commitHash } : {}),
+    });
+
+    it('wires onUndo on the most recent completed assistant turn and onRestore on the older ones', () => {
+      // The latest completed assistant turn gets an undo button (via
+      // useUndoAction). Older committed turns keep the non-destructive
+      // restore preview button. The two are mutually exclusive on a single
+      // message — undo wins.
+      const messages = [
+        userMsg('u1'),
+        assistantMsg('a1', 'older-commit'),
+        userMsg('u2'),
+        assistantMsg('a2', 'middle-commit'),
+        userMsg('u3'),
+        assistantMsg('a3', 'latest-commit'),
+      ];
+
+      renderWithProviders(<StreamingMessageList allMessages={messages} />);
+
+      expect(screen.getByTestId('message-a1')).toHaveAttribute('data-commit-hash', 'older-commit');
+      expect(screen.getByTestId('message-a1')).toHaveAttribute('data-has-on-undo', 'false');
+      expect(screen.getByTestId('message-a1')).toHaveAttribute('data-has-on-restore', 'true');
+
+      expect(screen.getByTestId('message-a2')).toHaveAttribute('data-commit-hash', 'middle-commit');
+      expect(screen.getByTestId('message-a2')).toHaveAttribute('data-has-on-undo', 'false');
+      expect(screen.getByTestId('message-a2')).toHaveAttribute('data-has-on-restore', 'true');
+
+      // Latest completed turn gets undo, NOT restore.
+      expect(screen.getByTestId('message-a3')).toHaveAttribute('data-commit-hash', 'latest-commit');
+      expect(screen.getByTestId('message-a3')).toHaveAttribute('data-has-on-undo', 'true');
+      expect(screen.getByTestId('message-a3')).toHaveAttribute('data-has-on-restore', 'false');
+
+      // User prompts never get either action — both moved to the response footer.
+      expect(screen.getByTestId('message-u1')).toHaveAttribute('data-has-on-undo', 'false');
+      expect(screen.getByTestId('message-u1')).toHaveAttribute('data-has-on-restore', 'false');
+      expect(screen.getByTestId('message-u3')).toHaveAttribute('data-has-on-undo', 'false');
+      expect(screen.getByTestId('message-u3')).toHaveAttribute('data-has-on-restore', 'false');
+    });
+
+    it('wires onUndo without a commit on the latest completed turn — undo can stash uncommitted work', () => {
+      const messages = [
+        userMsg('u1'),
+        assistantMsg('a1'), // no commitHash — turn errored before committing
+      ];
+
+      renderWithProviders(<StreamingMessageList allMessages={messages} />);
+
+      expect(screen.getByTestId('message-a1')).toHaveAttribute('data-commit-hash', '');
+      // Restore needs a commit hash; without one it's suppressed.
+      expect(screen.getByTestId('message-a1')).toHaveAttribute('data-has-on-restore', 'false');
+      // Undo still applies — it can stash uncommitted work even on a tree
+      // that never committed.
+      expect(screen.getByTestId('message-a1')).toHaveAttribute('data-has-on-undo', 'true');
+    });
+
+    it('does not wire either action on a streaming assistant turn', () => {
+      const messages = [
+        userMsg('u1'),
+        { ...assistantMsg('a1'), segments: [], toolCalls: [], isComplete: false }, // mid-stream
+      ];
+
+      renderWithProviders(<StreamingMessageList allMessages={messages} />);
+
+      // Streaming messages aren't "completed" — neither button shows in the footer.
+      expect(screen.getByTestId('message-a1')).toHaveAttribute('data-has-on-undo', 'false');
+      expect(screen.getByTestId('message-a1')).toHaveAttribute('data-has-on-restore', 'false');
+    });
+
+    it('falls back to onRestore on the latest committed turn when undo is locked', () => {
+      // useUndoAction returns isLocked=true when there is nothing meaningful
+      // to undo (e.g. clean tree + no rollback target, or the latest message
+      // is already a user-action notice). The latest completed turn should
+      // then surface the restore preview button instead.
+      mockUndoAction.isLocked = true;
+      const messages = [
+        userMsg('u1'),
+        assistantMsg('a1', 'a1-commit'),
+      ];
+
+      renderWithProviders(<StreamingMessageList allMessages={messages} />);
+
+      expect(screen.getByTestId('message-a1')).toHaveAttribute('data-has-on-undo', 'false');
+      expect(screen.getByTestId('message-a1')).toHaveAttribute('data-has-on-restore', 'true');
+    });
+
+    it('keeps onRestore on a committed assistant turn when a user-action notice trails it', () => {
+      // After an undo, a synthetic user-action notice tails the transcript
+      // and useUndoAction.isLocked flips to true. The latest completed
+      // assistant turn falls back to restore.
+      mockUndoAction.isLocked = true;
+      const userActionNotice = {
+        id: 'notice-1',
+        role: 'user' as const,
+        content: 'undid the last turn',
+        timestamp: new Date(),
+        metadata: { kind: 'restore' as const, commitHash: 'a1-commit' },
+      };
+      const messages = [
+        userMsg('u1'),
+        assistantMsg('a1', 'a1-commit'),
+        userActionNotice,
+      ];
+
+      renderWithProviders(<StreamingMessageList allMessages={messages} />);
+
+      expect(screen.getByTestId('message-a1')).toHaveAttribute('data-has-on-undo', 'false');
+      expect(screen.getByTestId('message-a1')).toHaveAttribute('data-has-on-restore', 'true');
+    });
+
+    it('wires onRestore on a "change nothing" assistant turn using the prior assistant commit', () => {
+      // A turn where the agent committed (a1, commit-a) followed by a turn
+      // where the agent made no changes (a2). When undo is locked on the
+      // latest turn (e.g. an editor edit committed on top, or generally
+      // nothing meaningful to rewind), the change-nothing message should
+      // still expose Restore so the user can preview the working tree at
+      // the end of that turn — which is the same as commit-a.
+      mockUndoAction.isLocked = true;
+      const messages = [
+        userMsg('u1'),
+        assistantMsg('a1', 'commit-a'),
+        userMsg('u2'),
+        assistantMsg('a2'), // agent made no changes — no commitHash of its own
+      ];
+
+      renderWithProviders(<StreamingMessageList allMessages={messages} />);
+
+      // a1 still uses its own commit.
+      expect(screen.getByTestId('message-a1')).toHaveAttribute('data-commit-hash', 'commit-a');
+      expect(screen.getByTestId('message-a1')).toHaveAttribute('data-has-on-restore', 'true');
+
+      // a2 falls back to a1's commit so the user can preview the pre-edit
+      // state from the change-nothing turn.
+      expect(screen.getByTestId('message-a2')).toHaveAttribute('data-commit-hash', 'commit-a');
+      expect(screen.getByTestId('message-a2')).toHaveAttribute('data-has-on-restore', 'true');
+      expect(screen.getByTestId('message-a2')).toHaveAttribute('data-has-on-undo', 'false');
+    });
+  });
+
+  describe('handleRestore — deferring the checkout while history is locked', () => {
+    const userMsg = (id: string) => ({
+      id, role: 'user' as const, content: 'hi', timestamp: new Date(),
+    });
+    const assistantMsg = (id: string, commitHash: string) => ({
+      id, role: 'assistant' as const, content: 'response', timestamp: new Date(), commitHash,
+    });
+
+    beforeEach(() => {
+      // The chat restore button lives on the non-latest assistant turns —
+      // the latest gets undo. Either pattern works (older turn while undo
+      // is unlocked, or any turn when undo is locked). We pick the latter
+      // so a single assistant message exposes the restore button, keeping
+      // the test setup minimal.
+      mockUndoAction.isLocked = true;
+    });
+
+    it('runs the checkout immediately when the history tab is unlocked', async () => {
+      // Baseline: with isHistoryDisabled=false (idle agent, no publish, etc.)
+      // the click path matches the pre-deferral behavior — checkout fires
+      // synchronously and the tab/preview nav happens alongside it.
+      mockIsHistoryDisabled.value = false;
+      const messages = [userMsg('u1'), assistantMsg('a1', 'older-commit')];
+
+      renderWithProviders(<StreamingMessageList allMessages={messages} />);
+
+      await act(async () => {
+        fireEvent.click(screen.getByTestId('restore-a1'));
+      });
+
+      expect(mockSelectCommit).toHaveBeenCalledTimes(1);
+      expect(mockSelectCommit).toHaveBeenCalledWith('test-app-123', 'older-commit');
+      expect(mockSetSelectedCommitHash).toHaveBeenCalledWith('test-app-123', 'older-commit');
+      expect(mockSetActiveChatTab).toHaveBeenCalledWith('history');
+      expect(mockNavigatePreviewToRoute).toHaveBeenCalledWith('/');
+    });
+
+    it('defers the checkout while the history tab is locked, then fires it when unlocked', async () => {
+      // The click should still navigate to history and visually mark the
+      // commit selected (so the user sees feedback), but selectCommit must
+      // not run — that's the bypass we're closing. As soon as the lock
+      // clears (e.g. agent stream completes), the queued checkout fires.
+      mockIsHistoryDisabled.value = true;
+      const messages = [userMsg('u1'), assistantMsg('a1', 'older-commit')];
+
+      const { rerender } = renderWithProviders(<StreamingMessageList allMessages={messages} />);
+
+      await act(async () => {
+        fireEvent.click(screen.getByTestId('restore-a1'));
+      });
+
+      // Visual nav happens immediately so the user gets feedback.
+      expect(mockSetSelectedCommitHash).toHaveBeenCalledWith('test-app-123', 'older-commit');
+      expect(mockSetActiveChatTab).toHaveBeenCalledWith('history');
+      expect(mockNavigatePreviewToRoute).toHaveBeenCalledWith('/');
+      // But the actual checkout — the part that mutates HEAD — does NOT.
+      expect(mockSelectCommit).not.toHaveBeenCalled();
+
+      // Lock releases (agent finished). The deferred checkout fires from
+      // the effect that watches isHistoryDisabled.
+      mockIsHistoryDisabled.value = false;
+      await act(async () => {
+        rerender(<StreamingMessageList allMessages={messages} />);
+      });
+
+      expect(mockSelectCommit).toHaveBeenCalledTimes(1);
+      expect(mockSelectCommit).toHaveBeenCalledWith('test-app-123', 'older-commit');
+    });
+
+    it('only the most recent click survives — later restore clicks override an earlier deferred hash', async () => {
+      // Defensive: while locked, if the user changes their mind and clicks
+      // a different commit, the second click should win. We don't queue a
+      // FIFO of checkouts — the latest selection is the one that fires.
+      mockIsHistoryDisabled.value = true;
+      const messages = [
+        userMsg('u1'),
+        assistantMsg('a1', 'first-commit'),
+        userMsg('u2'),
+        assistantMsg('a2', 'second-commit'),
+      ];
+
+      const { rerender } = renderWithProviders(<StreamingMessageList allMessages={messages} />);
+
+      await act(async () => {
+        fireEvent.click(screen.getByTestId('restore-a1'));
+        fireEvent.click(screen.getByTestId('restore-a2'));
+      });
+
+      expect(mockSelectCommit).not.toHaveBeenCalled();
+
+      mockIsHistoryDisabled.value = false;
+      await act(async () => {
+        rerender(<StreamingMessageList allMessages={messages} />);
+      });
+
+      expect(mockSelectCommit).toHaveBeenCalledTimes(1);
+      expect(mockSelectCommit).toHaveBeenCalledWith('test-app-123', 'second-commit');
+    });
+
+    it('does not re-fire a deferred checkout once the queue has been drained', async () => {
+      // After the deferred checkout fires, selectCommit toggles
+      // isSelectingCommit on (re-locking) and back off (unlocking). The
+      // effect that drains the queue re-runs each time isHistoryDisabled
+      // flips — the cleared ref prevents a double-fire.
+      mockIsHistoryDisabled.value = true;
+      const messages = [userMsg('u1'), assistantMsg('a1', 'older-commit')];
+
+      const { rerender } = renderWithProviders(<StreamingMessageList allMessages={messages} />);
+
+      await act(async () => {
+        fireEvent.click(screen.getByTestId('restore-a1'));
+      });
+
+      mockIsHistoryDisabled.value = false;
+      await act(async () => {
+        rerender(<StreamingMessageList allMessages={messages} />);
+      });
+      expect(mockSelectCommit).toHaveBeenCalledTimes(1);
+
+      // Simulate the lock toggling on and off again (e.g. the user runs a
+      // new agent turn, then it completes). No additional checkout.
+      mockIsHistoryDisabled.value = true;
+      rerender(<StreamingMessageList allMessages={messages} />);
+      mockIsHistoryDisabled.value = false;
+      await act(async () => {
+        rerender(<StreamingMessageList allMessages={messages} />);
+      });
+
+      expect(mockSelectCommit).toHaveBeenCalledTimes(1);
     });
   });
 });

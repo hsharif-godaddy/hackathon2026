@@ -22,6 +22,12 @@ interface CodeSyncStore {
   // Version counter that increments on any change - used for React reactivity
   changeVersion: number
 
+  // Bumps once per completed restore/undo. Subscribers (PreviewCode) react by
+  // re-evaluating their open files against the rewound working tree — the
+  // file content on disk has changed without going through the agent's
+  // tool-call path that normally populates `fileChanges`.
+  restoreVersion: number
+
   // Actions
   markFileStreaming: (path: string, operation: FileOperationType) => void
   markFileComplete: (path: string, operation: FileOperationType) => void
@@ -29,6 +35,7 @@ interface CodeSyncStore {
   resolveConflict: (path: string) => void
   clearFileChange: (path: string) => void
   clearAllChanges: () => void
+  signalRestore: () => void
   getFileChange: (path: string) => FileChange | undefined
   isFileStreaming: (path: string) => boolean
   hasConflict: (path: string) => boolean
@@ -39,6 +46,7 @@ export const useCodeSyncStore = create<CodeSyncStore>((set, get) => ({
   conflictingFiles: new Set(),
   streamingFiles: new Set(),
   changeVersion: 0,
+  restoreVersion: 0,
 
   markFileStreaming: (path: string, operation: FileOperationType) => {
     set((state) => {
@@ -114,6 +122,10 @@ export const useCodeSyncStore = create<CodeSyncStore>((set, get) => ({
       streamingFiles: new Set(),
       changeVersion: state.changeVersion + 1
     }))
+  },
+
+  signalRestore: () => {
+    set((state) => ({ restoreVersion: state.restoreVersion + 1 }))
   },
 
   getFileChange: (path: string) => {

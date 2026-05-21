@@ -10,9 +10,17 @@ const mocks = vi.hoisted(() => {
     hasRemote: vi.fn(),
     amendCommitMessage: vi.fn(),
     getCurrentCommit: vi.fn(),
+    hasUncommittedChanges: vi.fn(),
+    stashUncommittedChanges: vi.fn(),
+    getCommitDiff: vi.fn(),
+    getStashDiff: vi.fn(),
+    getBranchTip: vi.fn(),
     forApp: vi.fn(),
     logError: vi.fn(),
     createForApp: vi.fn(),
+    executeGitOperation: vi.fn(),
+    getLatestForApp: vi.fn(),
+    addMessage: vi.fn(),
   };
 });
 
@@ -22,6 +30,18 @@ vi.mock('../../../database/repositories/AppRepository.js', () => ({
   })),
 }));
 
+vi.mock('../../../database/repositories/ConversationRepository.js', () => ({
+  ConversationRepository: vi.fn().mockImplementation(() => ({
+    getLatestForApp: mocks.getLatestForApp,
+  })),
+}));
+
+vi.mock('../../../memory/adapters/index.js', () => ({
+  getMessageStore: () => ({
+    addMessage: mocks.addMessage,
+  }),
+}));
+
 vi.mock('../../../utils/git.js', () => ({
   GitUtils: vi.fn().mockImplementation(() => ({
     getCurrentBranch: mocks.getCurrentBranch,
@@ -29,6 +49,17 @@ vi.mock('../../../utils/git.js', () => ({
     hasRemote: mocks.hasRemote,
     amendCommitMessage: mocks.amendCommitMessage,
     getCurrentCommit: mocks.getCurrentCommit,
+    hasUncommittedChanges: mocks.hasUncommittedChanges,
+    stashUncommittedChanges: mocks.stashUncommittedChanges,
+    getCommitDiff: mocks.getCommitDiff,
+    getStashDiff: mocks.getStashDiff,
+    getBranchTip: mocks.getBranchTip,
+  })),
+}));
+
+vi.mock('../../../tools/git-tool.js', () => ({
+  GitTool: vi.fn().mockImplementation(() => ({
+    executeGitOperation: mocks.executeGitOperation,
   })),
 }));
 
@@ -73,12 +104,40 @@ describe('git routes', function gitRouteTests() {
     mocks.hasRemote.mockResolvedValue(false);
     mocks.amendCommitMessage.mockResolvedValue({ success: true, stderr: '' });
     mocks.getCurrentCommit.mockResolvedValue('1234567890abcdef1234567890abcdef12345678');
+    mocks.hasUncommittedChanges.mockResolvedValue(false);
+    mocks.stashUncommittedChanges.mockResolvedValue({
+      hasChanges: false,
+      stashHash: null,
+      diff: null,
+      diffTruncated: false,
+    });
+    mocks.getCommitDiff.mockResolvedValue({
+      diff: null,
+      diffTruncated: false,
+    });
+    mocks.getStashDiff.mockResolvedValue({
+      diff: null,
+      diffTruncated: false,
+    });
+    mocks.getBranchTip.mockResolvedValue(null);
     mocks.forApp.mockReturnValue({
       info: vi.fn(),
       warn: vi.fn(),
       error: vi.fn(),
     });
     mocks.createForApp.mockReturnValue(null);
+    mocks.executeGitOperation.mockResolvedValue({ success: true });
+    // Conversation persistence happens after the rewind action and is best-effort
+    // (errors are swallowed). Default to "no conversation" so the route doesn't
+    // touch the message store unless a test opts in.
+    mocks.getLatestForApp.mockResolvedValue(null);
+    mocks.addMessage.mockResolvedValue({
+      id: 'msg-1',
+      content: '',
+      sender: 'user',
+      createdAt: new Date().toISOString(),
+      metadata: {},
+    });
   });
 
   describe('PATCH /apps/:id/git/commit-message', function commitMessageTests() {
@@ -218,6 +277,374 @@ describe('git routes', function gitRouteTests() {
 
       expect(response.status).toBe(500);
       expect(response.body.error).toBe('Amend succeeded but failed to retrieve new commit hash');
+    });
+  });
+
+  describe('GET /apps/:id/git/status', function statusTests() {
+    it('returns hasUncommittedChanges=true when the working tree is dirty', async function dirtyTree() {
+      mocks.hasUncommittedChanges.mockResolvedValueOnce(true);
+
+      const response = await request(createTestApp())
+        .get('/apps/app-123/git/status');
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({ success: true, hasUncommittedChanges: true });
+      expect(mocks.hasUncommittedChanges).toHaveBeenCalledWith('/app');
+    });
+
+    it('returns hasUncommittedChanges=false when the working tree is clean', async function cleanTree() {
+      mocks.hasUncommittedChanges.mockResolvedValueOnce(false);
+
+      const response = await request(createTestApp())
+        .get('/apps/app-123/git/status');
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({ success: true, hasUncommittedChanges: false });
+    });
+
+    it('returns 404 when the app is not found', async function appNotFound() {
+      mocks.findById.mockReturnValueOnce(null);
+
+      const response = await request(createTestApp())
+        .get('/apps/app-123/git/status');
+
+      expect(response.status).toBe(404);
+      expect(response.body.error).toBe('App not found');
+      expect(mocks.hasUncommittedChanges).not.toHaveBeenCalled();
+    });
+
+    it('returns 500 when hasUncommittedChanges throws', async function statusError() {
+      mocks.hasUncommittedChanges.mockRejectedValueOnce(new Error('git unreachable'));
+
+      const response = await request(createTestApp())
+        .get('/apps/app-123/git/status');
+
+      expect(response.status).toBe(500);
+      expect(response.body.error).toBe('Failed to read git status');
+      expect(response.body.details).toBe('git unreachable');
+    });
+  });
+
+  describe('POST /apps/:id/git/restore', function restoreTests() {
+    it('stashes uncommitted work and runs the restore op when commitHash is provided', async function stashThenRestore() {
+      mocks.stashUncommittedChanges.mockResolvedValueOnce({
+        hasChanges: true,
+        stashHash: 'stash-abc',
+      });
+
+      const response = await request(createTestApp())
+        .post('/apps/app-123/git/restore')
+        .send({ commitHash: 'abc1234' });
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(response.body.hasChanges).toBe(true);
+      expect(response.body.stashHash).toBe('stash-abc');
+      expect(mocks.stashUncommittedChanges).toHaveBeenCalledTimes(1);
+      expect(mocks.executeGitOperation).toHaveBeenCalledWith(
+        '/app',
+        expect.objectContaining({ operation: 'restore', options: { hash: 'abc1234' } }),
+      );
+    });
+
+    it('does a stash-only call when commitHash is omitted', async function stashOnly() {
+      mocks.stashUncommittedChanges.mockResolvedValueOnce({
+        hasChanges: true,
+        stashHash: 'stash-only-hash',
+      });
+
+      const response = await request(createTestApp())
+        .post('/apps/app-123/git/restore')
+        .send({});
+
+      expect(response.status).toBe(200);
+      expect(response.body.stashHash).toBe('stash-only-hash');
+      // Without a commitHash the route falls back to a `checkout main` so the
+      // user lands on a clean main head — but it never runs the `restore` op.
+      expect(mocks.executeGitOperation).not.toHaveBeenCalledWith(
+        '/app',
+        expect.objectContaining({ operation: 'restore' }),
+      );
+      expect(mocks.executeGitOperation).toHaveBeenCalledWith(
+        '/app',
+        expect.objectContaining({ operation: 'checkout', branch: 'main' }),
+      );
+    });
+
+    it('returns 400 when the restore operation itself fails — and surfaces stashHash so the client can recover stashed work', async function restoreFails() {
+      mocks.stashUncommittedChanges.mockResolvedValueOnce({
+        hasChanges: true,
+        stashHash: 'stash-after-fail',
+      });
+      mocks.executeGitOperation.mockImplementation(async (_path: unknown, opts: any) => {
+        if (opts?.operation === 'restore') return { success: false, error: 'restore-failed' };
+        return { success: true };
+      });
+
+      const response = await request(createTestApp())
+        .post('/apps/app-123/git/restore')
+        .send({ commitHash: 'abc1234' });
+
+      expect(response.status).toBe(400);
+      expect(response.body.error).toBe('Failed to restore files from commit');
+      // Stash already happened before the failed restore op — the user's
+      // working-tree changes are recoverable, so the hash must travel back.
+      expect(response.body.stashHash).toBe('stash-after-fail');
+    });
+
+    it('returns 400 when the stash-only fallback `checkout main` fails — never a misleading 200', async function checkoutMainFails() {
+      mocks.stashUncommittedChanges.mockResolvedValueOnce({
+        hasChanges: true,
+        stashHash: 'stash-pre-checkout',
+      });
+      mocks.executeGitOperation.mockImplementation(async (_path: unknown, opts: any) => {
+        if (opts?.operation === 'checkout') return { success: false, error: 'checkout-failed' };
+        return { success: true };
+      });
+
+      const response = await request(createTestApp())
+        .post('/apps/app-123/git/restore')
+        .send({});
+
+      expect(response.status).toBe(400);
+      expect(response.body.error).toBe('Failed to checkout main branch');
+      expect(response.body.stashHash).toBe('stash-pre-checkout');
+      // Critical: the synthetic user-action notice MUST NOT be persisted with
+      // a wrong-branch HEAD when the checkout fails — verify we bail out
+      // before the persistence step would have fired.
+      expect(mocks.addMessage).not.toHaveBeenCalled();
+    });
+
+    it('rejects an empty commitHash string', async function rejectsEmptyCommitHash() {
+      const response = await request(createTestApp())
+        .post('/apps/app-123/git/restore')
+        .send({ commitHash: '   ' });
+
+      expect(response.status).toBe(400);
+      expect(response.body.error).toMatch(/commitHash/);
+      expect(mocks.stashUncommittedChanges).not.toHaveBeenCalled();
+    });
+
+    it('returns 404 when the app is not found', async function appNotFound() {
+      mocks.findById.mockReturnValueOnce(null);
+
+      const response = await request(createTestApp())
+        .post('/apps/app-123/git/restore')
+        .send({ commitHash: 'abc1234' });
+
+      expect(response.status).toBe(404);
+      expect(response.body.error).toBe('App not found');
+      expect(mocks.stashUncommittedChanges).not.toHaveBeenCalled();
+    });
+
+    it('returns the persisted notice row when a conversation exists', async function returnsNotice() {
+      mocks.getLatestForApp.mockResolvedValueOnce({ id: 'conv-9' });
+      const persistedAt = new Date('2026-05-18T12:00:00Z');
+      // Mocked-out store mirrors the metadata shape the route asks it to
+      // persist — `RestoreActionMetadata` from `@airo/shared/websocket`
+      // (`kind: 'restore'` plus the three rollback hashes).
+      const persistedMetadata = {
+        kind: 'restore',
+        commitHash: 'abc1234',
+        stashHash: null,
+        restoredCommitHash: 'abc1234',
+      };
+      mocks.addMessage.mockResolvedValueOnce({
+        id: 'msg-42',
+        sender: 'user',
+        content: '[system] The user performed a rollback.',
+        createdAt: persistedAt,
+        metadata: persistedMetadata,
+      });
+
+      const response = await request(createTestApp())
+        .post('/apps/app-123/git/restore')
+        .send({ commitHash: 'abc1234' });
+
+      expect(response.status).toBe(200);
+      expect(response.body.notice).toEqual({
+        id: 'msg-42',
+        sender: 'user',
+        content: '[system] The user performed a rollback.',
+        createdAt: persistedAt.toISOString(),
+        metadata: persistedMetadata,
+      });
+
+      // Critical: the route must hand the message store the new
+      // `RestoreActionMetadata` shape, not the legacy `{ kind: 'user-action',
+      // action: 'restore' }` form. The UI's `isRestoreMetadata` guard
+      // discriminates on `kind === 'restore'` — mismatched persistence here
+      // would cause the synthetic notice to silently fall through to the
+      // default JSON-dumping renderer.
+      expect(mocks.addMessage).toHaveBeenCalledWith(
+        'conv-9',
+        'user',
+        expect.any(String),
+        expect.objectContaining({
+          messageType: 'status',
+          metadata: expect.objectContaining({
+            kind: 'restore',
+            // `commitHash` here is the post-operation HEAD; with no further
+            // git mocking it falls through to `getCurrentCommit` → null when
+            // the route did the restore op (the `didRestore` branch passes
+            // `targetCommit` directly), but for the per-prompt restore path
+            // the route forwards the requested target.
+            commitHash: 'abc1234',
+            restoredCommitHash: 'abc1234',
+          }),
+        })
+      );
+    });
+
+    it('returns notice: null when there is no active conversation', async function noNotice() {
+      // Default mock already returns null; assert the response shape so a
+      // future regression that drops the field is caught.
+      const response = await request(createTestApp())
+        .post('/apps/app-123/git/restore')
+        .send({ commitHash: 'abc1234' });
+
+      expect(response.status).toBe(200);
+      expect(response.body.notice).toBeNull();
+      expect(mocks.addMessage).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('GET /apps/:id/git/diff', function diffTests() {
+    it('combines stash diff and commit diff in that order when both are provided', async function stashThenCommit() {
+      mocks.getStashDiff.mockResolvedValueOnce({
+        diff: 'diff --git a/wip b/wip\n+wip line',
+        diffTruncated: false,
+      });
+      mocks.getCommitDiff.mockResolvedValueOnce({
+        diff: 'diff --git a/foo b/foo\n+committed line',
+        diffTruncated: false,
+      });
+
+      const response = await request(createTestApp())
+        .get('/apps/app-123/git/diff')
+        .query({ commitHash: 'abc1234', stashHash: 'fedcba9' });
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(response.body.diff).toBe(
+        'diff --git a/wip b/wip\n+wip line\n' +
+        'diff --git a/foo b/foo\n+committed line',
+      );
+      expect(response.body.diffTruncated).toBe(false);
+      expect(mocks.getStashDiff).toHaveBeenCalledWith('/app', 'fedcba9');
+      // Commit diff is computed against the commit's parent — the standard
+      // `git show <commit>` form expressed via getCommitDiff(parent..commit).
+      expect(mocks.getCommitDiff).toHaveBeenCalledWith('/app', 'abc1234^', 'abc1234');
+    });
+
+    it('returns just the stash diff when only stashHash is provided', async function stashOnly() {
+      mocks.getStashDiff.mockResolvedValueOnce({
+        diff: 'diff --git a/wip b/wip\n+wip',
+        diffTruncated: false,
+      });
+
+      const response = await request(createTestApp())
+        .get('/apps/app-123/git/diff')
+        .query({ stashHash: 'fedcba9' });
+
+      expect(response.status).toBe(200);
+      expect(response.body.diff).toBe('diff --git a/wip b/wip\n+wip');
+      expect(mocks.getCommitDiff).not.toHaveBeenCalled();
+    });
+
+    it('returns just the commit diff when only commitHash is provided', async function commitOnly() {
+      mocks.getCommitDiff.mockResolvedValueOnce({
+        diff: 'diff --git a/foo b/foo\n+committed line',
+        diffTruncated: false,
+      });
+
+      const response = await request(createTestApp())
+        .get('/apps/app-123/git/diff')
+        .query({ commitHash: 'abc1234' });
+
+      expect(response.status).toBe(200);
+      expect(response.body.diff).toBe('diff --git a/foo b/foo\n+committed line');
+      expect(mocks.getStashDiff).not.toHaveBeenCalled();
+    });
+
+    it('returns null diff when both helpers report no changes', async function noChanges() {
+      const response = await request(createTestApp())
+        .get('/apps/app-123/git/diff')
+        .query({ commitHash: 'abc1234', stashHash: 'fedcba9' });
+
+      expect(response.status).toBe(200);
+      expect(response.body.diff).toBeNull();
+      expect(response.body.diffTruncated).toBe(false);
+    });
+
+    it('propagates diffTruncated when either piece is truncated', async function propagatesTruncation() {
+      mocks.getStashDiff.mockResolvedValueOnce({
+        diff: 'big stash diff',
+        diffTruncated: true,
+      });
+      mocks.getCommitDiff.mockResolvedValueOnce({
+        diff: 'small commit diff',
+        diffTruncated: false,
+      });
+
+      const response = await request(createTestApp())
+        .get('/apps/app-123/git/diff')
+        .query({ commitHash: 'abc1234', stashHash: 'fedcba9' });
+
+      expect(response.status).toBe(200);
+      expect(response.body.diffTruncated).toBe(true);
+    });
+
+    it('returns 400 when neither commitHash nor stashHash is provided', async function noHash() {
+      const response = await request(createTestApp())
+        .get('/apps/app-123/git/diff');
+
+      expect(response.status).toBe(400);
+      expect(response.body.error).toMatch(/commitHash or stashHash/);
+      expect(mocks.getCommitDiff).not.toHaveBeenCalled();
+      expect(mocks.getStashDiff).not.toHaveBeenCalled();
+    });
+
+    it('returns 400 when commitHash is not hex', async function rejectsNonHex() {
+      const response = await request(createTestApp())
+        .get('/apps/app-123/git/diff')
+        .query({ commitHash: 'not-hex!' });
+
+      expect(response.status).toBe(400);
+      expect(response.body.error).toMatch(/Invalid hash/);
+    });
+
+    it('returns 400 when stashHash is too short', async function rejectsShortHash() {
+      const response = await request(createTestApp())
+        .get('/apps/app-123/git/diff')
+        .query({ stashHash: 'abc' });
+
+      expect(response.status).toBe(400);
+      expect(response.body.error).toMatch(/Invalid hash/);
+    });
+
+    it('returns 404 when the app is not found', async function appNotFound() {
+      mocks.findById.mockReturnValueOnce(null);
+
+      const response = await request(createTestApp())
+        .get('/apps/app-123/git/diff')
+        .query({ commitHash: 'abc1234' });
+
+      expect(response.status).toBe(404);
+      expect(response.body.error).toBe('App not found');
+      expect(mocks.getCommitDiff).not.toHaveBeenCalled();
+    });
+
+    it('returns 500 when the diff helper throws', async function helperThrows() {
+      mocks.getCommitDiff.mockRejectedValueOnce(new Error('git unreachable'));
+
+      const response = await request(createTestApp())
+        .get('/apps/app-123/git/diff')
+        .query({ commitHash: 'abc1234' });
+
+      expect(response.status).toBe(500);
+      expect(response.body.error).toBe('Failed to read diff');
+      expect(response.body.details).toBe('git unreachable');
     });
   });
 });

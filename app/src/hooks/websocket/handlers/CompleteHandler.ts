@@ -63,6 +63,7 @@ export class CompleteHandler implements MessageHandler {
       totalSteps: data.data?.step as number | undefined,
       finishReason: data.data?.finishReason as string | undefined,
       usedFreeGrants: data.data?.usedFreeGrants as boolean | undefined,
+      commitHash: commitHashFromComplete(data),
     })
 
     trackCompletion(!!data.data?.usage)

@@ -417,16 +417,27 @@ export class StreamingWebSocketController extends EventEmitter {
 
   /**
    * Request the server to stop the current generation.
-   * Triggers abort on the server's AbortController for the active stream.
+   *
+   * Resolves once the server acks `stop_generation` — by which point the
+   * server's AbortController has already fired (the handler aborts
+   * synchronously before acking). Callers that need to perform a follow-up
+   * operation against a quiescent agent (e.g. the chat Undo button rolling
+   * back the working tree) MUST await this promise; fire-and-forget callers
+   * can ignore the return value.
+   *
+   * Resolves immediately when the socket isn't connected (nothing to stop).
    */
-  stopGeneration(): void {
+  stopGeneration(): Promise<void> {
     const socket = this.supervisor.getSocket()
-    if (!socket?.connected) return
+    if (!socket?.connected) return Promise.resolve()
 
-    socket.emit('stop_generation', {}, (response: { success?: boolean; error?: string }) => {
-      if (response?.error) {
-        logger.warn('websocket.stop.failed', { error: response.error })
-      }
+    return new Promise<void>((resolve) => {
+      socket.emit('stop_generation', {}, (response: { success?: boolean; error?: string }) => {
+        if (response?.error) {
+          logger.warn('websocket.stop.failed', { error: response.error })
+        }
+        resolve()
+      })
     })
   }
 

@@ -422,6 +422,15 @@ export class GitTool {
           success: true,
           operation: 'commit',
           output: 'Nothing to commit, working tree clean',
+          status: {
+            branch: status.branch,
+            ahead: status.ahead,
+            behind: status.behind,
+            isClean: status.isClean,
+            stagedFiles: status.stagedFiles,
+            modifiedFiles: status.modifiedFiles,
+            untrackedFiles: status.untrackedFiles,
+          }
         };
       }
 
@@ -473,7 +482,7 @@ export class GitTool {
       const toolResult: GitToolResult = {
         success: result.success,
         operation: 'commit',
-        output: result.success ? `Committed: ${message}` : result.stderr,
+        output: result.success ? `Committed: ${message}` : result.stderr
       };
 
       if (!result.success) {
@@ -1352,23 +1361,10 @@ export class GitTool {
         };
       }
 
-      // Check if dev-supervisor is available
-      if (!this.devSupervisor?.isAvailable()) {
-        throw new Error(
-          'Git restore requires dev-supervisor to be available for command execution. ' +
-          'This typically means the system is not running in a containerized environment with dev-supervisor installed, ' +
-          'or the dev-supervisor socket is not accessible.'
-        );
-      }
-
-      // First, checkout main branch to ensure we're not on a detached HEAD
-      // Always use /app as the working directory since all deployments are containerized
-      const checkoutResult = await this.devSupervisor!.exec({
-        command: 'git checkout main',
-        working_dir: '/app',
-        timeout: 30,
-        capture_output: true
-      });
+      // Route through GitUtils so the index.lock recovery path in
+      // attemptGitRecovery fires when a concurrent end-of-session commit
+      // (onBeforeComplete git hook) still holds .git/index.lock.
+      const checkoutResult = await this.gitUtils.switchBranch(appPath, 'main');
 
       if (!checkoutResult.success) {
         return {
@@ -1378,17 +1374,7 @@ export class GitTool {
         };
       }
 
-      // Create git restore command with appropriate options
-      const args = ['git', 'restore', `--source=${commitHash}`, '--staged', '--worktree', '.'];
-
-      // Execute the git restore command
-      // Always use /app as the working directory since all deployments are containerized
-      const result = await this.devSupervisor!.exec({
-        command: buildShellCommand(args),
-        working_dir: '/app',
-        timeout: 30,
-        capture_output: true
-      });
+      const result = await this.gitUtils.restoreFromCommit(appPath, commitHash);
 
       if (!result.success) {
         return {
@@ -1398,19 +1384,36 @@ export class GitTool {
         };
       }
 
-      // Auto-commit changes if restore was successful
-      const commitMessage = `Restore: Changes from commit ${commitHash.substring(0, 7).toUpperCase()}`;
-      const commitResult = await this.handleCommit(appPath, {
-        operation: 'commit',
-        message: commitMessage
-      });
+      // The restore mutated the worktree and index. If the commit step fails or
+      // throws, those staged changes would be swept into the next agent commit
+      // under an unrelated message — hard-reset to unwind.
+      try {
+        const commitMessage = `Restore: Changes from commit ${commitHash.substring(0, 7).toUpperCase()}`;
+        const commitResult = await this.handleCommit(appPath, {
+          operation: 'commit',
+          message: commitMessage
+        });
 
-      // Return success with information about both operations
-      return {
-        success: true,
-        operation: 'restore',
-        output: `Successfully restored files from commit ${commitHash.substring(0, 7)} and created a new commit.\n\nRestore output: ${result.stdout || 'No output'}\n\nCommit: ${commitResult.output || 'Committed successfully'}`,
-      };
+        if (!commitResult.success) {
+          await this.gitUtils.reset(appPath, { mode: 'hard' });
+          return {
+            success: false,
+            operation: 'restore',
+            error: commitResult.error || 'Failed to commit restored files',
+            status: commitResult.status,
+          };
+        }
+
+        return {
+          success: true,
+          operation: 'restore',
+          output: `Successfully restored files from commit ${commitHash.substring(0, 7)} and created a new commit.\n\nRestore output: ${result.stdout || 'No output'}\n\nCommit: ${commitResult.output || 'Committed successfully'}`,
+          status: commitResult.status,
+        };
+      } catch (error) {
+        await this.gitUtils.reset(appPath, { mode: 'hard' }).catch(() => undefined);
+        throw error;
+      }
     } catch (error) {
       return {
         success: false,

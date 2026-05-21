@@ -8,13 +8,19 @@ import Spinner from '@ux/spinner'
 
 import ChatMessagesSkeleton from '@/app/[market]/develop/components/chat/ChatMessagesSkeleton'
 import StaticSkeleton from '@/app/[market]/develop/components/StaticSkeleton'
-import { useAppIdFromParams } from '@/app/[market]/develop/components/utils'
+import { ChatTab } from '@/app/[market]/develop/components/types'
+import { navigatePreviewToRoute, useAppIdFromParams } from '@/app/[market]/develop/components/utils'
 import { useWebSocketContext } from '@/contexts/WebSocketContext'
+import { useChatTabs } from '@/hooks/useChatTabs'
+import { useIsHistoryDisabled } from '@/hooks/useIsHistoryDisabled'
 import { useSound } from '@/hooks/useSound'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
+import { useUndoAction } from '@/hooks/useUndoAction'
 import { shipAnalyticsLog } from '@/lib/logging'
+import { logger } from '@/lib/request-context'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
+import { useGitStore } from '@/stores/useGitStore'
 import {
   type ChatMessage,
   type StreamingMessage as StreamingMessageType,
@@ -25,6 +31,7 @@ import {
   useStreamingConversationStore,
   useWebSocketState,
 } from '@/stores/useStreamingConversationStore'
+import { logClickEvent } from '@/utils/instrumentation'
 import StreamingMessage from './StreamingMessage'
 import ThinkingIndicator from './ThinkingIndicator'
 
@@ -77,6 +84,16 @@ export default function StreamingMessageList({
   const historyLoadingComplete = useHistoryLoadingComplete()
   const loadingPhase = useDevelopPageStore((state) => state.loadingPhase)
 
+  const { setActiveChatTab } = useChatTabs()
+  const selectCommitForPreview = useGitStore((s) => s.selectCommit)
+  const setSelectedCommitHash = useGitStore((s) => s.setSelectedCommitHash)
+  const { isDisabled: isHistoryDisabled } = useIsHistoryDisabled(appIdFromParams || '')
+  const undoAction = useUndoAction()
+  // Holds the commit hash the user clicked Restore on while the history tab
+  // was locked (e.g. agent streaming, publish in flight). The deferred
+  // checkout fires from the effect below as soon as the lock clears.
+  const pendingPreviewHashRef = useRef<string | null>(null)
+
   // Pagination state from store
   const historyHasMore = useStreamingConversationStore((s) => s.historyHasMore)
   const historyNextCursor = useStreamingConversationStore((s) => s.historyNextCursor)
@@ -110,6 +127,7 @@ export default function StreamingMessageList({
       prevAppIdRef.current = currentAppId
       hasLoggedFirstResponseRef.current = false
       hasUserInteractedRef.current = false
+      pendingPreviewHashRef.current = null
 
       // Clear any pending scroll timeouts
       if (scrollTimeoutRef.current) {
@@ -174,6 +192,76 @@ export default function StreamingMessageList({
     }
     return null
   }, [allMessages])
+
+  // For each assistant message, the commit hash that represents its
+  // post-turn working tree state — the message's own commitHash if it
+  // committed, otherwise the most recent prior assistant commit (i.e.,
+  // the working tree didn't change during this turn). Lets the Restore
+  // icon point at a meaningful pre-edit state on "agent made no changes"
+  // turns, which is what the user wants to preview/rewind to once a
+  // later commit (editor edit, asset upload, external commit) has landed
+  // on top.
+  const effectiveCommitByIndex = useMemo<(string | null)[]>(() => {
+    let lastSeen: string | null = null
+    return allMessages.map((m) => {
+      if (m.role !== 'assistant') return null
+      const own = 'commitHash' in m && m.commitHash ? m.commitHash : null
+      if (own) lastSeen = own
+      return lastSeen
+    })
+  }, [allMessages])
+
+  const runPreviewCheckout = useCallback(async (appId: string, commitHash: string) => {
+    try {
+      // Preview browse only — doesn't mutate main. The actual restore (and
+      // its user-action notice) fires when the user clicks "Restore this
+      // version" from the history tab; see VersionHistory.handleRestoreCommit.
+      await selectCommitForPreview(appId, commitHash)
+    } catch (error) {
+      logger.error('streaming-message-list.restore.checkout-failed', {
+        appId,
+        error: error instanceof Error ? error.message : String(error),
+      })
+    }
+  }, [selectCommitForPreview])
+
+  const handleRestore = useCallback(async (commitHash: string) => {
+    if (!appIdFromParams) return
+    logClickEvent('develop.chat.restore')()
+    // Always navigate to the history tab and visually mark the commit as
+    // selected. The actual checkout (which mutates HEAD) is gated on the
+    // same lock as the history tab itself: while the agent is working,
+    // publish is in flight, etc. — defer until the lock clears so a chat
+    // click can't bypass what the history panel correctly disables.
+    setSelectedCommitHash(appIdFromParams, commitHash)
+    setActiveChatTab(ChatTab.HISTORY)
+    navigatePreviewToRoute('/')
+
+    if (isHistoryDisabled) {
+      pendingPreviewHashRef.current = commitHash
+      logger.info('streaming-message-list.restore.deferred', {
+        appId: appIdFromParams,
+        commitHash: commitHash.substring(0, 7),
+      })
+      return
+    }
+
+    pendingPreviewHashRef.current = null
+    await runPreviewCheckout(appIdFromParams, commitHash)
+  }, [appIdFromParams, isHistoryDisabled, runPreviewCheckout, setActiveChatTab, setSelectedCommitHash])
+
+  // When the history-tab lock releases (e.g. the agent finishes streaming),
+  // fire any deferred preview checkout that was queued by handleRestore.
+  // The ref is cleared before the call so the inevitable feedback loop
+  // (selectCommit flips isSelectingCommit on, which re-locks, then off,
+  // which re-runs this effect) doesn't double-fire.
+  useEffect(() => {
+    if (isHistoryDisabled) return
+    const pendingHash = pendingPreviewHashRef.current
+    if (!pendingHash || !appIdFromParams) return
+    pendingPreviewHashRef.current = null
+    void runPreviewCheckout(appIdFromParams, pendingHash)
+  }, [isHistoryDisabled, appIdFromParams, runPreviewCheckout])
 
   // Handle scroll events to detect user scroll (throttled for performance)
   // Reads from refs and store.getState() to avoid dependency churn on every state change
@@ -693,15 +781,38 @@ export default function StreamingMessageList({
         }
 
         const isLastAssistantMessage = message.role === 'assistant' && message.id === lastAssistantMessageId
+        const isActiveStream = 'isComplete' in message && !message.isComplete
+        // Use the effective commit (own, or the most recent prior assistant
+        // commit when this turn made no changes) so Restore on a "no
+        // changes" turn previews the state at the end of that turn rather
+        // than disappearing once HEAD drifts past it.
+        const commitHash = effectiveCommitByIndex[index]
+        // Restore is offered on every assistant turn with an effective
+        // commit. The action is non-destructive (it browses the commit in
+        // the preview pane and routes the user to the history tab), so the
+        // button serves as a discovery hook that surfaces the history tab.
+        // ResponseMetadata renders it next to copy.
+        const canRestore = message.role === 'assistant' && !!commitHash
+        // Undo replaces restore on the most recent completed assistant turn
+        // when it follows a user prompt — that's the one with `startTime`
+        // populated. Falls back to restore (handled below) when undo is
+        // locked, e.g. the latest message is already a user-action notice
+        // or the rollback target is unknown. useUndoAction covers both
+        // branches: stash uncommitted changes, or rewind to the prior
+        // commit captured on the previous user prompt's metadata.
+        const isUndoTarget = isLastAssistantMessage && !isActiveStream && !!startTime && !undoAction.isLocked
 
         return (
           <StreamingMessage
             key={message.id}
             message={message}
-            isActiveStream={'isComplete' in message && !message.isComplete}
+            isActiveStream={isActiveStream}
             isLastAssistantMessage={isLastAssistantMessage}
             startTime={startTime}
             showThinking={isLastAssistantMessage && effectiveShouldShowThinking}
+            commitHash={commitHash}
+            onUndo={isUndoTarget ? undoAction.triggerUndo : undefined}
+            onRestore={canRestore && !isUndoTarget ? handleRestore : undefined}
           />
         )
       })}

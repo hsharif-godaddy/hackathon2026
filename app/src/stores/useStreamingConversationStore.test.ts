@@ -315,6 +315,45 @@ describe('useStreamingConversationStore', function packageTests() {
       expect(messages[1]).toMatchObject({ id: 'user-1', role: 'user' })
       expect(messages[2]).toMatchObject({ id: 'assistant-2', role: 'assistant' })
     });
+
+    it('should recover userStopped from finalResult.finishReason on reload', function recoverUserStopped() {
+      const messages = normalizeConversationMessages([
+        {
+          id: 'assistant-stopped',
+          sender: 'assistant',
+          content: 'Partial response before stop',
+          createdAt: '2026-01-01T00:00:00.000Z',
+          metadata: {
+            commitHash: 'abc123def4',
+            finalResult: { finishReason: 'user_stopped' },
+          },
+        },
+      ])
+
+      expect(messages).toHaveLength(1)
+      expect(messages[0]).toMatchObject({
+        id: 'assistant-stopped',
+        role: 'assistant',
+        userStopped: true,
+        commitHash: 'abc123def4',
+      })
+    });
+
+    it('should leave userStopped undefined when finishReason is not user_stopped', function noUserStopped() {
+      const messages = normalizeConversationMessages([
+        {
+          id: 'assistant-complete',
+          sender: 'assistant',
+          content: 'Fully completed',
+          createdAt: '2026-01-01T00:00:00.000Z',
+          metadata: {
+            finalResult: { finishReason: 'stop' },
+          },
+        },
+      ])
+
+      expect(messages[0].userStopped).toBeUndefined()
+    });
   });
 
   describe('app switching', function appSwitching() {
@@ -728,6 +767,82 @@ describe('useStreamingConversationStore', function packageTests() {
 
       const assistantMsg = useStreamingConversationStore.getState().messages.find(m => m.role === 'assistant');
       expect(assistantMsg?.connectionLost).toBeUndefined();
+    });
+
+    it('should patch a late-arriving commitHash onto the last assistant message when activeStream is null', function lateCommitPatch() {
+      const store = useStreamingConversationStore.getState();
+
+      act(() => {
+        store.setCurrentAppId('app-1');
+        store.startNewStream('Build a todo app');
+      });
+
+      // First finalize: simulates the local finalize fired from
+      // useStreamingWebSocket.stopGeneration() — server hasn't acked yet, so
+      // there's no commitHash.
+      act(() => {
+        useStreamingConversationStore.getState().finalizeStream({ finishReason: 'user_stopped' });
+      });
+
+      const beforePatch = useStreamingConversationStore.getState().messages.find(m => m.role === 'assistant');
+      expect(beforePatch?.userStopped).toBe(true);
+      expect(beforePatch?.commitHash).toBeUndefined();
+
+      // Second finalize: simulates the server's `complete` arriving moments
+      // later carrying the squash commitHash. activeStream is already null.
+      act(() => {
+        useStreamingConversationStore.getState().finalizeStream({ commitHash: 'sq1234abcd' });
+      });
+
+      const afterPatch = useStreamingConversationStore.getState().messages.find(m => m.role === 'assistant');
+      expect(afterPatch?.id).toBe(beforePatch?.id);
+      expect(afterPatch?.commitHash).toBe('sq1234abcd');
+      expect(afterPatch?.userStopped).toBe(true);
+      // Don't double-append a phantom message
+      expect(useStreamingConversationStore.getState().messages.filter(m => m.role === 'assistant')).toHaveLength(1);
+    });
+
+    it('should ignore a late finalize with no commitHash and no activeStream', function lateNoOp() {
+      const store = useStreamingConversationStore.getState();
+
+      act(() => {
+        store.setCurrentAppId('app-1');
+        store.startNewStream('Build a todo app');
+      });
+
+      act(() => {
+        useStreamingConversationStore.getState().finalizeStream({ finishReason: 'user_stopped' });
+      });
+
+      const before = useStreamingConversationStore.getState().messages;
+
+      act(() => {
+        useStreamingConversationStore.getState().finalizeStream({ finishReason: 'stop' });
+      });
+
+      const after = useStreamingConversationStore.getState().messages;
+      expect(after).toEqual(before);
+    });
+
+    it('should not overwrite an existing commitHash on the last assistant message', function preserveExistingCommit() {
+      const store = useStreamingConversationStore.getState();
+
+      act(() => {
+        store.setCurrentAppId('app-1');
+        store.startNewStream('Build a todo app');
+      });
+
+      act(() => {
+        useStreamingConversationStore.getState().finalizeStream({ commitHash: 'first1aaaa' });
+      });
+
+      // Stray late finalize from a stale connection — must not clobber.
+      act(() => {
+        useStreamingConversationStore.getState().finalizeStream({ commitHash: 'stale2bbbb' });
+      });
+
+      const assistantMsg = useStreamingConversationStore.getState().messages.find(m => m.role === 'assistant');
+      expect(assistantMsg?.commitHash).toBe('first1aaaa');
     });
 
     it('should preserve origin from activeStream when finalizing support message', function preserveOrigin() {

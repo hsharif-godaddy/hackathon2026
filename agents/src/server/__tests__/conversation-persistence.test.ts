@@ -424,6 +424,74 @@ describe('AgentsMessagePersistence', function packageTests() {
       expect(mockUpdateMessage).not.toHaveBeenCalled()
       expect(mockAddMessage).toHaveBeenCalledWith('conv-123', 'agent', 'hi', expect.any(Object))
     })
+
+    it('should include commitHash in metadata when present on context', async function includesCommitHash() {
+      seedActiveConversation('test-socket', 'agent-msg-id')
+      const contextWithHash = { ...makeContext(), commitHash: 'abc123def456' }
+      await persistence.completeConversation('conv-123', [chunk('hi')], {}, contextWithHash)
+
+      expect(mockUpdateMessage).toHaveBeenCalledWith('agent-msg-id', expect.objectContaining({
+        metadata: expect.objectContaining({ commitHash: 'abc123def456' }),
+      }))
+    })
+
+    it('should omit commitHash from metadata when not on context', async function omitsCommitHashWhenAbsent() {
+      seedActiveConversation('test-socket', 'agent-msg-id')
+      await persistence.completeConversation('conv-123', [chunk('hi')], {}, makeContext())
+
+      const [, updates] = mockUpdateMessage.mock.calls[0]
+      expect(updates.metadata).not.toHaveProperty('commitHash')
+    })
+
+    it('should patch commitHash on message when fallback commit runs after save', async function patchCommitAfterFallback() {
+      const { AgentsMessagePersistence } = await import('../conversation-persistence.js')
+      const spy = vi
+        .spyOn(AgentsMessagePersistence.prototype as any, 'checkAndCommitChanges')
+        .mockResolvedValue('aba7aba7aba7aba7aba7aba7aba7aba7aba7')
+
+      const p = new AgentsMessagePersistence()
+      ;(p as any).activeConversations.set('test-socket', {
+        conversationId: 'conv-123',
+        userMessageId: 'user-msg-id',
+        agentMessageId: 'agent-msg-id',
+        context: {
+          ...makeContext('test-socket'),
+          appId: 'app-1',
+        },
+        message: 'create about page',
+        origin: 'customer',
+      })
+
+      try {
+        await p.completeConversation(
+          'conv-123',
+          [chunk('hi')],
+          {},
+          { ...makeContext('test-socket'), appId: 'app-1' }
+        )
+
+        const [, updates] = mockUpdateMessage.mock.calls[0]
+        expect(updates.metadata).not.toHaveProperty('commitHash')
+
+        expect(mockUpdateMessageMetadata).toHaveBeenCalledWith('agent-msg-id', {
+          commitHash: 'aba7aba7aba7aba7aba7aba7aba7aba7aba7',
+        })
+      } finally {
+        spy.mockRestore()
+      }
+    })
+
+    it('should include commitHash in addMessage fallback metadata when present on context', async function includesCommitHashInFallback() {
+      // Do NOT seed activeConversations — no agentMessageId
+      const contextWithHash = { ...makeContext(), commitHash: 'abc123def456' }
+      await persistence.completeConversation('conv-123', [chunk('hi')], {}, contextWithHash)
+
+      expect(mockAddMessage).toHaveBeenCalledWith('conv-123', 'agent', 'hi',
+        expect.objectContaining({
+          metadata: expect.objectContaining({ commitHash: 'abc123def456' }),
+        })
+      )
+    })
   })
 
   describe('#handleDisconnection – cleanup', function disconnectionCleanupTests() {

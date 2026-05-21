@@ -1,112 +1,92 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 import { logger } from '@/lib/request-context';
-import { appService } from '@/services/AppService';
-import { useGitStore } from '@/stores/useGitStore';
+import { appService, type RestoreNotice } from '@/services/AppService';
+import { useCodeSyncStore } from '@/stores/useCodeSyncStore';
+import { useFileTreeStore } from '@/stores/useFileTreeStore';
 
 interface RestoreCommitVariables {
   appId: string;
-  commitHash: string;
+  /** Target commit. Omit (or pass undefined) to do a stash-only rewind — used
+   *  by the chat undo button mid-stream / on a dirty tree where there is no
+   *  older commit to target. */
+  commitHash?: string;
+}
+
+export interface RestoreCommitResult {
+  /** Whether any uncommitted changes were stashed by this call. */
+  hasChanges: boolean;
+  /** Stash commit hash when one was created (i.e., tree had uncommitted work). */
+  stashHash: string | null;
+  /** Persisted user-action notice produced by the rewind. Callers mirror
+   *  this row into `useStreamingConversationStore` so the transcript reflects
+   *  the rollback without a re-fetch. Null when persistence was skipped
+   *  (e.g. no active conversation) or failed silently. */
+  notice: RestoreNotice | null;
 }
 
 /**
- * React Query mutation hook for restoring a git commit
+ * React Query mutation for the unified `/git/restore` endpoint.
  *
- * Handles restoring files from a specific commit and automatically
- * invalidates the git history cache on success to reflect the new commit
- * that gets created from the restore operation.
+ * The endpoint always stashes uncommitted changes first, then optionally
+ * rewinds onto a target commit. This single hook backs both the per-prompt
+ * Restore button (with `commitHash`) and the chat Undo button (with or
+ * without — see `useUndoAction`).
  *
- * @returns Mutation object with mutate, isPending, isError, error properties
- *
- * @example
- * ```typescript
- * const restoreMutation = useRestoreCommitMutation();
- *
- * function handleRestore() {
- *   restoreMutation.mutate(
- *     { appId: 'app-123', commitHash: 'abc123' },
- *     {
- *       onSuccess: () => {
- *         console.log('Commit restored successfully');
- *       },
- *       onError: (error) => {
- *         console.error('Restore failed:', error);
- *       }
- *     }
- *   );
- * }
- * ```
+ * Invalidates git-history (a stash and/or restore commit may have landed)
+ * user-action notice is returned in `notice` so callers can mirror it into
+ * the local transcript store; this hook does not touch the conversation
+ * store itself.
  */
 export function useRestoreCommitMutation() {
   const queryClient = useQueryClient();
-  const selectCommit = useGitStore((state) => state.selectCommit);
 
-  return useMutation<void, Error, RestoreCommitVariables>({
-    mutationFn: async function restoreCommit({ appId, commitHash }: RestoreCommitVariables): Promise<void> {
-      if (!appId || !commitHash) {
-        throw new Error('appId and commitHash are required');
+  return useMutation<RestoreCommitResult, Error, RestoreCommitVariables>({
+    mutationFn: async function restoreCommit({ appId, commitHash }: RestoreCommitVariables): Promise<RestoreCommitResult> {
+      if (!appId) {
+        throw new Error('appId is required');
       }
 
       logger.info('restore-commit-mutation.start', {
-        message: 'Starting commit restore',
         appId,
-        commitHash,
+        commitHash: commitHash ? commitHash.substring(0, 7) : null,
       });
 
-      await appService.restoreCommit(appId, commitHash);
+      const response = await appService.restoreCommit(appId, commitHash);
 
       logger.info('restore-commit-mutation.success', {
-        message: 'Commit restored successfully',
         appId,
-        commitHash,
+        commitHash: commitHash ? commitHash.substring(0, 7) : null,
+        hasChanges: response.hasChanges,
+        stashHash: response.stashHash ? response.stashHash.substring(0, 7) : null,
+        noticeId: response.notice?.id ?? null,
       });
+
+      return {
+        hasChanges: response.hasChanges,
+        stashHash: response.stashHash,
+        notice: response.notice,
+      };
     },
     onSuccess: async (_, variables) => {
-      logger.info('restore-commit-mutation.invalidate-start', {
-        message: 'Invalidating and refetching git history after restore',
-        appId: variables.appId,
-      });
-
-      // Invalidate first - this triggers refetch in all active useGitHistoryQuery hooks
-      // and waits for them to complete
+      // Always invalidate both caches: a stash entry is a commit (history may
+      // have shifted), and the working tree is now clean (status changed).
       await queryClient.invalidateQueries({
         queryKey: ['git-history', variables.appId],
-        refetchType: 'active'
+        refetchType: 'active',
       });
 
-      // Now fetch the fresh data to get the new commit hash for selection
-      const gitHistory = await queryClient.fetchQuery({
-        queryKey: ['git-history', variables.appId],
-        queryFn: async () => {
-          const { commits, currentCommit } = await appService.getGitHistory(variables.appId);
-          return { commits: commits || [], currentCommit: currentCommit || null };
-        }
-      });
-
-      logger.info('restore-commit-mutation.refetch-complete', {
-        message: 'Git history refetched',
-        appId: variables.appId,
-        commitCount: gitHistory.commits.length,
-      });
-
-      // Now that all components have fresh data, select the new commit
-      if (gitHistory && gitHistory.commits.length > 0) {
-        await selectCommit(variables.appId, gitHistory.commits[0].hash);
-        logger.info('restore-commit-mutation.new-commit-selected', {
-          message: 'Selected newly restored commit',
-          appId: variables.appId,
-          commitHash: gitHistory.commits[0].hash.substring(0, 7),
-        });
-      }
-
-      logger.info('restore-commit-mutation.complete', {
-        message: 'Restore complete and new commit selected',
-        appId: variables.appId,
-      });
+      // Working tree was rewritten on disk without going through the agent's
+      // tool-call path, so neither the cached file tree nor any file already
+      // open in the editor reflects what's actually on disk. Force a tree
+      // re-fetch and bump the restore signal — PreviewCode subscribes to it
+      // and routes its open files through the standard conflict-banner path
+      // so the user can choose Reload or Keep my changes per file.
+      void useFileTreeStore.getState().loadFiles(variables.appId);
+      useCodeSyncStore.getState().signalRestore();
     },
     onError: (error, variables) => {
       logger.error('restore-commit-mutation.error', {
-        message: 'Failed to restore commit',
         appId: variables.appId,
         commitHash: variables.commitHash,
         error: error.message,
@@ -114,4 +94,3 @@ export function useRestoreCommitMutation() {
     },
   });
 }
-

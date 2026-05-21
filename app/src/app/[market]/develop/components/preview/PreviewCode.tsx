@@ -144,6 +144,7 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
   // Subscribe to file changes from CodeSyncStore
   // Use changeVersion to trigger updates without recreating arrays
   const changeVersion = useCodeSyncStore((state) => state.changeVersion)
+  const restoreVersion = useCodeSyncStore((state) => state.restoreVersion)
   const clearFileChange = useCodeSyncStore((state) => state.clearFileChange)
   const addConflict = useCodeSyncStore((state) => state.addConflict)
   const resolveConflict = useCodeSyncStore((state) => state.resolveConflict)
@@ -458,6 +459,24 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
       changeTimeouts.clear()
     }
   }, [changeVersion, openFiles, activeFile, effectiveAppId, addFileToTree, removeFileFromTree, loadFileContent, addConflict, clearFileChange])
+
+  // Restore/undo signal: the working tree was rewound on disk, so any file
+  // currently open in the editor is showing pre-restore content. Mark every
+  // open file as a conflict so the standard banner offers Reload / Keep my
+  // changes per file. Skip the initial render (version 0) — only bumps after
+  // mount represent an actual restore event.
+  const lastRestoreVersionRef = useRef(restoreVersion)
+  useEffect(() => {
+    if (restoreVersion === lastRestoreVersionRef.current) return
+    lastRestoreVersionRef.current = restoreVersion
+    if (openFiles.length === 0) return
+    for (const file of openFiles) {
+      addConflict(file.path)
+    }
+    logger.info('code-editor.restore.open-files-marked-conflict', {
+      count: openFiles.length,
+    })
+  }, [restoreVersion, openFiles, addConflict])
 
   // Notify parent about unsaved changes
   useEffect(() => {

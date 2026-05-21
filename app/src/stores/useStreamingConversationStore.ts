@@ -134,6 +134,7 @@ export interface ChatMessage {
   referencedFiles?: Array<{ path: string; content: string }> // Referenced code files for user messages
   uploadedFileName?: string        // Name of file uploaded via HTTP to the agent
   origin?: MessageOrigin            // Message origin for visibility filtering
+  commitHash?: string               // Git commit hash produced by this message (for undo)
   metadata?: {
     usage?: {
       inputTokens: number
@@ -380,6 +381,16 @@ function isValidationPayload(msg: AgentConversationMessagePayload): boolean {
   return msg.metadata?.source === 'post_stream_validator' && msg.metadata?.displayAs === 'validation'
 }
 
+// Server-side conversation-persistence.ts writes the turn's abort reason onto
+// `metadata.finalResult.finishReason`. The shape is opaque (`Record<string,
+// unknown>`) on the wire, so peel it open carefully.
+function extractUserStopped(metadata: Record<string, unknown> | undefined): boolean {
+  const finalResult = metadata?.finalResult
+  if (typeof finalResult !== 'object' || finalResult === null) return false
+  const finishReason = (finalResult as Record<string, unknown>).finishReason
+  return finishReason === 'user_stopped'
+}
+
 function extractToolCallsFromSegments(segments: StreamSegment[]): ToolCall[] {
   return segments
     .map((segment) => segment.toolCall)
@@ -449,6 +460,7 @@ function mergeAssistantMessages(previous: ChatMessage, next: ChatMessage): ChatM
     content: [previous.content, next.content].filter(Boolean).join('\n\n'),
     segments: [...previousSegments, ...nextSegments],
     toolCalls: [...previousToolCalls, ...nextToolCalls],
+    commitHash: next.commitHash ?? previous.commitHash,
     maxStepsReached: previous.maxStepsReached || next.maxStepsReached,
     outputTokenLimitReached: previous.outputTokenLimitReached || next.outputTokenLimitReached,
     connectionLost: previous.connectionLost || next.connectionLost,
@@ -513,6 +525,16 @@ export const normalizeConversationMessages = (
           ? msg.metadata.usedFreeGrants
           : undefined
       ),
+      commitHash: typeof msg.metadata?.commitHash === 'string'
+        ? msg.metadata.commitHash
+        : undefined,
+      // Recover the user-stopped flag from persisted metadata so Undo works
+      // identically before and after a page reload. The server records the
+      // abort reason on `metadata.finalResult.finishReason` (see agents
+      // conversation-persistence.ts) when the user clicks Stop. Without this,
+      // a refreshed transcript drops the flag and useUndoAction's user-stopped
+      // squash inference can't fire.
+      userStopped: extractUserStopped(msg.metadata) || undefined,
       upstreamError: msg.upstreamError,
       budgetExceeded: msg.budgetExceeded,
       error: msg.error,
@@ -1017,7 +1039,40 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
 
   finalizeStream: (metadata?: any) => {
     const { activeStream } = get()
-    if (!activeStream) return
+    if (!activeStream) {
+      // Late server `complete` after a local finalize on Stop click.
+      // useStreamingWebSocket.stopGeneration() finalizes immediately so the
+      // Stop button always feels responsive, but the server still runs the
+      // end-of-turn squash and publishes `complete` with a real commitHash
+      // moments later. Without this branch the late commitHash is dropped,
+      // so Undo locks (no rollback target) and falls back to Restore.
+      // Patch the commit onto the most recent assistant message that's
+      // missing one, mirroring how `complete` would have set it had we
+      // waited for the server.
+      const lateCommitHash = typeof metadata?.commitHash === 'string' && metadata.commitHash.length > 0
+        ? metadata.commitHash
+        : undefined
+      if (lateCommitHash) {
+        set((state) => {
+          const lastAssistantIdx = state.messages.findLastIndex((m) => m.role === 'assistant')
+          if (lastAssistantIdx < 0) return state
+          const target = state.messages[lastAssistantIdx]
+          if (!target || target.commitHash) return state
+          const patched: ChatMessage = {
+            ...target,
+            commitHash: lateCommitHash,
+            metadata: { ...(target.metadata ?? {}), commitHash: lateCommitHash },
+          }
+          const nextMessages = state.messages.slice()
+          nextMessages[lastAssistantIdx] = patched
+          return { messages: nextMessages }
+        })
+        logger.info('streaming-store.stream.finalize.late_commit_patched', {
+          commitHash: lateCommitHash,
+        })
+      }
+      return
+    }
 
     // Mark any tools still in 'running' state as 'incomplete'
     // This happens when the LLM hits maxOutputTokens mid-tool-call,
@@ -1115,20 +1170,25 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
       ...(activeStream.retryAttempts !== undefined && { retryAttempts: activeStream.retryAttempts }),
       ...(activeStream.retryReason && { retryReason: activeStream.retryReason }),
       ...(activeStream.origin && { origin: activeStream.origin }),
+      ...(metadata?.commitHash && { commitHash: metadata.commitHash }),
       metadata: {
         ...activeStream.metadata,
         ...metadata
       }
     }
 
-    set((state) => ({
-      messages: state.messages.some((m) => m.id === completedMessage.id)
+    set((state) => {
+      const nextMessages = state.messages.some((m) => m.id === completedMessage.id)
         ? state.messages
-        : [...state.messages, completedMessage],
-      activeStream: null,
-      streamingState: 'idle',
-      isLoading: false
-    }))
+        : [...state.messages, completedMessage]
+
+      return {
+        messages: nextMessages,
+        activeStream: null,
+        streamingState: 'idle',
+        isLoading: false,
+      }
+    })
   },
 
   clearActiveStream: () => {

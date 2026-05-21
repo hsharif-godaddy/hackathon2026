@@ -135,6 +135,7 @@ describe('CompleteHandler', () => {
       agentId: 'develop',
       usage: { totalTokens: 100 },
       totalSteps: 3,
+      commitHash: 'abcdef1',
     })
     expect(mockTrackCompletion).toHaveBeenCalledWith(true)
     expect(context.helpers.handleCommitComplete).toHaveBeenCalledWith('abcdef1')

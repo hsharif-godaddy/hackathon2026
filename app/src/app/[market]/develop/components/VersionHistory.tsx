@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import Alert from '@ux/alert'
 import Button from '@ux/button'
@@ -25,6 +25,7 @@ import { logger } from '@/lib/request-context'
 import { GIT_HISTORY_PAGE_SIZE } from '@/services/AppService'
 import { useGitStore } from '@/stores/useGitStore'
 import { useSiteStore } from '@/stores/useSiteStore'
+import { type ChatMessage, useStreamingConversationStore } from '@/stores/useStreamingConversationStore'
 import { formatDate } from '@/utils/common'
 import { hasBeenPublished } from '@/utils/site'
 import { ChatTab } from './types'
@@ -240,6 +241,7 @@ export default function VersionHistory() {
   const site = useSiteStore((state) => appId ? state.getSite(appId) : null)
   const isHistoryTabActive = activeChatTab === ChatTab.HISTORY;
   const restoreMutation = useRestoreCommitMutation();
+  const addCompletedMessage = useStreamingConversationStore((s) => s.addCompletedMessage);
   const { isDisabled: isHistoryDisabled, isPublishing } = useIsHistoryDisabled(appId || '', restoreMutation.isPending);
 
   const isPublishButtonEnabled = useSwitchboard('appbuilder-publish-button')
@@ -330,6 +332,41 @@ export default function VersionHistory() {
   }, [deployments, allCommits])
 
   const groupedCommits = useMemo(() => groupCommitsByDate(allCommits), [allCommits])
+
+  const commitHashToGroupKey = useMemo(() => {
+    const map = new Map<string, string>()
+    Object.entries(groupedCommits).forEach(([groupKey, commits]) => {
+      commits.forEach(c => map.set(c.hash, groupKey))
+    })
+    return map
+  }, [groupedCommits])
+
+  const commitRefs = useRef(new Map<string, HTMLLIElement>())
+
+  // If the selected commit is inside a collapsed date group, expand that group
+  // before the scroll effect below runs — otherwise the element isn't in the DOM
+  // and scrollIntoView would no-op.
+  useEffect(() => {
+    if (!isHistoryTabActive || !selectedCommitHash) return
+    const groupKey = commitHashToGroupKey.get(selectedCommitHash)
+    if (!groupKey || !collapsedGroups.has(groupKey)) return
+    setCollapsedGroups(prev => {
+      const next = new Set(prev)
+      next.delete(groupKey)
+      return next
+    })
+  }, [isHistoryTabActive, selectedCommitHash, commitHashToGroupKey, collapsedGroups])
+
+  // Bring the selected commit into view whenever the history tab becomes
+  // active, selection changes, or new commits finish loading. `block: 'nearest'`
+  // makes this a no-op when the row is already visible, so the main case this
+  // covers is tab-switch via the chat undo button with an off-screen commit.
+  useLayoutEffect(() => {
+    if (!isHistoryTabActive || !selectedCommitHash) return
+    const el = commitRefs.current.get(selectedCommitHash)
+    if (!el || typeof el.scrollIntoView !== 'function') return
+    el.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  }, [isHistoryTabActive, selectedCommitHash, collapsedGroups, allCommits.length])
 
   const getGroupLabel = (groupKey: string): string => {
     if (groupKey === '__today__') {
@@ -458,11 +495,28 @@ export default function VersionHistory() {
     restoreMutation.mutate(
       { appId, commitHash: commit.hash },
       {
-        onSuccess: () => {
+        onSuccess: ({ stashHash, notice }) => {
           logger.info('version-history.restore.success', {
             appId,
-            commitHash: commit.hash.substring(0, 7)
+            commitHash: commit.hash.substring(0, 7),
+            stashHash: stashHash ? stashHash.substring(0, 7) : null,
+            noticeId: notice?.id ?? null,
           });
+
+          // Mirror the persisted user-action notice into the local transcript
+          // so the rollback shows up immediately — same pattern the chat undo
+          // button uses. Without this, the notice only appears after the
+          // next conversation reload.
+          if (notice) {
+            const synthetic: ChatMessage = {
+              id: notice.id,
+              role: notice.role,
+              content: notice.content,
+              timestamp: new Date(notice.createdAt),
+              metadata: notice.metadata ? { ...notice.metadata } : undefined,
+            };
+            addCompletedMessage(synthetic);
+          }
         },
         onError: (error) => {
           const errorMessage = error instanceof Error ? error.message : String(error)
@@ -584,7 +638,14 @@ export default function VersionHistory() {
                         restoreMutation.isPending && restoringHash === commit.hash
 
                       return (
-                        <li key={commit.hash} className="space-y-1">
+                        <li
+                          key={commit.hash}
+                          ref={(el) => {
+                            if (el) commitRefs.current.set(commit.hash, el)
+                            else commitRefs.current.delete(commit.hash)
+                          }}
+                          className="space-y-1"
+                        >
                           <CommitItem
                             onClick={() => handleSelectCommit(commit)}
                             message={commit.message}

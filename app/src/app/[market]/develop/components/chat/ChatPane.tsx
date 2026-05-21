@@ -96,7 +96,7 @@ const aotImports = [importBudgetExceededBanner]
 
 interface ChatPaneProps {
   sendMessage: (options: SendMessageOptions) => Promise<void>
-  stopGeneration: () => void
+  stopGeneration: () => Promise<void>
   isCreateFlowSession?: boolean
   hasInitialPrompt?: boolean
   /**
