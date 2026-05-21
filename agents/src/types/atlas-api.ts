@@ -73,6 +73,31 @@ export interface AtlasPage {
   };
   links: AtlasLink[];
   assets?: AtlasAssetRef[];
+  /** Per-page visual extraction — populated when adapter requests `include.visual: true`.
+   * We model only the fields we consume; Atlas may emit more (sections, backgrounds, etc.). */
+  visual?: {
+    forms?: AtlasExtractedForm[];
+  };
+}
+
+export interface AtlasExtractedForm {
+  action?: string;
+  method?: string;
+  id?: string;
+  className?: string;
+  fields: {
+    tag: string;
+    type: string;
+    name?: string;
+    placeholder?: string;
+    label?: string;
+    required: boolean;
+    options?: string[];
+  }[];
+  submitButton?: {
+    text: string;
+    type: string;
+  };
 }
 
 export interface AtlasLink {

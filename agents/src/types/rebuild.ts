@@ -1,8 +1,10 @@
 /**
  * Rebuild Feature Types
- * 
+ *
  * Type definitions for the "Rebuild my site" feature
  */
+
+import type { InteractivePattern } from '../services/interactive-pattern-detector.js';
 
 /**
  * Style preferences collected from user
@@ -94,6 +96,75 @@ export interface PageStructure {
   hasSidebar: boolean;
   sections: PageSection[];
   navigation: NavigationItem[];
+  /** Interactive patterns detected from raw HTML — surfaced to PagePromptAgent so
+   * carousels/sliders/accordions/tabs/video-heroes aren't silently flattened. */
+  interactivePatterns?: InteractivePattern[];
+  /** Forms extracted by Atlas from the source page — surfaced to PagePromptAgent
+   * so newsletter/contact/booking forms get rebuilt as real <form> elements
+   * (not visual mockups). Also the comparator for the eval rubric's Forms dimension. */
+  forms?: FormHint[];
+}
+
+export interface FormFieldHint {
+  type: string;
+  name?: string;
+  label?: string;
+  placeholder?: string;
+  required: boolean;
+  options?: string[];
+}
+
+export interface FormHint {
+  action?: string;
+  method: 'get' | 'post';
+  fields: FormFieldHint[];
+  submitButton?: { text: string };
+}
+
+/**
+ * Structured handoff from rebuild → develop. Code-built from the same inputs
+ * PagePromptAgent uses, but contains only the deterministic facts (no LLM
+ * judgment). Develop agent reads this directly to avoid reinterpreting facts
+ * that were already extracted (asset paths, form schemas, navigation, etc.).
+ *
+ * The markdown prompt PagePromptAgent emits remains the home for *creative*
+ * direction (layout, copy polish). The spec is the home for *facts*.
+ *
+ * Eval-time symmetric comparison reads from the same shape on both crawls.
+ */
+export interface PageBuildSpec {
+  schemaVersion: 1;
+  generatedAt: string;
+  page: {
+    url: string;
+    slug: string;
+    title: string;
+    isFirstPage: boolean;
+  };
+  site: {
+    sourceUrl: string;
+    siteType: SiteType;
+    sitePurpose: string;
+    targetAudience: string;
+    brandVoice: string;
+    designStyle: string;
+    colorPalette: SiteMetadata['colorPalette'];
+    typography: SiteMetadata['typography'];
+    contact?: SiteContactInfo;
+  };
+  navigation: {
+    primary: NavigationItem[];
+    footer: NavigationItem[];
+  };
+  detectedPatterns: InteractivePattern[];
+  forms: FormHint[];
+  /** Page-relevant assets with paths normalized to public form (`/assets/...`). */
+  assets: SpecAssetManifest;
+  /** Intake-form preferences (fidelity dial inputs once that lands). */
+  stylePreferences: StylePreferences;
+  pageContent: {
+    sanitizedContent: string;
+  };
 }
 
 /**
@@ -146,6 +217,18 @@ export interface AssetInfo {
   };
   fileSize?: number;
   sourcePages: string[];
+}
+
+/**
+ * Asset reference scoped to PageBuildSpec — paths are public URLs
+ * (`/assets/...`), not filesystem locations.
+ */
+export interface SpecAssetRef extends Omit<AssetInfo, 'localPath'> {
+  publicPath: string;
+}
+
+export interface SpecAssetManifest extends Omit<AssetManifest, 'assets'> {
+  assets: SpecAssetRef[];
 }
 
 /**

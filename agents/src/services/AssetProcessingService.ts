@@ -7,6 +7,7 @@ import sharp from 'sharp';
 
 import { Logger } from '../logging/index.js';
 import { createAgentTelemetryLogger } from '../utils/agent-logger.js';
+import { normalizeAssetPath } from '../utils/asset-paths.js';
 import { getPersistentPublicDir } from '../utils/persistent-assets.js';
 import type { AssetInfo, AssetManifest } from '../types/rebuild.js';
 
@@ -845,10 +846,7 @@ Respond ONLY with valid JSON in this exact format:
       markdown += '## Images\n\n';
 
       for (const image of images) {
-        // Convert local path to public URL path
-        const publicPath = image.localPath
-          .replace(/\\/g, '/')
-          .replace(/^\.source-site\/assets\//, '/assets/');
+        const publicPath = normalizeAssetPath(image.localPath);
 
         markdown += `### ${path.basename(image.localPath)}\n\n`;
         markdown += `**Original URL:** ${image.url}\n\n`;

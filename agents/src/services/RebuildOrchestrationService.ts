@@ -8,8 +8,11 @@ import {
   asRebuildError,
   createRebuildError,
   type AssetManifest,
+  type FormHint,
   type NavigationItem,
+  type PageBuildSpec,
   type PageContent,
+  type SpecAssetManifest,
   type RebuildWorkflowState,
   type SiteMetadata,
   type SourceSiteData,
@@ -19,10 +22,12 @@ import {
 } from '../types/rebuild.js';
 import type { PageScrapeResult } from '../tools/ai-lib-tools/drivers/website-scraper-driver.js';
 import { WebsiteScraperDriver } from '../tools/ai-lib-tools/drivers/website-scraper-driver.js';
+import { normalizeAssetPath } from '../utils/asset-paths.js';
 import { resizeForVision } from '../utils/image-resize.js';
 import { isRebuildHomepage, normalizeRebuildPageKey, rebuildUrlToSlug } from '../utils/rebuild-utils.js';
 import { AssetProcessingService } from './AssetProcessingService.js';
 import { AtlasCrawlerAdapter } from './AtlasCrawlerAdapter.js';
+import { detectInteractivePatterns } from './interactive-pattern-detector.js';
 import { SitemapDiscoveryService, type SitemapDiscoveryResult } from './SitemapDiscoveryService.js';
 
 const logger = Logger.create({ component: 'rebuild-orchestration-service' });
@@ -78,6 +83,7 @@ export class RebuildOrchestrationService {
   private sourceSiteDir: string;
   private stateFilePath: string;
   private options: RebuildOrchestrationOptions;
+  private cachedScraperPath: { useAtlas: boolean; reason: 'env-override' | 'jwt-flag' | 'default-legacy' } | null = null;
 
   constructor(appPath: string, options: RebuildOrchestrationOptions = {}) {
     this.appPath = appPath;
@@ -161,7 +167,8 @@ export class RebuildOrchestrationService {
         url: page.url,
         sanitizedContent: sanitized,
         html: page.html,
-        screenshotBase64: page.screenshotBase64
+        screenshotBase64: page.screenshotBase64,
+        forms: page.forms
       },
       rootPath,
       navigation
@@ -198,12 +205,30 @@ export class RebuildOrchestrationService {
    * @param appId - Application ID
    * @param sourceUrl - URL to scrape
    */
-  private useAtlas(): boolean {
-    return this.options.useAtlasCrawler === true || process.env.USE_ATLAS_CRAWLER === 'true';
+  private resolveScraperPath(): { useAtlas: boolean; reason: 'env-override' | 'jwt-flag' | 'default-legacy' } {
+    if (this.cachedScraperPath) return this.cachedScraperPath;
+    if (process.env.USE_ATLAS_CRAWLER === 'true') {
+      this.cachedScraperPath = { useAtlas: true, reason: 'env-override' };
+    } else if (this.options.useAtlasCrawler === true) {
+      this.cachedScraperPath = { useAtlas: true, reason: 'jwt-flag' };
+    } else {
+      this.cachedScraperPath = { useAtlas: false, reason: 'default-legacy' };
+    }
+    return this.cachedScraperPath;
   }
 
   private async scrapeAndAnalyze(appId: string, sourceUrl: string): Promise<void> {
-    if (this.useAtlas()) {
+    const { useAtlas, reason } = this.resolveScraperPath();
+    logger.info('rebuild-orchestration.path-selected', {
+      appId,
+      sourceUrl,
+      scraper: useAtlas ? 'atlas' : 'legacy-web-scraper',
+      reason,
+      jwtFlag: this.options.useAtlasCrawler === true,
+      envOverride: process.env.USE_ATLAS_CRAWLER === 'true',
+    });
+
+    if (useAtlas) {
       await this.scrapeAndAnalyzeWithAtlas(appId, sourceUrl);
       return;
     }
@@ -761,7 +786,7 @@ export class RebuildOrchestrationService {
       }
 
       // Create agent with the correct mode (first page vs inner page)
-      const promptAgent = new PagePromptAgent({ isFirstPage });
+      const promptAgent = new PagePromptAgent({ isFirstPage, useAtlasCrawler: this.resolveScraperPath().useAtlas });
       await promptAgent.initialize();
 
       const prompt = await promptAgent.generate(
@@ -775,6 +800,23 @@ export class RebuildOrchestrationService {
 
       await promptAgent.cleanup();
 
+      // Structured handoff seam: emit a code-built spec for develop-agent
+      // consumption. Atlas-only — legacy scraper doesn't produce the form/pattern
+      // signals the spec promises, so we'd be shipping a half-empty handoff.
+      // Write the spec BEFORE recording the page as built; if writeFile throws,
+      // a retry treats this as the homepage (isFirstPage check) instead of a
+      // half-built inner page.
+      let specPath: string | undefined;
+      let specPatternCount = 0;
+      let specFormCount = 0;
+      if (this.resolveScraperPath().useAtlas) {
+        const spec = this.buildPageSpec(pageSlug, pageContent, sourceSiteData.metadata, state.stylePreferences, pageAssetManifest, isFirstPage);
+        specPath = path.join(this.sourceSiteDir, `${pageSlug}-spec.json`);
+        await writeFile(specPath, JSON.stringify(spec, null, 2), 'utf-8');
+        specPatternCount = spec.detectedPatterns.length;
+        specFormCount = spec.forms.length;
+      }
+
       if (!state.pagesBuilt.includes(pageSlug)) {
         state.pagesBuilt.push(pageSlug);
         state.currentPage = pageSlug;
@@ -785,7 +827,8 @@ export class RebuildOrchestrationService {
       logger.info('rebuild-orchestration.build-page-complete', {
         appId,
         pageSlug,
-        promptLength: prompt.length
+        promptLength: prompt.length,
+        ...(specPath ? { specPath, specPatternCount, specFormCount } : {})
       });
 
       return prompt;
@@ -800,8 +843,67 @@ export class RebuildOrchestrationService {
   }
 
   /**
+   * Build the structured handoff spec from the same inputs PagePromptAgent uses.
+   * Code-built only — no LLM judgment. Develop agent consumes this for facts
+   * (asset paths, form schemas, detected patterns, navigation) so they don't
+   * round-trip through markdown reinterpretation.
+   *
+   * Asset paths are normalized to public paths (/assets/...) so spec consumers
+   * can use them directly without re-deriving from on-disk locations.
+   */
+  private buildPageSpec(
+    pageSlug: string,
+    pageContent: PageContent,
+    siteMetadata: SiteMetadata,
+    stylePreferences: StylePreferences,
+    pageAssetManifest: AssetManifest,
+    isFirstPage: boolean
+  ): PageBuildSpec {
+    const normalizedAssets: SpecAssetManifest = {
+      ...pageAssetManifest,
+      assets: pageAssetManifest.assets.map(({ localPath, ...rest }) => ({
+        ...rest,
+        publicPath: normalizeAssetPath(localPath)
+      }))
+    };
+
+    return {
+      schemaVersion: 1,
+      generatedAt: new Date().toISOString(),
+      page: {
+        url: pageContent.url,
+        slug: pageSlug,
+        title: pageContent.title,
+        isFirstPage
+      },
+      site: {
+        sourceUrl: siteMetadata.sourceUrl,
+        siteType: siteMetadata.siteType ?? 'content',
+        sitePurpose: siteMetadata.sitePurpose,
+        targetAudience: siteMetadata.targetAudience,
+        brandVoice: siteMetadata.brandVoice,
+        designStyle: siteMetadata.designStyle,
+        colorPalette: siteMetadata.colorPalette,
+        typography: siteMetadata.typography,
+        ...(siteMetadata.contact ? { contact: siteMetadata.contact } : {})
+      },
+      navigation: {
+        primary: pageContent.structure.navigation,
+        footer: siteMetadata.footerNavigation ?? []
+      },
+      detectedPatterns: pageContent.structure.interactivePatterns ?? [],
+      forms: pageContent.structure.forms ?? [],
+      assets: normalizedAssets,
+      stylePreferences,
+      pageContent: {
+        sanitizedContent: pageContent.sanitizedContent
+      }
+    };
+  }
+
+  /**
    * Get current workflow status
-   * 
+   *
    * @param appId - Application ID
    * @returns Promise resolving to current state
    */
@@ -892,7 +994,7 @@ export class RebuildOrchestrationService {
    * @param page - Page scrape result
    */
   private async savePage(
-    page: { url: string; sanitizedContent?: string; html?: string; screenshotBase64?: string },
+    page: { url: string; sanitizedContent?: string; html?: string; screenshotBase64?: string; forms?: FormHint[] },
     rootPath: string = '/',
     navigation: NavigationItem[] = []
   ): Promise<void> {
@@ -903,6 +1005,19 @@ export class RebuildOrchestrationService {
       : this.extractNavigationFromHtml(page.html, page.url);
 
     const title = this.extractTitle(page.sanitizedContent || '');
+    // Pattern detection + form attachment are Atlas-path enrichments. Legacy
+    // scraper doesn't produce structured forms; running the detector on its
+    // HTML is harmless but its outputs feed Atlas-gated downstream behavior.
+    const useAtlas = this.resolveScraperPath().useAtlas;
+    if (useAtlas && !page.html) {
+      logger.warn('rebuild-orchestration.atlas-missing-html', {
+        url: page.url,
+        slug,
+        message: 'Atlas page returned without raw HTML; pattern detection will be skipped'
+      });
+    }
+    const interactivePatterns = useAtlas ? detectInteractivePatterns(page.html) : [];
+    const forms = useAtlas ? (page.forms ?? []) : [];
 
     const pageContent: PageContent = {
       url: page.url,
@@ -915,11 +1030,30 @@ export class RebuildOrchestrationService {
         hasFooter: true,
         hasSidebar: false,
         sections: [],
-        navigation: effectiveNavigation
+        navigation: effectiveNavigation,
+        ...(interactivePatterns.length > 0 ? { interactivePatterns } : {}),
+        ...(forms.length > 0 ? { forms } : {})
       },
       metadata: { title },
       scrapedAt: new Date().toISOString()
     };
+
+    if (interactivePatterns.length > 0) {
+      logger.debug('rebuild-orchestration.interactive-patterns-detected', {
+        url: page.url,
+        slug,
+        patterns: interactivePatterns.map(p => `${p.type}(${p.occurrences})`)
+      });
+    }
+
+    if (forms.length > 0) {
+      logger.debug('rebuild-orchestration.forms-detected', {
+        url: page.url,
+        slug,
+        formCount: forms.length,
+        summary: forms.map(f => `${f.method.toUpperCase()}->${f.action ?? '(no action)'} (${f.fields.length} fields)`)
+      });
+    }
 
     const pagePath = path.join(this.sourceSiteDir, 'pages', `${slug}.json`);
     await writeFile(pagePath, JSON.stringify(pageContent, null, 2), 'utf-8');

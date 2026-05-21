@@ -112,6 +112,9 @@ export interface MultiPageScraperOptions {
 export interface PageScrapeResult extends BaseResult, ScrapedContent {
   url: string;
   screenshotBase64?: string;
+  /** Forms extracted by Atlas's per-page visual SSM. Empty/undefined for the legacy
+   * scraper path which doesn't produce structured form data. */
+  forms?: import('../../../types/rebuild.js').FormHint[];
 }
 
 /**

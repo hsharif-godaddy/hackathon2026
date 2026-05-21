@@ -10,15 +10,16 @@ import {
 } from '@airo/ai-lib'
 
 import { createAgentTelemetryLogger } from '../utils/agent-logger.js'
+import { normalizeAssetPath } from '../utils/asset-paths.js'
 import { Logger } from '../logging/index.js'
 import { getAgentModelWithName } from '../utils/model-selection.js'
-import type { AssetInfo, PageContent, SiteContactInfo, SiteMetadata, StylePreferences, AssetManifest } from '../types/rebuild.js'
+import type { AssetInfo, NavigationItem, PageContent, SiteContactInfo, SiteMetadata, StylePreferences, AssetManifest } from '../types/rebuild.js'
 import { buildSiteTypeRules } from './site-type-helpers.js'
 import { parseScreenshotDataUrl, screenshotFilenameForMime } from './screenshot-data-url.js'
 
 const logger = Logger.create({ component: 'page-prompt-agent' })
 
-async function buildPagePromptSystemPrompt(isFirstPage: boolean = true): Promise<string> {
+async function buildPagePromptSystemPrompt(isFirstPage: boolean = true, useAtlasCrawler: boolean = false): Promise<string> {
   const promptBuilder = createPromptBuilder()
 
   // Base prompt for all pages
@@ -88,6 +89,33 @@ When a homepage screenshot is attached, use it as the PRIMARY reference for layo
 - Note the footer structure (columns, density, placement of links vs contact info)
 - Replicate the layout faithfully — don't invent a new arrangement
 - Include specific layout instructions like "full-width hero with text overlaid on left, image right" or "3-column feature grid below a centered headline"`)
+
+  // Preserve-detected-blocks guidance is only meaningful when Atlas extraction
+  // is on — that's the only path that produces DETECTED INTERACTIVE PATTERNS /
+  // DETECTED FORMS blocks in the user prompt. Skipping these sections on the
+  // legacy path keeps the system prompt smaller and avoids subtly biasing
+  // legacy-rebuild behavior with directives whose triggers can never fire.
+  if (useAtlasCrawler) {
+    promptBuilder.text(`
+### Preserve Interactive Patterns
+
+The user prompt may include a **DETECTED INTERACTIVE PATTERNS** block listing structural features extracted from the source HTML (carousels, accordions, tabs, video heroes, lightboxes, modals). When present:
+
+- **Treat detected patterns as load-bearing.** If the source has a hero carousel, the rebuild prompt MUST specify a hero carousel/slideshow component — not a static hero with one image. Same for accordions (don't flatten to a stacked list), tabs (don't flatten to inline sections), video heroes (don't replace with a static image), lightboxes (don't drop image enlargement).
+- **Be specific about the component.** Name it ("hero image carousel with N slides", "FAQ accordion with expand/collapse", "tabbed services section") and describe the slides/panels/tabs using the actual content from the source.
+- **Source fidelity overrides image-size heuristics.** When a pattern is detected, slide/panel content (images + captions) MUST come from imported assets the source page references — even if those images look small or low-resolution. Do NOT instruct the develop agent to stock-search for replacement imagery for detected-pattern slides. Render imports at their native size or with object-fit: cover for full-bleed slides. The 800px+ hero-image guidance does not override pattern preservation.
+- **The redesign guidance below applies WITHIN preserved structure, not as license to flatten it.** Asymmetric layouts and bento grids are encouraged for static sections; don't use them as an excuse to remove a carousel.
+- If a pattern isn't listed in the detected block, you may still infer it from the screenshot — but do not REMOVE patterns that were detected.
+
+### Preserve Forms
+
+The user prompt may include a **DETECTED FORMS** block listing forms extracted from the source HTML, with fields, action URLs, and submit buttons. When present:
+
+- **Forms are load-bearing.** A newsletter signup, contact form, or booking form must be rebuilt as a real \`<form>\` element with the listed fields — NOT as a visual-only mockup (e.g. "an email input next to a button" is a mockup, not a form).
+- **Preserve field structure verbatim.** If the source has fields named \`email\`, \`first_name\`, \`message\` with the listed types/required flags, the rebuild prompt MUST instruct the develop agent to use those exact field names, types, and required flags. The submit-button text should match.
+- **Preserve action URL and method when present.** If the form has \`action="/subscribe"\` and \`method="post"\`, instruct the develop agent to wire the form to that endpoint (or scaffold a placeholder handler that POSTs to it). If the action is missing, instruct the agent to add a stub handler — not to drop the form.
+- **Don't invent forms.** If no form is detected, do not add one to the prompt.`)
+  }
 
 
   // First page gets full setup instructions
@@ -268,8 +296,8 @@ Generate a focused, content-centric prompt that:
   return await promptBuilder.build()
 }
 
-export async function createPagePromptAgent(isFirstPage: boolean = true): Promise<AgentConfig> {
-  const systemPrompt = await buildPagePromptSystemPrompt(isFirstPage)
+export async function createPagePromptAgent(isFirstPage: boolean = true, useAtlasCrawler: boolean = false): Promise<AgentConfig> {
+  const systemPrompt = await buildPagePromptSystemPrompt(isFirstPage, useAtlasCrawler)
   const { model, modelName } = await getAgentModelWithName('full')
 
   return {
@@ -298,15 +326,17 @@ export async function createPagePromptAgent(isFirstPage: boolean = true): Promis
 export async function createPagePromptAgentFactory(options?: {
   stateManager?: SessionStateManager
   isFirstPage?: boolean
+  useAtlasCrawler?: boolean
 }) {
   const factory = createAgentFactory()
   const isFirstPage = options?.isFirstPage ?? true
+  const useAtlasCrawler = options?.useAtlasCrawler ?? false
 
   const stateManager = options?.stateManager || createSessionStateManager({
     defaultAgentId: 'page-prompt'
   })
 
-  const pagePromptConfig = await createPagePromptAgent(isFirstPage)
+  const pagePromptConfig = await createPagePromptAgent(isFirstPage, useAtlasCrawler)
 
   const agents = factory.defineAgents({
     'page-prompt': pagePromptConfig
@@ -322,15 +352,17 @@ export async function createPagePromptAgentFactory(options?: {
 
 export class PagePromptAgent {
   private factory: Awaited<ReturnType<typeof createPagePromptAgentFactory>> | null = null
+  private useAtlasCrawler: boolean
   private isFirstPage: boolean
 
-  constructor(options?: { stateManager?: SessionStateManager; isFirstPage?: boolean }) {
+  constructor(options?: { stateManager?: SessionStateManager; isFirstPage?: boolean; useAtlasCrawler?: boolean }) {
     this.isFirstPage = options?.isFirstPage ?? true
+    this.useAtlasCrawler = options?.useAtlasCrawler ?? false
   }
 
   async initialize(): Promise<void> {
     logger.info('page-prompt-agent.initialization.start', { isFirstPage: this.isFirstPage })
-    this.factory = await createPagePromptAgentFactory({ isFirstPage: this.isFirstPage })
+    this.factory = await createPagePromptAgentFactory({ isFirstPage: this.isFirstPage, useAtlasCrawler: this.useAtlasCrawler })
     logger.info('page-prompt-agent.initialization.complete', { isFirstPage: this.isFirstPage })
   }
 
@@ -357,9 +389,7 @@ export class PagePromptAgent {
     const assetsList = assetManifest.assets
       .slice(0, 25)
       .map(a => {
-        const publicPath = a.localPath
-          .replace(/\\/g, '/')
-          .replace(/^\.source-site\/assets\//, '/assets/')
+        const publicPath = normalizeAssetPath(a.localPath)
 
         // Include dimensions and size category
         const dims = a.dimensions
@@ -399,6 +429,16 @@ export class PagePromptAgent {
     const siteType = siteMetadata.siteType ?? 'content'
     const siteTypeRules = buildSiteTypeRules(siteType, isFirstPage)
 
+    const patternsBlock = this.buildPatternsBlock(pageContent.structure.interactivePatterns)
+    const formsBlock = this.buildFormsBlock(pageContent.structure.forms)
+    const navigationBlock = this.buildNavigationBlock(pageContent.structure.navigation)
+    const footerNavBlock = isFirstPage
+      ? this.buildFooterNavBlock(siteMetadata.footerNavigation)
+      : ''
+    const contactBlock = isFirstPage && siteMetadata.contact
+      ? `\n=== CONTACT INFORMATION (from source site — use ONLY what's listed) ===\n${this.buildContactBlock(siteMetadata.contact)}\n`
+      : ''
+
     const prompt = `Generate a detailed prompt for building this ${isFirstPage ? 'homepage' : 'page'}. Your job is to OPTIMIZE the existing content, not create new content.
 
 SITE TYPE: ${siteType}
@@ -425,20 +465,7 @@ ${designInstructions}
 PAGE CONTENT TO REBUILD:
 - Title: ${pageContent.title}
 - URL: ${pageContent.url}
-${pageContent.structure.navigation.length > 0 ? `
-=== HEADER NAVIGATION (use EXACT paths and URLs) ===
-${pageContent.structure.navigation.map(n => `- "${n.label}" → ${n.url}${n.isExternal ? ' (EXTERNAL — keep full URL, open in new tab)' : ''}`).join('\n')}
-
-**CRITICAL: Use the exact URL paths above for navigation links. Do NOT rename or simplify paths (e.g., if the source has "/about-us", use "/about-us", NOT "/about").**
-- External links should be implemented with target="_blank" rel="noopener noreferrer"
-- Only the homepage is being built right now. The other paths will be built later when the user picks them from the rebuild page selector — leaving them unrouted (so they fall through to the 404 page) is the correct behavior for this turn.
-` : ''}${isFirstPage && siteMetadata.footerNavigation && siteMetadata.footerNavigation.length > 0 ? `
-=== FOOTER NAVIGATION (separate set of links for the site footer) ===
-${siteMetadata.footerNavigation.map(n => `- "${n.label}" → ${n.url}${n.isExternal ? ' (external)' : ''}`).join('\n')}
-` : ''}${isFirstPage && siteMetadata.contact ? `
-=== CONTACT INFORMATION (from source site — use ONLY what's listed) ===
-${this.buildContactBlock(siteMetadata.contact)}
-` : ''}
+${patternsBlock}${formsBlock}${navigationBlock}${footerNavBlock}${contactBlock}
 === EXTRACTED KEY CONTENT (use this for the rebuild) ===
 ${extractedContent}
 
@@ -781,6 +808,55 @@ Create a striking, attention-grabbing design.
     return ''
   }
 
+  private buildPatternsBlock(patterns: PageContent['structure']['interactivePatterns']): string {
+    if (!patterns || patterns.length === 0) return ''
+    const lines = patterns.map(
+      p => `- ${p.type} (${p.occurrences} match${p.occurrences === 1 ? '' : 'es'}; evidence: \`${p.evidence}\`)`
+    )
+    return `\n=== DETECTED INTERACTIVE PATTERNS (from source HTML — preserve in the rebuild) ===\n${lines.join('\n')}\n`
+  }
+
+  private buildFormsBlock(forms: PageContent['structure']['forms']): string {
+    if (!forms || forms.length === 0) return ''
+    const blocks = forms.map((f, i) => {
+      const action = f.action ?? '(no action — scaffold a stub handler)'
+      const fieldLines = f.fields.map(field => {
+        const parts = [`    - ${field.type}`]
+        if (field.name) parts.push(` name="${field.name}"`)
+        if (field.label) parts.push(` label="${field.label}"`)
+        if (field.placeholder) parts.push(` placeholder="${field.placeholder}"`)
+        if (field.required) parts.push(' (required)')
+        if (field.options && field.options.length > 0) {
+          parts.push(` options=[${field.options.slice(0, 5).join(', ')}]`)
+        }
+        return parts.join('')
+      })
+      const submit = f.submitButton ? `\n  Submit button: "${f.submitButton.text}"` : ''
+      return `Form ${i + 1}: ${f.method.toUpperCase()} ${action}\n  Fields:\n${fieldLines.join('\n')}${submit}`
+    })
+    return `\n=== DETECTED FORMS (from source HTML — preserve as real <form> elements with these exact fields) ===\n${blocks.join('\n\n')}\n`
+  }
+
+  private buildNavigationBlock(navigation: PageContent['structure']['navigation']): string {
+    if (navigation.length === 0) return ''
+    const lines = navigation.map(
+      n => `- "${n.label}" → ${n.url}${n.isExternal ? ' (EXTERNAL — keep full URL, open in new tab)' : ''}`
+    )
+    return `\n=== HEADER NAVIGATION (use EXACT paths and URLs) ===\n${lines.join('\n')}\n
+**CRITICAL: Use the exact URL paths above for navigation links. Do NOT rename or simplify paths (e.g., if the source has "/about-us", use "/about-us", NOT "/about").**
+- External links should be implemented with target="_blank" rel="noopener noreferrer"
+- Only the homepage is being built right now. The other paths will be built later when the user picks them from the rebuild page selector — leaving them unrouted (so they fall through to the 404 page) is the correct behavior for this turn.
+`
+  }
+
+  private buildFooterNavBlock(footerNav: NavigationItem[] | undefined): string {
+    if (!footerNav || footerNav.length === 0) return ''
+    const lines = footerNav.map(
+      n => `- "${n.label}" → ${n.url}${n.isExternal ? ' (external)' : ''}`
+    )
+    return `\n=== FOOTER NAVIGATION (separate set of links for the site footer) ===\n${lines.join('\n')}\n`
+  }
+
   /**
    * Render the source-extracted contact info as prompt-friendly bullets.
    * Atlas (or whichever extractor) is the source of truth — we only surface
@@ -861,9 +937,7 @@ Create a striking, attention-grabbing design.
     const unknownImages: string[] = []
 
     for (const asset of assets.slice(0, 30)) {
-      const publicPath = asset.localPath
-        .replace(/\\/g, '/')
-        .replace(/^\.source-site\/assets\//, '/assets/')
+      const publicPath = normalizeAssetPath(asset.localPath)
 
       const dims = asset.dimensions
         ? `${asset.dimensions.width}x${asset.dimensions.height}`

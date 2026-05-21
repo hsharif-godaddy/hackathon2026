@@ -7,12 +7,13 @@ import {
   AtlasJobStatusResponseSchema,
   AtlasSubmitResponseSchema,
 } from '../types/atlas-api.js';
-import type { AtlasCrawlResult } from '../types/atlas-api.js';
+import type { AtlasCrawlResult, AtlasExtractedForm } from '../types/atlas-api.js';
 import {
   WEBSITE_REBUILD_IMPORT_FAILED_USER_MESSAGE,
   createRebuildError,
 } from '../types/rebuild.js';
 import type {
+  FormHint,
   NavigationItem,
   SiteContactInfo,
   SiteMetadata,
@@ -45,6 +46,31 @@ interface AtlasCrawlOptions {
   rootPath?: string;
   concurrency?: number;
   timeout?: number;
+}
+
+export function mapAtlasForms(atlasForms: AtlasExtractedForm[] | undefined): FormHint[] {
+  if (!atlasForms || atlasForms.length === 0) return [];
+  return atlasForms.map(form => {
+    const rawMethod = (form.method ?? 'get').toLowerCase();
+    // Atlas's Zod schema only validates the top-level crawl-result shape; nested
+    // form payloads are unvalidated. Defend against malformed input here so a
+    // single bad form doesn't abort the whole adapter mapping.
+    const method: 'get' | 'post' = rawMethod === 'post' ? 'post' : 'get';
+    const fields = Array.isArray(form.fields) ? form.fields : [];
+    return {
+      ...(form.action ? { action: form.action } : {}),
+      method,
+      fields: fields.map(f => ({
+        type: f.type,
+        ...(f.name ? { name: f.name } : {}),
+        ...(f.label ? { label: f.label } : {}),
+        ...(f.placeholder ? { placeholder: f.placeholder } : {}),
+        required: f.required,
+        ...(f.options && f.options.length > 0 ? { options: f.options } : {}),
+      })),
+      ...(form.submitButton ? { submitButton: { text: form.submitButton.text } } : {}),
+    };
+  });
 }
 
 export interface AtlasCrawlOutput {
@@ -476,12 +502,16 @@ export class AtlasCrawlerAdapter {
   }
 
   private mapToPageScrapeResults(result: AtlasCrawlResult): PageScrapeResult[] {
-    return result.pages.map(page => ({
-      url: page.url,
-      success: page.statusCode >= 200 && page.statusCode < 400,
-      sanitizedContent: page.text ?? '',
-      html: page.html,
-    }));
+    return result.pages.map(page => {
+      const forms = mapAtlasForms(page.visual?.forms);
+      return {
+        url: page.url,
+        success: page.statusCode >= 200 && page.statusCode < 400,
+        sanitizedContent: page.text ?? '',
+        html: page.html,
+        ...(forms.length > 0 ? { forms } : {}),
+      };
+    });
   }
 
   mapToExtractedAssets(result: AtlasCrawlResult): ExtractedAsset[] {
