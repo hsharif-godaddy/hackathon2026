@@ -11,6 +11,7 @@ import EditIcon from '@ux/icon/edit'
 import Tag from '@ux/tag'
 import Tooltip from '@ux/tooltip'
 
+import CommitMessageWithSwatches from '@/app/[market]/develop/components/CommitMessageWithSwatches'
 import PanelSkeleton from '@/app/[market]/develop/components/PanelSkeleton'
 import { useChatTabs } from '@/hooks/useChatTabs'
 import { useDeploymentsQuery } from '@/hooks/useDeploymentsQuery'
@@ -143,7 +144,7 @@ function CommitItem({
                 }`}
               >
                 <p className="text-sm font-medium line-clamp-1">
-                  {message}
+                  <CommitMessageWithSwatches message={message} />
                 </p>
                 { description && (
                   <div className="text-xs">

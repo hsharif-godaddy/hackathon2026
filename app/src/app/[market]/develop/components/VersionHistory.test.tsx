@@ -149,6 +149,49 @@ describe('VersionHistory', () => {
     mockRestoreMutation.mutate.mockClear();
   });
 
+  it('renders hex then color swatch after hex in commit messages', async () => {
+    mockHistory = {
+      commits: [
+        {
+          hash: 'color-hash',
+          message: 'Update p color to #bcc12f in index.tsx',
+          author: 'A',
+          date: '2024-01-01',
+        },
+      ],
+      currentCommit: 'color-hash',
+      hasMore: false,
+    };
+
+    renderWithProviders(<VersionHistory />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('commit-message-hex-swatch')).toBeInTheDocument();
+      expect(screen.getByText('#BCC12F')).toBeInTheDocument();
+    });
+
+    const hex = screen.getByText('#BCC12F');
+    const swatch = screen.getByTestId('commit-message-hex-swatch');
+    expect(hex.compareDocumentPosition(swatch) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('does not render hex swatches when commit message has no hex color', async () => {
+    mockHistory = {
+      commits: [
+        { hash: 'plain-hash', message: 'Update h2 fontSize to text-5xl', author: 'A', date: '2024-01-01' },
+      ],
+      currentCommit: 'plain-hash',
+      hasMore: false,
+    };
+
+    renderWithProviders(<VersionHistory />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Update h2 fontSize to text-5xl')).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId('commit-message-hex-swatch')).not.toBeInTheDocument();
+  });
+
   it('auto-selects currentCommit on initial load', async () => {
     renderWithProviders(<VersionHistory />);
 
