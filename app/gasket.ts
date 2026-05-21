@@ -325,7 +325,7 @@ export default makeGasket({
     params: {
       app: 'airo-builder',
       manifest: 'no-header',
-      theme: 'godaddy-antares',
+      theme: 'godaddy-airo-light',
       privateLabel: 1,
       react: '19',
     }
