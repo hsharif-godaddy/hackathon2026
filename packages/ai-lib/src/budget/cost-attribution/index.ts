@@ -631,7 +631,7 @@ export function logReportCreated(
 // EXPORTS - Rule-based only (no LLM components)
 
 export * from './types.js'
-export { extractFailedCallIds, extractFailedTargets, messageReferencesTarget } from './failure-extraction.js'
+export { extractFailedCallIds, extractFailedTargets, getCorrelationId, messageReferencesTarget } from './failure-extraction.js'
 export { detectHighConfidencePatterns } from './pattern-detection.js'
 export { detectCausalChains, getCausalChainCallIds } from './causal-chain-detection.js'
 export {

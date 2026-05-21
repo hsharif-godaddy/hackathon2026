@@ -13,6 +13,7 @@ import {
   generateReportItems,
   analyzeExecution,
   attributeSessionItems,
+  getCorrelationId,
   logExecutionCompleted,
   logCausalChainDetected,
   ReportLabel,
@@ -375,4 +376,43 @@ export function safeProcessBudgetReport(
     })
     return { result: attributionFailedFallback(context.totalCost), didFallback: true }
   }
+}
+
+/**
+ * Walk steps backwards and return the first correlation ID found.
+ * Not restricted to LLM-only steps — any step type that carried a
+ * correlation ID header counts (tool-result, text, etc.).
+ */
+function findLastCorrelationId(steps: ExecutionStep[]): string | undefined {
+  for (let i = steps.length - 1; i >= 0; i--) {
+    const id = getCorrelationId(steps[i]!)
+    if (id) return id
+  }
+  return undefined
+}
+
+/**
+ * Log whether the last step's correlation ID was found in the BMS session items.
+ * Emits on every session so dashboards can compute a miss rate
+ * (found=false / total) to decide whether polling is worth the latency.
+ */
+export function checkCorrelationIdRace(
+  steps: ExecutionStep[],
+  sessionItems: readonly { callRequestId: string }[],
+  context: { budgetId: string; sessionId: string },
+): void {
+  if (steps.length === 0) return
+
+  const lastCorrelationId = findLastCorrelationId(steps)
+  if (!lastCorrelationId) return
+
+  const found = sessionItems.some(item => item.callRequestId === lastCorrelationId)
+
+  logger.info('budget.report.correlation_id_race', {
+    budgetId: context.budgetId,
+    sessionId: context.sessionId,
+    lastCorrelationId,
+    found,
+    itemCount: sessionItems.length,
+  })
 }

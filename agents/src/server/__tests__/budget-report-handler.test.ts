@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import {
   attributionFailedFallback,
+  checkCorrelationIdRace,
   processBudgetReport,
   safeProcessBudgetReport,
   type BudgetReportContext,
@@ -1254,6 +1255,97 @@ describe('safeProcessBudgetReport', () => {
 
     expect(didFallback).toBe(false)
     expect(result).toBeDefined()
+  })
+})
+
+describe('checkCorrelationIdRace', () => {
+  const ctx = { budgetId: 'b-1', sessionId: 'sess-1' }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('logs found=false when last correlation ID is missing from session items', () => {
+    const steps = [
+      { content: [], response: { headers: { 'x-correlation-id': 'call-0' } } },
+      { content: [], response: { headers: { 'x-correlation-id': 'call-1' } } },
+    ] as unknown as ExecutionStep[]
+
+    checkCorrelationIdRace(steps, [{ callRequestId: 'call-0' }], ctx)
+
+    expect(logger.info).toHaveBeenCalledWith('budget.report.correlation_id_race', {
+      budgetId: 'b-1',
+      sessionId: 'sess-1',
+      lastCorrelationId: 'call-1',
+      found: false,
+      itemCount: 1,
+    })
+  })
+
+  it('logs found=true when last correlation ID is present', () => {
+    const steps = [
+      { content: [], response: { headers: { 'x-correlation-id': 'call-0' } } },
+    ] as unknown as ExecutionStep[]
+
+    checkCorrelationIdRace(steps, [{ callRequestId: 'call-0' }], ctx)
+
+    expect(logger.info).toHaveBeenCalledWith('budget.report.correlation_id_race', {
+      budgetId: 'b-1',
+      sessionId: 'sess-1',
+      lastCorrelationId: 'call-0',
+      found: true,
+      itemCount: 1,
+    })
+  })
+
+  it('skips logging when steps are empty', () => {
+    checkCorrelationIdRace([], [{ callRequestId: 'call-0' }], ctx)
+
+    expect(logger.info).not.toHaveBeenCalledWith('budget.report.correlation_id_race', expect.anything())
+  })
+
+  it('logs found=false when steps exist but session items are empty (extreme race)', () => {
+    const steps = [
+      { content: [], response: { headers: { 'x-correlation-id': 'call-0' } } },
+    ] as unknown as ExecutionStep[]
+
+    checkCorrelationIdRace(steps, [], ctx)
+
+    expect(logger.info).toHaveBeenCalledWith('budget.report.correlation_id_race', {
+      budgetId: 'b-1',
+      sessionId: 'sess-1',
+      lastCorrelationId: 'call-0',
+      found: false,
+      itemCount: 0,
+    })
+  })
+
+  it('walks backwards past steps without correlation IDs', () => {
+    const steps = [
+      { content: [], response: { headers: { 'x-correlation-id': 'call-0' } } },
+      { content: [] },
+    ] as unknown as ExecutionStep[]
+
+    checkCorrelationIdRace(steps, [{ callRequestId: 'call-0' }], ctx)
+
+    expect(logger.info).toHaveBeenCalledWith('budget.report.correlation_id_race', {
+      budgetId: 'b-1',
+      sessionId: 'sess-1',
+      lastCorrelationId: 'call-0',
+      found: true,
+      itemCount: 1,
+    })
+  })
+
+  it('skips logging when no steps have correlation IDs', () => {
+    const steps = [
+      { content: [] },
+      { content: [] },
+    ] as unknown as ExecutionStep[]
+
+    checkCorrelationIdRace(steps, [{ callRequestId: 'call-0' }], ctx)
+
+    expect(logger.info).not.toHaveBeenCalledWith('budget.report.correlation_id_race', expect.anything())
   })
 })
 

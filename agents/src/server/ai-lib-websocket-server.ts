@@ -37,7 +37,7 @@ import {
 } from '@airo/ai-lib/budget'
 import { context as otelContext } from '@opentelemetry/api'
 import { createAgentContext } from '@godaddy/agent-otel-sdk'
-import { safeProcessBudgetReport, type BudgetReportResult } from './budget-report-handler.js'
+import { checkCorrelationIdRace, safeProcessBudgetReport, type BudgetReportResult } from './budget-report-handler.js'
 import { auth, AuthType, BYPASS_SITE_IDS } from '../services/features.js'
 import { getTemplateIds } from '../agents/template-registry.js'
 import { isEmployeeAuthType, type ProductType } from '@airo/shared/auth'
@@ -2165,6 +2165,16 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           parallelAssessmentStates.delete(originalSocketId)
           effectiveSubscriptionIds.delete(originalSocketId)
           throw new Error('getSession failed without throwing')
+        }
+
+        // Fires for all session types including BMS overrides (CareAgent, TestAccounts).
+        // Override sessions are low-volume; filter in dashboard if needed.
+        if (steps) {
+          try {
+            checkCorrelationIdRace(steps, session.sessionItems, { budgetId, sessionId })
+          } catch (err) {
+            logger.warn('budget.report.correlation_id_check_failed', { budgetId, sessionId, error: (err as Error).message })
+          }
         }
 
         // Get assessment outcome for intent-based attribution
