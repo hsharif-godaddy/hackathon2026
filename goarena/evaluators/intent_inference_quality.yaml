@@ -73,12 +73,13 @@ template: |
   - missing a major implied requirement that the user clearly signaled
 
   ## Rubric
-  5 = fully understood the requested outcome, implied needs, and later refinements.
-  4 = strong understanding with only minor misses.
-  3 = understands the core request but misses an important nuance or refinement.
-  2 = partial understanding with a clear misunderstanding that would affect the build.
-  1 = major misunderstanding of the requested website or workflow.
-  0 = no meaningful understanding of the user's intent.
+  Score on a 0–100 scale. Use the anchors below and interpolate between them as needed.
+  100 = fully understood the requested outcome, implied needs, and later refinements.
+  80  = strong understanding with only minor misses.
+  60  = understands the core request but misses an important nuance or refinement.
+  40  = partial understanding with a clear misunderstanding that would affect the build.
+  20  = major misunderstanding of the requested website or workflow.
+  0   = no meaningful understanding of the user's intent.
 
   Cite 2-3 concrete moments from the conversation in your reasoning.
 scoreConfig:

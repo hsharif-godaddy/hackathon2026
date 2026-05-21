@@ -71,12 +71,13 @@ template: |
   - output that is adjacent to the request rather than aligned to it
 
   ## Rubric
-  5 = strongly matches the intended site and user goal.
-  4 = core intent is reflected with only minor misses.
-  3 = partial alignment; usable, but a meaningful part of the intended outcome is missing.
-  2 = weak alignment with major gaps or misdirection.
-  1 = only loosely related to the user's intent.
-  0 = does not reflect the intended website at all.
+  Score on a 0–100 scale. Use the anchors below and interpolate between them as needed.
+  100 = strongly matches the intended site and user goal.
+  80  = core intent is reflected with only minor misses.
+  60  = partial alignment; usable, but a meaningful part of the intended outcome is missing.
+  40  = weak alignment with major gaps or misdirection.
+  20  = only loosely related to the user's intent.
+  0   = does not reflect the intended website at all.
 
   In the reasoning, compare requested outcome vs visible output directly.
 scoreConfig:
