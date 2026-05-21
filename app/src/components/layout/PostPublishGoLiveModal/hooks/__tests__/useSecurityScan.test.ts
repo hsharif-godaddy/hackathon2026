@@ -22,6 +22,20 @@ const mocks = vi.hoisted(() => ({
   setGoLiveModalStep: vi.fn()
 }));
 
+// useTranslations is called inside useSecurityScan via the new templating
+// helpers (vulnTitle / vulnDescription). Without an IntlProvider in the test
+// tree, useIntl() throws — so mock the hook with a values-aware identity that
+// returns one of the substitution values when present (lets "title flows
+// through" assertions stay readable) and falls back to the key otherwise.
+vi.mock('@/hooks/useTranslations', () => ({
+  useTranslations: () => (key: string, values?: Record<string, unknown>) => {
+    if (values?.title) return String(values.title);
+    if (values?.ruleId) return String(values.ruleId);
+    if (values?.packageName) return String(values.packageName);
+    return key;
+  },
+}));
+
 vi.mock('@/lib/gasket-config', () => ({
   appFetch: mocks.appFetch
 }));
@@ -66,14 +80,18 @@ describe('useSecurityScan', () => {
             securityReport: {
               vulnerabilities: [
                 {
+                  kind: 'sca',
                   severity: 'high',
-                  title: 'SQL Injection Risk',
-                  description: 'Potential SQL injection vulnerability'
+                  rawTitle: 'SQL Injection Risk',
+                  description: 'Potential SQL injection vulnerability',
+                  packageName: 'pg'
                 },
                 {
+                  kind: 'sca',
                   severity: 'medium',
-                  title: 'XSS Risk',
-                  description: 'Cross-site scripting vulnerability'
+                  rawTitle: 'XSS Risk',
+                  description: 'Cross-site scripting vulnerability',
+                  packageName: 'react-dom'
                 }
               ]
             }
@@ -299,6 +317,147 @@ describe('useSecurityScan', () => {
     expect(mocks.setGoLiveModalStep).toHaveBeenCalledWith(mockAppId, 'video');
   });
 
+  it('should render kind:"sast" with ruleId and rawTitle in vulnTitle', async () => {
+    const mockResponse = {
+      code: {
+        results: {
+          aiInsights: {
+            securityReport: {
+              vulnerabilities: [
+                {
+                  kind: 'sast',
+                  severity: 'high',
+                  ruleId: 'security/detect-eval-with-expression',
+                  rawTitle: 'eval-with-expression',
+                  description: 'eval used with non-literal expression',
+                  file: 'src/handler.ts',
+                  line: 42,
+                  column: 5,
+                },
+              ],
+            },
+          },
+        },
+        timedOut: false,
+        taskId: 'task-sast',
+      },
+    };
+
+    mocks.appFetch.mockResolvedValue({ ok: true, json: async () => mockResponse });
+    const { result } = renderHook(() => useSecurityScan(mockAppId));
+    void result.current.runScan();
+
+    await waitFor(() => expect(mocks.setSecurityScanResults).toHaveBeenCalled(), { timeout: 3000 });
+
+    // The mocked useTranslations returns values.title when present, so the SAST
+    // branch (which passes both ruleId + title) shows the title.
+    expect(mocks.setSecurityScanResults).toHaveBeenCalledWith(
+      mockAppId,
+      expect.objectContaining({
+        vulnerabilities: expect.arrayContaining([
+          expect.objectContaining({
+            severity: 'high',
+            title: 'eval-with-expression',
+            description: 'eval used with non-literal expression',
+          }),
+        ]),
+      }),
+    );
+  });
+
+  it('should render kind:"supplyChain" with ruleId/title and surface description', async () => {
+    const mockResponse = {
+      code: {
+        results: {
+          aiInsights: {
+            securityReport: {
+              vulnerabilities: [
+                {
+                  kind: 'supplyChain',
+                  severity: 'critical',
+                  ruleId: 'lockfile-lint/allowed-hosts',
+                  rawTitle: 'Package resolved from disallowed registry',
+                  description: 'pkg@1.0.0 resolved from evil.example.com',
+                  packageName: 'pkg@1.0.0',
+                  file: 'package-lock.json',
+                },
+              ],
+            },
+          },
+        },
+        timedOut: false,
+        taskId: 'task-sc',
+      },
+    };
+
+    mocks.appFetch.mockResolvedValue({ ok: true, json: async () => mockResponse });
+    const { result } = renderHook(() => useSecurityScan(mockAppId));
+    void result.current.runScan();
+
+    await waitFor(() => expect(mocks.setSecurityScanResults).toHaveBeenCalled(), { timeout: 3000 });
+
+    expect(mocks.setSecurityScanResults).toHaveBeenCalledWith(
+      mockAppId,
+      expect.objectContaining({
+        vulnerabilities: expect.arrayContaining([
+          expect.objectContaining({
+            severity: 'critical',
+            title: 'Package resolved from disallowed registry',
+            description: 'pkg@1.0.0 resolved from evil.example.com',
+          }),
+        ]),
+      }),
+    );
+  });
+
+  it('should render kind:"secret" using ruleId in vulnTitle', async () => {
+    const mockResponse = {
+      code: {
+        results: {
+          aiInsights: {
+            securityReport: {
+              vulnerabilities: [
+                {
+                  kind: 'secret',
+                  severity: 'high',
+                  ruleId: 'aws-access-key-id',
+                  description: 'AWS Access Key ID detected',
+                  remediation: ['Rotate the key and move to env vars'],
+                  file: 'src/config.ts',
+                  line: 10,
+                  column: 8,
+                },
+              ],
+            },
+          },
+        },
+        timedOut: false,
+        taskId: 'task-secret',
+      },
+    };
+
+    mocks.appFetch.mockResolvedValue({ ok: true, json: async () => mockResponse });
+    const { result } = renderHook(() => useSecurityScan(mockAppId));
+    void result.current.runScan();
+
+    await waitFor(() => expect(mocks.setSecurityScanResults).toHaveBeenCalled(), { timeout: 3000 });
+
+    // Mocked useTranslations: secret kind passes only `ruleId`, so the title
+    // should be the ruleId value.
+    expect(mocks.setSecurityScanResults).toHaveBeenCalledWith(
+      mockAppId,
+      expect.objectContaining({
+        vulnerabilities: expect.arrayContaining([
+          expect.objectContaining({
+            severity: 'high',
+            title: 'aws-access-key-id',
+            description: 'AWS Access Key ID detected',
+          }),
+        ]),
+      }),
+    );
+  });
+
   it('should map severity levels correctly', async () => {
     const mockResponse = {
       code: {
@@ -306,11 +465,11 @@ describe('useSecurityScan', () => {
           aiInsights: {
             securityReport: {
               vulnerabilities: [
-                { severity: 'critical', title: 'Critical issue', description: 'Desc' },
-                { severity: 'high', title: 'High issue', description: 'Desc' },
-                { severity: 'medium', title: 'Medium issue', description: 'Desc' },
-                { severity: 'moderate', title: 'Moderate issue', description: 'Desc' },
-                { severity: 'low', title: 'Low issue', description: 'Desc' }
+                { kind: 'sca', severity: 'critical', rawTitle: 'Critical issue', description: 'Desc', packageName: 'pkg-a' },
+                { kind: 'sca', severity: 'high', rawTitle: 'High issue', description: 'Desc', packageName: 'pkg-b' },
+                { kind: 'sca', severity: 'medium', rawTitle: 'Medium issue', description: 'Desc', packageName: 'pkg-c' },
+                { kind: 'sca', severity: 'moderate', rawTitle: 'Moderate issue', description: 'Desc', packageName: 'pkg-d' },
+                { kind: 'sca', severity: 'low', rawTitle: 'Low issue', description: 'Desc', packageName: 'pkg-e' }
               ]
             }
           }

@@ -14,13 +14,25 @@ import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execa } from 'execa';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const repoRoot = resolve(__dirname, '../../../..');
-const syncScriptPath = join(repoRoot, 'container-scripts/preview/sync-template-files.js');
 const baseTemplateDir = join(repoRoot, 'app-templates/v8');
+const originalSyncScriptPath = join(repoRoot, 'container-scripts/preview/sync-template-files.js');
+
+// In production the script lives at /management-scripts/sync-template-files.js
+// inside the v8 preview container and resolves @babel/* from the customer
+// app's /node_modules. Locally, container-scripts/preview/ isn't a workspace
+// package and the workspace root only hoists a partial @babel set — so
+// spawned `node` can't find @babel/generator. NODE_PATH doesn't apply to ESM,
+// so instead we copy the script under agents/ where Node's ESM resolver
+// finds agents/node_modules naturally. Source-of-truth for the script
+// remains container-scripts/preview/sync-template-files.js.
+const agentsRoot = resolve(__dirname, '../../..');
+const scriptCopyDir = join(agentsRoot, '.test-runner');
+const syncScriptPath = join(scriptCopyDir, 'sync-template-files.js');
 
 interface ScriptResult {
   exitCode: number;
@@ -38,6 +50,20 @@ interface MigrationEvent {
 type BaseJsonEvent = { event: string } & Record<string, unknown>;
 
 const tempRoots: string[] = [];
+
+beforeAll(() => {
+  // Stage the production script under agents/ so its ESM imports resolve
+  // against agents/node_modules. This mirrors the production resolution
+  // (script in /management-scripts/, node_modules at /node_modules) without
+  // requiring a workspace-level change. Re-copied each run so changes to the
+  // source script are picked up.
+  mkdirSync(scriptCopyDir, { recursive: true });
+  cpSync(originalSyncScriptPath, syncScriptPath);
+});
+
+afterAll(() => {
+  rmSync(scriptCopyDir, { recursive: true, force: true });
+});
 
 afterEach(() => {
   for (const dir of tempRoots.splice(0)) {
@@ -340,6 +366,8 @@ describe.skip('sync-template-files black-box migration harness', () => {
     'normalize-vite-html-entry',
     'inject-ssr-markers',
     'strip-stale-index-title',
+    'add-eslint-security-plugins',
+    'add-lockfile-lint',
   ];
 
   // Every historical template below predates `src/entry-server.tsx` (see `git cat-file -e
@@ -361,6 +389,8 @@ describe.skip('sync-template-files black-box migration harness', () => {
         'migration.normalize-vite-html-entry.skipped',
         'migration.inject-ssr-markers.skipped',
         'migration.strip-stale-index-title.skipped',
+        'migration.add-eslint-security-plugins.applied',
+        'migration.add-lockfile-lint.applied',
       ],
     },
     {
@@ -375,6 +405,8 @@ describe.skip('sync-template-files black-box migration harness', () => {
         'migration.normalize-vite-html-entry.skipped',
         'migration.inject-ssr-markers.skipped',
         'migration.strip-stale-index-title.skipped',
+        'migration.add-eslint-security-plugins.applied',
+        'migration.add-lockfile-lint.applied',
       ],
     },
     {
@@ -389,6 +421,8 @@ describe.skip('sync-template-files black-box migration harness', () => {
         'migration.normalize-vite-html-entry.skipped',
         'migration.inject-ssr-markers.skipped',
         'migration.strip-stale-index-title.skipped',
+        'migration.add-eslint-security-plugins.applied',
+        'migration.add-lockfile-lint.applied',
       ],
     },
     {
@@ -403,6 +437,8 @@ describe.skip('sync-template-files black-box migration harness', () => {
         'migration.normalize-vite-html-entry.skipped',
         'migration.inject-ssr-markers.skipped',
         'migration.strip-stale-index-title.skipped',
+        'migration.add-eslint-security-plugins.applied',
+        'migration.add-lockfile-lint.applied',
       ],
     },
     {
@@ -417,6 +453,8 @@ describe.skip('sync-template-files black-box migration harness', () => {
         'migration.normalize-vite-html-entry.skipped',
         'migration.inject-ssr-markers.skipped',
         'migration.strip-stale-index-title.skipped',
+        'migration.add-eslint-security-plugins.applied',
+        'migration.add-lockfile-lint.applied',
       ],
     },
     {
@@ -431,6 +469,8 @@ describe.skip('sync-template-files black-box migration harness', () => {
         'migration.normalize-vite-html-entry.skipped',
         'migration.inject-ssr-markers.skipped',
         'migration.strip-stale-index-title.skipped',
+        'migration.add-eslint-security-plugins.applied',
+        'migration.add-lockfile-lint.applied',
       ],
     },
   ];

@@ -12,42 +12,19 @@ import TextLockup from '@ux/text-lockup';
 
 import { ChatTab } from '@/app/[market]/develop/components/types';
 import { useAppIdFromParams } from '@/app/[market]/develop/components/utils';
+import { type StructuredVulnerability } from '@/app/api/testpilot/transform-scan-result';
 import { useChatTabs } from '@/hooks/useChatTabs';
 import { useTranslations } from '@/hooks/useTranslations';
 import { logger } from '@/lib/request-context';
 import { type TestPilotRunResult } from '@/lib/testpilot';
 import { TodoListService } from '@/services/TodoListService';
 
-/**
- * Security vulnerability interface based on TestPilot response
- */
-interface SecurityVulnerability {
-  severity: string;
-  title: string;
-  description: string;
-  impact?: string;
-  remediation?: string[];
-  location?: string;
-}
+type TranslateFn = ReturnType<typeof useTranslations>;
 
 /**
- * Security recommendation interface
- */
-interface SecurityRecommendation {
-  priority?: 'high' | 'medium' | 'low';
-  text: string;
-}
-
-/**
- * Security report interface based on TestPilot response
- */
-interface SecurityReport {
-  vulnerabilities?: SecurityVulnerability[];
-  recommendations?: (string | SecurityRecommendation)[];
-}
-
-/**
- * TestPilot security response interface
+ * TestPilot security response interface — `vulnerabilities` is the structured
+ * shape emitted by transform-scan-result.ts. The client templates user-visible
+ * strings via translation keys (builder_settings_security_*).
  */
 interface SecurityTestResult {
   status?: 'pending' | 'completed' | 'failed';
@@ -63,9 +40,81 @@ interface SecurityTestResult {
     elementContext?: Record<string, unknown>;
   }>;
   aiInsights?: {
-    securityReport?: SecurityReport;
+    securityReport?: {
+      vulnerabilities?: StructuredVulnerability[];
+    };
   };
   errors?: string[];
+}
+
+/**
+ * Translate a severity string ("critical" | "high" | "medium" | "low") to its
+ * localized label. Unknown severities pass through verbatim — better to surface
+ * a raw value than swallow a finding.
+ */
+function severityLabel(severity: string, t: TranslateFn): string {
+  const key = severity.toLowerCase();
+  if (key === 'critical' || key === 'high' || key === 'medium' || key === 'low') {
+    return t(`builder_settings_security_severity_${key}`);
+  }
+  return severity;
+}
+
+/**
+ * Build the user-visible title for a vulnerability. Each `kind` has its own
+ * translation key — registered upstream in the i18n tool.
+ */
+function displayTitle(v: StructuredVulnerability, t: TranslateFn): string {
+  switch (v.kind) {
+    case 'sca':
+      return t('builder_settings_security_vuln_title_sca', { title: v.rawTitle ?? v.packageName ?? '' });
+    case 'secret':
+      return t('builder_settings_security_vuln_title_secret', { ruleId: v.ruleId ?? '' });
+    case 'sast':
+      return t('builder_settings_security_vuln_title_sast', { ruleId: v.ruleId ?? '', title: v.rawTitle ?? '' });
+    case 'supplyChain':
+      return t('builder_settings_security_vuln_title_supply_chain', { ruleId: v.ruleId ?? '', title: v.rawTitle ?? '' });
+  }
+}
+
+/**
+ * Build the user-visible impact line. Templated client-side from raw context
+ * (file/line/packageName) provided by the BFF transform.
+ */
+function displayImpact(v: StructuredVulnerability, t: TranslateFn): string {
+  switch (v.kind) {
+    case 'sca':
+      return t('builder_settings_security_vuln_impact_sca', { packageName: v.packageName ?? '' });
+    case 'secret':
+      return t('builder_settings_security_vuln_impact_secret', { file: v.file ?? '', line: v.line ?? 0 });
+    case 'sast':
+      return t('builder_settings_security_vuln_impact_sast', { file: v.file ?? '', line: v.line ?? 0 });
+    case 'supplyChain':
+      return v.packageName
+        ? t('builder_settings_security_vuln_impact_supply_chain_pkg', { packageName: v.packageName })
+        : t('builder_settings_security_vuln_impact_supply_chain_file', { file: v.file ?? '' });
+  }
+}
+
+/**
+ * Pick the right description for a finding. Scanner-emitted free-text wins
+ * when present; for SCA findings we fall back to a translation key when the
+ * upstream advisory provided no description.
+ */
+function displayDescription(v: StructuredVulnerability, t: TranslateFn): string {
+  if (v.description && v.description.trim().length > 0) return v.description;
+  if (v.kind === 'sca') return t('builder_settings_security_vuln_desc_sca_fallback');
+  return '';
+}
+
+/**
+ * Resolve a remediation list, applying the SCA-specific translated fallback
+ * when the scanner did not emit one (e.g., no autoFix recommendation matched).
+ */
+function displayRemediation(v: StructuredVulnerability, t: TranslateFn): string[] {
+  if (v.remediation && v.remediation.length > 0) return v.remediation;
+  if (v.kind === 'sca') return [t('builder_settings_security_vuln_remediation_sca_fallback')];
+  return [];
 }
 
 /**
@@ -107,12 +156,13 @@ function SecurityVulnerabilityCard({
   onToggle,
   selectionDisabled
 }: {
-  vulnerability: SecurityVulnerability;
+  vulnerability: StructuredVulnerability;
   vulnerabilityId: string;
   isChecked: boolean;
   onToggle: (id: string) => void;
   selectionDisabled: boolean;
 }) {
+  const t = useTranslations();
   const getSeverityTagEmphasis = (severity: string): 'critical' | 'warning' | 'info' | 'neutral' => {
     switch (severity.toLowerCase()) {
       case 'critical':
@@ -127,6 +177,8 @@ function SecurityVulnerabilityCard({
         return 'neutral';
     }
   };
+
+  const impact = displayImpact(vulnerability, t);
 
   return (
     <Card
@@ -161,17 +213,17 @@ function SecurityVulnerabilityCard({
             emphasis={getSeverityTagEmphasis(vulnerability.severity)}
             size="lg"
           >
-            {vulnerability.severity}
+            {severityLabel(vulnerability.severity, t)}
           </Tag>
           <text.span as="title" className="min-w-0 break-words" size={0}>
-            {vulnerability.title}
+            {displayTitle(vulnerability, t)}
           </text.span>
         </Box>
       }
     >
-      {vulnerability.impact && (
+      {impact && (
         <Box>
-          <text.span>{vulnerability.impact}</text.span>
+          <text.span>{impact}</text.span>
         </Box>
       )}
     </Card>
@@ -340,11 +392,23 @@ export default function SecurityResults({
         return checkedVulnerabilities.has(vulnerabilityId);
       });
 
-      // Create items from selected vulnerabilities
-      const todoItems = selectedVulnerabilities.map((vulnerability) => ({
-        title: t('builder_settings_security_results_suggested_fix', { severity: vulnerability.severity, title: vulnerability.title}),
-        description: `${vulnerability.description}${vulnerability.remediation ? `\n${t('builder_settings_security_results_suggested_remediation')}:\n${vulnerability.remediation.map((item) => `- ${item}`).join("\n")}` : ""}`,
-      }));
+      // Create items from selected vulnerabilities. Each field is templated
+      // via translation keys keyed on `kind`, so a Japanese todo says
+      // "脆弱性: …" not "Vulnerable package: …".
+      const todoItems = selectedVulnerabilities.map((vulnerability) => {
+        const remediation = displayRemediation(vulnerability, t);
+        return {
+          title: t('builder_settings_security_results_suggested_fix', {
+            severity: severityLabel(vulnerability.severity, t),
+            title: displayTitle(vulnerability, t),
+          }),
+          description: `${displayDescription(vulnerability, t)}${
+            remediation.length > 0
+              ? `\n${t('builder_settings_security_results_suggested_remediation')}:\n${remediation.map((item) => `- ${item}`).join('\n')}`
+              : ''
+          }`,
+        };
+      });
 
       // Create the list
       const newTodoList = await todoListService.createList(
@@ -363,8 +427,8 @@ export default function SecurityResults({
       });
       Growl.addGrowlMessage({
         id: 'security-quick-fix-create-failed',
-        title: t('builder_settings_security_quick_fix_create_failed_title', undefined, 'Could not start Quick Fix'),
-        children: t('builder_settings_security_quick_fix_create_failed_description', undefined, 'The fix list could not be created. Please try again.'),
+        title: t('builder_settings_security_quick_fix_create_failed_title'),
+        children: t('builder_settings_security_quick_fix_create_failed_description'),
         emphasis: 'critical',
         lifetime: 7000
       });
@@ -414,17 +478,13 @@ export default function SecurityResults({
                   text={
                     isCreatingTodoList
                       ? t('builder_common_creating')
-                      : t('builder_settings_security_ask_airo_to_fix', undefined, 'Ask Airo to fix')
+                      : t('builder_settings_security_ask_airo_to_fix')
                   }
                 />
               </div>
             </div>
             <text.p emphasis="passive" size={-1} className="min-w-0">
-              {t(
-                'builder_settings_security_results_list_scope_note',
-                undefined,
-                'Only critical and high severity findings are listed.',
-              )}
+              {t('builder_settings_security_results_list_scope_note')}
             </text.p>
           </Box>
           <div className="grid gap-2">

@@ -4,6 +4,7 @@
 
 import { useCallback, useState } from 'react';
 
+import { useTranslations } from '@/hooks/useTranslations';
 import { appFetch } from '@/lib/gasket-config';
 import { shipAnalyticsLog } from '@/lib/logging';
 import { logger } from '@/lib/request-context';
@@ -11,10 +12,40 @@ import type { TestPilotRunResult } from '@/lib/testpilot';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import type { SecurityScanResult } from '../types';
 
+/**
+ * Mirrors StructuredVulnerability shape from transform-scan-result.ts. Inlined
+ * here to avoid a cross-module dep into BFF-internal types from a UI hook.
+ */
 interface TestPilotVulnerability {
+  kind: 'sca' | 'secret' | 'sast' | 'supplyChain';
   severity: string;
-  title: string;
+  ruleId?: string;
+  rawTitle?: string;
   description?: string;
+  packageName?: string;
+  file?: string;
+  line?: number;
+}
+
+type T = ReturnType<typeof useTranslations>;
+
+function vulnTitle(v: TestPilotVulnerability, t: T): string {
+  switch (v.kind) {
+    case 'sca':
+      return t('builder_settings_security_vuln_title_sca', { title: v.rawTitle ?? v.packageName ?? '' });
+    case 'secret':
+      return t('builder_settings_security_vuln_title_secret', { ruleId: v.ruleId ?? '' });
+    case 'sast':
+      return t('builder_settings_security_vuln_title_sast', { ruleId: v.ruleId ?? '', title: v.rawTitle ?? '' });
+    case 'supplyChain':
+      return t('builder_settings_security_vuln_title_supply_chain', { ruleId: v.ruleId ?? '', title: v.rawTitle ?? '' });
+  }
+}
+
+function vulnDescription(v: TestPilotVulnerability, t: T): string | undefined {
+  if (v.description && v.description.trim().length > 0) return v.description;
+  if (v.kind === 'sca') return t('builder_settings_security_vuln_desc_sca_fallback');
+  return undefined;
 }
 
 // Discriminated union for TestPilot API response
@@ -26,6 +57,7 @@ export function useSecurityScan(appId: string) {
   const [isScanning, setIsScanning] = useState(false);
   const [scanError, setScanError] = useState<string | null>(null);
   const { setSecurityScanResults, setGoLiveModalStep } = useDevelopPageStore();
+  const t = useTranslations();
 
   const skipSecurityScan = useCallback(() => {
     logger.info('go-live.security-scan.skipped', { appId });
@@ -116,8 +148,8 @@ export function useSecurityScan(appId: string) {
           const normalizedSeverity = severityLower === 'medium' ? 'moderate' : severityLower;
           return {
             severity: normalizedSeverity as 'critical' | 'high' | 'moderate' | 'low',
-            title: v.title,
-            description: v.description
+            title: vulnTitle(v, t),
+            description: vulnDescription(v, t),
           };
         }),
         summary
@@ -146,7 +178,7 @@ export function useSecurityScan(appId: string) {
     } finally {
       setIsScanning(false);
     }
-  }, [appId, setSecurityScanResults]);
+  }, [appId, setSecurityScanResults, t]);
 
   return {
     isScanning,

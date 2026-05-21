@@ -324,20 +324,19 @@ describe('testpilot', function packageTests() {
               securityReport: {
                 vulnerabilities: expect.arrayContaining([
                   expect.objectContaining({
+                    kind: 'sca',
                     severity: 'critical',
-                    title: 'Prototype Pollution',
-                    location: 'lodash',
+                    rawTitle: 'Prototype Pollution',
+                    packageName: 'lodash',
                   }),
                   expect.objectContaining({
+                    kind: 'secret',
                     severity: 'high',
-                    title: 'generic-api-key: Hard-coded secret detected',
-                    location: 'src/config.ts:10:15',
+                    ruleId: 'generic-api-key',
+                    file: 'src/config.ts',
+                    line: 10,
+                    column: 15,
                   }),
-                ]),
-                recommendations: expect.arrayContaining([
-                  expect.stringContaining('Auto-fixable'),
-                  expect.stringContaining('Manual review'),
-                  expect.stringContaining('Deprecated'),
                 ]),
               },
             },
@@ -399,8 +398,9 @@ describe('testpilot', function packageTests() {
         expect(data.code.results.success).toBe(true);
         expect(data.code.results.aiInsights.securityReport.vulnerabilities).toHaveLength(1);
         expect(data.code.results.aiInsights.securityReport.vulnerabilities[0]).toMatchObject({
+          kind: 'secret',
           severity: 'high',
-          title: expect.stringContaining('secret detected'),
+          ruleId: expect.any(String),
         });
       });
 
@@ -428,11 +428,12 @@ describe('testpilot', function packageTests() {
         expect(data.code.results.success).toBe(true);
         expect(data.code.results.aiInsights.securityReport.vulnerabilities).toHaveLength(2);
         expect(data.code.results.aiInsights.securityReport.vulnerabilities.every(
-          (v: { title?: string }) => !v.title?.includes('secret')
+          (v: { kind: string }) => v.kind !== 'secret'
         )).toBe(true);
       });
 
       it('should handle scan result with missing recommendations', async function missingRecommendations() {
+        // Asserts the transform handles a scan result with no `recommendations`.
         const scanResult: VulnerabilityScannerResult = {
           success: true,
           executionTime: 1000,
@@ -453,7 +454,7 @@ describe('testpilot', function packageTests() {
         expect(response.status).toBe(200);
         expect(data.code.timedOut).toBe(false);
         expect(data.code.results.success).toBe(true);
-        expect(data.code.results.aiInsights.securityReport.recommendations).toEqual([]);
+        expect(data.code.results.aiInsights.securityReport.recommendations).toBeUndefined();
       });
 
       it('should handle malformed npmAudit vulnerabilities (non-array)', async function malformedNpmAudit() {
@@ -546,7 +547,7 @@ describe('testpilot', function packageTests() {
         expect(data.code.timedOut).toBe(false);
         expect(data.code.results.success).toBe(true);
         expect(data.code.results.aiInsights.securityReport.vulnerabilities).toEqual([]);
-        expect(data.code.results.aiInsights.securityReport.recommendations).toEqual([]);
+        expect(data.code.results.aiInsights.securityReport.recommendations).toBeUndefined();
       });
 
       it('should handle failed scan result', async function failedScan() {
@@ -647,7 +648,8 @@ describe('testpilot', function packageTests() {
         const data = await response.json();
 
         const lodashVuln = data.code.results.aiInsights.securityReport.vulnerabilities.find(
-          (v: { location: string }) => v.location === 'lodash'
+          (v: { kind: string; packageName?: string }) =>
+            v.kind === 'sca' && v.packageName === 'lodash'
         );
 
         expect(lodashVuln.remediation).toEqual([
@@ -655,7 +657,10 @@ describe('testpilot', function packageTests() {
         ]);
       });
 
-      it('should use default remediation when no autoFixable recommendation exists', async function defaultRemediation() {
+      it('should leave remediation undefined when no autoFixable recommendation exists', async function defaultRemediation() {
+        // BFF emits structured fields only — when no autoFix rec is found, the
+        // remediation field is omitted so the client can supply a translated
+        // fallback (builder_settings_security_vuln_remediation_sca_fallback).
         mockAgentFetch.mockResolvedValue(createMockResponse(VALID_SCAN_RESULT));
 
         const request = createMockRequest({
@@ -668,12 +673,11 @@ describe('testpilot', function packageTests() {
         const data = await response.json();
 
         const axiosVuln = data.code.results.aiInsights.securityReport.vulnerabilities.find(
-          (v: { location: string }) => v.location === 'axios'
+          (v: { kind: string; packageName?: string }) =>
+            v.kind === 'sca' && v.packageName === 'axios'
         );
 
-        expect(axiosVuln.remediation).toEqual([
-          'Run npm audit fix to resolve this vulnerability',
-        ]);
+        expect(axiosVuln.remediation).toBeUndefined();
       });
     });
 
@@ -753,15 +757,16 @@ describe('testpilot', function packageTests() {
 
         // Verify package-a got the auto-fix recommendation
         const packageAVuln = result.aiInsights.securityReport.vulnerabilities.find(
-          v => v.location === 'package-a'
+          v => v.kind === 'sca' && v.packageName === 'package-a'
         );
         expect(packageAVuln?.remediation).toEqual(['Update to version 2.0.0']);
 
-        // Verify package-b got the default remediation
+        // package-b has no autoFix rec — BFF leaves remediation undefined; the
+        // client supplies the translated fallback at render time.
         const packageBVuln = result.aiInsights.securityReport.vulnerabilities.find(
-          v => v.location === 'package-b'
+          v => v.kind === 'sca' && v.packageName === 'package-b'
         );
-        expect(packageBVuln?.remediation).toEqual(['Run npm audit fix to resolve this vulnerability']);
+        expect(packageBVuln?.remediation).toBeUndefined();
       });
 
       it('should handle empty recommendations array', function emptyRecommendations() {
@@ -789,11 +794,83 @@ describe('testpilot', function packageTests() {
 
         const result = transformVulnerabilityScanResult(scanResult);
 
-        // Should use default remediation when no auto-fix is available
+        // No autoFix rec → BFF emits no remediation; client supplies the fallback.
         const vuln = result.aiInsights.securityReport.vulnerabilities.find(
-          v => v.location === 'test-package'
+          v => v.kind === 'sca' && v.packageName === 'test-package'
         );
-        expect(vuln?.remediation).toEqual(['Run npm audit fix to resolve this vulnerability']);
+        expect(vuln?.remediation).toBeUndefined();
+      });
+
+      it('should transform SAST findings into kind:"sast" vulnerabilities', function sastTransform() {
+        const scanResult: VulnerabilityScannerResult = {
+          success: true,
+          executionTime: 1000,
+          codeQualityScan: {
+            summary: { total: 1, critical: 0, high: 1, medium: 0, low: 0 },
+            findings: [
+              {
+                file: 'src/handler.ts',
+                line: 42,
+                column: 5,
+                ruleId: 'security/detect-eval-with-expression',
+                severity: 'high',
+                title: 'eval-with-expression',
+                description: 'eval used with non-literal expression',
+              },
+            ],
+          },
+        };
+
+        const result = transformVulnerabilityScanResult(scanResult);
+
+        const sast = result.aiInsights.securityReport.vulnerabilities.find(
+          (v) => v.kind === 'sast',
+        );
+        expect(sast).toBeDefined();
+        expect(sast).toMatchObject({
+          kind: 'sast',
+          severity: 'high',
+          ruleId: 'security/detect-eval-with-expression',
+          rawTitle: 'eval-with-expression',
+          file: 'src/handler.ts',
+          line: 42,
+          column: 5,
+        });
+      });
+
+      it('should transform supply-chain findings into kind:"supplyChain" vulnerabilities', function supplyChainTransform() {
+        const scanResult: VulnerabilityScannerResult = {
+          success: true,
+          executionTime: 1000,
+          supplyChainScan: {
+            summary: { total: 1, critical: 1, high: 0, medium: 0, low: 0 },
+            findings: [
+              {
+                ruleId: 'lockfile-lint/allowed-hosts',
+                severity: 'critical',
+                title: 'Package resolved from disallowed registry',
+                description: 'pkg@1.0.0 resolved from evil.example.com',
+                packageName: 'pkg@1.0.0',
+                file: 'package-lock.json',
+              },
+            ],
+          },
+        };
+
+        const result = transformVulnerabilityScanResult(scanResult);
+
+        const sc = result.aiInsights.securityReport.vulnerabilities.find(
+          (v) => v.kind === 'supplyChain',
+        );
+        expect(sc).toBeDefined();
+        expect(sc).toMatchObject({
+          kind: 'supplyChain',
+          severity: 'critical',
+          ruleId: 'lockfile-lint/allowed-hosts',
+          rawTitle: 'Package resolved from disallowed registry',
+          packageName: 'pkg@1.0.0',
+          file: 'package-lock.json',
+        });
       });
 
       it('should transform all vulnerability fields correctly', function correctTransformation() {
@@ -833,12 +910,12 @@ describe('testpilot', function packageTests() {
         expect(result.success).toBe(true);
 
         const vuln = result.aiInsights.securityReport.vulnerabilities[0];
+        expect(vuln.kind).toBe('sca');
         expect(vuln.severity).toBe('critical');
-        expect(vuln.title).toBe('Prototype Pollution');
+        expect(vuln.rawTitle).toBe('Prototype Pollution');
         expect(vuln.description).toBe('Lodash vulnerability description');
-        expect(vuln.impact).toBe('Vulnerable package: lodash');
+        expect(vuln.packageName).toBe('lodash');
         expect(vuln.remediation).toEqual(['Update lodash to 4.17.19']);
-        expect(vuln.location).toBe('lodash');
       });
     });
 

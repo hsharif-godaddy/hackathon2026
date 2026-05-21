@@ -257,6 +257,12 @@ const SYNC_MANIFEST = [
       '22e6ae1898a423aff378e0664323a9ae'  // Original shadcn template with next-themes
     ],
     force: false
+  },
+  {
+    file: 'eslint.security.config.js',
+    description: 'ESLint flat config for SAST security scanning (eslint-plugin-security + no-unsanitized)',
+    known_hashes: [],
+    force: false
   }
 ];
 
@@ -1208,6 +1214,62 @@ export const MIGRATIONS = [
       }
 
       return { status: 'applied', changed };
+    }
+  },
+  {
+    id: 'add-eslint-security-plugins',
+    description: 'Add eslint-plugin-security and eslint-plugin-no-unsanitized devDependencies for SAST scanning',
+    run(customerDir, _syncedFiles) {
+      const pkgPath = join(customerDir, 'package.json');
+      if (!existsSync(pkgPath)) return { status: 'skipped', reason: 'package_json_missing' };
+
+      let pkg;
+      try {
+        pkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
+      } catch {
+        return { status: 'skipped', reason: 'package_json_parse_error' };
+      }
+      if (!pkg.devDependencies) pkg.devDependencies = {};
+
+      let changed = false;
+      if (!('eslint-plugin-security' in pkg.devDependencies)) {
+        pkg.devDependencies['eslint-plugin-security'] = '^3.0.1';
+        changed = true;
+        console.log('  Added devDependencies.eslint-plugin-security');
+      }
+      if (!('eslint-plugin-no-unsanitized' in pkg.devDependencies)) {
+        pkg.devDependencies['eslint-plugin-no-unsanitized'] = '^4.1.2';
+        changed = true;
+        console.log('  Added devDependencies.eslint-plugin-no-unsanitized');
+      }
+
+      if (!changed) return { status: 'skipped', reason: 'already_present' };
+
+      writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n', 'utf8');
+      return { status: 'applied', changed: true };
+    }
+  },
+  {
+    id: 'add-lockfile-lint',
+    description: 'Add lockfile-lint devDependency for supply-chain integrity checks',
+    run(customerDir, _syncedFiles) {
+      const pkgPath = join(customerDir, 'package.json');
+      if (!existsSync(pkgPath)) return { status: 'skipped', reason: 'package_json_missing' };
+
+      let pkg;
+      try {
+        pkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
+      } catch {
+        return { status: 'skipped', reason: 'package_json_parse_error' };
+      }
+      if (!pkg.devDependencies) pkg.devDependencies = {};
+
+      if ('lockfile-lint' in pkg.devDependencies) return { status: 'skipped', reason: 'already_present' };
+
+      pkg.devDependencies['lockfile-lint'] = '~4.13.2';
+      console.log('  Added devDependencies.lockfile-lint');
+      writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n', 'utf8');
+      return { status: 'applied', changed: true };
     }
   }
 ];

@@ -62,16 +62,30 @@ export interface TestPilotResponse {
   errors?: string[];
   aiInsights?: {
     functional?: Record<string, unknown>;
+    // Structural shape — mirrors StructuredVulnerability / StructuredRecommendation
+    // from @/app/api/testpilot/transform-scan-result without importing those
+    // types here. Keeps the testpilot client free of BFF-internal coupling.
     securityReport?: {
       vulnerabilities?: Array<{
+        kind: 'sca' | 'secret' | 'sast' | 'supplyChain';
         severity: string;
-        title: string;
-        description: string;
-        impact?: string;
+        ruleId?: string;
+        rawTitle?: string;
+        description?: string;
         remediation?: string[];
-        location?: string;
+        packageName?: string;
+        file?: string;
+        line?: number;
+        column?: number;
       }>;
-      recommendations?: string[];
+      recommendations?: Array<{
+        kind: 'autoFix' | 'manualReview' | 'deprecated';
+        severity?: string;
+        package: string;
+        description?: string;
+        action?: string;
+        reason?: string;
+      }>;
     };
   };
   visualAnalysis?: {

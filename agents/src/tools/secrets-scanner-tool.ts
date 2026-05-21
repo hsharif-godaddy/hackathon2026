@@ -381,9 +381,16 @@ export class SecretsScannerTool {
     this.logger.info('secrets-scanner.gitleaks.executing');
 
     try {
-      // Gitleaks should be in PATH (/usr/local/bin/gitleaks)
+      // Gitleaks should be in PATH (/usr/local/bin/gitleaks).
+      // - `--no-git`: scan the working tree directly instead of git history so uncommitted
+      //   edits are included (critical for user-triggered scans after in-session edits).
+      // - `--report-path /dev/stdout`: in gitleaks v8, `--report-format json` defaults to
+      //   writing the JSON report to a FILE (`gitleaks-report.json` in cwd) and sends only
+      //   human-readable summary to stdout. Without this flag we'd read empty stdout and
+      //   silently treat every scan as "no findings".
       const result = await devSupervisor!.exec({
-        command: 'gitleaks detect --source /app --report-format json --no-banner',
+        command:
+          'gitleaks detect --no-git --source /app --report-format json --report-path /dev/stdout --no-banner',
         capture_output: true,
         timeout: Math.floor((options.timeout || this.DEFAULT_TIMEOUT) / 1000),
       });
@@ -395,27 +402,45 @@ export class SecretsScannerTool {
         throw new Error(`Gitleaks execution failed: ${result.stderr || 'Unknown error'}`);
       }
 
+      // exit 1 + empty stdout = findings claimed but nothing emitted; refuse
+      // to return [] which would mask real findings as a clean scan.
       if (!result.stdout) {
-        // No findings
+        if (result.exit_code === 1) {
+          this.logger.error('secrets-scanner.gitleaks.empty-stdout-with-findings-exit', {
+            stderr: result.stderr?.slice(0, 500),
+          });
+          throw new Error(
+            'Gitleaks exited 1 (findings) but stdout is empty — possible flag/config drift',
+          );
+        }
         return [];
       }
 
       const trimmedContent = result.stdout.trim();
-      if (!trimmedContent || (!trimmedContent.startsWith('{') && !trimmedContent.startsWith('['))) {
-        this.logger.warn('secrets-scanner.gitleaks.invalid-json', {
-          preview: trimmedContent.substring(0, 100),
+      // Empty trimmed output is treated as "no findings" by the empty-stdout
+      // branch above; if we reach here, content is non-empty.
+      if (!trimmedContent.startsWith('{') && !trimmedContent.startsWith('[')) {
+        // Non-JSON output from gitleaks means the binary printed an error to
+        // stdout (rare, but possible for misconfigured scans). Throwing
+        // propagates to the scanner's outer catch, which sets `success: false`
+        // and `error`. Worst-case for credential exposure: silently returning
+        // `[]` reads as "no secrets found" → secrets score 100.
+        this.logger.error('secrets-scanner.gitleaks.invalid-json', {
+          preview: trimmedContent.substring(0, 200),
         });
-        return [];
+        throw new Error(
+          `Gitleaks produced unparseable output (exit ${result.exit_code}): ${trimmedContent.slice(0, 200)}`,
+        );
       }
 
       let gitleaksData: GitleaksOutput | GitleaksFinding[];
       try {
         gitleaksData = JSON.parse(trimmedContent);
       } catch (parseError) {
-        this.logger.warn('secrets-scanner.gitleaks.json-parse-failed', {
+        this.logger.error('secrets-scanner.gitleaks.json-parse-failed', {
           error: getErrorMessage(parseError),
         });
-        return [];
+        throw new Error(`Gitleaks output failed JSON.parse: ${getErrorMessage(parseError)}`);
       }
 
       // Handle both array format and object with findings array
