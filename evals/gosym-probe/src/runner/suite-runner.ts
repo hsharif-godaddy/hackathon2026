@@ -248,13 +248,14 @@ export class SuiteRunner {
         loaded.scores,
         config.regression,
       );
-      const enrichedAggregated = enrichScoreModePassRates(
+      const { aggregated: enrichedAggregated, trials: enrichedTrials } = enrichScoreModePassRates(
         result,
         loaded.scores,
         config.regression,
       );
       result.regressionStatus = regressionStatus;
       result.aggregated = enrichedAggregated;
+      result.trials = enrichedTrials;
       result.baselineFilePath = loaded.filePath;
     }
   }

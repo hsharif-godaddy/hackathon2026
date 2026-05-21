@@ -94,7 +94,7 @@ describe('trialPassesBaseline boundary conditions', () => {
       ]);
       const baseline = makeBaseline('latency', 100);
 
-      const enriched = enrichScoreModePassRates(result, baseline, defaultConfig);
+      const { aggregated: enriched } = enrichScoreModePassRates(result, baseline, defaultConfig);
 
       // Non-finite score: validTrials++ but no passingTrials++ → explicit failure
       expect(enriched['latency'].passAtK).toBe(false);
@@ -107,7 +107,7 @@ describe('trialPassesBaseline boundary conditions', () => {
       ]);
       const baseline = makeBaseline('latency', 100);
 
-      const enriched = enrichScoreModePassRates(result, baseline, defaultConfig);
+      const { aggregated: enriched } = enrichScoreModePassRates(result, baseline, defaultConfig);
 
       expect(enriched['latency'].passAtK).toBe(false);
     });
@@ -118,7 +118,7 @@ describe('trialPassesBaseline boundary conditions', () => {
       ]);
       const baseline = makeBaseline('latency', 100);
 
-      const enriched = enrichScoreModePassRates(result, baseline, defaultConfig);
+      const { aggregated: enriched } = enrichScoreModePassRates(result, baseline, defaultConfig);
 
       expect(enriched['latency'].passAtK).toBe(false);
     });
@@ -131,7 +131,7 @@ describe('trialPassesBaseline boundary conditions', () => {
       ], { lowerIsBetter: true });
       const baseline = makeBaseline('tokens', 0);
 
-      const enriched = enrichScoreModePassRates(result, baseline, defaultConfig);
+      const { aggregated: enriched } = enrichScoreModePassRates(result, baseline, defaultConfig);
 
       expect(enriched['tokens'].passAtK).toBe(true);
     });
@@ -142,7 +142,7 @@ describe('trialPassesBaseline boundary conditions', () => {
       ], { lowerIsBetter: true });
       const baseline = makeBaseline('tokens', 0);
 
-      const enriched = enrichScoreModePassRates(result, baseline, defaultConfig);
+      const { aggregated: enriched } = enrichScoreModePassRates(result, baseline, defaultConfig);
 
       expect(enriched['tokens'].passAtK).toBe(false);
     });
@@ -155,7 +155,7 @@ describe('trialPassesBaseline boundary conditions', () => {
       ], { lowerIsBetter: false });
       const baseline = makeBaseline('score', 0);
 
-      const enriched = enrichScoreModePassRates(result, baseline, defaultConfig);
+      const { aggregated: enriched } = enrichScoreModePassRates(result, baseline, defaultConfig);
 
       expect(enriched['score'].passAtK).toBe(true);
     });
@@ -166,7 +166,7 @@ describe('trialPassesBaseline boundary conditions', () => {
       ], { lowerIsBetter: false });
       const baseline = makeBaseline('score', 0);
 
-      const enriched = enrichScoreModePassRates(result, baseline, defaultConfig);
+      const { aggregated: enriched } = enrichScoreModePassRates(result, baseline, defaultConfig);
 
       expect(enriched['score'].passAtK).toBe(true);
     });
@@ -180,7 +180,7 @@ describe('trialPassesBaseline boundary conditions', () => {
       ], { lowerIsBetter: true });
       const baseline = makeBaseline('tokens', 100);
 
-      const enriched = enrichScoreModePassRates(result, baseline, zeroThresholdConfig);
+      const { aggregated: enriched } = enrichScoreModePassRates(result, baseline, zeroThresholdConfig);
 
       expect(enriched['tokens'].passAtK).toBe(true);
     });
@@ -192,7 +192,7 @@ describe('trialPassesBaseline boundary conditions', () => {
       ], { lowerIsBetter: true });
       const baseline = makeBaseline('tokens', 100);
 
-      const enriched = enrichScoreModePassRates(result, baseline, zeroThresholdConfig);
+      const { aggregated: enriched } = enrichScoreModePassRates(result, baseline, zeroThresholdConfig);
 
       expect(enriched['tokens'].passAtK).toBe(false);
     });
@@ -204,7 +204,7 @@ describe('trialPassesBaseline boundary conditions', () => {
       ], { lowerIsBetter: false });
       const baseline = makeBaseline('quality', 100);
 
-      const enriched = enrichScoreModePassRates(result, baseline, zeroThresholdConfig);
+      const { aggregated: enriched } = enrichScoreModePassRates(result, baseline, zeroThresholdConfig);
 
       expect(enriched['quality'].passAtK).toBe(true);
     });
@@ -216,7 +216,7 @@ describe('trialPassesBaseline boundary conditions', () => {
       ], { lowerIsBetter: false });
       const baseline = makeBaseline('quality', 100);
 
-      const enriched = enrichScoreModePassRates(result, baseline, zeroThresholdConfig);
+      const { aggregated: enriched } = enrichScoreModePassRates(result, baseline, zeroThresholdConfig);
 
       expect(enriched['quality'].passAtK).toBe(false);
     });
@@ -236,7 +236,7 @@ describe('trialPassesBaseline boundary conditions', () => {
         makeTrialWithScore('latency', 90),
       ]);
 
-      const enriched = enrichScoreModePassRates(result, baseline, defaultConfig);
+      const { aggregated: enriched } = enrichScoreModePassRates(result, baseline, defaultConfig);
 
       expect(enriched['latency'].passAtK).toBeUndefined();
     });
@@ -254,7 +254,7 @@ describe('trialPassesBaseline boundary conditions', () => {
         makeTrialWithScore('latency', 90),
       ]);
 
-      const enriched = enrichScoreModePassRates(result, baseline, defaultConfig);
+      const { aggregated: enriched } = enrichScoreModePassRates(result, baseline, defaultConfig);
 
       expect(enriched['latency'].passAtK).toBeUndefined();
     });
@@ -268,7 +268,7 @@ describe('trialPassesBaseline boundary conditions', () => {
       ]);
       const baseline = makeBaseline('latency', 100);
 
-      const enriched = enrichScoreModePassRates(result, baseline, defaultConfig);
+      const { aggregated: enriched } = enrichScoreModePassRates(result, baseline, defaultConfig);
 
       expect(enriched['latency'].passAtK).toBeUndefined();
     });
@@ -289,7 +289,7 @@ describe('enrichScoreModePassRates error paths', () => {
       makeTrialWithScore('latency', 90),
     ]);
 
-    const enriched = enrichScoreModePassRates(result, baseline, defaultConfig);
+    const { aggregated: enriched } = enrichScoreModePassRates(result, baseline, defaultConfig);
 
     expect(enriched['latency'].passAtK).toBeUndefined();
     expect(enriched['latency'].regressionMode).toBe('score');
@@ -301,7 +301,7 @@ describe('enrichScoreModePassRates error paths', () => {
     ], { evalVersion: 'v2' });
     const baseline = makeBaseline('latency', 100, { evalVersion: 'v1' });
 
-    const enriched = enrichScoreModePassRates(result, baseline, defaultConfig);
+    const { aggregated: enriched } = enrichScoreModePassRates(result, baseline, defaultConfig);
 
     expect(enriched['latency'].passAtK).toBeUndefined();
   });
@@ -312,7 +312,7 @@ describe('enrichScoreModePassRates error paths', () => {
     ], { evalVersion: 'v1' });
     const baseline = makeBaseline('latency', 100);
 
-    const enriched = enrichScoreModePassRates(result, baseline, defaultConfig);
+    const { aggregated: enriched } = enrichScoreModePassRates(result, baseline, defaultConfig);
 
     expect(enriched['latency'].passAtK).toBeUndefined();
   });
@@ -323,7 +323,7 @@ describe('enrichScoreModePassRates error paths', () => {
     ]);
     const baseline = makeBaseline('latency', 100, { evalVersion: 'v1' });
 
-    const enriched = enrichScoreModePassRates(result, baseline, defaultConfig);
+    const { aggregated: enriched } = enrichScoreModePassRates(result, baseline, defaultConfig);
 
     expect(enriched['latency'].passAtK).toBeUndefined();
   });
@@ -334,7 +334,7 @@ describe('enrichScoreModePassRates error paths', () => {
     ], { evalVersion: 'v1' });
     const baseline = makeBaseline('latency', 100, { evalVersion: 'v1' });
 
-    const enriched = enrichScoreModePassRates(result, baseline, defaultConfig);
+    const { aggregated: enriched } = enrichScoreModePassRates(result, baseline, defaultConfig);
 
     expect(enriched['latency'].passAtK).toBeDefined();
   });
@@ -343,7 +343,7 @@ describe('enrichScoreModePassRates error paths', () => {
     const result = makeScenario('latency', []);
     const baseline = makeBaseline('latency', 100);
 
-    const enriched = enrichScoreModePassRates(result, baseline, defaultConfig);
+    const { aggregated: enriched } = enrichScoreModePassRates(result, baseline, defaultConfig);
 
     expect(enriched['latency'].passAtK).toBeUndefined();
     expect(enriched['latency'].passToTheK).toBeUndefined();
@@ -366,7 +366,7 @@ describe('enrichScoreModePassRates error paths', () => {
     const baseline = makeBaseline('latency', 100);
 
     // Trial excluded, so zero valid trials → treated like empty trials
-    const enriched = enrichScoreModePassRates(result, baseline, defaultConfig);
+    const { aggregated: enriched } = enrichScoreModePassRates(result, baseline, defaultConfig);
 
     // No trial has the evaluator → same as empty trials: passAtK remains undefined
     expect(enriched['latency'].passAtK).toBeUndefined();
@@ -384,7 +384,7 @@ describe('enrichScoreModePassRates core behavior', () => {
     ], { lowerIsBetter: false });
     const baseline = makeBaseline('quality', 100);
 
-    const enriched = enrichScoreModePassRates(result, baseline, defaultConfig);
+    const { aggregated: enriched } = enrichScoreModePassRates(result, baseline, defaultConfig);
 
     expect(enriched['quality'].passAtK).toBe(true);
     expect(enriched['quality'].baselinePassingTrials).toBe(1);
@@ -397,7 +397,7 @@ describe('enrichScoreModePassRates core behavior', () => {
     ], { lowerIsBetter: false });
     const baseline = makeBaseline('quality', 100);
 
-    const enriched = enrichScoreModePassRates(result, baseline, defaultConfig);
+    const { aggregated: enriched } = enrichScoreModePassRates(result, baseline, defaultConfig);
 
     expect(enriched['quality'].passAtK).toBe(false);
   });
@@ -409,7 +409,7 @@ describe('enrichScoreModePassRates core behavior', () => {
     ], { lowerIsBetter: true });
     const baseline = makeBaseline('latency', 100);
 
-    const enriched = enrichScoreModePassRates(result, baseline, defaultConfig);
+    const { aggregated: enriched } = enrichScoreModePassRates(result, baseline, defaultConfig);
 
     expect(enriched['latency'].passAtK).toBe(false);
     expect(enriched['latency'].passToTheK).toBe(false);
@@ -422,7 +422,7 @@ describe('enrichScoreModePassRates core behavior', () => {
     ], { lowerIsBetter: true });
     const baseline = makeBaseline('tokens', 100);
 
-    const enriched = enrichScoreModePassRates(result, baseline, defaultConfig);
+    const { aggregated: enriched } = enrichScoreModePassRates(result, baseline, defaultConfig);
 
     expect(enriched['tokens'].passAtK).toBe(true);
   });
@@ -434,7 +434,7 @@ describe('enrichScoreModePassRates core behavior', () => {
     ], { lowerIsBetter: true });
     const baseline = makeBaseline('tokens', 100);
 
-    const enriched = enrichScoreModePassRates(result, baseline, defaultConfig);
+    const { aggregated: enriched } = enrichScoreModePassRates(result, baseline, defaultConfig);
 
     expect(enriched['tokens'].passAtK).toBe(true);
   });
@@ -446,7 +446,7 @@ describe('enrichScoreModePassRates core behavior', () => {
     ], { lowerIsBetter: true });
     const baseline = makeBaseline('tokens', 100);
 
-    const enriched = enrichScoreModePassRates(result, baseline, defaultConfig);
+    const { aggregated: enriched } = enrichScoreModePassRates(result, baseline, defaultConfig);
 
     expect(enriched['tokens'].passAtK).toBe(false);
   });
@@ -459,7 +459,7 @@ describe('enrichScoreModePassRates core behavior', () => {
     ], { lowerIsBetter: true });
     const baseline = makeBaseline('latency', 100);
 
-    const enriched = enrichScoreModePassRates(result, baseline, defaultConfig);
+    const { aggregated: enriched } = enrichScoreModePassRates(result, baseline, defaultConfig);
 
     expect(enriched['latency'].passAtK).toBe(true);
     expect(enriched['latency'].passToTheK).toBe(true);
@@ -475,7 +475,7 @@ describe('enrichScoreModePassRates core behavior', () => {
     ], { lowerIsBetter: true });
     const baseline = makeBaseline('latency', 100);
 
-    const enriched = enrichScoreModePassRates(result, baseline, defaultConfig);
+    const { aggregated: enriched } = enrichScoreModePassRates(result, baseline, defaultConfig);
 
     expect(enriched['latency'].passAtK).toBe(true);
     expect(enriched['latency'].passToTheK).toBe(false);
@@ -492,7 +492,7 @@ describe('enrichScoreModePassRates core behavior', () => {
       regressionThresholds: { tokens: 0.01 },
     });
 
-    const enriched = enrichScoreModePassRates(result, baseline, configLoose);
+    const { aggregated: enriched } = enrichScoreModePassRates(result, baseline, configLoose);
 
     // baseline threshold=0.01 overrides config 0.20
     // (105-100)/100=0.05 > 0.01 → fails
@@ -510,7 +510,7 @@ describe('enrichScoreModePassRates core behavior', () => {
     ], { lowerIsBetter: true });
     const baseline = makeBaseline('tokens', 100);
 
-    const enriched = enrichScoreModePassRates(result, baseline, configStrict);
+    const { aggregated: enriched } = enrichScoreModePassRates(result, baseline, configStrict);
 
     expect(enriched['tokens'].passAtK).toBe(false);
   });
@@ -533,7 +533,7 @@ describe('enrichScoreModePassRates core behavior', () => {
     };
     const baseline = makeBaseline('latency', 100);
 
-    const enriched = enrichScoreModePassRates(scenarioWithMixed, baseline, defaultConfig);
+    const { aggregated: enriched } = enrichScoreModePassRates(scenarioWithMixed, baseline, defaultConfig);
 
     expect(enriched['bug-hit-rate']).toStrictEqual(passRateAgg);
   });
@@ -544,11 +544,17 @@ describe('enrichScoreModePassRates core behavior', () => {
     ]);
     const baseline = makeBaseline('latency', 100);
     const originalAgg = result.aggregated['latency'];
+    const originalTrial = result.trials[0];
+    const originalEvalResult = result.trials[0].evalResults[0];
 
     enrichScoreModePassRates(result, baseline, defaultConfig);
 
     expect(result.aggregated['latency']).toBe(originalAgg);
     expect(result.aggregated['latency'].passAtK).toBeUndefined();
+    // input trials array and EvalResult objects must not be mutated
+    expect(result.trials[0]).toBe(originalTrial);
+    expect(result.trials[0].evalResults[0]).toBe(originalEvalResult);
+    expect(result.trials[0].evalResults[0].verdict).toBe('observed');
   });
 
   it('unknown-verdict trials excluded from denominator for passToTheK', () => {
@@ -568,7 +574,7 @@ describe('enrichScoreModePassRates core behavior', () => {
     };
     const baseline = makeBaseline('latency', 100);
 
-    const enriched = enrichScoreModePassRates(result, baseline, defaultConfig);
+    const { aggregated: enriched } = enrichScoreModePassRates(result, baseline, defaultConfig);
 
     // 2 valid trials, both pass → passToTheK=true
     expect(enriched['latency'].passToTheK).toBe(true);
@@ -587,7 +593,7 @@ describe('enrichScoreModePassRates edge cases', () => {
     ], { lowerIsBetter: true });
     const baseline = makeBaseline('cost', 0.10);
 
-    const enriched = enrichScoreModePassRates(result, baseline, defaultConfig);
+    const { aggregated: enriched } = enrichScoreModePassRates(result, baseline, defaultConfig);
 
     expect(enriched['cost'].passAtK).toBe(true);
     expect(enriched['cost'].baselinePassingTrials).toBe(1);
@@ -603,7 +609,7 @@ describe('enrichScoreModePassRates edge cases', () => {
     ], { lowerIsBetter: true });
     const baseline = makeBaseline('metric', -10);
 
-    const enriched = enrichScoreModePassRates(result, baseline, defaultConfig);
+    const { aggregated: enriched } = enrichScoreModePassRates(result, baseline, defaultConfig);
 
     expect(enriched['metric'].passAtK).toBe(true);
   });
@@ -614,7 +620,7 @@ describe('enrichScoreModePassRates edge cases', () => {
     ], { lowerIsBetter: true });
     const baseline = makeBaseline('tokens', 1e15);
 
-    const enriched = enrichScoreModePassRates(result, baseline, defaultConfig);
+    const { aggregated: enriched } = enrichScoreModePassRates(result, baseline, defaultConfig);
 
     // (1e15*1.05 - 1e15) / 1e15 = 0.05 <= 0.1 → pass
     expect(enriched['tokens'].passAtK).toBe(true);
@@ -658,7 +664,7 @@ describe('enrichScoreModePassRates edge cases', () => {
       },
     };
 
-    const enriched = enrichScoreModePassRates(mixed, baseline, defaultConfig);
+    const { aggregated: enriched } = enrichScoreModePassRates(mixed, baseline, defaultConfig);
 
     // pass-rate: unchanged
     expect(enriched['bug-hit-rate'].passAtK).toBe(true);
@@ -666,5 +672,233 @@ describe('enrichScoreModePassRates edge cases', () => {
     expect(enriched['latency'].passAtK).toBeDefined();
     // cost: unchanged (no baseline)
     expect(enriched['cost'].passAtK).toBeUndefined();
+  });
+});
+
+// ── Trial verdict enrichment — boundary tests ─────────────────────────────────
+
+describe('trial verdict enrichment — boundary tests', () => {
+  it('passing trial → verdict updated to pass', () => {
+    // score=95, baseline=100, lowerIsBetter=true → 5% within 10% threshold → pass
+    const result = makeScenario('latency', [
+      makeTrialWithScore('latency', 95),
+    ], { lowerIsBetter: true });
+    const baseline = makeBaseline('latency', 100);
+
+    const { trials: enrichedTrials } = enrichScoreModePassRates(result, baseline, defaultConfig);
+
+    const evalResult = enrichedTrials[0].evalResults.find((e) => e.evaluator === 'latency')!;
+    expect(evalResult.verdict).toBe('pass');
+    expect(evalResult.baselineComparison).toBe('latency: 95 vs baseline 100 (threshold 10%) → pass');
+  });
+
+  it('failing trial → verdict updated to fail', () => {
+    // score=120, baseline=100, lowerIsBetter=true → 20% exceeds 10% threshold → fail
+    const result = makeScenario('latency', [
+      makeTrialWithScore('latency', 120),
+    ], { lowerIsBetter: true });
+    const baseline = makeBaseline('latency', 100);
+
+    const { trials: enrichedTrials } = enrichScoreModePassRates(result, baseline, defaultConfig);
+
+    const evalResult = enrichedTrials[0].evalResults.find((e) => e.evaluator === 'latency')!;
+    expect(evalResult.verdict).toBe('fail');
+    expect(evalResult.baselineComparison).toBe('latency: 120 vs baseline 100 (threshold 10%) → fail');
+  });
+
+  it('NaN score → verdict updated to fail (Number.isFinite guard)', () => {
+    const result = makeScenario('latency', [
+      makeTrialWithScore('latency', NaN),
+    ], { lowerIsBetter: true });
+    const baseline = makeBaseline('latency', 100);
+
+    const { trials: enrichedTrials } = enrichScoreModePassRates(result, baseline, defaultConfig);
+
+    const evalResult = enrichedTrials[0].evalResults.find((e) => e.evaluator === 'latency')!;
+    expect(evalResult.verdict).toBe('fail');
+    expect(evalResult.baselineComparison).toBe('latency: NaN vs baseline 100 (threshold 10%) → fail');
+  });
+
+  it('+Infinity score → verdict updated to fail', () => {
+    const result = makeScenario('latency', [
+      makeTrialWithScore('latency', Infinity),
+    ], { lowerIsBetter: true });
+    const baseline = makeBaseline('latency', 100);
+
+    const { trials: enrichedTrials } = enrichScoreModePassRates(result, baseline, defaultConfig);
+
+    const evalResult = enrichedTrials[0].evalResults.find((e) => e.evaluator === 'latency')!;
+    expect(evalResult.verdict).toBe('fail');
+    expect(evalResult.baselineComparison).toBe('latency: Infinity vs baseline 100 (threshold 10%) → fail');
+  });
+});
+
+// ── Trial verdict enrichment — error paths ────────────────────────────────────
+
+describe('trial verdict enrichment — error paths', () => {
+  it('verdict: unknown stays unknown (not enriched)', () => {
+    const result = makeScenario('latency', [
+      makeTrialWithScore('latency', 90, 'unknown'),
+    ], { lowerIsBetter: true });
+    const baseline = makeBaseline('latency', 100);
+
+    const { trials: enrichedTrials } = enrichScoreModePassRates(result, baseline, defaultConfig);
+
+    const evalResult = enrichedTrials[0].evalResults.find((e) => e.evaluator === 'latency')!;
+    expect(evalResult.verdict).toBe('unknown');
+  });
+
+  it('evaluatorFailed: true (verdict: unknown) stays unknown', () => {
+    const trial: TrialResult = {
+      trialIndex: 0,
+      transcript: { scenarioName: 'test-scenario', trialIndex: 0, turns: [], snapshots: [], errors: [] },
+      evalResults: [{ evaluator: 'latency', score: 90, verdict: 'unknown', reason: 'evaluator threw', evaluatorFailed: true }],
+    };
+    const result = makeScenario('latency', [trial], { lowerIsBetter: true });
+    const baseline = makeBaseline('latency', 100);
+
+    const { trials: enrichedTrials } = enrichScoreModePassRates(result, baseline, defaultConfig);
+
+    const evalResult = enrichedTrials[0].evalResults.find((e) => e.evaluator === 'latency')!;
+    expect(evalResult.verdict).toBe('unknown');
+  });
+
+  it('unenriched evaluator (no baseline entry) stays observed', () => {
+    const noEntryBaseline: BaselineScores = {
+      scenarioName: 'test-scenario',
+      runId: 'run-1',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      scores: {},
+    };
+    const result = makeScenario('latency', [
+      makeTrialWithScore('latency', 90),
+    ]);
+
+    const { trials: enrichedTrials } = enrichScoreModePassRates(result, noEntryBaseline, defaultConfig);
+
+    const evalResult = enrichedTrials[0].evalResults.find((e) => e.evaluator === 'latency')!;
+    expect(evalResult.verdict).toBe('observed');
+  });
+
+  it('pass-rate evaluator trial verdict unchanged', () => {
+    const trial: TrialResult = {
+      trialIndex: 0,
+      transcript: { scenarioName: 'test-scenario', trialIndex: 0, turns: [], snapshots: [], errors: [] },
+      evalResults: [{ evaluator: 'bug-hit-rate', score: 1.0, verdict: 'pass', reason: '' }],
+    };
+    const scenario: ScenarioResult = {
+      scenarioName: 'test-scenario',
+      stabilityLevel: 'medium',
+      trials: [trial],
+      aggregated: {
+        'bug-hit-rate': { passAtK: true, passToTheK: true, passingTrials: 1, totalTrials: 1 },
+      },
+    };
+    const baseline = makeBaseline('bug-hit-rate', 100);
+
+    const { trials: enrichedTrials } = enrichScoreModePassRates(scenario, baseline, defaultConfig);
+
+    const evalResult = enrichedTrials[0].evalResults.find((e) => e.evaluator === 'bug-hit-rate')!;
+    expect(evalResult.verdict).toBe('pass');
+  });
+});
+
+// ── Trial verdict enrichment — seam and edge cases ───────────────────────────
+
+describe('trial verdict enrichment — seam and edge cases', () => {
+  it('multiple score-mode evaluators per trial updated independently', () => {
+    // latency: 120 (fail, lowerIsBetter), quality: 95 (pass, higherIsBetter)
+    const trial: TrialResult = {
+      trialIndex: 0,
+      transcript: { scenarioName: 'test-scenario', trialIndex: 0, turns: [], snapshots: [], errors: [] },
+      evalResults: [
+        { evaluator: 'latency', score: 120, verdict: 'observed', reason: '' },
+        { evaluator: 'quality', score: 95, verdict: 'observed', reason: '' },
+      ],
+    };
+    const scenario: ScenarioResult = {
+      scenarioName: 'test-scenario',
+      stabilityLevel: 'medium',
+      trials: [trial],
+      aggregated: {
+        latency: { regressionMode: 'score', passingTrials: 0, totalTrials: 1, medianScore: 100, lowerIsBetter: true },
+        quality: { regressionMode: 'score', passingTrials: 0, totalTrials: 1, medianScore: 100, lowerIsBetter: false },
+      },
+    };
+    const baseline: BaselineScores = {
+      scenarioName: 'test-scenario',
+      runId: 'run-1',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      scores: {
+        latency: { passingTrials: 0, totalTrials: 1, medianScore: 100 },
+        quality: { passingTrials: 0, totalTrials: 1, medianScore: 100 },
+      },
+    };
+
+    const { trials: enrichedTrials } = enrichScoreModePassRates(scenario, baseline, defaultConfig);
+
+    const latencyResult = enrichedTrials[0].evalResults.find((e) => e.evaluator === 'latency')!;
+    const qualityResult = enrichedTrials[0].evalResults.find((e) => e.evaluator === 'quality')!;
+    expect(latencyResult.verdict).toBe('fail');
+    expect(latencyResult.baselineComparison).toBe('latency: 120 vs baseline 100 (threshold 10%) → fail');
+    expect(qualityResult.verdict).toBe('pass');
+    expect(qualityResult.baselineComparison).toBe('quality: 95 vs baseline 100 (threshold 10%) → pass');
+  });
+
+  it('mixed enriched + unenriched evaluator in same trial', () => {
+    // latency has baseline (will be enriched), cost has no baseline (stays observed)
+    const trial: TrialResult = {
+      trialIndex: 0,
+      transcript: { scenarioName: 'test-scenario', trialIndex: 0, turns: [], snapshots: [], errors: [] },
+      evalResults: [
+        { evaluator: 'latency', score: 95, verdict: 'observed', reason: '' },
+        { evaluator: 'cost', score: 0.05, verdict: 'observed', reason: '' },
+      ],
+    };
+    const scenario: ScenarioResult = {
+      scenarioName: 'test-scenario',
+      stabilityLevel: 'medium',
+      trials: [trial],
+      aggregated: {
+        latency: { regressionMode: 'score', passingTrials: 0, totalTrials: 1, medianScore: 100, lowerIsBetter: true },
+        cost: { regressionMode: 'score', passingTrials: 0, totalTrials: 1, medianScore: 0.10, lowerIsBetter: true },
+      },
+    };
+    const baseline: BaselineScores = {
+      scenarioName: 'test-scenario',
+      runId: 'run-1',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      scores: {
+        latency: { passingTrials: 0, totalTrials: 1, medianScore: 100 },
+        // cost has no baseline entry
+      },
+    };
+
+    const { trials: enrichedTrials } = enrichScoreModePassRates(scenario, baseline, defaultConfig);
+
+    const latencyResult = enrichedTrials[0].evalResults.find((e) => e.evaluator === 'latency')!;
+    const costResult = enrichedTrials[0].evalResults.find((e) => e.evaluator === 'cost')!;
+    expect(latencyResult.verdict).toBe('pass');
+    expect(latencyResult.baselineComparison).toBe('latency: 95 vs baseline 100 (threshold 10%) → pass');
+    expect(costResult.verdict).toBe('observed');
+    expect(costResult.baselineComparison).toBeUndefined();
+  });
+
+  it('enriched trials are new TrialResult objects, not same reference as input', () => {
+    // score=120 (fail) ensures the trial actually needs updating, producing a new object
+    const result = makeScenario('latency', [
+      makeTrialWithScore('latency', 120),
+    ], { lowerIsBetter: true });
+    const baseline = makeBaseline('latency', 100);
+    const inputTrial = result.trials[0];
+
+    const { trials: enrichedTrials } = enrichScoreModePassRates(result, baseline, defaultConfig);
+
+    expect(enrichedTrials[0]).not.toBe(inputTrial);
+    expect(enrichedTrials[0].evalResults[0]).not.toBe(inputTrial.evalResults[0]);
+    expect(enrichedTrials[0].evalResults[0].verdict).toBe('fail');
+    expect(enrichedTrials[0].evalResults[0].baselineComparison).toBe('latency: 120 vs baseline 100 (threshold 10%) → fail');
+    // original input untouched
+    expect(inputTrial.evalResults[0].verdict).toBe('observed');
   });
 });

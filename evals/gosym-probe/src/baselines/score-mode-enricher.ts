@@ -24,8 +24,9 @@ export function enrichScoreModePassRates(
   result: { trials: TrialResult[]; aggregated: Record<string, AggregatedResult> },
   baseline: BaselineScores,
   config: ThresholdConfig,
-): Record<string, AggregatedResult> {
+): { aggregated: Record<string, AggregatedResult>; trials: TrialResult[] } {
   const enriched: Record<string, AggregatedResult> = {};
+  const verdictUpdates = new Map<number, Map<string, { verdict: 'pass' | 'fail'; baselineComparison: string }>>();
 
   for (const [name, agg] of Object.entries(result.aggregated)) {
     if (agg.regressionMode !== 'score') {
@@ -70,12 +71,19 @@ export function enrichScoreModePassRates(
       foundAny = true;
       if (evalResult.verdict === 'unknown') continue;
       validTrials++;
-      if (
+      const trialVerdict: 'pass' | 'fail' = (
         Number.isFinite(evalResult.score) &&
         !exceedsThreshold(evalResult.score, baselineMedian, threshold, lowerIsBetter)
-      ) {
-        passingTrials++;
+      ) ? 'pass' : 'fail';
+
+      const baselineComparison = `${name}: ${evalResult.score} vs baseline ${baselineMedian} (threshold ${(threshold * 100).toFixed(0)}%) → ${trialVerdict}`;
+
+      if (!verdictUpdates.has(trial.trialIndex)) {
+        verdictUpdates.set(trial.trialIndex, new Map());
       }
+      verdictUpdates.get(trial.trialIndex)!.set(name, { verdict: trialVerdict, baselineComparison });
+
+      if (trialVerdict === 'pass') passingTrials++;
     }
 
     // Evaluator not present in any trial: no data to compare, skip enrichment.
@@ -98,5 +106,18 @@ export function enrichScoreModePassRates(
     };
   }
 
-  return enriched;
+  const updatedTrials: TrialResult[] = result.trials.map((trial) => {
+    const updates = verdictUpdates.get(trial.trialIndex);
+    if (!updates) return trial;
+    return {
+      ...trial,
+      evalResults: trial.evalResults.map((r) => {
+        const entry = updates.get(r.evaluator);
+        if (!entry) return r;
+        return { ...r, verdict: entry.verdict, baselineComparison: entry.baselineComparison };
+      }),
+    };
+  });
+
+  return { aggregated: enriched, trials: updatedTrials };
 }

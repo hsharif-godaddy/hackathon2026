@@ -24,6 +24,8 @@ export interface EvalResult {
   evalVersion?: string;
   /** True when this result was synthesized due to an evaluator exception. */
   evaluatorFailed?: boolean;
+  /** Baseline comparison annotation added by score-mode enrichment. */
+  baselineComparison?: string;
 }
 
 export interface Evaluator {

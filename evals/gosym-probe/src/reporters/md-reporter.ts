@@ -86,7 +86,10 @@ function renderEvaluatorReasoning(
       const r = evalIndex.get(i)?.get(name);
       if (r && r.verdict !== 'pass' && r.verdict !== 'unknown' && r.verdict !== 'observed') {
         const reason = escapePipeForMarkdown(r.reason) || '(no reason given)';
-        reasonLines.push(`- T${i + 1}: ${reason}`);
+        const comparison = r.baselineComparison
+          ? ` [${escapePipeForMarkdown(r.baselineComparison)}]`
+          : '';
+        reasonLines.push(`- T${i + 1}: ${reason}${comparison}`);
       }
     }
     if (reasonLines.length > 0) {

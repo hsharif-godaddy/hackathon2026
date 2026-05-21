@@ -4,6 +4,7 @@ import {
   renderTrialEvalResultsMarkdown,
 } from '../md-reporter.js';
 import type { ScenarioResult } from '../../runner/types.js';
+import type { EvalResult } from '../../evaluators/evaluator.js';
 import type { Turn } from '../../runner/transcript.js';
 import { makeTurn, makeToolCall, makeTurnWithToolCalls } from './fixtures.js';
 
@@ -32,7 +33,7 @@ function makeEvalResult(
 
 function makeTrial(
   index: number,
-  evalResults: ReturnType<typeof makeEvalResult>[],
+  evalResults: (ReturnType<typeof makeEvalResult> | EvalResult)[],
   turns: Turn[] = [],
   errors: string[] = [],
 ) {
@@ -1503,6 +1504,105 @@ describe('MdReporter — mode line', () => {
 
     expect(content).toContain('baselines/build-landing-page/2026-01-01T00-00-00.json');
     expect(content).toContain('compared');
+  });
+});
+
+// ── Score-mode evaluators with baseline comparison ───────────────────────────
+
+/**
+ * Fixture: score-mode evaluator after ScoreModeEnricher has been applied.
+ * T0 passed the baseline comparison (verdict: 'pass'), T1 exceeded the
+ * regression threshold (verdict: 'fail'). aggregated.latency has passAtK
+ * defined because enrichment ran.
+ */
+const SCORE_MODE_ENRICHED_RESULT: ScenarioResult = {
+  scenarioName: 'latency-check',
+  stabilityLevel: 'medium',
+  regressionStatus: {
+    scenarioName: 'latency-check',
+    gate: 'error' as const,
+    stabilityLevel: 'medium' as const,
+    evaluators: [],
+  },
+  trials: [
+    makeTrial(0, [{ ...makeEvalResult('latency', 'pass', 0.5, 'Total AAB duration: 500ms across 3 turns'), baselineComparison: 'latency: 0.5 vs baseline 1 (threshold 25%) → pass' }]),
+    makeTrial(1, [{ ...makeEvalResult('latency', 'fail', 0.9, 'Total AAB duration: 900ms across 3 turns'), baselineComparison: 'latency: 0.9 vs baseline 1 (threshold 25%) → fail' }]),
+  ],
+  aggregated: {
+    latency: {
+      passAtK: true,
+      passToTheK: false,
+      passingTrials: 1,
+      totalTrials: 2,
+      regressionMode: 'score',
+      medianScore: 0.5,
+    },
+  },
+};
+
+describe('MdReporter — score-mode evaluators with baseline comparison', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockMkdir.mockResolvedValue(undefined);
+    mockWriteFile.mockResolvedValue(undefined);
+  });
+
+  it('per-trial cell shows pass for enriched pass trial', () => {
+    const reporter = new MdReporter();
+    const content = reporter.render('run-001', [SCORE_MODE_ENRICHED_RESULT]);
+    expect(content).toContain('pass (0.50)');
+  });
+
+  it('per-trial cell shows fail for enriched fail trial', () => {
+    const reporter = new MdReporter();
+    const content = reporter.render('run-001', [SCORE_MODE_ENRICHED_RESULT]);
+    expect(content).toContain('fail (0.90)');
+  });
+
+  it('rollup table includes score-mode evaluator row with correct pass and fail counts', () => {
+    const reporter = new MdReporter();
+    const content = reporter.render('run-001', [SCORE_MODE_ENRICHED_RESULT]);
+    const rollupSection = content.split('### Evaluator rollup (across scenarios)')[1];
+    expect(rollupSection).toBeDefined();
+    // latency: 1 pass, 0 partial, 1 fail, 0 unknown → 50% pass rate
+    expect(rollupSection).toContain('| latency | 1 | 0 | 1 | 0 | 50% |');
+  });
+
+  it('reasoning block includes evaluator name, diagnostic reason, and baseline comparison for fail trial', () => {
+    const reporter = new MdReporter();
+    const content = reporter.render('run-001', [SCORE_MODE_ENRICHED_RESULT]);
+    const detailsSection = content.split('<details>')[1]?.split('</details>')[0];
+    expect(detailsSection).toBeDefined();
+    expect(detailsSection).toContain('latency');
+    expect(detailsSection).toContain('Total AAB duration: 900ms across 3 turns');
+    expect(detailsSection).toContain('latency: 0.9 vs baseline 1 (threshold 25%) → fail');
+  });
+
+  it('unenriched (skip-baseline) trials keep observed in per-trial cells and are excluded from rollup', () => {
+    const unenriched: ScenarioResult = {
+      scenarioName: 'latency-unenriched',
+      stabilityLevel: 'medium',
+      trials: [
+        makeTrial(0, [makeEvalResult('latency', 'observed', 0.5)]),
+      ],
+      aggregated: {
+        latency: {
+          passingTrials: 0,
+          totalTrials: 1,
+          regressionMode: 'score',
+          medianScore: 0.5,
+        },
+      },
+    };
+    const reporter = new MdReporter();
+    const content = reporter.render('run-001', [unenriched]);
+    expect(content).toContain('observed (0.50)');
+    // Isolate just the rollup table: it ends before the run-details table
+    // (renderRunDetails starts with '| Field | Value |')
+    const afterRollupHeading = content.split('### Evaluator rollup (across scenarios)')[1];
+    expect(afterRollupHeading).toBeDefined();
+    const rollupTableOnly = afterRollupHeading!.split('| Field | Value |')[0];
+    expect(rollupTableOnly).not.toContain('| latency |');
   });
 });
 
