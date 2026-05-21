@@ -10,7 +10,7 @@ export const EXPERIMENT_IDS = {
   /** Venture Home logo redirect: enable Brand Book for users entering via Venture Home */
   ventureHomeLogo: 'vh_dashboard_logo_to_airo_builder_redirect',
   /** Initial agent selection: maps cohort → agent profile. Only one agent-config experiment should run at a time. */
-  initialAgent: 'airo-builder-initial-agent',
+  initialAgent: 'airo-build-initial-agent',
   /** Build overlay question: show "Action needed" text when askQuestion is pending during initial build */
   buildOverlayQuestion: 'aab_first_build_action_needed_copy',
 } as const
@@ -27,6 +27,7 @@ export const EXPERIMENT_IDS = {
 export const INITIAL_AGENT_COHORT_TO_PROFILE: Readonly<Record<string, string>> = {
   initial_agent_v1: 'initial-agent-v1',
   initial_agent_v3: 'initial-agent-v3',
+  prompt_enhancer: 'prompt-enhancer',
 }
 
 /** Hivemind cohort id for hero copy, value props, examples intro, and section order (matches `hero_content_improvement/` + `data-homepage-variation`). */

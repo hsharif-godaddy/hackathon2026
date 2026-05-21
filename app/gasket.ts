@@ -368,7 +368,7 @@ export default makeGasket({
           // Canonical ID: EXPERIMENT_IDS.ventureHomeLogo in app/src/config/experiments.ts
           'vh_dashboard_logo_to_airo_builder_redirect',
           // Canonical ID: EXPERIMENT_IDS.initialAgent in app/src/config/experiments.ts
-          'airo-builder-initial-agent',
+          'airo-build-initial-agent',
           // Canonical ID: EXPERIMENT_IDS.buildOverlayQuestion in app/src/config/experiments.ts
           'aab_first_build_action_needed_copy'
         ]

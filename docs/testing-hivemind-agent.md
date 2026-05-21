@@ -1,4 +1,4 @@
-# Testing the `airo-builder-initial-agent` Hivemind experiment
+# Testing the `airo-build-initial-agent` Hivemind experiment
 
 End-to-end verification that a user lands in a Hivemind cohort, the agent-token BFF maps that cohort to an agent profile, and the agents service routes to the matching initial agent.
 
@@ -12,7 +12,7 @@ From the homepage in your browser:
 console.log(window.gasketData?.switchboard)
 ```
 
-You should see a `airo-builder-initial-agent` key with `cohortId` set to one of the experiment cohorts (e.g. `initial_agent_v1`, `initial_agent_v3`).
+You should see a `airo-build-initial-agent` key with `cohortId` set to one of the experiment cohorts (e.g. `initial_agent_v1`, `initial_agent_v3`).
 
 If the experiment is missing entirely or `cohortId` is `ineligible` / `unassigned` / `not_bucketed`, traffic in the Hivemind environment you're testing is most likely below 100% — bump it to 100% and wait ~2 min for the Switchboard cache to refresh.
 
@@ -66,7 +66,7 @@ If you see `profile.resolve.unknown` warnings, the JWT carried a profile name th
 
 To verify both arms end-to-end without waiting for re-bucketing:
 
-1. In the Hivemind UI for `airo-builder-initial-agent`, add yourself as a shopper-ID override pinned to the other cohort.
+1. In the Hivemind UI for `airo-build-initial-agent`, add yourself as a shopper-ID override pinned to the other cohort.
 2. Wait ~2 min for the Switchboard cache to propagate.
 3. Hard-reload the homepage and repeat steps 1–3.
 
@@ -82,7 +82,7 @@ You should see one event with `eid: 'appbuilder.develop.initialBuild.start.impre
 
 ## Common failure modes
 
-- **No `airo-builder-initial-agent` key in `window.gasketData.switchboard`:** dev server hasn't been restarted since adding the experiment to `gasket.ts`, AWS_PROFILE not set locally, or the experiment isn't in the running state in Hivemind for that env. The `airo-builder` app label must be attached to the experiment.
+- **No `airo-build-initial-agent` key in `window.gasketData.switchboard`:** dev server hasn't been restarted since adding the experiment to `gasket.ts`, AWS_PROFILE not set locally, or the experiment isn't in the running state in Hivemind for that env. The `airo-builder` app label must be attached to the experiment.
 - **Cohort assigned but no `agentProfile` in JWT:** cohort name in Hivemind doesn't match a key in `INITIAL_AGENT_COHORT_TO_PROFILE`. Either rename the cohort or update the map.
 - **`agentProfile` set but doesn't match cohort:** Switchboard `appbuilder-agent-profile` is overriding with a real profile name. Set it to `'hivemind'` or `'default'` to defer.
 - **`profile.resolve.unknown` warnings in agents service:** profile name in JWT isn't registered in `agents/src/profiles/`. Add the profile JSON or fix the Switchboard/cohort value.

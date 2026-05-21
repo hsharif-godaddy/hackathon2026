@@ -1093,7 +1093,7 @@ describe('agent-token', function packageTests() {
         });
       });
 
-      const EXPERIMENT_ID = 'airo-builder-initial-agent';
+      const EXPERIMENT_ID = 'airo-build-initial-agent';
 
       function mockSwitchboardAgentProfile(value: string | null): void {
         mockCheckSwitchboardValue.mockImplementation(async function getValue(name: string) {
