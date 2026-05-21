@@ -1,4 +1,4 @@
-# Local E2E testing (budget-service)
+# Local E2E
 
 Tools in this module for **local and CI-style integration only**. They are not used by production deploys. The release binary is `cmd/server` only.
 
@@ -81,7 +81,7 @@ Open **http://127.0.0.1:9980/**. **`BUDGET_SERVICE_URL` must be the budget API**
 
 ### Remote API
 
-Point **`BUDGET_SERVICE_URL`** at the deployed base URL (no trailing path; same host you would use with `curl …/health`). Use the UI’s **JWT** field and **Save JWT** when auth is enabled (`Authorization: Bearer …` in `sessionStorage`). Your laptop must be allowed to reach that URL (network policy, VPN). Treat remote targets like any production-adjacent tool: avoid destructive tests on shared data.
+Point **`BUDGET_SERVICE_URL`** at the deployed base URL (no trailing path; same host you would use with `curl …/health`). Use the UI's **JWT** field and **Save JWT** when auth is enabled (`Authorization: Bearer …` in `sessionStorage`). Your laptop must be allowed to reach that URL (network policy, VPN). Treat remote targets like any production-adjacent tool: avoid destructive tests on shared data.
 
 ### UI behavior
 

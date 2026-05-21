@@ -21,7 +21,7 @@ Authorization: sso-jwt <token>
 - Production: HTTPS only, must be `*.gdcorp.tools`, `*.godaddy.com`, or `*.nstk.net` domain
 - Local dev (`LOCAL_AUTH_DISABLE=true`): HTTP allowed for loopback addresses
 
-## Event Types
+## Event types
 
 | Event                   | Trigger                                    | Source                   |
 | ----------------------- | ------------------------------------------ | ------------------------ |
@@ -30,7 +30,7 @@ Authorization: sso-jwt <token>
 | `budget-item.expired`   | Item's `expiresAt` timestamp passed        | Background worker        |
 | `budget-item.exhausted` | Item's `creditsUsed` equals `creditsTotal` | API handler (via outbox) |
 
-## Payload Structure
+## Payload structure
 
 Webhooks share a common envelope:
 
@@ -43,7 +43,7 @@ Webhooks share a common envelope:
 }
 ```
 
-## Event Payloads
+## Event payloads
 
 ### `report.created`
 
@@ -163,7 +163,7 @@ Fired when a budget item is fully consumed (`creditsUsed = creditsTotal`).
 - **Retries:** Automatic with exponential backoff (see Retry Strategy below)
 - **Concurrency:** Webhooks are drained from the outbox and delivered sequentially within each worker tick
 
-## Transactional Outbox Pattern
+## Transactional outbox pattern
 
 The budget-service uses a transactional outbox pattern for reliable webhook delivery:
 
@@ -172,29 +172,23 @@ The budget-service uses a transactional outbox pattern for reliable webhook deli
 3. **Idempotency:** Each event has a unique idempotency key to prevent duplicate deliveries
 4. **Retry with backoff:** Failed deliveries are retried with exponential backoff
 
-### Retry Strategy
+### Retry strategy
 
-| Attempt | Backoff                           |
-| ------- | --------------------------------- |
-| 1       | Immediate                         |
-| 2       | 2 minutes                         |
-| 3       | 4 minutes                         |
-| 4       | 8 minutes                         |
-| 5       | 16 minutes                        |
-| 6       | 32 minutes                        |
-| 7       | Marked `failed` (no more retries) |
+After attempt N fails, the next retry waits `2^N` minutes — for the default `OUTBOX_MAX_ATTEMPTS=7`:
 
-Failed events remain in the outbox table for debugging and manual retry.
+| Attempt | Delay before this attempt |
+| ------- | ------------------------- |
+| 1       | Immediate                 |
+| 2       | 2 minutes                 |
+| 3       | 4 minutes                 |
+| 4       | 8 minutes                 |
+| 5       | 16 minutes                |
+| 6       | 32 minutes                |
+| 7       | 64 minutes                |
 
-### Outbox Configuration
+If attempt 7 also fails, the row is marked `failed` (~126 minutes total elapsed before final failure). Failed events remain in the outbox table for debugging and manual retry. Tunables (`OUTBOX_MAX_ATTEMPTS`, `OUTBOX_DRAIN_BATCH_SIZE`, `OUTBOX_RETENTION_DAYS`) are documented in [Configuration](configuration.md#worker-resets-expirations-webhook-delivery).
 
-| Variable                  | Default | Description                          |
-| ------------------------- | ------- | ------------------------------------ |
-| `OUTBOX_MAX_ATTEMPTS`     | `7`     | Maximum delivery attempts            |
-| `OUTBOX_DRAIN_BATCH_SIZE` | `100`   | Events processed per drain cycle     |
-| `OUTBOX_RETENTION_DAYS`   | `7`     | Days to keep completed/failed events |
-
-## Background Worker
+## Background worker
 
 The background worker runs on a configurable interval (default: 1 minute) and processes:
 
@@ -203,22 +197,16 @@ The background worker runs on a configurable interval (default: 1 minute) and pr
 3. **Outbox drain:** Delivers pending webhook events with retry logic
 4. **Cleanup:** Removes old completed/failed events (hourly)
 
-### Configuration
+Tunables (`WORKER_ENABLED`, `WORKER_INTERVAL`, `WORKER_BATCH_SIZE`) are documented in [Configuration](configuration.md#worker-resets-expirations-webhook-delivery).
 
-| Variable            | Default | Description                          |
-| ------------------- | ------- | ------------------------------------ |
-| `WORKER_ENABLED`    | `true`  | Enable/disable the background worker |
-| `WORKER_INTERVAL`   | `1m`    | Processing interval                  |
-| `WORKER_BATCH_SIZE` | `500`   | Max items per processing cycle       |
-
-### Processing Order
+### Processing order
 
 1. Resets are processed first (events written to outbox)
 2. Expirations are processed second (events written to outbox)
 3. Outbox is drained (webhooks delivered with retries)
 4. Cleanup runs hourly to remove old events
 
-## Receiving Webhooks
+## Receiving webhooks
 
 Example handler:
 
@@ -257,16 +245,9 @@ func handleWebhook(w http.ResponseWriter, r *http.Request) {
 
 ## Idempotency
 
-The outbox pattern uses idempotency keys to prevent duplicate webhook creation. Keys follow the format `{event-type}:{entity-id}:{discriminator}`:
+Each event is enqueued with a unique idempotency key derived from the event type and intrinsic event fields (e.g. `budgetItemId` + `resetsAt` for resets), stored on `webhook_outbox.idempotency_key` under a `UNIQUE` constraint. This prevents the producer from double-enqueueing the same logical event. The exact key format is an implementation detail of the producer — see [Database Schema](database-schema.md) for the column.
 
-- `report.created:{reportId}` — reportId is unique, no discriminator needed
-- `budget-item.reset:{budgetItemId}:{resetsAt}` — resetsAt prevents duplicates for same reset cycle
-- `budget-item.expired:{budgetItemId}:{expiresAt}` — expiresAt prevents duplicates for same item
-- `budget-item.exhausted:{budgetItemId}:{reportId}` — reportId prevents duplicates for same exhaustion event
-
-The key prefix matches the event type for easier debugging and querying.
-
-Even with these guarantees, receivers should still handle duplicates gracefully as network issues can cause the same webhook to be delivered more than once. Receivers should:
+Receivers should still handle duplicates gracefully — network retries can deliver the same payload more than once. Receivers should:
 
 1. Use a stable idempotency key derived from intrinsic event fields (not the delivery `timestamp`, which changes per delivery):
    - `budget-item.reset`: `budgetItemId` + `eventType` + `nextResetsAt`
