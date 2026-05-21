@@ -126,6 +126,7 @@ vi.mock('@/hooks/useClickhouseAnalytics', () => ({
     cityTrafficWithCountryData: [],
     browserTrendsOverTimeData: [],
     isLoading: false,
+    isFetched: false,
     error: null,
   }),
 }));

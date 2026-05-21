@@ -47,7 +47,6 @@ export async function executeGraphQLQuery(
 
   // Use Next.js API route proxy to avoid CORS issues
   const proxyUrl = '/api/analytics/graphql'
-
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     const abortController = new AbortController()
     const timeoutId = setTimeout(() => abortController.abort(), REQUEST_TIMEOUT_MS)

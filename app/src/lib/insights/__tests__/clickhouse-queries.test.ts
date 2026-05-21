@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  analyticsDateKey,
   buildAvgPagesPerSessionQuery,
   buildAvgSessionDurationQuery,
   buildBounceSessionsQuery,
@@ -30,6 +31,7 @@ import {
   buildTotalSessionsQuery,
   buildUniqueVisitorsPerHostQuery,
   buildUniqueVisitorsPerPageQuery,
+  trafficDateFilter,
 } from '../clickhouse-queries'
 
 const TEST_URL = '70mqshlu7h.c4.test-airoapp.ai'
@@ -63,6 +65,31 @@ describe('clickhouse-queries', () => {
       expect(query).toContain('limit: 50')
       // Should NOT be quoted
       expect(query).not.toContain('limit: "50"')
+    })
+
+    it('should use fromDate/toDate without bucketDays when DateRangeFilter passed', () => {
+      const query = buildCountryTrafficQuery(TEST_URL, {
+        fromDate: '2026-03-01',
+        toDate: '2026-05-19',
+      })
+      expect(query).toContain('fromDate: "2026-03-01"')
+      expect(query).toContain('toDate: "2026-05-19"')
+      expect(query).not.toContain('bucketDays:')
+      expect(query).not.toContain('days:')
+      expect(query).toContain('recordType: "geo_country"')
+    })
+
+    it('should use bucketDays and fromDate/toDate instead of days when BucketFilter passed', () => {
+      const query = buildCountryTrafficQuery(TEST_URL, {
+        fromDate: '2026-03-01',
+        toDate: '2026-05-19',
+        bucketDays: 7,
+      })
+      expect(query).toContain('bucketDays: 7')
+      expect(query).toContain('fromDate: "2026-03-01"')
+      expect(query).toContain('toDate: "2026-05-19"')
+      expect(query).not.toContain('days:')
+      expect(query).toContain('recordType: "geo_country"')
     })
   })
 
@@ -286,6 +313,50 @@ describe('clickhouse-queries', () => {
     })
   })
 
+  describe('analyticsDateKey', () => {
+    it('should encode rolling and custom selections', () => {
+      expect(analyticsDateKey({ mode: 'rolling', days: 7 })).toBe('rolling:7')
+      expect(
+        analyticsDateKey({
+          mode: 'custom',
+          fromDate: '2026-03-01',
+          toDate: '2026-05-19',
+        }),
+      ).toBe('custom:2026-03-01:2026-05-19')
+    })
+  })
+
+  describe('trafficDateFilter', () => {
+    it('rolling presets use days param without bucketDays', () => {
+      expect(trafficDateFilter({ mode: 'rolling', days: 7 })).toBe(7)
+      expect(trafficDateFilter({ mode: 'rolling', days: 15 })).toBe(15)
+      expect(trafficDateFilter({ mode: 'rolling', days: 30 })).toBe(30)
+    })
+
+    it('custom range up to 30 days omits bucketDays', () => {
+      expect(trafficDateFilter({
+        mode: 'custom',
+        fromDate: '2026-05-01',
+        toDate: '2026-05-19',
+      })).toEqual({
+        fromDate: '2026-05-01',
+        toDate: '2026-05-19',
+      })
+    })
+
+    it('custom range over 30 days includes bucketDays', () => {
+      expect(trafficDateFilter({
+        mode: 'custom',
+        fromDate: '2026-03-01',
+        toDate: '2026-05-19',
+      })).toEqual({
+        fromDate: '2026-03-01',
+        toDate: '2026-05-19',
+        bucketDays: 7,
+      })
+    })
+  })
+
   describe('different day values', () => {
     it('should use 30 days when specified', () => {
       const query = buildPageViewsPerPathQuery(TEST_URL, 30)
@@ -297,4 +368,5 @@ describe('clickhouse-queries', () => {
       expect(query).toContain('days: 1')
     })
   })
+
 })

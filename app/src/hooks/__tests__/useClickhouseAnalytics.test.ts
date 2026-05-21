@@ -101,7 +101,7 @@ describe('useClickhouseAnalytics', () => {
     const { result } = renderHook(() =>
       useClickhouseAnalytics({
         publishedUrl: 'https://test.example.com',
-        days: 7,
+        dateSelection: { mode: 'rolling', days: 7 },
         enabled: false,
       }),
       { wrapper: createWrapper() }
@@ -117,7 +117,7 @@ describe('useClickhouseAnalytics', () => {
     const { result } = renderHook(() =>
       useClickhouseAnalytics({
         publishedUrl: null,
-        days: 7,
+        dateSelection: { mode: 'rolling', days: 7 },
         enabled: true,
       }),
       { wrapper: createWrapper() }
@@ -132,7 +132,7 @@ describe('useClickhouseAnalytics', () => {
     renderHook(() =>
       useClickhouseAnalytics({
         publishedUrl: '  ',
-        days: 7,
+        dateSelection: { mode: 'rolling', days: 7 },
         enabled: true,
       }),
       { wrapper: createWrapper() }
@@ -146,7 +146,7 @@ describe('useClickhouseAnalytics', () => {
     const { result } = renderHook(() =>
       useClickhouseAnalytics({
         publishedUrl: 'https://test.example.com',
-        days: 7,
+        dateSelection: { mode: 'rolling', days: 7 },
         enabled: true,
       }),
       { wrapper: createWrapper() }
@@ -157,7 +157,7 @@ describe('useClickhouseAnalytics', () => {
     })
 
     // Should extract hostname
-    expect(mockFetchAll).toHaveBeenCalledWith('test.example.com', 7, undefined)
+    expect(mockFetchAll).toHaveBeenCalledWith('test.example.com', { mode: 'rolling', days: 7 }, undefined)
 
     await waitFor(() => {
       expect(result.current.isLoading).toBe(false)
@@ -168,14 +168,18 @@ describe('useClickhouseAnalytics', () => {
     renderHook(() =>
       useClickhouseAnalytics({
         publishedUrl: 'https://70mqshlu7h.c4.test-airoapp.ai/',
-        days: 7,
+        dateSelection: { mode: 'rolling', days: 7 },
         enabled: true,
       }),
       { wrapper: createWrapper() }
     )
 
     await waitFor(() => {
-      expect(mockFetchAll).toHaveBeenCalledWith('70mqshlu7h.c4.test-airoapp.ai', 7, undefined)
+      expect(mockFetchAll).toHaveBeenCalledWith(
+        '70mqshlu7h.c4.test-airoapp.ai',
+        { mode: 'rolling', days: 7 },
+        undefined,
+      )
     })
   })
 
@@ -187,7 +191,7 @@ describe('useClickhouseAnalytics', () => {
     const { result } = renderHook(() =>
       useClickhouseAnalytics({
         publishedUrl: 'https://error-test.example.com',
-        days: 7,
+        dateSelection: { mode: 'rolling', days: 7 },
         enabled: true,
       }),
       { wrapper: createWrapper() }
@@ -209,7 +213,7 @@ describe('useClickhouseAnalytics', () => {
     const { result } = renderHook(() =>
       useClickhouseAnalytics({
         publishedUrl: 'https://test.example.com',
-        days: 7,
+        dateSelection: { mode: 'rolling', days: 7 },
         enabled: true,
       }),
       { wrapper: createWrapper() }
@@ -222,31 +226,38 @@ describe('useClickhouseAnalytics', () => {
     expect(result.current.kpiExtras.totalSessions).toBe(50)
   })
 
-  it('should refetch when days changes', async () => {
+  it('should refetch when date selection changes', async () => {
     const wrapper = createWrapper()
     const { rerender } = renderHook(
-      ({ days }) =>
+      ({ dateSelection }) =>
         useClickhouseAnalytics({
           publishedUrl: 'https://test.example.com',
-          days,
+          dateSelection,
           enabled: true,
         }),
-      { initialProps: { days: 7 }, wrapper }
+      {
+        initialProps: { dateSelection: { mode: 'rolling' as const, days: 7 } },
+        wrapper,
+      }
     )
 
     await waitFor(() => expect(mockFetchAll).toHaveBeenCalledTimes(1))
 
-    rerender({ days: 30 })
+    rerender({ dateSelection: { mode: 'rolling', days: 30 } })
 
     await waitFor(() => expect(mockFetchAll).toHaveBeenCalledTimes(2))
-    expect(mockFetchAll).toHaveBeenLastCalledWith('test.example.com', 30, undefined)
+    expect(mockFetchAll).toHaveBeenLastCalledWith(
+      'test.example.com',
+      { mode: 'rolling', days: 30 },
+      undefined,
+    )
   })
 
   it('should return all expected data fields', async () => {
     const { result } = renderHook(() =>
       useClickhouseAnalytics({
         publishedUrl: 'https://test.example.com',
-        days: 7,
+        dateSelection: { mode: 'rolling', days: 7 },
         enabled: true,
       }),
       { wrapper: createWrapper() }

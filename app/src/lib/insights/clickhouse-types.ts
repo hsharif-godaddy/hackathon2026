@@ -22,6 +22,8 @@ export interface ClickhouseGraphQLResponse {
 export interface ChartDataPoint {
   date: string
   value: number
+  /** ISO start date for 7-day buckets; used to align padded chart axes */
+  bucket_from?: string
 }
 
 export interface DualSeriesDataPoint {
@@ -199,5 +201,6 @@ export interface ClickhouseAnalyticsData {
 
   // Loading state
   isLoading: boolean
+  isFetched: boolean
   error: Error | null
 }

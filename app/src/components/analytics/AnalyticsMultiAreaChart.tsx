@@ -32,6 +32,7 @@ interface AnalyticsMultiAreaChartProps {
   series: SeriesConfig[]
   stacked?: boolean
   embedded?: boolean
+  fetched?: boolean
 }
 
 /**
@@ -46,12 +47,14 @@ export function AnalyticsMultiAreaChart({
   label = 'Value',
   series,
   stacked = false,
-  embedded = false
+  embedded = false,
+  fetched = false,
 }: AnalyticsMultiAreaChartProps) {
   const chartId = useId().replace(/:/g, '')
   const t = useTranslations()
+  const chartData = data?.length ? data : (fetched ? [{ date: '—', ...(series[0] ? { [series[0].key]: 0 } : {}) }] : [])
 
-  if (!data || data.length === 0) {
+  if (!chartData.length) {
     if (embedded) {
       return (
         <AnalyticsTextLockup
@@ -70,7 +73,7 @@ export function AnalyticsMultiAreaChart({
 
   const chartContent = (
     <ResponsiveContainer width="100%" height={260} minHeight={200}>
-      <AreaChart data={data} margin={{ top: 10, right: 20, bottom: 20, left: 0 }}>
+      <AreaChart data={chartData} margin={{ top: 10, right: 20, bottom: 20, left: 0 }}>
           <defs>
             {series.map((s, i) => (
               <linearGradient key={`grad-${chartId}-${i}`} id={`grad-${chartId}-${i}`} x1="0" y1="0" x2="0" y2="1">

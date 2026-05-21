@@ -26,6 +26,8 @@ interface StatProgressListProps {
   maxItems?: number
   /** Optional tooltip shown on info icon next to title */
   tooltip?: string
+  /** When true and items are empty, show 0 instead of "no data" */
+  fetched?: boolean
 }
 
 /**
@@ -42,6 +44,7 @@ export function StatProgressList({
   showPercent = true,
   maxItems = 8,
   tooltip,
+  fetched = false,
 }: StatProgressListProps) {
   const t = useTranslations()
   const intl = useIntl()
@@ -53,7 +56,7 @@ export function StatProgressList({
           {title}
           {tooltip && (<InfoTooltip content={tooltip}/>)}
         </>}
-        description={t('builder_analytics_no_data')}
+        description={fetched ? '0' : t('builder_analytics_no_data')}
       />
     )
   }

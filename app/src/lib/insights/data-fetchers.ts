@@ -8,6 +8,7 @@
 
 import { logger } from '@/lib/request-context'
 import { safeFetch } from './clickhouse-fetchers'
+import type { DateFilter } from './clickhouse-queries'
 import {
   buildClickAnalyticsHostTotalsQuery,
   buildClicksByElementQuery,
@@ -35,14 +36,13 @@ function extractHostname(url: string): string {
 export async function fetchRouteCount(
   publishedUrl: string,
   route: string,
-  days: number,
+  dateFilter: DateFilter,
   appId?: string,
 ): Promise<number> {
   const hostname = extractHostname(publishedUrl)
   interface Row { page_path: string; page_views: number }
   try {
-    const rows = await safeFetch<Row>(buildPageViewsPerPathQuery(hostname, days), 'fetchRouteCount', appId)
-    // Sum page_views for the matching route only
+    const rows = await safeFetch<Row>(buildPageViewsPerPathQuery(hostname, dateFilter), 'fetchRouteCount', appId)
     const normalizedRoute = route === '/' ? '/' : route.replace(/\/$/, '')
     let total = 0
     for (const r of rows) {
@@ -69,13 +69,13 @@ export async function fetchRouteCount(
  */
 export async function fetchDailyPageViews(
   publishedUrl: string,
-  days: number,
+  dateFilter: DateFilter,
   appId?: string,
 ): Promise<{ count: number; dailyBreakdown: Array<{ date: string; count: number }> }> {
   const hostname = extractHostname(publishedUrl)
   interface Row { event_date: string; host_views: number }
   try {
-    const rows = await safeFetch<Row>(buildPageViewsPerHostQuery(hostname, days), 'fetchDailyPageViews', appId)
+    const rows = await safeFetch<Row>(buildPageViewsPerHostQuery(hostname, dateFilter), 'fetchDailyPageViews', appId)
     const byDate = new Map<string, number>()
     let total = 0
     for (const r of rows) {
@@ -102,13 +102,13 @@ export async function fetchDailyPageViews(
  */
 export async function fetchTotalClicks(
   publishedUrl: string,
-  days: number,
+  dateFilter: DateFilter,
   appId?: string,
 ): Promise<{ count: number; dailyBreakdown: Array<{ date: string; count: number }> }> {
   const hostname = extractHostname(publishedUrl)
   interface Row { event_date: string; clicks: number }
   try {
-    const rows = await safeFetch<Row>(buildClickAnalyticsHostTotalsQuery(hostname, days), 'fetchTotalClicks', appId)
+    const rows = await safeFetch<Row>(buildClickAnalyticsHostTotalsQuery(hostname, dateFilter), 'fetchTotalClicks', appId)
     const byDate = new Map<string, number>()
     let total = 0
     for (const r of rows) {
@@ -135,10 +135,10 @@ export async function fetchTotalClicks(
  */
 export async function fetchButtonClicks(
   publishedUrl: string,
-  days: number,
+  dateFilter: DateFilter,
   appId?: string,
 ): Promise<{ count: number; dailyBreakdown: Array<{ date: string; count: number }> }> {
-  return fetchClicksByType(publishedUrl, days, 'button', appId)
+  return fetchClicksByType(publishedUrl, dateFilter, 'button', appId)
 }
 
 /**
@@ -148,10 +148,10 @@ export async function fetchButtonClicks(
  */
 export async function fetchLinkClicks(
   publishedUrl: string,
-  days: number,
+  dateFilter: DateFilter,
   appId?: string,
 ): Promise<{ count: number; dailyBreakdown: Array<{ date: string; count: number }> }> {
-  return fetchClicksByType(publishedUrl, days, 'link', appId)
+  return fetchClicksByType(publishedUrl, dateFilter, 'link', appId)
 }
 
 /**
@@ -159,14 +159,14 @@ export async function fetchLinkClicks(
  */
 async function fetchClicksByType(
   publishedUrl: string,
-  days: number,
+  dateFilter: DateFilter,
   elementType: 'button' | 'link',
   appId?: string,
 ): Promise<{ count: number; dailyBreakdown: Array<{ date: string; count: number }> }> {
   const hostname = extractHostname(publishedUrl)
   interface Row { event_date: string; element_type: string; total_clicks: number; total_unique_visitors: number }
   try {
-    const rows = await safeFetch<Row>(buildClicksByElementQuery(hostname, days), `fetch${elementType}Clicks`, appId)
+    const rows = await safeFetch<Row>(buildClicksByElementQuery(hostname, dateFilter), `fetch${elementType}Clicks`, appId)
     const filtered = rows.filter((r) => r.element_type === elementType)
     const byDate = new Map<string, number>()
     let total = 0
@@ -195,13 +195,13 @@ async function fetchClicksByType(
  */
 export async function fetchVisitors(
   publishedUrl: string,
-  days: number,
+  dateFilter: DateFilter,
   appId?: string,
 ): Promise<number> {
   const hostname = extractHostname(publishedUrl)
   interface Row { event_date: string; unique_visitors?: number }
   try {
-    const rows = await safeFetch<Row>(buildPageViewsPerHostQuery(hostname, days), 'fetchVisitors', appId)
+    const rows = await safeFetch<Row>(buildPageViewsPerHostQuery(hostname, dateFilter), 'fetchVisitors', appId)
     let total = 0
     for (const r of rows) {
       total += Number(r.unique_visitors ?? 0)
@@ -215,4 +215,3 @@ export async function fetchVisitors(
     return 0
   }
 }
-

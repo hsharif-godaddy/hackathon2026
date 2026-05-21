@@ -4,6 +4,7 @@ import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 
 import { fetchAllClickhouseAnalytics } from '@/lib/insights/clickhouse-fetchers'
+import { analyticsDateKey, type AnalyticsDateSelection } from '@/lib/insights/clickhouse-queries'
 import type {
   ClickhouseAnalyticsData,
   KpiExtras,
@@ -13,7 +14,7 @@ import { logger } from '@/lib/request-context'
 interface UseClickhouseAnalyticsOptions {
   publishedUrl: string | null
   appId?: string
-  days: number
+  dateSelection: AnalyticsDateSelection
   enabled?: boolean
 }
 
@@ -43,7 +44,7 @@ const EMPTY_KPI: KpiExtras = {
 }
 
 /** Stable empty-state object returned while loading or when disabled */
-const EMPTY_DATA: Omit<ClickhouseAnalyticsData, 'isLoading' | 'error'> = {
+const EMPTY_DATA: Omit<ClickhouseAnalyticsData, 'isLoading' | 'isFetched' | 'error'> = {
   totalHostPageViews: 0,
   totalHostUniqueVisitors: 0,
   dailyHostPageViews: EMPTY_ARRAY,
@@ -95,18 +96,18 @@ const EMPTY_DATA: Omit<ClickhouseAnalyticsData, 'isLoading' | 'error'> = {
 export function useClickhouseAnalytics({
   publishedUrl,
   appId,
-  days,
+  dateSelection,
   enabled = true,
 }: UseClickhouseAnalyticsOptions): ClickhouseAnalyticsData {
   const hostname = publishedUrl ? extractHostname(publishedUrl) : ''
   const isEnabled = enabled && !!hostname.trim()
 
-  const { data, isLoading, error } = useQuery({
-    queryKey: ['clickhouse-analytics', hostname, days],
+  const { data, isLoading, isFetched, error } = useQuery({
+    queryKey: ['clickhouse-analytics', hostname, analyticsDateKey(dateSelection)],
     queryFn: async () => {
-      logger.debug('analytics.clickhouse.fetch.start', { hostname, days })
-      const result = await fetchAllClickhouseAnalytics(hostname, days, appId)
-      logger.debug('analytics.clickhouse.fetch.success', { hostname, days })
+      logger.debug('analytics.clickhouse.fetch.start', { hostname, dateSelection })
+      const result = await fetchAllClickhouseAnalytics(hostname, dateSelection, appId)
+      logger.debug('analytics.clickhouse.fetch.success', { hostname, dateSelection })
       return result
     },
     enabled: isEnabled,
@@ -119,6 +120,7 @@ export function useClickhouseAnalytics({
   return useMemo((): ClickhouseAnalyticsData => ({
     ...(data ?? EMPTY_DATA),
     isLoading,
+    isFetched,
     error: error ?? null,
-  }), [data, isLoading, error])
+  }), [data, isLoading, isFetched, error])
 }

@@ -10,7 +10,7 @@
 
 import { IamTokenClient } from 'gd-auth-client'
 
-import { getInsightsSsoHost } from '@/lib/insights/config'
+import { getInsightsSsoHost, getLocalDevInsightsToken } from '@/lib/insights/config'
 import { logger } from '@/lib/request-context'
 
 /**
@@ -40,6 +40,11 @@ const tokenCacheMap: Map<string, TokenCache> = new Map()
  * @throws Error if token generation fails
  */
 export async function getInsightsAuthToken(_hostname?: string | null): Promise<string> {
+  const localToken = getLocalDevInsightsToken()
+  if (localToken) {
+    return localToken
+  }
+
   try {
     const ssoHost = getInsightsSsoHost()
     const isProduction = ssoHost === 'sso.godaddy.com'

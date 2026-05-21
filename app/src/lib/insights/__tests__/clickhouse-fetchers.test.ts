@@ -24,6 +24,7 @@ vi.mock('../constants', async (importOriginal) => {
 
 import {
   fetchAllClickhouseAnalytics,
+  fetchBrowserTrendsOverTime,
   fetchCityTraffic,
   fetchClicksByElement,
   fetchClicksByHour,
@@ -40,12 +41,14 @@ import {
   fetchPageActivityShare,
   fetchPageTransitions,
   fetchPageViewsByPath,
+  fetchPageViewsPerHost,
   fetchReferrerLandingDetail,
   fetchSessionClickData,
   fetchSessionsByDevice,
   fetchTopCTALabels,
   fetchTopReferrers,
   fetchUniqueVisitorsByPage,
+  formatBucketLabel,
 } from '../clickhouse-fetchers'
 
 const TEST_URL = 'test.example.com'
@@ -401,6 +404,116 @@ describe('clickhouse-fetchers', () => {
       expect(todayEntry?.mobile).toBe(10)
       expect(todayEntry?.tablet).toBe(0)
     })
+
+    it('should sort bucketed ranges chronologically by bucket_from', async () => {
+      const bucketFilter = { fromDate: '2026-03-01', toDate: '2026-03-14', bucketDays: 7 }
+      const laterLabel = formatBucketLabel('2026-03-08', '2026-03-14')
+      const earlierLabel = formatBucketLabel('2026-03-01', '2026-03-07')
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(mockClickhouseResponse([
+        { bucket_from: '2026-03-08', bucket_to: '2026-03-14', device_type: 'laptop', clicks: 5 },
+        { bucket_from: '2026-03-01', bucket_to: '2026-03-07', device_type: 'mobile', clicks: 3 },
+      ])))
+
+      const result = await fetchDeviceMixOverTime(TEST_URL, bucketFilter)
+      const earlierIdx = result.findIndex((r) => r.date === earlierLabel)
+      const laterIdx = result.findIndex((r) => r.date === laterLabel)
+
+      expect(earlierIdx).toBeGreaterThanOrEqual(0)
+      expect(laterIdx).toBeGreaterThan(earlierIdx)
+      expect(result[earlierIdx]?.mobile).toBe(3)
+      expect(result[laterIdx]?.laptop).toBe(5)
+    })
+  })
+
+  describe('fetchPageViewsPerHost', () => {
+    it('should order custom >30 day buckets chronologically not by month label', async () => {
+      const bucketFilter = { fromDate: '2026-01-29', toDate: '2026-05-19', bucketDays: 7 }
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(mockClickhouseResponse([
+        { bucket_from: '2026-04-02', bucket_to: '2026-04-08', host_views: 100 },
+        { bucket_from: '2026-04-23', bucket_to: '2026-04-29', host_views: 200 },
+        { bucket_from: '2026-02-12', bucket_to: '2026-02-18', host_views: 300 },
+        { bucket_from: '2026-01-29', bucket_to: '2026-02-04', host_views: 400 },
+        { bucket_from: '2026-03-19', bucket_to: '2026-03-25', host_views: 500 },
+        { bucket_from: '2026-05-14', bucket_to: '2026-05-19', host_views: 600 },
+      ])))
+
+      const result = await fetchPageViewsPerHost(TEST_URL, bucketFilter)
+      const labels = result.dailyPageViews.map((d) => d.date)
+      const sortedByLabel = [...labels].sort((a, b) => a.localeCompare(b))
+
+      expect(result.totalPageViews).toBe(2100)
+      expect(labels).not.toEqual(sortedByLabel)
+      const janLabel = formatBucketLabel('2026-01-29', '2026-02-04')
+      const febLabel = formatBucketLabel('2026-02-12', '2026-02-18')
+      const mayLabel = formatBucketLabel('2026-05-14', '2026-05-19')
+      expect(labels.indexOf(janLabel)).toBeLessThan(labels.indexOf(febLabel))
+      expect(labels.indexOf(febLabel)).toBeLessThan(labels.indexOf(mayLabel))
+      expect(result.dailyPageViews.find((d) => d.date === mayLabel)?.value).toBe(600)
+    })
+  })
+
+  describe('fetchNewVsReturning', () => {
+    it('should place API rows when bucket_from is offset by one day from the grid', async () => {
+      const bucketFilter = { fromDate: '2026-04-02', toDate: '2026-05-20', bucketDays: 7 }
+      const gridLabel = formatBucketLabel('2026-05-14', '2026-05-20')
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(mockClickhouseResponse([
+        { bucket_from: '2026-05-15', bucket_to: '2026-05-20', new_visitors: 2 },
+      ])))
+
+      const result = await fetchNewVsReturning(TEST_URL, bucketFilter)
+      const slot = result.find((r) => r.date === gridLabel)
+
+      expect(slot?.new_visitors).toBe(2)
+    })
+
+    it('should place bucketed API rows on the matching bucket axis (by bucket_from)', async () => {
+      const bucketFilter = { fromDate: '2026-03-13', toDate: '2026-05-20', bucketDays: 7 }
+      const lastLabel = formatBucketLabel('2026-05-15', '2026-05-20')
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(mockClickhouseResponse([
+        { bucket_from: '2026-05-15', bucket_to: '2026-05-20', new_visitors: 2 },
+      ])))
+
+      const result = await fetchNewVsReturning(TEST_URL, bucketFilter)
+      const lastBucket = result.find((r) => r.date === lastLabel)
+
+      expect(lastBucket?.new_visitors).toBe(2)
+      expect(result.length).toBeGreaterThan(1)
+      expect(result.some((r) => r.new_visitors === 0)).toBe(true)
+    })
+  })
+
+  describe('fetchBrowserTrendsOverTime', () => {
+    it('should chart host-level bucket sessions when browser field is absent', async () => {
+      const bucketFilter = { fromDate: '2026-03-13', toDate: '2026-05-20', bucketDays: 7 }
+      const lastLabel = formatBucketLabel('2026-05-15', '2026-05-20')
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(mockClickhouseResponse([
+        { bucket_from: '2026-05-15', bucket_to: '2026-05-20', sessions: 10 },
+      ])))
+
+      const result = await fetchBrowserTrendsOverTime(TEST_URL, bucketFilter)
+      const lastBucket = result.find((r) => r.date === lastLabel)
+
+      expect(lastBucket?.Visitors).toBe(10)
+    })
+
+    it('should sort bucketed ranges chronologically by bucket_from', async () => {
+      const bucketFilter = { fromDate: '2026-03-01', toDate: '2026-03-14', bucketDays: 7 }
+      const laterLabel = formatBucketLabel('2026-03-08', '2026-03-14')
+      const earlierLabel = formatBucketLabel('2026-03-01', '2026-03-07')
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(mockClickhouseResponse([
+        { bucket_from: '2026-03-08', bucket_to: '2026-03-14', browser: 'Chrome', unique_visitors: 8 },
+        { bucket_from: '2026-03-01', bucket_to: '2026-03-07', browser: 'Safari', unique_visitors: 4 },
+      ])))
+
+      const result = await fetchBrowserTrendsOverTime(TEST_URL, bucketFilter)
+      const earlierIdx = result.findIndex((r) => r.date === earlierLabel)
+      const laterIdx = result.findIndex((r) => r.date === laterLabel)
+
+      expect(earlierIdx).toBeGreaterThanOrEqual(0)
+      expect(laterIdx).toBeGreaterThan(earlierIdx)
+      expect(result[earlierIdx]?.Safari).toBe(4)
+      expect(result[laterIdx]?.Chrome).toBe(8)
+    })
   })
 
   describe('fetchSessionClickData', () => {
@@ -483,7 +596,7 @@ describe('clickhouse-fetchers', () => {
       // Mock all fetch calls to return empty
       vi.stubGlobal('fetch', vi.fn().mockResolvedValue(emptyResponse()))
 
-      const result = await fetchAllClickhouseAnalytics(TEST_URL, TEST_DAYS)
+      const result = await fetchAllClickhouseAnalytics(TEST_URL, { mode: 'rolling', days: TEST_DAYS })
       // Verify all expected keys exist
       expect(result).toHaveProperty('pageViewsByPathData')
       expect(result).toHaveProperty('uniqueVisitorsByPageData')

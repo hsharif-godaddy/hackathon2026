@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from 'react'
 import Box from '@ux/box'
 import Collapsible from '@ux/collapsible'
 import AlertIcon from '@ux/icon/alert'
-import Select from '@ux/select'
 import Spinner from '@ux/spinner'
 import text from '@ux/text'
 
@@ -18,6 +17,12 @@ import { AnalyticsCard } from '@/components/analytics/AnalyticsCard'
 import { AnalyticsChart } from '@/components/analytics/AnalyticsChart'
 import { AnalyticsDetailTable } from '@/components/analytics/AnalyticsDetailTable'
 import { AnalyticsMultiAreaChart } from '@/components/analytics/AnalyticsMultiAreaChart'
+import {
+  AnalyticsPeriodPicker,
+  type AnalyticsPeriodValue,
+  defaultAnalyticsPeriodValue,
+  toAnalyticsDateSelection,
+} from '@/components/analytics/AnalyticsPeriodPicker'
 import { AnalyticsPieChart } from '@/components/analytics/AnalyticsPieChart'
 import { AnalyticsUpgradeBanner, AnalyticsUpgradeInnerBanner } from '@/components/analytics/AnalyticsUpgradeBanner'
 import { MetricCard } from '@/components/analytics/MetricCard'
@@ -68,19 +73,6 @@ function countryCodeToFlag(code: string): string {
   return String.fromCodePoint(...[...upper].map((c) => 0x1F1E6 - 65 + c.charCodeAt(0)))
 }
 
-/**
- * Calculate number of days passed in current month
- *
- * @returns Number of days from start of month to today (inclusive)
- */
-function getDaysThisMonth(): number {
-  const now = new Date()
-  const dayOfMonth = now.getDate()
-  return dayOfMonth
-}
-
-type TimePeriod = '7' | '15' | '30' | 'month'
-
 interface GeoProPlanRow { country: string; countryCode: string; city: string; visitors: number; newVisitors: number; returnVisitors: number }
 interface ReferrerTableRow { referrer: string; pageViews: number; engagementRate: string; landingVisits: number }
 interface CTATableRow { element: string; clicks: number; uniqueClicks: number; clicksPerSession: string }
@@ -107,23 +99,8 @@ export default function RUM() {
   const appId = useAppIdFromParams()
   const publishedUrl = usePublishedUrl()
   const isInsightsBannerEnabled = useSwitchboard(SWITCHBOARD_APPBUILDER_INSIGHTS_BANNER) === true
-  const [selectedPeriod, setSelectedPeriod] = useState<TimePeriod>('7')
-
-  // Calculate days based on selected period
-  const days = useMemo(() => {
-    switch (selectedPeriod) {
-      case '7':
-        return 7
-      case '15':
-        return 15
-      case '30':
-        return 30
-      case 'month':
-        return getDaysThisMonth()
-      default:
-        return 7
-    }
-  }, [selectedPeriod])
+  const [periodValue, setPeriodValue] = useState<AnalyticsPeriodValue>(defaultAnalyticsPeriodValue)
+  const dateSelection = useMemo(() => toAnalyticsDateSelection(periodValue), [periodValue])
 
   const [liveDataTab, setLiveDataTab] = useState<LiveDataTab>(LIVE_DATA_TAB.TOTAL_VISITORS)
   const [visitorInsightsTab, setVisitorInsightsTab] = useState<'clicks' | 'total-sessions'>('clicks')
@@ -132,27 +109,30 @@ export default function RUM() {
   // ── Plan-based gating ──────────────────────────────────
   const { data: subscription } = useSubscription()
   const currentPlan = subscription ? getPlanFromSubscription(subscription) : SubscriptionPlan.None
-  const isPro = isProfessionalOrAbove(currentPlan)        // Professional, Ultimate
+  const isPro = isProfessionalOrAbove(currentPlan)
   const openUpgradeModal = useDevelopPageStore((state) => state.openUpgradeModal)
   const handleMetricUpgrade = () => openUpgradeModal('analytics.metric_card', PAYWALL_ITC.UPGRADE)
   const handleInnerBannerUpgrade = () => openUpgradeModal('analytics.inner_banner', PAYWALL_ITC.UPGRADE)
 
-  // Reset plan-gated state when subscription lapses mid-session
   useEffect(() => {
-    if (!isPro && selectedPeriod === '15') setSelectedPeriod('7')
-  }, [isPro, selectedPeriod])
+    if (!isPro && periodValue.preset === '15') {
+      setPeriodValue((prev) => ({ ...prev, preset: '7' }))
+    }
+  }, [isPro, periodValue.preset])
 
   // Fetch analytics data from insights API (remaining: route count, loading state)
   const {
     totalClicks,
+    totalPageViews: insightsPageViews,
+    visitors: insightsVisitors,
     isLoading,
     isRefreshing,
     error
   } = useInsightsAnalytics({
     publishedUrl,
     appId,
-    days,
-    enabled: !!publishedUrl
+    dateSelection,
+    enabled: !!publishedUrl,
   })
 
   // Fetch all ClickHouse-backed chart data (replaces mock data)
@@ -179,11 +159,12 @@ export default function RUM() {
     topCTALabelsData,
     cityTrafficWithCountryData,
     countryTrafficWithCodeData,
+    isFetched: analyticsFetched,
   } = useClickhouseAnalytics({
     publishedUrl,
     appId,
-    days,
-    enabled: !!publishedUrl
+    dateSelection,
+    enabled: !!publishedUrl,
   })
 
   const chartData = useMemo(() => {
@@ -194,19 +175,31 @@ export default function RUM() {
   }, [dailyHostPageViews])
 
   const metrics = useMemo(() => {
-    const vv = totalHostUniqueVisitors
-    const pv = totalHostPageViews
-    // Derive totalClicks from clickTrendsData (ClickHouse) which reliably returns data,
-    // rather than the separate useInsightsAnalytics fetch which can silently return 0.
+    const pageviewsFromPaths = pageViewsByPathData.reduce((sum, d) => sum + Number(d.value ?? 0), 0)
+    const visitorsFromPages = uniqueVisitorsByPageData.reduce((sum, d) => sum + Number(d.value ?? 0), 0)
+    const sessionsFromDaily = dailyTotalSessions.reduce((sum, d) => sum + Number(d.value ?? 0), 0)
+    const pv = totalHostPageViews || pageviewsFromPaths || insightsPageViews
+    const vv = totalHostUniqueVisitors || visitorsFromPages || insightsVisitors
     const derivedTotalClicks = clickTrendsData.reduce((sum, d) => sum + d.value, 0)
     const clicks = derivedTotalClicks || totalClicks
     return {
       pageviews: pv,
       totalClicks: clicks,
       visitors: vv,
-      viewsPerVisit: vv > 0 ? pv / vv : 0
+      viewsPerVisit: vv > 0 ? pv / vv : 0,
+      sessionsFromDaily,
     }
-  }, [totalHostPageViews, totalHostUniqueVisitors, totalClicks, clickTrendsData])
+  }, [
+    totalHostPageViews,
+    totalHostUniqueVisitors,
+    totalClicks,
+    clickTrendsData,
+    pageViewsByPathData,
+    uniqueVisitorsByPageData,
+    dailyTotalSessions,
+    insightsPageViews,
+    insightsVisitors,
+  ])
 
   // Combine 4 data sources into a Top Pages table
   const topPagesData = useMemo((): TopPageRow[] => {
@@ -304,7 +297,7 @@ export default function RUM() {
   const browserTrendSeries = useMemo(() => {
     const colors = ['var(--color-ai)', 'var(--color-chart-blue)', 'var(--color-chart-green)', 'var(--color-chart-cyan)', 'var(--color-chart-orange)']
     if (browserTrendsOverTimeData.length === 0) return []
-    const keys = Object.keys(browserTrendsOverTimeData[0]).filter((k) => k !== 'date')
+    const keys = Object.keys(browserTrendsOverTimeData[0]).filter((k) => k !== 'date' && k !== 'bucket_from')
     return keys.map((k, i) => ({
       key: k,
       name: k,
@@ -490,7 +483,8 @@ export default function RUM() {
     )
   }
 
-  const { totalSessions, bounceSessions, peakHour } = kpiExtras
+  const totalSessions = kpiExtras.totalSessions || metrics.sessionsFromDaily
+  const { bounceSessions, peakHour } = kpiExtras
   const { viewsPerVisit } = metrics
 
   return (
@@ -544,20 +538,7 @@ export default function RUM() {
               </text.span>
             </div>
           )}
-          <Select
-            value={selectedPeriod}
-            id="period-select"
-            name="period-select"
-            onChange={(value) => setSelectedPeriod(value as TimePeriod)}
-            aria-label={t('builder_analytics_select_period')}
-            visualSize="sm"
-            className="bg-intents-ux-box-backgroundColor rounded-md"
-          >
-            <option value="7">{t('builder_analytics_last_7_days')}</option>
-            {isPro && <option value="15">{t('builder_analytics_last_15_days')}</option>}
-            <option value="30">{t('builder_analytics_last_30_days')}</option>
-            <option value="month">{t('builder_analytics_this_month')}</option>
-          </Select>
+          <AnalyticsPeriodPicker value={periodValue} onChange={setPeriodValue} showLast15Days={isPro} />
         </div>
       )}
       className="pb-2 px-1.5 md:px-0.5"
@@ -579,71 +560,56 @@ export default function RUM() {
                   label={t('builder_analytics_pageviews')}
                   value={metrics.pageviews}
                   description={t('builder_analytics_total_page_loads')}
-                  caption={metrics.pageviews === 0 ? t('builder_analytics_no_data') : undefined}
                 />
                 <MetricCard
                   label={t('builder_analytics_visitors')}
                   value={metrics.visitors}
                   description={t('builder_analytics_unique_visitors')}
-                  caption={metrics.visitors === 0 ? t('builder_analytics_no_data') : undefined}
                 />
                 <MetricCard
                   label={t('builder_analytics_views_per_visit')}
                   value={viewsPerVisit > 0 ? viewsPerVisit.toFixed(2) : '0.00'}
                   description={t('builder_analytics_pages_per_visitor')}
-                  caption={viewsPerVisit === 0 ? t('builder_analytics_no_data') : undefined}
                 />
                 <MetricCard
                   label={t('builder_analytics_total_sessions')}
                   value={totalSessions}
                   description={t('builder_analytics_all_sessions')}
-                  caption={totalSessions === 0 ? t('builder_analytics_no_data') : undefined}
                 />
                 <MetricCard
                   label={t('builder_analytics_engagement_rate')}
                   value={totalSessions > 0 ? `${Math.round(((totalSessions - bounceSessions) / totalSessions) * 100)}%` : '0%'}
                   description={t('builder_analytics_engaged_sessions', { engaged: totalSessions - bounceSessions, total: totalSessions })}
-                  caption={totalSessions === 0 ? t('builder_analytics_no_data') : undefined}
                 />
                 <MetricCard
                   label={t('builder_analytics_total_clicks')}
                   value={metrics.totalClicks}
                   description={t('builder_analytics_all_clicks_tracked')}
-                  {...(isPro
-                    ? { caption: metrics.totalClicks === 0 ? t('builder_analytics_no_data') : undefined }
-                    : { needsUpgrade: true as const, onUpgrade: handleMetricUpgrade })}
+                  {...(isPro ? null : { needsUpgrade: true as const, onUpgrade: handleMetricUpgrade })}
                 />
                 <MetricCard
                   label={t('builder_analytics_bounce_rate')}
                   value={kpiExtras.bounceRate || '0%'}
                   description={t('builder_analytics_bounce_sessions_count', { bounceSessions: kpiExtras.bounceSessions })}
-                  {...(isPro
-                    ? { caption: totalSessions === 0 ? t('builder_analytics_no_data') : undefined }
-                    : { needsUpgrade: true as const, onUpgrade: handleMetricUpgrade })}
+                  {...(isPro ? null : { needsUpgrade: true as const, onUpgrade: handleMetricUpgrade })}
                 />
                 <MetricCard
                   label={t('builder_analytics_peak_hour')}
-                  value={peakHour || '--'}
+                  value={peakHour || '0:00'}
                   description={t('builder_analytics_peak_hour_description', { visitors: kpiExtras.peakHourVisitors, clicks: kpiExtras.peakHourClicks })}
-                  {...(isPro
-                    ? { caption: (totalSessions === 0 || !peakHour) ? t('builder_analytics_no_data') : undefined }
-                    : { needsUpgrade: true as const, onUpgrade: handleMetricUpgrade })}
+                  {...(isPro ? null : { needsUpgrade: true as const, onUpgrade: handleMetricUpgrade })}
                 />
                 <MetricCard
                   label={t('builder_analytics_avg_pages_per_session')}
                   value={kpiExtras.avgPagesPerSession > 0 ? kpiExtras.avgPagesPerSession.toFixed(2) : '0.00'}
                   description={t('builder_analytics_pages_viewed_per_session')}
-                  {...(isPro
-                    ? { caption: totalSessions === 0 ? t('builder_analytics_no_data') : undefined }
-                    : { needsUpgrade: true as const, onUpgrade: handleMetricUpgrade })}
+                  {...(isPro ? null : { needsUpgrade: true as const, onUpgrade: handleMetricUpgrade })}
                 />
                 <MetricCard
                   label={t('builder_analytics_avg_duration')}
-                  value={kpiExtras.avgSessionDuration || '0s'}
+                  value={kpiExtras.avgSessionDuration || '0m 0s'}
                   description={t('builder_analytics_avg_session_length')}
-                  {...(isPro
-                    ? { caption: totalSessions === 0 ? t('builder_analytics_no_data') : undefined }
-                    : { needsUpgrade: true as const, onUpgrade: handleMetricUpgrade })}
+                  {...(isPro ? null : { needsUpgrade: true as const, onUpgrade: handleMetricUpgrade })}
                 />
               </div>
             </CollapsibleContent>
@@ -675,9 +641,9 @@ export default function RUM() {
                   </SegmentedController>
                 </div>
                 {liveDataTab === LIVE_DATA_TAB.TOTAL_VISITORS ? (
-                  <AnalyticsChart data={dailyUniqueVisitors} label={t('builder_analytics_visitors')} embedded />
+                  <AnalyticsChart data={dailyUniqueVisitors} label={t('builder_analytics_visitors')} embedded fetched={analyticsFetched} />
                 ) : liveDataTab === LIVE_DATA_TAB.PAGEVIEWS ? (
-                  <AnalyticsChart data={chartData} label={t('builder_analytics_page_views')} embedded />
+                  <AnalyticsChart data={chartData} label={t('builder_analytics_page_views')} embedded fetched={analyticsFetched} />
                 ) : liveDataTab === LIVE_DATA_TAB.VISITORS && isPro ? (
                   <AnalyticsMultiAreaChart
                     data={newVsReturningData}
@@ -687,6 +653,7 @@ export default function RUM() {
                       { key: 'returning_visitors', name: t('builder_analytics_returning_visitors'), color: 'var(--color-ai-muted)', strokeDasharray: '5 5' }
                     ]}
                     embedded
+                    fetched={analyticsFetched}
                   />
                 ) : liveDataTab === LIVE_DATA_TAB.VISITORS ? (
                   <AnalyticsUpgradeInnerBanner onUpgrade={handleInnerBannerUpgrade} />
@@ -695,6 +662,7 @@ export default function RUM() {
                     data={dailyTotalSessions}
                     label={t('builder_analytics_sessions')}
                     embedded
+                    fetched={analyticsFetched}
                   />
                 )}
               </AnalyticsCard>
@@ -715,6 +683,7 @@ export default function RUM() {
                   tooltip={t('builder_analytics_tooltip_country_distribution')}
                   color="var(--color-chart-blue)"
                   maxItems={8}
+                  fetched={analyticsFetched}
                 />
                 <StatProgressList
                   items={cityProgressItems}
@@ -722,6 +691,7 @@ export default function RUM() {
                   tooltip={t('builder_analytics_tooltip_city_ranking')}
                   color="var(--color-chart-cyan)"
                   maxItems={8}
+                  fetched={analyticsFetched}
                 />
               </div>
 
@@ -778,13 +748,14 @@ export default function RUM() {
           >
             <CollapsibleContent>
               <div className="grid grid-cols-1 @xl:grid-cols-2 gap-2 [&>*]:min-w-0">
-                <AnalyticsPieChart data={sessionsByDeviceData} label={t('builder_analytics_sessions_by_device')} tooltip={t('builder_analytics_tooltip_device_breakdown')} />
+                <AnalyticsPieChart data={sessionsByDeviceData} label={t('builder_analytics_sessions_by_device')} tooltip={t('builder_analytics_tooltip_device_breakdown')} fetched={analyticsFetched} />
                 <StatProgressList
                   items={referrerProgressItems}
                   title={t('builder_analytics_top_referrers')}
                   tooltip={t('builder_analytics_tooltip_top_referrers')}
                   color="var(--color-chart-green)"
                   maxItems={8}
+                  fetched={analyticsFetched}
                 />
               </div>
 
@@ -817,6 +788,7 @@ export default function RUM() {
                           { key: 'mobile', name: t('builder_analytics_mobile'), color: 'var(--color-chart-green)' },
                         ]}
                         embedded
+                        fetched={analyticsFetched}
                       />
                     ) : (
                       <AnalyticsMultiAreaChart
@@ -824,6 +796,7 @@ export default function RUM() {
                         label={t('builder_analytics_browser_trends')}
                         series={browserTrendSeries}
                         embedded
+                        fetched={analyticsFetched}
                       />
                     )}
                   </>

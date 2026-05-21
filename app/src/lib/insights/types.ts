@@ -2,6 +2,8 @@
  * Insights API Type Definitions
  */
 
+import type { AnalyticsDateSelection } from '@/lib/insights/clickhouse-queries'
+
 /**
  * GraphQL response type for insight count query
  */
@@ -96,7 +98,7 @@ export interface ErrorClassification {
 export interface UseInsightsAnalyticsOptions {
   publishedUrl: string | null
   appId?: string | null
-  days?: number
+  dateSelection: AnalyticsDateSelection
   enabled?: boolean
 }
 

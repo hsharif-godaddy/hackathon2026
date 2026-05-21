@@ -10,7 +10,12 @@ import { NextRequest, NextResponse } from 'next/server'
 // TODO: Re-enable when ownership validation is restored
 // import { getControlPlaneAdapter } from '@/lib/control-plane'
 import { type CustomerAuthContext, withCustomerAuth } from '@/lib/customer-auth'
-import { getInsightsApiUrl } from '@/lib/insights/config'
+import {
+  getInsightsApiUrl,
+  getLocalDevInsightsToken,
+  isAnalyticsLocalDevOverride,
+} from '@/lib/insights/config'
+import { logGraphqlRequest, logGraphqlResponse } from '@/lib/insights/log-graphql-query'
 import { getInsightsAuthToken } from '@/lib/insights-auth'
 import { logger } from '@/lib/request-context'
 
@@ -59,12 +64,26 @@ export const POST = withCustomerAuth(async (request: NextRequest, _authContext: 
     //   )
     // }
 
-    const operationName = query.match(/query\s+(\w+)/)?.[1] || 'unknown'
+    const localDev = isAnalyticsLocalDevOverride()
 
-    // Get authentication token (environment determined by Gasket config)
+    if (localDev) {
+      logger.info('analytics.graphql.local-dev', {
+        apiUrl: getInsightsApiUrl(),
+      })
+    }
+
+    logGraphqlRequest(appId, query)
+
+    const localJwt = localDev ? getLocalDevInsightsToken() : undefined
     let authToken: string
     try {
       authToken = await getInsightsAuthToken()
+      if (localDev) {
+        logger.info('analytics.graphql.auth', {
+          source: localJwt ? 'local-env-jwt' : 'iam-sso',
+          jwtLength: authToken.length,
+        })
+      }
     } catch (error) {
       logger.error('analytics.graphql.auth-failed', {
         message: 'Failed to get authentication token',
@@ -79,10 +98,6 @@ export const POST = withCustomerAuth(async (request: NextRequest, _authContext: 
     // Get API URL from Gasket per-environment config
     const apiUrl = getInsightsApiUrl()
 
-    logger.info('analytics.graphql.request', {
-      operationName
-    })
-
     // Forward request to UIP Insights API
     const response = await fetch(apiUrl, {
       method: 'POST',
@@ -95,6 +110,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, _authContext: 
 
     if (!response.ok) {
       const errorText = await response.text().catch(() => 'Unknown error')
+      logGraphqlResponse(appId, query, { httpStatus: response.status, errorText })
       logger.error('analytics.graphql.api-error', {
         message: 'UIP API returned error',
         status: response.status,
@@ -107,15 +123,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, _authContext: 
     }
 
     const result = await response.json()
-
-    const wildcardInsight = result?.data?.insightCountByValueDailyAnyWildcard?.brand?.namespace?.insightName
-    const dailyInsight = result?.data?.insightCountByValueDaily?.brand?.namespace?.insightName
-
-    logger.info('analytics.graphql.response', {
-      operationName,
-      count: wildcardInsight?.count ?? dailyInsight?.count ?? 0,
-      dailyBreakdownCount: (wildcardInsight?.dailyBreakdown || dailyInsight?.dailyBreakdown || []).length
-    })
+    logGraphqlResponse(appId, query, result)
 
     // Return the GraphQL response
     return NextResponse.json(result, {
@@ -134,4 +142,3 @@ export const POST = withCustomerAuth(async (request: NextRequest, _authContext: 
     )
   }
 })
-

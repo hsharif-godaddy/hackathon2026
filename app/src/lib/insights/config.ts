@@ -10,6 +10,7 @@ import 'server-only'
  *
  * Client code should import from ./constants instead.
  */
+import { logger } from '@/lib/request-context'
 import gasket from '../../../gasket.ts'
 
 const PROD_INSIGHTS_API_URL = 'https://uip.api.int.godaddy.com/v1/insights/graphql'
@@ -22,7 +23,8 @@ const PROD_INSIGHTS_API_URL = 'https://uip.api.int.godaddy.com/v1/insights/graph
  * @returns Insights GraphQL API URL
  */
 export function getInsightsApiUrl(): string {
-  return (gasket.config as any).insightsApiUrl
+  return getLocalDevInsightsApiUrl()
+    ?? (gasket.config as any).insightsApiUrl
     ?? process.env.UIP_INSIGHTS_API_URL
     ?? PROD_INSIGHTS_API_URL
 }
@@ -40,5 +42,47 @@ const PROD_SSO_HOST = 'sso.godaddy.com'
 export function getInsightsSsoHost(): string {
   return (gasket.config as any).insightsSsoHost
     ?? PROD_SSO_HOST
+}
+
+const DEFAULT_DEV_INSIGHTS_API_URL = 'https://uip-dp.api.int.dev-godaddy.com/v1/insights/graphql'
+
+export function isAnalyticsLocalDevOverride(): boolean {
+  const flag = process.env.ANALYTICS_LOCAL_DEV
+  return flag === '1' || flag === 'true'
+}
+
+export function getLocalDevInsightsApiUrl(): string | undefined {
+  if (!isAnalyticsLocalDevOverride()) return undefined
+  return process.env.ANALYTICS_LOCAL_API_URL?.trim() || DEFAULT_DEV_INSIGHTS_API_URL
+}
+
+function parseLocalDevJwt(raw: string | undefined): string | undefined {
+  let token = raw?.trim()
+  if (!token) return undefined
+  if (
+    (token.startsWith('"') && token.endsWith('"'))
+    || (token.startsWith("'") && token.endsWith("'"))
+  ) {
+    token = token.slice(1, -1).trim()
+  }
+  if (!token.startsWith('sso-jwt ')) {
+    token = `sso-jwt ${token}`
+  }
+  if (token.length < 80) {
+    return undefined
+  }
+  return token
+}
+
+export function getLocalDevInsightsToken(): string | undefined {
+  if (!isAnalyticsLocalDevOverride()) return undefined
+  const token = parseLocalDevJwt(process.env.ANALYTICS_LOCAL_SSO_JWT)
+  if (!token) {
+    logger.warn('analytics.local-dev.jwt-missing', {
+      message: 'ANALYTICS_LOCAL_SSO_JWT is unset or truncated — wrap the full token in double quotes in .env.local',
+      rawLength: process.env.ANALYTICS_LOCAL_SSO_JWT?.length ?? 0,
+    })
+  }
+  return token
 }
 

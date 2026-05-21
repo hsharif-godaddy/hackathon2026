@@ -5,6 +5,11 @@ import { useQuery } from '@tanstack/react-query'
 
 import { transformDailyBreakdown } from '@/lib/insights/calculations'
 import {
+  aggregateDateFilter,
+  analyticsDateKey,
+  type AnalyticsDateSelection,
+} from '@/lib/insights/clickhouse-queries'
+import {
   fetchButtonClicks,
   fetchDailyPageViews,
   fetchLinkClicks,
@@ -52,11 +57,11 @@ const EMPTY_DATA: InsightsQueryResult = {
 async function fetchAllInsightsAnalytics(
   publishedUrl: string,
   appId: string | null | undefined,
-  days: number,
+  dateSelection: AnalyticsDateSelection,
 ): Promise<InsightsQueryResult> {
-  logger.debug('analytics.insights.fetch.start', { publishedUrl, days })
+  const dateFilter = aggregateDateFilter(dateSelection)
+  logger.debug('analytics.insights.fetch.start', { publishedUrl, dateSelection })
 
-  // Fire all independent fetches in parallel
   const [
     pageViewsResult,
     totalClicksResult,
@@ -64,11 +69,11 @@ async function fetchAllInsightsAnalytics(
     linkClicksResult,
     visitorsCount,
   ] = await Promise.all([
-    fetchDailyPageViews(publishedUrl, days, appId ?? undefined),
-    fetchTotalClicks(publishedUrl, days, appId ?? undefined),
-    fetchButtonClicks(publishedUrl, days, appId ?? undefined),
-    fetchLinkClicks(publishedUrl, days, appId ?? undefined),
-    fetchVisitors(publishedUrl, days, appId ?? undefined),
+    fetchDailyPageViews(publishedUrl, dateFilter, appId ?? undefined),
+    fetchTotalClicks(publishedUrl, dateFilter, appId ?? undefined),
+    fetchButtonClicks(publishedUrl, dateFilter, appId ?? undefined),
+    fetchLinkClicks(publishedUrl, dateFilter, appId ?? undefined),
+    fetchVisitors(publishedUrl, dateFilter, appId ?? undefined),
   ])
 
   const dailyPageViews = transformDailyBreakdown(pageViewsResult.dailyBreakdown)
@@ -89,7 +94,7 @@ async function fetchAllInsightsAnalytics(
       const routeResults = await Promise.all(
         routes.map(async (route) => {
           try {
-            const count = await fetchRouteCount(publishedUrl, route, days, appId ?? undefined)
+            const count = await fetchRouteCount(publishedUrl, route, dateFilter, appId ?? undefined)
             return count > 0 ? ({ route, pageViews: count } as RoutePageView) : null
           } catch {
             return null
@@ -102,7 +107,7 @@ async function fetchAllInsightsAnalytics(
     }
   }
 
-  logger.debug('analytics.insights.fetch.success', { publishedUrl, days })
+  logger.debug('analytics.insights.fetch.success', { publishedUrl, dateSelection })
 
   return {
     dailyPageViews,
@@ -128,21 +133,21 @@ async function fetchAllInsightsAnalytics(
  * ```tsx
  * const { totalPageViews, isLoading, error } = useInsightsAnalytics({
  *   publishedUrl: 'https://example.com',
- *   days: 7,
+ *   dateSelection: { mode: 'rolling', days: 7 },
  * })
  * ```
  */
 export function useInsightsAnalytics({
   publishedUrl,
   appId,
-  days = 7,
+  dateSelection,
   enabled = true,
 }: UseInsightsAnalyticsOptions) {
   const isEnabled = enabled && !!publishedUrl?.trim()
 
   const { data, isLoading, isFetching, error } = useQuery({
-    queryKey: ['insights-analytics', publishedUrl, appId, days],
-    queryFn: () => fetchAllInsightsAnalytics(publishedUrl!, appId, days),
+    queryKey: ['insights-analytics', publishedUrl, appId, analyticsDateKey(dateSelection)],
+    queryFn: () => fetchAllInsightsAnalytics(publishedUrl!, appId, dateSelection),
     enabled: isEnabled,
     staleTime: 5 * 60 * 1000,  // 5 minutes — avoid refetching on every mount
     gcTime: 30 * 60 * 1000,    // 30 minutes — keep unused data in cache

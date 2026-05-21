@@ -22,6 +22,8 @@ interface AnalyticsChartProps {
   data: ChartDataPoint[]
   label?: string
   embedded?: boolean
+  /** When true and data is empty, render a zero chart instead of "no data" */
+  fetched?: boolean
 }
 
 /**
@@ -33,12 +35,13 @@ interface AnalyticsChartProps {
  *
  * @param data - Array of data points with date and value
  */
-export function AnalyticsChart({ data, label, embedded }: AnalyticsChartProps) {
+export function AnalyticsChart({ data, label, embedded, fetched = false }: AnalyticsChartProps) {
   const t = useTranslations()
   const gradientId = useId().replace(/:/g, '')
   const chartLabel = label ?? t('builder_analytics_chart_pageviews')
+  const chartData = data?.length ? data : (fetched ? [{ date: '—', value: 0 }] : [])
 
-  if (!data || data.length === 0) {
+  if (!chartData.length) {
     if (embedded) {
       return (
         <AnalyticsTextLockup
@@ -58,7 +61,7 @@ export function AnalyticsChart({ data, label, embedded }: AnalyticsChartProps) {
   const chartContent = (
     <ResponsiveContainer width="100%" height={260} minHeight={200}>
       <AreaChart
-          data={data}
+          data={chartData}
           margin={{
             top: 10,
             right: 20,

@@ -24,6 +24,7 @@ interface AnalyticsPieChartProps {
   label?: string
   /** Optional tooltip shown on info icon next to title */
   tooltip?: string
+  fetched?: boolean
 }
 
 const COLORS = ['var(--color-ai)', 'var(--color-ai-light)', 'var(--color-chart-blue)', 'var(--color-chart-green)', 'var(--color-chart-amber)', 'var(--color-chart-pink)', 'var(--color-chart-cyan)', 'var(--color-chart-violet)']
@@ -37,7 +38,7 @@ const COLORS = ['var(--color-ai)', 'var(--color-ai-light)', 'var(--color-chart-b
  * @param data - Array of data points with date and value
  * @param label - Chart label
  */
-export function AnalyticsPieChart({ data, label = 'Distribution', tooltip }: AnalyticsPieChartProps) {
+export function AnalyticsPieChart({ data, label = 'Distribution', tooltip, fetched = false }: AnalyticsPieChartProps) {
   const chartId = useId().replace(/:/g, '')
   const t = useTranslations()
 
@@ -48,7 +49,7 @@ export function AnalyticsPieChart({ data, label = 'Distribution', tooltip }: Ana
           {label}
           {tooltip && (<InfoTooltip content={tooltip}/>)}
         </>}
-        description={t('builder_analytics_no_data')}
+        description={fetched ? '0' : t('builder_analytics_no_data')}
       />
     )
   }

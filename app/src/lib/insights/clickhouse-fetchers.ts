@@ -10,7 +10,9 @@
  */
 
 import { logger } from '@/lib/request-context'
+import type { AnalyticsDateSelection, DateFilter } from './clickhouse-queries'
 import {
+  aggregateDateFilter,
   buildAvgPagesPerSessionQuery,
   buildAvgSessionDurationQuery,
   buildBounceSessionsQuery,
@@ -40,6 +42,8 @@ import {
   buildTotalSessionsQuery,
   buildUniqueVisitorsPerHostQuery,
   buildUniqueVisitorsPerPageQuery,
+  isBucketFilter,
+  trafficDateFilter,
 } from './clickhouse-queries'
 import type {
   ActivityHitRow,
@@ -108,7 +112,6 @@ async function execClickhouseImpl<T = Record<string, unknown>>(
 ): Promise<T[]> {
   const proxyUrl = '/api/analytics/graphql'
   let lastError: Error | null = null
-
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     const ac = new AbortController()
     const tid = setTimeout(() => ac.abort(), REQUEST_TIMEOUT_MS)
@@ -201,6 +204,130 @@ function generateDateRange(days: number): string[] {
   return dates
 }
 
+function generateDateRangeFromTo(fromDate: string, toDate: string): string[] {
+  const dates: string[] = []
+  const start = Date.parse(`${fromDate}T00:00:00Z`)
+  const end = Date.parse(`${toDate}T00:00:00Z`)
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return dates
+  for (let t = start; t <= end; t += 86_400_000) {
+    dates.push(new Date(t).toISOString().slice(0, 10))
+  }
+  return dates
+}
+
+export function formatBucketLabel(bucketFrom: string, bucketTo: string): string {
+  const formatPart = (iso: string) => {
+    const d = new Date(`${iso}T00:00:00Z`)
+    return d.toLocaleDateString('en-US', { month: 'short', day: '2-digit', timeZone: 'UTC' })
+  }
+  return `${formatPart(bucketFrom)} – ${formatPart(bucketTo)}`
+}
+
+function generateBucketRange(
+  fromDate: string,
+  toDate: string,
+  bucketDays: number,
+): Array<{ bucketFrom: string; bucketTo: string; label: string }> {
+  const start = Date.parse(`${fromDate}T00:00:00Z`)
+  const end = Date.parse(`${toDate}T00:00:00Z`)
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end < start || bucketDays < 1) return []
+
+  const buckets: Array<{ bucketFrom: string; bucketTo: string; label: string }> = []
+  for (let t = start; t <= end; t += bucketDays * 86_400_000) {
+    const bucketFrom = new Date(t).toISOString().slice(0, 10)
+    const bucketEnd = Math.min(t + (bucketDays - 1) * 86_400_000, end)
+    const bucketTo = new Date(bucketEnd).toISOString().slice(0, 10)
+    buckets.push({ bucketFrom, bucketTo, label: formatBucketLabel(bucketFrom, bucketTo) })
+  }
+  return buckets
+}
+
+function rowBucketFrom(point: { date: string; bucket_from?: string }): string | undefined {
+  return point.bucket_from
+}
+
+function numericField(row: object, keys: string[]): number {
+  const record = row as Record<string, unknown>
+  for (const key of keys) {
+    const v = record[key]
+    if (v !== undefined && v !== null && v !== '') {
+      return Number(v) || 0
+    }
+  }
+  return 0
+}
+
+function seriesHasPositiveValues(points: Array<{ value?: number }>): boolean {
+  return points.some((d) => Number(d.value) > 0)
+}
+
+function lookupBucketPoint<T extends { date: string; bucket_from?: string }>(
+  data: T[],
+  bucketFrom: string,
+  bucketTo: string,
+  label: string,
+): T | undefined {
+  const byFrom = data.find((d) => rowBucketFrom(d) === bucketFrom)
+  if (byFrom) return byFrom
+  const byLabel = data.find((d) => d.date === label)
+  if (byLabel) return byLabel
+  // API bucket alignment can differ by a day from our generated grid
+  return data.find((d) => {
+    const from = rowBucketFrom(d)
+    return Boolean(from && from >= bucketFrom && from <= bucketTo)
+  })
+}
+
+function seriesSortKey(
+  row: { event_date?: string; bucket_from?: string },
+  dateFilter: DateFilter,
+): string {
+  if (isBucketFilter(dateFilter) && row.bucket_from) return row.bucket_from
+  return row.event_date ?? ''
+}
+
+function seriesDisplayDate(
+  row: { event_date?: string; bucket_from?: string; bucket_to?: string },
+  dateFilter: DateFilter,
+): string {
+  if (isBucketFilter(dateFilter) && row.bucket_from && row.bucket_to) {
+    return formatBucketLabel(row.bucket_from, row.bucket_to)
+  }
+  return row.event_date ?? ''
+}
+
+type SeriesRow = {
+  event_date?: string
+  bucket_from?: string
+  bucket_to?: string
+}
+
+function aggregateChartPoints<TRow extends SeriesRow>(
+  rows: TRow[],
+  dateFilter: DateFilter,
+  valueForRow: (row: TRow) => number,
+): ChartDataPoint[] {
+  const byKey = new Map<string, { label: string; bucket_from?: string; value: number }>()
+  for (const row of rows) {
+    const key = seriesSortKey(row, dateFilter)
+    const label = seriesDisplayDate(row, dateFilter)
+    const prev = byKey.get(key)
+    const value = valueForRow(row)
+    byKey.set(key, {
+      label: prev?.label ?? label,
+      bucket_from: prev?.bucket_from ?? (isBucketFilter(dateFilter) ? row.bucket_from : undefined),
+      value: (prev?.value ?? 0) + value,
+    })
+  }
+  return [...byKey.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([, { label, value, bucket_from }]) => ({
+      date: label,
+      value,
+      ...(bucket_from ? { bucket_from } : {}),
+    }))
+}
+
 /**
  * Pad a time-series dataset so that every date in the requested range is
  * present.  Missing dates are filled with zero-valued entries whose shape
@@ -234,6 +361,51 @@ function padDateRange<T extends { date: string }>(
   return range.map((date) => map.get(date) ?? ({ date, ...makeZero() } as T))
 }
 
+function padDateRangeForFilter<T extends { date: string }>(
+  data: T[],
+  dateFilter: DateFilter,
+  zeroFn?: () => Omit<T, 'date'>,
+): T[] {
+  if (isBucketFilter(dateFilter)) {
+    const makeZero: () => Omit<T, 'date'> = zeroFn ?? (() => {
+      if (data.length === 0) return {} as Omit<T, 'date'>
+      const template = { ...data[0] } as Record<string, unknown>
+      delete template.date
+      delete template.bucket_from
+      for (const key of Object.keys(template)) {
+        if (typeof template[key] === 'number') template[key] = 0
+        else if (typeof template[key] === 'string') template[key] = ''
+      }
+      return template as Omit<T, 'date'>
+    })
+    return generateBucketRange(dateFilter.fromDate, dateFilter.toDate, dateFilter.bucketDays)
+      .map(({ bucketFrom, bucketTo, label }) => {
+        const hit = lookupBucketPoint(data, bucketFrom, bucketTo, label)
+        if (hit) {
+          return { ...hit, date: label, bucket_from: bucketFrom } as unknown as T
+        }
+        return { date: label, bucket_from: bucketFrom, ...makeZero() } as unknown as T
+      })
+  }
+  if (typeof dateFilter === 'number') {
+    return padDateRange(data, dateFilter, zeroFn)
+  }
+  const range = generateDateRangeFromTo(dateFilter.fromDate, dateFilter.toDate)
+  if (range.length === 0) return data
+  const map = new Map(data.map((d) => [d.date, d]))
+  const makeZero: () => Omit<T, 'date'> = zeroFn ?? (() => {
+    if (data.length === 0) return {} as Omit<T, 'date'>
+    const template = { ...data[0] } as Record<string, unknown>
+    delete template.date
+    for (const key of Object.keys(template)) {
+      if (typeof template[key] === 'number') template[key] = 0
+      else if (typeof template[key] === 'string') template[key] = ''
+    }
+    return template as Omit<T, 'date'>
+  })
+  return range.map((date) => map.get(date) ?? ({ date, ...makeZero() } as T))
+}
+
 function formatHour(h: number): string {
   return `${h}:00`
 }
@@ -247,25 +419,18 @@ function formatHour(h: number): string {
  */
 export async function fetchPageViewsPerHost(
   url: string,
-  days: number, appId?: string
+  dateFilter: DateFilter, appId?: string
 ): Promise<{ totalPageViews: number; dailyPageViews: ChartDataPoint[] }> {
-  interface Row { event_date: string; host_views: number }
-  const rows = await safeFetch<Row>(buildPageViewsPerHostQuery(url, days), 'pageViewsPerHost', appId)
-  // Aggregate by date (in case multiple rows per date)
-  const byDate = new Map<string, number>()
+  interface Row { event_date?: string; bucket_from?: string; bucket_to?: string; host_views?: number; page_views?: number; views?: number }
+  const rows = await safeFetch<Row>(buildPageViewsPerHostQuery(url, dateFilter), 'pageViewsPerHost', appId)
   let total = 0
   for (const r of rows) {
-    const d = r.event_date
-    const pv = Number(r.host_views ?? 0)
-    byDate.set(d, (byDate.get(d) ?? 0) + pv)
-    total += pv
+    total += numericField(r, ['host_views', 'page_views', 'views'])
   }
-  const sorted = [...byDate.entries()]
-    .map(([date, value]) => ({ date, value }))
-    .sort((a, b) => a.date.localeCompare(b.date))
+  const sorted = aggregateChartPoints(rows, dateFilter, (r) => numericField(r, ['host_views', 'page_views', 'views']))
   return {
     totalPageViews: total,
-    dailyPageViews: padDateRange(sorted, days, () => ({ value: 0 })),
+    dailyPageViews: padDateRangeForFilter(sorted, dateFilter, () => ({ value: 0 })),
   }
 }
 
@@ -275,24 +440,18 @@ export async function fetchPageViewsPerHost(
  */
 export async function fetchUniqueVisitorsPerHost(
   url: string,
-  days: number, appId?: string
+  dateFilter: DateFilter, appId?: string
 ): Promise<{ totalUniqueVisitors: number; dailyUniqueVisitors: ChartDataPoint[] }> {
-  interface Row { event_date: string; unique_visitors: number }
-  const rows = await safeFetch<Row>(buildUniqueVisitorsPerHostQuery(url, days), 'uniqueVisitorsPerHost', appId)
-  const byDate = new Map<string, number>()
+  interface Row { event_date?: string; bucket_from?: string; bucket_to?: string; unique_visitors?: number; visitors?: number }
+  const rows = await safeFetch<Row>(buildUniqueVisitorsPerHostQuery(url, dateFilter), 'uniqueVisitorsPerHost', appId)
   let total = 0
   for (const r of rows) {
-    const d = r.event_date
-    const uv = Number(r.unique_visitors ?? 0)
-    byDate.set(d, (byDate.get(d) ?? 0) + uv)
-    total += uv
+    total += numericField(r, ['unique_visitors', 'visitors'])
   }
-  const sorted = [...byDate.entries()]
-    .map(([date, value]) => ({ date, value }))
-    .sort((a, b) => a.date.localeCompare(b.date))
+  const sorted = aggregateChartPoints(rows, dateFilter, (r) => numericField(r, ['unique_visitors', 'visitors']))
   return {
     totalUniqueVisitors: total,
-    dailyUniqueVisitors: padDateRange(sorted, days, () => ({ value: 0 })),
+    dailyUniqueVisitors: padDateRangeForFilter(sorted, dateFilter, () => ({ value: 0 })),
   }
 }
 
@@ -303,58 +462,49 @@ export async function fetchUniqueVisitorsPerHost(
  */
 export async function fetchTotalSessionsDaily(
   url: string,
-  days: number, appId?: string
+  dateFilter: DateFilter, appId?: string
 ): Promise<ChartDataPoint[]> {
-  interface Row { event_date: string; total_sessions: number }
-  const rows = await safeFetch<Row>(buildTotalSessionsQuery(url, days), 'totalSessionsDaily', appId)
-  const byDate = new Map<string, number>()
-  for (const r of rows) {
-    const d = r.event_date
-    byDate.set(d, (byDate.get(d) ?? 0) + Number(r.total_sessions ?? 0))
-  }
-  const sorted = [...byDate.entries()]
-    .map(([date, value]) => ({ date, value }))
-    .sort((a, b) => a.date.localeCompare(b.date))
-  return padDateRange(sorted, days, () => ({ value: 0 }))
+  interface Row { event_date?: string; bucket_from?: string; bucket_to?: string; total_sessions?: number; sessions?: number }
+  const rows = await safeFetch<Row>(buildTotalSessionsQuery(url, dateFilter), 'totalSessionsDaily', appId)
+  const sorted = aggregateChartPoints(rows, dateFilter, (r) => numericField(r, ['total_sessions', 'sessions']))
+  return padDateRangeForFilter(sorted, dateFilter, () => ({ value: 0 }))
 }
 
 // ─── Traffic Overview ───────────────────────────────────
 
-export async function fetchPageViewsByPath(url: string, days: number, appId?: string): Promise<ChartDataPoint[]> {
+export async function fetchPageViewsByPath(url: string, dateFilter: DateFilter, appId?: string): Promise<ChartDataPoint[]> {
   interface Row { page_path: string; page_views: number }
-  const rows = await safeFetch<Row>(buildPageViewsPerPathQuery(url, days), 'pageViewsByPath', appId)
+  const rows = await safeFetch<Row>(buildPageViewsPerPathQuery(url, dateFilter), 'pageViewsByPath', appId)
   const agg = sumByKey(rows, 'page_path', 'page_views')
   return [...agg.entries()].map(([path, v]) => ({ date: path, value: v })).sort((a, b) => b.value - a.value).slice(0, 5)
 }
 
-export async function fetchUniqueVisitorsByPage(url: string, days: number, appId?: string): Promise<ChartDataPoint[]> {
+export async function fetchUniqueVisitorsByPage(url: string, dateFilter: DateFilter, appId?: string): Promise<ChartDataPoint[]> {
   interface Row { page_path: string; unique_visitors: number }
-  const rows = await safeFetch<Row>(buildUniqueVisitorsPerPageQuery(url, days), 'uniqueVisitorsByPage', appId)
+  const rows = await safeFetch<Row>(buildUniqueVisitorsPerPageQuery(url, dateFilter), 'uniqueVisitorsByPage', appId)
   const agg = sumByKey(rows, 'page_path', 'unique_visitors')
   return [...agg.entries()].map(([path, v]) => ({ date: path, value: v })).sort((a, b) => b.value - a.value).slice(0, 5)
 }
 
-export async function fetchPageActivityShare(url: string, days: number, appId?: string): Promise<ChartDataPoint[]> {
+export async function fetchPageActivityShare(url: string, dateFilter: DateFilter, appId?: string): Promise<ChartDataPoint[]> {
   interface Row { page_path: string; share_of_total_activity: number }
-  const rows = await safeFetch<Row>(buildPageActivityShareQuery(url, days), 'pageActivityShare', appId)
+  const rows = await safeFetch<Row>(buildPageActivityShareQuery(url, dateFilter), 'pageActivityShare', appId)
   // Already aggregated across days by the insight
   return rows.map((r) => ({ date: r.page_path, value: Math.round(r.share_of_total_activity) })).sort((a, b) => b.value - a.value).slice(0, 5)
 }
 
 // ─── Click Analytics ────────────────────────────────────
 
-export async function fetchClickTrends(url: string, days: number, appId?: string): Promise<ChartDataPoint[]> {
-  interface Row { event_date: string; clicks: number }
-  const rows = await safeFetch<Row>(buildClickAnalyticsHostTotalsQuery(url, days), 'clickTrends', appId)
-  const sorted = rows
-    .map((r) => ({ date: r.event_date, value: r.clicks }))
-    .sort((a, b) => a.date.localeCompare(b.date))
-  return padDateRange(sorted, days, () => ({ value: 0 }))
+export async function fetchClickTrends(url: string, dateFilter: DateFilter, appId?: string): Promise<ChartDataPoint[]> {
+  interface Row { event_date?: string; bucket_from?: string; bucket_to?: string; clicks: number }
+  const rows = await safeFetch<Row>(buildClickAnalyticsHostTotalsQuery(url, dateFilter), 'clickTrends', appId)
+  const sorted = aggregateChartPoints(rows, dateFilter, (r) => Number(r.clicks ?? 0))
+  return padDateRangeForFilter(sorted, dateFilter, () => ({ value: 0 }))
 }
 
-export async function fetchClicksByElement(url: string, days: number, appId?: string): Promise<ChartDataPoint[]> {
+export async function fetchClicksByElement(url: string, dateFilter: DateFilter, appId?: string): Promise<ChartDataPoint[]> {
   interface Row { element_type: string; total_clicks: number }
-  const rows = await safeFetch<Row>(buildClicksByElementQuery(url, days), 'clicksByElement', appId)
+  const rows = await safeFetch<Row>(buildClicksByElementQuery(url, dateFilter), 'clicksByElement', appId)
   const agg = sumByKey(rows, 'element_type', 'total_clicks')
   return [...agg.entries()].map(([el, v]) => ({
     date: el.charAt(0).toUpperCase() + el.slice(1),
@@ -362,22 +512,22 @@ export async function fetchClicksByElement(url: string, days: number, appId?: st
   }))
 }
 
-export async function fetchClicksPerPage(url: string, days: number, appId?: string): Promise<ChartDataPoint[]> {
+export async function fetchClicksPerPage(url: string, dateFilter: DateFilter, appId?: string): Promise<ChartDataPoint[]> {
   interface Row { page_path: string; clicks: number }
-  const rows = await safeFetch<Row>(buildClicksPerPageQuery(url, days), 'clicksPerPage', appId)
+  const rows = await safeFetch<Row>(buildClicksPerPageQuery(url, dateFilter), 'clicksPerPage', appId)
   const agg = sumByKey(rows, 'page_path', 'clicks')
   return [...agg.entries()].map(([p, v]) => ({ date: p, value: v })).sort((a, b) => b.value - a.value).slice(0, 5)
 }
 
-export async function fetchClickActivityShare(url: string, days: number, appId?: string): Promise<ChartDataPoint[]> {
+export async function fetchClickActivityShare(url: string, dateFilter: DateFilter, appId?: string): Promise<ChartDataPoint[]> {
   interface Row { page_path: string; share_of_total_clicks: number }
-  const rows = await safeFetch<Row>(buildClickActivityShareQuery(url, days), 'clickActivityShare', appId)
+  const rows = await safeFetch<Row>(buildClickActivityShareQuery(url, dateFilter), 'clickActivityShare', appId)
   return rows.map((r) => ({ date: r.page_path, value: Math.round(r.share_of_total_clicks) })).slice(0, 5)
 }
 
-export async function fetchExitRate(url: string, days: number, appId?: string): Promise<ComposedDataPoint[]> {
+export async function fetchExitRate(url: string, dateFilter: DateFilter, appId?: string): Promise<ComposedDataPoint[]> {
   interface Row { page_path: string; page_views: number; exits: number; exit_rate_x10000: number }
-  const rows = await safeFetch<Row>(buildExitRateQuery(url, days), 'exitRate', appId)
+  const rows = await safeFetch<Row>(buildExitRateQuery(url, dateFilter), 'exitRate', appId)
   // Aggregate across dates per page_path
   const map = new Map<string, { views: number; exits: number }>()
   for (const r of rows) {
@@ -396,39 +546,61 @@ export async function fetchExitRate(url: string, days: number, appId?: string): 
 
 // ─── Visitor Insights ───────────────────────────────────
 
-export async function fetchNewVsReturning(url: string, days: number, appId?: string): Promise<StackedBarDataPoint[]> {
-  interface Row { event_date: string; new_visitors: number; returning_visitors: number }
-  const rows = await safeFetch<Row>(buildReturningVisitorsQuery(url, days), 'newVsReturning', appId)
-  const sorted = rows
-    .map((r) => ({
-      date: r.event_date,
-      new_visitors: r.new_visitors,
-      returning_visitors: r.returning_visitors,
-    }))
-    .sort((a, b) => a.date.localeCompare(b.date))
-  return padDateRange(sorted, days, () => ({ new_visitors: 0, returning_visitors: 0 }))
-}
-
-export async function fetchBrowserSessions(url: string, days: number, appId?: string): Promise<MultiAreaDataPoint[]> {
-  interface Row { event_date: string; sessions: number; unique_visitors: number }
-  const rows = await safeFetch<Row>(buildBrowsersForVisitorsQuery(url, days), 'browserSessions', appId)
-  // Aggregate per date (sum across browsers)
-  const map = new Map<string, { sessions: number; unique_visitors: number }>()
-  for (const r of rows) {
-    const prev = map.get(r.event_date) ?? { sessions: 0, unique_visitors: 0 }
-    prev.sessions += Number(r.sessions) || 0
-    prev.unique_visitors += Number(r.unique_visitors) || 0
-    map.set(r.event_date, prev)
+export async function fetchNewVsReturning(url: string, dateFilter: DateFilter, appId?: string): Promise<StackedBarDataPoint[]> {
+  interface Row {
+    event_date?: string
+    bucket_from?: string
+    bucket_to?: string
+    new_visitors: number
+    returning_visitors: number
   }
-  const sorted = [...map.entries()]
-    .map(([d, v]) => ({ date: d, sessions: v.sessions, unique_visitors: v.unique_visitors }))
-    .sort((a, b) => (a.date as string).localeCompare(b.date as string))
-  return padDateRange(sorted, days, () => ({ sessions: 0, unique_visitors: 0 }))
+  const rows = await safeFetch<Row>(buildReturningVisitorsQuery(url, dateFilter), 'newVsReturning', appId)
+  const byKey = new Map<string, StackedBarDataPoint & { bucket_from?: string }>()
+  for (const r of rows) {
+    const key = seriesSortKey(r, dateFilter)
+    const prev = byKey.get(key)
+    byKey.set(key, {
+      date: prev?.date ?? seriesDisplayDate(r, dateFilter),
+      ...(isBucketFilter(dateFilter) && r.bucket_from ? { bucket_from: r.bucket_from } : {}),
+      new_visitors: Number(prev?.new_visitors ?? 0) + Number(r.new_visitors ?? 0),
+      returning_visitors: Number(prev?.returning_visitors ?? 0) + Number(r.returning_visitors ?? 0),
+    })
+  }
+  const sorted = [...byKey.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([, point]) => point)
+  return padDateRangeForFilter(sorted, dateFilter, () => ({ new_visitors: 0, returning_visitors: 0 }))
 }
 
-export async function fetchSessionsByDevice(url: string, days: number, appId?: string): Promise<ChartDataPoint[]> {
+export async function fetchBrowserSessions(url: string, dateFilter: DateFilter, appId?: string): Promise<MultiAreaDataPoint[]> {
+  interface Row {
+    event_date?: string
+    bucket_from?: string
+    bucket_to?: string
+    sessions: number
+    unique_visitors: number
+  }
+  const rows = await safeFetch<Row>(buildBrowsersForVisitorsQuery(url, dateFilter), 'browserSessions', appId)
+  const byKey = new Map<string, MultiAreaDataPoint & { bucket_from?: string }>()
+  for (const r of rows) {
+    const key = seriesSortKey(r, dateFilter)
+    const prev = byKey.get(key)
+    byKey.set(key, {
+      date: prev?.date ?? seriesDisplayDate(r, dateFilter),
+      ...(isBucketFilter(dateFilter) && r.bucket_from ? { bucket_from: r.bucket_from } : {}),
+      sessions: Number(prev?.sessions ?? 0) + Number(r.sessions ?? 0),
+      unique_visitors: Number(prev?.unique_visitors ?? 0) + Number(r.unique_visitors ?? 0),
+    })
+  }
+  const sorted = [...byKey.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([, point]) => point)
+  return padDateRangeForFilter(sorted, dateFilter, () => ({ sessions: 0, unique_visitors: 0 }))
+}
+
+export async function fetchSessionsByDevice(url: string, dateFilter: DateFilter, appId?: string): Promise<ChartDataPoint[]> {
   interface Row { device_type: string; sessions: number }
-  const rows = await safeFetch<Row>(buildSessionsByDeviceTypeQuery(url, days), 'sessionsByDevice', appId)
+  const rows = await safeFetch<Row>(buildSessionsByDeviceTypeQuery(url, dateFilter), 'sessionsByDevice', appId)
   const agg = sumByKey(rows, 'device_type', 'sessions')
   return [...agg.entries()].map(([d, v]) => ({
     date: d.charAt(0).toUpperCase() + d.slice(1),
@@ -441,9 +613,30 @@ export async function fetchSessionsByDevice(url: string, days: number, appId?: s
  * Uses `airobuilder_browsers_for_visitors` but reads `unique_visitors` (not `sessions`
  * which is actually page-views-per-browser, not real sessions).
  */
-export async function fetchBrowserTrendsOverTime(url: string, days: number, appId?: string): Promise<MultiAreaDataPoint[]> {
-  interface Row { event_date: string; browser: string; sessions: number; unique_visitors: number }
-  const rows = await safeFetch<Row>(buildBrowsersForVisitorsQuery(url, days), 'browserTrends', appId)
+export async function fetchBrowserTrendsOverTime(url: string, dateFilter: DateFilter, appId?: string): Promise<MultiAreaDataPoint[]> {
+  interface Row {
+    event_date?: string
+    bucket_from?: string
+    bucket_to?: string
+    browser?: string
+    sessions: number
+    unique_visitors: number
+  }
+  const rows = await safeFetch<Row>(buildBrowsersForVisitorsQuery(url, dateFilter), 'browserTrends', appId)
+
+  // Bucketed host_stats_browser returns host-level sessions per bucket (no browser breakdown)
+  if (isBucketFilter(dateFilter) && rows.length > 0 && rows.every((r) => !r.browser)) {
+    const points = aggregateChartPoints(rows, dateFilter, (r) => Number(r.unique_visitors ?? r.sessions ?? 0))
+    return padDateRangeForFilter(
+      points.map((p) => ({
+        date: p.date,
+        ...(p.bucket_from ? { bucket_from: p.bucket_from } : {}),
+        Visitors: p.value,
+      })),
+      dateFilter,
+      () => ({ Visitors: 0 }),
+    )
+  }
 
   // Aggregate total unique_visitors per browser to find top 5
   const browserTotals = new Map<string, number>()
@@ -457,24 +650,32 @@ export async function fetchBrowserTrendsOverTime(url: string, days: number, appI
     .map(([name]) => name)
   const topSet = new Set(topBrowsers)
 
-  // Build per-date per-browser grid using unique_visitors
-  const dateMap = new Map<string, Record<string, number>>()
+  const dateMap = new Map<string, { label: string; bucket_from?: string; browsers: Record<string, number> }>()
   for (const r of rows) {
     const b = topSet.has(r.browser || 'Other') ? (r.browser || 'Other') : 'Other'
-    const entry = dateMap.get(r.event_date) ?? {}
-    entry[b] = (entry[b] ?? 0) + Number(r.unique_visitors ?? 0)
-    dateMap.set(r.event_date, entry)
+    const key = seriesSortKey(r, dateFilter)
+    const prev = dateMap.get(key)
+    const browsers = prev?.browsers ?? {}
+    browsers[b] = (browsers[b] ?? 0) + Number(r.unique_visitors ?? 0)
+    dateMap.set(key, {
+      label: prev?.label ?? seriesDisplayDate(r, dateFilter),
+      bucket_from: prev?.bucket_from ?? (isBucketFilter(dateFilter) ? r.bucket_from : undefined),
+      browsers,
+    })
   }
 
   const sorted = [...dateMap.entries()]
-    .map(([d, browsers]) => {
-      const point: MultiAreaDataPoint = { date: d }
-      for (const b of topBrowsers) point[b] = browsers[b] ?? 0
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([, { label, bucket_from, browsers }]) => {
+      const point: MultiAreaDataPoint = {
+        date: label,
+        ...(bucket_from ? { bucket_from } : {}),
+      }
+      for (const browser of topBrowsers) point[browser] = browsers[browser] ?? 0
       return point
     })
-    .sort((a, b) => (a.date as string).localeCompare(b.date as string))
 
-  return padDateRange(sorted, days, () => {
+  return padDateRangeForFilter(sorted, dateFilter, () => {
     const empty: Record<string, number> = {}
     for (const b of topBrowsers) empty[b] = 0
     return empty
@@ -501,9 +702,9 @@ export interface CountryTrafficWithCodeRow {
   visitors: number
 }
 
-export async function fetchCountryTrafficWithCode(url: string, days: number, appId?: string): Promise<CountryTrafficWithCodeRow[]> {
+export async function fetchCountryTrafficWithCode(url: string, dateFilter: DateFilter, appId?: string): Promise<CountryTrafficWithCodeRow[]> {
   interface Row { country: string; sessions: number; unique_visitors: number }
-  const rows = await safeFetch<Row>(buildCountryTrafficQuery(url, days), 'countryTrafficWithCode', appId)
+  const rows = await safeFetch<Row>(buildCountryTrafficQuery(url, dateFilter), 'countryTrafficWithCode', appId)
   const map = new Map<string, { code: string; s: number; uv: number }>()
   for (const r of rows) {
     const prev = map.get(r.country) ?? { code: r.country, s: 0, uv: 0 }
@@ -516,9 +717,9 @@ export async function fetchCountryTrafficWithCode(url: string, days: number, app
     .sort((a, b) => b.visitors - a.visitors)
 }
 
-export async function fetchCountryTraffic(url: string, days: number, appId?: string): Promise<DualSeriesDataPoint[]> {
+export async function fetchCountryTraffic(url: string, dateFilter: DateFilter, appId?: string): Promise<DualSeriesDataPoint[]> {
   interface Row { country: string; sessions: number; unique_visitors: number }
-  const rows = await safeFetch<Row>(buildCountryTrafficQuery(url, days), 'countryTraffic', appId)
+  const rows = await safeFetch<Row>(buildCountryTrafficQuery(url, dateFilter), 'countryTraffic', appId)
   const map = new Map<string, { s: number; uv: number }>()
   for (const r of rows) {
     const prev = map.get(r.country) ?? { s: 0, uv: 0 }
@@ -531,9 +732,9 @@ export async function fetchCountryTraffic(url: string, days: number, appId?: str
     .sort((a, b) => b.value - a.value)
 }
 
-export async function fetchCityTraffic(url: string, days: number, appId?: string): Promise<DualSeriesDataPoint[]> {
+export async function fetchCityTraffic(url: string, dateFilter: DateFilter, appId?: string): Promise<DualSeriesDataPoint[]> {
   interface Row { city: string; sessions: number; unique_visitors: number }
-  const rows = await safeFetch<Row>(buildCityTrafficQuery(url, days), 'cityTraffic', appId)
+  const rows = await safeFetch<Row>(buildCityTrafficQuery(url, dateFilter), 'cityTraffic', appId)
   const map = new Map<string, { s: number; uv: number }>()
   for (const r of rows) {
     const prev = map.get(r.city) ?? { s: 0, uv: 0 }
@@ -553,9 +754,9 @@ export interface CityTrafficWithCountryRow {
   visitors: number
 }
 
-export async function fetchCityTrafficWithCountry(url: string, days: number, appId?: string): Promise<CityTrafficWithCountryRow[]> {
+export async function fetchCityTrafficWithCountry(url: string, dateFilter: DateFilter, appId?: string): Promise<CityTrafficWithCountryRow[]> {
   interface Row { city: string; country?: string; sessions: number; unique_visitors: number }
-  const rows = await safeFetch<Row>(buildCityTrafficQuery(url, days), 'cityTrafficWithCountry', appId)
+  const rows = await safeFetch<Row>(buildCityTrafficQuery(url, dateFilter), 'cityTrafficWithCountry', appId)
   const map = new Map<string, { country: string; uv: number }>()
   for (const r of rows) {
     const key = `${r.city}|${r.country ?? ''}`
@@ -573,9 +774,9 @@ export async function fetchCityTrafficWithCountry(url: string, days: number, app
 
 // ─── Navigation Patterns ────────────────────────────────
 
-export async function fetchPageTransitions(url: string, days: number, appId?: string): Promise<TableDataPoint[]> {
+export async function fetchPageTransitions(url: string, dateFilter: DateFilter, appId?: string): Promise<TableDataPoint[]> {
   interface Row { from_page: string; to_page: string; device_type: string; transitions: number }
-  const rows = await safeFetch<Row>(buildPageTransitionsQuery(url, days), 'pageTransitions', appId)
+  const rows = await safeFetch<Row>(buildPageTransitionsQuery(url, dateFilter), 'pageTransitions', appId)
   // Filter out self-transitions, aggregate
   const map = new Map<string, number>()
   for (const r of rows) {
@@ -591,9 +792,9 @@ export async function fetchPageTransitions(url: string, days: number, appId?: st
 
 // ─── Traffic Sources ────────────────────────────────────
 
-export async function fetchTopReferrers(url: string, days: number, appId?: string): Promise<DualSeriesDataPoint[]> {
+export async function fetchTopReferrers(url: string, dateFilter: DateFilter, appId?: string): Promise<DualSeriesDataPoint[]> {
   interface Row { referrer: string; visits: number; unique_visitors: number }
-  const rows = await safeFetch<Row>(buildTopReferrersQuery(url, days), 'topReferrers', appId)
+  const rows = await safeFetch<Row>(buildTopReferrersQuery(url, dateFilter), 'topReferrers', appId)
   const map = new Map<string, { visits: number; uv: number }>()
   for (const r of rows) {
     const label = r.referrer ? r.referrer.replace(/^https?:\/\//, '') : '(direct)'
@@ -608,9 +809,9 @@ export async function fetchTopReferrers(url: string, days: number, appId?: strin
     .slice(0, 5)
 }
 
-export async function fetchReferrerLandingDetail(url: string, days: number, appId?: string): Promise<ReferrerLandingRow[]> {
+export async function fetchReferrerLandingDetail(url: string, dateFilter: DateFilter, appId?: string): Promise<ReferrerLandingRow[]> {
   interface Row { referrer: string; landing_page: string; source: string; visits: number; unique_visitors: number }
-  const rows = await safeFetch<Row>(buildReferrerLandingPageQuery(url, days), 'referrerLanding', appId)
+  const rows = await safeFetch<Row>(buildReferrerLandingPageQuery(url, dateFilter), 'referrerLanding', appId)
   // Aggregate across dates
   const map = new Map<string, ReferrerLandingRow>()
   for (const r of rows) {
@@ -632,9 +833,9 @@ export async function fetchReferrerLandingDetail(url: string, days: number, appI
 
 // ─── Click Deep Dive ────────────────────────────────────
 
-export async function fetchTopCTALabels(url: string, days: number, appId?: string): Promise<DualSeriesDataPoint[]> {
+export async function fetchTopCTALabels(url: string, dateFilter: DateFilter, appId?: string): Promise<DualSeriesDataPoint[]> {
   interface Row { element_text: string; clicks: number; unique_visitors: number }
-  const rows = await safeFetch<Row>(buildClicksByElementTextQuery(url, days), 'topCTALabels', appId)
+  const rows = await safeFetch<Row>(buildClicksByElementTextQuery(url, dateFilter), 'topCTALabels', appId)
   const map = new Map<string, { clicks: number; uv: number }>()
   for (const r of rows) {
     if (!r.element_text) continue
@@ -649,9 +850,9 @@ export async function fetchTopCTALabels(url: string, days: number, appId?: strin
     .slice(0, 5)
 }
 
-export async function fetchElementSectionData(url: string, days: number, appId?: string): Promise<DualSeriesDataPoint[]> {
+export async function fetchElementSectionData(url: string, dateFilter: DateFilter, appId?: string): Promise<DualSeriesDataPoint[]> {
   interface Row { element_type: string; section: string; clicks: number; unique_visitors: number }
-  const rows = await safeFetch<Row>(buildClicksByElementPerDeviceQuery(url, days), 'elementSection', appId)
+  const rows = await safeFetch<Row>(buildClicksByElementPerDeviceQuery(url, dateFilter), 'elementSection', appId)
   const map = new Map<string, { clicks: number; uv: number }>()
   for (const r of rows) {
     const k = `${r.element_type} · ${r.section}`
@@ -665,9 +866,9 @@ export async function fetchElementSectionData(url: string, days: number, appId?:
     .sort((a, b) => b.value - a.value)
 }
 
-export async function fetchAvgClicksPerSession(url: string, days: number, appId?: string): Promise<ComposedDataPoint[]> {
+export async function fetchAvgClicksPerSession(url: string, dateFilter: DateFilter, appId?: string): Promise<ComposedDataPoint[]> {
   interface Row { event_date: string; clicks: number; sessions_that_clicked: number; clicks_per_session: number }
-  const rows = await safeFetch<Row>(buildClicksPerSessionQuery(url, days), 'avgClicksPerSession', appId)
+  const rows = await safeFetch<Row>(buildClicksPerSessionQuery(url, dateFilter), 'avgClicksPerSession', appId)
   // Aggregate per date
   const map = new Map<string, { clicks: number; sessions: number }>()
   for (const r of rows) {
@@ -684,14 +885,14 @@ export async function fetchAvgClicksPerSession(url: string, days: number, appId?
       rate: v.sessions > 0 ? Math.round((v.clicks / v.sessions) * 100) / 100 : 0,
     }))
     .sort((a, b) => a.date.localeCompare(b.date))
-  return padDateRange(sorted, days, () => ({ value: 0, value2: 0, rate: 0 }))
+  return padDateRangeForFilter(sorted, dateFilter, () => ({ value: 0, value2: 0, rate: 0 }))
 }
 
 // ─── Hourly Activity ────────────────────────────────────
 
-export async function fetchClicksByHour(url: string, days: number, appId?: string): Promise<DualSeriesDataPoint[]> {
+export async function fetchClicksByHour(url: string, dateFilter: DateFilter, appId?: string): Promise<DualSeriesDataPoint[]> {
   interface Row { hour: number; clicks: number; unique_visitors: number }
-  const rows = await safeFetch<Row>(buildClicksByHourAllDevicesQuery(url, days), 'clicksByHour', appId)
+  const rows = await safeFetch<Row>(buildClicksByHourAllDevicesQuery(url, dateFilter), 'clicksByHour', appId)
   // Aggregate across dates by hour
   const map = new Map<number, { clicks: number; uv: number }>()
   for (const r of rows) {
@@ -705,12 +906,12 @@ export async function fetchClicksByHour(url: string, days: number, appId?: strin
     .map(([h, v]) => ({ date: formatHour(h), value: v.clicks, value2: v.uv }))
 }
 
-export async function fetchHourlyPageviewVisitor(url: string, days: number, appId?: string): Promise<MultiAreaDataPoint[]> {
+export async function fetchHourlyPageviewVisitor(url: string, dateFilter: DateFilter, appId?: string): Promise<MultiAreaDataPoint[]> {
   interface PvRow { hour: number; pageviews: number }
   interface UvRow { hour: number; unique_visitors: number }
   const [pvRows, uvRows] = await Promise.all([
-    safeFetch<PvRow>(buildHostHourlyPageviewsQuery(url, days), 'hourlyPageviews', appId),
-    safeFetch<UvRow>(buildHostHourlyVisitorsQuery(url, days), 'hourlyVisitors', appId),
+    safeFetch<PvRow>(buildHostHourlyPageviewsQuery(url, dateFilter), 'hourlyPageviews', appId),
+    safeFetch<UvRow>(buildHostHourlyVisitorsQuery(url, dateFilter), 'hourlyVisitors', appId),
   ])
   const map = new Map<number, { pv: number; uv: number }>()
   for (const r of pvRows) {
@@ -728,9 +929,9 @@ export async function fetchHourlyPageviewVisitor(url: string, days: number, appI
     .map(([h, v]) => ({ date: formatHour(h), pageviews: v.pv, visitors: v.uv }))
 }
 
-export async function fetchDailyTrendByPage(url: string, days: number, appId?: string): Promise<MultiAreaDataPoint[]> {
+export async function fetchDailyTrendByPage(url: string, dateFilter: DateFilter, appId?: string): Promise<MultiAreaDataPoint[]> {
   interface Row { event_date: string; page_path: string; clicks: number }
-  const rows = await safeFetch<Row>(buildClicksPerPageQuery(url, days), 'dailyTrendByPage', appId)
+  const rows = await safeFetch<Row>(buildClicksPerPageQuery(url, dateFilter), 'dailyTrendByPage', appId)
   // Find top pages
   const totals = new Map<string, number>()
   for (const r of rows) {
@@ -759,12 +960,12 @@ export async function fetchDailyTrendByPage(url: string, days: number, appId?: s
       return pt
     })
     .sort((a, b) => (a.date as string).localeCompare(b.date as string))
-  return padDateRange(sorted, days, zeroPages)
+  return padDateRangeForFilter(sorted, dateFilter, zeroPages)
 }
 
-export async function fetchHourlyClicksByDevice(url: string, days: number, appId?: string): Promise<StackedBarDataPoint[]> {
+export async function fetchHourlyClicksByDevice(url: string, dateFilter: DateFilter, appId?: string): Promise<StackedBarDataPoint[]> {
   interface Row { hour: number; clicks: number; unique_visitors: number }
-  const rows = await safeFetch<Row>(buildClicksByHourAllDevicesQuery(url, days), 'hourlyClicksByDevice', appId)
+  const rows = await safeFetch<Row>(buildClicksByHourAllDevicesQuery(url, dateFilter), 'hourlyClicksByDevice', appId)
   // Aggregate across dates by hour
   const map = new Map<number, { clicks: number; uv: number }>()
   for (const r of rows) {
@@ -780,9 +981,9 @@ export async function fetchHourlyClicksByDevice(url: string, days: number, appId
 
 // ─── Device Analytics ───────────────────────────────────
 
-export async function fetchDeviceDistribution(url: string, days: number, appId?: string): Promise<ChartDataPoint[]> {
+export async function fetchDeviceDistribution(url: string, dateFilter: DateFilter, appId?: string): Promise<ChartDataPoint[]> {
   interface Row { device_type: string; clicks: number }
-  const rows = await safeFetch<Row>(buildClicksByElementPerDeviceQuery(url, days), 'deviceDistribution', appId)
+  const rows = await safeFetch<Row>(buildClicksByElementPerDeviceQuery(url, dateFilter), 'deviceDistribution', appId)
   const agg = sumByKey(rows, 'device_type', 'clicks')
   return [...agg.entries()].map(([d, v]) => ({
     date: d.charAt(0).toUpperCase() + d.slice(1),
@@ -790,32 +991,63 @@ export async function fetchDeviceDistribution(url: string, days: number, appId?:
   }))
 }
 
-export async function fetchDeviceMixOverTime(url: string, days: number, appId?: string): Promise<StackedBarDataPoint[]> {
-  interface Row { event_date: string; device_type: string; clicks: number }
-  const rows = await safeFetch<Row>(buildClicksByElementPerDeviceQuery(url, days), 'deviceMixOverTime', appId)
-  const map = new Map<string, Record<string, number>>()
+export async function fetchDeviceMixOverTime(url: string, dateFilter: DateFilter, appId?: string): Promise<StackedBarDataPoint[]> {
+  interface Row {
+    event_date?: string
+    bucket_from?: string
+    bucket_to?: string
+    device_type?: string
+    clicks?: number
+    unique_visitors?: number
+  }
+  const rows = await safeFetch<Row>(buildClicksByElementPerDeviceQuery(url, dateFilter), 'deviceMixOverTime', appId)
+
+  // Bucketed by_element can return host-level unique_visitors per bucket (no device_type)
+  if (isBucketFilter(dateFilter) && rows.length > 0 && rows.every((r) => !r.device_type)) {
+    const points = aggregateChartPoints(rows, dateFilter, (r) => Number(r.clicks ?? r.unique_visitors ?? 0))
+    return padDateRangeForFilter(
+      points.map((p) => ({
+        date: p.date,
+        ...(p.bucket_from ? { bucket_from: p.bucket_from } : {}),
+        laptop: p.value,
+        tablet: 0,
+        mobile: 0,
+      })),
+      dateFilter,
+      () => ({ laptop: 0, tablet: 0, mobile: 0 }),
+    )
+  }
+
+  const map = new Map<string, { label: string; bucket_from?: string; devs: Record<string, number> }>()
   for (const r of rows) {
-    const entry = map.get(r.event_date) ?? {}
-    const dev = r.device_type.toLowerCase()
-    entry[dev] = (entry[dev] ?? 0) + Number(r.clicks ?? 0)
-    map.set(r.event_date, entry)
+    const key = seriesSortKey(r, dateFilter)
+    const prev = map.get(key)
+    const devs = prev?.devs ?? {}
+    const dev = (r.device_type ?? 'other').toLowerCase()
+    devs[dev] = (devs[dev] ?? 0) + Number(r.clicks ?? 0)
+    map.set(key, {
+      label: prev?.label ?? seriesDisplayDate(r, dateFilter),
+      bucket_from: prev?.bucket_from ?? (isBucketFilter(dateFilter) ? r.bucket_from : undefined),
+      devs,
+    })
   }
   const sorted = [...map.entries()]
-    .map(([d, devs]) => ({
-      date: d,
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([, { label, bucket_from, devs }]) => ({
+      date: label,
+      ...(bucket_from ? { bucket_from } : {}),
       laptop: devs['laptop'] ?? 0,
       tablet: devs['tablet'] ?? 0,
       mobile: devs['mobile'] ?? 0,
     }))
-    .sort((a, b) => (a.date as string).localeCompare(b.date as string))
-  return padDateRange(sorted, days, () => ({ laptop: 0, tablet: 0, mobile: 0 }))
+  return padDateRangeForFilter(sorted, dateFilter, () => ({ laptop: 0, tablet: 0, mobile: 0 }))
 }
 
 // ─── Detail Tables ──────────────────────────────────────
 
-export async function fetchSessionClickData(url: string, days: number, appId?: string): Promise<SessionClickRow[]> {
+export async function fetchSessionClickData(url: string, dateFilter: DateFilter, appId?: string): Promise<SessionClickRow[]> {
   interface Row { element_type: string; section: string; clicks: number; sessions_that_clicked: number; clicks_per_session: number }
-  const rows = await safeFetch<Row>(buildClicksPerSessionQuery(url, days), 'sessionClick', appId)
+  const rows = await safeFetch<Row>(buildClicksPerSessionQuery(url, dateFilter), 'sessionClick', appId)
   return rows.map((r) => ({
     element: r.element_type,
     section: r.section,
@@ -825,9 +1057,9 @@ export async function fetchSessionClickData(url: string, days: number, appId?: s
   })).slice(0, 5)
 }
 
-export async function fetchElementClicksBySection(url: string, days: number, appId?: string): Promise<StackedBarDataPoint[]> {
+export async function fetchElementClicksBySection(url: string, dateFilter: DateFilter, appId?: string): Promise<StackedBarDataPoint[]> {
   interface Row { element_type: string; section: string; device_type: string; clicks: number }
-  const rows = await safeFetch<Row>(buildClicksByElementPerDeviceQuery(url, days), 'elementClicksBySection', appId)
+  const rows = await safeFetch<Row>(buildClicksByElementPerDeviceQuery(url, dateFilter), 'elementClicksBySection', appId)
   // Group by section, split by device
   const map = new Map<string, Record<string, number>>()
   for (const r of rows) {
@@ -853,7 +1085,7 @@ export async function fetchElementClicksBySection(url: string, days: number, app
 
 // ─── KPI Extras ─────────────────────────────────────────
 
-export async function fetchKpiExtras(url: string, days: number, appId?: string): Promise<KpiExtras> {
+export async function fetchKpiExtras(url: string, dateFilter: DateFilter, appId?: string): Promise<KpiExtras> {
   interface SessionRow { total_sessions: number }
   interface BounceRow { bounces: number; bounce_unique_visitors: number }
   interface HourRow { hour: number; clicks: number; unique_visitors: number }
@@ -861,11 +1093,11 @@ export async function fetchKpiExtras(url: string, days: number, appId?: string):
   interface DurRow { sessions: number; avg_session_duration_sec: number }
 
   const [sessionRows, bounceRows, hourRows, ppsRows, durRows] = await Promise.all([
-    safeFetch<SessionRow>(buildTotalSessionsQuery(url, days), 'kpi.totalSessions', appId),
-    safeFetch<BounceRow>(buildBounceSessionsQuery(url, days), 'kpi.bounceSessions', appId),
-    safeFetch<HourRow>(buildClicksByHourAllDevicesQuery(url, days), 'kpi.peakHour', appId),
-    safeFetch<PpsRow>(buildAvgPagesPerSessionQuery(url, days), 'kpi.avgPages', appId),
-    safeFetch<DurRow>(buildAvgSessionDurationQuery(url, days), 'kpi.avgDuration', appId),
+    safeFetch<SessionRow>(buildTotalSessionsQuery(url, dateFilter), 'kpi.totalSessions', appId),
+    safeFetch<BounceRow>(buildBounceSessionsQuery(url, dateFilter), 'kpi.bounceSessions', appId),
+    safeFetch<HourRow>(buildClicksByHourAllDevicesQuery(url, dateFilter), 'kpi.peakHour', appId),
+    safeFetch<PpsRow>(buildAvgPagesPerSessionQuery(url, dateFilter), 'kpi.avgPages', appId),
+    safeFetch<DurRow>(buildAvgSessionDurationQuery(url, dateFilter), 'kpi.avgDuration', appId),
   ])
 
   // Total sessions
@@ -933,9 +1165,9 @@ export async function fetchKpiExtras(url: string, days: number, appId?: string):
  * For each event_date, return the country with the highest session count.
  * Used to enrich raw page-view activity rows with geographic context.
  */
-export async function fetchTopCountryByDate(url: string, days: number, appId?: string): Promise<Map<string, string>> {
+export async function fetchTopCountryByDate(url: string, dateFilter: DateFilter, appId?: string): Promise<Map<string, string>> {
   interface Row { event_date: string; country: string; sessions: number }
-  const rows = await safeFetch<Row>(buildCountryTrafficQuery(url, days), 'topCountryByDate', appId)
+  const rows = await safeFetch<Row>(buildCountryTrafficQuery(url, dateFilter), 'topCountryByDate', appId)
   const dateMap = new Map<string, { country: string; sessions: number }>()
   for (const r of rows) {
     const current = dateMap.get(r.event_date)
@@ -954,9 +1186,9 @@ export async function fetchTopCountryByDate(url: string, days: number, appId?: s
  * For each event_date, return the browser with the highest session count.
  * Used to enrich raw page-view activity rows with browser context.
  */
-export async function fetchTopBrowserByDate(url: string, days: number, appId?: string): Promise<Map<string, string>> {
+export async function fetchTopBrowserByDate(url: string, dateFilter: DateFilter, appId?: string): Promise<Map<string, string>> {
   interface Row { event_date: string; browser: string; sessions: number }
-  const rows = await safeFetch<Row>(buildBrowsersForVisitorsQuery(url, days), 'topBrowserByDate', appId)
+  const rows = await safeFetch<Row>(buildBrowsersForVisitorsQuery(url, dateFilter), 'topBrowserByDate', appId)
   const dateMap = new Map<string, { browser: string; sessions: number }>()
   for (const r of rows) {
     const current = dateMap.get(r.event_date)
@@ -971,7 +1203,7 @@ export async function fetchTopBrowserByDate(url: string, days: number, appId?: s
   return result
 }
 
-export async function fetchRawPageViews(url: string, days: number, appId?: string): Promise<ActivityHitRow[]> {
+export async function fetchRawPageViews(url: string, dateFilter: DateFilter, appId?: string): Promise<ActivityHitRow[]> {
   // Use airobuilder_raw_page_views which returns mixed record types.
   // We prefer rows with record_type === 'page_stats' (per-path + device_type + unique_visitors),
   // but fall back to any row with a non-empty page_path if page_stats rows are absent.
@@ -986,7 +1218,7 @@ export async function fetchRawPageViews(url: string, days: number, appId?: strin
     referrer?: string
     source?: string
   }
-  const rows = await safeFetch<Row>(buildRawPageViewsQuery(url, days), 'activityHitsByPath', appId)
+  const rows = await safeFetch<Row>(buildRawPageViewsQuery(url, dateFilter), 'activityHitsByPath', appId)
 
   // Log record types for debugging
   const typeCounts = new Map<string, number>()
@@ -1057,52 +1289,59 @@ async function runBatched<T>(thunks: Array<() => Promise<T>>, batchSize = 8): Pr
   return results
 }
 
-export async function fetchAllClickhouseAnalytics(url: string, days: number, appId?: string) {
+export async function fetchAllClickhouseAnalytics(
+  url: string,
+  selection: AnalyticsDateSelection,
+  appId?: string,
+) {
+  const trafficFilter = trafficDateFilter(selection)
+  const aggregateFilter = aggregateDateFilter(selection)
+
   // Build list of named fetch thunks. Order matters — indices map to variable names.
   const thunks: Array<() => Promise<unknown>> = [
-    /* 0  */ () => fetchPageViewsPerHost(url, days, appId),
-    /* 1  */ () => fetchPageViewsByPath(url, days, appId),
-    /* 2  */ () => fetchUniqueVisitorsByPage(url, days, appId),
-    /* 3  */ () => fetchPageActivityShare(url, days, appId),
-    /* 4  */ () => fetchClickTrends(url, days, appId),
-    /* 5  */ () => fetchClicksByElement(url, days, appId),
-    /* 6  */ () => fetchClicksPerPage(url, days, appId),
-    /* 7  */ () => fetchClickActivityShare(url, days, appId),
-    /* 8  */ () => fetchExitRate(url, days, appId),
-    /* 9  */ () => fetchNewVsReturning(url, days, appId),
-    /* 10 */ () => fetchBrowserSessions(url, days, appId),
-    /* 11 */ () => fetchSessionsByDevice(url, days, appId),
-    /* 12 */ () => fetchCountryTraffic(url, days, appId),
-    /* 13 */ () => fetchCityTraffic(url, days, appId),
-    /* 14 */ () => fetchPageTransitions(url, days, appId),
-    /* 15 */ () => fetchTopReferrers(url, days, appId),
-    /* 16 */ () => fetchReferrerLandingDetail(url, days, appId),
-    /* 17 */ () => fetchTopCTALabels(url, days, appId),
-    /* 18 */ () => fetchElementSectionData(url, days, appId),
-    /* 19 */ () => fetchAvgClicksPerSession(url, days, appId),
-    /* 20 */ () => fetchClicksByHour(url, days, appId),
-    /* 21 */ () => fetchHourlyPageviewVisitor(url, days, appId),
-    /* 22 */ () => fetchDailyTrendByPage(url, days, appId),
-    /* 23 */ () => fetchHourlyClicksByDevice(url, days, appId),
-    /* 24 */ () => fetchDeviceDistribution(url, days, appId),
-    /* 25 */ () => fetchDeviceMixOverTime(url, days, appId),
-    /* 26 */ () => fetchSessionClickData(url, days, appId),
-    /* 27 */ () => fetchElementClicksBySection(url, days, appId),
-    /* 28 */ () => fetchKpiExtras(url, days, appId),
-    /* 29 */ () => fetchRawPageViews(url, days, appId),
-    /* 30 */ () => fetchTopCountryByDate(url, days, appId),
-    /* 31 */ () => fetchTopBrowserByDate(url, days, appId),
-    /* 32 */ () => fetchCountryTrafficWithCode(url, days, appId),
-    /* 33 */ () => fetchBrowserTrendsOverTime(url, days, appId),
-    /* 34 */ () => fetchUniqueVisitorsPerHost(url, days, appId),
-    /* 35 */ () => fetchTotalSessionsDaily(url, days, appId),
-    /* 36 */ () => fetchCityTrafficWithCountry(url, days, appId),
+    /* 0  */ () => fetchPageViewsPerHost(url, trafficFilter, appId),
+    /* 1  */ () => fetchPageViewsByPath(url, aggregateFilter, appId),
+    /* 2  */ () => fetchUniqueVisitorsByPage(url, aggregateFilter, appId),
+    /* 3  */ () => fetchPageActivityShare(url, aggregateFilter, appId),
+    /* 4  */ () => fetchClickTrends(url, aggregateFilter, appId),
+    /* 5  */ () => fetchClicksByElement(url, aggregateFilter, appId),
+    /* 6  */ () => fetchClicksPerPage(url, aggregateFilter, appId),
+    /* 7  */ () => fetchClickActivityShare(url, aggregateFilter, appId),
+    /* 8  */ () => fetchExitRate(url, aggregateFilter, appId),
+    /* 9  */ () => fetchNewVsReturning(url, trafficFilter, appId),
+    /* 10 */ () => fetchBrowserSessions(url, aggregateFilter, appId),
+    /* 11 */ () => fetchSessionsByDevice(url, aggregateFilter, appId),
+    /* 12 */ () => fetchCountryTraffic(url, aggregateFilter, appId),
+    /* 13 */ () => fetchCityTraffic(url, aggregateFilter, appId),
+    /* 14 */ () => fetchPageTransitions(url, aggregateFilter, appId),
+    /* 15 */ () => fetchTopReferrers(url, aggregateFilter, appId),
+    /* 16 */ () => fetchReferrerLandingDetail(url, aggregateFilter, appId),
+    /* 17 */ () => fetchTopCTALabels(url, aggregateFilter, appId),
+    /* 18 */ () => fetchElementSectionData(url, aggregateFilter, appId),
+    /* 19 */ () => fetchAvgClicksPerSession(url, aggregateFilter, appId),
+    /* 20 */ () => fetchClicksByHour(url, aggregateFilter, appId),
+    /* 21 */ () => fetchHourlyPageviewVisitor(url, aggregateFilter, appId),
+    /* 22 */ () => fetchDailyTrendByPage(url, aggregateFilter, appId),
+    /* 23 */ () => fetchHourlyClicksByDevice(url, aggregateFilter, appId),
+    /* 24 */ () => fetchDeviceDistribution(url, aggregateFilter, appId),
+    /* 25 */ () => fetchDeviceMixOverTime(url, trafficFilter, appId),
+    /* 26 */ () => fetchSessionClickData(url, aggregateFilter, appId),
+    /* 27 */ () => fetchElementClicksBySection(url, aggregateFilter, appId),
+    /* 28 */ () => fetchKpiExtras(url, aggregateFilter, appId),
+    /* 29 */ () => fetchRawPageViews(url, aggregateFilter, appId),
+    /* 30 */ () => fetchTopCountryByDate(url, aggregateFilter, appId),
+    /* 31 */ () => fetchTopBrowserByDate(url, aggregateFilter, appId),
+    /* 32 */ () => fetchCountryTrafficWithCode(url, aggregateFilter, appId),
+    /* 33 */ () => fetchBrowserTrendsOverTime(url, trafficFilter, appId),
+    /* 34 */ () => fetchUniqueVisitorsPerHost(url, trafficFilter, appId),
+    /* 35 */ () => fetchTotalSessionsDaily(url, trafficFilter, appId),
+    /* 36 */ () => fetchCityTrafficWithCountry(url, aggregateFilter, appId),
   ]
 
   // Run in batches of 8 to avoid saturating the browser connection pool
   const results = await runBatched(thunks, 8)
 
-  const hostPageViews = results[0] as { totalPageViews: number; dailyPageViews: ChartDataPoint[] }
+  let hostPageViews = results[0] as { totalPageViews: number; dailyPageViews: ChartDataPoint[] }
   const pageViewsByPathData = results[1] as ChartDataPoint[]
   const uniqueVisitorsByPageData = results[2] as ChartDataPoint[]
   const pageActivityShareData = results[3] as ChartDataPoint[]
@@ -1136,9 +1375,40 @@ export async function fetchAllClickhouseAnalytics(url: string, days: number, app
   const topBrowserByDate = results[31] as Map<string, string>
   const countryTrafficWithCodeData = results[32] as CountryTrafficWithCodeRow[]
   const browserTrendsOverTimeData = results[33] as MultiAreaDataPoint[]
-  const hostUniqueVisitors = results[34] as { totalUniqueVisitors: number; dailyUniqueVisitors: ChartDataPoint[] }
-  const dailyTotalSessions = results[35] as ChartDataPoint[]
+  let hostUniqueVisitors = results[34] as { totalUniqueVisitors: number; dailyUniqueVisitors: ChartDataPoint[] }
+  let dailyTotalSessions = results[35] as ChartDataPoint[]
   const cityTrafficWithCountryData = results[36] as CityTrafficWithCountryRow[]
+
+  // Custom ranges >30 days use weekly buckets for charts. Overview KPIs always use the
+  // daily aggregate queries — bucket rows often omit host_views or pad to zero on the UI.
+  if (isBucketFilter(trafficFilter)) {
+    const [pvDaily, uvDaily, sessionsDaily] = await Promise.all([
+      fetchPageViewsPerHost(url, aggregateFilter, appId),
+      fetchUniqueVisitorsPerHost(url, aggregateFilter, appId),
+      fetchTotalSessionsDaily(url, aggregateFilter, appId),
+    ])
+    hostPageViews = {
+      totalPageViews: pvDaily.totalPageViews,
+      dailyPageViews: seriesHasPositiveValues(hostPageViews.dailyPageViews)
+        ? hostPageViews.dailyPageViews
+        : pvDaily.dailyPageViews,
+    }
+    hostUniqueVisitors = {
+      totalUniqueVisitors: uvDaily.totalUniqueVisitors,
+      dailyUniqueVisitors: seriesHasPositiveValues(hostUniqueVisitors.dailyUniqueVisitors)
+        ? hostUniqueVisitors.dailyUniqueVisitors
+        : uvDaily.dailyUniqueVisitors,
+    }
+    if (!seriesHasPositiveValues(dailyTotalSessions)) {
+      dailyTotalSessions = sessionsDaily
+    }
+    logger.info('analytics.clickhouse.bucket-kpi-fallback', {
+      bucketPageViews: (results[0] as { totalPageViews: number }).totalPageViews,
+      dailyPageViews: pvDaily.totalPageViews,
+      dailyVisitors: uvDaily.totalUniqueVisitors,
+      dailySessions: sessionsDaily.reduce((s, d) => s + Number(d.value ?? 0), 0),
+    })
+  }
 
   // Enrich activity hits with per-date top country and browser
   const activityHitsData = rawActivityHits.map((hit) => ({
