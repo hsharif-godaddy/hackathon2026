@@ -62,6 +62,7 @@ interface FeatureConfig {
   enabledSkills: {
     social: boolean
     connectingCalendars: boolean
+    onlineConferencing: boolean
   }
 
   // Widget/Feature enablement configuration
@@ -232,7 +233,8 @@ function parseEnvironmentFeatures(): FeatureConfig {
     // Skill enablement configuration. Add skills here as they are created.
     enabledSkills: {
       social: process.env.ENABLE_SOCIAL === 'true',
-      connectingCalendars : process.env.ENABLE_CONNECTING_CALENDARS !== 'false'
+      connectingCalendars: process.env.ENABLE_CONNECTING_CALENDARS !== 'false',
+      onlineConferencing: process.env.ENABLE_ONLINE_CONFERENCING !== 'false'
     },
 
     // Widget/Feature enablement configuration

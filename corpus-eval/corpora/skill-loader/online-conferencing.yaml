@@ -1,0 +1,146 @@
+metadata:
+  name: Skill Loader - Online Conferencing
+  version: 1.0.0
+
+cases:
+  # --- Positive: online-conferencing skill should load ---
+
+  - id: google-meet-explicit
+    prompt: "Add Google Meet integration to my appointment booking"
+    expectedSkill: online-conferencing
+    tags: [positive]
+    rationale: Direct Google Meet integration request — clearest signal for online-conferencing
+
+  - id: zoom-explicit
+    prompt: "I want customers to automatically get a Zoom link when they book a consultation"
+    expectedSkill: online-conferencing
+    tags: [positive]
+    rationale: Explicit Zoom + automatic link generation on booking — core online-conferencing use case
+
+  - id: teams-explicit
+    prompt: "Add Microsoft Teams meetings to my consultation booking system"
+    expectedSkill: online-conferencing
+    tags: [positive]
+    rationale: Explicit Teams integration request
+
+  - id: automatic-meeting-link
+    prompt: "Automatically generate Google Meet or Zoom links when someone books an appointment"
+    expectedSkill: online-conferencing
+    tags: [positive]
+    rationale: Automatic meeting link generation with explicit providers — primary online-conferencing use case
+
+  - id: tutoring-platform
+    prompt: "Add Microsoft Teams to my tutoring platform so students get a meeting link when they book a session"
+    expectedSkill: online-conferencing
+    tags: [positive]
+    rationale: Domain-specific (tutoring) + explicit Teams + meeting link on booking
+
+  # --- Positive: harder cases ---
+
+  - id: video-call-on-booking
+    prompt: "Add Google Meet video call capability to my appointment system"
+    expectedSkill: online-conferencing
+    tags: [positive]
+    rationale: Video call capability with explicit provider name (Google Meet) on appointment system
+
+  - id: add-provider-later
+    prompt: "I already have Google Meet set up, can you add Zoom as a second option?"
+    expectedSkill: online-conferencing
+    tags: [positive, hard]
+    rationale: Re-entry flow (adding a second provider) — online-conferencing supports this explicitly
+
+  - id: remote-sessions
+    prompt: "Add Zoom integration so my clients can join sessions remotely over video when they book"
+    expectedSkill: online-conferencing
+    tags: [positive]
+    rationale: Remote video sessions with explicit Zoom integration on booking
+
+  - id: telehealth-video
+    prompt: "Add Google Meet or Zoom to my telehealth platform so patients get video consultation links"
+    expectedSkill: online-conferencing
+    tags: [positive]
+    rationale: Telehealth + explicit video consultation links + provider names (Google Meet/Zoom)
+
+  # --- Negative: null (no skill should load) ---
+
+  - id: static-events-display
+    prompt: "Show a list of upcoming webinars on my homepage"
+    expectedSkill: null
+    tags: [negative]
+    rationale: Displaying static event content — no meeting link generation needed
+
+  - id: video-embed
+    prompt: "Embed a YouTube video of our product demo on the homepage"
+    expectedSkill: null
+    tags: [negative]
+    rationale: Embedding static video content — not meeting link generation
+
+  - id: date-time-picker
+    prompt: "Add a date and time picker to my booking form"
+    expectedSkill: null
+    tags: [negative]
+    rationale: UI component for date selection — no conferencing integration
+
+  - id: contact-form
+    prompt: "Add a contact form with a subject dropdown so customers can reach us"
+    expectedSkill: email
+    tags: [negative]
+    rationale: Contact form sends emails — agent reasonably loads email skill (not online-conferencing)
+
+  - id: meeting-notes-page
+    prompt: "Create a page where I can store notes from past client meetings"
+    expectedSkill: database
+    tags: [negative]
+    rationale: Storing notes requires database — agent reasonably loads database skill (not online-conferencing)
+
+  # --- Negative: different skill should load ---
+
+  - id: booking-system-no-conferencing
+    prompt: "Add appointment booking to my website so customers can schedule consultations"
+    expectedSkill: online-appointments
+    tags: [negative]
+    rationale: Building the booking system without any video/meeting intent — online-appointments, not online-conferencing
+
+  - id: scheduling-only
+    prompt: "Build a time slot scheduling system for my business"
+    expectedSkill: online-appointments
+    tags: [negative]
+    rationale: Scheduling system without any video conferencing intent — online-appointments
+
+  - id: calendar-sync
+    prompt: "Sync my Google Calendar so bookings automatically appear in my calendar"
+    expectedSkill: connecting-calendars
+    tags: [negative]
+    rationale: Calendar sync / two-way integration — connecting-calendars, not online-conferencing (which generates meeting links, not syncs calendars)
+
+  - id: google-calendar-integration
+    prompt: "Connect my app to Google Calendar to show my availability"
+    expectedSkill: connecting-calendars
+    tags: [negative]
+    rationale: Calendar availability sync with external provider — connecting-calendars, not meeting link generation
+
+  - id: outlook-calendar-sync
+    prompt: "Set up two-way sync with Outlook so cancellations update automatically"
+    expectedSkill: connecting-calendars
+    tags: [negative]
+    rationale: Two-way calendar sync — connecting-calendars not online-conferencing
+
+  # --- Negative: harder cases (tricky near-misses) ---
+
+  - id: booking-with-video-ambiguous
+    prompt: "Add appointment booking to my site — I want a full booking system"
+    expectedSkill: online-appointments
+    tags: [negative, hard]
+    rationale: Booking system request without any video/conferencing intent — primary skill is online-appointments even though online-conferencing can compose with it later
+
+  - id: video-recordings
+    prompt: "Add a page where customers can watch recordings of past Zoom sessions"
+    expectedSkill: null
+    tags: [negative, hard]
+    rationale: Displaying past recordings is static content
+
+  - id: calendar-google-ambiguous
+    prompt: "Add Google Calendar to my app"
+    expectedSkill: connecting-calendars
+    tags: [negative, hard]
+    rationale: Add Google Calendar without booking/meeting context implies calendar sync (connecting-calendars), not meeting link generation (online-conferencing)
