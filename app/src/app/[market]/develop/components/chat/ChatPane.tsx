@@ -259,8 +259,11 @@ function ChatPaneInner({
   // Data loaded gate: prevents false "budget exceeded" during fetches
   const dataLoaded = grants !== undefined && !isGrantsFetching
 
-  // CRM skip / impersonation sessions always have chat enabled regardless of credits
-  const budgetExceeded = !isImpersonating && !hasAvailableCredits && (dataLoaded || budgetExceededFlag)
+  // Empty grants array (grants !== undefined && grants.length === 0) means the
+  // subscription is still provisioning — not budget exceeded.
+  const grantsStillProvisioning = grants !== undefined && grants.length === 0
+
+  const budgetExceeded = !isImpersonating && !hasAvailableCredits && !grantsStillProvisioning && (dataLoaded || budgetExceededFlag)
   const [isProactiveBannerDismissed, setIsProactiveBannerDismissed] = useState(false)
 
   useAotPreload(aotImports)

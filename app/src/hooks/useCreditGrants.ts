@@ -93,6 +93,16 @@ export function useCreditGrants({
     enabled: !!subscriptionId,
     staleTime: 5 * 60 * 1000, // 5 minutes
     gcTime: 5 * 60 * 1000,    // 5 minutes
+    // Poll every 1s when grants are empty — covers the provisioning race condition
+    // where subscription exists but grants haven't been created yet. Stops polling
+    // once grants arrive, on error, or after 30 attempts (~30s).
+    refetchInterval: (query) => {
+      if (query.state.status === 'error') return false;
+      if (query.state.data !== undefined && query.state.data.length === 0 && query.state.dataUpdateCount <= 30) {
+        return 1_000;
+      }
+      return false;
+    },
     retry: function retryOnError(failureCount, error) {
       // Don't retry on 4xx errors (client errors)
       if (error instanceof HttpError && error.status >= 400 && error.status < 500) {
