@@ -400,6 +400,31 @@ describe('AskQuestionToolRenderer', () => {
     expect(mockSendUserMessage).toHaveBeenCalledWith('Sweet Rise', { isActionRequest: true })
   })
 
+  it("type 'text' with a decide chip renders both the input and the chip", () => {
+    // Text questions get a freeform input AND the "Decide for me" chip so the
+    // user can defer without typing. The chip resolves to canonical English in
+    // the message just like on chip-only questions.
+    const result = makeResult([{
+      question: 'Where is the shop located?',
+      type: 'text',
+      placeholder: 'e.g. Phoenix',
+      suggestions: [{ text: 'Decide for me', value: '__decide__' }],
+    }])
+    render(
+      <AskQuestionToolRenderer
+        {...defaultProps}
+        result={result}
+      />,
+    )
+
+    expect(screen.getByPlaceholderText('e.g. Phoenix')).toBeInTheDocument()
+    const decide = screen.getByRole('option', {
+      name: /builder_tools_askquestion_decide_for_me/,
+    })
+    fireEvent.click(decide)
+    expect(mockSendUserMessage).toHaveBeenCalledWith('Decide for me', { isActionRequest: true })
+  })
+
   it('forwards question.placeholder to the free-text input', () => {
     const result = makeResult([{
       question: 'Anything else?',
@@ -466,11 +491,43 @@ describe('AskQuestionToolRenderer', () => {
     expect(mockSendUserMessage).toHaveBeenCalledWith('9', { isActionRequest: true })
   })
 
-  it('skip → "Decide for me" text when every chip step offers the sentinel (useDecideAsSkip=true)', () => {
-    // Two chip-only questions, each with a "Decide for me" sentinel → the
-    // ChoiceList skip button becomes "Decide for me", and skipping emits the
-    // chip's user-facing text into the message (not the raw `__decide__`
-    // sentinel value, which would render as gibberish in the chat).
+  it('decide chip renders the i18n label, not the raw English text from the agent', () => {
+    // The agent emits the chip with hardcoded English `text: "Decide for me"`,
+    // but the renderer swaps it for the localized translation. The mock
+    // `useTranslations` returns the key verbatim, which stands in for any
+    // non-English locale and proves the label comes from t(), not from the
+    // suggestion's `text` field.
+    const result = makeResult([
+      {
+        question: 'Vibe?',
+        type: 'chips_single',
+        suggestions: [
+          { text: 'Cozy' },
+          { text: 'Decide for me', value: '__decide__' },
+        ],
+      },
+    ])
+    render(
+      <AskQuestionToolRenderer
+        {...defaultProps}
+        result={result}
+      />,
+    )
+
+    expect(
+      screen.getByRole('option', { name: /builder_tools_askquestion_decide_for_me/ }),
+    ).toBeInTheDocument()
+    // The English fallback should NOT render — it would mean we're reading
+    // s.text instead of going through t().
+    expect(screen.queryByRole('option', { name: /^Decide for me$/ })).not.toBeInTheDocument()
+  })
+
+  it('clicking the decide chip emits canonical "Decide for me" in the message', () => {
+    // Regardless of how the chip is rendered (translated, English fallback,
+    // anything), `resolveSelection` pins the decide chip to the canonical
+    // English string so the prompt-enhancer's matching rule fires across
+    // every UI locale. The raw `__decide__` sentinel must NOT leak into the
+    // chat message.
     const result = makeResult([
       {
         question: 'Vibe?',
@@ -496,11 +553,16 @@ describe('AskQuestionToolRenderer', () => {
       />,
     )
 
-    // Skip advances; skip on the last step completes.
-    const skipButtons = screen.getAllByRole('button', { name: /Decide for me/i })
-    fireEvent.click(skipButtons[0])
-    const skipAgain = screen.getByRole('button', { name: /Decide for me/i })
-    fireEvent.click(skipAgain)
+    // Click each step's decide option (rendered with the t() key).
+    const decideOptions = screen.getAllByRole('option', {
+      name: /builder_tools_askquestion_decide_for_me/,
+    })
+    expect(decideOptions).toHaveLength(1) // only the active step renders
+    fireEvent.click(decideOptions[0])
+    const decideOnNextStep = screen.getByRole('option', {
+      name: /builder_tools_askquestion_decide_for_me/,
+    })
+    fireEvent.click(decideOnNextStep)
 
     expect(mockSendUserMessage).toHaveBeenCalledTimes(1)
     const [msg] = mockSendUserMessage.mock.calls[0]
@@ -508,55 +570,11 @@ describe('AskQuestionToolRenderer', () => {
     expect(msg.match(/Decide for me/g)?.length).toBe(2)
   })
 
-  it('"Decide for me" applies to text steps too in the prompt-enhancer flow', () => {
-    // Regression for the prompt-enhancer variant: the agent emits chip
-    // questions with the decide sentinel followed by trailing text questions
-    // (LOCATION / KEY DETAILS / NAMING). When useDecideAsSkip is true, the
-    // skip label must read "Decide for me" on every step AND skipping a
-    // text step must emit "Decide for me" into the assembled message — not
-    // blank. Otherwise the enhancer's omit-skipped-fields rule would drop
-    // the field, breaking the button's promise to the user.
-    const result = makeResult([
-      {
-        question: 'Vibe?',
-        type: 'chips_single',
-        suggestions: [
-          { text: 'Cozy' },
-          { text: 'Decide for me', value: '__decide__' },
-        ],
-      },
-      {
-        question: 'Where is the shop located?',
-        type: 'text',
-        suggestions: [],
-      },
-    ])
-    render(
-      <AskQuestionToolRenderer
-        {...defaultProps}
-        result={result}
-      />,
-    )
-
-    expect(screen.getByRole('button', { name: /Decide for me/i })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /^Skip$/i })).not.toBeInTheDocument()
-
-    // Skip both steps and confirm both produce "Decide for me" in the message.
-    const skip1 = screen.getByRole('button', { name: /Decide for me/i })
-    fireEvent.click(skip1)
-    const skip2 = screen.getByRole('button', { name: /Decide for me/i })
-    fireEvent.click(skip2)
-
-    expect(mockSendUserMessage).toHaveBeenCalledTimes(1)
-    const [msg] = mockSendUserMessage.mock.calls[0]
-    expect(msg.match(/Decide for me/g)?.length).toBe(2)
-    expect(msg).not.toMatch(/__decide__/)
-  })
-
-  it('skip → blank when any chip step lacks the sentinel (useDecideAsSkip=false)', () => {
-    // Two chip questions; only the first has a decide sentinel. The skip
-    // button stays labeled "Skip" and records blank for each answer — so
-    // the final message filters out empty entries entirely.
+  it('skipping a step records blank — empty message when every step is skipped', () => {
+    // The skip button no longer doubles as "Decide for me" — users who want
+    // the enhancer to fill in a field click the decide chip instead. Skip
+    // means "I have no answer", so the assembled message drops empty
+    // entries.
     const result = makeResult([
       {
         question: 'Vibe?',
@@ -587,7 +605,7 @@ describe('AskQuestionToolRenderer', () => {
     expect(mockSendUserMessage).toHaveBeenCalledTimes(1)
     const [msg] = mockSendUserMessage.mock.calls[0]
     expect(msg).not.toMatch(/__decide__/)
-    // All questions skipped → filter drops them → empty string.
+    expect(msg).not.toMatch(/Decide for me/)
     expect(msg).toBe('')
   })
 

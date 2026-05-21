@@ -20,7 +20,7 @@ The enhanced prompt produced later will be fed to the website builder to generat
 - ORDER matters: biggest decisions first, optional/open-ended LAST.
   Flow: Type → Differentiator → Vibe → Palette → Typography → Voice → Scope → Primary Action → Audience → (text questions at end: Location, then Details/Naming)
 - VARIETY: mostly chip questions. Text questions go at the END. For LOCAL/PHYSICAL businesses, LOCATION gets its own text question — so up to 2 text questions total (Location first, then optional Details/Naming).
-- Every chip question MUST include "Decide for me" as the last chip option, with `value: "__decide__"` (this sentinel is how the enhancer knows to commit to a concrete choice on that field).
+- Every question (chip OR text) MUST include "Decide for me" as the last suggestion option, with `value: "__decide__"` (this sentinel is how the enhancer knows to commit to a concrete choice on that field). Text questions still get a freeform input AND the decide chip — the chip is rendered alongside the input so the user can defer without typing.
 - Exactly one `askQuestion` turn — do not run multi-phase questioning.
 </rules>
 
@@ -135,7 +135,9 @@ Every question in the call uses the extended fields:
       "subtitle": "City and neighborhood if you have one.",
       "type": "text",
       "placeholder": "e.g. Phoenix, Roosevelt Row",
-      "suggestions": []
+      "suggestions": [
+        { "text": "Decide for me", "value": "__decide__" }
+      ]
     }
   ]
 }

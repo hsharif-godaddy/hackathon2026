@@ -60,26 +60,16 @@ function isMultiSelectQuestion(q: Question): boolean {
 }
 
 // The agent emits "Decide for me" as a chip with value "__decide__". The
-// enhancer step detects that sentinel to commit to concrete choices. We
-// surface it as the ChoiceList skip button instead of a list item, so it
-// never renders as a chip.
+// enhancer step detects that sentinel to commit to concrete choices. The
+// renderer swaps the chip's label for the localized translation at render
+// time, and resolves a click on it to the canonical English "Decide for me"
+// in the assembled chat message — so the enhancer's matching rule fires
+// regardless of UI locale.
 const DECIDE_SENTINEL = '__decide__'
+const DECIDE_CANONICAL_TEXT = 'Decide for me'
 
 function isDecideSuggestion(s: Suggestion): boolean {
   return s.value === DECIDE_SENTINEL
-}
-
-// User-facing text for the decide chip — emitted in the assembled message
-// instead of the raw `__decide__` sentinel value, since the message renders
-// in chat. The enhancer prompt matches on this text (case-insensitive) to
-// decide which fields to commit to.
-function getDecideText(q: Question): string | undefined {
-  const d = q.suggestions.find(isDecideSuggestion)
-  return d?.text
-}
-
-function visibleSuggestions(q: Question): Suggestion[] {
-  return q.suggestions.filter(s => !isDecideSuggestion(s))
 }
 
 // Chip values are the suggestion's 1-based index as a string (`"1"`, `"2"`, …)
@@ -99,6 +89,12 @@ function resolveSelection(raw: string, suggestions: Suggestion[]): string {
     const index = oneBased - 1
     if (index >= 0 && index < suggestions.length) {
       const s = suggestions[index]
+      // The decide chip's value is the `__decide__` sentinel (unreadable in
+      // chat) and its text is whatever locale the agent's prompt was
+      // authored in (English today, but agents that fully localize their
+      // prompts could produce a different language than the user's UI).
+      // Pin to the canonical English string so the enhancer matches it.
+      if (isDecideSuggestion(s)) return DECIDE_CANONICAL_TEXT
       return s.value || s.text
     }
   }
@@ -145,9 +141,16 @@ export default function AskQuestionToolRenderer({
   // the early `return null` paths below are after this call.
   const widgetDataPeek = ((result as ToolResult | undefined)?.output ?? (result as ToolResult | undefined))?.widgetData
   const activeStepSuggestionCount =
-    widgetDataPeek?.questions?.[activeStepIndex]
-      ? visibleSuggestions(widgetDataPeek.questions[activeStepIndex]).length
-      : 0
+    widgetDataPeek?.questions?.[activeStepIndex]?.suggestions.length ?? 0
+  // Localized label for the "Decide for me" chip — the agent emits it with
+  // `value: "__decide__"` and a hardcoded English `text`, but we render the
+  // translation so the chip reads correctly across the 62 supported locales.
+  // `defaultMessage` is the belt-and-suspenders floor: if the key hasn't
+  // propagated to a given locale's bundle yet, react-intl renders the literal
+  // key string ("builder_tools_askquestion_decide_for_me") which would leak
+  // into the UI. The default keeps the chip readable in English while
+  // translations catch up.
+  const decideLabel = t('builder_tools_askquestion_decide_for_me', undefined, 'Decide for me')
   // `hideQuestion` only suppresses the title text inside each ChoiceList.Step —
   // it does NOT mean the renderer is inert. InputActionsPanel passes
   // `hideQuestion={true}` when hoisting this component into the composer card
@@ -191,7 +194,6 @@ export default function AskQuestionToolRenderer({
             ) : (
               q.question
             )
-            const visible = visibleSuggestions(q)
             return (
               <ChoiceList.Step
                 key={i}
@@ -201,16 +203,16 @@ export default function AskQuestionToolRenderer({
                 selectionMode={isMultiSelectQuestion(q) ? 'multiple' : 'single'}
                 {...(q.placeholder ? { otherPlaceholder: q.placeholder } : {})}
               >
-                {visible.map((s, idx) => (
+                {q.suggestions.map((s, idx) => (
                   <ChoiceList.Item key={idx} value={chipValue(idx)}>
-                    {s.text}
+                    {isDecideSuggestion(s) ? decideLabel : s.text}
                   </ChoiceList.Item>
                 ))}
               </ChoiceList.Step>
             )
           })
         : null,
-    [peekQuestions, hideQuestion],
+    [peekQuestions, hideQuestion, decideLabel],
   )
 
   if (toolStatus === 'error') {
@@ -247,33 +249,11 @@ export default function AskQuestionToolRenderer({
   const allowOtherGlobal = questions.every(q => q.allowOther !== false)
   const rootOtherPlaceholder = t('builder_tools_askquestion_other_placeholder')
 
-  // Use the decide sentinel as the skip label when every chip step offers it.
-  // `skipLabel` is a root-level ChoiceList prop — it applies to every step
-  // including text-type ones. That's intentional for the prompt-enhancer
-  // flow, where the agent designs the whole form (chips + optional trailing
-  // text questions like LOCATION / KEY DETAILS / NAMING) around "Decide for
-  // me" semantics. We submit the same "Decide for me" string for skipped
-  // text steps too (see handleCompleteSelections) so the enhancer's
-  // decide-for-me rule kicks in for those fields rather than the
-  // omit-skipped-fields rule — matches the button's promise to the user.
-  const chipQuestions = questions.filter(q => q.type !== 'text')
-  const useDecideAsSkip =
-    chipQuestions.length > 0 && chipQuestions.every(q => getDecideText(q) !== undefined)
-  // Derive the label from the actual sentinel suggestion rather than a
-  // magic string, so renaming "Decide for me" in prompts doesn't silently
-  // leave the skip button on the old copy. Text questions don't carry a
-  // decide chip themselves; the chip-side text is the source of truth and
-  // applies to every step.
-  const decideText = useDecideAsSkip
-    ? (chipQuestions[0].suggestions.find(isDecideSuggestion)?.text ?? 'Decide for me')
-    : undefined
-  const skipLabel = decideText
-
   function handleStepChange(stepId: string, value: string | string[] | null) {
     pingUserActivity()
     const idx = parseInt(stepId, 10)
     const values = Array.isArray(value) ? value : value ? [value] : []
-    const visible = visibleSuggestions(questions[idx])
+    const visible = questions[idx].suggestions
     for (const v of values) {
       // 1-based numeric values in range are picks (chip click OR a bare-digit
       // freeform answer). Anything else is a freeform "Other" submit.
@@ -335,26 +315,18 @@ export default function AskQuestionToolRenderer({
     setSubmitted(true)
     pingUserActivity()
 
-    // Skip emits the "Decide for me" display text only when the skip button
-    // is acting as "Decide for me" (useDecideAsSkip). The same text is
-    // emitted for every step type — including text-only steps that don't
-    // carry a decide chip of their own — so the enhancer's decide-for-me
-    // rule fires for the LOCATION / KEY DETAILS / NAMING fields rather than
-    // the omit-skipped-fields rule. Otherwise the button's "Decide for me"
-    // promise wouldn't be kept on those steps.
-    // When the label is the default "Skip", a skipped step means the user
-    // omitted an optional answer — record blank so the enhancer omits that
-    // dimension instead of silently treating it as decide-for-me.
+    // A skipped step records blank — the enhancer's omit-skipped-fields
+    // rule then drops that dimension from the brief. Users who want the
+    // enhancer to fill in a field click the "Decide for me" chip instead,
+    // which `resolveSelection` maps to the canonical English string the
+    // enhancer matches on (see DECIDE_CANONICAL_TEXT).
     const perQuestion = questions.map((q, i) => {
       const sel = selections[String(i)]
-      const visible = visibleSuggestions(q)
-      if (sel == null) {
-        return useDecideAsSkip ? (decideText ?? '') : ''
-      }
+      if (sel == null) return ''
       if (Array.isArray(sel)) {
-        return sel.map(v => resolveSelection(v, visible)).join(', ')
+        return sel.map(v => resolveSelection(v, q.suggestions)).join(', ')
       }
-      return resolveSelection(sel, visible)
+      return resolveSelection(sel, q.suggestions)
     })
 
     const rawResult = result as Record<string, unknown> | undefined
@@ -398,7 +370,6 @@ export default function AskQuestionToolRenderer({
         onStepChange={handleStepChange}
         onActiveStepChange={handleActiveStepChange}
         stepIndicatorLabel={(cur, tot) => `${cur}/${tot}`}
-        {...(skipLabel ? { skipLabel } : {})}
       >
         {stepChildren}
       </ChoiceList>
