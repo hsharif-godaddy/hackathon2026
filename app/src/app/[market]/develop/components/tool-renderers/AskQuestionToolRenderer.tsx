@@ -19,6 +19,7 @@ interface Suggestion {
   text: string
   value?: string
   testId?: string
+  trackingId?: string
 }
 
 interface Question {
@@ -279,11 +280,16 @@ export default function AskQuestionToolRenderer({
       const oneBased = /^\d+$/.test(v) ? parseInt(v, 10) : NaN
       const isPick = oneBased >= 1 && oneBased <= visible.length
       if (isPick) {
+        // Prefer the suggestion's trackingId when set so a specific button
+        // (e.g. "Build a website with this logo") keeps the same id across
+        // prompt edits or option reordering. Falls back to the positional
+        // q{idx}_s{i} id for untagged suggestions.
+        const trackingId = visible[oneBased - 1].trackingId
         logAiroHQEvent({
           category: 'click',
           recommendation_task: 'builder_askquestion_suggestion_click',
           recommendation_type: 'askquestion_suggestion',
-          recommendation_id: `q${idx}_s${oneBased - 1}`,
+          recommendation_id: trackingId ?? `q${idx}_s${oneBased - 1}`,
         })()
       } else {
         logAiroHQEvent({

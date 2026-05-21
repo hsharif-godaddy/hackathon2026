@@ -20,8 +20,11 @@ vi.mock('@/stores/useStreamingConversationStore', () => ({
 vi.mock('@/hooks/useTranslations', () => ({
   useTranslations: () => (key: string) => key,
 }))
+const { mockLogAiroHQEvent } = vi.hoisted(() => ({
+  mockLogAiroHQEvent: vi.fn(() => () => {}),
+}))
 vi.mock('@/utils/instrumentation', () => ({
-  logAiroHQEvent: () => () => {},
+  logAiroHQEvent: mockLogAiroHQEvent,
 }))
 
 // Mock framer-motion to render children immediately
@@ -288,6 +291,57 @@ describe('AskQuestionToolRenderer', () => {
     fireEvent.click(screen.getByText('Blue'))
 
     expect(mockSendUserMessage).toHaveBeenCalledWith('color_blue', { isActionRequest: true })
+  })
+
+  it('suggestion with trackingId emits it as recommendation_id; untagged falls back to positional id', () => {
+    const result = makeResult([{
+      question: 'What next?',
+      suggestions: [
+        { text: 'Edit logo' },
+        { text: 'Build website', trackingId: 'logo_designer_build_website' },
+      ],
+    }])
+    render(
+      <AskQuestionToolRenderer
+        {...defaultProps}
+        result={result}
+      />,
+    )
+
+    fireEvent.click(screen.getByText('Build website'))
+
+    expect(mockLogAiroHQEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        category: 'click',
+        recommendation_task: 'builder_askquestion_suggestion_click',
+        recommendation_id: 'logo_designer_build_website',
+      }),
+    )
+
+    mockLogAiroHQEvent.mockClear()
+
+    const result2 = makeResult([{
+      question: 'What next?',
+      suggestions: [
+        { text: 'Edit logo' },
+        { text: 'Build website', trackingId: 'logo_designer_build_website' },
+      ],
+    }])
+    const { unmount } = render(
+      <AskQuestionToolRenderer
+        {...defaultProps}
+        result={result2}
+      />,
+    )
+    fireEvent.click(screen.getAllByText('Edit logo')[0])
+
+    expect(mockLogAiroHQEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        recommendation_task: 'builder_askquestion_suggestion_click',
+        recommendation_id: 'q0_s0',
+      }),
+    )
+    unmount()
   })
 
   it('renders subtitle below the question when present', () => {

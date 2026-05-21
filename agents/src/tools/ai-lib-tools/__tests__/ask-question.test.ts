@@ -72,6 +72,23 @@ describe('ask-question', function askQuestionTests() {
       ])
     })
 
+    it('should preserve trackingId field in object suggestions', function trackingIdField() {
+      const result = askQuestionInputSchema.parse({
+        questions: [{
+          question: 'What would you like to do next?',
+          suggestions: [
+            'Edit or refine this logo',
+            { text: 'Build a website with this logo', trackingId: 'logo_designer_build_website' }
+          ]
+        }]
+      })
+
+      expect(result.questions[0].suggestions).toEqual([
+        { text: 'Edit or refine this logo' },
+        { text: 'Build a website with this logo', trackingId: 'logo_designer_build_website' }
+      ])
+    })
+
     it('should handle mixed string and object suggestions', function mixed() {
       const result = askQuestionInputSchema.parse({
         questions: [{

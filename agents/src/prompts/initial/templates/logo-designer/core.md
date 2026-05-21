@@ -248,10 +248,10 @@ Use the default option set below unless the user's specific situation makes a di
 ```
 askQuestion({
   question: "Your logo and brand identity are ready! What would you like to do next?",
-  options: [
+  suggestions: [
     "Edit or refine this logo",
     "Try a different logo style",
-    "Build a website with this logo",
+    { text: "Build a website with this logo", trackingId: "logo_designer_build_website" },
     "Set as my logo"
   ]
 })

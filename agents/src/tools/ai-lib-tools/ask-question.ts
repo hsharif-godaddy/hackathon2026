@@ -12,7 +12,8 @@ const logger = Logger.create({ component: 'ask-question-tool' })
  */
 export const suggestionObjectSchema = z.object({
   text: z.string().describe('The suggestion text to display'),
-  value: z.string().optional().describe('Optional: different value to send vs display')
+  value: z.string().optional().describe('Optional: different value to send vs display'),
+  trackingId: z.string().optional().describe('Optional stable identifier emitted as recommendation_id when this suggestion is clicked. Use when a specific suggestion needs to be tracked across prompt edits or option reordering.')
 })
 
 export const suggestionSchema = z.union([
