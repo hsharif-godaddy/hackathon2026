@@ -381,10 +381,12 @@ Phase 1 — Setup (run these in parallel):
 - Search for images (hero, services, gallery, etc.)
 - Set font stack using the fontTheme tool (choose fonts that match design direction)
 - Apply color scheme using the colorScheme tool. If VISUAL DIRECTION above lists explicit hex values for colors (e.g., cream (#F5F0E8) as background), call the tool with mode 'apply' and pass each hex through (primary, background, secondary, accent, muted, etc.) so the palette matches the spec exactly. Only use mode 'set' with a description when no hex values were given — set mode discards everything except primary and background.
+- Set site language: If creating content in a non-English language (French, Spanish, etc.), update index.html to change lang="en" to the appropriate locale (e.g., lang="fr" for French, lang="es" for Spanish)
 
 Phase 2 — Structure (run these in parallel, after Phase 1):
 - Build header with navigation
 - Build footer with links and branding
+- If the site is non-English, translate the CookieBanner component to the site's locale (e.g., fr-FR for French, es-ES for Spanish)
 
 Phase 3 — Page (after Phase 1 & 2 are complete):
 - Build homepage (index.tsx) with all sections and animations
@@ -463,9 +465,11 @@ Phase 1 — Setup (run these in parallel):
 - Remove header and footer from RootLayout.tsx (this app needs fullscreen space)
 - Set font stack using the fontTheme tool (choose fonts that match design direction)
 - Apply color scheme using the colorScheme tool. If VISUAL DIRECTION above lists explicit hex values for colors (e.g., cream (#F5F0E8) as background), call the tool with mode 'apply' and pass each hex through (primary, background, secondary, accent, muted, etc.) so the palette matches the spec exactly. Only use mode 'set' with a description when no hex values were given — set mode discards everything except primary and background.
+- Set site language: If creating content in a non-English language (French, Spanish, etc.), update index.html to change lang="en" to the appropriate locale (e.g., lang="fr" for French, lang="es" for Spanish)
 
 Phase 2 — Page (after Phase 1):
 - Build main app structure (index.tsx) with [app-specific layout] and animations
+- If the site is non-English, translate the CookieBanner component to the site's locale (e.g., fr-FR for French, es-ES for Spanish)
 
 Phase 3 — Finalize:
 - Mark the Homepage todo item as COMPLETE using the todoList tool
