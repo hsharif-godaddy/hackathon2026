@@ -153,6 +153,19 @@ func TestUpdateSecrets_ReturnsErrorOn5xx(t *testing.T) {
 	if !strings.Contains(err.Error(), "workflow crashed") {
 		t.Errorf("error should include response-body prefix; got %q", err.Error())
 	}
+
+	// Pin: callers can errors.As to inspect the status. Retry helpers
+	// classify 5xx as retryable and 4xx as terminal via this field.
+	var httpErr *HTTPError
+	if !errors.As(err, &httpErr) {
+		t.Fatalf("want errors.As(*HTTPError), got %T: %v", err, err)
+	}
+	if httpErr.Status != http.StatusInternalServerError {
+		t.Errorf("HTTPError.Status: want 500, got %d", httpErr.Status)
+	}
+	if httpErr.OpName != "update-secrets" {
+		t.Errorf("HTTPError.OpName: want update-secrets, got %q", httpErr.OpName)
+	}
 }
 
 func TestUpdateSecrets_ReturnsErrorOn4xx(t *testing.T) {

@@ -22,6 +22,21 @@ const defaultTimeout = 30 * time.Second
 // from bloating logs.
 const errorBodyLimit = 512
 
+// HTTPError carries the response status and body preview for a non-2xx
+// mhp-airo response. Callers that need to classify retry-worthy errors
+// (5xx, 408, 429) versus terminal ones (4xx) can errors.As this and
+// inspect Status.
+type HTTPError struct {
+	OpName  string
+	Status  int
+	Preview string
+}
+
+// Error implements error.
+func (e *HTTPError) Error() string {
+	return fmt.Sprintf("mhpairo %s: HTTP %d: %s", e.OpName, e.Status, e.Preview)
+}
+
 // Config is what main.go passes to New. BaseURL and Auth are required; the
 // rest have sensible defaults.
 type Config struct {
@@ -209,5 +224,5 @@ func (c *Client) do(ctx context.Context, method, rawURL string, body any, opName
 	if len(preview) > errorBodyLimit {
 		preview = preview[:errorBodyLimit] + "…"
 	}
-	return fmt.Errorf("mhpairo %s: %s: %s", opName, resp.Status, preview)
+	return &HTTPError{OpName: opName, Status: resp.StatusCode, Preview: preview}
 }
