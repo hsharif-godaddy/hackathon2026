@@ -8,6 +8,8 @@ whenToUse: >-
   "og:title", "canonical", "get found on Google", "search visibility", "sitemap", "SEO audit".
   ALSO load this skill when adding a new page/route to a v8 app (the agent is expected
   to set head tags and register the route in seo-routes.ts).
+intents:
+  - SEO/search rankings/meta tags
 ---
 
 # SEO Analysis & Optimization Skill

@@ -65,7 +65,7 @@ Tools registered in `src/tools/ai-lib-tools/index.ts` (`allAILibTools`). Each ag
 
 **Stop-after tools:** `handoff`, `suggestedResponse`, `requestSecrets` pause for user confirmation. Other agents may define different stop-after sets.
 
-**Skills system:** Dynamic tool loading via `skillToolManager`; skills activated/deactivated per conversation; tool names use `{skillName}__{toolName}`. Skills live in `src/skills/` — see `src/skills/README.md`.
+**Skills system:** Dynamic tool loading via `skillToolManager`; skills activated/deactivated per conversation; tool names use `{skillName}__{toolName}`. Skills live in `src/skills/` — see `src/skills/README.md`. **Skills must be self-contained:** routing data, intent phrases, and any per-skill metadata live in that skill's `skill.md` frontmatter — never in shared code keyed by skill name (see `src/skills/README.md` "Self-Containment Rule").
 
 ### GitUtils Requirement
 

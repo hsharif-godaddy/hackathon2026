@@ -12,6 +12,8 @@ whenToUse: >-
   "AI that can answer questions about my app".
 dependencies:
   - ai
+intents:
+  - AI chatbot/AI assistant/AI agent
 ---
 
 # AI Chatbot/Agent Skill

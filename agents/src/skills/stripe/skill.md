@@ -9,6 +9,8 @@ skill-deps:
     templates: true
     instructions: false
     overwrite: false
+intents:
+  - Stripe (only when user explicitly says Stripe)
 ---
 
 # Stripe Payment Integration

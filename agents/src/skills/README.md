@@ -6,6 +6,8 @@
 
 Skills solve the **prompt bloat** problem by loading specialized instructions and templates on-demand instead of including everything upfront. This keeps agent prompts lean and focused while providing deep expertise when needed.
 
+**Skills must be self-contained.** Everything that pertains to a single skill — instructions, templates, dependencies, routing intents, feature-flag gating — lives inside that skill's directory, in its `skill.md` frontmatter or template files. Code outside the skills directory should reference skills as little as possible: agent system prompts, prompt builders, registries, and shared utilities **MUST NOT** contain switches, maps, or arrays keyed by skill name. Outside references make skills un-removable, un-disable-able, and silently broken when renamed. See "Self-Containment Rule" below for the specific anti-patterns to avoid.
+
 ## What are Skills?
 
 **Skills vs Agents vs Tools:**
@@ -15,6 +17,21 @@ Skills solve the **prompt bloat** problem by loading specialized instructions an
 - **Skills**: Contextual knowledge + templates loaded when needed (blog, auth, payments, etc.)
 
 Think of skills as "just-in-time documentation" that teaches the agent how to implement complex features.
+
+## Self-Containment Rule
+
+A skill must be removable, disable-able, and renamable without editing code outside its own directory. The lookup tables, intent maps, and routing hints required to make a skill discoverable belong in that skill's `skill.md` frontmatter — never in code keyed by skill name.
+
+**Anti-patterns (do not introduce):**
+
+- Hardcoded intent/routing arrays in prompt builders or loaders that map phrases to skill names. The dynamic `intents:` frontmatter field exists for exactly this case — see "Write skill.md".
+- `switch` / `if` chains over skill name in shared code paths.
+- Per-skill maps in agent system prompts (e.g. "for skill X do Y, for skill Z do W").
+- Registries that enumerate skill names in code rather than reading the directory.
+
+**The rule in one sentence:** if you find yourself adding a skill name to a file outside `agents/src/skills/<that-skill>/`, stop and put the data in the skill's frontmatter instead. If frontmatter doesn't have a field for it, propose extending the loader rather than adding the global lookup.
+
+The "Quick intent map" injected into agent system prompts is built dynamically from each skill's `intents` frontmatter by `buildSkillsPromptSection()` in `agents/src/tools/skill-loader-tool.ts`. Disabled skills (filtered by `enablementId`) drop out of the map automatically.
 
 ## Architecture
 
@@ -135,8 +152,25 @@ Create comprehensive markdown documentation:
 ---
 name: my-skill
 description: Brief description of what this skill does
+whenToUse: One sentence describing when the LLM should consider loading this skill (optional but recommended).
+intents:
+  - short trigger phrase 1
+  - short trigger phrase 2/synonym/alt wording
 ---
+```
 
+**Frontmatter fields:**
+
+- `name` (required) — skill identifier; must match the directory name.
+- `description` (required) — short one-line summary shown in every prompt.
+- `whenToUse` (optional) — guidance to the LLM after a skill is being considered.
+- `intents` (optional) — array of short trigger phrases (slash-separated synonyms allowed in a single entry). Each phrase becomes one entry in the system-prompt "Quick intent map" routing to this skill. Add intents only when this skill should be discoverable from a user's first-message wording. See "Self-Containment Rule" — routing data lives here, not in shared code.
+- `enablementId` (optional) — feature flag gating skill availability.
+- `dependencies` / `devDependencies` (optional) — npm packages installed when the skill is loaded.
+- `skill-deps` (optional) — other skills this skill depends on.
+- `post-install-notes` (optional) — text surfaced to the agent after install.
+
+```markdown
 # My Feature Skill
 
 ## When to Use This Skill

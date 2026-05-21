@@ -5,6 +5,8 @@ whenToUse: Load IMMEDIATELY for ANY new booking, appointment, scheduling, or res
 dependencies:
   - date-fns
   - zod
+intents:
+  - booking/appointments/scheduling/reservation/time slots
 ---
 
 # Online Appointments Skill

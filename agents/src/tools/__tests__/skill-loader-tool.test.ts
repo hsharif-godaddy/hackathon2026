@@ -520,7 +520,7 @@ devDependencies:
     });
   });
 
-  describe('#listSkills whenToUse', function listSkillsTests() {
+  describe('#listSkills frontmatter parsing', function listSkillsTests() {
     let tool: SkillLoaderTool;
     let tempDir: string;
     let skillsDir: string;
@@ -586,6 +586,54 @@ whenToUse:
       expect(result.success).toBe(true);
       expect(result.skills![0].whenToUse).toBeUndefined();
     });
+
+    it('should parse intents array from frontmatter', async function parsesIntents() {
+      await createSkillFile('with-intents', `---
+name: with-intents
+description: Has intent phrases
+intents:
+  - sell stuff/run a store
+  - manage products
+---
+# With Intents
+`);
+
+      const result = await tool.listSkills();
+      expect(result.success).toBe(true);
+      const skill = result.skills!.find(s => s.name === 'with-intents');
+      expect(skill).toBeDefined();
+      expect(skill!.intents).toEqual(['sell stuff/run a store', 'manage products']);
+    });
+
+    it('should leave intents undefined when frontmatter omits the field', async function omitsIntents() {
+      await createSkillFile('no-intents', `---
+name: no-intents
+description: No intents
+---
+# No Intents
+`);
+
+      const result = await tool.listSkills();
+      const skill = result.skills!.find(s => s.name === 'no-intents');
+      expect(skill!.intents).toBeUndefined();
+    });
+
+    it('should drop non-string entries from intents', async function filtersBadIntents() {
+      await createSkillFile('bad-intents', `---
+name: bad-intents
+description: Bad intent shape
+intents:
+  - good phrase
+  - 42
+  - null
+---
+# Bad Intents
+`);
+
+      const result = await tool.listSkills();
+      const skill = result.skills!.find(s => s.name === 'bad-intents');
+      expect(skill!.intents).toEqual(['good phrase']);
+    });
   });
 
   describe('#buildSkillsPromptSection', function buildSectionTests() {
@@ -602,112 +650,85 @@ whenToUse:
       expect(section).not.toContain('**auth**: Add authentication *When to use:*');
     });
 
-    it('should include quick intent map in preamble', function includesIntentMap() {
+    it('should build the quick intent map from skill frontmatter intents', function intentMapFromFrontmatter() {
       const section = buildSkillsPromptSection([
-        { name: 'test', description: 'Test skill' },
+        { name: 'commerce', description: 'Commerce', intents: ['online store/sell products', 'set up store'] },
+        { name: 'authentication', description: 'Auth', intents: ['login/signup'] },
+        { name: 'no-intents', description: 'Not in map' },
       ]);
 
       expect(section).toContain('Quick intent map');
+      expect(section).toContain('online store/sell products → commerce');
+      expect(section).toContain('set up store → commerce');
+      expect(section).toContain('login/signup → authentication');
+      // Skills without intents do not appear in the map
+      expect(section).not.toContain('→ no-intents');
+      // Entries are joined with " | "
+      expect(section).toMatch(/→ commerce \| set up store → commerce \| login\/signup → authentication/);
     });
 
-    it('should route each skill name from a representative intent phrase', function intentMapSkillCoverage() {
+    it('should omit the quick intent map line entirely when no skill defines intents', function noIntentMap() {
       const section = buildSkillsPromptSection([
-        { name: 'test', description: 'Test skill' },
+        { name: 'plain', description: 'No intents here' },
       ]);
 
-      // Each skill this intent map routes to MUST appear by a unique
-      // arrow-suffix that is NOT a prefix of another skill. Without this
-      // constraint, "→ commerce" would match "→ commerce-storefront" and
-      // "→ commerce-one-time-payment", silently passing if the standalone
-      // commerce route was deleted. Pair each skill with a trailing
-      // disambiguator (space, closing parenthesis, pipe, or newline) so
-      // each assertion is unique. commerce-storefront and
-      // commerce-one-time-payment use the closing ")" after
-      // "(load commerce first)" to also guard the full ordering phrase.
-      const routedSkillFragments = [
-        '→ commerce (load first',
-        '→ commerce-storefront (load commerce first)',
-        '→ commerce-one-time-payment (load commerce first)',
-        '→ authentication ',
-        '→ online-appointments ',
-        '→ blog ',
-        '→ blog-writing ',
-        '→ i18n ',
-        '→ google-maps ',
-        '→ email ',
-        '→ database ',
-        '→ ai-agent ',
-        '→ stripe |',
-        '→ custom-domain |',
-        // seo is the terminal entry in the intent map; '\n' is the
-        // end-of-line anchor. Update this assertion if a route is
-        // added after seo (the fragment would silently stop matching).
-        '→ seo\n',
-      ];
-      for (const fragment of routedSkillFragments) {
-        expect(section).toContain(fragment);
-      }
+      expect(section).not.toContain('Quick intent map');
+      // The skill list itself still renders
+      expect(section).toContain('- **plain**: No intents here');
     });
 
-    it('should include representative trigger phrases for every routed skill in the intent map', function intentPhrasesPresent() {
-      const section = buildSkillsPromptSection([
-        { name: 'test', description: 'Test skill' },
-      ]);
+    it('should preserve representative phrases from real on-disk skills', async function realSkillsGuardrail() {
+      // Drift guardrail: if someone deletes/truncates an `intents` entry in
+      // a real skill.md, this test fails. Phrases below are the canonical
+      // anchors moved from the previous hardcoded intentRoutes array.
+      const realTool = new SkillLoaderTool();
+      const result = await realTool.listSkills();
+      expect(result.success).toBe(true);
+      const section = buildSkillsPromptSection(result.skills!);
 
-      // These phrases are literal routing anchors; removing any allows
-      // sub-feature todos to match nothing and the agent builds a static
-      // mockup instead of loading the skill. Covers representative
-      // leading / mid-chain / terminal phrases per routed skill so
-      // silent truncation of a route's trigger clause is caught. The
-      // commerce route in particular spans multiple synonyms
-      // ("online store/e-commerce/sell products/shop/set up store/
-      // catalog data") — leading + terminal anchors guard against
-      // accidental truncation after the first slash-separated phrase.
       const phrases = [
-        // commerce — leading, mid, terminal
-        'online store',
-        'sell products',
-        'catalog data',
-        // commerce-storefront
+        'online store', 'sell products', 'catalog data',
         'product catalog UI',
-        // commerce-one-time-payment
         'buy-now',
-        // authentication
         'members-only',
-        // online-appointments
         'appointments',
-        // blog
         'set up blog',
-        // blog-writing
         'write blog post',
-        // i18n
         'multi-language',
-        // google-maps — leading + terminal
-        'store locator',
-        'directions',
-        // email
+        'store locator', 'directions',
         'transactional email',
-        // database
         'CRUD',
-        // ai-agent
         'AI chatbot',
-        // custom-domain — generic intents (no fqdn required)
-        'buy domain',
-        'want domain',
-        'purchase domain',
-        // seo
-        'search rankings',
-        'meta tags',
+        'buy domain', 'want domain', 'purchase domain',
+        'search rankings', 'meta tags',
+        'only when user explicitly says Stripe',
+        // Routing-time ordering hints for commerce sub-skills. Without
+        // these the LLM may load the storefront / one-time-payment UI
+        // skill before commerce has been set up, producing UI wired to
+        // an unconfigured store.
+        'storefront UI/cart UI/checkout UI (load commerce first)',
+        'charge customers (load commerce first)',
       ];
       for (const phrase of phrases) {
         expect(section).toContain(phrase);
       }
 
-      // Stripe's route is conditional — it must only fire when the user
-      // explicitly says "Stripe", not on generic payment requests.
-      // Dropping this qualifier would let the stripe skill match any
-      // payment intent, overlapping with commerce-one-time-payment.
-      expect(section).toContain('only when user explicitly says Stripe');
+      // Each routed skill must appear after a → followed by a terminator
+      // ( |, space, or end-of-line). Without the terminator, "→ commerce"
+      // would match "→ commerce-storefront", and "→ seo" would match
+      // "→ seo-audit". Skill order in the rendered map is filesystem-
+      // dependent so any of " | ", trailing space, or end-of-line is valid.
+      const routedSkills = [
+        'commerce', 'commerce-storefront', 'commerce-one-time-payment',
+        'authentication', 'online-appointments', 'blog',
+        'blog-writing', 'i18n', 'google-maps', 'email',
+        'database', 'ai-agent', 'stripe', 'custom-domain',
+        'seo',
+      ];
+      for (const skill of routedSkills) {
+        const escaped = skill.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
+        expect(section).toMatch(new RegExp(`→ ${escaped}( \\||\\n|$)`));
+      }
     });
 
     it('should expose the develop-prompt guardrail paragraph in the source', function guardrailPresentInCoreMd() {

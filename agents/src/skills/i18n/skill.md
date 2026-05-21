@@ -6,6 +6,8 @@ dependencies:
   - react-i18next
   - i18next
   - i18next-browser-languagedetector
+intents:
+  - multi-language/bilingual/translate/localization
 ---
 
 # Internationalization (i18n) Skill

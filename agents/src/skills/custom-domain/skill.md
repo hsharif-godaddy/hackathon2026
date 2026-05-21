@@ -2,6 +2,8 @@
 name: custom-domain
 description: Purchase, attach, or forward domains for the app
 whenToUse: Domain topic — attach/connect/buy/find/forward/redirect domain; "custom domain"; DNS; "I bought/purchased [domain]" + vague follow-ups ("set it up", "hook it up", "help with it"); "multiple domains" / "secondary domain" / "other domain". Domain intent + any action phrase = this skill.
+intents:
+  - buy domain/want domain/purchase domain/find domain/custom domain/connect domain/DNS/domain forward
 ---
 
 # Custom Domain

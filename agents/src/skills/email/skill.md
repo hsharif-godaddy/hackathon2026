@@ -6,6 +6,8 @@ dependencies:
   - nodemailer
 devDependencies:
   - '@types/nodemailer'
+intents:
+  - send email/email notification/transactional email/contact-form-with-backend
 ---
 
 # Email with Nodemailer

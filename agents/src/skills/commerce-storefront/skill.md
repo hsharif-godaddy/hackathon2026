@@ -2,6 +2,8 @@
 name: commerce-storefront
 description: Render GoDaddy Commerce storefront UI (catalog, product detail, cart, and checkout success/cancel pages) from existing Commerce store/catalog data. UI only.
 whenToUse: Trigger for requests like "build the product catalog", "build the shop/storefront", "add cart", or "wire checkout" when catalog data should come from GoDaddy Commerce. For ambiguous e-commerce prompts, load commerce first to verify/setup store data, then use this skill for UI wiring. Do NOT hand-build static catalog/cart pages when the user intends Commerce integration.
+intents:
+  - build product catalog UI/storefront UI/cart UI/checkout UI (load commerce first)
 dependencies:
   - "@godaddy/react"
   - "@godaddy/localizations"

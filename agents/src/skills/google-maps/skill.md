@@ -4,6 +4,8 @@ description: Add maps, location display, store locator, or Google Maps to applic
 whenToUse: User wants maps, location display, store locator, or directions on their site. Phrases like "add a map", "show our location", "store locator", "Google Maps", "directions".
 dependencies:
   - '@vis.gl/react-google-maps'
+intents:
+  - map/store locator/directions
 ---
 
 # Google Maps Skill

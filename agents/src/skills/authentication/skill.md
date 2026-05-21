@@ -5,6 +5,8 @@ whenToUse: User wants login, signup, user accounts, authentication, or to restri
 dependencies:
   - better-auth
 post-install-notes: 'Auth API route files are included in the templates — do NOT create additional route files under src/server/api/auth/. Do NOT install better-call or other better-auth sub-dependencies. The installed template files are complete — configure auth.ts and create login/signup pages only.'
+intents:
+  - login/signup/user accounts/members-only/restrict access/admin
 ---
 
 # BetterAuth Authentication Skill

@@ -6,6 +6,8 @@ dependencies:
   - drizzle-orm
   - drizzle-kit
   - mysql2
+intents:
+  - save data/database/CRUD/persist records
 ---
 
 # MySQL Database Skill
