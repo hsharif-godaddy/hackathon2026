@@ -683,7 +683,6 @@ export default function AppPublish({ location = 'develop' }: { location?: string
             design='primary'
             size='sm'
             data-partial='componentAiro'
-            disabled={isButtonDisabled}
             icon={getTriggerButtonIcon()}
             text={isChatToolbar || isPublishingOrDeploying ? undefined : getPublishButtonText()}
             aria-label={getPublishButtonText()}

@@ -285,14 +285,29 @@ describe('AppPublish', () => {
     expect(document.getElementById('tour-publish-button')).toBeInTheDocument();
   });
 
-  it('should disable publish when site has no agent_url', async function noAgentUrl() {
+  it('should keep trigger enabled but disable inner publish when site has no agent_url', async function noAgentUrl() {
     mockSiteStore.getSite.mockReturnValue(createMockSite({ id: 'app-123', agent_url: undefined }));
 
-    renderWithProviders(<AppPublish />);
+    const { user } = renderWithProviders(<AppPublish />);
+
+    // The top-level trigger button is always enabled — blocking reasons (missing agent_url,
+    // paywall, compliance, etc.) surface as warnings inside the popover instead of fading
+    // the header button.
+    const trigger = await screen.findByRole('button', { name: 'builder_publish_button' });
+    expect(trigger).not.toBeDisabled();
+
+    await user.click(trigger);
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'builder_publish_button' })).toBeDisabled();
+      expect(screen.getByText('builder_publish_popover_title')).toBeInTheDocument();
     });
+
+    // The inner publish button inside the popover remains hard-disabled because
+    // `isButtonDisabled` still includes `!site?.agent_url`.
+    const publishButtons = screen.getAllByRole('button', { name: 'builder_publish_button' });
+    const innerPublishButton = publishButtons.find((btn) => btn.id !== 'tour-publish-button');
+    expect(innerPublishButton).toBeDefined();
+    expect(innerPublishButton).toBeDisabled();
   });
 
   it('should open popover and show title after paywall check', async function openPopover() {
