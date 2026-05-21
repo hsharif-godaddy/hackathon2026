@@ -40,9 +40,6 @@ const baseArgs = {
   totalTokens: 1200,
   cachedInputTokens: 700,
   cacheWriteInputTokens: 300,
-  cacheHitRate: 0.7,
-  contextWindowUtilization: 0.1,
-  costUsd: 0.0042,
 }
 
 describe('maybeEmitDebugTurnStats', () => {
@@ -64,12 +61,14 @@ describe('maybeEmitDebugTurnStats', () => {
       expect.objectContaining({
         type: 'debug_turn_stats',
         conversationId: 'conv-1',
-        costUsd: 0.0042,
         cachedInputTokens: 700,
         cacheWriteInputTokens: 300,
         cacheHitRate: 0.7,
+        modelName: 'claude-sonnet-4-5',
       })
     )
+    const emittedPayload = enabled.emit.mock.calls[0][1]
+    expect(emittedPayload.costUsd).toBeGreaterThan(0)
   })
 
   it('does not emit to sockets without the claim', () => {

@@ -1311,11 +1311,8 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
             inputTokens: usage.inputTokens,
             outputTokens: usage.outputTokens,
             totalTokens: usage.totalTokens,
-            cachedInputTokens: usage.cachedInputTokens || 0,
-            cacheWriteInputTokens: usage.cacheWriteInputTokens || 0,
-            cacheHitRate: cacheMetrics.cacheHitRate,
-            contextWindowUtilization: contextUtilization,
-            costUsd: costEstimate.totalCost,
+            cachedInputTokens: usage.cachedInputTokens,
+            cacheWriteInputTokens: usage.cacheWriteInputTokens,
           })
 
           if (backgroundSummarizer) {

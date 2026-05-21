@@ -513,6 +513,7 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
           customerId: agentContext?.customerId,
           visitorId: agentContext?.visitorId,
           trafficSessionId: agentContext?.trafficSessionId,
+          debugStatsEnabled: agentContext?.debugStatsEnabled,
         },
         isInitialPrompt,
       },

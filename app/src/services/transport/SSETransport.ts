@@ -461,7 +461,7 @@ export class SSETransport implements ChatTransport {
     const eventTypes = [
       'chunk', 'tool_start', 'tool_input_delta', 'tool_call', 'tool_result',
       'step_start', 'step_complete', 'complete', 'error', 'stream_error',
-      'budget_update', 'stream_retry',
+      'budget_update', 'debug_turn_stats', 'stream_retry',
       'validation_message',
       'history_message', 'history_loaded', 'history_complete',
       'recovery_status', 'replay_complete', 'catchup_status', 'catchup_complete',
@@ -504,13 +504,20 @@ export class SSETransport implements ChatTransport {
       return
     }
 
-    // oauth_result is an out-of-band app event, not a conversation event —
-    // short-circuit before eventSubscribers / onEvent so it never flows
-    // through the conversation channel. TransportSupervisor dispatches the
-    // same CustomEvent for the WS path.
+    // oauth_result and debug_turn_stats are out-of-band app events, not
+    // conversation events — short-circuit before eventSubscribers / onEvent
+    // so they never flow through the conversation channel. TransportSupervisor
+    // dispatches the same CustomEvents for the WS path.
     if (type === 'oauth_result') {
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('oauth:result', { detail: data }))
+      }
+      return
+    }
+
+    if (type === 'debug_turn_stats') {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('airo:debug-turn-stats', { detail: data }))
       }
       return
     }

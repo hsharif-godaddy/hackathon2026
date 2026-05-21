@@ -1,20 +1,10 @@
-import { DEBUG_TURN_STATS_EVENT, type DebugTurnStatsEvent } from '@airo/shared/websocket'
+import { DEBUG_TURN_STATS_EVENT } from '@airo/shared/websocket'
 import { logger } from '../logging/index.js'
+import { computeDebugTurnStats, type ComputeDebugTurnStatsInput } from '../utils/debug-turn-stats.js'
 import { getSocketIO, isAppEligibleForEmit } from './ai-lib-websocket-server.js'
 
-export interface MaybeEmitDebugTurnStatsArgs {
+export interface MaybeEmitDebugTurnStatsArgs extends ComputeDebugTurnStatsInput {
   appId: string
-  conversationId: string
-  agentName: string
-  modelName: string
-  inputTokens: number
-  outputTokens: number
-  totalTokens: number
-  cachedInputTokens: number
-  cacheWriteInputTokens: number
-  cacheHitRate: number
-  contextWindowUtilization: number
-  costUsd: number
 }
 
 /**
@@ -24,15 +14,21 @@ export interface MaybeEmitDebugTurnStatsArgs {
  * so production users never receive these events.
  */
 export function maybeEmitDebugTurnStats(args: MaybeEmitDebugTurnStatsArgs): void {
-  // Wrap the entire body so a debug-only side channel can never break the
-  // primary cost-tracking / summarization path it's invoked from.
   try {
     if (!args.appId) return
     const io = getSocketIO()
     if (!io) return
 
-    const payload: DebugTurnStatsEvent = {
-      type: DEBUG_TURN_STATS_EVENT,
+    const eligibleSockets: Array<{ emit: (event: string, payload: unknown) => void }> = []
+    for (const socket of io.sockets.sockets.values()) {
+      if (!isAppEligibleForEmit(socket, args.appId)) continue
+      const agentContext = socket.handshake.auth?.agentContext as { debugStatsEnabled?: boolean } | undefined
+      if (agentContext?.debugStatsEnabled !== true) continue
+      eligibleSockets.push(socket)
+    }
+    if (eligibleSockets.length === 0) return
+
+    const payload = computeDebugTurnStats({
       conversationId: args.conversationId,
       agentName: args.agentName,
       modelName: args.modelName,
@@ -41,35 +37,18 @@ export function maybeEmitDebugTurnStats(args: MaybeEmitDebugTurnStatsArgs): void
       totalTokens: args.totalTokens,
       cachedInputTokens: args.cachedInputTokens,
       cacheWriteInputTokens: args.cacheWriteInputTokens,
-      cacheHitRate: args.cacheHitRate,
-      contextWindowUtilization: args.contextWindowUtilization,
-      costUsd: args.costUsd,
-      timestamp: new Date().toISOString(),
-    }
+    })
 
-    let total = 0
-    let eligible = 0
-    let claimEnabled = 0
-    let delivered = 0
-    for (const socket of io.sockets.sockets.values()) {
-      total++
-      if (!isAppEligibleForEmit(socket, args.appId)) continue
-      eligible++
-      const agentContext = socket.handshake.auth?.agentContext as { debugStatsEnabled?: boolean } | undefined
-      if (agentContext?.debugStatsEnabled !== true) continue
-      claimEnabled++
+    for (const socket of eligibleSockets) {
       socket.emit(DEBUG_TURN_STATS_EVENT, payload)
-      delivered++
     }
+    const delivered = eligibleSockets.length
 
     if (delivered > 0) {
       logger.debug('debug_stats.emit', {
         appId: args.appId,
         conversationId: args.conversationId,
-        costUsd: args.costUsd,
-        socketsTotal: total,
-        socketsEligibleForApp: eligible,
-        socketsWithClaim: claimEnabled,
+        costUsd: payload.costUsd,
         delivered,
       })
     }

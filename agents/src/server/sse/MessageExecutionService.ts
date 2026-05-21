@@ -42,6 +42,7 @@ import {
   collectImagesFromFormattedContexts, dataUrlsToProcessedFiles,
   checkAndTriggerSummarization,
 } from '../context-builders.js'
+import { computeDebugTurnStats } from '../../utils/debug-turn-stats.js'
 
 /** Short timeout for awaiting the classifier on an errored turn — the user is
  *  already seeing a failure, so don't delay terminal events for a slow classifier.
@@ -106,6 +107,7 @@ interface LifecycleContext {
     customerId?: string
     visitorId?: string
     trafficSessionId?: string
+    debugStatsEnabled?: boolean
   }
   isInitialPrompt?: boolean
 }
@@ -829,6 +831,36 @@ export class MessageExecutionService {
             })
           } else {
             lastTurnResult = await doStream(message)
+          }
+
+          const iterationUsage = lastTurnResult?.finalResult?.totalUsage ?? lastTurnResult?.finalResult?.usage
+          if (agentCtx?.debugStatsEnabled && iterationUsage) {
+            const iterAgent = this.deps.getAgent(agentName)
+            const iterModelName: string = iterAgent?.getConfig?.()?.modelName ?? agentCtx.modelOverride ?? 'unknown'
+            const iterInputTokens = iterationUsage.promptTokens ?? iterationUsage.inputTokens ?? 0
+            const iterOutputTokens = iterationUsage.outputTokens ?? 0
+            const iterTotalTokens = iterationUsage.totalTokens ?? (iterInputTokens + iterOutputTokens)
+            const iterCachedInput = iterationUsage.cachedInputTokens ?? iterationUsage.inputTokenDetails?.cacheReadTokens ?? 0
+            const iterCacheWrite = iterationUsage.inputTokenDetails?.cacheWriteTokens ?? 0
+
+            const iterPayload = computeDebugTurnStats({
+              conversationId,
+              agentName,
+              modelName: iterModelName,
+              inputTokens: iterInputTokens,
+              outputTokens: iterOutputTokens,
+              totalTokens: iterTotalTokens,
+              cachedInputTokens: iterCachedInput,
+              cacheWriteInputTokens: iterCacheWrite,
+            })
+
+            this.publishNonTerminal(appId, conversationId, {
+              conversationId,
+              type: 'debug_turn_stats',
+              content: '',
+              data: iterPayload as unknown as Record<string, unknown>,
+              agentName,
+            })
           }
         },
         getAutoContinuation: () => {
