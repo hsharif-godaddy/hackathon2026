@@ -348,6 +348,66 @@ describe('SSE routes', () => {
       expect(capturedData).toContain('event: chunk')
     })
 
+    it('suppresses replay for completed stream when client has no state (page reload)', async () => {
+      const mockEvents = [
+        { id: 'e1', type: 'chunk', sequence: 42, conversationId: 'conv_1', content: 'done', data: { messageId: 'm1' } },
+      ]
+      deps.getEventChannel.mockReturnValue({
+        getEventsSince: vi.fn().mockReturnValue(mockEvents),
+        getMetadata: vi.fn().mockReturnValue({ pendingMessageIds: [], firstSequence: 42, lastSequence: 42 }),
+      })
+      ;(deps as any).executionService = {
+        subscribeStream: vi.fn(),
+        hasActiveStream: vi.fn().mockReturnValue(false),
+      }
+
+      let capturedData = ''
+      await request(app)
+        .get('/api/conversations/abcdefghij/conv_1/stream')
+        .set('Accept', 'text/event-stream')
+        // No Last-Event-ID → clientHasNoState = true
+        .buffer(false)
+        .parse((res: any, callback: any) => {
+          res.on('data', (chunk: Buffer) => { capturedData += chunk.toString() })
+          setTimeout(() => { res.destroy(); callback(null, capturedData) }, 100)
+        })
+
+      expect(capturedData).toContain('"streamCompleted":true')
+      expect(capturedData).toContain('"hasBufferedEvents":false')
+      expect(capturedData).toContain('"replayedCount":0')
+      expect(capturedData).not.toContain('event: chunk')
+    })
+
+    it('replays events for delta client even when stream is completed', async () => {
+      const mockEvents = [
+        { id: 'e1', type: 'chunk', sequence: 42, conversationId: 'conv_1', content: 'done', data: { messageId: 'm1' } },
+      ]
+      deps.getEventChannel.mockReturnValue({
+        getEventsSince: vi.fn().mockReturnValue(mockEvents),
+        getMetadata: vi.fn().mockReturnValue({ pendingMessageIds: [], firstSequence: 42, lastSequence: 42 }),
+      })
+      ;(deps as any).executionService = {
+        subscribeStream: vi.fn(),
+        hasActiveStream: vi.fn().mockReturnValue(false),
+      }
+
+      let capturedData = ''
+      await request(app)
+        .get('/api/conversations/abcdefghij/conv_1/stream')
+        .set('Accept', 'text/event-stream')
+        .set('Last-Event-ID', '40')
+        .buffer(false)
+        .parse((res: any, callback: any) => {
+          res.on('data', (chunk: Buffer) => { capturedData += chunk.toString() })
+          setTimeout(() => { res.destroy(); callback(null, capturedData) }, 100)
+        })
+
+      expect(capturedData).toContain('"streamCompleted":true')
+      expect(capturedData).toContain('"hasBufferedEvents":true')
+      expect(capturedData).toContain('"replayedCount":1')
+      expect(capturedData).toContain('event: chunk')
+    })
+
     it('registers connection in registry by conversationId', async () => {
       const promise = request(app)
         .get('/api/conversations/abcdefghij/conv_1/stream')

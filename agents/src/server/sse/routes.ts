@@ -202,10 +202,15 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
           }
         }
 
+        // SSE-only: suppress replay for completed streams on page reload (WS has client-side dedup in TransportSupervisor).
+        const shouldReplay = plan.eventsToReplay.length > 0
+          && !(plan.streamCompleted && clientHasNoState)
+        const replayedCount = shouldReplay ? plan.eventsToReplay.length : 0
+
         writeFormatted('recovery_status', {
-          hasBufferedEvents: plan.eventsToReplay.length > 0,
-          bufferedCount: plan.eventsToReplay.length,
-          bufferedEventCount: plan.eventsToReplay.length,
+          hasBufferedEvents: shouldReplay,
+          bufferedCount: replayedCount,
+          bufferedEventCount: replayedCount,
           conversationId,
           streamCompleted: plan.streamCompleted,
           lossDetected: plan.lossDetected,
@@ -241,18 +246,20 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
           })
         }
 
-        for (const event of plan.eventsToReplay) {
-          writeFormatted(event.type, {
-            ...event.data,
-            content: event.content,
-            conversationId: event.conversationId,
-            agentName: event.agentName,
-          }, event.sequence)
+        if (shouldReplay) {
+          for (const event of plan.eventsToReplay) {
+            writeFormatted(event.type, {
+              ...event.data,
+              content: event.content,
+              conversationId: event.conversationId,
+              agentName: event.agentName,
+            }, event.sequence)
+          }
         }
 
         writeFormatted('replay_complete', {
           lastSequence: plan.lastReplaySequence,
-          replayedCount: plan.eventsToReplay.length,
+          replayedCount,
         })
 
         logger.info('sse.recovery.replayed', {
@@ -261,7 +268,8 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
           lastEventId,
           recoveryMode: clientHasNoState ? 'initial' : 'delta',
           replayFromSequence: plan.replayFromSequence,
-          replayedCount: plan.eventsToReplay.length,
+          bufferedCount: plan.eventsToReplay.length,
+          replayedCount,
           streamCompleted: plan.streamCompleted,
         })
       } catch (err) {
