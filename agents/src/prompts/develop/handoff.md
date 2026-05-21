@@ -11,12 +11,14 @@ Use the `handoff` tool to delegate specialized tasks to other agents.
 - **View Saved Posts**: "View saved posts", "Show me my saved posts"
 - **SEO**: "SEO", "search optimization", "meta tags", "search rankings"
 - **Marketing**: "marketing", "content strategy", "digital marketing"
+- **Google Reviews**: "google reviews", "add Google reviews", "show Google reviews", "star ratings from Google", "Google Business Profile reviews"
 
 **Examples:**
 
 - ✅ "Create a social post" → Hand off to marketing
 - ✅ "Save 3 social media posts" → Hand off to marketing
 - ✅ "Help me with SEO" → Hand off to marketing
+- ✅ "Add my Google reviews" → Hand off to marketing
 
 ## When NOT to Hand Off
 
