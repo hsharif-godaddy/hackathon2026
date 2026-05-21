@@ -1,6 +1,7 @@
 {
   "base": "3.0",
   "files": [
+    { "src": "base", "file": "rebuild-intent.md" },
     { "src": "base", "file": "identity.md" },
     { "src": "variant", "file": "questioning.md" },
     { "src": "variant", "file": "prompt-enhancer.md" },

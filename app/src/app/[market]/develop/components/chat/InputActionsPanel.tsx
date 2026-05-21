@@ -385,7 +385,9 @@ function InputActionsPanelLegacy({ shouldCollapse: _shouldCollapse }: { shouldCo
   }
 
   // ── Mode A: Agent idle, nothing to show ──────────────────────────────────
-  if (!hasCombinedItems && !hasPlan) {
+  // Text-only askQuestion (e.g. URL prompt for rebuild) has no chip suggestions,
+  // so hasCombinedItems is false — keep the panel mounted so the text input renders.
+  if (!hasCombinedItems && !hasPlan && !isAskQuestionActive) {
     return null
   }
 
@@ -1470,7 +1472,9 @@ function InputActionsPanelThemeSelection({
   }
 
   // ── Mode A: Agent idle, nothing to show ──────────────────────────────────
-  if (!hasCombinedItems && !hasPlan && !showAnySuggest && !hasRebuildPages) {
+  // Text-only askQuestion (e.g. URL prompt for rebuild) has no chip suggestions,
+  // so hasCombinedItems is false — keep the panel mounted so the text input renders.
+  if (!hasCombinedItems && !hasPlan && !showAnySuggest && !hasRebuildPages && !isAskQuestionActive) {
     return null
   }
 
@@ -1578,7 +1582,7 @@ function InputActionsPanelThemeSelection({
   // ── Mode B: Agent idle, has data ─────────────────────────────────────────
   return (
     <>
-      {(hasCombinedItems || hasPlan || showAnySuggest || hasRebuildPages) && (
+      {(hasCombinedItems || hasPlan || showAnySuggest || hasRebuildPages || isAskQuestionActive) && (
         <>
           {showColor && activeColorSchemeSuggest ? (
             <ThemePreviewInputPanel

@@ -42,16 +42,7 @@ describe('modular-prompt-files', function modularPromptFilesTests() {
 
   it('parseModularPromptFilesCsv falls back to defaults for whitespace-only CSV tokens', function emptyCsvTokens() {
     const files = parseModularPromptFilesCsv(' , , ');
-    expect(files).toEqual([
-      'identity.md',
-      'questioning.md',
-      'project-name.md',
-      'design-direction.md',
-      'design-reference.md',
-      'feature-list.md',
-      'handoff-template.md',
-      'examples.md',
-    ]);
+    expect(files).toEqual([...DEFAULT_MODULAR_PROMPT_FILES]);
   });
 
   it('parseModularPromptFilesFromProfileProperty falls back to defaults for whitespace-only profile value', function profilePropertyParse() {

@@ -77,7 +77,10 @@ function extractAskQuestion(toolCall: ToolCall): LatestNBAData | null {
     (s: unknown): s is Suggestion => !!s && typeof (s as Suggestion).text === 'string'
   )
 
-  if (validSuggestions.length === 0) {
+  // Text-input questions intentionally have no chip suggestions — the user
+  // types a free-text answer (e.g. a URL). Reject empty suggestions only for
+  // chip-style questions, where zero options means an unanswerable step.
+  if (validSuggestions.length === 0 && currentQuestion.type !== 'text') {
     return null
   }
 

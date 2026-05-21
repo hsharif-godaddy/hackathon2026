@@ -4,6 +4,7 @@ export const MODULAR_PROMPT_FILES_KEY = 'initial.modularPromptFiles' as const
 
 /** Modular prompt files (3.0+). Each is independently swappable. */
 export const DEFAULT_MODULAR_PROMPT_FILES = [
+  'rebuild-intent.md',
   'identity.md',
   'questioning.md',
   'project-name.md',
