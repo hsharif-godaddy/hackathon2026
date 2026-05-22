@@ -112,11 +112,12 @@ jobs:
         2. Security + performance (you)       - see <security_and_perf>
         3. E2E coverage (you)                 - see <e2e_review>
         4. PR hygiene (you)                   - see <pr_hygiene>
-        5. code-reviewer (subagent)           - general quality, project guidelines
-        6. pr-test-analyzer (subagent)        - test coverage gaps, edge cases
-        7. silent-failure-hunter (subagent)   - swallowed errors, bad catches
-        8. comment-analyzer (subagent)        - only if comments/docs changed
-        9. type-design-analyzer (subagent)    - only if new types added/modified
+        5. Skills isolation (you)             - see <skills_isolation>
+        6. code-reviewer (subagent)           - general quality, project guidelines
+        7. pr-test-analyzer (subagent)        - test coverage gaps, edge cases
+        8. silent-failure-hunter (subagent)   - swallowed errors, bad catches
+        9. comment-analyzer (subagent)        - only if comments/docs changed
+        10. type-design-analyzer (subagent)   - only if new types added/modified
 
         Skip a subagent if the diff has no relevant changes for it. Do not run
         code-simplifier - simplification suggestions belong in the other passes.
@@ -151,6 +152,10 @@ jobs:
              duplicating concerns handled elsewhere?
           5. Does it align with the direction of other recent work in this area,
              or contradict it?
+          6. If the PR modifies agent prompts, the skill loader, or shared
+             agent code: does it introduce skill-name-keyed lookups, intent
+             maps, or "when to use <X>" sections that should live in a
+             skill's own skill.md frontmatter? See <skills_isolation>.
 
         C. Is the problem genuine? Does the problem the PR claims to solve
            actually exist, and is it worth solving now? Flag speculative or
@@ -191,6 +196,79 @@ jobs:
         Flag as [Suggestion]:
         - UI changes without screenshots or videos in the description
         </pr_hygiene>
+
+        <skills_isolation>
+        Run this pass when the diff touches ANY of:
+        - agents/src/skills/** (skill added, removed, renamed, or modified)
+        - agents/src/prompts/** (agent system-prompt fragments)
+        - agents/src/tools/skill-loader-tool.ts
+        - agents/src/skill-tool-manager.ts
+        - agents/src/agents/** (agent definitions, factories, registries)
+        - packages/ai-lib/** files that compose agent prompts or tool sets
+
+        The rule: skills must be self-contained. A skill must be addable,
+        removable, renamable, or disable-able by editing only files under
+        agents/src/skills/<that-skill>/. Routing data (intent phrases,
+        when-to-use guidance, enablement flags, dependency lists) belongs
+        in that skill's skill.md frontmatter. The loader
+        (skill-loader-tool.ts buildSkillsPromptSection) reads the
+        directory and assembles the system-prompt intent map dynamically
+        — new metadata fields should extend the loader, not introduce
+        parallel lookups in shared code.
+
+        Reference: agents/src/skills/README.md ("Self-Containment Rule")
+        and agents/CLAUDE.md.
+
+        Flag as [Important] when the diff introduces or extends:
+        - A string literal matching a skill directory name (e.g.
+          "commerce", "blog", "stripe", "media-logo") in any file
+          outside agents/src/skills/<that-skill>/. Exceptions: tests,
+          fixtures, and documentation/comments describing the skill's
+          behavior.
+        - A switch / if-chain / lookup map / array literal keyed by
+          skill name in shared code (prompt builders, loaders, agent
+          factories, registries, tool wiring).
+        - New "when to use <skill X>" prose, per-skill bullet lists, or
+          routing tables added to an agent system prompt
+          (agents/src/prompts/**) that name a specific skill. The
+          correct channel is the skill's own intents:/whenToUse:
+          frontmatter — that data is injected into the system prompt
+          automatically by buildSkillsPromptSection.
+        - Per-skill conditional gating in a shared code path (e.g.
+          `if (skillName === 'commerce') { ... }`). If gating logic is
+          needed, express it as a generic frontmatter field the loader
+          interprets uniformly across skills.
+        - Hand-maintained registries that enumerate skill names rather
+          than reading agents/src/skills/.
+
+        Flag as [Important] when a skill is being renamed or removed and
+        the diff leaves shared code referencing the old name.
+
+        When a NEW skill is added in this PR, verify:
+        - Its routing/discovery data (intents, whenToUse, enablementId,
+          dependencies, skill-deps) lives in skill.md frontmatter.
+        - No file outside agents/src/skills/<new-skill>/ was edited to
+          "wire in" the skill. Loader / registry changes are only
+          acceptable when they introduce a generic capability (a new
+          frontmatter field, a new lifecycle hook) — not when they
+          hardcode the new skill by name.
+        - If the PR claims it cannot be done with frontmatter, the PR
+          description must explain why and propose extending the loader.
+          Otherwise flag as [Important] with the recommendation to move
+          the data into frontmatter or extend skill-loader-tool.ts
+          generically.
+
+        Do NOT flag:
+        - Pre-existing skill-name references in files the PR does not
+          modify (this is acknowledged legacy debt being addressed
+          separately — only flag NEW additions in the diff).
+        - References inside agents/src/skills/<skill>/ to that same
+          skill.
+        - Tests, fixtures, snapshots, and docstrings that name skills
+          for illustration.
+        - Skill names appearing in skill.md frontmatter or in templates/
+          files inside that skill's own directory.
+        </skills_isolation>
 
         <synthesis>
         After all passes complete, synthesize into a single summary comment.
