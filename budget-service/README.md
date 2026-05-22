@@ -21,6 +21,7 @@ Standalone service with its own deploy pipeline — not part of the agents/app/p
 - [Configuration](docs/configuration.md) — full env-var reference
 - [Observability](docs/observability.md) — logs, dashboards, OpenTelemetry
 - [DevOps](docs/devops.md) — deploy, rollback, incident response
+- [Alerts](docs/alerts.md) — alarm rules, triage steps, mitigation
 
 **Development**
 

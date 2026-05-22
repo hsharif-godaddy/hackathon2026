@@ -1,5 +1,16 @@
 # Observability
 
+## Dashboards
+
+| Environment  | Link                                                                                                                                                                                                                                                                                                         |
+|--------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **Prod**     | [Analytics dashboard (prod)](https://airobuilde-prod-usw2.kb.us-west-2.aws.found.io:9243/app/dashboards#/view/1c7154c8-2ed0-4782-a14d-11eece31d1d8?_g=(filters:!(),refreshInterval:(pause:!t,value:60000),time:(from:now-24h%2Fh,to:now)))                                                                    |
+| **Prod**     | [Observability dashboard (prod)](https://airobuilde-prod-usw2.kb.us-west-2.aws.found.io/app/apm/services/budget-service/overview?comparisonEnabled=true&environment=ENVIRONMENT_ALL&kuery=&latencyAggregationType=avg&offset=1d&rangeFrom=now-30m&rangeTo=now&serviceGroup=&transactionType=request)         |
+| **Non-prod** | [Analytics dashboard (non-prod)](https://airobuilde-non-prod-usw2.kb.us-west-2.aws.found.io:9243/app/dashboards#/view/1c7154c8-2ed0-4782-a14d-11eece31d1d8?_g=(filters:!(),refreshInterval:(pause:!t,value:60000),time:(from:now-24h%2Fh,to:now)))                                                            |
+| **Non-prod** | [Observability dashboard (non-prod)](https://airobuilde-non-prod-usw2.kb.us-west-2.aws.found.io/app/apm/services/budget-service/overview?comparisonEnabled=true&environment=ENVIRONMENT_ALL&kuery=&latencyAggregationType=avg&offset=1d&rangeFrom=now-30m&rangeTo=now&serviceGroup=&transactionType=request) |
+
+These dashboards surface the structured JSON logs described below.
+
 ## Logs
 
 Structured JSON to **stdout** via `log/slog` (same idea as `knowledge-service`). Default level is **info**. The logger is configured from `LOG_LEVEL` before config load so early failures (e.g. invalid env) still emit JSON on stdout.
@@ -21,17 +32,6 @@ If the report is persisted but loading or building the full response fails, the 
 ### Shutdown
 
 `SIGINT` / `SIGTERM` triggers graceful `http.Server.Shutdown` (15s timeout).
-
-## Dashboards (Kibana)
-
-| Environment  | Link                                                                                                                                                                                                                                                                                                         |
-|--------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| **Prod**     | [Analytics dashboard (prod)](https://airobuilde-prod-usw2.kb.us-west-2.aws.found.io:9243/app/dashboards#/view/1c7154c8-2ed0-4782-a14d-11eece31d1d8?_g=(filters:!(),refreshInterval:(pause:!t,value:60000),time:(from:now-24h%2Fh,to:now)))                                                                    |
-| **Prod**     | [Observability dashboard (prod)](https://airobuilde-prod-usw2.kb.us-west-2.aws.found.io/app/apm/services/budget-service/overview?comparisonEnabled=true&environment=ENVIRONMENT_ALL&kuery=&latencyAggregationType=avg&offset=1d&rangeFrom=now-30m&rangeTo=now&serviceGroup=&transactionType=request)         |
-| **Non-prod** | [Analytics dashboard (non-prod)](https://airobuilde-non-prod-usw2.kb.us-west-2.aws.found.io:9243/app/dashboards#/view/1c7154c8-2ed0-4782-a14d-11eece31d1d8?_g=(filters:!(),refreshInterval:(pause:!t,value:60000),time:(from:now-24h%2Fh,to:now)))                                                            |
-| **Non-prod** | [Observability dashboard (non-prod)](https://airobuilde-non-prod-usw2.kb.us-west-2.aws.found.io/app/apm/services/budget-service/overview?comparisonEnabled=true&environment=ENVIRONMENT_ALL&kuery=&latencyAggregationType=avg&offset=1d&rangeFrom=now-30m&rangeTo=now&serviceGroup=&transactionType=request) |
-
-These dashboards surface the structured JSON logs described above.
 
 ## OpenTelemetry (metrics + traces)
 
