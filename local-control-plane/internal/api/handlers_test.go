@@ -2100,8 +2100,8 @@ func TestEnsureSubscriptionCreatesWithDefaults(t *testing.T) {
 	if !sub.IsTrial {
 		t.Errorf("expected default isTrial true")
 	}
-	if sub.Plan != "free" {
-		t.Errorf("expected default plan free, got %s", sub.Plan)
+	if sub.Plan != "professional" {
+		t.Errorf("expected default plan professional, got %s", sub.Plan)
 	}
 	if sub.Reason != "" {
 		t.Errorf("expected default reason empty, got %s", sub.Reason)

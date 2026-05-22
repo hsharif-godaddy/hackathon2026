@@ -139,7 +139,7 @@ func (d *DB) migrate() error {
 		had_airo_plus INTEGER NOT NULL DEFAULT 0,
 		token_budget_id TEXT NOT NULL DEFAULT 'trial',
 		bms_budget_id TEXT NOT NULL DEFAULT '',
-		plan TEXT NOT NULL DEFAULT 'free',
+		plan TEXT NOT NULL DEFAULT 'professional',
 		created_at TEXT NOT NULL,
 		updated_at TEXT NOT NULL
 	)`); err != nil {
@@ -164,6 +164,12 @@ func (d *DB) migrate() error {
 		if !strings.Contains(err.Error(), "duplicate column") {
 			return fmt.Errorf("add customer_id column: %w", err)
 		}
+	}
+
+	// Migrate existing free-plan subscriptions to professional so local publishing works
+	// out of the box now that paywall feature flags have been removed.
+	if _, err := d.db.Exec(`UPDATE subscriptions SET plan = 'professional' WHERE plan = 'free'`); err != nil {
+		return fmt.Errorf("migrate free subscriptions to professional: %w", err)
 	}
 
 	if _, err := d.db.Exec(`CREATE TABLE IF NOT EXISTS deployments (
