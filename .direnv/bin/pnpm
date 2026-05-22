@@ -1,4 +1,5 @@
 #!/bin/bash
+# Depends on env vars exported by .envrc (REAL_PNPM, WORKSPACE_ROOT, NON_WORKSPACE_DIRS).
 cmd="$1"
 current_dir="$(pwd)"
 relative_path="${current_dir#$WORKSPACE_ROOT/}"
