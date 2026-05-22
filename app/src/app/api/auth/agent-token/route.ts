@@ -411,8 +411,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
     });
 
     // PaaS has its own billing model outside of the Airo Plus paywall, so the
-    // AAB paywall must not gate publishes for PaaS apps. canDownload and other
-    // paywall-derived flags stay as computed.
+    // AAB paywall must not gate publishes or downloads for PaaS apps.
     if (body.owningProduct === AIRO_OWNER_PRODUCTS.PAAS_NODEJS && !canPublish) {
       logger.info('agent-token.paas-publish-bypass', {
         siteId: body.siteId,
@@ -420,6 +419,14 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
         owningProduct: body.owningProduct,
       });
       canPublish = true;
+    }
+    if (body.owningProduct === AIRO_OWNER_PRODUCTS.PAAS_NODEJS && !canDownload) {
+      logger.info('agent-token.paas-download-bypass', {
+        siteId: body.siteId,
+        customerId: user.customerId,
+        owningProduct: body.owningProduct,
+      });
+      canDownload = true;
     }
 
     // Three-lever BMS migration check (see checkBmsMigration for details)

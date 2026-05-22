@@ -24,6 +24,9 @@ const PAAS_ALLOWED_ROUTES: RoutePattern[] = [
   { method: 'POST', path: '/apps/:id/zip/upload' },
   { method: 'GET', path: '/apps/:id/zip/upload/status' },
 
+  // Zip download (code export)
+  { method: 'GET', path: '/apps/:id/zip' },
+
   // Git remote operations
   { method: 'POST', path: '/apps/:id/git/remote/configure' },
   { method: 'POST', path: '/apps/:id/git/push' },

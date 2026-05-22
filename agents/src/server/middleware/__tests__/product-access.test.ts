@@ -114,6 +114,8 @@ describe('product-access middleware', () => {
       { method: 'GET', path: '/apps/abc123/files' },
       { method: 'GET', path: '/apps/abc123/files/read' },
       { method: 'POST', path: '/apps/abc123/files/write' },
+      // Zip download (code export)
+      { method: 'GET', path: '/apps/abc123/zip' },
       // Screenshots
       { method: 'GET', path: '/apps/abc123/screenshot' },
       { method: 'POST', path: '/apps/abc123/capture-screenshot' },
@@ -240,6 +242,10 @@ describe('isRouteAllowedForPaaS', () => {
   it('should allow zip import routes', () => {
     expect(isRouteAllowedForPaaS('POST', '/apps/test-app/zip/upload')).toBe(true);
     expect(isRouteAllowedForPaaS('GET', '/apps/test-app/zip/upload/status')).toBe(true);
+  });
+
+  it('should allow zip download route', () => {
+    expect(isRouteAllowedForPaaS('GET', '/apps/test-app/zip')).toBe(true);
   });
 
   it('should allow git remote routes', () => {

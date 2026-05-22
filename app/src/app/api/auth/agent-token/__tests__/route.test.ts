@@ -1027,7 +1027,7 @@ describe('agent-token', function packageTests() {
       });
     });
 
-    describe('PaaS canPublish bypass', function paasBypassTests() {
+    describe('PaaS permission bypass', function paasBypassTests() {
       beforeEach(function paasBypassSetup() {
         mockAuthenticateCustomer.mockResolvedValue({
           isAuthenticated: true,
@@ -1046,13 +1046,13 @@ describe('agent-token', function packageTests() {
         );
       });
 
-      it('should not elevate canDownload for PaaSNodeJS when paywall denies access', async function paasNoDownloadBypass() {
+      it('should force canDownload=true for PaaSNodeJS when paywall denies access', async function paasDownloadBypass() {
         const request = createMockRequest({ siteId: MOCK_SITE_ID, owningProduct: 'PaaSNodeJS' });
         const response = await POST(request);
 
         expect(response.status).toBe(200);
         expect(mockJWTService.getToken).toHaveBeenCalledWith(
-          expect.objectContaining({ canDownload: false, canPublish: true })
+          expect.objectContaining({ canDownload: true, canPublish: true, product: 'PaaSNodeJS' })
         );
       });
 
@@ -1063,6 +1063,16 @@ describe('agent-token', function packageTests() {
         expect(response.status).toBe(200);
         expect(mockJWTService.getToken).toHaveBeenCalledWith(
           expect.objectContaining({ canPublish: false, product: 'AiroAppBuilder' })
+        );
+      });
+
+      it('should leave canDownload=false for AiroAppBuilder when paywall denies access', async function aabNoDownloadBypass() {
+        const request = createMockRequest({ siteId: MOCK_SITE_ID, owningProduct: 'AiroAppBuilder' });
+        const response = await POST(request);
+
+        expect(response.status).toBe(200);
+        expect(mockJWTService.getToken).toHaveBeenCalledWith(
+          expect.objectContaining({ canDownload: false, canPublish: false, product: 'AiroAppBuilder' })
         );
       });
 
@@ -1080,6 +1090,22 @@ describe('agent-token', function packageTests() {
         expect(mockControlPlaneAdapter.appExists).toHaveBeenCalledTimes(1);
         expect(mockJWTService.getToken).toHaveBeenLastCalledWith(
           expect.objectContaining({ canPublish: true, product: 'PaaSNodeJS' })
+        );
+      });
+
+      it('should force canDownload=true for PaaSNodeJS on the site-validation cache-hit path', async function paasDownloadBypassCacheHit() {
+        const firstRequest = createMockRequest({ siteId: MOCK_SITE_ID, owningProduct: 'PaaSNodeJS' });
+        const firstResponse = await POST(firstRequest);
+        expect(firstResponse.status).toBe(200);
+        expect(mockControlPlaneAdapter.appExists).toHaveBeenCalledTimes(1);
+
+        const secondRequest = createMockRequest({ siteId: MOCK_SITE_ID, owningProduct: 'PaaSNodeJS' });
+        const secondResponse = await POST(secondRequest);
+
+        expect(secondResponse.status).toBe(200);
+        expect(mockControlPlaneAdapter.appExists).toHaveBeenCalledTimes(1);
+        expect(mockJWTService.getToken).toHaveBeenLastCalledWith(
+          expect.objectContaining({ canDownload: true, product: 'PaaSNodeJS' })
         );
       });
     });
