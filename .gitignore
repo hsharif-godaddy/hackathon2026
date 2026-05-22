@@ -40,6 +40,7 @@ test-results/
 playwright-report/
 *.png
 !blog/public/images/*.png
+!docs/**/*.png
 *.webm
 *.mp4
 app/test-results/
