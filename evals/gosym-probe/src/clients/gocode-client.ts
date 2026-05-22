@@ -1,4 +1,5 @@
 import OpenAI from 'openai';
+import { getS2SToken, refreshS2SToken } from '@airo/ai-lib';
 
 import type { Config } from '../../config/environments/types.js';
 import { stripUnsafeUnicode } from '../util/sanitize.js';
@@ -46,25 +47,50 @@ function sanitize(content: Content): Content {
   );
 }
 
+/**
+ * Builds a fetch wrapper that injects `Authorization: sso-jwt <token>` on every
+ * request and retries once with a refreshed token on 401/403.
+ */
+function buildS2SFetch(): typeof globalThis.fetch {
+  return async (input, init) => {
+    const token = await getS2SToken();
+    const headers = new Headers(init?.headers);
+    headers.set('Authorization', `sso-jwt ${token}`);
+    const res = await globalThis.fetch(input, { ...init, headers });
+    if (res.status === 401 || res.status === 403) {
+      await res.arrayBuffer(); // drain body to prevent connection leak on retry
+      const fresh = await refreshS2SToken();
+      const retryHeaders = new Headers(init?.headers);
+      retryHeaders.set('Authorization', `sso-jwt ${fresh}`);
+      return globalThis.fetch(input, { ...init, headers: retryHeaders });
+    }
+    return res;
+  };
+}
+
 export class GocodeClient implements IGocodeClient {
   private readonly client: OpenAI;
   private readonly model: string;
-  private readonly baseUrl: string;
-  private readonly apiKey: string;
+  private readonly config: Config['gocode'];
   private accumulated: ProbeUsage = { ...ZERO_USAGE };
 
   constructor(config: Config['gocode']) {
-    this.baseUrl = config.baseUrl;
-    this.apiKey = config.apiKey;
-    this.client = new OpenAI({
-      baseURL: config.baseUrl,
-      apiKey: config.apiKey,
-    });
+    this.config = config;
+    this.client = config.useS2S
+      ? new OpenAI({
+          baseURL: config.baseUrl,
+          apiKey: 'gocode-s2s-placeholder',
+          fetch: buildS2SFetch(),
+        })
+      : new OpenAI({
+          baseURL: config.baseUrl,
+          apiKey: config.apiKey,
+        });
     this.model = config.model;
   }
 
   withModel(model: string): IGocodeClient {
-    return new GocodeClient({ baseUrl: this.baseUrl, apiKey: this.apiKey, model });
+    return new GocodeClient({ ...this.config, model });
   }
 
   async complete(

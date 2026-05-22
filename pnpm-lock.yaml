@@ -1361,6 +1361,9 @@ importers:
 
   evals/gosym-probe:
     dependencies:
+      '@airo/ai-lib':
+        specifier: workspace:*
+        version: link:../../packages/ai-lib
       chalk:
         specifier: ^5.6.2
         version: 5.6.2

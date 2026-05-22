@@ -1,13 +1,20 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-const { mockCreate } = vi.hoisted(() => ({
+const { mockCreate, mockGetS2SToken, mockRefreshS2SToken } = vi.hoisted(() => ({
   mockCreate: vi.fn(),
+  mockGetS2SToken: vi.fn(),
+  mockRefreshS2SToken: vi.fn(),
 }));
 
 vi.mock('openai', () => ({
   default: vi.fn().mockImplementation(() => ({
     chat: { completions: { create: mockCreate } },
   })),
+}));
+
+vi.mock('@airo/ai-lib', () => ({
+  getS2SToken: mockGetS2SToken,
+  refreshS2SToken: mockRefreshS2SToken,
 }));
 
 import OpenAI from 'openai';
@@ -17,6 +24,7 @@ import type { Message } from '../gocode-client.js';
 const TEST_CONFIG = {
   baseUrl: 'https://gocode.example.com/v1',
   apiKey: 'sk-test',
+  useS2S: false,
   model: 'claude-sonnet-4-6',
 } as const;
 
@@ -331,6 +339,134 @@ describe('GocodeClient', () => {
 
       expect(derived.getAccumulatedUsage().calls).toBe(1);
       expect(client.getAccumulatedUsage().calls).toBe(0);
+    });
+  });
+
+  describe('S2S mode', () => {
+    const S2S_CONFIG = {
+      baseUrl: 'https://gocode.example.com/v1',
+      apiKey: '',
+      useS2S: true,
+      model: 'claude-sonnet-4-6',
+    } as const;
+
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    function captureOpenAIArgs(): Record<string, unknown> {
+      const mock = OpenAI as unknown as { mock: { calls: unknown[][] } };
+      return mock.mock.calls.at(-1)![0] as Record<string, unknown>;
+    }
+
+    describe('constructor', () => {
+      it('uses placeholder apiKey and custom fetch', () => {
+        new GocodeClient(S2S_CONFIG);
+        expect(OpenAI).toHaveBeenLastCalledWith({
+          baseURL: S2S_CONFIG.baseUrl,
+          apiKey: 'gocode-s2s-placeholder',
+          fetch: expect.any(Function),
+        });
+      });
+
+      it('does not include fetch in non-S2S mode', () => {
+        new GocodeClient({ ...S2S_CONFIG, useS2S: false, apiKey: 'sk-test' });
+        expect(OpenAI).toHaveBeenLastCalledWith({
+          baseURL: S2S_CONFIG.baseUrl,
+          apiKey: 'sk-test',
+        });
+      });
+    });
+
+    describe('fetch wrapper', () => {
+      it('injects Authorization: sso-jwt header', async () => {
+        mockGetS2SToken.mockResolvedValue('test-jwt');
+        const mockFetch = vi.fn().mockResolvedValue(new Response('{}', { status: 200 }));
+        vi.stubGlobal('fetch', mockFetch);
+
+        new GocodeClient(S2S_CONFIG);
+        const s2sFetch = captureOpenAIArgs().fetch as typeof globalThis.fetch;
+        await s2sFetch('https://api.example.com/chat', {});
+
+        const headers = mockFetch.mock.calls[0][1].headers as Headers;
+        expect(headers.get('Authorization')).toBe('sso-jwt test-jwt');
+      });
+
+      it('retries with refreshed token on 401', async () => {
+        mockGetS2SToken.mockResolvedValue('initial-token');
+        mockRefreshS2SToken.mockResolvedValue('refreshed-token');
+        const mockFetch = vi.fn()
+          .mockResolvedValueOnce(new Response('Unauthorized', { status: 401 }))
+          .mockResolvedValueOnce(new Response('{}', { status: 200 }));
+        vi.stubGlobal('fetch', mockFetch);
+
+        new GocodeClient(S2S_CONFIG);
+        const s2sFetch = captureOpenAIArgs().fetch as typeof globalThis.fetch;
+        const res = await s2sFetch('https://api.example.com/chat', {});
+
+        expect(mockRefreshS2SToken).toHaveBeenCalledOnce();
+        expect(mockFetch).toHaveBeenCalledTimes(2);
+        const retryHeaders = mockFetch.mock.calls[1][1].headers as Headers;
+        expect(retryHeaders.get('Authorization')).toBe('sso-jwt refreshed-token');
+        expect(res.status).toBe(200);
+      });
+
+      it('retries with refreshed token on 403', async () => {
+        mockGetS2SToken.mockResolvedValue('initial-token');
+        mockRefreshS2SToken.mockResolvedValue('refreshed-token');
+        const mockFetch = vi.fn()
+          .mockResolvedValueOnce(new Response('Forbidden', { status: 403 }))
+          .mockResolvedValueOnce(new Response('{}', { status: 200 }));
+        vi.stubGlobal('fetch', mockFetch);
+
+        new GocodeClient(S2S_CONFIG);
+        const s2sFetch = captureOpenAIArgs().fetch as typeof globalThis.fetch;
+        await s2sFetch('https://api.example.com/chat', {});
+
+        expect(mockRefreshS2SToken).toHaveBeenCalledOnce();
+      });
+
+      it('does not retry on non-auth error responses', async () => {
+        mockGetS2SToken.mockResolvedValue('token');
+        const mockFetch = vi.fn().mockResolvedValue(new Response('Error', { status: 500 }));
+        vi.stubGlobal('fetch', mockFetch);
+
+        new GocodeClient(S2S_CONFIG);
+        const s2sFetch = captureOpenAIArgs().fetch as typeof globalThis.fetch;
+        await s2sFetch('https://api.example.com/chat', {});
+
+        expect(mockFetch).toHaveBeenCalledOnce();
+        expect(mockRefreshS2SToken).not.toHaveBeenCalled();
+      });
+
+      it('preserves existing request headers alongside Authorization', async () => {
+        mockGetS2SToken.mockResolvedValue('token-xyz');
+        const mockFetch = vi.fn().mockResolvedValue(new Response('{}', { status: 200 }));
+        vi.stubGlobal('fetch', mockFetch);
+
+        new GocodeClient(S2S_CONFIG);
+        const s2sFetch = captureOpenAIArgs().fetch as typeof globalThis.fetch;
+        await s2sFetch('https://api.example.com/chat', {
+          headers: { 'Content-Type': 'application/json' },
+        });
+
+        const headers = mockFetch.mock.calls[0][1].headers as Headers;
+        expect(headers.get('Authorization')).toBe('sso-jwt token-xyz');
+        expect(headers.get('Content-Type')).toBe('application/json');
+      });
+    });
+
+    describe('withModel()', () => {
+      it('derived client preserves useS2S and placeholder apiKey', () => {
+        const s2sClient = new GocodeClient(S2S_CONFIG);
+        vi.clearAllMocks();
+        s2sClient.withModel('gpt-4o');
+        expect(OpenAI).toHaveBeenLastCalledWith({
+          baseURL: S2S_CONFIG.baseUrl,
+          apiKey: 'gocode-s2s-placeholder',
+          fetch: expect.any(Function),
+        });
+      });
     });
   });
 });

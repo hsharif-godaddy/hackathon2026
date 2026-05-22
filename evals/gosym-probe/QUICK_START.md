@@ -53,7 +53,7 @@ Edit `.env`:
 ```dotenv
 # GoCode (OpenAI-compatible endpoint)
 OPENAI_BASE_URL=https://caas-gocode-prod.caas-prod.prod.onkatana.net/v1
-OPENAI_API_KEY=<your-gocode-api-key>
+PROBE_OPENAI_API_KEY=<your-gocode-api-key>
 OPENAI_MODEL=claude-sonnet-4-6
 
 # Environment selector

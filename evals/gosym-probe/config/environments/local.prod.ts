@@ -14,7 +14,8 @@ export function createConfig(): Config {
     },
     gocode: {
       baseUrl: process.env.OPENAI_BASE_URL ?? '',
-      apiKey: process.env.OPENAI_API_KEY ?? '',
+      apiKey: process.env.PROBE_OPENAI_API_KEY ?? '',
+      useS2S: process.env.GOCODE_USE_S2S_AUTH === 'true',
       model: process.env.OPENAI_MODEL ?? '',
       visionModel: process.env.OPENAI_VISION_MODEL || process.env.OPENAI_MODEL || undefined,
     },

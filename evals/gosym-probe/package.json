@@ -15,6 +15,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@airo/ai-lib": "workspace:*",
     "chalk": "^5.6.2",
     "openai": "catalog:",
     "playwright": "^1.59.1",

@@ -10,6 +10,7 @@ export interface Config {
   gocode: {
     baseUrl: string;
     apiKey: string;
+    useS2S?: boolean;
     model: string;
     visionModel?: string;
   };

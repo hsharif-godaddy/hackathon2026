@@ -20,7 +20,7 @@ saved baselines.
 **Setup**
 
 ```bash
-cp .env.example .env   # fill in OPENAI_BASE_URL and OPENAI_API_KEY
+cp .env.example .env   # fill in OPENAI_BASE_URL and PROBE_OPENAI_API_KEY
 pnpm install           # run from repo root
 ```
 
@@ -192,14 +192,15 @@ Configured in `.env` (copy from `.env.example`).
 
 | Variable             | Required | Default                     | Description                                       |
 | -------------------- | -------- | --------------------------- | ------------------------------------------------- |
-| `GD_ENV`             | No       | `local.dev`                 | Config environment to load                        |
-| `OPENAI_BASE_URL`    | Yes      | —                           | GoCode endpoint URL                               |
-| `OPENAI_API_KEY`     | Yes      | —                           | GoCode API key                                    |
-| `OPENAI_MODEL`       | No       | —                           | Model for the synthetic user (GoCode)             |
-| `MAX_CONCURRENCY`    | No       | per-env                     | Max concurrent trials; `--concurrency` overrides  |
-| `MAX_TURNS`          | No       | `30`                        | Max turns per simulation; `--max-turns` overrides |
-| `AWS_PROFILE`        | No       | `airobuild-dev-private-sso` | AWS SSO profile                                   |
-| `PROBE_DEBUG_EVENTS` | No       | —                           | Set to `1` to log AAB socket events               |
+| `GD_ENV`                | No       | `local.dev`                 | Config environment to load                                                      |
+| `OPENAI_BASE_URL`       | Yes      | —                           | GoCode endpoint URL                                                             |
+| `PROBE_OPENAI_API_KEY`  | No*      | —                           | GoCode API key; not needed when `GOCODE_USE_S2S_AUTH=true`                      |
+| `GOCODE_USE_S2S_AUTH`   | No       | `false`                     | Set to `true` to use IAM S2S JWT auth instead of a static key                  |
+| `OPENAI_MODEL`          | No       | —                           | Model for the synthetic user (GoCode)                                           |
+| `MAX_CONCURRENCY`       | No       | per-env                     | Max concurrent trials; `--concurrency` overrides                                |
+| `MAX_TURNS`             | No       | `30`                        | Max turns per simulation; `--max-turns` overrides                               |
+| `AWS_PROFILE`           | No       | `airobuild-dev-private-sso` | AWS SSO profile; required for S2S and AAB                                       |
+| `PROBE_DEBUG_EVENTS`    | No       | —                           | Set to `1` to log AAB socket events                                             |
 
 ### AAB-side variables (set in `agents/.env` at repo root, not probe `.env`)
 

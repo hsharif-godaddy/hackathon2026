@@ -4,7 +4,8 @@ import { loadConfig } from '../index.js';
 const ENV_VARS = [
   'GD_ENV',
   'OPENAI_BASE_URL',
-  'OPENAI_API_KEY',
+  'PROBE_OPENAI_API_KEY',
+  'GOCODE_USE_S2S_AUTH',
   'OPENAI_MODEL',
   'MAX_CONCURRENCY',
   'MAX_TURNS',
@@ -74,8 +75,8 @@ describe('loadConfig', () => {
       );
     });
 
-    it('reads gocode.apiKey from OPENAI_API_KEY', () => {
-      process.env.OPENAI_API_KEY = 'sk-test-123';
+    it('reads gocode.apiKey from PROBE_OPENAI_API_KEY', () => {
+      process.env.PROBE_OPENAI_API_KEY = 'sk-test-123';
       expect(loadConfig().gocode.apiKey).toBe('sk-test-123');
     });
 
@@ -85,6 +86,20 @@ describe('loadConfig', () => {
 
     it('defaults gocode.apiKey to empty string when unset', () => {
       expect(loadConfig().gocode.apiKey).toBe('');
+    });
+
+    it('reads gocode.useS2S from GOCODE_USE_S2S_AUTH=true', () => {
+      process.env.GOCODE_USE_S2S_AUTH = 'true';
+      expect(loadConfig().gocode.useS2S).toBe(true);
+    });
+
+    it('defaults gocode.useS2S to false when GOCODE_USE_S2S_AUTH is unset', () => {
+      expect(loadConfig().gocode.useS2S).toBe(false);
+    });
+
+    it('gocode.useS2S is false for any value other than "true"', () => {
+      process.env.GOCODE_USE_S2S_AUTH = '1';
+      expect(loadConfig().gocode.useS2S).toBe(false);
     });
 
     it('reads gocode.model from OPENAI_MODEL', () => {

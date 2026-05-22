@@ -10,12 +10,18 @@ vi.mock('openai', () => ({
   })),
 }));
 
+vi.mock('@airo/ai-lib', () => ({
+  getS2SToken: vi.fn(),
+  refreshS2SToken: vi.fn(),
+}));
+
 import { PerTrialGocodeClient } from '../per-trial-gocode-client.js';
 import type { Message } from '../gocode-client.js';
 
 const TEST_CONFIG = {
   baseUrl: 'https://gocode.example.com/v1',
   apiKey: 'sk-test',
+  useS2S: false,
   model: 'claude-sonnet-4-6',
 } as const;
 

@@ -5,7 +5,9 @@ export type EnvLine =
   | { kind: 'blank'; raw: string }
   | { kind: 'entry'; key: string; value: string };
 
-export const SENSITIVE_KEYS = ['OPENAI_API_KEY'];
+// OPENAI_API_KEY retained for one cycle: existing developer .env files may
+// still carry the legacy key until the dev-runner preflight cleans it up.
+export const SENSITIVE_KEYS = ['PROBE_OPENAI_API_KEY', 'OPENAI_API_KEY'];
 
 const ENTRY_RE = /^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/;
 

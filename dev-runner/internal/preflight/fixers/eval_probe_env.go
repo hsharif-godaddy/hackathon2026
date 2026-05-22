@@ -39,7 +39,7 @@ GD_ENV=local.dev
 OPENAI_BASE_URL="%s"
 `, values.baseURL)
 		if !values.useS2S {
-			content += fmt.Sprintf(`OPENAI_API_KEY="%s"
+			content += fmt.Sprintf(`PROBE_OPENAI_API_KEY="%s"
 `, values.apiKey)
 		}
 		content += fmt.Sprintf(`
@@ -56,13 +56,18 @@ OPENAI_MODEL=claude-sonnet-4-6
 		return err
 	}
 	if values.useS2S {
-		if err := removeEnvVar(envPath, "OPENAI_API_KEY"); err != nil {
+		if err := removeEnvVar(envPath, "PROBE_OPENAI_API_KEY"); err != nil {
 			return err
 		}
 	} else {
-		if err := upsertEnvVar(envPath, "OPENAI_API_KEY", values.apiKey); err != nil {
+		if err := upsertEnvVar(envPath, "PROBE_OPENAI_API_KEY", values.apiKey); err != nil {
 			return err
 		}
+	}
+	// One-time cleanup: remove legacy key so existing .env files don't end up
+	// with both OPENAI_API_KEY and PROBE_OPENAI_API_KEY side-by-side.
+	if err := removeEnvVar(envPath, "OPENAI_API_KEY"); err != nil {
+		return err
 	}
 	if err := upsertEnvVarUnquoted(envPath, "AWS_PROFILE", values.awsProfile); err != nil {
 		return err
