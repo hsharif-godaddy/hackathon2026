@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"maps"
 	"os"
 	"os/exec"
 	"strings"
@@ -94,9 +95,13 @@ func (ce *CommandExecutor) Execute(req validation.CommandRequest) (*CommandResul
 	ctx, cancel := context.WithTimeout(context.Background(), timeoutDuration)
 	defer cancel()
 
+	// Build env for the child process: base (supervisor env) + per-command overrides.
+	// mergeEnv returns baseEnv unmodified when overrides is empty.
+	childEnv := mergeEnv(os.Environ(), req.Env)
+
 	// Create command (sandboxed or direct)
 	spec := sandbox.BuildExecProfile(ce.sharedStorageDir, req.Command, workDir)
-	sandboxCmd, sandboxErr := sandbox.WrapCommand(ctx, ce.sandboxEnabled, spec, os.Environ())
+	sandboxCmd, sandboxErr := sandbox.WrapCommand(ctx, ce.sandboxEnabled, spec, childEnv)
 	if sandboxErr != nil {
 		return nil, sandboxErr
 	}
@@ -109,6 +114,7 @@ func (ce *CommandExecutor) Execute(req validation.CommandRequest) (*CommandResul
 		// nosemgrep: go.lang.security.audit.dangerous-exec-command.dangerous-exec-command
 		cmd = exec.CommandContext(ctx, "sh", "-c", req.Command)
 		cmd.Dir = workDir
+		cmd.Env = childEnv
 	}
 
 	// Attach a status pipe for wrapper-level failures (only meaningful when sandboxed).
@@ -325,4 +331,24 @@ func (s *Server) runShortLivedCommand(cmd *exec.Cmd) error {
 	return cmd.Wait()
 }
 
-// ExecuteAsync is not needed for LLM usage - removed for simplicity
+// mergeEnv returns baseEnv with overrides applied. Duplicate keys in baseEnv
+// are replaced; new keys are appended. Does not mutate baseEnv.
+func mergeEnv(baseEnv []string, overrides map[string]string) []string {
+	if len(overrides) == 0 {
+		return baseEnv
+	}
+	envMap := make(map[string]string, len(baseEnv)+len(overrides))
+	for _, entry := range baseEnv {
+		k, v, found := strings.Cut(entry, "=")
+		if !found {
+			continue
+		}
+		envMap[k] = v
+	}
+	maps.Copy(envMap, overrides)
+	result := make([]string, 0, len(envMap))
+	for k, v := range envMap {
+		result = append(result, k+"="+v)
+	}
+	return result
+}

@@ -104,6 +104,7 @@ type Server struct {
 	router                 *mux.Router
 	procMgr                *processmanager.ProcessManager
 	cmdExec                *CommandExecutor
+	taskMgr                *TaskManager
 	envMgr                 *EnvironmentManager
 	logMgr                 *logs.Manager
 	pid1Mgr                *process.PID1Manager
@@ -173,6 +174,8 @@ func NewServer() *Server {
 		shutdownCh:             make(chan struct{}),
 	}
 
+	s.taskMgr = NewTaskManager(pid1Mgr, logMgr, &s.execCmdSeq)
+
 	s.setupRoutes()
 	return s
 }
@@ -191,6 +194,12 @@ func (s *Server) setupRoutes() {
 
 	// Command execution endpoints
 	s.router.HandleFunc("/exec", s.handleExec).Methods("POST")
+
+	// Task execution endpoints (unified async/sync model)
+	s.router.HandleFunc("/tasks", s.handleTaskSubmit).Methods("POST")
+	s.router.HandleFunc("/tasks/{id}", s.handleTaskGet).Methods("GET")
+	s.router.HandleFunc("/tasks/{id}/output", s.handleTaskOutput).Methods("GET")
+	s.router.HandleFunc("/tasks/{id}/cancel", s.handleTaskCancel).Methods("POST")
 
 	// Environment management endpoints
 	envRouter := s.router.PathPrefix("/environment").Subrouter()
@@ -300,6 +309,8 @@ func (s *Server) StartWithConfig(cfg *Config) error {
 	storageDir := sharedStorageDir()
 	s.cmdExec.SetSandboxEnabled(cfg.SandboxEnabled)
 	s.cmdExec.SetSharedStorageDir(storageDir)
+	s.taskMgr.SetSandboxEnabled(cfg.SandboxEnabled)
+	s.taskMgr.SetSharedStorageDir(storageDir)
 	s.procMgr.SetSandboxEnabled(cfg.SandboxEnabled)
 	s.procMgr.SetSharedStorageDir(storageDir)
 	s.procMgr.SetProcessVariant(sandbox.DetectProcessVariant())
@@ -670,6 +681,11 @@ func (s *Server) WaitForShutdown() {
 
 	<-sigChan
 	slog.Info("shutdown signal received, cleaning up...")
+
+	// Cancel running tasks
+	ctx, cancel := context.WithTimeout(context.Background(), taskCancelGracePeriod)
+	s.taskMgr.Shutdown(ctx)
+	cancel()
 
 	// Stop all managed processes
 	s.procMgr.StopAllProcesses()

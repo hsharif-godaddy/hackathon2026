@@ -6,10 +6,10 @@ Go-based containerized service acting as PID1 in development Docker containers. 
 
 ## Integration with Monorepo
 
-dev-supervisor is called by:
+dev-supervisor is consumed by:
 
-- `app/src/lib/dev-environment/adapters/DockerAppService.ts`
-- `app/src/lib/dev-environment/services/docker-compose-generator.ts`
+- `agents/src/services/DevSupervisorClient.ts` (primary HTTP client)
+- `agents/src/workspace/adapters/http-tasks.ts` (task API adapter)
 
 **Socket paths:**
 
@@ -17,7 +17,7 @@ dev-supervisor is called by:
 - Host (local dev): `/tmp/dev-supervisor-{dockerSafeId}/dev-supervisor.sock` (mounted to `/tmp/supervisor` in container)
 - Configurable: `AIRO_SUPERVISOR_SOCKET_PATH` (v4) or `DEV_SUPERVISOR_SOCKET_PATH` (v3 compat)
 
-**When changing the API:** Update the TypeScript client in `app/src/lib/dev-environment/` and test end-to-end with Docker Compose.
+**When changing the API:** Update the TypeScript client in `agents/src/services/DevSupervisorClient.ts` and test end-to-end with Docker Compose.
 
 ## Key Commands
 

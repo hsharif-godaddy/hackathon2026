@@ -94,6 +94,18 @@ func ValidateCommandRequest(req CommandRequest) error {
 		return errors.New("invalid working directory path")
 	}
 
+	// Validate per-command environment overrides. Unlike the /environment PUT endpoint,
+	// protected vars are allowed here — the override is ephemeral (child-only, no mutation
+	// of the supervisor process).
+	for key, value := range req.Env {
+		if !IsValidEnvVarName(key) {
+			return fmt.Errorf("invalid environment variable name: %s", key)
+		}
+		if len(value) > MaxEnvVarValueSize {
+			return fmt.Errorf("environment variable %s value too large (max %d bytes)", key, MaxEnvVarValueSize)
+		}
+	}
+
 	return nil
 }
 

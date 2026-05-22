@@ -300,6 +300,161 @@ func TestCommandExecutor_Execute_RegistersAndUnregistersWithPID1Manager(t *testi
 	}
 }
 
+func TestMergeEnv(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		base      []string
+		overrides map[string]string
+		wantKey   string
+		wantValue string
+	}{
+		{
+			name:      "nil overrides returns base unchanged",
+			base:      []string{"A=1", "B=2"},
+			overrides: nil,
+			wantKey:   "A",
+			wantValue: "1",
+		},
+		{
+			name:      "empty overrides returns base unchanged",
+			base:      []string{"A=1"},
+			overrides: map[string]string{},
+			wantKey:   "A",
+			wantValue: "1",
+		},
+		{
+			name:      "override replaces existing key",
+			base:      []string{"FOO=old", "BAR=keep"},
+			overrides: map[string]string{"FOO": "new"},
+			wantKey:   "FOO",
+			wantValue: "new",
+		},
+		{
+			name:      "override adds new key",
+			base:      []string{"A=1"},
+			overrides: map[string]string{"NEW_KEY": "added"},
+			wantKey:   "NEW_KEY",
+			wantValue: "added",
+		},
+		{
+			name:      "override with empty value",
+			base:      []string{"X=notempty"},
+			overrides: map[string]string{"X": ""},
+			wantKey:   "X",
+			wantValue: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			result := mergeEnv(tt.base, tt.overrides)
+			found := false
+			for _, entry := range result {
+				k, v, _ := strings.Cut(entry, "=")
+				if k == tt.wantKey {
+					found = true
+					if v != tt.wantValue {
+						t.Errorf("key %s: got value %q, want %q", tt.wantKey, v, tt.wantValue)
+					}
+					break
+				}
+			}
+			if !found {
+				t.Errorf("key %s not found in result", tt.wantKey)
+			}
+		})
+	}
+}
+
+func TestMergeEnv_DoesNotMutateBase(t *testing.T) {
+	t.Parallel()
+	base := []string{"A=1", "B=2"}
+	baseCopy := make([]string, len(base))
+	copy(baseCopy, base)
+
+	_ = mergeEnv(base, map[string]string{"A": "changed"})
+
+	for i, v := range base {
+		if v != baseCopy[i] {
+			t.Errorf("base was mutated: index %d changed from %q to %q", i, baseCopy[i], v)
+		}
+	}
+}
+
+func TestCommandExecutor_Execute_EnvForwarding(t *testing.T) {
+	t.Parallel()
+	executor := NewCommandExecutor(nil)
+
+	t.Run("child sees per-command env override", func(t *testing.T) {
+		t.Parallel()
+		result, err := executor.Execute(validation.CommandRequest{
+			Command:       "echo $MY_TEST_VAR",
+			CaptureOutput: true,
+			Timeout:       5,
+			Env:           map[string]string{"MY_TEST_VAR": "hello_from_env"},
+		})
+		if err != nil {
+			t.Fatalf("Execute failed: %v", err)
+		}
+		if result.ExitCode != 0 {
+			t.Fatalf("expected exit 0, got %d", result.ExitCode)
+		}
+		if !strings.Contains(result.Stdout, "hello_from_env") {
+			t.Errorf("expected stdout to contain 'hello_from_env', got %q", result.Stdout)
+		}
+	})
+
+	t.Run("base env still inherited with partial override", func(t *testing.T) {
+		t.Parallel()
+		result, err := executor.Execute(validation.CommandRequest{
+			Command:       "echo $HOME",
+			CaptureOutput: true,
+			Timeout:       5,
+			Env:           map[string]string{"UNRELATED_VAR": "x"},
+		})
+		if err != nil {
+			t.Fatalf("Execute failed: %v", err)
+		}
+		if strings.TrimSpace(result.Stdout) == "" {
+			t.Error("expected HOME to be inherited from base env, got empty stdout")
+		}
+	})
+
+	t.Run("override replaces existing base env var", func(t *testing.T) {
+		t.Parallel()
+		result, err := executor.Execute(validation.CommandRequest{
+			Command:       "echo $HOME",
+			CaptureOutput: true,
+			Timeout:       5,
+			Env:           map[string]string{"HOME": "/overridden"},
+		})
+		if err != nil {
+			t.Fatalf("Execute failed: %v", err)
+		}
+		if !strings.Contains(result.Stdout, "/overridden") {
+			t.Errorf("expected HOME to be overridden, got %q", result.Stdout)
+		}
+	})
+
+	t.Run("nil env uses base env as-is", func(t *testing.T) {
+		t.Parallel()
+		result, err := executor.Execute(validation.CommandRequest{
+			Command:       "echo $HOME",
+			CaptureOutput: true,
+			Timeout:       5,
+		})
+		if err != nil {
+			t.Fatalf("Execute failed: %v", err)
+		}
+		if strings.TrimSpace(result.Stdout) == "" {
+			t.Error("expected HOME from base env, got empty")
+		}
+	})
+}
+
 func TestCommandExecutor_ExecuteComplexCommands(t *testing.T) {
 	t.Parallel()
 	executor := NewCommandExecutor(nil)

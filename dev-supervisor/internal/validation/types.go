@@ -10,10 +10,11 @@ type ProcessStartRequest struct {
 
 // CommandRequest represents a request to execute a command
 type CommandRequest struct {
-	Command       string `json:"command"`
-	Timeout       int    `json:"timeout,omitempty"`
-	CaptureOutput bool   `json:"capture_output,omitempty"`
-	WorkingDir    string `json:"working_dir,omitempty"`
+	Command       string            `json:"command"`
+	Timeout       int               `json:"timeout,omitempty"`
+	CaptureOutput bool              `json:"capture_output,omitempty"`
+	WorkingDir    string            `json:"working_dir,omitempty"`
+	Env           map[string]string `json:"env,omitempty"`
 }
 
 // EnvironmentSetRequest represents a request to set environment variables

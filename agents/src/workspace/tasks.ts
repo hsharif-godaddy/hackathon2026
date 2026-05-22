@@ -25,7 +25,7 @@ export type RunCommandResponse =
 
 export interface TaskStatus {
   taskId: string;
-  kind: string;
+  kind: 'pending' | 'completed';
   state: TaskState;
   exitCode?: number;
   timedOut?: boolean;
@@ -38,6 +38,7 @@ export interface TaskOutput {
   stdout: string;
   stderr: string;
   nextOffset: number;
+  nextStderrOffset: number;
   complete: boolean;
 }
 

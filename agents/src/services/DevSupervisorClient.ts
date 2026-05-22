@@ -18,6 +18,67 @@ export interface ExecOptions {
   timeout?: number;
   /** Capture output (default: true) */
   capture_output?: boolean;
+  /** Per-command environment variable overrides (merged with base env, no global mutation) */
+  env?: Record<string, string>;
+}
+
+export interface TaskSubmitOptions {
+  /** The command to execute */
+  command: string;
+  /** Working directory (optional) */
+  working_dir?: string;
+  /** Hard execution timeout in seconds (default: 30, max: 3600) */
+  timeout?: number;
+  /** Per-command environment variable overrides */
+  env?: Record<string, string>;
+  /** How long to block the HTTP response waiting for completion (seconds). 0 = return immediately. */
+  wait_seconds?: number;
+}
+
+export type TaskState = 'queued' | 'running' | 'succeeded' | 'failed' | 'canceled' | 'timed_out';
+
+export interface TaskCompletedResult {
+  kind: 'completed';
+  task_id: string;
+  exit_code: number;
+  stdout: string;
+  stderr: string;
+  execution_time_ms: number;
+  timed_out: boolean;
+  command_id: number;
+}
+
+export interface TaskAcceptedResult {
+  kind: 'accepted';
+  task_id: string;
+  state: TaskState;
+}
+
+export type TaskSubmitResult = TaskCompletedResult | TaskAcceptedResult;
+
+export interface TaskStatusResult {
+  task_id: string;
+  state: TaskState;
+  command: string;
+  exit_code: number;
+  error?: string;
+  timed_out: boolean;
+  started_at?: string;
+  finished_at?: string;
+  execution_time_ms: number;
+  command_id: number;
+}
+
+export interface TaskOutputResult {
+  stdout: string;
+  stderr: string;
+  next_offset: number;
+  next_stderr_offset: number;
+  complete: boolean;
+}
+
+export interface TaskCancelResult {
+  state: 'canceled' | 'already_finished';
 }
 
 export interface ExecResult {
@@ -392,7 +453,8 @@ export class DevSupervisorClient {
         command: options.command,
         working_dir: options.working_dir,
         timeout: execTimeoutSec,
-        capture_output: options.capture_output !== false
+        capture_output: options.capture_output !== false,
+        env: options.env,
       }, (execTimeoutSec + 5) * 1000);
 
       // Log timeout separately from success for better observability
@@ -821,6 +883,95 @@ export class DevSupervisorClient {
     } catch (error) {
       this.logger.error('dev_supervisor.setup_execute.failure', {
         error: getErrorMessage(error)
+      });
+      throw error;
+    }
+  }
+
+  async submitTask(options: TaskSubmitOptions): Promise<TaskSubmitResult> {
+    const waitSeconds = options.wait_seconds ?? 0;
+    const timeoutSec = options.timeout ?? 30;
+    const httpTimeout = (Math.max(timeoutSec, waitSeconds) + 5) * 1000;
+
+    this.logger.info('dev_supervisor.task.submit.begin', {
+      command: options.command,
+      working_dir: options.working_dir,
+      timeout: timeoutSec,
+      wait_seconds: waitSeconds,
+    });
+
+    try {
+      const response = await this.makeRequest('POST', '/tasks', {
+        command: options.command,
+        working_dir: options.working_dir,
+        timeout: timeoutSec,
+        env: options.env,
+        wait_seconds: waitSeconds,
+      }, httpTimeout);
+
+      const result = response as TaskSubmitResult;
+      this.logger.info('dev_supervisor.task.submit.success', {
+        task_id: result.task_id,
+        kind: result.kind,
+      });
+      return result;
+    } catch (error) {
+      this.logger.error('dev_supervisor.task.submit.failure', {
+        command: options.command,
+        error: getErrorMessage(error),
+      });
+      throw error;
+    }
+  }
+
+  async getTask(taskId: string): Promise<TaskStatusResult> {
+    try {
+      const response = await this.makeRequest('GET', `/tasks/${taskId}`);
+      return response as TaskStatusResult;
+    } catch (error) {
+      this.logger.error('dev_supervisor.task.get.failure', {
+        task_id: taskId,
+        error: getErrorMessage(error),
+      });
+      throw error;
+    }
+  }
+
+  async getTaskOutput(taskId: string, since?: number, max?: number): Promise<TaskOutputResult> {
+    const params = new URLSearchParams();
+    if (since !== undefined) params.set('since', since.toString());
+    if (max !== undefined) params.set('max', max.toString());
+
+    const query = params.toString();
+    const path = `/tasks/${taskId}/output${query ? '?' + query : ''}`;
+
+    try {
+      const response = await this.makeRequest('GET', path);
+      return response as TaskOutputResult;
+    } catch (error) {
+      this.logger.error('dev_supervisor.task.output.failure', {
+        task_id: taskId,
+        error: getErrorMessage(error),
+      });
+      throw error;
+    }
+  }
+
+  async cancelTask(taskId: string): Promise<TaskCancelResult> {
+    this.logger.info('dev_supervisor.task.cancel.begin', { task_id: taskId });
+
+    try {
+      const response = await this.makeRequest('POST', `/tasks/${taskId}/cancel`);
+      const result = response as TaskCancelResult;
+      this.logger.info('dev_supervisor.task.cancel.success', {
+        task_id: taskId,
+        state: result.state,
+      });
+      return result;
+    } catch (error) {
+      this.logger.error('dev_supervisor.task.cancel.failure', {
+        task_id: taskId,
+        error: getErrorMessage(error),
       });
       throw error;
     }

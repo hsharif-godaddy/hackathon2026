@@ -115,6 +115,56 @@ func TestValidateCommandRequest_TimeoutLimits(t *testing.T) {
 	}
 }
 
+// --- Env validation tests for CommandRequest ---
+
+func TestValidateCommandRequest_Env(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		env     map[string]string
+		wantErr bool
+	}{
+		{name: "nil env (no overrides)", env: nil, wantErr: false},
+		{name: "empty env", env: map[string]string{}, wantErr: false},
+		{name: "valid single var", env: map[string]string{"FOO": "bar"}, wantErr: false},
+		{name: "valid multiple vars", env: map[string]string{"NODE_ENV": "production", "PORT": "3000"}, wantErr: false},
+		{name: "valid underscore prefix", env: map[string]string{"_INTERNAL": "x"}, wantErr: false},
+		// Protected vars ARE allowed for per-command overrides (ephemeral, no global mutation)
+		{name: "override PATH allowed", env: map[string]string{"PATH": "/usr/local/bin:/usr/bin"}, wantErr: false},
+		{name: "override HOME allowed", env: map[string]string{"HOME": "/tmp"}, wantErr: false},
+		// Invalid names
+		{name: "invalid: starts with digit", env: map[string]string{"1FOO": "bar"}, wantErr: true},
+		{name: "invalid: contains dash", env: map[string]string{"FOO-BAR": "baz"}, wantErr: true},
+		{name: "invalid: contains dot", env: map[string]string{"foo.bar": "baz"}, wantErr: true},
+		{name: "invalid: empty key", env: map[string]string{"": "bar"}, wantErr: true},
+		// Oversized value
+		{
+			name:    "value exceeds max size",
+			env:     map[string]string{"BIG": string(make([]byte, validation.MaxEnvVarValueSize+1))},
+			wantErr: true,
+		},
+		{
+			name:    "value at max size",
+			env:     map[string]string{"BIG": string(make([]byte, validation.MaxEnvVarValueSize))},
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			err := validation.ValidateCommandRequest(validation.CommandRequest{
+				Command: "echo test",
+				Env:     tt.env,
+			})
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ValidateCommandRequest(Env=%v) error = %v, wantErr %v", tt.env, err, tt.wantErr)
+			}
+		})
+	}
+}
+
 // --- Working directory tests for CommandRequest (accepts relative paths) ---
 
 func TestValidateCommandRequest_WorkingDir(t *testing.T) {
