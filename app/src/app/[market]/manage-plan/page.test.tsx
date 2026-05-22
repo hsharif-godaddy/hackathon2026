@@ -75,6 +75,10 @@ vi.mock('@/hooks/useEcommSubscriptionAutoRenewStatus', () => ({
   useEcommSubscriptionAutoRenewStatus: () => mockUseEcommSubscriptionAutoRenewStatus(),
 }));
 
+const mockSetAutoRenewState = {
+  isSuccess: false,
+  variables: undefined as { builderEntitlementId: string; autoRenew: boolean } | undefined,
+};
 vi.mock('@/hooks/useEcommSubscriptionAutoRenew', () => ({
   useEcommSubscriptionAutoRenew: () => ({
     setAutoRenew: {
@@ -82,6 +86,8 @@ vi.mock('@/hooks/useEcommSubscriptionAutoRenew', () => ({
       mutateAsync: vi.fn(),
       isPending: false,
       isError: false,
+      isSuccess: mockSetAutoRenewState.isSuccess,
+      variables: mockSetAutoRenewState.variables,
       error: null,
       reset: vi.fn(),
     },
@@ -194,6 +200,9 @@ describe('ManagePlan', function managePlanTests() {
     mockUseSites.mockReturnValue({ sites: [], isLoading: false, error: null });
     // Reset switchboard flags
     Object.keys(mockSwitchboardFlags).forEach((key) => delete mockSwitchboardFlags[key]);
+    // Reset autoRenew mutation state
+    mockSetAutoRenewState.isSuccess = false;
+    mockSetAutoRenewState.variables = undefined;
     // Default mock for autoRenew status
     mockUseEcommSubscriptionAutoRenewStatus.mockReturnValue({
       data: { autoRenew: true, paidThroughDate: '2027-01-29T07:00:00Z', subscriptionId: 'sub-123' },
@@ -1032,6 +1041,110 @@ describe('ManagePlan', function managePlanTests() {
 
       await waitFor(function checkNoAlert() {
         expect(screen.queryByText('builder_manageplan_downgrade_plan_title')).not.toBeInTheDocument();
+      });
+    });
+  });
+
+  describe('free auto-renew alert (mutation state bypass)', function freeAutoRenewAlertTests() {
+    beforeEach(function setupFreeAutoRenewTests() {
+      mockUseSwitchboard.mockReturnValue(true);
+    });
+
+    it('should show banner when mutation succeeded with autoRenew=false even if isRecentPlanChange', async function showBannerWithMutationState() {
+      // Subscription with recent updatedAt (would normally suppress banner)
+      mockUseActiveSubscription.mockReturnValue({
+        data: {
+          id: 'sub-1',
+          plan: SubscriptionPlan.Starter,
+          builderEntitlementId: 'ent-123',
+          updatedAt: new Date().toISOString(),
+          createdAt: '2024-01-01T00:00:00Z',
+        },
+        isLoading: false,
+        isError: false,
+      });
+      mockUseCreditGrants.mockReturnValue({
+        data: [createMonthlyGrant()],
+        isLoading: false,
+        isError: false,
+      });
+      // autoRenew status not yet synced (still true from API)
+      mockUseEcommSubscriptionAutoRenewStatus.mockReturnValue({
+        data: { autoRenew: true, paidThroughDate: '2027-01-29T07:00:00Z', subscriptionId: 'sub-123' },
+        isLoading: false,
+        isError: false,
+      });
+      // Mutation succeeded with autoRenew=false (user just clicked "Switch to Free")
+      mockSetAutoRenewState.isSuccess = true;
+      mockSetAutoRenewState.variables = { builderEntitlementId: 'ent-123', autoRenew: false };
+
+      renderWithProviders(<ManagePlan />);
+
+      await waitFor(function checkBannerVisible() {
+        expect(screen.getByText('builder_manageplan_downgrade_plan_title')).toBeInTheDocument();
+      });
+    });
+
+    it('should NOT show banner when isRecentPlanChange and no mutation state (upgrade race)', async function hideBannerForUpgradeRace() {
+      // Recent updatedAt (fresh upgrade) with autoRenew=false (stale, hasn't synced)
+      mockUseActiveSubscription.mockReturnValue({
+        data: {
+          id: 'sub-1',
+          plan: SubscriptionPlan.Starter,
+          builderEntitlementId: 'ent-123',
+          updatedAt: new Date().toISOString(),
+          createdAt: '2024-01-01T00:00:00Z',
+        },
+        isLoading: false,
+        isError: false,
+      });
+      mockUseCreditGrants.mockReturnValue({
+        data: [createMonthlyGrant()],
+        isLoading: false,
+        isError: false,
+      });
+      mockUseEcommSubscriptionAutoRenewStatus.mockReturnValue({
+        data: { autoRenew: false, paidThroughDate: '2027-01-29T07:00:00Z', subscriptionId: 'sub-123' },
+        isLoading: false,
+        isError: false,
+      });
+      // No mutation state (page loaded fresh after upgrade, not a user-initiated downgrade)
+
+      renderWithProviders(<ManagePlan />);
+
+      await waitFor(function checkBannerNotVisible() {
+        expect(screen.queryByText('builder_manageplan_downgrade_plan_title')).not.toBeInTheDocument();
+      });
+    });
+
+    it('should show banner when autoRenew=false and subscription is not recently changed', async function showBannerNormalRefresh() {
+      // Old updatedAt (not a recent change)
+      mockUseActiveSubscription.mockReturnValue({
+        data: {
+          id: 'sub-1',
+          plan: SubscriptionPlan.Starter,
+          builderEntitlementId: 'ent-123',
+          updatedAt: '2024-01-01T00:00:00Z',
+          createdAt: '2024-01-01T00:00:00Z',
+        },
+        isLoading: false,
+        isError: false,
+      });
+      mockUseCreditGrants.mockReturnValue({
+        data: [createMonthlyGrant()],
+        isLoading: false,
+        isError: false,
+      });
+      mockUseEcommSubscriptionAutoRenewStatus.mockReturnValue({
+        data: { autoRenew: false, paidThroughDate: '2027-01-29T07:00:00Z', subscriptionId: 'sub-123' },
+        isLoading: false,
+        isError: false,
+      });
+
+      renderWithProviders(<ManagePlan />);
+
+      await waitFor(function checkBannerVisible() {
+        expect(screen.getByText('builder_manageplan_downgrade_plan_title')).toBeInTheDocument();
       });
     });
   });

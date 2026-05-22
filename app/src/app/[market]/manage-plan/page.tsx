@@ -271,13 +271,10 @@ function ManagePlanContent() {
   const paidThroughDate = autoRenewStatus?.paidThroughDate;
   const parsedPaidThroughDate = parseDate(paidThroughDate);
 
-  // Check if subscription was updated within the last 10 minutes (recent plan change).
+  // Check if subscription was updated within the last 2 minutes (recent plan change).
   // This handles the race condition where a user upgrades from Free to Paid,
   // but autoRenew hasn't synced yet (still false). We suppress the downgrade
-  // banner during this window.
-  // Note: updatedAt changes when the subscription plan/tier changes (e.g., upgrade),
-  // but NOT when only autoRenew is toggled in ecomm. So downgrades (autoRenew=false)
-  // won't update updatedAt, allowing the banner to show correctly.
+  // banner during this window to avoid a confusing false-positive.
   const RECENT_PLAN_CHANGE_THRESHOLD_MS = 2 * 60 * 1000; // 2 minutes
   const subscriptionUpdatedAt = subscription?.updatedAt
     ? parseDate(subscription.updatedAt)
@@ -287,14 +284,18 @@ function ManagePlanContent() {
     Date.now() - subscriptionUpdatedAt.getTime() <
       RECENT_PLAN_CHANGE_THRESHOLD_MS;
 
-  // Show FreeAutoRenewAlert when auto-renew is disabled (autoRenew=false)
-  // but not for recent plan changes (upgrade from free to paid still syncing)
-  const isAutoRenewDisabled = autoRenewStatus?.autoRenew === false;
+  // When the user explicitly set autoRenew=false in this session (clicked "Switch to Free"),
+  // bypass the isRecentPlanChange guard and treat autoRenew as disabled immediately.
+  const hasPendingDowngrade =
+    setAutoRenew.isSuccess && setAutoRenew.variables?.autoRenew === false;
+
+  const isAutoRenewDisabled =
+    autoRenewStatus?.autoRenew === false || hasPendingDowngrade;
   const showFreeAutoRenewAlert =
     !isFreeAutoRenewAlertDismissed &&
     isPaidPlan &&
     isAutoRenewDisabled &&
-    !isRecentPlanChange;
+    (!isRecentPlanChange || hasPendingDowngrade);
 
   // Show DowngradeScheduledAlert when downgradedAt and downgradedPlan are present
   // This indicates the user has scheduled a downgrade to a different plan

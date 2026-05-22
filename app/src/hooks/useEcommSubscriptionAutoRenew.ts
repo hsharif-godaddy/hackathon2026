@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 import { appFetch, AuthDismissedError } from '@/lib/gasket-config';
 import { logger } from '@/lib/request-context';
+import { fetchEcommSubscriptionStatus } from './useEcommSubscriptionAutoRenewStatus';
 
 interface SetAutoRenewParams {
   builderEntitlementId: string;
@@ -100,13 +101,35 @@ export function useEcommSubscriptionAutoRenew() {
         }
       );
       queryClient.invalidateQueries({ queryKey: ['subscriptions'] });
-      // Invalidate status query after delay to sync with server once eventual consistency settles
-      // Clear any existing timeout before setting a new one
+      // Verify server state after delay (eventual consistency).
+      // Only update cache if server confirms the expected value — never overwrite
+      // the optimistic value with stale data.
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);
       }
       timeoutRef.current = setTimeout(() => {
-        queryClient.invalidateQueries({ queryKey: ['ecomm-subscription-status', variables.builderEntitlementId] });
+        fetchEcommSubscriptionStatus(variables.builderEntitlementId).then((freshData) => {
+          if (freshData.autoRenew === variables.autoRenew) {
+            // Server confirmed — update cache with full fresh data (includes paidThroughDate etc)
+            queryClient.setQueryData(
+              ['ecomm-subscription-status', variables.builderEntitlementId],
+              freshData
+            );
+          } else {
+            logger.warn('ecomm-subscription.auto-renew.reconcile.stale', {
+              builderEntitlementId: variables.builderEntitlementId,
+              expected: variables.autoRenew,
+              actual: freshData.autoRenew,
+            });
+          }
+        }).catch((error: unknown) => {
+          if (error instanceof AuthDismissedError) return;
+          logger.error('ecomm-subscription.auto-renew.reconcile.failed', {
+            builderEntitlementId: variables.builderEntitlementId,
+            autoRenew: variables.autoRenew,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        });
         timeoutRef.current = null;
       }, 5000);
     },
