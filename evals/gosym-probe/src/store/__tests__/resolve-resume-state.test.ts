@@ -41,6 +41,7 @@ function makeMetadata(
     gitSha: 'abc123',
     scenarios: ['scenario-a'],
     config: {} as RunMetadata['config'],
+    maxTurns: 30,
     ...overrides,
   };
 }

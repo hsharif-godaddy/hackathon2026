@@ -318,6 +318,7 @@ describe('EvalStore', () => {
       expect(parsed.config.env).toBe(config.env);
       expect(parsed.config.aab).toEqual(config.aab);
       expect(parsed.config.eval).toEqual(config.eval);
+      expect(parsed.maxTurns).toBe(config.eval.maxTurns);
       expect(parsed.trialsOverride).toBeUndefined();
     });
 
@@ -1555,6 +1556,7 @@ describe('EvalStore', () => {
       expect(parsed.config.env).toBe(config.env);
       expect(parsed.config.aab).toEqual(config.aab);
       expect(parsed.config.eval).toEqual(config.eval);
+      expect(parsed.maxTurns).toBe(config.eval.maxTurns);
       expect(parsed.trialsOverride).toBeUndefined();
     });
 
@@ -1975,6 +1977,7 @@ describe('EvalStore', () => {
         gitBranch: 'main',
         scenarios: ['test-scenario'],
         config: makeConfig(),
+        maxTurns: makeConfig().eval.maxTurns,
       };
       // finalizeRun order: metadata read then index read (updateRunIndex)
       mockReadFile
@@ -2013,6 +2016,7 @@ describe('EvalStore', () => {
         gitBranch: null,
         scenarios: ['test-scenario'],
         config: makeConfig(),
+        maxTurns: makeConfig().eval.maxTurns,
       };
       // finalizeRun order: metadata read then index read (updateRunIndex)
       mockReadFile
@@ -2324,6 +2328,7 @@ describe('EvalStore', () => {
           gitSha: 'abc123',
           scenarios: ['test-scenario'],
           config: makeConfig(),
+          maxTurns: makeConfig().eval.maxTurns,
         };
         seedIndex();
         mockReadFile.mockResolvedValueOnce(JSON.stringify(metadata));

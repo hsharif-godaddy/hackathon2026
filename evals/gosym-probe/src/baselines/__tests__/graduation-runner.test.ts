@@ -1025,6 +1025,7 @@ describe('GraduationRunner', () => {
             gitBranch: 'feat/test',
             scenarios: ['test-scenario'],
             config: mockConfig as unknown as import('../../util/sanitize.js').SanitizedConfig,
+            maxTurns: mockConfig.eval.maxTurns,
           }),
         ensureTrialDir: vi
           .fn<EvalStore['ensureTrialDir']>()

@@ -16,6 +16,7 @@ const baseMetadata: RunMetadata = {
   gitSha: 'abc123',
   scenarios: ['scenario-a', 'scenario-b'],
   config: {} as RunMetadata['config'],
+  maxTurns: 30,
 };
 
 const baseAgg: StoredAggregated = {

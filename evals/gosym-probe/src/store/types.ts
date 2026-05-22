@@ -17,6 +17,7 @@ export interface RunMetadata {
   gitBranch?: string | null;
   scenarios: string[];
   config: SanitizedConfig;
+  maxTurns: number;
   trialsOverride?: number;
   concurrencyOverride?: number;
   maxTurnsOverride?: number;

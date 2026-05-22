@@ -597,6 +597,7 @@ export class EvalStore {
       gitBranch,
       scenarios: scenarioNames,
       config: sanitizeConfig(config),
+      maxTurns: config.eval.maxTurns,
       ...(trialsOverride !== undefined && { trialsOverride }),
       ...(concurrencyOverride !== undefined && {
         concurrencyOverride,
