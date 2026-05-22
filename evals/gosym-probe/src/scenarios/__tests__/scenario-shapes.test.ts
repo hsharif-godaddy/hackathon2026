@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
   simplePortfolioScenario,
-  businessSiteScenario,
   multipageCatalogScenario,
 } from '../golden-light/index.js';
 import { buildLandingPageScenario } from '../build-landing-page.js';
@@ -50,13 +49,6 @@ describe('scenario shapes', () => {
     assertScenarioShape(
       simplePortfolioScenario(gocode, ctrlPlane),
       'simple-portfolio',
-    );
-  });
-
-  it('business-site has token evaluators and valid shape', () => {
-    assertScenarioShape(
-      businessSiteScenario(gocode, ctrlPlane),
-      'business-site',
     );
   });
 

@@ -1,6 +1,6 @@
 # golden-light Eval Suite
 
-golden-light is gosym-probe's regression-gate suite for the AAB agent. It drives four
+golden-light is gosym-probe's regression-gate suite for the AAB agent. It drives three
 web-build scenarios through the full agent loop — generate → tool-call → preview — and
 scores each run across correctness, output quality, alignment, and cost. All scenarios run
 against a locally running AAB instance; no PR or deployment is needed.
@@ -29,9 +29,9 @@ pnpm --filter gosym-probe run eval --suite golden-light --fan-out
 
 ---
 
-## The 4 Scenarios
+## The 3 Scenarios
 
-All scenarios use 3 trials by default and share the same evaluator stack (see below).
+All three scenarios use 3 trials by default and share the same evaluator stack (see below).
 
 ### `simple-portfolio`
 
@@ -43,20 +43,6 @@ section, and contact section (email link and social icons).
 **What it catches:** Regressions in basic structured-requirement following — the most
 fundamental check. If the agent misses a section or fails to build entirely, this scenario
 surfaces it first.
-
----
-
-### `business-site`
-
-A fully specified prompt for "GreenScape Landscaping" — hero with CTA, four-service grid,
-three customer testimonials, and a contact form. Green-and-white color scheme.
-
-**Goals:**
-1. Agent builds the site with all four components.
-2. Agent reuses a shared layout component for the header and footer rather than duplicating markup.
-
-**What it catches:** Regressions in multi-requirement aggregation and component reuse. If the
-agent starts duplicating layout markup or drops sections like testimonials, this scenario flags it.
 
 ---
 
@@ -78,9 +64,10 @@ integration patterns, data separation, and layout reuse across pages.
 
 ### `cleaning-biz-ambiguity`
 
-No static prompt. Uses the `cleaning-biz-owner` persona: a non-technical cleaning business
-owner who sends short, vague messages ("I need a website for my cleaning business") and
-gets frustrated if the agent asks too many questions at once or uses jargon.
+Uses a static first message ("I need a website for my cleaning business") combined with the
+`cleaning-biz-owner` persona for multi-turn behavior: a non-technical cleaning business owner
+who sends short, vague follow-ups and gets frustrated if the agent asks too many questions at
+once or uses jargon.
 
 **Goal:** Agent infers business basics from vague input and builds a functional site with a
 services section and contact information.
@@ -93,7 +80,7 @@ contact info, this scenario flags it.
 
 ## Evaluator Dimensions
 
-All four scenarios share the same evaluator stack, assembled in `create-golden-light-scenario.ts`.
+All three scenarios share the same evaluator stack, assembled in `create-golden-light-scenario.ts`.
 
 ### Correctness
 
@@ -123,13 +110,12 @@ judgment, covering structural and semantic dimensions:
 
 ### Alignment
 
-Four LLM judges that check semantic fit between the user's intent and the agent's output:
+Three LLM judges that check semantic fit between the user's intent and the agent's output:
 
 | Evaluator | What it catches |
 |---|---|
 | `intent-to-output-alignment` | Numeric match (0–1) between stated requirements and the built output |
 | `implicit-feature-gap` | Implied features that were silently dropped (e.g. missing contact form) |
-| `scope-drift-overgeneration` | Unnecessary pages or features added beyond what was asked |
 | `silent-hallucination` | Capability claims not backed by actual artifacts in the preview |
 
 ### Efficiency

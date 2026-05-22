@@ -15,6 +15,7 @@ export function cleaningBizAmbiguityScenario(
   return createGoldenLightScenario(
     {
       name: 'cleaning-biz-ambiguity',
+      staticFirstMessage: 'I need a website for my cleaning business',
       persona: cleaningBizPersona,
       goals: [
         {

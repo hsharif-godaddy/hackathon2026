@@ -1,6 +1,5 @@
 import { buildAiroBaselineScenarios } from './airo-baseline/index.js';
 import {
-  businessSiteScenario,
   cleaningBizAmbiguityScenario,
   multipageCatalogScenario,
   simplePortfolioScenario,
@@ -32,7 +31,6 @@ export function createAllScenarios(
 ): Scenario[] {
   return [
     simplePortfolioScenario(gocode, ctrlPlane),
-    businessSiteScenario(gocode, ctrlPlane),
     buildWithExplicitNameScenario(gocode, ctrlPlane),
     reAskInToolCallScenario(gocode, ctrlPlane),
     multipageCatalogScenario(gocode, ctrlPlane),

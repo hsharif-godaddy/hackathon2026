@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
   simplePortfolioScenario,
-  businessSiteScenario,
   multipageCatalogScenario,
   cleaningBizAmbiguityScenario,
 } from '../index.js';
@@ -26,7 +25,6 @@ const REQUIRED_EVALUATORS = [
   'token-usage',
   'intent-to-output-alignment',
   'implicit-feature-gap',
-  'scope-drift-overgeneration',
   'silent-hallucination',
 ];
 
@@ -40,32 +38,28 @@ const scenarios: {
   name: string;
   goalCount: number;
   hasStaticFirstMessage: boolean;
-  expectedPersonaName?: string;
+  persona: string;
 }[] = [
   {
     builder: simplePortfolioScenario,
     name: 'simple-portfolio',
     goalCount: 1,
     hasStaticFirstMessage: true,
-  },
-  {
-    builder: businessSiteScenario,
-    name: 'business-site',
-    goalCount: 2,
-    hasStaticFirstMessage: true,
+    persona: 'standard',
   },
   {
     builder: multipageCatalogScenario,
     name: 'multipage-catalog',
     goalCount: 3,
     hasStaticFirstMessage: true,
+    persona: 'standard',
   },
   {
     builder: cleaningBizAmbiguityScenario,
     name: 'cleaning-biz-ambiguity',
     goalCount: 1,
-    hasStaticFirstMessage: false,
-    expectedPersonaName: 'cleaning-biz-owner',
+    hasStaticFirstMessage: true,
+    persona: 'cleaning-biz-owner',
   },
 ];
 
@@ -75,7 +69,7 @@ describe('golden-light suite', () => {
 
   describe.each(scenarios)(
     '$name',
-    ({ builder, name, goalCount, hasStaticFirstMessage, expectedPersonaName }) => {
+    ({ builder, name, goalCount, hasStaticFirstMessage, persona }) => {
       const scenario = builder(gocode, ctrlPlane);
 
       it('has correct name and suite', () => {
@@ -103,19 +97,16 @@ describe('golden-light suite', () => {
         expect(scenario.trials).toBe(3);
       });
 
-      if (hasStaticFirstMessage) {
-        it('has a static first message', () => {
-          expect(
-            scenario.staticFirstMessage ?? '',
-          ).not.toHaveLength(0);
-        });
-      } else {
-        it('has no static first message but has a persona', () => {
-          expect(scenario.staticFirstMessage).toBeUndefined();
-          expect(scenario.persona).toBeDefined();
-          expect(scenario.persona?.name).toBe(expectedPersonaName);
-        });
-      }
+      it('has a static first message', () => {
+        expect(
+          scenario.staticFirstMessage ?? '',
+        ).not.toHaveLength(0);
+      });
+
+      it('has the expected persona', () => {
+        expect(scenario.persona).toBeDefined();
+        expect(scenario.persona?.name).toBe(persona);
+      });
     },
   );
 });

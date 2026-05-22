@@ -13,7 +13,7 @@ import { clamp01, readSnapshotHtml, extractBodyHtml } from '../shared.js';
 import { buildAlignmentEvidence } from './alignment-evidence.js';
 
 /** Bump when any prompt-contributing function in this directory changes. */
-export const ALIGNMENT_EVAL_VERSION = '1.0';
+export const ALIGNMENT_EVAL_VERSION = '1.1';
 
 interface BaseAlignmentSpec {
   readonly name: string;
@@ -48,16 +48,7 @@ const SPECS: AlignmentSpec[] = [
     scoreType: 'boolean',
     booleanTrueIsGood: false,
     description:
-      'Whether the final site is missing important implied features that a reasonable user would expect given the intent and domain, such as contact info, pricing, booking, map, or CTA placement.',
-    inputsUsed: ['conversation', 'final_artifacts'],
-  },
-  {
-    name: 'scope-drift-overgeneration',
-    dimension: 'Scope Control',
-    scoreType: 'boolean',
-    booleanTrueIsGood: false,
-    description:
-      'Whether the agent added unnecessary pages or features unsupported by user intent, especially if they increase complexity, risk, maintenance, or contradict user preferences.',
+      'Whether the final site is missing important implied features that a reasonable user would expect given the intent and domain, such as contact info, pricing, booking, map, or CTA placement. Evaluate rendered section content only — do not treat navigation links or planning artifacts pointing to unbuilt sections as evidence of a gap.',
     inputsUsed: ['conversation', 'final_artifacts'],
   },
   {

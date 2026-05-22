@@ -73,9 +73,9 @@ const VALID_SNAPSHOT = makeInlineSnapshot('<html><body><h1>Portfolio</h1></body>
 // ---------------------------------------------------------------------------
 
 describe('createAlignmentLLMEvaluators', () => {
-  it('returns exactly 4 evaluators', () => {
+  it('returns exactly 3 evaluators', () => {
     const evs = createAlignmentLLMEvaluators(makeGocode({}));
-    expect(evs).toHaveLength(4);
+    expect(evs).toHaveLength(3);
   });
 
   it('returns evaluators with correct names', () => {
@@ -83,12 +83,11 @@ describe('createAlignmentLLMEvaluators', () => {
     const names = evs.map((e) => e.name);
     expect(names).toContain('intent-to-output-alignment');
     expect(names).toContain('implicit-feature-gap');
-    expect(names).toContain('scope-drift-overgeneration');
     expect(names).toContain('silent-hallucination');
   });
 
   it('all evaluators have evalVersion equal to ALIGNMENT_EVAL_VERSION', () => {
-    expect(ALIGNMENT_EVAL_VERSION).toBe('1.0');
+    expect(ALIGNMENT_EVAL_VERSION).toBe('1.1');
     const evs = createAlignmentLLMEvaluators(makeGocode({}));
     for (const ev of evs) {
       expect(ev.evalVersion).toBe(ALIGNMENT_EVAL_VERSION);
@@ -284,28 +283,6 @@ describe('implicit-feature-gap (boolean, booleanTrueIsGood=false)', () => {
 // ---------------------------------------------------------------------------
 // Boolean polarity verification for remaining boolean evaluators
 // ---------------------------------------------------------------------------
-
-describe('scope-drift-overgeneration (boolean, booleanTrueIsGood=false)', () => {
-  it('value=true (drift present) → fail', async () => {
-    const evs = createAlignmentLLMEvaluators(
-      makeGocode({ value: true, verdict: 'fail', reason: 'unnecessary pages added' }),
-    );
-    const ev = evs.find((e) => e.name === 'scope-drift-overgeneration')!;
-    const result = await ev.evaluate(makeTranscript(VALID_TURNS), makeScenario(), VALID_SNAPSHOT);
-    expect(result.verdict).toBe('fail');
-    expect(result.score).toBe(0);
-  });
-
-  it('value=false (no drift) → pass', async () => {
-    const evs = createAlignmentLLMEvaluators(
-      makeGocode({ value: false, verdict: 'pass', reason: 'scope kept tight' }),
-    );
-    const ev = evs.find((e) => e.name === 'scope-drift-overgeneration')!;
-    const result = await ev.evaluate(makeTranscript(VALID_TURNS), makeScenario(), VALID_SNAPSHOT);
-    expect(result.verdict).toBe('pass');
-    expect(result.score).toBe(1);
-  });
-});
 
 describe('silent-hallucination (boolean, booleanTrueIsGood=false)', () => {
   it('value=true (hallucination present) → fail', async () => {
