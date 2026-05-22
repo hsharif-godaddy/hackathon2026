@@ -34,8 +34,10 @@ export class DefaultContextRenderer implements ContextAttachmentRenderer {
 
       const content = this.formatAsMarkdown(attachment)
       
-      const role: 'user' | 'system' = this.determineRole(attachment)
       const insertionOrder: 'before_history' | 'after_history' = this.determineInsertionOrder(renderStrategy || 'before_prompt')
+      // Anthropic requires all system messages to be contiguous at the start.
+      // after_history messages land after user/assistant turns, so they must be 'user' role.
+      const role: 'user' | 'system' = insertionOrder === 'after_history' ? 'user' : this.determineRole(attachment)
 
       logger.debug('context.renderer.default.rendered', {
         type: attachment.type,
