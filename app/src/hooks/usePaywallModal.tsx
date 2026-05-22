@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import { useQueryClient } from '@tanstack/react-query';
 
 import { UpgradeContainer } from '@/app/[market]/develop/components/paywall'
@@ -24,7 +24,7 @@ interface UsePaywallModalOptions {
 
 interface UsePaywallModalReturn {
   checkAndShowPaywall: (action: () => Promise<void>) => Promise<void>
-  PaywallModal: () => React.ReactElement | null
+  paywallModal: React.ReactElement | null
   shouldShowPaywall: boolean
   isPaywallLoading: boolean
   /** Whether publish limit check is loading */
@@ -42,7 +42,7 @@ interface UsePaywallModalReturn {
  *
  * @example
  * ```tsx
- * const { checkAndShowPaywall, PaywallModal } = usePaywallModal({
+ * const { checkAndShowPaywall, paywallModal } = usePaywallModal({
  *   source: 'download',
  *   appId // Optional for logging
  * })
@@ -55,7 +55,7 @@ interface UsePaywallModalReturn {
  *
  * return (
  *   <>
- *     <PaywallModal />
+ *     {paywallModal}
  *     <Button onClick={handleDownload} />
  *   </>
  * )
@@ -191,7 +191,7 @@ export function usePaywallModal({
     ]
   )
 
-  const PaywallModal = useCallback(() => {
+  const paywallModal = useMemo(() => {
     // Show publish limit modal if applicable
     if (showPublishLimitModal && publishLimitData) {
       return (
@@ -252,7 +252,7 @@ export function usePaywallModal({
 
   return {
     checkAndShowPaywall,
-    PaywallModal,
+    paywallModal,
     shouldShowPaywall: !hasCompletedPurchase && showPaywall,
     isPaywallLoading,
     isPublishLimitLoading,

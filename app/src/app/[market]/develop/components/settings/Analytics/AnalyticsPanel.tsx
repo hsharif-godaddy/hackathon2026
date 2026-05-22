@@ -53,7 +53,7 @@ export default function AnalyticsPanel() {
 
   const { handlePublish, isPublishDisabled, publishState } = usePublishForDomain(appId, site)
 
-  const { checkAndShowPaywall, PaywallModal, isPaywallLoading, isPublishLimitLoading } = usePaywallModal({
+  const { checkAndShowPaywall, paywallModal, isPaywallLoading, isPublishLimitLoading } = usePaywallModal({
     appId: appId ?? undefined,
     source: 'publish',
     itc: PAYWALL_ITC.PUBLISH,
@@ -115,7 +115,7 @@ export default function AnalyticsPanel() {
   if (!publishedUrl || !hasBeenPublished(site)) {
     return (
       <Box gap="lg" className="@container">
-        <PaywallModal />
+        {paywallModal}
         <EmptyStateCard
           icon={<GraphIcon width={48} height={48} />}
           title={t('builder_analytics_empty_title')}

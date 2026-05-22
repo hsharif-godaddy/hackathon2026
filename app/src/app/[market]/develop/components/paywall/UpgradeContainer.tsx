@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect } from 'react'
+import React, { useCallback, useEffect } from 'react'
 
 import { EXPERIMENT_IDS } from '@/config/experiments'
 import { useIsInCohort } from '@/hooks/useHivemind'
@@ -22,7 +22,7 @@ interface UpgradeContainerProps {
   itc?: string
 }
 
-export default function UpgradeContainer(props: UpgradeContainerProps) {
+export default React.memo(function UpgradeContainer(props: UpgradeContainerProps) {
   const { onClose, onSuccessClick, source } = props
   const { data: subscription, isLoading: subscriptionLoading } = useSubscription()
 
@@ -72,4 +72,4 @@ export default function UpgradeContainer(props: UpgradeContainerProps) {
       recommendedPlan={recommendedPlan}
     />
   )
-}
+})

@@ -22,7 +22,7 @@ vi.mock('@/hooks/useDownloadApp', () => ({
 vi.mock('@/hooks/usePaywallModal', () => ({
   usePaywallModal: vi.fn(() => ({
     checkAndShowPaywall: vi.fn((callback) => callback()),
-    PaywallModal: () => null,
+    paywallModal: null,
     shouldShowPaywall: false,
     isPaywallLoading: false,
     isPublishLimitLoading: false,
@@ -97,7 +97,7 @@ describe('ProjectPanel', () => {
 
       vi.mocked(usePaywallModal).mockReturnValue({
         checkAndShowPaywall: mockCheckAndShowPaywall,
-        PaywallModal: () => null,
+        paywallModal: null,
         shouldShowPaywall: false,
         isPaywallLoading: false,
         isPublishLimitLoading: false,
@@ -131,7 +131,7 @@ describe('ProjectPanel', () => {
 
       vi.mocked(usePaywallModal).mockReturnValue({
         checkAndShowPaywall: mockCheckAndShowPaywall,
-        PaywallModal: () => null,
+        paywallModal: null,
         shouldShowPaywall: false,
         isPaywallLoading: false,
         isPublishLimitLoading: false,
@@ -171,7 +171,7 @@ describe('ProjectPanel', () => {
 
       vi.mocked(usePaywallModal).mockReturnValue({
         checkAndShowPaywall: vi.fn(),
-        PaywallModal: () => null,
+        paywallModal: null,
         shouldShowPaywall: false,
         isPaywallLoading: false,
         isPublishLimitLoading: false,

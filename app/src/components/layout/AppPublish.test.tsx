@@ -123,22 +123,31 @@ vi.mock('@/hooks/useIsHistoryDisabled', () => ({
   useIsHistoryDisabled: () => ({ isDisabled: false }),
 }));
 
+let capturedOnPurchaseSuccess: (() => Promise<void>) | undefined;
 vi.mock('@/hooks/usePaywallModal', () => ({
-  usePaywallModal: vi.fn(() => ({
-    checkAndShowPaywall: vi.fn((callback: () => void | Promise<void>) => {
-      void callback();
-    }),
-    PaywallModal: () => null,
-    isPolling: false,
-    isPaywallLoading: false,
-    isPublishLimitLoading: false,
-  })),
+  usePaywallModal: vi.fn((options: { onPurchaseSuccess?: () => Promise<void> }) => {
+    capturedOnPurchaseSuccess = options.onPurchaseSuccess;
+    return {
+      checkAndShowPaywall: vi.fn((callback: () => void | Promise<void>) => {
+        void callback();
+      }),
+      paywallModal: null,
+      isPolling: false,
+      isPaywallLoading: false,
+      isPublishLimitLoading: false,
+    };
+  }),
 }));
 
 vi.mock('@/hooks/usePublishApp', () => ({
   usePublishApp: () => ({
     mutateAsync: mockMutateAsync,
   }),
+}));
+
+const mockIsUpgradePolling = vi.hoisted(() => ({ value: false }));
+vi.mock('@/hooks/useUpgradePurchase', () => ({
+  useIsUpgradePolling: () => mockIsUpgradePolling.value,
 }));
 
 vi.mock('@/hooks/useDnsConflictGate', () => ({
@@ -249,6 +258,7 @@ describe('AppPublish', () => {
     mockMutateAsync.mockReset();
     mockMutateAsync.mockResolvedValue(undefined);
     mockDnsConflictModal = null;
+    mockIsUpgradePolling.value = false;
     mockSiteStore.getSite.mockReturnValue(
       createMockSite({
         id: 'app-123',
@@ -1487,5 +1497,52 @@ describe('AppPublish', () => {
     expect(mockSetActiveChatTab).toHaveBeenCalledWith(ChatTab.SETTINGS);
     expect(mockDevelopStore.handleViewModeChange).not.toHaveBeenCalled();
     expect(mockDevelopStore.handleMobileModeChange).not.toHaveBeenCalled();
+  });
+
+  describe('upgrade polling and publish popover', () => {
+    it('should not open popover while upgrade polling is in progress', async function popoverWaitsDuringPolling() {
+      mockIsUpgradePolling.value = true;
+
+      renderWithProviders(<AppPublish />);
+
+      // Simulate onPurchaseSuccess being called after user upgrades
+      await capturedOnPurchaseSuccess?.();
+
+      // Popover should NOT be open while polling is in progress
+      expect(screen.queryByText('builder_publish_popover_title')).not.toBeInTheDocument();
+    });
+
+    it('should open popover after upgrade polling completes', async function popoverOpensAfterPolling() {
+      mockIsUpgradePolling.value = true;
+
+      const { rerender } = renderWithProviders(<AppPublish />);
+
+      // Simulate onPurchaseSuccess being called after user upgrades
+      await capturedOnPurchaseSuccess?.();
+
+      // Popover should NOT be open while polling is in progress
+      expect(screen.queryByText('builder_publish_popover_title')).not.toBeInTheDocument();
+
+      // Simulate polling completing
+      mockIsUpgradePolling.value = false;
+      rerender(<AppPublish />);
+
+      await waitFor(() => {
+        expect(screen.getByText('builder_publish_popover_title')).toBeInTheDocument();
+      });
+    });
+
+    it('should open popover immediately when no upgrade polling is active', async function popoverOpensImmediately() {
+      mockIsUpgradePolling.value = false;
+
+      renderWithProviders(<AppPublish />);
+
+      // Simulate onPurchaseSuccess being called (e.g. renewal, no polling needed)
+      await capturedOnPurchaseSuccess?.();
+
+      await waitFor(() => {
+        expect(screen.getByText('builder_publish_popover_title')).toBeInTheDocument();
+      });
+    });
   });
 });

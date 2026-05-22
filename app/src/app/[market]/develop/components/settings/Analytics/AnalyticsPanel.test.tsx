@@ -46,7 +46,7 @@ vi.mock('@/app/[market]/develop/components/settings/DomainPanel/usePublishForDom
 vi.mock('@/hooks/usePaywallModal', () => ({
   usePaywallModal: () => ({
     checkAndShowPaywall: vi.fn((cb: () => unknown) => cb()),
-    PaywallModal: () => null,
+    paywallModal: null,
     isPaywallLoading: false,
     isPublishLimitLoading: false,
   }),

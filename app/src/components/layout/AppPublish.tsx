@@ -36,6 +36,7 @@ import { useSecretsDiff } from '@/hooks/useSecretsDiff';
 import { useSubscription } from '@/hooks/useSubscription';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from '@/hooks/useTranslations';
+import { useIsUpgradePolling } from '@/hooks/useUpgradePurchase';
 import { JourneyTracker } from '@/lib/journeyTracker';
 import { shipAnalyticsLog } from '@/lib/logging';
 import { DeploymentStatus } from '@/lib/mgmt-airo/types';
@@ -149,15 +150,27 @@ export default function AppPublish({ location = 'develop' }: { location?: string
 
   const isChatToolbar = location === 'develop.chat_toolbar';
 
+  const isUpgradePolling = useIsUpgradePolling();
+  const [pendingOpenAfterUpgrade, setPendingOpenAfterUpgrade] = useState(false);
+
+  const handlePaywallPurchaseSuccess = useCallback(async () => {
+    setPendingOpenAfterUpgrade(true);
+  }, []);
+
+  // Open popover after upgrade polling completes
+  useEffect(() => {
+    if (pendingOpenAfterUpgrade && !isUpgradePolling) {
+      setPendingOpenAfterUpgrade(false);
+      setOpen(true);
+    }
+  }, [pendingOpenAfterUpgrade, isUpgradePolling]);
+
   // Use shared paywall modal hook (includes publish limit check)
-  const { checkAndShowPaywall, PaywallModal, isPaywallLoading, isPublishLimitLoading } = usePaywallModal({
+  const { checkAndShowPaywall, paywallModal, isPaywallLoading, isPublishLimitLoading } = usePaywallModal({
     appId: currentAppId,
     source: 'publish',
     itc: PAYWALL_ITC.PUBLISH,
-    onPurchaseSuccess: async () => {
-      // Open publish modal after successful purchase
-      setOpen(true);
-    },
+    onPurchaseSuccess: handlePaywallPurchaseSuccess,
   });
 
   const { data: subscription } = useSubscription();
@@ -674,7 +687,7 @@ export default function AppPublish({ location = 'develop' }: { location?: string
 
   return (
     <>
-      <PaywallModal />
+      {paywallModal}
       {dnsConflictModal}
       <Popover open={open} onOpenChange={handlePublish}>
         <PopoverTrigger asChild>

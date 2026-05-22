@@ -4,9 +4,13 @@ import React from 'react';
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { renderHook } from '@testing-library/react';
+import { act, renderHook } from '@testing-library/react';
 
 import { usePaywallModal } from './usePaywallModal';
+
+// Stable mock references to avoid destabilizing useMemo dependencies
+const mockOpenUpgradeModal = vi.fn();
+const mockGetSite = vi.fn(() => ({ name: 'Test Site' }));
 
 // Mock dependencies
 vi.mock('@/lib/logging', () => ({
@@ -15,7 +19,7 @@ vi.mock('@/lib/logging', () => ({
 vi.mock('@/stores/useDevelopPageStore', () => ({
   useDevelopPageStore: vi.fn((selector) => {
     const state = {
-      openUpgradeModal: vi.fn(),
+      openUpgradeModal: mockOpenUpgradeModal,
     };
     return selector ? selector(state) : state;
   }),
@@ -23,7 +27,7 @@ vi.mock('@/stores/useDevelopPageStore', () => ({
 vi.mock('@/stores/useSiteStore', () => ({
   useSiteStore: vi.fn((selector) => {
     const state = {
-      getSite: vi.fn(() => ({ name: 'Test Site' })),
+      getSite: mockGetSite,
     };
     return selector ? selector(state) : state;
   }),
@@ -116,14 +120,86 @@ describe('usePaywallModal', () => {
       );
 
       expect(result.current).toHaveProperty('checkAndShowPaywall');
-      expect(result.current).toHaveProperty('PaywallModal');
+      expect(result.current).toHaveProperty('paywallModal');
       expect(result.current).toHaveProperty('shouldShowPaywall');
       expect(result.current).toHaveProperty('isPaywallLoading');
 
       expect(typeof result.current.checkAndShowPaywall).toBe('function');
-      expect(typeof result.current.PaywallModal).toBe('function');
+      expect(result.current.paywallModal).toBeNull();
       expect(typeof result.current.shouldShowPaywall).toBe('boolean');
       expect(typeof result.current.isPaywallLoading).toBe('boolean');
+    });
+  });
+
+  describe('Referential stability', () => {
+    it('should retain paywallModal identity across re-renders when modal is visible', async () => {
+      const mockUsePaywallEligibility = await import('./usePaywallEligibility');
+      vi.mocked(mockUsePaywallEligibility.usePaywallEligibility).mockReturnValue({
+        showPaywall: true,
+        isLoading: false,
+        isError: false,
+        error: null,
+      });
+
+      const { result, rerender } = renderHook(
+        () =>
+          usePaywallModal({
+            appId: 'app-123',
+            source: 'test',
+          }),
+        { wrapper }
+      );
+
+      // Trigger paywall visibility by calling checkAndShowPaywall
+      await act(async () => {
+        await result.current.checkAndShowPaywall(async () => {});
+      });
+
+      const firstRender = result.current.paywallModal;
+      // Verify modal is actually rendered (not null)
+      expect(firstRender).not.toBeNull();
+
+      rerender();
+      const secondRender = result.current.paywallModal;
+
+      // paywallModal element reference must be stable across re-renders
+      // to prevent UpgradeContainer from being remounted during streaming
+      expect(firstRender).toBe(secondRender);
+    });
+
+    it('should retain paywallModal identity when parent re-renders without prop changes', async () => {
+      const mockUsePaywallEligibility = await import('./usePaywallEligibility');
+      vi.mocked(mockUsePaywallEligibility.usePaywallEligibility).mockReturnValue({
+        showPaywall: true,
+        isLoading: false,
+        isError: false,
+        error: null,
+      });
+
+      const { result, rerender } = renderHook(
+        () =>
+          usePaywallModal({
+            appId: 'app-456',
+            source: 'download',
+          }),
+        { wrapper }
+      );
+
+      // Trigger paywall visibility by calling checkAndShowPaywall
+      await act(async () => {
+        await result.current.checkAndShowPaywall(async () => {});
+      });
+
+      const firstRender = result.current.paywallModal;
+      // Verify modal is actually rendered (not null)
+      expect(firstRender).not.toBeNull();
+
+      rerender();
+      const secondRender = result.current.paywallModal;
+
+      // paywallModal element reference must be stable across re-renders
+      // to prevent UpgradeContainer from being remounted during streaming
+      expect(firstRender).toBe(secondRender);
     });
   });
 

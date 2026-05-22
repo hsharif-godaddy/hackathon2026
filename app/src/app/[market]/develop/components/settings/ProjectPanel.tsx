@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import Alert from '@ux/alert'
 import Box from '@ux/box'
 import Button from '@ux/button'
@@ -68,17 +68,19 @@ export default function ProjectPanel() {
     }
   }, [purgeStatus, purgeErrorCode, t])
 
+  const handlePaywallPurchaseSuccess = useCallback(async () => {
+    try {
+      await download()
+    } catch (error) {
+      // Error already logged in hook
+    }
+  }, [download])
+
   // Use shared paywall modal hook
-  const { checkAndShowPaywall, PaywallModal, isPaywallLoading } = usePaywallModal({
+  const { checkAndShowPaywall, paywallModal, isPaywallLoading } = usePaywallModal({
     appId,
     source: 'download',
-    onPurchaseSuccess: async () => {
-      try {
-        await download()
-      } catch (error) {
-        // Error already logged in hook
-      }
-    },
+    onPurchaseSuccess: handlePaywallPurchaseSuccess,
   })
 
   const handleDownload = async () => {
@@ -117,7 +119,7 @@ export default function ProjectPanel() {
 
   return (
     <>
-      <PaywallModal />
+      {paywallModal}
       <Box gap='lg' className='@container'>
         <SettingsSection
           title={t('builder_settings_project_purge_cache_title', undefined, 'Purge Cache')}
