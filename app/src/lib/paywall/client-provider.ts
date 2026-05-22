@@ -40,26 +40,14 @@ export class ClientPaywallProvider implements PaywallDataProvider {
   }
 
   /**
-   * Read paywall switchboard flags from the SSR-serialized gasket-data tree.
+   * Read the bypass-publish-limit flag from the SSR-serialized gasket-data tree.
    *
-   * Fails closed: throws if `window.gasketData` isn't yet populated (flags not
-   * hydrated) so the caller reports "service unavailable" rather than granting
-   * free access.
+   * The paywall is always enabled (no longer gated by feature flags).
+   * Only the bypass-publish-limit flag is still read as an operational escape hatch.
    */
   async checkSwitchboardFlags(_rootDomain: string): Promise<SwitchboardFlagsResult> {
-    const paywall = getSwitchboardFlag('appbuilder-airoplus-paywall');
-    const markets = getSwitchboardFlag('appbuilder-airoplus-markets');
     const bypassPublishLimit = getSwitchboardFlag('app-builder-bypass-publish-limit') ?? false;
-
-    if (paywall === undefined || markets === undefined) {
-      logger.error('paywall.client-provider.flag-fetch.missing', {
-        paywallLoaded: paywall !== undefined,
-        marketsLoaded: markets !== undefined,
-      });
-      throw new Error('Switchboard flags not loaded in gasket-data');
-    }
-
-    return { paywall, markets, bypassPublishLimit };
+    return { bypassPublishLimit };
   }
 
   /**

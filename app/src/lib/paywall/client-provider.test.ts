@@ -53,78 +53,35 @@ describe('ClientPaywallProvider', () => {
       stubGasketData(undefined);
     });
 
-    it('reads all three flags from gasket-data', async () => {
+    it('returns bypassPublishLimit flag from gasket-data', async () => {
       stubGasketData({
-        'appbuilder-airoplus-paywall': true,
-        'appbuilder-airoplus-markets': true,
         'app-builder-bypass-publish-limit': false,
       });
 
       const provider = new ClientPaywallProvider();
       await expect(provider.checkSwitchboardFlags('godaddy.com')).resolves.toEqual({
-        paywall: true,
-        markets: true,
         bypassPublishLimit: false,
       });
     });
 
     it('returns bypass=true when the flag is enabled', async () => {
       stubGasketData({
-        'appbuilder-airoplus-paywall': true,
-        'appbuilder-airoplus-markets': true,
         'app-builder-bypass-publish-limit': true,
       });
 
       const provider = new ClientPaywallProvider();
       await expect(provider.checkSwitchboardFlags('godaddy.com')).resolves.toEqual({
-        paywall: true,
-        markets: true,
         bypassPublishLimit: true,
       });
     });
 
     it('defaults bypass to false when missing (fail-closed optional flag)', async () => {
-      stubGasketData({
-        'appbuilder-airoplus-paywall': true,
-        'appbuilder-airoplus-markets': true,
-      });
+      stubGasketData({});
 
       const provider = new ClientPaywallProvider();
       await expect(provider.checkSwitchboardFlags('godaddy.com')).resolves.toEqual({
-        paywall: true,
-        markets: true,
         bypassPublishLimit: false,
       });
-    });
-
-    it('throws when paywall flag is missing from the tree', async () => {
-      stubGasketData({
-        'appbuilder-airoplus-markets': true,
-      });
-
-      const provider = new ClientPaywallProvider();
-      await expect(provider.checkSwitchboardFlags('godaddy.com')).rejects.toThrow(
-        /Switchboard flags not loaded/,
-      );
-    });
-
-    it('throws when markets flag is missing from the tree', async () => {
-      stubGasketData({
-        'appbuilder-airoplus-paywall': true,
-      });
-
-      const provider = new ClientPaywallProvider();
-      await expect(provider.checkSwitchboardFlags('godaddy.com')).rejects.toThrow(
-        /Switchboard flags not loaded/,
-      );
-    });
-
-    it('throws when gasket-data is not yet hydrated', async () => {
-      stubGasketData(undefined);
-      const provider = new ClientPaywallProvider();
-      await expect(provider.checkSwitchboardFlags('godaddy.com')).rejects.toThrow(
-        /Switchboard flags not loaded/,
-      );
     });
   });
 

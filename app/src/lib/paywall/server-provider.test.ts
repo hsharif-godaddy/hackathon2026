@@ -79,44 +79,27 @@ describe('ServerPaywallProvider', () => {
       mockCheckSwitchboardFlag.mockImplementation((name: string) => Promise.resolve(map[name] ?? false));
     }
 
-    it('should return flags from the gasket tree', async () => {
+    it('returns bypassPublishLimit flag from switchboard', async () => {
       stubFlags({
-        'appbuilder-airoplus-paywall': true,
-        'appbuilder-airoplus-markets': true,
         'app-builder-bypass-publish-limit': false,
       });
 
       const provider = new ServerPaywallProvider('jwt-token', 'customer-123', mockHeaders);
       await expect(provider.checkSwitchboardFlags('godaddy.com')).resolves.toEqual({
-        paywall: true,
-        markets: true,
         bypassPublishLimit: false,
       });
-      expect(mockCheckSwitchboardFlag).toHaveBeenCalledTimes(3);
+      expect(mockCheckSwitchboardFlag).toHaveBeenCalledTimes(1);
+      expect(mockCheckSwitchboardFlag).toHaveBeenCalledWith('app-builder-bypass-publish-limit', { headers: mockHeaders });
     });
 
     it('should return bypass flag when enabled', async () => {
       stubFlags({
-        'appbuilder-airoplus-paywall': true,
-        'appbuilder-airoplus-markets': true,
         'app-builder-bypass-publish-limit': true,
       });
 
       const provider = new ServerPaywallProvider('jwt-token', 'customer-123', mockHeaders);
       await expect(provider.checkSwitchboardFlags('godaddy.com')).resolves.toEqual({
-        paywall: true,
-        markets: true,
         bypassPublishLimit: true,
-      });
-    });
-
-    it('should default to false when a flag is missing from the tree', async () => {
-      stubFlags({});
-      const provider = new ServerPaywallProvider('jwt-token', 'customer-123', mockHeaders);
-      await expect(provider.checkSwitchboardFlags('godaddy.com')).resolves.toEqual({
-        paywall: false,
-        markets: false,
-        bypassPublishLimit: false,
       });
     });
 

@@ -26,7 +26,7 @@ export enum PaywallAction {
  *
  * This is the main paywall eligibility check used by both client and server.
  *
- * 1. Check if paywall is enabled via switchboard flags
+ * 1. Fetch the bypass-publish-limit operational flag
  * 2. Get user's account-level subscription and check plan
  *    - Paid plan (Starter, Professional, Ultimate) = access granted with plan limits
  *    - Users with app-builder-bypass-publish-limit enabled get unlimited publishing
@@ -55,37 +55,15 @@ export async function checkPaywallEligibility(
   };
 
   try {
-    // Step 1: Check if paywall is enabled via switchboard flags
+    // Step 1: Fetch bypassPublishLimit flag
     const rootDomain = provider.getRootDomain();
 
-    if (!rootDomain) {
-      logger.error('paywall.eligibility.no-root-domain', {
-        appId,
-        message: 'Cannot check switchboard flags without root domain',
-      });
-      // Fail closed - deny access if we can't determine domain
-      // Security: Never grant access when we can't verify eligibility
-      return {
-        hasAccess: false,
-        reason: 'Unable to verify subscription status (no root domain)',
-        details: {
-          hasSubscription: false,
-          hasEntitlements: false,
-          hasMatchingProject: false,
-        },
-      };
-    }
-
-    let paywallEnabled: boolean;
     let flags: SwitchboardFlagsResult;
     try {
-      flags = await provider.checkSwitchboardFlags(rootDomain);
-      paywallEnabled = flags.paywall && flags.markets;
+      flags = await provider.checkSwitchboardFlags(rootDomain || '');
 
       logger.info('paywall.eligibility.switchboard.checked', {
         appId,
-        isPaywallEnabled: flags.paywall,
-        isPaywallEnabledInMarket: flags.markets,
         isBypassEnabled: flags.bypassPublishLimit,
       });
     } catch (error) {
@@ -93,32 +71,8 @@ export async function checkPaywallEligibility(
         appId,
         error: error instanceof Error ? error.message : String(error),
       });
-      // Fail closed - deny access if switchboard check fails
-      // Security: Never grant access when we can't verify paywall status
-      return {
-        hasAccess: false,
-        reason: 'Unable to verify subscription status (switchboard check failed)',
-        details: {
-          hasSubscription: false,
-          hasEntitlements: false,
-          hasMatchingProject: false,
-        },
-      };
-    }
-
-    if (!paywallEnabled) {
-      // Switchboard flags explicitly indicate paywall is disabled
-      // This is intentional configuration (not a failure - those throw errors)
-      logger.info('paywall.eligibility.disabled', { appId });
-      return {
-        hasAccess: true,
-        reason: 'Paywall not enabled',
-        details: {
-          hasSubscription: false,
-          hasEntitlements: false,
-          hasMatchingProject: false,
-        },
-      };
+      // Fail closed on switchboard error, but default bypassPublishLimit to false
+      flags = { bypassPublishLimit: false };
     }
 
     // Step 2: Check account-level subscription

@@ -56,19 +56,12 @@ export class ServerPaywallProvider implements PaywallDataProvider {
   /**
    * Check switchboard feature flags for paywall control.
    *
-   * Reads from the gasket-plugin-switchboard per-request tree. Propagates
-   * errors so the caller (core.ts) can report "service unavailable" rather
-   * than granting free access. The underlying `checkSwitchboardFlag` already
-   * logs the gasket-level failure; relying on the outer `core.ts` catch to
-   * log the eligibility-level context avoids triple-logging a single event.
+   * The paywall is always enabled (no longer gated by feature flags).
+   * Only the bypass-publish-limit flag is still fetched as an operational escape hatch.
    */
   async checkSwitchboardFlags(_rootDomain: string): Promise<SwitchboardFlagsResult> {
-    const [paywall, markets, bypassPublishLimit] = await Promise.all([
-      checkSwitchboardFlag('appbuilder-airoplus-paywall', { headers: this.headers }),
-      checkSwitchboardFlag('appbuilder-airoplus-markets', { headers: this.headers }),
-      checkSwitchboardFlag('app-builder-bypass-publish-limit', { headers: this.headers }),
-    ]);
-    return { paywall, markets, bypassPublishLimit };
+    const bypassPublishLimit = await checkSwitchboardFlag('app-builder-bypass-publish-limit', { headers: this.headers });
+    return { bypassPublishLimit };
   }
 
   /**

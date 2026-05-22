@@ -13,7 +13,6 @@ import { useSiteStore } from '@/stores/useSiteStore'
 import { SubscriptionPlan } from '@/types/credits'
 import { usePaywallEligibility } from './usePaywallEligibility'
 import { usePublishLimitCheck } from './usePublishLimitCheck'
-import { useSwitchboard } from './useSwitchboard'
 
 interface UsePaywallModalOptions {
   appId?: string // Made optional for account-level subscriptions
@@ -78,8 +77,6 @@ export function usePaywallModal({
   } | null>(null)
   const [hasCompletedPurchase, setHasCompletedPurchase] = useState(false)
   const queryClient = useQueryClient()
-  const isAiroPlusPaywallEnabled = useSwitchboard('appbuilder-airoplus-paywall')
-  const isPaywallEnabledInMarket = useSwitchboard('appbuilder-airoplus-markets')
   const openUpgradeModal = useDevelopPageStore((state) => state.openUpgradeModal)
   const { showPaywall, isLoading: isPaywallLoading } = usePaywallEligibility()
   const site = useSiteStore((state) => (appId ? state.getSite(appId) : null))
@@ -135,16 +132,14 @@ export function usePaywallModal({
       if (isPublishSource && !canPublishWithLimit) {
         // Free plan or no plan (limit === 0) - show paywall
         if (limit === 0) {
-          if (isAiroPlusPaywallEnabled && isPaywallEnabledInMarket) {
-            setShowAiroPlusPaywall(true)
-            shipAnalyticsLog('airoplus.paywall.shown', {
-              appId,
-              appName: site?.name,
-              source,
-              plan,
-            })
-            return
-          }
+          setShowAiroPlusPaywall(true)
+          shipAnalyticsLog('airoplus.paywall.shown', {
+            appId,
+            appName: site?.name,
+            source,
+            plan,
+          })
+          return
         } else {
           // Paid plan at limit - show publish limit modal
           setPublishLimitData({
@@ -168,7 +163,7 @@ export function usePaywallModal({
       // Show paywall only if not completed purchase and showPaywall is true
       const shouldShowPaywall = !hasCompletedPurchase && showPaywall
 
-      if (isAiroPlusPaywallEnabled && isPaywallEnabledInMarket && shouldShowPaywall) {
+      if (shouldShowPaywall) {
         setShowAiroPlusPaywall(true)
         shipAnalyticsLog('airoplus.paywall.shown', {
           appId,
@@ -185,8 +180,6 @@ export function usePaywallModal({
       appId,
       hasCompletedPurchase,
       showPaywall,
-      isAiroPlusPaywallEnabled,
-      isPaywallEnabledInMarket,
       site?.name,
       source,
       isPublishSource,

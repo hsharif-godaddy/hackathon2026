@@ -12,31 +12,16 @@ vi.mock('@/lib/logging', () => ({
   shipAnalyticsLog: vi.fn(),
 }));
 
-vi.mock('./useSwitchboard', () => ({
-  getSwitchboardFlag: vi.fn(),
-}));
-
 vi.mock('./useSubscription', () => ({
   useSubscription: vi.fn(),
 }));
 
 import { usePaywallEligibility } from './usePaywallEligibility';
 import { useSubscription } from './useSubscription';
-import { getSwitchboardFlag } from './useSwitchboard';
-
-function stubFlags({ paywall, markets }: { paywall: boolean; markets: boolean }) {
-  vi.mocked(getSwitchboardFlag).mockImplementation((name: string) => {
-    if (name === 'appbuilder-airoplus-paywall') return paywall;
-    if (name === 'appbuilder-airoplus-markets') return markets;
-    return undefined;
-  });
-}
 
 describe('usePaywallEligibility', function hook() {
   beforeEach(function setup() {
     vi.clearAllMocks();
-
-    stubFlags({ paywall: true, markets: true });
 
     vi.mocked(useSubscription).mockReturnValue({
       data: { id: 'sub-123', plan: SubscriptionPlan.Free, status: 'active' },
@@ -49,15 +34,6 @@ describe('usePaywallEligibility', function hook() {
   });
 
   describe('Account-level subscription checks', function accountLevel() {
-    it('should not show paywall when feature flags are disabled', function flagsDisabled() {
-      stubFlags({ paywall: false, markets: false });
-
-      const { result } = renderHookWithProviders(() => usePaywallEligibility());
-
-      expect(result.current.showPaywall).toBe(false);
-      expect(result.current.isLoading).toBe(false);
-    });
-
     it('should show paywall for active AiroPlus plan', function airoPlus() {
       vi.mocked(useSubscription).mockReturnValue({
         data: { id: 'sub-plus', plan: SubscriptionPlan.AiroPlus, status: 'active' },
@@ -150,22 +126,6 @@ describe('usePaywallEligibility', function hook() {
       const { result } = renderHookWithProviders(() => usePaywallEligibility());
 
       expect(result.current.isLoading).toBe(true);
-    });
-
-    it('should not show loading when subscription is loading but paywall flag is off', function flagOffSubLoading() {
-      stubFlags({ paywall: false, markets: false });
-      vi.mocked(useSubscription).mockReturnValue({
-        data: undefined,
-        subscriptions: [],
-        isLoading: true,
-        isError: false,
-        error: null,
-        refetch: vi.fn(),
-      } as any);
-
-      const { result } = renderHookWithProviders(() => usePaywallEligibility());
-
-      expect(result.current.isLoading).toBe(false);
     });
   });
 

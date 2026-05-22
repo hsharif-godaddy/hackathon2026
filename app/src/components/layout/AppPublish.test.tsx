@@ -169,9 +169,6 @@ vi.mock('@/hooks/useSwitchboard', () => ({
     if (feature === 'appbuilder-publish-button') {
       return true;
     }
-    if (feature === 'appbuilder-airoplus-paywall') {
-      return true;
-    }
     if (feature === 'appbuilder-post-publish-feature-selection') {
       return true;
     }

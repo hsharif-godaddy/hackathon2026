@@ -16,10 +16,6 @@ import type { ProjectEdge } from './shared';
  * Switchboard feature flag check result
  */
 export interface SwitchboardFlagsResult {
-  /** Whether the main paywall flag is enabled */
-  paywall: boolean;
-  /** Whether paywall is enabled in the current market */
-  markets: boolean;
   /** Whether app-builder-bypass-publish-limit flag is enabled allowing unlimited publishing.
    * Defaults to false on fetch failure for fail-closed behavior. */
   bypassPublishLimit: boolean;
