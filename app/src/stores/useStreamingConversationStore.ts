@@ -618,7 +618,6 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
     }
 
     // Add user message to completed messages
-    // Note: origin is NOT set on user messages - only assistant messages need it for care agent styling
     const userChatMessage: ChatMessage = {
       id: userMsgId,
       role: 'user',
@@ -627,6 +626,7 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
       ...(selectedAssets && selectedAssets.length > 0 && { selectedAssets }),
       ...(referencedFiles && referencedFiles.length > 0 && { referencedFiles }),
       ...(uploadedFileName && { uploadedFileName }),
+      ...(origin && { origin }),
     }
 
     // Create new streaming message for assistant

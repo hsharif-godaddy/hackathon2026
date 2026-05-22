@@ -867,6 +867,18 @@ describe('useStreamingConversationStore', function packageTests() {
       const assistantMsg = useStreamingConversationStore.getState().messages.find(m => m.role === 'assistant');
       expect(assistantMsg?.origin).toBe('support');
     });
+
+    it('should set origin on user message for realtime care styling', function userMessageOrigin() {
+      const store = useStreamingConversationStore.getState();
+
+      act(() => {
+        store.setCurrentAppId('app-1');
+        store.startNewStream('Help me with my account', undefined, undefined, 'support');
+      });
+
+      const userMsg = useStreamingConversationStore.getState().messages.find(m => m.role === 'user');
+      expect(userMsg?.origin).toBe('support');
+    });
   });
 
   describe('#addToolStartSegment', function addToolStartSegmentTests() {
