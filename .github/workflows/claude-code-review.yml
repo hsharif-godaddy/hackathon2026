@@ -112,11 +112,12 @@ jobs:
         2. Security + performance (you)       - see <security_and_perf>
         3. E2E coverage (you)                 - see <e2e_review>
         4. PR hygiene (you)                   - see <pr_hygiene>
-        5. code-reviewer (subagent)           - general quality, project guidelines
-        6. pr-test-analyzer (subagent)        - test coverage gaps, edge cases
-        7. silent-failure-hunter (subagent)   - swallowed errors, bad catches
-        8. comment-analyzer (subagent)        - only if comments/docs changed
-        9. type-design-analyzer (subagent)    - only if new types added/modified
+        5. Skills isolation (you)             - see <skills_isolation>
+        6. code-reviewer (subagent)           - general quality, project guidelines
+        7. pr-test-analyzer (subagent)        - test coverage gaps, edge cases
+        8. silent-failure-hunter (subagent)   - swallowed errors, bad catches
+        9. comment-analyzer (subagent)        - only if comments/docs changed
+        10. type-design-analyzer (subagent)   - only if new types added/modified
 
         Skip a subagent if the diff has no relevant changes for it. Do not run
         code-simplifier - simplification suggestions belong in the other passes.
@@ -191,6 +192,43 @@ jobs:
         Flag as [Suggestion]:
         - UI changes without screenshots or videos in the description
         </pr_hygiene>
+
+        <skills_isolation>
+        Trigger: diff touches agents/src/skills/**, agents/src/prompts/**,
+        skill-loader-tool.ts, skill-tool-manager.ts, agents/src/agents/**.
+        See agents/src/skills/README.md.
+
+        Skills are self-contained — add/remove/rename edits live only
+        in the skill's dir. Frontmatter is the ONLY channel into the
+        system prompt; runtime owns render.
+
+        Flag [Important]:
+        - Skill-name literal outside its dir (tests/fixtures exempt).
+        - Switch/if/map/array keyed by skill name in shared code.
+        - Per-skill prose, "when to use", routing, or backup-load
+          text in shared prompts — even with frontmatter.
+        - Prose deterministic triggers ("if user says X load Y"); put
+          such matches in a frontmatter field as pre-filter.
+        - Per-skill gating like `if (skillName === 'commerce')`.
+        - Rename/remove leaving shared code on the old name.
+        - Unjustified shared-prompt growth; "not picked enough" is
+          not valid.
+
+        Skill length (skill.md body) ~200–300 lines:
+        - [Important]: new skill >300; PR growing oversized or pushing
+          a compliant one past 300. Shrinking is fine.
+        - [Suggestion]: new skill 200–300 — split or move to templates/.
+        Fix via splits or templates; never via shared prompts.
+
+        Selection overlap (skill add/modify):
+        - [Suggestion]: description keyword overlap with another skill —
+          differentiate or merge.
+        - [Suggestion]: whenToUse/intents fire on same phrases as
+          another — flag ambiguity. Compare across all skills.
+
+        Do NOT flag: pre-existing refs in unmodified files; self-refs;
+        tests/fixtures; names in frontmatter/templates.
+        </skills_isolation>
 
         <synthesis>
         After all passes complete, synthesize into a single summary comment.
