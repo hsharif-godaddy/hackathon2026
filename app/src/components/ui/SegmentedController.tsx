@@ -89,7 +89,7 @@ export function SegmentedControllerItem({ children, className, value }: Segmente
         className,
       )}
     >
-      <text.span as="action" size={-1}>{children}</text.span>
+      <text.span as="action" size={-1} className="flex gap-1 items-center">{children}</text.span>
     </button>
   );
 }

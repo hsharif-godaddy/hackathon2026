@@ -493,7 +493,7 @@ export default function RUM() {
       description={t('builder_analytics_header_rum_description')}
       hideStatus
       button={(
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 max-w-full">
           {/* TODO: Re-enable filter dropdowns once cross-filter backend support is added
           <Select
             value={filterCountry}
@@ -544,8 +544,6 @@ export default function RUM() {
       className="pb-2 px-1.5 md:px-0.5"
     >
       <Box gap="md">
-        {isInsightsBannerEnabled && <InsightsBanner />}
-
         <div>
           {/* ═══════════ OVERVIEW ═══════════ */}
           <Collapsible
@@ -555,6 +553,7 @@ export default function RUM() {
             title={<text.span as="title" size={-2}>{t('builder_analytics_overview')}</text.span>}
           >
             <CollapsibleContent>
+              {isInsightsBannerEnabled && <InsightsBanner />}
               <div className="grid grid-cols-2 @lg:grid-cols-4 gap-2">
                 <MetricCard
                   label={t('builder_analytics_pageviews')}

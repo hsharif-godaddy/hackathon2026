@@ -542,6 +542,29 @@
     animation: agent-pulse 1.8s infinite linear;
   }
 
+  @keyframes thumb-bounce-up {
+    0%   { transform: translateY(0); }
+    50%  { transform: translateY(-.4em) rotate(-10deg); }
+    70%  { transform: translateY(.1em);}
+    85%  { transform: translateY(-.1em); }
+    100% { transform: translateY(0); }
+  }
+
+  .animate-thumb-bounce-up {
+    animation: thumb-bounce-up 0.5s ease-out;
+  }
+
+  @keyframes thumb-bounce-down {
+    0%   { transform: translateY(0); }
+    50%  { transform: translateY(.3em) rotate(-10deg); }
+    85%  { transform: translateY(-.1em); }
+    100% { transform: translateY(0); }
+  }
+
+  .animate-thumb-bounce-down {
+    animation: thumb-bounce-down 0.5s ease-out;
+  }
+
   .animate-reverse-spin {
     animation: reverse-spin 1s linear infinite;
   }

@@ -116,10 +116,8 @@ export function AnalyticsPeriodPicker({ value, onChange, showLast15Days = false 
         )}
         <SegmentedControllerItem value="30">{t('builder_analytics_last_30_days')}</SegmentedControllerItem>
         <SegmentedControllerItem value="custom">
-          <span className="inline-flex items-center gap-1 whitespace-nowrap">
-            <CalendarIcon width={14} height={14} />
-            {t('builder_analytics_period_custom')}
-          </span>
+          <CalendarIcon width={14} height={14} />
+          {t('builder_analytics_period_custom')}
         </SegmentedControllerItem>
       </SegmentedController>
 
