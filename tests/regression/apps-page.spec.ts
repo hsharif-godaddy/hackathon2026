@@ -110,10 +110,10 @@ test.describe('Apps Page & Navigation', () => {
     await expect(appsPageTitle).toContainText(/\d+/);
     console.log('  ✓ App count displayed');
 
-    // Verify Create button
+    // Verify Create button (desktop uses create-app-card in action bar)
     await expect(page.getByTestId('create-app-card')).toBeVisible();
     await expect(page.getByTestId('create-app-card')).not.toBeDisabled();
-    console.log('  ✓ Create button visible and enabled');
+    console.log('  ✓ Create button visible and enabled (action bar)');
 
     // Verify app card exists
     const cardCount = await page.getByTestId('app-card-edit-button').count();
@@ -139,6 +139,7 @@ test.describe('Apps Page & Navigation', () => {
     // STEP 5: Test "Create a new app" navigation
     // ========================================
     console.log('🏠 Step 5: Testing Create navigation...');
+    // Use create-app-card from action bar (visible on desktop when apps exist)
     await page.getByTestId('create-app-card').click();
     await expect(page).toHaveURL(/\/$/);
     await page.getByTestId('homepage-prompt-input').waitFor({ state: 'visible', timeout: LONG_TIMEOUT });

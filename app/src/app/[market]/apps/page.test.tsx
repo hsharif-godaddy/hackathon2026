@@ -154,16 +154,16 @@ describe('Sites Page', () => {
   });
 
   describe('renders empty state', () => {
-    it('should show empty state card when no sites', () => {
+    it('should show empty state when no sites', () => {
       renderWithProviders(<Sites />);
 
-      expect(screen.getByText('builder_apps_empty_create')).toBeInTheDocument();
+      expect(screen.getByText('builder_apps_empty_state')).toBeInTheDocument();
     });
 
-    it('should hide apps count tag when no sites', () => {
+    it('should show create project button in empty state', () => {
       renderWithProviders(<Sites />);
 
-      expect(screen.queryByText('builder_apps_count')).not.toBeInTheDocument();
+      expect(screen.getByTestId('create-app-empty-state')).toBeInTheDocument();
     });
   });
 
@@ -184,7 +184,7 @@ describe('Sites Page', () => {
       expect(screen.getByText('App 3')).toBeInTheDocument();
     });
 
-    it('should show correct total count', () => {
+    it('should show correct total count in tag', () => {
       const sites = [
         createMockSite({ id: '1' }),
         createMockSite({ id: '2' }),
@@ -194,17 +194,17 @@ describe('Sites Page', () => {
 
       renderWithProviders(<Sites />);
 
-      expect(screen.getByText('builder_apps_count')).toBeInTheDocument();
+      expect(screen.getByText('2')).toBeInTheDocument();
     });
 
-    it('should show singular form for 1 app', () => {
+    it('should show count for 1 app', () => {
       const sites = [createMockSite()];
 
       useSitesStore.setState({ allSites: sites });
 
       renderWithProviders(<Sites />);
 
-      expect(screen.getByText('builder_apps_count')).toBeInTheDocument();
+      expect(screen.getByText('1')).toBeInTheDocument();
     });
   });
 

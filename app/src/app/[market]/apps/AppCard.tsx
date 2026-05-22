@@ -16,6 +16,7 @@ import ShowIcon from '@ux/icon/show'
 import TrashIcon from '@ux/icon/trash'
 import UnlinkIcon from '@ux/icon/unlink'
 import WebsiteIcon from '@ux/icon/website'
+import WindowNewIcon from '@ux/icon/window-new'
 import { Menu, MenuButton, MenuItem, MenuList, MenuSeparator } from '@ux/menu'
 import Modal from '@ux/modal'
 import Tag from '@ux/tag'
@@ -344,7 +345,19 @@ export default function AppCard({ site, transferAllowed = false }: { site: SiteI
       onPointerDown={(e) => e.stopPropagation()}
       onPointerUp={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
+      className="flex gap-1 items-center"
     >
+      {site.status === SiteStatus.Running && site.preview_url && (
+        <Button
+          design="control"
+          size="sm"
+          icon={<WindowNewIcon />}
+          onClick={() => window.open(site.preview_url, '_blank', 'noopener,noreferrer')}
+          data-eid={generateClickEID('apps.app.preview_corner')}
+          data-testid="app-card-preview-button"
+          aria-label={t('builder_apps_menu_preview')}
+        />
+      )}
       <Menu
         id="app-card-menu"
         size="sm"
@@ -402,7 +415,7 @@ export default function AppCard({ site, transferAllowed = false }: { site: SiteI
               data-testid="app-card-view-button"
             >
               <Box orientation="horizontal" gap="sm">
-                <ShowIcon />
+                <WindowNewIcon />
                 <text.span>{t('builder_apps_menu_preview')}</text.span>
               </Box>
             </MenuItem>
@@ -705,41 +718,3 @@ export default function AppCard({ site, transferAllowed = false }: { site: SiteI
   )
 }
 
-export const AppCardEmptyState = () => {
-  const t = useTranslations();
-  const router = useRouter()
-
-  return (
-    <Card className="items-center justify-center">
-      <button
-        data-testid="create-app-card"
-        data-eid={generateClickEID('apps.app_list.new_app')}
-        onClick={() => router.push(`/`)}
-        className="w-full h-full flex flex-col gap-1 items-center justify-center cursor-pointer"
-      >
-        <PlusIcon className="size-3 text-ai" />
-        <text.p>{t('builder_apps_empty_create')}</text.p>
-      </button>
-    </Card>
-  )
-}
-
-export const TransferAppCard = ({ onAcceptTransfer, isTransferEnabled }: { onAcceptTransfer?: () => void, isTransferEnabled?: boolean }) => {
-  const t = useTranslations();
-
-  if (!isTransferEnabled || !onAcceptTransfer) return null
-
-  return (
-    <Card className="items-center justify-center">
-      <button
-        data-testid="transfer-app-card"
-        data-eid={generateClickEID('apps.emptystate.accept_transfer')}
-        onClick={onAcceptTransfer}
-        className="w-full h-full flex flex-col gap-1 items-center justify-center cursor-pointer"
-      >
-        <ArrowRightIcon className="size-3 text-ai rtl:scale-x-[-1]" />
-        <text.p>{t('builder_transfer_accept_button', undefined, 'Accept Transfer')}</text.p>
-      </button>
-    </Card>
-  )
-}
