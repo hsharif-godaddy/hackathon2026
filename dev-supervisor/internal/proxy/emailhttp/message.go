@@ -214,6 +214,18 @@ func encodeAttachmentFilename(name string) string {
 // Replacing CR/LF in place would leave the smuggled-header body as
 // garbled-but-present subject text; truncating discards everything after
 // the injection attempt, which is the safer failure mode.
+//
+// Dedup is canonical-keyed, not literal-keyed. textproto.MIMEHeader.Set
+// canonicalizes its keys on store, so "Message-ID" goes in the map as
+// "Message-Id"; the future-proofing second loop iterates those canonical
+// keys. Tracking the `seen` set with the literal-cased order strings
+// (as an earlier version did) caused every non-canonical header in
+// `order` — Message-ID, MIME-Version, X-SITE-UID, X-PRODUCT,
+// X-ENVIRONMENT, X-DATACENTER, X-ACCOUNT-CREATED-DATE, X-SHOPPER-ID,
+// X-Originating-IP — to be emitted twice on the wire (once with our
+// casing, once with textproto's). Gmail rejects messages with
+// duplicate Message-ID per RFC 5322 §3.6.4 with 550 5.7.1.
+// TestBuildMessage_NoDuplicateHeaders pins the regression.
 func writeHeaders(buf *bytes.Buffer, h textproto.MIMEHeader) {
 	order := []string{
 		"From", "To", "Cc", "Reply-To", "Subject",
@@ -232,7 +244,7 @@ func writeHeaders(buf *bytes.Buffer, h textproto.MIMEHeader) {
 			}
 			fmt.Fprintf(buf, "%s: %s\r\n", k, safe)
 		}
-		seen[k] = true
+		seen[textproto.CanonicalMIMEHeaderKey(k)] = true
 	}
 	for _, k := range order {
 		if len(h.Values(k)) > 0 {
@@ -241,7 +253,8 @@ func writeHeaders(buf *bytes.Buffer, h textproto.MIMEHeader) {
 	}
 	// Future-proofing for headers we haven't named explicitly: emit any
 	// remaining keys after the documented set so adding a tracking header
-	// doesn't silently disappear from the output.
+	// doesn't silently disappear from the output. `k` here is the map's
+	// canonical key, so the canonical-keyed `seen` lookup matches.
 	for k := range h {
 		if !seen[k] {
 			emit(k)

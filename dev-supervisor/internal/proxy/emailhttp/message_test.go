@@ -7,6 +7,7 @@ import (
 	"mime"
 	"mime/multipart"
 	"net/mail"
+	"net/textproto"
 	"strings"
 	"testing"
 	"time"
@@ -304,6 +305,163 @@ func TestBuildMessage_MessageIDFormat(t *testing.T) {
 	want := "<deadbeef@acme.com>"
 	if got := parsed.Header.Get("Message-ID"); got != want {
 		t.Errorf("Message-ID = %q, want %q", got, want)
+	}
+}
+
+// TestBuildMessage_NoDuplicateHeaders pins the regression that produced
+// Gmail 550 5.7.1 ("multiple Message-ID headers") in production: every
+// header in writeHeaders' `order` slice whose literal casing differed
+// from textproto's canonical form (Message-ID → Message-Id, MIME-Version
+// → Mime-Version, X-SITE-UID → X-Site-Uid, etc.) was emitted twice —
+// once with our literal casing in the first ordered loop, once with the
+// canonical form in the "future-proofing" map-iteration loop, because
+// the `seen` set was keyed by literal string while h's actual map keys
+// are stored canonical.
+//
+// The earlier tests checked header presence (`bytes.Index` for substring,
+// `parsed.Header.Get` which canonicalizes the lookup), so duplicates
+// slipped past CI for every header that happened to be in non-canonical
+// case. This test counts.
+func TestBuildMessage_NoDuplicateHeaders(t *testing.T) {
+	t.Parallel()
+	// Tracking input includes the optional X-ACCOUNT-CREATED-DATE,
+	// X-SHOPPER-ID, and X-Originating-IP entries so we exercise every
+	// non-canonical header at once. (LoadTrackingHeaders only emits
+	// these when their env vars are set; the test injects them directly
+	// to skip the env round-trip.)
+	tracking := map[string]string{
+		"X-SITE-UID":             "site-1",
+		"X-PRODUCT":              "airo-app-builder",
+		"X-ENVIRONMENT":          "production",
+		"X-DATACENTER":           "phx",
+		"X-ACCOUNT-CREATED-DATE": "2026-01-01",
+		"X-SHOPPER-ID":           "12345",
+		"X-Originating-IP":       "127.0.0.1",
+	}
+	parsed, body := readBuiltMessage(t, preparedMessage{
+		MessageID: "deadbeef",
+		From:      "noreply@acme.com",
+		To:        []string{"u@example.com"},
+		ReplyTo:   "support@acme.com",
+		Subject:   "hi",
+		Text:      "x",
+	}, tracking)
+
+	// mail.ReadMessage stores headers under their canonical key. Two
+	// wire lines `Message-ID:` and `Message-Id:` both canonicalize to
+	// `Message-Id` and append to the same slice — so `len > 1` for any
+	// header here means duplicates landed on the wire and the bug is
+	// back.
+	allHeaders := []string{
+		"From", "To", "Reply-To", "Subject", "Date",
+		"Message-ID", "MIME-Version", "Content-Type", "Content-Transfer-Encoding",
+		"Auto-Submitted", "X-Mailer",
+		"X-SITE-UID", "X-PRODUCT", "X-ENVIRONMENT", "X-DATACENTER",
+		"X-ACCOUNT-CREATED-DATE", "X-SHOPPER-ID", "X-Originating-IP",
+	}
+	for _, name := range allHeaders {
+		key := textproto.CanonicalMIMEHeaderKey(name)
+		if got := len(parsed.Header[key]); got != 1 {
+			t.Errorf("header %s appeared %d times, want 1\n--- bytes ---\n%s", name, got, body)
+		}
+	}
+
+	// Wire shape: receivers (the relay's spam-attribution pipeline in
+	// particular) expect the literal casing the gateway has always
+	// advertised. Confirm the bytes carry the documented uppercase form
+	// rather than textproto's canonical title-case. If a future change
+	// switches to canonical wire shape, those filters need to update
+	// first; this assertion forces the conversation.
+	wireShape := []string{
+		"\r\nMessage-ID:",
+		"\r\nMIME-Version:",
+		"\r\nX-SITE-UID:",
+		"\r\nX-PRODUCT:",
+		"\r\nX-ENVIRONMENT:",
+		"\r\nX-DATACENTER:",
+		"\r\nX-ACCOUNT-CREATED-DATE:",
+		"\r\nX-SHOPPER-ID:",
+		"\r\nX-Originating-IP:",
+	}
+	for _, want := range wireShape {
+		if !bytes.Contains(body, []byte(want)) {
+			t.Errorf("missing wire shape %q in:\n%s", want, body)
+		}
+		// Confirm the canonical-cased variant does NOT also appear.
+		// e.g. "Message-Id:" should be absent if "Message-ID:" is the
+		// only line emitted for that header.
+		name := want[2 : len(want)-1] // strip the leading "\r\n" and trailing ":"
+		canonical := "\r\n" + textproto.CanonicalMIMEHeaderKey(name) + ":"
+		if canonical != want && bytes.Contains(body, []byte(canonical)) {
+			t.Errorf("duplicate canonical-cased header %q present alongside %q in:\n%s", canonical, want, body)
+		}
+	}
+}
+
+// TestBuildMessage_RFC5322FieldCardinality enforces RFC 5322 §3.6 header
+// cardinality independently of writeHeaders' `order` slice. The earlier
+// duplicate-Message-ID bug was a §3.6.4 violation; that defect is also
+// pinned by TestBuildMessage_NoDuplicateHeaders, but THIS test stays
+// honest if the order slice ever changes shape: it asserts cardinality
+// against the RFC's universe of fields, not against whatever the gateway
+// happens to emit today. A future bug that, say, emitted two `To:` lines
+// from a different code path would still trip this even though `To` was
+// never in the duplicate set.
+func TestBuildMessage_RFC5322FieldCardinality(t *testing.T) {
+	t.Parallel()
+	parsed, body := readBuiltMessage(t, preparedMessage{
+		MessageID: "deadbeef",
+		From:      "from@acme.com",
+		To:        []string{"to@example.com"},
+		CC:        []string{"cc@example.com"},
+		BCC:       []string{"bcc@example.com"},
+		ReplyTo:   "support@acme.com",
+		Subject:   "hi",
+		Text:      "x",
+	}, nil)
+
+	headerCount := func(name string) int {
+		return len(parsed.Header[textproto.CanonicalMIMEHeaderKey(name)])
+	}
+
+	// RFC 5322 §3.6.1 (Date), §3.6.2 (From), §3.6.4 (Message-ID).
+	// The gateway always populates these, so the cardinality is `== 1`.
+	// "Required exactly once" violations break SPF/DKIM alignment, DMARC
+	// reports, and trip Gmail's RFC-compliance enforcement (the failure
+	// mode that produced this test's existence).
+	requiredOnce := []string{"From", "Date", "Message-ID"}
+	for _, name := range requiredOnce {
+		if got := headerCount(name); got != 1 {
+			t.Errorf("RFC 5322 requires exactly one %s; got %d\n--- bytes ---\n%s",
+				name, got, body)
+		}
+	}
+
+	// RFC 5322 §3.6 — each of these may appear at most once. Asserts
+	// `<= 1` so absent headers (e.g. Sender, In-Reply-To when not set)
+	// pass cleanly; only duplicates fail.
+	atMostOnce := []string{
+		"Sender", "Reply-To",
+		"To", "Cc", "Bcc",
+		"In-Reply-To", "References",
+		"Subject",
+	}
+	for _, name := range atMostOnce {
+		if got := headerCount(name); got > 1 {
+			t.Errorf("RFC 5322 §3.6 allows %s at most once; got %d\n--- bytes ---\n%s",
+				name, got, body)
+		}
+	}
+
+	// Gateway-specific invariant beyond the RFC: Bcc is envelope-only,
+	// never written to the message headers (otherwise recipients leak
+	// each other on delivery). TestBuildMessage_BccNeverInHeaders covers
+	// the same rule for the byte-level absence; counting via the parser
+	// catches a future writer that emits a syntactically-valid Bcc line
+	// that bytes.Index might miss.
+	if got := headerCount("Bcc"); got != 0 {
+		t.Errorf("Bcc must not appear in message headers; got %d\n--- bytes ---\n%s",
+			got, body)
 	}
 }
 
