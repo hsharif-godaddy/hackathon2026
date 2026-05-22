@@ -1,0 +1,22 @@
+{
+  "name": "@airo/fanout-lambda",
+  "description": "S3-event-triggered Lambda that fans out feedback submissions to Slack, CRM, and the investigator Lambda",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "node --test --experimental-test-module-mocks './**/*.test.mjs'",
+    "test:watch": "node --test --watch --experimental-test-module-mocks './**/*.test.mjs'",
+    "lint": "find . -maxdepth 2 -name '*.mjs' -not -path './node_modules/*' -exec node --check {} +"
+  },
+  "dependencies": {
+    "@aws-sdk/client-lambda": "^3.1045.0",
+    "@aws-sdk/client-s3": "^3.1045.0",
+    "@aws-sdk/client-secrets-manager": "^3.1045.0",
+    "parquetjs": "0.11.2"
+  },
+  "devDependencies": {}
+}

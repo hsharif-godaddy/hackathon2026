@@ -30,6 +30,7 @@ on:
           - 'OfflineMLDataS3Stack'
           - 'EventsS3Stack'
           - 'FeedbackAutomationStack'
+          - 'FeedbackFanoutStack'
           - 'FeedbackS3Stack'
           - 'LakeFormationAdminsStack'
           - 'QdrantEcrStack'

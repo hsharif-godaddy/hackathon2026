@@ -63,10 +63,26 @@ export interface FeedbackStorePayload {
   feedback_topic_list?: string | null;
   /** Product surface or entry context label at submit time. */
   feedback_origin_name?: string | null;
+  /** Feedback dialog category — 'issue' | 'support' | 'feedback'. */
+  feedback_category?: string | null;
   /** Matches `hasBeenPublished(site)` at submit time. */
   app_publish_flag?: boolean | null;
   /** Public site URL when `app_publish_flag` is true; otherwise null. */
   publish_url?: string | null;
+  // ---- Fanout-Lambda enrichment fields (BFF → parquet → Lambda) ----
+  // The UI sends these so the Lambda can rebuild DiagnosticContext + the
+  // Slack Block Kit message identically to what the UI used to render.
+  // All optional; missing fields render as blanks for legacy submitters.
+  /** Pre-rendered "exp1=A, exp2=B" line from Hivemind cohorts. */
+  experiments_line?: string | null;
+  /** Preview URL (BFF will inject share-token before parquet write). */
+  preview_url?: string | null;
+  /** Live published URL (separate from publish_url Hive partition column). */
+  published_url_full?: string | null;
+  /** FullStory session URL captured at submit time. */
+  full_story_url?: string | null;
+  /** Pre-rendered subscription summary string. */
+  subscription_info?: string | null;
 }
 
 export interface DiagnosticContext {

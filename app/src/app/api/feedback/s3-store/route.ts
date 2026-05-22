@@ -19,13 +19,25 @@
 import { randomUUID } from 'node:crypto';
 
 import { NextRequest, NextResponse } from 'next/server';
+import { InvokeCommand, LambdaClient } from '@aws-sdk/client-lambda';
 import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 
 import type { FeedbackStorePayload } from '@/components/feedback/types';
+import { airoCertTokenService, fetchCustomerProfile } from '@/lib/crm';
 import { type CustomerAuthContext, withCustomerAuth } from '@/lib/customer-auth';
 import { logger } from '@/lib/request-context';
+import { checkSwitchboardFlag } from '@/lib/switchboard/server';
 import { encodeFeedbackParquet } from './feedback-to-parquet';
 import type { FeedbackS3Record } from './types';
+
+/**
+ * Switchboard flag that gates per-submission Lambda fanout.
+ * - ON  → UI skips Slack + companion-hub; Lambda owns delivery.
+ * - OFF → today's BFF/UI flow keeps running; Lambda no-ops on read.
+ * Issue/support paths use `/api/crm/case` regardless of this flag —
+ * only the NPS path writes parquet today.
+ */
+const FANOUT_VIA_LAMBDA_FLAG = 'appbuilder-fanout-via-lambda';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -39,7 +51,35 @@ try {
   logger.error('feedback.store.s3.client_init_failed', { error: s3ClientInitError });
 }
 
+// Lambda client used to fan out parquet writes to airo-fanout-<env>.
+// We invoke the Lambda directly (InvocationType=Event) instead of using
+// an S3 → Lambda trigger because GD's permissions boundary
+// GD-AWS-SSG-PB-DEFAULT explicitly denies s3:PutBucketNotification —
+// CDK's BucketNotificationsHandler can't modify the bucket. The Katana
+// task role for this container is granted lambda:InvokeFunction by
+// FeedbackFanoutStack. When FANOUT_LAMBDA_FN is unset (e.g. local dev,
+// pre-deploy) the invoke is skipped silently so the parquet write stays
+// the BFF's source-of-truth concern.
+let lambdaClient: LambdaClient | null = null;
+try {
+  lambdaClient = new LambdaClient({ region: process.env.AWS_REGION || 'us-west-2' });
+} catch (err) {
+  logger.error('feedback.store.lambda.client_init_failed', {
+    error: err instanceof Error ? err.message : String(err),
+  });
+}
+const FANOUT_LAMBDA_FN = process.env.FANOUT_LAMBDA_FN;
+
 const FEEDBACK_BUCKET = process.env.FEEDBACK_BUCKET;
+
+// Misconfig signal: bucket configured (so parquet is being written) but the
+// Lambda function name is not set, which means the entire fanout path is a
+// silent no-op. Surface at startup so this can't quietly survive a deploy.
+if (FEEDBACK_BUCKET && !FANOUT_LAMBDA_FN) {
+  logger.warn('feedback.store.fanout.fn_not_configured', {
+    message: 'FANOUT_LAMBDA_FN not set — Lambda fanout will be skipped on every submission. Set the env var to airo-fanout-<env> on the website Katana container.',
+  });
+}
 const FEEDBACK_TABLE_PREFIX = FEEDBACK_BUCKET === 'airo-builder-feedback-prod'
   ? 'airo_builder_feedback_cln'
   : 'airo_builder_feedback_cln_laketest';
@@ -216,10 +256,74 @@ export const POST = withCustomerAuth(async (
     });
   }
 
+  // Fanout-Lambda enrichment fields: type-only coercion, no validation —
+  // the Lambda treats blanks as graceful fallback. `origin` mirrors
+  // `feedback_origin_name` (already trimmed/validated above).
+  const experimentsLine = typeof body.experiments_line === 'string' ? body.experiments_line : null;
+  const previewUrlRaw = typeof body.preview_url === 'string' ? body.preview_url.trim() : '';
+  const previewUrl = previewUrlRaw && /^https?:\/\//i.test(previewUrlRaw) ? previewUrlRaw : null;
+  const publishedUrlFullRaw = typeof body.published_url_full === 'string' ? body.published_url_full.trim() : '';
+  const publishedUrlFull = publishedUrlFullRaw && /^https?:\/\//i.test(publishedUrlFullRaw) ? publishedUrlFullRaw : null;
+  const fullStoryUrlRaw = typeof body.full_story_url === 'string' ? body.full_story_url.trim() : '';
+  const fullStoryUrl = fullStoryUrlRaw && /^https?:\/\//i.test(fullStoryUrlRaw) ? fullStoryUrlRaw : null;
+  const subscriptionInfo = typeof body.subscription_info === 'string' ? body.subscription_info : null;
+
+  // Feedback dialog category — 'issue' | 'support' | 'feedback'. Used by the
+  // fanout Lambda to pick the right Slack Block Kit builder. Null-tolerant
+  // (legacy callers without category render Slack as a graceful skip).
+  const ALLOWED_CATEGORIES = ['issue', 'support', 'feedback'];
+  const rawCategory = typeof body.feedback_category === 'string' ? body.feedback_category.trim() : null;
+  const feedbackCategory = rawCategory && ALLOWED_CATEGORIES.includes(rawCategory) ? rawCategory : null;
+
   // Reject app_id values that would corrupt the Hive partition key (e.g. containing /)
   if (appId !== null && !APP_ID_PATTERN.test(appId)) {
     logger.warn('feedback.store.s3.invalid_app_id', { appId });
     return NextResponse.json({ error: 'Invalid app_id format' }, { status: 400 });
+  }
+
+  // Resolve the per-submission Switchboard gate. Failure-mode: fail closed —
+  // a system failure stamps `null` and the Lambda treats anything other than
+  // strict `true` as no-op, so the BFF/UI legacy path remains the source of
+  // truth. We log both success and failure so ops can verify rollout in Loki.
+  let fanoutViaLambda: boolean | null;
+  try {
+    fanoutViaLambda = await checkSwitchboardFlag(FANOUT_VIA_LAMBDA_FLAG, request);
+    logger.info('feedback.store.s3.fanout_flag', {
+      flag: FANOUT_VIA_LAMBDA_FLAG,
+      value: fanoutViaLambda,
+    });
+  } catch (err) {
+    fanoutViaLambda = null;
+    logger.warn('feedback.store.s3.fanout_flag_lookup_failed', {
+      flag: FANOUT_VIA_LAMBDA_FLAG,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+
+  // Best-effort customer profile fetch — populates the legacy CRM case shape
+  // (firstName/lastName/email/phone, not raw IDs). Profile API failure must
+  // NOT block the parquet write: legacy rows render fine in the Lambda with
+  // null-safe fallbacks (customer_id used as contactName, no email/phone).
+  // Mirrors the pattern used by app/src/lib/crm/case-client.ts:openCrmCase
+  // which we replaced for the fanout flow.
+  let profileFirstName: string | null = null;
+  let profileLastName: string | null = null;
+  let profileEmail: string | null = null;
+  let profilePhone: string | null = null;
+  if (authContext.user.customerId) {
+    try {
+      const ssoToken = await airoCertTokenService.getToken();
+      const profile = await fetchCustomerProfile(authContext.user.customerId, ssoToken);
+      profileFirstName = profile.firstName || null;
+      profileLastName = profile.lastName || null;
+      profileEmail = profile.email || null;
+      profilePhone = profile.phone;
+    } catch (err) {
+      logger.warn('feedback.store.s3.profile_fetch_failed', {
+        customerId: authContext.user.customerId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
 
   const now = new Date();
@@ -241,9 +345,22 @@ export const POST = withCustomerAuth(async (
     available_credit_cnt: availableCreditCnt,
     feedback_topic_list: feedbackTopicList,
     feedback_origin_name: feedbackOriginName,
+    feedback_category: feedbackCategory,
     app_publish_flag: appPublishFlag,
     publish_url: publishUrl,
     cln_create_utc_ts: tsStr,
+    origin: feedbackOriginName,
+    experiments_line: experimentsLine,
+    preview_url: previewUrl,
+    published_url_full: publishedUrlFull,
+    full_story_url: fullStoryUrl,
+    subscription_info: subscriptionInfo,
+    shopper_id: authContext.user.shopperId ?? null,
+    customer_first_name: profileFirstName,
+    customer_last_name: profileLastName,
+    customer_email: profileEmail,
+    customer_phone: profilePhone,
+    fanout_via_lambda: fanoutViaLambda,
   };
 
   let parquetBody: Buffer;
@@ -277,6 +394,34 @@ export const POST = withCustomerAuth(async (
       error: err instanceof Error ? err.message : String(err),
     });
     return NextResponse.json({ error: 'S3 write failed' }, { status: 500 });
+  }
+
+  // Async-invoke fanout Lambda with an S3-event-shaped payload. Best
+  // effort: the parquet is the system of record, so an invoke failure
+  // does NOT roll back the 200 — ops can replay from the parquet via
+  // `aws lambda invoke ... --payload <S3 event>` if needed.
+  if (FANOUT_LAMBDA_FN && lambdaClient) {
+    try {
+      await lambdaClient.send(new InvokeCommand({
+        FunctionName: FANOUT_LAMBDA_FN,
+        InvocationType: 'Event',
+        Payload: Buffer.from(JSON.stringify({
+          Records: [{
+            s3: {
+              bucket: { name: FEEDBACK_BUCKET },
+              object: { key: s3Key },
+            },
+          }],
+        })),
+      }));
+      logger.info('feedback.store.fanout.invoked', { appId, s3Key });
+    } catch (err) {
+      logger.warn('feedback.store.fanout.invoke_failed', {
+        appId,
+        s3Key,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
 
   return NextResponse.json({ success: true });

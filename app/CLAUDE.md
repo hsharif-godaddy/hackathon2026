@@ -87,8 +87,8 @@ Local dev inherits the Switchboard Reader dev grant when `AWS_PROFILE=airobuild-
 
 | Flag | Default | Purpose | Env |
 | ---- | ------- | ------- | --- |
-| `appbuilder-crm-case-create` | `false` | Gates direct CRM case creation from the feedback form (legacy path, superseded by `appbuilder-feedback-fanout`) | dev, test, prod |
-| `appbuilder-feedback-fanout` | `false` | Gates the unified fan-out endpoint `/api/feedback/submit` for issue/support/feedback submissions with rating < 5: opens a CRM case via CMAPI **and** invokes the AiroInvestigator Lambda (`INVESTIGATE_LAMBDA_FN`). When the flag is off the client falls back to the legacy `/api/crm/case` route gated by `appbuilder-crm-case-create` (CRM-only, no investigation). Must be registered in dev, test, and prod Switchboard before deploying the fan-out feature. | dev, test, prod |
+| `appbuilder-crm-case-create` | `false` | Gates direct CRM case creation from the feedback form (legacy path, superseded by `appbuilder-fanout-via-lambda`) | dev, test, prod |
+| `appbuilder-fanout-via-lambda` | `false` | Gates the per-submission fanout Lambda (`airo-fanout-<env>`) for issue/support/feedback. When ON, the BFF only writes parquet to S3 and async-invokes the Lambda, which owns Slack + CRM (issue/support) + AiroInvestigator (issue/support, feedback rating<5) + AABSP Jira (issue/support, feedback rating<5). When OFF, the legacy UI path runs (Slack + companion-hub + `/api/crm/case`). Must be registered in dev, test, and prod Switchboard before flipping on. | dev, test, prod |
 
 **Setting up a flag for local development:**
 

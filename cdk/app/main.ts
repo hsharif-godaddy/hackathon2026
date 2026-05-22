@@ -18,6 +18,7 @@ import { QdrantStack } from "../lib/qdrant-stack";
 import { QdrantEcrStack } from "../lib/qdrant-ecr-stack";
 import { LambdaBaseEcrStack } from "../lib/lambda-base-ecr-stack";
 import { FeedbackAutomationStack } from "../lib/feedback-automation-stack";
+import { FeedbackFanoutStack } from "../lib/feedback-fanout-stack";
 import { AiroInvestigatorStack } from "../lib/investigator-stack";
 import { S2sIamJwtStack } from "../lib/s2s-iam-jwt-stack";
 
@@ -87,8 +88,9 @@ async function main() {
   // Create Feedback S3 infrastructure (S3 bucket for user feedback submissions).
   // Deployed to dev and prod only — feedback data is not needed in the test environment.
   // test is technically deployable via cdk.yml but is intentionally excluded here.
+  let feedbackS3Stack: FeedbackS3Stack | undefined;
   if (config.envName === 'dev' || config.envName === 'prod') {
-    new FeedbackS3Stack(app, 'FeedbackS3Stack', { env });
+    feedbackS3Stack = new FeedbackS3Stack(app, 'FeedbackS3Stack', { env });
   }
 
   // Dedicated S3 bucket for product-analytics events (dev-private, test, prod).
@@ -119,8 +121,29 @@ async function main() {
   // once validated). The Lambda runs the airo-log-investigate skill on
   // demand; the bucket stores per-investigation state + reports.
   // Requires LambdaBaseEcrStack deployed + docker-mirror-lambda-base.yml run.
+  let investigatorStack: AiroInvestigatorStack | undefined;
   if (config.envName === 'dev' || config.envName === 'prod') {
-    new AiroInvestigatorStack(app, 'AiroInvestigatorStack', { env });
+    investigatorStack = new AiroInvestigatorStack(app, 'AiroInvestigatorStack', { env });
+  }
+
+  // Feedback Fanout Lambda — subscribes to FeedbackS3Stack's bucket, fans out
+  // submissions to Slack + CMAPI + invoke investigator. Gated on flag-disabled
+  // env var until cutover (see fanout/README.md). Same env gate as its deps
+  // (FeedbackS3Stack + AiroInvestigatorStack are dev/prod only).
+  if ((config.envName === 'dev' || config.envName === 'prod') && feedbackS3Stack && investigatorStack) {
+    const fanoutStack = new FeedbackFanoutStack(app, 'FeedbackFanoutStack', {
+      env,
+      feedbackBucketArn: feedbackS3Stack.feedbackBucket.bucketArn,
+      feedbackBucketName: feedbackS3Stack.feedbackBucket.bucketName,
+      investigatorFunctionArn: investigatorStack.investigatorFn.functionArn,
+      investigatorFunctionName: investigatorStack.investigatorFn.functionName,
+      crmCertSecretArn: config.crmCertSecretArn,
+      crmKeySecretArn: config.crmKeySecretArn,
+      crmBaseUrl: config.crmApiBase,
+      ssoUrl: config.ssoEndpoint,
+    });
+    fanoutStack.addDependency(feedbackS3Stack);
+    fanoutStack.addDependency(investigatorStack);
   }
 
   // Create Qdrant ECR repository (dev and prod only)

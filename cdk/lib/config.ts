@@ -146,6 +146,17 @@ interface Config {
   debugConsoleBaseUrl: string;
   /** Full URL for the GoDaddy SSO token endpoint (used by investigator to mint JWTs). */
   ssoEndpoint: string;
+  /**
+   * Base URL for AABSP Jira REST API. Same Atlassian tenant for all envs.
+   * Used by the fanout Lambda's jira-client.mjs as the host for /rest/api/3
+   * paths under Basic auth (svcgtig6n4xcohrre@godaddy.com + API token).
+   */
+  jiraBaseUrl: string;
+  /**
+   * Jira project key the fanout Lambda creates issues under. AABSP =
+   * "AAB Support Plane" (Suresh Gupta). Issues land here for triage.
+   */
+  jiraProjectKey: string;
   monitoring: MonitoringConfig;
   jwt: {
     rotationIntervalDays: number;
@@ -269,6 +280,8 @@ const devConfig: Config = {
     'GD-AWS-USA-GD-AiroBuilde-Dev-Private-PowerUser',
   ],
   eventsEmrBatchRoleArns: [],
+  jiraBaseUrl: 'https://godaddy-corp.atlassian.net',
+  jiraProjectKey: 'AABSP',
 };
 
 const testConfig: Config = {
@@ -358,6 +371,10 @@ const testConfig: Config = {
     'GD-AWS-USA-GD-AiroBuilde-Ops',
   ],
   eventsEmrBatchRoleArns: [],
+  // FeedbackFanoutStack isn't deployed in test (see main.ts), but jiraBaseUrl
+  // and jiraProjectKey are required to satisfy the type contract.
+  jiraBaseUrl: 'https://godaddy-corp.atlassian.net',
+  jiraProjectKey: 'AABSP',
 };
 
 const prodConfig: Config = {
@@ -462,6 +479,8 @@ const prodConfig: Config = {
   eventsEmrBatchRoleArns: [
     'arn:aws:iam::664289052486:role/dpaas-custom-enterprise-batch-EMRInstanceRole',
   ],
+  jiraBaseUrl: 'https://godaddy-corp.atlassian.net',
+  jiraProjectKey: 'AABSP',
 };
 
 

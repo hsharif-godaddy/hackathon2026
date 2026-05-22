@@ -100,13 +100,10 @@ vi.mock('@/hooks/useGasketData', () => ({
 // Per-flag mock: keep `airo-builder-feedback-multistep` ON (so the
 // FeedbackMultiStep component renders) and the legacy CRM-case create
 // flag ON (so the legacy `openCrmCaseForIssue` path the assertions in
-// this file expect is actually exercised), but force the fan-out flag
-// OFF. With the universal `vi.fn(() => true)` the component would pick
-// the fan-out branch (`submitFeedbackFanout`), which isn't mocked
-// here — calling it throws, the try/catch swallows, and
-// `openCrmCaseForIssue` never fires.
+// this file expect is actually exercised), but force the fanout-via-lambda
+// flag OFF so the legacy Slack/companion-hub branch is exercised.
 vi.mock('@/hooks/useSwitchboard', () => ({
-  useSwitchboard: vi.fn((flag: string) => flag !== 'appbuilder-feedback-fanout'),
+  useSwitchboard: vi.fn((flag: string) => flag !== 'appbuilder-fanout-via-lambda'),
 }));
 
 vi.mock('react-intl', async (importOriginal) => {
@@ -221,11 +218,6 @@ vi.mock('./submitFeedback', () => ({
   saveToCompanionHub: vi.fn(() => Promise.resolve()),
   storeToS3: vi.fn(),
   openCrmCaseForIssue: vi.fn(() => Promise.resolve({})),
-  // Defensive: even with the fan-out flag forced OFF in this file's
-  // useSwitchboard mock, leaving submitFeedbackFanout un-mocked here
-  // would surface as `is not a function` in any test that flips the
-  // flag locally. Mocking it explicitly keeps that future-proof.
-  submitFeedbackFanout: vi.fn(() => Promise.resolve(null)),
 }));
 
 vi.mock('./slackBuilders', () => ({

@@ -11,8 +11,9 @@ import { S3Client } from '@aws-sdk/client-s3';
 
 const require = createRequire(import.meta.url);
 
-const { mockEncodeFeedbackParquet } = vi.hoisted(() => ({
+const { mockEncodeFeedbackParquet, mockCheckSwitchboardFlag } = vi.hoisted(() => ({
   mockEncodeFeedbackParquet: vi.fn(),
+  mockCheckSwitchboardFlag: vi.fn(),
 }));
 
 vi.mock('./feedback-to-parquet', async (importOriginal) => {
@@ -78,6 +79,10 @@ vi.mock('@/lib/customer-auth', () => ({
   },
 }));
 
+vi.mock('@/lib/switchboard/server', () => ({
+  checkSwitchboardFlag: mockCheckSwitchboardFlag,
+}));
+
 function createRequest(body: Record<string, unknown>): NextRequest {
   return new NextRequest(new URL('http://localhost:3000/api/feedback/s3-store'), {
     method: 'POST',
@@ -102,6 +107,9 @@ describe('/api/feedback/s3-store', function s3StoreTests() {
     process.env.AWS_REGION = 'us-west-2';
     const actual = await vi.importActual<typeof import('./feedback-to-parquet')>('./feedback-to-parquet');
     mockEncodeFeedbackParquet.mockImplementation(actual.encodeFeedbackParquet);
+    // Default: flag OFF — preserves today's parquet column shape for legacy
+    // assertions. Cutover-specific tests override per-call.
+    mockCheckSwitchboardFlag.mockResolvedValue(false);
   });
 
   afterEach(function cleanup() {
@@ -577,6 +585,58 @@ describe('/api/feedback/s3-store', function s3StoreTests() {
           error: 'encode boom',
           feedbackId: expect.stringMatching(/^[0-9a-f-]{36}$/),
         }),
+      );
+    });
+  });
+
+  describe('POST - fanout_via_lambda Switchboard gate', function fanoutFlagTests() {
+    it('should stamp fanout_via_lambda=false in parquet when flag is OFF', async function flagOff() {
+      mockCheckSwitchboardFlag.mockResolvedValueOnce(false);
+      mockS3Send.mockResolvedValueOnce({});
+      const { POST } = await import('./route');
+
+      await POST(createRequest({ app_id: 'app-123', feedback_text: 'test', consent_flag: null, rating: null }));
+
+      expect(mockCheckSwitchboardFlag).toHaveBeenCalledWith('appbuilder-fanout-via-lambda', expect.anything());
+      const record = await readParquetRow(mockS3Send.mock.calls[0][0].Body);
+      expect(record.fanout_via_lambda).toBe(false);
+      expect(mockLogger.info).toHaveBeenCalledWith(
+        'feedback.store.s3.fanout_flag',
+        expect.objectContaining({ flag: 'appbuilder-fanout-via-lambda', value: false }),
+      );
+    });
+
+    it('should stamp fanout_via_lambda=true in parquet when flag is ON', async function flagOn() {
+      mockCheckSwitchboardFlag.mockResolvedValueOnce(true);
+      mockS3Send.mockResolvedValueOnce({});
+      const { POST } = await import('./route');
+
+      await POST(createRequest({ app_id: 'app-123', feedback_text: 'test', consent_flag: null, rating: null }));
+
+      const record = await readParquetRow(mockS3Send.mock.calls[0][0].Body);
+      expect(record.fanout_via_lambda).toBe(true);
+      expect(mockLogger.info).toHaveBeenCalledWith(
+        'feedback.store.s3.fanout_flag',
+        expect.objectContaining({ flag: 'appbuilder-fanout-via-lambda', value: true }),
+      );
+    });
+
+    it('should fail closed (null + warn) when flag lookup throws', async function flagLookupFailure() {
+      // Match the project pattern: a Switchboard system failure must NOT be
+      // misread as "flag ON" — Lambda treats anything other than strict
+      // `true` as no-op, so null is the safe legacy-path landing.
+      mockCheckSwitchboardFlag.mockRejectedValueOnce(new Error('boom'));
+      mockS3Send.mockResolvedValueOnce({});
+      const { POST } = await import('./route');
+
+      const response = await POST(createRequest({ app_id: 'app-123', feedback_text: 'test', consent_flag: null, rating: null }));
+      expect(response.status).toBe(200);
+
+      const record = await readParquetRow(mockS3Send.mock.calls[0][0].Body);
+      expect(record.fanout_via_lambda == null).toBe(true);
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        'feedback.store.s3.fanout_flag_lookup_failed',
+        expect.objectContaining({ flag: 'appbuilder-fanout-via-lambda', error: 'boom' }),
       );
     });
   });

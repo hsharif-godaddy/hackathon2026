@@ -6,6 +6,7 @@ packages:
   - "setup"
   - "cdk"
   - "debug-console"
+  - "fanout"
   - "agentic-qa"
   - "agentic-qa-langfuse"
   - "design-rag"

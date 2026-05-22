@@ -42,9 +42,27 @@ try {
     available_credit_cnt: { type: 'INT32', optional: true, compression: 'UNCOMPRESSED' },
     feedback_topic_list: { type: 'UTF8', optional: true, compression: 'UNCOMPRESSED' },
     feedback_origin_name: { type: 'UTF8', optional: true, compression: 'UNCOMPRESSED' },
+    feedback_category: { type: 'UTF8', optional: true, compression: 'UNCOMPRESSED' },
     app_publish_flag: { type: 'BOOLEAN', optional: true, compression: 'UNCOMPRESSED' },
     publish_url: { type: 'UTF8', optional: true, compression: 'UNCOMPRESSED' },
     cln_create_utc_ts: { type: 'TIMESTAMP_MILLIS', compression: 'UNCOMPRESSED' },
+    // Fanout Lambda enrichment fields (all optional UTF8 — see types.ts).
+    origin: { type: 'UTF8', optional: true, compression: 'UNCOMPRESSED' },
+    experiments_line: { type: 'UTF8', optional: true, compression: 'UNCOMPRESSED' },
+    preview_url: { type: 'UTF8', optional: true, compression: 'UNCOMPRESSED' },
+    published_url_full: { type: 'UTF8', optional: true, compression: 'UNCOMPRESSED' },
+    full_story_url: { type: 'UTF8', optional: true, compression: 'UNCOMPRESSED' },
+    subscription_info: { type: 'UTF8', optional: true, compression: 'UNCOMPRESSED' },
+    // Customer profile fields (BFF best-effort fetch via Profile API).
+    shopper_id: { type: 'UTF8', optional: true, compression: 'UNCOMPRESSED' },
+    customer_first_name: { type: 'UTF8', optional: true, compression: 'UNCOMPRESSED' },
+    customer_last_name: { type: 'UTF8', optional: true, compression: 'UNCOMPRESSED' },
+    customer_email: { type: 'UTF8', optional: true, compression: 'UNCOMPRESSED' },
+    customer_phone: { type: 'UTF8', optional: true, compression: 'UNCOMPRESSED' },
+    // Per-submission Switchboard gate (`appbuilder-fanout-via-lambda`).
+    // Optional so legacy parquet rows (pre-cutover) read back as null and the
+    // Lambda treats anything other than strict `true` as no-op.
+    fanout_via_lambda: { type: 'BOOLEAN', optional: true, compression: 'UNCOMPRESSED' },
   });
 } catch (err) {
   parquetSchemaInitError = err instanceof Error ? err.message : String(err);
@@ -90,9 +108,22 @@ function rowForParquet(record: FeedbackS3Record): Record<string, unknown> {
     available_credit_cnt: toInt32Credit(record.available_credit_cnt),
     feedback_topic_list: record.feedback_topic_list,
     feedback_origin_name: record.feedback_origin_name,
+    feedback_category: record.feedback_category,
     app_publish_flag: record.app_publish_flag,
     publish_url: record.publish_url,
     cln_create_utc_ts: parseFeedbackUtcStringToDate(record.cln_create_utc_ts),
+    origin: record.origin,
+    experiments_line: record.experiments_line,
+    preview_url: record.preview_url,
+    published_url_full: record.published_url_full,
+    full_story_url: record.full_story_url,
+    subscription_info: record.subscription_info,
+    shopper_id: record.shopper_id,
+    customer_first_name: record.customer_first_name,
+    customer_last_name: record.customer_last_name,
+    customer_email: record.customer_email,
+    customer_phone: record.customer_phone,
+    fanout_via_lambda: record.fanout_via_lambda,
   };
 }
 

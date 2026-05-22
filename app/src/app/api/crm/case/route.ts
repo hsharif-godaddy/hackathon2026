@@ -9,11 +9,12 @@
  * Gated by the `appbuilder-crm-case-create` Switchboard flag during rollout.
  * Blocks employee-impersonation (`e2s`) and GoDaddy internal (TLA) accounts.
  *
- * @deprecated Superseded by `/api/feedback/submit` (gated by
- * `appbuilder-feedback-fanout`), which opens the CRM case **and** invokes
- * the AiroInvestigator Lambda in one fan-out. Kept callable for backward
- * compatibility while the fanout flag rolls out. Remove this route once
- * `appbuilder-feedback-fanout` is at 100% in prod for ≥ 7 days and no
+ * @deprecated Superseded by the fanout Lambda (gated by
+ * `appbuilder-fanout-via-lambda`), which opens the CRM case, invokes the
+ * AiroInvestigator Lambda, posts to Slack, and creates a Jira ticket from
+ * a single parquet write. Kept callable for backward compatibility while
+ * the fanout flag rolls out. Remove this route once
+ * `appbuilder-fanout-via-lambda` is at 100% in prod for ≥ 7 days and no
  * `feedback.crm.case.*` log entries remain in Loki.
  */
 

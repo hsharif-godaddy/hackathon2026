@@ -1,4 +1,3 @@
-import type { FanoutSubmitRequest, FanoutSubmitResponse } from '@/lib/feedback/fanout-types';
 import { logger } from '@/lib/request-context';
 import { formatSlackBlockMessage, type SlackBlockMessage } from '@/lib/slack-webhook';
 import { SubscriptionPlan, SubscriptionStatus } from '@/types/credits';
@@ -104,6 +103,13 @@ export async function fetchDiagnosticContext(
   };
 }
 
+/**
+ * @deprecated since fanout-lambda migration — Slack delivery is now driven
+ * by the fanout Lambda triggered by the parquet write in `storeToS3`. The
+ * BFF route `/api/slack-webhook/feedback` is kept intact for any other
+ * callers but the submit path no longer calls it. Remove this helper once
+ * no consumers remain.
+ */
 export async function sendFeedbackToSlack(
   blockMessage: SlackBlockMessage,
   currentAppId: string | null,
@@ -133,29 +139,58 @@ export async function sendFeedbackToSlack(
   }
 }
 
-export function storeToS3(payload: FeedbackStorePayload): void {
-  fetch('/api/feedback/s3-store', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-    keepalive: true,
-  })
-    .then(async response => {
-      if (!response.ok) {
-        const body = await response.text().catch(() => '');
-        logger.warn('feedback.store.s3.server_error', {
-          status: response.status,
-          statusText: response.statusText,
-          body,
-        });
-      }
-    })
-    .catch(err => {
-      logger.warn('feedback.store.s3.network_error', {
-        error: err instanceof Error ? err.message : String(err),
-        context: 'navigation_or_network',
-      });
+/**
+ * Result of a `storeToS3` call. Caller decides whether to surface the
+ * outcome (flag-ON Lambda-fanout path: we DEPEND on this succeeding) or
+ * fire-and-forget (flag-OFF legacy path: parquet write is enrichment only).
+ */
+export interface StoreToS3Result {
+  ok: boolean;
+  status?: number;
+}
+
+/**
+ * Submit a parquet row to the BFF for S3 persistence + downstream Lambda
+ * fanout. Returns a Promise that resolves with the outcome — does NOT throw
+ * on HTTP errors (callers can branch on `result.ok`). Network errors are
+ * caught and logged as `network_error`; the Promise still resolves with
+ * `ok: false` so callers can show the user a failure toast.
+ *
+ * Critical: when `appbuilder-fanout-via-lambda` is ON, the entire fanout
+ * (Slack/CRM/Jira/investigator) hinges on this call succeeding. Callers in
+ * that path MUST `await` the result and treat `ok: false` as submission
+ * failure. The previous fire-and-forget shape (returning `void`
+ * synchronously) silently swallowed BFF 4xx/5xx errors, leaving the
+ * customer with a "success" toast even when no fanout happened.
+ */
+export async function storeToS3(payload: FeedbackStorePayload): Promise<StoreToS3Result> {
+  let response: Response;
+  try {
+    response = await fetch('/api/feedback/s3-store', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      keepalive: true,
     });
+  } catch (err) {
+    logger.warn('feedback.store.s3.network_error', {
+      error: err instanceof Error ? err.message : String(err),
+      context: 'navigation_or_network',
+    });
+    return { ok: false };
+  }
+
+  if (!response.ok) {
+    const body = await response.text().catch(() => '');
+    logger.warn('feedback.store.s3.server_error', {
+      status: response.status,
+      statusText: response.statusText,
+      body,
+    });
+    return { ok: false, status: response.status };
+  }
+
+  return { ok: true, status: response.status };
 }
 
 export interface CrmCaseClientInput {
@@ -211,38 +246,3 @@ export async function saveToCompanionHub(
   // Response body intentionally not consumed.
 }
 
-export async function submitFeedbackFanout(
-  payload: FanoutSubmitRequest,
-): Promise<FanoutSubmitResponse | null> {
-  if (isLocalDev()) return null;
-  let res: Response;
-  try {
-    res = await fetch('/api/feedback/submit', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-  } catch (err) {
-    logger.warn('feedback.fanout.client.network_error', {
-      error: err instanceof Error ? err.message : String(err),
-    });
-    return null;
-  }
-  if (!res.ok) {
-    logger.warn('feedback.fanout.client.bad_status', { status: res.status });
-    return null;
-  }
-  try {
-    return (await res.json()) as FanoutSubmitResponse;
-  } catch (err) {
-    // 200 with garbled body is distinct from "200 with null payload" —
-    // a missing log here would mask a real BFF shape regression. Warn
-    // (not error) because the client side has no recovery action; the
-    // submission already succeeded as far as the BFF is concerned.
-    logger.warn('feedback.fanout.client.parse_failed', {
-      status: res.status,
-      error: err instanceof Error ? err.message : String(err),
-    });
-    return null;
-  }
-}
