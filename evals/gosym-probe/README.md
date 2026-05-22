@@ -178,11 +178,10 @@ Concurrency is capped by `config.eval.maxConcurrency`.
 | Flag combo                       | `--trials N`        | `--concurrency M`          |
 | -------------------------------- | ------------------- | -------------------------- |
 | Standard eval                    | controls trials     | controls trial parallelism |
-| Standard + `--fan-out`           | controls trials     | ignored (forced to 1)      |
-| `--graduate`                     | ignored (stability) | controls trial parallelism |
-| `--graduate-suite`               | ignored (stability) | controls trial parallelism |
-| `--graduate-suite` + `--fan-out` | ignored (stability) | ignored (forced to 1)      |
-| `--resume`                       | caps/extends trials | controls trial parallelism |
+| Standard + `--fan-out`           | controls trials              | controls worker pool (capped by MAX_CONCURRENCY) |
+| `--graduate`                     | ignored (set by 'stability') | controls trial parallelism                       |
+| `--graduate-suite`               | ignored (set by 'stability') | controls trial parallelism                       |
+| `--graduate-suite` + `--fan-out` | ignored (set by 'stability') | controls worker pool (capped by MAX_CONCURRENCY) |
 
 Graduation trial counts are driven solely by stability level
 (`low`=3, `medium`=5, `high`=10). `--trials` has no effect in
