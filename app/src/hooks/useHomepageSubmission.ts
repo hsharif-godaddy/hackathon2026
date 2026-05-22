@@ -74,11 +74,6 @@ export function useHomepageSubmission() {
     baseData: { isAuthenticated },
   })
   const { signIn } = useSsoSignIn()
-  const showUpgradeModal = useDevelopPageStore((state) => state.showUpgradeModal)
-  const upgradeModalSource = useDevelopPageStore((state) => state.upgradeModalSource)
-  const upgradeModalItc = useDevelopPageStore((state) => state.upgradeModalItc)
-  const closeUpgradeModal = useDevelopPageStore((state) => state.closeUpgradeModal)
-
   const setHeroError = useCallback((next: string | null) => {
     if (next === null && pendingHomepageErrorRef.current) {
       logAnalytics('homepage.error.abandon', {
@@ -487,9 +482,5 @@ export function useHomepageSubmission() {
     handleStartBuilding,
     handleExampleClick,
     logHomepagePricingView,
-    showUpgradeModal,
-    upgradeModalSource,
-    upgradeModalItc,
-    closeUpgradeModal,
   }
 }

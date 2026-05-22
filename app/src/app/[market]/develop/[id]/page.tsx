@@ -13,7 +13,7 @@ import ChatToolbar from '@/app/[market]/develop/components/chat/ChatToolbar'
 import DevelopSkeleton from '@/app/[market]/develop/components/DevelopSkeleton'
 import DevelopHeader from '@/app/[market]/develop/components/layout/Header'
 import PanelSkeleton from '@/app/[market]/develop/components/PanelSkeleton'
-import { DevelopCreditsModal, PaywallErrorFallback, RenewalPollingModal, UpgradeContainer, UpgradePollingModal } from '@/app/[market]/develop/components/paywall'
+import { DevelopCreditsModal, PaywallErrorFallback, RenewalPollingModal, UpgradePollingModal } from '@/app/[market]/develop/components/paywall'
 import { CdsEsmPreload } from '@/app/[market]/develop/components/paywall/CdsEsmPreload'
 import PreviewPane, { type PublishSnapshotRequestDetail } from '@/app/[market]/develop/components/preview/PreviewPane'
 import ResizableDivider from '@/app/[market]/develop/components/ResizableDivider'
@@ -32,6 +32,7 @@ import { mutatesFiles } from '@/app/[market]/develop/utils/mutatesFiles'
 import { ProtectedRoute } from '@/components/auth'
 import ErrorBoundary from '@/components/ErrorBoundary'
 import { FEEDBACK_ID } from '@/components/feedback/utils'
+import { UpgradeModal } from '@/components/upgrade/UpgradeModal'
 import { buildDynamicApiUrl, dynamicApiConfigService } from '@/config/dynamic-api'
 import { EXPERIMENT_IDS } from '@/config/experiments'
 import { WebSocketProvider } from '@/contexts/WebSocketContext'
@@ -338,10 +339,8 @@ function DevelopPageContent() {
   const site = useDevelopPageStore((state) => state.site);
   const isAssetManagerOpen = useDevelopPageStore((state) => state.isAssetManagerOpen);
   const setIsAssetManagerOpen = useDevelopPageStore((state) => state.setIsAssetManagerOpen);
-  const showUpgradeModal = useDevelopPageStore((state) => state.showUpgradeModal);
   const openUpgradeModal = useDevelopPageStore((state) => state.openUpgradeModal);
   const upgradeModalSource = useDevelopPageStore((state) => state.upgradeModalSource);
-  const upgradeModalItc = useDevelopPageStore((state) => state.upgradeModalItc);
   const closeUpgradeModal = useDevelopPageStore((state) => state.closeUpgradeModal);
   const creditsModalSource = useDevelopPageStore((state) => state.creditsModalSource);
   const closeCreditsModal = useDevelopPageStore((state) => state.closeCreditsModal);
@@ -1846,24 +1845,7 @@ function DevelopPageContent() {
             />
           )}
         >
-          {showUpgradeModal && (
-            <UpgradeContainer
-              source={upgradeModalSource ?? 'unknown'}
-              itc={upgradeModalItc ?? undefined}
-              onSuccessClick={closeUpgradeModal}
-              onClose={() => {
-                const source = upgradeModalSource ?? 'unknown'
-                closeUpgradeModal()
-                shipAnalyticsLog(`${source}.dismissed`, { appId })
-              }}
-              onErrorClick={() => {
-                const source = upgradeModalSource ?? 'unknown'
-                closeUpgradeModal()
-                shipAnalyticsLog(`${source}.error`, { appId })
-              }}
-            />
-          )}
-
+          <UpgradeModal analyticsData={{ appId }} />
           {appId && <DevelopCreditsModal appId={appId} />}
           {appId && <FirstPublishCongratsModal appId={appId} />}
         </ErrorBoundary>

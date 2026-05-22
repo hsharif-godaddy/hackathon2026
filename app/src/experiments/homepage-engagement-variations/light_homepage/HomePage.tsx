@@ -7,18 +7,17 @@ import clsx from 'clsx'
 import HelpSection from '@/app/[market]/components/HelpSection'
 import InfraSection from '@/app/[market]/components/InfraSection'
 import StartSection from '@/app/[market]/components/StartSection'
-import { UpgradeContainer } from '@/app/[market]/develop/components/paywall'
 import { MockLoginDialog } from '@/components/auth/MockLogin'
 import FAQSection from '@/components/layout/FAQSection'
 import FeaturesSection from '@/components/layout/Features'
 import PricingSection from '@/components/layout/PricingSection'
+import { UpgradeModal } from '@/components/upgrade/UpgradeModal'
 import Header from '@/experiments/homepage-engagement-variations/light_homepage/Header'
 import HeroSection from '@/experiments/homepage-engagement-variations/light_homepage/HeroSection'
 import { useHomepageSubmission } from '@/hooks/useHomepageSubmission'
 import { usePaywallDeeplinkWithStore } from '@/hooks/usePaywallDeeplinkWithStore'
 import { useTranslations } from '@/hooks/useTranslations'
 import { isFeatureEnabled } from '@/lib/features'
-import { shipAnalyticsLog } from '@/lib/logging'
 import type { ServerFeatureFlags } from '@/lib/server-features'
 
 interface HomeContentProps {
@@ -121,23 +120,7 @@ export function LightHomepageHomePage({ serverFeatures }: HomeContentProps) {
         </div>
       </div>
 
-      {hp.showUpgradeModal && (
-        <UpgradeContainer
-          source={hp.upgradeModalSource ?? 'unknown'}
-          itc={hp.upgradeModalItc ?? undefined}
-          onSuccessClick={() => hp.closeUpgradeModal()}
-          onClose={() => {
-            const source = hp.upgradeModalSource ?? 'unknown'
-            hp.closeUpgradeModal()
-            shipAnalyticsLog(`${source}.dismissed`, {})
-          }}
-          onErrorClick={() => {
-            const source = hp.upgradeModalSource ?? 'unknown'
-            hp.closeUpgradeModal()
-            shipAnalyticsLog(`${source}.error`, {})
-          }}
-        />
-      )}
+      <UpgradeModal />
     </>
   )
 }
