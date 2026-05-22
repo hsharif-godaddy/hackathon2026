@@ -580,7 +580,7 @@ export class ConversationRepository {
     appId: string,
     options: { limit?: number; before?: string } = {}
   ): Promise<PaginatedMessagesResult> {
-    const limit = Math.min(options.limit ?? 20, 100); // Enforce max 100
+    const limit = Math.min(options.limit ?? 20, 200); // Enforce max 200
 
     // Count only messages whose conversation belongs to this app (ownership check via JOIN)
     const countStmt = this.db.prepare(`

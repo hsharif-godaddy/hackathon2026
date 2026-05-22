@@ -225,26 +225,47 @@ router.get('/conversations/:appId/messages', validateAppIdParam, async (req, res
  * SECURITY: Validates both appId ownership and that conversationId belongs to that app
  */
 router.get('/conversations/:appId/:conversationId', validateAppIdParam, validateConversationOwnership('conversationId'), async (req, res) => {
+  const appId = req.params.appId!; // Validated by validateAppIdParam middleware
   const conversationId = req.params.conversationId!; // Validated by validateConversationOwnership middleware
 
-  try {
+  const { limit, before } = req.query;
+  const paginated = limit !== undefined || before !== undefined;
 
+  try {
     const conversation = await lifecycle.getById(conversationId);
     if (!conversation) {
       return res.status(404).json({ error: 'Conversation not found' });
     }
 
+    if (paginated) {
+      const limitNum = limit !== undefined ? parseInt(limit as string, 10) : 50;
+      if (Number.isNaN(limitNum) || limitNum < 1) {
+        return res.status(400).json({ error: 'Invalid limit' });
+      }
+      const customerId = (req as AuthenticatedRequest).agentContext?.customerId;
+      const scope = workspaceScopeFromAppId(appId, customerId);
+      const result = await messages.getMessagesPaginated(scope, conversationId, {
+        limit: limitNum,
+        before: typeof before === 'string' ? before : undefined,
+      });
+      return res.json({
+        conversation,
+        messages: result.messages,
+        pagination: {
+          total: result.total,
+          hasMore: result.hasMore,
+          nextCursor: result.nextCursor,
+        },
+      });
+    }
+
     const msgs = await messages.getMessages(conversationId);
-
-
-    return res.json({
-      conversation,
-      messages: msgs
-    });
+    return res.json({ conversation, messages: msgs });
   } catch (error) {
     logger.error('conversation.fetch.failure', {
       conversationId,
-      error: getErrorMessage(error)
+      paginated,
+      error: getErrorMessage(error),
     });
     return res.status(500).json({ error: 'Failed to fetch conversation' });
   }

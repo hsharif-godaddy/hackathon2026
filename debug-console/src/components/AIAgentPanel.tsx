@@ -41,9 +41,16 @@ interface ConversationMessage {
     createdAt: string;
 }
 
+interface DetailPagination {
+    total: number;
+    hasMore: boolean;
+    nextCursor: string | null;
+}
+
 interface DetailResponse {
     conversation: ConversationSummary;
     messages: ConversationMessage[];
+    pagination: DetailPagination;
 }
 
 interface HealthResult {
@@ -75,9 +82,26 @@ interface MemoryResult {
 type HealthPhase = 'idle' | 'pinging' | 'ready' | 'unreachable';
 
 const LIST_LIMIT = 100;
+const DETAIL_PAGE_SIZE = 50;
 const HEALTH_MAX_ATTEMPTS = 10;
 const HEALTH_RETRY_DELAY_MS = 10_000;
 const TOOL_CALLS_VISIBLE_DEFAULT = 5;
+
+// Legacy shim: the previous agents service returns { conversation, messages }
+// with no `pagination` field. Treat that as a single full page so the UI
+// renders without crashing on the missing field. Remove once agents has
+// rolled out the paginated detail endpoint.
+function normalizeDetailResponse(raw: unknown): DetailResponse {
+    const detail = (raw || {}) as Partial<DetailResponse>;
+    if (!detail.pagination) {
+        const messageCount = Array.isArray(detail.messages) ? detail.messages.length : 0;
+        return {
+            ...(detail as DetailResponse),
+            pagination: { total: messageCount, hasMore: false, nextCursor: null },
+        };
+    }
+    return detail as DetailResponse;
+}
 
 export default function AIAgentPanel({ globalAppId, refreshKey, onRefresh }: Props) {
     const [healthPhase, setHealthPhase] = useState<HealthPhase>('idle');
@@ -274,7 +298,7 @@ export default function AIAgentPanel({ globalAppId, refreshKey, onRefresh }: Pro
         setDetailError(null);
         try {
             const res = await fetch(
-                `/api/agent/conversations/${encodeURIComponent(globalAppId)}/${encodeURIComponent(selectedId)}`,
+                `/api/agent/conversations/${encodeURIComponent(globalAppId)}/${encodeURIComponent(selectedId)}?limit=${DETAIL_PAGE_SIZE}`,
                 { credentials: 'include', cache: 'no-store' }
             );
             const data = await res.json().catch(function safe() { return null; });
@@ -282,7 +306,7 @@ export default function AIAgentPanel({ globalAppId, refreshKey, onRefresh }: Pro
             if (!res.ok) {
                 throw new Error((data && (data.error as string)) || `HTTP ${res.status}`);
             }
-            setDetail((data || {}) as DetailResponse);
+            setDetail(normalizeDetailResponse(data));
         } catch (err) {
             if (detailRunIdRef.current !== runId) return;
             setDetailError(err instanceof Error ? err.message : String(err));
@@ -293,6 +317,41 @@ export default function AIAgentPanel({ globalAppId, refreshKey, onRefresh }: Pro
             }
         }
     }, [globalAppId, selectedId]);
+
+    const loadOlderDetail = useCallback(async function loadOlderDetail() {
+        if (!globalAppId || !selectedId || !detail || !detail.pagination.hasMore || !detail.pagination.nextCursor) return;
+        const runId = ++detailRunIdRef.current;
+        const cursor = detail.pagination.nextCursor;
+        setDetailLoading(true);
+        setDetailError(null);
+        try {
+            const res = await fetch(
+                `/api/agent/conversations/${encodeURIComponent(globalAppId)}/${encodeURIComponent(selectedId)}?limit=${DETAIL_PAGE_SIZE}&before=${encodeURIComponent(cursor)}`,
+                { credentials: 'include', cache: 'no-store' }
+            );
+            const data = await res.json().catch(function safe() { return null; });
+            if (detailRunIdRef.current !== runId) return;
+            if (!res.ok) {
+                throw new Error((data && (data.error as string)) || `HTTP ${res.status}`);
+            }
+            const next = normalizeDetailResponse(data);
+            setDetail(function merge(prev) {
+                if (!prev) return next;
+                return {
+                    conversation: next.conversation,
+                    messages: [...next.messages, ...prev.messages],
+                    pagination: next.pagination,
+                };
+            });
+        } catch (err) {
+            if (detailRunIdRef.current !== runId) return;
+            setDetailError(err instanceof Error ? err.message : String(err));
+        } finally {
+            if (detailRunIdRef.current === runId) {
+                setDetailLoading(false);
+            }
+        }
+    }, [globalAppId, selectedId, detail]);
 
     const showBackButton = (conversations?.length ?? 0) > 1 && selectedId !== null;
     const canRefresh = healthPhase !== 'pinging' && !listLoading;
@@ -498,6 +557,7 @@ export default function AIAgentPanel({ globalAppId, refreshKey, onRefresh }: Pro
                             error={detailError}
                             loading={detailLoading}
                             onRender={loadDetail}
+                            onLoadOlder={loadOlderDetail}
                         />
                     )}
                 </>
@@ -782,12 +842,13 @@ function ConversationList({ conversations, onSelect }: {
     );
 }
 
-function ConversationDetail({ summary, detail, error, loading, onRender }: {
+function ConversationDetail({ summary, detail, error, loading, onRender, onLoadOlder }: {
     summary: ConversationSummary | null;
     detail: DetailResponse | null;
     error: string | null;
     loading: boolean;
     onRender: () => void;
+    onLoadOlder: () => void;
 }) {
     const header = detail?.conversation ?? summary;
     if (!header) {
@@ -801,9 +862,11 @@ function ConversationDetail({ summary, detail, error, loading, onRender }: {
     }
 
     const messages = detail?.messages ?? null;
-    const messageCount = messages !== null
-        ? messages.length
-        : (typeof summary?.messageCount === 'number' ? summary.messageCount : null);
+    const totalMessages = detail?.pagination?.total ?? null;
+    const loadedCount = messages !== null ? messages.length : null;
+    const displayCount = totalMessages !== null
+        ? `${loadedCount}/${totalMessages}`
+        : (typeof summary?.messageCount === 'number' ? `${summary.messageCount}` : null);
     const userCount = messages?.filter((m) => m.sender === 'user').length ?? null;
     const agentCount = messages !== null && userCount !== null ? messages.length - userCount : null;
 
@@ -840,11 +903,11 @@ function ConversationDetail({ summary, detail, error, loading, onRender }: {
                             <span style={metadataSeparatorStyle}>·</span>
                             <span style={metadataKeyStyle}>Messages:</span>
                             <span>
-                                {messageCount === null
+                                {displayCount === null
                                     ? '—'
                                     : userCount !== null && agentCount !== null
-                                        ? `${messageCount} (${userCount} user, ${agentCount} agent)`
-                                        : `${messageCount}`}
+                                        ? `${displayCount} (${userCount} user, ${agentCount} agent)`
+                                        : displayCount}
                             </span>
                         </div>
                     </div>
@@ -854,6 +917,23 @@ function ConversationDetail({ summary, detail, error, loading, onRender }: {
             {error && !detail && (
                 <div style={{ marginTop: '0.75rem' }}>
                     <ErrorBanner message={`Failed to load conversation: ${error}`} />
+                </div>
+            )}
+
+            {detail && detail.pagination.hasMore && (
+                <div style={{ marginTop: '0.75rem', display: 'flex', justifyContent: 'center' }}>
+                    <button
+                        type="button"
+                        onClick={onLoadOlder}
+                        disabled={loading}
+                        style={{
+                            ...secondaryButtonStyle,
+                            opacity: loading ? 0.6 : 1,
+                            cursor: loading ? 'not-allowed' : 'pointer',
+                        }}
+                    >
+                        {loading ? 'Loading older messages…' : 'Load older messages'}
+                    </button>
                 </div>
             )}
 

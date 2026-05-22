@@ -1,15 +1,9 @@
 import { Router, IRouter, Request, Response } from 'express';
 import v8 from 'node:v8';
 import { logger } from '../../logging/index.js';
-import { getConversationLifecycleStore, getMessageStore } from '../../memory/adapters/index.js';
-import { workspaceScopeFromAppId } from '../../memory/interfaces/scope.js';
-import { exportConversations } from '../../services/conversation-exporter.js';
-import type { ExportDetail } from '../../services/conversation-exporter.js';
 import { gdAuthService } from '../../services/gd-auth-service.js';
 
 const router: IRouter = Router();
-const lifecycle = getConversationLifecycleStore();
-const messages = getMessageStore();
 
 /**
  * Authentication middleware for diagnostics endpoints
@@ -241,64 +235,6 @@ router.get('/snapshot', async (req: Request, res: Response): Promise<void> => {
     res.status(500).json({
       error: 'Failed to generate heap snapshot',
     });
-  }
-});
-
-/**
- * GET /conversations/export - Export conversations for any app (mounted at /diagnostics/conversations/export)
- * Accepts only JOMAX tokens — admin access bypasses tenant isolation
- * Query parameters: appId (required), detail=summary|full (default: summary)
- */
-router.get('/conversations/export', async (req: Request, res: Response): Promise<void> => {
-  const authResult = await authenticateJomaxToken(req, res);
-  if (!authResult.valid) {
-    return;
-  }
-
-  const appId = req.query.appId as string;
-  const detail = (req.query.detail as ExportDetail) || 'summary';
-
-  if (!appId) {
-    res.status(400).json({ error: 'appId query parameter is required' });
-    return;
-  }
-
-  if (detail !== 'summary' && detail !== 'full') {
-    res.status(400).json({ error: 'detail must be "summary" or "full"' });
-    return;
-  }
-
-  logger.info('diagnostics.conversations.export', {
-    appId,
-    detail,
-    shopperId: authResult.shopperId,
-    cid: authResult.cid,
-  });
-
-  try {
-    const conversations = await lifecycle.getByAppId(workspaceScopeFromAppId(appId));
-
-    const allMessages = await messages.getMessagesBatch(conversations.map(c => c.id));
-    const messagesByConversation = new Map<string, typeof allMessages>();
-    for (const msg of allMessages) {
-      const existing = messagesByConversation.get(msg.conversationId) || [];
-      existing.push(msg);
-      messagesByConversation.set(msg.conversationId, existing);
-    }
-
-    const markdown = exportConversations(appId, conversations, messagesByConversation, detail);
-
-    res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
-    const safeAppId = appId.replace(/[^a-zA-Z0-9_-]/g, '_');
-    res.setHeader('Content-Disposition', `attachment; filename="conversations-${safeAppId}.md"`);
-    res.send(markdown);
-  } catch (error) {
-    logger.error('diagnostics.conversations.export.error', {
-      appId,
-      detail,
-      error: error instanceof Error ? error.message : String(error),
-    });
-    res.status(500).json({ error: 'Failed to export conversations' });
   }
 });
 

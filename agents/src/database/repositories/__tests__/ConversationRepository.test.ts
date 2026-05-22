@@ -576,17 +576,17 @@ describe('getMessagesAfterMessageId', () => {
       expect(result.total).toBe(0)
     })
 
-    it('should enforce max limit of 100', async () => {
+    it('should enforce max limit of 200', async () => {
       createApp('app-123')
       const conv = await repo.create('app-123', 'develop', 'Test')
 
-      for (let i = 1; i <= 150; i++) {
+      for (let i = 1; i <= 250; i++) {
         await repo.addMessage(conv.id, 'user', `Message ${i}`)
       }
 
-      const result = await repo.getMessagesPaginated(conv.id, 'app-123', { limit: 200 })
+      const result = await repo.getMessagesPaginated(conv.id, 'app-123', { limit: 500 })
 
-      expect(result.messages).toHaveLength(100)
+      expect(result.messages).toHaveLength(200)
     })
 
     it('should return empty result for wrong appId', async () => {

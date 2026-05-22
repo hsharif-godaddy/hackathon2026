@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "NEXT_TELEMETRY_DISABLED=1 NODE_OPTIONS='--max-old-space-size=4096 --heapsnapshot-near-heap-limit=3' tsx watch server.ts",
+    "dev": "NEXT_TELEMETRY_DISABLED=1 tsx watch server.ts",
     "build": "next build",
     "start": "tsx server.ts",
     "typecheck": "tsc --noEmit",

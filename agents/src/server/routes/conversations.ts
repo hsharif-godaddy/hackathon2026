@@ -3,8 +3,6 @@ import type { Router as RouterType } from 'express';
 import { Logger } from '../../logging/index.js';
 import { getConversationLifecycleStore, getMessageStore } from '../../memory/adapters/index.js';
 import { workspaceScopeFromAppId } from '../../memory/interfaces/scope.js';
-import { exportConversations } from '../../services/conversation-exporter.js';
-import type { ExportDetail } from '../../services/conversation-exporter.js';
 import { validateAppOwnershipFromQuery, validateConversationOwnership, type ConversationRequest } from '../middleware/app-ownership.js';
 import type { AuthenticatedRequest } from '../middleware/jwt-auth.js';
 import { mapToolCallsToUI } from '../tool-call-mapper.js';
@@ -66,49 +64,6 @@ router.get('/api/conversations', validateAppOwnershipFromQuery('appId'), async (
       error: error instanceof Error ? error.message : String(error)
     });
     return res.status(500).json({ error: 'Failed to fetch conversations' });
-  }
-});
-
-/**
- * GET /api/conversations/export
- * Export all conversations for an app as markdown
- * Query params: appId (required), detail=summary|full (default: summary)
- */
-router.get('/api/conversations/export', validateAppOwnershipFromQuery('appId'), async (req: Request, res: Response) => {
-  const appId = req.query.appId as string;
-  const detail = (req.query.detail as ExportDetail) || 'summary';
-
-  if (detail !== 'summary' && detail !== 'full') {
-    return res.status(400).json({ error: 'detail must be "summary" or "full"' });
-  }
-
-  try {
-    logger.debug('conversations.export.begin', { appId, detail });
-
-    const customerId = (req as AuthenticatedRequest).agentContext?.customerId;
-    const conversations = await lifecycle.getByAppId(workspaceScopeFromAppId(appId, customerId));
-
-    const allMessages = await messages.getMessagesBatch(conversations.map(c => c.id));
-    const messagesByConversation = new Map<string, typeof allMessages>();
-    for (const msg of allMessages) {
-      const existing = messagesByConversation.get(msg.conversationId) || [];
-      existing.push(msg);
-      messagesByConversation.set(msg.conversationId, existing);
-    }
-
-    const markdown = exportConversations(appId, conversations, messagesByConversation, detail);
-
-    res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
-    const safeAppId = appId.replace(/[^a-zA-Z0-9_-]/g, '_');
-    res.setHeader('Content-Disposition', `attachment; filename="conversations-${safeAppId}.md"`);
-    return res.send(markdown);
-  } catch (error) {
-    logger.error('conversations.export.error', {
-      appId,
-      detail,
-      error: error instanceof Error ? error.message : String(error),
-    });
-    return res.status(500).json({ error: 'Failed to export conversations' });
   }
 });
 
