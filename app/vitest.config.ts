@@ -93,6 +93,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
+      '@cds/deps-esm': path.resolve(__dirname, './cds/deps-esm.js'),
       // Hard-alias react entrypoints to the consumer's copy so any linked /
       // overridden dep (e.g. `@airo/components` via pnpm.overrides `link:` to
       // a sibling repo with its own node_modules) resolves every `react` /

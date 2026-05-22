@@ -37,8 +37,6 @@ vi.mock('@/utils/focus', () => ({
   resetFocusOnModalClose: vi.fn(),
 }));
 
-vi.mock('@/lib/cdsEsmDeps', () => ({ default: {} }));
-
 vi.mock('@/hooks/useSwitchboard', () => ({
   useSwitchboard: vi.fn(() => false),
 }));
@@ -150,7 +148,6 @@ describe('DirectToPaidContainer', function directToPaidContainerTests() {
 
     expect(screen.getByTestId('type')).toHaveTextContent('godaddyUnifiedPlansAndPricingLibraryEsm');
     expect(screen.getByTestId('loader-mode')).toHaveTextContent('esm');
-    expect(screen.getByTestId('has-deps')).toHaveTextContent('true');
   });
 
   it('should pass UMD props when umd-fallback flag is true', async function umdFallback() {

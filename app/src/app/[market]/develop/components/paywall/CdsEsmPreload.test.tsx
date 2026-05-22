@@ -25,9 +25,6 @@ vi.mock('@/hooks/useGasketData', () => ({
   useGasketData: () => mockGasketData(),
 }))
 
-vi.mock('@/lib/cdsEsmDeps', () => ({
-  default: { 'react/jsx-runtime': { module: {}, version: '19.0.0' } },
-}))
 
 let lastCdsProps: Record<string, unknown> | null = null
 vi.mock('@venture/cds-loader', () => ({

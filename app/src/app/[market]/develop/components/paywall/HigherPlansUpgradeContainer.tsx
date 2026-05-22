@@ -10,7 +10,6 @@ import { useGasketData } from '@/hooks/useGasketData'
 import { useSubscription } from '@/hooks/useSubscription'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useUpgradePurchase } from '@/hooks/useUpgradePurchase'
-import esmDeps from '@/lib/cdsEsmDeps'
 import { getItcOverride } from '@/lib/itc'
 import { shipAnalyticsLog } from '@/lib/logging'
 import { AiroSubscription } from '@/lib/mgmt-airo/types';
@@ -208,7 +207,7 @@ const HigherPlansUpgradeContainer = ({
     >
       <ComponentLoader
         type={umdFallback ? CDS_TYPE_UMD : CDS_TYPE_ESM}
-        {...(!umdFallback && { loaderMode: 'esm', deps: esmDeps })}
+        {...(!umdFallback && { loaderMode: 'esm'})}
         subType='UniversalUpgrade'
         productNamespace='airobuildr' // spelling of airobuildr is correct
         allowPaidToPaidModal

@@ -7,7 +7,6 @@ import { useAuth } from '@/hooks/useAuth'
 import { useCreditPurchase } from '@/hooks/useCreditPurchase'
 import { useGasketData } from '@/hooks/useGasketData'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
-import esmDeps from '@/lib/cdsEsmDeps'
 import { getErrorMessage } from '@/lib/errors'
 import { getItcOverride } from '@/lib/itc'
 import { shipAnalyticsLog } from '@/lib/logging'
@@ -165,7 +164,7 @@ const CreditsUpgradeContainer = ({
     >
       <ComponentLoader
         type={umdFallback ? CDS_TYPE_UMD : CDS_TYPE_ESM}
-        {...(!umdFallback && { loaderMode: 'esm', deps: esmDeps })}
+        {...(!umdFallback && { loaderMode: 'esm'})}
         locale={gasketData?.intl?.locale || 'en-US'}
         cds={gasketData?.cds}
         subType='StandaloneAddon'

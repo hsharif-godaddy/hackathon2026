@@ -45,7 +45,6 @@ vi.mock('@/utils/instrumentation', () => ({
   logImpressionEvent: vi.fn(() => vi.fn()),
 }));
 
-vi.mock('@/lib/cdsEsmDeps', () => ({ default: {} }));
 
 vi.mock('@/hooks/useSwitchboard', () => ({
   useSwitchboard: vi.fn(() => false),

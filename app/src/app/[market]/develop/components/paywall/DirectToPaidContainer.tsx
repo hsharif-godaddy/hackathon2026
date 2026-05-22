@@ -6,7 +6,6 @@ import ErrorBoundary from '@/components/ErrorBoundary'
 import { useGasketData } from '@/hooks/useGasketData'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useUpgradePurchase } from '@/hooks/useUpgradePurchase'
-import esmDeps from '@/lib/cdsEsmDeps'
 import { getItcOverride } from '@/lib/itc'
 import { shipAnalyticsLog } from '@/lib/logging'
 import { SubscriptionPlan } from '@/types/credits'
@@ -241,7 +240,7 @@ const DirectToPaidContainer = ({
     >
       <ComponentLoader
         type={umdFallback ? CDS_TYPE_UMD : CDS_TYPE_ESM}
-        {...(!umdFallback && { loaderMode: 'esm', deps: esmDeps })}
+        {...(!umdFallback && { loaderMode: 'esm'})}
         subType='DirectToPaid'
         offerGroupId={D2P_OFFER_GROUP_IDS.AIRO_BUILDER_LINEUP}
         productId={productId}

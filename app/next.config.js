@@ -1,5 +1,10 @@
 import 'tsx';
 
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
 const gasket = (await import('./gasket.ts')).default;
 
 export default gasket.actions.getNextConfig({
@@ -73,6 +78,7 @@ export default gasket.actions.getNextConfig({
     config.resolve.alias = {
       ...config.resolve.alias,
       'konva$': 'konva/lib/index.js',
+      '@cds/deps-esm': path.resolve(__dirname, 'cds/deps-esm.js'),
     };
 
     if (isServer) {

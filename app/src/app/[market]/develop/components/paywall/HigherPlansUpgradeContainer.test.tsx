@@ -105,8 +105,6 @@ vi.mock('@/utils/instrumentation', () => ({
   logImpressionEvent: vi.fn(() => vi.fn()),
 }));
 
-vi.mock('@/lib/cdsEsmDeps', () => ({ default: {} }));
-
 let componentLoaderMountCount = 0;
 
 vi.mock('./cdsLoader', async () => {

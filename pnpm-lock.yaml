@@ -75,9 +75,6 @@ catalogs:
     '@types/ws':
       specifier: ^8.18.1
       version: 8.18.1
-    '@ux/util':
-      specifier: ^2400.11.0
-      version: 2400.11.0
     '@vitest/coverage-v8':
       specifier: ^3.2.4
       version: 3.2.4
@@ -150,21 +147,12 @@ catalogs:
     parquetjs:
       specifier: ^0.11.2
       version: 0.11.2
-    react-device-detect:
-      specifier: ^2.2.3
-      version: 2.2.3
     react-filerobot-image-editor:
       specifier: 5.0.0-beta.156
       version: 5.0.0-beta.156
-    react-focus-lock:
-      specifier: ^2.13.7
-      version: 2.13.7
     react-markdown:
       specifier: ^10.1.0
       version: 10.1.0
-    react-transition-group:
-      specifier: ^4.4.5
-      version: 4.4.5
     remark-gfm:
       specifier: ^4.0.1
       version: 4.0.1
@@ -1116,9 +1104,6 @@ importers:
       '@ux/postcss-intents':
         specifier: ^2500.9.0
         version: 2500.9.0(@ux/intents@2500.9.0)(postcss@8.5.14)
-      '@ux/util':
-        specifier: 'catalog:'
-        version: 2400.11.0(encoding@0.1.13)
       '@vitejs/plugin-react':
         specifier: ^5.2.0
         version: 5.2.0(vite@6.4.2(@types/node@22.19.18)(jiti@2.7.0)(lightningcss@1.32.0)(sass@1.99.0)(terser@5.47.1)(tsx@4.21.0)(yaml@2.8.4))
@@ -1137,15 +1122,6 @@ importers:
       eslint-plugin-simple-import-sort:
         specifier: ^12.1.1
         version: 12.1.1(eslint@9.28.0(jiti@2.7.0))
-      react-device-detect:
-        specifier: 'catalog:'
-        version: 2.2.3(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      react-focus-lock:
-        specifier: 'catalog:'
-        version: 2.13.7(@types/react@19.2.14)(react@19.1.0)
-      react-transition-group:
-        specifier: 'catalog:'
-        version: 4.4.5(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       tailwindcss:
         specifier: ^4.3.0
         version: 4.3.0
@@ -3625,9 +3601,6 @@ packages:
   '@godaddy/browserslist-config@3.1.0':
     resolution: {integrity: sha512-wjowEmgJJkCvBSBGIjPBz4FVdXDcd6i7WFflgDtY1dJdsROWxu11e5NqE3OPdQEzkZjhEePqe1u87/QyT8/1Nw==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@godaddy/browserslist-config/-/@godaddy/browserslist-config-3.1.0.tgz}
 
-  '@godaddy/fetch@1.0.4':
-    resolution: {integrity: sha512-tkE7sUx193snbM6atNHLPv4KDgRtysGb+xeVQTQESdgnAPyZGzk+zEOqBOUr2zFKMYbj7auPuC3FIKVopDXa2g==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@godaddy/fetch/-/@godaddy/fetch-1.0.4.tgz}
-
   '@godaddy/gasket-auth@3.5.1':
     resolution: {integrity: sha512-idwImhdLhcgSQAcxrfuQN5SNZMqD6g2ezJhlcC7k7M5b2trA9nzaLzHg1cJq6ws4OUfa1tHnW+a95qyxwEuqbw==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@godaddy/gasket-auth/-/@godaddy/gasket-auth-3.5.1.tgz}
     peerDependencies:
@@ -3717,11 +3690,6 @@ packages:
     peerDependenciesMeta:
       prop-types:
         optional: true
-
-  '@godaddy/request@4.0.0':
-    resolution: {integrity: sha512-nX/pJJYqV0lDcdjCirkS0spv9oqJugCH6KOMjOrUvx6KuMmrWztu8Fccz7m0ctmY0dyp7El/83ouROYfbodTsg==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@godaddy/request/-/@godaddy/request-4.0.0.tgz}
-    engines: {node: '>= 4.x.x'}
-    deprecated: Use the fetch API instead of this wrapper package
 
   '@godaddy/user-analytics-js@4.0.1':
     resolution: {integrity: sha512-5hes3jTO09gFZNqQPCYRsTRLXvGa2+uq+u/HWB7aHnRx/3xNZg7KqbOpzY+LTv6FTI/sbw8yh587Ob7u0IIV5Q==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@godaddy/user-analytics-js/-/@godaddy/user-analytics-js-4.0.1.tgz}
@@ -7399,10 +7367,6 @@ packages:
       react: 19.1.0
       react-dom: 19.1.0
 
-  '@ux/util@2400.11.0':
-    resolution: {integrity: sha512-n0oelql9rbaCyZc226YQXvyVRKSnTUZoei52GjPb4FaQWA3Fyx91vgOqK3Ix4cuz0a3BZfyXMuC8xaTOPx1Ltg==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/util/-/@ux/util-2400.11.0.tgz}
-    engines: {node: '>= 18'}
-
   '@ux/webpack-config@2300.2.6':
     resolution: {integrity: sha512-tExbn9clVCLZ4Zlxg3DqVcDnL8QB/ErNK6WkvahaHvQKbSYwc3+kXSR5oDaSOny/KZL/B4IlKTk4YBFVcihVVw==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/webpack-config/-/@ux/webpack-config-2300.2.6.tgz}
 
@@ -10483,9 +10447,6 @@ packages:
   jsonfile@6.2.1:
     resolution: {integrity: sha512-zwOTdL3rFQ/lRdBnntKVOX6k5cKJwEc1HdilT71BWEu7J41gXIB2MRp+vxduPSwZJPWBxEzv4yH1wYLJGUHX4Q==}
 
-  jsonp@0.2.1:
-    resolution: {integrity: sha512-pfog5gdDxPdV4eP7Kg87M8/bHgshlZ5pybl+yKxAnCZ5O7lCIn7Ixydj03wOlnDQesky2BPyA91SQ+5Y/mNwzw==}
-
   jsx-ast-utils@3.3.5:
     resolution: {integrity: sha512-ZZow9HBI5O6EPgSJLUb8n2NKgmVWTwCvHGwFuJlMjvLFqlGG6pjirPhtdsseaLZjSibD8eegzmYpUZwoIlj2cQ==}
     engines: {node: '>=4.0'}
@@ -10531,9 +10492,6 @@ packages:
   koa@2.16.4:
     resolution: {integrity: sha512-3An0GCLDSR34tsCO4H8Tef8Pp2ngtaZDAZnsWJYelqXUK5wyiHvGItgK/xcSkmHLSTn1Jcho1mRQs2ehRzvKKw==}
     engines: {node: ^4.8.4 || ^6.10.1 || ^7.10.1 || >= 8.1.4}
-
-  koekiemonster@2.2.1:
-    resolution: {integrity: sha512-67IOEPQEmUsSUJINdrAbXi2p0rrm2Mc5+TEClOthmhNqsuGM4C4K8h1bg5XcFREU/LjiPU3HmDNbQjz9COueJg==}
 
   konva@9.3.18:
     resolution: {integrity: sha512-ad5h0Y9phUrinBrKXyIISbURRHQO7Rx5cz7mAEEfdVCs45gDqRD8Y0I0nJRk8S6iqEbiRE87CEZu5GVSnU8oow==}
@@ -11996,12 +11954,6 @@ packages:
     peerDependencies:
       react: 19.1.0
 
-  react-device-detect@2.2.3:
-    resolution: {integrity: sha512-buYY3qrCnQVlIFHrC5UcUoAj7iANs/+srdkwsnNjI7anr3Tt7UY6MqNxtMLlr0tMBied0O49UZVK8XKs3ZIiPw==}
-    peerDependencies:
-      react: 19.1.0
-      react-dom: 19.1.0
-
   react-dom@19.1.0:
     resolution: {integrity: sha512-Xs1hdnE+DyKgeHJeJznQmYMIBG3TKIHJJT95Q58nHLSrElKlGQqDTR2HQ9fx5CN/Gk6Vh/kupBTDLU11/nDk/g==}
     peerDependencies:
@@ -12479,9 +12431,6 @@ packages:
   rimraf@3.0.2:
     resolution: {integrity: sha512-JZkJMZkAGFFPP2YqXZXPbMlMBgsxzE8ILs4lMIX/2o0L9UBw9O/Y3o6wFw/i9YLapcUJWwqbi3kdxIPdC62TIA==}
     hasBin: true
-
-  rip-out@1.0.0:
-    resolution: {integrity: sha512-3MaIRdARgudmIIbHKo83/SJQSL+8HWbhGfJbGASsGkNV4EJsuO36CZUiWM13rgeYExOVAujP2qpqWMByUkC2Fg==}
 
   robots-parser@3.0.1:
     resolution: {integrity: sha512-s+pyvQeIKIZ0dx5iJiQk1tPLJAWln39+MI5jtM8wnyws+G5azk+dMnMX0qfbqNetKKNgcWWOdi0sfm+FbQbgdQ==}
@@ -13390,10 +13339,6 @@ packages:
   typical@7.3.0:
     resolution: {integrity: sha512-ya4mg/30vm+DOWfBg4YK3j2WD6TWtRkCbasOJr40CseYENzCUby/7rIvXA99JGsQHeNxLbnXdyLLxKSv3tauFw==}
     engines: {node: '>=12.17'}
-
-  ua-parser-js@1.0.41:
-    resolution: {integrity: sha512-LbBDqdIC5s8iROCUjMbW1f5dJQTEFB1+KO9ogbvlb3nm9n4YHa5p4KTvFPWvh2Hs8gZMBuiB1/8+pdfe/tDPug==}
-    hasBin: true
 
   ufo@1.6.4:
     resolution: {integrity: sha512-JFNbkD1Svwe0KvGi8GOeLcP4kAWQ609twvCdcHxq1oSL8svv39ZuSvajcD8B+5D0eL4+s1Is2D/O6KN3qcTeRA==}
@@ -16782,14 +16727,6 @@ snapshots:
 
   '@godaddy/browserslist-config@3.1.0': {}
 
-  '@godaddy/fetch@1.0.4(encoding@0.1.13)':
-    dependencies:
-      '@babel/runtime': 7.29.2
-      abort-controller: 3.0.0
-      node-fetch: 2.7.0(encoding@0.1.13)
-    transitivePeerDependencies:
-      - encoding
-
   '@godaddy/gasket-auth@3.5.1(@godaddy/gasket-plugin-auth@3.8.0(@godaddy/gasket-plugin-visitor@3.9.0)(encoding@0.1.13))(encoding@0.1.13)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
       '@gasket/data': 7.5.5
@@ -17001,17 +16938,6 @@ snapshots:
       react: 19.1.0
     optionalDependencies:
       prop-types: 15.8.1
-
-  '@godaddy/request@4.0.0(encoding@0.1.13)':
-    dependencies:
-      '@godaddy/fetch': 1.0.4(encoding@0.1.13)
-      diagnostics: 2.0.2
-      jsonp: 0.2.1
-      querystringify: 2.2.0
-      rip-out: 1.0.0
-    transitivePeerDependencies:
-      - encoding
-      - supports-color
 
   '@godaddy/user-analytics-js@4.0.1(react@19.1.0)':
     dependencies:
@@ -21364,17 +21290,6 @@ snapshots:
       react: 19.1.0
       react-dom: 19.1.0(react@19.1.0)
 
-  '@ux/util@2400.11.0(encoding@0.1.13)':
-    dependencies:
-      '@godaddy/request': 4.0.0(encoding@0.1.13)
-      diagnostics: 2.0.2
-      koekiemonster: 2.2.1
-      object-assign: 4.1.1
-      url-parse: 1.5.10
-    transitivePeerDependencies:
-      - encoding
-      - supports-color
-
   '@ux/webpack-config@2300.2.6':
     dependencies:
       async: 3.2.6
@@ -25159,12 +25074,6 @@ snapshots:
     optionalDependencies:
       graceful-fs: 4.2.11
 
-  jsonp@0.2.1:
-    dependencies:
-      debug: 2.6.9
-    transitivePeerDependencies:
-      - supports-color
-
   jsx-ast-utils@3.3.5:
     dependencies:
       array-includes: 3.1.9
@@ -25240,8 +25149,6 @@ snapshots:
       vary: 1.1.2
     transitivePeerDependencies:
       - supports-color
-
-  koekiemonster@2.2.1: {}
 
   konva@9.3.18: {}
 
@@ -27014,12 +26921,6 @@ snapshots:
       '@babel/runtime': 7.29.2
       react: 19.1.0
 
-  react-device-detect@2.2.3(react-dom@19.1.0(react@19.1.0))(react@19.1.0):
-    dependencies:
-      react: 19.1.0
-      react-dom: 19.1.0(react@19.1.0)
-      ua-parser-js: 1.0.41
-
   react-dom@19.1.0(react@19.1.0):
     dependencies:
       react: 19.1.0
@@ -27646,8 +27547,6 @@ snapshots:
   rimraf@3.0.2:
     dependencies:
       glob: 13.0.6
-
-  rip-out@1.0.0: {}
 
   robots-parser@3.0.1: {}
 
@@ -28691,8 +28590,6 @@ snapshots:
   typescript@5.9.3: {}
 
   typical@7.3.0: {}
-
-  ua-parser-js@1.0.41: {}
 
   ufo@1.6.4: {}
 

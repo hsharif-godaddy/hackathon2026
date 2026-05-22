@@ -2,6 +2,7 @@
 
 import { ReactNode, useCallback, useEffect, useRef, useState } from 'react'
 import * as ReactIntl from 'react-intl'
+import depsEsm from '@cds/deps-esm'
 import CdsComponentLoader from '@venture/cds-loader'
 
 import { shipAnalyticsLog } from '@/lib/logging'
@@ -134,7 +135,7 @@ export function ComponentLoader({
 
   return (
     <div ref={containerRef}>
-      <CdsComponentLoader source={source} onError={handleError} {...props} />
+      <CdsComponentLoader source={source} onError={handleError} {...props} {...(props.loaderMode === 'esm' && { deps: depsEsm })} />
     </div>
   )
 }

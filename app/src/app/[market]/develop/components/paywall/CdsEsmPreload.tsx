@@ -1,11 +1,11 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import depsEsm from '@cds/deps-esm'
 import CdsComponentLoader from '@venture/cds-loader'
 
 import { useGasketData } from '@/hooks/useGasketData'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
-import esmDeps from '@/lib/cdsEsmDeps'
 import { shipAnalyticsLog } from '@/lib/logging'
 import { logger } from '@/lib/request-context'
 import { PAYWALL_UMD_FALLBACK } from './cdsConfig'
@@ -150,7 +150,7 @@ export function CdsEsmPreload() {
         subType="UpgradeLoadingSkeleton"
         source="preload"
         cds={gasketData.cds}
-        deps={esmDeps}
+        deps={ depsEsm }
         locale={gasketData?.intl?.locale || 'en-US'}
         LoadingComponent={null}
         onError={(err: Error) => {

@@ -70,6 +70,11 @@ export default makeGasket({
       },
       switchboard: {
         env: 'development'
+      },
+      cds: {
+        api: {
+          baseUrl: 'https://cds.api.int.dev-godaddy.com',
+        }
       }
     },
     'local.test': {
@@ -115,6 +120,11 @@ export default makeGasket({
       },
       switchboard: {
         env: 'test'
+      },
+      cds: {
+        api: {
+          baseUrl: 'https://cds.api.int.test-godaddy.com',
+        }
       }
     },
     'local.prod': {
@@ -160,6 +170,11 @@ export default makeGasket({
       },
       switchboard: {
         env: 'production'
+      },
+      cds: {
+        api: {
+          baseUrl: 'https://cds.api.int.godaddy.com',
+        }
       }
     },
     // Deployed environments
@@ -167,7 +182,12 @@ export default makeGasket({
       insightsApiUrl: 'https://uip.api.int.test-godaddy.com/v1/insights/graphql',
       insightsSsoHost: 'sso.test-godaddy.com',
       switchboard: {
-        env: 'development'
+        env: 'development',
+      },
+      cds: {
+        api: {
+          baseUrl: 'https://cds.api.int.dev-godaddy.com',
+        }
       }
     },
     'test': {
@@ -176,6 +196,11 @@ export default makeGasket({
       insightsSsoHost: 'sso.test-godaddy.com',
       switchboard: {
         env: 'test'
+      },
+      cds: {
+        api: {
+          baseUrl: 'https://cds.api.int.test-godaddy.com',
+        }
       }
     },
     'production': {
@@ -184,6 +209,11 @@ export default makeGasket({
       insightsSsoHost: 'sso.godaddy.com',
       switchboard: {
         env: 'production'
+      },
+      cds: {
+        api: {
+          baseUrl: 'https://cds.api.int.godaddy.com',
+        }
       }
     },
   },
