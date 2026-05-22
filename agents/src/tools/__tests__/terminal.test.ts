@@ -8,8 +8,9 @@
  * - Basic input validation (empty, length)
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { TerminalTool } from '../terminal';
+import type { WorkspaceTasks, RunCommandResult } from '../../workspace/tasks';
 
 describe('TerminalTool', () => {
   let terminalTool: TerminalTool;
@@ -246,15 +247,190 @@ describe('TerminalTool', () => {
     });
   });
 
-  describe('Dev Supervisor Requirement', () => {
-    it('should report dev-supervisor as unavailable when not provided', () => {
-      expect(terminalTool.isDevSupervisorAvailable()).toBe(false);
+  describe('Workspace Requirement', () => {
+    it('should report workspace as unavailable when not provided', () => {
+      expect(terminalTool.isWorkspaceAvailable()).toBe(false);
     });
 
-    it('should require dev-supervisor for non-noop commands', async () => {
+    it('should require workspace for non-noop commands', async () => {
       await expect(
         terminalTool.executeCommand('/test/app', { command: 'echo test' })
-      ).rejects.toThrow('Terminal tool requires dev-supervisor');
+      ).rejects.toThrow('Terminal tool requires a workspace connection');
+    });
+  });
+
+  describe('Command Execution via WorkspaceTasks', () => {
+    const mockTasks: WorkspaceTasks = {
+      runCommand: vi.fn(),
+      runCommandSync: vi.fn(),
+      runCommandAsync: vi.fn(),
+      get: vi.fn(),
+      output: vi.fn(),
+      cancel: vi.fn(),
+    };
+    let tool: TerminalTool;
+
+    beforeEach(() => {
+      vi.resetAllMocks();
+      tool = new TerminalTool(mockTasks);
+    });
+
+    it('should return success for zero exit code', async () => {
+      vi.mocked(mockTasks.runCommandSync).mockResolvedValue({
+        taskId: 'task-1',
+        exitCode: 0,
+        timedOut: false,
+        stdout: 'hello world',
+        stderr: '',
+        executionTimeMs: 120,
+      });
+
+      const result = await tool.executeCommand('/test/app', { command: 'echo hello world' });
+
+      expect(result.success).toBe(true);
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toBe('hello world');
+      expect(result.stderr).toBe('');
+      expect(result.timedOut).toBe(false);
+      expect(result.error).toBeUndefined();
+    });
+
+    it('should return failure for non-zero exit code', async () => {
+      vi.mocked(mockTasks.runCommandSync).mockResolvedValue({
+        taskId: 'task-2',
+        exitCode: 1,
+        timedOut: false,
+        stdout: '',
+        stderr: 'command not found',
+        executionTimeMs: 50,
+      });
+
+      const result = await tool.executeCommand('/test/app', { command: 'badcmd' });
+
+      expect(result.success).toBe(false);
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toBe('command not found');
+      expect(result.timedOut).toBe(false);
+      expect(result.error).toBeUndefined();
+    });
+
+    it('should propagate timedOut from task result', async () => {
+      vi.mocked(mockTasks.runCommandSync).mockResolvedValue({
+        taskId: 'task-3',
+        exitCode: -1,
+        timedOut: true,
+        stdout: 'partial output',
+        stderr: '',
+        executionTimeMs: 30000,
+      });
+
+      const result = await tool.executeCommand('/test/app', { command: 'sleep 60' });
+
+      expect(result.success).toBe(false);
+      expect(result.timedOut).toBe(true);
+      expect(result.stdout).toBe('partial output');
+    });
+
+    it('should detect accepted-past-wait and report as timed out', async () => {
+      vi.mocked(mockTasks.runCommandSync).mockResolvedValue({
+        taskId: 'task-4',
+        exitCode: -1,
+        timedOut: false,
+        stdout: 'partial',
+        stderr: '',
+        executionTimeMs: 0,
+      });
+
+      const result = await tool.executeCommand('/test/app', { command: 'npm install' });
+
+      expect(result.success).toBe(false);
+      expect(result.timedOut).toBe(true);
+      expect(result.exitCode).toBe(-1);
+      expect(result.stdout).toBe('partial');
+      expect(result.error).toContain('Command still running');
+    });
+
+    it('should forward env variables to runCommandSync', async () => {
+      vi.mocked(mockTasks.runCommandSync).mockResolvedValue({
+        taskId: 'task-5',
+        exitCode: 0,
+        timedOut: false,
+        stdout: '',
+        stderr: '',
+        executionTimeMs: 10,
+      });
+
+      await tool.executeCommand('/test/app', {
+        command: 'echo $FOO',
+        env: { FOO: 'bar', BAZ: 'qux' },
+      });
+
+      expect(mockTasks.runCommandSync).toHaveBeenCalledWith(
+        expect.objectContaining({
+          command: 'echo $FOO',
+          env: { FOO: 'bar', BAZ: 'qux' },
+        })
+      );
+    });
+
+    it('should omit env when empty', async () => {
+      vi.mocked(mockTasks.runCommandSync).mockResolvedValue({
+        taskId: 'task-6',
+        exitCode: 0,
+        timedOut: false,
+        stdout: '',
+        stderr: '',
+        executionTimeMs: 10,
+      });
+
+      await tool.executeCommand('/test/app', { command: 'ls', env: {} });
+
+      expect(mockTasks.runCommandSync).toHaveBeenCalledWith(
+        expect.objectContaining({ env: undefined })
+      );
+    });
+
+    it('should forward workingDir to runCommandSync', async () => {
+      vi.mocked(mockTasks.runCommandSync).mockResolvedValue({
+        taskId: 'task-7',
+        exitCode: 0,
+        timedOut: false,
+        stdout: '',
+        stderr: '',
+        executionTimeMs: 10,
+      });
+
+      await tool.executeCommand('/test/app', { command: 'ls', workingDir: 'src/components' });
+
+      expect(mockTasks.runCommandSync).toHaveBeenCalledWith(
+        expect.objectContaining({ workingDir: 'src/components' })
+      );
+    });
+
+    it('should handle thrown errors from runCommandSync', async () => {
+      vi.mocked(mockTasks.runCommandSync).mockRejectedValue(new Error('connection refused'));
+
+      const result = await tool.executeCommand('/test/app', { command: 'echo test' });
+
+      expect(result.success).toBe(false);
+      expect(result.exitCode).toBe(-1);
+      expect(result.error).toContain('connection refused');
+    });
+
+    it('should sanitize ANSI codes from task output', async () => {
+      vi.mocked(mockTasks.runCommandSync).mockResolvedValue({
+        taskId: 'task-8',
+        exitCode: 0,
+        timedOut: false,
+        stdout: '\x1b[32m✓\x1b[0m All good',
+        stderr: '\x1b[31mwarn\x1b[0m: something',
+        executionTimeMs: 100,
+      });
+
+      const result = await tool.executeCommand('/test/app', { command: 'npm test' });
+
+      expect(result.stdout).toBe('✓ All good');
+      expect(result.stderr).toBe('warn: something');
     });
   });
 });

@@ -649,3 +649,27 @@ func TestTaskManager_CapacityAtomic(t *testing.T) {
 		t.Errorf("expected ErrTooManyTasks, got %v", err)
 	}
 }
+
+func TestTaskManager_DefaultWorkDir(t *testing.T) {
+	t.Parallel()
+	tm := newTestTaskManager()
+	defer tm.Shutdown(context.Background())
+
+	taskID, err := tm.Submit(validation.CommandRequest{
+		Command: "pwd",
+		Timeout: 5,
+	})
+	if err != nil {
+		t.Fatalf("Submit failed: %v", err)
+	}
+
+	task, err := tm.Wait(taskID, 5*time.Second)
+	if err != nil {
+		t.Fatalf("Wait failed: %v", err)
+	}
+
+	info := task.Info()
+	if info.WorkingDir != tm.config.DefaultWorkDir {
+		t.Errorf("expected WorkingDir=%q, got %q", tm.config.DefaultWorkDir, info.WorkingDir)
+	}
+}

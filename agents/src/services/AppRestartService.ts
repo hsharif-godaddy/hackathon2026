@@ -12,6 +12,7 @@ import { join } from 'node:path';
 import { Logger } from '../logging/index.js';
 import { TerminalTool } from '../tools/terminal.js';
 import { DevSupervisorClientFactory } from '../utils/dev-supervisor-client-factory.js';
+import { createForWorkspace } from '../workspace/index.js';
 import { measureAppDirSize } from '../utils/container-metrics.js';
 
 const RESTART_TIMEOUTS = {
@@ -386,16 +387,16 @@ export class AppRestartService {
     phase: 'install' | 'build'
   ): Promise<{ success: boolean; output?: string; error?: string; exitCode?: number }> {
     try {
-      const devSupervisor = DevSupervisorClientFactory.createForApp(appId);
+      const workspace = createForWorkspace(appId, 'preview');
 
-      if (!devSupervisor) {
+      if (!workspace) {
         return {
           success: false,
           error: 'Dev supervisor not available',
         };
       }
 
-      const terminalTool = new TerminalTool(devSupervisor);
+      const terminalTool = new TerminalTool(workspace.tasks);
       const timeout = phase === 'install' ? RESTART_TIMEOUTS.INSTALL : RESTART_TIMEOUTS.BUILD;
 
       const result = await terminalTool.executeCommand(appPath, {
@@ -459,16 +460,16 @@ export class AppRestartService {
     installOptions: InstallCommandOptions = {}
   ): Promise<{ success: boolean; output?: string; error?: string; exitCode?: number }> {
     try {
-      const devSupervisor = DevSupervisorClientFactory.createForApp(appId);
+      const workspace = createForWorkspace(appId, 'preview');
 
-      if (!devSupervisor) {
+      if (!workspace) {
         return {
           success: false,
           error: 'Dev supervisor not available',
         };
       }
 
-      const terminalTool = new TerminalTool(devSupervisor);
+      const terminalTool = new TerminalTool(workspace.tasks);
       const installCommand = getInstallCommand(packageManager, installOptions);
 
       this.logger.info('app-restart.install.begin', { appId, packageManager, command: installCommand });
@@ -508,16 +509,16 @@ export class AppRestartService {
     packageManager: PackageManager = 'npm'
   ): Promise<{ success: boolean; output?: string; error?: string; exitCode?: number }> {
     try {
-      const devSupervisor = DevSupervisorClientFactory.createForApp(appId);
+      const workspace = createForWorkspace(appId, 'preview');
 
-      if (!devSupervisor) {
+      if (!workspace) {
         return {
           success: false,
           error: 'Dev supervisor not available',
         };
       }
 
-      const terminalTool = new TerminalTool(devSupervisor);
+      const terminalTool = new TerminalTool(workspace.tasks);
       const buildCommand = getBuildCommand(packageManager);
 
       this.logger.info('app-restart.build.begin', { appId, packageManager, command: buildCommand });

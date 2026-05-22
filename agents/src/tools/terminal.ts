@@ -1,4 +1,4 @@
-import { DevSupervisorClient, ExecOptions, ExecResult } from '../services/DevSupervisorClient.js';
+import type { WorkspaceTasks } from '../workspace/tasks.js';
 
 export interface CommandOverride {
   /** Pattern to match against (can be string or regex) */
@@ -53,17 +53,14 @@ export class TerminalTool {
   private readonly DEFAULT_TIMEOUT = 30000; // 30 seconds
   private readonly MAX_TIMEOUT = 300000; // 5 minutes
   private readonly MAX_OUTPUT_LENGTH = 50000; // 50KB output limit
-  private devSupervisor: DevSupervisorClient | null;
+  private readonly tasks: WorkspaceTasks | null;
 
-  constructor(devSupervisor?: DevSupervisorClient) {
-    this.devSupervisor = devSupervisor || null;
+  constructor(tasks?: WorkspaceTasks) {
+    this.tasks = tasks || null;
   }
 
-  /**
-   * Check if dev-supervisor is available for command execution
-   */
-  isDevSupervisorAvailable(): boolean {
-    return this.devSupervisor !== null && this.devSupervisor !== undefined;
+  isWorkspaceAvailable(): boolean {
+    return this.tasks !== null;
   }
 
   /**
@@ -175,22 +172,17 @@ export class TerminalTool {
       this.resolveWorkingDirectory(appPath, workingDir);
     }
 
-    // Check if dev-supervisor is available - throw error if not
-    if (!this.isDevSupervisorAvailable()) {
+    if (!this.isWorkspaceAvailable()) {
       throw new Error(
-        'Terminal tool requires dev-supervisor to be available for command execution. ' +
+        'Terminal tool requires a workspace connection for command execution. ' +
         'This typically means the system is not running in a containerized environment with dev-supervisor installed, ' +
-        'or the dev-supervisor socket is not accessible. For security reasons, direct command execution has been disabled.'
+        'or the supervisor socket is not accessible. For security reasons, direct command execution has been disabled.'
       );
     }
 
-    // Execute using dev-supervisor
     return await this.executeWithDevSupervisor(command, originalCommand, appPath, workingDir, timeout, env, startTime);
   }
 
-  /**
-   * Execute command using dev-supervisor
-   */
   private async executeWithDevSupervisor(
     command: string,
     originalCommand: string,
@@ -201,29 +193,29 @@ export class TerminalTool {
     startTime: number
   ): Promise<TerminalCommandResult> {
     try {
-      const actualTimeout = Math.min(Math.floor(timeout / 1000), Math.floor(this.MAX_TIMEOUT / 1000));
-      
-      const execOptions: ExecOptions = {
+      const timeoutSeconds = Math.min(Math.floor(timeout / 1000), Math.floor(this.MAX_TIMEOUT / 1000));
+
+      const execResult = await this.tasks!.runCommandSync({
         command,
-        timeout: actualTimeout,
-        capture_output: true
-      };
-      
-      if (workingDir) {
-        execOptions.working_dir = workingDir;
-      }
-      
-      const execResult: ExecResult = await this.devSupervisor!.exec(execOptions);
+        workingDir: workingDir || undefined,
+        timeoutSeconds,
+        env: Object.keys(env).length > 0 ? env : undefined,
+      });
+
+      // Detect "accepted past wait" — task is still running but our wait expired.
+      // HttpTasks signals this with exitCode=-1, timedOut=false, executionTimeMs=0.
+      const stillRunning = execResult.exitCode === -1 && !execResult.timedOut && execResult.executionTimeMs === 0;
 
       const result: TerminalCommandResult = {
         command,
         workingDir: workingDir || '.',
-        exitCode: execResult.exit_code,
+        exitCode: stillRunning ? -1 : execResult.exitCode,
         stdout: this.sanitizeOutput(execResult.stdout).trim(),
         stderr: this.sanitizeOutput(execResult.stderr).trim(),
-        success: execResult.success,
+        success: stillRunning ? false : execResult.exitCode === 0,
         executionTime: Date.now() - startTime,
-        timedOut: false, // dev-supervisor handles timeout internally
+        timedOut: stillRunning ? true : execResult.timedOut,
+        ...(stillRunning && { error: `Command still running after ${timeoutSeconds}s wait — output may be incomplete` }),
       };
 
       if (originalCommand !== command) {
@@ -232,7 +224,6 @@ export class TerminalTool {
 
       return result;
     } catch (error) {
-      // Return error result for any dev-supervisor failures
       const errorMessage = error instanceof Error ? error.message : String(error);
       const result: TerminalCommandResult = {
         command,
@@ -243,7 +234,7 @@ export class TerminalTool {
         success: false,
         executionTime: Date.now() - startTime,
         timedOut: false,
-        error: `Dev-supervisor execution failed: ${errorMessage}`,
+        error: `Task execution failed: ${errorMessage}`,
       };
 
       if (originalCommand !== command) {

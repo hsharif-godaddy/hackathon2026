@@ -5,7 +5,7 @@ import matter from 'gray-matter';
 import { logger } from '../logging/index.js';
 import { skills, getFeatures } from '../services/features.js';
 import { TerminalTool } from './terminal.js';
-import { DevSupervisorClientFactory } from '../utils/dev-supervisor-client-factory.js';
+import { createForWorkspace } from '../workspace/index.js';
 import { regenerateEntryApiRegistrations } from '../utils/entry-api-sync.js';
 
 /**
@@ -811,10 +811,9 @@ export class SkillLoaderTool {
     const { group = 'prod', maxRetries = 3 } = options;
     let lastError: string | undefined;
 
-    // Get dev supervisor client for the app
-    const devSupervisorClient = DevSupervisorClientFactory.createForApp(appId);
+    const workspace = createForWorkspace(appId, 'preview');
 
-    if (!devSupervisorClient) {
+    if (!workspace) {
       this.logger.warn('skill.dependencies.no_dev_supervisor', {
         package: packageName,
         appId,
@@ -828,7 +827,7 @@ export class SkillLoaderTool {
       };
     }
 
-    const terminalTool = new TerminalTool(devSupervisorClient);
+    const terminalTool = new TerminalTool(workspace.tasks);
     const installCommand = group === 'dev'
       ? `npm install --save-dev ${packageName}`
       : `npm install ${packageName}`;

@@ -2,7 +2,7 @@ import { createTool, type Tool } from '@airo/ai-lib'
 import { z } from 'zod'
 import { TerminalTool, TerminalCommandOptions } from '../terminal.js'
 import { AppRepository } from '../../database/repositories/AppRepository.js'
-import { DevSupervisorClientFactory } from '../../utils/dev-supervisor-client-factory.js'
+import { createForWorkspace } from '../../workspace/index.js'
 
 const appRepo = new AppRepository()
 
@@ -27,15 +27,13 @@ export const terminalCommandAITool: Tool = createTool(
       throw new Error(`App '${appId}' not found`)
     }
 
-    // Create DevSupervisorClient for the app
-    const devSupervisorClient = DevSupervisorClientFactory.createForApp(appId)
-    if (!devSupervisorClient) {
+    const workspace = createForWorkspace(appId, 'preview')
+    if (!workspace) {
       throw new Error('dev-supervisor unavailable — cannot execute terminal commands')
     }
 
-    // Create terminal tool instance with the dev-supervisor client
-    const terminalTool = new TerminalTool(devSupervisorClient)
-    
+    const terminalTool = new TerminalTool(workspace.tasks)
+
     const result = await terminalTool.executeCommand(app.path, input as TerminalCommandOptions)
     return terminalTool.formatResult(result)
   }

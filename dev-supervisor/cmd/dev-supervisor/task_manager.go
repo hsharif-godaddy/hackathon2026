@@ -197,6 +197,7 @@ type TaskManagerConfig struct {
 	ReapTTL          time.Duration
 	SandboxEnabled   bool
 	SharedStorageDir string
+	DefaultWorkDir   string
 }
 
 type TaskManager struct {
@@ -213,9 +214,16 @@ type TaskManager struct {
 }
 
 func loadTaskManagerConfig() TaskManagerConfig {
+	defaultDir, err := os.Getwd()
+	if err != nil {
+		slog.Warn("task_manager.config.getwd_failed", "err", err)
+		defaultDir = "/tmp"
+	}
+
 	cfg := TaskManagerConfig{
-		MaxAsyncTasks: defaultMaxAsyncTasks,
-		ReapTTL:       defaultReapTTL,
+		MaxAsyncTasks:  defaultMaxAsyncTasks,
+		ReapTTL:        defaultReapTTL,
+		DefaultWorkDir: defaultDir,
 	}
 
 	if v := os.Getenv("AIRO_MAX_ASYNC_TASKS"); v != "" {
@@ -290,7 +298,7 @@ func (tm *TaskManager) Submit(req validation.CommandRequest) (string, error) {
 		timeout = maxTaskTimeout
 	}
 
-	workDir := "/tmp"
+	workDir := tm.config.DefaultWorkDir
 	if req.WorkingDir != "" {
 		workDir = req.WorkingDir
 	}
