@@ -65,9 +65,9 @@
     "benchmark:memory:gc": "NODE_OPTIONS='--expose-gc' tsx src/services/summarization/__benchmarks__/memory-benchmark.ts"
   },
   "dependencies": {
-    "@ai-sdk/anthropic": "^3.0.76",
-    "@ai-sdk/devtools": "^0.0.17",
-    "@ai-sdk/mcp": "^1.0.41",
+    "@ai-sdk/anthropic": "^3.0.77",
+    "@ai-sdk/devtools": "^0.0.18",
+    "@ai-sdk/mcp": "^1.0.42",
     "@ai-sdk/openai": "catalog:",
     "@airo/ai-common": "workspace:*",
     "@airo/ai-grants": "workspace:*",

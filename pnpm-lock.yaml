@@ -350,14 +350,14 @@ importers:
   agents:
     dependencies:
       '@ai-sdk/anthropic':
-        specifier: ^3.0.76
-        version: 3.0.76(zod@4.4.3)
+        specifier: ^3.0.77
+        version: 3.0.77(zod@4.4.3)
       '@ai-sdk/devtools':
-        specifier: ^0.0.17
-        version: 0.0.17
+        specifier: ^0.0.18
+        version: 0.0.18
       '@ai-sdk/mcp':
-        specifier: ^1.0.41
-        version: 1.0.41(zod@4.4.3)
+        specifier: ^1.0.42
+        version: 1.0.42(zod@4.4.3)
       '@ai-sdk/openai':
         specifier: 'catalog:'
         version: 3.0.63(zod@4.4.3)
@@ -1473,8 +1473,8 @@ importers:
         specifier: ^3.0.66
         version: 3.0.76(zod@4.4.3)
       '@ai-sdk/google':
-        specifier: ^3.0.71
-        version: 3.0.71(zod@4.4.3)
+        specifier: ^3.0.73
+        version: 3.0.73(zod@4.4.3)
       '@ai-sdk/openai':
         specifier: 'catalog:'
         version: 3.0.63(zod@4.4.3)
@@ -1750,6 +1750,12 @@ packages:
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
 
+  '@ai-sdk/anthropic@3.0.77':
+    resolution: {integrity: sha512-ML8C2M1YvPA1ulEx4TiyF0k1xvC2ikEiPBIC1PPQ0a5xELUGrO2lAaEzsTEoJ+eCeDd8PSBuFJjs+r+9yIwQXA==}
+    engines: {node: '>=18'}
+    peerDependencies:
+      zod: ^3.25.76 || ^4.1.8
+
   '@ai-sdk/azure@2.0.108':
     resolution: {integrity: sha512-/F+lx3glCDiqJfqkZP9IOCubYlWABX2Jg9Yzm/JIxZR5qHfo9rsLwS4zVtghbELVbEjxakaFlDT/c6uTBj0uug==}
     engines: {node: '>=18'}
@@ -1768,8 +1774,8 @@ packages:
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
 
-  '@ai-sdk/devtools@0.0.17':
-    resolution: {integrity: sha512-CJgo+3DMHOJbxxq1qTgnW4vpFXgBW1pHePMimBW4Go5FPU7iLqppoGX/UC798IXqlD3hncQRPfyBLZjbsJC91w==}
+  '@ai-sdk/devtools@0.0.18':
+    resolution: {integrity: sha512-0J25Q7occrkMJM1MrP0KeR8XNdGGKNgzxhOLfxBe/qZBQP6yXgV4H5Gf2DnDC3UgXDBJBskH9nh23doCo2Pebw==}
     engines: {node: '>=18'}
     hasBin: true
 
@@ -1797,8 +1803,8 @@ packages:
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
 
-  '@ai-sdk/google@3.0.71':
-    resolution: {integrity: sha512-G86UtqkCKM8mQcvsA4FQ1WCRN+w1gl/sxuoYl5CJX5DFSUSkrLNKmLcvi3TtnMvKth5li8W/1h3emQSl2K+qnA==}
+  '@ai-sdk/google@3.0.73':
+    resolution: {integrity: sha512-o2MuIeyvZrFIeIbnbA8Thrr63irdyUBh0uWBZ2lY6yFeXuE/tcwyXF74bDKS4KvTu84uFpQfpbS/LXHGKKXz+g==}
     engines: {node: '>=18'}
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
@@ -1809,8 +1815,8 @@ packages:
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
 
-  '@ai-sdk/mcp@1.0.41':
-    resolution: {integrity: sha512-AfA0jb6tTnfcieLx1d6breTmuae0fz67UNcBrCgZqPqaZ1NIlJT5uyXx+78pgYOuDHo0GtHECVhI1a9lkZnzgA==}
+  '@ai-sdk/mcp@1.0.42':
+    resolution: {integrity: sha512-ctRhX9vNLXvjGSFf+RlM+ZutIhlzIgMPWzo2BoJKfIW9JzLneA/57bZkkaUvWSdbYFu1FCyxMarNV/4D/pOUzA==}
     engines: {node: '>=18'}
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
@@ -2054,6 +2060,7 @@ packages:
   '@aws-sdk/core@3.974.10':
     resolution: {integrity: sha512-ZGFFlYynBR78Y/F8b/7y4i4sgW/iGwJSjoM7AZo5Et6vyr4/L0bunN+uzKMsvecCZyqcPp4RRK7Rs17l0kMujg==}
     engines: {node: '>=20.0.0'}
+    deprecated: Deprecated due to an error deserialization bug in JSON 1.0 protocol services, see https://github.com/aws/aws-sdk-js-v3/pull/8031. Newer version available.
 
   '@aws-sdk/core@3.974.8':
     resolution: {integrity: sha512-njR2qoG6ZuB0kvAS2FyICsFZJ6gmCcf2X/7JcD14sUvGDm26wiZ5BrA6LOiUxKFEF+IVe7kdroxyE00YlkiYsw==}
@@ -5912,6 +5919,7 @@ packages:
   '@smithy/core@3.24.0':
     resolution: {integrity: sha512-rZ5YfycIXX6puoGjthnDiMpUgtKNOq3c7CndQYkCNYQTv26AiCrZQOJPy7ANSfZ6Okk3UvCRnmO1OYWlLnYZgg==}
     engines: {node: '>=18.0.0'}
+    deprecated: Deprecated due to incompatibility with Node.js 18 in some environments https://github.com/smithy-lang/smithy-typescript/issues/2022
 
   '@smithy/core@3.24.2':
     resolution: {integrity: sha512-IKS7qX59fAGCYBmt5JChcDswQDupZqT2Yn2ZBA3UgTlsjRNNkQzZobbn95xoAAdtTyJmBiJB3Y02qR3rgy3Zog==}
@@ -14132,6 +14140,12 @@ snapshots:
       '@ai-sdk/provider-utils': 4.0.27(zod@4.4.3)
       zod: 4.4.3
 
+  '@ai-sdk/anthropic@3.0.77(zod@4.4.3)':
+    dependencies:
+      '@ai-sdk/provider': 3.0.10
+      '@ai-sdk/provider-utils': 4.0.27(zod@4.4.3)
+      zod: 4.4.3
+
   '@ai-sdk/azure@2.0.108(zod@4.4.3)':
     dependencies:
       '@ai-sdk/openai': 2.0.106(zod@4.4.3)
@@ -14155,7 +14169,7 @@ snapshots:
       zod: 4.4.3
     optional: true
 
-  '@ai-sdk/devtools@0.0.17':
+  '@ai-sdk/devtools@0.0.18':
     dependencies:
       '@ai-sdk/provider': 3.0.10
       '@hono/node-server': 1.19.14(hono@4.12.16)
@@ -14195,7 +14209,7 @@ snapshots:
       zod: 4.4.3
     optional: true
 
-  '@ai-sdk/google@3.0.71(zod@4.4.3)':
+  '@ai-sdk/google@3.0.73(zod@4.4.3)':
     dependencies:
       '@ai-sdk/provider': 3.0.10
       '@ai-sdk/provider-utils': 4.0.27(zod@4.4.3)
@@ -14208,7 +14222,7 @@ snapshots:
       zod: 4.4.3
     optional: true
 
-  '@ai-sdk/mcp@1.0.41(zod@4.4.3)':
+  '@ai-sdk/mcp@1.0.42(zod@4.4.3)':
     dependencies:
       '@ai-sdk/provider': 3.0.10
       '@ai-sdk/provider-utils': 4.0.27(zod@4.4.3)
@@ -23390,7 +23404,7 @@ snapshots:
       eslint: 9.28.0(jiti@2.7.0)
       eslint-import-resolver-node: 0.3.10
       eslint-import-resolver-typescript: 3.10.1(eslint-plugin-import@2.32.0(eslint@9.28.0(jiti@2.7.0)))(eslint@9.28.0(jiti@2.7.0))
-      eslint-plugin-import: 2.32.0(eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(eslint@9.28.0(jiti@2.7.0)))(eslint@9.28.0(jiti@2.7.0)))(eslint@9.28.0(jiti@2.7.0))
+      eslint-plugin-import: 2.32.0(eslint-import-resolver-typescript@3.10.1)(eslint@9.28.0(jiti@2.7.0))
       eslint-plugin-jsx-a11y: 6.10.2(eslint@9.28.0(jiti@2.7.0))
       eslint-plugin-react: 7.37.5(eslint@9.28.0(jiti@2.7.0))
       eslint-plugin-react-hooks: 7.1.1(eslint@9.28.0(jiti@2.7.0))
@@ -23410,7 +23424,7 @@ snapshots:
       eslint: 9.28.0(jiti@2.7.0)
       eslint-import-resolver-node: 0.3.10
       eslint-import-resolver-typescript: 3.10.1(eslint-plugin-import@2.32.0(eslint@9.28.0(jiti@2.7.0)))(eslint@9.28.0(jiti@2.7.0))
-      eslint-plugin-import: 2.32.0(eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(eslint@9.28.0(jiti@2.7.0)))(eslint@9.28.0(jiti@2.7.0)))(eslint@9.28.0(jiti@2.7.0))
+      eslint-plugin-import: 2.32.0(eslint-import-resolver-typescript@3.10.1)(eslint@9.28.0(jiti@2.7.0))
       eslint-plugin-jsx-a11y: 6.10.2(eslint@9.28.0(jiti@2.7.0))
       eslint-plugin-react: 7.37.5(eslint@9.28.0(jiti@2.7.0))
       eslint-plugin-react-hooks: 7.1.1(eslint@9.28.0(jiti@2.7.0))
@@ -23447,7 +23461,7 @@ snapshots:
       tinyglobby: 0.2.16
       unrs-resolver: 1.11.1
     optionalDependencies:
-      eslint-plugin-import: 2.32.0(eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(eslint@9.28.0(jiti@2.7.0)))(eslint@9.28.0(jiti@2.7.0)))(eslint@9.28.0(jiti@2.7.0))
+      eslint-plugin-import: 2.32.0(eslint-import-resolver-typescript@3.10.1)(eslint@9.28.0(jiti@2.7.0))
     transitivePeerDependencies:
       - supports-color
 
@@ -23475,7 +23489,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  eslint-plugin-import@2.32.0(eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(eslint@9.28.0(jiti@2.7.0)))(eslint@9.28.0(jiti@2.7.0)))(eslint@9.28.0(jiti@2.7.0)):
+  eslint-plugin-import@2.32.0(eslint-import-resolver-typescript@3.10.1)(eslint@9.28.0(jiti@2.7.0)):
     dependencies:
       '@rtsao/scc': 1.1.0
       array-includes: 3.1.9
