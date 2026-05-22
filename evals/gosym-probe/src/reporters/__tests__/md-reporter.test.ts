@@ -1456,6 +1456,67 @@ describe('MdReporter — score-mode evaluators with baseline comparison', () => 
   });
 });
 
+// ── Git info line ────────────────────────────────────────────────────────────
+
+describe('MdReporter — git info line', () => {
+  it('renders git SHA and branch when both are provided', () => {
+    const reporter = new MdReporter();
+    const content = reporter.render('run-001', [NO_BASELINE_RESULT], {
+      gitSha: 'abc1234def567890',
+      gitBranch: 'main',
+    });
+    expect(content).toContain('**Git:**');
+    expect(content).toContain('`abc1234`');
+    expect(content).toContain('`main`');
+  });
+
+  it('truncates SHA to 7 characters', () => {
+    const reporter = new MdReporter();
+    const content = reporter.render('run-001', [NO_BASELINE_RESULT], {
+      gitSha: 'abcdef1234567890',
+      gitBranch: 'main',
+    });
+    expect(content).toContain('`abcdef1`');
+    expect(content).not.toContain('`abcdef1234567890`');
+  });
+
+  it('renders only SHA when branch is null', () => {
+    const reporter = new MdReporter();
+    const content = reporter.render('run-001', [NO_BASELINE_RESULT], {
+      gitSha: 'abc1234def567890',
+      gitBranch: null,
+    });
+    expect(content).toContain('**Git:**');
+    expect(content).toContain('`abc1234`');
+    expect(content).not.toContain(' on `');
+  });
+
+  it('renders only branch when SHA is null', () => {
+    const reporter = new MdReporter();
+    const content = reporter.render('run-001', [NO_BASELINE_RESULT], {
+      gitSha: null,
+      gitBranch: 'feature/my-feature',
+    });
+    expect(content).toContain('**Git:**');
+    expect(content).toContain('`feature/my-feature`');
+  });
+
+  it('omits git line when both SHA and branch are null', () => {
+    const reporter = new MdReporter();
+    const content = reporter.render('run-001', [NO_BASELINE_RESULT], {
+      gitSha: null,
+      gitBranch: null,
+    });
+    expect(content).not.toContain('**Git:**');
+  });
+
+  it('omits git line when neither gitSha nor gitBranch is provided', () => {
+    const reporter = new MdReporter();
+    const content = reporter.render('run-001', [NO_BASELINE_RESULT]);
+    expect(content).not.toContain('**Git:**');
+  });
+});
+
 // ── RenderOptions integration ───────────────────────────────────────────────
 
 describe('MdReporter — RenderOptions integration', () => {

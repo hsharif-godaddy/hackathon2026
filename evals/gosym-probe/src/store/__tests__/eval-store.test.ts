@@ -337,8 +337,12 @@ describe('EvalStore', () => {
       expect(parsed.trialsOverride).toBe(5);
     });
 
-    it('uses null gitSha when git is unavailable', async () => {
-      mockExecFile.mockRejectedValueOnce(new Error('not a git repo'));
+    it('uses null gitSha when git is unavailable (not a repo)', async () => {
+      const gitError = Object.assign(
+        new Error('fatal: not a git repository'),
+        { code: 128 },
+      );
+      mockExecFile.mockRejectedValueOnce(gitError);
       const store = new EvalStore();
       const scenario = makeScenario();
       const result = makeScenarioResult(scenario, [makeTrialResult()]);
@@ -350,6 +354,144 @@ describe('EvalStore', () => {
       );
       const parsed = JSON.parse(call![1] as string);
       expect(parsed.gitSha).toBeNull();
+    });
+
+    it('uses null gitSha when git binary not found (ENOENT)', async () => {
+      const enoentError = Object.assign(
+        new Error('spawn git ENOENT'),
+        { code: 'ENOENT' },
+      );
+      mockExecFile.mockRejectedValueOnce(enoentError);
+      const store = new EvalStore();
+      const scenario = makeScenario();
+      const result = makeScenarioResult(scenario, [makeTrialResult()]);
+
+      await store.save('run-001', [result], [scenario], makeConfig());
+
+      const call = mockWriteFile.mock.calls.find(([p]) =>
+        (p as string).endsWith('run-metadata.json'),
+      );
+      const parsed = JSON.parse(call![1] as string);
+      expect(parsed.gitSha).toBeNull();
+    });
+
+    it('logs warning for unexpected git sha error (e.g. permissions)', async () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const unexpectedError = Object.assign(
+        new Error('permission denied'),
+        { code: 1 },
+      );
+      mockExecFile.mockRejectedValueOnce(unexpectedError);
+      const store = new EvalStore();
+      const scenario = makeScenario();
+      const result = makeScenarioResult(scenario, [makeTrialResult()]);
+
+      await store.save('run-001', [result], [scenario], makeConfig());
+
+      const call = mockWriteFile.mock.calls.find(([p]) =>
+        (p as string).endsWith('run-metadata.json'),
+      );
+      const parsed = JSON.parse(call![1] as string);
+      expect(parsed.gitSha).toBeNull();
+      expect(warnSpy).toHaveBeenCalledWith(
+        '[EvalStore] Unexpected git error resolving HEAD sha',
+        expect.objectContaining({ error: 'permission denied' }),
+      );
+      warnSpy.mockRestore();
+    });
+
+    it('writes gitBranch to run-metadata.json', async () => {
+      mockExecFile.mockResolvedValueOnce({ stdout: 'abc123def456\n', stderr: '' });
+      mockExecFile.mockResolvedValueOnce({ stdout: 'feature/my-branch\n', stderr: '' });
+      const store = new EvalStore();
+      const scenario = makeScenario();
+      const result = makeScenarioResult(scenario, [makeTrialResult()]);
+
+      await store.save('run-001', [result], [scenario], makeConfig());
+
+      const call = mockWriteFile.mock.calls.find(([p]) =>
+        (p as string).endsWith('run-metadata.json'),
+      );
+      const parsed = JSON.parse(call![1] as string);
+      expect(parsed.gitBranch).toBe('feature/my-branch');
+    });
+
+    it('trims whitespace from gitBranch', async () => {
+      mockExecFile.mockResolvedValueOnce({ stdout: 'abc123def456\n', stderr: '' });
+      mockExecFile.mockResolvedValueOnce({ stdout: '  main  \n', stderr: '' });
+      const store = new EvalStore();
+      const scenario = makeScenario();
+      const result = makeScenarioResult(scenario, [makeTrialResult()]);
+
+      await store.save('run-001', [result], [scenario], makeConfig());
+
+      const call = mockWriteFile.mock.calls.find(([p]) =>
+        (p as string).endsWith('run-metadata.json'),
+      );
+      const parsed = JSON.parse(call![1] as string);
+      expect(parsed.gitBranch).toBe('main');
+    });
+
+    it('uses null gitBranch when git branch command is unavailable', async () => {
+      const gitError = Object.assign(
+        new Error('fatal: not a git repository'),
+        { code: 128 },
+      );
+      mockExecFile.mockResolvedValueOnce({ stdout: 'abc123def456\n', stderr: '' });
+      mockExecFile.mockRejectedValueOnce(gitError);
+      const store = new EvalStore();
+      const scenario = makeScenario();
+      const result = makeScenarioResult(scenario, [makeTrialResult()]);
+
+      await store.save('run-001', [result], [scenario], makeConfig());
+
+      const call = mockWriteFile.mock.calls.find(([p]) =>
+        (p as string).endsWith('run-metadata.json'),
+      );
+      const parsed = JSON.parse(call![1] as string);
+      expect(parsed.gitBranch).toBeNull();
+    });
+
+    it('logs warning for unexpected git branch error', async () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      mockExecFile.mockResolvedValueOnce({ stdout: 'abc123def456\n', stderr: '' });
+      const unexpectedError = Object.assign(
+        new Error('git index corrupted'),
+        { code: 1 },
+      );
+      mockExecFile.mockRejectedValueOnce(unexpectedError);
+      const store = new EvalStore();
+      const scenario = makeScenario();
+      const result = makeScenarioResult(scenario, [makeTrialResult()]);
+
+      await store.save('run-001', [result], [scenario], makeConfig());
+
+      const call = mockWriteFile.mock.calls.find(([p]) =>
+        (p as string).endsWith('run-metadata.json'),
+      );
+      const parsed = JSON.parse(call![1] as string);
+      expect(parsed.gitBranch).toBeNull();
+      expect(warnSpy).toHaveBeenCalledWith(
+        '[EvalStore] Unexpected git error resolving branch',
+        expect.objectContaining({ error: 'git index corrupted' }),
+      );
+      warnSpy.mockRestore();
+    });
+
+    it('stores detached HEAD literal as gitBranch', async () => {
+      mockExecFile.mockResolvedValueOnce({ stdout: 'abc123def456\n', stderr: '' });
+      mockExecFile.mockResolvedValueOnce({ stdout: 'HEAD\n', stderr: '' });
+      const store = new EvalStore();
+      const scenario = makeScenario();
+      const result = makeScenarioResult(scenario, [makeTrialResult()]);
+
+      await store.save('run-001', [result], [scenario], makeConfig());
+
+      const call = mockWriteFile.mock.calls.find(([p]) =>
+        (p as string).endsWith('run-metadata.json'),
+      );
+      const parsed = JSON.parse(call![1] as string);
+      expect(parsed.gitBranch).toBe('HEAD');
     });
 
     it('writes scenario-config.json with serialized scenario', async () => {
@@ -896,7 +1038,10 @@ describe('EvalStore', () => {
           dir: '20260408000000_run-000',
         }],
       };
-      mockReadFile.mockResolvedValueOnce(JSON.stringify(existing));
+      // finalizeRun order: metadata read (ENOENT default), then index read
+      mockReadFile
+        .mockRejectedValueOnce(Object.assign(new Error('not found'), { code: 'ENOENT' }))
+        .mockResolvedValueOnce(JSON.stringify(existing));
 
       const scenario = makeScenario();
       const result = makeScenarioResult(scenario, [makeTrialResult()]);
@@ -1817,6 +1962,67 @@ describe('EvalStore', () => {
       );
       const parsed = JSON.parse(tmpCall![1] as string);
       expect(parsed.runs[0].kind).toBe('graduation');
+    });
+
+    it('passes gitSha and gitBranch from metadata to MdReporter.render()', async () => {
+      const store = new EvalStore();
+      const scenario = makeScenario();
+      const results = [makeScenarioResult(scenario, [makeTrialResult()])];
+      const metadata: RunMetadata = {
+        runId: 'run-001',
+        timestamp: '2026-04-09T00:00:00.000Z',
+        gitSha: 'abc123def456abc1',
+        gitBranch: 'main',
+        scenarios: ['test-scenario'],
+        config: makeConfig(),
+      };
+      // finalizeRun order: metadata read then index read (updateRunIndex)
+      mockReadFile
+        .mockResolvedValueOnce(JSON.stringify(metadata)); // metadata (index falls through to default ENOENT)
+
+      await store.finalizeRun(DIR_NAME, 'run-001', results);
+
+      expect(mockRender).toHaveBeenCalledWith(
+        'run-001',
+        results,
+        expect.objectContaining({ gitSha: 'abc123def456abc1', gitBranch: 'main' }),
+      );
+    });
+
+    it('does not set git fields in render options when metadata is missing', async () => {
+      const store = new EvalStore();
+      const scenario = makeScenario();
+      const results = [makeScenarioResult(scenario, [makeTrialResult()])];
+      // Both readFile calls (index and metadata) use default ENOENT mock
+
+      await store.finalizeRun(DIR_NAME, 'run-001', results);
+
+      const renderCall = mockRender.mock.calls[0][2] as Record<string, unknown>;
+      expect(renderCall).not.toHaveProperty('gitSha');
+      expect(renderCall).not.toHaveProperty('gitBranch');
+    });
+
+    it('does not set null git fields in render options when metadata has null values', async () => {
+      const store = new EvalStore();
+      const scenario = makeScenario();
+      const results = [makeScenarioResult(scenario, [makeTrialResult()])];
+      const metadata: RunMetadata = {
+        runId: 'run-001',
+        timestamp: '2026-04-09T00:00:00.000Z',
+        gitSha: null,
+        gitBranch: null,
+        scenarios: ['test-scenario'],
+        config: makeConfig(),
+      };
+      // finalizeRun order: metadata read then index read (updateRunIndex)
+      mockReadFile
+        .mockResolvedValueOnce(JSON.stringify(metadata)); // metadata (index falls through to default ENOENT)
+
+      await store.finalizeRun(DIR_NAME, 'run-001', results);
+
+      const renderCall = mockRender.mock.calls[0][2] as Record<string, unknown>;
+      expect(renderCall).not.toHaveProperty('gitSha');
+      expect(renderCall).not.toHaveProperty('gitBranch');
     });
   });
 

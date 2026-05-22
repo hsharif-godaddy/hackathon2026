@@ -5,6 +5,7 @@ import {
   findScenariosBySuite,
 } from './args.js';
 import { createCliDeps } from './client-factory.js';
+import { pickGitFields } from '../baselines/types.js';
 
 async function main(): Promise<void> {
   const { values, positionals } = parseArgs({
@@ -89,6 +90,7 @@ async function main(): Promise<void> {
       {
         scoreEvaluatorNames,
         defaultThreshold: config.regression.defaultThreshold,
+        ...pickGitFields(metadata),
       },
     );
 

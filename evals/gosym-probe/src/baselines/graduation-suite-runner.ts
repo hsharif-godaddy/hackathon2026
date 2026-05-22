@@ -4,6 +4,7 @@ import { staggeredRun } from '../util/stagger.js';
 import { GraduationRunner, isDeferredResult } from './graduation-runner.js';
 import type { GraduationResult } from './graduation-runner.js';
 import { BaselineStore } from './baseline-store.js';
+import { pickGitFields } from './types.js';
 import {
   resolveStabilityLevel,
   STABILITY_TRIALS,
@@ -17,6 +18,7 @@ import type { AgentClient } from '../clients/agent-client.js';
 import type { SyntheticUserAgent } from '../runner/synthetic-user.js';
 import type { SiteCapture } from '../clients/dom-capture.js';
 import type { EvalStore } from '../store/eval-store.js';
+import type { RunMetadata } from '../store/types.js';
 import type { ScenarioResult, TrialResult } from '../runner/types.js';
 import type { TrialLifecycle } from '../clients/trial-lifecycle.js';
 
@@ -227,6 +229,16 @@ export class GraduationSuiteRunner {
       await Promise.all(pendingWrites);
     }
 
+    let runMetadata: RunMetadata | null = null;
+    try {
+      runMetadata = await store.loadRunMetadataByDirName(sharedDirName);
+    } catch (err) {
+      this.log(
+        '[GraduationSuiteRunner] Failed to read run metadata for git fields, continuing without them',
+        { dirName: sharedDirName, error: (err as Error).message },
+      );
+    }
+
     const completedNames = new Set(scenarioResults.map((r) => r.scenarioName));
     const missingScenarioErrors: Error[] = scenariosWithStabilityTrials
       .filter((s) => !completedNames.has(s.name))
@@ -242,7 +254,7 @@ export class GraduationSuiteRunner {
     for (const result of scenarioResults) {
       try {
         const gradResult = await this.finalizeScenarioGraduation(
-          result, sharedDirName, runId, persistedTrials,
+          result, sharedDirName, runId, persistedTrials, runMetadata,
         );
         gradResults.push(gradResult);
       } catch (err) {
@@ -298,6 +310,7 @@ export class GraduationSuiteRunner {
     sharedDirName: string,
     runId: string,
     persistedTrials?: ReadonlySet<string>,
+    runMetadata?: RunMetadata | null,
   ): Promise<GraduationResult> {
     const { scenarios, stabilityLevelOverride, store, config, baselineStoreFactory } = this.options;
 
@@ -330,6 +343,7 @@ export class GraduationSuiteRunner {
       const baselineStore = baselineStoreFactory?.() ?? new BaselineStore();
       await baselineStore.save(runId, result, {
         defaultThreshold: config.regression.defaultThreshold,
+        ...pickGitFields(runMetadata),
       });
     } else {
       this.log(

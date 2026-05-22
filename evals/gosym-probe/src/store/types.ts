@@ -13,6 +13,8 @@ export interface RunMetadata {
   runId: string;
   timestamp: string;
   gitSha: string | null;
+  /** Optional for backward compat with metadata written before git-traceability. */
+  gitBranch?: string | null;
   scenarios: string[];
   config: SanitizedConfig;
   trialsOverride?: number;

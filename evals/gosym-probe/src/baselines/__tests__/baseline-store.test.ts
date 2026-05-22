@@ -315,6 +315,44 @@ describe('BaselineStore', () => {
     });
   });
 
+  describe('save() — git fields', () => {
+    it('writes gitSha and gitBranch to baseline JSON when provided', async () => {
+      const store = new BaselineStore();
+      await store.save('run-001', SCENARIO_RESULT, {
+        gitSha: 'abc1234',
+        gitBranch: 'main',
+      });
+
+      const [, raw] = mockWriteFile.mock.calls[0];
+      const parsed = JSON.parse(raw as string) as BaselineScores;
+      expect(parsed.gitSha).toBe('abc1234');
+      expect(parsed.gitBranch).toBe('main');
+    });
+
+    it('writes gitSha and gitBranch as null when explicitly null', async () => {
+      const store = new BaselineStore();
+      await store.save('run-001', SCENARIO_RESULT, {
+        gitSha: null,
+        gitBranch: null,
+      });
+
+      const [, raw] = mockWriteFile.mock.calls[0];
+      const parsed = JSON.parse(raw as string) as BaselineScores;
+      expect(parsed.gitSha).toBeNull();
+      expect(parsed.gitBranch).toBeNull();
+    });
+
+    it('omits gitSha and gitBranch when not provided', async () => {
+      const store = new BaselineStore();
+      await store.save('run-001', SCENARIO_RESULT);
+
+      const [, raw] = mockWriteFile.mock.calls[0];
+      const parsed = JSON.parse(raw as string) as BaselineScores;
+      expect(parsed).not.toHaveProperty('gitSha');
+      expect(parsed).not.toHaveProperty('gitBranch');
+    });
+  });
+
   describe('save() — existingBaseline optimization', () => {
     const SCORE_RESULT: ScenarioResult = {
       ...SCENARIO_RESULT,
@@ -1013,6 +1051,44 @@ describe('BaselineStore', () => {
       const [, raw] = mockWriteFile.mock.calls[0];
       const parsed = JSON.parse(raw as string) as BaselineScores;
       expect(parsed.scores['bug-hit-rate']).not.toHaveProperty('medianScore');
+    });
+  });
+
+  describe('saveFromStored() — git fields', () => {
+    it('writes gitSha and gitBranch to baseline JSON when provided', async () => {
+      const store = new BaselineStore();
+      await store.saveFromStored('run-001', STORED_AGGREGATED, undefined, {
+        gitSha: 'def5678',
+        gitBranch: 'feature/my-branch',
+      });
+
+      const [, raw] = mockWriteFile.mock.calls[0];
+      const parsed = JSON.parse(raw as string) as BaselineScores;
+      expect(parsed.gitSha).toBe('def5678');
+      expect(parsed.gitBranch).toBe('feature/my-branch');
+    });
+
+    it('writes gitSha and gitBranch as null when explicitly null', async () => {
+      const store = new BaselineStore();
+      await store.saveFromStored('run-001', STORED_AGGREGATED, undefined, {
+        gitSha: null,
+        gitBranch: null,
+      });
+
+      const [, raw] = mockWriteFile.mock.calls[0];
+      const parsed = JSON.parse(raw as string) as BaselineScores;
+      expect(parsed.gitSha).toBeNull();
+      expect(parsed.gitBranch).toBeNull();
+    });
+
+    it('omits gitSha and gitBranch when not provided', async () => {
+      const store = new BaselineStore();
+      await store.saveFromStored('run-001', STORED_AGGREGATED);
+
+      const [, raw] = mockWriteFile.mock.calls[0];
+      const parsed = JSON.parse(raw as string) as BaselineScores;
+      expect(parsed).not.toHaveProperty('gitSha');
+      expect(parsed).not.toHaveProperty('gitBranch');
     });
   });
 });

@@ -98,6 +98,7 @@ function makeMockStore() {
   return {
     save: vi.fn<EvalStore['save']>().mockResolvedValue('/path'),
     initRun: vi.fn<EvalStore['initRun']>().mockResolvedValue('mock-dir'),
+    loadRunMetadataByDirName: vi.fn<EvalStore['loadRunMetadataByDirName']>().mockResolvedValue(null),
     ensureTrialDir: vi.fn<EvalStore['ensureTrialDir']>().mockResolvedValue('/tmp/trial'),
     writeTrial: vi.fn<EvalStore['writeTrial']>().mockResolvedValue(undefined),
     writePartialTrial: vi.fn<EvalStore['writePartialTrial']>().mockResolvedValue(undefined),
@@ -456,6 +457,7 @@ describe('GraduationRunner', () => {
           initRun: vi
             .fn<EvalStore['initRun']>()
             .mockResolvedValue('20260101_run-store-stable'),
+          loadRunMetadataByDirName: vi.fn<EvalStore['loadRunMetadataByDirName']>().mockResolvedValue(null),
           ensureTrialDir: vi
             .fn<EvalStore['ensureTrialDir']>()
             .mockResolvedValue('/tmp/trial'),
@@ -494,6 +496,7 @@ describe('GraduationRunner', () => {
           initRun: vi
             .fn<EvalStore['initRun']>()
             .mockResolvedValue('20260101_run-store-unstable'),
+          loadRunMetadataByDirName: vi.fn<EvalStore['loadRunMetadataByDirName']>().mockResolvedValue(null),
           ensureTrialDir: vi
             .fn<EvalStore['ensureTrialDir']>()
             .mockResolvedValue('/tmp/trial'),
@@ -532,6 +535,7 @@ describe('GraduationRunner', () => {
           initRun: vi
             .fn<EvalStore['initRun']>()
             .mockResolvedValue('20260101_run-once'),
+          loadRunMetadataByDirName: vi.fn<EvalStore['loadRunMetadataByDirName']>().mockResolvedValue(null),
           ensureTrialDir: vi
             .fn<EvalStore['ensureTrialDir']>()
             .mockResolvedValue('/tmp/trial'),
@@ -997,6 +1001,55 @@ describe('GraduationRunner', () => {
 
       expect(SuiteRunner).toHaveBeenCalledWith(
         expect.not.objectContaining({ onTrialEvaluated: expect.anything() }),
+      );
+    });
+  });
+
+  describe('git field propagation', () => {
+    it('passes gitSha and gitBranch from run metadata to baselineStore.save', async () => {
+      mockSuiteRunnerRun.mockResolvedValue([
+        makeScenarioResult(['pass', 'pass', 'pass']),
+      ]);
+
+      const mockStore = {
+        save: vi.fn<EvalStore['save']>().mockResolvedValue('/path'),
+        initRun: vi
+          .fn<EvalStore['initRun']>()
+          .mockResolvedValue('20260101_run-git-fields'),
+        loadRunMetadataByDirName: vi
+          .fn<EvalStore['loadRunMetadataByDirName']>()
+          .mockResolvedValue({
+            runId: 'run-git-fields',
+            timestamp: '2026-01-01T00:00:00.000Z',
+            gitSha: 'abc1234',
+            gitBranch: 'feat/test',
+            scenarios: ['test-scenario'],
+            config: mockConfig as unknown as import('../../util/sanitize.js').SanitizedConfig,
+          }),
+        ensureTrialDir: vi
+          .fn<EvalStore['ensureTrialDir']>()
+          .mockResolvedValue('/tmp/trial'),
+        writePartialTrial: vi
+          .fn<EvalStore['writePartialTrial']>()
+          .mockResolvedValue(undefined),
+      };
+
+      const runner = new GraduationRunner({
+        scenario: mockScenario,
+        config: mockConfig,
+        baselineStore: mockBaselineStore,
+        store: mockStore as unknown as EvalStore,
+      });
+      await runner.run('run-git-fields');
+
+      expect(mockBaselineStore.save).toHaveBeenCalledWith(
+        'run-git-fields',
+        expect.objectContaining({ scenarioName: 'test-scenario' }),
+        expect.objectContaining({
+          defaultThreshold: 0.1,
+          gitSha: 'abc1234',
+          gitBranch: 'feat/test',
+        }),
       );
     });
   });

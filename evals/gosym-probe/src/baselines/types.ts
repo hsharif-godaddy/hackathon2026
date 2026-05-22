@@ -20,6 +20,10 @@ export interface BaselineScores {
   createdAt: string;
   stabilityLevel?: StabilityLevel;
   stabilityTrials?: number;
+  /** Short git SHA of the commit that produced this baseline. */
+  gitSha?: string | null;
+  /** Git branch name at the time this baseline was saved. */
+  gitBranch?: string | null;
   /** Keyed by evaluator name. */
   scores: Record<string, BaselineEvalScores>;
   /**
@@ -95,4 +99,19 @@ export interface RegressionResult {
     | 'version-skipped';
   stabilityLevel: StabilityLevel;
   evaluators: RegressionEvalResult[];
+}
+
+/**
+ * Extracts non-undefined git fields from metadata for spreading into
+ * baseline save options. Preserves explicit null (meaning "git info
+ * unavailable") while omitting undefined (meaning "field absent").
+ */
+export function pickGitFields(
+  meta: { gitSha?: string | null; gitBranch?: string | null } | null | undefined,
+): { gitSha?: string | null; gitBranch?: string | null } {
+  if (!meta) return {};
+  const result: { gitSha?: string | null; gitBranch?: string | null } = {};
+  if (meta.gitSha !== undefined) result.gitSha = meta.gitSha;
+  if (meta.gitBranch !== undefined) result.gitBranch = meta.gitBranch;
+  return result;
 }

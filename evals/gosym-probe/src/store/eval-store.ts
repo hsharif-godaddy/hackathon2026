@@ -143,7 +143,10 @@ export class EvalStore {
       maxTurnsOverride,
       kind,
     );
-    const gitSha = await this.getGitSha();
+    const [gitSha, gitBranch] = await Promise.all([
+      this.getGitSha(),
+      this.getGitBranch(),
+    ]);
     const timestamp = new Date().toISOString();
     const resolvedDirName =
       options.dirName ?? `${toCompactTimestamp(timestamp)}_${runId}`;
@@ -155,6 +158,7 @@ export class EvalStore {
       runId,
       timestamp,
       gitSha,
+      gitBranch,
       scenarios.map((s) => s.name),
       config,
       options.trialsOverride,
@@ -196,10 +200,27 @@ export class EvalStore {
       );
     }
 
+    let gitSha: string | null = null;
+    let gitBranch: string | null = null;
+    try {
+      const metadata = await this.loadJsonFile<RunMetadata>(
+        join(runDir, 'run-metadata.json'),
+      );
+      gitSha = metadata?.gitSha ?? null;
+      gitBranch = metadata?.gitBranch ?? null;
+    } catch (err) {
+      console.warn(
+        '[EvalStore] Failed to read run-metadata.json for git fields, continuing without them',
+        { path: join(runDir, 'run-metadata.json'), error: (err as Error).message },
+      );
+    }
+
     const reporter = new MdReporter();
     const resolvedRenderOptions: RenderOptions = {
       ...renderOptions,
       runMode: renderOptions?.runMode ?? (kind === 'graduation' ? 'graduation' : 'eval'),
+      ...(gitSha != null && { gitSha }),
+      ...(gitBranch != null && { gitBranch }),
     };
     const summaryContent = reporter.render(runId, results, resolvedRenderOptions);
     await writeFile(join(runDir, 'summary.md'), summaryContent);
@@ -561,6 +582,7 @@ export class EvalStore {
     runId: string,
     timestamp: string,
     gitSha: string | null,
+    gitBranch: string | null,
     scenarioNames: string[],
     config: Config,
     trialsOverride: number | undefined,
@@ -572,6 +594,7 @@ export class EvalStore {
       runId,
       timestamp,
       gitSha,
+      gitBranch,
       scenarios: scenarioNames,
       config: sanitizeConfig(config),
       ...(trialsOverride !== undefined && { trialsOverride }),
@@ -960,8 +983,47 @@ export class EvalStore {
         'git', ['rev-parse', 'HEAD'], { encoding: 'utf-8' },
       );
       return stdout.trim();
-    } catch {
+    } catch (err) {
+      if (!this.isExpectedGitError(err)) {
+        console.warn('[EvalStore] Unexpected git error resolving HEAD sha', {
+          error: (err as Error).message,
+        });
+      }
       return null;
     }
+  }
+
+  private async getGitBranch(): Promise<string | null> {
+    try {
+      const { stdout } = await execFile(
+        'git', ['rev-parse', '--abbrev-ref', 'HEAD'], { encoding: 'utf-8' },
+      );
+      return stdout.trim();
+    } catch (err) {
+      if (!this.isExpectedGitError(err)) {
+        console.warn('[EvalStore] Unexpected git error resolving branch', {
+          error: (err as Error).message,
+        });
+      }
+      return null;
+    }
+  }
+
+  /**
+   * Returns true for errors that indicate "not in a git repo" or "git not
+   * installed" -- expected cases where null is the correct return value.
+   * Returns false for unexpected failures (permissions, corrupt index, etc.)
+   * that warrant a warning.
+   */
+  private isExpectedGitError(err: unknown): boolean {
+    const code = (err as { code?: string | number }).code;
+    // ENOENT: git binary not found
+    if (code === 'ENOENT') return true;
+    // Exit code 128: fatal git error (not a repo, bad object, etc.)
+    if (code === 128) return true;
+    // Message-based fallback for environments that surface the error differently
+    const msg = (err as Error).message ?? '';
+    if (msg.includes('not a git repository')) return true;
+    return false;
   }
 }

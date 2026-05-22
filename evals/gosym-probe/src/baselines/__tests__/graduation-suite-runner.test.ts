@@ -89,6 +89,7 @@ function makeMockStore(): EvalStore {
   return {
     initRun: vi.fn().mockResolvedValue('20260513_abc123'),
     finalizeRun: vi.fn().mockResolvedValue('runs/20260513_abc123'),
+    loadRunMetadataByDirName: vi.fn().mockResolvedValue(null),
     writeTrial: vi.fn().mockResolvedValue(undefined),
     writePartialTrial: vi.fn().mockResolvedValue(undefined),
     ensureTrialDir: vi.fn().mockResolvedValue('/tmp/trial'),
@@ -1191,5 +1192,79 @@ describe('GraduationSuiteRunner — resume support', () => {
     expect(output.errors).toHaveLength(1);
     expect(output.errors[0]).toBe(writeError);
     expect(store.initRun).not.toHaveBeenCalled();
+  });
+});
+
+describe('GraduationSuiteRunner — git field propagation', () => {
+  let store: ReturnType<typeof makeMockStore>;
+  let config: ResolvedConfig;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    store = makeMockStore();
+    config = makeConfig();
+    mockSuiteRunnerRun.mockResolvedValue([]);
+  });
+
+  it('passes git fields from run metadata through to baselineStore.save', async () => {
+    const scenarios = [makeScenario('alpha')];
+    const mockBaselineStore = { save: vi.fn().mockResolvedValue(undefined) };
+
+    store.loadRunMetadataByDirName = vi.fn().mockResolvedValue({
+      runId: 'run-git',
+      timestamp: '2026-05-13T00:00:00Z',
+      gitSha: 'abc1234',
+      gitBranch: 'feat/test',
+      scenarios: ['alpha'],
+      config: {},
+    });
+
+    mockSuiteRunnerRun.mockResolvedValue([makeScenarioResult('alpha')]);
+
+    const runner = new GraduationSuiteRunner({
+      scenarios,
+      config,
+      store,
+      suiteMode: 'parallel',
+      baselineStoreFactory: () => mockBaselineStore as never,
+    });
+
+    await runner.run('run-git');
+
+    expect(mockBaselineStore.save).toHaveBeenCalledOnce();
+    expect(mockBaselineStore.save).toHaveBeenCalledWith(
+      'run-git',
+      expect.objectContaining({ scenarioName: 'alpha' }),
+      expect.objectContaining({
+        defaultThreshold: config.regression.defaultThreshold,
+        gitSha: 'abc1234',
+        gitBranch: 'feat/test',
+      }),
+    );
+  });
+
+  it('omits git fields when run metadata is null', async () => {
+    const scenarios = [makeScenario('alpha')];
+    const mockBaselineStore = { save: vi.fn().mockResolvedValue(undefined) };
+
+    store.loadRunMetadataByDirName = vi.fn().mockResolvedValue(null);
+
+    mockSuiteRunnerRun.mockResolvedValue([makeScenarioResult('alpha')]);
+
+    const runner = new GraduationSuiteRunner({
+      scenarios,
+      config,
+      store,
+      suiteMode: 'parallel',
+      baselineStoreFactory: () => mockBaselineStore as never,
+    });
+
+    await runner.run('run-no-git');
+
+    expect(mockBaselineStore.save).toHaveBeenCalledOnce();
+    const saveOptions = mockBaselineStore.save.mock.calls[0][2];
+    expect(saveOptions).toEqual({ defaultThreshold: config.regression.defaultThreshold });
+    expect(saveOptions).not.toHaveProperty('gitSha');
+    expect(saveOptions).not.toHaveProperty('gitBranch');
   });
 });

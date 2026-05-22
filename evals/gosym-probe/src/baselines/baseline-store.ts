@@ -11,7 +11,7 @@ import type { StoredAggregated } from '../store/types.js';
 import type { BaselineScores } from './types.js';
 import { toCompactTimestamp } from '../util/timestamp.js';
 
-export interface ThresholdOptions {
+export interface BaselineSaveOptions {
   /** Names of evaluators with regressionMode === 'score'. */
   scoreEvaluatorNames?: string[];
   /** Config default; used when no existing threshold is stored. */
@@ -23,6 +23,10 @@ export interface ThresholdOptions {
    * from disk as before.
    */
   existingBaseline?: BaselineScores | null;
+  /** Short git SHA of the commit that produced this baseline. */
+  gitSha?: string | null;
+  /** Git branch name at the time this baseline was saved. */
+  gitBranch?: string | null;
 }
 
 export class BaselineStore {
@@ -31,7 +35,7 @@ export class BaselineStore {
   async save(
     runId: string,
     result: ScenarioResult,
-    options?: ThresholdOptions,
+    options?: BaselineSaveOptions,
   ): Promise<void> {
     const scenarioDir = join(this.dir, result.scenarioName);
     await mkdir(scenarioDir, { recursive: true });
@@ -58,6 +62,8 @@ export class BaselineStore {
       createdAt: new Date().toISOString(),
       stabilityLevel: result.stabilityLevel,
       stabilityTrials: result.trials.length,
+      ...(options?.gitSha !== undefined && { gitSha: options.gitSha }),
+      ...(options?.gitBranch !== undefined && { gitBranch: options.gitBranch }),
       scores: Object.fromEntries(
         Object.entries(result.aggregated).map(([name, agg]) => [
           name,
@@ -108,7 +114,7 @@ export class BaselineStore {
     runId: string,
     stored: StoredAggregated,
     stabilityLevel?: StabilityLevel,
-    options?: ThresholdOptions,
+    options?: BaselineSaveOptions,
   ): Promise<void> {
     const scenarioDir = join(this.dir, stored.scenarioName);
     await mkdir(scenarioDir, { recursive: true });
@@ -149,6 +155,8 @@ export class BaselineStore {
       createdAt: new Date().toISOString(),
       ...(stabilityLevel !== undefined && { stabilityLevel }),
       ...(stabilityTrials !== undefined && { stabilityTrials }),
+      ...(options?.gitSha !== undefined && { gitSha: options.gitSha }),
+      ...(options?.gitBranch !== undefined && { gitBranch: options.gitBranch }),
       scores: Object.fromEntries(
         Object.entries(stored.evaluators).map(([name, ev]) => [
           name,

@@ -13,14 +13,15 @@ import type { SyntheticUserAgent } from '../runner/synthetic-user.js';
 import type { SiteCapture } from '../clients/dom-capture.js';
 import type { ScenarioResult, TrialResult } from '../runner/types.js';
 import type { EvalStore } from '../store/eval-store.js';
-import type { ThresholdOptions } from './baseline-store.js';
+import type { BaselineSaveOptions } from './baseline-store.js';
+import { pickGitFields } from './types.js';
 import type { TrialLifecycle } from '../clients/trial-lifecycle.js';
 
 interface BaselineStore {
   save(
     runId: string,
     result: ScenarioResult,
-    options?: ThresholdOptions,
+    options?: BaselineSaveOptions,
   ): Promise<void>;
 }
 
@@ -108,6 +109,18 @@ export class GraduationRunner {
         })
         : undefined);
 
+    let runMetadata: Awaited<ReturnType<EvalStore['loadRunMetadataByDirName']>> = null;
+    if (store) {
+      try {
+        runMetadata = await store.loadRunMetadataByDirName(dirName!);
+      } catch (err) {
+        log(
+          '[GraduationRunner] Failed to read run metadata for git fields, continuing without them',
+          { dirName, error: (err as Error).message },
+        );
+      }
+    }
+
     const runner = new SuiteRunner({
       scenarios: [scenario],
       config,
@@ -154,6 +167,7 @@ export class GraduationRunner {
     if (hasValidResults) {
       await baselineStore.save(runId, result, {
         defaultThreshold: config.regression.defaultThreshold,
+        ...pickGitFields(runMetadata),
       });
     } else {
       log(

@@ -277,6 +277,22 @@ function buildEvalIndex(
   return evalIndex;
 }
 
+function renderGitLine(
+  options: RenderOptions | undefined,
+): string | null {
+  const sha = options?.gitSha ?? null;
+  const branch = options?.gitBranch ?? null;
+  if (sha == null && branch == null) return null;
+
+  const shortSha = sha != null ? `\`${sha.slice(0, 7)}\`` : null;
+  const branchPart = branch != null ? `\`${branch}\`` : null;
+
+  if (shortSha != null && branchPart != null) {
+    return `**Git:** ${shortSha} on ${branchPart}`;
+  }
+  return `**Git:** ${shortSha ?? branchPart}`;
+}
+
 function renderModeLine(
   results: ScenarioResult[],
   options: RenderOptions | undefined,
@@ -398,6 +414,8 @@ export interface RenderOptions {
   wallClockMs?: number;
   runMode?: 'eval' | 'graduation';
   skipBaseline?: boolean;
+  gitSha?: string | null;
+  gitBranch?: string | null;
 }
 
 export class MdReporter {
@@ -421,11 +439,13 @@ export class MdReporter {
       ? `**Generated:** ${new Date().toISOString()} | **Wall Clock:** ${formatDuration(options.wallClockMs)}`
       : `**Generated:** ${new Date().toISOString()}`;
 
+    const gitLine = renderGitLine(options);
     const modeLine = renderModeLine(results, options);
 
     const sections: string[] = [
       `# Eval Run: ${runId}`,
       headerLine,
+      ...(gitLine != null ? [gitLine] : []),
       modeLine,
       '',
       '---',
