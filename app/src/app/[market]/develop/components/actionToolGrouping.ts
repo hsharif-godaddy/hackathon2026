@@ -34,6 +34,9 @@ const ACTION_GROUP_TOOL_NAMES = new Set([
   'viewLogs',
   'websiteScraper',
   'skill',
+  'listDesignSystems',
+  'installDesignSystem',
+  'loadUiKit',
   // Commerce skill tools (toCamelCase converts commerce__setup_store → commerce_SetupStore)
   'commerce_SetupStore',
   'commerce_FetchCatalog',

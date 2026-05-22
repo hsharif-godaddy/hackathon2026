@@ -15,6 +15,7 @@ import {
   withBudgetRecovery,
   redactSkillOutput,
   trackTurnSnapshotEvent,
+  runPreflightTools,
 } from '@airo/ai-transport'
 import type { ResponseMetadata } from '@airo/ai-transport'
 import { BudgetExceededError, containsBudgetExceededPattern } from '@airo/ai-common'
@@ -526,6 +527,29 @@ export class MessageExecutionService {
       .map(m => ({ role: m.role, content: m.content }))
 
     const messages = [...historyMessages, ...afterHistory, ...extraAfterHistory]
+
+    // Preflight tool synthesis: when conversation is empty and the agent declares
+    // preflightTools in its metadata, run them server-side and prepend synthesized
+    // assistant tool_call + tool result pairs so the model sees the result on turn 1.
+    const isFirstTurn = historyMessages.length === 0
+    if (isFirstTurn && agent && typeof agent.getConfig === 'function') {
+      try {
+        const agentConfig = agent.getConfig()
+        const preflightTools = (agentConfig.metadata as { preflightTools?: string[] } | undefined)?.preflightTools
+        if (preflightTools && preflightTools.length > 0) {
+          const preflight = await runPreflightTools({
+            preflightTools,
+            tools: agentConfig.tools as Record<string, { execute: (input: unknown, context: unknown) => Promise<unknown> }>,
+            context: executionContext ?? {},
+            logger: { warn: (event: string, data: Record<string, unknown>) => logger.warn(event, data) },
+          })
+          messages.unshift(...preflight)
+          logger.info('preflight.injected', { count: preflight.length, tools: preflightTools })
+        }
+      } catch (error) {
+        logger.warn('preflight.skipped', { reason: 'getConfig failed', ...errorFields(error) })
+      }
+    }
 
     // Create the Langfuse-facing agent-invocation span under the trace context
     // established in execute(). This mirrors the WS path (streamAgentResponse)

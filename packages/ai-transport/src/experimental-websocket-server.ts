@@ -54,6 +54,7 @@ import { runPostStreamValidation, turnEndedWithStopAfterTool, type ValidationMes
 import { invokeBudgetRecoveryCallback, buildContinuationPrompt, MAX_BUDGET_RETRIES } from './budget-recovery.js'
 import { parseAgentCommand } from './agent-command-parser.js'
 import { trackTurnSnapshotEvent, type TurnSnapshotState } from './turn-snapshot-tracker.js'
+import { runPreflightTools } from './preflight-tools.js'
 
 /**
  * APM agent type for tool execution tracking
@@ -3057,7 +3058,8 @@ export class WebSocketServer {
    */
   private async assembleMessages(
     data: ChatMessage,
-    context: Record<string, unknown> | undefined
+    context: Record<string, unknown> | undefined,
+    agent?: AgentWrapper
   ): Promise<{
     messages: ModelMessage[]
     contextMessages: PipelineContextMessage[]
@@ -3131,6 +3133,29 @@ export class WebSocketServer {
       messages.push(...convertedHistoryMessages)
     }
 
+    // Preflight tool synthesis: when conversation is empty and the agent declares
+    // preflightTools in its metadata, run them server-side and prepend synthesized
+    // assistant tool_call + tool result pairs so the model sees the result on turn 1.
+    const isFirstTurn = !data.conversationHistory || data.conversationHistory.length === 0
+    if (isFirstTurn && agent && typeof agent.getConfig === 'function') {
+      try {
+        const agentConfig = agent.getConfig()
+        const preflightTools = (agentConfig.metadata as { preflightTools?: string[] } | undefined)?.preflightTools
+        if (preflightTools && preflightTools.length > 0) {
+          const preflight = await runPreflightTools({
+            preflightTools,
+            tools: agentConfig.tools as Record<string, { execute: (input: unknown, context: unknown) => Promise<unknown> }>,
+            context: context ?? {},
+            logger: this.logger,
+          })
+          messages.push(...preflight)
+          this.logger.info('preflight.injected', { count: preflight.length, tools: preflightTools })
+        }
+      } catch (error) {
+        this.logger.warn('preflight.skipped', { reason: 'getConfig failed', error })
+      }
+    }
+
     // 3. Context messages marked "after_history" go to messages (after conversation history, before user message)
     messages.push(...afterHistoryMessages)
 
@@ -3186,7 +3211,7 @@ export class WebSocketServer {
     }
 
     // Assemble messages using clean interface-based approach
-    const { messages, contextMessages } = await this.assembleMessages(data, context)
+    const { messages, contextMessages } = await this.assembleMessages(data, context, agent)
 
     // Use getConversation to handle socket ID migration during reconnection
     const activeConversation = this.getConversation(socket.id)

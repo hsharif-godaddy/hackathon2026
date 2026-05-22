@@ -28,6 +28,7 @@ export const INITIAL_AGENT_COHORT_TO_PROFILE: Readonly<Record<string, string>> =
   initial_agent_v1: 'initial-agent-v1',
   initial_agent_v3: 'initial-agent-v3',
   prompt_enhancer: 'prompt-enhancer',
+  initial_agent_design_system: 'initial-agent-design-system',
 }
 
 /** Hivemind cohort id for hero copy, value props, examples intro, and section order (matches `hero_content_improvement/` + `data-homepage-variation`). */

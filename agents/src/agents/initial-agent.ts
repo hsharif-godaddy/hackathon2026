@@ -121,7 +121,7 @@ function modularPromptFilesFromActiveProfile(): string[] {
 const LEGACY_OPTIONAL_FILES = ['attributes.md', 'guidelines.md', 'examples.md']
 
 type ManifestEntry = { src: 'base' | 'template' | 'variant'; file: string }
-type ManifestFile = { base: string; files: ManifestEntry[] }
+type ManifestFile = { base: string; files: ManifestEntry[]; preflightTools?: string[] }
 
 function loadFromManifest(
   promptBuilder: ReturnType<typeof createPromptBuilder>,
@@ -129,7 +129,7 @@ function loadFromManifest(
   manifestPath: string,
   localDir: string,
   label: string,
-): void {
+): string[] {
   const manifest = JSON.parse(readFileSync(manifestPath, 'utf-8')) as ManifestFile
   const baseDir = `initial/${manifest.base}`
 
@@ -143,12 +143,16 @@ function loadFromManifest(
     }
     promptBuilder.file(filePath)
   }
+  return manifest.preflightTools ?? []
 }
 
 /**
  * Build the system prompt for the Initial Agent
  */
-async function buildInitialSystemPrompt(templateId?: string, promptVersion?: string): Promise<string> {
+async function buildInitialSystemPrompt(
+  templateId?: string,
+  promptVersion?: string,
+): Promise<{ systemPrompt: string; preflightTools: string[] }> {
   const promptBuilder = createPromptBuilder()
   const paths = getModularPromptPaths(import.meta.url)
 
@@ -157,23 +161,26 @@ async function buildInitialSystemPrompt(templateId?: string, promptVersion?: str
     const manifestPath = paths.getAgentFile(templateDir, 'manifest.json')
 
     if (existsSync(manifestPath)) {
-      loadFromManifest(promptBuilder, paths, manifestPath, templateDir, `template ${templateId}`)
-    } else {
-      // Legacy template mode: core.md + optional files
-      promptBuilder.file(paths.getAgentFile(templateDir, 'core.md'))
+      const preflightTools = loadFromManifest(promptBuilder, paths, manifestPath, templateDir, `template ${templateId}`)
+      promptBuilder.file(paths.getSharedFile('communication.md'))
+      promptBuilder.file(paths.getSharedFile('security.md'))
+      return { systemPrompt: await promptBuilder.build(), preflightTools }
+    }
 
-      for (const file of LEGACY_OPTIONAL_FILES) {
-        const filePath = paths.getAgentFile(templateDir, file)
-        if (existsSync(filePath)) {
-          promptBuilder.file(filePath)
-        }
+    // Legacy template mode: core.md + optional files
+    promptBuilder.file(paths.getAgentFile(templateDir, 'core.md'))
+
+    for (const file of LEGACY_OPTIONAL_FILES) {
+      const filePath = paths.getAgentFile(templateDir, file)
+      if (existsSync(filePath)) {
+        promptBuilder.file(filePath)
       }
     }
 
     promptBuilder.file(paths.getSharedFile('communication.md'))
     promptBuilder.file(paths.getSharedFile('security.md'))
 
-    return await promptBuilder.build()
+    return { systemPrompt: await promptBuilder.build(), preflightTools: [] }
   }
 
   // Versioned mode: load from initial/<version>/
@@ -184,10 +191,10 @@ async function buildInitialSystemPrompt(templateId?: string, promptVersion?: str
   // plus its own overrides (e.g. initial/prompt-enhancer/manifest.json).
   const versionManifestPath = paths.getAgentFile(versionDir, 'manifest.json')
   if (existsSync(versionManifestPath)) {
-    loadFromManifest(promptBuilder, paths, versionManifestPath, versionDir, `version ${version}`)
+    const preflightTools = loadFromManifest(promptBuilder, paths, versionManifestPath, versionDir, `version ${version}`)
     promptBuilder.file(paths.getSharedFile('communication.md'))
     promptBuilder.file(paths.getSharedFile('security.md'))
-    return await promptBuilder.build()
+    return { systemPrompt: await promptBuilder.build(), preflightTools }
   }
 
   // Detect modular (3.0+) vs legacy (1.0, 2.0) structure
@@ -215,7 +222,7 @@ async function buildInitialSystemPrompt(templateId?: string, promptVersion?: str
     }
     promptBuilder.file(paths.getSharedFile('security.md'))
   }
-  return await promptBuilder.build()
+  return { systemPrompt: await promptBuilder.build(), preflightTools: [] }
 }
 
 /**
@@ -233,7 +240,7 @@ export async function createInitialAgent(
     throw new Error(`Unknown template: ${templateId}`)
   }
 
-  const systemPrompt = await buildInitialSystemPrompt(templateId, promptVersion)
+  const { systemPrompt, preflightTools } = await buildInitialSystemPrompt(templateId, promptVersion)
   const { model, modelName } = await getAgentModelWithName('fast')
 
   // Named manifest variants (e.g. prompt-enhancer) live at
@@ -309,6 +316,15 @@ export async function createInitialAgent(
 
   // File upload: may need to apply extracted colors/fonts from classification
   if (templateId === 'file-upload') {
+    tools.colorScheme = allAILibTools.colorScheme
+    tools.fontTheme = allAILibTools.fontTheme
+  }
+
+  // Design-system named variant: list/install design systems and load UI kit reference
+  if (isNamedVariant && trimmedPromptVersion === 'design-system') {
+    tools.listDesignSystems = allAILibTools.listDesignSystems
+    tools.installDesignSystem = allAILibTools.installDesignSystem
+    tools.loadUiKit = allAILibTools.loadUiKit
     tools.colorScheme = allAILibTools.colorScheme
     tools.fontTheme = allAILibTools.fontTheme
   }
@@ -393,7 +409,8 @@ export async function createInitialAgent(
         includeSelectedImages: false,
         includeConversationHistory: true,
         includeTemplateDescription: true
-      }
+      },
+      preflightTools,
     }
   }
 }

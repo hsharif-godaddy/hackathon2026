@@ -53,6 +53,8 @@ export { websiteRebuildAITool } from './website-rebuild.js';
 export { rebuildPageSelectorAITool } from './rebuild-page-selector.js';
 export { mediaSlotAITool } from './media-slot.js';
 export { brandIdentityAITool } from './brand-identity.js';
+export { listDesignSystemsAITool } from './list-design-systems.js'
+export { installDesignSystemAITool } from './install-design-system.js'
 
 // Re-import for registry
 import { fileEditAITool } from './file-edit.js';
@@ -101,6 +103,8 @@ import { websiteRebuildAITool } from './website-rebuild.js';
 import { rebuildPageSelectorAITool } from './rebuild-page-selector.js';
 import { mediaSlotAITool } from './media-slot.js';
 import { brandIdentityAITool } from './brand-identity.js';
+import { listDesignSystemsAITool } from './list-design-systems.js';
+import { installDesignSystemAITool } from './install-design-system.js';
 
 /**
  * Complete registry of all AI-Lib converted tools
@@ -152,6 +156,8 @@ export const allAILibTools: Record<string, Tool> = {
   media: mediaSlotAITool,
   brandBook: brandIdentityAITool,
   loadUiKit: loadUiKitAITool,
+  listDesignSystems: listDesignSystemsAITool,
+  installDesignSystem: installDesignSystemAITool,
 };
 
 /**

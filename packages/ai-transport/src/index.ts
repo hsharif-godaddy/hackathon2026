@@ -207,3 +207,6 @@ export type {
   ConnectionRecoveryManagerDependencies,
   RecoveryManagerLogger
 } from './connection-recovery-manager.js'
+
+export { runPreflightTools } from './preflight-tools.js'
+export type { RunPreflightToolsInput } from './preflight-tools.js'

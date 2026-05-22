@@ -1,0 +1,7 @@
+{
+  "name": "initial-agent-design-system",
+  "description": "Initial agent variant: auto-selects a design system from the catalog based on the user's project, installs it into docs/ui-kit/, and proceeds to design",
+  "properties": {
+    "initial.promptVersion": "design-system"
+  }
+}

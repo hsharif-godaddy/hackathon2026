@@ -13,6 +13,7 @@ import {
   GitBranch,
   ListTodo,
   Package,
+  Palette,
   Pencil,
   ScrollText,
   Server,
@@ -89,6 +90,11 @@ export function getToolIcon(toolName: string | undefined): React.ReactNode {
 
     case 'skill':
       return <Package className={ICON_CLASS} aria-hidden="true" />
+
+    case 'listDesignSystems':
+    case 'installDesignSystem':
+    case 'loadUiKit':
+      return <Palette className={ICON_CLASS} aria-hidden="true" />
 
     default:
       return <Wrench className={ICON_CLASS} aria-hidden="true" />

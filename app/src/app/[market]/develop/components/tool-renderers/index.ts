@@ -14,6 +14,8 @@ import CommerceToolRenderer from './CommerceToolRenderer'
 import CssColorToolRenderer from './CssColorToolRenderer'
 import CssSuggestToolRenderer from './CssSuggestToolRenderer'
 import DefaultToolRenderer, { type DefaultToolRendererProps } from './DefaultToolRenderer'
+import DesignSystemToolRenderer from './DesignSystemToolRenderer'
+import DirectoryListingToolRenderer from './DirectoryListingToolRenderer'
 import DomainToolRenderer from './DomainToolRenderer'
 import EndConversationToolRenderer from './EndConversationToolRenderer'
 import FileEditToolRenderer from './FileEditToolRenderer'
@@ -72,7 +74,11 @@ export const toolRendererRegistry = {
   commerce__manage_media: CommerceToolRenderer,
   commerce__get_orders: CommerceToolRenderer,
   cssColor: CssColorToolRenderer,
+  listDesignSystems: DesignSystemToolRenderer,
+  installDesignSystem: DesignSystemToolRenderer,
+  loadUiKit: DesignSystemToolRenderer,
   cssSuggest: CssSuggestToolRenderer,
+  directoryListing: DirectoryListingToolRenderer,
   'custom-domain__domainPurchase': DomainToolRenderer,
   fontTheme: FontThemeToolRenderer,
   socialPostCreate: SocialPostCreateToolRenderer,
@@ -155,6 +161,8 @@ export {
   CssColorToolRenderer,
   CssSuggestToolRenderer,
   DefaultToolRenderer,
+  DesignSystemToolRenderer,
+  DirectoryListingToolRenderer,
   DomainToolRenderer,
   EndConversationToolRenderer,
   FileEditToolRenderer,
