@@ -1,11 +1,12 @@
 'use client'
 
 import React, { useRef } from 'react'
+import { Thinker } from '@airo/components/chat/thinker'
 
 import ActionToolGroupRenderer from '@/app/[market]/develop/components/ActionToolGroupRenderer'
+import { useThinkerLabel } from '@/app/[market]/develop/components/chat/useThinkerLabel'
 import MarkdownRenderer from '@/app/[market]/develop/components/MarkdownRenderer'
 import MessageToolCallsRenderer from '@/app/[market]/develop/components/MessageToolCallsRenderer'
-import ThinkingIndicator from '@/app/[market]/develop/components/ThinkingIndicator'
 import MediaGroupRenderer from '@/app/[market]/develop/components/tool-renderers/MediaGroupRenderer'
 import type { ToolCall } from '@/stores/useStreamingConversationStore'
 import type { ContentBlock } from './contentBlocks'
@@ -33,6 +34,7 @@ function blockKey(block: ContentBlock, index: number): string {
 }
 
 function MessageContentRenderer({ blocks, isActiveStream = false, isLastAssistantMessage = false, showThinking = false }: MessageContentRendererProps) {
+  const thinkerLabel = useThinkerLabel()
   const toolCallArraysCacheRef = useRef<Map<string, ToolCall[]>>(new Map())
 
   // Create stable array references for tool calls using a cache
@@ -81,7 +83,7 @@ function MessageContentRenderer({ blocks, isActiveStream = false, isLastAssistan
       })}
 
       {showThinking && (
-        <ThinkingIndicator active />
+        <Thinker label={thinkerLabel} />
       )}
     </div>
   )

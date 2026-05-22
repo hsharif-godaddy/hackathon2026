@@ -6,10 +6,12 @@ import dynamic from 'next/dynamic'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useIntl } from 'react-intl'
+import { Thinker } from '@airo/components/chat/thinker'
 import { Loader } from '@airo-ux/loader'
 import Button from '@ux/button'
 
 import { useLatestNBAs } from '@/app/[market]/develop/components/chat/useLatestNBAs'
+import { useThinkerLabel } from '@/app/[market]/develop/components/chat/useThinkerLabel'
 import DomainBar from '@/app/[market]/develop/components/layout/DomainBar'
 import BrandBookView from '@/app/[market]/develop/components/preview/brand-book'
 import { getDevicePreset } from '@/app/[market]/develop/components/preview/devicePresets'
@@ -18,7 +20,6 @@ import PreviewError from '@/app/[market]/develop/components/preview/PreviewError
 import PreviewLoadingState from '@/app/[market]/develop/components/preview/PreviewLoadingState'
 import PreviewSkeleton from '@/app/[market]/develop/components/preview/PreviewSkeleton'
 import StatusPill from '@/app/[market]/develop/components/preview/StatusPill'
-import ThinkingIndicator from '@/app/[market]/develop/components/ThinkingIndicator'
 import Tips from '@/app/[market]/develop/components/tips/Tips'
 import { MobileMode, PreviewViewMode, ViewMode } from '@/app/[market]/develop/components/types'
 import { useAppIdFromParams } from '@/app/[market]/develop/components/utils'
@@ -135,6 +136,7 @@ export default function PreviewPane({
   onAskAiroToFix,
 }: PreviewPaneProps) {
   const t = useTranslations();
+  const thinkerLabel = useThinkerLabel()
   const intl = useIntl();
   const isDomainBarEnabled = useSwitchboard('appbuilder-domain-bar');
   const isTopLevelDomainEnabled = useSwitchboard('appbuilder-domain-top-level');
@@ -1250,7 +1252,7 @@ export default function PreviewPane({
                         />
                       ) : (
                         <div className="bg-intents-ux-box-backgroundColor rounded-full px-2 pt-0.5 pb-0 shadow-lg border">
-                          <ThinkingIndicator active={true} inline={true} />
+                          <Thinker label={thinkerLabel} />
                         </div>
                       )}
                     </div>

@@ -13,8 +13,8 @@ catalogs:
       specifier: ^3.0.10
       version: 3.0.10
     '@airo/components':
-      specifier: ^4.6.0
-      version: 4.6.0
+      specifier: ^5.0.0
+      version: 5.0.0
     '@aws-sdk/client-lambda':
       specifier: ^3.1045.0
       version: 3.1045.0
@@ -610,7 +610,7 @@ importers:
         version: 2.1.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(typescript@5.9.3)
       '@airo/components':
         specifier: 'catalog:'
-        version: 4.6.0(b7994c115a8dcba2488f321fa671ccda)
+        version: 5.0.0(c3c31a1a906d87142451b3e64a296116)
       '@airo/shared':
         specifier: workspace:*
         version: link:../packages/shared
@@ -1916,11 +1916,12 @@ packages:
       react: 19.1.0
       react-dom: 19.1.0
 
-  '@airo/components@4.6.0':
-    resolution: {integrity: sha512-HEYrJJCqyEES9oZn1NRqGbUkmOxxr1JEZSIDCMmmhj4zCI/KscH4AQ9L8/Ik+NnUssCgp8T1aKaAHJqV0NfcjQ==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@airo/components/-/@airo/components-4.6.0.tgz}
+  '@airo/components@5.0.0':
+    resolution: {integrity: sha512-LL7q3b0IIUcDHwTFH7BKWQgAvXrrelbkBVvdMcBYFsyIw5GXP9UBbV8VvBCxxij0YEFUonn273w/yfvpb5irNQ==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/npm-user-experience-local/@airo/components/-/@airo/components-5.0.0.tgz}
     engines: {node: '>=22', npm: '>=10'}
     peerDependencies:
       '@godaddy/antares': ^0.1.0
+      '@lexical/react': ^0.42.0
       '@ux/box': 2500.9.0
       '@ux/button': 2500.11.1
       '@ux/card': 2500.11.1
@@ -1934,11 +1935,14 @@ packages:
       '@ux/intents': 2500.9.0
       '@ux/list-item': ^2400.0.0 || ^2500.0.0
       '@ux/listbox': ^2400.0.0 || ^2500.0.0
+      '@ux/menu': 2500.11.1
       '@ux/modal': 2500.11.1
       '@ux/tag': 2500.11.0
       '@ux/text': 2500.9.0
       '@ux/text-entry': ^2400.0.0 || ^2500.0.0
       '@ux/text-lockup': ^2400.0.0 || ^2500.0.0
+      lexical: ^0.42.0
+      lexical-beautiful-mentions: ^0.1.48
       react: 19.1.0
       react-aria-components: ^1.0.0
       react-dom: 19.1.0
@@ -14341,8 +14345,9 @@ snapshots:
       - prop-types
       - typescript
 
-  '@airo/components@4.6.0(b7994c115a8dcba2488f321fa671ccda)':
+  '@airo/components@5.0.0(c3c31a1a906d87142451b3e64a296116)':
     dependencies:
+      '@lexical/react': 0.42.0(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(yjs@13.6.30)
       '@ux/box': 2500.9.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/button': 2500.11.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/card': 2500.11.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
@@ -14354,12 +14359,15 @@ snapshots:
       '@ux/intents': 2500.9.0
       '@ux/list-item': 2500.11.3(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/listbox': 2500.11.3(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/menu': 2500.11.1(@types/react@19.2.14)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/modal': 2500.11.1(@types/react@19.2.14)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/tag': 2500.11.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/tailwind-intents': 2500.9.0(@ux/intents@2500.9.0)(tailwindcss@4.3.0)
       '@ux/text': 2500.9.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/text-lockup': 2500.11.3(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       classnames: 2.5.1
+      lexical: 0.42.0
+      lexical-beautiful-mentions: 0.1.48(@lexical/react@0.42.0(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(yjs@13.6.30))(@lexical/utils@0.42.0)(lexical@0.42.0)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       react: 19.1.0
       react-dom: 19.1.0(react@19.1.0)
       react-markdown: 10.1.0(@types/react@19.2.14)(react@19.1.0)

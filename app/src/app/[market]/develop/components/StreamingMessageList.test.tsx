@@ -68,8 +68,8 @@ vi.mock('./StreamingMessage', () => ({
   ),
 }));
 
-vi.mock('./ThinkingIndicator', () => ({
-  default: () => <div data-testid="thinking-indicator" />,
+vi.mock('@airo/components/chat/thinker', () => ({
+  Thinker: () => <div data-testid="thinking-indicator" />,
 }));
 
 // Module-level so individual tests can control return value (true = socket connected/sent).
@@ -169,6 +169,7 @@ vi.mock('@/stores/useStreamingConversationStore', () => {
   return {
     useStreamingConversationStore: store,
     useIsActivelyStreaming: () => mockStreamingStore.isActivelyStreaming,
+    useActiveRunningToolName: () => null,
     useConversationPagination: () => mockStreamingStore.pagination,
     useCurrentAppId: () => mockStreamingStore.currentAppId,
     useHistoryLoadingComplete: () => mockStreamingStore.historyLoadingComplete,

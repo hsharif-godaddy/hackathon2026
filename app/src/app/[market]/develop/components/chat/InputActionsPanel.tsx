@@ -3,6 +3,7 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { Thinker } from '@airo/components/chat/thinker'
 import { ChoiceList } from '@airo/components/input/choice-list'
 import { useQueryClient } from '@tanstack/react-query'
 
@@ -11,7 +12,7 @@ import CollapsibleChatInputSection, { CollapseChevron } from '@/app/[market]/dev
 import FontThemePreviewInputPanel from '@/app/[market]/develop/components/chat/FontThemePreviewInputPanel'
 import ThemePreviewInputPanel from '@/app/[market]/develop/components/chat/ThemePreviewInputPanel'
 import { useLatestNBAs } from '@/app/[market]/develop/components/chat/useLatestNBAs'
-import ThinkingIndicator from '@/app/[market]/develop/components/ThinkingIndicator'
+import { useThinkerLabel } from '@/app/[market]/develop/components/chat/useThinkerLabel'
 import AskQuestionToolRenderer from '@/app/[market]/develop/components/tool-renderers/AskQuestionToolRenderer'
 import { parseChoiceListIndex } from '@/app/[market]/develop/components/tool-renderers/choiceListIndex'
 import { focusChoiceListOptionByIndex } from '@/app/[market]/develop/components/tool-renderers/focusChoiceListOptionByIndex'
@@ -90,6 +91,7 @@ function isAskQuestionNBA(nbaData: ReturnType<typeof useLatestNBAs>): boolean {
  */
 function InputActionsPanelLegacy({ shouldCollapse: _shouldCollapse }: { shouldCollapse?: boolean }) {
   const t = useTranslations()
+  const thinkerLabel = useThinkerLabel()
   const sendUserMessage = useSendUserMessage()
   const nbaData = useLatestNBAs()
   const currentList = useCurrentList()
@@ -320,7 +322,7 @@ function InputActionsPanelLegacy({ shouldCollapse: _shouldCollapse }: { shouldCo
     return (
       <>
         <div className="flex items-center justify-between px-1 py-0.5 mb-1 min-h-[22px]">
-          <ThinkingIndicator active={true} inline={true} />
+          <Thinker label={thinkerLabel} />
           {hasPlan && !fullPlanExpanded && (
             <button
               type="button"
@@ -962,6 +964,7 @@ function InputActionsPanelThemeSelection({
   shouldCollapse = false,
 }: InputActionsPanelProps) {
   const t = useTranslations()
+  const thinkerLabel = useThinkerLabel()
   const queryClient = useQueryClient()
   const sendUserMessage = useSendUserMessage()
   const nbaData = useLatestNBAs()
@@ -1400,7 +1403,7 @@ function InputActionsPanelThemeSelection({
 
         {/* Thinking indicator with optional plan toggle (hide plan when applying theme) */}
         <div className="flex items-center justify-between px-1 py-0.5 mb-1 min-h-[22px]">
-          <ThinkingIndicator active={true} inline={true} />
+          <Thinker label={thinkerLabel} />
           {hasPlan && !showAnySuggest && (
             <button
               type="button"

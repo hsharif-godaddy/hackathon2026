@@ -1,3 +1,4 @@
 /* -> Import styles for Airo UX components */
 @import '@airo-ux/loader/styles';
+@import '@airo/components/chat/thinker/styles';
 @import '@airo/components/input/choice-list/styles';

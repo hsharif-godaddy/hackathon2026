@@ -1605,6 +1605,17 @@ const isActivelyStreamingSelector = (state: StreamingConversationState) =>
   state.streamingState === 'streaming' && !!state.activeStream
 
 export const useIsActivelyStreaming = () => useStreamingConversationStore(isActivelyStreamingSelector)
+
+const activeRunningToolNameSelector = (state: StreamingConversationState): string | null => {
+  const tools = state.activeStream?.toolCalls
+  if (!tools?.length) return null
+  for (let i = tools.length - 1; i >= 0; i--) {
+    if (tools[i]!.status === 'running') return tools[i]!.name
+  }
+  return null
+}
+
+export const useActiveRunningToolName = () => useStreamingConversationStore(activeRunningToolNameSelector)
 export const useInputValue = () => useStreamingConversationStore(state => state.inputValue)
 export const useIsLoading = () => useStreamingConversationStore(state => state.isLoading)
 export const useCurrentAppId = () => useStreamingConversationStore(state => state.currentAppId)

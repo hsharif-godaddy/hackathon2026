@@ -221,8 +221,7 @@ export function useGrantContext({
     [controller, effectiveEnabled, emitAfterRefetch, isConnected, refetchGrants]
   )
 
-  // Refetch grants when stream completes (credits have been consumed)
-  // Uses same pattern as ThinkingIndicator - watching isActivelyStreaming
+  // Refetch grants when stream completes (credits have been consumed).
   const isStreaming = useIsActivelyStreaming()
   const prevIsStreamingRef = useRef<boolean | null>(null)
   const streamCompleteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)

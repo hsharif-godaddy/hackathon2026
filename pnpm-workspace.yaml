@@ -22,7 +22,7 @@ catalog:
   # plugins/configs.
   "@ai-sdk/openai": ^3.0.63
   "@ai-sdk/provider": ^3.0.10
-  "@airo/components": ^4.6.0
+  "@airo/components": ^5.0.0
   "@aws-sdk/client-lambda": ^3.1045.0
 
   # Shared runtime

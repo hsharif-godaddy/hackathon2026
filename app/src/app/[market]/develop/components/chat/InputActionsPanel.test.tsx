@@ -27,7 +27,8 @@ vi.mock('@/stores/useStreamingConversationStore', () => ({
   useIsActivelyStreaming: vi.fn(),
   useIsLoading: vi.fn(),
   useMessages: vi.fn(),
-  useActiveStream: vi.fn(() => null)
+  useActiveStream: vi.fn(() => null),
+  useActiveRunningToolName: vi.fn(() => null)
 }))
 
 vi.mock('@/app/[market]/develop/hooks/useRebuildPages', () => ({

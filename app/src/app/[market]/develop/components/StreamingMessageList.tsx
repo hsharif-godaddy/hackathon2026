@@ -1,12 +1,14 @@
 'use client'
 
 import { type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { Thinker } from '@airo/components/chat/thinker'
 import Box from '@ux/box'
 import Button from '@ux/button'
 import ChevronDownIcon from '@ux/icon/chevron-down'
 import Spinner from '@ux/spinner'
 
 import ChatMessagesSkeleton from '@/app/[market]/develop/components/chat/ChatMessagesSkeleton'
+import { useThinkerLabel } from '@/app/[market]/develop/components/chat/useThinkerLabel'
 import StaticSkeleton from '@/app/[market]/develop/components/StaticSkeleton'
 import { ChatTab } from '@/app/[market]/develop/components/types'
 import { navigatePreviewToRoute, useAppIdFromParams } from '@/app/[market]/develop/components/utils'
@@ -33,7 +35,6 @@ import {
 } from '@/stores/useStreamingConversationStore'
 import { logClickEvent } from '@/utils/instrumentation'
 import StreamingMessage from './StreamingMessage'
-import ThinkingIndicator from './ThinkingIndicator'
 
 interface StreamingMessageListProps {
   allMessages: (ChatMessage | StreamingMessageType)[]
@@ -74,6 +75,7 @@ export default function StreamingMessageList({
   const prevIsStreamingRef = useRef(false)
   const hasUserInteractedRef = useRef(false)
   const t = useTranslations();
+  const thinkerLabel = useThinkerLabel()
   const areChatPlansEnabled = useSwitchboard('airo-builder-chat-plans')
 
   // Store hooks for loading state
@@ -659,7 +661,7 @@ export default function StreamingMessageList({
           <StreamingMessage
             message={{ id: 'initial-prompt', role: 'user', content: initialPromptText, timestamp: new Date() } satisfies ChatMessage}
           />
-          <ThinkingIndicator active={true} />
+          <Thinker label={thinkerLabel} />
           <div ref={messagesEndRef} />
         </div>
       )
@@ -818,7 +820,7 @@ export default function StreamingMessageList({
       })}
 
       {/* Standalone thinking indicator when the last assistant message has no content yet */}
-      {shouldShowStandaloneThinking && <ThinkingIndicator active={true} />}
+      {shouldShowStandaloneThinking && <Thinker label={thinkerLabel} />}
 
       {transcriptFooter}
 
