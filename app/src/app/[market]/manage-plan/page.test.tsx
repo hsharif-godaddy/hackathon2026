@@ -145,6 +145,7 @@ vi.mock('@ux/modal', () => ({
 }));
 
 vi.mock('@/app/[market]/develop/components/paywall', () => ({
+  CdsEsmPreload: () => null,
   UpgradeContainer: () => <div data-testid="upgrade-modal">Upgrade Modal</div>,
   CreditsUpgradeContainer: ({ entitlementId }: { entitlementId: string }) => (
     <div data-testid="credits-modal">
@@ -153,6 +154,7 @@ vi.mock('@/app/[market]/develop/components/paywall', () => ({
     </div>
   ),
   GrantPollingModal: () => <div data-testid="grant-polling-modal">Grant Polling Modal</div>,
+  RenewalPollingModal: () => <div data-testid="renewal-polling-modal">Renewal Polling Modal</div>,
   UpgradePollingModal: () => <div data-testid="upgrade-polling-modal">Upgrade Polling Modal</div>,
 }));
 

@@ -8,6 +8,7 @@ import Button from "@ux/button";
 import text from "@ux/text";
 
 import {
+  CdsEsmPreload,
   CreditsUpgradeContainer,
   GrantPollingModal,
   RenewalPollingModal,
@@ -26,6 +27,7 @@ import {
   TotalCreditsCard,
 } from "@/app/[market]/manage-plan/components";
 import { ProtectedRoute } from "@/components/auth";
+import ErrorBoundary from "@/components/ErrorBoundary";
 import { useCreditGrants } from "@/hooks/useCreditGrants";
 import { useIsCreditPolling } from "@/hooks/useCreditPurchase";
 import { useEcommSubscriptionAutoRenew } from "@/hooks/useEcommSubscriptionAutoRenew";
@@ -565,6 +567,10 @@ function ManagePlanContent() {
 
       {/* Polling overlay while waiting for subscription renewal */}
       {isRenewalPolling && <RenewalPollingModal />}
+
+      <ErrorBoundary fallback={() => null}>
+        <CdsEsmPreload />
+      </ErrorBoundary>
     </>
   );
 }
