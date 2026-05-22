@@ -99,11 +99,15 @@ test.describe('Apps Page & Navigation', () => {
     await page.getByTestId('app-card-edit-button').first().waitFor({ state: 'visible', timeout: 30000 });
 
     // Verify page header
-    await expect(page.getByTestId('apps-page-title')).toBeVisible();
+    const appsPageTitle = page.getByTestId('apps-page-title');
+    await expect(appsPageTitle).toBeVisible();
     console.log('  ✓ Page header visible');
 
-    // Verify app count
-    await expect(page.locator('body')).toContainText(/\d+ apps? total/);
+    // Verify app count — the count Tag is rendered inside `apps-page-title` via
+    // the `builder_apps_count` i18n key, so the exact wording ("apps", "projects",
+    // pluralization) can change externally. Assert the invariant: a numeric count
+    // is shown next to the title.
+    await expect(appsPageTitle).toContainText(/\d+/);
     console.log('  ✓ App count displayed');
 
     // Verify Create button
