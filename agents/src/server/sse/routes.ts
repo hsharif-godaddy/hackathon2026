@@ -1,7 +1,7 @@
 import { Router } from 'express'
 import type { Request, Response, NextFunction } from 'express'
 import type { ConversationEventChannel, EventSubscriber, StreamingEvent } from '@airo/ai-transport'
-import { createSSEWriter, computeRecoveryPlan } from '@airo/ai-transport'
+import { createSSEWriter, computeRecoveryPlan, parseAgentCommand } from '@airo/ai-transport'
 import { grantSessionManager, resolveBmsSubscriptionId } from '@airo/ai-grants'
 import { EventStreamRegistry } from './EventStreamRegistry.js'
 import { MessageExecutionService } from './MessageExecutionService.js'
@@ -472,6 +472,17 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
       return
     }
 
+    const parsedAgentCommand = parseAgentCommand(content)
+    if (parsedAgentCommand.hasCommand && !parsedAgentCommand.hasBody) {
+      logger.info('sse.agent_override.bodyless_passthrough', { appId, conversationId, requestedAgent: parsedAgentCommand.agentId })
+    }
+    const effectiveContent = parsedAgentCommand.hasCommand && parsedAgentCommand.hasBody
+      ? parsedAgentCommand.strippedContent ?? content
+      : content
+    const requestedAgentId = parsedAgentCommand.hasCommand && parsedAgentCommand.hasBody
+      ? parsedAgentCommand.agentId
+      : agentId
+
     if (!deps.executionService) {
       res.status(503).json({ error: 'Message execution not available' })
       return
@@ -516,7 +527,7 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
 
     const stateManager = deps.getStateManager()
     const resolvedAgentId = await deps.resolveAgent({
-      appId, agentId, agentProfile, templateId, agentContext,
+      appId, agentId: requestedAgentId, agentProfile, templateId, agentContext,
       ...(stateManager && { session: { sessionId: sseSocketId, stateManager } }),
     })
 
@@ -536,7 +547,7 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
     deps.executionService.execute({
       appId,
       conversationId,
-      content,
+      content: effectiveContent,
       siteId,
       agentId: resolvedAgentId,
       agentProfile,

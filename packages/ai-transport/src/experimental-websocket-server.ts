@@ -53,6 +53,7 @@ import {
 import { ChunkTimeoutGuard } from './chunk-timeout-guard.js'
 import { runPostStreamValidation, turnEndedWithStopAfterTool, type ValidationMessageEventData } from './post-stream-validation-runner.js'
 import { invokeBudgetRecoveryCallback, buildContinuationPrompt, MAX_BUDGET_RETRIES } from './budget-recovery.js'
+import { parseAgentCommand } from './agent-command-parser.js'
 
 /**
  * APM agent type for tool execution tracking
@@ -2168,11 +2169,14 @@ export class WebSocketServer {
 
       // 1.5. Strip /agent marker from message if present
       if (data.message && typeof data.message === 'string') {
-        const firstLine = data.message.split('\n')[0]?.trim()
-        if (firstLine?.match(/^\/agent\s+\w+$/i)) {
-          // Remove first line and any leading newline
-          const lines = data.message.split('\n')
-          data.message = lines.slice(1).join('\n').trimStart()
+        const parsedAgentCommand = parseAgentCommand(data.message)
+        if (parsedAgentCommand.hasCommand && parsedAgentCommand.hasBody) {
+          data.message = parsedAgentCommand.strippedContent
+        } else if (parsedAgentCommand.hasCommand) {
+          this.logger.info('websocket.agent_command.bodyless_passthrough', {
+            socketId,
+            requestedAgent: parsedAgentCommand.agentId,
+          })
         }
       }
 

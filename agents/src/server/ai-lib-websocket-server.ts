@@ -125,6 +125,7 @@ import {
 import { ConversationEventChannel } from '@airo/ai-transport'
 import { getSSERegistry } from './sse/registry-singleton.js'
 import { mapToolCallsToUI } from './tool-call-mapper.js'
+import { resolveManualAgentOverride } from './manual-agent-override.js'
 
 /**
  * Shared AppRepository instance to avoid repeated initialization
@@ -1170,20 +1171,8 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
       agentRouter: async (socketId: string, data: any) => {
         // Check for manual agent override in message content
         // Format: /agent <agent-name> on first line
-        if (data.message && typeof data.message === 'string') {
-          const firstLine = data.message.split('\n')[0].trim()
-          const agentOverrideMatch = firstLine.match(/^\/agent\s+(\w+)$/i)
-
-          if (agentOverrideMatch) {
-            const requestedAgent = agentOverrideMatch[1].toLowerCase()
-            logger.info('websocket.agent_router.manual_override', {
-              socketId,
-              requestedAgent,
-              message: 'Manual agent override detected in message'
-            })
-            return requestedAgent
-          }
-        }
+        const manualAgentOverride = resolveManualAgentOverride(socketId, data.message, logger)
+        if (manualAgentOverride) return manualAgentOverride
 
         const metadata = data.context?.metadata as any
         const appId = metadata?.appId
@@ -3409,4 +3398,3 @@ export function emitToApp(appId: string, event: string, payload: unknown): numbe
 export function getGitHookService() {
   return gitHookService;
 }
-

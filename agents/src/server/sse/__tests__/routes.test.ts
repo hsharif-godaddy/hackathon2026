@@ -823,6 +823,58 @@ describe('SSE routes', () => {
       expect(mockExecute).toHaveBeenCalledWith(expect.objectContaining({ content: '' }))
     })
 
+    it('parses hyphenated /agent override from first line and strips it from submitted content', async () => {
+      const mockExecute = vi.fn().mockResolvedValue(undefined)
+      const depsWithService = {
+        ...deps,
+        resolveAgent: vi.fn().mockResolvedValue('initial-v2'),
+        executionService: { execute: mockExecute, hasActiveStream: vi.fn().mockReturnValue(false) },
+      }
+      const appWithService = express()
+      appWithService.use(express.json())
+      appWithService.use('/api/conversations', createSSERoutes(depsWithService as any))
+
+      const res = await request(appWithService)
+        .post('/api/conversations/abcdefghij/conv_1/messages')
+        .send({ content: '/agent initial-v2\nBuild me a pricing page', agentId: 'develop' })
+
+      expect(res.status).toBe(202)
+      for (let i = 0; i < 50 && mockExecute.mock.calls.length === 0; i++) {
+        await new Promise(r => setTimeout(r, 5))
+      }
+      expect(depsWithService.resolveAgent).toHaveBeenCalledWith(expect.objectContaining({ agentId: 'initial-v2' }))
+      expect(mockExecute).toHaveBeenCalledWith(expect.objectContaining({
+        agentId: 'initial-v2',
+        content: 'Build me a pricing page',
+      }))
+    })
+
+    it('does not convert a bodyless /agent command into an empty prompt', async () => {
+      const mockExecute = vi.fn().mockResolvedValue(undefined)
+      const depsWithService = {
+        ...deps,
+        resolveAgent: vi.fn().mockResolvedValue('develop'),
+        executionService: { execute: mockExecute, hasActiveStream: vi.fn().mockReturnValue(false) },
+      }
+      const appWithService = express()
+      appWithService.use(express.json())
+      appWithService.use('/api/conversations', createSSERoutes(depsWithService as any))
+
+      const res = await request(appWithService)
+        .post('/api/conversations/abcdefghij/conv_1/messages')
+        .send({ content: '/agent initial-v2', agentId: 'develop' })
+
+      expect(res.status).toBe(202)
+      for (let i = 0; i < 50 && mockExecute.mock.calls.length === 0; i++) {
+        await new Promise(r => setTimeout(r, 5))
+      }
+      expect(depsWithService.resolveAgent).toHaveBeenCalledWith(expect.objectContaining({ agentId: 'develop' }))
+      expect(mockExecute).toHaveBeenCalledWith(expect.objectContaining({
+        agentId: 'develop',
+        content: '/agent initial-v2',
+      }))
+    })
+
     it('returns 400 when content exceeds max length', async () => {
       const res = await request(app)
         .post('/api/conversations/abcdefghij/conv_1/messages')

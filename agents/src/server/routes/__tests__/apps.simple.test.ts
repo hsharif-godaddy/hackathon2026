@@ -1,6 +1,13 @@
-import { describe, it, expect } from 'vitest';
+import { beforeAll, beforeEach, describe, it, expect, vi } from 'vitest';
 import request from 'supertest';
 import express from 'express';
+
+const mockSuggestName = vi.hoisted(() => vi.fn());
+
+vi.mock('../../../services/name-suggestion.js', () => ({
+  getNameSuggestionService: () => ({ suggestName: mockSuggestName }),
+}));
+
 import { appsRouter } from '../apps.js';
 
 // Create test Express app with fake auth context using a bypass siteId
@@ -21,6 +28,11 @@ describe('Apps Routes Basic Tests', () => {
 
   beforeAll(async () => {
     app = createTestApp();
+  });
+
+  beforeEach(() => {
+    mockSuggestName.mockReset();
+    mockSuggestName.mockResolvedValue('Suggested App');
   });
 
   it('should return 404 for non-existent app styles edit', async () => {
@@ -80,5 +92,25 @@ describe('Apps Routes Basic Tests', () => {
 
     // Should be 400 (bad request) or 404 (not found), but not 404 due to missing route
     expect([400, 404]).toContain(response.status);
+  });
+
+  it('strips hyphenated /agent commands before suggesting a name', async () => {
+    const response = await request(app)
+      .post('/apps/suggest-name')
+      .send({ prompt: '/agent initial-v2\nBuild a pricing page' })
+      .expect(200);
+
+    expect(mockSuggestName).toHaveBeenCalledWith('Build a pricing page');
+    expect(response.body.prompt).toBe('Build a pricing page');
+  });
+
+  it('passes bodyless /agent commands through when suggesting a name', async () => {
+    const response = await request(app)
+      .post('/apps/suggest-name')
+      .send({ prompt: '/agent initial-v2' })
+      .expect(200);
+
+    expect(mockSuggestName).toHaveBeenCalledWith('/agent initial-v2');
+    expect(response.body.prompt).toBe('/agent initial-v2');
   });
 });

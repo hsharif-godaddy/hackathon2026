@@ -744,6 +744,31 @@ describe('useSSEChat', () => {
     expect(mockAddToolResultSegment).toHaveBeenCalled()
   })
 
+  it('tool_result event with enriched SSE metadata still renders tool result segment', async () => {
+    await setupHook()
+    const tool = { id: 't4', name: 'read_file', input: { path: '/baz' }, output: 'ok' }
+
+    act(() => {
+      lastTransport.callbacks?.onEvent({
+        type: 'tool_result',
+        data: {
+          source: 'ai_response',
+          messageId: 'agent-msg-44',
+          agentId: 'develop',
+          toolName: 'read_file',
+          tool,
+        },
+      })
+    })
+
+    expect(mockAddToolResultSegment).toHaveBeenCalledWith(expect.objectContaining({
+      id: 't4',
+      name: 'read_file',
+      result: 'ok',
+      status: 'completed',
+    }))
+  })
+
   it('tool_input_delta event calls updateToolDelta and scheduleToolDeltaFlush', async () => {
     await setupHook()
 

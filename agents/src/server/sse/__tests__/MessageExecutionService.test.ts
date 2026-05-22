@@ -247,6 +247,63 @@ describe('MessageExecutionService', () => {
       )
     })
 
+    it('prefers SDK-normalized tool input/name for tool_result events', async () => {
+      deps = createMockDeps([
+        { type: 'tool-input-start', id: 'tid1', toolName: 'legacyTool' },
+        { type: 'tool-input-delta', id: 'tid1', toolName: 'legacyTool', delta: '{"foo":"' },
+        { type: 'tool-result', id: 'tid1', toolName: 'normalizedTool', input: { foo: 'bar', normalized: true }, output: 'done' },
+      ])
+      service = new MessageExecutionService(deps as any)
+
+      await service.execute(DEFAULT_PARAMS)
+
+      expect(deps.eventChannel.publish).toHaveBeenCalledWith(
+        'conv_1',
+        expect.objectContaining({
+          type: 'tool_result',
+          data: expect.objectContaining({
+            toolName: 'normalizedTool',
+            tool: expect.objectContaining({
+              id: 'tid1',
+              name: 'normalizedTool',
+              input: { foo: 'bar', normalized: true },
+            }),
+          }),
+        })
+      )
+    })
+
+    it('redacts skill output fields before publishing tool_result', async () => {
+      deps = createMockDeps([
+        {
+          type: 'tool-result',
+          id: 'tid1',
+          toolName: 'skill',
+          input: {},
+          output: { instructions: 'secret', dependentInstructions: 'secret2', publicSummary: 'ok' },
+        }
+      ])
+      service = new MessageExecutionService(deps as any)
+
+      await service.execute(DEFAULT_PARAMS)
+
+      expect(deps.eventChannel.publish).toHaveBeenCalledWith(
+        'conv_1',
+        expect.objectContaining({
+          type: 'tool_result',
+          data: expect.objectContaining({
+            tool: expect.objectContaining({
+              output: expect.objectContaining({
+                instructions: '[redacted]',
+                dependentInstructions: '[redacted]',
+                publicSummary: 'ok',
+              }),
+            }),
+          }),
+        })
+      )
+    })
+
     it('publishes tool_result with is_error for tool-error parts', async () => {
       deps = createMockDeps([
         { type: 'tool-error', id: 'tid1', toolName: 'myTool', error: new Error('boom') }
@@ -266,12 +323,34 @@ describe('MessageExecutionService', () => {
       )
     })
 
+    it('adds messageId, source, and agentId metadata to live events', async () => {
+      deps = createMockDeps([{ type: 'text-delta', text: 'hello' }])
+      service = new MessageExecutionService(deps as any)
+
+      await service.execute(DEFAULT_PARAMS)
+
+      expect(deps.eventChannel.publish).toHaveBeenCalledWith(
+        'conv_1',
+        expect.objectContaining({
+          type: 'chunk',
+          data: expect.objectContaining({
+            source: 'ai_response',
+            agentId: 'develop',
+            messageId: 'agent-msg-1',
+          }),
+        })
+      )
+    })
+
     it('publishes complete event after stream finishes', async () => {
       await service.execute(DEFAULT_PARAMS)
 
       expect(deps.eventChannel.publish).toHaveBeenCalledWith(
         'conv_1',
-        expect.objectContaining({ type: 'complete' })
+        expect.objectContaining({
+          type: 'complete',
+          data: expect.objectContaining({ messageId: 'agent-msg-1' }),
+        })
       )
     })
 
@@ -295,8 +374,249 @@ describe('MessageExecutionService', () => {
 
       expect(deps.eventChannel.publish).toHaveBeenCalledWith(
         'conv_1',
-        expect.objectContaining({ type: 'error', content: 'stream failure' })
+        expect.objectContaining({
+          type: 'error',
+          content: 'stream failure',
+          data: expect.objectContaining({ messageId: 'agent-msg-1' }),
+        })
       )
+      expect(deps.eventChannel.publish).toHaveBeenCalledWith(
+        'conv_1',
+        expect.objectContaining({
+          type: 'complete',
+          data: expect.objectContaining({ finishReason: 'error', messageId: 'agent-msg-1' }),
+        })
+      )
+    })
+
+    it('aborts stalled streams on chunk-timeout and emits terminal error + complete', async () => {
+      const previous = process.env.AI_CHUNK_TIMEOUT_MS
+      try {
+        process.env.AI_CHUNK_TIMEOUT_MS = '5'
+        deps = createMockDeps()
+        deps.getAgent.mockReturnValue({
+          streamGenerate: vi.fn().mockImplementation((_message: string, opts: { abortSignal: AbortSignal }) => {
+            return {
+              textStream: (async function* () {})(),
+              baseStream: new ReadableStream({
+                start(controller) {
+                  opts.abortSignal.addEventListener('abort', () => {
+                    controller.error(new Error(String(opts.abortSignal.reason ?? 'aborted')))
+                  }, { once: true })
+                },
+              }),
+            }
+          }),
+          getName: vi.fn().mockReturnValue('AI Developer'),
+        })
+        service = new MessageExecutionService(deps as any)
+
+        await service.execute(DEFAULT_PARAMS)
+
+        expect(deps.eventChannel.publish).toHaveBeenCalledWith(
+          'conv_1',
+          expect.objectContaining({
+            type: 'error',
+            content: expect.stringContaining('Stream chunk timeout'),
+          }),
+        )
+        expect(deps.eventChannel.publish).toHaveBeenCalledWith(
+          'conv_1',
+          expect.objectContaining({
+            type: 'complete',
+            data: expect.objectContaining({ finishReason: 'error' }),
+          }),
+        )
+      } finally {
+        if (previous === undefined) {
+          delete process.env.AI_CHUNK_TIMEOUT_MS
+        } else {
+          process.env.AI_CHUNK_TIMEOUT_MS = previous
+        }
+      }
+    })
+
+    it('does not count streamGenerate connection time against chunk timeout', async () => {
+      const previous = process.env.AI_CHUNK_TIMEOUT_MS
+      try {
+        process.env.AI_CHUNK_TIMEOUT_MS = '5'
+        deps = createMockDeps()
+        deps.getAgent.mockReturnValue({
+          streamGenerate: vi.fn().mockImplementation(async () => {
+            await new Promise(r => setTimeout(r, 20))
+            return {
+              textStream: (async function* () {})(),
+              baseStream: new ReadableStream({
+                start(controller) {
+                  controller.enqueue({ part: { type: 'text-delta', text: 'connected' } })
+                  controller.close()
+                },
+              }),
+              getFinalResult: vi.fn().mockResolvedValue({ finishReason: 'complete' }),
+            }
+          }),
+          getName: vi.fn().mockReturnValue('AI Developer'),
+        })
+        service = new MessageExecutionService(deps as any)
+
+        await service.execute(DEFAULT_PARAMS)
+
+        expect(deps.eventChannel.publish).not.toHaveBeenCalledWith(
+          'conv_1',
+          expect.objectContaining({ type: 'error' }),
+        )
+        expect(deps.eventChannel.publish).toHaveBeenCalledWith(
+          'conv_1',
+          expect.objectContaining({
+            type: 'complete',
+            data: expect.objectContaining({ finishReason: 'complete' }),
+          }),
+        )
+      } finally {
+        if (previous === undefined) {
+          delete process.env.AI_CHUNK_TIMEOUT_MS
+        } else {
+          process.env.AI_CHUNK_TIMEOUT_MS = previous
+        }
+      }
+    })
+
+    it('does not keep chunk timeout armed while awaiting getFinalResult', async () => {
+      const previous = process.env.AI_CHUNK_TIMEOUT_MS
+      try {
+        process.env.AI_CHUNK_TIMEOUT_MS = '5'
+        deps = createMockDeps()
+        deps.getAgent.mockReturnValue({
+          streamGenerate: vi.fn().mockResolvedValue({
+            textStream: (async function* () {})(),
+            baseStream: new ReadableStream({
+              start(controller) {
+                controller.enqueue({ part: { type: 'text-delta', text: 'done' } })
+                controller.close()
+              },
+            }),
+            getFinalResult: vi.fn().mockImplementation(async () => {
+              await new Promise(r => setTimeout(r, 20))
+              return { finishReason: 'complete' }
+            }),
+          }),
+          getName: vi.fn().mockReturnValue('AI Developer'),
+        })
+        service = new MessageExecutionService(deps as any)
+
+        await service.execute(DEFAULT_PARAMS)
+
+        expect(deps.eventChannel.publish).not.toHaveBeenCalledWith(
+          'conv_1',
+          expect.objectContaining({ type: 'error' }),
+        )
+        expect(deps.eventChannel.publish).toHaveBeenCalledWith(
+          'conv_1',
+          expect.objectContaining({
+            type: 'complete',
+            data: expect.objectContaining({ finishReason: 'complete' }),
+          }),
+        )
+      } finally {
+        if (previous === undefined) {
+          delete process.env.AI_CHUNK_TIMEOUT_MS
+        } else {
+          process.env.AI_CHUNK_TIMEOUT_MS = previous
+        }
+      }
+    })
+
+    it('resets chunk timeout on non-part baseStream frames', async () => {
+      const previous = process.env.AI_CHUNK_TIMEOUT_MS
+      try {
+        process.env.AI_CHUNK_TIMEOUT_MS = '25'
+        deps = createMockDeps()
+        deps.getAgent.mockReturnValue({
+          streamGenerate: vi.fn().mockResolvedValue({
+            textStream: (async function* () {})(),
+            baseStream: new ReadableStream({
+              start(controller) {
+                setTimeout(() => controller.enqueue({ metadata: { keepalive: true } }), 20)
+                setTimeout(() => {
+                  controller.enqueue({ part: { type: 'text-delta', text: 'alive' } })
+                  controller.close()
+                }, 35)
+              },
+            }),
+            getFinalResult: vi.fn().mockResolvedValue({ finishReason: 'complete' }),
+          }),
+          getName: vi.fn().mockReturnValue('AI Developer'),
+        })
+        service = new MessageExecutionService(deps as any)
+
+        await service.execute(DEFAULT_PARAMS)
+
+        expect(deps.eventChannel.publish).not.toHaveBeenCalledWith(
+          'conv_1',
+          expect.objectContaining({ type: 'error' }),
+        )
+        expect(deps.eventChannel.publish).toHaveBeenCalledWith(
+          'conv_1',
+          expect.objectContaining({ type: 'chunk', content: 'alive' }),
+        )
+      } finally {
+        if (previous === undefined) {
+          delete process.env.AI_CHUNK_TIMEOUT_MS
+        } else {
+          process.env.AI_CHUNK_TIMEOUT_MS = previous
+        }
+      }
+    })
+
+    it('reports chunk-timeout errors from textStream iterator aborts', async () => {
+      const previous = process.env.AI_CHUNK_TIMEOUT_MS
+      try {
+        process.env.AI_CHUNK_TIMEOUT_MS = '5'
+        deps = createMockDeps()
+        deps.getAgent.mockReturnValue({
+          streamGenerate: vi.fn().mockImplementation((_message: string, opts: { abortSignal: AbortSignal }) => {
+            return {
+              textStream: {
+                [Symbol.asyncIterator]() {
+                  return {
+                    next: () => new Promise<IteratorResult<string>>((_resolve, reject) => {
+                      opts.abortSignal.addEventListener('abort', () => {
+                        reject(new Error(String(opts.abortSignal.reason ?? 'aborted')))
+                      }, { once: true })
+                    }),
+                  }
+                },
+              },
+              getFinalResult: vi.fn().mockResolvedValue({ finishReason: 'complete' }),
+            }
+          }),
+          getName: vi.fn().mockReturnValue('AI Developer'),
+        })
+        service = new MessageExecutionService(deps as any)
+
+        await service.execute(DEFAULT_PARAMS)
+
+        expect(deps.eventChannel.publish).toHaveBeenCalledWith(
+          'conv_1',
+          expect.objectContaining({
+            type: 'error',
+            content: expect.stringContaining('Stream chunk timeout'),
+          }),
+        )
+        expect(deps.eventChannel.publish).toHaveBeenCalledWith(
+          'conv_1',
+          expect.objectContaining({
+            type: 'complete',
+            data: expect.objectContaining({ finishReason: 'error' }),
+          }),
+        )
+      } finally {
+        if (previous === undefined) {
+          delete process.env.AI_CHUNK_TIMEOUT_MS
+        } else {
+          process.env.AI_CHUNK_TIMEOUT_MS = previous
+        }
+      }
     })
 
     it('unsubscribes SSE subscribers in finally block', async () => {
@@ -717,12 +1037,128 @@ describe('MessageExecutionService', () => {
       // see a phantom success. The outer catch publishes error + complete.
       expect(deps.eventChannel.publish).toHaveBeenCalledWith(
         'conv_1',
-        expect.objectContaining({ type: 'error', content: 'SQLITE_BUSY on handoff' })
+        expect.objectContaining({
+          type: 'error',
+          content: 'SQLITE_BUSY on handoff',
+          data: expect.not.objectContaining({ messageId: 'agent-msg-1' }),
+        })
       )
       expect(deps.eventChannel.publish).toHaveBeenCalledWith(
         'conv_1',
         expect.objectContaining({ type: 'complete', data: expect.objectContaining({ finishReason: 'error' }) })
       )
+    })
+
+    it('uses the new agent turn messageId after a successful handoff', async () => {
+      deps.conversationPersistence.startAgentTurn
+        .mockResolvedValueOnce('agent-msg-1')
+        .mockResolvedValueOnce('agent-msg-2')
+
+      deps.stateManager.getCurrentAgent.mockReturnValue('marketing')
+      deps.stateManager.getLastHandoffPrompt.mockReturnValue('continue on marketing')
+
+      deps.getAgent.mockImplementation((name?: string) => ({
+        streamGenerate: vi.fn().mockResolvedValue({
+          textStream: (async function* () {})(),
+          baseStream: makeReadableStream([
+            { type: 'text-delta', text: `${name ?? 'develop'} chunk` },
+          ]),
+        }),
+        getName: vi.fn().mockReturnValue(name ?? 'develop'),
+      }))
+      service = new MessageExecutionService(deps as any)
+
+      await service.execute(DEFAULT_PARAMS)
+
+      expect(deps.eventChannel.publish).toHaveBeenCalledWith(
+        'conv_1',
+        expect.objectContaining({
+          type: 'chunk',
+          content: 'develop chunk',
+          agentName: 'develop',
+          data: expect.objectContaining({
+            agentId: 'develop',
+            messageId: 'agent-msg-1',
+          }),
+        })
+      )
+      expect(deps.eventChannel.publish).toHaveBeenCalledWith(
+        'conv_1',
+        expect.objectContaining({
+          type: 'chunk',
+          content: 'marketing chunk',
+          agentName: 'marketing',
+          data: expect.objectContaining({
+            agentId: 'marketing',
+            messageId: 'agent-msg-2',
+          }),
+        })
+      )
+    })
+
+    it("invokes runMessageEndHooks with reason: 'error' when chunk timeout aborts the stream", async () => {
+      const previous = process.env.AI_CHUNK_TIMEOUT_MS
+      mockRunMessageEndHooks.mockReset()
+      mockRunMessageEndHooks.mockResolvedValue({ commitHash: null, usedFreeGrants: false })
+      try {
+        process.env.AI_CHUNK_TIMEOUT_MS = '5'
+        deps = createMockDeps()
+        deps.getAgent.mockReturnValue({
+          streamGenerate: vi.fn().mockImplementation((_message: string, opts: { abortSignal: AbortSignal }) => ({
+            textStream: (async function* () {})(),
+            baseStream: new ReadableStream({
+              start(controller) {
+                opts.abortSignal.addEventListener('abort', () => {
+                  controller.error(new Error(String(opts.abortSignal.reason ?? 'aborted')))
+                }, { once: true })
+              },
+            }),
+          })),
+          getName: vi.fn().mockReturnValue('AI Developer'),
+        })
+
+        const lifecycle = {
+          gitHookService: {} as any,
+          getAssessmentAgent: () => ({}) as any,
+          sessionStore: {
+            getLastUserMessage: vi.fn(),
+            setLastUserMessage: vi.fn(),
+            getLastAssessmentTaskType: vi.fn(),
+            setLastAssessmentTaskType: vi.fn(),
+            clearSession: vi.fn(),
+          },
+          logger: { info: vi.fn(), warn: vi.fn(), debug: vi.fn(), error: vi.fn() },
+        }
+        service = new MessageExecutionService({ ...deps, lifecycle } as any)
+
+        await service.execute(DEFAULT_PARAMS)
+
+        const errorCall = mockRunMessageEndHooks.mock.calls.find(
+          c => c[1]?.reason === 'error'
+        )
+        expect(errorCall).toBeDefined()
+        expect(mockRunMessageEndHooks.mock.calls).not.toContainEqual(
+          expect.arrayContaining([
+            expect.anything(),
+            expect.objectContaining({ reason: 'disconnection' }),
+          ])
+        )
+        expect(deps.eventChannel.publish).toHaveBeenCalledWith(
+          'conv_1',
+          expect.objectContaining({
+            type: 'error',
+            content: expect.stringContaining('Stream chunk timeout'),
+          })
+        )
+      } finally {
+        if (previous === undefined) {
+          delete process.env.AI_CHUNK_TIMEOUT_MS
+        } else {
+          process.env.AI_CHUNK_TIMEOUT_MS = previous
+        }
+        mockRunMessageEndHooks.mockReset()
+        mockRunMessageEndHooks.mockResolvedValue({ commitHash: null, usedFreeGrants: false })
+      }
     })
   })
 

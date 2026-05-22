@@ -106,8 +106,16 @@ export type { PartProcessorCallbacks, PartProcessorState, ToolCallRecord } from 
 export { StreamTimingTracker, SLOW_CHUNK_GAP_THRESHOLD_MS } from './stream-timing-tracker.js'
 export type { StreamTimingData, StreamTimingDeps } from './stream-timing-tracker.js'
 
+// Chunk timeout guard (shared by WS + SSE transports)
+export { ChunkTimeoutGuard, DEFAULT_CHUNK_TIMEOUT_MS, CHUNK_GAP_WARNING_THRESHOLDS_MS } from './chunk-timeout-guard.js'
+export type { ChunkTimeoutDeps } from './chunk-timeout-guard.js'
+
 // Skill output redaction (shared by WS + SSE transports before emitting tool-result)
 export { redactSkillOutput } from './redact-skill-output.js'
+
+// First-line /agent override parsing (shared by WS + SSE transports and related prompt consumers)
+export { parseAgentCommand } from './agent-command-parser.js'
+export type { AgentCommandParseResult } from './agent-command-parser.js'
 
 // Non-idempotent tool detection (for mid-stream budget retry decisions)
 export { hasNonIdempotentTools } from './non-idempotent-tools.js'

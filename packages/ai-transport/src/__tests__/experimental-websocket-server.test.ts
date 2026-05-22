@@ -3500,6 +3500,84 @@ describe('WebSocketServer - messageMiddleware', function middlewareTests() {
   })
 })
 
+describe('WebSocketServer - /agent command handling', function agentCommandTests() {
+  let httpServer: HTTPServer
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockSocket.on.mockReset()
+    mockSocket.emit.mockReset()
+    mockSocket.connected = true
+    mockSocket.data = {}
+    mockSocket.handshake = { auth: {} }
+    httpServer = new HTTPServer()
+    mockAgent.streamGenerate = vi.fn().mockResolvedValue({
+      baseStream: null,
+      textStream: (async function* () {
+        yield 'ok'
+      })(),
+      getFinalResult: vi.fn().mockResolvedValue({
+        usage: { inputTokens: 1, outputTokens: 1 },
+        toolCalls: [],
+      }),
+    })
+  })
+
+  it('routes hyphenated manual agent overrides and strips the command from the prompt', async () => {
+    const routerMessages: string[] = []
+    const agentRouter = vi.fn((_socketId: string, data: any) => {
+      routerMessages.push(data.message)
+      return data.message.startsWith('/agent initial-v2') ? 'initial-v2' : undefined
+    })
+    const { server, messageHandler } = await setupServerWithConnection(httpServer, {
+      agents: mockAgents,
+      defaultAgent: 'test-agent',
+      agentRouter,
+    })
+
+    try {
+      await messageHandler({ message: '/agent initial-v2\nBuild a pricing page' })
+
+      expect(agentRouter).toHaveBeenCalledWith('test-socket-id', expect.any(Object))
+      expect(routerMessages).toContain('/agent initial-v2\nBuild a pricing page')
+      expect(mockAgents.get).toHaveBeenCalledWith('initial-v2')
+      expect(mockAgent.streamGenerate).toHaveBeenCalledWith(
+        'Build a pricing page',
+        expect.any(Object)
+      )
+    } finally {
+      server.close()
+    }
+  })
+
+  it('logs and preserves bodyless manual agent commands', async () => {
+    const { server, messageHandler } = await setupServerWithConnection(httpServer, {
+      agents: mockAgents,
+      defaultAgent: 'test-agent',
+    })
+    const infoSpy = vi.fn()
+    ;(server as any).logger.info = infoSpy
+
+    try {
+      await messageHandler({ message: '/agent initial-v2' })
+
+      expect(infoSpy).toHaveBeenCalledWith(
+        'websocket.agent_command.bodyless_passthrough',
+        expect.objectContaining({
+          socketId: 'test-socket-id',
+          requestedAgent: 'initial-v2',
+        })
+      )
+      expect(mockAgent.streamGenerate).toHaveBeenCalledWith(
+        '/agent initial-v2',
+        expect.any(Object)
+      )
+    } finally {
+      server.close()
+    }
+  })
+})
+
 describe('WebSocketServer - postStreamValidator continuation', () => {
   let httpServer: HTTPServer
 

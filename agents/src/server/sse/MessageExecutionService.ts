@@ -2,6 +2,7 @@ import type { ConversationEventChannel, ConversationMessage, PersistenceStreamin
 import {
   StreamPartProcessor,
   StreamTimingTracker,
+  ChunkTimeoutGuard,
   executeAgentLoop,
   buildChatSignalsTraceContext,
   createAgentInvocation,
@@ -12,6 +13,7 @@ import {
   runPostStreamValidation,
   turnEndedWithStopAfterTool,
   withBudgetRecovery,
+  redactSkillOutput,
 } from '@airo/ai-transport'
 import type { ResponseMetadata } from '@airo/ai-transport'
 import { BudgetExceededError, containsBudgetExceededPattern } from '@airo/ai-common'
@@ -27,7 +29,7 @@ import { logger, errorFields } from '../../logging/index.js'
 import { getBudgetServiceClient } from '../../services/budget-service-instance.js'
 import { toBudgetUpdatePayload } from '@airo/ai-lib/budget'
 import { safeProcessBudgetReport } from '../budget-report-handler.js'
-import { runWithModelOverride } from '@airo/ai-lib'
+import { parseChunkTimeoutMs, runWithModelOverride } from '@airo/ai-lib'
 import { resolveProfile, runWithProfile } from '../../profiles/index.js'
 import { guardAllowedOverrideModel, resolveOverride } from '../model-override.js'
 import type { AssessmentOutcome, ClassifierMode } from '../../agents/assessment-agent/index.js'
@@ -158,6 +160,7 @@ interface ActiveStream {
 
 export class MessageExecutionService {
   private deps: ExecutionDeps
+  private readonly chunkTimeoutMs = parseChunkTimeoutMs()
   private abortControllers = new Map<string, AbortController>()
   private activeStreams = new Map<string, ActiveStream>()
 
@@ -212,7 +215,7 @@ export class MessageExecutionService {
       return
     }
 
-    controller.abort()
+    controller.abort('user_stopped')
     logger.info('sse.execution.stopped', { conversationId })
 
     // The execute() loop observes the abort and publishes its own terminal
@@ -269,13 +272,15 @@ export class MessageExecutionService {
       appId: string
       siteId: string
       sseSocketId: string
-      abortSignal: AbortSignal
+      abortController: AbortController
       streamingEvents: PersistenceStreamingEvent[]
       executionContext: Record<string, unknown>
       streamState: ActiveStream
+      agentMessageId?: string
     },
   ): Promise<{ accumulatedContent: string; currentStep: number; finalResult: any; finishReason: string; responseMetadata: ResponseMetadata }> {
-    const { conversationId, appId, siteId, sseSocketId, abortSignal, streamingEvents, executionContext, streamState } = opts
+    const { conversationId, appId, siteId, sseSocketId, abortController, streamingEvents, executionContext, streamState, agentMessageId } = opts
+    const abortSignal = abortController.signal
 
     const pendingPublishes: Promise<unknown>[] = []
     // Guard each publish with .catch so a blocking-subscriber rejection
@@ -300,74 +305,132 @@ export class MessageExecutionService {
       )
     }
 
+    const modelName = agent?.getConfig?.()?.modelName ?? 'unknown'
     // emit is a no-op: tracker diagnostics surface via logger.warn, not the event channel.
     const tracker = new StreamTimingTracker({
       socket: { id: sseSocketId, emit: () => {} },
       agentName,
-      modelName: 'unknown',
+      modelName,
       logger,
       abortController: { signal: abortSignal },
     })
+    const guard = this.createChunkTimeoutGuard(abortController, sseSocketId, agentName, modelName)
+    const baseEventData = {
+      source: 'ai_response',
+      agentId: agentName,
+      ...(agentMessageId && { messageId: agentMessageId }),
+    }
 
     const processor = new StreamPartProcessor({
       onTextDelta: (text) => {
         tracker.recordTextChunk()
-        publish({ conversationId, type: 'chunk', content: text, data: {}, agentName })
-        streamingEvents.push({ type: 'chunk', content: text, timestamp: new Date() })
+        publish({ conversationId, type: 'chunk', content: text, data: baseEventData, agentName })
+        streamingEvents.push({ type: 'chunk', content: text, data: baseEventData, timestamp: new Date() })
       },
       onToolStart: (toolCallId, toolName, step) => {
         publish({
           conversationId, type: 'tool_start',
           content: `Using ${toolName}...`,
-          data: { step, tool: { id: toolCallId, name: toolName, input: {} } },
+          data: { ...baseEventData, step, toolName, tool: { id: toolCallId, name: toolName, input: {} } },
           agentName,
         })
-        streamingEvents.push({ type: 'tool_start', data: { tool: { id: toolCallId, name: toolName } }, timestamp: new Date() })
+        streamingEvents.push({
+          type: 'tool_start',
+          data: { ...baseEventData, step, toolName, tool: { id: toolCallId, name: toolName, input: {} } },
+          timestamp: new Date(),
+        })
       },
-      onToolInputDelta: (toolCallId, delta) => {
+      onToolInputDelta: (toolCallId, delta, _accumulated, toolName) => {
         publish({
           conversationId, type: 'tool_input_delta', content: '',
-          data: { toolId: toolCallId, delta }, agentName,
+          data: { ...baseEventData, toolId: toolCallId, toolName, delta }, agentName,
         })
       },
       onToolCall: (toolCallId, toolName, parsedInput) => {
+        guard?.pause()
         tracker.pauseGapTracking(toolName)
+        const input = typeof parsedInput === 'string' ? {} : parsedInput
         publish({
           conversationId, type: 'tool_call',
           content: `${toolName} input ready`,
-          data: { step: processor.currentStep, tool: { id: toolCallId, name: toolName, input: parsedInput } },
+          data: { ...baseEventData, step: processor.currentStep, toolName, tool: { id: toolCallId, name: toolName, input } },
           agentName,
         })
       },
-      onToolResult: (toolCallId, result) => {
+      onToolResult: (toolCallId, result, sdkInput, sdkToolName) => {
+        guard?.reset()
         tracker.resumeGapTracking()
         const toolCall = processor.getToolCall(toolCallId)
+        const toolName = sdkToolName ?? toolCall?.name ?? toolCallId
+        const input = sdkInput !== undefined
+          ? sdkInput
+          : (typeof toolCall?.input === 'string' ? {} : toolCall?.input)
+        const output = redactSkillOutput(toolName, result)
         publish({
           conversationId, type: 'tool_result',
-          content: `${toolCall?.name ?? toolCallId} completed`,
-          data: { step: processor.currentStep, tool: { id: toolCallId, name: toolCall?.name ?? toolCallId, input: toolCall?.input, output: result } },
+          content: `${toolName} completed`,
+          data: { ...baseEventData, step: processor.currentStep, toolName, tool: { id: toolCallId, name: toolName, input, output } },
           agentName,
         })
-        streamingEvents.push({ type: 'tool_result', data: { tool: { id: toolCallId, name: toolCall?.name ?? toolCallId, input: toolCall?.input, output: result } }, timestamp: new Date() })
+        streamingEvents.push({
+          type: 'tool_result',
+          data: { ...baseEventData, step: processor.currentStep, toolName, tool: { id: toolCallId, name: toolName, input, output } },
+          timestamp: new Date(),
+        })
       },
-      onToolError: (toolCallId, error) => {
+      onToolError: (toolCallId, error, sdkInput, sdkToolName) => {
+        guard?.reset()
         tracker.resumeGapTracking()
         const toolCall = processor.getToolCall(toolCallId)
+        const toolName = sdkToolName ?? toolCall?.name ?? toolCallId
+        const input = sdkInput !== undefined
+          ? sdkInput
+          : (typeof toolCall?.input === 'string' ? {} : (toolCall?.input || {}))
         publish({
           conversationId, type: 'tool_result',
-          content: `${toolCall?.name ?? toolCallId} failed: ${error.message}`,
-          data: { step: processor.currentStep, tool: { id: toolCallId, name: toolCall?.name ?? toolCallId, input: toolCall?.input || {}, output: {}, error: error.message, is_error: true } },
+          content: `${toolName} failed: ${error.message}`,
+          data: {
+            ...baseEventData,
+            step: processor.currentStep,
+            toolName,
+            tool: { id: toolCallId, name: toolName, input, output: {}, error: error.message, is_error: true },
+          },
           agentName,
         })
-        streamingEvents.push({ type: 'tool_result', data: { tool: { id: toolCallId, name: toolCall?.name ?? toolCallId, input: toolCall?.input || {}, error: error.message, is_error: true } }, timestamp: new Date() })
+        streamingEvents.push({
+          type: 'tool_result',
+          data: {
+            ...baseEventData,
+            step: processor.currentStep,
+            toolName,
+            tool: { id: toolCallId, name: toolName, input, output: {}, error: error.message, is_error: true },
+          },
+          timestamp: new Date(),
+        })
       },
       onStepStart: (step) => {
         publish({
           conversationId, type: 'step_start', content: '',
-          data: { step, stepType: 'reasoning', agentId: agentName, agentName: agent.getName?.() ?? agentName },
+          data: {
+            ...baseEventData,
+            step,
+            stepType: 'reasoning',
+            agentId: agentName,
+            agentName: agent.getName?.() ?? agentName,
+          },
           agentName,
         })
-        streamingEvents.push({ type: 'step_start', data: { step }, timestamp: new Date() })
+        streamingEvents.push({
+          type: 'step_start',
+          data: {
+            ...baseEventData,
+            step,
+            stepType: 'reasoning',
+            agentId: agentName,
+            agentName: agent.getName?.() ?? agentName,
+          },
+          timestamp: new Date(),
+        })
       },
       onError: (error) => {
         const errorMessage = error instanceof Error ? error.message : String(error)
@@ -450,6 +513,10 @@ export class MessageExecutionService {
       }),
     }
 
+    const throwChunkTimeoutError = (): never => {
+      throw new Error(`Stream chunk timeout after ${this.chunkTimeoutMs!}ms`)
+    }
+
     try {
       const streamResult: any = await invocation.runUnder(async () =>
         agent.streamGenerate(message, {
@@ -461,6 +528,7 @@ export class MessageExecutionService {
         }),
       )
 
+      guard?.arm()
       invocation.captureMetadata(streamResult.response)
 
       const baseStream = streamResult.baseStream
@@ -468,11 +536,22 @@ export class MessageExecutionService {
         const reader: ReadableStreamDefaultReader = (baseStream as ReadableStream).getReader()
         try {
           while (true) {
-            if (abortSignal.aborted) break
-            const { done, value } = await reader.read()
+            if (abortSignal.aborted) {
+              if (abortSignal.reason === 'chunk_timeout') throwChunkTimeoutError()
+              break
+            }
+            let readResult: ReadableStreamReadResult<any>
+            try {
+              readResult = await reader.read()
+            } catch (readError) {
+              if (abortSignal.reason === 'chunk_timeout') throwChunkTimeoutError()
+              throw readError
+            }
+            const { done, value } = readResult
             if (done) break
+            tracker.recordChunk()
+            guard?.reset()
             if (value?.part) {
-              tracker.recordChunk()
               processor.processPart(value.part)
               await Promise.all(pendingPublishes.splice(0))
             }
@@ -482,16 +561,27 @@ export class MessageExecutionService {
           if (pendingPublishes.length > 0) await Promise.all(pendingPublishes.splice(0))
         }
       } else {
-        for await (const chunk of streamResult.textStream) {
-          if (abortSignal.aborted) break
-          tracker.recordChunk()
-          processor.processPart({ type: 'text-delta', text: chunk })
-          await Promise.all(pendingPublishes.splice(0))
+        try {
+          for await (const chunk of streamResult.textStream) {
+            if (abortSignal.aborted) {
+              if (abortSignal.reason === 'chunk_timeout') throwChunkTimeoutError()
+              break
+            }
+            tracker.recordChunk()
+            guard?.reset()
+            processor.processPart({ type: 'text-delta', text: chunk })
+            await Promise.all(pendingPublishes.splice(0))
+          }
+        } catch (textStreamError) {
+          if (abortSignal.reason === 'chunk_timeout') throwChunkTimeoutError()
+          throw textStreamError
+        } finally {
+          if (pendingPublishes.length > 0) await Promise.all(pendingPublishes.splice(0))
         }
-        if (pendingPublishes.length > 0) await Promise.all(pendingPublishes.splice(0))
       }
 
       const timingData: StreamTimingData = tracker.finalize()
+      guard?.dispose()
       logger.info('sse.stream.timing', { appId, conversationId, agentName, ...timingData })
 
       let finishReason = 'complete'
@@ -550,7 +640,30 @@ export class MessageExecutionService {
         invocation.endError(err)
       }
       throw err
+    } finally {
+      guard?.dispose()
     }
+  }
+
+  private createChunkTimeoutGuard(
+    abortController: AbortController,
+    socketId: string,
+    agentName: string,
+    modelName: string,
+  ): ChunkTimeoutGuard | null {
+    if (this.chunkTimeoutMs == null || this.chunkTimeoutMs <= 0) {
+      return null
+    }
+    return new ChunkTimeoutGuard(
+      {
+        abortController,
+        logger,
+        socketId,
+        agentName,
+        modelName,
+      },
+      this.chunkTimeoutMs,
+    )
   }
 
   async execute(params: ExecuteParams): Promise<void> {
@@ -643,9 +756,10 @@ export class MessageExecutionService {
       streamState.subscriberIds.add(sub.id)
     }
 
+    let activeAgentMessageId: string | undefined
     try {
       await this.deps.conversationPersistence.continueConversation(conversationId, content, persistenceContext)
-      await this.deps.conversationPersistence.startAgentTurn(conversationId, persistenceContext)
+      activeAgentMessageId = await this.deps.conversationPersistence.startAgentTurn(conversationId, persistenceContext)
     } catch (err) {
       // Persistence failures (SQLITE_BUSY, disk-full, schema mismatch) happen
       // before any stream state is registered — emit a terminal error event
@@ -744,7 +858,8 @@ export class MessageExecutionService {
           if (iteration > 0) {
             persistenceContext.agentName = agentName
             try {
-              await this.deps.conversationPersistence.startAgentTurn(conversationId, persistenceContext)
+              activeAgentMessageId = undefined
+              activeAgentMessageId = await this.deps.conversationPersistence.startAgentTurn(conversationId, persistenceContext)
             } catch (err) {
               logger.error('sse.execution.persistence_handoff_turn_failed', {
                 appId, conversationId, iteration, agentName, ...errorFields(err),
@@ -755,8 +870,8 @@ export class MessageExecutionService {
 
           const doStream = async (prompt: string) => this.streamAgentTurn(agent, agentName, prompt, {
             conversationId, appId, siteId, sseSocketId,
-            abortSignal: abortController.signal,
-            streamingEvents, executionContext, streamState,
+            abortController,
+            streamingEvents, executionContext, streamState, agentMessageId: activeAgentMessageId,
           })
 
           if (budgetRecoveryCallback) {
@@ -1080,22 +1195,39 @@ export class MessageExecutionService {
         await this.publishTerminal(appId, conversationId, {
           conversationId, type: 'step_complete',
           content: lastTurnResult?.accumulatedContent ?? '',
-          data: { step: lastTurnResult?.currentStep ?? 1, isFinal: true, agentId: finalAgentName },
+          data: {
+            source: 'ai_response',
+            step: lastTurnResult?.currentStep ?? 1,
+            isFinal: true,
+            agentId: finalAgentName,
+            ...(activeAgentMessageId && { messageId: activeAgentMessageId }),
+          },
           agentName: finalAgentName,
         })
 
         await this.publishTerminal(appId, conversationId, {
           conversationId, type: 'complete', content: '',
-          data: { agentId: finalAgentName, finishReason, totalSteps: lastTurnResult?.currentStep ?? 1, commitHash, usedFreeGrants, ...getCurrentTraceIds() },
+          data: {
+            source: 'ai_response',
+            agentId: finalAgentName,
+            finishReason,
+            totalSteps: lastTurnResult?.currentStep ?? 1,
+            commitHash,
+            usedFreeGrants,
+            ...(activeAgentMessageId && { messageId: activeAgentMessageId }),
+            ...getCurrentTraceIds(),
+          },
           agentName: finalAgentName,
         })
       }
 
       logger.info('sse.execution.complete', { appId, conversationId, agentId: finalAgentName, finishReason, iterations: loopResult.iterations })
     } catch (error) {
+      const chunkTimeoutAborted = abortController.signal.aborted
+        && abortController.signal.reason === 'chunk_timeout'
       if (this.deps.lifecycle) {
         const reason: 'error' | 'disconnection' = abortController.signal.aborted
-          ? 'disconnection' : 'error'
+          && !chunkTimeoutAborted ? 'disconnection' : 'error'
         if (assessmentHandle && !assessmentOutcome) {
           // awaitOutcome is designed never to throw (swallowed classifier
           // rejection + withTimeout), so a throw here is a contract violation
@@ -1138,10 +1270,17 @@ export class MessageExecutionService {
         logger.info('sse.execution.superseded.skip_error_terminal', {
           appId, conversationId, aborted: abortController.signal.aborted,
         })
-      } else if (abortController.signal.aborted) {
+      } else if (abortController.signal.aborted && !chunkTimeoutAborted) {
         logger.info('sse.execution.aborted', { appId, conversationId })
         await this.publishTerminal(appId, conversationId, {
-          type: 'complete', content: '', data: { finishReason: 'aborted', ...getCurrentTraceIds() },
+          type: 'complete',
+          content: '',
+          data: {
+            source: 'ai_response',
+            finishReason: 'aborted',
+            ...(activeAgentMessageId && { messageId: activeAgentMessageId }),
+            ...getCurrentTraceIds(),
+          },
           conversationId, agentName: resolvedAgentId,
         })
       } else {
@@ -1153,11 +1292,23 @@ export class MessageExecutionService {
         logger.error('sse.execution.error', { appId, conversationId, ...errorFields(err) })
         await this.publishTerminal(appId, conversationId, {
           type: 'error', content: clientMessage,
-          data: { error: clientMessage, timestamp: new Date().toISOString() },
+          data: {
+            source: 'ai_response',
+            error: clientMessage,
+            timestamp: new Date().toISOString(),
+            ...(activeAgentMessageId && { messageId: activeAgentMessageId }),
+          },
           conversationId, agentName: 'system',
         })
         await this.publishTerminal(appId, conversationId, {
-          type: 'complete', content: '', data: { finishReason: 'error', ...getCurrentTraceIds() },
+          type: 'complete',
+          content: '',
+          data: {
+            source: 'ai_response',
+            finishReason: 'error',
+            ...(activeAgentMessageId && { messageId: activeAgentMessageId }),
+            ...getCurrentTraceIds(),
+          },
           conversationId, agentName: 'system',
         })
         emitTurnError({

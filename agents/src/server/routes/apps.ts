@@ -16,6 +16,7 @@
 import { Router, Request, Response, IRouter } from 'express';
 import { existsSync, writeFileSync, createWriteStream, mkdirSync } from 'fs';
 import { join as pathJoin } from 'path';
+import { parseAgentCommand } from '@airo/ai-transport';
 
 import multer from 'multer';
 import { AppRepository } from '../../database/index.js';
@@ -1190,10 +1191,13 @@ router.post('/suggest-name', async (req: Request, res: Response) => {
     }
 
     // Strip /agent command from first line if present
-    const firstLine = prompt.split('\n')[0]?.trim();
-    if (firstLine && firstLine.match(/^\/agent\s+\w+$/i)) {
-      const lines = prompt.split('\n');
-      prompt = lines.slice(1).join('\n').trimStart();
+    const parsedAgentCommand = parseAgentCommand(prompt);
+    if (parsedAgentCommand.hasCommand && parsedAgentCommand.hasBody) {
+      prompt = parsedAgentCommand.strippedContent;
+    } else if (parsedAgentCommand.hasCommand) {
+      logger.info('route.apps.name-suggest.agent_command_bodyless_passthrough', {
+        requestedAgent: parsedAgentCommand.agentId,
+      });
     }
 
     logger.info('route.apps.name-suggest.begin', {
