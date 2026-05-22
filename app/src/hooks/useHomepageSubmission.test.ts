@@ -1,0 +1,137 @@
+/**
+ * @vitest-environment jsdom
+ */
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { act, renderHook } from '@testing-library/react'
+
+import { logImpressionEvent } from '@/utils/instrumentation'
+import { useHomepageSubmission } from './useHomepageSubmission'
+
+const mockAuthContext = vi.hoisted(() => vi.fn(() => ({ isAuthenticated: true, isLoading: false })))
+const mockUseSubscription = vi.hoisted(() => vi.fn(() => ({ subscriptions: [] as { id: string }[], isLoading: false, isError: false })))
+const mockFetchQuickCreate = vi.hoisted(() => vi.fn())
+const mockRouterPush = vi.hoisted(() => vi.fn())
+
+vi.mock('@/utils/instrumentation', () => ({
+  logImpressionEvent: vi.fn(() => vi.fn()),
+  logClickEvent: vi.fn(() => vi.fn()),
+  logAiroHQEvent: vi.fn(() => vi.fn()),
+}))
+vi.mock('@/lib/logging', () => ({ shipAnalyticsLog: vi.fn() }))
+vi.mock('@/lib/request-context', () => ({
+  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+}))
+vi.mock('@/lib/errors', () => ({ getErrorMessage: (e: unknown) => String(e) }))
+vi.mock('@/lib/domain-validation', () => ({ validateDomainName: () => ({ valid: true }) }))
+vi.mock('@/lib/waf-validation', () => ({
+  validateAndClampPrompt: (text: string) => ({ text, wasClipped: false, charLength: text.length, byteLength: text.length }),
+}))
+vi.mock('@/lib/quick-create', () => ({
+  fetchQuickCreate: (...args: unknown[]) => mockFetchQuickCreate(...args),
+  buildDevelopUrl: () => '/develop/app-1',
+  setQuickCreateSessionFlags: vi.fn(),
+  storeUploadedFile: vi.fn(),
+  extractApiError: (e: unknown) => e,
+}))
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push: mockRouterPush, replace: vi.fn() }),
+  usePathname: () => '/',
+  useSearchParams: () => ({ get: () => null, toString: () => '' }),
+}))
+vi.mock('@/app/[market]/components/types', () => ({
+  validateTemplate: () => null,
+  LOGO_DESIGNER_TEMPLATE: 'logo-designer',
+  HeroSectionRef: {},
+}))
+vi.mock('@/components/providers/AuthProvider', () => ({
+  useAuthContext: () => mockAuthContext(),
+}))
+vi.mock('@/hooks/useSubscription', () => ({
+  useSubscription: () => mockUseSubscription(),
+}))
+vi.mock('@/hooks/useAnalytics', () => ({
+  useAnalytics: () => ({ cohort: undefined, logAnalytics: vi.fn() }),
+}))
+vi.mock('@/hooks/useSsoSignIn', () => ({ useSsoSignIn: () => ({ signIn: vi.fn() }) }))
+vi.mock('@/hooks/useSwitchboard', () => ({ useSwitchboard: () => false }))
+vi.mock('@/hooks/useTranslations', () => ({ useTranslations: () => (key: string) => key }))
+vi.mock('@/hooks/useSafariClass', () => ({ useSafariClass: () => undefined }))
+vi.mock('@/hooks/useAuthGateTracking', () => ({ useAuthGateTracking: () => undefined }))
+vi.mock('@/hooks/useHomepageBounceTracking', () => ({
+  useHomepageBounceTracking: () => ({ markEngaged: vi.fn() }),
+}))
+vi.mock('@/stores/useDevelopPageStore', () => ({
+  useDevelopPageStore: (selector: (s: Record<string, unknown>) => unknown) =>
+    selector({
+      showUpgradeModal: false,
+      upgradeModalSource: null,
+      upgradeModalItc: null,
+      closeUpgradeModal: vi.fn(),
+    }),
+}))
+
+describe('useHomepageSubmission', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockAuthContext.mockReturnValue({ isAuthenticated: true, isLoading: false })
+    mockUseSubscription.mockReturnValue({ subscriptions: [], isLoading: false, isError: false })
+    mockFetchQuickCreate.mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ id: 'site-1', type: 'standard' }),
+    })
+  })
+
+  describe('budget.newUser.eligible impression', () => {
+    it('fires when user is new (no subscriptions)', async () => {
+      mockUseSubscription.mockReturnValue({ subscriptions: [], isLoading: false, isError: false })
+
+      const { result } = renderHook(() => useHomepageSubmission())
+
+      await act(async () => {
+        await result.current.handleStartBuilding('build me a site')
+      })
+
+      expect(logImpressionEvent).toHaveBeenCalledWith('budget.newUser.eligible')
+    })
+
+    it('does not fire when user has existing subscriptions', async () => {
+      mockUseSubscription.mockReturnValue({ subscriptions: [{ id: 'sub-1' }], isLoading: false, isError: false })
+
+      const { result } = renderHook(() => useHomepageSubmission())
+
+      await act(async () => {
+        await result.current.handleStartBuilding('build me a site')
+      })
+
+      expect(logImpressionEvent).not.toHaveBeenCalledWith('budget.newUser.eligible')
+    })
+
+    it('does not fire while subscriptions are loading', async () => {
+      mockUseSubscription.mockReturnValue({ subscriptions: [], isLoading: true, error: null })
+
+      const { result } = renderHook(() => useHomepageSubmission())
+
+      await act(async () => {
+        await result.current.handleStartBuilding('build me a site')
+      })
+
+      expect(logImpressionEvent).not.toHaveBeenCalledWith('budget.newUser.eligible')
+    })
+
+    it('does not fire when subscriptions fetch fails', async () => {
+      mockUseSubscription.mockReturnValue({
+        subscriptions: [],
+        isLoading: false,
+        isError: true,
+      })
+
+      const { result } = renderHook(() => useHomepageSubmission())
+
+      await act(async () => {
+        await result.current.handleStartBuilding('build me a site')
+      })
+
+      expect(logImpressionEvent).not.toHaveBeenCalledWith('budget.newUser.eligible')
+    })
+  })
+})

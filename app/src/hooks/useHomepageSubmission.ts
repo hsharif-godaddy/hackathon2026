@@ -11,6 +11,7 @@ import { useAuthGateTracking } from '@/hooks/useAuthGateTracking'
 import { useHomepageBounceTracking } from '@/hooks/useHomepageBounceTracking'
 import { useSafariClass } from '@/hooks/useSafariClass'
 import { useSsoSignIn } from '@/hooks/useSsoSignIn'
+import { useSubscription } from '@/hooks/useSubscription'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
 import { validateDomainName } from '@/lib/domain-validation'
@@ -66,6 +67,8 @@ export function useHomepageSubmission() {
   promptTextRef.current = promptText
 
   const { isAuthenticated, isLoading: authIsLoading } = useAuthContext()
+  const { subscriptions, isLoading: subscriptionsLoading, isError: subscriptionsError } = useSubscription({ enabled: isAuthenticated })
+  const isNewUser = !subscriptionsLoading && !subscriptionsError && subscriptions.length === 0
   const { cohort, logAnalytics } = useAnalytics({
     experimentId: EXPERIMENT_IDS.homepageEngagement,
     baseData: { isAuthenticated },
@@ -324,6 +327,10 @@ export function useHomepageSubmission() {
         return;
       }
 
+      if (isNewUser) {
+        logImpressionEvent('budget.newUser.eligible')();
+      }
+
       const createSiteResponse = await fetchQuickCreate(
         promptToUse,
         undefined,
@@ -404,10 +411,10 @@ export function useHomepageSubmission() {
       setIsLoading(false)
       setIsRedirecting(false)
     }
-  }, [authIsLoading, isAuthenticated, isLoading, isRedirecting, logAnalytics, markHomepageEngaged, router, savePromptForRetry, selectedTemplate, signIn, t, uploadedFile])
+  }, [authIsLoading, isAuthenticated, isLoading, isNewUser, isRedirecting, logAnalytics, markHomepageEngaged, router, savePromptForRetry, selectedTemplate, signIn, t, uploadedFile])
 
   useEffect(() => {
-    if (!isAuthenticated || authIsLoading) return
+    if (!isAuthenticated || authIsLoading || subscriptionsLoading) return
 
     const savedPrompt = localStorage.getItem('airo-pending-prompt')
 
@@ -442,7 +449,7 @@ export function useHomepageSubmission() {
 
       handleStartBuilding(validated.text, restoredFqdn)
     }
-  }, [authIsLoading, handleStartBuilding, isAuthenticated, logAnalytics, promptText])
+  }, [authIsLoading, handleStartBuilding, isAuthenticated, logAnalytics, promptText, subscriptionsLoading])
 
   const handleExampleClick = (examplePrompt: string) => {
     submitSourceRef.current = 'example'
