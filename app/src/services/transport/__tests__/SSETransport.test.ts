@@ -264,6 +264,9 @@ describe('SSETransport', () => {
       fireError() // threshold trip
       expect(es.close).toHaveBeenCalled()
       expect(callbacks.onStateChange).toHaveBeenCalledWith('error')
+      expect(callbacks.onError).toHaveBeenCalledWith(expect.objectContaining({
+        message: 'sse_transport_cooldown',
+      }))
 
       t.destroy()
     })
@@ -493,5 +496,59 @@ describe('SSETransport', () => {
         content: 'validating',
       })
     )
+  })
+
+  it('parses numeric SSE event IDs into transport sequence', async () => {
+    transport.connect('app_1', 'token_123', 'conv_1')
+    await vi.waitFor(() => {
+      expect(callbacks.onStateChange).toHaveBeenCalledWith('connected')
+    })
+    callbacks.onEvent = vi.fn()
+
+    const handlers = eventListeners.chunk ?? []
+    expect(handlers.length).toBeGreaterThan(0)
+
+    for (const h of handlers) {
+      h({
+        data: JSON.stringify({ conversationId: 'conv_1', content: 'hello' }),
+        lastEventId: '42',
+      } as MessageEvent)
+    }
+
+    expect(callbacks.onEvent).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'chunk',
+      sequence: 42,
+    }))
+  })
+
+  it('omits transport sequence for missing or non-numeric SSE event IDs', async () => {
+    transport.connect('app_1', 'token_123', 'conv_1')
+    await vi.waitFor(() => {
+      expect(callbacks.onStateChange).toHaveBeenCalledWith('connected')
+    })
+    callbacks.onEvent = vi.fn()
+
+    const handlers = eventListeners.chunk ?? []
+    expect(handlers.length).toBeGreaterThan(0)
+
+    for (const h of handlers) {
+      h({
+        data: JSON.stringify({ conversationId: 'conv_1', content: 'bad id' }),
+        lastEventId: 'not-a-number',
+      } as MessageEvent)
+      h({
+        data: JSON.stringify({ conversationId: 'conv_1', content: 'missing id' }),
+      } as MessageEvent)
+    }
+
+    expect(callbacks.onEvent).toHaveBeenCalledTimes(2)
+    expect(callbacks.onEvent).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      type: 'chunk',
+      sequence: undefined,
+    }))
+    expect(callbacks.onEvent).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      type: 'chunk',
+      sequence: undefined,
+    }))
   })
 })

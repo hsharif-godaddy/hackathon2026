@@ -200,6 +200,51 @@ describe('SSE routes', () => {
       expect(deps.getEventChannel().getEventsSince).toHaveBeenCalledWith('conv_1', 41)
     })
 
+    it('buffers live events during replay, drops duplicates at high-water, and flushes the tail', async () => {
+      let subscribed: { onEvent: (event: any) => Promise<void> } | null = null
+      const replayEvents = [
+        { id: 'e1', type: 'chunk', sequence: 42, conversationId: 'conv_1', content: 'hello ', data: {} },
+        { id: 'e2', type: 'chunk', sequence: 43, conversationId: 'conv_1', content: 'world', data: {} },
+      ]
+      const duplicateLive43 = { id: 'e2-live', type: 'chunk', sequence: 43, conversationId: 'conv_1', content: 'world', data: {} }
+      const live44 = { id: 'e3-live', type: 'chunk', sequence: 44, conversationId: 'conv_1', content: '!', data: {} }
+      const unsubscribe = vi.fn()
+
+      deps.getEventChannel.mockReturnValue({
+        getEventsSince: vi.fn().mockImplementation(() => {
+          void subscribed?.onEvent(duplicateLive43)
+          void subscribed?.onEvent(live44)
+          return replayEvents
+        }),
+        getMetadata: vi.fn().mockReturnValue({ pendingMessageIds: ['m1'], firstSequence: 42, lastSequence: 43 }),
+        unsubscribe,
+      })
+      ;(deps as any).executionService = {
+        subscribeStream: vi.fn((_conversationId: string, subscriber: any) => {
+          subscribed = subscriber
+        }),
+        hasActiveStream: vi.fn().mockReturnValue(true),
+      }
+
+      let capturedData = ''
+      await request(app)
+        .get('/api/conversations/abcdefghij/conv_1/stream')
+        .set('Accept', 'text/event-stream')
+        .set('Last-Event-ID', '41')
+        .buffer(false)
+        .parse((res: any, callback: any) => {
+          res.on('data', (chunk: Buffer) => { capturedData += chunk.toString() })
+          setTimeout(() => { res.destroy(); callback(null, capturedData) }, 100)
+        })
+
+      const id43Frames = (capturedData.match(/id: 43\nevent: chunk/g) ?? []).length
+      expect(id43Frames).toBe(1)
+      expect(capturedData).toContain('id: 44\nevent: chunk')
+      expect(capturedData.indexOf('id: 44\nevent: chunk')).toBeLessThan(capturedData.indexOf('event: replay_complete'))
+      expect(unsubscribe).toHaveBeenCalledWith('conv_1', expect.stringMatching(/-replay-buffer$/))
+      expect((deps as any).executionService.subscribeStream).toHaveBeenCalledTimes(2)
+    })
+
     it('sets recovery_status streamCompleted=true when no producer is attached', async () => {
       const mockEvents = [
         { id: 'e1', type: 'text_delta', sequence: 42, conversationId: 'conv_1', content: 'done', data: {} },
@@ -480,9 +525,28 @@ describe('SSE routes', () => {
       // The only signal the client gets that replay failed is this
       // recovery_status frame. Without this test a regression that swallowed
       // the throw silently would leave the client assuming no buffered events.
+      let subscribed: { onEvent: (event: any) => Promise<void> } | null = null
+      const unsubscribe = vi.fn()
       deps.getEventChannel.mockReturnValue({
-        getEventsSince: vi.fn(() => { throw new Error('buffer corrupted') }),
+        getEventsSince: vi.fn(() => {
+          void subscribed?.onEvent({
+            id: 'live_after_failure',
+            type: 'chunk',
+            sequence: 44,
+            conversationId: 'conv_1',
+            content: 'live tail',
+            data: {},
+          })
+          throw new Error('buffer corrupted')
+        }),
+        unsubscribe,
       })
+      ;(deps as any).executionService = {
+        subscribeStream: vi.fn((_conversationId: string, subscriber: any) => {
+          subscribed = subscriber
+        }),
+        hasActiveStream: vi.fn().mockReturnValue(true),
+      }
 
       let capturedData = ''
       await request(app)
@@ -498,10 +562,14 @@ describe('SSE routes', () => {
       expect(capturedData).toContain('event: recovery_status')
       expect(capturedData).toContain('"bufferedEventCount":0')
       expect(capturedData).toContain('"error":"replay_failed"')
+      expect(capturedData).toContain('id: 44\nevent: chunk')
+      expect(capturedData.indexOf('id: 44\nevent: chunk')).toBeLessThan(capturedData.indexOf('event: replay_complete'))
       // replay_complete must follow so the client flushes its store-update
       // buffer — without it, queued events are stranded until the next
       // recovery cycle.
       expect(capturedData).toContain('event: replay_complete')
+      expect(unsubscribe).toHaveBeenCalledWith('conv_1', expect.stringMatching(/-replay-buffer$/))
+      expect((deps as any).executionService.subscribeStream).toHaveBeenCalledTimes(2)
     })
 
     it('emits recovery_status + replay_complete when event channel is unavailable', async () => {

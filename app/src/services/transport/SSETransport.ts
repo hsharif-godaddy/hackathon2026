@@ -153,6 +153,7 @@ export class SSETransport implements ChatTransport {
     // reopened either by the cooldown timer or by reconnectIfNeeded().
     this.closeEventSource()
     this.setState('error')
+    this.callbacks?.onError(new Error('sse_transport_cooldown'))
     logger.warn('sse.transport.cooldown.entered', {
       appId: this.appId, conversationId: this.conversationId,
       cooldownMs: this.cooldownMs, errors: this.consecutiveErrors,
@@ -527,11 +528,13 @@ export class SSETransport implements ChatTransport {
       for (const cb of subscribers) cb(data)
     }
 
+    const parsedSequence = parseInt((event as MessageEvent).lastEventId ?? '', 10)
     const transportEvent: TransportEvent = {
       type,
       data,
       content: data.content as string | undefined,
       conversationId: data.conversationId as string | undefined,
+      sequence: Number.isFinite(parsedSequence) ? parsedSequence : undefined,
     }
 
     if (type === 'complete') {

@@ -162,7 +162,7 @@ vi.mock('@/types/budget', () => ({
 // ---------------------------------------------------------------------------
 
 type MockCallbacks = {
-  onEvent: (e: { type: string; content?: string; conversationId?: string; data: Record<string, unknown> }) => void
+  onEvent: (e: { type: string; content?: string; conversationId?: string; data: Record<string, unknown>; sequence?: number }) => void
   onStateChange: (s: string) => void
   onError: (err: Error) => void
 }
@@ -232,7 +232,7 @@ vi.mock('@/lib/agent-fetch', () => ({
 }))
 
 vi.mock('@/lib/request-context', () => ({
-  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+  logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }))
 
 const mockSetLaunchVideoResult = vi.fn()
@@ -355,6 +355,7 @@ describe('useSSEChat', () => {
     mockSetLaunchVideoResult.mockClear()
     mockPublishAction.mockClear()
     mockGetSiteDataAction.mockClear()
+    vi.mocked(logger.debug).mockClear()
     vi.mocked(logger.info).mockClear()
     vi.mocked(logger.warn).mockClear()
     vi.mocked(logger.error).mockClear()
@@ -1334,6 +1335,44 @@ describe('useSSEChat', () => {
       expect(mockSetWebSocketState).toHaveBeenCalledWith({ connected: true, status: 'idle' })
     })
 
+    it('lossDetected recovery flushes inline history on replay_complete', async () => {
+      await setupHook()
+      mockLoadAndPersistHistory.mockClear()
+      mockSetHistoryPagination.mockClear()
+      mockSetHistoryLoadingComplete.mockClear()
+      mockSetHistoryLoadRequested.mockClear()
+
+      act(() => {
+        lastTransport.callbacks?.onEvent({
+          type: 'recovery_status',
+          data: {
+            lossDetected: true,
+            hasBufferedEvents: false,
+            streamCompleted: true,
+            historyHasMore: true,
+            historyNextCursor: 'cursor-1',
+          },
+        })
+        lastTransport.callbacks?.onEvent({
+          type: 'history_message',
+          data: { data: { id: 'msg-1', sender: 'assistant', content: 'recovered' } },
+        })
+        lastTransport.callbacks?.onEvent({
+          type: 'replay_complete',
+          data: { replayedCount: 0 },
+        })
+      })
+
+      expect(mockLoadAndPersistHistory).toHaveBeenCalledWith(expect.objectContaining({
+        rawMessages: [expect.objectContaining({ id: 'msg-1' })],
+        mode: 'replace',
+        detectInProgress: true,
+      }))
+      expect(mockSetHistoryPagination).toHaveBeenCalledWith({ hasMore: true, nextCursor: 'cursor-1' })
+      expect(mockSetHistoryLoadingComplete).toHaveBeenCalledWith(true)
+      expect(mockSetHistoryLoadRequested).toHaveBeenCalledWith(false)
+    })
+
     it('recovery_status for a completed stream reloads history', async () => {
       await setupHook()
       storeState.activeStream = {
@@ -1359,6 +1398,26 @@ describe('useSSEChat', () => {
       expect(mockClearConnectionRetry).toHaveBeenCalled()
       expect(mockSetHistoryLoadRequested).toHaveBeenCalledWith(false)
       expect(lastTransport.loadHistory).toHaveBeenCalled()
+    })
+
+    it('terminal transport error during streaming clears the active stream and loading state', async () => {
+      await setupHook()
+      storeState.activeStream = {
+        id: 'stream-in-cooldown',
+        role: 'assistant',
+        content: '',
+        segments: [],
+        toolCalls: [],
+        timestamp: new Date(),
+        isComplete: false,
+      }
+
+      act(() => {
+        lastTransport.callbacks?.onError(new Error('sse_transport_cooldown'))
+      })
+
+      expect(mockClearActiveStream).toHaveBeenCalled()
+      expect(mockSetIsLoading).toHaveBeenCalledWith(false)
     })
 
     it('uses the latest recovery_status to decide whether replay_complete finalizes', async () => {
@@ -1409,6 +1468,93 @@ describe('useSSEChat', () => {
         (c: unknown[]) => (c[0] as Record<string, unknown>)?.status === 'streaming'
       )
       expect(streamingCalls).toHaveLength(0)
+    })
+
+    it('deduplicates replay events by SSE sequence while recovery replay is active', async () => {
+      await setupHook()
+      mockBufferTextChunk.mockClear()
+
+      act(() => {
+        lastTransport.callbacks?.onEvent({
+          type: 'recovery_status',
+          data: { hasBufferedEvents: true, bufferedCount: 2, streamCompleted: false },
+        })
+      })
+
+      act(() => {
+        lastTransport.callbacks?.onEvent({
+          type: 'chunk',
+          content: 'hello',
+          data: {},
+          sequence: 77,
+        })
+      })
+      act(() => {
+        lastTransport.callbacks?.onEvent({
+          type: 'chunk',
+          content: 'hello',
+          data: {},
+          sequence: 77,
+        })
+      })
+
+      expect(mockBufferTextChunk).toHaveBeenCalledTimes(1)
+
+      act(() => {
+        lastTransport.callbacks?.onEvent({
+          type: 'replay_complete',
+          data: { replayedCount: 2 },
+        })
+      })
+      act(() => {
+        lastTransport.callbacks?.onEvent({
+          type: 'recovery_status',
+          data: { hasBufferedEvents: true, bufferedCount: 1, streamCompleted: false },
+        })
+      })
+      act(() => {
+        lastTransport.callbacks?.onEvent({
+          type: 'chunk',
+          content: 'new cycle',
+          data: {},
+          sequence: 77,
+        })
+      })
+
+      expect(mockBufferTextChunk).toHaveBeenCalledTimes(2)
+    })
+
+    it('clears recovery dedupe state on terminal transport error', async () => {
+      await setupHook()
+      mockBufferTextChunk.mockClear()
+
+      act(() => {
+        lastTransport.callbacks?.onEvent({
+          type: 'recovery_status',
+          data: { hasBufferedEvents: true, bufferedCount: 1, streamCompleted: false },
+        })
+      })
+      act(() => {
+        lastTransport.callbacks?.onEvent({
+          type: 'chunk',
+          content: 'before error',
+          data: {},
+          sequence: 77,
+        })
+      })
+      act(() => {
+        lastTransport.callbacks?.onError(new Error('sse_transport_cooldown'))
+      })
+      act(() => {
+        lastTransport.callbacks?.onEvent({
+          type: 'chunk',
+          content: 'after error',
+          data: {},
+          sequence: 77,
+        })
+      })
+
+      expect(mockBufferTextChunk).toHaveBeenCalledTimes(2)
     })
 
     it('ambiguous recovery_status clears stale activeStream when history is complete', async () => {

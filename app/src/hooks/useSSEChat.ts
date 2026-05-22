@@ -138,6 +138,15 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
   const historyBatchRef = useRef<{ messages: unknown[]; isPagination: boolean } | null>(null)
   const historyBatchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const replayCompletesStreamRef = useRef(false)
+  const replayDedupRef = useRef<{ active: boolean; seen: Set<number> }>({
+    active: false,
+    seen: new Set<number>(),
+  })
+  const recoveryHistoryReplayRef = useRef<{ active: boolean; hasMore: boolean; nextCursor: string | null }>({
+    active: false,
+    hasMore: false,
+    nextCursor: null,
+  })
 
   const currentAppId = useCurrentAppId()
   const { tokenAuthType } = useAuthContext()
@@ -303,6 +312,20 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
             onEvent(event) {
               const store = useStreamingConversationStore.getState()
               const type = event.type
+              if (
+                replayDedupRef.current.active
+                && typeof event.sequence === 'number'
+              ) {
+                if (replayDedupRef.current.seen.has(event.sequence)) {
+                  logger.debug('sse.recovery.replay_dedup.drop', {
+                    appId: store.currentAppId,
+                    eventType: type,
+                    sequence: event.sequence,
+                  })
+                  return
+                }
+                replayDedupRef.current.seen.add(event.sequence)
+              }
               if (STREAM_UPDATE_EVENTS.has(type)) {
                 ensureSSEActiveStream(type, event.conversationId)
               }
@@ -605,6 +628,13 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
               } else if (type === 'recovery_status') {
                 const payload = event.data as any
                 replayCompletesStreamRef.current = false
+                replayDedupRef.current.active = payload?.hasBufferedEvents === true
+                replayDedupRef.current.seen.clear()
+                recoveryHistoryReplayRef.current = {
+                  active: payload?.lossDetected === true,
+                  hasMore: payload?.historyHasMore === true,
+                  nextCursor: typeof payload?.historyNextCursor === 'string' ? payload.historyNextCursor : null,
+                }
                 if (payload?.streamCompleted && !payload?.hasBufferedEvents) {
                   if (store.activeStream) {
                     store.clearActiveStream()
@@ -649,6 +679,18 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
               } else if (type === 'replay_complete') {
                 // Flush any buffered store updates from replayed events
                 flushStoreUpdateBufferImmediate()
+                if (recoveryHistoryReplayRef.current.active) {
+                  flushHistoryBatch(false)
+                  store.setHistoryPagination({
+                    hasMore: recoveryHistoryReplayRef.current.hasMore,
+                    nextCursor: recoveryHistoryReplayRef.current.nextCursor,
+                  })
+                  store.setHistoryLoadingComplete(true)
+                  store.setHistoryLoadRequested(false)
+                  recoveryHistoryReplayRef.current = { active: false, hasMore: false, nextCursor: null }
+                }
+                replayDedupRef.current.active = false
+                replayDedupRef.current.seen.clear()
                 if (replayCompletesStreamRef.current) {
                   store.finalizeStream()
                   setTransportState('connected')
@@ -710,6 +752,9 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
               // or `error` event will arrive to finalize the stream, so the
               // input stays disabled forever otherwise.
               const store = useStreamingConversationStore.getState()
+              replayDedupRef.current.active = false
+              replayDedupRef.current.seen.clear()
+              recoveryHistoryReplayRef.current = { active: false, hasMore: false, nextCursor: null }
               if (store.activeStream) {
                 store.clearActiveStream()
               }

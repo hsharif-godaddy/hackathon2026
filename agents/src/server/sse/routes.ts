@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import type { Request, Response, NextFunction } from 'express'
-import type { ConversationEventChannel } from '@airo/ai-transport'
+import type { ConversationEventChannel, EventSubscriber, StreamingEvent } from '@airo/ai-transport'
 import { createSSEWriter, computeRecoveryPlan } from '@airo/ai-transport'
 import { grantSessionManager, resolveBmsSubscriptionId } from '@airo/ai-grants'
 import { EventStreamRegistry } from './EventStreamRegistry.js'
@@ -153,7 +153,54 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
       if (text) writer.write(text)
     }
 
+    const writeStreamingEvent = (event: StreamingEvent): void => {
+      writeFormatted(event.type, {
+        ...event.data,
+        content: event.content,
+        conversationId: event.conversationId,
+        agentName: event.agentName,
+      }, event.sequence)
+    }
+
     const eventChannel = deps.getEventChannel()
+    let replaying = false
+    const bufferedLiveEvents: StreamingEvent[] = []
+    let liveSubscriber: EventSubscriber | null = null
+
+    const replaceBufferingSubscriberWithDirect = (): void => {
+      if (!eventChannel || !deps.executionService || !liveSubscriber) return
+      if (typeof eventChannel.unsubscribe === 'function') {
+        eventChannel.unsubscribe(conversationId, liveSubscriber.id)
+      }
+      liveSubscriber = null
+      deps.executionService.subscribeStream(conversationId, subscriber)
+    }
+
+    const drainBufferedLiveEvents = (afterSequence: number): void => {
+      const tail = bufferedLiveEvents
+        .filter((event) => event.sequence > afterSequence)
+        .sort((a, b) => a.sequence - b.sequence)
+      for (const event of tail) {
+        writeStreamingEvent(event)
+      }
+    }
+
+    if (eventChannel && deps.executionService) {
+      replaying = true
+      liveSubscriber = {
+        id: `${subscriber.id}-replay-buffer`,
+        onError: (error: Error) => subscriber.onError(error),
+        onEvent: async (event: StreamingEvent) => {
+          if (replaying) {
+            bufferedLiveEvents.push(event)
+            return
+          }
+          await subscriber.onEvent(event)
+        },
+      }
+      deps.executionService.subscribeStream(conversationId, liveSubscriber)
+    }
+
     if (!eventChannel) {
       // Fresh connects now always run the recovery path, so a missing
       // event channel silently skips every recovery signal. Emit a minimal
@@ -248,14 +295,13 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
 
         if (shouldReplay) {
           for (const event of plan.eventsToReplay) {
-            writeFormatted(event.type, {
-              ...event.data,
-              content: event.content,
-              conversationId: event.conversationId,
-              agentName: event.agentName,
-            }, event.sequence)
+            writeStreamingEvent(event)
           }
         }
+
+        replaying = false
+        drainBufferedLiveEvents(plan.lastReplaySequence)
+        replaceBufferingSubscriberWithDirect()
 
         writeFormatted('replay_complete', {
           lastSequence: plan.lastReplaySequence,
@@ -282,15 +328,16 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
           streamCompleted: false,
           error: 'replay_failed',
         })
+        replaying = false
+        drainBufferedLiveEvents(-1)
         // Without replay_complete the client's store-update buffer never
         // flushes, leaving any queued events stranded.
         writeFormatted('replay_complete', { lastSequence: -1, replayedCount: 0 })
+        replaceBufferingSubscriberWithDirect()
       }
     }
 
-    if (deps.executionService) {
-      deps.executionService.subscribeStream(conversationId, subscriber)
-    } else {
+    if (!deps.executionService) {
       logger.warn('sse.connection.no_execution_service', { appId, conversationId })
     }
 

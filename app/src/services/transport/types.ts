@@ -5,6 +5,7 @@ export interface TransportEvent {
   data: Record<string, unknown>
   content?: string
   conversationId?: string
+  sequence?: number
 }
 
 export interface ChatTransportCallbacks {
