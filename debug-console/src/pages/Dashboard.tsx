@@ -9,9 +9,10 @@ import ConversationsPanel, { type ConversationsSource } from "@/components/Conve
 import type {
   MgmtAppDetails,
   MgmtCustomerApp,
+  MgmtSubscription,
   MgmtSubscriptionGrants,
 } from "@/lib/mgmt-types";
-import type { LlmSpendData } from "@/lib/spend-types";
+import type { BmsSpendData, LlmSpendData } from "@/lib/spend-types";
 import { CUSTOMER_ID_RE, SHOPPER_ID_RE } from "@/lib/mgmt-helpers";
 import LogsPanel, { type LogSource, type LogsView } from "@/components/LogsPanel";
 import TrafficPanel from "@/components/TrafficPanel";
@@ -68,12 +69,33 @@ export default function Dashboard() {
   // param so links survive a reload.
   const [logsView, setLogsView] = useState<LogsView>("logs");
   const [sources, setSources] = useState<LogSource[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [expandedError, setExpandedError] = useState<string | null>(null);
+  const [errorDetails, setErrorDetails] = useState<
+    Record<
+      string,
+      Array<{
+        timestamp: string;
+        message: string;
+        event?: string;
+        service?: string;
+        raw: Record<string, unknown>;
+      }>
+    >
+  >({});
+  const [bmsSpend, setBmsSpend] = useState<BmsSpendData | null>(null);
+  const [bmsSpendLoading, setBmsSpendLoading] = useState(false);
+  const [bmsSpendError, setBmsSpendError] = useState<string | null>(null);
+  // Legacy LLM spend — kept for non-migrated subs until BMS migration completes.
   const [llmSpend, setLlmSpend] = useState<LlmSpendData | null>(null);
   const [llmSpendLoading, setLlmSpendLoading] = useState(false);
   const [llmSpendError, setLlmSpendError] = useState<string | null>(null);
-  // Subscription + grant identifiers lifted from AppDetailsPanel — needed to
-  // drive the LLM spend fetch that powers the Subscription Details section.
-  const [mgmtRawSubId, setMgmtRawSubId] = useState<string | null>(null);
+  // SubscriptionId lifted from AppDetailsPanel via onSubscriptionLoaded —
+  // drives the /api/bms/spend fetch.
+  const [mgmtSubId, setMgmtSubId] = useState<string | null>(null);
+  // Grant user IDs lifted from AppDetailsPanel via onGrantsLoaded —
+  // drives the /api/llm-spend fetch for the legacy fallback path.
   const [mgmtGrantUserIds, setMgmtGrantUserIds] = useState<string[]>([]);
 
   const [shopperId, setShopperId] = useState<string | null>(null);
@@ -296,15 +318,56 @@ export default function Dashboard() {
 
   // Reset mgmt data when the app changes
   useEffect(() => {
-    setMgmtRawSubId(null);
+    setMgmtSubId(null);
     setMgmtGrantUserIds([]);
+    setBmsSpend(null);
+    setBmsSpendError(null);
     setLlmSpend(null);
+    setLlmSpendError(null);
   }, [submittedAppId]);
 
-  // Fetch LLM spend once grants are available from AppDetailsPanel (via onGrantsLoaded callback).
-  // Uses llmBudgetUserId from ALL grants (active + historical) sourced from the mgmt API —
-  // no dependency on the log-derived billing SID from app-context.
+  // Fetch BMS spend once the subscription has been loaded by AppDetailsPanel.
   useEffect(() => {
+    if (!mgmtSubId) {
+      setBmsSpend(null);
+      return;
+    }
+
+    const controller = new AbortController();
+    setBmsSpendLoading(true);
+    setBmsSpendError(null);
+
+    fetch(`/api/bms/spend?subscriptionId=${encodeURIComponent(mgmtSubId)}`, {
+      signal: controller.signal,
+    })
+      .then(async (res) => {
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
+        return data as BmsSpendData;
+      })
+      .then((data) => setBmsSpend(data))
+      .catch((err) => {
+        if (err.name === "AbortError") return;
+        setBmsSpend(null);
+        setBmsSpendError(
+          err instanceof Error ? err.message : "Failed to fetch BMS spend",
+        );
+      })
+      .finally(() => {
+        if (controller.signal.aborted) return;
+        setBmsSpendLoading(false);
+      });
+    return () => controller.abort();
+  }, [mgmtSubId]);
+
+  // Legacy LLM spend fetch — only fires when BMS confirms the sub is non-migrated.
+  // Uses llmBudgetUserId from ALL grants (active + historical) so coverage spans
+  // every billing period. Will be removed once full BMS migration completes.
+  useEffect(() => {
+    if (bmsSpend?.useBms !== false) {
+      setLlmSpend(null);
+      return;
+    }
     if (mgmtGrantUserIds.length === 0) {
       setLlmSpend(null);
       return;
@@ -315,19 +378,19 @@ export default function Dashboard() {
     setLlmSpendError(null);
 
     const params = new URLSearchParams();
-    if (mgmtRawSubId) params.set("subscriptionId", mgmtRawSubId);
+    if (mgmtSubId) params.set("subscriptionId", mgmtSubId);
     for (const uid of mgmtGrantUserIds) {
       params.append("grantUserId", uid);
     }
-    // Also include the subscription-level end_user (airo-builder:sid:<subId>) which
-    // may carry spend from calls that use the subscription ID directly (e.g. older billing).
-    if (mgmtRawSubId)
-      params.append("grantUserId", `airo-builder:sid:${mgmtRawSubId}`);
+    if (mgmtSubId) {
+      params.append("grantUserId", `airo-builder:sid:${mgmtSubId}`);
+    }
 
     fetch(`/api/llm-spend?${params}`, { signal: controller.signal })
       .then((res) => {
-        if (!res.ok)
+        if (!res.ok) {
           throw new Error(`Failed to fetch LLM spend: ${res.status}`);
+        }
         return res.json();
       })
       .then((data) => setLlmSpend(data))
@@ -343,7 +406,7 @@ export default function Dashboard() {
         setLlmSpendLoading(false);
       });
     return () => controller.abort();
-  }, [mgmtGrantUserIds, mgmtRawSubId]);
+  }, [bmsSpend, mgmtGrantUserIds, mgmtSubId]);
 
   const updateUrl = useCallback(
     (opts?: {
@@ -468,12 +531,17 @@ export default function Dashboard() {
     updateUrl({ appId: trimmed, customerId: null, tab: "details" });
   };
 
-  // Collect llmBudgetUserId from ALL grants (active + historical) so LLM Spend captures
-  // spend across every billing period — deduplicated to avoid duplicate ES query terms.
-  // Raw subscriptionId from mgmt is stored for display purposes only.
+  // Lift subscriptionId out of AppDetailsPanel so the BMS spend fetch can fire.
+  const handleSubscriptionLoaded = useCallback(
+    (subscription: MgmtSubscription | null) => {
+      setMgmtSubId(subscription?.id ?? null);
+    },
+    [],
+  );
+
+  // Lift dedup'd llmBudgetUserId list so the legacy LLM-spend fetch can fire.
   const handleGrantsLoaded = useCallback(
-    (subscriptionId: string, grants: MgmtSubscriptionGrants) => {
-      setMgmtRawSubId(subscriptionId);
+    (_subscriptionId: string, grants: MgmtSubscriptionGrants) => {
       const ids = [
         ...new Set(
           grants.grants
@@ -1283,9 +1351,13 @@ export default function Dashboard() {
                   appId={submittedAppId}
                   refreshKey={refreshKeys.details}
                   onRefresh={() => handleRefreshTab("details")}
+                  onSubscriptionLoaded={handleSubscriptionLoaded}
                   onGrantsLoaded={handleGrantsLoaded}
                   onAppLoaded={handleAppLoaded}
                   onCustomerIdLoaded={handleCustomerIdLoaded}
+                  bmsSpend={bmsSpend}
+                  bmsSpendLoading={bmsSpendLoading}
+                  bmsSpendError={bmsSpendError}
                   llmSpend={llmSpend}
                   llmSpendLoading={llmSpendLoading}
                   llmSpendError={llmSpendError}

@@ -46,6 +46,10 @@
     "./share-url": {
       "types": "./dist/share-url/index.d.ts",
       "import": "./dist/share-url/index.js"
+    },
+    "./credit-adapter": {
+      "types": "./dist/credit-adapter/index.d.ts",
+      "import": "./dist/credit-adapter/index.js"
     }
   },
   "typesVersions": {
@@ -76,6 +80,9 @@
       ],
       "share-url": [
         "dist/share-url/index.d.ts"
+      ],
+      "credit-adapter": [
+        "dist/credit-adapter/index.d.ts"
       ]
     }
   },

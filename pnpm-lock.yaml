@@ -1266,6 +1266,12 @@ importers:
 
   debug-console:
     dependencies:
+      '@airo/ai-lib':
+        specifier: workspace:*
+        version: link:../packages/ai-lib
+      '@airo/shared':
+        specifier: workspace:*
+        version: link:../packages/shared
       '@aws-sdk/client-lambda':
         specifier: ^3.1045.0
         version: 3.1045.0

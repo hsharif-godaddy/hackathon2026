@@ -1,5 +1,9 @@
 export { BudgetServiceClient } from './budget-service-client.js'
-export type { BudgetServiceClientConfig } from './budget-service-client.js'
+export type {
+  BudgetServiceClientConfig,
+  ReportAggregateParams,
+  ReportAggregateResponse,
+} from './budget-service-client.js'
 export {
   BudgetServiceError,
   BudgetServiceAuthError,

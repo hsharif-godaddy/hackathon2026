@@ -144,6 +144,17 @@ export interface MgmtReloadResponse {
     failedAt?: string;
 }
 
+export interface MgmtAttribute {
+    id?: string;
+    ownerType?: string;
+    ownerId?: string;
+    customerId?: string;
+    key: string;
+    value: Record<string, unknown> | null;
+    createdAt?: string;
+    updatedAt?: string;
+}
+
 export interface MgmtSubscription {
     id: string;
     productId: string;
@@ -155,6 +166,10 @@ export interface MgmtSubscription {
     plan: string;
     createdAt: string;
     updatedAt: string;
+    /** BMS budget ID when subscription has been migrated to Budget Service. */
+    bmsBudgetId?: string | null;
+    /** Subscription attributes; populated only when getSubscription is called with includeAttributes=true. */
+    attributes?: MgmtAttribute[];
 }
 
 export interface MgmtGrant {

@@ -617,4 +617,78 @@ describe('BudgetServiceClient', () => {
       await expect(client.getBudget('b-1')).rejects.toThrow('invalid JSON')
     })
   })
+
+  // ── getReportsAggregate ──
+
+  describe('getReportsAggregate', () => {
+    const VALID_AGGREGATE = JSON.stringify({
+      productKey: 'airo-builder',
+      label: '',
+      from: '2026-04-12T00:00:00Z',
+      to: '2026-05-12T00:00:00Z',
+      budgetCostTotal: 12.34,
+      productCostTotal: 56.78,
+      reportLineCount: 42,
+    })
+
+    it('builds query string and parses numeric totals', async () => {
+      const fetchMock = mockFetchWithText(true, 200, VALID_AGGREGATE)
+      const client = clientWith(fetchMock)
+
+      const result = await client.getReportsAggregate({
+        budgetId: 'b-1',
+        productKey: 'airo-builder',
+        from: new Date('2026-04-12T00:00:00Z'),
+        to: '2026-05-12T00:00:00Z',
+      })
+
+      expect(result.budgetCostTotal).toBe(12.34)
+      expect(result.productCostTotal).toBe(56.78)
+      expect(result.reportLineCount).toBe(42)
+      const calledUrl = (fetchMock as unknown as { mock: { calls: [string][] } }).mock.calls[0]![0]
+      expect(calledUrl).toMatch(/\/api\/v1\/reports\/aggregate\?/)
+      expect(calledUrl).toContain('budgetId=b-1')
+      expect(calledUrl).toContain('productKey=airo-builder')
+      expect(calledUrl).toContain('from=2026-04-12T00%3A00%3A00.000Z')
+      expect(calledUrl).toContain('to=2026-05-12T00%3A00%3A00Z')
+    })
+
+    it('coerces string-encoded money totals to numbers', async () => {
+      const body = JSON.stringify({
+        from: '2026-04-12T00:00:00Z',
+        to: '2026-05-12T00:00:00Z',
+        budgetCostTotal: '7.5',
+        productCostTotal: '0',
+        reportLineCount: 1,
+      })
+      const client = clientWith(mockFetchWithText(true, 200, body))
+      const result = await client.getReportsAggregate({ productKey: 'p' })
+      expect(result.budgetCostTotal).toBe(7.5)
+      expect(result.productCostTotal).toBe(0)
+    })
+
+    it('omits empty params from query string', async () => {
+      const fetchMock = mockFetchWithText(true, 200, VALID_AGGREGATE)
+      const client = clientWith(fetchMock)
+      await client.getReportsAggregate({ label: 'airo-builder:general' })
+      const calledUrl = (fetchMock as unknown as { mock: { calls: [string][] } }).mock.calls[0]![0]
+      expect(calledUrl).toContain('label=airo-builder%3Ageneral')
+      expect(calledUrl).not.toContain('budgetId=')
+      expect(calledUrl).not.toContain('from=')
+    })
+
+    it('throws on non-finite money values', async () => {
+      const body = JSON.stringify({
+        from: 'x',
+        to: 'y',
+        budgetCostTotal: 'not-a-number',
+        productCostTotal: 0,
+        reportLineCount: 0,
+      })
+      const client = clientWith(mockFetchWithText(true, 200, body))
+      await expect(client.getReportsAggregate({ productKey: 'p' })).rejects.toThrow(
+        'invalid ReportAggregateResponse'
+      )
+    })
+  })
 })

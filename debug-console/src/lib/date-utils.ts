@@ -13,6 +13,11 @@ export function computeUseBefore(days: number = 30): string {
     return daysLater.toISOString().replace(/\.\d{3}Z$/, 'Z');
 }
 
+/** Truncate a Date to the start of its UTC day (00:00:00.000 UTC). */
+export function startOfUtcDay(d: Date): Date {
+    return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+}
+
 export function formatTimestamp(timestamp: string): string {
     try {
         return new Date(timestamp).toLocaleString('en-US', {

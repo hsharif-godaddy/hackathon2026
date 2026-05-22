@@ -181,8 +181,26 @@ export class MgmtControlPlaneAdapter {
         return this.request(path);
     }
 
-    getSubscription(subscriptionId: string): Promise<MgmtSubscription> {
-        return this.request(`/api/airo/v1/subscriptions/${encodeURIComponent(subscriptionId)}`);
+    /**
+     * Per-page-load read coalescing: a single panel render fans out to both
+     * /api/mgmt/subscriptions/{id} (AppDetailsPanel) and /api/bms/spend
+     * (which calls getSubscription server-side). Memoizing here turns those
+     * two near-simultaneous fetches into one upstream call. includeAttributes
+     * varies the cache key so an attribute-less call doesn't poison a richer
+     * one cached after it.
+     */
+    getSubscription(
+        subscriptionId: string,
+        opts?: { includeAttributes?: boolean }
+    ): Promise<MgmtSubscription> {
+        const includeAttrs = opts?.includeAttributes ?? false;
+        const qs = includeAttrs ? '?includeAttributes=true' : '';
+        const cacheKey = `getSubscription:${subscriptionId}:${includeAttrs ? 'attrs' : 'plain'}`;
+        return memoizeRead(cacheKey, () =>
+            this.request<MgmtSubscription>(
+                `/api/airo/v1/subscriptions/${encodeURIComponent(subscriptionId)}${qs}`
+            )
+        );
     }
 
     getSubscriptionGrants(subscriptionId: string): Promise<MgmtSubscriptionGrants> {

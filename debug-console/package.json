@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "NEXT_TELEMETRY_DISABLED=1 tsx watch server.ts",
+    "dev": "NEXT_TELEMETRY_DISABLED=1 NODE_OPTIONS='--max-old-space-size=4096 --heapsnapshot-near-heap-limit=3' tsx watch server.ts",
     "build": "next build",
     "start": "tsx server.ts",
     "typecheck": "tsc --noEmit",
@@ -13,6 +13,8 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
+    "@airo/ai-lib": "workspace:*",
+    "@airo/shared": "workspace:*",
     "@aws-sdk/client-lambda": "^3.1045.0",
     "@aws-sdk/client-s3": "^3.1045.0",
     "@aws-sdk/client-secrets-manager": "^3.1045.0",

@@ -50,7 +50,8 @@ sudo security add-trusted-cert -d -r trustRoot \
 ### 3. Install + run
 
 ```bash
-pnpm install
+# probably has to be run from the top-level repo since pnpm workspaces don't always filter env vars correctly when run from a package
+pnpm install && pnpm build
 
 # Port 443 requires sudo on macOS/Linux
 sudo -E pnpm dev
@@ -63,6 +64,21 @@ To run on a non-privileged port instead, set `PORT`:
 ```bash
 PORT=3443 pnpm dev   # https://dev-console.airo-builder.godaddy.com:3443/
 ```
+
+To run with Budget Service features (requires additional config):
+
+```bash
+# Will require AWS SSO login
+aws sso login --profile airobuild-dev-private-sso
+
+# Set these env vars (or set in .env.local for persistence)
+export AWS_PROFILE=airobuild-dev-private-sso
+export BUDGET_SERVICE_URL=https://budget-service.api.int.test-godaddy.com
+
+# OR just set them inline for the dev server
+AWS_PROFILE=airobuild-dev-private-sso BUDGET_SERVICE_URL=https://budget-service.api.int.test-godaddy.com pnpm dev
+
+````
 
 ## Configuration
 

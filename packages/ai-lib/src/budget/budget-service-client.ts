@@ -113,6 +113,49 @@ const ReportResponseSchema = z.object({
   reportItems: z.array(ReportItemResponseSchema),
 }).passthrough() as z.ZodType<ReportResponse>
 
+// BMS encodes money as a JSON number for /reports/aggregate but the OpenAPI
+// spec hedges with oneOf(string|number) to match the rest of the API.
+// Coerce to number so callers always get a finite number.
+const moneyAsNumber = z.union([z.number(), z.string()]).transform((v, ctx) => {
+  const n = typeof v === 'number' ? v : parseFloat(v)
+  if (!Number.isFinite(n)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'expected finite number' })
+    return z.NEVER
+  }
+  return n
+})
+
+const ReportAggregateResponseSchema = z.object({
+  productKey: z.string().optional(),
+  label: z.string().optional(),
+  from: z.string(),
+  to: z.string(),
+  budgetCostTotal: moneyAsNumber,
+  productCostTotal: moneyAsNumber,
+  reportLineCount: z.number().int().nonnegative(),
+}).passthrough()
+
+export interface ReportAggregateParams {
+  budgetId?: string
+  sessionId?: string
+  productKey?: string
+  label?: string
+  /** Inclusive start. Pass a Date or RFC3339 string. */
+  from?: Date | string
+  /** Exclusive end. */
+  to?: Date | string
+}
+
+export interface ReportAggregateResponse {
+  productKey?: string
+  label?: string
+  from: string
+  to: string
+  budgetCostTotal: number
+  productCostTotal: number
+  reportLineCount: number
+}
+
 function validateResponse<T>(schema: z.ZodType<T>, data: unknown, label: string): T {
   const result = schema.safeParse(data)
   if (result.success) return result.data
@@ -213,6 +256,37 @@ export class BudgetServiceClient {
       'GET',
       `/api/v1/sessions/${encodeURIComponent(sessionId)}/reports/${encodeURIComponent(reportId)}`,
       ReportResponseSchema, 'ReportResponse', undefined, this.getBudgetTimeoutMs
+    )
+  }
+
+  /**
+   * Aggregate budgetCost and productCost over a time window.
+   * BMS requires at least one of `productKey` or `label` (or both); when
+   * `from`/`to` are both omitted, BMS defaults to the last 1 calendar month.
+   */
+  async getReportsAggregate(params: ReportAggregateParams = {}): Promise<ReportAggregateResponse> {
+    const search = new URLSearchParams()
+    const setIf = (k: string, v: string | undefined): void => {
+      if (v !== undefined && v !== '') search.set(k, v)
+    }
+    const toIso = (v: Date | string | undefined): string | undefined => {
+      if (v === undefined) return undefined
+      return v instanceof Date ? v.toISOString() : v
+    }
+    setIf('budgetId', params.budgetId)
+    setIf('sessionId', params.sessionId)
+    setIf('productKey', params.productKey)
+    setIf('label', params.label)
+    setIf('from', toIso(params.from))
+    setIf('to', toIso(params.to))
+
+    const qs = search.toString()
+    const path = `/api/v1/reports/aggregate${qs ? `?${qs}` : ''}`
+    return this.requestAndValidate(
+      'GET', path,
+      ReportAggregateResponseSchema as z.ZodType<ReportAggregateResponse>,
+      'ReportAggregateResponse',
+      undefined, this.getBudgetTimeoutMs
     )
   }
 

@@ -12,10 +12,10 @@ import {
   collectLokiEvidence,
   collectMergedLokiSources,
   extractClusterFromUrl,
-  mapWithConcurrency,
   normalizeEvidenceRequest,
   resolveAppCluster,
 } from '../evidence';
+import { mapWithConcurrency } from '@/lib/concurrency';
 
 const lokiSource = {
   id: 'airo-preview',
@@ -1136,7 +1136,7 @@ describe('mapWithConcurrency', () => {
     const items = Array.from({ length: 20 }, (_, i) => i);
     let inFlight = 0;
     let peak = 0;
-    const results = await mapWithConcurrency(items, 5, async (i) => {
+    const results = await mapWithConcurrency(items, 5, async (i: number) => {
       inFlight++;
       peak = Math.max(peak, inFlight);
       // Yield twice so multiple workers genuinely overlap before any resolves.
@@ -1151,7 +1151,7 @@ describe('mapWithConcurrency', () => {
   });
 
   it('handles items.length < limit without spawning idle workers', async () => {
-    const results = await mapWithConcurrency([1, 2, 3], 100, async (n) => n + 10);
+    const results = await mapWithConcurrency([1, 2, 3], 100, async (n: number) => n + 10);
     expect(results).toEqual([11, 12, 13]);
   });
 

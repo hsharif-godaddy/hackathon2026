@@ -5,12 +5,14 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import SpendDailyTable from '@/components/SpendDailyTable';
 import { formatTimestamp } from '@/lib/date-utils';
 import type { MgmtAppDetails, MgmtDomainError, MgmtImageStatus, MgmtSubscription, MgmtSubscriptionGrants, MgmtVariantWithLifecycle } from '@/lib/mgmt-types';
-import type { GrantBreakdown, LlmSpendData } from '@/lib/spend-types';
+import type { BmsSpendData, GrantBreakdown, LlmSpendData } from '@/lib/spend-types';
+import { BmsBudgetView } from '@/components/BmsBudgetView';
 
 interface Props {
     appId: string;
     refreshKey: number;
     onRefresh?: () => void;
+    onSubscriptionLoaded?: (subscription: MgmtSubscription | null) => void;
     onGrantsLoaded?: (subscriptionId: string, grants: MgmtSubscriptionGrants) => void;
     onAppLoaded?: (app: MgmtAppDetails | null) => void;
     // Emitted once the subscription fetch surfaces the customerId for this
@@ -18,6 +20,10 @@ interface Props {
     // user searched by appId only, so the Investigate tab knows whose
     // investigation bucket path to use.
     onCustomerIdLoaded?: (customerId: string | null) => void;
+    bmsSpend?: BmsSpendData | null;
+    bmsSpendLoading?: boolean;
+    bmsSpendError?: string | null;
+    /** Legacy LLM spend — only populated for non-BMS subscriptions. */
     llmSpend?: LlmSpendData | null;
     llmSpendLoading?: boolean;
     llmSpendError?: string | null;
@@ -434,13 +440,29 @@ interface SubscriptionBlockProps {
     subscriptionLoading: boolean;
     grants: MgmtSubscriptionGrants | null;
     grantsLoading: boolean;
+    bmsSpend?: BmsSpendData | null;
+    bmsSpendLoading?: boolean;
+    bmsSpendError?: string | null;
     llmSpend?: LlmSpendData | null;
     llmSpendLoading?: boolean;
     llmSpendError?: string | null;
 }
 
-function SubscriptionBlock({ subscription, subscriptionLoading, grants, grantsLoading, llmSpend, llmSpendLoading, llmSpendError }: SubscriptionBlockProps) {
-    const isLoading = subscriptionLoading || grantsLoading;
+function SubscriptionBlock({
+    subscription,
+    subscriptionLoading,
+    grants,
+    grantsLoading,
+    bmsSpend,
+    bmsSpendLoading,
+    bmsSpendError,
+    llmSpend,
+    llmSpendLoading,
+    llmSpendError,
+}: SubscriptionBlockProps) {
+    const isLoadingBaseline = subscriptionLoading || grantsLoading;
+    const useBms = bmsSpend?.useBms === true;
+
     const spendByUser = React.useMemo(() => {
         const map = new Map<string, GrantBreakdown>();
         llmSpend?.grantBreakdowns.forEach(g => map.set(g.grantUserId, g));
@@ -459,14 +481,25 @@ function SubscriptionBlock({ subscription, subscriptionLoading, grants, grantsLo
 
     return (
         <div style={{ padding: '1rem', backgroundColor: '#f9fafb', borderRadius: '6px', border: '1px solid #e5e7eb' }}>
-            <h4 style={{ margin: '0 0 0.75rem 0', fontSize: '0.875rem', fontWeight: 600, color: '#374151' }}>
-                Subscription Details
-            </h4>
-            {isLoading && !subscription && !grants ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                <h4 style={{ margin: 0, fontSize: '0.875rem', fontWeight: 600, color: '#374151' }}>
+                    Subscription Details
+                </h4>
+                {bmsSpend && (
+                    <StatusBadge
+                        value={useBms ? 'BMS' : 'Legacy'}
+                        green={['BMS']}
+                    />
+                )}
+                {bmsSpendLoading && !bmsSpend && (
+                    <span style={{ fontSize: '0.7rem', color: '#9ca3af' }}>(loading BMS…)</span>
+                )}
+            </div>
+
+            {isLoadingBaseline && !subscription && !grants ? (
                 <span style={{ fontSize: '0.875rem', color: '#6b7280' }}>Loading subscription details…</span>
             ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                    {/* Subscription fields */}
                     {subscription && (
                         <div style={{
                             display: 'grid',
@@ -482,80 +515,98 @@ function SubscriptionBlock({ subscription, subscriptionLoading, grants, grantsLo
                         </div>
                     )}
 
-                    {/* LLM spend totals */}
-                    {llmSpendError ? (
+                    {bmsSpendError && (
                         <div style={{
                             padding: '0.5rem 0.75rem',
                             backgroundColor: '#fef2f2',
                             border: '1px solid #fecaca',
                             borderRadius: '6px',
                             fontSize: '0.78rem',
-                            color: '#dc2626'
+                            color: '#dc2626',
                         }}>
-                            Failed to load LLM spend: {llmSpendError}
+                            Failed to load BMS spend: {bmsSpendError}
                         </div>
-                    ) : llmSpendLoading && !llmSpend ? (
-                        <span style={{ fontSize: '0.75rem', color: '#9ca3af' }}>Loading LLM spend data…</span>
-                    ) : llmSpend ? (
-                        <div style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '1.5rem',
-                            flexWrap: 'wrap',
-                            padding: '0.5rem 0.75rem',
-                            backgroundColor: '#fff',
-                            borderRadius: '6px',
-                            border: '1px solid #e5e7eb',
-                            fontSize: '0.8rem'
-                        }}>
-                            <span>
-                                Total Spend:{' '}
-                                <strong style={{ color: '#059669' }}>${llmSpend.totalSpend.toFixed(2)}</strong>
-                            </span>
-                            <span style={{ color: '#6b7280' }}>
-                                {formatTokens(llmSpend.totalTokens)} tokens
-                            </span>
-                            <span style={{ color: '#6b7280' }}>
-                                {llmSpend.totalRequests.toLocaleString()} requests
-                            </span>
-                            {llmSpend.truncated && (
-                                <span style={{ marginLeft: 'auto', color: '#92400e', fontSize: '0.72rem' }}>
-                                    ⚠ truncated — {llmSpend.docCount} matched, showing first 500
-                                </span>
-                            )}
-                        </div>
-                    ) : null}
+                    )}
 
-                    {/* Grants list — all grants, newest first */}
-                    {grantsLoading && !grants ? (
-                        <span style={{ fontSize: '0.75rem', color: '#9ca3af' }}>Loading grant data…</span>
-                    ) : grants && grants.grants.length > 0 ? (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                            <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                                Grants ({grants.grants.length})
-                            </div>
-                            {availableGrants.map(grant => (
-                                <GrantItem
-                                    key={grant.id}
-                                    grant={grant}
-                                    isActive={grant.id === grants.activeGrant}
-                                    spend={spendByUser.get(grant.llmBudgetUserId)}
-                                />
-                            ))}
-                            {consumedGrants.length > 0 && (
-                                <ConsumedGrantsGroup grants={consumedGrants} spendByUser={spendByUser} />
-                            )}
-                        </div>
-                    ) : grants ? (
-                        <span style={{ fontSize: '0.75rem', color: '#9ca3af' }}>No grants found</span>
-                    ) : null}
+                    {useBms && bmsSpend && subscription ? (
+                        <BmsBudgetView subscriptionId={subscription.id} spend={bmsSpend} />
+                    ) : (
+                        <>
+                            {/* Legacy LLM spend totals — only rendered for non-BMS subscriptions. */}
+                            {llmSpendError ? (
+                                <div style={{
+                                    padding: '0.5rem 0.75rem',
+                                    backgroundColor: '#fef2f2',
+                                    border: '1px solid #fecaca',
+                                    borderRadius: '6px',
+                                    fontSize: '0.78rem',
+                                    color: '#dc2626',
+                                }}>
+                                    Failed to load LLM spend: {llmSpendError}
+                                </div>
+                            ) : llmSpendLoading && !llmSpend ? (
+                                <span style={{ fontSize: '0.75rem', color: '#9ca3af' }}>Loading LLM spend data…</span>
+                            ) : llmSpend ? (
+                                <div style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '1.5rem',
+                                    flexWrap: 'wrap',
+                                    padding: '0.5rem 0.75rem',
+                                    backgroundColor: '#fff',
+                                    borderRadius: '6px',
+                                    border: '1px solid #e5e7eb',
+                                    fontSize: '0.8rem',
+                                }}>
+                                    <span>
+                                        Total Spend:{' '}
+                                        <strong style={{ color: '#059669' }}>${llmSpend.totalSpend.toFixed(2)}</strong>
+                                    </span>
+                                    <span style={{ color: '#6b7280' }}>
+                                        {formatTokens(llmSpend.totalTokens)} tokens
+                                    </span>
+                                    <span style={{ color: '#6b7280' }}>
+                                        {llmSpend.totalRequests.toLocaleString()} requests
+                                    </span>
+                                    {llmSpend.truncated && (
+                                        <span style={{ marginLeft: 'auto', color: '#92400e', fontSize: '0.72rem' }}>
+                                            ⚠ truncated — {llmSpend.docCount} matched, showing first 500
+                                        </span>
+                                    )}
+                                </div>
+                            ) : null}
+
+                            {grantsLoading && !grants ? (
+                                <span style={{ fontSize: '0.75rem', color: '#9ca3af' }}>Loading grant data…</span>
+                            ) : grants && grants.grants.length > 0 ? (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                    <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                                        Grants ({grants.grants.length})
+                                    </div>
+                                    {availableGrants.map(grant => (
+                                        <GrantItem
+                                            key={grant.id}
+                                            grant={grant}
+                                            isActive={grant.id === grants.activeGrant}
+                                            spend={spendByUser.get(grant.llmBudgetUserId)}
+                                        />
+                                    ))}
+                                    {consumedGrants.length > 0 && (
+                                        <ConsumedGrantsGroup grants={consumedGrants} spendByUser={spendByUser} />
+                                    )}
+                                </div>
+                            ) : grants ? (
+                                <span style={{ fontSize: '0.75rem', color: '#9ca3af' }}>No grants found</span>
+                            ) : null}
+                        </>
+                    )}
                 </div>
             )}
         </div>
     );
 }
 
-export default function AppDetailsPanel({ appId, refreshKey, onRefresh, onGrantsLoaded, onAppLoaded, onCustomerIdLoaded, llmSpend, llmSpendLoading, llmSpendError }: Props) {
+export default function AppDetailsPanel({ appId, refreshKey, onRefresh, onSubscriptionLoaded, onGrantsLoaded, onAppLoaded, onCustomerIdLoaded, bmsSpend, bmsSpendLoading, bmsSpendError, llmSpend, llmSpendLoading, llmSpendError }: Props) {
     const [app, setApp] = useState<MgmtAppDetails | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -574,6 +625,8 @@ export default function AppDetailsPanel({ appId, refreshKey, onRefresh, onGrants
     const pollingRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     // Stable refs for parent callbacks — avoids including them in the subscription
     // useEffect dep array (which would re-run on every poll tick if passed as new function refs).
+    const onSubscriptionLoadedRef = useRef(onSubscriptionLoaded);
+    onSubscriptionLoadedRef.current = onSubscriptionLoaded;
     const onGrantsLoadedRef = useRef(onGrantsLoaded);
     onGrantsLoadedRef.current = onGrantsLoaded;
     const onAppLoadedRef = useRef(onAppLoaded);
@@ -620,6 +673,7 @@ export default function AppDetailsPanel({ appId, refreshKey, onRefresh, onGrants
             .then(data => {
                 setSubscription(data);
                 onCustomerIdLoadedRef.current?.(data?.customerId ?? null);
+                onSubscriptionLoadedRef.current?.(data ?? null);
             })
             .catch(err => { if (err.name !== 'AbortError') console.warn('[AppDetailsPanel] subscription fetch failed', err); })
             .finally(() => { if (!controller.signal.aborted) setSubscriptionLoading(false); });
@@ -1069,6 +1123,9 @@ export default function AppDetailsPanel({ appId, refreshKey, onRefresh, onGrants
                     subscriptionLoading={subscriptionLoading}
                     grants={grants}
                     grantsLoading={grantsLoading}
+                    bmsSpend={bmsSpend}
+                    bmsSpendLoading={bmsSpendLoading}
+                    bmsSpendError={bmsSpendError}
                     llmSpend={llmSpend}
                     llmSpendLoading={llmSpendLoading}
                     llmSpendError={llmSpendError}

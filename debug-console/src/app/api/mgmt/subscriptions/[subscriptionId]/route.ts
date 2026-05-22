@@ -17,7 +17,9 @@ export const GET = withAuth<{ subscriptionId: string }>(async function getSubscr
     if (invalid) return invalid;
 
     try {
-        return NextResponse.json(await mgmtControlPlaneAdapter.getSubscription(subscriptionId));
+        return NextResponse.json(
+            await mgmtControlPlaneAdapter.getSubscription(subscriptionId, { includeAttributes: true })
+        );
     } catch (error) {
         return handleMgmtError(error, 'fetch subscription', { subscriptionId });
     }

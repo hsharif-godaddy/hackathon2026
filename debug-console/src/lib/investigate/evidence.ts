@@ -8,6 +8,7 @@ import {
   parseFullstorySessionUrl,
   type FullstoryMcpConfig,
 } from '@/lib/fullstory-mcp-client';
+import { mapWithConcurrency } from '@/lib/concurrency';
 import { parseTimeRange } from '@/lib/time-range';
 import mgmtControlPlaneAdapter from '@/lib/mgmt-control-plane-adapter';
 import { logger } from '@/lib/logger';
@@ -34,24 +35,6 @@ const LOKI_LIMIT = 5000;
 // while still finishing 7d in ~7×slowest-bucket wall time.
 const BUCKET_FETCH_CONCURRENCY = 8;
 
-export async function mapWithConcurrency<T, R>(
-  items: readonly T[],
-  limit: number,
-  fn: (item: T, index: number) => Promise<R>,
-): Promise<R[]> {
-  const out: R[] = new Array(items.length);
-  let cursor = 0;
-  const workerCount = Math.min(Math.max(1, limit), items.length);
-  const workers = Array.from({ length: workerCount }, async () => {
-    while (true) {
-      const idx = cursor++;
-      if (idx >= items.length) return;
-      out[idx] = await fn(items[idx], idx);
-    }
-  });
-  await Promise.all(workers);
-  return out;
-}
 const LOKI_JOB_TO_SOURCE_ID: Record<string, string> = {
   'airo-agents': 'airo-agents',
   'airo-preview-application': 'airo-preview',
