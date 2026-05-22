@@ -30,6 +30,11 @@ const Host = "gdartifactory1.jfrog.io"
 // different repo (e.g. npm-user-experience-local).
 const NpmScopePrefix = "//" + Host + "/artifactory/api/npm/"
 
+// NpmLoginRegistry is the registry URL for `pnpm login`. JFrog's web login
+// only succeeds against the node-virt virtual repo; the resulting token works
+// for every jfrog npm repo once ~/.npmrc uses NpmScopePrefix.
+const NpmLoginRegistry = "https://" + Host + "/artifactory/api/npm/node-virt/"
+
 // ValidateEndpoint is probed by Probe; overridable for tests.
 // `/api/system/version` is the canonical JFrog "am I authenticated?" endpoint:
 // it returns 200 for any authenticated user (since JFrog 2.2.1) and 401 when

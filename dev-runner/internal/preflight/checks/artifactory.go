@@ -22,7 +22,7 @@ type ArtifactoryCheck struct{}
 func (c *ArtifactoryCheck) Name() string     { return "Artifactory Auth" }
 func (c *ArtifactoryCheck) Category() string { return preflight.CategoryTools }
 
-const loginHint = "pnpm login --registry https://gdartifactory1.jfrog.io/artifactory/api/npm/ --auth-type web"
+const loginHint = "pnpm login --registry " + jfrog.NpmLoginRegistry + " --auth-type web"
 
 func (c *ArtifactoryCheck) Run(ctx context.Context, _ string) preflight.CheckResult {
 	// Single read (no prior Stat) to avoid a TOCTOU window during

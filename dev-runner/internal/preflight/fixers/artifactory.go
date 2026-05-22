@@ -10,8 +10,6 @@ import (
 	"github.com/airo-ai-builder/dev-runner/internal/preflight/jfrog"
 )
 
-const artifactoryRegistry = "https://gdartifactory1.jfrog.io/artifactory/api/npm/"
-
 // ArtifactoryFixer authenticates with GoDaddy Artifactory and ensures the
 // resulting ~/.npmrc auth entry is broad enough to cover every jfrog npm
 // repo, not just the specific one pnpm login targeted.
@@ -20,8 +18,9 @@ const artifactoryRegistry = "https://gdartifactory1.jfrog.io/artifactory/api/npm
 //   - If ~/.npmrc already has a token but scoped to a single repo path
 //     (e.g. .../api/npm/node-virt/), rewrite the prefix in place to
 //     .../api/npm/. Non-interactive, finishes instantly.
-//   - Otherwise (missing token or read error), run `pnpm login` for the
-//     broader registry. Interactive -- needs terminal passthrough.
+//   - Otherwise run `pnpm login` against jfrog.NpmLoginRegistry (node-virt;
+//     the broad /api/npm/ URL does not complete web login), then rewrite the
+//     new token to jfrog.NpmScopePrefix. Interactive -- needs terminal passthrough.
 //
 // NeedsTerminal stays true: we can't cheaply predict which path Fix will
 // take without reading the file twice, and falsely suspending the TUI for
@@ -38,7 +37,11 @@ func (f *ArtifactoryFixer) Fix(ctx context.Context, projectRoot string) error {
 	if rewrote {
 		return nil
 	}
-	return RunCommandPassthrough(ctx, projectRoot, "pnpm", "login", "--registry", artifactoryRegistry, "--auth-type", "web")
+	if err := RunCommandPassthrough(ctx, projectRoot, "pnpm", "login", "--registry", jfrog.NpmLoginRegistry, "--auth-type", "web"); err != nil {
+		return err
+	}
+	_, err = broadenNpmrcScope()
+	return err
 }
 
 // broadenNpmrcScope rewrites any jfrog npm auth entries in ~/.npmrc whose
