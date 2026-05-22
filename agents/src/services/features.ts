@@ -63,6 +63,8 @@ interface FeatureConfig {
     social: boolean
     connectingCalendars: boolean
     onlineConferencing: boolean
+    stripe: boolean
+    'stripe-v2': boolean
   }
 
   // Widget/Feature enablement configuration
@@ -231,10 +233,15 @@ function parseEnvironmentFeatures(): FeatureConfig {
     },
 
     // Skill enablement configuration. Add skills here as they are created.
+    // The legacy `stripe` and new `stripe-v2` skills are mutually exclusive:
+    // ENABLE_STRIPE_V2=true disables the legacy skill so the agent never sees
+    // both at once. Default (env unset) keeps the legacy skill on.
     enabledSkills: {
       social: process.env.ENABLE_SOCIAL === 'true',
       connectingCalendars: process.env.ENABLE_CONNECTING_CALENDARS !== 'false',
-      onlineConferencing: process.env.ENABLE_ONLINE_CONFERENCING !== 'false'
+      onlineConferencing: process.env.ENABLE_ONLINE_CONFERENCING !== 'false',
+      stripe: process.env.ENABLE_STRIPE_V2 !== 'true',
+      'stripe-v2': process.env.ENABLE_STRIPE_V2 === 'true',
     },
 
     // Widget/Feature enablement configuration

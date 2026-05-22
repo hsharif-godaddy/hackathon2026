@@ -410,4 +410,36 @@ describe("features", () => {
       expect(skills.isProfileGated("unknown")).toBe(false);
     });
   });
+
+  // Pin: legacy `stripe` and new `stripe-v2` are mutually exclusive via a
+  // single env var. The agent must never see both enabled simultaneously —
+  // they have overlapping whenToUse text and the LLM would pick
+  // unpredictably between them.
+  describe("stripe / stripe-v2 mutual exclusion", () => {
+    it("defaults to legacy stripe enabled, stripe-v2 disabled", async () => {
+      delete process.env.ENABLE_STRIPE_V2;
+
+      const { skills } = await import("../features.js");
+      expect(skills.isEnabled("stripe")).toBe(true);
+      expect(skills.isEnabled("stripe-v2")).toBe(false);
+    });
+
+    it("flips both when ENABLE_STRIPE_V2='true'", async () => {
+      process.env.ENABLE_STRIPE_V2 = "true";
+
+      const { skills } = await import("../features.js");
+      expect(skills.isEnabled("stripe")).toBe(false);
+      expect(skills.isEnabled("stripe-v2")).toBe(true);
+    });
+
+    it("treats anything other than 'true' as legacy-on, v2-off", async () => {
+      // Guards against typos like 'TRUE' or '1' silently flipping the
+      // legacy off without enabling v2.
+      process.env.ENABLE_STRIPE_V2 = "yes";
+
+      const { skills } = await import("../features.js");
+      expect(skills.isEnabled("stripe")).toBe(true);
+      expect(skills.isEnabled("stripe-v2")).toBe(false);
+    });
+  });
 });
