@@ -5,6 +5,7 @@ import TextLockup from '@ux/text-lockup'
 
 import { ContentTooltip } from '@/components/ui/ContentTooltip'
 import { useTranslations } from '@/hooks/useTranslations'
+import { logClickEvent } from '@/utils/instrumentation'
 
 /** Analytics metric card with optional upgrade-locked variant. */
 type MetricCardContent = {
@@ -54,7 +55,10 @@ export function MetricCard(props: MetricCardProps) {
       {...sharedCardProps}
       aria-label={`${label} – ${t('builder_common_tooltip_upgrade')}`}
       type="button"
-      onClick={onUpgrade}
+      onClick={() => {
+        logClickEvent('settings.analytics.metric_card_upgrade')()
+        onUpgrade()
+      }}
       className="size-full overflow-hidden text-start cursor-pointer hover:shadow-md"
     >
       {inner}

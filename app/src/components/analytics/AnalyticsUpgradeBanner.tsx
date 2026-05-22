@@ -7,6 +7,7 @@ import TextLockup from '@ux/text-lockup'
 import { AnalyticsPictogram } from '@/components/icons/AnalyticsPictogram'
 import { useTranslations } from '@/hooks/useTranslations'
 import { cn } from '@/lib/utils'
+import { logClickEvent } from '@/utils/instrumentation'
 
 export interface AnalyticsUpgradeBannerProps {
   onUpgrade: () => void
@@ -35,7 +36,10 @@ export function AnalyticsUpgradeBanner({ onUpgrade, className }: AnalyticsUpgrad
           size="sm"
           icon={<DiamondIcon />}
           text={t('builder_upgrade_button')}
-          onClick={onUpgrade}
+          onClick={() => {
+            logClickEvent('settings.analytics.upgrade_banner')()
+            onUpgrade()
+          }}
         />
       </div>
     </div>
@@ -55,7 +59,10 @@ export function AnalyticsUpgradeInnerBanner({ onUpgrade }: AnalyticsUpgradeInner
       blockAlignChildren="center"
       inlinePadding="md"
       blockPadding="md"
-      onClick={onUpgrade}
+      onClick={() => {
+        logClickEvent('settings.analytics.upgrade_inner_banner')()
+        onUpgrade()
+      }}
       type="button"
       className="border border-dashed border-intents-ux-box-borderColor rounded-md hover:bg-intents-ux-boxLowContrast-backgroundColor hover:text-intents-ux-boxLowContrast-foregroundColor cursor-pointer text-start"
     >

@@ -21,6 +21,7 @@ import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { useSiteStore } from '@/stores/useSiteStore'
 import { SubscriptionPlan } from '@/types/credits'
 import { getPlanFromSubscription } from '@/utils/credits'
+import { logClickEvent } from '@/utils/instrumentation'
 import { hasBeenPublished } from '@/utils/site'
 
 /**
@@ -101,7 +102,10 @@ export default function AnalyticsPanel() {
           title={t('builder_analytics_paywall_title')}
           description={t('builder_analytics_paywall_desc')}
           ctaLabel={t('builder_upgrade_button')}
-          onCtaClick={() => useDevelopPageStore.getState().openUpgradeModal('analytics.panel', PAYWALL_ITC.UPGRADE)}
+          onCtaClick={() => {
+            logClickEvent('settings.analytics.panel_upgrade')()
+            useDevelopPageStore.getState().openUpgradeModal('analytics.panel', PAYWALL_ITC.UPGRADE)
+          }}
           ctaIcon={<DiamondIcon />}
         />
       </Box>
