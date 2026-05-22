@@ -253,30 +253,6 @@ function formatPercent(
   return `${Math.round((numerator / denominator) * 100)}%`;
 }
 
-function scenarioPassCounts(
-  result: ScenarioResult,
-): { passed: number; total: number } {
-  // Only evaluators with passAtK defined have pass/fail semantics.
-  // Unenriched score-mode evaluators (passAtK === undefined) are excluded
-  // from both numerator and denominator.
-  const withPassAtK = Object.values(result.aggregated).filter(
-    (agg) => agg.passAtK !== undefined,
-  );
-  return {
-    passed: withPassAtK.filter((agg) => agg.passAtK).length,
-    total: withPassAtK.length,
-  };
-}
-
-function scenarioOverall(
-  result: ScenarioResult,
-): 'pass' | 'fail' {
-  const counts = scenarioPassCounts(result);
-  if (counts.total === 0) {
-    return Object.keys(result.aggregated).length > 0 ? 'pass' : 'fail';
-  }
-  return counts.passed / counts.total >= 0.75 ? 'pass' : 'fail';
-}
 
 function renderTrialLinks(result: ScenarioResult): string {
   return result.trials
@@ -485,64 +461,21 @@ export class MdReporter {
   private renderSuiteSummary(
     results: ScenarioResult[],
   ): string {
-    const gated = results.filter((r) => r.regressionStatus !== undefined);
-    const informational = results.filter((r) => r.regressionStatus === undefined);
     const totalTrials = results.reduce(
       (sum, result) => sum + result.trials.length,
       0,
     );
-    const scenarioPasses = results.filter(
-      (result) => scenarioOverall(result) === 'pass',
-    ).length;
-    const gatedPasses = gated.filter(
-      (result) => scenarioOverall(result) === 'pass',
-    ).length;
-    const informationalPasses = informational.filter(
-      (result) => scenarioOverall(result) === 'pass',
-    ).length;
 
     return [
       '## Suite Summary',
       '',
       `- Scenarios: **${results.length}**`,
       `- Trials: **${totalTrials}**`,
-      `- Scenarios passed: **${scenarioPasses}** / ${results.length} `
-        + `(${formatPercent(scenarioPasses, results.length)})`,
-      `- Gated passed: **${gatedPasses}** / ${gated.length} `
-        + `(${formatPercent(gatedPasses, gated.length)})`,
-      `- Informational passed: **${informationalPasses}** / ${informational.length} `
-        + `(${formatPercent(informationalPasses, informational.length)})`,
-      '',
-      '### Scenario pass rate (overall)',
-      '',
-      ...this.renderScenarioPassRateTable(results),
       '',
       '### Evaluator rollup (across scenarios)',
       '',
       ...this.renderEvaluatorRollupTable(results),
     ].join('\n');
-  }
-
-  private renderScenarioPassRateTable(
-    results: ScenarioResult[],
-  ): string[] {
-    const lines = [
-      '| Scenario ID | Scenario name | Overall | Evaluators passed |',
-      '|------------|---------------|---------|------------------|',
-    ];
-
-    for (const result of results) {
-      const counts = scenarioPassCounts(result);
-      lines.push(
-        `| ${escapePipeForMarkdown(result.scenarioName)}`
-        + ` | ${truncateCell(result.scenarioName, 120)}`
-        + ` | ${scenarioOverall(result)}`
-        + ` | ${counts.passed}/${counts.total} `
-        + `(${formatPercent(counts.passed, counts.total)}) |`,
-      );
-    }
-
-    return lines;
   }
 
   private renderEvaluatorRollupTable(

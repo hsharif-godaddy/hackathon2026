@@ -192,76 +192,11 @@ describe('MdReporter', () => {
     );
 
     expect(content).toContain('## Suite Summary');
-    expect(content).toContain('### Scenario pass rate (overall)');
     expect(content).toContain('### Evaluator rollup (across scenarios)');
     expect(content).toContain('| Evaluator | pass | partial | fail | unknown | pass rate |');
   });
 
-  it('counts only pass@k evaluators in scenario pass fraction (excludes score-mode)', () => {
-    const withObservational: ScenarioResult = {
-      ...BASELINED_RESULT,
-      trials: BASELINED_RESULT.trials.map((trial) => ({
-        ...trial,
-        evalResults: [
-          ...trial.evalResults,
-          makeEvalResult('token-usage', 'observed', 42),
-        ],
-      })),
-      aggregated: {
-        ...BASELINED_RESULT.aggregated,
-        'token-usage': {
-          passingTrials: 3,
-          totalTrials: 3,
-          regressionMode: 'score',
-          medianScore: 42,
-        },
-      },
-    };
-    const reporter = new MdReporter();
-    const content = reporter.render('run-001', [withObservational]);
-    const passRateSection = content.split(
-      '### Scenario pass rate (overall)',
-    )[1];
-    expect(passRateSection).toBeDefined();
-    expect(passRateSection).toContain('2/2 (100%)');
-    expect(passRateSection).toContain('| pass | 2/2 (100%)');
-    expect(passRateSection).not.toContain('2/3');
-  });
-
-  it('treats score-mode-only scenarios as overall pass (0/0 fraction)', () => {
-    const scoreOnly: ScenarioResult = {
-      scenarioName: 'latency-only',
-      stabilityLevel: 'medium',
-      trials: [
-        makeTrial(0, [
-          makeEvalResult('token-usage', 'observed', 100),
-          makeEvalResult('llm-cost', 'observed', 0.01),
-        ]),
-      ],
-      aggregated: {
-        'llm-cost': {
-          passingTrials: 1,
-          totalTrials: 1,
-          regressionMode: 'score',
-          medianScore: 0.01,
-        },
-        'token-usage': {
-          passingTrials: 1,
-          totalTrials: 1,
-          regressionMode: 'score',
-          medianScore: 100,
-        },
-      },
-    };
-    const reporter = new MdReporter();
-    const content = reporter.render('run-001', [scoreOnly]);
-    expect(content).toContain('- Scenarios passed: **1** / 1');
-    expect(content).toMatch(
-      /\| latency-only \|[^\n]*\| pass \| 0\/0 \(0%\)/,
-    );
-  });
-
-  it('renders trial links in a separate section at bottom (not inline in pass rate table)', () => {
+  it('renders trial links in a separate section at bottom', () => {
     const reporter = new MdReporter();
     const content = reporter.render('run-001', [BASELINED_RESULT]);
 
@@ -277,11 +212,6 @@ describe('MdReporter', () => {
     expect(trialLinksSection).toContain(
       '[T3](scenarios/build-landing-page/trials/2/eval-results.md)',
     );
-
-    // Pass rate table should not have a Links column
-    const passRateSection = content.split('### Scenario pass rate (overall)')[1]
-      ?.split('###')[0];
-    expect(passRateSection).not.toContain('| Links |');
   });
 
   it('includes an evaluator matrix', () => {
@@ -1381,86 +1311,6 @@ describe('MdReporter — composite breakdown', () => {
   });
 });
 
-// ── Score-mode pass fraction ──────────────────────────────────
-
-describe('MdReporter — score-mode pass fraction', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockMkdir.mockResolvedValue(undefined);
-    mockWriteFile.mockResolvedValue(undefined);
-  });
-
-  it('includes enriched score-mode evaluator (passAtK defined) in scenario pass fraction denominator', () => {
-    // 1 pass-rate evaluator (passAtK: true) + 1 enriched score-mode (passAtK: true)
-    // Both have meaningful pass/fail semantics → denominator should be 2
-    const result: ScenarioResult = {
-      scenarioName: 'mixed-enriched',
-      stabilityLevel: 'medium',
-      trials: [
-        makeTrial(0, [
-          makeEvalResult('jtbd-completion', 'pass'),
-          makeEvalResult('latency', 'observed', 0.5),
-        ]),
-      ],
-      aggregated: {
-        'jtbd-completion': {
-          passAtK: true,
-          passToTheK: true,
-          passingTrials: 1,
-          totalTrials: 1,
-        },
-        'latency': {
-          passAtK: true,
-          passToTheK: true,
-          passingTrials: 1,
-          totalTrials: 1,
-          medianScore: 0.5,
-          regressionMode: 'score',
-        },
-      },
-    };
-    const reporter = new MdReporter();
-    const content = reporter.render('run-001', [result]);
-    // Both evaluators in denominator → 2/2 (100%)
-    expect(content).toContain('2/2');
-    expect(content).toContain('100%');
-  });
-
-  it('excludes unenriched score-mode evaluator (passAtK absent) from scenario pass fraction denominator', () => {
-    // 1 pass-rate evaluator (passAtK: true) + 1 unenriched score-mode (passAtK: undefined)
-    // Only the pass-rate evaluator has pass/fail semantics → denominator should be 1
-    const result: ScenarioResult = {
-      scenarioName: 'mixed-unenriched',
-      stabilityLevel: 'medium',
-      trials: [
-        makeTrial(0, [
-          makeEvalResult('jtbd-completion', 'pass'),
-          makeEvalResult('latency', 'observed', 0.5),
-        ]),
-      ],
-      aggregated: {
-        'jtbd-completion': {
-          passAtK: true,
-          passToTheK: true,
-          passingTrials: 1,
-          totalTrials: 1,
-        },
-        'latency': {
-          // no passAtK — unenriched (no baseline)
-          passingTrials: 0,
-          totalTrials: 1,
-          medianScore: 0.5,
-          regressionMode: 'score',
-        },
-      },
-    };
-    const reporter = new MdReporter();
-    const content = reporter.render('run-001', [result]);
-    // Only jtbd-completion in denominator → 1/1 (100%), not 1/2 (50%)
-    expect(content).toContain('1/1');
-    expect(content).toContain('100%');
-  });
-});
 
 // ── Mode line rendering ──────────────────────────────────────────────────────
 
