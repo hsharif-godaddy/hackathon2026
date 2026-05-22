@@ -17,6 +17,9 @@ function appContext(overrides: Partial<AppContext> = {}): AppContext {
   return {
     appId: 'app-abc123',
     target: 'publish',
+    contextSource: 'none',
+    projectContextText: 'No project files were available for this diagnosis.',
+    filesIncluded: 0,
     ...overrides,
   };
 }
@@ -226,22 +229,22 @@ describe('LlmClassifier', () => {
     });
   });
 
-  describe('out-of-scope sentinel passthrough', () => {
+  describe('platform-outage sentinel passthrough', () => {
     const sentinelOutput: LlmAnalysisOutput = {
       status: 'unknown',
       primaryRecommendation:
-        'No platform guideline violation detected. The deployment error appears to be in the application code and is outside the scope of this diagnostic service.',
+        'The deployment platform is temporarily unavailable. Retry in a few minutes or contact support if the issue persists.',
       issues: [
         {
-          id: 'no-platform-violation-detected',
-          category: 'Out of Scope',
+          id: 'platform-outage',
+          category: 'Platform',
           severity: 'warning',
           message:
-            'Log evidence does not match any Node.js Hosting upload guideline. The failure appears to be an application-level error.',
+            'Logs indicate a platform or upstream infrastructure issue, not an application configuration problem.',
           recommendation:
-            'Review the cited log lines manually; the fix is in your application code, not a platform requirement.',
+            'Wait a few minutes and retry deployment. If failures continue, contact GoDaddy support with the cited log lines.',
           confidence: 0,
-          relatedLogs: ['ERR_UNSUPPORTED_DIR_IMPORT'],
+          relatedLogs: ['supervisor unavailable'],
         },
       ],
     };
@@ -250,15 +253,15 @@ describe('LlmClassifier', () => {
       const sentinelClient = new FakeLlmClient(async () => sentinelOutput);
       const classifier = new LlmClassifier(sentinelClient);
 
-      const result = await classifier.classify([logLine('ERR_UNSUPPORTED_DIR_IMPORT')], appContext());
+      const result = await classifier.classify([logLine('supervisor unavailable')], appContext());
 
       expect(result.handled).toBe(true);
       expect(result.issues).toHaveLength(1);
-      expect(result.issues[0]!.id).toBe('no-platform-violation-detected');
+      expect(result.issues[0]!.id).toBe('platform-outage');
       expect(result.issues[0]!.source).toBe('llm');
       expect(result.issues[0]!.severity).toBe('warning');
       expect(result.issues[0]!.confidence).toBe(0);
-      expect(result.issues[0]!.category).toBe('Out of Scope');
+      expect(result.issues[0]!.category).toBe('Platform');
     });
 
     it('the sentinel shape validates against the Zod schema the classifier supplies', async () => {

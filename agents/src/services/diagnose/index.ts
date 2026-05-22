@@ -4,4 +4,10 @@ export { PaaSDiagnoseService, buildUnknownAnalysis } from './PaaSDiagnoseService
 export type { PaaSDiagnoseServiceDeps } from './PaaSDiagnoseService.js';
 export { LlmClassifier } from './classifiers/LlmClassifier.js';
 export type { LlmClassifierOptions } from './classifiers/LlmClassifier.js';
+export { PatternClassifier } from './classifiers/PatternClassifier.js';
+export { DiagnoseContextService, diagnoseContextService } from './DiagnoseContextService.js';
+export type { DiagnoseContextGatherRequest } from './DiagnoseContextService.js';
+export { redactSecrets } from './redact-secrets.js';
+export { buildAppContext } from './types.js';
+export type { DiagnoseContextSource, AppContextBase, DiagnoseContextGatherResult } from './types.js';
 export { DiagnoseLlmClient } from './DiagnoseLlmClient.js';

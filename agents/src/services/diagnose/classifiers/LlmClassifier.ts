@@ -116,6 +116,7 @@ export class LlmClassifier implements Classifier {
     // LLM call stage. Any error here — including an ENOENT bubbling up from a
     // downstream dep — is classified as a generic llm-failure.
     try {
+      const hasProjectContext = Boolean(context.projectContextText?.trim());
       const output = await this.llm.generateStructured<LlmAnalysisOutput>({
         system: systemPrompt,
         user: userPrompt,
@@ -124,6 +125,7 @@ export class LlmClassifier implements Classifier {
         budgetUser: BudgetOverride.DiagnoseTask,
         tags: [DIAGNOSE_TAG, `target:${context.target}`],
         functionId: FUNCTION_ID,
+        maxOutputTokens: hasProjectContext ? 3000 : 2000,
       });
       return {
         handled: true,
@@ -206,6 +208,10 @@ export class LlmClassifier implements Classifier {
       .map((entry) => `${entry.timestamp} [${entry.source}] ${entry.message}`)
       .join('\n');
 
+    const projectContext =
+      ctx.projectContextText?.trim() ||
+      'No project files were available for this diagnosis.';
+
     return createPromptBuilder()
       .template(userTemplate)
       .build({
@@ -213,6 +219,10 @@ export class LlmClassifier implements Classifier {
         target: ctx.target,
         logCount: logs.length,
         logs: logText,
+        projectContext,
+        logSource: ctx.logSource ?? 'customer',
+        errorStage: ctx.errorStage ?? 'unknown',
+        packageManager: ctx.packageManager ?? 'npm',
       });
   }
 

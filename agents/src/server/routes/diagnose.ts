@@ -20,7 +20,9 @@ import { LogSanitizer } from '../../services/log-sanitizer.js';
 import {
   PaaSDiagnoseService,
   LlmClassifier,
+  PatternClassifier,
   DiagnoseLlmClient,
+  DiagnoseContextService,
   buildUnknownAnalysis,
 } from '../../services/diagnose/index.js';
 import type {
@@ -46,10 +48,14 @@ function getDiagnoseService(): DiagnoseService {
     );
     const llmClient = new DiagnoseLlmClient();
     const llmClassifier = new LlmClassifier(llmClient);
+    const patternClassifier = new PatternClassifier();
+    const diagnoseContextService = new DiagnoseContextService();
     _diagnoseService = new PaaSDiagnoseService({
       customerLogsService,
       agentOperationLogsService,
+      patternClassifier,
       llmClassifier,
+      diagnoseContextService,
     });
   }
   return _diagnoseService;

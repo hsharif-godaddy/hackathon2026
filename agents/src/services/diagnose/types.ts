@@ -4,6 +4,8 @@ import type { SanitizedLogEntry } from '../log-sanitizer.js';
 
 export type DiagnoseTarget = 'preview' | 'publish';
 
+export type DiagnoseContextSource = 'snapshot' | 'workspace' | 'none';
+
 export type IssueSeverity = 'error' | 'warning';
 
 export type ClassifierSource = 'pattern' | 'embedding' | 'llm';
@@ -24,6 +26,16 @@ export type DiagnoseErrorCode =
   | 'TIER_NOT_IMPLEMENTED'
   | 'UNKNOWN';
 
+export type DiagnoseAction =
+  | { type: 'command'; command: string; cwd?: string }
+  | {
+      type: 'file_edit';
+      path: string;
+      description: string;
+      before?: string;
+      after?: string;
+    };
+
 export interface Issue {
   id: string;
   category: string;
@@ -33,6 +45,7 @@ export interface Issue {
   confidence: number;
   source: ClassifierSource;
   relatedLogs?: string[];
+  actions?: DiagnoseAction[];
 }
 
 export interface AnalysisSummary {
@@ -46,6 +59,8 @@ export interface AnalysisMetadata {
   logsAnalyzed: number;
   tierUsed: DiagnoseTier;
   analysisTimeMs: number;
+  filesIncluded?: number;
+  contextSource?: DiagnoseContextSource;
   creditsUsed?: number;
   creditsRemaining?: number;
 }
@@ -117,6 +132,21 @@ export interface LlmGenerateArgs<T> {
  * Zod schema that the LLM response is validated against.
  * Mirrors the Issue shape (without `source`, which is stamped by the classifier).
  */
+export const LlmActionSchema = z.discriminatedUnion('type', [
+  z.object({
+    type: z.literal('command'),
+    command: z.string().min(1),
+    cwd: z.string().optional(),
+  }),
+  z.object({
+    type: z.literal('file_edit'),
+    path: z.string().min(1),
+    description: z.string().min(1),
+    before: z.string().optional(),
+    after: z.string().optional(),
+  }),
+]);
+
 export const LlmIssueSchema = z.object({
   id: z.string().min(1),
   category: z.string().min(1),
@@ -125,6 +155,7 @@ export const LlmIssueSchema = z.object({
   recommendation: z.string().min(1),
   confidence: z.number().min(0).max(100),
   relatedLogs: z.array(z.string()).max(3).optional(),
+  actions: z.array(LlmActionSchema).max(5).optional(),
 });
 
 export const LlmAnalysisSchema = z.object({
@@ -136,8 +167,56 @@ export const LlmAnalysisSchema = z.object({
 
 export type LlmAnalysisOutput = z.infer<typeof LlmAnalysisSchema>;
 
-/** App-level context passed to the LLM prompt. */
-export interface AppContext {
+/** Shared diagnose request fields for every classifier tier. */
+export interface AppContextBase {
   appId: string;
   target: DiagnoseTarget;
+  logSource?: 'customer' | 'import_job';
+  errorStage?: string;
+  packageManager?: 'npm' | 'yarn' | 'pnpm';
+}
+
+/** Classifier / LLM context after project files are gathered. */
+export type AppContext =
+  | (AppContextBase & {
+      contextSource: 'none';
+      projectContextText: string;
+      filesIncluded: number;
+    })
+  | (AppContextBase & {
+      contextSource: 'snapshot';
+      snapshotPath: string;
+      projectContextText: string;
+      filesIncluded: number;
+    })
+  | (AppContextBase & {
+      contextSource: 'workspace';
+      projectContextText: string;
+      filesIncluded: number;
+    });
+
+export interface DiagnoseContextGatherResult {
+  projectContextText: string;
+  contextSource: DiagnoseContextSource;
+  filesIncluded: number;
+}
+
+/** Build a validated AppContext from gather output (enforces cross-field invariants). */
+export function buildAppContext(
+  base: AppContextBase & { snapshotPath?: string },
+  gather: DiagnoseContextGatherResult
+): AppContext {
+  const shared = {
+    ...base,
+    projectContextText: gather.projectContextText,
+    filesIncluded: gather.filesIncluded,
+  };
+
+  if (gather.contextSource === 'snapshot' && base.snapshotPath) {
+    return { ...shared, contextSource: 'snapshot', snapshotPath: base.snapshotPath };
+  }
+  if (gather.contextSource === 'workspace') {
+    return { ...shared, contextSource: 'workspace' };
+  }
+  return { ...shared, contextSource: 'none' };
 }

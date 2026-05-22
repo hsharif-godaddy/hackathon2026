@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { PaaSDiagnoseService } from '../PaaSDiagnoseService.js';
+import { PatternClassifier } from '../classifiers/PatternClassifier.js';
 import { Logger } from '../../../logging/index.js';
 import type {
   AppContext,
@@ -56,7 +57,7 @@ function makeLogsService(response: CustomerLogsResponse): {
 
 function makeAgentLogsService(
   logs: SanitizedLogEntry[],
-  options?: { errorStage?: string }
+  options?: { errorStage?: string; diagnoseSnapshotPath?: string; detectedPackageManager?: 'npm' }
 ): {
   getFailureLogs: ReturnType<typeof vi.fn>;
 } {
@@ -66,6 +67,8 @@ function makeAgentLogsService(
       total: logs.length,
       source: logs.length > 0 ? 'import_job' : 'none',
       errorStage: options?.errorStage,
+      diagnoseSnapshotPath: options?.diagnoseSnapshotPath,
+      detectedPackageManager: options?.detectedPackageManager,
     }),
   };
 }
@@ -528,7 +531,11 @@ const llm = new FakeClassifier('llm', async () => ({ handled: true, issues: [iss
       const svc = new PaaSDiagnoseService({ customerLogsService: logs as never, llmClassifier: llm, clock });
       await svc.diagnose(makeRequest({ appId: 'real-app-id' }));
 
-      expect(llm.lastContext).toEqual({ appId: 'real-app-id', target: 'publish' });
+      expect(llm.lastContext).toMatchObject({
+        appId: 'real-app-id',
+        target: 'publish',
+        logSource: 'customer',
+      });
     });
   });
 
@@ -774,6 +781,75 @@ const llm = new FakeClassifier('llm', async () => ({
       expect(response.success).toBe(true);
       expect(findHitEvent(infoSpy)).toMatchObject({ llmFailure: false, issueCount: 1 });
       infoSpy.mockRestore();
+    });
+  });
+
+  describe('pattern tier and project context', () => {
+    it('short-circuits LLM when pattern classifier matches', async () => {
+      const logs = makeLogsService({
+        success: true,
+        logs: [
+          {
+            timestamp: '2026-04-20T10:30:45Z',
+            source: 'stderr',
+            message: "Error: Cannot find module 'lodash'",
+            level: 'error',
+          },
+        ],
+        total: 1,
+      });
+      const llm = new FakeClassifier('llm', async () => ({ handled: true, issues: [issue()] }));
+      const pattern = new PatternClassifier();
+
+      const svc = new PaaSDiagnoseService({
+        customerLogsService: logs as never,
+        patternClassifier: pattern,
+        llmClassifier: llm,
+        clock,
+      });
+      const response = await svc.diagnose(makeRequest());
+
+      expect(response.success).toBe(true);
+      expect(response.analysis.metadata.tierUsed).toBe('pattern');
+      expect(llm.calls).toBe(0);
+      expect(response.analysis.summary.primaryRecommendation).toContain('npm install lodash');
+    });
+
+    it('passes snapshot path and project context into LLM classifier', async () => {
+      const logs = makeLogsService({ success: true, logs: makeLogs(), total: 1 });
+      const agentLogs = makeAgentLogsService(makeLogs(), {
+        errorStage: 'building',
+        diagnoseSnapshotPath: '/tmp/snapshots/job-1',
+        detectedPackageManager: 'npm',
+      });
+      const llm = new FakeClassifier('llm', async () => ({ handled: true, issues: [issue()] }));
+      const gather = vi.fn().mockResolvedValue({
+        files: [],
+        projectContextText: '### package.json\n```\n{}\n```',
+        contextSource: 'snapshot' as const,
+        filesIncluded: 1,
+      });
+
+      const svc = new PaaSDiagnoseService({
+        customerLogsService: logs as never,
+        agentOperationLogsService: agentLogs as never,
+        llmClassifier: llm,
+        diagnoseContextService: { gather },
+        clock,
+      });
+      await svc.diagnose(makeRequest());
+
+      expect(gather).toHaveBeenCalledWith(
+        expect.objectContaining({
+          snapshotPath: '/tmp/snapshots/job-1',
+          logSource: 'import_job',
+        })
+      );
+      expect(llm.lastContext?.contextSource).toBe('snapshot');
+      if (llm.lastContext?.contextSource === 'snapshot') {
+        expect(llm.lastContext.snapshotPath).toBe('/tmp/snapshots/job-1');
+      }
+      expect(llm.lastContext?.projectContextText).toContain('package.json');
     });
   });
 });

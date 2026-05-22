@@ -463,6 +463,7 @@ function createImportJobsTable(db: Database): void {
       build_output TEXT,
       error_message TEXT,
       error_stage TEXT,
+      diagnose_snapshot_path TEXT,
       started_at DATETIME,
       completed_at DATETIME,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -908,16 +909,38 @@ function createTriggers(db: Database): void {
  *
  * @param db - Database instance
  */
+const MIGRATION_PROBE_APP_ID = '__migration_probe_app__';
+
+/** App row used only by import_jobs migration probe inserts (satisfies FK). */
+function ensureMigrationProbeApp(db: Database): void {
+  db.prepare(`
+    INSERT OR IGNORE INTO apps (id, name, path, port, status)
+    VALUES (?, 'Migration Probe', '/migration-probe', 3000, 'created')
+  `).run(MIGRATION_PROBE_APP_ID);
+}
+
+/** Remove probe rows so they are not copied into recovered databases. */
+function cleanupMigrationProbeRows(db: Database): void {
+  db.prepare(`
+    DELETE FROM import_jobs
+    WHERE id IN ('__test_constraint__', '__test_status_constraint__')
+       OR app_id = ?
+  `).run(MIGRATION_PROBE_APP_ID);
+  db.prepare(`DELETE FROM apps WHERE id = ?`).run(MIGRATION_PROBE_APP_ID);
+}
+
 function migrateSourceTypeConstraint(db: Database): void {
   try {
+    ensureMigrationProbeApp(db);
+    try {
     // Check current constraint by trying to insert a git_pull value
     const testStmt = db.prepare(`
       INSERT INTO import_jobs (id, app_id, status, source_type)
-      VALUES ('__test_constraint__', '__test__', 'pending', 'git_pull')
+      VALUES ('__test_constraint__', ?, 'pending', 'git_pull')
     `);
 
     try {
-      testStmt.run();
+      testStmt.run(MIGRATION_PROBE_APP_ID);
       // If we get here, constraint already allows git_pull - clean up and return
       db.prepare(`DELETE FROM import_jobs WHERE id = '__test_constraint__'`).run();
       logger.info('database.migration.source-type-constraint.skipped', {
@@ -960,6 +983,7 @@ function migrateSourceTypeConstraint(db: Database): void {
         build_output TEXT,
         error_message TEXT,
         error_stage TEXT,
+        diagnose_snapshot_path TEXT,
         started_at DATETIME,
         completed_at DATETIME,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -968,7 +992,20 @@ function migrateSourceTypeConstraint(db: Database): void {
       );
 
       -- Copy only zip import data (discard all git data as requested)
-      INSERT INTO import_jobs_new SELECT * FROM import_jobs WHERE source_type = 'zip';
+      INSERT INTO import_jobs_new (
+        id, app_id, status, source_type, zip_file_name, zip_file_size,
+        git_url, git_branch, git_commit_hash, extracted_path, detected_package_manager,
+        has_build_script, has_dev_script, validation_errors, install_output, build_output,
+        error_message, error_stage, diagnose_snapshot_path, started_at, completed_at,
+        created_at, updated_at
+      )
+      SELECT
+        id, app_id, status, source_type, zip_file_name, zip_file_size,
+        git_url, git_branch, git_commit_hash, extracted_path, detected_package_manager,
+        has_build_script, has_dev_script, validation_errors, install_output, build_output,
+        error_message, error_stage, diagnose_snapshot_path, started_at, completed_at,
+        created_at, updated_at
+      FROM import_jobs WHERE source_type = 'zip';
 
       -- Drop old table and rename new one
       DROP TABLE import_jobs;
@@ -985,6 +1022,9 @@ function migrateSourceTypeConstraint(db: Database): void {
     logger.info('database.migration.source-type-constraint.success', {
       message: 'Successfully updated source_type CHECK constraint (git data discarded)',
     });
+    } finally {
+      cleanupMigrationProbeRows(db);
+    }
   } catch (err) {
     logger.error('database.migration.source-type-constraint.failed', {
       error: err instanceof Error ? err.message : String(err),
@@ -1030,16 +1070,18 @@ function migrateImportJobsStatusConstraint(db: Database): void {
       return;
     }
 
+    ensureMigrationProbeApp(db);
+    try {
     // Check current constraint by trying to insert a 'pushing' status value.
     // Note: This test-insert-delete approach is not atomic, but SQLite's file-level
     // locking prevents concurrent writes. See function JSDoc for details.
     const testStmt = db.prepare(`
       INSERT INTO import_jobs (id, app_id, status, source_type)
-      VALUES ('__test_status_constraint__', '__test__', 'pushing', 'zip')
+      VALUES ('__test_status_constraint__', ?, 'pushing', 'zip')
     `);
 
     try {
-      testStmt.run();
+      testStmt.run(MIGRATION_PROBE_APP_ID);
       // If we get here, constraint already allows 'pushing' - clean up and return
       db.prepare(`DELETE FROM import_jobs WHERE id = '__test_status_constraint__'`).run();
       logger.info('database.migration.status-constraint.skipped', {
@@ -1081,6 +1123,7 @@ function migrateImportJobsStatusConstraint(db: Database): void {
         build_output TEXT,
         error_message TEXT,
         error_stage TEXT,
+        diagnose_snapshot_path TEXT,
         started_at DATETIME,
         completed_at DATETIME,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -1092,7 +1135,20 @@ function migrateImportJobsStatusConstraint(db: Database): void {
       -- which filters by source_type='zip'). All data is preserved here because this
       -- migration only relaxes the CHECK constraint to add new status values - it doesn't
       -- change data semantics or invalidate existing records.
-      INSERT INTO import_jobs_new SELECT * FROM import_jobs;
+      INSERT INTO import_jobs_new (
+        id, app_id, status, source_type, zip_file_name, zip_file_size,
+        git_url, git_branch, git_commit_hash, extracted_path, detected_package_manager,
+        has_build_script, has_dev_script, validation_errors, install_output, build_output,
+        error_message, error_stage, diagnose_snapshot_path, started_at, completed_at,
+        created_at, updated_at
+      )
+      SELECT
+        id, app_id, status, source_type, zip_file_name, zip_file_size,
+        git_url, git_branch, git_commit_hash, extracted_path, detected_package_manager,
+        has_build_script, has_dev_script, validation_errors, install_output, build_output,
+        error_message, error_stage, diagnose_snapshot_path, started_at, completed_at,
+        created_at, updated_at
+      FROM import_jobs;
 
       -- Drop old table and rename new one
       DROP TABLE import_jobs;
@@ -1109,6 +1165,9 @@ function migrateImportJobsStatusConstraint(db: Database): void {
     logger.info('database.migration.status-constraint.success', {
       message: 'Successfully updated status CHECK constraint to include pushing and pulling',
     });
+    } finally {
+      cleanupMigrationProbeRows(db);
+    }
   } catch (err) {
     // Error handling: Log and continue (don't throw). This matches the pattern used
     // by all other migrations in this file. SQLite's automatic transaction rollback
@@ -1338,8 +1397,52 @@ function applyMigrations(db: Database): void {
   // Migrate status CHECK constraint to include pushing and pulling statuses
   migrateImportJobsStatusConstraint(db);
 
+  migrateImportJobsDiagnoseSnapshotPath(db);
+
   // Add purpose column to share_tokens for archive-snapshot share tokens
   migrateShareTokensPurpose(db);
+}
+
+/**
+ * Migration: Add diagnose_snapshot_path for failed-import file context.
+ */
+function migrateImportJobsDiagnoseSnapshotPath(db: Database): void {
+  try {
+    const tableExists = db
+      .prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name='import_jobs'`)
+      .get() as { name: string } | undefined;
+
+    if (!tableExists) {
+      logger.info('database.migration.import-jobs-diagnose-snapshot.skipped', {
+        reason: 'import_jobs table does not exist yet',
+      });
+      return;
+    }
+
+    const columnInfo = db
+      .prepare(`SELECT name FROM pragma_table_info('import_jobs') WHERE name = 'diagnose_snapshot_path'`)
+      .get() as { name: string } | undefined;
+
+    if (columnInfo) {
+      logger.info('database.migration.import-jobs-diagnose-snapshot.skipped', {
+        reason: 'diagnose_snapshot_path column already exists',
+      });
+      return;
+    }
+
+    logger.info('database.migration.import-jobs-diagnose-snapshot.start', {
+      reason: 'Adding diagnose_snapshot_path for failed-import diagnose context',
+    });
+
+    db.exec(`ALTER TABLE import_jobs ADD COLUMN diagnose_snapshot_path TEXT`);
+
+    logger.info('database.migration.import-jobs-diagnose-snapshot.complete');
+  } catch (error) {
+    logger.error('database.migration.import-jobs-diagnose-snapshot.failed', {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    // Don't throw - migration failures shouldn't break app startup
+  }
 }
 
 /**

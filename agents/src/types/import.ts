@@ -129,6 +129,8 @@ export interface ImportJob {
   errorMessage?: string;
   /** Stage where the error occurred */
   errorStage?: string;
+  /** Host path to preserved project tree for diagnose (failed imports) */
+  diagnoseSnapshotPath?: string;
   /** When the import processing started */
   startedAt?: Date;
   /** When the import completed (success or failure) */

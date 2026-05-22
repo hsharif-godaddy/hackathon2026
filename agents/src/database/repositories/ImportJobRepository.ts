@@ -36,6 +36,7 @@ interface ImportJobRow {
   build_output: string | null;
   error_message: string | null;
   error_stage: string | null;
+  diagnose_snapshot_path: string | null;
   started_at: string | null;
   completed_at: string | null;
   created_at: string;
@@ -69,6 +70,7 @@ export interface UpdateImportJobParams {
   buildOutput?: string | undefined;
   errorMessage?: string | undefined;
   errorStage?: string | undefined;
+  diagnoseSnapshotPath?: string | undefined;
   startedAt?: Date;
   completedAt?: Date;
   // Git-specific fields
@@ -111,6 +113,7 @@ export class ImportJobRepository {
     if (row.build_output) job.buildOutput = row.build_output;
     if (row.error_message) job.errorMessage = row.error_message;
     if (row.error_stage) job.errorStage = row.error_stage;
+    if (row.diagnose_snapshot_path) job.diagnoseSnapshotPath = row.diagnose_snapshot_path;
     if (row.started_at) job.startedAt = new Date(row.started_at);
     if (row.completed_at) job.completedAt = new Date(row.completed_at);
 
@@ -314,6 +317,7 @@ export class ImportJobRepository {
     buildOutput: { column: 'build_output' },
     errorMessage: { column: 'error_message' },
     errorStage: { column: 'error_stage' },
+    diagnoseSnapshotPath: { column: 'diagnose_snapshot_path' },
     startedAt: { column: 'started_at', transform: (v) => (v as Date).toISOString() },
     completedAt: { column: 'completed_at', transform: (v) => (v as Date).toISOString() },
     gitUrl: { column: 'git_url' },

@@ -35,6 +35,7 @@ import {
   isSupportedProjectInContainer,
   SUPPORTED_BUILD_TOOLS,
 } from '../server/middleware/git-import-validation.js';
+import { diagnoseSnapshotService } from './DiagnoseSnapshotService.js';
 
 /**
  * Airo platform-specific .gitignore patterns
@@ -191,6 +192,7 @@ export class ProjectImportService {
     let containerZipPath: string | null = null;
     let containerExtractPath: string | null = null;
     let containerProjectPath: string | null = null;
+    let agentZipPath: string | undefined;
 
     try {
       // Mark as started
@@ -249,7 +251,7 @@ export class ProjectImportService {
       // Phase 2: Copy zip to container via shared filesystem
       await this.updateStatus(jobId, ImportJobStatus.EXTRACTING);
 
-      const agentZipPath = join(app.path, `.import-${jobId}.zip`);
+      agentZipPath = join(app.path, `.import-${jobId}.zip`);
       containerZipPath = `/app/.import-${jobId}.zip`;
       containerExtractPath = `/app/.import-${jobId}-extract`;
 
@@ -278,6 +280,12 @@ export class ProjectImportService {
           appId,
           stage: ImportJobStatus.EXTRACTING,
           errors: extractResult.errors,
+        });
+        await this.preserveDiagnoseSnapshotForFailure({
+          jobId,
+          appId,
+          appPath: app.path,
+          agentZipPath,
         });
         await this.importJobRepo.markFailed(
           jobId,
@@ -308,6 +316,12 @@ export class ProjectImportService {
           appId,
           stage: ImportJobStatus.VALIDATING,
           errors: validation.errors,
+        });
+        await this.preserveDiagnoseSnapshotForFailure({
+          jobId,
+          appId,
+          appPath: app.path,
+          agentZipPath,
         });
         await this.importJobRepo.markFailed(
           jobId,
@@ -376,6 +390,12 @@ export class ProjectImportService {
           appId,
           stage: ImportJobStatus.COPYING,
           error: copyResult.error,
+        });
+        await this.preserveDiagnoseSnapshotForFailure({
+          jobId,
+          appId,
+          appPath: app.path,
+          agentZipPath,
         });
         await this.importJobRepo.markFailed(
           jobId,
@@ -492,6 +512,12 @@ export class ProjectImportService {
           exitCode: installResult.exitCode,
           packageManager: detectedPm,
         });
+        await this.preserveDiagnoseSnapshotForFailure({
+          jobId,
+          appId,
+          appPath: app.path,
+          agentZipPath,
+        });
         await this.gitRollback(appId, app.path);
         await this.importJobRepo.markFailed(
           jobId,
@@ -530,6 +556,12 @@ export class ProjectImportService {
             error: buildResult.error,
             exitCode: buildResult.exitCode,
             packageManager: detectedPm,
+          });
+          await this.preserveDiagnoseSnapshotForFailure({
+            jobId,
+            appId,
+            appPath: app.path,
+            agentZipPath,
           });
           await this.gitRollback(appId, app.path);
           await this.importJobRepo.markFailed(
@@ -644,6 +676,7 @@ export class ProjectImportService {
       });
 
       // Mark as completed
+      await diagnoseSnapshotService.cleanupForApp(app.path, appId);
       await this.importJobRepo.markCompleted(jobId);
       this.appRepo.updateStatus(appId, 'created');
 
@@ -1219,6 +1252,35 @@ export class ProjectImportService {
         success: false,
         error: error instanceof Error ? error.message : 'Git commit failed',
       };
+    }
+  }
+
+  /**
+   * Copy the failing project tree (or zip) for diagnose before rollback/cleanup.
+   */
+  private async preserveDiagnoseSnapshotForFailure(args: {
+    jobId: string;
+    appId: string;
+    appPath: string;
+    agentZipPath?: string;
+  }): Promise<void> {
+    const snapshotPath = await diagnoseSnapshotService.preserve({
+      jobId: args.jobId,
+      appId: args.appId,
+      appPath: args.appPath,
+      agentZipPath: args.agentZipPath,
+    });
+    if (!snapshotPath) return;
+
+    try {
+      await this.importJobRepo.update(args.jobId, { diagnoseSnapshotPath: snapshotPath });
+    } catch (error) {
+      this.logger.warn('project-import.diagnose_snapshot.persist_failed', {
+        jobId: args.jobId,
+        appId: args.appId,
+        snapshotPath,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 

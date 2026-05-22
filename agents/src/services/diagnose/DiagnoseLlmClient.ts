@@ -7,7 +7,7 @@ import type { LlmClient, LlmGenerateArgs } from './types.js';
 
 const logger = Logger.create({ component: 'diagnose.llm-client' });
 
-const DEFAULT_MAX_OUTPUT_TOKENS = 1500;
+const DEFAULT_MAX_OUTPUT_TOKENS = 3000;
 
 /**
  * Production LlmClient for the diagnose service. Thin adapter that delegates to

@@ -6,10 +6,12 @@ import {
 } from '../AgentOperationLogsService.js';
 import type { CustomerLogsService, CustomerLogsResponse } from '../customer-logs-service.js';
 import type { SanitizedLogEntry } from '../log-sanitizer.js';
+import type { DiagnoseContextService } from './DiagnoseContextService.js';
 import type { DiagnoseService } from './DiagnoseService.js';
 import type {
   Analysis,
   AppContext,
+  AppContextBase,
   Classifier,
   ClassifierResult,
   DiagnoseErrorCode,
@@ -19,6 +21,7 @@ import type {
   DiagnoseTier,
   Issue,
 } from './types.js';
+import { buildAppContext } from './types.js';
 
 /**
  * Constructor dependencies for PaaSDiagnoseService. All collaborators are
@@ -29,7 +32,9 @@ import type {
 export interface PaaSDiagnoseServiceDeps {
   customerLogsService: Pick<CustomerLogsService, 'getLogs'>;
   agentOperationLogsService?: Pick<AgentOperationLogsService, 'getFailureLogs'>;
+  patternClassifier?: Classifier;
   llmClassifier: Classifier;
+  diagnoseContextService?: Pick<DiagnoseContextService, 'gather'>;
   /** Injectable clock for deterministic timing in tests. */
   clock?: () => number;
   /** Default log line limit when the request doesn't specify one. */
@@ -72,7 +77,9 @@ const logger = Logger.create({ component: 'diagnose.service' });
 export class PaaSDiagnoseService implements DiagnoseService {
   private readonly customerLogsService: PaaSDiagnoseServiceDeps['customerLogsService'];
   private readonly agentOperationLogsService: PaaSDiagnoseServiceDeps['agentOperationLogsService'];
+  private readonly patternClassifier: Classifier | undefined;
   private readonly llmClassifier: Classifier;
+  private readonly diagnoseContextService: PaaSDiagnoseServiceDeps['diagnoseContextService'];
   private readonly clock: () => number;
   private readonly defaultLines: number;
   // Tracks the in-flight diagnose per app. Only one diagnose may run per appId at a time —
@@ -84,7 +91,9 @@ export class PaaSDiagnoseService implements DiagnoseService {
   constructor(deps: PaaSDiagnoseServiceDeps) {
     this.customerLogsService = deps.customerLogsService;
     this.agentOperationLogsService = deps.agentOperationLogsService;
+    this.patternClassifier = deps.patternClassifier;
     this.llmClassifier = deps.llmClassifier;
+    this.diagnoseContextService = deps.diagnoseContextService;
     this.clock = deps.clock ?? Date.now;
     this.defaultLines = deps.defaultLines ?? DEFAULT_LINES;
   }
@@ -159,6 +168,9 @@ export class PaaSDiagnoseService implements DiagnoseService {
     let logs = logsResponse.logs;
     let logsAnalyzed = logsResponse.total;
     let logSource: 'customer' | 'import_job' = 'customer';
+    let snapshotPath: string | undefined;
+    let errorStage: string | undefined;
+    let packageManager: AppContext['packageManager'];
     const checkedAgentImportLogs = Boolean(this.agentOperationLogsService);
 
     if (this.agentOperationLogsService) {
@@ -171,12 +183,16 @@ export class PaaSDiagnoseService implements DiagnoseService {
         logs = agentLogs.logs;
         logsAnalyzed = agentLogs.total;
         logSource = 'import_job';
+        snapshotPath = agentLogs.diagnoseSnapshotPath;
+        errorStage = agentLogs.errorStage;
+        packageManager = agentLogs.detectedPackageManager;
         logger.info('diagnose.logs.source', {
           appId: request.appId,
           target: request.target,
           logSource,
           errorStage: agentLogs.errorStage,
           lineCount: agentLogs.total,
+          hasSnapshot: Boolean(snapshotPath),
         });
       }
     }
@@ -202,7 +218,49 @@ export class PaaSDiagnoseService implements DiagnoseService {
       };
     }
 
-    const appContext: AppContext = { appId: request.appId, target: request.target };
+    const contextBase: AppContextBase & { snapshotPath?: string } = {
+      appId: request.appId,
+      target: request.target,
+      logSource,
+      errorStage,
+      packageManager,
+      snapshotPath,
+    };
+
+    const gatherResult = this.diagnoseContextService
+      ? await this.diagnoseContextService.gather({
+          appId: request.appId,
+          target: request.target,
+          logs,
+          snapshotPath,
+          logSource,
+        })
+      : {
+          projectContextText: 'No project files were available for this diagnosis.',
+          contextSource: 'none' as const,
+          filesIncluded: 0,
+        };
+
+    const appContext = buildAppContext(contextBase, gatherResult);
+
+    if (this.patternClassifier) {
+      const patternResult = await this.patternClassifier.classify(logs, appContext);
+      if (patternResult.handled && patternResult.issues.length > 0 && patternResult.degraded !== true) {
+        logger.info('diagnose.tier.pattern.hit', {
+          appId: request.appId,
+          issueCount: patternResult.issues.length,
+        });
+        const analysis = this.assembleAnalysis({
+          result: patternResult,
+          tierUsed: 'pattern',
+          logsAnalyzed,
+          startedAt,
+          contextSource: appContext.contextSource,
+          filesIncluded: appContext.filesIncluded,
+        });
+        return { success: true, analysis };
+      }
+    }
 
     // LlmClassifier's internal contract is never-throw: both prompt-load and
     // LLM-call branches return a ClassifierResult with `degraded: true` on
@@ -252,6 +310,8 @@ export class PaaSDiagnoseService implements DiagnoseService {
         tierUsed: 'llm',
         logsAnalyzed,
         startedAt,
+        contextSource: appContext.contextSource,
+        filesIncluded: appContext.filesIncluded,
       });
       return {
         success: false,
@@ -266,6 +326,8 @@ export class PaaSDiagnoseService implements DiagnoseService {
       tierUsed: 'llm',
       logsAnalyzed,
       startedAt,
+      contextSource: appContext.contextSource,
+      filesIncluded: appContext.filesIncluded,
     });
 
     return { success: true, analysis };
@@ -296,6 +358,8 @@ export class PaaSDiagnoseService implements DiagnoseService {
     tierUsed: DiagnoseTier;
     logsAnalyzed: number;
     startedAt: number;
+    contextSource?: AppContext['contextSource'];
+    filesIncluded?: number;
   }): Analysis {
     const issues = args.result.issues;
     const errors = issues.filter((i) => i.severity === 'error').length;
@@ -319,6 +383,8 @@ export class PaaSDiagnoseService implements DiagnoseService {
         logsAnalyzed: args.logsAnalyzed,
         tierUsed: args.tierUsed,
         analysisTimeMs: Math.max(0, this.clock() - args.startedAt),
+        ...(args.contextSource !== undefined ? { contextSource: args.contextSource } : {}),
+        ...(args.filesIncluded !== undefined ? { filesIncluded: args.filesIncluded } : {}),
       },
     };
   }

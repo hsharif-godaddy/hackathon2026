@@ -7,12 +7,22 @@ Respond with a single JSON object matching this shape:
   "issues": [
     {
       "id": "short-kebab-case-identifier",
-      "category": "Human-readable category (e.g. 'Port Binding', 'Dependencies', 'Scripts')",
+      "category": "Human-readable category (e.g. 'Build', 'Dependencies', 'Port Binding')",
       "severity": "error",
-      "message": "One-sentence summary of the guideline violation in the user's voice",
-      "recommendation": "Imperative, specific fix grounded in the guideline (command, file path, or config change)",
+      "message": "One-sentence summary of the failure",
+      "recommendation": "Imperative fix: exact command, file path, and change",
       "confidence": 85,
-      "relatedLogs": ["verbatim log line 1", "verbatim log line 2"]
+      "relatedLogs": ["verbatim log line 1"],
+      "actions": [
+        { "type": "command", "command": "npm install lodash" },
+        {
+          "type": "file_edit",
+          "path": "src/server.ts",
+          "description": "Use process.env.PORT for listen",
+          "before": "app.listen(3000)",
+          "after": "app.listen(process.env.PORT || 3000)"
+        }
+      ]
     }
   ]
 }
@@ -23,54 +33,55 @@ Rules:
 - `status` is one of: `failing`, `degraded`, `unknown`, `healthy`.
 - `severity` is one of: `error`, `warning`.
 - `issues` MUST contain at least one entry.
-- `confidence` is an integer 0–100. Use lower values when log evidence is sparse or ambiguous.
-- `relatedLogs` is optional; include at most 3 entries per issue, taken verbatim from the logs.
-- `confidence: 0` is reserved for the out-of-scope sentinel below. For sparse but tentative matches, use 10–30.
+- `confidence` is an integer 0–100.
+- `relatedLogs` is optional; at most 3 verbatim lines per issue.
+- `actions` is optional; at most 5 entries per issue. Use when a structured command or file edit helps the UI.
+- `recommendation` must always be specific — never “review logs manually” unless using insufficient-evidence id below.
 
-### Out-of-Scope Sentinel
+### Platform-Outage Sentinel
 
-If the logs do NOT map to any platform upload guideline (the error appears to be in the customer's application code), return exactly this shape:
+Use only when logs show platform/infrastructure failure with **no** customer code fix:
 
 ```json
 {
   "status": "unknown",
-  "primaryRecommendation": "No platform guideline violation detected. The deployment error appears to be in the application code and is outside the scope of this diagnostic service.",
+  "primaryRecommendation": "The deployment platform is temporarily unavailable. Retry in a few minutes or contact support if the issue persists.",
   "issues": [
     {
-      "id": "no-platform-violation-detected",
-      "category": "Out of Scope",
+      "id": "platform-outage",
+      "category": "Platform",
       "severity": "warning",
-      "message": "Log evidence does not match any Node.js Hosting upload guideline. The failure appears to be an application-level error.",
-      "recommendation": "Review the cited log lines manually; the fix is in your application code, not a platform requirement.",
+      "message": "Logs indicate a platform or upstream infrastructure issue, not an application configuration problem.",
+      "recommendation": "Wait a few minutes and retry deployment. If failures continue, contact GoDaddy support with the cited log lines.",
       "confidence": 0,
-      "relatedLogs": ["one or two verbatim lines that triggered the analysis"]
+      "relatedLogs": ["verbatim infrastructure error line"]
     }
   ]
 }
 ```
 
-Use the sentinel verbatim (same `id`, `category`, `severity`, `confidence`) so downstream clients can detect this case reliably.
+Use `id: 'platform-outage'` verbatim for this case.
 
 ### Insufficient-Evidence Response
 
-If the logs exist but are too sparse or ambiguous to reach any conclusion (neither a guideline match nor a clear app-code failure), return this distinct shape:
+When logs exist but are too sparse for any concrete fix:
 
 ```json
 {
   "status": "unknown",
-  "primaryRecommendation": "Logs do not contain enough evidence to diagnose. Re-run diagnosis with a wider time window or re-trigger the failure to produce more logs.",
+  "primaryRecommendation": "Re-trigger the failure to capture fresh logs, then run diagnose again.",
   "issues": [
     {
       "id": "insufficient-log-evidence",
       "category": "Insufficient Evidence",
       "severity": "warning",
-      "message": "Not enough log evidence to determine whether this is a platform guideline violation or an application-level error.",
-      "recommendation": "Re-trigger the failure or widen the log window and retry.",
+      "message": "Not enough log or project context to determine a specific fix.",
+      "recommendation": "Re-run the failing deploy/build, then call diagnose again immediately while logs are fresh.",
       "confidence": 15,
-      "relatedLogs": ["up to 3 verbatim lines showing the ambiguity"]
+      "relatedLogs": ["up to 3 verbatim lines"]
     }
   ]
 }
 ```
 
-Use `id: 'insufficient-log-evidence'` verbatim so downstream clients can distinguish this case from the out-of-scope sentinel.
+Use `id: 'insufficient-log-evidence'` verbatim.

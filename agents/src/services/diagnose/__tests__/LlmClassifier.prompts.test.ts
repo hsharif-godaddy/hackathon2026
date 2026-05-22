@@ -42,7 +42,13 @@ function logLine(message: string): SanitizedLogEntry {
   return { timestamp: '2026-04-20T10:30:45Z', source: 'stderr', message, level: 'error' };
 }
 
-const CTX: AppContext = { appId: 'real-app-id', target: 'publish' };
+const CTX: AppContext = {
+  appId: 'real-app-id',
+  target: 'publish',
+  contextSource: 'none',
+  projectContextText: 'No project files were available for this diagnosis.',
+  filesIncluded: 0,
+};
 
 describe('LlmClassifier — real prompt files (integration)', () => {
   it('loads system + user templates from disk and resolves all placeholders', async () => {
@@ -55,7 +61,7 @@ describe('LlmClassifier — real prompt files (integration)', () => {
     expect(client.lastArgs).not.toBeNull();
     const { system, user } = client.lastArgs!;
 
-    // System prompt was composed from the guideline-aligned fragments.
+    expect(system).toContain('deployment troubleshooter');
     expect(system).toContain('Platform Upload Guidelines');
     expect(system).toContain('package.json');
     expect(system).toContain('Dependencies');
@@ -65,9 +71,9 @@ describe('LlmClassifier — real prompt files (integration)', () => {
     expect(system).toContain('Log Symptom');
     expect(system).toContain('Output Contract');
 
-    // Sentinel ids must survive fragment composition so downstream clients can detect them.
-    expect(system).toContain('no-platform-violation-detected');
+    expect(system).toContain('platform-outage');
     expect(system).toContain('insufficient-log-evidence');
+    expect(user).toContain('Project context');
 
     // All placeholders must be resolved — no `{{...}}` markers left anywhere.
     expect(system).not.toMatch(/\{\{[A-Za-z]+\}\}/);

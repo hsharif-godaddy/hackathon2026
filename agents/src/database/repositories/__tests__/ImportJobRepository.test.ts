@@ -31,6 +31,7 @@ describe('ImportJobRepository', () => {
     build_output: null,
     error_message: 'npm install failed',
     error_stage: 'installing',
+    diagnose_snapshot_path: '/tmp/snapshots/job-xyz789',
     started_at: '2026-04-20T10:00:00.000Z',
     completed_at: '2026-04-20T10:05:00.000Z',
     created_at: '2026-04-20T10:00:00.000Z',
@@ -81,6 +82,7 @@ describe('ImportJobRepository', () => {
       expect(result!.id).toBe(testJobId);
       expect(result!.status).toBe(ImportJobStatus.FAILED);
       expect(result!.errorMessage).toBe('npm install failed');
+      expect(result!.diagnoseSnapshotPath).toBe('/tmp/snapshots/job-xyz789');
       expect(mockDb.prepare).toHaveBeenCalledWith(
         expect.stringContaining('ORDER BY created_at DESC')
       );

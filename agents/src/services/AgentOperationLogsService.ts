@@ -17,6 +17,9 @@ export interface AgentOperationLogsResponse {
   source: 'import_job' | 'none';
   /** Stage from the latest failed import attempt (when source is import_job) */
   errorStage?: string;
+  /** Host path to preserved project files for diagnose (failed imports) */
+  diagnoseSnapshotPath?: string;
+  detectedPackageManager?: 'npm' | 'yarn' | 'pnpm';
 }
 
 /**
@@ -106,6 +109,8 @@ export class AgentOperationLogsService {
       total: logs.length,
       source: 'import_job',
       errorStage: job.errorStage,
+      diagnoseSnapshotPath: job.diagnoseSnapshotPath,
+      detectedPackageManager: job.detectedPackageManager,
     };
   }
 
