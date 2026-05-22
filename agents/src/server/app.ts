@@ -184,7 +184,7 @@ import compression from 'compression';
 import { createServer } from 'http';
 
 import { corsMiddleware, timingAllowOriginMiddleware, errorHandler, notFoundHandler, requestLogger, jwtAuthMiddleware, validateProductAccess } from './middleware/index.js';
-import { agentsRouter, appsRouter, chatRouter, healthRouter, diagnosticsRouter, gitRouter, debugRouter, filesRouter, filesPublicRouter, publishRouter, downloadRouter, dbRouter, dbImportRouter, todoListRouter, securityMisconfigScanRouter, vulnerabilityScanRouter, secretsScanRouter, oauthRouter, videoRouter, conversationsRouter, qaAnalyzeRouter, gitRemoteRouter, goLiveRouter, socialRouter, customerLogsRouter, diagnoseRouter, zipImportRouter, uiKitRouter, shareRouter, mediaRouter, modelsRouter, profilesRouter, transferValidateRouter, runtimeErrorsRouter, brandDataRouter, rebuildRouter, nextActionsRouter, captureScreenshotRouter, feedbackRouter } from './routes/index.js';
+import { agentsRouter, appsRouter, chatRouter, healthRouter, diagnosticsRouter, gitRouter, debugRouter, filesRouter, filesPublicRouter, publishRouter, downloadRouter, dbRouter, dbImportRouter, todoListRouter, securityMisconfigScanRouter, vulnerabilityScanRouter, secretsScanRouter, oauthRouter, videoRouter, conversationsRouter, qaAnalyzeRouter, gitRemoteRouter, goLiveRouter, socialRouter, customerLogsRouter, diagnoseRouter, zipImportRouter, uiKitRouter, shareRouter, mediaRouter, modelsRouter, profilesRouter, transferValidateRouter, runtimeErrorsRouter, brandDataRouter, rebuildRouter, nextActionsRouter, captureScreenshotRouter, feedbackRouter, conversationBrandIdRouter } from './routes/index.js';
 // Phase 3: Replace legacy WebSocket with AI-Lib WebSocket server
 import { setupAILibWebSocketServer, getWebSocketServerInfo, getGitHookService, getSSEEventChannel, getSSEAgentFactory, getMessageLifecycleDeps } from './ai-lib-websocket-server.js';
 import { EventStreamRegistry } from './sse/EventStreamRegistry.js';
@@ -426,6 +426,7 @@ protectedRouter.use('/', transferValidateRouter);
 protectedRouter.use('/', modelsRouter);
 protectedRouter.use('/', profilesRouter);
 protectedRouter.use('/', brandDataRouter);
+protectedRouter.use('/', conversationBrandIdRouter);
 protectedRouter.use('/apps', rebuildRouter);
 protectedRouter.use('/apps', nextActionsRouter);
 protectedRouter.use('/', feedbackRouter);

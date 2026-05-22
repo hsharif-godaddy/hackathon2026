@@ -207,6 +207,9 @@ interface DevelopPageStore {
   selectedModel: string | null
   selectedProfile: string | null
 
+  // Conversations brand ID
+  conversationsBrandId: string | null
+
   // Version history UI
   isVersionHistoryOpen: boolean
 
@@ -297,6 +300,7 @@ interface DevelopPageStore {
   setHasUnsavedChanges: (hasChanges: boolean) => void
   setSelectedModel: (model: string | null) => void
   setSelectedProfile: (profile: string | null) => void
+  setConversationsBrandId: (brandId: string | null) => void
   setIsMobile: (isMobile: boolean) => void
   setIsVersionHistoryOpen: (open: boolean) => void
   setIsPreviewVisible: (visible: boolean) => void
@@ -424,6 +428,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     hasUnsavedChanges: false,
     selectedModel: null,
     selectedProfile: null,
+    conversationsBrandId: null,
     isVersionHistoryOpen: false,
 
     // Tab state (initialized from URL in useChatTabs)
@@ -497,6 +502,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     setHasUnsavedChanges: (hasChanges) => set((state) => { state.hasUnsavedChanges = hasChanges }),
     setSelectedModel: (model) => set((state) => { state.selectedModel = model }),
     setSelectedProfile: (profile) => set((state) => { state.selectedProfile = profile }),
+    setConversationsBrandId: (brandId) => set((state) => { state.conversationsBrandId = brandId }),
     setIsMobile: (isMobile) => {
       const { isMobile: wasMobile, viewMode } = get()
 

@@ -42,6 +42,7 @@ import { useAppDetails } from '@/hooks/useAppDetails'
 import { useAppHibernation } from '@/hooks/useAppHibernation'
 import { useChatTabs } from '@/hooks/useChatTabs'
 import { useChatTransport } from '@/hooks/useChatTransport'
+import { useConversationsBrandId } from '@/hooks/useConversationsBrandId'
 import { useGitHistoryQuery } from '@/hooks/useGitHistory'
 import { useHivemind } from '@/hooks/useHivemind'
 import { useImageReadiness } from '@/hooks/useImageReadiness'
@@ -217,6 +218,14 @@ function DevelopPageContent() {
       });
     }
   }, [hibernation.resumeComplete, appId, archiveRestore.archiveRestoreComplete]);
+
+  // Fetch conversations brand ID early and sync to store
+  const { brandId, isLoading: isLoadingBrandId, error: brandIdError } = useConversationsBrandId(appId)
+  const setConversationsBrandId = useDevelopPageStore((state) => state.setConversationsBrandId)
+
+  useEffect(() => {
+    setConversationsBrandId(brandId)
+  }, [brandId, isLoadingBrandId, brandIdError, setConversationsBrandId])
 
   // Eval snapshot capture - captures screenshot on first build completion
   const { triggerEvalSnapshot, handleEvalViewportScreenshot } = useEvalSnapshotCapture({ appId })

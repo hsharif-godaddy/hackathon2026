@@ -7,6 +7,7 @@ import Box from '@ux/box';
 import Apps2Icon from '@ux/icon/apps2'
 import CodeIcon from '@ux/icon/code'
 import ColorPaletteIcon from '@ux/icon/color-palette'
+import ConversationsIcon from '@ux/icon/conversations'
 import MobilePhoneIcon from '@ux/icon/mobile-phone'
 import RefreshIcon from '@ux/icon/refresh'
 import SidebarCollapseIcon from '@ux/icon/sidebar-collapse'
@@ -39,6 +40,7 @@ const VIEW_MODE_EID_MAP: Record<string, string> = {
   [ViewMode.CODE]: 'develop.header.code_editor',
   [ViewMode.BRAND]: 'develop.header.brand_book',
   [ViewMode.DOMAIN]: 'develop.header.domain_view',
+  [ViewMode.INBOX]: 'develop.header.inbox'
 };
 
 const MOBILE_MODE_EID_MAP: Record<string, string> = {
@@ -54,10 +56,12 @@ export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) 
   const t = useTranslations();
   const isBrandBookEnabled = useSwitchboard('appbuilder-brandbook');
   const isTopLevelDomainEnabled = useSwitchboard('appbuilder-domain-top-level');
+  const isInboxEnabled = useSwitchboard('app-builder-inbox-button');
   const location = 'develop';
   const appId = useAppIdFromParams();
   const clickContext = useMemo(() => (appId ? { appId } : undefined), [appId]);
 
+  const conversationsBrandId = useDevelopPageStore((state) => state.conversationsBrandId)
   const chatPaneWidth = useDevelopPageStore((state) => state.chatPaneWidth)
   const isMobile = useDevelopPageStore((state) => state.isMobile)
   const viewMode = useDevelopPageStore((state) => state.viewMode)
@@ -158,6 +162,13 @@ export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) 
                     icon={<WorldIcon className="size-2.5" />}
                     label={t('builder_domain_title')}
                     disabled={isVersionHistoryOpen}
+                  />
+                )}
+                {isInboxEnabled && conversationsBrandId && (
+                  <ButtonGroup.Item
+                    value={ViewMode.INBOX}
+                    icon={<ConversationsIcon className="size-2.5" />}
+                    label={t('builder_preview_button_inbox')}
                   />
                 )}
               </ButtonGroup>

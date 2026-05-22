@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef } from 'react'
 import Box from '@ux/box'
 import CodeIcon from '@ux/icon/code'
 import CommentsIcon from '@ux/icon/comments'
+import ConversationsIcon from '@ux/icon/conversations'
 import GraphIcon from '@ux/icon/graph'
 import HistoryIcon from '@ux/icon/history'
 import ImageIcon from '@ux/icon/image'
@@ -54,6 +55,7 @@ export default function ChatToolbar({
   const handleViewModeChange = useDevelopPageStore((state) => state.handleViewModeChange);
   const isMobileInlineEditActive = useDevelopPageStore((state) => state.isMobileInlineEditActive);
   const toggleMobileInlineEdit = useDevelopPageStore((state) => state.toggleMobileInlineEdit);
+  const conversationsBrandId = useDevelopPageStore((state) => state.conversationsBrandId)
 
   // Use optimistic tab for UI selection state, fall back to URL-based state
   const displayActiveTab = optimisticActiveTab ?? activeChatTab
@@ -62,6 +64,7 @@ export default function ChatToolbar({
   const setSelectedCommitHash = useGitStore((state) => state.setSelectedCommitHash);
   const isAnalyticsEnabled = useSwitchboard('appbuilder-analytics');
   const isMobileInlineEditEnabled = useSwitchboard('airo-builder-mobile-inline-edit');
+  const isInboxEnabled = useSwitchboard('app-builder-inbox-button');
 
   const { data: gitHistoryData } = useGitHistoryQuery({
     appId: appId || '',
@@ -228,6 +231,13 @@ export default function ChatToolbar({
                 icon={<CodeIcon className="size-2.5" />}
                 label={t('builder_chat_toolbar_button_code')}
               />
+              {isInboxEnabled && conversationsBrandId && (
+                <ButtonGroup.Item
+                  value={ViewMode.INBOX}
+                  icon={<ConversationsIcon className="size-2.5" />}
+                  label={t('builder_preview_button_inbox')}
+                />
+              )}
             </ButtonGroup>
 
             <AnimatePresence>

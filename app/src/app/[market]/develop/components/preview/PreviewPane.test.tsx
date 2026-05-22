@@ -58,6 +58,12 @@ vi.mock('@/app/[market]/develop/components/settings/DomainPanel', () => ({
   default: () => <div data-testid="domain-panel">Domain Panel</div>,
 }));
 
+vi.mock('@/app/[market]/develop/components/preview/ConversationsIframe', () => ({
+  default: ({ brandId }: { brandId: string }) => (
+    <div data-testid="conversations-iframe">Conversations: {brandId}</div>
+  ),
+}));
+
 // Mock stores
 const mockServerPollingStore = {
   getServerState: vi.fn(() => ({ isReady: true, url: 'http://localhost:3000' })),
@@ -814,6 +820,121 @@ describe('PreviewPane', () => {
     expect(screen.queryByText('builder_preview_resuming_message')).not.toBeInTheDocument();
     await waitFor(() => {
       expect(screen.getByTestId('domain-panel')).toBeInTheDocument();
+    });
+  });
+
+  describe('INBOX view accessibility during preview server issues', () => {
+    const mockConversationsBrandId = 'test-brand-123';
+
+    it('should render INBOX when resumeFailed and viewMode is INBOX', () => {
+      mockSwitchboardResults['app-builder-inbox-button'] = true;
+      mockDevelopPageStore.viewMode = ViewMode.INBOX;
+      (mockDevelopPageStore as any).conversationsBrandId = mockConversationsBrandId;
+      // resumeFailed prop causes early-return guards to trigger, but INBOX should bypass them
+      mockServerPollingStore.getServerState = vi.fn(() => ({ isReady: false, url: null }));
+
+      renderWithProviders(
+        <PreviewPane
+          onPreviewRefresh={vi.fn()}
+          resumeFailed={true}
+        />
+      );
+
+      expect(screen.queryByTestId('preview-error')).not.toBeInTheDocument();
+      expect(screen.getByTestId('conversations-iframe')).toBeInTheDocument();
+    });
+
+    it('should render INBOX when isHibernated and viewMode is INBOX', () => {
+      mockSwitchboardResults['app-builder-inbox-button'] = true;
+      mockDevelopPageStore.viewMode = ViewMode.INBOX;
+      (mockDevelopPageStore as any).conversationsBrandId = mockConversationsBrandId;
+      mockServerPollingStore.getServerState = vi.fn(() => ({ isReady: false, url: null }));
+
+      renderWithProviders(
+        <PreviewPane
+          onPreviewRefresh={vi.fn()}
+          isHibernated={true}
+        />
+      );
+
+      expect(screen.queryByText('builder_preview_resuming_message')).not.toBeInTheDocument();
+      expect(screen.getByTestId('conversations-iframe')).toBeInTheDocument();
+    });
+
+    it('should render INBOX when isResuming and viewMode is INBOX', () => {
+      mockSwitchboardResults['app-builder-inbox-button'] = true;
+      mockDevelopPageStore.viewMode = ViewMode.INBOX;
+      (mockDevelopPageStore as any).conversationsBrandId = mockConversationsBrandId;
+      mockServerPollingStore.getServerState = vi.fn(() => ({ isReady: false, url: null }));
+
+      renderWithProviders(
+        <PreviewPane
+          onPreviewRefresh={vi.fn()}
+          isResuming={true}
+        />
+      );
+
+      expect(screen.queryByText('builder_preview_resuming_message')).not.toBeInTheDocument();
+      expect(screen.getByTestId('conversations-iframe')).toBeInTheDocument();
+    });
+
+    it('should render INBOX when imageReloadFailed and viewMode is INBOX', () => {
+      mockSwitchboardResults['app-builder-inbox-button'] = true;
+      mockDevelopPageStore.viewMode = ViewMode.INBOX;
+      (mockDevelopPageStore as any).conversationsBrandId = mockConversationsBrandId;
+
+      renderWithProviders(
+        <PreviewPane
+          onPreviewRefresh={vi.fn()}
+          imageReloadFailed={true}
+        />
+      );
+
+      expect(screen.queryByTestId('preview-error')).not.toBeInTheDocument();
+      expect(screen.getByTestId('conversations-iframe')).toBeInTheDocument();
+    });
+
+    it('should render INBOX when isImageReloading and viewMode is INBOX', () => {
+      mockSwitchboardResults['app-builder-inbox-button'] = true;
+      mockDevelopPageStore.viewMode = ViewMode.INBOX;
+      (mockDevelopPageStore as any).conversationsBrandId = mockConversationsBrandId;
+
+      renderWithProviders(
+        <PreviewPane
+          onPreviewRefresh={vi.fn()}
+          isImageReloading={true}
+        />
+      );
+
+      expect(screen.queryByText('builder_preview_image_reloading_message')).not.toBeInTheDocument();
+      expect(screen.getByTestId('conversations-iframe')).toBeInTheDocument();
+    });
+
+    it('should show error when resumeFailed and viewMode is PREVIEW (not INBOX)', () => {
+      mockDevelopPageStore.viewMode = ViewMode.PREVIEW;
+
+      renderWithProviders(
+        <PreviewPane
+          onPreviewRefresh={vi.fn()}
+          resumeFailed={true}
+        />
+      );
+
+      expect(screen.getByTestId('preview-error')).toBeInTheDocument();
+    });
+
+    it('should show loading when isHibernated and viewMode is PREVIEW (not INBOX)', () => {
+      mockDevelopPageStore.viewMode = ViewMode.PREVIEW;
+      mockServerPollingStore.getServerState = vi.fn(() => ({ isReady: false, url: null }));
+
+      renderWithProviders(
+        <PreviewPane
+          onPreviewRefresh={vi.fn()}
+          isHibernated={true}
+        />
+      );
+
+      expect(screen.getByText('builder_preview_resuming_message')).toBeInTheDocument();
     });
   });
 

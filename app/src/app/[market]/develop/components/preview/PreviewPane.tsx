@@ -14,6 +14,7 @@ import { useLatestNBAs } from '@/app/[market]/develop/components/chat/useLatestN
 import { useThinkerLabel } from '@/app/[market]/develop/components/chat/useThinkerLabel'
 import DomainBar from '@/app/[market]/develop/components/layout/DomainBar'
 import BrandBookView from '@/app/[market]/develop/components/preview/brand-book'
+import ConversationsIframe from '@/app/[market]/develop/components/preview/ConversationsIframe'
 import { getDevicePreset } from '@/app/[market]/develop/components/preview/devicePresets'
 import PreviewCode from '@/app/[market]/develop/components/preview/PreviewCode'
 import PreviewError from '@/app/[market]/develop/components/preview/PreviewError'
@@ -140,6 +141,7 @@ export default function PreviewPane({
   const intl = useIntl();
   const isDomainBarEnabled = useSwitchboard('appbuilder-domain-bar');
   const isTopLevelDomainEnabled = useSwitchboard('appbuilder-domain-top-level');
+  const isInboxEnabled = useSwitchboard('app-builder-inbox-button');
   /** Switchboard: translucent creation overlay + edit chip behavior. */
   const isPreviewEnhancedOverlaysEnabled =
     useSwitchboard('appbuilder-preview-enhanced-overlays') === true;
@@ -173,6 +175,7 @@ export default function PreviewPane({
   const setPreviewViewMode = useDevelopPageStore((state) => state.setPreviewViewMode)
   const mobileMode = useDevelopPageStore((state) => state.mobileMode)
   const handleMobileModeChange = useDevelopPageStore((state) => state.handleMobileModeChange)
+  const conversationsBrandId = useDevelopPageStore((state) => state.conversationsBrandId)
   // Get device dimensions from preset
   const selectedDevice = getDevicePreset(selectedDeviceId)
   const isFullSize = previewViewMode === PreviewViewMode.DESKTOP || selectedDeviceId === 'full'
@@ -999,7 +1002,7 @@ export default function PreviewPane({
   }
 
   // Show error state when resume failed
-  if (resumeFailed && viewMode !== ViewMode.BRAND && viewMode !== ViewMode.DOMAIN) {
+  if (resumeFailed && viewMode !== ViewMode.BRAND && viewMode !== ViewMode.DOMAIN && viewMode !== ViewMode.INBOX) {
     return (
       <PreviewError
         title={t('builder_preview_resume_failed_title')}
@@ -1022,11 +1025,11 @@ export default function PreviewPane({
   }
 
   // Show restarting message when app is hibernated or resuming
-  if ((isHibernated || isResuming) && viewMode !== ViewMode.BRAND && viewMode !== ViewMode.DOMAIN) {
+  if ((isHibernated || isResuming) && viewMode !== ViewMode.BRAND && viewMode !== ViewMode.DOMAIN && viewMode !== ViewMode.INBOX) {
     return <PreviewLoadingState message={t('builder_preview_resuming_message')} isMobile={isMobile} />
   }
 
-  if (imageReloadFailed && viewMode !== ViewMode.BRAND && viewMode !== ViewMode.DOMAIN) {
+  if (imageReloadFailed && viewMode !== ViewMode.BRAND && viewMode !== ViewMode.DOMAIN && viewMode !== ViewMode.INBOX) {
     return (
       <PreviewError
         title={t('builder_preview_image_reload_failed_title')}
@@ -1037,7 +1040,7 @@ export default function PreviewPane({
     )
   }
 
-  if (isImageReloading && viewMode !== ViewMode.BRAND && viewMode !== ViewMode.DOMAIN) {
+  if (isImageReloading && viewMode !== ViewMode.BRAND && viewMode !== ViewMode.DOMAIN && viewMode !== ViewMode.INBOX) {
     return <PreviewLoadingState message={t('builder_preview_image_reloading_message')} isMobile={isMobile} />
   }
 
@@ -1050,6 +1053,16 @@ export default function PreviewPane({
               <DomainPanel />
             </ErrorBoundary>
           </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (isInboxEnabled && conversationsBrandId && viewMode === ViewMode.INBOX) {
+    return (
+      <div className="h-full flex flex-col pr-1 md:pr-2.5 pl-1">
+        <div className="relative h-full overflow-auto rounded-lg md:rounded-b-none border bg-intents-ux-box-backgroundColor">
+          <ConversationsIframe brandId={conversationsBrandId} />
         </div>
       </div>
     )
