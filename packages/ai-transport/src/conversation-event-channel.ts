@@ -477,6 +477,37 @@ export class ConversationEventChannel {
   }
 
   /**
+   * Marks all buffered events for a persisted message as database-backed.
+   * Recovery can then filter those events when the client also reloads the
+   * persisted history snapshot, avoiding duplicate live-event replay.
+   *
+   * @param conversationId - The conversation containing buffered events
+   * @param messageId - Persisted agent message ID attached to stream events
+   * @returns Number of events marked persisted
+   */
+  markMessageEventsPersisted(conversationId: string, messageId: string): number {
+    const state = this.conversations.get(conversationId)
+    if (!state) {
+      return 0
+    }
+
+    let marked = 0
+    for (const event of state.buffer.getAll()) {
+      // persisted is monotonic: once the DB snapshot covers an event, every
+      // future recovery reader should observe the same buffered object as persisted.
+      if (event.data?.messageId === messageId && event.persisted !== true) {
+        event.persisted = true
+        marked++
+      }
+    }
+
+    if (marked > 0) {
+      state.lastActivity = new Date()
+    }
+    return marked
+  }
+
+  /**
    * Returns metadata about a conversation's event buffer
    * Useful for diagnostics and replay status
    *

@@ -453,6 +453,40 @@ describe('SSE routes', () => {
       expect(capturedData).toContain('event: chunk')
     })
 
+    it('filters persisted completed-turn events but still replays an unpersisted terminal tail', async () => {
+      const mockEvents = [
+        { id: 'e1', type: 'chunk', sequence: 42, conversationId: 'conv_1', content: 'already persisted', data: { messageId: 'm1' }, persisted: true },
+        { id: 'e2', type: 'complete', sequence: 43, conversationId: 'conv_1', content: '', data: { messageId: 'm1', finishReason: 'complete' }, persisted: false },
+      ]
+      deps.getEventChannel.mockReturnValue({
+        getEventsSince: vi.fn().mockReturnValue(mockEvents),
+        getMetadata: vi.fn().mockReturnValue({ pendingMessageIds: [], firstSequence: 42, lastSequence: 43 }),
+      })
+      ;(deps as any).executionService = {
+        subscribeStream: vi.fn(),
+        hasActiveStream: vi.fn().mockReturnValue(false),
+      }
+
+      let capturedData = ''
+      await request(app)
+        .get('/api/conversations/abcdefghij/conv_1/stream')
+        .set('Accept', 'text/event-stream')
+        .set('Last-Event-ID', '40')
+        .buffer(false)
+        .parse((res: any, callback: any) => {
+          res.on('data', (chunk: Buffer) => { capturedData += chunk.toString() })
+          setTimeout(() => { res.destroy(); callback(null, capturedData) }, 100)
+        })
+
+      expect(capturedData).toContain('"streamCompleted":true')
+      expect(capturedData).toContain('"hasBufferedEvents":true')
+      expect(capturedData).toContain('"replayedCount":1')
+      expect(capturedData).not.toContain('event: chunk')
+      expect(capturedData).not.toContain('already persisted')
+      expect(capturedData).toContain('event: complete')
+      expect(capturedData).toContain('"finishReason":"complete"')
+    })
+
     it('registers connection in registry by conversationId', async () => {
       const promise = request(app)
         .get('/api/conversations/abcdefghij/conv_1/stream')

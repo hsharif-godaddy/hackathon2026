@@ -138,6 +138,27 @@ describe('computeRecoveryPlan', () => {
     expect(seqs).not.toContain(100)
   })
 
+  it('filters persisted completed-turn events while preserving unpersisted terminal tail', () => {
+    const persistedChunk = event(100, 'chunk', 'm1', true)
+    const persistedToolResult = event(101, 'tool_result', 'm1', true)
+    const terminal = event(102, 'complete', 'm1', false)
+    const channel = mockChannel(
+      [persistedChunk, persistedToolResult, terminal],
+      { firstSequence: 100, lastSequence: 102, pendingMessageIds: [] }
+    )
+
+    const plan = computeRecoveryPlan({
+      conversationId: 'c',
+      channel,
+      lastDeliveredSequence: 99,
+      clientHasNoState: false,
+      hasActiveStream: false,
+    })
+
+    expect(plan.streamCompleted).toBe(true)
+    expect(plan.eventsToReplay.map(e => e.sequence)).toEqual([102])
+  })
+
   it('keeps messageId-less control events regardless of persisted flag', () => {
     const control: StreamingEvent = {
       id: 'ctrl',

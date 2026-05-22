@@ -30,7 +30,6 @@ import {
   type ConversationPersistence,
   type ConversationPersistenceWithCleanup,
   type ConversationMessage,
-  type PersistenceStreamingEvent,
   type ConversationContext,
   type StreamingEventType
 } from './interfaces.js'
@@ -54,6 +53,7 @@ import { ChunkTimeoutGuard } from './chunk-timeout-guard.js'
 import { runPostStreamValidation, turnEndedWithStopAfterTool, type ValidationMessageEventData } from './post-stream-validation-runner.js'
 import { invokeBudgetRecoveryCallback, buildContinuationPrompt, MAX_BUDGET_RETRIES } from './budget-recovery.js'
 import { parseAgentCommand } from './agent-command-parser.js'
+import { trackTurnSnapshotEvent, type TurnSnapshotState } from './turn-snapshot-tracker.js'
 
 /**
  * APM agent type for tool execution tracking
@@ -1295,30 +1295,6 @@ export class WebSocketServer {
   }
 
   /**
-   * Initialize conversation buffers for incremental persistence
-   * Ensures all required properties are defined
-   */
-  private initializeConversationBuffers(conversation: {
-    pendingSegments?: any[]
-    pendingToolCalls?: Map<string, any>
-    accumulatedContent?: string
-  }): asserts conversation is {
-    pendingSegments: any[]
-    pendingToolCalls: Map<string, any>
-    accumulatedContent: string
-  } {
-    if (!conversation.pendingSegments) {
-      conversation.pendingSegments = []
-    }
-    if (!conversation.pendingToolCalls) {
-      conversation.pendingToolCalls = new Map()
-    }
-    if (!conversation.accumulatedContent) {
-      conversation.accumulatedContent = ''
-    }
-  }
-
-  /**
    * Track streaming event for local conversation state
    *
    * This handles:
@@ -1329,46 +1305,15 @@ export class WebSocketServer {
    * Note: Database persistence is handled by PersistenceSubscriber
    */
   private async trackEventForConversation(
-    conversation: {
+    conversation: TurnSnapshotState & {
       conversationId: string
       context: ConversationContext
-      streamingEvents: PersistenceStreamingEvent[]
-      pendingSegments?: any[]
-      pendingToolCalls?: Map<string, any>
-      accumulatedContent?: string
     },
     type: string,
     content: string,
     data: Record<string, unknown>
   ): Promise<void> {
-    const timestamp = new Date()
-    const event: PersistenceStreamingEvent = {
-      type,
-      content: content || undefined,
-      data,
-      timestamp
-    }
-
-    // Add to local tracking for completeConversation()
-    conversation.streamingEvents.push(event)
-
-    this.initializeConversationBuffers(conversation)
-
-    // Always accumulate content for observability - regardless of persistence settings
-    // This ensures llm_end events capture the full streamed text
-    if (type === 'chunk' || type === 'text_chunk') {
-      if (content) {
-        // Insert a newline when text resumes after non-text events (tool_start,
-        // tool_result, etc.) so the accumulated string has readable separation
-        // between the agent's text segments instead of smashing them together.
-        // Uses length - 2 because the current event was already pushed above.
-        const lastEvent = conversation.streamingEvents[conversation.streamingEvents.length - 2]
-        if (conversation.accumulatedContent && lastEvent && lastEvent.type !== 'chunk' && lastEvent.type !== 'text_chunk') {
-          conversation.accumulatedContent += '\n'
-        }
-        conversation.accumulatedContent += content
-      }
-    }
+    const snapshot = trackTurnSnapshotEvent(conversation, type, content, data)
 
     // Handle incremental updates via updateAgentTurn if configured
     const agentMessageId = conversation.context.agentMessageId
@@ -1380,89 +1325,28 @@ export class WebSocketServer {
         hasUpdateMethod: !!this.config.messagePersistence.updateAgentTurn,
         willTriggerUpdate: !!(agentMessageId && this.config.messagePersistence.updateAgentTurn && type === 'tool_result'),
         contentLength: content?.length || 0,
-        accumulatedContentLength: conversation.accumulatedContent.length
+        accumulatedContentLength: snapshot.update.content.length
       })
     }
 
-    if (agentMessageId && this.config.messagePersistence.updateAgentTurn) {
-      if (type === 'chunk' || type === 'text_chunk') {
-        if (content) {
-          conversation.pendingSegments.push({
-            id: `seg_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`,
-            type: 'content',
-            content,
-            timestamp,
-            metadata: undefined
+    if (agentMessageId && this.config.messagePersistence.updateAgentTurn && snapshot.shouldUpdateAgentTurn) {
+      try {
+        if (process.env.DEBUG_CONVERSATION_HISTORY === 'true') {
+          this.logger.debug('turn.tool_result.update', {
+            messageId: agentMessageId,
+            contentLength: snapshot.update.content.length,
+            segmentsCount: snapshot.update.segments.length,
+            toolCallsCount: snapshot.update.toolCalls.length
           })
         }
-      } else if (type === 'tool_start' && data?.tool) {
-        const tool = data.tool as { id?: string; name: string; input: unknown }
-        const toolId = tool.id || `tool_${Date.now()}`
-        const toolData = {
-          id: toolId,
-          name: tool.name,
-          input: tool.input,
-          status: 'running',
-          startTime: timestamp
-        }
-        conversation.pendingToolCalls.set(toolId, toolData)
-
-        conversation.pendingSegments.push({
-          id: `seg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-          type: 'tool_call',
-          timestamp,
-          toolCall: toolData
-        })
-      } else if (type === 'tool_result' && data?.tool) {
-        const tool = data.tool as { id: string; input?: unknown; output?: string; result?: string; error?: string; is_error?: boolean }
-        const toolId = tool.id
-        const existingTool = conversation.pendingToolCalls.get(toolId)
-
-        if (existingTool) {
-          existingTool.input = tool.input || existingTool.input
-          existingTool.result = tool.output ?? content ?? tool.result
-          existingTool.error = tool.error
-          existingTool.status = (tool.error || tool.is_error) ? 'error' : 'completed'
-          existingTool.endTime = timestamp
-
-          if (existingTool.startTime && timestamp) {
-            const startTime = new Date(existingTool.startTime).getTime()
-            const endTime = new Date(timestamp).getTime()
-            existingTool.duration = endTime - startTime
-          }
-
-          const segmentIndex = conversation.pendingSegments.findIndex(s =>
-            s.type === 'tool_call' && s.toolCall?.id === toolId
-          )
-          if (segmentIndex >= 0) {
-            conversation.pendingSegments[segmentIndex].toolCall = existingTool
-          }
-
-          try {
-            if (process.env.DEBUG_CONVERSATION_HISTORY === 'true') {
-              this.logger.debug('turn.tool_result.update', {
-                messageId: agentMessageId,
-                toolId,
-                toolName: existingTool.name,
-                contentLength: conversation.accumulatedContent.length,
-                segmentsCount: conversation.pendingSegments.length,
-                toolCallsCount: conversation.pendingToolCalls.size
-              })
-            }
-            await this.config.messagePersistence.updateAgentTurn(
-              conversation.conversationId,
-              agentMessageId,
-              {
-                content: conversation.accumulatedContent,
-                segments: [...conversation.pendingSegments],
-                toolCalls: Array.from(conversation.pendingToolCalls.values())
-              },
-              conversation.context
-            )
-          } catch (error) {
-            this.logger.warn('turn.tool_result.failure', error)
-          }
-        }
+        await this.config.messagePersistence.updateAgentTurn(
+          conversation.conversationId,
+          agentMessageId,
+          snapshot.update,
+          conversation.context
+        )
+      } catch (error) {
+        this.logger.warn('turn.tool_result.failure', error)
       }
     }
   }

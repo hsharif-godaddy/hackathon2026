@@ -113,6 +113,19 @@ export type { ChunkTimeoutDeps } from './chunk-timeout-guard.js'
 // Skill output redaction (shared by WS + SSE transports before emitting tool-result)
 export { redactSkillOutput } from './redact-skill-output.js'
 
+// Incremental turn snapshot tracking (shared by WS + SSE persistence/recovery)
+export { trackTurnSnapshotEvent } from './turn-snapshot-tracker.js'
+export type {
+  InitializedTurnSnapshotState,
+  TurnSnapshotContentSegment,
+  TurnSnapshotSegment,
+  TurnSnapshotState,
+  TurnSnapshotToolCall,
+  TurnSnapshotToolCallSegment,
+  TurnSnapshotTrackResult,
+  TurnSnapshotUpdate,
+} from './turn-snapshot-tracker.js'
+
 // First-line /agent override parsing (shared by WS + SSE transports and related prompt consumers)
 export { parseAgentCommand } from './agent-command-parser.js'
 export type { AgentCommandParseResult } from './agent-command-parser.js'

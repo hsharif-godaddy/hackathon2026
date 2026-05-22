@@ -107,13 +107,15 @@ function createMockDeps(parts: any[] = []) {
     conversationPersistence: {
       continueConversation: vi.fn().mockResolvedValue(undefined),
       startAgentTurn: vi.fn().mockResolvedValue('agent-msg-1'),
+      updateAgentTurn: vi.fn().mockResolvedValue(undefined),
       completeConversation: vi.fn().mockResolvedValue(undefined),
       handleConversationError: vi.fn().mockResolvedValue(undefined),
     },
     eventChannel: {
       subscribe: vi.fn(),
       unsubscribe: vi.fn(),
-      publish: vi.fn().mockResolvedValue({ sequence: 1 })
+      publish: vi.fn().mockResolvedValue({ sequence: 1 }),
+      markMessageEventsPersisted: vi.fn(),
     },
     sseRegistry: {
       getSubscribers: vi.fn().mockReturnValue([]),
@@ -674,6 +676,122 @@ describe('MessageExecutionService', () => {
       )
     })
 
+    it('marks buffered message events persisted after completeConversation succeeds', async () => {
+      deps = createMockDeps([{ type: 'text-delta', text: 'Hello' }])
+      service = new MessageExecutionService(deps as any)
+
+      await service.execute(DEFAULT_PARAMS)
+
+      expect(deps.eventChannel.markMessageEventsPersisted).toHaveBeenCalledWith('conv_1', 'agent-msg-1')
+    })
+
+    it('warns when completeConversation succeeds but no buffered events are marked persisted', async () => {
+      deps = createMockDeps([{ type: 'text-delta', text: 'Hello' }])
+      deps.eventChannel.markMessageEventsPersisted.mockReturnValueOnce(0)
+      service = new MessageExecutionService(deps as any)
+
+      const loggerMod = await import('../../../logging/index.js')
+      const warnSpy = vi.spyOn(loggerMod.logger, 'warn')
+      let warnCalls: any[][] = []
+      try {
+        await service.execute(DEFAULT_PARAMS)
+      } finally {
+        warnCalls = warnSpy.mock.calls.slice()
+        warnSpy.mockRestore()
+      }
+
+      const markerLog = warnCalls.find(c => c[0] === 'sse.execution.persisted_marker.no_events_marked')
+      expect(markerLog).toBeDefined()
+      expect(markerLog?.[1]).toMatchObject({ conversationId: 'conv_1', messageId: 'agent-msg-1' })
+    })
+
+    it('does not mark buffered events persisted when completeConversation fails', async () => {
+      deps = createMockDeps([{ type: 'text-delta', text: 'Hello' }])
+      deps.conversationPersistence.completeConversation.mockRejectedValueOnce(new Error('DB down'))
+      service = new MessageExecutionService(deps as any)
+
+      await service.execute(DEFAULT_PARAMS)
+
+      expect(deps.eventChannel.markMessageEventsPersisted).not.toHaveBeenCalled()
+    })
+
+    it('updates the in-progress agent turn after tool_result for recovery history', async () => {
+      deps = createMockDeps([
+        { type: 'text-delta', text: 'Before tool. ' },
+        { type: 'tool-input-start', id: 'tid1', toolName: 'myTool' },
+        { type: 'tool-result', id: 'tid1', toolName: 'myTool', input: { k: 'v' }, output: 'done' },
+        { type: 'text-delta', text: 'After tool.' },
+      ])
+      service = new MessageExecutionService(deps as any)
+
+      await service.execute(DEFAULT_PARAMS)
+
+      expect(deps.conversationPersistence.updateAgentTurn).toHaveBeenCalledWith(
+        'conv_1',
+        'agent-msg-1',
+        expect.objectContaining({
+          content: 'Before tool. ',
+          segments: expect.arrayContaining([
+            expect.objectContaining({ type: 'content', content: 'Before tool. ' }),
+            expect.objectContaining({
+              type: 'tool_call',
+              toolCall: expect.objectContaining({
+                id: 'tid1',
+                name: 'myTool',
+                input: { k: 'v' },
+                result: 'done',
+                status: 'completed',
+              }),
+            }),
+          ]),
+          toolCalls: expect.arrayContaining([
+            expect.objectContaining({
+              id: 'tid1',
+              name: 'myTool',
+              input: { k: 'v' },
+              result: 'done',
+              status: 'completed',
+            }),
+          ]),
+        }),
+        expect.objectContaining({ socketId: 'sse:conv_1' }),
+      )
+      expect(deps.conversationPersistence.completeConversation.mock.calls[0][1]).toEqual(expect.arrayContaining([
+        expect.objectContaining({ type: 'chunk', content: 'Before tool. ' }),
+        expect.objectContaining({ type: 'tool_start' }),
+        expect.objectContaining({ type: 'tool_result' }),
+        expect.objectContaining({ type: 'chunk', content: 'After tool.' }),
+      ]))
+    })
+
+    it('updates the in-progress agent turn after tool_error for recovery history', async () => {
+      deps = createMockDeps([
+        { type: 'tool-input-start', id: 'tid1', toolName: 'myTool' },
+        { type: 'tool-error', id: 'tid1', toolName: 'myTool', input: { k: 'v' }, error: new Error('boom') },
+      ])
+      service = new MessageExecutionService(deps as any)
+
+      await service.execute(DEFAULT_PARAMS)
+
+      expect(deps.conversationPersistence.updateAgentTurn).toHaveBeenCalledWith(
+        'conv_1',
+        'agent-msg-1',
+        expect.objectContaining({
+          toolCalls: expect.arrayContaining([
+            expect.objectContaining({
+              id: 'tid1',
+              name: 'myTool',
+              input: { k: 'v' },
+              result: {},
+              error: 'boom',
+              status: 'error',
+            }),
+          ]),
+        }),
+        expect.objectContaining({ socketId: 'sse:conv_1' }),
+      )
+    })
+
     it('captures tool events for persistence', async () => {
       deps = createMockDeps([
         { type: 'tool-input-start', id: 'tid1', toolName: 'myTool' },
@@ -785,6 +903,37 @@ describe('MessageExecutionService', () => {
         undefined,
         expect.objectContaining({ socketId: 'sse:conv_1' })
       )
+      expect(deps.eventChannel.markMessageEventsPersisted).toHaveBeenCalledWith('conv_1', 'agent-msg-1')
+    })
+
+    it('logs error-path completeConversation failures with the error persistence log event', async () => {
+      deps.getAgent.mockReturnValue({
+        streamGenerate: vi.fn().mockResolvedValue({
+          textStream: (async function* () {})(),
+          baseStream: new ReadableStream({
+            start(controller) {
+              controller.enqueue({ part: { type: 'error', error: new Error('stream failure') } })
+              controller.close()
+            }
+          })
+        })
+      })
+      deps.conversationPersistence.completeConversation.mockRejectedValueOnce(new Error('DB down on error path'))
+      service = new MessageExecutionService(deps as any)
+
+      const loggerMod = await import('../../../logging/index.js')
+      const errorSpy = vi.spyOn(loggerMod.logger, 'error')
+      let errorCalls: any[][] = []
+      try {
+        await service.execute(DEFAULT_PARAMS)
+      } finally {
+        errorCalls = errorSpy.mock.calls.slice()
+        errorSpy.mockRestore()
+      }
+
+      const persistLog = errorCalls.find(c => c[0] === 'sse.execution.error_persistence_failed')
+      expect(persistLog).toBeDefined()
+      expect(persistLog?.[1]).toMatchObject({ conversationId: 'conv_1', error: 'DB down on error path' })
     })
   })
 
@@ -1094,6 +1243,8 @@ describe('MessageExecutionService', () => {
           }),
         })
       )
+      expect(deps.eventChannel.markMessageEventsPersisted).toHaveBeenCalledWith('conv_1', 'agent-msg-1')
+      expect(deps.eventChannel.markMessageEventsPersisted).toHaveBeenCalledWith('conv_1', 'agent-msg-2')
     })
 
     it("invokes runMessageEndHooks with reason: 'error' when chunk timeout aborts the stream", async () => {

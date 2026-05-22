@@ -67,6 +67,37 @@ describe('ConversationEventChannel', () => {
       expect(event.persisted).toBe(false)
     })
 
+    it('marks buffered events for a persisted message', async () => {
+      await channel.publish('conv1', {
+        conversationId: 'conv1',
+        type: 'chunk',
+        content: 'persisted',
+        data: { messageId: 'msg_1' },
+        agentName: 'test-agent'
+      })
+      await channel.publish('conv1', {
+        conversationId: 'conv1',
+        type: 'chunk',
+        content: 'live',
+        data: { messageId: 'msg_2' },
+        agentName: 'test-agent'
+      })
+      await channel.publish('conv1', {
+        conversationId: 'conv1',
+        type: 'status',
+        content: '',
+        data: {},
+        agentName: 'system'
+      })
+
+      expect(channel.markMessageEventsPersisted('conv1', 'msg_1')).toBe(1)
+
+      const events = channel.getEventsSince('conv1', -1)
+      expect(events.find(event => event.data?.messageId === 'msg_1')?.persisted).toBe(true)
+      expect(events.find(event => event.data?.messageId === 'msg_2')?.persisted).toBe(false)
+      expect(events.find(event => event.type === 'status')?.persisted).toBe(false)
+    })
+
     it('notifies all registered subscribers', async () => {
       const subscriber1 = new MockSubscriber('sub1')
       const subscriber2 = new MockSubscriber('sub2')
