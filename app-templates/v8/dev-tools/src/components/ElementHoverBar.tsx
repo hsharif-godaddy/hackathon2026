@@ -43,6 +43,13 @@ export default function ElementHoverBar({
 }: ElementHoverBarProps) {
   const { element } = hoveredElement;
   const isImage = hoveredElement.type === "image";
+
+  // Commerce Storefront (VITE_GODADDY_STORE_ID): product images come from the
+  // Commerce API — hide Replace/Modify for images without data-dev-id or media slot.
+  const isCommerceIntegrated = !!import.meta.env.VITE_GODADDY_STORE_ID;
+  const isUneditableImage = isImage && !element.getAttribute("data-dev-id") && !hoveredElement.isMediaSlot;
+  const showImageActions = isImage && !(isCommerceIntegrated && isUneditableImage);
+
   const [toolbarMode, setToolbarMode] = useState(false);
   const [quickEditMode, setQuickEditMode] = useState(false);
   // Single source of truth for which Hover Bar popover is open (Color Picker /
@@ -490,7 +497,7 @@ export default function ElementHoverBar({
 
   return (
     <HoverBar style={barStyle} onMouseEnter={onMouseEnter} onMouseLeave={onMouseLeave}>
-      {isImage && (
+      {showImageActions && (
         <>
           <HoverBarButton
             onClick={handleReplace}
