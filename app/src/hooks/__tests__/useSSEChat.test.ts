@@ -337,6 +337,7 @@ describe('useSSEChat', () => {
     mockFinalizeStream.mockClear()
     mockMarkUpstreamError.mockClear()
     mockSetIsLoading.mockClear()
+    mockStartNewStream.mockClear()
     mockLoadAndPersistHistory.mockClear()
     mockClearActiveStream.mockClear().mockImplementation(() => {
       storeState.activeStream = null
@@ -363,6 +364,7 @@ describe('useSSEChat', () => {
   })
 
   afterEach(() => {
+    vi.useRealTimers()
     // No vi.restoreAllMocks() - it would clear vi.fn() implementations in vi.mock factories
   })
 
@@ -782,7 +784,7 @@ describe('useSSEChat', () => {
       await hook.result.current.actions.send({ content: 'hello' })
     })
 
-    expect(mockStartNewStream).toHaveBeenCalledWith('hello', undefined, undefined, 'customer')
+    expect(mockStartNewStream).toHaveBeenCalledWith('hello', undefined, undefined, 'customer', undefined)
     expect(mockSetIsLoading).toHaveBeenCalledWith(true)
   })
 
@@ -797,7 +799,7 @@ describe('useSSEChat', () => {
       await hook.result.current.actions.send({ content: 'hello from support' })
     })
 
-    expect(mockStartNewStream).toHaveBeenCalledWith('hello from support', undefined, undefined, 'support')
+    expect(mockStartNewStream).toHaveBeenCalledWith('hello from support', undefined, undefined, 'support', undefined)
   })
 
   it('sendMessage defaults to customer origin when auth type has not resolved', async () => {
@@ -808,7 +810,7 @@ describe('useSSEChat', () => {
       await hook.result.current.actions.send({ content: 'hello before auth resolves' })
     })
 
-    expect(mockStartNewStream).toHaveBeenCalledWith('hello before auth resolves', undefined, undefined, 'customer')
+    expect(mockStartNewStream).toHaveBeenCalledWith('hello before auth resolves', undefined, undefined, 'customer', undefined)
   })
 
   it('sendMessage uses latest auth type after auth context changes', async () => {
@@ -822,7 +824,7 @@ describe('useSSEChat', () => {
       await hook.result.current.actions.send({ content: 'hello after auth resolves' })
     })
 
-    expect(mockStartNewStream).toHaveBeenCalledWith('hello after auth resolves', undefined, undefined, 'support')
+    expect(mockStartNewStream).toHaveBeenCalledWith('hello after auth resolves', undefined, undefined, 'support', undefined)
   })
 
   it('sendMessage calls transport.sendMessage with correct params', async () => {
@@ -835,6 +837,68 @@ describe('useSSEChat', () => {
     expect(lastTransport.sendMessage).toHaveBeenCalledWith(
       expect.objectContaining({ content: 'build a login page', sessionId: 'test-app-123' })
     )
+  })
+
+  it('sendMessage forwards aiEditContexts and uploadedFileName', async () => {
+    const hook = await setupHook()
+
+    await act(async () => {
+      await hook.result.current.actions.send({
+        content: 'build with context',
+        aiEditContexts: [{ id: 'ctx-1' }] as any,
+        uploadedFileName: 'logo.png',
+      })
+    })
+
+    expect(mockStartNewStream).toHaveBeenCalledWith(
+      'build with context',
+      undefined,
+      undefined,
+      'customer',
+      'logo.png',
+    )
+    expect(lastTransport.sendMessage).toHaveBeenCalledWith(expect.objectContaining({
+      aiEditContexts: [{ id: 'ctx-1' }],
+      uploadedFileName: 'logo.png',
+    }))
+  })
+
+  it('APP_NOT_FOUND resend forwards aiEditContexts and uploadedFileName', async () => {
+    const hook = await setupHook()
+
+    await act(async () => {
+      await hook.result.current.actions.send({
+        content: 'build with retry context',
+        aiEditContexts: [{ id: 'ctx-1' }] as any,
+        uploadedFileName: 'logo.png',
+      })
+    })
+
+    expect(lastTransport.sendMessage).toHaveBeenCalledWith(expect.objectContaining({
+      aiEditContexts: [{ id: 'ctx-1' }],
+      uploadedFileName: 'logo.png',
+    }))
+    lastTransport.sendMessage.mockClear()
+    vi.useFakeTimers()
+
+    act(() => {
+      lastTransport.callbacks?.onEvent({
+        type: 'stream_error',
+        content: 'app not ready',
+        data: { errorType: 'APP_NOT_FOUND', message: 'app not ready' },
+      })
+    })
+
+    await act(async () => {
+      vi.advanceTimersByTime(500)
+      await Promise.resolve()
+    })
+
+    expect(lastTransport.sendMessage).toHaveBeenCalledWith(expect.objectContaining({
+      content: 'build with retry context',
+      aiEditContexts: [{ id: 'ctx-1' }],
+      uploadedFileName: 'logo.png',
+    }))
   })
 
   it('sendMessage does nothing with empty content', async () => {

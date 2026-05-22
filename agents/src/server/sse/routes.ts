@@ -442,8 +442,9 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
     const {
       content, agentId, agentProfile,
       templateId, modelOverride,
-      visualContext, aiEditContext, selectedAssets,
+      visualContext, aiEditContext, aiEditContexts, selectedAssets,
       todoListContext, isActionRequest, customContext, buildErrorContext,
+      uploadedFileName,
       market,
     } = req.body
 
@@ -458,6 +459,11 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
 
     if (market !== undefined && typeof market !== 'string') {
       res.status(400).json({ error: 'market must be a string' })
+      return
+    }
+
+    if (aiEditContexts !== undefined && !Array.isArray(aiEditContexts)) {
+      res.status(400).json({ error: 'aiEditContexts must be an array' })
       return
     }
 
@@ -538,11 +544,13 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
       modelOverride,
       visualContext,
       aiEditContext,
+      aiEditContexts,
       selectedAssets,
       todoListContext,
       isActionRequest,
       customContext,
       buildErrorContext,
+      uploadedFileName,
       bmsBudgetId,
       budgetSessionId,
       subscriptionId: effectiveSubscriptionId,

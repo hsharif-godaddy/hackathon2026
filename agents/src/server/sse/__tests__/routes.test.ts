@@ -792,6 +792,15 @@ describe('SSE routes', () => {
       expect(res.status).toBe(400)
     })
 
+    it('returns 400 when aiEditContexts is not an array', async () => {
+      const res = await request(app)
+        .post('/api/conversations/abcdefghij/conv_1/messages')
+        .send({ content: 'Hello agent', aiEditContexts: { id: 'ctx-1' } })
+
+      expect(res.status).toBe(400)
+      expect(res.body.error).toBe('aiEditContexts must be an array')
+    })
+
     it('accepts empty content (asset/file-only prompts match WS permissiveness)', async () => {
       const mockExecute = vi.fn().mockResolvedValue(undefined)
       const depsWithService = {
@@ -844,6 +853,34 @@ describe('SSE routes', () => {
       }
       expect(mockExecute).toHaveBeenCalledWith(expect.objectContaining({
         lifecycleContext: expect.objectContaining({ isInitialPrompt: true }),
+      }))
+    })
+
+    it('forwards aiEditContexts and uploadedFileName to execute()', async () => {
+      const mockExecute = vi.fn().mockResolvedValue(undefined)
+      const depsWithService = {
+        ...deps,
+        executionService: { execute: mockExecute, hasActiveStream: vi.fn().mockReturnValue(false) },
+      }
+      const appWithService = express()
+      appWithService.use(express.json())
+      appWithService.use('/api/conversations', createSSERoutes(depsWithService as any))
+
+      const res = await request(appWithService)
+        .post('/api/conversations/abcdefghij/conv_1/messages')
+        .send({
+          content: 'hello',
+          aiEditContexts: [{ id: 'ctx-1' }],
+          uploadedFileName: 'logo.png',
+        })
+
+      expect(res.status).toBe(202)
+      for (let i = 0; i < 50 && mockExecute.mock.calls.length === 0; i++) {
+        await new Promise(r => setTimeout(r, 5))
+      }
+      expect(mockExecute).toHaveBeenCalledWith(expect.objectContaining({
+        aiEditContexts: [{ id: 'ctx-1' }],
+        uploadedFileName: 'logo.png',
       }))
     })
 

@@ -492,6 +492,7 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
                         agentProfile: pending.agentProfile,
                         visualContext: pending.visualContext,
                         aiEditContext: pending.aiEditContext,
+                        aiEditContexts: pending.aiEditContexts,
                         selectedAssets: pending.selectedAssets,
                         todoListContext: pending.todoListContext,
                         isActionRequest: pending.isActionRequest,
@@ -499,6 +500,7 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
                         budgetServiceEnabled: isBudgetServiceEnabledRef.current || undefined,
                         subscriptionId: subscriptionIdRef.current,
                         buildErrorContext: undefined,
+                        uploadedFileName: pending.uploadedFileName,
                       }).catch(err => {
                         logger.warn('sse.error.app_not_found.resend_failed', {
                           appId: currentAppId, error: err instanceof Error ? err.message : String(err),
@@ -843,7 +845,7 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
     store.setIsLoading(true)
     const referencedFiles = options.customContext?.referencedFiles as Array<{ path: string; content: string }> | undefined
     const origin = getMessageOriginForAuthType(tokenAuthTypeRef.current)
-    store.startNewStream(options.content, options.selectedAssets, referencedFiles, origin)
+    store.startNewStream(options.content, options.selectedAssets, referencedFiles, origin, options.uploadedFileName)
 
     // Cache the options for APP_NOT_FOUND retry. Reset any prior retry state
     // so a new user prompt starts with a clean 30-second window.
@@ -865,6 +867,7 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
         agentProfile: defaults.agentProfile,
         visualContext: defaults.visualContext,
         aiEditContext: options.aiEditContext,
+        aiEditContexts: options.aiEditContexts,
         selectedAssets: options.selectedAssets,
         todoListContext: options.todoListContext,
         isActionRequest: options.isActionRequest,
@@ -873,6 +876,7 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
         market: marketRef.current,
         subscriptionId: subscriptionIdRef.current,
         buildErrorContext: store.buildErrorContext,
+        uploadedFileName: options.uploadedFileName,
       })
     } catch (err) {
       const s = useStreamingConversationStore.getState()

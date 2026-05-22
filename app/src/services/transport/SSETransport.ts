@@ -232,6 +232,7 @@ export class SSETransport implements ChatTransport {
         agentProfile: params.agentProfile,
         visualContext: params.visualContext,
         aiEditContext: params.aiEditContext,
+        aiEditContexts: params.aiEditContexts,
         selectedAssets: params.selectedAssets,
         todoListContext: params.todoListContext,
         isActionRequest: params.isActionRequest,
@@ -239,6 +240,7 @@ export class SSETransport implements ChatTransport {
         budgetServiceEnabled: params.budgetServiceEnabled,
         subscriptionId: params.subscriptionId,
         buildErrorContext: params.buildErrorContext,
+        uploadedFileName: params.uploadedFileName,
         market: params.market,
       })
     })

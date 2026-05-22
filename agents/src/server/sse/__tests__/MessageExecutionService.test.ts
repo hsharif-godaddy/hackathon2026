@@ -524,6 +524,66 @@ describe('MessageExecutionService', () => {
         expect.objectContaining({ content: 'App context' })
       ]))
     })
+
+    it('builds SSE execution context attachments with WS-equivalent shapes', async () => {
+      await service.execute({
+        ...DEFAULT_PARAMS,
+        aiEditContexts: [{ id: 'ctx-1' }],
+        selectedAssets: [{ imageUrl: '//img.example.com/a.png', thumbnailUrl: '//img.example.com/thumb.png' }],
+        todoListContext: { todos: [{ title: 'Ship parity' }] },
+        isActionRequest: true,
+        customContext: {
+          referencedFiles: [{ path: 'src/App.tsx', content: '<App />' }],
+        },
+        buildErrorContext: { error: 'build failed', details: 'stack trace', exitCode: 1 },
+        uploadedFileName: 'logo.png',
+      })
+
+      const call = deps.getAgent().streamGenerate.mock.calls[0]
+      const executionContext = call[1].executionContext
+      expect(executionContext.metadata.uploadedFileName).toBe('logo.png')
+      expect(executionContext.contextAttachments).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          type: 'ai_edit_contexts',
+          data: [{ id: 'ctx-1' }],
+          persistence: 'save',
+          renderStrategy: 'before_prompt',
+        }),
+        expect.objectContaining({
+          type: 'selected_assets',
+          data: [expect.objectContaining({
+            imageUrl: 'https://img.example.com/a.png',
+            thumbnailUrl: 'https://img.example.com/thumb.png',
+          })],
+          persistence: 'ephemeral',
+          renderStrategy: 'before_prompt',
+        }),
+        expect.objectContaining({
+          type: 'todo_list_context',
+          data: { todos: [{ title: 'Ship parity' }] },
+          persistence: 'save',
+          renderStrategy: 'before_prompt',
+        }),
+        expect.objectContaining({
+          type: 'action_request',
+          data: { instruction: '[Action Request] Execute this request immediately. Do not summarize previous work.' },
+          persistence: 'ephemeral',
+          renderStrategy: 'before_prompt',
+        }),
+        expect.objectContaining({
+          type: 'referenced_files',
+          data: [{ path: 'src/App.tsx', content: '<App />' }],
+          persistence: 'ephemeral',
+          renderStrategy: 'before_prompt',
+        }),
+        expect.objectContaining({
+          type: 'build_error',
+          data: { error: 'build failed', details: 'stack trace', exitCode: 1 },
+          persistence: 'ephemeral',
+          renderStrategy: 'before_prompt',
+        }),
+      ]))
+    })
   })
 
   describe('subscribeStream (late-join)', () => {

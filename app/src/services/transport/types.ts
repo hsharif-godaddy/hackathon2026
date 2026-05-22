@@ -19,6 +19,7 @@ export interface SendMessageParams {
   sessionId: string
   visualContext?: unknown
   aiEditContext?: unknown
+  aiEditContexts?: unknown[]
   selectedAssets?: unknown[]
   todoListContext?: unknown
   isActionRequest?: boolean
@@ -29,6 +30,7 @@ export interface SendMessageParams {
   budgetServiceEnabled?: boolean
   subscriptionId?: string
   buildErrorContext?: { error: string; details: string; exitCode?: number } | null
+  uploadedFileName?: string
   market?: string
 }
 

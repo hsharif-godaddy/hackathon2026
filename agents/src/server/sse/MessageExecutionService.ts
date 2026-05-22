@@ -32,6 +32,12 @@ import { resolveProfile, runWithProfile } from '../../profiles/index.js'
 import { guardAllowedOverrideModel, resolveOverride } from '../model-override.js'
 import type { AssessmentOutcome, ClassifierMode } from '../../agents/assessment-agent/index.js'
 import { PARALLEL_ASSESSMENT_TIMEOUT_MS } from '../assessment-executor.js'
+import {
+  buildContextAttachments,
+  type BuildContextAttachmentAsset,
+  type BuildContextAttachmentsBuildErrorContext,
+  type BuildContextAttachmentsCustomContext,
+} from '@airo/shared/context-attachment'
 import type { PostStreamValidatorResult } from '../post-stream-validator.js'
 import {
   runStartGitHook, startParallelAssessment, runMessageEndHooks,
@@ -125,11 +131,13 @@ interface ExecuteParams {
   // unknown here so assignments into executionContext don't widen to any.
   visualContext?: unknown
   aiEditContext?: unknown
-  selectedAssets?: unknown[]
+  aiEditContexts?: unknown[]
+  selectedAssets?: BuildContextAttachmentAsset[]
   todoListContext?: unknown
   isActionRequest?: boolean
-  customContext?: unknown
-  buildErrorContext?: unknown
+  customContext?: BuildContextAttachmentsCustomContext
+  buildErrorContext?: BuildContextAttachmentsBuildErrorContext | null
+  uploadedFileName?: string
   bmsBudgetId?: string
   budgetSessionId?: string
   /** Original subscriptionId for override detection (care agent, test accounts) */
@@ -574,10 +582,10 @@ export class MessageExecutionService {
     const {
       appId, conversationId, content, siteId, agentId, agentProfile,
       templateId, modelOverride,
-      visualContext, aiEditContext, selectedAssets,
+      visualContext, aiEditContext, aiEditContexts, selectedAssets,
       todoListContext, isActionRequest, customContext, buildErrorContext,
       bmsBudgetId, budgetSessionId, subscriptionId, authType,
-      lifecycleContext, market,
+      lifecycleContext, uploadedFileName, market,
     } = params
 
     const resolvedAgentId = agentId
@@ -671,62 +679,16 @@ export class MessageExecutionService {
     const streamingEvents: PersistenceStreamingEvent[] = []
 
     // Shared execution context - tools modify this in-place (e.g. __autoContinue)
-    // Build contextAttachments from the incoming context data (SSE path)
-    // This mirrors the ChatMessageBuilder conversion on the WebSocket path
-    const contextAttachments: Array<{ type: string; data: unknown; persistence: string; renderStrategy: string; metadata: { timestamp: number; source: string } }> = []
-    const timestamp = Date.now()
-
-    if (aiEditContext) {
-      contextAttachments.push({
-        type: 'ai_edit_context',
-        data: aiEditContext,
-        persistence: 'save',
-        renderStrategy: 'before_prompt',
-        metadata: {
-          timestamp,
-          source: 'ai-edit-dialog'
-        }
-      })
-    }
-
-    if (visualContext) {
-      contextAttachments.push({
-        type: 'visual_context',
-        data: visualContext,
-        persistence: 'ephemeral',
-        renderStrategy: 'before_prompt',
-        metadata: {
-          timestamp,
-          source: 'iframe-capture'
-        }
-      })
-    }
-
-    if (selectedAssets) {
-      contextAttachments.push({
-        type: 'selected_assets',
-        data: selectedAssets,
-        persistence: 'ephemeral',
-        renderStrategy: 'before_prompt',
-        metadata: {
-          timestamp,
-          source: 'asset-manager'
-        }
-      })
-    }
-
-    if (buildErrorContext) {
-      contextAttachments.push({
-        type: 'build_error',
-        data: buildErrorContext,
-        persistence: 'ephemeral',
-        renderStrategy: 'before_prompt',
-        metadata: {
-          timestamp,
-          source: 'publish-failure'
-        }
-      })
-    }
+    const contextAttachments = buildContextAttachments({
+      aiEditContext,
+      aiEditContexts,
+      visualContext,
+      selectedAssets,
+      todoListContext,
+      isActionRequest,
+      customContext,
+      buildErrorContext,
+    })
 
     const executionContext: Record<string, unknown> = {
       metadata: {
@@ -736,6 +698,7 @@ export class MessageExecutionService {
         ...(agentCtx?.customerId && { customerId: agentCtx.customerId }),
         ...(bmsBudgetId && { bmsBudgetId, budgetServiceEnabled: true }),
         ...(budgetSessionId && { budgetSessionId }),
+        ...(uploadedFileName && { uploadedFileName }),
         ...(market && { market }),
       },
       ...(contextAttachments.length > 0 && { contextAttachments }),

@@ -13,7 +13,18 @@ export type {
   ContextAttachmentRenderer,
   ContextAttachmentConfig,
 } from './context-attachment/index.js'
-export { createContextAttachment, isContextAttachment, isContextAttachmentArray } from './context-attachment/index.js'
+export {
+  createContextAttachment,
+  isContextAttachment,
+  isContextAttachmentArray,
+  buildContextAttachments,
+} from './context-attachment/index.js'
+export type {
+  BuildContextAttachmentsInput,
+  BuildContextAttachmentsCustomContext,
+  BuildContextAttachmentAsset,
+  BuildContextAttachmentsBuildErrorContext,
+} from './context-attachment/index.js'
 
 // WebSocket Context
 export type { AgentsAppContext, AgentsAppChatMessage } from './websocket/index.js'
