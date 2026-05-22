@@ -642,6 +642,107 @@ describe('build-metadata', function tests() {
     })
   })
 
+  describe('Reconnection grant recovery', function reconnectTests() {
+    it('should use subscription-based grant lookup when socket has no mapping', function reconnectRecovery() {
+      // Simulate grants indexed by a previous socket for this subscription
+      grantSessionManager.setGrants('old-socket', [
+        createGrant({
+          subscriptionId: 'sub-reconnect',
+          llmBudgetUserId: 'airo-builder:grant:reconnect-grant',
+        }),
+      ])
+
+      // New socket has no mapping — simulates reconnection race
+      const context = {
+        socketId: 'new-socket',
+        metadata: {
+          appId: 'app-1',
+          subscriptionId: 'airo-build:sid:sub-reconnect', // prefixed, from app DB
+          customerId: 'customer-123',
+        },
+      }
+
+      const result = buildLitellmMetadataFromContext(context, {
+        source: LlmCallSource.UserChat,
+      })
+
+      expect(result).toBeDefined()
+      expect(result?.user).toBe('airo-builder:grant:reconnect-grant')
+    })
+
+    it('should restore socket mapping after recovery', function restoresMapping() {
+      // Simulate grants indexed by a previous socket
+      grantSessionManager.setGrants('old-socket', [
+        createGrant({
+          subscriptionId: 'sub-restore',
+          llmBudgetUserId: 'airo-builder:grant:restore-grant',
+        }),
+      ])
+
+      const context = {
+        socketId: 'new-socket-restore',
+        metadata: {
+          appId: 'app-1',
+          subscriptionId: 'sub-restore',
+          customerId: 'customer-123',
+        },
+      }
+
+      // First call recovers via subscription lookup
+      buildLitellmMetadataFromContext(context, { source: LlmCallSource.UserChat })
+
+      // Socket should now have the mapping — hasGrants should return true
+      expect(grantSessionManager.hasGrants('new-socket-restore')).toBe(true)
+    })
+
+    it('should return null when subscription grants all exhausted on reconnect', function reconnectExhausted() {
+      // All grants exhausted for this subscription
+      grantSessionManager.setGrants('old-socket', [
+        createGrant({
+          subscriptionId: 'sub-exhausted-reconnect',
+          creditsSpent: 1500,
+          creditsMax: 1500,
+        }),
+      ])
+
+      const context = {
+        socketId: 'new-socket-exhausted',
+        metadata: {
+          appId: 'app-1',
+          subscriptionId: 'airo-build:sid:sub-exhausted-reconnect',
+          customerId: 'customer-123',
+        },
+      }
+
+      const result = buildLitellmMetadataFromContext(context, {
+        source: LlmCallSource.UserChat,
+      })
+
+      // Should return null (blocked) — not fall through to SID or customerId
+      expect(result).toBe(null)
+    })
+
+    it('should fall through when no grants indexed for subscription', function reconnectNoGrants() {
+      // No grants have ever been received for this subscription
+      const context = {
+        socketId: 'new-socket-no-grants',
+        metadata: {
+          appId: 'app-1',
+          subscriptionId: 'airo-build:sid:sub-never-provisioned',
+          customerId: 'customer-123',
+        },
+      }
+
+      const result = buildLitellmMetadataFromContext(context, {
+        source: LlmCallSource.UserChat,
+      })
+
+      // Falls through to subscriptionId fallback (no grants to look up)
+      expect(result).toBeDefined()
+      expect(result?.user).toBe('airo-build:sid:sub-never-provisioned')
+    })
+  })
+
   describe('SubscriptionId fallback', function subscriptionFallbackTests() {
     it('should add prefix to subscriptionId if not already prefixed', function addPrefix() {
       const context = {

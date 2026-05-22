@@ -250,6 +250,69 @@ export function buildLitellmMetadataFromContext(
     return null
   }
 
+  // Socket exists but has no grant mapping (reconnection race — socket mapping removed
+  // on disconnect, not yet restored by registerSession or setGrants). Try subscription-based
+  // lookup as bridge using the subscriptionId from context metadata.
+  if (socketId && !grantSessionManager.hasGrants(socketId) && subscriptionId) {
+    const rawSubscriptionId = subscriptionId.startsWith(SUBSCRIPTION_ID_PREFIX)
+      ? subscriptionId.slice(SUBSCRIPTION_ID_PREFIX.length)
+      : subscriptionId
+
+    const userId = grantSessionManager.getUserIdBySubscription(rawSubscriptionId)
+
+    if (userId) {
+      // Restore the socket mapping so subsequent calls in this turn don't repeat this lookup
+      grantSessionManager.registerSession(socketId, rawSubscriptionId)
+
+      apm?.setLabel?.('litellm.user_type', 'grant_by_subscription_reconnect')
+      const metadata: LitellmMetadata = {
+        user: userId,
+        tags,
+        ...budgetFields,
+        ...traceFields,
+        _internal: {
+          socketId,
+          ...(customerId && { customerId })
+        }
+      }
+      logger.info('grants.build_metadata.reconnect_recovery', {
+        appId,
+        socketId,
+        subscriptionId,
+        rawSubscriptionId,
+        userType: 'grant_by_subscription_reconnect',
+        userId,
+        tags,
+        source: options?.source ?? LlmCallSource.UserChat,
+      })
+      return metadata
+    }
+
+    // Subscription has grants but all exhausted
+    if (grantSessionManager.hasGrantsBySubscription(rawSubscriptionId)) {
+      // Restore mapping so subsequent calls take the normal exhaustion path
+      grantSessionManager.registerSession(socketId, rawSubscriptionId)
+
+      logger.error('grants.build_metadata.reconnect_exhausted', {
+        appId,
+        socketId,
+        subscriptionId,
+        rawSubscriptionId,
+        customerId,
+      })
+      apm?.setLabel?.('litellm.user_type', 'exhausted_reconnect')
+      return null
+    }
+
+    // No grants indexed for this subscription — fall through to subscriptionId fallback
+    logger.warn('grants.build_metadata.reconnect_no_grants', {
+      appId,
+      socketId,
+      subscriptionId,
+      rawSubscriptionId,
+    })
+  }
+
   // For background tasks: Try subscription-based grant lookup when no socketId
   // This uses grants that were indexed when a user's websocket session received them
   if (!socketId && subscriptionId) {
