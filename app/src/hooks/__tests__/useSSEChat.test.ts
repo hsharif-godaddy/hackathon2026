@@ -1038,17 +1038,33 @@ describe('useSSEChat', () => {
   // ---------------------------------------------------------------------------
 
   describe('history loading', () => {
-    it('eagerly loads initial history once conversationId cookie exists', async () => {
+    it('loads initial history after recovery reports no buffered replay', async () => {
       mockConversationIdFromCookie = 'conv-abc-123'
       await setupHook()
+
+      expect(lastTransport.loadHistory).not.toHaveBeenCalled()
+
+      act(() => {
+        lastTransport.callbacks?.onEvent({
+          type: 'recovery_status',
+          data: { hasBufferedEvents: false, bufferedCount: 0, streamCompleted: false },
+        })
+      })
 
       expect(mockSetHistoryLoadRequested).toHaveBeenCalledWith(true)
       expect(lastTransport.loadHistory).toHaveBeenCalledWith()
     })
 
-    it('does not duplicate eager initial history load when connected fallback fires', async () => {
+    it('does not duplicate initial history load when connected fallback fires after recovery', async () => {
       mockConversationIdFromCookie = 'conv-abc-123'
       await setupHook()
+
+      act(() => {
+        lastTransport.callbacks?.onEvent({
+          type: 'recovery_status',
+          data: { hasBufferedEvents: false, bufferedCount: 0, streamCompleted: false },
+        })
+      })
 
       expect(lastTransport.loadHistory).toHaveBeenCalledTimes(1)
 
@@ -1057,6 +1073,23 @@ describe('useSSEChat', () => {
       })
 
       expect(lastTransport.loadHistory).toHaveBeenCalledTimes(1)
+    })
+
+    it('loads initial history on legacy server_config fallback when recovery_status is absent', async () => {
+      mockConversationIdFromCookie = 'conv-abc-123'
+      await setupHook()
+
+      expect(lastTransport.loadHistory).not.toHaveBeenCalled()
+
+      act(() => {
+        lastTransport.callbacks?.onEvent({
+          type: 'server_config',
+          data: { supportsWebSocketHistory: false, supportsConnectThenAuth: false, serverVersion: '2.0' },
+        })
+      })
+
+      expect(lastTransport.loadHistory).toHaveBeenCalledTimes(1)
+      expect(mockSetHistoryLoadRequested).toHaveBeenCalledWith(true)
     })
 
     it('marks history complete when connected fallback finds no conversation cookie', async () => {
@@ -1073,12 +1106,125 @@ describe('useSSEChat', () => {
       expect(mockSetHistoryLoadingComplete).toHaveBeenCalledWith(true)
     })
 
-    it('loads initial history after creating a conversation when no cookie exists', async () => {
+    it('loads initial history after creating a conversation once recovery reports no buffered replay', async () => {
       mockConversationIdFromCookie = null
       await setupHook()
 
+      expect(lastTransport.loadHistory).not.toHaveBeenCalled()
+
+      act(() => {
+        lastTransport.callbacks?.onEvent({
+          type: 'recovery_status',
+          data: { hasBufferedEvents: false, bufferedCount: 0, streamCompleted: false },
+        })
+      })
+
       expect(mockSetHistoryLoadRequested).toHaveBeenCalledWith(true)
       expect(lastTransport.loadHistory).toHaveBeenCalledWith()
+    })
+
+    it('defers initial history until buffered recovery replay completes', async () => {
+      mockConversationIdFromCookie = 'conv-abc-123'
+      await setupHook()
+
+      expect(lastTransport.loadHistory).not.toHaveBeenCalled()
+
+      act(() => {
+        lastTransport.callbacks?.onEvent({
+          type: 'recovery_status',
+          data: {
+            hasBufferedEvents: true,
+            bufferedCount: 17,
+            conversationId: 'conv-abc-123',
+            streamCompleted: false,
+          },
+        })
+      })
+
+      expect(lastTransport.loadHistory).not.toHaveBeenCalled()
+
+      act(() => {
+        lastTransport.callbacks?.onEvent({
+          type: 'chunk',
+          content: 'replayed response',
+          conversationId: 'conv-abc-123',
+          data: {},
+          sequence: 4286,
+        })
+      })
+
+      expect(mockBufferTextChunk).toHaveBeenCalledWith('replayed response')
+      expect(lastTransport.loadHistory).not.toHaveBeenCalled()
+
+      mockSetHistoryLoadRequested.mockClear()
+
+      act(() => {
+        lastTransport.callbacks?.onEvent({
+          type: 'replay_complete',
+          data: { lastSequence: 4286, replayedCount: 17 },
+        })
+      })
+
+      expect(lastTransport.loadHistory).toHaveBeenCalledTimes(1)
+      expect(mockSetHistoryLoadRequested).toHaveBeenCalledWith(true)
+
+      act(() => {
+        lastTransport.callbacks?.onEvent({
+          type: 'replay_complete',
+          data: { lastSequence: 4286, replayedCount: 0 },
+        })
+      })
+
+      expect(lastTransport.loadHistory).toHaveBeenCalledTimes(1)
+    })
+
+    it('clears a deferred initial history load on transport error so recovery can retry', async () => {
+      mockConversationIdFromCookie = 'conv-abc-123'
+      await setupHook()
+
+      act(() => {
+        lastTransport.callbacks?.onEvent({
+          type: 'recovery_status',
+          data: {
+            hasBufferedEvents: true,
+            bufferedCount: 2,
+            conversationId: 'conv-abc-123',
+            streamCompleted: false,
+          },
+        })
+      })
+
+      expect(lastTransport.loadHistory).not.toHaveBeenCalled()
+
+      mockSetHistoryLoadRequested.mockClear()
+
+      act(() => {
+        lastTransport.callbacks?.onError(new Error('boom'))
+      })
+
+      expect(mockSetHistoryLoadRequested).toHaveBeenCalledWith(false)
+
+      mockSetHistoryLoadRequested.mockClear()
+      lastTransport.loadHistory.mockClear()
+
+      act(() => {
+        lastTransport.callbacks?.onEvent({
+          type: 'recovery_status',
+          data: {
+            hasBufferedEvents: true,
+            bufferedCount: 1,
+            conversationId: 'conv-abc-123',
+            streamCompleted: false,
+          },
+        })
+      })
+
+      act(() => {
+        lastTransport.callbacks?.onStateChange('connected')
+      })
+
+      expect(mockSetHistoryLoadRequested).toHaveBeenCalledWith(true)
+      expect(lastTransport.loadHistory).not.toHaveBeenCalled()
     })
 
     it('skips history load if already requested', async () => {

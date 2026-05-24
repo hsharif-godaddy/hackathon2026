@@ -142,6 +142,9 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
     active: false,
     seen: new Set<number>(),
   })
+  const recoveryHandshakePendingRef = useRef(false)
+  const recoveryReplayActiveRef = useRef(false)
+  const deferredInitialHistoryConversationIdRef = useRef<string | null>(null)
   const recoveryHistoryReplayRef = useRef<{ active: boolean; hasMore: boolean; nextCursor: string | null }>({
     active: false,
     hasMore: false,
@@ -251,6 +254,29 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
     }
   }, [])
 
+  const startInitialHistoryLoad = useCallback((conversationId: string): boolean => {
+    const store = useStreamingConversationStore.getState()
+    const currentTransport = transportRef.current
+    if (!currentTransport) {
+      store.setHistoryLoadRequested(false)
+      logger.warn('sse.history.load.no_transport', { appId: currentAppId, conversationId })
+      return false
+    }
+
+    store.setHistoryLoadRequested(true)
+    logger.info('sse.history.load', { appId: currentAppId, conversationId })
+    currentTransport.loadHistory()
+    return true
+  }, [currentAppId])
+
+  const releaseDeferredInitialHistoryLoad = useCallback((): boolean => {
+    const deferredConversationId = deferredInitialHistoryConversationIdRef.current
+    if (!deferredConversationId) return false
+
+    deferredInitialHistoryConversationIdRef.current = null
+    return startInitialHistoryLoad(deferredConversationId)
+  }, [startInitialHistoryLoad])
+
   const requestInitialHistoryLoad = useCallback((conversationId: string | null): boolean => {
     const store = useStreamingConversationStore.getState()
 
@@ -263,14 +289,23 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
 
     if (store.historyLoadingComplete || store.historyLoadRequested) return false
 
-    const transport = transportRef.current
-    if (!transport) return false
+    const currentTransport = transportRef.current
+    if (!currentTransport) return false
 
-    store.setHistoryLoadRequested(true)
-    logger.info('sse.history.load', { appId: currentAppId, conversationId })
-    transport.loadHistory()
-    return true
-  }, [currentAppId])
+    if (recoveryHandshakePendingRef.current || recoveryReplayActiveRef.current) {
+      deferredInitialHistoryConversationIdRef.current = conversationId
+      store.setHistoryLoadRequested(true)
+      logger.info('sse.history.load.deferred_for_recovery', {
+        appId: currentAppId,
+        conversationId,
+        recoveryHandshakePending: recoveryHandshakePendingRef.current,
+        recoveryReplayActive: recoveryReplayActiveRef.current,
+      })
+      return true
+    }
+
+    return startInitialHistoryLoad(conversationId)
+  }, [currentAppId, startInitialHistoryLoad])
 
   // Connect/reconnect when appId changes
   useEffect(() => {
@@ -297,6 +332,9 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
             clearTimeout(historyBatchTimerRef.current)
             historyBatchTimerRef.current = null
           }
+          recoveryHandshakePendingRef.current = false
+          recoveryReplayActiveRef.current = false
+          deferredInitialHistoryConversationIdRef.current = null
 
           transportRef.current.destroy()
           transportRef.current = null
@@ -331,6 +369,10 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
               }
 
               if (type === 'server_config') {
+                if (recoveryHandshakePendingRef.current) {
+                  recoveryHandshakePendingRef.current = false
+                  releaseDeferredInitialHistoryLoad()
+                }
                 useStreamingConversationStore.setState({
                   serverCapabilities: {
                     supportsWebSocketHistory: (event.data as any)?.supportsWebSocketHistory === true,
@@ -629,6 +671,8 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
                 }
               } else if (type === 'recovery_status') {
                 const payload = event.data as any
+                recoveryHandshakePendingRef.current = false
+                recoveryReplayActiveRef.current = payload?.hasBufferedEvents === true
                 replayCompletesStreamRef.current = false
                 replayDedupRef.current.active = payload?.hasBufferedEvents === true
                 replayDedupRef.current.seen.clear()
@@ -646,8 +690,17 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
                   }
                   // Force history reload to pick up the completed turn.
                   if (transportRef.current) {
+                    const historyConversationId = typeof payload?.conversationId === 'string'
+                      ? payload.conversationId
+                      : currentAppId ? getConversationIdFromCookie(currentAppId) : null
+                    deferredInitialHistoryConversationIdRef.current = null
                     store.setHistoryLoadRequested(false)
-                    transportRef.current.loadHistory()
+                    if (historyConversationId) {
+                      startInitialHistoryLoad(historyConversationId)
+                    } else {
+                      logger.warn('sse.history.load.noConversationId', { appId: currentAppId })
+                      transportRef.current.loadHistory()
+                    }
                   }
                 } else if (payload?.hasBufferedEvents) {
                   ensureSSEActiveStream('recovery_status', payload?.conversationId)
@@ -657,6 +710,12 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
                   // rather than mutating the store directly from the event
                   // handler, per app/CLAUDE.md lifecycle rules.
                   setTransportState('streaming')
+                } else {
+                  const released = releaseDeferredInitialHistoryLoad()
+                  logger.info('sse.recovery.no_buffered_events_releasing_deferred', {
+                    appId: currentAppId,
+                    released,
+                  })
                 }
 
                 // Ambiguous recovery: server lost context; clear stale placeholder if history confirms turn finished.
@@ -693,11 +752,13 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
                 }
                 replayDedupRef.current.active = false
                 replayDedupRef.current.seen.clear()
+                recoveryReplayActiveRef.current = false
                 if (replayCompletesStreamRef.current) {
                   store.finalizeStream()
                   setTransportState('connected')
                   replayCompletesStreamRef.current = false
                 }
+                releaseDeferredInitialHistoryLoad()
 
                 logger.info('sse.recovery.replay_complete', {
                   appId: currentAppId,
@@ -754,6 +815,13 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
               // or `error` event will arrive to finalize the stream, so the
               // input stays disabled forever otherwise.
               const store = useStreamingConversationStore.getState()
+              const hadDeferredInitialHistoryLoad = deferredInitialHistoryConversationIdRef.current !== null
+              recoveryHandshakePendingRef.current = false
+              recoveryReplayActiveRef.current = false
+              deferredInitialHistoryConversationIdRef.current = null
+              if (hadDeferredInitialHistoryLoad) {
+                store.setHistoryLoadRequested(false)
+              }
               replayDedupRef.current.active = false
               replayDedupRef.current.seen.clear()
               recoveryHistoryReplayRef.current = { active: false, hasMore: false, nextCursor: null }
@@ -783,11 +851,13 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
         }
         if (cancelled) return
 
+        recoveryHandshakePendingRef.current = true
+        recoveryReplayActiveRef.current = false
+        deferredInitialHistoryConversationIdRef.current = null
         transportRef.current.connect(currentAppId!, token, conversationId)
-        // SSE history is fetched over HTTP, not through /stream. Start it as
-        // soon as the conversation is known so a broken EventSource endpoint
-        // does not leave the chat transcript empty or stuck behind stream
-        // initialization.
+        // SSE history is fetched over HTTP, not through /stream. Gate the
+        // initial load behind the stream recovery handshake so buffered replay
+        // remains authoritative for the in-progress turn, matching WS ordering.
         void requestInitialHistoryLoad(conversationId)
       } catch (err) {
         if (!cancelled) {
@@ -806,7 +876,7 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
       cancelled = true
       transportRef.current?.disconnect()
     }
-  }, [enabled, currentAppId, flushHistoryBatch, requestInitialHistoryLoad])
+  }, [enabled, currentAppId, flushHistoryBatch, releaseDeferredInitialHistoryLoad, requestInitialHistoryLoad, startInitialHistoryLoad])
 
   // Cleanup on unmount
   useEffect(() => {
