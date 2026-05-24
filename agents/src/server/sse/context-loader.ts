@@ -16,6 +16,8 @@ import { buildPinnedSkillsContextMessages } from '../pinned-skills-context.js'
 import { selectCacheConversationId } from '../budget-report-conversation-id.js'
 import { logger } from '../../logging/index.js'
 import type { AgentsAppContext } from '../../types/websocket-context.js'
+import { resolveBmsSubscriptionId } from '@airo/ai-grants'
+import { isEmployeeAuthType } from '@airo/shared/auth'
 
 export interface SSEContextLoaderDeps {
   agentFactory: {
@@ -39,6 +41,7 @@ export interface SSEContextLoaderDeps {
    * in-memory but is not persisted to `.airo/pinned-skills.json`.
    */
   getAppPath?: (appId: string) => string | undefined
+  getAppMetadata?: (appId: string) => { customerId?: string | null; subscriptionId?: string | null } | undefined
 }
 
 export interface SSEContextLoaderResult {
@@ -61,6 +64,39 @@ export function createSSEContextLoader(
     const rebuildPagesPromise: Promise<boolean> = appId
       ? deps.hasUnbuiltRebuildPages(appId)
       : Promise.resolve(false)
+
+    if (appId && deps.getAppMetadata) {
+      let appMetadata: ReturnType<NonNullable<SSEContextLoaderDeps['getAppMetadata']>> | undefined
+      try {
+        appMetadata = deps.getAppMetadata(appId)
+      } catch (err) {
+        logger.warn('sse.context.app_metadata_failed', {
+          appId,
+          error: err instanceof Error ? err.message : String(err),
+        })
+      }
+      if (appMetadata) {
+        const authType = metadata.authType as string | undefined
+        const isEmployeeSession = isEmployeeAuthType(authType)
+        const useTestBudget = metadata.useTestBudget === true
+        const currentSubscriptionId = typeof metadata.subscriptionId === 'string'
+          ? metadata.subscriptionId
+          : appMetadata.subscriptionId ?? undefined
+
+        if (appMetadata.customerId) {
+          metadata.customerId = appMetadata.customerId
+        }
+
+        const resolvedSubscriptionId = resolveBmsSubscriptionId(
+          isEmployeeSession,
+          useTestBudget,
+          currentSubscriptionId,
+        )
+        if (resolvedSubscriptionId) {
+          metadata.subscriptionId = resolvedSubscriptionId
+        }
+      }
+    }
 
     // Start with existing contextAttachments from MessageExecutionService (e.g., ai_edit_context)
     const contextAttachments: unknown[] = Array.isArray(context.contextAttachments)

@@ -62,6 +62,54 @@ describe('createSSEContextLoader', () => {
     expect((context.metadata as Record<string, unknown>).hasUnbuiltRebuildPages).toBe(true)
   })
 
+  it('enriches metadata with app DB customer and subscription for regular sessions', async () => {
+    const deps = makeDeps({
+      getAppMetadata: vi.fn().mockReturnValue({ customerId: 'cust-db', subscriptionId: 'sub-db' }),
+    })
+    const loader = createSSEContextLoader(deps)
+    const context: Record<string, unknown> = { metadata: { appId: 'app-1' } }
+
+    await loader(context)
+
+    expect(deps.getAppMetadata).toHaveBeenCalledWith('app-1')
+    expect(context.metadata).toEqual(expect.objectContaining({
+      customerId: 'cust-db',
+      subscriptionId: 'sub-db',
+    }))
+  })
+
+  it('uses BMS override subscription metadata for employee and test sessions', async () => {
+    const deps = makeDeps({
+      getAppMetadata: vi.fn().mockReturnValue({ customerId: 'cust-db', subscriptionId: 'sub-db' }),
+    })
+    const loader = createSSEContextLoader(deps)
+    const employeeContext: Record<string, unknown> = { metadata: { appId: 'app-1', authType: 'e2s' } }
+    const testBudgetContext: Record<string, unknown> = { metadata: { appId: 'app-1', useTestBudget: true } }
+
+    await loader(employeeContext)
+    await loader(testBudgetContext)
+
+    expect((employeeContext.metadata as Record<string, unknown>).subscriptionId).toBe('airo-builder:care-agent')
+    expect((testBudgetContext.metadata as Record<string, unknown>).subscriptionId).toBe('airo-builder:test-accounts')
+  })
+
+  it('continues context loading when app metadata lookup throws', async () => {
+    const deps = makeDeps({
+      getAppMetadata: vi.fn(() => {
+        throw new Error('SQLITE_BUSY')
+      }),
+    })
+    const loader = createSSEContextLoader(deps)
+    const context: Record<string, unknown> = { metadata: { appId: 'app-1' } }
+
+    const result = await loader(context)
+
+    expect(result.contextMessages).toEqual([{ role: 'system', content: 'ctx' }])
+    expect(deps.contextMgr.buildContextMessages).toHaveBeenCalled()
+    expect((context.metadata as Record<string, unknown>).customerId).toBeUndefined()
+    expect((context.metadata as Record<string, unknown>).subscriptionId).toBeUndefined()
+  })
+
   it('defaults hasUnbuiltRebuildPages to false when appId is absent', async () => {
     const hasUnbuiltRebuildPages = vi.fn().mockResolvedValue(true)
     const deps = makeDeps({ hasUnbuiltRebuildPages })

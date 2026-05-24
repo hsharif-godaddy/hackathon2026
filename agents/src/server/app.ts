@@ -251,6 +251,10 @@ function getOrCreateSSEExecutionService(): MessageExecutionService | null {
         contextMgr: contextMgr as any,
         hasUnbuiltRebuildPages,
         getAppPath: (id: string) => sseAppRepo.findById(id)?.path,
+        getAppMetadata: (id: string) => {
+          const app = sseAppRepo.findById(id)
+          return app ? { customerId: app.customerId, subscriptionId: app.subscriptionId } : undefined
+        },
       }),
     },
     loadConversationHistory: async (conversationId, appId, agentName) => {

@@ -26,6 +26,7 @@ const mockCreateAgentInvocationSpan = vi.fn(() => ({
   context: mockInvocationContext,
   end: mockInvocationEnd,
 }))
+const mockGetBudgetServiceClient = vi.hoisted(() => vi.fn(() => null))
 vi.mock('@godaddy/agent-otel-sdk', async () => {
   const actual = await vi.importActual<Record<string, unknown>>('@godaddy/agent-otel-sdk')
   return {
@@ -36,6 +37,7 @@ vi.mock('@godaddy/agent-otel-sdk', async () => {
 })
 
 import { MessageExecutionService } from '../MessageExecutionService.js'
+import { BudgetServiceConflictError } from '@airo/ai-lib/budget'
 
 // Mock ai-lib-websocket-server to avoid heavy dependency chain.
 // `actionServiceMap` is module-local so tests can assert registry state
@@ -63,8 +65,8 @@ vi.mock('../../message-lifecycle.js', () => ({
   runMessageEndHooks: (...args: any[]) => mockRunMessageEndHooks(...args),
 }))
 
-vi.mock('../../services/budget-service-instance.js', () => ({
-  getBudgetServiceClient: vi.fn(() => null),
+vi.mock('../../../services/budget-service-instance.js', () => ({
+  getBudgetServiceClient: mockGetBudgetServiceClient,
 }))
 
 // Mock context-builders to avoid heavy dependency chain (AppRepository, KnowB, Langfuse)
@@ -134,6 +136,47 @@ function createMockDeps(parts: any[] = []) {
   }
 }
 
+function createBudgetClient(overrides: Record<string, unknown> = {}) {
+  return {
+    getSession: vi.fn().mockResolvedValue({
+      costTotal: 1.25,
+      sessionItems: [{ callRequestId: 'corr-1', cost: 1.25 }],
+    }),
+    createReport: vi.fn().mockResolvedValue({
+      reportId: 'report-1',
+      budgetId: 'budget-abc',
+      sessionId: 'session-xyz',
+      productKey: 'airo-builder',
+      budgetCostTotal: 1.25,
+      productCostTotal: 0,
+      creditsAvailable: 98.75,
+      reportItems: [{
+        budgetCost: 1.25,
+        productCost: 0,
+        category: 'airo-builder:general',
+        budgetItems: [{ budgetItemId: 'item-1', creditsUsed: 1.25 }],
+      }],
+    }),
+    getBudget: vi.fn().mockResolvedValue({
+      budgetId: 'budget-abc',
+      productKey: 'airo-builder',
+      creditsTotal: '100.000000',
+      creditsUsed: '1.250000',
+      creditsPending: '0.000000',
+      items: [{
+        budgetItemId: 'item-1',
+        creditsTotal: '100.000000',
+        creditsUsed: '1.250000',
+        costToCreditRatio: '1.000000',
+        startsAt: null,
+        expiresAt: null,
+        resetInterval: null,
+      }],
+    }),
+    ...overrides,
+  }
+}
+
 const DEFAULT_PARAMS = {
   appId: 'app_1',
   conversationId: 'conv_1',
@@ -148,6 +191,7 @@ describe('MessageExecutionService', () => {
 
   beforeEach(() => {
     actionServiceMap.clear()
+    mockGetBudgetServiceClient.mockReturnValue(null)
     mockInvocationEnd.mockReset()
     mockCreateAgentInvocationSpan.mockClear()
     deps = createMockDeps()
@@ -2173,6 +2217,256 @@ describe('MessageExecutionService', () => {
       expect(execContext?.metadata).toEqual(expect.objectContaining({
         subscriptionId: 'sub-123',
       }))
+    })
+
+    it('includes JWT permissions and enrichment flags in executionContext.metadata', async () => {
+      deps = createMockDeps()
+      service = new MessageExecutionService(deps as any)
+
+      await service.execute({
+        ...DEFAULT_PARAMS,
+        authType: 'e2s',
+        lifecycleContext: {
+          agentContext: {
+            canDownload: true,
+            canPublish: true,
+            canPurchaseDomain: false,
+            isE2S: true,
+            authType: 'e2s',
+            useTestBudget: true,
+            budgetServiceEnabled: true,
+            bmsBudgetId: 'budget-from-jwt',
+            useAtlasCrawler: true,
+            googleReviewsEnabled: true,
+          },
+        },
+      })
+
+      const streamCall = deps.getAgent().streamGenerate as ReturnType<typeof vi.fn>
+      const execContext = streamCall.mock.calls[0][1]?.executionContext
+      expect(execContext?.metadata).toEqual(expect.objectContaining({
+        permissions: {
+          canDownload: true,
+          canPublish: true,
+          canPurchaseDomain: false,
+        },
+        isE2S: true,
+        authType: 'e2s',
+        useTestBudget: true,
+        budgetServiceEnabled: true,
+        bmsBudgetId: 'budget-from-jwt',
+        useAtlasCrawler: true,
+        googleReviewsEnabled: true,
+      }))
+    })
+
+    it('reports BMS cost with SDK execution steps and publishes budget_update', async () => {
+      const budgetClient = createBudgetClient()
+      mockGetBudgetServiceClient.mockReturnValue(budgetClient as any)
+      const steps = [{ stepNumber: 1, content: [], response: { headers: { 'x-correlation-id': 'corr-1' } } }]
+      deps = createMockDeps([{ type: 'text-delta', text: 'done' }])
+      deps.getAgent.mockReturnValue({
+        streamGenerate: vi.fn().mockResolvedValue({
+          textStream: (async function* () {})(),
+          baseStream: makeReadableStream([{ type: 'text-delta', text: 'done' }]),
+          getFinalResult: vi.fn().mockResolvedValue({ finishReason: 'complete', steps }),
+        }),
+        getName: vi.fn().mockReturnValue('AI Developer'),
+      })
+      service = new MessageExecutionService(deps as any)
+
+      const loggerMod = await import('../../../logging/index.js')
+      const infoSpy = vi.spyOn(loggerMod.logger, 'info')
+      let infoCalls: any[][] = []
+      try {
+        await service.execute({
+          ...DEFAULT_PARAMS,
+          bmsBudgetId: 'budget-abc',
+          budgetSessionId: 'session-xyz',
+          subscriptionId: 'sub-123',
+        })
+      } finally {
+        infoCalls = infoSpy.mock.calls.slice()
+        infoSpy.mockRestore()
+      }
+
+      expect(budgetClient.createReport).toHaveBeenCalledWith(
+        'session-xyz',
+        expect.objectContaining({ allowOverage: true }),
+      )
+      expect(infoCalls).toContainEqual([
+        'budget.report.steps_received',
+        expect.objectContaining({ stepCount: 1 }),
+      ])
+      expect(deps.eventChannel.publish).toHaveBeenCalledWith(
+        'conv_1',
+        expect.objectContaining({
+          type: 'budget_update',
+          data: expect.objectContaining({ refreshRequired: false }),
+        }),
+      )
+    })
+
+    it('reports BMS cost for user-aborted streams with wasUserAborted attribution', async () => {
+      const budgetClient = createBudgetClient()
+      mockGetBudgetServiceClient.mockReturnValue(budgetClient as any)
+      let resolveStream: (() => void) | undefined
+      deps = createMockDeps()
+      deps.getAgent.mockReturnValue({
+        streamGenerate: vi.fn().mockImplementation((_message: string, opts: { abortSignal: AbortSignal }) => ({
+          textStream: (async function* () {})(),
+          baseStream: new ReadableStream({
+            start(controller) {
+              opts.abortSignal.addEventListener('abort', () => {
+                controller.close()
+              }, { once: true })
+              resolveStream = () => controller.close()
+            },
+          }),
+          getFinalResult: vi.fn().mockResolvedValue({
+            finishReason: 'aborted',
+            steps: [{ stepNumber: 1, content: [] }],
+          }),
+        })),
+        getName: vi.fn().mockReturnValue('AI Developer'),
+      })
+      service = new MessageExecutionService(deps as any)
+
+      const executing = service.execute({
+        ...DEFAULT_PARAMS,
+        bmsBudgetId: 'budget-abc',
+        budgetSessionId: 'session-xyz',
+      })
+      for (let i = 0; i < 50 && !resolveStream; i++) {
+        await new Promise(r => setTimeout(r, 5))
+      }
+      service.stop('conv_1')
+      await executing
+
+      const reportArg = budgetClient.createReport.mock.calls[0][1]
+      expect(reportArg.reportItems).toEqual([
+        expect.objectContaining({
+          budgetCost: '1.25',
+          productCost: '0',
+        }),
+      ])
+    })
+
+    it('publishes refreshRequired budget_update when BMS report creation conflicts', async () => {
+      const budgetClient = createBudgetClient({
+        createReport: vi.fn().mockRejectedValue(
+          new BudgetServiceConflictError('report exists', 409, 'exists'),
+        ),
+      })
+      mockGetBudgetServiceClient.mockReturnValue(budgetClient as any)
+      deps = createMockDeps()
+      service = new MessageExecutionService(deps as any)
+
+      await service.execute({
+        ...DEFAULT_PARAMS,
+        bmsBudgetId: 'budget-abc',
+        budgetSessionId: 'session-xyz',
+      })
+
+      expect(deps.eventChannel.publish).toHaveBeenCalledWith(
+        'conv_1',
+        expect.objectContaining({
+          type: 'budget_update',
+          data: expect.objectContaining({ refreshRequired: true }),
+        }),
+      )
+    })
+
+    it('publishes refreshRequired budget_update when BMS reconciliation fails before report creation', async () => {
+      const budgetClient = createBudgetClient({
+        getSession: vi.fn().mockRejectedValue(new Error('getSession failed')),
+      })
+      mockGetBudgetServiceClient.mockReturnValue(budgetClient as any)
+      deps = createMockDeps()
+      service = new MessageExecutionService(deps as any)
+
+      await service.execute({
+        ...DEFAULT_PARAMS,
+        bmsBudgetId: 'budget-abc',
+        budgetSessionId: 'session-xyz',
+      })
+
+      expect(budgetClient.createReport).not.toHaveBeenCalled()
+      expect(deps.eventChannel.publish).toHaveBeenCalledWith(
+        'conv_1',
+        expect.objectContaining({
+          type: 'budget_update',
+          data: expect.objectContaining({ refreshRequired: true }),
+        }),
+      )
+    })
+
+    it('does not publish delayed BMS budget_update after the stream is superseded', async () => {
+      let resolveBudget: (value: any) => void
+      let resolveBudgetRequested: () => void
+      const budgetReady = new Promise<any>(resolve => {
+        resolveBudget = resolve
+      })
+      const budgetRequested = new Promise<void>(resolve => {
+        resolveBudgetRequested = resolve
+      })
+      const budgetClient = createBudgetClient({
+        getBudget: vi.fn().mockImplementation(() => {
+          resolveBudgetRequested()
+          return budgetReady
+        }),
+      })
+      mockGetBudgetServiceClient.mockReturnValue(budgetClient as any)
+      deps = createMockDeps()
+      service = new MessageExecutionService(deps as any)
+
+      const executing = service.execute({
+        ...DEFAULT_PARAMS,
+        bmsBudgetId: 'budget-abc',
+        budgetSessionId: 'session-xyz',
+      })
+
+      await budgetRequested
+      expect(budgetClient.getBudget).toHaveBeenCalled()
+
+      service.stop('conv_1')
+      resolveBudget!({
+        budgetId: 'budget-abc',
+        productKey: 'airo-builder',
+        creditsTotal: '100.000000',
+        creditsUsed: '1.250000',
+        creditsPending: '0.000000',
+        items: [],
+      })
+      await executing
+
+      const budgetUpdateCalls = (deps.eventChannel.publish as ReturnType<typeof vi.fn>).mock.calls
+        .filter(([, event]: [string, any]) => event.type === 'budget_update')
+      expect(budgetUpdateCalls).toHaveLength(0)
+    })
+
+    it('reports BMS cost on execution errors before publishing terminal error events', async () => {
+      const budgetClient = createBudgetClient()
+      mockGetBudgetServiceClient.mockReturnValue(budgetClient as any)
+      deps = createMockDeps()
+      deps.getAgent.mockReturnValue({
+        streamGenerate: vi.fn().mockRejectedValue(new Error('stream exploded')),
+        getName: vi.fn().mockReturnValue('AI Developer'),
+      })
+      service = new MessageExecutionService(deps as any)
+
+      await service.execute({
+        ...DEFAULT_PARAMS,
+        bmsBudgetId: 'budget-abc',
+        budgetSessionId: 'session-xyz',
+      })
+
+      expect(budgetClient.createReport).toHaveBeenCalled()
+      const publishCalls = (deps.eventChannel.publish as ReturnType<typeof vi.fn>).mock.calls
+      const budgetUpdateIndex = publishCalls.findIndex(([, event]: [string, any]) => event.type === 'budget_update')
+      const errorIndex = publishCalls.findIndex(([, event]: [string, any]) => event.type === 'error')
+      expect(budgetUpdateIndex).toBeGreaterThanOrEqual(0)
+      expect(errorIndex).toBeGreaterThan(budgetUpdateIndex)
     })
   })
 

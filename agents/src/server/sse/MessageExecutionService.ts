@@ -29,13 +29,26 @@ import { registerExternalActionService, unregisterExternalActionService, getClie
 import { sseSessionKey } from './session-key.js'
 import { logger, errorFields } from '../../logging/index.js'
 import { getBudgetServiceClient } from '../../services/budget-service-instance.js'
-import { toBudgetUpdatePayload } from '@airo/ai-lib/budget'
-import { safeProcessBudgetReport } from '../budget-report-handler.js'
+import {
+  BudgetServiceConflictError,
+  BudgetServiceError,
+  BudgetServiceTimeoutError,
+  BudgetServiceUnavailableError,
+  buildAttributionPayload,
+  emitCostAttributionResult,
+  logReportCreated,
+  toBudgetUpdatePayload,
+  type AttributionAssessment,
+  type AttributionContext,
+  type ExecutionStep,
+} from '@airo/ai-lib/budget'
+import { checkCorrelationIdRace, safeProcessBudgetReport } from '../budget-report-handler.js'
 import { parseChunkTimeoutMs, runWithModelOverride } from '@airo/ai-lib'
 import { resolveProfile, runWithProfile } from '../../profiles/index.js'
 import { guardAllowedOverrideModel, resolveOverride } from '../model-override.js'
 import type { AssessmentOutcome, ClassifierMode } from '../../agents/assessment-agent/index.js'
 import { PARALLEL_ASSESSMENT_TIMEOUT_MS } from '../assessment-executor.js'
+import { createAgentContext } from '@godaddy/agent-otel-sdk'
 import {
   buildContextAttachments,
   type BuildContextAttachmentAsset,
@@ -117,6 +130,17 @@ interface LifecycleContext {
     customerId?: string
     visitorId?: string
     trafficSessionId?: string
+    canDownload?: boolean
+    canPublish?: boolean
+    canPurchaseDomain?: boolean
+    isE2S?: boolean
+    authType?: string
+    useTestBudget?: boolean
+    budgetServiceEnabled?: boolean
+    subscriptionId?: string
+    bmsBudgetId?: string
+    useAtlasCrawler?: boolean
+    googleReviewsEnabled?: boolean
     debugStatsEnabled?: boolean
   }
   isInitialPrompt?: boolean
@@ -305,6 +329,254 @@ export class MessageExecutionService {
     active.subscriberIds.add(subscriber.id)
   }
 
+  private async getBudgetSessionWithRetry(
+    budgetId: string,
+    sessionId: string,
+    client: NonNullable<ReturnType<typeof getBudgetServiceClient>>,
+  ): Promise<Awaited<ReturnType<typeof client.getSession>>> {
+    const maxGetSessionRetries = 2
+    for (let attempt = 0; attempt <= maxGetSessionRetries; attempt++) {
+      try {
+        return await client.getSession(sessionId)
+      } catch (err) {
+        const isTransient = err instanceof BudgetServiceTimeoutError || err instanceof BudgetServiceUnavailableError
+        if (!isTransient || attempt === maxGetSessionRetries) {
+          logger.error('budget.report.getSessionFailed', {
+            budgetId, sessionId, attempt, maxRetries: maxGetSessionRetries, ...errorFields(err),
+          })
+          throw err
+        }
+        const baseDelay = 100
+        const maxDelay = 2000
+        const delay = Math.random() * Math.min(maxDelay, baseDelay * Math.pow(2, attempt))
+        await new Promise((resolve) => setTimeout(resolve, delay))
+      }
+    }
+    throw new Error('getSession failed without throwing')
+  }
+
+  private async reconcileBudgetReport(opts: {
+    appId: string
+    conversationId: string
+    budgetId: string
+    sessionId: string
+    streamState: ActiveStream
+    steps: ExecutionStep[]
+    assessmentOutcome?: AssessmentOutcome
+    wasUserAborted: boolean
+    subscriptionId?: string
+  }): Promise<{ sessionWasFree?: boolean }> {
+    const { appId, conversationId, budgetId, sessionId, streamState, steps, assessmentOutcome, wasUserAborted, subscriptionId } = opts
+    let sessionWasFreeForRefresh: boolean | undefined
+
+    const publishBudgetEvent = async (event: Parameters<typeof this.deps.eventChannel.publish>[1]): Promise<void> => {
+      if (this.activeStreams.get(conversationId) !== streamState) {
+        logger.info('sse.execution.superseded.skip_budget_event', {
+          appId,
+          conversationId,
+          eventType: event.type,
+        })
+        return
+      }
+      await this.publishNonTerminal(appId, conversationId, event)
+    }
+
+    const reconcileTimer = setTimeout(() => {
+      void publishBudgetEvent({
+        conversationId, type: 'budget_status', content: '',
+        data: { status: 'reconciling' }, agentName: 'system',
+      })
+    }, 10_000)
+    if (typeof reconcileTimer === 'object' && 'unref' in reconcileTimer) reconcileTimer.unref()
+
+    try {
+      const budgetClient = getBudgetServiceClient()
+      if (!budgetClient) {
+        await publishBudgetEvent({
+          conversationId,
+          type: 'budget_update',
+          content: '',
+          data: { refreshRequired: true },
+          agentName: 'system',
+        })
+        return {}
+      }
+
+      const session = await this.getBudgetSessionWithRetry(budgetId, sessionId, budgetClient)
+
+      try {
+        checkCorrelationIdRace(steps, session.sessionItems, { budgetId, sessionId })
+      } catch (err) {
+        logger.warn('budget.report.correlation_id_check_failed', { budgetId, sessionId, ...errorFields(err) })
+      }
+
+      if (!assessmentOutcome) {
+        logger.warn('budget.report.assessment_outcome_missing', {
+          budgetId,
+          sessionId,
+          socketId: sseSessionKey(conversationId),
+          message: 'Attribution will proceed without intent data',
+        })
+      }
+
+      const { result: budgetResult } = safeProcessBudgetReport(
+        {
+          budgetId,
+          sessionId,
+          totalCost: session.costTotal,
+          sessionItems: session.sessionItems,
+          steps,
+          assessmentOutcome,
+          wasUserAborted,
+          subscriptionId,
+        },
+        { budgetId, sessionId },
+      )
+      const { reportItems, executionData, sessionWasFree, attributionResult, attributionPath, labels } = budgetResult
+      sessionWasFreeForRefresh = sessionWasFree
+
+      let report: Awaited<ReturnType<typeof budgetClient.createReport>>
+      try {
+        report = await budgetClient.createReport(sessionId, { reportItems, allowOverage: true })
+      } catch (err) {
+        if (err instanceof BudgetServiceConflictError) {
+          logger.info('budget.report.conflict_idempotent', {
+            budgetId,
+            sessionId,
+            sessionWasFree,
+            message: 'Report already exists - telling client to refresh',
+          })
+          await publishBudgetEvent({
+            conversationId,
+            type: 'budget_update',
+            content: '',
+            data: { refreshRequired: true, sessionWasFree },
+            agentName: 'system',
+          })
+          return { sessionWasFree }
+        }
+
+        const budgetError = err instanceof BudgetServiceError ? err : null
+        logger.error('budget.report.createReportFailed', {
+          budgetId,
+          sessionId,
+          error: err instanceof Error ? err.message : String(err),
+          statusCode: budgetError?.statusCode,
+          responseBody: budgetError?.responseBody,
+        })
+        throw err
+      }
+
+      if (attributionResult) {
+        const attributionContext: AttributionContext = {
+          budgetId,
+          sessionId,
+          conversationId,
+          appId,
+        }
+        logReportCreated(attributionResult, report.reportId, attributionContext)
+      } else {
+        logger.info('budget.report.created', {
+          budgetId,
+          sessionId,
+          reportId: report.reportId,
+          totalCost: session.costTotal,
+          sessionWasFree,
+          attributionPath,
+        })
+      }
+
+      try {
+        const agentId = 'airo-app-builder-cost-attribution'
+        const attribution = buildAttributionPayload({
+          attributionResult,
+          totalCost: session.costTotal,
+          sessionWasFree,
+          fallbackLabels: labels,
+        })
+        const assessment: AttributionAssessment | undefined = assessmentOutcome?.result?.taskType
+          ? { intent: assessmentOutcome.result.taskType }
+          : undefined
+
+        otelContext.with(
+          createAgentContext({ conversationId, agentId }),
+          () => {
+            emitCostAttributionResult({
+              budgetId,
+              budgetSessionId: sessionId,
+              reportId: report.reportId,
+              executionData,
+              assessment,
+              totalCost: session.costTotal,
+              sessionWasFree,
+              attributionPath,
+              attribution,
+            })
+          },
+        )
+      } catch (err) {
+        logger.error('budget.report.attribution_emit_failed', {
+          budgetId,
+          sessionId,
+          reportId: report.reportId,
+          attributionPath,
+          totalCost: session.costTotal,
+          sessionWasFree,
+          ...errorFields(err),
+        })
+      }
+
+      try {
+        const budget = await budgetClient.getBudget(budgetId)
+        const payload = toBudgetUpdatePayload(report, budget, sessionWasFree)
+
+        logger.info('budget.update.payload_sent', {
+          budgetId,
+          sessionId,
+          reportId: report.reportId,
+          sessionWasFree,
+          reportItemCount: payload.assignment.reportItems.length,
+          totalBudgetCost: report.budgetCostTotal,
+          totalProductCost: report.productCostTotal,
+          categories: payload.assignment.reportItems.map(item => item.category),
+          budgetItemCount: payload.budgetItems.length,
+        })
+
+        await publishBudgetEvent({
+          conversationId, type: 'budget_update', content: '',
+          data: payload as unknown as Record<string, unknown>,
+          agentName: 'system',
+        })
+      } catch (err) {
+        logger.error('budget.report.payload_failed', { budgetId, sessionId, reportId: report.reportId, ...errorFields(err) })
+        await publishBudgetEvent({
+          conversationId,
+          type: 'budget_update',
+          content: '',
+          data: { refreshRequired: true, sessionWasFree },
+          agentName: 'system',
+        })
+      }
+
+      return { sessionWasFree }
+    } catch (err) {
+      logger.error('budget.report.failed', { appId, budgetId, sessionId, ...errorFields(err) })
+      await publishBudgetEvent({
+        conversationId,
+        type: 'budget_update',
+        content: '',
+        data: {
+          refreshRequired: true,
+          ...(sessionWasFreeForRefresh !== undefined && { sessionWasFree: sessionWasFreeForRefresh }),
+        },
+        agentName: 'system',
+      })
+      return {}
+    } finally {
+      clearTimeout(reconcileTimer)
+    }
+  }
+
   private async streamAgentTurn(
     agent: any,
     agentName: string,
@@ -321,7 +593,7 @@ export class MessageExecutionService {
       streamState: ActiveStream
       agentMessageId?: string
     },
-  ): Promise<{ accumulatedContent: string; currentStep: number; finalResult: any; finishReason: string; responseMetadata: ResponseMetadata }> {
+  ): Promise<{ accumulatedContent: string; currentStep: number; finalResult: any; finishReason: string; responseMetadata: ResponseMetadata; steps: ExecutionStep[] }> {
     const { conversationId, appId, siteId, sseSocketId, abortController, streamingEvents, executionContext, persistenceContext, streamState, agentMessageId } = opts
     const abortSignal = abortController.signal
 
@@ -700,7 +972,14 @@ export class MessageExecutionService {
         })
       }
 
-      return { accumulatedContent, currentStep, finalResult, finishReason, responseMetadata: finalMetadata }
+      return {
+        accumulatedContent,
+        currentStep,
+        finalResult,
+        finishReason,
+        responseMetadata: finalMetadata,
+        steps: Array.isArray(finalResult?.steps) ? finalResult.steps : [],
+      }
     } catch (err) {
       if (BudgetExceededError.isInstance(err)) {
         invocation.endError(err, { finishReason: 'budget_exceeded' })
@@ -880,10 +1159,22 @@ export class MessageExecutionService {
         agentId: resolvedAgentId,
         ...(subscriptionId && { subscriptionId }),
         ...(agentCtx?.customerId && { customerId: agentCtx.customerId }),
+        ...(agentCtx?.budgetServiceEnabled !== undefined && { budgetServiceEnabled: agentCtx.budgetServiceEnabled }),
         ...(bmsBudgetId && { bmsBudgetId, budgetServiceEnabled: true }),
+        ...(agentCtx?.bmsBudgetId && !bmsBudgetId && { bmsBudgetId: agentCtx.bmsBudgetId }),
         ...(budgetSessionId && { budgetSessionId }),
         ...(uploadedFileName && { uploadedFileName }),
         ...(market && { market }),
+        permissions: {
+          canDownload: agentCtx?.canDownload ?? false,
+          canPublish: agentCtx?.canPublish ?? false,
+          canPurchaseDomain: agentCtx?.canPurchaseDomain ?? false,
+        },
+        isE2S: agentCtx?.isE2S ?? false,
+        authType,
+        ...(agentCtx?.useTestBudget !== undefined && { useTestBudget: agentCtx.useTestBudget }),
+        ...(agentCtx?.useAtlasCrawler && { useAtlasCrawler: true }),
+        ...(agentCtx?.googleReviewsEnabled && { googleReviewsEnabled: true }),
       },
       ...(contextAttachments.length > 0 && { contextAttachments }),
       todoListContext, isActionRequest, customContext,
@@ -916,6 +1207,8 @@ export class MessageExecutionService {
     if (useGrantRecovery) {
       grantSessionManager.registerSession(sseSocketId, subscriptionId!)
     }
+
+    const allExecutionSteps: ExecutionStep[] = []
 
     try {
       let lastTurnResult: Awaited<ReturnType<typeof this.streamAgentTurn>> | undefined
@@ -980,6 +1273,10 @@ export class MessageExecutionService {
             })
           } else {
             lastTurnResult = await doStream(message)
+          }
+
+          if (lastTurnResult?.steps?.length) {
+            allExecutionSteps.push(...lastTurnResult.steps)
           }
 
           const iterationUsage = lastTurnResult?.finalResult?.totalUsage ?? lastTurnResult?.finalResult?.usage
@@ -1184,72 +1481,23 @@ export class MessageExecutionService {
       const commitHash: string | null = persistenceContext.commitHash ?? null
       let usedFreeGrants: boolean = persistenceContext.usedFreeGrants ?? false
 
-      if (!loopAborted && bmsBudgetId && budgetSessionId) {
-        const reconcileTimer = setTimeout(() => {
-          this.publishNonTerminal(appId, conversationId, {
-            conversationId, type: 'budget_status', content: '',
-            data: { status: 'reconciling' }, agentName: 'system',
-          })
-        }, 10_000)
-        if (typeof reconcileTimer === 'object' && 'unref' in reconcileTimer) reconcileTimer.unref()
-        try {
-          const budgetClient = getBudgetServiceClient()
-          if (budgetClient) {
-            const session = await budgetClient.getSession(budgetSessionId)
-
-            // safeProcessBudgetReport handles errors gracefully so createReport still executes
-            const { result: budgetResult } = safeProcessBudgetReport(
-              {
-                budgetId: bmsBudgetId,
-                sessionId: budgetSessionId,
-                totalCost: session.costTotal,
-                sessionItems: session.sessionItems,
-                steps: [],
-                assessmentOutcome,
-                wasUserAborted: loopAborted,
-                subscriptionId,
-              },
-              { budgetId: bmsBudgetId, sessionId: budgetSessionId },
-            )
-            const { reportItems, sessionWasFree } = budgetResult
-
-            const report = await budgetClient.createReport(budgetSessionId, { reportItems, allowOverage: true })
-            // BMS mode: update usedFreeGrants from cost attribution result
-            // (persistenceContext.usedFreeGrants is always false in BMS mode since
-            // deriveUsedFreeGrants returns false when budgetServiceEnabled=true)
-            usedFreeGrants = sessionWasFree
-            try {
-              const budget = await budgetClient.getBudget(bmsBudgetId)
-              const payload = toBudgetUpdatePayload(report, budget, sessionWasFree)
-
-              logger.info('budget.update.payload_sent', {
-                budgetId: bmsBudgetId,
-                sessionId: budgetSessionId,
-                reportId: report.reportId,
-                sessionWasFree,
-                reportItemCount: payload.assignment.reportItems.length,
-                totalBudgetCost: report.budgetCostTotal,
-                totalProductCost: report.productCostTotal,
-                categories: payload.assignment.reportItems.map(item => item.category),
-                budgetItemCount: payload.budgetItems.length,
-              })
-
-              await this.publishNonTerminal(appId, conversationId, {
-                conversationId, type: 'budget_update', content: '',
-                data: payload as unknown as Record<string, unknown>,
-                agentName: 'system',
-              })
-            } catch (getBudgetErr) {
-              logger.error('budget.report.payload_failed', { budgetId: bmsBudgetId, sessionId: budgetSessionId, reportId: report.reportId, ...errorFields(getBudgetErr) })
-              await this.publishNonTerminal(appId, conversationId, {
-                conversationId, type: 'budget_update', content: '', data: { refreshRequired: true }, agentName: 'system',
-              })
-            }
-          }
-        } catch (err) {
-          logger.error('budget.report.failed', { appId, budgetId: bmsBudgetId, sessionId: budgetSessionId, ...errorFields(err) })
-        } finally {
-          clearTimeout(reconcileTimer)
+      if (bmsBudgetId && budgetSessionId) {
+        const budgetReport = await this.reconcileBudgetReport({
+          appId,
+          conversationId,
+          budgetId: bmsBudgetId,
+          sessionId: budgetSessionId,
+          streamState,
+          steps: allExecutionSteps,
+          assessmentOutcome,
+          wasUserAborted: loopAborted,
+          subscriptionId,
+        })
+        // BMS mode: update usedFreeGrants from cost attribution result
+        // (persistenceContext.usedFreeGrants is always false in BMS mode since
+        // deriveUsedFreeGrants returns false when budgetServiceEnabled=true)
+        if (budgetReport.sessionWasFree !== undefined) {
+          usedFreeGrants = budgetReport.sessionWasFree
         }
       }
 
@@ -1341,6 +1589,20 @@ export class MessageExecutionService {
         agentMessageIds: openedAgentMessageIds,
         failureLogEvent: 'sse.execution.error_persistence_failed',
       })
+
+      if (bmsBudgetId && budgetSessionId) {
+        await this.reconcileBudgetReport({
+          appId,
+          conversationId,
+          budgetId: bmsBudgetId,
+          sessionId: budgetSessionId,
+          streamState,
+          steps: allExecutionSteps,
+          assessmentOutcome,
+          wasUserAborted: abortController.signal.aborted && !chunkTimeoutAborted,
+          subscriptionId,
+        })
+      }
 
       // Same superseded-slot guard as the success path: our terminal
       // events would otherwise land in a newer turn's subscriber set.
