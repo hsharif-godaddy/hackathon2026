@@ -23,7 +23,7 @@ import { grantSessionManager } from '@airo/ai-grants'
 import { createGrantBudgetRecoveryCallback } from '../grant-budget-recovery-callback.js'
 import { context as otelContext, trace } from '@opentelemetry/api'
 import type { AgentsMessagePersistence } from '../conversation-persistence.js'
-import type { EventStreamRegistry } from './EventStreamRegistry.js'
+import type { EventStreamRegistry, SubscriberLifecycleListener } from './EventStreamRegistry.js'
 import { SSEClientActionService } from './SSEClientActionService.js'
 import { registerActionService, cleanupActionService, getActionService } from '../agent-runtime.js'
 import { sseSessionKey } from './session-key.js'
@@ -71,6 +71,11 @@ import { computeDebugTurnStats } from '../../utils/debug-turn-stats.js'
  *  already seeing a failure, so don't delay terminal events for a slow classifier.
  *  usedFreeGrants defaults to false when the outcome is unavailable. */
 const ERRORED_TURN_ASSESSMENT_TIMEOUT_MS = 500
+
+const NO_SUBSCRIBER_ABORT_TIMEOUT_MS = (() => {
+  const parsed = parseInt(process.env.SSE_NO_SUBSCRIBER_ABORT_TIMEOUT_MS || '120000', 10)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 120_000
+})()
 
 interface ExecutionDeps {
   getAgent: (agentId?: string) => any
@@ -190,11 +195,12 @@ interface ActiveStream {
   apmTransaction?: { setLabel: (k: string, v: string | number) => void; setOutcome: (o: 'unknown' | 'success' | 'failure') => void; end: () => void; result?: string | number } | null
 }
 
-export class MessageExecutionService {
+export class MessageExecutionService implements SubscriberLifecycleListener {
   private deps: ExecutionDeps
   private readonly chunkTimeoutMs = parseChunkTimeoutMs()
   private abortControllers = new Map<string, AbortController>()
   private activeStreams = new Map<string, ActiveStream>()
+  private noSubscriberTimers = new Map<string, NodeJS.Timeout>()
 
   constructor(deps: ExecutionDeps) {
     this.deps = deps
@@ -202,6 +208,56 @@ export class MessageExecutionService {
 
   hasActiveStream(conversationId: string): boolean {
     return this.activeStreams.has(conversationId)
+  }
+
+  onLastSubscriberLeft(conversationId: string): void {
+    if (!this.activeStreams.has(conversationId)) return
+
+    // Idempotent: clear any existing timer before starting a new one
+    const existing = this.noSubscriberTimers.get(conversationId)
+    if (existing) {
+      clearTimeout(existing)
+      this.noSubscriberTimers.delete(conversationId)
+    }
+
+    const armedStream = this.activeStreams.get(conversationId)
+    const timer = setTimeout(() => {
+      this.noSubscriberTimers.delete(conversationId)
+      // Identity check: if a newer execute() replaced the stream slot, this
+      // timer belongs to the old turn and must not abort the new one.
+      if (this.activeStreams.get(conversationId) !== armedStream) return
+      const controller = this.abortControllers.get(conversationId)
+      if (controller && armedStream) {
+        const appId = armedStream.appId
+        logger.info('sse.execution.no_subscriber_abort', { conversationId, appId, timeoutMs: NO_SUBSCRIBER_ABORT_TIMEOUT_MS })
+
+        // Clear the activeStreams slot BEFORE aborting/publishing — mirrors
+        // stop()'s pattern. This causes execute()'s superseded check to fail,
+        // preventing it from publishing a duplicate terminal event.
+        this.activeStreams.delete(conversationId)
+        controller.abort('no_subscriber_timeout')
+
+        void this.publishTerminal(appId, conversationId, {
+          conversationId,
+          type: 'complete',
+          content: '',
+          data: { finishReason: 'no_subscriber_timeout', timestamp: new Date().toISOString() },
+          agentName: 'system',
+        })
+      }
+    }, NO_SUBSCRIBER_ABORT_TIMEOUT_MS)
+
+    this.noSubscriberTimers.set(conversationId, timer)
+    logger.info('sse.execution.no_subscriber_timer_started', { conversationId })
+  }
+
+  onSubscriberAdded(conversationId: string): void {
+    const timer = this.noSubscriberTimers.get(conversationId)
+    if (timer) {
+      clearTimeout(timer)
+      this.noSubscriberTimers.delete(conversationId)
+      logger.info('sse.execution.no_subscriber_timer_cancelled', { conversationId })
+    }
   }
 
   /**
@@ -290,6 +346,13 @@ export class MessageExecutionService {
     controller.abort('user_stopped')
     const active = this.activeStreams.get(conversationId)
     logger.info('sse.execution.stopped', { conversationId, ...(active?.requestId && { requestId: active.requestId }) })
+
+    // Cancel any pending no-subscriber timer — stop() supersedes it.
+    const pendingTimer = this.noSubscriberTimers.get(conversationId)
+    if (pendingTimer) {
+      clearTimeout(pendingTimer)
+      this.noSubscriberTimers.delete(conversationId)
+    }
 
     // The execute() loop observes the abort and publishes its own terminal
     // `complete` when it returns — but that can take seconds (mid-chunk
@@ -1740,6 +1803,14 @@ export class MessageExecutionService {
           this.deps.eventChannel.unsubscribe(conversationId, subId)
         }
         this.activeStreams.delete(conversationId)
+
+        // Only clear the no-subscriber timer if we still own the stream slot.
+        // A superseded execute() must not cancel a timer belonging to the new owner.
+        const pendingTimer = this.noSubscriberTimers.get(conversationId)
+        if (pendingTimer) {
+          clearTimeout(pendingTimer)
+          this.noSubscriberTimers.delete(conversationId)
+        }
       } else if (apmTransaction) {
         // Superseded by a newer execute() — the success/error paths skipped
         // ending the transaction (guarded by !superseded*), so end it here.

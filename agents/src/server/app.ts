@@ -285,6 +285,7 @@ function getOrCreateSSEExecutionService(): MessageExecutionService | null {
     resetPostStreamRetries: sseResetPostStreamRetries,
     lifecycle: getMessageLifecycleDeps(),
   })
+  sseRegistry.setListener(sseExecutionService)
   return sseExecutionService
 }
 

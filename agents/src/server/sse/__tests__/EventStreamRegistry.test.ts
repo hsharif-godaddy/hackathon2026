@@ -1,6 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { SSEWriter } from '@airo/ai-transport'
 import { EventStreamRegistry } from '../EventStreamRegistry.js'
+import type { SubscriberLifecycleListener } from '../EventStreamRegistry.js'
+import { logger } from '../../../logging/index.js'
+
+vi.mock('../../../logging/index.js', () => ({
+  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+}))
 
 function createMockWriter(): SSEWriter {
   let closed = false
@@ -193,6 +199,26 @@ describe('EventStreamRegistry', () => {
 
       expect(() => registry.sendToApp('app_unknown', 'noop', {})).not.toThrow()
     })
+
+    it('logs when sendToApp has zero delivery', () => {
+      const registry = new EventStreamRegistry()
+      registry.sendToApp('app_nobody', 'oauth_result', { success: true })
+      expect(logger.debug).toHaveBeenCalledWith(
+        'sse.registry.send_to_app.no_connections',
+        expect.objectContaining({ appId: 'app_nobody', eventType: 'oauth_result' })
+      )
+    })
+
+    it('does not log zero-delivery when connections exist', () => {
+      vi.mocked(logger.debug).mockClear()
+      const registry = new EventStreamRegistry()
+      registry.register('conv_1', 'app_X', createMockWriter())
+      registry.sendToApp('app_X', 'oauth_result', { success: true })
+      expect(logger.debug).not.toHaveBeenCalledWith(
+        'sse.registry.send_to_app.no_connections',
+        expect.anything()
+      )
+    })
   })
 
   it('sendToAll drops the event silently when the payload is unserializable', () => {
@@ -216,5 +242,56 @@ describe('EventStreamRegistry', () => {
 
     expect(() => registry.sendToAll('conv_1', 'evt', {})).not.toThrow()
     expect(registry.getConnectionCount('conv_1')).toBe(0)
+  })
+
+  describe('SubscriberLifecycleListener', () => {
+    let listener: SubscriberLifecycleListener
+
+    beforeEach(() => {
+      listener = {
+        onLastSubscriberLeft: vi.fn(),
+        onSubscriberAdded: vi.fn(),
+      }
+      registry = new EventStreamRegistry(listener)
+    })
+
+    it('calls onSubscriberAdded on register', () => {
+      const writer = createMockWriter()
+      registry.register('conv_1', 'app_1', writer)
+      expect(listener.onSubscriberAdded).toHaveBeenCalledWith('conv_1')
+    })
+
+    it('calls onLastSubscriberLeft when last subscriber unregisters', () => {
+      const writer = createMockWriter()
+      const { subscriber } = registry.register('conv_1', 'app_1', writer)
+      registry.unregister('conv_1', subscriber)
+      expect(listener.onLastSubscriberLeft).toHaveBeenCalledWith('conv_1')
+    })
+
+    it('does not call onLastSubscriberLeft when other subscribers remain', () => {
+      const w1 = createMockWriter()
+      const w2 = createMockWriter()
+      const { subscriber: s1 } = registry.register('conv_1', 'app_1', w1)
+      registry.register('conv_1', 'app_1', w2)
+      registry.unregister('conv_1', s1)
+      expect(listener.onLastSubscriberLeft).not.toHaveBeenCalled()
+    })
+
+    it('calls onLastSubscriberLeft when sendToAll removes the last dead writer', () => {
+      const bad = createMockWriter()
+      ;(bad.write as any).mockImplementation(() => { throw new Error('broken pipe') })
+      registry.register('conv_1', 'app_1', bad)
+      ;(listener.onSubscriberAdded as any).mockClear()
+
+      registry.sendToAll('conv_1', 'test', { foo: 'bar' })
+      expect(listener.onLastSubscriberLeft).toHaveBeenCalledWith('conv_1')
+    })
+
+    it('works without a listener (backward compatible)', () => {
+      const noListenerRegistry = new EventStreamRegistry()
+      const writer = createMockWriter()
+      const { subscriber } = noListenerRegistry.register('conv_1', 'app_1', writer)
+      expect(() => noListenerRegistry.unregister('conv_1', subscriber)).not.toThrow()
+    })
   })
 })

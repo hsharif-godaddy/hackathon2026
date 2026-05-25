@@ -5,6 +5,11 @@ import { logger } from '../../logging/index.js'
 
 const MAX_CONNECTIONS_PER_CONVERSATION = 10
 
+export interface SubscriberLifecycleListener {
+  onLastSubscriberLeft(conversationId: string): void
+  onSubscriberAdded(conversationId: string): void
+}
+
 function safeCall(fn: () => void, event: string, ctx: Record<string, unknown>): void {
   try {
     fn()
@@ -25,6 +30,15 @@ interface SSEConnection {
 
 export class EventStreamRegistry {
   private connections = new Map<string, Set<SSEConnection>>()
+  private listener: SubscriberLifecycleListener | undefined
+
+  constructor(listener?: SubscriberLifecycleListener) {
+    this.listener = listener
+  }
+
+  setListener(listener: SubscriberLifecycleListener): void {
+    this.listener = listener
+  }
 
   register(conversationId: string, appId: string, writer: SSEWriter): { subscriber: SSESubscriber } {
     const subscriber = new SSESubscriber(writer, appId, logger)
@@ -49,6 +63,7 @@ export class EventStreamRegistry {
 
     const connection: SSEConnection = { conversationId, appId, writer, subscriber }
     convConns.add(connection)
+    this.listener?.onSubscriberAdded(conversationId)
 
     return { subscriber }
   }
@@ -62,7 +77,10 @@ export class EventStreamRegistry {
         break
       }
     }
-    if (conns.size === 0) this.connections.delete(conversationId)
+    if (conns.size === 0) {
+      this.connections.delete(conversationId)
+      this.listener?.onLastSubscriberLeft(conversationId)
+    }
   }
 
   // Each step is isolated so a throw from dispose() or writer.end() (e.g. an
@@ -120,7 +138,10 @@ export class EventStreamRegistry {
     for (const conn of dead) {
       this.removeConnection(conns, conn, { endWriter: false })
     }
-    if (conns.size === 0) this.connections.delete(conversationId)
+    if (conns.size === 0) {
+      this.connections.delete(conversationId)
+      this.listener?.onLastSubscriberLeft(conversationId)
+    }
   }
 
   getSubscribers(conversationId: string): SSESubscriber[] {
@@ -156,8 +177,21 @@ export class EventStreamRegistry {
     return result
   }
 
+  /**
+   * Broadcast an event to every open conversation stream for this app.
+   *
+   * Delivery guarantee: best-effort. If no conversation streams are open for the
+   * app, the event is silently dropped (logged at debug level). Callers must not
+   * depend on delivery confirmation — the client should re-fetch state on reconnect
+   * for any app-level events (OAuth tokens, video status) that may have been missed.
+   */
   sendToApp(appId: string, type: string, data: Record<string, unknown>): void {
-    for (const conversationId of this.getConversationsByApp(appId)) {
+    const conversations = this.getConversationsByApp(appId)
+    if (conversations.length === 0) {
+      logger.debug('sse.registry.send_to_app.no_connections', { appId, eventType: type })
+      return
+    }
+    for (const conversationId of conversations) {
       this.sendToAll(conversationId, type, data)
     }
   }
