@@ -25,15 +25,19 @@ export { MERGED_LOKI_SOURCE_IDS, MERGED_LOKI_SOURCE_ID, isMergedLokiSource } fro
 import { isMergedLokiSource, MERGED_LOKI_SOURCE_IDS } from '@/lib/loki-source-ids';
 
 /**
- * Maps a Loki `job` stream label to the per-source `sourceId` we tag each
- * log with. Keep in sync with the Loki source registry in `log-sources.ts`.
+ * Maps a Loki `service_name` stream label to the per-source `sourceId` we
+ * tag each log with. Keep in sync with the Loki source registry in
+ * `log-sources.ts`.
  */
-export const MERGED_LOKI_JOB_TO_SOURCE_ID: Record<string, string> = {
+export const MERGED_LOKI_SERVICE_TO_SOURCE_ID: Record<string, string> = {
   'airo-agents': 'airo-agents',
   'airo-preview-application': 'airo-preview',
   'airo-publish-application': 'airo-publish',
+  'airo-pre-start': 'airo-pre-start',
+  'airo-db-init': 'airo-db-init',
+  'airo-secrets-worker': 'airo-secrets-worker',
 };
-export const MERGED_LOKI_JOBS = Object.keys(MERGED_LOKI_JOB_TO_SOURCE_ID);
+export const MERGED_LOKI_SERVICE_NAMES = Object.keys(MERGED_LOKI_SERVICE_TO_SOURCE_ID);
 
 export interface MergedLokiQueryParams {
   appId?: string;
@@ -84,28 +88,29 @@ export interface MergedLokiQueryResult {
 export async function queryMergedLokiSources(
   params: MergedLokiQueryParams
 ): Promise<MergedLokiQueryResult> {
-  // Reuse the airo-agents config for endpoint/apiKey/env. All three jobs
-  // live on the same Loki instance — `job` is what differentiates them and
-  // we replace it with a regex matcher below via `lokiJobsRegex`.
+  // Reuse the airo-agents config for endpoint/apiKey/env. All three services
+  // live on the same Loki instance — `service_name` is what differentiates
+  // them and we replace it with a regex matcher below via
+  // `lokiServiceNamesRegex`.
   const baseConfig = getLogSourceConfig('airo-agents');
   if (!baseConfig) {
     throw new Error('Loki not configured (airo-agents source missing)');
   }
 
-  const labelsWithoutJob: Record<string, string> = {};
+  const labelsWithoutService: Record<string, string> = {};
   for (const [k, v] of Object.entries(baseConfig.lokiLabels || {})) {
-    if (k !== 'job') labelsWithoutJob[k] = v;
+    if (k !== 'service_name') labelsWithoutService[k] = v;
   }
   if (params.appId) {
     const cluster = await resolveAppCluster(params.appId);
-    if (cluster) labelsWithoutJob.cluster = cluster;
+    if (cluster) labelsWithoutService.cluster = cluster;
   }
 
   const config = {
     lokiEndpoint: baseConfig.lokiEndpoint,
     lokiApiKey: baseConfig.lokiApiKey,
-    lokiLabels: labelsWithoutJob,
-    lokiJobsRegex: MERGED_LOKI_JOBS,
+    lokiLabels: labelsWithoutService,
+    lokiServiceNamesRegex: MERGED_LOKI_SERVICE_NAMES,
     environment: baseConfig.environment,
   };
 
@@ -130,7 +135,12 @@ export async function queryMergedLokiSources(
   const logs = transformLokiResponse(
     response,
     baseConfig.fieldMapping,
-    (streamLabels) => MERGED_LOKI_JOB_TO_SOURCE_ID[streamLabels.job] || 'unknown',
+    // Defensive read: prefer `service_name` (the label we now query on);
+    // fall back to legacy `job` so older log streams that haven't migrated
+    // still get tagged correctly.
+    (streamLabels) =>
+      MERGED_LOKI_SERVICE_TO_SOURCE_ID[streamLabels.service_name || streamLabels.job] ||
+      'unknown',
   );
 
   // Truncation = "Loki returned the cap; there may be more." Compare against

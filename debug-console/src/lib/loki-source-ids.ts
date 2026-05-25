@@ -8,11 +8,21 @@
  */
 
 /**
- * The three per-source IDs that share a Loki backend and can be queried as
- * a single merged regex-job request. Order matches the typical UI display
- * (Agent → Preview → Publish).
+ * The per-source IDs that share a Loki backend and can be queried as a
+ * single merged regex-service request. Order matches the typical UI display
+ * (main runtime services first, then lifecycle/supporting services). All
+ * of these emit through the same `airo-<appId>` Nomad job (with the
+ * exception of `airo-secrets-worker`, which is cluster-shared but still
+ * mentions the app id in its log lines).
  */
-export const MERGED_LOKI_SOURCE_IDS = ['airo-agents', 'airo-preview', 'airo-publish'] as const;
+export const MERGED_LOKI_SOURCE_IDS = [
+  'airo-agents',
+  'airo-preview',
+  'airo-publish',
+  'airo-pre-start',
+  'airo-db-init',
+  'airo-secrets-worker',
+] as const;
 
 export type MergedLokiSourceId = (typeof MERGED_LOKI_SOURCE_IDS)[number];
 

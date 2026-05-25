@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server';
 
 import { withAuth } from '@/lib/api-auth';
 import { resolveAppCluster } from '@/lib/investigate/evidence';
-import { buildAppIdQuery, getLogSourceConfig, getNestedValue } from '@/lib/log-sources';
+import { buildElasticsearchRequestBody } from '@/lib/es-query';
+import { getLogSourceConfig, getNestedValue } from '@/lib/log-sources';
 import type { LogSourceConfig } from '@/lib/log-sources';
 import { buildLokiQuery, findMinTimestampNs, findMinTimestampNsRaw, queryLoki, transformLokiResponse } from '@/lib/loki-client';
 import { queryMergedLokiSources } from '@/lib/loki-merged';
@@ -344,96 +345,19 @@ async function handleElasticsearchQuery(
   }
 
   try {
-    const mustClauses: Array<Record<string, unknown>> = [];
-    const levelKeywordField = sourceConfig.fieldMapping.levelKeywordField;
-
-    if (params.levels) {
-      const levelList = params.levels.split(',').map(l => sourceConfig.fieldMapping.logLevelFieldMap?.[l.trim().toLowerCase()] || l.trim().toUpperCase());
-      const rawLevelPatterns = params.levels.split(',').map(l => l.trim().toUpperCase());
-      // Level filtering for mixed structured/unstructured logs:
-      // - Structured logs: match the indexed level keyword field (e.g. level.keyword = "INFO")
-      // - Unstructured logs (no level field): fall back to match_phrase on raw `log` text
-      //   (e.g. log contains "INFO"), but only when the structured field doesn't exist
-      //   to avoid false positives from log message content
-      mustClauses.push({
-        bool: {
-          should: [
-            { terms: { [levelKeywordField]: levelList } },
-            ...rawLevelPatterns.map(p => ({
-              bool: {
-                must: [
-                  { match_phrase: { log: p } },
-                  { bool: { must_not: [{ exists: { field: levelKeywordField } }] } }
-                ]
-              }
-            }))
-          ],
-          minimum_should_match: 1
-        }
-      });
-    } else if (params.level && params.level !== 'all') {
-      const mappedLevel = sourceConfig.fieldMapping.logLevelFieldMap?.[params.level.toLowerCase()] || params.level.toUpperCase();
-      // Same mixed-log level filtering as above, for single level value
-      mustClauses.push({
-        bool: {
-          should: [
-            { term: { [levelKeywordField]: mappedLevel } },
-            {
-              bool: {
-                must: [
-                  { match_phrase: { log: params.level.toUpperCase() } },
-                  { bool: { must_not: [{ exists: { field: levelKeywordField } }] } }
-                ]
-              }
-            }
-          ],
-          minimum_should_match: 1
-        }
-      });
-    }
-
-    if (params.query) {
-      mustClauses.push({
-        multi_match: {
-          query: params.query,
-          fields: ['message^2', 'log', 'event', 'logger', 'service', 'app_id', 'appId', 'customerId', 'customer.id', 'hostname', 'environment', 'region', 'version', 'data.message'],
-          type: 'best_fields',
-          fuzziness: 'AUTO'
-        }
-      });
-    }
-
-    // Only apply app ID filter if the source supports it
-    if (params.appId && sourceConfig.fieldMapping.appIdField) {
-      const appIdQuery = buildAppIdQuery(params.appId, sourceConfig.fieldMapping);
-      if (appIdQuery) {
-        mustClauses.push(appIdQuery);
-      }
-    }
-
-    if (params.startTime) {
-      mustClauses.push({
-        range: {
-          '@timestamp': {
-            gte: params.startTime,
-            ...(params.endTime ? { lte: params.endTime } : {})
-          }
-        }
-      });
-    }
-
-    const esQuery = {
+    // Shared with the client-side ES preview renderer so the rendered query
+    // and the actual server query stay in sync. See lib/es-query.ts.
+    const esQuery = buildElasticsearchRequestBody({
+      fieldMapping: sourceConfig.fieldMapping,
       size: params.size,
       from: params.from,
-      sort: [
-        { '@timestamp': { order: 'desc' } }
-      ],
-      query: {
-        bool: {
-          must: mustClauses.length > 0 ? mustClauses : [{ match_all: {} }]
-        }
-      }
-    };
+      level: params.level,
+      levels: params.levels,
+      query: params.query,
+      appId: params.appId,
+      startTime: params.startTime,
+      endTime: params.endTime,
+    });
 
     const response = await fetch(
       `${sourceConfig.endpoint}/${sourceConfig.index}/_search?ignore_unavailable=true&expand_wildcards=open`,

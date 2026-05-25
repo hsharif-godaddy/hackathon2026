@@ -108,7 +108,7 @@ const airoContainerFieldMapping: FieldMapping = {
 };
 
 // Field mapping for Airo App Builder
-const airoAppFieldMapping: FieldMapping = {
+export const airoAppFieldMapping: FieldMapping = {
   appIdField: 'data.appId',
   appIdQueryType: 'term',
   timestampField: '@timestamp',
@@ -135,7 +135,7 @@ const airoAppFieldMapping: FieldMapping = {
 
 // Field mapping for Control Plane (searches both hosting-activity and airo-activity indices)
 // Pipe-separated appIdField matches on either app_id OR appId_str
-const controlPlaneFieldMapping: FieldMapping = {
+export const controlPlaneFieldMapping: FieldMapping = {
   appIdField: 'app_id|appId_str',
   appIdQueryType: 'term',
   timestampField: '@timestamp',
@@ -169,19 +169,42 @@ const LOKI_SOURCES: Record<string, { name: string; description: string; labels: 
   'airo-agents': {
     name: 'Agent App',
     description: 'Logs from the Airo Agents service',
-    labels: (env) => ({ job: 'airo-agents', env }),
+    labels: (env) => ({ service_name: 'airo-agents', env }),
     fieldMapping: airoAgentsFieldMapping
   },
   'airo-preview': {
     name: 'Preview App',
     description: 'Logs from the preview application containers',
-    labels: (env) => ({ job: 'airo-preview-application', env }),
+    labels: (env) => ({ service_name: 'airo-preview-application', env }),
     fieldMapping: airoContainerFieldMapping
   },
   'airo-publish': {
     name: 'Publish App',
     description: 'Logs from the published application containers',
-    labels: (env) => ({ job: 'airo-publish-application', env }),
+    labels: (env) => ({ service_name: 'airo-publish-application', env }),
+    fieldMapping: airoContainerFieldMapping
+  },
+  // Lifecycle / supporting services — separate Nomad services that share the
+  // same `airo-<appId>` job_id and emit during container init or background
+  // tasks. Surface them as their own entries so engineers can drill into a
+  // specific phase, and include them in the merged "All sources" query so
+  // early-lifecycle logs aren't filtered out at the service_name regex.
+  'airo-pre-start': {
+    name: 'Pre-start',
+    description: 'Container init logs that fire before the main service comes up',
+    labels: (env) => ({ service_name: 'airo-pre-start', env }),
+    fieldMapping: airoContainerFieldMapping
+  },
+  'airo-db-init': {
+    name: 'DB Init',
+    description: 'One-shot database initialization service',
+    labels: (env) => ({ service_name: 'airo-db-init', env }),
+    fieldMapping: airoContainerFieldMapping
+  },
+  'airo-secrets-worker': {
+    name: 'Secrets Worker',
+    description: 'Cluster-shared secrets sync worker (job_id is shared, not per-app)',
+    labels: (env) => ({ service_name: 'airo-secrets-worker', env }),
     fieldMapping: airoContainerFieldMapping
   }
 };

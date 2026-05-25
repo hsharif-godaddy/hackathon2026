@@ -28,6 +28,9 @@ const SOURCE_FIELD_MAPPINGS: Record<string, { appIdFilterMode: 'field' | 'query'
   'airo-app': { appIdFilterMode: 'field' },
   'airo-preview': { appIdFilterMode: 'field' },
   'airo-publish': { appIdFilterMode: 'field' },
+  'airo-pre-start': { appIdFilterMode: 'field' },
+  'airo-db-init': { appIdFilterMode: 'field' },
+  'airo-secrets-worker': { appIdFilterMode: 'field' },
   'control_plane': { appIdFilterMode: 'field' },
 };
 const DEFAULT_FIELD_MAPPING = { appIdFilterMode: 'field' as const };
@@ -60,7 +63,14 @@ interface KeyArgs {
 }
 
 function makeKey(args: KeyArgs): string {
-  return `${args.requestId}|${args.appId}|${args.timeKey}|${args.levelsKey}|${args.filterText}|${args.query}`;
+  return [
+    args.requestId,
+    args.appId,
+    args.timeKey,
+    args.levelsKey,
+    args.filterText,
+    args.query,
+  ].join('|');
 }
 
 function readCache(key: string): RequestState | undefined {
@@ -310,7 +320,14 @@ export function useLogFetcher(input: UseLogFetcherInput): UseLogFetcherOutput {
       // the calling component's local state.
       if (cursor) return fetchPage({ ...baseArgs, cursor });
 
-      const key = makeKey({ requestId, appId, timeKey, levelsKey, filterText, query });
+      const key = makeKey({
+        requestId,
+        appId,
+        timeKey,
+        levelsKey,
+        filterText,
+        query,
+      });
 
       const cached = readCache(key);
       if (cached) return cached;
@@ -481,7 +498,14 @@ export function useLogFetcher(input: UseLogFetcherInput): UseLogFetcherOutput {
       try {
         // Bypass the cache on retry — the entry is for a soft-failed call
         // we're explicitly trying to redo.
-        const key = makeKey({ requestId, appId, timeKey, levelsKey, filterText, query });
+        const key = makeKey({
+          requestId,
+          appId,
+          timeKey,
+          levelsKey,
+          filterText,
+          query,
+        });
         cache.delete(key);
         const page = await fetchPageCached(requestId);
         if (gen !== fetchGenRef.current) return;

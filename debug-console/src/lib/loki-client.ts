@@ -55,10 +55,11 @@ interface LokiConfig {
   lokiEndpoint?: string;
   lokiApiKey?: string;
   lokiLabels?: Record<string, string>;
-  // When set, builds `job=~"(j1|j2|...)"` instead of an exact `job=` match,
-  // and any `job` key in `lokiLabels` is ignored. Used for the merged-streams
-  // optimization where one query covers airo-agents + preview + publish.
-  lokiJobsRegex?: string[];
+  // When set, builds `service_name=~"(s1|s2|...)"` instead of an exact
+  // `service_name=` match, and any `service_name` key in `lokiLabels` is
+  // ignored. Used for the merged-streams optimization where one query covers
+  // airo-agents + preview + publish.
+  lokiServiceNamesRegex?: string[];
   environment?: string;
 }
 
@@ -167,22 +168,22 @@ export async function buildLokiQuery(
   const labels: string[] = [];
   const lineFilters: string[] = [];
 
-  // Job-regex matcher (merged-streams mode) takes precedence over an exact
-  // `job=` match from `lokiLabels`. We emit it first so the resulting query
-  // matches the format the Loki team recommends:
-  //   `{job=~"(j1|j2|j3)",cluster="...",env="..."} |= ...`
-  const jobsRegex = config.lokiJobsRegex;
-  if (jobsRegex && jobsRegex.length > 0) {
-    const escapedJobs = jobsRegex.map(j => escapeLogQLString(j)).join('|');
-    labels.push(`job=~"(${escapedJobs})"`);
+  // service_name regex matcher (merged-streams mode) takes precedence over
+  // an exact `service_name=` match from `lokiLabels`. We emit it first so the
+  // resulting query matches Grafana's display format:
+  //   `{service_name=~"(s1|s2|s3)",cluster="...",env="..."} |= ...`
+  const servicesRegex = config.lokiServiceNamesRegex;
+  if (servicesRegex && servicesRegex.length > 0) {
+    const escapedServices = servicesRegex.map(s => escapeLogQLString(s)).join('|');
+    labels.push(`service_name=~"(${escapedServices})"`);
   }
 
-  // Add static labels from config (job, env, service_name, cluster, …).
-  // Values are escaped because some (e.g. `cluster`) come from runtime lookups
+  // Add static labels from config (service_name, env, cluster, …). Values
+  // are escaped because some (e.g. `cluster`) come from runtime lookups
   // rather than hardcoded constants.
   if (config.lokiLabels) {
     for (const [key, value] of Object.entries(config.lokiLabels)) {
-      if (key === 'job' && jobsRegex && jobsRegex.length > 0) continue;
+      if (key === 'service_name' && servicesRegex && servicesRegex.length > 0) continue;
       if (value) {
         labels.push(`${key}="${escapeLogQLString(value)}"`);
       }
@@ -211,13 +212,10 @@ export async function buildLokiQuery(
   }
 
   // Handle level filtering using line filters (level is in JSON, not a label).
-  // Use a case-insensitive regex so we match both lower-case (agents:
-  // `"level":"error"`) and upper-case (preview/publish containers:
-  // `"level":"ERROR"`) log producers with a single filter. The leading `[{,]`
-  // anchors on the exact `level` JSON key (either the first field after `{`
-  // or a subsequent field after `,`) so we don't match `detected_level`,
-  // `parent_level`, etc. This assumes compact JSON output from log producers;
-  // pretty-printed lines with space-padded keys would not match.
+  // One regex per level, OR'd via LogQL's `or` line-filter syntax — matches
+  // Grafana's display format and reads better than a merged regex. The
+  // value side is case-insensitive `(?i)` so we match both lower-case
+  // (`"level":"error"`) and upper-case (`"level":"ERROR"`) producers.
   //
   // Priority: explicit params > detected from query. All inputs are routed
   // through `sanitizeLevels`, which drops anything outside `KNOWN_LEVELS`, so
@@ -229,8 +227,8 @@ export async function buildLokiQuery(
       : detectedLevels;
 
   if (effectiveLevels.length > 0) {
-    const levelPattern = effectiveLevels.join('|');
-    lineFilters.push(`|~ "(?i)[{,]\\"level\\":\\"(${levelPattern})\\""`);
+    const perLevel = effectiveLevels.map((l) => `\`"level":"(?i)${l}"\``);
+    lineFilters.push(`|~ ${perLevel.join(' or ')}`);
   }
 
   const now = new Date();
@@ -243,11 +241,12 @@ export async function buildLokiQuery(
   // (see `resolveAppCluster` in `investigate/evidence.ts`). When the lookup
   // fails we fall through with no cluster label rather than dropping logs.
 
-  // Handle app ID filtering - CRITICAL: app_id is in log line, NOT a label
-  // Use exact string match (faster than regex)
+  // Handle app ID filtering — bare substring match. `app_id` is in the JSON
+  // log line (not a label), and an exact `"app_id":"<id>"` match misses
+  // early-lifecycle lines that mention the id (e.g. via subdomain or path)
+  // before the structured field is populated.
   if (params.appId) {
-    const escapedAppId = escapeLogQLString(params.appId);
-    lineFilters.push(`|= "\\"app_id\\":\\"${escapedAppId}\\""`);
+    lineFilters.push(`|= "${escapeLogQLString(params.appId)}"`);
   }
 
   // Handle free-text search query (with level terms already extracted)

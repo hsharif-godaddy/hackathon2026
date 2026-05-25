@@ -10,8 +10,11 @@ import {
   resolveSyncedPreset,
   type RangeMode,
 } from '@/lib/log-time-range';
+import { MERGED_LOKI_SOURCE_ID } from '@/lib/loki-source-ids';
+import { useAppCluster } from '@/hooks/useAppCluster';
 import { useLogFetcher } from '@/hooks/useLogFetcher';
 import LogsSummaryView from './LogsSummaryView';
+import QueryInspector from './QueryInspector';
 import WarningStrip from './WarningStrip';
 
 export type LogsView = 'logs' | 'summary';
@@ -69,6 +72,7 @@ const SOURCE_LABELS: Record<string, string> = {
 // source (using merged Loki when all 3 Loki sources are present)". The
 // merged-Loki coordination itself lives inside `useLogFetcher`.
 const ALL_SOURCES = 'all';
+
 
 // Frozen at module scope so it has stable identity across renders. Passing
 // a fresh `{ error: true, warn: false }` object literal every render would
@@ -238,6 +242,15 @@ export default function LogsPanel({
     if (typeof window === 'undefined') return ALL_SOURCES;
     return localStorage.getItem(SELECTED_SOURCE_STORAGE_KEY) || ALL_SOURCES;
   });
+
+
+  // Cluster lookup tri-state for the LogQL preview. The viewer wants:
+  //   - `undefined` while loading (renders `<resolved>` placeholder)
+  //   - `null` when resolution returned no cluster (renders no cluster label)
+  //   - the resolved id string otherwise
+  const clusterResolution = useAppCluster(globalAppId);
+  const inspectorCluster: string | null | undefined =
+    clusterResolution.status === 'resolved' ? clusterResolution.cluster : undefined;
 
   // Date range state: preset dropdown OR custom absolute start/end
   const [rangeMode, setRangeMode] = useState<RangeMode>('preset');
@@ -410,7 +423,17 @@ export default function LogsPanel({
   // selection so the index isn't an orphan offset into the new list.
   useEffect(() => {
     setSelectedLogIndex(null);
-  }, [globalAppId, timeRange, rangeMode, presetValue, customStart, customEnd, debouncedFilterText, levelFilters, selectedSource]);
+  }, [
+    globalAppId,
+    timeRange,
+    rangeMode,
+    presetValue,
+    customStart,
+    customEnd,
+    debouncedFilterText,
+    levelFilters,
+    selectedSource,
+  ]);
 
   /**
    * Latest values of `loadMore` / `hasMore` / `loading`, kept in refs so the
@@ -779,6 +802,27 @@ export default function LogsPanel({
           loading={loading}
           onRetry={retryRequest}
           sourceLabels={SOURCE_LABELS}
+        />
+      )}
+
+      {/* Query viewer — collapsible read-only panel showing the query the
+          panel is about to send. Renders LogQL for Loki sources and the ES
+          request body for Elasticsearch sources. Hidden in Summary view
+          (a derived aggregation, not a user-editable query). */}
+      {!isSummary && (
+        <QueryInspector
+          // For "All sources" anchor on the merged-Loki sentinel — that's
+          // the dominant Loki fetch path and the most useful preview, even
+          // when ES sources are also fanned out behind the scenes.
+          sourceId={
+            selectedSource === 'all'
+              ? MERGED_LOKI_SOURCE_ID
+              : (requestSourceIds[0] || selectedSource)
+          }
+          appId={globalAppId || ''}
+          cluster={inspectorCluster}
+          levels={levelFilters}
+          filterText={debouncedFilterText}
         />
       )}
 

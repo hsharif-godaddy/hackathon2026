@@ -13,7 +13,7 @@ describe('loki-client', () => {
       lokiEndpoint: 'https://loki.example.com',
       lokiApiKey: 'test-key',
       lokiLabels: {
-        job: 'airo-agents',
+        service_name: 'airo-agents',
         env: 'prod'
       },
       environment: 'prod' as const
@@ -22,7 +22,7 @@ describe('loki-client', () => {
     it('should build basic query with labels only', async () => {
       const result = await buildLokiQuery({}, mockConfig);
 
-      expect(result.query).toBe('{job="airo-agents",env="prod"}');
+      expect(result.query).toBe('{service_name="airo-agents",env="prod"}');
       expect(result.direction).toBe('backward');
       expect(result.limit).toBe(500); // MAX_LOKI_FETCH default
     });
@@ -33,19 +33,19 @@ describe('loki-client', () => {
         mockConfig
       );
 
-      expect(result.query).toContain('|~ "(?i)[{,]\\"level\\":\\"(error)\\""');
+      expect(result.query).toContain('|~ `"level":"(?i)error"`');
     });
 
-    it('should use case-insensitive regex OR for multiple levels', async () => {
+    it('should OR per-level line filters for multiple levels', async () => {
       const result = await buildLokiQuery(
         { levelsFilter: 'error,warn' },
         mockConfig
       );
 
-      expect(result.query).toContain('|~ "(?i)[{,]\\"level\\":\\"(error|warn)\\""');
+      expect(result.query).toContain('|~ `"level":"(?i)error"` or `"level":"(?i)warn"`');
     });
 
-    it('should add line filter for app_id and omit cluster when not provided', async () => {
+    it('should add bare-substring line filter for app_id and omit cluster when not provided', async () => {
       const result = await buildLokiQuery(
         { appId: 'abc123' },
         mockConfig
@@ -55,7 +55,10 @@ describe('loki-client', () => {
       // constrain by cluster so apps whose allocation migrated still surface
       // logs. The route layer adds cluster only when an appId resolves to one.
       expect(result.query).not.toContain('cluster=');
-      expect(result.query).toContain('|= "\\"app_id\\":\\"abc123\\""');
+      // Bare-substring match catches early-lifecycle lines that mention the id
+      // before the structured `app_id` JSON field is populated.
+      expect(result.query).toContain('|= "abc123"');
+      expect(result.query).not.toContain('"app_id"');
     });
 
     it('should add cluster label when present in lokiLabels', async () => {
@@ -65,7 +68,7 @@ describe('loki-client', () => {
       );
 
       expect(result.query).toContain('cluster="c37"');
-      expect(result.query).toContain('|= "\\"app_id\\":\\"abc123\\""');
+      expect(result.query).toContain('|= "abc123"');
     });
 
     it('should escape special characters in label values', async () => {
@@ -79,36 +82,36 @@ describe('loki-client', () => {
       expect(result.query).toContain('cluster="c\\"37\\\\bad"');
     });
 
-    it('should build merged-streams query with job regex matcher', async () => {
+    it('should build merged-streams query with service_name regex matcher', async () => {
       const result = await buildLokiQuery(
         { appId: 'abc123' },
         {
           lokiEndpoint: 'https://loki.example.com',
           lokiLabels: { env: 'prod', cluster: 'c37' },
-          lokiJobsRegex: ['airo-agents', 'airo-preview-application', 'airo-publish-application']
+          lokiServiceNamesRegex: ['airo-agents', 'airo-preview-application', 'airo-publish-application']
         }
       );
 
-      expect(result.query).toContain('job=~"(airo-agents|airo-preview-application|airo-publish-application)"');
+      expect(result.query).toContain('service_name=~"(airo-agents|airo-preview-application|airo-publish-application)"');
       expect(result.query).toContain('cluster="c37"');
       expect(result.query).toContain('env="prod"');
-      expect(result.query).toContain('|= "\\"app_id\\":\\"abc123\\""');
+      expect(result.query).toContain('|= "abc123"');
     });
 
-    it('should ignore lokiLabels.job when lokiJobsRegex is set', async () => {
+    it('should ignore lokiLabels.service_name when lokiServiceNamesRegex is set', async () => {
       const result = await buildLokiQuery(
         {},
         {
           lokiEndpoint: 'https://loki.example.com',
-          lokiLabels: { job: 'airo-agents', env: 'prod' },
-          lokiJobsRegex: ['airo-agents', 'airo-preview-application']
+          lokiLabels: { service_name: 'airo-agents', env: 'prod' },
+          lokiServiceNamesRegex: ['airo-agents', 'airo-preview-application']
         }
       );
 
-      expect(result.query).toContain('job=~"(airo-agents|airo-preview-application)"');
-      // Must not also emit `job="airo-agents"` from lokiLabels — that would
+      expect(result.query).toContain('service_name=~"(airo-agents|airo-preview-application)"');
+      // Must not also emit `service_name="airo-agents"` from lokiLabels — that would
       // produce conflicting matchers and zero results.
-      expect(result.query).not.toMatch(/job="airo-agents"/);
+      expect(result.query).not.toMatch(/service_name="airo-agents"/);
     });
 
     it('should add case-sensitive line filters for search query', async () => {
@@ -143,8 +146,8 @@ describe('loki-client', () => {
 
       // mockConfig has no cluster in lokiLabels.
       expect(result.query).not.toContain('cluster=');
-      expect(result.query).toContain('|~ "(?i)[{,]\\"level\\":\\"(error)\\""');
-      expect(result.query).toContain('|= "\\"app_id\\":\\"abc123\\""');
+      expect(result.query).toContain('|~ `"level":"(?i)error"`');
+      expect(result.query).toContain('|= "abc123"');
       expect(result.query).toContain('|= "database"');
     });
 
@@ -205,7 +208,7 @@ describe('loki-client', () => {
         mockConfig
       );
 
-      expect(result.query).toContain('|~ "(?i)[{,]\\"level\\":\\"(error|warn)\\""');
+      expect(result.query).toContain('|~ `"level":"(?i)error"` or `"level":"(?i)warn"`');
       expect(result.query).not.toContain('(info)');
     });
 
@@ -224,7 +227,7 @@ describe('loki-client', () => {
         mockConfig
       );
 
-      expect(result.query).toContain('|~ "(?i)[{,]\\"level\\":\\"(error)\\""');
+      expect(result.query).toContain('|~ `"level":"(?i)error"`');
       expect(result.query).toContain('|= "database"');
       expect(result.query).not.toContain('|= "error"');
     });
@@ -235,7 +238,7 @@ describe('loki-client', () => {
         mockConfig
       );
 
-      expect(result.query).toContain('|~ "(?i)[{,]\\"level\\":\\"(error|warn)\\""');
+      expect(result.query).toContain('|~ `"level":"(?i)error"` or `"level":"(?i)warn"`');
       expect(result.query).toContain('|= "database"');
       expect(result.query).not.toContain('|= "error"');
       expect(result.query).not.toContain('|= "warn"');
@@ -250,31 +253,29 @@ describe('loki-client', () => {
         mockConfig
       );
 
-      expect(result.query).toContain('|~ "(?i)[{,]\\"level\\":\\"(info)\\""');
+      expect(result.query).toContain('|~ `"level":"(?i)info"`');
       expect(result.query).not.toContain('error');
       expect(result.query).not.toContain('warn');
     });
 
-    it('should emit case-insensitive regex so uppercase container-log levels match', async () => {
+    it('should emit case-insensitive value match so uppercase container-log levels match', async () => {
       // Preview/publish containers emit "level":"ERROR"; agents emit
-      // "level":"error". Must not regress to exact-case `|=` matching.
+      // "level":"error". The `(?i)` inside the value side covers both.
       const result = await buildLokiQuery({ levelFilter: 'error' }, mockConfig);
 
-      expect(result.query).toContain('|~ "(?i)');
-      expect(result.query).not.toMatch(/\|= "level\\":/);
+      expect(result.query).toContain('(?i)error');
     });
 
-    it('should anchor level regex to the exact key, not substrings like detected_level', async () => {
-      // The emitted LogQL pattern (`[{,]"level":"(error)"`) must match the
-      // exact `level` key at the top of a JSON object or after a comma, and
-      // must NOT match look-alike keys like `detected_level`.
+    it('should match the exact "level" key, not substrings like detected_level', async () => {
+      // The emitted LogQL pattern is `"level":"(?i)error"` — a literal
+      // `"level":` prefix. Look-alike keys like `detected_level` end with
+      // `_level":`, not `"level":`, so they don't match.
       const result = await buildLokiQuery({ levelFilter: 'error' }, mockConfig);
 
-      expect(result.query).toContain('[{,]\\"level\\":\\"(error)\\"');
+      expect(result.query).toContain('"level":"(?i)error"');
 
-      // Mirror the LogQL pattern with JS RegExp semantics (`i` flag replaces
-      // the Go `(?i)` inline flag).
-      const re = /[{,]"level":"(error)"/i;
+      // Mirror the LogQL pattern with JS RegExp semantics.
+      const re = /"level":"(?:error)"/i;
 
       expect(re.test('{"level":"error","msg":"x"}')).toBe(true);
       expect(re.test('{"level":"ERROR","msg":"x"}')).toBe(true);
@@ -304,7 +305,7 @@ describe('loki-client', () => {
         mockConfig
       );
 
-      expect(result.query).toContain('|~ "(?i)[{,]\\"level\\":\\"(error|warn)\\""');
+      expect(result.query).toContain('|~ `"level":"(?i)error"` or `"level":"(?i)warn"`');
       expect(result.query).not.toContain('bogus');
       expect(result.query).not.toContain('.*');
     });
