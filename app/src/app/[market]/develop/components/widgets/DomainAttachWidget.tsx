@@ -31,6 +31,7 @@ import {
 } from '@/hooks/useModifyDomains';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from '@/hooks/useTranslations';
+import { appFetch } from '@/lib/gasket-config';
 import { shipAnalyticsLog } from '@/lib/logging';
 import { DomainMode, DomainStatus } from '@/lib/mgmt-airo/types';
 import { logger } from '@/lib/request-context';
@@ -78,6 +79,7 @@ export default function DomainAttachWidget({
   const isDomainAttachEnabled = useSwitchboard('appbuilder-domain-attach');
   const isDomainPurchaseEnabled = useSwitchboard('appbuilder-domain-purchase');
   const isDomainTransferEnabled = useSwitchboard('appbuilder-domain-transfer');
+  const dkimUiEnabled = useSwitchboard('appbuilder-dkim-onboarding') === true;
 
   // Custom domain input state
   const [customDomain, setCustomDomain] = useState<string | null>(null);
@@ -425,6 +427,21 @@ export default function DomainAttachWidget({
       shipAnalyticsLog('domain.attach.widget.disconnect.success', {
         appId,
         domainName
+      });
+
+      // Best-effort DKIM teardown — see DomainAttach.tsx for design notes.
+      // Only fires when the feature flag is on to avoid wasted round-trips.
+      if (dkimUiEnabled) void appFetch(`/api/apps/${appId}/dkim/offboard`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ domain: domainName }),
+      }).catch((err: unknown) => {
+
+        console.warn('dkim.offboard.client.failed', {
+          appId,
+          domainName,
+          error: err instanceof Error ? err.message : String(err),
+        });
       });
 
       if (sendUserMessage) {

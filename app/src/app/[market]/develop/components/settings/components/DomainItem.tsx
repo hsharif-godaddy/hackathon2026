@@ -26,6 +26,7 @@ import { defaultMessageForDomainJobLabelKey } from '@/lib/translations/domain-jo
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import { translateDomainApiError } from '@/utils/domain-validation';
 import { generateClickEID } from '@/utils/instrumentation';
+import { DkimStatusBadge } from './DkimStatusBadge';
 import DomainConnectConfirmation from './DomainConnectConfirmation';
 
 function getDomainUrl(domain: string): string {
@@ -73,6 +74,7 @@ function getConnectedDomainTagLabel(
 export default function DomainItem({
   domain,
   appDomain,
+  appId,
   siteId,
   onConnect,
   onDisconnect,
@@ -83,6 +85,7 @@ export default function DomainItem({
 }: {
   domain: Domain;
   appDomain?: AppDomain;
+  appId?: string;
   siteId: string;
   onConnect: (domainName: string) => void;
   onDisconnect: (domainName: string) => void;
@@ -315,6 +318,9 @@ export default function DomainItem({
             >
               {connectedTagLabel}
             </Tag>
+          )}
+          {appId && appDomain?.status === DomainStatus.ACTIVE && (
+            <DkimStatusBadge appId={appId} domain={domainName} />
           )}
         </Box>
         <Popover open={open} onOpenChange={handlePopoverOpenChange}>

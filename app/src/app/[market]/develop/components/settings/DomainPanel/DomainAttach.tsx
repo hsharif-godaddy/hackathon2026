@@ -15,6 +15,7 @@ import { DomainConflictModal } from '@/app/[market]/develop/components/widgets/D
 import type { AppDetailsResponse } from '@/hooks/useAppDetails';
 import { useAuth } from '@/hooks/useAuth';
 import { useCustomerDomainAttach } from '@/hooks/useCustomerDomainAttach';
+import { useDkimAutoOnboard } from '@/hooks/useDkimAutoOnboard';
 import { useDomainDnsOwnership } from '@/hooks/useDomainDnsOwnership';
 import { useDomainsQuery } from '@/hooks/useDomainsQuery';
 import { useDomainTransfer } from '@/hooks/useDomainTransfer';
@@ -27,6 +28,7 @@ import {
 import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from '@/hooks/useTranslations';
 import { DomainStatus as ControlPlaneDomainStatus } from '@/lib/control-plane/types';
+import { appFetch } from '@/lib/gasket-config';
 import { shipAnalyticsLog } from '@/lib/logging';
 import { DomainMode, DomainStatus } from '@/lib/mgmt-airo/types';
 import { PAYWALL_ITC } from '@/lib/paywall/shared';
@@ -174,6 +176,37 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
     enabled: domainDnsOwnershipEnabled,
   });
 
+  // Strict gate on the appbuilder-dkim-onboarding switchboard flag for
+  // the NEW DKIM-related code paths added in this PR. The pre-existing
+  // `useDomainDnsOwnership({ fqdns: pendingDomain })` above stays
+  // ungated because it drives manual-DNS-instruction UI for external
+  // domains — that's pre-existing DCC functionality, independent of
+  // DKIM, and must keep working for every domain-attach regardless
+  // of feature-flag state.
+  //
+  // What IS gated below:
+  //   1. Second DCC ownership query keyed on customer-domain-for-DKIM
+  //      (added in round 3 to fix the auto-onboard wiring bug)
+  //   2. useDkimAutoOnboard — fires the /dkim/onboard POST
+  //
+  // When the flag is off, neither hook does work: the second query is
+  // disabled (no DCC poll for the customer domain) and useDkimAutoOnboard
+  // skips its effect.
+  const dkimUiEnabled = useSwitchboard('appbuilder-dkim-onboarding') === true;
+  const customerDomainForDkim = pendingCustomerDomainForAttach?.fqdn ?? null;
+  const { data: customerDomainOwnership } = useDomainDnsOwnership({
+    siteId: currentAppId,
+    fqdns: customerDomainForDkim ?? '',
+    enabled: dkimUiEnabled && !!currentAppId && !!customerDomainForDkim,
+  });
+
+  useDkimAutoOnboard({
+    appId: currentAppId,
+    domain: customerDomainForDkim,
+    ownership: customerDomainOwnership ?? null,
+    enabled: dkimUiEnabled && !!customerDomainForDkim,
+  });
+
   const hideDomainDnsUntilOwnershipResolved =
     domainDnsOwnershipEnabled &&
     isDomainDnsOwnershipLoading &&
@@ -307,7 +340,17 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
   }
 
   /**
-   * Handle disconnecting a domain from the application
+   * Handle disconnecting a domain from the application.
+   *
+   * After the upstream detach succeeds, fire a best-effort POST to
+   * /api/apps/[id]/dkim/offboard so Vox tears down the per-domain DKIM
+   * provisioning. The offboard call is intentionally fire-and-forget:
+   *   - Vox /offboard is idempotent (safe to call for never-onboarded
+   *     domains), so we don't need to gate on origin/ownership client-side.
+   *   - The detach UX must not block on a Vox round-trip — DKIM teardown
+   *     is independent of the user-visible "domain disconnected" outcome.
+   *   - Failures are surfaced via console (UI side) and BFF logs
+   *     (dkim.offboard.error / dkim.deactivate.failed).
    */
   async function handleDisconnectDomain(domainName: string) {
     if (!currentAppId) return;
@@ -322,6 +365,24 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
       shipAnalyticsLog('domain.custom.disconnect.success', {
         appId: currentAppId,
         domainName
+      });
+
+      // Best-effort DKIM teardown — only fires when the feature flag is on.
+      // When the flag is off, the route would return {result:'skipped'}
+      // anyway, but skipping the call entirely avoids the wasted round-trip.
+      // Don't await — detach UX is already committed. Errors logged to
+      // browser console; BFF-side logs capture the canonical failure trail.
+      if (dkimUiEnabled) void appFetch(`/api/apps/${currentAppId}/dkim/offboard`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ domain: domainName }),
+      }).catch((err: unknown) => {
+
+        console.warn('dkim.offboard.client.failed', {
+          appId: currentAppId,
+          domainName,
+          error: err instanceof Error ? err.message : String(err),
+        });
       });
     } catch (error) {
       logger.error('domain-attach.disconnect.failure', {
@@ -504,6 +565,7 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
                     <DomainItem
                       domain={entry.customerDomain}
                       appDomain={rootAppDomain}
+                      appId={currentAppId}
                       siteId={currentAppId}
                       onConnect={handleConnectDomain}
                       onDisconnect={handleDisconnectDomain}
@@ -525,6 +587,7 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
                         name: subdomain.fqdn,
                       }}
                       appDomain={subdomain}
+                      appId={currentAppId}
                       siteId={currentAppId}
                       onConnect={handleConnectDomain}
                       onDisconnect={handleDisconnectDomain}
@@ -547,6 +610,7 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
                 name: appDomain.fqdn,
               }}
               appDomain={appDomain}
+              appId={currentAppId}
               siteId={currentAppId}
               onConnect={handleConnectDomain}
               onDisconnect={handleDisconnectDomain}
@@ -572,6 +636,7 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
                 name: appDomain.fqdn,
               }}
               appDomain={appDomain}
+              appId={currentAppId}
               siteId={currentAppId}
               onConnect={handleConnectDomain}
               onDisconnect={handleDisconnectDomain}
@@ -591,6 +656,7 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
                 key={`available-customer-domain-${index}-${domainName}`}
                 domain={entry.customerDomain}
                 appDomain={undefined}
+                appId={currentAppId}
                 siteId={currentAppId}
                 onConnect={handleConnectDomain}
                 onDisconnect={handleDisconnectDomain}

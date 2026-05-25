@@ -5,11 +5,15 @@ import CartIcon from '@ux/icon/cart'
 import LinkIcon from '@ux/icon/link'
 import text from '@ux/text'
 
+import { DkimStatusBadge } from '@/app/[market]/develop/components/settings/components/DkimStatusBadge'
 import type { DefaultToolRendererProps } from '@/app/[market]/develop/components/tool-renderers/DefaultToolRenderer'
 import ToolHeader from '@/app/[market]/develop/components/tool-renderers/ToolHeader'
 import DomainAttachWidget from '@/app/[market]/develop/components/widgets/DomainAttachWidget'
 import DomainPurchaseWidget from '@/app/[market]/develop/components/widgets/DomainPurchaseWidget'
 import ErrorBoundary from '@/components/ErrorBoundary'
+import { useDkimAutoOnboard } from '@/hooks/useDkimAutoOnboard'
+import { useDomainDnsOwnership } from '@/hooks/useDomainDnsOwnership'
+import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
 
 /**
@@ -42,6 +46,34 @@ export default function DomainToolRenderer({
   const displayName = isAttach ? t('builder_tools_domain_attach') : t('builder_tools_domain_purchase')
   const summaryText = isAttach ? t('builder_domain_attach_title') : t('builder_domain_purchase_title')
 
+  // Strict gate on the appbuilder-dkim-onboarding switchboard flag.
+  // When the flag is off (or undefined during SSR), no DCC polling or
+  // auto-onboard POST happens here. Note: this gate is for the DKIM
+  // hooks ONLY — pre-existing domain-attach DCC functionality elsewhere
+  // (e.g. useDomainDnsOwnership for pendingDomain in DomainAttach.tsx
+  // and DomainAttachWidget.tsx, both used to decide whether to show
+  // manual DNS instructions) is independent of this flag and stays
+  // working regardless.
+  //
+  // Also restricted to the CURRENT assistant message: without
+  // isLastAssistantMessage gating, every historical domain-attach tool
+  // message in the conversation would re-mount these hooks. Hooks
+  // still mount unconditionally (rules of hooks) — `enabled: false`
+  // is the runtime gate.
+  const dkimUiEnabled = useSwitchboard('appbuilder-dkim-onboarding') === true
+  const dkimEnabled = dkimUiEnabled && isLastAssistantMessage && isAttach && isSuccess && !!appId && !!domain
+  const { data: ownershipData } = useDomainDnsOwnership({
+    siteId: appId,
+    fqdns: domain ?? '',
+    enabled: dkimEnabled,
+  })
+  useDkimAutoOnboard({
+    appId,
+    domain,
+    ownership: ownershipData ?? null,
+    enabled: dkimEnabled,
+  })
+
   return (
     <div>
       <ToolHeader
@@ -67,6 +99,9 @@ export default function DomainToolRenderer({
                 <text.strong size={0}>
                   {summaryText}
                 </text.strong>
+                {isAttach && appId && domain && (
+                  <DkimStatusBadge appId={appId} domain={domain} />
+                )}
               </Box>
             )}
           </ErrorBoundary>
