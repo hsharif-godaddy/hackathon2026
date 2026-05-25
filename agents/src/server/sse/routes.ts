@@ -234,6 +234,7 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
         let historyMessages: Awaited<ReturnType<typeof deps.messages.getMessagesPaginated>>['messages'] = []
         let historyHasMore = false
         let historyNextCursor: string | null = null
+        let historyLoadFailed = false
         if (plan.lossDetected) {
           try {
             const customerId = (req as AuthenticatedRequest).agentContext?.customerId
@@ -246,6 +247,7 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
             historyHasMore = paginatedResult.hasMore
             historyNextCursor = paginatedResult.nextCursor
           } catch (err) {
+            historyLoadFailed = true
             logger.warn('sse.recovery.history_load_failed', { appId, conversationId, ...errorFields(err) })
           }
         }
@@ -268,6 +270,7 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
           historyMessageCount: historyMessages.length,
           historyHasMore,
           historyNextCursor,
+          historyLoadFailed,
         })
 
         for (const msg of historyMessages) {

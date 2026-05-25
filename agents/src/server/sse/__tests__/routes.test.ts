@@ -696,6 +696,7 @@ describe('SSE routes', () => {
       expect(capturedData).toContain('"inProgress":false')
       // segments included
       expect(capturedData).toContain('"segments":[')
+      expect(capturedData).toContain('"historyLoadFailed":false')
     })
 
     it('does not stream history_message when no buffer loss', async () => {
@@ -751,6 +752,7 @@ describe('SSE routes', () => {
       expect(capturedData).toContain('"historyMessageCount":0')
       expect(capturedData).not.toContain('event: history_message')
       expect(capturedData).toContain('event: replay_complete')
+      expect(capturedData).toContain('"historyLoadFailed":true')
     })
 
     it('preserves inProgress:true when stream is still active', async () => {

@@ -34,6 +34,7 @@
   "dependencies": {
     "@airo-ux/loader": "^2.1.1",
     "@airo/components": "catalog:",
+    "@airo/ai-transport": "workspace:*",
     "@airo/shared": "workspace:*",
     "@aws-sdk/client-lambda": "catalog:",
     "@aws-sdk/client-s3": "^3.1048.0",

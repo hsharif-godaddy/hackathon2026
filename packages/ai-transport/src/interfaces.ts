@@ -317,33 +317,38 @@ export interface ConversationPersistenceWithCleanup extends ConversationPersiste
 }
 
 /**
- * Event types for streaming events
+ * Event types for streaming events.
+ * Runtime array drives the type — adding a new event here automatically
+ * makes it available to both server publishers and client listeners.
  */
-export type StreamingEventType =
-  | 'chunk'
-  | 'tool_start'
-  | 'tool_input_delta'
-  | 'tool_call'
-  | 'tool_result'
-  | 'step_start'
-  | 'step_complete'
-  | 'complete'
-  | 'error'
-  | 'validation_message'
-  | 'recovery_status'
-  | 'conversation_info'
-  | 'agents_available'
-  | 'replay_complete'
-  | 'catchup_status'
-  | 'catchup_complete'
-  | 'server_config'
-  | 'client_action'
-  | 'budget_update'
-  | 'budget_status'
-  | 'debug_turn_stats'
-  | 'stream_retry'
-  | 'video'
-  | 'request_grant_refresh'
+export const STREAMING_EVENT_TYPES = [
+  'chunk',
+  'tool_start',
+  'tool_input_delta',
+  'tool_call',
+  'tool_result',
+  'step_start',
+  'step_complete',
+  'complete',
+  'error',
+  'validation_message',
+  'recovery_status',
+  'conversation_info',
+  'agents_available',
+  'replay_complete',
+  'catchup_status',
+  'catchup_complete',
+  'server_config',
+  'client_action',
+  'budget_update',
+  'budget_status',
+  'debug_turn_stats',
+  'stream_retry',
+  'video',
+  'request_grant_refresh',
+] as const
+
+export type StreamingEventType = typeof STREAMING_EVENT_TYPES[number]
 
 /**
  * Normalized streaming event structure for event channel

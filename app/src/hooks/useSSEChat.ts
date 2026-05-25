@@ -757,6 +757,18 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
                   bufferedCount: payload?.bufferedCount,
                   streamCompleted: payload?.streamCompleted,
                 })
+
+                // Buffer-loss with failed inline history: fall back to HTTP history
+                // load so the client doesn't silently miss conversation data.
+                // Skip when streamCompleted && !hasBufferedEvents — that branch
+                // already triggers a history reload above.
+                if (payload?.lossDetected && payload?.historyLoadFailed && payload?.historyMessageCount === 0
+                  && !(payload?.streamCompleted && !payload?.hasBufferedEvents)) {
+                  logger.info('sse.recovery.history_fallback_triggered', { appId: currentAppId })
+                  if (transportRef.current) {
+                    transportRef.current.loadHistory()
+                  }
+                }
               } else if (type === 'replay_complete') {
                 // Flush any buffered store updates from replayed events
                 flushStoreUpdateBufferImmediate()

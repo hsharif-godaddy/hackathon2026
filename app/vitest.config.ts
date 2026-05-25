@@ -146,6 +146,7 @@ export default defineConfig({
       deps: {
         inline: [
           '@airo/ai-lib',
+          '@airo/ai-transport',
           '@airo/components',
           /^@ux\//,
         ],

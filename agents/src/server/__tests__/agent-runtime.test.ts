@@ -77,6 +77,17 @@ describe('agent-runtime', () => {
       expect(getMessageLifecycleDeps().sessionStore).toBeDefined()
     })
 
+    it('creates event channel with capacity 10000', async () => {
+      const { ConversationEventChannel } = await import('@airo/ai-transport')
+      const { initAgentRuntime } = await import('../agent-runtime.js')
+
+      await initAgentRuntime()
+
+      expect(ConversationEventChannel).toHaveBeenCalledWith(
+        expect.objectContaining({ capacity: 10_000 })
+      )
+    })
+
     it('is idempotent — calling twice does not reinitialize', async () => {
       const { initAgentRuntime } = await import('../agent-runtime.js')
       const { createWebSocketAgentFactory } = await import('../../agents/ai-lib-agents/index.js')

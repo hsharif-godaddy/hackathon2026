@@ -544,6 +544,77 @@ describe('useSSEChat', () => {
     expect(storeState.streamingState).toBe('streaming')
   })
 
+  it('triggers loadHistory fallback when loss detected with failed inline history and active stream', async () => {
+    await setupHook()
+
+    act(() => {
+      lastTransport.callbacks?.onEvent({
+        type: 'recovery_status',
+        data: {
+          lossDetected: true,
+          historyLoadFailed: true,
+          historyMessageCount: 0,
+          historyStreaming: false,
+          hasBufferedEvents: true,
+          bufferedCount: 5,
+          streamCompleted: false,
+          conversationId: 'conv-created-123',
+        },
+      })
+    })
+
+    // Even though there are buffered events (active stream), the history fallback
+    // should fire because inline history failed and data was lost.
+    expect(lastTransport.loadHistory).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not double-load history when streamCompleted path already handles it', async () => {
+    await setupHook()
+
+    act(() => {
+      lastTransport.callbacks?.onEvent({
+        type: 'recovery_status',
+        data: {
+          lossDetected: true,
+          historyLoadFailed: true,
+          historyMessageCount: 0,
+          historyStreaming: false,
+          hasBufferedEvents: false,
+          bufferedCount: 0,
+          streamCompleted: true,
+          conversationId: 'conv-created-123',
+        },
+      })
+    })
+
+    // streamCompleted + !hasBufferedEvents triggers startInitialHistoryLoad.
+    // The historyLoadFailed fallback should NOT also fire (double-load).
+    expect(lastTransport.loadHistory).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not trigger loadHistory fallback when historyLoadFailed is false', async () => {
+    await setupHook()
+
+    act(() => {
+      lastTransport.callbacks?.onEvent({
+        type: 'recovery_status',
+        data: {
+          lossDetected: true,
+          historyLoadFailed: false,
+          historyMessageCount: 3,
+          historyStreaming: true,
+          hasBufferedEvents: true,
+          bufferedCount: 5,
+          streamCompleted: false,
+          conversationId: 'conv-created-123',
+        },
+      })
+    })
+
+    // History was delivered inline — no fallback needed.
+    expect(lastTransport.loadHistory).not.toHaveBeenCalled()
+  })
+
   it('complete event calls flushStoreUpdateBufferImmediate then finalizeStream', async () => {
     await setupHook()
 

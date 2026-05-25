@@ -43,7 +43,7 @@ export async function initAgentRuntime(): Promise<void> {
     const { initializeBackgroundSummarization } = await import('../services/summarization/index.js')
     await initializeBackgroundSummarization()
 
-    const channel = new ConversationEventChannel()
+    const channel = new ConversationEventChannel({ capacity: 10_000, ttl: 5 * 60 * 1000 })
 
     const cleanupInterval = setInterval(() => {
       const removed = channel.cleanup() ?? 0

@@ -1,8 +1,36 @@
 import { EventSource } from 'eventsource'
+import { STREAMING_EVENT_TYPES, type StreamingEventType } from '@airo/ai-transport/event-types'
 
 import { agentFetch, clearAgentTokenCache, getAgentToken } from '@/lib/agent-fetch'
 import { logger } from '@/lib/request-context'
 import type { ChatTransport, ChatTransportCallbacks, SendMessageParams, TransportEvent, TransportState } from './types'
+
+export const SSE_INTENTIONALLY_IGNORED: ReadonlySet<StreamingEventType> = new Set([
+  'budget_status',
+  'conversation_info',
+  'agents_available',
+  'server_config',
+  'catchup_status',
+  'catchup_complete',
+] as const)
+
+/**
+ * Events emitted by SSE routes but not part of the channel event type union.
+ * `history_loaded` and `history_complete` are client-synthesized in loadHistory(),
+ * not server-emitted over SSE. `history_message`, `stream_error`, and `oauth_result`
+ * are emitted directly by the SSE route handler.
+ */
+export const ROUTE_EVENT_TYPES = [
+  'history_message',
+  'history_loaded',
+  'history_complete',
+  'stream_error',
+  'oauth_result',
+] as const
+
+export const SSE_REGISTERED_EVENT_TYPES = [...STREAMING_EVENT_TYPES, ...ROUTE_EVENT_TYPES].filter(
+  (t) => !SSE_INTENTIONALLY_IGNORED.has(t as StreamingEventType)
+)
 
 function errMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
@@ -468,18 +496,7 @@ export class SSETransport implements ChatTransport {
       }
     })
 
-    const eventTypes = [
-      'chunk', 'tool_start', 'tool_input_delta', 'tool_call', 'tool_result',
-      'step_start', 'step_complete', 'complete', 'error', 'stream_error',
-      'budget_update', 'debug_turn_stats', 'stream_retry',
-      'validation_message',
-      'history_message', 'history_loaded', 'history_complete',
-      'recovery_status', 'replay_complete', 'catchup_status', 'catchup_complete',
-      'client_action', 'video', 'status', 'request_grant_refresh', 'resync',
-      'oauth_result',
-    ]
-
-    for (const type of eventTypes) {
+    for (const type of SSE_REGISTERED_EVENT_TYPES) {
       this.eventSource.addEventListener(type, (event: MessageEvent) => {
         this.handleTypedEvent(type, event)
       })

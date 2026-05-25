@@ -26,6 +26,9 @@ export {
 export type {
   EventChannelLogger
 } from './conversation-event-channel.js'
+export {
+  STREAMING_EVENT_TYPES,
+} from './interfaces.js'
 export type {
   StreamingEvent,
   StreamingEventType,
