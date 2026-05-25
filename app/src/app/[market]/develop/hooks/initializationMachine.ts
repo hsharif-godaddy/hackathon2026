@@ -72,8 +72,8 @@ export type InitializationMachineEvent =
   | { type: 'START_CHECKING_CREATION'; appId: string; isJobId: boolean; hasInitialPrompt?: boolean }
   | { type: 'SKIP_TO_PAGE_INIT'; appId: string; hasInitialPrompt?: boolean }
 
-  // Context hydration (for job→app transition)
-  | { type: 'HYDRATE_APP'; appId: string; isJobId: boolean }
+  // Context hydration (for job→app transition or site-loaded initial-prompt sync)
+  | { type: 'HYDRATE_APP'; appId: string; isJobId: boolean; hasInitialPrompt?: boolean }
 
   // Creation flow
   | { type: 'START_CREATING'; jobId: string; initialPromptText: string }
@@ -141,6 +141,12 @@ export const initializationMachine = setup({
         // Re-hydrate hasInitialPrompt from event if provided (for post-RESET initialization)
         if (event.type === 'START_CHECKING_CREATION' || event.type === 'SKIP_TO_PAGE_INIT') {
           return event.hasInitialPrompt ?? context.hasInitialPrompt
+        }
+        // HYDRATE_APP can promote false → true when site loads with initial_prompt
+        // (e.g. cold external redirect like DPP). It must not clear hasInitialPrompt
+        // after PROMPT_SENT, so we only honour an explicit true value.
+        if (event.type === 'HYDRATE_APP') {
+          return event.hasInitialPrompt === true ? true : context.hasInitialPrompt
         }
         return context.hasInitialPrompt
       },

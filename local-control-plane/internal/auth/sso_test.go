@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -50,6 +51,87 @@ func TestSSOMiddleware_MissingToken(t *testing.T) {
 
 	if rec.Code != http.StatusUnauthorized {
 		t.Errorf("expected 401, got %d", rec.Code)
+	}
+}
+
+// AuthenticateOptional must let unauthenticated requests through (so the
+// existing public /signup behavior is preserved) — even with AUTH_TYPE=jwt,
+// callers without a cookie should reach the handler unchanged.
+func TestSSOMiddleware_AuthenticateOptional_NoToken(t *testing.T) {
+	t.Parallel()
+
+	mw, err := newTestSSOMiddleware(t)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	handler := mw.AuthenticateOptional(okHandler())
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/airo/v1/signup", nil)
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200 (optional auth, no token), got %d", rec.Code)
+	}
+}
+
+// AuthenticateOptional must propagate the lowRisk-authenticated request to
+// next on the success path, so the handler observes whatever context the
+// validator put in (token, customer ID, etc.). Constructed with a stub
+// lowRisk so we don't need a real SSO server to mint a token — the test
+// targets the sentinel-capture + request-substitution plumbing, which is
+// the bit that wouldn't be caught by the failure-path tests if it regressed.
+func TestSSOMiddleware_AuthenticateOptional_PropagatesAuthedContext(t *testing.T) {
+	t.Parallel()
+
+	type ctxKey string
+	const markerKey ctxKey = "marker"
+
+	stubLowRisk := func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx := context.WithValue(r.Context(), markerKey, "authed")
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
+
+	mw := &SSOMiddleware{authType: "jwt", lowRisk: stubLowRisk}
+
+	var captured any
+	handler := mw.AuthenticateOptional(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		captured = r.Context().Value(markerKey)
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/airo/v1/signup", nil)
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", rec.Code)
+	}
+	if captured != "authed" {
+		t.Errorf("expected authed-ctx propagated to next handler, got %v", captured)
+	}
+}
+
+// With AUTH_TYPE=none, AuthenticateOptional is a passthrough.
+func TestSSOMiddleware_AuthenticateOptional_AuthDisabled(t *testing.T) {
+	t.Parallel()
+
+	mw, err := NewSSOMiddleware("none", "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	handler := mw.AuthenticateOptional(okHandler())
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/airo/v1/signup", nil)
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200 (auth disabled), got %d", rec.Code)
 	}
 }
 

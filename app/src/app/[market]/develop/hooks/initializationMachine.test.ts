@@ -1106,4 +1106,60 @@ describe('initializationMachine', () => {
       expect(actor.getSnapshot().context.retryCount).toBe(0)
     })
   })
+
+  // -------------------------------------------------------------------------
+  // HYDRATE_APP — hasInitialPrompt invariant
+  //
+  // Locks down the strict `=== true` clause in setAppId. HYDRATE_APP can fire
+  // both for the site-aware late-hydration case (cold DPP redirect: must
+  // promote false → true) and for the job→app router transition path that
+  // runs after PROMPT_SENT (must NOT clear true → false). A simplification
+  // to `event.hasInitialPrompt ?? context.hasInitialPrompt` would compile and
+  // pass every other test, silently re-introducing the regression #3925
+  // reverted.
+  // -------------------------------------------------------------------------
+  describe('HYDRATE_APP hasInitialPrompt invariant', () => {
+    it('promotes hasInitialPrompt false → true when site loads with initial_prompt', () => {
+      const actor = createActor(initializationMachine, {
+        input: { appId: 'job-123', isJobId: true, hasInitialPrompt: false },
+      })
+      actor.start()
+
+      expect(actor.getSnapshot().context.hasInitialPrompt).toBe(false)
+
+      actor.send({ type: 'HYDRATE_APP', appId: 'app-456', isJobId: false, hasInitialPrompt: true })
+
+      expect(actor.getSnapshot().context.hasInitialPrompt).toBe(true)
+      expect(actor.getSnapshot().context.appId).toBe('app-456')
+      expect(actor.getSnapshot().context.isJobId).toBe(false)
+    })
+
+    it('preserves hasInitialPrompt=true when HYDRATE_APP event omits the flag', () => {
+      // The post-CREATION_SUCCEEDED hydrate effect (useInitialization.ts:851)
+      // dispatches HYDRATE_APP without `hasInitialPrompt`, after PROMPT_SENT
+      // may already have flipped initialPromptSent. Must not clobber the flag.
+      const actor = createActor(initializationMachine, {
+        input: { appId: 'job-123', isJobId: true, hasInitialPrompt: true },
+      })
+      actor.start()
+
+      actor.send({ type: 'HYDRATE_APP', appId: 'app-456', isJobId: false })
+
+      expect(actor.getSnapshot().context.hasInitialPrompt).toBe(true)
+      expect(actor.getSnapshot().context.appId).toBe('app-456')
+    })
+
+    it('does NOT flip hasInitialPrompt true → false when HYDRATE_APP carries an explicit false', () => {
+      // setAppId only honours `=== true`. A stale `false` from a late-firing
+      // effect must never clear a flag the auto-send pipeline relies on.
+      const actor = createActor(initializationMachine, {
+        input: { appId: 'job-123', isJobId: true, hasInitialPrompt: true },
+      })
+      actor.start()
+
+      actor.send({ type: 'HYDRATE_APP', appId: 'app-456', isJobId: false, hasInitialPrompt: false })
+
+      expect(actor.getSnapshot().context.hasInitialPrompt).toBe(true)
+    })
+  })
 })

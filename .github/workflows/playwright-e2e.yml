@@ -13,19 +13,19 @@ on:
   # Update all three when adding or changing a schedule.
   schedule:
     # Critical-path E2E every 2 hours - fast post-deploy/regression gate.
-    - cron: "0 */2 * * *"
+    - cron: '0 */2 * * *'
     # Full regression suite once per day (06:00 UTC) - covers auth flows,
     # apps-page, media tab, publish popover, archive restore (otherwise only
     # exercised on manual dispatch).
-    - cron: "0 6 * * *"
+    - cron: '0 6 * * *'
 
   # Allow manual triggering and post-promotion triggering
   workflow_dispatch:
     inputs:
       environment:
-        description: "Environment to test against"
+        description: 'Environment to test against'
         required: true
-        default: "prod"
+        default: 'prod'
         type: choice
         options:
           - dev
@@ -33,9 +33,9 @@ on:
           - test
           - prod
       test_filter:
-        description: "Test suite to run"
+        description: 'Test suite to run'
         required: false
-        default: "e2e"
+        default: 'e2e'
         type: choice
         options:
           - e2e
@@ -48,8 +48,9 @@ on:
           - develop-media
           - develop-publish
           - develop-brand-book
+          - develop-dpp-handoff
       post_promotion:
-        description: "Triggered by promotion workflow (internal use)"
+        description: 'Triggered by promotion workflow (internal use)'
         required: false
         type: boolean
         default: false
@@ -58,17 +59,17 @@ on:
   workflow_call:
     inputs:
       environment:
-        description: "Environment to test against"
+        description: 'Environment to test against'
         required: true
-        default: "test" # The workflow_call will mostly be called building for the test env
+        default: 'test' # The workflow_call will mostly be called building for the test env
         type: string
       test_filter:
-        description: "Test suite: e2e, regression, e2e-then-regression (sequential, fail-fast), or individual spec name (e.g. authentication, apps-page)"
+        description: 'Test suite: e2e, regression, e2e-then-regression (sequential, fail-fast), or individual spec name (e.g. authentication, apps-page)'
         required: false
-        default: "e2e"
+        default: 'e2e'
         type: string
       post_promotion:
-        description: "Triggered by promotion workflow (internal use)"
+        description: 'Triggered by promotion workflow (internal use)'
         required: false
         type: boolean
         default: false
@@ -180,7 +181,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
-          node-version: "22"
+          node-version: '22'
 
       - name: Enable Corepack and configure pnpm
         run: |
@@ -406,10 +407,10 @@ jobs:
     with:
       result: ${{ needs.test.result }}
       environment: ${{ needs.test.outputs.environment }}
-      title: "E2E Tests - ${{ needs.test.outputs.environment }} (by ${{ github.actor }})"
+      title: 'E2E Tests - ${{ needs.test.outputs.environment }} (by ${{ github.actor }})'
       message: |
         *Environment:* ${{ needs.test.outputs.environment }}
         *Trigger:* ${{ github.event_name == 'schedule' && 'Scheduled' || (github.event_name == 'workflow_dispatch' && github.event.inputs.post_promotion == 'true' && 'Post-Promotion' || 'Manual') }}
         *Actor:* ${{ github.actor }}
         *Run:* <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Details>
-      footer: "airo-app-builder | E2E Tests"
+      footer: 'airo-app-builder | E2E Tests'

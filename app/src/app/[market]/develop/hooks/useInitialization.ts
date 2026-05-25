@@ -2,6 +2,7 @@ import { useRouter } from 'next/navigation'
 import { useEffect, useRef, useState } from 'react'
 import { useMachine } from '@xstate/react'
 
+import { getConversationIdFromCookie } from '@/hooks/websocket/useWebSocketHelpers'
 import { logger } from '@/lib/request-context'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { cleanupSiteCreationStore, useSiteCreationStore } from '@/stores/useSiteCreationStore'
@@ -30,13 +31,188 @@ function getInitialJobIdFromStorage(appId: string | null): string | null {
 }
 
 /**
+ * Cross-session "auto-send already happened" guard, keyed by realAppId in
+ * `localStorage`. Set in `markInitialPromptSent` after the first auto-send
+ * resolves; checked by the site-aware hydration paths so a page refresh on
+ * `/develop/{realAppId}` does not re-trigger auto-send. `site.initial_prompt`
+ * persists forever in mgmt-airo, so without this flag the BFF-loaded site
+ * looks identical to a first-time DPP redirect after refresh.
+ *
+ * Errors from `localStorage` access (Safari ITP, sandboxed iframes, "block
+ * all cookies" mode, QuotaExceededError) are caught and surfaced via
+ * `logger.warn` rather than swallowed silently — on a refresh this flag is
+ * the primary backstop (PROMPT_SENT lives only in machine context, the
+ * sessionStorage flags are explicitly cleared in `applyMarkInitialPromptSentEffects`,
+ * and the cookie+history gate is the only other line of defense). A silent
+ * write failure would invisibly degrade the refresh-window guarantee, so
+ * we emit a `develop-page.auto-sent-flag.{read,write}-failed` event instead.
+ */
+const AUTO_SENT_FLAG_PREFIX = 'initial-prompt-auto-sent-'
+
+function getInitialPromptAutoSentFlag(appId: string | null): boolean {
+  if (typeof window === 'undefined' || !appId) return false
+  try {
+    return localStorage.getItem(`${AUTO_SENT_FLAG_PREFIX}${appId}`) === 'true'
+  } catch (err) {
+    logger.warn('develop-page.auto-sent-flag.read-failed', {
+      appId,
+      error: err instanceof Error ? err.message : String(err),
+    })
+    return false
+  }
+}
+
+function setInitialPromptAutoSentFlag(appId: string | null): void {
+  if (typeof window === 'undefined' || !appId) return
+  try {
+    localStorage.setItem(`${AUTO_SENT_FLAG_PREFIX}${appId}`, 'true')
+  } catch (err) {
+    logger.warn('develop-page.auto-sent-flag.write-failed', {
+      appId,
+      error: err instanceof Error ? err.message : String(err),
+    })
+  }
+}
+
+/**
+ * Predicate for the site-aware `hasInitialPrompt` hydration effect. Cold
+ * external redirects (DPP and future entry points) land on /develop/{jobId}
+ * without the home-flow sessionStorage flags. By the time `site` loads with
+ * a populated `initial_prompt`, the machine has already left idle, so the
+ * START_CHECKING_CREATION / SKIP_TO_PAGE_INIT branches in the init effect
+ * cannot set `hasInitialPrompt` — this effect re-derives it from the loaded
+ * site and dispatches HYDRATE_APP.
+ *
+ * Returns true ONLY when every gate passes:
+ *   - we have an appId,
+ *   - the machine context does not already say `hasInitialPrompt: true`
+ *     (the HYDRATE_APP setAppId action only honors `true` here, but we still
+ *     short-circuit to keep the effect a no-op once hydration has occurred),
+ *   - the loaded site really belongs to the current app (not a stale carry-
+ *     over during navigation between apps),
+ *   - that site has a non-empty `initial_prompt`,
+ *   - the cross-session auto-sent localStorage flag is NOT set (the durable
+ *     guard against re-trigger on page refresh after the first auto-send —
+ *     mgmt-airo persists `site.initial_prompt` forever).
+ *
+ * Exported (along with the effect's body inline) so tests can lock down the
+ * gates without mounting the entire hook + its store dependencies. A
+ * regression that drops any one of these checks re-opens either the
+ * stale-site leak or the PR #3925 cross-session re-send.
+ */
+export function shouldHydrateInitialPromptFromSite(
+  appId: string | null,
+  hasInitialPromptInContext: boolean,
+  site: Site | null,
+  realAppId: string | null,
+): boolean {
+  if (!appId) return false
+  if (hasInitialPromptInContext) return false
+  if (!isSiteForCurrentApp(site, appId, realAppId)) return false
+  if (!site.initial_prompt) return false
+  if (getInitialPromptAutoSentFlag(site.id)) return false
+  return true
+}
+
+/**
+ * Conversation-history gate for the site-aware hydration effect. The
+ * underlying predicate above checks site shape and the localStorage flag;
+ * this one checks the conversation has actually settled. Both must pass
+ * before HYDRATE_APP can fire.
+ *
+ * - `!hasConversationCookie` → fresh app, fire immediately. `load_history` is
+ *   never sent without a conversationId (StreamingWebSocketController.loadHistory
+ *   short-circuits), so the server never replies `history_loaded`, so
+ *   `historyLoadingComplete` never flips via the normal path. The 15s retry in
+ *   StreamingMessageList only increments its counter on a successful emit, so
+ *   the safety failsafe never trips either. Without this branch, a fresh DPP
+ *   redirect deadlocks: HYDRATE_APP doesn't fire → auto-send doesn't fire →
+ *   no `conversation_info` from the agent → cookie never gets set → loop.
+ * - `!historyLoadingComplete` → existing app, wait; do not race the history load.
+ * - `hasMessages` → existing app with prior chat; never re-fire HYDRATE_APP because
+ *   (a) it would flip `shouldAutoSendPrompt` and re-send the prompt as a
+ *   duplicate user message (the GOC retrigger leak), and
+ *   (b) it would push the machine into `ready.waitingForFirstEdit`, sticking
+ *   the "building your app" overlay until FIRST_EDIT_TIMEOUT_MS=10min.
+ *
+ * Re-trigger protection for an existing app whose cookie expired (>7 days) is
+ * preserved by the second predicate: `shouldHydrateInitialPromptFromSite`
+ * checks the durable `initial-prompt-auto-sent-{appId}` localStorage flag.
+ *
+ * Exported for the same reason as the predicate above: lock the gate down
+ * with a unit test so a future refactor cannot silently re-introduce the
+ * #3997 production regressions.
+ */
+export function shouldFireSiteAwareHydration(
+  historyLoadingComplete: boolean,
+  hasMessages: boolean,
+  hasConversationCookie: boolean,
+): boolean {
+  if (!hasConversationCookie) return true
+  if (!historyLoadingComplete) return false
+  if (hasMessages) return false
+  return true
+}
+
+/**
+ * Storage side-effects of `markInitialPromptSent`: clear the in-flight
+ * sessionStorage flags the home-page flow wrote, and set the durable
+ * `initial-prompt-auto-sent-{appId}` localStorage flag that the site-aware
+ * auto-send paths consult. Extracted (and exported) so tests can lock down
+ * the localStorage write — the in-hook action otherwise has no test seam,
+ * and a refactor that drops the flag write would silently re-introduce the
+ * cross-session re-send regression PR #3925 reverted.
+ */
+export function applyMarkInitialPromptSentEffects(
+  initialJobId: string | null,
+  appId: string | null,
+): void {
+  if (typeof window === 'undefined') return
+  if (initialJobId) {
+    sessionStorage.removeItem(`initial-prompt-pending-${initialJobId}`)
+    sessionStorage.removeItem(`in-creation-flow-${initialJobId}`)
+    sessionStorage.removeItem(`initial-prompt-text-${initialJobId}`)
+    sessionStorage.removeItem(`initial-template-${initialJobId}`)
+    sessionStorage.removeItem(`initial-upload-file-${initialJobId}`)
+  }
+  if (appId) {
+    sessionStorage.removeItem(`initial-prompt-text-${appId}`)
+    sessionStorage.removeItem(`initial-template-${appId}`)
+    sessionStorage.removeItem(`initial-upload-file-${appId}`)
+    // Cross-session guard: prevent re-trigger of site-aware auto-send on a
+    // future refresh. site.initial_prompt persists forever in mgmt-airo, so
+    // the in-memory PROMPT_SENT flag is not enough on its own. Mirrors the
+    // check in checkHasInitialPrompt + the site-aware hydration effect.
+    setInitialPromptAutoSentFlag(appId)
+  }
+}
+
+/**
  * Helper to check if initial prompt is pending
+ *
+ * Returns true when EITHER:
+ * - The home-page flow's sessionStorage flags are set
+ *   (`initial-prompt-pending-{id}` + `in-creation-flow-{id}`), OR
+ * - The current app's site record (BFF-loaded) has a non-empty `initial_prompt`.
+ *
+ * The site-aware branch covers cold external redirects (e.g. DPP) where the
+ * sessionStorage flags are never written, but mgmt-airo holds the prompt in
+ * `app.variables.initialPrompt` and the BFF surfaces it as `site.initial_prompt`.
+ * The `isSiteForCurrentApp` staleness guard prevents the previous app's prompt
+ * from leaking during navigation between apps.
  *
  * @param initialJobId - The initial job ID to check
  * @param appId - The app ID to check (for rebuild mode)
+ * @param site - Loaded site record from useDevelopPageStore (may be stale)
+ * @param realAppId - Real appId tracked by useSiteCreationStore (job→app flip)
  * @returns True if initial prompt is pending
  */
-function checkHasInitialPrompt(initialJobId: string | null, appId: string | null): boolean {
+export function checkHasInitialPrompt(
+  initialJobId: string | null,
+  appId: string | null,
+  site: Site | null,
+  realAppId: string | null,
+): boolean {
   if (typeof window === 'undefined') return false
 
   // Check with initialJobId first (normal creation flow)
@@ -51,6 +227,22 @@ function checkHasInitialPrompt(initialJobId: string | null, appId: string | null
     const hasPromptPending = sessionStorage.getItem(`initial-prompt-pending-${appId}`) === 'true'
     const inCreationFlow = sessionStorage.getItem(`in-creation-flow-${appId}`) === 'true'
     if (hasPromptPending && inCreationFlow) return true
+  }
+
+  // Site-aware fallback: cold external redirect (DPP and future entry points)
+  // where the home-flow flags were never written but the BFF returned a populated
+  // site.initial_prompt for the current app.
+  //
+  // Cross-session "already auto-sent" guard: site.initial_prompt persists forever
+  // in mgmt-airo, so on a page refresh the BFF response is identical to a
+  // first-time redirect. Skip the site-aware path when the localStorage flag
+  // (set in markInitialPromptSent) says we already auto-sent for this app.
+  if (
+    isSiteForCurrentApp(site, appId, realAppId) &&
+    !!site.initial_prompt &&
+    !getInitialPromptAutoSentFlag(site.id)
+  ) {
+    return true
   }
 
   return false
@@ -521,11 +713,14 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
   // -------------------------------------------------------------------------
   // XState Machine
   // -------------------------------------------------------------------------
+  // First-render hydration: site/realAppId are not yet read here (see below),
+  // so we pass null. The site-aware branch is picked up later by the dedicated
+  // effect that watches `site.initial_prompt` and dispatches HYDRATE_APP.
   const [state, send] = useMachine(initializationMachine, {
     input: {
       appId,
       isJobId,
-      hasInitialPrompt: checkHasInitialPrompt(getInitialJobIdFromStorage(appId), appId),
+      hasInitialPrompt: checkHasInitialPrompt(getInitialJobIdFromStorage(appId), appId, null, null),
     },
   })
 
@@ -612,6 +807,7 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
   const isStreamingMessage = useStreamingConversationStore((state) => state.isLoading)
   const messages = useStreamingConversationStore((state) => state.messages)
   const activeStream = useStreamingConversationStore((state) => state.activeStream)
+  const historyLoadingComplete = useStreamingConversationStore((state) => state.historyLoadingComplete)
   // -------------------------------------------------------------------------
   // DERIVED STATE (Context)
   // -------------------------------------------------------------------------
@@ -716,8 +912,8 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
       useSiteCreationStore.getState().reset()
     }
 
-    // Hydrate hasInitialPrompt from sessionStorage for post-RESET re-initialization
-    const hydratedHasInitialPrompt = checkHasInitialPrompt(initialJobId, appId)
+    // Hydrate hasInitialPrompt from sessionStorage + site for post-RESET re-initialization
+    const hydratedHasInitialPrompt = checkHasInitialPrompt(initialJobId, appId, site, realAppId)
 
     if (isJobId) {
       send({ type: 'START_CHECKING_CREATION', appId, isJobId, hasInitialPrompt: hydratedHasInitialPrompt })
@@ -782,6 +978,31 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
       send({ type: 'HYDRATE_APP', appId, isJobId })
     }
   }, [state, appId, isJobId, send])
+
+  // EFFECT: Site-aware hasInitialPrompt hydration.
+  //
+  // Cold external redirects (DPP and future entry points) land on /develop/{jobId}
+  // without the home-flow sessionStorage flags. By the time `site` loads with a
+  // populated `initial_prompt`, the machine has already left idle, so the
+  // START_CHECKING_CREATION / SKIP_TO_PAGE_INIT branches in the init effect
+  // above can no longer set `hasInitialPrompt`. Re-derive from the loaded site
+  // and dispatch HYDRATE_APP to flip the flag before the always-transition out
+  // of `ready: determiningSubPhase` decides between waitingForWebSocket and
+  // active. The setAppId action only honors `true` here, so this never clears
+  // the flag after PROMPT_SENT.
+  //
+  // The localStorage `initial-prompt-auto-sent-{site.id}` flag is the
+  // cross-session guard: site.initial_prompt persists forever in mgmt-airo, so
+  // a page refresh after the first auto-send sees an identical site payload and
+  // would re-trigger this effect. The flag is set in markInitialPromptSent
+  // (always — the action runs in the auto-send `finally`, success or failure).
+  useEffect(() => {
+    if (!appId) return
+    const hasConversationCookie = !!getConversationIdFromCookie(realAppId || appId)
+    if (!shouldFireSiteAwareHydration(historyLoadingComplete, messages.length > 0, hasConversationCookie)) return
+    if (!shouldHydrateInitialPromptFromSite(appId, state.context.hasInitialPrompt, site, realAppId)) return
+    send({ type: 'HYDRATE_APP', appId, isJobId, hasInitialPrompt: true })
+  }, [appId, isJobId, realAppId, site, state.context.hasInitialPrompt, historyLoadingComplete, messages.length, send])
 
   // EFFECT: Initialize page data
   useEffect(() => {
@@ -995,18 +1216,7 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
 
     markInitialPromptSent: () => {
       send({ type: 'PROMPT_SENT' })
-      if (initialJobId) {
-        sessionStorage.removeItem(`initial-prompt-pending-${initialJobId}`)
-        sessionStorage.removeItem(`in-creation-flow-${initialJobId}`)
-        sessionStorage.removeItem(`initial-prompt-text-${initialJobId}`)
-        sessionStorage.removeItem(`initial-template-${initialJobId}`)
-        sessionStorage.removeItem(`initial-upload-file-${initialJobId}`)
-      }
-      if (appId) {
-        sessionStorage.removeItem(`initial-prompt-text-${appId}`)
-        sessionStorage.removeItem(`initial-template-${appId}`)
-        sessionStorage.removeItem(`initial-upload-file-${appId}`)
-      }
+      applyMarkInitialPromptSentEffects(initialJobId, appId)
     },
 
     markFirstFileEditSeen: () => {
