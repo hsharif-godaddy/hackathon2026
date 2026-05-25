@@ -1,19 +1,23 @@
 import clsx from 'clsx'
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { FormattedMessage, useIntl } from 'react-intl'
-import Alert from '@ux/alert'
 import Box from '@ux/box'
-import Button from '@ux/button'
-import MicIcon from '@ux/icon/mic'
 import SendIcon from '@ux/icon/send'
-import Spinner from '@ux/spinner'
 import { text } from '@ux/text'
 
 import DesignFileUpload, { DesignFileUploadCard } from '@/app/[market]/components/DesignFileUpload'
 import TemplateSelector from '@/app/[market]/components/TemplateSelector'
 import type { HeroSectionProps, HeroSectionRef } from '@/app/[market]/components/types'
+import { AnimatedDisclaimer } from '@/components/home/AnimatedDisclaimer'
+import { HeroBenefits } from '@/components/home/HeroBenefits'
+import { HeroScrollButton } from '@/components/home/HeroScrollButton'
+import { PromptCharCount } from '@/components/home/PromptCharCount'
+import { PromptErrorAlert } from '@/components/home/PromptErrorAlert'
+import { SpeechToggleButton } from '@/components/home/SpeechToggleButton'
+import { SubmitInitialPrompt } from '@/components/home/SubmitInitialPrompt'
 import { useAuthContext } from '@/components/providers/AuthProvider'
 import { EXPERIMENT_IDS } from '@/config/experiments'
+import { HOMEPAGE_ENGAGEMENT_COHORT_IDS } from '@/experiments/homepage-engagement-variations/cohort-ids'
 import ExamplesSection from '@/experiments/homepage-engagement-variations/hero_content_improvement/HeroExamples'
 import { useAnalytics } from '@/hooks/useAnalytics'
 import { useBreakpoints } from '@/hooks/useBreakpoints'
@@ -24,7 +28,6 @@ import { useTextareaHoverTracking } from '@/hooks/useTextareaHoverTracking'
 import { useTranslations } from '@/hooks/useTranslations'
 import { JourneyTracker } from '@/lib/journeyTracker'
 import { getByteLength, MAX_PROMPT_BYTES, validateAndClampPrompt } from '@/lib/waf-validation'
-import { generateClickEID } from '@/utils/instrumentation'
 import { handleModifierEnterNewline } from '@/utils/textareaShortcuts'
 
 const PROMPT_IDLE_MS = 30_000
@@ -45,7 +48,7 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
   onFileChange,
 }, ref) => {
   const t = useTranslations();
-  useImpression('homepage.firstprompt.view', { customProperties: { variant: 'hero_content_improvement' } })
+  useImpression('homepage.firstprompt.view', { customProperties: { variant: HOMEPAGE_ENGAGEMENT_COHORT_IDS.HERO_CONTENT_IMPROVEMENT } })
   const isTemplateSelectorEnabled = useSwitchboard('appbuilder-template-selector')
   const { isAuthenticated } = useAuthContext()
   const { logAnalytics } = useAnalytics({
@@ -372,62 +375,8 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
     getFirstInputTime: () => firstInputTimeRef.current
   }), [typeText])
 
-  const scrollToNextSection = useCallback(() => {
-    logAnalytics(
-      'homepage.hero.scroll_cta_click',
-      {
-        msFromPageLoad: Math.round(performance.now()),
-      },
-      {
-        kind: 'click',
-        eid: 'homepage.hero.scroll_cta',
-      },
-    )
-    const nextSection = document.getElementById('start-section');
-
-    // Calculate target position with fallback
-    let targetPosition: number;
-    if (nextSection) {
-      const rect = nextSection.getBoundingClientRect();
-      targetPosition = window.pageYOffset + rect.top;
-    } else {
-      targetPosition = window.pageYOffset + window.innerHeight;
-    };
-
-    const startPosition = window.pageYOffset;
-    const duration = 1000;
-    const startTime = Date.now();
-
-    const animateScroll = () => {
-      const elapsed = Date.now() - startTime;
-      const progress = Math.min(elapsed / duration, 1);
-
-      // Easing function for smoother animation
-      const easeInOutQuad = (t: number) => t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
-      const easedProgress = easeInOutQuad(progress);
-
-      const currentPosition = startPosition + (targetPosition - startPosition) * easedProgress;
-      window.scrollTo(0, currentPosition);
-
-      if (progress < 1) {
-        requestAnimationFrame(animateScroll);
-      }
-    };
-
-    requestAnimationFrame(animateScroll);
-  }, [logAnalytics])
-
-  // Memoize aria-label to prevent translation errors on every render (20-33 times/second due to placeholder animation)
-  // Use intl.formatMessage directly as intl instance is stable (unlike t which is recreated each render)
-  const microphoneAriaLabel = useMemo(() => {
-    return isListening
-      ? intl.formatMessage({ id: 'builder_homepage_hero_stop_listening', defaultMessage: 'Stop listening' })
-      : intl.formatMessage({ id: 'builder_homepage_hero_start_listening', defaultMessage: 'Start voice input' })
-  }, [isListening, intl])
-
   const bytesRemaining = MAX_PROMPT_BYTES - getByteLength(displayText)
   const isOverLimit = bytesRemaining < 0
-  const showCharCount = bytesRemaining <= 20
 
   return (
     <Box className="flex flex-col gap-2 md:gap-3 px-2 sm:px-3 lg:px-4 pt-12 min-h-[calc(100vh-3rem)] items-center justify-center">
@@ -456,42 +405,10 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
           {subheadingText}
         </text.p>
       ) : (
-      <div className="mx-auto flex flex-col items-center justify-center gap-0.5 opacity-60 sm:flex-row sm:gap-1.5">
-        <div className="flex flex-wrap items-center justify-center gap-1 sm:gap-1.5">
-          <text.p size={1} className="!font-normal max-sm:!text-xs whitespace-nowrap">
-            {t('builder_homepage_hero_value_prop_start_free', undefined, 'Get started for free')}
-          </text.p>
-          <span className="opacity-40" aria-hidden>·</span>
-          <span className="inline-flex items-center gap-1 whitespace-nowrap">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 max-sm:h-[11px] max-sm:w-[11px]" aria-hidden>
-              <ellipse cx="12" cy="5" rx="9" ry="3" />
-              <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3" />
-              <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" />
-            </svg>
-            <text.p size={1} className="!font-normal max-sm:!text-xs">
-              {t('builder_homepage_hero_value_prop_credits', undefined, '50 AI credits/mo')}
-            </text.p>
-          </span>
-        </div>
-        <span className="hidden opacity-40 sm:inline" aria-hidden>·</span>
-        <text.p size={1} className="!font-normal max-sm:!text-xs">
-          {t('builder_homepage_hero_value_prop_no_card', undefined, 'No credit card required')}
-        </text.p>
-      </div>
+        <HeroBenefits />
       )}
 
-      {/* Error Display */}
-      {error && (
-        <div className="w-full max-w-2xl mx-auto mt-2 md:mt-4">
-          <Alert
-            emphasis="critical"
-            title={t('builder_status_error')}
-            actions={<Button text={t('builder_common_dismiss')} onClick={() => setError(null)} />}
-          >
-            {error}
-          </Alert>
-        </div>
-      )}
+      <PromptErrorAlert error={error} onDismiss={() => setError(null)} />
 
       <div className="w-full max-w-2xl mx-auto my-2 md:my-4">
         <Box gap={isMdBreakpoint ? 'md' : 'lg'}>
@@ -618,30 +535,7 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
 
               <Box orientation="horizontal" blockAlignChildren="spaceBetween" inlineAlignChildren="end">
                 {/* Character Counter */}
-                <div
-                  id="prompt-char-count"
-                  role="status"
-                  aria-live="polite"
-                >
-                  {showCharCount && (
-                    <text.p
-                      size={0}
-                      className={clsx('font-medium', { 'opacity-50': !isOverLimit })}
-                      emphasis={isOverLimit ? 'critical' : undefined}
-                    >
-                      <span aria-hidden="true">
-                        {isOverLimit ? `-${Math.abs(bytesRemaining)}` : bytesRemaining}
-                      </span>
-                      <span className="sr-only">
-                        {isOverLimit
-                          ? t('builder_homepage_hero_chars_over_limit', { count: Math.abs(bytesRemaining) },
-                            `${Math.abs(bytesRemaining)} characters over limit`)
-                          : t('builder_homepage_hero_chars_remaining', { count: bytesRemaining },
-                            `${bytesRemaining} characters remaining`)}
-                      </span>
-                    </text.p>
-                  )}
-                </div>
+                <PromptCharCount bytesRemaining={bytesRemaining} isOverLimit={isOverLimit} />
 
                 {/* Action Buttons Container */}
                 <Box orientation="horizontal" gap="sm">
@@ -653,34 +547,21 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
                     />
                   )}
                   {isSpeechSupported && (
-                    <Button
-                      onClick={() => {
+                    <SpeechToggleButton
+                      isListening={isListening}
+                      isLoading={isLoading}
+                      isTyping={isTyping}
+                      onToggle={() => {
                         logAnalytics('homepage.prompt.speech_toggled', { active: !isListening })
                         toggleSpeech()
                       }}
-                      onMouseDown={(e) => e.preventDefault()}
-                      data-eid={generateClickEID('homepage.prompt.speech')}
-                      disabled={isLoading || isTyping}
-                      design={isListening ? 'primary' : 'control'}
-                      className={clsx('cursor-pointer !rounded-full aspect-square !border-none', {
-                        '!bg-intents-ux-feedbackHighContrastCritical-feedbackColor': isListening,
-                        '!bg-transparent hover:!bg-intents-ux-boxLowContrast-backgroundColor': !isListening,
-                      })}
-                      icon={<MicIcon />}
-                      aria-label={microphoneAriaLabel}
-                      size={isBelowSmBreakpoint ? 'sm' : 'md'}
                     />
                   )}
-                  <Button
+                  <SubmitInitialPrompt
                     onClick={handleStartBuilding}
-                    data-partial="componentAiro"
-                    data-eid={generateClickEID('homepage.prompt.submit')}
                     disabled={!displayText.trim() || isLoading || isTyping || isOverLimit}
-                    design='primary'
-                    className='cursor-pointer !rounded-full aspect-square !border-none'
-                    icon={isLoading ? <Spinner size='sm' /> : <SendIcon />}
-                    aria-label={isLoading ? t('builder_homepage_hero_prompt_button_loading') : t('builder_homepage_hero_prompt_button')}
-                    size={isBelowSmBreakpoint ? 'sm' : 'md'}
+                    isLoading={isLoading}
+                    icon={<SendIcon />}
                   />
                 </Box>
               </Box>
@@ -694,51 +575,14 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
           )}
 
           {/* Disclaimer */}
-          <div
-            className={clsx(
-              'grid transition-all duration-300 ease-in-out',
-              (isFocused || isListening || displayText.trim().length > 0) ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
-            )}
-            onMouseDown={(e) => e.preventDefault()}
-          >
-            <div className="overflow-hidden">
-              <text.p size={-1} className='max-w-lg mx-auto opacity-40 mb-2 md:mb-4 text-center'>
-                <FormattedMessage
-                  id='builder_homepage_hero_disclaimer_v2'
-                  values={{
-                    terms: (
-                      <Button
-                        design="inline"
-                        size="sm"
-                        external
-                        href="https://www.godaddy.com/legal/agreements/ai-terms-of-use"
-                        className="!text-intents-ux-boxHighContrast-foregroundColor"
-                        text={t('builder_homepage_hero_disclaimer_terms')}
-                      />
-                    )
-                  }}
-                />
-              </text.p>
-            </div>
-          </div>
+          <AnimatedDisclaimer isVisible={isFocused || isListening || displayText.trim().length > 0} />
 
           <ExamplesSection
             onExampleClick={onExampleClick}
             onTemplateChange={onTemplateChange}
           />
 
-          <button
-            onClick={scrollToNextSection}
-            className="mx-auto mt-2 flex items-center gap-1 text-sm opacity-60 hover:opacity-100 hover:cursor-pointer transition-opacity group"
-            data-eid={generateClickEID('homepage.hero.see_how_it_works')}
-          >
-            <Box blockAlignChildren='center' inlineAlignChildren='center' gap="md">
-              <text.p size={0} className='font-medium'>{t('builder_homepage_hero_scroll')}</text.p>
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 8 37" className="w-1 group-hover:translate-y-1 transition-all duration-500">
-                <path fill="#d3c1f7" d="M3.646 36.789a.5.5 0 0 0 .708 0l3.182-3.182a.5.5 0 1 0-.708-.707L4 35.728 1.172 32.9a.5.5 0 0 0-.708.707zM4 0h-.5v36.435h1V0z" opacity=".5" />
-              </svg>
-            </Box>
-          </button>
+          <HeroScrollButton sectionId="start-section" />
         </Box>
       </div>
     </Box >
