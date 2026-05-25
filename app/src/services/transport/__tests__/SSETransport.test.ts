@@ -551,4 +551,65 @@ describe('SSETransport', () => {
       sequence: undefined,
     }))
   })
+
+  describe('loadHistory', () => {
+    it('emits history_complete with preserved cursor on pagination failure', async () => {
+      transport.connect('app_1', 'token_123', 'conv_1')
+      await vi.waitFor(() => {
+        expect(callbacks.onStateChange).toHaveBeenCalledWith('connected')
+      })
+
+      // Mock a failed paginated fetch
+      ;(global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        json: () => Promise.resolve({}),
+      })
+
+      transport.loadHistory({ cursor: 'cursor-abc', limit: 20 })
+
+      await vi.waitFor(() => {
+        expect(callbacks.onEvent).toHaveBeenCalledWith(
+          expect.objectContaining({
+            type: 'history_complete',
+            data: expect.objectContaining({
+              error: expect.any(String),
+              hasMore: true,
+              nextCursor: 'cursor-abc',
+              messageCount: 0,
+            }),
+          })
+        )
+      })
+    })
+
+    it('emits history_loaded with hasMore false on initial load failure', async () => {
+      transport.connect('app_1', 'token_123', 'conv_1')
+      await vi.waitFor(() => {
+        expect(callbacks.onStateChange).toHaveBeenCalledWith('connected')
+      })
+
+      ;(global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        json: () => Promise.resolve({}),
+      })
+
+      transport.loadHistory()
+
+      await vi.waitFor(() => {
+        expect(callbacks.onEvent).toHaveBeenCalledWith(
+          expect.objectContaining({
+            type: 'history_loaded',
+            data: expect.objectContaining({
+              error: expect.any(String),
+              hasMore: false,
+              nextCursor: null,
+              messageCount: 0,
+            }),
+          })
+        )
+      })
+    })
+  })
 })

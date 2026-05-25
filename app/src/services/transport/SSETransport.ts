@@ -330,13 +330,19 @@ export class SSETransport implements ChatTransport {
       })
       .catch((err: unknown) => {
         const msg = errMessage(err)
+        const isPagination = !!params.cursor
         logger.warn('sse.transport.load_history.failed', {
           appId: this.appId, conversationId: this.conversationId,
-          isPagination: !!params.cursor, error: msg,
+          isPagination, error: msg,
         })
         this.callbacks?.onEvent({
-          type: params.cursor ? 'history_complete' : 'history_loaded',
-          data: { error: msg, hasMore: false, nextCursor: null, messageCount: 0 },
+          type: isPagination ? 'history_complete' : 'history_loaded',
+          data: {
+            error: msg,
+            hasMore: isPagination,
+            nextCursor: isPagination ? (params.cursor ?? null) : null,
+            messageCount: 0,
+          },
         })
       })
   }

@@ -38,6 +38,7 @@ const mockSetHistoryLoadRequested = vi.fn()
 const mockSetHistoryLoadingComplete = vi.fn()
 const mockSetHistoryPagination = vi.fn()
 const mockSetHistoryLoadingMore = vi.fn()
+const mockClearMessages = vi.fn()
 
 let currentAppId: string | null = 'test-app-123'
 let storeState: Record<string, unknown> = {}
@@ -50,6 +51,7 @@ function getStoreState() {
     connectionRetry: { isRetrying: false },
     historyLoadingComplete: false,
     historyLoadRequested: false,
+    historyNextCursor: null as string | null,
     appendTextSegment: mockAppendTextSegment,
     addToolStartSegment: mockAddToolStartSegment,
     addToolCallSegment: mockAddToolCallSegment,
@@ -68,6 +70,7 @@ function getStoreState() {
     setHistoryLoadingComplete: mockSetHistoryLoadingComplete,
     setHistoryPagination: mockSetHistoryPagination,
     setHistoryLoadingMore: mockSetHistoryLoadingMore,
+    clearMessages: mockClearMessages,
     ...storeState,
   }
 }
@@ -219,6 +222,7 @@ vi.mock('@/services/transport/SSETransport', () => {
 vi.mock('@/config/dynamic-api', () => ({
   dynamicApiConfigService: {
     getConfigForSite: vi.fn().mockResolvedValue({ baseUrl: 'https://agent.example.com' }),
+    clearCache: vi.fn(),
   },
 }))
 
@@ -236,10 +240,15 @@ vi.mock('@/lib/request-context', () => ({
 }))
 
 const mockSetLaunchVideoResult = vi.fn()
+const mockSetLastCompleteTraceIds = vi.fn()
 
 vi.mock('@/stores/useDevelopPageStore', () => ({
   useDevelopPageStore: {
-    getState: vi.fn().mockReturnValue({ selectedModel: undefined, setLaunchVideoResult: mockSetLaunchVideoResult }),
+    getState: vi.fn().mockReturnValue({
+      selectedModel: undefined,
+      setLaunchVideoResult: mockSetLaunchVideoResult,
+      setLastCompleteTraceIds: mockSetLastCompleteTraceIds,
+    }),
   },
 }))
 
@@ -349,11 +358,16 @@ describe('useSSEChat', () => {
     mockSetHistoryLoadingComplete.mockClear().mockImplementation((complete: boolean) => {
       storeState.historyLoadingComplete = complete
     })
-    mockSetHistoryPagination.mockClear()
+    mockSetHistoryPagination.mockClear().mockImplementation((pagination: { hasMore: boolean; nextCursor: string | null }) => {
+      storeState.historyHasMore = pagination.hasMore
+      storeState.historyNextCursor = pagination.nextCursor
+    })
     mockSetHistoryLoadingMore.mockClear()
+    mockClearMessages.mockClear()
     mockSetWebSocketState.mockClear()
     mockSetConversationId.mockClear()
     mockSetLaunchVideoResult.mockClear()
+    mockSetLastCompleteTraceIds.mockClear()
     mockPublishAction.mockClear()
     mockGetSiteDataAction.mockClear()
     vi.mocked(logger.debug).mockClear()
@@ -1366,6 +1380,46 @@ describe('useSSEChat', () => {
       expect(lastTransport.loadHistory).not.toHaveBeenCalled()
     })
 
+    it('skips setHistoryPagination on error to preserve cursor for retry', async () => {
+      mockConversationIdFromCookie = 'conv-abc-123'
+      await setupHook()
+
+      // Simulate initial recovery completing (triggers history load)
+      act(() => {
+        lastTransport.callbacks?.onEvent({
+          type: 'recovery_status',
+          data: { hasBufferedEvents: false, bufferedCount: 0, streamCompleted: false },
+        })
+      })
+
+      // Simulate successful initial history load with pagination
+      act(() => {
+        lastTransport.callbacks?.onEvent({
+          type: 'history_loaded',
+          data: { hasMore: true, nextCursor: 'cursor-page-2', messageCount: 25 },
+        })
+      })
+
+      expect(mockSetHistoryPagination).toHaveBeenLastCalledWith({
+        hasMore: true,
+        nextCursor: 'cursor-page-2',
+      })
+      mockSetHistoryPagination.mockClear()
+
+      // Simulate pagination failure
+      act(() => {
+        lastTransport.callbacks?.onEvent({
+          type: 'history_complete',
+          data: { error: 'History fetch failed: 500', hasMore: true, nextCursor: 'cursor-page-2', messageCount: 0 },
+        })
+      })
+
+      // Pagination state NOT updated — hasMore/nextCursor preserved from last
+      // success so scroll-to-top retry works (matches WS HistoryCompleteHandler)
+      expect(mockSetHistoryPagination).not.toHaveBeenCalled()
+      expect(mockSetHistoryLoadingMore).toHaveBeenCalledWith(false)
+    })
+
     it('history_message events are batched and flushed via history_loaded', async () => {
       await setupHook()
 
@@ -1910,6 +1964,51 @@ describe('useSSEChat', () => {
       expect(mockFinalizeStream).not.toHaveBeenCalled()
     })
   })
+
+  describe('reconnect', () => {
+    it('destroys transport, clears cache, resets history state, and creates new transport', async () => {
+      const { dynamicApiConfigService } = await import('@/config/dynamic-api')
+      mockConversationIdFromCookie = 'conv-abc-123'
+
+      const { useSSEChat } = await import('@/hooks/useSSEChat')
+      const hook = renderHook(() => useSSEChat())
+
+      await act(async () => {
+        await flushPromises()
+      })
+
+      const firstTransport = lastTransport
+      expect(firstTransport.connect).toHaveBeenCalledTimes(1)
+
+      // Simulate archive restore: new URL available
+      vi.mocked(dynamicApiConfigService.getConfigForSite).mockResolvedValue({
+        baseUrl: 'https://new-agent.example.com',
+      })
+
+      // Trigger reconnect
+      await act(async () => {
+        await hook.result.current.actions.reconnect()
+        await flushPromises()
+      })
+
+      // Old transport destroyed
+      expect(firstTransport.destroy).toHaveBeenCalled()
+
+      // Cache cleared
+      expect(dynamicApiConfigService.clearCache).toHaveBeenCalledWith('test-app-123')
+
+      // History state reset
+      expect(mockClearMessages).toHaveBeenCalled()
+      expect(mockSetHistoryLoadingComplete).toHaveBeenCalledWith(false)
+      expect(mockSetHistoryLoadRequested).toHaveBeenCalledWith(false)
+
+      // New transport created with fresh URL
+      const { SSETransport } = await import('@/services/transport/SSETransport')
+      expect(SSETransport).toHaveBeenLastCalledWith({ baseUrl: 'https://new-agent.example.com' })
+
+      hook.unmount()
+    })
+  })
 })
 
 describe('lastAssistantMessageIsComplete', () => {
@@ -1954,5 +2053,48 @@ describe('lastAssistantMessageIsComplete', () => {
       { role: 'assistant', isComplete: false },
       { role: 'user' },
     ])).toBe(false)
+  })
+
+  describe('complete trace IDs', () => {
+    it('stores trace IDs from complete event in useDevelopPageStore', async () => {
+      await setupHook()
+
+      storeState.activeStream = { id: 'stream-1', role: 'assistant', content: '', segments: [], toolCalls: [], isComplete: false }
+
+      act(() => {
+        lastTransport.callbacks?.onEvent({
+          type: 'complete',
+          data: {
+            traceId: 'trace-abc',
+            observationId: 'obs-xyz',
+            agentId: 'builder',
+            finishReason: 'stop',
+          },
+          content: undefined,
+        })
+      })
+
+      expect(mockSetLastCompleteTraceIds).toHaveBeenCalledWith({
+        traceId: 'trace-abc',
+        observationId: 'obs-xyz',
+        agentName: 'builder',
+      })
+    })
+
+    it('sets trace IDs to null when complete event lacks them', async () => {
+      await setupHook()
+
+      storeState.activeStream = { id: 'stream-1', role: 'assistant', content: '', segments: [], toolCalls: [], isComplete: false }
+
+      act(() => {
+        lastTransport.callbacks?.onEvent({
+          type: 'complete',
+          data: { finishReason: 'stop' },
+          content: undefined,
+        })
+      })
+
+      expect(mockSetLastCompleteTraceIds).toHaveBeenCalledWith(null)
+    })
   })
 })

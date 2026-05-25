@@ -23,6 +23,7 @@ import {
   clearToolDeltaBuffer,
   scheduleToolDeltaFlush,
 } from '@/services/websocket/toolDeltaBuffer'
+import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { useSitesStore } from '@/stores/useSitesStore'
 import {
   type StreamingMessage,
@@ -176,6 +177,7 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
 
   const [transportState, setTransportState] = useState<TransportState>('disconnected')
   const [connectionError, setConnectionError] = useState<unknown>(undefined)
+  const [reconnectNonce, setReconnectNonce] = useState(0)
 
   // Track last sendMessage options + APP_NOT_FOUND retry state. Mirrors the
   // WS ErrorHandler retry loop: APP_NOT_FOUND is common during app
@@ -483,6 +485,16 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
                 }
                 maybeFireEvalSnapshot(commitHash, activeAppId)
                 scheduleUsageRefresh()
+
+                const traceId = completeData?.traceId
+                const observationId = completeData?.observationId
+                if (typeof traceId === 'string' && typeof observationId === 'string' && traceId && observationId) {
+                  const agentName = typeof completeData?.agentId === 'string' && completeData.agentId.length > 0
+                    ? completeData.agentId : undefined
+                  useDevelopPageStore.getState().setLastCompleteTraceIds({ traceId, observationId, agentName })
+                } else {
+                  useDevelopPageStore.getState().setLastCompleteTraceIds(null)
+                }
               } else if (type === 'error' || type === 'stream_error') {
                 flushStoreUpdateBufferImmediate()
                 const errData = event.data as any
@@ -771,9 +783,6 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
                   logger.warn('sse.history.complete.error', {
                     appId: currentAppId, error: (event.data as any).error,
                   })
-                  // Clear pagination so stale hasMore/nextCursor from a prior
-                  // page don't trigger further load attempts after a failure.
-                  store.setHistoryPagination({ hasMore: false, nextCursor: null })
                 } else {
                   store.setHistoryPagination({
                     hasMore: typeof (event.data as any)?.hasMore === 'boolean' ? (event.data as any).hasMore : false,
@@ -876,7 +885,7 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
       cancelled = true
       transportRef.current?.disconnect()
     }
-  }, [enabled, currentAppId, flushHistoryBatch, releaseDeferredInitialHistoryLoad, requestInitialHistoryLoad, startInitialHistoryLoad])
+  }, [enabled, currentAppId, flushHistoryBatch, releaseDeferredInitialHistoryLoad, requestInitialHistoryLoad, startInitialHistoryLoad, reconnectNonce])
 
   // Cleanup on unmount
   useEffect(() => {
@@ -990,17 +999,26 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
   }, [])
 
   const reconnect = useCallback(async (): Promise<void> => {
-    const t = transportRef.current
     const appId = useStreamingConversationStore.getState().currentAppId
-    if (!t || !appId) return
-    const conversationId = getConversationIdFromCookie(appId)
-    if (!conversationId) return
+    if (!appId) return
+
     try {
-      const token = await getAgentToken(appId)
-      t.disconnect()
-      t.connect(appId, token, conversationId)
+      dynamicApiConfigService.clearCache(appId)
+
+      const store = useStreamingConversationStore.getState()
+      store.clearMessages()
+      store.setHistoryLoadingComplete(false)
+      store.setHistoryLoadRequested(false)
+
+      if (transportRef.current) {
+        transportRef.current.destroy()
+        transportRef.current = null
+        setTransport(null)
+      }
     } catch (err) {
       logger.error('sse.reconnect.failed', { appId, error: err instanceof Error ? err.message : String(err) })
+    } finally {
+      setReconnectNonce((n) => n + 1)
     }
   }, [])
 
