@@ -1,9 +1,11 @@
 'use client'
 
 import { type ReactElement } from 'react'
+import Tag from '@ux/tag'
 
-import { SWITCHBOARD_APPBUILDER_DEBUG_DRAWER } from '@/config/switchboard-flags'
+import { SWITCHBOARD_APPBUILDER_DEBUG_DRAWER, SWITCHBOARD_APPBUILDER_SSE_TRANSPORT } from '@/config/switchboard-flags'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
+import { useStreamingConversationStore, useStreamingState, useWebSocketState } from '@/stores/useStreamingConversationStore'
 import CostSparkline from './CostSparkline'
 import { useDebugStats } from './DebugStatsContext'
 
@@ -57,9 +59,14 @@ export function DebugStatsToggleButton(): ReactElement | null {
 export function DebugStatsPanel(): ReactElement | null {
   const enabled = useSwitchboard(SWITCHBOARD_APPBUILDER_DEBUG_DRAWER)
   const { state, dispatch, open, setOpen } = useDebugStats()
+  const sseFlag = useSwitchboard(SWITCHBOARD_APPBUILDER_SSE_TRANSPORT)
+  const wsState = useWebSocketState()
+  const retryState = useStreamingConversationStore((s) => s.retryState)
+  const streamingState = useStreamingState()
 
   if (!enabled || !open) return null
 
+  const transport = sseFlag === true ? 'SSE' : 'WS'
   const last = state.history[state.history.length - 1]
   const costValues = state.history.map((h) => h.costUsd)
   const cacheHitValues = state.history.map((h) => h.cacheHitRate)
@@ -81,6 +88,28 @@ export function DebugStatsPanel(): ReactElement | null {
           Close
         </button>
       </div>
+
+      <section className="mb-3" data-testid="debug-stats-connection-info">
+        <div className="text-xs text-muted-foreground mb-1">Connection</div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Tag size="sm" emphasis={transport === 'SSE' ? 'info' : 'highlight'} data-testid="debug-stats-transport-badge">
+            {transport}
+          </Tag>
+          <Tag size="sm" emphasis={wsState.connected ? 'success' : 'critical'}>
+            {wsState.connected ? 'connected' : wsState.status}
+          </Tag>
+          {streamingState !== 'idle' && (
+            <Tag size="sm" emphasis="warning">
+              {streamingState}
+            </Tag>
+          )}
+          {retryState.isRetrying && (
+            <Tag size="sm" emphasis="critical">
+              {`retry #${retryState.retryCount}`}
+            </Tag>
+          )}
+        </div>
+      </section>
 
       <section className="mb-3">
         <div className="text-xs text-muted-foreground">Last prompt</div>

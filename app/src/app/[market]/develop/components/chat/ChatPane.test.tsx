@@ -189,12 +189,16 @@ vi.mock('@/stores/useStreamingConversationStore', () => ({
   useBudgetExceeded: () => mockStreamingStore.activeStream?.budgetExceeded === true || mockStreamingStore.messages[mockStreamingStore.messages.length - 1]?.budgetExceeded === true,
   useSetInputValue: () => mockStreamingStore.setInputValue,
   useSetAiEditContext: () => mockStreamingStore.setAiEditContext,
-  useStreamingConversationStore: { getState: () => ({ aiEditContext: mockStreamingStore.aiEditContext }) },
+  useStreamingConversationStore: Object.assign(
+    (selector: (s: Record<string, unknown>) => unknown) => selector({ retryState: { isRetrying: false, retryCount: 0 } }),
+    { getState: () => ({ aiEditContext: mockStreamingStore.aiEditContext }) }
+  ),
   useRemoveAiEditContext: () => mockStreamingStore.removeAiEditContext,
   useClearAiEditContexts: () => mockStreamingStore.clearAiEditContexts,
   useSetBuildErrorContext: () => mockStreamingStore.setBuildErrorContext,
   useSetCurrentAppId: () => mockStreamingStore.setCurrentAppId,
   useHistoryLoadingComplete: () => mockStreamingStore.historyLoadingComplete,
+  useWebSocketState: () => ({ connected: true, status: 'idle' }),
 }));
 
 vi.mock('@/stores/useDevelopPageStore', () => ({

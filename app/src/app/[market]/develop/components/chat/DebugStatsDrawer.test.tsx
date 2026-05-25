@@ -6,8 +6,25 @@ import { fireEvent,render, screen } from '@testing-library/react'
 import { DebugStatsProvider, useDebugStats } from './DebugStatsContext'
 import { DebugStatsPanel,DebugStatsToggleButton } from './DebugStatsDrawer'
 
+vi.mock('@ux/tag', () => ({
+  default: ({ children, ...props }: { children: string; [key: string]: unknown }) => <span {...props}>{children}</span>,
+}))
 vi.mock('@/hooks/useSwitchboard', () => ({
   useSwitchboard: vi.fn(),
+}))
+
+const mockUseWebSocketState = vi.fn((): { connected: boolean; status: string } => ({ connected: true, status: 'idle' }))
+const mockUseStreamingState = vi.fn((): string => 'idle')
+const mockUseStreamingConversationStore = vi.fn((selector: (s: Record<string, unknown>) => unknown) =>
+  selector({
+    retryState: { isRetrying: false, retryCount: 0 },
+  })
+)
+
+vi.mock('@/stores/useStreamingConversationStore', () => ({
+  useWebSocketState: () => mockUseWebSocketState(),
+  useStreamingState: () => mockUseStreamingState(),
+  useStreamingConversationStore: (selector: (s: Record<string, unknown>) => unknown) => mockUseStreamingConversationStore(selector),
 }))
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 
@@ -95,5 +112,48 @@ describe('DebugStats UI', () => {
     fireEvent.click(screen.getByRole('button', { name: /clear history/i }))
     expect(screen.queryByTestId('debug-stats-last-cost')).not.toBeInTheDocument()
     expect(screen.getByText(/no data yet/i)).toBeInTheDocument()
+  })
+
+  it('shows WS transport badge when SSE flag is off', () => {
+    vi.mocked(useSwitchboard).mockImplementation((flag: string) =>
+      flag === 'app-builder-sse-transport' ? false : true
+    )
+    render(<Mount />)
+    fireEvent.click(screen.getByTestId('debug-stats-toggle'))
+    expect(screen.getByTestId('debug-stats-transport-badge')).toHaveTextContent('WS')
+  })
+
+  it('shows connected status badge', () => {
+    vi.mocked(useSwitchboard).mockReturnValue(true)
+    mockUseWebSocketState.mockReturnValue({ connected: true, status: 'idle' })
+    render(<Mount />)
+    fireEvent.click(screen.getByTestId('debug-stats-toggle'))
+    expect(screen.getByText('connected')).toBeInTheDocument()
+  })
+
+  it('shows connection status when disconnected', () => {
+    vi.mocked(useSwitchboard).mockReturnValue(true)
+    mockUseWebSocketState.mockReturnValue({ connected: false, status: 'connecting' })
+    render(<Mount />)
+    fireEvent.click(screen.getByTestId('debug-stats-toggle'))
+    expect(screen.getByText('connecting')).toBeInTheDocument()
+  })
+
+  it('shows streaming state badge when active', () => {
+    vi.mocked(useSwitchboard).mockReturnValue(true)
+    mockUseStreamingState.mockReturnValue('streaming')
+    render(<Mount />)
+    fireEvent.click(screen.getByTestId('debug-stats-toggle'))
+    expect(screen.getByText('streaming')).toBeInTheDocument()
+  })
+
+  it('shows retry badge with count', () => {
+    vi.mocked(useSwitchboard).mockReturnValue(true)
+    mockUseStreamingConversationStore.mockImplementation((selector: (s: Record<string, unknown>) => unknown) =>
+      selector({ retryState: { isRetrying: true, retryCount: 3 } })
+    )
+    render(<Mount />)
+    fireEvent.click(screen.getByTestId('debug-stats-toggle'))
+    expect(screen.getByText('retry #3')).toBeInTheDocument()
   })
 })

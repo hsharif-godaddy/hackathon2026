@@ -1,5 +1,6 @@
 import { useRef } from 'react'
 
+import { SWITCHBOARD_APPBUILDER_SSE_TRANSPORT } from '@/config/switchboard-flags'
 import { useSSEChat } from './useSSEChat'
 import { useStreamingWebSocket } from './useStreamingWebSocket'
 import { useSwitchboard } from './useSwitchboard'
@@ -16,7 +17,7 @@ type TransportResult = ReturnType<typeof useSSEChat> | ReturnType<typeof useStre
  * or subscriber registrations.
  */
 export function useChatTransport(): TransportResult {
-  const sseEnabled = useSwitchboard('app-builder-sse-transport')
+  const sseEnabled = useSwitchboard(SWITCHBOARD_APPBUILDER_SSE_TRANSPORT)
 
   const resolvedRef = useRef<boolean | null>(null)
   if (resolvedRef.current === null) {
