@@ -13,19 +13,19 @@ on:
   # Update all three when adding or changing a schedule.
   schedule:
     # Critical-path E2E every 2 hours - fast post-deploy/regression gate.
-    - cron: "0 */2 * * *"
+    - cron: '0 */2 * * *'
     # Full regression suite once per day (06:00 UTC) - covers auth flows,
     # apps-page, media tab, publish popover, archive restore (otherwise only
     # exercised on manual dispatch).
-    - cron: "0 6 * * *"
+    - cron: '0 6 * * *'
 
   # Allow manual triggering and post-promotion triggering
   workflow_dispatch:
     inputs:
       environment:
-        description: "Environment to test against"
+        description: 'Environment to test against'
         required: true
-        default: "prod"
+        default: 'prod'
         type: choice
         options:
           - dev
@@ -33,9 +33,9 @@ on:
           - test
           - prod
       test_filter:
-        description: "Test suite to run"
+        description: 'Test suite to run'
         required: false
-        default: "e2e"
+        default: 'e2e'
         type: choice
         options:
           - e2e
@@ -49,7 +49,7 @@ on:
           - develop-publish
           - develop-brand-book
       post_promotion:
-        description: "Triggered by promotion workflow (internal use)"
+        description: 'Triggered by promotion workflow (internal use)'
         required: false
         type: boolean
         default: false
@@ -58,17 +58,17 @@ on:
   workflow_call:
     inputs:
       environment:
-        description: "Environment to test against"
+        description: 'Environment to test against'
         required: true
-        default: "test" # The workflow_call will mostly be called building for the test env
+        default: 'test' # The workflow_call will mostly be called building for the test env
         type: string
       test_filter:
-        description: "Test suite: e2e, regression, e2e-then-regression (sequential, fail-fast), or individual spec name (e.g. authentication, apps-page)"
+        description: 'Test suite: e2e, regression, e2e-then-regression (sequential, fail-fast), or individual spec name (e.g. authentication, apps-page)'
         required: false
-        default: "e2e"
+        default: 'e2e'
         type: string
       post_promotion:
-        description: "Triggered by promotion workflow (internal use)"
+        description: 'Triggered by promotion workflow (internal use)'
         required: false
         type: boolean
         default: false
@@ -78,9 +78,135 @@ permissions:
   contents: read
 
 jobs:
+  # Resolve the test filter and build the matrix payload for the `test` job.
+  # Lifted out of the test step so the resolved filter can drive the matrix.
+  #
+  # Each matrix entry carries `project` (Playwright `--project` to run),
+  # `shard` (1-based), `total` (denominator for `--shard=N/M`; 1 means no
+  # shard flag), and optional `spec` (a filename for single-spec dispatches).
+  # `multi_runner` is `'true'` when the matrix has more than one entry —
+  # that gates blob reporting and the downstream merge-reports job.
+  prepare:
+    runs-on:
+      labels:
+        - airo-cicd-runners
+        - self-hosted
+    outputs:
+      filter: ${{ steps.resolve.outputs.filter }}
+      matrix_include: ${{ steps.resolve.outputs.matrix_include }}
+      multi_runner: ${{ steps.resolve.outputs.multi_runner }}
+    steps:
+      - name: Resolve filter and build matrix
+        id: resolve
+        env:
+          GITHUB_EVENT_SCHEDULE: ${{ github.event.schedule }}
+          INPUT_TEST_FILTER: ${{ inputs.test_filter }}
+        run: |
+          # Mirror the filter resolution in the `test` step.
+          if [ -n "$GITHUB_EVENT_SCHEDULE" ]; then
+            case "$GITHUB_EVENT_SCHEDULE" in
+              "0 6 * * *") FILTER="regression" ;;
+              *) FILTER="e2e" ;;
+            esac
+          elif [ -n "$INPUT_TEST_FILTER" ]; then
+            FILTER="$INPUT_TEST_FILTER"
+          else
+            FILTER="e2e"
+          fi
+
+          # Shard count for the full `regression` suite. Set to match the
+          # number of spec files in tests/e2e/ + tests/regression/ so each
+          # shard owns roughly one spec's worth of work — the practical
+          # ceiling before the per-shard setup tax (~5 min) eats the
+          # wall-clock win.
+          #
+          # Empirically (run 26278762371 at N=10): wall-clock is ~16.5 min,
+          # bounded by one shard running two ~8-min app-creation tests in
+          # `develop-edit-interactions.spec.ts` (Modern color scheme,
+          # Modern font theme). Splitting that cluster requires bumping to
+          # N>=17, but the runner-minute cost (~36 -> ~85) outweighs the
+          # ~5.5 min wall-clock win at current usage. If we want to go
+          # below ~16 min, the right next move is optimizing those two
+          # tests (shared app fixture) rather than throwing more runners.
+          #
+          # Practical caveats — revisit if a run trips either:
+          #   1. Single test account → N parallel SSO logins + app-creates.
+          #      If we hit throttling, provision per-shard accounts before
+          #      bumping further.
+          #   2. Self-hosted `airo-cicd-runners` pool size. If the pool has
+          #      fewer than N idle runners at 06:00 UTC, shards queue and
+          #      we save less wall-clock than expected.
+          REGRESSION_SHARDS=10
+
+          # Helper: emit the regression-suite include entries (one per shard).
+          regression_entries() {
+            for i in $(seq 1 "$REGRESSION_SHARDS"); do
+              [ "$i" -gt 1 ] && printf ','
+              printf '{"project":"regression","shard":%d,"total":%d}' \
+                "$i" "$REGRESSION_SHARDS"
+            done
+          }
+
+          case "$FILTER" in
+            e2e)
+              INCLUDES='[{"project":"e2e","shard":1,"total":1}]'
+              ;;
+            regression)
+              INCLUDES="[$(regression_entries)]"
+              ;;
+            e2e-then-regression)
+              # Despite the name, e2e and regression now run as PARALLEL
+              # matrix entries (1 e2e job + N regression shards). The
+              # original sequential "then" existed to fail-fast on e2e
+              # before paying the 30 min regression cost, but now that
+              # regression is sharded the parallel wall-clock is similar
+              # to e2e alone. The fail-fast gate is gone — if you need
+              # it back, dispatch `e2e` first and `regression` after.
+              INCLUDES="[{\"project\":\"e2e\",\"shard\":1,\"total\":1},$(regression_entries)]"
+              ;;
+            all)
+              # Removed in favor of e2e-then-regression. Reject explicitly
+              # so callers that haven't migrated get a clear error instead
+              # of silently building an unexpected matrix.
+              echo "ERROR: 'all' filter was removed. Use 'e2e-then-regression' for parallel e2e + sharded regression, or run 'e2e' and 'regression' as separate dispatches." >&2
+              exit 1
+              ;;
+            *)
+              # Single-spec filter (e.g. 'authentication', 'develop-chat'):
+              # one runner, no sharding, the `spec` field tells the test
+              # step which file to pass to playwright.
+              INCLUDES="[{\"project\":\"regression\",\"shard\":1,\"total\":1,\"spec\":\"${FILTER}.spec.ts\"}]"
+              ;;
+          esac
+
+          COUNT=$(echo "$INCLUDES" | jq length)
+          if [ "$COUNT" -gt 1 ]; then
+            MULTI=true
+          else
+            MULTI=false
+          fi
+
+          echo "filter=$FILTER" >> $GITHUB_OUTPUT
+          echo "matrix_include=$INCLUDES" >> $GITHUB_OUTPUT
+          echo "multi_runner=$MULTI" >> $GITHUB_OUTPUT
+          echo "Resolved filter: $FILTER, matrix entries: $COUNT, multi_runner: $MULTI"
+
   test:
+    needs: prepare
+    strategy:
+      # Don't cancel sibling shards when one fails — we want full coverage so
+      # the merged report shows every failure, not just the first.
+      fail-fast: false
+      matrix:
+        # Each entry expands to one parallel job and carries:
+        #   project: 'e2e' | 'regression'
+        #   shard:   1..total (used for --shard=N/M)
+        #   total:   shard denominator (1 = no shard flag)
+        #   spec:    optional spec filename for single-spec filters
+        include: ${{ fromJSON(needs.prepare.outputs.matrix_include) }}
     # Sized for the worst case (e2e-then-regression with one retry):
     # ~5 min setup + ~10 min e2e + ~30 min regression + retry headroom.
+    # With sharding the regression slice per runner drops to ~10 min.
     timeout-minutes: 90
     runs-on:
       labels:
@@ -180,7 +306,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
-          node-version: "22"
+          node-version: '22'
 
       - name: Enable Corepack and configure pnpm
         run: |
@@ -200,6 +326,20 @@ jobs:
             exit 1
           fi
           echo "pnpm version $ACTUAL_VERSION matches expected version"
+
+      - name: Locate pnpm store
+        id: pnpm-store
+        run: echo "path=$(pnpm store path --silent)" >> $GITHUB_OUTPUT
+
+      - name: Cache pnpm store
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4
+        with:
+          path: ${{ steps.pnpm-store.outputs.path }}
+          # Self-hosted runners may persist disk between jobs; cache makes the
+          # win deterministic across runners and across fresh runners alike.
+          key: pnpm-store-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            pnpm-store-${{ runner.os }}-
 
       - name: Install dependencies
         run: |
@@ -251,9 +391,17 @@ jobs:
       - name: Run Playwright tests
         env:
           CI: true
-          # Routed through env: to avoid shell injection from github context.
-          GITHUB_EVENT_SCHEDULE: ${{ github.event.schedule }}
-          INPUT_TEST_FILTER: ${{ inputs.test_filter }}
+          # Project, shard, total, and optional spec come straight off the
+          # matrix entry — no per-step filter resolution needed.
+          PROJECT: ${{ matrix.project }}
+          SHARD: ${{ matrix.shard }}
+          TOTAL_SHARDS: ${{ matrix.total }}
+          SPEC: ${{ matrix.spec || '' }}
+          # Switches playwright.config.ts to the blob reporter so each shard's
+          # results can be merged by the `merge-reports` job downstream. Only
+          # set when the matrix has multiple entries to keep single-run
+          # behavior unchanged.
+          PLAYWRIGHT_BLOB_REPORT: ${{ needs.prepare.outputs.multi_runner == 'true' && '1' || '' }}
           # tests/helpers/constants.ts getCredentials() reads env-specific variables
           # based on PLAYWRIGHT_ENV (DEV_*, PRE_TEST_*, TEST_*, PROD_*). All four
           # pairs must be set so the same secret value works for any environment
@@ -272,62 +420,44 @@ jobs:
           ES_URL: ${{ steps.get-es-credentials.outputs.es_url }}
           ES_API_KEY: ${{ steps.get-es-credentials.outputs.es_api_key }}
         run: |
-          # Schedule-triggered runs don't carry an `inputs` payload, so pick the
-          # filter from the cron string instead. Manual dispatch / workflow_call
-          # use the explicit input.
-          if [ -n "$GITHUB_EVENT_SCHEDULE" ]; then
-            case "$GITHUB_EVENT_SCHEDULE" in
-              "0 6 * * *")
-                FILTER="regression"
-                ;;
-              *)
-                FILTER="e2e"
-                ;;
-            esac
-          elif [ -n "$INPUT_TEST_FILTER" ]; then
-            FILTER="$INPUT_TEST_FILTER"
-          else
-            FILTER="e2e"
+          # Only attach --shard when the matrix entry actually splits work.
+          # Avoids passing --shard=1/1 (a no-op but noisy in logs) for the
+          # e2e runner and single-spec dispatches.
+          SHARD_FLAG=""
+          if [ "$TOTAL_SHARDS" -gt 1 ]; then
+            SHARD_FLAG="--shard=${SHARD}/${TOTAL_SHARDS}"
           fi
-          echo "Test filter resolved to: $FILTER"
-          case "$FILTER" in
-            e2e)
-              echo "Running E2E critical path test"
-              npx playwright test --project=e2e
-              ;;
-            regression)
-              echo "Running full regression suite"
-              npx playwright test --project=regression
-              ;;
-            e2e-then-regression)
-              # bash -eo pipefail (GH Actions default shell) aborts the run
-              # step on the first nonzero exit, so regression never starts
-              # if e2e fails and the step is marked failed (fail-fast).
-              echo "Running E2E critical path, then regression suite if E2E passes"
-              npx playwright test --project=e2e
-              echo "E2E passed, running regression suite"
-              npx playwright test --project=regression
-              ;;
-            all)
-              # Removed in favor of e2e-then-regression. Reject explicitly
-              # so callers that haven't migrated get a clear error instead
-              # of falling through to "*)" and trying to run all.spec.ts.
-              echo "ERROR: 'all' filter was removed. Use 'e2e-then-regression' for sequential fail-fast execution, or run 'e2e' and 'regression' as separate dispatches if you need both regardless of failures." >&2
-              exit 1
-              ;;
-            *)
-              echo "Running filtered regression test: $FILTER"
-              npx playwright test --project=regression "${FILTER}.spec.ts"
-              ;;
-          esac
+          if [ -n "$SPEC" ]; then
+            echo "Running single spec: $SPEC (--project=$PROJECT)"
+            npx playwright test --project="$PROJECT" "$SPEC"
+          else
+            echo "Running --project=$PROJECT ${SHARD_FLAG:-(no shard)}"
+            npx playwright test --project="$PROJECT" $SHARD_FLAG
+          fi
 
       - name: Upload Test Results
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         if: always()
         with:
-          name: test-results
+          # upload-artifact v4+ requires unique names per matrix job. Project
+          # is in the name so e2e and regression entries (which run in parallel
+          # under `e2e-then-regression`) don't collide.
+          name: test-results-${{ matrix.project }}-shard-${{ matrix.shard }}
           path: test-results/
           retention-days: 30
+
+      - name: Upload Playwright blob report
+        if: ${{ always() && needs.prepare.outputs.multi_runner == 'true' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: blob-report-${{ matrix.project }}-shard-${{ matrix.shard }}
+          path: blob-report
+          # Default `warn` would let a shard whose setup crashed before
+          # Playwright produced blob-report/ upload nothing and exit 0,
+          # leaving merge-reports to silently produce a partial HTML report.
+          # `error` makes the missing blob a loud failure on the shard.
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Comment PR with test results
         uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
@@ -395,21 +525,121 @@ jobs:
           TEST_ENVIRONMENT: ${{ steps.env-config.outputs.environment }}
           BASE_URL: ${{ steps.env-config.outputs.base_url }}
 
+  # Merge per-shard blob reports into a single HTML report. Only runs when
+  # the test matrix had more than one entry (sharded regression, or the
+  # parallel e2e + regression mix from `e2e-then-regression`). Uses
+  # `if: always()` so a failing shard still contributes to the merged report
+  # — reviewing partial-failure runs is the main reason this job exists.
+  # `playwright merge-reports` happily stitches blobs from different
+  # `--project=` runs into one HTML output.
+  merge-reports:
+    needs: [prepare, test]
+    if: ${{ always() && needs.prepare.outputs.multi_runner == 'true' }}
+    runs-on:
+      labels:
+        - airo-cicd-runners
+        - self-hosted
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Get Artifactory Token
+        id: jfrog
+        uses: jfrog/setup-jfrog-cli@1641575d87647fb969c0545f0b6a76873e328b7c # v5.0.0
+        env:
+          JF_URL: ${{ vars.JF_URL }}
+        with:
+          oidc-provider-name: github
+
+      - name: Setup Artifactory Creds
+        env:
+          OIDC_TOKEN: ${{ steps.jfrog.outputs.oidc-token }}
+        run: |
+          echo "::add-mask::$OIDC_TOKEN"
+          echo "ARTIFACTORY_NPM_TOKEN=${OIDC_TOKEN}" >> $GITHUB_ENV
+
+      - name: Configure pnpm registry
+        run: |
+          echo "registry=https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/" > .npmrc
+          echo "//gdartifactory1.jfrog.io/artifactory/api/npm/:_authToken=${{ env.ARTIFACTORY_NPM_TOKEN }}" >> .npmrc
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: '22'
+
+      - name: Enable Corepack and configure pnpm
+        run: |
+          npm install -g corepack@latest
+          corepack enable
+          EXPECTED_VERSION=$(node -p "
+            const pm = require('./package.json').packageManager || '';
+            const match = pm.match(/^pnpm@(.+?)(\+|$)/);
+            if (!match) { console.error('Cannot parse packageManager:', pm); process.exit(1); }
+            match[1];
+          ")
+          corepack prepare "pnpm@${EXPECTED_VERSION}" --activate
+
+      - name: Locate pnpm store
+        id: pnpm-store
+        run: echo "path=$(pnpm store path --silent)" >> $GITHUB_OUTPUT
+
+      - name: Cache pnpm store
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4
+        with:
+          path: ${{ steps.pnpm-store.outputs.path }}
+          key: pnpm-store-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            pnpm-store-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Download blob reports
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          path: all-blob-reports
+          # Broad pattern so we pick up both `blob-report-regression-shard-*`
+          # and `blob-report-e2e-shard-*` (parallel e2e + regression mix).
+          pattern: blob-report-*
+          merge-multiple: true
+
+      - name: Merge into HTML report
+        run: npx playwright merge-reports --reporter html ./all-blob-reports
+
+      - name: Upload merged HTML report
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: playwright-html-report
+          path: playwright-report
+          retention-days: 30
+
   slack-notify:
     name: Send Slack Notification
-    if: always() && needs.test.result == 'failure'
-    needs: [test]
+    # Fire when *either* the test matrix or the merge-reports job fails.
+    # Slack is the nightly surfacing channel — if merge-reports crashes
+    # (zero blob artifacts, playwright merge error, install failure on
+    # the merge runner) but every shard passed, the workflow goes red
+    # on GitHub but nobody on-call would see it without this.
+    # `skipped` (merge-reports doesn't run when total=1) doesn't match
+    # `== 'failure'`, so single-shard runs aren't affected.
+    if: always() && (needs.test.result == 'failure' || needs.merge-reports.result == 'failure')
+    needs: [test, merge-reports]
     uses: ./.github/workflows/slack-notify.yml
     permissions:
       id-token: write
       contents: read
     with:
-      result: ${{ needs.test.result }}
+      # Slack-notify is only invoked when something failed, so hard-code
+      # `failure` rather than forwarding `needs.test.result` — that field
+      # would be `'success'` in the merge-reports-only failure case and
+      # produce a misleading notification.
+      result: failure
       environment: ${{ needs.test.outputs.environment }}
-      title: "E2E Tests - ${{ needs.test.outputs.environment }} (by ${{ github.actor }})"
+      title: 'E2E Tests - ${{ needs.test.outputs.environment }} (by ${{ github.actor }})'
       message: |
         *Environment:* ${{ needs.test.outputs.environment }}
         *Trigger:* ${{ github.event_name == 'schedule' && 'Scheduled' || (github.event_name == 'workflow_dispatch' && github.event.inputs.post_promotion == 'true' && 'Post-Promotion' || 'Manual') }}
         *Actor:* ${{ github.actor }}
         *Run:* <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Details>
-      footer: "airo-app-builder | E2E Tests"
+      footer: 'airo-app-builder | E2E Tests'

@@ -82,8 +82,14 @@ export default defineConfig({
     timeout: 30000, // 30 seconds for expect assertions
   },
   /* Reporter to use. See https://playwright.dev/docs/test-reporters */
+  // When CI runs the suite sharded across multiple runners, each shard writes
+  // a `blob` report that the workflow's `merge-reports` job stitches into one
+  // HTML report. PLAYWRIGHT_BLOB_REPORT is set by the workflow only when
+  // total_shards > 1, so non-sharded CI keeps the `github` reporter unchanged.
   reporter: process.env.CI
-    ? [['list'], ['github'], ['./tests/reporters/elasticsearch-reporter.ts']]
+    ? (process.env.PLAYWRIGHT_BLOB_REPORT
+        ? [['list'], ['blob'], ['./tests/reporters/elasticsearch-reporter.ts']]
+        : [['list'], ['github'], ['./tests/reporters/elasticsearch-reporter.ts']])
     : [['list'], ['html'], ['./tests/reporters/elasticsearch-reporter.ts']],
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
   use: {
