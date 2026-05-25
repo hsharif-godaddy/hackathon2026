@@ -92,13 +92,85 @@ The dataset avoids a single repeated prompt pattern. It includes:
 
 ## How To Use
 
-Run the `gosym-probe` suite from the repo root:
+### Prerequisites
+
+Start Airo Builder locally with mock auth from the repo root:
+
+```bash
+AUTH_TYPE=mock pnpm run dev
+```
+
+The dev TUI should show healthy services for `App`, `Agents`, and `Control Plane`.
+
+### Interactive CLI
 
 ```bash
 GD_AIRO_BASELINE_ENABLE=1 \
 GD_AIRO_BASELINE_USE_BASELINE_EVALUATORS=1 \
-pnpm --filter gosym-probe eval --suite airo-baseline --skip-baseline
+PROBE_DEBUG_EVENTS=1 \
+pnpm --filter gosym-probe start
 ```
+
+### Run All Scenarios
+
+```bash
+GD_AIRO_BASELINE_ENABLE=1 \
+GD_AIRO_BASELINE_USE_BASELINE_EVALUATORS=1 \
+PROBE_DEBUG_EVENTS=1 \
+pnpm --filter gosym-probe eval --suite airo-baseline --skip-baseline --max-turns 15
+```
+
+### Run In Parallel
+
+```bash
+GD_AIRO_BASELINE_ENABLE=1 \
+GD_AIRO_BASELINE_USE_BASELINE_EVALUATORS=1 \
+PROBE_DEBUG_EVENTS=1 \
+pnpm --filter gosym-probe eval --suite airo-baseline --fan-out --skip-baseline --max-turns 15
+```
+
+### Run Multiple Trials
+
+```bash
+GD_AIRO_BASELINE_ENABLE=1 \
+GD_AIRO_BASELINE_USE_BASELINE_EVALUATORS=1 \
+PROBE_DEBUG_EVENTS=1 \
+pnpm --filter gosym-probe eval --suite airo-baseline --skip-baseline --max-turns 15 --trials 2
+```
+
+### Resume A Previous Run
+
+```bash
+GD_AIRO_BASELINE_ENABLE=1 \
+GD_AIRO_BASELINE_USE_BASELINE_EVALUATORS=1 \
+PROBE_DEBUG_EVENTS=1 \
+pnpm --filter gosym-probe eval --suite airo-baseline --skip-baseline --max-turns 15 --trials 2 --resume <run-id-or-run-dir>
+```
+
+Resume skips completed trial indices and writes missing trials into the same run directory.
+
+### Flags
+
+- `GD_AIRO_BASELINE_ENABLE=1`: loads the `airo-baseline` scenarios from `evals/airo-baseline-set`.
+- `GD_AIRO_BASELINE_USE_BASELINE_EVALUATORS=1`: attaches the baseline evaluator set.
+- `PROBE_DEBUG_EVENTS=1`: prints AAB websocket debug events.
+- `--suite airo-baseline`: runs only the Airo baseline suite.
+- `--skip-baseline`: skips saved-regression-baseline checks while iterating.
+- `--max-turns <n>`: caps conversation turns.
+- `--trials <n>`: overrides per-scenario trial count.
+- `--fan-out`: dispatches trials concurrently across a worker pool.
+- `--resume <run-id-or-run-dir>`: resumes an existing run.
+
+### Override Paths
+
+By default, `airo-baseline` loads from this directory. Override with:
+
+```bash
+GD_AIRO_BASELINE_SYNTHETIC_USERS_PATH=/path/to/synthetic-users-folder
+GD_AIRO_BASELINE_SCENARIOS_PATH=/path/to/scenarios-folder
+```
+
+---
 
 This pack follows the Synthia split between synthetic users and scenarios:
 
