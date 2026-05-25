@@ -1288,7 +1288,6 @@ export default function PreviewPane({
 
               {showBuildingOverlay && (
                 <div
-                  data-testid="preview-building-overlay"
                   className={clsx(
                     'absolute inset-0 rounded-lg',
                     isPreviewEnhancedOverlaysEnabled

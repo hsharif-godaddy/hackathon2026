@@ -328,9 +328,7 @@ export default function StreamingMessage({
     : undefined
 
   return (
-    <div
-      data-testid={message.role === 'user' ? 'chat-message-user' : undefined}
-      className={clsx('flex w-full', {
+    <div className={clsx('flex w-full', {
       'justify-end': message.role === 'user' && !isCardStyle,
       'justify-start': message.role !== 'user' || isCardStyle
     })}>

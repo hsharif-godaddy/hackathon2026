@@ -56,12 +56,8 @@ func NewRouter(db *store.DB, jwtService *auth.JWTService, ssoMW *auth.SSOMiddlew
 	})
 
 	// Public endpoints registered before the authenticated subrouter so
-	// gorilla/mux doesn't match the PathPrefix first. Signup uses optional
-	// auth: an unauthenticated POST still works (and lands under
-	// DefaultCustomerID), but if an SSO cookie is present the resulting app
-	// is owned by the real shopper — matching production mgmt-airo, where
-	// DPP redirects always carry a session.
-	r.Handle("/api/airo/v1/signup", ssoMW.AuthenticateOptional(http.HandlerFunc(srv.Signup))).Methods("POST")
+	// gorilla/mux doesn't match the PathPrefix first.
+	r.HandleFunc("/api/airo/v1/signup", srv.Signup).Methods("POST")
 	r.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	}).Methods("GET")

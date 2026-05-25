@@ -8,43 +8,14 @@ import { NextRequest, NextResponse } from 'next/server'
 
 import { getControlPlaneAdapter } from '@/lib/control-plane'
 import {
-  authenticateCustomer,
   createCustomerAuthError,
   type CustomerAuthContext,
   customerHasAccount,
   withCustomerAuth
 } from '@/lib/customer-auth'
-import { validateDomainName } from '@/lib/domain-validation'
 import { logger } from '@/lib/request-context'
 
-const ALLOWED_VARIABLE_KEYS = new Set(['lastInteractionAt', 'title', 'initialPrompt', 'airoSubscriptionId', 'fqdn'])
-
-/**
- * Validate fqdn updates: trim, lowercase, then run the shared RFC 1035
- * validator the quick-create route uses (`@/lib/domain-validation`). This
- * keeps the API contract consistent across endpoints — same character set,
- * same length cap, same label rules, and the same normalized lowercase form
- * persisted into mgmt-airo. The adapter read side already type-guards, but
- * we reject malformed writes here so downstream consumers (publish, DPP,
- * BFF detail routes) never see them.
- *
- * Returns the normalized fqdn string on success, or a `{ error: string }`
- * object on rejection. Callers narrow with `typeof result === 'string'`.
- */
-function validateFqdn(value: unknown): string | { error: string } {
-  if (typeof value !== 'string') {
-    return { error: 'fqdn must be a string' }
-  }
-  const normalized = value.trim().toLowerCase()
-  if (normalized.length === 0) {
-    return { error: 'fqdn must not be empty' }
-  }
-  const result = validateDomainName(normalized)
-  if (!result.valid) {
-    return { error: result.error ?? 'fqdn is not a valid domain name' }
-  }
-  return normalized
-}
+const ALLOWED_VARIABLE_KEYS = new Set(['lastInteractionAt', 'title', 'initialPrompt', 'airoSubscriptionId'])
 
 // PATCH /api/sites/[id]/variables - Update site variables
 export const PATCH = withCustomerAuth(async (request: NextRequest, authContext: CustomerAuthContext, { params }: { params: Promise<{ id: string }> }) => {
@@ -56,42 +27,13 @@ export const PATCH = withCustomerAuth(async (request: NextRequest, authContext: 
     }
     const variableUpdates: Record<string, unknown> = {}
     for (const key of Object.keys(rawUpdates)) {
-      if (!ALLOWED_VARIABLE_KEYS.has(key)) continue
-      if (key === 'fqdn') {
-        const result = validateFqdn(rawUpdates[key])
-        if (typeof result === 'string') {
-          variableUpdates[key] = result
-        } else {
-          return NextResponse.json({ error: result.error }, { status: 400 })
-        }
-      } else {
+      if (ALLOWED_VARIABLE_KEYS.has(key)) {
         variableUpdates[key] = rawUpdates[key]
       }
     }
     if (Object.keys(variableUpdates).length === 0) {
       return NextResponse.json({ error: 'No valid variable keys provided' }, { status: 400 })
     }
-
-    // fqdn writes are domain changes. /api/sites/[id]/domains is level 3
-    // (HBI-validated, <=12h non-persistent) per app/CLAUDE.md "Tiered Auth
-    // Levels"; the variables route stays level 1 by default so high-frequency
-    // metadata writes (lastInteractionAt fires on every chat completion via
-    // completionSideEffects.updateSiteTimestamp) don't trigger re-auth loops.
-    // When the body actually carries fqdn, escalate the same JWT to level 3
-    // inline so the two write paths to mgmt-airo's hostname stay symmetric.
-    if ('fqdn' in variableUpdates) {
-      const level3 = await authenticateCustomer(request, 3)
-      if (level3.isAuthenticated === false) {
-        return NextResponse.json(
-          {
-            error: level3.error,
-            ...(level3.authReason !== undefined ? { authReason: level3.authReason } : {}),
-          },
-          { status: 401 },
-        )
-      }
-    }
-
     const { user } = authContext
 
     // Customer must have an account to update sites
