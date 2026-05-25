@@ -21,6 +21,7 @@ import { FeedbackAutomationStack } from "../lib/feedback-automation-stack";
 import { FeedbackFanoutStack } from "../lib/feedback-fanout-stack";
 import { AiroInvestigatorStack } from "../lib/investigator-stack";
 import { S2sIamJwtStack } from "../lib/s2s-iam-jwt-stack";
+import { TransactionalEventsKinesisStack } from "../lib/transactional-events-kinesis-stack";
 
 /**
  * Main function to execute the CDK app
@@ -145,6 +146,11 @@ async function main() {
     fanoutStack.addDependency(feedbackS3Stack);
     fanoutStack.addDependency(investigatorStack);
   }
+
+  // Kinesis stream for transactional email events. Cross-account producers
+  // (EventBridge eventbus-cross-account roles) put records; consumers are
+  // downstream data-pipeline roles. Deployed to all environments.
+  new TransactionalEventsKinesisStack(app, 'TransactionalEventsKinesisStack', { env });
 
   // Create Qdrant ECR repository (dev and prod only)
   // Deploy this first to allow pre-populating Docker images

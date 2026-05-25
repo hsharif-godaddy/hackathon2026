@@ -1,0 +1,12 @@
+{
+  "kinesis": {
+    "streamName": "transactional-events-stream-prod",
+    "streamMode": "ON_DEMAND",
+    "retentionPeriodHours": 24
+  },
+  "crossAccount": {
+    "producerRoleArns": [
+      "arn:aws:iam::380414489361:role/eventbus-custom-eventbus-cross-account"
+    ]
+  }
+}

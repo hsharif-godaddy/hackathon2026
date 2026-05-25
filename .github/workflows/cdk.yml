@@ -38,6 +38,7 @@ on:
           - 'LambdaBaseEcrStack'
           - 'AiroInvestigatorStack'
           - 'S2sIamJwtStack'
+          - 'TransactionalEventsKinesisStack'
         default: '--all'
       DEFAULT_ACTION:
         description: 'Default action to take'
