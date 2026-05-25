@@ -177,12 +177,17 @@ interface ExecuteParams {
   lifecycleContext?: LifecycleContext
   market?: string
   userTimezone?: string
+  requestId?: string
+  /** Elastic APM transaction — labeled progressively and ended at terminal. */
+  apmTransaction?: { setLabel: (k: string, v: string | number) => void; setOutcome: (o: 'unknown' | 'success' | 'failure') => void; end: () => void; result?: string | number } | null
 }
 
 interface ActiveStream {
   appId: string
   convId: string
   subscriberIds: Set<string>
+  requestId?: string
+  apmTransaction?: { setLabel: (k: string, v: string | number) => void; setOutcome: (o: 'unknown' | 'success' | 'failure') => void; end: () => void; result?: string | number } | null
 }
 
 export class MessageExecutionService {
@@ -283,7 +288,8 @@ export class MessageExecutionService {
     }
 
     controller.abort('user_stopped')
-    logger.info('sse.execution.stopped', { conversationId })
+    const active = this.activeStreams.get(conversationId)
+    logger.info('sse.execution.stopped', { conversationId, ...(active?.requestId && { requestId: active.requestId }) })
 
     // The execute() loop observes the abort and publishes its own terminal
     // `complete` when it returns — but that can take seconds (mid-chunk
@@ -292,8 +298,13 @@ export class MessageExecutionService {
     // UI resets immediately. execute()'s later publish is a no-op on the
     // client side (finalizeStream early-returns when activeStream is null)
     // and produces at most a duplicate event on any other subscriber.
-    const active = this.activeStreams.get(conversationId)
     if (active) {
+      if (active.apmTransaction) {
+        active.apmTransaction.setLabel('finishReason', 'user_stopped')
+        active.apmTransaction.result = 'aborted'
+        active.apmTransaction.setOutcome('unknown')
+        active.apmTransaction.end()
+      }
       // Vacate the slot BEFORE publishing the terminal. Late events from
       // the still-running old execute() (mid-chunk reader.read(), tool
       // result, getFinalResult()) are gated on `activeStreams.get(...) ===
@@ -308,7 +319,7 @@ export class MessageExecutionService {
       this.activeStreams.delete(conversationId)
       void this.publishTerminal(active.appId, conversationId, {
         conversationId, type: 'complete', content: '',
-        data: { finishReason: 'user_stopped', ...getCurrentTraceIds() },
+        data: { finishReason: 'user_stopped', ...getCurrentTraceIds(), ...(active.requestId && { requestId: active.requestId }) },
         agentName: 'system',
       }).finally(() => {
         const nextOwner = this.activeStreams.get(conversationId)
@@ -1046,7 +1057,7 @@ export class MessageExecutionService {
       visualContext, aiEditContext, aiEditContexts, selectedAssets,
       todoListContext, isActionRequest, customContext, buildErrorContext,
       bmsBudgetId, budgetSessionId, subscriptionId, authType,
-      lifecycleContext, uploadedFileName, market, userTimezone,
+      lifecycleContext, uploadedFileName, market, userTimezone, requestId, apmTransaction,
     } = params
 
     const resolvedAgentId = agentId
@@ -1096,8 +1107,9 @@ export class MessageExecutionService {
     // Bridge sseRegistry → eventChannel BEFORE pre-turn persistence runs. If we
     // bridge after, a persistence failure publishes terminal events to an empty
     // eventChannel and the /stream client hangs forever.
-    const streamState: ActiveStream = { appId, convId: conversationId, subscriberIds: new Set() }
+    const streamState: ActiveStream = { appId, convId: conversationId, subscriberIds: new Set(), ...(requestId && { requestId }), apmTransaction }
     this.activeStreams.set(conversationId, streamState)
+    if (apmTransaction) apmTransaction.setLabel('agent_name', resolvedAgentId)
     const sseSubscribers = this.deps.sseRegistry.getSubscribers(conversationId)
     for (const sub of sseSubscribers) {
       this.deps.eventChannel.subscribe(conversationId, sub)
@@ -1130,6 +1142,12 @@ export class MessageExecutionService {
           this.deps.eventChannel.unsubscribe(conversationId, subId)
         }
         this.activeStreams.delete(conversationId)
+      }
+      if (apmTransaction) {
+        apmTransaction.setLabel('finishReason', 'persistence_pre_turn_failed')
+        apmTransaction.result = 'error'
+        apmTransaction.setOutcome('failure')
+        apmTransaction.end()
       }
       return
     }
@@ -1542,12 +1560,21 @@ export class MessageExecutionService {
             usedFreeGrants,
             ...(activeAgentMessageId && { messageId: activeAgentMessageId }),
             ...getCurrentTraceIds(),
+            ...(requestId && { requestId }),
           },
           agentName: finalAgentName,
         })
       }
 
-      logger.info('sse.execution.complete', { appId, conversationId, agentId: finalAgentName, finishReason, iterations: loopResult.iterations })
+      logger.info('sse.execution.complete', { appId, conversationId, agentId: finalAgentName, finishReason, iterations: loopResult.iterations, ...(requestId && { requestId }) })
+      if (apmTransaction && !supersededSuccess) {
+        apmTransaction.setLabel('finishReason', finishReason)
+        apmTransaction.setLabel('agent_id', finalAgentName)
+        if (lastTurnResult?.currentStep) apmTransaction.setLabel('steps', lastTurnResult.currentStep)
+        apmTransaction.result = 'success'
+        apmTransaction.setOutcome('success')
+        apmTransaction.end()
+      }
     } catch (error) {
       const chunkTimeoutAborted = abortController.signal.aborted
         && abortController.signal.reason === 'chunk_timeout'
@@ -1615,7 +1642,13 @@ export class MessageExecutionService {
           appId, conversationId, aborted: abortController.signal.aborted,
         })
       } else if (abortController.signal.aborted && !chunkTimeoutAborted) {
-        logger.info('sse.execution.aborted', { appId, conversationId })
+        logger.info('sse.execution.aborted', { appId, conversationId, ...(requestId && { requestId }) })
+        if (apmTransaction && !supersededError) {
+          apmTransaction.setLabel('finishReason', 'aborted')
+          apmTransaction.result = 'aborted'
+          apmTransaction.setOutcome('unknown')
+          apmTransaction.end()
+        }
         await this.publishTerminal(appId, conversationId, {
           type: 'complete',
           content: '',
@@ -1624,6 +1657,7 @@ export class MessageExecutionService {
             finishReason: 'aborted',
             ...(activeAgentMessageId && { messageId: activeAgentMessageId }),
             ...getCurrentTraceIds(),
+            ...(requestId && { requestId }),
           },
           conversationId, agentName: resolvedAgentId,
         })
@@ -1633,7 +1667,15 @@ export class MessageExecutionService {
         // Prefer classified.clientMessage for errors that sanitize internal
         // detail (BMS API paths). Matches the WS wire contract.
         const clientMessage = classified.clientMessage ?? err.message
-        logger.error('sse.execution.error', { appId, conversationId, ...errorFields(err) })
+        logger.error('sse.execution.error', { appId, conversationId, ...errorFields(err), ...(requestId && { requestId }) })
+        if (apmTransaction && !supersededError) {
+          apmTransaction.setLabel('finishReason', 'error')
+          apmTransaction.setLabel('error_message', clientMessage)
+          apmTransaction.setLabel('error_type', err.name || 'Error')
+          apmTransaction.result = 'error'
+          apmTransaction.setOutcome('failure')
+          apmTransaction.end()
+        }
         await this.publishTerminal(appId, conversationId, {
           type: 'error', content: clientMessage,
           data: {
@@ -1641,6 +1683,7 @@ export class MessageExecutionService {
             error: clientMessage,
             timestamp: new Date().toISOString(),
             ...(activeAgentMessageId && { messageId: activeAgentMessageId }),
+            ...(requestId && { requestId }),
           },
           conversationId, agentName: 'system',
         })
@@ -1652,6 +1695,7 @@ export class MessageExecutionService {
             finishReason: 'error',
             ...(activeAgentMessageId && { messageId: activeAgentMessageId }),
             ...getCurrentTraceIds(),
+            ...(requestId && { requestId }),
           },
           conversationId, agentName: 'system',
         })
@@ -1696,6 +1740,13 @@ export class MessageExecutionService {
           this.deps.eventChannel.unsubscribe(conversationId, subId)
         }
         this.activeStreams.delete(conversationId)
+      } else if (apmTransaction) {
+        // Superseded by a newer execute() — the success/error paths skipped
+        // ending the transaction (guarded by !superseded*), so end it here.
+        apmTransaction.setLabel('finishReason', 'superseded')
+        apmTransaction.result = 'aborted'
+        apmTransaction.setOutcome('unknown')
+        apmTransaction.end()
       }
     }
   }

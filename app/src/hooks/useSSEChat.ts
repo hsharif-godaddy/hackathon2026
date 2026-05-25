@@ -454,6 +454,20 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
                 store.finalizeStream(event.data)
 
                 const completeData = event.data as any
+                const traceId = typeof completeData?.traceId === 'string' && completeData.traceId ? completeData.traceId : undefined
+                const observationId = typeof completeData?.observationId === 'string' && completeData.observationId ? completeData.observationId : undefined
+                if (traceId && observationId) {
+                  const requestId = typeof completeData?.requestId === 'string' && completeData.requestId ? completeData.requestId : undefined
+                  const agentName = typeof completeData?.agentId === 'string' && completeData.agentId ? completeData.agentId : undefined
+                  useDevelopPageStore.getState().setLastCompleteTraceIds({
+                    traceId,
+                    observationId,
+                    ...(agentName && { agentName }),
+                    ...(requestId && { requestId }),
+                  })
+                } else {
+                  useDevelopPageStore.getState().setLastCompleteTraceIds(null)
+                }
                 const commitHash = typeof completeData?.commitHash === 'string' && completeData.commitHash.length > 0
                   ? completeData.commitHash : undefined
                 const activeAppId = store.currentAppId
@@ -487,16 +501,6 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
                 }
                 maybeFireEvalSnapshot(commitHash, activeAppId)
                 scheduleUsageRefresh()
-
-                const traceId = completeData?.traceId
-                const observationId = completeData?.observationId
-                if (typeof traceId === 'string' && typeof observationId === 'string' && traceId && observationId) {
-                  const agentName = typeof completeData?.agentId === 'string' && completeData.agentId.length > 0
-                    ? completeData.agentId : undefined
-                  useDevelopPageStore.getState().setLastCompleteTraceIds({ traceId, observationId, agentName })
-                } else {
-                  useDevelopPageStore.getState().setLastCompleteTraceIds(null)
-                }
               } else if (type === 'error' || type === 'stream_error') {
                 flushStoreUpdateBufferImmediate()
                 const errData = event.data as any

@@ -20,6 +20,7 @@ import { BudgetExceededError } from '@airo/ai-common'
 import { ConnectionInitializer } from '../connection-initializer.js'
 import type { AgentRouterParams, AgentStateManager } from '../agent-router.js'
 
+import apm from 'elastic-apm-node'
 import { sseSessionKey } from './session-key.js'
 import { asyncHandler } from '../middleware/async-handler.js'
 import { mapToolCallsToUI } from '../tool-call-mapper.js'
@@ -478,6 +479,8 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
       return
     }
 
+    const apmTransaction = apm.startTransaction('SSE Message', 'request')
+
     const parsedAgentCommand = parseAgentCommand(content)
     if (parsedAgentCommand.hasCommand && !parsedAgentCommand.hasBody) {
       logger.info('sse.agent_override.bodyless_passthrough', { appId, conversationId, requestedAgent: parsedAgentCommand.agentId })
@@ -489,12 +492,29 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
       ? parsedAgentCommand.agentId
       : agentId
 
+    if (apmTransaction) {
+      apmTransaction.setLabel('requestId', (req as any).requestId ?? 'unknown')
+      apmTransaction.setLabel('conversationId', conversationId)
+      apmTransaction.setLabel('message_length', effectiveContent.length)
+      apmTransaction.setLabel('isInitialPrompt', 'false')
+    }
+
     if (!deps.executionService) {
+      if (apmTransaction) {
+        apmTransaction.setLabel('finishReason', 'execution_unavailable')
+        apmTransaction.result = 'error'
+        apmTransaction.setOutcome('failure')
+        apmTransaction.end()
+      }
       res.status(503).json({ error: 'Message execution not available' })
       return
     }
 
     const agentContext = (req as AuthenticatedRequest).agentContext
+    if (apmTransaction) {
+      if (agentContext?.customerId) apmTransaction.setLabel('customerId', agentContext.customerId)
+      if (agentContext?.trafficSessionId) apmTransaction.setLabel('sessionId', agentContext.trafficSessionId)
+    }
 
     // Derive effective subscriptionId for override detection at report time
     // Employee/test sessions get BudgetOverride values for 100% GoDaddy attribution via isBmsOverride()
@@ -522,8 +542,20 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
       }
     } catch (err) {
       if (BudgetExceededError.isInstance(err)) {
+        if (apmTransaction) {
+          apmTransaction.setLabel('finishReason', 'budget_exceeded')
+          apmTransaction.result = 'error'
+          apmTransaction.setOutcome('failure')
+          apmTransaction.end()
+        }
         res.status(402).json({ error: (err as Error).message })
         return
+      }
+      if (apmTransaction) {
+        apmTransaction.setLabel('finishReason', 'precheck_error')
+        apmTransaction.result = 'error'
+        apmTransaction.setOutcome('failure')
+        apmTransaction.end()
       }
       logger.error('sse.budget.precheck_failed', { appId, conversationId, ...errorFields(err) })
       throw err
@@ -531,11 +563,22 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
 
     const sseSocketId = sseSessionKey(conversationId)
 
-    const stateManager = deps.getStateManager()
-    const resolvedAgentId = await deps.resolveAgent({
-      appId, agentId: requestedAgentId, agentProfile, templateId, agentContext,
-      ...(stateManager && { session: { sessionId: sseSocketId, stateManager } }),
-    })
+    let resolvedAgentId: string
+    try {
+      const stateManager = deps.getStateManager()
+      resolvedAgentId = await deps.resolveAgent({
+        appId, agentId: requestedAgentId, agentProfile, templateId, agentContext,
+        ...(stateManager && { session: { sessionId: sseSocketId, stateManager } }),
+      })
+    } catch (err) {
+      if (apmTransaction) {
+        apmTransaction.setLabel('finishReason', 'agent_resolution_failed')
+        apmTransaction.result = 'error'
+        apmTransaction.setOutcome('failure')
+        apmTransaction.end()
+      }
+      throw err
+    }
 
     res.status(202).json({ accepted: true })
 
@@ -548,6 +591,9 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
       isInitialPrompt = (await deps.messages.getMessageCount(conversationId)) <= 1
     } catch (err) {
       logger.warn('sse.messages.isInitialPrompt.error', { conversationId, ...errorFields(err) })
+    }
+    if (apmTransaction) {
+      apmTransaction.setLabel('isInitialPrompt', String(isInitialPrompt))
     }
 
     deps.executionService.execute({
@@ -575,6 +621,8 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
       market,
       userTimezone,
       requestHeaders: req.headers as Record<string, string | string[] | undefined>,
+      requestId: (req as any).requestId,
+      apmTransaction,
       lifecycleContext: {
         agentContext: {
           enableAssessmentAgent: agentContext?.enableAssessmentAgent,

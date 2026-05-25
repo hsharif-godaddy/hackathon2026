@@ -2650,4 +2650,108 @@ describe('MessageExecutionService', () => {
     const executionContext = deps.contextManager.loadContextMessages.mock.calls[0][0]
     expect(executionContext.metadata.sessionId).toBe('sse:conv_1')
   })
+
+  describe('requestId propagation', () => {
+    it('includes requestId in the complete event data', async () => {
+      deps = createMockDeps([{ type: 'text-delta', text: 'hi' }])
+      service = new MessageExecutionService(deps as any)
+
+      await service.execute({ ...DEFAULT_PARAMS, requestId: 'req_abc1' })
+
+      const completeCall = deps.eventChannel.publish.mock.calls.find(
+        ([, evt]: [string, any]) => evt.type === 'complete'
+      )
+      expect(completeCall).toBeDefined()
+      expect(completeCall![1].data).toMatchObject({ requestId: 'req_abc1' })
+    })
+
+    it('includes requestId in error terminal events', async () => {
+      deps = createMockDeps([])
+      deps.getAgent.mockReturnValue({
+        streamGenerate: vi.fn().mockRejectedValue(new Error('provider down')),
+        getName: vi.fn().mockReturnValue('AI Developer'),
+      })
+      service = new MessageExecutionService(deps as any)
+
+      await service.execute({ ...DEFAULT_PARAMS, requestId: 'req_err1' })
+
+      const errorCall = deps.eventChannel.publish.mock.calls.find(
+        ([, evt]: [string, any]) => evt.type === 'error'
+      )
+      expect(errorCall).toBeDefined()
+      expect(errorCall![1].data).toMatchObject({ requestId: 'req_err1' })
+
+      const completeCall = deps.eventChannel.publish.mock.calls.find(
+        ([, evt]: [string, any]) => evt.type === 'complete' && evt.data?.finishReason === 'error'
+      )
+      expect(completeCall).toBeDefined()
+      expect(completeCall![1].data).toMatchObject({ requestId: 'req_err1' })
+    })
+  })
+
+  describe('APM transaction lifecycle', () => {
+    it('labels and ends apmTransaction on successful completion', async () => {
+      const mockTransaction = { setLabel: vi.fn(), setOutcome: vi.fn(), end: vi.fn(), result: undefined as string | undefined }
+      deps = createMockDeps([{ type: 'text-delta', text: 'hi' }])
+      service = new MessageExecutionService(deps as any)
+
+      await service.execute({ ...DEFAULT_PARAMS, apmTransaction: mockTransaction })
+
+      expect(mockTransaction.setLabel).toHaveBeenCalledWith('agent_name', 'develop')
+      expect(mockTransaction.setLabel).toHaveBeenCalledWith('finishReason', expect.any(String))
+      expect(mockTransaction.result).toBe('success')
+      expect(mockTransaction.setOutcome).toHaveBeenCalledWith('success')
+      expect(mockTransaction.end).toHaveBeenCalled()
+    })
+
+    it('labels and ends apmTransaction on error', async () => {
+      const mockTransaction = { setLabel: vi.fn(), setOutcome: vi.fn(), end: vi.fn(), result: undefined as string | undefined }
+      deps = createMockDeps([])
+      deps.getAgent.mockReturnValue({
+        streamGenerate: vi.fn().mockRejectedValue(new Error('provider down')),
+        getName: vi.fn().mockReturnValue('AI Developer'),
+      })
+      service = new MessageExecutionService(deps as any)
+
+      await service.execute({ ...DEFAULT_PARAMS, apmTransaction: mockTransaction })
+
+      expect(mockTransaction.setLabel).toHaveBeenCalledWith('finishReason', 'error')
+      expect(mockTransaction.setLabel).toHaveBeenCalledWith('error_type', 'Error')
+      expect(mockTransaction.result).toBe('error')
+      expect(mockTransaction.setOutcome).toHaveBeenCalledWith('failure')
+      expect(mockTransaction.end).toHaveBeenCalled()
+    })
+
+    it('ends apmTransaction on user stop', async () => {
+      const mockTransaction = { setLabel: vi.fn(), setOutcome: vi.fn(), end: vi.fn(), result: undefined as string | undefined }
+      let resolveRead: (v: any) => void
+      const readPromise = new Promise(r => { resolveRead = r })
+      const slowStream = new ReadableStream({
+        async pull(controller) {
+          await readPromise
+          controller.close()
+        },
+      })
+      deps = createMockDeps([])
+      deps.getAgent.mockReturnValue({
+        streamGenerate: vi.fn().mockResolvedValue({
+          textStream: (async function* () {})(),
+          baseStream: slowStream,
+        }),
+        getName: vi.fn().mockReturnValue('AI Developer'),
+      })
+      service = new MessageExecutionService(deps as any)
+
+      const executePromise = service.execute({ ...DEFAULT_PARAMS, apmTransaction: mockTransaction })
+      await new Promise(r => setTimeout(r, 50))
+      service.stop('conv_1')
+      resolveRead!(undefined)
+      await executePromise
+
+      expect(mockTransaction.setLabel).toHaveBeenCalledWith('finishReason', 'user_stopped')
+      expect(mockTransaction.result).toBe('aborted')
+      expect(mockTransaction.setOutcome).toHaveBeenCalledWith('unknown')
+      expect(mockTransaction.end).toHaveBeenCalled()
+    })
+  })
 })

@@ -4,6 +4,12 @@ import request from 'supertest'
 import { createSSERoutes } from '../routes.js'
 import { EventStreamRegistry } from '../EventStreamRegistry.js'
 
+const mockApmTransaction = { setLabel: vi.fn(), setOutcome: vi.fn(), end: vi.fn(), result: undefined as string | undefined }
+const mockStartTransaction = vi.fn().mockReturnValue(mockApmTransaction)
+vi.mock('elastic-apm-node', () => ({
+  default: { startTransaction: (...args: any[]) => mockStartTransaction(...args) },
+}))
+
 vi.mock('@airo/ai-grants', async (importOriginal) => {
   const actual = await importOriginal() as Record<string, unknown>
   return {
@@ -79,6 +85,11 @@ describe('SSE routes', () => {
   beforeEach(() => {
     mockClientActionServices.clear()
     mockBudgetPreCheck.mockReset().mockResolvedValue(null)
+    mockStartTransaction.mockReset().mockReturnValue(null)
+    mockApmTransaction.setLabel.mockReset()
+    mockApmTransaction.setOutcome.mockReset()
+    mockApmTransaction.end.mockReset()
+    mockApmTransaction.result = undefined
     app = express()
     app.use(express.json())
     deps = createMockDeps()
@@ -1118,6 +1129,67 @@ describe('SSE routes', () => {
           }),
         }),
       )
+    })
+
+    it('passes requestId from request-logger middleware to execute()', async () => {
+      const mockExecute = vi.fn().mockResolvedValue(undefined)
+      const depsWithService = {
+        ...deps,
+        executionService: { execute: mockExecute, hasActiveStream: vi.fn().mockReturnValue(false) },
+      }
+      const appWithService = express()
+      appWithService.use(express.json())
+      appWithService.use((req: any, _res: any, next: any) => {
+        req.requestId = 'test-req-id'
+        next()
+      })
+      appWithService.use('/api/conversations', createSSERoutes(depsWithService as any))
+
+      await request(appWithService)
+        .post('/api/conversations/abcdefghij/conv_1/messages')
+        .send({ content: 'Hello' })
+
+      for (let i = 0; i < 50 && mockExecute.mock.calls.length === 0; i++) {
+        await new Promise(r => setTimeout(r, 5))
+      }
+      expect(mockExecute).toHaveBeenCalledWith(
+        expect.objectContaining({ requestId: 'test-req-id' })
+      )
+    })
+
+    it('starts an APM transaction and passes it to execute()', async () => {
+      const txn = { setLabel: vi.fn(), setOutcome: vi.fn(), end: vi.fn(), result: undefined as string | undefined }
+      mockStartTransaction.mockReturnValueOnce(txn)
+      const mockExecute = vi.fn().mockResolvedValue(undefined)
+      const authenticateWithCtx = vi.fn((req: any, _res: any, next: any) => {
+        req.agentContext = { siteId: 'abcdefghij', customerId: 'cust-123', trafficSessionId: 'sess-456' }
+        req.requestId = 'apm-req-id'
+        next()
+      })
+      const depsWithService = {
+        ...deps,
+        authenticate: authenticateWithCtx,
+        executionService: { execute: mockExecute, hasActiveStream: vi.fn().mockReturnValue(false) },
+      }
+      const appWithService = express()
+      appWithService.use(express.json())
+      appWithService.use('/api/conversations', createSSERoutes(depsWithService as any))
+
+      await request(appWithService)
+        .post('/api/conversations/abcdefghij/conv_1/messages')
+        .send({ content: 'Hello agent' })
+
+      for (let i = 0; i < 50 && mockExecute.mock.calls.length === 0; i++) {
+        await new Promise(r => setTimeout(r, 5))
+      }
+      expect(mockExecute).toHaveBeenCalledWith(
+        expect.objectContaining({ apmTransaction: txn })
+      )
+      expect(txn.setLabel).toHaveBeenCalledWith('requestId', 'apm-req-id')
+      expect(txn.setLabel).toHaveBeenCalledWith('conversationId', 'conv_1')
+      expect(txn.setLabel).toHaveBeenCalledWith('message_length', 11)
+      expect(txn.setLabel).toHaveBeenCalledWith('customerId', 'cust-123')
+      expect(txn.setLabel).toHaveBeenCalledWith('sessionId', 'sess-456')
     })
   })
 

@@ -594,6 +594,35 @@ describe('useSSEChat', () => {
     })
   })
 
+  describe('complete event trace ID extraction', () => {
+    it('populates store with traceId, observationId, and requestId from complete event', async () => {
+      await setupHook()
+
+      act(() => {
+        lastTransport.callbacks?.onEvent({
+          type: 'complete',
+          data: { traceId: 'trace-abc', observationId: 'obs-xyz', requestId: 'req-123' },
+        })
+      })
+
+      expect(mockSetLastCompleteTraceIds).toHaveBeenCalledWith({
+        traceId: 'trace-abc',
+        observationId: 'obs-xyz',
+        requestId: 'req-123',
+      })
+    })
+
+    it('clears trace IDs when complete event has no traceId', async () => {
+      await setupHook()
+
+      act(() => {
+        lastTransport.callbacks?.onEvent({ type: 'complete', data: {} })
+      })
+
+      expect(mockSetLastCompleteTraceIds).toHaveBeenCalledWith(null)
+    })
+  })
+
   it('error event calls store.markUpstreamError', async () => {
     await setupHook()
 
@@ -2098,46 +2127,4 @@ describe('lastAssistantMessageIsComplete', () => {
     ])).toBe(false)
   })
 
-  describe('complete trace IDs', () => {
-    it('stores trace IDs from complete event in useDevelopPageStore', async () => {
-      await setupHook()
-
-      storeState.activeStream = { id: 'stream-1', role: 'assistant', content: '', segments: [], toolCalls: [], isComplete: false }
-
-      act(() => {
-        lastTransport.callbacks?.onEvent({
-          type: 'complete',
-          data: {
-            traceId: 'trace-abc',
-            observationId: 'obs-xyz',
-            agentId: 'builder',
-            finishReason: 'stop',
-          },
-          content: undefined,
-        })
-      })
-
-      expect(mockSetLastCompleteTraceIds).toHaveBeenCalledWith({
-        traceId: 'trace-abc',
-        observationId: 'obs-xyz',
-        agentName: 'builder',
-      })
-    })
-
-    it('sets trace IDs to null when complete event lacks them', async () => {
-      await setupHook()
-
-      storeState.activeStream = { id: 'stream-1', role: 'assistant', content: '', segments: [], toolCalls: [], isComplete: false }
-
-      act(() => {
-        lastTransport.callbacks?.onEvent({
-          type: 'complete',
-          data: { finishReason: 'stop' },
-          content: undefined,
-        })
-      })
-
-      expect(mockSetLastCompleteTraceIds).toHaveBeenCalledWith(null)
-    })
-  })
 })

@@ -27,6 +27,7 @@ export interface TraceIds {
   traceId: string
   observationId: string
   agentName?: string
+  requestId?: string
 }
 
 // Chat pane width constants
