@@ -950,7 +950,7 @@ export class EvalStore {
         totalTrials: agg.totalTrials,
         scores: computeScoreStats(scores),
         verdicts,
-        ...(agg.medianScore != null && { medianScore: agg.medianScore }),
+        ...(agg.aggregateScore != null && { aggregateScore: agg.aggregateScore }),
         ...(agg.evalVersion !== undefined && { evalVersion: agg.evalVersion }),
         ...(agg.lowerIsBetter !== undefined && {
           lowerIsBetter: agg.lowerIsBetter,

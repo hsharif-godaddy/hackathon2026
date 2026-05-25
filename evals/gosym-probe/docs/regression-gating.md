@@ -142,9 +142,11 @@ the problem entirely.
 ### Score-mode evaluators are more resilient
 
 Score-mode evaluators (token-usage, latency, prompt-efficiency) compare
-medians and use relative percentage thresholds. Medians are noisier at
-3 trials but not catastrophically so, because the underlying measurements
-are continuous rather than binary.
+trimmed means and use relative percentage thresholds. At 3 trials,
+`trimmedMean(3)` equals the median (the single middle value after trimming
+extremes), so existing thresholds remain valid. The underlying measurements
+are continuous rather than binary, making them more resilient to low trial
+counts.
 
 ---
 

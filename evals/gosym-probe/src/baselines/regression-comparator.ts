@@ -94,14 +94,14 @@ export class RegressionComparator {
     const versionMismatch = this.versionMismatch(name, agg, baseline);
     if (versionMismatch) return versionMismatch;
 
-    const currentScore = agg.medianScore ?? NaN;
+    const currentScore = agg.aggregateScore ?? NaN;
 
     if (Number.isNaN(currentScore)) {
       return { type: 'skipped', evaluator: name, skipReason: 'no-score-data' };
     }
 
     const baselineEntry = baseline.scores[name];
-    const baselineScore = baselineEntry?.medianScore ?? NaN;
+    const baselineScore = baselineEntry?.aggregateScore ?? NaN;
 
     const delta =
       Number.isNaN(currentScore) || Number.isNaN(baselineScore)

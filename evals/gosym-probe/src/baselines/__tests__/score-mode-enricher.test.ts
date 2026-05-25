@@ -28,13 +28,13 @@ function makeTrialWithScore(
 function makeScoreModeAgg(options: {
   lowerIsBetter?: boolean;
   evalVersion?: string;
-  medianScore?: number;
+  aggregateScore?: number;
 } = {}): AggregatedResult {
   return {
     regressionMode: 'score',
     passingTrials: 0,
     totalTrials: 3,
-    medianScore: options.medianScore ?? 100,
+    aggregateScore: options.aggregateScore ?? 100,
     lowerIsBetter: options.lowerIsBetter,
     evalVersion: options.evalVersion,
   };
@@ -57,7 +57,7 @@ function makeScenario(
 
 function makeBaseline(
   evaluator: string,
-  medianScore: number,
+  aggregateScore: number,
   options: {
     evalVersion?: string;
     regressionThresholds?: Record<string, number>;
@@ -71,7 +71,7 @@ function makeBaseline(
       [evaluator]: {
         passingTrials: 0,
         totalTrials: 3,
-        medianScore,
+        aggregateScore,
         evalVersion: options.evalVersion,
       },
     },
@@ -124,7 +124,7 @@ describe('trialPassesBaseline boundary conditions', () => {
     });
   });
 
-  describe('lowerIsBetter + baselineMedian = 0', () => {
+  describe('lowerIsBetter + baseline aggregateScore = 0', () => {
     it('trialScore <= 0 passes', () => {
       const result = makeScenario('tokens', [
         makeTrialWithScore('tokens', 0),
@@ -148,7 +148,7 @@ describe('trialPassesBaseline boundary conditions', () => {
     });
   });
 
-  describe('higherIsBetter + baselineMedian = 0', () => {
+  describe('higherIsBetter + baseline aggregateScore = 0', () => {
     it('any trial score passes (mirrors regression-comparator: no exceeded when baseline=0)', () => {
       const result = makeScenario('score', [
         makeTrialWithScore('score', 0),
@@ -222,8 +222,8 @@ describe('trialPassesBaseline boundary conditions', () => {
     });
   });
 
-  describe('undefined baselineMedian → skip enrichment', () => {
-    it('baseline entry has no medianScore → passAtK remains undefined', () => {
+  describe('undefined baseline aggregateScore → skip enrichment', () => {
+    it('baseline entry has no aggregateScore → passAtK remains undefined', () => {
       const baseline: BaselineScores = {
         scenarioName: 'test-scenario',
         runId: 'run-1',
@@ -241,13 +241,13 @@ describe('trialPassesBaseline boundary conditions', () => {
       expect(enriched['latency'].passAtK).toBeUndefined();
     });
 
-    it('NaN medianScore in baseline → skip enrichment', () => {
+    it('NaN aggregateScore in baseline → skip enrichment', () => {
       const baseline: BaselineScores = {
         scenarioName: 'test-scenario',
         runId: 'run-1',
         createdAt: '2026-01-01T00:00:00.000Z',
         scores: {
-          latency: { passingTrials: 0, totalTrials: 3, medianScore: NaN },
+          latency: { passingTrials: 0, totalTrials: 3, aggregateScore: NaN },
         },
       };
       const result = makeScenario('latency', [
@@ -601,7 +601,7 @@ describe('enrichScoreModePassRates edge cases', () => {
 
   it('negative baseline with lowerIsBetter — trial passes (negative baseline is indeterminate)', () => {
     // baseline=-10, score=-15 (decrease, better for lowerIsBetter)
-    // With negative baselineMedian, percentage change is undefined.
+    // With negative baseline aggregateScore, percentage change is undefined.
     // exceedsThreshold returns false → trial passes.
     // This matches RegressionComparator: baselineScore < 0 → exceeded=false.
     const result = makeScenario('metric', [
@@ -642,14 +642,14 @@ describe('enrichScoreModePassRates edge cases', () => {
           regressionMode: 'score',
           passingTrials: 0,
           totalTrials: 3,
-          medianScore: 100,
+          aggregateScore: 100,
           lowerIsBetter: true,
         },
         'cost': {
           regressionMode: 'score',
           passingTrials: 0,
           totalTrials: 3,
-          medianScore: 0.5,
+          aggregateScore: 0.5,
           lowerIsBetter: true,
         },
       },
@@ -659,7 +659,7 @@ describe('enrichScoreModePassRates edge cases', () => {
       runId: 'run-1',
       createdAt: '2026-01-01T00:00:00.000Z',
       scores: {
-        'latency': { passingTrials: 0, totalTrials: 3, medianScore: 100 },
+        'latency': { passingTrials: 0, totalTrials: 3, aggregateScore: 100 },
         // cost has no baseline entry
       },
     };
@@ -821,8 +821,8 @@ describe('trial verdict enrichment — seam and edge cases', () => {
       stabilityLevel: 'medium',
       trials: [trial],
       aggregated: {
-        latency: { regressionMode: 'score', passingTrials: 0, totalTrials: 1, medianScore: 100, lowerIsBetter: true },
-        quality: { regressionMode: 'score', passingTrials: 0, totalTrials: 1, medianScore: 100, lowerIsBetter: false },
+        latency: { regressionMode: 'score', passingTrials: 0, totalTrials: 1, aggregateScore: 100, lowerIsBetter: true },
+        quality: { regressionMode: 'score', passingTrials: 0, totalTrials: 1, aggregateScore: 100, lowerIsBetter: false },
       },
     };
     const baseline: BaselineScores = {
@@ -830,8 +830,8 @@ describe('trial verdict enrichment — seam and edge cases', () => {
       runId: 'run-1',
       createdAt: '2026-01-01T00:00:00.000Z',
       scores: {
-        latency: { passingTrials: 0, totalTrials: 1, medianScore: 100 },
-        quality: { passingTrials: 0, totalTrials: 1, medianScore: 100 },
+        latency: { passingTrials: 0, totalTrials: 1, aggregateScore: 100 },
+        quality: { passingTrials: 0, totalTrials: 1, aggregateScore: 100 },
       },
     };
 
@@ -860,8 +860,8 @@ describe('trial verdict enrichment — seam and edge cases', () => {
       stabilityLevel: 'medium',
       trials: [trial],
       aggregated: {
-        latency: { regressionMode: 'score', passingTrials: 0, totalTrials: 1, medianScore: 100, lowerIsBetter: true },
-        cost: { regressionMode: 'score', passingTrials: 0, totalTrials: 1, medianScore: 0.10, lowerIsBetter: true },
+        latency: { regressionMode: 'score', passingTrials: 0, totalTrials: 1, aggregateScore: 100, lowerIsBetter: true },
+        cost: { regressionMode: 'score', passingTrials: 0, totalTrials: 1, aggregateScore: 0.10, lowerIsBetter: true },
       },
     };
     const baseline: BaselineScores = {
@@ -869,7 +869,7 @@ describe('trial verdict enrichment — seam and edge cases', () => {
       runId: 'run-1',
       createdAt: '2026-01-01T00:00:00.000Z',
       scores: {
-        latency: { passingTrials: 0, totalTrials: 1, medianScore: 100 },
+        latency: { passingTrials: 0, totalTrials: 1, aggregateScore: 100 },
         // cost has no baseline entry
       },
     };

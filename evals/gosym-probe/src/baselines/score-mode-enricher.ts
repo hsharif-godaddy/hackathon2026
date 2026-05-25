@@ -5,14 +5,14 @@ import type { ThresholdConfig } from './threshold.js';
 
 /**
  * Enriches score-mode evaluators in a ScenarioResult with passAtK/passToTheK
- * derived from per-trial comparison against a baseline median.
+ * derived from per-trial comparison against a baseline aggregate score.
  *
  * Returns a NEW aggregated record. The input ScenarioResult is not mutated.
  * Each evaluator is processed independently.
  *
  * Score-mode evaluators are left unchanged (passAtK remains undefined) when:
  * - The baseline has no entry for the evaluator.
- * - The baseline medianScore is undefined or non-finite.
+ * - The baseline aggregateScore is undefined or non-finite.
  * - evalVersion differs between current run and baseline.
  * - All trials have verdict 'unknown' (no valid comparison data).
  * - The trials array is empty (result.trials.length === 0).
@@ -35,9 +35,9 @@ export function enrichScoreModePassRates(
     }
 
     const baselineEntry = baseline.scores[name];
-    const baselineMedian = baselineEntry?.medianScore;
+    const baselineAggregate = baselineEntry?.aggregateScore;
 
-    if (baselineMedian === undefined || !Number.isFinite(baselineMedian)) {
+    if (baselineAggregate === undefined || !Number.isFinite(baselineAggregate)) {
       enriched[name] = agg;
       continue;
     }
@@ -73,10 +73,10 @@ export function enrichScoreModePassRates(
       validTrials++;
       const trialVerdict: 'pass' | 'fail' = (
         Number.isFinite(evalResult.score) &&
-        !exceedsThreshold(evalResult.score, baselineMedian, threshold, lowerIsBetter)
+        !exceedsThreshold(evalResult.score, baselineAggregate, threshold, lowerIsBetter)
       ) ? 'pass' : 'fail';
 
-      const baselineComparison = `${name}: ${evalResult.score} vs baseline ${baselineMedian} (threshold ${(threshold * 100).toFixed(0)}%) → ${trialVerdict}`;
+      const baselineComparison = `${name}: ${evalResult.score} vs baseline ${baselineAggregate} (threshold ${(threshold * 100).toFixed(0)}%) → ${trialVerdict}`;
 
       if (!verdictUpdates.has(trial.trialIndex)) {
         verdictUpdates.set(trial.trialIndex, new Map());

@@ -224,7 +224,7 @@ describe('BaselineStore', () => {
 
   describe('save() — score-mode handling', () => {
     it(
-      'does not write medianScore for pass-rate '
+      'does not write aggregateScore for pass-rate '
       + 'evaluators',
       async () => {
         const store = new BaselineStore();
@@ -236,7 +236,7 @@ describe('BaselineStore', () => {
               passToTheK: false,
               passingTrials: 2,
               totalTrials: 3,
-              medianScore: 0.67,
+              aggregateScore: 0.67,
             },
           },
         };
@@ -248,12 +248,12 @@ describe('BaselineStore', () => {
         ) as BaselineScores;
         expect(
           parsed.scores['output-quality'],
-        ).not.toHaveProperty('medianScore');
+        ).not.toHaveProperty('aggregateScore');
       },
     );
 
     it(
-      'writes medianScore for score-mode evaluators',
+      'writes aggregateScore for score-mode evaluators',
       async () => {
         const store = new BaselineStore();
         const result: ScenarioResult = {
@@ -264,7 +264,7 @@ describe('BaselineStore', () => {
               passToTheK: true,
               passingTrials: 3,
               totalTrials: 3,
-              medianScore: 0.75,
+              aggregateScore: 0.75,
               regressionMode: 'score',
             },
           },
@@ -276,7 +276,7 @@ describe('BaselineStore', () => {
           raw as string,
         ) as BaselineScores;
         expect(
-          parsed.scores['latency']?.medianScore,
+          parsed.scores['latency']?.aggregateScore,
         ).toBe(0.75);
       },
     );
@@ -291,7 +291,7 @@ describe('BaselineStore', () => {
           'latency': {
             passingTrials: 3,
             totalTrials: 3,
-            medianScore: 0.75,
+            aggregateScore: 0.75,
             regressionMode: 'score',
           },
         },
@@ -362,7 +362,7 @@ describe('BaselineStore', () => {
           passToTheK: true,
           passingTrials: 3,
           totalTrials: 3,
-          medianScore: 0.8,
+          aggregateScore: 0.8,
           regressionMode: 'score',
         },
       },
@@ -566,7 +566,7 @@ describe('BaselineStore', () => {
             totalTrials: 3,
             scores: { min: 0.7, max: 0.9, mean: 0.8, median: 0.8, stddev: 0.05 },
             verdicts: { observed: 3 },
-            medianScore: 0.75,
+            aggregateScore: 0.75,
           },
         },
         timing: {
@@ -615,7 +615,7 @@ describe('BaselineStore', () => {
             stddev: 0.5,
           },
           verdicts: { observed: 3 },
-          medianScore: 0.85,
+          aggregateScore: 0.85,
         },
         'output-quality': {
           passAtK: true,
@@ -715,7 +715,7 @@ describe('BaselineStore', () => {
     );
 
     it(
-      'throws when evaluators have medianScore but '
+      'throws when evaluators have aggregateScore but '
       + 'scoreEvaluatorNames is omitted',
       async () => {
         const store = new BaselineStore();
@@ -731,7 +731,7 @@ describe('BaselineStore', () => {
     );
 
     it(
-      'throws when evaluators have medianScore but '
+      'throws when evaluators have aggregateScore but '
       + 'scoreEvaluatorNames is empty',
       async () => {
         const store = new BaselineStore();
@@ -750,7 +750,7 @@ describe('BaselineStore', () => {
 
     it(
       'throws when scoreEvaluatorNames is a non-empty '
-      + 'subset missing evaluators with medianScore',
+      + 'subset missing evaluators with aggregateScore',
       async () => {
         const stored: StoredAggregated = {
           scenarioName: 'build-landing-page',
@@ -762,7 +762,7 @@ describe('BaselineStore', () => {
               totalTrials: 3,
               scores: { min: 7, max: 9, mean: 8, median: 8.5, stddev: 0.5 },
               verdicts: { observed: 3 },
-              medianScore: 0.85,
+              aggregateScore: 0.85,
             },
             'response-time': {
               passAtK: true,
@@ -771,7 +771,7 @@ describe('BaselineStore', () => {
               totalTrials: 3,
               scores: { min: 5, max: 8, mean: 6.5, median: 6, stddev: 1 },
               verdicts: { observed: 3 },
-              medianScore: 0.60,
+              aggregateScore: 0.60,
             },
           },
           timing: {
@@ -796,7 +796,7 @@ describe('BaselineStore', () => {
     );
 
     it(
-      'does not throw when no evaluators have medianScore '
+      'does not throw when no evaluators have aggregateScore '
       + 'and scoreEvaluatorNames is omitted',
       async () => {
         const store = new BaselineStore();
@@ -973,7 +973,7 @@ describe('BaselineStore', () => {
       expect(typeof parsed.createdAt).toBe('string');
     });
 
-    it('preserves medianScore of 0 for score-mode evaluators', async () => {
+    it('preserves aggregateScore of 0 for score-mode evaluators', async () => {
       const stored: StoredAggregated = {
         scenarioName: 'build-landing-page',
         evaluators: {
@@ -984,7 +984,7 @@ describe('BaselineStore', () => {
             totalTrials: 3,
             scores: { min: 0, max: 0, mean: 0, median: 0, stddev: 0 },
             verdicts: { observed: 3 },
-            medianScore: 0,
+            aggregateScore: 0,
           },
         },
         timing: {
@@ -1003,10 +1003,10 @@ describe('BaselineStore', () => {
 
       const [, raw] = mockWriteFile.mock.calls[0];
       const parsed = JSON.parse(raw as string) as BaselineScores;
-      expect(parsed.scores['latency']?.medianScore).toBe(0);
+      expect(parsed.scores['latency']?.aggregateScore).toBe(0);
     });
 
-    it('uses filtered medianScore over scores.median', async () => {
+    it('uses filtered aggregateScore over scores.median', async () => {
       const stored: StoredAggregated = {
         scenarioName: 'build-landing-page',
         evaluators: {
@@ -1017,7 +1017,7 @@ describe('BaselineStore', () => {
             totalTrials: 5,
             scores: { min: 0, max: 9, mean: 3.4, median: 3, stddev: 3.2 },
             verdicts: { observed: 2, unknown: 3 },
-            medianScore: 0.7,
+            aggregateScore: 0.7,
           },
         },
         timing: {
@@ -1036,10 +1036,10 @@ describe('BaselineStore', () => {
 
       const [, raw] = mockWriteFile.mock.calls[0];
       const parsed = JSON.parse(raw as string) as BaselineScores;
-      expect(parsed.scores['latency']?.medianScore).toBe(0.7);
+      expect(parsed.scores['latency']?.aggregateScore).toBe(0.7);
     });
 
-    it('omits medianScore when evaluator summary has none', async () => {
+    it('omits aggregateScore when evaluator summary has none', async () => {
       const store = new BaselineStore();
       await store.saveFromStored(
         'run-001',
@@ -1050,7 +1050,7 @@ describe('BaselineStore', () => {
 
       const [, raw] = mockWriteFile.mock.calls[0];
       const parsed = JSON.parse(raw as string) as BaselineScores;
-      expect(parsed.scores['bug-hit-rate']).not.toHaveProperty('medianScore');
+      expect(parsed.scores['bug-hit-rate']).not.toHaveProperty('aggregateScore');
     });
   });
 

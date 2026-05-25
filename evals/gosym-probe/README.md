@@ -277,7 +277,7 @@ Error: baseline run "abc-1234-uuid" not found for scenario "build-landing-page".
 `--baseline` and `--skip-baseline` are mutually exclusive.
 
 **What a baseline stores:** aggregated `passAtK`, `passToTheK`,
-`passingTrials`, `totalTrials`, and `medianScore` (for score-mode
+`passingTrials`, `totalTrials`, and `aggregateScore` (for score-mode
 evaluators) per evaluator, not raw trial transcripts.
 
 **No baseline = informational.** Scenarios without a saved baseline are
@@ -288,11 +288,12 @@ reported but never block. Pass `--skip-baseline` to skip comparison entirely.
 - **Pass-rate evaluators** (default): compares pass rate
   (`passingTrials / totalTrials`) against baseline. A drop exceeding the
   threshold flags a regression.
-- **Score-mode evaluators** (`regressionMode: 'score'`): compares median
-  score via relative percentage change against the baseline median.
-  Respects `lowerIsBetter` directionality. After regression comparison,
-  `enrichScoreModePassRates` derives `passAtK`/`passToTheK` by checking
-  each trial's score against the baseline median within the threshold.
+- **Score-mode evaluators** (`regressionMode: 'score'`): compares the
+  aggregate score (trimmed mean) via relative percentage change against the
+  baseline. Respects `lowerIsBetter` directionality. After regression
+  comparison, `enrichScoreModePassRates` derives `passAtK`/`passToTheK` by
+  checking each trial's score against the baseline aggregate score within
+  the threshold.
 
 ### Choosing the right metric for gating
 

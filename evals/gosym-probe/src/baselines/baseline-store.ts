@@ -77,8 +77,8 @@ export class BaselineStore {
             passingTrials: agg.passingTrials,
             totalTrials: agg.totalTrials,
             ...(scoreNamesSet.has(name) &&
-              agg.medianScore != null && {
-                medianScore: agg.medianScore,
+              agg.aggregateScore != null && {
+                aggregateScore: agg.aggregateScore,
               }),
             ...(agg.evalVersion !== undefined && {
               evalVersion: agg.evalVersion,
@@ -107,7 +107,7 @@ export class BaselineStore {
    * Callers MUST provide `options.scoreEvaluatorNames` when score-mode
    * evaluators exist. Unlike {@link save}, this method cannot infer
    * score-mode evaluators because {@link StoredAggregated} does not
-   * carry `regressionMode`. Throws if evaluators with `medianScore`
+   * carry `regressionMode`. Throws if evaluators with `aggregateScore`
    * are detected but `scoreEvaluatorNames` is empty or omitted.
    */
   async saveFromStored(
@@ -125,20 +125,20 @@ export class BaselineStore {
     const scoreNames = options?.scoreEvaluatorNames ?? [];
     const scoreNamesSet = new Set(scoreNames);
 
-    const evalsWithMedian = Object.entries(stored.evaluators)
-      .filter(([, ev]) => ev.medianScore != null)
+    const evalsWithAggregate = Object.entries(stored.evaluators)
+      .filter(([, ev]) => ev.aggregateScore != null)
       .map(([name]) => name);
 
-    const missingNames = evalsWithMedian.filter(
+    const missingNames = evalsWithAggregate.filter(
       (name) => !scoreNamesSet.has(name),
     );
 
     if (missingNames.length > 0) {
       throw new Error(
         `saveFromStored: scenario "${stored.scenarioName}" has evaluators `
-        + `with medianScore (${missingNames.join(', ')}) not listed in `
+        + `with aggregateScore (${missingNames.join(', ')}) not listed in `
         + `scoreEvaluatorNames. Pass all score-mode evaluator names to `
-        + `preserve medianScore and regressionThresholds.`,
+        + `preserve aggregateScore and regressionThresholds.`,
       );
     }
 
@@ -170,8 +170,8 @@ export class BaselineStore {
             passingTrials: ev.passingTrials,
             totalTrials: ev.totalTrials,
             ...(scoreNamesSet.has(name) &&
-              ev.medianScore != null && {
-                medianScore: ev.medianScore,
+              ev.aggregateScore != null && {
+                aggregateScore: ev.aggregateScore,
               }),
             ...(ev.evalVersion !== undefined && {
               evalVersion: ev.evalVersion,

@@ -512,7 +512,7 @@ describe('MdReporter', () => {
             passToTheK: false,
             passingTrials: 0,
             totalTrials: 1,
-            medianScore: 0.75,
+            aggregateScore: 0.75,
             regressionMode: 'score',
           },
         },
@@ -1072,7 +1072,7 @@ describe('MdReporter — score-mode pass@k rendering', () => {
         'latency': {
           passingTrials: 0,
           totalTrials: 1,
-          medianScore: 0.75,
+          aggregateScore: 0.75,
           regressionMode: 'score',
         },
       },
@@ -1385,7 +1385,7 @@ const SCORE_MODE_ENRICHED_RESULT: ScenarioResult = {
       passingTrials: 1,
       totalTrials: 2,
       regressionMode: 'score',
-      medianScore: 0.5,
+      aggregateScore: 0.5,
     },
   },
 };
@@ -1440,7 +1440,7 @@ describe('MdReporter — score-mode evaluators with baseline comparison', () => 
           passingTrials: 0,
           totalTrials: 1,
           regressionMode: 'score',
-          medianScore: 0.5,
+          aggregateScore: 0.5,
         },
       },
     };

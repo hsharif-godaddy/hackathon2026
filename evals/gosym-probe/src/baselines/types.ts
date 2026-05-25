@@ -7,8 +7,8 @@ export interface BaselineEvalScores {
   passToTheK?: boolean;
   passingTrials: number;
   totalTrials: number;
-  /** Median score across trials; populated for score-mode evaluators. */
-  medianScore?: number;
+  /** Aggregate score across trials; populated for score-mode evaluators. */
+  aggregateScore?: number;
   evalVersion?: string;
   /** When true, score increase = regression. Present only for score-mode evaluators. */
   lowerIsBetter?: boolean;
@@ -44,13 +44,13 @@ export interface ComparedRegressionEvalResult extends RegressionEvalResultBase {
   type: 'compared';
   /**
    * Pass-rate mode: passingTrials / totalTrials.
-   * Score mode: median score across trials.
+   * Score mode: aggregate score across trials.
    * NaN when no data is available.
    */
   currentScore: number;
   /**
    * Pass-rate mode: baseline passingTrials / totalTrials.
-   * Score mode: baseline median score.
+   * Score mode: baseline aggregate score.
    * NaN when no baseline data exists.
    */
   baselineScore: number;

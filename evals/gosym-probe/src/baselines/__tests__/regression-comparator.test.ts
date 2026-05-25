@@ -26,17 +26,17 @@ function makeAgg(
   };
 }
 
-function makeScoreAgg(medianScore?: number): AggregatedResult {
+function makeScoreAgg(aggregateScore?: number): AggregatedResult {
   return {
     passingTrials: 0,
     totalTrials: 1,
-    ...(medianScore !== undefined ? { medianScore } : {}),
+    ...(aggregateScore !== undefined ? { aggregateScore } : {}),
     regressionMode: 'score',
   };
 }
 
 function makeScoreBaseline(
-  medianScore?: number,
+  aggregateScore?: number,
   regressionThresholds?: Record<string, number>,
 ): BaselineScores {
   return {
@@ -49,7 +49,7 @@ function makeScoreBaseline(
         passToTheK: false,
         passingTrials: 0,
         totalTrials: 1,
-        ...(medianScore !== undefined ? { medianScore } : {}),
+        ...(aggregateScore !== undefined ? { aggregateScore } : {}),
       },
     },
     ...(regressionThresholds !== undefined
@@ -473,8 +473,8 @@ describe('RegressionComparator', () => {
       expect(r.gate).toBe('pass');
     });
 
-    it('absent baseline medianScore -> exceeded = false', () => {
-      // baseline scores entry exists but medianScore is absent
+    it('absent baseline aggregateScore -> exceeded = false', () => {
+      // baseline scores entry exists but aggregateScore is absent
       const result = makeResult({
         latency: makeScoreAgg(0.5),
       });
@@ -485,7 +485,7 @@ describe('RegressionComparator', () => {
       expect(Number.isNaN(e?.baselineScore)).toBe(true);
     });
 
-    it('absent current medianScore → skipped with no-score-data', () => {
+    it('absent current aggregateScore → skipped with no-score-data', () => {
       const result = makeResult({
         latency: makeScoreAgg(),
       });
@@ -509,7 +509,7 @@ describe('RegressionComparator', () => {
       expect(r.gate).toBe('pass');
     });
 
-    it('baseline medianScore = 0 → exceeded = false (no division by zero)',
+    it('baseline aggregateScore = 0 → exceeded = false (no division by zero)',
       () => {
         const result = makeResult({
           latency: makeScoreAgg(0),
@@ -521,7 +521,7 @@ describe('RegressionComparator', () => {
       },
     );
 
-    it('currentScore and baselineScore reflect median scores', () => {
+    it('currentScore and baselineScore reflect aggregate scores', () => {
       const result = makeResult({
         latency: makeScoreAgg(0.56),
       });

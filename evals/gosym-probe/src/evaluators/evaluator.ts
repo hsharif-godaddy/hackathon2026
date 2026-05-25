@@ -34,7 +34,7 @@ export interface Evaluator {
   /**
    * Controls how RegressionComparator handles this evaluator.
    * - 'passRate' (default): compare pass-rate across trials
-   * - 'score': compare median score across trials
+   * - 'score': compare aggregate score across trials
    */
   regressionMode?: 'passRate' | 'score';
   /**

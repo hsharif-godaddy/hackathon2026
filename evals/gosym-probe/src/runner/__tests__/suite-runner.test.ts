@@ -718,7 +718,7 @@ describe('SuiteRunner — score-mode enrichment', () => {
     mockBaselineStore.load.mockResolvedValue(null);
   });
 
-  it('enriches score-mode evaluator with passAtK when baseline has medianScore', async () => {
+  it('enriches score-mode evaluator with passAtK when baseline has aggregateScore', async () => {
     const scoreEval: Evaluator = {
       name: 'token-count',
       regressionMode: 'score',
@@ -740,7 +740,7 @@ describe('SuiteRunner — score-mode enrichment', () => {
           'token-count': {
             passingTrials: 0,
             totalTrials: 3,
-            medianScore: 100,
+            aggregateScore: 100,
           },
         },
       },

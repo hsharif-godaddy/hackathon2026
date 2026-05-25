@@ -6,7 +6,7 @@ import type {
   ScenarioResult,
   AggregatedResult,
 } from './types.js';
-import { median } from '../util/median.js';
+import { trimmedMean } from '../util/trimmed-mean.js';
 
 type EvalData = {
   verdicts: EvalResult['verdict'][];
@@ -61,8 +61,8 @@ export class TrialAggregator {
       const passingTrials = verdicts.filter((v, i) => v === 'pass' && !failed[i]).length;
       const totalTrials = verdicts.length - failedCount;
       const mode = modeMap.get(name);
-      const filteredMedian = mode === 'score'
-        ? median(scores.filter((_, i) => verdicts[i] !== 'unknown' && !failed[i]))
+      const filteredAggregate = mode === 'score'
+        ? trimmedMean(scores.filter((_, i) => verdicts[i] !== 'unknown' && !failed[i]))
         : null;
       const lowerIsBetter = lowerIsBetterMap.get(name);
 
@@ -81,7 +81,7 @@ export class TrialAggregator {
         passingTrials,
         totalTrials,
         ...(failedCount > 0 && { failedTrials: failedCount }),
-        ...(filteredMedian != null && { medianScore: filteredMedian }),
+        ...(filteredAggregate != null && { aggregateScore: filteredAggregate }),
         ...(mode !== undefined && { regressionMode: mode }),
         ...(versions.size === 1 &&
           versionedResults === verdicts.length && { evalVersion: [...versions][0] }),

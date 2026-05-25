@@ -279,7 +279,7 @@ describe('formatEvaluatorScores', () => {
             stddev: 0.1,
           },
           verdicts: { observed: 3 },
-          medianScore: 0.8,
+          aggregateScore: 0.8,
         },
       },
     };

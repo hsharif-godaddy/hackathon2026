@@ -14,14 +14,14 @@ export interface AggregatedResult {
    * At least one trial passed. For pass-rate evaluators this is always present.
    * For score-mode evaluators (`regressionMode === 'score'`): present when a
    * baseline exists and is derived from per-trial comparison against the
-   * baseline median; absent when no baseline is available.
+   * baseline aggregate score; absent when no baseline is available.
    */
   passAtK?: boolean;
   /**
    * All trials passed. For pass-rate evaluators this is always present.
    * For score-mode evaluators (`regressionMode === 'score'`): present when a
    * baseline exists and is derived from per-trial comparison against the
-   * baseline median; absent when no baseline is available.
+   * baseline aggregate score; absent when no baseline is available.
    */
   passToTheK?: boolean;
   /**
@@ -30,7 +30,7 @@ export interface AggregatedResult {
   passingTrials: number;
   /**
    * Count of trials whose score fell within the regression threshold of the
-   * baseline median. Only present for enriched score-mode evaluators with a
+   * baseline aggregate score. Only present for enriched score-mode evaluators with a
    * baseline comparison.
    */
   baselinePassingTrials?: number;
@@ -38,12 +38,12 @@ export interface AggregatedResult {
   totalTrials: number;
   /** Number of trials where the evaluator itself failed (e.g. judge parse error). */
   failedTrials?: number;
-  /** Median score across non-unknown trials; present only for score-mode evaluators. */
-  medianScore?: number;
+  /** Aggregate score across non-unknown trials; present only for score-mode evaluators. */
+  aggregateScore?: number;
   /**
    * Regression comparison mode for this evaluator.
    * Absent / 'passRate': compare pass-rate across trials (default).
-   * 'score': compare median score via relative delta.
+   * 'score': compare aggregate score via relative delta.
    */
   regressionMode?: 'passRate' | 'score';
   evalVersion?: string;

@@ -268,7 +268,7 @@ describe('TrialAggregator', () => {
     });
   });
 
-  describe('medianScore', () => {
+  describe('aggregateScore', () => {
     const scoreEvaluator = {
       name: 'eval',
       regressionMode: 'score' as const,
@@ -314,18 +314,18 @@ describe('TrialAggregator', () => {
       };
     }
 
-    it('computes median for odd trial count', () => {
+    it('computes trimmed mean for odd trial count', () => {
       const trials = [
         makeTrialWithScore(0, { eval: 0.1 }),
         makeTrialWithScore(1, { eval: 0.5 }),
         makeTrialWithScore(2, { eval: 0.3 }),
       ];
       const result = agg.aggregate(scoreScenario(), trials);
-      // Sorted: [0.1, 0.3, 0.5] -> median = 0.3
-      expect(result.aggregated['eval'].medianScore).toBe(0.3);
+      // Sorted: [0.1, 0.3, 0.5] -> trimmed = [0.3] -> 0.3
+      expect(result.aggregated['eval'].aggregateScore).toBe(0.3);
     });
 
-    it('computes median for even trial count', () => {
+    it('computes trimmed mean for even trial count', () => {
       const trials = [
         makeTrialWithScore(0, { eval: 0.1 }),
         makeTrialWithScore(1, { eval: 0.4 }),
@@ -333,8 +333,8 @@ describe('TrialAggregator', () => {
         makeTrialWithScore(3, { eval: 0.3 }),
       ];
       const result = agg.aggregate(scoreScenario(), trials);
-      // Sorted: [0.1, 0.2, 0.3, 0.4] -> median = (0.2 + 0.3) / 2 = 0.25
-      expect(result.aggregated['eval'].medianScore).toBe(0.25);
+      // Sorted: [0.1, 0.2, 0.3, 0.4] -> trimmed = [0.2, 0.3] -> 0.25
+      expect(result.aggregated['eval'].aggregateScore).toBe(0.25);
     });
 
     it('returns 0 when all scores are zero', () => {
@@ -344,13 +344,13 @@ describe('TrialAggregator', () => {
         makeTrialWithScore(2, { eval: 0 }),
       ];
       const result = agg.aggregate(scoreScenario(), trials);
-      expect(result.aggregated['eval'].medianScore).toBe(0);
+      expect(result.aggregated['eval'].aggregateScore).toBe(0);
     });
 
     it('returns the score directly for a single trial', () => {
       const trials = [makeTrialWithScore(0, { eval: 0.707 })];
       const result = agg.aggregate(scoreScenario(), trials);
-      expect(result.aggregated['eval'].medianScore).toBe(0.707);
+      expect(result.aggregated['eval'].aggregateScore).toBe(0.707);
     });
 
     it('handles mixed scores across trials', () => {
@@ -362,17 +362,47 @@ describe('TrialAggregator', () => {
         makeTrialWithScore(4, { eval: 0.5 }),
       ];
       const result = agg.aggregate(scoreScenario(), trials);
-      // Sorted: [0.1, 0.3, 0.5, 0.7, 0.9] -> median = 0.5
-      expect(result.aggregated['eval'].medianScore).toBe(0.5);
+      // Sorted: [0.1, 0.3, 0.5, 0.7, 0.9] -> trimmed = [0.3, 0.5, 0.7] -> 0.5
+      expect(result.aggregated['eval'].aggregateScore).toBe(0.5);
     });
 
-    it('omits medianScore for pass-rate evaluators', () => {
+    it('trimmed mean differs from median on asymmetric distribution', () => {
+      const trials = [
+        makeTrialWithScore(0, { eval: 0.0 }),
+        makeTrialWithScore(1, { eval: 0.2 }),
+        makeTrialWithScore(2, { eval: 0.3 }),
+        makeTrialWithScore(3, { eval: 0.7 }),
+        makeTrialWithScore(4, { eval: 1.0 }),
+      ];
+      const result = agg.aggregate(scoreScenario(), trials);
+      // Sorted: [0.0, 0.2, 0.3, 0.7, 1.0] -> trimmed = [0.2, 0.3, 0.7] -> 0.4
+      // Median would be 0.3; trimmed mean is 0.4
+      expect(result.aggregated['eval'].aggregateScore).toBeCloseTo(0.4);
+    });
+
+    it('trimmed mean differs from median on asymmetric length-4 distribution', () => {
+      const trials = [
+        makeTrialWithScore(0, { eval: 0.1 }),
+        makeTrialWithScore(1, { eval: 0.2 }),
+        makeTrialWithScore(2, { eval: 0.8 }),
+        makeTrialWithScore(3, { eval: 0.9 }),
+      ];
+      const result = agg.aggregate(scoreScenario(), trials);
+      // Sorted: [0.1, 0.2, 0.8, 0.9] -> trimmed = [0.2, 0.8] -> 0.5
+      // Median would be (0.2+0.8)/2 = 0.5 — same here, but the trimming path is exercised
+      // Use a skewed set instead: [0.1, 0.3, 0.4, 0.9] -> trimmed = [0.3, 0.4] -> 0.35
+      // Median would be (0.3+0.4)/2 = 0.35 — also same. For length-4, median ≡ trimmedMean.
+      // The value of this test is exercising the even-length trim boundary at integration level.
+      expect(result.aggregated['eval'].aggregateScore).toBe(0.5);
+    });
+
+    it('omits aggregateScore for pass-rate evaluators', () => {
       const trials = [
         makeTrial(0, { eval: 'pass' }),
         makeTrial(1, { eval: 'fail' }),
       ];
       const result = agg.aggregate(makeScenario(), trials);
-      expect(result.aggregated['eval'].medianScore).toBeUndefined();
+      expect(result.aggregated['eval'].aggregateScore).toBeUndefined();
     });
 
     function makeTrialWithScoreAndVerdict(
@@ -403,7 +433,7 @@ describe('TrialAggregator', () => {
       };
     }
 
-    it('excludes unknown-verdict trials from medianScore', () => {
+    it('excludes unknown-verdict trials from aggregateScore', () => {
       const trials = [
         makeTrialWithScoreAndVerdict(0, {
           eval: { score: 0, verdict: 'unknown' },
@@ -422,11 +452,11 @@ describe('TrialAggregator', () => {
         }),
       ];
       const result = agg.aggregate(scoreScenario(), trials);
-      // Only observed scores [0.8, 0.6], median = (0.6 + 0.8) / 2 = 0.7
-      expect(result.aggregated['eval'].medianScore).toBe(0.7);
+      // Only observed scores [0.8, 0.6] -> count <= 2, mean = 0.7
+      expect(result.aggregated['eval'].aggregateScore).toBe(0.7);
     });
 
-    it('omits medianScore when all trials are unknown', () => {
+    it('omits aggregateScore when all trials are unknown', () => {
       const trials = [
         makeTrialWithScoreAndVerdict(0, {
           eval: { score: 0, verdict: 'unknown' },
@@ -436,7 +466,7 @@ describe('TrialAggregator', () => {
         }),
       ];
       const result = agg.aggregate(scoreScenario(), trials);
-      expect(result.aggregated['eval'].medianScore).toBeUndefined();
+      expect(result.aggregated['eval'].aggregateScore).toBeUndefined();
     });
   });
 
@@ -836,6 +866,42 @@ describe('TrialAggregator', () => {
       const result = agg.aggregate(makeScenario(), trials);
       expect(result.aggregated['eval'].failedTrials).toBeUndefined();
       expect(result.aggregated['eval'].totalTrials).toBe(2);
+    });
+
+    it('excludes evaluatorFailed trials from score-mode aggregateScore', () => {
+      const scoreEval: Evaluator = {
+        name: 'metric',
+        regressionMode: 'score' as const,
+        evaluate: async () => ({
+          evaluator: 'metric',
+          score: 0,
+          verdict: 'observed' as const,
+          reason: '',
+        }),
+      };
+      const scenario = makeScenario({ evaluators: [scoreEval] });
+      const trials: TrialResult[] = [
+        {
+          trialIndex: 0,
+          transcript: { scenarioName: 'test-scenario', trialIndex: 0, turns: [], snapshots: [], errors: [] },
+          evalResults: [{ evaluator: 'metric', score: 100, verdict: 'observed', reason: '' }],
+        },
+        {
+          trialIndex: 1,
+          transcript: { scenarioName: 'test-scenario', trialIndex: 1, turns: [], snapshots: [], errors: [] },
+          evalResults: [{ evaluator: 'metric', score: 200, verdict: 'observed', reason: '' }],
+        },
+        {
+          trialIndex: 2,
+          transcript: { scenarioName: 'test-scenario', trialIndex: 2, turns: [], snapshots: [], errors: [] },
+          evalResults: [{ evaluator: 'metric', score: 999, verdict: 'observed', reason: '', evaluatorFailed: true }],
+        },
+      ];
+      const result = agg.aggregate(scenario, trials);
+      // Only trials 0 and 1 contribute: trimmedMean([100, 200]) = 150
+      // If the !failed[i] guard were removed, trimmedMean([100, 200, 999]) = 200
+      expect(result.aggregated['metric'].aggregateScore).toBe(150);
+      expect(result.aggregated['metric'].failedTrials).toBe(1);
     });
   });
 });

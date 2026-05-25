@@ -856,7 +856,7 @@ describe('EvalStore', () => {
           'test-evaluator': {
             passingTrials: 0,
             totalTrials: 1,
-            medianScore: 0.75,
+            aggregateScore: 0.75,
             regressionMode: 'score',
             lowerIsBetter: true,
           },

@@ -64,8 +64,8 @@ export interface EvaluatorSummary {
   totalTrials: number;
   scores: ScoreStats;
   verdicts: Record<string, number>;
-  /** Median score excluding unknown-verdict trials; present only for score-mode evaluators. */
-  medianScore?: number;
+  /** Aggregate score excluding unknown-verdict trials; present only for score-mode evaluators. */
+  aggregateScore?: number;
   evalVersion?: string;
   /** When true, score increase = regression. Present only for score-mode evaluators. */
   lowerIsBetter?: boolean;
