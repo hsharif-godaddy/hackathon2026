@@ -14,6 +14,7 @@ export { default as todoListRouter } from './todo-list.js';
 export { default as securityMisconfigScanRouter } from './security-misconfig-scan.js';
 export { default as qaAnalyzeRouter } from './qa-analyze.js';
 export { default as vulnerabilityScanRouter } from './vulnerability-scan.js';
+export { default as securityReportRouter } from './security-report.js';
 export { default as secretsScanRouter } from './secrets-scan.js';
 export { default as oauthRouter } from './oauth.js';
 export { default as videoRouter } from './video.js';

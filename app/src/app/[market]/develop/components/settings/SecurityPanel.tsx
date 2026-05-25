@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Alert from '@ux/alert';
 import Box from "@ux/box";
 import Button from "@ux/button";
 import Card from "@ux/card";
 import WandIcon from "@ux/icon/wand";
+import text from '@ux/text';
 
 import { SettingsLoadingState } from '@/app/[market]/develop/components/settings/components/SettingsLoadingState';
 import SettingsSection from "@/app/[market]/develop/components/settings/SettingsSection";
@@ -14,6 +15,7 @@ import { shipAnalyticsLog } from '@/lib/logging';
 import { type TestPilotRunResult } from "@/lib/testpilot";
 import { useSecurityQuickFixHandoffStore } from '@/stores/useSecurityQuickFixHandoffStore';
 import { useServerPollingStore } from '@/stores/useServerPollingStore';
+import { formatDate } from '@/utils/common';
 import SecurityResults from './components/security/SecurityResults';
 
 type SeverityBucket = { critical: number; high: number; medium: number; low: number };
@@ -71,8 +73,10 @@ export default function SecurityPanel() {
   const serverState = getServerState(appId);
 
   const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingStoredReport, setIsLoadingStoredReport] = useState(false);
   const [isQuickFixInProgress, setIsQuickFixInProgress] = useState(false);
   const [results, setResults] = useState<{ security?: TestPilotRunResult } | null>(null);
+  const [lastScannedAt, setLastScannedAt] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [errorTitle, setErrorTitle] = useState<string | null>(null);
 
@@ -80,14 +84,49 @@ export default function SecurityPanel() {
   const lastPanelResetNonce = useSecurityQuickFixHandoffStore((s) => s.lastPanelResetNonce);
   const recordPanelReset = useSecurityQuickFixHandoffStore((s) => s.recordPanelReset);
 
+  const storedReportAbortRef = useRef<AbortController | null>(null);
+
   useEffect(() => {
     if (handoffCompleteNonce > lastPanelResetNonce) {
+      storedReportAbortRef.current?.abort();
+      setIsLoadingStoredReport(false);
       setResults(null);
+      setLastScannedAt(null);
       setError(null);
       setErrorTitle(null);
       recordPanelReset();
     }
   }, [handoffCompleteNonce, lastPanelResetNonce, recordPanelReset]);
+
+  useEffect(() => {
+    if (!appId) return;
+    const controller = new AbortController();
+    storedReportAbortRef.current = controller;
+    setIsLoadingStoredReport(true);
+    fetch(`/api/security-report/${appId}`, { signal: controller.signal })
+      .then(async (res) => {
+        if (controller.signal.aborted) return;
+        if (res.status === 404) {
+          setIsLoadingStoredReport(false);
+          return;
+        }
+        if (!res.ok) {
+          setIsLoadingStoredReport(false);
+          return;
+        }
+        const data = await res.json() as { scannedAt: string; results: TestPilotRunResult['results']; timedOut: boolean; taskId: string };
+        if (controller.signal.aborted) return;
+        setResults({ security: { results: data.results, timedOut: data.timedOut, taskId: data.taskId } });
+        setLastScannedAt(data.scannedAt);
+        setIsLoadingStoredReport(false);
+      })
+      .catch((err: unknown) => {
+        if (err instanceof Error && err.name === 'AbortError') return;
+        // Stored report is optional — silently skip on error
+        setIsLoadingStoredReport(false);
+      });
+    return () => controller.abort();
+  }, [appId]);
 
   /**
    * Retry a timed out task by polling its results
@@ -150,6 +189,7 @@ export default function SecurityPanel() {
     }
 
     setIsLoading(true);
+    setLastScannedAt(null);
     setError(null);
     setErrorTitle(null);
 
@@ -190,6 +230,7 @@ export default function SecurityPanel() {
       } else {
         // Success - rename 'code' to 'security' for backwards compatibility with SecurityResults
         setResults({ security: codeResult });
+        setLastScannedAt(new Date().toISOString());
         shipAnalyticsLog('security.scan_completed', summarizeScan(codeResult, appId));
         setIsLoading(false);
       }
@@ -208,21 +249,27 @@ export default function SecurityPanel() {
         title={t('builder_settings_security_title')}
         description={t('builder_settings_security_desc')}
         button={
-          !isLoading && (
+          !isLoading && !isLoadingStoredReport && (
             <Button
               design="primary"
               size="sm"
               icon={<WandIcon />}
-              disabled={!isReady || isLoading || isQuickFixInProgress}
+              disabled={!isReady || isLoading || isQuickFixInProgress || isLoadingStoredReport}
               onClick={handleRunAnalysis}
-              text={isLoading ? t('builder_settings_security_analysis_running') : t('builder_settings_security_analysis_run')}
+              text={t('builder_settings_security_analysis_run')}
             />
           )
         }
         hideStatus={true}
       >
 
-        {!isReady && !error && !isLoading && (
+        {isLoadingStoredReport && !isLoading && (
+          <Card>
+            <SettingsLoadingState />
+          </Card>
+        )}
+
+        {!isLoadingStoredReport && !isReady && !error && !isLoading && !results && (
           <Card>
             <SettingsLoadingState
               title={t('builder_settings_security_waiting')}
@@ -240,10 +287,24 @@ export default function SecurityPanel() {
         )}
 
         {results && !isLoading && (
-          <SecurityResults
-            results={results}
-            onQuickFixInProgressChange={setIsQuickFixInProgress}
-          />
+          <>
+            {!isReady && !isLoadingStoredReport && (
+              <Card>
+                <SettingsLoadingState
+                  title={t('builder_settings_security_waiting')}
+                />
+              </Card>
+            )}
+            <SecurityResults
+              results={results}
+              onQuickFixInProgressChange={setIsQuickFixInProgress}
+            />
+            {lastScannedAt && (
+              <text.p emphasis="passive" size={-1} className="mt-2">
+                {t('builder_settings_security_last_analyzed')}: {formatDate(lastScannedAt, true)}
+              </text.p>
+            )}
+          </>
         )}
 
         {error && (
