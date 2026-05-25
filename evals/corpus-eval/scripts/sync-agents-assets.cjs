@@ -14,8 +14,8 @@
 const { cpSync, existsSync, mkdirSync } = require('fs');
 const { join, dirname } = require('path');
 
-const agentsSrc = join(__dirname, '../../agents/src');
-const agentsDist = join(__dirname, '../../agents/dist');
+const agentsSrc = join(__dirname, '../../../agents/src');
+const agentsDist = join(__dirname, '../../../agents/dist');
 
 function ensureDir(dir) {
   if (!existsSync(dir)) {

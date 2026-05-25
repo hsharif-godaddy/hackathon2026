@@ -5,39 +5,39 @@ run-name: "Agentic QA Evaluation - ${{ github.event_name == 'pull_request' && '1
 on:
   schedule:
     # 6x daily: every 4 hours starting at midnight UTC
-    - cron: "0 0,4,8,12,16,20 * * *"
+    - cron: '0 0,4,8,12,16,20 * * *'
 
   pull_request:
     paths:
-      - "agentic-qa-langfuse/**"
-      - ".github/workflows/agentic-qa-langfuse.yml"
+      - 'evals/agentic-qa-langfuse/**'
+      - '.github/workflows/agentic-qa-langfuse.yml'
 
   workflow_dispatch:
     inputs:
       hours:
-        description: "Time window: process traces from the last N hours"
+        description: 'Time window: process traces from the last N hours'
         required: false
-        default: "4"
+        default: '4'
         type: string
       session:
-        description: "Session ID to scope to (optional, overrides hours)"
+        description: 'Session ID to scope to (optional, overrides hours)'
         required: false
         type: string
       workers:
-        description: "Number of concurrent workers"
+        description: 'Number of concurrent workers'
         required: false
-        default: "10"
+        default: '10'
         type: string
       evaluator:
-        description: "Run a single evaluator only. Leave empty to run all."
+        description: 'Run a single evaluator only. Leave empty to run all.'
         required: false
         type: choice
-        default: ""
+        default: ''
         options:
-          - ""
-          - "error"
-          - "intent"
-          - "vertical"
+          - ''
+          - 'error'
+          - 'intent'
+          - 'vertical'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -86,7 +86,7 @@ jobs:
       - name: Validate CaaS proxy token
         env:
           JWT_TOKEN: ${{ steps.get-awsiam-test.outputs.jwt }}
-          OPENAI_BASE_URL: "https://api.gocode.caas.gdcorp.tools/v1"
+          OPENAI_BASE_URL: 'https://api.gocode.caas.gdcorp.tools/v1'
         run: |
           set -e
 
@@ -108,7 +108,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
-          node-version: "22"
+          node-version: '22'
 
       - name: Enable Corepack and configure pnpm
         run: |
@@ -139,10 +139,10 @@ jobs:
         env:
           LANGFUSE_PUBLIC_KEY: ${{ secrets.LANGFUSE_PUBLIC_KEY }}
           LANGFUSE_SECRET_KEY: ${{ secrets.LANGFUSE_SECRET_KEY }}
-          LANGFUSE_BASE_URL: "https://agentobser-langfuse.int.godaddy.com"
+          LANGFUSE_BASE_URL: 'https://agentobser-langfuse.int.godaddy.com'
           JWT_TOKEN: ${{ steps.get-awsiam-test.outputs.jwt }}
-          OPENAI_BASE_URL: "https://api.gocode.caas.gdcorp.tools/v1"
-          OPENAI_MODEL: "gpt-5"
+          OPENAI_BASE_URL: 'https://api.gocode.caas.gdcorp.tools/v1'
+          OPENAI_MODEL: 'gpt-5'
         run: |
           BASE_ARGS=("--filter" "agentic-qa-langfuse" "start")
 

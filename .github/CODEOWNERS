@@ -12,8 +12,8 @@
 /.husky/ @hdewan-godaddy @deverton-godaddy @dmiller1-godaddy
 
 # Services & packages
-/agentic-qa/ @hdewan-godaddy @deverton-godaddy @jpatel2-godaddy
-/agentic-qa-langfuse/ @abertin-godaddy @deverton-godaddy
+/evals/agentic-qa/ @hdewan-godaddy @deverton-godaddy @jpatel2-godaddy
+/evals/agentic-qa-langfuse/ @abertin-godaddy @deverton-godaddy
 /agents/ @gdcorp-partners/dev-airo-ai-core-agent-squad
 /agents/src/agents/ @gdcorp-partners/dev-airo-ai-core-agent-squad @rrex-godaddy
 /agents/src/server/routes/ @gdcorp-partners/dev-airo-ai-core-agent-squad @hmaheshwari-godaddy
@@ -32,7 +32,7 @@
 /cdk/ @ugupta-godaddy @jeichorn-godaddy @deverton-godaddy
 /cli-agent-client/ @gdcorp-partners/dev-airo-ai-core-agent-squad
 /container-scripts/ @deverton-godaddy @matkinson-godaddy @hmaheshwari-godaddy
-/corpus-eval/ @rjha3-godaddy @deverton-godaddy @mlefebvre1-godaddy
+/evals/corpus-eval/ @rjha3-godaddy @deverton-godaddy @mlefebvre1-godaddy
 /debug-console/ @ugupta-godaddy @deverton-godaddy @hgupta2-godaddy
 /design-data/ @gdcorp-partners/dev-airo-ai-core-agent-squad
 /design-rag/ @gdcorp-partners/dev-airo-ai-core-agent-squad
@@ -41,7 +41,7 @@
 /docs/ @jeichorn-godaddy @deverton-godaddy @hmaheshwari-godaddy
 /e2e/ @mlefebvre1-godaddy @hdewan-godaddy @deverton-godaddy
 /go-agent/ @jeichorn-godaddy @rjha3-godaddy @deverton-godaddy
-/goarena/ @cmachgodaddy
+/evals/goarena/ @cmachgodaddy
 /image-search-service/ @jeichorn-godaddy @skilaru-godaddy @jundai-godaddy
 /kibana-dashboards/ @hdewan-godaddy @deverton-godaddy
 /knowledge-base/ @arai1-godaddy @deverton-godaddy @skemp-godaddy

@@ -32,7 +32,7 @@ app-templates/
 dev-supervisor/
 local-control-plane/
 go-agent/
-goarena/
+evals/goarena/
 packages/go-auth/
 
 # Vendored / external

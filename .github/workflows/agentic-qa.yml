@@ -489,7 +489,7 @@ jobs:
         if: always()
         with:
           name: agentic-qa-reports-${{ steps.scenario-name.outputs.name }}
-          path: agentic-qa/reports/
+          path: evals/agentic-qa/reports/
           retention-days: 30
 
       - name: Upload Screenshots
@@ -497,7 +497,7 @@ jobs:
         if: always()
         with:
           name: agentic-qa-screenshots-${{ steps.scenario-name.outputs.name }}
-          path: agentic-qa/reports/screenshots/
+          path: evals/agentic-qa/reports/screenshots/
           retention-days: 30
 
   # Summary job: collect results and send notification

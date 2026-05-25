@@ -140,7 +140,7 @@ function main() {
 
   const failures = [];
 
-  const CORPUS_DIR = 'corpus-eval/corpora/skill-loader';
+  const CORPUS_DIR = 'evals/corpus-eval/corpora/skill-loader';
 
   for (const skillName of skillDirs) {
     const skillDir = join(REPO_ROOT, SKILLS_DIR, skillName);

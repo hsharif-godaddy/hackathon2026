@@ -16,10 +16,10 @@ on:
       config-file:
         description: 'Suite configuration file'
         required: true
-        default: 'goarena/brand_logo_eval_suite.yaml'
+        default: 'evals/goarena/brand_logo_eval_suite.yaml'
         type: choice
         options:
-          - goarena/brand_logo_eval_suite.yaml
+          - evals/goarena/brand_logo_eval_suite.yaml
       synthia-env:
         description: 'Synthia environment'
         required: false
@@ -59,7 +59,7 @@ on:
         description: 'Suite configuration file'
         required: false
         type: string
-        default: 'goarena/brand_logo_eval_suite.yaml'
+        default: 'evals/goarena/brand_logo_eval_suite.yaml'
       synthia-env:
         description: 'Synthia environment'
         required: false
@@ -126,7 +126,7 @@ jobs:
           FAIL_ON_THRESHOLD: ${{ inputs.fail-on-threshold }}
         run: |
           ALLOWED_AGENTS="TEST_EB_AiroAppBuilder_regression"
-          ALLOWED_CONFIGS="goarena/brand_logo_eval_suite.yaml"
+          ALLOWED_CONFIGS="evals/goarena/brand_logo_eval_suite.yaml"
           ALLOWED_ENVS="test"
 
           error=0
@@ -159,21 +159,21 @@ jobs:
         id: load-users
         uses: gdcorp-dna/synthia/actions/load-synthetic-users@f11b73e55b89458c729d78f8f10cb9cb4a92528c # release-1.1.1
         with:
-          config-path: goarena/synthetic-users/brand-logo
+          config-path: evals/goarena/synthetic-users/brand-logo
           synthia-env: ${{ inputs.synthia-env }}
 
       - name: Load Evaluators
         id: load-evaluators
         uses: gdcorp-dna/synthia/actions/load-evaluators@f11b73e55b89458c729d78f8f10cb9cb4a92528c # release-1.1.1
         with:
-          config-path: goarena/evaluators/brand-logo
+          config-path: evals/goarena/evaluators/brand-logo
           synthia-env: ${{ inputs.synthia-env }}
 
       - name: Load Scenarios
         id: load-scenarios
         uses: gdcorp-dna/synthia/actions/load-scenarios@f11b73e55b89458c729d78f8f10cb9cb4a92528c # release-1.1.1
         with:
-          config-path: goarena/scenarios/brand-logo
+          config-path: evals/goarena/scenarios/brand-logo
           agent-name: ${{ inputs.agent-name }}
           synthia-env: ${{ inputs.synthia-env }}
 

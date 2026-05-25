@@ -1,0 +1,49 @@
+{
+  "name": "corpus-eval",
+  "version": "1.0.0",
+  "description": "Corpus-based evaluation system for AI classification agents",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "eval": "AWS_PROFILE=airo-builder-dev-gocode GASKET_ENV=local.dev LOG_DISABLED_DOMAINS=assessment_agent,embedding_classifier,lr_classifier,local_embedding_cache,grants node ../../agents/load-env.cjs pnpm exec tsx src/index.ts",
+    "eval:assessment": "AWS_PROFILE=airo-builder-dev-gocode GASKET_ENV=local.dev LOG_DISABLED_DOMAINS=assessment_agent,embedding_classifier,lr_classifier,local_embedding_cache,grants node ../../agents/load-env.cjs pnpm exec tsx src/index.ts run corpora/assessment-agent/",
+    "eval:assessment:verbose": "AWS_PROFILE=airo-builder-dev-gocode GASKET_ENV=local.dev node ../../agents/load-env.cjs pnpm exec tsx src/index.ts run corpora/assessment-agent/ --verbose",
+    "eval:assessment:compare": "AWS_PROFILE=airo-builder-dev-gocode GASKET_ENV=local.dev LOG_DISABLED_DOMAINS=assessment_agent,embedding_classifier,lr_classifier,local_embedding_cache,grants node ../../agents/load-env.cjs pnpm exec tsx src/index.ts compare corpora/assessment-agent/ -m haiku,sonnet",
+    "eval:assessment:publish": "AWS_PROFILE=airo-builder-dev-gocode GASKET_ENV=local.dev LOG_DISABLED_DOMAINS=assessment_agent,embedding_classifier,lr_classifier,local_embedding_cache,grants node ../../agents/load-env.cjs pnpm exec tsx src/index.ts run corpora/assessment-agent/publish.yaml --verbose",
+    "eval:assessment:domain": "AWS_PROFILE=airo-builder-dev-gocode GASKET_ENV=local.dev LOG_DISABLED_DOMAINS=assessment_agent,embedding_classifier,lr_classifier,local_embedding_cache,grants node ../../agents/load-env.cjs pnpm exec tsx src/index.ts run corpora/assessment-agent/domain.yaml --verbose",
+    "eval:assessment:fix": "AWS_PROFILE=airo-builder-dev-gocode GASKET_ENV=local.dev LOG_DISABLED_DOMAINS=assessment_agent,embedding_classifier,lr_classifier,local_embedding_cache,grants node ../../agents/load-env.cjs pnpm exec tsx src/index.ts run corpora/assessment-agent/fix.yaml --verbose",
+    "eval:assessment:general": "AWS_PROFILE=airo-builder-dev-gocode GASKET_ENV=local.dev LOG_DISABLED_DOMAINS=assessment_agent,embedding_classifier,lr_classifier,local_embedding_cache,grants node ../../agents/load-env.cjs pnpm exec tsx src/index.ts run corpora/assessment-agent/general.yaml --verbose",
+    "eval:assessment:path": "AWS_PROFILE=airo-builder-dev-gocode GASKET_ENV=local.dev LOG_DISABLED_DOMAINS=assessment_agent,embedding_classifier,lr_classifier,local_embedding_cache,grants node ../../agents/load-env.cjs pnpm exec tsx src/index.ts run corpora/assessment-agent/ --tags path-validation --verbose",
+    "eval:assessment:initial": "AWS_PROFILE=airo-builder-dev-gocode GASKET_ENV=local.dev LOG_DISABLED_DOMAINS=assessment_agent,embedding_classifier,lr_classifier,local_embedding_cache,grants node ../../agents/load-env.cjs pnpm exec tsx src/index.ts run corpora/assessment-agent/ --tags initial --verbose",
+    "eval:assessment:session": "AWS_PROFILE=airo-builder-dev-gocode GASKET_ENV=local.dev LOG_DISABLED_DOMAINS=assessment_agent,embedding_classifier,lr_classifier,local_embedding_cache,grants node ../../agents/load-env.cjs pnpm exec tsx src/index.ts run corpora/assessment-agent/90y66osz8y-corpus.yaml --verbose",
+    "sync:agents-assets": "node scripts/sync-agents-assets.cjs",
+    "eval:skill-loader": "node scripts/sync-agents-assets.cjs && AWS_PROFILE=airo-builder-dev-gocode GASKET_ENV=local.dev node ../../agents/load-env.cjs pnpm exec tsx src/skill-loader.ts run corpora/skill-loader/",
+    "eval:skill-loader:verbose": "node scripts/sync-agents-assets.cjs && AWS_PROFILE=airo-builder-dev-gocode GASKET_ENV=local.dev node ../../agents/load-env.cjs pnpm exec tsx src/skill-loader.ts run corpora/skill-loader/ --verbose",
+    "eval:skill-loader:run": "node scripts/sync-agents-assets.cjs && AWS_PROFILE=airo-builder-dev-gocode GASKET_ENV=local.dev node ../../agents/load-env.cjs pnpm exec tsx src/skill-loader.ts run",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src/",
+    "lint:fix": "eslint --fix src/"
+  },
+  "dependencies": {
+    "@airo/agents": "workspace:*",
+    "@airo/ai-lib": "workspace:*",
+    "commander": "catalog:",
+    "yaml": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@airo/eslint-config": "workspace:*",
+    "@types/node": "catalog:",
+    "eslint": "catalog:",
+    "tsx": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  },
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0"
+  }
+}
