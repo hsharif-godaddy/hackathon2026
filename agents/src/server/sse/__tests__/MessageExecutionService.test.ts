@@ -2571,6 +2571,34 @@ describe('MessageExecutionService', () => {
         subscriptionId: 'sub-bms-1',
         bmsBudgetId: 'bms-budget-id',
         budgetSessionId: 'bms-session-id',
+        lifecycleContext: {
+          agentContext: {
+            budgetServiceEnabled: true,
+          },
+        },
+      })
+
+      expect(grantSessionManager.registerSession).not.toHaveBeenCalled()
+      expect(grantSessionManager.removeSession).not.toHaveBeenCalled()
+    })
+
+    it('skips grant registration when budgetServiceEnabled=true even without budget result', async () => {
+      const { grantSessionManager } = await import('@airo/ai-grants')
+      vi.spyOn(grantSessionManager, 'registerSession').mockImplementation(() => {})
+      vi.spyOn(grantSessionManager, 'removeSession').mockImplementation(() => {})
+
+      deps = createMockDeps()
+      service = new MessageExecutionService(deps as any)
+
+      await service.execute({
+        ...DEFAULT_PARAMS,
+        subscriptionId: 'sub-bms-no-budget',
+        // No bmsBudgetId or budgetSessionId — but JWT says BMS is enabled
+        lifecycleContext: {
+          agentContext: {
+            budgetServiceEnabled: true,
+          },
+        },
       })
 
       expect(grantSessionManager.registerSession).not.toHaveBeenCalled()

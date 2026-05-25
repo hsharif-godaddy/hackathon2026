@@ -4,7 +4,7 @@ import { getMessageOriginForAuthType } from '@airo/shared/auth'
 
 import { useAuthContext } from '@/components/providers/AuthProvider'
 import { dynamicApiConfigService } from '@/config/dynamic-api'
-import { useSwitchboard } from '@/hooks/useSwitchboard'
+import { usesBms } from '@/hooks/usesBms'
 import {
   getConversationIdFromCookie,
   setConversationIdCookie,
@@ -52,9 +52,9 @@ import {
 import { mapToolCall, mapToolResult, mapToolStart } from './shared/toolMappers'
 import { handleToolCallSideEffects, handleToolResultSideEffects } from './shared/toolSideEffects'
 import { buildValidationToolCallFromEvent } from './shared/validationToolCallBuilder'
+import { useBudgetUpdate } from './useBudgetUpdate'
+import { useGrantContext } from './useGrantContext'
 import type { SendMessageOptions } from './useStreamingWebSocket'
-import { useBudgetUpdate } from './websocket/useBudgetUpdate'
-import { useGrantContext } from './websocket/useGrantContext'
 
 const BROWSER_TIMEZONE: string = Intl.DateTimeFormat().resolvedOptions().timeZone
 
@@ -166,7 +166,7 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
     return state.getSite(currentAppId)?.subscription_id
   })
 
-  const isBudgetServiceEnabled = useSwitchboard('app-builder-budget-service') ?? false
+  const isBudgetServiceEnabled = usesBms()
 
   const subscriptionIdRef = useRef(subscriptionId)
   subscriptionIdRef.current = subscriptionId

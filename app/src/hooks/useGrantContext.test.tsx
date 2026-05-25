@@ -34,9 +34,9 @@ vi.mock('@/stores/useStreamingConversationStore', () => ({
   useIsActivelyStreaming: () => streamingRef.current,
 }))
 
-const mockUseSwitchboard = vi.fn()
-vi.mock('@/hooks/useSwitchboard', () => ({
-  useSwitchboard: (flag: string) => mockUseSwitchboard(flag),
+const mockUsesBms = vi.fn()
+vi.mock('@/hooks/usesBms', () => ({
+  usesBms: () => mockUsesBms(),
 }))
 
 import { logger } from '@/lib/request-context'
@@ -62,13 +62,13 @@ describe('useGrantContext', function useGrantContextTests() {
   beforeEach(function setup() {
     vi.clearAllMocks()
     streamingRef.current = false
-    mockUseSwitchboard.mockReturnValue(false) // Default: BMS disabled (legacy grants mode)
+    mockUsesBms.mockReturnValue(false) // Default: BMS disabled (legacy grants mode)
     vi.useRealTimers()
   })
 
   describe('BMS mode (app-builder-budget-service flag enabled)', function bmsModeTests() {
     beforeEach(function setupBms() {
-      mockUseSwitchboard.mockReturnValue(true) // BMS enabled
+      mockUsesBms.mockReturnValue(true) // BMS enabled
     })
 
     it('passes undefined subscriptionId to useCreditGrants when BMS enabled', function bmsDisablesGrantFetch() {
@@ -296,6 +296,31 @@ describe('useGrantContext', function useGrantContextTests() {
       expect(mockRefetch).not.toHaveBeenCalled()
 
       vi.useRealTimers()
+    })
+
+    it('regression: usesBms predicate is not accidentally inverted', () => {
+      mockUsesBms.mockReturnValue(true)
+      mockUseCreditGrants.mockReturnValue({
+        data: undefined,
+        refetch: vi.fn(),
+        isLoading: false,
+      })
+
+      const controller = {
+        emitGrantContext: vi.fn(() => true),
+        onGrantRefreshRequested: vi.fn(() => vi.fn()),
+      }
+
+      renderHookWithProviders(() =>
+        useGrantContext({
+          controller,
+          subscriptionId: 'sub-1',
+          isConnected: true,
+          enabled: true,
+        })
+      )
+
+      expect(controller.emitGrantContext).not.toHaveBeenCalled()
     })
   })
 

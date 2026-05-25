@@ -2,7 +2,7 @@ import { useEffect } from 'react'
 import type { BudgetUpdatePayload, BudgetUpdateSuccess } from '@airo/shared/budget'
 import { useQueryClient } from '@tanstack/react-query'
 
-import { useSwitchboard } from '@/hooks/useSwitchboard'
+import { usesBms } from '@/hooks/usesBms'
 import { adaptBudgetItemsToGrants } from '@/lib/credit-adapter/adapt-budget-to-grants'
 import { logger } from '@/lib/request-context'
 import type { CreditGrant } from '@/types/credits'
@@ -34,9 +34,8 @@ interface UseBudgetUpdateOptions {
  */
 export function useBudgetUpdate({ controller, subscriptionId, enabled = true }: UseBudgetUpdateOptions): void {
   const queryClient = useQueryClient()
-  // BMS mode: this hook is only active when BMS is enabled
-  const budgetServiceEnabled = useSwitchboard('app-builder-budget-service') ?? false
-  const effectiveEnabled = enabled && budgetServiceEnabled
+  const bmsEnabled = usesBms()
+  const effectiveEnabled = enabled && bmsEnabled
 
   useEffect(() => {
     if (!controller || !effectiveEnabled) return

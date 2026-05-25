@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef } from 'react'
 import type { QueryObserverResult } from '@tanstack/react-query'
 
 import { useCreditGrants } from '@/hooks/useCreditGrants'
-import { useSwitchboard } from '@/hooks/useSwitchboard'
+import { usesBms } from '@/hooks/usesBms'
 import { logger } from '@/lib/request-context'
 import { useIsActivelyStreaming } from '@/stores/useStreamingConversationStore'
 import type { CreditGrant } from '@/types/credits'
@@ -62,9 +62,8 @@ export function useGrantContext({
   isConnected,
   enabled = true,
 }: UseGrantContextOptions): void {
-  // BMS mode: skip all grant operations - BMS handles cost tracking via x-gocode-budget-* headers
-  const budgetServiceEnabled = useSwitchboard('app-builder-budget-service') ?? false
-  const effectiveEnabled = enabled && !budgetServiceEnabled
+  const bmsEnabled = usesBms()
+  const effectiveEnabled = enabled && !bmsEnabled
   const lastSentHashRef = useRef<string | null>(null)
   const isInitialSendRef = useRef(true)
 

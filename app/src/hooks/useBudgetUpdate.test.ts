@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { BudgetItem, BudgetUpdatePayload } from '@airo/shared/budget'
 
 import { renderHookWithProviders } from '@/tests/test-utils'
-import { type BudgetUpdateController,useBudgetUpdate } from './useBudgetUpdate'
+import { type BudgetUpdateController, useBudgetUpdate } from './useBudgetUpdate'
 
 vi.mock('@/lib/request-context', () => ({
   logger: {
@@ -17,9 +17,9 @@ vi.mock('@/lib/request-context', () => ({
   },
 }))
 
-const mockUseSwitchboard = vi.fn()
-vi.mock('@/hooks/useSwitchboard', () => ({
-  useSwitchboard: (flag: string) => mockUseSwitchboard(flag),
+const mockUsesBms = vi.fn()
+vi.mock('@/hooks/usesBms', () => ({
+  usesBms: () => mockUsesBms(),
 }))
 
 const mockInvalidateQueries = vi.fn()
@@ -80,13 +80,13 @@ function createController(): {
 describe('useBudgetUpdate', function useBudgetUpdateTests() {
   beforeEach(function setup() {
     vi.clearAllMocks()
-    mockUseSwitchboard.mockReturnValue(true) // Default: BMS enabled (this hook only runs in BMS mode)
+    mockUsesBms.mockReturnValue(true) // Default: BMS enabled (this hook only runs in BMS mode)
     mockAdaptBudgetItemsToGrants.mockReturnValue([{ id: 'grant-1' }])
   })
 
   describe('BMS flag gating', function bmsFlagTests() {
     it('does not subscribe when BMS flag is disabled', function bmsDisabledNoSubscribe() {
-      mockUseSwitchboard.mockReturnValue(false)
+      mockUsesBms.mockReturnValue(false)
       const { controller, cleanup } = createController()
 
       renderHookWithProviders(() =>
@@ -127,6 +127,22 @@ describe('useBudgetUpdate', function useBudgetUpdateTests() {
       )
 
       // Cleanup should be called on unmount (proves subscription happened)
+      unmount()
+      expect(cleanup).toHaveBeenCalled()
+    })
+
+    it('regression: usesBms predicate is not accidentally inverted', function bmsPredicateNotInverted() {
+      mockUsesBms.mockReturnValue(true)
+      const { controller, cleanup } = createController()
+
+      const { unmount } = renderHookWithProviders(() =>
+        useBudgetUpdate({
+          controller,
+          subscriptionId: 'sub-1',
+          enabled: true,
+        })
+      )
+
       unmount()
       expect(cleanup).toHaveBeenCalled()
     })

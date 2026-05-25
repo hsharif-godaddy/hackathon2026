@@ -1283,8 +1283,10 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
     // Set session metadata so handoff tool can find the session
     this.deps.stateManager.setSessionMetadata(sseSocketId, { appId })
 
-    // Budget recovery for grants-mode (non-BMS) sessions
-    const useGrantRecovery = !bmsBudgetId && !budgetSessionId && !!subscriptionId
+    // Budget recovery for grants-mode (non-BMS) sessions.
+    // Use budgetServiceEnabled from JWT as the authoritative signal (matches WebSocket semantics).
+    const budgetServiceEnabled = agentCtx?.budgetServiceEnabled === true
+    const useGrantRecovery = !budgetServiceEnabled && !!subscriptionId
     const budgetRecoveryCallback = useGrantRecovery
       ? createGrantBudgetRecoveryCallback({ logger })
       : undefined
