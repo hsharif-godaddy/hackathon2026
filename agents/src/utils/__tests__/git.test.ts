@@ -8,33 +8,32 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { GitUtils } from '../git.js';
 
-// Mock WorkspaceTasks
-const createMockTasks = () => ({
-  runCommandSync: vi.fn().mockResolvedValue({
-    exitCode: 0,
+// Mock DevSupervisorClient
+const createMockDevSupervisor = () => ({
+  isAvailable: vi.fn().mockReturnValue(true),
+  exec: vi.fn().mockResolvedValue({
+    success: true,
+    exit_code: 0,
     stdout: 'Already up to date.',
-    stderr: '',
-    timedOut: false,
-    executionTimeMs: 100,
-    taskId: 'test-task-1',
+    stderr: ''
   })
 });
 
 describe('GitUtils', () => {
   let gitUtils: GitUtils;
-  let mockTasks: ReturnType<typeof createMockTasks>;
+  let mockDevSupervisor: ReturnType<typeof createMockDevSupervisor>;
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockTasks = createMockTasks();
-    gitUtils = new GitUtils(mockTasks as any);
+    mockDevSupervisor = createMockDevSupervisor();
+    gitUtils = new GitUtils(mockDevSupervisor as any);
   });
 
   describe('pull', () => {
     it('should execute git pull with -X when merge strategy specified', async () => {
       await gitUtils.pull('/app', 'origin', 'main', {}, 'theirs');
 
-      const callArgs = mockTasks.runCommandSync.mock.calls[0][0];
+      const callArgs = mockDevSupervisor.exec.mock.calls[0][0];
       expect(callArgs.command).toContain('-X');
       expect(callArgs.command).toContain('theirs');
       expect(callArgs.command).not.toContain('--allow-unrelated-histories');
@@ -44,7 +43,7 @@ describe('GitUtils', () => {
     it('should execute git pull with --no-rebase when noRebase is true', async () => {
       await gitUtils.pull('/app', 'origin', 'main', {}, 'theirs', false, true);
 
-      const callArgs = mockTasks.runCommandSync.mock.calls[0][0];
+      const callArgs = mockDevSupervisor.exec.mock.calls[0][0];
       expect(callArgs.command).toContain('--no-rebase');
       expect(callArgs.command).toContain('-X');
       expect(callArgs.command).toContain('theirs');
@@ -53,7 +52,7 @@ describe('GitUtils', () => {
     it('should execute git pull with --allow-unrelated-histories when set to true', async () => {
       await gitUtils.pull('/app', 'origin', 'main', {}, 'theirs', true);
 
-      const callArgs = mockTasks.runCommandSync.mock.calls[0][0];
+      const callArgs = mockDevSupervisor.exec.mock.calls[0][0];
       expect(callArgs.command).toContain('-X');
       expect(callArgs.command).toContain('theirs');
       expect(callArgs.command).toContain('--allow-unrelated-histories');
@@ -62,20 +61,20 @@ describe('GitUtils', () => {
     it('should execute git pull without --allow-unrelated-histories when set to false', async () => {
       await gitUtils.pull('/app', 'origin', 'main', {}, 'theirs', false);
 
-      const callArgs = mockTasks.runCommandSync.mock.calls[0][0];
+      const callArgs = mockDevSupervisor.exec.mock.calls[0][0];
       expect(callArgs.command).not.toContain('--allow-unrelated-histories');
     });
 
     it('should execute git pull without merge strategy when not specified', async () => {
       await gitUtils.pull('/app', 'origin', 'main', {});
 
-      expect(mockTasks.runCommandSync).toHaveBeenCalledWith(
+      expect(mockDevSupervisor.exec).toHaveBeenCalledWith(
         expect.objectContaining({
           command: expect.stringContaining("git 'pull' 'origin' 'main'")
         })
       );
 
-      const callArgs = mockTasks.runCommandSync.mock.calls[0][0];
+      const callArgs = mockDevSupervisor.exec.mock.calls[0][0];
       expect(callArgs.command).not.toContain('-X');
       expect(callArgs.command).not.toContain('--no-rebase');
     });
@@ -83,7 +82,7 @@ describe('GitUtils', () => {
     it('should execute git pull with all options: noRebase, mergeStrategy, and allowUnrelatedHistories', async () => {
       await gitUtils.pull('/app', 'origin', 'main', {}, 'theirs', true, true);
 
-      const callArgs = mockTasks.runCommandSync.mock.calls[0][0];
+      const callArgs = mockDevSupervisor.exec.mock.calls[0][0];
       expect(callArgs.command).toContain('--no-rebase');
       expect(callArgs.command).toContain('-X');
       expect(callArgs.command).toContain('theirs');
@@ -93,7 +92,7 @@ describe('GitUtils', () => {
     it('should execute git pull with allowUnrelatedHistories but without merge strategy', async () => {
       await gitUtils.pull('/app', 'origin', 'main', {}, undefined, true);
 
-      const callArgs = mockTasks.runCommandSync.mock.calls[0][0];
+      const callArgs = mockDevSupervisor.exec.mock.calls[0][0];
       expect(callArgs.command).not.toContain('-X');
       expect(callArgs.command).toContain('--allow-unrelated-histories');
     });
@@ -101,18 +100,16 @@ describe('GitUtils', () => {
 
   describe('commitTree', () => {
     it('should create orphan commit when no parent specified', async () => {
-      mockTasks.runCommandSync.mockResolvedValueOnce({
-        exitCode: 0,
+      mockDevSupervisor.exec.mockResolvedValueOnce({
+        success: true,
+        exit_code: 0,
         stdout: 'abc123def456\n',
-        stderr: '',
-        timedOut: false,
-        executionTimeMs: 0,
-        taskId: 't',
+        stderr: ''
       });
 
       await gitUtils.commitTree('/app', 'tree-hash-123', 'test message');
 
-      const callArgs = mockTasks.runCommandSync.mock.calls[0][0];
+      const callArgs = mockDevSupervisor.exec.mock.calls[0][0];
       expect(callArgs.command).toContain('commit-tree');
       expect(callArgs.command).toContain('tree-hash-123');
       expect(callArgs.command).toContain('test message');
@@ -120,18 +117,16 @@ describe('GitUtils', () => {
     });
 
     it('should create commit with parent when parentHash specified', async () => {
-      mockTasks.runCommandSync.mockResolvedValueOnce({
-        exitCode: 0,
+      mockDevSupervisor.exec.mockResolvedValueOnce({
+        success: true,
+        exit_code: 0,
         stdout: 'abc123def456\n',
-        stderr: '',
-        timedOut: false,
-        executionTimeMs: 0,
-        taskId: 't',
+        stderr: ''
       });
 
       await gitUtils.commitTree('/app', 'tree-hash-123', 'test message', { parentHash: 'parent-hash-456' });
 
-      const callArgs = mockTasks.runCommandSync.mock.calls[0][0];
+      const callArgs = mockDevSupervisor.exec.mock.calls[0][0];
       expect(callArgs.command).toContain('commit-tree');
       expect(callArgs.command).toContain('tree-hash-123');
       expect(callArgs.command).toContain('-p');
@@ -140,13 +135,11 @@ describe('GitUtils', () => {
     });
 
     it('should return failure result when commit-tree fails', async () => {
-      mockTasks.runCommandSync.mockResolvedValueOnce({
-        exitCode: 1,
+      mockDevSupervisor.exec.mockResolvedValueOnce({
+        success: false,
+        exit_code: 1,
         stdout: '',
-        stderr: 'fatal: not a valid tree object',
-        timedOut: false,
-        executionTimeMs: 0,
-        taskId: 't',
+        stderr: 'fatal: not a valid tree object'
       });
 
       const result = await gitUtils.commitTree('/app', 'bad-tree', 'test message');
@@ -158,19 +151,17 @@ describe('GitUtils', () => {
 
   describe('restoreFromCommit', () => {
     it('should invoke git restore with --source, --staged, --worktree and the current dir', async () => {
-      mockTasks.runCommandSync.mockResolvedValueOnce({
-        exitCode: 0,
+      mockDevSupervisor.exec.mockResolvedValueOnce({
+        success: true,
+        exit_code: 0,
         stdout: '',
-        stderr: '',
-        timedOut: false,
-        executionTimeMs: 0,
-        taskId: 't',
+        stderr: ''
       });
 
       const result = await gitUtils.restoreFromCommit('/app', 'abcdef1');
 
       expect(result.success).toBe(true);
-      const callArgs = mockTasks.runCommandSync.mock.calls[0][0];
+      const callArgs = mockDevSupervisor.exec.mock.calls[0][0];
       expect(callArgs.command).toContain('restore');
       expect(callArgs.command).toContain('--source=abcdef1');
       expect(callArgs.command).toContain('--staged');
@@ -179,13 +170,11 @@ describe('GitUtils', () => {
     });
 
     it('should surface git failure when the commit does not exist', async () => {
-      mockTasks.runCommandSync.mockResolvedValueOnce({
-        exitCode: 128,
+      mockDevSupervisor.exec.mockResolvedValueOnce({
+        success: false,
+        exit_code: 128,
         stdout: '',
-        stderr: "fatal: bad revision 'deadbeef'",
-        timedOut: false,
-        executionTimeMs: 0,
-        taskId: 't',
+        stderr: "fatal: bad revision 'deadbeef'"
       });
 
       const result = await gitUtils.restoreFromCommit('/app', 'deadbeef');
@@ -197,31 +186,27 @@ describe('GitUtils', () => {
 
   describe('getTreeHash', () => {
     it('should resolve tree hash for a ref', async () => {
-      mockTasks.runCommandSync.mockResolvedValueOnce({
-        exitCode: 0,
+      mockDevSupervisor.exec.mockResolvedValueOnce({
+        success: true,
+        exit_code: 0,
         stdout: 'tree-hash-abc123\n',
-        stderr: '',
-        timedOut: false,
-        executionTimeMs: 0,
-        taskId: 't',
+        stderr: ''
       });
 
       const result = await gitUtils.getTreeHash('/app', 'HEAD');
 
       expect(result).toBe('tree-hash-abc123');
-      const callArgs = mockTasks.runCommandSync.mock.calls[0][0];
+      const callArgs = mockDevSupervisor.exec.mock.calls[0][0];
       expect(callArgs.command).toContain('rev-parse');
       expect(callArgs.command).toContain('HEAD^{tree}');
     });
 
     it('should throw when ref cannot be resolved', async () => {
-      mockTasks.runCommandSync.mockResolvedValueOnce({
-        exitCode: 128,
+      mockDevSupervisor.exec.mockResolvedValueOnce({
+        success: false,
+        exit_code: 128,
         stdout: '',
-        stderr: 'fatal: not a valid object name',
-        timedOut: false,
-        executionTimeMs: 0,
-        taskId: 't',
+        stderr: 'fatal: not a valid object name'
       });
 
       await expect(gitUtils.getTreeHash('/app', 'nonexistent')).rejects.toThrow(
@@ -232,36 +217,32 @@ describe('GitUtils', () => {
 
   describe('updateRef', () => {
     it('should update a ref to point to a commit', async () => {
-      mockTasks.runCommandSync.mockResolvedValueOnce({
-        exitCode: 0,
+      mockDevSupervisor.exec.mockResolvedValueOnce({
+        success: true,
+        exit_code: 0,
         stdout: '',
-        stderr: '',
-        timedOut: false,
-        executionTimeMs: 0,
-        taskId: 't',
+        stderr: ''
       });
 
       await gitUtils.updateRef('/app', 'refs/heads/main', 'commit-hash-789');
 
-      const callArgs = mockTasks.runCommandSync.mock.calls[0][0];
+      const callArgs = mockDevSupervisor.exec.mock.calls[0][0];
       expect(callArgs.command).toContain('update-ref');
       expect(callArgs.command).toContain('refs/heads/main');
       expect(callArgs.command).toContain('commit-hash-789');
     });
 
     it('should include old value for compare-and-swap when provided', async () => {
-      mockTasks.runCommandSync.mockResolvedValueOnce({
-        exitCode: 0,
+      mockDevSupervisor.exec.mockResolvedValueOnce({
+        success: true,
+        exit_code: 0,
         stdout: '',
-        stderr: '',
-        timedOut: false,
-        executionTimeMs: 0,
-        taskId: 't',
+        stderr: ''
       });
 
       await gitUtils.updateRef('/app', 'refs/heads/main', 'new-hash', 'old-hash');
 
-      const callArgs = mockTasks.runCommandSync.mock.calls[0][0];
+      const callArgs = mockDevSupervisor.exec.mock.calls[0][0];
       expect(callArgs.command).toContain('update-ref');
       expect(callArgs.command).toContain('refs/heads/main');
       expect(callArgs.command).toContain('new-hash');
@@ -269,13 +250,11 @@ describe('GitUtils', () => {
     });
 
     it('should throw when update-ref fails', async () => {
-      mockTasks.runCommandSync.mockResolvedValueOnce({
-        exitCode: 1,
+      mockDevSupervisor.exec.mockResolvedValueOnce({
+        success: false,
+        exit_code: 1,
         stdout: '',
-        stderr: 'fatal: update_ref failed',
-        timedOut: false,
-        executionTimeMs: 0,
-        taskId: 't',
+        stderr: 'fatal: update_ref failed'
       });
 
       await expect(
@@ -288,9 +267,9 @@ describe('GitUtils', () => {
     it('should use 60 second default timeout for large repos', async () => {
       await gitUtils.addFiles('/app', ['.']);
 
-      expect(mockTasks.runCommandSync).toHaveBeenCalledWith(
+      expect(mockDevSupervisor.exec).toHaveBeenCalledWith(
         expect.objectContaining({
-          timeoutSeconds: 60
+          timeout: 60 // 60 seconds (60000ms converted to seconds for dev-supervisor)
         })
       );
     });
@@ -298,9 +277,9 @@ describe('GitUtils', () => {
     it('should respect custom timeout when provided', async () => {
       await gitUtils.addFiles('/app', ['.'], { timeout: 180000 });
 
-      expect(mockTasks.runCommandSync).toHaveBeenCalledWith(
+      expect(mockDevSupervisor.exec).toHaveBeenCalledWith(
         expect.objectContaining({
-          timeoutSeconds: 180
+          timeout: 180 // 180 seconds
         })
       );
     });
@@ -308,7 +287,7 @@ describe('GitUtils', () => {
     it('should add specified files', async () => {
       await gitUtils.addFiles('/app', ['file1.txt', 'file2.txt']);
 
-      const callArgs = mockTasks.runCommandSync.mock.calls[0][0];
+      const callArgs = mockDevSupervisor.exec.mock.calls[0][0];
       expect(callArgs.command).toContain('git');
       expect(callArgs.command).toContain('add');
       expect(callArgs.command).toContain('file1.txt');
@@ -318,7 +297,7 @@ describe('GitUtils', () => {
     it('should add all files by default', async () => {
       await gitUtils.addFiles('/app');
 
-      const callArgs = mockTasks.runCommandSync.mock.calls[0][0];
+      const callArgs = mockDevSupervisor.exec.mock.calls[0][0];
       expect(callArgs.command).toContain('git');
       expect(callArgs.command).toContain('add');
       expect(callArgs.command).toContain("'.'");
@@ -326,12 +305,13 @@ describe('GitUtils', () => {
   });
 
   describe('createArchive', () => {
-    it('should throw error when workspace is not available', async () => {
-      const gitUtilsUnavailable = new GitUtils(undefined);
+    it('should throw error when dev-supervisor is not available', async () => {
+      mockDevSupervisor.isAvailable.mockReturnValue(false);
+      const gitUtilsUnavailable = new GitUtils(mockDevSupervisor as any);
 
       await expect(
         gitUtilsUnavailable.createArchive('/app', 'abc1234')
-      ).rejects.toThrow('Archive creation requires a workspace connection for command execution.');
+      ).rejects.toThrow('Archive creation requires dev-supervisor to be available');
     });
 
     it('should throw error when commit hash format is invalid', async () => {
@@ -351,13 +331,11 @@ describe('GitUtils', () => {
     it('should throw error when dist/ folder does not exist for dist-only archives', async () => {
       // Mock dist/ check to fail
       // Note: With includeSource: false, the dist/ check runs immediately
-      mockTasks.runCommandSync.mockResolvedValueOnce({
-        exitCode: 1,
+      mockDevSupervisor.exec.mockResolvedValueOnce({
+        success: false,
+        exit_code: 1,
         stdout: '',
-        stderr: '',
-        timedOut: false,
-        executionTimeMs: 0,
-        taskId: 't',
+        stderr: ''
       });
 
       await expect(
@@ -365,9 +343,10 @@ describe('GitUtils', () => {
       ).rejects.toThrow('dist/ folder not found - application must be built before publishing');
 
       // Verify the dist/ check was called
-      expect(mockTasks.runCommandSync).toHaveBeenCalledWith(
+      expect(mockDevSupervisor.exec).toHaveBeenCalledWith(
         expect.objectContaining({
           command: expect.stringContaining('test'),
+          working_dir: '/app'
         })
       );
     });
@@ -376,9 +355,9 @@ describe('GitUtils', () => {
       const commitHash = 'abc1234';
 
       // Flow: mkdir -> tar (no dist check for includeSource: true)
-      mockTasks.runCommandSync
-        .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // mkdir output dir
-        .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' }); // tar
+      mockDevSupervisor.exec
+        .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' })  // mkdir output dir
+        .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' }); // tar
 
       const result = await gitUtils.createArchive('/app', commitHash, undefined, { includeSource: true });
 
@@ -390,10 +369,10 @@ describe('GitUtils', () => {
       // Verify only 2 calls: mkdir and tar (no dist check).
       // The archive manifest listing is deferred via setImmediate and runs
       // on a later tick, so it's not observable from this synchronous assertion.
-      expect(mockTasks.runCommandSync).toHaveBeenCalledTimes(2);
+      expect(mockDevSupervisor.exec).toHaveBeenCalledTimes(2);
 
       // Verify no dist check command was called
-      const allCommands = mockTasks.runCommandSync.mock.calls.map(call => call[0].command);
+      const allCommands = mockDevSupervisor.exec.mock.calls.map(call => call[0].command);
       const hasDistCheck = allCommands.some(cmd => cmd.includes("test") && cmd.includes("dist"));
       expect(hasDistCheck).toBe(false);
     });
@@ -403,11 +382,11 @@ describe('GitUtils', () => {
 
       // Flow: dist check -> manifest check (not found) -> mkdir -> tar
       // Note: Using explicit includeSource: false to skip auto-detect
-      mockTasks.runCommandSync
-        .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // dist/ check
-        .mockResolvedValueOnce({ exitCode: 1, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' }) // airo-media.json check (not found)
-        .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // mkdir output dir
-        .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' }); // tar
+      mockDevSupervisor.exec
+        .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' })  // dist/ check
+        .mockResolvedValueOnce({ success: false, exit_code: 1, stdout: '', stderr: '' }) // airo-media.json check (not found)
+        .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' })  // mkdir output dir
+        .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' }); // tar
 
       const result = await gitUtils.createArchive('/app', commitHash, undefined, { includeSource: false });
 
@@ -417,10 +396,10 @@ describe('GitUtils', () => {
       });
 
       // Verify 4 calls: dist check, manifest check, mkdir, tar
-      expect(mockTasks.runCommandSync).toHaveBeenCalledTimes(4);
+      expect(mockDevSupervisor.exec).toHaveBeenCalledTimes(4);
 
       // Verify tar archives dist/
-      const tarCallArgs = mockTasks.runCommandSync.mock.calls[3][0];
+      const tarCallArgs = mockDevSupervisor.exec.mock.calls[3][0];
       expect(tarCallArgs.command).toContain('tar');
       expect(tarCallArgs.command).toContain('dist');
     });
@@ -430,12 +409,12 @@ describe('GitUtils', () => {
 
       // Flow: dist check -> manifest check (found) -> copy manifest -> mkdir -> tar
       // Note: Using explicit includeSource: false to skip auto-detect
-      mockTasks.runCommandSync
-        .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // dist/ check
-        .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // airo-media.json check (found)
-        .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // cp airo-media.json dist/
-        .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // mkdir output dir
-        .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' }); // tar
+      mockDevSupervisor.exec
+        .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' })  // dist/ check
+        .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' })  // airo-media.json check (found)
+        .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' })  // cp airo-media.json dist/
+        .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' })  // mkdir output dir
+        .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' }); // tar
 
       const result = await gitUtils.createArchive('/app', commitHash, undefined, { includeSource: false });
 
@@ -445,16 +424,16 @@ describe('GitUtils', () => {
       });
 
       // Verify 5 calls including the copy
-      expect(mockTasks.runCommandSync).toHaveBeenCalledTimes(5);
+      expect(mockDevSupervisor.exec).toHaveBeenCalledTimes(5);
 
       // Verify manifest was copied to dist/
-      const copyCallArgs = mockTasks.runCommandSync.mock.calls[2][0];
+      const copyCallArgs = mockDevSupervisor.exec.mock.calls[2][0];
       expect(copyCallArgs.command).toContain('cp');
       expect(copyCallArgs.command).toContain('airo-media.json');
       expect(copyCallArgs.command).toContain('dist/airo-media.json');
 
       // Verify final tar only archives dist/
-      const tarCallArgs = mockTasks.runCommandSync.mock.calls[4][0];
+      const tarCallArgs = mockDevSupervisor.exec.mock.calls[4][0];
       expect(tarCallArgs.command).toContain('tar');
       expect(tarCallArgs.command).toContain('dist');
     });
@@ -462,18 +441,18 @@ describe('GitUtils', () => {
     it('should throw error when copying airo-media.json fails', async () => {
       // Flow: dist check -> manifest check (found) -> copy fails
       // Note: Using explicit includeSource: false to skip auto-detect
-      mockTasks.runCommandSync
-        .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // dist/ check
-        .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // airo-media.json check (found)
-        .mockResolvedValueOnce({ exitCode: 1, stdout: '', stderr: 'Permission denied', timedOut: false, executionTimeMs: 0, taskId: 't' }); // cp fails
+      mockDevSupervisor.exec
+        .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' })  // dist/ check
+        .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' })  // airo-media.json check (found)
+        .mockResolvedValueOnce({ success: false, exit_code: 1, stdout: '', stderr: 'Permission denied' }); // cp fails
 
       await expect(
         gitUtils.createArchive('/app', 'abc1234', undefined, { includeSource: false })
       ).rejects.toThrow('Failed to copy airo-media.json to dist/');
 
       // Verify the copy command was attempted
-      expect(mockTasks.runCommandSync).toHaveBeenCalledTimes(3);
-      const copyCallArgs = mockTasks.runCommandSync.mock.calls[2][0];
+      expect(mockDevSupervisor.exec).toHaveBeenCalledTimes(3);
+      const copyCallArgs = mockDevSupervisor.exec.mock.calls[2][0];
       expect(copyCallArgs.command).toContain('cp');
       expect(copyCallArgs.command).toContain('airo-media.json');
     });
@@ -481,10 +460,10 @@ describe('GitUtils', () => {
     it('should throw error when mkdir fails', async () => {
       // Flow: dist check -> manifest check (not found) -> mkdir fails
       // Note: Using explicit includeSource: false to skip auto-detect
-      mockTasks.runCommandSync
-        .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // dist/ check
-        .mockResolvedValueOnce({ exitCode: 1, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' }) // airo-media.json check
-        .mockResolvedValueOnce({ exitCode: 1, stdout: '', stderr: 'Permission denied', timedOut: false, executionTimeMs: 0, taskId: 't' }); // mkdir fails
+      mockDevSupervisor.exec
+        .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' })  // dist/ check
+        .mockResolvedValueOnce({ success: false, exit_code: 1, stdout: '', stderr: '' }) // airo-media.json check
+        .mockResolvedValueOnce({ success: false, exit_code: 1, stdout: '', stderr: 'Permission denied' }); // mkdir fails
 
       await expect(
         gitUtils.createArchive('/app', 'abc1234', undefined, { includeSource: false })
@@ -494,11 +473,11 @@ describe('GitUtils', () => {
     it('should throw error when tar command fails', async () => {
       // Flow: dist check -> manifest check (not found) -> mkdir -> tar fails
       // Note: Using explicit includeSource: false to skip auto-detect
-      mockTasks.runCommandSync
-        .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // dist/ check
-        .mockResolvedValueOnce({ exitCode: 1, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' }) // airo-media.json check
-        .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // mkdir succeeds
-        .mockResolvedValueOnce({ exitCode: 1, stdout: '', stderr: 'No space left on device', timedOut: false, executionTimeMs: 0, taskId: 't' }); // tar fails
+      mockDevSupervisor.exec
+        .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' })  // dist/ check
+        .mockResolvedValueOnce({ success: false, exit_code: 1, stdout: '', stderr: '' }) // airo-media.json check
+        .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' })  // mkdir succeeds
+        .mockResolvedValueOnce({ success: false, exit_code: 1, stdout: '', stderr: 'No space left on device' }); // tar fails
 
       await expect(
         gitUtils.createArchive('/app', 'abc1234', undefined, { includeSource: false })
@@ -512,21 +491,21 @@ describe('GitUtils', () => {
 
           // Flow: bundle check (exists) -> dist check -> manifest check -> mkdir -> tar (dist only)
           // Note: bundle check happens first (in shouldIncludeSource), then dist check for dist-only archives
-          mockTasks.runCommandSync
-            .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // bundle check (exists)
-            .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // dist/ check
-            .mockResolvedValueOnce({ exitCode: 1, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' }) // airo-media.json check (not found)
-            .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // mkdir output dir
-            .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' }); // tar
+          mockDevSupervisor.exec
+            .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' })  // bundle check (exists)
+            .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' })  // dist/ check
+            .mockResolvedValueOnce({ success: false, exit_code: 1, stdout: '', stderr: '' }) // airo-media.json check (not found)
+            .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' })  // mkdir output dir
+            .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' }); // tar
 
           await gitUtils.createArchive('/app', commitHash);
 
           // Verify bundle check was called first
-          const bundleCheckCall = mockTasks.runCommandSync.mock.calls[0][0];
+          const bundleCheckCall = mockDevSupervisor.exec.mock.calls[0][0];
           expect(bundleCheckCall.command).toContain('server.bundle.mjs');
 
           // Verify tar only archives dist/ (no exclusions)
-          const tarCallArgs = mockTasks.runCommandSync.mock.calls[4][0];
+          const tarCallArgs = mockDevSupervisor.exec.mock.calls[4][0];
           expect(tarCallArgs.command).toContain('dist');
           expect(tarCallArgs.command).not.toContain('--exclude');
         });
@@ -536,15 +515,15 @@ describe('GitUtils', () => {
 
           // Flow: bundle check (not exists) -> mkdir -> tar (full source with exclusions)
           // Note: No dist check because includeSource=true (auto-detected from missing bundle)
-          mockTasks.runCommandSync
-            .mockResolvedValueOnce({ exitCode: 1, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' }) // bundle check (not exists)
-            .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // mkdir output dir
-            .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' }); // tar
+          mockDevSupervisor.exec
+            .mockResolvedValueOnce({ success: false, exit_code: 1, stdout: '', stderr: '' }) // bundle check (not exists)
+            .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' })  // mkdir output dir
+            .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' }); // tar
 
           await gitUtils.createArchive('/app', commitHash);
 
           // Verify tar archives full source with exclusions
-          const tarCallArgs = mockTasks.runCommandSync.mock.calls[2][0];
+          const tarCallArgs = mockDevSupervisor.exec.mock.calls[2][0];
           expect(tarCallArgs.command).toContain('tar');
           expect(tarCallArgs.command).toContain('--exclude');
           expect(tarCallArgs.command).toContain('node_modules');
@@ -560,10 +539,10 @@ describe('GitUtils', () => {
 
           // Flow: bundle check (not exists) -> mkdir -> tar
           // Note: dist/ check is intentionally NOT mocked because it should NOT be called
-          mockTasks.runCommandSync
-            .mockResolvedValueOnce({ exitCode: 1, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' }) // bundle check (not exists)
-            .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // mkdir output dir
-            .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' }); // tar
+          mockDevSupervisor.exec
+            .mockResolvedValueOnce({ success: false, exit_code: 1, stdout: '', stderr: '' }) // bundle check (not exists)
+            .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' })  // mkdir output dir
+            .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' }); // tar
 
           const result = await gitUtils.createArchive('/app', commitHash);
 
@@ -574,10 +553,10 @@ describe('GitUtils', () => {
 
           // Verify exactly 3 calls: bundle check, mkdir, tar (no dist check).
           // Archive manifest is deferred via setImmediate — not observable here.
-          expect(mockTasks.runCommandSync).toHaveBeenCalledTimes(3);
+          expect(mockDevSupervisor.exec).toHaveBeenCalledTimes(3);
 
           // Explicitly verify no dist check command was called
-          const allCommands = mockTasks.runCommandSync.mock.calls.map(call => call[0].command);
+          const allCommands = mockDevSupervisor.exec.mock.calls.map(call => call[0].command);
           const hasDistCheck = allCommands.some(cmd =>
             cmd.includes("test") && cmd.includes("'-d'") && cmd.includes("'dist'")
           );
@@ -591,20 +570,20 @@ describe('GitUtils', () => {
 
           // Flow: dist check -> manifest check (not found) -> mkdir -> tar
           // Note: No bundle check because includeSource is explicit
-          mockTasks.runCommandSync
-            .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // dist/ check
-            .mockResolvedValueOnce({ exitCode: 1, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' }) // airo-media.json check (not found)
-            .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // mkdir output dir
-            .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' }); // tar
+          mockDevSupervisor.exec
+            .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' })  // dist/ check
+            .mockResolvedValueOnce({ success: false, exit_code: 1, stdout: '', stderr: '' }) // airo-media.json check (not found)
+            .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' })  // mkdir output dir
+            .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' }); // tar
 
           await gitUtils.createArchive('/app', commitHash, undefined, { includeSource: false });
 
           // Verify no bundle check was called (first call after dist check is manifest check)
-          const secondCall = mockTasks.runCommandSync.mock.calls[1][0];
+          const secondCall = mockDevSupervisor.exec.mock.calls[1][0];
           expect(secondCall.command).not.toContain('server.bundle.mjs');
 
           // Verify tar only archives dist/
-          const tarCallArgs = mockTasks.runCommandSync.mock.calls[3][0];
+          const tarCallArgs = mockDevSupervisor.exec.mock.calls[3][0];
           expect(tarCallArgs.command).toContain('dist');
           expect(tarCallArgs.command).not.toContain('--exclude');
         });
@@ -615,21 +594,21 @@ describe('GitUtils', () => {
           // Flow: mkdir -> tar (with exclusions)
           // Note: No bundle check because includeSource is explicit
           // Note: No dist check because includeSource: true skips it
-          mockTasks.runCommandSync
-            .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // mkdir output dir
-            .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' }); // tar
+          mockDevSupervisor.exec
+            .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' })  // mkdir output dir
+            .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' }); // tar
 
           await gitUtils.createArchive('/app', commitHash, undefined, { includeSource: true });
 
           // Verify no bundle check or dist check was called
           // (2 = mkdir + tar; archive manifest deferred via setImmediate)
-          expect(mockTasks.runCommandSync).toHaveBeenCalledTimes(2);
-          const allCommands = mockTasks.runCommandSync.mock.calls.map(call => call[0].command);
+          expect(mockDevSupervisor.exec).toHaveBeenCalledTimes(2);
+          const allCommands = mockDevSupervisor.exec.mock.calls.map(call => call[0].command);
           const hasBundleCheck = allCommands.some(cmd => cmd.includes('server.bundle.mjs'));
           expect(hasBundleCheck).toBe(false);
 
           // Verify tar archives full source with exclusions
-          const tarCallArgs = mockTasks.runCommandSync.mock.calls[1][0];
+          const tarCallArgs = mockDevSupervisor.exec.mock.calls[1][0];
           expect(tarCallArgs.command).toContain('--exclude');
           expect(tarCallArgs.command).toContain("'.'");
         });
@@ -641,13 +620,13 @@ describe('GitUtils', () => {
 
           // Flow: mkdir -> tar (with exclusions)
           // Note: No dist check because includeSource: true skips it
-          mockTasks.runCommandSync
-            .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // mkdir output dir
-            .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' }); // tar
+          mockDevSupervisor.exec
+            .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' })  // mkdir output dir
+            .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' }); // tar
 
           await gitUtils.createArchive('/app', commitHash, undefined, { includeSource: true });
 
-          const tarCallArgs = mockTasks.runCommandSync.mock.calls[1][0];
+          const tarCallArgs = mockDevSupervisor.exec.mock.calls[1][0];
           expect(tarCallArgs.command).toMatch(/--exclude.*node_modules/);
           expect(tarCallArgs.command).toMatch(/--exclude.*\.git/);
           expect(tarCallArgs.command).not.toMatch(/--exclude.*\.env/);
@@ -658,15 +637,15 @@ describe('GitUtils', () => {
           try {
             const commitHash = 'abc1234';
 
-            mockTasks.runCommandSync
-              .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // mkdir output dir
-              .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' }); // tar
+            mockDevSupervisor.exec
+              .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' })  // mkdir output dir
+              .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' }); // tar
 
             await gitUtils.createArchive('/app', commitHash, undefined, { includeSource: true });
 
             // .ssl is bind-mounted read-only into the local-control-plane publish container;
             // it must be excluded to prevent tar extraction from failing with "Read-only file system"
-            const tarCallArgs = mockTasks.runCommandSync.mock.calls[1][0];
+            const tarCallArgs = mockDevSupervisor.exec.mock.calls[1][0];
             expect(tarCallArgs.command).toMatch(/--exclude.*\.ssl/);
           } finally {
             vi.unstubAllEnvs();
@@ -678,15 +657,15 @@ describe('GitUtils', () => {
           try {
             const commitHash = 'abc1234';
 
-            mockTasks.runCommandSync
-              .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // mkdir output dir
-              .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' }); // tar
+            mockDevSupervisor.exec
+              .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' })  // mkdir output dir
+              .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' }); // tar
 
             await gitUtils.createArchive('/app', commitHash, undefined, { includeSource: true });
 
             // Nomad/production has no read-only .ssl bind-mount, so the exclusion is skipped
             // to keep archive contents identical to pre-fix behavior.
-            const tarCallArgs = mockTasks.runCommandSync.mock.calls[1][0];
+            const tarCallArgs = mockDevSupervisor.exec.mock.calls[1][0];
             expect(tarCallArgs.command).not.toMatch(/--exclude.*\.ssl/);
           } finally {
             vi.unstubAllEnvs();
@@ -697,14 +676,14 @@ describe('GitUtils', () => {
           const commitHash = 'abc1234';
 
           // Note: No dist check because includeSource: true skips it
-          mockTasks.runCommandSync
-            .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' }) // mkdir output dir
-            .mockResolvedValueOnce({ exitCode: 0, stdout: 'test.json\u0000tmp/cache.db\u0000', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' }) // list untracked
-            .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' }); // tar
+          mockDevSupervisor.exec
+            .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' }) // mkdir output dir
+            .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: 'test.json\u0000tmp/cache.db\u0000', stderr: '' }) // list untracked
+            .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' }); // tar
 
           await gitUtils.createArchive('/app', commitHash, undefined, { includeSource: true, excludeUntracked: true });
 
-          const tarCallArgs = mockTasks.runCommandSync.mock.calls[2][0];
+          const tarCallArgs = mockDevSupervisor.exec.mock.calls[2][0];
           expect(tarCallArgs.command).toContain('--exclude=test.json');
           expect(tarCallArgs.command).toContain('--exclude=tmp/cache.db');
         });
@@ -713,14 +692,14 @@ describe('GitUtils', () => {
           const commitHash = 'abc1234';
 
           // Note: No dist check because includeSource: true skips it
-          mockTasks.runCommandSync
-            .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' }) // mkdir output dir
-            .mockResolvedValueOnce({ exitCode: 0, stdout: ' leading.txt\u0000trailing.txt \u0000', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' }) // list untracked
-            .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' }); // tar
+          mockDevSupervisor.exec
+            .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' }) // mkdir output dir
+            .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: ' leading.txt\u0000trailing.txt \u0000', stderr: '' }) // list untracked
+            .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' }); // tar
 
           await gitUtils.createArchive('/app', commitHash, undefined, { includeSource: true, excludeUntracked: true });
 
-          const tarCallArgs = mockTasks.runCommandSync.mock.calls[2][0];
+          const tarCallArgs = mockDevSupervisor.exec.mock.calls[2][0];
           expect(tarCallArgs.command).toContain('--exclude= leading.txt');
           expect(tarCallArgs.command).toContain('--exclude=trailing.txt ');
         });
@@ -729,14 +708,14 @@ describe('GitUtils', () => {
           const commitHash = 'abc1234';
 
           // Note: No dist check because includeSource: true skips it
-          mockTasks.runCommandSync
-            .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' }) // mkdir output dir
-            .mockResolvedValueOnce({ exitCode: 0, stdout: '.env\u0000.env.local\u0000.env.production\u0000subdir/.env\u0000config.json\u0000', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' }) // list untracked
-            .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' }); // tar
+          mockDevSupervisor.exec
+            .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' }) // mkdir output dir
+            .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '.env\u0000.env.local\u0000.env.production\u0000subdir/.env\u0000config.json\u0000', stderr: '' }) // list untracked
+            .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' }); // tar
 
           await gitUtils.createArchive('/app', commitHash, undefined, { includeSource: true, excludeUntracked: true });
 
-          const tarCallArgs = mockTasks.runCommandSync.mock.calls[2][0];
+          const tarCallArgs = mockDevSupervisor.exec.mock.calls[2][0];
           // .env files at the root (starting with .env) are filtered from the untracked exclusion list,
           // so they will NOT have --exclude flags and will be included in the publish archive
           expect(tarCallArgs.command).not.toContain('--exclude=.env');
@@ -752,14 +731,14 @@ describe('GitUtils', () => {
           const commitHash = 'abc1234';
 
           // Note: No dist check because includeSource: true skips it
-          mockTasks.runCommandSync
-            .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' }) // mkdir output dir
-            .mockResolvedValueOnce({ exitCode: 0, stdout: '.airo/config.json\u0000.airo\u0000.airo-other/foo.txt\u0000random.txt\u0000', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' }) // list untracked
-            .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' }); // tar
+          mockDevSupervisor.exec
+            .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' }) // mkdir output dir
+            .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '.airo/config.json\u0000.airo\u0000.airo-other/foo.txt\u0000random.txt\u0000', stderr: '' }) // list untracked
+            .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' }); // tar
 
           await gitUtils.createArchive('/app', commitHash, undefined, { includeSource: true, excludeUntracked: true });
 
-          const tarCallArgs = mockTasks.runCommandSync.mock.calls[2][0];
+          const tarCallArgs = mockDevSupervisor.exec.mock.calls[2][0];
           // .airo/ files and the .airo directory itself are filtered from the untracked exclusion list,
           // so they will NOT have --exclude flags and will be included in the publish archive
           expect(tarCallArgs.command).not.toContain('--exclude=.airo/config.json');
@@ -775,17 +754,15 @@ describe('GitUtils', () => {
           const commitHash = 'abc1234';
 
           // Note: No dist check because includeSource: true skips it
-          mockTasks.runCommandSync
-            .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' }) // mkdir output dir
+          mockDevSupervisor.exec
+            .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' }) // mkdir output dir
             .mockResolvedValueOnce({
-              exitCode: 1,
+              success: false,
+              exit_code: 1,
               stdout: '',
               stderr: 'not a git repository',
-              timedOut: false,
-              executionTimeMs: 0,
-              taskId: 't',
             }) // list untracked (fails)
-            .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' }); // tar
+            .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' }); // tar
 
           await expect(
             gitUtils.createArchive('/app', commitHash, undefined, { includeSource: true, excludeUntracked: true })
@@ -796,8 +773,8 @@ describe('GitUtils', () => {
 
           // 3 calls: mkdir, list-untracked (fails), tar.
           // Archive manifest is deferred via setImmediate — not observable here.
-          expect(mockTasks.runCommandSync).toHaveBeenCalledTimes(3);
-          const tarCallArgs = mockTasks.runCommandSync.mock.calls[2][0];
+          expect(mockDevSupervisor.exec).toHaveBeenCalledTimes(3);
+          const tarCallArgs = mockDevSupervisor.exec.mock.calls[2][0];
           expect(tarCallArgs.command).not.toContain('--exclude=test.json');
           expect(tarCallArgs.command).not.toContain('--exclude=tmp/cache.db');
         });
@@ -808,9 +785,9 @@ describe('GitUtils', () => {
           // Flow: mkdir -> tar
           // Note: No manifest check or copy when includeSource is true
           // Note: No dist check because includeSource: true skips it
-          mockTasks.runCommandSync
-            .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // mkdir output dir
-            .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' }); // tar
+          mockDevSupervisor.exec
+            .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' })  // mkdir output dir
+            .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' }); // tar
 
           await gitUtils.createArchive('/app', commitHash, undefined, { includeSource: true });
 
@@ -818,10 +795,10 @@ describe('GitUtils', () => {
           // No manifest check or copy because full source includes everything
           // No dist check because includeSource: true skips it
           // Archive manifest event is deferred via setImmediate — not observable here.
-          expect(mockTasks.runCommandSync).toHaveBeenCalledTimes(2);
+          expect(mockDevSupervisor.exec).toHaveBeenCalledTimes(2);
 
           // Verify no cp command was called
-          const allCommands = mockTasks.runCommandSync.mock.calls.map(call => call[0].command);
+          const allCommands = mockDevSupervisor.exec.mock.calls.map(call => call[0].command);
           const hasCopy = allCommands.some(cmd => cmd.includes('cp') && cmd.includes('airo-media.json'));
           expect(hasCopy).toBe(false);
         });
@@ -830,14 +807,14 @@ describe('GitUtils', () => {
           const commitHash = 'abc1234';
 
           // Note: No dist check because includeSource: true skips it
-          mockTasks.runCommandSync
-            .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // mkdir output dir
-            .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' }); // tar
+          mockDevSupervisor.exec
+            .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' })  // mkdir output dir
+            .mockResolvedValueOnce({ success: true, exit_code: 0, stdout: '', stderr: '' }); // tar
 
           await gitUtils.createArchive('/app', commitHash, undefined, { includeSource: true });
 
           // Verify tar uses '.' to archive from root
-          const tarCallArgs = mockTasks.runCommandSync.mock.calls[1][0];
+          const tarCallArgs = mockDevSupervisor.exec.mock.calls[1][0];
           expect(tarCallArgs.command).toContain("'.'");
         });
       });

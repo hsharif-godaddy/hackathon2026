@@ -96,10 +96,9 @@ describe('HttpTasks', () => {
 
       expect(result.taskId).toBe('task-3');
       expect(result.exitCode).toBe(-1);
-      expect(result.timedOut).toBe(true);
+      expect(result.timedOut).toBe(false);
       expect(result.stdout).toBe('partial output');
       expect(result.stderr).toBe('partial err');
-      expect(result.executionTimeMs).toBe(5000);
     });
   });
 

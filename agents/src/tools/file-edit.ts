@@ -8,7 +8,7 @@ import { translateDockerPath, deriveAssetsDir, validateNoEscapingSymlinks } from
 import { logger } from '../logging/index.js';
 import { toolFileEditEvents, toolServerHealthEvents } from '../logging/events/index.js';
 import { ServerManagementTool } from './server-management-tool.js';
-import { createForWorkspace } from '../workspace/index.js';
+import { DevSupervisorClientFactory } from '../utils/dev-supervisor-client-factory.js';
 import { fileUploadService } from '../services/FileUploadService.js';
 import { createSafePathBuilder } from '../utils/safe-path.js';
 import { isSourceFile, BINARY_FILE_REGEX } from '../utils/file-types.js';
@@ -529,8 +529,9 @@ export class FileEditTool {
     appId: string
   ): Promise<{ success: boolean; hash?: string; error?: string }> {
     try {
-      const workspace = createForWorkspace(appId, 'preview');
-      const gitTool = new GitTool(workspace?.tasks);
+      // Create git tool with dev-supervisor
+      const devSupervisor = DevSupervisorClientFactory.createForApp(appId);
+      const gitTool = new GitTool(devSupervisor || undefined);
 
       // Stage modified/created files
       if (modifiedFilePaths.length > 0) {
@@ -1309,8 +1310,9 @@ export class FileEditTool {
     const relativePath = relative(appPath, filePath);
 
     try {
-      const workspace = createForWorkspace(context.appId, 'preview');
-      const gitTool = new GitTool(workspace?.tasks)
+      // Create git tool with dev-supervisor for this specific app
+      const devSupervisor = DevSupervisorClientFactory.createForApp(context.appId)
+      const gitTool = new GitTool(devSupervisor || undefined)
 
       // First, add the changed file to git
       await gitTool.executeGitOperation(appPath, {

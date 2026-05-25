@@ -1,7 +1,6 @@
 import { existsSync } from 'node:fs';
 
 import { DevSupervisorClientFactory } from '../../utils/dev-supervisor-client-factory.js';
-import { createForWorkspace } from '../../workspace/index.js';
 import { AppRepository } from '../../database/repositories/AppRepository.js';
 import { GitUtils } from '../../utils/git.js';
 import { log } from '../../logging/index.js';
@@ -110,9 +109,9 @@ router.post('/apps/:id/publish', requirePermission('canPublish'), async (req, re
       return res.status(404).json({ error: 'App not found' });
     }
 
+    // Create GitUtils with dev-supervisor for this specific app
     const devSupervisor = DevSupervisorClientFactory.createForApp(id);
-    const workspace = createForWorkspace(id, 'preview');
-    const gitUtils = new GitUtils(workspace?.tasks);
+    const gitUtils = new GitUtils(devSupervisor || undefined);
 
     // Check if dev-supervisor is available
     if (!devSupervisor) {

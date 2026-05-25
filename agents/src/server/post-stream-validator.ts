@@ -39,7 +39,6 @@ import {
 import { DevSupervisorClientFactory } from '../utils/dev-supervisor-client-factory.js';
 import { GitUtils } from '../utils/git.js';
 import { AppRepository } from '../database/repositories/AppRepository.js';
-import { createForWorkspace } from '../workspace/index.js';
 
 type PhaseLogger = Pick<ILogger, 'info' | 'warn'>;
 
@@ -840,9 +839,9 @@ export function buildSharedPostStreamValidator(logger: PhaseLogger): {
   const hasUncommittedChanges = async (appId: string): Promise<boolean> => {
     const app = appRepo.findById(appId)
     if (!app) throw new Error(`App not found: ${appId}`)
-    const workspace = createForWorkspace(appId, 'preview')
-    if (!workspace) throw new Error(`Workspace not available for app: ${appId}`)
-    return new GitUtils(workspace.tasks).hasUncommittedChanges(app.path)
+    const devSupervisor = DevSupervisorClientFactory.createForApp(appId)
+    if (!devSupervisor) throw new Error(`DevSupervisor not available for app: ${appId}`)
+    return new GitUtils(devSupervisor).hasUncommittedChanges(app.path)
   }
 
   const validator = createPostStreamValidator({

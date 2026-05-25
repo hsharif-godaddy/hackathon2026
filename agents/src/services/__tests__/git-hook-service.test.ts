@@ -43,10 +43,6 @@ vi.mock('../../logging/index.js', () => ({
   },
 }));
 
-vi.mock('../../workspace/index.js', () => ({
-  createForWorkspace: () => ({ tasks: {} }),
-}));
-
 // Import after mocks
 import { GitHookService } from '../git-hook-service.js';
 import { AppRepository } from '../../database/repositories/AppRepository.js';

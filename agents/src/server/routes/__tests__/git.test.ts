@@ -69,10 +69,6 @@ vi.mock('../../../utils/dev-supervisor-client-factory.js', () => ({
   },
 }));
 
-vi.mock('../../../workspace/index.js', () => ({
-  createForWorkspace: () => ({ tasks: {} }),
-}));
-
 vi.mock('../../../logging/index.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../../logging/index.js')>();
   return {

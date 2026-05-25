@@ -89,17 +89,15 @@ export class HttpTasks implements WorkspaceTasks {
     }
 
     // Server returned accepted — command is still running past our wait.
-    // Since wait_seconds === timeoutSec, this means the command exceeded its
-    // allotted time. Mark as timed out so callers (e.g. attemptGitRecovery)
-    // don't misinterpret the -1 exit code as a command failure and retry.
+    // Fetch whatever output is available so far.
     const output = await this.client.getTaskOutput(response.task_id);
     return {
       taskId: response.task_id,
       exitCode: -1,
-      timedOut: true,
+      timedOut: false,
       stdout: output.stdout,
       stderr: output.stderr,
-      executionTimeMs: timeoutSec * 1000,
+      executionTimeMs: 0,
     };
   }
 

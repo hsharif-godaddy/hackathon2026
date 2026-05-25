@@ -93,28 +93,17 @@ function setupSuccessfulPushMocks(overrides?: {
 
 describe("GitTool - Filtered Push with Allowlist", () => {
   let gitTool: GitTool;
-  let mockTasks: any;
+  let mockDevSupervisor: any;
 
   beforeEach(() => {
     vi.clearAllMocks();
 
-    mockTasks = {
-      runCommandSync: vi.fn().mockResolvedValue({
-        taskId: 'test-task-1',
-        exitCode: 0,
-        stdout: '',
-        stderr: '',
-        timedOut: false,
-        executionTimeMs: 50,
-      }),
-      runCommand: vi.fn(),
-      runCommandAsync: vi.fn(),
-      get: vi.fn(),
-      output: vi.fn(),
-      cancel: vi.fn(),
+    mockDevSupervisor = {
+      isAvailable: vi.fn().mockReturnValue(true),
+      exec: vi.fn(),
     };
 
-    gitTool = new GitTool(mockTasks);
+    gitTool = new GitTool(mockDevSupervisor);
   });
 
   afterEach(() => {

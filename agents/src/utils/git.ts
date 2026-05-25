@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-import type { WorkspaceTasks } from '../workspace/tasks.js';
+import { DevSupervisorClient } from '../services/index.js';
 import { logger } from '../logging/index.js';
 import { buildShellCommand } from './shell-utils.js';
 
@@ -101,10 +101,10 @@ export interface ArchiveOptions extends GitCommandOptions {
  */
 export class GitUtils {
   private readonly DEFAULT_TIMEOUT = 30000; // 30 seconds
-  private readonly tasks: WorkspaceTasks | null;
+  private devSupervisor: DevSupervisorClient | null;
 
-  constructor(tasks?: WorkspaceTasks) {
-    this.tasks = tasks || null;
+  constructor(devSupervisor?: DevSupervisorClient) {
+    this.devSupervisor = devSupervisor || null;
   }
 
   /**
@@ -719,9 +719,9 @@ export class GitUtils {
   ): Promise<GitArchiveResult> {
     const { timeout = 60000 } = options;
 
-    if (!this.isWorkspaceAvailable()) {
+    if (!this.isDevSupervisorAvailable()) {
       throw new Error(
-        'Archive creation requires a workspace connection for command execution.'
+        'Archive creation requires dev-supervisor to be available for command execution.'
       );
     }
 
@@ -735,17 +735,18 @@ export class GitUtils {
     const archivePath = `${outputDir}/${commitHash}.tar.gz`;
 
     // Determine archive strategy first: auto-detect or use explicit override
-    const includeSource = await this.shouldIncludeSource(repoPath, options.includeSource);
+    const includeSource = await this.shouldIncludeSource(options.includeSource);
 
     // Only verify dist/ folder exists for dist-only archives
     // Full source archives include everything in /app, so dist/ is not required
     if (!includeSource) {
-      const distCheckResult = await this.tasks!.runCommandSync({
+      const distCheckResult = await this.devSupervisor!.exec({
         command: buildShellCommand(['test', '-d', 'dist']),
-        workingDir: repoPath,
-        timeoutSeconds: 5,
+        working_dir: '/app',
+        timeout: 5,
+        capture_output: true
       });
-      if (distCheckResult.exitCode !== 0) {
+      if (!distCheckResult.success) {
         logger.error('git.archive.dist_check.failed', {
           message: 'dist/ folder not found - application must be built before publishing',
           repoPath,
@@ -759,7 +760,6 @@ export class GitUtils {
     // Create archive using appropriate strategy
     if (includeSource) {
       await this.createFullSourceArchive(
-        repoPath,
         archivePath,
         outputDir,
         timeout,
@@ -767,7 +767,7 @@ export class GitUtils {
         options.includeNodeModules === true
       );
     } else {
-      await this.createDistOnlyArchive(repoPath, archivePath, outputDir, timeout);
+      await this.createDistOnlyArchive(archivePath, outputDir, timeout);
     }
 
     return {
@@ -780,18 +780,19 @@ export class GitUtils {
    * Determine whether to include full source in archive.
    * Auto-detects based on dist/server.bundle.mjs presence if not explicitly specified.
    */
-  private async shouldIncludeSource(repoPath: string, explicitValue?: boolean): Promise<boolean> {
+  private async shouldIncludeSource(explicitValue?: boolean): Promise<boolean> {
     if (explicitValue !== undefined) {
       return explicitValue;
     }
 
     // Auto-detect: include source if bundled server NOT found
-    const bundleCheckResult = await this.tasks!.runCommandSync({
+    const bundleCheckResult = await this.devSupervisor!.exec({
       command: buildShellCommand(['test', '-f', 'dist/server.bundle.mjs']),
-      workingDir: repoPath,
-      timeoutSeconds: 5,
+      working_dir: '/app',
+      timeout: 5,
+      capture_output: true
     });
-    return bundleCheckResult.exitCode !== 0;
+    return !bundleCheckResult.success;
   }
 
   /**
@@ -799,45 +800,48 @@ export class GitUtils {
    * Used for apps with bundled server (fast path).
    */
   private async createDistOnlyArchive(
-    repoPath: string,
     archivePath: string,
     outputDir: string,
     timeout: number
   ): Promise<void> {
     // Copy airo-media.json into dist/ if it exists
-    const manifestCheckResult = await this.tasks!.runCommandSync({
+    const manifestCheckResult = await this.devSupervisor!.exec({
       command: buildShellCommand(['test', '-f', 'airo-media.json']),
-      workingDir: repoPath,
-      timeoutSeconds: 5,
+      working_dir: '/app',
+      timeout: 5,
+      capture_output: true
     });
-    if (manifestCheckResult.exitCode === 0) {
-      const copyResult = await this.tasks!.runCommandSync({
+    if (manifestCheckResult.success) {
+      const copyResult = await this.devSupervisor!.exec({
         command: buildShellCommand(['cp', 'airo-media.json', 'dist/airo-media.json']),
-        workingDir: repoPath,
-        timeoutSeconds: 5,
+        working_dir: '/app',
+        timeout: 5,
+        capture_output: true
       });
-      if (copyResult.exitCode !== 0) {
+      if (!copyResult.success) {
         throw new Error(`Failed to copy airo-media.json to dist/: ${copyResult.stderr || 'Unknown error'}`);
       }
     }
 
     // Create output directory
-    const mkdirResult = await this.tasks!.runCommandSync({
+    const mkdirResult = await this.devSupervisor!.exec({
       command: buildShellCommand(['mkdir', '-p', outputDir]),
-      workingDir: repoPath,
-      timeoutSeconds: 10,
+      working_dir: '/app',
+      timeout: 10,
+      capture_output: true
     });
-    if (mkdirResult.exitCode !== 0) {
+    if (!mkdirResult.success) {
       throw new Error(`Failed to create output directory: ${mkdirResult.stderr || 'Unknown error'}`);
     }
 
     // Create tar.gz archive of dist/ folder
-    const tarResult = await this.tasks!.runCommandSync({
-      command: buildShellCommand(['tar', '-czf', archivePath, '-C', repoPath, 'dist']),
-      workingDir: repoPath,
-      timeoutSeconds: Math.floor(timeout / 1000),
+    const tarResult = await this.devSupervisor!.exec({
+      command: buildShellCommand(['tar', '-czf', archivePath, '-C', '/app', 'dist']),
+      working_dir: '/app',
+      timeout: Math.floor(timeout / 1000),
+      capture_output: true
     });
-    if (tarResult.exitCode !== 0) {
+    if (!tarResult.success) {
       throw new Error(`Failed to create archive: ${tarResult.stderr || 'Unknown error'}`);
     }
   }
@@ -854,7 +858,6 @@ export class GitUtils {
    *     mount, so the exclusion is skipped there.)
    */
   private async createFullSourceArchive(
-    repoPath: string,
     archivePath: string,
     outputDir: string,
     timeout: number,
@@ -862,18 +865,19 @@ export class GitUtils {
     includeNodeModules: boolean = false
   ): Promise<void> {
     // Create output directory
-    const mkdirResult = await this.tasks!.runCommandSync({
+    const mkdirResult = await this.devSupervisor!.exec({
       command: buildShellCommand(['mkdir', '-p', outputDir]),
-      workingDir: repoPath,
-      timeoutSeconds: 10,
+      working_dir: '/app',
+      timeout: 10,
+      capture_output: true
     });
-    if (mkdirResult.exitCode !== 0) {
+    if (!mkdirResult.success) {
       throw new Error(`Failed to create output directory: ${mkdirResult.stderr || 'Unknown error'}`);
     }
 
     const untrackedExclusions = !excludeUntracked
       ? []
-      : await this.getUntrackedExclusions(repoPath);
+      : await this.getUntrackedExclusions();
 
     const tarExclusions = ['--exclude=.git'];
     if (!includeNodeModules) {
@@ -901,14 +905,15 @@ export class GitUtils {
       'tar', '-czf', archivePath,
       ...tarExclusions,
       ...untrackedExclusions.map(file => `--exclude=${file}`),
-      '-C', repoPath, '.'
+      '-C', '/app', '.'
     ];
-    const tarResult = await this.tasks!.runCommandSync({
+    const tarResult = await this.devSupervisor!.exec({
       command: buildShellCommand(tarArgs),
-      workingDir: repoPath,
-      timeoutSeconds: Math.floor(timeout / 1000),
+      working_dir: '/app',
+      timeout: Math.floor(timeout / 1000),
+      capture_output: true
     });
-    if (tarResult.exitCode !== 0) {
+    if (!tarResult.success) {
       throw new Error(`Failed to create archive: ${tarResult.stderr || 'Unknown error'}`);
     }
 
@@ -916,7 +921,11 @@ export class GitUtils {
     // re-fetching the tar. Deferred via setImmediate so zero work happens on
     // the caller's synchronous path; wrapped in .catch to guarantee no
     // unhandled rejection can escape. A manifest failure is never worth
-    // failing the publish over.
+    // failing the publish over. Use warn (not debug) here because the inner
+    // catch already handles expected exec failures at debug — anything that
+    // escapes to this outer catch is a programming error (e.g. a TypeError
+    // from `this.devSupervisor!` being null) and would otherwise be
+    // invisible at prod LOG_LEVEL=info.
     setImmediate(() => {
       this.emitArchiveManifest(archivePath).catch((error) => {
         logger.warn('git.archive.create.manifest.skip', {
@@ -945,12 +954,14 @@ export class GitUtils {
         `{ stat -c '%s' "${archivePath}" 2>/dev/null || wc -c < "${archivePath}"; } ; ` +
         `echo '---entries---' ; ` +
         `tar -tzf "${archivePath}" 2>/dev/null | head -n ${ENTRY_LIMIT}`;
-      const result = await this.tasks!.runCommandSync({
+      const result = await this.devSupervisor!.exec({
         command: manifestCmd,
-        timeoutSeconds: 15,
+        working_dir: '/app',
+        timeout: 15,
+        capture_output: true,
       });
 
-      if (result.exitCode !== 0) {
+      if (!result.success) {
         logger.debug('git.archive.create.manifest.skip', {
           archivePath,
           stderr: result.stderr,
@@ -992,13 +1003,14 @@ export class GitUtils {
     }
   }
 
-  private async getUntrackedExclusions(repoPath: string): Promise<string[]> {
-    const untrackedResult = await this.tasks!.runCommandSync({
-      command: buildShellCommand(['git', '-C', repoPath, 'ls-files', '-z', '--others', '--exclude-standard']),
-      workingDir: repoPath,
-      timeoutSeconds: 5,
+  private async getUntrackedExclusions(): Promise<string[]> {
+    const untrackedResult = await this.devSupervisor!.exec({
+      command: buildShellCommand(['git', '-C', '/app', 'ls-files', '-z', '--others', '--exclude-standard']),
+      working_dir: '/app',
+      timeout: 5,
+      capture_output: true
     });
-    if (untrackedResult.exitCode !== 0) {
+    if (!untrackedResult.success) {
       logger.debug('git.archive.untracked.exclude.skip', {
         message: 'Failed to list untracked files; proceeding without untracked exclusions',
         stderr: untrackedResult.stderr,
@@ -1362,8 +1374,11 @@ export class GitUtils {
     });
   }
 
-  private isWorkspaceAvailable(): boolean {
-    return this.tasks !== null;
+  /**
+   * Check if dev-supervisor is available for command execution
+   */
+  private isDevSupervisorAvailable(): boolean {
+    return this.devSupervisor !== null && this.devSupervisor !== undefined && this.devSupervisor.isAvailable();
   }
 
   /**
@@ -1396,25 +1411,27 @@ export class GitUtils {
         // Wait 2 seconds to allow any in-progress git operation to complete
         await new Promise(resolve => setTimeout(resolve, 2000));
 
-        if (this.isWorkspaceAvailable()) {
+        if (this.isDevSupervisorAvailable()) {
           // Check if lock file still exists after wait
-          const checkLockResult = await this.tasks!.runCommandSync({
+          const checkLockResult = await this.devSupervisor!.exec({
             command: buildShellCommand(['test', '-f', '.git/index.lock']),
-            workingDir: repoPath,
-            timeoutSeconds: 5,
+            working_dir: '/app',
+            timeout: 5,
+            capture_output: true
           });
 
-          if (checkLockResult.exitCode === 0) {
+          if (checkLockResult.success) {
             // Lock file still exists, remove it
             logger.info('git.util.recovery.lock.removing', { repoPath });
 
-            const lockRemovalResult = await this.tasks!.runCommandSync({
+            const lockRemovalResult = await this.devSupervisor!.exec({
               command: buildShellCommand(['rm', '-f', '.git/index.lock']),
-              workingDir: repoPath,
-              timeoutSeconds: 10,
+              working_dir: '/app',
+              timeout: 10,
+              capture_output: true
             });
 
-            if (lockRemovalResult.exitCode === 0) {
+            if (lockRemovalResult.success) {
               logger.info('git.util.recovery.lock.removed', { repoPath });
               return { recovered: true, shouldRetry: true, escalate: false };
             } else {
@@ -1461,17 +1478,18 @@ export class GitUtils {
       logger.warn('git.util.recovery.corruption.detected', { repoPath });
 
       try {
-        if (this.isWorkspaceAvailable()) {
+        if (this.isDevSupervisorAvailable()) {
           // Run git fsck to check and repair
           logger.info('git.util.recovery.corruption.fsck_running', { repoPath });
 
-          const fsckResult = await this.tasks!.runCommandSync({
+          const fsckResult = await this.devSupervisor!.exec({
             command: buildShellCommand(['git', 'fsck', '--full']),
-            workingDir: repoPath,
-            timeoutSeconds: 60,
+            working_dir: '/app',
+            timeout: 60,
+            capture_output: true
           });
 
-          if (fsckResult.exitCode === 0) {
+          if (fsckResult.success) {
             logger.info('git.util.recovery.corruption.fsck_success', { repoPath });
             return { recovered: true, shouldRetry: true, escalate: false };
           } else {
@@ -1497,7 +1515,7 @@ export class GitUtils {
     // Check for missing .git directory
     // Skip this check when using dev-supervisor since the path is inside the container
     if (errorLower.includes('not a git repository') || errorLower.includes('no such file or directory')) {
-      if (!this.isWorkspaceAvailable()) {
+      if (!this.isDevSupervisorAvailable()) {
         const gitDirPath = resolve(repoPath, '.git');
         if (!existsSync(gitDirPath)) {
           // Critical error - missing .git directory requires escalation
@@ -1534,7 +1552,7 @@ export class GitUtils {
     // Validate that the directory exists on host filesystem
     // Skip this check when using dev-supervisor since the path is inside the container
     const workingDir = resolve(cwd);
-    if (!this.isWorkspaceAvailable() && !existsSync(workingDir)) {
+    if (!this.isDevSupervisorAvailable() && !existsSync(workingDir)) {
       throw new Error(`Working directory does not exist: ${workingDir}`);
     }
 
@@ -1552,28 +1570,31 @@ export class GitUtils {
     };
 
     try {
-      if (!this.isWorkspaceAvailable()) {
+      if (!this.isDevSupervisorAvailable()) {
         throw new Error(
-          'Git operations require a workspace connection for command execution. ' +
+          'Git operations require dev-supervisor to be available for command execution. ' +
           'All deployments are containerized and must have dev-supervisor installed.'
         );
       }
 
-      const execResult = await this.tasks!.runCommandSync({
+      // Use dev-supervisor for command execution
+      // Always use /app as the working directory since all deployments are containerized
+      const execResult = await this.devSupervisor!.exec({
         command,
-        workingDir,
-        timeoutSeconds: Math.floor(timeout / 1000),
+        working_dir: '/app',
+        timeout: Math.floor(timeout / 1000),
+        capture_output: true
       });
 
-      result.exitCode = execResult.exitCode;
+      result.exitCode = execResult.exit_code;
       result.stdout = execResult.stdout;
       result.stderr = execResult.stderr;
-      result.timedOut = execResult.timedOut;
+      result.timedOut = false; // dev-supervisor handles timeout internally
       result.executionTime = Date.now() - startTime;
-      result.success = execResult.exitCode === 0;
+      result.success = execResult.success;
 
-      // If command failed (but not timed out), attempt recovery
-      if (!result.success && !result.timedOut && result.stderr) {
+      // If command failed, attempt recovery
+      if (!result.success && result.stderr) {
         const recovery = await this.attemptGitRecovery(result.stderr, workingDir, command);
 
         if (recovery.escalate) {
@@ -1596,19 +1617,20 @@ export class GitUtils {
             recovered: recovery.recovered
           });
 
-          const retryResult = await this.tasks!.runCommandSync({
+          const retryResult = await this.devSupervisor!.exec({
             command,
-            workingDir,
-            timeoutSeconds: Math.floor(timeout / 1000),
+            working_dir: '/app',
+            timeout: Math.floor(timeout / 1000),
+            capture_output: true
           });
 
-          result.exitCode = retryResult.exitCode;
+          result.exitCode = retryResult.exit_code;
           result.stdout = retryResult.stdout;
           result.stderr = retryResult.stderr;
-          result.success = retryResult.exitCode === 0;
+          result.success = retryResult.success;
           result.executionTime = Date.now() - startTime;
 
-          if (retryResult.exitCode === 0) {
+          if (retryResult.success) {
             logger.info('git.util.execute.retry_success', {
               command,
               workingDir

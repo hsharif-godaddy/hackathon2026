@@ -81,31 +81,25 @@ vi.mock('../../logging/events/index.js', () => ({
   }
 }));
 
-// Create mock WorkspaceTasks
-const createMockTasks = () => ({
-  runCommandSync: vi.fn().mockResolvedValue({
-    taskId: 'test-task-1',
-    exitCode: 0,
+// Create mock DevSupervisorClient
+const createMockDevSupervisor = () => ({
+  isAvailable: vi.fn().mockReturnValue(true),
+  exec: vi.fn().mockResolvedValue({
+    success: true,
+    exit_code: 0,
     stdout: '',
-    stderr: '',
-    timedOut: false,
-    executionTimeMs: 50,
-  }),
-  runCommand: vi.fn(),
-  runCommandAsync: vi.fn(),
-  get: vi.fn(),
-  output: vi.fn(),
-  cancel: vi.fn(),
+    stderr: ''
+  })
 });
 
 describe('GitTool', () => {
   let gitTool: GitTool;
-  let mockTasks: ReturnType<typeof createMockTasks>;
+  let mockDevSupervisor: ReturnType<typeof createMockDevSupervisor>;
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockTasks = createMockTasks();
-    gitTool = new GitTool(mockTasks as any);
+    mockDevSupervisor = createMockDevSupervisor();
+    gitTool = new GitTool(mockDevSupervisor as any);
   });
 
   describe('Parameter Resolution (options first, then database fallback)', () => {
