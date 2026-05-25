@@ -132,6 +132,25 @@ describe('SSETransport', () => {
     )
   })
 
+  it('includes userTimezone in POST body', async () => {
+    transport.connect('app_1', 'token_123', 'conv_1')
+    await vi.waitFor(() => {
+      expect(callbacks.onStateChange).toHaveBeenCalledWith('connected')
+    })
+
+    await transport.sendMessage({
+      content: 'Hello',
+      sessionId: 'sess_1',
+      userTimezone: 'America/New_York',
+    })
+
+    const call = (global.fetch as ReturnType<typeof vi.fn>).mock.calls.find(
+      (c: any[]) => (c[0] as string).includes('/messages')
+    )
+    const body = JSON.parse(call[1].body)
+    expect(body.userTimezone).toBe('America/New_York')
+  })
+
   it('does not include X-Connection-Id header', async () => {
     transport.connect('app_1', 'token_123', 'conv_1')
     await vi.waitFor(() => {

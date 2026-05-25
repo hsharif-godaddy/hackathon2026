@@ -17,6 +17,7 @@ export interface ChatTransportCallbacks {
 export interface SendMessageParams {
   content: string
   sessionId: string
+  userTimezone?: string
   visualContext?: unknown
   aiEditContext?: unknown
   aiEditContexts?: unknown[]

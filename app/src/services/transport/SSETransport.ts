@@ -227,6 +227,7 @@ export class SSETransport implements ChatTransport {
       body: JSON.stringify({
         content: params.content,
         sessionId: params.sessionId,
+        userTimezone: params.userTimezone,
         templateId: params.templateId,
         modelOverride: params.modelOverride,
         agentProfile: params.agentProfile,

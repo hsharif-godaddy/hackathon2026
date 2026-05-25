@@ -446,6 +446,7 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
       todoListContext, isActionRequest, customContext, buildErrorContext,
       uploadedFileName,
       market,
+      userTimezone,
     } = req.body
 
     // WS permits empty content after stripping /agent markers and when the
@@ -459,6 +460,11 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
 
     if (market !== undefined && typeof market !== 'string') {
       res.status(400).json({ error: 'market must be a string' })
+      return
+    }
+
+    if (userTimezone !== undefined && typeof userTimezone !== 'string') {
+      res.status(400).json({ error: 'userTimezone must be a string' })
       return
     }
 
@@ -567,6 +573,7 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
       subscriptionId: effectiveSubscriptionId,
       authType: agentContext?.authType,
       market,
+      userTimezone,
       requestHeaders: req.headers as Record<string, string | string[] | undefined>,
       lifecycleContext: {
         agentContext: {

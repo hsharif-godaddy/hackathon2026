@@ -917,6 +917,38 @@ describe('SSE routes', () => {
       expect(res.status).toBe(400)
     })
 
+    it('returns 400 when userTimezone is not a string', async () => {
+      const res = await request(app)
+        .post('/api/conversations/abcdefghij/conv_1/messages')
+        .send({ content: 'Hello agent', userTimezone: 123 })
+
+      expect(res.status).toBe(400)
+      expect(res.body.error).toBe('userTimezone must be a string')
+    })
+
+    it('forwards userTimezone to executionService', async () => {
+      const mockExecute = vi.fn().mockResolvedValue(undefined)
+      const depsWithService = {
+        ...deps,
+        executionService: { execute: mockExecute, hasActiveStream: vi.fn().mockReturnValue(false) }
+      }
+      const appWithService = express()
+      appWithService.use(express.json())
+      appWithService.use('/api/conversations', createSSERoutes(depsWithService as any))
+
+      const res = await request(appWithService)
+        .post('/api/conversations/abcdefghij/conv_1/messages')
+        .send({ content: 'Hello', userTimezone: 'America/Denver' })
+
+      expect(res.status).toBe(202)
+      for (let i = 0; i < 50 && mockExecute.mock.calls.length === 0; i++) {
+        await new Promise(r => setTimeout(r, 5))
+      }
+      expect(mockExecute).toHaveBeenCalledWith(expect.objectContaining({
+        userTimezone: 'America/Denver',
+      }))
+    })
+
     it('forwards isInitialPrompt=true when conversation has only the just-persisted user message', async () => {
       const mockExecute = vi.fn().mockResolvedValue(undefined)
       deps.messages.getMessageCount.mockResolvedValue(1)

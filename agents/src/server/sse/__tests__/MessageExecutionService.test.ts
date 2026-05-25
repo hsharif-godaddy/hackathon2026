@@ -1099,6 +1099,28 @@ describe('MessageExecutionService', () => {
     })
   })
 
+  describe('userTimezone metadata', () => {
+    it('includes userTimezone in executionContext metadata when provided', async () => {
+      deps = createMockDeps()
+      service = new MessageExecutionService(deps as any)
+
+      await service.execute({ ...DEFAULT_PARAMS, userTimezone: 'Europe/Berlin' })
+
+      const executionContext = deps.contextManager.loadContextMessages.mock.calls[0][0]
+      expect(executionContext.metadata.userTimezone).toBe('Europe/Berlin')
+    })
+
+    it('omits userTimezone from metadata when not provided', async () => {
+      deps = createMockDeps()
+      service = new MessageExecutionService(deps as any)
+
+      await service.execute(DEFAULT_PARAMS)
+
+      const executionContext = deps.contextManager.loadContextMessages.mock.calls[0][0]
+      expect(executionContext.metadata.userTimezone).toBeUndefined()
+    })
+  })
+
   describe('subscribeStream (late-join)', () => {
     it('delivers subsequent events to a subscriber that joins after execute() has started', async () => {
       // Wire a pubsub through eventChannel so subscribe/publish actually fan out.
@@ -2616,5 +2638,16 @@ describe('MessageExecutionService', () => {
 
       expect(postStreamValidator).toHaveBeenCalled()
     })
+  })
+
+  it('includes sessionId in executionContext metadata', async () => {
+    deps = createMockDeps()
+    service = new MessageExecutionService(deps as any)
+
+    await service.execute(DEFAULT_PARAMS)
+
+    // contextManager.loadContextMessages receives the full executionContext
+    const executionContext = deps.contextManager.loadContextMessages.mock.calls[0][0]
+    expect(executionContext.metadata.sessionId).toBe('sse:conv_1')
   })
 })

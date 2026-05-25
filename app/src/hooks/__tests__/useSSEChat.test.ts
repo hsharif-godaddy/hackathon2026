@@ -262,6 +262,15 @@ vi.mock('@/hooks/websocket/actions', () => ({
   },
 }))
 
+let mockRouteParams: Record<string, string> = {}
+
+vi.mock('next/navigation', () => ({
+  useParams: () => mockRouteParams,
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
+  usePathname: () => '/test',
+  useSearchParams: () => new URLSearchParams(),
+}))
+
 const mockBufferTextChunk = vi.fn()
 const mockBufferStoreUpdate = vi.fn()
 const mockFlushStoreUpdateBufferImmediate = vi.fn()
@@ -303,8 +312,11 @@ async function flushPromises() {
   await new Promise(resolve => setTimeout(resolve, 0))
 }
 
-async function setupHook(appId = 'test-app-123') {
+async function setupHook(appIdOrOptions: string | { appId?: string; market?: string } = 'test-app-123') {
+  const appId = typeof appIdOrOptions === 'string' ? appIdOrOptions : (appIdOrOptions.appId ?? 'test-app-123')
+  const market = typeof appIdOrOptions === 'object' ? appIdOrOptions.market : undefined
   currentAppId = appId
+  mockRouteParams = market ? { market } : {}
   const { useSSEChat } = await import('@/hooks/useSSEChat')
   const hook = renderHook(() => useSSEChat())
 
@@ -323,6 +335,7 @@ describe('useSSEChat', () => {
   beforeEach(() => {
     currentAppId = 'test-app-123'
     storeState = {}
+    mockRouteParams = {}
     mockTokenAuthType = 'basic'
     mockConversationIdFromCookie = null
     // Mock fetch for conversation creation POST
@@ -874,7 +887,7 @@ describe('useSSEChat', () => {
     })
 
     expect(lastTransport.sendMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ content: 'build a login page', sessionId: 'test-app-123' })
+      expect.objectContaining({ content: 'build a login page', sessionId: 'test-app-123', userTimezone: expect.any(String) })
     )
   })
 
@@ -937,6 +950,36 @@ describe('useSSEChat', () => {
       content: 'build with retry context',
       aiEditContexts: [{ id: 'ctx-1' }],
       uploadedFileName: 'logo.png',
+    }))
+  })
+
+  it('APP_NOT_FOUND resend preserves market', async () => {
+    const hook = await setupHook({ market: 'es-ES' })
+
+    await act(async () => {
+      await hook.result.current.actions.send({ content: 'hola' })
+    })
+
+    lastTransport.sendMessage.mockClear()
+    vi.useFakeTimers()
+
+    act(() => {
+      lastTransport.callbacks?.onEvent({
+        type: 'stream_error',
+        content: 'app not ready',
+        data: { errorType: 'APP_NOT_FOUND', message: 'app not ready' },
+      })
+    })
+
+    await act(async () => {
+      vi.advanceTimersByTime(500)
+      await Promise.resolve()
+    })
+
+    expect(lastTransport.sendMessage).toHaveBeenCalledWith(expect.objectContaining({
+      content: 'hola',
+      market: 'es-ES',
+      userTimezone: expect.any(String),
     }))
   })
 

@@ -56,6 +56,8 @@ import type { SendMessageOptions } from './useStreamingWebSocket'
 import { useBudgetUpdate } from './websocket/useBudgetUpdate'
 import { useGrantContext } from './websocket/useGrantContext'
 
+const BROWSER_TIMEZONE: string = Intl.DateTimeFormat().resolvedOptions().timeZone
+
 type ConnectionStatus = 'idle' | 'connecting' | 'authenticating' | 'streaming' | 'completing' | 'error'
 
 const STREAM_UPDATE_EVENTS = new Set([
@@ -541,6 +543,7 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
                       transport.sendMessage({
                         content: pending.content,
                         sessionId: currentAppId ?? 'unknown',
+                        userTimezone: BROWSER_TIMEZONE,
                         templateId: pending.templateId,
                         modelOverride: pending.modelOverride,
                         agentProfile: pending.agentProfile,
@@ -552,6 +555,7 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
                         isActionRequest: pending.isActionRequest,
                         customContext: pending.customContext,
                         budgetServiceEnabled: isBudgetServiceEnabledRef.current || undefined,
+                        market: marketRef.current,
                         subscriptionId: subscriptionIdRef.current,
                         buildErrorContext: undefined,
                         uploadedFileName: pending.uploadedFileName,
@@ -941,6 +945,7 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
       await t.sendMessage({
         content: options.content,
         sessionId: activeAppId,
+        userTimezone: BROWSER_TIMEZONE,
         templateId: options.templateId,
         modelOverride: defaults.modelOverride,
         agentProfile: defaults.agentProfile,

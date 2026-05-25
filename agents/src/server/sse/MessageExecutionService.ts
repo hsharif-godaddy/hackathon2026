@@ -176,6 +176,7 @@ interface ExecuteParams {
   /** JWT agent context + derived lifecycle hints (isInitialPrompt, multi-turn caches). */
   lifecycleContext?: LifecycleContext
   market?: string
+  userTimezone?: string
 }
 
 interface ActiveStream {
@@ -1045,7 +1046,7 @@ export class MessageExecutionService {
       visualContext, aiEditContext, aiEditContexts, selectedAssets,
       todoListContext, isActionRequest, customContext, buildErrorContext,
       bmsBudgetId, budgetSessionId, subscriptionId, authType,
-      lifecycleContext, uploadedFileName, market,
+      lifecycleContext, uploadedFileName, market, userTimezone,
     } = params
 
     const resolvedAgentId = agentId
@@ -1155,6 +1156,7 @@ export class MessageExecutionService {
 
     const executionContext: Record<string, unknown> = {
       metadata: {
+        sessionId: sseSocketId,
         appId, siteId, conversationId, templateId, modelOverride, agentProfile,
         agentId: resolvedAgentId,
         ...(subscriptionId && { subscriptionId }),
@@ -1165,6 +1167,7 @@ export class MessageExecutionService {
         ...(budgetSessionId && { budgetSessionId }),
         ...(uploadedFileName && { uploadedFileName }),
         ...(market && { market }),
+        ...(userTimezone && { userTimezone }),
         permissions: {
           canDownload: agentCtx?.canDownload ?? false,
           canPublish: agentCtx?.canPublish ?? false,
