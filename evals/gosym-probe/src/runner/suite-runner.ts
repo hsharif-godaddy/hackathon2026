@@ -15,6 +15,7 @@ import type { BaselineScores } from '../baselines/types.js';
 import type { EvalResult, Evaluator } from '../evaluators/evaluator.js';
 import { normalizeEvalResult } from '../evaluators/normalize-eval-result.js';
 import { effectiveConcurrency } from '../util/concurrency.js';
+import { parseRetryAfterMs } from '../util/retry-after.js';
 import { sleep } from '../util/sleep.js';
 import { staggeredRun, computeStaggerDelay } from '../util/stagger.js';
 import type { TrialLifecycle } from '../clients/trial-lifecycle.js';
@@ -23,15 +24,6 @@ import type { TrialLifecycle } from '../clients/trial-lifecycle.js';
 // if per-environment tuning becomes necessary (e.g. CI wants fewer retries).
 const RATE_LIMIT_WAIT_MS = 30_000;
 const MAX_RATE_LIMIT_RETRIES = 10;
-const MAX_RETRY_WAIT_MS = 300_000; // 5 min cap per-sleep to guard against absurd server values
-
-function parseRetryAfterMs(headers: Headers | undefined): number | null {
-  const raw = headers?.get('retry-after');
-  if (!raw) return null;
-  const seconds = Number(raw);
-  if (!Number.isFinite(seconds) || seconds <= 0) return null;
-  return Math.min(seconds * 1000, MAX_RETRY_WAIT_MS);
-}
 
 interface BaselineStore {
   load(scenarioName: string): Promise<{ scores: BaselineScores; filePath: string } | null>;

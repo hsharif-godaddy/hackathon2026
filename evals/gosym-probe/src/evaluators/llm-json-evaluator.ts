@@ -1,10 +1,15 @@
 import { z } from 'zod';
+import { RateLimitError } from 'openai';
 
 import type { EvalResult, Evaluator } from './evaluator.js';
 import type { IGocodeClient } from '../clients/gocode-client.js';
 import type { DOMSnapshot, Transcript } from '../runner/transcript.js';
 import type { Scenario } from '../scenarios/types.js';
 import { clamp01 } from './shared.js';
+import { retryOn429 } from '../util/retry-on-429.js';
+
+const EVALUATOR_RATE_LIMIT_MAX_RETRIES = 5;
+const EVALUATOR_RATE_LIMIT_WAIT_MS = 30_000;
 
 function extractJsonObject(text: string): string | null {
   const start = text.indexOf('{');
@@ -98,13 +103,39 @@ export class LLMJsonEvaluator<T> implements Evaluator {
     const prompt = await this.config.prompt(transcript, scenario, snapshot);
     let response: string;
     try {
-      response = await this.gocode.complete([{ role: 'user', content: prompt }]);
+      response = await retryOn429(
+        () => this.gocode.complete([{ role: 'user', content: prompt }]),
+        {
+          maxRetries: EVALUATOR_RATE_LIMIT_MAX_RETRIES,
+          defaultWaitMs: EVALUATOR_RATE_LIMIT_WAIT_MS,
+          onRetry: ({ attempt, maxRetries, waitMs }) => {
+            console.warn('LLM judge rate-limited; retrying.', {
+              evaluator: this.name,
+              attempt,
+              maxAttempts: maxRetries,
+              waitSeconds: waitMs / 1000,
+            });
+          },
+          onExhausted: (totalAttempts) => {
+            console.warn('LLM judge rate-limit retry budget exhausted.', {
+              evaluator: this.name,
+              totalAttempts,
+            });
+          },
+        },
+      );
     } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      console.warn('LLM judge request failed.', {
+        evaluator: this.name,
+        error: errorMessage,
+        isRateLimit: err instanceof RateLimitError,
+      });
       return {
         evaluator: this.name,
         score: 0,
         verdict: 'unknown',
-        reason: `LLM judge request failed: ${err instanceof Error ? err.message : String(err)}`,
+        reason: `LLM judge request failed: ${errorMessage}`,
         ...(this.evalVersion !== undefined && { evalVersion: this.evalVersion }),
       };
     }
