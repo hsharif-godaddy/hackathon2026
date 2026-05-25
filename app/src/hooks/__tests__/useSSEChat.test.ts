@@ -568,6 +568,169 @@ describe('useSSEChat', () => {
     expect(lastTransport.loadHistory).toHaveBeenCalledTimes(1)
   })
 
+  it('does not mark recovery complete until fallback history succeeds after inline history failure', async () => {
+    await setupHook()
+
+    act(() => {
+      lastTransport.callbacks?.onEvent({
+        type: 'recovery_status',
+        data: {
+          lossDetected: true,
+          historyLoadFailed: true,
+          historyMessageCount: 0,
+          historyStreaming: false,
+          hasBufferedEvents: true,
+          bufferedCount: 5,
+          streamCompleted: false,
+          conversationId: 'conv-created-123',
+        },
+      })
+    })
+
+    expect(lastTransport.loadHistory).toHaveBeenCalledTimes(1)
+    expect(mockSetHistoryLoadRequested).toHaveBeenCalledWith(true)
+
+    mockSetHistoryLoadingComplete.mockClear()
+    mockSetHistoryLoadRequested.mockClear()
+    mockSetHistoryPagination.mockClear()
+
+    act(() => {
+      lastTransport.callbacks?.onEvent({
+        type: 'replay_complete',
+        data: { replayedCount: 5 },
+      })
+    })
+
+    expect(mockSetHistoryPagination).not.toHaveBeenCalled()
+    expect(mockSetHistoryLoadingComplete).not.toHaveBeenCalledWith(true)
+    expect(mockSetHistoryLoadRequested).not.toHaveBeenCalledWith(false)
+
+    act(() => {
+      lastTransport.callbacks?.onEvent({
+        type: 'history_loaded',
+        data: { hasMore: false, nextCursor: null, messageCount: 2 },
+      })
+    })
+
+    expect(mockSetHistoryPagination).toHaveBeenCalledWith({ hasMore: false, nextCursor: null })
+    expect(mockSetHistoryLoadingComplete).toHaveBeenCalledWith(true)
+  })
+
+  it('keeps fallback history retryable when fallback history fails after replay_complete', async () => {
+    await setupHook()
+
+    act(() => {
+      lastTransport.callbacks?.onEvent({
+        type: 'recovery_status',
+        data: {
+          lossDetected: true,
+          historyLoadFailed: true,
+          historyMessageCount: 0,
+          historyStreaming: false,
+          hasBufferedEvents: true,
+          bufferedCount: 5,
+          streamCompleted: false,
+          conversationId: 'conv-created-123',
+        },
+      })
+    })
+
+    mockSetHistoryLoadingComplete.mockClear()
+    mockSetHistoryLoadRequested.mockClear()
+
+    act(() => {
+      lastTransport.callbacks?.onEvent({
+        type: 'replay_complete',
+        data: { replayedCount: 5 },
+      })
+      lastTransport.callbacks?.onEvent({
+        type: 'history_loaded',
+        data: { error: 'History fetch failed: 500', hasMore: false, nextCursor: null, messageCount: 0 },
+      })
+    })
+
+    expect(mockSetHistoryLoadingComplete).not.toHaveBeenCalledWith(true)
+    expect(mockSetHistoryLoadRequested).toHaveBeenCalledWith(false)
+  })
+
+  it('does not release a deferred initial history load when fallback history succeeds before replay_complete', async () => {
+    mockConversationIdFromCookie = 'conv-abc-123'
+    await setupHook()
+
+    act(() => {
+      lastTransport.callbacks?.onStateChange('connected')
+    })
+
+    expect(lastTransport.loadHistory).not.toHaveBeenCalled()
+    expect(mockSetHistoryLoadRequested).toHaveBeenCalledWith(true)
+
+    act(() => {
+      lastTransport.callbacks?.onEvent({
+        type: 'recovery_status',
+        data: {
+          lossDetected: true,
+          historyLoadFailed: true,
+          historyMessageCount: 0,
+          historyStreaming: false,
+          hasBufferedEvents: true,
+          bufferedCount: 5,
+          streamCompleted: false,
+          conversationId: 'conv-created-123',
+        },
+      })
+    })
+
+    expect(lastTransport.loadHistory).toHaveBeenCalledTimes(1)
+
+    act(() => {
+      lastTransport.callbacks?.onEvent({
+        type: 'history_loaded',
+        data: { hasMore: false, nextCursor: null, messageCount: 2 },
+      })
+      lastTransport.callbacks?.onEvent({
+        type: 'replay_complete',
+        data: { replayedCount: 5 },
+      })
+    })
+
+    expect(lastTransport.loadHistory).toHaveBeenCalledTimes(1)
+    expect(mockSetHistoryLoadingComplete).toHaveBeenCalledWith(true)
+  })
+
+  it('clears pending fallback recovery on transport error', async () => {
+    await setupHook()
+
+    act(() => {
+      lastTransport.callbacks?.onEvent({
+        type: 'recovery_status',
+        data: {
+          lossDetected: true,
+          historyLoadFailed: true,
+          historyMessageCount: 0,
+          historyStreaming: false,
+          hasBufferedEvents: true,
+          bufferedCount: 5,
+          streamCompleted: false,
+          conversationId: 'conv-created-123',
+        },
+      })
+      lastTransport.callbacks?.onError(new Error('sse_transport_cooldown'))
+    })
+
+    mockSetHistoryLoadingComplete.mockClear()
+    mockSetHistoryLoadRequested.mockClear()
+
+    act(() => {
+      lastTransport.callbacks?.onEvent({
+        type: 'replay_complete',
+        data: { replayedCount: 5 },
+      })
+    })
+
+    expect(mockSetHistoryLoadingComplete).not.toHaveBeenCalledWith(true)
+    expect(mockSetHistoryLoadRequested).not.toHaveBeenCalledWith(false)
+  })
+
   it('does not double-load history when streamCompleted path already handles it', async () => {
     await setupHook()
 

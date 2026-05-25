@@ -2,9 +2,9 @@
 
 Date: 2026-05-25
 
-Scope: current code and tests in this checkout. Documentation was used only to identify stale or replacement-readiness areas; code and tests are the source of truth.
+Scope: current code and tests in this checkout after recent SSE parity PRs merged to `main` through #4094. Code and tests are the source of truth; docs are treated as potentially stale.
 
-Goal: identify every user-visible behavior, operational guarantee, and backend capability currently supported by WebSocket that SSE must support before WebSocket can be replaced. SSE does not need to copy WebSocket-specific mechanics where an SSE-native design preserves the same guarantee.
+Goal: identify the remaining user-visible behaviors, operational guarantees, and backend capabilities that SSE must support before WebSocket can be disabled. SSE does not need to copy WebSocket-specific wire mechanics when an SSE-native design gives the same guarantee.
 
 ## Status And Impact Taxonomy
 
@@ -26,177 +26,255 @@ Impact values:
 
 ## Executive Summary
 
-SSE is not ready to replace WebSocket yet, but the gap is narrower than a wire-protocol comparison suggests. Core streaming, tool events, persistence, recovery replay, BMS/grants, and agent execution are largely shared or have acceptable SSE-native equivalents. The remaining replacement risk is mostly lifecycle, runtime extraction, recovery edge cases, event-contract drift, and a few request/metadata differences.
+SSE is much closer to functional replacement readiness than the original parity review indicated. Several earlier blockers have landed in recent PRs:
 
-Verification notes:
+- Runtime extraction from the WebSocket server landed in #4085.
+- Client lifecycle, reconnect, trace IDs, and pagination work landed in #4087.
+- Recovery buffer capacity, loss surfacing, and event contract work landed in #4088.
+- Request/context fields such as `sessionId`, `userTimezone`, and `market` landed in #4089.
+- Observability parity, APM transactions, and request correlation landed in #4090.
+- No-subscriber abort and app-level fanout observability landed in #4093.
+- BMS client gating cleanup and SSE grant recovery predicate alignment landed in #4094.
 
-- Read-only code analysis was performed across `app/`, `agents/`, and `packages/ai-transport/`.
-- Targeted SSE route tests passed: `pnpm --filter @airo/agents test:unit "src/server/sse/__tests__/routes.test.ts"` reported 55 tests passing.
-- Targeted `@airo/ai-transport` recovery/subscriber/channel tests passed as part of the package suite, reporting 706 tests passing.
-- Targeted website `useSSEChat` test execution was blocked before meaningful assertions by unresolved `@airo/shared/credit-adapter` from `app/src/lib/credit-adapter/adapt-budget-to-grants.ts`.
+The remaining work is narrower and should be treated as targeted correctness hardening, not a broad rebuild of the transport.
 
-Comparison note: `docs/sse-ws-parity-analysis.md` was reviewed after this report was drafted. Several of its blockers are stale against current code (`APP_NOT_FOUND` retry, `BUDGET_EXCEEDED` handling, `request_grant_refresh`, `stream_retry`, `debug_turn_stats`, and the SSE feature flag now exist). Useful additions from that document are retained here as validation or hardening items: Elastic APM-specific verification, per-request log correlation, total payload-size validation, migration-guide readiness, and performance benchmarks.
+Current replacement readiness: **not ready to disable WebSocket yet**.
 
-Supersession note: this document supersedes the older `docs/sse-ws-parity-analysis.md`, which was removed because it duplicated this analysis and contained stale replacement blockers.
+Primary remaining risks:
 
-## Prioritized Blockers
+1. Buffer-loss recovery can still be marked complete after inline history load failure.
+2. `stream_retry` is not ownership-guarded and can clear the wrong active client stream if a stale retry event races with a newer turn.
+3. Save-worthy context attachments appear to be built after the initial SSE user/agent persistence calls, so pre-turn persistence may miss them.
+4. SSE error events do not carry the same classified error metadata the client and WebSocket path support.
+5. SSE payload-size validation is less complete than the WebSocket request guard.
+6. `APP_NOT_FOUND` retry still rebuilds from raw options rather than a resolved outbound payload snapshot.
+7. Explicit SSE execution-service shutdown/abort remains absent from server shutdown.
+8. Client billing/grant mode authority is partly cleaned up, but product still needs to decide whether switchboard-only `usesBms()` is acceptable or JWT/server authority must drive the UI hooks.
 
-1. SSE runtime is initialized inside WebSocket startup. Removing WebSocket naively can break `getSSEEventChannel()` and `getSSEAgentFactory()` because they are initialized in `setupAILibWebSocketServer()` before Socket.IO creation. Evidence: [`agents/src/server/ai-lib-websocket-server.ts`](../agents/src/server/ai-lib-websocket-server.ts#L136), [`agents/src/server/ai-lib-websocket-server.ts`](../agents/src/server/ai-lib-websocket-server.ts#L580), [`agents/src/server/app.ts`](../agents/src/server/app.ts#L623).
-2. SSE reconnect does not match WebSocket cold archive restore behavior. WebSocket clears dynamic API cache, clears messages, resets history flags, and reconnects; SSE only re-fetches token and reconnects the existing transport. Evidence: [`app/src/services/websocket/StreamingWebSocketController.ts`](../app/src/services/websocket/StreamingWebSocketController.ts#L290), [`app/src/hooks/useSSEChat.ts`](../app/src/hooks/useSSEChat.ts#L992).
-3. SSE disconnect semantics can keep expensive work running after tab close. SSE stream close unregisters the writer only; active execution continues until completion, explicit stop, or replacement turn. Evidence: [`agents/src/server/sse/routes.ts`](../agents/src/server/sse/routes.ts#L358), [`agents/src/server/sse/MessageExecutionService.ts`](../agents/src/server/sse/MessageExecutionService.ts#L277).
-4. SSE recovery buffer is smaller than WebSocket. WebSocket config uses `ConversationEventChannel({ capacity: 10_000 })`; SSE uses the default `1000`. Evidence: [`packages/ai-transport/src/conversation-event-channel.ts`](../packages/ai-transport/src/conversation-event-channel.ts#L214), [`agents/src/server/ai-lib-websocket-server.ts`](../agents/src/server/ai-lib-websocket-server.ts#L581).
-5. Server/client event contract can drift silently. Server event types live in `@airo/ai-transport`; the SSE client has a hard-coded allowlist. Evidence: [`packages/ai-transport/src/interfaces.ts`](../packages/ai-transport/src/interfaces.ts#L322), [`app/src/services/transport/SSETransport.ts`](../app/src/services/transport/SSETransport.ts#L464).
-6. Buffer-loss history failure can look successful. Server detects loss and tries inline history; if DB history load fails, it still emits `replay_complete`, and the client can mark recovery complete without surfacing data-loss retry state. Evidence: [`packages/ai-transport/src/recovery-plan.ts`](../packages/ai-transport/src/recovery-plan.ts#L72), [`agents/src/server/sse/routes.ts`](../agents/src/server/sse/routes.ts#L236), [`app/src/hooks/useSSEChat.ts`](../app/src/hooks/useSSEChat.ts#L743).
+## Recent PR Reconciliation
 
-## Area 1: Client Transport And Hooks
+| Area | Recent PR evidence | Current classification |
+|---|---|---|
+| Runtime extraction | #4085 `Extract transport-agnostic agent runtime from WebSocket server` | Earlier blocker closed. |
+| Client reconnect/lifecycle/pagination | #4087 `fix(sse): client lifecycle parity — reconnect, trace IDs, pagination` | Broad issue closed; remaining pagination concerns should be tested but are not a known blocker. |
+| Recovery hardening and event contract | #4088 `fix(sse): recovery hardening — buffer capacity, loss surfacing, event contract` | Mostly closed; one recovery-complete failure edge remains. |
+| Request/context parity | #4089 `feat(sse): SSE request/context parity (sessionId, userTimezone, market)` | Mostly closed; payload-size and resend snapshot remain. |
+| Observability | #4090 `feat(sse): add observability parity (trace IDs, APM transactions, request correlation)` | Broad issue closed; structured client error metadata remains. |
+| Operational semantics | #4093 `feat(sse): add no-subscriber abort timer and app-level fanout observability` | Earlier disconnect/fanout blockers closed or downgraded. |
+| Billing/grants | #4045 and #4094 | Mostly closed; client mode authority still needs explicit decision. |
 
-| Capability / behavior | WebSocket implementation evidence | SSE implementation evidence | Status | Replacement impact | Recommended change | Suggested tests |
-|---|---|---|---|---|---|---|
-| Transport selection | `useChatTransport` selects `useStreamingWebSocket` when the SSE flag is false: [`app/src/hooks/useChatTransport.ts`](../app/src/hooks/useChatTransport.ts#L18) | Selects `useSSEChat` when `app-builder-sse-transport` is true: [`app/src/hooks/useChatTransport.ts`](../app/src/hooks/useChatTransport.ts#L19) | Parity | Required | Keep flag lock until replacement; remove WebSocket fallback only after blockers are resolved. | Flag-locking and disabled-hook no-allocation tests. |
-| Connect/auth model | WebSocket emits an `authenticate` event: [`app/src/services/websocket/ConnectionManager.ts`](../app/src/services/websocket/ConnectionManager.ts#L598) | SSE uses Bearer headers and `agentFetch`: [`app/src/services/transport/SSETransport.ts`](../app/src/services/transport/SSETransport.ts#L213), [`app/src/services/transport/SSETransport.ts`](../app/src/services/transport/SSETransport.ts#L393) | SSE-native equivalent | Required | Do not port WebSocket auth events. Keep per-request auth and EventSource reopen behavior. | 401 refresh, cooldown, and reconnect tests. |
-| Send message path | WebSocket builds `chat_message` payloads with context: [`app/src/services/websocket/StreamingWebSocketController.ts`](../app/src/services/websocket/StreamingWebSocketController.ts#L521) | SSE posts to `/messages`: [`app/src/services/transport/SSETransport.ts`](../app/src/services/transport/SSETransport.ts#L225) | Parity | Required | Preserve effective execution metadata and attachments, not wire shape. | Contract test comparing WebSocket built payload to SSE server execute args for the same user input. |
-| Stop generation | WebSocket emits `stop_generation` and waits for an ack: [`app/src/services/websocket/StreamingWebSocketController.ts`](../app/src/services/websocket/StreamingWebSocketController.ts#L430) | SSE POSTs `/stop` and finalizes locally: [`app/src/services/transport/SSETransport.ts`](../app/src/services/transport/SSETransport.ts#L286), [`app/src/hooks/useSSEChat.ts`](../app/src/hooks/useSSEChat.ts#L974) | SSE-native equivalent | Required | Keep HTTP stop endpoint. Do not emulate WebSocket ack beyond HTTP status. | Stop success/failure and local `user_stopped` finalization. |
-| Cold archive reconnect | WebSocket clears dynamic API cache, messages, and history flags: [`app/src/services/websocket/StreamingWebSocketController.ts`](../app/src/services/websocket/StreamingWebSocketController.ts#L295) | SSE reconnect only token-refreshes and reconnects: [`app/src/hooks/useSSEChat.ts`](../app/src/hooks/useSSEChat.ts#L992) | Missing | Blocker | Rebuild transport/base URL, clear dynamic API cache, clear messages, reset history flags, then reconnect/load history. | Archive-restore reconnect fetches new agent URL and reloads history. |
-| Complete trace attribution | WebSocket stores `lastCompleteTraceIds`: [`app/src/hooks/websocket/handlers/CompleteHandler.ts`](../app/src/hooks/websocket/handlers/CompleteHandler.ts#L49) | SSE complete finalizes and side-effects, but does not store trace IDs: [`app/src/hooks/useSSEChat.ts`](../app/src/hooks/useSSEChat.ts#L448) | Missing | Required | Add trace/observation/agent extraction to SSE complete handling. | Complete events with and without trace IDs update `useDevelopPageStore`. |
-| History pagination errors | WebSocket preserves retry state through history handlers | SSE history failure clears pagination via synthetic `history_complete`: [`app/src/services/transport/SSETransport.ts`](../app/src/services/transport/SSETransport.ts#L331), [`app/src/hooks/useSSEChat.ts`](../app/src/hooks/useSSEChat.ts#L770) | Partial | Required | Preserve cursor/hasMore on pagination failure so the user can retry. | Pagination error permits retry against the same cursor. |
-| Event allowlist hygiene | WebSocket has handler registration and direct socket events | SSE hard-codes listened events: [`app/src/services/transport/SSETransport.ts`](../app/src/services/transport/SSETransport.ts#L464) | Partial | Required | Generate/share event list or add a server/client event-contract test. | All server-produced SSE events are allowlisted and either handled or explicitly ignored. |
-| Catch-up events | WebSocket has `catchup_status` / `catchup_complete` handlers and ACK semantics | SSE allowlists `catchup_*` but `useSSEChat` has no active handling: [`app/src/services/transport/SSETransport.ts`](../app/src/services/transport/SSETransport.ts#L470) | Not needed for SSE replacement | Cleanup | Do not port WebSocket catch-up ACK mechanics unless the SSE server intentionally emits such events. | Assert current SSE server does not emit catch-up events. |
+## Prioritized Remaining Work
 
-## Area 2: Server Transport
+1. **Blocker: buffer-loss recovery can silently mask data loss**
+   - Server emits `replay_complete` even when inline history recovery failed: [`agents/src/server/sse/routes.ts`](../agents/src/server/sse/routes.ts#L237), [`agents/src/server/sse/routes.ts`](../agents/src/server/sse/routes.ts#L310).
+   - Client triggers fallback `loadHistory()` but still marks history complete on `replay_complete` when loss recovery is active: [`app/src/hooks/useSSEChat.ts`](../app/src/hooks/useSSEChat.ts#L765), [`app/src/hooks/useSSEChat.ts`](../app/src/hooks/useSSEChat.ts#L775).
+   - Impact: user can see an empty or incomplete conversation with no surfaced recovery failure.
 
-| Capability / behavior | WebSocket implementation evidence | SSE implementation evidence | Status | Replacement impact | Recommended change | Suggested tests |
-|---|---|---|---|---|---|---|
-| Runtime bootstrap | `setupAILibWebSocketServer()` initializes the shared runtime: [`agents/src/server/ai-lib-websocket-server.ts`](../agents/src/server/ai-lib-websocket-server.ts#L505) | SSE event channel/factory are initialized inside that setup: [`agents/src/server/ai-lib-websocket-server.ts`](../agents/src/server/ai-lib-websocket-server.ts#L580) | Partial | Blocker | Extract transport-neutral agent runtime and SSE channel initialization before deleting Socket.IO. | Boot with WebSocket disabled; `GET /stream` emits `initialize` and `POST /messages` reaches execution. |
-| Auth and tenant isolation | WebSocket validates socket auth and app context | SSE routes mount behind JWT/product access and conversation ownership checks: [`agents/src/server/app.ts`](../agents/src/server/app.ts#L400), [`agents/src/server/sse/routes.ts`](../agents/src/server/sse/routes.ts#L48) | SSE-native equivalent | Required | Keep HTTP auth and ownership checks. | 401/403 ownership tests on all SSE routes. |
-| PaaS access | WebSocket explicitly denies PaaS socket access | PaaS allowlist excludes `/api/conversations`: [`agents/src/server/middleware/product-access.ts`](../agents/src/server/middleware/product-access.ts#L22) | Not needed for SSE replacement | Cleanup | For AAB replacement, current denial is consistent. Decide separately if PaaS needs SSE chat. | Product-access allow/deny tests for SSE routes. |
-| Stream open and recovery | WebSocket uses connection recovery manager and ACK windows | SSE parses `Last-Event-Id`, computes recovery plan, emits `recovery_status`, replays events, drains live tail, then emits `replay_complete`: [`agents/src/server/sse/routes.ts`](../agents/src/server/sse/routes.ts#L121), [`agents/src/server/sse/routes.ts`](../agents/src/server/sse/routes.ts#L222) | SSE-native equivalent | Required | Do not port WebSocket ACK/catch-up mechanics. | Last-Event-Id no-state and delta replay tests. |
-| Recovery buffer sizing | WebSocket channel capacity is configured higher | SSE uses default channel capacity of 1000: [`packages/ai-transport/src/conversation-event-channel.ts`](../packages/ai-transport/src/conversation-event-channel.ts#L214), [`agents/src/server/ai-lib-websocket-server.ts`](../agents/src/server/ai-lib-websocket-server.ts#L581) | Partial | Blocker | Configure SSE buffer capacity explicitly to match replacement needs. | Active stream with more than 1000 events and stale `Last-Event-Id`. |
-| Disconnect shutdown semantics | WebSocket has recovery expiry and abort semantics | SSE stream close unregisters the writer only: [`agents/src/server/sse/routes.ts`](../agents/src/server/sse/routes.ts#L364) | Partial | Blocker | Decide no-subscriber abort timer vs intentional background completion. If matching current WebSocket cost controls, add timer. | Close starts timer, reconnect cancels, expiry aborts and persists terminal state. |
-| Message startup and payloads | WebSocket accepts message context and metadata | SSE `/messages` accepts agent/profile/model/template, visual/edit context, selected assets, todo, action request, custom/build error context, upload name, and market: [`agents/src/server/sse/routes.ts`](../agents/src/server/sse/routes.ts#L438) | Parity | Required | No core server startup gap; tighten request validation for context payload sizes if needed. | Empty asset-only prompt, `/agent`, `aiEditContexts`, headers/JWT context, BMS precheck. |
-| Cancellation / stop | WebSocket `stop_generation` aborts the turn | SSE `POST /stop` aborts execution and publishes immediate `user_stopped` complete: [`agents/src/server/sse/routes.ts`](../agents/src/server/sse/routes.ts#L602), [`agents/src/server/sse/MessageExecutionService.ts`](../agents/src/server/sse/MessageExecutionService.ts#L277) | SSE-native equivalent | Required | Keep HTTP stop endpoint. | Stop route and aborted BMS attribution. |
-| Client actions | WebSocket action service is in the WebSocket module | SSE publishes `client_action` and resolves via `/actions`, but registry helpers still live in `ai-lib-websocket-server.ts`: [`agents/src/server/sse/routes.ts`](../agents/src/server/sse/routes.ts#L612), [`agents/src/server/sse/MessageExecutionService.ts`](../agents/src/server/sse/MessageExecutionService.ts#L1139) | Partial | Required | Extract the client-action registry before removing WebSocket. | Action publish/result/cleanup with WebSocket module absent. |
-| App-level fanout | WebSocket `emitToApp()` targets all authenticated sockets for an app: [`agents/src/server/ai-lib-websocket-server.ts`](../agents/src/server/ai-lib-websocket-server.ts#L3384) | SSE app fanout depends on active conversation streams | Partial | Blocker | Audit remaining `emitToApp` usage. Add app-level SSE channel or require active stream per feature. | OAuth/video delivery with no conversation stream vs active stream. |
+2. **Blocker / Required: stale `stream_retry` is not ownership-guarded**
+   - `ActiveStream` carries `requestId`: [`agents/src/server/sse/MessageExecutionService.ts`](../agents/src/server/sse/MessageExecutionService.ts#L1173).
+   - Terminal events include `requestId`: [`agents/src/server/sse/MessageExecutionService.ts`](../agents/src/server/sse/MessageExecutionService.ts#L1628), [`agents/src/server/sse/MessageExecutionService.ts`](../agents/src/server/sse/MessageExecutionService.ts#L1751).
+   - `stream_retry` publishes directly without request ownership metadata: [`agents/src/server/sse/MessageExecutionService.ts`](../agents/src/server/sse/MessageExecutionService.ts#L1350).
+   - Client clears the current stream unconditionally: [`app/src/hooks/useSSEChat.ts`](../app/src/hooks/useSSEChat.ts#L442).
+   - Impact: a stale retry event can clear a newer active stream if it races with stop/new-message flows.
 
-## Area 3: Shared Transport Core
+3. **Required: save-worthy context attachments may miss pre-turn persistence**
+   - SSE `persistenceContext` is created before attachments are built: [`agents/src/server/sse/MessageExecutionService.ts`](../agents/src/server/sse/MessageExecutionService.ts#L1157).
+   - `continueConversation()` and `startAgentTurn()` run before `buildContextAttachments()`: [`agents/src/server/sse/MessageExecutionService.ts`](../agents/src/server/sse/MessageExecutionService.ts#L1185), [`agents/src/server/sse/MessageExecutionService.ts`](../agents/src/server/sse/MessageExecutionService.ts#L1227).
+   - Persistence explicitly saves only `context.contextAttachments` with `persistence === 'save'`: [`agents/src/server/conversation-persistence.ts`](../agents/src/server/conversation-persistence.ts#L280).
+   - Impact: history/UI may lose save-worthy user-message attachment metadata even though execution receives it.
 
-| Capability / behavior | WebSocket implementation evidence | SSE implementation evidence | Status | Replacement impact | Recommended change | Suggested tests |
-|---|---|---|---|---|---|---|
-| Event channel sequencing and buffering | Shared `ConversationEventChannel.publish()` creates sequences, buffers, and notifies subscribers: [`packages/ai-transport/src/conversation-event-channel.ts`](../packages/ai-transport/src/conversation-event-channel.ts#L271) | SSE uses the same event channel and SSE subscriber: [`packages/ai-transport/src/subscribers/sse-subscriber.ts`](../packages/ai-transport/src/subscribers/sse-subscriber.ts#L28) | Parity | Required | Keep a single shared event channel. | Existing channel and subscriber tests. |
-| Stream part processing | Shared `StreamPartProcessor` normalizes AI SDK parts: [`packages/ai-transport/src/stream-part-processor.ts`](../packages/ai-transport/src/stream-part-processor.ts#L77) | SSE execution uses that shared processing path | Parity | Required | Keep event mapping shared. | Cross-transport fixture for representative AI SDK stream. |
-| `step_start` timing | WebSocket adapter can emit at LLM-call start | Shared processor emits on `tool-input-start`: [`packages/ai-transport/src/stream-part-processor.ts`](../packages/ai-transport/src/stream-part-processor.ts#L86) | Partial | Nice-to-have | Test whether analytics/UI depends on text-only `step_start`; share behavior if needed. | Text-only turn emits expected lifecycle events. |
-| Execution loop | Shared `executeAgentLoop` owns handoff and continuation | SSE calls shared loop: [`agents/src/server/sse/MessageExecutionService.ts`](../agents/src/server/sse/MessageExecutionService.ts#L1217) | Parity | Required | Keep handoff/continuation logic in `packages/ai-transport`. | Handoff and auto-continuation parity tests. |
-| Coalescing and backpressure | WebSocket subscriber coalesces messages: [`packages/ai-transport/src/subscribers/websocket-subscriber.ts`](../packages/ai-transport/src/subscribers/websocket-subscriber.ts#L38) | SSE subscriber coalesces with writer backlog sampling: [`packages/ai-transport/src/subscribers/sse-subscriber.ts`](../packages/ai-transport/src/subscribers/sse-subscriber.ts#L43) | SSE-native equivalent | Required | Keep SSE backlog-based coalescing. | Slow-client/backpressure tests. |
-| SSE wire formatting failure | Not applicable to WebSocket wire | SSE emits fallback `stream_error` and advances sequence: [`packages/ai-transport/src/subscribers/sse-subscriber.ts`](../packages/ai-transport/src/subscribers/sse-subscriber.ts#L96) | SSE-native equivalent | Required | Keep `safeFormatSSEEvent`. | Circular or BigInt payload produces `stream_error` and does not replay-loop. |
-| Event type contract | Server event union is in `@airo/ai-transport`: [`packages/ai-transport/src/interfaces.ts`](../packages/ai-transport/src/interfaces.ts#L322) | SSE client event list is hard-coded: [`app/src/services/transport/SSETransport.ts`](../app/src/services/transport/SSETransport.ts#L464) | Partial | Required | Create shared event list or add contract test. | Fails when a server event lacks a client listener or intentional ignore entry. |
-| Publish failure semantics | WebSocket and SSE have adapter-specific failure guards | SSE `guardedPublish` and terminal publish guards prevent subscriber failure from flipping successful turns: [`agents/src/server/sse/MessageExecutionService.ts`](../agents/src/server/sse/MessageExecutionService.ts#L230) | Parity | Required | Keep subscriber failures isolated. | Publish rejection does not convert success to error. |
+4. **Required: SSE error events lack classified metadata**
+   - SSE classifies errors but terminal error event data omits `errorType`, `statusCode`, retry metadata, and sanitized diagnostics: [`agents/src/server/sse/MessageExecutionService.ts`](../agents/src/server/sse/MessageExecutionService.ts#L1731), [`agents/src/server/sse/MessageExecutionService.ts`](../agents/src/server/sse/MessageExecutionService.ts#L1744).
+   - SSE client already consumes `errorType` and `statusCode` if present: [`app/src/hooks/useSSEChat.ts`](../app/src/hooks/useSSEChat.ts#L508).
+   - WebSocket includes classified metadata in its error payload: [`packages/ai-transport/src/experimental-websocket-server.ts`](../packages/ai-transport/src/experimental-websocket-server.ts#L2460).
+   - Impact: UI and retry handling cannot reliably distinguish `APP_NOT_FOUND`, `BUDGET_EXCEEDED`, retryable upstream failures, and generic upstream errors from SSE server context.
 
-## Area 4: Recovery, Replay, And Persistence
+5. **Required: request payload-size guard is weaker than WebSocket**
+   - SSE validates only `content.length`: [`agents/src/server/sse/routes.ts`](../agents/src/server/sse/routes.ts#L480).
+   - WebSocket validates message plus context attachment payload length: [`packages/ai-transport/src/experimental-websocket-server.ts`](../packages/ai-transport/src/experimental-websocket-server.ts#L2040).
+   - Impact: oversized referenced files/context payloads can take a different path under SSE than WebSocket.
 
-| Capability / behavior | WebSocket implementation evidence | SSE implementation evidence | Status | Replacement impact | Recommended change | Suggested tests |
-|---|---|---|---|---|---|---|
-| Persisted chat history load | WebSocket uses `load_history`: [`app/src/services/websocket/StreamingWebSocketController.ts`](../app/src/services/websocket/StreamingWebSocketController.ts#L671) | SSE uses HTTP `GET /messages`: [`app/src/services/transport/SSETransport.ts`](../app/src/services/transport/SSETransport.ts#L302), [`agents/src/server/sse/routes.ts`](../agents/src/server/sse/routes.ts#L376) | SSE-native equivalent | Required | Keep HTTP history API. | Initial and paginated history tests. |
-| Last-Event-Id resume | WebSocket uses recovery cursor and ACK mechanics | SSE strips first `Last-Event-Id` and lets reconnects preserve cursor: [`app/src/services/transport/SSETransport.ts`](../app/src/services/transport/SSETransport.ts#L399) | SSE-native equivalent | Required | Preserve no-state first connect and delta reconnect semantics. | First open full replay; reconnect delta replay. |
-| Replay ordering | WebSocket recovery replays before history effects | SSE defers HTTP history while recovery/replay is pending: [`app/src/hooks/useSSEChat.ts`](../app/src/hooks/useSSEChat.ts#L280), [`app/src/hooks/useSSEChat.ts`](../app/src/hooks/useSSEChat.ts#L740) | Parity | Required | Preserve order: `recovery_status`, replay, `replay_complete`, then HTTP history. | No duplicate or dropped history during active turn. |
-| Replay dedupe | WebSocket dedupes replayed events | SSE parses sequence and dedupes during replay: [`app/src/services/transport/SSETransport.ts`](../app/src/services/transport/SSETransport.ts#L533), [`app/src/hooks/useSSEChat.ts`](../app/src/hooks/useSSEChat.ts#L753) | Parity | Required | Assert every replayed event has numeric `id:`. | Duplicate sequence replay is dropped. |
-| Events produced during replay | WebSocket has catch-up windows | SSE buffers live events while replaying and drains events after the replay high-water: [`agents/src/server/sse/routes.ts`](../agents/src/server/sse/routes.ts#L179), [`agents/src/server/sse/routes.ts`](../agents/src/server/sse/routes.ts#L302) | SSE-native equivalent | Required | Keep buffering subscriber and high-water drain. | Live event during replay is delivered once and in order. |
-| Persistence filtering | Shared recovery filters persisted message events: [`packages/ai-transport/src/recovery-plan.ts`](../packages/ai-transport/src/recovery-plan.ts#L55) | SSE marks persisted after successful DB completion: [`agents/src/server/sse/MessageExecutionService.ts`](../agents/src/server/sse/MessageExecutionService.ts#L237) | Parity | Required | Keep persisted-event filtering. | Persisted completed turn not replayed; unpersisted terminal tail replayed. |
-| Buffer-loss recovery | WebSocket has larger replay window | SSE detects loss and streams inline persisted history: [`packages/ai-transport/src/recovery-plan.ts`](../packages/ai-transport/src/recovery-plan.ts#L72), [`agents/src/server/sse/routes.ts`](../agents/src/server/sse/routes.ts#L236) | Partial | Blocker | Surface history-load failure or trigger retry when loss is detected and inline history fails. | DB failure during loss recovery leaves retry/error state. |
-| Completed stream reload | WebSocket dedupe and history reload avoid stale active streams | SSE suppresses completed-stream replay for no-state clients and reloads history when needed: [`agents/src/server/sse/routes.ts`](../agents/src/server/sse/routes.ts#L252), [`app/src/hooks/useSSEChat.ts`](../app/src/hooks/useSSEChat.ts#L684) | Parity | Required | Keep current completed-stream handling. | Reload after completed stream clears stale active stream. |
+6. **Required: `APP_NOT_FOUND` resend should reuse resolved outbound payload**
+   - SSE caches raw `SendMessageOptions`: [`app/src/hooks/useSSEChat.ts`](../app/src/hooks/useSSEChat.ts#L949).
+   - Initial send resolves defaults and outbound fields before calling transport: [`app/src/hooks/useSSEChat.ts`](../app/src/hooks/useSSEChat.ts#L955), [`app/src/hooks/useSSEChat.ts`](../app/src/hooks/useSSEChat.ts#L961).
+   - Retry rebuilds a partial payload manually: [`app/src/hooks/useSSEChat.ts`](../app/src/hooks/useSSEChat.ts#L533), [`app/src/hooks/useSSEChat.ts`](../app/src/hooks/useSSEChat.ts#L547).
+   - Impact: retry can drift from the initial outbound request as new fields are added.
 
-## Area 5: Request And Context Parity
+7. **Required: explicit SSE shutdown lifecycle**
+   - App owns a singleton `sseExecutionService`: [`agents/src/server/app.ts`](../agents/src/server/app.ts#L227), [`agents/src/server/app.ts`](../agents/src/server/app.ts#L237).
+   - Shutdown explicitly closes WebSocket but has no equivalent SSE execution-service abort/cleanup call: [`agents/src/server/app.ts`](../agents/src/server/app.ts#L759), [`agents/src/server/app.ts`](../agents/src/server/app.ts#L800).
+   - Impact: process shutdown can leave active SSE execution cleanup dependent on HTTP server close or process exit rather than an explicit transport lifecycle.
 
-| Capability / behavior | WebSocket implementation evidence | SSE implementation evidence | Status | Replacement impact | Recommended change | Suggested tests |
-|---|---|---|---|---|---|---|
-| Request envelope shape | WebSocket builds nested `context`: [`app/src/services/websocket/ChatMessageBuilder.ts`](../app/src/services/websocket/ChatMessageBuilder.ts#L111) | SSE posts flat JSON fields: [`app/src/services/transport/SSETransport.ts`](../app/src/services/transport/SSETransport.ts#L225) | SSE-native equivalent | Required | Compare effective execution context, not wire shape. | Fixture from same inputs to WebSocket and SSE effective metadata. |
-| `sessionId` propagation | WebSocket metadata includes `sessionId`: [`app/src/services/websocket/ChatMessageBuilder.ts`](../app/src/services/websocket/ChatMessageBuilder.ts#L73) | SSE sends `sessionId`, but route does not consume it and execution uses `sse:${conversationId}` internally: [`app/src/services/transport/SSETransport.ts`](../app/src/services/transport/SSETransport.ts#L229), [`agents/src/server/sse/MessageExecutionService.ts`](../agents/src/server/sse/MessageExecutionService.ts#L1139) | Partial | Required | Add metadata `sessionId` or document/test canonical replacement. | Execution metadata includes expected session identifier. |
-| `userTimezone` | WebSocket metadata includes timezone: [`app/src/services/websocket/ChatMessageBuilder.ts`](../app/src/services/websocket/ChatMessageBuilder.ts#L74) | SSE metadata omits it; dynamic context only includes it if present: [`agents/src/server/context-builders.ts`](../agents/src/server/context-builders.ts#L29) | Missing | Required | Send browser timezone or derive server-side. | SSE dynamic data includes timezone. |
-| `userId` | WebSocket sends placeholder `current-user`: [`app/src/services/websocket/ChatMessageBuilder.ts`](../app/src/services/websocket/ChatMessageBuilder.ts#L72) | SSE does not include it | Partial | Nice-to-have | Decide whether to drop, replace with JWT customer/user identity, or intentionally ignore. | Only test if retained. |
-| Context attachments | WebSocket uses shared builder: [`app/src/services/websocket/ChatMessageBuilder.ts`](../app/src/services/websocket/ChatMessageBuilder.ts#L108) | SSE uses shared builder server-side: [`agents/src/server/sse/MessageExecutionService.ts`](../agents/src/server/sse/MessageExecutionService.ts#L1145) | Parity | Required | Keep shared builder. | Existing WebSocket-equivalent attachment shape test. |
-| AI edit contexts, assets, todo, build errors | Shared builder supports these fields: [`packages/shared/src/context-attachment/build-context-attachments.ts`](../packages/shared/src/context-attachment/build-context-attachments.ts#L61) | SSE forwards fields through POST/execution: [`agents/src/server/sse/routes.ts`](../agents/src/server/sse/routes.ts#L445) | Parity | Required | No gap. | Snapshot attachment output for all context kinds. |
-| Template/model/profile/market | WebSocket sends these in metadata: [`app/src/services/websocket/ChatMessageBuilder.ts`](../app/src/services/websocket/ChatMessageBuilder.ts#L75) | Initial SSE send forwards them, but APP_NOT_FOUND retry omits `market`: [`app/src/hooks/useSSEChat.ts`](../app/src/hooks/useSSEChat.ts#L932), [`app/src/hooks/useSSEChat.ts`](../app/src/hooks/useSSEChat.ts#L529) | Partial | Required | Add `market` to APP_NOT_FOUND retry payload. | Retry preserves `market`. |
-| Conversation creation with agent/template | WebSocket can send first message and let server create/resolve conversation | SSE pre-creates a conversation, but client creation POST sends no body: [`app/src/hooks/useSSEChat.ts`](../app/src/hooks/useSSEChat.ts#L843), [`agents/src/server/sse/routes.ts`](../agents/src/server/sse/routes.ts#L102) | Partial | Required | If initial agent/template affects conversation state, include them during SSE conversation creation. | Template-aware first conversation creation. |
-| Client-sent budget/subscription fields | WebSocket derives much of this from JWT/server context | SSE client sends fields, but server derives from `agentContext`: [`app/src/services/transport/SSETransport.ts`](../app/src/services/transport/SSETransport.ts#L240), [`agents/src/server/sse/routes.ts`](../agents/src/server/sse/routes.ts#L491) | SSE-native equivalent | Cleanup | Remove misleading request fields or document that body values are ignored. | Body tampering cannot override JWT budget/subscription state. |
-| Repo/token handling | Not a chat transport responsibility | Git credentials remain REST route responsibility | Not needed for SSE replacement | Cleanup | Do not add repo tokens to SSE chat payloads. | Git REST dual-product tests only. |
+8. **Decision required: client billing/grant mode authority**
+   - `usesBms()` is documented as client-side switchboard gating only, not the full server decision: [`app/src/hooks/usesBms.ts`](../app/src/hooks/usesBms.ts#L3).
+   - `useBudgetUpdate()` and `useGrantContext()` still gate on `usesBms()`: [`app/src/hooks/useBudgetUpdate.ts`](../app/src/hooks/useBudgetUpdate.ts#L35), [`app/src/hooks/useGrantContext.ts`](../app/src/hooks/useGrantContext.ts#L59).
+   - Impact: if server/JWT authority can disagree with switchboard, the client may subscribe to the wrong grant/budget behavior. If product accepts switchboard-only UI gating, document that decision and keep this as cleanup.
 
-## Area 6: Billing, Grants, And Budget Behavior
+## Full Parity Matrix
+
+### Area 1: Client Transport And Hooks
 
 | Capability / behavior | WebSocket implementation evidence | SSE implementation evidence | Status | Replacement impact | Recommended change | Suggested tests |
 |---|---|---|---|---|---|---|
-| BMS precheck | WebSocket performs precheck in message-start path | SSE route prechecks before execution: [`agents/src/server/sse/routes.ts`](../agents/src/server/sse/routes.ts#L501) | Parity | Required | No SSE-specific gap. | 402 budget exceeded and accepted-path tests. |
-| BMS reconciliation | WebSocket emits `budget_update` before completion | SSE reconciles before terminal event: [`agents/src/server/sse/MessageExecutionService.ts`](../agents/src/server/sse/MessageExecutionService.ts#L1484) | Parity | Required | No gap. | Success, conflict, failure, and terminal ordering tests. |
-| Client budget update | WebSocket exposes `budget:update` controller API | SSE subscribes to `budget_update`: [`app/src/services/transport/SSETransport.ts`](../app/src/services/transport/SSETransport.ts#L367) | Parity | Required | Keep shared hook. | Cache update/invalidation via SSE controller. |
-| Legacy grant context | WebSocket sends `grant_context` | SSE uses `PUT /grants`: [`app/src/services/transport/SSETransport.ts`](../app/src/services/transport/SSETransport.ts#L344), [`agents/src/server/sse/routes.ts`](../agents/src/server/sse/routes.ts#L643) | SSE-native equivalent | Required | No gap. | Grant set and refresh tests. |
-| `request_grant_refresh` | WebSocket emits socket event | SSE publishes event-channel event: [`agents/src/server/ai-lib-websocket-server.ts`](../agents/src/server/ai-lib-websocket-server.ts#L2709), [`app/src/services/transport/SSETransport.ts`](../app/src/services/transport/SSETransport.ts#L363) | Parity | Required | No gap. | Refresh callback through SSE channel. |
-| Mid-stream grant recovery and `stream_retry` | WebSocket publishes retry event | SSE publishes and client handles `stream_retry`: [`agents/src/server/sse/MessageExecutionService.ts`](../agents/src/server/sse/MessageExecutionService.ts#L1241), [`app/src/services/transport/SSETransport.ts`](../app/src/services/transport/SSETransport.ts#L467), [`app/src/hooks/useSSEChat.ts`](../app/src/hooks/useSSEChat.ts#L438) | Parity | Required | Keep covered. This event is not dead in current code. | Mid-stream grant exhaustion emits retry and clears partial UI. |
-| BMS migrated-user client gating | Token can enable BMS through either migration flag: [`app/src/app/api/auth/agent-token/route.ts`](../app/src/app/api/auth/agent-token/route.ts#L432) | Client hooks check only `app-builder-budget-service`: [`app/src/hooks/websocket/useBudgetUpdate.ts`](../app/src/hooks/websocket/useBudgetUpdate.ts#L35), [`app/src/hooks/websocket/useGrantContext.ts`](../app/src/hooks/websocket/useGrantContext.ts#L65) | Partial | Required | Shared bug: centralize `usesBms` predicate and reuse in budget/grant hooks. | `bmsExistingEnabled=true`, `budgetServiceEnabled=false` cases. |
-| Edge degraded BMS state | WebSocket skips grant recovery when BMS is enabled | SSE enables grant recovery when no BMS budget/session exists and a subscription exists: [`agents/src/server/sse/MessageExecutionService.ts`](../agents/src/server/sse/MessageExecutionService.ts#L1202) | Partial | Nice-to-have | Align both paths on explicit `legacyGrantMode` predicate. | `budgetServiceEnabled=true` with missing BMS session behaves consistently. |
-| `budget_status` | WebSocket and SSE produce delayed status but clients do not consume it | SSE event union includes it, but allowlist omits it: [`packages/ai-transport/src/interfaces.ts`](../packages/ai-transport/src/interfaces.ts#L342), [`agents/src/server/sse/MessageExecutionService.ts`](../agents/src/server/sse/MessageExecutionService.ts#L384) | Not needed for SSE replacement | Cleanup | Remove or intentionally wire UI if product wants a visible reconciling state. | Contract test marks as intentionally ignored. |
+| Transport selection | `useChatTransport` selects WS or SSE by flag: [`app/src/hooks/useChatTransport.ts`](../app/src/hooks/useChatTransport.ts) | Same hook selects `useSSEChat` when SSE flag is enabled. | Parity | Required | Keep WebSocket fallback until remaining blockers are fixed. | Flag on/off hook selection; disabled unused transport does not initialize. |
+| Connect/auth model | WebSocket authenticates over Socket.IO. | SSE uses authenticated HTTP/EventSource requests. | SSE-native equivalent | Required | Do not port socket `authenticate` events. | 401 refresh, reconnect, auth-negative route tests. |
+| Send message path | WebSocket builds a `chat_message` payload. | SSE posts to `/messages`: [`app/src/services/transport/SSETransport.ts`](../app/src/services/transport/SSETransport.ts#L250). | Partial | Required | Preserve effective payload fields and store resolved outbound snapshot for retry. | Initial send and `APP_NOT_FOUND` retry send identical resolved metadata. |
+| Stop generation | WebSocket emits `stop_generation`. | SSE posts `/stop` and locally finalizes if needed: [`app/src/hooks/useSSEChat.ts`](../app/src/hooks/useSSEChat.ts#L1012). | SSE-native equivalent | Required | Keep HTTP stop endpoint. | Stop route, local finalization, server abort. |
+| Reconnect/archive restore | WebSocket and #4087-style SSE lifecycle now clear cache/messages/history state. | Current SSE reconnect clears cache, messages, and history flags: [`app/src/hooks/useSSEChat.ts`](../app/src/hooks/useSSEChat.ts#L1022). | Parity | Required | Keep targeted regression coverage for stale cursor/loading state. | Reconnect clears messages, pagination, loading-more, dynamic API cache. |
+| History pagination after reconnect | WebSocket resets history state during reconnect. | SSE clears messages and history flags; `setHistoryLoadingMore(false)` is used in history completion paths: [`app/src/hooks/useSSEChat.ts`](../app/src/hooks/useSSEChat.ts#L812). | Partial | Required | Add explicit reconnect test for `nextCursor` and `historyLoadingMore`; fix if failing. | Stale `nextCursor` and loading-more do not survive reconnect. |
+| Complete trace attribution | WebSocket stores complete trace IDs. | #4090/#4087 added SSE trace/request correlation; current complete event extracts `requestId`: [`app/src/hooks/useSSEChat.ts`](../app/src/hooks/useSSEChat.ts#L460). | Parity | Required | Keep tests; no new gap found. | Complete event updates trace/request attribution store. |
+| Error handling | WebSocket receives structured error metadata. | SSE client handles metadata if present, but server omits key fields. | Partial | Required | Add classified metadata to SSE error events. | `APP_NOT_FOUND`, `BUDGET_EXCEEDED`, retryable upstream, generic upstream. |
+| Event allowlist | WebSocket handler registration follows socket events. | SSE hard-codes event list in transport. | Parity | Required | #4088 added event-contract work; keep it as a replacement gate. | Server event union matches client allowlist or explicit ignore list. |
+| Catch-up ACK mechanics | WebSocket supports catch-up/recovery ACKs. | SSE uses `Last-Event-Id`, replay, and dedupe. | Not needed for SSE replacement | Cleanup | Do not port WebSocket ACK mechanics. | Assert SSE replay works without ACK protocol. |
 
-## Area 7: Observability And Operational Behavior
-
-| Capability / behavior | WebSocket implementation evidence | SSE implementation evidence | Status | Replacement impact | Recommended change | Suggested tests |
-|---|---|---|---|---|---|---|
-| Structured logs | WebSocket logs under `websocket.*` | SSE logs connection, recovery, history, send, and error events under `sse.*`: [`app/src/hooks/useSSEChat.ts`](../app/src/hooks/useSSEChat.ts#L262), [`agents/src/server/sse/routes.ts`](../agents/src/server/sse/routes.ts#L311) | Parity | Required | Keep log fields aligned: `appId`, `conversationId`, status/error. | Snapshot log names and fields for lifecycle paths. |
-| OTel/Langfuse trace context | WebSocket creates message transaction and OTel context | SSE builds chat signals trace context and invocation span: [`agents/src/server/sse/MessageExecutionService.ts`](../agents/src/server/sse/MessageExecutionService.ts#L1016), [`agents/src/server/sse/MessageExecutionService.ts`](../agents/src/server/sse/MessageExecutionService.ts#L826) | Parity | Required | Keep. | Span lifecycle tests for success, abort, and error. |
-| Client feedback trace IDs | WebSocket stores last complete trace IDs: [`app/src/hooks/websocket/handlers/CompleteHandler.ts`](../app/src/hooks/websocket/handlers/CompleteHandler.ts#L49) | SSE complete does not update the store | Missing | Required | Add SSE trace ID store update. | App-generation feedback captures SSE trace IDs. |
-| Debug turn stats | WebSocket emits debug turn stats | SSE publishes `debug_turn_stats` and transport dispatches a window event: [`agents/src/server/sse/MessageExecutionService.ts`](../agents/src/server/sse/MessageExecutionService.ts#L1303), [`app/src/services/transport/SSETransport.ts`](../app/src/services/transport/SSETransport.ts#L521) | Parity | Nice-to-have | Keep existing event. | Dispatch `airo:debug-turn-stats` test. |
-| SSE write/serialization failures | WebSocket socket emit path differs | SSE fallback emits `stream_error`: [`packages/ai-transport/src/subscribers/sse-subscriber.ts`](../packages/ai-transport/src/subscribers/sse-subscriber.ts#L96) | SSE-native equivalent | Required | Keep fallback and logging. | Bad payload produces client-visible error. |
-| Connection quality behavior | WebSocket has socket timing/quality paths | SSE has EventSource error/cooldown logs: [`app/src/services/transport/SSETransport.ts`](../app/src/services/transport/SSETransport.ts#L413) | Partial | Nice-to-have | Add SSE reconnect/cooldown counters if operators need parity. | Consecutive EventSource failures log cooldown and recover. |
-| Elastic APM transaction parity | WebSocket starts connection/message transactions and labels them through the WebSocket server | SSE has OTel/Langfuse invocation trace context, but Elastic APM transaction parity was not confirmed in current analysis: [`agents/src/server/sse/MessageExecutionService.ts`](../agents/src/server/sse/MessageExecutionService.ts#L1016) | Partial | Required | Verify whether production dashboards and alerts depend on Elastic APM transactions. If they do, add SSE message transaction instrumentation with appId, conversationId, agentId, finishReason, and error labels. | Execute SSE messages and verify expected transaction/labels in APM dashboards or mocked APM agent. |
-| Per-message request correlation | WebSocket logs include socket/session-oriented context; message transactions provide an execution boundary | SSE logs commonly include `appId` and `conversationId`, but not a generated per-message request ID | Partial | Required | Generate an `sseRequestId` or equivalent execution ID in `/messages`/`MessageExecutionService.execute()` and include it in logs, terminal events if useful, and budget/trace correlation fields. | Grep logs by one request ID and see message start, stream, budget, persistence, and terminal lifecycle. |
-| App-level operational fanout | WebSocket `emitToApp` is app-scoped: [`agents/src/server/ai-lib-websocket-server.ts`](../agents/src/server/ai-lib-websocket-server.ts#L3370) | SSE fanout depends on active streams | Partial | Blocker | Inventory non-chat app events and decide channel model. | OAuth/video no-stream delivery behavior. |
-
-## Area 8: Tests, Docs, And Replacement Readiness
+### Area 2: Server Transport
 
 | Capability / behavior | WebSocket implementation evidence | SSE implementation evidence | Status | Replacement impact | Recommended change | Suggested tests |
 |---|---|---|---|---|---|---|
-| SSE protocol docs | Existing SSE protocol doc exists | It still says the flag is not currently consumed, but code consumes it: [`docs/sse-transport-protocol.md`](sse-transport-protocol.md#L299), [`app/src/hooks/useChatTransport.ts`](../app/src/hooks/useChatTransport.ts#L19) | Partial | Cleanup | Update docs after final replacement decision. | Docs review checklist. |
-| Legacy WebSocket docs | Many docs describe WebSocket as primary | Current code has dual path | Partial | Cleanup | Mark WebSocket docs historical or update to SSE. | Docs grep in replacement PR. |
-| SSE route tests | WebSocket has its own route/server tests | SSE route tests cover stream, replay, messages, stop, actions, grants: [`agents/src/server/sse/__tests__/routes.test.ts`](../agents/src/server/sse/__tests__/routes.test.ts#L75) | Parity | Required | Expand for blockers above. | Disabled-WebSocket startup, buffer-loss failure, product access. |
-| SSE hook tests | WebSocket hook/controller tests exist | `useSSEChat` covers recovery, history, actions, and video paths: [`app/src/hooks/__tests__/useSSEChat.test.ts`](../app/src/hooks/__tests__/useSSEChat.test.ts#L313) | Partial | Required | Fix website test module resolution and add missing lifecycle cases. | Cold archive reconnect, trace IDs, market retry, pagination retry. |
-| Shared transport tests | Shared WebSocket/SSE core tests exist | `@airo/ai-transport` channel/recovery/subscriber tests cover shared behavior | Parity | Required | Keep shared tests as replacement gate. | Full `@airo/ai-transport` suite. |
-| Replacement flag | Feature flag selects SSE or WebSocket: [`app/src/hooks/useChatTransport.ts`](../app/src/hooks/useChatTransport.ts#L18) | WebSocket fallback remains | Partial | Required | Disable WebSocket only after blockers and test gates pass. | Canary with SSE flag on; no Socket.IO connection opened. |
-| Total request payload validation | WebSocket has transport-specific incoming payload limits and message builder constraints | SSE validates `content` length but relies mostly on JSON/body-level limits for the rest of the request body: [`agents/src/server/sse/routes.ts`](../agents/src/server/sse/routes.ts#L470) | Partial | Required | Add or explicitly document total payload validation for context attachments, selected assets metadata, referenced files, and build-error context. | Oversized attachment/custom context returns a deterministic 413/400 and does not start execution. |
-| Migration guide | WebSocket and SSE coexist behind the transport flag | No dedicated replacement/migration guide was found in the current review | Missing | Cleanup | Add a short migration/readiness guide covering flag rollout, rollback, non-goals, known differences, and removal order. | Docs checklist in final replacement PR. |
+| Runtime bootstrap | Historically initialized inside WebSocket server. | #4085 extracted runtime; SSE has lazy `MessageExecutionService` creation in `app.ts`: [`agents/src/server/app.ts`](../agents/src/server/app.ts#L237). | Parity | Required | Keep boot test with WebSocket disabled. | Start with WS disabled; stream and message endpoints work. |
+| Auth and tenant isolation | WebSocket validates authenticated socket/app ownership. | SSE routes use auth, app ownership, and conversation ownership middleware. | SSE-native equivalent | Required | Keep HTTP auth and ownership checks. | 401/403 for stream, messages, stop, actions, grants. |
+| Stream startup and replay | WebSocket has socket recovery/catch-up. | SSE parses `Last-Event-Id`, emits `recovery_status`, replays, drains live events, emits `replay_complete`: [`agents/src/server/sse/routes.ts`](../agents/src/server/sse/routes.ts#L260). | SSE-native equivalent | Required | Keep SSE-native replay model. | Initial, delta, lost-buffer, completed-stream reload. |
+| Recovery failure behavior | WebSocket recovery does not silently complete after data loss. | SSE can currently complete recovery after inline history failure. | Partial | Blocker | Gate completion on fallback success or surface visible recovery error. | Loss plus history DB failure does not mark complete empty. |
+| Recovery buffer sizing | WebSocket had larger capacity. | #4088 added buffer capacity hardening. | Parity | Required | Keep capacity configuration and overflow tests. | Cursor behind buffer head triggers loss handling. |
+| Disconnect semantics | WebSocket has cleanup/recovery expiry. | #4093 added no-subscriber abort timer and fanout observability. | Parity | Required | Keep reconnect-cancels-abort and expiry-aborts tests. | Close stream, reconnect before timer, timer expiry abort. |
+| Stop/cancellation | WebSocket aborts current turn. | SSE `POST /stop` aborts and publishes `user_stopped`: [`agents/src/server/sse/MessageExecutionService.ts`](../agents/src/server/sse/MessageExecutionService.ts#L339). | SSE-native equivalent | Required | No wire-protocol port needed. | Stop idempotency and immediate terminal event. |
+| Client actions | WebSocket action service uses socket. | SSE publishes `client_action` and resolves via `/actions`. | SSE-native equivalent | Required | Keep HTTP action-result path. | Success, error, unknown request, auth-negative tests. |
+| Shutdown lifecycle | WebSocket close is explicit in server shutdown. | SSE execution-service shutdown is not explicit. | Missing | Required | Add `MessageExecutionService.shutdown()` and call it from server shutdown. | Active SSE execution aborts/cleans up on shutdown. |
+
+### Area 3: Shared Transport Core
+
+| Capability / behavior | WebSocket implementation evidence | SSE implementation evidence | Status | Replacement impact | Recommended change | Suggested tests |
+|---|---|---|---|---|---|---|
+| Event sequencing/buffering | Shared `ConversationEventChannel` sequences and buffers events. | SSE uses the same channel. | Parity | Required | Keep shared event channel. | Existing channel/recovery tests. |
+| Stream part processing | Shared `StreamPartProcessor` normalizes AI SDK parts. | SSE uses shared processing path through `MessageExecutionService`. | Parity | Required | Keep logic shared. | Cross-transport fixture for chunks, tools, errors. |
+| Execution loop | WebSocket and SSE use shared loop/handoff primitives after extraction. | SSE `MessageExecutionService` calls shared execution logic. | Parity | Required | Keep transport-neutral loop. | Handoff, validation retry, continuation. |
+| Coalescing/backpressure | WebSocket subscriber coalesces. | SSE subscriber/writer coalesces and handles stream write failures. | SSE-native equivalent | Required | Keep SSE-native writer/backlog behavior. | Slow client, serialization failure, replay dedupe. |
+| `stream_retry` event | WebSocket retry event belongs to current socket turn. | SSE publishes retry without active owner/request metadata. | Partial | Blocker / Required | Add ownership-guarded publish and client request correlation. | Superseded retry cannot affect new turn. |
+| Event type contract | Server event union is shared. | SSE client allowlist is fixed but #4088 added contract coverage. | Parity | Required | Keep contract tests mandatory. | New server event fails unless handled or ignored. |
+
+### Area 4: Recovery, Replay, And Persistence
+
+| Capability / behavior | WebSocket implementation evidence | SSE implementation evidence | Status | Replacement impact | Recommended change | Suggested tests |
+|---|---|---|---|---|---|---|
+| Persisted history load | WebSocket loads history over socket. | SSE uses HTTP history and inline recovery history. | SSE-native equivalent | Required | Keep HTTP history model. | Initial load, pagination, reload after completed stream. |
+| `Last-Event-Id` recovery | WebSocket uses socket recovery IDs/ACKs. | SSE uses native `Last-Event-Id`. | SSE-native equivalent | Required | Do not port WebSocket ACKs. | Reconnect from known sequence, duplicate suppression. |
+| Buffer loss fallback | WebSocket has recovery/catch-up semantics. | SSE detects loss and attempts DB history, but can complete after failure. | Partial | Blocker | Treat loss plus failed history as incomplete until fallback success or visible failure. | DB failure plus replay complete cannot silently finish. |
+| Persisted-event filtering | Shared recovery plan filters persisted completed-turn events. | SSE uses shared recovery plan. | Parity | Required | Keep filtering tests. | Persisted completed events suppressed; unpersisted terminal tail replayed. |
+| Context attachment persistence | WebSocket builds context before persistence. | SSE builds attachments after pre-turn persistence. | Partial | Required | Build save-worthy attachments before `continueConversation()` / `startAgentTurn()`. | Save-worthy attachments persisted; ephemeral not persisted. |
+| Validation continuation persistence | WebSocket persists validation continuation metadata. | SSE passes `messageMetadata` for validation messages: [`agents/src/server/sse/MessageExecutionService.ts`](../agents/src/server/sse/MessageExecutionService.ts#L1470). | Parity | Required | No gap found. | Validation message persisted with expected metadata. |
+
+### Area 5: Request And Context Parity
+
+| Capability / behavior | WebSocket implementation evidence | SSE implementation evidence | Status | Replacement impact | Recommended change | Suggested tests |
+|---|---|---|---|---|---|---|
+| `sessionId`, timezone, market | WebSocket includes execution metadata. | #4089 added SSE parity for these fields. | Parity | Required | Keep tests. | Route forwards `userTimezone`; retry preserves `market`. |
+| Template/model/profile | WebSocket sends resolved payload. | SSE resolves defaults before send. | Parity | Required | Store resolved outbound snapshot for retry. | `APP_NOT_FOUND` retry uses same model/profile as first send. |
+| AI edit contexts/assets/todo/build errors | WebSocket shared builder supports these. | SSE forwards and builds context attachments server-side. | Parity for execution; Partial for persistence | Required | Keep execution parity; fix pre-turn persistence attachment timing. | Execution context and persisted history assertions. |
+| Payload-size guard | WebSocket checks message plus context attachments. | SSE checks only content length. | Partial | Required | Add total payload validation for context attachments/custom context/build error/selected assets metadata. | Oversized referenced file returns deterministic 400/413 before execution. |
+| Repo/token handling | Not a chat transport wire requirement. | SSE should not add repo tokens to chat payloads. | Not needed for SSE replacement | Cleanup | Keep repo/token handling in existing REST/config paths. | Existing dual-product git config tests. |
+
+### Area 6: Billing, Grants, And Budget Behavior
+
+| Capability / behavior | WebSocket implementation evidence | SSE implementation evidence | Status | Replacement impact | Recommended change | Suggested tests |
+|---|---|---|---|---|---|---|
+| BMS precheck | WebSocket prechecks before execution. | SSE prechecks before execution. | Parity | Required | Keep route tests. | 402, accepted path, tamper-resistant body fields. |
+| BMS reconciliation and update | WebSocket files report and emits `budget_update`. | SSE reconciles before terminal event and publishes `budget_update`. | Parity | Required | Keep ordering tests. | Success, conflict, failure, user-abort attribution. |
+| Legacy grant context | WebSocket sends grant context over socket. | SSE uses HTTP grant context endpoint and request-refresh events. | SSE-native equivalent | Required | Keep HTTP model. | Grant set, request refresh, no BMS mode emissions. |
+| Mid-stream grant recovery | WebSocket has grant advancement/retry logic. | SSE uses shared recovery logic and emits `stream_retry`. | Partial | Blocker / Required | Keep recovery, but guard retry event ownership. | Retry with no non-idempotent tools; stale retry ignored. |
+| Client BMS/grants gating | WebSocket/SSE share hooks. | #4094 centralized `usesBms()`, but it is still switchboard-only. | Partial / Decision required | Required if JWT authority is required | Decide whether UI should follow JWT/server authority. If yes, wire token-authoritative mode into hooks. | Token vs switchboard disagreement tests. |
+| `budget_status` | Server can emit status. | Client behavior is not central replacement requirement. | Not needed for SSE replacement | Cleanup | Keep or mark intentionally ignored. | Contract test documents ignore behavior. |
+
+### Area 7: Observability And Operational Behavior
+
+| Capability / behavior | WebSocket implementation evidence | SSE implementation evidence | Status | Replacement impact | Recommended change | Suggested tests |
+|---|---|---|---|---|---|---|
+| Structured logs | WebSocket logs connection/message lifecycle. | SSE logs stream, recovery, execution, budget, and lifecycle events. | Parity | Required | Keep correlation fields. | Log field snapshots for success/error/recovery. |
+| Request correlation/APM | WebSocket has message boundary instrumentation. | #4090 added SSE request correlation and APM transactions. | Parity | Required | Keep observability tests. | Success, abort, provider error, budget error labels. |
+| Debug turn stats | WebSocket emits debug stats. | SSE event and client dispatch exist. | Parity | Nice-to-have | Keep debug drawer regression coverage. | `airo:debug-turn-stats` dispatch test. |
+| Structured client errors | WebSocket sends classified metadata. | SSE server omits classified metadata in terminal error payload. | Partial | Required | Add error metadata to SSE event data. | Client handles classified SSE errors identically to WS. |
+| No-subscriber operations | WebSocket has cleanup/expiry behavior. | #4093 added no-subscriber abort timer. | Parity | Required | Keep timer/fanout observability tests. | No-subscriber timer starts, cancels, aborts. |
+| Shutdown operations | WebSocket close is explicit. | SSE active execution cleanup on shutdown is not explicit. | Missing | Required | Add SSE shutdown/abort path. | Server shutdown aborts active execution and clears registries. |
+
+### Area 8: Tests, Docs, And Replacement Readiness
+
+| Capability / behavior | WebSocket implementation evidence | SSE implementation evidence | Status | Replacement impact | Recommended change | Suggested tests |
+|---|---|---|---|---|---|---|
+| Server route coverage | WebSocket server tests exist. | SSE route tests cover stream, replay, messages, stop, actions, grants. | Parity | Required | Add tests for remaining recovery and payload-size gaps. | Buffer-loss failure, oversized context, auth-negative actions/stop. |
+| Hook coverage | WebSocket hook/controller tests exist. | `useSSEChat` tests cover many recovery/lifecycle paths. | Partial | Required | Add stale retry, fallback failure, resend snapshot tests. | Current blocker/regression suite. |
+| Shared transport coverage | Shared package tests cover channel/recovery/subscribers. | SSE depends on same shared code. | Parity | Required | Keep full `@airo/ai-transport` suite as replacement gate. | Full package suite. |
+| Docs | Older docs may describe WebSocket as primary. | This doc is current as of post-#4094 code. | Partial | Cleanup | Update/remove stale WebSocket-primary docs in final removal PR. | Docs grep for stale flag/protocol claims. |
+| Replacement flag | Flag still permits fallback. | SSE can be selected while WebSocket remains available. | Partial | Required | Keep fallback until blockers close; then canary SSE-default before removal. | SSE-default canary with no Socket.IO connection. |
 
 ## Explicit Non-Goals And WebSocket-Only Mechanics
 
 | Mechanic | Classification | Reason |
 |---|---|---|
-| `authenticate` socket event | Not needed for SSE replacement | SSE uses Bearer-authenticated HTTP requests and EventSource fetch. |
-| `tokenRefresh` socket event | Not needed for SSE replacement | SSE refreshes via `agentFetch` and token re-open behavior. |
-| `recovery_ack` and `catchup_ack` | Not needed for SSE replacement | SSE equivalent is `Last-Event-Id`, replay, and dedupe. |
-| Socket IDs as durable client identity | Not needed for SSE replacement | SSE should use conversation/session keys plus HTTP auth. |
-| Socket.IO ping/upgrade/volatile emit semantics | Not needed for SSE replacement | Browser/EventSource reconnect and HTTP requests are the native model. |
-| `conversation_info` event | Not needed for SSE replacement | SSE pre-creates/resolves conversation before stream. |
-| `budget_status` UI behavior | Cleanup | Inert today; not user-visible on either path. |
-| `status`, `resync`, `request_grant_refresh_ack` | Cleanup | No clear active SSE replacement requirement found. |
+| Socket `authenticate` event | Not needed for SSE replacement | SSE uses authenticated HTTP requests and EventSource open/reopen behavior. |
+| Socket `tokenRefresh` event | Not needed for SSE replacement | SSE refreshes through HTTP/token plumbing and reconnect. |
+| `recovery_ack` / `catchup_ack` | Not needed for SSE replacement | SSE equivalent is `Last-Event-Id`, server replay, and client dedupe. |
+| Socket IDs as durable user-visible identity | Not needed for SSE replacement | SSE should use conversation/session keys plus HTTP auth. |
+| Socket.IO ping/upgrade/volatile emit semantics | Not needed for SSE replacement | Browser/EventSource reconnect plus explicit HTTP actions are the native model. |
+| WebSocket wire names | Not needed for SSE replacement | Preserve behavior and guarantees, not wire protocol shape. |
+| Inert `budget_status` UI behavior | Cleanup | Not currently a replacement blocker unless product wants visible reconciling state. |
 
 ## Recommended Implementation Sequence
 
-1. Runtime extraction PR: move SSE runtime initialization, `ConversationEventChannel`, agent factory access, and client-action registry out of `ai-lib-websocket-server.ts`.
-2. Client lifecycle PR: implement SSE archive-restore reconnect parity, reset history state correctly, add complete trace IDs, and preserve pagination retry state.
-3. Recovery hardening PR: configure SSE buffer capacity, handle loss-plus-history-failure as recoverable/visible, and add event allowlist contract tests.
-4. Request/context PR: add or intentionally replace `sessionId`, add `userTimezone`, preserve `market` on APP_NOT_FOUND retry, decide initial conversation template/agent creation, and add total payload-size validation.
-5. Observability PR: add SSE complete trace ID handling, verify/add Elastic APM transaction parity, and introduce per-message request correlation IDs.
-6. Operational semantics PR: decide no-subscriber abort vs background completion; audit `emitToApp` and add app-level SSE strategy if needed.
-7. Billing/shared gating PR: fix BMS migrated-user gating predicate and degraded BMS/legacy grant predicate alignment.
-8. Replacement-readiness PR: update docs, add migration guide, run full typecheck/lint/build/test gates, canary SSE-only mode, then remove or disable WebSocket fallback.
+1. **PR A: recovery correctness blocker**
+   - Prevent `replay_complete` from marking history/recovery complete after `lossDetected && historyLoadFailed` until fallback HTTP history succeeds.
+   - Surface a recovery error if fallback fails.
+   - Tests: inline history failure plus fallback success; inline history failure plus fallback failure; completed-stream reload path remains unchanged.
+
+2. **PR B: guarded `stream_retry` blocker**
+   - Route `publishStreamRetry` through an active-stream ownership checked helper.
+   - Include `requestId` or equivalent stream owner metadata.
+   - Client ignores stale `stream_retry` not matching the current active stream/request.
+   - Tests: superseded turn cannot clear a newer active stream; valid retry still clears partial UI.
+
+3. **PR C: persistence-context attachment parity**
+   - Build save-worthy context attachments before pre-turn persistence.
+   - Attach them to `persistenceContext` for `continueConversation()` and relevant `startAgentTurn()` calls.
+   - Tests: save-worthy attachments persist; ephemeral attachments do not; execution context still receives all required attachments.
+
+4. **PR D: structured SSE error metadata**
+   - Add `errorType`, `statusCode`, retry metadata, and sanitized diagnostics to SSE terminal error event data.
+   - Keep sensitive internal details sanitized consistently with the WebSocket contract.
+   - Tests: `APP_NOT_FOUND`, `BUDGET_EXCEEDED`, retryable upstream, generic upstream.
+
+5. **PR E: request guard and resend fidelity**
+   - Add total request payload validation comparable to WebSocket.
+   - Store and reuse the resolved outbound SSE send payload for `APP_NOT_FOUND` retry.
+   - Tests: oversized referenced files/context rejected; retry payload exactly matches initial resolved payload except expected retry metadata.
+
+6. **PR F: explicit SSE shutdown lifecycle**
+   - Add `MessageExecutionService.shutdown()` or equivalent abort/cleanup API.
+   - Call it from `agents/src/server/app.ts` shutdown before closing database/process resources.
+   - Tests: active execution aborts; action registries, subscribers, timers, and APM transaction cleanup run.
+
+7. **PR G: billing authority decision or cleanup**
+   - If JWT/server authority must drive UI mode, wire that value into `useGrantContext()` and `useBudgetUpdate()`.
+   - If switchboard-only client gating is accepted, document that product decision and keep #4094 behavior.
+   - Tests: token-vs-switchboard disagreement cases if JWT authority is required.
+
+8. **PR H: final replacement-readiness pass**
+   - Run full targeted test plan.
+   - Update stale docs.
+   - Canary SSE-default with WebSocket fallback still present.
+   - Disable/remove WebSocket only after canary evidence and rollback path are accepted.
 
 ## Test Plan Before Disabling WebSocket
 
-1. Unit: `SSETransport` auth refresh, cooldown, `Last-Event-Id`, event parsing, and allowlist contract.
-2. Unit: `useSSEChat` cold archive reconnect, trace IDs, market retry, terminal transport error, replay dedupe, and history pagination retry.
-3. Unit: SSE routes for disabled-WebSocket startup, ownership/product access, stream replay, buffer loss, inline history failure, stop/actions/grants.
-4. Unit: `MessageExecutionService` for success/error/abort terminal ordering, BMS reconciliation before complete, grant `stream_retry`, and persisted marker behavior.
-5. Shared: full `@airo/ai-transport` suite for event channel, recovery plan, subscribers, coalescing, and stream processor.
-6. Integration: browser flow with SSE flag on and assert no Socket.IO connection, initial prompt, tool calls, stop, reconnect, page reload during active turn, and archive restore.
-7. Billing: BMS happy path, BMS 402, conflict/refreshRequired, legacy grants refresh/retry, and migrated `app-builder-bms-existing` path.
-8. Observability: trace IDs appear in Langfuse/feedback path, debug stats dispatch, and structured logs include `appId` and `conversationId`.
-9. Docs/replacement: grep docs for stale WebSocket-primary claims and update or mark historical.
-10. Payload limits: oversized message content, context attachments, selected-asset metadata, referenced files, and build-error context fail deterministically before execution starts.
-11. Elastic APM: execute success, budget error, user stop, provider error, and chunk-timeout turns via SSE; verify expected transactions, labels, errors, and durations if Elastic APM remains an operational source of truth.
-12. Log correlation: every SSE message execution has a request ID that appears on stream start, budget precheck/reporting, persistence, terminal events, and error logs.
+1. `useSSEChat`: buffer-loss with inline history failure, fallback success, fallback failure, and no silent complete.
+2. `useSSEChat`: stale `stream_retry` ignored; current retry accepted.
+3. `useSSEChat`: `APP_NOT_FOUND` resend uses resolved outbound payload snapshot.
+4. `useSSEChat`: reconnect clears messages, history completion, pagination cursor, and loading-more state.
+5. `SSETransport`: event allowlist contract, auth refresh, `Last-Event-Id`, cooldown/reconnect, and bad payload handling.
+6. SSE routes: stream replay, lost-buffer recovery, history DB failure, oversized context payload, stop/actions/grants auth-negative cases.
+7. `MessageExecutionService`: success/error/abort terminal ordering, guarded retry, context persistence, BMS report ordering, user-stop attribution, shutdown abort.
+8. Shared `@airo/ai-transport`: event channel, recovery plan, subscribers, coalescing, stream processor, budget recovery.
+9. Billing/grants: BMS happy path, 402, conflict/refreshRequired, legacy grant refresh/retry, BMS-vs-grants mode decision cases.
+10. Observability: request ID and trace/APM labels across success, abort, provider error, budget error, recovery failure.
+11. Integration/browser: SSE flag on, no Socket.IO connection, initial prompt, tool calls, stop, reload during active turn, archive restore, history pagination.
+12. Docs/replacement: grep docs for stale WebSocket-primary claims; document non-goals and rollback procedure.
 
 ## Performance And Operations Benchmarks
 
@@ -204,9 +282,9 @@ These are not functional parity blockers by themselves, but they should be part 
 
 | Metric | Suggested threshold | Method |
 |---|---|---|
-| Time to first token | SSE no worse than WebSocket by more than 50 ms p95 in the same environment | Measure from `POST /messages` to first `chunk` event. |
-| Streaming throughput | SSE at least 95% of WebSocket event throughput under representative load | Run the same synthetic agent stream over both transports and compare events/sec and client render cadence. |
-| Recovery latency | Reconnect to first replayed event under 500 ms p95 while buffer is intact | Disconnect mid-turn, reconnect with `Last-Event-Id`, measure first replayed event. |
-| Memory per idle connection | SSE no more than 1.2x WebSocket at target concurrent idle connections | Compare RSS/heap after a fixed number of idle connections and active streams. |
-| Buffer overflow behavior | Loss detection always leads to history replay or visible retry/error state | Force cursor behind buffer head and validate `lossDetected` plus recovery UX. |
-| Reconnect storm resistance | No unbounded EventSource opens or token-refresh loops during rapid focus/network churn | Trigger rapid reconnects and verify cooldown/guards/log volume. |
+| Time to first token | SSE no worse than WebSocket by more than 50 ms p95 in the same environment. | Measure from `POST /messages` to first `chunk` event. |
+| Streaming throughput | SSE at least 95% of WebSocket event throughput under representative load. | Run the same synthetic agent stream over both transports and compare events/sec and client render cadence. |
+| Recovery latency | Reconnect to first replayed event under 500 ms p95 while buffer is intact. | Disconnect mid-turn, reconnect with `Last-Event-Id`, measure first replayed event. |
+| Memory per idle connection | SSE no more than 1.2x WebSocket at target concurrent idle connections. | Compare RSS/heap after a fixed number of idle connections and active streams. |
+| Buffer overflow behavior | Loss detection always leads to history replay or visible retry/error state. | Force cursor behind buffer head and validate `lossDetected` plus recovery UX. |
+| Reconnect storm resistance | No unbounded EventSource opens or token-refresh loops during rapid focus/network churn. | Trigger rapid reconnects and verify cooldown/guards/log volume. |

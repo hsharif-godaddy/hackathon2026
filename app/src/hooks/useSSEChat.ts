@@ -153,6 +153,9 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
     hasMore: false,
     nextCursor: null,
   })
+  // Inline recovery history can fail while live event replay still completes;
+  // in that case the HTTP history result, not replay_complete, owns completion.
+  const recoveryHistoryFallbackPendingRef = useRef(false)
 
   const currentAppId = useCurrentAppId()
   const { tokenAuthType } = useAuthContext()
@@ -609,6 +612,8 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
                   // StreamingMessageList can retry and, if the retry cap is
                   // exhausted, render the explicit history-load failure state
                   // instead of treating the conversation as empty.
+                  deferredInitialHistoryConversationIdRef.current = null
+                  recoveryHistoryFallbackPendingRef.current = false
                   return
                 }
 
@@ -617,6 +622,8 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
                   nextCursor: (event.data as any)?.nextCursor ?? null,
                 })
                 store.setHistoryLoadingComplete(true)
+                deferredInitialHistoryConversationIdRef.current = null
+                recoveryHistoryFallbackPendingRef.current = false
 
                 historyBatchRef.current = null
                 if (historyBatchTimerRef.current) {
@@ -696,8 +703,12 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
                 replayCompletesStreamRef.current = false
                 replayDedupRef.current.active = payload?.hasBufferedEvents === true
                 replayDedupRef.current.seen.clear()
+                const recoveryHistoryNeedsFallback = payload?.lossDetected === true
+                  && payload?.historyLoadFailed === true
+                  && payload?.historyMessageCount === 0
+                recoveryHistoryFallbackPendingRef.current = recoveryHistoryNeedsFallback
                 recoveryHistoryReplayRef.current = {
-                  active: payload?.lossDetected === true,
+                  active: payload?.lossDetected === true && !recoveryHistoryNeedsFallback,
                   hasMore: payload?.historyHasMore === true,
                   nextCursor: typeof payload?.historyNextCursor === 'string' ? payload.historyNextCursor : null,
                 }
@@ -762,10 +773,10 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
                 // load so the client doesn't silently miss conversation data.
                 // Skip when streamCompleted && !hasBufferedEvents — that branch
                 // already triggers a history reload above.
-                if (payload?.lossDetected && payload?.historyLoadFailed && payload?.historyMessageCount === 0
-                  && !(payload?.streamCompleted && !payload?.hasBufferedEvents)) {
+                if (recoveryHistoryNeedsFallback && !(payload?.streamCompleted && !payload?.hasBufferedEvents)) {
                   logger.info('sse.recovery.history_fallback_triggered', { appId: currentAppId })
                   if (transportRef.current) {
+                    store.setHistoryLoadRequested(true)
                     transportRef.current.loadHistory()
                   }
                 }
@@ -790,7 +801,9 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
                   setTransportState('connected')
                   replayCompletesStreamRef.current = false
                 }
-                releaseDeferredInitialHistoryLoad()
+                if (!recoveryHistoryFallbackPendingRef.current) {
+                  releaseDeferredInitialHistoryLoad()
+                }
 
                 logger.info('sse.recovery.replay_complete', {
                   appId: currentAppId,
@@ -854,6 +867,7 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
               replayDedupRef.current.active = false
               replayDedupRef.current.seen.clear()
               recoveryHistoryReplayRef.current = { active: false, hasMore: false, nextCursor: null }
+              recoveryHistoryFallbackPendingRef.current = false
               if (store.activeStream) {
                 store.clearActiveStream()
               }
