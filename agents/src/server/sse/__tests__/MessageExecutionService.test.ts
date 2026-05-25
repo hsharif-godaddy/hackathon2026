@@ -39,19 +39,19 @@ vi.mock('@godaddy/agent-otel-sdk', async () => {
 import { MessageExecutionService } from '../MessageExecutionService.js'
 import { BudgetServiceConflictError } from '@airo/ai-lib/budget'
 
-// Mock ai-lib-websocket-server to avoid heavy dependency chain.
+// Mock agent-runtime action service registry.
 // `actionServiceMap` is module-local so tests can assert registry state
-// without touching the production clientActionServices map.
+// without touching the production actionServices map.
 const actionServiceMap = new Map<string, { cleanup: () => void }>()
-vi.mock('../../ai-lib-websocket-server.js', () => ({
-  registerExternalActionService: vi.fn((key: string, service: any) => {
+vi.mock('../../agent-runtime.js', () => ({
+  registerActionService: vi.fn((key: string, service: any) => {
     actionServiceMap.set(key, service)
   }),
-  unregisterExternalActionService: vi.fn((key: string) => {
+  cleanupActionService: vi.fn((key: string) => {
     const s = actionServiceMap.get(key)
     if (s) { s.cleanup(); actionServiceMap.delete(key) }
   }),
-  getClientActionService: vi.fn((key: string) => actionServiceMap.get(key) ?? null),
+  getActionService: vi.fn((key: string) => actionServiceMap.get(key) ?? null),
 }))
 
 // Mock message-lifecycle helpers so the lifecycle-deps test can assert
@@ -1660,7 +1660,7 @@ describe('MessageExecutionService', () => {
       // service has already been registered under the same key (as if a
       // second execute() had raced in and replaced the map entry). The guard
       // at MessageExecutionService.ts:finally must detect the map entry is
-      // no longer this turn's service and skip unregisterExternalActionService.
+      // no longer this turn's service and skip cleanupActionService.
       let resolveStream: (v: any) => void
       const streamGate = new Promise<void>(r => { resolveStream = () => r() })
 

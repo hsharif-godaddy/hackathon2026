@@ -15,8 +15,8 @@ vi.mock('../../../../logging/index.js', () => ({
     },
 }))
 
-vi.mock('../../../../server/ai-lib-websocket-server.js', () => ({
-    getClientActionService: vi.fn(),
+vi.mock('../../../../server/agent-runtime.js', () => ({
+    getActionService: vi.fn(),
 }))
 
 vi.mock('../../../../tools/memory-tool.js', () => ({
@@ -32,9 +32,9 @@ vi.mock('../../../../database/repositories/AppRepository.js', () => ({
 }))
 
 import { domainPurchaseTool } from '../index.js'
-import { getClientActionService } from '../../../../server/ai-lib-websocket-server.js'
+import { getActionService } from '../../../../server/agent-runtime.js'
 
-const mockGetClientActionService = vi.mocked(getClientActionService)
+const mockGetClientActionService = vi.mocked(getActionService)
 
 function execute(input: Record<string, unknown>, context: Record<string, unknown>) {
     return domainPurchaseTool.execute(input as any, context)

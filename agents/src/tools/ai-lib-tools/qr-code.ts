@@ -8,7 +8,7 @@
 import { createTool, type Tool } from '@airo/ai-lib'
 import { z } from 'zod'
 import { generateQRCode } from '../qr-code-tool.js'
-import { getClientActionService } from '../../server/ai-lib-websocket-server.js'
+import { getActionService } from '../../server/agent-runtime.js'
 
 /**
  * QR Code generation tool for AI agents
@@ -54,7 +54,7 @@ IMPORTANT:
     }
 
     // Get client action service from global registry
-    const clientActionService = getClientActionService(socketId)
+    const clientActionService = getActionService(socketId)
     if (!clientActionService) {
       throw new Error('Client action service not available - cannot fetch published URL')
     }

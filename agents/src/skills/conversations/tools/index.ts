@@ -23,7 +23,7 @@ import { Logger } from '../../../logging/index.js';
 import { appRepository } from '../../../database/repositories/index.js';
 import { MemoryRepository } from '../../../database/repositories/MemoryRepository.js';
 import { SkillLoaderTool } from '../../../tools/skill-loader-tool.js';
-import { getClientActionService } from '../../../server/ai-lib-websocket-server.js';
+import { getActionService } from '../../../server/agent-runtime.js';
 import type { IClientActionService } from '../../../services/ClientActionService.js';
 import { resolveEnv } from '../../../utils/gd-env.js';
 import {
@@ -53,7 +53,7 @@ function getAppId(ctx?: ToolContext): string | undefined {
 function getClient(ctx?: ToolContext): IClientActionService | null {
   const socketId = ctx?.socketId;
   if (!socketId || typeof socketId !== 'string') return null;
-  return getClientActionService(socketId);
+  return getActionService(socketId);
 }
 
 /**

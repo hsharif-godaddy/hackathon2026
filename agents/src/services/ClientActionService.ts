@@ -28,7 +28,7 @@ export interface ClientActionResult {
 /**
  * Shared surface implemented by both the WebSocket `ClientActionService`
  * and the HTTP/SSE `SSEClientActionService`. Tool code retrieves a service
- * via `getClientActionService(socketId)` and only needs these members.
+ * via `getActionService(key)` and only needs these members.
  */
 export interface IClientActionService {
   executeAction(request: ClientActionRequest): Promise<ClientActionResult>

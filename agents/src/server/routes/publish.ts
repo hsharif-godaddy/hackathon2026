@@ -12,7 +12,7 @@ import { requirePermission } from '../middleware/require-permission.js';
 import { validateAppOwnership } from '../middleware/app-ownership.js';
 import { getPublishStrategy, BuildError, PreviewNotRunningError, MissingStartCommandError } from './publish/strategies/index.js';
 import type { PublishContext } from './publish/strategies/index.js';
-import { getGitHookService } from '../ai-lib-websocket-server.js';
+import { getGitHookService } from '../agent-runtime.js';
 import { validatePublishedSeo } from '../../services/SeoValidator.js';
 
 const router: Router = Router();

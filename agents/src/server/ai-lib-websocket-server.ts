@@ -56,7 +56,6 @@ interface ContextMessage {
 }
 
 import {
-  createWebSocketAgentFactory,
   aiLibAgentMetadata
 } from '../agents/ai-lib-agents/index.js'
 import { AILibContextManager } from '../agents/ai-lib-agents/context-manager.js'
@@ -91,7 +90,6 @@ import {
 import type { AgentsAppContext } from '../types/websocket-context.js'
 import { selectCacheConversationId } from './budget-report-conversation-id.js'
 import { AppRepository } from '../database/repositories/AppRepository.js'
-import { initializeContextRegistry } from '../services/initializeContextRegistry.js'
 import {
   buildDynamicDataMessage,
   buildTodoContextMessage,
@@ -99,17 +97,14 @@ import {
   collectImagesFromFormattedContexts,
   checkAndTriggerSummarization,
 } from './context-builders.js'
-import { GitHookService } from '../services/git-hook-service.js'
 import { buildSharedPostStreamValidator } from './post-stream-validator.js'
 import { buildPinnedSkillsContextMessages } from './pinned-skills-context.js'
 import {
   runStartGitHook, runStartAssessment, runMessageEndHooks,
-  LifecycleSessionStore,
-  type MessageLifecycleDeps,
 } from './message-lifecycle.js'
 import { ClientActionService, type IClientActionService } from '../services/ClientActionService.js'
 import { hasUnbuiltRebuildPages } from '../tools/ai-lib-tools/rebuild-page-selector.js'
-import { getAssessmentAgent, type AssessmentOutcome, AssessmentTaskType } from '../agents/assessment-agent/index.js'
+import { type AssessmentOutcome, AssessmentTaskType } from '../agents/assessment-agent/index.js'
 import { withTimeout } from '../utils/promise-utils.js'
 import {
   executeAssessment,
@@ -122,64 +117,25 @@ import {
   shouldAwaitParallelAssessment,
   type ParallelAssessmentState,
 } from './assessment-executor.js'
-import { ConversationEventChannel } from '@airo/ai-transport'
 import { getSSERegistry } from './sse/registry-singleton.js'
 import { mapToolCallsToUI } from './tool-call-mapper.js'
 import { resolveManualAgentOverride } from './manual-agent-override.js'
+import {
+  getEventChannel,
+  getAgentFactory as getRuntimeAgentFactory,
+  getMessageLifecycleDeps as getRuntimeLifecycleDeps,
+  getGitHookService as getRuntimeGitHookService,
+  registerActionService,
+  getActionService,
+  cleanupActionService,
+  initAgentRuntime,
+} from './agent-runtime.js'
 
 /**
  * Shared AppRepository instance to avoid repeated initialization
  */
 const appRepo = new AppRepository()
 
-/**
- * Shared ConversationEventChannel for SSE transport.
- * Initialized once during setupAILibWebSocketServer and shared with
- * MessageExecutionService so SSE subscribers receive agent events.
- */
-let sseEventChannelInstance: ConversationEventChannel | null = null
-let sseEventChannelCleanupInterval: NodeJS.Timeout | null = null
-
-/**
- * Shared agentFactory reference for SSE execution.
- * Set during setupAILibWebSocketServer once agents are initialized.
- */
-let sseAgentFactoryInstance: Awaited<ReturnType<typeof import('../agents/ai-lib-agents/index.js').createWebSocketAgentFactory>> | null = null
-
-/**
- * Get the SSE event channel (available after setupAILibWebSocketServer resolves).
- */
-export function getSSEEventChannel(): ConversationEventChannel | null {
-  return sseEventChannelInstance
-}
-
-/**
- * Get the SSE agent factory (available after setupAILibWebSocketServer resolves).
- */
-export function getSSEAgentFactory(): typeof sseAgentFactoryInstance {
-  return sseAgentFactoryInstance
-}
-
-/**
- * Shared GitHookService instance for tracking feature branches across connections
- */
-const gitHookService = new GitHookService()
-
-/**
- * Shared lifecycle deps used by both onMessageStart and beforeMessageComplete,
- * and re-exported to the SSE path via `getMessageLifecycleDeps()`.
- */
-const lifecycleSessionStore = new LifecycleSessionStore()
-const lifecycleDeps: MessageLifecycleDeps = {
-  gitHookService,
-  getAssessmentAgent,
-  sessionStore: lifecycleSessionStore,
-  logger,
-}
-
-export function getMessageLifecycleDeps(): MessageLifecycleDeps {
-  return lifecycleDeps
-}
 
 /**
  * Post-stream validator (tsc + runtime-error checks with bounded retries).
@@ -290,11 +246,6 @@ function getSocket(socketId: string | undefined): Socket | null {
   }
 }
 
-/**
- * Client Action Service registry
- * Maps socketId -> ClientActionService for client-side tool execution
- */
-const clientActionServices = new Map<string, IClientActionService>()
 
 /**
  * Memory tracking data for request-scoped memory monitoring
@@ -425,73 +376,31 @@ function getOrCreateClientActionService(
   socketId: string,
   conversationId: string
 ): IClientActionService | null {
-  // Get existing service
-  let service = clientActionServices.get(socketId)
-  if (service) {
-    return service
-  }
+  let service = getActionService(socketId)
+  if (service) return service
 
-  // Create new service
   if (!ioInstance) {
-    logger.warn('client-action-service.no_io_instance', {
-      socketId,
-      conversationId,
-    })
+    logger.warn('client-action-service.no_io_instance', { socketId, conversationId })
     return null
   }
 
   const socket = ioInstance.sockets.sockets.get(socketId)
   if (!socket) {
-    logger.warn('client-action-service.socket_not_found', {
-      socketId,
-      conversationId,
-    })
+    logger.warn('client-action-service.socket_not_found', { socketId, conversationId })
     return null
   }
 
   service = new ClientActionService(socket, conversationId)
-  clientActionServices.set(socketId, service)
-
-  logger.info('client-action-service.created', {
-    socketId,
-    conversationId,
-  })
-
+  registerActionService(socketId, service)
+  logger.info('client-action-service.created', { socketId, conversationId })
   return service
-}
-
-/**
- * Get existing ClientActionService for a socket
- * Used by tools to access the service without it being in context
- */
-export function getClientActionService(socketId: string): IClientActionService | null {
-  return clientActionServices.get(socketId) || null
 }
 
 /**
  * Cleanup ClientActionService for a socket
  */
 function cleanupClientActionService(socketId: string): void {
-  const service = clientActionServices.get(socketId)
-  if (service) {
-    service.cleanup()
-    clientActionServices.delete(socketId)
-    logger.info('client-action-service.cleaned_up', {
-      socketId,
-    })
-  }
-}
-
-/**
- * Register an external (non-WebSocket) action service keyed by an arbitrary ID.
- * Used by SSE transport to make client-action dispatching work without a Socket.IO socket.
- */
-export function registerExternalActionService(key: string, service: IClientActionService): void {
-  clientActionServices.set(key, service)
-}
-
-export function unregisterExternalActionService(key: string): void {
-  cleanupClientActionService(key)
+  cleanupActionService(socketId)
 }
 
 /**
@@ -546,50 +455,23 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
   } | null = null
 
   try {
-    // Initialize context attachment registry with default renderers
-    initializeContextRegistry()
-
-    // Create the agent factory with state manager
-    const agentFactory = await createWebSocketAgentFactory()
+    // Initialize shared agent runtime (context registry, agent factory, summarization, SSE channel)
+    await initAgentRuntime()
+    const agentFactory = getRuntimeAgentFactory()!
     const stateManager = agentFactory.stateManager
 
     // Create context manager for app context and template descriptions
     const contextManager = new AILibContextManager()
 
-    // Wire up todo list selection callback to state manager
-    const { todoListTool } = await import('../tools/todo-list-tool.js')
-    todoListTool.setOnSelectCallback((sessionId: string, listId: string) => {
-      stateManager.setSelectedTodoList(sessionId, listId)
-      logger.info('todo.list.selected', {
-        sessionId,
-        listId,
-        message: 'Todo list selected for session'
-      })
-    })
-
     // Create message persistence implementation
     const messagePersistence = new AgentsMessagePersistence()
 
-    // Resolve the conversation stores and initialize background summarization
+    // Resolve the conversation stores
     const lifecycleStore = getConversationLifecycleStore()
     const messageStore = getMessageStore()
-    const { initializeBackgroundSummarization } = await import('../services/summarization/index.js')
 
-    backgroundSummarizer = await initializeBackgroundSummarization()
-
-    // Initialize SSE transport infrastructure
-    sseEventChannelInstance = new ConversationEventChannel()
-    sseAgentFactoryInstance = agentFactory
-
-    // Periodically purge idle per-conversation event buffers (matches the WS
-    // server's 60s cleanup cadence in packages/ai-transport).
-    sseEventChannelCleanupInterval = setInterval(() => {
-      const removed = sseEventChannelInstance?.cleanup() ?? 0
-      if (removed > 0) {
-        logger.debug('sse.event_channel.cleanup', { removedConversations: removed })
-      }
-    }, 60_000)
-    sseEventChannelCleanupInterval.unref?.()
+    const { getBackgroundSummarizer } = await import('../services/summarization/index.js')
+    backgroundSummarizer = getBackgroundSummarizer()
 
     const wsAgentRouter = createAgentRouter({
       hasMessagesForApp: (appId) => messageStore.hasMessagesForApp(workspaceScopeFromAppId(appId)),
@@ -1563,7 +1445,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         // Git hook: check setup status, ensure correct branch, create feature branch.
         // Coordinates with nomad_setup.sh via dev-supervisor setup status API.
         // Shared with SSE via `runStartGitHook`; failures are logged inside and never throw.
-        await runStartGitHook(lifecycleDeps, {
+        await runStartGitHook(getRuntimeLifecycleDeps(), {
           appId: siteId,
           conversationId: typedContext?.conversation?.conversationId,
           sessionKey: socketId,
@@ -1930,7 +1812,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           }
         }
 
-        return runMessageEndHooks(lifecycleDeps, {
+        return runMessageEndHooks(getRuntimeLifecycleDeps(), {
           appId: siteId,
           conversationId: typedContext?.conversation?.conversationId,
           sessionKey: socketId,
@@ -2425,7 +2307,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         budgetReportConversationCache.delete(socketId)
         pendingBudgetOverrides.delete(socketId)
         cachedAgentContexts.delete(socketId)
-        lifecycleSessionStore.clearSession(socketId)
+        getRuntimeLifecycleDeps().sessionStore.clearSession(socketId)
         wsResetPostStreamRetries(socketId)
 
         // Cleanup ClientActionService
@@ -2436,22 +2318,23 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
 
         // Git hook: Squash merge to main on disconnection
         // Try to find appId from active branches using socketId (conversationId not available here)
-        const appId = gitHookService.findAppIdBySocketId(socketId);
+        const gitHookSvc = getRuntimeGitHookService()
+        const appId = gitHookSvc.findAppIdBySocketId(socketId);
 
         if (appId) {
           // Get branch info to extract conversationId if available
-          const branchInfo = gitHookService.getAppBranch(appId);
+          const branchInfo = gitHookSvc.getAppBranch(appId);
           const conversationId = branchInfo?.conversationId;
 
           // Track the git operation so shutdown can await it (shared end-hook).
-          const gitOp = runMessageEndHooks(lifecycleDeps, {
+          const gitOp = runMessageEndHooks(getRuntimeLifecycleDeps(), {
             appId,
             conversationId,
             sessionKey: socketId,
             reason: 'disconnection',
             enableAssessmentOverride: false,
           })
-          gitHookService.trackOperation(gitOp);
+          gitHookSvc.trackOperation(gitOp);
           await gitOp;
         } else {
           logger.debug('websocket.git_hook.connection_end.no_app', {
@@ -2562,7 +2445,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
 
         // Git hook: Squash merge to main on error (shared with SSE).
         if (appId) {
-          await runMessageEndHooks(lifecycleDeps, {
+          await runMessageEndHooks(getRuntimeLifecycleDeps(), {
             appId,
             conversationId: typedContext?.conversation?.conversationId,
             sessionKey: socketId,
@@ -2709,7 +2592,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
       } else if (sessionId.startsWith('sse:')) {
         // SSE sessions are keyed as sse:${conversationId} but subscribers listen on conversationId
         const conversationId = sessionId.slice(4)
-        const eventChannel = getSSEEventChannel()
+        const eventChannel = getEventChannel()
         if (eventChannel) {
           eventChannel.publish(conversationId, {
             conversationId,
@@ -3392,9 +3275,3 @@ export function emitToApp(appId: string, event: string, payload: unknown): numbe
   return delivered
 }
 
-/**
- * Get the GitHookService instance for shutdown git operations
- */
-export function getGitHookService() {
-  return gitHookService;
-}

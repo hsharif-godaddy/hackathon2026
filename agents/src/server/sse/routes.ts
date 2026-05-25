@@ -13,7 +13,7 @@ import { isEmployeeAuthType } from '@airo/shared/auth'
 import type { ConversationLifecycleStore, MessageStore } from '../../memory/interfaces/index.js'
 import { workspaceScopeFromAppId } from '../../memory/interfaces/scope.js'
 import { BYPASS_SITE_IDS } from '../../services/features.js'
-import { getSSEAgentFactory, getClientActionService } from '../ai-lib-websocket-server.js'
+import { getAgentFactory, getActionService } from '../agent-runtime.js'
 import { performBudgetPreCheck } from '../budget-pre-check.js'
 import { getBudgetServiceClient } from '../../services/budget-service-instance.js'
 import { BudgetExceededError } from '@airo/ai-common'
@@ -81,7 +81,7 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
 
   const connectionInitializer = new ConnectionInitializer(
     () => {
-      const factory = getSSEAgentFactory()
+      const factory = getAgentFactory()
       if (!factory) return null
       return {
         agents: {
@@ -620,7 +620,7 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
       return
     }
 
-    const service = getClientActionService(sseSessionKey(conversationId))
+    const service = getActionService(sseSessionKey(conversationId))
     // Only SSEClientActionService exposes resolveAction; WS services are driven via the socket listener.
     const sseService = service && 'resolveAction' in service
       ? service as unknown as import('./SSEClientActionService.js').SSEClientActionService

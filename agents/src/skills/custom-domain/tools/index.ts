@@ -6,7 +6,7 @@ import type { SkillToolDefinition } from '@airo/ai-skills'
 import { AppRepository } from '../../../database/repositories/AppRepository.js'
 import { Logger } from '../../../logging/index.js'
 import { customerIdFromContext } from '../../../memory/interfaces/scope.js'
-import { getClientActionService } from '../../../server/ai-lib-websocket-server.js'
+import { getActionService } from '../../../server/agent-runtime.js'
 import { validateDomainName } from '../../../utils/domain-validation.js'
 import { MemoryTool } from '../../../tools/memory-tool.js'
 
@@ -130,7 +130,7 @@ async function attach(
         }
     }
 
-    const clientActionService = getClientActionService(socketId)
+    const clientActionService = getActionService(socketId)
     if (!clientActionService) {
         logger.error('domain.attach.client-action-service-unavailable', { appId })
         return {
@@ -199,7 +199,7 @@ async function attach(
  * Falls back to the widget when the client-side action fails.
  */
 async function autoAttach(
-    clientActionService: NonNullable<ReturnType<typeof getClientActionService>>,
+    clientActionService: NonNullable<ReturnType<typeof getActionService>>,
     appId: string,
     domain: string
 ) {
@@ -263,7 +263,7 @@ async function forward(
         }
     }
 
-    const clientActionService = getClientActionService(socketId)
+    const clientActionService = getActionService(socketId)
     if (!clientActionService) {
         logger.error('domain.forward.client-action-service-unavailable', { appId })
         return {
@@ -366,7 +366,7 @@ function formatSiteCustomDomainsSummary(domains: SiteDomainForAttachCheck[] | un
  * If the call fails, published defaults true (fail open) to match prior checkPublished behavior.
  */
 async function getSiteContextForAttach(
-    clientActionService: NonNullable<ReturnType<typeof getClientActionService>>,
+    clientActionService: NonNullable<ReturnType<typeof getActionService>>,
     appId: string
 ): Promise<{ published: boolean; domains?: SiteDomainForAttachCheck[] }> {
     try {

@@ -7,7 +7,7 @@ import { errorToLogError, log } from '../../logging/index.js';
 import { validateAppOwnership } from '../middleware/app-ownership.js';
 import { requirePermission } from '../middleware/require-permission.js';
 import { VideoGenerationTool } from '../../tools/video-generation-tool.js';
-import { getSSEEventChannel } from '../ai-lib-websocket-server.js'
+import { getEventChannel } from '../agent-runtime.js'
 import { getSSERegistry } from '../sse/registry-singleton.js';
 
 const router: IRouter = Router();
@@ -56,7 +56,7 @@ router.post('/:id/generate-video', requirePermission('canPublish'), async (req: 
 
     const tool = new VideoGenerationTool({ appId: id, appPath: app.path, previewUrl: app.previewUrl });
     const sseRegistry = getSSERegistry();
-    const eventChannel = getSSEEventChannel();
+    const eventChannel = getEventChannel();
     if (sseRegistry && eventChannel) {
       tool.setSSERegistry({
         sendEvent: (appId, type, data) => {

@@ -4,7 +4,7 @@ import type { SkillToolDefinition } from '@airo/ai-skills';
 import { AppRepository } from '../../../database/repositories/AppRepository.js';
 import { logger } from '../../../logging/index.js';
 import { customerIdFromContext } from '../../../memory/interfaces/scope.js';
-import { getClientActionService } from '../../../server/ai-lib-websocket-server.js';
+import { getActionService } from '../../../server/agent-runtime.js';
 import { DevSupervisorClientFactory } from '../../../utils/dev-supervisor-client-factory.js';
 import { validateDomainName } from '../../../utils/domain-validation.js';
 import { MemoryTool } from '../../../tools/memory-tool.js';
@@ -61,7 +61,7 @@ export const publishTool: SkillToolDefinition = {
       throw new Error('Socket ID not available in context - tool must be called via WebSocket');
     }
 
-    const clientActionService = getClientActionService(socketId);
+    const clientActionService = getActionService(socketId);
     if (!clientActionService) {
       throw new Error('Client action service unavailable — cannot publish');
     }
@@ -327,7 +327,7 @@ export const statusTool: SkillToolDefinition = {
     // Run getSiteData (URL enrichment) and getPublishStatus in parallel — URL is best-effort
     const socketId = (context as any)?.socketId;
     const clientActionService = socketId && typeof socketId === 'string'
-      ? getClientActionService(socketId)
+      ? getActionService(socketId)
       : null;
 
     const siteDataPromise = clientActionService

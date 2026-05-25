@@ -57,7 +57,7 @@ vi.mock('./publish/strategies/index.js', async (importOriginal) => {
   };
 });
 
-vi.mock('../ai-lib-websocket-server.js', () => ({
+vi.mock('../agent-runtime.js', () => ({
   getGitHookService: vi.fn(() => ({
     hasActiveBranch: vi.fn().mockReturnValue(false),
     clearBranchTracking: vi.fn(),
@@ -86,7 +86,7 @@ vi.mock('../../logging/index.js', () => ({
 // Import after mocks
 const publishRouter = await import('./publish.js').then(m => m.default);
 import { getPublishStrategy, MissingStartCommandError } from './publish/strategies/index.js';
-import { getGitHookService } from '../ai-lib-websocket-server.js';
+import { getGitHookService } from '../agent-runtime.js';
 
 describe('Publish Route Authorization', () => {
   let app: Express;

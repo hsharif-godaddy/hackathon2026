@@ -186,7 +186,8 @@ import { createServer } from 'http';
 import { corsMiddleware, timingAllowOriginMiddleware, errorHandler, notFoundHandler, requestLogger, jwtAuthMiddleware, validateProductAccess } from './middleware/index.js';
 import { agentsRouter, appsRouter, chatRouter, healthRouter, diagnosticsRouter, gitRouter, debugRouter, filesRouter, filesPublicRouter, publishRouter, downloadRouter, dbRouter, dbImportRouter, todoListRouter, securityMisconfigScanRouter, vulnerabilityScanRouter, secretsScanRouter, oauthRouter, videoRouter, conversationsRouter, qaAnalyzeRouter, gitRemoteRouter, goLiveRouter, socialRouter, customerLogsRouter, diagnoseRouter, zipImportRouter, uiKitRouter, shareRouter, mediaRouter, modelsRouter, profilesRouter, transferValidateRouter, runtimeErrorsRouter, brandDataRouter, rebuildRouter, nextActionsRouter, captureScreenshotRouter, feedbackRouter, conversationBrandIdRouter } from './routes/index.js';
 // Phase 3: Replace legacy WebSocket with AI-Lib WebSocket server
-import { setupAILibWebSocketServer, getWebSocketServerInfo, getGitHookService, getSSEEventChannel, getSSEAgentFactory, getMessageLifecycleDeps } from './ai-lib-websocket-server.js';
+import { setupAILibWebSocketServer, getWebSocketServerInfo } from './ai-lib-websocket-server.js';
+import { initAgentRuntime, getEventChannel, getAgentFactory, getMessageLifecycleDeps, getGitHookService } from './agent-runtime.js';
 import { EventStreamRegistry } from './sse/EventStreamRegistry.js';
 import { initSSERegistry } from './sse/registry-singleton.js';
 import { createSSERoutes } from './sse/routes.js';
@@ -207,7 +208,6 @@ import { getTemplateIds } from '../agents/template-registry.js';
 import { createAgentRouter } from './agent-router.js';
 import { closeDatabase, getDatabase } from '../database/index.js';
 import { AppRepository } from '../database/repositories/AppRepository.js';
-import { destroyLlmDispatcher } from '@airo/ai-lib';
 
 const app: Express = express();
 const port = process.env.PORT || 4000;
@@ -236,8 +236,8 @@ const resolveAgent = createAgentRouter({
 
 function getOrCreateSSEExecutionService(): MessageExecutionService | null {
   if (sseExecutionService) return sseExecutionService
-  const eventChannel = getSSEEventChannel()
-  const agentFactory = getSSEAgentFactory()
+  const eventChannel = getEventChannel()
+  const agentFactory = getAgentFactory()
   if (!eventChannel || !agentFactory) return null
 
   const contextMgr = new AILibContextManager()
@@ -437,11 +437,11 @@ protectedRouter.use('/', feedbackRouter);
 protectedRouter.use('/api/conversations', createSSERoutes({
   registry: sseRegistry,
   authenticate: (_req, _res, next) => next(), // Auth handled by protectedRouter middleware
-  getEventChannel: () => getSSEEventChannel(),
+  getEventChannel: () => getEventChannel(),
   get executionService() { return getOrCreateSSEExecutionService() ?? undefined },
   resolveAgent,
   getStateManager: () => {
-    const factory = getSSEAgentFactory()
+    const factory = getAgentFactory()
     if (!factory) return null
     return factory.stateManager as import('./agent-router.js').AgentStateManager
   },
@@ -619,6 +619,10 @@ async function initialize() {
         }
       }
     }
+
+    // Initialize transport-agnostic agent runtime (shared by SSE and WS)
+    await initAgentRuntime()
+    logger.info('server.agent_runtime.init.success')
 
     // Phase 3: Setup AI-Lib WebSocket Server
     logger.info('server.websocket.init.begin', { phase: 3 });
@@ -823,7 +827,8 @@ async function shutdown() {
       });
     }
 
-    await destroyLlmDispatcher();
+    const { destroyAgentRuntime } = await import('./agent-runtime.js')
+    await destroyAgentRuntime();
 
     logger.info('server.shutdown.success', {
       service: serviceName,

@@ -18,8 +18,8 @@ vi.mock('../../../../logging/index.js', () => {
   }
 })
 
-vi.mock('../../../../server/ai-lib-websocket-server.js', () => ({
-  getClientActionService: vi.fn(),
+vi.mock('../../../../server/agent-runtime.js', () => ({
+  getActionService: vi.fn(),
 }))
 
 vi.mock('../../../../tools/publish-client-tool.js', () => ({
@@ -51,7 +51,7 @@ vi.mock('../../../../utils/dev-supervisor-client-factory.js', () => ({
 
 import { publishTool, statusTool } from '../index.js'
 import { AppRepository } from '../../../../database/repositories/AppRepository.js'
-import { getClientActionService } from '../../../../server/ai-lib-websocket-server.js'
+import { getActionService } from '../../../../server/agent-runtime.js'
 import { executePublish } from '../../../../tools/publish-client-tool.js'
 import { MemoryTool } from '../../../../tools/memory-tool.js'
 import { DevSupervisorClientFactory } from '../../../../utils/dev-supervisor-client-factory.js'
@@ -91,7 +91,7 @@ describe('publishing skill publish-tools', () => {
 
     beforeEach(() => {
       vi.clearAllMocks()
-      vi.mocked(getClientActionService).mockReturnValue(mockClientActionService as any)
+      vi.mocked(getActionService).mockReturnValue(mockClientActionService as any)
     })
 
     describe('publish eligibility pre-validation', () => {
@@ -467,7 +467,7 @@ describe('publishing skill publish-tools', () => {
       vi.mocked(DevSupervisorClientFactory.createForPublishSupervisor).mockReturnValue(
         mockSupervisor as any
       )
-      vi.mocked(getClientActionService).mockReturnValue(mockStatusClientActionService as any)
+      vi.mocked(getActionService).mockReturnValue(mockStatusClientActionService as any)
     })
 
     it('throws when appId is missing', async () => {

@@ -20,9 +20,9 @@ vi.mock('../../../../database/repositories/index.js', () => ({
   appRepository: { findById: mockFindById },
 }));
 
-const mockGetClientActionService = vi.fn();
-vi.mock('../../../../server/ai-lib-websocket-server.js', () => ({
-  getClientActionService: (...args: unknown[]) => mockGetClientActionService(...args),
+const mockGetActionService = vi.fn();
+vi.mock('../../../../server/agent-runtime.js', () => ({
+  getActionService: (...args: unknown[]) => mockGetActionService(...args),
 }));
 
 const mockInstallTemplates = vi.fn();
@@ -65,7 +65,7 @@ const mockClient = {} as any;
 describe('conversations skill tools', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockGetClientActionService.mockReturnValue(mockClient);
+    mockGetActionService.mockReturnValue(mockClient);
     mockFindById.mockResolvedValue({ path: '/tmp/airo-app-builder/app-123/preview', name: 'My App' });
     mockInstallTemplates.mockResolvedValue({ success: true });
     mockAccess.mockResolvedValue(undefined);
@@ -97,7 +97,7 @@ describe('conversations skill tools', () => {
 
     it('returns error when no client action service is available', async () => {
       mockMemoryGet.mockResolvedValue({ exists: false });
-      mockGetClientActionService.mockReturnValue(null);
+      mockGetActionService.mockReturnValue(null);
 
       const result = await discoverAccountTool.execute({}, context);
 
@@ -295,7 +295,7 @@ describe('conversations skill tools', () => {
     });
 
     it('returns error when no client for create_new', async () => {
-      mockGetClientActionService.mockReturnValue(null);
+      mockGetActionService.mockReturnValue(null);
 
       const result = await selectAccountTool.execute(
         { accountUrl: 'create_new', entitlementId: 'ent-1' },
@@ -471,7 +471,7 @@ describe('conversations skill tools', () => {
     });
 
     it('returns error when client is unavailable', async () => {
-      mockGetClientActionService.mockReturnValue(null);
+      mockGetActionService.mockReturnValue(null);
 
       const result = await setupWidgetTool.execute({}, context);
 
@@ -555,7 +555,7 @@ describe('conversations skill tools', () => {
     });
 
     it('returns error when client is unavailable', async () => {
-      mockGetClientActionService.mockReturnValue(null);
+      mockGetActionService.mockReturnValue(null);
 
       const result = await updateWidgetConfigTool.execute({ color: '#aabbcc' }, context);
 

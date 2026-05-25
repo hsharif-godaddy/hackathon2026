@@ -25,7 +25,7 @@ import { context as otelContext, trace } from '@opentelemetry/api'
 import type { AgentsMessagePersistence } from '../conversation-persistence.js'
 import type { EventStreamRegistry } from './EventStreamRegistry.js'
 import { SSEClientActionService } from './SSEClientActionService.js'
-import { registerExternalActionService, unregisterExternalActionService, getClientActionService } from '../ai-lib-websocket-server.js'
+import { registerActionService, cleanupActionService, getActionService } from '../agent-runtime.js'
 import { sseSessionKey } from './session-key.js'
 import { logger, errorFields } from '../../logging/index.js'
 import { getBudgetServiceClient } from '../../services/budget-service-instance.js'
@@ -1137,7 +1137,7 @@ export class MessageExecutionService {
     this.abortControllers.set(conversationId, abortController)
 
     const clientActionService = new SSEClientActionService(conversationId, appId, this.deps.eventChannel)
-    registerExternalActionService(sseSocketId, clientActionService)
+    registerActionService(sseSocketId, clientActionService)
 
     const streamingEvents: PersistenceStreamingEvent[] = []
 
@@ -1671,8 +1671,8 @@ export class MessageExecutionService {
       // If a racing execute() replaced the registry slot, it owns the
       // session seed data (lastUserMessage / lastAssessmentTaskType) —
       // touching any of it would corrupt the next turn.
-      if (getClientActionService(sseSocketId) === clientActionService) {
-        unregisterExternalActionService(sseSocketId)
+      if (getActionService(sseSocketId) === clientActionService) {
+        cleanupActionService(sseSocketId)
         this.deps.lifecycle?.sessionStore.clearSession(sseSocketId)
       } else {
         logger.warn('sse.execution.concurrent_submit_cleanup', { appId, conversationId })

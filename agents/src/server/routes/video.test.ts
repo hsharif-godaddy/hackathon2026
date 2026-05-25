@@ -61,6 +61,10 @@ vi.mock('../ai-lib-websocket-server.js', () => ({
   getSocketIO: vi.fn(() => null)
 }));
 
+vi.mock('../agent-runtime.js', () => ({
+  getEventChannel: vi.fn(() => null),
+}));
+
 vi.mock('../../services/features.js', () => ({
   BYPASS_SITE_IDS: [] as string[],
 }));

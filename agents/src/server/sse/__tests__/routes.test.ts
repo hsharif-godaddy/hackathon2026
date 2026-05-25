@@ -22,9 +22,9 @@ vi.mock('../../../services/features.js', async (importOriginal) => {
 })
 
 const mockClientActionServices = new Map<string, any>()
-vi.mock('../../ai-lib-websocket-server.js', () => ({
-  getSSEAgentFactory: vi.fn().mockReturnValue(null),
-  getClientActionService: vi.fn((key: string) => mockClientActionServices.get(key) ?? null),
+vi.mock('../../agent-runtime.js', () => ({
+  getAgentFactory: vi.fn().mockReturnValue(null),
+  getActionService: vi.fn((key: string) => mockClientActionServices.get(key) ?? null),
 }))
 
 const mockBudgetPreCheck = vi.fn()
