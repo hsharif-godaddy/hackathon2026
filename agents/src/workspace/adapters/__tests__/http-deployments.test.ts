@@ -71,19 +71,20 @@ describe('HttpDeployments', () => {
     });
 
     it('status hydrates startedAt from wire uptime', async () => {
-      (client.getPublishStatus as any).mockResolvedValue({
-        version: 'v1',
-        health: { status: 'healthy', message: 'ok' },
-        process: { state: 'running', pid: 10, uptime: '120s' },
-        warnings: [],
-      });
-      const before = Date.now();
-      const result = await deployments.status();
-      expect(result.process.startedAt).toBeInstanceOf(Date);
-      const startedMs = result.process.startedAt!.getTime();
-      // Should be ~120s before "now"; allow a small skew for clock drift in test.
-      expect(before - startedMs).toBeGreaterThanOrEqual(120_000);
-      expect(before - startedMs).toBeLessThan(125_000);
+      vi.useFakeTimers({ now: 1_700_000_000_000 });
+      try {
+        (client.getPublishStatus as any).mockResolvedValue({
+          version: 'v1',
+          health: { status: 'healthy', message: 'ok' },
+          process: { state: 'running', pid: 10, uptime: '120s' },
+          warnings: [],
+        });
+        const result = await deployments.status();
+        expect(result.process.startedAt).toBeInstanceOf(Date);
+        expect(result.process.startedAt!.getTime()).toBe(1_700_000_000_000 - 120_000);
+      } finally {
+        vi.useRealTimers();
+      }
     });
 
     it('prepare throws VariantNotApplicableError (preview-only)', async () => {
