@@ -184,6 +184,46 @@ describe('AgentsMessagePersistence', function packageTests() {
     return updates.segments as any[]
   }
 
+  describe('#continueConversation – context attachments', function contextAttachmentTests() {
+    it('persists only save-worthy context attachments on user messages', async function persistsSaveAttachments() {
+      const saveAttachment = {
+        type: 'ai_edit_contexts',
+        data: [{ id: 'ctx-1' }],
+        persistence: 'save',
+      }
+      const ephemeralAttachment = {
+        type: 'selected_assets',
+        data: [{ imageUrl: 'https://img.example.com/a.png' }],
+        persistence: 'ephemeral',
+      }
+
+      await persistence.continueConversation('conv-123', 'hello', {
+        ...makeContext(),
+        contextAttachments: [saveAttachment, ephemeralAttachment],
+      })
+
+      expect(mockAddMessage).toHaveBeenCalledWith('conv-123', 'user', 'hello', expect.objectContaining({
+        contextAttachments: [saveAttachment],
+      }))
+    })
+
+    it('omits contextAttachments when no save-worthy attachments are present', async function omitsEphemeralOnlyAttachments() {
+      await persistence.continueConversation('conv-123', 'hello', {
+        ...makeContext(),
+        contextAttachments: [
+          {
+            type: 'selected_assets',
+            data: [{ imageUrl: 'https://img.example.com/a.png' }],
+            persistence: 'ephemeral',
+          },
+        ],
+      })
+
+      const [, , options] = mockAddMessage.mock.calls[0]
+      expect(options).not.toHaveProperty('contextAttachments')
+    })
+  })
+
   describe('#completeConversation – optimizeStreamingEvents', function optimizeTests() {
     it('should merge consecutive chunk events into a single content segment', async function mergeChunks() {
       const events = [

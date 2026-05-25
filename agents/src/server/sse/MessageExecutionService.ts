@@ -54,6 +54,7 @@ import {
   type BuildContextAttachmentAsset,
   type BuildContextAttachmentsBuildErrorContext,
   type BuildContextAttachmentsCustomContext,
+  type ContextAttachment,
 } from '@airo/shared/context-attachment'
 import type { PostStreamValidatorResult } from '../post-stream-validator.js'
 import {
@@ -119,6 +120,7 @@ interface ExecutionDeps {
  * mutated in place — reads use ?? defaults.
  */
 interface SSEPersistenceContext extends ConversationContext {
+  contextAttachments?: ContextAttachment[]
   commitHash?: string | null
   usedFreeGrants?: boolean
 }
@@ -1154,6 +1156,20 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
       })
     }
 
+    const contextAttachments = buildContextAttachments({
+      aiEditContext,
+      aiEditContexts,
+      visualContext,
+      selectedAssets,
+      todoListContext,
+      isActionRequest,
+      customContext,
+      buildErrorContext,
+    })
+    const persistableContextAttachments = contextAttachments.filter(
+      attachment => attachment.persistence === 'save',
+    )
+
     const persistenceContext: SSEPersistenceContext = {
       socketId: sseSocketId,
       agentName: resolvedAgentId,
@@ -1162,6 +1178,11 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
       conversation: { conversationId },
       metadata: { authType },
     }
+    // Keep ephemeral turn-only context out of initial user-message history; the
+    // persistence layer remains the final save-only boundary for all callers.
+    const initialPersistenceContext: SSEPersistenceContext = persistableContextAttachments.length > 0
+      ? { ...persistenceContext, contextAttachments: persistableContextAttachments }
+      : persistenceContext
 
     this.deps.resetPostStreamRetries?.(sseSocketId)
 
@@ -1182,8 +1203,8 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
     let activeAgentMessageId: string | undefined
     const openedAgentMessageIds = new Set<string>()
     try {
-      await this.deps.conversationPersistence.continueConversation(conversationId, content, persistenceContext)
-      activeAgentMessageId = await this.deps.conversationPersistence.startAgentTurn(conversationId, persistenceContext)
+      await this.deps.conversationPersistence.continueConversation(conversationId, content, initialPersistenceContext)
+      activeAgentMessageId = await this.deps.conversationPersistence.startAgentTurn(conversationId, initialPersistenceContext)
       openedAgentMessageIds.add(activeAgentMessageId)
     } catch (err) {
       // Persistence failures (SQLITE_BUSY, disk-full, schema mismatch) happen
@@ -1224,17 +1245,6 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
     const streamingEvents: PersistenceStreamingEvent[] = []
 
     // Shared execution context - tools modify this in-place (e.g. __autoContinue)
-    const contextAttachments = buildContextAttachments({
-      aiEditContext,
-      aiEditContexts,
-      visualContext,
-      selectedAssets,
-      todoListContext,
-      isActionRequest,
-      customContext,
-      buildErrorContext,
-    })
-
     const executionContext: Record<string, unknown> = {
       metadata: {
         sessionId: sseSocketId,

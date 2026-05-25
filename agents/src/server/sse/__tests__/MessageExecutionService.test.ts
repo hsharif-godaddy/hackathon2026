@@ -700,6 +700,81 @@ describe('MessageExecutionService', () => {
       )
     })
 
+    it('omits contextAttachments from pre-turn persistence when no attachments are present', async () => {
+      await service.execute(DEFAULT_PARAMS)
+
+      const continueContext = deps.conversationPersistence.continueConversation.mock.calls[0][2]
+      expect(continueContext.contextAttachments).toBeUndefined()
+
+      const startContext = deps.conversationPersistence.startAgentTurn.mock.calls[0][1]
+      expect(startContext.contextAttachments).toBeUndefined()
+    })
+
+    it('omits ephemeral-only contextAttachments from pre-turn persistence', async () => {
+      await service.execute({
+        ...DEFAULT_PARAMS,
+        selectedAssets: [{ imageUrl: '//img.example.com/a.png' }],
+        customContext: {
+          referencedFiles: [{ path: 'src/App.tsx', content: '<App />' }],
+        },
+      })
+
+      const continueContext = deps.conversationPersistence.continueConversation.mock.calls[0][2]
+      expect(continueContext.contextAttachments).toBeUndefined()
+
+      const startContext = deps.conversationPersistence.startAgentTurn.mock.calls[0][1]
+      expect(startContext.contextAttachments).toBeUndefined()
+
+      const executionContext = deps.getAgent().streamGenerate.mock.calls[0][1].executionContext
+      expect(executionContext.contextAttachments.map((attachment: { type: string }) => attachment.type)).toEqual([
+        'selected_assets',
+        'referenced_files',
+      ])
+    })
+
+    it('passes only save-worthy context attachments to pre-turn persistence', async () => {
+      await service.execute({
+        ...DEFAULT_PARAMS,
+        aiEditContexts: [{ id: 'ctx-1' }],
+        selectedAssets: [{ imageUrl: '//img.example.com/a.png' }],
+        customContext: {
+          referencedFiles: [{ path: 'src/App.tsx', content: '<App />' }],
+          type: 'custom_saved_context',
+          data: { source: 'test' },
+          persistence: 'save',
+        },
+      })
+
+      const continueContext = deps.conversationPersistence.continueConversation.mock.calls[0][2]
+      expect(continueContext.contextAttachments.map((attachment: { type: string }) => attachment.type)).toEqual([
+        'ai_edit_contexts',
+        'custom_saved_context',
+      ])
+      expect(continueContext.contextAttachments).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          type: 'ai_edit_contexts',
+          data: [{ id: 'ctx-1' }],
+          persistence: 'save',
+        }),
+        expect.objectContaining({
+          type: 'custom_saved_context',
+          data: { source: 'test' },
+          persistence: 'save',
+        }),
+      ]))
+
+      const startContext = deps.conversationPersistence.startAgentTurn.mock.calls[0][1]
+      expect(startContext.contextAttachments).toEqual(continueContext.contextAttachments)
+
+      const executionContext = deps.getAgent().streamGenerate.mock.calls[0][1].executionContext
+      expect(executionContext.contextAttachments.map((attachment: { type: string }) => attachment.type)).toEqual(expect.arrayContaining([
+        'ai_edit_contexts',
+        'selected_assets',
+        'referenced_files',
+        'custom_saved_context',
+      ]))
+    })
+
     it('calls completeConversation with captured streaming events after success', async () => {
       deps = createMockDeps([
         { type: 'text-delta', text: 'Hello ' },

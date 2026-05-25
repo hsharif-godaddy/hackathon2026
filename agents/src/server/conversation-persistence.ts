@@ -30,8 +30,21 @@ import { DevSupervisorClientFactory } from '../utils/dev-supervisor-client-facto
 import { aiLibAgentMetadata, type AILibAgentMetadata } from '../agents/ai-lib-agents/index.js'
 import { AppNotFoundError } from './errors/app-not-found-error.js'
 import { getMessageOriginForAuthType, type MessageOrigin } from '@airo/shared/auth'
+import type { ContextAttachment } from '@airo/shared/context-attachment'
 import { nanoid } from 'nanoid'
 import apm from 'elastic-apm-node'
+
+interface ConversationContextWithAttachments extends ConversationContext {
+  contextAttachments?: ContextAttachment[]
+}
+
+function getPersistableContextAttachments(context: ConversationContextWithAttachments): ContextAttachment[] | undefined {
+  const contextAttachments = context.contextAttachments
+  if (!Array.isArray(contextAttachments)) return undefined
+
+  const persistableAttachments = contextAttachments.filter(attachment => attachment.persistence === 'save')
+  return persistableAttachments.length > 0 ? persistableAttachments : undefined
+}
 
 export class AgentsMessagePersistence implements ConversationPersistenceWithCleanup {
   private lifecycleStore: ConversationLifecycleStore
@@ -277,11 +290,9 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
       socketId: context.socketId
     })
 
-    // Extract contextAttachments if present (they're passed through agent context)
-    const contextAttachments = (context as any).contextAttachments
-    const filteredAttachments = contextAttachments && Array.isArray(contextAttachments)
-      ? contextAttachments.filter((att: any) => att.persistence === 'save')
-      : undefined
+    // Persistence is the final boundary for context-attachment history:
+    // callers may pre-filter, but only save-worthy attachments are stored.
+    const persistableContextAttachments = getPersistableContextAttachments(context)
 
     const origin = this.getOriginFromContext(context)
     const messageMetadata =
@@ -310,7 +321,7 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
       origin,
       customerId: customerIdFromContext(context as { metadata?: Record<string, unknown> }),
       agentId: context.agentName,
-      ...(filteredAttachments && filteredAttachments.length > 0 && { contextAttachments: filteredAttachments })
+      ...(persistableContextAttachments && { contextAttachments: persistableContextAttachments })
     })
 
     this.activeConversations.set(context.socketId, {
@@ -497,11 +508,9 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
       })
     }
 
-    // Extract contextAttachments if present (they're passed through agent context)
-    const contextAttachments = (context as any).contextAttachments
-    const filteredAttachments = contextAttachments && Array.isArray(contextAttachments)
-      ? contextAttachments.filter((att: any) => att.persistence === 'save')
-      : undefined
+    // Persistence is the final boundary for context-attachment history:
+    // callers may pre-filter, but only save-worthy attachments are stored.
+    const persistableContextAttachments = getPersistableContextAttachments(context)
 
     const origin = this.getOriginFromContext(context)
 
@@ -522,7 +531,7 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
       origin,
       customerId: customerIdFromContext(context as { metadata?: Record<string, unknown> }),
       agentId: context.agentName,
-      ...(filteredAttachments && filteredAttachments.length > 0 && { contextAttachments: filteredAttachments })
+      ...(persistableContextAttachments && { contextAttachments: persistableContextAttachments })
     })
 
     this.activeConversations.set(context.socketId, {
