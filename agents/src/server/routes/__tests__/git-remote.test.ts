@@ -26,6 +26,10 @@ vi.mock('../../../utils/dev-supervisor-client-factory.js', () => ({
   },
 }));
 
+vi.mock('../../../workspace/index.js', () => ({
+  createForWorkspace: () => ({ tasks: {} }),
+}));
+
 vi.mock('../../middleware/app-ownership.js', () => ({
   validateAppOwnership: vi.fn((_req, _res, next) => next()),
 }));

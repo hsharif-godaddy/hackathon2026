@@ -12,7 +12,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { AppRepository } from '../database/repositories/AppRepository.js';
-import { DevSupervisorClientFactory } from '../utils/dev-supervisor-client-factory.js';
+import { createForWorkspace } from '../workspace/index.js';
 import { GitUtils } from '../utils/git.js';
 import { logger } from '../logging/index.js';
 import { gettyUploadService } from './GettyUploadService.js';
@@ -1171,13 +1171,13 @@ export class MediaManifestService {
     additionalFiles?: string[]
   ): Promise<string | undefined> {
     try {
-      const devSupervisor = DevSupervisorClientFactory.createForApp(appId);
-      if (!devSupervisor || !devSupervisor.isAvailable()) {
-        logger.debug('media_manifest.git_commit.no_supervisor', { appId });
+      const workspace = createForWorkspace(appId, 'preview');
+      if (!workspace) {
+        logger.warn('media_manifest.git_commit.no_supervisor', { appId });
         return undefined;
       }
 
-      const gitUtils = new GitUtils(devSupervisor);
+      const gitUtils = new GitUtils(workspace.tasks);
       const app = this.appRepository.findById(appId);
       if (!app) {
         return undefined;

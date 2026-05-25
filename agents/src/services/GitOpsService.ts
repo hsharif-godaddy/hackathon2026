@@ -10,6 +10,7 @@ import { ImportJobRepository } from '../database/repositories/ImportJobRepositor
 import { ImportJobStatus, type ImportJob } from '../types/import.js';
 import { GitTool } from '../tools/git-tool.js';
 import { DevSupervisorClientFactory } from '../utils/dev-supervisor-client-factory.js';
+import { createForWorkspace } from '../workspace/index.js';
 import { isSupportedProjectOnHost, matchesBuildToolOnHost, SUPPORTED_BUILD_TOOLS } from '../server/middleware/git-import-validation.js';
 import { appRestartService, type BuildToolType } from './AppRestartService.js';
 import { modifyViteConfig } from './ViteConfigModifier.js';
@@ -212,22 +213,23 @@ export class GitOpsService {
     try {
       await this.importJobRepo.updateStatus(jobId, ImportJobStatus.PUSHING);
 
-      const devSupervisor = DevSupervisorClientFactory.createForApp(appId);
-      if (!devSupervisor) {
+      const workspace = createForWorkspace(appId, 'preview');
+      if (!workspace) {
         logger.error('git-ops.push.devSupervisor.unavailable', {
           appId,
           jobId,
           stage: 'pushing',
+          kind: 'workspace',
         });
         await this.importJobRepo.markFailed(
           jobId,
-          'Dev supervisor no longer available',
+          'Workspace no longer available',
           'pushing'
         );
         return;
       }
 
-      const gitTool = new GitTool(devSupervisor);
+      const gitTool = new GitTool(workspace.tasks);
 
       const result = await gitTool.executeGitOperation(appPath, {
         operation: 'push',
@@ -393,22 +395,40 @@ export class GitOpsService {
     try {
       await this.importJobRepo.updateStatus(jobId, ImportJobStatus.PULLING);
 
+      const workspace = createForWorkspace(appId, 'preview');
+      if (!workspace) {
+        logger.error('git-ops.pull.devSupervisor.unavailable', {
+          appId,
+          jobId,
+          stage: 'pulling',
+          kind: 'workspace',
+        });
+        await this.importJobRepo.markFailed(
+          jobId,
+          'Workspace no longer available',
+          'pulling'
+        );
+        return;
+      }
+
+      const gitTool = new GitTool(workspace.tasks);
+      // Phase 3 services (codeSyncFileCleanupService, modifyViteConfig, injectPortHandling)
+      // still accept DevSupervisorClient — will be migrated separately.
       const devSupervisor = DevSupervisorClientFactory.createForApp(appId);
       if (!devSupervisor) {
         logger.error('git-ops.pull.devSupervisor.unavailable', {
           appId,
           jobId,
           stage: 'pulling',
+          kind: 'devSupervisor',
         });
         await this.importJobRepo.markFailed(
           jobId,
-          'Dev supervisor no longer available',
+          'DevSupervisor no longer available for post-pull services',
           'pulling'
         );
         return;
       }
-
-      const gitTool = new GitTool(devSupervisor);
 
       const result = await gitTool.executeGitOperation(appPath, {
         operation: 'pull',

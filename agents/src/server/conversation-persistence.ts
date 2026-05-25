@@ -26,7 +26,7 @@ import { GitTool } from '../tools/git-tool.js'
 import { GitUtils } from '../utils/git.js'
 import { logger, log } from '../logging/index.js'
 import { toolGitEvents } from '../logging/events/index.js'
-import { DevSupervisorClientFactory } from '../utils/dev-supervisor-client-factory.js'
+import { createForWorkspace } from '../workspace/index.js'
 import { aiLibAgentMetadata, type AILibAgentMetadata } from '../agents/ai-lib-agents/index.js'
 import { AppNotFoundError } from './errors/app-not-found-error.js'
 import { getMessageOriginForAuthType, type MessageOrigin } from '@airo/shared/auth'
@@ -86,8 +86,8 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
     try {
       const app = this.appRepository.findById(appId)
       if (!app?.path) return null
-      const devSupervisor = DevSupervisorClientFactory.createForApp(appId)
-      const gitUtils = new GitUtils(devSupervisor || undefined)
+      const workspace = createForWorkspace(appId, 'preview')
+      const gitUtils = new GitUtils(workspace?.tasks)
       return await gitUtils.getCurrentCommit(app.path)
     } catch (error) {
       log.forApp(appId).warn('conversation.user_message.pre_commit_hash_unresolved', {
@@ -1008,10 +1008,9 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
         return null;
       }
 
-      // Create git tools with dev-supervisor for this specific app
-      const devSupervisor = DevSupervisorClientFactory.createForApp(appId);
-      const gitTool = new GitTool(devSupervisor || undefined);
-      const gitUtils = new GitUtils(devSupervisor || undefined);
+      const workspace = createForWorkspace(appId, 'preview');
+      const gitTool = new GitTool(workspace?.tasks);
+      const gitUtils = new GitUtils(workspace?.tasks);
 
       // Best-effort: keep fallback commits on main to match squash-merge path
       try {

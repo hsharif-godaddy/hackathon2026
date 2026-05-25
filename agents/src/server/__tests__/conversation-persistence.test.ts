@@ -96,6 +96,10 @@ vi.mock('../../utils/dev-supervisor-client-factory.js', () => ({
   DevSupervisorClientFactory: { createForApp: vi.fn().mockReturnValue(null) },
 }))
 
+vi.mock('../../workspace/index.js', () => ({
+  createForWorkspace: () => ({ tasks: {} }),
+}))
+
 vi.mock('../../agents/ai-lib-agents/index.js', () => ({
   aiLibAgentMetadata: {},
 }))

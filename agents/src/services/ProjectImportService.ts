@@ -30,6 +30,7 @@ import { injectPortHandling } from './ExpressPortInjector.js';
 import { GitTool } from '../tools/git-tool.js';
 import { DevSupervisorClientFactory } from '../utils/dev-supervisor-client-factory.js';
 import { DevSupervisorClient } from './DevSupervisorClient.js';
+import { createForWorkspace } from '../workspace/index.js';
 import { ImportJobStatus, ValidationErrorKey, type ImportJob, type ValidationError } from '../types/import.js';
 import {
   isSupportedProjectInContainer,
@@ -1223,8 +1224,8 @@ export class ProjectImportService {
     appPath: string
   ): Promise<{ success: boolean; error?: string }> {
     try {
-      const devSupervisor = DevSupervisorClientFactory.createForApp(appId);
-      const gitTool = new GitTool(devSupervisor || undefined);
+      const workspace = createForWorkspace(appId, 'preview');
+      const gitTool = new GitTool(workspace?.tasks);
 
       // Add all files
       const addResult = await gitTool.executeGitOperation(appPath, {
@@ -1292,8 +1293,8 @@ export class ProjectImportService {
     try {
       this.logger.info('project-import.rollback.start', { appId });
 
-      const devSupervisor = DevSupervisorClientFactory.createForApp(appId);
-      const gitTool = new GitTool(devSupervisor || undefined);
+      const workspace = createForWorkspace(appId, 'preview');
+      const gitTool = new GitTool(workspace?.tasks);
 
       // Step 1: Reset all tracked files to HEAD (discards all changes)
       const resetResult = await gitTool.executeGitOperation(appPath, {
