@@ -38,6 +38,8 @@ vi.mock('@godaddy/agent-otel-sdk', async () => {
 
 import { MessageExecutionService } from '../MessageExecutionService.js'
 import { BudgetServiceConflictError } from '@airo/ai-lib/budget'
+import { BudgetExceededError } from '@airo/ai-common'
+import { APICallError, RetryError } from 'ai'
 
 // Mock agent-runtime action service registry.
 // `actionServiceMap` is module-local so tests can assert registry state
@@ -91,6 +93,16 @@ function makeReadableStream(parts: any[]): ReadableStream {
       }
     }
   })
+}
+
+function deferred<T = void>() {
+  let resolve!: (value: T | PromiseLike<T>) => void
+  let reject!: (reason?: unknown) => void
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res
+    reject = rej
+  })
+  return { promise, resolve, reject }
 }
 
 function createMockDeps(parts: any[] = []) {
@@ -2633,6 +2645,69 @@ describe('MessageExecutionService', () => {
       )
     })
 
+    it('does not publish stale stream_retry after a newer turn owns the conversation', async () => {
+      const { grantSessionManager } = await import('@airo/ai-grants')
+      vi.spyOn(grantSessionManager, 'registerSession').mockImplementation(() => {})
+      vi.spyOn(grantSessionManager, 'removeSession').mockImplementation(() => {})
+      vi.spyOn(grantSessionManager, 'advanceToNextGrant').mockReturnValue(true)
+      vi.spyOn(grantSessionManager, 'getCurrentUserId').mockReturnValue('grant-user-2')
+      vi.spyOn(grantSessionManager, 'requestGrantRefreshAndWait').mockResolvedValue(false)
+
+      const firstTurnEntered = deferred<void>()
+      const secondTurnEntered = deferred<void>()
+      const firstTurnResult = deferred<any>()
+      const secondTurnResult = deferred<any>()
+      let streamGenerateCalls = 0
+
+      deps = createMockDeps()
+      deps.getAgent.mockReturnValue({
+        streamGenerate: vi.fn().mockImplementation(() => {
+          streamGenerateCalls += 1
+          if (streamGenerateCalls === 1) {
+            firstTurnEntered.resolve()
+            return firstTurnResult.promise
+          }
+          if (streamGenerateCalls === 2) {
+            secondTurnEntered.resolve()
+            return secondTurnResult.promise
+          }
+          return Promise.resolve({
+            textStream: (async function* () {})(),
+            baseStream: makeReadableStream([]),
+            getFinalResult: vi.fn().mockResolvedValue({ finishReason: 'complete' }),
+          })
+        }),
+        getName: vi.fn().mockReturnValue('AI Developer'),
+      })
+      service = new MessageExecutionService(deps as any)
+
+      const firstExecute = service.execute({ ...DEFAULT_PARAMS, subscriptionId: 'sub-grant-1', requestId: 'req-old' })
+      await firstTurnEntered.promise
+
+      const secondExecute = service.execute({
+        ...DEFAULT_PARAMS,
+        content: 'new prompt',
+        subscriptionId: 'sub-grant-1',
+        requestId: 'req-new',
+      })
+      await secondTurnEntered.promise
+
+      firstTurnResult.reject(new BudgetExceededError('grant exhausted', 402))
+      await firstExecute
+
+      secondTurnResult.resolve({
+        textStream: (async function* () {})(),
+        baseStream: makeReadableStream([]),
+        getFinalResult: vi.fn().mockResolvedValue({ finishReason: 'complete' }),
+      })
+      await secondExecute
+
+      const streamRetryCall = deps.eventChannel.publish.mock.calls.find(
+        ([, evt]: [string, any]) => evt.type === 'stream_retry'
+      )
+      expect(streamRetryCall).toBeUndefined()
+    })
+
     it('skips grant registration when BMS session is active', async () => {
       const { grantSessionManager } = await import('@airo/ai-grants')
       vi.spyOn(grantSessionManager, 'registerSession').mockImplementation(() => {})
@@ -2790,6 +2865,78 @@ describe('MessageExecutionService', () => {
       expect(completeCall).toBeDefined()
       expect(completeCall![1].data).toMatchObject({ requestId: 'req_err1' })
     })
+
+    it('includes requestId in streaming events before terminal completion', async () => {
+      deps = createMockDeps([{ type: 'text-delta', text: 'hi' }])
+      service = new MessageExecutionService(deps as any)
+
+      await service.execute({ ...DEFAULT_PARAMS, requestId: 'req_stream1' })
+
+      const chunkCall = deps.eventChannel.publish.mock.calls.find(
+        ([, evt]: [string, any]) => evt.type === 'chunk'
+      )
+      expect(chunkCall).toBeDefined()
+      expect(chunkCall![1].data).toMatchObject({ requestId: 'req_stream1' })
+    })
+  })
+
+  describe('structured terminal error metadata', () => {
+    it.each([
+      [
+        'APP_NOT_FOUND',
+        Object.assign(new Error('app gone'), { errorType: 'APP_NOT_FOUND' }),
+        { errorType: 'APP_NOT_FOUND', statusCode: 404 },
+      ],
+      [
+        'BUDGET_EXCEEDED',
+        new BudgetExceededError('budget exhausted', 402),
+        { errorType: 'BUDGET_EXCEEDED', statusCode: 402 },
+      ],
+      [
+        'retryable upstream',
+        new APICallError({ message: 'svc unavailable', url: 'https://x', requestBodyValues: {}, statusCode: 503 }),
+        { statusCode: 503, _absent: ['errorType', 'retryAttempts', 'retryReason'] },
+      ],
+      [
+        'generic upstream',
+        new Error('provider down'),
+        { _absent: ['errorType', 'statusCode', 'retryAttempts', 'retryReason'] },
+      ],
+      [
+        'retry error',
+        new RetryError({ message: 'retry failed', reason: 'maxRetriesExceeded', errors: [new Error('a'), new Error('b')] }),
+        { errorType: 'RETRY_ERROR', statusCode: 500, retryAttempts: 2, retryReason: 'maxRetriesExceeded' },
+      ],
+    ])('publishes classified fields for %s', async (_case, error, expected) => {
+      deps = createMockDeps([])
+      deps.getAgent.mockReturnValue({
+        streamGenerate: vi.fn().mockRejectedValue(error),
+        getName: vi.fn().mockReturnValue('AI Developer'),
+      })
+      service = new MessageExecutionService(deps as any)
+
+      await service.execute({ ...DEFAULT_PARAMS, requestId: 'req_err_meta' })
+
+      const errorCall = deps.eventChannel.publish.mock.calls.find(
+        ([, evt]: [string, any]) => evt.type === 'error'
+      )
+      expect(errorCall).toBeDefined()
+      const { _absent, ...positiveExpected } = expected as Record<string, unknown>
+      expect(errorCall![1].data).toMatchObject({
+        source: 'ai_response',
+        error: error instanceof Error ? error.message : String(error),
+        timestamp: expect.any(String),
+        requestId: 'req_err_meta',
+        ...positiveExpected,
+      })
+      expect(errorCall![1].data).not.toHaveProperty('stack')
+      expect(errorCall![1].data).not.toHaveProperty('cause')
+      if (Array.isArray(_absent)) {
+        for (const key of _absent) {
+          expect(errorCall![1].data).not.toHaveProperty(key)
+        }
+      }
+    })
   })
 
   describe('APM transaction lifecycle', () => {
@@ -2855,6 +3002,109 @@ describe('MessageExecutionService', () => {
       expect(mockTransaction.result).toBe('aborted')
       expect(mockTransaction.setOutcome).toHaveBeenCalledWith('unknown')
       expect(mockTransaction.end).toHaveBeenCalled()
+    })
+  })
+
+  describe('shutdown lifecycle', () => {
+    it('shutdown with no active streams completes cleanly', async () => {
+      deps = createMockDeps([])
+      service = new MessageExecutionService(deps as any)
+
+      await service.shutdown()
+
+      expect(deps.eventChannel.publish).not.toHaveBeenCalled()
+    })
+
+    it('shutdown does not throw when cleanupActionService throws, and APM still ends', async () => {
+      const { cleanupActionService } = await import('../../agent-runtime.js') as { cleanupActionService: ReturnType<typeof vi.fn> }
+      const mockTransaction = { setLabel: vi.fn(), setOutcome: vi.fn(), end: vi.fn(), result: undefined as string | undefined }
+      const streamStarted = deferred<void>()
+      const mockSub = { id: 'sse-sub-1', onEvent: vi.fn(), onError: vi.fn() }
+      deps = createMockDeps([])
+      deps.sseRegistry.getSubscribers.mockReturnValue([mockSub])
+      deps.getAgent.mockReturnValue({
+        streamGenerate: vi.fn().mockImplementation((_message: string, opts: { abortSignal: AbortSignal }) => {
+          const baseStream = new ReadableStream({
+            start(controller) {
+              opts.abortSignal.addEventListener('abort', () => controller.error(new Error('AbortError')))
+              streamStarted.resolve()
+            },
+          })
+          return Promise.resolve({
+            textStream: (async function* () {})(),
+            baseStream,
+            getFinalResult: vi.fn().mockResolvedValue({ finishReason: 'complete' }),
+          })
+        }),
+        getName: vi.fn().mockReturnValue('AI Developer'),
+      })
+      service = new MessageExecutionService(deps as any)
+
+      const execPromise = service.execute({ ...DEFAULT_PARAMS, conversationId: 'conv_1', apmTransaction: mockTransaction })
+      await streamStarted.promise
+      service.onLastSubscriberLeft('conv_1')
+
+      // Make cleanupActionService throw during shutdown — this exercises the catch path
+      cleanupActionService.mockImplementationOnce(() => { throw new Error('cleanup exploded') })
+
+      // shutdown should not propagate the error
+      await expect(service.shutdown()).resolves.toBeUndefined()
+      await execPromise
+
+      // APM transaction still ends despite the throw (finally block)
+      expect(mockTransaction.end).toHaveBeenCalled()
+      expect(mockTransaction.result).toBe('aborted')
+    })
+
+    it('aborts active streams and cleans action services, subscribers, timers, and APM state', async () => {
+      const mockTransaction = { setLabel: vi.fn(), setOutcome: vi.fn(), end: vi.fn(), result: undefined as string | undefined }
+      const streamStarted = deferred<void>()
+      let capturedSignal: AbortSignal | undefined
+      const mockSub = { id: 'sse-sub-1', onEvent: vi.fn(), onError: vi.fn() }
+      deps = createMockDeps([])
+      deps.sseRegistry.getSubscribers.mockReturnValue([mockSub])
+      deps.getAgent.mockReturnValue({
+        streamGenerate: vi.fn().mockImplementation((_message: string, opts: { abortSignal: AbortSignal }) => {
+          capturedSignal = opts.abortSignal
+          const baseStream = new ReadableStream({
+            start(controller) {
+              opts.abortSignal.addEventListener('abort', () => controller.error(new Error('AbortError')))
+              streamStarted.resolve()
+            },
+          })
+          return Promise.resolve({
+            textStream: (async function* () {})(),
+            baseStream,
+            getFinalResult: vi.fn().mockResolvedValue({ finishReason: 'complete' }),
+          })
+        }),
+        getName: vi.fn().mockReturnValue('AI Developer'),
+      })
+      service = new MessageExecutionService(deps as any)
+
+      const executePromise = service.execute({ ...DEFAULT_PARAMS, apmTransaction: mockTransaction })
+      await streamStarted.promise
+      service.onLastSubscriberLeft('conv_1')
+
+      await service.shutdown()
+      await executePromise
+
+      expect(capturedSignal?.aborted).toBe(true)
+      expect(capturedSignal?.reason).toBe('server_shutdown')
+      expect(actionServiceMap.has('sse:conv_1')).toBe(false)
+      const shutdownCompleteCall = deps.eventChannel.publish.mock.calls.find(
+        ([, evt]: [string, any]) => evt.type === 'complete' && evt.data?.finishReason === 'server_shutdown'
+      )
+      expect(shutdownCompleteCall).toBeDefined()
+      expect(deps.eventChannel.unsubscribe).toHaveBeenCalledWith('conv_1', 'sse-sub-1')
+      expect(deps.eventChannel.publish.mock.invocationCallOrder.at(-1)).toBeLessThan(
+        deps.eventChannel.unsubscribe.mock.invocationCallOrder[0],
+      )
+      expect(mockTransaction.setLabel).toHaveBeenCalledWith('finishReason', 'server_shutdown')
+      expect(mockTransaction.result).toBe('aborted')
+      expect(mockTransaction.setOutcome).toHaveBeenCalledWith('unknown')
+      expect(mockTransaction.end).toHaveBeenCalledTimes(1)
+      expect(service.hasActiveStream('conv_1')).toBe(false)
     })
   })
 })

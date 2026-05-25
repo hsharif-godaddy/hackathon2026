@@ -34,6 +34,7 @@ const mockSetWebSocketState = vi.fn()
 const mockLoadAndPersistHistory = vi.fn()
 const mockClearActiveStream = vi.fn()
 const mockClearConnectionRetry = vi.fn()
+const mockClearStreamForRetry = vi.fn()
 const mockSetHistoryLoadRequested = vi.fn()
 const mockSetHistoryLoadingComplete = vi.fn()
 const mockSetHistoryPagination = vi.fn()
@@ -66,6 +67,7 @@ function getStoreState() {
     loadAndPersistHistory: mockLoadAndPersistHistory,
     clearActiveStream: mockClearActiveStream,
     clearConnectionRetry: mockClearConnectionRetry,
+    clearStreamForRetry: mockClearStreamForRetry,
     setHistoryLoadRequested: mockSetHistoryLoadRequested,
     setHistoryLoadingComplete: mockSetHistoryLoadingComplete,
     setHistoryPagination: mockSetHistoryPagination,
@@ -365,6 +367,7 @@ describe('useSSEChat', () => {
       storeState.activeStream = null
     })
     mockClearConnectionRetry.mockClear()
+    mockClearStreamForRetry.mockClear()
     mockSetHistoryLoadRequested.mockClear().mockImplementation((requested: boolean) => {
       storeState.historyLoadRequested = requested
     })
@@ -881,6 +884,90 @@ describe('useSSEChat', () => {
     )
   })
 
+  it('copies retry metadata from SSE error events into StructuredError', async () => {
+    await setupHook()
+
+    act(() => {
+      lastTransport.callbacks?.onEvent({
+        type: 'error',
+        content: 'retry failed',
+        data: {
+          errorType: 'RETRY_ERROR',
+          statusCode: 500,
+          retryAttempts: 3,
+          retryReason: 'maxRetriesExceeded',
+          timestamp: '2026-05-26T00:00:00.000Z',
+        },
+      })
+    })
+
+    expect(mockMarkUpstreamError).toHaveBeenCalledWith(expect.objectContaining({
+      message: 'retry failed',
+      type: 'RETRY_ERROR',
+      statusCode: 500,
+      retryAttempts: 3,
+      retryReason: 'maxRetriesExceeded',
+      timestamp: '2026-05-26T00:00:00.000Z',
+    }))
+  })
+
+  it('stream_retry clears retry UI when requestId matches the active stream', async () => {
+    await setupHook()
+
+    act(() => {
+      lastTransport.callbacks?.onEvent({
+        type: 'step_start',
+        data: { requestId: 'req-active' },
+      })
+      lastTransport.callbacks?.onEvent({
+        type: 'stream_retry',
+        data: { requestId: 'req-active', reason: 'budget_exceeded_grant_advanced' },
+      })
+    })
+
+    expect(mockFlushStoreUpdateBufferImmediate).toHaveBeenCalled()
+    expect(mockClearStreamForRetry).toHaveBeenCalled()
+  })
+
+  it('stream_retry without requestId bypasses guard and clears UI', async () => {
+    await setupHook()
+
+    act(() => {
+      lastTransport.callbacks?.onEvent({
+        type: 'step_start',
+        data: { requestId: 'req-active' },
+      })
+      lastTransport.callbacks?.onEvent({
+        type: 'stream_retry',
+        data: { reason: 'budget_exceeded_grant_advanced' },
+      })
+    })
+
+    expect(mockFlushStoreUpdateBufferImmediate).toHaveBeenCalled()
+    expect(mockClearStreamForRetry).toHaveBeenCalled()
+  })
+
+  it('ignores stale stream_retry events for a prior requestId', async () => {
+    await setupHook()
+
+    act(() => {
+      lastTransport.callbacks?.onEvent({
+        type: 'step_start',
+        data: { requestId: 'req-current' },
+      })
+      lastTransport.callbacks?.onEvent({
+        type: 'stream_retry',
+        data: { requestId: 'req-stale', reason: 'budget_exceeded_grant_advanced' },
+      })
+    })
+
+    expect(mockClearStreamForRetry).not.toHaveBeenCalled()
+    expect(logger.info).toHaveBeenCalledWith(
+      'sse.stream_retry.stale_ignored',
+      expect.objectContaining({ requestId: 'req-stale', activeRequestId: 'req-current' }),
+    )
+  })
+
   it('tool_start event calls bufferStoreUpdate with addToolStartSegment', async () => {
     await setupHook()
     const tool = { id: 't1', name: 'read_file', input: {}, status: 'running' as const }
@@ -1180,6 +1267,7 @@ describe('useSSEChat', () => {
 
   it('APP_NOT_FOUND resend forwards aiEditContexts and uploadedFileName', async () => {
     const hook = await setupHook()
+    storeState.buildErrorContext = { error: 'build failed', details: 'stderr', exitCode: 1 }
 
     await act(async () => {
       await hook.result.current.actions.send({
@@ -1192,6 +1280,7 @@ describe('useSSEChat', () => {
     expect(lastTransport.sendMessage).toHaveBeenCalledWith(expect.objectContaining({
       aiEditContexts: [{ id: 'ctx-1' }],
       uploadedFileName: 'logo.png',
+      buildErrorContext: { error: 'build failed', details: 'stderr', exitCode: 1 },
     }))
     lastTransport.sendMessage.mockClear()
     vi.useFakeTimers()
@@ -1213,7 +1302,72 @@ describe('useSSEChat', () => {
       content: 'build with retry context',
       aiEditContexts: [{ id: 'ctx-1' }],
       uploadedFileName: 'logo.png',
+      buildErrorContext: { error: 'build failed', details: 'stderr', exitCode: 1 },
     }))
+  })
+
+  it('APP_NOT_FOUND retry fires a second time with same resolved params', async () => {
+    const hook = await setupHook()
+    storeState.buildErrorContext = { error: 'build failed', details: 'stderr', exitCode: 1 }
+
+    await act(async () => {
+      await hook.result.current.actions.send({
+        content: 'build with retry context',
+        aiEditContexts: [{ id: 'ctx-1' }] as any,
+        uploadedFileName: 'logo.png',
+      })
+    })
+
+    lastTransport.sendMessage.mockClear()
+    vi.useFakeTimers()
+
+    // First APP_NOT_FOUND retry
+    act(() => {
+      lastTransport.callbacks?.onEvent({
+        type: 'stream_error',
+        content: 'app not ready',
+        data: { errorType: 'APP_NOT_FOUND', message: 'app not ready' },
+      })
+    })
+
+    await act(async () => {
+      vi.advanceTimersByTime(500)
+      await Promise.resolve()
+    })
+
+    expect(lastTransport.sendMessage).toHaveBeenCalledTimes(1)
+    expect(lastTransport.sendMessage).toHaveBeenCalledWith(expect.objectContaining({
+      content: 'build with retry context',
+      aiEditContexts: [{ id: 'ctx-1' }],
+      uploadedFileName: 'logo.png',
+      buildErrorContext: { error: 'build failed', details: 'stderr', exitCode: 1 },
+    }))
+
+    lastTransport.sendMessage.mockClear()
+
+    // Second APP_NOT_FOUND retry — params should still be intact
+    act(() => {
+      lastTransport.callbacks?.onEvent({
+        type: 'stream_error',
+        content: 'app still not ready',
+        data: { errorType: 'APP_NOT_FOUND', message: 'app still not ready' },
+      })
+    })
+
+    await act(async () => {
+      vi.advanceTimersByTime(1000)
+      await Promise.resolve()
+    })
+
+    expect(lastTransport.sendMessage).toHaveBeenCalledTimes(1)
+    expect(lastTransport.sendMessage).toHaveBeenCalledWith(expect.objectContaining({
+      content: 'build with retry context',
+      aiEditContexts: [{ id: 'ctx-1' }],
+      uploadedFileName: 'logo.png',
+      buildErrorContext: { error: 'build failed', details: 'stderr', exitCode: 1 },
+    }))
+
+    vi.useRealTimers()
   })
 
   it('APP_NOT_FOUND resend preserves market', async () => {

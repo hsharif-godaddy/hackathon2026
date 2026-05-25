@@ -1,7 +1,7 @@
 import { Router } from 'express'
 import type { Request, Response, NextFunction } from 'express'
 import type { ConversationEventChannel, EventSubscriber, StreamingEvent } from '@airo/ai-transport'
-import { createSSEWriter, computeRecoveryPlan, parseAgentCommand } from '@airo/ai-transport'
+import { createSSEWriter, computeRecoveryPlan, parseAgentCommand, stringPayloadLength } from '@airo/ai-transport'
 import { grantSessionManager, resolveBmsSubscriptionId } from '@airo/ai-grants'
 import { EventStreamRegistry } from './EventStreamRegistry.js'
 import { MessageExecutionService } from './MessageExecutionService.js'
@@ -19,6 +19,7 @@ import { getBudgetServiceClient } from '../../services/budget-service-instance.j
 import { BudgetExceededError } from '@airo/ai-common'
 import { ConnectionInitializer } from '../connection-initializer.js'
 import type { AgentRouterParams, AgentStateManager } from '../agent-router.js'
+import { buildContextAttachments } from '@airo/shared/context-attachment'
 
 import apm from 'elastic-apm-node'
 import { sseSessionKey } from './session-key.js'
@@ -477,8 +478,19 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
       return
     }
 
-    if (content.length > MAX_CONTENT_LENGTH) {
-      res.status(400).json({ error: `content exceeds maximum length of ${MAX_CONTENT_LENGTH}` })
+    const contextAttachments = buildContextAttachments({
+      aiEditContext,
+      aiEditContexts,
+      visualContext,
+      selectedAssets,
+      todoListContext,
+      isActionRequest,
+      customContext,
+      buildErrorContext,
+    })
+    const incomingPayloadLength = content.length + stringPayloadLength(contextAttachments)
+    if (incomingPayloadLength > MAX_CONTENT_LENGTH) {
+      res.status(400).json({ error: `message payload exceeds maximum length of ${MAX_CONTENT_LENGTH}` })
       return
     }
 

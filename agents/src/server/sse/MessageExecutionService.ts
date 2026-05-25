@@ -203,6 +203,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
   private abortControllers = new Map<string, AbortController>()
   private activeStreams = new Map<string, ActiveStream>()
   private noSubscriberTimers = new Map<string, NodeJS.Timeout>()
+  private endedApmTransactions = new WeakSet<NonNullable<ActiveStream['apmTransaction']>>()
 
   constructor(deps: ExecutionDeps) {
     this.deps = deps
@@ -298,6 +299,14 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
     return this.guardedPublish(appId, conversationId, event, 'sse.execution.stream_publish_failed', 'warn')
   }
 
+  private markApmTransactionEnded(transaction: ActiveStream['apmTransaction']): void {
+    if (transaction) this.endedApmTransactions.add(transaction)
+  }
+
+  private isApmTransactionEnded(transaction: ActiveStream['apmTransaction']): boolean {
+    return !!transaction && this.endedApmTransactions.has(transaction)
+  }
+
   private async completeConversationAndMarkPersisted(opts: {
     appId: string
     conversationId: string
@@ -369,6 +378,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
         active.apmTransaction.result = 'aborted'
         active.apmTransaction.setOutcome('unknown')
         active.apmTransaction.end()
+        this.markApmTransactionEnded(active.apmTransaction)
       }
       // Vacate the slot BEFORE publishing the terminal. Late events from
       // the still-running old execute() (mid-chunk reader.read(), tool
@@ -404,6 +414,63 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
     }
     this.deps.eventChannel.subscribe(active.convId, subscriber as any)
     active.subscriberIds.add(subscriber.id)
+  }
+
+  async shutdown(): Promise<void> {
+    logger.info('sse.execution.shutdown.begin', { activeStreamCount: this.activeStreams.size })
+
+    for (const timer of this.noSubscriberTimers.values()) {
+      clearTimeout(timer)
+    }
+    this.noSubscriberTimers.clear()
+
+    const activeEntries = [...this.activeStreams.entries()]
+
+    for (const [conversationId, active] of activeEntries) {
+      try {
+        if (this.activeStreams.get(conversationId) !== active) continue
+
+        await this.publishTerminal(active.appId, conversationId, {
+          conversationId,
+          type: 'complete',
+          content: '',
+          data: {
+            finishReason: 'server_shutdown',
+            timestamp: new Date().toISOString(),
+            ...(active.requestId && { requestId: active.requestId }),
+          },
+          agentName: 'system',
+        })
+        this.activeStreams.delete(conversationId)
+
+        const controller = this.abortControllers.get(conversationId)
+        if (controller) {
+          controller.abort('server_shutdown')
+          this.abortControllers.delete(conversationId)
+        }
+
+        cleanupActionService(sseSessionKey(conversationId))
+
+        for (const subId of active.subscriberIds) {
+          this.deps.eventChannel.unsubscribe(conversationId, subId)
+        }
+      } catch (error) {
+        logger.error('sse.execution.shutdown.stream_failed', {
+          conversationId,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      } finally {
+        if (active.apmTransaction) {
+          active.apmTransaction.setLabel('finishReason', 'server_shutdown')
+          active.apmTransaction.result = 'aborted'
+          active.apmTransaction.setOutcome('unknown')
+          active.apmTransaction.end()
+          this.markApmTransactionEnded(active.apmTransaction)
+        }
+      }
+    }
+
+    logger.info('sse.execution.shutdown.complete', { abortedStreamCount: activeEntries.length })
   }
 
   private async getBudgetSessionWithRetry(
@@ -712,6 +779,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
       source: 'ai_response',
       agentId: agentName,
       ...(agentMessageId && { messageId: agentMessageId }),
+      ...(streamState.requestId && { requestId: streamState.requestId }),
     }
     const turnSnapshot: TurnSnapshotState = { streamingEvents }
     const scheduleAgentTurnUpdate = (update: TurnSnapshotUpdate): void => {
@@ -1232,6 +1300,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
         apmTransaction.result = 'error'
         apmTransaction.setOutcome('failure')
         apmTransaction.end()
+        this.markApmTransactionEnded(apmTransaction)
       }
       return
     }
@@ -1358,11 +1427,24 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
                 .join(''),
               clearTurnState: () => { streamingEvents.length = 0 },
               publishStreamRetry: async (name: string) => {
-                await this.deps.eventChannel.publish(conversationId, {
-                  conversationId, type: 'stream_retry', content: '',
-                  data: { reason: 'budget_exceeded_grant_advanced', agentName: name }, agentName: name,
-                }).catch((err: unknown) => {
-                  logger.warn('sse.stream_retry.publish_failed', { conversationId, error: err instanceof Error ? err.message : String(err) })
+                if (this.activeStreams.get(conversationId) !== streamState) {
+                  logger.info('sse.execution.superseded.skip_stream_retry', {
+                    appId,
+                    conversationId,
+                    ...(requestId && { requestId }),
+                  })
+                  return
+                }
+                await this.publishNonTerminal(appId, conversationId, {
+                  conversationId,
+                  type: 'stream_retry',
+                  content: '',
+                  data: {
+                    reason: 'budget_exceeded_grant_advanced',
+                    agentName: name,
+                    ...(requestId && { requestId }),
+                  },
+                  agentName: name,
                 })
               },
               logger,
@@ -1649,6 +1731,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
         apmTransaction.result = 'success'
         apmTransaction.setOutcome('success')
         apmTransaction.end()
+        this.markApmTransactionEnded(apmTransaction)
       }
     } catch (error) {
       const chunkTimeoutAborted = abortController.signal.aborted
@@ -1723,6 +1806,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
           apmTransaction.result = 'aborted'
           apmTransaction.setOutcome('unknown')
           apmTransaction.end()
+          this.markApmTransactionEnded(apmTransaction)
         }
         await this.publishTerminal(appId, conversationId, {
           type: 'complete',
@@ -1742,6 +1826,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
         // Prefer classified.clientMessage for errors that sanitize internal
         // detail (BMS API paths). Matches the WS wire contract.
         const clientMessage = classified.clientMessage ?? err.message
+        const { errorType, statusCode, retryAttempts, retryReason } = classified
         logger.error('sse.execution.error', { appId, conversationId, ...errorFields(err), ...(requestId && { requestId }) })
         if (apmTransaction && !supersededError) {
           apmTransaction.setLabel('finishReason', 'error')
@@ -1750,6 +1835,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
           apmTransaction.result = 'error'
           apmTransaction.setOutcome('failure')
           apmTransaction.end()
+          this.markApmTransactionEnded(apmTransaction)
         }
         await this.publishTerminal(appId, conversationId, {
           type: 'error', content: clientMessage,
@@ -1757,6 +1843,10 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
             source: 'ai_response',
             error: clientMessage,
             timestamp: new Date().toISOString(),
+            ...(errorType !== undefined && { errorType }),
+            ...(statusCode !== undefined && { statusCode }),
+            ...(retryAttempts !== undefined && { retryAttempts }),
+            ...(retryReason !== undefined && { retryReason }),
             ...(activeAgentMessageId && { messageId: activeAgentMessageId }),
             ...(requestId && { requestId }),
           },
@@ -1778,7 +1868,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
           conversationId,
           agentId: formatAgentId(resolvedAgentId),
           error: err,
-          ...(classified.errorType !== undefined && { errorType: classified.errorType }),
+          ...(errorType !== undefined && { errorType }),
           errorPhase: 'execution',
           isRetryable: classified.isRetryable,
           logger: { warn: (event, fields) => logger.warn(event, fields) },
@@ -1823,13 +1913,14 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
           clearTimeout(pendingTimer)
           this.noSubscriberTimers.delete(conversationId)
         }
-      } else if (apmTransaction) {
+      } else if (apmTransaction && !this.isApmTransactionEnded(apmTransaction)) {
         // Superseded by a newer execute() — the success/error paths skipped
         // ending the transaction (guarded by !superseded*), so end it here.
         apmTransaction.setLabel('finishReason', 'superseded')
         apmTransaction.result = 'aborted'
         apmTransaction.setOutcome('unknown')
         apmTransaction.end()
+        this.markApmTransactionEnded(apmTransaction)
       }
     }
   }

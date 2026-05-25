@@ -199,6 +199,9 @@ export type {
 export { computeRecoveryPlan } from './recovery-plan.js'
 export type { RecoveryPlan, RecoveryPlanInput } from './recovery-plan.js'
 
+// Payload size measurement (shared by WS + SSE size-limit checks)
+export { stringPayloadLength } from './payload-length.js'
+
 // Connection Recovery Management
 export {
   ConnectionRecoveryManager

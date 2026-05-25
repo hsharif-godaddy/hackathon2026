@@ -16,6 +16,7 @@ import {
 } from '@airo/ai-lib'
 import type { ExecutionStep } from '@airo/ai-lib/budget'
 import { classifyError, BudgetExceededError, isBudgetExceededAPIError, containsBudgetExceededPattern, createLogger } from '@airo/ai-common'
+import { stringPayloadLength } from './payload-length.js'
 import { StreamPartProcessor } from './stream-part-processor.js'
 import { awaitResponseMetadata } from './response-metadata-capture.js'
 import { redactSkillOutput } from './redact-skill-output.js'
@@ -94,30 +95,6 @@ type MetadataRecord = Record<string, unknown> & {
 
 /** Defense-in-depth cap for one user turn over chat WebSocket (message + context attachment strings). */
 const MAX_INCOMING_WEBSOCKET_CHAT_CHARS = 100_000
-
-/**
- * Recursive sum of string lengths in nested objects/arrays. Counts every string field on
- * attachments (type, persistence, renderStrategy, source, etc.), not only payload content.
- * Uses a WeakSet to skip circular references.
- */
-function stringPayloadLength(value: unknown, seen?: WeakSet<object>): number {
-  if (value === null || value === undefined) return 0
-  if (typeof value === 'string') return value.length
-  if (typeof value === 'number' || typeof value === 'boolean') return 0
-  if (typeof value === 'object') {
-    const visited = seen ?? new WeakSet()
-    if (visited.has(value as object)) return 0
-    visited.add(value as object)
-    let n = 0
-    if (Array.isArray(value)) {
-      for (const item of value) n += stringPayloadLength(item, visited)
-    } else {
-      for (const v of Object.values(value as Record<string, unknown>)) n += stringPayloadLength(v, visited)
-    }
-    return n
-  }
-  return 0
-}
 
 function contextAttachmentsPayloadLength(context: Record<string, unknown> | undefined): number {
   if (!context) return 0
@@ -2486,8 +2463,8 @@ export class WebSocketServer {
 
       // Construct error metadata object explicitly
       const errorMetadata: Record<string, unknown> = {
-        errorType,
-        statusCode,
+        ...(errorType !== undefined && { errorType }),
+        ...(statusCode !== undefined && { statusCode }),
         timestamp: new Date().toISOString(),
         agentId: agentName || this.config.defaultAgent
       };

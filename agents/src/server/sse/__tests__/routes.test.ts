@@ -930,6 +930,72 @@ describe('SSE routes', () => {
       expect(res.status).toBe(400)
     })
 
+    it('returns 400 for oversized content plus context attachment payload before execute()', async () => {
+      const mockExecute = vi.fn().mockResolvedValue(undefined)
+      const depsWithService = {
+        ...deps,
+        executionService: { execute: mockExecute, hasActiveStream: vi.fn().mockReturnValue(false) },
+      }
+      const appWithService = express()
+      appWithService.use(express.json({ limit: '10mb' }))
+      appWithService.use('/api/conversations', createSSERoutes(depsWithService as any))
+
+      const res = await request(appWithService)
+        .post('/api/conversations/abcdefghij/conv_1/messages')
+        .send({
+          content: 'hello',
+          customContext: {
+            referencedFiles: [{ path: 'src/large.ts', content: 'x'.repeat(100_000) }],
+          },
+        })
+
+      expect(res.status).toBe(400)
+      expect(res.body.error).toBe('message payload exceeds maximum length of 100000')
+      expect(mockExecute).not.toHaveBeenCalled()
+    })
+
+    it('accepts content exactly at the max length limit', async () => {
+      const mockExecute = vi.fn().mockResolvedValue(undefined)
+      const depsWithService = {
+        ...deps,
+        executionService: { execute: mockExecute, hasActiveStream: vi.fn().mockReturnValue(false) },
+      }
+      const appWithService = express()
+      appWithService.use(express.json({ limit: '10mb' }))
+      appWithService.use('/api/conversations', createSSERoutes(depsWithService as any))
+
+      const res = await request(appWithService)
+        .post('/api/conversations/abcdefghij/conv_1/messages')
+        .send({ content: 'x'.repeat(100_000) })
+
+      expect(res.status).not.toBe(400)
+      expect(mockExecute).toHaveBeenCalled()
+    })
+
+    it('returns 400 for oversized context attachments with empty content', async () => {
+      const mockExecute = vi.fn().mockResolvedValue(undefined)
+      const depsWithService = {
+        ...deps,
+        executionService: { execute: mockExecute, hasActiveStream: vi.fn().mockReturnValue(false) },
+      }
+      const appWithService = express()
+      appWithService.use(express.json({ limit: '10mb' }))
+      appWithService.use('/api/conversations', createSSERoutes(depsWithService as any))
+
+      const res = await request(appWithService)
+        .post('/api/conversations/abcdefghij/conv_1/messages')
+        .send({
+          content: '',
+          customContext: {
+            referencedFiles: [{ path: 'src/big.ts', content: 'x'.repeat(100_001) }],
+          },
+        })
+
+      expect(res.status).toBe(400)
+      expect(res.body.error).toBe('message payload exceeds maximum length of 100000')
+      expect(mockExecute).not.toHaveBeenCalled()
+    })
+
     it('returns 400 when userTimezone is not a string', async () => {
       const res = await request(app)
         .post('/api/conversations/abcdefghij/conv_1/messages')

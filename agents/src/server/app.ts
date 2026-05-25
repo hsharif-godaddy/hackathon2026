@@ -757,6 +757,22 @@ async function shutdown() {
       });
     }
 
+    if (sseExecutionService) {
+      try {
+        await sseExecutionService.shutdown();
+        logger.info('server.sse.shutdown.success', {
+          service: serviceName,
+        });
+      } catch (error) {
+        logger.error('server.sse.shutdown.failure', {
+          service: serviceName,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      } finally {
+        sseExecutionService = null;
+      }
+    }
+
     if (wsServer) {
       try {
         // Socket.IO 4.8.3: io.close() no longer throws on a stopped server,

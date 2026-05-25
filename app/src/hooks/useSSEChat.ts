@@ -12,7 +12,7 @@ import {
 import { agentFetch, getAgentToken } from '@/lib/agent-fetch'
 import { logger } from '@/lib/request-context'
 import { SSETransport } from '@/services/transport/SSETransport'
-import type { TransportState } from '@/services/transport/types'
+import type { SendMessageParams, TransportState } from '@/services/transport/types'
 import {
   bufferStoreUpdate,
   bufferTextChunk,
@@ -156,6 +156,7 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
   // Inline recovery history can fail while live event replay still completes;
   // in that case the HTTP history result, not replay_complete, owns completion.
   const recoveryHistoryFallbackPendingRef = useRef(false)
+  const currentStreamRequestIdRef = useRef<string | null>(null)
 
   const currentAppId = useCurrentAppId()
   const { tokenAuthType } = useAuthContext()
@@ -187,7 +188,7 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
   // Track last sendMessage options + APP_NOT_FOUND retry state. Mirrors the
   // WS ErrorHandler retry loop: APP_NOT_FOUND is common during app
   // provisioning and should not surface as a terminal error for ~30s.
-  const lastSendOptionsRef = useRef<SendMessageOptions | null>(null)
+  const lastResolvedSendParamsRef = useRef<SendMessageParams | null>(null)
   const appNotFoundRetryRef = useRef<{ startTime: number; count: number; timer: ReturnType<typeof setTimeout> | null }>({
     startTime: 0, count: 0, timer: null,
   })
@@ -357,6 +358,9 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
             onEvent(event) {
               const store = useStreamingConversationStore.getState()
               const type = event.type
+              const eventRequestId = typeof (event.data as any)?.requestId === 'string' && (event.data as any).requestId
+                ? (event.data as any).requestId as string
+                : null
               if (
                 replayDedupRef.current.active
                 && typeof event.sequence === 'number'
@@ -372,6 +376,7 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
                 replayDedupRef.current.seen.add(event.sequence)
               }
               if (STREAM_UPDATE_EVENTS.has(type)) {
+                if (eventRequestId) currentStreamRequestIdRef.current = eventRequestId
                 ensureSSEActiveStream(type, event.conversationId)
               }
 
@@ -398,6 +403,7 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
                   .filter(Boolean)
                 store.setAgentCatalog(agents, payload?.defaultAgent ? String(payload.defaultAgent) : null)
               } else if (type === 'step_start') {
+                if (eventRequestId) currentStreamRequestIdRef.current = eventRequestId
                 const agentNameRaw = (event.data as any)?.agentName
                 if (agentNameRaw) store.setCurrentAgentName(String(agentNameRaw))
                 if (store.connectionRetry.isRetrying) store.clearConnectionRetry()
@@ -443,6 +449,17 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
                   })
                 }
               } else if (type === 'stream_retry') {
+                // Guard only fires when BOTH event and ref requestIds are present — a retry without
+                // requestId (legacy server, first conversation) intentionally bypasses to clear the UI.
+                if (eventRequestId && currentStreamRequestIdRef.current && eventRequestId !== currentStreamRequestIdRef.current) {
+                  logger.info('sse.stream_retry.stale_ignored', {
+                    appId: store.currentAppId,
+                    requestId: eventRequestId,
+                    activeRequestId: currentStreamRequestIdRef.current,
+                  })
+                  return
+                }
+                if (eventRequestId) currentStreamRequestIdRef.current = eventRequestId
                 flushStoreUpdateBufferImmediate()
                 store.clearStreamForRetry()
               } else if (type === 'validation_message') {
@@ -523,7 +540,7 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
                 // APP_NOT_FOUND is common during app provisioning — retry the
                 // last sendMessage with exponential backoff up to ~30s, like
                 // the WS ErrorHandler does, before surfacing as a hard error.
-                if (errorType === 'APP_NOT_FOUND' && lastSendOptionsRef.current) {
+                if (errorType === 'APP_NOT_FOUND' && lastResolvedSendParamsRef.current) {
                   const retry = appNotFoundRetryRef.current
                   if (retry.startTime === 0) retry.startTime = Date.now()
                   const elapsed = Date.now() - retry.startTime
@@ -533,7 +550,11 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
                     logger.warn('sse.error.app_not_found.retry', {
                       appId: currentAppId, retryCount: retry.count, delay, elapsed,
                     })
-                    const pending = lastSendOptionsRef.current
+                    const pending = lastResolvedSendParamsRef.current
+                    if (!pending) {
+                      clearAppNotFoundRetry()
+                      return
+                    }
                     if (retry.timer) clearTimeout(retry.timer)
                     retry.timer = setTimeout(() => {
                       // Transport may have been torn down between the retry
@@ -547,26 +568,7 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
                         })
                         return
                       }
-                      transport.sendMessage({
-                        content: pending.content,
-                        sessionId: currentAppId ?? 'unknown',
-                        userTimezone: BROWSER_TIMEZONE,
-                        templateId: pending.templateId,
-                        modelOverride: pending.modelOverride,
-                        agentProfile: pending.agentProfile,
-                        visualContext: pending.visualContext,
-                        aiEditContext: pending.aiEditContext,
-                        aiEditContexts: pending.aiEditContexts,
-                        selectedAssets: pending.selectedAssets,
-                        todoListContext: pending.todoListContext,
-                        isActionRequest: pending.isActionRequest,
-                        customContext: pending.customContext,
-                        budgetServiceEnabled: isBudgetServiceEnabledRef.current || undefined,
-                        market: marketRef.current,
-                        subscriptionId: subscriptionIdRef.current,
-                        buildErrorContext: undefined,
-                        uploadedFileName: pending.uploadedFileName,
-                      }).catch(err => {
+                      transport.sendMessage(pending).catch(err => {
                         logger.warn('sse.error.app_not_found.resend_failed', {
                           appId: currentAppId, error: err instanceof Error ? err.message : String(err),
                         })
@@ -582,6 +584,8 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
                   type: (errorType as StructuredError['type']) ?? 'UPSTREAM_ERROR',
                   statusCode: errData?.statusCode,
                   timestamp: errData?.timestamp,
+                  retryAttempts: errData?.retryAttempts,
+                  retryReason: errData?.retryReason,
                 }
                 store.markUpstreamError(structuredError)
                 store.finalizeStream()
@@ -960,9 +964,11 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
     const origin = getMessageOriginForAuthType(tokenAuthTypeRef.current)
     store.startNewStream(options.content, options.selectedAssets, referencedFiles, origin, options.uploadedFileName)
 
-    // Cache the options for APP_NOT_FOUND retry. Reset any prior retry state
-    // so a new user prompt starts with a clean 30-second window.
-    lastSendOptionsRef.current = options
+    // Reset APP_NOT_FOUND retry state so a new user prompt starts with a
+    // clean 30-second window. The resolved outbound payload is cached after
+    // defaults are applied below.
+    lastResolvedSendParamsRef.current = null
+    currentStreamRequestIdRef.current = null
     clearAppNotFoundRetry()
 
     try {
@@ -972,7 +978,7 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
         visualContext: options.visualContext,
       })
 
-      await t.sendMessage({
+      const resolvedSendParams: SendMessageParams = {
         content: options.content,
         sessionId: activeAppId,
         userTimezone: BROWSER_TIMEZONE,
@@ -991,7 +997,9 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
         subscriptionId: subscriptionIdRef.current,
         buildErrorContext: store.buildErrorContext,
         uploadedFileName: options.uploadedFileName,
-      })
+      }
+      lastResolvedSendParamsRef.current = resolvedSendParams
+      await t.sendMessage(resolvedSendParams)
     } catch (err) {
       const s = useStreamingConversationStore.getState()
 
