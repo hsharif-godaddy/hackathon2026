@@ -46,6 +46,7 @@ export function createConfig(): Config {
         'llm-cost': 1.5,
         'latency': 1.5,
         'tool-parallelism': 0.5,
+        'tool-batching-efficiency': 0.5,
       },
       // Loose gate for score-mode evaluators to absorb infrastructure variance noise
       defaultThreshold: 0.25,

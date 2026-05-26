@@ -17,6 +17,8 @@ import { LatencyEvaluator }
   from '../../evaluators/latency-evaluator.js';
 import { ToolParallelismEvaluator }
   from '../../evaluators/tool-parallelism.js';
+import { ToolBatchingEfficiencyEvaluator }
+  from '../../evaluators/tool-batching-efficiency.js';
 import { TurnDurationEvaluator }
   from '../../evaluators/turn-duration.js';
 import { TokenUsageCollector }
@@ -67,6 +69,7 @@ export function createGoldenLightScenario(
     new AgentStepsEvaluator(),
     new LatencyEvaluator(),
     new ToolParallelismEvaluator(),
+    new ToolBatchingEfficiencyEvaluator(),
     new TurnDurationEvaluator(),
     new TokenUsageEvaluator({ collector, gocodeClient: gocode }),
     ...createAlignmentLLMEvaluators(gocode),

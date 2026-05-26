@@ -127,6 +127,7 @@ Observed metrics (no pass/fail gate; tracked for regression via score-mode basel
 | `prompt-efficiency` | User turn count, normalised via sigmoid; inflation signals looping or over-questioning |
 | `agent-steps` | Total agent reasoning steps; inflation signals inefficiency |
 | `tool-parallelism` | Fraction of concurrent tool calls; decline signals serialisation regressions |
+| `tool-batching-efficiency` | Successful tool calls per productive turn (log2-normalised density); rewards batching independent ops |
 | `latency` | Time-to-first-chunk and inter-chunk gaps; requires `SOCKET_DIAGNOSTICS=true` in AAB |
 | `turn-duration` | Total wall-clock time per AAB turn |
 | `token-usage` | Total tokens consumed (AAB + probe overhead); cost signal |

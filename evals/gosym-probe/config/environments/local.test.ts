@@ -39,6 +39,7 @@ export function createConfig(): Config {
         'llm-cost': 1.5,
         'latency': 1.5,
         'tool-parallelism': 0.5,
+        'tool-batching-efficiency': 0.5,
         'tool-failure-rate': 1.5,
         'intent-to-output-alignment': 0.15,
         'implicit-feature-gap': 0.15,
