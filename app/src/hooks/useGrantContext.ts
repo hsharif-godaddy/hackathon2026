@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef } from 'react'
 import type { QueryObserverResult } from '@tanstack/react-query'
 
 import { useCreditGrants } from '@/hooks/useCreditGrants'
-import { usesBms } from '@/hooks/usesBms'
 import { logger } from '@/lib/request-context'
 import { useIsActivelyStreaming } from '@/stores/useStreamingConversationStore'
 import type { CreditGrant } from '@/types/credits'
@@ -25,6 +24,7 @@ interface UseGrantContextOptions {
   controller: GrantContextController | null
   subscriptionId: string | undefined
   isConnected: boolean
+  budgetServiceEnabled: boolean | undefined
   enabled?: boolean
 }
 
@@ -60,10 +60,10 @@ export function useGrantContext({
   controller,
   subscriptionId,
   isConnected,
+  budgetServiceEnabled,
   enabled = true,
 }: UseGrantContextOptions): void {
-  const bmsEnabled = usesBms()
-  const effectiveEnabled = enabled && !bmsEnabled
+  const effectiveEnabled = enabled && budgetServiceEnabled === false
   const lastSentHashRef = useRef<string | null>(null)
   const isInitialSendRef = useRef(true)
 

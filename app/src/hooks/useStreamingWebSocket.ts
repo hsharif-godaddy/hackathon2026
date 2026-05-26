@@ -50,6 +50,7 @@ import {
   getToolDeltaBuffer,
   scheduleToolDeltaFlush,
 } from '@/services/websocket/toolDeltaBuffer'
+import { useResolvedBillingMode } from '@/stores/useBillingModeStore'
 import { useSitesStore } from '@/stores/useSitesStore'
 import {
   useCurrentAppId,
@@ -162,6 +163,8 @@ export function useStreamingWebSocket({ enabled = true }: { enabled?: boolean } 
     if (!currentAppId) return undefined
     return state.getSite(currentAppId)?.subscription_id
   })
+
+  const budgetServiceEnabled = useResolvedBillingMode(currentAppId)
 
   const t = useTranslations()
 
@@ -322,18 +325,18 @@ export function useStreamingWebSocket({ enabled = true }: { enabled?: boolean } 
     }
   }, [enabled])
 
-  // Synchronize grant context with agent via controller interface
-  // Internally checks BMS flag - disabled when BMS handles cost tracking
   useGrantContext({
     controller: controllerRef.current,
     subscriptionId,
     isConnected: webSocketState.connected,
+    budgetServiceEnabled,
     enabled,
   })
 
   useBudgetUpdate({
     controller: controllerRef.current,
     subscriptionId,
+    budgetServiceEnabled,
     enabled,
   })
 

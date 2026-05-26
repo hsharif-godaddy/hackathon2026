@@ -131,8 +131,8 @@ vi.mock('@tanstack/react-query', () => ({
 // Switchboard / Sites / Grants mocks
 // ---------------------------------------------------------------------------
 
-vi.mock('@/hooks/usesBms', () => ({
-  usesBms: () => false,
+vi.mock('@/stores/useBillingModeStore', () => ({
+  useResolvedBillingMode: () => false,
 }))
 
 const mockRefetchGrants = vi.fn().mockResolvedValue({ data: [] })

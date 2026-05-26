@@ -4,7 +4,6 @@ import { getMessageOriginForAuthType } from '@airo/shared/auth'
 
 import { useAuthContext } from '@/components/providers/AuthProvider'
 import { dynamicApiConfigService } from '@/config/dynamic-api'
-import { usesBms } from '@/hooks/usesBms'
 import {
   getConversationIdFromCookie,
   setConversationIdCookie,
@@ -23,6 +22,7 @@ import {
   clearToolDeltaBuffer,
   scheduleToolDeltaFlush,
 } from '@/services/websocket/toolDeltaBuffer'
+import { useResolvedBillingMode } from '@/stores/useBillingModeStore'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { useSitesStore } from '@/stores/useSitesStore'
 import {
@@ -170,13 +170,13 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
     return state.getSite(currentAppId)?.subscription_id
   })
 
-  const isBudgetServiceEnabled = usesBms()
+  const budgetServiceEnabled = useResolvedBillingMode(currentAppId)
 
   const subscriptionIdRef = useRef(subscriptionId)
   subscriptionIdRef.current = subscriptionId
 
-  const isBudgetServiceEnabledRef = useRef(isBudgetServiceEnabled)
-  isBudgetServiceEnabledRef.current = isBudgetServiceEnabled
+  const budgetServiceEnabledRef = useRef(budgetServiceEnabled)
+  budgetServiceEnabledRef.current = budgetServiceEnabled
 
   const tokenAuthTypeRef = useRef(tokenAuthType)
   tokenAuthTypeRef.current = tokenAuthType
@@ -201,18 +201,18 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
 
   const isConnected = transportState === 'connected' || transportState === 'streaming'
 
-  // Grant context synchronization with agent
-  // Internally checks BMS flag - disabled when BMS handles cost tracking
   useGrantContext({
     controller: transport,
     subscriptionId,
     isConnected,
+    budgetServiceEnabled,
     enabled,
   })
 
   useBudgetUpdate({
     controller: transport,
     subscriptionId,
+    budgetServiceEnabled,
     enabled,
   })
 
@@ -992,7 +992,7 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
         todoListContext: options.todoListContext,
         isActionRequest: options.isActionRequest,
         customContext: options.customContext,
-        budgetServiceEnabled: isBudgetServiceEnabledRef.current || undefined,
+        budgetServiceEnabled: budgetServiceEnabledRef.current || undefined,
         market: marketRef.current,
         subscriptionId: subscriptionIdRef.current,
         buildErrorContext: store.buildErrorContext,

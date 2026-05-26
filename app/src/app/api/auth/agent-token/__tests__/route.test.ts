@@ -224,7 +224,8 @@ describe('agent-token', function packageTests() {
         token: MOCK_JWT_TOKEN,
         expires: MOCK_TOKEN_EXPIRES.toISOString(),
         siteId: MOCK_SITE_ID,
-        type: 'jwt'
+        type: 'jwt',
+        budgetServiceEnabled: false,
       });
       expect(mockControlPlaneAdapter.appExists).toHaveBeenCalledWith(MOCK_SITE_ID, 'user-jwt-token', 'AiroAppBuilder');
       expect(mockJWTService.getToken).toHaveBeenCalledWith({

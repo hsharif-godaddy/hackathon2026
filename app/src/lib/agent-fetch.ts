@@ -8,6 +8,17 @@
  */
 
 import { appFetch } from '@/lib/gasket-config'
+import { logger } from '@/lib/request-context'
+import { useBillingModeStore } from '@/stores/useBillingModeStore'
+
+export interface AgentTokenResponse {
+  token: string;
+  expires: string;
+  siteId: string;
+  type: 'jwt';
+  budgetServiceEnabled: boolean;
+  expiresInSeconds?: number;
+}
 
 export interface AgentFetchOptions extends RequestInit {
   siteId: string;
@@ -72,9 +83,10 @@ export async function getAgentToken(siteId: string): Promise<string> {
           throw new Error(`Failed to get agent token: ${response.status}`);
         }
         
-        const data = await response.json();
+        const data: AgentTokenResponse = await response.json();
         token = data.token;
         expires = new Date(data.expires);
+        useBillingModeStore.getState().setMode(siteId, data.budgetServiceEnabled);
       }
       
       // Cache and return token
@@ -100,6 +112,7 @@ export async function getAgentToken(siteId: string): Promise<string> {
 export function clearAgentTokenCache(siteId: string): void {
   tokenCache.delete(siteId);
   pendingTokenRequests.delete(siteId);
+  useBillingModeStore.getState().clearMode(siteId);
 }
 
 /**
@@ -124,7 +137,7 @@ export async function agentFetch(url: string, options: AgentFetchOptions): Promi
   });
 
   if (response.status === 401) {
-    tokenCache.delete(siteId);
+    clearAgentTokenCache(siteId);
 
     const freshToken = await getAgentToken(siteId);
 

@@ -17,10 +17,6 @@ vi.mock('@/lib/request-context', () => ({
   },
 }))
 
-const mockUsesBms = vi.fn()
-vi.mock('@/hooks/usesBms', () => ({
-  usesBms: () => mockUsesBms(),
-}))
 
 const mockInvalidateQueries = vi.fn()
 const mockSetQueryData = vi.fn()
@@ -80,24 +76,37 @@ function createController(): {
 describe('useBudgetUpdate', function useBudgetUpdateTests() {
   beforeEach(function setup() {
     vi.clearAllMocks()
-    mockUsesBms.mockReturnValue(true) // Default: BMS enabled (this hook only runs in BMS mode)
     mockAdaptBudgetItemsToGrants.mockReturnValue([{ id: 'grant-1' }])
   })
 
-  describe('BMS flag gating', function bmsFlagTests() {
-    it('does not subscribe when BMS flag is disabled', function bmsDisabledNoSubscribe() {
-      mockUsesBms.mockReturnValue(false)
+  describe('billing mode gating', function billingModeGatingTests() {
+    it('does not subscribe when budgetServiceEnabled is false', function grantsMode() {
       const { controller, cleanup } = createController()
 
       renderHookWithProviders(() =>
         useBudgetUpdate({
           controller,
           subscriptionId: 'sub-1',
+          budgetServiceEnabled: false,
           enabled: true,
         })
       )
 
-      // Should not have subscribed to budget updates
+      expect(cleanup).not.toHaveBeenCalled()
+    })
+
+    it('does not subscribe when budgetServiceEnabled is undefined', function unresolvedMode() {
+      const { controller, cleanup } = createController()
+
+      renderHookWithProviders(() =>
+        useBudgetUpdate({
+          controller,
+          subscriptionId: 'sub-1',
+          budgetServiceEnabled: undefined,
+          enabled: true,
+        })
+      )
+
       expect(cleanup).not.toHaveBeenCalled()
     })
 
@@ -108,6 +117,7 @@ describe('useBudgetUpdate', function useBudgetUpdateTests() {
         useBudgetUpdate({
           controller,
           subscriptionId: 'sub-1',
+          budgetServiceEnabled: true,
           enabled: false,
         })
       )
@@ -115,30 +125,14 @@ describe('useBudgetUpdate', function useBudgetUpdateTests() {
       expect(cleanup).not.toHaveBeenCalled()
     })
 
-    it('subscribes when BMS flag is enabled and enabled=true', function bmsEnabledSubscribes() {
+    it('subscribes when budgetServiceEnabled is true and enabled=true', function bmsEnabledSubscribes() {
       const { controller, cleanup } = createController()
 
       const { unmount } = renderHookWithProviders(() =>
         useBudgetUpdate({
           controller,
           subscriptionId: 'sub-1',
-          enabled: true,
-        })
-      )
-
-      // Cleanup should be called on unmount (proves subscription happened)
-      unmount()
-      expect(cleanup).toHaveBeenCalled()
-    })
-
-    it('regression: usesBms predicate is not accidentally inverted', function bmsPredicateNotInverted() {
-      mockUsesBms.mockReturnValue(true)
-      const { controller, cleanup } = createController()
-
-      const { unmount } = renderHookWithProviders(() =>
-        useBudgetUpdate({
-          controller,
-          subscriptionId: 'sub-1',
+          budgetServiceEnabled: true,
           enabled: true,
         })
       )
@@ -156,6 +150,7 @@ describe('useBudgetUpdate', function useBudgetUpdateTests() {
         useBudgetUpdate({
           controller,
           subscriptionId: 'sub-1',
+          budgetServiceEnabled: true,
         })
       )
 
@@ -177,6 +172,7 @@ describe('useBudgetUpdate', function useBudgetUpdateTests() {
         useBudgetUpdate({
           controller,
           subscriptionId: undefined,
+          budgetServiceEnabled: true,
         })
       )
 
@@ -209,6 +205,7 @@ describe('useBudgetUpdate', function useBudgetUpdateTests() {
         useBudgetUpdate({
           controller,
           subscriptionId: 'sub-happy',
+          budgetServiceEnabled: true,
         })
       )
 
@@ -256,6 +253,7 @@ describe('useBudgetUpdate', function useBudgetUpdateTests() {
         useBudgetUpdate({
           controller,
           subscriptionId: 'sub-free',
+          budgetServiceEnabled: true,
         })
       )
 
@@ -290,6 +288,7 @@ describe('useBudgetUpdate', function useBudgetUpdateTests() {
         useBudgetUpdate({
           controller,
           subscriptionId: 'sub-paid',
+          budgetServiceEnabled: true,
         })
       )
 
@@ -324,6 +323,7 @@ describe('useBudgetUpdate', function useBudgetUpdateTests() {
         useBudgetUpdate({
           controller,
           subscriptionId: 'sub-1',
+          budgetServiceEnabled: true,
         })
       )
 
@@ -341,6 +341,7 @@ describe('useBudgetUpdate', function useBudgetUpdateTests() {
           useBudgetUpdate({
             controller: props.controller,
             subscriptionId: 'sub-1',
+            budgetServiceEnabled: true,
           }),
         { initialProps: { controller: first.controller } }
       )

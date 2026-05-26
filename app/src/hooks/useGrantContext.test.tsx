@@ -34,10 +34,6 @@ vi.mock('@/stores/useStreamingConversationStore', () => ({
   useIsActivelyStreaming: () => streamingRef.current,
 }))
 
-const mockUsesBms = vi.fn()
-vi.mock('@/hooks/usesBms', () => ({
-  usesBms: () => mockUsesBms(),
-}))
 
 import { logger } from '@/lib/request-context'
 
@@ -62,15 +58,10 @@ describe('useGrantContext', function useGrantContextTests() {
   beforeEach(function setup() {
     vi.clearAllMocks()
     streamingRef.current = false
-    mockUsesBms.mockReturnValue(false) // Default: BMS disabled (legacy grants mode)
     vi.useRealTimers()
   })
 
-  describe('BMS mode (app-builder-budget-service flag enabled)', function bmsModeTests() {
-    beforeEach(function setupBms() {
-      mockUsesBms.mockReturnValue(true) // BMS enabled
-    })
-
+  describe('BMS mode (budgetServiceEnabled=true)', function bmsModeTests() {
     it('passes undefined subscriptionId to useCreditGrants when BMS enabled', function bmsDisablesGrantFetch() {
       mockUseCreditGrants.mockReturnValue({
         data: undefined,
@@ -88,10 +79,10 @@ describe('useGrantContext', function useGrantContextTests() {
           controller,
           subscriptionId: 'sub-1',
           isConnected: true,
+          budgetServiceEnabled: true,
         })
       )
 
-      // useCreditGrants should be called with undefined subscriptionId (BMS disables grant fetch)
       expect(mockUseCreditGrants).toHaveBeenCalled()
       const capturedOptions = mockUseCreditGrants.mock.calls[0]![0] as { subscriptionId?: string }
       expect(capturedOptions.subscriptionId).toBeUndefined()
@@ -117,10 +108,10 @@ describe('useGrantContext', function useGrantContextTests() {
           controller,
           subscriptionId: 'sub-1',
           isConnected: true,
+          budgetServiceEnabled: true,
         })
       )
 
-      // Should not emit grant_context in BMS mode
       expect(emitGrantContext).not.toHaveBeenCalled()
     })
 
@@ -142,10 +133,10 @@ describe('useGrantContext', function useGrantContextTests() {
           controller,
           subscriptionId: 'sub-1',
           isConnected: true,
+          budgetServiceEnabled: true,
         })
       )
 
-      // onGrantRefreshRequested should not be called when BMS mode is active
       expect(onGrantRefreshRequested).not.toHaveBeenCalled()
     })
 
@@ -175,6 +166,7 @@ describe('useGrantContext', function useGrantContextTests() {
           controller,
           subscriptionId: 'sub-1',
           isConnected: true,
+          budgetServiceEnabled: true,
         })
       )
 
@@ -226,6 +218,7 @@ describe('useGrantContext', function useGrantContextTests() {
           controller,
           subscriptionId: 'sub-1',
           isConnected: true,
+          budgetServiceEnabled: true,
         })
       )
 
@@ -280,6 +273,7 @@ describe('useGrantContext', function useGrantContextTests() {
           controller,
           subscriptionId: 'sub-1',
           isConnected: true,
+          budgetServiceEnabled: true,
         })
       )
 
@@ -298,8 +292,7 @@ describe('useGrantContext', function useGrantContextTests() {
       vi.useRealTimers()
     })
 
-    it('regression: usesBms predicate is not accidentally inverted', () => {
-      mockUsesBms.mockReturnValue(true)
+    it('regression: budgetServiceEnabled=true disables grant context', () => {
       mockUseCreditGrants.mockReturnValue({
         data: undefined,
         refetch: vi.fn(),
@@ -316,6 +309,7 @@ describe('useGrantContext', function useGrantContextTests() {
           controller,
           subscriptionId: 'sub-1',
           isConnected: true,
+          budgetServiceEnabled: true,
           enabled: true,
         })
       )
@@ -357,6 +351,7 @@ describe('useGrantContext', function useGrantContextTests() {
         controller,
         subscriptionId: 'sub-1',
         isConnected: true,
+        budgetServiceEnabled: false,
       })
     )
 
@@ -414,6 +409,7 @@ describe('useGrantContext', function useGrantContextTests() {
         controller,
         subscriptionId: 'sub-1',
         isConnected: true,
+        budgetServiceEnabled: false,
       })
     )
 
@@ -462,6 +458,7 @@ describe('useGrantContext', function useGrantContextTests() {
         controller,
         subscriptionId: 'sub-1',
         isConnected: true,
+        budgetServiceEnabled: false,
       })
     )
 
@@ -514,6 +511,7 @@ describe('useGrantContext', function useGrantContextTests() {
         controller,
         subscriptionId: 'sub-1',
         isConnected: true,
+        budgetServiceEnabled: false,
       })
     )
 
@@ -570,6 +568,7 @@ describe('useGrantContext', function useGrantContextTests() {
           controller,
           subscriptionId: 'sub-1',
           isConnected: true,
+          budgetServiceEnabled: false,
         })
       )
 
@@ -616,6 +615,7 @@ describe('useGrantContext', function useGrantContextTests() {
           controller,
           subscriptionId: 'sub-1',
           isConnected: true,
+          budgetServiceEnabled: false,
         })
       )
 
@@ -660,6 +660,7 @@ describe('useGrantContext', function useGrantContextTests() {
           controller,
           subscriptionId: 'sub-1',
           isConnected: true,
+          budgetServiceEnabled: false,
         })
       )
 
@@ -710,6 +711,7 @@ describe('useGrantContext', function useGrantContextTests() {
           controller,
           subscriptionId: 'sub-1',
           isConnected: true,
+          budgetServiceEnabled: false,
         })
       )
 
@@ -767,6 +769,7 @@ describe('useGrantContext', function useGrantContextTests() {
           controller,
           subscriptionId: 'sub-1',
           isConnected: true,
+          budgetServiceEnabled: false,
         })
       )
 
@@ -820,6 +823,7 @@ describe('useGrantContext', function useGrantContextTests() {
           controller,
           subscriptionId: 'sub-1',
           isConnected: true,
+          budgetServiceEnabled: false,
         })
       )
 
@@ -876,6 +880,7 @@ describe('useGrantContext', function useGrantContextTests() {
           controller,
           subscriptionId: 'sub-1',
           isConnected: true,
+          budgetServiceEnabled: false,
         })
       )
 

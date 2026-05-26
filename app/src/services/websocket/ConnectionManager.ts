@@ -13,9 +13,11 @@
 
 import { type DisconnectDescription, io, type Socket } from 'socket.io-client'
 
+import type { AgentTokenResponse } from '@/lib/agent-fetch'
 import { shipAnalyticsLog } from '@/lib/logging'
 import { logger } from '@/lib/request-context'
 import { getSharedSocket, setSharedSocket } from '@/lib/socketRegistry'
+import { useBillingModeStore } from '@/stores/useBillingModeStore'
 import type { ServerConfig } from './stateMachineTypes'
 
 /**
@@ -152,7 +154,7 @@ const defaultFetchAgentToken = async (siteId: string): Promise<string | null> =>
       return null
     }
 
-    const data = await response.json()
+    const data: AgentTokenResponse = await response.json()
     const token = data.token
 
     if (!token) {
@@ -163,6 +165,8 @@ const defaultFetchAgentToken = async (siteId: string): Promise<string | null> =>
       })
       return null
     }
+
+    useBillingModeStore.getState().setMode(siteId, data.budgetServiceEnabled)
 
     shipAnalyticsLog('funnel.ws.token_acquired', {
       appId: siteId,

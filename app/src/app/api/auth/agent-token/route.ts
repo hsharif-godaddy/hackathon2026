@@ -568,16 +568,14 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       ...timing,
     });
 
-    const response: Record<string, unknown> = {
+    const response = {
       token: result.token,
       expires: result.expires.toISOString(),
       siteId: body.siteId,
-      type: 'jwt'
+      type: 'jwt' as const,
+      budgetServiceEnabled,
+      ...(body.expiresInSeconds && { expiresInSeconds: body.expiresInSeconds }),
     };
-
-    if (body.expiresInSeconds) {
-      response.expiresInSeconds = body.expiresInSeconds;
-    }
 
     return NextResponse.json(response);
 
