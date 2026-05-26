@@ -195,9 +195,12 @@ export const POST = withCustomerAuth(async (
   request: NextRequest,
   authContext: CustomerAuthContext,
 ): Promise<NextResponse> => {
+  // No FEEDBACK_BUCKET → local dev or pre-deploy: succeed without writing.
+  // The client decides what to do (it'll log the Slack block JSON locally
+  // when isLocalDev()). 503 here would just produce a noisy error toast.
   if (!FEEDBACK_BUCKET) {
     logger.warn('feedback.store.s3.skipped_not_configured');
-    return NextResponse.json({ error: 'S3 not configured' }, { status: 503 });
+    return NextResponse.json({ success: true, devSkipped: true });
   }
   if (!s3Client) {
     logger.error('feedback.store.s3.client_unavailable', { initError: s3ClientInitError });

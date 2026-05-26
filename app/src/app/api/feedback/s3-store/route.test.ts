@@ -118,15 +118,20 @@ describe('/api/feedback/s3-store', function s3StoreTests() {
   });
 
   describe('POST - S3 not configured', function notConfiguredTests() {
-    it('should return 503 and log when FEEDBACK_BUCKET is unset', async function noBucket() {
+    it('should return 200 with devSkipped when FEEDBACK_BUCKET is unset (local dev)', async function noBucket() {
       delete process.env.FEEDBACK_BUCKET;
       const { POST } = await import('./route');
 
       const response = await POST(createRequest({ app_id: 'app-123', feedback_text: 'hello', consent_flag: true, rating: 7 }));
       const data = await response.json();
 
-      expect(response.status).toBe(503);
-      expect(data.error).toBe('S3 not configured');
+      // Local dev / pre-deploy: succeed without writing so the UI doesn't
+      // surface a noisy error toast. Client decides what to do with the
+      // returned devSkipped flag (e.g. log the Slack block JSON locally
+      // when isLocalDev()).
+      expect(response.status).toBe(200);
+      expect(data.success).toBe(true);
+      expect(data.devSkipped).toBe(true);
       expect(mockLogger.warn).toHaveBeenCalledWith('feedback.store.s3.skipped_not_configured');
       expect(mockS3Send).not.toHaveBeenCalled();
     });

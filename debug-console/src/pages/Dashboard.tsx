@@ -17,6 +17,7 @@ import { CUSTOMER_ID_RE, SHOPPER_ID_RE } from "@/lib/mgmt-helpers";
 import LogsPanel, { type LogSource, type LogsView } from "@/components/LogsPanel";
 import TrafficPanel from "@/components/TrafficPanel";
 import InvestigatePanel from "@/components/InvestigatePanel";
+import FeedbacksPanel from "@/components/FeedbacksPanel";
 import UserMenu from "@/components/UserMenu";
 const TIME_RANGES = [
   { label: "Last 1 hour", value: "1h" },
@@ -36,7 +37,8 @@ type TabId =
   | "care"
   | "logs"
   | "traffic"
-  | "investigate";
+  | "investigate"
+  | "feedback";
 
 const VALID_TAB_IDS: readonly TabId[] = [
   "details",
@@ -45,6 +47,7 @@ const VALID_TAB_IDS: readonly TabId[] = [
   "logs",
   "traffic",
   "investigate",
+  "feedback",
 ];
 
 const VALID_LOGS_VIEWS: readonly LogsView[] = ["logs", "summary"];
@@ -115,7 +118,13 @@ export default function Dashboard() {
     logs: 0,
     traffic: 0,
     investigate: 0,
+    feedback: 0,
   });
+
+  // Deep-link target for the Feedback tab. Parsed once on mount from the
+  // `feedbackId` URL param so a Slack "Details" link can land directly on
+  // the matching row. The panel manages its own selection state after that.
+  const [initialFeedbackId, setInitialFeedbackId] = useState<string | null>(null);
 
   // Tabs are mounted lazily on first visit, then kept alive via display:none.
   // Avoids the cold-start fan-out that fired Logs ES queries, Conversations
@@ -264,6 +273,10 @@ export default function Dashboard() {
     }
     if (urlTimeRange && VALID_TIME_RANGE_VALUES.includes(urlTimeRange)) {
       setTimeRange(urlTimeRange);
+    }
+    const urlFeedbackId = searchParams?.get("feedbackId");
+    if (urlFeedbackId) {
+      setInitialFeedbackId(urlFeedbackId);
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -416,6 +429,7 @@ export default function Dashboard() {
       timeRange?: string;
       source?: ConversationsSource;
       logsView?: LogsView;
+      feedbackId?: string | null;
     }) => {
       const params = new URLSearchParams();
       const effectiveCustomerId =
@@ -426,6 +440,11 @@ export default function Dashboard() {
       const effectiveTimeRange = opts?.timeRange ?? timeRange;
       const effectiveSource = opts?.source ?? conversationsSource;
       const effectiveLogsView = opts?.logsView ?? logsView;
+      // No state fallback for feedbackId: callers either pass the new value
+      // (panel selection change) or omit it (any other navigation), in which
+      // case the param is dropped — feedbackId is tab-scoped and shouldn't
+      // leak across tab changes.
+      const effectiveFeedbackId = opts?.feedbackId ?? null;
 
       if (effectiveCustomerId) {
         params.set("customerId", effectiveCustomerId);
@@ -447,6 +466,9 @@ export default function Dashboard() {
       }
       if (effectiveTab === "logs" && effectiveLogsView === "summary") {
         params.set("logsView", "summary");
+      }
+      if (effectiveTab === "feedback" && effectiveFeedbackId) {
+        params.set("feedbackId", effectiveFeedbackId);
       }
 
       const query = params.toString();
@@ -625,6 +647,14 @@ export default function Dashboard() {
     [submittedAppId, updateUrl],
   );
 
+  const handleFeedbackSelect = useCallback(
+    (feedbackId: string | null) => {
+      if (!submittedAppId) return;
+      updateUrl({ tab: "feedback", feedbackId });
+    },
+    [submittedAppId, updateUrl],
+  );
+
   const tabs: { id: TabId; label: string; icon: string }[] = [
     { id: "details", label: "Details", icon: "🗂️" },
     { id: "conversations", label: "Conversations", icon: "💬" },
@@ -632,6 +662,7 @@ export default function Dashboard() {
     { id: "traffic", label: "Traffic", icon: "🌐" },
     { id: "care", label: "Care Contacts", icon: "🎧" },
     { id: "investigate", label: "Investigate", icon: "🔍" },
+    { id: "feedback", label: "Feedback", icon: "💭" },
   ];
 
   return (
@@ -1439,6 +1470,22 @@ export default function Dashboard() {
                       Enter an App ID and Customer / Shopper ID above to run an investigation.
                     </div>
                   )}
+                </div>
+              )}
+
+              {/* Feedback Tab — per-app feedback list with deep-link support.
+                  Driven by the `feedbackId` URL param: when set on first
+                  load, the panel auto-selects the matching row. Reads parquet
+                  rows from S3 via /api/feedback/recent?appId=... */}
+              {visitedTabs.has("feedback") && (
+                <div style={{ display: activeTab === "feedback" ? "block" : "none" }}>
+                  <FeedbacksPanel
+                    appId={submittedAppId}
+                    initialFeedbackId={initialFeedbackId}
+                    onFeedbackIdChange={handleFeedbackSelect}
+                    refreshKey={refreshKeys.feedback}
+                    onRefresh={() => handleRefreshTab("feedback")}
+                  />
                 </div>
               )}
 

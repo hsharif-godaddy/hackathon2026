@@ -5,12 +5,12 @@ on:
     branches:
       - main
     paths:
-      - "dev-runner/**"
-      - ".github/workflows/dev-runner.yml"
+      - 'dev-runner/**'
+      - '.github/workflows/dev-runner.yml'
   pull_request:
     paths:
-      - "dev-runner/**"
-      - ".github/workflows/dev-runner.yml"
+      - 'dev-runner/**'
+      - '.github/workflows/dev-runner.yml'
 
 jobs:
   # dev-runner is a bootstrap tool whose deps are intentionally all public
@@ -33,7 +33,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
         with:
-          go-version: "1.25"
+          go-version: '1.25'
           cache-dependency-path: dev-runner/go.sum
 
       - name: golangci-lint
@@ -74,7 +74,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
         with:
-          go-version: "1.25"
+          go-version: '1.25'
           cache-dependency-path: dev-runner/go.sum
 
       - name: Download dependencies
@@ -116,7 +116,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
         with:
-          go-version: "1.25"
+          go-version: '1.25'
           cache-dependency-path: dev-runner/go.sum
 
       - name: Download dependencies

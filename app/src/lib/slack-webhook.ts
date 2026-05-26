@@ -21,7 +21,8 @@ export interface SlackField {
 }
 
 export interface SlackLink {
-  url: string;
+  /** Omit `url` to render the entry as plain context text (e.g. an app ID label). */
+  url?: string;
   text: string;
 }
 
@@ -65,6 +66,20 @@ export function formatSlackBlockMessage(data: SlackBlockMessage): Record<string,
         text: `*${data.title}*`,
       },
     });
+  }
+
+  // Single-column sections (full-width) — rendered BEFORE the two-column
+  // metadata block so the long-form content (comment / description) leads.
+  if (data.singleColumnSections && data.singleColumnSections.length > 0) {
+    for (const section of data.singleColumnSections) {
+      blocks.push({
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: section.label ? `*${section.label}*\n${section.value}` : section.value,
+        },
+      });
+    }
   }
 
   // Two-column section with fields (left and right)
@@ -127,24 +142,12 @@ export function formatSlackBlockMessage(data: SlackBlockMessage): Record<string,
     }
   }
 
-  // Single-column sections (full-width)
-  if (data.singleColumnSections && data.singleColumnSections.length > 0) {
-    for (const section of data.singleColumnSections) {
-      blocks.push({
-        type: 'section',
-        text: {
-          type: 'mrkdwn',
-          text: section.label ? `*${section.label}*\n${section.value}` : section.value,
-        },
-      });
-    }
-  }
-
-  // Add links as context block
+  // Add links as context block. Entries without a `url` render as plain
+  // text — used to label the row (e.g. with the app ID before the links).
   if (data.links && data.links.length > 0) {
     const linkElements = data.links.map((link) => ({
       type: 'mrkdwn',
-      text: `<${link.url}|${link.text}>`,
+      text: link.url ? `<${link.url}|${link.text}>` : link.text,
     }));
 
     blocks.push({

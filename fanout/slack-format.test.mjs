@@ -107,6 +107,22 @@ await test('formatSlackBlockMessage: links render as context block with <url|tex
   });
 });
 
+await test('formatSlackBlockMessage: link without url renders as plain mrkdwn text', () => {
+  const result = formatSlackBlockMessage({
+    links: [
+      { text: 'app-123' },
+      { url: 'https://a', text: 'A' },
+    ],
+  });
+  assert.deepEqual(result.blocks[0], {
+    type: 'context',
+    elements: [
+      { type: 'mrkdwn', text: 'app-123' },
+      { type: 'mrkdwn', text: '<https://a|A>' },
+    ],
+  });
+});
+
 await test('formatSlackBlockMessage: divider always present at end', () => {
   const result = formatSlackBlockMessage({
     title: 'T',
@@ -129,6 +145,7 @@ await test('formatSlackBlockMessage: full feedback message end-to-end', () => {
     text: ':bug: Bug Report',
     blocks: [
       { type: 'section', text: { type: 'mrkdwn', text: '*:bug: Bug Report*' } },
+      { type: 'section', text: { type: 'mrkdwn', text: '*What Happened*\ncrash' } },
       {
         type: 'section',
         fields: [
@@ -136,7 +153,6 @@ await test('formatSlackBlockMessage: full feedback message end-to-end', () => {
           { type: 'mrkdwn', text: '*Origin*\ndevelop' },
         ],
       },
-      { type: 'section', text: { type: 'mrkdwn', text: '*What Happened*\ncrash' } },
       { type: 'context', elements: [{ type: 'mrkdwn', text: '<https://nexus|Nexus>' }] },
       { type: 'divider' },
     ],

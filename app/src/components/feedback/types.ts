@@ -100,4 +100,8 @@ export interface DiagnosticContext {
   isImpersonating: boolean;
   shopperId: string | undefined;
   experimentsLine?: string;
+  /** Customer (shopper) account ID for the debug-console "Details" deep-link. */
+  customerId?: string;
+  /** Parquet-row UUID for the debug-console "Details" deep-link. Lambda path only. */
+  feedbackUuid?: string;
 }

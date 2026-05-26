@@ -14,7 +14,7 @@ import {
  * any drift in either side surfaces immediately.
  */
 
-await test('buildSupportRequestBlocks: ditto UI format', () => {
+await test('buildSupportRequestBlocks: compact shape — Subscription + Origin + Details deep-link', () => {
   const data = { topics: ['ui', 'publish'], description: 'broken', followUp: true };
   const origin = 'first-publish-banner';
   const ctx = {
@@ -27,6 +27,8 @@ await test('buildSupportRequestBlocks: ditto UI format', () => {
     isInternalUser: false,
     shopperId: '12345',
     experimentsLine: 'exp1=A, exp2=B',
+    customerId: 'cust-1',
+    feedbackUuid: 'fb-uuid-s',
   };
 
   const result = buildSupportRequestBlocks(data, origin, ctx);
@@ -34,32 +36,25 @@ await test('buildSupportRequestBlocks: ditto UI format', () => {
   assert.deepEqual(result, {
     title: ':sos: Support Request',
     twoColumnSection: {
-      leftFields: [
-        { label: 'App ID', value: 'app-1' },
-        { label: 'Subscription', value: 'Pro Annual / Active' },
-        { label: 'Topics', value: 'ui, publish' },
-        { label: 'Follow-up Consent', value: 'Yes' },
-      ],
-      rightFields: [
-        { label: 'Origin', value: 'first-publish-banner' },
-        { label: 'Experiments', value: 'exp1=A, exp2=B' },
-      ],
+      leftFields: [{ label: 'Subscription', value: 'Pro Annual / Active' }],
+      rightFields: [{ label: 'Origin', value: 'first-publish-banner' }],
     },
     singleColumnSections: [
       { label: 'Description', value: 'broken' },
       { value: '_We\'ll reply to the email on the customer\'s GoDaddy account._' },
     ],
     links: [
+      { text: 'app-1' },
       { url: 'https://preview.airo-builder.test-godaddy.com/?airoShareToken=abc', text: 'Preview' },
       { url: 'https://example.com', text: 'Published' },
-      { url: 'https://app.fullstory.com/some-session', text: 'FullStory' },
-      { url: 'https://ctk.int.gdcorp.tools/nexus/results?criteria=app_id&term=app-1', text: 'Nexus' },
+      { url: 'https://app.fullstory.com/some-session', text: 'FS' },
       { url: 'https://console.airo-builder.godaddy.com/?appId=app-1', text: 'Console' },
+      { url: 'https://console.airo-builder.godaddy.com/?customerId=cust-1&appId=app-1&tab=feedback&feedbackId=fb-uuid-s', text: 'Details' },
     ],
   });
 });
 
-await test('buildSupportRequestBlocks: empty rightFields → placeholder rightFields', () => {
+await test('buildSupportRequestBlocks: blank description + no subscription/origin → undefined twoColumnSection', () => {
   const data = { topics: [], description: '', followUp: false };
   const ctx = {
     currentAppId: 'app-only',
@@ -74,20 +69,14 @@ await test('buildSupportRequestBlocks: empty rightFields → placeholder rightFi
 
   const result = buildSupportRequestBlocks(data, undefined, ctx);
 
-  assert.deepEqual(result.twoColumnSection, {
-    leftFields: [
-      { label: 'App ID', value: 'app-only' },
-      { label: 'Follow-up Consent', value: 'No' },
-    ],
-    rightFields: [{ value: ' ' }],
-  });
+  assert.equal(result.twoColumnSection, undefined);
   // Description omitted when blank, but the canned closing line always present
   assert.deepEqual(result.singleColumnSections, [
     { value: '_We\'ll reply to the email on the customer\'s GoDaddy account._' },
   ]);
 });
 
-await test('buildBugReportBlocks: ditto UI format', () => {
+await test('buildBugReportBlocks: compact shape — Origin-only twoColumnSection when subscription absent + Details deep-link', () => {
   const data = { topics: ['rendering'], description: 'crash on save', followUp: false };
   const origin = 'develop-page';
   const ctx = {
@@ -99,6 +88,8 @@ await test('buildBugReportBlocks: ditto UI format', () => {
     isImpersonating: false,
     isInternalUser: false,
     shopperId: undefined,
+    customerId: 'cust-2',
+    feedbackUuid: 'fb-uuid-b',
   };
 
   const result = buildBugReportBlocks(data, origin, ctx);
@@ -106,28 +97,23 @@ await test('buildBugReportBlocks: ditto UI format', () => {
   assert.deepEqual(result, {
     title: ':bug: Bug Report',
     twoColumnSection: {
-      leftFields: [
-        { label: 'App ID', value: 'app-2' },
-        { label: 'Issue Area', value: 'rendering' },
-        { label: 'Follow-up Consent', value: 'No' },
-      ],
-      rightFields: [
-        { label: 'Origin', value: 'develop-page' },
-      ],
+      leftFields: [{ label: ' ', value: ' ' }],
+      rightFields: [{ label: 'Origin', value: 'develop-page' }],
     },
     singleColumnSections: [
       { label: 'What Happened', value: 'crash on save' },
     ],
     links: [
+      { text: 'app-2' },
       { url: 'https://preview.example/p?airoShareToken=t', text: 'Preview' },
-      { url: 'https://fs/2', text: 'FullStory' },
-      { url: 'https://ctk.int.gdcorp.tools/nexus/results?criteria=app_id&term=app-2', text: 'Nexus' },
+      { url: 'https://fs/2', text: 'FS' },
       { url: 'https://console.airo-builder.godaddy.com/?appId=app-2', text: 'Console' },
+      { url: 'https://console.airo-builder.godaddy.com/?customerId=cust-2&appId=app-2&tab=feedback&feedbackId=fb-uuid-b', text: 'Details' },
     ],
   });
 });
 
-await test('buildBugReportBlocks: impersonating adds "Filed by" left field', () => {
+await test('buildBugReportBlocks: impersonating decorates the title with CRM-skip suffix', () => {
   const data = { topics: [], description: 'x', followUp: false };
   const ctx = {
     currentAppId: 'app-3',
@@ -142,53 +128,46 @@ await test('buildBugReportBlocks: impersonating adds "Filed by" left field', () 
 
   const result = buildBugReportBlocks(data, undefined, ctx);
 
-  assert.deepEqual(result.twoColumnSection.leftFields, [
-    { label: 'App ID', value: 'app-3' },
-    { label: 'Filed by', value: 'CRM skip (99887)' },
-    { label: 'Follow-up Consent', value: 'No' },
-  ]);
-  assert.deepEqual(result.twoColumnSection.rightFields, [{ value: ' ' }]);
+  assert.equal(result.title, ':bug: Bug Report - :no_entry_sign: CRM skip (99887)');
+  // No subscription, no origin → no two-column section.
+  assert.equal(result.twoColumnSection, undefined);
 });
 
-await test('buildFeedbackBlocks: rating 7 → :star-struck: with Extremely positive label', () => {
+await test('buildFeedbackBlocks: rating 7 → title carries rating, body has Subscription + Origin and comment', () => {
   const data = { rating: 7, topics: ['ai'], comment: 'love it', customerConsent: true };
   const ctx = {
     currentAppId: 'app-f',
     previewUrl: undefined,
     publishedUrl: undefined,
     fullStoryUrl: null,
-    subscriptionInfo: 'Free',
+    subscriptionInfo: 'Professional - 696/1050',
     isImpersonating: false,
     isInternalUser: false,
     shopperId: '12345',
+    customerId: 'cust-9',
+    feedbackUuid: 'fb-uuid-1',
   };
 
-  const result = buildFeedbackBlocks(data, undefined, ctx);
+  const result = buildFeedbackBlocks(data, 'first-publish-banner', ctx);
 
   assert.deepEqual(result, {
-    title: ':speech_balloon: Product Feedback',
+    title: ':speech_balloon: Product Feedback - 7/7 :star-struck:',
     twoColumnSection: {
-      leftFields: [
-        { label: 'App ID', value: 'app-f' },
-        { label: 'Subscription', value: 'Free' },
-        { label: 'Customer Consent', value: 'Yes' },
-      ],
-      rightFields: [
-        { value: '7/7 - Extremely positive\n:star-struck:' },
-        { label: 'Topics', value: 'ai' },
-      ],
+      leftFields: [{ label: 'Subscription', value: 'Professional - 696/1050' }],
+      rightFields: [{ label: 'Origin', value: 'first-publish-banner' }],
     },
     singleColumnSections: [
-      { label: 'Comment', value: 'love it' },
+      { value: '> love it' },
     ],
     links: [
-      { url: 'https://ctk.int.gdcorp.tools/nexus/results?criteria=app_id&term=app-f', text: 'Nexus' },
+      { text: 'app-f' },
       { url: 'https://console.airo-builder.godaddy.com/?appId=app-f', text: 'Console' },
+      { url: 'https://console.airo-builder.godaddy.com/?customerId=cust-9&appId=app-f&tab=feedback&feedbackId=fb-uuid-1', text: 'Details' },
     ],
   });
 });
 
-await test('buildFeedbackBlocks: impersonating session → "No score: E2S session"', () => {
+await test('buildFeedbackBlocks: impersonating session → No score in title, body has only comment (or none)', () => {
   const data = { rating: 5, topics: [], comment: '', customerConsent: false };
   const ctx = {
     currentAppId: null,
@@ -203,15 +182,12 @@ await test('buildFeedbackBlocks: impersonating session → "No score: E2S sessio
 
   const result = buildFeedbackBlocks(data, undefined, ctx);
 
-  assert.deepEqual(result.twoColumnSection.rightFields, [
-    { label: 'No score', value: 'E2S session' },
-  ]);
-  assert.deepEqual(result.twoColumnSection.leftFields, [
-    { label: 'Customer Consent', value: 'No' },
-  ]);
+  assert.equal(result.title, ':speech_balloon: Product Feedback - :no_entry_sign: No score (E2S session)');
+  assert.equal(result.twoColumnSection, undefined);
+  assert.equal(result.singleColumnSections, undefined);
 });
 
-await test('buildFeedbackBlocks: internal user → "No score: TLA account (shopperId)"', () => {
+await test('buildFeedbackBlocks: internal user → No score (TLA account) in title', () => {
   const data = { rating: 5, topics: [], comment: '', customerConsent: true };
   const ctx = {
     currentAppId: null,
@@ -226,12 +202,10 @@ await test('buildFeedbackBlocks: internal user → "No score: TLA account (shopp
 
   const result = buildFeedbackBlocks(data, undefined, ctx);
 
-  assert.deepEqual(result.twoColumnSection.rightFields, [
-    { label: 'No score', value: 'TLA account (12345)' },
-  ]);
+  assert.equal(result.title, ':speech_balloon: Product Feedback - :no_entry_sign: No score (TLA account (12345))');
 });
 
-await test('buildFeedbackBlocks: customer consent No', () => {
+await test('buildFeedbackBlocks: rating 4 + empty comment → title only, no body sections', () => {
   const data = { rating: 4, topics: [], comment: '', customerConsent: false };
   const ctx = {
     currentAppId: null,
@@ -245,12 +219,49 @@ await test('buildFeedbackBlocks: customer consent No', () => {
   };
 
   const result = buildFeedbackBlocks(data, undefined, ctx);
-  assert.deepEqual(result.twoColumnSection.leftFields, [
-    { label: 'Customer Consent', value: 'No' },
+  assert.equal(result.title, ':speech_balloon: Product Feedback - 4/7 :neutral_face:');
+  assert.equal(result.twoColumnSection, undefined);
+  assert.equal(result.singleColumnSections, undefined);
+  // No appId → no Details link.
+  assert.equal(result.links.find((l) => l.text === 'Details'), undefined);
+});
+
+await test('buildFeedbackBlocks: multiline comment is line-wise blockquoted', () => {
+  const data = { rating: 6, topics: [], comment: 'line one\nline two\nline three', customerConsent: true };
+  const ctx = {
+    currentAppId: 'app-m',
+    previewUrl: undefined,
+    publishedUrl: undefined,
+    fullStoryUrl: null,
+    subscriptionInfo: '',
+    isImpersonating: false,
+    isInternalUser: false,
+    shopperId: undefined,
+  };
+
+  const result = buildFeedbackBlocks(data, undefined, ctx);
+  assert.equal(result.title, ':speech_balloon: Product Feedback - 6/7 :smile:');
+  assert.deepEqual(result.singleColumnSections, [
+    { value: '> line one\n> line two\n> line three' },
   ]);
-  assert.deepEqual(result.twoColumnSection.rightFields, [
-    { value: '4/7 - Neutral\n:neutral_face:' },
-  ]);
+});
+
+await test('buildFeedbackBlocks: Details link omits feedbackId / customerId when missing', () => {
+  const data = { rating: 5, topics: [], comment: '', customerConsent: false };
+  const ctx = {
+    currentAppId: 'app-x',
+    previewUrl: undefined,
+    publishedUrl: undefined,
+    fullStoryUrl: null,
+    subscriptionInfo: '',
+    isImpersonating: false,
+    isInternalUser: false,
+    shopperId: undefined,
+  };
+
+  const result = buildFeedbackBlocks(data, undefined, ctx);
+  const details = result.links.find((l) => l.text === 'Details');
+  assert.equal(details.url, 'https://console.airo-builder.godaddy.com/?appId=app-x&tab=feedback');
 });
 
 await test('buildDiagnosticLinks: publishedUrl with "test-" omitted', () => {
@@ -270,12 +281,8 @@ await test('buildDiagnosticLinks: publishedUrl with "test-" omitted', () => {
 
   // 'Published' must NOT appear in links because publishedUrl contains 'test-'
   assert.equal(result.links.find(l => l.text === 'Published'), undefined);
-  // Preview, Nexus, Console should still be present
+  // Preview and Console should still be present
   assert.equal(result.links.find(l => l.text === 'Preview').url, 'https://preview');
-  assert.equal(
-    result.links.find(l => l.text === 'Nexus').url,
-    'https://ctk.int.gdcorp.tools/nexus/results?criteria=app_id&term=app-x',
-  );
   assert.equal(
     result.links.find(l => l.text === 'Console').url,
     'https://console.airo-builder.godaddy.com/?appId=app-x',
@@ -295,7 +302,7 @@ const MIN_CTX = {
   shopperId: undefined,
 };
 
-await test('enrichment: both triage links prepend the diagnostic links', () => {
+await test('enrichment: both triage links sit between App ID label and diagnostic links', () => {
   const enrichment = {
     crmCaseUrl: 'https://godaddy2.lightning.force.com/lightning/r/Case/500U900000TUb7vIAD/view',
     caseNumber: '00012345',
@@ -309,18 +316,20 @@ await test('enrichment: both triage links prepend the diagnostic links', () => {
     enrichment,
   );
 
-  // Triage links should be the FIRST entries (prepended). Case label
-  // includes the customer-facing caseNumber so triagers see the same
-  // identifier the customer received in their CRM email; Jira keeps a
-  // single-word label since the issue key is already in the URL hover.
-  assert.equal(result.links[0].text, 'Case #00012345');
-  assert.equal(result.links[0].url, enrichment.crmCaseUrl);
-  assert.equal(result.links[1].text, 'Jira');
-  assert.equal(result.links[1].url, enrichment.jiraUrl);
+  // Footer ordering (compact shape): [App ID label] → [Case, Jira] →
+  // [diagnostic links] → [Details]. Triage links sit closest to the
+  // App ID so the live CRM case + Jira issue for THIS submission are
+  // the most prominent things after the id.
+  assert.equal(result.links[0].text, 'app-1');
+  assert.equal(result.links[0].url, undefined);
+  assert.equal(result.links[1].text, 'Case #00012345');
+  assert.equal(result.links[1].url, enrichment.crmCaseUrl);
+  assert.equal(result.links[2].text, 'Jira');
+  assert.equal(result.links[2].url, enrichment.jiraUrl);
   // Investigation NOT in Slack — investigator posts its own CRM note
   assert.equal(result.links.find(l => l.text === 'Investigation'), undefined);
-  // Diagnostic links (Nexus, Console) should still follow
-  assert.ok(result.links.find(l => l.text === 'Nexus'));
+  // Diagnostic links (Console) should still follow
+  assert.ok(result.links.find(l => l.text === 'Console'));
 });
 
 await test('enrichment: Case label falls back to plain "Case" when caseNumber missing (resolver miss)', () => {
@@ -335,8 +344,9 @@ await test('enrichment: Case label falls back to plain "Case" when caseNumber mi
     enrichment,
   );
 
-  assert.equal(result.links[0].text, 'Case');
-  assert.equal(result.links[0].url, enrichment.crmCaseUrl);
+  // [0] = App ID label; [1] = Case (resolver miss falls back to plain "Case").
+  assert.equal(result.links[1].text, 'Case');
+  assert.equal(result.links[1].url, enrichment.crmCaseUrl);
 });
 
 await test('enrichment: omitted entirely → no triage links, message identical to legacy shape', () => {
@@ -362,7 +372,8 @@ await test('enrichment: partial (Jira only, no CRM) → renders Jira only', () =
     enrichment,
   );
 
-  assert.equal(result.links[0].text, 'Jira');
+  // [0] = App ID label; [1] = Jira (no Case in this enrichment).
+  assert.equal(result.links[1].text, 'Jira');
   assert.equal(result.links.find(l => l.text === 'Case'), undefined);
 });
 
@@ -380,6 +391,7 @@ await test('enrichment: support category gets triage links too', () => {
     enrichment,
   );
 
-  assert.equal(result.links[0].text, 'Case #00099999');
-  assert.equal(result.links[1].text, 'Jira');
+  // [0] = App ID label; [1] = Case; [2] = Jira.
+  assert.equal(result.links[1].text, 'Case #00099999');
+  assert.equal(result.links[2].text, 'Jira');
 });

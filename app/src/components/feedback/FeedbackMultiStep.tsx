@@ -19,7 +19,7 @@ import { CategorySelectStep } from './steps/CategorySelectStep';
 import { GetSupportStep } from './steps/GetSupportStep';
 import { ReportIssueStep } from './steps/ReportIssueStep';
 import { ShareFeedbackStep } from './steps/ShareFeedbackStep';
-import { fetchDiagnosticContext, openCrmCaseForIssue, saveToCompanionHub, sendFeedbackToSlack, storeToS3 } from './submitFeedback';
+import { fetchDiagnosticContext, logDevFeedbackBlockMessage, openCrmCaseForIssue, saveToCompanionHub, sendFeedbackToSlack, storeToS3 } from './submitFeedback';
 import type {
   DiagnosticContext,
   FeedbackCategory,
@@ -139,6 +139,7 @@ export function FeedbackMultiStep(props: FeedbackProps) {
   const isImpersonating = isEmployeeAuthType((authState as any)?.authType);
   const userInfo = getUserInfo();
   const shopperId = userInfo?.shopperId as string | undefined;
+  const customerId = userInfo?.customerId as string | undefined;
   // GoDaddy TLA (three-letter acronym) accounts have 3-char shopperIds — these are internal employees
   const isInternalUser = shopperId?.length === 3;
 
@@ -181,7 +182,7 @@ export function FeedbackMultiStep(props: FeedbackProps) {
   const handleSupportSubmit = useCallback(async (data: SupportFormData) => {
     let outcome: 'success' | 'failed' = 'failed';
     try {
-      const ctx = await fetchDiagnosticContext(currentAppId, getSite, isInternalUser, isImpersonating, shopperId, experimentsLine);
+      const ctx = await fetchDiagnosticContext(currentAppId, getSite, isInternalUser, isImpersonating, shopperId, experimentsLine, customerId);
 
       if (fanoutViaLambda) {
         // Switchboard-flag ON: the fanout Lambda owns Slack + CRM + investigator
@@ -189,6 +190,7 @@ export function FeedbackMultiStep(props: FeedbackProps) {
         // field the BFF stamps into the parquet. The UI must NOT also call
         // /api/crm/case + /api/slack-webhook/feedback here, or recipients
         // get duplicate messages / cases during cutover.
+        logDevFeedbackBlockMessage(buildSupportRequestBlocks(data, origin, ctx));
         const storeResult = await storeToS3(buildFanoutPayload(
           'support',
           { feedbackText: data.description, consent: data.followUp, rating: null, topics: data.topics },
@@ -282,11 +284,12 @@ export function FeedbackMultiStep(props: FeedbackProps) {
   const handleIssueSubmit = useCallback(async (data: IssueFormData) => {
     let outcome: 'success' | 'failed' = 'failed';
     try {
-      const ctx = await fetchDiagnosticContext(currentAppId, getSite, isInternalUser, isImpersonating, shopperId, experimentsLine);
+      const ctx = await fetchDiagnosticContext(currentAppId, getSite, isInternalUser, isImpersonating, shopperId, experimentsLine, customerId);
 
       if (fanoutViaLambda) {
         // Switchboard-flag ON: the fanout Lambda owns Slack + CRM + investigator
         // for issue submissions. UI just writes the parquet; Lambda fans out.
+        logDevFeedbackBlockMessage(buildBugReportBlocks(data, origin, ctx));
         const storeResult = await storeToS3(buildFanoutPayload(
           'issue',
           { feedbackText: data.description, consent: data.followUp, rating: null, topics: data.topics },
@@ -371,12 +374,13 @@ export function FeedbackMultiStep(props: FeedbackProps) {
   const handleFeedbackSubmit = useCallback(async (data: ShareFeedbackFormData) => {
     let outcome: 'success' | 'failed' = 'failed';
     try {
-      const ctx = await fetchDiagnosticContext(currentAppId, getSite, isInternalUser, isImpersonating, shopperId, experimentsLine);
+      const ctx = await fetchDiagnosticContext(currentAppId, getSite, isInternalUser, isImpersonating, shopperId, experimentsLine, customerId);
 
       if (fanoutViaLambda) {
         // Switchboard-flag ON: the fanout Lambda owns Slack + companion-hub + CRM
         // + investigator end-to-end from the parquet write. UI must NOT also
         // call Slack/companionHub here, or recipients get duplicates.
+        logDevFeedbackBlockMessage(buildFeedbackBlocks(data, origin, ctx));
         const storeResult = await storeToS3(buildFanoutPayload(
           'feedback',
           { feedbackText: data.comment ?? null, consent: data.customerConsent, rating: data.rating ?? null, topics: data.topics },

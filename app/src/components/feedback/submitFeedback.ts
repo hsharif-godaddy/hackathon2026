@@ -6,6 +6,25 @@ import { isLocalDev } from '@/utils/is-local-dev';
 import type { DiagnosticContext, FeedbackStorePayload } from './types';
 import { getBaseUrl, getFullStorySessionUrl } from './utils';
 
+/**
+ * Dev-only console preview of a feedback Slack message. Used by both:
+ *   - the legacy webhook path (server echoes blockMessage when SLACK_FEEDBACK_WEBHOOK_URL is unset)
+ *   - the Lambda-fanout path (FEEDBACK_BUCKET unset → server short-circuits, client echoes locally)
+ * No-op outside local dev so it never leaks in test/prod.
+ */
+export function logDevFeedbackBlockMessage(blockMessage: SlackBlockMessage | undefined | null): void {
+  if (!isLocalDev() || !blockMessage) return;
+  // Block Kit Builder rejects top-level fields other than `blocks`; strip the
+  // `text` fallback that Slack uses for push notifications so the dev can
+  // paste the output straight into https://app.slack.com/block-kit-builder.
+  const { blocks } = formatSlackBlockMessage(blockMessage);
+   
+  console.log(
+    '📧 [DEV MODE] Feedback Slack payload (paste into https://app.slack.com/block-kit-builder):\n',
+    JSON.stringify({ blocks }, null, 2),
+  );
+}
+
 interface SiteInfo {
   preview_url?: string;
   published_url?: string;
@@ -18,6 +37,7 @@ export async function fetchDiagnosticContext(
   isImpersonating: boolean,
   shopperId: string | undefined,
   experimentsLine?: string,
+  customerId?: string,
 ): Promise<DiagnosticContext> {
   const site = currentAppId ? getSite(currentAppId) : null;
   const fullStoryUrl = await getFullStorySessionUrl(true);
@@ -100,6 +120,7 @@ export async function fetchDiagnosticContext(
     isImpersonating,
     shopperId,
     experimentsLine,
+    customerId,
   };
 }
 
@@ -130,9 +151,7 @@ export async function sendFeedbackToSlack(
   if (isLocalDev()) {
     try {
       const result = await response.json();
-      if (result.blockMessage) {
-        console.log('📧 [DEV MODE] Feedback Slack payload:', JSON.stringify(formatSlackBlockMessage(result.blockMessage), null, 2));
-      }
+      logDevFeedbackBlockMessage(result.blockMessage);
     } catch {
       // JSON parse failure is non-fatal in dev — Slack delivery already succeeded.
     }

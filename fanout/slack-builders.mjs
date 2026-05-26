@@ -10,23 +10,13 @@
  */
 
 const RATING_EMOJIS = {
-  '1': ':alert_red: :alert_red: :alert_red:',
-  '2': ':alert_orange: :alert_orange:',
+  '1': ':alert_red:',
+  '2': ':alert_orange:',
   '3': ':alert_yellow:',
   '4': ':neutral_face:',
   '5': ':slightly_smiling_face:',
   '6': ':smile:',
   '7': ':star-struck:',
-};
-
-const RATING_LABELS = {
-  '1': 'Very negative',
-  '2': 'Negative',
-  '3': 'Somewhat negative',
-  '4': 'Neutral',
-  '5': 'Positive',
-  '6': 'Very positive',
-  '7': 'Extremely positive',
 };
 
 function buildDiagnosticLinks(ctx) {
@@ -39,13 +29,9 @@ function buildDiagnosticLinks(ctx) {
     links.push({ url: ctx.publishedUrl, text: 'Published' });
   }
   if (ctx.fullStoryUrl) {
-    links.push({ url: ctx.fullStoryUrl, text: 'FullStory' });
+    links.push({ url: ctx.fullStoryUrl, text: 'FS' });
   }
   if (ctx.currentAppId) {
-    links.push({
-      url: `https://ctk.int.gdcorp.tools/nexus/results?criteria=app_id&term=${ctx.currentAppId}`,
-      text: 'Nexus',
-    });
     links.push({
       url: `https://console.airo-builder.godaddy.com/?appId=${ctx.currentAppId}`,
       text: 'Console',
@@ -58,8 +44,8 @@ function buildDiagnosticLinks(ctx) {
 /**
  * Triage-link section: CRM case in Salesforce + AABSP Jira issue. Each
  * link rendered only when its entity exists. Returns an array of
- * {url, text} entries that prepend the standard diagnostic links so
- * triagers see them first.
+ * {url, text} entries appended to footer links between App ID label and
+ * diagnostic links so triagers see the live case/issue right next to the app id.
  *
  * Investigation URL deliberately omitted — the investigator already
  * posts its own deep-link as a CRM case note when it completes (see
@@ -67,7 +53,7 @@ function buildDiagnosticLinks(ctx) {
  * note posts the same link upfront. Slack would be a third copy with
  * no triage value-add.
  *
- * Lambda-only: the UI's slackBuilders.ts doesn't have this function
+ * Lambda-only: the UI's slackBuilders.ts doesn't have this helper
  * because the UI builds Slack messages BEFORE these downstreams run.
  * Lambda has the IDs in hand at message-build time, so it can deep-link.
  */
@@ -90,35 +76,71 @@ function buildTriageLinks(enrichment) {
   return links;
 }
 
-function buildCustomerInfoLeft(ctx) {
-  const fields = [];
-
-  if (ctx.currentAppId) {
-    fields.push({ label: 'App ID', value: ctx.currentAppId });
-  }
+function buildSubscriptionOriginSection(ctx, origin) {
+  const leftFields = [];
   if (ctx.subscriptionInfo) {
-    fields.push({ label: 'Subscription', value: ctx.subscriptionInfo });
+    leftFields.push({ label: 'Subscription', value: ctx.subscriptionInfo });
   }
-
-  return fields;
-}
-
-export function buildSupportRequestBlocks(data, origin, ctx, enrichment = null) {
-  const leftFields = buildCustomerInfoLeft(ctx);
   const rightFields = [];
-
-  if (data.topics.length > 0) {
-    leftFields.push({ label: 'Topics', value: data.topics.join(', ') });
-  }
-  leftFields.push({ label: 'Follow-up Consent', value: data.followUp ? 'Yes' : 'No' });
-
   if (origin) {
     rightFields.push({ label: 'Origin', value: origin });
   }
-  if (ctx.experimentsLine) {
-    rightFields.push({ label: 'Experiments', value: ctx.experimentsLine });
-  }
+  if (leftFields.length > 0 && rightFields.length > 0) return { leftFields, rightFields };
+  if (leftFields.length > 0) return { leftFields, rightFields: [{ value: ' ' }] };
+  if (rightFields.length > 0) return { leftFields: [{ label: ' ', value: ' ' }], rightFields };
+  return undefined;
+}
 
+function decorateTitleForImpersonation(baseTitle, ctx) {
+  if (!ctx.isImpersonating) return baseTitle;
+  return `${baseTitle} - :no_entry_sign: CRM skip (${ctx.shopperId || 'unknown'})`;
+}
+
+// Deep-links every Slack message (feedback / issue / support) to the
+// debug-console Feedback tab — the panel renders all three categories
+// keyed by appId, and `feedbackId` (when available, Lambda-path only)
+// auto-expands the matching row.
+function buildDetailsLink(ctx) {
+  if (!ctx.currentAppId) return null;
+  const params = [`appId=${ctx.currentAppId}`, 'tab=feedback'];
+  if (ctx.customerId) params.unshift(`customerId=${ctx.customerId}`);
+  if (ctx.feedbackUuid) params.push(`feedbackId=${ctx.feedbackUuid}`);
+  return {
+    url: `https://console.airo-builder.godaddy.com/?${params.join('&')}`,
+    text: 'Details',
+  };
+}
+
+// Footer ordering: [App ID copy-label] → [triage links: Case, Jira] →
+// [diagnostic links: Preview, Published, FS, Console] → [Details].
+// Triage links sit closest to the App ID so the CRM case + Jira issue
+// for THIS submission are the most prominent things after the id.
+// Diagnostic links (env state) follow. Details (debug-console) closes
+// out the row.
+function buildFooterLinks(ctx, enrichment) {
+  const links = [];
+  // App ID as a plain-text label so triagers can copy the id without
+  // scrolling — rendered ahead of the click-through links.
+  if (ctx.currentAppId) {
+    links.push({ text: ctx.currentAppId });
+  }
+  links.push(...buildTriageLinks(enrichment));
+  links.push(...buildDiagnosticLinks(ctx));
+  const detailsLink = buildDetailsLink(ctx);
+  if (detailsLink) links.push(detailsLink);
+  return links;
+}
+
+function quoteBlock(text) {
+  return text.split('\n').map((line) => `> ${line}`).join('\n');
+}
+
+export function buildSupportRequestBlocks(data, origin, ctx, enrichment = null) {
+  // Compact shape — matches the Feedback redesign. Body is the
+  // description + canned reply line + Subscription/Origin two-column.
+  // Topics, Follow-up Consent, Experiments, App ID drop from the digest
+  // (still captured in the CRM case for triage). Title carries the
+  // CRM-skip suffix when impersonating so it surfaces in push notifications.
   const singleColumnSections = [];
   if (data.description.trim()) {
     singleColumnSections.push({ label: 'Description', value: data.description.trim() });
@@ -128,101 +150,60 @@ export function buildSupportRequestBlocks(data, origin, ctx, enrichment = null) 
   });
 
   return {
-    title: ':sos: Support Request',
-    twoColumnSection: leftFields.length > 0 && rightFields.length > 0
-      ? { leftFields, rightFields }
-      : leftFields.length > 0
-        ? { leftFields, rightFields: [{ value: ' ' }] }
-        : undefined,
+    title: decorateTitleForImpersonation(':sos: Support Request', ctx),
     singleColumnSections,
-    links: [...buildTriageLinks(enrichment), ...buildDiagnosticLinks(ctx)],
+    twoColumnSection: buildSubscriptionOriginSection(ctx, origin),
+    links: buildFooterLinks(ctx, enrichment),
   };
 }
 
 export function buildBugReportBlocks(data, origin, ctx, enrichment = null) {
-  const leftFields = buildCustomerInfoLeft(ctx);
-  const rightFields = [];
-
-  if (ctx.isImpersonating) {
-    leftFields.push({ label: 'Filed by', value: `CRM skip (${ctx.shopperId || 'unknown'})` });
-  }
-  if (data.topics.length > 0) {
-    leftFields.push({ label: 'Issue Area', value: data.topics.join(', ') });
-  }
-  leftFields.push({ label: 'Follow-up Consent', value: data.followUp ? 'Yes' : 'No' });
-
-  if (origin) {
-    rightFields.push({ label: 'Origin', value: origin });
-  }
-  if (ctx.experimentsLine) {
-    rightFields.push({ label: 'Experiments', value: ctx.experimentsLine });
-  }
-
+  // Compact shape — matches the Feedback redesign. Body is the
+  // description + Subscription/Origin two-column. Issue Area,
+  // Follow-up Consent, Experiments, App ID drop from the digest (still
+  // captured in the CRM case). Title carries the CRM-skip suffix when
+  // impersonating so it surfaces in push notifications.
   const singleColumnSections = [];
   if (data.description.trim()) {
     singleColumnSections.push({ label: 'What Happened', value: data.description.trim() });
   }
 
   return {
-    title: ':bug: Bug Report',
-    twoColumnSection: leftFields.length > 0 && rightFields.length > 0
-      ? { leftFields, rightFields }
-      : leftFields.length > 0
-        ? { leftFields, rightFields: [{ value: ' ' }] }
-        : undefined,
+    title: decorateTitleForImpersonation(':bug: Bug Report', ctx),
     singleColumnSections: singleColumnSections.length > 0 ? singleColumnSections : undefined,
-    links: [...buildTriageLinks(enrichment), ...buildDiagnosticLinks(ctx)],
+    twoColumnSection: buildSubscriptionOriginSection(ctx, origin),
+    links: buildFooterLinks(ctx, enrichment),
   };
 }
 
 export function buildFeedbackBlocks(data, origin, ctx, enrichment = null) {
-  const leftFields = buildCustomerInfoLeft(ctx);
-  const rightFields = [];
-
-  // Customer consent
-  leftFields.push({
-    label: 'Customer Consent',
-    value: data.customerConsent ? 'Yes' : 'No',
-  });
-
-  // Rating display
+  // Title carries the rating so it shows in Slack push notifications
+  // (also used as the fallback `text` field). Body keeps Subscription +
+  // Origin (the two facts readers triage on most often) and the comment.
+  // Everything else (consent, topics, experiments, customer profile) is
+  // one click away in the debug-console feedback tab via the Details link.
+  let title = ':speech_balloon: Product Feedback';
   if (ctx.isImpersonating || ctx.isInternalUser) {
-    rightFields.push({
-      label: 'No score',
-      value: ctx.isImpersonating ? 'E2S session' : `TLA account (${ctx.shopperId || 'unknown'})`,
-    });
+    const reason = ctx.isImpersonating
+      ? 'E2S session'
+      : `TLA account (${ctx.shopperId || 'unknown'})`;
+    title = `${title} - :no_entry_sign: No score (${reason})`;
   } else if (data.rating) {
     const ratingStr = String(data.rating);
     const emoji = RATING_EMOJIS[ratingStr] || ':question:';
-    const label = RATING_LABELS[ratingStr] || 'Unknown';
-    rightFields.push({
-      value: `${ratingStr}/7 - ${label}\n${emoji}`,
-    });
-  }
-
-  if (origin) {
-    rightFields.push({ label: 'Origin', value: origin });
-  }
-
-  if (data.topics.length > 0) {
-    rightFields.push({ label: 'Topics', value: data.topics.join(', ') });
-  }
-
-  if (ctx.experimentsLine) {
-    rightFields.push({ label: 'Experiments', value: ctx.experimentsLine });
+    title = `${title} - ${ratingStr}/7 ${emoji}`;
   }
 
   const singleColumnSections = [];
-  if (data.comment && data.comment.trim()) {
-    singleColumnSections.push({ label: 'Comment', value: data.comment.trim() });
+  const trimmedComment = data.comment ? data.comment.trim() : '';
+  if (trimmedComment) {
+    singleColumnSections.push({ value: quoteBlock(trimmedComment) });
   }
 
   return {
-    title: ':speech_balloon: Product Feedback',
-    twoColumnSection: leftFields.length > 0 && rightFields.length > 0
-      ? { leftFields, rightFields }
-      : undefined,
+    title,
+    twoColumnSection: buildSubscriptionOriginSection(ctx, origin),
     singleColumnSections: singleColumnSections.length > 0 ? singleColumnSections : undefined,
-    links: [...buildTriageLinks(enrichment), ...buildDiagnosticLinks(ctx)],
+    links: buildFooterLinks(ctx, enrichment),
   };
 }

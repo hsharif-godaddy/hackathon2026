@@ -92,7 +92,9 @@ await test('routes feedback category to buildFeedbackBlocks', async () => {
     ctx: CTX,
   });
   const body = JSON.parse(fetchCalls[0].init.body);
-  assert.equal(body.text, ':speech_balloon: Product Feedback');
+  // Title carries the rating in the compact shape so Slack push
+  // notifications surface the score without expanding the message.
+  assert.equal(body.text, ':speech_balloon: Product Feedback - 7/7 :star-struck:');
 });
 
 await test('routes support category to buildSupportRequestBlocks', async () => {

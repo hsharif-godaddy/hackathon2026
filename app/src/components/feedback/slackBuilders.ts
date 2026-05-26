@@ -2,23 +2,13 @@ import type { SlackBlockMessage, SlackLink, SlackSingleSection } from '@/lib/sla
 import type { DiagnosticContext, IssueFormData, ShareFeedbackFormData, SupportFormData } from './types';
 
 const RATING_EMOJIS: Record<string, string> = {
-  '1': ':alert_red: :alert_red: :alert_red:',
-  '2': ':alert_orange: :alert_orange:',
+  '1': ':alert_red:',
+  '2': ':alert_orange:',
   '3': ':alert_yellow:',
   '4': ':neutral_face:',
   '5': ':slightly_smiling_face:',
   '6': ':smile:',
   '7': ':star-struck:',
-};
-
-const RATING_LABELS: Record<string, string> = {
-  '1': 'Very negative',
-  '2': 'Negative',
-  '3': 'Somewhat negative',
-  '4': 'Neutral',
-  '5': 'Positive',
-  '6': 'Very positive',
-  '7': 'Extremely positive',
 };
 
 function buildDiagnosticLinks(ctx: DiagnosticContext): SlackLink[] {
@@ -31,13 +21,9 @@ function buildDiagnosticLinks(ctx: DiagnosticContext): SlackLink[] {
     links.push({ url: ctx.publishedUrl, text: 'Published' });
   }
   if (ctx.fullStoryUrl) {
-    links.push({ url: ctx.fullStoryUrl, text: 'FullStory' });
+    links.push({ url: ctx.fullStoryUrl, text: 'FS' });
   }
   if (ctx.currentAppId) {
-    links.push({
-      url: `https://ctk.int.gdcorp.tools/nexus/results?criteria=app_id&term=${ctx.currentAppId}`,
-      text: 'Nexus',
-    });
     links.push({
       url: `https://console.airo-builder.godaddy.com/?appId=${ctx.currentAppId}`,
       text: 'Console',
@@ -47,17 +33,59 @@ function buildDiagnosticLinks(ctx: DiagnosticContext): SlackLink[] {
   return links;
 }
 
-function buildCustomerInfoLeft(ctx: DiagnosticContext): Array<{ label: string; value: string }> {
-  const fields: Array<{ label: string; value: string }> = [];
+// Deep-links every Slack message (feedback / issue / support) to the
+// debug-console Feedback tab — the panel renders all three categories
+// keyed by appId, and `feedbackId` (when available, Lambda-path only)
+// auto-expands the matching row.
+function buildDetailsLink(ctx: DiagnosticContext): SlackLink | null {
+  if (!ctx.currentAppId) return null;
+  const params = [`appId=${ctx.currentAppId}`, 'tab=feedback'];
+  if (ctx.customerId) params.unshift(`customerId=${ctx.customerId}`);
+  if (ctx.feedbackUuid) params.push(`feedbackId=${ctx.feedbackUuid}`);
+  return {
+    url: `https://console.airo-builder.godaddy.com/?${params.join('&')}`,
+    text: 'Details',
+  };
+}
 
+function buildFooterLinks(ctx: DiagnosticContext): SlackLink[] {
+  const links: SlackLink[] = [];
+  // App ID as a plain-text label so triagers can copy the id without
+  // scrolling — rendered ahead of the click-through links.
   if (ctx.currentAppId) {
-    fields.push({ label: 'App ID', value: ctx.currentAppId });
+    links.push({ text: ctx.currentAppId });
   }
-  if (ctx.subscriptionInfo) {
-    fields.push({ label: 'Subscription', value: ctx.subscriptionInfo });
-  }
+  links.push(...buildDiagnosticLinks(ctx));
+  const detailsLink = buildDetailsLink(ctx);
+  if (detailsLink) links.push(detailsLink);
+  return links;
+}
 
-  return fields;
+function quoteBlock(text: string): string {
+  return text.split('\n').map((line) => `> ${line}`).join('\n');
+}
+
+function buildSubscriptionOriginSection(
+  ctx: DiagnosticContext,
+  origin: string | undefined,
+): SlackBlockMessage['twoColumnSection'] {
+  const leftFields: Array<{ label: string; value: string }> = [];
+  if (ctx.subscriptionInfo) {
+    leftFields.push({ label: 'Subscription', value: ctx.subscriptionInfo });
+  }
+  const rightFields: Array<{ label?: string; value: string }> = [];
+  if (origin) {
+    rightFields.push({ label: 'Origin', value: origin });
+  }
+  if (leftFields.length > 0 && rightFields.length > 0) return { leftFields, rightFields };
+  if (leftFields.length > 0) return { leftFields, rightFields: [{ value: ' ' }] };
+  if (rightFields.length > 0) return { leftFields: [{ label: ' ', value: ' ' }], rightFields };
+  return undefined;
+}
+
+function decorateTitleForImpersonation(baseTitle: string, ctx: DiagnosticContext): string {
+  if (!ctx.isImpersonating) return baseTitle;
+  return `${baseTitle} - :no_entry_sign: CRM skip (${ctx.shopperId || 'unknown'})`;
 }
 
 export function buildSupportRequestBlocks(
@@ -65,21 +93,11 @@ export function buildSupportRequestBlocks(
   origin: string | undefined,
   ctx: DiagnosticContext,
 ): SlackBlockMessage {
-  const leftFields = buildCustomerInfoLeft(ctx);
-  const rightFields: Array<{ label?: string; value: string }> = [];
-
-  if (data.topics.length > 0) {
-    leftFields.push({ label: 'Topics', value: data.topics.join(', ') });
-  }
-  leftFields.push({ label: 'Follow-up Consent', value: data.followUp ? 'Yes' : 'No' });
-
-  if (origin) {
-    rightFields.push({ label: 'Origin', value: origin });
-  }
-  if (ctx.experimentsLine) {
-    rightFields.push({ label: 'Experiments', value: ctx.experimentsLine });
-  }
-
+  // Compact shape — matches the Feedback redesign. Body is the
+  // description + canned reply line + Subscription/Origin two-column.
+  // Topics, Follow-up Consent, Experiments, App ID drop from the digest
+  // (still captured in the CRM case for triage). Title carries the
+  // CRM-skip suffix when impersonating so it surfaces in push notifications.
   const singleColumnSections: SlackSingleSection[] = [];
   if (data.description.trim()) {
     singleColumnSections.push({ label: 'Description', value: data.description.trim() });
@@ -89,14 +107,10 @@ export function buildSupportRequestBlocks(
   });
 
   return {
-    title: ':sos: Support Request',
-    twoColumnSection: leftFields.length > 0 && rightFields.length > 0
-      ? { leftFields, rightFields }
-      : leftFields.length > 0
-        ? { leftFields, rightFields: [{ value: ' ' }] }
-        : undefined,
+    title: decorateTitleForImpersonation(':sos: Support Request', ctx),
     singleColumnSections,
-    links: buildDiagnosticLinks(ctx),
+    twoColumnSection: buildSubscriptionOriginSection(ctx, origin),
+    links: buildFooterLinks(ctx),
   };
 }
 
@@ -105,38 +119,21 @@ export function buildBugReportBlocks(
   origin: string | undefined,
   ctx: DiagnosticContext,
 ): SlackBlockMessage {
-  const leftFields = buildCustomerInfoLeft(ctx);
-  const rightFields: Array<{ label?: string; value: string }> = [];
-
-  if (ctx.isImpersonating) {
-    leftFields.push({ label: 'Filed by', value: `CRM skip (${ctx.shopperId || 'unknown'})` });
-  }
-  if (data.topics.length > 0) {
-    leftFields.push({ label: 'Issue Area', value: data.topics.join(', ') });
-  }
-  leftFields.push({ label: 'Follow-up Consent', value: data.followUp ? 'Yes' : 'No' });
-
-  if (origin) {
-    rightFields.push({ label: 'Origin', value: origin });
-  }
-  if (ctx.experimentsLine) {
-    rightFields.push({ label: 'Experiments', value: ctx.experimentsLine });
-  }
-
+  // Compact shape — matches the Feedback redesign. Body is the
+  // description + Subscription/Origin two-column. Issue Area,
+  // Follow-up Consent, Experiments, App ID drop from the digest (still
+  // captured in the CRM case). Title carries the CRM-skip suffix when
+  // impersonating so it surfaces in push notifications.
   const singleColumnSections: SlackSingleSection[] = [];
   if (data.description.trim()) {
     singleColumnSections.push({ label: 'What Happened', value: data.description.trim() });
   }
 
   return {
-    title: ':bug: Bug Report',
-    twoColumnSection: leftFields.length > 0 && rightFields.length > 0
-      ? { leftFields, rightFields }
-      : leftFields.length > 0
-        ? { leftFields, rightFields: [{ value: ' ' }] }
-        : undefined,
+    title: decorateTitleForImpersonation(':bug: Bug Report', ctx),
     singleColumnSections: singleColumnSections.length > 0 ? singleColumnSections : undefined,
-    links: buildDiagnosticLinks(ctx),
+    twoColumnSection: buildSubscriptionOriginSection(ctx, origin),
+    links: buildFooterLinks(ctx),
   };
 }
 
@@ -145,53 +142,33 @@ export function buildFeedbackBlocks(
   origin: string | undefined,
   ctx: DiagnosticContext,
 ): SlackBlockMessage {
-  const leftFields = buildCustomerInfoLeft(ctx);
-  const rightFields: Array<{ label?: string; value: string }> = [];
-
-  // Customer consent
-  leftFields.push({
-    label: 'Customer Consent',
-    value: data.customerConsent ? 'Yes' : 'No',
-  });
-
-  // Rating display
+  // Title carries the rating so it shows in Slack push notifications
+  // (also used as the fallback `text` field). Body keeps Subscription +
+  // Origin (the two facts readers triage on most often) and the comment.
+  // Everything else (consent, topics, experiments, customer profile) is
+  // one click away in the debug-console feedback tab via the Details link.
+  let title = ':speech_balloon: Product Feedback';
   if (ctx.isImpersonating || ctx.isInternalUser) {
-    rightFields.push({
-      label: 'No score',
-      value: ctx.isImpersonating ? 'E2S session' : `TLA account (${ctx.shopperId || 'unknown'})`,
-    });
+    const reason = ctx.isImpersonating
+      ? 'E2S session'
+      : `TLA account (${ctx.shopperId || 'unknown'})`;
+    title = `${title} - :no_entry_sign: No score (${reason})`;
   } else if (data.rating) {
     const ratingStr = String(data.rating);
     const emoji = RATING_EMOJIS[ratingStr] || ':question:';
-    const label = RATING_LABELS[ratingStr] || 'Unknown';
-    rightFields.push({
-      value: `${ratingStr}/7 - ${label}\n${emoji}`,
-    });
-  }
-
-  if (origin) {
-    rightFields.push({ label: 'Origin', value: origin });
-  }
-
-  if (data.topics.length > 0) {
-    rightFields.push({ label: 'Topics', value: data.topics.join(', ') });
-  }
-
-  if (ctx.experimentsLine) {
-    rightFields.push({ label: 'Experiments', value: ctx.experimentsLine });
+    title = `${title} - ${ratingStr}/7 ${emoji}`;
   }
 
   const singleColumnSections: SlackSingleSection[] = [];
-  if (data.comment && data.comment.trim()) {
-    singleColumnSections.push({ label: 'Comment', value: data.comment.trim() });
+  const trimmedComment = data.comment ? data.comment.trim() : '';
+  if (trimmedComment) {
+    singleColumnSections.push({ value: quoteBlock(trimmedComment) });
   }
 
   return {
-    title: ':speech_balloon: Product Feedback',
-    twoColumnSection: leftFields.length > 0 && rightFields.length > 0
-      ? { leftFields, rightFields }
-      : undefined,
+    title,
+    twoColumnSection: buildSubscriptionOriginSection(ctx, origin),
     singleColumnSections: singleColumnSections.length > 0 ? singleColumnSections : undefined,
-    links: buildDiagnosticLinks(ctx),
+    links: buildFooterLinks(ctx),
   };
 }

@@ -765,5 +765,7 @@ function buildDiagnosticContextFromRow(row) {
     isImpersonating: false,
     shopperId,
     experimentsLine: row.experiments_line || undefined,
+    customerId: row.customer_id || undefined,
+    feedbackUuid: row.feedback_id || undefined,
   };
 }

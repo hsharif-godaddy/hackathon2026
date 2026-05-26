@@ -17,7 +17,7 @@ const ITEMS_CACHE_TTL_MS = 120_000;
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 const MAX_MERGED_ITEMS = 2_000;
 
-export const FEEDBACK_RANGE_DAYS_LIST = [1, 7, 14, 30] as const;
+export const FEEDBACK_RANGE_DAYS_LIST = [1, 7, 14, 30, 90] as const;
 export type FeedbackRangeDays = (typeof FEEDBACK_RANGE_DAYS_LIST)[number];
 
 export type FeedbackWindow =
@@ -295,8 +295,17 @@ async function getObjectItems(
   return extractFeedbackItemsFromObjectText(content);
 }
 
+function appIdKeyFilter(appId: string | undefined): (key: string) => boolean {
+  if (!appId) return () => true;
+  // Hive-partition layout puts appId below date: `…/day=DD/hour=HH/appId={appId}/{ts}.parquet`.
+  // Substring match is sufficient — the segment is unambiguous within the bucket prefix.
+  const needle = `/appId=${appId}/`;
+  return (key: string) => key.includes(needle);
+}
+
 async function fetchFeedbackFromS3Rolling(
   dayCount: FeedbackRangeDays,
+  appId?: string,
 ): Promise<{ items: FeedbackItem[]; merged_truncated: boolean; partition_errors: number }> {
   const bucket = getFeedbackS3Bucket();
   if (!bucket) return { items: [], merged_truncated: false, partition_errors: 0 };
@@ -305,6 +314,7 @@ async function fetchFeedbackFromS3Rolling(
   const feedbackItems: FeedbackItem[] = [];
   let partition_errors = 0;
   const partitionDays = dayCount + 1;
+  const matchesAppId = appIdKeyFilter(appId);
 
   for (let i = 0; i < partitionDays; i += 1) {
     const date = new Date(now - i * MS_PER_DAY);
@@ -320,6 +330,7 @@ async function fetchFeedbackFromS3Rolling(
 
     let malformedLinesInPartition = 0;
     for (const key of keys) {
+      if (!matchesAppId(key)) continue;
       const { items: fromKey, malformedLineCount } = await getObjectItems(bucket, key);
       malformedLinesInPartition += malformedLineCount;
       for (const item of fromKey) {
@@ -343,12 +354,14 @@ async function fetchFeedbackFromS3Rolling(
 async function fetchFeedbackFromS3Absolute(
   startYmd: string,
   endYmd: string,
+  appId?: string,
 ): Promise<{ items: FeedbackItem[]; merged_truncated: boolean; partition_errors: number }> {
   const bucket = getFeedbackS3Bucket();
   if (!bucket) return { items: [], merged_truncated: false, partition_errors: 0 };
 
   const feedbackItems: FeedbackItem[] = [];
   let partition_errors = 0;
+  const matchesAppId = appIdKeyFilter(appId);
   for (const date of enumerateUtcDaysInclusive(startYmd, endYmd)) {
     const prefix = hivePrefixForUtcDate(date);
     let keys: string[] = [];
@@ -362,6 +375,7 @@ async function fetchFeedbackFromS3Absolute(
 
     let malformedLinesInPartition = 0;
     for (const key of keys) {
+      if (!matchesAppId(key)) continue;
       const { items: fromKey, malformedLineCount } = await getObjectItems(bucket, key);
       malformedLinesInPartition += malformedLineCount;
       for (const item of fromKey) {
@@ -382,7 +396,9 @@ async function fetchFeedbackFromS3Absolute(
   };
 }
 
-async function fetchFeedbackFromS3All(): Promise<{ items: FeedbackItem[]; merged_truncated: boolean; partition_errors: number }> {
+async function fetchFeedbackFromS3All(
+  appId?: string,
+): Promise<{ items: FeedbackItem[]; merged_truncated: boolean; partition_errors: number }> {
   const bucket = getFeedbackS3Bucket();
   if (!bucket) return { items: [], merged_truncated: false, partition_errors: 0 };
 
@@ -397,6 +413,8 @@ async function fetchFeedbackFromS3All(): Promise<{ items: FeedbackItem[]; merged
     return { items: [], merged_truncated: false, partition_errors };
   }
 
+  const matchesAppId = appIdKeyFilter(appId);
+  keys = keys.filter(matchesAppId);
   keys.sort((a, b) => b.localeCompare(a));
 
   const feedbackItems: FeedbackItem[] = [];
@@ -433,10 +451,12 @@ async function fetchFeedbackFromS3All(): Promise<{ items: FeedbackItem[]; merged
 
 export async function getFeedbackItemsCached(
   window: FeedbackWindow,
+  appId?: string,
+  force: boolean = false,
 ): Promise<{ items: FeedbackItem[]; merged_truncated: boolean; partition_errors: number }> {
-  const key = feedbackWindowCacheKey(window);
+  const key = `${feedbackWindowCacheKey(window)}:app=${appId ?? ''}`;
   const now = Date.now();
-  if (itemsCache && itemsCache.key === key && now - itemsCache.at < ITEMS_CACHE_TTL_MS) {
+  if (!force && itemsCache && itemsCache.key === key && now - itemsCache.at < ITEMS_CACHE_TTL_MS) {
     return {
       items: itemsCache.items,
       merged_truncated: itemsCache.merged_truncated,
@@ -445,10 +465,10 @@ export async function getFeedbackItemsCached(
   }
   const merged =
     window.kind === 'all'
-      ? await fetchFeedbackFromS3All()
+      ? await fetchFeedbackFromS3All(appId)
       : window.kind === 'rolling'
-        ? await fetchFeedbackFromS3Rolling(window.days)
-        : await fetchFeedbackFromS3Absolute(window.startYmd, window.endYmd);
+        ? await fetchFeedbackFromS3Rolling(window.days, appId)
+        : await fetchFeedbackFromS3Absolute(window.startYmd, window.endYmd, appId);
   if (merged.partition_errors === 0) {
     itemsCache = {
       at: now,
@@ -747,4 +767,127 @@ export function buildFeedbackRecent(
   }
 
   return { items: recentItems, merged_truncated: mergedTruncated };
+}
+
+/**
+ * Per-app feedback rows for the debug-console Feedback tab. Returns the
+ * full parquet record (rather than the projected `FeedbackRecentRow`) so
+ * the panel can render every field that was dropped from the compact Slack
+ * digest — Origin, Topics, Experiments, Subscription info, Customer
+ * profile, links, etc.
+ *
+ * Topics arrive as a JSON-stringified array; parsed eagerly here so the
+ * client doesn't need to second-guess the wire shape.
+ */
+export interface FeedbackByAppRow {
+  feedbackId: string;
+  feedbackUtcTs?: string;
+  appId?: string;
+  customerId?: string;
+  shopperId?: string;
+  rating?: number;
+  comment?: string;
+  consent?: boolean;
+  origin?: string;
+  category?: string;
+  topics: string[];
+  experimentsLine?: string;
+  planTypeName?: string;
+  subscriptionId?: string;
+  subscriptionStatus?: string;
+  subscriptionInfo?: string;
+  totalCredits?: number;
+  availableCredits?: number;
+  appPublishFlag?: boolean;
+  publishUrl?: string;
+  previewUrl?: string;
+  publishedUrlFull?: string;
+  fullStoryUrl?: string;
+  customerFirstName?: string;
+  customerLastName?: string;
+  customerEmail?: string;
+  customerPhone?: string;
+}
+
+function boolField(item: FeedbackItem, keys: readonly string[]): boolean | undefined {
+  for (const k of keys) {
+    const v = item[k];
+    if (typeof v === 'boolean') return v;
+  }
+  return undefined;
+}
+
+function parseTopicsField(item: FeedbackItem): string[] {
+  const raw = item['feedback_topic_list'];
+  if (Array.isArray(raw)) return raw.filter((x): x is string => typeof x === 'string');
+  if (typeof raw !== 'string' || !raw.trim()) return [];
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (Array.isArray(parsed)) return parsed.filter((x): x is string => typeof x === 'string');
+  } catch {
+    // Malformed topic JSON — drop, don't poison the UI.
+  }
+  return [];
+}
+
+export function buildFeedbackByApp(
+  items: FeedbackItem[],
+  window: FeedbackWindow,
+  mergedTruncated: boolean,
+): { items: FeedbackByAppRow[]; merged_truncated: boolean; total: number; avgRating: number | null } {
+  const inWindow = filterFeedbackItemsForWindow(items, window).sort((a, b) =>
+    String(b.feedback_utc_ts ?? '').localeCompare(String(a.feedback_utc_ts ?? '')),
+  );
+
+  const rows: FeedbackByAppRow[] = [];
+  let ratingSum = 0;
+  let ratingCount = 0;
+
+  for (const item of inWindow) {
+    const feedbackId = strField(item, ['feedback_id']);
+    if (!feedbackId) continue;
+
+    const rating = numField(item, ['rating']);
+    if (rating !== undefined && Number.isFinite(rating)) {
+      ratingSum += rating;
+      ratingCount += 1;
+    }
+
+    rows.push({
+      feedbackId,
+      feedbackUtcTs: strField(item, ['feedback_utc_ts']),
+      appId: strField(item, ['app_id', 'appId']),
+      customerId: strField(item, ['customer_id', 'customerId']),
+      shopperId: strField(item, ['shopper_id', 'shopperId']),
+      rating,
+      comment: strField(item, ['feedback_text', 'comment']),
+      consent: boolField(item, ['consent_flag']),
+      origin: strField(item, ['feedback_origin_name', 'origin']),
+      category: strField(item, ['feedback_category']),
+      topics: parseTopicsField(item),
+      experimentsLine: strField(item, ['experiments_line']),
+      planTypeName: strField(item, ['plan_type_name']),
+      subscriptionId: strField(item, ['subscription_id']),
+      subscriptionStatus: strField(item, ['subscription_status']),
+      subscriptionInfo: strField(item, ['subscription_info']),
+      totalCredits: numField(item, ['total_credit_cnt']),
+      availableCredits: numField(item, ['available_credit_cnt']),
+      appPublishFlag: boolField(item, ['app_publish_flag']),
+      publishUrl: strField(item, ['publish_url']),
+      previewUrl: strField(item, ['preview_url']),
+      publishedUrlFull: strField(item, ['published_url_full']),
+      fullStoryUrl: strField(item, ['full_story_url']),
+      customerFirstName: strField(item, ['customer_first_name']),
+      customerLastName: strField(item, ['customer_last_name']),
+      customerEmail: strField(item, ['customer_email']),
+      customerPhone: strField(item, ['customer_phone']),
+    });
+  }
+
+  return {
+    items: rows,
+    merged_truncated: mergedTruncated,
+    total: rows.length,
+    avgRating: ratingCount > 0 ? ratingSum / ratingCount : null,
+  };
 }

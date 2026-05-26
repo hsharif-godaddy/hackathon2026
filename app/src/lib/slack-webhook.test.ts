@@ -529,4 +529,74 @@ describe('slack-webhook', function slackWebhookTests() {
       expect(() => JSON.parse(callBody)).not.toThrow();
     });
   });
+
+  // formatSlackBlockMessage covers the new compact-shape contract: long-form
+  // single-column sections render BEFORE the two-column metadata block, and
+  // footer link entries without a `url` render as plain text. Both behaviors
+  // are exercised by the UI's slackBuilders, so a regression here would
+  // silently corrupt every Slack message on the legacy path. fanout's
+  // slack-format.test.mjs covers the Lambda port; these mirror it for the UI.
+  describe('formatSlackBlockMessage block ordering + url-less links', function formatTests() {
+    it('renders singleColumnSections BEFORE twoColumnSection so long-form leads', async function ordering() {
+      const { formatSlackBlockMessage } = await import('./slack-webhook');
+      const result = formatSlackBlockMessage({
+        title: ':bug: Bug Report',
+        singleColumnSections: [{ label: 'What Happened', value: 'crash' }],
+        twoColumnSection: {
+          leftFields: [{ label: 'Subscription', value: 'Pro Annual' }],
+          rightFields: [{ label: 'Origin', value: 'develop' }],
+        },
+        links: [{ text: 'app-1' }],
+      });
+
+      const blocks = result.blocks as Array<{ type: string; text?: { text: string }; fields?: unknown }>;
+      expect(blocks[0].type).toBe('section'); // title
+      expect(blocks[0].text?.text).toBe('*:bug: Bug Report*');
+      expect(blocks[1].type).toBe('section'); // single-column (long-form)
+      expect(blocks[1].text?.text).toBe('*What Happened*\ncrash');
+      expect(blocks[2].type).toBe('section'); // two-column metadata after
+      expect(blocks[2].fields).toBeDefined();
+    });
+
+    it('singleColumnSections without label renders raw value (no bold prefix)', async function noLabel() {
+      const { formatSlackBlockMessage } = await import('./slack-webhook');
+      const result = formatSlackBlockMessage({
+        singleColumnSections: [
+          { value: '_We\'ll reply to the email on the customer\'s GoDaddy account._' },
+        ],
+      });
+      const blocks = result.blocks as Array<{ text?: { text: string } }>;
+      expect(blocks[0].text?.text).toBe('_We\'ll reply to the email on the customer\'s GoDaddy account._');
+    });
+
+    it('link without `url` renders as plain mrkdwn text (App ID label)', async function urlLessLink() {
+      const { formatSlackBlockMessage } = await import('./slack-webhook');
+      const result = formatSlackBlockMessage({
+        links: [
+          { text: 'app-1' },
+          { url: 'https://example.com/preview', text: 'Preview' },
+        ],
+      });
+      const blocks = result.blocks as Array<{ type: string; elements?: Array<{ text: string }> }>;
+      const ctx = blocks.find((b) => b.type === 'context');
+      expect(ctx?.elements?.[0].text).toBe('app-1');
+      expect(ctx?.elements?.[1].text).toBe('<https://example.com/preview|Preview>');
+    });
+
+    it('all-links-have-url path still works (back-compat for callers without label entries)', async function allUrls() {
+      const { formatSlackBlockMessage } = await import('./slack-webhook');
+      const result = formatSlackBlockMessage({
+        links: [
+          { url: 'https://example.com/a', text: 'A' },
+          { url: 'https://example.com/b', text: 'B' },
+        ],
+      });
+      const blocks = result.blocks as Array<{ type: string; elements?: Array<{ text: string }> }>;
+      const ctx = blocks.find((b) => b.type === 'context');
+      expect(ctx?.elements?.map((e) => e.text)).toEqual([
+        '<https://example.com/a|A>',
+        '<https://example.com/b|B>',
+      ]);
+    });
+  });
 });
