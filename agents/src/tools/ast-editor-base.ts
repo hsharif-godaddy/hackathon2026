@@ -9,7 +9,7 @@ import { GitTool } from './git-tool.js';
 import { translateDockerPath } from '../utils/path-helper.js';
 import { logger } from '../logging/index.js';
 import { toolAstEditEvents } from '../logging/events/index.js';
-import { DevSupervisorClientFactory } from '../utils/dev-supervisor-client-factory.js';
+import { createForWorkspace } from '../workspace/index.js';
 
 const traverse = _traverse.default || _traverse;
 const generate = _generate.default || _generate;
@@ -40,8 +40,8 @@ export abstract class ASTEditorBase {
    * Create a GitTool instance for the specified app
    */
   protected createGitTool(appId: string): GitTool {
-    const devSupervisor = DevSupervisorClientFactory.createForApp(appId)
-    return new GitTool(devSupervisor || undefined)
+    const workspace = createForWorkspace(appId, 'preview');
+    return new GitTool(workspace?.tasks)
   }
 
   /**

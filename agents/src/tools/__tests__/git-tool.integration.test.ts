@@ -9,6 +9,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { GitTool } from '../git-tool.js';
 import { DevSupervisorClientFactory } from '../../utils/dev-supervisor-client-factory.js';
+import { createForWorkspace } from '../../workspace/index.js';
 import { AppRepository } from '../../database/repositories/AppRepository.js';
 
 describe('Git Tool Integration Tests', () => {
@@ -38,14 +39,14 @@ describe('Git Tool Integration Tests', () => {
     
     console.log(`Running git tool integration tests against app: ${testAppId}`);
     
-    // Create GitTool instance with dev-supervisor client
-    const devSupervisor = DevSupervisorClientFactory.createForApp(testAppId);
-    if (!devSupervisor) {
+    // Create GitTool instance with workspace tasks
+    const workspace = createForWorkspace(testAppId, 'preview');
+    if (!workspace) {
       skipTests = true;
       return;
     }
-    
-    gitTool = new GitTool(devSupervisor);
+
+    gitTool = new GitTool(workspace.tasks);
   }, 30000);
 
   afterAll(async () => {

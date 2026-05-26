@@ -3,7 +3,7 @@ import { AppRepository } from '../../database/repositories/AppRepository.js';
 import { GitRemoteConfigRepository } from '../../database/repositories/GitRemoteConfigRepository.js';
 import { GitTool } from '../../tools/git-tool.js';
 import { Logger } from '../../logging/index.js';
-import { DevSupervisorClientFactory } from '../../utils/dev-supervisor-client-factory.js';
+import { createForWorkspace } from '../../workspace/index.js';
 import { validateAppOwnership } from '../middleware/app-ownership.js';
 import { validateGitSync } from '../middleware/git-import-validation.js';
 import { getErrorMessage } from '../../utils/error.js';
@@ -131,9 +131,8 @@ router.post(
         return;
       }
 
-      // Get dev-supervisor for the app
-      const devSupervisor = DevSupervisorClientFactory.createForApp(appId);
-      if (!devSupervisor || !devSupervisor.isAvailable()) {
+      const workspace = createForWorkspace(appId, 'preview');
+      if (!workspace) {
         res.status(503).json({
           error: 'App container is not available',
           message: 'The app container must be running to configure git remote'
@@ -141,8 +140,7 @@ router.post(
         return;
       }
 
-      // Create git tool with dev-supervisor
-      const gitTool = new GitTool(devSupervisor);
+      const gitTool = new GitTool(workspace.tasks);
 
       // Execute configure-remote operation
       const result = await gitTool.executeGitOperation(app.path, {

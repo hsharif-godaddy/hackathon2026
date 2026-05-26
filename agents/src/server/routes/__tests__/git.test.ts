@@ -69,6 +69,10 @@ vi.mock('../../../utils/dev-supervisor-client-factory.js', () => ({
   },
 }));
 
+vi.mock('../../../workspace/index.js', () => ({
+  createForWorkspace: vi.fn(() => ({ tasks: {} })),
+}));
+
 vi.mock('../../../logging/index.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../../logging/index.js')>();
   return {
@@ -86,6 +90,7 @@ vi.mock('../../middleware/app-ownership.js', () => ({
 }));
 
 import gitRouter from '../git.js';
+import { createForWorkspace } from '../../../workspace/index.js';
 
 function createTestApp() {
   const app = express();
@@ -98,6 +103,7 @@ describe('git routes', function gitRouteTests() {
   beforeEach(function resetMocks() {
     vi.clearAllMocks();
 
+    vi.mocked(createForWorkspace).mockReturnValue({ tasks: {} } as ReturnType<typeof createForWorkspace>);
     mocks.findById.mockReturnValue({ path: '/app' });
     mocks.getCurrentBranch.mockResolvedValue('main');
     mocks.getStatus.mockResolvedValue({ stagedFiles: 0 });
@@ -645,6 +651,39 @@ describe('git routes', function gitRouteTests() {
       expect(response.status).toBe(500);
       expect(response.body.error).toBe('Failed to read diff');
       expect(response.body.details).toBe('git unreachable');
+    });
+  });
+
+  describe('workspace unavailable (503)', function workspaceUnavailableTests() {
+    beforeEach(() => {
+      vi.mocked(createForWorkspace).mockReturnValue(null);
+    });
+
+    it.each([
+      ['GET', '/apps/app-123/git/history', undefined],
+      ['PATCH', '/apps/app-123/git/commit-message', { message: 'test' }],
+      ['GET', '/apps/app-123/git/status', undefined],
+      ['GET', '/apps/app-123/git/diff?commitHash=abc1234', undefined],
+      ['POST', '/apps/app-123/git/checkout', { commitHash: 'abc1234' }],
+      ['POST', '/apps/app-123/git/return', {}],
+      ['POST', '/apps/app-123/git/restore', {}],
+    ])('%s %s returns 503 when workspace is null', async (method, pathWithQuery, body) => {
+      const app = createTestApp();
+      const [path, query] = pathWithQuery.split('?');
+      let req;
+      if (method === 'GET') {
+        req = request(app).get(path);
+        if (query) req = req.query(Object.fromEntries(new URLSearchParams(query)));
+      } else if (method === 'PATCH') {
+        req = request(app).patch(path).send(body);
+      } else {
+        req = request(app).post(path).send(body);
+      }
+
+      const response = await req;
+
+      expect(response.status).toBe(503);
+      expect(response.body.error).toBe('Preview container is not available');
     });
   });
 });

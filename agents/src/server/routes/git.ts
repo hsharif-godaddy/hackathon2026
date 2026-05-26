@@ -3,7 +3,7 @@ import { AppRepository } from '../../database/index.js';
 import { GitTool } from '../../tools/git-tool.js';
 import { GitUtils } from '../../utils/git.js';
 import { log } from '../../logging/index.js';
-import { DevSupervisorClientFactory } from '../../utils/dev-supervisor-client-factory.js';
+import { createForWorkspace } from '../../workspace/index.js';
 import { validateAppOwnership } from '../middleware/app-ownership.js';
 import { ConversationRepository } from '../../database/index.js';
 import { getMessageStore } from '../../memory/index.js';
@@ -68,9 +68,12 @@ router.get('/apps/:id/git/history', validateAppOwnership, async (req, res) => {
     }
 
     // Create git tool with dev-supervisor for this specific app
-    const devSupervisor = DevSupervisorClientFactory.createForApp(id)
-    const gitTool = new GitTool(devSupervisor || undefined)
-    const gitUtils = new GitUtils(devSupervisor || undefined)
+    const workspace = createForWorkspace(id, 'preview');
+    if (!workspace) {
+      return res.status(503).json({ error: 'Preview container is not available' });
+    }
+    const gitTool = new GitTool(workspace.tasks);
+    const gitUtils = new GitUtils(workspace.tasks);
 
     // Fetch one extra commit so the API can return hasMore without an extra round-trip.
     const result = await gitTool.executeGitOperation(app.path, {
@@ -152,8 +155,11 @@ router.patch('/apps/:id/git/commit-message', validateAppOwnership, async (req, r
       return res.status(404).json({ error: 'App not found' });
     }
 
-    const devSupervisor = DevSupervisorClientFactory.createForApp(id)
-    const gitUtils = new GitUtils(devSupervisor || undefined)
+    const workspace = createForWorkspace(id, 'preview');
+    if (!workspace) {
+      return res.status(503).json({ error: 'Preview container is not available' });
+    }
+    const gitUtils = new GitUtils(workspace.tasks);
 
     const currentBranch = await gitUtils.getCurrentBranch(app.path);
     if (currentBranch !== 'main') {
@@ -256,8 +262,11 @@ router.get('/apps/:id/git/status', validateAppOwnership, async (req, res) => {
       return res.status(404).json({ error: 'App not found' });
     }
 
-    const devSupervisor = DevSupervisorClientFactory.createForApp(id);
-    const gitUtils = new GitUtils(devSupervisor || undefined);
+    const workspace = createForWorkspace(id, 'preview');
+    if (!workspace) {
+      return res.status(503).json({ error: 'Preview container is not available' });
+    }
+    const gitUtils = new GitUtils(workspace.tasks);
 
     const hasUncommittedChanges = await gitUtils.hasUncommittedChanges(app.path);
 
@@ -338,8 +347,11 @@ router.get('/apps/:id/git/diff', validateAppOwnership, async (req, res) => {
       return res.status(404).json({ error: 'App not found' });
     }
 
-    const devSupervisor = DevSupervisorClientFactory.createForApp(id);
-    const gitUtils = new GitUtils(devSupervisor || undefined);
+    const workspace = createForWorkspace(id, 'preview');
+    if (!workspace) {
+      return res.status(503).json({ error: 'Preview container is not available' });
+    }
+    const gitUtils = new GitUtils(workspace.tasks);
 
     let stashDiff: string | null = null;
     let stashTruncated = false;
@@ -414,8 +426,11 @@ router.post('/apps/:id/git/checkout', validateAppOwnership, async (req, res) => 
     }
 
     // Create git tool with dev-supervisor for this specific app
-    const devSupervisor = DevSupervisorClientFactory.createForApp(id)
-    const gitTool = new GitTool(devSupervisor || undefined)
+    const workspace = createForWorkspace(id, 'preview');
+    if (!workspace) {
+      return res.status(503).json({ error: 'Preview container is not available' });
+    }
+    const gitTool = new GitTool(workspace.tasks);
 
     // First save the current HEAD position
     const currentBranchResult = await gitTool.executeGitOperation(app.path, {
@@ -549,8 +564,11 @@ router.post('/apps/:id/git/return', validateAppOwnership, async (req, res) => {
     }
 
     // Create git tool with dev-supervisor for this specific app
-    const devSupervisor = DevSupervisorClientFactory.createForApp(id)
-    const gitTool = new GitTool(devSupervisor || undefined)
+    const workspace = createForWorkspace(id, 'preview');
+    if (!workspace) {
+      return res.status(503).json({ error: 'Preview container is not available' });
+    }
+    const gitTool = new GitTool(workspace.tasks);
 
     // First, check current branch status
     const statusResult = await gitTool.executeGitOperation(app.path, {
@@ -644,9 +662,12 @@ router.post('/apps/:id/git/restore', validateAppOwnership, async (req, res) => {
       return res.status(404).json({ error: 'App not found' });
     }
 
-    const devSupervisor = DevSupervisorClientFactory.createForApp(id)
-    const gitTool = new GitTool(devSupervisor || undefined)
-    const gitUtils = new GitUtils(devSupervisor || undefined)
+    const workspace = createForWorkspace(id, 'preview');
+    if (!workspace) {
+      return res.status(503).json({ error: 'Preview container is not available' });
+    }
+    const gitTool = new GitTool(workspace.tasks);
+    const gitUtils = new GitUtils(workspace.tasks);
 
     // Stash before any restore so the user's uncommitted work is preserved.
     // The stash command is a no-op when the tree is clean, so this is safe

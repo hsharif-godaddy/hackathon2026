@@ -1,7 +1,7 @@
 import { GitUtils, GitStatus as GitUtilsStatus } from '../utils/git.js';
 import { logger, Logger } from '../logging/index.js';
 import { toolGitEvents } from '../logging/events/index.js';
-import { DevSupervisorClient } from '../services/DevSupervisorClient.js';
+import type { WorkspaceTasks } from '../workspace/tasks.js';
 import { AppRepository } from '../database/repositories/AppRepository.js';
 import { buildShellCommand } from '../utils/shell-utils.js';
 import { GitRemoteTokenManager } from '../services/GitRemoteTokenManager.js';
@@ -122,16 +122,16 @@ export interface GitToolResult {
  * Provides comprehensive Git operations with intelligent features
  */
 export class GitTool {
-  private gitUtils: GitUtils;
-  private devSupervisor: DevSupervisorClient | null;
-  private gitRemoteTokenManager: GitRemoteTokenManager | null;
-  private gitRemoteConfigRepo: GitRemoteConfigRepository;
+  private readonly gitUtils: GitUtils;
+  private readonly tasks: WorkspaceTasks | null;
+  private readonly gitRemoteTokenManager: GitRemoteTokenManager | null;
+  private readonly gitRemoteConfigRepo: GitRemoteConfigRepository;
   private logger = Logger.create({ component: 'git-tool' });
 
-  constructor(devSupervisor?: DevSupervisorClient) {
-    this.devSupervisor = devSupervisor || null;
-    this.gitUtils = new GitUtils(devSupervisor);
-    this.gitRemoteTokenManager = devSupervisor ? new GitRemoteTokenManager(devSupervisor) : null;
+  constructor(tasks?: WorkspaceTasks) {
+    this.tasks = tasks || null;
+    this.gitUtils = new GitUtils(tasks);
+    this.gitRemoteTokenManager = tasks ? new GitRemoteTokenManager(tasks) : null;
     this.gitRemoteConfigRepo = new GitRemoteConfigRepository();
   }
 
@@ -504,13 +504,8 @@ export class GitTool {
    */
   private async handleDiff(appPath: string, options: GitToolOptions): Promise<GitToolResult> {
     try {
-      // Check if dev-supervisor is available
-      if (!this.devSupervisor?.isAvailable()) {
-        throw new Error(
-          'Git diff requires dev-supervisor to be available for command execution. ' +
-          'This typically means the system is not running in a containerized environment with dev-supervisor installed, ' +
-          'or the dev-supervisor socket is not accessible.'
-        );
+      if (!this.tasks) {
+        throw new Error('Git diff requires a workspace connection for command execution.');
       }
 
       // Build git diff command
@@ -524,30 +519,23 @@ export class GitTool {
         args.push(...options.files);
       }
 
-      // Execute using dev-supervisor with properly escaped command
-      // Always use /app as the working directory since all deployments are containerized
-      const execResult = await this.devSupervisor!.exec({
+      const execResult = await this.tasks.runCommandSync({
         command: buildShellCommand(args),
-        working_dir: '/app',
-        timeout: 30,
-        capture_output: true
+        workingDir: '/app',
+        timeoutSeconds: 30,
       });
 
-      const result = {
-        success: execResult.success,
-        stdout: execResult.stdout,
-        stderr: execResult.stderr,
-      };
+      const success = execResult.exitCode === 0;
 
       const toolResult: GitToolResult = {
-        success: result.success,
+        success,
         operation: 'diff',
-        diff: result.stdout || 'No differences found',
-        output: result.stdout || 'No differences found',
+        diff: execResult.stdout || 'No differences found',
+        output: execResult.stdout || 'No differences found',
       };
 
-      if (!result.success) {
-        toolResult.error = result.stderr;
+      if (!success) {
+        toolResult.error = execResult.timedOut ? 'Command timed out' : execResult.stderr;
       }
 
       return toolResult;
@@ -1188,13 +1176,8 @@ export class GitTool {
    */
   private async handleClean(appPath: string, options: GitToolOptions): Promise<GitToolResult> {
     try {
-      // Check if dev-supervisor is available
-      if (!this.devSupervisor?.isAvailable()) {
-        throw new Error(
-          'Git clean requires dev-supervisor to be available for command execution. ' +
-          'This typically means the system is not running in a containerized environment with dev-supervisor installed, ' +
-          'or the dev-supervisor socket is not accessible.'
-        );
+      if (!this.tasks) {
+        throw new Error('Git clean requires a workspace connection for command execution.');
       }
 
       // Build git clean command
@@ -1205,25 +1188,24 @@ export class GitTool {
         args.push('-n'); // dry run
       }
 
-      // Execute via dev-supervisor
-      // Always use /app as the working directory since all deployments are containerized
-      const execResult = await this.devSupervisor!.exec({
+      const execResult = await this.tasks.runCommandSync({
         command: buildShellCommand(args),
-        working_dir: '/app',
-        timeout: 30,
-        capture_output: true,
+        workingDir: '/app',
+        timeoutSeconds: 30,
       });
 
+      const success = execResult.exitCode === 0;
+
       const toolResult: GitToolResult = {
-        success: execResult.success,
+        success,
         operation: 'clean',
-        output: execResult.success
+        output: success
           ? execResult.stdout || 'Successfully removed untracked files'
-          : execResult.stderr,
+          : (execResult.timedOut ? 'Command timed out' : execResult.stderr),
       };
 
-      if (!execResult.success) {
-        toolResult.error = execResult.stderr;
+      if (!success) {
+        toolResult.error = execResult.timedOut ? 'Command timed out' : execResult.stderr;
       }
 
       return toolResult;
@@ -1284,13 +1266,8 @@ export class GitTool {
         };
       }
 
-      // Check if dev-supervisor is available
-      if (!this.devSupervisor?.isAvailable()) {
-        throw new Error(
-          'Git revert requires dev-supervisor to be available for command execution. ' +
-          'This typically means the system is not running in a containerized environment with dev-supervisor installed, ' +
-          'or the dev-supervisor socket is not accessible.'
-        );
+      if (!this.tasks) {
+        throw new Error('Git revert requires a workspace connection for command execution.');
       }
 
       // Create git revert command with appropriate options
@@ -1300,27 +1277,23 @@ export class GitTool {
       }
       args.push(commitHash);
 
-      // Always use /app as the working directory since all deployments are containerized
-      const execResult = await this.devSupervisor!.exec({
+      const execResult = await this.tasks.runCommandSync({
         command: buildShellCommand(args),
-        working_dir: '/app',
-        timeout: 30,
-        capture_output: true
+        workingDir: '/app',
+        timeoutSeconds: 30,
       });
 
-      const result = {
-        success: execResult.success,
-        stdout: execResult.stdout,
-        stderr: execResult.stderr,
-      };
+      const success = execResult.exitCode === 0;
 
       // Get updated status after revert
-      const status = result.success ? await this.gitUtils.getStatus(appPath) : null;
+      const status = success ? await this.gitUtils.getStatus(appPath) : null;
 
       const toolResult: GitToolResult = {
-        success: result.success,
+        success,
         operation: 'revert',
-        output: result.success ? `Successfully reverted commit: ${commitHash}` : result.stderr,
+        output: success
+          ? `Successfully reverted commit: ${commitHash}`
+          : (execResult.timedOut ? 'Command timed out' : execResult.stderr),
       };
 
       if (status) {
@@ -1332,8 +1305,8 @@ export class GitTool {
         };
       }
 
-      if (!result.success) {
-        toolResult.error = result.stderr;
+      if (!success) {
+        toolResult.error = execResult.timedOut ? 'Command timed out' : execResult.stderr;
       }
 
       return toolResult;
@@ -1573,11 +1546,11 @@ export class GitTool {
     repoUrl: string,
     token?: string
   ): Promise<GitToolResult> {
-    if (!this.devSupervisor?.isAvailable()) {
+    if (!this.tasks) {
       return {
         success: false,
         operation: 'push',
-        error: 'Dev-supervisor is required for filtered push'
+        error: 'Workspace connection is required for filtered push'
       };
     }
 

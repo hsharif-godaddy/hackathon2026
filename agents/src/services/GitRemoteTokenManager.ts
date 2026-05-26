@@ -1,4 +1,4 @@
-import { DevSupervisorClient } from './DevSupervisorClient.js';
+import type { WorkspaceTasks } from '../workspace/tasks.js';
 import { GitProviderFactory } from './git-providers/GitProviderFactory.js';
 import { Logger } from '../logging/index.js';
 import { getErrorMessage } from '../utils/error.js';
@@ -20,7 +20,7 @@ import { getNomadAllocConfig } from '../utils/nomad-config.js';
 export class GitRemoteTokenManager {
   private logger = Logger.create({ component: 'git-remote-token-manager' });
 
-  constructor(private devSupervisor: DevSupervisorClient) {}
+  constructor(private readonly tasks: WorkspaceTasks) {}
 
   /**
    * Configure git credentials for remote operations
@@ -60,15 +60,13 @@ export class GitRemoteTokenManager {
       // Build bash script with token
       const script = this.buildCredentialScript(provider.name, hostname, effectiveToken);
 
-      // Execute script inside container via dev-supervisor
-      const execResult = await this.devSupervisor.exec({
+      const execResult = await this.tasks.runCommandSync({
         command: script,
-        working_dir: '/app',
-        timeout: 300,
-        capture_output: true
+        workingDir: '/app',
+        timeoutSeconds: 300,
       });
 
-      if (execResult.exit_code !== 0) {
+      if (execResult.exitCode !== 0) {
         throw new Error(
           `Credential configuration failed: ${execResult.stderr || execResult.stdout || 'Unknown error'}`
         );
@@ -108,14 +106,13 @@ export class GitRemoteTokenManager {
         git config --local --unset credential.helper || true
       `;
 
-      const execResult = await this.devSupervisor.exec({
+      const execResult = await this.tasks.runCommandSync({
         command: script,
-        working_dir: '/app',
-        timeout: 300,
-        capture_output: true
+        workingDir: '/app',
+        timeoutSeconds: 300,
       });
 
-      if (execResult.exit_code !== 0) {
+      if (execResult.exitCode !== 0) {
         // Log warning but don't throw - cleanup failures shouldn't break operation
         this.logger.warn('git-remote.credentials.cleanup.warning', {
           appId,

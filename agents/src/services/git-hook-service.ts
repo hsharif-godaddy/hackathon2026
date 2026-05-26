@@ -1,5 +1,6 @@
 import { AppRepository } from '../database/repositories/AppRepository.js';
 import { DevSupervisorClientFactory } from '../utils/dev-supervisor-client-factory.js';
+import { createForWorkspace } from '../workspace/index.js';
 import { GitUtils } from '../utils/git.js';
 import { logger } from '../logging/index.js';
 
@@ -168,7 +169,13 @@ export class GitHookService {
         this.logGitError(appId, 'setupCoordination', setupError as Error);
       }
 
-      const gitUtils = new GitUtils(devSupervisor);
+      const workspace = createForWorkspace(appId, 'preview');
+      if (!workspace) {
+        this.logGitError(appId, 'handleMessageStart', 'Workspace not available');
+        return;
+      }
+
+      const gitUtils = new GitUtils(workspace.tasks);
 
       // Check if this is a git repository
       const isRepo = await gitUtils.isGitRepository(app.path);
@@ -298,14 +305,14 @@ export class GitHookService {
         return null;
       }
 
-      const devSupervisor = DevSupervisorClientFactory.createForApp(appId);
-      if (!devSupervisor) {
-        this.logGitError(appId, 'handleConnectionEnd', 'DevSupervisor not available');
+      const workspace = createForWorkspace(appId, 'preview');
+      if (!workspace) {
+        this.logGitError(appId, 'handleConnectionEnd', 'Workspace not available');
         this.appBranches.delete(appId);
         return null;
       }
 
-      const gitUtils = new GitUtils(devSupervisor);
+      const gitUtils = new GitUtils(workspace.tasks);
 
       // Check if this is a git repository
       const isRepo = await gitUtils.isGitRepository(app.path);

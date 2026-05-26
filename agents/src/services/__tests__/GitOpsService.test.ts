@@ -64,6 +64,10 @@ vi.mock('../ProjectSourceDetectionService.js', () => ({
   },
 }));
 
+vi.mock('../../workspace/index.js', () => ({
+  createForWorkspace: vi.fn(() => ({ tasks: {} })),
+}));
+
 const mockLogger = vi.hoisted(() => ({
   info: vi.fn(),
   warn: vi.fn(),
@@ -84,6 +88,7 @@ import { DevSupervisorClientFactory } from '../../utils/dev-supervisor-client-fa
 import { isSupportedProjectOnHost, matchesBuildToolOnHost } from '../../server/middleware/git-import-validation.js';
 import { appRestartService } from '../AppRestartService.js';
 import { projectSourceDetectionService } from '../ProjectSourceDetectionService.js';
+import { createForWorkspace } from '../../workspace/index.js';
 
 describe('GitOpsService', () => {
   let service: GitOpsService;
@@ -157,6 +162,9 @@ describe('GitOpsService', () => {
     // Default: project is supported (matchesBuildToolOnHost returns true for the first tool)
     vi.mocked(isSupportedProjectOnHost).mockReturnValue(true);
     vi.mocked(matchesBuildToolOnHost).mockReturnValue(true);
+
+    // Default: workspace is available
+    vi.mocked(createForWorkspace).mockReturnValue({ tasks: {} } as any);
 
     service = new GitOpsService();
   });
@@ -617,6 +625,49 @@ describe('GitOpsService', () => {
 
       expect(result.success).toBe(false);
       expect(result.errorCode).toBe('FORBIDDEN');
+    });
+  });
+
+  describe('workspace-null handling in background execution', () => {
+    it('should mark pull job as failed when workspace becomes null', async () => {
+      // Workspace returns null after job is created (container went away)
+      vi.mocked(createForWorkspace).mockReturnValue(null as any);
+
+      await service.startPull({
+        appId: testAppId,
+        token: 'ghp_test_token',
+        repoUrl: 'https://github.com/user/repo.git',
+      });
+
+      await vi.runAllTimersAsync();
+
+      expect(mockImportJobRepo.markFailed).toHaveBeenCalledWith(
+        testJobId,
+        'Workspace no longer available',
+        'pulling'
+      );
+      expect(mockImportJobRepo.markCompleted).not.toHaveBeenCalled();
+    });
+
+    it('should mark push job as failed when workspace becomes null', async () => {
+      vi.mocked(createForWorkspace).mockReturnValue(null as any);
+
+      await service.startPush({
+        appId: testAppId,
+        remoteName: 'origin',
+        forcePush: false,
+        token: 'ghp_test_token',
+        repoUrl: 'https://github.com/user/repo.git',
+      });
+
+      await vi.runAllTimersAsync();
+
+      expect(mockImportJobRepo.markFailed).toHaveBeenCalledWith(
+        testJobId,
+        'Workspace no longer available',
+        'pushing'
+      );
+      expect(mockImportJobRepo.markCompleted).not.toHaveBeenCalled();
     });
   });
 });

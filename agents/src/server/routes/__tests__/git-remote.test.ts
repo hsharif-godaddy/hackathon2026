@@ -7,10 +7,12 @@ vi.mock('../../../utils/capability-config.js', () => ({
   isCapabilityEnabled: vi.fn(),
 }));
 
+const mockFindById = vi.hoisted(() => vi.fn());
+
 // Mock other dependencies
 vi.mock('../../../database/repositories/AppRepository.js', () => ({
   AppRepository: vi.fn().mockImplementation(() => ({
-    findById: vi.fn(),
+    findById: mockFindById,
   })),
 }));
 
@@ -24,6 +26,10 @@ vi.mock('../../../utils/dev-supervisor-client-factory.js', () => ({
   DevSupervisorClientFactory: {
     createForApp: vi.fn(),
   },
+}));
+
+vi.mock('../../../workspace/index.js', () => ({
+  createForWorkspace: vi.fn(() => ({ tasks: {} })),
 }));
 
 vi.mock('../../middleware/app-ownership.js', () => ({
@@ -53,6 +59,7 @@ vi.mock('../../../services/GitOpsService.js', () => ({
 // Import after mocks
 import gitRemoteRouter from '../git-remote.js';
 import { isCapabilityEnabled } from '../../../utils/capability-config.js';
+import { createForWorkspace } from '../../../workspace/index.js';
 import { gitOpsService } from '../../../services/GitOpsService.js';
 import { ImportJobStatus } from '../../../types/import.js';
 
@@ -68,6 +75,7 @@ describe('git-remote routes', function gitRemoteTests() {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(createForWorkspace).mockReturnValue({ tasks: {} } as any);
     app = createTestApp();
   });
 
@@ -391,6 +399,22 @@ describe('git-remote routes', function gitRemoteTests() {
 
       expect(response.body.error).toBe('modifyViteConfig must be a boolean');
       expect(gitOpsService.startPull).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('workspace-null guard', function workspaceNullTests() {
+    it('should return 503 when createForWorkspace returns null on /git/remote/configure', async function configureWorkspaceNull() {
+      process.env.ENABLE_GIT_REMOTE_SYNC = 'true';
+      vi.mocked(createForWorkspace).mockReturnValue(null as any);
+      mockFindById.mockReturnValue({ id: 'test-id', path: '/tmp/apps/test-id/app' });
+      app = createTestApp();
+
+      const response = await request(app)
+        .post('/apps/test-id/git/remote/configure')
+        .send({ repoUrl: 'https://github.com/user/repo.git' });
+
+      expect(response.status).toBe(503);
+      expect(response.body.error).toBe('App container is not available');
     });
   });
 });
