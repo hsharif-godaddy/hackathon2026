@@ -22,7 +22,7 @@ vi.mock('@/lib/customer-auth', () => ({
     return async (request: any) => {
       return handler(request, {
         jwt: 'test-jwt',
-        user: { accountId: 'acc-1', customerId: 'cust-1', email: 'test@test.com' }
+        user: { accountId: 'acc-1', customerId: 'cust-1', email: 'test@test.com', shopperId: 'shopper-1' }
       });
     };
   },
@@ -38,6 +38,11 @@ vi.mock('@/lib/control-plane', () => ({
 
 vi.mock('@/lib/translations/server-intl', () => ({
   detectLocale: vi.fn().mockResolvedValue('en-US')
+}));
+
+const mockFetchShopperMarketId = vi.fn();
+vi.mock('@/lib/shopper/shopper-market', () => ({
+  fetchShopperMarketId: (...args: unknown[]) => mockFetchShopperMarketId(...args),
 }));
 
 function makeRequest(body: Record<string, unknown>) {
@@ -290,6 +295,54 @@ describe('/api/sites/quick-create datacenter', () => {
 
     expect(mockCreateSite).toHaveBeenCalledWith(
       expect.not.objectContaining({ datacenter: expect.anything() })
+    );
+  });
+});
+
+describe('/api/sites/quick-create market resolution', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockCreateSite.mockResolvedValue({
+      success: true, siteId: 'app-1', name: 'Test', status: 'active',
+      type: 'job', account_id: 'acc-1',
+    });
+  });
+
+  it('passes shopper marketId to createSite when helper resolves it', async () => {
+    mockFetchShopperMarketId.mockResolvedValue('en-IN');
+
+    const { POST } = await import('../route');
+    await POST(makeRequest({ initialPrompt: 'test' }));
+
+    expect(mockFetchShopperMarketId).toHaveBeenCalledWith(
+      expect.anything(),
+      'shopper-1',
+      'test-jwt',
+    );
+    expect(mockCreateSite).toHaveBeenCalledWith(
+      expect.objectContaining({ marketId: 'en-IN' })
+    );
+  });
+
+  it('falls back to detectLocale when helper returns undefined', async () => {
+    mockFetchShopperMarketId.mockResolvedValue(undefined);
+
+    const { POST } = await import('../route');
+    await POST(makeRequest({ initialPrompt: 'test' }));
+
+    expect(mockCreateSite).toHaveBeenCalledWith(
+      expect.objectContaining({ marketId: 'en-US' })
+    );
+  });
+
+  it('falls back to detectLocale when helper returns empty string', async () => {
+    mockFetchShopperMarketId.mockResolvedValue('');
+
+    const { POST } = await import('../route');
+    await POST(makeRequest({ initialPrompt: 'test' }));
+
+    expect(mockCreateSite).toHaveBeenCalledWith(
+      expect.objectContaining({ marketId: 'en-US' })
     );
   });
 });

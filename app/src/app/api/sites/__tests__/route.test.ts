@@ -39,7 +39,8 @@ vi.mock('@/lib/customer-auth', () => ({
         jwt: 'test-jwt-token',
         user: {
           accountId: 'test-account',
-          email: 'test@example.com'
+          email: 'test@example.com',
+          shopperId: 'shopper-1'
         }
       };
       return handler(request, mockAuthContext);
@@ -47,6 +48,11 @@ vi.mock('@/lib/customer-auth', () => ({
   },
   customerHasAccount: vi.fn(() => true),
   createCustomerAuthError: vi.fn()
+}));
+
+const mockFetchShopperMarketId = vi.fn();
+vi.mock('@/lib/shopper/shopper-market', () => ({
+  fetchShopperMarketId: (...args: unknown[]) => mockFetchShopperMarketId(...args),
 }));
 
 vi.mock('@/lib/control-plane', () => ({
@@ -276,6 +282,98 @@ describe('/api/sites', function sitesRouteTests() {
           prompt: 'Hello',
           jwt: 'test-jwt-token'
         })
+      );
+    });
+
+    it('passes shopper marketId to createSite when helper resolves it', async function passesShopperMarketId() {
+      mockFetchShopperMarketId.mockResolvedValueOnce('en-IN');
+
+      const { getControlPlaneAdapter } = await import('@/lib/control-plane');
+      const { POST } = await import('../route');
+
+      const createSite = vi.fn().mockResolvedValue({
+        success: true,
+        siteId: 'job-1',
+        status: 'creating',
+        created_at: new Date('2025-01-01T00:00:00.000Z')
+      });
+
+      (getControlPlaneAdapter as any).mockReturnValue({ listSites: vi.fn(), createSite });
+
+      const request = new NextRequest('http://localhost:3000/api/sites', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ initialPrompt: 'Hello' })
+      });
+
+      const response = await POST(request);
+
+      expect(response.status).toBe(201);
+      expect(mockFetchShopperMarketId).toHaveBeenCalledWith(
+        expect.anything(),
+        'shopper-1',
+        'test-jwt-token',
+      );
+      expect(createSite).toHaveBeenCalledWith(
+        expect.objectContaining({ marketId: 'en-IN' })
+      );
+    });
+
+    it('falls back to detectLocale when shopper helper returns undefined', async function fallsBackOnUndefined() {
+      mockFetchShopperMarketId.mockResolvedValueOnce(undefined);
+
+      const { getControlPlaneAdapter } = await import('@/lib/control-plane');
+      const { POST } = await import('../route');
+
+      const createSite = vi.fn().mockResolvedValue({
+        success: true,
+        siteId: 'job-1',
+        status: 'creating',
+        created_at: new Date('2025-01-01T00:00:00.000Z')
+      });
+
+      (getControlPlaneAdapter as any).mockReturnValue({ listSites: vi.fn(), createSite });
+
+      const request = new NextRequest('http://localhost:3000/api/sites', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ initialPrompt: 'Hello' })
+      });
+
+      const response = await POST(request);
+
+      expect(response.status).toBe(201);
+      expect(createSite).toHaveBeenCalledWith(
+        expect.objectContaining({ marketId: 'en-US' })
+      );
+    });
+
+    it('falls back to detectLocale when shopper helper returns empty string', async function fallsBackOnEmpty() {
+      mockFetchShopperMarketId.mockResolvedValueOnce('');
+
+      const { getControlPlaneAdapter } = await import('@/lib/control-plane');
+      const { POST } = await import('../route');
+
+      const createSite = vi.fn().mockResolvedValue({
+        success: true,
+        siteId: 'job-1',
+        status: 'creating',
+        created_at: new Date('2025-01-01T00:00:00.000Z')
+      });
+
+      (getControlPlaneAdapter as any).mockReturnValue({ listSites: vi.fn(), createSite });
+
+      const request = new NextRequest('http://localhost:3000/api/sites', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ initialPrompt: 'Hello' })
+      });
+
+      const response = await POST(request);
+
+      expect(response.status).toBe(201);
+      expect(createSite).toHaveBeenCalledWith(
+        expect.objectContaining({ marketId: 'en-US' })
       );
     });
 

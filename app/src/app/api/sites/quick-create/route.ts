@@ -14,6 +14,7 @@ import { validateDomainName } from '@/lib/domain-validation';
 import { mgmtAiro401Response } from '@/lib/mgmt-airo/auth-error';
 import { AIRO_PRODUCT_IDS } from '@/lib/mgmt-airo/types';
 import { logger } from '@/lib/request-context';
+import { fetchShopperMarketId } from '@/lib/shopper/shopper-market';
 import { detectLocale } from '@/lib/translations/server-intl';
 import { getByteLength, MAX_PROMPT_BYTES } from '@/lib/waf-validation';
 
@@ -94,8 +95,23 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
 
     logger.info('sites.quick-create.start', { accountId: account_id });
 
-    // Detect locale for datacenter selection
-    const marketId = await detectLocale();
+    // Resolve market for datacenter selection. Prefer the shopper's resident
+    // market (Shopper API) over Gasket's cookie-based locale, which is dominated
+    // by `en-US` because most users sign up via the godaddy.com US storefront.
+    const [fallbackMarket, shopperMarket] = await Promise.all([
+      detectLocale(),
+      user.shopperId
+        ? fetchShopperMarketId(request, user.shopperId, authContext.jwt)
+        : Promise.resolve(undefined),
+    ]);
+    const marketId = shopperMarket || fallbackMarket;
+
+    logger.info('sites.quick-create.market-resolution', {
+      shopperMarket,
+      fallbackMarket,
+      marketId,
+      source: shopperMarket ? 'shopper-api' : 'gasket-fallback',
+    });
 
     // Use control plane adapter
     const adapter = getControlPlaneAdapter();
