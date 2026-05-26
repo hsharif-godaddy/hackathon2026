@@ -509,7 +509,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
     assessmentOutcome?: AssessmentOutcome
     wasUserAborted: boolean
     subscriptionId?: string
-  }): Promise<{ sessionWasFree?: boolean }> {
+  }): Promise<{ filed: boolean; sessionWasFree?: boolean }> {
     const { appId, conversationId, budgetId, sessionId, streamState, steps, assessmentOutcome, wasUserAborted, subscriptionId } = opts
     let sessionWasFreeForRefresh: boolean | undefined
 
@@ -543,7 +543,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
           data: { refreshRequired: true },
           agentName: 'system',
         })
-        return {}
+        return { filed: false }
       }
 
       const session = await this.getBudgetSessionWithRetry(budgetId, sessionId, budgetClient)
@@ -597,7 +597,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
             data: { refreshRequired: true, sessionWasFree },
             agentName: 'system',
           })
-          return { sessionWasFree }
+          return { filed: true, sessionWasFree }
         }
 
         const budgetError = err instanceof BudgetServiceError ? err : null
@@ -702,7 +702,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
         })
       }
 
-      return { sessionWasFree }
+      return { filed: true, sessionWasFree }
     } catch (err) {
       logger.error('budget.report.failed', { appId, budgetId, sessionId, ...errorFields(err) })
       await publishBudgetEvent({
@@ -715,7 +715,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
         },
         agentName: 'system',
       })
-      return {}
+      return { filed: false }
     } finally {
       clearTimeout(reconcileTimer)
     }
@@ -1374,6 +1374,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
     }
 
     const allExecutionSteps: ExecutionStep[] = []
+    let budgetReportFiled = false
 
     try {
       let lastTurnResult: Awaited<ReturnType<typeof this.streamAgentTurn>> | undefined
@@ -1612,6 +1613,16 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
       const loopAborted = loopResult.termination === 'aborted' || abortController.signal.aborted
       const finishReason = loopAborted ? 'aborted' : (lastTurnResult?.finishReason ?? 'complete')
 
+      if (loopResult.termination === 'max_handoffs') {
+        logger.warn('agent.loop.max_handoffs_reached', {
+          appId,
+          conversationId,
+          agentName: finalAgentName,
+          iterations: loopResult.iterations,
+          ...(requestId && { requestId }),
+        })
+      }
+
       const usage = lastTurnResult?.finalResult?.totalUsage ?? lastTurnResult?.finalResult?.usage
       if (usage && this.deps.backgroundSummarizer) {
         const metadata = (executionContext.metadata as Record<string, unknown> | undefined) ?? {}
@@ -1671,6 +1682,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
           wasUserAborted: loopAborted,
           subscriptionId,
         })
+        budgetReportFiled = budgetReport.filed
         // BMS mode: update usedFreeGrants from cost attribution result
         // (persistenceContext.usedFreeGrants is always false in BMS mode since
         // deriveUsedFreeGrants returns false when budgetServiceEnabled=true)
@@ -1779,7 +1791,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
       })
 
       if (bmsBudgetId && budgetSessionId) {
-        await this.reconcileBudgetReport({
+        const errorBudgetReport = await this.reconcileBudgetReport({
           appId,
           conversationId,
           budgetId: bmsBudgetId,
@@ -1790,6 +1802,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
           wasUserAborted: abortController.signal.aborted && !chunkTimeoutAborted,
           subscriptionId,
         })
+        budgetReportFiled = errorBudgetReport.filed
       }
 
       // Same superseded-slot guard as the success path: our terminal
@@ -1875,6 +1888,43 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
         })
       }
     } finally {
+      // Budget report fallback: if neither the success nor error path filed
+      // the report, retry once before tearing down the stream slot (which
+      // publishBudgetEvent guards on).
+      if (bmsBudgetId && budgetSessionId && !budgetReportFiled) {
+        try {
+          const fallbackResult = await this.reconcileBudgetReport({
+            appId,
+            conversationId,
+            budgetId: bmsBudgetId,
+            sessionId: budgetSessionId,
+            streamState,
+            steps: allExecutionSteps,
+            assessmentOutcome,
+            wasUserAborted: abortController.signal.aborted
+              && abortController.signal.reason !== 'chunk_timeout',
+            subscriptionId,
+          })
+          if (!fallbackResult.filed) {
+            logger.error('budget.report.fallback_also_failed', {
+              appId,
+              conversationId,
+              budgetId: bmsBudgetId,
+              sessionId: budgetSessionId,
+              stepCount: allExecutionSteps.length,
+            })
+          }
+        } catch (fallbackErr) {
+          logger.error('budget.report.finally_fallback_threw', {
+            appId,
+            conversationId,
+            budgetId: bmsBudgetId,
+            sessionId: budgetSessionId,
+            error: fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr),
+          })
+        }
+      }
+
       // Clean up grant session registration to prevent stale mappings
       if (useGrantRecovery) {
         grantSessionManager.removeSession(sseSocketId)

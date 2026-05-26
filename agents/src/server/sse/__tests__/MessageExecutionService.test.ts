@@ -3107,4 +3107,171 @@ describe('MessageExecutionService', () => {
       expect(service.hasActiveStream('conv_1')).toBe(false)
     })
   })
+
+  describe('budget report fallback retry', () => {
+    it('retries in finally when createReport rejects with non-409 then succeeds on second attempt', async () => {
+      const budgetClient = createBudgetClient({
+        createReport: vi.fn()
+          .mockRejectedValueOnce(new Error('transient BMS failure'))
+          .mockResolvedValueOnce({
+            reportId: 'report-retry',
+            budgetId: 'budget-abc',
+            sessionId: 'session-xyz',
+            productKey: 'airo-builder',
+            budgetCostTotal: 1.25,
+            productCostTotal: 0,
+            creditsAvailable: 98.75,
+            reportItems: [{
+              budgetCost: 1.25,
+              productCost: 0,
+              category: 'airo-builder:general',
+              budgetItems: [{ budgetItemId: 'item-1', creditsUsed: 1.25 }],
+            }],
+          }),
+      })
+      mockGetBudgetServiceClient.mockReturnValue(budgetClient as any)
+      deps = createMockDeps()
+      service = new MessageExecutionService(deps as any)
+
+      await service.execute({
+        ...DEFAULT_PARAMS,
+        bmsBudgetId: 'budget-abc',
+        budgetSessionId: 'session-xyz',
+      })
+
+      expect(budgetClient.createReport).toHaveBeenCalledTimes(2)
+    })
+
+    it('logs fallback_also_failed when both primary and fallback fail', async () => {
+      const budgetClient = createBudgetClient({
+        getSession: vi.fn().mockRejectedValue(new Error('BMS down')),
+      })
+      mockGetBudgetServiceClient.mockReturnValue(budgetClient as any)
+      deps = createMockDeps()
+      service = new MessageExecutionService(deps as any)
+
+      const loggerMod = await import('../../../logging/index.js')
+      const errorSpy = vi.spyOn(loggerMod.logger, 'error')
+      let errorCalls: any[][] = []
+      try {
+        await service.execute({
+          ...DEFAULT_PARAMS,
+          bmsBudgetId: 'budget-abc',
+          budgetSessionId: 'session-xyz',
+        })
+      } finally {
+        errorCalls = errorSpy.mock.calls.slice()
+        errorSpy.mockRestore()
+      }
+
+      const fallbackCall = errorCalls.find(c => c[0] === 'budget.report.fallback_also_failed')
+      expect(fallbackCall).toBeDefined()
+      expect(fallbackCall?.[1]).toMatchObject({
+        appId: 'app_1',
+        conversationId: 'conv_1',
+        budgetId: 'budget-abc',
+        sessionId: 'session-xyz',
+      })
+
+      // Terminal completion still reaches client
+      expect(deps.eventChannel.publish).toHaveBeenCalledWith(
+        'conv_1',
+        expect.objectContaining({ type: 'complete' }),
+      )
+    })
+
+    it('does not trigger fallback when conflict (409) returns filed: true', async () => {
+      const budgetClient = createBudgetClient({
+        createReport: vi.fn().mockRejectedValue(
+          new BudgetServiceConflictError('report exists', 409, 'exists'),
+        ),
+      })
+      mockGetBudgetServiceClient.mockReturnValue(budgetClient as any)
+      deps = createMockDeps()
+      service = new MessageExecutionService(deps as any)
+
+      const loggerMod = await import('../../../logging/index.js')
+      const errorSpy = vi.spyOn(loggerMod.logger, 'error')
+      let errorCalls: any[][] = []
+      try {
+        await service.execute({
+          ...DEFAULT_PARAMS,
+          bmsBudgetId: 'budget-abc',
+          budgetSessionId: 'session-xyz',
+        })
+      } finally {
+        errorCalls = errorSpy.mock.calls.slice()
+        errorSpy.mockRestore()
+      }
+
+      expect(budgetClient.createReport).toHaveBeenCalledTimes(1)
+      const fallbackCall = errorCalls.find(c => c[0] === 'budget.report.fallback_also_failed')
+      expect(fallbackCall).toBeUndefined()
+    })
+
+    it('does not trigger fallback when createReport succeeds but getBudget fails', async () => {
+      const budgetClient = createBudgetClient({
+        getBudget: vi.fn().mockRejectedValue(new Error('getBudget failed')),
+      })
+      mockGetBudgetServiceClient.mockReturnValue(budgetClient as any)
+      deps = createMockDeps()
+      service = new MessageExecutionService(deps as any)
+
+      await service.execute({
+        ...DEFAULT_PARAMS,
+        bmsBudgetId: 'budget-abc',
+        budgetSessionId: 'session-xyz',
+      })
+
+      // createReport succeeded → filed: true → no fallback
+      expect(budgetClient.createReport).toHaveBeenCalledTimes(1)
+      // Client still gets refreshRequired from the getBudget failure path
+      expect(deps.eventChannel.publish).toHaveBeenCalledWith(
+        'conv_1',
+        expect.objectContaining({
+          type: 'budget_update',
+          data: expect.objectContaining({ refreshRequired: true }),
+        }),
+      )
+    })
+  })
+
+  describe('max-handoff guard logging', () => {
+    it('logs agent.loop.max_handoffs_reached when loop hits max iterations', async () => {
+      // Force 10+ handoffs: stateManager always returns a different agent,
+      // causing executeAgentLoop to iterate until MAX_HANDOFFS.
+      let callCount = 0
+      deps.stateManager.getCurrentAgent.mockImplementation(() => {
+        callCount++
+        return `agent-${callCount}`
+      })
+      deps.stateManager.getLastHandoffPrompt.mockReturnValue('continue')
+      deps.getAgent.mockImplementation((name?: string) => ({
+        streamGenerate: vi.fn().mockResolvedValue({
+          textStream: (async function* () {})(),
+          baseStream: makeReadableStream([]),
+        }),
+        getName: vi.fn().mockReturnValue(name ?? 'develop'),
+      }))
+      service = new MessageExecutionService(deps as any)
+
+      const loggerMod = await import('../../../logging/index.js')
+      const warnSpy = vi.spyOn(loggerMod.logger, 'warn')
+      let warnCalls: any[][] = []
+      try {
+        await service.execute(DEFAULT_PARAMS)
+      } finally {
+        warnCalls = warnSpy.mock.calls.slice()
+        warnSpy.mockRestore()
+      }
+
+      const maxHandoffCall = warnCalls.find(c => c[0] === 'agent.loop.max_handoffs_reached')
+      expect(maxHandoffCall).toBeDefined()
+      expect(maxHandoffCall?.[1]).toMatchObject({
+        appId: 'app_1',
+        conversationId: 'conv_1',
+        iterations: 10,
+      })
+    })
+  })
 })
