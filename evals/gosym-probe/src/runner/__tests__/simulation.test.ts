@@ -77,7 +77,7 @@ const mockConfig: ResolvedConfig = {
     maxConcurrency: 1,
   },
   playwright: { ignoreHttpsErrors: true },
-  regression: { thresholds: {}, defaultThreshold: 0.1 },
+  regression: { alpha: 0.05, k: 2.0, fallbackThresholds: { thresholds: {}, defaultThreshold: 0.1 } },
 };
 
 function makeScenario(overrides: Partial<Scenario> = {}): Scenario {

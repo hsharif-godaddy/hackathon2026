@@ -1,30 +1,35 @@
 import type { StabilityLevel } from '../scenarios/types.js';
-import type { AggregatedResult, ScenarioResult } from '../runner/types.js';
+import type { AggregatedResult, ScenarioResult, TrialResult } from '../runner/types.js';
 import type {
   BaselineScores,
+  ComparedRegressionEvalResult,
   RegressionEvalResult,
   RegressionResult,
   SkippedRegressionEvalResult,
+  StatisticalMetadata,
 } from './types.js';
 import { exceedsThreshold, resolveThreshold, hasVersionMismatch } from './threshold.js';
-import type { ThresholdConfig } from './threshold.js';
+import {
+  computeMargin,
+  tostProportions,
+  tostPermutation,
+} from './statistical-tests.js';
+import { extractTrialScoresForEvaluator } from './trial-scores.js';
+import type { StatisticalRegressionConfig } from '../../config/environments/types.js';
 
-const STABILITY_GATE: Record<StabilityLevel, RegressionResult['gate']> = {
-  low: 'warning',
-  medium: 'error',
-  high: 'critical',
-};
+function isBinaryScores(scores: readonly number[]): boolean {
+  return scores.every((s) => s === 0 || s === 1);
+}
 
 export class RegressionComparator {
   compare(
     result: ScenarioResult,
     baseline: BaselineScores,
-    config: ThresholdConfig,
+    config: StatisticalRegressionConfig,
   ): RegressionResult {
     const evaluators = this.buildEvalResults(result, baseline, config);
-    const stabilityLevel =
-      baseline.stabilityLevel ?? result.stabilityLevel;
-    const gate = this.computeGate(evaluators, stabilityLevel);
+    const stabilityLevel = baseline.stabilityLevel ?? result.stabilityLevel;
+    const gate = this.computeGate(evaluators);
     return {
       scenarioName: result.scenarioName,
       gate,
@@ -36,13 +41,13 @@ export class RegressionComparator {
   private buildEvalResults(
     result: ScenarioResult,
     baseline: BaselineScores,
-    config: ThresholdConfig,
+    config: StatisticalRegressionConfig,
   ): RegressionEvalResult[] {
     return Object.entries(result.aggregated).map(([name, agg]) => {
       if (agg.regressionMode === 'score') {
-        return this.buildScoreModeResult(name, agg, baseline, config);
+        return this.buildScoreModeResult(name, agg, baseline, config, result.trials);
       }
-      return this.buildPassRateResult(name, agg, baseline, config);
+      return this.buildPassRateResult(name, agg, baseline, config, result.trials);
     });
   }
 
@@ -50,7 +55,8 @@ export class RegressionComparator {
     name: string,
     agg: AggregatedResult,
     baseline: BaselineScores,
-    config: ThresholdConfig,
+    config: StatisticalRegressionConfig,
+    trials: TrialResult[],
   ): RegressionEvalResult {
     const versionMismatch = this.versionMismatch(name, agg, baseline);
     if (versionMismatch) return versionMismatch;
@@ -60,7 +66,6 @@ export class RegressionComparator {
     }
 
     const currentScore = agg.passingTrials / agg.totalTrials;
-
     const baselineEntry = baseline.scores[name];
     const baselineScore =
       baselineEntry && baselineEntry.totalTrials > 0
@@ -72,15 +77,73 @@ export class RegressionComparator {
         ? NaN
         : currentScore - baselineScore;
 
-    const threshold = resolveThreshold(name, config);
+    const baselineTrialScores = baselineEntry?.trialScores;
+    if (baselineTrialScores && baselineTrialScores.length > 0) {
+      const currentTrialScores = extractTrialScoresForEvaluator(name, trials);
+      if (currentTrialScores.length > 0) {
+        const k = this.resolveK(name, config);
+        const margin = computeMargin(baselineTrialScores, k);
 
-    // Pass-rate uses absolute difference: threshold of 0.1 means "flag when
-    // pass-rate drops by more than 10 percentage points." This differs from
-    // score-mode's percentage-relative detection (via exceedsThreshold()) because
-    // pass-rates are bounded [0,1] where absolute thresholds are more intuitive.
+        if (margin === 0) {
+          const baselineConstant = baselineTrialScores[0];
+          const allMatch = currentTrialScores.every((s) => s === baselineConstant);
+          return {
+            type: 'compared',
+            evaluator: name,
+            currentScore,
+            baselineScore,
+            delta,
+            exceeded: !allMatch,
+            statistical: {
+              method: 'uniform-match',
+              margin: 0,
+              baselineSD: 0,
+              k,
+              n: { baseline: baselineTrialScores.length, current: currentTrialScores.length },
+              confidenceInterval: { lower: 0, upper: 0 },
+              nonInferiorityProven: allMatch,
+            },
+          };
+        }
+
+        const allBinary = isBinaryScores(baselineTrialScores) && isBinaryScores(currentTrialScores);
+        const tostResult = allBinary
+          ? tostProportions(baselineTrialScores, currentTrialScores, {
+              alpha: config.alpha,
+              margin,
+              seed: config.seed,
+            })
+          : tostPermutation(baselineTrialScores, currentTrialScores, {
+              alpha: config.alpha,
+              margin,
+              seed: config.seed,
+            });
+        const statistical: StatisticalMetadata = {
+          method: tostResult.method,
+          margin: tostResult.margin,
+          baselineSD: tostResult.baselineSD,
+          k,
+          n: { baseline: baselineTrialScores.length, current: currentTrialScores.length },
+          confidenceInterval: tostResult.confidenceInterval,
+          nonInferiorityProven: tostResult.nonInferiorityProven,
+        };
+        return {
+          type: 'compared',
+          evaluator: name,
+          currentScore,
+          baselineScore,
+          delta,
+          exceeded: !tostResult.nonInferiorityProven,
+          statistical,
+        };
+      }
+    }
+
+    // Fallback: pass-rate baselines predate per-baseline threshold overrides,
+    // so only config-level thresholds apply here (unlike score-mode below).
+    const threshold = resolveThreshold(name, config.fallbackThresholds);
     const exceeded =
-      !Number.isNaN(delta) &&
-      baselineScore - currentScore > threshold;
+      !Number.isNaN(delta) && baselineScore - currentScore > threshold;
 
     return { type: 'compared', evaluator: name, currentScore, baselineScore, delta, exceeded };
   }
@@ -89,7 +152,8 @@ export class RegressionComparator {
     name: string,
     agg: AggregatedResult,
     baseline: BaselineScores,
-    config: ThresholdConfig,
+    config: StatisticalRegressionConfig,
+    trials: TrialResult[],
   ): RegressionEvalResult {
     const versionMismatch = this.versionMismatch(name, agg, baseline);
     if (versionMismatch) return versionMismatch;
@@ -108,8 +172,64 @@ export class RegressionComparator {
         ? NaN
         : currentScore - baselineScore;
 
-    const threshold = resolveThreshold(name, config, baseline.regressionThresholds);
+    const baselineTrialScores = baselineEntry?.trialScores;
+    if (baselineTrialScores && baselineTrialScores.length > 0) {
+      const currentTrialScores = extractTrialScoresForEvaluator(name, trials);
+      if (currentTrialScores.length > 0) {
+        const k = this.resolveK(name, config);
+        const margin = computeMargin(baselineTrialScores, k);
 
+        if (margin === 0) {
+          const baselineConstant = baselineTrialScores[0];
+          const allMatch = currentTrialScores.every((s) => s === baselineConstant);
+          return {
+            type: 'compared',
+            evaluator: name,
+            currentScore,
+            baselineScore,
+            delta,
+            exceeded: !allMatch,
+            statistical: {
+              method: 'uniform-match',
+              margin: 0,
+              baselineSD: 0,
+              k,
+              n: { baseline: baselineTrialScores.length, current: currentTrialScores.length },
+              confidenceInterval: { lower: 0, upper: 0 },
+              nonInferiorityProven: allMatch,
+            },
+          };
+        }
+
+        const tostResult = tostPermutation(baselineTrialScores, currentTrialScores, {
+          alpha: config.alpha,
+          margin,
+          lowerIsBetter: agg.lowerIsBetter === true,
+          seed: config.seed,
+        });
+        const statistical: StatisticalMetadata = {
+          method: tostResult.method,
+          margin: tostResult.margin,
+          baselineSD: tostResult.baselineSD,
+          k,
+          n: { baseline: baselineTrialScores.length, current: currentTrialScores.length },
+          confidenceInterval: tostResult.confidenceInterval,
+          nonInferiorityProven: tostResult.nonInferiorityProven,
+        };
+        return {
+          type: 'compared',
+          evaluator: name,
+          currentScore,
+          baselineScore,
+          delta,
+          exceeded: !tostResult.nonInferiorityProven,
+          statistical,
+        };
+      }
+    }
+
+    // Fallback: threshold-based comparison when no trial scores available.
+    const threshold = resolveThreshold(name, config.fallbackThresholds, baseline.regressionThresholds);
     const exceeded = exceedsThreshold(
       currentScore, baselineScore, threshold, agg.lowerIsBetter === true,
     );
@@ -141,19 +261,34 @@ export class RegressionComparator {
     };
   }
 
-
-  private computeGate(
-    evaluators: RegressionEvalResult[],
-    stabilityLevel: StabilityLevel,
-  ): RegressionResult['gate'] {
-    if (
-      evaluators.length > 0 &&
-      evaluators.every((e) => e.type === 'skipped')
-    ) {
-      return 'version-skipped';
-    }
-    if (!evaluators.some((e) => e.type === 'compared' && e.exceeded)) return 'pass';
-    return STABILITY_GATE[stabilityLevel];
+  /** Resolves the k multiplier for a named evaluator, applying per-evaluator overrides. */
+  private resolveK(name: string, config: StatisticalRegressionConfig): number {
+    return config.evaluatorKOverrides?.[name] ?? config.k;
   }
 
+  private computeGate(evaluators: RegressionEvalResult[]): RegressionResult['gate'] {
+    if (evaluators.length > 0 && evaluators.every((e) => e.type === 'skipped')) {
+      const hasVersionMismatch = evaluators.some(
+        (e) => e.type === 'skipped' && e.skipReason === 'evaluator-version-mismatch',
+      );
+      if (hasVersionMismatch) return 'fail';
+      return 'warning';
+    }
+
+    const compared = evaluators.filter(
+      (e): e is ComparedRegressionEvalResult => e.type === 'compared',
+    );
+
+    if (compared.some((e) => e.exceeded && e.statistical !== undefined)) {
+      // Statistical evidence of regression: TOST failed to prove non-inferiority.
+      return 'fail';
+    }
+
+    if (compared.some((e) => e.exceeded && e.statistical === undefined)) {
+      // Fallback threshold breach only — no statistical backing, treat as warning.
+      return 'warning';
+    }
+
+    return 'pass';
+  }
 }

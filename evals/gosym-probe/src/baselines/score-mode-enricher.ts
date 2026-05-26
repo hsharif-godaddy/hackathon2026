@@ -1,5 +1,5 @@
 import type { AggregatedResult, TrialResult } from '../runner/types.js';
-import type { BaselineScores } from './types.js';
+import type { BaselineScores, RegressionResult } from './types.js';
 import { exceedsThreshold, resolveThreshold, hasVersionMismatch } from './threshold.js';
 import type { ThresholdConfig } from './threshold.js';
 
@@ -20,17 +20,54 @@ import type { ThresholdConfig } from './threshold.js';
  *
  * Pass-rate evaluators are copied unchanged.
  */
+/**
+ * Builds a map of evaluator name → TOST nonInferiorityProven for evaluators
+ * where TOST ran (statistical metadata present on the compared result).
+ * Evaluators that went through the threshold fallback path are excluded so
+ * they continue to use threshold-based enrichment below.
+ */
+function buildTostResultMap(regressionResult: RegressionResult | undefined): Map<string, boolean> {
+  if (!regressionResult) return new Map();
+  const map = new Map<string, boolean>();
+  for (const evalResult of regressionResult.evaluators) {
+    if (evalResult.type === 'compared' && evalResult.statistical !== undefined) {
+      map.set(evalResult.evaluator, !evalResult.exceeded);
+    }
+  }
+  return map;
+}
+
 export function enrichScoreModePassRates(
   result: { trials: TrialResult[]; aggregated: Record<string, AggregatedResult> },
   baseline: BaselineScores,
   config: ThresholdConfig,
+  regressionResult?: RegressionResult,
 ): { aggregated: Record<string, AggregatedResult>; trials: TrialResult[] } {
   const enriched: Record<string, AggregatedResult> = {};
   const verdictUpdates = new Map<number, Map<string, { verdict: 'pass' | 'fail'; baselineComparison: string }>>();
 
+  const tostResults = buildTostResultMap(regressionResult);
+
   for (const [name, agg] of Object.entries(result.aggregated)) {
     if (agg.regressionMode !== 'score') {
       enriched[name] = agg;
+      continue;
+    }
+
+    // TOST path: TOST ran for this evaluator — use its distribution-level result.
+    // Per-trial verdicts stay 'observed'; gating is expressed through passAtK/passToTheK.
+    const tostNonInferior = tostResults.get(name);
+    if (tostNonInferior !== undefined) {
+      const validTrials = result.trials.filter((t) => {
+        const er = t.evalResults.find((e) => e.evaluator === name);
+        return er !== undefined && er.verdict !== 'unknown';
+      }).length;
+      enriched[name] = {
+        ...agg,
+        passAtK: tostNonInferior,
+        passToTheK: tostNonInferior,
+        baselinePassingTrials: tostNonInferior ? validTrials : 0,
+      };
       continue;
     }
 

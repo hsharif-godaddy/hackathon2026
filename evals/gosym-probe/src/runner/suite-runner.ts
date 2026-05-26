@@ -253,7 +253,8 @@ export class SuiteRunner {
       const { aggregated: enrichedAggregated, trials: enrichedTrials } = enrichScoreModePassRates(
         result,
         loaded.scores,
-        config.regression,
+        config.regression.fallbackThresholds,
+        regressionStatus,
       );
       result.regressionStatus = regressionStatus;
       result.aggregated = enrichedAggregated;

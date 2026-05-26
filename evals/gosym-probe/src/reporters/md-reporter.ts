@@ -68,9 +68,19 @@ function baselineCell(
   }
   const sign = entry.delta >= 0 ? '+' : '';
   const formatted = `${sign}${entry.delta.toFixed(2)}`;
-  return entry.exceeded
+  const base = entry.exceeded
     ? `\u26a0\ufe0f ${formatted}`
     : formatted;
+
+  if (entry.statistical) {
+    const { nonInferiorityProven, confidenceInterval: ci, margin } = entry.statistical;
+    const tostMark = nonInferiorityProven ? '\u2713' : '\u2717';
+    const ciStr = `CI ${ci.lower.toFixed(2)}..${ci.upper.toFixed(2)}`;
+    const marginStr = `\u00b1${margin.toFixed(2)}`;
+    return `${base} [TOST ${tostMark}, ${ciStr}, ${marginStr}]`;
+  }
+
+  return base;
 }
 
 function renderEvaluatorReasoning(

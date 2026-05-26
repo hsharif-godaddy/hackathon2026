@@ -1,5 +1,18 @@
 import type { ThresholdConfig } from '../../src/baselines/threshold.js';
 
+export interface StatisticalRegressionConfig {
+  /** Significance level for TOST (0, 1). Default: 0.05. */
+  alpha: number;
+  /** SD multiplier for margin computation: margin = k * SD(baseline). Default: 2.0. */
+  k: number;
+  /** Per-evaluator k overrides. Keys are evaluator names. */
+  evaluatorKOverrides?: Record<string, number>;
+  /** Integer PRNG seed for Monte Carlo / bootstrap determinism. */
+  seed?: number;
+  /** Fallback thresholds used when baseline lacks trialScores (legacy baselines). */
+  fallbackThresholds: ThresholdConfig;
+}
+
 export interface Config {
   env: string;
   aab: {
@@ -37,7 +50,7 @@ export interface Config {
   playwright: {
     ignoreHttpsErrors: boolean;
   };
-  regression: ThresholdConfig;
+  regression: StatisticalRegressionConfig;
   storage?: {
     maxRuns?: number;
   };

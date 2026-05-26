@@ -13,15 +13,19 @@ export interface AggregatedResult {
   /**
    * At least one trial passed. For pass-rate evaluators this is always present.
    * For score-mode evaluators (`regressionMode === 'score'`): present when a
-   * baseline exists and is derived from per-trial comparison against the
-   * baseline aggregate score; absent when no baseline is available.
+   * baseline exists; absent when no baseline is available. Populated by one of:
+   * - TOST path: set to the distribution-level nonInferiority result (all-or-nothing).
+   * - Threshold fallback: derived from per-trial comparison against the baseline
+   *   aggregate score (true when at least one trial falls within threshold).
    */
   passAtK?: boolean;
   /**
    * All trials passed. For pass-rate evaluators this is always present.
    * For score-mode evaluators (`regressionMode === 'score'`): present when a
-   * baseline exists and is derived from per-trial comparison against the
-   * baseline aggregate score; absent when no baseline is available.
+   * baseline exists; absent when no baseline is available. Populated by one of:
+   * - TOST path: set to the distribution-level nonInferiority result (all-or-nothing).
+   * - Threshold fallback: derived from per-trial comparison against the baseline
+   *   aggregate score (true when every trial falls within threshold).
    */
   passToTheK?: boolean;
   /**
@@ -29,9 +33,11 @@ export interface AggregatedResult {
    */
   passingTrials: number;
   /**
-   * Count of trials whose score fell within the regression threshold of the
-   * baseline aggregate score. Only present for enriched score-mode evaluators with a
-   * baseline comparison.
+   * Count of trials considered passing relative to the baseline. Populated by:
+   * - TOST path: set to validTrials when non-inferior, 0 otherwise (all-or-nothing).
+   * - Threshold fallback: count of trials whose score fell within the regression
+   *   threshold of the baseline aggregate score.
+   * Only present for enriched score-mode evaluators with a baseline comparison.
    */
   baselinePassingTrials?: number;
   /** Total number of trials run (excludes evaluator-failed trials). */

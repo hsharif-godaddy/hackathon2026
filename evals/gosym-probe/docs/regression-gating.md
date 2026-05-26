@@ -1,7 +1,25 @@
-# Regression Gating: Metrics, Trial Counts, and Thresholds
+# Regression Gating: TOST Statistical Framework
 
-How gosym-probe detects regressions, which metrics it uses, and how to
-reason about trial count tradeoffs when running eval against feature branches.
+How gosym-probe detects regressions, the statistical method it uses, and how
+to reason about trial count tradeoffs when running eval against feature
+branches.
+
+---
+
+## Overview
+
+Regression gating answers: "Did my branch make things worse?"
+
+The comparator runs after each eval and compares the current run's scores
+against a saved baseline. The output is a gate: `pass`, `warning`, or `fail`.
+
+**When `trialScores` are present in the baseline** (any baseline graduated
+after the TOST migration), the comparator uses TOST (Two One-Sided Tests)
+— a proper non-inferiority test grounded in confidence intervals.
+
+**When `trialScores` are absent** (legacy baselines), it falls back to
+static threshold comparison and caps the gate at `warning` rather than
+`fail`.
 
 ---
 
@@ -15,9 +33,6 @@ gosym-probe computes three aggregation metrics per evaluator per scenario:
 | **Pass^k** | All k trials passed | Does this work every single time? |
 | **Pass@k** | At least 1 of k trials passed | Can this work at all? |
 
-Each metric serves a different purpose. Using the wrong one for a given
-gate produces misleading signals.
-
 ### Pass rate: regression gating
 
 Pass rate is an **unbiased estimator** of the true pass probability `p`,
@@ -28,10 +43,9 @@ E[pass_rate] = p    (for any number of trials)
 Var[pass_rate] = p(1-p) / n
 ```
 
-This makes it the correct choice for **change detection** (did my branch
-make things worse?). You can compare a 10-trial baseline against a 3-trial
-regression run because both estimate the same underlying quantity. Only the
-variance differs.
+This makes it the correct choice for **change detection**: you can compare
+a 20-trial baseline against a 3-trial regression run because both estimate
+the same underlying quantity. Only the variance differs.
 
 The regression comparator uses pass rate for exactly this reason
 (`src/baselines/regression-comparator.ts`).
@@ -47,160 +61,406 @@ If true p = 0.9:
   P(pass^3)  = 0.9^3  = 0.729
 ```
 
-This makes pass^k appropriate for **quality bars** where you fix k and
-demand all-pass (graduation, release gating), but inappropriate for
-comparing runs at different trial counts. A 10-trial baseline with
-pass^k = true represents a much stronger signal than a 3-trial run with
-pass^k = true.
+Pass^k is appropriate for **quality bars** where you fix k and demand
+all-pass (graduation, release gating), but inappropriate for comparing
+runs at different trial counts.
 
 ### Pass@k: smoke testing
 
-Pass@k answers "can this work at all?" If even one trial passes, the
-system is functional. Useful for:
-
-- Fast triage (is the scenario totally broken or just flaky?)
-- Catching catastrophic regressions cheaply (1-2 trials)
-- Gating scenarios where partial success is acceptable
+Pass@k answers "can this work at all?" Useful for fast triage and catching
+catastrophic regressions cheaply (1-2 trials).
 
 ---
 
-## Where Each Metric Is Used
+## TOST: Two One-Sided Tests
 
-| Metric | Good for | Why |
-|--------|----------|-----|
-| **Pass rate** | Regression gating | Unbiased estimator of true probability, comparable across trial counts, supports thresholds |
-| **Pass^k** | Graduation / release gates | Answers "is this deterministically reliable?" which matters for promotion decisions where you fix k and demand all-pass |
-| **Pass@k** | Smoke testing / triage | Answers "can this work at all?" useful for catching total breakages cheaply |
+### What it means
+
+TOST tests whether the current run is **non-inferior** to the baseline —
+meaning it has not regressed beyond a tolerance margin. It is not a test
+of equivalence or superiority.
+
+The test asks: "Can we rule out that the current run is worse than baseline
+by more than `margin`?" If the answer is yes (the CI lower bound clears
+`-margin`), non-inferiority is proven and the gate passes.
+
+### The margin
+
+The margin is data-driven, derived from the baseline's own noise:
+
+```
+margin = k × SD(baseline_trialScores)
+```
+
+`SD` is the population standard deviation of the per-trial scores saved
+when the baseline was graduated. `k` controls how many "wobbles" of
+baseline noise are tolerated.
+
+**What k means in practice:**
+
+| k | Tolerance | Use case |
+|---|-----------|----------|
+| 1.0 | 1 wobble (strict) | Zero-variance evaluators, hard pass/fail |
+| 2.0 (default) | 2 wobbles | General evaluators — absorbs typical trial variance |
+| 3.0 | 3 wobbles (permissive) | High-variance evaluators (latency, cost) |
+
+A baseline with high variance produces a wide margin, which means the
+current run has more room to vary without triggering a failure. A stable
+baseline (low variance) produces a tight margin, demanding the current run
+stay close.
+
+**SD=0 (zero-variance baseline):** When all baseline trials score
+identically (e.g., always 1.0 or always 0.0), `margin = 0`. TOST cannot
+prove non-inferiority with a zero margin, so the comparator bypasses it
+and uses a strict uniform-match check instead: the current run passes only
+if every trial score equals the baseline constant. Any deviation from the
+constant value is a failure. This ensures perfectly stable evaluators
+demand perfect consistency without producing false failures on identical
+results.
+
+### Which test is used
+
+The comparator dispatches to different TOST implementations based on
+evaluator type:
+
+| Evaluator type | Method | Source |
+|---------------|--------|--------|
+| Binary pass/fail (`regressionMode` default) | Wilson-score CI on difference of proportions | `tostProportions()` |
+| Continuous score-mode (`regressionMode: 'score'`) | Permutation test (exact or Monte Carlo) | `tostPermutation()` |
+
+**Permutation test path:** When `n_baseline + n_current ≤ 15`, all
+`C(n, n_current)` permutations are enumerated exactly (e.g., n=5+5 gives
+252 permutations). Above 15, seeded Monte Carlo with 10,000 samples is
+used. The CI is derived by centering the permutation null distribution at
+the observed difference.
+
+### Gate semantics
+
+| Condition | Gate |
+|-----------|------|
+| TOST proves non-inferiority for all evaluators | `pass` |
+| TOST fails for any evaluator (statistical evidence) | `fail` |
+| Fallback threshold exceeded (no `trialScores`) | `warning` |
+| All evaluators skipped (version mismatch) | `fail` |
+| All evaluators skipped (no data) | `warning` |
+
+`fail` means statistical evidence of regression. `warning` is
+informational — it means the comparison ran without statistical backing
+(legacy baseline) or could not run at all.
 
 ---
 
-## Trial Count Mismatch: Baseline vs Regression Runs
+## Power and Sample Size
 
-A common cost-saving pattern: establish baselines at high trial counts
-(20 trials via `--graduate --stability high`) and run regression checks
-on feature branches at low trial counts (3 trials via `--trials 3`).
+### What "power" means here
 
-### Why this works mechanically
+Power is the probability that the TOST correctly proves non-inferiority
+when the true performance is unchanged. Low power = high false-fail rate
+(the test fails to prove non-inferiority even when nothing regressed).
 
-The regression comparator normalizes to ratios before comparing:
+Power increases with:
+- Larger current run n
+- Larger baseline n (better SD estimate, wider permutation pool)
+- Lower baseline variance (tighter SD → smaller margin → easier to prove)
+- Higher k (wider margin → easier to prove, but risks missing real regressions)
+
+### Approximate false-fail rates (k=2, identical distributions)
+
+For binary evaluators (Wilson-score), with a strong baseline (n=20, p=0.85):
+
+| n_current | Approx. false-fail rate | Signal quality |
+|-----------|------------------------|----------------|
+| 3 | ~10% | Low (wide CI, coarse quantization) |
+| 5 | ~2% | Solid for routine checks |
+| 10 | ~0.1% | Near-certain |
+
+For score-mode evaluators (permutation, k=2, identical distributions):
+
+| n_current | n_baseline | Combined n | Method | Approx. false-fail rate |
+|-----------|-----------|------------|--------|------------------------|
+| 3 | 5 | 8 | exact | ~15% |
+| 3 | 10 | 13 | exact | ~8% |
+| 5 | 10 | 15 | exact | ~3% |
+| 10 | 20 | 30 | MC | ~0.5% |
+
+These are approximations. Actual rates depend on the evaluator's score
+distribution and baseline variance.
+
+### Minimum useful n
+
+At n_current=3, the Wilson CI spans roughly ±0.35 for a binary evaluator.
+With a typical k=2 margin of 0.2-0.3, the CI lower bound will frequently
+be below `-margin` even when nothing changed. This is expected: 3 trials
+cannot statistically prove non-inferiority against a tight margin.
+
+The test does not hide this: it returns `nonInferiorityProven: false` and
+the gate becomes `fail`. This is honest behavior. The correct response is
+to re-run at a higher trial count.
+
+---
+
+## Asymmetric n: High Baseline, Low Eval Run
+
+A common cost-saving pattern: graduate baselines at high trial counts (10-20
+trials) and run regression checks on feature branches at low trial counts
+(3-5 trials). This asymmetry is supported and expected.
+
+### Practical false-fail rates by n_current
+
+With n_baseline=20 and k=2 (binary evaluators, no true regression):
+
+| n_current | Approx. false-fail rate | When to use |
+|-----------|------------------------|-------------|
+| 3 | ~10% | Quick smoke test. If passes, high confidence. If fails, re-run at 5. |
+| 5 | ~2% | Solid signal for routine branch checks. |
+| 10 | ~0.1% | Near-certain. Use before merging high-risk changes. |
+
+Stable evaluators (low CV) have lower false-fail rates at any n. Noisy
+evaluators (latency, token-usage) are where n=3 gets shaky.
+
+### Recommended workflow
+
+```
+n=3 quick check
+  └─ passes → done (high confidence the branch is clean)
+  └─ fails  → re-run at n=5 before investigating
+               └─ passes at n=5 → n=3 was noise, proceed
+               └─ fails at n=5  → likely real, investigate
+```
+
+Why high baseline n helps beyond the asymmetry itself:
+- Better SD estimate for the margin (more representative noise profile)
+- Larger permutation pool for score-mode evaluators (exact test remains
+  feasible up to combined n=15)
+
+### What the CI tells you
+
+When a run fails, check the markdown report for the confidence interval.
+A CI like `[-0.41, +0.08]` with margin `0.20` means:
+
+- The CI lower bound (-0.41) is below `-margin` (-0.20)
+- Non-inferiority is not proven
+- But the CI upper bound (+0.08) shows the current mean is likely not worse
+  than baseline — the failure is driven by uncertainty, not a clear drop
+
+This is normal at n=3. Re-run at n=5 or n=10 to resolve.
+
+---
+
+## Fallback Path (Legacy Baselines)
+
+Baselines graduated before the TOST migration lack `trialScores`. The
+comparator detects this and falls back automatically.
+
+**Fallback behavior:**
+- Computes `baselineScore - currentScore` as before
+- Compares against the static threshold from `fallbackThresholds`
+- If threshold exceeded: gate is `warning`, not `fail`
+- No `statistical` metadata in the result
+
+The `warning` cap is intentional. Legacy baselines cannot provide
+statistical backing for a `fail` verdict. The signal is still useful
+(something exceeded a threshold) but is not statistically grounded.
+
+**Per-evaluator fallback thresholds** (from `local.dev.ts`):
+
+| Evaluator | Threshold |
+|-----------|-----------|
+| `jtbd-completion` | 0.10 |
+| `bug-hit-rate` | 0.10 |
+| `tool-call-verification` | 0.10 |
+| `prompt-efficiency` | 0.20 |
+| `token-usage` | 1.5 |
+| `latency` | 1.5 |
+| (all others) | 0.25 (default) |
+
+To get `fail`-capable gating, re-graduate the baseline. See the migration
+guide below.
+
+---
+
+## Configuration
+
+The `regression` block in each environment config (`config/environments/`):
 
 ```typescript
-// regression-comparator.ts
-const currentScore = agg.passingTrials / agg.totalTrials;
-const baselineScore = baselineEntry.passingTrials / baselineEntry.totalTrials;
-const exceeded = baselineScore - currentScore > threshold;
+regression: {
+  alpha: 0.05,               // significance level for TOST (default: 0.05)
+  k: 2.0,                    // SD multiplier for margin (default: 2.0)
+  evaluatorKOverrides: {     // optional: per-evaluator k overrides
+    'latency': 3.0,
+    'llm-cost': 3.0,
+  },
+  seed: 42,                  // optional: PRNG seed for MC/bootstrap determinism
+  fallbackThresholds: {
+    thresholds: {
+      'jtbd-completion': 0.1,
+      // ...
+    },
+    defaultThreshold: 0.25,  // applies to evaluators not in the map
+  },
+}
 ```
 
-Trial counts never enter the threshold formula. A 10-trial baseline at
-0.9 is compared the same way against a 3-trial run at 0.667. No warnings,
-no adjustments, no statistical corrections.
+### `alpha`
 
-### The variance problem
+The significance level for TOST. At `alpha=0.05`, the test uses a 95%
+confidence interval. Lowering alpha (e.g., 0.01) makes the test more
+conservative — the CI must clear the margin with more certainty, increasing
+the false-fail rate at small n. Raising alpha (e.g., 0.10) makes it more
+permissive.
 
-With 3 trials, your possible pass-rate values are quantized:
+Default: `0.05`.
 
+### `k`
+
+The SD multiplier that sets the margin. Higher k = wider margin = more
+tolerant of variation.
+
+Rules of thumb:
+- `k=1`: tight, only appropriate for very stable evaluators
+- `k=2`: general default, balances sensitivity and false-fail rate
+- `k=3`: use for high-variance evaluators where the SD itself is large
+
+Default: `2.0`.
+
+### `evaluatorKOverrides`
+
+Per-evaluator k override. Useful when some evaluators (e.g., latency, cost)
+have inherently high variance and would produce too many false positives at
+the global k.
+
+```typescript
+evaluatorKOverrides: {
+  'latency': 3.0,      // latency is noisy; allow 3× SD drift
+  'llm-cost': 3.0,     // cost varies with model routing
+  'jtbd-completion': 1.5,  // binary and stable; tighten slightly
+}
 ```
-0/3 = 0.000
-1/3 = 0.333
-2/3 = 0.667
-3/3 = 1.000
+
+If an evaluator is not in `evaluatorKOverrides`, `config.k` is used.
+
+### `seed`
+
+An integer seed for the Mulberry32 PRNG used in Monte Carlo permutation
+sampling and BCa bootstrap. Set this for deterministic results in CI.
+
+When `seed` is omitted, it defaults to `0` in the statistical functions,
+which is effectively deterministic (same seed = same results). Setting an
+explicit seed in config makes this contract explicit and visible.
+
+```typescript
+regression: {
+  alpha: 0.05,
+  k: 2.0,
+  seed: 12345,
+  fallbackThresholds: { /* ... */ },
+}
 ```
 
-With 10 trials, you get 11 possible values (0.0, 0.1, 0.2, ... 1.0).
+### `fallbackThresholds`
 
-A single flaky trial at 3 trials swings the score by 33 percentage
-points. At 10 trials, each trial only moves the score by 10 points.
+Used only when a baseline lacks `trialScores` (legacy path). Structure:
 
-### Concrete example
+```typescript
+fallbackThresholds: {
+  thresholds: Record<string, number>,  // per-evaluator static thresholds
+  defaultThreshold: number,            // fallback when evaluator not in map
+}
+```
 
-**Scenario:** jtbd-completion evaluator, threshold = 0.10
-
-**Baseline (10 trials):** 9/10 pass = 0.90
-
-| 3-trial result | Pass rate | Delta from baseline | Regression? |
-|----------------|-----------|---------------------|-------------|
-| 3/3 pass | 1.000 | +0.10 | No (improved) |
-| 2/3 pass | 0.667 | -0.233 | **Yes** (exceeds 0.10) |
-| 1/3 pass | 0.333 | -0.567 | **Yes** |
-| 0/3 pass | 0.000 | -0.900 | **Yes** |
-
-At 3 trials, there is no middle ground between "all pass" and "regression
-flagged." One unlucky LLM response is the difference between a clean run
-and an investigation.
-
-### False positive and false negative rates
-
-**Higher false-positive rate (spurious regressions):** A scenario with
-true p = 0.85 will produce 2/3 passes about 33% of the time (binomial
-probability), triggering a false regression flag against a 0.9 baseline.
-
-**Higher false-negative rate (missed regressions):** A real regression
-dropping p from 0.9 to 0.7 can still produce 3/3 passes about 34% of
-the time (0.7^3 = 0.343 for all-fail is wrong; P(3/3) = 0.343), masking
-the problem entirely.
-
-### Score-mode evaluators are more resilient
-
-Score-mode evaluators (token-usage, latency, prompt-efficiency) compare
-trimmed means and use relative percentage thresholds. At 3 trials,
-`trimmedMean(3)` equals the median (the single middle value after trimming
-extremes), so existing thresholds remain valid. The underlying measurements
-are continuous rather than binary, making them more resilient to low trial
-counts.
+Score-mode evaluators use relative thresholds (percentage change). Pass-rate
+evaluators use absolute deltas.
 
 ---
 
-## Practical Recommendations
+## Migration Guide: Re-Graduating Baselines to Include `trialScores`
 
-### Establishing baselines
+Baselines saved before the TOST migration lack `trialScores` and will only
+ever produce `warning` gates. To enable full TOST gating, re-graduate.
+
+### Step 1: Run graduation
 
 Use high trial counts (20 via `--stability high`) for baselines. This is
 a one-time cost that produces a stable reference point. The baseline
 stores aggregated scores, not raw transcripts, so storage is minimal.
 
 ```bash
-pnpm run eval --graduate <scenario> --stability high
+# Single scenario
+pnpm run eval --graduate <scenario-name> --stability high
+
+# All scenarios in a suite
+pnpm run eval --graduate-suite <suite-name> --stability high --fan-out
 ```
 
-### Running regression checks on feature branches
+This runs 20 trials (stability=high), saves `trialScores` in the new
+baseline format, and replaces the existing baseline.
 
-Use 3 trials for cost-conscious branch validation:
+### Step 2: Verify trialScores were saved
+
+After graduation, check the baseline JSON:
 
 ```bash
-pnpm run eval --trials 3
+cat evals/gosym-probe/baselines/<scenario-name>.json | grep trialScores
 ```
 
-Expect noisier results. Treat flagged regressions as "investigate" signals
-rather than definitive failures.
+Each evaluator entry should now have a `trialScores` array:
 
-### Threshold tuning for low trial counts
+```json
+{
+  "jtbd-completion": {
+    "passingTrials": 9,
+    "totalTrials": 10,
+    "trialScores": [1, 1, 1, 0, 1, 1, 1, 1, 1, 1]
+  }
+}
+```
 
-With 3 trials and pass-rate evaluators, the default threshold of 0.10 is
-too tight (a single failure blows past it). Options:
+### Step 3: Run a regression check to confirm
 
-1. **Loosen pass-rate thresholds to 0.35+** in a branch-check config
-   environment. This absorbs the quantization noise while still catching
-   2/3 or worse failures against a strong baseline.
+```bash
+pnpm run eval --scenario <scenario-name> --trials 5
+```
 
-2. **Use pass@k as the branch gate** instead of pass-rate. If at least
-   one trial passes, the scenario is not catastrophically broken. Reserve
-   strict pass-rate gating for graduation and CI.
+The markdown report should now show `statistical` metadata (margin, CI,
+method) instead of the legacy threshold comparison.
 
-3. **Confirm before acting.** When a 3-trial run flags a regression,
-   re-run at higher trial count before concluding it's real:
-   ```bash
-   pnpm run eval --scenario <name> --trials 10
-   ```
+### Re-graduating from a prior run
 
-### Cost vs confidence tradeoffs
+If you already have a high-trial run in `results/runs/`, you can save it
+as a baseline without re-running:
 
-| Trials | Relative cost | Pass-rate granularity | Confidence in regression signal |
-|--------|---------------|----------------------|-------------------------------|
-| 3 | 1x | 4 values (0, .33, .67, 1) | Low (high variance) |
-| 5 | 1.7x | 6 values (0, .2, .4, .6, .8, 1) | Moderate |
-| 10 | 3.3x | 11 values (0.0 to 1.0) | High |
+```bash
+pnpm run save-baseline <run-id>
+```
 
-The sweet spot depends on scenario cost. For cheap scenarios (few turns,
-no DOM capture), 5 trials is a good balance. For expensive scenarios
-(multi-turn, Playwright captures), 3 trials with loose thresholds and
-confirmation re-runs is pragmatic.
+The save-baseline CLI loads per-trial `eval-results.json` files from the
+run directory and extracts `trialScores` automatically. This is useful for
+promoting an existing run to baseline without spending additional LLM calls.
+
+### Stability levels
+
+| Level | Trials | Use case |
+|-------|--------|----------|
+| `low` | 5 | Fast development iteration |
+| `medium` | 10 | Default graduation |
+| `high` | 20 | Production baselines |
+
+Higher baseline n improves margin accuracy (better SD estimate) and
+increases power for low-n regression checks.
+
+---
+
+## Evaluator Version Mismatches
+
+If an evaluator's `evalVersion` changes between runs, the comparator skips
+that evaluator and emits `skipReason: 'evaluator-version-mismatch'`. The gate
+becomes `fail`.
+
+This is not a TOST failure — it means the evaluation rubric changed and the
+old baseline is no longer comparable. The hard fail ensures stale baselines
+are not silently ignored. Re-graduate to restore full gating.
+
+Adding `evalVersion` to an evaluator that previously lacked one is a breaking
+change (the new baseline field will never match an absent field in old
+baselines). Re-graduate immediately after adding or bumping `evalVersion`.

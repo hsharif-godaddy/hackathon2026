@@ -567,54 +567,26 @@ async function main(): Promise<void> {
     console.log(`  ${runDir}`);
 
     if (!skipBaseline) {
-      const versionSkipped = results.filter(
-        (r) => r.regressionStatus?.gate === 'version-skipped',
-      );
-      if (versionSkipped.length > 0) {
-        for (const r of versionSkipped) {
-          const skipped = r.regressionStatus!.evaluators.filter(
-            (e) => e.type === 'skipped',
-          );
-          const hasVersionMismatch = skipped.some(
-            (e) => 'skipReason' in e && e.skipReason === 'evaluator-version-mismatch',
-          );
-          const hasDataGap = skipped.some(
-            (e) =>
-              'skipReason' in e &&
-              (e.skipReason === 'no-score-data' || e.skipReason === 'no-trial-data'),
-          );
-          if (hasVersionMismatch) {
-            console.error(
-              `Error: evaluator comparisons skipped for "${r.scenarioName}" ` +
-              `due to version mismatch. Regenerate the baseline:\n` +
-              `  pnpm run save-baseline <run-id> --scenario ${r.scenarioName}`,
-            );
-          }
-          if (hasDataGap) {
-            console.error(
-              `Error: evaluator comparisons skipped for "${r.scenarioName}" ` +
-              `— no score/trial data available. Check probe health or run more trials.`,
-            );
-          }
-        }
-        process.exitCode = 1;
-        return;
-      }
-
       const regressionFailures = results.filter(
-        (r) =>
-          r.regressionStatus?.gate === 'error' ||
-          r.regressionStatus?.gate === 'critical',
+        (r) => r.regressionStatus?.gate === 'fail',
       );
       if (regressionFailures.length > 0) {
         for (const r of regressionFailures) {
-          const gate = r.regressionStatus!.gate as 'error' | 'critical';
-          const level = r.regressionStatus!.stabilityLevel;
-          const label = gate === 'critical' ? 'Critical' : 'Error';
-          console.error(
-            `${label}: regression detected in "${r.scenarioName}"` +
-            ` (${level} stability).`,
+          const skipped = r.regressionStatus!.evaluators.filter((e) => e.type === 'skipped');
+          const hasVersionMismatch = skipped.some(
+            (e) => 'skipReason' in e && e.skipReason === 'evaluator-version-mismatch',
           );
+          if (hasVersionMismatch) {
+            console.error(
+              `Regression: evaluator version mismatch in "${r.scenarioName}". ` +
+              `Regenerate the baseline:\n` +
+              `  pnpm run save-baseline <run-id> --scenario ${r.scenarioName}`,
+            );
+          } else {
+            console.error(
+              `Regression: statistical evidence of regression detected in "${r.scenarioName}".`,
+            );
+          }
         }
         process.exitCode = 1;
         return;
@@ -624,8 +596,7 @@ async function main(): Promise<void> {
         if (r.regressionStatus?.gate === 'warning') {
           console.warn(
             `Warning: regression detected in "${r.scenarioName}"` +
-            ` (low stability). Consider re-graduating at medium or` +
-            ` high stability.`,
+            ` (fallback threshold). Re-graduate to enable statistical gating.`,
           );
         }
       }

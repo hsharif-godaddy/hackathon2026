@@ -133,14 +133,14 @@ describe('loadConfig', () => {
       expect(Number.isInteger(maxTurns)).toBe(true);
     });
 
-    it('regression.defaultThreshold is between 0 and 1', () => {
-      const { defaultThreshold } = loadConfig().regression;
+    it('regression.fallbackThresholds.defaultThreshold is between 0 and 1', () => {
+      const { defaultThreshold } = loadConfig().regression.fallbackThresholds;
       expect(defaultThreshold).toBeGreaterThan(0);
       expect(defaultThreshold).toBeLessThanOrEqual(1);
     });
 
-    it('regression.thresholds is an object', () => {
-      expect(loadConfig().regression.thresholds).toBeTypeOf('object');
+    it('regression.fallbackThresholds.thresholds is an object', () => {
+      expect(loadConfig().regression.fallbackThresholds.thresholds).toBeTypeOf('object');
     });
 
     it('playwright.ignoreHttpsErrors is a boolean', () => {

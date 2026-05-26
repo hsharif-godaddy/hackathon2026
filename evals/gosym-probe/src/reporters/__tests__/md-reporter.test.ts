@@ -6,6 +6,7 @@ import {
 import type { ScenarioResult } from '../../runner/types.js';
 import type { EvalResult } from '../../evaluators/evaluator.js';
 import type { Turn } from '../../runner/transcript.js';
+import type { StatisticalMetadata } from '../../baselines/types.js';
 import { makeTurn, makeToolCall, makeTurnWithToolCalls } from './fixtures.js';
 
 vi.mock('node:fs/promises');
@@ -542,7 +543,7 @@ function makeRegressionStatus(
   const currentScore = 0.8;
   return {
     scenarioName: 'build-landing-page',
-    gate: exceeded ? ('error' as const) : ('pass' as const),
+    gate: exceeded ? ('warning' as const) : ('pass' as const),
     stabilityLevel: 'medium' as const,
     evaluators: [
       {
@@ -1370,7 +1371,7 @@ const SCORE_MODE_ENRICHED_RESULT: ScenarioResult = {
   stabilityLevel: 'medium',
   regressionStatus: {
     scenarioName: 'latency-check',
-    gate: 'error' as const,
+    gate: 'warning' as const,
     stabilityLevel: 'medium' as const,
     evaluators: [],
   },
@@ -1514,6 +1515,105 @@ describe('MdReporter — git info line', () => {
     const reporter = new MdReporter();
     const content = reporter.render('run-001', [NO_BASELINE_RESULT]);
     expect(content).not.toContain('**Git:**');
+  });
+});
+
+// ── TOST statistical metadata in vs. baseline column ────────────────────────
+
+const TOST_META: StatisticalMetadata = {
+  method: 'wilson-score',
+  margin: 0.30,
+  baselineSD: 0.15,
+  k: 2.0,
+  n: { baseline: 10, current: 5 },
+  confidenceInterval: { lower: -0.15, upper: 0.29 },
+  nonInferiorityProven: true,
+};
+
+function makeRegressionStatusWithTost(
+  evaluator: string,
+  delta: number,
+  exceeded: boolean,
+  statistical: StatisticalMetadata,
+) {
+  const currentScore = 0.8;
+  return {
+    scenarioName: 'build-landing-page',
+    gate: exceeded ? ('fail' as const) : ('pass' as const),
+    stabilityLevel: 'medium' as const,
+    evaluators: [
+      {
+        type: 'compared' as const,
+        evaluator,
+        currentScore,
+        baselineScore: currentScore - delta,
+        delta,
+        exceeded,
+        statistical,
+      },
+    ],
+  };
+}
+
+describe('MdReporter — TOST statistical metadata in vs. baseline column', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockMkdir.mockResolvedValue(undefined);
+    mockWriteFile.mockResolvedValue(undefined);
+  });
+
+  it('shows TOST check mark when non-inferiority is proven', () => {
+    const result = {
+      ...BASELINED_RESULT,
+      regressionStatus: makeRegressionStatusWithTost('bug-hit-rate', 0.05, false, TOST_META),
+    };
+    const reporter = new MdReporter();
+    const content = reporter.render('run-001', [result]);
+    expect(content).toContain('TOST \u2713');
+  });
+
+  it('shows TOST cross mark when non-inferiority is not proven', () => {
+    const result = {
+      ...BASELINED_RESULT,
+      regressionStatus: makeRegressionStatusWithTost('bug-hit-rate', -0.33, true, {
+        ...TOST_META,
+        nonInferiorityProven: false,
+        confidenceInterval: { lower: -0.55, upper: -0.11 },
+      }),
+    };
+    const reporter = new MdReporter();
+    const content = reporter.render('run-001', [result]);
+    expect(content).toContain('TOST \u2717');
+  });
+
+  it('shows CI bounds in vs. baseline cell', () => {
+    const result = {
+      ...BASELINED_RESULT,
+      regressionStatus: makeRegressionStatusWithTost('bug-hit-rate', 0.05, false, TOST_META),
+    };
+    const reporter = new MdReporter();
+    const content = reporter.render('run-001', [result]);
+    expect(content).toContain('CI -0.15..0.29');
+  });
+
+  it('shows margin in vs. baseline cell', () => {
+    const result = {
+      ...BASELINED_RESULT,
+      regressionStatus: makeRegressionStatusWithTost('bug-hit-rate', 0.05, false, TOST_META),
+    };
+    const reporter = new MdReporter();
+    const content = reporter.render('run-001', [result]);
+    expect(content).toContain('\u00b10.30');
+  });
+
+  it('does not show TOST when no statistical metadata is present', () => {
+    const result = {
+      ...BASELINED_RESULT,
+      regressionStatus: makeRegressionStatus('bug-hit-rate', 0.05, false),
+    };
+    const reporter = new MdReporter();
+    const content = reporter.render('run-001', [result]);
+    expect(content).not.toContain('TOST');
   });
 });
 

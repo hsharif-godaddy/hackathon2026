@@ -166,7 +166,7 @@ export class GraduationRunner {
 
     if (hasValidResults) {
       await baselineStore.save(runId, result, {
-        defaultThreshold: config.regression.defaultThreshold,
+        defaultThreshold: config.regression.fallbackThresholds.defaultThreshold,
         ...pickGitFields(runMetadata),
       });
     } else {

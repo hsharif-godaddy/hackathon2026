@@ -1,4 +1,5 @@
 import type { StabilityLevel } from '../scenarios/types.js';
+import type { TOSTMethod } from './statistical-tests.js';
 
 export interface BaselineEvalScores {
   /** Absent when regressionMode === 'score'. */
@@ -12,6 +13,12 @@ export interface BaselineEvalScores {
   evalVersion?: string;
   /** When true, score increase = regression. Present only for score-mode evaluators. */
   lowerIsBetter?: boolean;
+  /**
+   * Per-trial scores used for statistical regression gating (TOST).
+   * Excludes trials with evaluatorFailed=true or verdict='unknown'.
+   * Absent on legacy baselines saved before this field was introduced.
+   */
+  trialScores?: readonly number[];
 }
 
 export interface BaselineScores {
@@ -40,6 +47,26 @@ interface RegressionEvalResultBase {
   baselineEvalVersion?: string;
 }
 
+/**
+ * Metadata from a TOST (Two One-Sided Tests) statistical comparison.
+ * Present only when baseline had trialScores and current run had extractable scores.
+ */
+export interface StatisticalMetadata {
+  method: TOSTMethod;
+  /** Non-inferiority margin used: k * SD(baselineTrialScores). */
+  margin: number;
+  /** Population SD of baseline trial scores. */
+  baselineSD: number;
+  /** SD multiplier used to derive the margin. */
+  k: number;
+  /** Trial count for each side of the comparison. */
+  n: { baseline: number; current: number };
+  /** (1 - alpha) confidence interval on mean(current) - mean(baseline). */
+  confidenceInterval: { lower: number; upper: number };
+  /** True when CI proves current is within margin of baseline (gate passes). */
+  nonInferiorityProven: boolean;
+}
+
 export interface ComparedRegressionEvalResult extends RegressionEvalResultBase {
   type: 'compared';
   /**
@@ -62,11 +89,8 @@ export interface ComparedRegressionEvalResult extends RegressionEvalResultBase {
    */
   delta: number;
   /**
-   * Pass-rate mode: true when absolute drop exceeds threshold.
-   * Score mode (higher-is-better): true when relative drop
-   *   (baseline - current) / baseline exceeds threshold.
-   * Score mode (lowerIsBetter): true when relative increase
-   *   (current - baseline) / baseline exceeds threshold.
+   * Statistical path: true when TOST fails to prove non-inferiority.
+   * Fallback path: true when threshold is exceeded.
    * False for NaN scores, missing baseline, or zero baseline score.
    */
   exceeded: boolean;
@@ -74,6 +98,11 @@ export interface ComparedRegressionEvalResult extends RegressionEvalResultBase {
   skipReason?: string;
   currentEvalVersion?: string;
   baselineEvalVersion?: string;
+  /**
+   * Present when the statistical (TOST) path was used.
+   * Absent when falling back to threshold-based comparison.
+   */
+  statistical?: StatisticalMetadata;
 }
 
 export interface SkippedRegressionEvalResult extends RegressionEvalResultBase {
@@ -86,17 +115,11 @@ export type RegressionEvalResult = ComparedRegressionEvalResult | SkippedRegress
 export interface RegressionResult {
   scenarioName: string;
   /**
-   * 'warning'  — low-stability scenario with threshold breach; exit 0
-   * 'error'    — medium-stability scenario with threshold breach; exit 1
-   * 'critical' — high-stability scenario with threshold breach; exit 1
-   * 'pass'     — scenario within thresholds
+   * 'pass'    — non-inferiority proven (TOST/uniform-match) or within thresholds; exit 0
+   * 'fail'    — statistical regression (TOST/uniform-match failed) or version-mismatch skips; exit 1
+   * 'warning' — fallback threshold breach (no statistical backing) or all evaluators skipped (no data); exit 0
    */
-  gate:
-    | 'pass'
-    | 'warning'
-    | 'error'
-    | 'critical'
-    | 'version-skipped';
+  gate: 'pass' | 'warning' | 'fail';
   stabilityLevel: StabilityLevel;
   evaluators: RegressionEvalResult[];
 }

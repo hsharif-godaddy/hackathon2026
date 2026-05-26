@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { enrichScoreModePassRates } from '../score-mode-enricher.js';
 import type { ScenarioResult, AggregatedResult, TrialResult } from '../../runner/types.js';
-import type { BaselineScores } from '../types.js';
+import type { BaselineScores, RegressionResult } from '../types.js';
 import type { EvalResult } from '../../evaluators/evaluator.js';
 import type { ThresholdConfig } from '../threshold.js';
 
@@ -900,5 +900,216 @@ describe('trial verdict enrichment — seam and edge cases', () => {
     expect(enrichedTrials[0].evalResults[0].baselineComparison).toBe('latency: 120 vs baseline 100 (threshold 10%) → fail');
     // original input untouched
     expect(inputTrial.evalResults[0].verdict).toBe('observed');
+  });
+});
+
+// ── TOST path (regressionResult provided) ─────────────────────────────────────
+
+function makeRegressionResult(
+  entries: Array<{ evaluator: string; exceeded: boolean; hasStatistical?: boolean }>,
+): RegressionResult {
+  return {
+    scenarioName: 'test-scenario',
+    gate: 'pass',
+    stabilityLevel: 'medium',
+    evaluators: entries.map(({ evaluator, exceeded, hasStatistical = true }) => ({
+      type: 'compared' as const,
+      evaluator,
+      currentScore: 1.0,
+      baselineScore: 1.0,
+      delta: 0,
+      exceeded,
+      statistical: hasStatistical
+        ? {
+            method: 'permutation-exact' as const,
+            margin: 0.1,
+            baselineSD: 0.05,
+            k: 2,
+            n: { baseline: 3, current: 3 },
+            confidenceInterval: { lower: -0.05, upper: 0.05 },
+            nonInferiorityProven: !exceeded,
+          }
+        : undefined,
+    })),
+  };
+}
+
+function makeTrialWithScoreAndIndex(
+  evaluator: string,
+  score: number,
+  trialIndex: number,
+  verdict: EvalResult['verdict'] = 'observed',
+): TrialResult {
+  return {
+    trialIndex,
+    transcript: {
+      scenarioName: 'test-scenario',
+      trialIndex,
+      turns: [],
+      snapshots: [],
+      errors: [],
+    },
+    evalResults: [{ evaluator, score, verdict, reason: '' }],
+  };
+}
+
+describe('enrichScoreModePassRates — TOST path', () => {
+  const threeTrials = [
+    makeTrialWithScoreAndIndex('latency', 0.5, 0),
+    makeTrialWithScoreAndIndex('latency', 0.4, 1),
+    makeTrialWithScoreAndIndex('latency', 0.6, 2),
+  ];
+
+  const scoreModeScenario: ScenarioResult = {
+    scenarioName: 'test-scenario',
+    stabilityLevel: 'medium',
+    trials: threeTrials,
+    aggregated: {
+      latency: { regressionMode: 'score', passingTrials: 0, totalTrials: 3, aggregateScore: 0.5 },
+    },
+  };
+
+  const baseline = makeBaseline('latency', 0.5);
+
+  it('TOST passed: passAtK=true, passToTheK=true, baselinePassingTrials=validTrials', () => {
+    const rr = makeRegressionResult([{ evaluator: 'latency', exceeded: false }]);
+
+    const { aggregated: enriched } = enrichScoreModePassRates(
+      scoreModeScenario, baseline, defaultConfig, rr,
+    );
+
+    expect(enriched['latency'].passAtK).toBe(true);
+    expect(enriched['latency'].passToTheK).toBe(true);
+    expect(enriched['latency'].baselinePassingTrials).toBe(3);
+  });
+
+  it('TOST passed: per-trial verdicts stay observed, no baselineComparison added', () => {
+    const rr = makeRegressionResult([{ evaluator: 'latency', exceeded: false }]);
+
+    const { trials: enrichedTrials } = enrichScoreModePassRates(
+      scoreModeScenario, baseline, defaultConfig, rr,
+    );
+
+    for (const trial of enrichedTrials) {
+      const er = trial.evalResults.find((e) => e.evaluator === 'latency')!;
+      expect(er.verdict).toBe('observed');
+      expect(er.baselineComparison).toBeUndefined();
+    }
+  });
+
+  it('TOST failed: passAtK=false, passToTheK=false, baselinePassingTrials=0', () => {
+    const rr = makeRegressionResult([{ evaluator: 'latency', exceeded: true }]);
+
+    const { aggregated: enriched } = enrichScoreModePassRates(
+      scoreModeScenario, baseline, defaultConfig, rr,
+    );
+
+    expect(enriched['latency'].passAtK).toBe(false);
+    expect(enriched['latency'].passToTheK).toBe(false);
+    expect(enriched['latency'].baselinePassingTrials).toBe(0);
+  });
+
+  it('TOST failed: per-trial verdicts stay observed, no baselineComparison added', () => {
+    const rr = makeRegressionResult([{ evaluator: 'latency', exceeded: true }]);
+
+    const { trials: enrichedTrials } = enrichScoreModePassRates(
+      scoreModeScenario, baseline, defaultConfig, rr,
+    );
+
+    for (const trial of enrichedTrials) {
+      const er = trial.evalResults.find((e) => e.evaluator === 'latency')!;
+      expect(er.verdict).toBe('observed');
+      expect(er.baselineComparison).toBeUndefined();
+    }
+  });
+
+  it('statistical=undefined on ComparedResult: falls through to threshold path', () => {
+    // hasStatistical=false → threshold fallback should fire
+    const rr = makeRegressionResult([{ evaluator: 'latency', exceeded: false, hasStatistical: false }]);
+    // score=50, baseline=100, threshold=10% → passes threshold (50% drop > 10% but lowerIsBetter=false
+    // so actually: baselineScore - score = 50, relative = 50%, > 10% → FAIL via threshold)
+    const result = makeScenario('latency', [makeTrialWithScore('latency', 50)]);
+    const bl = makeBaseline('latency', 100);
+
+    const { aggregated: enriched } = enrichScoreModePassRates(result, bl, defaultConfig, rr);
+
+    // threshold path would fire and produce a verdict
+    expect(enriched['latency'].passAtK).toBe(false);
+    expect(enriched['latency'].baselinePassingTrials).toBe(0);
+  });
+
+  it('evaluator absent from regressionResult: falls through to threshold path', () => {
+    const rr = makeRegressionResult([{ evaluator: 'other-evaluator', exceeded: false }]);
+    const result = makeScenario('latency', [makeTrialWithScore('latency', 50)]);
+    const bl = makeBaseline('latency', 100);
+
+    const { aggregated: enriched } = enrichScoreModePassRates(result, bl, defaultConfig, rr);
+
+    // threshold path fires
+    expect(enriched['latency'].passAtK).toBe(false);
+  });
+
+  it('skipped result in regressionResult: falls through to threshold path', () => {
+    const rr: RegressionResult = {
+      scenarioName: 'test-scenario',
+      gate: 'pass',
+      stabilityLevel: 'medium',
+      evaluators: [{ type: 'skipped', evaluator: 'latency', skipReason: 'no-trial-data' }],
+    };
+    const result = makeScenario('latency', [makeTrialWithScore('latency', 95)]);
+    const bl = makeBaseline('latency', 100);
+
+    const { aggregated: enriched } = enrichScoreModePassRates(result, bl, defaultConfig, rr);
+
+    // threshold path fires; 95 vs 100, 5% drop ≤ 10% threshold → pass
+    expect(enriched['latency'].passAtK).toBe(true);
+  });
+
+  it('TOST path only applies to score-mode evaluators; pass-rate evaluator is copied unchanged', () => {
+    const rr = makeRegressionResult([{ evaluator: 'jtbd', exceeded: false }]);
+    const scenario: ScenarioResult = {
+      scenarioName: 'test-scenario',
+      stabilityLevel: 'medium',
+      trials: [makeTrialWithScore('jtbd', 1, 'pass')],
+      aggregated: {
+        jtbd: { regressionMode: 'passRate', passingTrials: 1, totalTrials: 1 },
+      },
+    };
+    const bl: BaselineScores = {
+      scenarioName: 'test-scenario',
+      runId: 'run-1',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      scores: { jtbd: { passingTrials: 1, totalTrials: 1 } },
+    };
+
+    const { aggregated: enriched } = enrichScoreModePassRates(scenario, bl, defaultConfig, rr);
+
+    // pass-rate evaluator must not be touched by the TOST path
+    expect(enriched['jtbd'].passAtK).toBeUndefined();
+    expect(enriched['jtbd'].regressionMode).toBe('passRate');
+  });
+
+  it('TOST passed with unknown trial: unknown trial excluded from baselinePassingTrials', () => {
+    const trials = [
+      makeTrialWithScoreAndIndex('latency', 0.5, 0, 'observed'),
+      makeTrialWithScoreAndIndex('latency', 0.0, 1, 'unknown'),
+      makeTrialWithScoreAndIndex('latency', 0.6, 2, 'observed'),
+    ];
+    const scenario: ScenarioResult = {
+      scenarioName: 'test-scenario',
+      stabilityLevel: 'medium',
+      trials,
+      aggregated: {
+        latency: { regressionMode: 'score', passingTrials: 0, totalTrials: 3, aggregateScore: 0.5 },
+      },
+    };
+    const rr = makeRegressionResult([{ evaluator: 'latency', exceeded: false }]);
+    const bl = makeBaseline('latency', 0.5);
+
+    const { aggregated: enriched } = enrichScoreModePassRates(scenario, bl, defaultConfig, rr);
+
+    // 2 valid (non-unknown) trials
+    expect(enriched['latency'].passAtK).toBe(true);
+    expect(enriched['latency'].baselinePassingTrials).toBe(2);
   });
 });

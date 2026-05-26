@@ -6,12 +6,14 @@ import {
 } from './args.js';
 import { createCliDeps } from './client-factory.js';
 import { pickGitFields } from '../baselines/types.js';
+import { isValidTrialScore } from '../baselines/trial-scores.js';
 
 async function main(): Promise<void> {
   const { values, positionals } = parseArgs({
     args: process.argv.slice(2),
     options: {
       suite: { type: 'string' },
+      scenario: { type: 'string' },
     },
     allowPositionals: true,
   });
@@ -19,7 +21,14 @@ async function main(): Promise<void> {
   const runId = positionals[0];
   if (!runId) {
     process.stderr.write(
-      'Usage: save-baseline <run-id> [--suite <suite>]\n',
+      'Usage: save-baseline <run-id> [--suite <suite>] [--scenario <name>]\n',
+    );
+    process.exit(1);
+  }
+
+  if (values.suite && values.scenario) {
+    process.stderr.write(
+      'Error: --suite and --scenario are mutually exclusive.\n',
     );
     process.exit(1);
   }
@@ -38,6 +47,8 @@ async function main(): Promise<void> {
     );
     process.exit(1);
   }
+
+  const dirName = await evalStore.resolveRunDirName(runId);
 
   let scenariosToSave = metadata.scenarios;
 
@@ -62,6 +73,14 @@ async function main(): Promise<void> {
       );
       process.exit(1);
     }
+  } else if (values.scenario) {
+    if (!metadata.scenarios.includes(values.scenario)) {
+      process.stderr.write(
+        `Error: scenario "${values.scenario}" not found in run "${runId}".\n`,
+      );
+      process.exit(1);
+    }
+    scenariosToSave = [values.scenario];
   }
 
   for (const scenarioName of scenariosToSave) {
@@ -77,6 +96,13 @@ async function main(): Promise<void> {
       continue;
     }
 
+    const trialScoresMap = await buildTrialScoresMap(
+      evalStore,
+      dirName,
+      runId,
+      scenarioName,
+    );
+
     const scenario = allScenarios.find((s) => s.name === scenarioName);
     const stabilityLevel = scenario?.stabilityLevel;
     const scoreEvaluatorNames = (scenario?.evaluators ?? [])
@@ -89,7 +115,8 @@ async function main(): Promise<void> {
       stabilityLevel,
       {
         scoreEvaluatorNames,
-        defaultThreshold: config.regression.defaultThreshold,
+        defaultThreshold: config.regression.fallbackThresholds.defaultThreshold,
+        trialScoresMap,
         ...pickGitFields(metadata),
       },
     );
@@ -99,6 +126,36 @@ async function main(): Promise<void> {
       `<timestamp>_${runId}.json\n`,
     );
   }
+}
+
+async function buildTrialScoresMap(
+  evalStore: ReturnType<typeof createCliDeps>['evalStore'],
+  dirName: string | null,
+  runId: string,
+  scenarioName: string,
+): Promise<Record<string, number[]>> {
+  if (!dirName) return {};
+
+  const trialIndices = await evalStore.listCompletedTrialIndices(
+    dirName,
+    scenarioName,
+  );
+
+  const allResults = await Promise.all(
+    trialIndices.map((trialIndex) =>
+      evalStore.loadEvalResults(runId, scenarioName, trialIndex),
+    ),
+  );
+
+  const trialScoresMap: Record<string, number[]> = {};
+  for (const evalResults of allResults) {
+    if (!evalResults) continue;
+    for (const r of evalResults) {
+      if (!isValidTrialScore(r)) continue;
+      (trialScoresMap[r.evaluator] ??= []).push(r.score);
+    }
+  }
+  return trialScoresMap;
 }
 
 main().catch((err: unknown) => {

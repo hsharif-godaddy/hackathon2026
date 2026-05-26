@@ -61,7 +61,7 @@ function makeConfig(overrides?: Partial<ResolvedConfig>): ResolvedConfig {
     gocode: { baseUrl: 'http://localhost', apiKey: 'key', model: 'test' },
     eval: { defaultTrials: 3, maxTurns: 30, turnTimeoutMs: 30000, maxConcurrency: 2, firstTurnInactivityMs: 600_000, firstTurnRetryScheduleMs: [600_000, 120_000, 120_000, 120_000], maxFirstTurnRetries: 2 },
     playwright: { ignoreHttpsErrors: true },
-    regression: { defaultThreshold: 0.25, thresholds: {} },
+    regression: { alpha: 0.05, k: 2.0, fallbackThresholds: { defaultThreshold: 0.25, thresholds: {} } },
     ...overrides,
   };
 }
@@ -759,7 +759,7 @@ describe('GraduationSuiteRunner — suiteMode: parallel', () => {
     expect(mockBaselineStore.save).toHaveBeenCalledWith(
       'run-baseline',
       expect.objectContaining({ scenarioName: 'alpha' }),
-      expect.objectContaining({ defaultThreshold: config.regression.defaultThreshold }),
+      expect.objectContaining({ defaultThreshold: config.regression.fallbackThresholds.defaultThreshold }),
     );
   });
 
@@ -1236,7 +1236,7 @@ describe('GraduationSuiteRunner — git field propagation', () => {
       'run-git',
       expect.objectContaining({ scenarioName: 'alpha' }),
       expect.objectContaining({
-        defaultThreshold: config.regression.defaultThreshold,
+        defaultThreshold: config.regression.fallbackThresholds.defaultThreshold,
         gitSha: 'abc1234',
         gitBranch: 'feat/test',
       }),
@@ -1263,7 +1263,7 @@ describe('GraduationSuiteRunner — git field propagation', () => {
 
     expect(mockBaselineStore.save).toHaveBeenCalledOnce();
     const saveOptions = mockBaselineStore.save.mock.calls[0][2];
-    expect(saveOptions).toEqual({ defaultThreshold: config.regression.defaultThreshold });
+    expect(saveOptions).toEqual({ defaultThreshold: config.regression.fallbackThresholds.defaultThreshold });
     expect(saveOptions).not.toHaveProperty('gitSha');
     expect(saveOptions).not.toHaveProperty('gitBranch');
   });

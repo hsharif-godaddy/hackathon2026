@@ -136,8 +136,9 @@ const mockConfig: ResolvedConfig = {
   },
   playwright: { ignoreHttpsErrors: true },
   regression: {
-    thresholds: {},
-    defaultThreshold: 0.1,
+    alpha: 0.05,
+    k: 2.0,
+    fallbackThresholds: { thresholds: {}, defaultThreshold: 0.1 },
   },
 };
 

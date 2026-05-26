@@ -9,6 +9,7 @@ import type { ScenarioResult } from '../runner/types.js';
 import type { StabilityLevel } from '../scenarios/types.js';
 import type { StoredAggregated } from '../store/types.js';
 import type { BaselineScores } from './types.js';
+import { extractAllTrialScores } from './trial-scores.js';
 import { toCompactTimestamp } from '../util/timestamp.js';
 
 export interface BaselineSaveOptions {
@@ -27,6 +28,14 @@ export interface BaselineSaveOptions {
   gitSha?: string | null;
   /** Git branch name at the time this baseline was saved. */
   gitBranch?: string | null;
+  /**
+   * Per-evaluator trial scores for statistical regression gating.
+   * Used by saveFromStored() when per-trial data is loaded separately
+   * from disk (the StoredAggregated format does not carry per-trial scores).
+   * Keyed by evaluator name; scores must be pre-filtered (no
+   * evaluatorFailed or unknown-verdict entries).
+   */
+  trialScoresMap?: Record<string, number[]>;
 }
 
 export class BaselineStore {
@@ -56,6 +65,8 @@ export class BaselineStore {
       options?.existingBaseline,
     );
 
+    const trialScoresByEvaluator = extractAllTrialScores(result.trials);
+
     const baseline: BaselineScores = {
       scenarioName: result.scenarioName,
       runId,
@@ -65,29 +76,34 @@ export class BaselineStore {
       ...(options?.gitSha !== undefined && { gitSha: options.gitSha }),
       ...(options?.gitBranch !== undefined && { gitBranch: options.gitBranch }),
       scores: Object.fromEntries(
-        Object.entries(result.aggregated).map(([name, agg]) => [
-          name,
-          {
-            ...(agg.passAtK !== undefined && {
-              passAtK: agg.passAtK,
-            }),
-            ...(agg.passToTheK !== undefined && {
-              passToTheK: agg.passToTheK,
-            }),
-            passingTrials: agg.passingTrials,
-            totalTrials: agg.totalTrials,
-            ...(scoreNamesSet.has(name) &&
-              agg.aggregateScore != null && {
-                aggregateScore: agg.aggregateScore,
+        Object.entries(result.aggregated).map(([name, agg]) => {
+          const trialScores = trialScoresByEvaluator.get(name);
+          return [
+            name,
+            {
+              ...(agg.passAtK !== undefined && {
+                passAtK: agg.passAtK,
               }),
-            ...(agg.evalVersion !== undefined && {
-              evalVersion: agg.evalVersion,
-            }),
-            ...(agg.lowerIsBetter !== undefined && {
-              lowerIsBetter: agg.lowerIsBetter,
-            }),
-          },
-        ]),
+              ...(agg.passToTheK !== undefined && {
+                passToTheK: agg.passToTheK,
+              }),
+              passingTrials: agg.passingTrials,
+              totalTrials: agg.totalTrials,
+              ...(scoreNamesSet.has(name) &&
+                agg.aggregateScore != null && {
+                  aggregateScore: agg.aggregateScore,
+                }),
+              ...(agg.evalVersion !== undefined && {
+                evalVersion: agg.evalVersion,
+              }),
+              ...(agg.lowerIsBetter !== undefined && {
+                lowerIsBetter: agg.lowerIsBetter,
+              }),
+              ...(trialScores !== undefined &&
+                trialScores.length > 0 && { trialScores }),
+            },
+          ];
+        }),
       ),
       ...(regressionThresholds !== undefined && { regressionThresholds }),
     };
@@ -158,29 +174,34 @@ export class BaselineStore {
       ...(options?.gitSha !== undefined && { gitSha: options.gitSha }),
       ...(options?.gitBranch !== undefined && { gitBranch: options.gitBranch }),
       scores: Object.fromEntries(
-        Object.entries(stored.evaluators).map(([name, ev]) => [
-          name,
-          {
-            ...(!scoreNamesSet.has(name) && ev.passAtK !== undefined && {
-              passAtK: ev.passAtK,
-            }),
-            ...(!scoreNamesSet.has(name) && ev.passToTheK !== undefined && {
-              passToTheK: ev.passToTheK,
-            }),
-            passingTrials: ev.passingTrials,
-            totalTrials: ev.totalTrials,
-            ...(scoreNamesSet.has(name) &&
-              ev.aggregateScore != null && {
-                aggregateScore: ev.aggregateScore,
+        Object.entries(stored.evaluators).map(([name, ev]) => {
+          const trialScores = options?.trialScoresMap?.[name];
+          return [
+            name,
+            {
+              ...(!scoreNamesSet.has(name) && ev.passAtK !== undefined && {
+                passAtK: ev.passAtK,
               }),
-            ...(ev.evalVersion !== undefined && {
-              evalVersion: ev.evalVersion,
-            }),
-            ...(ev.lowerIsBetter !== undefined && {
-              lowerIsBetter: ev.lowerIsBetter,
-            }),
-          },
-        ]),
+              ...(!scoreNamesSet.has(name) && ev.passToTheK !== undefined && {
+                passToTheK: ev.passToTheK,
+              }),
+              passingTrials: ev.passingTrials,
+              totalTrials: ev.totalTrials,
+              ...(scoreNamesSet.has(name) &&
+                ev.aggregateScore != null && {
+                  aggregateScore: ev.aggregateScore,
+                }),
+              ...(ev.evalVersion !== undefined && {
+                evalVersion: ev.evalVersion,
+              }),
+              ...(ev.lowerIsBetter !== undefined && {
+                lowerIsBetter: ev.lowerIsBetter,
+              }),
+              ...(trialScores !== undefined &&
+                trialScores.length > 0 && { trialScores }),
+            },
+          ];
+        }),
       ),
       ...(regressionThresholds !== undefined && { regressionThresholds }),
     };

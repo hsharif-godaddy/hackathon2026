@@ -3,6 +3,7 @@ import {
   parseMaxConcurrency,
   parseMaxTurns,
 } from './parse-env.js';
+import { REGRESSION_DEFAULTS } from './defaults.js';
 
 export function createConfig(): Config {
   return {
@@ -29,23 +30,25 @@ export function createConfig(): Config {
       ignoreHttpsErrors: true,
     },
     regression: {
-      thresholds: {
-        'prompt-efficiency': 0.15,
-        'turn-duration': 1.5,
-        'token-usage': 1.5,
-        'llm-cost': 1.5,
-        'latency': 1.5,
-        'tool-parallelism': 0.5,
-        'tool-batching-efficiency': 0.5,
-        'tool-failure-rate': 1.5,
-        // Alignment/quality: 15% relative score drop (score-mode evaluators)
-        'intent-to-output-alignment': 0.15,
-        'implicit-feature-gap': 0.15,
-        'scope-drift-overgeneration': 0.15,
-        'silent-hallucination': 0.15,
-        'output-quality': 0.15,
+      ...REGRESSION_DEFAULTS,
+      fallbackThresholds: {
+        thresholds: {
+          'prompt-efficiency': 0.15,
+          'turn-duration': 1.5,
+          'token-usage': 1.5,
+          'llm-cost': 1.5,
+          'latency': 1.5,
+          'tool-parallelism': 0.5,
+          'tool-batching-efficiency': 0.5,
+          'tool-failure-rate': 1.5,
+          'intent-to-output-alignment': 0.15,
+          'implicit-feature-gap': 0.15,
+          'scope-drift-overgeneration': 0.15,
+          'silent-hallucination': 0.15,
+          'output-quality': 0.15,
+        },
+        defaultThreshold: 0.1,
       },
-      defaultThreshold: 0.1,
     },
   };
 }

@@ -4,6 +4,7 @@ import type {
   ScenarioResult,
   TrialResult,
 } from '../../runner/types.js';
+import type { EvalResult } from '../../evaluators/evaluator.js';
 import type { BaselineScores } from '../types.js';
 import type { StoredAggregated } from '../../store/types.js';
 
@@ -1089,6 +1090,249 @@ describe('BaselineStore', () => {
       const parsed = JSON.parse(raw as string) as BaselineScores;
       expect(parsed).not.toHaveProperty('gitSha');
       expect(parsed).not.toHaveProperty('gitBranch');
+    });
+  });
+
+  // ── trialScores helpers ──────────────────────────────────────────────────
+
+  function makeTrialWithResults(
+    trialIndex: number,
+    results: Array<{
+      evaluator: string;
+      score: number;
+      verdict: EvalResult['verdict'];
+      evaluatorFailed?: boolean;
+    }>,
+  ): TrialResult {
+    return {
+      trialIndex,
+      transcript: {
+        scenarioName: 'build-landing-page',
+        trialIndex,
+        turns: [],
+        snapshots: [],
+        errors: [],
+      },
+      evalResults: results.map(({ evaluator, score, verdict, evaluatorFailed }) => ({
+        evaluator,
+        score,
+        verdict,
+        reason: '',
+        ...(evaluatorFailed !== undefined && { evaluatorFailed }),
+      })),
+    };
+  }
+
+  describe('save() — trialScores extraction', () => {
+    it('extracts per-trial scores for each evaluator', async () => {
+      const store = new BaselineStore();
+      const result: ScenarioResult = {
+        scenarioName: 'build-landing-page',
+        stabilityLevel: 'medium',
+        trials: [
+          makeTrialWithResults(0, [{ evaluator: 'jtbd', score: 1.0, verdict: 'pass' }]),
+          makeTrialWithResults(1, [{ evaluator: 'jtbd', score: 0.0, verdict: 'fail' }]),
+          makeTrialWithResults(2, [{ evaluator: 'jtbd', score: 1.0, verdict: 'pass' }]),
+        ],
+        aggregated: { jtbd: { passingTrials: 2, totalTrials: 3 } },
+      };
+      await store.save('run-001', result);
+
+      const [, raw] = mockWriteFile.mock.calls[0];
+      const parsed = JSON.parse(raw as string) as BaselineScores;
+      expect(parsed.scores['jtbd']?.trialScores).toEqual([1.0, 0.0, 1.0]);
+    });
+
+    it('excludes evaluatorFailed trials from trialScores', async () => {
+      const store = new BaselineStore();
+      const result: ScenarioResult = {
+        scenarioName: 'build-landing-page',
+        stabilityLevel: 'medium',
+        trials: [
+          makeTrialWithResults(0, [{ evaluator: 'jtbd', score: 1.0, verdict: 'pass' }]),
+          makeTrialWithResults(1, [{ evaluator: 'jtbd', score: 0.0, verdict: 'fail', evaluatorFailed: true }]),
+          makeTrialWithResults(2, [{ evaluator: 'jtbd', score: 1.0, verdict: 'pass' }]),
+        ],
+        aggregated: { jtbd: { passingTrials: 2, totalTrials: 2 } },
+      };
+      await store.save('run-001', result);
+
+      const [, raw] = mockWriteFile.mock.calls[0];
+      const parsed = JSON.parse(raw as string) as BaselineScores;
+      expect(parsed.scores['jtbd']?.trialScores).toEqual([1.0, 1.0]);
+    });
+
+    it('excludes unknown-verdict trials from trialScores', async () => {
+      const store = new BaselineStore();
+      const result: ScenarioResult = {
+        scenarioName: 'build-landing-page',
+        stabilityLevel: 'medium',
+        trials: [
+          makeTrialWithResults(0, [{ evaluator: 'jtbd', score: 0.8, verdict: 'pass' }]),
+          makeTrialWithResults(1, [{ evaluator: 'jtbd', score: 0.0, verdict: 'unknown' }]),
+          makeTrialWithResults(2, [{ evaluator: 'jtbd', score: 0.6, verdict: 'partial' }]),
+        ],
+        aggregated: { jtbd: { passingTrials: 1, totalTrials: 3 } },
+      };
+      await store.save('run-001', result);
+
+      const [, raw] = mockWriteFile.mock.calls[0];
+      const parsed = JSON.parse(raw as string) as BaselineScores;
+      expect(parsed.scores['jtbd']?.trialScores).toEqual([0.8, 0.6]);
+    });
+
+    it('omits trialScores field when all trials are excluded', async () => {
+      const store = new BaselineStore();
+      const result: ScenarioResult = {
+        scenarioName: 'build-landing-page',
+        stabilityLevel: 'medium',
+        trials: [
+          makeTrialWithResults(0, [{ evaluator: 'jtbd', score: 0.0, verdict: 'unknown' }]),
+          makeTrialWithResults(1, [{ evaluator: 'jtbd', score: 0.0, verdict: 'unknown' }]),
+        ],
+        aggregated: { jtbd: { passingTrials: 0, totalTrials: 0 } },
+      };
+      await store.save('run-001', result);
+
+      const [, raw] = mockWriteFile.mock.calls[0];
+      const parsed = JSON.parse(raw as string) as BaselineScores;
+      expect(parsed.scores['jtbd']).not.toHaveProperty('trialScores');
+    });
+
+    it('extracts per-trial scores for score-mode evaluators', async () => {
+      const store = new BaselineStore();
+      const result: ScenarioResult = {
+        scenarioName: 'build-landing-page',
+        stabilityLevel: 'medium',
+        trials: [
+          makeTrialWithResults(0, [{ evaluator: 'latency', score: 1200, verdict: 'observed' }]),
+          makeTrialWithResults(1, [{ evaluator: 'latency', score: 950, verdict: 'observed' }]),
+          makeTrialWithResults(2, [{ evaluator: 'latency', score: 1100, verdict: 'observed' }]),
+        ],
+        aggregated: {
+          latency: {
+            passingTrials: 3,
+            totalTrials: 3,
+            aggregateScore: 1083.3,
+            regressionMode: 'score',
+          },
+        },
+      };
+      await store.save('run-001', result);
+
+      const [, raw] = mockWriteFile.mock.calls[0];
+      const parsed = JSON.parse(raw as string) as BaselineScores;
+      expect(parsed.scores['latency']?.trialScores).toEqual([1200, 950, 1100]);
+    });
+
+    it('extracts trialScores for each evaluator independently across multi-evaluator trials', async () => {
+      const store = new BaselineStore();
+      const result: ScenarioResult = {
+        scenarioName: 'build-landing-page',
+        stabilityLevel: 'medium',
+        trials: [
+          makeTrialWithResults(0, [
+            { evaluator: 'jtbd', score: 1.0, verdict: 'pass' },
+            { evaluator: 'latency', score: 800, verdict: 'observed' },
+          ]),
+          makeTrialWithResults(1, [
+            { evaluator: 'jtbd', score: 0.0, verdict: 'fail' },
+            { evaluator: 'latency', score: 1100, verdict: 'observed' },
+          ]),
+        ],
+        aggregated: {
+          jtbd: { passingTrials: 1, totalTrials: 2 },
+          latency: { passingTrials: 2, totalTrials: 2, aggregateScore: 950, regressionMode: 'score' },
+        },
+      };
+      await store.save('run-001', result);
+
+      const [, raw] = mockWriteFile.mock.calls[0];
+      const parsed = JSON.parse(raw as string) as BaselineScores;
+      expect(parsed.scores['jtbd']?.trialScores).toEqual([1.0, 0.0]);
+      expect(parsed.scores['latency']?.trialScores).toEqual([800, 1100]);
+    });
+  });
+
+  describe('load() — legacy baseline compatibility', () => {
+    it('loads baseline without trialScores field without error', async () => {
+      const store = new BaselineStore();
+      mockReaddir.mockResolvedValueOnce([`${FIXED_COMPACT}_run-001.json`]);
+      mockReadFile.mockResolvedValueOnce(JSON.stringify(STORED_BASELINE));
+
+      await expect(store.load('build-landing-page')).resolves.not.toThrow();
+    });
+
+    it('trialScores is undefined on legacy baseline lacking the field', async () => {
+      const store = new BaselineStore();
+      mockReaddir.mockResolvedValueOnce([`${FIXED_COMPACT}_run-001.json`]);
+      mockReadFile.mockResolvedValueOnce(JSON.stringify(STORED_BASELINE));
+
+      const result = await store.load('build-landing-page');
+      expect(result?.scores.scores['bug-hit-rate']?.trialScores).toBeUndefined();
+    });
+  });
+
+  describe('saveFromStored() — trialScoresMap', () => {
+    it('includes trialScores when provided in trialScoresMap', async () => {
+      const store = new BaselineStore();
+      await store.saveFromStored('run-001', STORED_AGGREGATED, undefined, {
+        trialScoresMap: { 'bug-hit-rate': [1.0, 0.0] },
+      });
+
+      const [, raw] = mockWriteFile.mock.calls[0];
+      const parsed = JSON.parse(raw as string) as BaselineScores;
+      expect(parsed.scores['bug-hit-rate']?.trialScores).toEqual([1.0, 0.0]);
+    });
+
+    it('omits trialScores when trialScoresMap is not provided', async () => {
+      const store = new BaselineStore();
+      await store.saveFromStored('run-001', STORED_AGGREGATED);
+
+      const [, raw] = mockWriteFile.mock.calls[0];
+      const parsed = JSON.parse(raw as string) as BaselineScores;
+      expect(parsed.scores['bug-hit-rate']).not.toHaveProperty('trialScores');
+    });
+
+    it('omits trialScores for evaluators not present in the map', async () => {
+      const stored: StoredAggregated = {
+        scenarioName: 'build-landing-page',
+        evaluators: {
+          'eval-a': {
+            passingTrials: 2,
+            totalTrials: 3,
+            scores: { min: 0, max: 1, mean: 0.67, median: 1, stddev: 0.47 },
+            verdicts: { pass: 2, fail: 1 },
+          },
+          'eval-b': {
+            passingTrials: 1,
+            totalTrials: 3,
+            scores: { min: 0, max: 1, mean: 0.33, median: 0, stddev: 0.47 },
+            verdicts: { pass: 1, fail: 2 },
+          },
+        },
+        timing: { totalDurationMs: 6000, avgTrialDurationMs: 2000, avgTurnsPerTrial: 4 },
+      };
+      const store = new BaselineStore();
+      await store.saveFromStored('run-001', stored, undefined, {
+        trialScoresMap: { 'eval-a': [1.0, 0.0, 1.0] },
+      });
+
+      const [, raw] = mockWriteFile.mock.calls[0];
+      const parsed = JSON.parse(raw as string) as BaselineScores;
+      expect(parsed.scores['eval-a']?.trialScores).toEqual([1.0, 0.0, 1.0]);
+      expect(parsed.scores['eval-b']).not.toHaveProperty('trialScores');
+    });
+
+    it('omits trialScores for evaluator with empty scores array', async () => {
+      const store = new BaselineStore();
+      await store.saveFromStored('run-001', STORED_AGGREGATED, undefined, {
+        trialScoresMap: { 'bug-hit-rate': [] },
+      });
+
+      const [, raw] = mockWriteFile.mock.calls[0];
+      const parsed = JSON.parse(raw as string) as BaselineScores;
+      expect(parsed.scores['bug-hit-rate']).not.toHaveProperty('trialScores');
     });
   });
 });

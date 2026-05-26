@@ -342,7 +342,7 @@ export class GraduationSuiteRunner {
     if (hasValidResults) {
       const baselineStore = baselineStoreFactory?.() ?? new BaselineStore();
       await baselineStore.save(runId, result, {
-        defaultThreshold: config.regression.defaultThreshold,
+        defaultThreshold: config.regression.fallbackThresholds.defaultThreshold,
         ...pickGitFields(runMetadata),
       });
     } else {

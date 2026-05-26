@@ -1,17 +1,24 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { RegressionComparator } from '../regression-comparator.js';
-import type { ScenarioResult, AggregatedResult } from
+import type { ScenarioResult, AggregatedResult, TrialResult } from
   '../../runner/types.js';
 import type { BaselineScores, ComparedRegressionEvalResult } from '../types.js';
+import type { Transcript } from '../../runner/transcript.js';
+import type { StatisticalRegressionConfig } from '../../../config/environments/types.js';
 
 // ── Fixtures ────────────────────────────────────────────────────────────────
 
-const THRESHOLDS = {
-  thresholds: {
-    'output-quality': 0.15,
-    'prompt-efficiency': 0.2,
+const THRESHOLDS: StatisticalRegressionConfig = {
+  alpha: 0.05,
+  k: 2.0,
+  seed: 42,
+  fallbackThresholds: {
+    thresholds: {
+      'output-quality': 0.15,
+      'prompt-efficiency': 0.2,
+    },
+    defaultThreshold: 0.1,
   },
-  defaultThreshold: 0.1,
 };
 
 function makeAgg(
@@ -60,12 +67,26 @@ function makeScoreBaseline(
 
 function makeResult(
   aggregated: Record<string, AggregatedResult>,
+  trials: TrialResult[] = [],
 ): ScenarioResult {
   return {
     scenarioName: 'test-scenario',
     stabilityLevel: 'medium',
-    trials: [],
+    trials,
     aggregated,
+  };
+}
+
+function makeTrialResult(
+  index: number,
+  evaluatorName: string,
+  score: number,
+  verdict: 'pass' | 'fail' | 'observed' = score === 1 ? 'pass' : 'fail',
+): TrialResult {
+  return {
+    trialIndex: index,
+    transcript: {} as Transcript,
+    evalResults: [{ evaluator: evaluatorName, score, verdict, reason: '' }],
   };
 }
 
@@ -116,7 +137,7 @@ describe('RegressionComparator', () => {
         currentEvalVersion: 'current-version',
         baselineEvalVersion: 'baseline-version',
       });
-      expect(r.gate).toBe('version-skipped');
+      expect(r.gate).toBe('fail');
     });
 
     it('skips evaluator comparison when baseline version is missing', () => {
@@ -134,7 +155,7 @@ describe('RegressionComparator', () => {
         skipReason: 'evaluator-version-mismatch',
         currentEvalVersion: 'current-version',
       });
-      expect(r.gate).toBe('version-skipped');
+      expect(r.gate).toBe('fail');
     });
   });
 
@@ -157,24 +178,24 @@ describe('RegressionComparator', () => {
       expect(r.gate).toBe('pass');
     });
 
-    it('gate is error when score drops beyond default threshold', () => {
+    it('gate is warning when score drops beyond default threshold', () => {
       // baseline: 3/3 = 1.0, current: 2/3 ≈ 0.667, drop ≈ 0.333 > 0.1
       const result = makeResult({
         'bug-hit-rate': makeAgg(2, 3),
       });
       const baseline = makeBaseline({ 'bug-hit-rate': { passingTrials: 3, totalTrials: 3 } });
       const r = comparator.compare(result, baseline, THRESHOLDS);
-      expect(r.gate).toBe('error');
+      expect(r.gate).toBe('warning');
     });
 
-    it('gate is error when score drops beyond evaluator-specific threshold', () => {
+    it('gate is warning when score drops beyond evaluator-specific threshold', () => {
       // output-quality threshold = 0.15; drop = 1.0 - 0.8 = 0.2 > 0.15
       const result = makeResult({
         'output-quality': makeAgg(4, 5),
       });
       const baseline = makeBaseline({ 'output-quality': { passingTrials: 5, totalTrials: 5 } });
       const r = comparator.compare(result, baseline, THRESHOLDS);
-      expect(r.gate).toBe('error');
+      expect(r.gate).toBe('warning');
     });
 
     it('gate is pass when drop is within evaluator-specific threshold', () => {
@@ -217,14 +238,14 @@ describe('RegressionComparator', () => {
       });
       const baseline = makeBaseline({ 'jtbd-completion': { passingTrials: 5, totalTrials: 5 } });
       const r = comparator.compare(result, baseline, THRESHOLDS);
-      expect(r.gate).toBe('error');
+      expect(r.gate).toBe('warning');
     });
   });
 
   // ── Version-skipped gate (all evaluators skipped) ─────────────────────────
 
   describe('version-skipped gate', () => {
-    it('gate is version-skipped when all evaluators are skipped due to version mismatch', () => {
+    it('gate is fail when all evaluators are version-skipped', () => {
       const result = makeResult({
         latency: {
           ...makeScoreAgg(0.7),
@@ -246,11 +267,11 @@ describe('RegressionComparator', () => {
       };
 
       const r = comparator.compare(result, baseline, THRESHOLDS);
-      expect(r.gate).toBe('version-skipped');
+      expect(r.gate).toBe('fail');
       expect(r.evaluators.every((e) => e.type === 'skipped')).toBe(true);
     });
 
-    it('gate is not version-skipped when at least one evaluator is not skipped', () => {
+    it('gate is pass when at least one evaluator is not version-skipped', () => {
       const result = makeResult({
         latency: {
           ...makeScoreAgg(0.7),
@@ -268,7 +289,7 @@ describe('RegressionComparator', () => {
       };
 
       const r = comparator.compare(result, baseline, THRESHOLDS);
-      expect(r.gate).not.toBe('version-skipped');
+      expect(r.gate).toBe('pass');
     });
   });
 
@@ -288,14 +309,14 @@ describe('RegressionComparator', () => {
       expect(e?.exceeded).toBe(false);
     });
 
-    it('drop just above threshold → error', () => {
+    it('drop just above threshold → warning', () => {
       // threshold = 0.1; baseline = 10/10 = 1.0, current = 8/10 = 0.8, drop = 0.2 > 0.1
       const result = makeResult({
         'bug-hit-rate': makeAgg(8, 10),
       });
       const baseline = makeBaseline({ 'bug-hit-rate': { passingTrials: 10, totalTrials: 10 } });
       const r = comparator.compare(result, baseline, THRESHOLDS);
-      expect(r.gate).toBe('error');
+      expect(r.gate).toBe('warning');
       const e = r.evaluators.find((x) => x.evaluator === 'bug-hit-rate') as ComparedRegressionEvalResult | undefined;
       expect(e?.exceeded).toBe(true);
     });
@@ -361,7 +382,7 @@ describe('RegressionComparator', () => {
       expect(r.gate).toBe('pass');
     });
 
-    it('gate is error when one of multiple evaluators breaches', () => {
+    it('gate is warning when one of multiple evaluators breaches', () => {
       const result = makeResult({
         'bug-hit-rate': makeAgg(3, 3),         // fine
         'prompt-efficiency': makeAgg(6, 10),    // drop 0.4 > 0.2
@@ -371,7 +392,7 @@ describe('RegressionComparator', () => {
         'prompt-efficiency': { passingTrials: 10, totalTrials: 10 },
       });
       const r = comparator.compare(result, baseline, THRESHOLDS);
-      expect(r.gate).toBe('error');
+      expect(r.gate).toBe('warning');
     });
   });
 
@@ -391,7 +412,7 @@ describe('RegressionComparator', () => {
       expect(r.stabilityLevel).toBe('low');
     });
 
-    it('medium stability + exceeded threshold → error', () => {
+    it('medium stability + exceeded threshold → warning', () => {
       const result = makeResult({
         'bug-hit-rate': makeAgg(2, 3),
       });
@@ -400,11 +421,11 @@ describe('RegressionComparator', () => {
         'medium',
       );
       const r = comparator.compare(result, baseline, THRESHOLDS);
-      expect(r.gate).toBe('error');
+      expect(r.gate).toBe('warning');
       expect(r.stabilityLevel).toBe('medium');
     });
 
-    it('high stability + exceeded threshold → critical', () => {
+    it('high stability + exceeded threshold → warning', () => {
       const result = makeResult({
         'bug-hit-rate': makeAgg(2, 3),
       });
@@ -413,20 +434,20 @@ describe('RegressionComparator', () => {
         'high',
       );
       const r = comparator.compare(result, baseline, THRESHOLDS);
-      expect(r.gate).toBe('critical');
+      expect(r.gate).toBe('warning');
       expect(r.stabilityLevel).toBe('high');
     });
 
-    it('legacy baseline (no stabilityLevel) + exceeded → error', () => {
+    it('legacy baseline (no stabilityLevel) + exceeded → warning', () => {
       const result = makeResult({
         'bug-hit-rate': makeAgg(2, 3),
       });
-      // no stabilityLevel on baseline → defaults to 'medium' → 'error'
+      // no stabilityLevel on baseline → defaults to 'medium' → 'warning'
       const baseline = makeBaseline(
         { 'bug-hit-rate': { passingTrials: 3, totalTrials: 3 } },
       );
       const r = comparator.compare(result, baseline, THRESHOLDS);
-      expect(r.gate).toBe('error');
+      expect(r.gate).toBe('warning');
       expect(r.stabilityLevel).toBe('medium');
     });
 
@@ -458,7 +479,7 @@ describe('RegressionComparator', () => {
       const r = comparator.compare(result, baseline, THRESHOLDS);
       const e = r.evaluators.find((x) => x.evaluator === 'latency') as ComparedRegressionEvalResult | undefined;
       expect(e?.exceeded).toBe(true);
-      expect(r.gate).toBe('error');
+      expect(r.gate).toBe('warning');
     });
 
     it('passes when relative score drop is within threshold', () => {
@@ -543,7 +564,7 @@ describe('RegressionComparator', () => {
         const r = comparator.compare(result, baseline, THRESHOLDS);
         const e = r.evaluators.find((x) => x.evaluator === 'latency') as ComparedRegressionEvalResult | undefined;
         expect(e?.exceeded).toBe(true);
-        expect(r.gate).toBe('error');
+        expect(r.gate).toBe('warning');
       });
 
       it('does not flag regression when score decreases (improvement)', () => {
@@ -605,7 +626,7 @@ describe('RegressionComparator', () => {
         expect(r.stabilityLevel).toBe('low');
       });
 
-      it('medium stability + score drop → error', () => {
+      it('medium stability + score drop → warning', () => {
         const result = makeResult({
           latency: makeScoreAgg(0.5),
         });
@@ -614,11 +635,11 @@ describe('RegressionComparator', () => {
           stabilityLevel: 'medium' as const,
         };
         const r = comparator.compare(result, baseline, THRESHOLDS);
-        expect(r.gate).toBe('error');
+        expect(r.gate).toBe('warning');
         expect(r.stabilityLevel).toBe('medium');
       });
 
-      it('high stability + score drop → critical', () => {
+      it('high stability + score drop → warning', () => {
         const result = makeResult({
           latency: makeScoreAgg(0.5),
         });
@@ -627,7 +648,7 @@ describe('RegressionComparator', () => {
           stabilityLevel: 'high' as const,
         };
         const r = comparator.compare(result, baseline, THRESHOLDS);
-        expect(r.gate).toBe('critical');
+        expect(r.gate).toBe('warning');
         expect(r.stabilityLevel).toBe('high');
       });
 
@@ -643,6 +664,284 @@ describe('RegressionComparator', () => {
         const r = comparator.compare(result, baseline, THRESHOLDS);
         expect(r.gate).toBe('pass');
       });
+    });
+  });
+
+  // ── Statistical path (Task 1: integration seam tests) ─────────────────────
+
+  describe('statistical path (baseline has trialScores)', () => {
+    it('produces statistical metadata on compared result for pass-rate evaluator', () => {
+      // baseline: 7/10 passing, SD ≈ 0.458, margin ≈ 0.916 (wide)
+      const baselineTrialScores = [1, 0, 1, 1, 0, 1, 1, 1, 0, 1];
+      const trials = [0, 1, 2, 3, 4].map((i) =>
+        makeTrialResult(i, 'jtbd-completion', 1, 'pass'),
+      );
+      const result = makeResult({ 'jtbd-completion': makeAgg(5, 5) }, trials);
+
+      const baseline = makeBaseline({ 'jtbd-completion': { passingTrials: 7, totalTrials: 10 } });
+      baseline.scores['jtbd-completion'].trialScores = baselineTrialScores;
+
+      const r = comparator.compare(result, baseline, THRESHOLDS);
+      const e = r.evaluators.find((x) => x.evaluator === 'jtbd-completion') as ComparedRegressionEvalResult | undefined;
+
+      expect(e?.statistical).toBeDefined();
+      expect(e?.statistical?.method).toBe('wilson-score');
+      expect(e?.statistical?.n).toEqual({ baseline: 10, current: 5 });
+      expect(typeof e?.statistical?.margin).toBe('number');
+      expect(e?.statistical?.margin).toBeGreaterThan(0);
+      expect(typeof e?.statistical?.baselineSD).toBe('number');
+      expect(typeof e?.statistical?.nonInferiorityProven).toBe('boolean');
+      expect(e?.statistical?.confidenceInterval).toHaveProperty('lower');
+      expect(e?.statistical?.confidenceInterval).toHaveProperty('upper');
+    });
+
+    it('produces statistical metadata on compared result for score-mode evaluator', () => {
+      const baselineTrialScores = [0.85, 0.80, 0.88, 0.82, 0.84];
+      const currentScores = [0.82, 0.84, 0.83, 0.85, 0.81];
+      const trials = currentScores.map((s, i) =>
+        makeTrialResult(i, 'latency', s, 'observed'),
+      );
+      const result = makeResult(
+        { latency: { ...makeScoreAgg(0.83), regressionMode: 'score' } },
+        trials,
+      );
+      const baseline = makeScoreBaseline(0.838);
+      baseline.scores.latency.trialScores = baselineTrialScores;
+
+      const r = comparator.compare(result, baseline, THRESHOLDS);
+      const e = r.evaluators.find((x) => x.evaluator === 'latency') as ComparedRegressionEvalResult | undefined;
+
+      expect(e?.statistical).toBeDefined();
+      expect(['permutation-exact', 'permutation-mc']).toContain(e?.statistical?.method);
+      expect(e?.statistical?.n).toEqual({ baseline: 5, current: 5 });
+      expect(e?.statistical?.k).toBe(2.0);
+    });
+
+    it('falls back when baseline lacks trialScores — no statistical field', () => {
+      const result = makeResult({ 'jtbd-completion': makeAgg(3, 3) });
+      const baseline = makeBaseline({ 'jtbd-completion': { passingTrials: 3, totalTrials: 3 } });
+      // no trialScores on baseline
+
+      const r = comparator.compare(result, baseline, THRESHOLDS);
+      const e = r.evaluators.find((x) => x.evaluator === 'jtbd-completion') as ComparedRegressionEvalResult | undefined;
+
+      expect(e?.statistical).toBeUndefined();
+      expect(r.gate).toBe('pass');
+    });
+
+    it('uses statistical path for evaluators with trialScores and fallback for those without', () => {
+      // 'scored-eval' has trialScores; 'legacy-eval' does not
+      const baselineTrialScores = [1, 0, 1, 1, 0, 1, 1, 1, 0, 1];
+      const trials = [0, 1, 2].map((i) => ({
+        trialIndex: i,
+        transcript: {} as Transcript,
+        evalResults: [
+          { evaluator: 'scored-eval', score: 1, verdict: 'pass' as const, reason: '' },
+          { evaluator: 'legacy-eval', score: 1, verdict: 'pass' as const, reason: '' },
+        ],
+      }));
+      const result = makeResult(
+        {
+          'scored-eval': makeAgg(3, 3),
+          'legacy-eval': makeAgg(3, 3),
+        },
+        trials,
+      );
+
+      const baseline = makeBaseline({
+        'scored-eval': { passingTrials: 7, totalTrials: 10 },
+        'legacy-eval': { passingTrials: 3, totalTrials: 3 },
+      });
+      baseline.scores['scored-eval'].trialScores = baselineTrialScores;
+      // legacy-eval has no trialScores
+
+      const r = comparator.compare(result, baseline, THRESHOLDS);
+      const scoredE = r.evaluators.find((x) => x.evaluator === 'scored-eval') as ComparedRegressionEvalResult | undefined;
+      const legacyE = r.evaluators.find((x) => x.evaluator === 'legacy-eval') as ComparedRegressionEvalResult | undefined;
+
+      expect(scoredE?.statistical).toBeDefined();
+      expect(legacyE?.statistical).toBeUndefined();
+    });
+
+    it('gate is pass when TOST proves non-inferiority (current = 100%, high-variance baseline)', () => {
+      // baseline: 7/10, SD ≈ 0.458, margin ≈ 0.916 (wider than any possible drop)
+      const baselineTrialScores = [1, 0, 1, 1, 0, 1, 1, 1, 0, 1];
+      const trials = [0, 1, 2, 3, 4].map((i) =>
+        makeTrialResult(i, 'jtbd-completion', 1, 'pass'),
+      );
+      const result = makeResult({ 'jtbd-completion': makeAgg(5, 5) }, trials);
+
+      const baseline = makeBaseline({ 'jtbd-completion': { passingTrials: 7, totalTrials: 10 } });
+      baseline.scores['jtbd-completion'].trialScores = baselineTrialScores;
+
+      const r = comparator.compare(result, baseline, THRESHOLDS);
+      expect(r.gate).toBe('pass');
+      const e = r.evaluators.find((x) => x.evaluator === 'jtbd-completion') as ComparedRegressionEvalResult | undefined;
+      expect(e?.exceeded).toBe(false);
+      expect(e?.statistical?.nonInferiorityProven).toBe(true);
+    });
+
+    it('gate is fail when TOST detects clear regression (0/5 vs baseline 5/5)', () => {
+      // baseline all-pass (SD=0, margin=0) → any difference fails TOST
+      const baselineTrialScores = [1, 1, 1, 1, 1];
+      const trials = [0, 1, 2, 3, 4].map((i) =>
+        makeTrialResult(i, 'jtbd-completion', 0, 'fail'),
+      );
+      const result = makeResult({ 'jtbd-completion': makeAgg(0, 5) }, trials);
+
+      const baseline = makeBaseline({ 'jtbd-completion': { passingTrials: 5, totalTrials: 5 } });
+      baseline.scores['jtbd-completion'].trialScores = baselineTrialScores;
+
+      const r = comparator.compare(result, baseline, THRESHOLDS);
+      expect(r.gate).toBe('fail');
+      const e = r.evaluators.find((x) => x.evaluator === 'jtbd-completion') as ComparedRegressionEvalResult | undefined;
+      expect(e?.exceeded).toBe(true);
+      expect(e?.statistical?.nonInferiorityProven).toBe(false);
+    });
+
+    it('gate is fail when all evaluators are version-skipped', () => {
+      const result = makeResult({
+        latency: { ...makeScoreAgg(0.7), evalVersion: 'v2' },
+      });
+      const baseline = makeScoreBaseline(0.9);
+      baseline.scores.latency.evalVersion = 'v1';
+      baseline.scores.latency.trialScores = [0.9, 0.9, 0.9, 0.9, 0.9];
+
+      const r = comparator.compare(result, baseline, THRESHOLDS);
+      expect(r.gate).toBe('fail');
+      expect(r.evaluators.every((e) => e.type === 'skipped')).toBe(true);
+    });
+
+    it('gate is fail when TOST-failing evaluator coexists with fallback-warning evaluator', () => {
+      // 'tost-eval' has trialScores and regresses → TOST fail (statistical)
+      // 'legacy-eval' has no trialScores and regresses → threshold breach (no statistical)
+      // Gate must be 'fail' (TOST evidence dominates), not 'warning'.
+      const baselineTrialScores = [1, 1, 1, 1, 1];
+      const trials = [0, 1, 2, 3, 4].map((i) => ({
+        trialIndex: i,
+        transcript: {} as Transcript,
+        evalResults: [
+          { evaluator: 'tost-eval', score: 0, verdict: 'fail' as const, reason: '' },
+          { evaluator: 'legacy-eval', score: 0, verdict: 'fail' as const, reason: '' },
+        ],
+      }));
+      const result = makeResult(
+        {
+          'tost-eval': makeAgg(0, 5),
+          'legacy-eval': makeAgg(0, 5),
+        },
+        trials,
+      );
+
+      const baseline = makeBaseline({
+        'tost-eval': { passingTrials: 5, totalTrials: 5 },
+        'legacy-eval': { passingTrials: 5, totalTrials: 5 },
+      });
+      baseline.scores['tost-eval'].trialScores = baselineTrialScores;
+      // legacy-eval has no trialScores → fallback threshold path
+
+      const r = comparator.compare(result, baseline, THRESHOLDS);
+      const tostE = r.evaluators.find((x) => x.evaluator === 'tost-eval') as ComparedRegressionEvalResult | undefined;
+      const legacyE = r.evaluators.find((x) => x.evaluator === 'legacy-eval') as ComparedRegressionEvalResult | undefined;
+
+      expect(tostE?.exceeded).toBe(true);
+      expect(tostE?.statistical).toBeDefined();
+      expect(legacyE?.exceeded).toBe(true);
+      expect(legacyE?.statistical).toBeUndefined();
+      // Key assertion: TOST fail dominates over fallback warning
+      expect(r.gate).toBe('fail');
+    });
+  });
+
+  // ── Error paths with statistical config (Task 2) ────────────────────────────
+
+  describe('statistical error paths', () => {
+    it('falls back to threshold when baseline trialScores is empty array', () => {
+      const trials = [0, 1, 2].map((i) =>
+        makeTrialResult(i, 'jtbd-completion', 1, 'pass'),
+      );
+      const result = makeResult({ 'jtbd-completion': makeAgg(3, 3) }, trials);
+      const baseline = makeBaseline({ 'jtbd-completion': { passingTrials: 3, totalTrials: 3 } });
+      baseline.scores['jtbd-completion'].trialScores = []; // empty → fallback
+
+      const r = comparator.compare(result, baseline, THRESHOLDS);
+      const e = r.evaluators.find((x) => x.evaluator === 'jtbd-completion') as ComparedRegressionEvalResult | undefined;
+      expect(e?.statistical).toBeUndefined();
+      expect(r.gate).toBe('pass');
+    });
+
+    it('gate is warning (not fail) when fallback threshold is exceeded', () => {
+      // No trialScores → fallback path. Threshold breach → warning.
+      const result = makeResult({ 'bug-hit-rate': makeAgg(2, 3) });
+      const baseline = makeBaseline({ 'bug-hit-rate': { passingTrials: 3, totalTrials: 3 } });
+      // No trialScores on baseline
+
+      const r = comparator.compare(result, baseline, THRESHOLDS);
+      expect(r.gate).toBe('warning');
+      const e = r.evaluators.find((x) => x.evaluator === 'bug-hit-rate') as ComparedRegressionEvalResult | undefined;
+      expect(e?.exceeded).toBe(true);
+      expect(e?.statistical).toBeUndefined();
+    });
+
+    it('falls back to threshold when current run has no extractable trial scores', () => {
+      // trials is empty → extractCurrentTrialScores returns [] → fallback
+      const baselineTrialScores = [1, 1, 1, 1, 1];
+      const result = makeResult({ 'jtbd-completion': makeAgg(3, 3) }); // trials=[]
+      const baseline = makeBaseline({ 'jtbd-completion': { passingTrials: 5, totalTrials: 5 } });
+      baseline.scores['jtbd-completion'].trialScores = baselineTrialScores;
+
+      const r = comparator.compare(result, baseline, THRESHOLDS);
+      const e = r.evaluators.find((x) => x.evaluator === 'jtbd-completion') as ComparedRegressionEvalResult | undefined;
+      expect(e?.statistical).toBeUndefined();
+      expect(r.gate).toBe('pass');
+    });
+
+    it('excludes evaluatorFailed trials from current trial scores', () => {
+      // 2 valid trials, 1 evaluatorFailed → only 2 scores extracted
+      const baselineTrialScores = [1, 1, 1, 1, 1];
+      const trials: TrialResult[] = [
+        makeTrialResult(0, 'jtbd-completion', 1, 'pass'),
+        {
+          trialIndex: 1,
+          transcript: {} as Transcript,
+          evalResults: [{
+            evaluator: 'jtbd-completion', score: 0, verdict: 'fail', reason: '',
+            evaluatorFailed: true,
+          }],
+        },
+        makeTrialResult(2, 'jtbd-completion', 1, 'pass'),
+      ];
+      const result = makeResult({ 'jtbd-completion': makeAgg(2, 3) }, trials);
+      const baseline = makeBaseline({ 'jtbd-completion': { passingTrials: 5, totalTrials: 5 } });
+      baseline.scores['jtbd-completion'].trialScores = baselineTrialScores;
+
+      const r = comparator.compare(result, baseline, THRESHOLDS);
+      const e = r.evaluators.find((x) => x.evaluator === 'jtbd-completion') as ComparedRegressionEvalResult | undefined;
+      // TOST should run (2 valid scores extracted)
+      expect(e?.statistical).toBeDefined();
+      expect(e?.statistical?.n.current).toBe(2);
+    });
+
+    it('excludes unknown-verdict trials from current trial scores', () => {
+      const baselineTrialScores = [1, 1, 1, 1, 1];
+      const trials: TrialResult[] = [
+        makeTrialResult(0, 'jtbd-completion', 1, 'pass'),
+        {
+          trialIndex: 1,
+          transcript: {} as Transcript,
+          evalResults: [{
+            evaluator: 'jtbd-completion', score: 0.5, verdict: 'unknown' as const, reason: '',
+          }],
+        },
+        makeTrialResult(2, 'jtbd-completion', 1, 'pass'),
+      ];
+      const result = makeResult({ 'jtbd-completion': makeAgg(2, 3) }, trials);
+      const baseline = makeBaseline({ 'jtbd-completion': { passingTrials: 5, totalTrials: 5 } });
+      baseline.scores['jtbd-completion'].trialScores = baselineTrialScores;
+
+      const r = comparator.compare(result, baseline, THRESHOLDS);
+      const e = r.evaluators.find((x) => x.evaluator === 'jtbd-completion') as ComparedRegressionEvalResult | undefined;
+      expect(e?.statistical?.n.current).toBe(2); // unknown excluded
     });
   });
 });
