@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // Local class shape that mirrors StripeService's StripeServiceError. We
 // can't easily reuse the real class via vi.mock (the mock factory returns
@@ -28,6 +28,22 @@ vi.mock('../../../../services/StripeService.js', () => ({
   StripeServiceError: MockStripeServiceError,
 }));
 
+const mockLoadStripeMcpTools = vi.fn();
+const mockResetStripeMcpClientCache = vi.fn();
+
+vi.mock('../../../../services/mcp/stripe-mcp-client.js', () => ({
+  loadStripeMcpTools: mockLoadStripeMcpTools,
+  _resetStripeMcpClientCache: mockResetStripeMcpClientCache,
+}));
+
+const mockRegisterDynamicTools = vi.fn();
+
+vi.mock('../../../../tools/skill-tool-manager.js', () => ({
+  skillToolManager: {
+    registerDynamicTools: mockRegisterDynamicTools,
+  },
+}));
+
 const mockLoggerInfo = vi.fn();
 const mockLoggerWarn = vi.fn();
 const mockLoggerError = vi.fn();
@@ -41,7 +57,7 @@ vi.mock('../../../../logging/index.js', () => ({
   },
 }));
 
-const { setupTool, statusTool } = await import('../index.js');
+const { setupTool, statusTool, hooks } = await import('../index.js');
 
 describe('stripe-v2 skill tools', () => {
   beforeEach(() => {
@@ -86,15 +102,11 @@ describe('stripe-v2 skill tools', () => {
 
       expect(result).toMatchObject({
         stripeProvisioningUnavailable: true,
+        retryAfterSeconds: 30,
         upstreamCode: 'STRIPE_CREATE_FAILED',
         upstreamStatus: 502,
       });
-      // No retryAfterSeconds — degrade cause is a deploy-time config gap
-      // (preview API not enabled), not a transient failure. The skill prose
-      // tells the agent not to retry within the conversation; advertising a
-      // retry budget here would contradict that.
-      expect(result).not.toHaveProperty('retryAfterSeconds');
-      expect((result as { message: string }).message).toContain("isn't available in this Airo Builder environment");
+      expect((result as { message: string }).message).toContain('still being provisioned');
 
       // Pin the level: degrade is expected/recoverable so it logs at WARN.
       // A regression that bumps this to ERROR would page oncall on every
@@ -285,6 +297,43 @@ describe('stripe-v2 skill tools', () => {
     it('statusTool accepts an empty input object', () => {
       const result = statusTool.parameters.safeParse({});
       expect(result.success).toBe(true);
+    });
+  });
+
+  describe('hooks.onLoad (Stripe MCP integration)', () => {
+    afterEach(() => {
+      vi.clearAllMocks();
+    });
+
+    it('calls registerDynamicTools when MCP tools are returned', async () => {
+      const fakeTool = { description: 'create a product', execute: vi.fn() };
+      mockLoadStripeMcpTools.mockResolvedValueOnce({ products_create: fakeTool });
+
+      await hooks?.onLoad?.({ skillName: 'stripe-v2' });
+
+      expect(mockLoadStripeMcpTools).toHaveBeenCalledOnce();
+      expect(mockRegisterDynamicTools).toHaveBeenCalledWith('stripe-v2', {
+        products_create: fakeTool,
+      });
+    });
+
+    it('skips registerDynamicTools when loadStripeMcpTools returns empty (no key)', async () => {
+      mockLoadStripeMcpTools.mockResolvedValueOnce({});
+
+      await hooks?.onLoad?.({ skillName: 'stripe-v2' });
+
+      expect(mockLoadStripeMcpTools).toHaveBeenCalledOnce();
+      expect(mockRegisterDynamicTools).not.toHaveBeenCalled();
+    });
+
+    it('skips registerDynamicTools when loadStripeMcpTools rejects (MCP unreachable)', async () => {
+      // Guard against a regression where loadStripeMcpTools starts throwing
+      // instead of returning {} — a rejected onLoad bubbles through runHook
+      // and kills skill activation. onLoad must swallow the error.
+      mockLoadStripeMcpTools.mockRejectedValueOnce(new Error('MCP unreachable'));
+
+      await expect(hooks?.onLoad?.({ skillName: 'stripe-v2' })).resolves.toBeUndefined();
+      expect(mockRegisterDynamicTools).not.toHaveBeenCalled();
     });
   });
 });

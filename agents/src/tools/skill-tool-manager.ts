@@ -7,6 +7,7 @@
  * - Step-based auto-unload (inactivity detection via prepareStep hook)
  * - Tool name prefixing to prevent collisions
  * - activeTools filtering controls visibility (not runtime injection)
+ * - Dynamic post-boot tool injection for runtime-sourced tools (e.g. Stripe MCP)
  */
 
 import type { Tool } from 'ai';
@@ -117,6 +118,27 @@ export class SkillToolManager {
         toolCount,
         skills: Array.from(this.toolRegistry.skillToTools.keys())
       });
+
+      // Pre-fire onLoad hooks so skills with dynamic tools (e.g. MCP) register
+      // them before prepareCall snapshots getAllTools(). Without this, MCP tools
+      // are only registered when loadSkill fires — after prepareCall has already
+      // run — and the AI SDK's executeToolCall silently no-ops any call whose
+      // implementation isn't in that snapshot.
+      // onLoad is idempotent: it's also called when loadSkill fires mid-turn,
+      // and each skill's onLoad handler caches its result, so double-calling is safe.
+      for (const [skillName, hooks] of this.toolRegistry.skillHooks) {
+        if (hooks.onLoad) {
+          try {
+            await hooks.onLoad({ skillName });
+            logger.info('skill_tool_manager.preload.success', { skillName });
+          } catch (error) {
+            logger.warn('skill_tool_manager.preload.failed', {
+              skillName,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          }
+        }
+      }
     } catch (error) {
       logger.error('skill_tool_manager.initialization_failed', {
         error: error instanceof Error ? error.message : String(error)
@@ -136,6 +158,83 @@ export class SkillToolManager {
       return {};
     }
     return this.toolRegistry.tools;
+  }
+
+  /**
+   * Register tools that are sourced at runtime (e.g. from an MCP server) into
+   * the skill's slot in the tool registry. Safe to call multiple times — a
+   * second call with the same skill name and identical tool names is a no-op
+   * (existing entries are overwritten with the same value).
+   *
+   * `rawTools` keys are UN-prefixed tool names (e.g. "products_create"). This
+   * method applies buildSkillToolName(skillName, rawName) to produce the
+   * prefixed registry key ("stripe-v2__products_create") and records the
+   * un-prefixed name in skillToTools so getActiveToolNames() returns the right
+   * prefixed names via the existing ConversationSkillState path.
+   *
+   * Must be called AFTER initialize() so toolRegistry is non-null.
+   */
+  registerDynamicTools(skillName: string, rawTools: Record<string, Tool>): void {
+    if (!this.toolRegistry) {
+      logger.warn('skill_tool_manager.register_dynamic.not_initialized', { skillName });
+      return;
+    }
+
+    const entries = Object.entries(rawTools);
+    if (entries.length === 0) return;
+
+    const rawNames: string[] = [];
+    for (const [rawName, toolDef] of entries) {
+      rawNames.push(rawName);
+      const prefixed = buildSkillToolName(skillName, rawName);
+      // Wrap execute to log MCP tool execution lifecycle events with skill/tool
+      // name context. agent-factory's wrapToolsWithHooks also wraps these tools
+      // at the outer layer; this inner wrapper adds the structured skillName /
+      // toolName fields that the outer wrapper doesn't carry.
+      const originalExecute = toolDef.execute;
+      this.toolRegistry.tools[prefixed] = {
+        ...toolDef,
+        execute: typeof originalExecute === 'function'
+          ? async (args: unknown, options: unknown) => {
+              logger.info('skill_tool_manager.dynamic_tool.execution.start', {
+                skillName,
+                toolName: prefixed,
+              });
+              try {
+                const result = await (originalExecute as (args: unknown, options: unknown) => Promise<unknown>)(args, options);
+                logger.info('skill_tool_manager.dynamic_tool.execution.complete', {
+                  skillName,
+                  toolName: prefixed,
+                });
+                return result;
+              } catch (err) {
+                logger.error('skill_tool_manager.dynamic_tool.execution.error', {
+                  skillName,
+                  toolName: prefixed,
+                  error: err instanceof Error ? err.message : String(err),
+                });
+                throw err;
+              }
+            }
+          : originalExecute,
+      };
+    }
+
+    // Merge with any static tool names already registered for this skill.
+    const existing = this.toolRegistry.skillToTools.get(skillName) ?? [];
+    const merged = Array.from(new Set([...existing, ...rawNames]));
+    this.toolRegistry.skillToTools.set(skillName, merged);
+
+    // Update ConversationSkillState so getActiveToolNames reflects MCP tools
+    // for any conversation that already has the skill active.
+    this.conversationState.setSkillTools(skillName, merged);
+
+    logger.info('skill_tool_manager.dynamic_tools_registered', {
+      skillName,
+      added: rawNames.length,
+      total: merged.length,
+      tools: rawNames,
+    });
   }
 
   /**

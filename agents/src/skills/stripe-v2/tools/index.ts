@@ -27,10 +27,14 @@
  */
 
 import { z } from 'zod';
-import type { SkillToolDefinition } from '@airo/ai-skills';
+import type { SkillToolDefinition, SkillHooks } from '@airo/ai-skills';
 
 import { logger } from '../../../logging/index.js';
 import { stripeService, StripeServiceError } from '../../../services/StripeService.js';
+import { loadStripeMcpTools } from '../../../services/mcp/stripe-mcp-client.js';
+import { skillToolManager } from '../../../tools/skill-tool-manager.js';
+
+const STRIPE_PROVISIONING_RETRY_SECONDS = 30;
 
 type ToolContext = {
   metadata?: {
@@ -57,15 +61,12 @@ function isProvisioningUnavailable(err: unknown): err is StripeServiceError {
 }
 
 function buildProvisioningUnavailableResult(error: StripeServiceError) {
-  // No retryAfterSeconds: the cause is a deploy-time config gap (preview API
-  // not enabled on this Airo Builder deployment), not a transient failure.
-  // Advertising a retry budget would contradict the skill's "don't retry
-  // within this conversation" instruction.
   return {
     stripeProvisioningUnavailable: true,
+    retryAfterSeconds: STRIPE_PROVISIONING_RETRY_SECONDS,
     message:
-      "Stripe integration isn't available in this Airo Builder environment yet. " +
-      'Let the user know and ask them to try again later.',
+      'Stripe is still being provisioned for this Airo Builder deployment. ' +
+      'Tell the user we will turn it on shortly and they should try again later.',
     upstreamCode: error.code,
     upstreamStatus: error.status,
   };
@@ -208,6 +209,42 @@ export const statusTool: SkillToolDefinition = {
       }
       logSkillError('skill.stripe_v2.status.error', appId, err);
       throw err;
+    }
+  },
+};
+
+/**
+ * Stripe-v2 skill lifecycle hooks.
+ *
+ * onLoad fires from two paths:
+ *   1. Pre-fire at agent startup (skill-tool-manager init) — no appId. In
+ *      production this is fine: getNomadAllocConfig() resolves to the single
+ *      per-alloc config.json since one agent process serves one app. In local
+ *      dev there's no single alloc, so loadStripeMcpTools returns {} and the
+ *      pre-fire is a no-op; tools are registered when the skill is activated
+ *      mid-conversation via the path below.
+ *   2. Mid-conversation skill load (skill-loader runHook) — appId is passed
+ *      via SkillHookContext, so loadStripeMcpTools can read this app's
+ *      per-app config.json under APPS_BASE_DIR/<appId>/local/preview/.
+ *
+ * When STRIPE_MCP_KEY is not yet available (pre-provisioning, or pre-fire in
+ * local dev), loadStripeMcpTools returns {} and registerDynamicTools is a
+ * no-op — the skill still works with the static setup/status tools only.
+ */
+export const hooks: SkillHooks = {
+  onLoad: async ({ skillName, appId }) => {
+    let mcpTools: Awaited<ReturnType<typeof loadStripeMcpTools>>;
+    try {
+      mcpTools = await loadStripeMcpTools(appId);
+    } catch (err) {
+      logger.warn('skill.stripe_v2.onload.mcp_load_failed', {
+        appId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return;
+    }
+    if (Object.keys(mcpTools).length > 0) {
+      skillToolManager.registerDynamicTools(skillName, mcpTools);
     }
   },
 };

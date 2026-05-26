@@ -233,4 +233,116 @@ describe('SkillToolManager', () => {
       expect(customManager).toBeDefined();
     });
   });
+
+  // Pre-firing onLoad at boot is what lets dynamic-tool skills (e.g. MCP)
+  // register their tools before prepareCall snapshots getAllTools(). If this
+  // regresses, dynamic tools land in the registry too late and the AI SDK
+  // silently no-ops calls to them.
+  describe('initialize - pre-fires onLoad hooks', () => {
+    beforeEach(() => {
+      mockOnInstallHook.mockReset();
+      mockOnLoadHook.mockReset();
+      mockOnLoadHook.mockResolvedValue(undefined);
+    });
+
+    it('calls onLoad with the skillName for every skill that declares one', async () => {
+      const fresh = new SkillToolManager();
+      await fresh.initialize();
+      expect(mockOnLoadHook).toHaveBeenCalledWith({ skillName: 'blog' });
+      // database has no hooks — must not error out the initialize
+      // onInstall is NOT pre-fired (it's an install-time hook, not load-time)
+      expect(mockOnInstallHook).not.toHaveBeenCalled();
+    });
+
+    it('swallows onLoad rejections so initialize still completes', async () => {
+      mockOnLoadHook.mockRejectedValue(new Error('boom'));
+      const fresh = new SkillToolManager();
+      await expect(fresh.initialize()).resolves.toBeUndefined();
+      // Static tools must still be registered despite the hook failure
+      expect(Object.keys(fresh.getAllTools())).toContain('blog__createPost');
+    });
+  });
+
+  describe('registerDynamicTools', () => {
+    it('registers tools under their prefixed names in the registry', () => {
+      manager.registerDynamicTools('blog', {
+        products_create: { description: 'create', execute: vi.fn().mockResolvedValue('ok') },
+      });
+      expect(manager.getAllTools()['blog__products_create']).toBeDefined();
+      expect(manager.getAllTools()['blog__products_create'].description).toBe('create');
+    });
+
+    it('exposes registered tools to the conversation via getActiveToolNames', () => {
+      manager.registerSkill('blog', 'conv-1');
+      manager.registerDynamicTools('blog', {
+        x: { description: 'x', execute: vi.fn() },
+      });
+      const names = manager.getActiveToolNames('conv-1');
+      expect(names).toContain('blog__x');
+      // Static tools remain visible
+      expect(names).toContain('blog__createPost');
+      expect(names).toContain('blog__listPosts');
+    });
+
+    it('dedupes when the same raw name is registered twice', () => {
+      manager.registerDynamicTools('blog', { x: { description: 'a', execute: vi.fn() } });
+      manager.registerDynamicTools('blog', { x: { description: 'b', execute: vi.fn() } });
+      manager.registerSkill('blog', 'conv-2');
+      const matches = manager.getActiveToolNames('conv-2').filter(n => n === 'blog__x');
+      expect(matches).toHaveLength(1);
+    });
+
+    it('wraps execute and forwards args + return value', async () => {
+      const inner = vi.fn().mockResolvedValue('result');
+      manager.registerDynamicTools('blog', {
+        x: { description: 'x', execute: inner },
+      });
+      const wrapped = manager.getAllTools()['blog__x'];
+      const result = await (wrapped.execute as (a: unknown, o: unknown) => Promise<unknown>)(
+        { foo: 1 },
+        { bar: 2 },
+      );
+      expect(inner).toHaveBeenCalledWith({ foo: 1 }, { bar: 2 });
+      expect(result).toBe('result');
+    });
+
+    it('wraps execute and rethrows errors after logging', async () => {
+      const err = new Error('fail');
+      manager.registerDynamicTools('blog', {
+        x: { description: 'x', execute: vi.fn().mockRejectedValue(err) },
+      });
+      const wrapped = manager.getAllTools()['blog__x'];
+      await expect(
+        (wrapped.execute as (a: unknown, o: unknown) => Promise<unknown>)({}, {}),
+      ).rejects.toBe(err);
+    });
+
+    it('preserves a non-function execute (no wrap)', () => {
+      manager.registerDynamicTools('blog', {
+        x: { description: 'no-execute' },
+      });
+      const got = manager.getAllTools()['blog__x'];
+      expect(got).toBeDefined();
+      expect(got.execute).toBeUndefined();
+    });
+
+    it('is a no-op when called before initialize', async () => {
+      const fresh = new SkillToolManager();
+      // Unique skill/tool name avoids collision with state leaked by the
+      // shared buildAllSkillTools mock fixture used by other tests.
+      expect(() =>
+        fresh.registerDynamicTools('uninit-skill', {
+          uninit_tool: { description: 'x', execute: vi.fn() },
+        }),
+      ).not.toThrow();
+      await fresh.initialize();
+      expect(fresh.getAllTools()['uninit-skill__uninit_tool']).toBeUndefined();
+    });
+
+    it('is a no-op when rawTools is empty', () => {
+      const before = Object.keys(manager.getAllTools()).length;
+      manager.registerDynamicTools('blog', {});
+      expect(Object.keys(manager.getAllTools())).toHaveLength(before);
+    });
+  });
 });

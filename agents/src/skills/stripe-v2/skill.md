@@ -37,8 +37,21 @@ Sample framing for the chat reply:
 
 ## Graceful degradation
 
-If `stripe-v2__setup` returns `{stripeProvisioningUnavailable: true, message}`, the upstream Stripe API has rejected the request — usually because the v2 preview API isn't enabled for this Airo Builder deployment yet. Tell the user the literal `message`. Don't retry within the same conversation; suggest they try again later. This is the expected state until the platform Stripe access is fully wired up.
+If `stripe-v2__setup` returns `{stripeProvisioningUnavailable: true, message, retryAfterSeconds}`, the upstream Stripe API has rejected the request — usually because the v2 preview API isn't enabled for this Airo Builder deployment yet. Tell the user the literal `message`. Don't retry within the same conversation; suggest they try again later. This is the expected state until the platform Stripe access is fully wired up.
 
-## Current scope
+## MCP tools (products, prices, customers, etc.)
 
-This skill covers **sandbox provisioning and claim-status reads** only. It does not yet render checkout pages, install the `stripe` npm package, or copy checkout templates into the customer app — that integration is coming. If the user asks for checkout pages now, acknowledge that the sandbox is ready and tell them the checkout UI integration is on the way.
+When the sandbox has been provisioned and the agent process has `STRIPE_MCP_KEY` in its environment, Stripe MCP tools are automatically added to this skill's tool list at load time. Check your active tool list — if `stripe-v2__create_product`, `stripe-v2__create_price`, and similar tools are present, use them directly for any Stripe writes.
+
+**Use MCP tools for all LLM-initiated Stripe writes.** The agent acts on the merchant's behalf using the restricted MCP key (`ek_test_*`), not the secret key.
+
+**CRITICAL — Do NOT fall back to direct Stripe API calls using `STRIPE_SECRET_KEY`.** When MCP tools are unavailable or failing, do NOT use `terminalCommand`, `node -e` scripts, curl, or any other mechanism to call the Stripe API directly. The `STRIPE_SECRET_KEY` is for the customer app's checkout runtime only — not for agent-initiated Stripe operations. Using it directly bypasses Stripe's prescribed LLM integration model and must never be done.
+
+**When MCP tools are absent** (pre-provisioning, or the MCP server is unreachable), only `stripe-v2__setup` and `stripe-v2__status` are available. In that case:
+1. If the sandbox hasn't been provisioned yet, call `stripe-v2__setup` first.
+2. If the sandbox is already provisioned but MCP tools are missing, tell the user the Stripe MCP tools aren't available in this session and ask them to start a new conversation (the agent process picks up `STRIPE_MCP_KEY` on restart and `onLoad` will re-fetch the tools).
+3. Do NOT attempt to create products, prices, customers, or any other Stripe objects without MCP tools. Wait for the user's guidance.
+
+## Scope
+
+This skill covers **sandbox provisioning, claim-status reads, and LLM-initiated Stripe writes via MCP**. It does not yet render checkout pages or copy checkout templates into the customer app — the UI integration is coming.

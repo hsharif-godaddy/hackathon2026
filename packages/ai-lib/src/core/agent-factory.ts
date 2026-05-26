@@ -260,6 +260,7 @@ export class AgentWrapper {
   // Base tool names (excludes all skill tools) — computed once in prepareCall.
   // Used by prepareStep to build the activeTools list without recomputing each step.
   private currentBaseToolNames: string[] | undefined
+
   private turnCount: number = 0
   private pipeline: ContextPipeline
   private overrideAgents = new Map<string, AgentWrapper>()
@@ -412,14 +413,14 @@ export class AgentWrapper {
         // ARE picked up in prepareStep via getActiveToolNames.
         this.currentBaseToolNames = undefined
         if (this.skillToolProvider) {
-          try {
-            const skillToolNames = new Set(this.skillToolProvider.getSkillToolNames())
-            const allToolNames = Object.keys(this.config.tools || {})
-            this.currentBaseToolNames = allToolNames.filter(name => !skillToolNames.has(name))
+          const skillToolNames = new Set(this.skillToolProvider.getSkillToolNames())
+          const allToolNames = Object.keys(this.config.tools || {})
+          this.currentBaseToolNames = allToolNames.filter(name => !skillToolNames.has(name))
 
-            // Run cleanup once at the start of the run (not per-step) to avoid
-            // removing tools mid-run which would invalidate the Anthropic cache
-            if (this.currentConversationId) {
+          // Run cleanup once at the start of the run (not per-step) to avoid
+          // removing tools mid-run which would invalidate the Anthropic cache
+          if (this.currentConversationId) {
+            try {
               const deactivated = this.skillToolProvider.cleanupInactiveSkills(
                 this.currentConversationId,
                 this.currentStepNumber
@@ -431,7 +432,29 @@ export class AgentWrapper {
                   skills: deactivated
                 })
               }
+            } catch (error) {
+              logger.error('agent.prepare_call.skill_cleanup_failure', {
+                error: error instanceof Error ? error.message : String(error)
+              })
             }
+          }
+
+          // Refresh tool definitions from skillToolProvider so that tools
+          // registered after this AgentWrapper was constructed (e.g. MCP tools
+          // added by registerDynamicTools inside an onLoad hook) are available
+          // for execution. ToolLoopAgent.settings.tools is a static snapshot from
+          // construction — returning tools here overrides it for this call only.
+          try {
+            const latestSkillTools = this.skillToolProvider.getAllTools()
+            const baseToolEntries = Object.entries(this.config.tools || {}).filter(
+              ([name]) => !skillToolNames.has(name)
+            ) as [string, Tool][]
+            const refreshedTools: Record<string, Tool> = {
+              ...Object.fromEntries(baseToolEntries),
+              ...latestSkillTools,
+            }
+            ;(preparedCall as typeof preparedCall & { tools?: Record<string, Tool> }).tools =
+              this.wrapToolsWithHooks(refreshedTools)
           } catch (error) {
             logger.error('agent.prepare_call.active_tools_snapshot_failure', {
               error: error instanceof Error ? error.message : String(error)
