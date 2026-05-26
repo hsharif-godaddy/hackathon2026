@@ -166,7 +166,7 @@ function SitesPageContent() {
           
 
           {!isAcceptTransferOpen && (
-            <div className={`fixed bottom-0 left-0 right-0 z-10 bg-intents-ux-box-backgroundColor border-t border-intents-ux-borderColor p-3 flex gap-2 md:static md:bg-transparent md:border-0 md:p-0 ${totalSites === 0 ? 'md:!hidden' : ''}`}>
+            <div className={`fixed bottom-0 left-0 right-0 bg-intents-ux-box-backgroundColor border-t border-intents-ux-borderColor p-3 flex gap-2 md:static md:bg-transparent md:border-0 md:p-0 ${totalSites === 0 ? 'md:!hidden' : ''}`}>
             <Button
               design="primary"
               size="sm"
