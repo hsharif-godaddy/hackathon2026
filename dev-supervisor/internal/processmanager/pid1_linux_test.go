@@ -63,6 +63,7 @@ func TestPID1OrphanReaping(t *testing.T) {
 	}
 
 	pid1Mgr := process.NewPID1Manager()
+	t.Cleanup(pid1Mgr.Stop)
 	pid1Mgr.SetPID1ForTesting(true)
 
 	// Start the orphan reaper
@@ -154,6 +155,7 @@ func TestPID1TrackedVsOrphanedProcesses(t *testing.T) {
 
 	logMgr := logs.NewManager(100)
 	pid1Mgr := process.NewPID1Manager()
+	t.Cleanup(pid1Mgr.Stop)
 	pid1Mgr.SetPID1ForTesting(true)
 	pid1Mgr.Start(nil)
 
@@ -176,24 +178,6 @@ func TestPID1TrackedVsOrphanedProcesses(t *testing.T) {
 		// Clean up
 		_ = pm.Stop(ProcessStopRequest{Signal: "SIGKILL", Timeout: 5})
 		time.Sleep(100 * time.Millisecond)
-	})
-}
-
-func TestPID1SignalForwarding(t *testing.T) {
-	// Skip if not running as PID 1
-	if os.Getpid() != 1 {
-		t.Skip("Test requires running as PID 1 (run in Docker)")
-	}
-
-	pid1Mgr := process.NewPID1Manager()
-	pid1Mgr.SetPID1ForTesting(true)
-	pid1Mgr.SetSignalForwardingForTesting(true)
-
-	// Note: Full signal forwarding tests are better done in Docker integration
-	// This is mainly a placeholder for potential unit tests of signal handling
-	t.Run("signal forwarding enabled", func(_ *testing.T) {
-		// Signal forwarding is enabled by default, tested via Start() behavior
-		// No direct accessor needed as it's verified through integration tests
 	})
 }
 

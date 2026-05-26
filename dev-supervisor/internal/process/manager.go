@@ -22,4 +22,5 @@ type ManagedProcess interface {
 type childProcessInfo struct {
 	process        *os.Process
 	managedProcess ManagedProcess
+	isProcessGroup bool // true when the child was started with Setpgid=true (pid == pgid)
 }

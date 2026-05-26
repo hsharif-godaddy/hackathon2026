@@ -1,4 +1,4 @@
-//go:build linux && amd64
+//go:build linux && (amd64 || arm64)
 
 package process
 
@@ -14,10 +14,7 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-const (
-	orphanReaperIdleInterval   = 250 * time.Millisecond
-	trackedProcessBackoffDelay = 25 * time.Millisecond
-)
+const orphanReaperIdleInterval = 250 * time.Millisecond
 
 func (pm *PID1Manager) startOrphanReaper() {
 	go pm.reapOrphanedChildren()
@@ -35,6 +32,9 @@ func (pm *PID1Manager) reapOrphanedChildren() {
 
 	for {
 		select {
+		case <-pm.stopCh:
+			slog.Debug("orphan reaper stopping")
+			return
 		case <-sigCh:
 		case <-ticker.C:
 		}
@@ -65,12 +65,17 @@ func (pm *PID1Manager) reapExitedChildren() {
 		pm.mu.RUnlock()
 
 		if tracked {
-			time.Sleep(trackedProcessBackoffDelay)
-			continue
+			// Tracked PID — its owner (cmd.Wait) will consume the exit status.
+			// waitid(P_ALL) may return this same PID on retry since WNOWAIT
+			// leaves it in the queue. Return to the outer select; the next
+			// SIGCHLD or 250ms tick retries after the owner has likely consumed it.
+			// Orphans behind this PID in the wait queue are delayed at most one tick.
+			return
 		}
 
 		if err := waitidRetry(unix.P_PID, int(info.Pid), &info, unix.WEXITED); err != nil {
 			if errors.Is(err, syscall.ECHILD) {
+				slog.Debug("orphan vanished between peek and reap", "pid", info.Pid)
 				continue
 			}
 

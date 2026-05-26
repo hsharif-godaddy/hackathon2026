@@ -473,6 +473,9 @@ func (s *Server) startUnixServer(socketPath string, shutdownTimeout time.Duratio
 		case <-ctx.Done():
 			slog.Warn("PID 1 shutdown timeout exceeded", "timeout", shutdownTimeout)
 		}
+
+		// Unblock the main goroutine so cleanup runs and the process exits.
+		s.Shutdown()
 	})
 
 	// Start server in a goroutine
@@ -515,9 +518,9 @@ func (s *Server) startUnixServer(socketPath string, shutdownTimeout time.Duratio
 			slog.Warn("server shutdown timeout exceeded, forcing shutdown", "timeout", shutdownTimeout)
 		}
 	} else {
-		// If we are PID 1, the PID1Manager handles shutdown
-		// Wait for server to be shut down (block forever until PID1Manager calls shutdown)
-		select {}
+		// PID1Manager handles lifecycle; wait for its shutdown callback to
+		// close shutdownCh via s.Shutdown().
+		<-s.shutdownCh
 	}
 
 	// Stop HTTP proxy
@@ -606,6 +609,9 @@ func (s *Server) startTCPServer(port string, shutdownTimeout time.Duration) erro
 		case <-ctx.Done():
 			slog.Warn("PID 1 shutdown timeout exceeded", "timeout", shutdownTimeout)
 		}
+
+		// Unblock the main goroutine so cleanup runs and the process exits.
+		s.Shutdown()
 	})
 
 	// Start server in a goroutine
@@ -648,9 +654,9 @@ func (s *Server) startTCPServer(port string, shutdownTimeout time.Duration) erro
 			slog.Warn("TCP server shutdown timeout exceeded, forcing shutdown", "timeout", shutdownTimeout)
 		}
 	} else {
-		// If we are PID 1, the PID1Manager handles shutdown
-		// Wait for server to be shut down (block forever until PID1Manager calls shutdown)
-		select {}
+		// PID1Manager handles lifecycle; wait for its shutdown callback to
+		// close shutdownCh via s.Shutdown().
+		<-s.shutdownCh
 	}
 
 	// Stop HTTP proxy
@@ -679,7 +685,10 @@ func (s *Server) WaitForShutdown() {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
-	<-sigChan
+	select {
+	case <-sigChan:
+	case <-s.shutdownCh:
+	}
 	slog.Info("shutdown signal received, cleaning up...")
 
 	// Cancel running tasks
@@ -1104,8 +1113,10 @@ func startServerWithCommand(server *Server, cfg *Config, args []string) {
 	// Handle conditional startup if setup script is configured
 	deferSetup := handleConditionalSetup(server, cfg, startReq)
 
-	// Start server in background
+	// Start server in background; serverDone signals when cleanup completes.
+	serverDone := make(chan struct{})
 	go func() {
+		defer close(serverDone)
 		if err := server.StartWithConfig(cfg); err != nil {
 			slog.Error("failed to start server", "error", err)
 			os.Exit(1)
@@ -1139,6 +1150,11 @@ func startServerWithCommand(server *Server, cfg *Config, args []string) {
 
 	// Wait for shutdown signals
 	server.WaitForShutdown()
+
+	// Wait for server cleanup (proxy stop, socket removal) to finish before
+	// main() exits. Without this, the process can terminate while the
+	// StartWithConfig goroutine is still running cleanup.
+	<-serverDone
 }
 
 func main() {

@@ -21,6 +21,8 @@ type PID1Manager struct {
 	shutdownTimeout  time.Duration
 	isShuttingDown   bool
 	isPID1           bool
+	stopCh           chan struct{}
+	stopOnce         sync.Once
 }
 
 func NewPID1Manager() *PID1Manager {
@@ -29,7 +31,16 @@ func NewPID1Manager() *PID1Manager {
 		signalForwarding: true,
 		shutdownTimeout:  30 * time.Second,
 		isPID1:           os.Getpid() == 1,
+		stopCh:           make(chan struct{}),
 	}
+}
+
+// Stop signals background goroutines (reaper, signal forwarding) to exit.
+// Safe to call from multiple goroutines concurrently.
+func (pm *PID1Manager) Stop() {
+	pm.stopOnce.Do(func() {
+		close(pm.stopCh)
+	})
 }
 
 func (pm *PID1Manager) Start(shutdownCallback func()) {
@@ -47,11 +58,20 @@ func (pm *PID1Manager) Start(shutdownCallback func()) {
 		pm.startOrphanReaper()
 	} else {
 		slog.Info("PID 1 behavior disabled", "pid", os.Getpid())
-		// Still setup basic signal handling for graceful shutdown
+		if err := setChildSubreaper(); err != nil {
+			slog.Warn("failed to set child subreaper; orphaned grandchildren will not be reaped", "error", err)
+		} else {
+			slog.Info("configured as child subreaper")
+		}
 		pm.setupBasicSignalHandling()
 	}
 }
 
+// RegisterChildProcess registers a process for signal delivery and lifecycle
+// tracking. Callers that start processes with Setpgid=true should use
+// StartAndRegister instead — it derives isProcessGroup from cmd.SysProcAttr
+// directly. This method assumes non-process-group (isProcessGroup=false) for
+// direct *os.Process registrations.
 func (pm *PID1Manager) RegisterChildProcess(process *os.Process, managedProcess ManagedProcess) bool {
 	if process == nil {
 		return false
@@ -60,19 +80,22 @@ func (pm *PID1Manager) RegisterChildProcess(process *os.Process, managedProcess 
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
 
-	return pm.registerChildLocked(process, managedProcess)
+	return pm.registerChildLocked(process, managedProcess, false)
 }
 
 // registerChildLocked inserts the child into the tracking map and starts any
 // managed watcher. Caller MUST hold pm.mu.Lock(). Split out of
 // RegisterChildProcess so StartAndRegister can hold the lock across cmd.Start()
 // and the map insert in a single critical section.
-func (pm *PID1Manager) registerChildLocked(process *os.Process, managedProcess ManagedProcess) bool {
+func (pm *PID1Manager) registerChildLocked(
+	process *os.Process, managedProcess ManagedProcess, isProcessGroup bool,
+) bool {
 	pm.childProcesses[process.Pid] = &childProcessInfo{
 		process:        process,
 		managedProcess: managedProcess,
+		isProcessGroup: isProcessGroup,
 	}
-	slog.Debug("registered child process", "pid", process.Pid)
+	slog.Debug("registered child process", "pid", process.Pid, "process_group", isProcessGroup)
 
 	managedLifecycle := pm.ShouldManageChildLifecycle(managedProcess)
 	if managedLifecycle {
@@ -116,7 +139,8 @@ func (pm *PID1Manager) StartAndRegister(cmd *exec.Cmd, managedProcess ManagedPro
 		return err
 	}
 
-	pm.registerChildLocked(cmd.Process, managedProcess)
+	isGroup := cmd.SysProcAttr != nil && cmd.SysProcAttr.Setpgid
+	pm.registerChildLocked(cmd.Process, managedProcess, isGroup)
 	return nil
 }
 
@@ -148,21 +172,29 @@ func (pm *PID1Manager) startManagedWatcher(pid int, managedProcess ManagedProces
 func (pm *PID1Manager) setupSignalForwarding() {
 	slog.Info("setting up signal forwarding for PID 1")
 
-	// Signals to forward to children
 	signals := []os.Signal{
 		syscall.SIGTERM,
 		syscall.SIGINT,
 		syscall.SIGUSR1,
 		syscall.SIGUSR2,
 		syscall.SIGHUP,
+		syscall.SIGWINCH,
+		syscall.SIGCONT,
+		syscall.SIGALRM,
 	}
 
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, signals...)
 
 	go func() {
-		for sig := range sigChan {
-			pm.handleSignal(sig)
+		defer signal.Stop(sigChan)
+		for {
+			select {
+			case <-pm.stopCh:
+				return
+			case sig := <-sigChan:
+				pm.handleSignal(sig)
+			}
 		}
 	}()
 }
@@ -173,61 +205,85 @@ func (pm *PID1Manager) setupBasicSignalHandling() {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGTERM, syscall.SIGINT)
 
+	// Exits after one signal — a second SIGTERM/SIGINT hits the OS default
+	// (immediate termination), which is the desired hard-kill escalation.
 	go func() {
-		sig := <-sigChan
-		slog.Info("received signal, initiating shutdown", "signal", sig)
-		pm.initiateShutdown()
+		defer signal.Stop(sigChan)
+		select {
+		case <-pm.stopCh:
+			return
+		case sig := <-sigChan:
+			slog.Info("received signal, initiating shutdown", "signal", sig)
+			sysSig, ok := sig.(syscall.Signal)
+			if !ok {
+				slog.Warn("signal type assertion failed, defaulting to SIGTERM", "signal", sig)
+				sysSig = syscall.SIGTERM
+			}
+			pm.initiateShutdown(sysSig)
+		}
 	}()
 }
 
 func (pm *PID1Manager) handleSignal(sig os.Signal) {
-	// Get child count for logging without holding lock during shutdown
 	pm.mu.RLock()
 	childCount := len(pm.childProcesses)
 	pm.mu.RUnlock()
 
-	slog.Info("forwarding signal to child processes", "signal", sig, "child_count", childCount)
+	slog.Info("received signal", "signal", sig, "child_count", childCount)
 
 	switch sig {
-	case syscall.SIGTERM, syscall.SIGINT:
-		// Graceful shutdown signals - don't hold lock when calling initiateShutdown
-		// as it needs to acquire write lock (prevents deadlock)
-		pm.initiateShutdown()
-
+	case syscall.SIGTERM:
+		pm.initiateShutdown(syscall.SIGTERM)
+	case syscall.SIGINT:
+		pm.initiateShutdown(syscall.SIGINT)
 	default:
-		// Other signals - forward to children
-		// Snapshot children under lock, then forward without holding lock
 		children := pm.snapshotChildren()
 		pm.forwardSignalToChildrenSnapshot(sig, children)
 	}
 }
 
+type childSnapshot struct {
+	process        *os.Process
+	isProcessGroup bool
+}
+
 // snapshotChildren creates a copy of the child process list under read lock.
 // This allows signal forwarding to proceed without holding locks during blocking operations.
-func (pm *PID1Manager) snapshotChildren() []*os.Process {
+func (pm *PID1Manager) snapshotChildren() []childSnapshot {
 	pm.mu.RLock()
 	defer pm.mu.RUnlock()
 
-	snapshot := make([]*os.Process, 0, len(pm.childProcesses))
+	snapshot := make([]childSnapshot, 0, len(pm.childProcesses))
 	for _, child := range pm.childProcesses {
-		snapshot = append(snapshot, child.process)
+		snapshot = append(snapshot, childSnapshot{
+			process:        child.process,
+			isProcessGroup: child.isProcessGroup,
+		})
 	}
 	return snapshot
 }
 
 // forwardSignalToChildrenSnapshot forwards a signal to a snapshot of child processes.
 // Does not require holding any locks, safe to call after snapshotChildren().
-func (pm *PID1Manager) forwardSignalToChildrenSnapshot(sig os.Signal, children []*os.Process) {
-	for _, proc := range children {
-		if err := proc.Signal(sig); err != nil {
-			slog.Error("failed to send signal to child", "signal", sig, "pid", proc.Pid, "error", err)
+func (pm *PID1Manager) forwardSignalToChildrenSnapshot(sig os.Signal, children []childSnapshot) {
+	sysSig, ok := sig.(syscall.Signal)
+	if !ok {
+		slog.Warn("signal type assertion failed, falling back to per-process delivery", "signal", sig)
+	}
+	for _, child := range children {
+		if ok && child.isProcessGroup {
+			if err := syscall.Kill(-child.process.Pid, sysSig); err != nil && !errors.Is(err, syscall.ESRCH) {
+				slog.Error("failed to signal process group", "signal", sig, "pgid", child.process.Pid, "error", err)
+			}
 		} else {
-			slog.Debug("forwarded signal to child", "signal", sig, "pid", proc.Pid)
+			if err := child.process.Signal(sig); err != nil && !errors.Is(err, os.ErrProcessDone) {
+				slog.Error("failed to send signal to child", "signal", sig, "pid", child.process.Pid, "error", err)
+			}
 		}
 	}
 }
 
-func (pm *PID1Manager) initiateShutdown() {
+func (pm *PID1Manager) initiateShutdown(gracefulSignal syscall.Signal) {
 	pm.mu.Lock()
 	if pm.isShuttingDown {
 		pm.mu.Unlock()
@@ -236,10 +292,9 @@ func (pm *PID1Manager) initiateShutdown() {
 	pm.isShuttingDown = true
 	pm.mu.Unlock()
 
-	slog.Info("initiating graceful shutdown")
+	slog.Info("initiating graceful shutdown", "signal", gracefulSignal)
 
-	// Send SIGTERM to all children first
-	pm.terminateChildren(syscall.SIGTERM)
+	pm.terminateChildren(gracefulSignal)
 
 	// Wait for children to exit gracefully
 	timeout := time.After(pm.shutdownTimeout)
@@ -270,15 +325,21 @@ func (pm *PID1Manager) initiateShutdown() {
 	}
 }
 
-func (pm *PID1Manager) terminateChildren(sig os.Signal) {
+func (pm *PID1Manager) terminateChildren(sig syscall.Signal) {
 	pm.mu.RLock()
 	defer pm.mu.RUnlock()
 
 	slog.Info("sending signal to child processes", "signal", sig, "child_count", len(pm.childProcesses))
 
 	for pid, child := range pm.childProcesses {
-		if err := child.process.Signal(sig); err != nil {
-			slog.Error("failed to send signal to child", "signal", sig, "pid", pid, "error", err)
+		if child.isProcessGroup {
+			if err := syscall.Kill(-pid, sig); err != nil && !errors.Is(err, syscall.ESRCH) {
+				slog.Error("failed to signal process group", "signal", sig, "pgid", pid, "error", err)
+			}
+		} else {
+			if err := child.process.Signal(sig); err != nil && !errors.Is(err, os.ErrProcessDone) {
+				slog.Error("failed to send signal to child", "signal", sig, "pid", pid, "error", err)
+			}
 		}
 	}
 }

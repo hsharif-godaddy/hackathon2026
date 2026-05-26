@@ -13,6 +13,7 @@ import (
 // when processing SIGTERM/SIGINT by ensuring it doesn't hold RLock while calling initiateShutdown.
 func TestPID1Manager_SignalHandlingNoDeadlock(t *testing.T) {
 	pm := NewPID1Manager()
+	t.Cleanup(pm.Stop)
 	pm.SetPID1ForTesting(true)
 	pm.SetSignalForwardingForTesting(true)
 
@@ -37,12 +38,11 @@ func TestPID1Manager_SignalHandlingNoDeadlock(t *testing.T) {
 		t.Fatal("handleSignal(SIGTERM) deadlocked - did not complete within 2 seconds")
 	}
 
-	// Verify shutdown was initiated
+	// Verify shutdown callback was invoked (always called, even with zero children)
 	select {
 	case <-shutdownCalled:
-		// Success
-	case <-time.After(1 * time.Second):
-		// This is OK - shutdown callback might not be called if no children
+	case <-time.After(2 * time.Second):
+		t.Fatal("shutdown callback was not called within 2 seconds")
 	}
 }
 
@@ -50,6 +50,7 @@ func TestPID1Manager_SignalHandlingNoDeadlock(t *testing.T) {
 // (SIGHUP, SIGUSR1, etc.) doesn't hold locks unnecessarily.
 func TestPID1Manager_SignalForwardingNoDeadlock(t *testing.T) {
 	pm := NewPID1Manager()
+	t.Cleanup(pm.Stop)
 	pm.SetPID1ForTesting(true)
 	pm.SetSignalForwardingForTesting(true)
 
@@ -75,13 +76,17 @@ func TestPID1Manager_SignalForwardingNoDeadlock(t *testing.T) {
 // signal handlers don't cause races or deadlocks.
 func TestPID1Manager_ConcurrentSignalHandling(t *testing.T) {
 	pm := NewPID1Manager()
+	t.Cleanup(pm.Stop)
 	pm.SetPID1ForTesting(true)
 	pm.SetSignalForwardingForTesting(true)
 
 	pm.Start(func() {})
 
-	// Send multiple signals concurrently
-	signals := []syscall.Signal{syscall.SIGHUP, syscall.SIGUSR1, syscall.SIGUSR2}
+	// Send multiple signals concurrently (covers all forwarded non-shutdown signals)
+	signals := []syscall.Signal{
+		syscall.SIGHUP, syscall.SIGUSR1, syscall.SIGUSR2,
+		syscall.SIGWINCH, syscall.SIGCONT, syscall.SIGALRM,
+	}
 
 	done := make(chan bool, len(signals))
 	for _, sig := range signals {

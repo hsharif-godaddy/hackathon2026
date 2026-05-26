@@ -141,11 +141,11 @@ jobs:
             BINARY_NAME="${BINARY_NAME}.exe"
             SANDBOX_NAME="${SANDBOX_NAME}.exe"
           fi
-          go build -ldflags="-w -s" -o "dist/${BINARY_NAME}-${GOOS}-${GOARCH}" ./cmd/dev-supervisor
+          go build -trimpath -ldflags="-w -s" -o "dist/${BINARY_NAME}-${GOOS}-${GOARCH}" ./cmd/dev-supervisor
 
           # airo-sandbox requires POSIX sh and is excluded for Windows by build tags
           if [ "$GOOS" != "windows" ]; then
-            go build -ldflags="-w -s" -o "dist/${SANDBOX_NAME}-${GOOS}-${GOARCH}" ./cmd/airo-sandbox
+            go build -trimpath -ldflags="-w -s" -o "dist/${SANDBOX_NAME}-${GOOS}-${GOARCH}" ./cmd/airo-sandbox
           fi
 
       - name: Upload build artifacts

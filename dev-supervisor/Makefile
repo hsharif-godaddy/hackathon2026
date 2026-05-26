@@ -6,7 +6,7 @@
 BINARY_NAME := dev-supervisor
 BUILD_DIR := dist
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
-LDFLAGS := -ldflags="-w -s -X main.Version=${VERSION}"
+LDFLAGS := -trimpath -ldflags="-w -s -X main.Version=${VERSION}"
 
 # Force Go 1.25.7 toolchain (matches go.mod)
 export GOTOOLCHAIN := go1.25.7
@@ -33,15 +33,15 @@ build-sandbox:
 build-all:
 	@echo "Building for multiple platforms..."
 	@mkdir -p ${BUILD_DIR}
-	GOOS=linux GOARCH=amd64 go build ${LDFLAGS} -o ${BUILD_DIR}/${BINARY_NAME}-linux-amd64 ./cmd/dev-supervisor
-	GOOS=linux GOARCH=arm64 go build ${LDFLAGS} -o ${BUILD_DIR}/${BINARY_NAME}-linux-arm64 ./cmd/dev-supervisor
-	GOOS=darwin GOARCH=amd64 go build ${LDFLAGS} -o ${BUILD_DIR}/${BINARY_NAME}-darwin-amd64 ./cmd/dev-supervisor
-	GOOS=darwin GOARCH=arm64 go build ${LDFLAGS} -o ${BUILD_DIR}/${BINARY_NAME}-darwin-arm64 ./cmd/dev-supervisor
-	GOOS=windows GOARCH=amd64 go build ${LDFLAGS} -o ${BUILD_DIR}/${BINARY_NAME}-windows-amd64.exe ./cmd/dev-supervisor
-	GOOS=linux GOARCH=amd64 go build ${LDFLAGS} -o ${BUILD_DIR}/airo-sandbox-linux-amd64 ./cmd/airo-sandbox
-	GOOS=linux GOARCH=arm64 go build ${LDFLAGS} -o ${BUILD_DIR}/airo-sandbox-linux-arm64 ./cmd/airo-sandbox
-	GOOS=darwin GOARCH=amd64 go build ${LDFLAGS} -o ${BUILD_DIR}/airo-sandbox-darwin-amd64 ./cmd/airo-sandbox
-	GOOS=darwin GOARCH=arm64 go build ${LDFLAGS} -o ${BUILD_DIR}/airo-sandbox-darwin-arm64 ./cmd/airo-sandbox
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build ${LDFLAGS} -o ${BUILD_DIR}/${BINARY_NAME}-linux-amd64 ./cmd/dev-supervisor
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build ${LDFLAGS} -o ${BUILD_DIR}/${BINARY_NAME}-linux-arm64 ./cmd/dev-supervisor
+	CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build ${LDFLAGS} -o ${BUILD_DIR}/${BINARY_NAME}-darwin-amd64 ./cmd/dev-supervisor
+	CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build ${LDFLAGS} -o ${BUILD_DIR}/${BINARY_NAME}-darwin-arm64 ./cmd/dev-supervisor
+	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build ${LDFLAGS} -o ${BUILD_DIR}/${BINARY_NAME}-windows-amd64.exe ./cmd/dev-supervisor
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build ${LDFLAGS} -o ${BUILD_DIR}/airo-sandbox-linux-amd64 ./cmd/airo-sandbox
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build ${LDFLAGS} -o ${BUILD_DIR}/airo-sandbox-linux-arm64 ./cmd/airo-sandbox
+	CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build ${LDFLAGS} -o ${BUILD_DIR}/airo-sandbox-darwin-amd64 ./cmd/airo-sandbox
+	CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build ${LDFLAGS} -o ${BUILD_DIR}/airo-sandbox-darwin-arm64 ./cmd/airo-sandbox
 	# airo-sandbox is not built for Windows (requires POSIX sh)
 
 ## Clean build artifacts

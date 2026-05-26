@@ -15,9 +15,10 @@ RUN go mod download
 # Copy source code
 COPY . .
 
-# Build binaries with static linking for Alpine
-RUN CGO_ENABLED=0 GOOS=linux go build -a -ldflags '-extldflags "-static" -w -s' -o /usr/local/bin/dev-supervisor ./cmd/dev-supervisor
-RUN CGO_ENABLED=0 GOOS=linux go build -a -ldflags '-extldflags "-static" -w -s' -o /usr/local/bin/airo-sandbox ./cmd/airo-sandbox
+# Build statically-linked binaries (CGO_ENABLED=0 uses Go's internal linker)
+ARG VERSION=dev
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-w -s -X main.Version=${VERSION}" -o /usr/local/bin/dev-supervisor ./cmd/dev-supervisor
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-w -s" -o /usr/local/bin/airo-sandbox ./cmd/airo-sandbox
 
 # Final stage - minimal Alpine image suitable for copying binary from
 FROM alpine:3.22
