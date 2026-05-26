@@ -26,7 +26,7 @@ COPY package.json ./
 # does not need an .npmrc bind-mount for Artifactory auth.
 RUN npm install --omit=dev --no-audit --no-fund
 COPY handler.mjs cert-loader.mjs crm-client.mjs crm-token.mjs \
-     invoke-investigator.mjs jira-client.mjs jira-mapping.mjs \
+     invoke-investigator.mjs jira-client.mjs jira-mapping.mjs logger.mjs \
      parquet-reader.mjs secret-cache.mjs slack.mjs slack-builders.mjs \
      slack-format.mjs state.mjs ./
 

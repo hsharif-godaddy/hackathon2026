@@ -6,7 +6,8 @@ import { postCase, getCase, getCaseByExternalId, postNote, resolveCaseAsync } fr
 import { invokeInvestigator } from './invoke-investigator.mjs';
 import { postSlackMessage } from './slack.mjs';
 import { findIssueByFeedbackId, createIssue } from './jira-client.mjs';
-import { buildJiraIssueBody } from './jira-mapping.mjs';
+import { buildJiraIssueBody, parseTopics } from './jira-mapping.mjs';
+import { log } from './logger.mjs';
 
 const REGION = process.env.AWS_REGION ?? 'us-west-2';
 const s3 = new S3Client({ region: REGION });
@@ -14,13 +15,6 @@ const s3 = new S3Client({ region: REGION });
 const DEDUP_WINDOW_MS = 60 * 60 * 1000;
 const SCHEMA_VERSION = 1;
 
-const log = (level, domain, fields) => {
-  console[level === 'error' ? 'error' : 'log'](JSON.stringify({
-    level,
-    msg: domain,
-    ...fields,
-  }));
-};
 
 /**
  * S3 ObjectCreated event handler. Processes one parquet at a time.
@@ -73,6 +67,11 @@ export async function handler(event) {
   }
 
   const stateBucket = process.env.FEEDBACK_BUCKET ?? bucket;
+  // Source-parquet S3 URI threaded into the Jira "S3 Object Reference"
+  // custom field (customfield_36259) so triagers can replay the raw payload
+  // when needed. Built once here and passed down through the dedup-hit and
+  // fresh paths.
+  const s3Ref = `s3://${bucket}/${key}`;
   const existing = await readState({ bucket: stateBucket, customerId, appId });
 
   const now = Date.now();
@@ -80,7 +79,7 @@ export async function handler(event) {
     const age = now - existing.state.startedAt;
     if (age <= DEDUP_WINDOW_MS) {
       const handled = await handleDedupHit({
-        existing, row, customerId, appId, submissionId, stateBucket, now,
+        existing, row, customerId, appId, submissionId, stateBucket, now, s3Ref,
       });
       if (handled) return;
       // handleDedupHit returned false: existing case is stale (closed) OR
@@ -94,7 +93,7 @@ export async function handler(event) {
       // is down would re-anchor `startedAt` on every retry, defeating the
       // dedup contract.
       await handleFreshPath({
-        row, customerId, appId, submissionId, stateBucket, now,
+        row, customerId, appId, submissionId, stateBucket, now, s3Ref,
         overwriteEtag: existing.etag,
         preservedStartedAt: existing.state.startedAt,
       });
@@ -102,7 +101,7 @@ export async function handler(event) {
     }
   }
 
-  await handleFreshPath({ row, customerId, appId, submissionId, stateBucket, now });
+  await handleFreshPath({ row, customerId, appId, submissionId, stateBucket, now, s3Ref });
 }
 
 async function readParquet(bucket, key) {
@@ -138,7 +137,7 @@ function crmConfig() {
   };
 }
 
-async function handleDedupHit({ existing, row, customerId, appId, submissionId, stateBucket, now }) {
+async function handleDedupHit({ existing, row, customerId, appId, submissionId, stateBucket, now, s3Ref }) {
   // Prior submission left state.json with no caseId (e.g. CRM postCase
   // failed → bulkhead skipped). Don't call getCase(null) — it would 500
   // server-side. Treat as stale → caller falls through to fresh path so
@@ -184,7 +183,7 @@ async function handleDedupHit({ existing, row, customerId, appId, submissionId, 
   // match a prior click — each eligible click creates its own ticket.
   // Investigator stays off on dedup path — only NEW CRM case creation +
   // investigator are suppressed; Slack/Jira still surface every submission.
-  const jiraKey = await resolveJiraKey({ row, submissionId, logPrefix: 'fanout.dedup.jira' });
+  const jiraKey = await resolveJiraKey({ row, submissionId, logPrefix: 'fanout.dedup.jira', s3Ref });
 
   // Slack always runs on dedup hit (mirrors fresh path) — every submission
   // pings the channel even when the underlying CRM case is reused. Now
@@ -216,7 +215,7 @@ async function handleDedupHit({ existing, row, customerId, appId, submissionId, 
   return true;
 }
 
-async function handleFreshPath({ row, customerId, appId, submissionId, stateBucket, now, overwriteEtag, preservedStartedAt }) {
+async function handleFreshPath({ row, customerId, appId, submissionId, stateBucket, now, s3Ref, overwriteEtag, preservedStartedAt }) {
   const baseState = {
     schemaVersion: SCHEMA_VERSION,
     submissionId,
@@ -384,11 +383,13 @@ async function handleFreshPath({ row, customerId, appId, submissionId, stateBuck
 
   // Jira fanout runs BEFORE Slack so the Slack message can include the
   // AABSP issue key as a clickable triage link. Eligibility-gated and
-  // idempotent (find-by-label before create); each spam-click within the
-  // dedup window is a unique submissionId so each click → unique label →
+  // idempotent (find-by-Feedback-ID before create — see jira-client.mjs
+  // findIssueByFeedbackId, which JQL-searches the field defined by
+  // FEEDBACK_ID_CUSTOM_FIELD_ID); each spam-click within the dedup window
+  // is a unique submissionId so each click → unique Feedback ID →
   // distinct ticket. Wrapped warn-not-throw inside `resolveJiraKey` so a
   // Jira outage doesn't block Slack/investigator.
-  const jiraKey = await resolveJiraKey({ row, submissionId, logPrefix: 'fanout.jira' });
+  const jiraKey = await resolveJiraKey({ row, submissionId, logPrefix: 'fanout.jira', s3Ref });
 
   const investigateUrl = buildInvestigateUrl(customerId, appId);
   const investigationId = newInvestigationId();
@@ -479,9 +480,10 @@ async function handleFreshPath({ row, customerId, appId, submissionId, stateBuck
 
 /**
  * Resolve the AABSP Jira issue key for a feedback submission, creating
- * a new ticket only when one doesn't already exist for this
- * `feedback-id-<submissionId>` label. Returns the issue key or `null`
- * (eligibility-gated, find/create failed, or Jira not in use).
+ * a new ticket only when one doesn't already exist for this submissionId
+ * in the typed Feedback ID custom field (FEEDBACK_ID_CUSTOM_FIELD_ID in
+ * jira-client.mjs — currently `cf[36238]`). Returns the issue key or
+ * `null` (eligibility-gated, find/create failed, or Jira not in use).
  *
  * Wraps the find/create round-trip in a single try/catch so a Jira
  * outage degrades cleanly to `null` — Slack still posts, just without
@@ -490,8 +492,20 @@ async function handleFreshPath({ row, customerId, appId, submissionId, stateBuck
  * fresh, `fanout.dedup.jira` for dedup) so log queries keep working
  * unchanged from before this helper existed.
  */
-async function resolveJiraKey({ row, submissionId, logPrefix }) {
+async function resolveJiraKey({ row, submissionId, logPrefix, s3Ref }) {
   if (!shouldFanoutDownstream(row)) return null;
+
+  // Explicit env-presence check matches the JIRA_PROJECT_KEY regex-rejection
+  // path: a missing JIRA_BASE_URL would otherwise produce a fetch error
+  // like "fetch failed: undefined/rest/api/3/..." which is opaque to
+  // triagers staring at CloudWatch. Surface the misconfig as a distinct
+  // log line and bail to `null` so Slack/CRM/investigator continue.
+  const baseUrl = process.env.JIRA_BASE_URL;
+  if (!baseUrl) {
+    log('warn', `${logPrefix}.config_missing`, { reason: 'JIRA_BASE_URL not set', feedbackId: submissionId });
+    return null;
+  }
+
   // Split find vs create error handling so a Jira outage and an
   // operator-side failure (project archived, required field added,
   // perms revoked) log distinctly. Find failures roll up to
@@ -499,7 +513,7 @@ async function resolveJiraKey({ row, submissionId, logPrefix }) {
   let existing;
   try {
     existing = await findIssueByFeedbackId({
-      baseUrl: process.env.JIRA_BASE_URL,
+      baseUrl,
       projectKey: process.env.JIRA_PROJECT_KEY,
       feedbackId: submissionId,
     });
@@ -512,8 +526,8 @@ async function resolveJiraKey({ row, submissionId, logPrefix }) {
     return existing;
   }
   try {
-    const body = buildJiraIssueBody(row, process.env.JIRA_PROJECT_KEY);
-    const issue = await createIssue({ baseUrl: process.env.JIRA_BASE_URL, body });
+    const body = buildJiraIssueBody(row, process.env.JIRA_PROJECT_KEY, s3Ref);
+    const issue = await createIssue({ baseUrl, body });
     log('info', `${logPrefix}.created`, { issueKey: issue.key, feedbackId: submissionId });
     return issue.key ?? null;
   } catch (err) {
@@ -703,11 +717,6 @@ function renderDuplicateNote({ submissionId, row }) {
     row.rating != null ? `Rating: ${row.rating}` : null,
     `Feedback: ${(row.feedback_text ?? '').slice(0, 1000)}`,
   ].filter(Boolean).join('\n');
-}
-
-function parseTopics(raw) {
-  if (!raw) return [];
-  try { return JSON.parse(raw); } catch { return []; }
 }
 
 /**

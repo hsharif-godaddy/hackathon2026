@@ -61,7 +61,7 @@ to the Lambda has these effects:
 | CRM `postNote` (kickoff/duplicate) | **Will duplicate** | Notes have no idempotency key; replay adds a second note to the same case |
 | Slack | **Will duplicate** | Webhook has no idempotency; replay produces a second Slack message in the channel |
 | Investigator invoke | Investigator-side dedup via `active/<cid>/<aid>/state.json` lock | Concurrent replays no-op; replay after completion may re-trigger (verify with investigator owner) |
-| Jira | Idempotent via `feedback-id-<uuid>` label | Search before create finds existing issue → skip |
+| Jira | Idempotent via Feedback ID custom field (`cf[36238]`) | Search before create finds existing issue → skip |
 
 When replaying from DLQ, expect: 1 new CRM note + 1 duplicate Slack
 message + 1 idempotent Jira no-op + (likely) 1 idempotent investigator
@@ -199,11 +199,11 @@ prior fanouts — the surrounding fanouts always complete first.
 
 ### Eligibility
 
-| Category   | Action                                              | Issue type |
-| ---------- | --------------------------------------------------- | ---------- |
-| `issue`    | Always create                                       | `Bug`      |
-| `support`  | Always create                                       | `Task`     |
-| `feedback` | Only when `rating != null && rating < 5`            | `Task`     |
+| Category   | Action                                              | Issue type      |
+| ---------- | --------------------------------------------------- | --------------- |
+| `issue`    | Always create                                       | `Bug`           |
+| `support`  | Always create                                       | `SOS Support`   |
+| `feedback` | Only when `rating != null && rating < 5`            | `Prod Feedback` |
 
 ### Auth
 
@@ -225,11 +225,13 @@ revoking the old token.
 
 ### Idempotency
 
-The mapping always emits a `feedback-id-<submission_id>` label on every
-issue body. Before creating, the Lambda runs a JQL search
-(`project="AABSP" AND labels="feedback-id-<id>"`); a non-empty result
-short-circuits to `fanout.jira.skip_existing`. Parquet replays (DLQ
-replay, Lambda retry) are therefore safe.
+Every issue body sets the typed Feedback ID custom field
+(`FEEDBACK_ID_CUSTOM_FIELD_ID` in `jira-client.mjs`, currently `cf[36238]`)
+to the submission UUID. Before creating, the Lambda runs a JQL search
+(`project="AABSP" AND cf[<FEEDBACK_ID_CUSTOM_FIELD_ID>]="<id>"`); a
+non-empty result short-circuits to `fanout.jira.skip_existing`. Parquet
+replays (DLQ replay, Lambda retry, S3 double-fire) are therefore safe.
+The labels column stays clean (`AAB-App` only).
 
 ### Environment variables
 
@@ -259,12 +261,14 @@ replay, Lambda retry) are therefore safe.
 
 ### Customization
 
-The mapping deliberately uses standard fields only: `summary`,
-`description` (ADF), `issuetype.name`, `project.key`, `labels`. No
-custom fields, no `priority`, no `reporter`. All metadata goes into
-either the description (ADF paragraphs + `codeBlock` for the verbatim
-feedback text) or the labels (`user-feedback`, `feedback-type-<cat>`,
-`app-<id>`, `feedback-id-<id>`, optional `rating-<n>`). The customer
-ID is intentionally NOT in labels — Jira labels are project-wide
-searchable and not redactable per-issue, so customer/shopper IDs stay
-in the description body only. See `jira-mapping.mjs` for the full mapping.
+Issue type is chosen per category: `issue → Bug`, `support → SOS Support`,
+`feedback → Prod Feedback`. Typed AABSP custom fields hold the structured
+data triagers care about (App ID, Subscription/Plan, Origin, Topics,
+Customer Consent, Feedback ID, S3 Object Reference, Experiments, Rating);
+the description ADF holds only the customer's feedback text rendered as
+prose paragraphs. Labels stay minimal (`AAB-App`). The customer ID is
+intentionally NOT in labels — Jira labels are project-wide searchable and
+not redactable per-issue, so customer/shopper IDs stay only in custom
+fields where they can be cleaned per-issue. See `jira-mapping.mjs` for
+the full mapping and `getJiraIssueTypeMetaWithFields` against AABSP for
+the source of truth on field IDs.

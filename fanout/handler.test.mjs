@@ -543,6 +543,13 @@ await test('dedup hit within 60min: posts duplicate note + Slack + Jira; skips n
   assert.equal(calls.slack[0].enrichment.caseNumber, undefined);
   assert.equal(calls.slack[0].enrichment.jiraKey, 'AABSP-1');
   assert.match(calls.slack[0].enrichment.jiraUrl, /\/browse\/AABSP-1$/);
+  // Dedup-path Jira create must carry the same s3Ref custom field as
+  // fresh path — pins the threading symmetry. A regression that drops
+  // s3Ref from handleDedupHit would silently lose traceability on every
+  // dedup-window duplicate ticket.
+  const dedupBody = calls.jiraCreate[0].body;
+  const dedupS3Ref = dedupBody.fields.customfield_36259;
+  assert.ok(typeof dedupS3Ref === 'string' && dedupS3Ref.startsWith('s3://'));
 });
 
 await test('stale state (case closed): falls through to fresh path', async () => {
@@ -621,7 +628,7 @@ await test('jira: issue category → findIssueByFeedbackId then createIssue (Bug
   assert.equal(calls.jiraCreate[0].body.fields.project.key, 'AABSP');
 });
 
-await test('jira: support category → createIssue called (Task)', async () => {
+await test('jira: support category → createIssue called (SOS Support)', async () => {
   readStateImpl = freshReadStateImpl();
   parseFeedbackParquetImpl = async () => ({
     ...FEEDBACK_ROW,
@@ -633,10 +640,10 @@ await test('jira: support category → createIssue called (Task)', async () => {
 
   assert.equal(calls.jiraFind.length, 1);
   assert.equal(calls.jiraCreate.length, 1);
-  assert.equal(calls.jiraCreate[0].body.fields.issuetype.name, 'Task');
+  assert.equal(calls.jiraCreate[0].body.fields.issuetype.name, 'SOS Support');
 });
 
-await test('jira: feedback rating=3 → createIssue called with rating-3 label', async () => {
+await test('jira: feedback rating=3 → Prod Feedback ticket with feedback-id label + Rating custom field', async () => {
   readStateImpl = freshReadStateImpl();
   parseFeedbackParquetImpl = async () => ({
     ...FEEDBACK_ROW,
@@ -648,8 +655,24 @@ await test('jira: feedback rating=3 → createIssue called with rating-3 label',
   await handler(S3_EVENT);
 
   assert.equal(calls.jiraCreate.length, 1);
-  assert.ok(calls.jiraCreate[0].body.fields.labels.includes('rating-3'));
-  assert.ok(calls.jiraCreate[0].body.fields.labels.includes('feedback-id-sub-1'));
+  const body = calls.jiraCreate[0].body;
+  assert.equal(body.fields.issuetype.name, 'Prod Feedback');
+  assert.deepEqual(body.fields.labels, ['AAB-App']);
+  assert.equal(body.fields.customfield_36238, 'sub-1'); // Feedback ID drives dedup now
+  assert.deepEqual(body.fields.customfield_36239, { value: '3/7' });
+});
+
+await test('jira: createIssue body carries S3 Object Reference custom field built from event bucket+key', async () => {
+  readStateImpl = freshReadStateImpl();
+  parseFeedbackParquetImpl = async () => ({ ...FEEDBACK_ROW });
+
+  await handler(S3_EVENT);
+
+  assert.equal(calls.jiraCreate.length, 1);
+  const s3Ref = calls.jiraCreate[0].body.fields.customfield_36259;
+  assert.ok(typeof s3Ref === 'string' && s3Ref.startsWith('s3://'));
+  assert.ok(s3Ref.includes(S3_EVENT.Records[0].s3.bucket.name));
+  assert.ok(s3Ref.includes(S3_EVENT.Records[0].s3.object.key));
 });
 
 await test('downstream: feedback rating=5 → eligibility skip for Jira AND investigator AND CRM (Slack still runs)', async () => {
@@ -774,6 +797,26 @@ await test('jira: findIssueByFeedbackId throws → handler still completes; crea
   assert.equal(calls.invoke.length, 1);
   assert.equal(calls.jiraFind.length, 1);
   assert.equal(calls.jiraCreate.length, 0);
+});
+
+await test('jira: missing JIRA_BASE_URL env → degraded path skips find/create, Slack still posts', async () => {
+  readStateImpl = freshReadStateImpl();
+  const saved = process.env.JIRA_BASE_URL;
+  delete process.env.JIRA_BASE_URL;
+
+  try {
+    await handler(S3_EVENT);
+  } finally {
+    process.env.JIRA_BASE_URL = saved;
+  }
+
+  // Misconfig short-circuits before any Jira call — no find, no create.
+  assert.equal(calls.jiraFind.length, 0, 'find skipped when JIRA_BASE_URL unset');
+  assert.equal(calls.jiraCreate.length, 0, 'create skipped when JIRA_BASE_URL unset');
+  // Slack/CRM/investigator continue uninterrupted.
+  assert.equal(calls.slack.length, 1, 'Slack still pings on Jira misconfig');
+  assert.equal(calls.postCase.length, 1, 'CRM still opens case on Jira misconfig');
+  assert.equal(calls.invoke.length, 1, 'investigator still invoked on Jira misconfig');
 });
 
 await test('crm: postCase throws (CMAPI 422 / 5xx) → handler still completes; Slack/invoke/Jira run with caseId=null', async () => {

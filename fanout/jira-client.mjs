@@ -63,9 +63,15 @@ export function _resetAuthCache() {
 }
 
 /**
- * Look up an existing AABSP issue by feedback-id label. Used as the
- * idempotency check before `createIssue` so duplicate parquet replays
- * (DLQ replay, Lambda retry) do not double-create tickets.
+ * Look up an existing AABSP issue by Feedback ID custom field. Used as
+ * the idempotency check before `createIssue` so duplicate parquet replays
+ * (DLQ replay, Lambda retry, S3 double-fire) do not double-create tickets.
+ *
+ * Searches `cf[36238]` (the typed Feedback ID textfield) rather than a
+ * `feedback-id-<id>` label so the labels column stays clean (`AAB-App`
+ * only). Field ID is locked in the AABSP project metadata; if Jira admin
+ * ever recreates the field with a new ID, update CUSTOM_FIELD_IDS in
+ * jira-mapping.mjs and FEEDBACK_ID_CUSTOM_FIELD_ID below in lockstep.
  *
  * @returns {Promise<string|null>} Issue key (e.g. "AABSP-42") or null.
  */
@@ -76,6 +82,7 @@ export function _resetAuthCache() {
 // error than a 400 from Atlassian if either ever takes an unexpected shape.
 const PROJECT_KEY_PATTERN = /^[A-Z][A-Z0-9_]{1,9}$/;
 const FEEDBACK_ID_PATTERN = /^[a-zA-Z0-9-]+$/; // UUIDv4 + safety margin
+const FEEDBACK_ID_CUSTOM_FIELD_ID = 36238;
 
 export async function findIssueByFeedbackId({ baseUrl, projectKey, feedbackId }) {
   if (!PROJECT_KEY_PATTERN.test(projectKey)) {
@@ -85,7 +92,7 @@ export async function findIssueByFeedbackId({ baseUrl, projectKey, feedbackId })
     throw new Error(`jira feedbackId rejected: "${feedbackId}" must match ${FEEDBACK_ID_PATTERN}`);
   }
   const auth = await getBasicAuth();
-  const jql = encodeURIComponent(`project = "${projectKey}" AND labels = "feedback-id-${feedbackId}"`);
+  const jql = encodeURIComponent(`project = "${projectKey}" AND cf[${FEEDBACK_ID_CUSTOM_FIELD_ID}] = "${feedbackId}"`);
   // Atlassian REST v3 endpoint is `/rest/api/3/search/jql` — the older
   // `/rest/api/3/search` was REMOVED (returns 410 with "The requested API
   // has been removed. Please migrate to the /rest/api/3/search/jql API"
