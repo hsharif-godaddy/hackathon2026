@@ -184,7 +184,7 @@ Concurrency is capped by `config.eval.maxConcurrency`.
 | `--graduate-suite` + `--fan-out` | ignored (set by 'stability') | controls worker pool (capped by MAX_CONCURRENCY) |
 
 Graduation trial counts are driven solely by stability level
-(`low`=3, `medium`=5, `high`=10). `--trials` has no effect in
+(`low`=5, `medium`=10, `high`=20). `--trials` has no effect in
 graduation paths. `--fan-out` forces trial-level concurrency to 1
 (trials run sequentially within each scenario; scenarios fan out).
 
@@ -382,9 +382,9 @@ command runs an elevated trial count to establish a representative baseline.
    `--stability` override):
    | Level | Trials |
    |----------|--------|
-   | `low` | 3 (default) |
-   | `medium` | 5 |
-   | `high` | 10 |
+   | `low` | 5 (default) |
+   | `medium` | 10 |
+   | `high` | 20 |
 2. Aggregates all trial results.
 3. Saves the baseline unconditionally, unless all trials produced only
    `unknown` verdicts (indicating infrastructure failure rather than
@@ -400,10 +400,10 @@ manual code commit.
 ### Running graduation
 
 ```bash
-# Uses the scenario's stability level (defaults to low / 3 trials)
+# Uses the scenario's stability level (defaults to low / 5 trials)
 pnpm run eval --graduate build-landing-page
 
-# Override with a higher stability level (10 trials)
+# Override with a higher stability level (20 trials)
 pnpm run eval --graduate build-landing-page --stability high
 
 # Limit concurrent trials within the scenario
@@ -416,14 +416,14 @@ pnpm run eval --graduate-suite smoke
 **Success output (exit 0):**
 
 ```
-✓ Scenario "build-landing-page" graduated [low / 3 trials]
+✓ Scenario "build-landing-page" graduated [low / 5 trials]
   Baseline saved.
 ```
 
 **Failure output (exit 1):**
 
 ```
-✓ Scenario "build-landing-page" graduated [low / 3 trials]
+✓ Scenario "build-landing-page" graduated [low / 5 trials]
   Baseline NOT saved (all trials produced unknown verdicts).
 ```
 
@@ -436,9 +436,9 @@ once a baseline is successfully saved.
 `--graduate-suite` partitions scenarios by stability level for optimal
 throughput:
 
-- **Low stability** (1 trial each): scenarios fan out concurrently,
+- **Low stability** (5 trials each): scenarios fan out concurrently,
   capped by `--concurrency` or `config.eval.maxConcurrency`.
-- **Medium / high stability** (5 or 10 trials): scenarios run one at
+- **Medium / high stability** (10 or 20 trials): scenarios run one at
   a time; trials within each scenario run concurrently.
 
 This avoids combinatorial explosion (scenario × trial parallelism) while

@@ -8,7 +8,7 @@ baseline. Once a baseline exists the scenario gates future runs automatically.
 ```
 
 - `<name>`: scenario name (or suite name with `--suite`)
-- `--stability`: override stability level (low=1, medium=5, high=10
+- `--stability`: override stability level (low=5, medium=10, high=20
   trials). Defaults to the scenario's own level or medium.
 - `--suite`: treat `<name>` as a suite, graduating all its scenarios
 - `--commit`: commit the saved baseline JSON after promotion

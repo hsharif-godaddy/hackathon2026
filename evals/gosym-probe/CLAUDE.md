@@ -72,7 +72,7 @@ pnpm run eval          # headless eval with flags (CI / scripting)
 | `--graduate-suite` + `--fan-out` | ignored (set by 'stability') | controls worker pool (capped by MAX_CONCURRENCY)                             |
 
 Graduation trial counts are driven solely by stability level
-(`low`=3, `medium`=5, `high`=10). `--trials` has no effect in
+(`low`=5, `medium`=10, `high`=20). `--trials` has no effect in
 graduation paths. `--fan-out` dispatches trials round-robin across all
 workers (A1,B1,C1,A2,B2,C2,...), keeping workers busy until the queue
 drains. `--concurrency M` sets the worker pool size, capped by MAX_CONCURRENCY.

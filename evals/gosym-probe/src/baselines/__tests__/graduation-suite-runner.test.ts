@@ -73,7 +73,7 @@ function makeGraduationResult(
   return {
     scenarioName,
     stabilityLevel: 'low',
-    stabilityTrials: 3,
+    stabilityTrials: 5,
     baselineSaved: true,
     scenarioResult: {
       scenarioName,
@@ -714,8 +714,8 @@ describe('GraduationSuiteRunner — suiteMode: parallel', () => {
 
   it('applies stability trial counts as scenario.trials overrides', async () => {
     const scenarios = [
-      makeScenario('alpha', { stabilityLevel: 'low' }),   // 3 trials
-      makeScenario('beta', { stabilityLevel: 'high' }),    // 10 trials
+      makeScenario('alpha', { stabilityLevel: 'low' }),   // 5 trials
+      makeScenario('beta', { stabilityLevel: 'high' }),    // 20 trials
     ];
     mockSuiteRunnerRun.mockResolvedValue([
       makeScenarioResult('alpha'),
@@ -733,8 +733,8 @@ describe('GraduationSuiteRunner — suiteMode: parallel', () => {
 
     const [call] = vi.mocked(SuiteRunner).mock.calls;
     const passedScenarios = (call[0] as { scenarios: Scenario[] }).scenarios;
-    expect(passedScenarios.find((s) => s.name === 'alpha')?.trials).toBe(3);
-    expect(passedScenarios.find((s) => s.name === 'beta')?.trials).toBe(10);
+    expect(passedScenarios.find((s) => s.name === 'alpha')?.trials).toBe(5);
+    expect(passedScenarios.find((s) => s.name === 'beta')?.trials).toBe(20);
   });
 
   it('saves baseline for each scenario with valid results', async () => {
@@ -849,7 +849,7 @@ describe('GraduationSuiteRunner — suiteMode: parallel', () => {
     expect(output.results[0]).toMatchObject({
       scenarioName: 'alpha',
       stabilityLevel: 'medium',
-      stabilityTrials: 5,
+      stabilityTrials: 10,
       baselineSaved: true,
     });
   });

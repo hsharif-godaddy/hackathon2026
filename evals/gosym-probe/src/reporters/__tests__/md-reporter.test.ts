@@ -1325,7 +1325,7 @@ describe('MdReporter — mode line', () => {
 
     expect(content).toContain('Mode:');
     expect(content).toContain('graduation');
-    expect(content).toContain('medium (5 trials)');
+    expect(content).toContain('medium (10 trials)');
   });
 
   it('renders skipBaseline mode', () => {

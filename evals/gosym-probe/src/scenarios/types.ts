@@ -14,9 +14,9 @@ export type StabilityLevel = 'low' | 'medium' | 'high';
 export const DEFAULT_STABILITY_LEVEL: StabilityLevel = 'low';
 
 export const STABILITY_TRIALS: Record<StabilityLevel, number> = {
-  low: 3,
-  medium: 5,
-  high: 10,
+  low: 5,
+  medium: 10,
+  high: 20,
 };
 
 export function resolveStabilityLevel(

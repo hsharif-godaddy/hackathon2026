@@ -159,9 +159,9 @@ describe('GraduationRunner', () => {
   });
 
   describe('stability-based trial counts', () => {
-    it('low stability → trialsOverride=3', async () => {
+    it('low stability → trialsOverride=5', async () => {
       mockSuiteRunnerRun.mockResolvedValue([
-        makeScenarioResult(['pass', 'pass', 'pass']),
+        makeScenarioResult(['pass', 'pass', 'pass', 'pass', 'pass']),
       ]);
 
       const scenario = {
@@ -176,15 +176,16 @@ describe('GraduationRunner', () => {
       const result = await runner.run('run-low');
 
       expect(SuiteRunner).toHaveBeenCalledWith(
-        expect.objectContaining({ trialsOverride: 3 }),
+        expect.objectContaining({ trialsOverride: 5 }),
       );
       expect(result.stabilityLevel).toBe('low');
-      expect(result.stabilityTrials).toBe(3);
+      expect(result.stabilityTrials).toBe(5);
     });
 
-    it('medium stability → trialsOverride=5', async () => {
+    it('medium stability → trialsOverride=10', async () => {
       mockSuiteRunnerRun.mockResolvedValue([
         makeScenarioResult([
+          'pass', 'pass', 'pass', 'pass', 'pass',
           'pass', 'pass', 'pass', 'pass', 'pass',
         ]),
       ]);
@@ -201,13 +202,15 @@ describe('GraduationRunner', () => {
       await runner.run('run-medium');
 
       expect(SuiteRunner).toHaveBeenCalledWith(
-        expect.objectContaining({ trialsOverride: 5 }),
+        expect.objectContaining({ trialsOverride: 10 }),
       );
     });
 
-    it('high stability → trialsOverride=10', async () => {
+    it('high stability → trialsOverride=20', async () => {
       mockSuiteRunnerRun.mockResolvedValue([
         makeScenarioResult([
+          'pass', 'pass', 'pass', 'pass', 'pass',
+          'pass', 'pass', 'pass', 'pass', 'pass',
           'pass', 'pass', 'pass', 'pass', 'pass',
           'pass', 'pass', 'pass', 'pass', 'pass',
         ]),
@@ -225,15 +228,15 @@ describe('GraduationRunner', () => {
       await runner.run('run-high');
 
       expect(SuiteRunner).toHaveBeenCalledWith(
-        expect.objectContaining({ trialsOverride: 10 }),
+        expect.objectContaining({ trialsOverride: 20 }),
       );
     });
 
-    it('no stabilityLevel defaults to low → trialsOverride=3',
+    it('no stabilityLevel defaults to low → trialsOverride=5',
       async () => {
         mockSuiteRunnerRun.mockResolvedValue([
           makeScenarioResult([
-            'pass', 'pass', 'pass',
+            'pass', 'pass', 'pass', 'pass', 'pass',
           ]),
         ]);
 
@@ -246,7 +249,7 @@ describe('GraduationRunner', () => {
         await runner.run('run-default');
 
         expect(SuiteRunner).toHaveBeenCalledWith(
-          expect.objectContaining({ trialsOverride: 3 }),
+          expect.objectContaining({ trialsOverride: 5 }),
         );
       },
     );
@@ -255,6 +258,8 @@ describe('GraduationRunner', () => {
       async () => {
         mockSuiteRunnerRun.mockResolvedValue([
           makeScenarioResult([
+            'pass', 'pass', 'pass', 'pass', 'pass',
+            'pass', 'pass', 'pass', 'pass', 'pass',
             'pass', 'pass', 'pass', 'pass', 'pass',
             'pass', 'pass', 'pass', 'pass', 'pass',
           ]),
@@ -272,7 +277,7 @@ describe('GraduationRunner', () => {
         const result = await runner.run('run-high-result');
 
         expect(result.stabilityLevel).toBe('high');
-        expect(result.stabilityTrials).toBe(10);
+        expect(result.stabilityTrials).toBe(20);
       },
     );
   });
@@ -321,6 +326,8 @@ describe('GraduationRunner', () => {
         makeScenarioResult([
           'pass', 'pass', 'pass', 'pass', 'pass',
           'pass', 'pass', 'pass', 'pass', 'pass',
+          'pass', 'pass', 'pass', 'pass', 'pass',
+          'pass', 'pass', 'pass', 'pass', 'pass',
         ]),
       ]);
 
@@ -337,16 +344,16 @@ describe('GraduationRunner', () => {
       const result = await runner.run('run-override');
 
       expect(SuiteRunner).toHaveBeenCalledWith(
-        expect.objectContaining({ trialsOverride: 10 }),
+        expect.objectContaining({ trialsOverride: 20 }),
       );
       expect(result.stabilityLevel).toBe('high');
-      expect(result.stabilityTrials).toBe(10);
+      expect(result.stabilityTrials).toBe(20);
     });
 
     it('overrides the default when scenario has no stabilityLevel',
       async () => {
         mockSuiteRunnerRun.mockResolvedValue([
-          makeScenarioResult(['pass', 'pass', 'pass']),
+          makeScenarioResult(['pass', 'pass', 'pass', 'pass', 'pass']),
         ]);
 
         const runner = new GraduationRunner({
@@ -358,10 +365,10 @@ describe('GraduationRunner', () => {
         const result = await runner.run('run-override-default');
 
         expect(SuiteRunner).toHaveBeenCalledWith(
-          expect.objectContaining({ trialsOverride: 3 }),
+          expect.objectContaining({ trialsOverride: 5 }),
         );
         expect(result.stabilityLevel).toBe('low');
-        expect(result.stabilityTrials).toBe(3);
+        expect(result.stabilityTrials).toBe(5);
       },
     );
 
@@ -369,6 +376,8 @@ describe('GraduationRunner', () => {
       async () => {
         mockSuiteRunnerRun.mockResolvedValue([
           makeScenarioResult([
+            'pass', 'pass', 'pass', 'pass', 'pass',
+            'pass', 'pass', 'pass', 'pass', 'pass',
             'pass', 'pass', 'pass', 'pass', 'pass',
             'pass', 'pass', 'pass', 'pass', 'pass',
           ]),
@@ -387,7 +396,7 @@ describe('GraduationRunner', () => {
         await runner.run('run-no-override');
 
         expect(SuiteRunner).toHaveBeenCalledWith(
-          expect.objectContaining({ trialsOverride: 10 }),
+          expect.objectContaining({ trialsOverride: 20 }),
         );
       },
     );
@@ -617,7 +626,7 @@ describe('GraduationRunner', () => {
   describe('GraduationResult shape', () => {
     it('result contains scenarioName, stabilityLevel, stabilityTrials, baselineSaved', async () => {
       mockSuiteRunnerRun.mockResolvedValue([
-        makeScenarioResult(['pass', 'pass', 'pass']),
+        makeScenarioResult(['pass', 'pass', 'pass', 'pass', 'pass']),
       ]);
 
       const runner = new GraduationRunner({
@@ -629,7 +638,7 @@ describe('GraduationRunner', () => {
 
       expect(result).toHaveProperty('scenarioName', 'test-scenario');
       expect(result).toHaveProperty('stabilityLevel', 'low');
-      expect(result).toHaveProperty('stabilityTrials', 3);
+      expect(result).toHaveProperty('stabilityTrials', 5);
       expect(result).toHaveProperty('baselineSaved', true);
       expect(Object.keys(result)).toHaveLength(4);
     });

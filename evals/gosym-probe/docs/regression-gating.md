@@ -77,7 +77,7 @@ system is functional. Useful for:
 ## Trial Count Mismatch: Baseline vs Regression Runs
 
 A common cost-saving pattern: establish baselines at high trial counts
-(10 trials via `--graduate --stability high`) and run regression checks
+(20 trials via `--graduate --stability high`) and run regression checks
 on feature branches at low trial counts (3 trials via `--trials 3`).
 
 ### Why this works mechanically
@@ -154,7 +154,7 @@ counts.
 
 ### Establishing baselines
 
-Use high trial counts (10 via `--stability high`) for baselines. This is
+Use high trial counts (20 via `--stability high`) for baselines. This is
 a one-time cost that produces a stable reference point. The baseline
 stores aggregated scores, not raw transcripts, so storage is minimal.
 
