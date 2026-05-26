@@ -580,9 +580,16 @@ test.describe('E2E - Critical Path', () => {
       );
       await expect(disconnectButton).toBeVisible({ timeout: DEFAULT_TIMEOUT });
       await expect(disconnectButton).toBeEnabled();
-      // Disconnect has no confirmation dialog; the click fires the
-      // modify-domains DELETE immediately.
+      // Disconnect opens the SEO warning modal (`DomainDisconnectConfirmationModal`);
+      // the row is removed only after the user confirms (`executeDisconnectDomain`).
       await disconnectButton.click();
+
+      const disconnectConfirmButton = page.locator(
+        '[data-eid*="domain.disconnect.buttons.confirm"]',
+      );
+      await expect(disconnectConfirmButton).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+      await expect(disconnectConfirmButton).toBeEnabled();
+      await disconnectConfirmButton.click();
 
       // `not.toBeAttached()` (vs `not.toBeVisible()`) verifies the row was
       // unmounted from the DOM, not just CSS-hidden — catches a regression

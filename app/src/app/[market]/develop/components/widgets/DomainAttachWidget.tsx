@@ -16,6 +16,7 @@ import DomainItem from '@/app/[market]/develop/components/settings/components/Do
 import ExternalDomainInput from '@/app/[market]/develop/components/settings/components/ExternalDomainInput';
 import { useAppIdFromParams } from '@/app/[market]/develop/components/utils';
 import { DomainConflictModal } from '@/app/[market]/develop/components/widgets/DomainConflictModal';
+import { DomainDisconnectConfirmationModal } from '@/app/[market]/develop/components/widgets/DomainDisconnectConfirmationModal';
 import DomainPurchaseWidget from '@/app/[market]/develop/components/widgets/DomainPurchaseWidget';
 import { useAuth } from '@/hooks/useAuth';
 import { useCustomerDomainAttach } from '@/hooks/useCustomerDomainAttach';
@@ -99,6 +100,10 @@ export default function DomainAttachWidget({
   const [showOwnedDomainConfirmation, setShowOwnedDomainConfirmation] = useState(false);
   const [matchedOwnedDomain, setMatchedOwnedDomain] = useState<string | null>(null);
   const [conflictData, setConflictData] = useState<DomainMutationDetails['conflictDetails'] | null>(null);
+
+  // Disconnect is gated behind a modal that warns about broken links, stale SEO
+  // settings, and the lack of automatic redirects from the old domain.
+  const [disconnectTarget, setDisconnectTarget] = useState<string | null>(null);
 
   const site = useSiteStore((state) => appId ? state.getSite(appId) : null);
 
@@ -414,7 +419,16 @@ export default function DomainAttachWidget({
     }
   }
 
-  async function handleDisconnectDomain(domainName: string) {
+  function handleDisconnectDomain(domainName: string) {
+    if (!appId) return;
+    shipAnalyticsLog('domain.attach.widget.disconnect.confirmation_shown', {
+      appId,
+      domainName,
+    });
+    setDisconnectTarget(domainName);
+  }
+
+  async function executeDisconnectDomain(domainName: string) {
     if (!appId) return;
 
     try {
@@ -462,7 +476,30 @@ export default function DomainAttachWidget({
       if (sendUserMessage) {
         sendUserMessage(`Failed to disconnect ${domainName}. Please try again.`, { isActionRequest: true });
       }
+    } finally {
+      setDisconnectTarget(null);
     }
+  }
+
+  function handleConfirmDisconnect() {
+    if (!disconnectTarget || !appId) return;
+    shipAnalyticsLog('domain.attach.widget.disconnect.confirmed', {
+      appId,
+      domainName: disconnectTarget,
+    });
+    void executeDisconnectDomain(disconnectTarget);
+  }
+
+  function handleCancelDisconnect() {
+    if (modifyDomainsMutation.isPending) return;
+    if (!disconnectTarget) return;
+    if (appId) {
+      shipAnalyticsLog('domain.attach.widget.disconnect.cancelled', {
+        appId,
+        domainName: disconnectTarget,
+      });
+    }
+    setDisconnectTarget(null);
   }
 
   function handleAddCustomDomain() {
@@ -917,6 +954,15 @@ export default function DomainAttachWidget({
         existingAppName={conflictData?.existingAppName}
         existingAppId={conflictData?.existingAppId ?? ''}
         error={transferError}
+      />
+
+      <DomainDisconnectConfirmationModal
+        isOpen={!!disconnectTarget}
+        domain={disconnectTarget ?? ''}
+        fallbackUrl={site?.published_url ?? ''}
+        onClose={handleCancelDisconnect}
+        onConfirm={handleConfirmDisconnect}
+        isDisconnecting={modifyDomainsMutation.isPending}
       />
     </Box>
   )

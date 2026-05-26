@@ -12,6 +12,7 @@ import SettingsSection from "@/app/[market]/develop/components/settings/Settings
 import { Status } from "@/app/[market]/develop/components/types";
 import { useAppIdFromParams } from "@/app/[market]/develop/components/utils";
 import { DomainConflictModal } from '@/app/[market]/develop/components/widgets/DomainConflictModal';
+import { DomainDisconnectConfirmationModal } from '@/app/[market]/develop/components/widgets/DomainDisconnectConfirmationModal';
 import type { AppDetailsResponse } from '@/hooks/useAppDetails';
 import { useAuth } from '@/hooks/useAuth';
 import { useCustomerDomainAttach } from '@/hooks/useCustomerDomainAttach';
@@ -79,6 +80,7 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
   const [debouncedDomain, setDebouncedDomain] = useState('');
   const [showAddConfirmation, setShowAddConfirmation] = useState(false);
   const [conflictData, setConflictData] = useState<DomainMutationDetails['conflictDetails'] | null>(null);
+  const [disconnectTarget, setDisconnectTarget] = useState<string | null>(null);
   const validationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const site = useSiteStore((state) => {
@@ -339,12 +341,20 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
     }
   }
 
+  function handleDisconnectDomain(domainName: string) {
+    if (!currentAppId) return;
+    shipAnalyticsLog('domain.custom.disconnect.confirmation_shown', {
+      appId: currentAppId,
+      domainName,
+    });
+    setDisconnectTarget(domainName);
+  }
+
   /**
-   * Handle disconnecting a domain from the application.
-   *
-   * After the upstream detach succeeds, fire a best-effort POST to
-   * /api/apps/[id]/dkim/offboard so Vox tears down the per-domain DKIM
-   * provisioning. The offboard call is intentionally fire-and-forget:
+   * Runs after the user confirms disconnect in the modal. After the upstream
+   * detach succeeds, fire a best-effort POST to /api/apps/[id]/dkim/offboard
+   * so Vox tears down the per-domain DKIM provisioning. The offboard call is
+   * intentionally fire-and-forget:
    *   - Vox /offboard is idempotent (safe to call for never-onboarded
    *     domains), so we don't need to gate on origin/ownership client-side.
    *   - The detach UX must not block on a Vox round-trip — DKIM teardown
@@ -352,7 +362,7 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
    *   - Failures are surfaced via console (UI side) and BFF logs
    *     (dkim.offboard.error / dkim.deactivate.failed).
    */
-  async function handleDisconnectDomain(domainName: string) {
+  async function executeDisconnectDomain(domainName: string) {
     if (!currentAppId) return;
 
     try {
@@ -396,7 +406,30 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
         domainName,
         error: error instanceof Error ? error.message : String(error)
       });
+    } finally {
+      setDisconnectTarget(null);
     }
+  }
+
+  function handleConfirmDisconnect() {
+    if (!disconnectTarget || !currentAppId) return;
+    shipAnalyticsLog('domain.custom.disconnect.confirmed', {
+      appId: currentAppId,
+      domainName: disconnectTarget,
+    });
+    void executeDisconnectDomain(disconnectTarget);
+  }
+
+  function handleCancelDisconnect() {
+    if (modifyDomainsMutation.isPending) return;
+    if (!disconnectTarget) return;
+    if (currentAppId) {
+      shipAnalyticsLog('domain.custom.disconnect.cancelled', {
+        appId: currentAppId,
+        domainName: disconnectTarget,
+      });
+    }
+    setDisconnectTarget(null);
   }
 
   /**
@@ -765,6 +798,15 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
         existingAppId={conflictData?.existingAppId ?? ''}
         error={transferError}
       />
+
+      <DomainDisconnectConfirmationModal
+        isOpen={!!disconnectTarget}
+        domain={disconnectTarget ?? ''}
+        fallbackUrl={site?.published_url ?? ''}
+        onClose={handleCancelDisconnect}
+        onConfirm={handleConfirmDisconnect}
+        isDisconnecting={modifyDomainsMutation.isPending}
+      />
     </SettingsSection>
-  );
+  ); 
 }
