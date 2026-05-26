@@ -1,60 +1,161 @@
 ---
+evaluatorId: "airo-visual-layout-sanity"
 name: visual_layout_sanity
 description: Rates whether the generated site looks visually sane, scannable, and
-  not obviously broken.
+  not obviously broken. Improved with screenshot verification and agent capability boundaries.
 type: llm
-scoreType: CATEGORICAL
+scoreType: NUMERIC
 scoreName: visual_layout_sanity
 llmConfig:
-  model: gpt-4o
+  model: gpt-5.2
   temperature: 0
   maxTokens: 2000
 projectId: "8606"
-staticContext: 'Primary evidence: final screenshots. Use business context only to interpret
-  whether the visible layout seems appropriate for the site type. Judge visible visual
-  sanity, hierarchy, and scannability.'
+staticContext: 'Primary evidence: final screenshots. Judge visible visual
+  sanity, hierarchy, and scannability from pixels; use on-page copy visible in captures
+  to interpret site type. Use the user conversation (original prompt and refinements)
+  only to interpret what layout density, style, or emphasis the user asked for—screenshots
+  remain the ground truth for whether the result looks sane. Screenshots are the Playwright viewport capture
+  of the rendered DOM; use them as primary truth for overlap, spacing, and hierarchy.
+  CRITICAL: Distinguish between agent-controlled code structure and browser/CDN rendering issues.
+  Do not penalize agent for rendering problems outside its control.'
 criteriaSchemaFile: schemas/empty-object.json
 template: |
-  You are grading `visual_layout_sanity` for an Airo Builder output.
+  Evaluate visual_layout_sanity for an Airo Builder output.
 
-  Use screenshots as the primary evidence. Do not infer hidden pages or invisible responsive states.
+  ## CRITICAL: Screenshot Verification
 
-  ## Context
-  {{#if scenario.business}}
-  Business: {{scenario.business.businessName}} ({{scenario.business.industry}})
-  Brand personality: {{json scenario.business.brandPersonality}}
-  Style preferences: {{json scenario.business.stylePreferences}}
+  {{#if screenshots}}
+  ✓ {{screenshots.length}} screenshot(s) available for evaluation
+  {{else}}
+  ❌ FATAL: NO SCREENSHOTS PROVIDED
+
+  **Cannot evaluate visual layout sanity without screenshots.**
+
+  Return immediately:
+  {
+    "score": 0,
+    "summary": "Cannot evaluate visual layout sanity - no screenshots provided. Visual evaluation requires screenshot artifacts. This is not an agent failure; screenshots are required input for this evaluator.",
+    "evaluationStatus": "ARTIFACT_MISSING",
+    "observations": [],
+    "confidence": 1.0
+  }
+
+  STOP HERE. Do not proceed with evaluation.
   {{/if}}
-  {{#if scenario.goal}}
-  Primary goal: {{scenario.goal.name}}
+
+  ## Agent Capability Boundaries
+
+  **Agent CAN Control (fair to evaluate):**
+  - HTML/CSS code structure for layout
+  - Element spacing and positioning in code
+  - Typography choices (font-family, font-size, line-height)
+  - Color choices and contrast in code
+  - Component hierarchy in code
+  - Responsive breakpoints defined in code
+
+  **Agent CANNOT Control (do NOT penalize):**
+  - Browser rendering quirks (Safari vs Chrome differences)
+  - Font loading failures from CDN (FOUT/FOIT issues)
+  - Image loading failures from external CDN
+  - CSS framework rendering edge cases
+  - Infrastructure issues (server errors, timeouts)
+  - User's browser settings (zoom level, accessibility settings)
+
+  ## Fair Attribution Guidelines
+
+  When you see visual issues in screenshots:
+
+  **Penalize agent (structural issues in generated code):**
+  - Overlapping elements due to positioning code
+  - Poor spacing due to margin/padding code
+  - Unreadable text size due to font-size code
+  - Poor contrast due to color choices in code
+  - Broken hierarchy due to heading structure
+  - Layout chaos due to flexbox/grid code
+
+  **Do NOT penalize agent (rendering/external issues):**
+  - Missing fonts (shows system fallback) = CDN issue
+  - Broken images (shows alt text/placeholder) = CDN/URL issue
+  - Partially loaded page = infrastructure issue
+  - Browser-specific rendering glitches = browser issue
+  - Flash of unstyled content = loading timing issue
+
+  ## User request (conversation)
+  {{#if conversation.originalPrompt}}
+  Original request:
+  {{conversation.originalPrompt}}
+  {{/if}}
+  {{#if conversation.userMessages}}
+  User refinements:
+  {{#each conversation.userMessages}}
+  - {{this}}
+  {{/each}}
   {{/if}}
 
   ## Visual Evidence
-  Up to three screenshots of the final generated website are attached separately.
+  {{screenshots.length}} screenshot(s) of the final generated website are attached.
+
+  Review EACH screenshot carefully. Use the user requests above only to judge fit (e.g. requested minimal vs dense, professional vs playful); do not treat chat as proof of what is on screen.
 
   ## Judge This
-  Classify whether the visible layout looks sane and production-plausible.
+  Assess whether the visible layout looks sane and production-plausible.
 
   Look for:
-  - clear visual hierarchy
-  - readable spacing and text sizing
-  - sensible balance of images, copy, and whitespace
-  - scannable sections and CTAs
+  - clear visual hierarchy (from code structure)
+  - readable spacing and text sizing (from CSS code)
+  - sensible balance of images, copy, and whitespace (from layout code)
+  - scannable sections and CTAs (from component structure)
 
-  Penalize:
-  - broken spacing or overlap
-  - visually confusing hierarchy
-  - unreadable text or contrast problems visible in screenshots
-  - clutter, placeholder-heavy surfaces, or obviously unfinished composition
+  Penalize (only if caused by agent's code):
+  - broken spacing or overlap (from positioning code)
+  - visually confusing hierarchy (from heading/section structure)
+  - unreadable text or contrast problems (from color/size choices in code)
+  - clutter, placeholder-heavy surfaces, or obviously unfinished composition (from content structure)
+
+  Do NOT penalize:
+  - Missing external fonts (CDN issue)
+  - Broken external images (URL/CDN issue)
+  - Browser rendering quirks
+  - Infrastructure loading issues
 
   ## Rubric
-  good = visually sane, readable, and clearly structured.
-  acceptable = usable but with noticeable visual rough edges.
-  poor = cluttered, broken, confusing, or visibly low quality.
+  Return a single integer score from 0 through 100 (inclusive). Higher means better visual layout sanity.
 
-  Mention 2-3 visible layout traits that drove the classification.
+  90-100 = excellent: polished, production-plausible layout with strong hierarchy, spacing, and scannability.
+  70-89 = good: visually sane, readable, and clearly structured.
+  50-69 = fair: usable but with noticeable visual rough edges in code structure.
+  30-49 = poor: cluttered, broken, confusing, or visibly low quality due to code structure issues.
+  0-29 = very poor: layout is unusable or clearly broken due to structural code problems.
+
+  ## Response Format
+
+  {
+    "score": 0-100,
+    "summary": "Brief explanation with attribution (2-3 sentences)",
+    "observations": [
+      {
+        "aspect": "hierarchy | spacing | typography | contrast | balance",
+        "assessment": "excellent | good | fair | poor | very poor",
+        "details": "What you observed in screenshots",
+        "attributedTo": "agent_code | browser_rendering | cdn_external | infrastructure",
+        "reasoning": "Why this attribution"
+      }
+    ],
+    "layoutStrengths": ["visible strength 1", "strength 2"],
+    "layoutWeaknesses": [
+      {
+        "issue": "description of weakness",
+        "attributedTo": "agent_code | browser_rendering | cdn_external | infrastructure",
+        "impact": "how it affects usability"
+      }
+    ],
+    "confidence": 0-1
+  }
+
+  In the summary, mention 2-3 visible layout traits that drove the score WITH ATTRIBUTION.
+  Be specific about what's agent-controlled vs external issues.
+
 scoreConfig:
-  categories:
-  - good
-  - acceptable
-  - poor
+  min: 0
+  max: 100

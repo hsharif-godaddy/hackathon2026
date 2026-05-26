@@ -1,32 +1,33 @@
 ---
+evaluatorId: "airo-scope-drift-overgeneration"
 name: scope_drift_overgeneration
 description: Checks whether the site stays appropriately within the requested scope
-  without irrelevant overgeneration.
+  without irrelevant overgeneration. Graduated scoring (0-100) based on degree and
+  impact of scope drift.
 type: llm
-scoreType: BOOLEAN
+scoreType: NUMERIC
 scoreName: no_scope_drift_overgeneration
 llmConfig:
-  model: gpt-4o
+  model: gpt-5.2
   temperature: 0
   maxTokens: 2000
-projectId: airo-builder-regression
-staticContext: 'Use the requested scope plus the final artifact. Return true only when
-  there is no meaningful scope drift, irrelevant overgeneration, or extra complexity
-  that weakens the requested site.'
+projectId: "8606"
+staticContext: 'Use the conversation for intended scope plus the final artifact.
+  Return graduated score (0-100) where 100 means perfect scope adherence, lower scores
+  reflect increasing drift, overgeneration, or dilutive complexity. Evidence: combine
+  Playwright screenshots (rendered surface) with pageContent (DOM-extracted headings,
+  links, buttons, main text) to spot extra sections or off-topic journeys; the transcript
+  defines intended scope. Drift must be visible in that capture; do not infer off-scope
+  content on routes or states that were not captured. Link and button text in pageContent
+  excludes href—you cannot classify an affordance as off-scope solely because payment,
+  booking, or integration targets are uninspectable.'
 criteriaSchemaFile: schemas/empty-object.json
 template: |
   You are grading `scope_drift_overgeneration` for an Airo Builder output.
 
   Compare the requested site scope with the visible output. This evaluator is about irrelevant or dilutive additions, not missing features.
 
-  ## Requested Scope
-  {{#if scenario.goal}}
-  Primary goal: {{scenario.goal.name}}
-  Goal bullets:
-  {{#each scenario.goal.goals}}
-  - {{this}}
-  {{/each}}
-  {{/if}}
+  ## Intended scope (conversation)
   {{#if conversation.originalPrompt}}
   Original request:
   {{conversation.originalPrompt}}
@@ -39,6 +40,10 @@ template: |
   {{/if}}
 
   ## Final Output Evidence
+  Page title: {{pageContent.title}}
+  Main H1: {{pageContent.h1}}
+  Form count: {{pageContent.formCount}}
+  Image count: {{pageContent.imageCount}}
   Headings:
   {{#each pageContent.headings}}
   - {{this}}
@@ -54,19 +59,213 @@ template: |
   Main text:
   {{pageContent.mainText}}
 
+  ## Scope Drift Severity Levels
+
+  ### Critical Drift (-30 to -40 points)
+  - Site targets completely different use case than requested
+  - Core functionality diverted to wrong business model
+  - Primary visitor journey redirected to unrelated outcome
+  - Feature complexity that fundamentally changes the site purpose
+
+  ### Major Drift (-15 to -25 points)
+  - Significant extra feature area pulling toward different use case
+  - Major section competing with requested primary outcome
+  - Substantial complexity muddying visitor journey
+  - Multiple unrelated features added
+
+  ### Minor Drift (-5 to -10 points)
+  - Small extra section that slightly dilutes focus
+  - Minor feature addition not explicitly requested
+  - Reasonable default that goes slightly beyond scope
+  - One unrelated element present
+
+  ### NOT Drift (0 points deduction)
+  - Small helpful additions that strengthen the site
+  - Normal marketing/supporting sections (about, contact, FAQ)
+  - Reasonable defaults that enhance requested site
+  - Standard boilerplate (privacy, terms)
+  - Features that support but don't compete with primary goal
+
+  ## Scoring Formula (Graduated 0-100)
+
+  **Start with 100 points (perfect scope adherence).**
+
+  For each scope drift element found:
+  1. Identify the extra/off-scope element
+  2. Classify severity (Critical/Major/Minor)
+  3. Assess impact on primary outcome
+  4. Deduct appropriate points
+  5. Continue until all elements analyzed
+
+  **Impact multipliers:**
+  - Drift competes with primary CTA: +50% deduction
+  - Drift causes confusion in visitor journey: +30% deduction
+  - Drift is prominent (hero, first section): +20% deduction
+  - Drift is subtle (footer, sidebar): -30% deduction
+
+  **Helpful additions bonus:**
+  - If extra elements clearly support primary goal: reduce deduction by 50%
+  - If extra elements are reasonable defaults: reduce deduction by 30%
+
+  **Pattern penalties:**
+  - 1 drift element: base deduction
+  - 2-3 drift elements: suggest pattern, +10 points penalty
+  - 4+ drift elements: clear overgeneration, +20 points penalty
+
+  **Minimum score: 0**
+
+  ## Graduated Scoring Bands
+
+  **90-100: Excellent scope adherence**
+  - Site precisely matches requested scope
+  - Only reasonable defaults or helpful additions
+  - No competing or dilutive elements
+  - Clean, focused visitor journey
+
+  **75-89: Good scope adherence**
+  - Site mostly matches requested scope
+  - 1-2 minor extra elements that don't compete
+  - Visitor journey remains clear
+  - Minor additions enhance rather than dilute
+
+  **60-74: Fair scope adherence**
+  - Site generally matches requested scope
+  - Some extra sections or features present
+  - Slight dilution of primary focus
+  - Visitor journey still navigable
+
+  **40-59: Poor scope adherence**
+  - Site has significant extra features
+  - Multiple sections compete for attention
+  - Primary outcome somewhat diluted
+  - Visitor journey cluttered
+
+  **20-39: Very poor scope adherence**
+  - Site diverges substantially from request
+  - Major competing feature areas
+  - Primary outcome heavily diluted
+  - Visitor journey confused
+
+  **0-19: Failed scope adherence**
+  - Site targets wrong use case entirely
+  - Core purpose fundamentally changed
+  - Requested scope almost unrecognizable
+  - Critical overgeneration
+
   ## Judge This
-  Return true only when the site stays meaningfully within scope.
 
-  Do not penalize:
-  - small helpful additions
-  - normal marketing/supporting sections
-  - reasonable defaults that strengthen the requested site
+  Base scope drift on **Final Output Evidence** (visible sections, links, and copy). Do not treat uncaptured pages or interaction-only views as proof of extra scope. Button and link lists are extraction labels—do **not** treat unverifiable click targets alone as drift.
 
-  Do penalize:
-  - extra feature areas that pull the site toward a different use case
-  - unnecessary complexity that muddies the visitor journey
-  - irrelevant sections that compete with the requested primary outcome
+  For each element in the artifact:
+  1. Was this explicitly or implicitly requested?
+  2. Does it support the primary goal?
+  3. Does it compete with the primary goal?
+  4. Is it a reasonable default?
+  5. Does it add value or dilute focus?
 
-  Return false when there is clear, meaningful scope drift or irrelevant overgeneration.
+  If off-scope or overgenerated:
+  1. Classify severity
+  2. Assess impact on primary outcome
+  3. Calculate point deduction with multipliers
+  4. Document in findings
 
-  The reasoning should explain why the extra material is genuinely off-scope rather than merely additional.
+  **Do not penalize:**
+  - Small helpful additions
+  - Normal marketing/supporting sections
+  - Reasonable defaults that strengthen the requested site
+
+  **Do penalize:**
+  - Extra feature areas that pull the site toward a different use case
+  - Unnecessary complexity that muddies the visitor journey
+  - Irrelevant sections that compete with the requested primary outcome
+
+  ## Examples
+
+  **Example 1: Perfect scope (Score: 100)**
+  - Everything present was requested or implied
+  - No competing elements
+  - Clean, focused execution
+  - Deductions: 0
+
+  **Example 2: Minor helpful addition (Score: 95)**
+  - Added FAQ section (reasonable default)
+  - Supports primary goal
+  - Deduction: -5 points
+
+  **Example 3: Minor drift (Score: 88)**
+  - Added blog section not requested
+  - Doesn't compete with primary CTA
+  - Base deduction: -15, reduced 50% for supporting content = -7.5
+  - Rounded: -12
+
+  **Example 4: Major drift (Score: 68)**
+  - Added e-commerce for consulting site
+  - Competes with booking primary goal
+  - Base deduction: -20, +50% competition penalty = -30
+  - Total: -32
+
+  **Example 5: Critical drift (Score: 38)**
+  - Requested portfolio, got full e-commerce platform
+  - Completely different use case
+  - Base deduction: -35, +50% compete +20% prominent = -59.5
+  - Rounded: -62
+
+  **Example 6: Multiple minor drifts (Score: 67)**
+  - 3 unrequested sections (blog, shop, community)
+  - Each minor individually (-8, -7, -10 = -25)
+  - Pattern penalty: -10
+  - Total: -35, final score 65, rounded to 67
+
+  ## Response Format
+
+  ```json
+  {
+    "score": <0-100>,
+    "summary": "Brief explanation of scope adherence assessment",
+    "scope_analysis": {
+      "requested_elements": ["element1", "element2"],
+      "present_elements": ["element1", "element2", "extra1"],
+      "off_scope_elements": [
+        {
+          "element": "name/description",
+          "severity": "critical|major|minor",
+          "competes_with_primary": true|false,
+          "dilutes_focus": true|false,
+          "points_deducted": <number>,
+          "reasoning": "Why this is off-scope and impact"
+        }
+      ]
+    },
+    "drift_summary": {
+      "critical_drift_count": <number>,
+      "major_drift_count": <number>,
+      "minor_drift_count": <number>,
+      "total_drift_elements": <number>
+    },
+    "scoring_breakdown": {
+      "starting_score": 100,
+      "critical_deductions": <number>,
+      "major_deductions": <number>,
+      "minor_deductions": <number>,
+      "impact_multipliers": <number>,
+      "pattern_penalty": <number>,
+      "helpful_bonus": <number>,
+      "final_score": <0-100>
+    },
+    "visitor_journey_impact": "none|slight|moderate|severe",
+    "recommendations": [
+      "What to remove or refocus if applicable"
+    ],
+    "confidence": <0-1>
+  }
+  ```
+
+  The reasoning should explain:
+  - What was requested vs what was delivered
+  - Which elements are off-scope and why
+  - How drift impacts the primary visitor outcome
+  - Whether extras help or hurt the site's effectiveness
+
+scoreConfig:
+  min: 0
+  max: 100

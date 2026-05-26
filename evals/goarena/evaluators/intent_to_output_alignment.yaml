@@ -1,32 +1,101 @@
 ---
+evaluatorId: "airo-intent-to-output-alignment"
 name: intent_to_output_alignment
-description: Scores whether the resulting website reflects the inferred user intent
-  instead of a shallow literal build.
+description: Evaluates whether the final website reflects the inferred user intent,
+  with clear distinction between structural alignment (agent controls) and functional
+  verification (agent cannot do).
 type: llm
 scoreType: NUMERIC
 scoreName: intent_to_output_alignment
 llmConfig:
-  model: gpt-4o
+  model: gpt-5.2
   temperature: 0
-  maxTokens: 2000
+  maxTokens: 2500
 projectId: "8606"
+needsVision: true
 staticContext: 'Use both the requested outcome from the conversation and the final
   website artifact. Judge whether the output reflects what the user meant to build,
-  not just literal keyword overlap.'
+  not just literal keyword overlap. CRITICAL: Distinguish STRUCTURAL alignment (code
+  structure, visible elements, labels) from FUNCTIONAL verification (tested behavior,
+  working integrations). Agent controls structural output, cannot verify functional
+  behavior without browser testing. Evidence order: (1) screenshots, (2) pageContent
+  DOM fields, (3) conversation for intent. Prefer (1) and (2) for what visitors see.
+  Misalignment must be grounded in visitor-visible structural evidence; do not lower
+  score solely because functional behavior cannot be verified from capture.'
 criteriaSchemaFile: schemas/empty-object.json
 template: |
   You are grading `intent_to_output_alignment` for an Airo Builder session.
 
   Compare what the user was trying to get built with what the final site visibly delivers.
 
-  ## Requested Outcome
-  {{#if scenario.goal}}
-  Primary goal: {{scenario.goal.name}}
-  Goal bullets:
-  {{#each scenario.goal.goals}}
-  - {{this}}
-  {{/each}}
-  {{/if}}
+  ## CRITICAL: Structural vs Functional Distinction
+
+  ### Structural Alignment (Agent CAN Control - EVALUATE THIS)
+
+  **Structure = Code architecture, visible elements, labels, organization**
+
+  Agent can verify and control:
+  ✓ Site type matches intent (e-commerce vs portfolio vs booking)
+  ✓ Required sections/pages exist in code
+  ✓ CTA labels match expected actions ("Book Now", "Add to Cart", "Contact Us")
+  ✓ Form fields match business needs (name, email, phone, etc.)
+  ✓ Navigation structure supports user journey
+  ✓ Content sections align with business type
+  ✓ Visual hierarchy emphasizes right elements
+
+  Evidence: pageContent fields, visible structure in screenshots, code organization
+
+  ### Functional Verification (Agent CANNOT Do - DON'T EVALUATE THIS)
+
+  **Function = Tested behavior, working integrations, runtime execution**
+
+  Agent cannot verify without browser automation:
+  ✗ Button actually navigates to correct page
+  ✗ Form actually submits and processes
+  ✗ Cart actually adds items
+  ✗ Checkout actually completes payment
+  ✗ Booking actually creates appointment
+  ✗ Links actually route correctly
+  ✗ Integrations actually work (Stripe, calendars, APIs)
+
+  Evidence: Would require browser testing, post-interaction states, backend verification
+
+  ### Examples of Distinction
+
+  **Example 1: E-commerce site**
+
+  Structural alignment (evaluate):
+  ✓ Product pages exist with price/description/image structure
+  ✓ "Add to Cart" buttons visible
+  ✓ Cart icon in navigation
+  ✓ Checkout page exists with form fields
+  ✓ Payment CTA present
+
+  Functional verification (do NOT evaluate):
+  ✗ Add to Cart actually updates cart state
+  ✗ Checkout actually processes payment
+  ✗ Stripe integration actually works
+
+  **Example 2: Booking site**
+
+  Structural alignment (evaluate):
+  ✓ Service descriptions present
+  ✓ "Book Appointment" CTA visible
+  ✓ Booking form exists with date/time fields
+  ✓ Contact information present
+
+  Functional verification (do NOT evaluate):
+  ✗ Booking form actually sends to calendar
+  ✗ Date picker actually works
+  ✗ Confirmation email actually sends
+
+  ## What "Alignment" Means for This Evaluator
+
+  **Alignment = Structural match between intent and visible output**
+
+  NOT alignment = Functional verification of working behavior
+
+  ## User request (conversation)
   {{#if conversation.originalPrompt}}
   Original request:
   {{conversation.originalPrompt}}
@@ -39,8 +108,12 @@ template: |
   {{/if}}
 
   ## Final Output Evidence
+  When screenshots are attached, use them to confirm layout, hero, and CTA prominence;
+  use pageContent for exact strings and lists.
+
   Page title: {{pageContent.title}}
   Main H1: {{pageContent.h1}}
+  Meta description: {{pageContent.metaDescription}}
   Headings:
   {{#each pageContent.headings}}
   - {{this}}
@@ -54,32 +127,132 @@ template: |
   - {{this}}
   {{/each}}
   Form count: {{pageContent.formCount}}
+  Image count: {{pageContent.imageCount}}
   Main text:
   {{pageContent.mainText}}
 
   ## Judge This
-  Determine whether the site reflects the user's intended outcome, not just a shallow reading of the prompt.
 
-  Reward:
-  - correct site type and visitor journey
-  - visible support for the business use case
-  - incorporation of important refinements or implied needs
+  ### Evidence boundary (visible structural alignment)
 
-  Penalize:
-  - literal keyword matching that misses the real purpose of the site
-  - correct business label but wrong visitor flow
-  - output that is adjacent to the request rather than aligned to it
+  Judge alignment between intended outcome and **structural evidence** (screenshots, DOM fields):
+  - Site type and visitor journey structure
+  - Visible support for business use case (sections, CTAs, forms)
+  - Incorporation of requirements and implied needs
+  - CTA labels and form fields match intent
 
-  ## Rubric
-  Score on a 0–100 scale. Use the anchors below and interpolate between them as needed.
-  100 = strongly matches the intended site and user goal.
-  80  = core intent is reflected with only minor misses.
-  60  = partial alignment; usable, but a meaningful part of the intended outcome is missing.
-  40  = weak alignment with major gaps or misdirection.
-  20  = only loosely related to the user's intent.
-  0   = does not reflect the intended website at all.
+  **Do NOT judge:**
+  - Whether buttons/forms actually work (functional)
+  - Whether integrations actually connect (functional)
+  - Whether flows actually complete (functional)
+  - Post-interaction behavior not captured
 
-  In the reasoning, compare requested outcome vs visible output directly.
+  Labeled Buttons/Links are sufficient for structural alignment to checkout, booking,
+  or integration outcomes. Do **not** withhold marks because destinations cannot be
+  verified from extraction.
+
+  ## Evaluation Focus
+
+  Determine whether the site **structure** reflects the user's intended outcome.
+
+  **Reward (structural alignment):**
+  - Correct site type and visitor journey structure
+  - Visible structural support for business use case
+  - Appropriate sections, CTAs, forms for intent
+  - Important refinements reflected in structure
+  - CTA labels align with expected actions
+
+  **Penalize (structural misalignment):**
+  - Wrong site type (portfolio when user wanted e-commerce)
+  - Wrong visitor journey structure (lead gen when user wanted booking)
+  - Missing critical structural elements (no cart for shopping, no booking form for appointments)
+  - CTA labels misaligned with intent ("Download" when user wanted "Book")
+  - Structural implementation doesn't match request
+
+  **Do NOT Penalize:**
+  - Unverifiable functional behavior
+  - Untested integration connections
+  - Post-click behavior not in capture
+  - Backend functionality you cannot inspect
+
+  ## If Structure is Present but Function Unverifiable
+
+  Example scenario:
+  - User wanted: "Booking site"
+  - Structure shows: Booking form with date/time fields, "Book Appointment" button
+  - Function unknown: Can't verify form actually books
+
+  Verdict: **Structurally aligned** → Score 85-95
+
+  Do NOT lower score for unverifiable function if structure is correct.
+
+  ## Rubric (Graduated 0-100)
+
+  Return a single integer from 0 through 100. Higher means stronger structural alignment.
+
+  **90-100** = strongly matches intended structural outcome
+    - Site type correct
+    - Visitor journey structure correct
+    - All critical structural elements present
+    - CTA labels align perfectly
+    - Refinements incorporated
+
+  **70-89** = core structural intent reflected, minor gaps
+    - Site type correct
+    - Journey mostly correct
+    - Most structural elements present
+    - Minor label or section mismatches
+
+  **50-69** = partial structural alignment
+    - Site type correct but journey unclear
+    - Some critical structural elements missing
+    - CTA labels partially aligned
+    - Some requirements not structurally represented
+
+  **30-49** = weak structural alignment
+    - Site type questionable
+    - Journey misdirected
+    - Major structural gaps
+    - CTA labels misaligned
+
+  **10-29** = poor structural alignment
+    - Wrong site type
+    - Wrong visitor journey structure
+    - Critical structural elements absent
+
+  **0-9** = does not structurally reflect intent at all
+    - Completely wrong site type
+    - No structural alignment with request
+
+  ## Response Format
+
+  ```json
+  {
+    "score": <0-100>,
+    "summary": "Brief comparison of intended vs structural output",
+    "alignment_analysis": {
+      "structural_alignment": {
+        "site_type": "correct | incorrect | partially",
+        "visitor_journey": "aligned | misaligned | partially",
+        "critical_elements": ["list present structural elements"],
+        "missing_elements": ["list missing structural elements"],
+        "cta_alignment": "excellent | good | fair | poor"
+      },
+      "functional_verification": {
+        "note": "Functional verification not possible/required for this evaluation",
+        "structural_indicators": ["what structure suggests about function"]
+      }
+    },
+    "strengths": ["structural alignment strengths"],
+    "weaknesses": ["structural misalignment issues"],
+    "unverifiable_functional_aspects": ["list for transparency"],
+    "confidence": <0-1>
+  }
+  ```
+
+  In the reasoning, compare requested structural outcome vs visible structural output directly.
+  Be clear about what's structural alignment vs functional uncertainty.
+
 scoreConfig:
   min: 0
   max: 100

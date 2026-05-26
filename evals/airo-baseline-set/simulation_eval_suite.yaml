@@ -1,0 +1,24 @@
+# Evaluation Suite: Browser-Based Website Testing
+# Tests AI agent's website generation capabilities using browser automation
+
+version: "1.0"
+
+suite:
+  name: "Browser-Based Website Generation Tests"
+  description: |
+    Tests AI website builder agents using browser automation.
+    Evaluates generated websites using a hybrid approach of system
+    evaluators (library-based) and LLM evaluators (AI-powered).
+
+    For browser-based scenarios (with browserConfig), each evaluator
+    has a weight and the overall score is the weighted average.
+
+  scenarios:
+    - key: "airo-baseline-syn_d85e2c4a7f90b316"
+    - key: "airo-baseline-syn_1c4e8a0d6f9b2375"
+    - key: "airo-baseline-syn_c73a9f1d5b0e2468"
+    - key: "airo-baseline-syn_b42d8e6f0a13c975"
+    - key: "airo-baseline-syn_f26c0a9e4d7b5318"
+
+  config:
+    mode: "simulation"

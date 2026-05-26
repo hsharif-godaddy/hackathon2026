@@ -1,0 +1,127 @@
+---
+evaluatorId: "airo-primary-cta-presence"
+name: primary_cta_presence
+description: Verifies at least one clear call-to-action exists on the captured page. Scans
+  buttons and links for action words (book, schedule, contact, get started, etc.).
+type: llm
+scoreType: NUMERIC
+scoreName: primary_cta_presence
+llmConfig:
+  model: gpt-5.2
+  temperature: 0
+  maxTokens: 1500
+projectId: "8606"
+staticContext: 'Check pageContent buttons and links for action-oriented language that prompts
+  user engagement (book, schedule, contact, buy, etc.). Pure DOM text scan - not verifying
+  functionality or destinations, only that CTA text exists.'
+criteriaSchemaFile: schemas/empty-object.json
+scoreConfig:
+  min: 0
+  max: 100
+template: |
+  You are evaluating whether the captured page has at least one clear call-to-action (CTA).
+
+  ## 🚨 EVALUATION SCOPE
+
+  **You are checking the CAPTURED PAGE ONLY** for CTA presence.
+
+  A **call-to-action (CTA)** is text that prompts the user to take an action beyond navigation.
+
+  ## Evidence Available
+
+  **Page Content (DOM extraction):**
+  - Buttons: {{#each pageContent.buttons}}- {{this}} {{/each}}
+  - Links: {{#each pageContent.links}}- {{this}} {{/each}}
+  - Forms: {{pageContent.formCount}}
+
+  ## Evaluation Logic (Score 0-100)
+
+  **100 points** = Multiple strong CTAs:
+  - ✓ 2+ buttons/links with strong action language (book, contact, get started, shop now, etc.)
+  - ✓ Clear conversion focus
+
+  **75 points** = One strong CTA:
+  - ✓ 1 button/link with strong action language
+  - ✓ Clear primary action
+
+  **50 points** = Weak/generic CTAs only:
+  - ✓ Only weak CTAs like "Learn More", "Read More", "See More"
+  - ✓ Generic exploration prompts
+
+  **25 points** = Form present but no clear CTA:
+  - formCount > 0 but no clear CTA button text
+  - Likely has submit button but text not captured
+
+  **0 points** = No CTAs:
+  - ✗ NO action-oriented buttons/links
+  - ✗ Only navigation (Home, About, Services)
+  - ✗ Only footer/social links
+
+  **Action language patterns**:
+  - **Strong CTAs**: book, schedule, contact, get started, request quote, shop now, buy now, sign up, free trial
+  - **Weak CTAs**: learn more, read more, see more, discover, explore
+  - **NOT CTAs**: home, about, services, privacy, terms (navigation/footer)
+
+  ## What Counts as a CTA
+
+  **YES - These are CTAs**:
+  - "Book Now", "Schedule Appointment" → Action request
+  - "Contact Us", "Get in Touch" → Communication prompt
+  - "Get Started", "Try Free" → Engagement prompt
+  - "Shop Now", "Add to Cart" → Commerce action
+  - "Learn More", "Discover More" → Exploration prompt
+  - "Request Quote", "Get Quote" → Lead generation
+  - "Sign Up", "Subscribe" → Registration action
+
+  **NO - These are NOT CTAs**:
+  - "Home", "About", "Services", "Products" → Navigation
+  - "Privacy Policy", "Terms of Service" → Legal
+  - "Facebook", "Twitter", "LinkedIn" → Social media
+  - Logo text, brand name → Branding
+
+  ## Edge Cases
+
+  **"Learn More"**: YES - counts as CTA (exploration action)
+  **"Contact"**: YES - counts as CTA (communication action)
+  **"Menu"**: NO - this is navigation (unless "View Menu" or "Download Menu")
+  **Form presence**: If formCount > 0, likely has CTA (submit button), but check button text to confirm
+
+  ## Important Rules
+
+  - **Do NOT** require specific CTA strength - any action word counts
+  - **Do NOT** penalize for "weak" CTAs like "Learn More" - these are valid
+  - **Do NOT** require multiple CTAs - one is sufficient
+  - **Do NOT** require CTA functionality - checking text only
+  - **PASS** if ANY button/link suggests user action
+
+  ## Self-Check
+
+  Before submitting:
+  - ❌ Did you give 0 for "Learn More"? (50 points for weak CTAs)
+  - ❌ Did you count navigation as CTA? (Navigation != CTA)
+  - ❌ Did you give 100 for one weak CTA? (One strong = 75, multiple strong = 100)
+
+  **Scoring guide**:
+  - 2+ strong CTAs → 100
+  - 1 strong CTA → 75
+  - Weak CTAs only → 50
+  - Form but no CTA → 25
+  - No CTAs → 0
+
+  ## Response Format
+
+  ```json
+  {
+    "score": <0-100>,
+    "summary": "Brief explanation with specific CTA examples",
+    "evidence": {
+      "cta_found": true|false,
+      "cta_strength": "multiple_strong | one_strong | weak | form_only | none",
+      "cta_examples": ["list", "of", "CTA", "text", "found"],
+      "total_buttons": <number>,
+      "total_links": <number>,
+      "reasoning": "Why this score"
+    },
+    "confidence": <0-1>
+  }
+  ```

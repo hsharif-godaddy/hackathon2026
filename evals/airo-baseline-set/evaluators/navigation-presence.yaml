@@ -1,0 +1,115 @@
+---
+evaluatorId: "airo-navigation-presence"
+name: navigation_presence
+description: Verifies presence of navigation structure via DOM inspection. Checks for nav element,
+  role="navigation", or aria-label containing navigation keywords.
+type: llm
+scoreType: NUMERIC
+scoreName: navigation_presence
+llmConfig:
+  model: gpt-5.2
+  temperature: 0
+  maxTokens: 1500
+projectId: "8606"
+staticContext: 'Pure structural check for navigation elements in captured page DOM. Looks for
+  semantic navigation patterns: nav element, role="navigation", navigation-related aria-labels,
+  or clear navigation link patterns (Home, About, Services, Contact, etc.).'
+criteriaSchemaFile: schemas/empty-object.json
+scoreConfig:
+  min: 0
+  max: 100
+template: |
+  You are evaluating whether the captured page has navigation structure.
+
+  ## 🚨 EVALUATION SCOPE
+
+  **You are checking the CAPTURED PAGE ONLY** for navigation structure.
+
+  This is a **pure DOM structure check** - verifying that navigation elements exist.
+
+  ## Evidence Available
+
+  **Page Content (DOM extraction):**
+  - Page links: {{#each pageContent.links}}- {{this}} {{/each}}
+  - Buttons: {{#each pageContent.buttons}}- {{this}} {{/each}}
+  - Main text: {{pageContent.mainText}}
+
+  ## Evaluation Logic (Score 0-100)
+
+  **100 points** = Clear navigation structure:
+  - ✓ 4+ navigation links (Home, About, Services, Contact, Products, etc.)
+  - ✓ Comprehensive site navigation present
+
+  **75 points** = Good navigation:
+  - ✓ 3 navigation links present
+  - ✓ Core sections covered (e.g., Home, About, Contact)
+
+  **50 points** = Minimal navigation:
+  - ✓ 2 navigation links present
+  - ✓ Basic navigation exists but limited
+
+  **25 points** = Questionable navigation:
+  - Only 1 navigation-type link
+  - OR only footer/social links (not true navigation)
+
+  **0 points** = No navigation:
+  - ✗ NO navigation links
+  - ✗ Only CTAs or footer links
+  - ✗ No site structure navigation
+
+  ## Common Navigation Patterns
+
+  **Typical navigation links** (informational):
+  - Home, About, About Us
+  - Services, Products, Menu, Portfolio, Gallery
+  - Contact, Contact Us, Location
+  - Blog, News, Resources
+  - Team, Careers, Testimonials
+
+  **NOT navigation** (these are other link types):
+  - Book Now, Get Started → CTAs
+  - Privacy Policy, Terms of Service → Footer legal
+  - Facebook, Twitter, LinkedIn → Social links
+
+  ## Edge Cases
+
+  **Single-page sites**: May have anchor links (#about, #services) - count as navigation if labels suggest sections
+  **Minimal sites**: If 2-3 navigation-type links exist, PASS (don't require full navbar)
+  **Button-based navigation**: Buttons can be navigation if text suggests it (rare but valid)
+
+  ## Important Rules
+
+  - **Do NOT** require specific navigation element types (nav, role, aria) - link patterns are sufficient
+  - **Do NOT** require minimum number of links beyond 2-3 navigation-type items
+  - **Do NOT** penalize for missing navigation on other pages (checking captured page only)
+  - **PASS** if clear navigation pattern exists, even if minimal
+
+  ## Self-Check
+
+  Before submitting:
+  - ❌ Did you give 0 for 2 nav links? (50 points for minimal navigation)
+  - ❌ Did you count CTAs as navigation? (CTAs != navigation)
+  - ❌ Did you require nav element / role / aria? (Link patterns are sufficient)
+
+  **Scoring guide**:
+  - 4+ nav links → 100
+  - 3 nav links → 75
+  - 2 nav links → 50
+  - 1 nav link → 25
+  - 0 nav links → 0
+
+  ## Response Format
+
+  ```json
+  {
+    "score": <0-100>,
+    "summary": "Brief explanation with specific evidence",
+    "evidence": {
+      "navigation_links_found": ["list", "of", "nav-type", "links"],
+      "total_navigation_links": <number>,
+      "navigation_pattern": "comprehensive | good | minimal | questionable | none",
+      "reasoning": "Why this score"
+    },
+    "confidence": <0-1>
+  }
+  ```

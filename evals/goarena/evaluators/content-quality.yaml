@@ -1,6 +1,7 @@
 # Content Quality Evaluator
 # LLM-based evaluator for assessing content quality of generated websites
 # Uses extracted page content (text) - NOT screenshots
+# Text comes from DOM extraction of the Playwright-captured preview; treat it as visitor-visible copy, not chat claims.
 
 evaluatorId: "airo-content-quality"
 name: "Airo Content Quality Evaluator"
@@ -18,7 +19,7 @@ scoreConfig:
 
 # LLM configuration
 llmConfig:
-  model: "gpt-4o"
+  model: "gpt-5.2"
   temperature: 0
   maxTokens: 2000
 
@@ -36,8 +37,6 @@ projectId: "8606"
 #   - pageContent.buttons: Array of button texts
 #   - pageContent.metaDescription: Meta description
 #   - previewUrl: URL of the generated website
-#   - scenario.business: Business context
-#   - scenario.goal: Goal information
 #   - conversation.originalPrompt: First user message (original request)
 #   - conversation.userMessages: All user messages (requirements)
 #   - conversation.messages: Full conversation history
@@ -59,14 +58,6 @@ template: |
   {{/each}}
   {{/unless}}
   {{/if}}
-  {{/if}}
-
-  ## Business Context
-  {{#if scenario.business}}
-  Business Name: {{scenario.business.businessName}}
-  Industry: {{scenario.business.industry}}
-  Description: {{scenario.business.businessDescription}}
-  Target Audience: {{scenario.business.targetAudience}}
   {{/if}}
 
   ## Website Information
@@ -146,7 +137,7 @@ criteriaSchema:
     - minScore
     - maxScore
 
-# Example usage in scenario.evaluators:
+# Example usage in suite configuration:
 # evaluators:
 #   - evaluatorId: content-quality
 #     weight: 20

@@ -1,38 +1,122 @@
 ---
+evaluatorId: "airo-structural-coherence"
 name: structural_coherence
 description: Scores whether the pages, headings, links, and sections form a coherent
-  site structure.
+  site structure, with clear guidance on capture limitations.
 type: llm
 scoreType: NUMERIC
 scoreName: structural_coherence
 llmConfig:
-  model: gpt-4o
+  model: gpt-5.2
   temperature: 0
   maxTokens: 2000
 projectId: "8606"
-staticContext: 'Primary evidence: final page structure, headings, links, buttons, and
-  screenshots when available. Judge information architecture and section logic, not
-  conversational behavior.'
+needsVision: true
+staticContext: 'Primary evidence: final page structure, headings, links, buttons,
+  and screenshots when available. Judge information architecture and section logic.
+  CRITICAL: Evaluate ONLY the captured page structure. Do not penalize for pages
+  that exist in code but were not captured. Agent may have generated multi-page structure
+  that is not visible in single-page capture. Only evaluate coherence of what IS
+  captured. Screenshots show rendered layout; pageContent lists DOM-extracted labels.
+  Infer nav and action coherence from wording and placement in captured evidence,
+  never from verifying external targets.'
 criteriaSchemaFile: schemas/empty-object.json
 template: |
   You are grading `structural_coherence` for an Airo Builder output.
 
-  Focus on information architecture and section logic. Do not score tone or visual polish except where they make structure impossible to judge.
+  Focus on information architecture and section logic of the CAPTURED page.
 
-  ## Requested Site Context
-  {{#if scenario.business}}
-  Business: {{scenario.business.businessName}} ({{scenario.business.industry}})
-  Description: {{scenario.business.businessDescription}}
+  ## CRITICAL: Capture Limitations
+
+  ### What You Can Evaluate (Captured Evidence)
+
+  **This capture shows:**
+  - {{pageContent.title}} page
+  - Heading hierarchy on THIS page
+  - Section flow on THIS page
+  - Navigation labels (as text, not verified destinations)
+  - Content organization on THIS page
+
+  **Evaluate:**
+  ✓ Heading hierarchy makes sense (H1 → H2 → H3 logical progression)
+  ✓ Sections flow logically on this page
+  ✓ Navigation labels are coherent and descriptive
+  ✓ Content is appropriately grouped
+  ✓ Page structure supports apparent purpose
+  ✓ Internal consistency within this page
+
+  ### What You CANNOT Evaluate (Not Captured)
+
+  **This capture does NOT show:**
+  - Other pages that may exist (/about, /services, /contact, etc.)
+  - Multi-page site architecture
+  - Navigation destinations (only labels visible)
+  - Page transitions or routing
+  - Full site map
+
+  **Do NOT penalize:**
+  ✗ "Missing" pages that exist in code but not captured
+  ✗ Multi-page navigation you cannot verify
+  ✗ Structure that exists in code but not in screenshot
+  ✗ Routes/pages implied by nav links but not shown
+  ✗ Full site architecture beyond this page
+
+  ### Agent Capability Boundaries
+
+  **Agent CAN control (fair to evaluate):**
+  - Heading hierarchy in generated code
+  - Section organization in generated code
+  - Navigation label text
+  - Content grouping logic
+  - Single-page structure coherence
+
+  **Agent CANNOT control (don't penalize):**
+  - Which pages are captured for evaluation
+  - Multi-page architecture if only one page captured
+  - Navigation destinations beyond label text
+
+  ## Example Scenarios
+
+  **Scenario 1: Homepage captured**
+
+  Navigation links visible: Home | About | Services | Contact
+
+  ✓ **Good evaluation:** "Navigation labels are clear and coherent. Page sections (Hero, Services Overview, CTA) flow logically. Heading hierarchy is appropriate."
+
+  ✗ **Bad evaluation:** "Missing About and Services pages - structure incomplete."
+  → Problem: Those pages may exist, just not captured
+
+  **Scenario 2: Product page captured**
+
+  Navigation shows: Shop | Products | Cart | Checkout
+
+  ✓ **Good evaluation:** "Product page structure is coherent with appropriate sections (images, description, specifications, add to cart). Headings follow logical hierarchy."
+
+  ✗ **Bad evaluation:** "Cannot find homepage or cart page - poor structure."
+  → Problem: Evaluating pages not in capture
+
+  **Scenario 3: Single page site**
+
+  All content on one page with anchor navigation
+
+  ✓ **Good evaluation:** "Single-page structure with clear sections. Navigation anchors correspond to visible sections. Good hierarchy and flow."
+
+  ## User request (conversation)
+  {{#if conversation.originalPrompt}}
+  Original request:
+  {{conversation.originalPrompt}}
   {{/if}}
-  {{#if scenario.goal}}
-  Primary goal: {{scenario.goal.name}}
-  Goal bullets:
-  {{#each scenario.goal.goals}}
+  {{#if conversation.userMessages}}
+  User refinements:
+  {{#each conversation.userMessages}}
   - {{this}}
   {{/each}}
   {{/if}}
 
-  ## Final Structure Evidence
+  ## Final Structure Evidence (Captured Page Only)
+
+  **Current page:** {{pageContent.title}}
+
   Page title: {{pageContent.title}}
   Main H1: {{pageContent.h1}}
   Headings:
@@ -47,33 +131,140 @@ template: |
   {{#each pageContent.buttons}}
   - {{this}}
   {{/each}}
+  Form count: {{pageContent.formCount}}
+  Image count: {{pageContent.imageCount}}
   Main text:
   {{pageContent.mainText}}
 
   ## Judge This
-  Score whether the visible site structure is coherent for the requested use case.
+
+  ### Evidence boundary (captured IA only)
+
+  - Score structure from headings, sections, nav affordances visible in **Final Structure Evidence**
+  - Do NOT penalize for "missing" pages or states not represented in capture
+  - Nav link text does not expose destinations; coherent IA does not depend on inspecting href
+  - If nav links suggest multi-page site, assume pages exist if agent was asked to generate them
+
+  Score whether the VISIBLE CAPTURED page structure is coherent for the apparent site purpose.
+
+  ## Evaluation Criteria
+
+  **Heading Hierarchy (0-25 points)**
+  - 25: Clear H1 → H2 → H3 progression, logical nesting
+  - 20: Mostly logical, minor hierarchy issues
+  - 15: Some hierarchy confusion
+  - 10: Poor hierarchy structure
+  - 0: No coherent hierarchy
+
+  **Section Flow (0-25 points)**
+  - 25: Logical progression from intro → details → action
+  - 20: Good flow with minor rough edges
+  - 15: Workable but uneven
+  - 10: Confusing or disconnected flow
+  - 0: No coherent flow
+
+  **Navigation Coherence (0-25 points)**
+  - 25: Clear, descriptive labels that make sense together
+  - 20: Good labels, minor improvements possible
+  - 15: Adequate but generic
+  - 10: Confusing or inconsistent labels
+  - 0: No coherent navigation
+  - N/A: If no navigation present on this page
+
+  **Content Grouping (0-25 points)**
+  - 25: Excellent grouping, no redundancy
+  - 20: Good grouping, minor overlaps
+  - 15: Workable but somewhat repetitive
+  - 10: Confusing or very redundant
+  - 0: No coherent grouping
+
+  **Total: 0-100**
+
+  ## What Structural Coherence Means
 
   Consider:
-  - whether the page appears to have a logical flow from intro to supporting sections to action
-  - whether headings and sections feel non-redundant and appropriately grouped
-  - whether navigation/wayfinding and section names make sense together
-  - whether the structure covers the main informational needs of this kind of business
+  - Whether THIS page has logical flow from intro → supporting sections → action
+  - Whether headings and sections feel non-redundant and appropriately grouped
+  - Whether navigation/wayfinding and section names make sense together (as labels)
+  - Whether structure covers main informational needs visible on THIS page
 
-  Penalize:
-  - disconnected or repetitive sections
-  - confusing heading hierarchy
-  - a page that reads like unrelated blocks rather than a coherent site
-  - important structural omissions for the use case
+  Penalize (only for captured page):
+  - Disconnected or repetitive sections ON THIS PAGE
+  - Confusing heading hierarchy ON THIS PAGE
+  - Page reads like unrelated blocks
+  - Important structural omissions FOR THIS PAGE'S purpose
 
-  ## Rubric
-  5 = coherent and well organized.
-  4 = strong structure with minor rough edges.
-  3 = workable but uneven or partially redundant.
-  2 = confusing or noticeably incomplete structure.
-  1 = poor structure that harms usability.
-  0 = no coherent structure.
+  Do NOT penalize:
+  - Other pages that may exist but aren't captured
+  - Multi-page architecture not visible
+  - Navigation destinations you cannot verify
 
-  Explain which sections or headings make the structure work or fail.
+  ## Rubric (Graduated 0-100)
+
+  **90-100** = coherent and well organized
+    - Excellent heading hierarchy
+    - Logical section flow
+    - Clear navigation labels
+    - Well-grouped content
+
+  **70-89** = strong structure with minor rough edges
+    - Good hierarchy
+    - Mostly logical flow
+    - Decent navigation
+    - Minor redundancy
+
+  **50-69** = workable but uneven
+    - Acceptable hierarchy
+    - Some flow issues
+    - Generic navigation
+    - Some redundancy
+
+  **30-49** = confusing or noticeably incomplete structure ON THIS PAGE
+    - Poor hierarchy
+    - Confusing flow
+    - Unclear navigation
+    - Significant redundancy
+
+  **10-29** = poor structure that harms usability
+    - No clear hierarchy
+    - Disconnected sections
+    - Confusing labels
+    - Major structural problems
+
+  **0-9** = no coherent structure
+    - Complete chaos
+    - No organization
+
+  ## Response Format
+
+  ```json
+  {
+    "score": <0-100>,
+    "summary": "Brief structural assessment OF CAPTURED PAGE",
+    "scoring_breakdown": {
+      "heading_hierarchy": <0-25>,
+      "section_flow": <0-25>,
+      "navigation_coherence": <0-25 or "n/a">,
+      "content_grouping": <0-25>
+    },
+    "structure_analysis": {
+      "captured_page": "{{pageContent.title}}",
+      "heading_assessment": "excellent | good | fair | poor",
+      "flow_assessment": "excellent | good | fair | poor",
+      "nav_labels": ["list navigation labels if present"],
+      "sections_identified": ["list main sections on this page"]
+    },
+    "strengths": ["structural strengths ON THIS PAGE"],
+    "weaknesses": ["structural issues ON THIS PAGE"],
+    "capture_limitations_note": "Only evaluated captured page structure. Other pages may exist but are not assessed.",
+    "implied_multi_page": true|false,
+    "confidence": <0-1>
+  }
+  ```
+
+  Explain which sections or headings make the structure work or fail ON THE CAPTURED PAGE.
+  Do NOT penalize for pages not in capture.
+
 scoreConfig:
   min: 0
-  max: 5
+  max: 100

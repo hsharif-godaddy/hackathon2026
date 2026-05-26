@@ -1,0 +1,159 @@
+# Content Quality Evaluator
+# LLM-based evaluator for assessing content quality of generated websites
+# Uses extracted page content (text) - NOT screenshots
+# Text comes from DOM extraction of the Playwright-captured preview; treat it as visitor-visible copy, not chat claims.
+
+evaluatorId: "airo-content-quality"
+name: "Airo Content Quality Evaluator"
+description: "Evaluates content quality, relevance, and completeness of generated websites"
+
+# Evaluator type - "llm" means LLM-as-Judge evaluation
+type: llm
+
+# Score configuration
+scoreType: NUMERIC
+scoreName: "content_quality_score"
+scoreConfig:
+  min: 0
+  max: 100
+
+# LLM configuration
+llmConfig:
+  model: "gpt-5.2"
+  temperature: 0
+  maxTokens: 2000
+
+# Project ID (set when uploading to Synthia)
+projectId: "8606"
+
+# Handlebars template for LLM prompt
+# Available browser context variables:
+#   - pageContent.title: Page title
+#   - pageContent.h1: Main H1 heading
+#   - pageContent.headings: Array of H1-H3 headings
+#   - pageContent.mainText: Main text content (truncated)
+#   - pageContent.wordCount: Word count
+#   - pageContent.links: Array of link texts
+#   - pageContent.buttons: Array of button texts
+#   - pageContent.metaDescription: Meta description
+#   - previewUrl: URL of the generated website
+#   - conversation.originalPrompt: First user message (original request)
+#   - conversation.userMessages: All user messages (requirements)
+#   - conversation.messages: Full conversation history
+template: |
+  You are evaluating the content quality of a generated website.
+
+  ## What the User Requested
+  {{#if conversation.originalPrompt}}
+  **Original Request:**
+  {{conversation.originalPrompt}}
+
+  {{#if conversation.userMessages.length}}
+  {{#unless (eq conversation.userMessages.length 1)}}
+  **Additional Requirements:**
+  {{#each conversation.userMessages}}
+  {{#unless @first}}
+  - {{this}}
+  {{/unless}}
+  {{/each}}
+  {{/unless}}
+  {{/if}}
+  {{/if}}
+
+  ## Website Information
+  URL: {{previewUrl}}
+  Title: {{pageContent.title}}
+  Main Heading (H1): {{pageContent.h1}}
+  Meta Description: {{pageContent.metaDescription}}
+  Word Count: {{pageContent.wordCount}}
+
+  ## Section Headings
+  {{#each pageContent.headings}}
+  - {{this}}
+  {{/each}}
+
+  ## Main Content (truncated)
+  ---
+  {{pageContent.mainText}}
+  ---
+
+  ## Evaluation Criteria
+  {{#each criteria.dimensions}}
+  ### {{name}}
+  {{description}}
+  Weight: {{weight}}
+
+  {{/each}}
+
+  ## Your Task
+  Evaluate the website content against each criterion above.
+  {{#if conversation.originalPrompt}}
+  **IMPORTANT:** Compare the website content against what the user originally requested. Does the content actually address the user's needs?
+  {{/if}}
+
+  For each criterion, provide:
+  1. A score from {{criteria.minScore}} to {{criteria.maxScore}}
+  2. Specific observations supporting your score
+  3. Suggestions for improvement (if the score is below 80% of {{criteria.maxScore}})
+
+  Then calculate an overall weighted score.
+
+  Respond with JSON in this format:
+  {
+    "dimensions": [
+      {
+        "name": "criterion name",
+        "score": number,
+        "observations": "your observations",
+        "suggestions": "improvement suggestions or null"
+      }
+    ],
+    "overallScore": number,
+    "summary": "brief summary of content quality",
+    "confidence": number between 0 and 1
+  }
+
+# Criteria schema for validation (optional)
+criteriaSchema:
+  type: object
+  properties:
+    dimensions:
+      type: array
+      items:
+        type: object
+        properties:
+          name:
+            type: string
+          description:
+            type: string
+          weight:
+            type: number
+    minScore:
+      type: number
+    maxScore:
+      type: number
+  required:
+    - dimensions
+    - minScore
+    - maxScore
+
+# Example usage in suite configuration:
+# evaluators:
+#   - evaluatorId: content-quality
+#     weight: 20
+#     criteria:
+#       dimensions:
+#         - name: relevance
+#           description: "Content is relevant to the business"
+#           weight: 0.3
+#         - name: completeness
+#           description: "All essential information is present"
+#           weight: 0.3
+#         - name: authenticity
+#           description: "Content feels authentic, not placeholder"
+#           weight: 0.2
+#         - name: clarity
+#           description: "Information is clear and easy to understand"
+#           weight: 0.2
+#       minScore: 1
+#       maxScore: 10

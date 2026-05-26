@@ -1,36 +1,140 @@
 ---
+evaluatorId: "airo-content-specificity"
 name: content_specificity
 description: Scores whether the site content is specific to the business rather than
-  generic filler.
+  generic filler, with fair attribution based on user requirement specificity.
 type: llm
 scoreType: NUMERIC
 scoreName: content_specificity
 llmConfig:
-  model: gpt-4o
+  model: gpt-5.2
   temperature: 0
   maxTokens: 2000
 projectId: "8606"
-staticContext: 'Primary evidence: business context plus final page content. Judge whether
-  the copy is specific to the business, offer, audience, and use case rather than
-  generic template filler.'
+staticContext: 'Primary evidence: visible page content and user conversation. Judge
+  whether copy is specific to the business/offer/audience rather than generic template
+  filler. CRITICAL: Fair attribution requires checking user requirement specificity.
+  If user provided vague requirements ("consulting site"), generic content is reasonable
+  default. If user provided specific requirements ("cloud migration consulting for
+  Fortune 500"), agent should generate specific content. Do not penalize agent for
+  generic content when user requirements were vague. pageContent is DOM-extracted
+  from Playwright preview. Screenshots help spot placeholder chrome vs real copy.
+  Button/link texts omit href; specificity is about wording, not routable URLs.'
 criteriaSchemaFile: schemas/empty-object.json
 template: |
   You are grading `content_specificity` for an Airo Builder output.
 
-  Use the business context and the visible final-site copy. Do not judge factual correctness of claims unless the text is obviously placeholder or fabricated.
+  Use the visible final-site copy and user conversation. Do not judge factual correctness unless text is obviously placeholder or fabricated.
 
-  ## Business Context
-  {{#if scenario.business}}
-  Business: {{scenario.business.businessName}} ({{scenario.business.industry}})
-  Description: {{scenario.business.businessDescription}}
-  Audience: {{scenario.business.targetAudience}}
+  ## CRITICAL: User Requirement Attribution
+
+  ### Fair Content Specificity Evaluation
+
+  **BEFORE scoring, check user requirement specificity:**
+
+  **User provided VAGUE requirements:**
+  - "Create a consulting site"
+  - "Make a portfolio"
+  - "Build an e-commerce store"
+  - "I need a business website"
+
+  Agent generates GENERIC content:
+  - "Expert consulting services"
+  - "Professional portfolio"
+  - "Quality products"
+
+  **Verdict: APPROPRIATE** → Score 60-75
+  - User didn't provide specifics
+  - Agent generated reasonable defaults
+  - Generic is acceptable starting point
+
+  **User provided SPECIFIC requirements:**
+  - "Cloud migration consulting for Fortune 500 companies"
+  - "Portfolio for wedding photography in Austin"
+  - "E-commerce for handmade ceramic pottery"
+  - "Law firm specializing in IP litigation"
+
+  Agent generates GENERIC content:
+  - "Expert consulting services"
+  - "Professional photographer"
+  - "Quality products"
+  - "Professional legal services"
+
+  **Verdict: POOR** → Score 20-40
+  - User provided specifics
+  - Agent should have used them
+  - Generic despite specific input
+
+  Agent generates SPECIFIC content:
+  - "Enterprise cloud migration for Fortune 500"
+  - "Austin wedding photography since 2015"
+  - "Handcrafted ceramic pottery"
+  - "IP litigation attorneys"
+
+  **Verdict: EXCELLENT** → Score 90-100
+  - Used user's specific details
+  - Grounded in actual business
+  - Appropriate specificity level
+
+  ### Examples
+
+  **Example 1: Vague user input → Generic content (APPROPRIATE)**
+
+  User: "Create a consulting site"
+  Content: "Expert consulting services to help your business grow"
+  Score: 70/100 (appropriate default for vague input)
+  Reasoning: User didn't specify consulting type, industry, or unique value
+
+  **Example 2: Specific user input → Generic content (POOR)**
+
+  User: "Enterprise cybersecurity consulting for financial institutions"
+  Content: "Expert consulting services to help your business grow"
+  Score: 30/100 (should have used specific details)
+  Reasoning: User provided specific industry and niche, agent ignored it
+
+  **Example 3: Specific user input → Specific content (EXCELLENT)**
+
+  User: "Enterprise cybersecurity consulting for financial institutions"
+  Content: "Cybersecurity expertise for banks and financial services"
+  Score: 92/100 (excellent use of specific details)
+  Reasoning: Content reflects specific industry and specialization
+
+  **Example 4: Vague input + conversational refinement → Specific content (EXCELLENT)**
+
+  User: "Create a site"
+  Agent: "What type of site?"
+  User: "Restaurant in Brooklyn serving authentic Thai food"
+  Content: "Authentic Thai cuisine in the heart of Brooklyn"
+  Score: 95/100 (agent clarified and used specifics)
+  Reasoning: Agent elicited details and used them
+
+  ## User request (conversation)
+  {{#if conversation.originalPrompt}}
+  Original request:
+  {{conversation.originalPrompt}}
   {{/if}}
-  {{#if scenario.goal}}
-  Primary goal: {{scenario.goal.name}}
+  {{#if conversation.userMessages}}
+  User refinements:
+  {{#each conversation.userMessages}}
+  - {{this}}
+  {{/each}}
   {{/if}}
-  Customer summary: {{scenario.customerSummary}}
+
+  ## Requirement Specificity Analysis
+
+  **Before scoring content, analyze user requirements:**
+
+  Requirement specificity level:
+  - **Vague** (10-30% detail): Business type only, no specifics
+  - **Moderate** (40-60% detail): Business type + some details (industry, location, or target audience)
+  - **Specific** (70-90% detail): Business type + multiple details (industry, location, target audience, unique value)
+  - **Very Specific** (90-100% detail): Comprehensive details (industry, niche, location, audience, services, differentiators)
+
+  Expected content specificity should match requirement specificity ±15%.
 
   ## Final Copy Evidence
+  Buttons and Links are labeled affordances without destinations—do **not** downscore because you cannot inspect click targets.
+
   Page title: {{pageContent.title}}
   Main H1: {{pageContent.h1}}
   Meta description: {{pageContent.metaDescription}}
@@ -46,28 +150,113 @@ template: |
   {{pageContent.mainText}}
 
   ## Judge This
-  Score how specific the visible content is to this business.
+  Score how specific the visible content is to this business RELATIVE TO USER INPUT SPECIFICITY.
 
-  Reward copy that is clearly grounded in:
-  - the actual business or offer
-  - the target audience
-  - concrete services, products, process details, outcomes, neighborhoods, pricing cues, or category-specific terminology
+  ### Content Specificity Indicators
 
-  Penalize:
-  - generic marketing filler that could fit almost any business
-  - vague buzzwords with little concrete meaning
-  - obvious placeholder phrasing
-  - copy that names the business but remains otherwise generic
+  **Highly specific copy is grounded in:**
+  - Actual business type or service
+  - Target industry or audience
+  - Concrete services, products, or process details
+  - Geographic location or service area
+  - Specific outcomes or results
+  - Category-specific terminology
+  - Unique value propositions
+  - Pricing cues when relevant
 
-  ## Rubric
-  5 = highly specific, grounded, and relevant throughout.
-  4 = mostly specific with a little generic filler.
-  3 = mixed; some sections are useful while important parts stay generic.
-  2 = largely generic with only limited business detail.
-  1 = mostly filler content.
-  0 = essentially no meaningful business-specific content.
+  **Generic filler lacks:**
+  - Business-specific details
+  - Concrete terminology
+  - Specific audience references
+  - Differentiation points
+  - Just uses buzzwords that fit any business
 
-  In the reasoning, quote a few concrete phrases that support the score.
+  ### Scoring Formula
+
+  **Step 1: Determine requirement specificity (0-100%)**
+  - Vague: 10-30%
+  - Moderate: 40-60%
+  - Specific: 70-90%
+  - Very Specific: 90-100%
+
+  **Step 2: Determine content specificity (0-100%)**
+  - Generic filler: 0-30%
+  - Some specific elements: 40-60%
+  - Mostly specific: 70-90%
+  - Highly specific: 90-100%
+
+  **Step 3: Calculate expectation match**
+  - If content specificity ≥ requirement specificity: GOOD
+  - If content specificity < requirement specificity: GAP
+
+  **Step 4: Calculate score**
+  - Base score: content specificity percentage
+  - Bonus: +10 if exceeds requirements
+  - Penalty: -20 if significantly below requirements (>30% gap)
+
+  ## Rubric (Graduated 0-100)
+
+  **90-100** = highly specific, grounded, and relevant
+    - Content uses specific details from user input
+    - Business-specific terminology throughout
+    - Concrete outcomes and processes
+    - Exceeds or matches requirement specificity
+
+  **70-89** = mostly specific with a little generic filler
+    - Most sections use specific details
+    - Some generic phrases
+    - Matches requirement specificity well
+
+  **50-69** = mixed; some useful, important parts generic
+    - Some specific content
+    - Significant generic sections
+    - Close to requirement specificity but could improve
+
+  **30-49** = largely generic with limited business detail
+    - Mostly buzzwords and filler
+    - Few specific details despite specific user input
+    - Below requirement specificity
+
+  **10-29** = mostly filler content
+    - Almost all generic
+    - Ignores specific user details
+    - Far below requirement specificity
+
+  **0-9** = essentially no meaningful business-specific content
+    - Pure template filler
+    - No business details at all
+
+  ## Response Format
+
+  ```json
+  {
+    "score": <0-100>,
+    "summary": "Brief assessment with user requirement context",
+    "requirement_analysis": {
+      "user_specificity": <0-100>,
+      "details_provided": ["list specific details user provided"],
+      "detail_level": "vague | moderate | specific | very specific"
+    },
+    "content_analysis": {
+      "content_specificity": <0-100>,
+      "specific_elements": ["list specific content elements"],
+      "generic_elements": ["list generic filler elements"],
+      "specificity_level": "generic | somewhat specific | mostly specific | highly specific"
+    },
+    "expectation_match": {
+      "expected_specificity": <0-100>,
+      "actual_specificity": <0-100>,
+      "gap": <number>,
+      "verdict": "exceeds | matches | below expectations"
+    },
+    "specific_phrases": ["quote concrete business-specific phrases"],
+    "generic_phrases": ["quote generic filler phrases"],
+    "confidence": <0-1>
+  }
+  ```
+
+  In the reasoning, quote concrete phrases and explain how they relate to user requirement specificity.
+
 scoreConfig:
   min: 0
-  max: 5
+  max: 100

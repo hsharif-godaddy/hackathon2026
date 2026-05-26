@@ -1,37 +1,139 @@
 ---
+evaluatorId: "airo-conversion-path-clarity"
 name: conversion_path_clarity
-description: Scores whether the site offers a clear, easy next step aligned to user
-  goals.
+description: Evaluates whether the website provides a clear and accessible next step
+  aligned with user goals. Improved to distinguish presentation clarity (agent controls)
+  from functional verification (agent cannot test).
 type: llm
 scoreType: NUMERIC
 scoreName: conversion_path_clarity
 llmConfig:
-  model: gpt-4o
+  model: gpt-5.2
   temperature: 0
   maxTokens: 2000
 projectId: "8606"
-staticContext: 'Primary evidence: visible buttons, links, forms, and the business goal.
-  Judge whether a visitor can clearly identify the right next step from the final
-  site.'
+staticContext: 'Primary evidence: visible buttons, links, forms, and user-stated
+  goals from conversation. Judge whether a visitor can clearly identify the right
+  next step from visible presentation. CRITICAL: Evaluate presentation clarity (labels,
+  prominence, placement) NOT functional verification (whether clicking actually works).
+  Agent controls how CTAs are presented, cannot test if they functionally work. Use
+  screenshots for CTA placement and visual prominence; use pageContent for exact labels
+  and form counts. Judge from captured viewport and DOM only: do not require multi-step
+  funnel or post-submit states. Buttons/Links are visible labels only; judge clarity
+  from labels, prominence, and copy—never downgrade because destinations cannot be
+  inspected.'
 criteriaSchemaFile: schemas/empty-object.json
 template: |
   You are grading `conversion_path_clarity` for an Airo Builder output.
 
   Focus on the visible visitor journey from landing on the site to the intended next action.
 
-  ## Goal Context
-  {{#if scenario.business}}
-  Business: {{scenario.business.businessName}} ({{scenario.business.industry}})
+  ## CRITICAL: Presentation Clarity vs Functional Verification
+
+  ### This Evaluator Scores: PRESENTATION CLARITY
+
+  **Presentation = How CTAs are shown to visitors (agent controls this)**
+
+  Evaluate:
+  ✓ CTA labels are clear and action-oriented ("Book Now" not "Click Here")
+  ✓ CTAs are visually prominent (size, color, placement)
+  ✓ Supporting copy explains the next step
+  ✓ Single clear primary action (not competing CTAs)
+  ✓ Form fields are appropriately labeled
+  ✓ Instructions guide user toward action
+  ✓ Visual hierarchy emphasizes conversion path
+
+  Evidence: Visible button/link labels, form presence, placement in screenshots
+
+  ### This Evaluator Does NOT Score: FUNCTIONAL VERIFICATION
+
+  **Function = Whether actions actually work (agent cannot test this)**
+
+  Do NOT evaluate:
+  ✗ Whether clicking CTA actually navigates
+  ✗ Whether form submit actually processes
+  ✗ Whether booking actually creates appointment
+  ✗ Whether payment actually goes through
+  ✗ Whether email actually sends
+  ✗ Post-interaction confirmation pages
+  ✗ Multi-step flow completion
+
+  Evidence: Would require browser testing, not available to agent
+
+  ### Examples
+
+  **Example 1: Booking site - GOOD clarity**
+
+  Presentation (evaluate):
+  ✓ Large "Book Your Appointment" button above fold
+  ✓ Supporting text: "Schedule a consultation in 3 easy steps"
+  ✓ Form has clear labels: Name, Email, Phone, Preferred Date
+  ✓ Submit button says "Confirm Booking"
+
+  Score: 90+ (excellent presentation clarity)
+
+  Function (do NOT evaluate):
+  ? Does form actually send to calendar system
+  ? Does user receive confirmation email
+
+  **Example 2: E-commerce site - GOOD clarity**
+
+  Presentation (evaluate):
+  ✓ "Add to Cart" buttons on each product
+  ✓ Cart icon in navigation shows item count
+  ✓ Prominent "Checkout" button in cart
+  ✓ Clear pricing and shipping info
+
+  Score: 85-95 (good presentation clarity)
+
+  Function (do NOT evaluate):
+  ? Does Add to Cart actually update state
+  ? Does Checkout actually process payment
+
+  **Example 3: Lead gen site - POOR clarity**
+
+  Presentation (evaluate):
+  ✗ Button just says "Submit" (unclear what for)
+  ✗ Form is below fold, hard to find
+  ✗ No supporting text explaining purpose
+  ✗ Competing CTAs (Download, Contact, Subscribe)
+
+  Score: 30-49 (poor presentation clarity)
+
+  ## Agent Capability Boundaries
+
+  **Agent CAN control:**
+  - CTA wording and labels
+  - Button styling and prominence
+  - Form field labels and structure
+  - Supporting copy and instructions
+  - Visual hierarchy and placement
+
+  **Agent CANNOT control:**
+  - Whether CTAs functionally work when clicked
+  - Whether forms actually submit
+  - Whether integrations are connected
+  - Post-click behavior
+  - Backend processing
+
+  ## User request (conversation)
+  {{#if conversation.originalPrompt}}
+  Original request:
+  {{conversation.originalPrompt}}
   {{/if}}
-  {{#if scenario.goal}}
-  Primary goal: {{scenario.goal.name}}
-  Goal bullets:
-  {{#each scenario.goal.goals}}
+  {{#if conversation.userMessages}}
+  User refinements:
+  {{#each conversation.userMessages}}
   - {{this}}
   {{/each}}
   {{/if}}
 
   ## Conversion Evidence
+  **Evidence limit:** Link and button lines are extraction labels without URLs or routed targets—do not require verifiable endpoints.
+
+  Page title: {{pageContent.title}}
+  Main H1: {{pageContent.h1}}
+  Image count: {{pageContent.imageCount}}
   Buttons:
   {{#each pageContent.buttons}}
   - {{this}}
@@ -49,25 +151,130 @@ template: |
   {{pageContent.mainText}}
 
   ## Judge This
-  Score whether a real visitor can quickly identify and take the intended next step.
 
-  Consider:
-  - clarity of CTA wording
-  - prominence and placement of the next action
-  - whether supporting copy explains why or how to take the step
-  - whether the next step matches the business outcome the site is supposed to drive
+  ### Evidence boundary (visible next step presentation)
 
-  Penalize buried, ambiguous, competing, or mismatched CTAs.
+  Score whether the **Conversion Evidence** makes the intended **next action** presentation clear:
+  - CTA labels, placement, supporting copy, forms
+  - This is NOT a test of whether submit succeeds or follow-on pages appear
+  - Do not penalize solely because post-interaction states not shown
+  - Buttons/Links are **surface text** only—never penalize routing to external systems
 
-  ## Rubric
-  5 = the conversion path is obvious, well labeled, and aligned.
-  4 = clear with only minor friction.
-  3 = a next step exists but is not especially clear or prominent.
-  2 = weak, confusing, or buried conversion path.
-  1 = barely visible or clearly mismatched next step.
-  0 = no meaningful conversion path.
+  Score whether a real visitor can quickly **identify and understand** the intended next step
+  from what's VISIBLY PRESENTED.
 
-  Base the reasoning on specific visible CTAs, forms, and supporting copy.
+  ## Evaluation Criteria
+
+  **Clarity of CTA Wording (0-25 points)**
+  - 25: Action-oriented, specific, clear ("Book Free Consultation")
+  - 20: Clear but generic ("Submit", "Continue")
+  - 15: Vague but understandable ("Learn More", "Click Here")
+  - 10: Ambiguous or confusing
+  - 0: No clear CTA or unintelligible
+
+  **Visual Prominence (0-25 points)**
+  - 25: Highly prominent (large, contrasting, above fold)
+  - 20: Prominent (visible, clear hierarchy)
+  - 15: Present but not emphasized
+  - 10: Buried or low contrast
+  - 0: Invisible or hidden
+
+  **Supporting Context (0-25 points)**
+  - 25: Excellent explanation of what/why/how
+  - 20: Good context provided
+  - 15: Minimal context
+  - 10: No context, user must guess
+  - 0: Confusing or contradictory
+
+  **Conversion Path Focus (0-25 points)**
+  - 25: Single clear primary action
+  - 20: Clear primary with relevant secondary
+  - 15: Multiple options but one is emphasized
+  - 10: Competing actions, unclear priority
+  - 0: No clear path or many competing CTAs
+
+  **Total: 0-100**
+
+  ## Do NOT Penalize For
+
+  - Unverifiable routing destinations
+  - Untested form submission
+  - Unknown backend integrations
+  - Post-click behavior not shown
+  - Multi-step flow not captured
+  - Functional aspects you cannot inspect
+
+  If structure/labels suggest clear next step but function unverifiable:
+  → Score based on presentation clarity alone
+
+  ## Rubric (Graduated 0-100)
+
+  **90-100** = conversion path presentation is obvious, well labeled, and aligned
+    - Excellent CTA wording
+    - Highly prominent placement
+    - Strong supporting context
+    - Clear single focus
+
+  **70-89** = clear presentation with only minor friction
+    - Good CTA wording
+    - Prominent placement
+    - Adequate context
+    - Mostly focused
+
+  **50-69** = next step exists but presentation not especially clear
+    - Generic CTA wording
+    - Moderate prominence
+    - Minimal context
+    - Some competing elements
+
+  **30-49** = weak, confusing, or buried conversion path presentation
+    - Vague CTA wording
+    - Low prominence
+    - No context
+    - Multiple competing CTAs
+
+  **10-29** = barely visible or clearly mismatched next step presentation
+    - Unclear what to do
+    - Hidden CTAs
+    - Confusing labels
+
+  **0-9** = no meaningful conversion path presentation
+    - No clear CTA
+    - No forms or contact methods
+    - Visitor lost
+
+  ## Response Format
+
+  ```json
+  {
+    "score": <0-100>,
+    "summary": "Brief assessment of conversion path presentation clarity",
+    "scoring_breakdown": {
+      "cta_wording": <0-25>,
+      "visual_prominence": <0-25>,
+      "supporting_context": <0-25>,
+      "conversion_focus": <0-25>
+    },
+    "clarity_analysis": {
+      "primary_cta": {
+        "label": "button/link text",
+        "prominence": "high | medium | low",
+        "clarity": "excellent | good | fair | poor",
+        "context_provided": true|false
+      },
+      "competing_ctas": ["list if multiple"],
+      "form_clarity": "excellent | good | fair | poor | n/a"
+    },
+    "strengths": ["presentation strengths"],
+    "weaknesses": ["presentation weaknesses"],
+    "unverifiable_functional": ["list for transparency"],
+    "confidence": <0-1>
+  }
+  ```
+
+  Base the reasoning on specific visible CTAs, forms, supporting copy, and visual prominence.
+  Do NOT lower score for unverifiable functional aspects.
+
 scoreConfig:
   min: 0
-  max: 5
+  max: 100

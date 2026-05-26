@@ -1,31 +1,143 @@
 ---
+evaluatorId: "airo-trust-signal-coverage"
 name: trust_signal_coverage
-description: Scores how well the final site includes trust-building signals appropriate
-  to the business type.
+description: Measures presence of trust-building elements with clear distinction between
+  presence (agent controls) and functional verification (agent cannot test).
 type: llm
 scoreType: NUMERIC
 scoreName: trust_signal_coverage
 llmConfig:
-  model: gpt-4o
+  model: gpt-5.2
   temperature: 0
   maxTokens: 2000
 projectId: "8606"
-staticContext: 'Primary evidence: business context plus final website artifact. Evaluate
-  visible trust cues only. Return checklist evidence and assign a numeric score based
-  on the strength of trust-signal coverage for this business type.'
+staticContext: 'Primary evidence: the final website artifact and checklist. Evaluate
+  visible trust cues only. CRITICAL: Trust signals = PRESENCE of credibility indicators,
+  NOT functional verification of backend systems. Agent can generate contact forms,
+  display credentials, show policies - agent CANNOT test if forms actually submit
+  or verify authenticity. Return checklist evidence and numeric score based on presence
+  strength for the business type. Prefer screenshots for visible contact blocks, badges,
+  footer content; use pageContent for exact strings. Do not penalize for functional
+  verification beyond agent control. pageContent links/buttons are labels without
+  href; never treat unverifiable endpoints as missing trust cues.'
 criteriaSchemaFile: schemas/checklist-single-item.json
 template: |
   You are grading `trust_signal_coverage` for an Airo Builder output.
 
-  Judge only visible trust cues on the final site. Do not assume off-page reputation, hidden policies, or backend systems.
+  Judge only visible trust cues on the final site.
 
-  ## Business Context
-  {{#if scenario.business}}
-  Business: {{scenario.business.businessName}} ({{scenario.business.industry}})
-  Description: {{scenario.business.businessDescription}}
-  Audience: {{scenario.business.targetAudience}}
+  ## CRITICAL: Presence vs Functional Verification
+
+  ### Trust Signals = PRESENCE of credibility indicators
+
+  **This evaluation scores PRESENCE (agent controls):**
+
+  ✓ Contact form visible on page
+  ✓ Email address displayed
+  ✓ Phone number displayed
+  ✓ Physical address mentioned
+  ✓ Professional credentials shown (licenses, certifications)
+  ✓ Testimonials or reviews present
+  ✓ Privacy policy link exists
+  ✓ Terms of service link exists
+  ✓ Security badges displayed (SSL, payment processor logos)
+  ✓ Social proof elements (client logos, case studies)
+  ✓ About section with team info
+  ✓ Business hours listed
+
+  Evidence: Visible text, forms, badges, links in pageContent/screenshots
+
+  ### This evaluation does NOT score FUNCTION (agent cannot verify)
+
+  **Do NOT evaluate functional verification:**
+
+  ✗ Contact form actually submits email
+  ✗ Email address actually exists/works
+  ✗ Phone number actually rings/connects
+  ✗ Address actually is business location
+  ✗ Credentials actually are valid/verified
+  ✗ Testimonials actually are real
+  ✗ SSL certificate actually is valid
+  ✗ Payment processor actually is connected
+  ✗ Links actually route to policy pages
+
+  Evidence: Would require backend verification, not available
+
+  ### Examples
+
+  **Example 1: Service business - GOOD coverage**
+
+  Presence (evaluate):
+  ✓ Contact form with name/email/phone/message fields
+  ✓ Email: contact@business.com visible in footer
+  ✓ Phone: (555) 123-4567 in header
+  ✓ Address: "123 Main St, City, State" in footer
+  ✓ "Licensed & Insured" badge
+  ✓ 3 customer testimonials with names
+  ✓ Privacy Policy link in footer
+
+  Score: 85-95 (excellent presence)
+
+  Function (do NOT evaluate):
+  ? Does form actually send email
+  ? Is phone number active
+  ? Is business actually licensed
+
+  **Example 2: E-commerce - GOOD coverage**
+
+  Presence (evaluate):
+  ✓ Secure checkout badges (Visa, Mastercard, SSL)
+  ✓ Return policy link
+  ✓ Customer service email
+  ✓ FAQ section
+  ✓ "30-Day Money Back Guarantee" displayed
+
+  Score: 80-90 (good presence)
+
+  Function (do NOT evaluate):
+  ? Is payment processor connected
+  ? Is return policy enforceable
+
+  **Example 3: Consulting - POOR coverage**
+
+  Presence (evaluate):
+  ✗ No contact information visible
+  ✗ No credentials or certifications shown
+  ✗ No client testimonials
+  ✗ No about section
+
+  Score: 10-29 (very poor presence)
+
+  ## Agent Capability Boundaries
+
+  **Agent CAN generate/display:**
+  - Contact forms with appropriate fields
+  - Email addresses, phone numbers, addresses
+  - Credential badges and certifications
+  - Testimonial sections
+  - Policy links
+  - Security badges
+  - Social proof elements
+
+  **Agent CANNOT verify:**
+  - Forms actually submit
+  - Contact info actually works
+  - Credentials actually are valid
+  - Testimonials actually are real
+  - Policies actually are comprehensive
+  - Security actually is implemented
+
+  ## User request (conversation)
+  {{#if conversation.originalPrompt}}
+  Original request:
+  {{conversation.originalPrompt}}
   {{/if}}
-  Customer summary: {{scenario.customerSummary}}
+  {{#if conversation.userMessages}}
+  User refinements:
+  {{#each conversation.userMessages}}
+  - {{this}}
+  {{/each}}
+  {{/if}}
 
   ## Final Site Evidence
   Page title: {{pageContent.title}}
@@ -42,8 +154,16 @@ template: |
   {{#each pageContent.buttons}}
   - {{this}}
   {{/each}}
+  Form count: {{pageContent.formCount}}
   Main text:
   {{pageContent.mainText}}
+
+  ### Evidence boundary (presence checks only)
+
+  - Score trust cues that **appear** in Final Site Evidence
+  - Do not mark gap solely because you cannot verify backend functionality
+  - Interaction-dependent disclosure not automatically a failure
+  - Contact/policy **links** are anchor text only; do not penalize unverifiable destinations
 
   ## Checklist
   Evaluate each trust-signal item as pass/fail with brief visible evidence.
@@ -51,18 +171,133 @@ template: |
   - {{id}}: {{description}}
   {{/each}}
 
-  ## Judge This
-  Trust signals should be appropriate for the business type. Examples may include real contact paths, service area/location, pricing cues, testimonials or social proof, professionalism cues, credentials, process clarity, or policies when relevant.
+  ## Checklist Interpretation
 
-  Set the numeric score from 0 to 5 using the checklist and overall importance of the missing items:
-  - 5 = trust coverage is strong and all important items pass
-  - 4 = mostly strong with only minor trust gaps
-  - 3 = mixed; enough trust to proceed, but notable gaps remain
-  - 2 = weak trust coverage with several important omissions
-  - 1 = very little visible basis for trust
-  - 0 = trust signals are essentially absent
+  For each checklist item, interpret as PRESENCE check:
+
+  **"Contact information visible" →** Check for visible email/phone/address/form
+  - Pass: Email, phone, or contact form visible
+  - Fail: No contact method visible
+  - Do NOT require: Verified working email/phone
+
+  **"Professional credentials shown" →** Check for visible licenses/certs/badges
+  - Pass: Credentials, licenses, certifications displayed
+  - Fail: No professional credentials visible
+  - Do NOT require: Verified valid credentials
+
+  **"Privacy policy present" →** Check for visible policy link or section
+  - Pass: Privacy policy link or section visible
+  - Fail: No policy mentioned
+  - Do NOT require: Comprehensive policy content verification
+
+  **"Payment security indicated" →** Check for visible security badges/mentions
+  - Pass: SSL badge, payment logos, security mentions visible
+  - Fail: No security indicators visible
+  - Do NOT require: Verified SSL certificate or payment connection
+
+  **"Testimonials or reviews" →** Check for visible testimonial content
+  - Pass: Testimonials, reviews, case studies visible
+  - Fail: No social proof visible
+  - Do NOT require: Verified real testimonials
+
+  ## Judge This
+
+  Trust signals should be appropriate for the business type.
+
+  **Evaluate PRESENCE of:**
+  - Real contact paths (form, email, phone)
+  - Service area/location
+  - Pricing cues
+  - Testimonials or social proof
+  - Professional credentials
+  - Process clarity
+  - Policies where relevant
+
+  **Do NOT evaluate FUNCTION of:**
+  - Whether contact methods actually work
+  - Whether credentials are valid
+  - Whether testimonials are real
+  - Whether policies are comprehensive
+  - Whether security is implemented
+
+  Set the numeric score from 0 through 100 using the checklist and overall importance.
+
+  ## Rubric (Graduated 0-100)
+
+  **90-100** = trust presence coverage is strong
+    - All important trust indicators visible
+    - Comprehensive contact options
+    - Strong professional signals
+    - Clear policies and security mentions
+
+  **70-89** = mostly strong trust presence
+    - Most important indicators visible
+    - Good contact coverage
+    - Some professional signals
+    - Basic policies present
+
+  **50-69** = mixed presence
+    - Enough trust indicators to proceed
+    - Basic contact present
+    - Some professional signals
+    - Notable gaps remain
+
+  **30-49** = weak trust presence
+    - Several important indicators missing
+    - Limited contact options
+    - Few professional signals
+    - Major presence gaps
+
+  **10-29** = very little visible trust basis
+    - Most trust indicators absent
+    - Minimal contact info
+    - No professional signals
+    - Critical presence gaps
+
+  **0-9** = trust signals essentially absent
+    - No contact information
+    - No professional indicators
+    - No policies or security mentions
+    - Cannot establish credibility from visible elements
 
   Weight business-critical trust items more heavily than nice-to-have polish.
+
+  ## Mandatory `checklist` row contract
+
+  The `checklist` array drives automated aggregation: every element **must** include:
+  - `id`: the criterion **`id` copied verbatim** from the checklist block below (required string; never omit)
+  - `pass`: boolean — trust presence verdict for that row (**must be named `pass`, not `passed`**)
+  - `evidence`: short string citing visible cues from the site or screenshots
+
+  Emit **exactly** one checklist object per enumerated criterion (**{{criteria.checklist.length}}** rows). Keep the detailed trust breakdown in **`trust_signal_analysis`** and narrative fields below; **do not** replace `pass`/`id`/`evidence` with synonyms.
+
+  ## Response Format
+
+  ```json
+  {
+    "score": <0-100>,
+    "summary": "Brief trust presence assessment",
+    "checklist": [
+      {
+        "id": "exact_criterion_id_from_config",
+        "pass": true,
+        "evidence": "Visible cue that supports pass/fail"
+      }
+    ],
+    "trust_signal_analysis": {
+      "contact_methods": ["list visible methods"],
+      "professional_signals": ["list visible credentials/badges"],
+      "social_proof": ["list visible testimonials/reviews"],
+      "policies": ["list visible policy links"],
+      "security_indicators": ["list visible security badges"]
+    },
+    "presence_strengths": ["strong trust presence elements"],
+    "presence_gaps": ["missing trust indicators"],
+    "unverifiable_functional": ["list for transparency"],
+    "confidence": <0-1>
+  }
+  ```
+
 scoreConfig:
   min: 0
-  max: 5
+  max: 100

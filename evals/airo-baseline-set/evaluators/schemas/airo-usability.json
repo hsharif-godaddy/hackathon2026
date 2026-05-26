@@ -1,0 +1,28 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["heuristics"],
+  "properties": {
+    "heuristics": {
+      "type": "array",
+      "description": "Nielsen's 10 Usability Heuristics",
+      "items": {
+        "type": "object",
+        "required": ["number", "name", "description"],
+        "properties": {
+          "number": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

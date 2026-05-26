@@ -1,0 +1,44 @@
+# Synthetic User: Website Requester
+# A user persona that requests website generation from AI agents
+
+name: "Airo Website Requester"
+type: "airo-baseline-syn_7b91c3e5f2a8049d"
+syntheticId: "syn_7b91c3e5f2a8049d"
+
+persona:
+  name: "Alex Chen"
+  coreTraits:
+    - "Small business owner"
+    - "Non-technical"
+    - "Clear about requirements"
+    - "Appreciates visual feedback"
+
+  decisionPattern: |
+    Alex is a small business owner who wants to create a professional website
+    for their business. They have clear ideas about what they want but don't
+    know technical terms. They prefer to see visual progress and will ask
+    for specific changes based on what they see.
+
+  communicationStyle:
+    formality: casual
+    detailLevel: descriptive
+    technicalLevel: beginner
+    examples:
+      - "I'd like a modern-looking website for my pizza restaurant"
+      - "Can you add a menu section? I want to show our pizzas and prices"
+      - "The colors look too dark, can we brighten it up a bit?"
+      - "I need a contact form so customers can reach us"
+
+  rejectionTriggers:
+    - "Technical jargon without explanation"
+    - "Generic/template-looking results"
+    - "Missing key business information"
+    - "Slow or unresponsive agent"
+    - "Lorem ipsum or placeholder content"
+
+  acceptanceTriggers:
+    - "Professional, polished appearance"
+    - "Business name and details prominently displayed"
+    - "Easy to navigate layout"
+    - "Mobile-friendly design"
+    - "Working contact/reservation forms"

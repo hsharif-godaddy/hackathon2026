@@ -1,7 +1,8 @@
 ---
-evaluatorId: system-performance
-name: Performance Evaluator
-description: Deterministic web performance checks over the generated preview.
+evaluatorId: "airo-system-performance"
+name: "Airo Performance Evaluator"
+description: Deterministic web performance metrics on the Playwright-loaded preview
+  (same rendered page as DOM extraction and screenshots).
 type: system
 systemCategory: performance
 scoreType: NUMERIC
@@ -9,4 +10,4 @@ scoreName: performance_score
 scoreConfig:
   min: 0
   max: 100
-projectId: airo-builder-regression
+projectId: "8606"

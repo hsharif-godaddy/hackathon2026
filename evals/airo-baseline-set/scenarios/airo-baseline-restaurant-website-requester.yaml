@@ -1,0 +1,180 @@
+---
+key: "airo-baseline-syn_7b91c3e5f2a8049d"
+name: "Restaurant Website — Joe's Pizza (Food & Hospitality)"
+syntheticUserName: "Airo Website Requester"
+business:
+  industry: "Food & Hospitality"
+  businessName: "Joe's Pizza"
+  businessDescription: "Joe's Pizza is a family-owned Italian pizzeria that has been serving
+
+    the local community for 25 years. Known for authentic New York-style
+
+    pizza and homemade pasta dishes.\n"
+  targetAudience: "Local families and pizza lovers"
+  brandPersonality:
+    - "friendly"
+    - "family-owned"
+    - "authentic"
+  colorPreferences:
+    - "tomato-red"
+    - "cream"
+    - "olive-green"
+  stylePreferences:
+    - "casual"
+    - "appetizing"
+    - "mobile-first"
+goal:
+  name: "Generate Restaurant Website"
+  goals:
+    - "Request a professional restaurant website"
+    - "Include menu with prices"
+    - "Add contact information and location"
+    - "Include online ordering or reservation capability"
+    - "Ensure mobile-friendly design"
+customerSummary: "A small business owner wanting to create a professional website for their
+
+  pizza restaurant. They want customers to see the menu, find the location,
+
+  and be able to place orders or make reservations.\n"
+trials: 1
+maxTurns: 45
+llmConfig:
+  model: "gpt-4.1"
+  temperature: 0.75
+  maxTokens: 32000
+browserConfig:
+  browserAuth:
+    type: "form"
+    credentialsSecretId: "goarena/airo/login04"
+    loginUrl: "https://sso.test-godaddy.com"
+    usernameSelector: "#username"
+    passwordSelector: "#password"
+    submitSelector: "#submitBtn"
+  requiresPerTurnScreenshots: true
+  qualityEval:
+    enabled: true
+    siteType: "restaurant"
+    wcagLevel: "AA"
+    thresholds:
+      minOverallScore: 70
+      minAccessibility: 75
+evaluators:
+  - evaluatorName: "Airo Functional Evaluator"
+    weight: 3
+    criteria:
+      checkLinks: true
+      checkImages: true
+      checkConsoleErrors: true
+  - evaluatorName: "Airo Accessibility Evaluator"
+    weight: 3
+    criteria:
+      wcagLevel: "AA"
+  - evaluatorName: "Airo SEO Evaluator"
+    weight: 3
+    criteria:
+      checkOpenGraph: true
+      checkTwitterCards: true
+  - evaluatorName: "Airo Performance Evaluator"
+    weight: 3
+    criteria:
+      timeout: 30000
+  - evaluatorName: "Airo Security Evaluator"
+    weight: 3
+    criteria:
+      requireHttps: true
+      checkHeaders: true
+  - evaluatorName: "intent_resolution_status"
+    weight: 22
+    criteria: {}
+  - evaluatorName: "intent_to_output_alignment"
+    weight: 4
+    criteria: {}
+  - evaluatorName: "implicit_feature_gap"
+    weight: 3
+    criteria:
+      checklist:
+        - id: "booking_or_appointment_path_present"
+          description: "Is there a visible booking, appointment request, or trial-signup path that reasonably supports the use case?"
+        - id: "visual_showcase_present"
+          description: "Does the site include a meaningful visual showcase such as a gallery, photos, portfolio, or product imagery when the use case clearly calls for it?"
+        - id: "core_catalog_or_service_information_present"
+          description: "Does the site surface the core catalog, menu, service, listing, room, course, or equivalent business information that visitors would expect to browse?"
+  - evaluatorName: "trust_signal_coverage"
+    weight: 3
+    criteria:
+      checklist:
+        - id: "contact_information_present"
+          description: "Does the site include clear contact information or a clearly reachable inquiry/contact path for the business?"
+        - id: "location_or_service_area_present"
+          description: "Does the site make location, directions, service area, or other real-world operating context easy to find when that matters for trust?"
+        - id: "credibility_signals_present"
+          description: "Does the site include credibility signals such as testimonials, reviews, credentials, bios, insurance/policy details, or similar trust-building content appropriate to the business?"
+        - id: "core_information_visible"
+          description: "Is key decision-making information visible and easy to find, such as pricing, services, room/course details, schedule, hours, policies, or equivalent core business information?"
+  - evaluatorName: "scope_drift_overgeneration"
+    weight: 3
+    criteria: {}
+  - evaluatorName: "visual_task_completion_status"
+    weight: 22
+    criteria:
+      checklist:
+        - id: "requested_outcome_visible"
+          description: "Is the primary intended outcome clearly supported by the site (for example, booking, inquiry, quote request, signup, or portfolio contact) with visible evidence?"
+        - id: "primary_cta_present"
+          description: "Is there a clear primary CTA aligned to the intended outcome, and is it easy to find?"
+        - id: "conversion_path_functional"
+          description: "Does the CTA lead to a usable next step (form/contact method/booking path) rather than a dead-end or purely informational promise?"
+        - id: "core_offering_clear"
+          description: "Is the core offering/service clearly described so a visitor understands what to do and what they get?"
+        - id: "relevant_content_present"
+          description: "Does the content include enough relevant details for this use case (e.g., services, portfolio/gallery cues, process, packages, or availability) to proceed?"
+        - id: "trust_basics_present"
+          description: "Are basic trust signals present (contact path, about/credibility cues, policies, or other signals appropriate to the business)?"
+        - id: "navigation_or_wayfinding_clear"
+          description: "Is navigation or wayfinding sufficient for the visitor to find key info and the next step without confusion?"
+        - id: "no_major_mismatch"
+          description: "Is the output aligned to the intended visitor journey without major mismatches (wrong site type, wrong workflow, or contradictory messaging)?"
+        - id: "contact_or_followup_path_present"
+          description: "Is there a clear way to follow up (contact form/email/phone/social link) appropriate to the outcome?"
+        - id: "no_unresolved_blocker"
+          description: "Is there no major blocker preventing the user from completing the intended task (missing CTA, missing contact method, broken flow, or missing critical information)?"
+  - evaluatorName: "conversion_path_clarity"
+    weight: 3
+    criteria: {}
+  - evaluatorName: "content_specificity"
+    weight: 3
+    criteria: {}
+  - evaluatorName: "conversation_to_artifact_consistency"
+    weight: 3
+    criteria: {}
+  - evaluatorName: "silent_hallucination"
+    weight: 3
+    criteria: {}
+  - evaluatorName: "ambiguity_handling_quality"
+    weight: 3
+    criteria: {}
+  - evaluatorName: "flow_efficiency"
+    weight: 3
+    criteria: {}
+  - evaluatorName: "structural_coherence"
+    weight: 2
+    criteria: {}
+  - evaluatorName: "visual_layout_sanity"
+    weight: 2
+    criteria: {}
+  - evaluatorName: "hero_section_presence"
+    weight: 2
+    criteria: {}
+  - evaluatorName: "navigation_presence"
+    weight: 2
+    criteria: {}
+  - evaluatorName: "primary_cta_presence"
+    weight: 2
+    criteria: {}
+suite: "airo-baseline"
+syntheticUserId: "syn_7b91c3e5f2a8049d"
+agentName: "airo-builder"
+testingCapability: "Complexity: hard | Primary intent: restaurant website + menu + contact or ordering path | Skill under test: SMB site generation, conversions | Scenario cluster: Goarena restaurant | Expected: menu/pricing, location/hours, contact or ordering/reservations"
+complexity: "hard"
+executionMode: "sequential"
+category: "capability"

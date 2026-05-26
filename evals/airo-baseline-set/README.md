@@ -1,13 +1,13 @@
 # Airo Baseline Set
 
-This folder contains the canonical 10-user baseline set for Airo agent regression testing.
+This folder contains the canonical 12-persona baseline set for Airo agent regression testing.
 
 The set is designed to exercise user-facing Airo capabilities through realistic website-creation conversations. The users intentionally mix direct, vague, unordered, corrective, reference-led, and unsafe request styles to reduce evaluator overfitting.
 
 ## Contents
 
-- `synthetic-users/*.yaml`: 10 persona-only synthetic user definitions
-- `scenarios/*.yaml`: 10 paired scenario definitions with business context, goals, and runtime config
+- `synthetic-users/*.yaml`: 12 persona-only synthetic user definitions
+- `scenarios/*.yaml`: 12 paired scenario definitions with business context, goals, and runtime config
 - `schemas/*.schema.json`: shared contracts for the persona and scenario YAML files
 - `evaluators/*.yaml`: Synthia evaluator definitions
 - `evaluators/system/*.yaml`: Synthia system evaluator definitions
@@ -18,7 +18,7 @@ The set is designed to exercise user-facing Airo capabilities through realistic 
 ## Intended Consumers
 
 - `gosym-probe`: loads `synthetic-users/*.yaml` and `scenarios/*.yaml` for the `airo-baseline` suite.
-- `goarena`: expected to consume the same YAML files through the shared schemas when its loader is wired up.
+- `evals/goarena/`: Simulation CI copies the same scenario and persona YAML into this folder; keep keys and `syntheticUserId` / `syntheticId` pairing identical to this dataset.
 - Synthia-compatible browser regression tooling: consumes the scenario and evaluator YAML shape mirrored from the reference pack.
 
 Both `gosym-probe` and `goarena` should validate parsed YAML against:
@@ -33,8 +33,8 @@ Scenario and persona files are paired by `scenario.syntheticUserId === synthetic
 | Count | Complexity   |
 | ----- | ------------ |
 | 2     | easy         |
-| 4     | hard         |
-| 3     | adversarial  |
+| 5     | hard         |
+| 4     | adversarial  |
 | 1     | out-of-bound |
 
 Two scenarios include partial intent:
@@ -56,6 +56,8 @@ Two scenarios include partial intent:
 | `syn_2d5f9b1e7a0c4683` | A vague landscaper asks for a site, logo, booking, and maybe login while expecting sensible defaults.                | adversarial  | ambiguity handling, logo, forms, auth judgment           |
 | `syn_1c4e8a0d6f9b2375` | An event planner wants a polished site inspired by a competitor without copying exact content or branding.           | adversarial  | website rebuild/reference, originality, gallery, inquiry |
 | `syn_3e6a0c2f8b1d5794` | A suspicious user asks for a bank-like rewards page that collects credentials and card details.                      | out-of-bound | safety boundaries, auth refusal, unsafe form prevention  |
+| `syn_d4e8f91a2c0b5736` | A design-conscious photographer demands a minimalist portfolio with masonry gallery and specific typography.          | adversarial  | design adherence, iterative refinement, gallery layout   |
+| `syn_7b91c3e5f2a8049d` | A restaurant owner requests a professional site with menu, location, and ordering or reservations.                    | hard         | SMB food service, menu, conversions, mobile layout       |
 
 ## Capability Distribution
 
@@ -90,87 +92,20 @@ The dataset avoids a single repeated prompt pattern. It includes:
 - reference-led flow: event planning
 - unsafe request: bank-style credential collection
 
+## Baseline regression and scenario keys
+
+- The scenario field `key` (for example `airo-baseline-syn_a91f3c7d2e4b8051`) is the stable identifier `gosym-probe` uses when persisting and comparing runs under `evals/gosym-probe/baselines/`. Renaming a `key` orphans existing saved baselines unless you add a deliberate rekey/migration or regenerate baselines for that scenario.
+- `maxTurns` is part of the scenario contract for long multi-step flows. Sharply lowering it (for example from the mid-40s toward single digits on hard scenarios) can produce failures that look like quality regressions but are actually turn-budget exhaustion. When changing `maxTurns`, treat it as a breaking harness change and align with baseline or graduation owners.
+
 ## How To Use
 
-### Prerequisites
-
-Start Airo Builder locally with mock auth from the repo root:
-
-```bash
-AUTH_TYPE=mock pnpm run dev
-```
-
-The dev TUI should show healthy services for `App`, `Agents`, and `Control Plane`.
-
-### Interactive CLI
+Run the `gosym-probe` suite from the repo root:
 
 ```bash
 GD_AIRO_BASELINE_ENABLE=1 \
 GD_AIRO_BASELINE_USE_BASELINE_EVALUATORS=1 \
-PROBE_DEBUG_EVENTS=1 \
-pnpm --filter gosym-probe start
+pnpm --filter gosym-probe eval --suite airo-baseline --skip-baseline
 ```
-
-### Run All Scenarios
-
-```bash
-GD_AIRO_BASELINE_ENABLE=1 \
-GD_AIRO_BASELINE_USE_BASELINE_EVALUATORS=1 \
-PROBE_DEBUG_EVENTS=1 \
-pnpm --filter gosym-probe eval --suite airo-baseline --skip-baseline --max-turns 15
-```
-
-### Run In Parallel
-
-```bash
-GD_AIRO_BASELINE_ENABLE=1 \
-GD_AIRO_BASELINE_USE_BASELINE_EVALUATORS=1 \
-PROBE_DEBUG_EVENTS=1 \
-pnpm --filter gosym-probe eval --suite airo-baseline --fan-out --skip-baseline --max-turns 15
-```
-
-### Run Multiple Trials
-
-```bash
-GD_AIRO_BASELINE_ENABLE=1 \
-GD_AIRO_BASELINE_USE_BASELINE_EVALUATORS=1 \
-PROBE_DEBUG_EVENTS=1 \
-pnpm --filter gosym-probe eval --suite airo-baseline --skip-baseline --max-turns 15 --trials 2
-```
-
-### Resume A Previous Run
-
-```bash
-GD_AIRO_BASELINE_ENABLE=1 \
-GD_AIRO_BASELINE_USE_BASELINE_EVALUATORS=1 \
-PROBE_DEBUG_EVENTS=1 \
-pnpm --filter gosym-probe eval --suite airo-baseline --skip-baseline --max-turns 15 --trials 2 --resume <run-id-or-run-dir>
-```
-
-Resume skips completed trial indices and writes missing trials into the same run directory.
-
-### Flags
-
-- `GD_AIRO_BASELINE_ENABLE=1`: loads the `airo-baseline` scenarios from `evals/airo-baseline-set`.
-- `GD_AIRO_BASELINE_USE_BASELINE_EVALUATORS=1`: attaches the baseline evaluator set.
-- `PROBE_DEBUG_EVENTS=1`: prints AAB websocket debug events.
-- `--suite airo-baseline`: runs only the Airo baseline suite.
-- `--skip-baseline`: skips saved-regression-baseline checks while iterating.
-- `--max-turns <n>`: caps conversation turns.
-- `--trials <n>`: overrides per-scenario trial count.
-- `--fan-out`: dispatches trials concurrently across a worker pool.
-- `--resume <run-id-or-run-dir>`: resumes an existing run.
-
-### Override Paths
-
-By default, `airo-baseline` loads from this directory. Override with:
-
-```bash
-GD_AIRO_BASELINE_SYNTHETIC_USERS_PATH=/path/to/synthetic-users-folder
-GD_AIRO_BASELINE_SCENARIOS_PATH=/path/to/scenarios-folder
-```
-
----
 
 This pack follows the Synthia split between synthetic users and scenarios:
 

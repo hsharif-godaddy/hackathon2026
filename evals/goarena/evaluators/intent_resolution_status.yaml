@@ -1,0 +1,278 @@
+---
+evaluatorId: "airo-intent-resolution-status"
+name: intent_resolution_status
+description: Measures how accurately the agent inferred the user's true intent from
+  conversation, with CRITICAL capability validation to prevent misguided intent classification.
+  This is the fix for the core "misguided intent" problem.
+type: llm
+scoreType: NUMERIC
+scoreName: intent_resolution_status
+llmConfig:
+  model: gpt-5.2
+  temperature: 0
+  maxTokens: 2500
+projectId: "8606"
+staticContext: 'Primary evidence: conversation transcript and tool-call sequence.
+  This is the main intent-resolution evaluator. Return graduated score (0-100) based
+  on accuracy of intent inference across the session. Use the App Builder intent taxonomy
+  when reasoning: Create, Continue, Troubleshoot, Grow, Explore. CRITICAL: Before
+  assigning intent, VALIDATE it matches agent capabilities. Do NOT expect agent to
+  navigate preview, take screenshots, control browser, or test interactions. If user
+  asks for these, correct intent is Troubleshoot → User Support (guide user) or Continue
+  (verify via code). Tool calls are execution truth: prefer their names, args, and
+  outcomes over assistant prose. MISGUIDED INTENTS THAT EXPECT IMPOSSIBLE CAPABILITIES
+  SCORE AS EVALUATOR ERROR, NOT AGENT FAILURE.'
+criteriaSchemaFile: schemas/empty-object.json
+template: |
+  You are grading `intent_resolution_status` for an Airo Builder session.
+
+  Use only the conversation and tool-call evidence below. Do not reward or penalize the final website here except as a minor confirmation signal.
+
+  Your job is to determine whether the agent correctly resolved the user's underlying
+  job-to-be-done and active sub-intent with enough nuance to steer the right build behavior.
+
+  ## CRITICAL: Intent Capability Validation Pre-Check
+
+  **BEFORE assigning or judging intent, validate it matches agent capabilities.**
+
+  ### Agent Capabilities Reference
+
+  **Agent CAN:**
+  - Generate and edit code (readFile, str_replace_based_edit_tool, directoryListing)
+  - Provide clear navigation instructions to user
+  - Diagnose code issues via file reading
+  - Use 30+ available tools (git, server management, publishing, database, etc.)
+  - Verify code structure exists via file inspection
+  - Offer guidance on how user can test/navigate
+
+  **Agent CANNOT:**
+  - Navigate preview browser or any iframe
+  - Take screenshots or capture visual artifacts
+  - Click buttons or test interactions
+  - Control browser state or behavior
+  - "Show" anything visual to user
+  - Verify appearance without screenshots
+  - Test functionality without browser automation
+
+  ### Intent Validation Questions (ASK THESE FIRST)
+
+  Before judging agent's intent resolution, ask:
+
+  □ **Does the stated/expected intent require browser navigation?**
+     - If YES → Intent is MISGUIDED unless reframed as guidance/code generation
+     - Example: ❌ "Verify flow in preview" vs ✅ "Generate code for flow"
+
+  □ **Does the stated/expected intent require taking screenshots?**
+     - If YES → Intent is MISGUIDED unless reframed as code verification
+     - Example: ❌ "Show screenshots of pages" vs ✅ "Verify page code exists"
+
+  □ **Is user signaling a functional blocker?**
+     - Keywords: "can't get X to work", "won't navigate", "doesn't switch", "broken"
+     - If YES → Primary intent should be Troubleshoot, NOT Create/Continue
+     - Example: "preview won't switch pages" = Troubleshoot → User Support
+
+  □ **Is the expected outcome physically possible for agent?**
+     - If NO → Intent classification itself is MISGUIDED
+     - Score should reflect evaluator error, not agent failure
+
+  ### Misguided Intent Patterns (DO NOT BLAME AGENT)
+
+  These intent classifications are EVALUATOR ERRORS:
+
+  ❌ **Misguided:** "Continue → Verify flow in preview"
+     - Agent cannot navigate preview
+     - When agent says "I can't navigate", that's HONESTY not failure
+
+  ✅ **Correct:** "Troubleshoot → User Support: Help user navigate preview"
+     - Agent provides guidance for user to navigate
+     - Agent verifies code via readFile
+
+  ❌ **Misguided:** "Create → Show screenshots of pages"
+     - Agent cannot take screenshots
+     - When agent says "I don't have screenshot capability", that's TRUTH
+
+  ✅ **Correct:** "Continue → Generate page code and describe structure"
+     - Agent generates code for pages
+     - Agent explains structure via code reading
+
+  ❌ **Misguided:** "Continue → Make preview switch pages"
+     - Agent cannot control browser
+     - When agent provides instructions instead, that's APPROPRIATE
+
+  ✅ **Correct:** "Troubleshoot → Diagnose navigation issue"
+     - Agent checks routing code via readFile
+     - Agent suggests fixes if code issue found
+
+  ### If You Detect Misguided Intent Classification
+
+  If the "expected" intent requires capabilities agent doesn't have:
+
+  1. **Identify the true appropriate intent** (what agent SHOULD do)
+  2. **Check if agent recognized the appropriate intent**
+  3. **Score based on agent recognizing appropriate intent**
+  4. **Note in response that original expectation was misguided**
+  5. **Do NOT penalize agent for being honest about limitations**
+
+  Example:
+  ```
+  Expected intent (misguided): "Continue → Verify store flow in preview"
+  True intent (correct): "Troubleshoot → Help user navigate + verify code"
+  Agent understanding: "I cannot navigate, but I can verify code and guide you"
+  Score: HIGH (agent correctly understood its actual capability-appropriate intent)
+  Note: "Original expectation was misguided - agent cannot navigate preview"
+  ```
+
+  ## Conversation Evidence
+  {{#if conversation.originalPrompt}}
+  Original request:
+  {{conversation.originalPrompt}}
+  {{/if}}
+  {{#if conversation.userMessages}}
+  User refinements:
+  {{#each conversation.userMessages}}
+  - {{this}}
+  {{/each}}
+  {{/if}}
+  {{#if conversation.messages}}
+  Transcript:
+  {{#each conversation.messages}}
+  TURN {{turn}} {{uppercase role}}: {{content}}
+  {{#if toolCalls}}
+  Tool calls made on this turn:
+  {{#each toolCalls}}
+  - {{name}}{{#if args}} args={{args}}{{/if}}
+  {{/each}}
+  {{/if}}
+  {{#if toolInvocations}}
+  Tool invocations with outcomes:
+  {{#each toolInvocations}}
+  - `{{name}}`: {{outcome}}{{#if (eq outcome "SUCCESS")}} ✓{{/if}}{{#if (eq outcome "FAILURE")}} ✗{{/if}}
+  {{/each}}
+  {{/if}}
+  {{/each}}
+  {{/if}}
+
+  ## Judge This
+  Decide how accurately the agent resolved the user's real intent.
+
+  Use the App Builder taxonomy explicitly when reasoning. Internally identify the
+  best-fit primary intent and sub-intent that matches AGENT CAPABILITIES, then judge
+  whether the agent recognized that same intent.
+
+  Taxonomy families and sub-intents:
+  - Create
+    - Website Creation: starting a new site, first-time builder flow, project initiation
+    - Content Generation: creating copy, blogs, policies, SEO-oriented content
+    - Visual Design: imagery, logo, color palette, visual styling
+  - Continue
+    - Iterative Refinement: make this change, apply updates, repeated edits
+    - Resume Editing: continue an existing project, reopen draft, go back to my site
+    - Workflow Progression: move to next step, recommendations, guided progression
+  - Troubleshoot
+    - System Errors: technical malfunction, timeout, broken feature
+    - User Support: how-to questions, feature guidance, help requests, "show me how to X"
+    - Context Issues: misunderstanding, clarification, "that's not what I meant"
+  - Grow
+    - Marketing Enhancement: promotion, marketing content, acquisition-oriented asks
+    - Business Development: strategy, growth advice, business guidance
+    - Technical Integration: domain, hosting, payments, connecting external tools
+  - Explore
+    - Feature Discovery: what can this do, what features are available
+    - Template Browsing: examples, designs, styles, templates
+    - Process Understanding: how does this work, what are the steps
+
+  ## Scoring Rubric (Graduated 0-100)
+
+  **90-100: Excellent Intent Resolution**
+  - Captured real business/use case
+  - Correctly identified capability-appropriate intent
+  - Recognized all major implied needs
+  - Updated understanding after refinements
+  - **Recognized when user asked for impossible things and reframed appropriately**
+  - **Did NOT attempt to do things outside capabilities**
+
+  **75-89: Good Intent Resolution**
+  - Generally understood request correctly
+  - Intent mostly matches capabilities
+  - Caught most implied needs
+  - Responded appropriately to corrections
+  - Minor capability boundary confusion
+
+  **60-74: Fair Intent Resolution**
+  - Core intent understood but nuances missed
+  - Some capability boundary confusion
+  - Missed some implied needs
+  - Slow to adapt
+
+  **40-59: Poor Intent Resolution**
+  - Wrong intent for agent capabilities
+  - Significant capability confusion
+  - Missed major requirements
+  - **Attempted impossible tasks instead of reframing**
+
+  **20-39: Very Poor Intent Resolution**
+  - Fundamental misunderstanding
+  - Tried to do impossible things
+  - Ignored corrections
+  - **Claimed capabilities it doesn't have**
+
+  **0-19: Failed / Misguided Evaluation**
+  - **EVALUATOR assigned impossible intent expectations**
+  - **Agent correctly identified limitations but evaluator expected impossible things**
+  - Use this score when the EVALUATION ITSELF is misguided
+
+  ## Critical: Honesty About Limitations is GOOD
+
+  If agent says:
+  - "I cannot navigate the preview" → This is HONEST ✓
+  - "I don't have screenshot capability" → This is TRUTHFUL ✓
+  - "I can verify code but cannot test it" → This is APPROPRIATE ✓
+  - "I can provide instructions for you to navigate" → This is HELPFUL ✓
+
+  These are NOT failures. These are correct capability awareness.
+
+  ## Response Format
+
+  ```json
+  {
+    "score": <0-100>,
+    "summary": "Brief explanation with capability validation note",
+    "intentAnalysis": {
+      "capabilityValidation": {
+        "originalExpectationMisguided": true|false,
+        "requiresImpossibleCapabilities": ["list if misguided"],
+        "appropriateIntent": "what agent SHOULD do given capabilities"
+      },
+      "trueIntent": {
+        "primary": "Create|Continue|Troubleshoot|Grow|Explore",
+        "subIntent": "specific sub-intent matching capabilities",
+        "reasoning": "Why this is the capability-appropriate intent"
+      },
+      "agentIntent": {
+        "primary": "what agent understood",
+        "subIntent": "what agent understood",
+        "reasoning": "Evidence of agent's understanding"
+      },
+      "matched": true|false,
+      "capabilityAwareness": "excellent | good | fair | poor | very poor"
+    },
+    "keyMoments": [
+      {
+        "turn": <number>,
+        "type": "strength|weakness|honest_limitation",
+        "description": "What happened",
+        "capabilityNote": "If relevant, note capability boundary"
+      }
+    ],
+    "evaluationNote": "If original intent expectation was misguided, explain here",
+    "confidence": <0-1>
+  }
+  ```
+
+  **CRITICAL:** If you detect the intent expectation was misguided (requires impossible capabilities),
+  clearly state this in `evaluationNote` and `capabilityValidation`, and do NOT penalize agent
+  for being honest about its limitations.
+
+scoreConfig:
+  min: 0
+  max: 100

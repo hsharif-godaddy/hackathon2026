@@ -1,6 +1,7 @@
 # Business Fit Evaluator
 # LLM-based evaluator for assessing site-type-specific requirements
 # Uses extracted page content to verify business-specific elements are present
+# pageContent is DOM-extracted from the Playwright preview; pair with screenshots when available for layout-sensitive fit (e.g., menu vs single-page).
 
 evaluatorId: "airo-business-fit"
 name: "Airo Business Fit Evaluator"
@@ -18,12 +19,16 @@ scoreConfig:
 
 # LLM configuration
 llmConfig:
-  model: "gpt-4o"
+  model: "gpt-5.2"
   temperature: 0
   maxTokens: 2000
 
 # Project ID (set when uploading to Synthia)
 projectId: "8606"
+
+staticContext: 'Judge required and optional elements from visible artifact text and screenshots only.
+  pageContent Buttons and Links are anchor/control labels without href; treat presence of a plausible labeled
+  affordance as satisfying flow targets (pay, book, contact) unless visible copy contradicts—never require Stripe or other URLs in extraction.'
 
 # Handlebars template for LLM prompt
 # Uses extracted page content to verify presence of business elements
@@ -37,8 +42,6 @@ projectId: "8606"
 #   - pageContent.formCount: Number of forms on page
 #   - pageContent.imageCount: Number of images on page
 #   - previewUrl: URL of the generated website
-#   - scenario.business: Business context
-#   - scenario.goal: Goal information
 #   - conversation.originalPrompt: First user message (original request)
 #   - conversation.userMessages: All user messages (requirements)
 template: |
@@ -61,14 +64,6 @@ template: |
   {{/if}}
   {{/if}}
 
-  ## Business Context
-  {{#if scenario.business}}
-  Business Name: {{scenario.business.businessName}}
-  Industry: {{scenario.business.industry}}
-  Description: {{scenario.business.businessDescription}}
-  Target Audience: {{scenario.business.targetAudience}}
-  {{/if}}
-
   ## Site Type
   {{criteria.siteType}}
 
@@ -83,6 +78,9 @@ template: |
   {{/each}}
 
   ## Website Content Analysis
+
+  **Evidence limit:** Buttons and Links are extraction labels—no URLs. Score **present**/quality from visible wording;
+  marking `present: false` for payment or booking rails because destinations are unknowable **is forbidden** unless contradictory text appears.
 
   **Page Title:** {{pageContent.title}}
   **Main Heading:** {{pageContent.h1}}
@@ -163,7 +161,7 @@ criteriaSchema:
     - siteType
     - requiredElements
 
-# Example usage in scenario.evaluators:
+# Example usage in suite configuration:
 # evaluators:
 #   - evaluatorId: business-fit
 #     weight: 2

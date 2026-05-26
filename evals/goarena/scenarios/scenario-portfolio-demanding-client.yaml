@@ -1,7 +1,7 @@
 # Scenario: Portfolio Website - Demanding Client
 # Tests AI agent's ability to handle specific design requirements
 
-key: "airo-portfolio-demanding-client"
+key: "scenario-portfolio-demanding-client"
 name: "Portfolio Website with Specific Requirements"
 syntheticUserName: "Airo Demanding Client"
 
@@ -39,6 +39,14 @@ llmConfig:
 # Browser-based configuration (URL and auth come from Agent)
 # Note: elementHints support multi-page flows (home page -> develop page redirect)
 browserConfig:
+  browserAuth:
+    type: form
+    credentialsSecretId: goarena/airo/login04
+    loginUrl: https://sso.test-godaddy.com
+    usernameSelector: "#username"
+    passwordSelector: "#password"
+    submitSelector: "#submitBtn"
+  requiresPerTurnScreenshots: true
   qualityEval:
     enabled: true
     siteType: portfolio
@@ -52,110 +60,153 @@ browserConfig:
 #   - Individual score per evaluator
 #   - Overall weighted score
 evaluators:
-  # System evaluators (library-based, no LLM cost)
   - evaluatorName: "Airo Functional Evaluator"
-    weight: 25  # 25%
+    weight: 3
     criteria:
       checkLinks: true
       checkImages: true
       checkConsoleErrors: true
 
   - evaluatorName: "Airo Accessibility Evaluator"
-    weight: 10  # 10%
+    weight: 3
     criteria:
       wcagLevel: AA
 
   - evaluatorName: "Airo SEO Evaluator"
-    weight: 5   # 5%
+    weight: 3
     criteria:
       checkOpenGraph: true
       checkTwitterCards: true
 
   - evaluatorName: "Airo Performance Evaluator"
-    weight: 10  # 10%
+    weight: 3
     criteria:
       timeout: 30000
 
   - evaluatorName: "Airo Security Evaluator"
-    weight: 3   # 3%
+    weight: 3
     criteria:
       requireHttps: true
       checkHeaders: true
 
-  # LLM evaluators (user-defined, uses LLM-as-Judge)
-  - evaluatorName: "Airo Content Quality Evaluator"
-    weight: 20  # 20%
+  - evaluatorName: intent_resolution_status
+    weight: 22
+    criteria: {}
+  - evaluatorName: intent_to_output_alignment
+    weight: 4
+    criteria: {}
+  - evaluatorName: implicit_feature_gap
+    weight: 3
     criteria:
-      minScore: 1
-      maxScore: 100
-      dimensions:
-        - name: relevance
-          description: "Content is appropriate for a photography portfolio"
-          weight: 0.3
-        - name: professionalTone
-          description: "Writing reflects high-end, professional positioning"
-          weight: 0.2
-        - name: completeness
-          description: "Essential portfolio elements present (bio, services, contact)"
-          weight: 0.3
-        - name: authenticity
-          description: "No placeholder content, feels genuine"
-          weight: 0.2
-
-  - evaluatorName: "Airo Visual Quality Evaluator"
-    weight: 15  # 15%
+      checklist:
+        - id: booking_or_appointment_path_present
+          description:
+            Is there a visible booking, appointment request, or trial-signup path that reasonably
+            supports the use case?
+        - id: visual_showcase_present
+          description:
+            Does the site include a meaningful visual showcase such as a gallery, photos,
+            portfolio, or product imagery when the use case clearly calls for it?
+        - id: core_catalog_or_service_information_present
+          description:
+            Does the site surface the core catalog, menu, service, listing, room, course, or
+            equivalent business information that visitors would expect to browse?
+  - evaluatorName: trust_signal_coverage
+    weight: 3
     criteria:
-      minScore: 1
-      maxScore: 100
-      dimensions:
-        - name: minimalistDesign
-          description: "Design is clean and minimalist with plenty of white space"
-          weight: 0.3
-        - name: typographyElegance
-          description: "Typography is elegant, preferably using serif fonts"
-          weight: 0.3
-        - name: galleryLayout
-          description: "Photo gallery uses effective layout (masonry or similar)"
-          weight: 0.2
-        - name: brandConsistency
-          description: "Consistent visual style throughout all pages"
-          weight: 0.2
-
-  - evaluatorName: "Airo Usability Evaluator"
-    weight: 10  # 10%
+      checklist:
+        - id: contact_information_present
+          description:
+            Does the site include clear contact information or a clearly reachable inquiry/contact
+            path for the business?
+        - id: location_or_service_area_present
+          description:
+            Does the site make location, directions, service area, or other real-world operating
+            context easy to find when that matters for trust?
+        - id: credibility_signals_present
+          description:
+            Does the site include credibility signals such as testimonials, reviews, credentials,
+            bios, insurance/policy details, or similar trust-building content appropriate to the
+            business?
+        - id: core_information_visible
+          description:
+            Is key decision-making information visible and easy to find, such as pricing, services,
+            room/course details, schedule, hours, policies, or equivalent core business information?
+  - evaluatorName: scope_drift_overgeneration
+    weight: 3
+    criteria: {}
+  - evaluatorName: visual_task_completion_status
+    weight: 22
     criteria:
-      heuristics:
-        - number: 1
-          name: "Visibility of system status"
-          description: "User knows where they are and what's happening"
-        - number: 2
-          name: "Match between system and real world"
-          description: "Uses familiar concepts and language"
-        - number: 3
-          name: "User control and freedom"
-          description: "Easy navigation, clear back/home options"
-        - number: 4
-          name: "Consistency and standards"
-          description: "Follows conventions, consistent UI elements"
-        - number: 8
-          name: "Aesthetic and minimalist design"
-          description: "No unnecessary information, clean design"
-
-  - evaluatorName: "Airo Business Fit Evaluator"
-    weight: 2   # 2%
-    criteria:
-      siteType: portfolio
-      requiredElements:
-        - "Photographer name/brand prominently displayed"
-        - "Photo gallery showcasing work"
-        - "About/bio section"
-        - "Services offered"
-        - "Contact information or form"
-      optionalElements:
-        - "Client testimonials"
-        - "Pricing information"
-        - "Blog or news section"
-        - "Social media integration"
-        - "Newsletter signup"
-
-# Total weights: 25 + 10 + 5 + 10 + 3 + 20 + 15 + 10 + 2 = 100%
+      checklist:
+        - id: requested_outcome_visible
+          description:
+            Is the primary intended outcome clearly supported by the site (for example, booking,
+            inquiry, quote request, signup, or portfolio contact) with visible evidence?
+        - id: primary_cta_present
+          description: Is there a clear primary CTA aligned to the intended outcome, and is it easy to find?
+        - id: conversion_path_functional
+          description:
+            Does the CTA lead to a usable next step (form/contact method/booking path) rather
+            than a dead-end or purely informational promise?
+        - id: core_offering_clear
+          description:
+            Is the core offering/service clearly described so a visitor understands what to do and
+            what they get?
+        - id: relevant_content_present
+          description:
+            Does the content include enough relevant details for this use case (e.g., services,
+            portfolio/gallery cues, process, packages, or availability) to proceed?
+        - id: trust_basics_present
+          description:
+            Are basic trust signals present (contact path, about/credibility cues, policies, or
+            other signals appropriate to the business)?
+        - id: navigation_or_wayfinding_clear
+          description:
+            Is navigation or wayfinding sufficient for the visitor to find key info and the next
+            step without confusion?
+        - id: no_major_mismatch
+          description:
+            Is the output aligned to the intended visitor journey without major mismatches (wrong
+            site type, wrong workflow, or contradictory messaging)?
+        - id: contact_or_followup_path_present
+          description:
+            Is there a clear way to follow up (contact form/email/phone/social link) appropriate to
+            the outcome?
+        - id: no_unresolved_blocker
+          description:
+            Is there no major blocker preventing the user from completing the intended task (missing
+            CTA, missing contact method, broken flow, or missing critical information)?
+  - evaluatorName: conversion_path_clarity
+    weight: 3
+    criteria: {}
+  - evaluatorName: content_specificity
+    weight: 3
+    criteria: {}
+  - evaluatorName: conversation_to_artifact_consistency
+    weight: 3
+    criteria: {}
+  - evaluatorName: silent_hallucination
+    weight: 3
+    criteria: {}
+  - evaluatorName: ambiguity_handling_quality
+    weight: 3
+    criteria: {}
+  - evaluatorName: flow_efficiency
+    weight: 3
+    criteria: {}
+  - evaluatorName: structural_coherence
+    weight: 2
+    criteria: {}
+  - evaluatorName: visual_layout_sanity
+    weight: 2
+    criteria: {}
+  - evaluatorName: hero_section_presence
+    weight: 2
+    criteria: {}
+  - evaluatorName: navigation_presence
+    weight: 2
+    criteria: {}
+  - evaluatorName: primary_cta_presence
+    weight: 2
+    criteria: {}

@@ -1,7 +1,9 @@
 ---
-evaluatorId: system-functional
-name: Functional Evaluator
-description: Deterministic functional checks over the generated preview using Playwright.
+evaluatorId: "airo-system-functional"
+name: "Airo Functional Evaluator"
+description: Deterministic functional checks over the generated preview using Playwright
+  (DOM capture)—broken links, missing images, and browser console errors from the same
+  session that produces screenshots and pageContent for LLM judges.
 type: system
 systemCategory: functional
 scoreType: NUMERIC
@@ -9,4 +11,4 @@ scoreName: functional_score
 scoreConfig:
   min: 0
   max: 100
-projectId: airo-builder-regression
+projectId: "8606"

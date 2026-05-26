@@ -1,0 +1,179 @@
+# Usability Evaluator (Improved)
+# LLM-based evaluator using Nielsen's 10 Usability Heuristics
+# Uses screenshots with vision API to evaluate UI/UX
+# IMPROVEMENT: Added screenshot verification and agent capability boundaries
+
+evaluatorId: "airo-usability"
+name: "Airo Usability Evaluator"
+description: "Evaluates website usability based on Nielsen's 10 Usability Heuristics using screenshots with fair attribution"
+
+# Evaluator type - "llm" means LLM-as-Judge evaluation
+type: llm
+
+# Score configuration
+scoreType: NUMERIC
+scoreName: "usability_score"
+scoreConfig:
+  min: 0
+  max: 100
+
+# LLM configuration - must use a vision-capable model
+llmConfig:
+  model: "gpt-5.2"  # Vision-capable model
+  temperature: 0
+  maxTokens: 3000
+
+# Project ID (set when uploading to Synthia)
+projectId: "8606"
+
+# Handlebars template for LLM prompt
+template: |
+  You are evaluating the usability of a generated website using Nielsen's 10 Usability Heuristics.
+
+  ## CRITICAL: Screenshot Verification
+
+  {{#if screenshots}}
+  ✓ {{screenshots.length}} screenshot(s) available for evaluation
+  {{else}}
+  ❌ FATAL: NO SCREENSHOTS PROVIDED
+
+  **Cannot evaluate usability without visual evidence.**
+
+  Return immediately:
+  {
+    "heuristicsEvaluated": 0,
+    "heuristics": [],
+    "totalSeverity": 0,
+    "maxSeverity": 0,
+    "overallScore": 0,
+    "criticalViolations": [],
+    "summary": "Cannot evaluate usability - no screenshots provided. Usability requires visual evidence to assess Nielsen heuristics. This is not an agent failure; screenshots are required input artifacts.",
+    "evaluationStatus": "ARTIFACT_MISSING",
+    "confidence": 1.0
+  }
+
+  STOP HERE. Do not proceed with evaluation.
+  {{/if}}
+
+  ## Agent Capability Boundaries
+
+  **What Agent Controls (can be evaluated):**
+  - HTML/CSS code generation for UI elements
+  - Component structure and hierarchy
+  - Content organization and information architecture
+  - Form fields, buttons, navigation structure
+
+  **What Agent Does NOT Control (do not penalize):**
+  - Browser rendering quirks (font loading, CSS edge cases)
+  - CDN/external resource loading failures
+  - Infrastructure issues (server errors, timeouts)
+  - User's browser settings or device limitations
+
+  **Fair Attribution:**
+  - Penalize: Poor UI structure in generated code
+  - Do NOT penalize: Browser/infrastructure rendering issues
+
+  ## What the User Requested
+  {{#if conversation.originalPrompt}}
+  **Original Request:**
+  {{conversation.originalPrompt}}
+
+  {{#if conversation.userMessages.length}}
+  {{#unless (eq conversation.userMessages.length 1)}}
+  **Additional Requirements:**
+  {{#each conversation.userMessages}}
+  {{#unless @first}}
+  - {{this}}
+  {{/unless}}
+  {{/each}}
+  {{/unless}}
+  {{/if}}
+  {{/if}}
+
+  ## Website URL
+  {{previewUrl}}
+
+  ## Nielsen's 10 Usability Heuristics
+  {{#each criteria.heuristics}}
+  ### {{number}}. {{name}}
+  {{description}}
+
+  {{/each}}
+
+  ## Your Task
+  Analyze the provided screenshots and evaluate each heuristic. Base judgments only on what is
+  visible in those captures; do not assume violations that depend on interactions, uncaptured pages,
+  or post-submit states unless the screenshots show them.
+
+  For each heuristic, identify:
+  - Whether the heuristic is violated based on visible UI structure
+  - Severity of any violations:
+    - 0 = No usability problem
+    - 1 = Cosmetic problem only (fix if time permits)
+    - 2 = Minor usability problem (low priority)
+    - 3 = Major usability problem (high priority to fix)
+    - 4 = Usability catastrophe (must fix before release)
+  - Specific examples from the screenshots
+
+  ## Severity Attribution Guidelines
+
+  **Assign severity 3-4 only for:**
+  - Structural UI problems in generated code (hierarchy, layout, labels)
+  - Missing critical UI elements (no navigation, no submit button)
+  - Confusing information architecture
+
+  **Do NOT assign severity 3-4 for:**
+  - Browser rendering quirks (unless clearly from CSS code)
+  - Missing external resources (fonts, images from CDN)
+  - Infrastructure errors visible in screenshots
+
+  If you see rendering issues:
+  1. Check if it's from agent's generated code structure
+  2. Or if it's browser/CDN/infrastructure issue
+  3. Only penalize if it's from code structure
+
+  ## Scoring Formula
+
+  Scoring: 100 - (total_severity / max_severity) * 100
+  Where max_severity = 4 × number of heuristics evaluated ({{criteria.heuristics.length}})
+  So for {{criteria.heuristics.length}} heuristics: max_severity = {{criteria.heuristics.length}} × 4
+
+  Respond with JSON in this format:
+  {
+    "heuristicsEvaluated": {{criteria.heuristics.length}},
+    "heuristics": [
+      {
+        "number": 1,
+        "name": "heuristic name",
+        "violated": boolean,
+        "severity": 0-4,
+        "observations": "specific observations from screenshots",
+        "examples": ["list of specific violations found"],
+        "attributedTo": "agent_code | browser_rendering | infrastructure"
+      }
+    ],
+    "totalSeverity": number (sum of all severity scores),
+    "maxSeverity": number ({{criteria.heuristics.length}} × 4),
+    "overallScore": number (100 - (total_severity / ({{criteria.heuristics.length}} * 4)) * 100),
+    "criticalViolations": ["list of severity 3-4 violations with attribution"],
+    "summary": "brief usability summary with fair attribution",
+    "confidence": number between 0 and 1
+  }
+
+# Criteria schema for validation (optional)
+criteriaSchema:
+  type: object
+  properties:
+    heuristics:
+      type: array
+      items:
+        type: object
+        properties:
+          number:
+            type: integer
+          name:
+            type: string
+          description:
+            type: string
+  required:
+    - heuristics

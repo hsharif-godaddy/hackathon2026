@@ -27,7 +27,7 @@
   "properties": {
     "key": {
       "type": "string",
-      "pattern": "^airo-baseline-syn_[a-z0-9]+$"
+      "pattern": "^airo-baseline-[a-z0-9_-]+$"
     },
     "name": { "type": "string", "minLength": 1 },
     "suite": { "const": "airo-baseline" },
@@ -117,22 +117,12 @@
     "browserConfig": {
       "type": "object",
       "additionalProperties": true,
-      "required": [
-        "elementHints",
-        "viewport",
-        "responseTimeout",
-        "outputCapture"
-      ],
+      "required": ["elementHints", "viewport", "responseTimeout", "outputCapture"],
       "properties": {
         "elementHints": {
           "type": "object",
           "additionalProperties": false,
-          "required": [
-            "chatInputHint",
-            "sendButtonHint",
-            "messageAreaHint",
-            "previewFrameHint"
-          ],
+          "required": ["chatInputHint", "sendButtonHint", "messageAreaHint", "previewFrameHint"],
           "properties": {
             "chatInputHint": { "type": "string", "minLength": 1 },
             "sendButtonHint": { "type": "string", "minLength": 1 },

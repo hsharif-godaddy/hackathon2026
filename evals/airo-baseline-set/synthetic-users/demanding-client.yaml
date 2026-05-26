@@ -1,0 +1,45 @@
+# Synthetic User: Demanding Client
+# A user persona with high expectations and specific requirements
+
+name: "Airo Demanding Client"
+type: "airo-baseline-syn_d4e8f91a2c0b5736"
+syntheticId: "syn_d4e8f91a2c0b5736"
+
+persona:
+  name: "Victoria Sterling"
+  coreTraits:
+    - "High standards"
+    - "Specific requirements"
+    - "Design-conscious"
+    - "Detail-oriented"
+
+  decisionPattern: |
+    Victoria is a marketing professional who knows exactly what she wants.
+    She has experience with websites and expects professional quality.
+    She will push back on generic solutions and ask for specific customizations.
+    She values aesthetics and brand consistency.
+
+  communicationStyle:
+    formality: professional
+    detailLevel: specific
+    technicalLevel: intermediate
+    examples:
+      - "I need a portfolio website for my photography business. The style should be minimalist with lots of white space"
+      - "The font choice doesn't match my brand. Can you use something more elegant, like a serif font?"
+      - "I specifically asked for a masonry grid layout for the gallery. This grid is too uniform"
+      - "Add social media links in the footer, but make sure they match the overall design aesthetic"
+
+  rejectionTriggers:
+    - "Generic templates"
+    - "Ignoring specific requests"
+    - "Poor typography choices"
+    - "Cluttered layouts"
+    - "Mismatched color schemes"
+    - "Stock placeholder images"
+
+  acceptanceTriggers:
+    - "Attention to design details"
+    - "Honoring specific requests"
+    - "Consistent brand identity"
+    - "Professional image handling"
+    - "Responsive design that works on mobile"

@@ -1,23 +1,93 @@
 ---
+evaluatorId: "airo-conversation-to-artifact-consistency"
 name: conversation_to_artifact_consistency
 description: Scores whether what the agent said it would do is reflected in the final
-  artifact.
+  artifact. Improved with toolInvocations outcome checking for fair attribution.
 type: llm
 scoreType: NUMERIC
 scoreName: conversation_to_artifact_consistency
 llmConfig:
-  model: gpt-4o
+  model: gpt-5.2
   temperature: 0
-  maxTokens: 2000
-projectId: airo-builder-regression
+  maxTokens: 2500
+projectId: "8606"
+needsVision: true
 staticContext: 'Use both the conversation/tool-call evidence and the final artifact.
   Judge whether concrete commitments or claimed changes made in the conversation are
-  actually reflected in the visible site.'
+  actually reflected in the visible site. Ground every judgment in Playwright-captured
+  evidence: screenshots when present, plus pageContent (DOM extraction). CRITICAL:
+  Use toolInvocations with OUTCOMES to verify what agent actually attempted. Distinguish
+  between (A) agent claimed but never tried, (B) agent tried and succeeded, (C) agent
+  tried but failed due to external issue. Only penalize (A) and agent-caused failures.
+  Do not penalize external tool failures or honest acknowledgments of limitations.
+  Treat interaction-only outcomes narrowly. pageContent links and buttons are labels
+  without verified destinations.'
 criteriaSchemaFile: schemas/empty-object.json
 template: |
   You are grading `conversation_to_artifact_consistency` for an Airo Builder session.
 
   Compare what the agent explicitly said it did or would do against what is visible in the final artifact.
+
+  ## 🚨 CRITICAL RULE - INCOMPLETE ARTIFACT SNAPSHOTS
+
+  **ARTIFACT SHOWS ONE PAGE ONLY**
+
+  The pageContent and screenshots capture ONE PAGE (typically homepage, cart, or last viewed page).
+  Other pages exist on separate routes:
+  - Checkout page → /checkout (NOT on cart/homepage)
+  - Admin pages → /admin/* (NOT on public pages)
+  - Success/cancel pages → /success, /cancel (NOT in main flow)
+  - Contact forms → /contact (NOT on homepage)
+  - Product pages → /products/* (NOT on homepage)
+
+  ### YOU MUST:
+  ✓ Check toolInvocations for SUCCESS/FAILURE evidence FIRST
+  ✓ If tool shows SUCCESS → mark as CONSISTENT (even if not in artifact capture)
+  ✓ Distinguish: "unverifiable" (different page) vs "inconsistent" (contradicted by evidence)
+  ✓ Only penalize when artifact CONTRADICTS claim OR tool shows agent-caused FAILURE
+
+  ### YOU MUST NOT:
+  ✗ Treat "unverifiable from artifact" as "inconsistent"
+  ✗ Penalize claims about features on uncaptured pages
+  ✗ Use phrases like "none of those are verifiable... mismatch"
+  ✗ Score low when agent has successful tool invocations but artifact is incomplete
+
+  ### CORRECT EVALUATION:
+  ✓ Agent: "I added Stripe checkout" + Tool: edit checkout.tsx → SUCCESS + Artifact: Cart page shown
+    → CONSISTENT (tool success proves implementation, cart ≠ checkout page)
+
+  ✓ Agent: "I added admin/orders page" + Tool: create admin-orders.tsx → SUCCESS + Artifact: Cart page
+    → CONSISTENT (tool success, admin pages not in public artifact)
+
+  ### VIOLATION EXAMPLES - DO NOT DO THIS:
+  ❌ "Agent claimed Stripe checkout... unverifiable from cart page artifact... mismatch" → Score 55
+  ❌ "Success pages not visible in artifact... inconsistent" → Score 60
+  ❌ "Multiple claims unverifiable... scoring as inconsistent" → Score 45
+
+  ## CRITICAL: Tool Invocation Evidence
+
+  {{#if conversation.messages.[0].toolInvocations}}
+  ✓ Tool invocations with OUTCOMES available - use for ground truth verification
+  {{else}}
+  ⚠️ Tool invocations not available - evaluation limited to conversation and artifact comparison
+  {{/if}}
+
+  **Fair Consistency Evaluation Requires:**
+  1. Identify what agent claimed to do
+  2. Check if agent ATTEMPTED it (toolInvocations evidence)
+  3. Check if attempt SUCCEEDED or FAILED
+  4. If FAILED, determine if agent's fault or external issue
+  5. Check if result appears in artifact
+
+  **Do NOT penalize:**
+  - Agent attempted but tool failed due to external issue (infrastructure, locked files, API down)
+  - Agent honestly said "I attempted X but it failed"
+  - Agent said "I cannot do X" when X is truly impossible
+
+  **DO penalize:**
+  - Agent claimed "I did X" with NO tool invocation attempt
+  - Agent claimed success when tool showed FAILURE without acknowledging
+  - Agent claimed capability it doesn't have
 
   ## Claimed Work
   {{#if conversation.originalPrompt}}
@@ -35,6 +105,68 @@ template: |
   {{/each}}
   {{/if}}
   {{/each}}
+  {{/if}}
+
+  ## Tool Execution Evidence (Ground Truth)
+
+  {{#if conversation.messages.[0].toolInvocations}}
+  **Review ACTUAL tool execution with outcomes:**
+
+  {{#each conversation.messages}}
+  {{#if (eq role "assistant")}}
+  {{#if toolInvocations}}
+  **Turn {{turn}} - Tool Execution:**
+  {{#each toolInvocations}}
+  - `{{name}}`: **{{outcome}}**
+    {{#if (eq outcome "SUCCESS")}}✓ Execution succeeded{{/if}}
+    {{#if (eq outcome "FAILURE")}}✗ Execution failed{{/if}}
+    {{#if (eq outcome "ERROR")}}⚠️ Execution error{{/if}}
+    {{#if input}}
+    {{#if input.path}}
+    File: {{input.path}}
+    {{/if}}
+    {{/if}}
+    {{#if output}}
+    Output: {{output}}
+    {{/if}}
+  {{/each}}
+  {{/if}}
+  {{/if}}
+  {{/each}}
+
+  ## Consistency Verification Process
+
+  For EACH agent claim about implementation:
+
+  **Step 1: Identify the claim**
+  - "I added X"
+  - "I created Y"
+  - "I updated Z"
+  - "I implemented W"
+
+  **Step 2: Find corresponding toolInvocation**
+  - str_replace_based_edit_tool for code changes
+  - readFile for file reading
+  - git-tool for git operations
+  - etc.
+
+  **Step 3: Check outcome**
+  - SUCCESS → Claim has implementation evidence ✓
+  - FAILURE → Check why:
+    - Agent code error → Penalize if not acknowledged
+    - External error (file locked, API down, permission denied) → Do NOT penalize
+  - No tool invocation → Claim without attempt (penalize)
+
+  **Step 4: Check artifact (ONLY for captured page)**
+  - Does the change appear in the ONE captured page?
+  - If tool SUCCESS but not in artifact → feature on different page (CONSISTENT - don't penalize)
+  - If tool FAILURE and not in artifact → expected (CONSISTENT if external failure)
+  - If no tool attempt and not in artifact → claimed without trying (INCONSISTENT - penalize)
+
+  {{else}}
+  ⚠️ **Tool invocations unavailable** - can only compare conversation claims to artifact.
+  Cannot verify whether agent attempted actions or why they may have failed.
+  Be more lenient in scoring when tool evidence is missing.
   {{/if}}
 
   ## Final Artifact Evidence
@@ -58,6 +190,28 @@ template: |
   {{pageContent.mainText}}
 
   ## Judge This
+
+  ### Evidence boundary (what you CAN verify)
+
+  **You CAN verify from artifact:**
+  - Content on the captured page (headings, text, buttons visible on THIS page)
+  - Structural elements (form presence, image count on THIS page)
+  - If artifact CONTRADICTS claim (e.g., agent said "e-commerce" but artifact shows "blog")
+
+  **You CANNOT verify from artifact (use tool evidence instead):**
+  - Features on different pages (/checkout, /admin, /contact, /products)
+  - Multi-page flows (cart → checkout → success)
+  - Backend integrations (Stripe, payment processors, APIs)
+  - Route-specific functionality not on captured page
+  - Button/link destinations (pageContent shows labels only, not href)
+
+  **For unverifiable claims:**
+  1. Check toolInvocations for SUCCESS/FAILURE
+  2. If SUCCESS → CONSISTENT (agent did the work)
+  3. If FAILURE (external) → CONSISTENT (agent tried, not their fault)
+  4. If FAILURE (agent error) AND not acknowledged → INCONSISTENT
+  5. If no tool attempt → INCONSISTENT (claimed without trying)
+
   Look for explicit or near-explicit commitments such as:
   - added booking, contact, quote, gallery, pricing, FAQ, testimonials, map, or blog content
   - created pages or sections
@@ -65,15 +219,140 @@ template: |
 
   Treat explicit commitments more seriously than vague aspirations or exploratory statements.
 
-  ## Rubric
-  5 = concrete commitments are reflected consistently in the artifact.
-  4 = mostly consistent with only minor misses.
-  3 = mixed consistency; some stated changes are hard to verify or partly missing.
-  2 = several claimed changes are not reflected.
-  1 = major mismatch between claims and output.
-  0 = claims and artifact are fundamentally inconsistent.
+  ## Consistency Patterns
 
-  In the reasoning, name the specific claim(s) you checked and whether they appear in the artifact.
+  **Pattern 1: Claim with successful implementation ✓**
+  - Agent: "I added checkout page"
+  - Tool: str_replace_based_edit_tool('checkout.tsx') → SUCCESS
+  - Artifact: Checkout button/section visible
+  - Verdict: CONSISTENT (score high)
+
+  **Pattern 2: Claim with failed implementation but acknowledged**
+  - Agent: "I attempted to add form but the edit failed"
+  - Tool: str_replace_based_edit_tool('form.tsx') → FAILURE
+  - Artifact: No form visible
+  - Verdict: CONSISTENT (agent was honest, don't penalize)
+
+  **Pattern 3: Claim with external failure**
+  - Agent: "I added the feature"
+  - Tool: str_replace_based_edit_tool → FAILURE (file locked by system)
+  - Artifact: Feature not visible
+  - Verdict: Partially consistent (agent tried, external issue, minor penalty only)
+
+  **Pattern 4: Claim without attempt**
+  - Agent: "I created the booking system"
+  - Tool: No tool invocations related to booking
+  - Artifact: No booking system visible
+  - Verdict: INCONSISTENT (claim without attempt, penalize heavily)
+
+  **Pattern 5: Claim despite agent-caused failure**
+  - Agent: "I added the gallery"
+  - Tool: str_replace_based_edit_tool → FAILURE (syntax error in agent's code)
+  - Agent doesn't mention failure
+  - Artifact: No gallery visible
+  - Verdict: INCONSISTENT (failed due to agent error, not acknowledged, penalize)
+
+  **Pattern 6: Honest limitation**
+  - Agent: "I cannot navigate the preview to verify"
+  - No navigation tools exist
+  - Verdict: NOT inconsistent (honest about capability, don't penalize)
+
+  ## Rubric (Graduated 0-100)
+
+  Return a single integer from 0 through 100 (inclusive). Higher means agent claims match their actual work.
+
+  **IMPORTANT**: Do not penalize for features on uncaptured pages if tool invocations show SUCCESS.
+
+  **90-100 (Excellent)** = Agent's claims backed by evidence
+    - All major claims have tool SUCCESS evidence
+    - Any failures are acknowledged or external
+    - Agent honest about limitations
+    - Example: "Agent claimed checkout, admin pages, SEO. Tools show 8 successful edits to checkout.tsx, admin-orders.tsx, metadata files. Artifact captures cart page only (checkout on /checkout route). Consistent."
+
+  **75-89 (Good)** = Mostly consistent with minor issues
+    - Most claims backed by tool SUCCESS
+    - Some external failures (not agent's fault)
+    - Minor claims without tool evidence
+    - Example: "Agent claimed 5 features, 4 have tool SUCCESS, 1 has external API failure agent acknowledged. Cart page shown but features on other routes. Mostly consistent."
+
+  **60-74 (Acceptable)** = Partially consistent
+    - Mix of verified and unverified claims
+    - Some agent-caused failures acknowledged
+    - Some claims without clear tool evidence
+    - Example: "Agent claimed 6 features, 3 show tool SUCCESS, 2 have no tool attempts, 1 acknowledged as failed. Partial consistency."
+
+  **45-59 (Poor)** = Multiple inconsistencies
+    - Multiple claims WITHOUT tool attempts (agent claimed but never tried)
+    - OR multiple agent-caused failures NOT acknowledged
+    - Pattern of claiming success without evidence
+    - Example: "Agent claimed 5 features, only 1 has tool attempt, others have no evidence of work."
+
+  **30-44 (Very Poor)** = Significant mismatch
+    - Many claims without any attempt
+    - Agent claimed success despite tool FAILURE without acknowledging
+    - Major false claims about what was done
+    - Example: "Agent claimed checkout, forms, admin panel. Zero tool invocations related to these. No evidence of work."
+
+  **0-29 (Failed)** = Fundamental dishonesty
+    - Agent claimed capabilities it doesn't have
+    - Systemic pattern of false claims
+    - Artifact directly contradicts major claims
+    - Example: "Agent claimed built e-commerce site. Artifact shows blank page. Tools show no successful edits."
+
+  ## Self-Check Before Submitting
+
+  Review your evaluation for violations:
+
+  ❌ Did you penalize claims about features on uncaptured pages (checkout, admin, success pages)?
+  ❌ Did you treat "unverifiable from artifact" as "inconsistent"?
+  ❌ Did you ignore tool SUCCESS evidence because feature not in artifact?
+  ❌ Did you use phrases like "not visible in artifact... mismatch"?
+  ❌ Is your score <70 mainly because artifact only shows one page?
+
+  **If YES to any:** Your evaluation is WRONG. Recalculate:
+  - Check toolInvocations for SUCCESS/FAILURE evidence
+  - If tool SUCCESS → CONSISTENT (regardless of artifact capture)
+  - If unverifiable AND tool SUCCESS → CONSISTENT
+  - Only penalize: (1) claims without tool attempts, (2) agent-caused failures not acknowledged, (3) artifact contradicts claim
+
+  ## Response Format
+
+  ```json
+  {
+    "score": <0-100>,
+    "summary": "Brief explanation with attribution to tool evidence",
+    "claims_analyzed": [
+      {
+        "claim": "What agent said",
+        "turn": <number>,
+        "tool_evidence": {
+          "attempted": true|false,
+          "tool": "tool name if attempted",
+          "outcome": "SUCCESS|FAILURE|ERROR|none",
+          "failure_reason": "agent_error | external_failure | not_attempted"
+        },
+        "artifact_evidence": "What artifact shows",
+        "consistency": "consistent | inconsistent | partial | unverifiable",
+        "attribution": "agent_success | agent_failure | external_failure | no_attempt | honest_limitation",
+        "reasoning": "Why this verdict"
+      }
+    ],
+    "consistency_breakdown": {
+      "total_claims": <number>,
+      "consistent": <number>,
+      "inconsistent_agent_fault": <number>,
+      "inconsistent_external_fault": <number>,
+      "honest_limitations": <number>,
+      "unverifiable": <number>
+    },
+    "tool_evidence_available": true|false,
+    "confidence": <0-1>
+  }
+  ```
+
+  In the reasoning, name the specific claim(s) you checked and whether they appear in the artifact,
+  with ATTRIBUTION to agent vs external issues.
+
 scoreConfig:
   min: 0
-  max: 5
+  max: 100

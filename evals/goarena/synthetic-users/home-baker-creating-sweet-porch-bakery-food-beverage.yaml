@@ -1,6 +1,6 @@
 ---
 name: Home baker creating Sweet Porch Bakery
-type: airo-baseline-syn_a91f3c7d2e4b8051
+type: airo-baseline-home-baker-creating-sweet-porch-bakery-food-beverage
 persona:
   name: Home baker creating Sweet Porch Bakery (Food & Beverage)
   coreTraits:

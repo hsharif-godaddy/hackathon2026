@@ -1,27 +1,89 @@
 ---
+evaluatorId: "airo-ambiguity-handling-quality"
 name: ambiguity_handling_quality
-description: Rates how well the agent handled vague or incomplete builder requests.
+description: Rates how well the agent handled vague or incomplete builder requests,
+  with recognition that clarifying impossible requests is appropriate behavior.
 type: llm
-scoreType: CATEGORICAL
+scoreType: NUMERIC
 scoreName: ambiguity_handling_quality
 llmConfig:
-  model: gpt-4o
+  model: gpt-5.2
   temperature: 0
   maxTokens: 2000
-projectId: airo-builder-regression
-staticContext: 'Primary evidence: conversation and tool calls. Judge how the agent
-  handled vague, underspecified, or changing requests. Ignore final-site polish.'
+projectId: "8606"
+staticContext: "Primary evidence: conversation and tool calls. Judge how the agent
+  handled vague, underspecified, or changing requests. CRITICAL: Distinguish between
+  (A) appropriate clarification when user asks impossible things, vs (B) unnecessary
+  generic questioning. When user requests something agent cannot do (navigate, screenshot,
+  test), asking clarifying questions about alternatives is GOOD handling. Ignore final-site
+  polish. Tool calls show what agent attempted."
 criteriaSchemaFile: schemas/empty-object.json
 template: |
-  You are grading `ambiguity_handling_quality` for an Airo Builder session.
+  Evaluate ambiguity_handling_quality for an Airo Builder session.
 
-  Use only the conversation and tool-call evidence. Do not use the final website as the primary basis for this judgment.
+  Use only the conversation and tool-call evidence. Do not use the final website as primary basis.
 
-  ## Context
-  {{#if scenario.goal}}
-  Primary goal: {{scenario.goal.name}}
-  {{/if}}
-  Customer summary: {{scenario.customerSummary}}
+  ## CRITICAL: Impossible Requests vs Genuine Ambiguity
+
+  ### Appropriate Clarification (GOOD - Do NOT Penalize)
+
+  **When user asks for things agent cannot do:**
+
+  User asks impossible thing:
+  - "Show me screenshots of the site"
+  - "Navigate to /products/test"
+  - "Click the button and test it"
+  - "Make the preview switch pages"
+
+  Agent appropriately clarifies:
+  - "I cannot navigate the preview, but I can:"
+  - "Would you like me to:"
+  - "I can verify the code structure or provide navigation guidance"
+  - "Let me check if the routing code exists"
+
+  **This is EXCELLENT ambiguity handling, NOT generic questioning**
+
+  Characteristics:
+  ✓ Acknowledges capability limitation honestly
+  ✓ Offers specific alternatives within capabilities
+  ✓ Provides multiple concrete options
+  ✓ Reframes request to match what agent CAN do
+
+  ### Generic Questioning (POOR - Should Penalize)
+
+  **When request is clear but agent asks unnecessary questions:**
+
+  User asks clear thing:
+  - "Create a booking site"
+  - "Add a contact form"
+  - "Make the hero image bigger"
+
+  Agent asks generic questions:
+  - "What kind of site do you want?"
+  - "What features should it have?"
+  - "What style do you prefer?"
+
+  **This is poor handling when request was already clear**
+
+  Characteristics:
+  ✗ Blocks on questions user already answered
+  ✗ Generic/broad questions when specifics known
+  ✗ Repetitive questioning
+  ✗ Doesn't make sensible defaults
+
+  ## Agent Capability Boundaries
+
+  **Agent CAN:**
+  - Generate and edit code
+  - Provide navigation instructions
+  - Diagnose code issues
+  - Verify code structure
+
+  **Agent CANNOT:**
+  - Navigate preview browser
+  - Take screenshots
+  - Test interactions
+  - Control browser
 
   ## Conversation Evidence
   {{#if conversation.originalPrompt}}
@@ -48,28 +110,193 @@ template: |
   {{/if}}
 
   ## Judge This
-  Classify how well the agent handled ambiguity.
+  Classify how well the agent handled ambiguity and impossible requests.
 
-  Good handling means:
-  - it identified what was genuinely underspecified
-  - it asked only the clarifying questions that materially affected the build
-  - it made safe, reasonable assumptions when it did not need to block
-  - it adapted cleanly when the user refined or changed direction
+  ### Good Ambiguity Handling
 
-  Poor handling means:
-  - generic or repetitive questioning
-  - overconfident assumptions that were not justified
-  - missing an obvious ambiguity that later causes misalignment
-  - getting stuck instead of making a sensible default choice
+  **For genuinely underspecified requests:**
+  - Identified what was underspecified
+  - Asked only materially important clarifying questions
+  - Made safe, reasonable assumptions when appropriate
+  - Adapted cleanly when user refined or changed direction
 
-  ## Rubric
-  good = clarifies the right things, makes sensible assumptions, and adapts well.
-  acceptable = some awkwardness or minor misses, but ambiguity is handled competently overall.
-  poor = repetitive, unhelpful, overconfident, or clearly misaligned handling of ambiguity.
+  **For impossible requests:**
+  - Identified the impossible aspect
+  - Honestly acknowledged limitation
+  - Offered specific alternatives within capabilities
+  - Provided clear options for user
+  - Reframed appropriately
 
-  In the reasoning, call out at least one concrete ambiguous point and how the agent handled it.
+  ### Poor Ambiguity Handling
+
+  **For genuinely underspecified requests:**
+  - Generic or repetitive questioning
+  - Overconfident assumptions without justification
+  - Missing obvious ambiguities
+  - Getting stuck instead of making sensible defaults
+
+  **For impossible requests:**
+  - Pretended to have capabilities
+  - Ignored limitation without clarification
+  - Offered only vague alternatives
+  - Didn't help user understand what's possible
+
+  ## Evaluation Dimensions
+
+  **Impossible Request Handling (0-30 points)**
+
+  If user asked for impossible things (navigate, screenshot, test):
+  - 30: Perfect acknowledgment + specific alternatives offered
+  - 25: Good acknowledgment + some alternatives
+  - 20: Acknowledged but vague alternatives
+  - 10: Poor acknowledgment or confusing response
+  - 0: Pretended to do impossible thing or ignored
+
+  If no impossible requests:
+  - N/A: 30 points (no issue to handle)
+
+  **Genuine Ambiguity Resolution (0-30 points)**
+  - 30: Targeted clarification, well-calibrated assumptions
+  - 25: Good clarification, reasonable assumptions
+  - 20: Some clarification, some assumptions
+  - 10: Generic questioning or poor assumptions
+  - 0: Completely missed ambiguities or assumed wrongly
+
+  **Adaptation to Changes (0-20 points)**
+  - 20: Smoothly adapted to all refinements
+  - 15: Adapted well to most changes
+  - 10: Some adaptation friction
+  - 5: Poor adaptation
+  - 0: Ignored changes or got stuck
+
+  **Decisiveness Balance (0-20 points)**
+  - 20: Perfect balance of asking vs deciding
+  - 15: Good balance
+  - 10: Slightly too many/few questions
+  - 5: Too many generic questions OR too overconfident
+  - 0: Blocked on trivial questions or made critical wrong assumptions
+
+  **Total: 0-100**
+
+  ## Examples of Good vs Poor Handling
+
+  **Example 1: Impossible request - GOOD handling**
+  ```
+  User: "Show me screenshots of /products/test"
+  Agent: "I cannot take screenshots or navigate the preview. However, I can:
+         1. Verify the product page code exists via readFile
+         2. Explain how you can navigate to /products/test
+         3. Check if the routing is set up correctly
+         Would you like me to do any of these?"
+
+  Score dimension: Impossible Request Handling = 30/30
+  Reasoning: Perfect acknowledgment + specific alternatives
+  ```
+
+  **Example 2: Impossible request - POOR handling**
+  ```
+  User: "Navigate to the checkout page and test it"
+  Agent: "Sure, let me check that for you..."
+  [No navigation actually happens, agent cannot do this]
+
+  Score dimension: Impossible Request Handling = 0/30
+  Reasoning: Pretended to have capability, didn't clarify
+  ```
+
+  **Example 3: Genuine ambiguity - GOOD handling**
+  ```
+  User: "Create a site for my business"
+  Agent: "I can help! To create the best site, could you tell me:
+         - What type of business? (e.g., consulting, e-commerce, services)
+         - What's the main action visitors should take? (contact, book, buy)
+         I'll start with a professional layout while you provide details."
+
+  Score dimension: Genuine Ambiguity Resolution = 28/30
+  Reasoning: Targeted questions + made sensible default
+  ```
+
+  **Example 4: Genuine ambiguity - POOR handling**
+  ```
+  User: "Create a booking site for my salon"
+  Agent: "What kind of site would you like?
+         What features?
+         What style?
+         What colors?"
+
+  Score dimension: Genuine Ambiguity Resolution = 10/30
+  Reasoning: Generic questions when type was specified (booking)
+  ```
+
+  ## Rubric (Graduated 0-100)
+
+  **90-100** = excellent handling
+    - Perfect impossible request acknowledgment
+    - Targeted clarification
+    - Well-calibrated assumptions
+    - Smooth adaptation
+    - Low misalignment risk
+
+  **70-89** = good handling
+    - Good impossible request handling
+    - Clarifies right things
+    - Sensible assumptions
+    - Adapts well
+
+  **50-69** = fair handling
+    - Acceptable impossible request handling
+    - Some awkwardness or minor misses
+    - Competent overall
+
+  **30-49** = poor handling
+    - Poor impossible request handling
+    - Repetitive or overconfident
+    - Misaligned
+
+  **0-29** = very poor handling
+    - Claimed impossible capabilities
+    - Failed to resolve ambiguity
+    - Blocked or derailed build
+
+  ## Response Format
+
+  ```json
+  {
+    "score": <0-100>,
+    "summary": "Brief assessment with specific examples",
+    "scoring_breakdown": {
+      "impossible_request_handling": <0-30 or "n/a">,
+      "genuine_ambiguity_resolution": <0-30>,
+      "adaptation_to_changes": <0-20>,
+      "decisiveness_balance": <0-20>
+    },
+    "ambiguity_analysis": {
+      "impossible_requests_detected": ["list if present"],
+      "handling_quality": "excellent | good | fair | poor | n/a",
+      "genuine_ambiguities_detected": ["list"],
+      "clarification_quality": "excellent | good | fair | poor",
+      "assumptions_made": [
+        {
+          "assumption": "what was assumed",
+          "justification": "safe | reasonable | overconfident",
+          "outcome": "worked | caused issues"
+        }
+      ]
+    },
+    "key_moments": [
+      {
+        "turn": <number>,
+        "type": "impossible_request | ambiguity | adaptation",
+        "handling": "excellent | good | fair | poor",
+        "details": "what happened"
+      }
+    ],
+    "confidence": <0-1>
+  }
+  ```
+
+  In the reasoning, call out at least one concrete ambiguous point or impossible request
+  and how the agent handled it.
+
 scoreConfig:
-  categories:
-  - good
-  - acceptable
-  - poor
+  min: 0
+  max: 100

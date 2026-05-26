@@ -1,0 +1,265 @@
+# Visual Quality Evaluator - IMPROVED
+# LLM-based evaluator for assessing visual design of generated websites
+# Uses screenshots with vision API - evaluates what the user SEES
+# Playwright supplies viewport captures of the rendered DOM; optional pageContent may
+# be passed alongside for exact headings/CTA labels—use screenshots for pixels, pageContent for strings.
+
+evaluatorId: "airo-visual-quality"
+name: "Airo Visual Quality Evaluator"
+description: "Evaluates visual design, layout, and professional appearance of generated websites using screenshots"
+
+# Evaluator type - "llm" means LLM-as-Judge evaluation
+type: llm
+
+# Score configuration
+scoreType: NUMERIC
+scoreName: "visual_quality_score"
+scoreConfig:
+  min: 0
+  max: 100
+
+# LLM configuration - must use a vision-capable model
+llmConfig:
+  model: "gpt-5.2"  # Vision-capable model
+  temperature: 0
+  maxTokens: 2500
+
+# Project ID (set when uploading to Synthia)
+projectId: "8606"
+
+# Handlebars template for LLM prompt
+# This evaluator uses SCREENSHOTS (vision API) - the screenshots array is passed
+# to the LLM automatically when the evaluator name contains "visual" or "usability"
+# Available browser context variables:
+#   - screenshots: Array of base64 images (passed to vision API automatically)
+#   - previewUrl: URL of the generated website
+#   - conversation.originalPrompt: First user message (original request)
+#   - conversation.userMessages: All user messages (requirements)
+template: |
+  # Visual Quality Evaluation
+
+  ## CRITICAL: Artifact Verification
+
+  {{#if screenshots}}
+  ✓ **{{screenshots.length}} screenshot(s) available** - Visual evaluation CAN proceed
+  {{else}}
+  ❌ **FATAL: NO SCREENSHOTS PROVIDED**
+
+  **This evaluation CANNOT proceed without screenshots.**
+
+  You MUST return this exact response:
+  ```json
+  {
+    "overallScore": 0,
+    "summary": "Cannot evaluate visual quality - no screenshots provided. This is not the agent's fault; visual artifacts were not available to this evaluator.",
+    "dimensions": [],
+    "placeholdersFound": [],
+    "layoutIssues": [],
+    "confidence": 0,
+    "evaluationStatus": "ARTIFACT_MISSING"
+  }
+  ```
+
+  **STOP HERE. Do not attempt to evaluate without screenshots.**
+  {{/if}}
+
+  {{#if screenshots}}
+  ## Available Artifacts
+
+  You have access to:
+  - **{{screenshots.length}} screenshot(s)** for visual inspection ✓
+  {{#if conversation}}
+  - Conversation history ({{conversation.totalTurns}} turns) ✓
+  {{/if}}
+  {{#if pageContent}}
+  - Page content structure (title, headings, buttons, links) ✓
+  {{/if}}
+
+  ## What You CAN Evaluate (from screenshots)
+
+  ✓ Visual layout and spacing
+  ✓ Color schemes and contrast
+  ✓ Typography and font choices
+  ✓ Image quality and placement
+  ✓ Button and CTA visibility
+  ✓ Overall aesthetic appeal
+  ✓ Professional appearance
+  ✓ Visual hierarchy and flow
+  ✓ Presence of placeholders (Lorem ipsum, "Your text here", etc.)
+
+  ## What You CANNOT Evaluate (without interaction)
+
+  ✗ Interactive behavior (clicks, hovers, animations)
+  ✗ Form submissions and validations
+  ✗ Dynamic content loading
+  ✗ JavaScript functionality
+  ✗ Multiple pages (unless multiple screenshots provided)
+  ✗ Responsive behavior at different breakpoints (unless multiple viewport screenshots)
+
+  ## What the Agent Controlled
+
+  **Agent did control:**
+  - Code generation for HTML/CSS/components
+  - Layout structure and element positioning
+  - Color choices and typography
+  - Content integration
+
+  **Agent did NOT control (do NOT penalize):**
+  - Browser rendering quirks
+  - External image loading failures
+  - Font loading issues (CDN problems)
+  - Deployment/infrastructure issues
+
+  ## What the User Requested
+
+  {{#if conversation.originalPrompt}}
+  **Original Request:**
+  {{conversation.originalPrompt}}
+
+  {{#if conversation.userMessages.length}}
+  {{#unless (eq conversation.userMessages.length 1)}}
+  **Additional Requirements:**
+  {{#each conversation.userMessages}}
+  {{#unless @first}}
+  - {{this}}
+  {{/unless}}
+  {{/each}}
+  {{/unless}}
+  {{/if}}
+  {{/if}}
+
+  ## Website URL
+  {{previewUrl}}
+
+  {{#if pageContent}}
+  ## Page Content Reference
+
+  Use this to understand content structure, but evaluate visual presentation from screenshots:
+  - **Title**: {{pageContent.title}}
+  - **Main H1**: {{pageContent.h1}}
+  - **Buttons**: {{#each pageContent.buttons}}{{this}}{{#unless @last}}, {{/unless}}{{/each}}
+  - **Links**: {{pageContent.links.length}} links present
+  - **Forms**: {{pageContent.formCount}} form(s)
+  - **Images**: {{pageContent.imageCount}} image(s)
+  {{/if}}
+
+  ## Evaluation Criteria
+
+  {{#each criteria.dimensions}}
+  ### {{name}} (Weight: {{weight}})
+  {{description}}
+
+  {{/each}}
+
+  ## Your Task
+
+  Analyze the provided screenshots and evaluate the website's visual quality. Judge only what is
+  visible in those captures; do not penalize for hypothetical issues on other pages or after interactions.
+
+  Pay special attention to:
+  - **Placeholder content** (Lorem ipsum, "Your text here", "[Insert...]", generic photos)
+  - **Placeholder images** or broken image icons
+  - **Layout problems** (overlapping elements, misalignment, awkward spacing)
+  - **Color scheme** coherence and contrast
+  - **Typography** consistency and readability
+  - **Professional appearance** and polish
+  - **Visual hierarchy** and clarity
+  - **CTA visibility** and prominence
+
+  ## Scoring Guidelines
+
+  For each criterion:
+  1. **Score from {{criteria.minScore}} to {{criteria.maxScore}}**
+  2. **Provide specific observations** from the screenshots (reference what you actually see)
+  3. **Suggest improvements** if score is below 80% of maximum
+
+  **Be fair:**
+  - If agent followed design principles but used generic content while waiting for real content, note this but don't fail entirely
+  - If layout is sound but images are stock photos, that's acceptable for initial build
+  - Distinguish between "work in progress" and "broken/poor quality"
+
+  **Penalize appropriately:**
+  - Heavy use of Lorem ipsum or obvious placeholder text
+  - Broken layouts or overlapping elements
+  - Poor contrast making text unreadable
+  - Unprofessional color combinations
+  - No visual hierarchy (everything same size/weight)
+
+  ## Response Format
+
+  Respond with JSON in this format:
+  ```json
+  {
+    "dimensions": [
+      {
+        "name": "criterion name",
+        "score": number ({{criteria.minScore}}-{{criteria.maxScore}}),
+        "observations": "specific observations from screenshots",
+        "suggestions": "improvement suggestions or null",
+        "evidenceFromScreenshot": "what you actually saw in the screenshot"
+      }
+    ],
+    "placeholdersFound": ["list of specific placeholder issues found"],
+    "layoutIssues": ["list of specific layout problems observed"],
+    "overallScore": number (0-100, weighted average based on dimension weights),
+    "summary": "brief summary of visual quality with specific references to what you saw",
+    "confidence": number between 0 and 1,
+    "evaluationStatus": "SUCCESS"
+  }
+  ```
+
+  **Important:**
+  - Reference specific things you see in the screenshots
+  - Don't make assumptions about pages you can't see
+  - Be constructive in suggestions
+  - Base score on visible evidence only
+  {{/if}}
+
+# Criteria schema for validation (optional)
+criteriaSchema:
+  type: object
+  properties:
+    dimensions:
+      type: array
+      items:
+        type: object
+        properties:
+          name:
+            type: string
+          description:
+            type: string
+          weight:
+            type: number
+        required:
+          - name
+          - description
+          - weight
+    minScore:
+      type: number
+    maxScore:
+      type: number
+  required:
+    - dimensions
+    - minScore
+    - maxScore
+
+# Example usage in suite configuration:
+# evaluators:
+#   - evaluatorId: visual-quality
+#     weight: 15
+#     criteria:
+#       dimensions:
+#         - name: professionalAppearance
+#           description: "Website looks professional and trustworthy"
+#           weight: 0.3
+#         - name: noPlaceholders
+#           description: "No Lorem ipsum or placeholder content visible"
+#           weight: 0.25
+#         - name: layoutQuality
+#           description: "Layout is well-organized with proper alignment"
+#           weight: 0.25
+#         - name: brandConsistency
+#           description: "Colors, fonts, and styling are consistent"
+#           weight: 0.2
+#       minScore: 1
+#       maxScore: 10

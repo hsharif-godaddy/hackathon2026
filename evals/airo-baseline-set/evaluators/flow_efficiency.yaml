@@ -1,4 +1,5 @@
 ---
+evaluatorId: "airo-flow-efficiency"
 name: flow_efficiency
 description: Scores whether the interaction progressed efficiently without unnecessary
   loops or avoidable delay.
@@ -6,24 +7,65 @@ type: llm
 scoreType: NUMERIC
 scoreName: flow_efficiency
 llmConfig:
-  model: gpt-4o
+  model: gpt-5.2
   temperature: 0
-  maxTokens: 2000
-projectId: airo-builder-regression
-staticContext: 'Primary evidence: conversation turns and tool-call sequence. Judge
+  maxTokens: 2500
+projectId: "8606"
+staticContext: 'Primary evidence: conversation turns and tool-call sequence with execution outcomes. Judge
   how directly the session moved from request to usable build progress. Do not score
-  final-site quality here.'
+  final-site quality here. Tool calls are the trace of browser-backed automation; use
+  repeated failures, missing follow-through after a tool success, or long gaps without
+  progress as efficiency signals alongside turn count.
+  Narrow the efficiency judgment to that trace: do not lower the score because a final
+  artifact snapshot is incomplete, a preview capture missed a page state, or evaluation
+  did not record every interaction—penalize only patterns evidenced in the transcript
+  and tool stream (avoidable loops, contradiction, stalled tooling).'
 criteriaSchemaFile: schemas/empty-object.json
 template: |
   You are grading `flow_efficiency` for an Airo Builder session.
 
-  Use only conversation flow and tool usage. Ignore visual polish and overall site quality.
+  ## Available Artifacts
 
-  ## Task Context
-  {{#if scenario.goal}}
-  Primary goal: {{scenario.goal.name}}
+  {{#if conversation}}
+  ✓ Conversation history ({{conversation.totalTurns}} turns)
+  {{#if conversation.messages.[0].toolInvocations}}
+  ✓ **Tool invocations** with execution outcomes (SUCCESS/FAILURE/ERROR) - use this for efficiency analysis
+  {{else}}
+  ⚠️ Tool invocation details not available (limited to conversation analysis only)
   {{/if}}
-  Customer summary: {{scenario.customerSummary}}
+  {{/if}}
+
+  ## What to Evaluate
+
+  **Evaluate ONLY from conversation and tool execution evidence:**
+  ✓ Number of turns required
+  ✓ Tool call patterns and outcomes
+  ✓ Repetitive clarification loops
+  ✓ Contradictory progress updates
+  ✓ Adaptation after user refinements
+  ✓ Tool success/failure patterns
+
+  **Do NOT evaluate (not visible in artifacts):**
+  ✗ Final site quality or completeness
+  ✗ Visual polish
+  ✗ Features not evident in conversation
+  ✗ Hypothetical "shorter paths" you cannot see in the transcript
+
+  ## What Counts as Inefficiency
+
+  **Penalize for:**
+  - Repeated asks for the SAME clarification
+  - Contradictory "done" statements without tool progress
+  - Tools failing repeatedly without adaptation
+  - Long chat runs with no tooling when next step was obvious
+  - Wheel-spinning or redoing work without reason
+
+  **Do NOT penalize for:**
+  - Legitimate user-driven pivots or changes
+  - Substantial edit requests
+  - Needed clarification (when it unblocks important work)
+  - Single tool failures followed by recovery
+  - External/infrastructure failures (not agent's fault)
 
   ## Conversation Evidence
   {{#if conversation.originalPrompt}}
@@ -36,45 +78,125 @@ template: |
   - {{this}}
   {{/each}}
   {{/if}}
-  {{#if conversation.messages}}
-  Transcript:
+
+  {{#if conversation.messages.[0].toolInvocations}}
+  ## Tool Execution Analysis
+
+  Review tool call patterns for efficiency signals:
+
   {{#each conversation.messages}}
-  TURN {{turn}} {{uppercase role}}: {{content}}
-  {{#if toolCalls}}
-  Tool calls on this turn:
-  {{#each toolCalls}}
-  - {{name}}{{#if args}} args={{args}}{{/if}}
+  {{#if (eq role "assistant")}}
+  {{#if toolInvocations}}
+  **Turn {{turn}}:**
+  {{#each toolInvocations}}
+  - `{{name}}`: **{{outcome}}**{{#if (eq outcome "SUCCESS")}} ✓{{/if}}{{#if (eq outcome "FAILURE")}} ✗{{/if}}{{#if (eq outcome "ERROR")}} ⚠️{{/if}}
   {{/each}}
+  {{/if}}
+  {{/if}}
+  {{/each}}
+
+  **Efficiency Signals from Tools:**
+  - Count SUCCESS vs FAILURE outcomes
+  - Look for repeated failures without adaptation
+  - Check for tool progress vs conversation-only turns
+  - Identify unnecessary tool repeats (same tool, same inputs)
+  {{else}}
+  ## Conversation Transcript (Tool details not available)
+
+  {{#each conversation.messages}}
+  **TURN {{turn}} - {{uppercase role}}:** {{content}}
+  {{#if toolCalls}}
+  Tool calls on this turn: {{#each toolCalls}}{{this}}{{#unless @last}}, {{/unless}}{{/each}}
   {{/if}}
   {{/each}}
   {{/if}}
 
   ## Judge This
+  ### Evidence boundary (narrow inefficiency)
+  - Base the score **only** on **Conversation Evidence** and **Tool Execution** patterns above
+  - Do not infer inefficiency from missing website snapshots or from
+    hypothetical shorter paths you cannot see in the transcript
+  - Legitimate user-driven pivots, substantial edit requests, or needed clarification
+    are NOT inefficiency unless the transcript shows **avoidable** repetition or
+    wheel-spinning
+  - Penalize clear signals in the trace: repeated asks for the same clarification,
+    contradictory "done" statements without tool progress, tools failing or ignored
+    without adaptation, or long runs of chat with no tooling when the next step was
+    obvious from context
+  - **External failures:** If tools fail due to external services/APIs (not agent code errors),
+    do NOT count as agent inefficiency. Check error messages in tool outputs.
+
   Score how efficiently the agent moved the session forward.
 
   Reward:
-  - early progress toward a usable build
-  - concise, necessary clarification only when it unblocks important work
-  - tool usage that matches the next obvious step
-  - adaptation after a user refinement without restarting unnecessarily
+  - Early progress toward a usable build (check tool SUCCESS outcomes)
+  - Concise, necessary clarification only when it unblocks important work
+  - Tool usage that matches the next obvious step
+  - Quick adaptation after user refinement without restarting unnecessarily
+  - High tool success rate (>85% SUCCESS indicates efficient execution)
+  - Recovery after tool failures (retry with fixes)
 
   Penalize:
-  - repetitive clarification loops
-  - contradictory progress updates
-  - obvious wheel-spinning, stalling, or redoing work without reason
-  - too many turns spent on low-value chatter instead of advancing the build
+  - Repetitive clarification loops (asking same question multiple times)
+  - Contradictory progress updates (saying "done" without tool evidence)
+  - Obvious wheel-spinning, stalling, or redoing work without reason
+  - Low tool success rate due to agent errors (not external failures)
+  - Too many turns spent on low-value chatter instead of advancing the build
+  - Repeated tool failures without trying alternatives
 
   Do not penalize legitimate iteration when the user changes direction or asks for substantial edits.
 
   ## Rubric
-  5 = very direct progression with little or no wasted motion.
-  4 = mostly efficient with minor detours.
-  3 = acceptable but somewhat repetitive, slow, or over-chatty.
-  2 = clearly inefficient with repeated loops or avoidable churn.
-  1 = severely inefficient.
-  0 = essentially no meaningful forward progress.
+  Return a single integer from 0 through 100 (inclusive). Higher means more efficient session flow.
 
-  In the reasoning, distinguish unavoidable iteration from avoidable delay.
+  **90-100 (Excellent):**
+  - Very direct progression with little or no wasted motion
+  - High tool success rate (>90%)
+  - Minimal clarification loops
+  - Quick recovery from any failures
+
+  **70-89 (Good):**
+  - Mostly efficient with minor detours
+  - Good tool success rate (75-90%)
+  - Some clarification needed but appropriate
+  - Generally steady progress
+
+  **50-69 (Fair):**
+  - Acceptable but somewhat repetitive, slow, or over-chatty
+  - Mixed tool success rate (50-75%)
+  - Some unnecessary loops or delays
+  - Progress but with inefficiencies
+
+  **30-49 (Poor):**
+  - Clearly inefficient with repeated loops or avoidable churn
+  - Low tool success rate (<50%) due to agent errors
+  - Significant wheel-spinning or repetition
+  - Slow progress
+
+  **10-29 (Very Poor):**
+  - Severely inefficient
+  - Many failed attempts without learning
+  - Extensive unnecessary conversation
+
+  **0-9 (Failed):**
+  - Essentially no meaningful forward progress
+  - Nearly all tool calls failed or no tools used when needed
+
+  ## Response Format
+
+  In your reasoning:
+  1. Calculate tool success rate (if available): SUCCESS / Total calls
+  2. Identify any inefficiency patterns (repetition, contradictions, failures)
+  3. Distinguish unavoidable iteration from avoidable delay
+  4. Note any external failures that weren't agent's fault
+  5. Cite specific turn numbers and tool outcomes as evidence
+
+  Provide:
+  - `score`: integer 0-100
+  - `summary`: explain efficiency with specific evidence (turn numbers, tool success rate)
+  - `toolSuccessRate`: (if available) percentage of SUCCESS outcomes
+  - `inefficiencyPatterns`: list of specific inefficiency issues found
+  - `confidence`: 0-1 score
 scoreConfig:
   min: 0
-  max: 5
+  max: 100

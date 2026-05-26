@@ -1,7 +1,8 @@
 ---
-evaluatorId: system-accessibility
-name: Accessibility Evaluator
-description: WCAG-focused accessibility checks using axe-core over the generated preview.
+evaluatorId: "airo-system-accessibility"
+name: "Airo Accessibility Evaluator"
+description: WCAG-focused accessibility checks using axe-core over the generated preview
+  DOM from Playwright (same capture pipeline as screenshots and pageContent extraction).
 type: system
 systemCategory: accessibility
 scoreType: NUMERIC
@@ -9,4 +10,4 @@ scoreName: accessibility_score
 scoreConfig:
   min: 0
   max: 100
-projectId: airo-builder-regression
+projectId: "8606"

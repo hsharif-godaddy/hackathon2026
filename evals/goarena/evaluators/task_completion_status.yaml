@@ -1,0 +1,281 @@
+---
+evaluatorId: "airo-task-completion-status"
+name: visual_task_completion_status
+description: Measures whether the site effectively supports the user's primary goal
+  such as leads, bookings, or inquiries. Main task-completion evaluator with graduated
+  scoring (0-100) based on checklist pass rate.
+type: llm
+scoreType: NUMERIC
+scoreName: task_completion_status
+llmConfig:
+  model: gpt-5.2
+  temperature: 0
+  maxTokens: 2500
+projectId: "8606"
+staticContext: 'Main task-completion evaluator using graduated scoring (0-100). Evidence:
+  conversation, tool invocations, pageContent (DOM), and screenshots. pageContent
+  shows ONLY the captured page (typically homepage). Multi-page features (cart, checkout,
+  contact forms) exist on other routes. Do NOT penalize for features not in the single-page
+  snapshot. Only fail when visible evidence CONTRADICTS requirements.'
+criteriaSchemaFile: schemas/checklist-single-item.json
+template: |
+  You are grading `task_completion_status` for an Airo Builder output.
+
+  ## 🚨 CRITICAL RULE — MUST FOLLOW
+
+  **HOMEPAGE SNAPSHOTS ARE INCOMPLETE BY DESIGN**
+
+  The pageContent captures ONE PAGE (usually homepage). Other pages exist on different routes:
+  - Cart page → /cart (NOT on homepage)
+  - Checkout page → /checkout (NOT on homepage)
+  - Contact form → /contact (NOT on homepage)
+  - Inquiry form → /inquiry (NOT on homepage)
+
+  **FormCount=0 on homepage is EXPECTED** — forms live on other pages.
+
+  ### YOU MUST:
+  ✓ PASS checklist items if plausible CTAs exist (buttons/links/forms on captured page)
+  ✓ Give credit when toolInvocations show SUCCESS (agent did its part)
+  ✓ Score 75+ when core user journey is clear from visible CTAs
+
+  ### YOU MUST NOT:
+  ✗ Penalize for "no visible cart page" (it's on /cart, not homepage)
+  ✗ Penalize for "formCount=0" (forms are on /contact, /inquiry, etc.)
+  ✗ Use phrases like "likely blocker", "remains unverified", "significant gap" for features on other pages
+  ✗ Fail critical items for unverifiable backend integrations (Stripe, booking systems)
+  ✗ Treat absence of evidence as evidence of absence
+
+  ### VIOLATION EXAMPLES — DO NOT DO THIS:
+  ❌ "no visible cart/checkout entry point in capture... is a likely blocker" → Score 55
+  ❌ "formCount=0 shows no forms exist... incomplete" → Score 60
+  ❌ "cart page not shown... significant gap" → Score 65
+
+  ### CORRECT EXAMPLES:
+  ✓ "'Add to Cart' buttons present; cart/checkout pages exist on separate routes not captured in homepage snapshot; core journey clear" → Score 85
+  ✓ "FormCount=0 on homepage expected; contact form likely on /contact route; 'Contact Us' link present in navigation" → Score 80
+  ✓ "'Book Appointment' CTA visible; booking flow on separate page; user journey clear" → Score 85
+
+  ---
+
+  ## Available Evidence
+
+  {{#if conversation}}
+  ✓ Conversation ({{conversation.totalTurns}} turns)
+  {{#if conversation.messages.[0].toolInvocations}}
+  ✓ **Tool invocations** with outcomes (SUCCESS/FAILURE/ERROR)
+  {{else}}
+  ⚠️ Tool invocations unavailable
+  {{/if}}
+  {{/if}}
+  {{#if pageContent}}
+  ✓ Page content (DOM from ONE page, typically homepage)
+  {{/if}}
+  {{#if screenshots}}
+  ✓ {{screenshots.length}} screenshot(s)
+  {{else}}
+  ⚠️ No screenshots
+  {{/if}}
+
+  **Evidence scope:**
+  - Buttons/Links = labels only (no href/destinations)
+  - Cannot verify: payment processors, external integrations, post-click behavior, pages not captured
+
+  ---
+
+  ## User Request
+
+  {{#if conversation.originalPrompt}}
+  Original: {{conversation.originalPrompt}}
+  {{/if}}
+  {{#if conversation.userMessages}}
+  Refinements:
+  {{#each conversation.userMessages}}
+  - {{this}}
+  {{/each}}
+  {{/if}}
+
+  ---
+
+  {{#if conversation.messages.[0].toolInvocations}}
+  ## Tool Execution Evidence
+
+  {{#each conversation.messages}}
+  {{#if (eq role "assistant")}}
+  {{#if toolInvocations}}
+  **Turn {{turn}}:**
+  {{#each toolInvocations}}
+  - `{{name}}`: **{{outcome}}**{{#if (eq outcome "SUCCESS")}} ✓{{/if}}{{#if (eq outcome "FAILURE")}} ✗{{/if}}
+  {{/each}}
+  {{/if}}
+  {{/if}}
+  {{/each}}
+
+  **When toolInvocations show SUCCESS for implementation (file edits, route creation), give credit even if visual capture is incomplete.**
+  {{/if}}
+
+  ---
+
+  ## Captured Page Evidence
+
+  Page title: {{pageContent.title}}
+  Main H1: {{pageContent.h1}}
+  Headings: {{#each pageContent.headings}}- {{this}} {{/each}}
+  Buttons: {{#each pageContent.buttons}}- {{this}} {{/each}}
+  Links: {{#each pageContent.links}}- {{this}} {{/each}}
+  Form count: {{pageContent.formCount}}
+  Image count: {{pageContent.imageCount}}
+  Main text: {{pageContent.mainText}}
+
+  ---
+
+  ## What to Evaluate
+
+  **Focus on the primary task**: Did the user accomplish what they asked for?
+
+  Look at the conversation to understand:
+  - What did the user want to build/fix/change?
+  - What were their requirements and goals?
+  - Did they get a usable result?
+
+  **Evaluate simply**: Can the user accomplish their stated goal with this output?
+
+  Don't categorize or classify the intent type. Just evaluate completion.
+
+  ---
+
+  ## Checklist Evaluation
+
+  Evaluate each item as PASS/FAIL:
+
+  {{#each criteria.checklist}}
+  - **{{id}}**: {{description}}
+  {{/each}}
+
+  ### Pass/Fail Guidelines
+
+  **PASS if:**
+  - Plausible CTA/button/link/form exists for the outcome
+  - Tool invocations show successful implementation
+  - Visible evidence supports the requirement
+  - Feature may exist on uncaptured page but CTA is present
+
+  **FAIL only if:**
+  - Visible evidence CONTRADICTS requirement (e.g., wrong business type shown)
+  - No CTA/button/link/form related to requirement anywhere in captured page
+  - Screenshots confirm requirement is truly missing (not just on another page)
+
+  **For unverifiable items** (multi-page features, backend integrations):
+  - If CTA present (e.g., "Add to Cart", "Book Now", "Contact") → PASS
+  - Only FAIL if NO related CTA exists anywhere
+
+  ---
+
+  ## Scoring — Use These Exact Examples
+
+  **90-100 (Excellent):**
+  - User can complete their primary task
+  - All critical elements present
+  - Example: "User wanted e-commerce site. Products, prices, 'Add to Cart' buttons all present. Checkout on separate page not shown but CTA exists."
+
+  **80-89 (Good):**
+  - User can complete primary task
+  - One minor element missing
+  - Example: "User wanted booking site. 'Book Now' CTA present, services listed, but no pricing shown."
+
+  **70-79 (Acceptable):**
+  - User can mostly complete task but missing 1 key element
+  - Example: "User wanted contact form. Form exists but no submission confirmation shown."
+
+  **60-69 (Fair):**
+  - User can attempt task but path is unclear or incomplete
+  - Example: "User wanted store. Products listed but no clear way to purchase."
+
+  **40-59 (Poor):**
+  - User cannot complete primary task
+  - Example: "User wanted e-commerce but only got informational pages, no purchase path."
+
+  **20-39 (Very Poor):**
+  - Output doesn't match user's request
+  - Example: "User wanted restaurant site, got blog template."
+
+  **0-19 (Failed):**
+  - Unusable output
+  - Example: "Blank page or broken build."
+
+  ### Scoring Formula
+
+  1. Count passed checklist items: **P** out of **N** = {{criteria.checklist.length}}
+  2. Calculate pass rate: `passRate = P / N`
+  3. Base score: `baseScore = passRate × 100`
+
+  4. **Critical item check:**
+     - If `requested_outcome_visible` FAILED due to truly missing CTA (not uncaptured page): multiply by 0.7
+     - If `no_unresolved_blocker` FAILED due to actual blocker (not uncaptured page): multiply by 0.7
+     - Both failed: multiply by 0.5
+
+  5. **Technical blocker bonus:**
+     - If tool invocations show multiple external FAILURES (not agent errors) and agent attempted workarounds: add 10 points (max 100)
+
+  6. **Round to nearest integer**
+
+  ### Critical Item Definitions
+
+  **requested_outcome_visible:**
+  - PASS: Button/link/form for outcome exists (e.g., "Add to Cart", "Book Now", "Contact")
+  - FAIL: No button/link/form for outcome anywhere in captured page AND screenshots confirm absence
+
+  **no_unresolved_blocker:**
+  - PASS: User can proceed with their task
+  - FAIL: Actual blocker prevents task (build error, wrong content, broken functionality)
+
+  ---
+
+  ## Self-Check Before Submitting
+
+  Review your reasoning for violations:
+
+  ❌ Did you penalize for "no visible cart/checkout" when cart is on separate page?
+  ❌ Did you use "likely blocker" for features on uncaptured pages?
+  ❌ Did you treat formCount=0 on homepage as proof no forms exist site-wide?
+  ❌ Did you fail critical items for unverifiable backend integrations?
+  ❌ Is your score <70 mainly because of uncaptured multi-page features?
+
+  **If YES to any:** Your score is WRONG. Recalculate:
+  - Remove penalties for uncaptured pages
+  - If "Add to Cart"/"Book Now"/"Contact" CTA present → pass relevant checklist items
+  - Adjust score to 75+ if core journey is clear
+
+  ---
+
+  ## Response Format
+
+  ```json
+  {
+    "score": <0-100>,
+    "summary": "Explain completion level with specific evidence from pageContent, screenshots, or toolInvocations. Cite turn numbers and visible elements. If penalizing, explain what contradicts requirements (not what's missing from capture).",
+    "checklist": [
+      {
+        "id": "<exact_id_from_checklist_above>",
+        "pass": true,
+        "evidence": "Brief rationale from visible evidence"
+      }
+    ],
+    "passedCount": <number>,
+    "passRate": <P/N as decimal>,
+    "criticalItemsFailed": ["<id>" or empty array],
+    "toolSuccessRate": <percentage or null>,
+    "scoringBreakdown": {
+      "baseScore": <number>,
+      "criticalPenalty": <number, 0 if none applied>,
+      "technicalBlockerBonus": <number, 0 if none>,
+      "finalScore": <number>
+    },
+    "confidence": <0-1>
+  }
+  ```
+
+  **Checklist must have exactly {{criteria.checklist.length}} items in same order as above.**
+
+scoreConfig:
+  min: 0
+  max: 100

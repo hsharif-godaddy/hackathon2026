@@ -1,0 +1,109 @@
+---
+evaluatorId: "airo-hero-section-presence"
+name: hero_section_presence
+description: Verifies presence of hero section with headline (h1) paired with clear call-to-action
+  above the fold. Checks DOM structure for hero pattern.
+type: llm
+scoreType: NUMERIC
+scoreName: hero_section_presence
+llmConfig:
+  model: gpt-5.2
+  temperature: 0
+  maxTokens: 1500
+projectId: "8606"
+staticContext: 'Check pageContent for hero section pattern: h1 or prominent headline paired with
+  CTA language (book, schedule, contact, get started, learn more, etc.). This is a structural
+  check of the captured page DOM only. Do not penalize for multi-page features.'
+criteriaSchemaFile: schemas/empty-object.json
+scoreConfig:
+  min: 0
+  max: 100
+template: |
+  You are evaluating whether the captured page has a hero section with headline + CTA.
+
+  ## 🚨 EVALUATION SCOPE
+
+  **You are evaluating the CAPTURED PAGE ONLY** (typically homepage).
+
+  A hero section typically includes:
+  - **Headline**: h1 or prominent heading (usually first major heading on page)
+  - **Call-to-Action**: Button or link with action language (book, schedule, contact, get started, etc.)
+
+  These should appear together in the upper portion of the page (above the fold).
+
+  ## Evidence Available
+
+  **Page Content (DOM extraction from captured page):**
+  - Title: {{pageContent.title}}
+  - Main H1: {{pageContent.h1}}
+  - All headings: {{#each pageContent.headings}}- {{this}} {{/each}}
+  - Buttons: {{#each pageContent.buttons}}- {{this}} {{/each}}
+  - Links: {{#each pageContent.links}}- {{this}} {{/each}}
+  - Main text (first 500 chars): {{pageContent.mainText}}
+
+  ## Evaluation Logic (Score 0-100)
+
+  **100 points** = Both h1 AND clear CTA present:
+  - ✓ H1 heading exists ({{pageContent.h1}})
+  - ✓ At least one button/link with strong CTA language (book, schedule, contact, get started, etc.)
+
+  **50 points** = Partial hero section:
+  - H1 exists but only weak/generic CTAs (e.g., only "Learn More" or navigation links)
+  - OR strong CTA exists but no h1 (uses h2 or other heading)
+
+  **0 points** = No hero section:
+  - ✗ No h1 heading
+  - ✗ No CTA buttons/links (only navigation/footer links)
+
+  **CTA language patterns** (case-insensitive):
+  - **Strong CTAs**: book, schedule, contact us, get started, sign up, request quote, shop now, buy now, free trial
+  - **Weak CTAs**: learn more, read more, see more (generic exploration)
+  - **NOT CTAs**: home, about, services (navigation), privacy, terms (footer)
+
+  ## Important Rules
+
+  - **Do NOT** require specific CTA text - any action word is sufficient
+  - **Do NOT** penalize if hero section exists but is on a different page
+  - **Do NOT** require visual verification - DOM structure is sufficient
+  - **Do NOT** fail if CTA text is generic (e.g., "Learn More" is valid)
+  - **PASS** if both h1 and any CTA-like button/link exist
+
+  ## Edge Cases
+
+  **Navigation links**: "Home", "About", "Services" are NOT CTAs (informational navigation)
+  **Footer links**: "Privacy Policy", "Terms" are NOT CTAs (legal links)
+  **Social links**: "Facebook", "Twitter" are NOT CTAs (social media)
+
+  **Valid CTAs include**: Any button/link that prompts user action beyond navigation
+
+  ## Self-Check
+
+  Before submitting:
+  - ❌ Did you give 0 when weak CTA exists? (50 points for weak CTAs)
+  - ❌ Did you give 100 for navigation links? (Navigation != CTA)
+  - ❌ Did you require visual verification? (DOM structure is sufficient)
+
+  **Scoring guide**:
+  - h1 + strong CTA → 100
+  - h1 + weak CTA → 50
+  - h1 only (no CTA) → 0
+  - CTA only (no h1) → 50
+  - Neither → 0
+
+  ## Response Format
+
+  ```json
+  {
+    "score": <0-100>,
+    "summary": "Brief explanation with specific evidence",
+    "evidence": {
+      "h1_present": true|false,
+      "h1_text": "text of h1 or null",
+      "cta_present": true|false,
+      "cta_strength": "strong | weak | none",
+      "cta_examples": ["list", "of", "CTA", "buttons/links", "found"],
+      "reasoning": "Why this score"
+    },
+    "confidence": <0-1>
+  }
+  ```

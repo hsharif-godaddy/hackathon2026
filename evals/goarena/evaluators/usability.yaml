@@ -1,10 +1,11 @@
-# Usability Evaluator
+# Usability Evaluator (Improved)
 # LLM-based evaluator using Nielsen's 10 Usability Heuristics
 # Uses screenshots with vision API to evaluate UI/UX
+# IMPROVEMENT: Added screenshot verification and agent capability boundaries
 
 evaluatorId: "airo-usability"
 name: "Airo Usability Evaluator"
-description: "Evaluates website usability based on Nielsen's 10 Usability Heuristics using screenshots"
+description: "Evaluates website usability based on Nielsen's 10 Usability Heuristics using screenshots with fair attribution"
 
 # Evaluator type - "llm" means LLM-as-Judge evaluation
 type: llm
@@ -18,7 +19,7 @@ scoreConfig:
 
 # LLM configuration - must use a vision-capable model
 llmConfig:
-  model: "gpt-4o"  # Vision-capable model
+  model: "gpt-5.2"  # Vision-capable model
   temperature: 0
   maxTokens: 3000
 
@@ -26,17 +27,51 @@ llmConfig:
 projectId: "8606"
 
 # Handlebars template for LLM prompt
-# This evaluator uses SCREENSHOTS (vision API) - the screenshots array is passed
-# to the LLM automatically when the evaluator name contains "visual" or "usability"
-# Available browser context variables:
-#   - screenshots: Array of base64 images (passed to vision API automatically)
-#   - previewUrl: URL of the generated website
-#   - scenario.business: Business context
-#   - scenario.goal: Goal information
-#   - conversation.originalPrompt: First user message (original request)
-#   - conversation.userMessages: All user messages (requirements)
 template: |
   You are evaluating the usability of a generated website using Nielsen's 10 Usability Heuristics.
+
+  ## CRITICAL: Screenshot Verification
+
+  {{#if screenshots}}
+  ✓ {{screenshots.length}} screenshot(s) available for evaluation
+  {{else}}
+  ❌ FATAL: NO SCREENSHOTS PROVIDED
+
+  **Cannot evaluate usability without visual evidence.**
+
+  Return immediately:
+  {
+    "heuristicsEvaluated": 0,
+    "heuristics": [],
+    "totalSeverity": 0,
+    "maxSeverity": 0,
+    "overallScore": 0,
+    "criticalViolations": [],
+    "summary": "Cannot evaluate usability - no screenshots provided. Usability requires visual evidence to assess Nielsen heuristics. This is not an agent failure; screenshots are required input artifacts.",
+    "evaluationStatus": "ARTIFACT_MISSING",
+    "confidence": 1.0
+  }
+
+  STOP HERE. Do not proceed with evaluation.
+  {{/if}}
+
+  ## Agent Capability Boundaries
+
+  **What Agent Controls (can be evaluated):**
+  - HTML/CSS code generation for UI elements
+  - Component structure and hierarchy
+  - Content organization and information architecture
+  - Form fields, buttons, navigation structure
+
+  **What Agent Does NOT Control (do not penalize):**
+  - Browser rendering quirks (font loading, CSS edge cases)
+  - CDN/external resource loading failures
+  - Infrastructure issues (server errors, timeouts)
+  - User's browser settings or device limitations
+
+  **Fair Attribution:**
+  - Penalize: Poor UI structure in generated code
+  - Do NOT penalize: Browser/infrastructure rendering issues
 
   ## What the User Requested
   {{#if conversation.originalPrompt}}
@@ -55,13 +90,6 @@ template: |
   {{/if}}
   {{/if}}
 
-  ## Business Context
-  {{#if scenario.business}}
-  Business Name: {{scenario.business.businessName}}
-  Industry: {{scenario.business.industry}}
-  Target Audience: {{scenario.business.targetAudience}}
-  {{/if}}
-
   ## Website URL
   {{previewUrl}}
 
@@ -73,10 +101,12 @@ template: |
   {{/each}}
 
   ## Your Task
-  Analyze the provided screenshots and evaluate each heuristic.
+  Analyze the provided screenshots and evaluate each heuristic. Base judgments only on what is
+  visible in those captures; do not assume violations that depend on interactions, uncaptured pages,
+  or post-submit states unless the screenshots show them.
 
   For each heuristic, identify:
-  - Whether the heuristic is violated
+  - Whether the heuristic is violated based on visible UI structure
   - Severity of any violations:
     - 0 = No usability problem
     - 1 = Cosmetic problem only (fix if time permits)
@@ -85,9 +115,28 @@ template: |
     - 4 = Usability catastrophe (must fix before release)
   - Specific examples from the screenshots
 
+  ## Severity Attribution Guidelines
+
+  **Assign severity 3-4 only for:**
+  - Structural UI problems in generated code (hierarchy, layout, labels)
+  - Missing critical UI elements (no navigation, no submit button)
+  - Confusing information architecture
+
+  **Do NOT assign severity 3-4 for:**
+  - Browser rendering quirks (unless clearly from CSS code)
+  - Missing external resources (fonts, images from CDN)
+  - Infrastructure errors visible in screenshots
+
+  If you see rendering issues:
+  1. Check if it's from agent's generated code structure
+  2. Or if it's browser/CDN/infrastructure issue
+  3. Only penalize if it's from code structure
+
+  ## Scoring Formula
+
   Scoring: 100 - (total_severity / max_severity) * 100
   Where max_severity = 4 × number of heuristics evaluated ({{criteria.heuristics.length}})
-  So for {{criteria.heuristics.length}} heuristics: max_severity = {{criteria.heuristics.length}} × 4 = worst score of 0
+  So for {{criteria.heuristics.length}} heuristics: max_severity = {{criteria.heuristics.length}} × 4
 
   Respond with JSON in this format:
   {
@@ -99,14 +148,15 @@ template: |
         "violated": boolean,
         "severity": 0-4,
         "observations": "specific observations from screenshots",
-        "examples": ["list of specific violations found"]
+        "examples": ["list of specific violations found"],
+        "attributedTo": "agent_code | browser_rendering | infrastructure"
       }
     ],
     "totalSeverity": number (sum of all severity scores),
     "maxSeverity": number ({{criteria.heuristics.length}} × 4),
     "overallScore": number (100 - (total_severity / ({{criteria.heuristics.length}} * 4)) * 100),
-    "criticalViolations": ["list of severity 3-4 violations"],
-    "summary": "brief usability summary",
+    "criticalViolations": ["list of severity 3-4 violations with attribution"],
+    "summary": "brief usability summary with fair attribution",
     "confidence": number between 0 and 1
   }
 
@@ -127,40 +177,3 @@ criteriaSchema:
             type: string
   required:
     - heuristics
-
-# Example usage in scenario.evaluators:
-# evaluators:
-#   - evaluatorId: usability
-#     weight: 10
-#     criteria:
-#       heuristics:
-#         - number: 1
-#           name: "Visibility of system status"
-#           description: "The design should always keep users informed about what is going on"
-#         - number: 2
-#           name: "Match between system and real world"
-#           description: "The design should speak the users' language, use familiar concepts"
-#         - number: 3
-#           name: "User control and freedom"
-#           description: "Users need a clearly marked exit, undo and redo"
-#         - number: 4
-#           name: "Consistency and standards"
-#           description: "Users should not wonder whether different words/actions mean the same"
-#         - number: 5
-#           name: "Error prevention"
-#           description: "Good design prevents problems from occurring in the first place"
-#         - number: 6
-#           name: "Recognition rather than recall"
-#           description: "Minimize user memory load by making elements visible"
-#         - number: 7
-#           name: "Flexibility and efficiency of use"
-#           description: "Shortcuts for experienced users, cater to both novice and expert"
-#         - number: 8
-#           name: "Aesthetic and minimalist design"
-#           description: "Interfaces should not contain irrelevant or rarely needed information"
-#         - number: 9
-#           name: "Help users recognize and recover from errors"
-#           description: "Error messages should be expressed in plain language with solutions"
-#         - number: 10
-#           name: "Help and documentation"
-#           description: "Help should be easy to search, focused on the user's task"

@@ -1,43 +1,50 @@
 ---
+evaluatorId: "airo-implicit-feature-gap"
 name: implicit_feature_gap
-description: Flags whether important implied features are missing from the final site.
+description: Checks whether the final site avoids meaningful gaps in important implied
+  features. Graduated scoring (0-100) based on number and severity of missing features.
 type: llm
-scoreType: BOOLEAN
-scoreName: implicit_feature_gap
+scoreType: NUMERIC
+scoreName: no_implicit_feature_gap
 llmConfig:
-  model: gpt-4o
+  model: gpt-5.2
   temperature: 0
   maxTokens: 2000
 projectId: "8606"
-staticContext: 'Use the requested goal plus the final artifact to determine whether
-  important implied features are missing. Evaluate each checklist item as pass/fail
-  and set the boolean score to true only when there is a meaningful implied-feature
-  gap.'
+staticContext: 'Use the conversation for stated goals plus the final artifact to
+  determine whether important implied features are missing. Evaluate each checklist
+  item as pass/fail and return graduated score (0-100) where 100 means no gaps, lower
+  scores reflect severity and count of missing features. Prefer Playwright screenshots
+  plus pageContent (DOM-extracted structure and copy) over chat when judging what
+  is actually visible to visitors. Read checklist items narrowly: do not fail for
+  interaction-only behavior (post-submit views, conditional fields, later funnel
+  steps) when that state is missing from the capture unless the visible page contradicts
+  the implied need. Buttons and Links in pageContent are visible labels without href
+  or verified endpoints; checklist items asking for Stripe, gateways, calendars,
+  booking engines, etc. must honor **presence of a plausible labeled control**, not
+  verified destinations. Distinguish between code verification (agent CAN do via readFile)
+  and functional verification (agent CANNOT do without browser navigation).'
 criteriaSchemaFile: schemas/checklist-single-item.json
 template: |
   You are grading `implicit_feature_gap` for an Airo Builder output.
 
   Judge whether the final site is missing features that are reasonably implied by the requested business goal, even if the user did not spell them out word for word.
 
-  ## Requested Outcome
-  {{#if scenario.business}}
-  Business: {{scenario.business.businessName}} ({{scenario.business.industry}})
-  Description: {{scenario.business.businessDescription}}
-  {{/if}}
-  {{#if scenario.goal}}
-  Primary goal: {{scenario.goal.name}}
-  Goal bullets:
-  {{#each scenario.goal.goals}}
-  - {{this}}
-  {{/each}}
-  {{/if}}
-  Customer summary: {{scenario.customerSummary}}
+  ## User request (conversation)
   {{#if conversation.originalPrompt}}
   Original request:
   {{conversation.originalPrompt}}
   {{/if}}
+  {{#if conversation.userMessages}}
+  User refinements:
+  {{#each conversation.userMessages}}
+  - {{this}}
+  {{/each}}
+  {{/if}}
 
   ## Final Artifact Evidence
+  Page title: {{pageContent.title}}
+  Main H1: {{pageContent.h1}}
   Headings:
   {{#each pageContent.headings}}
   - {{this}}
@@ -51,8 +58,16 @@ template: |
   - {{this}}
   {{/each}}
   Form count: {{pageContent.formCount}}
+  Image count: {{pageContent.imageCount}}
   Main text:
   {{pageContent.mainText}}
+
+  ### Evidence boundary (narrow implied features)
+  - Infer gaps only from **Final Artifact Evidence**. Do not treat the absence of an uncaptured
+    interaction state as proof a feature is missing unless the visible surface clearly contradicts it.
+  - Evaluate each checklist description as **one** question about what that evidence can show; if part
+    of the wording needs a view not in the packet, note that and **pass** unless contradiction is visible.
+  - Link and button list entries omit targets; do **not** fail because an external workflow cannot be inspected from extraction.
 
   ## Checklist
   Evaluate each implied-feature checklist item as pass/fail with brief visible evidence.
@@ -60,11 +75,197 @@ template: |
   - {{id}}: {{description}}
   {{/each}}
 
+  ## Feature Gap Severity Levels
+
+  ### Critical Gap (-30 to -40 points)
+  - Core business outcome feature missing (e.g., booking form for booking site)
+  - Primary conversion path incomplete (e.g., no checkout for e-commerce)
+  - Essential trust/credibility element absent (e.g., no contact info for service business)
+  - Feature that fundamentally breaks user's stated goal
+
+  ### Major Gap (-15 to -25 points)
+  - Important secondary feature missing (e.g., no pricing for paid service)
+  - Expected workflow step missing (e.g., no cart for shopping flow)
+  - Standard business feature absent (e.g., no about page for professional site)
+  - Feature most visitors would expect
+
+  ### Minor Gap (-5 to -10 points)
+  - Nice-to-have feature missing (e.g., no testimonials)
+  - Polish element absent (e.g., no FAQ)
+  - Secondary navigation missing
+  - Feature that enhances but isn't essential
+
+  ### NOT a Gap (0 points deduction)
+  - Cosmetic extras or luxury features
+  - Low-priority nice-to-haves
+  - Features implied only by ideal interpretation
+  - Acceptable alternative exists (e.g., email form instead of phone)
+  - Evidence insufficient to confirm gap (post-interaction states)
+
+  ## Scoring Formula (Graduated 0-100)
+
+  **Start with 100 points (no gaps).**
+
+  Let **N** = {{criteria.checklist.length}} (total checklist items).
+  Evaluate each item and assign gap severity (Critical/Major/Minor/None).
+
+  For each failed checklist item:
+  1. Determine feature importance (Critical/Major/Minor)
+  2. Deduct appropriate points based on severity
+  3. Continue until all items evaluated
+
+  **Frequency consideration:**
+  - 1 gap: base deduction only
+  - 2-3 gaps: consider if pattern reveals broader issue
+  - 4+ gaps: significant pattern, consider additional -10 to -20 points
+
+  **Acceptable alternatives bonus:**
+  - If alternative implementation satisfies need: reduce deduction by 50%
+  - If partial implementation exists: reduce deduction by 30%
+
+  **Work-in-progress consideration:**
+  - If toolInvocations show agent attempted feature: reduce deduction by 20%
+  - If conversation shows feature planned for next iteration: note but don't reduce deduction
+
+  **Minimum score: 0**
+
+  ## Graduated Scoring Bands
+
+  **90-100: Excellent - No meaningful gaps**
+  - All critical and major implied features present
+  - At most 1-2 minor nice-to-haves missing
+  - Site fully supports stated business goal
+
+  **75-89: Good - Minor gaps only**
+  - All critical features present
+  - All major features present
+  - Some minor features missing
+  - Site effectively supports business goal
+
+  **60-74: Fair - Some major gaps**
+  - All critical features present
+  - 1-2 major features missing
+  - Multiple minor features missing
+  - Site supports goal but with noticeable gaps
+
+  **40-59: Poor - Major gaps present**
+  - All critical features present
+  - Multiple major features missing
+  - Numerous minor features missing
+  - Site partially supports goal
+
+  **20-39: Very poor - Critical gap present**
+  - 1 critical feature missing
+  - Multiple major/minor gaps
+  - Core business outcome questionable
+
+  **0-19: Failed - Multiple critical gaps**
+  - Multiple critical features missing
+  - Fundamental business goal unsupported
+  - Site cannot fulfill stated purpose
+
   ## Judge This
-  Only count meaningful implied gaps. A gap is meaningful when a normal visitor would reasonably expect it for the requested site type or when its absence weakens the main use case.
+
+  For each checklist item:
+  1. Determine if feature is present in evidence
+  2. If absent, classify severity (Critical/Major/Minor)
+  3. Check for acceptable alternatives
+  4. Check for partial implementations
+  5. Calculate point deduction
+  6. Sum all deductions
+  7. Final score = 100 - total deductions (min 0)
+
+  A gap is meaningful when a normal visitor would reasonably expect it for the requested site type or when its absence weakens the main use case.
 
   Do not count cosmetic extras or low-priority nice-to-haves.
 
-  Set the top-level boolean score:
-  - true = one or more checklist failures reveal a meaningful implied-feature gap
-  - false = implied needs are reasonably covered or an acceptable visible alternative exists
+  ## Examples
+
+  **Example 1: No gaps (Score: 100)**
+  - All implied features present
+  - Site fully supports business goal
+  - Deductions: 0
+
+  **Example 2: One minor gap (Score: 93)**
+  - FAQ section missing (nice-to-have)
+  - All critical/major features present
+  - Deduction: -7 points
+
+  **Example 3: One major gap (Score: 78)**
+  - Pricing page missing for paid service
+  - Other features present
+  - Deduction: -22 points
+
+  **Example 4: One critical gap (Score: 63)**
+  - Booking form missing for booking site
+  - Other features present
+  - Deduction: -37 points
+
+  **Example 5: Multiple gaps (Score: 48)**
+  - 1 major gap: no about page (-20)
+  - 2 minor gaps: no testimonials (-8), no social links (-7)
+  - Frequency consideration: -15
+  - Total deduction: -50
+  - Final: 50, adjusted to 48
+
+  **Example 6: Alternative exists (Score: 88)**
+  - Contact phone number missing (-15 base)
+  - But contact email form present (-50% reduction = -7.5)
+  - Total deduction: -12, rounded
+  - Final: 88
+
+  ## Mandatory `checklist` row contract
+
+  Output **exactly {{criteria.checklist.length}}** checklist objects — one per criterion below, **same order**. Each row **must** include:
+  - `id`: copy the criterion **`id` string verbatim** from the enumerated list below (never omit; never substitute a description where an id belongs)
+  - `pass`: boolean — `true` if no meaningful gap for that criterion, **`false`** if there is a gap (**field name must be `pass`, not `passed`**)
+  - `evidence`: short string tying the verdict to artifact evidence
+
+  You may include additional analytic fields (`severity`, `points_deducted`, etc.) on the same objects **only alongside** those three keys.
+
+  ## Response Format
+
+  ```json
+  {
+    "score": <0-100>,
+    "summary": "Brief explanation of gap assessment",
+    "checklist": [
+      {
+        "id": "checklist_item_id",
+        "pass": true,
+        "evidence": "What artifacts show",
+        "severity": "critical|major|minor|none",
+        "points_deducted": <number>,
+        "alternative_exists": true|false,
+        "reasoning": "Why pass/fail and severity assessment"
+      }
+    ],
+    "gap_summary": {
+      "critical_gaps": <number>,
+      "major_gaps": <number>,
+      "minor_gaps": <number>,
+      "total_gaps": <number>
+    },
+    "scoring_breakdown": {
+      "starting_score": 100,
+      "critical_deductions": <number>,
+      "major_deductions": <number>,
+      "minor_deductions": <number>,
+      "frequency_penalty": <number>,
+      "alternative_bonus": <number>,
+      "final_score": <0-100>
+    },
+    "missing_features": [
+      {
+        "feature": "name",
+        "severity": "critical|major|minor",
+        "impact": "how this affects business goal"
+      }
+    ],
+    "confidence": <0-1>
+  }
+  ```
+
+scoreConfig:
+  min: 0
+  max: 100

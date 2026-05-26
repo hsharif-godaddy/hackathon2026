@@ -1,7 +1,8 @@
 ---
-evaluatorId: system-security
-name: Security Evaluator
-description: Deterministic HTTPS/security-header checks over the generated preview.
+evaluatorId: "airo-system-security"
+name: "Airo Security Evaluator"
+description: Deterministic HTTPS and security-header checks on the same preview URL
+  Playwright uses for DOM capture and screenshots.
 type: system
 systemCategory: security
 scoreType: NUMERIC
@@ -9,4 +10,4 @@ scoreName: security_score
 scoreConfig:
   min: 0
   max: 100
-projectId: airo-builder-regression
+projectId: "8606"
