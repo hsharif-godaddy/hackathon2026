@@ -14,6 +14,7 @@ import { access, mkdir, readFile, rename, stat, unlink, writeFile } from 'node:f
 import path from 'node:path';
 import { nanoid } from 'nanoid';
 import { createOpenAIClient } from '@airo/ai-lib';
+import { AIRO_ASSET_UPLOADS_URL_PREFIX } from '@airo/shared/media';
 import { videoApiFetch } from '../helper/video-api-helper.js';
 import { logger } from '../logging/index.js';
 import { emitToApp } from '../server/ai-lib-websocket-server.js';
@@ -70,7 +71,9 @@ export interface VideoAppContext {
  * Service for generating videos using OpenAI Sora API
  */
 export class VideoGenerationTool {
-  private sseRegistry: { sendEvent: (appId: string, type: string, data: Record<string, unknown>) => void } | null = null;
+  private sseRegistry: {
+    sendEvent: (appId: string, type: string, data: Record<string, unknown>) => void;
+  } | null = null;
   private readonly appId: string;
   private readonly appPath: string;
   private readonly previewUrl?: string;
@@ -89,7 +92,9 @@ export class VideoGenerationTool {
     this.maxPollAttempts = ctx.maxPollAttempts ?? 100;
   }
 
-  setSSERegistry(registry: { sendEvent: (appId: string, type: string, data: Record<string, unknown>) => void }): void {
+  setSSERegistry(registry: {
+    sendEvent: (appId: string, type: string, data: Record<string, unknown>) => void;
+  }): void {
     this.sseRegistry = registry;
   }
 
@@ -127,40 +132,66 @@ export class VideoGenerationTool {
         throw new Error(`Source video is empty: ${videoPath}`);
       }
 
-      await execa('ffmpeg', [
-        '-loop', '1',
-        '-i', outroImagePath,
-        '-t', '1',
-        '-vf', `scale=${resolution.split('x')[0]}:${resolution.split('x')[1]}`,
-        '-pix_fmt', 'yuv420p',
-        '-r', '30',
-        '-threads', '4',
-        '-y',
-        tempOutroVideo
-      ], { timeout: 60000 });
+      await execa(
+        'ffmpeg',
+        [
+          '-loop',
+          '1',
+          '-i',
+          outroImagePath,
+          '-t',
+          '1',
+          '-vf',
+          `scale=${resolution.split('x')[0]}:${resolution.split('x')[1]}`,
+          '-pix_fmt',
+          'yuv420p',
+          '-r',
+          '30',
+          '-threads',
+          '4',
+          '-y',
+          tempOutroVideo,
+        ],
+        { timeout: 60000 }
+      );
 
       const escapeForConcat = (p: string) => p.replace(/\\/g, '\\\\').replace(/'/g, "'\\''");
-      await writeFile(concatList, `file '${escapeForConcat(videoPath)}'\nfile '${escapeForConcat(tempOutroVideo)}'`);
+      await writeFile(
+        concatList,
+        `file '${escapeForConcat(videoPath)}'\nfile '${escapeForConcat(tempOutroVideo)}'`
+      );
 
-      await execa('ffmpeg', [
-        '-f', 'concat',
-        '-safe', '0',
-        '-i', concatList,
-        '-c:v', 'libx264',
-        '-preset', 'ultrafast',
-        '-threads', '4',
-        '-c:a', 'aac',
-        '-pix_fmt', 'yuv420p',
-        '-y',
-        finalVideo
-      ], { timeout: 120000 });
+      await execa(
+        'ffmpeg',
+        [
+          '-f',
+          'concat',
+          '-safe',
+          '0',
+          '-i',
+          concatList,
+          '-c:v',
+          'libx264',
+          '-preset',
+          'ultrafast',
+          '-threads',
+          '4',
+          '-c:a',
+          'aac',
+          '-pix_fmt',
+          'yuv420p',
+          '-y',
+          finalVideo,
+        ],
+        { timeout: 120000 }
+      );
 
       await rename(finalVideo, videoPath);
     } finally {
       await Promise.all([
         unlink(tempOutroVideo).catch(() => {}),
         unlink(concatList).catch(() => {}),
-        unlink(finalVideo).catch(() => {})
+        unlink(finalVideo).catch(() => {}),
       ]);
     }
   }
@@ -177,7 +208,9 @@ export class VideoGenerationTool {
       let existingMetadata: Record<string, unknown> = {};
       try {
         existingMetadata = JSON.parse(await readFile(this.videoMetadataPath, 'utf-8'));
-      } catch { /* file may not exist yet */ }
+      } catch {
+        /* file may not exist yet */
+      }
 
       const now = new Date().toISOString();
       const videoMetadata = {
@@ -186,7 +219,7 @@ export class VideoGenerationTool {
         createdAt: existingMetadata.createdAt || now,
         updatedAt: now,
         url: url || null,
-        error: error ?? null
+        error: error ?? null,
       };
 
       await writeFile(this.videoMetadataPath, JSON.stringify(videoMetadata, null, 2));
@@ -194,13 +227,13 @@ export class VideoGenerationTool {
       logger.info('video-generation.metadata-saved', {
         appId: this.appId,
         videoId,
-        status
+        status,
       });
     } catch (saveError) {
       logger.error('video-generation.metadata-save-failed', {
         appId: this.appId,
         videoId,
-        error: saveError instanceof Error ? saveError.message : String(saveError)
+        error: saveError instanceof Error ? saveError.message : String(saveError),
       });
     }
   }
@@ -212,7 +245,11 @@ export class VideoGenerationTool {
     filePath: string,
     resolution: VideoResolution
   ): Promise<void> {
-    const outroImagePath = path.join(process.cwd(), 'images', 'Built_with_Airo_Builder_720x1280.jpeg');
+    const outroImagePath = path.join(
+      process.cwd(),
+      'images',
+      'Built_with_Airo_Builder_720x1280.jpeg'
+    );
 
     try {
       await access(outroImagePath);
@@ -220,7 +257,7 @@ export class VideoGenerationTool {
       throw new Error(`Required outro image not found: ${outroImagePath}`);
     }
 
-    if (!await this.checkFfmpegAvailable()) {
+    if (!(await this.checkFfmpegAvailable())) {
       throw new Error('ffmpeg is required for outro stitching but is not available on the system');
     }
 
@@ -245,45 +282,53 @@ export class VideoGenerationTool {
             status: 'completed',
             url: this.previewUrl
               ? `${this.previewUrl.replace(/\/+$/, '')}${videoMetadata.url}`
-              : videoMetadata.url
+              : videoMetadata.url,
           };
-        } catch { /* video file missing, regenerate */ }
+        } catch {
+          /* video file missing, regenerate */
+        }
       }
 
-      if (videoMetadata.status !== 'failed' && (videoMetadata.jobId || videoMetadata.status === 'pending')) {
+      if (
+        videoMetadata.status !== 'failed' &&
+        (videoMetadata.jobId || videoMetadata.status === 'pending')
+      ) {
         return { status: videoMetadata.status || 'pending' };
       }
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
         logger.warn('video-generation.start.metadata-read-failed', {
           appId: this.appId,
-          error: error instanceof Error ? error.message : String(error)
+          error: error instanceof Error ? error.message : String(error),
         });
       }
     }
 
     logger.info('video-generation.start.initiating', { appId: this.appId, duration, resolution });
 
-    this.initiateGeneration(options).catch(error => {
+    this.initiateGeneration(options).catch((error) => {
       logger.error('video-generation.initiate-error', {
         appId: this.appId,
-        error: error instanceof Error ? error.message : String(error)
+        error: error instanceof Error ? error.message : String(error),
       });
     });
 
     return { status: 'queued' };
   }
 
-  private async screenshotToBlob(publishedUrl: string, resolution: VideoResolution): Promise<Blob | null> {
+  private async screenshotToBlob(
+    publishedUrl: string,
+    resolution: VideoResolution
+  ): Promise<Blob | null> {
     const parts = resolution.split('x');
     const width = Number(parts[0]);
     const height = Number(parts[1]);
 
     try {
-      const raw = await new WebsiteScraperDriver().fetchScreenshotBuffer(
-        publishedUrl,
-        { width: String(width), height: String(height) }
-      );
+      const raw = await new WebsiteScraperDriver().fetchScreenshotBuffer(publishedUrl, {
+        width: String(width),
+        height: String(height),
+      });
 
       if (!raw) {
         logger.warn('video-generation.screenshot-failed', { appId: this.appId, publishedUrl });
@@ -295,7 +340,7 @@ export class VideoGenerationTool {
       logger.warn('video-generation.screenshot-error', {
         appId: this.appId,
         publishedUrl,
-        error: error instanceof Error ? error.message : String(error)
+        error: error instanceof Error ? error.message : String(error),
       });
       return null;
     }
@@ -306,20 +351,29 @@ export class VideoGenerationTool {
 
     await mkdir(this.airoDir, { recursive: true });
     const now = new Date().toISOString();
-    await writeFile(this.videoMetadataPath, JSON.stringify({
-      jobId: null,
-      status: 'pending',
-      createdAt: now,
-      updatedAt: now,
-      url: null,
-      error: null
-    }, null, 2));
+    await writeFile(
+      this.videoMetadataPath,
+      JSON.stringify(
+        {
+          jobId: null,
+          status: 'pending',
+          createdAt: now,
+          updatedAt: now,
+          url: null,
+          error: null,
+        },
+        null,
+        2
+      )
+    );
 
     let metadataSaved = false;
     let failureReason = 'Video generation failed';
 
     try {
-      const generatedPrompt = await getVideoPromptGenerationService().generateVideoPrompt(this.appId);
+      const generatedPrompt = await getVideoPromptGenerationService().generateVideoPrompt(
+        this.appId
+      );
 
       if (!generatedPrompt) {
         logger.error('video-generation.no-prompt', { appId: this.appId });
@@ -348,17 +402,23 @@ export class VideoGenerationTool {
             appId: this.appId,
             publishedUrl,
             blobSize: screenshotBlob.size,
-            blobType: screenshotBlob.type
+            blobType: screenshotBlob.type,
           });
         }
       } else {
         logger.warn('video-generation.no-published-url', { appId: this.appId });
       }
 
-      const createResponse = await videoApiFetch(openaiClient, '/videos', { method: 'POST', body: formData });
+      const createResponse = await videoApiFetch(openaiClient, '/videos', {
+        method: 'POST',
+        body: formData,
+      });
 
       if (!createResponse.ok) {
-        logger.error('video-generation.submit-failed', { appId: this.appId, status: createResponse.status });
+        logger.error('video-generation.submit-failed', {
+          appId: this.appId,
+          status: createResponse.status,
+        });
         failureReason = 'Failed to submit video job to OpenAI';
         return;
       }
@@ -375,11 +435,11 @@ export class VideoGenerationTool {
       metadataSaved = true;
       logger.info('video-generation.submitted', { appId: this.appId, videoId });
 
-      this.startBackgroundPolling(options, videoId, openaiClient).catch(error => {
+      this.startBackgroundPolling(options, videoId, openaiClient).catch((error) => {
         logger.error('video-generation.background-polling-error', {
           appId: this.appId,
           videoId,
-          error: error instanceof Error ? error.message : String(error)
+          error: error instanceof Error ? error.message : String(error),
         });
       });
     } finally {
@@ -402,25 +462,23 @@ export class VideoGenerationTool {
       appId: this.appId,
       videoId,
       intervalMs: this.pollIntervalMs,
-      maxAttempts: this.maxPollAttempts
+      maxAttempts: this.maxPollAttempts,
     });
 
     for (let attempt = 1; attempt <= this.maxPollAttempts; attempt++) {
-      await new Promise(resolve => setTimeout(resolve, this.pollIntervalMs));
+      await new Promise((resolve) => setTimeout(resolve, this.pollIntervalMs));
 
       try {
-        const statusResponse = await videoApiFetch(
-          openaiClient,
-          `/videos/${videoId}`,
-          { headers: { 'Content-Type': 'application/json' } }
-        );
+        const statusResponse = await videoApiFetch(openaiClient, `/videos/${videoId}`, {
+          headers: { 'Content-Type': 'application/json' },
+        });
 
         if (!statusResponse.ok) {
           logger.warn('video-generation.polling.http-error', {
             appId: this.appId,
             videoId,
             attempt,
-            status: statusResponse.status
+            status: statusResponse.status,
           });
           continue;
         }
@@ -432,7 +490,7 @@ export class VideoGenerationTool {
           appId: this.appId,
           videoId,
           attempt,
-          openaiStatus
+          openaiStatus,
         });
 
         try {
@@ -447,7 +505,7 @@ export class VideoGenerationTool {
             appId: this.appId,
             videoId,
             attempt,
-            error: metadataError instanceof Error ? metadataError.message : String(metadataError)
+            error: metadataError instanceof Error ? metadataError.message : String(metadataError),
           });
         }
 
@@ -455,7 +513,7 @@ export class VideoGenerationTool {
           logger.info('video-generation.polling.completed', {
             appId: this.appId,
             videoId,
-            attempt
+            attempt,
           });
           await this.downloadAndProcessVideo(options, videoId, openaiClient);
           return;
@@ -466,7 +524,7 @@ export class VideoGenerationTool {
             appId: this.appId,
             videoId,
             attempt,
-            reason: 'OpenAI reported failure'
+            reason: 'OpenAI reported failure',
           });
           await this.deleteMetadata(videoId, 'Video generation failed');
           return;
@@ -478,7 +536,7 @@ export class VideoGenerationTool {
             appId: this.appId,
             videoId,
             attempt,
-            reason: 'metadata file deleted'
+            reason: 'metadata file deleted',
           });
           return;
         }
@@ -486,7 +544,7 @@ export class VideoGenerationTool {
           appId: this.appId,
           videoId,
           attempt,
-          error: pollError instanceof Error ? pollError.message : String(pollError)
+          error: pollError instanceof Error ? pollError.message : String(pollError),
         });
       }
     }
@@ -495,7 +553,7 @@ export class VideoGenerationTool {
       appId: this.appId,
       videoId,
       attempts: this.maxPollAttempts,
-      reason: 'Maximum polling attempts exceeded'
+      reason: 'Maximum polling attempts exceeded',
     });
     await this.deleteMetadata(videoId, 'Video generation timed out after maximum polling attempts');
   }
@@ -506,12 +564,7 @@ export class VideoGenerationTool {
    */
   private async validateVideoFile(filePath: string): Promise<string | null> {
     try {
-      await execa('ffmpeg', [
-        '-v', 'error',
-        '-i', filePath,
-        '-f', 'null',
-        '-'
-      ], { timeout: 30000 });
+      await execa('ffmpeg', ['-v', 'error', '-i', filePath, '-f', 'null', '-'], { timeout: 30000 });
       return null;
     } catch (error) {
       return error instanceof Error ? error.message : String(error);
@@ -532,7 +585,7 @@ export class VideoGenerationTool {
     this.emitVideoEvent({
       status: 'failed',
       jobId: videoId,
-      error: errorMessage || 'Video generation failed'
+      error: errorMessage || 'Video generation failed',
     });
   }
 
@@ -545,7 +598,10 @@ export class VideoGenerationTool {
 
     const wsDelivered = emitToApp(appId, 'message', payload);
     logger.info('video-generation.websocket.emit', {
-      appId, status: data.status, jobId: data.jobId, wsDelivered,
+      appId,
+      status: data.status,
+      jobId: data.jobId,
+      wsDelivered,
     });
 
     if (this.sseRegistry) {
@@ -570,7 +626,11 @@ export class VideoGenerationTool {
 
     const contentResponse = await videoApiFetch(openaiClient, `/videos/${videoId}/content`);
     if (!contentResponse.ok) {
-      logger.error('video-generation.download-failed', { appId: this.appId, videoId, status: contentResponse.status });
+      logger.error('video-generation.download-failed', {
+        appId: this.appId,
+        videoId,
+        status: contentResponse.status,
+      });
       await this.deleteMetadata(videoId, 'Failed to download video from OpenAI');
       return;
     }
@@ -592,12 +652,17 @@ export class VideoGenerationTool {
       appId: this.appId,
       videoId,
       filename: fullFilename,
-      size: videoBuffer.length
+      size: videoBuffer.length,
     });
 
     const validationError = await this.validateVideoFile(filePath);
     if (validationError) {
-      logger.error('video-generation.invalid-file', { appId: this.appId, videoId, filePath, reason: validationError });
+      logger.error('video-generation.invalid-file', {
+        appId: this.appId,
+        videoId,
+        filePath,
+        reason: validationError,
+      });
       await unlink(filePath).catch(() => {});
       await this.deleteMetadata(videoId, `Invalid video file: ${validationError}`);
       return;
@@ -609,21 +674,26 @@ export class VideoGenerationTool {
       logger.warn('video-generation.outro-stitch-failed', {
         appId: this.appId,
         videoId,
-        error: outroError instanceof Error ? outroError.message : String(outroError)
+        error: outroError instanceof Error ? outroError.message : String(outroError),
       });
     }
 
-    const publicPath = `/airo-assets/uploads/${fullFilename}`;
+    const publicPath = `${AIRO_ASSET_UPLOADS_URL_PREFIX}${fullFilename}`;
     await this.saveVideoMetadata(videoId, 'completed', publicPath);
-    logger.info('video-generation.completed', { appId: this.appId, videoId, filename: fullFilename });
+    logger.info('video-generation.completed', {
+      appId: this.appId,
+      videoId,
+      filename: fullFilename,
+    });
 
-    const videoUrl = this.previewUrl ? `${this.previewUrl.replace(/\/+$/, '')}${publicPath}` : publicPath;
+    const videoUrl = this.previewUrl
+      ? `${this.previewUrl.replace(/\/+$/, '')}${publicPath}`
+      : publicPath;
 
     this.emitVideoEvent({
       status: 'completed',
       jobId: videoId,
-      videoUrl
+      videoUrl,
     });
   }
-
 }

@@ -14,9 +14,19 @@ import rateLimit from 'express-rate-limit';
 import crypto from 'crypto';
 import path from 'path';
 import fs from 'fs/promises';
+import {
+  AIRO_ASSET_UPLOADS_URL_PREFIX,
+  getFilenameFromUploadUrl,
+  isSafeUploadFilename,
+} from '@airo/shared/media';
 import { mediaManifestService } from '../../services/MediaManifestService.js';
 import { imageProcessingService } from '../../services/ImageProcessingService.js';
 import { fileUploadService } from '../../services/FileUploadService.js';
+import {
+  collectUploadUrlsForFilename,
+  collectUploadUrlsForFilenameFromSlot,
+  deletePersistentUploadFiles,
+} from '../../services/media-upload-deletion.js';
 import { normalizeSearchQuery } from '../../services/image-search/normalize.js';
 import { AppRepository } from '../../database/repositories/AppRepository.js';
 import { logger } from '../../logging/index.js';
@@ -35,14 +45,14 @@ const ALLOWED_IMAGE_TYPES: Record<string, string> = {
 
 // Magic byte signatures for image validation
 const IMAGE_SIGNATURES: Array<{ mime: string; bytes: number[] }> = [
-  { mime: 'image/jpeg', bytes: [0xFF, 0xD8, 0xFF] },
-  { mime: 'image/png', bytes: [0x89, 0x50, 0x4E, 0x47] },
+  { mime: 'image/jpeg', bytes: [0xff, 0xd8, 0xff] },
+  { mime: 'image/png', bytes: [0x89, 0x50, 0x4e, 0x47] },
   { mime: 'image/webp', bytes: [0x52, 0x49, 0x46, 0x46] }, // RIFF header (bytes 8-11 checked separately)
-  { mime: 'image/gif', bytes: [0x47, 0x49, 0x46, 0x38] },  // GIF8
+  { mime: 'image/gif', bytes: [0x47, 0x49, 0x46, 0x38] }, // GIF8
 ];
 
 function validateImageMagicBytes(buffer: Buffer, mimeType: string): boolean {
-  const sig = IMAGE_SIGNATURES.find(s => s.mime === mimeType);
+  const sig = IMAGE_SIGNATURES.find((s) => s.mime === mimeType);
   if (!sig) return false;
   if (buffer.length < sig.bytes.length) return false;
   if (!sig.bytes.every((byte, i) => buffer[i] === byte)) return false;
@@ -76,10 +86,14 @@ const uploadRateLimiter = rateLimit({
     return req.ip || req.socket.remoteAddress || 'unknown';
   },
   handler: (req: Request, res: Response) => {
-    logger.warn('route.media.upload.rate_limit_exceeded', {
-      ip: req.ip,
-      appId: req.params.appId,
-    }, { tags: ['security', 'rate-limiting'] });
+    logger.warn(
+      'route.media.upload.rate_limit_exceeded',
+      {
+        ip: req.ip,
+        appId: req.params.appId,
+      },
+      { tags: ['security', 'rate-limiting'] }
+    );
 
     const retryAfter = Math.ceil(UPLOAD_RATE_LIMIT_WINDOW_MS / 1000);
     res.status(429).json({
@@ -256,11 +270,13 @@ router.get('/:appId/search', async (req: Request, res: Response) => {
 
   const page = Math.max(1, parseInt(String(req.query.page || '1'), 10) || 1);
   const pageSize = Math.min(24, Math.max(1, parseInt(String(req.query.pageSize || '9'), 10) || 9));
-  const orientations = typeof req.query.orientations === 'string' && req.query.orientations !== 'any'
-    ? req.query.orientations
-    : null;
+  const orientations =
+    typeof req.query.orientations === 'string' && req.query.orientations !== 'any'
+      ? req.query.orientations
+      : null;
 
-  const gettyBaseUrl = (process.env.GETTY_IMAGE_PROXY_URL || 'https://getty-images-proxy.api.dev-godaddy.com')
+  const gettyBaseUrl =
+    process.env.GETTY_IMAGE_PROXY_URL || 'https://getty-images-proxy.api.dev-godaddy.com';
   const appKey = process.env.GETTY_APP_KEY || 'airo-app-builder';
 
   let authHeader = '';
@@ -293,7 +309,11 @@ router.get('/:appId/search', async (req: Request, res: Response) => {
 
     if (!response.ok) {
       const text = await response.text();
-      logger.warn('route.media.search.upstream_error', { appId, status: response.status, text: text.slice(0, 200) });
+      logger.warn('route.media.search.upstream_error', {
+        appId,
+        status: response.status,
+        text: text.slice(0, 200),
+      });
       return res.status(502).json({ success: false, error: 'Getty search failed' });
     }
 
@@ -325,6 +345,238 @@ router.get('/:appId/search', async (req: Request, res: Response) => {
     return res.status(500).json({ success: false, error: 'Failed to search images' });
   }
 });
+
+/**
+ * DELETE /media/:appId/uploads/:filename
+ * Delete a chat/persistent uploaded image and remove manifest references safely.
+ */
+router.delete('/:appId/uploads/:filename', async (req: Request, res: Response) => {
+  const appId = req.params.appId;
+  const filename = req.params.filename;
+
+  if (!appId || !filename) {
+    return res.status(400).json({
+      success: false,
+      error: 'App ID and filename are required',
+    });
+  }
+
+  if (!isSafeUploadFilename(filename)) {
+    logger.warn(
+      'route.media.delete_upload.invalid_filename',
+      {
+        appId,
+        filename,
+      },
+      { tags: ['security', 'path-traversal-attempt'] }
+    );
+    return res.status(400).json({
+      success: false,
+      error: 'Invalid filename',
+    });
+  }
+
+  try {
+    const appRepository = new AppRepository();
+    const app = appRepository.findById(appId);
+    if (!app) {
+      return res.status(404).json({
+        success: false,
+        error: `App not found: ${appId}`,
+      });
+    }
+
+    const manifestResult = await mediaManifestService.getManifest(appId);
+    if (!manifestResult.success) {
+      return res.status(500).json({
+        success: false,
+        error: manifestResult.error || 'Failed to read manifest',
+      });
+    }
+
+    const uploadUrls = collectUploadUrlsForFilename(manifestResult.manifest, filename);
+    let affectedSlots: string[] = [];
+    let removedUrls: string[] = [];
+
+    if (uploadUrls.length > 0) {
+      const removeResult = await mediaManifestService.removeUploadedUrls(appId, uploadUrls);
+      if (!removeResult.success) {
+        return res.status(409).json({
+          success: false,
+          error: removeResult.error || 'Cannot delete upload while it is in use',
+          affectedSlots: removeResult.affectedSlots || [],
+          removedUrls: removeResult.removedUrls || uploadUrls,
+        });
+      }
+      affectedSlots = removeResult.affectedSlots || [];
+      removedUrls = removeResult.removedUrls || uploadUrls;
+    }
+
+    const { deletedPersistentUrls, failedPersistentUrls } = await deletePersistentUploadFiles(
+      app.path,
+      uploadUrls
+    );
+    const chatDeleteResult = await fileUploadService.deleteUploadedFile(appId, filename);
+
+    if (uploadUrls.length === 0 && !chatDeleteResult.deleted) {
+      return res.status(404).json({
+        success: false,
+        error: 'Upload file not found',
+      });
+    }
+
+    if (failedPersistentUrls.length > 0) {
+      logger.warn('route.media.delete_upload.persistent_cleanup_failed', {
+        appId,
+        filename,
+        failedPersistentUrls,
+      });
+    }
+
+    logger.info('route.media.delete_upload.success', {
+      appId,
+      filename,
+      affectedSlots,
+      removedUrls,
+      chatUploadDeleted: chatDeleteResult.deleted,
+      uploadId: chatDeleteResult.uploadId,
+      deletedPersistentUrls,
+      failedPersistentUrls,
+    });
+
+    return res.json({
+      success: true,
+      affectedSlots,
+      removedUrls,
+      chatUploadDeleted: chatDeleteResult.deleted,
+      uploadId: chatDeleteResult.uploadId,
+      deletedPersistentUrls,
+      failedPersistentUrls,
+    });
+  } catch (error) {
+    logger.error('route.media.delete_upload.error', {
+      appId,
+      filename,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return res.status(500).json({
+      success: false,
+      error: 'Failed to delete upload',
+    });
+  }
+});
+
+/**
+ * DELETE /media/:appId/slots/:slotName/uploads/:filename
+ * Remove an uploaded image from one media slot while leaving the upload available elsewhere.
+ */
+router.delete(
+  '/:appId/slots/:slotName(*)/uploads/:filename',
+  async (req: Request, res: Response) => {
+    const appId = req.params.appId;
+    const slotName = req.params.slotName;
+    const filename = req.params.filename;
+
+    if (!appId || !slotName || !filename) {
+      return res.status(400).json({
+        success: false,
+        error: 'App ID, slot name, and filename are required',
+      });
+    }
+
+    if (slotName.includes('..') || slotName.startsWith('/') || slotName.includes('\0')) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid slot name',
+      });
+    }
+
+    if (!isSafeUploadFilename(filename)) {
+      logger.warn(
+        'route.media.delete_slot_upload.invalid_filename',
+        {
+          appId,
+          slotName,
+          filename,
+        },
+        { tags: ['security', 'path-traversal-attempt'] }
+      );
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid filename',
+      });
+    }
+
+    try {
+      const manifestResult = await mediaManifestService.getManifest(appId);
+      if (!manifestResult.success) {
+        return res.status(500).json({
+          success: false,
+          error: manifestResult.error || 'Failed to read manifest',
+        });
+      }
+
+      const slot = manifestResult.manifest?.[slotName];
+      if (!slot) {
+        return res.status(404).json({
+          success: false,
+          error: `Slot not found: ${slotName}`,
+        });
+      }
+
+      const uploadUrls = collectUploadUrlsForFilenameFromSlot(slot, filename);
+      if (uploadUrls.length === 0) {
+        return res.status(404).json({
+          success: false,
+          error: 'Upload is not used in this slot',
+        });
+      }
+
+      const removeResult = await mediaManifestService.removeUploadedUrlsFromSlot(
+        appId,
+        slotName,
+        uploadUrls
+      );
+      if (!removeResult.success) {
+        return res.status(409).json({
+          success: false,
+          error: removeResult.error || 'Cannot remove upload from slot',
+          affectedSlots: removeResult.affectedSlots || [],
+          removedUrls: removeResult.removedUrls || uploadUrls,
+          chatUploadDeleted: false,
+        });
+      }
+
+      logger.info('route.media.delete_slot_upload.success', {
+        appId,
+        slotName,
+        filename,
+        affectedSlots: removeResult.affectedSlots || [],
+        removedUrls: removeResult.removedUrls || uploadUrls,
+        chatUploadDeleted: false,
+      });
+
+      return res.json({
+        success: true,
+        affectedSlots: removeResult.affectedSlots || [],
+        removedUrls: removeResult.removedUrls || uploadUrls,
+        chatUploadDeleted: false,
+        commitHash: removeResult.commitHash,
+      });
+    } catch (error) {
+      logger.error('route.media.delete_slot_upload.error', {
+        appId,
+        slotName,
+        filename,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to remove upload from slot',
+      });
+    }
+  }
+);
 
 /**
  * GET /media/:appId/slots/:slotName
@@ -409,7 +661,8 @@ router.put('/:appId/slots/:slotName(*)', async (req: Request, res: Response) => 
       markUserModified: true,
       allowExternalUrl: allowExternalUrl === true,
       gettyId: typeof gettyId === 'string' ? gettyId : undefined,
-      searchQuery: typeof searchQuery === 'string' && searchQuery.trim() ? searchQuery.trim() : undefined,
+      searchQuery:
+        typeof searchQuery === 'string' && searchQuery.trim() ? searchQuery.trim() : undefined,
     });
 
     if (!result.success) {
@@ -500,7 +753,7 @@ router.post(
 
       // Find the chat upload file on disk
       const uploadedFiles = await fileUploadService.listUploadedFiles(appId);
-      const matchingFile = uploadedFiles.find(f => f.filename === filename);
+      const matchingFile = uploadedFiles.find((f) => f.filename === filename);
 
       if (!matchingFile) {
         return res.status(404).json({ success: false, error: 'Upload file not found' });
@@ -567,7 +820,7 @@ router.post(
       await fs.writeFile(tempPath, processed.buffer); // nosemgrep: path-traversal
       await fs.rename(tempPath, filePath); // nosemgrep: path-traversal
 
-      const uploadedUrl = `/airo-assets/uploads/${mediaFilename}`;
+      const uploadedUrl = `${AIRO_ASSET_UPLOADS_URL_PREFIX}${mediaFilename}`;
 
       const updateResult = await mediaManifestService.updateSlotWithUpload(
         appId,
@@ -577,14 +830,19 @@ router.post(
       );
 
       if (!updateResult.success) {
-        await fs.unlink(filePath).catch(() => { }); // nosemgrep: path-traversal
+        await fs.unlink(filePath).catch(() => {}); // nosemgrep: path-traversal
         return res.status(500).json({
           success: false,
           error: updateResult.error || 'Failed to update manifest',
         });
       }
 
-      logger.info('route.media.apply_upload.success', { appId, slotName, uploadedUrl, sourceFilename: filename });
+      logger.info('route.media.apply_upload.success', {
+        appId,
+        slotName,
+        uploadedUrl,
+        sourceFilename: filename,
+      });
 
       return res.json({
         success: true,
@@ -637,10 +895,14 @@ router.post(
       // Security: Validate slotName doesn't contain path traversal patterns
       // Note: slotName can contain '/' for nested paths (e.g., "components/hero/section")
       if (slotName.includes('..') || slotName.startsWith('/') || slotName.includes('\0')) {
-        logger.warn('route.media.upload.path_traversal_attempt', {
-          appId,
-          slotName,
-        }, { tags: ['security', 'path-traversal-attempt'] });
+        logger.warn(
+          'route.media.upload.path_traversal_attempt',
+          {
+            appId,
+            slotName,
+          },
+          { tags: ['security', 'path-traversal-attempt'] }
+        );
         return res.status(400).json({
           success: false,
           error: 'Invalid slot name',
@@ -664,11 +926,15 @@ router.post(
       }
 
       if (!validateImageMagicBytes(file.buffer, file.mimetype)) {
-        logger.warn('route.media.upload.magic_bytes_mismatch', {
-          appId,
-          slotName,
-          mimetype: file.mimetype,
-        }, { tags: ['security'] });
+        logger.warn(
+          'route.media.upload.magic_bytes_mismatch',
+          {
+            appId,
+            slotName,
+            mimetype: file.mimetype,
+          },
+          { tags: ['security'] }
+        );
         return res.status(400).json({
           success: false,
           error: 'File content does not match declared image type',
@@ -714,37 +980,33 @@ router.post(
       // If overwriteFilename is provided (editing a local upload), reuse the
       // existing filename so the file is overwritten in place instead of
       // accumulating new files on each editor save.
-      const overwriteFilename = typeof req.body?.overwriteFilename === 'string'
-        ? req.body.overwriteFilename
-        : undefined;
-      const isOverwrite = overwriteFilename !== undefined
-        && !overwriteFilename.includes('/')
-        && !overwriteFilename.includes('..')
-        && !overwriteFilename.includes('\0');
+      const overwriteFilename =
+        typeof req.body?.overwriteFilename === 'string' ? req.body.overwriteFilename : undefined;
+      const isOverwrite =
+        overwriteFilename !== undefined &&
+        !overwriteFilename.includes('/') &&
+        !overwriteFilename.includes('..') &&
+        !overwriteFilename.includes('\0');
 
       // chatFilenameOverwrite: editor was opened from a chat upload that has no persistent
       // URL yet. Overwrite the original chat file instead of creating a new copy.
-      const chatFilenameOverwrite = !isOverwrite && typeof req.body?.chatFilenameOverwrite === 'string'
-        ? req.body.chatFilenameOverwrite
-        : undefined;
-      const hasChatOverwrite = chatFilenameOverwrite !== undefined
-        && !chatFilenameOverwrite.includes('/')
-        && !chatFilenameOverwrite.includes('..')
-        && !chatFilenameOverwrite.includes('\0');
+      const chatFilenameOverwrite =
+        !isOverwrite && typeof req.body?.chatFilenameOverwrite === 'string'
+          ? req.body.chatFilenameOverwrite
+          : undefined;
+      const hasChatOverwrite =
+        chatFilenameOverwrite !== undefined &&
+        !chatFilenameOverwrite.includes('/') &&
+        !chatFilenameOverwrite.includes('..') &&
+        !chatFilenameOverwrite.includes('\0');
 
       let filename: string;
       if (isOverwrite) {
         filename = overwriteFilename!;
       } else {
         // Generate filename: {sanitized-slot}-{hash}.{ext}
-        const sanitizedSlot = slotName
-          .replace(/\//g, '-')
-          .replace(/[^a-zA-Z0-9-]/g, '');
-        const hash = crypto
-          .createHash('sha256')
-          .update(file.buffer)
-          .digest('hex')
-          .slice(0, 8);
+        const sanitizedSlot = slotName.replace(/\//g, '-').replace(/[^a-zA-Z0-9-]/g, '');
+        const hash = crypto.createHash('sha256').update(file.buffer).digest('hex').slice(0, 8);
         const ext = ALLOWED_IMAGE_TYPES[file.mimetype];
         filename = `${sanitizedSlot}-${hash}.${ext}`;
       }
@@ -766,13 +1028,17 @@ router.post(
       const resolvedMediaDir = path.resolve(mediaDir);
       const resolvedFilePath = path.resolve(filePath);
       if (!resolvedFilePath.startsWith(resolvedMediaDir + path.sep)) {
-        logger.error('route.media.upload.path_escape_attempt', {
-          appId,
-          slotName,
-          filename,
-          resolvedFilePath,
-          resolvedMediaDir,
-        }, { tags: ['security', 'path-traversal-attempt'] });
+        logger.error(
+          'route.media.upload.path_escape_attempt',
+          {
+            appId,
+            slotName,
+            filename,
+            resolvedFilePath,
+            resolvedMediaDir,
+          },
+          { tags: ['security', 'path-traversal-attempt'] }
+        );
         return res.status(400).json({
           success: false,
           error: 'Invalid file path',
@@ -785,7 +1051,7 @@ router.post(
       await fs.rename(tempPath, filePath);
 
       // Build the URL (using airo-assets proxy pattern)
-      const uploadedUrl = `/airo-assets/uploads/${filename}`;
+      const uploadedUrl = `${AIRO_ASSET_UPLOADS_URL_PREFIX}${filename}`;
 
       if (isOverwrite) {
         // Overwriting a local upload in place — URL is unchanged so no manifest
@@ -837,9 +1103,11 @@ router.post(
             const sharesUrl = s.currentUrl === uploadedUrl || s.alternatives.includes(uploadedUrl);
 
             // Case B: different persistent file but produced from the same chat upload
-            const sharesChatSource = !!(chatFilename &&
+            const sharesChatSource = !!(
+              chatFilename &&
               s.uploadSources &&
-              Object.values(s.uploadSources).includes(chatFilename));
+              Object.values(s.uploadSources).includes(chatFilename)
+            );
 
             if (!sharesUrl && !sharesChatSource) continue;
 
@@ -855,8 +1123,8 @@ router.post(
                 .map(([url]) => url);
 
               for (const siblingUrl of siblingUrls) {
-                const siblingFilename = siblingUrl.replace('/airo-assets/uploads/', '');
-                if (siblingFilename.includes('/') || siblingFilename.includes('..') || siblingFilename.includes('\0')) continue;
+                const siblingFilename = getFilenameFromUploadUrl(siblingUrl);
+                if (!siblingFilename) continue;
                 const siblingFilePath = path.join(mediaDir, siblingFilename); // nosemgrep: path-join-resolve-traversal
                 const resolvedSibling = path.resolve(siblingFilePath); // nosemgrep: path-join-resolve-traversal
                 if (!resolvedSibling.startsWith(resolvedMediaDir + path.sep)) continue;
@@ -865,11 +1133,17 @@ router.post(
                   await fs.writeFile(siblingTempPath, file.buffer);
                   await fs.rename(siblingTempPath, siblingFilePath);
                   logger.debug('route.media.upload.cross_slot_overwrite', {
-                    appId, slotName, affectedSlot: name, siblingUrl,
+                    appId,
+                    slotName,
+                    affectedSlot: name,
+                    siblingUrl,
                   });
                 } catch (crossErr) {
                   logger.warn('route.media.upload.cross_slot_overwrite_failed', {
-                    appId, slotName, affectedSlot: name, siblingUrl,
+                    appId,
+                    slotName,
+                    affectedSlot: name,
+                    siblingUrl,
                     error: crossErr instanceof Error ? crossErr.message : String(crossErr),
                   });
                 }
@@ -900,13 +1174,20 @@ router.post(
         // Editor was opened from a chat upload — overwrite it in place instead of
         // creating a new copy, so the thumbnail stays current and no duplicate appears.
         try {
-          const chatFilePath = await fileUploadService.findUploadedFilePath(appId, chatFilenameOverwrite!);
+          const chatFilePath = await fileUploadService.findUploadedFilePath(
+            appId,
+            chatFilenameOverwrite!
+          );
           if (chatFilePath) {
             const chatTempPath = `${chatFilePath}.tmp.${Date.now()}`;
             await fs.writeFile(chatTempPath, file.buffer);
             await fs.rename(chatTempPath, chatFilePath);
             chatUploadFilename = chatFilenameOverwrite;
-            logger.debug('route.media.upload.chat_overwrite_updated', { appId, slotName, chatFilenameOverwrite });
+            logger.debug('route.media.upload.chat_overwrite_updated', {
+              appId,
+              slotName,
+              chatFilenameOverwrite,
+            });
           }
         } catch (chatErr) {
           logger.warn('route.media.upload.chat_overwrite_failed', {
@@ -947,7 +1228,7 @@ router.post(
           error: updateResult.error,
         });
         // Clean up the written file on failure
-        await fs.unlink(filePath).catch(() => { });
+        await fs.unlink(filePath).catch(() => {});
         return res.status(500).json({
           success: false,
           error: updateResult.error || 'Failed to update manifest',

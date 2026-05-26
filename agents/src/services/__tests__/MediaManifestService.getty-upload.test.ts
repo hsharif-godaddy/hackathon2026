@@ -53,10 +53,7 @@ function makeSlot(overrides: Partial<MediaSlot> = {}): MediaSlot {
     mediaType: 'image',
     currentUrl: 'https://preview.getty.com/current.jpg',
     searchQuery: 'nature',
-    alternatives: [
-      'https://preview.getty.com/alt1.jpg',
-      'https://preview.getty.com/alt2.jpg',
-    ],
+    alternatives: ['https://preview.getty.com/alt1.jpg', 'https://preview.getty.com/alt2.jpg'],
     userModified: false,
     createdAt: '2026-01-01T00:00:00.000Z',
     lastUpdated: '2026-01-01T00:00:00.000Z',
@@ -130,10 +127,7 @@ describe('MediaManifestService - Getty upload integration', () => {
       const slot = makeSlot({
         gettyId: 'getty-100',
         alternativeGettyIds: ['getty-201', 'getty-202'],
-        alternatives: [
-          'https://preview.getty.com/alt1.jpg',
-          'https://preview.getty.com/alt2.jpg',
-        ],
+        alternatives: ['https://preview.getty.com/alt1.jpg', 'https://preview.getty.com/alt2.jpg'],
       });
 
       const result = await service.setSlot('test-app', 'hero-image', slot);
@@ -164,12 +158,8 @@ describe('MediaManifestService - Getty upload integration', () => {
       const writtenContent = vi.mocked(fs.writeFile).mock.calls[0]![1] as string;
       const writtenManifest = JSON.parse(writtenContent);
 
-      expect(writtenManifest['hero-image'].currentUrl).toBe(
-        'https://cdn.example.com/100.jpg'
-      );
-      expect(writtenManifest['hero-image'].alternatives[0]).toBe(
-        'https://cdn.example.com/201.jpg'
-      );
+      expect(writtenManifest['hero-image'].currentUrl).toBe('https://cdn.example.com/100.jpg');
+      expect(writtenManifest['hero-image'].alternatives[0]).toBe('https://cdn.example.com/201.jpg');
     });
   });
 
@@ -203,9 +193,7 @@ describe('MediaManifestService - Getty upload integration', () => {
       expect(result.success).toBe(true);
       // Original preview URLs should be preserved when upload returns nothing
       expect(result.slot!.currentUrl).toBe('https://preview.getty.com/current.jpg');
-      expect(result.slot!.alternatives).toEqual([
-        'https://preview.getty.com/alt1.jpg',
-      ]);
+      expect(result.slot!.alternatives).toEqual(['https://preview.getty.com/alt1.jpg']);
     });
   });
 
@@ -217,16 +205,11 @@ describe('MediaManifestService - Getty upload integration', () => {
       const existingSlot = makeSlot({
         currentUrl: 'https://cdn.example.com/current.jpg',
         gettyId: 'getty-100',
-        alternatives: [
-          'https://preview.getty.com/alt1.jpg',
-          'https://preview.getty.com/alt2.jpg',
-        ],
+        alternatives: ['https://preview.getty.com/alt1.jpg', 'https://preview.getty.com/alt2.jpg'],
         alternativeGettyIds: ['getty-201', 'getty-202'],
       });
 
-      vi.mocked(fs.readFile).mockResolvedValue(
-        JSON.stringify({ 'hero-image': existingSlot })
-      );
+      vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify({ 'hero-image': existingSlot }));
       vi.mocked(gettyUploadService.uploadAndReport).mockResolvedValue([
         { id: 'getty-201', url: 'https://cdn.example.com/201.jpg' },
       ]);
@@ -243,16 +226,11 @@ describe('MediaManifestService - Getty upload integration', () => {
       const existingSlot = makeSlot({
         currentUrl: 'https://cdn.example.com/current.jpg',
         gettyId: 'getty-100',
-        alternatives: [
-          'https://preview.getty.com/alt1.jpg',
-          'https://preview.getty.com/alt2.jpg',
-        ],
+        alternatives: ['https://preview.getty.com/alt1.jpg', 'https://preview.getty.com/alt2.jpg'],
         alternativeGettyIds: ['getty-201', 'getty-202'],
       });
 
-      vi.mocked(fs.readFile).mockResolvedValue(
-        JSON.stringify({ 'hero-image': existingSlot })
-      );
+      vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify({ 'hero-image': existingSlot }));
       vi.mocked(gettyUploadService.uploadAndReport).mockResolvedValue([
         { id: 'getty-201', url: 'https://cdn.example.com/201.jpg' },
       ]);
@@ -270,16 +248,11 @@ describe('MediaManifestService - Getty upload integration', () => {
       const existingSlot = makeSlot({
         currentUrl: 'https://cdn.example.com/current.jpg',
         gettyId: 'getty-100',
-        alternatives: [
-          'https://preview.getty.com/alt1.jpg',
-          'https://preview.getty.com/alt2.jpg',
-        ],
+        alternatives: ['https://preview.getty.com/alt1.jpg', 'https://preview.getty.com/alt2.jpg'],
         alternativeGettyIds: ['getty-201', 'getty-202'],
       });
 
-      vi.mocked(fs.readFile).mockResolvedValue(
-        JSON.stringify({ 'hero-image': existingSlot })
-      );
+      vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify({ 'hero-image': existingSlot }));
       vi.mocked(gettyUploadService.uploadAndReport).mockResolvedValue([
         { id: 'getty-201', url: 'https://cdn.example.com/201.jpg' },
       ]);
@@ -307,9 +280,7 @@ describe('MediaManifestService - Getty upload integration', () => {
         alternativeGettyIds: ['getty-201'],
       });
 
-      vi.mocked(fs.readFile).mockResolvedValue(
-        JSON.stringify({ 'hero-image': existingSlot })
-      );
+      vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify({ 'hero-image': existingSlot }));
 
       const result = await service.updateSlot('test-app', 'hero-image', {
         newUrl: '/airo-assets/uploads/new-upload.jpg',
@@ -322,10 +293,7 @@ describe('MediaManifestService - Getty upload integration', () => {
         'https://preview.getty.com/current.jpg',
         'https://preview.getty.com/alt1.jpg',
       ]);
-      expect(result.slot!.alternativeGettyIds).toEqual([
-        'getty-100',
-        'getty-201',
-      ]);
+      expect(result.slot!.alternativeGettyIds).toEqual(['getty-100', 'getty-201']);
     });
   });
 
@@ -334,16 +302,11 @@ describe('MediaManifestService - Getty upload integration', () => {
       const existingSlot = makeSlot({
         currentUrl: 'https://cdn.example.com/current.jpg',
         gettyId: undefined,
-        alternatives: [
-          'https://example.com/uploaded.jpg',
-          'https://preview.getty.com/alt2.jpg',
-        ],
+        alternatives: ['https://example.com/uploaded.jpg', 'https://preview.getty.com/alt2.jpg'],
         alternativeGettyIds: ['', 'getty-202'],
       });
 
-      vi.mocked(fs.readFile).mockResolvedValue(
-        JSON.stringify({ 'hero-image': existingSlot })
-      );
+      vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify({ 'hero-image': existingSlot }));
 
       await service.updateSlot('test-app', 'hero-image', {
         newUrl: 'https://example.com/uploaded.jpg',
@@ -366,9 +329,7 @@ describe('MediaManifestService - Getty upload integration', () => {
         alternativeGettyIds: ['getty-201', 'getty-202'],
       });
 
-      vi.mocked(fs.readFile).mockResolvedValue(
-        JSON.stringify({ 'hero-image': existingSlot })
-      );
+      vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify({ 'hero-image': existingSlot }));
 
       // Select the 3rd alternative (index 3 in allUrls) which has no Getty ID
       await service.updateSlot('test-app', 'hero-image', {
@@ -391,9 +352,7 @@ describe('MediaManifestService - Getty upload integration', () => {
         gettyId: undefined,
         alternatives: ['https://cdn.example.com/alt1.jpg'],
       });
-      vi.mocked(fs.readFile).mockResolvedValue(
-        JSON.stringify({ 'hero-image': existingSlot })
-      );
+      vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify({ 'hero-image': existingSlot }));
       vi.mocked(gettyUploadService.uploadAndReport).mockResolvedValue([
         { id: 'getty-search-1', url: 'https://cdn.example.com/licensed.jpg' },
       ]);
@@ -416,9 +375,7 @@ describe('MediaManifestService - Getty upload integration', () => {
         gettyId: undefined,
         alternatives: [],
       });
-      vi.mocked(fs.readFile).mockResolvedValue(
-        JSON.stringify({ 'hero-image': existingSlot })
-      );
+      vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify({ 'hero-image': existingSlot }));
       vi.mocked(gettyUploadService.uploadAndReport).mockResolvedValue([]);
 
       const result = await service.updateSlot('test-app', 'hero-image', {
@@ -440,9 +397,7 @@ describe('MediaManifestService - Getty upload integration', () => {
         alternatives: [],
         searchQuery: 'old query',
       });
-      vi.mocked(fs.readFile).mockResolvedValue(
-        JSON.stringify({ 'hero-image': existingSlot })
-      );
+      vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify({ 'hero-image': existingSlot }));
       vi.mocked(gettyUploadService.uploadAndReport).mockResolvedValue([
         { id: 'getty-search-1', url: 'https://cdn.example.com/licensed.jpg' },
       ]);
@@ -460,4 +415,160 @@ describe('MediaManifestService - Getty upload integration', () => {
     });
   });
 
+  // ---------------------------------------------------------------------------
+  // removeUploadedUrls
+  // ---------------------------------------------------------------------------
+  describe('removeUploadedUrls', () => {
+    it('promotes the first remaining alternative when removing the current upload', async () => {
+      const existingSlot = makeSlot({
+        currentUrl: '/airo-assets/uploads/hero-upload.jpg',
+        gettyId: undefined,
+        alternatives: [
+          'https://cdn.example.com/replacement.jpg',
+          '/airo-assets/uploads/other-upload.jpg',
+        ],
+        alternativeGettyIds: ['getty-201', ''],
+        uploadSources: {
+          '/airo-assets/uploads/hero-upload.jpg': 'chat-hero.jpg',
+          '/airo-assets/uploads/other-upload.jpg': 'chat-other.jpg',
+        },
+      });
+
+      vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify({ 'hero-image': existingSlot }));
+
+      const result = await service.removeUploadedUrls('test-app', [
+        '/airo-assets/uploads/hero-upload.jpg',
+      ]);
+
+      expect(result.success).toBe(true);
+      expect(result.affectedSlots).toEqual(['hero-image']);
+      expect(result.slot).toBeUndefined();
+
+      const writtenContent = vi.mocked(fs.writeFile).mock.calls[0]![1] as string;
+      const writtenManifest = JSON.parse(writtenContent);
+      expect(writtenManifest['hero-image'].currentUrl).toBe(
+        'https://cdn.example.com/replacement.jpg'
+      );
+      expect(writtenManifest['hero-image'].gettyId).toBe('getty-201');
+      expect(writtenManifest['hero-image'].alternatives).toEqual([
+        '/airo-assets/uploads/other-upload.jpg',
+      ]);
+      expect(writtenManifest['hero-image'].uploadSources).toEqual({
+        '/airo-assets/uploads/other-upload.jpg': 'chat-other.jpg',
+      });
+    });
+
+    it('removes uploaded alternatives and source mappings without changing the current image', async () => {
+      const existingSlot = makeSlot({
+        currentUrl: 'https://cdn.example.com/current.jpg',
+        gettyId: 'getty-100',
+        alternatives: ['/airo-assets/uploads/old-upload.jpg', 'https://cdn.example.com/alt.jpg'],
+        alternativeGettyIds: ['', 'getty-201'],
+        uploadSources: {
+          '/airo-assets/uploads/old-upload.jpg': 'chat-old.jpg',
+        },
+      });
+
+      vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify({ 'hero-image': existingSlot }));
+
+      const result = await service.removeUploadedUrls('test-app', [
+        '/airo-assets/uploads/old-upload.jpg',
+      ]);
+
+      expect(result.success).toBe(true);
+
+      const writtenContent = vi.mocked(fs.writeFile).mock.calls[0]![1] as string;
+      const writtenManifest = JSON.parse(writtenContent);
+      expect(writtenManifest['hero-image'].currentUrl).toBe('https://cdn.example.com/current.jpg');
+      expect(writtenManifest['hero-image'].alternatives).toEqual([
+        'https://cdn.example.com/alt.jpg',
+      ]);
+      expect(writtenManifest['hero-image'].alternativeGettyIds).toEqual(['getty-201']);
+      expect(writtenManifest['hero-image'].uploadSources).toBeUndefined();
+    });
+
+    it('fails without writing when the deleted current upload has no replacement', async () => {
+      const existingSlot = makeSlot({
+        currentUrl: '/airo-assets/uploads/only-upload.jpg',
+        alternatives: [],
+        uploadSources: {
+          '/airo-assets/uploads/only-upload.jpg': 'chat-only.jpg',
+        },
+      });
+
+      vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify({ 'hero-image': existingSlot }));
+
+      const result = await service.removeUploadedUrls('test-app', [
+        '/airo-assets/uploads/only-upload.jpg',
+      ]);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Cannot delete upload');
+      expect(fs.writeFile).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('removeUploadedUrlsFromSlot', () => {
+    it('removes the uploaded URL from only the requested slot', async () => {
+      const heroSlot = makeSlot({
+        currentUrl: '/airo-assets/uploads/hero-upload.jpg',
+        alternatives: ['https://cdn.example.com/hero-replacement.jpg'],
+        alternativeGettyIds: ['getty-201'],
+        uploadSources: {
+          '/airo-assets/uploads/hero-upload.jpg': 'chat-upload.jpg',
+        },
+      });
+      const gallerySlot = makeSlot({
+        currentUrl: '/airo-assets/uploads/gallery-upload.jpg',
+        alternatives: ['https://cdn.example.com/gallery-replacement.jpg'],
+        alternativeGettyIds: ['getty-301'],
+        uploadSources: {
+          '/airo-assets/uploads/gallery-upload.jpg': 'chat-upload.jpg',
+        },
+      });
+
+      vi.mocked(fs.readFile).mockResolvedValue(
+        JSON.stringify({ hero: heroSlot, gallery: gallerySlot })
+      );
+
+      const result = await service.removeUploadedUrlsFromSlot('test-app', 'hero', [
+        '/airo-assets/uploads/hero-upload.jpg',
+      ]);
+
+      expect(result.success).toBe(true);
+      expect(result.affectedSlots).toEqual(['hero']);
+
+      const writtenContent = vi.mocked(fs.writeFile).mock.calls[0]![1] as string;
+      const writtenManifest = JSON.parse(writtenContent);
+      expect(writtenManifest.hero.currentUrl).toBe('https://cdn.example.com/hero-replacement.jpg');
+      expect(writtenManifest.hero.alternatives).toEqual([]);
+      expect(writtenManifest.hero.uploadSources).toBeUndefined();
+      expect(writtenManifest.gallery.currentUrl).toBe('/airo-assets/uploads/gallery-upload.jpg');
+      expect(writtenManifest.gallery.uploadSources).toEqual({
+        '/airo-assets/uploads/gallery-upload.jpg': 'chat-upload.jpg',
+      });
+    });
+
+    it('fails without writing when the requested slot has no replacement image', async () => {
+      vi.mocked(fs.readFile).mockResolvedValue(
+        JSON.stringify({
+          hero: makeSlot({
+            currentUrl: '/airo-assets/uploads/only-upload.jpg',
+            alternatives: [],
+            uploadSources: {
+              '/airo-assets/uploads/only-upload.jpg': 'chat-only.jpg',
+            },
+          }),
+        })
+      );
+
+      const result = await service.removeUploadedUrlsFromSlot('test-app', 'hero', [
+        '/airo-assets/uploads/only-upload.jpg',
+      ]);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Cannot remove upload');
+      expect(fs.writeFile).not.toHaveBeenCalled();
+    });
+  });
 });

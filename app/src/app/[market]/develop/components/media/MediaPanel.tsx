@@ -176,7 +176,10 @@ export default function MediaPanel() {
 
   if (activeSlotName) {
     return (
-      <div className="flex flex-col h-full min-h-0 px-2 md:px-0 md:pt-0 pb-2 gap-2">
+      <div
+        data-media-delete-boundary
+        className="relative flex flex-col h-full min-h-0 px-2 md:px-0 md:pt-0 pb-2 gap-2"
+      >
         <button
           type="button"
           onClick={handleBack}

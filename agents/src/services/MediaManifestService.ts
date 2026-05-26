@@ -11,6 +11,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { AIRO_ASSET_UPLOADS_URL_PREFIX } from '@airo/shared/media';
 import { AppRepository } from '../database/repositories/AppRepository.js';
 import { createForWorkspace } from '../workspace/index.js';
 import { GitUtils } from '../utils/git.js';
@@ -125,6 +126,11 @@ export interface ManifestOperationResult {
   commitHash?: string;
 }
 
+export interface RemoveUploadedUrlsResult extends ManifestOperationResult {
+  affectedSlots?: string[];
+  removedUrls?: string[];
+}
+
 // In-memory locks per app to prevent concurrent modifications
 const appLocks = new Map<string, Promise<void>>();
 
@@ -177,7 +183,7 @@ const SOURCE_DIR_CATEGORIES: [RegExp, string][] = [
 function deriveSlotPath(
   devContext?: { fileName: string; componentName: string; lineNumber: number },
   imageAlt?: string,
-  imageUrl?: string,
+  imageUrl?: string
 ): string {
   if (!devContext?.fileName) {
     return `imported/image-${Date.now()}`;
@@ -191,10 +197,10 @@ function deriveSlotPath(
     if (match?.[1]) {
       category = cat;
       segmentName = match[1]
-        .replace(/\.page$/, '')     // strip .page suffix if present
-        .replace(/\/index$/, '')    // strip /index suffix
+        .replace(/\.page$/, '') // strip .page suffix if present
+        .replace(/\/index$/, '') // strip /index suffix
         .replace(/^index$/, 'home') // top-level index = home
-        .replace(/\//g, '-')       // flatten nested paths
+        .replace(/\//g, '-') // flatten nested paths
         .toLowerCase();
       break;
     }
@@ -204,11 +210,12 @@ function deriveSlotPath(
   let imageName = '';
 
   if (imageAlt?.trim()) {
-    imageName = imageAlt.trim()
+    imageName = imageAlt
+      .trim()
       .toLowerCase()
-      .replace(/[^a-z0-9\s-]/g, '')  // strip non-alphanumeric
-      .replace(/\s+/g, '-')          // spaces to hyphens
-      .substring(0, 40);             // keep reasonable length
+      .replace(/[^a-z0-9\s-]/g, '') // strip non-alphanumeric
+      .replace(/\s+/g, '-') // spaces to hyphens
+      .substring(0, 40); // keep reasonable length
   }
 
   if (!imageName && imageUrl && !imageUrl.startsWith('data:')) {
@@ -216,10 +223,10 @@ function deriveSlotPath(
       const pathname = new URL(imageUrl, 'http://localhost').pathname;
       const filename = pathname.split('/').pop() || '';
       imageName = filename
-        .replace(/\.[^.]+$/, '')          // strip extension
-        .replace(/[^a-zA-Z0-9-]/g, '-')  // non-alphanum to hyphens
-        .replace(/-+/g, '-')             // collapse multiple hyphens
-        .replace(/^-|-$/g, '')           // trim leading/trailing hyphens
+        .replace(/\.[^.]+$/, '') // strip extension
+        .replace(/[^a-zA-Z0-9-]/g, '-') // non-alphanum to hyphens
+        .replace(/-+/g, '-') // collapse multiple hyphens
+        .replace(/^-|-$/g, '') // trim leading/trailing hyphens
         .substring(0, 40)
         .toLowerCase();
     } catch {
@@ -234,10 +241,7 @@ function deriveSlotPath(
   return `${category}/${segmentName}/${imageName}`;
 }
 
-const AIRO_PREVIEW_HOST_SUFFIXES = [
-  '.airoapp.ai',
-  '.test-airoapp.ai',
-] as const;
+const AIRO_PREVIEW_HOST_SUFFIXES = ['.airoapp.ai', '.test-airoapp.ai'] as const;
 
 function isAiroPreviewHostname(hostname: string): boolean {
   return (
@@ -254,7 +258,10 @@ function isAiroPreviewHostname(hostname: string): boolean {
 function normalizeImageUrl(imageUrl: string): string {
   try {
     const url = new URL(imageUrl);
-    const isLocal = url.hostname === 'localhost' || url.hostname === '127.0.0.1' || url.hostname === 'local.gasket.dev-godaddy.com';
+    const isLocal =
+      url.hostname === 'localhost' ||
+      url.hostname === '127.0.0.1' ||
+      url.hostname === 'local.gasket.dev-godaddy.com';
     if (isLocal || isAiroPreviewHostname(url.hostname)) {
       return url.pathname;
     }
@@ -280,7 +287,7 @@ function isResolvedPathWithinRoot(resolvedFile: string, rootDir: string): boolea
 async function copyLocalFileToMedia(
   appPath: string,
   localUrlPath: string,
-  slotPath: string,
+  slotPath: string
 ): Promise<string | null> {
   // Resolve local URL path to a filesystem path.
   // Vite serves public/ at root, so /assets/images/x.png → {app}/public/assets/images/x.png
@@ -357,7 +364,7 @@ async function copyLocalFileToMedia(
     dest: filename,
   });
 
-  return `/airo-assets/uploads/${filename}`;
+  return `${AIRO_ASSET_UPLOADS_URL_PREFIX}${filename}`;
 }
 
 /**
@@ -370,7 +377,7 @@ async function copyLocalFileToMedia(
  */
 function resolveTransparentLogoUrl(
   slot: MediaSlot,
-  candidateUrl: string,
+  candidateUrl: string
 ): { url: string; rewritten: boolean } {
   if (slot.mediaType !== 'logo') {
     return { url: candidateUrl, rewritten: false };
@@ -522,7 +529,8 @@ export class MediaManifestService {
       // from the same source element, return it. The sourceRef check prevents
       // merging distinct elements that happen to share a URL.
       const existingByUrl = Object.entries(manifest).find(
-        ([_, slot]) => slot.currentUrl === normalizedUrl && (!slot.sourceRef || slot.sourceRef === sourceRef)
+        ([_, slot]) =>
+          slot.currentUrl === normalizedUrl && (!slot.sourceRef || slot.sourceRef === sourceRef)
       );
 
       if (existingByUrl) {
@@ -614,20 +622,24 @@ export class MediaManifestService {
       const newSlotUrl = `/airo-assets/images/${slotPath}`;
       if (options.devContext) {
         try {
-          const replaceResult = await astImageEditor.replaceImage(app.path, {
-            elementInfo: {
-              tagName: options.imageType === 'background' ? 'div' : 'img',
-              className: '',
-              id: '',
-              selector: '',
-              devContext: options.devContext,
+          const replaceResult = await astImageEditor.replaceImage(
+            app.path,
+            {
+              elementInfo: {
+                tagName: options.imageType === 'background' ? 'div' : 'img',
+                className: '',
+                id: '',
+                selector: '',
+                devContext: options.devContext,
+              },
+              imageInfo: {
+                type: options.imageType || 'img',
+                currentUrl: sourceFileUrl,
+              },
+              newImageUrl: newSlotUrl,
             },
-            imageInfo: {
-              type: options.imageType || 'img',
-              currentUrl: sourceFileUrl,
-            },
-            newImageUrl: newSlotUrl,
-          }, appId);
+            appId
+          );
 
           if (replaceResult.success) {
             logger.info('media_manifest.import_slot.source_updated', {
@@ -655,7 +667,9 @@ export class MediaManifestService {
       }
 
       // Commit to git (includes both manifest and source file changes)
-      const additionalFiles = options.devContext?.fileName ? [options.devContext.fileName] : undefined;
+      const additionalFiles = options.devContext?.fileName
+        ? [options.devContext.fileName]
+        : undefined;
       try {
         await this.commitManifestChange(appId, slotPath, 'create', additionalFiles);
       } catch (gitError) {
@@ -667,7 +681,11 @@ export class MediaManifestService {
         });
       }
 
-      logger.info('media_manifest.import_slot.success', { appId, slotPath, imageUrl: options.imageUrl.substring(0, 200) });
+      logger.info('media_manifest.import_slot.success', {
+        appId,
+        slotPath,
+        imageUrl: options.imageUrl.substring(0, 200),
+      });
 
       return { success: true, slotPath };
     } catch (error) {
@@ -748,7 +766,7 @@ export class MediaManifestService {
 
       if (urlIndex === -1 || urlIndex >= allUrls.length) {
         // Allow injecting an existing uploaded image URL that isn't in this slot yet
-        if (options.newUrl && options.newUrl.startsWith('/airo-assets/uploads/')) {
+        if (options.newUrl && options.newUrl.startsWith(AIRO_ASSET_UPLOADS_URL_PREFIX)) {
           newCurrentUrl = options.newUrl;
           newAlternatives = [...new Set(allUrls)].filter((url) => url !== options.newUrl);
           newCurrentGettyId = undefined;
@@ -963,8 +981,9 @@ export class MediaManifestService {
       }
 
       // Deduplicate alternatives (repeated uploads/swaps can cause duplicates)
-      const deduplicatedAlternatives = [...new Set(newAlternatives)]
-        .filter((url) => url !== uploadedUrl);
+      const deduplicatedAlternatives = [...new Set(newAlternatives)].filter(
+        (url) => url !== uploadedUrl
+      );
 
       // Rebuild Getty IDs aligned with deduped alternatives
       const newAlternativeGettyIds = deduplicatedAlternatives.map(
@@ -984,14 +1003,13 @@ export class MediaManifestService {
         alternatives: deduplicatedAlternatives,
         userModified: true,
         lastUpdated: new Date().toISOString(),
-        searchQuery: '',  // upload is unrelated to any prior search term
+        searchQuery: '', // upload is unrelated to any prior search term
         gettyId: undefined, // Uploaded image has no Getty ID
         alternativeGettyIds: newAlternativeGettyIds.some((id) => id)
           ? newAlternativeGettyIds
           : undefined,
-        uploadSources: Object.keys(updatedUploadSources).length > 0
-          ? updatedUploadSources
-          : undefined,
+        uploadSources:
+          Object.keys(updatedUploadSources).length > 0 ? updatedUploadSources : undefined,
       };
 
       manifest[slotName] = updatedSlot;
@@ -1019,6 +1037,312 @@ export class MediaManifestService {
         success: true,
         slot: updatedSlot,
         manifest,
+        commitHash,
+      };
+    } finally {
+      releaseLock();
+    }
+  }
+
+  private buildSlotAfterUploadUrlRemoval(
+    existingSlot: MediaSlot,
+    removeSet: Set<string>
+  ): { changed: boolean; updatedSlot?: MediaSlot } {
+    const pruneStringMap = (map?: Record<string, string>): Record<string, string> | undefined => {
+      if (!map) return undefined;
+      const next = Object.fromEntries(
+        Object.entries(map).filter(([key, value]) => !removeSet.has(key) && !removeSet.has(value))
+      );
+      return Object.keys(next).length > 0 ? next : undefined;
+    };
+
+    const pruneLogoSourceMap = (
+      map?: Record<string, { sessionId: string; logoId: string }>
+    ): Record<string, { sessionId: string; logoId: string }> | undefined => {
+      if (!map) return undefined;
+      const next = Object.fromEntries(Object.entries(map).filter(([key]) => !removeSet.has(key)));
+      return Object.keys(next).length > 0 ? next : undefined;
+    };
+
+    const uploadSourceUrls = Object.keys(existingSlot.uploadSources || {});
+    const hasRemovedCurrent = removeSet.has(existingSlot.currentUrl);
+    const hasRemovedAlternative = existingSlot.alternatives.some((url) => removeSet.has(url));
+    const hasRemovedUploadSource = uploadSourceUrls.some((url) => removeSet.has(url));
+    const hasRemovedLogoMapEntry = [
+      existingSlot.solidUrlMap,
+      existingSlot.reversedUrlMap,
+      existingSlot.reversedSolidUrlMap,
+      existingSlot.mockupUrlMap,
+      existingSlot.landscapeMockupUrlMap,
+    ].some(
+      (map) =>
+        map &&
+        Object.entries(map).some(([key, value]) => removeSet.has(key) || removeSet.has(value))
+    );
+    const hasRemovedLogoSourceMapEntry = Object.keys(existingSlot.logoSourceMap || {}).some((url) =>
+      removeSet.has(url)
+    );
+
+    if (
+      !hasRemovedCurrent &&
+      !hasRemovedAlternative &&
+      !hasRemovedUploadSource &&
+      !hasRemovedLogoMapEntry &&
+      !hasRemovedLogoSourceMapEntry
+    ) {
+      return { changed: false };
+    }
+
+    const altGettyIds = existingSlot.alternativeGettyIds || [];
+    const urlToGettyId = new Map<string, string>();
+    urlToGettyId.set(existingSlot.currentUrl, existingSlot.gettyId || '');
+    existingSlot.alternatives.forEach((url, i) => {
+      if (!urlToGettyId.has(url)) {
+        urlToGettyId.set(url, altGettyIds[i] || '');
+      }
+    });
+
+    const newCurrentUrl = hasRemovedCurrent
+      ? existingSlot.alternatives.find((url) => !removeSet.has(url))
+      : existingSlot.currentUrl;
+
+    if (!newCurrentUrl) {
+      return { changed: true };
+    }
+
+    const newAlternatives = [...new Set(existingSlot.alternatives)].filter(
+      (url) => !removeSet.has(url) && url !== newCurrentUrl
+    );
+    const newAlternativeGettyIds = newAlternatives.map((url) => urlToGettyId.get(url) || '');
+    const newUploadSources = existingSlot.uploadSources
+      ? Object.fromEntries(
+          Object.entries(existingSlot.uploadSources).filter(([url]) => !removeSet.has(url))
+        )
+      : undefined;
+
+    const updatedSlot: MediaSlot = {
+      ...existingSlot,
+      currentUrl: newCurrentUrl,
+      alternatives: newAlternatives,
+      userModified: true,
+      lastUpdated: new Date().toISOString(),
+      gettyId: urlToGettyId.get(newCurrentUrl) || undefined,
+      alternativeGettyIds: newAlternativeGettyIds.some((id) => id)
+        ? newAlternativeGettyIds
+        : undefined,
+      uploadSources:
+        newUploadSources && Object.keys(newUploadSources).length > 0 ? newUploadSources : undefined,
+      solidUrlMap: pruneStringMap(existingSlot.solidUrlMap),
+      reversedUrlMap: pruneStringMap(existingSlot.reversedUrlMap),
+      reversedSolidUrlMap: pruneStringMap(existingSlot.reversedSolidUrlMap),
+      mockupUrlMap: pruneStringMap(existingSlot.mockupUrlMap),
+      landscapeMockupUrlMap: pruneStringMap(existingSlot.landscapeMockupUrlMap),
+      logoSourceMap: pruneLogoSourceMap(existingSlot.logoSourceMap),
+    };
+
+    return { changed: true, updatedSlot };
+  }
+
+  /**
+   * Remove one or more persistent upload URLs from the manifest. If a removed
+   * URL is currently active for a slot, promote the first remaining alternative.
+   */
+  async removeUploadedUrls(
+    appId: string,
+    uploadedUrls: string[]
+  ): Promise<RemoveUploadedUrlsResult> {
+    const app = this.appRepository.findById(appId);
+    if (!app) {
+      return {
+        success: false,
+        error: `App not found: ${appId}`,
+      };
+    }
+
+    const urlsToRemove = [...new Set(uploadedUrls)].filter((url) =>
+      url.startsWith(AIRO_ASSET_UPLOADS_URL_PREFIX)
+    );
+    if (urlsToRemove.length === 0) {
+      return { success: true, affectedSlots: [], removedUrls: [] };
+    }
+
+    const removeSet = new Set(urlsToRemove);
+    const logContext = { appId, removedUrls: urlsToRemove };
+    logger.info('media_manifest.remove_uploads.begin', logContext);
+
+    const releaseLock = await acquireLock(appId);
+
+    try {
+      const manifestPath = this.getManifestPath(app.path);
+      let manifest: MediaManifest = {};
+      try {
+        const content = await fs.readFile(manifestPath, 'utf-8');
+        manifest = JSON.parse(content);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+          logger.warn('media_manifest.remove_uploads.read_error', {
+            ...logContext,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+        return { success: true, manifest: {}, affectedSlots: [], removedUrls: urlsToRemove };
+      }
+
+      const nextManifest: MediaManifest = { ...manifest };
+      const affectedSlots: string[] = [];
+      const blockedSlots: string[] = [];
+
+      for (const [slotName, existingSlot] of Object.entries(manifest)) {
+        const removal = this.buildSlotAfterUploadUrlRemoval(existingSlot, removeSet);
+        if (!removal.changed) {
+          continue;
+        }
+
+        if (!removal.updatedSlot) {
+          blockedSlots.push(slotName);
+          continue;
+        }
+
+        nextManifest[slotName] = removal.updatedSlot;
+        affectedSlots.push(slotName);
+      }
+
+      if (blockedSlots.length > 0) {
+        return {
+          success: false,
+          error: `Cannot delete upload because it is the only media for slot: ${blockedSlots.join(', ')}`,
+          affectedSlots,
+          removedUrls: urlsToRemove,
+        };
+      }
+
+      if (affectedSlots.length === 0) {
+        return { success: true, manifest, affectedSlots: [], removedUrls: urlsToRemove };
+      }
+
+      await this.writeManifest(manifestPath, nextManifest);
+
+      let commitHash: string | undefined;
+      try {
+        commitHash = await this.commitManifestChange(appId, 'uploaded media', 'update');
+      } catch (gitError) {
+        logger.warn('media_manifest.remove_uploads.git_commit_failed', {
+          ...logContext,
+          error: gitError instanceof Error ? gitError.message : String(gitError),
+        });
+      }
+
+      logger.info('media_manifest.remove_uploads.success', {
+        ...logContext,
+        affectedSlots,
+        commitHash,
+      });
+
+      return {
+        success: true,
+        manifest: nextManifest,
+        affectedSlots,
+        removedUrls: urlsToRemove,
+        commitHash,
+      };
+    } finally {
+      releaseLock();
+    }
+  }
+
+  async removeUploadedUrlsFromSlot(
+    appId: string,
+    slotName: string,
+    uploadedUrls: string[]
+  ): Promise<RemoveUploadedUrlsResult> {
+    const app = this.appRepository.findById(appId);
+    if (!app) {
+      return {
+        success: false,
+        error: `App not found: ${appId}`,
+      };
+    }
+
+    const urlsToRemove = [...new Set(uploadedUrls)].filter((url) =>
+      url.startsWith(AIRO_ASSET_UPLOADS_URL_PREFIX)
+    );
+    if (urlsToRemove.length === 0) {
+      return { success: true, affectedSlots: [], removedUrls: [] };
+    }
+
+    const removeSet = new Set(urlsToRemove);
+    const logContext = { appId, slotName, removedUrls: urlsToRemove };
+    logger.info('media_manifest.remove_uploads_from_slot.begin', logContext);
+
+    const releaseLock = await acquireLock(appId);
+
+    try {
+      const manifestPath = this.getManifestPath(app.path);
+      let manifest: MediaManifest = {};
+      try {
+        const content = await fs.readFile(manifestPath, 'utf-8');
+        manifest = JSON.parse(content);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+          logger.warn('media_manifest.remove_uploads_from_slot.read_error', {
+            ...logContext,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+        return { success: true, manifest: {}, affectedSlots: [], removedUrls: urlsToRemove };
+      }
+
+      const existingSlot = manifest[slotName];
+      if (!existingSlot) {
+        return {
+          success: false,
+          error: `Slot not found: ${slotName}`,
+          affectedSlots: [],
+          removedUrls: urlsToRemove,
+        };
+      }
+
+      const removal = this.buildSlotAfterUploadUrlRemoval(existingSlot, removeSet);
+      if (!removal.changed) {
+        return { success: true, manifest, affectedSlots: [], removedUrls: urlsToRemove };
+      }
+
+      if (!removal.updatedSlot) {
+        return {
+          success: false,
+          error: `Cannot remove upload because it is the only media for slot: ${slotName}`,
+          affectedSlots: [],
+          removedUrls: urlsToRemove,
+        };
+      }
+
+      const nextManifest: MediaManifest = {
+        ...manifest,
+        [slotName]: removal.updatedSlot,
+      };
+
+      await this.writeManifest(manifestPath, nextManifest);
+
+      let commitHash: string | undefined;
+      try {
+        commitHash = await this.commitManifestChange(appId, slotName, 'update');
+      } catch (gitError) {
+        logger.warn('media_manifest.remove_uploads_from_slot.git_commit_failed', {
+          ...logContext,
+          error: gitError instanceof Error ? gitError.message : String(gitError),
+        });
+      }
+
+      logger.info('media_manifest.remove_uploads_from_slot.success', {
+        ...logContext,
+        commitHash,
+      });
+
+      return {
+        success: true,
+        manifest: nextManifest,
+        affectedSlots: [slotName],
+        removedUrls: urlsToRemove,
         commitHash,
       };
     } finally {
@@ -1082,7 +1406,7 @@ export class MediaManifestService {
         const uploadResults = await gettyUploadService.uploadAndReport(allGettyIds);
 
         if (uploadResults.length > 0) {
-          const resultMap = new Map(uploadResults.map(r => [r.id, r.url]));
+          const resultMap = new Map(uploadResults.map((r) => [r.id, r.url]));
 
           // Replace current URL if we got a CDN URL for it
           const cdnUrl = resultMap.get(slot.gettyId);

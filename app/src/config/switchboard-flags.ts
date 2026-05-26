@@ -7,3 +7,5 @@ export const SWITCHBOARD_APPBUILDER_GO_LIVE_FEATURE = 'appbuilder-go-live-featur
 export const SWITCHBOARD_APPBUILDER_INSIGHTS_BANNER = 'appbuilder-insights-banner';
 export const SWITCHBOARD_APPBUILDER_DEBUG_DRAWER = 'appbuilder-debug-drawer';
 export const SWITCHBOARD_APPBUILDER_SSE_TRANSPORT = 'app-builder-sse-transport';
+export const SWITCHBOARD_APPBUILDER_UPLOADED_IMAGE_DELETION =
+  'appbuilder-uploaded-image-deletion';

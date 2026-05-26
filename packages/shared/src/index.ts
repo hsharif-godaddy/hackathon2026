@@ -1,7 +1,7 @@
 // Grants
-export type { CreditGrant, GrantContextPayload } from './grants/index.js'
-export { GrantType, GrantFinalState, LlmCallSource, GrantErrorCode } from './grants/index.js'
-export { GrantManager, GrantUnusableReason } from './grants/index.js'
+export type { CreditGrant, GrantContextPayload } from './grants/index.js';
+export { GrantType, GrantFinalState, LlmCallSource, GrantErrorCode } from './grants/index.js';
+export { GrantManager, GrantUnusableReason } from './grants/index.js';
 
 // Context Attachment
 export type {
@@ -12,7 +12,7 @@ export type {
   RenderedContext,
   ContextAttachmentRenderer,
   ContextAttachmentConfig,
-} from './context-attachment/index.js'
+} from './context-attachment/index.js';
 export {
   createContextAttachment,
   isContextAttachment,
@@ -27,22 +27,29 @@ export type {
 } from './context-attachment/index.js'
 
 // WebSocket Context
-export type { AgentsAppContext, AgentsAppChatMessage } from './websocket/index.js'
+export type { AgentsAppContext, AgentsAppChatMessage } from './websocket/index.js';
 
 // Social
-export { CONNECT_REQUEST_FROM_PUBLISH } from './social/index.js'
-export type { ValidationDetails, PostImageData } from './social/index.js'
+export { CONNECT_REQUEST_FROM_PUBLISH } from './social/index.js';
+export type { ValidationDetails, PostImageData } from './social/index.js';
 
 // Auth
-export { SUPPORTED_AUTH_TYPES, isEmployeeAuthType } from './auth/index.js'
-export type { SupportedAuthType, AuthType } from './auth/index.js'
+export { SUPPORTED_AUTH_TYPES, isEmployeeAuthType } from './auth/index.js';
+export type { SupportedAuthType, AuthType } from './auth/index.js';
 
 // Domain (attach / site sync)
-export { fqdnIsConnectedOrProvisioningOnSite } from './domain/index.js'
-export type { SiteDomainForAttachCheck } from './domain/index.js'
+export { fqdnIsConnectedOrProvisioningOnSite } from './domain/index.js';
+export type { SiteDomainForAttachCheck } from './domain/index.js';
 
 // JSON
-export { safeStringify } from './json/index.js'
+export { safeStringify } from './json/index.js';
+
+// Media
+export {
+  AIRO_ASSET_UPLOADS_URL_PREFIX,
+  getFilenameFromUploadUrl,
+  isSafeUploadFilename,
+} from './media/index.js';
 
 // Share URL (base64url codec for /share/{encoded} BFF redirect)
 export {
@@ -55,8 +62,8 @@ export {
   isEncodableSiteId,
   isEncodableToken,
   tokenSuffix,
-} from './share-url/index.js'
-export type { SharePayload } from './share-url/index.js'
+} from './share-url/index.js';
+export type { SharePayload } from './share-url/index.js';
 
 // Brand Data
 export type {
@@ -72,4 +79,4 @@ export type {
   BrandDataToneMatrix,
   BrandDataTypography,
   BrandDataVoice,
-} from './brand-data/index.js'
+} from './brand-data/index.js';

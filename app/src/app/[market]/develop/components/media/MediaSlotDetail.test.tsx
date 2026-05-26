@@ -11,7 +11,8 @@ import { useIsEmbedded } from '@/hooks/useIsEmbedded';
 import { useMediaManifest } from '@/hooks/useMediaManifest';
 import { useMediaSlot } from '@/hooks/useMediaSlot';
 import { renderWithProviders } from '@/tests/test-utils';
-import { formatSlotName, MediaSlotDetail } from './MediaSlotDetail';
+import { MediaSlotDetail } from './MediaSlotDetail';
+import { formatSlotName } from './mediaSlotLabels';
 
 const mockAppId = 'app-123';
 const mockSlotName = 'hero/image';
@@ -25,14 +26,17 @@ vi.mock('@/hooks/useMediaManifest', () => ({
 }));
 
 vi.mock('@/stores/useServerPollingStore', () => ({
-  useServerPollingStore: (selector: unknown) => (selector as (state: unknown) => unknown)({
-    getServerState: () => ({ url: 'https://preview.example.com' }),
-  }),
+  useServerPollingStore: (selector: unknown) =>
+    (selector as (state: unknown) => unknown)({
+      getServerState: () => ({ url: 'https://preview.example.com' }),
+    }),
 }));
 
 vi.mock('@/config/dynamic-api', () => ({
   dynamicApiConfigService: {
-    getConfigForSite: vi.fn().mockResolvedValue({ agentUrl: 'https://agent.example.com/apps/app-123' }),
+    getConfigForSite: vi
+      .fn()
+      .mockResolvedValue({ agentUrl: 'https://agent.example.com/apps/app-123' }),
   },
 }));
 
@@ -68,10 +72,15 @@ vi.mock('@/components/security/allowed-frame-ancestors', () => ({
   getParentOrigin: vi.fn().mockReturnValue('https://dashboard.godaddy.com'),
 }));
 
-
 const mockUploadedImagesSection = vi.fn();
 vi.mock('@/app/[market]/develop/components/media/UploadedImagesSection', () => ({
-  UploadedImagesSection: (props: { onSelectImage: (file: { filename: string }) => void; appId: string; isDisabled?: boolean; layout?: string; selectedFilename?: string | null }) => {
+  UploadedImagesSection: (props: {
+    onSelectImage: (file: { filename: string }) => void;
+    appId: string;
+    isDisabled?: boolean;
+    layout?: string;
+    selectedFilename?: string | null;
+  }) => {
     mockUploadedImagesSection(props);
     return (
       <div data-testid="uploaded-images-section">
@@ -99,7 +108,7 @@ describe('MediaSlotDetail', () => {
     mockUploadedImagesSection.mockClear();
     mockLogImpressionEvent.mockClear();
     global.fetch = vi.fn();
-    
+
     vi.mocked(useMediaSlot).mockReturnValue({
       slot: {
         currentUrl: '/img1.jpg',
@@ -121,30 +130,44 @@ describe('MediaSlotDetail', () => {
   });
 
   it('renders loading state', () => {
-    vi.mocked(useMediaSlot).mockReturnValue({ isLoading: true, error: null, slot: null } as unknown as ReturnType<typeof useMediaSlot>);
-    
-    const { container } = renderWithProviders(<MediaSlotDetail appId={mockAppId} slotName={mockSlotName} />);
+    vi.mocked(useMediaSlot).mockReturnValue({
+      isLoading: true,
+      error: null,
+      slot: null,
+    } as unknown as ReturnType<typeof useMediaSlot>);
+
+    const { container } = renderWithProviders(
+      <MediaSlotDetail appId={mockAppId} slotName={mockSlotName} />
+    );
     expect(container.querySelector('.ux-skeleton')).toBeInTheDocument();
   });
 
   it('renders error state', () => {
-    vi.mocked(useMediaSlot).mockReturnValue({ isLoading: false, error: 'Failed to load slot', slot: null } as unknown as ReturnType<typeof useMediaSlot>);
-    
+    vi.mocked(useMediaSlot).mockReturnValue({
+      isLoading: false,
+      error: 'Failed to load slot',
+      slot: null,
+    } as unknown as ReturnType<typeof useMediaSlot>);
+
     renderWithProviders(<MediaSlotDetail appId={mockAppId} slotName={mockSlotName} />);
     expect(screen.getByText('builder_mediaslot_error_fail_load')).toBeInTheDocument();
     expect(screen.getByText('Failed to load slot')).toBeInTheDocument();
   });
 
   it('renders empty state when no images', () => {
-    vi.mocked(useMediaSlot).mockReturnValue({ isLoading: false, error: null, slot: null } as unknown as ReturnType<typeof useMediaSlot>);
-    
+    vi.mocked(useMediaSlot).mockReturnValue({
+      isLoading: false,
+      error: null,
+      slot: null,
+    } as unknown as ReturnType<typeof useMediaSlot>);
+
     renderWithProviders(<MediaSlotDetail appId={mockAppId} slotName={mockSlotName} />);
     expect(screen.getByText('builder_mediaslot_no_images')).toBeInTheDocument();
   });
 
   it('renders slot details correctly', () => {
     renderWithProviders(<MediaSlotDetail appId={mockAppId} slotName={mockSlotName} />);
-    
+
     expect(screen.getByText('Hero Image')).toBeInTheDocument();
     expect(screen.getByText('test query')).toBeInTheDocument();
     expect(screen.getByText('builder_mediaslot_uploads')).toBeInTheDocument();
@@ -157,7 +180,9 @@ describe('MediaSlotDetail', () => {
       json: async () => ({ success: true }),
     });
 
-    const { user } = renderWithProviders(<MediaSlotDetail appId={mockAppId} slotName={mockSlotName} />);
+    const { user } = renderWithProviders(
+      <MediaSlotDetail appId={mockAppId} slotName={mockSlotName} />
+    );
 
     // Select an alternative image (wait for search to complete before querying)
     const images = await screen.findAllByRole('button', { pressed: false });
@@ -188,11 +213,13 @@ describe('MediaSlotDetail', () => {
       json: async () => ({ error: 'Swap failed' }),
     });
 
-    const { user } = renderWithProviders(<MediaSlotDetail appId={mockAppId} slotName={mockSlotName} />);
+    const { user } = renderWithProviders(
+      <MediaSlotDetail appId={mockAppId} slotName={mockSlotName} />
+    );
 
     const images = await screen.findAllByRole('button', { pressed: false });
     await user.click(images[0]);
-    
+
     const useButton = screen.getByText('builder_mediaslot_use_image');
     await user.click(useButton);
 
@@ -239,7 +266,9 @@ describe('MediaSlotDetail', () => {
       json: async () => ({ error: 'Upload file not found' }),
     });
 
-    const { user } = renderWithProviders(<MediaSlotDetail appId={mockAppId} slotName={mockSlotName} />);
+    const { user } = renderWithProviders(
+      <MediaSlotDetail appId={mockAppId} slotName={mockSlotName} />
+    );
 
     // Select upload, then confirm
     const selectUploadBtn = screen.getByText('Select Uploaded Image');
@@ -306,7 +335,9 @@ describe('MediaSlotDetail', () => {
         blob: async () => new Blob(['img'], { type: 'image/png' }),
       });
 
-      const { user } = renderWithProviders(<MediaSlotDetail appId={mockAppId} slotName={mockSlotName} />);
+      const { user } = renderWithProviders(
+        <MediaSlotDetail appId={mockAppId} slotName={mockSlotName} />
+      );
 
       await user.click(screen.getByText('builder_mediaslot_set_as_logo'));
 
@@ -325,7 +356,9 @@ describe('MediaSlotDetail', () => {
       const postMessageSpy = vi.spyOn(window.parent, 'postMessage');
       (global.fetch as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('Network error'));
 
-      const { user } = renderWithProviders(<MediaSlotDetail appId={mockAppId} slotName={mockSlotName} />);
+      const { user } = renderWithProviders(
+        <MediaSlotDetail appId={mockAppId} slotName={mockSlotName} />
+      );
 
       await user.click(screen.getByText('builder_mediaslot_set_as_logo'));
 
@@ -346,7 +379,9 @@ describe('MediaSlotDetail', () => {
       vi.mocked(getParentOrigin).mockReturnValue(null);
       const postMessageSpy = vi.spyOn(window.parent, 'postMessage');
 
-      const { user } = renderWithProviders(<MediaSlotDetail appId={mockAppId} slotName={mockSlotName} />);
+      const { user } = renderWithProviders(
+        <MediaSlotDetail appId={mockAppId} slotName={mockSlotName} />
+      );
 
       await user.click(screen.getByText('builder_mediaslot_set_as_logo'));
 
@@ -430,7 +465,6 @@ describe('MediaSlotDetail', () => {
       });
     });
   });
-
 });
 
 describe('formatSlotName', () => {

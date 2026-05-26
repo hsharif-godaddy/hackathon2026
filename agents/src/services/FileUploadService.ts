@@ -3,6 +3,7 @@ import { mkdir, writeFile, readFile, readdir, unlink, rm } from 'fs/promises'
 import { extname } from 'path'
 import { nanoid } from 'nanoid'
 import { z } from 'zod'
+import { isSafeUploadFilename } from '@airo/shared/media'
 
 import { logger } from '../logging/index.js'
 import { fileUploadEvents } from '../logging/events/index.js'
@@ -31,6 +32,11 @@ export interface UploadResult {
   files: UploadedFile[]
   failedFiles: FailedFile[]
   expiresAt?: string
+}
+
+export interface DeleteUploadedFileResult {
+  deleted: boolean
+  uploadId?: string
 }
 
 const BLOCKED_EXTENSIONS = new Set([
@@ -594,6 +600,91 @@ export class FileUploadService {
       })
       return false
     }
+  }
+
+  async deleteUploadedFile(appId: string, storedFilename: string): Promise<DeleteUploadedFileResult> {
+    if (!isSafeUploadFilename(storedFilename)) {
+      return { deleted: false }
+    }
+
+    const appDir = this.pathBuilder.join(appId)
+    if (!existsSync(appDir)) {
+      return { deleted: false }
+    }
+
+    try {
+      const uploadDirs = readdirSync(appDir)
+
+      for (const uploadId of uploadDirs) {
+        const metadataPath = this.pathBuilder.join(appId, uploadId, 'metadata.json')
+        if (!existsSync(metadataPath)) {
+          continue
+        }
+
+        let metadata: z.infer<typeof MetadataSchema>
+        try {
+          const metadataContent = await readFile(metadataPath, 'utf-8')
+          const rawMetadata = JSON.parse(metadataContent)
+          if (hasPrototypePollution(rawMetadata)) {
+            logger.error('file-upload.metadata.prototype-pollution', {
+              appId,
+              uploadId,
+              message: 'SECURITY: Prototype pollution attempt detected in metadata.json'
+            }, { tags: ['security', 'prototype-pollution', 'metadata-validation'] })
+            continue
+          }
+          metadata = MetadataSchema.parse(rawMetadata)
+        } catch (error) {
+          fileUploadEvents.retrieveFailure(
+            logger,
+            error instanceof Error ? error : new Error(String(error)),
+            { appId, uploadId }
+          )
+          continue
+        }
+
+        const fileIndex = metadata.files.findIndex((file) => file.filename === storedFilename)
+        if (fileIndex === -1) {
+          continue
+        }
+
+        const filePath = this.getFilePath(appId, uploadId, storedFilename)
+        try {
+          await unlink(filePath)
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+            throw error
+          }
+        }
+
+        metadata.files.splice(fileIndex, 1)
+        metadata.fileCount = metadata.files.length
+
+        const uploadDir = this.pathBuilder.join(appId, uploadId)
+        if (metadata.files.length === 0) {
+          await rm(uploadDir, { recursive: true, force: true })
+        } else {
+          await writeFile(metadataPath, JSON.stringify(metadata, null, 2))
+        }
+
+        fileUploadEvents.cleanupDeleted(logger, {
+          appId,
+          uploadId,
+          operation: 'delete',
+          deletedCount: 1
+        })
+
+        return { deleted: true, uploadId }
+      }
+    } catch (error) {
+      fileUploadEvents.cleanupFailure(logger, error instanceof Error ? error : new Error(String(error)), {
+        appId,
+        operation: 'delete'
+      })
+      return { deleted: false }
+    }
+
+    return { deleted: false }
   }
 
   async cleanupAppUploads(appId: string): Promise<number> {

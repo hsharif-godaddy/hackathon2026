@@ -72,18 +72,26 @@ const mockMediaSlotDialogStore = {
 };
 
 vi.mock('@/stores/useMediaSlotDialogStore', () => ({
-  useMediaSlotDialogStore: (selector: unknown) => (selector as (state: unknown) => unknown)(mockMediaSlotDialogStore),
+  useMediaSlotDialogStore: (selector: unknown) =>
+    (selector as (state: unknown) => unknown)(mockMediaSlotDialogStore),
 }));
 
 vi.mock('@/app/[market]/develop/components/media/MediaSlotDetail', () => ({
-  MediaSlotDetail: ({ slotName, onDone, onEdit }: { slotName: string; onDone: () => void; onEdit?: (url: string) => void }) => (
+  MediaSlotDetail: ({
+    slotName,
+    onDone,
+    onEdit,
+  }: {
+    slotName: string;
+    onDone: () => void;
+    onEdit?: (url: string) => void;
+  }) => (
     <div data-testid="media-slot-detail">
       Detail for {slotName}
       <button onClick={onDone}>Done</button>
       {onEdit && <button onClick={() => onEdit('http://example.com/img.jpg')}>Edit</button>}
     </div>
   ),
-  formatSlotName: (name: string) => name,
 }));
 
 vi.mock('@/app/[market]/develop/components/media/MediaSlotsGrid', () => ({

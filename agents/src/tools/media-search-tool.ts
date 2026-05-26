@@ -33,10 +33,15 @@ import { GettyMediaDriver } from './ai-lib-tools/drivers/getty-media-driver.js';
 import { ImageSearchServiceDriver } from './ai-lib-tools/drivers/image-search-service-driver.js';
 import type { MediaDriver, MediaDriverSearchOptions } from './ai-lib-tools/drivers/media-driver.js';
 import { createOpenAIClient } from '@airo/ai-lib';
+import { AIRO_ASSET_UPLOADS_URL_PREFIX } from '@airo/shared/media';
 import { AppRepository } from '../database/repositories/AppRepository.js';
 import { nanoid } from 'nanoid';
 import { logger } from '../logging/index.js';
-import { toolImageSearchEvents, toolVideoSearchEvents, toolImageGenerationEvents } from '../logging/events/index.js';
+import {
+  toolImageSearchEvents,
+  toolVideoSearchEvents,
+  toolImageGenerationEvents,
+} from '../logging/events/index.js';
 import OpenAI from 'openai';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -174,21 +179,22 @@ export class MediaSearchTool {
       if (Array.isArray(prompt)) {
         return {
           success: false,
-          error: 'Image generation does not support multiple prompts. Please provide a single prompt.'
+          error:
+            'Image generation does not support multiple prompts. Please provide a single prompt.',
         };
       }
 
       if (!prompt || typeof prompt !== 'string' || prompt.trim().length === 0) {
         return {
           success: false,
-          error: 'A valid prompt is required for image generation'
+          error: 'A valid prompt is required for image generation',
         };
       }
 
       if (!appId) {
         return {
           success: false,
-          error: 'App ID is required for image generation'
+          error: 'App ID is required for image generation',
         };
       }
 
@@ -200,14 +206,14 @@ export class MediaSearchTool {
       if (Array.isArray(prompt)) {
         return {
           success: false,
-          error: 'Video search does not support multiple prompts. Please provide a single prompt.'
+          error: 'Video search does not support multiple prompts. Please provide a single prompt.',
         };
       }
 
       if (!prompt || typeof prompt !== 'string' || prompt.trim().length === 0) {
         return {
           success: false,
-          error: 'A valid search prompt is required for video search'
+          error: 'A valid search prompt is required for video search',
         };
       }
 
@@ -216,17 +222,20 @@ export class MediaSearchTool {
 
     // Image search (default)
     if (Array.isArray(prompt)) {
-      if (prompt.length === 0 || prompt.some(p => !p || typeof p !== 'string' || p.trim().length === 0)) {
+      if (
+        prompt.length === 0 ||
+        prompt.some((p) => !p || typeof p !== 'string' || p.trim().length === 0)
+      ) {
         return {
           success: false,
-          error: 'All prompts must be valid non-empty strings'
+          error: 'All prompts must be valid non-empty strings',
         };
       }
 
       if (prompt.length > 20) {
         return {
           success: false,
-          error: 'Maximum 20 prompts allowed for parallel search'
+          error: 'Maximum 20 prompts allowed for parallel search',
         };
       }
 
@@ -237,14 +246,14 @@ export class MediaSearchTool {
     if (!prompt || typeof prompt !== 'string' || prompt.trim().length === 0) {
       return {
         success: false,
-        error: 'A valid search prompt is required'
+        error: 'A valid search prompt is required',
       };
     }
 
     if (count !== undefined && (count < 1 || count > 50)) {
       return {
         success: false,
-        error: 'Count must be between 1 and 50'
+        error: 'Count must be between 1 and 50',
       };
     }
 
@@ -300,7 +309,8 @@ export class MediaSearchTool {
       orientations: toArray(options?.orientations),
       compositions: toArray(options?.compositions),
       moods: options?.moods,
-      graphicalStyles: options?.graphicalStyles || (mediaType === 'image' ? ['photography'] : undefined),
+      graphicalStyles:
+        options?.graphicalStyles || (mediaType === 'image' ? ['photography'] : undefined),
       sortOrder: options?.sortOrder || 'best_match',
       color: options?.color,
       // Advanced filters (shared)
@@ -345,7 +355,12 @@ export class MediaSearchTool {
       });
 
       const driver = this.getDriver(mediaType, options?.useService);
-      const driverOptions = this.buildDriverOptions(prompt, mediaType as 'image' | 'video', count, options);
+      const driverOptions = this.buildDriverOptions(
+        prompt,
+        mediaType as 'image' | 'video',
+        count,
+        options
+      );
       const result = await driver.search(driverOptions);
 
       if (!result.success || !result.items || result.items.length === 0) {
@@ -357,14 +372,18 @@ export class MediaSearchTool {
         });
         return {
           success: false,
-          error: result.error || `No ${mediaType}s found for this search query`
+          error: result.error || `No ${mediaType}s found for this search query`,
         };
       }
 
       const mediaUrls: string[] = [];
       const gettyIds: string[] = [];
       for (const item of result.items.slice(0, count)) {
-        const mediaUrl = item?.urls?.highRes || item?.urls?.standard || item?.urls?.preview || item?.urls?.thumbnail;
+        const mediaUrl =
+          item?.urls?.highRes ||
+          item?.urls?.standard ||
+          item?.urls?.preview ||
+          item?.urls?.thumbnail;
         if (mediaUrl) {
           mediaUrls.push(mediaUrl);
           gettyIds.push(item.id);
@@ -380,7 +399,7 @@ export class MediaSearchTool {
         });
         return {
           success: false,
-          error: `No valid ${mediaType} URLs found in search response`
+          error: `No valid ${mediaType} URLs found in search response`,
         };
       }
 
@@ -414,14 +433,14 @@ export class MediaSearchTool {
           success: true,
           url: mediaUrls[0]!,
           ...(gettyIds[0] && { gettyId: gettyIds[0] }),
-          ...(thumbnailUrl && { thumbnailUrl })
+          ...(thumbnailUrl && { thumbnailUrl }),
         };
       } else {
         return {
           success: true,
           urls: mediaUrls,
           gettyIds,
-          ...(thumbnailUrl && { thumbnailUrl })
+          ...(thumbnailUrl && { thumbnailUrl }),
         };
       }
     } catch (error) {
@@ -434,7 +453,7 @@ export class MediaSearchTool {
       });
       return {
         success: false,
-        error: `Media ${mediaType} search failed: ${error instanceof Error ? error.message : String(error)}`
+        error: `Media ${mediaType} search failed: ${error instanceof Error ? error.message : String(error)}`,
       };
     }
   }
@@ -464,7 +483,9 @@ export class MediaSearchTool {
         provider: 'getty',
       });
 
-      const searchPromises = prompts.map(prompt => this.searchSingle(prompt, 'image', count, options));
+      const searchPromises = prompts.map((prompt) =>
+        this.searchSingle(prompt, 'image', count, options)
+      );
       const results = await Promise.all(searchPromises);
 
       const combinedResults = results.map((result, index) => {
@@ -488,27 +509,27 @@ export class MediaSearchTool {
         return combined;
       });
 
-      const hasAnySuccess = results.some(r => r.success);
+      const hasAnySuccess = results.some((r) => r.success);
 
       toolImageSearchEvents.success(logger, {
         toolName: 'MediaSearchTool',
         prompt: `Parallel search: ${prompts.join(', ')}`,
         count,
         provider: 'getty',
-        resultUrls: results.flatMap(r => r.urls || (r.url ? [r.url] : [])),
+        resultUrls: results.flatMap((r) => r.urls || (r.url ? [r.url] : [])),
         resultCount: results.reduce((sum, r) => sum + (r.urls?.length || (r.url ? 1 : 0)), 0),
       });
 
       if (hasAnySuccess) {
         return {
           success: true,
-          results: combinedResults
+          results: combinedResults,
         };
       } else {
         return {
           success: false,
           results: combinedResults,
-          error: 'All parallel searches failed'
+          error: 'All parallel searches failed',
         };
       }
     } catch (error) {
@@ -520,7 +541,7 @@ export class MediaSearchTool {
       });
       return {
         success: false,
-        error: `Parallel image search failed: ${error instanceof Error ? error.message : String(error)}`
+        error: `Parallel image search failed: ${error instanceof Error ? error.message : String(error)}`,
       };
     }
   }
@@ -539,7 +560,7 @@ export class MediaSearchTool {
       toolName: 'media-tool',
       appId,
       prompt,
-      options: { size, filename }
+      options: { size, filename },
     };
 
     toolImageGenerationEvents.begin(logger, logData);
@@ -549,7 +570,7 @@ export class MediaSearchTool {
       if (!openaiClient) {
         return {
           success: false,
-          error: 'OpenAI client could not be created - authentication not configured properly'
+          error: 'OpenAI client could not be created - authentication not configured properly',
         };
       }
 
@@ -559,7 +580,7 @@ export class MediaSearchTool {
       if (!app) {
         return {
           success: false,
-          error: `App not found: ${appId}`
+          error: `App not found: ${appId}`,
         };
       }
 
@@ -568,7 +589,7 @@ export class MediaSearchTool {
       fs.mkdirSync(imagesDir, { recursive: true });
 
       const result = await openaiClient.images.generate({
-        model: "gpt-image-1",
+        model: 'gpt-image-1',
         prompt: prompt.trim(),
         n: 1,
         size: size,
@@ -577,7 +598,7 @@ export class MediaSearchTool {
       if (!result.data || result.data.length === 0) {
         return {
           success: false,
-          error: 'No image generated from the provided prompt'
+          error: 'No image generated from the provided prompt',
         };
       }
 
@@ -585,12 +606,14 @@ export class MediaSearchTool {
       if (!imageData || (!imageData.b64_json && !imageData.url)) {
         return {
           success: false,
-          error: 'No image data returned from the API'
+          error: 'No image data returned from the API',
         };
       }
 
-      const safeFilename = filename ||
-        prompt.trim()
+      const safeFilename =
+        filename ||
+        prompt
+          .trim()
           .toLowerCase()
           .replace(/[^a-z0-9]+/g, '-')
           .replace(/^-+|-+$/g, '')
@@ -612,7 +635,7 @@ export class MediaSearchTool {
 
       fs.writeFileSync(filePath, imageBuffer);
 
-      const publicPath = `/airo-assets/uploads/${fullFilename}`;
+      const publicPath = `${AIRO_ASSET_UPLOADS_URL_PREFIX}${fullFilename}`;
       const executionTime = Date.now() - startTime;
 
       toolImageGenerationEvents.success(logger, {
@@ -621,15 +644,15 @@ export class MediaSearchTool {
         prompt: logData.prompt,
         options: {
           size: logData.options.size,
-          ...(logData.options.filename && { filename: logData.options.filename })
+          ...(logData.options.filename && { filename: logData.options.filename }),
         },
         resultStats: {
           success: true,
           filePath,
           publicPath,
           fileSize: imageBuffer.length,
-          executionTime
-        }
+          executionTime,
+        },
       });
 
       // Get app's preview URL (app was already fetched earlier)
@@ -642,13 +665,13 @@ export class MediaSearchTool {
         url: imageUrl,
         filepath: filePath,
         publicPath,
-        ...(imageData.b64_json && { base64Data: imageData.b64_json })
+        ...(imageData.b64_json && { base64Data: imageData.b64_json }),
       };
     } catch (error) {
       toolImageGenerationEvents.failure(logger, error as Error, logData);
       return {
         success: false,
-        error: `Image generation failed: ${error instanceof Error ? error.message : String(error)}`
+        error: `Image generation failed: ${error instanceof Error ? error.message : String(error)}`,
       };
     }
   }
@@ -677,16 +700,16 @@ export async function findMedia(options: MediaSearchOptions): Promise<MediaSearc
 
   // Validate prompt
   if (Array.isArray(prompt)) {
-    if (prompt.length === 0 || prompt.some(p => !p || typeof p !== 'string')) {
+    if (prompt.length === 0 || prompt.some((p) => !p || typeof p !== 'string')) {
       return {
         success: false,
-        error: 'A valid array of search prompts is required'
+        error: 'A valid array of search prompts is required',
       };
     }
   } else if (!prompt || typeof prompt !== 'string') {
     return {
       success: false,
-      error: 'A valid search prompt is required'
+      error: 'A valid search prompt is required',
     };
   }
 
@@ -718,26 +741,26 @@ export async function findMedia(options: MediaSearchOptions): Promise<MediaSearc
       toolImageGenerationEvents.failure(logger, error as Error, {
         toolName: 'media-tool',
         appId: appId || '',
-        prompt: promptForLog
+        prompt: promptForLog,
       });
     } else if (mediaType === 'video') {
       toolVideoSearchEvents.failure(logger, error as Error, {
         toolName: 'MediaSearchTool',
         prompt: promptForLog,
-        provider: 'getty'
+        provider: 'getty',
       });
     } else {
       toolImageSearchEvents.failure(logger, error as Error, {
         toolName: 'MediaSearchTool',
         prompt: promptForLog,
         provider: 'getty',
-        count: count ?? 1
+        count: count ?? 1,
       });
     }
 
     return {
       success: false,
-      error: `Media operation failed: ${error instanceof Error ? error.message : String(error)}`
+      error: `Media operation failed: ${error instanceof Error ? error.message : String(error)}`,
     };
   }
 }

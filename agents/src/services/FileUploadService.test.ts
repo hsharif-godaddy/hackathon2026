@@ -190,3 +190,74 @@ describe('FileUploadService - List Files', () => {
     expect(files).toEqual([]);
   });
 });
+
+describe('FileUploadService - Delete Uploaded File', () => {
+  const deleteTestDir = '/tmp/test-uploads-delete-file';
+
+  afterEach(async () => {
+    if (existsSync(deleteTestDir)) {
+      await rm(deleteTestDir, { recursive: true, force: true });
+    }
+  });
+
+  it('deletes one stored file and keeps remaining metadata in the upload session', async () => {
+    const service = new FileUploadService(deleteTestDir);
+    const result = await service.processUpload('test-app-delete', [
+      {
+        originalname: 'photo-a.png',
+        mimetype: 'image/png',
+        size: 1024,
+        buffer: Buffer.from('photo-a')
+      } as Express.Multer.File,
+      {
+        originalname: 'photo-b.png',
+        mimetype: 'image/png',
+        size: 1024,
+        buffer: Buffer.from('photo-b')
+      } as Express.Multer.File
+    ]);
+
+    const deleted = await service.deleteUploadedFile('test-app-delete', result.files[0].filename);
+    const remainingFiles = await service.listUploadedFiles('test-app-delete');
+
+    expect(deleted).toEqual({ deleted: true, uploadId: result.uploadId });
+    expect(remainingFiles).toHaveLength(1);
+    expect(remainingFiles[0].filename).toBe(result.files[1].filename);
+  });
+
+  it('removes the upload session directory when deleting its last file', async () => {
+    const service = new FileUploadService(deleteTestDir);
+    const result = await service.processUpload('test-app-delete', [
+      {
+        originalname: 'photo-a.png',
+        mimetype: 'image/png',
+        size: 1024,
+        buffer: Buffer.from('photo-a')
+      } as Express.Multer.File
+    ]);
+
+    const deleted = await service.deleteUploadedFile('test-app-delete', result.files[0].filename);
+
+    expect(deleted).toEqual({ deleted: true, uploadId: result.uploadId });
+    expect(existsSync(`${service.getAppUploadsDir('test-app-delete')}/${result.uploadId}`)).toBe(false);
+  });
+
+  it('rejects unsafe filenames without deleting anything', async () => {
+    const service = new FileUploadService(deleteTestDir);
+    const result = await service.processUpload('test-app-delete', [
+      {
+        originalname: 'photo-a.png',
+        mimetype: 'image/png',
+        size: 1024,
+        buffer: Buffer.from('photo-a')
+      } as Express.Multer.File
+    ]);
+
+    const deleted = await service.deleteUploadedFile('test-app-delete', '../photo-a.png');
+    const remainingFiles = await service.listUploadedFiles('test-app-delete');
+
+    expect(deleted).toEqual({ deleted: false });
+    expect(remainingFiles).toHaveLength(1);
+    expect(remainingFiles[0].filename).toBe(result.files[0].filename);
+  });
+});

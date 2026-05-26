@@ -60,6 +60,9 @@ export interface MediaSlot {
   /** Maps transparent URL → landscape mockup URL for logo variants.
    *  Only populated when mediaType === 'logo'. */
   landscapeMockupUrlMap?: Record<string, string>;
+  /** Maps transparent URL to source logo metadata for logo variants.
+   *  Only populated when mediaType === 'logo'. */
+  logoSourceMap?: Record<string, { sessionId: string; logoId: string }>;
 }
 
 /**
