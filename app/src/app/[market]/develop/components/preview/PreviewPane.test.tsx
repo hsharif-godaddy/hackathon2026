@@ -348,13 +348,32 @@ describe('PreviewPane', () => {
     expect(iframe).toHaveAttribute('inert');
   });
 
-  it('should render editing chip when all visibility conditions are met', async () => {
+  it('should render desktop status chip with Thinking label when processing and not mutating', async () => {
     mockSwitchboardResults[EDITING_CHIP_FLAG] = true;
 
     renderWithProviders(
       <PreviewPane
         onPreviewRefresh={vi.fn()}
         isProcessing={true}
+        isMutatingFiles={false}
+        showBuildingOverlay={false}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('preview-editing-chip')).toBeInTheDocument();
+    });
+    expect(screen.getByText('Thinking…')).toBeInTheDocument();
+    expect(screen.queryByText('Editing…')).not.toBeInTheDocument();
+  });
+
+  it('should render desktop status chip with Editing label when mutating', async () => {
+    mockSwitchboardResults[EDITING_CHIP_FLAG] = true;
+
+    renderWithProviders(
+      <PreviewPane
+        onPreviewRefresh={vi.fn()}
+        isProcessing={false}
         isMutatingFiles={true}
         showBuildingOverlay={false}
       />
@@ -363,23 +382,15 @@ describe('PreviewPane', () => {
     await waitFor(() => {
       expect(screen.getByTestId('preview-editing-chip')).toBeInTheDocument();
     });
+    expect(screen.getByText('Editing…')).toBeInTheDocument();
+    expect(screen.queryByText('Thinking…')).not.toBeInTheDocument();
   });
 
   it.each([
     {
-      name: 'flag is false',
-      setup: () => { mockSwitchboardResults[EDITING_CHIP_FLAG] = false; },
-      props: { isProcessing: true, isMutatingFiles: true, showBuildingOverlay: false },
-    },
-    {
-      name: 'processing is false',
+      name: 'processing and mutating are both false',
       setup: () => { mockSwitchboardResults[EDITING_CHIP_FLAG] = true; },
-      props: { isProcessing: false, isMutatingFiles: true, showBuildingOverlay: false },
-    },
-    {
-      name: 'mutating files is false',
-      setup: () => { mockSwitchboardResults[EDITING_CHIP_FLAG] = true; },
-      props: { isProcessing: true, isMutatingFiles: false, showBuildingOverlay: false },
+      props: { isProcessing: false, isMutatingFiles: false, showBuildingOverlay: false },
     },
     {
       name: 'building overlay is true',
@@ -410,7 +421,7 @@ describe('PreviewPane', () => {
     });
   });
 
-  it('should dismiss editing chip on file-saved preview refresh message', async () => {
+  it('should keep desktop status chip visible on file-saved while still mutating', async () => {
     mockSwitchboardResults[EDITING_CHIP_FLAG] = true;
 
     renderWithProviders(
@@ -432,15 +443,12 @@ describe('PreviewPane', () => {
       source: window,
     }));
 
-    await waitFor(
-      () => {
-        expect(screen.getByTestId('preview-editing-chip')).toHaveStyle({ opacity: '0' });
-      },
-      { timeout: 2000 }
-    );
+    await waitFor(() => {
+      expect(screen.getByTestId('preview-editing-chip')).toBeInTheDocument();
+    });
   });
 
-  it('should dismiss editing chip on preview-refresh message', async () => {
+  it('should keep desktop status chip visible on preview-refresh while still mutating', async () => {
     mockSwitchboardResults[EDITING_CHIP_FLAG] = true;
 
     renderWithProviders(
@@ -462,12 +470,9 @@ describe('PreviewPane', () => {
       source: window,
     }));
 
-    await waitFor(
-      () => {
-        expect(screen.getByTestId('preview-editing-chip')).toHaveStyle({ opacity: '0' });
-      },
-      { timeout: 2000 }
-    );
+    await waitFor(() => {
+      expect(screen.getByTestId('preview-editing-chip')).toBeInTheDocument();
+    });
   });
 
   it('should set mobile preview mode when isMobile is true', () => {
@@ -492,7 +497,7 @@ describe('PreviewPane', () => {
     expect(mockDevelopPageStore.setPreviewViewMode).toHaveBeenCalledWith(PreviewViewMode.DESKTOP);
   });
 
-  it('should keep ThinkingIndicator on mobile when enhanced overlays flag is off', () => {
+  it('should keep mobile Thinking label when processing and not mutating', () => {
     mockSwitchboardResults[EDITING_CHIP_FLAG] = false;
 
     renderWithProviders(
@@ -509,7 +514,7 @@ describe('PreviewPane', () => {
     expect(screen.queryByTestId('preview-mobile-status-pill')).not.toBeInTheDocument();
   });
 
-  it('should show mobile StatusPill with Thinking label when enhanced overlays flag is on and not mutating', () => {
+  it('should show mobile status pill with Thinking label when enhanced overlays flag is on and not mutating', () => {
     mockSwitchboardResults[EDITING_CHIP_FLAG] = true;
 
     renderWithProviders(
@@ -528,7 +533,7 @@ describe('PreviewPane', () => {
     expect(within(mobileStatusPill).getByText('Thinking…')).toBeInTheDocument();
   });
 
-  it('should show mobile StatusPill with Editing label when enhanced overlays flag is on and mutating', () => {
+  it('should show mobile status pill with Editing label when enhanced overlays flag is on and mutating', () => {
     mockSwitchboardResults[EDITING_CHIP_FLAG] = true;
 
     renderWithProviders(

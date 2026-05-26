@@ -7,6 +7,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useIntl } from 'react-intl'
 import { Thinker } from '@airo/components/chat/thinker'
+import { Canvas } from '@airo/components/surfaces/canvas'
 import { Loader } from '@airo-ux/loader'
 import Button from '@ux/button'
 
@@ -20,7 +21,6 @@ import PreviewCode from '@/app/[market]/develop/components/preview/PreviewCode'
 import PreviewError from '@/app/[market]/develop/components/preview/PreviewError'
 import PreviewLoadingState from '@/app/[market]/develop/components/preview/PreviewLoadingState'
 import PreviewSkeleton from '@/app/[market]/develop/components/preview/PreviewSkeleton'
-import StatusPill from '@/app/[market]/develop/components/preview/StatusPill'
 import Tips from '@/app/[market]/develop/components/tips/Tips'
 import { MobileMode, PreviewViewMode, ViewMode } from '@/app/[market]/develop/components/types'
 import { useAppIdFromParams } from '@/app/[market]/develop/components/utils'
@@ -45,7 +45,6 @@ const DomainPanel = dynamic(
 
 // Timing constants for iframe lifecycle management
 const REFRESH_DEBOUNCE_MS = 500 // Debounce rapid refresh requests
-const PROCESSING_OVERLAY_FALLBACK_MS = 3000
 const STATE_RESTORE_FALLBACK_MS = 3000 // Fallback timeout if iframe doesn't send ready signal
 const SCROLL_LISTENER_OPTIONS = { capture: true, passive: true } as const
 /** Eval snapshot: IFRAME_READY means the iframe has registered its message listener; HMR-only builds use fallback */
@@ -143,8 +142,7 @@ export default function PreviewPane({
   const isTopLevelDomainEnabled = useSwitchboard('appbuilder-domain-top-level');
   const isInboxEnabled = useSwitchboard('app-builder-inbox-button');
   /** Switchboard: translucent creation overlay + edit chip behavior. */
-  const isPreviewEnhancedOverlaysEnabled =
-    useSwitchboard('appbuilder-preview-enhanced-overlays') === true;
+  const isPreviewEnhancedOverlaysEnabled = useSwitchboard('appbuilder-preview-enhanced-overlays') === true;
   const isBuildOverlayQuestionMessageEnabled =
     useSwitchboard('appbuilder-build-overlay-question-message') === true;
   const { cohort: buildOverlayCohort } = useHivemind(EXPERIMENT_IDS.buildOverlayQuestion);
@@ -240,33 +238,15 @@ export default function PreviewPane({
 
   // Track message handler timers for proper cleanup (from PR #1056)
   const refreshTimerRef = useRef<NodeJS.Timeout | null>(null)
-  const processingOverlayFallbackTimerRef = useRef<NodeJS.Timeout | null>(null)
   const scrollRestoreTimerRef = useRef<NodeJS.Timeout | null>(null)
   const pendingEvalFullHeightRef = useRef(false)
   const evalFullHeightFallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const [showProcessingOverlay, setShowProcessingOverlay] = useState(false)
   const [editingChipPosition, setEditingChipPosition] = useState<{
     left: number
     top: number
   } | null>(null)
   const [isPortalReady, setIsPortalReady] = useState(false)
-  const prevIsProcessingRef = useRef(isProcessing)
-  const prevIsMutatingFilesRef = useRef(isMutatingFiles)
-  const processingOverlayHydratedRef = useRef(false)
-  const dismissProcessingOverlayRef = useRef(() => {})
-
-  const dismissProcessingOverlay = useCallback(function dismissProcessingOverlay() {
-    setShowProcessingOverlay(false)
-    if (processingOverlayFallbackTimerRef.current !== null) {
-      clearTimeout(processingOverlayFallbackTimerRef.current)
-      processingOverlayFallbackTimerRef.current = null
-    }
-  }, [])
-
-  useEffect(() => {
-    dismissProcessingOverlayRef.current = dismissProcessingOverlay
-  }, [dismissProcessingOverlay])
 
   useEffect(() => {
     if (typeof document === 'undefined') return
@@ -279,9 +259,9 @@ export default function PreviewPane({
       return
     }
 
-    const { left, width, bottom } = previewShellRef.current.getBoundingClientRect()
+    const { left, top, width } = previewShellRef.current.getBoundingClientRect()
     setEditingChipPosition({
-      top: bottom - 64,
+      top: top + 16,
       left: left + (width / 2),
     })
   }, [])
@@ -291,7 +271,7 @@ export default function PreviewPane({
       !isMobile &&
       isPortalReady &&
       isPreviewEnhancedOverlaysEnabled &&
-      showProcessingOverlay &&
+      (isProcessing || isMutatingFiles) &&
       !showBuildingOverlay
     )
 
@@ -325,11 +305,12 @@ export default function PreviewPane({
       window.removeEventListener('scroll', handleWindowScroll, SCROLL_LISTENER_OPTIONS)
     }
   }, [
+    isMutatingFiles,
+    isProcessing,
     isPortalReady,
     isMobile,
     isPreviewEnhancedOverlaysEnabled,
     showBuildingOverlay,
-    showProcessingOverlay,
     updateEditingChipPosition,
   ])
 
@@ -384,98 +365,12 @@ export default function PreviewPane({
     isWaitingForIframeReadyRef.current = isWaitingForIframeReady
   }, [isWaitingForIframeReady])
 
-  useEffect(() => {
-    if (showBuildingOverlay) {
-      dismissProcessingOverlayRef.current()
-    }
-  }, [showBuildingOverlay])
-
-  useEffect(() => {
-    if (!processingOverlayHydratedRef.current) {
-      processingOverlayHydratedRef.current = true
-      prevIsProcessingRef.current = isProcessing
-      prevIsMutatingFilesRef.current = isMutatingFiles
-
-      // Activate immediately if mounting into an active mutation state
-      if (isProcessing && isMutatingFiles && !showBuildingOverlay && isPreviewEnhancedOverlaysEnabled) {
-        setShowProcessingOverlay(true)
-      }
-      return
-    }
-
-    const prevP = prevIsProcessingRef.current
-    const prevM = prevIsMutatingFilesRef.current
-
-    if (!showBuildingOverlay && isPreviewEnhancedOverlaysEnabled) {
-      const processingBecameTrue = !prevP && isProcessing
-      const mutatingBecameTrue = !prevM && isMutatingFiles
-      // 1) processing false → true while mutating already true
-      const activateOnProcessingWhileMutating =
-        processingBecameTrue && isMutatingFiles && prevM
-      // 2) mutating false → true while processing already true
-      const activateOnMutatingWhileProcessing =
-        mutatingBecameTrue && isProcessing && prevP
-      // Same tick: both became true (prevP and prevM were false)
-      const activateOnBothBecameTrue = processingBecameTrue && mutatingBecameTrue
-
-      const shouldActivate =
-        isProcessing &&
-        isMutatingFiles &&
-        (activateOnProcessingWhileMutating ||
-          activateOnMutatingWhileProcessing ||
-          activateOnBothBecameTrue)
-
-      if (shouldActivate) {
-        setShowProcessingOverlay(true)
-      }
-    }
-
-    prevIsProcessingRef.current = isProcessing
-    prevIsMutatingFilesRef.current = isMutatingFiles
-  }, [isProcessing, isMutatingFiles, showBuildingOverlay, isPreviewEnhancedOverlaysEnabled])
-
-  useEffect(() => {
-    if (!isPreviewEnhancedOverlaysEnabled) {
-      return
-    }
-    if (isProcessing) {
-      if (processingOverlayFallbackTimerRef.current !== null) {
-        clearTimeout(processingOverlayFallbackTimerRef.current)
-        processingOverlayFallbackTimerRef.current = null
-      }
-      return
-    }
-    if (!showProcessingOverlay) return
-
-    processingOverlayFallbackTimerRef.current = setTimeout(function processingOverlayFallback() {
-      processingOverlayFallbackTimerRef.current = null
-      setShowProcessingOverlay(false)
-    }, PROCESSING_OVERLAY_FALLBACK_MS)
-
-    return () => {
-      if (processingOverlayFallbackTimerRef.current !== null) {
-        clearTimeout(processingOverlayFallbackTimerRef.current)
-        processingOverlayFallbackTimerRef.current = null
-      }
-    }
-  }, [isProcessing, showProcessingOverlay, isPreviewEnhancedOverlaysEnabled])
-
-  useEffect(() => {
-    if (!isPreviewEnhancedOverlaysEnabled) {
-      dismissProcessingOverlayRef.current()
-    }
-  }, [isPreviewEnhancedOverlaysEnabled])
-
   // Cleanup fallback timer on unmount
   useEffect(() => {
     return () => {
       if (fallbackTimerRef.current) {
         clearTimeout(fallbackTimerRef.current)
         fallbackTimerRef.current = null
-      }
-      if (processingOverlayFallbackTimerRef.current !== null) {
-        clearTimeout(processingOverlayFallbackTimerRef.current)
-        processingOverlayFallbackTimerRef.current = null
       }
     }
   }, [])
@@ -881,7 +776,6 @@ export default function PreviewPane({
           if (iframeRef.current) {
             const iframeSrc = iframeRef.current.src
             iframeRef.current.src = iframeSrc
-            dismissProcessingOverlayRef.current()
 
             // If we have state to restore, do it after iframe loads
             if (event.data.preserveState) {
@@ -1170,7 +1064,7 @@ export default function PreviewPane({
       isPreviewEnhancedOverlaysEnabled &&
       isPreviewSurfaceVisible &&
       !showBuildingOverlay &&
-      showProcessingOverlay &&
+      (isProcessing || isMutatingFiles) &&
       editingChipPosition
     )
     return (
@@ -1255,7 +1149,7 @@ export default function PreviewPane({
                       }}
                     >
                       {isPreviewEnhancedOverlaysEnabled ? (
-                        <StatusPill
+                        <Canvas.Status
                           data-testid="preview-mobile-status-pill"
                           label={
                             isMutatingFiles
@@ -1335,8 +1229,10 @@ export default function PreviewPane({
                       exit={{ opacity: 0, x: '-50%', y: -4, transition: { duration: 0.25 } }}
                       transition={{ duration: 0.175 }}
                     >
-                      <StatusPill
-                        label={t('builder_preview_editing', undefined, 'Editing…')}
+                      <Canvas.Status
+                        label={isMutatingFiles
+                          ? t('builder_preview_editing', undefined, 'Editing…')
+                          : t('builder_agent_thinking', undefined, 'Thinking…')}
                       />
                     </motion.div>
                   )}
