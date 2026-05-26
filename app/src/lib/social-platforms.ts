@@ -252,7 +252,7 @@ const DEFAULT_STRATEGY: PlatformStrategy = {
 }
 
 export function getPlatformStrategy(platform: string): PlatformStrategy {
-  const normalizedPlatform = platform.toLowerCase() as SocialPlatform
+  const normalizedPlatform = PLATFORM_TRANSFORMS.toDisplay(platform) as SocialPlatform
   return PLATFORM_STRATEGIES[normalizedPlatform] ?? DEFAULT_STRATEGY
 }
 

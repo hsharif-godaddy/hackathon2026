@@ -45,6 +45,9 @@ function GoogleReviewsToolRenderer({
       if (!userTokenId) {
         throw new Error('No user token found for this Google connection')
       }
+      if (!locationId) {
+        throw new Error('Google Business Profile connection is missing a location. Please reconnect your Google Business Profile and select your business location.')
+      }
 
       const reviews: GoogleReview[] = await socialV2Client.getGoogleReviews(userTokenId, locationId)
 
