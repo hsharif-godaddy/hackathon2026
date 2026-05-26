@@ -10,7 +10,7 @@ import {
 } from "../utils/selection-overlay";
 import type { HoveredElement } from "../hooks/useImageHoverDetection";
 import { Bookmark, Image, Pencil, Pointer, Sparkles } from "lucide-react";
-import { isClickable, isTextElement, isTextBlockElement } from "../utils/element-detection";
+import { isClickable, isTextElement, isTextBlockElement, isListElement } from "../utils/element-detection";
 import { t } from "../utils/translations";
 import { HoverBar, HoverBarButton } from "./HoverBar";
 import { QuickEditBar } from "./QuickEditBar";
@@ -19,6 +19,7 @@ import TextFixButton from "./TextFixButton";
 import { useTextFix } from "../hooks/useTextFix";
 import { htmlStringToDisplayText } from "../utils/text-fix-helpers";
 import TextAlignButton from "./TextAlignButton";
+import ListTypeButton from "./ListTypeButton";
 import BoldButton from "./BoldButton";
 import ItalicButton from "./ItalicButton";
 import TextColorButton from "./TextColorButton";
@@ -525,6 +526,7 @@ export default function ElementHoverBar({
           {fixEligible && <TextFixButton state={fix.state} onFix={handleFix} />}
         </>
       )}
+      {!isLoopRendered && isListElement(element) && <ListTypeButton selectedElement={targetEl} {...menuController("list")} />}
       <HoverBarButton
         onClick={handleReference}
         title={t("devtools_reference_title", "Add as reference")}

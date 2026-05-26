@@ -6,7 +6,7 @@
  * `openMenu: HoverBarMenuId | null` and threads controlled props to each
  * child via `popoverController(id)`.
  */
-export type HoverBarMenuId = "color" | "size" | "align";
+export type HoverBarMenuId = "color" | "size" | "align" | "list";
 
 export interface PopoverController {
   isOpen: boolean;

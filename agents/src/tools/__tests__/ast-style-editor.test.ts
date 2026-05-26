@@ -1430,6 +1430,182 @@ export default function Page() {
     });
   });
 
+  describe('List Style Type (Tailwind Classes)', () => {
+    it('should add list-disc and [&>*]:list-item when listStyleType is disc', async () => {
+      const component = `import React from 'react';
+
+export default function Page() {
+  return (
+    <div>
+      <ul data-dev-id="abc123" className="mt-4"><li>Item</li></ul>
+    </div>
+  );
+}`;
+      await writeFile(testFilePath, component);
+
+      const request = {
+        selector: 'ul',
+        property: 'listStyleType',
+        value: 'disc',
+        newClassName: 'mt-4 list-disc [&>*]:list-item',
+        elementInfo: {
+          tagName: 'ul',
+          className: 'mt-4',
+          id: '',
+          textContent: 'Item',
+          selector: 'ul',
+          dataId: 'abc123',
+          devContext: {
+            fileName: '/src/frontend/pages/index.page.tsx',
+            componentName: 'Page',
+            lineNumber: 6,
+          },
+          rect: { top: 100, left: 0, width: 200, height: 40 },
+          computedStyles: {},
+        },
+      };
+
+      const result = await astEditor.editElementStyle(testAppPath, request);
+
+      expect(result.success).toBe(true);
+      const updatedFile = await readFile(testFilePath, 'utf-8');
+      expect(updatedFile).toContain('list-disc');
+      expect(updatedFile).toContain('[&>*]:list-item');
+      expect(updatedFile).toContain('mt-4');
+    });
+
+    it('should swap list-disc for list-decimal when listStyleType changes', async () => {
+      const component = `import React from 'react';
+
+export default function Page() {
+  return (
+    <div>
+      <ul data-dev-id="abc123" className="mt-4 list-disc [&>*]:list-item"><li>Item</li></ul>
+    </div>
+  );
+}`;
+      await writeFile(testFilePath, component);
+
+      const request = {
+        selector: 'ul',
+        property: 'listStyleType',
+        value: 'decimal',
+        newClassName: 'mt-4 list-decimal [&>*]:list-item',
+        elementInfo: {
+          tagName: 'ul',
+          className: 'mt-4 list-disc [&>*]:list-item',
+          id: '',
+          textContent: 'Item',
+          selector: 'ul',
+          dataId: 'abc123',
+          devContext: {
+            fileName: '/src/frontend/pages/index.page.tsx',
+            componentName: 'Page',
+            lineNumber: 6,
+          },
+          rect: { top: 100, left: 0, width: 200, height: 40 },
+          computedStyles: {},
+        },
+      };
+
+      const result = await astEditor.editElementStyle(testAppPath, request);
+
+      expect(result.success).toBe(true);
+      const updatedFile = await readFile(testFilePath, 'utf-8');
+      expect(updatedFile).toContain('list-decimal');
+      expect(updatedFile).not.toContain('list-disc');
+      expect(updatedFile).toContain('[&>*]:list-item');
+    });
+
+    it('should remove list type classes when listStyleType value is empty', async () => {
+      const component = `import React from 'react';
+
+export default function Page() {
+  return (
+    <div>
+      <ul data-dev-id="abc123" className="mt-4 list-disc [&>*]:list-item"><li>Item</li></ul>
+    </div>
+  );
+}`;
+      await writeFile(testFilePath, component);
+
+      const request = {
+        selector: 'ul',
+        property: 'listStyleType',
+        value: '',
+        newClassName: 'mt-4',
+        elementInfo: {
+          tagName: 'ul',
+          className: 'mt-4 list-disc [&>*]:list-item',
+          id: '',
+          textContent: 'Item',
+          selector: 'ul',
+          dataId: 'abc123',
+          devContext: {
+            fileName: '/src/frontend/pages/index.page.tsx',
+            componentName: 'Page',
+            lineNumber: 6,
+          },
+          rect: { top: 100, left: 0, width: 200, height: 40 },
+          computedStyles: {},
+        },
+      };
+
+      const result = await astEditor.editElementStyle(testAppPath, request);
+
+      expect(result.success).toBe(true);
+      const updatedFile = await readFile(testFilePath, 'utf-8');
+      expect(updatedFile).not.toMatch(/list-(disc|decimal)/);
+      expect(updatedFile).not.toContain('[&>*]:list-item');
+      expect(updatedFile).toContain('mt-4');
+    });
+
+    it('should preserve unrelated classes when changing list type', async () => {
+      const component = `import React from 'react';
+
+export default function Page() {
+  return (
+    <div>
+      <ul data-dev-id="abc123" className="mt-4 font-bold text-gray-700"><li>Item</li></ul>
+    </div>
+  );
+}`;
+      await writeFile(testFilePath, component);
+
+      const request = {
+        selector: 'ul',
+        property: 'listStyleType',
+        value: 'decimal',
+        newClassName: 'mt-4 font-bold text-gray-700 list-decimal [&>*]:list-item',
+        elementInfo: {
+          tagName: 'ul',
+          className: 'mt-4 font-bold text-gray-700',
+          id: '',
+          textContent: 'Item',
+          selector: 'ul',
+          dataId: 'abc123',
+          devContext: {
+            fileName: '/src/frontend/pages/index.page.tsx',
+            componentName: 'Page',
+            lineNumber: 6,
+          },
+          rect: { top: 100, left: 0, width: 200, height: 40 },
+          computedStyles: {},
+        },
+      };
+
+      const result = await astEditor.editElementStyle(testAppPath, request);
+
+      expect(result.success).toBe(true);
+      const updatedFile = await readFile(testFilePath, 'utf-8');
+      expect(updatedFile).toContain('list-decimal');
+      expect(updatedFile).toContain('[&>*]:list-item');
+      expect(updatedFile).toContain('mt-4');
+      expect(updatedFile).toContain('font-bold');
+      expect(updatedFile).toContain('text-gray-700');
+    });
+  });
+
   describe('Inline Formatting Normalization (unwrap em/strong/b/i)', () => {
     it('should unwrap <em> children when adding italic class', async () => {
       const component = `import React from 'react';
@@ -1830,6 +2006,29 @@ export default function Page() {
       expect(devToolsSrc).toMatch(bareSize);
       expect(agentsSrc).toMatch(bareArbitrary);
       expect(devToolsSrc).toMatch(bareArbitrary);
+    });
+
+    it('listTypePattern regex in agents matches ListType enum values in dev-tools', async () => {
+      const agentsSrc = await readFile(
+        join(process.cwd(), 'src/tools/ast-style-editor.ts'),
+        'utf-8',
+      );
+      const devToolsSrc = await readFile(
+        join(
+          process.cwd(),
+          '../app-templates/v8/dev-tools/src/components/ListTypeButton.tsx',
+        ),
+        'utf-8',
+      );
+
+      // Agents side: the listStyleType case must contain a pattern that accepts
+      // both "disc" and "decimal" as the value after "list-".
+      const listTypePattern = /\/\^list-\(disc\|decimal\)\$\//;
+      expect(agentsSrc).toMatch(listTypePattern);
+
+      // Dev-tools side: the ListType enum must declare exactly those two values.
+      expect(devToolsSrc).toMatch(/DISC\s*=\s*"disc"/);
+      expect(devToolsSrc).toMatch(/DECIMAL\s*=\s*"decimal"/);
     });
   });
 

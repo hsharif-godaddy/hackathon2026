@@ -451,6 +451,19 @@ export class ASTStyleEditor extends ASTEditorBase {
         return filtered.join(' ');
       }
 
+      case 'listStyleType': {
+        const listTypePattern = /^list-(disc|decimal)$/;
+        const filtered = classes.filter(
+          className => !listTypePattern.test(className) && className !== '[&>*]:list-item'
+        );
+
+        if (value && listTypePattern.test(`list-${value}`)) {
+          filtered.push(`list-${value}`);
+          filtered.push('[&>*]:list-item');
+        }
+        return filtered.join(' ');
+      }
+
       case 'color': {
         // Remove existing text color classes (including responsive and state variants)
         const filteredColor = classes.filter(c => !c.match(/^(\w+:)*text-\w+-\d+$/));

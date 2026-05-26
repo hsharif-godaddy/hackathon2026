@@ -87,7 +87,8 @@ export function useImageHoverDetection(
       // and might incorrectly claim a heading inside an image card.
       const tag = target.tagName.toLowerCase();
       const isDirectContentTag = ["p", "h1", "h2", "h3", "h4", "h5", "h6",
-        "span", "a", "button", "label", "li", "blockquote", "code", "pre", "figcaption"].includes(tag);
+        "span", "a", "button", "label", "li", "blockquote", "code", "pre", "figcaption",
+        "ul", "ol"].includes(tag);
       const directImageTag = tag === "img" || tag === "video" || tag === "picture" || tag === "canvas" || tag === "svg";
 
       // For direct content tags (not images), skip image detection and go straight to content path.

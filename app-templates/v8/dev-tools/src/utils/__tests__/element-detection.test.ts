@@ -18,6 +18,9 @@ import {
   BLOCK_TEXT_TAGS,
   TEXT_TAGS,
   LIST_TAGS,
+  CONTENT_TAGS,
+  MEDIA_TAGS,
+  FORM_TAGS
 } from '../element-detection.js';
 
 function buildElement(html: string): HTMLElement {
@@ -55,6 +58,12 @@ describe('element-detection', () => {
     it('LIST_TAGS does not overlap with TEXT_TAGS', () => {
       for (const tag of LIST_TAGS) {
         expect(TEXT_TAGS.has(tag)).toBe(false);
+      }
+    });
+
+    it('CONTENT_TAGS is a superset of TEXT_TAGS, LIST_TAGS, MEDIA_TAGS, and FORM_TAGS', () => {
+      for (const tag of [...TEXT_TAGS, ...LIST_TAGS, ...MEDIA_TAGS, ...FORM_TAGS]) {
+        expect(CONTENT_TAGS.has(tag)).toBe(true);
       }
     });
   });

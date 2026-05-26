@@ -13,6 +13,20 @@ export const TEXT_TAGS = new Set([...INLINE_TEXT_TAGS, ...BLOCK_TEXT_TAGS]);
 /** List container elements. */
 export const LIST_TAGS = new Set(["ul", "ol"]);
 
+/** Embedded media elements. */
+export const MEDIA_TAGS = new Set(["img", "video", "svg", "canvas", "picture"]);
+
+/** Form control elements. */
+export const FORM_TAGS = new Set(["input", "textarea", "select"]);
+
+/**
+ * All content elements — superset of TEXT_TAGS, LIST_TAGS, MEDIA_TAGS, and
+ * FORM_TAGS. Used for hover-bar visibility and AI edit targeting.
+ */
+export const CONTENT_TAGS = new Set([...TEXT_TAGS, ...LIST_TAGS, ...MEDIA_TAGS, ...FORM_TAGS]);
+
+// ─── Element classification helpers ──────────────────────────────────────────
+
 /**
  * Returns true for elements that carry user-visible text and support inline
  * formatting actions (bold, italic, color, font size).
@@ -70,7 +84,7 @@ export function isInsideNavSurface(element: HTMLElement): boolean {
 /** Returns true for elements where block-level formatting (alignment, lists) makes sense for inline editing. */
 export function isBodyTextElement(element: HTMLElement): boolean {
   const tag = element.tagName.toLowerCase();
-  return tag === "p" || tag === "li" || tag === "ul" || tag === "ol";
+  return tag === "p" || tag === "li" || LIST_TAGS.has(tag);
 }
 
 /** Check if an element is suitable for inline text editing */
@@ -84,13 +98,8 @@ export function isTextEditable(element: HTMLElement): boolean {
   const tagName = element.tagName.toLowerCase();
   const textContent = element.textContent?.trim() || "";
 
-  const textTags = [
-    "p", "h1", "h2", "h3", "h4", "h5", "h6",
-    "span", "a", "button", "label", "li",
-    "ul", "ol",
-  ];
   const hasText = textContent.length > 0;
-  const isListContainer = tagName === "ul" || tagName === "ol";
+  const isListContainer = LIST_TAGS.has(tagName);
   const hasOnlyText = isListContainer
     ? Array.from(element.children).every((child) => child.tagName.toLowerCase() === "li")
     : element.children.length === 0 ||
@@ -99,7 +108,7 @@ export function isTextEditable(element: HTMLElement): boolean {
         return tag === "br" || tag === "span" || tag === "strong" || tag === "em" || tag === "b" || tag === "i";
       });
 
-  return textTags.includes(tagName) && hasText && hasOnlyText;
+  return (TEXT_TAGS.has(tagName) || isListContainer) && hasText && hasOnlyText;
 }
 
 /**
@@ -146,14 +155,7 @@ export function resolveContentKey(element: HTMLElement): { key: string; kind: "c
 export function isContentElement(element: HTMLElement): boolean {
   const tag = element.tagName.toLowerCase();
 
-  const contentTags = [
-    "p", "h1", "h2", "h3", "h4", "h5", "h6",
-    "span", "a", "button", "label", "li",
-    "img", "video", "svg", "canvas", "picture",
-    "input", "textarea", "select",
-    "blockquote", "code", "pre", "figcaption",
-  ];
-  if (contentTags.includes(tag)) return true;
+  if (CONTENT_TAGS.has(tag)) return true;
 
   const rect = element.getBoundingClientRect();
   const isSmall = rect.width < 400 && rect.height < 300;
