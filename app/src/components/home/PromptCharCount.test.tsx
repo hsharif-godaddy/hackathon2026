@@ -22,11 +22,10 @@ vi.mock('@ux/text', () => ({
 }));
 
 describe('PromptCharCount', () => {
-  it('renders nothing when bytesRemaining is above threshold', () => {
-    const { container } = renderWithProviders(
-      <PromptCharCount bytesRemaining={21} isOverLimit={false} />,
-    );
-    expect(container.firstChild).toBeNull();
+  it('renders the wrapper but hides counter when bytesRemaining is above threshold', () => {
+    renderWithProviders(<PromptCharCount bytesRemaining={21} isOverLimit={false} />);
+    expect(screen.getByRole('status')).toBeInTheDocument();
+    expect(screen.queryByText('21')).not.toBeInTheDocument();
   });
 
   it('renders when bytesRemaining is at the threshold (20)', () => {
