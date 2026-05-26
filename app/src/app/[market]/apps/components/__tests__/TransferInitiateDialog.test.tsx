@@ -29,7 +29,7 @@ vi.mock('@ux/modal', () => ({
 }));
 describe('TransferInitiateDialog', function dialogTests() {
   const defaultProps = {
-    appId: 'app-123',
+    appId: 'hkq2p1f1n2',
     appName: 'My Test App',
     onClose: vi.fn(),
     onTransferCreated: vi.fn(),
@@ -148,7 +148,7 @@ describe('TransferInitiateDialog', function dialogTests() {
   it('should fire impression event on mount', function firesImpression() {
     renderWithProviders(<TransferInitiateDialog {...defaultProps} />);
 
-    expect(instrumentation.logImpressionEvent).toHaveBeenCalledWith('apps.transfer.initiate_dialog');
+    expect(instrumentation.logImpressionEvent).toHaveBeenCalledWith('apps.transfer.initiate_dialog', { appId: 'hkq2p1f1n2' });
   });
 
   it('should fire success click event on successful initiation', async function firesSuccessEid() {
@@ -167,7 +167,8 @@ describe('TransferInitiateDialog', function dialogTests() {
       expect(screen.getByText('abc123')).toBeInTheDocument();
     });
 
-    expect(instrumentation.logClickEvent).toHaveBeenCalledWith('apps.transfer.initiate_success');
+    expect(instrumentation.logClickEvent).toHaveBeenCalledWith('apps.transfer.initiate_submit', { appId: 'hkq2p1f1n2' });
+    expect(instrumentation.logClickEvent).toHaveBeenCalledWith('apps.transfer.initiate_success', { appId: 'hkq2p1f1n2' });
   });
 
   it('should fire error click event on failed initiation', async function firesErrorEid() {
@@ -186,6 +187,7 @@ describe('TransferInitiateDialog', function dialogTests() {
       expect(screen.getByText('Target email not found')).toBeInTheDocument();
     });
 
-    expect(instrumentation.logClickEvent).toHaveBeenCalledWith('apps.transfer.initiate_error');
+    expect(instrumentation.logClickEvent).toHaveBeenCalledWith('apps.transfer.initiate_submit', { appId: 'hkq2p1f1n2' });
+    expect(instrumentation.logClickEvent).toHaveBeenCalledWith('apps.transfer.initiate_error', { appId: 'hkq2p1f1n2' });
   });
 });

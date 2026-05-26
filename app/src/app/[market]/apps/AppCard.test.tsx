@@ -803,7 +803,7 @@ describe('AppCard', () => {
       await user.click(screen.getByTestId('confirm-button'));
 
       await waitFor(() => {
-        expect(instrumentation.logClickEvent).toHaveBeenCalledWith('apps.transfer.cancel_success');
+        expect(instrumentation.logClickEvent).toHaveBeenCalledWith('apps.transfer.cancel_success', { appId: 'test-site-123' });
       });
     });
 
@@ -832,7 +832,7 @@ describe('AppCard', () => {
       await user.click(screen.getByTestId('confirm-button'));
 
       await waitFor(() => {
-        expect(instrumentation.logClickEvent).toHaveBeenCalledWith('apps.transfer.cancel_error');
+        expect(instrumentation.logClickEvent).toHaveBeenCalledWith('apps.transfer.cancel_error', { appId: 'test-site-123' });
       });
     });
 
@@ -861,7 +861,7 @@ describe('AppCard', () => {
       await user.click(screen.getByTestId('confirm-button'));
 
       await waitFor(() => {
-        expect(instrumentation.logClickEvent).toHaveBeenCalledWith('apps.transfer.cancel_error');
+        expect(instrumentation.logClickEvent).toHaveBeenCalledWith('apps.transfer.cancel_error', { appId: 'test-site-123' });
       });
     });
   });
@@ -947,6 +947,54 @@ describe('AppCard', () => {
       await waitFor(() => {
         expect(screen.queryByTestId('transfer-blocked-reason')).not.toBeInTheDocument();
       });
+    });
+
+    it('should fire apps.app.transfer EID with appId only when dialog opens', async function firesTransferEid() {
+      mockTransferValidation(true, false);
+
+      const { user } = renderWithProviders(<AppCard site={mockSite} transferAllowed={true} />);
+
+      await waitFor(() => {
+        expect(appFetch).toHaveBeenCalled();
+      });
+
+      const actionsMenuButton = screen.getByRole('button', { name: 'builder_apps_menu_actions' });
+      await user.click(actionsMenuButton);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('app-card-transfer-button')).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByTestId('app-card-transfer-button'));
+
+      await waitFor(() => {
+        expect(instrumentation.logClickEvent).toHaveBeenCalledWith('apps.app.transfer', { appId: mockSite.id });
+      });
+    });
+
+    it('should not fire apps.app.transfer EID when canTransfer is false', async function doesNotFireWhenBlocked() {
+      mockTransferValidation(false, true);
+
+      const { user } = renderWithProviders(<AppCard site={mockSite} transferAllowed={true} />);
+
+      await waitFor(() => {
+        expect(appFetch).toHaveBeenCalled();
+      });
+
+      const actionsMenuButton = screen.getByRole('button', { name: 'builder_apps_menu_actions' });
+      await user.click(actionsMenuButton);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('app-card-transfer-button')).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByTestId('app-card-transfer-button'));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('transfer-blocked-reason')).toBeInTheDocument();
+      });
+
+      expect(instrumentation.logClickEvent).not.toHaveBeenCalledWith('apps.app.transfer', expect.anything());
     });
 
     it('should show error message when validate endpoint fails', async function validateFails() {

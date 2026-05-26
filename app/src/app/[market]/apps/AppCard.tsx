@@ -24,6 +24,7 @@ import text from '@ux/text'
 import TextInput from '@ux/text-input'
 
 import AppThumbnail from '@/app/[market]/apps/AppThumbnail'
+import { transferEventProps } from '@/app/[market]/apps/components/transfer-constants'
 import TransferInitiateDialog from '@/app/[market]/apps/components/TransferInitiateDialog'
 import UnpublishConfirmationModal from '@/components/layout/UnpublishConfirmationModal'
 import { useAppRename } from '@/hooks/useAppRename'
@@ -136,20 +137,20 @@ export default function AppCard({ site, transferAllowed = false }: { site: SiteI
     try {
       const response = await appFetch(`/api/apps/${site.id}/transfer/cancel`, { method: 'POST' }, { authLevel: 3 })
       if (response.ok) {
-        logClickEvent('apps.transfer.cancel_success')()
+        logClickEvent('apps.transfer.cancel_success', transferEventProps(site.id))()
         setActiveTransfer(null)
         setAlertState({ siteId: null, type: null, message: '' })
         refreshSites()
       } else {
         const data = await response.json()
-        logClickEvent('apps.transfer.cancel_error')()
+        logClickEvent('apps.transfer.cancel_error', transferEventProps(site.id))()
         logger.error('transfer.cancel.ui.failed', { appId: site.id, error: data })
         setAlertState({ siteId: null, type: null, message: '' })
         setCancelTransferError(data.error || t('builder_transfer_error_cancel_failed', undefined, 'Failed to cancel transfer. Please try again.'))
       }
     } catch (error) {
       if (error instanceof AuthDismissedError) return
-      logClickEvent('apps.transfer.cancel_error')()
+      logClickEvent('apps.transfer.cancel_error', transferEventProps(site.id))()
       logger.error('transfer.cancel.ui.error', {
         appId: site.id,
         error: error instanceof Error ? error.message : String(error)
@@ -179,6 +180,7 @@ export default function AppCard({ site, transferAllowed = false }: { site: SiteI
         setTransferBlockedReason(t('builder_transfer_blocked_commerce', undefined, 'Transfer is unavailable for apps with GoDaddy Commerce integration.'))
         return
       }
+      logClickEvent('apps.app.transfer', transferEventProps(site.id))()
       setIsTransferDialogOpen(true)
     } catch (error) {
       logger.error('transfer.validate.ui.error', {
@@ -329,8 +331,8 @@ export default function AppCard({ site, transferAllowed = false }: { site: SiteI
         if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
         handleTransferClick()
       }}
-      data-eid={generateClickEID('apps.app.transfer')}
       data-testid="app-card-transfer-button"
+      data-eid={generateClickEID('apps.app.transfer')}
       disabled={transferValidating}
     >
       <Box orientation="horizontal" gap="sm">

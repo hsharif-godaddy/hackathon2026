@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Box from '@ux/box'
 import Button from '@ux/button'
 import CopyIcon from '@ux/icon/copy'
@@ -8,6 +8,7 @@ import Modal from '@ux/modal'
 import text from '@ux/text'
 import TextInput from '@ux/text-input'
 
+import { transferEventProps } from '@/app/[market]/apps/components/transfer-constants'
 import { useTranslations } from '@/hooks/useTranslations'
 import { appFetch, AuthDismissedError } from '@/lib/gasket-config'
 import { logger } from '@/lib/request-context'
@@ -29,10 +30,11 @@ export default function TransferInitiateDialog({
   onTransferCreated
 }: TransferInitiateDialogProps) {
   const t = useTranslations()
+  const eventProps = useMemo(() => transferEventProps(appId), [appId])
 
   useEffect(function trackDialogImpression() {
-    logImpressionEvent('apps.transfer.initiate_dialog')()
-  }, [])
+    logImpressionEvent('apps.transfer.initiate_dialog', eventProps)()
+  }, [eventProps])
 
   const [step, setStep] = useState<DialogStep>('input')
   const [email, setEmail] = useState('')
@@ -58,6 +60,7 @@ export default function TransferInitiateDialog({
 
     setIsLoading(true)
     setError(null)
+    logClickEvent('apps.transfer.initiate_submit', eventProps)()
 
     try {
       const response = await appFetch(`/api/apps/${appId}/transfer`, {
@@ -69,18 +72,18 @@ export default function TransferInitiateDialog({
       const data = await response.json()
 
       if (!response.ok) {
-        logClickEvent('apps.transfer.initiate_error')()
+        logClickEvent('apps.transfer.initiate_error', eventProps)()
         setError(data.error || data.message || t('builder_transfer_error_initiate_failed', undefined, 'Failed to initiate transfer'))
         return
       }
 
-      logClickEvent('apps.transfer.initiate_success')()
+      logClickEvent('apps.transfer.initiate_success', eventProps)()
       setTransferToken(data.transferToken)
       setTransferExpiresAt(data.expiresAt)
       setStep('token')
     } catch (err) {
       if (err instanceof AuthDismissedError) return
-      logClickEvent('apps.transfer.initiate_error')()
+      logClickEvent('apps.transfer.initiate_error', eventProps)()
       logger.error('transfer.initiate.ui.error', {
         appId,
         error: err instanceof Error ? err.message : String(err)
@@ -95,6 +98,7 @@ export default function TransferInitiateDialog({
     if (!transferToken) return
     try {
       await navigator.clipboard.writeText(transferToken)
+      logClickEvent('apps.transfer.copy_token', eventProps)()
       setCopied(true)
       setCopyError(false)
       setTimeout(() => setCopied(false), 2000)
@@ -136,6 +140,7 @@ export default function TransferInitiateDialog({
 
             <TextInput
               id="target-email"
+              data-eid={generateClickEID('apps.transfer.email_input')}
               label={t('builder_transfer_email_label', undefined, 'Recipient\u2019s GoDaddy email')}
               value={email}
               onChange={(value) => {
@@ -151,7 +156,6 @@ export default function TransferInitiateDialog({
               disabled={isLoading}
               placeholder={t('builder_transfer_email_placeholder', undefined, 'Recipient\u2019s GoDaddy email')}
               multiline={false}
-              data-eid={generateClickEID('apps.transfer.email_input')}
             />
 
             <Button
@@ -159,8 +163,8 @@ export default function TransferInitiateDialog({
               disabled={isLoading || !email.trim()}
               design="primary"
               size="sm"
-              text={isLoading ? t('builder_transfer_initiating', undefined, 'Generating...') : t('builder_transfer_initiate_submit', undefined, 'Generate Code')}
               data-eid={generateClickEID('apps.transfer.initiate_submit')}
+              text={isLoading ? t('builder_transfer_initiating', undefined, 'Generating...') : t('builder_transfer_initiate_submit', undefined, 'Generate Code')}
             />
           </Box>
         </div>
@@ -187,19 +191,18 @@ export default function TransferInitiateDialog({
               size="sm"
               icon={<CopyIcon />}
               text={copied ? t('builder_transfer_token_copied', undefined, 'Copied!') : copyError ? t('builder_common_error', undefined, 'Error') : t('builder_transfer_copy_code', undefined, 'Copy Code')}
-              data-eid={generateClickEID('apps.transfer.copy_token')}
             />
           </div>
 
           <Button
             onClick={() => {
+              logClickEvent('apps.transfer.done', eventProps)()
               if (transferToken) onTransferCreated(transferToken, transferExpiresAt)
               onClose()
             }}
             design="primary"
             size="sm"
             text={t('builder_common_done', undefined, 'Done')}
-            data-eid={generateClickEID('apps.transfer.done')}
           />
         </Box>
       )}

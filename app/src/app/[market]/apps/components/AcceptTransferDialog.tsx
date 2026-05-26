@@ -8,7 +8,7 @@ import Spinner from '@ux/spinner'
 import text from '@ux/text'
 import TextInput from '@ux/text-input'
 
-import { TRANSFER_TOKEN_LENGTH, TRANSFER_TOKEN_PATTERN } from '@/app/[market]/apps/components/transfer-constants'
+import { TRANSFER_TOKEN_LENGTH, TRANSFER_TOKEN_PATTERN, transferEventProps } from '@/app/[market]/apps/components/transfer-constants'
 import { useTranslations } from '@/hooks/useTranslations'
 import { appFetch, AuthDismissedError } from '@/lib/gasket-config'
 import { logger } from '@/lib/request-context'
@@ -28,6 +28,7 @@ const MAX_CONSECUTIVE_ERRORS = 5
 
 export default function AcceptTransferDialog({ onClose, onAccepted }: AcceptTransferDialogProps) {
   const t = useTranslations()
+  const transferAppIdRef = useRef<string | undefined>(undefined)
 
   useEffect(function trackDialogImpression() {
     logImpressionEvent('apps.transfer.accept_dialog')()
@@ -55,7 +56,7 @@ export default function AcceptTransferDialog({ onClose, onAccepted }: AcceptTran
     attemptRef.current += 1
 
     if (attemptRef.current > MAX_POLL_ATTEMPTS) {
-      logClickEvent('apps.transfer.accept_error')()
+      logClickEvent('apps.transfer.accept_error', transferEventProps(transferAppIdRef.current))()
       stopPolling()
       setError(t('builder_transfer_error_timeout', undefined, 'The transfer is taking longer than expected. Please check your apps list later.'))
       setStep('error')
@@ -69,7 +70,7 @@ export default function AcceptTransferDialog({ onClose, onAccepted }: AcceptTran
         if (!response.ok) {
           errorCountRef.current += 1
           if (errorCountRef.current >= MAX_CONSECUTIVE_ERRORS) {
-            logClickEvent('apps.transfer.accept_error')()
+            logClickEvent('apps.transfer.accept_error', transferEventProps(transferAppIdRef.current))()
             stopPolling()
             setError(t('builder_transfer_error_status_check_failed', undefined, 'Unable to check transfer status. Please close and try again.'))
             setStep('error')
@@ -82,8 +83,12 @@ export default function AcceptTransferDialog({ onClose, onAccepted }: AcceptTran
         errorCountRef.current = 0
         const data = await response.json()
 
+        if (typeof data.appId === 'string') {
+          transferAppIdRef.current = data.appId
+        }
+
         if (data.status === 'completed') {
-          logClickEvent('apps.transfer.accept_success')()
+          logClickEvent('apps.transfer.accept_success', transferEventProps(transferAppIdRef.current))()
           stopPolling()
           refreshSites()
           onAccepted?.()
@@ -92,7 +97,7 @@ export default function AcceptTransferDialog({ onClose, onAccepted }: AcceptTran
         }
 
         if (data.status === 'failed') {
-          logClickEvent('apps.transfer.accept_error')()
+          logClickEvent('apps.transfer.accept_error', transferEventProps(transferAppIdRef.current))()
           stopPolling()
           setError(t('builder_transfer_error_transfer_failed', undefined, 'The transfer failed. Please try again or contact support.'))
           setStep('error')
@@ -106,7 +111,7 @@ export default function AcceptTransferDialog({ onClose, onAccepted }: AcceptTran
         })
         errorCountRef.current += 1
         if (errorCountRef.current >= MAX_CONSECUTIVE_ERRORS) {
-          logClickEvent('apps.transfer.accept_error')()
+          logClickEvent('apps.transfer.accept_error', transferEventProps(transferAppIdRef.current))()
           stopPolling()
           setError(t('builder_transfer_error_status_check_failed', undefined, 'Unable to check transfer status. Please close and try again.'))
           setStep('error')
@@ -151,8 +156,14 @@ export default function AcceptTransferDialog({ onClose, onAccepted }: AcceptTran
 
       const data = await response.json()
 
+      if (typeof data.appId === 'string') {
+        transferAppIdRef.current = data.appId
+      }
+
+      logClickEvent('apps.transfer.accept_submit', transferEventProps(transferAppIdRef.current))()
+
       if (!response.ok) {
-        logClickEvent('apps.transfer.accept_error')()
+        logClickEvent('apps.transfer.accept_error', transferEventProps(transferAppIdRef.current))()
         setError(data.error || data.message || t('builder_transfer_error_accept_failed', undefined, 'Failed to accept transfer'))
         setStep('error')
         return
@@ -162,14 +173,14 @@ export default function AcceptTransferDialog({ onClose, onAccepted }: AcceptTran
         setStep('processing')
         pollStatus(trimmed)
       } else {
-        logClickEvent('apps.transfer.accept_success')()
+        logClickEvent('apps.transfer.accept_success', transferEventProps(transferAppIdRef.current))()
         refreshSites()
         onAccepted?.()
         onClose()
       }
     } catch (err) {
       if (err instanceof AuthDismissedError) return
-      logClickEvent('apps.transfer.accept_error')()
+      logClickEvent('apps.transfer.accept_error', transferEventProps(transferAppIdRef.current))()
       logger.error('transfer.accept.ui.error', {
         error: err instanceof Error ? err.message : String(err)
       })
@@ -196,6 +207,7 @@ export default function AcceptTransferDialog({ onClose, onAccepted }: AcceptTran
           <Box orientation="vertical" gap="sm">
             <TextInput
               id="transfer-token"
+              data-eid={generateClickEID('apps.transfer.accept_token_input')}
               label={t('builder_transfer_token_label', undefined, 'Transfer Code')}
               value={transferToken}
               onChange={(value) => {
@@ -212,7 +224,6 @@ export default function AcceptTransferDialog({ onClose, onAccepted }: AcceptTran
               visualSize="sm"
               placeholder={t('builder_transfer_token_placeholder', undefined, 'Enter 6-character code')}
               multiline={false}
-              data-eid={generateClickEID('apps.transfer.accept_token_input')}
             />
           </Box>
 
@@ -222,16 +233,16 @@ export default function AcceptTransferDialog({ onClose, onAccepted }: AcceptTran
               disabled={isLoading}
               design="secondary"
               size="sm"
-              text={t('builder_common_cancel', undefined, 'Cancel')}
               data-eid={generateClickEID('apps.transfer.accept_cancel')}
+              text={t('builder_common_cancel', undefined, 'Cancel')}
             />
             <Button
               onClick={handleAccept}
               disabled={isLoading || transferToken.trim().length !== TRANSFER_TOKEN_LENGTH}
               design="primary"
               size="sm"
-              text={isLoading ? t('builder_transfer_accepting', undefined, 'Accepting...') : t('builder_transfer_accept_submit', undefined, 'Accept Transfer')}
               data-eid={generateClickEID('apps.transfer.accept_submit')}
+              text={isLoading ? t('builder_transfer_accepting', undefined, 'Accepting...') : t('builder_transfer_accept_submit', undefined, 'Accept Transfer')}
             />
           </Box>
         </Box>
@@ -247,8 +258,8 @@ export default function AcceptTransferDialog({ onClose, onAccepted }: AcceptTran
             onClick={handleClose}
             design="secondary"
             size="sm"
-            text={t('builder_transfer_processing_dismiss', undefined, 'Dismiss')}
             data-eid={generateClickEID('apps.transfer.processing_dismiss')}
+            text={t('builder_transfer_processing_dismiss', undefined, 'Dismiss')}
           />
         </Box>
       )}
@@ -264,20 +275,21 @@ export default function AcceptTransferDialog({ onClose, onAccepted }: AcceptTran
           <Box orientation="horizontal" gap="sm" className="pt-2 justify-end">
             <Button
               onClick={() => {
+                transferAppIdRef.current = undefined
                 setStep('input')
                 setError(null)
               }}
               design="secondary"
               size="sm"
-              text={t('builder_common_try_again', undefined, 'Try Again')}
               data-eid={generateClickEID('apps.transfer.accept_retry')}
+              text={t('builder_common_try_again', undefined, 'Try Again')}
             />
             <Button
               onClick={onClose}
               design="primary"
               size="sm"
-              text={t('builder_common_close', undefined, 'Close')}
               data-eid={generateClickEID('apps.transfer.accept_close')}
+              text={t('builder_common_close', undefined, 'Close')}
             />
           </Box>
         </Box>

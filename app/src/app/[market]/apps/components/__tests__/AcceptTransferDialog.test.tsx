@@ -28,6 +28,8 @@ vi.mock('@ux/modal', () => ({
     </div>
   ),
 }));
+const TRANSFER_APP_ID = 'hkq2p1f1n2';
+
 describe('AcceptTransferDialog', function dialogTests() {
   const defaultProps = {
     onClose: vi.fn(),
@@ -75,16 +77,17 @@ describe('AcceptTransferDialog', function dialogTests() {
   });
 
   it('should show processing step when status is processing', async function showProcessing() {
-    vi.mocked(appFetch).mockResolvedValue({
-      ok: true,
-      status: 200,
-      json: async () => ({
-        requestId: 'req-1',
-        status: 'processing',
-        message: 'Transfer accepted',
-        appId: 'app-1',
-      }),
-    } as Response);
+    vi.mocked(appFetch)
+      .mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          requestId: 'req-1',
+          status: 'processing',
+          message: 'Transfer accepted',
+          appId: TRANSFER_APP_ID,
+        }),
+      } as Response);
 
     const { user } = renderWithProviders(<AcceptTransferDialog {...defaultProps} />);
 
@@ -102,16 +105,17 @@ describe('AcceptTransferDialog', function dialogTests() {
     const mockRefreshSites = vi.fn();
     useSitesStore.setState({ refreshSites: mockRefreshSites });
 
-    vi.mocked(appFetch).mockResolvedValue({
-      ok: true,
-      status: 200,
-      json: async () => ({
-        requestId: 'req-1',
-        status: 'completed',
-        message: 'Transfer already completed',
-        appId: 'app-1',
-      }),
-    } as Response);
+    vi.mocked(appFetch)
+      .mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          requestId: 'req-1',
+          status: 'completed',
+          message: 'Transfer already completed',
+          appId: TRANSFER_APP_ID,
+        }),
+      } as Response);
 
     const { user } = renderWithProviders(<AcceptTransferDialog {...defaultProps} />);
 
@@ -133,17 +137,17 @@ describe('AcceptTransferDialog', function dialogTests() {
       .mockResolvedValueOnce({
         ok: true,
         status: 200,
-        json: async () => ({ status: 'processing', message: 'Accepted', appId: 'app-1' }),
+        json: async () => ({ status: 'processing', message: 'Accepted', appId: TRANSFER_APP_ID }),
       } as Response)
       .mockResolvedValueOnce({
         ok: true,
         status: 200,
-        json: async () => ({ status: 'processing', appId: 'app-1' }),
+        json: async () => ({ status: 'processing', appId: TRANSFER_APP_ID }),
       } as Response)
       .mockResolvedValueOnce({
         ok: true,
         status: 200,
-        json: async () => ({ status: 'completed', appId: 'app-1' }),
+        json: async () => ({ status: 'completed', appId: TRANSFER_APP_ID }),
       } as Response);
 
     const { user } = renderWithProviders(<AcceptTransferDialog {...defaultProps} />);
@@ -170,12 +174,12 @@ describe('AcceptTransferDialog', function dialogTests() {
       .mockResolvedValueOnce({
         ok: true,
         status: 200,
-        json: async () => ({ status: 'processing', message: 'Accepted', appId: 'app-1' }),
+        json: async () => ({ status: 'processing', message: 'Accepted', appId: TRANSFER_APP_ID }),
       } as Response)
       .mockResolvedValueOnce({
         ok: true,
         status: 200,
-        json: async () => ({ status: 'failed', appId: 'app-1' }),
+        json: async () => ({ status: 'failed', appId: TRANSFER_APP_ID }),
       } as Response);
 
     const { user } = renderWithProviders(<AcceptTransferDialog {...defaultProps} />);
@@ -193,7 +197,7 @@ describe('AcceptTransferDialog', function dialogTests() {
       expect(screen.getByText('The transfer failed. Please try again or contact support.')).toBeInTheDocument();
     });
 
-    expect(instrumentation.logClickEvent).toHaveBeenCalledWith('apps.transfer.accept_error');
+    expect(instrumentation.logClickEvent).toHaveBeenCalledWith('apps.transfer.accept_error', { appId: TRANSFER_APP_ID });
   });
 
   it('should show error and fire error EID after consecutive poll failures', async function pollConsecutiveErrors() {
@@ -201,7 +205,7 @@ describe('AcceptTransferDialog', function dialogTests() {
       .mockResolvedValueOnce({
         ok: true,
         status: 200,
-        json: async () => ({ status: 'processing', message: 'Accepted', appId: 'app-1' }),
+        json: async () => ({ status: 'processing', message: 'Accepted', appId: TRANSFER_APP_ID }),
       } as Response)
       .mockResolvedValue({
         ok: false,
@@ -226,7 +230,7 @@ describe('AcceptTransferDialog', function dialogTests() {
       expect(screen.getByText('Unable to check transfer status. Please close and try again.')).toBeInTheDocument();
     });
 
-    expect(instrumentation.logClickEvent).toHaveBeenCalledWith('apps.transfer.accept_error');
+    expect(instrumentation.logClickEvent).toHaveBeenCalledWith('apps.transfer.accept_error', { appId: TRANSFER_APP_ID });
   });
 
   it('should show timeout message and fire error EID when poll exceeds max attempts', async function pollTimeout() {
@@ -234,12 +238,12 @@ describe('AcceptTransferDialog', function dialogTests() {
       .mockResolvedValueOnce({
         ok: true,
         status: 200,
-        json: async () => ({ status: 'processing', message: 'Accepted', appId: 'app-1' }),
+        json: async () => ({ status: 'processing', message: 'Accepted', appId: TRANSFER_APP_ID }),
       } as Response)
       .mockResolvedValue({
         ok: true,
         status: 200,
-        json: async () => ({ status: 'processing', appId: 'app-1' }),
+        json: async () => ({ status: 'processing', appId: TRANSFER_APP_ID }),
       } as Response);
 
     const { user } = renderWithProviders(<AcceptTransferDialog {...defaultProps} />);
@@ -259,15 +263,16 @@ describe('AcceptTransferDialog', function dialogTests() {
       expect(screen.getByText('The transfer is taking longer than expected. Please check your apps list later.')).toBeInTheDocument();
     });
 
-    expect(instrumentation.logClickEvent).toHaveBeenCalledWith('apps.transfer.accept_error');
+    expect(instrumentation.logClickEvent).toHaveBeenCalledWith('apps.transfer.accept_error', { appId: TRANSFER_APP_ID });
   });
 
   it('should show error step on API failure', async function acceptError() {
-    vi.mocked(appFetch).mockResolvedValue({
-      ok: false,
-      status: 400,
-      json: async () => ({ error: 'CUSTOMER_MISMATCH' }),
-    } as Response);
+    vi.mocked(appFetch)
+      .mockResolvedValue({
+        ok: false,
+        status: 400,
+        json: async () => ({ error: 'CUSTOMER_MISMATCH' }),
+      } as Response);
 
     const { user } = renderWithProviders(<AcceptTransferDialog {...defaultProps} />);
 
@@ -282,11 +287,12 @@ describe('AcceptTransferDialog', function dialogTests() {
   
 
   it('should stop polling when dismiss is clicked during processing', async function dismissProcessing() {
-    vi.mocked(appFetch).mockResolvedValue({
-      ok: true,
-      status: 200,
-      json: async () => ({ status: 'processing', message: 'Accepted', appId: 'app-1' }),
-    } as Response);
+    vi.mocked(appFetch)
+      .mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({ status: 'processing', message: 'Accepted', appId: TRANSFER_APP_ID }),
+      } as Response);
 
     const { user } = renderWithProviders(<AcceptTransferDialog {...defaultProps} />);
 
@@ -304,11 +310,12 @@ describe('AcceptTransferDialog', function dialogTests() {
   });
 
   it('should allow retry after error', async function retryAfterError() {
-    vi.mocked(appFetch).mockResolvedValueOnce({
-      ok: false,
-      status: 400,
-      json: async () => ({ error: 'TRANSFER_EXPIRED' }),
-    } as Response);
+    vi.mocked(appFetch)
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 400,
+        json: async () => ({ error: 'TRANSFER_EXPIRED' }),
+      } as Response);
 
     const { user } = renderWithProviders(<AcceptTransferDialog {...defaultProps} />);
 
@@ -334,11 +341,12 @@ describe('AcceptTransferDialog', function dialogTests() {
     const mockRefreshSites = vi.fn();
     useSitesStore.setState({ refreshSites: mockRefreshSites });
 
-    vi.mocked(appFetch).mockResolvedValue({
-      ok: true,
-      status: 200,
-      json: async () => ({ requestId: 'req-1', status: 'completed', message: 'Done', appId: 'app-1' }),
-    } as Response);
+    vi.mocked(appFetch)
+      .mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({ requestId: 'req-1', status: 'completed', message: 'Done', appId: TRANSFER_APP_ID }),
+      } as Response);
 
     const { user } = renderWithProviders(<AcceptTransferDialog {...defaultProps} />);
 
@@ -349,15 +357,17 @@ describe('AcceptTransferDialog', function dialogTests() {
       expect(defaultProps.onClose).toHaveBeenCalled();
     });
 
-    expect(instrumentation.logClickEvent).toHaveBeenCalledWith('apps.transfer.accept_success');
+    expect(instrumentation.logClickEvent).toHaveBeenCalledWith('apps.transfer.accept_submit', { appId: TRANSFER_APP_ID });
+    expect(instrumentation.logClickEvent).toHaveBeenCalledWith('apps.transfer.accept_success', { appId: TRANSFER_APP_ID });
   });
 
   it('should fire error click event on API failure', async function firesErrorEid() {
-    vi.mocked(appFetch).mockResolvedValue({
-      ok: false,
-      status: 400,
-      json: async () => ({ error: 'INVALID_TOKEN' }),
-    } as Response);
+    vi.mocked(appFetch)
+      .mockResolvedValue({
+        ok: false,
+        status: 400,
+        json: async () => ({ error: 'INVALID_TOKEN', appId: TRANSFER_APP_ID }),
+      } as Response);
 
     const { user } = renderWithProviders(<AcceptTransferDialog {...defaultProps} />);
 
@@ -368,7 +378,8 @@ describe('AcceptTransferDialog', function dialogTests() {
       expect(screen.getByText('INVALID_TOKEN')).toBeInTheDocument();
     });
 
-    expect(instrumentation.logClickEvent).toHaveBeenCalledWith('apps.transfer.accept_error');
+    expect(instrumentation.logClickEvent).toHaveBeenCalledWith('apps.transfer.accept_submit', { appId: TRANSFER_APP_ID });
+    expect(instrumentation.logClickEvent).toHaveBeenCalledWith('apps.transfer.accept_error', { appId: TRANSFER_APP_ID });
   });
 
   it('should fire success click event when poll detects completed', async function pollSuccessEid() {
@@ -379,12 +390,12 @@ describe('AcceptTransferDialog', function dialogTests() {
       .mockResolvedValueOnce({
         ok: true,
         status: 200,
-        json: async () => ({ status: 'processing', message: 'Accepted', appId: 'app-1' }),
+        json: async () => ({ status: 'processing', message: 'Accepted', appId: TRANSFER_APP_ID }),
       } as Response)
       .mockResolvedValueOnce({
         ok: true,
         status: 200,
-        json: async () => ({ status: 'completed', appId: 'app-1' }),
+        json: async () => ({ status: 'completed', appId: TRANSFER_APP_ID }),
       } as Response);
 
     const { user } = renderWithProviders(<AcceptTransferDialog {...defaultProps} />);
@@ -402,10 +413,10 @@ describe('AcceptTransferDialog', function dialogTests() {
       expect(defaultProps.onClose).toHaveBeenCalled();
     });
 
-    expect(instrumentation.logClickEvent).toHaveBeenCalledWith('apps.transfer.accept_success');
+    expect(instrumentation.logClickEvent).toHaveBeenCalledWith('apps.transfer.accept_success', { appId: TRANSFER_APP_ID });
   });
 
-  it('should fire error click event when submit throws', async function submitThrows() {
+  it('should fire error click event (no submit event) when submit throws', async function submitThrows() {
     vi.mocked(appFetch).mockRejectedValue(new Error('Network error'));
 
     const { user } = renderWithProviders(<AcceptTransferDialog {...defaultProps} />);
@@ -417,6 +428,7 @@ describe('AcceptTransferDialog', function dialogTests() {
       expect(screen.getByText('Failed to accept transfer')).toBeInTheDocument();
     });
 
-    expect(instrumentation.logClickEvent).toHaveBeenCalledWith('apps.transfer.accept_error');
+    expect(instrumentation.logClickEvent).not.toHaveBeenCalledWith('apps.transfer.accept_submit', expect.anything());
+    expect(instrumentation.logClickEvent).toHaveBeenCalledWith('apps.transfer.accept_error', undefined);
   });
 });

@@ -104,6 +104,7 @@ export function mockInstrumentation() {
     logActionEvent: vi.fn(() => vi.fn()),
     generateClickEID: vi.fn((event: string) => `appbuilder.${event}.click`),
     logAiroHQEvent: vi.fn(() => vi.fn()),
+    setInstrumentationAppId: vi.fn(),
   };
 }
 
