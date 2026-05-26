@@ -9,6 +9,7 @@
 import { z } from 'zod';
 import { logger } from '../../../logging/index.js';
 import { grantSessionManager } from '@airo/ai-grants';
+import { BudgetExceededError } from '@airo/ai-common';
 import type { SkillToolDefinition } from '@airo/ai-skills';
 import { logoService, type ProcessedLogo } from '../../../services/LogoService.js';
 import { mediaManifestService } from '../../../services/MediaManifestService.js';
@@ -452,6 +453,20 @@ export const generateLogoTool: SkillToolDefinition = {
           error: r.reason instanceof Error ? r.reason.message : String(r.reason),
         });
       }
+    }
+
+    const budgetExhaustedRejection = variationResults.find(
+      (r): r is PromiseRejectedResult => r.status === 'rejected' && BudgetExceededError.isInstance(r.reason),
+    );
+    if (budgetExhaustedRejection) {
+      logger.warn('skills.media-logo.tools.generate_logo.budget_exceeded', {
+        appId,
+        customerId,
+        budgetUserId,
+        successfulLogoCount: logos.length,
+        failedVariationCount: variationFailureCount,
+      });
+      throw budgetExhaustedRejection.reason;
     }
 
     if (logos.length === 0) {
