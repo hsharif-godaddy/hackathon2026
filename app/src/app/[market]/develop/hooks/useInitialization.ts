@@ -29,14 +29,110 @@ function getInitialJobIdFromStorage(appId: string | null): string | null {
   return sessionStorage.getItem(`initial-job-id-${appId}`)
 }
 
-/**
- * Helper to check if initial prompt is pending
- *
- * @param initialJobId - The initial job ID to check
- * @param appId - The app ID to check (for rebuild mode)
- * @returns True if initial prompt is pending
- */
-function checkHasInitialPrompt(initialJobId: string | null, appId: string | null): boolean {
+// Cross-session re-send guard: site.initial_prompt persists forever in mgmt-airo, so on
+// refresh the BFF response is identical to a first-time DPP redirect. See PR #3925.
+const AUTO_SENT_FLAG_PREFIX = 'initial-prompt-auto-sent-'
+
+function getInitialPromptAutoSentFlag(appId: string | null): boolean {
+  if (typeof window === 'undefined' || !appId) return false
+  try {
+    return localStorage.getItem(`${AUTO_SENT_FLAG_PREFIX}${appId}`) === 'true'
+  } catch (err) {
+    logger.warn('develop-page.auto-sent-flag.read-failed', {
+      appId,
+      error: err instanceof Error ? err.message : String(err),
+    })
+    return false
+  }
+}
+
+function setInitialPromptAutoSentFlag(appId: string | null): void {
+  if (typeof window === 'undefined' || !appId) return
+  try {
+    localStorage.setItem(`${AUTO_SENT_FLAG_PREFIX}${appId}`, 'true')
+  } catch (err) {
+    logger.warn('develop-page.auto-sent-flag.write-failed', {
+      appId,
+      error: err instanceof Error ? err.message : String(err),
+    })
+  }
+}
+
+// Site-aware hydration predicate for cold external redirects (DPP). Each gate guards a
+// distinct regression — see docs/plans/2026-05-25-dpp-hydration-race-creation-handoff-bypass.md.
+export function shouldHydrateInitialPromptFromSite(
+  appId: string | null,
+  hasInitialPromptInContext: boolean,
+  site: Site | null,
+  realAppId: string | null,
+): boolean {
+  if (!appId) return false
+  if (hasInitialPromptInContext) return false
+  if (!isSiteForCurrentApp(site, appId, realAppId)) return false
+  if (!site.initial_prompt) return false
+  if (getInitialPromptAutoSentFlag(site.id)) return false
+  return true
+}
+
+// Conversation-history gate. fromCreationHandoff bypasses historyLoadingComplete because
+// the URL flip resets it on a single non-reconnecting WS. See plan doc for the race
+// matrix and why the previous !hasConversationCookie short-circuit (PR #4074) was racy.
+export function shouldFireSiteAwareHydration(
+  historyLoadingComplete: boolean,
+  hasMessages: boolean,
+  fromCreationHandoff: boolean = false,
+): boolean {
+  if (hasMessages) return false
+  if (fromCreationHandoff) return true
+  if (!historyLoadingComplete) return false
+  return true
+}
+
+// In-session creation handoff signal. The ref is wiped by the loading.tsx Suspense remount
+// on URL flip jobId→realAppId, so the sessionStorage marker is the cross-remount fallback.
+// Either branch alone must keep the bypass live — a regression that drops one would silently
+// re-introduce the deadlock for whichever path it covers.
+export function isInCreationHandoff(
+  appId: string | null,
+  jobIdToRealAppId: { realAppId: string | null } | null,
+): boolean {
+  if (!appId) return false
+  if (jobIdToRealAppId?.realAppId === appId) return true
+  if (typeof window === 'undefined') return false
+  return sessionStorage.getItem(`initial-job-id-${appId}`) !== null
+}
+
+// Storage side-effects of markInitialPromptSent. Extracted for unit-testability.
+export function applyMarkInitialPromptSentEffects(
+  initialJobId: string | null,
+  appId: string | null,
+): void {
+  if (typeof window === 'undefined') return
+  if (initialJobId) {
+    sessionStorage.removeItem(`initial-prompt-pending-${initialJobId}`)
+    sessionStorage.removeItem(`in-creation-flow-${initialJobId}`)
+    sessionStorage.removeItem(`initial-prompt-text-${initialJobId}`)
+    sessionStorage.removeItem(`initial-template-${initialJobId}`)
+    sessionStorage.removeItem(`initial-upload-file-${initialJobId}`)
+  }
+  if (appId) {
+    sessionStorage.removeItem(`initial-prompt-text-${appId}`)
+    sessionStorage.removeItem(`initial-template-${appId}`)
+    sessionStorage.removeItem(`initial-upload-file-${appId}`)
+    // Clear the creation-handoff marker so subsequent same-tab reloads rely on the strict gate.
+    sessionStorage.removeItem(`initial-job-id-${appId}`)
+    setInitialPromptAutoSentFlag(appId)
+  }
+}
+
+// True when sessionStorage flags are set (home flow) OR site.initial_prompt is populated
+// for the current app and the auto-sent guard is unset (cold external redirect).
+export function checkHasInitialPrompt(
+  initialJobId: string | null,
+  appId: string | null,
+  site: Site | null,
+  realAppId: string | null,
+): boolean {
   if (typeof window === 'undefined') return false
 
   // Check with initialJobId first (normal creation flow)
@@ -51,6 +147,15 @@ function checkHasInitialPrompt(initialJobId: string | null, appId: string | null
     const hasPromptPending = sessionStorage.getItem(`initial-prompt-pending-${appId}`) === 'true'
     const inCreationFlow = sessionStorage.getItem(`in-creation-flow-${appId}`) === 'true'
     if (hasPromptPending && inCreationFlow) return true
+  }
+
+  // Site-aware fallback for cold external redirects, gated by the cross-session re-send guard.
+  if (
+    isSiteForCurrentApp(site, appId, realAppId) &&
+    !!site.initial_prompt &&
+    !getInitialPromptAutoSentFlag(site.id)
+  ) {
+    return true
   }
 
   return false
@@ -521,11 +626,14 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
   // -------------------------------------------------------------------------
   // XState Machine
   // -------------------------------------------------------------------------
+  // First-render hydration: site/realAppId are not yet read here (see below),
+  // so we pass null. The site-aware branch is picked up later by the dedicated
+  // effect that watches `site.initial_prompt` and dispatches HYDRATE_APP.
   const [state, send] = useMachine(initializationMachine, {
     input: {
       appId,
       isJobId,
-      hasInitialPrompt: checkHasInitialPrompt(getInitialJobIdFromStorage(appId), appId),
+      hasInitialPrompt: checkHasInitialPrompt(getInitialJobIdFromStorage(appId), appId, null, null),
     },
   })
 
@@ -583,13 +691,20 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
     previousAppIdRef.current = appId
   }, [appId, realAppId, send])
 
-  // Track if we're in an active creation flow for THIS page session
+  // Track if we're in an active creation flow for THIS page session.
+  //
+  // Synced to context.hasInitialPrompt and re-synced on appId change (DPP
+  // job ID → real app ID URL flip). The previous two-effect form (reset on
+  // appId change, set-only on hasInitialPrompt change) had a stale-ref race:
+  // on URL flip the appId effect cleared the ref to false, but
+  // hasInitialPrompt was unchanged across the flip (the machine context
+  // persists), so the second effect skipped — leaving the ref false for
+  // the rest of the session. That hid showPreviewLoader, so the bare
+  // template iframe was visible while the agent worked.
   const isActiveCreationSession = useRef(false)
-
-  // Reset isActiveCreationSession flag on navigation (Issue 9.2)
   useEffect(() => {
-    isActiveCreationSession.current = false
-  }, [appId])
+    isActiveCreationSession.current = state.context.hasInitialPrompt
+  }, [appId, state.context.hasInitialPrompt])
 
   // Last assistant message id we sent STREAM_COMPLETE_WITHOUT_FIRST_EDIT for (avoid duplicate sends)
   const streamCompleteWithoutEditSentForRef = useRef<string | null>(null)
@@ -612,6 +727,7 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
   const isStreamingMessage = useStreamingConversationStore((state) => state.isLoading)
   const messages = useStreamingConversationStore((state) => state.messages)
   const activeStream = useStreamingConversationStore((state) => state.activeStream)
+  const historyLoadingComplete = useStreamingConversationStore((state) => state.historyLoadingComplete)
   // -------------------------------------------------------------------------
   // DERIVED STATE (Context)
   // -------------------------------------------------------------------------
@@ -663,13 +779,6 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
   // EFFECTS: XState Machine Integration
   // -------------------------------------------------------------------------
 
-  // Set the active creation session flag
-  useEffect(() => {
-    if (context.hasInitialPrompt && !isActiveCreationSession.current) {
-      isActiveCreationSession.current = true
-    }
-  }, [context.hasInitialPrompt])
-
   // Sync site.initial_prompt to sessionStorage
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -716,8 +825,8 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
       useSiteCreationStore.getState().reset()
     }
 
-    // Hydrate hasInitialPrompt from sessionStorage for post-RESET re-initialization
-    const hydratedHasInitialPrompt = checkHasInitialPrompt(initialJobId, appId)
+    // Hydrate hasInitialPrompt from sessionStorage + site for post-RESET re-initialization
+    const hydratedHasInitialPrompt = checkHasInitialPrompt(initialJobId, appId, site, realAppId)
 
     if (isJobId) {
       send({ type: 'START_CHECKING_CREATION', appId, isJobId, hasInitialPrompt: hydratedHasInitialPrompt })
@@ -782,6 +891,15 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
       send({ type: 'HYDRATE_APP', appId, isJobId })
     }
   }, [state, appId, isJobId, send])
+
+  // Site-aware hydration for cold external redirects (DPP). See plan doc for the gate matrix.
+  useEffect(() => {
+    if (!appId) return
+    const fromCreationHandoff = isInCreationHandoff(appId, jobIdToRealAppIdRef.current)
+    if (!shouldFireSiteAwareHydration(historyLoadingComplete, messages.length > 0, fromCreationHandoff)) return
+    if (!shouldHydrateInitialPromptFromSite(appId, state.context.hasInitialPrompt, site, realAppId)) return
+    send({ type: 'HYDRATE_APP', appId, isJobId, hasInitialPrompt: true })
+  }, [appId, isJobId, realAppId, site, state.context.hasInitialPrompt, historyLoadingComplete, messages.length, send])
 
   // EFFECT: Initialize page data
   useEffect(() => {
@@ -995,18 +1113,7 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
 
     markInitialPromptSent: () => {
       send({ type: 'PROMPT_SENT' })
-      if (initialJobId) {
-        sessionStorage.removeItem(`initial-prompt-pending-${initialJobId}`)
-        sessionStorage.removeItem(`in-creation-flow-${initialJobId}`)
-        sessionStorage.removeItem(`initial-prompt-text-${initialJobId}`)
-        sessionStorage.removeItem(`initial-template-${initialJobId}`)
-        sessionStorage.removeItem(`initial-upload-file-${initialJobId}`)
-      }
-      if (appId) {
-        sessionStorage.removeItem(`initial-prompt-text-${appId}`)
-        sessionStorage.removeItem(`initial-template-${appId}`)
-        sessionStorage.removeItem(`initial-upload-file-${appId}`)
-      }
+      applyMarkInitialPromptSentEffects(initialJobId, appId)
     },
 
     markFirstFileEditSeen: () => {

@@ -3,6 +3,7 @@ import { logger } from '@/lib/request-context';
 import { checkSwitchboardFlag } from '@/lib/switchboard/server';
 import { getDatacenterFromMarketId } from '@/lib/utils/dc-mapping';
 import { extractCustomerId } from '@/lib/utils/jwt-utils';
+import { truncateToByteLimit } from '@/lib/waf-validation';
 import { useSubscriptionCacheStore } from '@/stores/useSubscriptionCacheStore';
 import { ArchiveRestoreResponse, ArchiveStatusResponse, CreateSiteParams, CreateSiteResult, DeploySiteOptions, DomainStatus, DomainType, IControlPlaneAdapter, ImageStatusResponse, ReloadImagesResponse, SecretOperations, SecretOperationsResult, SecretsDiffResult, SecretsResponse, SecretUpdate, SiteDomain, SiteInfo, SiteStatus, SiteVariant } from './types';
 import gasket from '../../../gasket.ts';
@@ -1266,12 +1267,26 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
         published_url = `https://${prefixDomain.fqdn}`;
       }
     }
+    // Clamp at boundary; direct mgmt-airo writes bypass the BFF/WAF.
+    const rawInitialPrompt = app.variables?.initialPrompt;
+    const initial_prompt = typeof rawInitialPrompt === 'string'
+      ? truncateToByteLimit(rawInitialPrompt)
+      : undefined;
+
+    // Type-guard untyped JSON; trimmed-length check matches route.ts validateFqdn.
+    const rawFqdn = app.variables?.fqdn;
+    const trimmedFqdn = typeof rawFqdn === 'string' ? rawFqdn.trim() : '';
+    const fqdn = trimmedFqdn.length > 0 && trimmedFqdn.length <= 253
+      ? trimmedFqdn
+      : undefined;
+
     return {
       id: app.id,
       name: app.variables?.title || app.id,
       status: this.mapAppStatus(app.status),
       account_id: customerId || 'customer', // Use provided customerId or fallback to 'customer'
-      initial_prompt: app.variables?.initialPrompt,
+      initial_prompt,
+      fqdn,
       agent_url,
       preview_url,
       published_url,

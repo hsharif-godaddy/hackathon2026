@@ -626,4 +626,5 @@ describe('WebSocket Recovery Integration', () => {
       expect(errorCalls).toHaveLength(0)
     })
   })
+
 })

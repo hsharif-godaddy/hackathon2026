@@ -1,15 +1,23 @@
 /**
  * @vitest-environment jsdom
  */
-/**
- * Tests for useInitialization hook
- * 
- * These tests verify the state machine logic and UI state computation
- */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { deriveIsAwaitingStream, getEditPaths, isCompletedFileEdit, isSiteForCurrentApp, resetStaleAppContext } from './useInitialization';
+import { SiteStatus } from '@/lib/control-plane/types';
+import type { Site } from '@/stores/useSitesStore';
+import { applyMarkInitialPromptSentEffects, checkHasInitialPrompt, deriveIsAwaitingStream, getEditPaths, isCompletedFileEdit, isInCreationHandoff, isSiteForCurrentApp, resetStaleAppContext, shouldFireSiteAwareHydration, shouldHydrateInitialPromptFromSite } from './useInitialization';
+
+function makeSite(overrides: Partial<Site>): Site {
+  return {
+    id: 'app-1',
+    status: SiteStatus.Running,
+    account_id: 'cust-1',
+    created_at: new Date(),
+    updated_at: new Date(),
+    ...overrides,
+  } as Site;
+}
 
 describe('useInitialization', function hookTests() {
   
@@ -24,7 +32,6 @@ describe('useInitialization', function hookTests() {
         'error'
       ];
 
-      // This test documents the expected phases
       expect(phases.length).toBe(6);
     });
   });
@@ -37,8 +44,7 @@ describe('useInitialization', function hookTests() {
         'sending-initial-prompt',
         'initial-prompt-sent'
       ];
-      
-      // This test documents the expected sub-phases
+
       expect(subPhases.length).toBe(4);
     });
   });
@@ -50,69 +56,61 @@ describe('useInitialization', function hookTests() {
     }
 
     it('should show chat loader during creation phases', function chatLoaderCreation() {
-      // When creationPhase is 'creating', showChatLoader should be true
       expect(shouldShowLoaderForPhase('creating')).toBe(true);
     });
 
     it('should hide chat loader when creation is complete', function chatLoaderComplete() {
-      // When creationPhase is 'completed', showChatLoader should be false
       expect(shouldShowLoaderForPhase('completed')).toBe(false);
     });
 
     it('should show chat loader when waiting for websocket', function chatLoaderWebSocket() {
-      // When isInitialCreationFlow is true and websocket is not connected
       const isInitialCreationFlow = true;
       const isWebSocketConnected = false;
       const shouldShowLoader = isInitialCreationFlow && !isWebSocketConnected;
-      
+
       expect(shouldShowLoader).toBe(true);
     });
 
     it('should hide chat loader after websocket connects', function chatLoaderConnected() {
-      // When websocket connects, loader should hide
       const isInitialCreationFlow = true;
       const isWebSocketConnected = true;
       const initialPromptSent = false;
       const shouldShowLoader = isInitialCreationFlow && !isWebSocketConnected && !initialPromptSent;
-      
+
       expect(shouldShowLoader).toBe(false);
     });
 
     it('should show preview loader during initial creation', function previewLoaderCreation() {
-      // When in initial creation flow and loading
       const isInitialCreationFlow = true;
       const isLoading = true;
       const shouldShowLoader = isInitialCreationFlow && isLoading;
-      
+
       expect(shouldShowLoader).toBe(true);
     });
 
     it('should hide preview loader after setup complete', function previewLoaderComplete() {
-      // When initial setup is complete
       const isInitialCreationFlow = false;
       const isLoading = true;
       const shouldShowLoader = isInitialCreationFlow && isLoading;
-      
+
       expect(shouldShowLoader).toBe(false);
     });
 
     it('should enable auto-send when websocket connects', function autoSendEnabled() {
-      // Auto-send should be enabled when websocket connects with pending prompt
       const isInitialCreationFlow = true;
       const isWebSocketConnected = true;
       const initialPromptSent = false;
       const canAutoSend = isInitialCreationFlow && isWebSocketConnected && !initialPromptSent;
-      
+
       expect(canAutoSend).toBe(true);
     });
 
     it('should disable auto-send after prompt sent', function autoSendDisabled() {
-      // Auto-send should be disabled after prompt is sent
       const isInitialCreationFlow = true;
       const isWebSocketConnected = true;
       const initialPromptSent = true;
       const canAutoSend = isInitialCreationFlow && isWebSocketConnected && !initialPromptSent;
-      
+
       expect(canAutoSend).toBe(false);
     });
   });
@@ -482,11 +480,7 @@ describe('useInitialization', function hookTests() {
     });
   });
 
-  // Regression: creating a second app after a first one caused the first app's
-  // initial prompt to be displayed during the jobId stage because the
-  // useDevelopPageStore.site object persisted across navigations. Ensure the
-  // helper only matches sites whose id lines up with the current app or its
-  // real (post-conversion) app id.
+  // Regression: stale `site` from a previous app must not match a new appId/jobId.
   describe('isSiteForCurrentApp', function isSiteForCurrentAppTests() {
     it('returns false when site is null', function noSite() {
       expect(isSiteForCurrentApp(null, 'app-1', null)).toBe(false);
@@ -501,14 +495,10 @@ describe('useInitialization', function hookTests() {
     });
 
     it('returns true when site id matches realAppId (job→app conversion)', function matchesRealAppId() {
-      // During job→app conversion, URL appId is still the jobId but site
-      // already reflects the real app id.
       expect(isSiteForCurrentApp({ id: 'app-1' }, 'job-xyz', 'app-1')).toBe(true);
     });
 
     it('returns false when site is for a different (previous) app', function differentApp() {
-      // Bug scenario: first app's site is still loaded while jobId for second
-      // app is in the URL; no realAppId yet for the new app.
       expect(isSiteForCurrentApp({ id: 'app-1' }, 'job-2', null)).toBe(false);
     });
 
@@ -522,6 +512,305 @@ describe('useInitialization', function hookTests() {
 
     it('returns false when both appId and realAppId are null', function bothNull() {
       expect(isSiteForCurrentApp({ id: 'app-1' }, null, null)).toBe(false);
+    });
+  });
+
+  describe('checkHasInitialPrompt', function checkHasInitialPromptTests() {
+    beforeEach(() => {
+      sessionStorage.clear();
+      localStorage.clear();
+    });
+
+    it('returns false when neither sessionStorage flags nor site are set', function emptyState() {
+      expect(checkHasInitialPrompt(null, 'app-1', null, null)).toBe(false);
+    });
+
+    it('returns true when sessionStorage flags are set on initialJobId', function jobIdFlags() {
+      sessionStorage.setItem('initial-prompt-pending-job-1', 'true');
+      sessionStorage.setItem('in-creation-flow-job-1', 'true');
+      expect(checkHasInitialPrompt('job-1', 'app-1', null, null)).toBe(true);
+    });
+
+    it('returns true when sessionStorage flags are set on appId (rebuild mode)', function appIdFlags() {
+      sessionStorage.setItem('initial-prompt-pending-app-1', 'true');
+      sessionStorage.setItem('in-creation-flow-app-1', 'true');
+      expect(checkHasInitialPrompt(null, 'app-1', null, null)).toBe(true);
+    });
+
+    it('returns true when site has initial_prompt for current app and flags are absent (DPP cold redirect)', function siteAware() {
+      const site = makeSite({ id: 'app-1', initial_prompt: 'Build me a portfolio' });
+      expect(checkHasInitialPrompt(null, 'app-1', site, null)).toBe(true);
+    });
+
+    it('site-aware branch matches via realAppId during job→app conversion', function siteAwareRealAppId() {
+      const site = makeSite({ id: 'app-1', initial_prompt: 'Build me a portfolio' });
+      expect(checkHasInitialPrompt(null, 'job-xyz', site, 'app-1')).toBe(true);
+    });
+
+    it('site-aware branch is gated by isSiteForCurrentApp staleness guard', function staleSiteGuard() {
+      const stalePrevSite = makeSite({ id: 'app-prev', initial_prompt: 'Previous app prompt' });
+      expect(checkHasInitialPrompt(null, 'job-2', stalePrevSite, null)).toBe(false);
+    });
+
+    it('site-aware branch returns false when site has no initial_prompt', function siteWithoutPrompt() {
+      const site = makeSite({ id: 'app-1' });
+      expect(checkHasInitialPrompt(null, 'app-1', site, null)).toBe(false);
+    });
+
+    it('site-aware branch returns false when initial_prompt is empty string', function emptyPrompt() {
+      const site = makeSite({ id: 'app-1', initial_prompt: '' });
+      expect(checkHasInitialPrompt(null, 'app-1', site, null)).toBe(false);
+    });
+
+    it('site-aware branch returns false when the auto-sent flag is set in localStorage (refresh after first send)', function refreshGuard() {
+      // PR #3925 regression: mgmt-airo persists site.initial_prompt forever, so refresh looks identical to first-time DPP.
+      const site = makeSite({ id: 'app-1', initial_prompt: 'Build me a portfolio' });
+      localStorage.setItem('initial-prompt-auto-sent-app-1', 'true');
+      expect(checkHasInitialPrompt(null, 'app-1', site, null)).toBe(false);
+    });
+
+    it('auto-sent flag is keyed by site.id, so it does not leak across apps', function flagPerApp() {
+      const site = makeSite({ id: 'app-1', initial_prompt: 'Build me a portfolio' });
+      localStorage.setItem('initial-prompt-auto-sent-app-prev', 'true');
+      expect(checkHasInitialPrompt(null, 'app-1', site, null)).toBe(true);
+    });
+
+    it('sessionStorage flags still win even when auto-sent flag is set (in-flight first send)', function sessionWinsOverFlag() {
+      sessionStorage.setItem('initial-prompt-pending-app-1', 'true');
+      sessionStorage.setItem('in-creation-flow-app-1', 'true');
+      localStorage.setItem('initial-prompt-auto-sent-app-1', 'true');
+      expect(checkHasInitialPrompt(null, 'app-1', null, null)).toBe(true);
+    });
+  });
+
+  describe('applyMarkInitialPromptSentEffects', function effectsTests() {
+    beforeEach(function clearStorage() {
+      localStorage.clear();
+      sessionStorage.clear();
+    });
+
+    it('writes the cross-session auto-sent localStorage flag for the appId', function writesFlag() {
+      // Durable PR #3925 guard: in-memory PROMPT_SENT alone won't survive refresh.
+      applyMarkInitialPromptSentEffects('job-1', 'app-1');
+      expect(localStorage.getItem('initial-prompt-auto-sent-app-1')).toBe('true');
+    });
+
+    it('clears all home-flow sessionStorage keys for initialJobId', function clearsJobIdKeys() {
+      sessionStorage.setItem('initial-prompt-pending-job-1', 'true');
+      sessionStorage.setItem('in-creation-flow-job-1', 'true');
+      sessionStorage.setItem('initial-prompt-text-job-1', 'Build me a site');
+      sessionStorage.setItem('initial-template-job-1', 'portfolio');
+      sessionStorage.setItem('initial-upload-file-job-1', 'data:image/png;base64,...');
+
+      applyMarkInitialPromptSentEffects('job-1', 'app-1');
+
+      expect(sessionStorage.getItem('initial-prompt-pending-job-1')).toBeNull();
+      expect(sessionStorage.getItem('in-creation-flow-job-1')).toBeNull();
+      expect(sessionStorage.getItem('initial-prompt-text-job-1')).toBeNull();
+      expect(sessionStorage.getItem('initial-template-job-1')).toBeNull();
+      expect(sessionStorage.getItem('initial-upload-file-job-1')).toBeNull();
+    });
+
+    it('clears rebuild-mode sessionStorage keys for appId', function clearsAppIdKeys() {
+      sessionStorage.setItem('initial-prompt-text-app-1', 'Add a new page');
+      sessionStorage.setItem('initial-template-app-1', 'portfolio');
+      sessionStorage.setItem('initial-upload-file-app-1', 'data:image/png;base64,...');
+
+      applyMarkInitialPromptSentEffects('job-1', 'app-1');
+
+      expect(sessionStorage.getItem('initial-prompt-text-app-1')).toBeNull();
+      expect(sessionStorage.getItem('initial-template-app-1')).toBeNull();
+      expect(sessionStorage.getItem('initial-upload-file-app-1')).toBeNull();
+    });
+
+    it('clears the initial-job-id creation-handoff marker for the appId', function clearsHandoffMarker() {
+      // Marker is set during the URL flip (jobId → realAppId) so the bypass survives the
+      // loading.tsx Suspense remount. Once auto-send completes, subsequent same-tab reloads
+      // should fall through to the strict gate, not the bypass.
+      sessionStorage.setItem('initial-job-id-app-1', 'job-1');
+
+      applyMarkInitialPromptSentEffects('job-1', 'app-1');
+
+      expect(sessionStorage.getItem('initial-job-id-app-1')).toBeNull();
+    });
+
+    it('does not clear the handoff marker for a different appId', function preservesUnrelatedMarker() {
+      sessionStorage.setItem('initial-job-id-app-2', 'job-2');
+
+      applyMarkInitialPromptSentEffects('job-1', 'app-1');
+
+      expect(sessionStorage.getItem('initial-job-id-app-2')).toBe('job-2');
+    });
+
+    it('does not write the flag when appId is null', function nullAppId() {
+      applyMarkInitialPromptSentEffects('job-1', null);
+      // Asserting the literal "null"-suffix key catches a missing null check.
+      expect(localStorage.getItem('initial-prompt-auto-sent-null')).toBeNull();
+    });
+
+    it('still clears initialJobId-keyed sessionStorage when appId is null', function nullAppIdStillClearsJob() {
+      sessionStorage.setItem('initial-prompt-pending-job-1', 'true');
+      sessionStorage.setItem('in-creation-flow-job-1', 'true');
+
+      applyMarkInitialPromptSentEffects('job-1', null);
+
+      expect(sessionStorage.getItem('initial-prompt-pending-job-1')).toBeNull();
+      expect(sessionStorage.getItem('in-creation-flow-job-1')).toBeNull();
+    });
+
+    it('writes the flag when initialJobId is null but appId is set (cold DPP redirect)', function nullJobIdSetsFlag() {
+      applyMarkInitialPromptSentEffects(null, 'app-1');
+      expect(localStorage.getItem('initial-prompt-auto-sent-app-1')).toBe('true');
+    });
+
+    it('is idempotent — calling twice keeps the flag set to true', function idempotent() {
+      applyMarkInitialPromptSentEffects('job-1', 'app-1');
+      applyMarkInitialPromptSentEffects('job-1', 'app-1');
+      expect(localStorage.getItem('initial-prompt-auto-sent-app-1')).toBe('true');
+    });
+
+    it('the flag it writes is observed by checkHasInitialPrompt (round-trip)', function roundTrip() {
+      const site = makeSite({ id: 'app-1', initial_prompt: 'Build me a portfolio' });
+      expect(checkHasInitialPrompt(null, 'app-1', site, null)).toBe(true);
+
+      applyMarkInitialPromptSentEffects('job-1', 'app-1');
+
+      expect(checkHasInitialPrompt(null, 'app-1', site, null)).toBe(false);
+    });
+  });
+
+  describe('shouldHydrateInitialPromptFromSite', function hydrationGateTests() {
+    beforeEach(function clearStorage() {
+      localStorage.clear();
+      sessionStorage.clear();
+    });
+
+    it('returns true when every gate passes (cold DPP redirect)', function happyPath() {
+      const site = makeSite({ id: 'app-1', initial_prompt: 'Build me a portfolio' });
+      expect(shouldHydrateInitialPromptFromSite('app-1', false, site, null)).toBe(true);
+    });
+
+    it('returns false when appId is null (no app to hydrate)', function noAppId() {
+      const site = makeSite({ id: 'app-1', initial_prompt: 'Build me a portfolio' });
+      expect(shouldHydrateInitialPromptFromSite(null, false, site, null)).toBe(false);
+    });
+
+    it('returns false when context.hasInitialPrompt is already true (idempotent)', function alreadyHydrated() {
+      const site = makeSite({ id: 'app-1', initial_prompt: 'Build me a portfolio' });
+      expect(shouldHydrateInitialPromptFromSite('app-1', true, site, null)).toBe(false);
+    });
+
+    it('returns false when site is null (still loading)', function siteNotLoaded() {
+      expect(shouldHydrateInitialPromptFromSite('app-1', false, null, null)).toBe(false);
+    });
+
+    it('returns false when site.id does not match appId or realAppId (stale)', function staleSite() {
+      const stale = makeSite({ id: 'app-prev', initial_prompt: 'Old prompt' });
+      expect(shouldHydrateInitialPromptFromSite('app-1', false, stale, null)).toBe(false);
+    });
+
+    it('matches when site.id equals realAppId (mid-flight job→app flip)', function realAppIdMatch() {
+      const site = makeSite({ id: 'real-app-1', initial_prompt: 'Build me a portfolio' });
+      expect(shouldHydrateInitialPromptFromSite('job-1', false, site, 'real-app-1')).toBe(true);
+    });
+
+    it('returns false when site.initial_prompt is empty string', function emptyPrompt() {
+      const site = makeSite({ id: 'app-1', initial_prompt: '' });
+      expect(shouldHydrateInitialPromptFromSite('app-1', false, site, null)).toBe(false);
+    });
+
+    it('returns false when site.initial_prompt is undefined (no prompt to send)', function undefinedPrompt() {
+      const site = makeSite({ id: 'app-1' });
+      expect(shouldHydrateInitialPromptFromSite('app-1', false, site, null)).toBe(false);
+    });
+
+    it('returns false when the cross-session auto-sent flag is set in localStorage', function alreadyAutoSent() {
+      // PR #3925 regression: refresh-after-first-send must not re-fire.
+      const site = makeSite({ id: 'app-1', initial_prompt: 'Build me a portfolio' });
+      localStorage.setItem('initial-prompt-auto-sent-app-1', 'true');
+      expect(shouldHydrateInitialPromptFromSite('app-1', false, site, null)).toBe(false);
+    });
+
+    it('auto-sent flag is keyed by site.id (set on a different app does not block)', function flagKeyedBySiteId() {
+      const site = makeSite({ id: 'app-1', initial_prompt: 'Build me a portfolio' });
+      localStorage.setItem('initial-prompt-auto-sent-app-prev', 'true');
+      expect(shouldHydrateInitialPromptFromSite('app-1', false, site, null)).toBe(true);
+    });
+
+    it('round-trip with applyMarkInitialPromptSentEffects: gate flips after the helper runs', function roundTrip() {
+      const site = makeSite({ id: 'app-1', initial_prompt: 'Build me a portfolio' });
+      expect(shouldHydrateInitialPromptFromSite('app-1', false, site, null)).toBe(true);
+      applyMarkInitialPromptSentEffects(null, 'app-1');
+      expect(shouldHydrateInitialPromptFromSite('app-1', false, site, null)).toBe(false);
+    });
+  });
+
+  describe('shouldFireSiteAwareHydration', function historyGateTests() {
+    // Conversation-history gate. fromCreationHandoff bypasses historyLoadingComplete
+    // because the URL flip jobId→realAppId resets it; hasMessages always wins.
+
+    it('returns true once history has loaded with no messages', function historyLoadedEmpty() {
+      expect(shouldFireSiteAwareHydration(true, false)).toBe(true);
+    });
+
+    it('returns false while history is still loading', function historyInFlight() {
+      expect(shouldFireSiteAwareHydration(false, false)).toBe(false);
+    });
+
+    it('returns false when the app already has messages (existing app)', function existingApp() {
+      expect(shouldFireSiteAwareHydration(true, true)).toBe(false);
+    });
+
+    it('returns false when history is loading and messages are spuriously present', function historyInFlightWithMessages() {
+      expect(shouldFireSiteAwareHydration(false, true)).toBe(false);
+    });
+
+    it('returns true on creation handoff even when history has not finished loading', function creationHandoffBypass() {
+      expect(shouldFireSiteAwareHydration(false, false, true)).toBe(true);
+    });
+
+    it('returns false on creation handoff when messages are present', function creationHandoffStillGuardsMessages() {
+      expect(shouldFireSiteAwareHydration(false, true, true)).toBe(false);
+      expect(shouldFireSiteAwareHydration(true, true, true)).toBe(false);
+    });
+  });
+
+  describe('isInCreationHandoff', function creationHandoffOrTests() {
+    // Both branches of the OR (ref ∪ sessionStorage marker) must independently
+    // keep the bypass live. The ref covers the in-place case; the sessionStorage
+    // marker covers the loading.tsx Suspense remount that wipes the ref on the
+    // jobId→realAppId URL flip. Dropping either branch silently re-deadlocks
+    // the corresponding path.
+
+    beforeEach(function clearStorage() {
+      sessionStorage.clear();
+    });
+
+    it('returns false when appId is null', function noAppId() {
+      expect(isInCreationHandoff(null, { realAppId: 'app-1' })).toBe(false);
+    });
+
+    it('returns true when only the ref matches (in-place — no remount)', function refOnly() {
+      expect(isInCreationHandoff('app-1', { realAppId: 'app-1' })).toBe(true);
+    });
+
+    it('returns true when only the sessionStorage marker is present (post-remount: ref wiped)', function markerOnly() {
+      sessionStorage.setItem('initial-job-id-app-1', 'job-1');
+      expect(isInCreationHandoff('app-1', null)).toBe(true);
+    });
+
+    it('returns true when ref realAppId is null but the marker covers the flip', function nullRefRealAppId() {
+      sessionStorage.setItem('initial-job-id-app-1', 'job-1');
+      expect(isInCreationHandoff('app-1', { realAppId: null })).toBe(true);
+    });
+
+    it('returns false when neither branch matches the current appId', function neither() {
+      expect(isInCreationHandoff('app-1', { realAppId: 'app-other' })).toBe(false);
+    });
+
+    it('marker is keyed by appId — a different app\'s marker does not bypass', function markerKeyedByAppId() {
+      sessionStorage.setItem('initial-job-id-app-other', 'job-1');
+      expect(isInCreationHandoff('app-1', null)).toBe(false);
     });
   });
 });

@@ -151,3 +151,67 @@ func (m *SSOMiddleware) Authenticate(next http.Handler) http.Handler {
 		}
 	})
 }
+
+// AuthenticateOptional validates the SSO token if one is present and propagates
+// the resulting context to next; if no token is supplied (or validation fails)
+// it still calls next without any token context, so customerIDFromRequest falls
+// back to DefaultCustomerID. This exists for the public /signup route, which
+// production mgmt-airo always sees with an SSO session — locally we want both:
+// authenticated callers (so DPP-shape repros land under the real shopper) and
+// unauthenticated callers (so existing scripts keep working).
+func (m *SSOMiddleware) AuthenticateOptional(next http.Handler) http.Handler {
+	if m.authType != "jwt" {
+		return next
+	}
+
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var authedReq *http.Request
+		sentinel := http.HandlerFunc(func(_ http.ResponseWriter, ar *http.Request) {
+			authedReq = ar
+		})
+
+		// Discard whatever the lowRisk handler writes — it will write 401 if
+		// the token is missing or invalid, and we want to swallow that and
+		// proceed unauthenticated rather than reject the request. Capture the
+		// status so we can emit a debug breadcrumb when a cookie was sent but
+		// rejected (the stale-AIRO_COOKIE case during local DPP testing).
+		drw := &discardingResponseWriter{}
+		m.lowRisk(sentinel).ServeHTTP(drw, r)
+
+		if authedReq != nil {
+			next.ServeHTTP(w, authedReq)
+			return
+		}
+
+		// Only log when a cookie was actually offered. No-cookie callers are
+		// the documented happy path for unauthenticated /signup, and logging
+		// every one of those would be noise.
+		if drw.status >= 400 && r.Header.Get("Cookie") != "" {
+			slog.Debug("sso.auth.optional.rejected", "status", drw.status)
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// discardingResponseWriter swallows all writes. Used by AuthenticateOptional
+// to suppress the lowRisk handler's 401 response when no token is present,
+// while still letting the caller observe whether the lowRisk handler set a
+// status (so it can distinguish "no token offered" from "token rejected").
+type discardingResponseWriter struct {
+	header http.Header
+	status int
+}
+
+func (d *discardingResponseWriter) Header() http.Header {
+	if d.header == nil {
+		d.header = http.Header{}
+	}
+	return d.header
+}
+
+func (d *discardingResponseWriter) Write(b []byte) (int, error) { return len(b), nil }
+func (d *discardingResponseWriter) WriteHeader(code int) {
+	if d.status == 0 {
+		d.status = code
+	}
+}

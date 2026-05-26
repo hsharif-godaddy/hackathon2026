@@ -48,6 +48,7 @@ on:
           - develop-media
           - develop-publish
           - develop-brand-book
+          - develop-dpp-handoff
       post_promotion:
         description: 'Triggered by promotion workflow (internal use)'
         required: false
