@@ -19,6 +19,7 @@ const {
   mockSetActiveChatTab,
   mockNavigatePreviewToRoute,
   mockIsHistoryDisabled,
+  mockActiveChatTab,
 } = vi.hoisted(() => ({
   mockSelectCommit: vi.fn().mockResolvedValue({ previewRoute: null }),
   mockSetSelectedCommitHash: vi.fn(),
@@ -27,6 +28,7 @@ const {
   // Boxed so individual tests can flip the value mid-render without losing
   // the reference the hook mock closes over.
   mockIsHistoryDisabled: { value: false },
+  mockActiveChatTab: { value: 'chat' as 'chat' | 'history' | 'medias' | 'analytics' | 'settings' },
 }));
 
 vi.mock('@/stores/useGitStore', () => ({
@@ -84,7 +86,10 @@ vi.mock('@/contexts/WebSocketContext', () => ({
 }));
 
 vi.mock('@/hooks/useChatTabs', () => ({
-  useChatTabs: () => ({ setActiveChatTab: mockSetActiveChatTab }),
+  useChatTabs: () => ({
+    activeChatTab: mockActiveChatTab.value,
+    setActiveChatTab: mockSetActiveChatTab,
+  }),
 }));
 
 vi.mock('@/hooks/useSound', () => ({
@@ -207,6 +212,7 @@ describe('StreamingMessageList', function packageTests() {
     mockSelectCommit.mockResolvedValue({ previewRoute: null });
     mockSetSelectedCommitHash.mockReset();
     mockIsHistoryDisabled.value = false;
+    mockActiveChatTab.value = 'chat';
     mockStreamingStore.isActivelyStreaming = false;
     mockUndoAction.isLocked = false;
     mockUndoAction.isPending = false;
@@ -1207,6 +1213,50 @@ describe('StreamingMessageList', function packageTests() {
 
       expect(mockSelectCommit).toHaveBeenCalledTimes(1);
       expect(mockSelectCommit).toHaveBeenCalledWith('test-app-123', 'second-commit');
+    });
+
+    it('cancels the deferred checkout when the user switches back to the chat tab before the lock clears', async () => {
+      // The click queues a preview-checkout because the history tab is
+      // locked (agent streaming). Before the lock releases, the user
+      // navigates back to the chat tab. ChatToolbar's autoReturnToMain
+      // then checks out main; the queued checkout must be canceled or it
+      // would fire when the lock later releases and race the
+      // autoReturnToMain, leaving the working tree on the older commit
+      // while the UI thinks it's on main — a git timeline de-sync.
+      mockIsHistoryDisabled.value = true;
+      mockActiveChatTab.value = 'chat';
+      const messages = [userMsg('u1'), assistantMsg('a1', 'older-commit')];
+
+      const { rerender } = renderWithProviders(<StreamingMessageList allMessages={messages} />);
+
+      await act(async () => {
+        fireEvent.click(screen.getByTestId('restore-a1'));
+      });
+
+      expect(mockSelectCommit).not.toHaveBeenCalled();
+
+      // handleRestore calls setActiveChatTab(HISTORY); the mocked setter
+      // doesn't flip the boxed value, so push the transition manually to
+      // mirror what useChatTabs does in the real app.
+      mockActiveChatTab.value = 'history';
+      await act(async () => {
+        rerender(<StreamingMessageList allMessages={messages} />);
+      });
+
+      // User navigates back to chat while the agent is still streaming.
+      mockActiveChatTab.value = 'chat';
+      await act(async () => {
+        rerender(<StreamingMessageList allMessages={messages} />);
+      });
+
+      // Lock then releases (agent finished). The pending hash was
+      // canceled by the tab switch, so no checkout fires.
+      mockIsHistoryDisabled.value = false;
+      await act(async () => {
+        rerender(<StreamingMessageList allMessages={messages} />);
+      });
+
+      expect(mockSelectCommit).not.toHaveBeenCalled();
     });
 
     it('does not re-fire a deferred checkout once the queue has been drained', async () => {

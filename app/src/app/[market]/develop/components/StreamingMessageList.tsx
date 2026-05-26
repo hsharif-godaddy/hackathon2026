@@ -86,7 +86,7 @@ export default function StreamingMessageList({
   const historyLoadingComplete = useHistoryLoadingComplete()
   const loadingPhase = useDevelopPageStore((state) => state.loadingPhase)
 
-  const { setActiveChatTab } = useChatTabs()
+  const { activeChatTab, setActiveChatTab } = useChatTabs()
   const selectCommitForPreview = useGitStore((s) => s.selectCommit)
   const setSelectedCommitHash = useGitStore((s) => s.setSelectedCommitHash)
   const { isDisabled: isHistoryDisabled } = useIsHistoryDisabled(appIdFromParams || '')
@@ -251,6 +251,18 @@ export default function StreamingMessageList({
     pendingPreviewHashRef.current = null
     await runPreviewCheckout(appIdFromParams, commitHash)
   }, [appIdFromParams, isHistoryDisabled, runPreviewCheckout, setActiveChatTab, setSelectedCommitHash])
+
+  // Cancel any queued preview checkout when the user navigates off the
+  // history tab. Without this, leaving History while the agent is still
+  // streaming leaves the deferred hash armed — it would fire when the
+  // lock releases and race with ChatToolbar's autoReturnToMain, leaving
+  // the working tree on the older commit while the UI thinks it's on
+  // main.
+  useEffect(() => {
+    if (activeChatTab !== ChatTab.HISTORY) {
+      pendingPreviewHashRef.current = null
+    }
+  }, [activeChatTab])
 
   // When the history-tab lock releases (e.g. the agent finishes streaming),
   // fire any deferred preview checkout that was queued by handleRestore.
