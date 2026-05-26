@@ -12,6 +12,7 @@ import { createForWorkspace } from '../workspace/index.js';
 import { fileUploadService } from '../services/FileUploadService.js';
 import { createSafePathBuilder } from '../utils/safe-path.js';
 import { isSourceFile, BINARY_FILE_REGEX } from '../utils/file-types.js';
+import { checkPreviewHealth } from '../utils/preview-health-check.js';
 
 
 // Constants for consistent text truncation
@@ -144,7 +145,7 @@ export class FileEditTool {
       }
 
       // Check if server is responding
-      const isHealthy = await this.checkServerHealth(app.port);
+      const isHealthy = await checkPreviewHealth(app.port);
 
       if (!isHealthy) {
         toolServerHealthEvents.unhealthy(logger, {
@@ -189,21 +190,6 @@ export class FileEditTool {
     }
   }
 
-  /**
-   * Check if a development server is responding on the given port
-   */
-  private async checkServerHealth(port: number): Promise<boolean> {
-    try {
-      const response = await fetch(`http://localhost:${port}`, {
-        signal: AbortSignal.timeout(3000),
-      });
-      await response.body?.cancel();
-
-      return response.status < 500;
-    } catch {
-      return false;
-    }
-  }
 
 
   /**

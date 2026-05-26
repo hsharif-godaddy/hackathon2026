@@ -94,6 +94,7 @@ import {
   buildDynamicDataMessage,
   buildTodoContextMessage,
   buildRagContextMessage,
+  buildMemoryContextMessage,
   collectImagesFromFormattedContexts,
   checkAndTriggerSummarization,
 } from './context-builders.js'
@@ -717,6 +718,11 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
             stateManager,
           }) : null
 
+          // Build memory context for persistent user preferences/decisions
+          const memoryContextMessage = await buildMemoryContextMessage({
+            appId: agentsAppContext.metadata?.appId as string,
+          })
+
           // Search KnowB with user's message for relevant documentation
           // CACHING: KnowB results are query-dependent (change every request), so they MUST be
           // inserted 'after_history' to preserve caching of stable prefix content.
@@ -728,9 +734,10 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
 
           logger.info('websocket.context.provider.success', {
             message: 'Built context messages',
-            messageCount: contextResult.contextMessages.length + (dynamicDataMessage ? 1 : 0) + (todoContextMessage ? 1 : 0) + (ragContextMessage ? 1 : 0),
+            messageCount: contextResult.contextMessages.length + (dynamicDataMessage ? 1 : 0) + (todoContextMessage ? 1 : 0) + (memoryContextMessage ? 1 : 0) + (ragContextMessage ? 1 : 0),
             hasDynamicData: !!dynamicDataMessage,
             hasTodoContext: !!todoContextMessage,
+            hasMemoryContext: !!memoryContextMessage,
             hasRagContext: !!ragContextMessage
           })
 
@@ -776,6 +783,15 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
               role: todoContextMessage.role as 'user' | 'system',
               content: todoContextMessage.content,
               insertionOrder: todoContextMessage.insertionOrder
+            })
+          }
+
+          // Add memory context if present (Segment 7.5: user preferences/decisions)
+          if (memoryContextMessage) {
+            allMessages.push({
+              role: memoryContextMessage.role as 'user' | 'system',
+              content: memoryContextMessage.content,
+              insertionOrder: memoryContextMessage.insertionOrder
             })
           }
 

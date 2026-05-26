@@ -64,6 +64,7 @@ function makeDeps(overrides: {
    */
   waitForCycleAdvance?: WaitForCycleAdvanceFn;
   restartBeaconWaitMs?: number;
+  healthCheckPreview?: (appId: string) => Promise<boolean>;
 } = {}) {
   const logger = { info: vi.fn(), warn: vi.fn() };
   const typecheckService = {
@@ -146,6 +147,9 @@ function makeDeps(overrides: {
   if (overrides.restartBeaconWaitMs !== undefined) {
     runtimeErrorsDeps.restartBeaconWaitMs = overrides.restartBeaconWaitMs;
   }
+  if (overrides.healthCheckPreview) {
+    runtimeErrorsDeps.healthCheckPreview = vi.fn(overrides.healthCheckPreview);
+  }
   return {
     deps: {
       typecheck: {
@@ -167,6 +171,7 @@ function makeDeps(overrides: {
       waitForCycleAdvance: runtimeErrorService.waitForCycleAdvance,
       hasUncommittedChanges: hasUncommittedChangesFn,
       restartPreview: restartPreviewMock,
+      healthCheckPreview: runtimeErrorsDeps.healthCheckPreview as ReturnType<typeof vi.fn> | undefined,
       tscCounters,
       rtCounters
     }
@@ -878,6 +883,86 @@ describe('createPostStreamValidator', () => {
         'agent.runtime_errors.exceeded',
         expect.any(Object)
       );
+    });
+  });
+
+  describe('runtime phase — preview health check (no cycle established)', () => {
+    it('returns continue with diagnostic when health check reports unhealthy', async () => {
+      const { deps, mocks } = makeDeps({
+        cycleEstablished: false,
+        healthCheckPreview: async () => false,
+      });
+      const validator = createPostStreamValidator(deps);
+      const result = await validator(makeArgs());
+      expect(result).toMatchObject({
+        continuationPrompt: expect.stringContaining('not responding'),
+        message: expect.stringContaining('not responding')
+      });
+      expect(mocks.healthCheckPreview).toHaveBeenCalledWith(APP_ID);
+      expect(mocks.logger.warn).toHaveBeenCalledWith(
+        'agent.runtime_errors.pass.health_check_failed',
+        expect.objectContaining({ appId: APP_ID, socketId: SOCKET_ID })
+      );
+      expect(mocks.rtCounters.get(SOCKET_ID)).toBe(1);
+    });
+
+    it('returns clean when health check reports healthy despite no cycle', async () => {
+      const { deps, mocks } = makeDeps({
+        cycleEstablished: false,
+        healthCheckPreview: async () => true,
+      });
+      const validator = createPostStreamValidator(deps);
+      const result = await validator(makeArgs());
+      expect(result).toBeUndefined();
+      expect(mocks.healthCheckPreview).toHaveBeenCalledWith(APP_ID);
+      expect(mocks.logger.warn).not.toHaveBeenCalledWith(
+        'agent.runtime_errors.pass.health_check_failed',
+        expect.any(Object)
+      );
+    });
+
+    it('treats a throwing health check as healthy (fail-open)', async () => {
+      const { deps, mocks } = makeDeps({
+        cycleEstablished: false,
+        healthCheckPreview: async () => { throw new Error('ECONNREFUSED'); },
+      });
+      const validator = createPostStreamValidator(deps);
+      const result = await validator(makeArgs());
+      expect(result).toBeUndefined();
+      expect(mocks.logger.warn).not.toHaveBeenCalledWith(
+        'agent.runtime_errors.pass.health_check_failed',
+        expect.any(Object)
+      );
+    });
+
+    it('does not call health check when cycle IS established', async () => {
+      const { deps, mocks } = makeDeps({
+        cycleEstablished: true,
+        healthCheckPreview: async () => false,
+      });
+      const validator = createPostStreamValidator(deps);
+      const result = await validator(makeArgs());
+      expect(result).toBeUndefined();
+      expect(mocks.healthCheckPreview).not.toHaveBeenCalled();
+    });
+
+    it('returns exhausted when health check fails and retry budget is spent', async () => {
+      const { deps, mocks } = makeDeps({
+        cycleEstablished: false,
+        healthCheckPreview: async () => false,
+        rtRetryCount: 2,
+        rtMaxRetries: 2,
+      });
+      const emitChunk = vi.fn(async (_text: string) => {});
+      const validator = createPostStreamValidator(deps);
+      const result = await validator(makeArgs({ emitChunk }));
+      expect(result).toMatchObject({
+        skipped: true,
+        reason: 'exhausted',
+        message: expect.stringContaining('not responding')
+      });
+      expect(emitChunk).toHaveBeenCalledTimes(1);
+      expect(emitChunk.mock.calls[0]![0]).toContain('not responding');
     });
   });
 });

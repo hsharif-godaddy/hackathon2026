@@ -40,6 +40,7 @@ import { DevSupervisorClientFactory } from '../utils/dev-supervisor-client-facto
 import { GitUtils } from '../utils/git.js';
 import { AppRepository } from '../database/repositories/AppRepository.js';
 import { createForWorkspace } from '../workspace/index.js';
+import { checkPreviewHealth } from '../utils/preview-health-check.js';
 
 type PhaseLogger = Pick<ILogger, 'info' | 'warn'>;
 
@@ -157,6 +158,15 @@ export interface RuntimeErrorPhaseDeps {
    * to 15s.
    */
   restartBeaconWaitMs?: number;
+  /**
+   * Optional. When provided, performs an HTTP health check against the
+   * preview when runtime errors report clean but no cycle was ever
+   * established (the beacon pipeline may be broken or the page crashed
+   * before error-client.ts loaded). Returns true if the preview is
+   * responding (status < 500), false otherwise. Fail-open: if this
+   * callback throws, the phase treats the preview as healthy.
+   */
+  healthCheckPreview?: (appId: string) => Promise<boolean>;
   logger: PhaseLogger;
 }
 
@@ -606,6 +616,41 @@ export async function runRuntimeErrorPhase(
         retryCount,
         durationMs: result.durationMs
       });
+
+      // Health check: verify the preview is actually responding.
+      // If the page crashed before error-client.ts loaded, the cycle
+      // beacon never fires and drainForTurn() returns empty, but the
+      // page is actually broken.
+      if (deps.healthCheckPreview) {
+        let isHealthy: boolean;
+        try {
+          isHealthy = await deps.healthCheckPreview(appId);
+        } catch {
+          isHealthy = true;
+        }
+        if (!isHealthy) {
+          logger.warn('agent.runtime_errors.pass.health_check_failed', {
+            socketId,
+            appId,
+            conversationId,
+            agentName,
+            retryCount,
+          });
+
+          if (retryCount >= maxRetries) {
+            return {
+              kind: 'exhausted',
+              message: '\n\n_The preview page is not responding. The dev server may have crashed. Check the terminal output and restart if needed._\n'
+            };
+          }
+
+          retryCounters.set(socketId, retryCount + 1);
+          return {
+            kind: 'continue',
+            message: '### Preview page not responding\n\nThe preview page returned a server error or is unreachable. The dev server may have crashed before the error reporting client loaded. Check your recent changes for top-level errors that would prevent the app from starting (e.g., syntax errors in entry files, missing imports, or module-level throws). Fix the root cause so the page loads successfully.\n'
+          };
+        }
+      }
     } else {
       logger.info('agent.runtime_errors.pass', {
         socketId,
@@ -876,6 +921,11 @@ export function buildSharedPostStreamValidator(logger: PhaseLogger): {
           return { success: false, error: 'aborted' }
         }
         return ds.restartProcess({ graceful: true })
+      },
+      healthCheckPreview: async (appId: string): Promise<boolean> => {
+        const app = appRepo.findById(appId)
+        if (!app?.port) return true
+        return checkPreviewHealth(app.port)
       },
       logger,
     },

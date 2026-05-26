@@ -1,17 +1,13 @@
 import { createTool, type Tool } from '@airo/ai-lib'
 import { z } from 'zod'
-import { MemoryService } from '../../services/memory-service.js'
-import { MemorySchemaRegistry } from '../../services/memory-schema-registry.js'
-import { MemoryContextProvider } from '../../services/memory-context-provider.js'
-import { registerPredefinedSchemas } from '../../services/memory-predefined-schemas.js'
+import {
+  memoryService,
+  memorySchemaRegistry as schemaRegistry,
+  memoryContextProvider as contextProvider,
+} from '../../services/memory-singletons.js'
 import { AppRepository } from '../../database/repositories/AppRepository.js'
 
-const memoryService = new MemoryService()
-const schemaRegistry = new MemorySchemaRegistry()
-const contextProvider = new MemoryContextProvider(memoryService, schemaRegistry)
 const appRepo = new AppRepository()
-
-registerPredefinedSchemas(schemaRegistry)
 
 /**
  * Memory Tool for AI-Lib

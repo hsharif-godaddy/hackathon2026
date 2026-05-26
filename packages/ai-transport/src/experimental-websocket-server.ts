@@ -2871,11 +2871,12 @@ export class WebSocketServer {
       return null
     }
 
-    // Handoff occurred - get the prompt
-    const handoffPrompt = this.config.stateManager.getLastHandoffPrompt?.(socketId)
-    if (!handoffPrompt) {
-      this.logger.warn('handoff.no_prompt', { newAgentName })
-      return null
+    // Handoff occurred - get the prompt (fallback to 'Continue' if not stored,
+    // matching SSE behavior in MessageExecutionService.ts)
+    const storedPrompt = this.config.stateManager.getLastHandoffPrompt?.(socketId)
+    const handoffPrompt = storedPrompt || 'Continue'
+    if (!storedPrompt) {
+      this.logger.warn('handoff.no_prompt_fallback', { newAgentName, fallback: 'Continue' })
     }
 
     // Clear the prompt so it's not reused

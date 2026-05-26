@@ -3,6 +3,7 @@ import { AppRepository } from '../database/repositories/AppRepository.js'
 import { knowBDriver } from '../tools/ai-lib-tools/drivers/knowb-driver.js'
 import { todoListIdFromContextAttachments } from '../utils/todo-list-id-from-context-attachments.js'
 import { getTodoContextManager } from '../services/TodoContextManager.js'
+import { memoryContextProvider } from '../services/memory-singletons.js'
 import { BudgetOverride } from '@airo/ai-grants'
 import { logger } from '../logging/index.js'
 
@@ -231,6 +232,33 @@ export async function buildRagContextMessage(opts: {
       appId,
       sessionId,
       query: userMessage.substring(0, 100)
+    })
+    return null
+  }
+}
+
+export async function buildMemoryContextMessage(opts: {
+  appId: string
+}): Promise<ContextMessage | null> {
+  const { appId } = opts
+  if (!appId) return null
+
+  try {
+    const app = appRepo.findById(appId)
+    if (!app?.path) return null
+
+    const contextString = await memoryContextProvider.getContextString(app.path, appId)
+    if (!contextString) return null
+
+    return {
+      role: 'user',
+      content: contextString,
+      insertionOrder: 'after_history'
+    }
+  } catch (err) {
+    logger.warn('context.memory.build_failed', {
+      appId,
+      error: err instanceof Error ? err.message : String(err),
     })
     return null
   }

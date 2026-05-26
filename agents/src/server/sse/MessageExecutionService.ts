@@ -63,6 +63,7 @@ import {
 } from '../message-lifecycle.js'
 import {
   buildDynamicDataMessage, buildTodoContextMessage, buildRagContextMessage,
+  buildMemoryContextMessage,
   collectImagesFromFormattedContexts, dataUrlsToProcessedFiles,
   checkAndTriggerSummarization,
 } from '../context-builders.js'
@@ -923,7 +924,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
     const metadata = (executionContext.metadata ?? {}) as Record<string, unknown>
     const todoListContext = executionContext['todoListContext']
 
-    const [ragContextMessage, todoContextMessage, historyMessages] = await Promise.all([
+    const [ragContextMessage, todoContextMessage, memoryContextMessage, historyMessages] = await Promise.all([
       buildRagContextMessage({ userMessage: message, appId, sessionId: sseSocketId }),
       buildTodoContextMessage({
         sessionId: sseSocketId, appId, metadata,
@@ -932,6 +933,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
           : undefined,
         stateManager: this.deps.stateManager,
       }),
+      buildMemoryContextMessage({ appId }),
       this.deps.loadConversationHistory(conversationId, appId, agentName).catch(err => {
         logger.warn('sse.execution.history_load_failed', { appId, conversationId, ...errorFields(err) })
         return [] as ConversationMessage[]
@@ -939,7 +941,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
     ])
     const dynamicDataMessage = buildDynamicDataMessage(metadata)
 
-    const extraAfterHistory = [ragContextMessage, todoContextMessage, dynamicDataMessage]
+    const extraAfterHistory = [ragContextMessage, todoContextMessage, memoryContextMessage, dynamicDataMessage]
       .filter((m): m is NonNullable<typeof m> => m != null)
       .map(m => ({ role: m.role, content: m.content }))
 
