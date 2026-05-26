@@ -954,11 +954,14 @@ function migrateSourceTypeConstraint(db: Database): void {
       });
     }
 
-    // SQLite requires table recreation to modify CHECK constraint
-    // Note: existing git data is NOT preserved - only zip import data is migrated
-    db.exec(`
-      BEGIN TRANSACTION;
-
+    // SQLite requires table recreation to modify CHECK constraint.
+    // Note: existing git data is NOT preserved - only zip import data is migrated.
+    // Wrapped in db.transaction() so any mid-script failure auto-rolls-back —
+    // a hand-rolled `db.exec("BEGIN; …; COMMIT")` would leave the connection
+    // sitting on an open transaction (orphan tx → SQLITE_LOCKED on every
+    // subsequent wal_checkpoint, and writes lost on close).
+    db.transaction(() => {
+      db.exec(`
       -- Create new table with updated constraint (no 'git', only 'zip', 'git_pull', 'git_push')
       CREATE TABLE import_jobs_new (
         id TEXT PRIMARY KEY,
@@ -1015,9 +1018,8 @@ function migrateSourceTypeConstraint(db: Database): void {
       CREATE INDEX IF NOT EXISTS idx_import_jobs_app_id ON import_jobs(app_id);
       CREATE INDEX IF NOT EXISTS idx_import_jobs_status ON import_jobs(status);
       CREATE INDEX IF NOT EXISTS idx_import_jobs_created_at ON import_jobs(created_at);
-
-      COMMIT;
     `);
+    })();
 
     logger.info('database.migration.source-type-constraint.success', {
       message: 'Successfully updated source_type CHECK constraint (git data discarded)',
@@ -1036,13 +1038,15 @@ function migrateSourceTypeConstraint(db: Database): void {
 /**
  * Migration: Update status CHECK constraint to add 'pushing' and 'pulling' statuses
  *
- * SQLite doesn't support ALTER COLUMN, so we need to recreate the table.
- * This is safe because we copy all data and use a transaction.
+ * SQLite doesn't support ALTER COLUMN, so we need to recreate the table. The
+ * recreation is wrapped in `db.transaction()`, which copies all rows atomically.
  *
- * 1. Transaction rollback: SQLite automatically rolls back failed transactions when
- *    an error occurs within BEGIN/COMMIT. We rely on this built-in behavior rather
- *    than explicit ROLLBACK handling. If db.exec() throws, SQLite guarantees the
- *    database remains in its pre-transaction state.
+ * 1. Transaction rollback: The table recreation is wrapped in `db.transaction()`,
+ *    which guarantees ROLLBACK on throw via better-sqlite3's C API. **Do not**
+ *    revert to `db.exec("BEGIN; ...; COMMIT")` — when a statement inside an exec
+ *    script throws after BEGIN, better-sqlite3 leaves the connection holding an
+ *    orphan transaction (SQLITE_LOCKED on every subsequent wal_checkpoint, writes
+ *    silently lost on close). See PR #4150.
  *
  * 2. Concurrent migration safety: The test-insert-delete check is not atomic, but
  *    SQLite's file-level locking prevents concurrent writes to the same database.
@@ -1095,10 +1099,11 @@ function migrateImportJobsStatusConstraint(db: Database): void {
       });
     }
 
-    // SQLite requires table recreation to modify CHECK constraint
-    db.exec(`
-      BEGIN TRANSACTION;
-
+    // SQLite requires table recreation to modify CHECK constraint.
+    // Wrapped in db.transaction() so any mid-script failure auto-rolls-back —
+    // see migrateSourceTypeConstraint for the orphan-transaction hazard this avoids.
+    db.transaction(() => {
+      db.exec(`
       -- Create new table with updated status constraint (includes pushing and pulling)
       CREATE TABLE import_jobs_new (
         id TEXT PRIMARY KEY,
@@ -1158,9 +1163,8 @@ function migrateImportJobsStatusConstraint(db: Database): void {
       CREATE INDEX IF NOT EXISTS idx_import_jobs_app_id ON import_jobs(app_id);
       CREATE INDEX IF NOT EXISTS idx_import_jobs_status ON import_jobs(status);
       CREATE INDEX IF NOT EXISTS idx_import_jobs_created_at ON import_jobs(created_at);
-
-      COMMIT;
     `);
+    })();
 
     logger.info('database.migration.status-constraint.success', {
       message: 'Successfully updated status CHECK constraint to include pushing and pulling',
@@ -1169,10 +1173,10 @@ function migrateImportJobsStatusConstraint(db: Database): void {
       cleanupMigrationProbeRows(db);
     }
   } catch (err) {
-    // Error handling: Log and continue (don't throw). This matches the pattern used
-    // by all other migrations in this file. SQLite's automatic transaction rollback
-    // ensures the database remains consistent. Check logs for 'database.migration.
-    // status-constraint.failed' to detect and manually resolve migration failures.
+    // Error handling: Log and continue (don't throw). db.transaction() above
+    // guarantees rollback on throw, so the database is consistent; check logs
+    // for 'database.migration.status-constraint.failed' to detect and resolve
+    // migration failures.
     logger.error('database.migration.status-constraint.failed', {
       error: err instanceof Error ? err.message : String(err),
     });
