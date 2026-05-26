@@ -8,6 +8,12 @@ import {
 
 import { checkBmsMigration, shouldCheckBmsMigration } from '@/lib/bms-migration';
 import { getBudgetServiceClient } from '@/lib/budget-service/client';
+import {
+  fetchHivemindCohorts,
+  getBudgetServiceCohort,
+  isBudgetServiceExperimentTreatment,
+  logBudgetServiceExperimentTriggered,
+} from '@/lib/budget-service-experiment';
 import { adaptBudgetToGrants } from '@/lib/credit-adapter';
 import { type CustomerAuthContext, withCustomerAuth } from '@/lib/customer-auth';
 import { AiroHttpError, AiroMgmtClient } from '@/lib/mgmt-airo';
@@ -22,9 +28,9 @@ export const dynamic = 'force-dynamic';
  * GET /api/credits/grants - Get credit grants for a subscription
  *
  * Returns credit grants (monthly plan and credit packs) for a subscription.
- * When BMS is enabled (flag ON + subscription.bmsBudgetId present + budget client
- * available), data comes from BMS and is adapted to CreditGrant[] format for
- * backwards compatibility. Otherwise, data comes from the legacy mgmt-airo grants API.
+ * When BMS is enabled (app-builder-budget-service switchboard ON + Hivemind cohort `bms`
+ * for new users, or app-builder-bms-existing for migrated users + subscription ready),
+ * data comes from BMS and is adapted to CreditGrant[] format. Otherwise, legacy grants API.
  *
  * Query Parameters:
  * - subscriptionId: The subscription ID to get grants for (required)
@@ -78,15 +84,33 @@ export const GET = withCustomerAuth(async (
         error: error instanceof Error ? error.message : String(error),
       });
     }
+    const hivemindCohorts = await fetchHivemindCohorts(request);
+    const budgetServiceCohort = getBudgetServiceCohort(hivemindCohorts);
+    const budgetServiceExperimentEnabled = isBudgetServiceExperimentTreatment(
+      isBudgetFlagEnabled,
+      budgetServiceCohort,
+    );
+
+    if (isBudgetFlagEnabled) {
+      logBudgetServiceExperimentTriggered(budgetServiceCohort, { subscriptionId });
+      if (!budgetServiceExperimentEnabled) {
+        logger.info('credits.grants.api.experiment-grants-default', {
+          subscriptionId,
+          cohortId: budgetServiceCohort ?? 'none',
+        });
+      }
+    }
+
     const budgetClient = getBudgetServiceClient(request.headers);
 
     let grants;
     let source: CreditsSource;
 
-    // Only fetch subscription when BMS path is possible (either flag enabled + client available)
-    // budgetServiceEnabled: for NEW users created with BMS budgets
-    // bmsExistingEnabled: for EXISTING users being migrated to BMS
-    const bmsMigrationFlags = { budgetServiceEnabled: isBudgetFlagEnabled, bmsExistingEnabled: isBmsExistingEnabled };
+    const bmsMigrationFlags = {
+      budgetServiceEnabled: budgetServiceExperimentEnabled,
+      bmsExistingEnabled: isBmsExistingEnabled,
+    };
+
     if (shouldCheckBmsMigration(bmsMigrationFlags) && budgetClient) {
       const subscription = await mgmtClient.getSubscription(subscriptionId, { includeAttributes: true });
 

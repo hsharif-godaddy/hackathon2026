@@ -1,3 +1,4 @@
+import { isBudgetServiceExperimentTreatment } from '@/lib/budget-service-experiment';
 import { AIRO_OWNER_PRODUCTS, AIRO_PRODUCT_IDS, AiroMgmtClient, getOwnerProductFromProductId } from '@/lib/mgmt-airo';
 import { logger } from '@/lib/request-context';
 import { checkSwitchboardFlag } from '@/lib/switchboard/server';
@@ -202,6 +203,7 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
         }
       }
 
+      const bmsActive = isBudgetServiceExperimentTreatment(isBmsEnabled, params.budgetServiceCohort);
       const response = await client.signup({
         datacenter: resolvedDatacenter,
         isTrial: true,
@@ -216,14 +218,14 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
             ...(params.fqdn && { fqdn: params.fqdn })
           }
         }],
-        bmsActive: isBmsEnabled,
+        bmsActive,
         ...(params.itc && { itc: params.itc }),
         ...(params.fqdn && { fqdn: params.fqdn }),
       });
 
       logger.info('v2-control-plane.create-site.signup.success', {
         jobId: response.statusJobId,
-        bmsActive: isBmsEnabled,
+        bmsActive,
         fqdn: !!params.fqdn,
       }, {
         tags: ['security']

@@ -7,6 +7,14 @@ vi.mock('@/lib/request-context', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }
 }));
 
+const mockFetchHivemindCohorts = vi.fn().mockResolvedValue(undefined);
+const mockGetBudgetServiceCohort = vi.fn().mockReturnValue(undefined);
+
+vi.mock('@/lib/budget-service-experiment', () => ({
+  fetchHivemindCohorts: (...args: unknown[]) => mockFetchHivemindCohorts(...args),
+  getBudgetServiceCohort: (...args: unknown[]) => mockGetBudgetServiceCohort(...args),
+}));
+
 const mockCreateSite = vi.fn();
 
 vi.mock('@/lib/customer-auth', () => ({
@@ -39,6 +47,40 @@ function makeRequest(body: Record<string, unknown>) {
     body: JSON.stringify(body),
   });
 }
+
+describe('/api/sites/quick-create budget service cohort', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockCreateSite.mockResolvedValue({
+      success: true, siteId: 'app-1', name: 'Test', status: 'active',
+      type: 'job', account_id: 'acc-1',
+    });
+  });
+
+  it('passes resolved cohort to createSite', async () => {
+    mockFetchHivemindCohorts.mockResolvedValue({ 'airo-build-budget-service': 'on' });
+    mockGetBudgetServiceCohort.mockReturnValue('on');
+
+    const { POST } = await import('../route');
+    await POST(makeRequest({ initialPrompt: 'test' }));
+
+    expect(mockCreateSite).toHaveBeenCalledWith(
+      expect.objectContaining({ budgetServiceCohort: 'on' })
+    );
+  });
+
+  it('passes undefined cohort when not in experiment', async () => {
+    mockFetchHivemindCohorts.mockResolvedValue(undefined);
+    mockGetBudgetServiceCohort.mockReturnValue(undefined);
+
+    const { POST } = await import('../route');
+    await POST(makeRequest({ initialPrompt: 'test' }));
+
+    expect(mockCreateSite).toHaveBeenCalledWith(
+      expect.objectContaining({ budgetServiceCohort: undefined })
+    );
+  });
+});
 
 describe('/api/sites/quick-create ITC validation', () => {
   beforeEach(() => {

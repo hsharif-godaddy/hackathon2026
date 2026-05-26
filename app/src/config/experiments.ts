@@ -13,6 +13,8 @@ export const EXPERIMENT_IDS = {
   initialAgent: 'airo-build-initial-agent',
   /** Build overlay question: show "Action needed" text when askQuestion is pending during initial build */
   buildOverlayQuestion: 'aab_first_build_action_needed_copy',
+  /** Budget service: allocates new users to BMS (treatment) or grants (control). Default is grants. */
+  budgetService: 'airo-app-builder-budget-service-launch',
 } as const
 
 /**
@@ -30,6 +32,12 @@ export const INITIAL_AGENT_COHORT_TO_PROFILE: Readonly<Record<string, string>> =
   prompt_enhancer: 'prompt-enhancer',
   initial_agent_design_system: 'initial-agent-design-system',
 }
+
+/** Hivemind treatment cohort — BMS for new users (budgetService experiment). */
+export const BUDGET_SERVICE_BMS_COHORT = 'on' as const
+
+/** Hivemind control cohort — legacy grants for new users (budgetService experiment). */
+export const BUDGET_SERVICE_GRANTS_COHORT = 'off' as const
 
 export const INELIGIBLE_COHORT = 'ineligible' as const
 

@@ -786,7 +786,7 @@ describe('agent-token', function packageTests() {
         );
       });
 
-      it('should use BMS for NEW user (no migration attribute) when budgetServiceEnabled is true', async function budgetServiceNewUser() {
+      it('should use BMS for NEW user when budgetServiceEnabled is true and Hivemind cohort is on', async function budgetServiceNewUser() {
         mockAuthenticateCustomer.mockResolvedValue({
           isAuthenticated: true,
           user: MOCK_USER,
@@ -798,16 +798,15 @@ describe('agent-token', function packageTests() {
           Promise.resolve(flag === 'app-builder-budget-service' || flag === 'app-builder-bms-existing')
         );
         mockControlPlaneAdapter.getSite.mockResolvedValue({ subscription_id: 'sub-123' });
-        // Has bmsBudgetId but no migration attribute = NEW user
         mockMgmtClient.getSubscription.mockResolvedValue({
           bmsBudgetId: 'budget-123',
           attributes: []
         });
+        mockGetExperimentCohorts.mockResolvedValue({ 'airo-app-builder-budget-service-launch': { cohortId: 'on' } });
 
         const request = createMockRequest({ siteId: MOCK_SITE_ID });
         const response = await POST(request);
 
-        // NEW user with budgetServiceEnabled=true → should use BMS
         expect(response.status).toBe(200);
         expect(mockJWTService.getToken).toHaveBeenCalledWith(
           expect.objectContaining({ budgetServiceEnabled: true, bmsBudgetId: 'budget-123' })
@@ -1237,10 +1236,146 @@ describe('agent-token', function packageTests() {
         expect(mockJWTService.getToken).toHaveBeenCalledWith(
           expect.objectContaining({ agentProfile: 'initial-agent-v3' })
         );
-        expect(mockLogger.warn).toHaveBeenCalledWith('hivemind.experiment.error', expect.objectContaining({
-          experimentId: EXPERIMENT_ID,
+        expect(mockLogger.warn).toHaveBeenCalledWith('hivemind.cohorts.fetch-error', expect.objectContaining({
           error: 'switchboard unreachable',
         }));
+      });
+    });
+
+    describe('Hivemind budget-service experiment', function budgetExperimentTests() {
+      const BUDGET_EXPERIMENT_ID = 'airo-app-builder-budget-service-launch';
+
+      function setupNewBmsUser(): void {
+        mockAuthenticateCustomer.mockResolvedValue({
+          isAuthenticated: true,
+          user: MOCK_USER,
+          jwt: 'user-jwt-token'
+        });
+        mockControlPlaneAdapter.appExists.mockResolvedValue(true);
+        mockCheckSwitchboardFlag.mockImplementation((flag: string) =>
+          Promise.resolve(flag === 'app-builder-budget-service' || flag === 'app-builder-bms-existing')
+        );
+        mockControlPlaneAdapter.getSite.mockResolvedValue({ subscription_id: 'sub-123' });
+        mockMgmtClient.getSubscription.mockResolvedValue({
+          bmsBudgetId: 'budget-123',
+          attributes: []
+        });
+      }
+
+      function setupExistingBmsUser(): void {
+        mockAuthenticateCustomer.mockResolvedValue({
+          isAuthenticated: true,
+          user: MOCK_USER,
+          jwt: 'user-jwt-token'
+        });
+        mockControlPlaneAdapter.appExists.mockResolvedValue(true);
+        mockCheckSwitchboardFlag.mockImplementation((flag: string) =>
+          Promise.resolve(flag === 'app-builder-budget-service' || flag === 'app-builder-bms-existing')
+        );
+        mockControlPlaneAdapter.getSite.mockResolvedValue({ subscription_id: 'sub-123' });
+        mockMgmtClient.getSubscription.mockResolvedValue({
+          bmsBudgetId: 'budget-456',
+          attributes: [{ key: 'bms-migration', value: { migrationDate: '2026-05-05T00:00:00Z' } }]
+        });
+      }
+
+      it('new user in on cohort → budgetServiceEnabled true', async function onCohort() {
+        setupNewBmsUser();
+        mockGetExperimentCohorts.mockResolvedValue({ [BUDGET_EXPERIMENT_ID]: { cohortId: 'on' } });
+
+        const response = await POST(createMockRequest({ siteId: MOCK_SITE_ID }));
+
+        expect(response.status).toBe(200);
+        expect(mockJWTService.getToken).toHaveBeenCalledWith(
+          expect.objectContaining({ budgetServiceEnabled: true, bmsBudgetId: 'budget-123' })
+        );
+        expect(mockLogger.info).toHaveBeenCalledWith('hivemind.experiment.triggered', expect.objectContaining({
+          experimentId: BUDGET_EXPERIMENT_ID,
+          cohortId: 'on',
+        }));
+      });
+
+      it('new user in off cohort → budgetServiceEnabled false', async function offCohort() {
+        setupNewBmsUser();
+        mockGetExperimentCohorts.mockResolvedValue({ [BUDGET_EXPERIMENT_ID]: { cohortId: 'off' } });
+
+        const response = await POST(createMockRequest({ siteId: MOCK_SITE_ID }));
+
+        expect(response.status).toBe(200);
+        expect(mockJWTService.getToken).toHaveBeenCalledWith(
+          expect.objectContaining({ budgetServiceEnabled: false, bmsBudgetId: undefined })
+        );
+        expect(mockLogger.info).toHaveBeenCalledWith('agent-token.bms-experiment-grants-default', expect.objectContaining({
+          cohortId: 'off',
+          reason: 'cohort-not-on',
+        }));
+      });
+
+      it('new user with no cohort (default) → budgetServiceEnabled false (grants default)', async function noCohort() {
+        setupNewBmsUser();
+        mockGetExperimentCohorts.mockResolvedValue({});
+
+        const response = await POST(createMockRequest({ siteId: MOCK_SITE_ID }));
+
+        expect(response.status).toBe(200);
+        expect(mockJWTService.getToken).toHaveBeenCalledWith(
+          expect.objectContaining({ budgetServiceEnabled: false, bmsBudgetId: undefined })
+        );
+      });
+
+      it.each(['ineligible', 'unassigned', 'not_bucketed'])(
+        'new user with excluded cohort %s → budgetServiceEnabled false (grants default)',
+        async function excluded(cohort) {
+          setupNewBmsUser();
+          mockGetExperimentCohorts.mockResolvedValue({ [BUDGET_EXPERIMENT_ID]: cohort });
+
+          const response = await POST(createMockRequest({ siteId: MOCK_SITE_ID }));
+
+          expect(response.status).toBe(200);
+          expect(mockJWTService.getToken).toHaveBeenCalledWith(
+            expect.objectContaining({ budgetServiceEnabled: false, bmsBudgetId: undefined })
+          );
+          expect(mockLogger.info).toHaveBeenCalledWith('agent-token.bms-experiment-grants-default', expect.objectContaining({
+            cohortId: cohort,
+            reason: 'cohort-not-on',
+          }));
+        }
+      );
+
+      it('existing migrated user is unaffected by off cohort', async function existingUserUnaffected() {
+        setupExistingBmsUser();
+        mockGetExperimentCohorts.mockResolvedValue({ [BUDGET_EXPERIMENT_ID]: { cohortId: 'off' } });
+
+        const response = await POST(createMockRequest({ siteId: MOCK_SITE_ID }));
+
+        expect(response.status).toBe(200);
+        expect(mockJWTService.getToken).toHaveBeenCalledWith(
+          expect.objectContaining({ budgetServiceEnabled: true, bmsBudgetId: 'budget-456' })
+        );
+      });
+
+      it('existing migrated user is unaffected when no cohort assigned', async function existingNoCohort() {
+        setupExistingBmsUser();
+        mockGetExperimentCohorts.mockResolvedValue({});
+
+        const response = await POST(createMockRequest({ siteId: MOCK_SITE_ID }));
+
+        expect(response.status).toBe(200);
+        expect(mockJWTService.getToken).toHaveBeenCalledWith(
+          expect.objectContaining({ budgetServiceEnabled: true, bmsBudgetId: 'budget-456' })
+        );
+      });
+
+      it('getExperimentCohorts rejection → new user defaults to grants', async function cohortFetchFails() {
+        setupNewBmsUser();
+        mockGetExperimentCohorts.mockRejectedValue(new Error('switchboard unreachable'));
+
+        const response = await POST(createMockRequest({ siteId: MOCK_SITE_ID }));
+
+        expect(response.status).toBe(200);
+        expect(mockJWTService.getToken).toHaveBeenCalledWith(
+          expect.objectContaining({ budgetServiceEnabled: false, bmsBudgetId: undefined })
+        );
       });
     });
   });

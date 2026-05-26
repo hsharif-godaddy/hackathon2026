@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+import { fetchHivemindCohorts, getBudgetServiceCohort } from '@/lib/budget-service-experiment';
 import { getControlPlaneAdapter } from '@/lib/control-plane';
 import { CreateSiteParams } from '@/lib/control-plane/types';
 import {
@@ -99,6 +100,9 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
     // Use control plane adapter
     const adapter = getControlPlaneAdapter();
 
+    const hivemindCohorts = await fetchHivemindCohorts(request);
+    const budgetServiceCohort = getBudgetServiceCohort(hivemindCohorts);
+
     const createSiteParams: CreateSiteParams = {
       accountId: account_id,
       prompt: normalizedPrompt,
@@ -106,6 +110,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       productId,
       marketId,
       headers: request.headers,
+      budgetServiceCohort,
       ...(validItc && { itc: validItc }),
       ...(validDatacenter && { datacenter: validDatacenter }),
       ...(validFqdn && { fqdn: validFqdn }),

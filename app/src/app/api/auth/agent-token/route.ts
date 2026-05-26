@@ -13,6 +13,14 @@ import { isEmployeeAuthType, type ProductType } from '@airo/shared/auth';
 
 import { EXPERIMENT_IDS, INITIAL_AGENT_COHORT_TO_PROFILE } from '@/config/experiments';
 import { checkBmsMigration, getMigrationDate, shouldCheckBmsMigration } from '@/lib/bms-migration';
+import {
+  fetchHivemindCohorts,
+  getBudgetServiceCohort,
+  isBudgetServiceExperimentTreatment,
+  logBudgetServiceExperimentTriggered,
+  logBudgetServiceGrantsDefault,
+  normalizeHivemindCohort,
+} from '@/lib/budget-service-experiment';
 import { getControlPlaneAdapter } from '@/lib/control-plane';
 import { createCustomerAuthError, type CustomerAuthContext, customerHasAccount, type CustomerUser, withCustomerAuth } from '@/lib/customer-auth';
 import { getJWTService } from '@/lib/jwt-service';
@@ -25,7 +33,6 @@ import { checkSwitchboardFlag, checkSwitchboardValue } from '@/lib/switchboard/s
 import { trafficPathwaySessionId } from '@/utils/traffic-signals';
 import { visitorIdFromVisitorCookieRaw } from '@/utils/visitor-id';
 import { getSiteValidationFromCache, setSiteValidationCache } from './site-validation-cache';
-import gasket from '../../../../../gasket';
 
 export interface CreateAgentTokenRequest {
   siteId: string;
@@ -357,6 +364,29 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       googleReviewsEnabled = resolveBooleanFlag(googleReviewsResult, 'agent-token.google-reviews-flag-check-failed', body.siteId, user.customerId);
     }
 
+    const hivemindCohorts = await fetchHivemindCohorts(request);
+    const budgetServiceSwitchboardEnabled = budgetServiceEnabled;
+    const budgetServiceCohort = getBudgetServiceCohort(hivemindCohorts);
+    const budgetServiceExperimentEnabled = isBudgetServiceExperimentTreatment(
+      budgetServiceSwitchboardEnabled,
+      budgetServiceCohort,
+    );
+    if (budgetServiceSwitchboardEnabled) {
+      logBudgetServiceExperimentTriggered(budgetServiceCohort, {
+        siteId: body.siteId,
+        customerId: user.customerId,
+      });
+      if (!budgetServiceExperimentEnabled) {
+        logBudgetServiceGrantsDefault(budgetServiceCohort, {
+          siteId: body.siteId,
+          customerId: user.customerId,
+          reason: 'cohort-not-on',
+        });
+      }
+    }
+    // JWT must reflect experiment treatment, not raw switchboard (existing-user path uses bmsExisting).
+    budgetServiceEnabled = budgetServiceExperimentEnabled;
+
     // Hivemind initial-agent experiment: cohort → agent profile.
     //
     // Precedence (top wins):
@@ -372,33 +402,20 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
     //
     // We resolve the cohort regardless of whether we end up applying the mapping so
     // that every assigned user is logged as triggered for the experiment denominator.
-    try {
-      const getExperimentCohorts = gasket.actions.getExperimentCohorts;
-      if (typeof getExperimentCohorts === 'function') {
-        const headersObj: Record<string, string> = {};
-        request.headers.forEach((value, key) => { headersObj[key] = value; });
-        const cohorts = await getExperimentCohorts({ headers: headersObj });
-        const cohort = cohorts?.[EXPERIMENT_IDS.initialAgent] as string | undefined;
-        if (cohort && cohort !== 'ineligible' && cohort !== 'unassigned' && cohort !== 'not_bucketed') {
-          logger.info('hivemind.experiment.triggered', {
-            experimentId: EXPERIMENT_IDS.initialAgent,
-            cohortId: cohort,
-            siteId: body.siteId,
-            customerId: user.customerId,
-          });
-          if (!agentProfile) {
-            const mappedProfile = INITIAL_AGENT_COHORT_TO_PROFILE[cohort];
-            if (mappedProfile) {
-              agentProfile = mappedProfile;
-            }
-          }
+    const initialAgentCohort = normalizeHivemindCohort(hivemindCohorts?.[EXPERIMENT_IDS.initialAgent]);
+    if (initialAgentCohort && initialAgentCohort !== 'ineligible' && initialAgentCohort !== 'unassigned' && initialAgentCohort !== 'not_bucketed') {
+      logger.info('hivemind.experiment.triggered', {
+        experimentId: EXPERIMENT_IDS.initialAgent,
+        cohortId: initialAgentCohort,
+        siteId: body.siteId,
+        customerId: user.customerId,
+      });
+      if (!agentProfile) {
+        const mappedProfile = INITIAL_AGENT_COHORT_TO_PROFILE[initialAgentCohort];
+        if (mappedProfile) {
+          agentProfile = mappedProfile;
         }
       }
-    } catch (error) {
-      logger.warn('hivemind.experiment.error', {
-        experimentId: EXPERIMENT_IDS.initialAgent,
-        error: error instanceof Error ? error.message : String(error),
-      });
     }
 
     // Searchable log of the resolved agent profile from Switchboard/Hivemind.
@@ -433,7 +450,10 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
     // Either flag enables BMS: budgetServiceEnabled (new users) OR bmsExistingEnabled (migrated users)
     // If fetch fails, bmsBudgetId stays undefined (cost assigned to GoDaddy)
     let bmsBudgetId: string | undefined;
-    const bmsMigrationFlags = { budgetServiceEnabled, bmsExistingEnabled };
+    const bmsMigrationFlags = {
+      budgetServiceEnabled: budgetServiceExperimentEnabled,
+      bmsExistingEnabled,
+    };
     if (shouldCheckBmsMigration(bmsMigrationFlags) && subscriptionId) {
       try {
         const baseUrl = process.env.MGMT_AIRO_BASE_URL || 'https://mgmt.nstk.net';
@@ -450,6 +470,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
             customerId: user.customerId,
             subscriptionId,
             bmsBudgetId,
+            bmsMigrationPath: migrationResult.path,
             migrationDate: getMigrationDate(subscription),
           });
         } else {
@@ -472,6 +493,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
         budgetServiceEnabled = false;
       }
     }
+
     // Enforce dependency: enableAssessmentOverride requires enableAssessmentAgent
     // If agent is disabled, override can't function (classification is short-circuited)
     enableAssessmentOverride = enableAssessmentAgent && enableAssessmentOverride;

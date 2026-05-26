@@ -589,7 +589,7 @@ describe('V2ControlPlaneAdapter', () => {
         delete process.env.ALWAYS_NEW_SUBSCRIPTION;
       });
 
-      it('should pass bmsActive: true when headers provided and flag enabled', async () => {
+      it('should pass bmsActive: true when headers provided, flag enabled, and cohort is on', async () => {
         mockCheckSwitchboardFlag.mockResolvedValue(true);
 
         mockFetch.mockResolvedValueOnce({
@@ -605,7 +605,8 @@ describe('V2ControlPlaneAdapter', () => {
           accountId: MOCK_ACCOUNT_ID,
           prompt: MOCK_PROMPT,
           jwt: MOCK_JWT,
-          headers: mockHeaders
+          headers: mockHeaders,
+          budgetServiceCohort: 'on',
         });
 
         // Verify checkSwitchboardFlag was called with correct flag name
@@ -618,6 +619,31 @@ describe('V2ControlPlaneAdapter', () => {
         const signupCall = mockFetch.mock.calls[0];
         const requestBody = JSON.parse(signupCall[1].body);
         expect(requestBody.bmsActive).toBe(true);
+      });
+
+      it('should pass bmsActive: false when flag enabled but cohort is not treatment', async () => {
+        mockCheckSwitchboardFlag.mockResolvedValue(true);
+
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            statusJobId: MOCK_JOB_ID,
+            subscriptionId: 'new-sub-xyz789'
+          })
+        });
+
+        const mockHeaders = new Headers({ 'x-test': 'value' });
+        await adapter.createSite({
+          accountId: MOCK_ACCOUNT_ID,
+          prompt: MOCK_PROMPT,
+          jwt: MOCK_JWT,
+          headers: mockHeaders,
+          budgetServiceCohort: 'off',
+        });
+
+        const signupCall = mockFetch.mock.calls[0];
+        const requestBody = JSON.parse(signupCall[1].body);
+        expect(requestBody.bmsActive).toBe(false);
       });
 
       it('should pass bmsActive: false when headers provided and flag disabled', async () => {

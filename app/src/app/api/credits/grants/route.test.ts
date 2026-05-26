@@ -41,6 +41,21 @@ vi.mock('@/lib/credit-adapter', () => ({
   adaptBudgetToGrants: vi.fn(),
 }));
 
+const { mockFetchHivemindCohorts } = vi.hoisted(function setup() {
+  return { mockFetchHivemindCohorts: vi.fn().mockResolvedValue({}) };
+});
+
+vi.mock('@/lib/budget-service-experiment', async function mockBudgetExperimentModule() {
+  const actual = await vi.importActual<typeof import('@/lib/budget-service-experiment')>(
+    '@/lib/budget-service-experiment',
+  );
+  return {
+    ...actual,
+    fetchHivemindCohorts: mockFetchHivemindCohorts,
+    logBudgetServiceExperimentTriggered: vi.fn(),
+  };
+});
+
 describe('GET /api/credits/grants', () => {
   let mockClient: any;
   let GET: any;
@@ -285,9 +300,11 @@ describe('GET /api/credits/grants', () => {
       expect(mockClient.getCreditGrants).toHaveBeenCalled();
     });
 
-    it('should use BMS for NEW user (bmsBudgetId present, no migration attribute) when budgetServiceEnabled', async () => {
+    it('should use BMS for NEW user (bmsBudgetId present, no migration attribute) when cohort is on', async () => {
       const request = new NextRequest('http://localhost/api/credits/grants?subscriptionId=sub-123');
       const authContext = createAuthContext('jwt-token');
+
+      mockFetchHivemindCohorts.mockResolvedValue({ 'airo-app-builder-budget-service-launch': { cohortId: 'on' } });
 
       // Subscription has bmsBudgetId but no migration attribute = NEW user
       mockClient.getSubscription.mockResolvedValue({
@@ -317,9 +334,97 @@ describe('GET /api/credits/grants', () => {
       expect(mockClient.getCreditGrants).not.toHaveBeenCalled();
     });
 
+    it('should fall back to grants for NEW user when cohort is off', async () => {
+      const request = new NextRequest('http://localhost/api/credits/grants?subscriptionId=sub-123');
+      const authContext = createAuthContext('jwt-token');
+
+      mockFetchHivemindCohorts.mockResolvedValue({ 'airo-app-builder-budget-service-launch': { cohortId: 'off' } });
+      mockClient.getSubscription.mockResolvedValue({
+        id: 'sub-123',
+        bmsBudgetId: 'budget-uuid-123',
+        attributes: [],
+      });
+      mockClient.getCreditGrants.mockResolvedValue(MOCK_GRANTS);
+
+      const response = await GET(request, authContext);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.success).toBe(true);
+      expect(data.source).toBe(CreditsSource.Grants);
+      expect(mockBudgetClient.getBudget).not.toHaveBeenCalled();
+      expect(mockClient.getCreditGrants).toHaveBeenCalled();
+    });
+
+    it('should use BMS for EXISTING migrated user even when experiment cohort is off', async () => {
+      const request = new NextRequest('http://localhost/api/credits/grants?subscriptionId=sub-123');
+      const authContext = createAuthContext('jwt-token');
+
+      // Cohort explicitly 'off' (control for new-user experiment) — must not suppress BMS for migrated users
+      mockFetchHivemindCohorts.mockResolvedValue({ 'airo-app-builder-budget-service-launch': { cohortId: 'off' } });
+
+      // bmsExistingEnabled=true; budgetServiceEnabled=true but cohort=off so experiment disabled
+      mockCheckSwitchboardFlag.mockImplementation((flag: string) => {
+        if (flag === 'app-builder-budget-service') return Promise.resolve(true);
+        if (flag === 'app-builder-bms-existing') return Promise.resolve(true);
+        return Promise.resolve(false);
+      });
+
+      // Subscription is fully migrated: bms-migration attribute + bmsBudgetId
+      mockClient.getSubscription.mockResolvedValue({
+        id: 'sub-123',
+        bmsBudgetId: 'budget-uuid-123',
+        attributes: [{ key: 'bms-migration', value: { migrationDate: '2026-05-05T00:00:00Z' } }],
+      });
+
+      const mockBudget = {
+        budgetId: 'budget-uuid-123',
+        items: [{ budgetItemId: 'item-1', creditsTotal: '1000', creditsUsed: '500' }],
+      };
+      const mockAdaptedGrants = [
+        { id: 'grant-1', type: AiroGrantType.PlanMonthly, creditsMax: 1000, creditsSpent: 500 },
+      ];
+
+      mockBudgetClient.getBudget.mockResolvedValue(mockBudget);
+      mockAdaptBudgetToGrants.mockReturnValue(mockAdaptedGrants);
+
+      const response = await GET(request, authContext);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.success).toBe(true);
+      expect(data.source).toBe(CreditsSource.Bms);
+      expect(mockBudgetClient.getBudget).toHaveBeenCalledWith('budget-uuid-123');
+      expect(mockClient.getCreditGrants).not.toHaveBeenCalled();
+    });
+
+    it('should fall back to grants for NEW user when cohort is ineligible', async () => {
+      const request = new NextRequest('http://localhost/api/credits/grants?subscriptionId=sub-123');
+      const authContext = createAuthContext('jwt-token');
+
+      mockFetchHivemindCohorts.mockResolvedValue({ 'airo-app-builder-budget-service-launch': { cohortId: 'ineligible' } });
+      mockClient.getSubscription.mockResolvedValue({
+        id: 'sub-123',
+        bmsBudgetId: 'budget-uuid-123',
+        attributes: [],
+      });
+      mockClient.getCreditGrants.mockResolvedValue(MOCK_GRANTS);
+
+      const response = await GET(request, authContext);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.success).toBe(true);
+      expect(data.source).toBe(CreditsSource.Grants);
+      expect(mockBudgetClient.getBudget).not.toHaveBeenCalled();
+      expect(mockClient.getCreditGrants).toHaveBeenCalled();
+    });
+
     it('should fall back to grants for NEW user when budgetServiceEnabled is false', async () => {
       const request = new NextRequest('http://localhost/api/credits/grants?subscriptionId=sub-123');
       const authContext = createAuthContext('jwt-token');
+
+      mockFetchHivemindCohorts.mockResolvedValue({ 'airo-app-builder-budget-service-launch': { cohortId: 'on' } });
 
       // Only bmsExistingEnabled is true, but this is a NEW user (no migration attribute)
       mockCheckSwitchboardFlag.mockImplementation((flag: string) => {

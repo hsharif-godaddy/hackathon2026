@@ -31,11 +31,15 @@ export interface BmsMigrationFlags {
   bmsExistingEnabled: boolean;
 }
 
+export type BmsMigrationPath = 'new-user' | 'existing-user';
+
 export interface BmsMigrationResult {
   /** Whether BMS should be used for this subscription */
   useBms: boolean;
   /** BMS budget ID if enabled, undefined otherwise */
   bmsBudgetId: string | undefined;
+  /** Which migration path was taken when useBms is true */
+  path?: BmsMigrationPath;
   /** Reason BMS is not enabled (for logging) */
   reason?: string;
 }
@@ -94,14 +98,14 @@ export function checkBmsMigration(
     if (!flags.bmsExistingEnabled) {
       return { useBms: false, bmsBudgetId: undefined, reason: 'existing-user-flag-disabled' };
     }
-    return { useBms: true, bmsBudgetId: subscription.bmsBudgetId };
+    return { useBms: true, bmsBudgetId: subscription.bmsBudgetId, path: 'existing-user' };
   }
 
   // NEW user (no migration attribute at all) — requires budgetServiceEnabled flag
   if (!flags.budgetServiceEnabled) {
     return { useBms: false, bmsBudgetId: undefined, reason: 'new-user-flag-disabled' };
   }
-  return { useBms: true, bmsBudgetId: subscription.bmsBudgetId };
+  return { useBms: true, bmsBudgetId: subscription.bmsBudgetId, path: 'new-user' };
 }
 
 /**

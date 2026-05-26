@@ -29,23 +29,25 @@ describe('checkBmsMigration', () => {
       attributes: [{ key: 'bms-migration', value: { migrationDate: MIGRATION_DATE } }],
     };
 
-    it('should return useBms=true when bmsExistingEnabled is true', () => {
+    it('should return useBms=true with existing-user path when bmsExistingEnabled is true', () => {
       const flags = { budgetServiceEnabled: false, bmsExistingEnabled: true };
 
       const result = checkBmsMigration(existingUserSubscription, flags);
 
       expect(result.useBms).toBe(true);
       expect(result.bmsBudgetId).toBe('budget-123');
+      expect(result.path).toBe('existing-user');
       expect(result.reason).toBeUndefined();
     });
 
-    it('should return useBms=true when both flags are true', () => {
+    it('should return useBms=true with existing-user path when both flags are true', () => {
       const flags = { budgetServiceEnabled: true, bmsExistingEnabled: true };
 
       const result = checkBmsMigration(existingUserSubscription, flags);
 
       expect(result.useBms).toBe(true);
       expect(result.bmsBudgetId).toBe('budget-123');
+      expect(result.path).toBe('existing-user');
     });
 
     it('should return useBms=false when bmsExistingEnabled is false (even if budgetServiceEnabled is true)', () => {
@@ -65,23 +67,25 @@ describe('checkBmsMigration', () => {
       attributes: [],
     };
 
-    it('should return useBms=true when budgetServiceEnabled is true', () => {
+    it('should return useBms=true with new-user path when budgetServiceEnabled is true', () => {
       const flags = { budgetServiceEnabled: true, bmsExistingEnabled: false };
 
       const result = checkBmsMigration(newUserSubscription, flags);
 
       expect(result.useBms).toBe(true);
       expect(result.bmsBudgetId).toBe('budget-456');
+      expect(result.path).toBe('new-user');
       expect(result.reason).toBeUndefined();
     });
 
-    it('should return useBms=true when both flags are true', () => {
+    it('should return useBms=true with new-user path when both flags are true', () => {
       const flags = { budgetServiceEnabled: true, bmsExistingEnabled: true };
 
       const result = checkBmsMigration(newUserSubscription, flags);
 
       expect(result.useBms).toBe(true);
       expect(result.bmsBudgetId).toBe('budget-456');
+      expect(result.path).toBe('new-user');
     });
 
     it('should return useBms=false when budgetServiceEnabled is false (even if bmsExistingEnabled is true)', () => {
@@ -98,18 +102,20 @@ describe('checkBmsMigration', () => {
   describe('when subscription is null/undefined', () => {
     const flags = { budgetServiceEnabled: true, bmsExistingEnabled: true };
 
-    it('should return useBms=false with reason for null', () => {
+    it('should return useBms=false with reason and no path for null', () => {
       const result = checkBmsMigration(null, flags);
 
       expect(result.useBms).toBe(false);
       expect(result.reason).toBe('no-subscription');
+      expect(result.path).toBeUndefined();
     });
 
-    it('should return useBms=false with reason for undefined', () => {
+    it('should return useBms=false with reason and no path for undefined', () => {
       const result = checkBmsMigration(undefined, flags);
 
       expect(result.useBms).toBe(false);
       expect(result.reason).toBe('no-subscription');
+      expect(result.path).toBeUndefined();
     });
   });
 
@@ -178,13 +184,14 @@ describe('checkBmsMigration', () => {
         attributes: [{ key: 'bms-migration', value: { migrationDate: '2026-05-05T00:00:00Z' } }],
       };
 
-      it('should use BMS when bmsExistingEnabled is true and migrationDate is set', () => {
+      it('should use BMS with existing-user path when bmsExistingEnabled is true and migrationDate is set', () => {
         const flags = { budgetServiceEnabled: false, bmsExistingEnabled: true };
 
         const result = checkBmsMigration(existingUserComplete, flags);
 
         expect(result.useBms).toBe(true);
         expect(result.bmsBudgetId).toBe('budget-123');
+        expect(result.path).toBe('existing-user');
       });
 
       it('should NOT use BMS when bmsExistingEnabled is false (even with migrationDate set)', () => {
@@ -239,7 +246,7 @@ describe('checkBmsMigration', () => {
         expect(result.reason).toBe('new-user-flag-disabled');
       });
 
-      it('should use BMS for NEW user when budgetServiceEnabled is true', () => {
+      it('should use BMS with new-user path when budgetServiceEnabled is true', () => {
         const subscription = {
           bmsBudgetId: 'budget-456',
           attributes: [],
@@ -250,6 +257,7 @@ describe('checkBmsMigration', () => {
 
         expect(result.useBms).toBe(true);
         expect(result.bmsBudgetId).toBe('budget-456');
+        expect(result.path).toBe('new-user');
       });
     });
 

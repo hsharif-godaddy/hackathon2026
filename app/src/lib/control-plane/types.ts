@@ -184,6 +184,8 @@ export interface CreateSiteParams {
   itc?: string;
   /** Optional FQDN to attach in parallel with app creation. */
   fqdn?: string;
+  /** Hivemind cohort for the budget-service experiment, already normalized by getBudgetServiceCohort. */
+  budgetServiceCohort?: string;
 }
 
 /**
