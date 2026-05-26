@@ -17,6 +17,7 @@ import { QuickEditBar } from "./QuickEditBar";
 import { TextFixPopover } from "./TextFixPopover";
 import TextFixButton from "./TextFixButton";
 import { useTextFix } from "../hooks/useTextFix";
+import { useSpeechBridge } from "../hooks/useSpeechBridge";
 import { htmlStringToDisplayText } from "../utils/text-fix-helpers";
 import TextAlignButton from "./TextAlignButton";
 import ListTypeButton from "./ListTypeButton";
@@ -78,6 +79,7 @@ export default function ElementHoverBar({
   // existing AST text-edit pipeline. State + request lifecycle live in the
   // hook; the button render lives in TextFixButton.
   const fix = useTextFix();
+  const speech = useSpeechBridge();
 
   // Outline overlay + pointer cursor on the hovered element.
   // Uses a fixed-position div so the outline stays visible even when
@@ -232,7 +234,7 @@ export default function ElementHoverBar({
       const hasSpaceAbove = r.top > MIN_CLEARANCE_ABOVE;
 
       // Estimate bar width (approximate, can be adjusted based on actual measurements)
-      const estimatedBarWidth = 300;
+      const estimatedBarWidth = 350;
       const halfBarWidth = estimatedBarWidth / 2;
 
       // Determine horizontal position
@@ -467,6 +469,7 @@ export default function ElementHoverBar({
         onDismiss={handleQuickEditDismiss}
         onMouseEnter={onMouseEnter}
         onMouseLeave={onMouseLeave}
+        speech={speech}
       />
     );
   }

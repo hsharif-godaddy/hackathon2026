@@ -1,7 +1,14 @@
 import React, { useEffect, useRef, useState } from "react";
-import { ArrowUp, X } from "lucide-react";
+import { ArrowUp, Mic, X } from "lucide-react";
 import { t } from "../utils/translations";
 import { HoverBar } from "./HoverBar";
+
+interface SpeechController {
+  isSupported: boolean;
+  isListening: boolean;
+  transcript: string;
+  toggle: () => void;
+}
 
 const DISMISS_BTN_STYLES: React.CSSProperties = {
   display: "flex",
@@ -44,6 +51,19 @@ const SEND_BTN_STYLES: React.CSSProperties = {
   flexShrink: 0,
 };
 
+const MIC_BTN_BASE_STYLES: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  width: "28px",
+  height: "28px",
+  padding: "0",
+  border: "1px solid #e5e7eb",
+  borderRadius: "7px",
+  cursor: "pointer",
+  flexShrink: 0,
+};
+
 interface QuickEditBarProps {
   onSubmit: (prompt: string) => void;
   onDismiss: () => void;
@@ -51,6 +71,9 @@ interface QuickEditBarProps {
   style?: React.CSSProperties;
   onMouseEnter?: () => void;
   onMouseLeave?: () => void;
+  /** Optional speech-to-text controller. When omitted or `isSupported` is
+   *  false, the mic button is not rendered. */
+  speech?: SpeechController;
 }
 
 export function QuickEditBar({
@@ -59,25 +82,63 @@ export function QuickEditBar({
   style,
   onMouseEnter,
   onMouseLeave,
+  speech,
 }: QuickEditBarProps) {
   const [value, setValue] = useState<string>("");
   const inputRef = useRef<HTMLInputElement>(null);
+  const baseTextRef = useRef<string>("");
 
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
 
+  // Append speech transcript to whatever the user had typed before starting.
+  // Mirrors ChatInput's textBeforeListeningRef behavior.
+  useEffect(function captureBaseTextOnListenStart() {
+    if (speech?.isListening) baseTextRef.current = value;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [speech?.isListening]);
+
+  useEffect(function applyTranscriptToInput() {
+    if (!speech?.isListening || !speech.transcript) return;
+    const base = baseTextRef.current;
+    const separator = base && !base.endsWith(" ") ? " " : "";
+    setValue(base + separator + speech.transcript);
+  }, [speech?.isListening, speech?.transcript]);
+
+  // Stop speech when this component unmounts via any path — element-change
+  // reset, edit mode disabled, hover lost, etc. — since the mic UI lives
+  // here, leaving it recording with no off-switch would orphan the session.
+  // Use a ref so the cleanup reads the latest controller, not a stale
+  // closure value.
+  const speechRef = useRef(speech);
+  speechRef.current = speech;
+  useEffect(function stopSpeechOnUnmount() {
+    return () => {
+      if (speechRef.current?.isListening) speechRef.current.toggle();
+    };
+  }, []);
+
   const handleSubmit = (): void => {
+    if (speech?.isListening) speech.toggle();
     if (value.trim()) onSubmit(value.trim());
   };
+
+  const handleDismiss = (): void => {
+    if (speech?.isListening) speech.toggle();
+    onDismiss();
+  };
+
+  const showMic = Boolean(speech?.isSupported);
+  const isListening = Boolean(speech?.isListening);
 
   return (
     <HoverBar
       style={{
         alignItems: "center",
         padding: "4px 4px 4px 8px",
-        minWidth: "250px",
-        gap: "10px",
+        minWidth: "320px",
+        gap: "4px",
         background: "rgba(255,255,255,0.95)",
         animation: "none",
         ...style,
@@ -92,7 +153,7 @@ export function QuickEditBar({
         style={DISMISS_BTN_STYLES}
         onMouseEnter={(e) => { e.currentTarget.style.color = "#374151"; }}
         onMouseLeave={(e) => { e.currentTarget.style.color = "#9ca3af"; }}
-        onClick={(e) => { e.stopPropagation(); onDismiss(); }}
+        onClick={(e) => { e.stopPropagation(); handleDismiss(); }}
       >
         <X width={14} height={14} />
       </button>
@@ -106,9 +167,29 @@ export function QuickEditBar({
         style={INPUT_STYLES}
         onKeyDown={(e) => {
           if (e.key === "Enter" && value.trim()) handleSubmit();
-          if (e.key === "Escape") onDismiss();
+          if (e.key === "Escape") handleDismiss();
         }}
       />
+      {showMic && (
+        <button
+          type="button"
+          data-airo-dev-tools=""
+          aria-pressed={isListening}
+          title={
+            isListening
+              ? t("devtools_quick_edit_stop_listening", "Stop listening")
+              : t("devtools_quick_edit_start_listening", "Start listening")
+          }
+          style={{
+            ...MIC_BTN_BASE_STYLES,
+            background: isListening ? "#dc2626" : "transparent",
+            color: isListening ? "#fff" : "#6b7280",
+          }}
+          onClick={(e) => { e.stopPropagation(); speech!.toggle(); }}
+        >
+          <Mic width={14} height={14} />
+        </button>
+      )}
       <button
         type="button"
         data-airo-dev-tools=""

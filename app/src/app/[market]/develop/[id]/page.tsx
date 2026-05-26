@@ -24,6 +24,7 @@ import { clearExpiredWidgetStates } from '@/app/[market]/develop/components/widg
 import { sendPendingAutoSendMessage } from '@/app/[market]/develop/hooks/sendPendingAutoSendMessage'
 import { useAppGenerationFeedbackTrigger } from '@/app/[market]/develop/hooks/useAppGenerationFeedbackTrigger'
 import { useChatPaneLoadingState } from '@/app/[market]/develop/hooks/useChatPaneLoadingState'
+import { useDevToolsSpeechBridge } from '@/app/[market]/develop/hooks/useDevToolsSpeechBridge'
 import { useEvalSnapshotCapture } from '@/app/[market]/develop/hooks/useEvalSnapshotCapture'
 import { deriveIsAwaitingStream, useInitialization } from '@/app/[market]/develop/hooks/useInitialization'
 import { usePublishSnapshotCapture } from '@/app/[market]/develop/hooks/usePublishSnapshotCapture'
@@ -525,6 +526,11 @@ function DevelopPageContent() {
       }
     }
   }, [])
+
+  // Speech-to-text bridge for the dev-tools Quick Edit bar. The iframe can't
+  // install react-speech-recognition, so the parent owns recognition and
+  // forwards listening/transcript state via postMessage. See `useDevToolsSpeechBridge`.
+  const speechBridge = useDevToolsSpeechBridge()
 
   // Funnel event: Track when chat loader hides (user can now see chat)
   // Only during create flow from homepage
@@ -1367,6 +1373,16 @@ function DevelopPageContent() {
           break
         case 'IFRAME_READY':
           sendEditModeMessage(isEditModeEnabled)
+          speechBridge.handleIframeReady()
+          break
+        case 'SPEECH_QUERY_SUPPORT':
+          speechBridge.broadcastSupport()
+          break
+        case 'SPEECH_START':
+          speechBridge.handleStart()
+          break
+        case 'SPEECH_STOP':
+          speechBridge.handleStop()
           break
         case 'AUTO_IMPORT_MEDIA_SLOT': {
           const { imageUrl, devContext, imageAlt, imageType, openEditor } = event.data
@@ -1379,7 +1395,7 @@ function DevelopPageContent() {
 
     window.addEventListener('message', handleMessage)
     return () => window.removeEventListener('message', handleMessage)
-  }, [sendTextUpdate, sendTextFix, sendStyleUpdate, setAiEditContext, addAiEditContext, ws.actions.send, setInputValue, handleScreenshotUpload, handleEvalViewportScreenshot, setIsAssetManagerOpen, appId, scheduleMicrotask, sendEditModeMessage, isEditModeEnabled, handleAutoImportMediaSlot, sendUserRequestedFix])
+  }, [sendTextUpdate, sendTextFix, sendStyleUpdate, setAiEditContext, addAiEditContext, ws.actions.send, setInputValue, handleScreenshotUpload, handleEvalViewportScreenshot, setIsAssetManagerOpen, appId, scheduleMicrotask, sendEditModeMessage, isEditModeEnabled, handleAutoImportMediaSlot, sendUserRequestedFix, speechBridge])
   // Warn user before leaving page with unsaved changes
   useEffect(() => {
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {

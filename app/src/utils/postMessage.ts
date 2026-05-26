@@ -59,7 +59,13 @@ export function isOriginAllowed(event: MessageEvent): boolean {
 }
 
 /**
- * Safely posts a message to an iframe using the configured target origin
+ * Safely posts a message to an iframe using the configured target origin.
+ *
+ * Swallows SecurityError (misconfigured `NEXT_PUBLIC_IFRAME_ORIGIN` vs the
+ * iframe's actual origin) and DataCloneError (non-cloneable payload) so a
+ * single bad message doesn't escalate into an AiroErrorBoundary crash via
+ * window.onerror — high-frequency callers (transcript / scroll updates)
+ * would otherwise crash the develop page.
  *
  * @param iframe - The iframe element to send the message to
  * @param message - The message to send
@@ -71,5 +77,14 @@ export function postMessageToIframe(iframe: HTMLIFrameElement, message: any): vo
   }
 
   const targetOrigin = getTargetOrigin()
-  iframe.contentWindow.postMessage(message, targetOrigin)
+  try {
+    iframe.contentWindow.postMessage(message, targetOrigin)
+  } catch (err) {
+    const messageType = (message as { type?: unknown } | null)?.type
+    logger.warn('post-message.failed', {
+      messageType: typeof messageType === 'string' ? messageType : undefined,
+      errorName: err instanceof Error ? err.name : undefined,
+      error: err instanceof Error ? err.message : String(err),
+    })
+  }
 }
