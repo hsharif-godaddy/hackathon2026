@@ -560,7 +560,11 @@ async function main(): Promise<void> {
       process.exitCode = 1;
     }
 
-    const runDir = await store.finalizeRun(dirName, runId, results, undefined, { wallClockMs, skipBaseline });
+    const runDir = await store.finalizeRun(dirName, runId, results, undefined, {
+      wallClockMs,
+      skipBaseline,
+      tostConfig: { alpha: config.regression.alpha, k: config.regression.k },
+    });
     await store.prune();
 
     console.log('\nResults written to:');

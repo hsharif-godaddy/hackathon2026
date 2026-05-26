@@ -2028,6 +2028,21 @@ describe('EvalStore', () => {
       expect(renderCall).not.toHaveProperty('gitSha');
       expect(renderCall).not.toHaveProperty('gitBranch');
     });
+
+    it('passes tostConfig from renderOptions through to MdReporter.render()', async () => {
+      const store = new EvalStore();
+      const scenario = makeScenario();
+      const results = [makeScenarioResult(scenario, [makeTrialResult()])];
+      const tostConfig = { alpha: 0.05, k: 2.0 };
+
+      await store.finalizeRun(DIR_NAME, 'run-001', results, undefined, { tostConfig });
+
+      expect(mockRender).toHaveBeenCalledWith(
+        'run-001',
+        results,
+        expect.objectContaining({ tostConfig }),
+      );
+    });
   });
 
   describe('acquireRunLock()', () => {

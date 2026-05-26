@@ -4,7 +4,11 @@ import type { ScenarioResult, AggregatedResult, TrialResult } from
   '../runner/types.js';
 import type { EvalResult } from '../evaluators/evaluator.js';
 import type { CompositeBreakdownEntry } from '../evaluators/composite-evaluator.js';
-import type { RegressionEvalResult } from '../baselines/types.js';
+import type {
+  RegressionEvalResult,
+  RegressionResult,
+  ComparedRegressionEvalResult,
+} from '../baselines/types.js';
 import type { StabilityLevel } from '../scenarios/types.js';
 import { STABILITY_TRIALS } from '../scenarios/types.js';
 import {
@@ -418,6 +422,84 @@ export function renderTrialEvalResultsMarkdown(
   return `${lines.join('\n')}\n`;
 }
 
+function renderTostConfigLine(options: RenderOptions | undefined): string | null {
+  const tc = options?.tostConfig;
+  if (!tc) return null;
+  return `**TOST:** alpha=${tc.alpha}, k=${tc.k}`;
+}
+
+function renderScenarioGateSummary(regressionStatus: RegressionResult): string[] {
+  const gateIcon =
+    regressionStatus.gate === 'pass' ? '\u2713' :
+    regressionStatus.gate === 'warning' ? '\u26a0\ufe0f' : '\u2717';
+
+  const lines: string[] = [
+    `> **Regression gate:** ${gateIcon} ${regressionStatus.gate}`,
+  ];
+
+  const notable = regressionStatus.evaluators.filter(
+    (e) => e.type === 'skipped' || (e.type === 'compared' && e.exceeded),
+  );
+
+  if (notable.length === 0) return lines;
+
+  lines.push(
+    '',
+    '| Evaluator | Method | Result |',
+    '|-----------|--------|--------|',
+  );
+
+  for (const e of notable) {
+    const name = escapePipeForMarkdown(e.evaluator);
+    if (e.type === 'skipped') {
+      lines.push(`| ${name} | skipped | ${escapePipeForMarkdown(e.skipReason)} |`);
+    } else {
+      const method = e.statistical
+        ? `TOST (${e.statistical.method})`
+        : 'threshold fallback';
+      const result = e.statistical ? 'regression detected' : 'exceeded';
+      lines.push(`| ${name} | ${method} | ${result} |`);
+    }
+  }
+
+  return lines;
+}
+
+function renderTostDiagnostics(regressionStatus: RegressionResult): string | null {
+  const withStats = regressionStatus.evaluators.filter(
+    (e): e is ComparedRegressionEvalResult =>
+      e.type === 'compared' && e.statistical !== undefined,
+  );
+
+  if (withStats.length === 0) return null;
+
+  const blocks: string[] = [];
+
+  for (const e of withStats) {
+    const stat = e.statistical!;
+    const deltaStr = Number.isFinite(e.delta)
+      ? (e.delta >= 0 ? `+${e.delta.toFixed(2)}` : e.delta.toFixed(2))
+      : '\u2014';
+
+    blocks.push(
+      `**${e.evaluator}** ${stat.method} | n: baseline=${stat.n.baseline}, current=${stat.n.current}`,
+      `- Margin: \u00b1${stat.margin.toFixed(2)} (k=${stat.k}, SD=${stat.baselineSD.toFixed(2)})`,
+      `- CI: ${stat.confidenceInterval.lower.toFixed(2)}..${stat.confidenceInterval.upper.toFixed(2)}`,
+      `- Delta: ${deltaStr}`,
+      `- Non-inferiority: ${stat.nonInferiorityProven ? 'proven' : 'not proven'}`,
+      '',
+    );
+  }
+
+  return [
+    '<details>',
+    '<summary>TOST Diagnostics</summary>',
+    '',
+    ...blocks,
+    '</details>',
+  ].join('\n');
+}
+
 // ── MdReporter class ─────────────────────────────────────────
 
 export interface RenderOptions {
@@ -426,6 +508,7 @@ export interface RenderOptions {
   skipBaseline?: boolean;
   gitSha?: string | null;
   gitBranch?: string | null;
+  tostConfig?: { alpha: number; k: number };
 }
 
 export class MdReporter {
@@ -450,12 +533,14 @@ export class MdReporter {
       : `**Generated:** ${new Date().toISOString()}`;
 
     const gitLine = renderGitLine(options);
+    const tostConfigLine = renderTostConfigLine(options);
     const modeLine = renderModeLine(results, options);
 
     const sections: string[] = [
       `# Eval Run: ${runId}`,
       headerLine,
       ...(gitLine != null ? [gitLine] : []),
+      ...(tostConfigLine != null ? [tostConfigLine] : []),
       modeLine,
       '',
       '---',
@@ -686,9 +771,13 @@ export class MdReporter {
       '',
       summaryLine,
       '',
-      '#### Scores',
-      '',
     ];
+
+    if (result.regressionStatus) {
+      lines.push(...renderScenarioGateSummary(result.regressionStatus), '');
+    }
+
+    lines.push('#### Scores', '');
 
     const trialHeaders = Array.from(
       { length: k },
@@ -735,6 +824,13 @@ export class MdReporter {
     );
     if (reasoning) {
       lines.push('', reasoning);
+    }
+
+    if (result.regressionStatus) {
+      const diagnostics = renderTostDiagnostics(result.regressionStatus);
+      if (diagnostics) {
+        lines.push('', diagnostics);
+      }
     }
 
     const breakdown = renderCompositeBreakdown(evalNames, evalIndex, k);

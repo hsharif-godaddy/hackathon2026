@@ -6,7 +6,10 @@ import {
 import type { ScenarioResult } from '../../runner/types.js';
 import type { EvalResult } from '../../evaluators/evaluator.js';
 import type { Turn } from '../../runner/transcript.js';
-import type { StatisticalMetadata } from '../../baselines/types.js';
+import type {
+  StatisticalMetadata,
+  RegressionEvalResult,
+} from '../../baselines/types.js';
 import { makeTurn, makeToolCall, makeTurnWithToolCalls } from './fixtures.js';
 
 vi.mock('node:fs/promises');
@@ -1641,5 +1644,317 @@ describe('MdReporter — RenderOptions integration', () => {
 
     expect(content).toContain('Mode:');
     expect(content).toContain('eval');
+  });
+});
+
+// ── Test fixtures for TOST gate/diagnostics tests ────────────────────────────
+
+const TOST_PASS_META: StatisticalMetadata = {
+  method: 'wilson-score',
+  margin: 0.30,
+  baselineSD: 0.15,
+  k: 2.0,
+  n: { baseline: 10, current: 5 },
+  confidenceInterval: { lower: -0.15, upper: 0.29 },
+  nonInferiorityProven: true,
+};
+
+const TOST_FAIL_META: StatisticalMetadata = {
+  method: 'wilson-score',
+  margin: 0.30,
+  baselineSD: 0.15,
+  k: 2.0,
+  n: { baseline: 10, current: 5 },
+  confidenceInterval: { lower: -0.55, upper: -0.11 },
+  nonInferiorityProven: false,
+};
+
+function makeResultWithEvaluators(
+  gate: 'pass' | 'warning' | 'fail',
+  evaluators: RegressionEvalResult[],
+): ScenarioResult {
+  return {
+    ...BASELINED_RESULT,
+    regressionStatus: {
+      scenarioName: 'build-landing-page',
+      gate,
+      stabilityLevel: 'medium',
+      evaluators,
+    },
+  };
+}
+
+function makeCompared(
+  evaluator: string,
+  delta: number,
+  exceeded: boolean,
+  statistical?: StatisticalMetadata,
+): RegressionEvalResult {
+  const currentScore = 0.8;
+  return {
+    type: 'compared',
+    evaluator,
+    currentScore,
+    baselineScore: currentScore - delta,
+    delta,
+    exceeded,
+    ...(statistical !== undefined ? { statistical } : {}),
+  };
+}
+
+function makeSkipped(evaluator: string, skipReason: string): RegressionEvalResult {
+  return { type: 'skipped', evaluator, skipReason };
+}
+
+// ── TOST config line ──────────────────────────────────────────────────────────
+
+describe('MdReporter — TOST config line', () => {
+  it('renders TOST config line when tostConfig is provided', () => {
+    const reporter = new MdReporter();
+    const content = reporter.render('run-001', [NO_BASELINE_RESULT], {
+      tostConfig: { alpha: 0.05, k: 2.0 },
+    });
+    // JavaScript drops trailing .0 for integers: 2.0 → "2"
+    expect(content).toContain('**TOST:** alpha=0.05, k=2');
+  });
+
+  it('omits TOST config line when tostConfig is absent', () => {
+    const reporter = new MdReporter();
+    const content = reporter.render('run-001', [NO_BASELINE_RESULT]);
+    expect(content).not.toContain('**TOST:**');
+  });
+
+  it('renders with non-default alpha and k values', () => {
+    const reporter = new MdReporter();
+    const content = reporter.render('run-001', [NO_BASELINE_RESULT], {
+      tostConfig: { alpha: 0.10, k: 1.5 },
+    });
+    expect(content).toContain('**TOST:** alpha=0.1, k=1.5');
+  });
+});
+
+// ── Scenario gate summary ─────────────────────────────────────────────────────
+
+describe('MdReporter — scenario gate summary', () => {
+  it('renders gate=fail with TOST evaluator exceeded', () => {
+    const result = makeResultWithEvaluators('fail', [
+      makeCompared('jtbd-completion', -0.30, true, TOST_FAIL_META),
+    ]);
+    const reporter = new MdReporter();
+    const content = reporter.render('run-001', [result]);
+    expect(content).toContain('Regression gate');
+    expect(content).toContain('fail');
+    expect(content).toContain('regression detected');
+  });
+
+  it('renders gate=warning with fallback evaluator exceeded (no statistical)', () => {
+    const result = makeResultWithEvaluators('warning', [
+      makeCompared('jtbd-completion', -0.30, true),
+    ]);
+    const reporter = new MdReporter();
+    const content = reporter.render('run-001', [result]);
+    expect(content).toContain('Regression gate');
+    expect(content).toContain('warning');
+    expect(content).toContain('threshold fallback');
+    expect(content).toContain('exceeded');
+  });
+
+  it('renders gate=pass with all passing evaluators — no table', () => {
+    const result = makeResultWithEvaluators('pass', [
+      makeCompared('jtbd-completion', 0.02, false, TOST_PASS_META),
+    ]);
+    const reporter = new MdReporter();
+    const content = reporter.render('run-001', [result]);
+    expect(content).toContain('Regression gate');
+    expect(content).toContain('pass');
+    expect(content).not.toContain('regression detected');
+    expect(content).not.toContain('threshold fallback');
+  });
+
+  it('renders gate summary when evaluators array is empty', () => {
+    const result = makeResultWithEvaluators('pass', []);
+    const reporter = new MdReporter();
+    const content = reporter.render('run-001', [result]);
+    expect(content).toContain('Regression gate');
+  });
+
+  it('renders skipped evaluator in gate table', () => {
+    const result = makeResultWithEvaluators('warning', [
+      makeSkipped('jtbd-completion', 'eval-version-mismatch'),
+    ]);
+    const reporter = new MdReporter();
+    const content = reporter.render('run-001', [result]);
+    expect(content).toContain('skipped');
+    expect(content).toContain('eval-version-mismatch');
+  });
+
+  it('escapes pipe in evaluator name within gate table', () => {
+    const result = makeResultWithEvaluators('warning', [
+      makeCompared('eval|name', -0.30, true),
+    ]);
+    const reporter = new MdReporter();
+    const content = reporter.render('run-001', [result]);
+    // Table should not contain a raw unescaped pipe in the evaluator name cell
+    const lines = content.split('\n');
+    const evalLine = lines.find((l) => l.includes('eval') && l.includes('name') && l.startsWith('|'));
+    expect(evalLine).toBeDefined();
+    // Each markdown table row should have exactly 4 pipe chars (3 cols = 4 delimiters)
+    const pipeCount = (evalLine!.match(/\|/g) ?? []).length;
+    expect(pipeCount).toBe(4);
+  });
+
+  it('does not render gate summary when regressionStatus is absent', () => {
+    const reporter = new MdReporter();
+    const content = reporter.render('run-001', [NO_BASELINE_RESULT]);
+    expect(content).not.toContain('Regression gate');
+  });
+});
+
+// ── TOST diagnostics block ────────────────────────────────────────────────────
+
+describe('MdReporter — TOST diagnostics block', () => {
+  it('renders diagnostics details block for evaluator with statistical metadata', () => {
+    const result = makeResultWithEvaluators('fail', [
+      makeCompared('jtbd-completion', -0.30, true, TOST_FAIL_META),
+    ]);
+    const reporter = new MdReporter();
+    const content = reporter.render('run-001', [result]);
+    expect(content).toContain('TOST Diagnostics');
+    expect(content).toContain('jtbd-completion');
+    expect(content).toContain('wilson-score');
+  });
+
+  it('renders multiple evaluators in diagnostics block', () => {
+    const result = makeResultWithEvaluators('fail', [
+      makeCompared('jtbd-completion', -0.30, true, TOST_FAIL_META),
+      makeCompared('bug-hit-rate', -0.10, true, {
+        ...TOST_FAIL_META,
+        method: 'permutation-exact',
+      }),
+    ]);
+    const reporter = new MdReporter();
+    const content = reporter.render('run-001', [result]);
+    expect(content).toContain('jtbd-completion');
+    expect(content).toContain('bug-hit-rate');
+    expect(content).toContain('permutation-exact');
+  });
+
+  it('renders nonInferiorityProven=true as proven', () => {
+    const result = makeResultWithEvaluators('pass', [
+      makeCompared('jtbd-completion', 0.02, false, TOST_PASS_META),
+    ]);
+    const reporter = new MdReporter();
+    const content = reporter.render('run-001', [result]);
+    expect(content).toContain('proven');
+  });
+
+  it('renders nonInferiorityProven=false as not proven', () => {
+    const result = makeResultWithEvaluators('fail', [
+      makeCompared('jtbd-completion', -0.30, true, TOST_FAIL_META),
+    ]);
+    const reporter = new MdReporter();
+    const content = reporter.render('run-001', [result]);
+    expect(content).toContain('not proven');
+  });
+
+  it('renders margin=0 (uniform-match case) as 0.00', () => {
+    const result = makeResultWithEvaluators('pass', [
+      makeCompared('jtbd-completion', 0.0, false, {
+        ...TOST_PASS_META,
+        margin: 0,
+        baselineSD: 0,
+      }),
+    ]);
+    const reporter = new MdReporter();
+    const content = reporter.render('run-001', [result]);
+    expect(content).toContain('0.00');
+  });
+
+  it('renders delta=NaN as em dash', () => {
+    const compared = makeCompared('jtbd-completion', 0, false, TOST_PASS_META);
+    const withNanDelta = { ...compared, delta: NaN };
+    const result = makeResultWithEvaluators('pass', [withNanDelta]);
+    const reporter = new MdReporter();
+    const content = reporter.render('run-001', [result]);
+    expect(content).toContain('\u2014');
+  });
+
+  it('does not render diagnostics block when no evaluator has statistical metadata', () => {
+    const result = makeResultWithEvaluators('warning', [
+      makeCompared('jtbd-completion', -0.30, true),
+    ]);
+    const reporter = new MdReporter();
+    const content = reporter.render('run-001', [result]);
+    expect(content).not.toContain('TOST Diagnostics');
+  });
+
+  it('does not render diagnostics block when all evaluators are skipped', () => {
+    const result = makeResultWithEvaluators('warning', [
+      makeSkipped('jtbd-completion', 'eval-version-mismatch'),
+    ]);
+    const reporter = new MdReporter();
+    const content = reporter.render('run-001', [result]);
+    expect(content).not.toContain('TOST Diagnostics');
+  });
+
+  it('does not render diagnostics block when regressionStatus is absent', () => {
+    const reporter = new MdReporter();
+    const content = reporter.render('run-001', [NO_BASELINE_RESULT]);
+    expect(content).not.toContain('TOST Diagnostics');
+  });
+});
+
+// ── Gate + diagnostics integration ───────────────────────────────────────────
+
+describe('MdReporter — gate summary and diagnostics integration', () => {
+  it('gate summary appears before #### Scores in scenario section', () => {
+    const result = makeResultWithEvaluators('fail', [
+      makeCompared('jtbd-completion', -0.30, true, TOST_FAIL_META),
+    ]);
+    const reporter = new MdReporter();
+    const content = reporter.render('run-001', [result]);
+    const gateSummaryPos = content.indexOf('Regression gate');
+    const scoresPos = content.indexOf('#### Scores');
+    expect(gateSummaryPos).toBeGreaterThan(-1);
+    expect(scoresPos).toBeGreaterThan(-1);
+    expect(gateSummaryPos).toBeLessThan(scoresPos);
+  });
+
+  it('diagnostics appears after evaluator reasoning and before composite breakdown', () => {
+    const result = makeResultWithEvaluators('fail', [
+      makeCompared('jtbd-completion', -0.30, true, TOST_FAIL_META),
+    ]);
+    const reporter = new MdReporter();
+    const content = reporter.render('run-001', [result]);
+    const diagnosticsPos = content.indexOf('TOST Diagnostics');
+    const scoresPos = content.indexOf('#### Scores');
+    expect(diagnosticsPos).toBeGreaterThan(scoresPos);
+  });
+
+  it('renders margin and CI in diagnostics content', () => {
+    const result = makeResultWithEvaluators('fail', [
+      makeCompared('jtbd-completion', -0.30, true, TOST_FAIL_META),
+    ]);
+    const reporter = new MdReporter();
+    const content = reporter.render('run-001', [result]);
+    expect(content).toContain('\u00b10.30');
+    expect(content).toContain('-0.55..-0.11');
+  });
+
+  it('renders CI bounds from diagnostics', () => {
+    const result = makeResultWithEvaluators('fail', [
+      makeCompared('jtbd-completion', -0.30, true, TOST_FAIL_META),
+    ]);
+    const reporter = new MdReporter();
+    const content = reporter.render('run-001', [result]);
+    expect(content).toContain('-0.55');
+    expect(content).toContain('-0.11');
+  });
+
+  it('gate summary and diagnostics both absent when regressionStatus is undefined', () => {
+    const reporter = new MdReporter();
+    const content = reporter.render('run-001', [NO_BASELINE_RESULT]);
+    expect(content).not.toContain('Regression gate');
+    expect(content).not.toContain('TOST Diagnostics');
   });
 });
