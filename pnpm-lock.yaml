@@ -569,14 +569,14 @@ importers:
         specifier: 'catalog:'
         version: 3.1052.0
       '@aws-sdk/client-s3':
-        specifier: ^3.1048.0
-        version: 3.1048.0
+        specifier: ^3.1049.0
+        version: 3.1049.0
       '@aws-sdk/client-secrets-manager':
-        specifier: 3.1048.0
-        version: 3.1048.0
+        specifier: 3.1049.0
+        version: 3.1049.0
       '@aws-sdk/client-sts':
-        specifier: 3.1047.0
-        version: 3.1047.0
+        specifier: 3.1049.0
+        version: 3.1049.0
       '@aws-sdk/credential-provider-node':
         specifier: ^3.972.42
         version: 3.972.44
@@ -1132,8 +1132,8 @@ importers:
   cdk:
     dependencies:
       '@aws-sdk/client-secrets-manager':
-        specifier: ^3.1048.0
-        version: 3.1048.0
+        specifier: ^3.1049.0
+        version: 3.1049.0
       '@gd-datalake/local-admins':
         specifier: 1.1.1
         version: 1.1.1(aws-cdk-lib@2.253.1(constructs@10.6.0))(constructs@10.6.0)
@@ -1178,14 +1178,14 @@ importers:
         specifier: ^3.1048.0
         version: 3.1052.0
       '@aws-sdk/client-s3':
-        specifier: ^3.1048.0
-        version: 3.1048.0
+        specifier: ^3.1049.0
+        version: 3.1049.0
       '@aws-sdk/client-secrets-manager':
-        specifier: ^3.1048.0
-        version: 3.1048.0
+        specifier: ^3.1049.0
+        version: 3.1049.0
       '@aws-sdk/s3-request-presigner':
-        specifier: ^3.1048.0
-        version: 3.1048.0
+        specifier: ^3.1049.0
+        version: 3.1049.0
       '@elastic/elasticsearch':
         specifier: 'catalog:'
         version: 8.19.1
@@ -1426,11 +1426,11 @@ importers:
         specifier: ^3.1048.0
         version: 3.1052.0
       '@aws-sdk/client-s3':
-        specifier: ^3.1048.0
-        version: 3.1048.0
+        specifier: ^3.1049.0
+        version: 3.1049.0
       '@aws-sdk/client-secrets-manager':
-        specifier: ^3.1048.0
-        version: 3.1048.0
+        specifier: ^3.1049.0
+        version: 3.1049.0
       parquetjs:
         specifier: 0.11.2
         version: 0.11.2(bufferutil@4.1.0)
@@ -1540,11 +1540,11 @@ importers:
         specifier: workspace:*
         version: link:../eslint-config-airo
       '@aws-sdk/client-sts':
-        specifier: 3.1047.0
-        version: 3.1047.0
+        specifier: 3.1049.0
+        version: 3.1049.0
       '@aws-sdk/credential-providers':
-        specifier: 3.1048.0
-        version: 3.1048.0
+        specifier: 3.1049.0
+        version: 3.1049.0
       '@types/express':
         specifier: 'catalog:'
         version: 4.17.25
@@ -2060,24 +2060,24 @@ packages:
     resolution: {integrity: sha512-3OEn8zvtfJoN0jFfjVJ9jF2GVRDL3IjDfk6CAgVTAqjfCVjajiUD0iFAGQ4cOzdcv1LGsZ0b/snJDWalY3OePQ==}
     engines: {node: '>=20.0.0'}
 
-  '@aws-sdk/client-cognito-identity@3.1048.0':
-    resolution: {integrity: sha512-eJUSxEwhz9fKmjhRgOvFTuJ+SjCu15SpgYo3aSJ6rjs2IaWi2F8NcvOuejHb0a01a/J71/9bdjUDrQLH2kUmkg==}
+  '@aws-sdk/client-cognito-identity@3.1049.0':
+    resolution: {integrity: sha512-gfgKqA8If1CVtHgDma2yIpBDbYiB8jshbGe+nagfjBmlOmrBAycpgXxPGg3VONtm+UfgzbkSYbbR9xKW8rRCQg==}
     engines: {node: '>=20.0.0'}
 
   '@aws-sdk/client-lambda@3.1052.0':
     resolution: {integrity: sha512-GmdEaDGPPD+SBF2kl3Xvb2jgSxJ/Eiuh4Vc2J2NbXoWbEkCZ3nE2b8SiZx1ckSog/F4/V/+FZUwtJwvLXV4Yuw==}
     engines: {node: '>=20.0.0'}
 
-  '@aws-sdk/client-s3@3.1048.0':
-    resolution: {integrity: sha512-SrJn5FteqqtcDBgQIvqLKk3Qn/2vSsi5XR03I53EDDR4CbCdLysVSNgUnjVncEECMua9Pz+nxO0/lEx3TP+6mA==}
+  '@aws-sdk/client-s3@3.1049.0':
+    resolution: {integrity: sha512-e5ToFwYeHSfkKDPs/G0yhO7vxvfVOF6DhmlvI2xFi4m12NvjxPhaA2Y35QMaYLrw/oGPXmu9McfKnBm/oXYXbg==}
     engines: {node: '>=20.0.0'}
 
-  '@aws-sdk/client-secrets-manager@3.1048.0':
-    resolution: {integrity: sha512-GELp/vb1Kzk/xBUOx21OGti12OiuMwSYBoFAq5RhIcJGC7eBzSUa40zZZlsQsGXDW0OQb9Er+Ll3htr9doGFeg==}
+  '@aws-sdk/client-secrets-manager@3.1049.0':
+    resolution: {integrity: sha512-SHj5WzvYis2OBhbGY83WyFluUMl4DU6ZuJPrlAECfvr2lkRI4uiLd7a3MSmdZ5FlINcURLrPqhyHdzvZHCy3qw==}
     engines: {node: '>=20.0.0'}
 
-  '@aws-sdk/client-sts@3.1047.0':
-    resolution: {integrity: sha512-LLeyHPEYlo16wfteaAkYKZx8BrvF+ZqSkYSWodLmtk8xxCAONLOkeHyAofOswQrSetz3BWiu+sd9WNXEvucoPg==}
+  '@aws-sdk/client-sts@3.1049.0':
+    resolution: {integrity: sha512-Dq8WJk3oPNQvK7gOYDFnOl6jXh2TiwggATqzs3bbboOu5hleZ50Nt9Zm38jA0zWnWm2nJ5p/qdKJzXeGecHRvA==}
     engines: {node: '>=20.0.0'}
 
   '@aws-sdk/core@3.974.13':
@@ -2128,8 +2128,8 @@ packages:
     resolution: {integrity: sha512-J+it58HUGyMIAquB6pWtvmO4m0E/gQ/Tz9Xcoogk3Rety13likU5U8HioeIgE+aN1DDOAB//MARoIdLZS1Mpfw==}
     engines: {node: '>=20.0.0'}
 
-  '@aws-sdk/credential-providers@3.1048.0':
-    resolution: {integrity: sha512-qradm+eSLJTWQLd/TOxlETL1rMQ/ozvr2iU7wga5hqoox/FiXV9VLtomv3Cqwa6GdpYGWI8ebfSu6mS18I1PyQ==}
+  '@aws-sdk/credential-providers@3.1049.0':
+    resolution: {integrity: sha512-2B0ljqENrXKHlPg50kCV12RA35jcAfgZLLB38NW9qv5gUtOHFS8/wW7AkbyVAFYQySl/+2a3x1MAjY2d+Ed71g==}
     engines: {node: '>=20.0.0'}
 
   '@aws-sdk/middleware-bucket-endpoint@3.972.15':
@@ -2180,8 +2180,8 @@ packages:
     resolution: {integrity: sha512-Jz0mg/eqfChGZm0G4bzm6CpyEEtu9ThG1WHY3uE/hGjIUIXPsyVyTuQOetUsrU9QiYWMknmyIKIEHpZ69BHzrA==}
     engines: {node: '>=20.0.0'}
 
-  '@aws-sdk/s3-request-presigner@3.1048.0':
-    resolution: {integrity: sha512-7/yZh562OhKvwBFS/nVL+7qMecUGO91XfaPfqisWiswtlgoQ4gt4zHn9MuUwoPcIYgdkOO0RucOzcD13u7uJEg==}
+  '@aws-sdk/s3-request-presigner@3.1049.0':
+    resolution: {integrity: sha512-pffbb4YNXB2OeqoFMEyFLg1J7SZu5fMf4D/NiCmwzSumLuUb8FVU+oNbmhVA2bgr1B78Hz9h7zObaVgLKh/bTw==}
     engines: {node: '>=20.0.0'}
 
   '@aws-sdk/signature-v4-multi-region@3.996.28':
@@ -11955,6 +11955,7 @@ packages:
   recharts@2.15.4:
     resolution: {integrity: sha512-UT/q6fwS3c1dHbXv2uFgYJ9BMFHu3fwnd7AYZaEQhXuYQ4hgsxLvsUXzGdKeZrW5xopzDCvuA2N41WJ88I7zIw==}
     engines: {node: '>=14'}
+    deprecated: 1.x and 2.x branches are no longer active. Bump to Recharts v3 to receive latest features and bugfixes. See https://github.com/recharts/recharts/wiki/3.0-migration-guide
     peerDependencies:
       react: 19.1.0
       react-dom: 19.1.0
@@ -14341,7 +14342,7 @@ snapshots:
       '@smithy/util-utf8': 4.3.4
       tslib: 2.8.1
 
-  '@aws-sdk/client-cognito-identity@3.1048.0':
+  '@aws-sdk/client-cognito-identity@3.1049.0':
     dependencies:
       '@aws-crypto/sha256-browser': 5.2.0
       '@aws-crypto/sha256-js': 5.2.0
@@ -14367,7 +14368,7 @@ snapshots:
       '@smithy/types': 4.14.2
       tslib: 2.8.1
 
-  '@aws-sdk/client-s3@3.1048.0':
+  '@aws-sdk/client-s3@3.1049.0':
     dependencies:
       '@aws-crypto/sha1-browser': 5.2.0
       '@aws-crypto/sha256-browser': 5.2.0
@@ -14388,7 +14389,7 @@ snapshots:
       '@smithy/types': 4.14.2
       tslib: 2.8.1
 
-  '@aws-sdk/client-secrets-manager@3.1048.0':
+  '@aws-sdk/client-secrets-manager@3.1049.0':
     dependencies:
       '@aws-crypto/sha256-browser': 5.2.0
       '@aws-crypto/sha256-js': 5.2.0
@@ -14401,22 +14402,14 @@ snapshots:
       '@smithy/types': 4.14.2
       tslib: 2.8.1
 
-  '@aws-sdk/client-sts@3.1047.0':
+  '@aws-sdk/client-sts@3.1049.0':
     dependencies:
       '@aws-crypto/sha256-browser': 5.2.0
       '@aws-crypto/sha256-js': 5.2.0
       '@aws-sdk/core': 3.974.13
       '@aws-sdk/credential-provider-node': 3.972.44
-      '@aws-sdk/middleware-host-header': 3.972.14
-      '@aws-sdk/middleware-logger': 3.972.13
-      '@aws-sdk/middleware-recursion-detection': 3.972.15
-      '@aws-sdk/middleware-user-agent': 3.972.43
-      '@aws-sdk/region-config-resolver': 3.972.17
       '@aws-sdk/signature-v4-multi-region': 3.996.28
       '@aws-sdk/types': 3.973.9
-      '@aws-sdk/util-endpoints': 3.996.12
-      '@aws-sdk/util-user-agent-browser': 3.972.14
-      '@aws-sdk/util-user-agent-node': 3.973.29
       '@smithy/core': 3.24.4
       '@smithy/fetch-http-handler': 5.4.4
       '@smithy/node-http-handler': 4.7.4
@@ -14554,9 +14547,9 @@ snapshots:
       '@smithy/types': 4.14.2
       tslib: 2.8.1
 
-  '@aws-sdk/credential-providers@3.1048.0':
+  '@aws-sdk/credential-providers@3.1049.0':
     dependencies:
-      '@aws-sdk/client-cognito-identity': 3.1048.0
+      '@aws-sdk/client-cognito-identity': 3.1049.0
       '@aws-sdk/core': 3.974.13
       '@aws-sdk/credential-provider-cognito-identity': 3.972.36
       '@aws-sdk/credential-provider-env': 3.972.39
@@ -14661,7 +14654,7 @@ snapshots:
       '@aws-sdk/core': 3.974.13
       tslib: 2.8.1
 
-  '@aws-sdk/s3-request-presigner@3.1048.0':
+  '@aws-sdk/s3-request-presigner@3.1049.0':
     dependencies:
       '@aws-sdk/core': 3.974.13
       '@aws-sdk/signature-v4-multi-region': 3.996.28
@@ -20020,7 +20013,7 @@ snapshots:
 
   '@ux/deploy-assets@3.4.0':
     dependencies:
-      '@aws-sdk/client-s3': 3.1048.0
+      '@aws-sdk/client-s3': 3.1049.0
       glob-extra: 5.0.2
       is-glob: 4.0.3
       mime: 3.0.0
@@ -22564,7 +22557,7 @@ snapshots:
       eslint: 9.28.0(jiti@2.7.0)
       eslint-import-resolver-node: 0.3.10
       eslint-import-resolver-typescript: 3.10.1(eslint-plugin-import@2.32.0(eslint@9.28.0(jiti@2.7.0)))(eslint@9.28.0(jiti@2.7.0))
-      eslint-plugin-import: 2.32.0(eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(eslint@9.28.0(jiti@2.7.0)))(eslint@9.28.0(jiti@2.7.0)))(eslint@9.28.0(jiti@2.7.0))
+      eslint-plugin-import: 2.32.0(eslint-import-resolver-typescript@3.10.1)(eslint@9.28.0(jiti@2.7.0))
       eslint-plugin-jsx-a11y: 6.10.2(eslint@9.28.0(jiti@2.7.0))
       eslint-plugin-react: 7.37.5(eslint@9.28.0(jiti@2.7.0))
       eslint-plugin-react-hooks: 7.1.1(eslint@9.28.0(jiti@2.7.0))
@@ -22584,7 +22577,7 @@ snapshots:
       eslint: 9.28.0(jiti@2.7.0)
       eslint-import-resolver-node: 0.3.10
       eslint-import-resolver-typescript: 3.10.1(eslint-plugin-import@2.32.0(eslint@9.28.0(jiti@2.7.0)))(eslint@9.28.0(jiti@2.7.0))
-      eslint-plugin-import: 2.32.0(eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(eslint@9.28.0(jiti@2.7.0)))(eslint@9.28.0(jiti@2.7.0)))(eslint@9.28.0(jiti@2.7.0))
+      eslint-plugin-import: 2.32.0(eslint-import-resolver-typescript@3.10.1)(eslint@9.28.0(jiti@2.7.0))
       eslint-plugin-jsx-a11y: 6.10.2(eslint@9.28.0(jiti@2.7.0))
       eslint-plugin-react: 7.37.5(eslint@9.28.0(jiti@2.7.0))
       eslint-plugin-react-hooks: 7.1.1(eslint@9.28.0(jiti@2.7.0))
@@ -22621,7 +22614,7 @@ snapshots:
       tinyglobby: 0.2.16
       unrs-resolver: 1.11.1
     optionalDependencies:
-      eslint-plugin-import: 2.32.0(eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(eslint@9.28.0(jiti@2.7.0)))(eslint@9.28.0(jiti@2.7.0)))(eslint@9.28.0(jiti@2.7.0))
+      eslint-plugin-import: 2.32.0(eslint-import-resolver-typescript@3.10.1)(eslint@9.28.0(jiti@2.7.0))
     transitivePeerDependencies:
       - supports-color
 
@@ -22649,7 +22642,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  eslint-plugin-import@2.32.0(eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(eslint@9.28.0(jiti@2.7.0)))(eslint@9.28.0(jiti@2.7.0)))(eslint@9.28.0(jiti@2.7.0)):
+  eslint-plugin-import@2.32.0(eslint-import-resolver-typescript@3.10.1)(eslint@9.28.0(jiti@2.7.0)):
     dependencies:
       '@rtsao/scc': 1.1.0
       array-includes: 3.1.9
