@@ -28,6 +28,34 @@ import TextSizeStepperButton from "./TextSizeStepperButton";
 import { nextOpenMenu, type HoverBarMenuId } from "../utils/popover-coordinator";
 
 
+const OUTLINE_PAD = 8;
+
+const HOVER_PULSE_STYLE_ID = "airo-hover-pulse-keyframes";
+
+function ensureHoverPulseKeyframes(): void {
+  if (document.getElementById(HOVER_PULSE_STYLE_ID)) return;
+  const style = document.createElement("style");
+  style.id = HOVER_PULSE_STYLE_ID;
+  style.textContent = `
+    @keyframes airoHoverPulse {
+      0%, 100% {
+        box-shadow:
+          0 0 4px 0 rgba(255,255,255,0.11),
+          0 0 2px rgba(255,255,255,0.18);
+      }
+      50% {
+        box-shadow:
+          0 0 10px 2px rgba(255,255,255,0.25),
+          0 0 5px rgba(255,255,255,0.33);
+      }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      [data-airo-hover-overlay] { animation: none !important; }
+    }
+  `;
+  document.head.appendChild(style);
+}
+
 interface ElementHoverBarProps {
   hoveredElement: HoveredElement;
   isMultiSelectActive: boolean;
@@ -86,20 +114,25 @@ export default function ElementHoverBar({
   // useTextEditing hides the element (visibility:hidden) for Lexical editing.
   const outlineRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
+    ensureHoverPulseKeyframes();
     element.style.cursor = "pointer";
     const overlay = document.createElement("div");
     overlay.setAttribute("data-airo-dev-tools", "");
+    overlay.setAttribute("data-airo-hover-overlay", "");
     overlay.style.position = "fixed";
-    overlay.style.border = "2px solid rgba(139,92,246,0.4)";
-    overlay.style.borderRadius = "4px";
+    overlay.style.border = "1px solid #8b5cf6";
+    overlay.style.background = "rgba(139,92,246,0.1)";
+    // Static fallback for prefers-reduced-motion (animation is suppressed).
+    overlay.style.boxShadow = "0 0 4px 0 rgba(255,255,255,0.11), 0 0 2px rgba(255,255,255,0.18)";
+    overlay.style.animation = "airoHoverPulse 3.2s ease-in-out infinite";
     overlay.style.pointerEvents = "none";
     overlay.style.zIndex = "9999";
     const updatePos = () => {
       const r = element.getBoundingClientRect();
-      overlay.style.top = `${r.top - 2}px`;
-      overlay.style.left = `${r.left - 2}px`;
-      overlay.style.width = `${r.width + 4}px`;
-      overlay.style.height = `${r.height + 4}px`;
+      overlay.style.top = `${r.top - OUTLINE_PAD}px`;
+      overlay.style.left = `${r.left - OUTLINE_PAD}px`;
+      overlay.style.width = `${r.width + OUTLINE_PAD * 2}px`;
+      overlay.style.height = `${r.height + OUTLINE_PAD * 2}px`;
     };
     updatePos();
     document.body.appendChild(overlay);
@@ -258,14 +291,14 @@ export default function ElementHoverBar({
         transform: horizontalTransform,
       };
       if (hasSpaceAbove) {
-        style.top = `${r.top - GAP}px`;
+        style.top = `${r.top - GAP - OUTLINE_PAD}px`;
         style.transform = horizontalTransform === "translateX(-50%)"
           ? "translate(-50%, -100%)"
           : horizontalTransform === "translateX(0)"
           ? "translate(0, -100%)"
           : "translate(-100%, -100%)";
       } else {
-        style.top = `${r.bottom + GAP}px`;
+        style.top = `${r.bottom + GAP + OUTLINE_PAD}px`;
       }
       return style;
     };
