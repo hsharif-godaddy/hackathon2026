@@ -5,39 +5,36 @@ import type { Scenario } from '../../scenarios/types.js';
 import {
   LLMJsonEvaluator,
   JudgeNumericalSchema,
-  JudgeBooleanSchema,
   type JudgeNumerical,
-  type JudgeBoolean,
 } from '../llm-json-evaluator.js';
-import { clamp01, readSnapshotHtml, extractBodyHtml } from '../shared.js';
+import { readSnapshotHtml, extractBodyHtml } from '../shared.js';
 import { buildAlignmentEvidence } from './alignment-evidence.js';
 
 /** Bump when any prompt-contributing function in this directory changes. */
-export const ALIGNMENT_EVAL_VERSION = '1.1';
+export const ALIGNMENT_EVAL_VERSION = '2.0';
 
 interface BaseAlignmentSpec {
   readonly name: string;
   readonly dimension: string;
   readonly description: string;
   readonly inputsUsed: readonly string[];
+  readonly regressionMode: 'passRate' | 'score';
+  readonly lowerIsBetter: boolean;
 }
 
 interface NumericalAlignmentSpec extends BaseAlignmentSpec {
   readonly scoreType: 'numerical';
 }
 
-interface BooleanAlignmentSpec extends BaseAlignmentSpec {
-  readonly scoreType: 'boolean';
-  readonly booleanTrueIsGood: boolean;
-}
-
-type AlignmentSpec = NumericalAlignmentSpec | BooleanAlignmentSpec;
+type AlignmentSpec = NumericalAlignmentSpec;
 
 const SPECS: AlignmentSpec[] = [
   {
     name: 'intent-to-output-alignment',
     dimension: 'Intent Understanding & Alignment',
     scoreType: 'numerical',
+    regressionMode: 'score',
+    lowerIsBetter: false,
     description:
       'Whether the final website output matches the user intent expressed in the conversation. Verify the site structure, content, and CTAs support the stated goal and key requirements.',
     inputsUsed: ['conversation', 'final_artifacts'],
@@ -45,19 +42,21 @@ const SPECS: AlignmentSpec[] = [
   {
     name: 'implicit-feature-gap',
     dimension: 'Implicit Feature Completeness',
-    scoreType: 'boolean',
-    booleanTrueIsGood: false,
+    scoreType: 'numerical',
+    regressionMode: 'score',
+    lowerIsBetter: false,
     description:
-      'Whether the final site is missing important implied features that a reasonable user would expect given the intent and domain, such as contact info, pricing, booking, map, or CTA placement. Evaluate rendered section content only — do not treat navigation links or planning artifacts pointing to unbuilt sections as evidence of a gap.',
+      'How completely the final site covers implied features a reasonable user would expect given the intent and domain, such as contact info, pricing, booking, map, or CTA placement. Evaluate rendered section content only — do not treat navigation links or planning artifacts pointing to unbuilt sections as evidence of a gap.',
     inputsUsed: ['conversation', 'final_artifacts'],
   },
   {
     name: 'silent-hallucination',
     dimension: 'Consistency & Truthfulness',
-    scoreType: 'boolean',
-    booleanTrueIsGood: false,
+    scoreType: 'numerical',
+    regressionMode: 'score',
+    lowerIsBetter: false,
     description:
-      'Whether the agent implies or asserts capabilities that are not backed by tool calls or final artifacts, such as working integrations, sent emails, configured analytics, or completed publishing.',
+      'How well all agent claims are supported by tool calls and final artifacts. Score high when every stated capability (integrations, emails, analytics, publishing) is backed by observable evidence.',
     inputsUsed: ['conversation', 'tool_calls', 'final_artifacts'],
   },
 ];
@@ -92,6 +91,14 @@ function judgeHeader(spec: AlignmentSpec): string {
 function numericalPrompt(
   spec: NumericalAlignmentSpec,
 ): (transcript: Transcript, scenario: Scenario, snapshot?: DOMSnapshot) => Promise<string> {
+  const verdictGuide = [
+    'Verdict guide (advisory — only "unknown" has a functional effect):',
+    '- pass: strong supporting evidence that requirements are met',
+    '- partial: mixed evidence; meaningful gaps but not a total failure',
+    '- fail: clear violation or missing requirement, supported by evidence',
+    '- unknown: ONLY when evidence is genuinely insufficient to judge — use pass/partial/fail for ambiguous cases',
+  ].join('\n');
+
   return async (transcript, scenario, snapshot) =>
     [
       'ROLE:',
@@ -111,93 +118,27 @@ function numericalPrompt(
       '- 0.0-0.3: poor / failed',
       '- unknown: evidence is insufficient to judge',
       '',
-      'Verdict guide:',
-      '- pass: requirements are met with strong supporting evidence',
-      '- partial: mixed evidence; meaningful gaps but not a total failure',
-      '- fail: clear violation or missing requirement, supported by evidence',
-      '- unknown: cannot determine from evidence provided',
+      verdictGuide,
       '',
       await buildAlignmentEvidence(transcript, scenario, snapshot),
     ].join('\n');
 }
 
-function booleanPrompt(
-  spec: BooleanAlignmentSpec,
-): (transcript: Transcript, scenario: Scenario, snapshot?: DOMSnapshot) => Promise<string> {
-  return async (transcript, scenario, snapshot) =>
-    [
-      'ROLE:',
-      'You are an expert evaluator for a browser-based website builder agent.',
-      '',
-      protocol(),
-      '',
-      judgeHeader(spec),
-      '',
-      `Boolean polarity: ${spec.booleanTrueIsGood ? 'value=true means the requirement is satisfied (good)' : 'value=true means a problem is present (bad)'}.`,
-      '',
-      'Return ONLY valid JSON with this schema:',
-      '{"value": <true|false>, "verdict": "pass|partial|fail|unknown", "reason": "<brief>"}',
-      '',
-      'Use verdict=unknown if evidence is insufficient.',
-      await buildAlignmentEvidence(transcript, scenario, snapshot),
-    ].join('\n');
-}
-
-function mapNumerical(
+function mapScoreMode(
   spec: NumericalAlignmentSpec,
 ): (parsed: JudgeNumerical, transcript: Transcript) => EvalResult {
-  return (parsed, transcript) => {
-    const unknown = parsed.verdict === 'unknown';
-    return {
-      evaluator: spec.name,
-      score: unknown ? 0 : clamp01(parsed.score),
-      verdict: parsed.verdict,
-      reason: parsed.reason,
-      details: {
-        dimension: spec.dimension,
-        inputsUsed: spec.inputsUsed,
-        transcriptErrors: transcript.errors.length,
-      },
-    };
-  };
-}
-
-function mapBoolean(
-  spec: BooleanAlignmentSpec,
-): (parsed: JudgeBoolean, transcript: Transcript) => EvalResult {
-  return (parsed, transcript) => {
-    if (parsed.verdict === 'unknown') {
-      return {
-        evaluator: spec.name,
-        score: 0,
-        verdict: 'unknown',
-        reason: parsed.reason,
-        details: {
-          dimension: spec.dimension,
-          inputsUsed: spec.inputsUsed,
-        },
-      };
-    }
-
-    const ok = spec.booleanTrueIsGood ? parsed.value : !parsed.value;
-
-    return {
-      evaluator: spec.name,
-      score: ok ? 1.0 : 0.0,
-      verdict: ok ? 'pass' : 'fail',
-      reason: parsed.reason,
-      details: {
-        dimension: spec.dimension,
-        inputsUsed: spec.inputsUsed,
-        value: parsed.value,
-        transcriptErrors: transcript.errors.length,
-      },
-    };
-  };
-}
-
-function assertNever(value: never): never {
-  throw new Error(`Unsupported alignment evaluator score type: ${String(value)}`);
+  return (parsed, transcript) => ({
+    evaluator: spec.name,
+    score: parsed.verdict === 'unknown' ? 0 : parsed.score,
+    verdict: parsed.verdict === 'unknown' ? 'unknown' : 'observed',
+    reason: parsed.reason,
+    details: {
+      dimension: spec.dimension,
+      inputsUsed: spec.inputsUsed,
+      advisoryVerdict: parsed.verdict,
+      transcriptErrors: transcript.errors.length,
+    },
+  });
 }
 
 function createEvaluatorFromSpec(gocode: IGocodeClient, spec: AlignmentSpec): Evaluator {
@@ -212,31 +153,17 @@ function createEvaluatorFromSpec(gocode: IGocodeClient, spec: AlignmentSpec): Ev
     return extractBodyHtml(html).trim().length > 0;
   };
 
-  if (spec.scoreType === 'numerical') {
-    return new LLMJsonEvaluator(gocode, {
-      name: spec.name,
-      evalVersion: ALIGNMENT_EVAL_VERSION,
-      schema: JudgeNumericalSchema,
-      canEvaluate,
-      validateEvidence,
-      prompt: numericalPrompt(spec),
-      toEvalResult: mapNumerical(spec),
-    });
-  }
-
-  if (spec.scoreType === 'boolean') {
-    return new LLMJsonEvaluator(gocode, {
-      name: spec.name,
-      evalVersion: ALIGNMENT_EVAL_VERSION,
-      schema: JudgeBooleanSchema,
-      canEvaluate,
-      validateEvidence,
-      prompt: booleanPrompt(spec),
-      toEvalResult: mapBoolean(spec),
-    });
-  }
-
-  return assertNever(spec);
+  return new LLMJsonEvaluator(gocode, {
+    name: spec.name,
+    evalVersion: ALIGNMENT_EVAL_VERSION,
+    regressionMode: spec.regressionMode,
+    lowerIsBetter: spec.lowerIsBetter,
+    schema: JudgeNumericalSchema,
+    canEvaluate,
+    validateEvidence,
+    prompt: numericalPrompt(spec),
+    toEvalResult: mapScoreMode(spec),
+  });
 }
 
 export function createAlignmentLLMEvaluators(gocode: IGocodeClient): Evaluator[] {

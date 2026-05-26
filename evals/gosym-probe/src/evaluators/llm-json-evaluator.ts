@@ -31,25 +31,13 @@ export const JudgeNumericalSchema = z.object({
   reason: z.string().min(1),
 });
 
-export const JudgeBooleanSchema = z.object({
-  value: z.boolean(),
-  verdict: JudgeVerdictSchema,
-  reason: z.string().min(1),
-});
-
-export const JudgeCategoricalSchema = z.object({
-  value: z.string().min(1),
-  verdict: JudgeVerdictSchema,
-  reason: z.string().min(1),
-});
-
 export type JudgeNumerical = z.infer<typeof JudgeNumericalSchema>;
-export type JudgeBoolean = z.infer<typeof JudgeBooleanSchema>;
-export type JudgeCategorical = z.infer<typeof JudgeCategoricalSchema>;
 
 export interface LLMJsonEvaluatorConfig<T> {
   name: string;
   evalVersion?: string;
+  regressionMode?: 'passRate' | 'score';
+  lowerIsBetter?: boolean;
   schema: z.ZodType<T>;
   canEvaluate?: (transcript: Transcript, scenario: Scenario, snapshot?: DOMSnapshot) => boolean | Promise<boolean>;
   validateEvidence?: (transcript: Transcript, scenario: Scenario, snapshot?: DOMSnapshot) => Promise<boolean>;
@@ -65,6 +53,8 @@ export interface LLMJsonEvaluatorConfig<T> {
 export class LLMJsonEvaluator<T> implements Evaluator {
   readonly name: string;
   readonly evalVersion?: string;
+  readonly regressionMode?: 'passRate' | 'score';
+  readonly lowerIsBetter?: boolean;
 
   constructor(
     private readonly gocode: IGocodeClient,
@@ -72,6 +62,8 @@ export class LLMJsonEvaluator<T> implements Evaluator {
   ) {
     this.name = config.name;
     this.evalVersion = config.evalVersion;
+    this.regressionMode = config.regressionMode;
+    this.lowerIsBetter = config.lowerIsBetter;
   }
 
   async evaluate(

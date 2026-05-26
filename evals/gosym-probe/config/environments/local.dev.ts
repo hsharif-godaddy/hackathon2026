@@ -36,6 +36,7 @@ export function createConfig(): Config {
         'prompt-efficiency': 0.2,
         'token-usage': 1.5,
         'tool-failure-rate': 1.5,
+        // Alignment/quality: 15% relative score drop (score-mode evaluators)
         'intent-to-output-alignment': 0.15,
         'implicit-feature-gap': 0.15,
         'scope-drift-overgeneration': 0.15,

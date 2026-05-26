@@ -87,7 +87,7 @@ describe('createAlignmentLLMEvaluators', () => {
   });
 
   it('all evaluators have evalVersion equal to ALIGNMENT_EVAL_VERSION', () => {
-    expect(ALIGNMENT_EVAL_VERSION).toBe('1.1');
+    expect(ALIGNMENT_EVAL_VERSION).toBe('2.0');
     const evs = createAlignmentLLMEvaluators(makeGocode({}));
     for (const ev of evs) {
       expect(ev.evalVersion).toBe(ALIGNMENT_EVAL_VERSION);
@@ -106,34 +106,37 @@ describe('intent-to-output-alignment (numerical)', () => {
     )!;
   }
 
-  it('pass case: maps score and verdict from valid LLM response', async () => {
+  it('pass case: maps score to observed with advisoryVerdict pass', async () => {
     const ev = getEval(makeGocode({ score: 0.9, verdict: 'pass', reason: 'well aligned' }));
     const result = await ev.evaluate(
       makeTranscript(VALID_TURNS), makeScenario(), VALID_SNAPSHOT,
     );
     expect(result.evaluator).toBe('intent-to-output-alignment');
     expect(result.score).toBeCloseTo(0.9);
-    expect(result.verdict).toBe('pass');
+    expect(result.verdict).toBe('observed');
+    expect((result.details as Record<string, unknown>)?.advisoryVerdict).toBe('pass');
     expect(result.reason).toBe('well aligned');
     expect(result.evalVersion).toBe(ALIGNMENT_EVAL_VERSION);
   });
 
-  it('partial case: maps partial verdict correctly', async () => {
+  it('partial case: maps partial to observed with advisoryVerdict partial', async () => {
     const ev = getEval(makeGocode({ score: 0.55, verdict: 'partial', reason: 'mostly aligned' }));
     const result = await ev.evaluate(
       makeTranscript(VALID_TURNS), makeScenario(), VALID_SNAPSHOT,
     );
     expect(result.score).toBeCloseTo(0.55);
-    expect(result.verdict).toBe('partial');
+    expect(result.verdict).toBe('observed');
+    expect((result.details as Record<string, unknown>)?.advisoryVerdict).toBe('partial');
   });
 
-  it('fail case: maps fail verdict correctly', async () => {
+  it('fail case: maps fail to observed with advisoryVerdict fail', async () => {
     const ev = getEval(makeGocode({ score: 0.1, verdict: 'fail', reason: 'misaligned output' }));
     const result = await ev.evaluate(
       makeTranscript(VALID_TURNS), makeScenario(), VALID_SNAPSHOT,
     );
     expect(result.score).toBeCloseTo(0.1);
-    expect(result.verdict).toBe('fail');
+    expect(result.verdict).toBe('observed');
+    expect((result.details as Record<string, unknown>)?.advisoryVerdict).toBe('fail');
   });
 
   it('unknown verdict forces score to 0', async () => {
@@ -196,7 +199,7 @@ describe('intent-to-output-alignment (numerical)', () => {
     expect(result.reason).toContain('Evidence validation failed');
   });
 
-  it('result.details contains dimension, inputsUsed, and transcriptErrors', async () => {
+  it('result.details contains dimension, inputsUsed, advisoryVerdict, and transcriptErrors', async () => {
     const ev = getEval(makeGocode({ score: 0.9, verdict: 'pass', reason: 'ok' }));
     const result = await ev.evaluate(
       makeTranscript(VALID_TURNS), makeScenario(), VALID_SNAPSHOT,
@@ -204,6 +207,7 @@ describe('intent-to-output-alignment (numerical)', () => {
     expect(result.details).toEqual({
       dimension: 'Intent Understanding & Alignment',
       inputsUsed: ['conversation', 'final_artifacts'],
+      advisoryVerdict: 'pass',
       transcriptErrors: 0,
     });
   });
@@ -211,49 +215,51 @@ describe('intent-to-output-alignment (numerical)', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Boolean polarity inversion — implicit-feature-gap (booleanTrueIsGood=false)
+// implicit-feature-gap (numerical, score-mode)
 // ---------------------------------------------------------------------------
 
-describe('implicit-feature-gap (boolean, booleanTrueIsGood=false)', () => {
+describe('implicit-feature-gap (numerical, score-mode)', () => {
   function getEval(gocode: GocodeClient) {
     return createAlignmentLLMEvaluators(gocode).find(
       (e) => e.name === 'implicit-feature-gap',
     )!;
   }
 
-  it('value=true (problem present) → verdict fail, score 0', async () => {
-    const ev = getEval(makeGocode({ value: true, verdict: 'fail', reason: 'missing contact info' }));
+  it('score=0.8 with verdict pass → verdict observed, advisoryVerdict pass', async () => {
+    const ev = getEval(makeGocode({ score: 0.8, verdict: 'pass', reason: 'all features present' }));
     const result = await ev.evaluate(
       makeTranscript(VALID_TURNS), makeScenario(), VALID_SNAPSHOT,
     );
-    expect(result.score).toBe(0);
-    expect(result.verdict).toBe('fail');
+    expect(result.verdict).toBe('observed');
+    expect(result.score).toBeCloseTo(0.8);
+    expect((result.details as Record<string, unknown>)?.advisoryVerdict).toBe('pass');
   });
 
-  it('value=false (no problem) → verdict pass, score 1', async () => {
-    const ev = getEval(makeGocode({ value: false, verdict: 'pass', reason: 'all features present' }));
+  it('score=0.2 with verdict fail → verdict observed, advisoryVerdict fail', async () => {
+    const ev = getEval(makeGocode({ score: 0.2, verdict: 'fail', reason: 'missing contact info' }));
     const result = await ev.evaluate(
       makeTranscript(VALID_TURNS), makeScenario(), VALID_SNAPSHOT,
     );
-    expect(result.score).toBe(1);
-    expect(result.verdict).toBe('pass');
+    expect(result.verdict).toBe('observed');
+    expect(result.score).toBeCloseTo(0.2);
+    expect((result.details as Record<string, unknown>)?.advisoryVerdict).toBe('fail');
   });
 
-  it('result.details contains dimension, inputsUsed, value, and transcriptErrors', async () => {
-    const ev = getEval(makeGocode({ value: false, verdict: 'pass', reason: 'ok' }));
+  it('result.details contains dimension, inputsUsed, advisoryVerdict, and transcriptErrors', async () => {
+    const ev = getEval(makeGocode({ score: 0.9, verdict: 'pass', reason: 'ok' }));
     const result = await ev.evaluate(
       makeTranscript(VALID_TURNS), makeScenario(), VALID_SNAPSHOT,
     );
     expect(result.details).toEqual({
       dimension: 'Implicit Feature Completeness',
       inputsUsed: ['conversation', 'final_artifacts'],
-      value: false,
+      advisoryVerdict: 'pass',
       transcriptErrors: 0,
     });
   });
 
-  it('unknown verdict forces score to 0 regardless of value', async () => {
-    const ev = getEval(makeGocode({ value: false, verdict: 'unknown', reason: 'unclear' }));
+  it('unknown verdict forces score to 0 and verdict unknown', async () => {
+    const ev = getEval(makeGocode({ score: 0.5, verdict: 'unknown', reason: 'unclear' }));
     const result = await ev.evaluate(
       makeTranscript(VALID_TURNS), makeScenario(), VALID_SNAPSHOT,
     );
@@ -262,7 +268,7 @@ describe('implicit-feature-gap (boolean, booleanTrueIsGood=false)', () => {
   });
 
   it('canEvaluate returns false for empty transcript → verdict unknown', async () => {
-    const ev = getEval(makeGocode({ value: false, verdict: 'pass', reason: 'ok' }));
+    const ev = getEval(makeGocode({ score: 0.8, verdict: 'pass', reason: 'ok' }));
     const result = await ev.evaluate(
       makeTranscript([]), makeScenario(), VALID_SNAPSHOT,
     );
@@ -281,27 +287,136 @@ describe('implicit-feature-gap (boolean, booleanTrueIsGood=false)', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Boolean polarity verification for remaining boolean evaluators
+// silent-hallucination (numerical, score-mode)
 // ---------------------------------------------------------------------------
 
-describe('silent-hallucination (boolean, booleanTrueIsGood=false)', () => {
-  it('value=true (hallucination present) → fail', async () => {
-    const evs = createAlignmentLLMEvaluators(
-      makeGocode({ value: true, verdict: 'fail', reason: 'claimed email configured, no tool call' }),
+describe('silent-hallucination (numerical, score-mode)', () => {
+  function getEval(gocode: GocodeClient) {
+    return createAlignmentLLMEvaluators(gocode).find(
+      (e) => e.name === 'silent-hallucination',
+    )!;
+  }
+
+  it('score=0.9 with verdict pass → verdict observed, advisoryVerdict pass', async () => {
+    const ev = getEval(makeGocode({ score: 0.9, verdict: 'pass', reason: 'all claims backed' }));
+    const result = await ev.evaluate(
+      makeTranscript(VALID_TURNS), makeScenario(), VALID_SNAPSHOT,
     );
-    const ev = evs.find((e) => e.name === 'silent-hallucination')!;
-    const result = await ev.evaluate(makeTranscript(VALID_TURNS), makeScenario(), VALID_SNAPSHOT);
-    expect(result.verdict).toBe('fail');
-    expect(result.score).toBe(0);
+    expect(result.verdict).toBe('observed');
+    expect(result.score).toBeCloseTo(0.9);
+    expect((result.details as Record<string, unknown>)?.advisoryVerdict).toBe('pass');
   });
 
-  it('value=false (no hallucination) → pass', async () => {
-    const evs = createAlignmentLLMEvaluators(
-      makeGocode({ value: false, verdict: 'pass', reason: 'all claims backed by tool calls' }),
+  it('score=0.1 with verdict fail → verdict observed, advisoryVerdict fail', async () => {
+    const ev = getEval(makeGocode({ score: 0.1, verdict: 'fail', reason: 'unverified claims' }));
+    const result = await ev.evaluate(
+      makeTranscript(VALID_TURNS), makeScenario(), VALID_SNAPSHOT,
     );
-    const ev = evs.find((e) => e.name === 'silent-hallucination')!;
+    expect(result.verdict).toBe('observed');
+    expect(result.score).toBeCloseTo(0.1);
+    expect((result.details as Record<string, unknown>)?.advisoryVerdict).toBe('fail');
+  });
+
+  it('result.details contains dimension, inputsUsed, advisoryVerdict, and transcriptErrors', async () => {
+    const ev = getEval(makeGocode({ score: 0.8, verdict: 'pass', reason: 'ok' }));
+    const result = await ev.evaluate(
+      makeTranscript(VALID_TURNS), makeScenario(), VALID_SNAPSHOT,
+    );
+    expect(result.details).toEqual({
+      dimension: 'Consistency & Truthfulness',
+      inputsUsed: ['conversation', 'tool_calls', 'final_artifacts'],
+      advisoryVerdict: 'pass',
+      transcriptErrors: 0,
+    });
+  });
+
+  it('unknown verdict forces score to 0 and verdict unknown', async () => {
+    const ev = getEval(makeGocode({ score: 0.5, verdict: 'unknown', reason: 'unclear' }));
+    const result = await ev.evaluate(
+      makeTranscript(VALID_TURNS), makeScenario(), VALID_SNAPSHOT,
+    );
+    expect(result.score).toBe(0);
+    expect(result.verdict).toBe('unknown');
+  });
+
+  it('canEvaluate returns false for empty transcript → verdict unknown', async () => {
+    const ev = getEval(makeGocode({ score: 0.8, verdict: 'pass', reason: 'ok' }));
+    const result = await ev.evaluate(
+      makeTranscript([]), makeScenario(), VALID_SNAPSHOT,
+    );
+    expect(result.score).toBe(0);
+    expect(result.verdict).toBe('unknown');
+  });
+
+  it('LLM failure returns verdict unknown', async () => {
+    const ev = getEval(makeFailingGocode('timeout'));
+    const result = await ev.evaluate(
+      makeTranscript(VALID_TURNS), makeScenario(), VALID_SNAPSHOT,
+    );
+    expect(result.score).toBe(0);
+    expect(result.verdict).toBe('unknown');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Score-mode regression configuration (integration seam)
+// ---------------------------------------------------------------------------
+
+describe('score-mode regression configuration', () => {
+  it('all 3 evaluators have regressionMode: score', () => {
+    const evs = createAlignmentLLMEvaluators(makeGocode({}));
+    for (const ev of evs) {
+      expect(ev.regressionMode).toBe('score');
+    }
+  });
+
+  it('all 3 evaluators have lowerIsBetter: false', () => {
+    const evs = createAlignmentLLMEvaluators(makeGocode({}));
+    for (const ev of evs) {
+      expect(ev.lowerIsBetter).toBe(false);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// mapScoreMode validation boundary tests
+// ---------------------------------------------------------------------------
+
+describe('mapScoreMode boundary tests (via implicit-feature-gap)', () => {
+  function getEval(gocode: GocodeClient) {
+    return createAlignmentLLMEvaluators(gocode).find(
+      (e) => e.name === 'implicit-feature-gap',
+    )!;
+  }
+
+  it('score=0.0 with non-unknown verdict → verdict observed, score 0', async () => {
+    const ev = getEval(makeGocode({ score: 0.0, verdict: 'fail', reason: 'many gaps' }));
     const result = await ev.evaluate(makeTranscript(VALID_TURNS), makeScenario(), VALID_SNAPSHOT);
-    expect(result.verdict).toBe('pass');
-    expect(result.score).toBe(1);
+    expect(result.verdict).toBe('observed');
+    expect(result.score).toBeCloseTo(0.0);
+    expect((result.details as Record<string, unknown>)?.advisoryVerdict).toBe('fail');
+  });
+
+  it('score=1.0 with verdict pass → verdict observed, score 1', async () => {
+    const ev = getEval(makeGocode({ score: 1.0, verdict: 'pass', reason: 'all features present' }));
+    const result = await ev.evaluate(makeTranscript(VALID_TURNS), makeScenario(), VALID_SNAPSHOT);
+    expect(result.verdict).toBe('observed');
+    expect(result.score).toBeCloseTo(1.0);
+    expect((result.details as Record<string, unknown>)?.advisoryVerdict).toBe('pass');
+  });
+
+  it('verdict=unknown → score 0, verdict unknown, advisoryVerdict unknown', async () => {
+    const ev = getEval(makeGocode({ score: 0.5, verdict: 'unknown', reason: 'insufficient evidence' }));
+    const result = await ev.evaluate(makeTranscript(VALID_TURNS), makeScenario(), VALID_SNAPSHOT);
+    expect(result.verdict).toBe('unknown');
+    expect(result.score).toBe(0);
+    expect((result.details as Record<string, unknown>)?.advisoryVerdict).toBe('unknown');
+  });
+
+  it('score=0.0 with verdict fail is included in aggregation (not filtered as unknown)', async () => {
+    const ev = getEval(makeGocode({ score: 0.0, verdict: 'fail', reason: 'worst case' }));
+    const result = await ev.evaluate(makeTranscript(VALID_TURNS), makeScenario(), VALID_SNAPSHOT);
+    expect(result.verdict).toBe('observed');
+    expect(result.score).toBeCloseTo(0.0);
   });
 });
