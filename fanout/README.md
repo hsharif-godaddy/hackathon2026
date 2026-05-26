@@ -149,6 +149,47 @@ applies uniformly across categories; the Lambda picks the right Slack
 Block Kit builder via `row.feedback_category` (the BFF stamps it on
 every parquet write).
 
+## Slack message triage links
+
+Every Slack notification includes deep-links to the entities created
+for that submission:
+
+| Link | Target | Built when |
+|------|--------|------------|
+| `Case` | Salesforce Lightning case page | issue/support category + CMAPI returned `caseId` + `SALESFORCE_LIGHTNING_BASE` set |
+| `Jira` | AABSP Jira issue browse page | eligibility passes + Jira create succeeded |
+
+Labels intentionally match the single-word convention of the sibling
+diagnostic links (`Preview`, `Nexus`, `Console`). The case number and
+Jira issue key live in the URL hover-tooltip — they're noise in the
+visible row.
+
+The investigation URL is intentionally NOT in the Slack triage block —
+the investigator already posts its own deep-link as a CRM case note
+when it completes (see `maybeAddCrmCaseNote` in
+`investigator/handler.mjs`), and the kickoff note posts it upfront
+when CRM creation succeeds. A third copy in Slack would add no
+triage value.
+
+Order of operations in `handleFreshPath`: state → CRM postCase → Jira
+search/create → Slack (with enrichment) → kickoff note → investigator
+invoke. Jira moved BEFORE Slack so the Jira key is available at
+message-build time. Slack call is the same try/catch-warn-not-throw
+shape as before; if any link is missing (e.g. CRM 422 left `caseId=null`),
+that link is omitted but the rest of the message renders unchanged.
+
+The Salesforce Lightning URL pattern is
+`${SALESFORCE_LIGHTNING_BASE}/lightning/r/Case/${caseRecordId}/view`
+(verified against `https://godaddy-corp.atlassian.net/wiki/spaces/CARESFINT/pages/3863389051`).
+When `SALESFORCE_LIGHTNING_BASE` is empty (e.g. sandbox env where the
+Lightning instance differs), the `Case` link is omitted entirely; the
+rest of the Slack message renders unchanged. Triagers can still find
+the case via Nexus or the kickoff note in the CRM case itself.
+
+Happy-path NPS submissions (rating ≥ 5) get NO triage links — there's
+no CRM/Jira/investigator to link to. The Slack message renders
+identically to the legacy UI Block Kit shape (backward compat).
+
 ## Jira fanout (AABSP)
 
 After Slack + CRM + investigator dispatch, the Lambda creates an AABSP
@@ -209,8 +250,10 @@ replay, Lambda retry) are therefore safe.
 3. Ops opens the Secrets Manager console for the secret and replaces
    `email` and `apiToken` with the provisioned values.
 4. While placeholders remain, every Jira step logs
-   `fanout.jira.failed` with the Atlassian 401 response and skips —
-   Slack/CRM/investigator continue running normally.
+   `fanout.jira.find_failed` (or `fanout.jira.create_failed` if a
+   prior find succeeded but the create call hits the 401) with the
+   Atlassian response and skips — Slack/CRM/investigator continue
+   running normally.
 5. Rotate the API token roughly every 30 days: mint a new one,
    update the secret, then revoke the old token.
 

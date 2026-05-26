@@ -281,3 +281,105 @@ await test('buildDiagnosticLinks: publishedUrl with "test-" omitted', () => {
     'https://console.airo-builder.godaddy.com/?appId=app-x',
   );
 });
+
+// ---- Triage-link enrichment tests ----
+
+const MIN_CTX = {
+  currentAppId: 'app-1',
+  previewUrl: undefined,
+  publishedUrl: undefined,
+  fullStoryUrl: null,
+  subscriptionInfo: '',
+  isImpersonating: false,
+  isInternalUser: false,
+  shopperId: undefined,
+};
+
+await test('enrichment: both triage links prepend the diagnostic links', () => {
+  const enrichment = {
+    crmCaseUrl: 'https://godaddy2.lightning.force.com/lightning/r/Case/500U900000TUb7vIAD/view',
+    caseNumber: '00012345',
+    jiraKey: 'AABSP-42',
+    jiraUrl: 'https://godaddy-corp.atlassian.net/browse/AABSP-42',
+  };
+  const result = buildBugReportBlocks(
+    { topics: [], description: 'broken', followUp: true },
+    'first-publish-banner',
+    MIN_CTX,
+    enrichment,
+  );
+
+  // Triage links should be the FIRST entries (prepended). Case label
+  // includes the customer-facing caseNumber so triagers see the same
+  // identifier the customer received in their CRM email; Jira keeps a
+  // single-word label since the issue key is already in the URL hover.
+  assert.equal(result.links[0].text, 'Case #00012345');
+  assert.equal(result.links[0].url, enrichment.crmCaseUrl);
+  assert.equal(result.links[1].text, 'Jira');
+  assert.equal(result.links[1].url, enrichment.jiraUrl);
+  // Investigation NOT in Slack — investigator posts its own CRM note
+  assert.equal(result.links.find(l => l.text === 'Investigation'), undefined);
+  // Diagnostic links (Nexus, Console) should still follow
+  assert.ok(result.links.find(l => l.text === 'Nexus'));
+});
+
+await test('enrichment: Case label falls back to plain "Case" when caseNumber missing (resolver miss)', () => {
+  const enrichment = {
+    crmCaseUrl: 'https://godaddy2.lightning.force.com/lightning/r/Case/500U900000TUb7vIAD/view',
+    // caseNumber omitted — async-path resolver timed out before SF persisted
+  };
+  const result = buildBugReportBlocks(
+    { topics: [], description: 'broken', followUp: true },
+    undefined,
+    MIN_CTX,
+    enrichment,
+  );
+
+  assert.equal(result.links[0].text, 'Case');
+  assert.equal(result.links[0].url, enrichment.crmCaseUrl);
+});
+
+await test('enrichment: omitted entirely → no triage links, message identical to legacy shape', () => {
+  const result = buildBugReportBlocks(
+    { topics: [], description: 'broken', followUp: true },
+    undefined,
+    MIN_CTX,
+  );
+  // No Case/Jira links — backward compat with UI's legacy builder
+  assert.equal(result.links.find(l => l.text === 'Case'), undefined);
+  assert.equal(result.links.find(l => l.text === 'Jira'), undefined);
+});
+
+await test('enrichment: partial (Jira only, no CRM) → renders Jira only', () => {
+  const enrichment = {
+    jiraKey: 'AABSP-42',
+    jiraUrl: 'https://godaddy-corp.atlassian.net/browse/AABSP-42',
+  };
+  const result = buildFeedbackBlocks(
+    { topics: [], comment: 'meh', rating: 3, customerConsent: true },
+    undefined,
+    MIN_CTX,
+    enrichment,
+  );
+
+  assert.equal(result.links[0].text, 'Jira');
+  assert.equal(result.links.find(l => l.text === 'Case'), undefined);
+});
+
+await test('enrichment: support category gets triage links too', () => {
+  const enrichment = {
+    crmCaseUrl: 'https://godaddy2.lightning.force.com/lightning/r/Case/500U900000XYZ/view',
+    caseNumber: '00099999',
+    jiraKey: 'AABSP-9',
+    jiraUrl: 'https://godaddy-corp.atlassian.net/browse/AABSP-9',
+  };
+  const result = buildSupportRequestBlocks(
+    { topics: ['billing'], description: 'help', followUp: false },
+    undefined,
+    MIN_CTX,
+    enrichment,
+  );
+
+  assert.equal(result.links[0].text, 'Case #00099999');
+  assert.equal(result.links[1].text, 'Jira');
+});

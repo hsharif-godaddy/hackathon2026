@@ -25,8 +25,15 @@ const PLACEHOLDER_VALUE = 'REPLACE_ME';
  * @param {object} args.formData - { topics, description?, comment?, rating?, followUp?, customerConsent? }
  * @param {string|undefined} args.origin
  * @param {object} args.ctx - DiagnosticContext shape (see app/src/components/feedback/types.ts DiagnosticContext)
+ * @param {object|null} [args.enrichment] - optional triage links prepended to the message:
+ *   `{ crmCaseUrl?, jiraKey?, jiraUrl? }`. When omitted/null (e.g. happy NPS
+ *   submissions with no CRM/Jira), the message renders identically to the
+ *   legacy UI Block Kit shape. Investigation URL is intentionally NOT
+ *   included — the investigator already posts its own deep-link as a CRM
+ *   case note, and the kickoff note posts the same link upfront. Adding
+ *   it here would be a third copy with no triage value-add.
  */
-export async function postSlackMessage({ category, formData, origin, ctx }) {
+export async function postSlackMessage({ category, formData, origin, ctx, enrichment = null }) {
   const arn = process.env.SLACK_WEBHOOK_SECRET_ARN;
   if (!arn) {
     skipLog('SLACK_WEBHOOK_SECRET_ARN unset');
@@ -37,9 +44,9 @@ export async function postSlackMessage({ category, formData, origin, ctx }) {
   if (!url) return;
 
   let blockMessage;
-  if (category === 'issue') blockMessage = buildBugReportBlocks(formData, origin, ctx);
-  else if (category === 'support') blockMessage = buildSupportRequestBlocks(formData, origin, ctx);
-  else if (category === 'feedback') blockMessage = buildFeedbackBlocks(formData, origin, ctx);
+  if (category === 'issue') blockMessage = buildBugReportBlocks(formData, origin, ctx, enrichment);
+  else if (category === 'support') blockMessage = buildSupportRequestBlocks(formData, origin, ctx, enrichment);
+  else if (category === 'feedback') blockMessage = buildFeedbackBlocks(formData, origin, ctx, enrichment);
   else throw new Error(`Unknown feedback category: ${category}`);
 
   const slackBody = formatSlackBlockMessage(blockMessage);

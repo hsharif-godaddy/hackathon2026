@@ -157,6 +157,15 @@ interface Config {
    * "AAB Support Plane" (Suresh Gupta). Issues land here for triage.
    */
   jiraProjectKey: string;
+  /**
+   * Salesforce Lightning base URL for building deep-links to CRM cases in
+   * the fanout Slack message. Format: `https://<org>.lightning.force.com`.
+   * Lambda builds case URLs as `${base}/lightning/r/Case/${caseRecordId}/view`.
+   * Empty string disables CRM hyperlinking — Slack message renders the
+   * case number as plain text instead. Useful for sandbox envs where the
+   * Lightning instance differs from prod.
+   */
+  salesforceLightningBase: string;
   monitoring: MonitoringConfig;
   jwt: {
     rotationIntervalDays: number;
@@ -282,6 +291,11 @@ const devConfig: Config = {
   eventsEmrBatchRoleArns: [],
   jiraBaseUrl: 'https://godaddy-corp.atlassian.net',
   jiraProjectKey: 'AABSP',
+  // Dev/test CRM (CMAPI) creates cases against the same Salesforce prod
+  // Lightning instance the support team uses today; verified from
+  // `https://godaddy-corp.atlassian.net/wiki/spaces/CARESFINT/pages/3863389051`.
+  // If a sandbox-specific Lightning URL ever ships, override per env.
+  salesforceLightningBase: 'https://godaddy2.lightning.force.com',
 };
 
 const testConfig: Config = {
@@ -371,10 +385,12 @@ const testConfig: Config = {
     'GD-AWS-USA-GD-AiroBuilde-Ops',
   ],
   eventsEmrBatchRoleArns: [],
-  // FeedbackFanoutStack isn't deployed in test (see main.ts), but jiraBaseUrl
-  // and jiraProjectKey are required to satisfy the type contract.
+  // FeedbackFanoutStack isn't deployed in test (see main.ts), but jiraBaseUrl,
+  // jiraProjectKey, and salesforceLightningBase are required to satisfy the
+  // type contract.
   jiraBaseUrl: 'https://godaddy-corp.atlassian.net',
   jiraProjectKey: 'AABSP',
+  salesforceLightningBase: 'https://godaddy2.lightning.force.com',
 };
 
 const prodConfig: Config = {
@@ -481,6 +497,7 @@ const prodConfig: Config = {
   ],
   jiraBaseUrl: 'https://godaddy-corp.atlassian.net',
   jiraProjectKey: 'AABSP',
+  salesforceLightningBase: 'https://godaddy2.lightning.force.com',
 };
 
 

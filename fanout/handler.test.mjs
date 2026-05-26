@@ -12,7 +12,9 @@ let readStateImpl = async () => null;
 let writeStateConditionalImpl = async () => {};
 let postCaseImpl = async () => ({});
 let getCaseImpl = async () => null;
+let getCaseByExternalIdImpl = async () => null;
 let postNoteImpl = async () => {};
+let resolveCaseAsyncImpl = async () => null;
 let invokeInvestigatorImpl = async () => {};
 let postSlackMessageImpl = async () => {};
 let findIssueByFeedbackIdImpl = async () => null;
@@ -24,7 +26,9 @@ let createIssueImpl = async () => ({ key: 'AABSP-1', id: '10000' });
 const calls = {
   postCase: [],
   getCase: [],
+  getCaseByExternalId: [],
   postNote: [],
+  resolveCase: [],
   invoke: [],
   stateRead: [],
   stateWrite: [],
@@ -78,9 +82,17 @@ mock.module('./crm-client.mjs', {
       calls.getCase.push(args[0]);
       return getCaseImpl(...args);
     },
+    getCaseByExternalId: async (...args) => {
+      calls.getCaseByExternalId.push(args[0]);
+      return getCaseByExternalIdImpl(...args);
+    },
     postNote: async (...args) => {
       calls.postNote.push(args[0]);
       return postNoteImpl(...args);
+    },
+    resolveCaseAsync: async (...args) => {
+      calls.resolveCase.push(args[0]);
+      return resolveCaseAsyncImpl(...args);
     },
   },
 });
@@ -170,8 +182,14 @@ beforeEach(() => {
     referenceId: null,
     created: true,
   });
-  getCaseImpl = async () => null;
+  // Default: return a case with caseNumber so sync-path caseNumber fetch works.
+  // Dedup tests that need null/Closed override this per-test.
+  getCaseImpl = async () => ({ caseRecordId: '500U900000TP4kYIAT', caseNumber: '00012345', status: 'Open' });
+  // Default: pre-POST guard sees no existing case → handler proceeds to postCase.
+  // Tests covering the guard-hit scenario override this per-test.
+  getCaseByExternalIdImpl = async () => null;
   postNoteImpl = async () => {};
+  resolveCaseAsyncImpl = async () => null;
   postSlackMessageImpl = async () => {};
   invokeInvestigatorImpl = async () => {};
   findIssueByFeedbackIdImpl = async () => null;
@@ -188,7 +206,8 @@ beforeEach(() => {
   process.env.AIRO_SSO_ENDPOINT = 'https://sso.example.com/v1/secure/api/token';
   process.env.SLACK_WEBHOOK_SECRET_ARN = 'arn:aws:secretsmanager:us-west-2:111:secret:airo-fanout-slack-webhook';
   process.env.INVESTIGATE_LAMBDA_FN = 'airo-investigator';
-  process.env.DEBUG_CONSOLE_BASE_URL = 'https://debug.example.com';
+  process.env.DEBUG_CONSOLE_BASE_URL = 'https://console.example.com';
+  process.env.SALESFORCE_LIGHTNING_BASE = 'https://godaddy2.lightning.force.com';
 });
 
 await test('fresh path: opens case, writes state, posts Slack + kickoff note + invoke investigator', async () => {
@@ -232,6 +251,147 @@ await test('fresh path: opens case, writes state, posts Slack + kickoff note + i
     description: 'broken thing',
     followUp: true,
   });
+  // Triage-link enrichment: Slack call should carry the CRM case URL
+  // and Jira issue key so triagers can deep-link straight from the
+  // Slack message. CRM URL pattern is the Salesforce Lightning case
+  // page; Jira URL is the AABSP issue browse link. Investigation URL
+  // is intentionally not in enrichment (investigator posts its own
+  // deep-link as a CRM note + kickoff note carries it).
+  assert.ok(calls.slack[0].enrichment);
+  assert.match(calls.slack[0].enrichment.crmCaseUrl, /\/lightning\/r\/Case\/.+\/view$/);
+  assert.equal(calls.slack[0].enrichment.caseNumber, '00012345');
+  assert.equal(calls.slack[0].enrichment.jiraKey, 'AABSP-1');
+  assert.match(calls.slack[0].enrichment.jiraUrl, /\/browse\/AABSP-1$/);
+  // Sync path: no resolver poll, but one getCase call to fetch caseNumber
+  // (POST response never includes caseNumber on either sync or async path).
+  assert.equal(calls.resolveCase.length, 0);
+  assert.equal(calls.getCase.length, 1);
+  assert.equal(calls.getCase[0].caseId, '500U900000TP4kYIAT');
+});
+
+await test('fresh path: async-mode postCase → resolver polls and materializes Salesforce caseRecordId + caseNumber', async () => {
+  // CMAPI async POST returns only `referenceId` (= our externalSystemId
+  // echoed back) — caseId/caseNumber are null until SF Adapter persists
+  // the case in Salesforce. Resolver polls GET ?externalId= with backoff;
+  // hit on the first attempt here, so the Slack enrichment carries the
+  // real SF Record ID for the Lightning URL and the customer-facing
+  // caseNumber for the link label.
+  postCaseImpl = async () => ({
+    caseId: null,
+    caseNumber: null,
+    referenceId: 'airo-cust-1-app-1-sub-1',
+    created: null,
+  });
+  resolveCaseAsyncImpl = async () => ({
+    caseRecordId: '500U900000TP4kYIAT',
+    caseNumber: '00067890',
+  });
+  let readCount = 0;
+  readStateImpl = async () => {
+    readCount += 1;
+    if (readCount === 1) return null;
+    return {
+      state: {
+        schemaVersion: 1,
+        submissionId: 'sub-1',
+        crmCaseId: null,
+        startedAt: Date.now(),
+        lastUpdatedAt: Date.now(),
+      },
+      etag: '"e-fresh"',
+    };
+  };
+
+  await handler(S3_EVENT);
+
+  assert.equal(calls.resolveCase.length, 1);
+  assert.equal(calls.resolveCase[0].externalId, 'airo-cust-1-app-1-sub-1');
+  // Slack enrichment should embed the resolved SF Record ID in the URL
+  // (not the referenceId — that would render a broken Lightning link).
+  assert.ok(calls.slack[0].enrichment);
+  assert.match(calls.slack[0].enrichment.crmCaseUrl, /\/lightning\/r\/Case\/500U900000TP4kYIAT\/view$/);
+  assert.equal(calls.slack[0].enrichment.caseNumber, '00067890');
+});
+
+await test('fresh path: async-mode resolver miss → Slack still posts with no Case link, no crash', async () => {
+  // Resolver polls all 4 attempts and returns null (SF persistence took
+  // longer than ~3.5s budget). buildEnrichment should omit crmCaseUrl /
+  // caseNumber so buildTriageLinks renders only the Jira link; the rest
+  // of the Slack message remains intact (no thrown error).
+  postCaseImpl = async () => ({
+    caseId: null,
+    caseNumber: null,
+    referenceId: 'airo-cust-1-app-1-sub-1',
+    created: null,
+  });
+  resolveCaseAsyncImpl = async () => null;
+  let readCount = 0;
+  readStateImpl = async () => {
+    readCount += 1;
+    if (readCount === 1) return null;
+    return {
+      state: {
+        schemaVersion: 1,
+        submissionId: 'sub-1',
+        crmCaseId: null,
+        startedAt: Date.now(),
+        lastUpdatedAt: Date.now(),
+      },
+      etag: '"e-fresh"',
+    };
+  };
+
+  await handler(S3_EVENT);
+
+  assert.equal(calls.resolveCase.length, 1);
+  // Slack still fired even with resolver miss
+  assert.equal(calls.slack.length, 1);
+  // CRM enrichment fields absent → buildTriageLinks renders no Case link.
+  // Jira link still present from successful Jira mock.
+  assert.equal(calls.slack[0].enrichment?.crmCaseUrl, undefined);
+  assert.equal(calls.slack[0].enrichment?.caseNumber, undefined);
+  assert.equal(calls.slack[0].enrichment?.jiraKey, 'AABSP-1');
+});
+
+await test('fresh path: sync-mode getCase failure leaves caseNumber null but Slack still posts with link', async () => {
+  // Sync-path postCase returns SF Record ID directly, then we fire a
+  // single getCase to fetch caseNumber. If that GET throws (transient
+  // CMAPI hiccup), bulkhead pattern: log warn, continue, render Slack
+  // with the SF link but no `Case #...` label (Slack falls back to
+  // plain `Case`). The Lambda must not crash and CRM-case opening
+  // must still be reported as success because the case IS in CRM.
+  postCaseImpl = async () => ({
+    caseId: '500U900000TP4kYIAT',
+    caseNumber: null,
+    referenceId: null,
+    created: true,
+  });
+  getCaseImpl = async () => { throw new Error('CMAPI 503 transient'); };
+  let readCount = 0;
+  readStateImpl = async () => {
+    readCount += 1;
+    if (readCount === 1) return null;
+    return {
+      state: {
+        schemaVersion: 1,
+        submissionId: 'sub-1',
+        crmCaseId: null,
+        startedAt: Date.now(),
+        lastUpdatedAt: Date.now(),
+      },
+      etag: '"e-fresh"',
+    };
+  };
+
+  await handler(S3_EVENT);
+
+  assert.equal(calls.getCase.length, 1, 'sync path attempted to fetch caseNumber');
+  assert.equal(calls.slack.length, 1, 'Slack post not blocked by getCase failure');
+  assert.equal(calls.invoke.length, 1, 'investigator still invoked');
+  // Salesforce link rendered (caseRecordId came from postCase), but no
+  // caseNumber → buildTriageLinks renders plain `Case` not `Case #...`.
+  assert.match(calls.slack[0].enrichment.crmCaseUrl, /\/lightning\/r\/Case\/500U900000TP4kYIAT\/view$/);
+  assert.equal(calls.slack[0].enrichment.caseNumber, undefined);
 });
 
 await test('fresh path: support category routes Slack with category=support and same form-data shape', async () => {
@@ -368,6 +528,21 @@ await test('dedup hit within 60min: posts duplicate note + Slack + Jira; skips n
   assert.equal(calls.invoke.length, 0, 'investigator NOT invoked on dedup hit');
   assert.equal(calls.slack.length, 1, 'Slack still pings on dedup hit');
   assert.equal(calls.jiraCreate.length, 1, 'Jira ticket still created on dedup hit (eligibility-gated)');
+  // Dedup-path Slack must carry the same triage-link enrichment as fresh
+  // path: existing CRM case (reused) + new Jira ticket (one per click).
+  // CRM caseId comes from `existing.state.crmCaseId`, jiraKey from the
+  // freshly-created issue. A regression that drops either source would
+  // silently produce a Slack message missing the deep-links, defeating
+  // the whole point of the enrichment.
+  assert.ok(calls.slack[0].enrichment, 'dedup Slack call has enrichment');
+  assert.match(calls.slack[0].enrichment.crmCaseUrl, /\/lightning\/r\/Case\/.+\/view$/);
+  // The dedup mock omits `caseNumber` from the live case object, so the
+  // enrichment must NOT carry caseNumber — Slack falls back to plain `Case`.
+  // Asserts the fallback path explicitly so a regression that always sets
+  // caseNumber from `liveCase` would be caught.
+  assert.equal(calls.slack[0].enrichment.caseNumber, undefined);
+  assert.equal(calls.slack[0].enrichment.jiraKey, 'AABSP-1');
+  assert.match(calls.slack[0].enrichment.jiraUrl, /\/browse\/AABSP-1$/);
 });
 
 await test('stale state (case closed): falls through to fresh path', async () => {
@@ -619,4 +794,46 @@ await test('crm: postCase throws (CMAPI 422 / 5xx) → handler still completes; 
   // Kickoff note skipped because caseId is null.
   // postNote was NOT called (no kickoff post when caseId null).
   assert.equal(calls.postNote.length, 0);
+});
+
+await test('crm: pre-POST guard hit → reuses existing case, skips postCase, renders Slack link', async () => {
+  // Defends against scenarios where postCase appeared to fail to us
+  // (30s client abort, network blip, manual replay) but CMAPI server
+  // already persisted the case. Without the guard, the next attempt
+  // would create a duplicate.
+  readStateImpl = freshReadStateImpl();
+  getCaseByExternalIdImpl = async () => ({
+    caseRecordId: '500U900000TeAPvIAN',
+    caseNumber: '00114462',
+    status: 'Open',
+  });
+
+  await handler(S3_EVENT);
+
+  assert.equal(calls.getCaseByExternalId.length, 1, 'preflight GET fired once');
+  assert.equal(calls.postCase.length, 0, 'postCase skipped on guard hit');
+  assert.equal(calls.resolveCase.length, 0, 'resolver skipped on guard hit');
+  // Slack rendered with reused case
+  assert.equal(calls.slack.length, 1);
+  assert.equal(
+    calls.slack[0].enrichment?.crmCaseUrl,
+    'https://godaddy2.lightning.force.com/lightning/r/Case/500U900000TeAPvIAN/view',
+  );
+  assert.equal(calls.slack[0].enrichment?.caseNumber, '00114462');
+  // Kickoff note still posted to the reused case
+  assert.equal(calls.postNote.length, 1);
+  assert.equal(calls.postNote[0].caseRecordId, '500U900000TeAPvIAN');
+});
+
+await test('crm: pre-POST guard error → logged, falls through to postCase as normal', async () => {
+  // Guard is best-effort; a transient GET failure must not block the
+  // primary postCase path. Caught error logged via fanout.crm.preflight_get_failed.
+  readStateImpl = freshReadStateImpl();
+  getCaseByExternalIdImpl = async () => { throw new Error('CMAPI GET 503'); };
+
+  await handler(S3_EVENT);
+
+  assert.equal(calls.getCaseByExternalId.length, 1);
+  assert.equal(calls.postCase.length, 1, 'postCase still ran after guard error');
+  assert.equal(calls.slack.length, 1);
 });

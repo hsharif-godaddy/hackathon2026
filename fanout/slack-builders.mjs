@@ -55,6 +55,41 @@ function buildDiagnosticLinks(ctx) {
   return links;
 }
 
+/**
+ * Triage-link section: CRM case in Salesforce + AABSP Jira issue. Each
+ * link rendered only when its entity exists. Returns an array of
+ * {url, text} entries that prepend the standard diagnostic links so
+ * triagers see them first.
+ *
+ * Investigation URL deliberately omitted — the investigator already
+ * posts its own deep-link as a CRM case note when it completes (see
+ * `maybeAddCrmCaseNote` in `investigator/handler.mjs`), and the kickoff
+ * note posts the same link upfront. Slack would be a third copy with
+ * no triage value-add.
+ *
+ * Lambda-only: the UI's slackBuilders.ts doesn't have this function
+ * because the UI builds Slack messages BEFORE these downstreams run.
+ * Lambda has the IDs in hand at message-build time, so it can deep-link.
+ */
+function buildTriageLinks(enrichment) {
+  if (!enrichment) return [];
+  const links = [];
+  if (enrichment.crmCaseUrl) {
+    // Show `Case #<caseNumber>` when the resolver materialized the
+    // customer-facing number (matches what the customer sees in their
+    // CRM email — "Your ticket ID is: 00012345"). On async-path
+    // resolver miss caseNumber is null and we render plain `Case` so
+    // the link still surfaces; the caseRecordId in the URL is enough
+    // for triagers to deep-link into Salesforce Lightning.
+    const text = enrichment.caseNumber ? `Case #${enrichment.caseNumber}` : 'Case';
+    links.push({ url: enrichment.crmCaseUrl, text });
+  }
+  if (enrichment.jiraUrl) {
+    links.push({ url: enrichment.jiraUrl, text: 'Jira' });
+  }
+  return links;
+}
+
 function buildCustomerInfoLeft(ctx) {
   const fields = [];
 
@@ -68,7 +103,7 @@ function buildCustomerInfoLeft(ctx) {
   return fields;
 }
 
-export function buildSupportRequestBlocks(data, origin, ctx) {
+export function buildSupportRequestBlocks(data, origin, ctx, enrichment = null) {
   const leftFields = buildCustomerInfoLeft(ctx);
   const rightFields = [];
 
@@ -100,11 +135,11 @@ export function buildSupportRequestBlocks(data, origin, ctx) {
         ? { leftFields, rightFields: [{ value: ' ' }] }
         : undefined,
     singleColumnSections,
-    links: buildDiagnosticLinks(ctx),
+    links: [...buildTriageLinks(enrichment), ...buildDiagnosticLinks(ctx)],
   };
 }
 
-export function buildBugReportBlocks(data, origin, ctx) {
+export function buildBugReportBlocks(data, origin, ctx, enrichment = null) {
   const leftFields = buildCustomerInfoLeft(ctx);
   const rightFields = [];
 
@@ -136,11 +171,11 @@ export function buildBugReportBlocks(data, origin, ctx) {
         ? { leftFields, rightFields: [{ value: ' ' }] }
         : undefined,
     singleColumnSections: singleColumnSections.length > 0 ? singleColumnSections : undefined,
-    links: buildDiagnosticLinks(ctx),
+    links: [...buildTriageLinks(enrichment), ...buildDiagnosticLinks(ctx)],
   };
 }
 
-export function buildFeedbackBlocks(data, origin, ctx) {
+export function buildFeedbackBlocks(data, origin, ctx, enrichment = null) {
   const leftFields = buildCustomerInfoLeft(ctx);
   const rightFields = [];
 
@@ -188,6 +223,6 @@ export function buildFeedbackBlocks(data, origin, ctx) {
       ? { leftFields, rightFields }
       : undefined,
     singleColumnSections: singleColumnSections.length > 0 ? singleColumnSections : undefined,
-    links: buildDiagnosticLinks(ctx),
+    links: [...buildTriageLinks(enrichment), ...buildDiagnosticLinks(ctx)],
   };
 }

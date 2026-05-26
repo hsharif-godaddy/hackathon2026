@@ -112,12 +112,13 @@ export class FeedbackFanoutStack extends GDStack {
     // iam:DeleteRolePolicy). Bumping every CFN identifier with a `-v2`
     // suffix in dev sidesteps the orphans by creating a fresh resource
     // set; test/prod stay clean (first deploy ever, no orphans).
-    // TODO(skilaru): drop the suffix once an admin cleans the dev
-    // orphans (`airobuilde-custom-03dab0da6fb403a1a5074cfa6005100d59721fb7`,
-    // `dev-airo-fanout-{slack-webhook,jira-api-token}`,
-    // `airo-fanout-dev` Lambda + log group, `airo-fanout-dlq-dev`).
-    const SUFFIX_KEBAB: string = config.envName === 'dev' ? '-v2' : '';
-    const SUFFIX_PASCAL: string = config.envName === 'dev' ? 'V2' : '';
+    // TODO(skilaru, AIROBUILD-XXXX): drop the suffix once an admin cleans the
+    // dev orphans listed in the tracking ticket. Until then the suffix is bumped
+    // each time a failed deploy leaves a fresh orphan (v2 → v4, skipped v3
+    // because v3 secrets were RETAIN-policied and orphaned in the v3 attempt).
+    // The orphans live in IAM/Secrets and PowerUser SSO cannot delete them.
+    const SUFFIX_KEBAB: string = config.envName === 'dev' ? '-v4' : '';
+    const SUFFIX_PASCAL: string = config.envName === 'dev' ? 'V4' : '';
 
     // ---- Slack webhook secret (CDK-owned, ops fills via console once) ----
     // Mirrors airo-stripe-service-stack.ts pattern: CDK creates the Secret
@@ -144,7 +145,10 @@ export class FeedbackFanoutStack extends GDStack {
         secretStringTemplate: JSON.stringify({ webhookUrl: 'REPLACE_ME' }),
         excludeCharacters: '"@/\\',
       },
-      removalPolicy: cdk.RemovalPolicy.RETAIN,
+      // DESTROY in dev so failed-deploy rollbacks actually delete the secret
+      // and prevent "already exists" orphan collisions on the next deploy.
+      // RETAIN in test/prod to preserve manually-filled webhook URLs.
+      removalPolicy: config.envName === 'dev' ? cdk.RemovalPolicy.DESTROY : cdk.RemovalPolicy.RETAIN,
     });
 
     // ---- Jira API token secret (CDK-owned, ops fills via console) ----
@@ -172,7 +176,7 @@ export class FeedbackFanoutStack extends GDStack {
         secretStringTemplate: JSON.stringify({ email: 'REPLACE_ME', apiToken: 'REPLACE_ME' }),
         excludeCharacters: '"@/\\',
       },
-      removalPolicy: cdk.RemovalPolicy.RETAIN,
+      removalPolicy: config.envName === 'dev' ? cdk.RemovalPolicy.DESTROY : cdk.RemovalPolicy.RETAIN,
     });
 
     // ---- Dead Letter Queue ----
@@ -242,6 +246,19 @@ export class FeedbackFanoutStack extends GDStack {
       // Cap concurrent fanout to protect downstream services (Slack, CRM,
       // investigator Lambda) from a parquet-writer storm.
       reservedConcurrentExecutions: 50,
+      // Disable AWS Lambda async-invocation auto-retry. Default is 2 retries
+      // which compounds non-idempotent side effects: each retry re-runs the
+      // ENTIRE handler, so any error after `postCase` succeeds (Slack 5xx,
+      // Jira 401, state-write race, exec timeout) results in a second CRM
+      // case, second Slack message, second Jira issue. CMAPI's async POST is
+      // expected to upsert on `externalSystemId` per the documented
+      // idempotency contract (see Confluence p4117200898), but we cannot
+      // depend on that — observed prod runs produced two consecutive case
+      // numbers from a single Lambda invocation when the SF Adapter
+      // pipeline retried. With retryAttempts=0, genuine failures land in
+      // the DLQ for manual replay (the parquet is the source of truth) and
+      // we trade automatic retry for predictable side-effect counts.
+      retryAttempts: 0,
       logGroup,
       deadLetterQueue: this.dlq,
       vpc,
@@ -267,6 +284,13 @@ export class FeedbackFanoutStack extends GDStack {
         JIRA_API_TOKEN_SECRET_ARN: jiraApiTokenSecret.secretArn,
         JIRA_BASE_URL: config.jiraBaseUrl,
         JIRA_PROJECT_KEY: config.jiraProjectKey,
+        // Salesforce Lightning base URL for building deep-links to CRM
+        // cases in the Slack message. Lambda renders
+        // `${SALESFORCE_LIGHTNING_BASE}/lightning/r/Case/${caseId}/view` per
+        // submission. Empty string disables the hyperlink (case number
+        // renders as plain text). Pattern verified against Confluence
+        // page 3863389051 (DIFY Salesforce Bug Reporting SOP).
+        SALESFORCE_LIGHTNING_BASE: config.salesforceLightningBase,
         // Cutover gating is per-submission via the `appbuilder-fanout-via-lambda`
         // Switchboard flag (resolved by the BFF and stamped into the parquet's
         // `fanout_via_lambda` column). No environment kill-switch — Lambda
@@ -275,6 +299,35 @@ export class FeedbackFanoutStack extends GDStack {
         LOG_LEVEL: config.envName === 'prod' ? 'info' : 'debug',
       },
     });
+
+    // ECR repo policy for Lambda pull is NOT managed by this stack.
+    //
+    // gd-safeguard's AppScopedStagingSynthesizer routes the fanout Docker
+    // image asset to a per-app ECR repo (`6082/airo-fanout`). Lambda needs
+    // a `LambdaECRImageRetrievalPolicy` resource policy on that repo to
+    // pull the image; without it CloudFormation reports:
+    //   "AWS Lambda does not have permission to access the provided code
+    //    artifact. Please configure the required permissions in the ECR
+    //    repository."
+    //
+    // We CAN'T manage this policy here for two reasons:
+    //   1. AwsCustomResource → ecr:SetRepositoryPolicy is denied by the
+    //      GD-AWS-SSG-PB-MINIFIED permissions boundary on all Lambda
+    //      execution roles in this account.
+    //   2. The CI deploy role (GD-AWS-SSG-Deploy-Role) also lacks
+    //      ecr:SetRepositoryPolicy, so a pre-deploy CLI step doesn't work
+    //      either.
+    //
+    // Operational note: the policy is provisioned ONCE per env, by an
+    // admin SSO with ecr:SetRepositoryPolicy, after the per-app repo first
+    // exists (created by the asset publish on first CDK deploy attempt).
+    // Once set, the policy persists; CDK deploys after that work fine.
+    // gd-safeguard automatically attaches the equivalent
+    // LambdaECRImageRetrievalPolicy on most existing per-app repos
+    // (verified on prod 6082/airo-fanout and 6082/airo-investigator).
+    // If a future gd-safeguard staging refresh wipes the policy, an admin
+    // re-attach is required — a CI-managed re-attach is not currently
+    // possible without a permissions-boundary exception.
 
     // ---- IAM ----
     // Read the parquet object that triggered us. Scoped to the table prefix

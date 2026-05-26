@@ -1,8 +1,8 @@
 import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
 
 import { parseFeedbackParquet } from './parquet-reader.mjs';
-import { keyFor, readState, writeStateConditional } from './state.mjs';
-import { postCase, getCase, postNote } from './crm-client.mjs';
+import { readState, writeStateConditional } from './state.mjs';
+import { postCase, getCase, getCaseByExternalId, postNote, resolveCaseAsync } from './crm-client.mjs';
 import { invokeInvestigator } from './invoke-investigator.mjs';
 import { postSlackMessage } from './slack.mjs';
 import { findIssueByFeedbackId, createIssue } from './jira-client.mjs';
@@ -178,46 +178,41 @@ async function handleDedupHit({ existing, row, customerId, appId, submissionId, 
     if (err.name !== 'PreconditionFailed') log('warn', 'fanout.dedup.state_update_failed', { error: err.message });
   }
 
+  // Jira runs BEFORE Slack so the duplicate-Slack message can include the
+  // newly created AABSP ticket as a triage link. Eligibility-gated; each
+  // spam-click has a unique submissionId so the find-by-label search won't
+  // match a prior click — each eligible click creates its own ticket.
+  // Investigator stays off on dedup path — only NEW CRM case creation +
+  // investigator are suppressed; Slack/Jira still surface every submission.
+  const jiraKey = await resolveJiraKey({ row, submissionId, logPrefix: 'fanout.dedup.jira' });
+
   // Slack always runs on dedup hit (mirrors fresh path) — every submission
-  // pings the channel even when the underlying CRM case is reused, so the
-  // team sees that the customer kept submitting. Failures here MUST NOT
-  // block Jira / state update.
+  // pings the channel even when the underlying CRM case is reused. Now
+  // enriched with triage links: the existing CRM case (reused) and the
+  // new Jira ticket (one per click). Failures here MUST NOT block state
+  // update.
   try {
     await postSlackMessage({
       category: row.feedback_category,
       formData: buildFormDataFromRow(row),
       origin: row.feedback_origin_name ?? undefined,
       ctx: buildDiagnosticContextFromRow(row),
+      enrichment: buildEnrichment({
+        // liveCase is the resolved CMAPI Case from the dedup-path getCase
+        // above. `caseRecordId` is populated whenever the row exists in
+        // SF; `caseNumber` may lag during the SF projection's mid-write
+        // window (rare on dedup since we're reading an older row, but
+        // defended for robustness), hence the `?? null` fallback.
+        caseRecordId: liveCase.caseRecordId,
+        caseNumber: liveCase.caseNumber ?? null,
+        jiraKey,
+      }),
     });
   } catch (err) {
     log('warn', 'fanout.dedup.slack_failed', { error: err.message });
   }
 
-  // Jira always runs on dedup hit (subject to eligibility gate). Each spam-
-  // click has a unique feedback_id (UUID) so `findIssueByFeedbackId` won't
-  // match across submissions; each eligible click creates its own AABSP
-  // ticket. Investigator stays off on this path — only the new CRM case
-  // creation is suppressed, not Slack/Jira surfacing.
-  if (shouldFanoutDownstream(row)) {
-    try {
-      const existingIssue = await findIssueByFeedbackId({
-        baseUrl: process.env.JIRA_BASE_URL,
-        projectKey: process.env.JIRA_PROJECT_KEY,
-        feedbackId: submissionId,
-      });
-      if (existingIssue) {
-        log('info', 'fanout.dedup.jira.skip_existing', { issueKey: existingIssue, feedbackId: submissionId });
-      } else {
-        const body = buildJiraIssueBody(row, process.env.JIRA_PROJECT_KEY);
-        const issue = await createIssue({ baseUrl: process.env.JIRA_BASE_URL, body });
-        log('info', 'fanout.dedup.jira.created', { issueKey: issue.key, feedbackId: submissionId });
-      }
-    } catch (err) {
-      log('warn', 'fanout.dedup.jira_failed', { error: err.message, feedbackId: submissionId });
-    }
-  }
-
-  log('info', 'fanout.dedup.hit', { customerId, appId, caseId: existing.state.crmCaseId });
+  log('info', 'fanout.dedup.hit', { customerId, appId, caseId: existing.state.crmCaseId, jiraKey });
   return true;
 }
 
@@ -281,16 +276,85 @@ async function handleFreshPath({ row, customerId, appId, submissionId, stateBuck
   // create a case and flood the support queue with non-issues.
   let caseId = null;
   let caseNumber = null;
+  let caseRecordId = null;
   if (shouldOpenCrmCase(row)) {
+    const externalSystemId = buildExternalSystemId(customerId, appId, submissionId);
     try {
-      const result = await postCase({
+      // Pre-POST idempotency guard: if a case with this externalSystemId
+      // already exists, reuse it instead of POSTing again. Defends against
+      // scenarios where postCase appears to fail to us (30s client abort,
+      // network blip, manual parquet replay) but CMAPI server-side already
+      // persisted the case. Without this guard, the next attempt would
+      // create a duplicate. Cheap (~500ms p99 GET per fresh path) and only
+      // runs on the fresh path — dedup hits already short-circuited above.
+      const existing = await getCaseByExternalId({
         ...crmConfig(),
-        body: buildCaseBody({ row, customerId, appId, submissionId }),
+        externalId: externalSystemId,
+      }).catch((err) => {
+        log('warn', 'fanout.crm.preflight_get_failed', {
+          customerId, appId, submissionId, externalSystemId, error: err.message,
+        });
+        return null;
       });
-      caseId = result.caseId;
-      caseNumber = result.caseNumber;
+      if (existing?.caseRecordId) {
+        caseRecordId = existing.caseRecordId;
+        caseNumber = existing.caseNumber ?? null;
+        caseId = existing.caseRecordId;
+        log('info', 'fanout.crm.preflight_hit', {
+          customerId, appId, submissionId, caseId, caseNumber,
+        });
+      } else {
+        // externalSystemId is constructed inside buildCaseBody and echoed back
+        // by CMAPI as `referenceId` on the async path; we read it from there.
+        const result = await postCase({
+          ...crmConfig(),
+          body: buildCaseBody({ row, customerId, appId, submissionId }),
+        });
+        caseId = result.caseId;
+        caseNumber = result.caseNumber;
+        // Two paths depending on whether CMAPI responded sync or async:
+        //
+        // Async (CMAPI 202): POST returns only `referenceId` (our externalSystemId
+        // echoed back). caseId/caseNumber null until SF Adapter persists the case.
+        // Poll GET ?externalId= with backoff to materialise the real SF Record ID
+        // + customer-facing caseNumber for the Slack Lightning link.
+        //
+        // Sync (CMAPI 200): POST returns `id` (real SF Record ID) in `caseId`.
+        // caseNumber is NOT in the POST response on either path — CMAPI docs
+        // confirm caseNumber comes only from a subsequent GET. So on the sync
+        // path we set caseRecordId directly from caseId, then do a single GET
+        // ?caseId= to fetch caseNumber (no polling needed, case already exists).
+        if (result.referenceId) {
+          // Async path — poll until SF persists.
+          const resolved = await resolveCaseAsync({
+            ...crmConfig(),
+            externalId: result.referenceId,
+            log,
+            context: { customerId, appId, submissionId },
+          });
+          if (resolved) {
+            caseRecordId = resolved.caseRecordId;
+            caseNumber = resolved.caseNumber;
+            if (!caseId) caseId = resolved.caseRecordId;
+          }
+        } else if (caseId) {
+          // Sync path — caseId is already the SF Record ID.
+          caseRecordId = caseId;
+          // caseNumber not in POST response; single GET to fetch it.
+          try {
+            const liveCase = await getCase({ ...crmConfig(), caseId });
+            caseNumber = liveCase?.caseNumber ?? null;
+          } catch (err) {
+            log('warn', 'fanout.crm.case_number_fetch_failed', {
+              caseId, customerId, appId, submissionId, error: err.message,
+            });
+          }
+        }
+      }
     } catch (err) {
-      log('warn', 'fanout.crm.post_failed', { error: err.message });
+      log('warn', 'fanout.crm.post_failed', {
+        customerId, appId, submissionId, error: err.message,
+      });
     }
   } else {
     log('info', 'fanout.crm.skip', {
@@ -299,6 +363,12 @@ async function handleFreshPath({ row, customerId, appId, submissionId, stateBuck
     });
   }
 
+  // Persist crmCaseId IMMEDIATELY after CRM resolution, before Slack/Jira/
+  // investigator run. Tightens the dedup race window: if the handler errors
+  // mid-flight (Slack 5xx, Jira 401, investigator invoke fail) AWS will not
+  // retry under retryAttempts=0, but a manual DLQ replay or a spam-click
+  // submission within DEDUP_WINDOW_MS will see the persisted caseId and
+  // dedup-hit instead of opening a duplicate case.
   const after = await readState({ bucket: stateBucket, customerId, appId });
   if (after) {
     try {
@@ -312,23 +382,36 @@ async function handleFreshPath({ row, customerId, appId, submissionId, stateBuck
     }
   }
 
+  // Jira fanout runs BEFORE Slack so the Slack message can include the
+  // AABSP issue key as a clickable triage link. Eligibility-gated and
+  // idempotent (find-by-label before create); each spam-click within the
+  // dedup window is a unique submissionId so each click → unique label →
+  // distinct ticket. Wrapped warn-not-throw inside `resolveJiraKey` so a
+  // Jira outage doesn't block Slack/investigator.
+  const jiraKey = await resolveJiraKey({ row, submissionId, logPrefix: 'fanout.jira' });
+
+  const investigateUrl = buildInvestigateUrl(customerId, appId);
+  const investigationId = newInvestigationId();
+
   // Slack delivery: builds the same Block Kit shape the UI used to build
   // (verbatim port in slack-builders.mjs / slack-format.mjs). Webhook URL
   // comes from a CDK-owned Secrets Manager secret; while unset the
-  // helper silently skips. Failures here MUST NOT block CRM / investigator.
+  // helper silently skips. Now enriched with triage links: CRM case in
+  // Salesforce Lightning, AABSP Jira issue, and AI investigation page.
+  // Each link rendered only when corresponding entity exists. Triagers
+  // can click straight from Slack to the right system.
   try {
     await postSlackMessage({
       category: row.feedback_category,
       formData: buildFormDataFromRow(row),
       origin: row.feedback_origin_name ?? undefined,
       ctx: buildDiagnosticContextFromRow(row),
+      enrichment: buildEnrichment({ caseRecordId, caseNumber, jiraKey }),
     });
   } catch (err) {
     log('warn', 'fanout.slack.failed', { error: err.message });
   }
 
-  const investigateUrl = buildInvestigateUrl(customerId, appId);
-  const investigationId = newInvestigationId();
   if (caseId && investigateUrl) {
     // Wording matches the legacy BFF (`/api/feedback/submit`) verbatim so
     // support tooling that triages on this exact prefix continues to work.
@@ -391,31 +474,99 @@ async function handleFreshPath({ row, customerId, appId, submissionId, stateBuck
     log('info', 'fanout.invoke.skipped', { reason: 'category/rating not eligible', category: row.feedback_category, rating: row.rating ?? null });
   }
 
-  // Jira fanout — gated by category eligibility, idempotent by
-  // feedback-id label. Wrapped in try/catch warn-not-throw so a Jira
-  // outage / token failure / 4xx does NOT roll back or block prior
-  // fanouts (state, CRM, Slack, investigator). Failure mode: log and
-  // move on; ops can backfill from the parquet if needed.
-  if (shouldFanoutDownstream(row)) {
-    try {
-      const existing = await findIssueByFeedbackId({
-        baseUrl: process.env.JIRA_BASE_URL,
-        projectKey: process.env.JIRA_PROJECT_KEY,
-        feedbackId: submissionId,
-      });
-      if (existing) {
-        log('info', 'fanout.jira.skip_existing', { issueKey: existing, feedbackId: submissionId });
-      } else {
-        const body = buildJiraIssueBody(row, process.env.JIRA_PROJECT_KEY);
-        const issue = await createIssue({ baseUrl: process.env.JIRA_BASE_URL, body });
-        log('info', 'fanout.jira.created', { issueKey: issue.key, feedbackId: submissionId });
-      }
-    } catch (err) {
-      log('warn', 'fanout.jira.failed', { error: err.message, feedbackId: submissionId });
+  log('info', 'fanout.fresh.done', { customerId, appId, caseId, caseNumber, jiraKey, investigationId });
+}
+
+/**
+ * Resolve the AABSP Jira issue key for a feedback submission, creating
+ * a new ticket only when one doesn't already exist for this
+ * `feedback-id-<submissionId>` label. Returns the issue key or `null`
+ * (eligibility-gated, find/create failed, or Jira not in use).
+ *
+ * Wraps the find/create round-trip in a single try/catch so a Jira
+ * outage degrades cleanly to `null` — Slack still posts, just without
+ * the Jira link. Used by both `handleFreshPath` and `handleDedupHit`.
+ * `logPrefix` selects the lifecycle namespace (`fanout.jira` for
+ * fresh, `fanout.dedup.jira` for dedup) so log queries keep working
+ * unchanged from before this helper existed.
+ */
+async function resolveJiraKey({ row, submissionId, logPrefix }) {
+  if (!shouldFanoutDownstream(row)) return null;
+  // Split find vs create error handling so a Jira outage and an
+  // operator-side failure (project archived, required field added,
+  // perms revoked) log distinctly. Find failures roll up to
+  // `<prefix>.find_failed`; create failures to `<prefix>.create_failed`.
+  let existing;
+  try {
+    existing = await findIssueByFeedbackId({
+      baseUrl: process.env.JIRA_BASE_URL,
+      projectKey: process.env.JIRA_PROJECT_KEY,
+      feedbackId: submissionId,
+    });
+  } catch (err) {
+    log('warn', `${logPrefix}.find_failed`, { error: err.message, feedbackId: submissionId });
+    return null;
+  }
+  if (existing) {
+    log('info', `${logPrefix}.skip_existing`, { issueKey: existing, feedbackId: submissionId });
+    return existing;
+  }
+  try {
+    const body = buildJiraIssueBody(row, process.env.JIRA_PROJECT_KEY);
+    const issue = await createIssue({ baseUrl: process.env.JIRA_BASE_URL, body });
+    log('info', `${logPrefix}.created`, { issueKey: issue.key, feedbackId: submissionId });
+    return issue.key ?? null;
+  } catch (err) {
+    log('warn', `${logPrefix}.create_failed`, { error: err.message, feedbackId: submissionId });
+    return null;
+  }
+}
+
+/**
+ * Build the triage-links enrichment object passed to the Slack builder.
+ * Each link rendered only when the corresponding entity AND its base URL
+ * env var exist, so happy NPS submissions (no CRM, no Jira) get an
+ * unenriched Slack message identical to today's. Salesforce Lightning
+ * base URL comes from `SALESFORCE_LIGHTNING_BASE` (set by CDK per env);
+ * when unset, the CRM link is omitted entirely and the Slack message
+ * still renders the rest of its contents.
+ *
+ * Note: investigation URL is intentionally NOT included — the
+ * investigator already posts its own CRM case note with the deep link
+ * (see `maybeAddCrmCaseNote` in `investigator/handler.mjs`), and the
+ * kickoff note in handleFreshPath also surfaces it. Adding it to Slack
+ * would be a third copy of the same link without a Slack-specific
+ * triage value-add.
+ */
+function buildEnrichment({ caseRecordId, caseNumber, jiraKey }) {
+  const sfBase = process.env.SALESFORCE_LIGHTNING_BASE;
+  const jiraBase = process.env.JIRA_BASE_URL;
+  const enrichment = {};
+  if (caseRecordId) {
+    if (sfBase) {
+      enrichment.crmCaseUrl = `${sfBase.replace(/\/$/, '')}/lightning/r/Case/${caseRecordId}/view`;
+      // Customer-facing case number — drives the Slack link text
+      // (`Case #00012345`) so triagers see the same identifier the
+      // customer received in their CRM email. Falls back to a plain
+      // `Case` label inside `buildTriageLinks` when caseNumber is null
+      // (resolver miss on async path; SF hasn't persisted yet).
+      if (caseNumber) enrichment.caseNumber = caseNumber;
+    } else {
+      // CRM case exists but the Lightning base is missing from the env →
+      // misconfig. Drop the link silently to avoid 500-ing the Slack post,
+      // but emit a warn so dashboards/oncall can spot the regression.
+      log('warn', 'fanout.enrichment.salesforce_base_missing', { caseRecordId });
     }
   }
-
-  log('info', 'fanout.fresh.done', { customerId, appId, caseId, caseNumber, investigationId });
+  if (jiraKey) {
+    if (jiraBase) {
+      enrichment.jiraKey = jiraKey;
+      enrichment.jiraUrl = `${jiraBase.replace(/\/$/, '')}/browse/${jiraKey}`;
+    } else {
+      log('warn', 'fanout.enrichment.jira_base_missing', { jiraKey });
+    }
+  }
+  return Object.keys(enrichment).length > 0 ? enrichment : null;
 }
 
 /**
