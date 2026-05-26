@@ -342,25 +342,25 @@ describe('reamaze client', () => {
   // --------------------------------------------------------------------------
 
   describe('activateAccount', () => {
-    it('passes appId and entitlementId in body', async () => {
+    it('passes appId, entitlementId, and appName in body', async () => {
       mockExecuteAction.mockResolvedValue({
         success: true,
         result: { status: 200, data: { name: 'New Account', brandUrl: 'a1b2c3d4-0000-4000-8000-000000000007', ventureId: 'v1', aabAppId: 'app-1' } },
       });
 
-      await activateAccount(mockClient, 'app-1', 'ent-123');
+      await activateAccount(mockClient, 'app-1', 'ent-123', 'My App');
 
       expect(mockExecuteAction).toHaveBeenCalledWith(
         expect.objectContaining({
           params: expect.objectContaining({
             operation: 'activate_account',
-            body: { aabAppId: 'app-1', aabEntitlementId: 'ent-123' },
+            body: { aabAppId: 'app-1', aabEntitlementId: 'ent-123', aabAppName: 'My App' },
           }),
         }),
       );
     });
 
-    it('omits aabEntitlementId when not provided', async () => {
+    it('omits aabEntitlementId and aabAppName when not provided', async () => {
       mockExecuteAction.mockResolvedValue({
         success: true,
         result: { status: 200, data: { name: 'New Account', brandUrl: 'a1b2c3d4-0000-4000-8000-000000000007', ventureId: 'v1', aabAppId: 'app-1' } },
@@ -385,7 +385,7 @@ describe('reamaze client', () => {
         result: { status: 201, data: account },
       });
 
-      const result = await activateAccount(mockClient, 'app-1', 'ent-123');
+      const result = await activateAccount(mockClient, 'app-1', 'ent-123', 'My App');
 
       expect(result.success).toBe(true);
       if (result.success) {

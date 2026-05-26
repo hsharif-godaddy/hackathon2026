@@ -150,7 +150,7 @@ describe('conversations skill tools', () => {
 
       expect(result.accountCreated).toBe(true);
       expect(result.accountId).toBe('a1b2c3d4-0000-4000-8000-000000000003');
-      expect(mockActivateAccount).toHaveBeenCalledWith(mockClient, 'app-123', 'ent-1');
+      expect(mockActivateAccount).toHaveBeenCalledWith(mockClient, 'app-123', 'ent-1', 'My App');
       expect(mockMemorySet).toHaveBeenCalledWith(
         'app-123',
         'integrations.conversations.brandId',
@@ -256,7 +256,7 @@ describe('conversations skill tools', () => {
 
       expect(result.success).toBe(true);
       expect(result.accountId).toBe('a1b2c3d4-0000-4000-8000-000000000003');
-      expect(mockActivateAccount).toHaveBeenCalledWith(expect.anything(), 'app-123', undefined);
+      expect(mockActivateAccount).toHaveBeenCalledWith(expect.anything(), 'app-123', undefined, 'My App');
     });
 
     it('activates account for create_new with entitlementId', async () => {

@@ -235,6 +235,7 @@ export async function activateAccount(
   client: IClientActionService,
   appId: string,
   entitlementId?: string,
+  appName?: string,
 ): Promise<ReamazeResult<Account>> {
   return dispatch<Account>(client, {
     operation: 'activate_account',
@@ -242,6 +243,7 @@ export async function activateAccount(
     body: {
       aabAppId: appId,
       ...(entitlementId && { aabEntitlementId: entitlementId }),
+      ...(appName && { aabAppName: appName }),
     },
   });
 }

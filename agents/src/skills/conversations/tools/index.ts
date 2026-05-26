@@ -134,7 +134,8 @@ export const discoverAccountTool: SkillToolDefinition = {
     // No account linked to this app — auto-create from first available entitlement.
     if (unlinkedEntitlements.length > 0) {
       const entitlement = unlinkedEntitlements[0]!;
-      const activateResult = await activateAccount(client, appId, entitlement.entitlementId);
+      const app = await appRepository.findById(appId);
+      const activateResult = await activateAccount(client, appId, entitlement.entitlementId, app?.name);
       if (!activateResult.success) {
         return { error: `Failed to create account: ${activateResult.error}` };
       }
@@ -179,7 +180,8 @@ export const selectAccountTool: SkillToolDefinition = {
         return { error: 'ClientActionService not available — tool requires an authenticated websocket session.' };
       }
 
-      const result = await activateAccount(client, appId, input.entitlementId);
+      const app = await appRepository.findById(appId);
+      const result = await activateAccount(client, appId, input.entitlementId, app?.name);
       if (!result.success) {
         return { error: `Failed to activate account: ${result.error}` };
       }
