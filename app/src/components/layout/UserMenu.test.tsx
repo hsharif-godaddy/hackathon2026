@@ -44,6 +44,7 @@ const mockPush = vi.fn();
 const mockPrefetch = vi.fn();
 const mockUseSwitchboard = vi.fn();
 const mockUseSubscription = vi.fn();
+const mockUseVenture = vi.fn();
 const mockUseAuthContext = vi.fn();
 const mockLogClickEvent = vi.fn(() => vi.fn());
 const mockLogImpressionEvent = vi.fn((_eid: string) => vi.fn());
@@ -95,11 +96,15 @@ vi.mock('@/components/providers/AuthProvider', () => ({
 }));
 
 vi.mock('@/hooks/useSwitchboard', () => ({
-  useSwitchboard: () => mockUseSwitchboard(),
+  useSwitchboard: (flag: string) => mockUseSwitchboard(flag),
 }));
 
 vi.mock('@/hooks/useSubscription', () => ({
   useSubscription: () => mockUseSubscription(),
+}));
+
+vi.mock('@/hooks/useVenture', () => ({
+  useVenture: () => mockUseVenture(),
 }));
 
 vi.mock('@/utils/getRootDomain', () => ({
@@ -113,6 +118,7 @@ describe('UserMenu', function userMenuTests() {
     mockUseAuthContext.mockReturnValue(mockAuthContext({ isAuthenticated: true }));
     mockUseSwitchboard.mockReturnValue(false);
     mockUseSubscription.mockReturnValue({ data: undefined, isLoading: false });
+    mockUseVenture.mockReturnValue({ ventureId: undefined, isLoading: false });
   });
 
   describe('when user is authenticated on develop page', function authenticatedDevelopTests() {
@@ -342,6 +348,110 @@ describe('UserMenu', function userMenuTests() {
           configurable: true,
         });
       }
+    });
+  });
+
+  describe('Dashboard menu item', function dashboardTests() {
+    function enableVentureConnectionFlag() {
+      mockUseSwitchboard.mockImplementation((flag: string) => flag === 'aab-venture-connection');
+    }
+
+    it('should not show Dashboard when ventureId is unavailable', async function hideWithoutVenture() {
+      enableVentureConnectionFlag();
+
+      const { user } = renderWithProviders(<UserMenu location="develop" />);
+
+      await user.click(screen.getByLabelText('builder_user_menu_label'));
+
+      await waitFor(function checkMyProducts() {
+        expect(screen.getByText('builder_user_menu_my_products')).toBeInTheDocument();
+      });
+
+      expect(screen.queryByText('builder_user_menu_dashboard')).not.toBeInTheDocument();
+    });
+
+    it('should not show Dashboard when aab-venture-connection flag is off', async function hideWhenFlagOff() {
+      mockUseVenture.mockReturnValue({ ventureId: 'venture-abc', isLoading: false });
+
+      const { user } = renderWithProviders(<UserMenu location="develop" />);
+
+      await user.click(screen.getByLabelText('builder_user_menu_label'));
+
+      await waitFor(function checkMyProducts() {
+        expect(screen.getByText('builder_user_menu_my_products')).toBeInTheDocument();
+      });
+
+      expect(screen.queryByText('builder_user_menu_dashboard')).not.toBeInTheDocument();
+    });
+
+    it('should show Dashboard when flag is on and ventureId is available', async function showWithVenture() {
+      enableVentureConnectionFlag();
+      mockUseVenture.mockReturnValue({ ventureId: 'venture-abc', isLoading: false });
+
+      const { user } = renderWithProviders(<UserMenu location="develop" />);
+
+      await user.click(screen.getByLabelText('builder_user_menu_label'));
+
+      await waitFor(function checkDashboard() {
+        expect(screen.getByText('builder_user_menu_dashboard')).toBeInTheDocument();
+      });
+    });
+
+    it('should navigate to venture dashboard when clicked', async function navigate() {
+      enableVentureConnectionFlag();
+      mockUseVenture.mockReturnValue({ ventureId: 'venture-abc', isLoading: false });
+
+      const originalLocation = window.location;
+      const hrefSetter = vi.fn();
+      Object.defineProperty(window, 'location', {
+        value: { ...originalLocation, href: '' },
+        writable: true,
+        configurable: true,
+      });
+      Object.defineProperty(window.location, 'href', {
+        set: hrefSetter,
+        configurable: true,
+      });
+
+      try {
+        const { user } = renderWithProviders(<UserMenu location="develop" />);
+
+        await user.click(screen.getByLabelText('builder_user_menu_label'));
+        await waitFor(function checkDashboard() {
+          expect(screen.getByText('builder_user_menu_dashboard')).toBeInTheDocument();
+        });
+
+        await user.click(screen.getByText('builder_user_menu_dashboard'));
+
+        expect(hrefSetter).toHaveBeenCalledWith(
+          'https://dashboard.godaddy.com/venture?ventureId=venture-abc'
+        );
+      } finally {
+        Object.defineProperty(window, 'location', {
+          value: originalLocation,
+          writable: true,
+          configurable: true,
+        });
+      }
+    });
+
+    it('should appear after My Products in the menu', async function order() {
+      enableVentureConnectionFlag();
+      mockUseVenture.mockReturnValue({ ventureId: 'venture-abc', isLoading: false });
+
+      const { user } = renderWithProviders(<UserMenu location="develop" />);
+
+      await user.click(screen.getByLabelText('builder_user_menu_label'));
+
+      await waitFor(function checkBoth() {
+        expect(screen.getByText('builder_user_menu_my_products')).toBeInTheDocument();
+        expect(screen.getByText('builder_user_menu_dashboard')).toBeInTheDocument();
+      });
+
+      const myProducts = screen.getByText('builder_user_menu_my_products');
+      const dashboard = screen.getByText('builder_user_menu_dashboard');
+      const position = myProducts.compareDocumentPosition(dashboard);
+      expect(position & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     });
   });
 

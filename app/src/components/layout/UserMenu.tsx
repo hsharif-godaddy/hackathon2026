@@ -5,6 +5,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import Button from '@ux/button';
 import AppsIcon from '@ux/icon/apps';
 import CommentsIcon from '@ux/icon/comments';
+import DashboardIcon from '@ux/icon/dashboard';
 import GdTheGoIcon from '@ux/icon/gd-the-go';
 import HeartIcon from '@ux/icon/heart';
 import LogoutIcon from '@ux/icon/logout';
@@ -23,6 +24,7 @@ import { useSsoSignIn } from '@/hooks/useSsoSignIn';
 import { useSubscription } from '@/hooks/useSubscription';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from '@/hooks/useTranslations';
+import { useVenture } from '@/hooks/useVenture';
 import {
   Popover,
   PopoverContent,
@@ -35,6 +37,8 @@ import { logClickEvent, logImpressionEvent } from '@/utils/instrumentation';
 
 const GODADDY_URL = 'https://www.godaddy.com';
 const getMyProductsUrl = () => `https://account.${getRootDomain() || 'godaddy.com'}/products`;
+const getMyDashboardUrl = (ventureId: string) =>
+  `https://dashboard.${getRootDomain() || 'godaddy.com'}/venture?ventureId=${encodeURIComponent(ventureId)}`;
 
 interface MenuItemConfig {
   key: string
@@ -66,7 +70,11 @@ export default function UserMenu({ onShowMockLogin, location = 'unknown' }: User
 
   const { signIn } = useSsoSignIn();
   const isManagePlanEnabled = useSwitchboard('appbuilder-manage-plan');
+  const isVentureConnectionEnabled = useSwitchboard('aab-venture-connection');
   const { data: activeSubscription } = useSubscription({ enabled: isAuthenticated && !!isManagePlanEnabled });
+  const { ventureId } = useVenture({
+    enabled: isAuthenticated && !!isVentureConnectionEnabled && open,
+  });
   const currentAppId = useDevelopPageStore((state) => state.currentAppId);
   const clickContext = useMemo(
     () => (currentAppId ? { appId: currentAppId } : undefined),
@@ -102,6 +110,11 @@ export default function UserMenu({ onShowMockLogin, location = 'unknown' }: User
   const handleMyProducts = () => {
     setOpen(false);
     window.location.href = getMyProductsUrl();
+  };
+
+  const handleMyDashboard = (id: string) => {
+    setOpen(false);
+    window.location.href = getMyDashboardUrl(id);
   };
 
   const handleGiveFeedback = () => {
@@ -145,6 +158,7 @@ export default function UserMenu({ onShowMockLogin, location = 'unknown' }: User
       [
         showManagePlan ? { key: 'manage-plan', onClick: handleManagePlan, eid: `${location}.user_menu.manage_plan`, icon: <MapIcon className="size-2" />, text: t('builder_user_menu_manage_plan') } : null,
         { key: 'my-products', onClick: handleMyProducts, eid: `${location}.user_menu.my_products`, icon: <ProductsIcon className="size-2" />, text: t('builder_user_menu_my_products') },
+        isVentureConnectionEnabled && ventureId ? { key: 'dashboard', onClick: () => handleMyDashboard(ventureId), eid: `${location}.user_menu.dashboard`, icon: <DashboardIcon className="size-2" />, text: t('builder_user_menu_dashboard') } : null,
       ].filter(Boolean) as MenuItemConfig[],
       [
         isDevelopPage ? { key: 'refer-friend', onClick: handleReferFriend, eid: `${location}.user_menu.refer_friend`, icon: <HeartIcon className="size-2" />, text: t('builder_user_menu_refer_friend') } : null,
@@ -157,7 +171,7 @@ export default function UserMenu({ onShowMockLogin, location = 'unknown' }: User
       ],
     ];
 
-  }, [location, t, isAuthenticated, showManagePlan, isDevelopPage, handleSignOut, handleSignInClick, handleGoDaddy]);
+  }, [location, t, isAuthenticated, showManagePlan, isDevelopPage, isVentureConnectionEnabled, ventureId, handleSignOut, handleSignInClick, handleGoDaddy]);
 
   return (
     <>

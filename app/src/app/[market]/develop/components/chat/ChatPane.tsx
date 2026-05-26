@@ -44,9 +44,9 @@ import { useSubscription } from '@/hooks/useSubscription'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTodoListLoader } from '@/hooks/useTodoListLoader'
 import { useTranslations } from '@/hooks/useTranslations'
+import { useVenture } from '@/hooks/useVenture'
 import { useVisitedTabs } from '@/hooks/useVisitedTabs'
 import { getFileUploadAgent } from '@/lib/file-agent'
-import { appFetch } from '@/lib/gasket-config'
 import { shipAnalyticsLog } from '@/lib/logging'
 import { createPostPublishPreLaunchAssistantMessage } from '@/lib/post-publish-prelaunch-ask-question'
 import { logger } from '@/lib/request-context'
@@ -396,52 +396,9 @@ function ChatPaneInner({
   // State for referenced files (file paths with content from file tree)
   const [referencedFiles, setReferencedFiles] = useState<Array<{ path: string; content: string }>>([])
 
-  // Pre-fetch ventureId for AssetManager to avoid loading delay
-  const [ventureId, setVentureId] = useState<string | null>(null)
-
-  // Fetch ventureId on component mount
-  useEffect(function fetchVentureId() {
-    let cancelled = false;
-
-    async function load() {
-      try {
-        const response = await appFetch('/api/venture')
-
-        // Check if component unmounted during fetch
-        if (cancelled) return;
-
-        if (!response.ok) {
-          logger.error('chat-pane.venture-fetch-error', {
-            message: 'Failed to fetch venture ID',
-            status: response.status
-          })
-          return
-        }
-
-        const data = await response.json()
-
-        if (!cancelled && data.success && data.ventureId) {
-          setVentureId(data.ventureId)
-          logger.debug('chat-pane.venture-fetched', {
-            message: 'Venture ID fetched successfully'
-          })
-        }
-      } catch (err) {
-        if (cancelled) return;
-
-        logger.error('chat-pane.venture-fetch-exception', {
-          message: 'Exception fetching venture ID',
-          error: err instanceof Error ? err.message : 'Unknown error'
-        })
-      }
-    }
-
-    load()
-
-    return () => {
-      cancelled = true;
-    };
-  }, [])
+  // Pre-fetch ventureId for AssetManager (and warm the shared react-query
+  // cache for other consumers like UserMenu's Dashboard link).
+  useVenture()
 
   // Combine messages and activeStream, guarding against duplicate IDs
   // (can happen when persistHistory and set({ activeStream }) are separate store updates)
