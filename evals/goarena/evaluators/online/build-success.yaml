@@ -1,0 +1,63 @@
+---
+evaluatorId: "airo-build-success"
+name: build_success
+description: "Boolean evaluator — did the user express satisfaction with the Airo Builder output?"
+
+type: llm
+scoreType: BOOLEAN
+scoreName: build_success
+
+llmConfig:
+  model: gpt-4o-mini
+  temperature: 0
+  maxTokens: 300
+
+projectId: "8606"
+
+staticContext: 'Judge only from user messages in the conversation. Look for explicit or implicit
+  satisfaction signals. Do not infer from agent responses.'
+
+criteriaSchema:
+  type: object
+  properties: {}
+  additionalProperties: false
+
+template: |
+  You are evaluating whether the user was happy with the output from Airo Builder.
+
+  PASS (score = true) when the user:
+  - Explicitly approves ("looks good", "perfect", "thanks", "publish it", "that's what I wanted")
+  - Moves forward without complaints after seeing the result
+  - Asks to publish or share the site
+
+  FAIL (score = false) when the user:
+  - Explicitly expresses dissatisfaction ("this is wrong", "that's not what I wanted", "start over")
+  - Abandons the session mid-way after a failed result
+  - Reports the output is broken or unusable
+
+  If the conversation ends without a clear signal either way, lean PASS.
+
+  ## Conversation
+  {{#if conversation.originalPrompt}}
+  Original request: {{conversation.originalPrompt}}
+  {{/if}}
+
+  {{#each conversation.messages}}
+  {{uppercase role}}: {{content}}
+  {{/each}}
+
+  ## Response
+
+  Respond with JSON only:
+  {
+    "score": true or false,
+    "summary": "one sentence citing the specific user message that drove your decision"
+  }
+
+onlineConfig:
+  enabled: true
+  version: v1
+  scope: trace
+  target:
+    langfuseProjectIds:
+      - REPLACE_LANGFUSE_PROJECT_ID

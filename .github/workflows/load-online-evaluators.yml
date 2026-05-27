@@ -1,0 +1,64 @@
+name: Load Online Evaluators
+
+on:
+  workflow_dispatch:
+    inputs:
+      synthia-env:
+        description: 'Synthia environment'
+        required: false
+        default: 'prod'
+        type: choice
+        options:
+          - prod
+          - test
+      langfuse-project-id:
+        description: 'Langfuse project ID to target (prod: cmj7ew7m20026tr41gsi9knd4)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: load-online-evaluators-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  load-online-evaluators:
+    runs-on:
+      labels:
+        - airo-cicd-runners
+        - self-hosted
+    timeout-minutes: 10
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Inject Langfuse project ID
+        env:
+          LANGFUSE_PROJECT_ID: ${{ inputs.langfuse-project-id }}
+        run: |
+          sed -i "s/REPLACE_LANGFUSE_PROJECT_ID/${LANGFUSE_PROJECT_ID}/g" \
+            evals/goarena/evaluators/online/build-success.yaml
+
+      - name: Load Online Evaluators
+        id: load-evaluators
+        uses: gdcorp-dna/synthia/actions/load-evaluators@6452899fdfb9f693e03e271a58111dc11c0414e1 # release-1.1.2
+        with:
+          config-path: evals/goarena/evaluators/online
+          synthia-env: ${{ inputs.synthia-env }}
+
+      - name: Summary
+        if: always()
+        env:
+          EVALUATOR_COUNT: ${{ steps.load-evaluators.outputs.evaluator-count }}
+          CREATED_COUNT: ${{ steps.load-evaluators.outputs.created-count }}
+          UPDATED_COUNT: ${{ steps.load-evaluators.outputs.updated-count }}
+          EVALUATOR_NAMES: ${{ steps.load-evaluators.outputs.evaluator-names }}
+        run: |
+          echo "## Online Evaluators Loaded" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Total: $EVALUATOR_COUNT" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Created: $CREATED_COUNT" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Updated: $UPDATED_COUNT" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Names: $EVALUATOR_NAMES" >> "$GITHUB_STEP_SUMMARY"
