@@ -73,7 +73,7 @@ export default function UserMenu({ onShowMockLogin, location = 'unknown' }: User
   const isVentureConnectionEnabled = useSwitchboard('aab-venture-connection');
   const { data: activeSubscription } = useSubscription({ enabled: isAuthenticated && !!isManagePlanEnabled });
   const { ventureId } = useVenture({
-    enabled: isAuthenticated && !!isVentureConnectionEnabled && open,
+    enabled: isAuthenticated && !!isVentureConnectionEnabled,
   });
   const currentAppId = useDevelopPageStore((state) => state.currentAppId);
   const clickContext = useMemo(
