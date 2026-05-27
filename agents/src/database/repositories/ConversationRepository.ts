@@ -1062,6 +1062,46 @@ export class ConversationRepository {
     stmt.run(messageId);
   }
 
+  async getRecentMessagesForApp(appId: string, limit: number): Promise<DatabaseMessage[]> {
+    const conversationsStmt = this.db.prepare(`
+      SELECT id FROM conversations WHERE app_id = ?
+    `);
+    const conversations = conversationsStmt.all(appId) as Array<{ id: string }>;
+
+    if (conversations.length === 0) {
+      return [];
+    }
+
+    const placeholders = conversations.map(() => '?').join(',');
+    const conversationIds = conversations.map(c => c.id);
+
+    const stmt = this.db.prepare(`
+      SELECT id, conversation_id, sender, content, origin, created_at
+      FROM conversation_messages
+      WHERE conversation_id IN (${placeholders})
+      ORDER BY created_at DESC, rowid DESC
+      LIMIT ?
+    `);
+
+    const rows = stmt.all(...conversationIds, limit) as Array<{
+      id: string;
+      conversation_id: string;
+      sender: 'user' | 'agent';
+      content: string;
+      origin: 'support' | 'customer';
+      created_at: string;
+    }>;
+
+    return rows.reverse().map(row => ({
+      id: row.id,
+      conversationId: row.conversation_id,
+      sender: row.sender,
+      content: row.content,
+      origin: row.origin,
+      createdAt: new Date(row.created_at),
+    })) as DatabaseMessage[];
+  }
+
   /**
    * Get the timestamp of the most recent message across all conversations
    *

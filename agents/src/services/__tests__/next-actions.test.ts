@@ -4,12 +4,14 @@ const {
   mockFindById,
   mockFindLatestForApp,
   mockGetMessagesAfterMessageId,
+  mockGetRecentMessagesForApp,
   mockGetAllLists,
   mockGenerateText,
 } = vi.hoisted(() => ({
   mockFindById: vi.fn(),
   mockFindLatestForApp: vi.fn(),
   mockGetMessagesAfterMessageId: vi.fn(),
+  mockGetRecentMessagesForApp: vi.fn(),
   mockGetAllLists: vi.fn(),
   mockGenerateText: vi.fn(),
 }))
@@ -31,6 +33,7 @@ vi.mock('../../database/repositories/AppRepository.js', () => ({
 vi.mock('../../database/repositories/ConversationRepository.js', () => ({
   ConversationRepository: vi.fn().mockImplementation(() => ({
     getMessagesAfterMessageId: mockGetMessagesAfterMessageId,
+    getRecentMessagesForApp: mockGetRecentMessagesForApp,
   })),
 }))
 
@@ -70,6 +73,7 @@ describe('NextActionsService', () => {
     // Default: app exists, no summary, no todos
     mockFindById.mockReturnValue({ id: appId })
     mockFindLatestForApp.mockResolvedValue(null)
+    mockGetRecentMessagesForApp.mockResolvedValue([])
     mockGetAllLists.mockReturnValue([])
     mockGenerateText.mockResolvedValue({
       text: '[{"text": "Add a contact page"}]',
@@ -161,17 +165,48 @@ describe('NextActionsService', () => {
       expect(prompt).toContain('Add footer')
     })
 
-    it('should not include recent messages section when summary has no messageRangeEnd', async () => {
+    it('should use getRecentMessagesForApp when summary has no messageRangeEnd', async () => {
       mockFindLatestForApp.mockResolvedValue({
         summaryText: 'A summary',
         messageRangeEnd: null,
       })
+      mockGetRecentMessagesForApp.mockResolvedValue([
+        { sender: 'agent', content: 'Here are some options for you.' },
+      ])
 
       await service.generateNextActions(appId)
 
       expect(mockGetMessagesAfterMessageId).not.toHaveBeenCalled()
+      expect(mockGetRecentMessagesForApp).toHaveBeenCalled()
       const prompt = mockGenerateText.mock.calls[0][0].prompt as string
-      expect(prompt).not.toContain('RECENT MESSAGES')
+      expect(prompt).toContain('RECENT MESSAGES')
+      expect(prompt).toContain('Assistant: Here are some options for you.')
+    })
+
+    it('should return empty suggestions when LLM returns empty array', async () => {
+      mockGenerateText.mockResolvedValue({
+        text: '[]',
+        usage: { totalTokens: 50 },
+      })
+
+      const result = await service.generateNextActions(appId)
+
+      expect(result.suggestions).toEqual([])
+    })
+
+    it('should fetch recent messages when no summary exists', async () => {
+      mockFindLatestForApp.mockResolvedValue(null)
+      mockGetRecentMessagesForApp.mockResolvedValue([
+        { sender: 'user', content: 'Build me a trombone teaching site' },
+        { sender: 'agent', content: 'Here are some name ideas. Any of these resonate?' },
+      ])
+
+      await service.generateNextActions(appId)
+
+      expect(mockGetRecentMessagesForApp).toHaveBeenCalled()
+      expect(mockGetMessagesAfterMessageId).not.toHaveBeenCalled()
+      const prompt = mockGenerateText.mock.calls[0][0].prompt as string
+      expect(prompt).toContain('Assistant: Here are some name ideas. Any of these resonate?')
     })
 
     it('should pass correct parameters to generateText', async () => {

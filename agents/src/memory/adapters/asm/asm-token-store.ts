@@ -48,6 +48,20 @@ export class AsmConversationTokenStore implements ConversationTokenStore {
     return [];
   }
 
+  async getRecentMessagesForApp(scope: WorkspaceScope, limit: number): Promise<HistoryMessage[]> {
+    const convIds = await this.searchByAppId(scope.appId);
+    const allMessages: HistoryMessage[] = [];
+    for (const convId of convIds) {
+      const messages = await this.fetchAllMessages(convId);
+      const chain = walkLinearChain(messages);
+      for (const m of chain) {
+        allMessages.push(mapAsmToHistoryMessage(m, convId));
+      }
+    }
+    allMessages.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+    return allMessages.slice(-limit);
+  }
+
   async getLastMessageTimestamp(): Promise<string | null> {
     return this.lastSeenTimestamp;
   }

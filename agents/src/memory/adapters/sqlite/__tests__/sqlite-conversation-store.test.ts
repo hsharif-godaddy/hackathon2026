@@ -114,6 +114,7 @@ describe('SqliteConversationTokenStore', function tokenTests() {
     getEstimatedTokensAfterMessageId: vi.fn(),
     getEstimatedTokensForApp: vi.fn(),
     getMessagesAfterMessageId: vi.fn(),
+    getRecentMessagesForApp: vi.fn(),
     getLastMessageTimestamp: vi.fn(),
   };
 
@@ -137,6 +138,13 @@ describe('SqliteConversationTokenStore', function tokenTests() {
     const result = await store.getEstimatedTokensForApp(scope);
     expect(result).toBe(1000);
     expect(mockRepo.getEstimatedTokensForApp).toHaveBeenCalledWith('app-1');
+  });
+
+  it('should forward getRecentMessagesForApp with appId and limit from scope', async function forwardRecent() {
+    mockRepo.getRecentMessagesForApp.mockResolvedValue([{ id: 'msg-1', sender: 'agent', content: 'hello' }]);
+    const result = await store.getRecentMessagesForApp(scope, 20);
+    expect(result).toEqual([{ id: 'msg-1', sender: 'agent', content: 'hello' }]);
+    expect(mockRepo.getRecentMessagesForApp).toHaveBeenCalledWith('app-1', 20);
   });
 
   it('should forward getLastMessageTimestamp without scope', async function forwardTimestamp() {

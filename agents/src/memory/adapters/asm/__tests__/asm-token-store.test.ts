@@ -88,6 +88,60 @@ describe('AsmConversationTokenStore', function tokenStoreTests() {
     expect(msgs[1].content).toBe('third');
   });
 
+  it('should return recent messages for app limited and sorted chronologically', async function recentMessages() {
+    const m1 = makeMsg('m1', 'first', 'USER');
+    const m2 = makeMsg('m2', 'second', 'AGENT', ['m1']);
+    const m3 = makeMsg('m3', 'third', 'USER', ['m2']);
+    mockClient.getConversation.mockResolvedValue({
+      id: 'conv-1',
+      status: 'ACTIVE',
+      createdAt: '2024-01-01T00:00:00Z',
+      updatedAt: '2024-01-01T00:00:00Z',
+      messages: { edges: [m1, m2, m3].map((m) => ({ cursor: m.id, node: m })) },
+    });
+
+    const msgs = await store.getRecentMessagesForApp(scope, 2);
+    expect(msgs).toHaveLength(2);
+    expect(msgs[0].content).toBe('second');
+    expect(msgs[1].content).toBe('third');
+  });
+
+  it('should merge messages from multiple conversations sorted by time', async function recentMultiConv() {
+    mockClient.searchConversations.mockResolvedValue({ conversationIds: ['conv-1', 'conv-2'] });
+
+    const m1 = makeMsg('m1', 'conv1-first', 'USER');
+    (m1 as any).messageCreatedAt = new Date('2024-01-01T00:00:00Z');
+    const m2 = makeMsg('m2', 'conv1-second', 'AGENT', ['m1']);
+    (m2 as any).messageCreatedAt = new Date('2024-01-01T00:02:00Z');
+
+    const m3 = makeMsg('m3', 'conv2-first', 'USER');
+    (m3 as any).messageCreatedAt = new Date('2024-01-01T00:01:00Z');
+    const m4 = makeMsg('m4', 'conv2-second', 'AGENT', ['m3']);
+    (m4 as any).messageCreatedAt = new Date('2024-01-01T00:03:00Z');
+
+    mockClient.getConversation
+      .mockResolvedValueOnce({
+        id: 'conv-1',
+        status: 'ACTIVE',
+        createdAt: '2024-01-01T00:00:00Z',
+        updatedAt: '2024-01-01T00:00:00Z',
+        messages: { edges: [m1, m2].map((m) => ({ cursor: m.id, node: m })) },
+      })
+      .mockResolvedValueOnce({
+        id: 'conv-2',
+        status: 'ACTIVE',
+        createdAt: '2024-01-01T00:00:00Z',
+        updatedAt: '2024-01-01T00:00:00Z',
+        messages: { edges: [m3, m4].map((m) => ({ cursor: m.id, node: m })) },
+      });
+
+    const msgs = await store.getRecentMessagesForApp(scope, 3);
+    expect(msgs).toHaveLength(3);
+    expect(msgs[0].content).toBe('conv2-first');
+    expect(msgs[1].content).toBe('conv1-second');
+    expect(msgs[2].content).toBe('conv2-second');
+  });
+
   it('should paginate backwards when fetching messages', async function paginatedTokens() {
     const m1 = makeMsg('m1', 'hello', 'USER');
     const m2 = makeMsg('m2', 'world', 'AGENT', ['m1']);

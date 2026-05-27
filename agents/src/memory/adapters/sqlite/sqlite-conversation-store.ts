@@ -177,6 +177,10 @@ export class SqliteConversationTokenStore implements ConversationTokenStore {
     return this.repo.getMessagesAfterMessageId(scope.appId, afterMessageId);
   }
 
+  async getRecentMessagesForApp(scope: WorkspaceScope, limit: number): Promise<HistoryMessage[]> {
+    return this.repo.getRecentMessagesForApp(scope.appId, limit);
+  }
+
   async getLastMessageTimestamp() {
     return this.repo.getLastMessageTimestamp();
   }

@@ -403,6 +403,99 @@ describe('getMessagesAfterMessageId', () => {
     })
   })
 
+  describe('getRecentMessagesForApp', () => {
+    it('should return empty array when no conversations exist', async () => {
+      createApp('app-123')
+
+      const messages = await repo.getRecentMessagesForApp('app-123', 20)
+
+      expect(messages).toEqual([])
+    })
+
+    it('should return recent messages limited by count', async () => {
+      createApp('app-123')
+      const conv = await repo.create('app-123', 'initial', 'Test Conv')
+
+      await repo.addMessage(conv.id, 'user', 'Message 1')
+      await new Promise(resolve => setTimeout(resolve, 10))
+      await repo.addMessage(conv.id, 'agent', 'Message 2')
+      await new Promise(resolve => setTimeout(resolve, 10))
+      await repo.addMessage(conv.id, 'user', 'Message 3')
+
+      const messages = await repo.getRecentMessagesForApp('app-123', 2)
+
+      expect(messages).toHaveLength(2)
+      expect(messages[0].content).toBe('Message 2')
+      expect(messages[1].content).toBe('Message 3')
+    })
+
+    it('should return messages in chronological order', async () => {
+      createApp('app-123')
+      const conv = await repo.create('app-123', 'initial', 'Test Conv')
+
+      await repo.addMessage(conv.id, 'user', 'First')
+      await new Promise(resolve => setTimeout(resolve, 10))
+      await repo.addMessage(conv.id, 'agent', 'Second')
+      await new Promise(resolve => setTimeout(resolve, 10))
+      await repo.addMessage(conv.id, 'user', 'Third')
+
+      const messages = await repo.getRecentMessagesForApp('app-123', 20)
+
+      expect(messages).toHaveLength(3)
+      expect(messages[0].content).toBe('First')
+      expect(messages[1].content).toBe('Second')
+      expect(messages[2].content).toBe('Third')
+    })
+
+    it('should merge messages from multiple conversations', async () => {
+      createApp('app-123')
+      const conv1 = await repo.create('app-123', 'initial', 'Conv 1')
+      const conv2 = await repo.create('app-123', 'develop', 'Conv 2')
+
+      await repo.addMessage(conv1.id, 'user', 'Conv1 Msg1')
+      await new Promise(resolve => setTimeout(resolve, 10))
+      await repo.addMessage(conv2.id, 'user', 'Conv2 Msg1')
+      await new Promise(resolve => setTimeout(resolve, 10))
+      await repo.addMessage(conv1.id, 'agent', 'Conv1 Msg2')
+
+      const messages = await repo.getRecentMessagesForApp('app-123', 20)
+
+      expect(messages).toHaveLength(3)
+      expect(messages[0].content).toBe('Conv1 Msg1')
+      expect(messages[1].content).toBe('Conv2 Msg1')
+      expect(messages[2].content).toBe('Conv1 Msg2')
+    })
+
+    it('should only return messages for specified app', async () => {
+      createApp('app-123')
+      createApp('app-456')
+
+      const conv1 = await repo.create('app-123', 'initial', 'App1 Conv')
+      const conv2 = await repo.create('app-456', 'initial', 'App2 Conv')
+
+      await repo.addMessage(conv1.id, 'user', 'App1 Msg')
+      await repo.addMessage(conv2.id, 'user', 'App2 Msg')
+
+      const messages = await repo.getRecentMessagesForApp('app-123', 20)
+
+      expect(messages).toHaveLength(1)
+      expect(messages[0].content).toBe('App1 Msg')
+    })
+
+    it('should include origin field', async () => {
+      createApp('app-123')
+      const conv = await repo.create('app-123', 'initial', 'Test Conv')
+
+      await repo.addMessage(conv.id, 'user', 'Hello', { origin: 'customer' })
+      await repo.addMessage(conv.id, 'agent', 'Hi there', { origin: 'support' })
+
+      const messages = await repo.getRecentMessagesForApp('app-123', 20)
+
+      expect(messages[0].origin).toBe('customer')
+      expect(messages[1].origin).toBe('support')
+    })
+  })
+
   describe('getEstimatedTokensAfterMessageId', () => {
     it('should return estimated tokens for messages after reference', async () => {
       createApp('app-123')

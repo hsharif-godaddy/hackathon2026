@@ -124,6 +124,7 @@ export interface ConversationTokenStore {
   getEstimatedTokensAfterMessageId(scope: WorkspaceScope, afterMessageId: string): Promise<number | null>;
   getEstimatedTokensForApp(scope: WorkspaceScope): Promise<number>;
   getMessagesAfterMessageId(scope: WorkspaceScope, afterMessageId: string): Promise<HistoryMessage[]>;
+  getRecentMessagesForApp(scope: WorkspaceScope, limit: number): Promise<HistoryMessage[]>;
   /** Global query — returns the most recent message timestamp across all apps (used for /health). */
   getLastMessageTimestamp(): Promise<string | null>;
 }

@@ -22,6 +22,15 @@ interface NextActionsResult {
 const SYSTEM_PROMPT = `You suggest 2-4 next actions for a web app builder user based on their conversation history.
 
 Return ONLY a JSON array: [{"text": "action description"}, ...]
+Return an empty array [] when suggestions are NOT appropriate.
+
+Do NOT suggest actions when the assistant's last message:
+- Asks a question or requests input (e.g. "Any of these resonate?", "What do you think?", "Which option do you prefer?")
+- Presents options, names, or ideas for the user to review or choose from
+- Requests clarification or confirmation
+- Is waiting for the user to make a decision
+
+In these cases the user needs to respond to the assistant, not start a new task. Return [].
 
 Global actions (suggest when appropriate):
 | Action | When to suggest |
@@ -62,26 +71,26 @@ export class NextActionsService {
       contextParts.push(`=== CONVERSATION SUMMARY ===\n${summary.summaryText}`)
     }
 
-    // 2. Recent messages since summary
-    if (summary?.messageRangeEnd) {
-      const recentMessages = await this.conversationTokenStore.getMessagesAfterMessageId(scope, summary.messageRangeEnd)
-      if (recentMessages.length > 0) {
-        const formatted = recentMessages
-          .slice(-20)
-          .map(msg => {
-            if (msg.sender === 'user' && msg.content) {
-              return `User: ${msg.content.substring(0, 500)}`
-            }
-            if (msg.sender === 'agent' && msg.content) {
-              return `Assistant: ${msg.content.substring(0, 500)}`
-            }
-            return null
-          })
-          .filter(Boolean)
-          .join('\n\n')
-        if (formatted) {
-          contextParts.push(`=== RECENT MESSAGES (since last summary) ===\n${formatted}`)
-        }
+    // 2. Recent messages since summary (or all recent messages if no summary exists)
+    const recentMessages = summary?.messageRangeEnd
+      ? await this.conversationTokenStore.getMessagesAfterMessageId(scope, summary.messageRangeEnd)
+      : await this.conversationTokenStore.getRecentMessagesForApp(scope, 20)
+    if (recentMessages.length > 0) {
+      const formatted = recentMessages
+        .slice(-20)
+        .map(msg => {
+          if (msg.sender === 'user' && msg.content) {
+            return `User: ${msg.content.substring(0, 500)}`
+          }
+          if (msg.sender === 'agent' && msg.content) {
+            return `Assistant: ${msg.content.substring(0, 500)}`
+          }
+          return null
+        })
+        .filter(Boolean)
+        .join('\n\n')
+      if (formatted) {
+        contextParts.push(`=== RECENT MESSAGES (since last summary) ===\n${formatted}`)
       }
     }
 
