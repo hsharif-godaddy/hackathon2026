@@ -82,6 +82,8 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
   const [conflictData, setConflictData] = useState<DomainMutationDetails['conflictDetails'] | null>(null);
   const [disconnectTarget, setDisconnectTarget] = useState<string | null>(null);
   const validationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const domainStatusRef = useRef<Map<string, string>>(new Map());
+  const trackedAppIdRef = useRef<string | null>(null);
 
   const site = useSiteStore((state) => {
     if (!currentAppId) return null;
@@ -235,6 +237,48 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
     };
   }, []);
 
+  // Track domain status transitions as polling updates arrive.
+  // On first render (or app switch), baseline the statuses without firing events —
+  // only subsequent changes (pending → active, active → failed, etc.) are emitted.
+  useEffect(() => {
+    if (!currentAppId || !appDetails?.domains) return;
+
+    const nonPrefixDomains = appDetails.domains.filter(
+      (d) => d.domainType !== 'prefix' && d.domainType !== 'customer',
+    );
+
+    if (trackedAppIdRef.current !== currentAppId) {
+      domainStatusRef.current = new Map(nonPrefixDomains.map((d) => [d.fqdn, d.status]));
+      trackedAppIdRef.current = currentAppId;
+      return;
+    }
+
+    for (const domain of nonPrefixDomains) {
+      const prevStatus = domainStatusRef.current.get(domain.fqdn);
+      const currStatus = domain.status;
+
+      if (prevStatus === undefined) {
+        domainStatusRef.current.set(domain.fqdn, currStatus);
+        continue;
+      }
+
+      if (prevStatus !== currStatus) {
+        shipAnalyticsLog('domain.custom.state_transition', {
+          appId: currentAppId,
+          domainName: domain.fqdn,
+          status: currStatus,
+          prevStatus,
+        });
+        domainStatusRef.current.set(domain.fqdn, currStatus);
+      }
+    }
+
+    const activeFqdns = new Set(nonPrefixDomains.map((d) => d.fqdn));
+    for (const key of domainStatusRef.current.keys()) {
+      if (!activeFqdns.has(key)) domainStatusRef.current.delete(key);
+    }
+  }, [appDetails?.domains, currentAppId]);
+
   /**
    * Handle custom domain input change with debouncing
    *
@@ -321,6 +365,11 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
         ) &&
         error.details.conflictDetails
       ) {
+        shipAnalyticsLog('domain.custom.connect.conflict', {
+          appId: currentAppId,
+          domainName,
+          nestedCode: error.details.nestedCode,
+        });
         setConflictData(error.details.conflictDetails);
         modifyDomainsMutation.reset();
         return;

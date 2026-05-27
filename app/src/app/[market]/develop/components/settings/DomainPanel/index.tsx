@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import Box from "@ux/box";
 import Button from "@ux/button";
 import WebsiteIcon from '@ux/icon/website';
@@ -14,6 +15,7 @@ import { usePaywallEligibility } from '@/hooks/usePaywallEligibility';
 import { useSwitchboard } from "@/hooks/useSwitchboard";
 import { useTranslations } from '@/hooks/useTranslations';
 import { DomainStatus, DomainType } from "@/lib/control-plane/types";
+import { shipAnalyticsLog } from '@/lib/logging';
 import { PAYWALL_ITC } from '@/lib/paywall/shared';
 import { useDevelopPageStore } from "@/stores/useDevelopPageStore";
 import { useSiteStore } from "@/stores/useSiteStore";
@@ -26,8 +28,18 @@ export default function DomainPanel() {
   const t = useTranslations();
   const isDomainAttachEnabled = useSwitchboard('appbuilder-domain-attach');
   const isProjectDomainEnabled = useSwitchboard('appbuilder-project-domain');
+  const domainFeaturesEnabled = isDomainAttachEnabled || isProjectDomainEnabled;
 
   const currentAppId = useAppIdFromParams();
+  const panelViewedAppIdsRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!currentAppId || !domainFeaturesEnabled) return;
+    if (panelViewedAppIdsRef.current.has(currentAppId)) return;
+    panelViewedAppIdsRef.current.add(currentAppId);
+    shipAnalyticsLog('settings.domains.panel_viewed', { appId: currentAppId });
+  }, [currentAppId, domainFeaturesEnabled]);
+
   const site = useSiteStore((state) => {
     if (!currentAppId) return null;
     return state.getSite(currentAppId);

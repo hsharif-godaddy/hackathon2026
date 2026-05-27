@@ -60,6 +60,10 @@ vi.mock('./usePublishForDomain', () => ({
 
 vi.mock('@/utils/instrumentation', () => mockInstrumentation());
 
+vi.mock('@/lib/logging', () => ({
+  shipAnalyticsLog: vi.fn(),
+}));
+
 describe('DomainPanel', function domainPanelTests() {
   beforeEach(function setup() {
     vi.clearAllMocks();
@@ -394,6 +398,77 @@ describe('DomainPanel', function domainPanelTests() {
       // Should show coming soon, not upgrade screen
       expect(screen.getByText('builder_domain_title')).toBeInTheDocument();
       expect(screen.queryByText('builder_domain_upgrade_title')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('analytics', function analyticsTests() {
+    it('does not log panel_viewed when both domain features are disabled', async function panelViewedFlagsOff() {
+      const { shipAnalyticsLog } = await import('@/lib/logging');
+      const { useSwitchboard } = await import('@/hooks/useSwitchboard');
+      const { usePaywallEligibility } = await import('@/hooks/usePaywallEligibility');
+      const { useSiteStore } = await import('@/stores/useSiteStore');
+
+      vi.mocked(useSwitchboard).mockReturnValue(false);
+      vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: false, isLoading: false });
+      vi.mocked(useSiteStore).mockImplementation((selector: any) => {
+        const mockSite = createMockSite({ variants: ['publish'] });
+        const state = {
+          getSite: vi.fn(() => mockSite),
+          loading: {},
+        };
+        return selector(state);
+      });
+
+      renderWithProviders(<DomainPanel />);
+
+      await waitFor(function settle() {
+        expect(screen.getByText('builder_domain_coming_soon')).toBeInTheDocument();
+      });
+      expect(shipAnalyticsLog).not.toHaveBeenCalledWith(
+        'settings.domains.panel_viewed',
+        expect.anything(),
+      );
+    });
+
+    it('logs panel_viewed once per app while features are enabled', async function panelViewedOncePerApp() {
+      const { shipAnalyticsLog } = await import('@/lib/logging');
+      const { useSwitchboard } = await import('@/hooks/useSwitchboard');
+      const { usePaywallEligibility } = await import('@/hooks/usePaywallEligibility');
+      const { useSiteStore } = await import('@/stores/useSiteStore');
+      const { useAppIdFromParams } = await import('@/app/[market]/develop/components/utils');
+
+      vi.mocked(useSwitchboard).mockReturnValue(true);
+      vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: false, isLoading: false });
+      vi.mocked(useSiteStore).mockImplementation((selector: any) => {
+        const mockSite = createMockSite({ variants: ['publish'] });
+        const state = {
+          getSite: vi.fn(() => mockSite),
+          loading: {},
+        };
+        return selector(state);
+      });
+
+      const { rerender } = renderWithProviders(<DomainPanel />);
+
+      await waitFor(function firstView() {
+        expect(shipAnalyticsLog).toHaveBeenCalledWith('settings.domains.panel_viewed', {
+          appId: 'test-app-123',
+        });
+      });
+
+      rerender(<DomainPanel />);
+
+      expect(shipAnalyticsLog).toHaveBeenCalledTimes(1);
+
+      vi.mocked(useAppIdFromParams).mockReturnValue('other-app-456');
+      rerender(<DomainPanel />);
+
+      await waitFor(function secondAppView() {
+        expect(shipAnalyticsLog).toHaveBeenCalledWith('settings.domains.panel_viewed', {
+          appId: 'other-app-456',
+        });
+      });
+      expect(shipAnalyticsLog).toHaveBeenCalledTimes(2);
     });
   });
 
