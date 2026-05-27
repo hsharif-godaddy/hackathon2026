@@ -13,15 +13,15 @@ Implemented:
 
 - `/health` — public liveness.
 - `/v1/_probe` — public diagnostic, exercises read-only IAM grants against the CDK-provisioned resources.
-- `POST /v1/sandboxes` — agent-facing, creates a claimable sandbox (via fake Stripe client) and persists metadata (no credentials) to DynamoDB. Idempotent on `appId`. All three Stripe-issued keys (`sk_test_*`, `pk_test_*`, `ek_test_*`) are **not** persisted — by design they flow only into mhp-airo's alloc env, where the agent reads `STRIPE_MCP_KEY` and preview/publish read `STRIPE_SECRET_KEY` / `STRIPE_PUBLISHABLE_KEY`. Current build drops them on the floor since the mhp-airo push ships in a later PR; see TODO in `internal/api/sandboxes.go`.
+- `POST /v1/sandboxes` — agent-facing, creates a claimable sandbox and pushes the resulting Stripe keys to the mhp-core hosting service (`POST /hosting/v1/apps/:appId/secrets`) before persisting metadata to DynamoDB. Idempotent on `appId`. The five-op bulk push routes `STRIPE_MCP_KEY` to the agent task target via `protected:true` (delivered to `/local/config.json`), and splits `STRIPE_SECRET_KEY` / `STRIPE_PUBLISHABLE_KEY` into preview and publish variant ops so go-live can later flip publish to `*_live_*` while preview stays `*_test_*`. Stripe-issued keys are never persisted in stripe-service — hosting is their durable home.
 - `GET /v1/status?appId=X` — returns claim state for an app's sandbox.
 - `POST /webhooks/stripe` — receives Stripe webhooks. Public route (no `gd-auth`); Stripe authenticates via the `Stripe-Signature` header. The handler verifies the signature against the secret loaded at startup from Secrets Manager, parses `{id, type}`, and conditionally-`PutItem`s into the `stripe_events` DDB table for idempotency. Duplicate deliveries return 200; bad signatures return 401. **No per-event-type business logic yet** — that lands as the next handful of PRs.
 
 All `/v1/*` endpoints except `/v1/_probe` require an AWS IAM SSO token.
 
-Also landed: `internal/mhpairo` — outbound client for mhp-airo's three
-alloc-management endpoints (POST secrets, PATCH app, POST reload). Library
-only; not wired into any handler yet. See the section below.
+Also landed: `internal/hosting` — outbound client for the mhp-core hosting
+service's bulk-secrets endpoint (POST `/hosting/v1/apps/:appId/secrets`).
+Wired into `postSandboxes`. See the section below.
 
 Library packages (no caller wires them in yet):
 
@@ -58,34 +58,35 @@ Library packages (no caller wires them in yet):
 
 Next PRs:
 
-1. `mhp-airo` callout to inject all three Stripe keys (`sk_test_*`, `pk_test_*`, `ek_test_*` as `STRIPE_SECRET_KEY` / `STRIPE_PUBLISHABLE_KEY` / `STRIPE_MCP_KEY`) into the customer-app alloc env. Must run between `claimableSandboxes.create` and the DDB `PutItem` so `claim_status: "provisioned"` implies the alloc env is actually ready; on push failure, abandon the Stripe sandbox and return an error without writing DDB.
-2. Per-event-type webhook handlers: `claimable_sandbox.claimed` (DDB update), `sandbox_details_owner_account_updated` (live-key mint via Managed API Keys + push to mhp-airo), `api_key.rotated` / `api_key.expired` (revoke / re-push).
-3. Managed API Keys flow on `sandbox_details_owner_account_updated`: three `apiKeys.create` calls (secret / publishable / mcp), JWE-decrypt via KMS for sk/mcp, push all three to mhp-airo as `sk_live_*` / `pk_live_*` / `ek_live_*`. No new stripe-service data store — live credentials follow the same mhp-airo path as the sandbox keys.
-4. Wire `internal/mhpairo` into `postSandboxes` and the go-live webhook handler.
+1. Per-event-type webhook handlers: `sandbox_details_owner_account_updated` (live-key mint via Managed API Keys + push to hosting using the same `internal/hosting` client), `api_key.rotated` / `api_key.expired` (revoke / re-push). The dispatcher is already merged (PR #3878); only the live-key write step is outstanding.
+2. Managed API Keys flow on `sandbox_details_owner_account_updated`: three `apiKeys.create` calls (secret / publishable / mcp), JWE-decrypt via KMS for sk/mcp, push to hosting with the same five-op shape (publish-variant ops upgraded to `*_live_*`; preview ops stay `*_test_*`; MCP stays `protected:true`).
 
-### `internal/mhpairo` (outbound control-plane client)
+### `internal/hosting` (outbound control-plane client)
 
-`internal/mhpairo.Client` wraps `*http.Client` with an `AuthProvider` seam and
-exposes three methods:
+`internal/hosting.Client` wraps `*http.Client` with an `AuthProvider` seam and
+exposes one method:
 
-- `UpdateSecrets(ctx, subID, sysID, appID, ops)` — `POST /api/airo/v1/subscriptions/:subID/systems/:sysID/apps/:appID/secrets`
-- `UpdateApp(ctx, subID, sysID, appID, update)` — `PATCH /api/airo/v1/subscriptions/:subID/systems/:sysID/apps/:appID`
-- `ReloadApp(ctx, subID, sysID, appID)` — `POST /api/airo/v1/subscriptions/:subID/systems/:sysID/apps/:appID/reload`
+- `UpdateSecrets(ctx, appID, ops)` — `POST /hosting/v1/apps/:appID/secrets`
+  with `{operations[], workflowName}`. The default `workflowName` is
+  `airo-app-secrets`, which triggers hosting's reload pipeline server-side —
+  no separate `/reload` call needed.
 
-All three take the full `(subscriptionId, systemId, appId)` triple — mhp-airo
-has no appId-only endpoint and stripe-service has no customer context to
-resolve one. The caller (future `postSandboxes` + webhook handler) is
-expected to carry the triple alongside `appId`.
+The endpoint is appId-only; hosting handles per-key delivery routing via the
+`Protected` and `Variants` flags on each operation rather than path
+segments. `Protected: true` routes to the agent task target (per the
+composition's `protectedSecretsTargets`); `Variants: ["preview"]` /
+`["publish"]` routes to those variant task targets.
 
-Auth is pluggable via `mhpairo.AuthProvider`. `mhpairo.NewAwsIamAuth(gd, sso)`
-wraps `gd-auth-lib`'s AWS-IAM JWT minter for prod; `mhpairo.NoopAuth{}` sends
-no Authorization header and is what you use against local-control-plane.
+Auth is pluggable via `hosting.AuthProvider`. `hosting.NewAwsIamAuth(gd, sso)`
+wraps `gd-auth-lib`'s AWS-IAM JWT minter for prod; `hosting.NoopAuth{}` sends
+no Authorization header and is what you use against local-control-plane
+(which mocks the same endpoint at `/hosting/v1/apps/:id/secrets`).
 
 **Smoke-test locally:**
 
 1. `cd local-control-plane && make run` (listens on `:4100`, SQLite auto-created, no auth required).
-2. In a Go test or REPL: `mhpairo.New(mhpairo.Config{BaseURL: "http://localhost:4100/api/airo/v1", Auth: mhpairo.NoopAuth{}})` and call the three methods against a seeded app.
-3. Inspect `local-control-plane/local-control-plane.db` (SQLite) to confirm the writes landed.
+2. In a Go test or REPL: `hosting.New(hosting.Config{BaseURL: "http://localhost:4100", Auth: hosting.NoopAuth{}})` and call `UpdateSecrets` against a seeded app.
+3. Inspect `local-control-plane/local-control-plane.db` (SQLite) to confirm the writes landed; check `${APPS_BASE_DIR}/<appId>/local/preview/config.json` to confirm the protected MCP key was synced into the agent's per-app config.
 
 ## Protected routes
 
@@ -142,9 +143,9 @@ so local probes exercise real dev resources without a separate local stack.
 | `SHUTDOWN_TIMEOUT`    | `15s`   | Max time to drain in-flight requests on SIGTERM.                                                                                                                       |
 | `AUTH_TYPE`           | `jwt`   | `jwt` enforces AWS IAM SSO tokens on `/v1/*`; `none` bypasses auth (local dev only).                                                                                   |
 | `SSO_HOST`            | _unset_ | GoDaddy SSO hostname; required when `AUTH_TYPE=jwt`. `sso.dev-godaddy.com` (dev) / `sso.godaddy.com` (prod).                                                           |
-| `MHP_AIRO_BASE_URL`   | \*      | mhp-airo API root incl. `/api/airo/v1`. Required when `AUTH_TYPE=jwt`. Defaults to `http://localhost:4100/api/airo/v1` when `AUTH_TYPE=none`.                          |
-| `MHP_AIRO_TIMEOUT`    | `30s`   | Per-request HTTP timeout to mhp-airo.                                                                                                                                  |
-| `MHP_AIRO_AUTH`       | \*      | `awsiam` (mint AWS-IAM JWT via gd-auth-lib) or `none` (no Authorization header; for local-control-plane). Defaults mirror `AUTH_TYPE` (`jwt`→`awsiam`, `none`→`none`). |
+| `MGMT_API_BASE_URL`   | \*      | mhp-core ingress root (no path prefix; the client appends `/hosting/v1/...`). Required when `AUTH_TYPE=jwt`. Defaults to `http://localhost:4100` when `AUTH_TYPE=none`. Legacy `MHP_AIRO_BASE_URL` accepted as a fallback for in-flight env migrations. |
+| `MGMT_API_TIMEOUT`    | `30s`   | Per-request HTTP timeout. Legacy `MHP_AIRO_TIMEOUT` accepted as a fallback.                                                                                            |
+| `MGMT_API_AUTH`       | \*      | `awsiam` (mint AWS-IAM JWT via gd-auth-lib) or `none` (no Authorization header; for local-control-plane). Defaults mirror `AUTH_TYPE` (`jwt`→`awsiam`, `none`→`none`). Legacy `MHP_AIRO_AUTH` accepted as a fallback. |
 | `STRIPE_CLIENT`       | `fake`  | `fake` (deterministic synthetic IDs, no network) or `real` (real Stripe v2 via `internal/stripeapi`). Forced to `fake` when `ENVIRONMENT=local`.                       |
 | `STRIPE_API_BASE_URL` | _unset_ | Override for `internal/stripeapi`'s default (`https://api.stripe.com`). Tests / staging environments only.                                                             |
 | `STRIPE_API_VERSION`  | _unset_ | Override for `internal/stripeapi`'s pinned `Stripe-Version` header. Set when Stripe rotates us to a new preview version.                                               |

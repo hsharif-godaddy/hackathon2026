@@ -2251,3 +2251,239 @@ func TestCustomerIDFromRequest_DataIsolation(t *testing.T) {
 		t.Errorf("shopper-B should see 0 apps, got %d", len(resp.Apps))
 	}
 }
+
+// --- Hosting endpoint mock + protected-secrets fold-in ---
+
+// Pins the /hosting/v1/apps/{appId}/secrets route alongside the legacy
+// /api/airo/v1/... path. Dropping the alias would silently 404 every
+// local secrets push.
+func TestHostingRouteAlias_ReachesUpdateSecrets(t *testing.T) {
+	// Scope APPS_BASE_DIR so config-sync writes don't bleed into $HOME.
+	t.Setenv("APPS_BASE_DIR", t.TempDir())
+	router := NewRouter(newTestDB(t), nil, noopSSOMiddleware(t))
+
+	body, _ := json.Marshal(map[string]any{
+		"operations": []map[string]any{
+			{"type": "upsert", "secret": map[string]any{
+				"name": "STRIPE_SECRET_KEY", "value": "sk_test_x",
+				"variants": []string{"preview"}, "systemManaged": true,
+			}},
+		},
+	})
+	req := httptest.NewRequest(http.MethodPost,
+		"/hosting/v1/apps/app-route-alias/secrets", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("hosting alias should reach UpdateSecrets; got %d (body=%q)",
+			w.Code, w.Body.String())
+	}
+	var resp map[string]any
+	decodeJSON(t, w, &resp)
+	if resp["secretsUpdated"] != true {
+		t.Errorf("expected secretsUpdated:true; got %+v", resp)
+	}
+}
+
+// Pins that the hosting alias is registered INSIDE the JWT-guarded
+// subrouter. A future refactor that registers the alias above ssoMW.Authenticate
+// would let unauthenticated POSTs through in production (AUTH_TYPE=jwt).
+// The companion test above runs with auth disabled (the local-dev default),
+// so this test is the only thing pinning the auth posture.
+func TestHostingRouteAlias_RequiresAuth_WhenSSOEnabled(t *testing.T) {
+	t.Setenv("APPS_BASE_DIR", t.TempDir())
+	mw, err := auth.NewSSOMiddleware("jwt", "sso.dev-godaddy.com")
+	if err != nil {
+		t.Fatalf("NewSSOMiddleware: %v", err)
+	}
+	router := NewRouter(newTestDB(t), nil, mw)
+
+	body, _ := json.Marshal(map[string]any{
+		"operations": []map[string]any{
+			{"type": "upsert", "secret": map[string]any{
+				"name": "STRIPE_SECRET_KEY", "value": "sk_test_x",
+				"variants": []string{"preview"}, "systemManaged": true,
+			}},
+		},
+	})
+	req := httptest.NewRequest(http.MethodPost,
+		"/hosting/v1/apps/app-no-auth/secrets", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("unauthenticated hosting alias POST should be 401; got %d (body=%q)",
+			w.Code, w.Body.String())
+	}
+}
+
+// Pins the default arm of the op.Type switch: a typo'd type must be
+// counted as a failed op so partialFailure:true surfaces rather than
+// returning 200 with secretsUpdated:false. The payload pairs a valid
+// op with a typo so partialFailure surfaces; a typo alone would trip
+// the "all operations failed" 500 branch.
+func TestUpdateSecrets_UnknownOpTypeCountsAsFailed(t *testing.T) {
+	srv := newTestServer(t)
+
+	body, _ := json.Marshal(map[string]any{
+		"operations": []map[string]any{
+			{"type": "upsert", "secret": map[string]any{
+				"name": "VALID_KEY", "value": "valid", "variants": []string{"shared"},
+			}},
+			{"type": "upsrt", "secret": map[string]any{ // typo
+				"name": "TYPO_KEY", "value": "should-be-rejected",
+			}},
+		},
+	})
+	req := httptest.NewRequest(http.MethodPost, "/apps/app-typo/secrets", bytes.NewReader(body))
+	req = setMuxVars(req, map[string]string{"appId": "app-typo"})
+	w := httptest.NewRecorder()
+	srv.UpdateSecrets(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status: want 200 (partial failure on 200), got %d (body=%q)", w.Code, w.Body.String())
+	}
+	var resp map[string]any
+	decodeJSON(t, w, &resp)
+	if resp["partialFailure"] != true {
+		t.Errorf("partialFailure: want true, got %+v (full body=%+v)", resp["partialFailure"], resp)
+	}
+	failedCount, _ := resp["failedCount"].(float64)
+	if failedCount < 1 {
+		t.Errorf("failedCount: want >= 1, got %v", resp["failedCount"])
+	}
+	if resp["secretsUpdated"] != true {
+		t.Errorf("secretsUpdated: want true (the valid op succeeded); got %+v", resp["secretsUpdated"])
+	}
+
+	// The typo'd op must not have written to DB.
+	rows, err := srv.DB.GetSecrets("app-typo", nil)
+	if err != nil {
+		t.Fatalf("GetSecrets: %v", err)
+	}
+	for _, r := range rows {
+		if r.Name == "TYPO_KEY" {
+			t.Errorf("typo'd op MUST NOT write to DB; got row %+v", r)
+		}
+	}
+}
+
+// Pins the "Protected:true → variant=protected" routing in UpdateSecrets.
+// Mirrors prod's protectedSecretsTargets delivery; if misrouted into
+// "shared" or an explicit variants array, the secret would land where
+// prod never delivers protected secrets.
+func TestUpdateSecrets_ProtectedFlagStoresUnderProtectedVariant(t *testing.T) {
+	srv := newTestServer(t)
+
+	pTrue := true
+	body, _ := json.Marshal(map[string]any{
+		"operations": []map[string]any{
+			{"type": "upsert", "secret": map[string]any{
+				"name": "STRIPE_MCP_KEY", "value": "ek_test_x",
+				"protected": pTrue, "systemManaged": true,
+			}},
+		},
+	})
+	req := httptest.NewRequest(http.MethodPost, "/apps/app-protected/secrets", bytes.NewReader(body))
+	req = setMuxVars(req, map[string]string{"appId": "app-protected"})
+	w := httptest.NewRecorder()
+	srv.UpdateSecrets(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("UpdateSecrets: status %d (body=%q)", w.Code, w.Body.String())
+	}
+	rows, err := srv.DB.GetSecrets("app-protected", nil)
+	if err != nil {
+		t.Fatalf("GetSecrets: %v", err)
+	}
+	var found *store.Secret
+	for i := range rows {
+		if rows[i].Name == "STRIPE_MCP_KEY" {
+			found = &rows[i]
+			break
+		}
+	}
+	if found == nil {
+		t.Fatalf("STRIPE_MCP_KEY not stored; got rows=%+v", rows)
+	}
+	if found.Variant != "protected" {
+		t.Errorf("variant: want %q, got %q (this row would land in the wrong "+
+			"per-variant config in prod via syncSecretsToConfigFiles)",
+			"protected", found.Variant)
+	}
+}
+
+// Pins the preview-only fold-in for protected secrets. Flipping the
+// publish-skip guard would surface protected secrets into the published
+// runtime — the exact inversion the protected flag exists to prevent.
+func TestUpdateSecrets_ProtectedFoldsIntoPreviewButNotPublish(t *testing.T) {
+	srv, tmpDir := newTestServerWithFS(t)
+	appID := "test-app-protected-fold"
+	setupAppDirs(t, tmpDir, appID)
+
+	pTrue := true
+	body, _ := json.Marshal(map[string]any{
+		"operations": []map[string]any{
+			{"type": "upsert", "secret": map[string]any{
+				"name": "STRIPE_MCP_KEY", "value": "ek_test_xyz",
+				"protected": pTrue, "systemManaged": true,
+			}},
+			// Pair with a publish-variant secret so we can verify publish's
+			// config.json is also synced (not silently skipped).
+			{"type": "upsert", "secret": map[string]any{
+				"name": "STRIPE_SECRET_KEY", "value": "sk_test_xyz",
+				"variants": []string{"publish"}, "systemManaged": true,
+			}},
+		},
+	})
+	req := httptest.NewRequest(http.MethodPost,
+		"/hosting/v1/apps/"+appID+"/secrets", bytes.NewReader(body))
+	req = setMuxVars(req, map[string]string{"appId": appID})
+	w := httptest.NewRecorder()
+	srv.UpdateSecrets(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("UpdateSecrets: status %d (body=%q)", w.Code, w.Body.String())
+	}
+
+	previewConfig := readConfig(t, filepath.Join(tmpDir, appID, "local", "preview", "config.json"))
+	publishConfig := readConfig(t, filepath.Join(tmpDir, appID, "local", "publish", "config.json"))
+
+	// Preview must contain the protected secret.
+	if previewConfig["STRIPE_MCP_KEY"] == nil {
+		t.Errorf("preview/config.json missing STRIPE_MCP_KEY: %+v", previewConfig)
+	}
+
+	// Publish must NOT contain the protected secret — load-bearing
+	// assertion; the rest of the suite would still pass if the
+	// publish-skip guard were removed.
+	if _, leaked := publishConfig["STRIPE_MCP_KEY"]; leaked {
+		t.Errorf("publish/config.json must not contain STRIPE_MCP_KEY (protected secret leak): %+v",
+			publishConfig)
+	}
+
+	// Publish-variant secret should land in publish (proves the publish
+	// sync ran at all and that the publish skip is scoped to protected).
+	if publishConfig["STRIPE_SECRET_KEY"] == nil {
+		t.Errorf("publish/config.json missing STRIPE_SECRET_KEY (publish-variant op): %+v",
+			publishConfig)
+	}
+}
+
+// readConfig loads a per-app config.json into a map. Returns an empty map
+// when the file doesn't exist (some sync paths only write one variant).
+func readConfig(t *testing.T, path string) map[string]any {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return map[string]any{}
+		}
+		t.Fatalf("read %s: %v", path, err)
+	}
+	var cfg map[string]any
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		t.Fatalf("parse %s: %v", path, err)
+	}
+	return cfg
+}

@@ -15,13 +15,18 @@ import (
 
 // Server holds handler dependencies.
 type Server struct {
-	Environment     string
-	Version         string
-	Prober          awsclients.Prober
-	ResourceNames   config.ResourceNames
-	Auth            *goauth.Middleware
-	Stripe          stripeclient.Client
-	Sandboxes       sandboxStore
+	Environment   string
+	Version       string
+	Prober        awsclients.Prober
+	ResourceNames config.ResourceNames
+	Auth          *goauth.Middleware
+	Stripe        stripeclient.Client
+	Sandboxes     sandboxStore
+	// Secrets is the outbound client to mhp-core's hosting service for
+	// pushing Stripe-issued credentials into a customer app's alloc env
+	// (POST /hosting/v1/apps/:appId/secrets). Always non-nil in production;
+	// wired from buildHostingClient.
+	Secrets         secretsPusher
 	Events          eventStore
 	WebhookVerifier *webhook.Verifier
 	// EventFetcher expands thin v2 event IDs into full payloads via GET

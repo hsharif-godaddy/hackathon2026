@@ -15,10 +15,12 @@ import (
 
 	"github.com/gdcorp-golang/auth/gdsso"
 
+	gdauth "github.com/gdcorp-identity/gd-auth-lib/go/gd_auth_lib"
 	goauth "github.com/gdcorp-partners/airo-app-builder/packages/go-auth"
 	"github.com/gdcorp-partners/airo-app-builder/stripe-service/internal/api"
 	"github.com/gdcorp-partners/airo-app-builder/stripe-service/internal/awsclients"
 	"github.com/gdcorp-partners/airo-app-builder/stripe-service/internal/config"
+	"github.com/gdcorp-partners/airo-app-builder/stripe-service/internal/hosting"
 	"github.com/gdcorp-partners/airo-app-builder/stripe-service/internal/store"
 	stripeclient "github.com/gdcorp-partners/airo-app-builder/stripe-service/internal/stripe"
 	"github.com/gdcorp-partners/airo-app-builder/stripe-service/internal/stripeapi"
@@ -92,6 +94,12 @@ func main() {
 		os.Exit(1)
 	}
 
+	secretsClient, err := buildHostingClient(cfg)
+	if err != nil {
+		slog.Error("stripe_service.hosting.build", "error", err)
+		os.Exit(1)
+	}
+
 	srv := &api.Server{
 		Environment:     string(cfg.Environment),
 		Version:         version,
@@ -100,6 +108,7 @@ func main() {
 		Auth:            authMW,
 		Stripe:          stripeClient,
 		Sandboxes:       sandboxes,
+		Secrets:         secretsClient,
 		Events:          events,
 		WebhookVerifier: verifier,
 		EventFetcher:    stripeAPIClient, // nil when STRIPE_CLIENT=fake
@@ -220,4 +229,30 @@ func buildStripeClient(cfg config.Config, clients *awsclients.Clients, resources
 		return nil, nil, fmt.Errorf("construct real stripe client: %w", err)
 	}
 	return real, sapi, nil
+}
+
+// buildHostingClient constructs the outbound hosting.Client from cfg.Hosting.
+// BaseURL is always set by config.Load (local default or explicit env var),
+// so this never returns nil.
+func buildHostingClient(cfg config.Config) (*hosting.Client, error) {
+	var auth hosting.AuthProvider
+	switch cfg.Hosting.Auth {
+	case "awsiam":
+		gd, err := gdauth.New()
+		if err != nil {
+			return nil, fmt.Errorf("hosting: init gd-auth: %w", err)
+		}
+		a, err := hosting.NewAwsIamAuth(gd, cfg.SSOHost)
+		if err != nil {
+			return nil, fmt.Errorf("hosting: init aws-iam auth: %w", err)
+		}
+		auth = a
+	default:
+		auth = hosting.NoopAuth{}
+	}
+	return hosting.New(hosting.Config{
+		BaseURL: cfg.Hosting.BaseURL,
+		Auth:    auth,
+		Timeout: cfg.Hosting.Timeout,
+	})
 }

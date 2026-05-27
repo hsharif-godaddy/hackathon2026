@@ -102,6 +102,14 @@ func NewRouter(db *store.DB, jwtService *auth.JWTService, ssoMW *auth.SSOMiddlew
 	v1.HandleFunc("/subscriptions/{subId}/systems/{sysId}/apps/{appId}/unpublish", srv.UnpublishApp).Methods("POST")
 	v1.HandleFunc("/subscriptions/{subId}/systems/{sysId}/apps/{appId}/secrets", srv.GetSecrets).Methods("GET")
 	v1.HandleFunc("/subscriptions/{subId}/systems/{sysId}/apps/{appId}/secrets", srv.UpdateSecrets).Methods("POST")
+
+	// Hosting service mock (mhp-core/backends/hosting): flat appId-keyed
+	// secrets path, separate from airo's subscription-scoped routes above.
+	// Handler is shared with the v1 routes — request/response shape matches.
+	hosting := r.PathPrefix("/hosting/v1").Subrouter()
+	hosting.Use(ssoMW.Authenticate)
+	hosting.HandleFunc("/apps/{appId}/secrets", srv.GetSecrets).Methods("GET")
+	hosting.HandleFunc("/apps/{appId}/secrets", srv.UpdateSecrets).Methods("POST")
 	v1.HandleFunc("/subscriptions/{subId}/systems/{sysId}/apps/{appId}/image-status", srv.GetImageStatus).Methods("GET")
 	v1.HandleFunc("/subscriptions/{subId}/systems/{sysId}/apps/{appId}/archive-status", srv.GetArchiveStatus).Methods("GET")
 	v1.HandleFunc("/subscriptions/{subId}/systems/{sysId}/apps/{appId}/restore", srv.ArchiveRestore).Methods("POST")

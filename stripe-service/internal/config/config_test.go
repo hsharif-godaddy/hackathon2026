@@ -279,82 +279,108 @@ func TestLoadAcceptsValidDurations(t *testing.T) {
 	}
 }
 
-func TestLoadMHPAiroDefaultsWithAuthNone(t *testing.T) {
+func TestLoadHostingDefaultsWithAuthNone(t *testing.T) {
 	clearEnv(t) // sets AUTH_TYPE=none
 	cfg, err := Load()
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if got, want := cfg.MHPAiro.BaseURL, "http://localhost:4100/api/airo/v1"; got != want {
-		t.Errorf("MHPAiro.BaseURL: want %q, got %q", want, got)
+	if got, want := cfg.Hosting.BaseURL, "http://localhost:4100"; got != want {
+		t.Errorf("Hosting.BaseURL: want %q, got %q", want, got)
 	}
-	if got, want := cfg.MHPAiro.Auth, "none"; got != want {
-		t.Errorf("MHPAiro.Auth: want %q, got %q", want, got)
+	if got, want := cfg.Hosting.Auth, "none"; got != want {
+		t.Errorf("Hosting.Auth: want %q, got %q", want, got)
 	}
-	if cfg.MHPAiro.Timeout != 30*time.Second {
-		t.Errorf("MHPAiro.Timeout: want 30s, got %s", cfg.MHPAiro.Timeout)
+	if cfg.Hosting.Timeout != 30*time.Second {
+		t.Errorf("Hosting.Timeout: want 30s, got %s", cfg.Hosting.Timeout)
 	}
 }
 
-func TestLoadMHPAiroRequiresBaseURLWhenAuthJwt(t *testing.T) {
+func TestLoadHostingRequiresBaseURLWhenAuthJwt(t *testing.T) {
 	clearEnv(t)
 	t.Setenv("AUTH_TYPE", "jwt")
 	t.Setenv("SSO_HOST", "sso.dev-godaddy.com")
-	// MHP_AIRO_BASE_URL deliberately unset.
+	// MGMT_API_BASE_URL deliberately unset.
 	_, err := Load()
 	if err == nil {
-		t.Fatal("want error when AUTH_TYPE=jwt and MHP_AIRO_BASE_URL is unset")
+		t.Fatal("want error when AUTH_TYPE=jwt and MGMT_API_BASE_URL is unset")
 	}
-	if !strings.Contains(err.Error(), "MHP_AIRO_BASE_URL") {
-		t.Errorf("error should mention MHP_AIRO_BASE_URL; got %q", err)
+	if !strings.Contains(err.Error(), "MGMT_API_BASE_URL") {
+		t.Errorf("error should mention MGMT_API_BASE_URL; got %q", err)
 	}
 }
 
-func TestLoadMHPAiroAuthDefaultsToAwsIamWhenJwt(t *testing.T) {
+func TestLoadHostingAuthDefaultsToAwsIamWhenJwt(t *testing.T) {
 	clearEnv(t)
 	t.Setenv("AUTH_TYPE", "jwt")
 	t.Setenv("SSO_HOST", "sso.dev-godaddy.com")
-	t.Setenv("MHP_AIRO_BASE_URL", "https://mgmt.nstk.net/api/airo/v1")
+	t.Setenv("MGMT_API_BASE_URL", "http://api.mgmt")
 	cfg, err := Load()
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if got, want := cfg.MHPAiro.Auth, "awsiam"; got != want {
-		t.Errorf("MHPAiro.Auth: want %q, got %q", want, got)
+	if got, want := cfg.Hosting.Auth, "awsiam"; got != want {
+		t.Errorf("Hosting.Auth: want %q, got %q", want, got)
 	}
 }
 
-func TestLoadMHPAiroRejectsInvalidAuth(t *testing.T) {
+func TestLoadHostingRejectsInvalidAuth(t *testing.T) {
 	clearEnv(t)
-	t.Setenv("MHP_AIRO_AUTH", "bearer") // not a valid option
+	t.Setenv("MGMT_API_AUTH", "bearer") // not a valid option
 	_, err := Load()
 	if err == nil {
-		t.Fatal("want error for invalid MHP_AIRO_AUTH")
+		t.Fatal("want error for invalid MGMT_API_AUTH")
 	}
-	if !strings.Contains(err.Error(), "MHP_AIRO_AUTH") {
-		t.Errorf("error should mention MHP_AIRO_AUTH; got %q", err)
+	if !strings.Contains(err.Error(), "MGMT_API_AUTH") {
+		t.Errorf("error should mention MGMT_API_AUTH; got %q", err)
 	}
 }
 
-func TestLoadMHPAiroRespectsExplicitOverrides(t *testing.T) {
+func TestLoadHostingRespectsExplicitOverrides(t *testing.T) {
 	clearEnv(t)
 	t.Setenv("AUTH_TYPE", "jwt")
 	t.Setenv("SSO_HOST", "sso.dev-godaddy.com")
-	t.Setenv("MHP_AIRO_BASE_URL", "https://custom.example/api/airo/v1")
-	t.Setenv("MHP_AIRO_AUTH", "none") // override default mapping
-	t.Setenv("MHP_AIRO_TIMEOUT", "7s")
+	t.Setenv("MGMT_API_BASE_URL", "https://custom.example")
+	t.Setenv("MGMT_API_AUTH", "none") // override default mapping
+	t.Setenv("MGMT_API_TIMEOUT", "7s")
 	cfg, err := Load()
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if cfg.MHPAiro.BaseURL != "https://custom.example/api/airo/v1" {
-		t.Errorf("MHPAiro.BaseURL: want override, got %q", cfg.MHPAiro.BaseURL)
+	if cfg.Hosting.BaseURL != "https://custom.example" {
+		t.Errorf("Hosting.BaseURL: want override, got %q", cfg.Hosting.BaseURL)
 	}
-	if cfg.MHPAiro.Auth != "none" {
-		t.Errorf("MHPAiro.Auth: want none (override), got %q", cfg.MHPAiro.Auth)
+	if cfg.Hosting.Auth != "none" {
+		t.Errorf("Hosting.Auth: want none (override), got %q", cfg.Hosting.Auth)
 	}
-	if cfg.MHPAiro.Timeout.Seconds() != 7 {
-		t.Errorf("MHPAiro.Timeout: want 7s, got %s", cfg.MHPAiro.Timeout)
+	if cfg.Hosting.Timeout.Seconds() != 7 {
+		t.Errorf("Hosting.Timeout: want 7s, got %s", cfg.Hosting.Timeout)
+	}
+}
+
+// TestLoadHostingFallsBackToLegacyMHPAiroEnvVars exercises the
+// backward-compat branch in firstEnv: deployments migrating one env var at
+// a time still resolve correctly when only the legacy name is set.
+func TestLoadHostingFallsBackToLegacyMHPAiroEnvVars(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("AUTH_TYPE", "jwt")
+	t.Setenv("SSO_HOST", "sso.dev-godaddy.com")
+	// MGMT_API_BASE_URL unset; MHP_AIRO_BASE_URL set instead.
+	t.Setenv("MHP_AIRO_BASE_URL", "https://legacy.example")
+	t.Setenv("MHP_AIRO_AUTH", "none")
+	t.Setenv("MHP_AIRO_TIMEOUT", "9s")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Hosting.BaseURL != "https://legacy.example" {
+		t.Errorf("Hosting.BaseURL: want legacy fallback, got %q", cfg.Hosting.BaseURL)
+	}
+	if cfg.Hosting.Auth != "none" {
+		t.Errorf("Hosting.Auth: want legacy fallback, got %q", cfg.Hosting.Auth)
+	}
+	if cfg.Hosting.Timeout.Seconds() != 9 {
+		t.Errorf("Hosting.Timeout: want 9s legacy fallback, got %s", cfg.Hosting.Timeout)
 	}
 }
 

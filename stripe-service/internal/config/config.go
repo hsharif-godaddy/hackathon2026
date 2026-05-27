@@ -45,10 +45,10 @@ type Config struct {
 	AuthType         string // "jwt" (default) or "none" (local dev bypass)
 	SSOHost          string // GoDaddy SSO hostname; required when AuthType=jwt
 
-	// MHPAiro groups config for the outbound mhp-airo control-plane client
-	// (see internal/mhpairo). Kept as a sub-struct so future additions
+	// Hosting groups config for the outbound mhp-core hosting service client
+	// (see internal/hosting). Kept as a sub-struct so future additions
 	// (health-probe path, per-endpoint overrides) don't sprawl at the top.
-	MHPAiro MHPAiroConfig
+	Hosting HostingConfig
 
 	// StripeClient selects which internal/stripe.Client implementation
 	// the server wires in: "fake" (deterministic synthetic IDs, no
@@ -69,9 +69,11 @@ type Config struct {
 	StripeAPIVersion string
 }
 
-// MHPAiroConfig is the env-driven config for internal/mhpairo.Client.
-type MHPAiroConfig struct {
-	// BaseURL is the mhp-airo API root, up to and including "/api/airo/v1".
+// HostingConfig is the env-driven config for internal/hosting.Client.
+type HostingConfig struct {
+	// BaseURL is the hosting API root, up to but not including "/hosting/v1".
+	// Example prod (in-cluster): "http://api.mgmt".
+	// Example local: "http://localhost:4100".
 	// Required when AuthType=jwt; defaults to local-control-plane when unset.
 	BaseURL string
 
@@ -159,7 +161,7 @@ func Load() (Config, error) {
 		return Config{}, fmt.Errorf("SSO_HOST must be set when AUTH_TYPE=jwt")
 	}
 
-	if cfg.MHPAiro, err = loadMHPAiroConfig(cfg.AuthType); err != nil {
+	if cfg.Hosting, err = loadHostingConfig(cfg.AuthType); err != nil {
 		return Config{}, err
 	}
 
@@ -199,27 +201,31 @@ func parseStripeClient(s string, env Environment) (StripeClientKind, error) {
 	return normalized, nil
 }
 
-// loadMHPAiroConfig reads the MHP_AIRO_* env vars. Defaults are env-aware:
-// with AUTH_TYPE=none we assume local-control-plane on :4100; with
-// AUTH_TYPE=jwt a BaseURL must be set explicitly (no sane default to guess
-// between dev/test/prod mhp-airo hosts).
-func loadMHPAiroConfig(authType string) (MHPAiroConfig, error) {
-	out := MHPAiroConfig{
-		BaseURL: strings.TrimSpace(os.Getenv("MHP_AIRO_BASE_URL")),
-		Auth:    strings.ToLower(strings.TrimSpace(os.Getenv("MHP_AIRO_AUTH"))),
+// loadHostingConfig reads the MGMT_API_* env vars. Defaults are env-aware:
+// with AUTH_TYPE=none we point at local-control-plane on :4100; with
+// AUTH_TYPE=jwt the BaseURL must be set explicitly (no sane default to guess
+// between dev/test/prod mhp-core ingress hosts).
+//
+// Backward-compat: if MGMT_API_BASE_URL is unset but the legacy
+// MHP_AIRO_BASE_URL is set, fall back to it (and log) so deployments
+// migrating one env var at a time keep working. Same for AUTH/TIMEOUT.
+func loadHostingConfig(authType string) (HostingConfig, error) {
+	out := HostingConfig{
+		BaseURL: firstEnv("MGMT_API_BASE_URL", "MHP_AIRO_BASE_URL"),
+		Auth:    strings.ToLower(firstEnv("MGMT_API_AUTH", "MHP_AIRO_AUTH")),
 	}
 
-	timeout, err := getEnvDuration("MHP_AIRO_TIMEOUT", 30*time.Second)
+	timeout, err := getEnvDurationFirst(30*time.Second, "MGMT_API_TIMEOUT", "MHP_AIRO_TIMEOUT")
 	if err != nil {
-		return MHPAiroConfig{}, err
+		return HostingConfig{}, err
 	}
 	out.Timeout = timeout
 
 	if out.BaseURL == "" {
 		if authType == "none" {
-			out.BaseURL = "http://localhost:4100/api/airo/v1"
+			out.BaseURL = "http://localhost:4100"
 		} else {
-			return MHPAiroConfig{}, fmt.Errorf("MHP_AIRO_BASE_URL must be set when AUTH_TYPE=jwt")
+			return HostingConfig{}, fmt.Errorf("MGMT_API_BASE_URL must be set when AUTH_TYPE=jwt")
 		}
 	}
 
@@ -236,10 +242,34 @@ func loadMHPAiroConfig(authType string) (MHPAiroConfig, error) {
 	case "awsiam", "none":
 		// ok
 	default:
-		return MHPAiroConfig{}, fmt.Errorf("MHP_AIRO_AUTH must be one of awsiam|none; got %q", out.Auth)
+		return HostingConfig{}, fmt.Errorf("MGMT_API_AUTH must be one of awsiam|none; got %q", out.Auth)
 	}
 
 	return out, nil
+}
+
+// firstEnv returns the first non-empty (after TrimSpace) value among the keys.
+// Used to honor a legacy env var name as a fallback when the canonical name
+// is unset.
+func firstEnv(keys ...string) string {
+	for _, k := range keys {
+		if v := strings.TrimSpace(os.Getenv(k)); v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+// getEnvDurationFirst is getEnvDuration with multi-key fallback. Returns
+// fallback only when every key is unset/empty; if any key is set but
+// unparseable, returns the error from the first one tried.
+func getEnvDurationFirst(fallback time.Duration, keys ...string) (time.Duration, error) {
+	for _, k := range keys {
+		if strings.TrimSpace(os.Getenv(k)) != "" {
+			return getEnvDuration(k, fallback)
+		}
+	}
+	return fallback, nil
 }
 
 func parseAuthType(s string) (string, error) {

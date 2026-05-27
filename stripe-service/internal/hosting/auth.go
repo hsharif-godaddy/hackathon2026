@@ -1,4 +1,4 @@
-package mhpairo
+package hosting
 
 import (
 	"context"
@@ -10,7 +10,7 @@ import (
 	gdauth "github.com/gdcorp-identity/gd-auth-lib/go/gd_auth_lib"
 )
 
-// AuthProvider attaches an Authorization header to an outbound mhp-airo
+// AuthProvider attaches an Authorization header to an outbound hosting
 // request. Different implementations cover different environments (AWS-IAM
 // JWT in prod, no-op in local-dev against local-control-plane with
 // AUTH_TYPE=none).
@@ -23,7 +23,7 @@ type AuthProvider interface {
 	Name() string
 }
 
-// NoopAuth attaches no credential. Used when the receiving mhp-airo runs with
+// NoopAuth attaches no credential. Used when the receiving hosting runs with
 // AUTH_TYPE=none (local-control-plane, or a misconfigured deploy where we
 // want to fail loud downstream rather than mint tokens the service won't
 // accept anyway).
@@ -57,12 +57,12 @@ type AwsIamAuth struct {
 // and an SSO host (protocol stripped, surrounding whitespace trimmed).
 func NewAwsIamAuth(gd *gdauth.GDAuth, ssoHost string) (*AwsIamAuth, error) {
 	if gd == nil {
-		return nil, errors.New("mhpairo: gd-auth client is required")
+		return nil, errors.New("hosting: gd-auth client is required")
 	}
 	host := strings.TrimSpace(ssoHost)
 	host = strings.TrimPrefix(strings.TrimPrefix(host, "https://"), "http://")
 	if host == "" {
-		return nil, errors.New("mhpairo: SSO host is required")
+		return nil, errors.New("hosting: SSO host is required")
 	}
 	return &AwsIamAuth{
 		minter: gd,
@@ -88,13 +88,13 @@ func (a *AwsIamAuth) ApplyAuth(ctx context.Context, req *http.Request) error {
 
 	select {
 	case <-ctx.Done():
-		return fmt.Errorf("mhpairo: mint AWS-IAM token: %w", ctx.Err())
+		return fmt.Errorf("hosting: mint AWS-IAM token: %w", ctx.Err())
 	case r := <-ch:
 		if r.err != nil {
-			return fmt.Errorf("mhpairo: mint AWS-IAM token: %w", r.err)
+			return fmt.Errorf("hosting: mint AWS-IAM token: %w", r.err)
 		}
 		if r.token == "" {
-			return errors.New("mhpairo: gd-auth-lib returned an empty token")
+			return errors.New("hosting: gd-auth-lib returned an empty token")
 		}
 		req.Header.Set("Authorization", "Bearer "+r.token)
 		return nil

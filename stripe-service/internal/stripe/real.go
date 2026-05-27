@@ -12,7 +12,7 @@ import (
 // claimableSandboxCreator is the slice of *stripeapi.Client this package
 // needs. Production wiring (in cmd/server/main.go) passes the real
 // *stripeapi.Client; tests inject a fake implementation. Same narrow-
-// interface pattern as mhpairo.tokenMinter / kmspubkey.keyFetcher.
+// interface pattern as hosting.tokenMinter / kmspubkey.keyFetcher.
 type claimableSandboxCreator interface {
 	CreateClaimableSandbox(
 		ctx context.Context,

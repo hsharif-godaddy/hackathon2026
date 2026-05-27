@@ -1,4 +1,4 @@
-package mhpairo
+package hosting
 
 import (
 	"context"

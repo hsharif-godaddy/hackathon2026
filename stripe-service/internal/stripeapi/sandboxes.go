@@ -57,7 +57,8 @@ type OnboardingLinkResponseDetails struct {
 }
 
 // SandboxAPIKeys are the three test-mode keys Stripe issues alongside
-// a freshly-created claimable sandbox.
+// a freshly-created claimable sandbox. They go straight into the alloc
+// env via the hosting service and are never persisted in stripe-service.
 type SandboxAPIKeys struct {
 	Secret      string `json:"secret"`      // sk_test_*
 	Publishable string `json:"publishable"` // pk_test_*

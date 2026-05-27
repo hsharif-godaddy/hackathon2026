@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gdcorp-partners/airo-app-builder/stripe-service/internal/hosting"
 	"github.com/gdcorp-partners/airo-app-builder/stripe-service/internal/store"
 	stripeclient "github.com/gdcorp-partners/airo-app-builder/stripe-service/internal/stripe"
 )
@@ -27,6 +28,67 @@ type sandboxStore interface {
 	Put(ctx context.Context, s store.Sandbox) error
 	QueryByAppID(ctx context.Context, appID string) ([]store.Sandbox, error)
 	UpdateClaimStatus(ctx context.Context, sandboxID string, status store.ClaimStatus, liveAccountID string) error
+}
+
+// secretsPusher is the subset of hosting.Client used by postSandboxes.
+// Keeping it as an interface lets tests inject a fake without standing up a
+// real HTTP server.
+type secretsPusher interface {
+	UpdateSecrets(ctx context.Context, appID string, ops []hosting.SecretOp) error
+}
+
+// boolPtr returns a *bool for the given value. Used to set Protected on
+// payloads where the field uses *bool to distinguish "explicitly set" from
+// "omitted" (the hosting schema treats omitted as false; we want explicit
+// for the MCP-key op so the wire body is unambiguous).
+func boolPtr(b bool) *bool { return &b }
+
+// buildSecretsOps constructs the bulk-secrets payload that hosting expects.
+// Five ops:
+//   - STRIPE_MCP_KEY: protected:true (delivered to agent task target only,
+//     via the composition's protectedSecretsTargets — see ai-builder/v4
+//     composition.json's "agent" entry → /local/config.json).
+//   - STRIPE_SECRET_KEY / STRIPE_PUBLISHABLE_KEY split into preview-variant
+//     and publish-variant ops so go-live can later flip the publish ops to
+//     *_live_* without ever putting live keys into the preview alloc.
+//
+// At sandbox-create time both variant ops carry the *_test_* values; the
+// preview-never-sees-live invariant is enforced trivially here. The go-live
+// webhook handler will use the same builder shape with publish-variant ops
+// upgraded to *_live_*.
+func buildSecretsOps(secretKey, publishableKey, mcpKey string) []hosting.SecretOp {
+	return []hosting.SecretOp{
+		{Type: hosting.SecretOpUpsert, Secret: hosting.SecretPayload{
+			Name:          "STRIPE_MCP_KEY",
+			Value:         mcpKey,
+			Protected:     boolPtr(true),
+			SystemManaged: true,
+		}},
+		{Type: hosting.SecretOpUpsert, Secret: hosting.SecretPayload{
+			Name:          "STRIPE_SECRET_KEY",
+			Value:         secretKey,
+			Variants:      []string{"preview"},
+			SystemManaged: true,
+		}},
+		{Type: hosting.SecretOpUpsert, Secret: hosting.SecretPayload{
+			Name:          "STRIPE_SECRET_KEY",
+			Value:         secretKey,
+			Variants:      []string{"publish"},
+			SystemManaged: true,
+		}},
+		{Type: hosting.SecretOpUpsert, Secret: hosting.SecretPayload{
+			Name:          "STRIPE_PUBLISHABLE_KEY",
+			Value:         publishableKey,
+			Variants:      []string{"preview"},
+			SystemManaged: true,
+		}},
+		{Type: hosting.SecretOpUpsert, Secret: hosting.SecretPayload{
+			Name:          "STRIPE_PUBLISHABLE_KEY",
+			Value:         publishableKey,
+			Variants:      []string{"publish"},
+			SystemManaged: true,
+		}},
+	}
 }
 
 type createSandboxRequest struct {
@@ -48,19 +110,18 @@ type statusResponse struct {
 }
 
 // postSandboxes is idempotent on appId: if the app already has a sandbox it
-// returns 200 with the existing one, otherwise calls the Stripe client to
-// create one, persists metadata with ClaimStatus=provisioned, and returns 201.
+// returns 200 with the existing one. Otherwise it calls the Stripe client to
+// create one, pushes the Stripe-issued keys to hosting (the mhp-core control
+// plane) so they reach the customer-app and agent task targets, persists
+// metadata with ClaimStatus=provisioned, and returns 201.
 //
-// TODO(mhp-airo): between Stripe create and the DDB PutItem below, push
-// sb.SecretKey + sb.PublishableKey + sb.MCPKey to mhp-airo
-// (PUT /apps/:appId/secrets + /reload) with retry+backoff on 5xx/network.
-// Must succeed before the DDB write: none of the Stripe-issued keys are
-// copied into store.Sandbox — they're ephemeral in stripe-service and
-// mhp-airo is their only durable home. If we persist the DDB row before
-// the alloc env is set up, the agent thinks the sandbox is ready but has
-// no STRIPE_MCP_KEY (and preview/publish have no sk/pk). On exhaust,
-// return error without writing DDB; abandon the Stripe sandbox (cheap,
-// pre-claim) and let the agent retry stripe__setup.
+// Push happens BEFORE the DDB Put: none of the Stripe-issued keys are copied
+// into store.Sandbox — they're ephemeral in stripe-service and hosting is
+// their only durable home. If we persisted the DDB row before the alloc
+// secrets were live, the agent would see "sandbox ready" but have no
+// STRIPE_MCP_KEY (and preview/publish would have no sk/pk). On push failure
+// we return 502 without writing DDB and abandon the Stripe sandbox (cheap,
+// pre-claim); the agent can retry stripe__setup.
 func (s *Server) postSandboxes(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
@@ -111,9 +172,8 @@ func (s *Server) postSandboxes(w http.ResponseWriter, r *http.Request) {
 	// write-time uniqueness, not rate limiting: either (a) make sandbox_id
 	// deterministic from appId + transaction, (b) add a separate
 	// app_id-keyed item with a ConditionExpression("attribute_not_exists"),
-	// or (c) use a TransactWriteItems that claims an app lock. Deferred
-	// until the mhp-airo push lands — any of those fixes will touch the
-	// same code path.
+	// or (c) use a TransactWriteItems that claims an app lock. Same code
+	// path as the secrets push below.
 
 	sb, err := s.Stripe.CreateClaimableSandbox(ctx, stripeclient.CreateSandboxInput{
 		AppID:   appID,
@@ -126,9 +186,32 @@ func (s *Server) postSandboxes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// sb.PublishableKey / sb.SecretKey / sb.MCPKey are intentionally NOT
-	// copied into the persisted row — see TODO above. They fall out of
-	// scope when this function returns.
+	// Push the Stripe-issued keys into the customer-app alloc env via the
+	// mhp-core hosting service before writing the DDB row. The keys are
+	// never stored in stripe-service — hosting is their only durable home.
+	// If the push fails we return 502 and abandon the Stripe sandbox
+	// (cheap, pre-claim); the agent can retry stripe__setup.
+	//
+	// s.Secrets is required: main.go always wires it via buildHostingClient
+	// (which exits the process on construction failure), and tests that
+	// reach this branch inject a fake. The previous silent-skip branch
+	// when Secrets was nil was a foot-gun — a misconfigured Server would
+	// have written a 201+DDB row with no keys, exactly the failure this
+	// push is meant to prevent.
+	ops := buildSecretsOps(sb.SecretKey, sb.PublishableKey, sb.MCPKey)
+	if err := s.Secrets.UpdateSecrets(ctx, appID, ops); err != nil {
+		slog.Error("stripe_service.sandboxes.secrets_push_failed",
+			"appId", appID,
+			"sandboxId", sb.SandboxID,
+			"accountId", sb.AccountID,
+			"error", err,
+		)
+		writeError(w, http.StatusBadGateway, "SECRETS_PUSH_FAILED", "failed to deliver keys to control plane")
+		return
+	}
+
+	// sb.PublishableKey / sb.SecretKey / sb.MCPKey fall out of scope here —
+	// they were never persisted in stripe-service.
 	now := time.Now().UTC()
 	persisted := store.Sandbox{
 		SandboxID:   sb.SandboxID,

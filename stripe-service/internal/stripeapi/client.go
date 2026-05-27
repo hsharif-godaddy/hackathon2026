@@ -65,7 +65,7 @@ func New(cfg Config) (*Client, error) {
 		base = defaultBaseURL
 	}
 	base = strings.TrimRight(base, "/")
-	// Mirror the BaseURL validation we tightened on mhpairo: url.Parse is
+	// Mirror the BaseURL validation we tightened on the hosting client: url.Parse is
 	// too permissive (accepts "localhost:80/foo" without error). Require
 	// an absolute URL with an http/https scheme and a non-empty host.
 	u, err := url.ParseRequestURI(base)

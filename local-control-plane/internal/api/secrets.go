@@ -29,8 +29,10 @@ func (s *Server) GetSecrets(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Group secrets by variant for the response format mgmt-airo uses
+	// Group secrets by variant for the mgmt-airo / hosting response format.
+	// The "protected" group mirrors hosting's GetSecretsResponse.
 	shared := make([]map[string]any, 0)
+	protected := make([]map[string]any, 0)
 	variantSecrets := map[string][]map[string]any{
 		"preview": {},
 		"publish": {},
@@ -43,9 +45,12 @@ func (s *Server) GetSecrets(w http.ResponseWriter, r *http.Request) {
 			"systemManaged": sec.SystemManaged,
 		}
 
-		if sec.Variant == "shared" {
+		switch sec.Variant {
+		case "shared":
 			shared = append(shared, entry)
-		} else {
+		case "protected":
+			protected = append(protected, entry)
+		default:
 			variantSecrets[sec.Variant] = append(variantSecrets[sec.Variant], entry)
 		}
 	}
@@ -54,6 +59,9 @@ func (s *Server) GetSecrets(w http.ResponseWriter, r *http.Request) {
 		"appId": appID,
 		"shared": map[string]any{
 			"secrets": shared,
+		},
+		"protected": map[string]any{
+			"secrets": protected,
 		},
 		"variants": map[string]any{
 			"preview": map[string]any{
@@ -78,6 +86,11 @@ func (s *Server) UpdateSecrets(w http.ResponseWriter, r *http.Request) {
 				Value         any      `json:"value"`
 				Variants      []string `json:"variants"`
 				SystemManaged bool     `json:"systemManaged"`
+				// Protected mirrors hosting's flag — secrets delivered only
+				// to the agent task target (composition's
+				// protectedSecretsTargets). Locally stored under the
+				// sentinel variant "protected".
+				Protected *bool `json:"protected,omitempty"`
 			} `json:"secret"`
 		} `json:"operations"`
 		WorkflowName string `json:"workflowName"`
@@ -92,7 +105,10 @@ func (s *Server) UpdateSecrets(w http.ResponseWriter, r *http.Request) {
 
 	for _, op := range body.Operations {
 		variant := "shared"
-		if len(op.Secret.Variants) > 0 {
+		switch {
+		case op.Secret.Protected != nil && *op.Secret.Protected:
+			variant = "protected"
+		case len(op.Secret.Variants) > 0:
 			variant = op.Secret.Variants[0]
 		}
 
@@ -103,8 +119,13 @@ func (s *Server) UpdateSecrets(w http.ResponseWriter, r *http.Request) {
 			case string:
 				valueStr = v
 			default:
-				// JSON-encode non-string values
-				b, _ := jsonMarshal(v)
+				// JSON-encode non-string values; count marshal failure as a failed op.
+				b, mErr := jsonMarshal(v)
+				if mErr != nil {
+					slog.Error("secret.upsert.marshal_failed", "app_id", appID, "name", op.Secret.Name, "error", mErr)
+					failed++
+					continue
+				}
 				valueStr = string(b)
 			}
 
@@ -124,6 +145,11 @@ func (s *Server) UpdateSecrets(w http.ResponseWriter, r *http.Request) {
 			} else {
 				succeeded++
 			}
+
+		default:
+			// Surface unknown op.Type as a failed op so typos don't slip through silently.
+			slog.Error("secret.unknown_op_type", "app_id", appID, "name", op.Secret.Name, "type", op.Type)
+			failed++
 		}
 	}
 
@@ -133,8 +159,11 @@ func (s *Server) UpdateSecrets(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if succeeded > 0 {
-		if err := s.syncSecretsToConfigFiles(appID, "preview"); err != nil {
-			slog.Error("secret.config_sync.failed", "app_id", appID, "variant", "preview", "error", err)
+		// Sync both variant configs; errors are logged but non-fatal.
+		for _, v := range []string{"preview", "publish"} {
+			if err := s.syncSecretsToConfigFiles(appID, v); err != nil {
+				slog.Error("secret.config_sync.failed", "app_id", appID, "variant", v, "error", err)
+			}
 		}
 	}
 
@@ -229,7 +258,10 @@ func (s *Server) syncSecretsToConfigFiles(appID, variant string) error {
 		}
 	}
 
-	// Add all non-system-managed secrets from SQLite for this variant
+	// Add secrets from SQLite for this variant. System-managed entries are
+	// only written if the file didn't already preserve them — protects
+	// structured entries like DATABASE (written by template.go at app
+	// creation) from being overwritten by the DB's JSON-string form.
 	secrets, err := s.DB.GetSecrets(appID, &variant)
 	if err != nil {
 		return fmt.Errorf("get secrets: %w", err)
@@ -237,11 +269,43 @@ func (s *Server) syncSecretsToConfigFiles(appID, variant string) error {
 
 	for _, sec := range secrets {
 		if sec.SystemManaged {
-			continue
+			if _, alreadyPreserved := config[sec.Name]; alreadyPreserved {
+				continue
+			}
 		}
 		config[sec.Name] = map[string]any{
-			"SYSTEM_MANAGED": false,
+			"SYSTEM_MANAGED": sec.SystemManaged,
 			"VALUE":          sec.Value,
+		}
+	}
+
+	// Fold protected secrets into the preview config. In prod they're
+	// delivered as a separate artifact to the agent task target only
+	// (composition's protectedSecretsTargets); locally the agent reads
+	// preview/config.json directly. Skip publish — protected secrets must
+	// never reach the published runtime.
+	//
+	// Upsert-only: this iterates current DB rows. A delete of a protected
+	// row leaves the SYSTEM_MANAGED-flagged entry in preview/config.json
+	// (the file-preserve sweep above keeps system-managed entries from
+	// disk regardless of DB state). Theoretical today since callers don't
+	// delete protected rows; a future delete flow needs an explicit clear.
+	if variant == "preview" {
+		protectedVariant := "protected"
+		protected, err := s.DB.GetSecrets(appID, &protectedVariant)
+		if err != nil {
+			return fmt.Errorf("get protected secrets: %w", err)
+		}
+		for _, sec := range protected {
+			// GetSecrets unions the requested variant with "shared";
+			// filter back down to just the protected rows.
+			if sec.Variant != "protected" {
+				continue
+			}
+			config[sec.Name] = map[string]any{
+				"SYSTEM_MANAGED": sec.SystemManaged,
+				"VALUE":          sec.Value,
+			}
 		}
 	}
 
