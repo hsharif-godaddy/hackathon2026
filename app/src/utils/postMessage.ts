@@ -58,6 +58,17 @@ export function isOriginAllowed(event: MessageEvent): boolean {
   return event.origin === allowedOrigin
 }
 
+function resolveIframeTargetOrigin(iframe: HTMLIFrameElement): string {
+  if (process.env.NODE_ENV === 'development' && iframe.src) {
+    try {
+      return new URL(iframe.src).origin
+    } catch {
+      // Unparseable src — fall through to the env-based default.
+    }
+  }
+  return getTargetOrigin()
+}
+
 /**
  * Safely posts a message to an iframe using the configured target origin.
  *
@@ -76,7 +87,11 @@ export function postMessageToIframe(iframe: HTMLIFrameElement, message: any): vo
     return
   }
 
-  const targetOrigin = getTargetOrigin()
+  // In local dev, each preview runs on a dynamic port at
+  // https://local.gasket.dev-godaddy.com:<port>, so NEXT_PUBLIC_IFRAME_ORIGIN
+  // can't be set to a single value. Prefer the iframe's own src origin over
+  // the '*' fallback so we still target a specific origin.
+  const targetOrigin = resolveIframeTargetOrigin(iframe)
   try {
     iframe.contentWindow.postMessage(message, targetOrigin)
   } catch (err) {

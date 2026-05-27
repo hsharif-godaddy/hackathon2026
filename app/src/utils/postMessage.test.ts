@@ -267,6 +267,88 @@ describe('postMessage utilities', () => {
         'https://app.example.com'
       );
     });
+
+    describe('local dev iframe-src origin override', () => {
+      const originalNodeEnv = process.env.NODE_ENV;
+
+      beforeEach(() => {
+        delete process.env.NEXT_PUBLIC_IFRAME_ORIGIN;
+        process.env.NODE_ENV = 'development';
+      });
+
+      afterEach(() => {
+        process.env.NODE_ENV = originalNodeEnv;
+      });
+
+      it('targets the iframe.src origin instead of wildcard in dev', () => {
+        const iframe = {
+          contentWindow: mockContentWindow as any,
+          src: 'https://local.gasket.dev-godaddy.com:5001/preview',
+        } as HTMLIFrameElement;
+
+        postMessageToIframe(iframe, { type: 'ping' });
+
+        expect(mockContentWindow.postMessage).toHaveBeenCalledWith(
+          { type: 'ping' },
+          'https://local.gasket.dev-godaddy.com:5001'
+        );
+        expect(logger.warn).not.toHaveBeenCalled();
+      });
+
+      it('strips path and query from iframe.src', () => {
+        const iframe = {
+          contentWindow: mockContentWindow as any,
+          src: 'http://localhost:5002/some/path?token=abc',
+        } as HTMLIFrameElement;
+
+        postMessageToIframe(iframe, { type: 'ping' });
+
+        expect(mockContentWindow.postMessage).toHaveBeenCalledWith(
+          { type: 'ping' },
+          'http://localhost:5002'
+        );
+      });
+
+      it('falls back to wildcard when iframe has no src', () => {
+        const iframe = {
+          contentWindow: mockContentWindow as any,
+          src: '',
+        } as HTMLIFrameElement;
+
+        postMessageToIframe(iframe, { type: 'ping' });
+
+        expect(mockContentWindow.postMessage).toHaveBeenCalledWith({ type: 'ping' }, '*');
+        expect(logger.warn).toHaveBeenCalledWith(
+          'post-message.no-origin-configured',
+          expect.any(Object),
+        );
+      });
+
+      it('falls back to wildcard when iframe.src is unparseable', () => {
+        const iframe = {
+          contentWindow: mockContentWindow as any,
+          src: 'not a url',
+        } as HTMLIFrameElement;
+
+        postMessageToIframe(iframe, { type: 'ping' });
+
+        expect(mockContentWindow.postMessage).toHaveBeenCalledWith({ type: 'ping' }, '*');
+        expect(logger.warn).toHaveBeenCalled();
+      });
+
+      it('does not override origin outside development', () => {
+        process.env.NODE_ENV = 'production';
+        const iframe = {
+          contentWindow: mockContentWindow as any,
+          src: 'https://local.gasket.dev-godaddy.com:5001/preview',
+        } as HTMLIFrameElement;
+
+        postMessageToIframe(iframe, { type: 'ping' });
+
+        expect(mockContentWindow.postMessage).toHaveBeenCalledWith({ type: 'ping' }, '*');
+        expect(logger.warn).toHaveBeenCalled();
+      });
+    });
   });
 
   describe('integration scenarios', () => {
