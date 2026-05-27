@@ -111,8 +111,21 @@ jobs:
     permissions:
       contents: read
 
-  run-browser-scenarios:
+  # Capture the post-refill, pre-simulation credit baseline. Pairs with
+  # snapshot-after below to compute pool-level credit spend for this run.
+  # Runs after refill so the baseline reflects any newly-granted credit
+  # packs (otherwise the diff would be polluted by the refill's grant).
+  snapshot-before:
+    name: Snapshot credits (before)
     needs: refill-credits
+    uses: ./.github/workflows/snapshot-test-credits.yml
+    with:
+      label: before-${{ github.run_id }}
+    permissions:
+      contents: read
+
+  run-browser-scenarios:
+    needs: [refill-credits, snapshot-before]
     runs-on:
       labels:
         - airo-cicd-runners
@@ -159,21 +172,21 @@ jobs:
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - name: Load Synthetic Users
         id: load-users
-        uses: gdcorp-dna/synthia/actions/load-synthetic-users@f11b73e55b89458c729d78f8f10cb9cb4a92528c # release-1.1.1
+        uses: gdcorp-dna/synthia/actions/load-synthetic-users@6452899fdfb9f693e03e271a58111dc11c0414e1 # release-1.1.2
         with:
           config-path: evals/goarena/synthetic-users
           synthia-env: ${{ inputs.synthia-env }}
 
       - name: Load Evaluators
         id: load-evaluators
-        uses: gdcorp-dna/synthia/actions/load-evaluators@f11b73e55b89458c729d78f8f10cb9cb4a92528c # release-1.1.1
+        uses: gdcorp-dna/synthia/actions/load-evaluators@6452899fdfb9f693e03e271a58111dc11c0414e1 # release-1.1.2
         with:
           config-path: evals/goarena/evaluators
           synthia-env: ${{ inputs.synthia-env }}
 
       - name: Load Scenarios
         id: load-scenarios
-        uses: gdcorp-dna/synthia/actions/load-scenarios@f11b73e55b89458c729d78f8f10cb9cb4a92528c # release-1.1.1
+        uses: gdcorp-dna/synthia/actions/load-scenarios@6452899fdfb9f693e03e271a58111dc11c0414e1 # release-1.1.2
         with:
           config-path: evals/goarena/scenarios
           agent-name: ${{ inputs.agent-name }}
@@ -181,7 +194,7 @@ jobs:
 
       - name: Run Browser Scenarios
         id: synthia
-        uses: gdcorp-dna/synthia/actions/run-scenarios@f11b73e55b89458c729d78f8f10cb9cb4a92528c # release-1.1.1
+        uses: gdcorp-dna/synthia/actions/run-scenarios@6452899fdfb9f693e03e271a58111dc11c0414e1 # release-1.1.2
         with:
           config-path: ${{ inputs.config-file }}
           agent-name: ${{ inputs.agent-name }}
@@ -254,3 +267,152 @@ jobs:
             echo "::error::Synthia step did not complete successfully (conclusion: $SYNTHIA_CONCLUSION)"
             exit 1
           fi
+
+  # Capture the post-simulation credit total. Runs even if the scenario
+  # job failed -- a partial run still spent credits and we want to know
+  # how many. Pairs with snapshot-before to bound the spend window.
+  snapshot-after:
+    name: Snapshot credits (after)
+    needs: run-browser-scenarios
+    if: always()
+    uses: ./.github/workflows/snapshot-test-credits.yml
+    with:
+      label: after-${{ github.run_id }}
+    permissions:
+      contents: read
+
+  # Compute the pool-level credit spend (sum of after.creditsSpent -
+  # before.creditsSpent across all available grants on all subs) and
+  # render it into the run summary alongside the scenario results.
+  report-credit-spend:
+    name: Report credit spend for this run
+    # Use `always()` so the report still runs when scenarios failed --
+    # we still want to surface "this failed run cost X credits".
+    needs: [snapshot-before, snapshot-after]
+    if: always()
+    runs-on:
+      labels:
+        - airo-cicd-runners
+        - self-hosted
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Download before snapshot
+        # Tolerate a missing snapshot-before (e.g. refill failed and
+        # cancelled this dependency) -- the report step below explicitly
+        # handles "before missing" by reporting absolute spend.
+        if: needs.snapshot-before.result == 'success'
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.1.8
+        with:
+          name: airo-credits-snapshot-before-${{ github.run_id }}
+          path: ./snapshot-before
+
+      - name: Download after snapshot
+        if: needs.snapshot-after.result == 'success'
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.1.8
+        with:
+          name: airo-credits-snapshot-after-${{ github.run_id }}
+          path: ./snapshot-after
+
+      - name: Compute and report credit spend
+        env:
+          BEFORE_RESULT: ${{ needs.snapshot-before.result }}
+          AFTER_RESULT: ${{ needs.snapshot-after.result }}
+        run: |
+          # Best-effort: this report should never fail the workflow run
+          # because it runs after the actual scenarios -- a credit-diff
+          # parsing blip shouldn't mask a real scenario pass/fail.
+          set -uo pipefail
+
+          BEFORE_FILE="./snapshot-before/snapshot.json"
+          AFTER_FILE="./snapshot-after/snapshot.json"
+
+          {
+            echo ""
+            echo "## Airo credit spend for this run"
+            echo ""
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$BEFORE_RESULT" != "success" ] || [ ! -f "$BEFORE_FILE" ]; then
+            echo "::warning::No 'before' snapshot available (snapshot-before result: $BEFORE_RESULT) -- can't compute delta"
+            {
+              echo ":warning: \`before\` snapshot unavailable (job result: \`$BEFORE_RESULT\`) -- skipping delta."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          if [ "$AFTER_RESULT" != "success" ] || [ ! -f "$AFTER_FILE" ]; then
+            echo "::warning::No 'after' snapshot available (snapshot-after result: $AFTER_RESULT) -- can't compute delta"
+            {
+              echo ":warning: \`after\` snapshot unavailable (job result: \`$AFTER_RESULT\`) -- skipping delta."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          # Pool-level totals stamped onto each snapshot by snapshot-test-credits.yml.
+          #
+          # Delta math MUST use `pool_credits_spent_total` (sum over ALL
+          # grants regardless of `isAvailable`), not `pool_credits_spent`
+          # (which filters to active grants). When a grant exhausts
+          # mid-suite it flips `isAvailable: true -> false`, and the
+          # filtered sum drops it from the after side -- producing a
+          # negative delta even though real spend went up. The
+          # `_total` field is unfiltered and avoids that trap.
+          BEFORE_TOTAL=$(jq -r '.pool_credits_spent_total // 0' "$BEFORE_FILE")
+          AFTER_TOTAL=$(jq -r '.pool_credits_spent_total // 0' "$AFTER_FILE")
+          BEFORE_TAKEN_AT=$(jq -r '.taken_at // "unknown"' "$BEFORE_FILE")
+          AFTER_TAKEN_AT=$(jq -r '.taken_at // "unknown"' "$AFTER_FILE")
+          DELTA_TOTAL=$((AFTER_TOTAL - BEFORE_TOTAL))
+
+          # Per-subscription delta. Same reason as above for using
+          # `credits_spent_total` rather than `credits_spent_available`.
+          # Inner-join on subscription_id; emit rows only for subs that
+          # read OK in both snapshots so we don't show misleading
+          # "0 spend" rows for failed reads.
+          PER_SUB_TABLE=$(jq -nr \
+            --slurpfile before "$BEFORE_FILE" \
+            --slurpfile after "$AFTER_FILE" \
+            '
+            ($before[0].subscriptions // []) as $b
+            | ($after[0].subscriptions  // []) as $a
+            | [
+                $a[]
+                | select(.ok == true)
+                | . as $after_row
+                | ($b[] | select(.subscription_id == $after_row.subscription_id and .ok == true)) as $before_row
+                | {
+                    sub: $after_row.subscription_id,
+                    before: $before_row.credits_spent_total,
+                    after: $after_row.credits_spent_total,
+                    delta: ($after_row.credits_spent_total - $before_row.credits_spent_total)
+                  }
+              ]
+            | sort_by(-.delta)
+            | .[]
+            | "| `\(.sub)` | \(.before) | \(.after) | \(.delta) |"
+            ')
+
+          {
+            echo "**Pool credits spent this run:** \`$DELTA_TOTAL\`"
+            echo ""
+            echo "- Before snapshot: \`$BEFORE_TOTAL\` credits at \`$BEFORE_TAKEN_AT\`"
+            echo "- After snapshot:  \`$AFTER_TOTAL\` credits at \`$AFTER_TAKEN_AT\`"
+            echo ""
+            echo "_Totals above sum \`creditsSpent\` over **all** grants (including expired) so the delta stays correct when a grant exhausts mid-run. They will not match the \`creditsSpent (available)\` totals in the snapshot tables, which intentionally show only currently-active grants._"
+            echo ""
+            echo "### Per-subscription delta"
+            echo ""
+            echo "| Subscription | Before | After | Delta |"
+            echo "| --- | ---: | ---: | ---: |"
+            if [ -n "$PER_SUB_TABLE" ]; then
+              echo "$PER_SUB_TABLE"
+            else
+              echo "| _no subscriptions read OK in both snapshots_ | — | — | — |"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          echo ""
+          echo "=================================================="
+          echo "Pool credits spent this run: $DELTA_TOTAL (before=$BEFORE_TOTAL after=$AFTER_TOTAL)"
+          echo "=================================================="

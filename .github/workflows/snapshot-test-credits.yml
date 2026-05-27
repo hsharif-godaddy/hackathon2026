@@ -1,0 +1,371 @@
+name: Snapshot Test Subscription Credits
+
+# Snapshots `creditsSpent` for the curated TEST subscription pool used by
+# Synthia simulations. Sister workflow to `refill-test-credits.yml`:
+# same auth path (Getty mTLS -> SSO JWT in `cert` realm -> mgmt-airo),
+# same subscription list, but read-only -- no grants are issued.
+#
+# Designed to be called twice from `simulation_evaluation.yml`
+# (before and after the suite) so the calling workflow can compute a
+# pool-level credit-spend delta for each Synthia run. Also callable
+# manually for ad-hoc snapshots.
+#
+# References:
+#   - https://godaddy-corp.atlassian.net/wiki/spaces/PAR/pages/4258595687/Running+Grants+Locally
+#   - refill-test-credits.yml (same auth pattern)
+
+on:
+  workflow_dispatch:
+    inputs:
+      label:
+        description: 'Label to tag the snapshot artifact (e.g. "manual", "before", "after-1234")'
+        required: false
+        default: 'manual'
+        type: string
+  # Allow other workflows to call this for before/after snapshots.
+  workflow_call:
+    inputs:
+      label:
+        description: 'Label to tag the snapshot artifact (must be unique within the calling run)'
+        required: false
+        type: string
+        default: 'snapshot'
+    outputs:
+      total-credits-spent:
+        description: 'Sum of creditsSpent across all isAvailable grants on all subscriptions at snapshot time'
+        value: ${{ jobs.snapshot.outputs.total-credits-spent }}
+      snapshot-artifact-name:
+        description: 'Name of the uploaded JSON snapshot artifact'
+        value: ${{ jobs.snapshot.outputs.snapshot-artifact-name }}
+
+# No concurrency group on purpose -- snapshots are idempotent reads and
+# we want before/after calls within a single simulation_evaluation run
+# to coexist without one blocking the other.
+
+permissions:
+  contents: read
+
+jobs:
+  snapshot:
+    name: Snapshot creditsSpent for TEST subscriptions
+    runs-on:
+      labels:
+        - airo-cicd-runners
+        - self-hosted
+    timeout-minutes: 10
+    outputs:
+      total-credits-spent: ${{ steps.snapshot.outputs.total-credits-spent }}
+      # Static derivation from the input label -- the calling workflow
+      # passes the same label to its download-artifact step, so this is
+      # really just "echo what we were told". Surfaced as an output for
+      # discoverability of the artifact-name convention.
+      snapshot-artifact-name: airo-credits-snapshot-${{ inputs.label }}
+    env:
+      # TEST environment only (mirrors refill-test-credits.yml).
+      MGMT_AIRO_BASE_URL: https://mgmt.nstk.net
+      # Curated CatalystEngineering01..10 pool. Keep in sync with
+      # refill-test-credits.yml -- both workflows operate on the same
+      # subscriptions.
+      SUBSCRIPTION_IDS: |
+        jds0ahs9ji
+        o1p0vp669k
+        h249ixlevn
+        pwxibq3p2a
+        bgnvgtrwab
+        wkzn2av44v
+        qeyfrz4alz
+        1yjwyqz8ji
+        ugw15usrdg
+        tnowc9hib9
+
+    steps:
+      - name: Fetch Getty mTLS cert and generate SSO JWT
+        env:
+          AWS_REGION: us-west-2
+        run: |
+          set -euo pipefail
+
+          # TEST-environment cert + SSO endpoint (mirrors refill-test-credits.yml).
+          AWS_ACCOUNT_ID="694282668781"
+          IAM_ROLE="GD-AWS-USA-GD-AiroBuilde-Dev-Private-Deploy"
+          SSO_ENDPOINT="https://sso.test-godaddy.com/v1/secure/api/token"
+          CERT_SECRET_PATH="getty.airo-builder.test.authclient.int.godaddy.com.crt"
+          KEY_SECRET_PATH="getty.airo-builder.test.authclient.int.godaddy.com.key"
+
+          echo "Assuming role ${IAM_ROLE}..."
+          CREDS=$(aws sts assume-role \
+            --role-arn "arn:aws:iam::${AWS_ACCOUNT_ID}:role/${IAM_ROLE}" \
+            --role-session-name "snapshot-test-credits-${GITHUB_RUN_ID}" \
+            --query "Credentials.[AccessKeyId,SecretAccessKey,SessionToken]" \
+            --output text)
+          export AWS_ACCESS_KEY_ID=$(echo "$CREDS" | awk '{print $1}')
+          export AWS_SECRET_ACCESS_KEY=$(echo "$CREDS" | awk '{print $2}')
+          export AWS_SESSION_TOKEN=$(echo "$CREDS" | awk '{print $3}')
+
+          echo "Fetching Getty mTLS cert and key from Secrets Manager..."
+          GETTY_CERT=$(aws secretsmanager get-secret-value \
+            --secret-id "${CERT_SECRET_PATH}" \
+            --region "${AWS_REGION}" \
+            --query SecretString --output text)
+          GETTY_KEY=$(aws secretsmanager get-secret-value \
+            --secret-id "${KEY_SECRET_PATH}" \
+            --region "${AWS_REGION}" \
+            --query SecretString --output text)
+
+          CERT_TEMP_DIR=$(mktemp -d)
+          chmod 700 "$CERT_TEMP_DIR"
+          cleanup() { rm -rf "$CERT_TEMP_DIR"; }
+          trap cleanup EXIT
+
+          printf '%s' "$GETTY_CERT" > "$CERT_TEMP_DIR/getty.crt"
+          printf '%s' "$GETTY_KEY"  > "$CERT_TEMP_DIR/getty.key"
+          chmod 600 "$CERT_TEMP_DIR/getty.crt" "$CERT_TEMP_DIR/getty.key"
+
+          echo "Requesting SSO JWT from ${SSO_ENDPOINT}..."
+          SSO_RAW_RESPONSE=$(curl -sS \
+            --cert "$CERT_TEMP_DIR/getty.crt" \
+            --key  "$CERT_TEMP_DIR/getty.key" \
+            -X POST \
+            -H "Content-Type: application/json" \
+            -H "Accept: application/json" \
+            -d '{"realm": "cert"}' \
+            -w '\n%{http_code}' \
+            "${SSO_ENDPOINT}")
+          SSO_HTTP_STATUS=$(printf '%s' "$SSO_RAW_RESPONSE" | tail -n1)
+          SSO_RESPONSE=$(printf '%s' "$SSO_RAW_RESPONSE" | sed '$d')
+
+          SSO_JWT=$(echo "$SSO_RESPONSE" | jq -r '.data // .access_token // .token // empty')
+          if [ -z "$SSO_JWT" ] || [ "$SSO_JWT" = "null" ]; then
+            SSO_ERROR_MESSAGE=$(printf '%s' "$SSO_RESPONSE" | jq -r '(.error_description // .error.message // .error // .message // empty) | tostring' 2>/dev/null || true)
+            if [ -n "$SSO_ERROR_MESSAGE" ] && [ "$SSO_ERROR_MESSAGE" != "null" ]; then
+              echo "::error::Failed to extract SSO JWT from response (HTTP status: $SSO_HTTP_STATUS, message: $SSO_ERROR_MESSAGE)"
+            else
+              echo "::error::Failed to extract SSO JWT from response (HTTP status: $SSO_HTTP_STATUS)"
+            fi
+            exit 1
+          fi
+
+          echo "::add-mask::$SSO_JWT"
+          echo "SSO_JWT=$SSO_JWT" >> "$GITHUB_ENV"
+          echo "SSO JWT generated"
+
+      - name: Snapshot creditsSpent for each subscription
+        id: snapshot
+        env:
+          SNAPSHOT_LABEL: ${{ inputs.label }}
+        run: |
+          # Tolerate per-subscription failures so a single transport blip
+          # doesn't lose the rest of the snapshot.
+          set -uo pipefail
+
+          SNAPSHOT_FILE="snapshot.json"
+          TAKEN_AT_ISO="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+          # Build a JSON document incrementally with jq. Start with the
+          # envelope (label, taken_at, run id, run url), then append each
+          # subscription's record.
+          JQ_FILTER='{
+            label: $label,
+            taken_at: $taken_at,
+            github_run_id: $run_id,
+            github_run_url: $run_url,
+            mgmt_airo_base_url: $mgmt_url,
+            subscriptions: []
+          }'
+          jq -n \
+            --arg label "$SNAPSHOT_LABEL" \
+            --arg taken_at "$TAKEN_AT_ISO" \
+            --arg run_id "${GITHUB_RUN_ID:-}" \
+            --arg run_url "${GITHUB_SERVER_URL:-}/${GITHUB_REPOSITORY:-}/actions/runs/${GITHUB_RUN_ID:-}" \
+            --arg mgmt_url "$MGMT_AIRO_BASE_URL" \
+            "$JQ_FILTER" > "$SNAPSHOT_FILE"
+
+          TOTAL_SUBS=0
+          OK_SUBS=0
+          FAILED_SUBS=0
+          POOL_CREDITS_SPENT=0
+          POOL_CREDITS_SPENT_TOTAL=0
+          POOL_CREDITS_MAX=0
+
+          {
+            echo "## Credit snapshot (label: \`$SNAPSHOT_LABEL\`)"
+            echo ""
+            echo "Taken at \`$TAKEN_AT_ISO\` against \`$MGMT_AIRO_BASE_URL\`."
+            echo ""
+            echo "| Subscription | creditsSpent (available) | creditsMax (available) | Available grants | Status |"
+            echo "| --- | ---: | ---: | ---: | --- |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          while IFS= read -r RAW; do
+            SUBSCRIPTION_ID="${RAW#"${RAW%%[![:space:]]*}"}"
+            SUBSCRIPTION_ID="${SUBSCRIPTION_ID%"${SUBSCRIPTION_ID##*[![:space:]]}"}"
+            [ -z "$SUBSCRIPTION_ID" ] && continue
+            case "$SUBSCRIPTION_ID" in \#*) continue ;; esac
+
+            TOTAL_SUBS=$((TOTAL_SUBS + 1))
+
+            echo ""
+            echo "=================================================="
+            echo "Subscription: $SUBSCRIPTION_ID"
+            echo "=================================================="
+
+            GET_RESP=$(curl -sS -w "\n%{http_code}" -X GET \
+              "${MGMT_AIRO_BASE_URL}/api/airo/v1/subscriptions/${SUBSCRIPTION_ID}/credits/grants?syncSpend=true" \
+              -H "Authorization: sso-jwt ${SSO_JWT}" \
+              -H "Accept: application/json")
+
+            GET_CODE=$(echo "$GET_RESP" | tail -n1)
+            GET_BODY=$(echo "$GET_RESP" | sed '$d')
+
+            if [ "$GET_CODE" -lt 200 ] || [ "$GET_CODE" -ge 300 ]; then
+              echo "::error::Failed to fetch grants for $SUBSCRIPTION_ID (HTTP $GET_CODE)"
+              echo "Response: $GET_BODY"
+              FAILED_SUBS=$((FAILED_SUBS + 1))
+              # Record the failure in the snapshot JSON so consumers can
+              # tell "we couldn't read this sub" from "this sub had 0 spend".
+              jq --arg id "$SUBSCRIPTION_ID" \
+                 --arg reason "http-error" \
+                 --argjson status "$GET_CODE" \
+                 '.subscriptions += [{ subscription_id: $id, ok: false, reason: $reason, http_status: $status }]' \
+                 "$SNAPSHOT_FILE" > "${SNAPSHOT_FILE}.tmp" && mv "${SNAPSHOT_FILE}.tmp" "$SNAPSHOT_FILE"
+              echo "| \`$SUBSCRIPTION_ID\` | — | — | — | ❌ HTTP $GET_CODE |" >> "$GITHUB_STEP_SUMMARY"
+              continue
+            fi
+
+            # Extract per-grant detail and totals.
+            #
+            # Two views are computed:
+            #   credits_spent_available -- only `isAvailable: true` grants.
+            #     Used for the at-a-glance "current capacity dashboard"
+            #     view (matches `creditsMax_available` for an X / Y
+            #     reading of "what's burned of currently active packs").
+            #   credits_spent_total -- ALL grants regardless of
+            #     `isAvailable`. Used for delta math by the calling
+            #     report job. The unfiltered total is mandatory because
+            #     a grant can flip `isAvailable: true -> false` between
+            #     before/after snapshots when its `creditsSpent` reaches
+            #     `creditsMax` mid-run; the filtered sum would then drop
+            #     that grant on the after side and produce a wildly wrong
+            #     (often negative) delta. `creditsSpent` is monotonic
+            #     per grant in mgmt-airo, so summing it across all
+            #     grants is safe -- expired grants stay in the response
+            #     with their final spent value frozen.
+            #
+            # Handle both the documented bare-array response and the
+            # observed `{grants: [...]}` envelope (mirrors refill-test-credits.yml).
+            EXTRACT=$(echo "$GET_BODY" | jq -c '
+              (if type == "array" then . else (.grants // []) end) as $grants
+              | {
+                  grants: ($grants | map({
+                    id: (.id // .grantId // null),
+                    type: (.type // null),
+                    isAvailable: (.isAvailable // false),
+                    creditsMax: (.creditsMax // 0),
+                    creditsSpent: (.creditsSpent // 0)
+                  })),
+                  available_count: ([$grants[] | select(.isAvailable == true)] | length),
+                  credits_spent_available: ([$grants[] | select(.isAvailable == true) | (.creditsSpent // 0)] | add // 0),
+                  credits_max_available: ([$grants[] | select(.isAvailable == true) | (.creditsMax // 0)] | add // 0),
+                  credits_spent_total: ([$grants[] | (.creditsSpent // 0)] | add // 0)
+                }
+            ' 2>/dev/null)
+
+            if [ -z "$EXTRACT" ]; then
+              echo "::error::Failed to parse grants response for $SUBSCRIPTION_ID"
+              echo "Response body: $GET_BODY"
+              FAILED_SUBS=$((FAILED_SUBS + 1))
+              jq --arg id "$SUBSCRIPTION_ID" \
+                 --arg reason "malformed-response" \
+                 --argjson status "$GET_CODE" \
+                 '.subscriptions += [{ subscription_id: $id, ok: false, reason: $reason, http_status: $status }]' \
+                 "$SNAPSHOT_FILE" > "${SNAPSHOT_FILE}.tmp" && mv "${SNAPSHOT_FILE}.tmp" "$SNAPSHOT_FILE"
+              echo "| \`$SUBSCRIPTION_ID\` | — | — | — | ❌ parse failed |" >> "$GITHUB_STEP_SUMMARY"
+              continue
+            fi
+
+            CREDITS_SPENT=$(echo "$EXTRACT" | jq -r '.credits_spent_available')
+            CREDITS_SPENT_TOTAL=$(echo "$EXTRACT" | jq -r '.credits_spent_total')
+            CREDITS_MAX=$(echo "$EXTRACT" | jq -r '.credits_max_available')
+            AVAILABLE_COUNT=$(echo "$EXTRACT" | jq -r '.available_count')
+            echo "creditsSpent (available grants only): $CREDITS_SPENT"
+            echo "creditsSpent (all grants):            $CREDITS_SPENT_TOTAL"
+            echo "creditsMax  (available grants only): $CREDITS_MAX"
+            echo "Available grants: $AVAILABLE_COUNT"
+
+            POOL_CREDITS_SPENT=$((POOL_CREDITS_SPENT + CREDITS_SPENT))
+            POOL_CREDITS_SPENT_TOTAL=$((POOL_CREDITS_SPENT_TOTAL + CREDITS_SPENT_TOTAL))
+            POOL_CREDITS_MAX=$((POOL_CREDITS_MAX + CREDITS_MAX))
+            OK_SUBS=$((OK_SUBS + 1))
+
+            jq --arg id "$SUBSCRIPTION_ID" \
+               --argjson status "$GET_CODE" \
+               --argjson detail "$EXTRACT" \
+               '.subscriptions += [{
+                  subscription_id: $id,
+                  ok: true,
+                  http_status: $status,
+                  credits_spent_available: $detail.credits_spent_available,
+                  credits_max_available: $detail.credits_max_available,
+                  credits_spent_total: $detail.credits_spent_total,
+                  available_count: $detail.available_count,
+                  grants: $detail.grants
+                }]' \
+               "$SNAPSHOT_FILE" > "${SNAPSHOT_FILE}.tmp" && mv "${SNAPSHOT_FILE}.tmp" "$SNAPSHOT_FILE"
+
+            echo "| \`$SUBSCRIPTION_ID\` | $CREDITS_SPENT | $CREDITS_MAX | $AVAILABLE_COUNT | ✅ |" >> "$GITHUB_STEP_SUMMARY"
+          done <<< "$SUBSCRIPTION_IDS"
+
+          # Stamp pool-level totals onto the snapshot so consumers don't
+          # have to re-aggregate to display a one-line headline.
+          # `pool_credits_spent` mirrors the available-only display table;
+          # `pool_credits_spent_total` is the unfiltered version used for
+          # accurate before/after delta math (see the `credits_spent_total`
+          # comment above for why filtering breaks deltas).
+          jq --argjson spent "$POOL_CREDITS_SPENT" \
+             --argjson spent_total "$POOL_CREDITS_SPENT_TOTAL" \
+             --argjson max "$POOL_CREDITS_MAX" \
+             --argjson total "$TOTAL_SUBS" \
+             --argjson ok "$OK_SUBS" \
+             --argjson failed "$FAILED_SUBS" \
+             '. + {
+                pool_credits_spent: $spent,
+                pool_credits_spent_total: $spent_total,
+                pool_credits_max: $max,
+                totals: { processed: $total, ok: $ok, failed: $failed }
+              }' \
+             "$SNAPSHOT_FILE" > "${SNAPSHOT_FILE}.tmp" && mv "${SNAPSHOT_FILE}.tmp" "$SNAPSHOT_FILE"
+
+          {
+            echo ""
+            echo "**Pool totals:** creditsSpent(available)=$POOL_CREDITS_SPENT, creditsSpent(all grants)=$POOL_CREDITS_SPENT_TOTAL, creditsMax(available)=$POOL_CREDITS_MAX, processed=$TOTAL_SUBS, ok=$OK_SUBS, failed=$FAILED_SUBS"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          echo ""
+          echo "=================================================="
+          echo "Snapshot summary: spent_available=$POOL_CREDITS_SPENT, spent_total=$POOL_CREDITS_SPENT_TOTAL, max_available=$POOL_CREDITS_MAX, processed=$TOTAL_SUBS, ok=$OK_SUBS, failed=$FAILED_SUBS"
+          echo "=================================================="
+
+          # Workflow-output for the calling workflow's headline diff.
+          # Use the unfiltered total so paired before/after subtractions
+          # are accurate even when grants exhaust mid-window (see comment
+          # on `credits_spent_total` above).
+          echo "total-credits-spent=$POOL_CREDITS_SPENT_TOTAL" >> "$GITHUB_OUTPUT"
+
+          if [ "$TOTAL_SUBS" -eq 0 ]; then
+            echo "::warning::No subscription IDs configured -- add IDs under SUBSCRIPTION_IDS in the workflow env"
+          fi
+          # Don't fail the snapshot on per-subscription read errors -- the
+          # snapshot JSON records them and the calling workflow's diff
+          # report will surface them. Failing here would also fail the
+          # paired before/after snapshot and the run, which we don't want.
+
+      - name: Upload snapshot artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          # Artifact names must be unique within a workflow run, so the
+          # caller is responsible for passing a unique label (e.g.
+          # "before-${{ github.run_id }}" / "after-${{ github.run_id }}").
+          name: airo-credits-snapshot-${{ inputs.label }}
+          path: snapshot.json
+          retention-days: 30
+          if-no-files-found: error
