@@ -35,6 +35,183 @@ describe('ProjectSourceDetectionService', () => {
     await rm(tempDir, { recursive: true, force: true });
   });
 
+  describe('path signals', () => {
+    it('detects lovable via .lovable directory at root', async () => {
+      await mkdir(join(tempDir, '.lovable'));
+      await writeFile(join(tempDir, 'package.json'), JSON.stringify({ name: 'app' }));
+
+      const result = await service.detect(tempDir);
+
+      expect(result.detectedSources).toContain('lovable');
+      expect(result.matches.some(m => m.source === 'lovable' && m.file === '.lovable')).toBe(true);
+    });
+
+    it('still detects lovable via name pattern when .lovable exists as a file not a directory', async () => {
+      await writeFile(join(tempDir, '.lovable'), 'something');
+      await writeFile(join(tempDir, 'package.json'), JSON.stringify({ name: 'app' }));
+      await writeFile(join(tempDir, 'README.md'), '# Clean app\n');
+
+      const result = await service.detect(tempDir);
+
+      // path signal (isDirectory: true) skips the file, but name pattern fires on the filename
+      expect(result.detectedSources).toContain('lovable');
+      expect(result.matches.some(m => m.source === 'lovable' && m.file === '.lovable' && m.line === undefined)).toBe(true);
+    });
+
+    it('path signal match has no line number since no file content is read', async () => {
+      await mkdir(join(tempDir, '.lovable'));
+      await writeFile(join(tempDir, 'package.json'), JSON.stringify({ name: 'app' }));
+
+      const result = await service.detect(tempDir);
+
+      const signal = result.matches.find(m => m.file === '.lovable');
+      expect(signal).toBeDefined();
+      expect(signal?.line).toBeUndefined();
+    });
+
+    it('detects replit via .replit file at root', async () => {
+      await writeFile(join(tempDir, '.replit'), 'run = "node index.js"\n');
+      await writeFile(join(tempDir, 'package.json'), JSON.stringify({ name: 'app' }));
+
+      const result = await service.detect(tempDir);
+
+      expect(result.detectedSources).toContain('replit');
+      expect(result.matches.some(m => m.source === 'replit' && m.file === '.replit')).toBe(true);
+    });
+
+    it('detects replit via .replitignore file at root', async () => {
+      await writeFile(join(tempDir, '.replitignore'), 'node_modules\n');
+      await writeFile(join(tempDir, 'package.json'), JSON.stringify({ name: 'app' }));
+
+      const result = await service.detect(tempDir);
+
+      expect(result.detectedSources).toContain('replit');
+      expect(result.matches.some(m => m.source === 'replit' && m.file === '.replitignore')).toBe(true);
+    });
+
+    it('detects airo via airo-media.json at root', async () => {
+      await writeFile(join(tempDir, 'airo-media.json'), JSON.stringify({ version: 1 }));
+      await writeFile(join(tempDir, 'package.json'), JSON.stringify({ name: 'app' }));
+
+      const result = await service.detect(tempDir);
+
+      expect(result.detectedSources).toContain('airo');
+      expect(result.matches.some(m => m.source === 'airo' && m.file === 'airo-media.json')).toBe(true);
+    });
+  });
+
+  describe('name patterns — files', () => {
+    it('detects lovable via file with "lovable" in name at root', async () => {
+      await writeFile(join(tempDir, 'package.json'), JSON.stringify({ name: 'app' }));
+      await writeFile(join(tempDir, 'lovable.config.ts'), 'export default {};\n');
+
+      const result = await service.detect(tempDir);
+
+      expect(result.detectedSources).toContain('lovable');
+      expect(result.matches.some(m => m.source === 'lovable' && m.file === 'lovable.config.ts')).toBe(true);
+    });
+
+    it('does not detect lovable via file with "lovable" in name inside a subdirectory (rootOnly)', async () => {
+      await writeFile(join(tempDir, 'package.json'), JSON.stringify({ name: 'app' }));
+      await writeFile(join(tempDir, 'README.md'), '# App\n');
+      await mkdir(join(tempDir, 'src'), { recursive: true });
+      await writeFile(join(tempDir, 'src', 'lovable-helper.ts'), 'export const x = 1;\n');
+
+      const result = await service.detect(tempDir);
+
+      expect(result.matches.every(m => !(m.source === 'lovable' && m.file === 'src/lovable-helper.ts'))).toBe(true);
+    });
+
+    it('file name match has no line number since no file content is read', async () => {
+      await writeFile(join(tempDir, 'package.json'), JSON.stringify({ name: 'app' }));
+      await writeFile(join(tempDir, 'lovable.config.ts'), 'export default {};\n');
+
+      const result = await service.detect(tempDir);
+
+      const nameMatch = result.matches.find(m => m.file === 'lovable.config.ts');
+      expect(nameMatch).toBeDefined();
+      expect(nameMatch?.line).toBeUndefined();
+    });
+  });
+
+  describe('name patterns — directories', () => {
+    it('detects replit via directory containing "replit-artifact" in name anywhere in tree', async () => {
+      await writeFile(join(tempDir, 'package.json'), JSON.stringify({ name: 'app' }));
+      await writeFile(join(tempDir, 'README.md'), '# App\n');
+      await mkdir(join(tempDir, 'src', '.replit-artifact'), { recursive: true });
+
+      const result = await service.detect(tempDir);
+
+      expect(result.detectedSources).toContain('replit');
+      expect(result.matches.some(m => m.source === 'replit' && m.file.includes('replit-artifact'))).toBe(true);
+    });
+
+    it('directory name match has no line number since no file content is read', async () => {
+      await writeFile(join(tempDir, 'package.json'), JSON.stringify({ name: 'app' }));
+      await mkdir(join(tempDir, '.replit-artifact'), { recursive: true });
+
+      const result = await service.detect(tempDir);
+
+      const dirMatch = result.matches.find(m => m.file.includes('replit-artifact'));
+      expect(dirMatch).toBeDefined();
+      expect(dirMatch?.line).toBeUndefined();
+    });
+  });
+
+  describe('per-source match cap', () => {
+    it('collects up to 3 matches per source across multiple files', async () => {
+      await writeFile(join(tempDir, 'package.json'), JSON.stringify({ dependencies: { lovable: '1.0.0' } }));
+      await writeFile(join(tempDir, 'README.md'), '# Built with Lovable\n');
+      await writeFile(join(tempDir, 'a.ts'), '// lovable component\n');
+
+      const result = await service.detect(tempDir);
+
+      const lovableMatches = result.matches.filter(m => m.source === 'lovable');
+      expect(lovableMatches.length).toBeGreaterThanOrEqual(2);
+    });
+
+    it('does not exceed 3 matches per source even when more files match', async () => {
+      await writeFile(join(tempDir, 'package.json'), JSON.stringify({ dependencies: { lovable: '1.0.0' } }));
+      await writeFile(join(tempDir, 'README.md'), '# Built with Lovable\n');
+
+      for (let i = 0; i < 5; i++) {
+        await writeFile(join(tempDir, `comp-${i}.ts`), '// lovable\n');
+      }
+
+      const result = await service.detect(tempDir);
+
+      const lovableMatches = result.matches.filter(m => m.source === 'lovable');
+      expect(lovableMatches.length).toBeLessThanOrEqual(3);
+    });
+
+    it('records one match per file even when a file contains multiple needle hits', async () => {
+      await writeFile(
+        join(tempDir, 'package.json'),
+        'lovable\nlovable\nlovable\nlovable\n'
+      );
+
+      const result = await service.detect(tempDir);
+
+      const packageMatches = result.matches.filter(m => m.source === 'lovable' && m.file === 'package.json');
+      expect(packageMatches.length).toBe(1);
+    });
+  });
+
+  describe('multi-source detection', () => {
+    it('detects lovable and replit independently in the same project', async () => {
+      await writeFile(join(tempDir, '.replitignore'), 'node_modules\n');
+      await writeFile(
+        join(tempDir, 'package.json'),
+        JSON.stringify({ devDependencies: { 'lovable-tagger': '1.0.0' } })
+      );
+
+      const result = await service.detect(tempDir);
+
+      expect(result.detectedSources).toContain('lovable');
+      expect(result.detectedSources).toContain('replit');
+    });
+  });
+
   it('detects lovable from package.json via lovable-tagger dependency', async () => {
     await writeFile(
       join(tempDir, 'package.json'),

@@ -13,11 +13,13 @@ import type {
   ProjectSourceDetectionResult,
   ProjectSourceId,
   ProjectSourceMatch,
+  SourceDetector,
 } from '../types/project-source.js';
 
 const MAX_FILES_SCANNED = 20;
 const MAX_WALK_FILES = MAX_FILES_SCANNED - 2; // package.json + README.md reserved
 const MAX_FILE_BYTES = 512 * 1024;
+const MAX_MATCHES_PER_SOURCE = 3;
 const MAX_MATCHES_LOGGED = 20;
 
 const REQUIRED_FILES = ['package.json', 'README.md'] as const;
@@ -49,13 +51,39 @@ const SCANNABLE_EXTENSIONS = new Set([
   '.toml',
 ]);
 
-interface SourceDetector {
-  id: ProjectSourceId;
-  needles: string[];
-}
-
 const DETECTORS: SourceDetector[] = [
-  { id: 'lovable', needles: ['lovable'] },
+  {
+    id: 'lovable',
+    needles: ['lovable'],
+    pathSignals: [
+      { path: '.lovable', isDirectory: true },
+    ],
+    namePatterns: [
+      { contains: 'lovable', rootOnly: true },
+    ],
+  },
+  {
+    id: 'replit',
+    needles: ['replit'],
+    pathSignals: [
+      { path: '.replit' },
+      { path: '.replitignore' },
+    ],
+    namePatterns: [
+      { contains: 'replit-artifact', isDirectory: true },
+    ],
+  },
+  {
+    id: 'base44',
+    needles: ['base44'],
+  },
+  {
+    id: 'airo',
+    needles: ['airo'],
+    pathSignals: [
+      { path: 'airo-media.json' },
+    ],
+  },
 ];
 
 /** Format source IDs for structured logs (logger rejects array fields). */
@@ -102,7 +130,7 @@ export class ProjectSourceDetectionService {
       const lines = content.split('\n');
 
       for (const detector of DETECTORS) {
-        if (matches.some(m => m.source === detector.id)) {
+        if (matches.filter(m => m.source === detector.id).length >= MAX_MATCHES_PER_SOURCE) {
           continue;
         }
         for (let i = 0; i < lines.length; i++) {
@@ -118,12 +146,31 @@ export class ProjectSourceDetectionService {
               break;
             }
           }
-          if (matches.some(m => m.source === detector.id)) {
+          if (matches.some(m => m.source === detector.id && m.file === relFile)) {
             break;
           }
         }
       }
     };
+
+    for (const detector of DETECTORS) {
+      for (const signal of detector.pathSignals ?? []) {
+        if (matches.filter(m => m.source === detector.id).length >= MAX_MATCHES_PER_SOURCE) {
+          break;
+        }
+        const signalStat = await stat(join(root, signal.path)).catch(() => null);
+        if (!signalStat) {
+          continue;
+        }
+        if (signal.isDirectory === true && !signalStat.isDirectory()) {
+          continue;
+        }
+        if (signal.isDirectory === false && !signalStat.isFile()) {
+          continue;
+        }
+        matches.push({ source: detector.id, file: signal.path });
+      }
+    }
 
     for (const name of REQUIRED_FILES) {
       await scanFile(join(root, name));
@@ -165,6 +212,24 @@ export class ProjectSourceDetectionService {
           if (SKIP_DIR_NAMES.has(name)) {
             continue;
           }
+          const nameLower = name.toLowerCase();
+          for (const detector of DETECTORS) {
+            if (matches.filter(m => m.source === detector.id).length >= MAX_MATCHES_PER_SOURCE) {
+              continue;
+            }
+            for (const pattern of detector.namePatterns ?? []) {
+              if (!pattern.isDirectory) {
+                continue;
+              }
+              if (pattern.rootOnly && dir !== root) {
+                continue;
+              }
+              if (nameLower.includes(pattern.contains.toLowerCase())) {
+                matches.push({ source: detector.id, file: relative(root, full) || full });
+                break;
+              }
+            }
+          }
           await collectCandidates(full);
           continue;
         }
@@ -175,6 +240,25 @@ export class ProjectSourceDetectionService {
 
         if (entryStat.size > MAX_FILE_BYTES) {
           continue;
+        }
+
+        const nameLower = name.toLowerCase();
+        for (const detector of DETECTORS) {
+          if (matches.filter(m => m.source === detector.id).length >= MAX_MATCHES_PER_SOURCE) {
+            continue;
+          }
+          for (const pattern of detector.namePatterns ?? []) {
+            if (pattern.isDirectory) {
+              continue;
+            }
+            if (pattern.rootOnly && dir !== root) {
+              continue;
+            }
+            if (nameLower.includes(pattern.contains.toLowerCase())) {
+              matches.push({ source: detector.id, file: relative(root, full) || full });
+              break;
+            }
+          }
         }
 
         const ext = name.includes('.') ? name.slice(name.lastIndexOf('.')) : '';
