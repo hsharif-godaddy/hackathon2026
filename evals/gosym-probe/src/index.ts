@@ -45,6 +45,7 @@ import type {
   Scenario,
   StabilityLevel,
 } from './scenarios/types.js';
+import { formatRegressionFailureMessage } from './reporters/regression-message.js';
 
 function makeProgressCallback(
   reporter: ProgressReporter | null,
@@ -588,6 +589,7 @@ async function main(): Promise<void> {
             );
           } else {
             console.error(
+              formatRegressionFailureMessage(r.regressionStatus!) ??
               `Regression: statistical evidence of regression detected in "${r.scenarioName}".`,
             );
           }
