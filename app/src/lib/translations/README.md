@@ -195,10 +195,10 @@ The app is already configured with the `TranslationsProvider` in the root layout
 ```typescript
 // app/src/app/layout.tsx
 import { TranslationsProvider } from '@/components/providers/TranslationProvider';
-import { loadTranslations, detectLocale } from '@/lib/translations';
+import { loadTranslations, detectTranslationLocale } from '@/lib/translations';
 
 export default async function RootLayout({ children }) {
-  const locale = await detectLocale();
+  const locale = await detectTranslationLocale();
   let messages;
 
   try {
@@ -497,10 +497,10 @@ export default async function ServerPage() {
 For simpler use cases, load translations directly:
 
 ```typescript
-import { loadTranslations, detectLocale } from '@/lib/translations';
+import { loadTranslations, detectTranslationLocale } from '@/lib/translations';
 
 export default async function ServerPage() {
-  const locale = await detectLocale();
+  const locale = await detectTranslationLocale();
   const messages = await loadTranslations(locale, ['@airo-app-builder/aab']);
 
   return (
@@ -734,10 +734,10 @@ export default async function Article() {
 }
 
 // ✅ Good: Server Component with loadTranslations (simpler)
-import { loadTranslations, detectLocale } from '@/lib/translations';
+import { loadTranslations, detectTranslationLocale } from '@/lib/translations';
 
 export default async function Article() {
-  const locale = await detectLocale();
+  const locale = await detectTranslationLocale();
   const messages = await loadTranslations(locale, ['@airo-app-builder/aab']);
   return <article>{messages['article_title']}</article>;
 }

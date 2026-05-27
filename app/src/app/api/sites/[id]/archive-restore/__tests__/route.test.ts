@@ -31,7 +31,7 @@ vi.mock('@/lib/control-plane', () => ({
 }));
 
 vi.mock('@/lib/translations/server-intl', () => ({
-  detectLocale: vi.fn().mockResolvedValue('en-US'),
+  detectTranslationLocale: vi.fn().mockResolvedValue('en-US'),
 }));
 
 describe('/api/sites/[id]/archive-restore', function archiveRestoreRouteTests() {

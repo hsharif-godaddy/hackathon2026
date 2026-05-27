@@ -33,7 +33,7 @@ vi.mock('@/lib/switchboard/server', () => ({
 }));
 vi.mock('@/lib/request-context', () => ({ logger: mockLogger }));
 vi.mock('@/lib/translations/server-intl', () => ({
-  detectLocale: vi.fn().mockResolvedValue('en-US'),
+  detectTranslationLocale: vi.fn().mockResolvedValue('en-US'),
 }));
 vi.mock('@/lib/customer-auth', () => ({
   withCustomerAuth: (handler: any) => async (request: NextRequest, ...args: any[]) =>

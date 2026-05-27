@@ -41,7 +41,7 @@ vi.mock('@/lib/request-context', () => ({
 }));
 
 vi.mock('@/lib/translations', () => ({
-  detectLocale: vi.fn(() => 'en-US'),
+  detectTranslationLocale: vi.fn(() => 'en-US'),
 }));
 
 vi.mock('@/lib/switchboard/server', () => ({

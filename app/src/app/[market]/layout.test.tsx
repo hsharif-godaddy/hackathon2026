@@ -16,9 +16,9 @@ vi.mock('next/headers', () => ({
 vi.mock('@/styles/globals.scss', () => ({}));
 
 const mockLoadTranslations = vi.fn();
-const mockDetectLocale = vi.fn();
+const mockDetectTranslationLocale = vi.fn();
 vi.mock('@/lib/translations', () => ({
-  detectLocale: (...args: unknown[]) => mockDetectLocale(...args),
+  detectTranslationLocale: (...args: unknown[]) => mockDetectTranslationLocale(...args),
   getServerIntl: vi.fn(),
 }));
 vi.mock('@/lib/translations/load-translations', () => ({
@@ -76,7 +76,7 @@ import MarketLayout from './layout';
 describe('MarketLayout', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockDetectLocale.mockResolvedValue('en-US');
+    mockDetectTranslationLocale.mockResolvedValue('en-US');
     mockLoadTranslations.mockResolvedValue({ key: 'value' });
     mockInstrumentPageRequest.mockResolvedValue(undefined);
     mockGetExperimentCohorts.mockResolvedValue({

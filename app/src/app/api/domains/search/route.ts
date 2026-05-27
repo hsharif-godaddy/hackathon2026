@@ -16,7 +16,7 @@ import { type CustomerAuthContext, withCustomerAuth } from '@/lib/customer-auth'
 import { normalizeIsc } from '@/lib/domain-offers/isc-config';
 import { logger } from '@/lib/request-context';
 import { checkSwitchboardFlag } from '@/lib/switchboard/server';
-import { detectLocale } from '@/lib/translations';
+import { detectTranslationLocale } from '@/lib/translations';
 
 export const dynamic = 'force-dynamic';
 
@@ -150,7 +150,7 @@ export const POST = withCustomerAuth(async (
 
     // Prefer market from client (sourced from locale cookie), fall back to server detection
     const clientMarket = typeof body.market === 'string' ? body.market.trim() : '';
-    const market = (clientMarket && LOCALE_RE.test(clientMarket)) ? clientMarket : await detectLocale();
+    const market = (clientMarket && LOCALE_RE.test(clientMarket)) ? clientMarket : await detectTranslationLocale();
     const domainServices = getDomainServices(market);
 
     logger.info('domains.search.start', {

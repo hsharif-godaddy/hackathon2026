@@ -21,7 +21,7 @@ import ReferralTracker from "@/components/tracking/ReferralTracker";
 import { EXPERIMENT_IDS } from "@/config/experiments";
 import { instrumentPageRequest } from "@/lib/apm-context";
 import { logger } from "@/lib/request-context";
-import { detectLocale, getServerIntl } from "@/lib/translations";
+import { detectTranslationLocale, getServerIntl } from "@/lib/translations";
 import { loadTranslations } from "@/lib/translations/load-translations";
 import gasket from '../../../gasket';
 
@@ -57,7 +57,7 @@ export async function generateMetadata(): Promise<Metadata> {
   const shareImageUrl = `${getMetadataBaseUrl()}/images/share.png`;
 
   try {
-    const locale = await detectLocale();
+    const locale = await detectTranslationLocale();
     const intl = await getServerIntl({ locale });
 
     let title = defaultTitle;
@@ -137,7 +137,7 @@ async function MarketLayout({
   // Note: Middleware can't do this - it runs in Edge Runtime without OTel context
   await instrumentPageRequest(headersList);
 
-  const locale = await detectLocale();
+  const locale = await detectTranslationLocale();
 
   let messages: Record<string, string> | undefined;
   try {

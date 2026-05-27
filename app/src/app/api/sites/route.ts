@@ -8,11 +8,10 @@ import {
   type CustomerAuthContext,
   customerHasAccount,
   withCustomerAuth} from '@/lib/customer-auth';
+import { resolveMarketId } from '@/lib/market/resolve-market';
 import { logger } from '@/lib/request-context';
 import { injectShareTokenIntoPreviewUrl } from '@/lib/share/inject-preview-token';
-import { fetchShopperMarketId } from '@/lib/shopper/shopper-market';
 import { checkSwitchboardFlag } from '@/lib/switchboard/server';
-import { detectLocale } from '@/lib/translations/server-intl';
 
 // Force dynamic rendering to prevent database calls during build
 export const dynamic = 'force-dynamic';
@@ -142,23 +141,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
     // Use authenticated user's account ID
     const account_id = user.accountId!;
 
-    // Resolve market for datacenter selection. Prefer the shopper's resident
-    // market (Shopper API) over Gasket's cookie-based locale, which is dominated
-    // by `en-US` because most users sign up via the godaddy.com US storefront.
-    const [fallbackMarket, shopperMarket] = await Promise.all([
-      detectLocale(),
-      user.shopperId
-        ? fetchShopperMarketId(request, user.shopperId, authContext.jwt)
-        : Promise.resolve(undefined),
-    ]);
-    const marketId = shopperMarket || fallbackMarket;
-
-    logger.info('sites.create.market-resolution', {
-      shopperMarket,
-      fallbackMarket,
-      marketId,
-      source: shopperMarket ? 'shopper-api' : 'gasket-fallback',
-    });
+    const { marketId } = await resolveMarketId(request, user.shopperId, authContext.jwt);
 
     // Create site using control plane adapter
     const adapter = getControlPlaneAdapter();

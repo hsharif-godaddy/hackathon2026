@@ -17,7 +17,8 @@ const TIMEOUT_MS = 5000;
  * because most users sign up via the godaddy.com US storefront.
  *
  * Returns `undefined` on any failure (network, timeout, parse, non-2xx, or
- * empty/whitespace `marketId`). Callers must fall back to detectLocale().
+ * empty/whitespace `marketId`). Callers must fall back to another signal
+ * (see `resolveMarketId` in @/lib/market/resolve-market).
  */
 export async function fetchShopperMarketId(
   request: NextRequest,

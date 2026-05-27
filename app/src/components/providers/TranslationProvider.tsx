@@ -46,7 +46,7 @@ const TranslationsContext = createContext<TranslationsState>(defaultTranslations
  * ```tsx
  * // Server-side mode (in layout.tsx)
  * const messages = await loadTranslations('en-US', ['@airo-app-builder/aab']);
- * const locale = await detectLocale();
+ * const locale = await detectTranslationLocale();
  *
  * <TranslationsProvider locale={locale} messages={messages}>
  *   {children}

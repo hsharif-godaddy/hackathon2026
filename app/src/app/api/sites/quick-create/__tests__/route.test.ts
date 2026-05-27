@@ -36,13 +36,14 @@ vi.mock('@/lib/control-plane', () => ({
   getControlPlaneAdapter: () => ({ createSite: mockCreateSite })
 }));
 
-vi.mock('@/lib/translations/server-intl', () => ({
-  detectLocale: vi.fn().mockResolvedValue('en-US')
-}));
-
-const mockFetchShopperMarketId = vi.fn();
-vi.mock('@/lib/shopper/shopper-market', () => ({
-  fetchShopperMarketId: (...args: unknown[]) => mockFetchShopperMarketId(...args),
+const mockResolveMarketId = vi.fn().mockResolvedValue({
+  marketId: 'en-US',
+  shopperMarket: undefined,
+  visitorMarket: 'en-US',
+  source: 'visitor-market',
+});
+vi.mock('@/lib/market/resolve-market', () => ({
+  resolveMarketId: (...args: unknown[]) => mockResolveMarketId(...args),
 }));
 
 function makeRequest(body: Record<string, unknown>) {
@@ -308,13 +309,18 @@ describe('/api/sites/quick-create market resolution', () => {
     });
   });
 
-  it('passes shopper marketId to createSite when helper resolves it', async () => {
-    mockFetchShopperMarketId.mockResolvedValue('en-IN');
+  it('passes resolved marketId to createSite and forwards (request, shopperId, jwt) to the helper', async () => {
+    mockResolveMarketId.mockResolvedValueOnce({
+      marketId: 'en-IN',
+      shopperMarket: 'en-IN',
+      visitorMarket: 'en-US',
+      source: 'shopper-api',
+    });
 
     const { POST } = await import('../route');
     await POST(makeRequest({ initialPrompt: 'test' }));
 
-    expect(mockFetchShopperMarketId).toHaveBeenCalledWith(
+    expect(mockResolveMarketId).toHaveBeenCalledWith(
       expect.anything(),
       'shopper-1',
       'test-jwt',
@@ -324,19 +330,29 @@ describe('/api/sites/quick-create market resolution', () => {
     );
   });
 
-  it('falls back to detectLocale when helper returns undefined', async () => {
-    mockFetchShopperMarketId.mockResolvedValue(undefined);
+  it('uses visitor-market resolution when helper picks visitor over shopper', async () => {
+    mockResolveMarketId.mockResolvedValueOnce({
+      marketId: 'de-DE',
+      shopperMarket: 'en-US',
+      visitorMarket: 'de-DE',
+      source: 'visitor-market',
+    });
 
     const { POST } = await import('../route');
     await POST(makeRequest({ initialPrompt: 'test' }));
 
     expect(mockCreateSite).toHaveBeenCalledWith(
-      expect.objectContaining({ marketId: 'en-US' })
+      expect.objectContaining({ marketId: 'de-DE' })
     );
   });
 
-  it('falls back to detectLocale when helper returns empty string', async () => {
-    mockFetchShopperMarketId.mockResolvedValue('');
+  it('uses fallback en-US when helper returns the fallback source', async () => {
+    mockResolveMarketId.mockResolvedValueOnce({
+      marketId: 'en-US',
+      shopperMarket: undefined,
+      visitorMarket: undefined,
+      source: 'fallback',
+    });
 
     const { POST } = await import('../route');
     await POST(makeRequest({ initialPrompt: 'test' }));

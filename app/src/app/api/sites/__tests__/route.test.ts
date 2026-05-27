@@ -50,17 +50,18 @@ vi.mock('@/lib/customer-auth', () => ({
   createCustomerAuthError: vi.fn()
 }));
 
-const mockFetchShopperMarketId = vi.fn();
-vi.mock('@/lib/shopper/shopper-market', () => ({
-  fetchShopperMarketId: (...args: unknown[]) => mockFetchShopperMarketId(...args),
+const mockResolveMarketId = vi.fn().mockResolvedValue({
+  marketId: 'en-US',
+  shopperMarket: undefined,
+  visitorMarket: 'en-US',
+  source: 'visitor-market',
+});
+vi.mock('@/lib/market/resolve-market', () => ({
+  resolveMarketId: (...args: unknown[]) => mockResolveMarketId(...args),
 }));
 
 vi.mock('@/lib/control-plane', () => ({
   getControlPlaneAdapter: vi.fn()
-}));
-
-vi.mock('@/lib/translations/server-intl', () => ({
-  detectLocale: vi.fn().mockResolvedValue('en-US')
 }));
 
 // Switchboard flag is consulted in handleGetSites for the
@@ -285,8 +286,13 @@ describe('/api/sites', function sitesRouteTests() {
       );
     });
 
-    it('passes shopper marketId to createSite when helper resolves it', async function passesShopperMarketId() {
-      mockFetchShopperMarketId.mockResolvedValueOnce('en-IN');
+    it('passes resolved marketId to createSite and forwards (request, shopperId, jwt) to the helper', async function passesResolvedMarketId() {
+      mockResolveMarketId.mockResolvedValueOnce({
+        marketId: 'en-IN',
+        shopperMarket: 'en-IN',
+        visitorMarket: 'en-US',
+        source: 'shopper-api',
+      });
 
       const { getControlPlaneAdapter } = await import('@/lib/control-plane');
       const { POST } = await import('../route');
@@ -309,7 +315,7 @@ describe('/api/sites', function sitesRouteTests() {
       const response = await POST(request);
 
       expect(response.status).toBe(201);
-      expect(mockFetchShopperMarketId).toHaveBeenCalledWith(
+      expect(mockResolveMarketId).toHaveBeenCalledWith(
         expect.anything(),
         'shopper-1',
         'test-jwt-token',
@@ -319,8 +325,13 @@ describe('/api/sites', function sitesRouteTests() {
       );
     });
 
-    it('falls back to detectLocale when shopper helper returns undefined', async function fallsBackOnUndefined() {
-      mockFetchShopperMarketId.mockResolvedValueOnce(undefined);
+    it('uses visitor-market resolution when helper picks visitor over shopper', async function passesVisitorMarketId() {
+      mockResolveMarketId.mockResolvedValueOnce({
+        marketId: 'de-DE',
+        shopperMarket: 'en-US',
+        visitorMarket: 'de-DE',
+        source: 'visitor-market',
+      });
 
       const { getControlPlaneAdapter } = await import('@/lib/control-plane');
       const { POST } = await import('../route');
@@ -344,12 +355,17 @@ describe('/api/sites', function sitesRouteTests() {
 
       expect(response.status).toBe(201);
       expect(createSite).toHaveBeenCalledWith(
-        expect.objectContaining({ marketId: 'en-US' })
+        expect.objectContaining({ marketId: 'de-DE' })
       );
     });
 
-    it('falls back to detectLocale when shopper helper returns empty string', async function fallsBackOnEmpty() {
-      mockFetchShopperMarketId.mockResolvedValueOnce('');
+    it('uses fallback en-US when helper returns the fallback source', async function fallsBackOnFallbackSource() {
+      mockResolveMarketId.mockResolvedValueOnce({
+        marketId: 'en-US',
+        shopperMarket: undefined,
+        visitorMarket: undefined,
+        source: 'fallback',
+      });
 
       const { getControlPlaneAdapter } = await import('@/lib/control-plane');
       const { POST } = await import('../route');

@@ -7,7 +7,13 @@ import gasket from '../../../gasket';
 import { logger } from '../request-context';
 
 /**
- * Detect user's locale using Gasket's built-in locale detection
+ * Detect the locale to use for **translations**.
+ *
+ * This is NOT the visitor's market — it's the locale Gasket has resolved
+ * against the set of supported translation files (so e.g. an `en-IN` market
+ * resolves to `en-US` here, because that's the supported English translation).
+ * For datacenter selection / market-aware behavior, use the visitor market via
+ * `gasket.actions.getVisitor(req).market` (see `@/lib/market/resolve-market`).
  *
  * Uses Gasket's `resolveGasketData` which handles:
  * - Cookie-based locale detection (`market_locale`, `locale`)
@@ -17,9 +23,9 @@ import { logger } from '../request-context';
  *
  * This ensures consistency between server-side and client-side locale detection.
  *
- * @returns Promise resolving to detected locale string (e.g., 'en-US', 'es-MX', 'fr-FR')
+ * @returns Promise resolving to detected translation locale (e.g., 'en-US', 'es-MX', 'fr-FR')
  */
-export async function detectLocale(): Promise<string> {
+export async function detectTranslationLocale(): Promise<string> {
   try {
     const req = await request();
     const data: any = await resolveGasketData(gasket, req);

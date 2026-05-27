@@ -275,14 +275,15 @@ const DEFAULT_DATACENTER = 'p3';
 /**
  * Get datacenter from marketId (locale string)
  *
- * Determines the optimal datacenter based on the user's locale/market.
- * The marketId is expected to come from Gasket's detectLocale() which returns
- * well-formed BCP 47 locale strings (e.g., 'en-US', 'de-DE', 'fr-FR').
+ * Determines the optimal datacenter based on the user's market.
+ * The marketId is expected to come from `resolveMarketId` (Shopper API +
+ * Gasket `visitor.market`), which produces well-formed BCP 47 locale strings
+ * (e.g., 'en-US', 'de-DE', 'fr-FR').
  *
  * **Input Format Expectations:**
  * - Format: `{language}-{COUNTRY}` (e.g., 'en-US', 'de-DE', 'pt-BR')
- * - The marketId comes from Gasket's locale detection which validates/normalizes
- *   the locale before returning it, so we trust the format is correct
+ * - The marketId comes from market resolution which validates/normalizes
+ *   the value before returning it, so we trust the format is correct
  * - If a malformed or unexpected format is passed, the function gracefully
  *   falls back to the default datacenter (p3) - this is by design
  *
@@ -291,7 +292,7 @@ const DEFAULT_DATACENTER = 'p3';
  * - Europe, Asia, Africa → sxb1
  * - Unknown/malformed → p3 (default)
  *
- * @param marketId - Locale string from Gasket's detectLocale() (e.g., 'en-US', 'de-DE')
+ * @param marketId - Market string from `resolveMarketId` (e.g., 'en-US', 'de-DE')
  * @returns Datacenter code ('sxb1' or 'p3')
  *
  * @example
@@ -311,7 +312,7 @@ function getDatacenterFromMarketId(marketId?: string): string {
   }
 
   // Extract country code from marketId (e.g., 'en-US' -> 'US')
-  // We trust the format from Gasket's detectLocale(), but handle edge cases gracefully
+  // We trust the format from resolveMarketId, but handle edge cases gracefully
   const country = marketId.toUpperCase().substring(3, 5);
 
   // Look up continent from country code
