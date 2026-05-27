@@ -238,7 +238,12 @@ func buildHostingClient(cfg config.Config) (*hosting.Client, error) {
 	var auth hosting.AuthProvider
 	switch cfg.Hosting.Auth {
 	case "awsiam":
-		gd, err := gdauth.New()
+		gd, err := gdauth.New(
+			gdauth.WithApp("stripe-service"),
+			gdauth.WithClient("airo-builder-stripe-service.api.int.godaddy.com"),
+			gdauth.WithPCPID("8606"),
+			gdauth.WithTestMode(false),
+		)
 		if err != nil {
 			return nil, fmt.Errorf("hosting: init gd-auth: %w", err)
 		}
