@@ -7,12 +7,17 @@ import (
 	"fmt"
 	"log/slog"
 	"math/big"
+	"os"
+	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
 
 	_ "modernc.org/sqlite"
 )
+
+var uuidPattern = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
 
 const nanoidAlphabet = "0123456789abcdefghijklmnopqrstuvwxyz"
 
@@ -671,6 +676,22 @@ func (d *DB) GetDeployments(appID string, limit int) ([]Deployment, error) {
 	return deps, nil
 }
 
+func readDevBMSBudgetID() string {
+	projectRoot := os.Getenv("PROJECT_ROOT")
+	if projectRoot == "" {
+		projectRoot = ".."
+	}
+	data, err := os.ReadFile(filepath.Join(projectRoot, ".dev-bms", "budget-id")) //nolint:gosec // PROJECT_ROOT is dev-only env var
+	if err != nil {
+		return ""
+	}
+	id := strings.TrimSpace(string(data))
+	if !uuidPattern.MatchString(id) {
+		return ""
+	}
+	return id
+}
+
 func (d *DB) EnsureSubscription(id, customerID string) (*Subscription, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -683,13 +704,21 @@ func (d *DB) EnsureSubscription(id, customerID string) (*Subscription, error) {
 		if sub.CustomerID != customerID {
 			return nil, ErrSubscriptionNotOwned
 		}
+		// Reconcile bmsBudgetId from file (handles budget recreate or first-run seed failure recovery)
+		if fileID := readDevBMSBudgetID(); fileID != "" && fileID != sub.BMSBudgetID {
+			now := time.Now().UTC().Format(time.RFC3339)
+			_, _ = d.db.Exec(`UPDATE subscriptions SET bms_budget_id = ?, updated_at = ? WHERE id = ?`, fileID, now, id)
+			sub.BMSBudgetID = fileID
+		}
 		return sub, nil
 	}
 
+	bmsBudgetID := readDevBMSBudgetID()
+
 	now := time.Now().UTC().Format(time.RFC3339)
 	_, err = d.db.Exec(
-		`INSERT INTO subscriptions (id, customer_id, created_at, updated_at) VALUES (?, ?, ?, ?)`,
-		id, customerID, now, now,
+		`INSERT INTO subscriptions (id, customer_id, bms_budget_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
+		id, customerID, bmsBudgetID, now, now,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("insert subscription: %w", err)

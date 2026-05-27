@@ -1,6 +1,8 @@
 package store
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -541,5 +543,127 @@ func TestGetDeploymentsDefaultLimit(t *testing.T) {
 	}
 	if deps != nil {
 		t.Fatalf("expected nil for empty result, got %v", deps)
+	}
+}
+
+// --- EnsureSubscription with BMS budget ID ---
+
+func TestEnsureSubscription_ReadsBudgetIDFile(t *testing.T) {
+	dir := t.TempDir()
+	bmsDir := filepath.Join(dir, ".dev-bms")
+	if err := os.MkdirAll(bmsDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(bmsDir, "budget-id"), []byte("a1b2c3d4-e5f6-7890-abcd-ef1234567890\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PROJECT_ROOT", dir)
+
+	db := newTestDB(t)
+	sub, err := db.EnsureSubscription("test-sub-1", "cust-1")
+	if err != nil {
+		t.Fatalf("EnsureSubscription: %v", err)
+	}
+	if sub.BMSBudgetID != "a1b2c3d4-e5f6-7890-abcd-ef1234567890" {
+		t.Fatalf("expected bmsBudgetId from file, got %q", sub.BMSBudgetID)
+	}
+}
+
+func TestEnsureSubscription_MissingFile(t *testing.T) {
+	t.Setenv("PROJECT_ROOT", t.TempDir())
+
+	db := newTestDB(t)
+	sub, err := db.EnsureSubscription("test-sub-2", "cust-1")
+	if err != nil {
+		t.Fatalf("EnsureSubscription: %v", err)
+	}
+	if sub.BMSBudgetID != "" {
+		t.Fatalf("expected empty bmsBudgetId, got %q", sub.BMSBudgetID)
+	}
+}
+
+func TestEnsureSubscription_InvalidUUID(t *testing.T) {
+	dir := t.TempDir()
+	bmsDir := filepath.Join(dir, ".dev-bms")
+	if err := os.MkdirAll(bmsDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(bmsDir, "budget-id"), []byte("not-a-uuid\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PROJECT_ROOT", dir)
+
+	db := newTestDB(t)
+	sub, err := db.EnsureSubscription("test-sub-3", "cust-1")
+	if err != nil {
+		t.Fatalf("EnsureSubscription: %v", err)
+	}
+	if sub.BMSBudgetID != "" {
+		t.Fatalf("expected empty bmsBudgetId for invalid UUID, got %q", sub.BMSBudgetID)
+	}
+}
+
+func TestEnsureSubscription_ReconcileOnFileChange(t *testing.T) {
+	dir := t.TempDir()
+	bmsDir := filepath.Join(dir, ".dev-bms")
+	if err := os.MkdirAll(bmsDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(bmsDir, "budget-id"), []byte("a1b2c3d4-e5f6-7890-abcd-ef1234567890\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PROJECT_ROOT", dir)
+
+	db := newTestDB(t)
+	sub1, err := db.EnsureSubscription("test-sub-4", "cust-1")
+	if err != nil {
+		t.Fatalf("first EnsureSubscription: %v", err)
+	}
+	if sub1.BMSBudgetID != "a1b2c3d4-e5f6-7890-abcd-ef1234567890" {
+		t.Fatalf("expected initial bmsBudgetId, got %q", sub1.BMSBudgetID)
+	}
+
+	// Simulate budget recreate: file changes to new UUID
+	if err := os.WriteFile(filepath.Join(bmsDir, "budget-id"), []byte("99999999-9999-9999-9999-999999999999\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	sub2, err := db.EnsureSubscription("test-sub-4", "cust-1")
+	if err != nil {
+		t.Fatalf("second EnsureSubscription: %v", err)
+	}
+	if sub2.BMSBudgetID != "99999999-9999-9999-9999-999999999999" {
+		t.Fatalf("expected reconciled bmsBudgetId, got %q", sub2.BMSBudgetID)
+	}
+}
+
+func TestEnsureSubscription_ReconcileFromEmpty(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("PROJECT_ROOT", dir)
+
+	db := newTestDB(t)
+	// Create subscription with no budget file (simulates first-run seed failure)
+	sub1, err := db.EnsureSubscription("test-sub-5", "cust-1")
+	if err != nil {
+		t.Fatalf("first EnsureSubscription: %v", err)
+	}
+	if sub1.BMSBudgetID != "" {
+		t.Fatalf("expected empty bmsBudgetId, got %q", sub1.BMSBudgetID)
+	}
+
+	// Simulate seed success: file now appears
+	bmsDir := filepath.Join(dir, ".dev-bms")
+	if err := os.MkdirAll(bmsDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(bmsDir, "budget-id"), []byte("a1b2c3d4-e5f6-7890-abcd-ef1234567890\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	sub2, err := db.EnsureSubscription("test-sub-5", "cust-1")
+	if err != nil {
+		t.Fatalf("second EnsureSubscription: %v", err)
+	}
+	if sub2.BMSBudgetID != "a1b2c3d4-e5f6-7890-abcd-ef1234567890" {
+		t.Fatalf("expected reconciled bmsBudgetId, got %q", sub2.BMSBudgetID)
 	}
 }

@@ -60,6 +60,9 @@ packages/design-extractor/output/
 # Development CA (per-project certificate authority)
 .dev-ca/
 
+# BMS dev seed state (written by dev-runner preflight)
+.dev-bms/
+
 # License reports
 licenses-report.txt
 .direnv/CACHEDIR.TAG

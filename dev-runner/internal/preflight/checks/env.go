@@ -103,7 +103,7 @@ func (c *AgentsEnvCheck) Run(_ context.Context, projectRoot string) preflight.Ch
 	}
 	s2s := strings.EqualFold(strings.TrimSpace(env["GOCODE_USE_S2S_AUTH"]), "true")
 
-	required := []string{"NODE_ENV", "AUTH_TYPE"}
+	required := []string{"NODE_ENV", "AUTH_TYPE", "BUDGET_SERVICE_URL"}
 	if s2s {
 		required = append(required, "AWS_PROFILE", "GOCODE_USE_S2S_AUTH")
 	} else {

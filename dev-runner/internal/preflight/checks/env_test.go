@@ -28,6 +28,7 @@ func TestAgentsEnvCheck_S2SMode_NoAPIKeyRequired(t *testing.T) {
 		"AUTH_TYPE=jwt",
 		"GOCODE_USE_S2S_AUTH=true",
 		"AWS_PROFILE=airobuild-dev-private-sso",
+		"BUDGET_SERVICE_URL=https://budget-service.api.int.dev-godaddy.com",
 	}, "\n"))
 
 	c := &AgentsEnvCheck{}
@@ -189,6 +190,7 @@ func TestAgentsEnvCheck_S2SMode_StaleApiKeyVars(t *testing.T) {
 		"AUTH_TYPE=jwt",
 		"GOCODE_USE_S2S_AUTH=true",
 		"AWS_PROFILE=airobuild-dev-private-sso",
+		"BUDGET_SERVICE_URL=https://budget-service.api.int.dev-godaddy.com",
 		`OPENAI_BASE_URL="https://caas-gocode-prod.caas-prod.prod.onkatana.net"`,
 		`OPENAI_API_KEY="sk-stale"`,
 	}, "\n"))

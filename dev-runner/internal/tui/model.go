@@ -334,6 +334,7 @@ func buildPreflightRunner(projectRoot string) *preflight.Runner {
 				Checks: []preflight.CheckWithFixer{
 					{Check: &checks.PortCheck{Ports: requiredPorts}, Fixer: &fixers.PortsFixer{Ports: requiredPorts}},
 					{Check: &checks.MySQLCheck{}, Fixer: &fixers.MySQLFixer{}},
+					{Check: &checks.BMSRemoteSeedCheck{}, Fixer: &fixers.BMSRemoteSeedFixer{}},
 				},
 			},
 		},

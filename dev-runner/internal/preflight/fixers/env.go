@@ -224,6 +224,8 @@ AGENT_URL=http://localhost:4000
 DOWNLOAD_TEMP_DIR="/tmp/apps/archives"
 
 ENABLE_AI_DEVTOOLS=true
+
+BUDGET_SERVICE_URL=https://budget-service.api.int.dev-godaddy.com
 `, v.AuthType, v.AWSProfile)
 		} else {
 			content = fmt.Sprintf(`# Airo Builder - Agents Environment Configuration
@@ -260,6 +262,8 @@ AGENT_URL=http://localhost:4000
 DOWNLOAD_TEMP_DIR="/tmp/apps/archives"
 
 ENABLE_AI_DEVTOOLS=true
+
+BUDGET_SERVICE_URL=https://budget-service.api.int.dev-godaddy.com
 `, v.AuthType, v.AWSProfile, v.APIKey, v.BaseURL,
 				v.APIKey, v.BaseURL)
 		}
@@ -293,6 +297,7 @@ ENABLE_AI_DEVTOOLS=true
 		{"AGENT_URL", "http://localhost:4000", false},
 		{"DOWNLOAD_TEMP_DIR", "/tmp/apps/archives", true},
 		{"ENABLE_AI_DEVTOOLS", "true", false},
+		{"BUDGET_SERVICE_URL", "https://budget-service.api.int.dev-godaddy.com", false},
 	}
 
 	var modeVars []struct {
