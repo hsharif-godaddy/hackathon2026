@@ -7,6 +7,7 @@ import type { DOMSnapshot, Transcript } from '../runner/transcript.js';
 import type { Scenario } from '../scenarios/types.js';
 import { clamp01 } from './shared.js';
 import { retryOn429 } from '../util/retry-on-429.js';
+import { warnLine } from '../util/warn-line.js';
 
 const EVALUATOR_RATE_LIMIT_MAX_RETRIES = 5;
 const EVALUATOR_RATE_LIMIT_WAIT_MS = 30_000;
@@ -101,7 +102,7 @@ export class LLMJsonEvaluator<T> implements Evaluator {
           maxRetries: EVALUATOR_RATE_LIMIT_MAX_RETRIES,
           defaultWaitMs: EVALUATOR_RATE_LIMIT_WAIT_MS,
           onRetry: ({ attempt, maxRetries, waitMs }) => {
-            console.warn('LLM judge rate-limited; retrying.', {
+            warnLine('LLM judge rate-limited; retrying.', {
               evaluator: this.name,
               attempt,
               maxAttempts: maxRetries,
@@ -109,7 +110,7 @@ export class LLMJsonEvaluator<T> implements Evaluator {
             });
           },
           onExhausted: (totalAttempts) => {
-            console.warn('LLM judge rate-limit retry budget exhausted.', {
+            warnLine('LLM judge rate-limit retry budget exhausted.', {
               evaluator: this.name,
               totalAttempts,
             });
@@ -118,7 +119,7 @@ export class LLMJsonEvaluator<T> implements Evaluator {
       );
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err);
-      console.warn('LLM judge request failed.', {
+      warnLine('LLM judge request failed.', {
         evaluator: this.name,
         error: errorMessage,
         isRateLimit: err instanceof RateLimitError,

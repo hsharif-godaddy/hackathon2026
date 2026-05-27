@@ -17,6 +17,7 @@ import { normalizeEvalResult } from '../evaluators/normalize-eval-result.js';
 import { effectiveConcurrency } from '../util/concurrency.js';
 import { parseRetryAfterMs } from '../util/retry-after.js';
 import { sleep } from '../util/sleep.js';
+import { warnLine } from '../util/warn-line.js';
 import { staggeredRun, computeStaggerDelay } from '../util/stagger.js';
 import type { TrialLifecycle } from '../clients/trial-lifecycle.js';
 
@@ -641,7 +642,7 @@ export class SuiteRunner {
             retrySchedule[inactivityAttempts]
             ?? config.eval.firstTurnInactivityMs;
           inactivityAttempts++;
-          console.warn(
+          warnLine(
             'Trial retry: first-turn inactivity timeout.',
             {
               scenarioName: scenario.name,
@@ -660,7 +661,7 @@ export class SuiteRunner {
         ) {
           rateLimitAttempts++;
           const waitMs = parseRetryAfterMs(err.headers) ?? RATE_LIMIT_WAIT_MS;
-          console.warn(
+          warnLine(
             'Trial retry: rate limit (429).',
             {
               scenarioName: scenario.name,
@@ -675,12 +676,22 @@ export class SuiteRunner {
           continue;
         }
         if (err instanceof RateLimitError) {
-          console.warn(
+          warnLine(
             'Trial failed: rate-limit retry budget exhausted.',
             {
               scenarioName: scenario.name,
               trialIndex,
               totalAttempts: rateLimitAttempts + 1,
+            },
+          );
+        }
+        if (err instanceof InactivityTimeoutError) {
+          warnLine(
+            'Trial failed: first-turn inactivity retry budget exhausted.',
+            {
+              scenarioName: scenario.name,
+              trialIndex,
+              totalAttempts: inactivityAttempts + 1,
             },
           );
         }

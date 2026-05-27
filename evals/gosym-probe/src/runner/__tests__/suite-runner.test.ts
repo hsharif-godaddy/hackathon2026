@@ -1605,7 +1605,11 @@ describe('first-turn inactivity retry', () => {
 
     // 1 initial + 2 retries = 3 total attempts
     expect(mockSimulationRun).toHaveBeenCalledTimes(3);
-    expect(warnSpy).toHaveBeenCalledTimes(2);
+    expect(warnSpy).toHaveBeenCalledTimes(3);
+    expect(warnSpy).toHaveBeenLastCalledWith(
+      'Trial failed: first-turn inactivity retry budget exhausted.',
+      expect.objectContaining({ scenarioName: scenario.name }),
+    );
     warnSpy.mockRestore();
   });
 
