@@ -41,6 +41,7 @@ export function makeTranscript(turns: Turn[]): Transcript {
     turns,
     snapshots: [],
     errors: [],
+    captureErrors: [],
   };
 }
 

@@ -23,6 +23,8 @@ describe('baseline operational efficiency', function operationalTests() {
       ],
       snapshots: [],
       errors: [],
+      captureErrors: [],
+      
     };
 
     const evaluator = new TotalTimeTakenEvaluator();
@@ -44,6 +46,8 @@ describe('baseline operational efficiency', function operationalTests() {
       ],
       snapshots: [],
       errors: [],
+      captureErrors: [],
+      
     };
 
     const evaluator = new TotalTimeTakenEvaluator();
@@ -63,6 +67,8 @@ describe('baseline operational efficiency', function operationalTests() {
       ],
       snapshots: [],
       errors: [],
+      captureErrors: [],
+      
     };
 
     const evaluator = new TotalTimeTakenEvaluator();

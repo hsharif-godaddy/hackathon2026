@@ -52,6 +52,8 @@ function makeTrial(
       turns: [],
       snapshots: [],
       errors: [],
+      captureErrors: [],
+      
     },
     evalResults,
   };
@@ -309,6 +311,8 @@ describe('TrialAggregator', () => {
           turns: [],
           snapshots: [],
           errors: [],
+          captureErrors: [],
+          
         },
         evalResults,
       };
@@ -428,6 +432,8 @@ describe('TrialAggregator', () => {
           turns: [],
           snapshots: [],
           errors: [],
+          captureErrors: [],
+          
         },
         evalResults,
       };
@@ -494,6 +500,8 @@ describe('TrialAggregator', () => {
             turns: [],
             snapshots: [],
             errors: [],
+            captureErrors: [],
+            
           },
           evalResults: [
             {
@@ -531,6 +539,8 @@ describe('TrialAggregator', () => {
             turns: [],
             snapshots: [],
             errors: [],
+            captureErrors: [],
+            
           },
           evalResults: [
             {
@@ -573,6 +583,8 @@ describe('TrialAggregator', () => {
             turns: [],
             snapshots: [],
             errors: [],
+            captureErrors: [],
+            
           },
           evalResults: [{
             evaluator: 'score-eval',
@@ -589,6 +601,8 @@ describe('TrialAggregator', () => {
             turns: [],
             snapshots: [],
             errors: [],
+            captureErrors: [],
+            
           },
           evalResults: [{
             evaluator: 'score-eval',
@@ -652,6 +666,8 @@ describe('TrialAggregator', () => {
             turns: [],
             snapshots: [],
             errors: [],
+            captureErrors: [],
+            
           },
           evalResults: [
             {
@@ -676,6 +692,8 @@ describe('TrialAggregator', () => {
             turns: [],
             snapshots: [],
             errors: [],
+            captureErrors: [],
+            
           },
           evalResults: [
             {
@@ -746,6 +764,8 @@ describe('TrialAggregator', () => {
           turns: [],
           snapshots: [],
           errors: [],
+          captureErrors: [],
+          
         },
         evalResults,
       };
@@ -808,6 +828,8 @@ describe('TrialAggregator', () => {
           turns: [],
           snapshots: [],
           errors: [],
+          captureErrors: [],
+          
         },
         evalResults: [{
           evaluator: evalName,
@@ -883,17 +905,17 @@ describe('TrialAggregator', () => {
       const trials: TrialResult[] = [
         {
           trialIndex: 0,
-          transcript: { scenarioName: 'test-scenario', trialIndex: 0, turns: [], snapshots: [], errors: [] },
+          transcript: { scenarioName: 'test-scenario', trialIndex: 0, turns: [], snapshots: [], errors: [], captureErrors: [] },
           evalResults: [{ evaluator: 'metric', score: 100, verdict: 'observed', reason: '' }],
         },
         {
           trialIndex: 1,
-          transcript: { scenarioName: 'test-scenario', trialIndex: 1, turns: [], snapshots: [], errors: [] },
+          transcript: { scenarioName: 'test-scenario', trialIndex: 1, turns: [], snapshots: [], errors: [], captureErrors: [] },
           evalResults: [{ evaluator: 'metric', score: 200, verdict: 'observed', reason: '' }],
         },
         {
           trialIndex: 2,
-          transcript: { scenarioName: 'test-scenario', trialIndex: 2, turns: [], snapshots: [], errors: [] },
+          transcript: { scenarioName: 'test-scenario', trialIndex: 2, turns: [], snapshots: [], errors: [], captureErrors: [] },
           evalResults: [{ evaluator: 'metric', score: 999, verdict: 'observed', reason: '', evaluatorFailed: true }],
         },
       ];

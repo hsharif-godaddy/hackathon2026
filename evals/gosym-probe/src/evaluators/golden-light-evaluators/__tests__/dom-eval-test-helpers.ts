@@ -27,6 +27,7 @@ export function makeTranscript(overrides: Partial<Transcript> = {}): Transcript 
     turns: [],
     snapshots: [],
     errors: [],
+    captureErrors: [],
     ...overrides,
   };
 }

@@ -753,6 +753,10 @@ export class MdReporter {
       (sum, trial) => sum + trial.transcript.errors.length,
       0,
     );
+    const captureErrorCount = result.trials.reduce(
+      (sum, trial) => sum + (trial.transcript.captureErrors?.length ?? 0),
+      0,
+    );
 
     let summaryLine =
       `**Trials:** ${k}`
@@ -764,6 +768,9 @@ export class MdReporter {
     }
     if (runtimeErrorCount > 0) {
       summaryLine += ` | **Runtime Errors:** ${runtimeErrorCount}`;
+    }
+    if (captureErrorCount > 0) {
+      summaryLine += ` | **Capture Errors:** ${captureErrorCount}`;
     }
 
     const lines: string[] = [

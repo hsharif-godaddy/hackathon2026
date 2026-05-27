@@ -36,6 +36,7 @@ function makeMinimalTrial(trialIndex: number): TrialResult {
       turns: [],
       snapshots: [],
       errors: [],
+      captureErrors: [],
     },
     evalResults: [],
   };
@@ -1112,6 +1113,7 @@ describe('BaselineStore', () => {
         turns: [],
         snapshots: [],
         errors: [],
+        captureErrors: [],
       },
       evalResults: results.map(({ evaluator, score, verdict, evaluatorFailed }) => ({
         evaluator,

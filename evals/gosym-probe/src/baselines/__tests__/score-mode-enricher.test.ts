@@ -20,6 +20,7 @@ function makeTrialWithScore(
       turns: [],
       snapshots: [],
       errors: [],
+      captureErrors: [],
     },
     evalResults: [{ evaluator, score, verdict, reason: '' }],
   };
@@ -359,6 +360,7 @@ describe('enrichScoreModePassRates error paths', () => {
         turns: [],
         snapshots: [],
         errors: [],
+        captureErrors: [],
       },
       evalResults: [{ evaluator: 'other', score: 50, verdict: 'observed', reason: '' }],
     };
@@ -751,7 +753,7 @@ describe('trial verdict enrichment — error paths', () => {
   it('evaluatorFailed: true (verdict: unknown) stays unknown', () => {
     const trial: TrialResult = {
       trialIndex: 0,
-      transcript: { scenarioName: 'test-scenario', trialIndex: 0, turns: [], snapshots: [], errors: [] },
+      transcript: { scenarioName: 'test-scenario', trialIndex: 0, turns: [], snapshots: [], errors: [], captureErrors: [] },
       evalResults: [{ evaluator: 'latency', score: 90, verdict: 'unknown', reason: 'evaluator threw', evaluatorFailed: true }],
     };
     const result = makeScenario('latency', [trial], { lowerIsBetter: true });
@@ -783,7 +785,7 @@ describe('trial verdict enrichment — error paths', () => {
   it('pass-rate evaluator trial verdict unchanged', () => {
     const trial: TrialResult = {
       trialIndex: 0,
-      transcript: { scenarioName: 'test-scenario', trialIndex: 0, turns: [], snapshots: [], errors: [] },
+      transcript: { scenarioName: 'test-scenario', trialIndex: 0, turns: [], snapshots: [], errors: [], captureErrors: [] },
       evalResults: [{ evaluator: 'bug-hit-rate', score: 1.0, verdict: 'pass', reason: '' }],
     };
     const scenario: ScenarioResult = {
@@ -810,7 +812,7 @@ describe('trial verdict enrichment — seam and edge cases', () => {
     // latency: 120 (fail, lowerIsBetter), quality: 95 (pass, higherIsBetter)
     const trial: TrialResult = {
       trialIndex: 0,
-      transcript: { scenarioName: 'test-scenario', trialIndex: 0, turns: [], snapshots: [], errors: [] },
+      transcript: { scenarioName: 'test-scenario', trialIndex: 0, turns: [], snapshots: [], errors: [], captureErrors: [] },
       evalResults: [
         { evaluator: 'latency', score: 120, verdict: 'observed', reason: '' },
         { evaluator: 'quality', score: 95, verdict: 'observed', reason: '' },
@@ -849,7 +851,7 @@ describe('trial verdict enrichment — seam and edge cases', () => {
     // latency has baseline (will be enriched), cost has no baseline (stays observed)
     const trial: TrialResult = {
       trialIndex: 0,
-      transcript: { scenarioName: 'test-scenario', trialIndex: 0, turns: [], snapshots: [], errors: [] },
+      transcript: { scenarioName: 'test-scenario', trialIndex: 0, turns: [], snapshots: [], errors: [], captureErrors: [] },
       evalResults: [
         { evaluator: 'latency', score: 95, verdict: 'observed', reason: '' },
         { evaluator: 'cost', score: 0.05, verdict: 'observed', reason: '' },
@@ -948,6 +950,7 @@ function makeTrialWithScoreAndIndex(
       turns: [],
       snapshots: [],
       errors: [],
+      captureErrors: [],
     },
     evalResults: [{ evaluator, score, verdict, reason: '' }],
   };

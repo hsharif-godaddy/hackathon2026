@@ -460,6 +460,7 @@ export class EvalStore {
         turns: transcript.turns,
         snapshots: [],
         errors: transcript.errors,
+        captureErrors: transcript.captureErrors ?? [],
       },
     };
   }
@@ -768,6 +769,7 @@ export class EvalStore {
       turns: transcript.turns,
       snapshotCount,
       errors: transcript.errors,
+      captureErrors: transcript.captureErrors,
     };
     await writeFile(
       join(trialDir, 'transcript.json'),

@@ -56,6 +56,7 @@ function makeTranscript(index: number): Transcript {
     turns: [],
     snapshots: [],
     errors: [],
+    captureErrors: [],
   };
 }
 

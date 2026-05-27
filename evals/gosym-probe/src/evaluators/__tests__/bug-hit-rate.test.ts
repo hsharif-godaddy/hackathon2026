@@ -17,6 +17,8 @@ function makeTranscript(overrides: Partial<Transcript> = {}): Transcript {
     turns: [],
     snapshots: [],
     errors: [],
+    captureErrors: [],
+    
     ...overrides,
   };
 }
@@ -103,5 +105,25 @@ describe('BugHitRateEvaluator', () => {
 
   it('is named bug-hit-rate', () => {
     expect(evaluator.name).toBe('bug-hit-rate');
+  });
+
+  it('does not count captureErrors as agent errors', async () => {
+    const transcript = makeTranscript({
+      errors: [],
+      captureErrors: ['page.waitForSelector: Timeout 90000ms exceeded'],
+    });
+    const result = await evaluator.evaluate(transcript, makeScenario());
+    expect(result.score).toBe(1.0);
+    expect(result.verdict).toBe('pass');
+  });
+
+  it('counts only agent errors when both arrays are populated', async () => {
+    const transcript = makeTranscript({
+      errors: ['agent tool error'],
+      captureErrors: ['capture timeout'],
+    });
+    const result = await evaluator.evaluate(transcript, makeScenario());
+    expect(result.score).toBeCloseTo(0.5);
+    expect(result.verdict).toBe('pass');
   });
 });

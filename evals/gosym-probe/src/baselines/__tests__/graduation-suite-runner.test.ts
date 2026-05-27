@@ -98,7 +98,7 @@ function makeMockStore(): EvalStore {
 }
 
 function makeTranscript(scenarioName = 'test', trialIndex = 0): Transcript {
-  return { scenarioName, trialIndex, turns: [], snapshots: [], errors: [] };
+  return { scenarioName, trialIndex, turns: [], snapshots: [], errors: [], captureErrors: [] };
 }
 
 function makeTrialResult(overrides?: Partial<TrialResult>): TrialResult {

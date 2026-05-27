@@ -152,6 +152,8 @@ function makeTrialResult(
       ],
       snapshots,
       errors: [],
+      captureErrors: [],
+      
     },
     evalResults,
   };
@@ -225,6 +227,8 @@ function makeTrialResultWithReadFile(
       ],
       snapshots: [],
       errors: [],
+      captureErrors: [],
+      
     },
     evalResults: [
       {
@@ -837,6 +841,8 @@ describe('EvalStore', () => {
           ],
           snapshots: [],
           errors: [],
+          captureErrors: [],
+          
         },
         evalResults: [
           {
@@ -901,6 +907,8 @@ describe('EvalStore', () => {
           ],
           snapshots: [],
           errors: [],
+          captureErrors: [],
+          
         },
         evalResults: [
           {
@@ -2236,6 +2244,8 @@ describe('EvalStore', () => {
         turns: [],
         snapshots: [],
         errors: [],
+        captureErrors: [],
+        
       };
 
       await store.writePartialTrial(DIR_NAME, 'test-scenario', 0, transcript);
@@ -2431,6 +2441,41 @@ describe('EvalStore', () => {
         );
 
         expect(result).toBeNull();
+      });
+    });
+
+    describe('loadTrialResultByDirName()', () => {
+      it('defaults captureErrors to [] when field is missing from stored transcript', async () => {
+        const store = new EvalStore();
+        const transcriptWithoutCaptureErrors = {
+          scenarioName: 'test-scenario',
+          trialIndex: 0,
+          turns: [],
+          snapshotCount: 1,
+          errors: [],
+          // captureErrors intentionally omitted to simulate pre-existing data
+        };
+        const evalResults: EvalResult[] = [
+          {
+            evaluator: 'test-evaluator',
+            score: 1.0,
+            verdict: 'pass',
+            reason: 'all good',
+          },
+        ];
+        mockReadFile.mockResolvedValueOnce(
+          JSON.stringify(transcriptWithoutCaptureErrors),
+        );
+        mockReadFile.mockResolvedValueOnce(
+          JSON.stringify(evalResults),
+        );
+
+        const result = await store.loadTrialResultByDirName(
+          '20260409000000_run-001', 'test-scenario', 0,
+        );
+
+        expect(result).not.toBeNull();
+        expect(result!.transcript.captureErrors).toEqual([]);
       });
     });
 

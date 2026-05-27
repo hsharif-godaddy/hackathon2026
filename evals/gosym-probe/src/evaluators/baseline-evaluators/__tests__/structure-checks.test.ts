@@ -28,6 +28,7 @@ function makeTranscript(): Transcript {
     turns: [],
     snapshots: [],
     errors: [],
+    captureErrors: [],
   };
 }
 

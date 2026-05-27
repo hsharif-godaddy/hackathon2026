@@ -58,6 +58,7 @@ function makeTranscript(trialIndex = 0): Transcript {
     turns: [],
     snapshots: [],
     errors: [],
+    captureErrors: [],
   };
 }
 

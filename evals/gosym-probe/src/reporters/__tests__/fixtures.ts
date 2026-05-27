@@ -43,6 +43,7 @@ export function makeTrial(overrides?: Partial<TrialResult>): TrialResult {
       turns: [],
       snapshots: [],
       errors: [],
+      captureErrors: [],
     },
     evalResults: [],
     ...overrides,

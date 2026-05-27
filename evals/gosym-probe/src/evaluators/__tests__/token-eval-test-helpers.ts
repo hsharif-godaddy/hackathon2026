@@ -38,6 +38,7 @@ export function makeTranscript(trialIndex: number): Transcript {
     turns: [],
     snapshots: [],
     errors: [],
+    captureErrors: [],
   };
 }
 

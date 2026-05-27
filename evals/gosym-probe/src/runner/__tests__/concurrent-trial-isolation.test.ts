@@ -131,6 +131,7 @@ beforeEach(() => {
       turns: [],
       snapshots: [],
       errors: [],
+      captureErrors: [],
     };
   });
 });
@@ -375,6 +376,7 @@ describe('TokenUsageEvaluator probe delta isolation via SuiteRunner', () => {
           turns: [],
           snapshots: [],
           errors: [],
+          captureErrors: [],
         };
       });
 
@@ -437,6 +439,7 @@ describe('TokenUsageEvaluator probe delta isolation via SuiteRunner', () => {
             turns: [],
             snapshots: [],
             errors: [],
+            captureErrors: [],
           };
         },
       } as unknown as InstanceType<typeof Simulation>;

@@ -26,6 +26,7 @@ function makeTranscript(): Transcript {
     ],
     snapshots: [],
     errors: [],
+    captureErrors: [],
   };
 }
 

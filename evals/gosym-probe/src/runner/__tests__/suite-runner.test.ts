@@ -74,7 +74,7 @@ function makeTranscript(
   scenarioName = 'test-scenario',
   trialIndex = 0,
 ): Transcript {
-  return { scenarioName, trialIndex, turns: [], snapshots: [], errors: [] };
+  return { scenarioName, trialIndex, turns: [], snapshots: [], errors: [], captureErrors: [] };
 }
 
 function makePassResult(evalName: string): EvalResult {

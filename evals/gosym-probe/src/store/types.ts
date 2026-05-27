@@ -39,6 +39,8 @@ export interface StoredTranscript {
   turns: Turn[];
   snapshotCount: number;
   errors: string[];
+  /** Optional for backward compat with existing persisted files that pre-date this field. */
+  captureErrors?: string[];
 }
 
 export interface StoredSnapshotMeta {

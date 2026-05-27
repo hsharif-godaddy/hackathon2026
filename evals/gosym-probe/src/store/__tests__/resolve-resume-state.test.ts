@@ -27,6 +27,8 @@ function makeTrialResult(trialIndex: number): TrialResult {
       turns: [],
       snapshots: [],
       errors: [],
+      captureErrors: [],
+      
     },
     evalResults: [],
   };

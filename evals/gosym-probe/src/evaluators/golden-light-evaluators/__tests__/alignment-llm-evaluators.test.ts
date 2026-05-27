@@ -41,6 +41,7 @@ function makeTranscript(turns: Turn[] = [], errors: string[] = []): Transcript {
     turns,
     snapshots: [],
     errors,
+    captureErrors: [],
   };
 }
 

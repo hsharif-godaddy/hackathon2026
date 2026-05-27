@@ -63,6 +63,7 @@ function makeTranscript(capturedSite?: CapturedSite): Transcript {
     turns: [],
     snapshots: [],
     errors: [],
+    captureErrors: [],
     capturedSite,
   };
 }

@@ -518,7 +518,7 @@ describe('Simulation', () => {
         getTrialOutputDir: vi.fn().mockResolvedValue('/tmp/trials/0'),
       };
 
-      await new Simulation({
+      const transcript = await new Simulation({
         scenario,
         agentClient: agent,
         syntheticUser,
@@ -528,9 +528,52 @@ describe('Simulation', () => {
 
       expect(scenario.teardown).toHaveBeenCalledOnce();
       expect(warnSpy).toHaveBeenCalledOnce();
+      expect(transcript.captureErrors).toHaveLength(1);
+      expect(transcript.captureErrors[0]).toContain('browser crash');
+      expect(transcript.errors).toHaveLength(0);
       warnSpy.mockRestore();
     },
   );
+
+  it('routes getTrialOutputDir failure to captureErrors, not errors', async () => {
+    const warnSpy = vi
+      .spyOn(console, 'warn')
+      .mockImplementation(() => {});
+    const scenario = makeScenario({
+      setup: vi.fn().mockResolvedValue({ appId: 'app' }),
+    });
+    const syntheticUser: SyntheticUserAgent = {
+      nextMessage: vi
+        .fn()
+        .mockResolvedValueOnce('hello')
+        .mockResolvedValue(null),
+    };
+    const mockSiteCapture = {
+      capture: vi.fn(),
+    };
+    const agent = makeAutoAgent();
+    const captureContext: SimulationCaptureContext = {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      siteCapture: mockSiteCapture as any,
+      getTrialOutputDir: vi
+        .fn()
+        .mockRejectedValue(new Error('dir creation failed')),
+    };
+
+    const transcript = await new Simulation({
+      scenario,
+      agentClient: agent,
+      syntheticUser,
+      captureContext,
+      config: mockConfig,
+    }).run(0);
+
+    expect(transcript.captureErrors).toHaveLength(1);
+    expect(transcript.captureErrors[0]).toContain('dir creation failed');
+    expect(transcript.errors).toHaveLength(0);
+    expect(mockSiteCapture.capture).not.toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
 
   it('sets trialIndex and scenarioName in the transcript', async () => {
     const scenario = makeScenario({ name: 'my-scenario' });

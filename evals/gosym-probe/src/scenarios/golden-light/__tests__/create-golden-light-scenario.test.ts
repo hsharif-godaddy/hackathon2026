@@ -152,6 +152,8 @@ describe('createGoldenLightScenario', () => {
       ],
       snapshots: [],
       errors: [],
+      captureErrors: [],
+      
     };
     const result = await agentStepsEval!.evaluate(transcript, scenario);
     const expectedScore = 1 / (1 + Math.exp(0.2 * (5 - 15)));

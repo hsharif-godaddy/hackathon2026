@@ -47,6 +47,7 @@ function makeTranscript(
     turns,
     snapshots: [],
     errors: [],
+    captureErrors: [],
   };
 }
 

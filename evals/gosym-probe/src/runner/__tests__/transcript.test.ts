@@ -40,6 +40,7 @@ describe('TranscriptBuilder', () => {
     expect(transcript.turns).toHaveLength(0);
     expect(transcript.snapshots).toHaveLength(0);
     expect(transcript.errors).toHaveLength(0);
+    expect(transcript.captureErrors).toHaveLength(0);
   });
 
   describe('addTurn()', () => {
@@ -201,6 +202,34 @@ describe('TranscriptBuilder', () => {
       builder.addError('first error');
       builder.addError('second error');
       expect(builder.build().errors).toEqual(['first error', 'second error']);
+    });
+  });
+
+  describe('addCaptureError()', () => {
+    it('records capture errors in insertion order', () => {
+      const builder = new TranscriptBuilder('s', 0);
+      builder.addCaptureError('capture failed: timeout');
+      builder.addCaptureError('output dir creation failed');
+      expect(builder.build().captureErrors).toEqual([
+        'capture failed: timeout',
+        'output dir creation failed',
+      ]);
+    });
+
+    it('does not bleed into errors', () => {
+      const builder = new TranscriptBuilder('s', 0);
+      builder.addCaptureError('capture failed: timeout');
+      const transcript = builder.build();
+      expect(transcript.errors).toHaveLength(0);
+      expect(transcript.captureErrors).toHaveLength(1);
+    });
+
+    it('addError() does not bleed into captureErrors', () => {
+      const builder = new TranscriptBuilder('s', 0);
+      builder.addError('agent error');
+      const transcript = builder.build();
+      expect(transcript.captureErrors).toHaveLength(0);
+      expect(transcript.errors).toHaveLength(1);
     });
   });
 

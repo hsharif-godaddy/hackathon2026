@@ -30,6 +30,9 @@ export interface Transcript {
   snapshots: DOMSnapshot[];
   capturedSite?: CapturedSite;
   errors: string[];
+  /** Infrastructure failures from the capture path (Playwright timeouts, output dir errors).
+   * Not counted as agent errors — kept separate so evaluators like bug-hit-rate are not polluted. */
+  captureErrors: string[];
   /** Number of retries before the trial succeeded (0 means first attempt). */
   retryCount?: number;
 }
@@ -38,6 +41,7 @@ export class TranscriptBuilder {
   private readonly _turns: Turn[] = [];
   private readonly _snapshots: DOMSnapshot[] = [];
   private readonly _errors: string[] = [];
+  private readonly _captureErrors: string[] = [];
   private _capturedSite: CapturedSite | undefined;
 
   constructor(
@@ -61,6 +65,10 @@ export class TranscriptBuilder {
     this._errors.push(error);
   }
 
+  addCaptureError(error: string): void {
+    this._captureErrors.push(error);
+  }
+
   build(): Transcript {
     return {
       scenarioName: this.scenarioName,
@@ -71,6 +79,7 @@ export class TranscriptBuilder {
         capturedSite: this._capturedSite,
       }),
       errors: [...this._errors],
+      captureErrors: [...this._captureErrors],
     };
   }
 }

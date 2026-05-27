@@ -40,6 +40,7 @@ function makeTrial(
   evalResults: (ReturnType<typeof makeEvalResult> | EvalResult)[],
   turns: Turn[] = [],
   errors: string[] = [],
+  captureErrors: string[] = [],
 ) {
   return {
     trialIndex: index,
@@ -49,6 +50,7 @@ function makeTrial(
       turns,
       snapshots: [],
       errors,
+      captureErrors,
     },
     evalResults,
   };
@@ -1022,6 +1024,54 @@ describe('MdReporter — failure/error counts', () => {
     const reporter = new MdReporter();
     const content = reporter.render('run-001', [result]);
     expect(content).not.toContain('**Runtime Errors:**');
+  });
+
+  it('shows Capture Errors count when transcript has capture errors', () => {
+    const result: ScenarioResult = {
+      scenarioName: 'capture-errors-scenario',
+      stabilityLevel: 'medium',
+      trials: [
+        makeTrial(
+          0,
+          [makeEvalResult('eval-a', 'pass')],
+          [],
+          [],
+          ['Playwright timeout', 'Output dir failed'],
+        ),
+      ],
+      aggregated: {
+        'eval-a': {
+          passAtK: true,
+          passToTheK: true,
+          passingTrials: 1,
+          totalTrials: 1,
+        },
+      },
+    };
+    const reporter = new MdReporter();
+    const content = reporter.render('run-001', [result]);
+    expect(content).toContain('**Capture Errors:** 2');
+  });
+
+  it('omits Capture Errors when transcript has no capture errors', () => {
+    const result: ScenarioResult = {
+      scenarioName: 'clean-capture',
+      stabilityLevel: 'medium',
+      trials: [
+        makeTrial(0, [makeEvalResult('eval-a', 'pass')]),
+      ],
+      aggregated: {
+        'eval-a': {
+          passAtK: true,
+          passToTheK: true,
+          passingTrials: 1,
+          totalTrials: 1,
+        },
+      },
+    };
+    const reporter = new MdReporter();
+    const content = reporter.render('run-001', [result]);
+    expect(content).not.toContain('**Capture Errors:**');
   });
 
   it('aggregates Tool Errors and Runtime Errors across multiple trials', () => {

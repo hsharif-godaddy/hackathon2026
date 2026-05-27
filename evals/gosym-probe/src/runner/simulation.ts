@@ -404,7 +404,7 @@ export class Simulation {
       trialDir = await captureContext.getTrialOutputDir(trialIndex);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      builder.addError(
+      builder.addCaptureError(
         `Capture failed (trial ${trialIndex}): ${msg}`,
       );
       // nosemgrep: javascript.lang.security.audit.unsafe-formatstring
@@ -424,7 +424,7 @@ export class Simulation {
       builder.addCapturedSite(result.capturedSite);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      builder.addError(
+      builder.addCaptureError(
         `Capture failed (trial ${trialIndex}): ${msg}`,
       );
       // nosemgrep: javascript.lang.security.audit.unsafe-formatstring
