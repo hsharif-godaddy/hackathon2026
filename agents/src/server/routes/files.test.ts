@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import request from 'supertest';
 import express, { Application } from 'express';
 import { filesRouter, filesPublicRouter } from './files.js';
@@ -49,6 +49,16 @@ vi.mock('../../services/FileUploadService.js', () => {
     FileUploadService: vi.fn(() => mockService)
   };
 });
+
+// Mock AppRepository so route can look up app.path without a real SQLite db.
+// vi.mock() factories are hoisted above top-level vars, so use vi.hoisted() to
+// share the mock fn between the factory and individual tests.
+const { appRepoFindByIdMock } = vi.hoisted(() => ({ appRepoFindByIdMock: vi.fn() }));
+vi.mock('../../database/repositories/AppRepository.js', () => ({
+  AppRepository: vi.fn(() => ({
+    findById: appRepoFindByIdMock
+  }))
+}));
 
 // Mock file URL signer for signed URL tests
 vi.mock('../../utils/file-url-signer.js', () => ({
@@ -339,6 +349,95 @@ describe('Files Router - Path Traversal Security', () => {
     });
   });
 
+  describe('GET /files/uploads/:appId/:filename - HTML/XML Force Download', () => {
+    const cases: Array<{ filename: string; mimeType: string }> = [
+      { filename: 'reference.html', mimeType: 'text/html' },
+      { filename: 'page.htm', mimeType: 'text/html' },
+      { filename: 'doc.xhtml', mimeType: 'application/xhtml+xml' },
+      { filename: 'sitemap.xml', mimeType: 'application/xml' },
+      { filename: 'feed.xml', mimeType: 'text/xml' },
+      { filename: 'transform.xsl', mimeType: 'application/xml' },
+      { filename: 'transform.xslt', mimeType: 'application/xml' }
+    ];
+
+    it.each(cases)(
+      'serves $filename as a non-renderable attachment',
+      async ({ filename, mimeType }) => {
+        const futureExp = Math.floor(Date.now() / 1000) + 3600;
+        const { fileUploadService } = await import('../../services/FileUploadService.js');
+
+        vi.mocked(fileUploadService.listUploadedFiles).mockResolvedValue([
+          {
+            id: 'file_html',
+            originalName: filename,
+            filename,
+            size: 50,
+            mimeType,
+            uploadedAt: new Date().toISOString()
+          }
+        ]);
+
+        vi.mocked(fileUploadService.getAppUploadsDir).mockReturnValue(testUploadDir);
+        vi.mocked(fileUploadService.getFilePath).mockReturnValue(
+          `${testUploadDir}/upload_html/${filename}`
+        );
+
+        const { writeFile } = await import('fs/promises');
+        await mkdir(`${testUploadDir}/upload_html`, { recursive: true });
+        await writeFile(
+          `${testUploadDir}/upload_html/${filename}`,
+          Buffer.from('<script>alert(1)</script>')
+        );
+
+        const response = await request(app).get(
+          `/files/uploads/test-app/${filename}?sig=valid-test-signature&exp=${futureExp}`
+        );
+
+        expect(response.status).toBe(200);
+        // Browser must not render this as HTML/XML
+        expect(response.headers['content-type']).toBe('text/plain; charset=utf-8');
+        // Must be downloaded, not rendered inline
+        expect(response.headers['content-disposition']).toBe(
+          `attachment; filename="${filename}"`
+        );
+        expect(response.headers['x-content-type-options']).toBe('nosniff');
+      }
+    );
+
+    it('still serves images inline with their declared content-type', async () => {
+      const futureExp = Math.floor(Date.now() / 1000) + 3600;
+      const { fileUploadService } = await import('../../services/FileUploadService.js');
+
+      vi.mocked(fileUploadService.listUploadedFiles).mockResolvedValue([
+        {
+          id: 'file_jpg',
+          originalName: 'photo.jpg',
+          filename: 'photo.jpg',
+          size: 100,
+          mimeType: 'image/jpeg',
+          uploadedAt: new Date().toISOString()
+        }
+      ]);
+
+      vi.mocked(fileUploadService.getAppUploadsDir).mockReturnValue(testUploadDir);
+      vi.mocked(fileUploadService.getFilePath).mockReturnValue(
+        `${testUploadDir}/upload_jpg/photo.jpg`
+      );
+
+      const { writeFile } = await import('fs/promises');
+      await mkdir(`${testUploadDir}/upload_jpg`, { recursive: true });
+      await writeFile(`${testUploadDir}/upload_jpg/photo.jpg`, Buffer.from('jpg-data'));
+
+      const response = await request(app).get(
+        `/files/uploads/test-app/photo.jpg?sig=valid-test-signature&exp=${futureExp}`
+      );
+
+      expect(response.status).toBe(200);
+      expect(response.headers['content-type']).toBe('image/jpeg');
+      expect(response.headers['content-disposition']).toBeUndefined();
+    });
+  });
+
   describe('GET /files/:appId/list - Signed URLs in Response', () => {
     it('should include signedUrl for each file in list response', async () => {
       const { fileUploadService } = await import('../../services/FileUploadService.js');
@@ -387,6 +486,120 @@ describe('Files Router - Path Traversal Security', () => {
 
       expect(response.status).toBe(200);
       expect(response.body.files).toHaveLength(0);
+    });
+  });
+
+  describe('POST /files/upload - Persist to project docs/', () => {
+    const projectRoot = '/tmp/test-uploads-docs-project';
+    const uploadsRoot = '/tmp/test-uploads-docs-source';
+
+    beforeEach(async () => {
+      for (const dir of [projectRoot, uploadsRoot]) {
+        if (existsSync(dir)) await rm(dir, { recursive: true, force: true });
+      }
+      await mkdir(projectRoot, { recursive: true });
+      await mkdir(`${uploadsRoot}/upload_docs`, { recursive: true });
+      appRepoFindByIdMock.mockReset();
+    });
+
+    afterEach(async () => {
+      for (const dir of [projectRoot, uploadsRoot]) {
+        if (existsSync(dir)) await rm(dir, { recursive: true, force: true });
+      }
+    });
+
+    // FileUploadService stores files under a sanitized `filename` (not originalName),
+    // so the source on disk uses a safe name regardless of what the user named the file.
+    async function runUpload(originalName: string, mimeType: string, body: string) {
+      const { fileUploadService } = await import('../../services/FileUploadService.js');
+      const storedFilename = `stored_${Math.random().toString(36).slice(2, 10)}.bin`;
+      const sourcePath = `${uploadsRoot}/upload_docs/${storedFilename}`;
+      const { writeFile } = await import('fs/promises');
+      await writeFile(sourcePath, body);
+
+      vi.mocked(fileUploadService.processUpload).mockResolvedValue({
+        uploadId: 'upload_docs',
+        appId: 'test-app',
+        files: [{
+          id: 'file_1',
+          originalName,
+          filename: storedFilename,
+          size: body.length,
+          mimeType,
+          uploadedAt: new Date().toISOString()
+        }],
+        failedFiles: [],
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
+      });
+      vi.mocked(fileUploadService.getFilePath).mockImplementation(
+        (_appId: string, uploadId: string, filename: string) => `${uploadsRoot}/${uploadId}/${filename}`
+      );
+
+      return request(app)
+        .post('/files/upload')
+        .field('appId', 'test-app')
+        .attach('files', Buffer.from(body), originalName)
+        .set('Authorization', 'Bearer valid-token');
+    }
+
+    it('copies non-image uploads into <app.path>/docs/', async () => {
+      appRepoFindByIdMock.mockReturnValue({ id: 'test-app', path: projectRoot });
+
+      const response = await runUpload(
+        'bakery-products.xml',
+        'application/xml',
+        '<bakery><name>Sunrise</name></bakery>'
+      );
+
+      expect(response.status).toBe(200);
+      expect(existsSync(`${projectRoot}/docs/bakery-products.xml`)).toBe(true);
+    });
+
+    it('does not copy images into docs/ (auto-resolve handles those)', async () => {
+      appRepoFindByIdMock.mockReturnValue({ id: 'test-app', path: projectRoot });
+
+      const response = await runUpload('photo.png', 'image/png', 'fake-png-bytes');
+
+      expect(response.status).toBe(200);
+      expect(existsSync(`${projectRoot}/docs/photo.png`)).toBe(false);
+    });
+
+    it('skips docs/ copy when no app record (PaaS / unregistered app)', async () => {
+      appRepoFindByIdMock.mockReturnValue(null);
+
+      const response = await runUpload('reference.html', 'text/html', '<p>hi</p>');
+
+      expect(response.status).toBe(200);
+      expect(existsSync(`${projectRoot}/docs/reference.html`)).toBe(false);
+    });
+
+    it('rejects path-escape attempts in originalName via basename()', async () => {
+      appRepoFindByIdMock.mockReturnValue({ id: 'test-app', path: projectRoot });
+
+      // basename() reduces "../../etc/passwd" to "passwd" — file lands as docs/passwd, not above projectRoot.
+      const response = await runUpload('../../etc/passwd', 'text/plain', 'malicious');
+
+      expect(response.status).toBe(200);
+      expect(existsSync(`${projectRoot}/docs/passwd`)).toBe(true);
+      // No file outside the docs dir was written.
+      expect(existsSync(`${projectRoot}/../etc/passwd`)).toBe(false);
+    });
+
+    it('does not fail the upload if docs/ copy fails', async () => {
+      // Point app.path at a path that does not exist and cannot be created (file collision).
+      const blockingFile = `/tmp/test-uploads-docs-blocking-${Date.now()}`;
+      const { writeFile } = await import('fs/promises');
+      await writeFile(blockingFile, 'i am a file, not a directory');
+      try {
+        appRepoFindByIdMock.mockReturnValue({ id: 'test-app', path: blockingFile });
+
+        const response = await runUpload('note.txt', 'text/plain', 'hello');
+
+        // Upload still succeeds even when the docs/ copy cannot be performed.
+        expect(response.status).toBe(200);
+      } finally {
+        await rm(blockingFile, { force: true });
+      }
     });
   });
 

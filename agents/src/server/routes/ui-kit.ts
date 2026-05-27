@@ -17,7 +17,7 @@ if (!existsSync(TEMP_DIR)) {
   mkdirSync(TEMP_DIR, { recursive: true })
 }
 
-const ALLOWED_EXTENSIONS = ['.zip', '.md', '.txt', '.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp']
+const ALLOWED_EXTENSIONS = ['.zip', '.md', '.txt', '.xml', '.html', '.htm', '.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp']
 
 const fileUpload = multer({
   storage: multer.diskStorage({

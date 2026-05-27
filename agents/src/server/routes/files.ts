@@ -1,18 +1,98 @@
 import { Router, Request, Response, NextFunction, IRouter } from 'express'
 import rateLimit from 'express-rate-limit'
 import multer from 'multer'
+import { mkdir, copyFile } from 'fs/promises'
+import { dirname, join, normalize, resolve, basename } from 'path'
 
 import { logger, log } from '../../logging/index.js'
 import { isClientError } from '../../services/errors/file-upload-errors.js'
 import { fileUploadService } from '../../services/FileUploadService.js'
+import { AppRepository } from '../../database/repositories/AppRepository.js'
 import { validateAppOwnershipFromBody } from '../middleware/app-ownership.js'
 import type { AuthenticatedRequest } from '../middleware/jwt-auth.js'
 import { signFileUrl, verifyFileSignature } from '../../utils/file-url-signer.js'
+
+const appRepo = new AppRepository()
 
 const router: IRouter = Router()
 
 // Public router for file serving with signed URLs (no JWT required)
 const publicRouter: IRouter = Router()
+
+const RENDERABLE_MARKUP_EXTENSIONS = ['.html', '.htm', '.xhtml', '.xml', '.xsl', '.xslt'] as const
+const RENDERABLE_MARKUP_MIME_TYPES = new Set([
+  'text/html',
+  'application/xhtml+xml',
+  'application/xml',
+  'text/xml'
+])
+
+function isRenderableMarkup(filename: string, mimeType: string | null): boolean {
+  const lower = filename.toLowerCase()
+  if (RENDERABLE_MARKUP_EXTENSIONS.some(ext => lower.endsWith(ext))) {
+    return true
+  }
+  return mimeType !== null && RENDERABLE_MARKUP_MIME_TYPES.has(mimeType)
+}
+
+interface UploadedFileMeta {
+  originalName: string
+  filename: string
+  mimeType: string | null
+}
+
+// Mirror non-image chat uploads into <app.path>/docs/<originalName> so the
+// agent's regular file-read tools can reach them on later messages — chat
+// attachments are otherwise only included in the message they were sent with.
+// Best-effort: failures are logged and do not fail the upload.
+async function persistUploadsToDocs(
+  appId: string,
+  uploadId: string,
+  files: UploadedFileMeta[]
+): Promise<void> {
+  const app = appRepo.findById(appId)
+  if (!app?.path) {
+    // PaaS or unregistered app — no project workspace to copy into.
+    return
+  }
+
+  const docsDir = resolve(join(app.path, 'docs'))
+
+  for (const file of files) {
+    const isImage = file.mimeType?.startsWith('image/') ?? false
+    if (isImage) continue
+
+    const safeName = basename(file.originalName)
+    if (!safeName || safeName === '.' || safeName === '..') continue
+
+    const targetPath = resolve(join(docsDir, safeName))
+    if (!normalize(targetPath).startsWith(docsDir)) {
+      logger.warn('file-upload.docs-persist.unsafe-path', {
+        appId,
+        originalName: file.originalName
+      }, { tags: ['security', 'path-traversal'] })
+      continue
+    }
+
+    try {
+      const sourcePath = fileUploadService.getFilePath(appId, uploadId, file.filename)
+      await mkdir(dirname(targetPath), { recursive: true })
+      await copyFile(sourcePath, targetPath)
+      logger.debug('file-upload.docs-persist.success', {
+        appId,
+        uploadId,
+        filename: safeName
+      })
+    } catch (error) {
+      logger.warn('file-upload.docs-persist.failed', {
+        appId,
+        uploadId,
+        filename: safeName,
+        error: error instanceof Error ? error.message : String(error)
+      })
+    }
+  }
+}
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -148,6 +228,8 @@ router.post('/upload', uploadRateLimiter,
     })
 
     const result = await fileUploadService.processUpload(appId, files)
+
+    await persistUploadsToDocs(appId, result.uploadId, result.files)
 
     // Add signed URLs to response for browser access
     // Wrap in try-catch to handle missing encryption key gracefully
@@ -480,8 +562,17 @@ publicRouter.get('/uploads/:appId/:filename', async (req: Request, res: Response
     // Read and serve the file
     const fileBuffer = await readFile(filePath)
 
-    // Set appropriate content-type and security headers
-    res.setHeader('Content-Type', matchingFile.mimeType || 'application/octet-stream')
+    // HTML/XML round-trip back to browsers via signed URLs; force-download to
+    // prevent stored XSS on the agents-service origin. Content-Type is also
+    // overridden to text/plain because some browsers ignore Content-Disposition
+    // for known-renderable types.
+    if (isRenderableMarkup(matchingFile.filename, matchingFile.mimeType)) {
+      res.setHeader('Content-Type', 'text/plain; charset=utf-8')
+      const safeAsciiFilename = matchingFile.filename.replace(/[^A-Za-z0-9._-]/g, '_')
+      res.setHeader('Content-Disposition', `attachment; filename="${safeAsciiFilename}"`)
+    } else {
+      res.setHeader('Content-Type', matchingFile.mimeType || 'application/octet-stream')
+    }
     res.setHeader('Content-Length', fileBuffer.length)
 
     // Set Cache-Control based on auth method

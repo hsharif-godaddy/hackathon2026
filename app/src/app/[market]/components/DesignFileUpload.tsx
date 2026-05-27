@@ -143,7 +143,7 @@ export default function DesignFileUpload({ uploadedFile, onFileChange, onError, 
       <input
         ref={inputRef}
         type="file"
-        accept=".md,.txt,.zip,.png,.jpg,.jpeg,.gif,.svg,.webp"
+        accept=".md,.txt,.xml,.html,.htm,.zip,.png,.jpg,.jpeg,.gif,.svg,.webp"
         onChange={handleFileSelect}
         className="hidden"
         disabled={disabled}

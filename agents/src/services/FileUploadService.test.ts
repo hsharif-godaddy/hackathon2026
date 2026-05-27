@@ -65,6 +65,28 @@ describe('FileUploadService - File Type Validation', () => {
 
     expect(() => service.validateFile(file)).not.toThrow();
   });
+
+  it('should accept XML files', () => {
+    const file = {
+      originalname: 'sitemap.xml',
+      mimetype: 'application/xml',
+      size: 1024,
+      buffer: Buffer.from('<urlset><url><loc>https://example.com</loc></url></urlset>')
+    } as Express.Multer.File;
+
+    expect(() => service.validateFile(file)).not.toThrow();
+  });
+
+  it('should accept HTML files', () => {
+    const file = {
+      originalname: 'reference.html',
+      mimetype: 'text/html',
+      size: 1024,
+      buffer: Buffer.from('<html><body><h1>Hello</h1></body></html>')
+    } as Express.Multer.File;
+
+    expect(() => service.validateFile(file)).not.toThrow();
+  });
 });
 
 describe('FileUploadService - Per-File Error Handling', () => {

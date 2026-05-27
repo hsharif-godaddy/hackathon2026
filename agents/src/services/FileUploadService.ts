@@ -50,9 +50,6 @@ const BLOCKED_EXTENSIONS = new Set([
   '.sql', '.db',
   // Archives
   '.zip', '.tar', '.gz', '.rar', '.7z',
-  // HTML/XML that can execute scripts (SVG is allowed but sanitized)
-  '.html', '.htm', '.xhtml',
-  '.xml', '.xsl', '.xslt',
   // Other executable formats
   '.swf', '.jar'
 ])
@@ -67,11 +64,6 @@ const BLOCKED_MIME_TYPES = new Set([
   'application/gzip',
   'application/x-rar-compressed',
   'application/x-7z-compressed',
-  // HTML/XML MIME types
-  'text/html',
-  'application/xhtml+xml',
-  'application/xml',
-  'text/xml',
   // Other executable formats
   'application/x-shockwave-flash',
   'application/java-archive'
