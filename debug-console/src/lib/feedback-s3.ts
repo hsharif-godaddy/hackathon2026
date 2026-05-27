@@ -803,10 +803,6 @@ export interface FeedbackByAppRow {
   previewUrl?: string;
   publishedUrlFull?: string;
   fullStoryUrl?: string;
-  customerFirstName?: string;
-  customerLastName?: string;
-  customerEmail?: string;
-  customerPhone?: string;
 }
 
 function boolField(item: FeedbackItem, keys: readonly string[]): boolean | undefined {
@@ -877,10 +873,6 @@ export function buildFeedbackByApp(
       previewUrl: strField(item, ['preview_url']),
       publishedUrlFull: strField(item, ['published_url_full']),
       fullStoryUrl: strField(item, ['full_story_url']),
-      customerFirstName: strField(item, ['customer_first_name']),
-      customerLastName: strField(item, ['customer_last_name']),
-      customerEmail: strField(item, ['customer_email']),
-      customerPhone: strField(item, ['customer_phone']),
     });
   }
 

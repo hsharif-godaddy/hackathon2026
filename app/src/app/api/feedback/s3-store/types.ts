@@ -58,18 +58,7 @@ export interface FeedbackS3Record {
   full_story_url: string | null;
   /** Pre-rendered subscription summary string (e.g. 'Pro Annual / Active'). */
   subscription_info: string | null;
-  // ---- Customer profile fields (added 2026-05) ----
-  // Populated best-effort by the BFF via fetchCustomerProfile (Profile API)
-  // so the fanout Lambda can build a CRM case body that matches the legacy
-  // BFF shape — Saideep Kilaru / skilaru@godaddy.com / phone, not raw IDs.
-  // All optional: profile fetch failure does not block parquet write; Lambda
-  // gracefully falls back to (customer_id / null / null / null) when fields
-  // are missing. shopper_id is always available from the JWT.
   shopper_id: string | null;
-  customer_first_name: string | null;
-  customer_last_name: string | null;
-  customer_email: string | null;
-  customer_phone: string | null;
   /**
    * Per-submission Switchboard gate (`appbuilder-fanout-via-lambda`). The BFF
    * resolves the flag at submit time and stamps the boolean here so the

@@ -631,14 +631,10 @@ function shouldOpenCrmCase(row) {
 }
 
 /**
- * Build a CMAPI case body that matches the legacy BFF
- * (`app/src/lib/crm/case-client.ts:buildCaseBody`) shape verbatim — same
- * field set, same caseNotes structure (`Comment : (appid - <id>) <details>`),
- * same recordType/status/categories — so support agents see "Saideep
- * Kilaru / skilaru@godaddy.com / 9170...", not a raw customerId with a
- * noreply email. Profile fields come from the parquet (BFF best-effort
- * fetched them via Profile API at submit time); when unavailable we fall
- * back to safe nulls/customerId rather than blocking the case.
+ * Build a CMAPI case body. Customer contact fields (name/email/phone) are
+ * intentionally null — the BFF no longer writes PII to the parquet. Support
+ * agents resolve customer details from `shopperId` / `externalSystemId` via
+ * internal tooling.
  */
 function buildCaseBody({ row, customerId, appId, submissionId }) {
   const text = row.feedback_text ?? '';
@@ -647,15 +643,11 @@ function buildCaseBody({ row, customerId, appId, submissionId }) {
   const appIdSegment = appId ? `(appid - ${appId}) ` : '';
   const note = `Comment : ${appIdSegment}${escalationDetails}`;
 
-  const firstName = row.customer_first_name ?? '';
-  const lastName = row.customer_last_name ?? '';
-  const fullName = `${firstName} ${lastName}`.trim();
-
-  const body = {
-    contactName: fullName || customerId,
-    contactFirstName: firstName || null,
-    contactLastName: lastName || null,
-    contactEmail: row.customer_email ?? null,
+  return {
+    contactName: customerId,
+    contactFirstName: null,
+    contactLastName: null,
+    contactEmail: null,
     shopperId: row.shopper_id ?? null,
     recordType: 'standard',
     status: 'Open',
@@ -679,12 +671,6 @@ function buildCaseBody({ row, customerId, appId, submissionId }) {
       escalationDetails,
     },
   };
-
-  if (row.customer_phone) {
-    body.contactPhone = row.customer_phone;
-  }
-
-  return body;
 }
 
 /**

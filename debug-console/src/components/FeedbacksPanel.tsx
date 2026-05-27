@@ -26,10 +26,6 @@ interface FeedbackByAppRow {
   previewUrl?: string;
   publishedUrlFull?: string;
   fullStoryUrl?: string;
-  customerFirstName?: string;
-  customerLastName?: string;
-  customerEmail?: string;
-  customerPhone?: string;
 }
 
 interface FeedbacksApiResponse {
@@ -508,25 +504,6 @@ function FeedbackDetail({ row }: { row: FeedbackByAppRow }) {
     { label: 'App Published', value: row.appPublishFlag == null ? '—' : row.appPublishFlag ? 'Yes' : 'No' },
   ];
 
-  // Customer contact details are PII and only surfaced when the customer
-  // explicitly consented to follow-up. Each line is omitted when the
-  // underlying field is empty so we don't show "—" rows.
-  const customerContact: DetailField[] = [];
-  if (row.consent === true) {
-    const fullName = [row.customerFirstName, row.customerLastName]
-      .filter((s): s is string => Boolean(s && s.trim()))
-      .join(' ')
-      .trim();
-    if (fullName) customerContact.push({ label: 'Name', value: fullName });
-    if (row.customerEmail) {
-      customerContact.push({
-        label: 'Email',
-        value: <a href={`mailto:${row.customerEmail}`} style={{ color: '#1d4ed8', textDecoration: 'none' }}>{row.customerEmail}</a>,
-      });
-    }
-    if (row.customerPhone) customerContact.push({ label: 'Phone', value: row.customerPhone });
-  }
-
   const links: Array<{ label: string; url: string }> = [];
   if (row.previewUrl) links.push({ label: 'Preview', url: row.previewUrl });
   if (row.publishedUrlFull) links.push({ label: 'Published', url: row.publishedUrlFull });
@@ -588,12 +565,6 @@ function FeedbackDetail({ row }: { row: FeedbackByAppRow }) {
       <DetailSection title="Context">
         <DetailList fields={context} />
       </DetailSection>
-
-      {customerContact.length > 0 && (
-        <DetailSection title="Customer (consented)">
-          <DetailList fields={customerContact} />
-        </DetailSection>
-      )}
 
       {row.experimentsLine && (
         <DetailSection title="Experiments">

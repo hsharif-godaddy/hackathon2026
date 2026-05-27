@@ -23,7 +23,6 @@ import { InvokeCommand, LambdaClient } from '@aws-sdk/client-lambda';
 import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 
 import type { FeedbackStorePayload } from '@/components/feedback/types';
-import { airoCertTokenService, fetchCustomerProfile } from '@/lib/crm';
 import { type CustomerAuthContext, withCustomerAuth } from '@/lib/customer-auth';
 import { logger } from '@/lib/request-context';
 import { checkSwitchboardFlag } from '@/lib/switchboard/server';
@@ -303,32 +302,6 @@ export const POST = withCustomerAuth(async (
     });
   }
 
-  // Best-effort customer profile fetch — populates the legacy CRM case shape
-  // (firstName/lastName/email/phone, not raw IDs). Profile API failure must
-  // NOT block the parquet write: legacy rows render fine in the Lambda with
-  // null-safe fallbacks (customer_id used as contactName, no email/phone).
-  // Mirrors the pattern used by app/src/lib/crm/case-client.ts:openCrmCase
-  // which we replaced for the fanout flow.
-  let profileFirstName: string | null = null;
-  let profileLastName: string | null = null;
-  let profileEmail: string | null = null;
-  let profilePhone: string | null = null;
-  if (authContext.user.customerId) {
-    try {
-      const ssoToken = await airoCertTokenService.getToken();
-      const profile = await fetchCustomerProfile(authContext.user.customerId, ssoToken);
-      profileFirstName = profile.firstName || null;
-      profileLastName = profile.lastName || null;
-      profileEmail = profile.email || null;
-      profilePhone = profile.phone;
-    } catch (err) {
-      logger.warn('feedback.store.s3.profile_fetch_failed', {
-        customerId: authContext.user.customerId,
-        error: err instanceof Error ? err.message : String(err),
-      });
-    }
-  }
-
   const now = new Date();
   const s3Key = buildS3Key(appId, now);
   const tsStr = formatUtcTs(now);
@@ -359,10 +332,6 @@ export const POST = withCustomerAuth(async (
     full_story_url: fullStoryUrl,
     subscription_info: subscriptionInfo,
     shopper_id: authContext.user.shopperId ?? null,
-    customer_first_name: profileFirstName,
-    customer_last_name: profileLastName,
-    customer_email: profileEmail,
-    customer_phone: profilePhone,
     fanout_via_lambda: fanoutViaLambda,
   };
 

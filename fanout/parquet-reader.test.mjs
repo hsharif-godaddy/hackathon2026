@@ -63,8 +63,8 @@ await test('parseFeedbackParquet throws on empty buffer', async () => {
  * If a future change adds a column to the BFF schema or removes one without
  * updating the parser, this round-trip will start failing — preventing a
  * silent prod regression where fields the Lambda relies on (e.g.
- * `fanout_via_lambda`, `customer_email`, `feedback_category`) come back
- * undefined and the handler silently no-ops or sends bad CRM bodies.
+ * `fanout_via_lambda`, `feedback_category`) come back undefined and the
+ * handler silently no-ops or sends bad CRM bodies.
  *
  * Keep this list in sync with `feedback-to-parquet.ts:PARQUET_SCHEMA`.
  */
@@ -96,10 +96,6 @@ async function buildFullSchemaParquet(row) {
     full_story_url: { type: 'UTF8', optional: true },
     subscription_info: { type: 'UTF8', optional: true },
     shopper_id: { type: 'UTF8', optional: true },
-    customer_first_name: { type: 'UTF8', optional: true },
-    customer_last_name: { type: 'UTF8', optional: true },
-    customer_email: { type: 'UTF8', optional: true },
-    customer_phone: { type: 'UTF8', optional: true },
     fanout_via_lambda: { type: 'BOOLEAN', optional: true },
   });
   const chunks = [];
@@ -141,10 +137,6 @@ await test('parseFeedbackParquet round-trips the full BFF schema (every column t
     full_story_url: 'https://app.fullstory.com/ui/123',
     subscription_info: 'Pro Annual / Active',
     shopper_id: '9469965',
-    customer_first_name: 'Saideep',
-    customer_last_name: 'Kilaru',
-    customer_email: 'skilaru@godaddy.com',
-    customer_phone: '917032698060',
     fanout_via_lambda: true,
   };
   const buf = await buildFullSchemaParquet(fullRow);
@@ -163,10 +155,6 @@ await test('parseFeedbackParquet round-trips the full BFF schema (every column t
   assert.equal(rec.feedback_origin_name, 'first-publish-banner');
   assert.equal(rec.feedback_topic_list, '["topic-a"]');
   assert.equal(rec.shopper_id, '9469965');
-  assert.equal(rec.customer_first_name, 'Saideep');
-  assert.equal(rec.customer_last_name, 'Kilaru');
-  assert.equal(rec.customer_email, 'skilaru@godaddy.com');
-  assert.equal(rec.customer_phone, '917032698060');
   assert.equal(rec.fanout_via_lambda, true);
   assert.equal(rec.preview_url, 'https://preview.example.com/?t=abc');
   assert.equal(rec.published_url_full, 'https://customer.app.example.com');
@@ -204,6 +192,5 @@ await test('parseFeedbackParquet handles missing optional fields (legacy parquet
   const rec = await parseFeedbackParquet(buf);
   // fanout_via_lambda missing → handler treats as no-op (correct backward-compat).
   assert.equal(rec.fanout_via_lambda, undefined);
-  assert.equal(rec.customer_email, undefined);
   assert.equal(rec.shopper_id, undefined);
 });
