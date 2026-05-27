@@ -1420,6 +1420,22 @@ importers:
         specifier: 3.2.4
         version: 3.2.4(@types/debug@4.1.13)(@types/node@22.19.18)(@vitest/ui@3.2.4)(jiti@2.7.0)(jsdom@26.1.0(bufferutil@4.1.0))(lightningcss@1.32.0)(sass@1.99.0)(terser@5.47.1)(tsx@4.21.0)(yaml@2.8.4)
 
+  evals/rebuild-prompts:
+    dependencies:
+      '@airo/agents':
+        specifier: workspace:*
+        version: link:../../agents
+    devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 22.19.18
+      tsx:
+        specifier: 'catalog:'
+        version: 4.21.0
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+
   fanout:
     dependencies:
       '@aws-sdk/client-lambda':

@@ -1,0 +1,20 @@
+{
+  "name": "rebuild-prompts-eval",
+  "version": "0.1.0",
+  "description": "Local eval harness for PagePromptAgent: asserts contract invariants on the generated rebuild prompt across synthetic fixtures",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "eval": "pnpm --filter @airo/agents build && GASKET_ENV=local.dev LOG_DISABLED_DOMAINS=page-prompt-agent,base-driver-v2,getty_upload node ../../agents/load-env.cjs pnpm exec tsx src/run.ts",
+    "eval:update-baselines": "pnpm --filter @airo/agents build && GASKET_ENV=local.dev LOG_DISABLED_DOMAINS=page-prompt-agent,base-driver-v2,getty_upload node ../../agents/load-env.cjs pnpm exec tsx src/run.ts --update-baselines",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@airo/agents": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "tsx": "catalog:",
+    "typescript": "catalog:"
+  }
+}

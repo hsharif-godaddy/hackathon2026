@@ -13,6 +13,7 @@ packages:
   - "ts-bridge"
   - "evals/corpus-eval"
   - "evals/gosym-probe"
+  - "evals/rebuild-prompts"
   - "!app-templates/**"
 
 catalog:

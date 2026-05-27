@@ -1,0 +1,85 @@
+{
+  "agentOptions": {
+    "isFirstPage": true,
+    "useAtlasCrawler": true
+  },
+  "generateArgs": {
+    "siteMetadata": {
+      "sourceUrl": "https://example.test/",
+      "siteType": "content",
+      "sitePurpose": "Olive Lane — quarterly food magazine",
+      "targetAudience": "Home cooks who care about provenance",
+      "brandVoice": "Considered, literary, warm",
+      "designStyle": "Editorial with generous white space",
+      "colorPalette": {
+        "primary": ["#2c2c2c"],
+        "secondary": ["#fdfcf8"],
+        "accent": ["#7a8b3c"]
+      },
+      "typography": {
+        "headingFonts": ["Tiempos Headline"],
+        "bodyFonts": ["Tiempos Text"]
+      },
+      "scrapedAt": "2026-05-21T00:00:00Z",
+      "version": "1"
+    },
+    "pageContent": {
+      "url": "https://example.test/",
+      "slug": "homepage",
+      "title": "Olive Lane — quarterly food magazine",
+      "content": "Quarterly food magazine. New issue out now.",
+      "sanitizedContent": "Olive Lane. A quarterly food magazine for home cooks. Subscribe for one essay, one recipe, one photograph each Sunday.",
+      "structure": {
+        "hasHeader": true,
+        "hasFooter": true,
+        "hasSidebar": false,
+        "sections": [],
+        "navigation": [
+          { "label": "Issues", "url": "/issues", "isExternal": false },
+          { "label": "Recipes", "url": "/recipes", "isExternal": false },
+          { "label": "About", "url": "/about", "isExternal": false }
+        ],
+        "forms": [
+          {
+            "method": "post",
+            "action": "/subscribe",
+            "fields": [
+              {
+                "type": "email",
+                "name": "subscriber_email",
+                "label": "Your email address",
+                "placeholder": "you@example.com",
+                "required": true
+              }
+            ],
+            "submitButton": { "text": "Send me Sundays" }
+          }
+        ]
+      },
+      "metadata": { "title": "Olive Lane — quarterly food magazine" },
+      "scrapedAt": "2026-05-21T00:00:00Z"
+    },
+    "stylePreferences": {
+      "designDirection": "keep-similar",
+      "colorPreference": "keep-original",
+      "typographyStyle": "keep-original",
+      "layoutApproach": "responsive"
+    },
+    "assetManifest": {
+      "assets": [
+        {
+          "url": "https://example.test/cover.jpg",
+          "localPath": "/assets/images/cover.jpg",
+          "type": "image",
+          "altText": "Issue four cover, slow-roasted tomatoes",
+          "dimensions": { "width": 1600, "height": 2000 },
+          "sourcePages": ["https://example.test/"]
+        }
+      ],
+      "totalAssets": 1,
+      "byType": { "image": 1, "font": 0, "icon": 0, "other": 0 },
+      "generatedAt": "2026-05-21T00:00:00Z"
+    },
+    "screenshotBase64": null
+  }
+}

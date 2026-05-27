@@ -1,0 +1,68 @@
+{
+  "agentOptions": {
+    "isFirstPage": true,
+    "useAtlasCrawler": false
+  },
+  "generateArgs": {
+    "siteMetadata": {
+      "sourceUrl": "https://example.test/",
+      "siteType": "content",
+      "sitePurpose": "ACME Studio — independent design practice",
+      "targetAudience": "Small businesses seeking distinctive brand identity",
+      "brandVoice": "Considered, warm, modern",
+      "designStyle": "Editorial minimalism with serif typography",
+      "colorPalette": {
+        "primary": ["#1a1a1a"],
+        "secondary": ["#f5f0eb"],
+        "accent": ["#c64a32"]
+      },
+      "typography": {
+        "headingFonts": ["Cormorant Garamond"],
+        "bodyFonts": ["Inter"]
+      },
+      "scrapedAt": "2026-05-21T00:00:00Z",
+      "version": "1"
+    },
+    "pageContent": {
+      "url": "https://example.test/",
+      "slug": "homepage",
+      "title": "ACME Studio — independent design practice",
+      "content": "Independent brand and identity studio. We help small businesses tell their story.",
+      "sanitizedContent": "ACME Studio. Independent brand and identity studio for small businesses. Our work spans visual identity, packaging, and digital. Get in touch.",
+      "structure": {
+        "hasHeader": true,
+        "hasFooter": true,
+        "hasSidebar": false,
+        "sections": [],
+        "navigation": [
+          { "label": "Work", "url": "/work", "isExternal": false },
+          { "label": "About", "url": "/about", "isExternal": false },
+          { "label": "Contact", "url": "/contact", "isExternal": false }
+        ]
+      },
+      "metadata": { "title": "ACME Studio — independent design practice" },
+      "scrapedAt": "2026-05-21T00:00:00Z"
+    },
+    "stylePreferences": {
+      "designDirection": "keep-similar",
+      "colorPreference": "keep-original",
+      "typographyStyle": "keep-original",
+      "layoutApproach": "responsive"
+    },
+    "assetManifest": {
+      "assets": [
+        {
+          "url": "https://example.test/logo.svg",
+          "localPath": "/assets/images/logo.svg",
+          "type": "icon",
+          "altText": "ACME Studio",
+          "sourcePages": ["https://example.test/"]
+        }
+      ],
+      "totalAssets": 1,
+      "byType": { "image": 0, "font": 0, "icon": 1, "other": 0 },
+      "generatedAt": "2026-05-21T00:00:00Z"
+    },
+    "screenshotBase64": null
+  }
+}

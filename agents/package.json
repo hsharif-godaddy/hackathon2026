@@ -15,6 +15,14 @@
       "types": "./dist/agents/assessment-agent/index.d.ts",
       "import": "./dist/agents/assessment-agent/index.js"
     },
+    "./page-prompt-agent": {
+      "types": "./dist/agents/page-prompt-agent.d.ts",
+      "import": "./dist/agents/page-prompt-agent.js"
+    },
+    "./rebuild-types": {
+      "types": "./dist/types/rebuild.d.ts",
+      "import": "./dist/types/rebuild.js"
+    },
     "./tools": {
       "types": "./dist/tools/ai-lib-tools/index.d.ts",
       "import": "./dist/tools/ai-lib-tools/index.js"
@@ -27,7 +35,7 @@
     "local:test": "GASKET_ENV=local.test NODE_OPTIONS='--max-old-space-size=1536' node load-env.cjs pnpm run dev:watch",
     "local:prod": "GASKET_ENV=local.prod NODE_OPTIONS='--max-old-space-size=1536' node load-env.cjs pnpm run dev:watch",
     "build:deps": "pnpm exec turbo run build --filter=@airo/agents^...",
-    "build": "tsc && node scripts/copy-assessment-agent-models.mjs",
+    "build": "tsc && node scripts/copy-assessment-agent-models.mjs && node scripts/copy-prompts.mjs",
     "typecheck": "tsc --noEmit",
     "start": "node --env-file=.env dist/server/app.js",
     "test": "NODE_OPTIONS='--max-old-space-size=512' vitest run --exclude='**/*.integration.test.ts'",

@@ -1,0 +1,92 @@
+{
+  "agentOptions": {
+    "isFirstPage": true,
+    "useAtlasCrawler": true
+  },
+  "generateArgs": {
+    "siteMetadata": {
+      "sourceUrl": "https://example.test/",
+      "siteType": "content",
+      "sitePurpose": "Northwind Bakery — small-batch breads and pastries",
+      "targetAudience": "Local residents seeking artisan baked goods",
+      "brandVoice": "Warm, neighborly, craft-focused",
+      "designStyle": "Soft cream and earth tones with hand-set type",
+      "colorPalette": {
+        "primary": ["#3a2a1a"],
+        "secondary": ["#f6e9d8"],
+        "accent": ["#b95a2a"]
+      },
+      "typography": {
+        "headingFonts": ["Playfair Display"],
+        "bodyFonts": ["Source Sans Pro"]
+      },
+      "scrapedAt": "2026-05-21T00:00:00Z",
+      "version": "1"
+    },
+    "pageContent": {
+      "url": "https://example.test/",
+      "slug": "homepage",
+      "title": "Northwind Bakery — small-batch breads and pastries",
+      "content": "Welcome to Northwind. Spring flavors are here.",
+      "sanitizedContent": "Northwind Bakery. Small-batch breads and pastries baked daily. Spring flavors: lemon scone, blackberry tart, hummingbird cake.",
+      "structure": {
+        "hasHeader": true,
+        "hasFooter": true,
+        "hasSidebar": false,
+        "sections": [],
+        "navigation": [
+          { "label": "Menu", "url": "/menu", "isExternal": false },
+          { "label": "Visit", "url": "/visit", "isExternal": false },
+          { "label": "Order", "url": "/order", "isExternal": false }
+        ],
+        "interactivePatterns": [
+          {
+            "type": "carousel",
+            "evidence": "class=\"hero-slideshow swiper-container\"",
+            "occurrences": 3
+          }
+        ]
+      },
+      "metadata": { "title": "Northwind Bakery — small-batch breads and pastries" },
+      "scrapedAt": "2026-05-21T00:00:00Z"
+    },
+    "stylePreferences": {
+      "designDirection": "keep-similar",
+      "colorPreference": "keep-original",
+      "typographyStyle": "keep-original",
+      "layoutApproach": "responsive"
+    },
+    "assetManifest": {
+      "assets": [
+        {
+          "url": "https://example.test/lemon-scone.jpg",
+          "localPath": "/assets/images/lemon-scone.jpg",
+          "type": "image",
+          "altText": "Lemon scone, fresh from the oven",
+          "dimensions": { "width": 1200, "height": 800 },
+          "sourcePages": ["https://example.test/"]
+        },
+        {
+          "url": "https://example.test/blackberry-tart.jpg",
+          "localPath": "/assets/images/blackberry-tart.jpg",
+          "type": "image",
+          "altText": "Blackberry tart with crème fraîche",
+          "dimensions": { "width": 1200, "height": 800 },
+          "sourcePages": ["https://example.test/"]
+        },
+        {
+          "url": "https://example.test/hummingbird-cake.jpg",
+          "localPath": "/assets/images/hummingbird-cake.jpg",
+          "type": "image",
+          "altText": "Hummingbird cake slice",
+          "dimensions": { "width": 1200, "height": 800 },
+          "sourcePages": ["https://example.test/"]
+        }
+      ],
+      "totalAssets": 3,
+      "byType": { "image": 3, "font": 0, "icon": 0, "other": 0 },
+      "generatedAt": "2026-05-21T00:00:00Z"
+    },
+    "screenshotBase64": null
+  }
+}

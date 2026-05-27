@@ -1,0 +1,8 @@
+.devtools/
+node_modules/
+dist/
+
+# Captured LLM outputs are dev-loop artifacts — regenerate locally with
+# `pnpm eval:update-baselines`. Commit a specific baseline only when you
+# need to lock in a known-good output: `git add -f fixtures/<name>/baseline.md`.
+fixtures/**/baseline.md
