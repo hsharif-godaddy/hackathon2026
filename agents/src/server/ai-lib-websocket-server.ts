@@ -119,7 +119,7 @@ import {
   type ParallelAssessmentState,
 } from './assessment-executor.js'
 import { getSSERegistry } from './sse/registry-singleton.js'
-import { mapToolCallsToUI } from './tool-call-mapper.js'
+import { mapSegmentsToUI, mapToolCallsToUI } from './tool-call-mapper.js'
 import { resolveManualAgentOverride } from './manual-agent-override.js'
 import {
   getEventChannel,
@@ -994,7 +994,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
               persistedMsg.toolCalls = mapToolCallsToUI(msg.toolCalls as any)
             }
             if (msg.segments != null) {
-              persistedMsg.segments = msg.segments
+              persistedMsg.segments = mapSegmentsToUI(msg.segments as any)
             }
             if (msg.metadata != null) {
               persistedMsg.metadata = msg.metadata

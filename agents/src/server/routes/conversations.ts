@@ -5,7 +5,7 @@ import { getConversationLifecycleStore, getMessageStore } from '../../memory/ada
 import { workspaceScopeFromAppId } from '../../memory/interfaces/scope.js';
 import { validateAppOwnershipFromQuery, validateConversationOwnership, type ConversationRequest } from '../middleware/app-ownership.js';
 import type { AuthenticatedRequest } from '../middleware/jwt-auth.js';
-import { mapToolCallsToUI } from '../tool-call-mapper.js';
+import { mapSegmentsToUI, mapToolCallsToUI } from '../tool-call-mapper.js';
 
 const router: RouterType = Router();
 const logger = Logger.create({ component: 'conversations-routes' });
@@ -156,7 +156,7 @@ router.get('/api/conversations/:id/messages/paginated', validateConversationOwne
         createdAt: msg.createdAt.toISOString(),
         ...(msg.messageType != null && { messageType: msg.messageType }),
         ...(msg.toolCalls != null && { toolCalls: mapToolCallsToUI(msg.toolCalls as any) }),
-        ...(msg.segments != null && { segments: msg.segments }),
+        ...(msg.segments != null && { segments: mapSegmentsToUI(msg.segments as any) }),
         ...(msg.metadata != null && { metadata: msg.metadata }),
         ...(msg.contextAttachments != null && { contextAttachments: msg.contextAttachments }),
         ...(msg.origin != null && { origin: msg.origin }),

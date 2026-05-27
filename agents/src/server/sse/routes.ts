@@ -24,7 +24,7 @@ import { buildContextAttachments } from '@airo/shared/context-attachment'
 import apm from 'elastic-apm-node'
 import { sseSessionKey } from './session-key.js'
 import { asyncHandler } from '../middleware/async-handler.js'
-import { mapToolCallsToUI } from '../tool-call-mapper.js'
+import { mapSegmentsToUI, mapToolCallsToUI } from '../tool-call-mapper.js'
 
 const HEARTBEAT_INTERVAL_MS = 15_000
 const RETRY_MS = 1000
@@ -289,7 +289,7 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
               createdAt: msg.createdAt.toISOString(),
               ...(msg.messageType != null && { messageType: msg.messageType }),
               ...(msg.toolCalls != null && { toolCalls: mapToolCallsToUI(msg.toolCalls as any) }),
-              ...(msg.segments != null && { segments: msg.segments }),
+              ...(msg.segments != null && { segments: mapSegmentsToUI(msg.segments as any) }),
               ...(metadata != null && { metadata }),
               ...(msg.contextAttachments != null && { contextAttachments: msg.contextAttachments }),
               ...(msg.origin != null && { origin: msg.origin }),
@@ -421,7 +421,7 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
           createdAt: msg.createdAt.toISOString(),
           ...(msg.messageType != null && { messageType: msg.messageType }),
           ...(msg.toolCalls != null && { toolCalls: mapToolCallsToUI(msg.toolCalls as any) }),
-          ...(msg.segments != null && { segments: msg.segments }),
+          ...(msg.segments != null && { segments: mapSegmentsToUI(msg.segments as any) }),
           ...(metadata != null && { metadata }),
           ...(msg.contextAttachments != null && { contextAttachments: msg.contextAttachments }),
           ...(msg.origin != null && { origin: msg.origin }),

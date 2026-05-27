@@ -186,4 +186,77 @@ describe('normalizeConversationMessages', () => {
     const normalized = normalizeConversationMessages(rawMessages)
     expect(normalized[0].commitHash).toBeUndefined()
   })
+
+  it('preserves wire-format completed status and widget result for askQuestion on reload', () => {
+    const widgetData = {
+      type: 'ask-question',
+      questions: [{
+        question: 'pick one',
+        suggestions: [{ text: 'a' }, { text: 'b' }],
+        allowOther: true,
+        multiSelect: false,
+      }],
+      currentQuestionIndex: 0,
+      answers: [],
+    }
+
+    const [message] = normalizeConversationMessages([
+      {
+        id: 'assistant-ask',
+        sender: 'assistant',
+        createdAt: '2024-01-05T00:00:00.000Z',
+        toolCalls: [
+          {
+            id: 'tool-ask',
+            name: 'askQuestion',
+            status: 'completed',
+            input: { questions: widgetData.questions },
+            result: { success: true, widgetType: 'ask-question', widgetData },
+          },
+        ],
+      },
+    ])
+
+    expect(message.toolCalls?.[0].status).toBe('completed')
+    expect(message.toolCalls?.[0].result).toMatchObject({
+      widgetType: 'ask-question',
+      widgetData: { questions: widgetData.questions },
+    })
+  })
+
+  it('preserves wire-format completed status on segment toolCall for the segments path', () => {
+    const secretsResult = {
+      success: true,
+      secretsRequired: true,
+      secretsRequest: {
+        secrets: [{ name: 'API_KEY', label: 'API key', required: true }],
+      },
+    }
+
+    const [message] = normalizeConversationMessages([
+      {
+        id: 'assistant-secrets',
+        sender: 'assistant',
+        createdAt: '2024-01-06T00:00:00.000Z',
+        segments: [
+          {
+            id: 'seg-secrets',
+            type: 'tool_call',
+            timestamp: '2024-01-06T00:00:00.000Z',
+            toolCall: {
+              id: 'tool-secrets',
+              name: 'requestSecrets',
+              status: 'completed',
+              input: { secrets: secretsResult.secretsRequest.secrets },
+              result: secretsResult,
+            },
+          },
+        ],
+      },
+    ])
+
+    const segment = message.segments?.[0]
+    expect(segment?.toolCall?.status).toBe('completed')
+    expect(segment?.toolCall?.result).toEqual(secretsResult)
+  })
 })

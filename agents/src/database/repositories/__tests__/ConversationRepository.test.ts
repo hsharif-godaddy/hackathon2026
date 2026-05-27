@@ -828,5 +828,37 @@ describe('getMessagesAfterMessageId', () => {
       const msg = messages.find(m => m.id === 'msg-output')!
       expect(msg.toolCalls![0].toolResult).toEqual({ stdout: 'hello' })
     })
+
+    it('round-trips a DB row through normalizeToolCalls + mapToolCallsToUI to wire-side "completed"', async () => {
+      const { mapToolCallsToUI } = await import('../../../server/tool-call-mapper.js')
+
+      createApp('app-rt')
+      const conv = await repo.create('app-rt', 'develop', 'Test')
+
+      const dbToolCalls = JSON.stringify([
+        {
+          id: 'tc-rt',
+          tool_name: 'requestSecrets',
+          tool_args: { secrets: [{ name: 'API_KEY' }] },
+          tool_result: { ok: true },
+          status: 'success',
+        },
+      ])
+      testDb.prepare(`
+        INSERT INTO conversation_messages (id, conversation_id, sender, content, tool_calls, created_at)
+        VALUES (?, ?, ?, ?, ?, datetime('now'))
+      `).run('msg-rt', conv.id, 'agent', 'done', dbToolCalls)
+
+      const messages = await repo.getMessages(conv.id)
+      const msg = messages.find(m => m.id === 'msg-rt')!
+
+      expect(msg.toolCalls![0].status).toBe('success')
+
+      const ui = mapToolCallsToUI(msg.toolCalls as any)
+      expect(ui[0].status).toBe('completed')
+      expect(ui[0].name).toBe('requestSecrets')
+      expect(ui[0].input).toEqual({ secrets: [{ name: 'API_KEY' }] })
+      expect(ui[0].result).toEqual({ ok: true })
+    })
   })
 })
