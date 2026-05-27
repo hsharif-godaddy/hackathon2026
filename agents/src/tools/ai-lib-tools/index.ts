@@ -6,7 +6,6 @@
 import type { Tool } from '@airo/ai-lib';
 
 // Import all individual tools
-export { fileEditAITool } from './file-edit.js';
 export { textEditorAITool } from './text-editor.js';
 export { directoryListingAITool } from './directory-listing.js';
 export { terminalCommandAITool } from './terminal-command.js';
@@ -57,7 +56,6 @@ export { listDesignSystemsAITool } from './list-design-systems.js'
 export { installDesignSystemAITool } from './install-design-system.js'
 
 // Re-import for registry
-import { fileEditAITool } from './file-edit.js';
 import { textEditorAITool } from './text-editor.js';
 import { directoryListingAITool } from './directory-listing.js';
 import { terminalCommandAITool } from './terminal-command.js';
@@ -112,7 +110,6 @@ import { installDesignSystemAITool } from './install-design-system.js';
  */
 export const allAILibTools: Record<string, Tool> = {
   str_replace_based_edit_tool: textEditorAITool,  // Native Anthropic text_editor_20250728
-  fileEdit: fileEditAITool,       // LEGACY: Batch tool (deprecated, use str_replace_based_edit_tool)
   directoryListing: directoryListingAITool,
   terminalCommand: terminalCommandAITool,
   readFile: readFileAITool,

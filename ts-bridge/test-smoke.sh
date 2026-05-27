@@ -38,7 +38,7 @@ echo "  Tool count: $TOOL_COUNT"
 [ "$TOOL_COUNT" -gt 0 ] 2>/dev/null || { echo "FAIL: no tools discovered"; exit 1; }
 
 # Verify native Go tools are excluded.
-for native in readFile directoryListing grepSearch terminalCommand str_replace_based_edit_tool fileEdit; do
+for native in readFile directoryListing grepSearch terminalCommand str_replace_based_edit_tool; do
   if echo "$TOOLS" | grep -q "\"name\":\"$native\""; then
     echo "FAIL: native Go tool '$native' should not be in bridge"
     exit 1

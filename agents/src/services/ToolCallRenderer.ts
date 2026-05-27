@@ -49,6 +49,8 @@ export class ToolCallRenderer {
         return this.renderReadFileSummary
       case 'file_edit':
       case 'fileEdit':
+      case 'str_replace_based_edit_tool':
+      case 'textEditor':
         return this.renderFileEditSummary
       case 'list_dir':
       case 'directoryListing':

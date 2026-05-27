@@ -13,7 +13,7 @@ Skills solve the **prompt bloat** problem by loading specialized instructions an
 **Skills vs Agents vs Tools:**
 
 - **Agents**: High-level coordinators that orchestrate work (develop, color-scheme, commerce, etc.)
-- **Tools**: Specific actions agents can perform (fileEdit, terminal, git, etc.)
+- **Tools**: Specific actions agents can perform (str_replace_based_edit_tool, terminal, git, etc.)
 - **Skills**: Contextual knowledge + templates loaded when needed (blog, auth, payments, etc.)
 
 Think of skills as "just-in-time documentation" that teaches the agent how to implement complex features.
@@ -219,7 +219,7 @@ This metadata is used by:
 - **YAML frontmatter** - Required metadata (name, description)
 - When this skill applies
 - Step-by-step installation (using `skill({ action: "install" })` for templates)
-- Required tools (media, fileEdit, etc.)
+- Required tools (media, str_replace_based_edit_tool, etc.)
 - Code examples with proper paths
 - Common pitfalls and how to avoid them
 
@@ -341,7 +341,7 @@ const result = await skillLoader.installTemplates({ skill: 'blog', appPath: '/pa
 
 1. **Loading**: SkillLoaderTool recursively reads all files in `templates/` directory
 2. **Response**: Template contents included directly in loadSkill result
-3. **Installation**: Agent uses `fileEdit` with `operation: "create"` to install templates
+3. **Installation**: Agent uses `str_replace_based_edit_tool` with `command: "create"` to install templates
 4. **Path mapping**: Agent follows skill.md instructions for destination paths
 
 **Why this works:**

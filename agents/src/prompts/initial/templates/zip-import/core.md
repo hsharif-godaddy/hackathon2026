@@ -25,7 +25,7 @@ The user uploaded a ZIP file containing styles, pages, and/or components. These 
 ## Important Rules
 
 - Do NOT attempt to write the imported files — they are already on disk
-- If you need to make adjustments to imported files, use `fileEdit`
+- If you need to make adjustments to imported files, use `str_replace_based_edit_tool`
 - Do NOT ask design questions — the uploaded files define the design
 - If `src/design.md` was imported, mention that the design spec is available for the develop agent to reference
 - Keep the conversation brief and focused on getting the project named and identifying additional work

@@ -158,7 +158,7 @@ describe('seo-analyze', function seoAnalyzeTests() {
       expect(result.nextSteps).toContain('directoryListing');
       expect(result.nextSteps).toContain('readFile');
       expect(result.nextSteps).toContain('grepSearch');
-      expect(result.nextSteps).toContain('fileEdit');
+      expect(result.nextSteps).toContain('str_replace_based_edit_tool');
     });
 
     it('should throw error when appId is missing', async function noAppId() {

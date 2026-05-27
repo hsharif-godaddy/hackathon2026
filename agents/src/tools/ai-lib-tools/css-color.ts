@@ -46,12 +46,12 @@ function formatPaletteForWidget(palette: ReturnType<typeof generatePalette>, nam
  * CSS Color Tool for AI-Lib
  *
  * Programmatically updates CSS color variables with intelligent color generation
- * and contrast checking. Much faster than using fileEdit for CSS updates.
+ * and contrast checking. Much faster than using str_replace_based_edit_tool for CSS updates.
  */
 export const cssColorAITool: Tool = createTool(
   `Update CSS color palette programmatically with intelligent color generation.
 
-This tool is MUCH FASTER than using fileEdit for CSS color updates. It:
+This tool is MUCH FASTER than using str_replace_based_edit_tool for CSS color updates. It:
 - Can apply a previously suggested palette by name (from cssSuggest)
 - Generates missing colors using color theory algorithms (analogous, complementary, triadic)
 - Ensures WCAG AA contrast compliance (4.5:1 ratio)
@@ -69,7 +69,7 @@ Color Generation Algorithms:
 - Muted: Desaturated and lightened primary
 - Semantic colors: Pre-optimized red/green/orange for errors/success/warnings
 
-Use this tool instead of fileEdit when updating color schemes!`,
+Use this tool instead of str_replace_based_edit_tool when updating color schemes!`,
   z.object({
     paletteName: z.string().describe('Name for the color palette (e.g., "Ocean Blue", "Forest Green"). If this matches a suggested palette name, colors will be retrieved automatically.'),
     primary: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional().describe('Primary brand color (hex format, e.g., #3B82F6). Optional if paletteName matches a suggested palette.'),

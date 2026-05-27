@@ -62,23 +62,11 @@ const afterToolExecution: AfterToolExecutionHook = async (
   const argsObj = args as any
 
   // Track specific development operations
-  if ((toolName === 'str_replace_based_edit_tool' || toolName === 'textEditor' || toolName === 'fileEdit') && (resultObj?.success || typeof result === 'string')) {
-    // Handle batch operations (fileEdit schema)
-    if (resultObj.operations && Array.isArray(resultObj.operations)) {
-      const paths = resultObj.operations.map((op: any) => op.path).filter(Boolean);
-      const modes = [...new Set(resultObj.operations.map((op: any) => op.mode).filter(Boolean))];
-      contextLogger.info('develop_agent.tool.file_edit.success', {
-        filePaths: paths,
-        operations: modes,
-        fileCount: resultObj.totalOperations || paths.length
-      });
-    } else {
-      // Single operation - extract from args (textEditor) or result (fileEdit)
-      contextLogger.info('develop_agent.tool.file_edit.success', {
-        filePath: argsObj?.path || resultObj.filePath || resultObj.path || 'unknown',
-        operation: argsObj?.command || resultObj.operation || resultObj.mode || 'edit'
-      });
-    }
+  if ((toolName === 'str_replace_based_edit_tool' || toolName === 'textEditor') && (resultObj?.success || typeof result === 'string')) {
+    contextLogger.info('develop_agent.tool.file_edit.success', {
+      filePath: argsObj?.path || resultObj.filePath || resultObj.path || 'unknown',
+      operation: argsObj?.command || resultObj.operation || 'edit'
+    });
   }
 
   if (toolName === 'terminalCommand' && resultObj?.success) {

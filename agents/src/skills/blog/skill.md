@@ -104,7 +104,7 @@ skill({
 3. **Utilities:** blog.ts, frontmatter.ts
 4. **Content Setup:** index.ts, README.md
 
-**Important:** The install action handles all file copying automatically - you don't need to use fileEdit!
+**Important:** The install action handles all file copying automatically - you don't need to use str_replace_based_edit_tool!
 
 ### Step 1: Add Import to `/src/main.tsx`
 

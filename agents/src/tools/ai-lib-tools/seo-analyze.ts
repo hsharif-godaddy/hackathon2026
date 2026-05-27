@@ -105,7 +105,7 @@ Use the following tools to analyze the app:
    - Search for SEO-related patterns
    - Identify content that matches target keywords
 
-4. **fileEdit** - Make strategic improvements:
+4. **str_replace_based_edit_tool** - Make strategic improvements:
    - Update metadata based on business context
    - Improve content to align with brand voice
    - Add structured data where appropriate

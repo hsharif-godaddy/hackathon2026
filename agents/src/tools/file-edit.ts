@@ -2,17 +2,13 @@ import { dirname, resolve, relative, basename } from 'path';
 import { diffLines, createPatch } from 'diff';
 import type { FileSystemOperations } from '../filesystem/index.js';
 import { LocalFileSystemOperations, defaultLocalFs } from '../filesystem/index.js';
-import { AppRepository } from '../database/index.js';
 import { GitTool } from './git-tool.js';
 import { translateDockerPath, deriveAssetsDir, validateNoEscapingSymlinks } from '../utils/path-helper.js';
 import { logger } from '../logging/index.js';
-import { toolFileEditEvents, toolServerHealthEvents } from '../logging/events/index.js';
-import { ServerManagementTool } from './server-management-tool.js';
 import { createForWorkspace } from '../workspace/index.js';
 import { fileUploadService } from '../services/FileUploadService.js';
 import { createSafePathBuilder } from '../utils/safe-path.js';
 import { isSourceFile, BINARY_FILE_REGEX } from '../utils/file-types.js';
-import { checkPreviewHealth } from '../utils/preview-health-check.js';
 
 
 // Constants for consistent text truncation
@@ -67,613 +63,72 @@ export interface FileEditResult {
 }
 
 /**
- * Batch file edit options (multi-operation interface)
- */
-export interface FileBatchEditOptions {
-  /** Array of file operations to perform in sequence */
-  operations: Array<{
-    /** Path to the file to edit (relative to app root) */
-    path: string;
-    /** Edit mode: edit for partial changes, rewrite for full replacement, create for new files, delete to remove files */
-    mode?: 'edit' | 'rewrite' | 'create' | 'delete';
-    /** Array of search-and-replace operations for partial edits */
-    edits?: Array<{
-      old: string;
-      new: string;
-    }>;
-    /** Full content for rewrite or create operations */
-    content?: string;
-  }>;
-  /** Create parent directories if they don't exist */
-  createDirs?: boolean;
-  /** Preview changes without applying them */
-  dryRun?: boolean;
-  /** Use fuzzy matching for search text if exact match fails */
-  fuzzyMatch?: boolean;
-  /** Automatically commit changes using git */
-  autoCommit?: boolean;
-  /** Custom commit message for auto-commit (if not provided, a default message will be generated) */
-  commitMessage?: string;
-}
-
-/**
- * Batch file edit result (multi-operation result)
- */
-export interface FileBatchEditResult {
-  /** Whether ALL operations succeeded */
-  success: boolean;
-  /** Total number of operations requested */
-  totalOperations: number;
-  /** Number of operations completed successfully */
-  completedOperations: number;
-  /** Array of individual operation results (reuses FileEditResult) */
-  results: Array<FileEditResult>;
-  /** Error message if batch operation failed */
-  error?: string;
-  /** Git commit hash if autoCommit was successful */
-  commitHash?: string;
-}
-
-/**
  * File Edit Tool
- * Provides comprehensive file editing capabilities with safety features
+ * Provides file editing capabilities with safety features
  */
 export class FileEditTool {
   private readonly MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB limit
-  private appRepo: AppRepository;
 
-  constructor(private readonly fs: FileSystemOperations = new LocalFileSystemOperations()) {
-    this.appRepo = new AppRepository();
-  }
+  constructor(private readonly fs: FileSystemOperations = new LocalFileSystemOperations()) {}
 
-
-  /**
-   * Ensure the development server is healthy after file changes
-   */
-  private async ensureDevServerHealth(appId: string): Promise<void> {
-    try {
-      // Give the server a moment to process any changes
-      await new Promise(resolve => setTimeout(resolve, 1000));
-
-      const app = this.appRepo.findById(appId);
-      if (!app) {
-        logger.warn('App not found for health check', {
-          appId,
-          toolName: 'FileEditTool',
-        });
-        return;
-      }
-
-      // Check if server is responding
-      const isHealthy = await checkPreviewHealth(app.port);
-
-      if (!isHealthy) {
-        toolServerHealthEvents.unhealthy(logger, {
-          toolName: 'FileEditTool',
-          appId,
-          port: app.port,
-          isHealthy: false,
-        });
-        try {
-          // Use the server management tool for consistent restart behavior
-          const serverTool = new ServerManagementTool();
-          const restartResult = await serverTool.restartServer({ reason: 'File edit triggered restart' }, appId);
-
-          if (restartResult.success) {
-            toolServerHealthEvents.restart(logger, {
-              toolName: 'FileEditTool',
-              appId,
-              port: app.port,
-              isHealthy: true,
-            });
-          }
-        } catch (restartError) {
-          logger.error('Failed to restart dev server', {
-            appId,
-            port: app.port,
-            error: restartError instanceof Error ? restartError.message : String(restartError),
-          });
-        }
-      } else {
-        toolServerHealthEvents.healthy(logger, {
-          toolName: 'FileEditTool',
-          appId,
-          port: app.port,
-          isHealthy: true,
-        });
-      }
-    } catch (error) {
-      logger.error('Error checking dev server health', {
-        appId,
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
-  }
-
-
-
-  /**
-   * Execute a single file edit operation
-   * @deprecated Use editFiles() for all operations (single or batch)
-   * This method is maintained for backward compatibility with REST API and Memory Service
-   */
   async editFile(appPath: string, options: FileEditOptions, context?: { appId?: string; conversationId?: string }): Promise<FileEditResult> {
-    // Convert single operation to batch format
-    const batchOptions: FileBatchEditOptions = {
-      operations: [{
-        path: options.path,
-        ...(options.mode !== undefined && { mode: options.mode }),
-        ...(options.edits !== undefined && { edits: options.edits }),
-        ...(options.content !== undefined && { content: options.content }),
-      }],
-      ...(options.createDirs !== undefined && { createDirs: options.createDirs }),
-      ...(options.dryRun !== undefined && { dryRun: options.dryRun }),
-      ...(options.fuzzyMatch !== undefined && { fuzzyMatch: options.fuzzyMatch }),
-      ...(options.autoCommit !== undefined && { autoCommit: options.autoCommit }),
-      ...(options.commitMessage !== undefined && { commitMessage: options.commitMessage }),
-    };
-
-    // Execute as batch operation
-    const batchResult = await this.editFiles(appPath, batchOptions, context);
-
-    // Extract first result for backward compatibility
-    const [firstResult] = batchResult.results;
-
-    if (!firstResult) {
-      const errorMsg = batchResult.error || 'Internal error: operation returned no results';
-      logger.error('FileEditTool.editFile: No results from batch operation', {
-        path: options.path,
-        mode: options.mode,
-        batchError: batchResult.error,
-        ...(context?.appId && { appId: context.appId }),
-      });
+    let filePath: string;
+    try {
+      filePath = resolveFilePath(appPath, options.path);
+    } catch (error) {
       return {
         success: false,
         path: options.path,
         mode: options.mode || 'edit',
-        error: errorMsg,
+        error: error instanceof Error ? error.message : String(error),
       };
     }
 
-    return firstResult;
-  }
-
-  /**
-   * Execute multiple file edit operations in sequence with fail-fast behavior.
-   * Processes each operation sequentially and stops on the first error encountered.
-   * Supports automatic git commit for all successful operations.
-   *
-   * @param appPath - Absolute path to the application directory containing files to edit
-   * @param options - Batch operation configuration including array of file operations and commit settings
-   * @param context - Optional execution context containing appId and conversationId for logging
-   * @returns Promise resolving to batch result with success status, operation counts, and individual results
-   * @throws {Error} When file path escapes app directory or symlink security validation fails
-   *
-   * @example
-   * const result = await fileEditTool.editFiles('/tmp/apps/app123/app', {
-   *   operations: [
-   *     { path: 'src/index.ts', mode: 'edit', edits: [{ old: 'foo', new: 'bar' }] },
-   *     { path: 'src/config.json', mode: 'rewrite', content: '{"key": "value"}' }
-   *   ],
-   *   autoCommit: true,
-   *   commitMessage: 'Update source files'
-   * }, { appId: 'app123' });
-   */
-  async editFiles(appPath: string, options: FileBatchEditOptions, context?: { appId?: string; conversationId?: string }): Promise<FileBatchEditResult> {
-    // Validate input
-    if (!options.operations || options.operations.length === 0) {
-      return {
-        success: false,
-        totalOperations: 0,
-        completedOperations: 0,
-        results: [],
-        error: 'At least one operation is required',
-      };
-    }
-
-    // Initialize result structure
-    const result: FileBatchEditResult = {
-      success: true,
-      totalOperations: options.operations.length,
-      completedOperations: 0,
-      results: [],
-    };
-
-    const modifiedFilePaths: string[] = [];
-    const deletedFilePaths: string[] = [];
-
-    // Log batch begin
-    toolFileEditEvents.batchBegin(logger, {
-      toolName: 'FileEditTool',
-      operationCount: options.operations.length,
-      ...(context?.appId && { appId: context.appId }),
-    });
-
-    // Process each operation in sequence
-    for (const [index, operation] of options.operations.entries()) {
-      try {
-        // Resolve file path
-        const filePath = resolveFilePath(appPath, operation.path);
-
-        // Auto-detect mode if not specified (never auto-detects 'delete')
-        const mode = operation.mode || await this.detectMode(filePath, operation);
-
-        // Check immutability (skip for create mode)
-        if (mode !== 'create') {
-          const immutable = await isFileImmutable(filePath, this.fs);
-          if (immutable) {
-            const errorResult: FileEditResult = {
-              success: false,
-              path: operation.path,
-              mode,
-              error: 'This file is marked as immutable and cannot be edited. The file contains "TREAT AS IMMUTABLE" in its first line.',
-            };
-            result.results.push(errorResult);
-            result.success = false;
-            result.error = `Operation ${index} failed: ${errorResult.error}`;
-
-            toolFileEditEvents.operationFailure(logger, new Error('File is immutable'), {
-              toolName: 'FileEditTool',
-              operationIndex: index,
-              filePath: operation.path,
-              mode,
-              ...(context?.appId && { appId: context.appId }),
-            });
-
-            break; // Fail-fast
-          }
-        }
-
-        // Log operation begin
-        toolFileEditEvents.operationBegin(logger, {
-          toolName: 'FileEditTool',
-          operationIndex: index,
-          filePath: operation.path,
-          mode,
-          ...(context?.appId && { appId: context.appId }),
-        });
-
-        // Build FileEditOptions for the single operation
-        const singleOperationOptions: FileEditOptions = {
-          path: operation.path,
-          mode,
-          ...(operation.edits !== undefined && { edits: operation.edits }),
-          ...(operation.content !== undefined && { content: operation.content }),
-          ...(options.createDirs !== undefined && { createDirs: options.createDirs }),
-          ...(options.dryRun !== undefined && { dryRun: options.dryRun }),
-          ...(options.fuzzyMatch !== undefined && { fuzzyMatch: options.fuzzyMatch }),
-          autoCommit: false, // We handle batch commit separately
-        };
-
-        // Execute operation handler
-        let opResult: FileEditResult;
-        switch (mode) {
-          case 'create':
-            opResult = await this.handleCreate(filePath, singleOperationOptions, appPath, context);
-            break;
-          case 'rewrite':
-            opResult = await this.handleRewrite(filePath, singleOperationOptions, appPath, context);
-            break;
-          case 'edit':
-            opResult = await this.handleEdit(filePath, singleOperationOptions, appPath, context);
-            break;
-          case 'delete':
-            opResult = await this.handleDelete(filePath, singleOperationOptions, appPath, context);
-            break;
-          default:
-            throw new Error(`Unknown edit mode: ${mode}`);
-        }
-
-        // Add result to results array
-        result.results.push(opResult);
-
-        if (opResult.success) {
-          result.completedOperations++;
-
-          // Track file paths for git commit
-          if (mode === 'delete') {
-            deletedFilePaths.push(filePath);
-          } else {
-            modifiedFilePaths.push(filePath);
-          }
-
-          toolFileEditEvents.operationSuccess(logger, {
-            toolName: 'FileEditTool',
-            operationIndex: index,
-            filePath: operation.path,
-            mode,
-            ...(context?.appId && { appId: context.appId }),
-          });
-        } else {
-          result.success = false;
-          result.error = `Operation ${index} failed: ${opResult.error}`;
-
-          toolFileEditEvents.operationFailure(logger, new Error(opResult.error || 'Unknown error'), {
-            toolName: 'FileEditTool',
-            operationIndex: index,
-            filePath: operation.path,
-            mode,
-            ...(context?.appId && { appId: context.appId }),
-          });
-
-          break; // Fail-fast
-        }
-      } catch (error) {
-        // Handle unexpected errors
-        const errorResult: FileEditResult = {
-          success: false,
-          path: operation.path,
-          mode: operation.mode || 'edit',
-          error: error instanceof Error ? error.message : String(error),
-        };
-        result.results.push(errorResult);
-        result.success = false;
-        result.error = `Operation ${index} failed: ${errorResult.error}`;
-
-        toolFileEditEvents.operationFailure(logger, error as Error, {
-          toolName: 'FileEditTool',
-          operationIndex: index,
-          filePath: operation.path,
-          mode: operation.mode || 'edit',
-          ...(context?.appId && { appId: context.appId }),
-        });
-
-        break; // Fail-fast
-      }
-    }
-
-    // Batch git commit if enabled and we have completed operations
-    if (!options.dryRun && result.completedOperations > 0 && context?.appId) {
-      const commitResult = await this.batchCommitChanges(
-        appPath,
-        modifiedFilePaths,
-        deletedFilePaths,
-        options.commitMessage,
-        result,
-        context.appId
-      );
-
-      if (commitResult.success && commitResult.hash) {
-        result.commitHash = commitResult.hash;
-      } else if (!commitResult.success && commitResult.error) {
-        // Distinguish between expected and serious errors
-        const errorMessage = commitResult.error.toLowerCase();
-        const isExpectedError =
-          errorMessage.includes('nothing to commit') ||
-          errorMessage.includes('no changes added') ||
-          errorMessage.includes('working tree clean');
-
-        if (isExpectedError) {
-          // Expected error - nothing to commit (files may have been identical)
-          logger.warn('tool.file.edit.git.commit.no_changes', {
-            appPath,
-            fileCount: modifiedFilePaths.length + deletedFilePaths.length,
-            reason: 'nothing_to_commit',
-          });
-        } else {
-          // Serious error - repository corruption, permission errors, etc.
-          logger.error('tool.file.edit.git.commit.failure', {
-            appPath,
-            fileCount: modifiedFilePaths.length + deletedFilePaths.length,
-            error: commitResult.error,
-            errorType: this.categorizeGitError(commitResult.error),
-          });
-        }
-      }
-    }
-
-    // Log batch completion
-    if (result.success) {
-      toolFileEditEvents.batchSuccess(logger, {
-        toolName: 'FileEditTool',
-        operationCount: result.totalOperations,
-        completedOperations: result.completedOperations,
-        ...(context?.appId && { appId: context.appId }),
-      });
-    } else {
-      toolFileEditEvents.batchFailure(logger, new Error(result.error || 'Batch operation failed'), {
-        toolName: 'FileEditTool',
-        operationCount: result.totalOperations,
-        completedOperations: result.completedOperations,
-        ...(context?.appId && { appId: context.appId }),
-      });
-    }
-
-    return result;
-  }
-
-  /**
-   * Commit multiple file changes in a single git commit transaction.
-   * Stages both modified/created files and deleted files, then commits with auto-generated or custom message.
-   * Uses git add for both modifications and deletions (modern git behavior).
-   *
-   * @param appPath - Absolute path to the application directory containing the git repository
-   * @param modifiedFilePaths - Array of absolute paths to files that were created or modified
-   * @param deletedFilePaths - Array of absolute paths to files that were deleted
-   * @param customMessage - Optional custom commit message (if undefined, generates descriptive message)
-   * @param result - Batch operation result used for auto-generating commit message
-   * @param appId - Application identifier for dev-supervisor client initialization
-   * @returns Promise resolving to object with success status and optional commit hash
-   * @throws {Error} When git staging, commit, or log operations fail with non-recoverable errors
-   *
-   * @example
-   * const commitResult = await this.batchCommitChanges(
-   *   '/tmp/apps/app123/app',
-   *   ['/tmp/apps/app123/app/src/index.ts'],
-   *   ['/tmp/apps/app123/app/src/old.ts'],
-   *   'Update source files',
-   *   batchResult,
-   *   'app123'
-   * );
-   */
-  private async batchCommitChanges(
-    appPath: string,
-    modifiedFilePaths: string[],
-    deletedFilePaths: string[],
-    customMessage: string | undefined,
-    result: FileBatchEditResult,
-    appId: string
-  ): Promise<{ success: boolean; hash?: string; error?: string }> {
+    let mode: 'create' | 'edit' | 'rewrite' | 'delete';
     try {
-      const workspace = createForWorkspace(appId, 'preview');
-      const gitTool = new GitTool(workspace?.tasks);
-
-      // Stage modified/created files
-      if (modifiedFilePaths.length > 0) {
-        const relativeFilePaths = modifiedFilePaths.map(fp => relative(appPath, fp));
-        await gitTool.executeGitOperation(appPath, {
-          operation: 'add',
-          files: relativeFilePaths
-        });
-      }
-
-      // Stage deleted files (git add works for deletions in modern git)
-      if (deletedFilePaths.length > 0) {
-        const relativeDeletedPaths = deletedFilePaths.map(fp => relative(appPath, fp));
-        await gitTool.executeGitOperation(appPath, {
-          operation: 'add',
-          files: relativeDeletedPaths
-        });
-      }
-
-      // Generate commit message if not provided
-      const commitMessage = customMessage || this.generateBatchCommitMessage(result);
-
-      // Commit the changes
-      const commitResult = await gitTool.executeGitOperation(appPath, {
-        operation: 'commit',
-        message: commitMessage
-      });
-
-      if (!commitResult.success) {
-        const errorMsg = commitResult.error || 'Git commit operation failed';
-        return {
-          success: false,
-          error: errorMsg
-        };
-      }
-
-      // Get commit hash from log
-      const logResult = await gitTool.executeGitOperation(appPath, {
-        operation: 'log',
-        options: { count: 1 }
-      });
-
-      if (!logResult.success) {
-        // Commit succeeded but couldn't retrieve hash - still consider it successful
-        logger.warn('tool.file.edit.git.log.failure', {
-          appPath,
-          reason: 'commit_succeeded_log_failed',
-          error: logResult.error || 'Failed to retrieve commit hash'
-        });
-        return { success: true };
-      }
-
-      const hash = logResult.commits?.[0]?.hash;
-      return hash ? { success: true, hash } : { success: true };
-
+      mode = options.mode || await this.detectMode(filePath, options);
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      logger.error('tool.file.edit.git.commit.failure', {
-        appPath,
-        fileCount: modifiedFilePaths.length + deletedFilePaths.length,
-        error: errorMessage,
-      });
       return {
         success: false,
-        error: errorMessage
+        path: options.path,
+        mode: options.mode || 'edit',
+        error: error instanceof Error ? error.message : String(error),
       };
     }
-  }
 
-  /**
-   * Categorize git errors by type for better diagnostics.
-   * Analyzes error message to determine if it's a permission error, repository corruption,
-   * configuration issue, or other type of failure.
-   *
-   * @param errorMessage - Git error message to categorize
-   * @returns Error category string for logging and diagnostics
-   */
-  private categorizeGitError(errorMessage: string): string {
-    const lowerError = errorMessage.toLowerCase();
+    try {
+      if (mode !== 'create') {
+        const immutable = await isFileImmutable(filePath, this.fs);
+        if (immutable) {
+          return {
+            success: false,
+            path: options.path,
+            mode,
+            error: 'This file is marked as immutable and cannot be edited. The file contains "TREAT AS IMMUTABLE" in its first line.',
+          };
+        }
+      }
 
-    if (lowerError.includes('permission denied') || lowerError.includes('access denied')) {
-      return 'permission_error';
+      switch (mode) {
+        case 'create':
+          return await this.handleCreate(filePath, options, appPath, context);
+        case 'rewrite':
+          return await this.handleRewrite(filePath, options, appPath, context);
+        case 'edit':
+          return await this.handleEdit(filePath, options, appPath, context);
+        case 'delete':
+          return await this.handleDelete(filePath, options, appPath, context);
+        default:
+          return { success: false, path: options.path, mode, error: `Unknown edit mode: ${mode}` };
+      }
+    } catch (error) {
+      return {
+        success: false,
+        path: options.path,
+        mode,
+        error: error instanceof Error ? error.message : String(error),
+      };
     }
-    if (lowerError.includes('not a git repository') || lowerError.includes('no such file or directory')) {
-      return 'repository_not_found';
-    }
-    if (lowerError.includes('corrupt') || lowerError.includes('broken')) {
-      return 'repository_corruption';
-    }
-    if (lowerError.includes('conflict') || lowerError.includes('merge')) {
-      return 'merge_conflict';
-    }
-    if (lowerError.includes('lock') || lowerError.includes('.git/index.lock')) {
-      return 'repository_locked';
-    }
-    if (lowerError.includes('disk') || lowerError.includes('space')) {
-      return 'disk_space_error';
-    }
-
-    return 'unknown_error';
-  }
-
-  /**
-   * Generate a descriptive commit message summarizing batch file operations.
-   * Creates human-readable message by counting operation types (create, update, rewrite, delete)
-   * and formatting them into a comma-separated list.
-   *
-   * @param result - Batch operation result containing array of individual file operation results
-   * @returns Formatted commit message string describing all successful operations
-   *
-   * @example
-   * // With multiple operation types
-   * generateBatchCommitMessage(result) // Returns: "Create 2 files, Update 3 files, Delete 1 file"
-   *
-   * @example
-   * // With single operation type
-   * generateBatchCommitMessage(result) // Returns: "Update 5 files"
-   *
-   * @example
-   * // With no successful operations
-   * generateBatchCommitMessage(result) // Returns: "Update files"
-   */
-  private generateBatchCommitMessage(result: FileBatchEditResult): string {
-    const operations = result.results;
-    const created = operations.filter(r => r.success && r.mode === 'create').length;
-    const edited = operations.filter(r => r.success && r.mode === 'edit').length;
-    const rewritten = operations.filter(r => r.success && r.mode === 'rewrite').length;
-    const deleted = operations.filter(r => r.success && r.mode === 'delete').length;
-
-    const parts: string[] = [];
-    if (created > 0) parts.push(`Create ${created} file${created > 1 ? 's' : ''}`);
-    if (edited > 0) parts.push(`Update ${edited} file${edited > 1 ? 's' : ''}`);
-    if (rewritten > 0) parts.push(`Rewrite ${rewritten} file${rewritten > 1 ? 's' : ''}`);
-    if (deleted > 0) parts.push(`Delete ${deleted} file${deleted > 1 ? 's' : ''}`);
-
-    if (parts.length === 0) {
-      return 'Update files';
-    } else if (parts.length === 1) {
-      return parts[0] ?? 'Update files';
-    } else {
-      return parts.join(', ');
-    }
-  }
-
-  /**
-   * Resolve file path safely within the app directory
-   */
-  private resolveFilePath(appPath: string, relativePath: string): string {
-    return resolveFilePath(appPath, relativePath);
-  }
-
-  /**
-   * Validate that no symlinks in the path chain point outside the app directory
-   */
-  private validateNoEscapingSymlinks(targetPath: string, appPath: string): void {
-    const assetsDir = deriveAssetsDir(appPath);
-    return validateNoEscapingSymlinks(targetPath, appPath, assetsDir ? [assetsDir] : []);
   }
 
   private async resolveSourceFile(
@@ -755,14 +210,6 @@ export class FileEditTool {
     }
 
     throw new Error('Cannot determine edit mode: specify either "content" for rewrite or "edits" for partial changes');
-  }
-
-  /**
-   * Validate content doesn't contain forbidden upload URLs
-   * CRITICAL: Prevents upload URLs from appearing in generated source code
-   */
-  private validateNoApiPaths(content: string, filePath: string): { valid: boolean; error?: string } {
-    return validateNoApiPaths(content, filePath);
   }
 
   /**
@@ -1338,99 +785,6 @@ export class FileEditTool {
     }
   }
 
-  /**
-   * Create a summary of the file edit operation for conversation history
-   * Handles both single operation and batch operation results
-   */
-  summarizeOperation(options: FileEditOptions | FileBatchEditOptions, result: FileEditResult | FileBatchEditResult): string {
-    // Check if batch result
-    if ('results' in result && Array.isArray(result.results)) {
-      const batchResult = result as FileBatchEditResult;
-      if (!batchResult.success) {
-        return `Batch operation failed: ${batchResult.completedOperations}/${batchResult.totalOperations} completed`;
-      }
-
-      const created = batchResult.results.filter(r => r.success && r.mode === 'create').length;
-      const edited = batchResult.results.filter(r => r.success && r.mode === 'edit').length;
-      const rewritten = batchResult.results.filter(r => r.success && r.mode === 'rewrite').length;
-      const deleted = batchResult.results.filter(r => r.success && r.mode === 'delete').length;
-
-      const parts: string[] = [];
-      if (created > 0) parts.push(`created ${created} file${created > 1 ? 's' : ''}`);
-      if (edited > 0) parts.push(`modified ${edited} file${edited > 1 ? 's' : ''}`);
-      if (rewritten > 0) parts.push(`rewrote ${rewritten} file${rewritten > 1 ? 's' : ''}`);
-      if (deleted > 0) parts.push(`deleted ${deleted} file${deleted > 1 ? 's' : ''}`);
-
-      return `Batch operation: ${parts.join(', ')}`;
-    }
-
-    // Single operation result (original logic)
-    const singleResult = result as FileEditResult;
-    if (!singleResult.success) {
-      return `Failed to ${singleResult.mode} ${singleResult.path}: ${singleResult.error}`;
-    }
-
-    const fileName = singleResult.path.split('/').pop() || singleResult.path;
-
-    switch (singleResult.mode) {
-      case 'create': {
-        const lines = singleResult.changes?.totalLines || 0;
-        return `Created ${fileName} (${lines} lines)`;
-      }
-      case 'rewrite': {
-        const lines = singleResult.changes?.totalLines || 0;
-        return `Rewrote ${fileName} (${lines} lines)`;
-      }
-      case 'edit': {
-        const adds = singleResult.changes?.additions || 0;
-        const dels = singleResult.changes?.deletions || 0;
-        return `Modified ${fileName} (+${adds} -${dels} lines)`;
-      }
-      case 'delete': {
-        return `Deleted ${fileName}`;
-      }
-      default:
-        return `Updated ${fileName}`;
-    }
-  }
-
-  /**
-   * Format the edit result for display
-   */
-  formatResult(result: FileEditResult | FileBatchEditResult): string {
-    // Check if it's a batch result
-    if ('results' in result && Array.isArray(result.results)) {
-      const batchResult = result as FileBatchEditResult;
-      return JSON.stringify({
-        success: batchResult.success,
-        totalOperations: batchResult.totalOperations,
-        completedOperations: batchResult.completedOperations,
-        operations: batchResult.results.map(r => ({
-          path: r.path,
-          mode: r.mode,
-          success: r.success,
-          changes: r.changes,
-          diff: r.diff,
-          error: r.error,
-          warning: r.warning
-        })),
-        commitHash: batchResult.commitHash,
-        error: batchResult.error
-      }, null, 2);
-    }
-
-    // Single operation result (original format)
-    const singleResult = result as FileEditResult;
-    return JSON.stringify({
-      success: singleResult.success,
-      mode: singleResult.mode,
-      path: singleResult.path,
-      changes: singleResult.changes,
-      diff: singleResult.diff,
-      error: singleResult.error,
-      warning: singleResult.warning
-    }, null, 2);
-  }
 }
 
 /**

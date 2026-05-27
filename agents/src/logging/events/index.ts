@@ -42,7 +42,6 @@ export {
   toolCodeSearchEvents,
   toolDirectoryListingEvents,
   toolDirectoryWalkEvents,
-  toolFileEditEvents,
   toolGitEvents,
   toolGrepEvents,
   toolImageGenerationEvents,

@@ -233,18 +233,6 @@ export interface ToolCacheOperationData {
   itemsProcessed?: number;
 }
 
-export interface ToolFileEditData {
-  toolName: string;
-  filePath: string;
-  mode: 'create' | 'edit' | 'rewrite' | 'delete';
-  appId?: string;
-  contentLength?: number;
-  editsCount?: number;
-  dryRun?: boolean;
-  autoCommit?: boolean;
-  autoBuild?: boolean;
-}
-
 export interface ToolBuildOperationData {
   toolName: string;
   appId?: string;
@@ -695,21 +683,6 @@ export interface ConversationTokenLimitData {
   messageDistribution: Record<string, number>;
 }
 
-export interface FileBatchEditEventData {
-  toolName: string;
-  operationCount: number;
-  completedOperations?: number;
-  appId?: string;
-}
-
-export interface FileOperationEventData {
-  toolName: string;
-  operationIndex: number;
-  filePath: string;
-  mode: string;
-  appId?: string;
-}
-
 // Event type mappings for consistent naming
 export const AppEvents = {
   // Repository lifecycle: app.repository.init.{begin|success|failure}
@@ -897,21 +870,6 @@ export const AppEvents = {
         begin: 'tool.cache.cleanup.begin' as const,
         success: 'tool.cache.cleanup.success' as const,
         failure: 'tool.cache.cleanup.failure' as const,
-      },
-    },
-    fileEdit: {
-      begin: 'tool.file.edit.begin' as const,
-      success: 'tool.file.edit.success' as const,
-      failure: 'tool.file.edit.failure' as const,
-      batch: {
-        begin: 'tool.file.edit.batch.begin' as const,
-        success: 'tool.file.edit.batch.success' as const,
-        failure: 'tool.file.edit.batch.failure' as const,
-      },
-      operation: {
-        begin: 'tool.file.edit.operation.begin' as const,
-        success: 'tool.file.edit.operation.success' as const,
-        failure: 'tool.file.edit.operation.failure' as const,
       },
     },
     build: {

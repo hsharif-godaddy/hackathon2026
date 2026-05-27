@@ -13,7 +13,6 @@ export const NATIVE_GO_TOOLS = new Set([
   'directoryListing',
   'grepSearch',
   'str_replace_based_edit_tool',
-  'fileEdit', // deprecated legacy tool
 ]);
 
 export interface ToolDescriptor {

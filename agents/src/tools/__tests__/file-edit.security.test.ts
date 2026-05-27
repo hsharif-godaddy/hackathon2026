@@ -280,6 +280,117 @@ describe('FileEditTool - Security Tests', () => {
     });
   });
 
+  describe('Auto Mode Detection', () => {
+    it('should auto-detect create mode when file does not exist', async () => {
+      const result = await fileEditTool.editFile(testAppDir, {
+        path: 'new-file.txt',
+        content: 'hello world',
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.mode).toBe('create');
+
+      const written = readFileSync(join(testAppDir, 'new-file.txt'), 'utf-8');
+      expect(written).toBe('hello world');
+    });
+
+    it('should auto-detect rewrite mode when file exists and content is provided', async () => {
+      writeFileSync(join(testAppDir, 'existing.txt'), 'old content');
+
+      const result = await fileEditTool.editFile(testAppDir, {
+        path: 'existing.txt',
+        content: 'new content',
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.mode).toBe('rewrite');
+
+      const written = readFileSync(join(testAppDir, 'existing.txt'), 'utf-8');
+      expect(written).toBe('new content');
+    });
+
+    it('should auto-detect edit mode when file exists and edits are provided', async () => {
+      writeFileSync(join(testAppDir, 'to-edit.txt'), 'line one\nline two\nline three\n');
+
+      const result = await fileEditTool.editFile(testAppDir, {
+        path: 'to-edit.txt',
+        edits: [{ old: 'line two', new: 'LINE TWO' }],
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.mode).toBe('edit');
+
+      const written = readFileSync(join(testAppDir, 'to-edit.txt'), 'utf-8');
+      expect(written).toContain('LINE TWO');
+    });
+
+    it('should return error when mode cannot be determined', async () => {
+      writeFileSync(join(testAppDir, 'ambiguous.txt'), 'content');
+
+      const result = await fileEditTool.editFile(testAppDir, {
+        path: 'ambiguous.txt',
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toMatch(/cannot determine edit mode/i);
+    });
+  });
+
+  describe('Immutable File Rejection', () => {
+    it('should reject editing a file marked as immutable', async () => {
+      writeFileSync(join(testAppDir, 'locked.txt'), '// TREAT AS IMMUTABLE\ndo not touch');
+
+      const result = await fileEditTool.editFile(testAppDir, {
+        path: 'locked.txt',
+        mode: 'rewrite',
+        content: 'overwritten',
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toMatch(/immutable/i);
+
+      const unchanged = readFileSync(join(testAppDir, 'locked.txt'), 'utf-8');
+      expect(unchanged).toContain('do not touch');
+    });
+
+    it('should reject editing immutable file via auto-detected mode', async () => {
+      writeFileSync(join(testAppDir, 'guarded.txt'), '/* TREAT AS IMMUTABLE */\nprotected');
+
+      const result = await fileEditTool.editFile(testAppDir, {
+        path: 'guarded.txt',
+        content: 'hacked',
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toMatch(/immutable/i);
+    });
+
+    it('should allow creating a new file even if path does not exist (no immutability check)', async () => {
+      const result = await fileEditTool.editFile(testAppDir, {
+        path: 'brand-new.txt',
+        mode: 'create',
+        content: '// TREAT AS IMMUTABLE\nfresh file',
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.mode).toBe('create');
+    });
+
+    it('should reject deleting an immutable file', async () => {
+      writeFileSync(join(testAppDir, 'nodelete.txt'), '# TREAT AS IMMUTABLE\nkeep me');
+
+      const result = await fileEditTool.editFile(testAppDir, {
+        path: 'nodelete.txt',
+        mode: 'delete',
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toMatch(/immutable/i);
+
+      expect(existsSync(join(testAppDir, 'nodelete.txt'))).toBe(true);
+    });
+  });
+
   describe('Asset Symlink Whitelisting', () => {
     let previewDir: string;
     let assetsDir: string;

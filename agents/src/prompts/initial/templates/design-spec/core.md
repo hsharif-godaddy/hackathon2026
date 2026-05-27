@@ -10,7 +10,7 @@ If the user provides a URL or domain name, treat it as the target domain for the
 
 <workflow>
 1. **Parse design spec** — Read the uploaded design.md from the referenced files in context
-2. **Write design file** — Use `fileEdit` to write the full design.md content to `src/design.md`
+2. **Write design file** — Use `str_replace_based_edit_tool` to write the full design.md content to `src/design.md`
 3. **Apply color tokens** — Use `colorScheme` tool with the YAML `colors` section values
 4. **Apply font tokens** — Use `fontTheme` tool with the primary font families from the YAML `typography` section
 5. **Ask about content** — Use `askQuestion` to learn about the business, page content, and features (1-2 rounds max)

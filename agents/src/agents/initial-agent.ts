@@ -298,19 +298,19 @@ export async function createInitialAgent(
   if (templateId === 'design-spec') {
     tools.colorScheme = allAILibTools.colorScheme
     tools.fontTheme = allAILibTools.fontTheme
-    tools.fileEdit = allAILibTools.fileEdit
+    tools.str_replace_based_edit_tool = allAILibTools.str_replace_based_edit_tool
   }
 
   // ZIP import template: write uploaded files to disk
   if (templateId === 'zip-import') {
-    tools.fileEdit = allAILibTools.fileEdit
+    tools.str_replace_based_edit_tool = allAILibTools.str_replace_based_edit_tool
   }
 
   // UI kit import: apply design tokens, write files, load kit reference
   if (templateId === 'ui-kit-import') {
     tools.colorScheme = allAILibTools.colorScheme
     tools.fontTheme = allAILibTools.fontTheme
-    tools.fileEdit = allAILibTools.fileEdit
+    tools.str_replace_based_edit_tool = allAILibTools.str_replace_based_edit_tool
     tools.loadUiKit = allAILibTools.loadUiKit
   }
 
