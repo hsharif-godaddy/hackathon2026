@@ -30,7 +30,7 @@ export const SSO_TIMEOUT = 30000;
 export const GO_LIVE_MODAL_TIMEOUT = 20000;
 
 /** Apps grid page size — must match app/src/app/[market]/apps/constants.ts */
-export const APPS_GRID_PAGE_SIZE = 11;
+export const APPS_GRID_PAGE_SIZE = 12;
 
 /**
  * Hard cap enforced by mgmt-airo (returns HTTP 422 with errorCode
