@@ -10,9 +10,9 @@
  */
 
 const RATING_EMOJIS = {
-  '1': ':alert_red:',
-  '2': ':alert_orange:',
-  '3': ':alert_yellow:',
+  '1': ':red_circle:',
+  '2': ':large_orange_circle:',
+  '3': ':large_yellow_circle:',
   '4': ':neutral_face:',
   '5': ':slightly_smiling_face:',
   '6': ':smile:',
