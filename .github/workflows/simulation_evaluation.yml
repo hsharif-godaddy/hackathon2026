@@ -365,11 +365,20 @@ jobs:
           AFTER_TAKEN_AT=$(jq -r '.taken_at // "unknown"' "$AFTER_FILE")
           DELTA_TOTAL=$((AFTER_TOTAL - BEFORE_TOTAL))
 
-          # Per-subscription delta. Same reason as above for using
+          # Per-subscription credit spend. Same reason as above for using
           # `credits_spent_total` rather than `credits_spent_available`.
-          # Inner-join on subscription_id; emit rows only for subs that
-          # read OK in both snapshots so we don't show misleading
-          # "0 spend" rows for failed reads.
+          # We deliberately emit only Subscription + spend -- the
+          # absolute before/after numbers under `credits_spent_total`
+          # don't match the snapshot tables' `creditsSpent (available)`
+          # values (different aggregation), and showing both was more
+          # confusing than helpful in this row. Operators who want
+          # before/after detail can read it from the snapshot tables
+          # above (active grants) or from the artifact JSON (full
+          # per-grant breakdown). Inner-join on subscription_id; emit
+          # rows only for subs that read OK in both snapshots so we
+          # don't show misleading "0 spend" rows for failed reads.
+          # `delta` is kept as the internal sort key but rendered as
+          # "Credits Spent" in the markdown table for non-engineers.
           PER_SUB_TABLE=$(jq -nr \
             --slurpfile before "$BEFORE_FILE" \
             --slurpfile after "$AFTER_FILE" \
@@ -383,32 +392,30 @@ jobs:
                 | ($b[] | select(.subscription_id == $after_row.subscription_id and .ok == true)) as $before_row
                 | {
                     sub: $after_row.subscription_id,
-                    before: $before_row.credits_spent_total,
-                    after: $after_row.credits_spent_total,
                     delta: ($after_row.credits_spent_total - $before_row.credits_spent_total)
                   }
               ]
             | sort_by(-.delta)
             | .[]
-            | "| `\(.sub)` | \(.before) | \(.after) | \(.delta) |"
+            | "| `\(.sub)` | \(.delta) |"
             ')
 
           {
-            echo "**Pool credits spent this run:** \`$DELTA_TOTAL\`"
+            echo "**Total Airo credits spent this run:** \`$DELTA_TOTAL\`"
             echo ""
             echo "- Before snapshot: \`$BEFORE_TOTAL\` credits at \`$BEFORE_TAKEN_AT\`"
             echo "- After snapshot:  \`$AFTER_TOTAL\` credits at \`$AFTER_TAKEN_AT\`"
             echo ""
-            echo "_Totals above sum \`creditsSpent\` over **all** grants (including expired) so the delta stays correct when a grant exhausts mid-run. They will not match the \`creditsSpent (available)\` totals in the snapshot tables, which intentionally show only currently-active grants._"
+            echo "_Pool totals above sum \`creditsSpent\` over **all** grants (including expired) so the spend figure stays correct when a grant exhausts mid-run. They will not match the \`creditsSpent (available)\` totals in the snapshot tables, which intentionally show only currently-active grants. The per-subscription numbers below are computed the same way._"
             echo ""
-            echo "### Per-subscription delta"
+            echo "### Credits spent per subscription"
             echo ""
-            echo "| Subscription | Before | After | Delta |"
-            echo "| --- | ---: | ---: | ---: |"
+            echo "| Subscription | Credits Spent |"
+            echo "| --- | ---: |"
             if [ -n "$PER_SUB_TABLE" ]; then
               echo "$PER_SUB_TABLE"
             else
-              echo "| _no subscriptions read OK in both snapshots_ | — | — | — |"
+              echo "| _no subscriptions read OK in both snapshots_ | — |"
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 
