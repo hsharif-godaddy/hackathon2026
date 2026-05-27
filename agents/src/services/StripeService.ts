@@ -80,9 +80,9 @@ export class StripeServiceError extends Error {
 // ============================================================================
 
 const stripeServiceUrls = {
-  dev: 'https://airo-stripe-service.mvci.api.dev-godaddy.com',
-  test: 'https://airo-stripe-service.mvci.api.test-godaddy.com',
-  prod: 'https://airo-stripe-service.mvci.api.godaddy.com',
+  dev: 'https://stripe.airo-builder.dev-godaddy.com',
+  test: 'https://stripe.airo-builder.test-godaddy.com',
+  prod: 'https://stripe.airo-builder.godaddy.com',
 } as const;
 
 function getStripeServiceBaseUrl(): string {
