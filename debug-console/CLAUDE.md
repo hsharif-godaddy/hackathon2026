@@ -53,6 +53,10 @@ Caches are in-process. Restarts purge them. Dev-only changes (e.g. heap snapshot
 - `DEBUG_FETCH=1 pnpm dev` activates `dev-fetch-instrumentation.ts`, which monkey-patches `globalThis.fetch` to log every outbound call with timing, repeat-detection, and a periodic top-15 summary. Snapshot endpoint at `/api/dev/fetch-stats`. Use this when chasing fan-out / leak issues — observable counts beat guessing.
 - AWS SDK clients (S3, Lambda, Secrets Manager) bypass `globalThis.fetch`, so the probe doesn't see them. If suspected, add a separate probe.
 
+## Customer PII
+
+**Don't render customer PII (email, phone, name, address) in the dashboard.** Use `shopperId` / `customerId` / `externalSystemId` — dev/support resolve identity via internal CRM tooling. If you're touching code that already displays PII, replace the value with `'N/A'` and drop the field from the upstream type.
+
 ## Key Commands
 
 ```bash
