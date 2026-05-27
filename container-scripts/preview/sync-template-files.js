@@ -87,6 +87,12 @@ const SYNC_MANIFEST = [
     force: false
   },
   {
+    file: 'src/lib/analytics-consent.ts',
+    description: 'Shared cookie consent utility for analytics tracking skills',
+    known_hashes: [],
+    force: false,
+  },
+  {
     file: 'src/main.tsx',
     description: 'Client entry; hydrateRoot when SSR markup present, createRoot otherwise',
     known_hashes: [
