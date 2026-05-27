@@ -1174,7 +1174,7 @@ describe('useDevelopPageStore', function useDevelopPageStoreTests() {
       });
     });
 
-    it('should persist and rehydrate domainJobsInProgress', async function persistAndRehydrate() {
+    it('should not persist domainJobsInProgress across reloads', async function noPersistence() {
       const startedAt = Date.now();
       act(function setJob() {
         useDevelopPageStore.getState().setDomainJobInProgress('app-123', {
@@ -1185,23 +1185,21 @@ describe('useDevelopPageStore', function useDevelopPageStoreTests() {
       });
 
       const savedState = localStorage.getItem(storageKey);
-      expect(savedState).toContain('app-123');
+      // partialize returns empty object — domainJobsInProgress is not serialized
+      if (savedState) {
+        expect(savedState).not.toContain('app-123');
+      }
 
       act(function clearRuntimeState() {
         useDevelopPageStore.setState({ domainJobsInProgress: {} });
       });
-      expect(useDevelopPageStore.getState().domainJobsInProgress['app-123']).toBeUndefined();
-      localStorage.setItem(storageKey, savedState as string);
 
       await act(async function rehydrate() {
         await persistedStore.persist.rehydrate();
       });
 
-      expect(useDevelopPageStore.getState().domainJobsInProgress['app-123']).toEqual({
-        fqdn: 'example.com',
-        startedAt,
-        jobStatus: 'RUNNING',
-      });
+      // Not rehydrated — in-flight state has no value after a reload
+      expect(useDevelopPageStore.getState().domainJobsInProgress['app-123']).toBeUndefined();
     });
   });
 

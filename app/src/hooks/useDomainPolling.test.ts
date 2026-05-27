@@ -129,6 +129,54 @@ describe('useDomainPolling', function pollingTests() {
     });
   });
 
+  describe('refetchInterval — hasActiveJob override', function activeJobTests() {
+    it('polls when hasActiveJob is true even if domains array is empty', function activeJobEmptyDomains() {
+      renderHookWithProviders(() => useDomainPolling('app-123', { hasActiveJob: true }));
+      expect(interval(makeData([]))).toBeGreaterThan(0);
+    });
+
+    it('polls when hasActiveJob is true even if data is undefined', function activeJobNoData() {
+      renderHookWithProviders(() => useDomainPolling('app-123', { hasActiveJob: true }));
+      expect(interval(undefined)).toBeGreaterThan(0);
+    });
+
+    it('polls when hasActiveJob is true even if all domains are terminal', function activeJobTerminalDomains() {
+      renderHookWithProviders(() => useDomainPolling('app-123', { hasActiveJob: true }));
+      expect(interval(makeData([
+        { domainType: null, status: DomainStatus.ACTIVE },
+      ]))).toBeGreaterThan(0);
+    });
+
+    it('does not poll when hasActiveJob is false and no pending domains', function noActiveJobStops() {
+      renderHookWithProviders(() => useDomainPolling('app-123', { hasActiveJob: false }));
+      expect(interval(makeData([
+        { domainType: null, status: DomainStatus.ACTIVE },
+      ]))).toBe(false);
+    });
+
+    it('resets backoff clock when hasActiveJob transitions to false', function activeJobClockReset() {
+      vi.useFakeTimers();
+
+      renderHookWithProviders(() => useDomainPolling('app-123', { hasActiveJob: true }));
+      const terminal = makeData([{ domainType: null, status: DomainStatus.ACTIVE }]);
+
+      // Advance past the first backoff stage
+      vi.advanceTimersByTime(6 * 60_000);
+      expect(interval(terminal)).toBe(30_000); // 5-10min stage
+
+      // Simulate hasActiveJob toggling off — re-render with new options
+      renderHookWithProviders(() => useDomainPolling('app-123', { hasActiveJob: false }));
+      // Polling stops and clock resets
+      expect(interval(terminal)).toBe(false);
+
+      // Next pending domain starts fresh at 5s
+      renderHookWithProviders(() => useDomainPolling('app-123', { hasActiveJob: false }));
+      expect(interval(makeData([{ domainType: null, status: DomainStatus.PENDING }]))).toBe(5_000);
+
+      vi.useRealTimers();
+    });
+  });
+
   describe('refetchInterval — backoff stages', function backoffTests() {
     it('returns 5s interval early in polling', function earlyInterval() {
       renderHookWithProviders(() => useDomainPolling('app-123'));

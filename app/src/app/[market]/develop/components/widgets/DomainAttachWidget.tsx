@@ -36,6 +36,7 @@ import { appFetch } from '@/lib/gasket-config';
 import { shipAnalyticsLog } from '@/lib/logging';
 import { DomainMode, DomainStatus } from '@/lib/mgmt-airo/types';
 import { logger } from '@/lib/request-context';
+import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import { useSiteStore } from '@/stores/useSiteStore';
 import { isBlockedAiroDomain, isCustomerDomain, sanitizeDomainInput, validateDomain } from '@/utils/domain';
 import { getDomainErrorMessage, translateDomainApiError } from '@/utils/domain-validation';
@@ -153,8 +154,12 @@ export default function DomainAttachWidget({
   // Compute actual loading state
   const isLoading = authLoading || isLoadingDomains || (!isDomainsFetched && isAuthenticated);
 
+  const hasActiveDomainJob = useDevelopPageStore(
+    (s) => Boolean(appId && s.domainJobsInProgress?.[appId]),
+  );
+
   // Poll while any domain is in a transitional state (pending, deleting, no status yet)
-  const { data: appDetails, isFetched: isAppDetailsFetched } = useDomainPolling(appId);
+  const { data: appDetails, isFetched: isAppDetailsFetched } = useDomainPolling(appId, { hasActiveJob: hasActiveDomainJob });
 
   // Handle customer domain attachment with automatic DNS configuration
   const {

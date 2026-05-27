@@ -1172,7 +1172,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     })
   })), {
     name: 'airo-builder.develop-page-store.v1',
-    partialize: (state) => ({ domainJobsInProgress: state.domainJobsInProgress }),
+    partialize: () => ({}),
   }),
     { name: 'DevelopPageStore' }
   )

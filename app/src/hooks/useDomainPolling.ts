@@ -32,7 +32,11 @@ function pollInterval(elapsedMs: number): number {
  * Backs off from 5s → 30s → 2min → 10min over time.
  * Clock resets when all domains reach a terminal state.
  */
-export function useDomainPolling(appId: string | null | undefined) {
+interface UseDomainPollingOptions {
+  hasActiveJob?: boolean;
+}
+
+export function useDomainPolling(appId: string | null | undefined, options: UseDomainPollingOptions = {}) {
   const pollStartTimeRef = useRef(Date.now());
 
   return useAppDetails(appId, {
@@ -41,12 +45,14 @@ export function useDomainPolling(appId: string | null | undefined) {
     refetchInterval: (data) => {
       const hasPendingDomain = data?.domains?.some(d => {
         if (d.domainType === 'prefix') return false;
-        if (!d.status) return true; // status absent immediately after creation — poll until backend assigns one
+        if (!d.status) return true;
 
         return d.status === DomainStatus.PENDING || d.status === DomainStatus.DELETING;
       }) ?? false;
 
-      if (!hasPendingDomain) {
+      const shouldPoll = hasPendingDomain || (options.hasActiveJob ?? false);
+
+      if (!shouldPoll) {
         pollStartTimeRef.current = Date.now();
         return false;
       }

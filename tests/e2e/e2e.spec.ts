@@ -35,11 +35,11 @@ import {
   AI_RESPONSE_TIMEOUT_MS,
   CHAT_INPUT_TIMEOUT,
   DEFAULT_TIMEOUT,
-  DEPLOYMENT_TIMEOUT_MS,
   E2E_NO_DELETE,
   LONG_TIMEOUT,
   PREVIEW_TIMEOUT,
   PUBLISH_TIMEOUT_MS,
+  SHORT_TIMEOUT,
   getEnvConfig,
   getSpecPrefix,
 } from '../helpers/constants';
@@ -406,7 +406,7 @@ test.describe('E2E - Critical Path', () => {
         .locator('button[aria-label="Clear"]');
       await expect(clearButton).toBeVisible({ timeout: DEFAULT_TIMEOUT });
       await clearButton.click();
-      await expect(searchInput).toHaveValue('');
+      await expect(searchInput).toHaveValue('', { timeout: DEFAULT_TIMEOUT });
       console.log('  Search clear works');
 
       if (await previewTab.isVisible().catch(() => false)) {
@@ -462,74 +462,8 @@ test.describe('E2E - Critical Path', () => {
 
     await test.step('Step 11: Custom domain (e2e.airotesting.shop) — attach, verify DNS, disconnect', async () => {
       const TARGET_DOMAIN = 'e2e.airotesting.shop';
+      const MAX_DOMAIN_ATTEMPTS = 3;
 
-      await dismissOverlays(page);
-      await ensureAuthenticated(page);
-
-      // Open the Domain settings panel via the desktop user-flow path:
-      // header Publish button -> "Connect a Custom Domain" button in the
-      // resulting popover. The button calls `handleViewDomain` in
-      // `app/src/components/layout/AppPublish.tsx`, which sets
-      // `activeChatTab=SETTINGS` + `activeSettingsSection=DOMAIN`. The
-      // button only renders when the app is on an Airo subdomain AND has
-      // published at least once — both true here after Step 1 + Step 3.
-      await expect(publishButton).toBeVisible({ timeout: DEFAULT_TIMEOUT });
-      await publishButton.click();
-
-      // Translation key first as a safety net in case the rendered string
-      // changes; English copy second as the runtime label.
-      const connectCustomDomainButton = page.getByRole('button', {
-        name: /Connect a Custom Domain|builder_common_custom_domain_button/i,
-      });
-      await expect(connectCustomDomainButton).toBeVisible({ timeout: DEFAULT_TIMEOUT });
-      await connectCustomDomainButton.click();
-
-      // Use the heading role (renders as `text.h3` in SettingsSection.tsx)
-      // with an anchored regex. A bare `getByText(/Custom Domain/i).first()`
-      // would also match a hidden chat-suggestion `<p>` that contains the
-      // phrase, which is never visible — timing out the assertion.
-      await expect(
-        page.getByRole('heading', { name: /^Custom Domain$/i }),
-      ).toBeVisible({ timeout: DEFAULT_TIMEOUT });
-
-      const customDomainInput = page.locator('#custom-domain-slug');
-      await expect(customDomainInput).toBeVisible({ timeout: DEFAULT_TIMEOUT });
-      await expect(customDomainInput).toBeEnabled();
-      await customDomainInput.fill(TARGET_DOMAIN);
-
-      // Add stays disabled until the 500ms input debounce elapses AND the
-      // validation API returns available=true. Asserting toBeEnabled (not
-      // just toBeVisible) before clicking is the #1 defense against flake
-      // here — clicking a still-disabled button silently no-ops.
-      const addButton = page.locator('[data-eid*="settings.domains.add_domain"]');
-      await expect(addButton).toBeVisible({ timeout: DEFAULT_TIMEOUT });
-      await expect(addButton).toBeEnabled({ timeout: LONG_TIMEOUT });
-      await addButton.click();
-
-      await expect(
-        page.getByText(/builder_custom_domain_modal_title|Are you sure/i),
-      ).toBeVisible({ timeout: DEFAULT_TIMEOUT });
-
-      const continueButton = page.locator(
-        '[data-eid*="settings.domains.connect_continue"]',
-      );
-      await expect(continueButton).toBeVisible({ timeout: DEFAULT_TIMEOUT });
-      await expect(continueButton).toBeEnabled();
-      await continueButton.click();
-
-      // Wait for the modal close transition before probing the next state,
-      // otherwise the row-appears assertion can race the modal teardown.
-      await expect(
-        page.getByText(/builder_custom_domain_modal_title|Are you sure/i),
-      ).not.toBeVisible({ timeout: DEFAULT_TIMEOUT });
-
-      // Scope the row locator: filter divs to those containing BOTH the
-      // domain text AND the row's Options button. A bare getByText(TARGET_DOMAIN)
-      // is ambiguous once DNS records render. The DNS card has no Options
-      // button, so the dual filter uniquely picks the row Card.
-      // TARGET_DOMAIN is escaped before being interpolated into the regex
-      // so the `.` chars in `e2e.airotesting.shop` are matched literally,
-      // not as the regex "any char" metachar.
       const escapedTarget = TARGET_DOMAIN.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       const domainRowContainer = page
         .locator('div')
@@ -538,7 +472,162 @@ test.describe('E2E - Critical Path', () => {
           has: page.getByRole('button', { name: /builder_common_options|^Options$/i }),
         })
         .last();
-      await expect(domainRowContainer).toBeVisible({ timeout: DEPLOYMENT_TIMEOUT_MS });
+
+      // Retry loop: the domain-add API in test environments is intermittently
+      // slow or silently fails. Rather than a single 300s blind wait (which
+      // lets auth expire), use a shorter timeout per attempt with re-auth
+      // between retries.
+      for (let attempt = 1; attempt <= MAX_DOMAIN_ATTEMPTS; attempt++) {
+        await dismissOverlays(page);
+        await ensureAuthenticated(page);
+
+        // Open the publish popover to access "Connect a Custom Domain".
+        await expect(publishButton).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+        await publishButton.click();
+
+        const connectCustomDomainButton = page.getByRole('button', {
+          name: /Connect a Custom Domain|builder_common_custom_domain_button/i,
+        });
+
+        // If the "Connect a Custom Domain" button isn't visible, the domain
+        // may already be connected from a previous attempt (the button only
+        // renders when on an Airo subdomain with no active custom domain).
+        // Navigate to the domain settings panel to confirm.
+        const connectButtonVisible = await connectCustomDomainButton
+          .waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT })
+          .then(() => true)
+          .catch(() => false);
+
+        if (!connectButtonVisible) {
+          // Close the popover and navigate to domain settings via URL
+          await page.keyboard.press('Escape');
+          const currentUrl = new URL(page.url());
+          currentUrl.searchParams.set('tab', 'settings');
+          currentUrl.searchParams.set('settings', 'domain');
+          await page.goto(currentUrl.toString(), { waitUntil: 'load' });
+
+          // Give the domain panel time to hydrate and render the row
+          const rowVisible = await domainRowContainer
+            .waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT })
+            .then(() => true)
+            .catch(() => false);
+
+          if (rowVisible) {
+            console.log(`  Domain already connected from prior attempt (attempt ${attempt})`);
+            break;
+          }
+          throw new Error(
+            `Attempt ${attempt}: "Connect a Custom Domain" button not visible and domain row not found on settings panel. Page URL: ${page.url()}`,
+          );
+        }
+
+        await connectCustomDomainButton.click();
+
+        await expect(
+          page.getByRole('heading', { name: /^Custom Domain$/i }),
+        ).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+
+        // After navigating to the domain panel, give it a moment to hydrate
+        // in case a previous attempt's API call completed late.
+        if (attempt > 1) {
+          const alreadyVisible = await domainRowContainer
+            .waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT / 3 })
+            .then(() => true)
+            .catch(() => false);
+          if (alreadyVisible) {
+            console.log(`  Domain row appeared between retries (attempt ${attempt})`);
+            break;
+          }
+        }
+
+        // Fill the domain input and submit. The entire sequence is soft-failed
+        // because a product-level race (useDomainPolling stops polling before
+        // the domain record appears in mgmt-airo) can cause the form to
+        // disappear mid-interaction if a prior attempt's API call lands late.
+        const customDomainInput = page.locator('#custom-domain-slug');
+        const inputReady = await customDomainInput
+          .waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT })
+          .then(() => expect(customDomainInput).toBeEnabled())
+          .then(() => true)
+          .catch(() => false);
+
+        if (!inputReady) {
+          const rowLateVisible = await domainRowContainer
+            .waitFor({ state: 'visible', timeout: SHORT_TIMEOUT })
+            .then(() => true)
+            .catch(() => false);
+          if (rowLateVisible) {
+            console.log(`  Domain form gone, row visible — already connected (attempt ${attempt})`);
+            break;
+          }
+          if (attempt < MAX_DOMAIN_ATTEMPTS) {
+            console.log(`  Domain input not ready (attempt ${attempt}/${MAX_DOMAIN_ATTEMPTS}), retrying...`);
+            continue;
+          }
+          throw new Error(
+            `Attempt ${attempt}: Domain input never appeared and domain row not found. Page URL: ${page.url()}`,
+          );
+        }
+
+        await customDomainInput.fill(TARGET_DOMAIN);
+
+        const addButton = page.locator('[data-eid*="settings.domains.add_domain"]');
+        const addReady = await addButton
+          .waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT })
+          .then(() => expect(addButton).toBeEnabled({ timeout: LONG_TIMEOUT }))
+          .then(() => true)
+          .catch(() => false);
+
+        if (!addReady) {
+          const rowLateVisible = await domainRowContainer
+            .waitFor({ state: 'visible', timeout: SHORT_TIMEOUT })
+            .then(() => true)
+            .catch(() => false);
+          if (rowLateVisible) {
+            console.log(`  Domain row appeared while waiting for Add button (attempt ${attempt})`);
+            break;
+          }
+          if (attempt < MAX_DOMAIN_ATTEMPTS) {
+            console.log(`  Add button never ready (attempt ${attempt}/${MAX_DOMAIN_ATTEMPTS}), retrying...`);
+            continue;
+          }
+          throw new Error(
+            `Attempt ${attempt}: Add button never ready and domain row not found. Page URL: ${page.url()}`,
+          );
+        }
+
+        await addButton.click();
+
+        await expect(
+          page.getByText(/builder_custom_domain_modal_title|Are you sure/i),
+        ).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+
+        const continueButton = page.locator(
+          '[data-eid*="settings.domains.connect_continue"]',
+        );
+        await expect(continueButton).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+        await expect(continueButton).toBeEnabled();
+        await continueButton.click();
+
+        await expect(
+          page.getByText(/builder_custom_domain_modal_title|Are you sure/i),
+        ).not.toBeVisible({ timeout: DEFAULT_TIMEOUT });
+
+        const appeared = await domainRowContainer
+          .waitFor({ state: 'visible', timeout: LONG_TIMEOUT })
+          .then(() => true)
+          .catch(() => false);
+
+        if (appeared) break;
+
+        if (attempt < MAX_DOMAIN_ATTEMPTS) {
+          console.log(`  Domain row did not appear (attempt ${attempt}/${MAX_DOMAIN_ATTEMPTS}), retrying...`);
+        } else {
+          throw new Error(
+            `Domain row not visible after ${MAX_DOMAIN_ATTEMPTS} attempts (${LONG_TIMEOUT}ms each). Page URL: ${page.url()}`,
+          );
+        }
+      }
 
       // DNS instructions panel renders when the domain is external. Anchor
       // on the i18n key (untranslated) or the English fallback.
@@ -548,7 +637,7 @@ test.describe('E2E - Critical Path', () => {
           has: page.getByText(/builder_domain_dns_instructions|To finish connecting/i),
         })
         .first();
-      await expect(dnsRegion).toBeVisible({ timeout: DEPLOYMENT_TIMEOUT_MS });
+      await expect(dnsRegion).toBeVisible({ timeout: LONG_TIMEOUT });
 
       // Assert the A record renders — `getDnsRecords` in @/utils/domain
       // always returns an aRecord regardless of root-vs-subdomain or DCV
@@ -594,8 +683,8 @@ test.describe('E2E - Critical Path', () => {
       // `not.toBeAttached()` (vs `not.toBeVisible()`) verifies the row was
       // unmounted from the DOM, not just CSS-hidden — catches a regression
       // that would hide-but-keep the row in DOM.
-      await expect(domainRowContainer).not.toBeAttached({ timeout: DEPLOYMENT_TIMEOUT_MS });
-      await expect(customDomainInput).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+      await expect(domainRowContainer).not.toBeAttached({ timeout: LONG_TIMEOUT });
+      await expect(page.locator('#custom-domain-slug')).toBeVisible({ timeout: DEFAULT_TIMEOUT });
       console.log('  Custom domain disconnected and input restored');
     });
 

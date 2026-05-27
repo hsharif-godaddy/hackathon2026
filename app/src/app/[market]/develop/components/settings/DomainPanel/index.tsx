@@ -56,8 +56,12 @@ export default function DomainPanel() {
   const { handlePublish, isPublishDisabled, publishState } = usePublishForDomain(currentAppId, site);
   const canManageDomains = canAccessDomainManagement(site);
 
+  const hasActiveDomainJob = useDevelopPageStore(
+    (s) => Boolean(currentAppId && s.domainJobsInProgress?.[currentAppId]),
+  );
+
   // Use polling query as single source of truth for domain ordering
-  const { data: appDetails, isFetched: isAppDetailsFetched } = useDomainPolling(currentAppId);
+  const { data: appDetails, isFetched: isAppDetailsFetched } = useDomainPolling(currentAppId, { hasActiveJob: hasActiveDomainJob });
 
   // Check if there's an active or pending custom domain to determine section order
   const hasActiveCustomDomain = appDetails?.domains?.some(
