@@ -81,7 +81,7 @@ export function DomainDisconnectConfirmationModal({
           <Button
             design="secondary"
             data-partial="componentAiro"
-            data-eid={generateClickEID('domain.disconnect.buttons.cancel')}
+            data-eid={generateClickEID('domain.disconnect-buttons.cancel')}
             text={t('builder_domain_disconnect_warning_back', {}, 'No, Go Back')}
             onClick={onClose}
             disabled={isDisconnecting}
@@ -90,7 +90,7 @@ export function DomainDisconnectConfirmationModal({
           <Button
             design="primary"
             data-partial="componentAiro"
-            data-eid={generateClickEID('domain.disconnect.buttons.confirm')}
+            data-eid={generateClickEID('domain.disconnect-buttons.confirm')}
             text={
               isDisconnecting
                 ? t('builder_domain_disconnect_seo_warning_disconnecting', {}, 'Disconnecting…')
