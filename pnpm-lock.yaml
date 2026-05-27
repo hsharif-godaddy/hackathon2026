@@ -13,8 +13,8 @@ catalogs:
       specifier: ^3.0.10
       version: 3.0.10
     '@airo/components':
-      specifier: ^6.0.0
-      version: 6.0.0
+      specifier: ^6.2.0
+      version: 6.2.0
     '@aws-sdk/client-lambda':
       specifier: ^3.1048.0
       version: 3.1052.0
@@ -561,7 +561,7 @@ importers:
         version: link:../packages/ai-transport
       '@airo/components':
         specifier: 'catalog:'
-        version: 6.0.0(c3c31a1a906d87142451b3e64a296116)
+        version: 6.2.0(c3c31a1a906d87142451b3e64a296116)
       '@airo/shared':
         specifier: workspace:*
         version: link:../packages/shared
@@ -1910,9 +1910,10 @@ packages:
       react: 19.1.0
       react-dom: 19.1.0
 
-  '@airo/components@6.0.0':
-    resolution: {integrity: sha512-k636zGQQkVp1lvpfJS2ZDQ8rAUJTAG141BA8BE7XdVZmtTjU1/4U7fMG+fAKEA50iH1MjAEAzN8pRoH++r8y3g==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@airo/components/-/@airo/components-6.0.0.tgz}
+  '@airo/components@6.2.0':
+    resolution: {integrity: sha512-pxWpqBl7rB4FT0d7y9i1MLlLrWLmuQAp5R51RrtpdbRbURKbj4RaZFgFJi2MUbNEodPWD+PXiKuYy+xYJN4ahg==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@airo/components/-/@airo/components-6.2.0.tgz}
     engines: {node: '>=22', npm: '>=10'}
+    hasBin: true
     peerDependencies:
       '@godaddy/antares': ^0.1.0
       '@lexical/react': ^0.42.0
@@ -14082,7 +14083,7 @@ snapshots:
       - prop-types
       - typescript
 
-  '@airo/components@6.0.0(c3c31a1a906d87142451b3e64a296116)':
+  '@airo/components@6.2.0(c3c31a1a906d87142451b3e64a296116)':
     dependencies:
       '@lexical/react': 0.42.0(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(yjs@13.6.30)
       '@ux/box': 2500.9.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
@@ -22557,7 +22558,7 @@ snapshots:
       eslint: 9.28.0(jiti@2.7.0)
       eslint-import-resolver-node: 0.3.10
       eslint-import-resolver-typescript: 3.10.1(eslint-plugin-import@2.32.0(eslint@9.28.0(jiti@2.7.0)))(eslint@9.28.0(jiti@2.7.0))
-      eslint-plugin-import: 2.32.0(eslint-import-resolver-typescript@3.10.1)(eslint@9.28.0(jiti@2.7.0))
+      eslint-plugin-import: 2.32.0(eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(eslint@9.28.0(jiti@2.7.0)))(eslint@9.28.0(jiti@2.7.0)))(eslint@9.28.0(jiti@2.7.0))
       eslint-plugin-jsx-a11y: 6.10.2(eslint@9.28.0(jiti@2.7.0))
       eslint-plugin-react: 7.37.5(eslint@9.28.0(jiti@2.7.0))
       eslint-plugin-react-hooks: 7.1.1(eslint@9.28.0(jiti@2.7.0))
@@ -22577,7 +22578,7 @@ snapshots:
       eslint: 9.28.0(jiti@2.7.0)
       eslint-import-resolver-node: 0.3.10
       eslint-import-resolver-typescript: 3.10.1(eslint-plugin-import@2.32.0(eslint@9.28.0(jiti@2.7.0)))(eslint@9.28.0(jiti@2.7.0))
-      eslint-plugin-import: 2.32.0(eslint-import-resolver-typescript@3.10.1)(eslint@9.28.0(jiti@2.7.0))
+      eslint-plugin-import: 2.32.0(eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(eslint@9.28.0(jiti@2.7.0)))(eslint@9.28.0(jiti@2.7.0)))(eslint@9.28.0(jiti@2.7.0))
       eslint-plugin-jsx-a11y: 6.10.2(eslint@9.28.0(jiti@2.7.0))
       eslint-plugin-react: 7.37.5(eslint@9.28.0(jiti@2.7.0))
       eslint-plugin-react-hooks: 7.1.1(eslint@9.28.0(jiti@2.7.0))
@@ -22614,7 +22615,7 @@ snapshots:
       tinyglobby: 0.2.16
       unrs-resolver: 1.11.1
     optionalDependencies:
-      eslint-plugin-import: 2.32.0(eslint-import-resolver-typescript@3.10.1)(eslint@9.28.0(jiti@2.7.0))
+      eslint-plugin-import: 2.32.0(eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(eslint@9.28.0(jiti@2.7.0)))(eslint@9.28.0(jiti@2.7.0)))(eslint@9.28.0(jiti@2.7.0))
     transitivePeerDependencies:
       - supports-color
 
@@ -22642,7 +22643,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  eslint-plugin-import@2.32.0(eslint-import-resolver-typescript@3.10.1)(eslint@9.28.0(jiti@2.7.0)):
+  eslint-plugin-import@2.32.0(eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(eslint@9.28.0(jiti@2.7.0)))(eslint@9.28.0(jiti@2.7.0)))(eslint@9.28.0(jiti@2.7.0)):
     dependencies:
       '@rtsao/scc': 1.1.0
       array-includes: 3.1.9
