@@ -102,21 +102,23 @@ const mockAuthUIState = {
   redirectUrl: null as string | null,
   setRedirectUrl: vi.fn(),
   ssoAuthReason: null as number | null,
+  inFlightReauth: false,
+  setInFlightReauth: vi.fn(),
 };
 
 vi.mock('@/stores/useAuthUIStore', () => ({
   useAuthUIStore: (selector?: any) => (typeof selector === 'function' ? selector(mockAuthUIState) : mockAuthUIState),
 }));
 
-vi.mock('@/stores/useSitesStore', () => {
-  const state = {
-    clearRequiresAuth: vi.fn(),
-    fetchSite: vi.fn(),
-  };
-  return {
-    useSitesStore: (selector?: any) => (typeof selector === 'function' ? selector(state) : state),
-  };
-});
+const mockSitesStoreState = vi.hoisted(() => ({
+  clearRequiresAuth: vi.fn(),
+  fetchSite: vi.fn(),
+}));
+
+vi.mock('@/stores/useSitesStore', () => ({
+  useSitesStore: (selector?: any) =>
+    typeof selector === 'function' ? selector(mockSitesStoreState) : mockSitesStoreState,
+}));
 
 vi.mock('@/utils/getRootDomain', () => ({
   getRootDomain: () => 'godaddy.com',
@@ -159,6 +161,7 @@ describe('SsoLogin redirect handling', function ssoLoginRedirectTests() {
     latestConsumingPath = null;
     mockAuthUIState.redirectUrl = null;
     mockAuthUIState.ssoAuthReason = null;
+    mockAuthUIState.inFlightReauth = false;
   });
 
   it('navigates to same-origin redirect path', async function redirectsToSameOrigin() {
@@ -369,6 +372,7 @@ describe('SsoLogin authReason routing', function ssoLoginAuthReasonTests() {
     latestConsumingPath = null;
     mockAuthUIState.redirectUrl = null;
     mockAuthUIState.ssoAuthReason = null;
+    mockAuthUIState.inFlightReauth = false;
   });
 
   it('routes to /login by default when authReason is null', async function defaultsToLogin() {
@@ -434,5 +438,63 @@ describe('SsoLogin authReason routing', function ssoLoginAuthReasonTests() {
       auth_reason: '3'
     });
     expect(latestConsumingPath).toBe('/');
+  });
+});
+
+describe('SsoLogin in-flight reauth', function inFlightReauthTests() {
+  beforeAll(function stubLocation() {
+    overrideWindowLocation('https://airo-builder.test/');
+  });
+
+  afterAll(function restoreLocation() {
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: originalLocation,
+    });
+  });
+
+  beforeEach(function resetMocks() {
+    vi.clearAllMocks();
+    overrideWindowLocation('https://airo-builder.test/develop/abc123');
+    latestOnAuth = null;
+    latestPageToLoadParams = null;
+    latestPageToLoad = null;
+    latestConsumingPath = null;
+    mockAuthUIState.redirectUrl = null;
+    mockAuthUIState.ssoAuthReason = null;
+    mockAuthUIState.inFlightReauth = false;
+  });
+
+  it('closes with success and does not navigate when inFlightReauth is true', async function inFlightSkipsNav() {
+    // openModalAndVerify sets both: redirectUrl is used by SsoDeck for the
+    // iframe consumingPath, but the post-auth navigation must be skipped.
+    mockAuthUIState.inFlightReauth = true;
+    mockAuthUIState.redirectUrl = 'https://airo-builder.test/develop/abc123';
+    const assignSpy = vi.spyOn(window.location, 'assign').mockImplementation(() => {});
+    const reloadSpy = vi.spyOn(window.location, 'reload').mockImplementation(() => {});
+
+    renderWithProviders(<SsoLogin />);
+    await triggerAuth({ data: { redirect_url: 'https://airo-builder.test/' } });
+
+    expect(assignSpy).not.toHaveBeenCalled();
+    expect(reloadSpy).not.toHaveBeenCalled();
+    expect(mockAuthUIState.closeSsoLogin).toHaveBeenCalledWith('success');
+    expect(mockSitesStoreState.clearRequiresAuth).toHaveBeenCalled();
+    expect(mockAuthUIState.setRedirectUrl).not.toHaveBeenCalled();
+    assignSpy.mockRestore();
+    reloadSpy.mockRestore();
+  });
+
+  it('takes the navigation path when inFlightReauth is false (existing behavior)', async function nonInFlightStillNavigates() {
+    mockAuthUIState.inFlightReauth = false;
+    mockAuthUIState.redirectUrl = 'https://airo-builder.test/develop/abc123';
+    const assignSpy = vi.spyOn(window.location, 'assign').mockImplementation(() => {});
+
+    renderWithProviders(<SsoLogin />);
+    await triggerAuth();
+
+    expect(assignSpy).toHaveBeenCalledWith('https://airo-builder.test/develop/abc123');
+    expect(mockAuthUIState.closeSsoLogin).not.toHaveBeenCalled();
+    assignSpy.mockRestore();
   });
 });

@@ -448,9 +448,18 @@ async function openModalAndVerify(
     store.setRedirectUrl(window.location.href);
   }
   if (store.isSsoLoginOpen) {
+    // A different caller (e.g. useSsoSignIn, sso-debug) already owns this
+    // modal. Don't flip inFlightReauth — that would change the semantics of
+    // their post-auth flow. The verify probe will pick up cookie propagation
+    // if their auth happens to satisfy our level.
     logger.warn('app-fetch.auth-resolve.modal-already-open', { level, authReason });
+  } else {
+    // Mark this open as a mid-mutation step-up. SsoLogin reads this flag and
+    // skips its post-auth navigation so the awaiting fetch can resume in
+    // place without reloading the page and abandoning the request.
+    store.setInFlightReauth(true);
+    store.openSsoLogin();
   }
-  store.openSsoLogin();
 
   let outcome: 'success' | 'dismiss';
   try {
@@ -477,7 +486,10 @@ async function openModalAndVerify(
     logger.warn('app-fetch.auth-resolve.verify-timeout', { level });
     return { kind: 'reauthed' };
   }
-  if (!verify.ok) return { kind: 'failed', response: verify };
+  if (!verify.ok) {
+    logger.error('app-fetch.auth-resolve.verify-failed', { level, status: verify.status });
+    return { kind: 'failed', response: verify };
+  }
   return { kind: 'reauthed' };
 }
 

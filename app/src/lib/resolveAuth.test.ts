@@ -260,6 +260,55 @@ describe('resolveAuth', () => {
     expect(fetchMock).toHaveBeenCalledTimes(4);
   });
 
+  it('sets inFlightReauth when it opens the modal, and closeSsoLogin clears it', async () => {
+    const { resolveAuth } = await import('@/lib/gasket-config');
+    const { useAuthUIStore } = await import('@/stores/useAuthUIStore');
+
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(response401())
+      .mockResolvedValueOnce(response200());
+    vi.stubGlobal('fetch', fetchMock);
+
+    const promise = resolveAuth({ level: 3 });
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(useAuthUIStore.getState().isSsoLoginOpen).toBe(true);
+    expect(useAuthUIStore.getState().inFlightReauth).toBe(true);
+
+    useAuthUIStore.getState().closeSsoLogin('success');
+
+    await expect(promise).resolves.toEqual({ kind: 'reauthed' });
+    expect(useAuthUIStore.getState().inFlightReauth).toBe(false);
+  });
+
+  it('does NOT set inFlightReauth when the modal is already open from another caller', async () => {
+    const { resolveAuth } = await import('@/lib/gasket-config');
+    const { useAuthUIStore } = await import('@/stores/useAuthUIStore');
+
+    // Simulate an explicit caller (useSsoSignIn / sso-debug) opening the modal first.
+    useAuthUIStore.getState().openSsoLogin();
+    expect(useAuthUIStore.getState().inFlightReauth).toBe(false);
+
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(response401())
+      .mockResolvedValueOnce(response200());
+    vi.stubGlobal('fetch', fetchMock);
+
+    const openSpy = vi.spyOn(useAuthUIStore.getState(), 'openSsoLogin');
+
+    const promise = resolveAuth({ level: 3 });
+    await vi.advanceTimersByTimeAsync(0);
+
+    // Preflight must NOT flip the explicit-open modal into in-flight mode,
+    // and must not call openSsoLogin again (already a no-op, but guarded so
+    // intent is explicit at the call site).
+    expect(useAuthUIStore.getState().inFlightReauth).toBe(false);
+    expect(openSpy).not.toHaveBeenCalled();
+
+    useAuthUIStore.getState().closeSsoLogin('success');
+    await expect(promise).resolves.toEqual({ kind: 'reauthed' });
+  });
+
   it('returns failed with the original probe response when modal wait times out', async () => {
     const { resolveAuth } = await import('@/lib/gasket-config');
     const { useAuthUIStore } = await import('@/stores/useAuthUIStore');

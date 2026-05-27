@@ -12,6 +12,14 @@ interface AuthUIStore {
    * for preflight-initiated SSO opens.
    */
   ssoAuthReason: number | null;
+  /**
+   * True when the SSO modal was opened by an in-flight authPreflight (a fetch
+   * mid-mutation that needs a step-up). On success, SsoLogin must NOT navigate
+   * — the awaiting fetch resumes after the verify probe and completes the
+   * mutation in place. Cleared by closeSsoLogin so a subsequent explicit "log
+   * back in" UI flow keeps its expected reload behavior.
+   */
+  inFlightReauth: boolean;
 
   // === Redirect State ===
   redirectUrl: string | null;
@@ -22,6 +30,7 @@ interface AuthUIStore {
   clearSsoCloseReason: () => void;
   setSsoLoaded: () => void;
   setSsoAuthReason: (reason: number | null) => void;
+  setInFlightReauth: (value: boolean) => void;
 
   // === Redirect Actions ===
   setRedirectUrl: (url: string | null) => void;
@@ -38,6 +47,7 @@ export const useAuthUIStore = create<AuthUIStore>((set, get) => ({
   isSsoLoading: true,
   ssoCloseReason: null,
   ssoAuthReason: null,
+  inFlightReauth: false,
 
   redirectUrl: null,
 
@@ -45,10 +55,13 @@ export const useAuthUIStore = create<AuthUIStore>((set, get) => ({
     if (get().isSsoLoginOpen) return;
     set({ isSsoLoginOpen: true, isSsoLoading: true, ssoCloseReason: null });
   },
-  closeSsoLogin: (reason = 'dismiss') => set({ isSsoLoginOpen: false, ssoCloseReason: reason, ssoAuthReason: null }),
+  // Reset all transient open-state in one place so no close path can leak
+  // stale ssoAuthReason / redirectUrl / inFlightReauth into a later open.
+  closeSsoLogin: (reason = 'dismiss') => set({ isSsoLoginOpen: false, ssoCloseReason: reason, ssoAuthReason: null, inFlightReauth: false, redirectUrl: null }),
   clearSsoCloseReason: () => set({ ssoCloseReason: null }),
   setSsoLoaded: () => set({ isSsoLoading: false }),
   setSsoAuthReason: (reason) => set({ ssoAuthReason: reason }),
+  setInFlightReauth: (value) => set({ inFlightReauth: value }),
 
   setRedirectUrl: (url) => set({ redirectUrl: url })
 }));

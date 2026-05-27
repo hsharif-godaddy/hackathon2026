@@ -69,7 +69,7 @@ export default function SsoLogin() {
   const [ssoHost, setSsoHost] = useState<string | null>(null);
   const { isSmBreakpoint } = useBreakpoints();
 
-  const { isSsoLoginOpen, isSsoLoading, closeSsoLogin, setSsoLoaded, redirectUrl, setRedirectUrl, ssoAuthReason } = useAuthUIStore();
+  const { isSsoLoginOpen, isSsoLoading, closeSsoLogin, setSsoLoaded, redirectUrl, setRedirectUrl, ssoAuthReason, inFlightReauth } = useAuthUIStore();
   const clearRequiresAuth = useSitesStore((state) => state.clearRequiresAuth);
   const { authState } = useAuthContext();
   // Prefer preflight-set reason (store) over Gasket authState, since preflight
@@ -274,7 +274,19 @@ export default function SsoLogin() {
     logger.info('sso-login.auth.success', {
       message: 'SSO authentication successful',
       data,
+      inFlightReauth,
     });
+
+    // In-flight step-up: an awaiting authPreflight call is parked on this modal.
+    // Closing with 'success' lets gasket-config's waitForSsoOutcome() resolve so
+    // the post-auth verify probe + the original fetch run in place. Navigating
+    // here would unmount the page mid-mutation, destroying React form state and
+    // abandoning the request. closeSsoLogin clears the flag.
+    if (inFlightReauth) {
+      clearRequiresAuth();
+      closeSsoLogin('success');
+      return;
+    }
 
     // Priority 1: Use stored redirect URL (from the store) or ?redirect= query param.
     // Both paths inside applyRedirect() navigate via window.location.assign, so the page
@@ -317,7 +329,7 @@ export default function SsoLogin() {
       message: 'No redirect available, reloading page to pick up new auth cookie',
     });
     window.location.reload();
-  }, [closeSsoLogin, clearRequiresAuth, applyRedirect, isValidRedirectUrl]);
+  }, [closeSsoLogin, clearRequiresAuth, applyRedirect, isValidRedirectUrl, inFlightReauth]);
 
   // Don't render if not open
   if (!isSsoLoginOpen) {
