@@ -1492,6 +1492,7 @@ function DevelopPageContent() {
         send: ws.actions.send,
         setInputValue,
         markInitialPromptSent: init.actions.markInitialPromptSent,
+        markFirstFileEditSeen: init.actions.markFirstFileEditSeen,
         onSettled: () => {
           pendingAutoSendRef.current = null
           autoSendInFlightRef.current = false

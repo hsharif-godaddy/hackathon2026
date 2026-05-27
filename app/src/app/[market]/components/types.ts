@@ -28,6 +28,7 @@ export interface UploadedDesignFile {
   isDesignMd: boolean
   isZip?: boolean
   isUiKit?: boolean
+  isAppImport?: boolean
   isImage?: boolean
   zipRaw?: ArrayBuffer
 }

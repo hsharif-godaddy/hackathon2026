@@ -5,6 +5,7 @@ import { dirname, join, normalize, resolve } from 'path'
 import { nanoid } from 'nanoid'
 import JSZip from 'jszip'
 import { rm } from 'fs/promises'
+import { APP_CONFIG_FILES, APP_DIRECTORIES } from '@airo/shared/app-structure'
 import { AppRepository } from '../../database/repositories/AppRepository.js'
 import { validateAppOwnership } from '../middleware/app-ownership.js'
 import { logger } from '../../logging/index.js'
@@ -45,9 +46,42 @@ function isSafePath(filePath: string): boolean {
 const ALLOWED_ZIP_PREFIXES = ['src/styles/', 'src/pages/', 'src/components/', 'docs/']
 const ALLOWED_ZIP_EXACT = ['src/design.md']
 
+const APP_IMPORT_PREFIXES = APP_DIRECTORIES.map(d => `${d}/`)
+const APP_IMPORT_CONFIG_FILE_SET = new Set<string>(APP_CONFIG_FILES)
+
+const APP_IMPORT_SKIP_PREFIXES = ['node_modules/', '.git/']
+const APP_IMPORT_SKIP_FILES = new Set(['pnpm-lock.yaml', 'package-lock.json', 'yarn.lock'])
+
+const MAX_APP_IMPORT_FILES = 2000
+const MAX_APP_IMPORT_UNCOMPRESSED_BYTES = 100 * 1024 * 1024 // 100MB
+
 function isAllowedZipPath(filePath: string): boolean {
   if (ALLOWED_ZIP_EXACT.includes(filePath)) return true
   return ALLOWED_ZIP_PREFIXES.some(prefix => filePath.startsWith(prefix))
+}
+
+function isAllowedAppImportPath(filePath: string): boolean {
+  if (APP_IMPORT_SKIP_PREFIXES.some(prefix => filePath.startsWith(prefix))) return false
+  if (APP_IMPORT_SKIP_FILES.has(filePath)) return false
+  if (APP_IMPORT_CONFIG_FILE_SET.has(filePath)) return true
+  return APP_IMPORT_PREFIXES.some(prefix => filePath.startsWith(prefix))
+}
+
+function detectAppBuilderZip(zip: JSZip, commonPrefix: string): boolean {
+  const hasFile = (name: string): boolean => !!zip.files[name] || !!zip.files[`${commonPrefix}${name}`]
+  const hasDir = (name: string): boolean => {
+    const prefixed = commonPrefix ? `${commonPrefix}${name}` : name
+    return Object.keys(zip.files).some(p => p.startsWith(prefixed))
+  }
+
+  if (!hasFile('package.json')) return false
+  if (!hasFile('index.html')) return false
+  if (!hasDir('src/')) return false
+
+  const hasViteConfig = hasFile('vite.config.ts') || hasFile('vite.config.js') || hasFile('vite.config.mjs')
+  if (!hasViteConfig) return false
+
+  return true
 }
 
 function detectCommonPrefix(paths: string[]): string {
@@ -98,6 +132,7 @@ router.post('/apps/:id/file-upload', (req: Request, res: Response) => {
 
         // Check for kit-meta.json with and without the common prefix
         const isUiKit = !!zip.files['kit-meta.json'] || !!zip.files[`${commonPrefix}kit-meta.json`]
+        const isAppImport = !isUiKit && detectAppBuilderZip(zip, commonPrefix)
 
         const targetDir = isUiKit
           ? join(app.path, 'docs', 'ui-kit')
@@ -105,6 +140,7 @@ router.post('/apps/:id/file-upload', (req: Request, res: Response) => {
 
         const entries = Object.entries(zip.files).filter(([, f]) => !f.dir)
         let written = 0
+        let totalUncompressedBytes = 0
 
         for (const [entryPath, file] of entries) {
           // Skip macOS resource fork files
@@ -118,8 +154,19 @@ router.post('/apps/:id/file-upload', (req: Request, res: Response) => {
           const normalized = stripped.replace(/\\/g, '/')
           if (!isSafePath(normalized)) continue
 
-          // Non-UI-kit ZIPs must pass path allowlist
-          if (!isUiKit && !isAllowedZipPath(normalized)) continue
+          if (isUiKit) {
+            // UI kits: no path restriction (all safe paths allowed)
+          } else if (isAppImport) {
+            if (!isAllowedAppImportPath(normalized)) continue
+          } else {
+            if (!isAllowedZipPath(normalized)) continue
+          }
+
+          if (written >= MAX_APP_IMPORT_FILES) {
+            logger.warn('route.file-upload.zip.file_count_exceeded', { appId, limit: MAX_APP_IMPORT_FILES })
+            res.status(422).json({ error: `Zip exceeds maximum file count (${MAX_APP_IMPORT_FILES})` })
+            return
+          }
 
           const fullPath = resolve(join(targetDir, normalized))
           if (!normalize(fullPath).startsWith(resolve(targetDir))) continue
@@ -128,17 +175,36 @@ router.post('/apps/:id/file-upload', (req: Request, res: Response) => {
 
           if (/\.(png|jpg|jpeg|gif|svg|ico|webp)$/i.test(normalized)) {
             const buf = await (file as JSZip.JSZipObject).async('nodebuffer')
+            totalUncompressedBytes += buf.length
+            if (totalUncompressedBytes > MAX_APP_IMPORT_UNCOMPRESSED_BYTES) {
+              logger.warn('route.file-upload.zip.size_exceeded', { appId, limit: MAX_APP_IMPORT_UNCOMPRESSED_BYTES })
+              res.status(422).json({ error: 'Zip exceeds maximum uncompressed size (100MB)' })
+              return
+            }
             writeFileSync(fullPath, buf)
           } else {
             const content = await (file as JSZip.JSZipObject).async('string')
+            totalUncompressedBytes += Buffer.byteLength(content, 'utf-8')
+            if (totalUncompressedBytes > MAX_APP_IMPORT_UNCOMPRESSED_BYTES) {
+              logger.warn('route.file-upload.zip.size_exceeded', { appId, limit: MAX_APP_IMPORT_UNCOMPRESSED_BYTES })
+              res.status(422).json({ error: 'Zip exceeds maximum uncompressed size (100MB)' })
+              return
+            }
             writeFileSync(fullPath, content, 'utf-8')
           }
           written++
         }
 
         await rm(filePath, { force: true })
-        logger.info('route.file-upload.zip.success', { appId, written, isUiKit })
-        res.json({ success: true, written, isUiKit })
+
+        if (written === 0 && entries.length > 0) {
+          logger.warn('route.file-upload.zip.no_files_written', { appId, entryCount: entries.length, isUiKit, isAppImport })
+          res.status(422).json({ error: 'No recognizable files found in zip', written: 0, isUiKit, isAppImport })
+          return
+        }
+
+        logger.info('route.file-upload.zip.success', { appId, written, isUiKit, isAppImport })
+        res.json({ success: true, written, isUiKit, isAppImport })
       } else {
         const isImage = /\.(png|jpg|jpeg|gif|svg|webp)$/i.test(fileName)
         const targetDir = isImage ? 'src/assets' : 'docs'

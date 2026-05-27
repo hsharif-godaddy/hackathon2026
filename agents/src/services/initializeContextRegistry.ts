@@ -52,6 +52,12 @@ export function initializeContextRegistry(): void {
   })
 
   contextAttachmentRegistry.register({
+    type: 'app_import_upload',
+    renderer: new ZipUploadContextRenderer(),
+    defaultPersistence: 'ephemeral'
+  })
+
+  contextAttachmentRegistry.register({
     type: 'ui_kit_upload',
     renderer: new UiKitUploadContextRenderer(),
     defaultPersistence: 'ephemeral'

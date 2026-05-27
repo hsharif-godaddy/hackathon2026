@@ -15,7 +15,7 @@ import { text } from '@ux/text'
 import { useBreakpoints } from '@/hooks/useBreakpoints'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
-import { detectUiKit } from '@/lib/zip-extract'
+import { detectAppBuilderApp, detectUiKit } from '@/lib/zip-extract'
 import type { UploadedDesignFile } from './types'
 
 type FileType = 'designMd' | 'document' | 'image' | 'uiKit' | 'zip'
@@ -87,6 +87,7 @@ export default function DesignFileUpload({ uploadedFile, onFileChange, onError, 
 
         const buffer = await file.arrayBuffer()
         const isUiKit = await detectUiKit(buffer)
+        const isAppImport = !isUiKit && await detectAppBuilderApp(buffer)
 
         onFileChange({
           name: file.name,
@@ -94,6 +95,7 @@ export default function DesignFileUpload({ uploadedFile, onFileChange, onError, 
           isDesignMd: false,
           isZip: true,
           isUiKit,
+          isAppImport,
           zipRaw: buffer,
         })
       } else if (isImage) {

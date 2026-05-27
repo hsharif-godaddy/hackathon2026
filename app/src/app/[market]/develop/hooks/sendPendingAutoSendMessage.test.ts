@@ -15,6 +15,11 @@ vi.mock('@/lib/request-context', () => ({
   },
 }))
 
+const mockRetrieveAndUploadFile = vi.fn().mockResolvedValue(true)
+vi.mock('@/lib/quick-create', () => ({
+  retrieveAndUploadFile: (...args: unknown[]) => mockRetrieveAndUploadFile(...args),
+}))
+
 const APP_ID = 'app-123'
 const MESSAGE = 'Build me a landing page'
 const TEMPLATE_ID = 'logo-designer'
@@ -23,8 +28,10 @@ interface BuildOptionsOverrides {
   send?: ReturnType<typeof vi.fn>
   setInputValue?: ReturnType<typeof vi.fn>
   markInitialPromptSent?: ReturnType<typeof vi.fn>
+  markFirstFileEditSeen?: ReturnType<typeof vi.fn>
   onSettled?: ReturnType<typeof vi.fn>
   templateId?: string | null
+  uploadedFile?: { name: string; content: string; isDesignMd: boolean; isZip?: boolean; isUiKit?: boolean; isAppImport?: boolean; isImage?: boolean } | null
 }
 
 function buildOptions(overrides: BuildOptionsOverrides = {}) {
@@ -32,9 +39,11 @@ function buildOptions(overrides: BuildOptionsOverrides = {}) {
     messageToSend: MESSAGE,
     appId: APP_ID,
     templateId: 'templateId' in overrides ? overrides.templateId ?? null : TEMPLATE_ID,
+    uploadedFile: overrides.uploadedFile ?? null,
     send: overrides.send ?? vi.fn().mockResolvedValue(undefined),
     setInputValue: overrides.setInputValue ?? vi.fn(),
     markInitialPromptSent: overrides.markInitialPromptSent ?? vi.fn(),
+    markFirstFileEditSeen: overrides.markFirstFileEditSeen ?? vi.fn(),
     onSettled: overrides.onSettled ?? vi.fn(),
   }
 }
@@ -217,5 +226,47 @@ describe('sendPendingAutoSendMessage', () => {
     )
 
     expect(callOrder).toEqual(['onSettled', 'markInitialPromptSent'])
+  })
+
+  it('calls markFirstFileEditSeen after successful app-import upload to dismiss overlay immediately', async () => {
+    const markFirstFileEditSeen = vi.fn()
+    mockRetrieveAndUploadFile.mockResolvedValue(true)
+
+    await sendPendingAutoSendMessage(
+      buildOptions({
+        markFirstFileEditSeen,
+        uploadedFile: { name: 'app.zip', content: '', isDesignMd: false, isZip: true, isAppImport: true },
+      }),
+    )
+
+    expect(markFirstFileEditSeen).toHaveBeenCalledOnce()
+  })
+
+  it('does not call markFirstFileEditSeen for non-app-import uploads', async () => {
+    const markFirstFileEditSeen = vi.fn()
+    mockRetrieveAndUploadFile.mockResolvedValue(true)
+
+    await sendPendingAutoSendMessage(
+      buildOptions({
+        markFirstFileEditSeen,
+        uploadedFile: { name: 'styles.zip', content: '', isDesignMd: false, isZip: true },
+      }),
+    )
+
+    expect(markFirstFileEditSeen).not.toHaveBeenCalled()
+  })
+
+  it('calls markFirstFileEditSeen even when app-import upload fails (dismisses overlay)', async () => {
+    const markFirstFileEditSeen = vi.fn()
+    mockRetrieveAndUploadFile.mockResolvedValue(false)
+
+    await sendPendingAutoSendMessage(
+      buildOptions({
+        markFirstFileEditSeen,
+        uploadedFile: { name: 'app.zip', content: '', isDesignMd: false, isZip: true, isAppImport: true },
+      }),
+    )
+
+    expect(markFirstFileEditSeen).toHaveBeenCalledOnce()
   })
 })

@@ -7,10 +7,11 @@ import { logger } from '../../logging/index.js'
 const appRepo = new AppRepository()
 
 const SCAN_DIRS = ['src/styles', 'src/pages', 'src/components', 'docs']
+const APP_IMPORT_SCAN_DIRS = ['src', 'public']
 
-function collectWrittenFiles(appPath: string): string[] {
+function collectWrittenFiles(appPath: string, dirs: string[]): string[] {
   const results: string[] = []
-  for (const dir of SCAN_DIRS) {
+  for (const dir of dirs) {
     const fullDir = join(appPath, dir)
     if (!existsSync(fullDir)) continue
     for (const entry of readdirSync(fullDir, { withFileTypes: true, recursive: true })) {
@@ -26,7 +27,7 @@ function collectWrittenFiles(appPath: string): string[] {
 
 export class ZipUploadContextRenderer implements ContextAttachmentRenderer {
   canHandle(type: string): boolean {
-    return type === 'zip_upload'
+    return type === 'zip_upload' || type === 'app_import_upload'
   }
 
   render(
@@ -46,7 +47,9 @@ export class ZipUploadContextRenderer implements ContextAttachmentRenderer {
       return null
     }
 
-    const written = collectWrittenFiles(appPath)
+    const isAppImport = _attachment.type === 'app_import_upload'
+    const scanDirs = isAppImport ? APP_IMPORT_SCAN_DIRS : SCAN_DIRS
+    const written = collectWrittenFiles(appPath, scanDirs)
     if (written.length === 0) {
       return {
         content: 'ZIP upload was processed but no files were found on disk. The upload may have failed.',
@@ -55,7 +58,9 @@ export class ZipUploadContextRenderer implements ContextAttachmentRenderer {
       }
     }
 
-    const lines = ['The following files were written to disk from the uploaded ZIP:']
+    const lines = isAppImport
+      ? ['The following files were imported from a previously exported app:']
+      : ['The following files were written to disk from the uploaded ZIP:']
     for (const path of written) {
       lines.push(`- ${path}`)
     }

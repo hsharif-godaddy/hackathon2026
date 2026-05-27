@@ -416,6 +416,10 @@ export const initializationMachine = setup({
               target: 'waitingForFirstEdit',
               actions: ['markPromptSent', 'logTransition'],
             },
+            FIRST_FILE_EDIT_SEEN: {
+              target: 'active',
+              actions: ['markPromptSent', 'markFirstFileEditSeen', 'logTransition'],
+            },
             WEBSOCKET_DISCONNECTED: {
               target: 'waitingForWebSocket',
               actions: ['logTransition'],

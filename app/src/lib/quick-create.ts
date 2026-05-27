@@ -51,7 +51,7 @@ export function setQuickCreateSessionFlags(
   siteId: string,
   prompt: string,
   templateId?: string,
-  uploadedFile?: { name: string; content: string; isDesignMd: boolean; isZip?: boolean; isUiKit?: boolean; zipFiles?: Array<{ path: string; content: string }> } | null,
+  uploadedFile?: { name: string; content: string; isDesignMd: boolean; isZip?: boolean; isUiKit?: boolean; isAppImport?: boolean; zipFiles?: Array<{ path: string; content: string }> } | null,
 ) {
   sessionStorage.setItem(`name-registration-pending-${siteId}`, 'true')
   sessionStorage.setItem(`initial-prompt-pending-${siteId}`, 'true')

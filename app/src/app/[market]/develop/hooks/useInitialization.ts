@@ -2,6 +2,7 @@ import { useRouter } from 'next/navigation'
 import { useEffect, useRef, useState } from 'react'
 import { useMachine } from '@xstate/react'
 
+import type { UploadedDesignFile } from '@/app/[market]/components/types'
 import { logger } from '@/lib/request-context'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { cleanupSiteCreationStore, useSiteCreationStore } from '@/stores/useSiteCreationStore'
@@ -203,7 +204,7 @@ function getStoredTemplateId(initialJobId: string | null, appId: string | null):
   return null
 }
 
-function getStoredUploadedFile(initialJobId: string | null, appId: string | null): { name: string; content: string; isDesignMd: boolean; isZip?: boolean; isUiKit?: boolean } | null {
+function getStoredUploadedFile(initialJobId: string | null, appId: string | null): { name: string; content: string; isDesignMd: boolean; isZip?: boolean; isUiKit?: boolean; isAppImport?: boolean } | null {
   if (typeof window === 'undefined') return null
   try {
     if (initialJobId) {
@@ -289,7 +290,7 @@ export interface InitializationUIState {
   shouldAutoSendPrompt: boolean
   autoSendPromptText: string | null
   templateId: string | null
-  uploadedFile: { name: string; content: string; isDesignMd: boolean; isZip?: boolean; isUiKit?: boolean } | null
+  uploadedFile: Omit<UploadedDesignFile, 'zipRaw'> | null
 
   // Error handling
   hasError: boolean
@@ -1052,7 +1053,6 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
 
   // EFFECT: When stream completes with incomplete tools only (e.g. token limit),
   // transition to active so the "Building your App" overlay hides and the user sees the preview.
-  // For other cases (error, no tools) we keep old behaviour: overlay stays until 5-min timeout.
   useEffect(() => {
     if (!state.matches({ ready: 'waitingForFirstEdit' })) {
       streamCompleteWithoutEditSentForRef.current = null

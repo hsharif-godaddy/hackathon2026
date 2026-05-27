@@ -7,10 +7,11 @@ export interface SendPendingAutoSendMessageOptions {
   appId: string
   jobId?: string | null
   templateId: string | null
-  uploadedFile?: { name: string; content: string; isDesignMd: boolean; isZip?: boolean; isUiKit?: boolean; isImage?: boolean } | null
+  uploadedFile?: { name: string; content: string; isDesignMd: boolean; isZip?: boolean; isUiKit?: boolean; isAppImport?: boolean; isImage?: boolean } | null
   send: (options: SendMessageOptions) => Promise<void>
   setInputValue: (value: string) => void
   markInitialPromptSent: () => void
+  markFirstFileEditSeen: () => void
   onSettled: () => void
 }
 
@@ -49,12 +50,13 @@ export async function sendPendingAutoSendMessage(
     send,
     setInputValue,
     markInitialPromptSent,
+    markFirstFileEditSeen,
     onSettled,
   } = opts
 
   const effectiveTemplateId = uploadedFile?.isUiKit
     ? 'ui-kit-import'
-    : uploadedFile?.isZip
+    : (uploadedFile?.isAppImport || uploadedFile?.isZip)
       ? 'zip-import'
       : uploadedFile
         ? 'file-upload'
@@ -67,19 +69,27 @@ export async function sendPendingAutoSendMessage(
     if (uploadedFile) {
       try {
         fileUploaded = await retrieveAndUploadFile(appId, jobId)
+        if (fileUploaded && uploadedFile.isAppImport) {
+          markFirstFileEditSeen()
+        }
       } catch (uploadError) {
         logger.error('develop-page.file-upload.failed', {
           error: uploadError instanceof Error ? uploadError.message : JSON.stringify(uploadError),
           appId,
         })
       }
+      if (!fileUploaded && uploadedFile.isAppImport) {
+        markFirstFileEditSeen()
+      }
     }
 
     const contextType = uploadedFile?.isUiKit
       ? 'ui_kit_upload'
-      : uploadedFile?.isZip
-        ? 'zip_upload'
-        : 'file_upload'
+      : uploadedFile?.isAppImport
+        ? 'app_import_upload'
+        : uploadedFile?.isZip
+          ? 'zip_upload'
+          : 'file_upload'
 
     await send({
       content: messageToSend,
@@ -90,7 +100,7 @@ export async function sendPendingAutoSendMessage(
         customContext: {
           type: contextType,
           persistence: 'save',
-          data: { uploaded: true, name: uploadedFile!.name, isDesignMd: uploadedFile!.isDesignMd, isZip: uploadedFile!.isZip, isUiKit: uploadedFile!.isUiKit, isImage: uploadedFile!.isImage },
+          data: { uploaded: true, name: uploadedFile!.name, isDesignMd: uploadedFile!.isDesignMd, isZip: uploadedFile!.isZip, isUiKit: uploadedFile!.isUiKit, isAppImport: uploadedFile!.isAppImport, isImage: uploadedFile!.isImage },
         },
       }),
     })

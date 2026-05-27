@@ -54,6 +54,10 @@
     "./credit-adapter": {
       "types": "./dist/credit-adapter/index.d.ts",
       "import": "./dist/credit-adapter/index.js"
+    },
+    "./app-structure": {
+      "types": "./dist/app-structure/index.d.ts",
+      "import": "./dist/app-structure/index.js"
     }
   },
   "typesVersions": {
@@ -90,6 +94,9 @@
       ],
       "credit-adapter": [
         "dist/credit-adapter/index.d.ts"
+      ],
+      "app-structure": [
+        "dist/app-structure/index.d.ts"
       ]
     }
   },
