@@ -19,12 +19,14 @@ import { projectSourceDetectionService } from './ProjectSourceDetectionService.j
 import { modifyViteConfig } from './ViteConfigModifier.js';
 import {
   appRestartService,
-  DEFAULT_START_COMMAND,
   getInstallCommand,
   getBuildCommand,
   detectPackageManager,
+  resolveStartCommand,
   type PackageManager,
 } from './AppRestartService.js';
+
+export { resolveStartCommand, type ServeCommandSource } from './AppRestartService.js';
 import { measureAppDirSize, bytesToMB } from '../utils/container-metrics.js';
 import { injectPortHandling } from './ExpressPortInjector.js';
 import { GitTool } from '../tools/git-tool.js';
@@ -99,38 +101,6 @@ interface PackageJsonInfo {
   scripts?: Record<string, string>;
   dependencies?: Record<string, string>;
   devDependencies?: Record<string, string>;
-}
-
-export type ServeCommandSource = 'user' | 'scripts.start' | 'scripts.dev' | 'default';
-
-/**
- * Resolve the PaaS start command and attribution. Extracted from `importZipFile`
- * so the fallback chain is directly testable and the `serveCommandSource`
- * attribution (surfaced in the `project-import.config.create` Loki event)
- * can be asserted without re-implementing the formula in tests.
- *
- * Priority: user-provided → scripts.start → scripts.dev → default.
- * Dev-script fallback forces NODE_ENV=development because some Vite/React
- * apps break when `<pm> run dev` runs under NODE_ENV=production.
- */
-export function resolveStartCommand(
-  userStart: string | undefined,
-  validation: { hasStartScript?: boolean; hasDevScript?: boolean },
-  pm: string
-): { startCommand: string; serveCommandSource: ServeCommandSource } {
-  if (userStart) {
-    return { startCommand: userStart, serveCommandSource: 'user' };
-  }
-  if (validation.hasStartScript) {
-    return { startCommand: `${pm} start`, serveCommandSource: 'scripts.start' };
-  }
-  if (validation.hasDevScript) {
-    return {
-      startCommand: `NODE_ENV=development ${pm} run dev`,
-      serveCommandSource: 'scripts.dev',
-    };
-  }
-  return { startCommand: DEFAULT_START_COMMAND, serveCommandSource: 'default' };
 }
 
 export class ProjectImportService {

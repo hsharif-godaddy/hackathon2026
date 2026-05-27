@@ -95,7 +95,83 @@ export function getBuildCommand(packageManager: PackageManager = 'npm', producti
  * Interface for dev-supervisor exec method (minimal interface for detectPackageManager)
  */
 export interface DevSupervisorExec {
-  exec(options: { command: string; timeout: number }): Promise<{ stdout?: string }>;
+  exec(options: { command: string; timeout: number }): Promise<{ success?: boolean; stdout?: string }>;
+}
+
+export interface PackageJsonScripts {
+  hasBuildScript: boolean;
+  hasStartScript: boolean;
+  hasDevScript: boolean;
+}
+
+type PackageScriptsReadFailureReason = 'exec_failed' | 'empty_stdout' | 'parse_failed' | 'exec_error';
+
+const packageScriptsLogger = Logger.create({ component: 'app-restart' });
+
+function warnPackageScriptsReadFailed(
+  appId: string | undefined,
+  projectRoot: string,
+  reason: PackageScriptsReadFailureReason,
+  error?: string
+): void {
+  packageScriptsLogger.warn('app-restart.package-scripts.read-failed', {
+    appId,
+    projectRoot,
+    reason,
+    ...(error !== undefined ? { error } : {}),
+  });
+}
+
+/**
+ * Read package.json scripts from the container project root.
+ * On read/parse failure, returns no scripts (restart cycle soft fallback) and logs
+ * a warning — unlike zip import, which fails the job with structured validation errors.
+ */
+export async function readPackageJsonScripts(
+  devSupervisor: DevSupervisorExec,
+  projectRoot = '/app',
+  appId?: string
+): Promise<PackageJsonScripts> {
+  const empty: PackageJsonScripts = {
+    hasBuildScript: false,
+    hasStartScript: false,
+    hasDevScript: false,
+  };
+
+  try {
+    const catResult = await devSupervisor.exec({
+      command: `cat "${projectRoot}/package.json"`,
+      timeout: 5,
+    });
+
+    if (catResult.success === false) {
+      warnPackageScriptsReadFailed(appId, projectRoot, 'exec_failed');
+      return empty;
+    }
+
+    if (!catResult.stdout) {
+      warnPackageScriptsReadFailed(appId, projectRoot, 'empty_stdout');
+      return empty;
+    }
+
+    const packageJson = JSON.parse(catResult.stdout) as { scripts?: Record<string, string> };
+    const scripts = packageJson.scripts || {};
+    const hasStartScript = 'start' in scripts;
+    const hasDevScript = 'dev' in scripts || hasStartScript;
+    const hasBuildScript = 'build' in scripts;
+
+    return { hasBuildScript, hasStartScript, hasDevScript };
+  } catch (error) {
+    const reason: PackageScriptsReadFailureReason =
+      error instanceof SyntaxError ? 'parse_failed' : 'exec_error';
+    warnPackageScriptsReadFailed(
+      appId,
+      projectRoot,
+      reason,
+      error instanceof Error ? error.message : String(error)
+    );
+    return empty;
+  }
 }
 
 /**
@@ -156,6 +232,11 @@ export interface CommandOverrides {
 export interface RestartCycleOptions {
   skipInstall?: boolean;
   skipBuild?: boolean;
+  /**
+   * Remove node_modules before install (e.g. after git pull when package.json/lockfile changed).
+   * Avoids npm ENOTEMPTY failures from incremental updates over a stale tree.
+   */
+  freshInstall?: boolean;
   /** Options passed to getInstallCommand (e.g. legacyPeerDeps) */
   installOptions?: InstallCommandOptions;
   /** @deprecated Use commands.start instead */
@@ -199,6 +280,40 @@ export interface PaasConfig {
  * why a customer ended up with a particular start command.
  */
 export type ServeCommandSource = 'user' | 'scripts.start' | 'scripts.dev' | 'default';
+
+/**
+ * Resolve the PaaS start command and attribution. Shared by zip import and
+ * git pull restart cycles so both paths use the same fallback chain.
+ *
+ * Priority: user-provided → scripts.start → scripts.dev → default.
+ * Dev-script fallback forces NODE_ENV=development because some Vite/React
+ * apps break when `<pm> run dev` runs under NODE_ENV=production.
+ */
+export function resolveStartCommand(
+  userStart: string | undefined,
+  validation: { hasStartScript?: boolean; hasDevScript?: boolean },
+  pm: string
+): { startCommand: string; serveCommandSource: ServeCommandSource } {
+  if (userStart) {
+    return { startCommand: userStart, serveCommandSource: 'user' };
+  }
+  if (validation.hasStartScript) {
+    return { startCommand: `${pm} start`, serveCommandSource: 'scripts.start' };
+  }
+  if (validation.hasDevScript) {
+    return {
+      startCommand: `NODE_ENV=development ${pm} run dev`,
+      serveCommandSource: 'scripts.dev',
+    };
+  }
+  return { startCommand: DEFAULT_START_COMMAND, serveCommandSource: 'default' };
+}
+
+/** Whether install output indicates npm could not remove directories (stale node_modules). */
+export function isEnoTemptyInstallError(output?: string, error?: string): boolean {
+  const combined = `${output || ''}\n${error || ''}`;
+  return combined.includes('ENOTEMPTY') || combined.includes('npm error code ENOTEMPTY');
+}
 
 export class AppRestartService {
   private logger = Logger.create({ component: 'app-restart' });
@@ -245,6 +360,24 @@ export class AppRestartService {
 
       this.logger.info('app-restart.package-manager.detected', { appId, packageManager });
 
+      const scripts = devSupervisor
+        ? await readPackageJsonScripts(devSupervisor, '/app', appId)
+        : { hasBuildScript: false, hasStartScript: false, hasDevScript: false };
+
+      const userStart = options?.commands?.start ?? options?.devCommand;
+      const { startCommand, serveCommandSource } = resolveStartCommand(
+        userStart,
+        scripts,
+        packageManager
+      );
+
+      this.logger.info('app-restart.start-command.resolved', {
+        appId,
+        packageManager,
+        serveCommandSource,
+        startCommand,
+      });
+
       // Step 1: Stop dev server
       const stopResult = await this.stopDevServer(appId);
       if (!stopResult.success) {
@@ -263,7 +396,9 @@ export class AppRestartService {
       if (!options?.skipInstall) {
         const installCommand = options?.commands?.install || getInstallCommand(packageManager, options?.installOptions ?? {});
         const installStartTime = Date.now();
-        const installResult = await this.runCommand(appId, appPath, installCommand, 'install');
+        const installResult = await this.runInstallWithRecovery(appId, appPath, installCommand, {
+          freshInstall: options?.freshInstall,
+        });
         installDurationMs = Date.now() - installStartTime;
         metrics.installDurationMs = installDurationMs;
 
@@ -282,9 +417,12 @@ export class AppRestartService {
         result.phases.install = true; // Mark as success since it was skipped
       }
 
-      // Step 3: Run build (unless skipped)
+      // Step 3: Run build when package.json has a build script or caller overrides (matches zip import)
       let buildDurationMs: number | undefined;
-      if (!options?.skipBuild) {
+      const shouldRunBuild =
+        !options?.skipBuild && (Boolean(options?.commands?.build) || scripts.hasBuildScript);
+
+      if (shouldRunBuild) {
         const buildCommand = options?.commands?.build || getBuildCommand(packageManager);
         const buildStartTime = Date.now();
         const buildResult = await this.runCommand(appId, appPath, buildCommand, 'build');
@@ -312,16 +450,15 @@ export class AppRestartService {
       await this.createPaasConfig(
         appPath,
         options?.buildToolType,
-        options?.commands?.start,
+        startCommand,
         undefined, // productId
         options?.commands?.dev,
         packageManager,
-        undefined, // serveCommandSource — caller has no fallback chain; default resolves from customStartCommand presence
+        serveCommandSource,
         appId
       );
 
       // Step 5: Restart dev server with resolved start command
-      const startCommand = this.resolveStartCommand(options);
       const restartStartTime = Date.now();
       const restartResult = await this.restartDevServer(appId, startCommand);
       const startDurationMs = Date.now() - restartStartTime;
@@ -359,22 +496,73 @@ export class AppRestartService {
   }
 
   /**
-   * Resolve the start command based on options.
-   * Always defaults to npm start - customers define their own start script.
+   * Remove app and template-root node_modules before a clean install.
+   * Uses rm -r -f for /node_modules to avoid dev-supervisor dangerous-command detection on rm -rf /.
    */
-  private resolveStartCommand(options?: RestartCycleOptions): string {
-    // Custom start command takes priority
-    if (options?.commands?.start) {
-      return options.commands.start;
+  async removeNodeModules(appId: string, appPath: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      const devSupervisor = DevSupervisorClientFactory.createForApp(appId);
+
+      if (!devSupervisor) {
+        return { success: false, error: 'Dev supervisor not available' };
+      }
+
+      const nodeModulesPath = `${appPath}/node_modules`;
+      // No || true — failures must surface via exit code. rm -rf is idempotent (-f).
+      const command =
+        `rm -rf "${nodeModulesPath}" && ( [ ! -d /node_modules ] || rm -r -f /node_modules )`;
+
+      this.logger.info('app-restart.node-modules.remove.begin', { appId, appPath });
+
+      const result = await devSupervisor.exec({ command, timeout: 60 });
+
+      if (!result.success) {
+        this.logger.warn('app-restart.node-modules.remove.failed', {
+          appId,
+          appPath,
+          error: result.error,
+        });
+        return { success: false, error: result.error || 'Failed to remove node_modules' };
+      }
+
+      this.logger.info('app-restart.node-modules.remove.success', { appId, appPath });
+      return { success: true };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to remove node_modules',
+      };
+    }
+  }
+
+  /**
+   * Run install, optionally wiping node_modules first; retry once on ENOTEMPTY.
+   */
+  private async runInstallWithRecovery(
+    appId: string,
+    appPath: string,
+    installCommand: string,
+    options?: { freshInstall?: boolean }
+  ): Promise<{ success: boolean; output?: string; error?: string; exitCode?: number }> {
+    if (options?.freshInstall) {
+      const wipeResult = await this.removeNodeModules(appId, appPath);
+      if (!wipeResult.success) {
+        return { success: false, error: wipeResult.error || 'Failed to remove node_modules' };
+      }
     }
 
-    // Legacy devCommand support
-    if (options?.devCommand) {
-      return options.devCommand;
+    let installResult = await this.runCommand(appId, appPath, installCommand, 'install');
+
+    if (!installResult.success && isEnoTemptyInstallError(installResult.output, installResult.error)) {
+      this.logger.warn('app-restart.install.enotempty-retry', { appId });
+      const wipeResult = await this.removeNodeModules(appId, appPath);
+      if (!wipeResult.success) {
+        return installResult;
+      }
+      installResult = await this.runCommand(appId, appPath, installCommand, 'install');
     }
 
-    // Always use npm start by default
-    return DEFAULT_START_COMMAND;
+    return installResult;
   }
 
   /**

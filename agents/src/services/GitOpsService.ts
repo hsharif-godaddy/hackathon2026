@@ -568,6 +568,7 @@ export class GitOpsService {
       const restartResult = await appRestartService.performFullRestartCycle(appId, appPath, {
         buildToolType,
         installOptions: { legacyPeerDeps: true },
+        freshInstall: true,
         commands: options.commands,
       });
 

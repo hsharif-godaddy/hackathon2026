@@ -275,6 +275,15 @@ describe('GitOpsService', () => {
       // Run setImmediate callbacks
       await vi.runAllTimersAsync();
 
+      expect(appRestartService.performFullRestartCycle).toHaveBeenCalledWith(
+        testAppId,
+        testAppPath,
+        expect.objectContaining({
+          freshInstall: true,
+          installOptions: { legacyPeerDeps: true },
+        })
+      );
+
       // Verify git operations were called
       const gitCalls = mockGitTool.executeGitOperation.mock.calls;
 

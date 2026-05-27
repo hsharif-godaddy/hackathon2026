@@ -5,6 +5,9 @@ import {
   detectPackageManager,
   getBuildCommand,
   getInstallCommand,
+  isEnoTemptyInstallError,
+  readPackageJsonScripts,
+  resolveStartCommand,
 } from '../AppRestartService.js';
 import { DevSupervisorClientFactory } from '../../utils/dev-supervisor-client-factory.js';
 import { TerminalTool } from '../../tools/terminal.js';
@@ -14,11 +17,15 @@ import * as fs from 'node:fs/promises';
 vi.mock('../../utils/dev-supervisor-client-factory.js');
 vi.mock('../../tools/terminal.js');
 vi.mock('node:fs/promises');
+const { mockLoggerWarn } = vi.hoisted(() => ({
+  mockLoggerWarn: vi.fn(),
+}));
+
 vi.mock('../../logging/index.js', () => ({
   Logger: {
     create: () => ({
       info: vi.fn(),
-      warn: vi.fn(),
+      warn: mockLoggerWarn,
       error: vi.fn(),
     }),
   },
@@ -39,8 +46,40 @@ describe('AppRestartService', () => {
   const testAppId = 'test-app-123';
   const testAppPath = '/tmp/apps/test-app-123/app';
 
+  function mockExecForRestartCycle(
+    options: {
+      pnpm?: boolean;
+      yarn?: boolean;
+      packageJsonScripts?: Record<string, string>;
+    } = {}
+  ): void {
+    const scripts = options.packageJsonScripts ?? { build: 'vite build', start: 'node server.js' };
+    mockDevSupervisor.exec.mockImplementation(({ command }: { command: string }) => {
+      if (command.includes('pnpm-lock.yaml')) {
+        return Promise.resolve({ stdout: options.pnpm ? 'found' : '' });
+      }
+      if (command.includes('yarn.lock')) {
+        return Promise.resolve({ stdout: options.yarn ? 'found' : '' });
+      }
+      if (command.includes('package.json')) {
+        return Promise.resolve({
+          success: true,
+          stdout: JSON.stringify({ scripts }),
+        });
+      }
+      if (command.includes('du -sb')) {
+        return Promise.resolve({ stdout: '104857600' });
+      }
+      if (command.includes('node_modules')) {
+        return Promise.resolve({ success: true, stdout: '' });
+      }
+      return Promise.resolve({ stdout: '' });
+    });
+  }
+
   beforeEach(() => {
     vi.clearAllMocks();
+    mockLoggerWarn.mockClear();
 
     // Create mock DevSupervisor client
     mockDevSupervisor = {
@@ -70,6 +109,41 @@ describe('AppRestartService', () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  describe('removeNodeModules', () => {
+    it('should remove app and template-root node_modules via dev-supervisor', async () => {
+      mockDevSupervisor.exec.mockResolvedValue({ success: true });
+
+      const result = await service.removeNodeModules(testAppId, testAppPath);
+
+      expect(result.success).toBe(true);
+      expect(mockDevSupervisor.exec).toHaveBeenCalledWith({
+        command: `rm -rf "${testAppPath}/node_modules" && ( [ ! -d /node_modules ] || rm -r -f /node_modules )`,
+        timeout: 60,
+      });
+    });
+
+    it('should fail when dev supervisor is unavailable', async () => {
+      vi.mocked(DevSupervisorClientFactory.createForApp).mockReturnValue(null);
+
+      const result = await service.removeNodeModules(testAppId, testAppPath);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('Dev supervisor not available');
+    });
+
+    it('should fail when rm command exits non-zero', async () => {
+      mockDevSupervisor.exec.mockResolvedValue({
+        success: false,
+        error: 'rm: cannot remove: Permission denied',
+      });
+
+      const result = await service.removeNodeModules(testAppId, testAppPath);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('rm: cannot remove: Permission denied');
+    });
   });
 
   describe('stopDevServer', () => {
@@ -434,6 +508,107 @@ describe('AppRestartService', () => {
     });
   });
 
+  describe('resolveStartCommand', () => {
+    it('should use user-provided start command when provided', () => {
+      const result = resolveStartCommand(
+        'node custom.js',
+        { hasStartScript: true, hasDevScript: true },
+        'npm'
+      );
+      expect(result).toEqual({ startCommand: 'node custom.js', serveCommandSource: 'user' });
+    });
+
+    it('should use npm start when start script exists', () => {
+      const result = resolveStartCommand(undefined, { hasStartScript: true, hasDevScript: true }, 'npm');
+      expect(result).toEqual({ startCommand: 'npm start', serveCommandSource: 'scripts.start' });
+    });
+
+    it('should use dev script with NODE_ENV=development when only dev exists', () => {
+      const result = resolveStartCommand(undefined, { hasStartScript: false, hasDevScript: true }, 'npm');
+      expect(result).toEqual({
+        startCommand: 'NODE_ENV=development npm run dev',
+        serveCommandSource: 'scripts.dev',
+      });
+    });
+
+    it('should default to npm start when no scripts', () => {
+      const result = resolveStartCommand(undefined, { hasStartScript: false, hasDevScript: false }, 'npm');
+      expect(result).toEqual({ startCommand: 'npm start', serveCommandSource: 'default' });
+    });
+  });
+
+  describe('readPackageJsonScripts', () => {
+    it('should detect scripts from package.json', async () => {
+      mockDevSupervisor.exec.mockResolvedValueOnce({
+        success: true,
+        stdout: JSON.stringify({ scripts: { build: 'vite build', dev: 'vite', start: 'node s.js' } }),
+      });
+
+      const scripts = await readPackageJsonScripts(mockDevSupervisor);
+
+      expect(scripts).toEqual({
+        hasBuildScript: true,
+        hasStartScript: true,
+        hasDevScript: true,
+      });
+    });
+
+    it('should return no scripts and warn when exec fails', async () => {
+      mockDevSupervisor.exec.mockResolvedValueOnce({ success: false, stdout: '' });
+
+      const scripts = await readPackageJsonScripts(mockDevSupervisor, '/app', testAppId);
+
+      expect(scripts).toEqual({
+        hasBuildScript: false,
+        hasStartScript: false,
+        hasDevScript: false,
+      });
+      expect(mockLoggerWarn).toHaveBeenCalledWith('app-restart.package-scripts.read-failed', {
+        appId: testAppId,
+        projectRoot: '/app',
+        reason: 'exec_failed',
+      });
+    });
+
+    it('should return no scripts and warn when stdout is empty', async () => {
+      mockDevSupervisor.exec.mockResolvedValueOnce({ success: true, stdout: '' });
+
+      const scripts = await readPackageJsonScripts(mockDevSupervisor, '/app', testAppId);
+
+      expect(scripts).toEqual({
+        hasBuildScript: false,
+        hasStartScript: false,
+        hasDevScript: false,
+      });
+      expect(mockLoggerWarn).toHaveBeenCalledWith('app-restart.package-scripts.read-failed', {
+        appId: testAppId,
+        projectRoot: '/app',
+        reason: 'empty_stdout',
+      });
+    });
+
+    it('should return no scripts and warn when package.json is invalid JSON', async () => {
+      mockDevSupervisor.exec.mockResolvedValueOnce({ success: true, stdout: 'not-json' });
+
+      const scripts = await readPackageJsonScripts(mockDevSupervisor, '/app', testAppId);
+
+      expect(scripts).toEqual({
+        hasBuildScript: false,
+        hasStartScript: false,
+        hasDevScript: false,
+      });
+      expect(mockLoggerWarn).toHaveBeenCalledWith(
+        'app-restart.package-scripts.read-failed',
+        expect.objectContaining({
+          appId: testAppId,
+          projectRoot: '/app',
+          reason: 'parse_failed',
+          error: expect.any(String),
+        })
+      );
+    });
+  });
+
   describe('performFullRestartCycle', () => {
     beforeEach(() => {
       // Setup default successful mocks for full cycle
@@ -445,10 +620,7 @@ describe('AppRestartService', () => {
         stdout: 'Success',
         stderr: '',
       });
-      // Default to npm (no lock files found) for existing tests
-      mockDevSupervisor.exec
-        .mockResolvedValueOnce({ stdout: '' }) // pnpm check - not found
-        .mockResolvedValueOnce({ stdout: '' }); // yarn check - not found
+      mockExecForRestartCycle();
     });
 
     it('should complete full restart cycle successfully', async () => {
@@ -499,6 +671,43 @@ describe('AppRestartService', () => {
       });
     });
 
+    it('should start with dev script when package.json has only dev', async () => {
+      mockExecForRestartCycle({ packageJsonScripts: { dev: 'vite' } });
+
+      await service.performFullRestartCycle(testAppId, testAppPath);
+
+      expect(mockDevSupervisor.startProcess).toHaveBeenCalledWith({
+        command: 'sh -c "NODE_ENV=development npm run dev"',
+        working_dir: '/app',
+      });
+      const writeCall = vi.mocked(fs.writeFile).mock.calls[0];
+      const writtenConfig = JSON.parse(writeCall[1] as string);
+      expect(writtenConfig.runtime.serve.command).toBe('NODE_ENV=development npm run dev');
+    });
+
+    it('should skip build when package.json has no build script', async () => {
+      mockExecForRestartCycle({ packageJsonScripts: { dev: 'vite', start: 'node s.js' } });
+
+      await service.performFullRestartCycle(testAppId, testAppPath);
+
+      const terminalCalls = mockTerminalTool.executeCommand.mock.calls;
+      const buildCalls = terminalCalls.filter((call) => call[1].command === 'npm run build');
+      expect(buildCalls.length).toBe(0);
+    });
+
+    it('should use commands.start over package.json scripts', async () => {
+      mockExecForRestartCycle({ packageJsonScripts: { dev: 'vite' } });
+
+      await service.performFullRestartCycle(testAppId, testAppPath, {
+        commands: { start: 'node custom.js' },
+      });
+
+      expect(mockDevSupervisor.startProcess).toHaveBeenCalledWith({
+        command: 'sh -c "node custom.js"',
+        working_dir: '/app',
+      });
+    });
+
     it('should fail when npm install fails', async () => {
       mockTerminalTool.executeCommand.mockResolvedValueOnce({
         success: false,
@@ -514,6 +723,47 @@ describe('AppRestartService', () => {
       expect(result.phases.build).toBe(false);
       expect(result.phases.restart).toBe(false);
       expect(result.error).toBe('npm ERR! Installation failed');
+    });
+
+    it('should remove node_modules before install when freshInstall is set', async () => {
+      const result = await service.performFullRestartCycle(testAppId, testAppPath, {
+        freshInstall: true,
+      });
+
+      expect(result.success).toBe(true);
+      expect(mockDevSupervisor.exec).toHaveBeenCalledWith(
+        expect.objectContaining({
+          command: expect.stringContaining(`rm -rf "${testAppPath}/node_modules"`),
+        })
+      );
+    });
+
+    it('should retry install after ENOTEMPTY by removing node_modules', async () => {
+      mockTerminalTool.executeCommand
+        .mockResolvedValueOnce({
+          success: false,
+          exitCode: 1,
+          stdout: '',
+          stderr: 'npm error code ENOTEMPTY\nnpm error path /app/node_modules/lucide-react/dist',
+        })
+        .mockResolvedValueOnce({
+          success: true,
+          exitCode: 0,
+          stdout: 'Install success',
+          stderr: '',
+        });
+
+      const result = await service.performFullRestartCycle(testAppId, testAppPath);
+
+      expect(result.success).toBe(true);
+      const installCalls = mockTerminalTool.executeCommand.mock.calls.filter((call) =>
+        call[1].command.includes('install')
+      );
+      expect(installCalls).toHaveLength(2);
+      const rmCalls = mockDevSupervisor.exec.mock.calls.filter(([args]) =>
+        args.command.includes(`${testAppPath}/node_modules`)
+      );
+      expect(rmCalls.length).toBeGreaterThanOrEqual(1);
     });
 
     it('should continue when build fails (build is not critical)', async () => {
@@ -575,9 +825,7 @@ describe('AppRestartService', () => {
 
     describe('package manager detection', () => {
       beforeEach(() => {
-        // Clear exec mock from parent beforeEach to allow test-specific setup
         mockDevSupervisor.exec.mockReset();
-        // Reset default mocks for PM detection tests
         mockDevSupervisor.stopProcess.mockResolvedValue(true);
         mockDevSupervisor.startProcess.mockResolvedValue({ state: 'running' });
         mockTerminalTool.executeCommand.mockResolvedValue({
@@ -589,7 +837,7 @@ describe('AppRestartService', () => {
       });
 
       it('should detect pnpm and use pnpm commands', async () => {
-        mockDevSupervisor.exec.mockResolvedValueOnce({ stdout: 'found' }); // pnpm check
+        mockExecForRestartCycle({ pnpm: true });
 
         await service.performFullRestartCycle(testAppId, testAppPath);
 
@@ -613,9 +861,7 @@ describe('AppRestartService', () => {
       });
 
       it('should detect yarn and use yarn commands', async () => {
-        mockDevSupervisor.exec
-          .mockResolvedValueOnce({ stdout: '' }) // pnpm check - not found
-          .mockResolvedValueOnce({ stdout: 'found' }); // yarn check
+        mockExecForRestartCycle({ yarn: true });
 
         await service.performFullRestartCycle(testAppId, testAppPath);
 
@@ -639,9 +885,7 @@ describe('AppRestartService', () => {
       });
 
       it('should default to npm when no lock file exists', async () => {
-        mockDevSupervisor.exec
-          .mockResolvedValueOnce({ stdout: '' }) // pnpm check - not found
-          .mockResolvedValueOnce({ stdout: '' }); // yarn check - not found
+        mockExecForRestartCycle();
 
         await service.performFullRestartCycle(testAppId, testAppPath);
 
@@ -672,14 +916,13 @@ describe('AppRestartService', () => {
 
         await service.performFullRestartCycle(testAppId, testAppPath);
 
-        // Verify npm commands were used as fallback
         const terminalCalls = mockTerminalTool.executeCommand.mock.calls;
         expect(terminalCalls[0][1].command).toBe('npm install --include=dev');
-        expect(terminalCalls[1][1].command).toBe('npm run build');
+        expect(terminalCalls.length).toBe(1);
       });
 
       it('should use custom install command over detected PM', async () => {
-        mockDevSupervisor.exec.mockResolvedValueOnce({ stdout: 'found' }); // pnpm detected
+        mockExecForRestartCycle({ pnpm: true });
 
         await service.performFullRestartCycle(testAppId, testAppPath, {
           commands: { install: 'custom-install-command' },
@@ -691,7 +934,7 @@ describe('AppRestartService', () => {
       });
 
       it('should use custom build command over detected PM', async () => {
-        mockDevSupervisor.exec.mockResolvedValueOnce({ stdout: 'found' }); // pnpm detected
+        mockExecForRestartCycle({ pnpm: true, packageJsonScripts: {} });
 
         await service.performFullRestartCycle(testAppId, testAppPath, {
           commands: { build: 'custom-build-command' },
@@ -720,19 +963,7 @@ describe('AppRestartService', () => {
         stdout: 'Success',
         stderr: '',
       });
-      // Use command-based mocking for robustness (not dependent on call order)
-      mockDevSupervisor.exec.mockImplementation(({ command }: { command: string }) => {
-        if (command.includes('pnpm-lock.yaml')) {
-          return Promise.resolve({ stdout: '' }); // pnpm not found
-        }
-        if (command.includes('yarn.lock')) {
-          return Promise.resolve({ stdout: '' }); // yarn not found
-        }
-        if (command.includes('du -sb')) {
-          return Promise.resolve({ stdout: '104857600' }); // 100MB
-        }
-        return Promise.resolve({ stdout: '' });
-      });
+      mockExecForRestartCycle();
     });
 
     it('should collect timing metrics for install, build, and start phases', async () => {
@@ -846,6 +1077,24 @@ describe('Package Manager Utilities', () => {
 
     it('should not change yarn install with legacyPeerDeps', function yarnLegacy() {
       expect(getInstallCommand('yarn', { legacyPeerDeps: true })).toBe('yarn install');
+    });
+  });
+
+  describe('isEnoTemptyInstallError', () => {
+    it('should detect ENOTEMPTY in stderr', () => {
+      expect(
+        isEnoTemptyInstallError(undefined, 'npm error code ENOTEMPTY')
+      ).toBe(true);
+    });
+
+    it('should detect ENOTEMPTY in combined output', () => {
+      expect(
+        isEnoTemptyInstallError('ENOTEMPTY: directory not empty', undefined)
+      ).toBe(true);
+    });
+
+    it('should return false for unrelated install errors', () => {
+      expect(isEnoTemptyInstallError(undefined, 'npm ERR! peer dep conflict')).toBe(false);
     });
   });
 
