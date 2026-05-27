@@ -360,6 +360,35 @@ describe('StreamingIntegratedResponse', function streamingIntegratedResponseTest
     });
   });
 
+  describe('connection dropped upstream error', function connectionDroppedErrorTests() {
+    it('shows friendly copy when upstream error message is terminated', function terminatedConnectionDropped() {
+      renderWithProviders(
+        <StreamingIntegratedResponse
+          message={upstreamErrorMessage('UPSTREAM_ERROR', { error: 'terminated' })}
+          streamingState="idle"
+        />
+      );
+
+      expect(screen.getByText('builder_connection_dropped_title')).toBeInTheDocument();
+      expect(screen.getByText('builder_connection_dropped_message')).toBeInTheDocument();
+      expect(screen.queryByText('Error')).not.toBeInTheDocument();
+      expect(screen.queryByText('terminated')).not.toBeInTheDocument();
+    });
+
+    it('shows generic error for other unclassified upstream errors', function genericUpstreamError() {
+      renderWithProviders(
+        <StreamingIntegratedResponse
+          message={upstreamErrorMessage('UPSTREAM_ERROR', { error: 'Something went wrong' })}
+          streamingState="idle"
+        />
+      );
+
+      expect(screen.getByText('Error')).toBeInTheDocument();
+      expect(screen.getByText('Something went wrong')).toBeInTheDocument();
+      expect(screen.queryByText('builder_connection_dropped_title')).not.toBeInTheDocument();
+    });
+  });
+
   describe('action grouping', function actionGroupingTests() {
     it('collapses consecutive compact tool actions by default and expands on click', function collapsesAndExpandsActionGroup() {
       renderWithProviders(

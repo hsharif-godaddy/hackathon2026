@@ -287,6 +287,16 @@ export default function StreamingIntegratedResponse({
               title={t('builder_bms_error_title', undefined, 'Unable to Process Request')}
               message={t('builder_bms_error_message', undefined, 'Something went wrong on our end. Please try again.')}
             />
+          ) : /\bterminated\b/i.test(message.error ?? '') ? (
+            <StreamingAlertMessage
+              type="Critical"
+              title={t('builder_connection_dropped_title', undefined, 'It looks like the connection dropped.')}
+              message={t(
+                'builder_connection_dropped_message',
+                undefined,
+                'This happens occasionally and isn\'t caused by anything you did. Type "continue" and I\'ll pick up right where I left off.'
+              )}
+            />
           ) : (
             /* Generic upstream error for all other types */
             <StreamingAlertMessage
