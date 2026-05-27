@@ -21,6 +21,7 @@ import type { EvalStore } from '../store/eval-store.js';
 import type { RunMetadata } from '../store/types.js';
 import type { ScenarioResult, TrialResult } from '../runner/types.js';
 import type { TrialLifecycle } from '../clients/trial-lifecycle.js';
+import type { IGocodeClient } from '../clients/gocode-client.js';
 
 export interface GraduationSuiteRunResult {
   results: GraduationResult[];
@@ -80,6 +81,7 @@ export interface GraduationSuiteRunnerOptions {
    * aggregate existing ones). Only used in parallel (fan-out) mode.
    */
   trialIndicesByScenario?: Map<string, number[]>;
+  gocode?: IGocodeClient;
 }
 
 export class GraduationSuiteRunner {
@@ -391,6 +393,8 @@ export class GraduationSuiteRunner {
         runId,
         deferred.map((r) => r.scenarioResult),
         'graduation',
+        undefined,
+        this.options.gocode,
       );
     }
   }

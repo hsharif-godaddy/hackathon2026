@@ -269,6 +269,8 @@ describe('GraduationSuiteRunner', () => {
       'run-789',
       [scenarioResultAlpha, scenarioResultBeta],
       'graduation',
+      undefined,
+      undefined,
     );
   });
 
@@ -337,6 +339,8 @@ describe('GraduationSuiteRunner', () => {
       'run-partial',
       [completedResult.scenarioResult, gammaResult.scenarioResult],
       'graduation',
+      undefined,
+      undefined,
     );
   });
 
@@ -828,6 +832,8 @@ describe('GraduationSuiteRunner — suiteMode: parallel', () => {
       'run-finalize',
       expect.arrayContaining([alphaResult, betaResult]),
       'graduation',
+      undefined,
+      undefined,
     );
   });
 

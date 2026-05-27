@@ -16,6 +16,7 @@ import type { EvalStore } from '../store/eval-store.js';
 import type { BaselineSaveOptions } from './baseline-store.js';
 import { pickGitFields } from './types.js';
 import type { TrialLifecycle } from '../clients/trial-lifecycle.js';
+import type { IGocodeClient } from '../clients/gocode-client.js';
 
 interface BaselineStore {
   save(
@@ -42,6 +43,7 @@ interface GraduationRunnerOptionsBase {
   trialLifecycle?: TrialLifecycle;
   onTrialEvaluated?: (scenarioName: string, trial: TrialResult) => void;
   log?: (message: string, ...args: unknown[]) => void;
+  gocode?: IGocodeClient;
 }
 
 export type GraduationRunnerOptions = GraduationRunnerOptionsBase & (
@@ -156,6 +158,7 @@ export class GraduationRunner {
           maxTurnsOverride: this.options.maxTurnsOverride,
           kind: 'graduation',
           dirName,
+          ...(this.options.gocode !== undefined && { gocode: this.options.gocode }),
         });
       }
     }

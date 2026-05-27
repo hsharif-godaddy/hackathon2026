@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { loadConfig } from '../config/index.js';
 import { AABClient } from './clients/aab-client.js';
 import { AABCtrlPlaneClient } from './clients/aab-ctrl-plane-client.js';
+import { GocodeClient } from './clients/gocode-client.js';
 import { PerTrialGocodeClient } from './clients/per-trial-gocode-client.js';
 import {
   SetupContextResolver,
@@ -143,8 +144,9 @@ async function main(): Promise<void> {
     resolver: new SetupContextResolver(),
     ignoreHttpsErrors: config.playwright.ignoreHttpsErrors,
   });
-  const gocodeClient  = new PerTrialGocodeClient(config.gocode);
-  const syntheticUser = new GocodeSyntheticUser(gocodeClient);
+  const gocodeClient          = new PerTrialGocodeClient(config.gocode);
+  const narrativeGocodeClient = new GocodeClient(config.gocode);
+  const syntheticUser         = new GocodeSyntheticUser(gocodeClient);
 
   const ALL_SCENARIOS = createAllScenarios(gocodeClient, ctrlPlane, config);
   const scenarioIndex = buildScenarioIndex(ALL_SCENARIOS);
@@ -248,6 +250,7 @@ async function main(): Promise<void> {
         dirName: gradResumeState?.dirName,
         existingTrialsByScenario: gradResumeState?.existingTrialsByScenario,
         trialIndicesByScenario: gradResumeState?.trialIndicesByScenario,
+        gocode: narrativeGocodeClient,
       });
 
       const suiteResult: GraduationSuiteRunResult = await suiteRunner.run(gradRunId).finally(releaseGradLockFn);
@@ -359,6 +362,7 @@ async function main(): Promise<void> {
       trialLifecycle: gocodeClient,
       onTrialEvaluated: makeProgressCallback(gradReporter),
       store: singleGradStore,
+      gocode: narrativeGocodeClient,
     });
 
     console.log(
@@ -565,7 +569,7 @@ async function main(): Promise<void> {
       wallClockMs,
       skipBaseline,
       tostConfig: { alpha: config.regression.alpha, k: config.regression.k },
-    });
+    }, narrativeGocodeClient);
     await store.prune();
 
     console.log('\nResults written to:');

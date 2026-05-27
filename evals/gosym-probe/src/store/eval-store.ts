@@ -21,6 +21,8 @@ import {
   renderTrialEvalResultsMarkdown,
 } from '../reporters/md-reporter.js';
 import type { RenderOptions } from '../reporters/md-reporter.js';
+import { NarrativeSummaryReporter } from '../reporters/narrative-summary.js';
+import type { IGocodeClient } from '../clients/gocode-client.js';
 import { toCompactTimestamp } from '../util/timestamp.js';
 import { sanitizeConfig } from '../util/sanitize.js';
 import type {
@@ -64,6 +66,7 @@ export interface RunOptions {
   maxTurnsOverride?: number;
   kind?: 'eval' | 'graduation';
   dirName?: string;
+  gocode?: IGocodeClient;
 }
 
 export class EvalStore {
@@ -125,7 +128,7 @@ export class EvalStore {
     }
     // renderOptions intentionally omitted: save() callers (interactive CLI,
     // graduation runner) do not track wall-clock timing for the full run.
-    return this.finalizeRun(resolvedDirName, runId, results, options.kind);
+    return this.finalizeRun(resolvedDirName, runId, results, options.kind, undefined, options.gocode);
   }
 
   async initRun(
@@ -189,6 +192,7 @@ export class EvalStore {
     results: ScenarioResult[],
     kind?: 'eval' | 'graduation',
     renderOptions?: RenderOptions,
+    gocode?: IGocodeClient,
   ): Promise<string> {
     const runDir = this.runDir(dirName);
 
@@ -223,12 +227,63 @@ export class EvalStore {
       ...(gitBranch != null && { gitBranch }),
     };
     const summaryContent = reporter.render(runId, results, resolvedRenderOptions);
-    await writeFile(join(runDir, 'summary.md'), summaryContent);
+    await writeFile(join(runDir, 'aggregate-report.md'), summaryContent);
 
     const timestamp = new Date().toISOString();
     await this.updateRunIndex(runId, timestamp, dirName, kind);
 
+    await this.writeSummary(runDir, runId, results, resolvedRenderOptions, gitSha, gitBranch, gocode);
+
     return runDir;
+  }
+
+  private async writeSummary(
+    runDir: string,
+    runId: string,
+    results: ScenarioResult[],
+    resolvedRenderOptions: RenderOptions,
+    gitSha: string | null,
+    gitBranch: string | null,
+    gocode?: IGocodeClient,
+  ): Promise<void> {
+    try {
+      let content: string;
+      if (gocode) {
+        const narrativeReporter = new NarrativeSummaryReporter(gocode);
+        content = await narrativeReporter.render(runId, results, {
+          runMode: resolvedRenderOptions.runMode ?? 'eval',
+          gitSha,
+          gitBranch,
+          wallClockMs: resolvedRenderOptions.wallClockMs,
+        });
+      } else {
+        content = [
+          '# Narrative Summary Unavailable',
+          '',
+          'No GoCode client was provided. See `aggregate-report.md` for the full tabular results.',
+        ].join('\n');
+      }
+      await writeFile(join(runDir, 'summary.md'), content);
+    } catch (err) {
+      console.warn(
+        '[EvalStore] Failed to write summary.md, continuing without it',
+        { error: (err as Error).message },
+      );
+      try {
+        await writeFile(
+          join(runDir, 'summary.md'),
+          [
+            '# Narrative Summary Unavailable',
+            '',
+            `Summary generation failed: ${(err as Error).message}`,
+            '',
+            'See `aggregate-report.md` for the full tabular results.',
+          ].join('\n'),
+        );
+      } catch {
+        // summary.md write failed twice — skip it entirely
+      }
+    }
   }
 
   async acquireRunLock(dirName: string): Promise<() => Promise<void>> {

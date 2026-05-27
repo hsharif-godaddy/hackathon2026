@@ -44,6 +44,7 @@ vi.mock('node:util', async (importOriginal) => {
 });
 
 vi.mock('../../reporters/md-reporter.js');
+vi.mock('../../reporters/narrative-summary.js');
 vi.mock('../../util/conversation-renderer.js', () => ({
   renderConversation: vi.fn().mockReturnValue({
     scenarioName: 'test-scenario',
@@ -65,6 +66,8 @@ import {
   MdReporter,
   renderTrialEvalResultsMarkdown,
 } from '../../reporters/md-reporter.js';
+import { NarrativeSummaryReporter } from '../../reporters/narrative-summary.js';
+import type { IGocodeClient } from '../../clients/gocode-client.js';
 import {
   renderConversation,
 } from '../../util/conversation-renderer.js';
@@ -245,6 +248,7 @@ function makeTrialResultWithReadFile(
 
 describe('EvalStore', () => {
   let mockRender: ReturnType<typeof vi.fn>;
+  let mockNarrativeRender: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -259,6 +263,10 @@ describe('EvalStore', () => {
     mockRender = vi.fn().mockReturnValue('# mock summary');
     vi.mocked(MdReporter).mockImplementation(
       () => ({ render: mockRender }) as unknown as MdReporter,
+    );
+    mockNarrativeRender = vi.fn().mockResolvedValue('# narrative summary');
+    vi.mocked(NarrativeSummaryReporter).mockImplementation(
+      () => ({ render: mockNarrativeRender }) as unknown as NarrativeSummaryReporter,
     );
     mockRenderTrialEvalResultsMarkdown.mockReturnValue(
       '## mock eval results\n',
@@ -1000,7 +1008,7 @@ describe('EvalStore', () => {
       expect(parsed).not.toHaveProperty('regressionStatus');
     });
 
-    it('writes summary.md using MdReporter.render()', async () => {
+    it('writes aggregate-report.md using MdReporter.render()', async () => {
       const store = new EvalStore();
       const scenario = makeScenario();
       const results = [makeScenarioResult(scenario, [makeTrialResult()])];
@@ -1009,7 +1017,7 @@ describe('EvalStore', () => {
 
       expect(mockRender).toHaveBeenCalledWith('run-001', results, { runMode: 'eval' });
       const summaryCall = mockWriteFile.mock.calls.find(([p]) =>
-        (p as string).endsWith('summary.md'),
+        (p as string).endsWith('aggregate-report.md'),
       );
       expect(summaryCall).toBeDefined();
       expect(summaryCall![1]).toBe('# mock summary');
@@ -1212,6 +1220,21 @@ describe('EvalStore', () => {
         );
       },
     );
+
+    it('forwards gocode from RunOptions to narrative reporter', async () => {
+      const store = new EvalStore();
+      const scenario = makeScenario();
+      const result = makeScenarioResult(scenario, [makeTrialResult()]);
+      const mockGocode = { complete: vi.fn() } as unknown as IGocodeClient;
+
+      await store.save('run-001', [result], [scenario], makeConfig(), { gocode: mockGocode });
+
+      expect(mockNarrativeRender).toHaveBeenCalled();
+      const summaryCall = mockWriteFile.mock.calls.find(([p]) =>
+        (p as string).endsWith('summary.md'),
+      );
+      expect(summaryCall).toBeDefined();
+    });
   });
 
   describe('ensureTrialDir()', () => {
@@ -1905,7 +1928,7 @@ describe('EvalStore', () => {
       expect(parsed.scenarioName).toBe('test-scenario');
     });
 
-    it('writes summary.md using MdReporter.render()', async () => {
+    it('writes aggregate-report.md using MdReporter.render()', async () => {
       const store = new EvalStore();
       const scenario = makeScenario();
       const results = [
@@ -1916,7 +1939,7 @@ describe('EvalStore', () => {
 
       expect(mockRender).toHaveBeenCalledWith('run-001', results, { runMode: 'eval' });
       const call = mockWriteFile.mock.calls.find(([p]) =>
-        (p as string).endsWith('summary.md'),
+        (p as string).endsWith('aggregate-report.md'),
       );
       expect(call).toBeDefined();
       expect(call![1]).toBe('# mock summary');
@@ -2035,6 +2058,64 @@ describe('EvalStore', () => {
       const renderCall = mockRender.mock.calls[0][2] as Record<string, unknown>;
       expect(renderCall).not.toHaveProperty('gitSha');
       expect(renderCall).not.toHaveProperty('gitBranch');
+    });
+
+    it('writes summary.md via NarrativeSummaryReporter when gocode is provided', async () => {
+      const store = new EvalStore();
+      const scenario = makeScenario();
+      const results = [makeScenarioResult(scenario, [makeTrialResult()])];
+      const mockGocode = { complete: vi.fn() } as unknown as IGocodeClient;
+
+      await store.finalizeRun(DIR_NAME, 'run-001', results, undefined, undefined, mockGocode);
+
+      expect(mockNarrativeRender).toHaveBeenCalledWith(
+        'run-001',
+        results,
+        expect.objectContaining({ runMode: 'eval' }),
+      );
+      const summaryCall = mockWriteFile.mock.calls.find(([p]) =>
+        (p as string).endsWith('summary.md'),
+      );
+      expect(summaryCall).toBeDefined();
+      expect(summaryCall![1]).toBe('# narrative summary');
+    });
+
+    it('writes no-client stub to summary.md when gocode is absent', async () => {
+      const store = new EvalStore();
+      const scenario = makeScenario();
+      const results = [makeScenarioResult(scenario, [makeTrialResult()])];
+
+      await store.finalizeRun(DIR_NAME, 'run-001', results);
+
+      expect(mockNarrativeRender).not.toHaveBeenCalled();
+      const summaryCall = mockWriteFile.mock.calls.find(([p]) =>
+        (p as string).endsWith('summary.md'),
+      );
+      expect(summaryCall).toBeDefined();
+      expect(summaryCall![1] as string).toContain('aggregate-report.md');
+    });
+
+    it('writes fallback stub and does not throw when NarrativeSummaryReporter.render() throws', async () => {
+      const store = new EvalStore();
+      const scenario = makeScenario();
+      const results = [makeScenarioResult(scenario, [makeTrialResult()])];
+      const mockGocode = { complete: vi.fn() } as unknown as IGocodeClient;
+      mockNarrativeRender.mockRejectedValueOnce(new Error('LLM error'));
+
+      await expect(
+        store.finalizeRun(DIR_NAME, 'run-001', results, undefined, undefined, mockGocode),
+      ).resolves.toBeDefined();
+
+      const aggregateCall = mockWriteFile.mock.calls.find(([p]) =>
+        (p as string).endsWith('aggregate-report.md'),
+      );
+      expect(aggregateCall).toBeDefined();
+
+      const summaryCall = mockWriteFile.mock.calls.find(([p]) =>
+        (p as string).endsWith('summary.md'),
+      );
+      expect(summaryCall).toBeDefined();
+      expect(summaryCall![1] as string).toContain('aggregate-report.md');
     });
 
     it('passes tostConfig from renderOptions through to MdReporter.render()', async () => {
