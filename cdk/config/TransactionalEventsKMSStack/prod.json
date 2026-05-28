@@ -1,0 +1,10 @@
+{
+  "kms": {
+    "keyAlias": "transactional-events-kms-key-prod"
+  },
+  "crossAccount": {
+    "producerRoleArns": [
+      "arn:aws:iam::380414489361:role/eventbus-custom-eventbus-cross-account"
+    ]
+  }
+}

@@ -23,6 +23,7 @@ import { FeedbackFanoutStack } from "../lib/feedback-fanout-stack";
 import { AiroInvestigatorStack } from "../lib/investigator-stack";
 import { S2sIamJwtStack } from "../lib/s2s-iam-jwt-stack";
 import { TransactionalEventsKinesisStack } from "../lib/transactional-events-kinesis-stack";
+import { TransactionalEventsKMSStack } from "../lib/transactional-events-kms-stack";
 
 /**
  * Main function to execute the CDK app
@@ -153,10 +154,19 @@ async function main() {
     fanoutStack.addDependency(investigatorStack);
   }
 
+  // KMS key for encrypting the transactional events Kinesis stream.
+  // Cross-account producer accounts are granted encrypt/decrypt so they can
+  // write records via their EventBridge cross-account roles.
+  const transactionalEventsKmsStack = new TransactionalEventsKMSStack(app, 'TransactionalEventsKMSStack', { env });
+
   // Kinesis stream for transactional email events. Cross-account producers
   // (EventBridge eventbus-cross-account roles) put records; consumers are
   // downstream data-pipeline roles. Deployed to all environments.
-  new TransactionalEventsKinesisStack(app, 'TransactionalEventsKinesisStack', { env });
+  const transactionalEventsKinesisStack = new TransactionalEventsKinesisStack(app, 'TransactionalEventsKinesisStack', {
+    env,
+    kmsKey: transactionalEventsKmsStack.kmsKey,
+  });
+  transactionalEventsKinesisStack.addDependency(transactionalEventsKmsStack);
 
   // Create Qdrant ECR repository (dev and prod only)
   // Deploy this first to allow pre-populating Docker images
