@@ -526,6 +526,56 @@ jobs:
           TEST_ENVIRONMENT: ${{ steps.env-config.outputs.environment }}
           BASE_URL: ${{ steps.env-config.outputs.base_url }}
 
+  # Calls hosting-web-apps' reusable Playwright workflow alongside our own
+  # `test` job so PaaS UI E2E runs on every AAB Playwright trigger
+  # (schedule, workflow_dispatch, and workflow_call from
+  # deploy-test-e2e.yml). Lands the job on airo-cicd-runners via
+  # `runs-on-json` because hosting-web-apps' own runner fleet doesn't
+  # have Chromium's runtime libs (libnss3 et al.) baked in yet.
+  #
+  # `uses:` must be a compile-time constant, so we need separate jobs
+  # per environment to reference different HWA branches:
+  #   prod → @main (stable, merged code)
+  #   test → @fix/e2e (integration branch — flip to a dedicated
+  #          integration branch or @main once the HWA PR merges)
+
+  # --- prod: runs tests from main ---
+  host-paas-e2e:
+    if: >
+      ${{ (inputs.environment || 'prod') == 'prod'
+          && (github.event_name == 'schedule'
+              || contains(fromJSON('["e2e", "regression", "e2e-then-regression"]'), inputs.test_filter || 'e2e')) }}
+    name: E2E Tests (host-paas, prod)
+    uses: gdcorp-partners/hosting-web-apps/.github/workflows/e2e-playwright.yml@main
+    with:
+      environment: prod
+      ref: main
+      runs-on-json: '{"labels": ["airo-cicd-runners", "self-hosted"]}'
+    secrets:
+      CHECKOUT_SSH_KEY: ${{ secrets.PAAS_SSH_KEY }}
+    permissions:
+      id-token: write
+      contents: read
+
+  # --- test: runs tests from integration branch ---
+  # KNOWN ISSUE: CI runners are not on VPN, so PaaS BFF API calls to
+  # host.beta.test-godaddy.com return 403 "RBAC: access denied" from
+  # the edge proxy. Re-enable once runners have VPN access or the
+  # beta-test environment is reachable from the CI network.
+  host-paas-e2e-test:
+    if: false # disabled until VPN access is resolved
+    name: E2E Tests (host-paas, test)
+    uses: gdcorp-partners/hosting-web-apps/.github/workflows/e2e-playwright.yml@integration
+    with:
+      environment: test
+      ref: integration
+      runs-on-json: '{"labels": ["airo-cicd-runners", "self-hosted"]}'
+    secrets:
+      CHECKOUT_SSH_KEY: ${{ secrets.PAAS_SSH_KEY }}
+    permissions:
+      id-token: write
+      contents: read
+
   # Merge per-shard blob reports into a single HTML report. Only runs when
   # the test matrix had more than one entry (sharded regression, or the
   # parallel e2e + regression mix from `e2e-then-regression`). Uses
@@ -624,8 +674,8 @@ jobs:
     # on GitHub but nobody on-call would see it without this.
     # `skipped` (merge-reports doesn't run when total=1) doesn't match
     # `== 'failure'`, so single-shard runs aren't affected.
-    if: always() && (needs.test.result == 'failure' || needs.merge-reports.result == 'failure')
-    needs: [test, merge-reports]
+    if: always() && (needs.test.result == 'failure' || needs.merge-reports.result == 'failure' || needs.host-paas-e2e.result == 'failure')
+    needs: [test, merge-reports, host-paas-e2e]
     uses: ./.github/workflows/slack-notify.yml
     permissions:
       id-token: write
