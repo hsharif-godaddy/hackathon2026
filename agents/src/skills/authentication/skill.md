@@ -339,6 +339,15 @@ Based on user response, wrap routes with `ProtectedRoute`:
 
 ---
 
+## Verification
+```typescript
+httpCheck({ url: '/api/auth/session', expectStatus: 200 })
+```
+
+A 200 confirms the session route is registered. If it fails, the response body contains a diagnostic message — follow its instructions to resolve.
+
+---
+
 ## Known Behaviors & Edge Cases
 
 | Situation                                | What to do                                                                                                                                                                     |

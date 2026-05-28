@@ -36,12 +36,17 @@ export interface SSEContextLoaderDeps {
   }
   hasUnbuiltRebuildPages: (appId: string) => Promise<boolean>
   /**
-   * Resolve workspace path for the given app. Optional — when omitted (or
-   * when it returns undefined for an appId), pinned-skill state still works
-   * in-memory but is not persisted to `.airo/pinned-skills.json`.
+   * Resolve the fields needed to enrich SSE context for a given app.
+   * Supplies workspace path (pinned-skill persistence), base URL (httpCheck
+   * tool), and billing metadata (customerId/subscriptionId). Optional —
+   * when omitted each feature degrades gracefully.
    */
-  getAppPath?: (appId: string) => string | undefined
-  getAppMetadata?: (appId: string) => { customerId?: string | null; subscriptionId?: string | null } | undefined
+  getAppContextFields?: (appId: string) => {
+    path?: string
+    previewUrl?: string | null
+    customerId?: string | null
+    subscriptionId?: string | null
+  } | undefined
 }
 
 export interface SSEContextLoaderResult {
@@ -65,26 +70,30 @@ export function createSSEContextLoader(
       ? deps.hasUnbuiltRebuildPages(appId)
       : Promise.resolve(false)
 
-    if (appId && deps.getAppMetadata) {
-      let appMetadata: ReturnType<NonNullable<SSEContextLoaderDeps['getAppMetadata']>> | undefined
+    if (appId && deps.getAppContextFields) {
+      let appRecord: ReturnType<NonNullable<SSEContextLoaderDeps['getAppContextFields']>> | undefined
       try {
-        appMetadata = deps.getAppMetadata(appId)
+        appRecord = deps.getAppContextFields(appId)
       } catch (err) {
         logger.warn('sse.context.app_metadata_failed', {
           appId,
           error: err instanceof Error ? err.message : String(err),
         })
       }
-      if (appMetadata) {
+      if (appRecord) {
+        if (appRecord.previewUrl && !metadata.appBaseUrl) {
+          metadata.appBaseUrl = appRecord.previewUrl
+        }
+
         const authType = metadata.authType as string | undefined
         const isEmployeeSession = isEmployeeAuthType(authType)
         const useTestBudget = metadata.useTestBudget === true
         const currentSubscriptionId = typeof metadata.subscriptionId === 'string'
           ? metadata.subscriptionId
-          : appMetadata.subscriptionId ?? undefined
+          : appRecord.subscriptionId ?? undefined
 
-        if (appMetadata.customerId) {
-          metadata.customerId = appMetadata.customerId
+        if (appRecord.customerId) {
+          metadata.customerId = appRecord.customerId
         }
 
         const resolvedSubscriptionId = resolveBmsSubscriptionId(
@@ -142,7 +151,7 @@ export function createSSEContextLoader(
     const pinSelection = selectCacheConversationId(context as AgentsAppContext)
     const contextMessages = [...result.contextMessages]
     if (pinSelection.value) {
-      const pinAppPath = appId && deps.getAppPath ? deps.getAppPath(appId) : undefined
+      const pinAppPath = appId && deps.getAppContextFields ? deps.getAppContextFields(appId)?.path : undefined
       const pinnedMessages = await buildPinnedSkillsContextMessages(pinSelection.value, pinAppPath)
       for (const msg of pinnedMessages) {
         contextMessages.push(msg)

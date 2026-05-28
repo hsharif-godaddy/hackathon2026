@@ -634,6 +634,13 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
                 agentsAppContext.metadata.useAtlasCrawler = true
               }
 
+              // Resolve app base URL once for tools like httpCheck
+              if (!agentsAppContext.metadata.appBaseUrl) {
+                if (app.previewUrl) {
+                  agentsAppContext.metadata.appBaseUrl = app.previewUrl
+                }
+              }
+
               if (agentContext?.googleReviewsEnabled) {
                 agentsAppContext.metadata.googleReviewsEnabled = true
               }

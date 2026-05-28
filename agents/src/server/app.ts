@@ -250,10 +250,11 @@ function getOrCreateSSEExecutionService(): MessageExecutionService | null {
         agentFactory: agentFactory as any,
         contextMgr: contextMgr as any,
         hasUnbuiltRebuildPages,
-        getAppPath: (id: string) => sseAppRepo.findById(id)?.path,
-        getAppMetadata: (id: string) => {
+        getAppContextFields: (id: string) => {
           const app = sseAppRepo.findById(id)
-          return app ? { customerId: app.customerId, subscriptionId: app.subscriptionId } : undefined
+          if (!app) return undefined
+          const { path, previewUrl, customerId, subscriptionId } = app
+          return { path, previewUrl, customerId, subscriptionId }
         },
       }),
     },

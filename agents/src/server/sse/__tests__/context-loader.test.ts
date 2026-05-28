@@ -64,14 +64,14 @@ describe('createSSEContextLoader', () => {
 
   it('enriches metadata with app DB customer and subscription for regular sessions', async () => {
     const deps = makeDeps({
-      getAppMetadata: vi.fn().mockReturnValue({ customerId: 'cust-db', subscriptionId: 'sub-db' }),
+      getAppContextFields: vi.fn().mockReturnValue({ customerId: 'cust-db', subscriptionId: 'sub-db' }),
     })
     const loader = createSSEContextLoader(deps)
     const context: Record<string, unknown> = { metadata: { appId: 'app-1' } }
 
     await loader(context)
 
-    expect(deps.getAppMetadata).toHaveBeenCalledWith('app-1')
+    expect(deps.getAppContextFields).toHaveBeenCalledWith('app-1')
     expect(context.metadata).toEqual(expect.objectContaining({
       customerId: 'cust-db',
       subscriptionId: 'sub-db',
@@ -80,7 +80,7 @@ describe('createSSEContextLoader', () => {
 
   it('uses BMS override subscription metadata for employee and test sessions', async () => {
     const deps = makeDeps({
-      getAppMetadata: vi.fn().mockReturnValue({ customerId: 'cust-db', subscriptionId: 'sub-db' }),
+      getAppContextFields: vi.fn().mockReturnValue({ customerId: 'cust-db', subscriptionId: 'sub-db' }),
     })
     const loader = createSSEContextLoader(deps)
     const employeeContext: Record<string, unknown> = { metadata: { appId: 'app-1', authType: 'e2s' } }
@@ -93,11 +93,9 @@ describe('createSSEContextLoader', () => {
     expect((testBudgetContext.metadata as Record<string, unknown>).subscriptionId).toBe('airo-builder:test-accounts')
   })
 
-  it('continues context loading when app metadata lookup throws', async () => {
+  it('continues context loading when getApp throws', async () => {
     const deps = makeDeps({
-      getAppMetadata: vi.fn(() => {
-        throw new Error('SQLITE_BUSY')
-      }),
+      getAppContextFields: vi.fn(() => { throw new Error('SQLITE_BUSY') }),
     })
     const loader = createSSEContextLoader(deps)
     const context: Record<string, unknown> = { metadata: { appId: 'app-1' } }
@@ -247,6 +245,41 @@ describe('createSSEContextLoader', () => {
 
     expect(result.contextMessages).toStrictEqual(messages)
     expect(result.formattedContexts).toBe(formatted)
+  })
+
+  describe('appBaseUrl resolution', () => {
+    it('writes previewUrl from getApp to metadata.appBaseUrl when unset', async () => {
+      const deps = makeDeps({ getAppContextFields: vi.fn().mockReturnValue({ previewUrl: 'http://localhost:3001' }) })
+      const loader = createSSEContextLoader(deps)
+      const context: Record<string, unknown> = { metadata: { appId: 'app-1' } }
+
+      await loader(context)
+
+      expect(deps.getAppContextFields).toHaveBeenCalledWith('app-1')
+      expect((context.metadata as Record<string, unknown>).appBaseUrl).toBe('http://localhost:3001')
+    })
+
+    it('does not overwrite metadata.appBaseUrl when already set', async () => {
+      const deps = makeDeps({ getAppContextFields: vi.fn().mockReturnValue({ previewUrl: 'http://localhost:9999' }) })
+      const loader = createSSEContextLoader(deps)
+      const context: Record<string, unknown> = {
+        metadata: { appId: 'app-1', appBaseUrl: 'http://localhost:3001' },
+      }
+
+      await loader(context)
+
+      expect((context.metadata as Record<string, unknown>).appBaseUrl).toBe('http://localhost:3001')
+    })
+
+    it('leaves metadata.appBaseUrl unset when getApp returns no previewUrl', async () => {
+      const deps = makeDeps({ getAppContextFields: vi.fn().mockReturnValue({ customerId: 'c1' }) })
+      const loader = createSSEContextLoader(deps)
+      const context: Record<string, unknown> = { metadata: { appId: 'app-1' } }
+
+      await loader(context)
+
+      expect((context.metadata as Record<string, unknown>).appBaseUrl).toBeUndefined()
+    })
   })
 
   describe('pinned-skill injection (SSE parity with WS)', () => {

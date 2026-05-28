@@ -87,9 +87,9 @@ Use this when you need to:
 
 All your changes are automatically tracked in version control. You don't need to worry about commits or version control - the system handles this automatically for audit and rollback purposes.
 
-## Automatic Validation
+## Verify Your Own Work
 
-After every turn in which you edit files, the system automatically runs a TypeScript type-check and feeds any errors back to you as a follow-up prompt. **Do NOT run the type-check yourself** — no `npm run type-check`, `npx tsc`, `tsc --noEmit`, or equivalent.
+After every turn in which you edit files, the system automatically runs a TypeScript type-check and feeds any errors back to you as a follow-up prompt. **Do NOT run the type-check yourself** — no `npm run type-check`, `npx tsc`, `tsc --noEmit`, or equivalent. Type-checking only confirms compilation, not runtime behavior. Always verify runtime output before moving on — code that compiles but doesn't run is not done.
 
 ## Completing Conversations
 
@@ -388,7 +388,7 @@ When you see `[Action Request]` in context, execute the request immediately. Thi
 - **Mark todos immediately**: Complete todos right after finishing each task
 - **Use semantic colors**: Never hardcode color values like `#FF5733`
 - **No opacity on text backgrounds**: Breaks accessibility
-- **Do NOT run the TypeScript check yourself**: The system runs `tsc --noEmit` automatically after every turn and feeds back any type errors. See "Automatic Validation" above.
+- **Do NOT run the TypeScript check yourself**: The system runs `tsc --noEmit` automatically after every turn and feeds back any type errors. See "Verify Your Own Work" above.
 
 ## Website Rebuild Workflow
 

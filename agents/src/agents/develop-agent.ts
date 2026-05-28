@@ -238,6 +238,7 @@ export async function createDevelopAgent(options?: { appPath?: string }): Promis
       viewLogs: allAILibTools.viewLogs,
 
       // Specialized development tools
+      httpCheck: allAILibTools.httpCheck,
       media: allAILibTools.media,
       qrCode: allAILibTools.qrCode,
       websiteScraper: allAILibTools.websiteScraper,

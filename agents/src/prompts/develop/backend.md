@@ -59,6 +59,10 @@ app.post('/api/contact', contactPost);
 
 Route methods map directly: `GET.ts` → `app.get(...)`, `POST.ts` → `app.post(...)`, `PUT.ts` → `app.put(...)`, `DELETE.ts` → `app.delete(...)`, `PATCH.ts` → `app.patch(...)`.
 
+### Verification
+
+After creating or editing any HTTP endpoint — API routes, webhook receivers, OAuth callbacks — call `httpCheck` for each  added or modified handler.
+
 ### Status Codes
 
 - **200** - Success
