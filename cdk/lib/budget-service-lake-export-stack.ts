@@ -182,7 +182,7 @@ export class BudgetServiceLakeExportStack extends GDStack {
     const schedule = new events.Rule(this, 'ExportSchedule', {
       ruleName: `${config.envName}-budget-export-schedule`,
       description: 'Daily snapshot of budget-service tables to the budget export bucket',
-      schedule: events.Schedule.cron({ minute: '05', hour: '5' }),
+      schedule: events.Schedule.cron({ minute: '30', hour: '5' }),
     });
     schedule.addTarget(new targets.LambdaFunction(this.exportLambda));
 
@@ -202,7 +202,7 @@ export class BudgetServiceLakeExportStack extends GDStack {
     new cloudwatch.Alarm(this, 'ExportStalenessAlarm', {
       alarmName: `${config.envName}-budget-export-staleness`,
       alarmDescription:
-        'Budget export Lambda has not been invoked in the last 25 hours (expected daily at 5:05 UTC).',
+        'Budget export Lambda has not been invoked in the last 25 hours (expected daily at 5:30 UTC).',
       metric: this.exportLambda.metricInvocations({
         statistic: cloudwatch.Stats.SUM,
         period: cdk.Duration.hours(25),

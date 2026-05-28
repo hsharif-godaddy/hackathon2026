@@ -116,7 +116,6 @@ def _register_lake_partition(table_lake_name: str, year: str, month: str, day: s
             "year": year,
             "month": month,
             "day": day,
-            "region": "us-west-2",
         },
     )
     logger.info(
