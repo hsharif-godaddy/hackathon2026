@@ -20,10 +20,12 @@
  * in skill.md, NOT at registration time. buildAllSkillTools walks every
  * directory under `agents/src/skills/` and registers these exports
  * unconditionally, so `stripe-v2__setup` and `stripe-v2__status` exist in
- * the AI-SDK registry regardless of `ENABLE_STRIPE_V2`. The only path from
- * registry → LLM today is `LoadSkill`, which gates on `enablementId`. If a
- * future code path surfaces registry tools without going through LoadSkill,
- * gating will need to move to registration.
+ * the AI-SDK registry regardless of whether the skill is enabled for the
+ * active shopper. The only path from registry → LLM today is `LoadSkill`,
+ * which calls `skills.isEnabled('stripe-v2')` → `profileFlag('skill.stripe-v2.enabled', false)`
+ * via the `profileGatedSkills` registry. If a future code path surfaces
+ * registry tools without going through LoadSkill, gating will need to
+ * move to registration.
  */
 
 import { z } from 'zod';

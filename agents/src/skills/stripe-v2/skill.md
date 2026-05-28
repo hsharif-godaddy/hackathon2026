@@ -1,7 +1,7 @@
 ---
 name: stripe-v2
 description: Add Stripe payment integration to the customer's app via the platform-managed flow — Airo provisions a dedicated Stripe sandbox for the app, the user claims it, and the customer app gets sandbox keys delivered automatically.
-whenToUse: User explicitly mentions Stripe for payments. Phrases like "add Stripe", "Stripe checkout", "Stripe payments", "Stripe subscription". Only use this skill when the user specifically asks for Stripe — for general e-commerce requests, use the commerce skill instead.
+whenToUse: User explicitly mentions Stripe for payments. Phrases like "add Stripe", "Stripe checkout", "Stripe payments", "Stripe subscription". Only use this skill when the user specifically asks for Stripe — for general e-commerce requests, use the commerce skill instead. PREFERRED over the legacy `stripe` skill when both are visible in your catalog — this skill provisions a Stripe sandbox for the user automatically and avoids the manual API-key paste flow.
 enablementId: stripe-v2
 ---
 

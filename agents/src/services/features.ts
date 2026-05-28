@@ -64,7 +64,6 @@ interface FeatureConfig {
     connectingCalendars: boolean
     onlineConferencing: boolean
     stripe: boolean
-    'stripe-v2': boolean
   }
 
   // Widget/Feature enablement configuration
@@ -233,15 +232,16 @@ function parseEnvironmentFeatures(): FeatureConfig {
     },
 
     // Skill enablement configuration. Add skills here as they are created.
-    // The legacy `stripe` and new `stripe-v2` skills are mutually exclusive:
-    // ENABLE_STRIPE_V2=true disables the legacy skill so the agent never sees
-    // both at once. Default (env unset) keeps the legacy skill on.
+    // Legacy `stripe` is always available; the new `stripe-v2` is profile-gated
+    // (see profileGatedSkills) so it only appears for shoppers whose
+    // `appbuilder-agent-profile` switchboard rule maps them to a profile that
+    // sets `skill.stripe-v2.enabled: true` (currently the experimental profile
+    // for internal QA testing).
     enabledSkills: {
       social: process.env.ENABLE_SOCIAL === 'true',
       connectingCalendars: process.env.ENABLE_CONNECTING_CALENDARS !== 'false',
       onlineConferencing: process.env.ENABLE_ONLINE_CONFERENCING !== 'false',
-      stripe: process.env.ENABLE_STRIPE_V2 !== 'true',
-      'stripe-v2': process.env.ENABLE_STRIPE_V2 === 'true',
+      stripe: true,
     },
 
     // Widget/Feature enablement configuration
@@ -350,6 +350,7 @@ export const profileGatedSkills: Set<string> = new Set([
   'googleReviews',
   'complianceDocs',
   'conversations',
+  'stripe-v2',
 ]);
 
 /**
@@ -358,7 +359,7 @@ export const profileGatedSkills: Set<string> = new Set([
 export const skills = {
   /**
    * Check if a specific skill is enabled.
-   * Resolution: static config (env var) > profile flag > default (false).
+   * Resolution: static config (hardcoded or env-var-derived) > profile flag > default (false).
    */
   isEnabled: (skillId: string): boolean => {
     const featureConfig = getFeatures();

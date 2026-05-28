@@ -411,35 +411,63 @@ describe("features", () => {
     });
   });
 
-  // Pin: legacy `stripe` and new `stripe-v2` are mutually exclusive via a
-  // single env var. The agent must never see both enabled simultaneously —
-  // they have overlapping whenToUse text and the LLM would pick
-  // unpredictably between them.
-  describe("stripe / stripe-v2 mutual exclusion", () => {
-    it("defaults to legacy stripe enabled, stripe-v2 disabled", async () => {
-      delete process.env.ENABLE_STRIPE_V2;
-
+  // Pin: legacy `stripe` is always available (static enabledSkills); new
+  // `stripe-v2` is profile-gated so it appears only for shoppers whose
+  // `appbuilder-agent-profile` switchboard rule maps them to a profile that
+  // sets `skill.stripe-v2.enabled: true`. Both can be visible simultaneously
+  // for experimental shoppers — the LLM picks between them via whenToUse.
+  describe("stripe / stripe-v2 enablement", () => {
+    it("legacy stripe is always enabled (static config)", async () => {
       const { skills } = await import("../features.js");
       expect(skills.isEnabled("stripe")).toBe(true);
+    });
+
+    it("stripe-v2 is disabled with no active profile", async () => {
+      const { skills } = await import("../features.js");
       expect(skills.isEnabled("stripe-v2")).toBe(false);
     });
 
-    it("flips both when ENABLE_STRIPE_V2='true'", async () => {
-      process.env.ENABLE_STRIPE_V2 = "true";
-
+    it("stripe-v2 is enabled when active profile sets skill.stripe-v2.enabled=true", async () => {
       const { skills } = await import("../features.js");
-      expect(skills.isEnabled("stripe")).toBe(false);
-      expect(skills.isEnabled("stripe-v2")).toBe(true);
+      const { runWithProfile } = await import("../../profiles/profile-context.js");
+
+      const experimentalProfile: ProfileData = {
+        name: "experimental",
+        description: "Internal QA — enables new skills for testing",
+        properties: { "skill.stripe-v2.enabled": true },
+      };
+
+      const result = runWithProfile(experimentalProfile, () => skills.isEnabled("stripe-v2"));
+      expect(result).toBe(true);
     });
 
-    it("treats anything other than 'true' as legacy-on, v2-off", async () => {
-      // Guards against typos like 'TRUE' or '1' silently flipping the
-      // legacy off without enabling v2.
-      process.env.ENABLE_STRIPE_V2 = "yes";
-
+    it("stripe-v2 stays disabled when active profile lacks the flag", async () => {
       const { skills } = await import("../features.js");
-      expect(skills.isEnabled("stripe")).toBe(true);
-      expect(skills.isEnabled("stripe-v2")).toBe(false);
+      const { runWithProfile } = await import("../../profiles/profile-context.js");
+
+      const otherProfile: ProfileData = {
+        name: "prompt-enhancer",
+        description: "QA profile for prompt experiments — not stripe",
+        properties: { "develop.promptOptimization": true },
+      };
+
+      const result = runWithProfile(otherProfile, () => skills.isEnabled("stripe-v2"));
+      expect(result).toBe(false);
+    });
+
+    it("stripe-v2 is registered as profile-gated", async () => {
+      const { skills } = await import("../features.js");
+      expect(skills.isProfileGated("stripe-v2")).toBe(true);
+    });
+
+    // Pin: experimental.json must keep `skill.stripe-v2.enabled: true` for
+    // the targeted-shopper rollout to actually fire. The other tests in this
+    // suite hand-build profile literals, so a silent revert of
+    // `agents/src/profiles/experimental.json:12` would not fail any of them.
+    // This test imports the real JSON and locks the contract.
+    it("experimental profile actually enables stripe-v2 (regression pin)", async () => {
+      const experimental = (await import("../../profiles/experimental.json", { with: { type: "json" } })).default;
+      expect(experimental.properties["skill.stripe-v2.enabled"]).toBe(true);
     });
   });
 });
