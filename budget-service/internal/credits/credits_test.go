@@ -1,7 +1,12 @@
 package credits
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
+	"log/slog"
+	"math"
+	"strings"
 	"testing"
 
 	"github.com/shopspring/decimal"
@@ -237,5 +242,75 @@ func TestDollarsToCreditsEdgeCases(t *testing.T) {
 				t.Fatalf("DollarsToCredits(%s,%s) = %s, want %s", tc.cost, tc.ratio, got.StringFixed(6), tc.want)
 			}
 		})
+	}
+}
+
+func TestLogFloatMarshalJSON(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name string
+		in   LogFloat
+		want string
+	}{
+		{"zero whole", 0, "0.0"},
+		{"positive whole", 5, "5.0"},
+		{"negative whole", -5, "-5.0"},
+		{"fractional", 0.5, "0.5"},
+		{"small fractional", 0.0234, "0.0234"},
+		{"large whole", 1000000, "1000000.0"},
+		{"negative fractional", -0.0001, "-0.0001"},
+		{"nan", LogFloat(math.NaN()), "null"},
+		{"posinf", LogFloat(math.Inf(1)), "null"},
+		{"neginf", LogFloat(math.Inf(-1)), "null"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := json.Marshal(tc.in)
+			if err != nil {
+				t.Fatalf("json.Marshal(%v): %v", float64(tc.in), err)
+			}
+			if string(got) != tc.want {
+				t.Fatalf("json.Marshal(%v) = %s, want %s", float64(tc.in), got, tc.want)
+			}
+		})
+	}
+}
+
+// Guards the slog integration: slog's JSONHandler must route a LogFloat
+// (kind=Any) through json.Marshal, hitting our MarshalJSON. If a future
+// Go version special-cases defined types whose underlying type is
+// float64, slog could bypass MarshalJSON and the wrapper would silently
+// stop working.
+func TestLogFloatRoundTripsThroughSlogJSONHandler(t *testing.T) {
+	t.Parallel()
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	logger.Info("test", "whole", LogFloat(1), "frac", LogFloat(0.5), "zero", LogFloat(0))
+	out := buf.String()
+	for _, want := range []string{`"whole":1.0`, `"frac":0.5`, `"zero":0.0`} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("expected slog JSON output to contain %s, got: %s", want, out)
+		}
+	}
+}
+
+func TestLogFloatFromDecimal(t *testing.T) {
+	t.Parallel()
+	got, err := json.Marshal(LogFloatFromDecimal(decimal.RequireFromString("0")))
+	if err != nil {
+		t.Fatalf("marshal zero: %v", err)
+	}
+	if string(got) != "0.0" {
+		t.Fatalf("zero decimal -> %s, want 0.0", got)
+	}
+	got, err = json.Marshal(LogFloatFromDecimal(decimal.RequireFromString("1.234567")))
+	if err != nil {
+		t.Fatalf("marshal fractional: %v", err)
+	}
+	// InexactFloat64 may round to a slightly different binary float, but
+	// the leading characters and the decimal point are what matters here.
+	if got[0] != '1' || got[1] != '.' {
+		t.Fatalf("fractional decimal -> %s, want 1.234567-ish", got)
 	}
 }

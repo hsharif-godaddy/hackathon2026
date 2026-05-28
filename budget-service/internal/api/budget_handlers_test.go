@@ -3439,6 +3439,83 @@ func TestPostBudgetSessionReportEmitsSuccessLog(t *testing.T) {
 	}
 }
 
+// Guards against the Elastic dynamic-mapping pitfall where Go's json
+// encoder strips trailing ".0" from whole-number floats, causing the
+// first ingested document to mis-map *Usd fields as `long`. The wrapper
+// at credits.LogFloatFromDecimal must keep the ".0" in the wire bytes
+// even for whole-number costs. Note: this asserts on the raw log
+// bytes, not the json.Unmarshal'd shape, because Unmarshal collapses
+// `1` and `1.0` to the same float64.
+func TestPostBudgetSessionReportLogsUsdFieldsWithFractionalDigit(t *testing.T) {
+	var logBuf bytes.Buffer
+	logH := slog.NewJSONHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelInfo})
+	previous := slog.Default()
+	slog.SetDefault(slog.New(logH))
+	t.Cleanup(func() { slog.SetDefault(previous) })
+
+	st := testStore(t)
+	mw := auth.NewMiddleware("none", nil, nil)
+	srv := &Server{Store: st}
+	h := NewRouter(srv, mw)
+	pk := "usd-shape-" + uuid.NewString()
+	reqP := httptest.NewRequest(http.MethodPost, "/api/v1/products", strings.NewReader(`{"productKey":"`+pk+`"}`))
+	reqP.Header.Set("Content-Type", "application/json")
+	recP := httptest.NewRecorder()
+	h.ServeHTTP(recP, reqP)
+	if recP.Code != http.StatusCreated {
+		t.Fatalf("post product: %d %s", recP.Code, recP.Body.String())
+	}
+	reqB := httptest.NewRequest(http.MethodPost, "/api/v1/budgets", strings.NewReader(
+		`{"productKey":"`+pk+`","items":[{"creditsTotal":"10.000000","costToCreditRatio":"1"}]}`,
+	))
+	reqB.Header.Set("Content-Type", "application/json")
+	recB := httptest.NewRecorder()
+	h.ServeHTTP(recB, reqB)
+	if recB.Code != http.StatusCreated {
+		t.Fatalf("post budget: %d %s", recB.Code, recB.Body.String())
+	}
+	budgetID := decodeJSONMapUseNumber(t, recB.Body.String())["budgetId"].(string)
+	reqS := httptest.NewRequest(http.MethodPost, "/api/v1/sessions", strings.NewReader(`{"budgetId":"`+budgetID+`"}`))
+	reqS.Header.Set("Content-Type", "application/json")
+	recS := httptest.NewRecorder()
+	h.ServeHTTP(recS, reqS)
+	if recS.Code != http.StatusCreated {
+		t.Fatalf("post session: %d %s", recS.Code, recS.Body.String())
+	}
+	sessionID := decodeJSONMapUseNumber(t, recS.Body.String())["sessionId"].(string)
+
+	// Whole-number costs — exactly the case Go's json encoder would emit
+	// without a fractional digit.
+	repBody := `{"reportItems":[{"budgetCost":"1.000000","productCost":"2.000000","label":"shape"}]}`
+	reqR := httptest.NewRequest(http.MethodPost, "/api/v1/sessions/"+sessionID+"/reports", strings.NewReader(repBody))
+	reqR.Header.Set("Content-Type", "application/json")
+	recR := httptest.NewRecorder()
+	h.ServeHTTP(recR, reqR)
+	if recR.Code != http.StatusCreated {
+		t.Fatalf("post report: %d %s", recR.Code, recR.Body.String())
+	}
+
+	var successLine string
+	for _, line := range strings.Split(logBuf.String(), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		if strings.Contains(line, `"msg":"budget.session.report.success"`) {
+			successLine = line
+			break
+		}
+	}
+	if successLine == "" {
+		t.Fatalf("missing budget.session.report.success in log output: %s", logBuf.String())
+	}
+	for _, want := range []string{`"budgetCostTotalUsd":1.0`, `"productCostTotalUsd":2.0`} {
+		if !strings.Contains(successLine, want) {
+			t.Fatalf("expected raw log line to contain %s, got: %s", want, successLine)
+		}
+	}
+}
+
 func TestPostBudgetSessionReportLogTruncatesSessionCallRequestIds(t *testing.T) {
 	var logBuf bytes.Buffer
 	logH := slog.NewJSONHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelInfo})

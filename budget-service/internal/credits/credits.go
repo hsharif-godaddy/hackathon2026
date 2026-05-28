@@ -3,6 +3,8 @@ package credits
 
 import (
 	"errors"
+	"math"
+	"strconv"
 	"strings"
 
 	"github.com/shopspring/decimal"
@@ -79,4 +81,32 @@ func DollarsToCredits(costUSD, creditSpendRatio decimal.Decimal) (decimal.Decima
 
 func Format(d decimal.Decimal) string {
 	return d.StringFixed(FractionalDigits)
+}
+
+// LogFloat wraps float64 for emission to structured logs that flow into
+// Elasticsearch. It always JSON-encodes with at least one fractional
+// digit (e.g. 0 -> 0.0, 5 -> 5.0), so Elastic's dynamic mapping infers
+// `double` rather than `long` when the first document for a field
+// happens to carry a whole-number value. NaN and infinities encode as
+// JSON null, matching encoding/json's behavior for those float states.
+type LogFloat float64
+
+// LogFloatFromDecimal converts a decimal money value to a LogFloat for
+// log emission. Float imprecision is acceptable here because the value
+// is for monitoring; precise amounts are logged as strings alongside
+// (e.g. budgetCostTotal next to budgetCostTotalUsd).
+func LogFloatFromDecimal(d decimal.Decimal) LogFloat {
+	return LogFloat(d.InexactFloat64())
+}
+
+func (f LogFloat) MarshalJSON() ([]byte, error) {
+	v := float64(f)
+	if math.IsNaN(v) || math.IsInf(v, 0) {
+		return []byte("null"), nil
+	}
+	s := strconv.FormatFloat(v, 'f', -1, 64)
+	if !strings.ContainsRune(s, '.') {
+		s += ".0"
+	}
+	return []byte(s), nil
 }
