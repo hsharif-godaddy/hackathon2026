@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { makeRunCommandResult } from '../../../workspace/__tests__/mock-helpers.js';
 import { Request, Response, NextFunction } from 'express';
 import { ValidationErrorKey } from '../../../types/import.js';
 import {
@@ -379,60 +380,60 @@ describe('isSupportedProjectOnHost', () => {
 
 describe('hasConfigFileInContainer', () => {
   it('should return true when config file is found', async () => {
-    const mockDevSupervisor = {
-      exec: vi.fn().mockResolvedValueOnce({ stdout: 'found' }),
+    const mockTasks = {
+      runCommandSync: vi.fn().mockResolvedValueOnce(makeRunCommandResult({ stdout: 'found' })),
     };
 
     const result = await hasConfigFileInContainer(
-      mockDevSupervisor as any,
+      mockTasks as any,
       '/app',
       ['custom.config.js', 'custom.config.ts']
     );
 
     expect(result).toBe(true);
-    expect(mockDevSupervisor.exec).toHaveBeenCalledWith({
+    expect(mockTasks.runCommandSync).toHaveBeenCalledWith({
       command: 'test -f "/app/custom.config.js" && echo "found" || echo "notfound"',
-      timeout: 5,
+      timeoutSeconds: 5,
     });
   });
 
   it('should check all config files until one is found', async () => {
-    const mockDevSupervisor = {
-      exec: vi.fn()
-        .mockResolvedValueOnce({ stdout: 'notfound' })
-        .mockResolvedValueOnce({ stdout: 'found' }),
+    const mockTasks = {
+      runCommandSync: vi.fn()
+        .mockResolvedValueOnce(makeRunCommandResult({ stdout: 'notfound' }))
+        .mockResolvedValueOnce(makeRunCommandResult({ stdout: 'found' })),
     };
 
     const result = await hasConfigFileInContainer(
-      mockDevSupervisor as any,
+      mockTasks as any,
       '/app',
       ['first.config.js', 'second.config.js', 'third.config.js']
     );
 
     expect(result).toBe(true);
-    expect(mockDevSupervisor.exec).toHaveBeenCalledTimes(2);
+    expect(mockTasks.runCommandSync).toHaveBeenCalledTimes(2);
   });
 
   it('should return false when no config files found', async () => {
-    const mockDevSupervisor = {
-      exec: vi.fn().mockResolvedValue({ stdout: 'notfound' }),
+    const mockTasks = {
+      runCommandSync: vi.fn().mockResolvedValue(makeRunCommandResult({ stdout: 'notfound' })),
     };
 
     const result = await hasConfigFileInContainer(
-      mockDevSupervisor as any,
+      mockTasks as any,
       '/app',
       ['a.config.js', 'b.config.js']
     );
 
     expect(result).toBe(false);
-    expect(mockDevSupervisor.exec).toHaveBeenCalledTimes(2);
+    expect(mockTasks.runCommandSync).toHaveBeenCalledTimes(2);
   });
 
   it('should throw error for invalid path', async () => {
-    const mockDevSupervisor = { exec: vi.fn() };
+    const mockTasks = { runCommandSync: vi.fn() };
 
     await expect(
-      hasConfigFileInContainer(mockDevSupervisor as any, '/app; rm -rf /', ['config.js'])
+      hasConfigFileInContainer(mockTasks as any, '/app; rm -rf /', ['config.js'])
     ).rejects.toThrow('Invalid project root path');
   });
 });
@@ -473,26 +474,26 @@ describe('isValidShellPath', () => {
 
 describe('isSupportedProjectInContainer', () => {
   it('should return supported=true with matchedTool for any valid package.json', async () => {
-    const mockDevSupervisor = {
-      exec: vi.fn(),
+    const mockTasks = {
+      runCommandSync: vi.fn(),
     };
     const packageJson: PackageJsonDeps = { dependencies: { anything: '^1.0.0' } };
 
-    const result = await isSupportedProjectInContainer(mockDevSupervisor as any, '/app', packageJson);
+    const result = await isSupportedProjectInContainer(mockTasks as any, '/app', packageJson);
 
     expect(result.supported).toBe(true);
     expect(result.matchedTool).toBe('Node.js');
     // No exec calls needed since NODEJS_BUILD_TOOL has no config files
-    expect(mockDevSupervisor.exec).not.toHaveBeenCalled();
+    expect(mockTasks.runCommandSync).not.toHaveBeenCalled();
   });
 
   it('should return supported=true even for empty dependencies', async () => {
-    const mockDevSupervisor = {
-      exec: vi.fn(),
+    const mockTasks = {
+      runCommandSync: vi.fn(),
     };
     const packageJson: PackageJsonDeps = { dependencies: {} };
 
-    const result = await isSupportedProjectInContainer(mockDevSupervisor as any, '/app', packageJson);
+    const result = await isSupportedProjectInContainer(mockTasks as any, '/app', packageJson);
 
     expect(result.supported).toBe(true);
     expect(result.matchedTool).toBe('Node.js');
@@ -505,13 +506,13 @@ describe('isSupportedProjectInContainer', () => {
       packageNames: ['custom-bundler'],
     };
 
-    const mockDevSupervisor = {
-      exec: vi.fn().mockResolvedValueOnce({ stdout: 'found' }),
+    const mockTasks = {
+      runCommandSync: vi.fn().mockResolvedValueOnce(makeRunCommandResult({ stdout: 'found' })),
     };
     const packageJson: PackageJsonDeps = { dependencies: {} };
 
     const result = await isSupportedProjectInContainer(
-      mockDevSupervisor as any,
+      mockTasks as any,
       '/app',
       packageJson,
       [customTool]
@@ -528,13 +529,13 @@ describe('isSupportedProjectInContainer', () => {
       packageNames: ['custom-bundler'],
     };
 
-    const mockDevSupervisor = {
-      exec: vi.fn().mockResolvedValue({ stdout: 'notfound' }),
+    const mockTasks = {
+      runCommandSync: vi.fn().mockResolvedValue(makeRunCommandResult({ stdout: 'notfound' })),
     };
     const packageJson: PackageJsonDeps = { dependencies: { 'custom-bundler': '^1.0.0' } };
 
     const result = await isSupportedProjectInContainer(
-      mockDevSupervisor as any,
+      mockTasks as any,
       '/app',
       packageJson,
       [customTool]
@@ -546,40 +547,34 @@ describe('isSupportedProjectInContainer', () => {
 
   describe('NODEJS_BUILD_TOOL detection', () => {
     it('should support any Node.js project (no specific package required)', async () => {
-      const mockDevSupervisor = {
-        exec: vi.fn(),
-      };
+      const mockTasks = { runCommandSync: vi.fn() };
       const packageJson: PackageJsonDeps = { dependencies: { express: '^4.18.2' } };
 
-      const result = await isSupportedProjectInContainer(mockDevSupervisor as any, '/app', packageJson);
+      const result = await isSupportedProjectInContainer(mockTasks as any, '/app', packageJson);
 
       expect(result.supported).toBe(true);
       expect(result.matchedTool).toBe('Node.js');
     });
 
     it('should support projects with any dependencies', async () => {
-      const mockDevSupervisor = {
-        exec: vi.fn(),
-      };
+      const mockTasks = { runCommandSync: vi.fn() };
       const packageJson: PackageJsonDeps = { dependencies: { lodash: '^4.17.21' } };
 
-      const result = await isSupportedProjectInContainer(mockDevSupervisor as any, '/app', packageJson);
+      const result = await isSupportedProjectInContainer(mockTasks as any, '/app', packageJson);
 
       expect(result.supported).toBe(true);
       expect(result.matchedTool).toBe('Node.js');
     });
 
     it('should support projects with vitest in devDependencies (not Vite project)', async () => {
-      const mockDevSupervisor = {
-        exec: vi.fn(),
-      };
+      const mockTasks = { runCommandSync: vi.fn() };
       // Project has vitest for testing but is not a Vite frontend project
       const packageJson: PackageJsonDeps = {
         dependencies: { express: '^4.18.2' },
         devDependencies: { vitest: '^1.0.0' }
       };
 
-      const result = await isSupportedProjectInContainer(mockDevSupervisor as any, '/app', packageJson);
+      const result = await isSupportedProjectInContainer(mockTasks as any, '/app', packageJson);
 
       expect(result.supported).toBe(true);
       expect(result.matchedTool).toBe('Node.js');

@@ -31,7 +31,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Logger, log } from '../../logging/index.js';
 import { ValidationErrorKey, type ValidationError } from '../../types/import.js';
-import type { DevSupervisorClient } from '../../services/DevSupervisorClient.js';
+import type { WorkspaceTasks } from '../../workspace/tasks.js';
 
 const logger = Logger.create({ component: 'git-sync-validation-middleware' });
 
@@ -524,7 +524,7 @@ export function isSupportedProjectOnHost(
  * @throws Error if projectRoot contains invalid characters
  */
 export async function hasConfigFileInContainer(
-  devSupervisor: DevSupervisorClient,
+  tasks: Pick<WorkspaceTasks, 'runCommandSync'>,
   projectRoot: string,
   configFiles: readonly string[]
 ): Promise<boolean> {
@@ -533,9 +533,9 @@ export async function hasConfigFileInContainer(
   }
 
   for (const configFile of configFiles) {
-    const checkResult = await devSupervisor.exec({
+    const checkResult = await tasks.runCommandSync({
       command: `test -f "${projectRoot}/${configFile}" && echo "found" || echo "notfound"`,
-      timeout: 5,
+      timeoutSeconds: 5,
     });
     if (checkResult.stdout?.trim() === 'found') {
       return true;
@@ -548,13 +548,13 @@ export async function hasConfigFileInContainer(
  * Checks if a project matches a build tool inside a container.
  */
 export async function matchesBuildToolInContainer(
-  devSupervisor: DevSupervisorClient,
+  tasks: Pick<WorkspaceTasks, 'runCommandSync'>,
   projectRoot: string,
   packageJson: PackageJsonDeps,
   buildTool: BuildToolConfig
 ): Promise<boolean> {
   if (buildTool.configFiles.length > 0) {
-    const hasConfig = await hasConfigFileInContainer(devSupervisor, projectRoot, buildTool.configFiles);
+    const hasConfig = await hasConfigFileInContainer(tasks, projectRoot, buildTool.configFiles);
     if (hasConfig) return true;
   }
 
@@ -567,13 +567,13 @@ export async function matchesBuildToolInContainer(
  * @returns Object with match result and matched tool name (if any)
  */
 export async function isSupportedProjectInContainer(
-  devSupervisor: DevSupervisorClient,
+  tasks: Pick<WorkspaceTasks, 'runCommandSync'>,
   projectRoot: string,
   packageJson: PackageJsonDeps,
   supportedTools: readonly BuildToolConfig[] = SUPPORTED_BUILD_TOOLS
 ): Promise<{ supported: boolean; matchedTool?: string }> {
   for (const tool of supportedTools) {
-    if (await matchesBuildToolInContainer(devSupervisor, projectRoot, packageJson, tool)) {
+    if (await matchesBuildToolInContainer(tasks, projectRoot, packageJson, tool)) {
       return { supported: true, matchedTool: tool.name };
     }
   }

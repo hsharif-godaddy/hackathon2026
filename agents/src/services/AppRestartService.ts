@@ -179,27 +179,27 @@ export async function readPackageJsonScripts(
  * Detect package manager by checking for lock files.
  * Used by zip upload, git pull, and publish flows.
  * Falls back to npm on any error (container unreachable, timeout, etc.)
- * @param devSupervisor - Dev supervisor client with exec method
+ * @param tasks - Workspace tasks interface for running commands in container
  * @param projectRoot - Root path to check for lock files (default: /app)
  */
 export async function detectPackageManager(
-  devSupervisor: DevSupervisorExec,
+  tasks: Pick<WorkspaceTasks, 'runCommandSync'>,
   projectRoot = '/app'
 ): Promise<PackageManager> {
   try {
     // Check for pnpm-lock.yaml
-    const pnpmCheck = await devSupervisor.exec({
+    const pnpmCheck = await tasks.runCommandSync({
       command: `test -f "${projectRoot}/pnpm-lock.yaml" && echo "found"`,
-      timeout: 5,
+      timeoutSeconds: 5,
     });
     if (pnpmCheck.stdout?.trim() === 'found') {
       return 'pnpm';
     }
 
     // Check for yarn.lock
-    const yarnCheck = await devSupervisor.exec({
+    const yarnCheck = await tasks.runCommandSync({
       command: `test -f "${projectRoot}/yarn.lock" && echo "found"`,
-      timeout: 5,
+      timeoutSeconds: 5,
     });
     if (yarnCheck.stdout?.trim() === 'found') {
       return 'yarn';
@@ -353,32 +353,6 @@ export class AppRestartService {
     this.logger.info('app-restart.cycle.begin', { appId });
 
     try {
-      // Detect package manager from lock files
-      const devSupervisor = DevSupervisorClientFactory.createForApp(appId);
-      const packageManager: PackageManager = devSupervisor
-        ? await detectPackageManager(devSupervisor)
-        : 'npm';
-
-      this.logger.info('app-restart.package-manager.detected', { appId, packageManager });
-
-      const scripts = devSupervisor
-        ? await readPackageJsonScripts(devSupervisor, '/app', appId)
-        : { hasBuildScript: false, hasStartScript: false, hasDevScript: false };
-
-      const userStart = options?.commands?.start ?? options?.devCommand;
-      const { startCommand, serveCommandSource } = resolveStartCommand(
-        userStart,
-        scripts,
-        packageManager
-      );
-
-      this.logger.info('app-restart.start-command.resolved', {
-        appId,
-        packageManager,
-        serveCommandSource,
-        startCommand,
-      });
-
       // Step 1: Stop dev server (uses HTTP client directly, no workspace needed)
       const stopResult = await this.stopDevServer(appId);
       if (!stopResult.success) {
@@ -399,6 +373,31 @@ export class AppRestartService {
         result.error = 'Dev supervisor not available';
         return result;
       }
+
+      // Detect package manager from lock files
+      const packageManager: PackageManager = await detectPackageManager(workspace.tasks);
+
+      this.logger.info('app-restart.package-manager.detected', { appId, packageManager });
+
+      // Read package.json scripts for build/start command resolution
+      const devSupervisor = DevSupervisorClientFactory.createForApp(appId);
+      const scripts = devSupervisor
+        ? await readPackageJsonScripts(devSupervisor, '/app', appId)
+        : { hasBuildScript: false, hasStartScript: false, hasDevScript: false };
+
+      const userStart = options?.commands?.start ?? options?.devCommand;
+      const { startCommand, serveCommandSource } = resolveStartCommand(
+        userStart,
+        scripts,
+        packageManager
+      );
+
+      this.logger.info('app-restart.start-command.resolved', {
+        appId,
+        packageManager,
+        serveCommandSource,
+        startCommand,
+      });
 
       // Step 2: Run install (unless skipped)
       let installDurationMs: number | undefined;

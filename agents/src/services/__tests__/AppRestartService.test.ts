@@ -11,6 +11,7 @@ import {
 } from '../AppRestartService.js';
 import { DevSupervisorClientFactory } from '../../utils/dev-supervisor-client-factory.js';
 import { createForWorkspace } from '../../workspace/index.js';
+import { makeRunCommandResult } from '../../workspace/__tests__/mock-helpers.js';
 import { TerminalTool } from '../../tools/terminal.js';
 import * as fs from 'node:fs/promises';
 
@@ -38,10 +39,10 @@ vi.mock('../../logging/index.js', () => ({
 describe('AppRestartService', () => {
   let service: AppRestartService;
   let mockDevSupervisor: {
+    exec: Mock;
     stopProcess: Mock;
     restartProcess: Mock;
     startProcess: Mock;
-    exec: Mock;
   };
   let mockTerminalTool: {
     executeCommand: Mock;
@@ -85,12 +86,12 @@ describe('AppRestartService', () => {
     vi.clearAllMocks();
     mockLoggerWarn.mockClear();
 
-    // Create mock DevSupervisor client
+    // Create mock DevSupervisor client (used for stop/start/restart and readPackageJsonScripts)
     mockDevSupervisor = {
+      exec: vi.fn(),
       stopProcess: vi.fn(),
       restartProcess: vi.fn(),
       startProcess: vi.fn(),
-      exec: vi.fn(),
     };
 
     // Create mock TerminalTool
@@ -103,7 +104,7 @@ describe('AppRestartService', () => {
 
     // Setup workspace mock (used by runInstall, runBuild, measureAppDirSize)
     vi.mocked(createForWorkspace).mockReturnValue({
-      tasks: { runCommandSync: vi.fn().mockResolvedValue({ taskId: 't', exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 1 }) },
+      tasks: { runCommandSync: vi.fn().mockResolvedValue(makeRunCommandResult()) },
     } as any);
 
     // Setup TerminalTool mock
@@ -833,6 +834,8 @@ describe('AppRestartService', () => {
     });
 
     describe('package manager detection', () => {
+      let mockRunCommandSync: Mock;
+
       beforeEach(() => {
         mockDevSupervisor.exec.mockReset();
         mockDevSupervisor.stopProcess.mockResolvedValue(true);
@@ -843,17 +846,24 @@ describe('AppRestartService', () => {
           stdout: 'Success',
           stderr: '',
         });
+
+        // Set up workspace.tasks.runCommandSync for detectPackageManager
+        mockRunCommandSync = vi.fn().mockResolvedValue(makeRunCommandResult({ stdout: '' }));
+        vi.mocked(createForWorkspace).mockReturnValue({
+          tasks: { runCommandSync: mockRunCommandSync },
+        } as any);
       });
 
       it('should detect pnpm and use pnpm commands', async () => {
         mockExecForRestartCycle({ pnpm: true });
+        mockRunCommandSync.mockResolvedValueOnce(makeRunCommandResult({ stdout: 'found' })); // pnpm check
 
         await service.performFullRestartCycle(testAppId, testAppPath);
 
         // Verify pnpm-lock.yaml was checked
-        expect(mockDevSupervisor.exec).toHaveBeenCalledWith({
+        expect(mockRunCommandSync).toHaveBeenCalledWith({
           command: 'test -f "/app/pnpm-lock.yaml" && echo "found"',
-          timeout: 5,
+          timeoutSeconds: 5,
         });
 
         // Verify pnpm install command was used
@@ -871,13 +881,16 @@ describe('AppRestartService', () => {
 
       it('should detect yarn and use yarn commands', async () => {
         mockExecForRestartCycle({ yarn: true });
+        mockRunCommandSync
+          .mockResolvedValueOnce(makeRunCommandResult({ stdout: '' })) // pnpm check - not found
+          .mockResolvedValueOnce(makeRunCommandResult({ stdout: 'found' })); // yarn check
 
         await service.performFullRestartCycle(testAppId, testAppPath);
 
         // Verify yarn.lock was checked
-        expect(mockDevSupervisor.exec).toHaveBeenCalledWith({
+        expect(mockRunCommandSync).toHaveBeenCalledWith({
           command: 'test -f "/app/yarn.lock" && echo "found"',
-          timeout: 5,
+          timeoutSeconds: 5,
         });
 
         // Verify yarn install command was used
@@ -895,6 +908,9 @@ describe('AppRestartService', () => {
 
       it('should default to npm when no lock file exists', async () => {
         mockExecForRestartCycle();
+        mockRunCommandSync
+          .mockResolvedValueOnce(makeRunCommandResult({ stdout: '' })) // pnpm check - not found
+          .mockResolvedValueOnce(makeRunCommandResult({ stdout: '' })); // yarn check - not found
 
         await service.performFullRestartCycle(testAppId, testAppPath);
 
@@ -911,17 +927,18 @@ describe('AppRestartService', () => {
         expect(writtenConfig.runtime.build.command).toBe('npm run build');
       });
 
-      it('should fall back to npm when devSupervisor is null', async () => {
-        vi.mocked(DevSupervisorClientFactory.createForApp).mockReturnValue(null);
+      it('should fail when workspace is unavailable', async () => {
+        vi.mocked(createForWorkspace).mockReturnValue(null);
 
         const result = await service.performFullRestartCycle(testAppId, testAppPath);
 
-        // Should fail because devSupervisor is needed for other operations
         expect(result.success).toBe(false);
+        expect(result.error).toBe('Dev supervisor not available');
+        expect(mockTerminalTool.executeCommand).not.toHaveBeenCalled();
       });
 
-      it('should fall back to npm when exec throws during PM detection', async () => {
-        mockDevSupervisor.exec.mockRejectedValue(new Error('Container unreachable'));
+      it('should fall back to npm when runCommandSync throws during PM detection', async () => {
+        mockRunCommandSync.mockRejectedValue(new Error('Container unreachable'));
 
         await service.performFullRestartCycle(testAppId, testAppPath);
 
@@ -932,6 +949,7 @@ describe('AppRestartService', () => {
 
       it('should use custom install command over detected PM', async () => {
         mockExecForRestartCycle({ pnpm: true });
+        mockRunCommandSync.mockResolvedValueOnce(makeRunCommandResult({ stdout: 'found' })); // pnpm detected
 
         await service.performFullRestartCycle(testAppId, testAppPath, {
           commands: { install: 'custom-install-command' },
@@ -944,6 +962,7 @@ describe('AppRestartService', () => {
 
       it('should use custom build command over detected PM', async () => {
         mockExecForRestartCycle({ pnpm: true, packageJsonScripts: {} });
+        mockRunCommandSync.mockResolvedValueOnce(makeRunCommandResult({ stdout: 'found' })); // pnpm detected
 
         await service.performFullRestartCycle(testAppId, testAppPath, {
           commands: { build: 'custom-build-command' },
@@ -973,12 +992,11 @@ describe('AppRestartService', () => {
         stderr: '',
       });
       mockExecForRestartCycle();
-      // Mock createForWorkspace for measureAppDirSize (needs stdout with size)
       vi.mocked(createForWorkspace).mockReturnValue({
         tasks: {
-          runCommandSync: vi.fn().mockResolvedValue({
-            taskId: 't', exitCode: 0, stdout: '104857600\n', stderr: '', timedOut: false, executionTimeMs: 1,
-          }),
+          runCommandSync: vi.fn().mockResolvedValue(
+            makeRunCommandResult({ stdout: '104857600\n' }),
+          ),
         },
       } as any);
     });
@@ -1016,9 +1034,7 @@ describe('AppRestartService', () => {
     it('should handle invalid du output gracefully', async () => {
       vi.mocked(createForWorkspace).mockReturnValue({
         tasks: {
-          runCommandSync: vi.fn().mockResolvedValue({
-            taskId: 't', exitCode: 0, stdout: 'not-a-number', stderr: '', timedOut: false, executionTimeMs: 1,
-          }),
+          runCommandSync: vi.fn().mockResolvedValue(makeRunCommandResult({ stdout: 'not-a-number' })),
         },
       } as any);
 
@@ -1141,78 +1157,78 @@ describe('Package Manager Utilities', () => {
 
   describe('detectPackageManager', () => {
     it('should detect pnpm when pnpm-lock.yaml exists', async () => {
-      const mockDevSupervisor = {
-        exec: vi.fn()
-          .mockResolvedValueOnce({ stdout: 'found' }) // pnpm check
+      const mockTasks = {
+        runCommandSync: vi.fn()
+          .mockResolvedValueOnce(makeRunCommandResult({ stdout: 'found' })) // pnpm check
       };
 
-      const result = await detectPackageManager(mockDevSupervisor);
+      const result = await detectPackageManager(mockTasks);
 
       expect(result).toBe('pnpm');
-      expect(mockDevSupervisor.exec).toHaveBeenCalledWith({
+      expect(mockTasks.runCommandSync).toHaveBeenCalledWith({
         command: 'test -f "/app/pnpm-lock.yaml" && echo "found"',
-        timeout: 5,
+        timeoutSeconds: 5,
       });
     });
 
     it('should detect yarn when yarn.lock exists', async () => {
-      const mockDevSupervisor = {
-        exec: vi.fn()
-          .mockResolvedValueOnce({ stdout: '' }) // pnpm check - not found
-          .mockResolvedValueOnce({ stdout: 'found' }) // yarn check
+      const mockTasks = {
+        runCommandSync: vi.fn()
+          .mockResolvedValueOnce(makeRunCommandResult({ stdout: '' })) // pnpm check - not found
+          .mockResolvedValueOnce(makeRunCommandResult({ stdout: 'found' })) // yarn check
       };
 
-      const result = await detectPackageManager(mockDevSupervisor);
+      const result = await detectPackageManager(mockTasks);
 
       expect(result).toBe('yarn');
     });
 
     it('should default to npm when no lock file exists', async () => {
-      const mockDevSupervisor = {
-        exec: vi.fn()
-          .mockResolvedValueOnce({ stdout: '' }) // pnpm check - not found
-          .mockResolvedValueOnce({ stdout: '' }) // yarn check - not found
+      const mockTasks = {
+        runCommandSync: vi.fn()
+          .mockResolvedValueOnce(makeRunCommandResult({ stdout: '' })) // pnpm check - not found
+          .mockResolvedValueOnce(makeRunCommandResult({ stdout: '' })) // yarn check - not found
       };
 
-      const result = await detectPackageManager(mockDevSupervisor);
+      const result = await detectPackageManager(mockTasks);
 
       expect(result).toBe('npm');
     });
 
-    it('should fall back to npm when exec throws an error', async () => {
-      const mockDevSupervisor = {
-        exec: vi.fn().mockRejectedValue(new Error('Container unreachable'))
+    it('should fall back to npm when runCommandSync throws an error', async () => {
+      const mockTasks = {
+        runCommandSync: vi.fn().mockRejectedValue(new Error('Container unreachable'))
       };
 
-      const result = await detectPackageManager(mockDevSupervisor);
+      const result = await detectPackageManager(mockTasks);
 
       expect(result).toBe('npm');
     });
 
-    it('should fall back to npm when exec throws during yarn check', async () => {
-      const mockDevSupervisor = {
-        exec: vi.fn()
-          .mockResolvedValueOnce({ stdout: '' }) // pnpm check - not found
+    it('should fall back to npm when runCommandSync throws during yarn check', async () => {
+      const mockTasks = {
+        runCommandSync: vi.fn()
+          .mockResolvedValueOnce(makeRunCommandResult({ stdout: '' })) // pnpm check - not found
           .mockRejectedValueOnce(new Error('Timeout')) // yarn check throws
       };
 
-      const result = await detectPackageManager(mockDevSupervisor);
+      const result = await detectPackageManager(mockTasks);
 
       expect(result).toBe('npm');
     });
 
     it('should use custom projectRoot when provided', async () => {
-      const mockDevSupervisor = {
-        exec: vi.fn()
-          .mockResolvedValueOnce({ stdout: 'found' }) // pnpm check with custom path
+      const mockTasks = {
+        runCommandSync: vi.fn()
+          .mockResolvedValueOnce(makeRunCommandResult({ stdout: 'found' })) // pnpm check with custom path
       };
 
-      const result = await detectPackageManager(mockDevSupervisor, '/app/my-project');
+      const result = await detectPackageManager(mockTasks, '/app/my-project');
 
       expect(result).toBe('pnpm');
-      expect(mockDevSupervisor.exec).toHaveBeenCalledWith({
+      expect(mockTasks.runCommandSync).toHaveBeenCalledWith({
         command: 'test -f "/app/my-project/pnpm-lock.yaml" && echo "found"',
-        timeout: 5,
+        timeoutSeconds: 5,
       });
     });
   });

@@ -30,9 +30,8 @@ export { resolveStartCommand, type ServeCommandSource } from './AppRestartServic
 import { measureAppDirSize, bytesToMB } from '../utils/container-metrics.js';
 import { injectPortHandling } from './ExpressPortInjector.js';
 import { GitTool } from '../tools/git-tool.js';
-import { DevSupervisorClientFactory } from '../utils/dev-supervisor-client-factory.js';
-import { DevSupervisorClient } from './DevSupervisorClient.js';
 import { createForWorkspace } from '../workspace/index.js';
+import type { WorkspaceTasks } from '../workspace/tasks.js';
 import { ImportJobStatus, ValidationErrorKey, type ImportJob, type ValidationError } from '../types/import.js';
 import {
   isSupportedProjectInContainer,
@@ -182,13 +181,7 @@ export class ProjectImportService {
         throw new Error(`App path not found or not accessible: ${app.path}`);
       }
 
-      // Get dev-supervisor client for container operations
-      const devSupervisor = DevSupervisorClientFactory.createForApp(appId);
-      if (!devSupervisor) {
-        throw new Error('Dev supervisor not available for container operations');
-      }
-
-      // WorkspaceTasks for migrated services (cleanup, vite config, port injection, metrics)
+      // Create workspace for container operations
       const workspace = createForWorkspace(appId, 'preview');
       if (!workspace) {
         throw new Error('Workspace not available for container operations');
@@ -243,9 +236,9 @@ export class ProjectImportService {
       // Copy zip file to container via shared filesystem mount (agent-side path)
       await cp(zipPath, agentZipPath);
 
-      // Phase 3: Extract zip inside container (container-side paths for dev-supervisor)
+      // Phase 3: Extract zip inside container (container-side paths)
       const extractResult = await this.extractZipInContainer(
-        devSupervisor,
+        workspace.tasks,
         containerZipPath,
         containerExtractPath,
         { jobId, appId }
@@ -270,7 +263,7 @@ export class ProjectImportService {
           ImportJobStatus.EXTRACTING,
           extractResult.errors
         );
-        await this.cleanupContainerFiles(devSupervisor, containerZipPath, containerProjectPath);
+        await this.cleanupContainerFiles(workspace.tasks, containerZipPath, containerProjectPath);
         await this.cleanupZipFile(params.zipPath!);
         return;
       }
@@ -283,7 +276,7 @@ export class ProjectImportService {
       // Phase 4: Validate project structure in container
       await this.updateStatus(jobId, ImportJobStatus.VALIDATING);
       const validation = await this.validateProjectInContainer(
-        devSupervisor,
+        workspace.tasks,
         containerProjectPath!
       );
 
@@ -306,7 +299,7 @@ export class ProjectImportService {
           ImportJobStatus.VALIDATING,
           validation.errors
         );
-        await this.cleanupContainerFiles(devSupervisor, containerZipPath, containerProjectPath);
+        await this.cleanupContainerFiles(workspace.tasks, containerZipPath, containerProjectPath);
         if (sourceType === 'zip') await this.cleanupZipFile(params.zipPath!);
         return;
       }
@@ -356,7 +349,7 @@ export class ProjectImportService {
       // Phase 6: Copy files to app directory (inside container)
       await this.updateStatus(jobId, ImportJobStatus.COPYING);
       const copyResult = await this.copyFilesInContainer(
-        devSupervisor,
+        workspace.tasks,
         extractedProjectPath,
         app.path
       );
@@ -379,7 +372,7 @@ export class ProjectImportService {
           copyResult.error || 'Failed to copy files',
           ImportJobStatus.COPYING
         );
-        await this.cleanupContainerFiles(devSupervisor, containerZipPath, containerProjectPath);
+        await this.cleanupContainerFiles(workspace.tasks, containerZipPath, containerProjectPath);
         if (sourceType === 'zip') await this.cleanupZipFile(params.zipPath!);
         return;
       }
@@ -402,7 +395,7 @@ export class ProjectImportService {
 
       // Ensure .gitignore has Airo-specific patterns after copy
       await this.ensureAiroGitignorePatterns(
-        devSupervisor,
+        workspace.tasks,
         '/app',
         validation.hasGitignoreFile ?? false
       );
@@ -506,7 +499,7 @@ export class ProjectImportService {
             details: { exitCode: installResult.exitCode, packageManager: detectedPm },
           }]
         );
-        await this.cleanupContainerFiles(devSupervisor, containerZipPath, containerProjectPath);
+        await this.cleanupContainerFiles(workspace.tasks, containerZipPath, containerProjectPath);
         if (sourceType === 'zip') await this.cleanupZipFile(params.zipPath!);
         return;
       }
@@ -551,7 +544,7 @@ export class ProjectImportService {
               details: { exitCode: buildResult.exitCode, packageManager: detectedPm },
             }]
           );
-          await this.cleanupContainerFiles(devSupervisor, containerZipPath, containerProjectPath);
+          await this.cleanupContainerFiles(workspace.tasks, containerZipPath, containerProjectPath);
           if (sourceType === 'zip') await this.cleanupZipFile(params.zipPath!);
           return;
         }
@@ -590,7 +583,7 @@ export class ProjectImportService {
         containerZipPath,
         containerExtractPath
       });
-      await this.cleanupContainerFiles(devSupervisor, containerZipPath, containerExtractPath);
+      await this.cleanupContainerFiles(workspace.tasks, containerZipPath, containerExtractPath);
       this.logger.info('project-import.pre-commit-cleanup.complete', { jobId, appId });
       // Clear paths so we don't try to clean up again in error handler (idempotent)
       containerZipPath = null;
@@ -618,7 +611,7 @@ export class ProjectImportService {
             message: commitResult.error || 'Git commit failed',
           }]
         );
-        await this.cleanupContainerFiles(devSupervisor, containerZipPath, containerProjectPath);
+        await this.cleanupContainerFiles(workspace.tasks, containerZipPath, containerProjectPath);
         if (sourceType === 'zip') await this.cleanupZipFile(params.zipPath!);
         return;
       }
@@ -678,9 +671,9 @@ export class ProjectImportService {
 
       // Best-effort cleanup
       try {
-        const devSupervisor = DevSupervisorClientFactory.createForApp(appId);
-        if (devSupervisor) {
-          await this.cleanupContainerFiles(devSupervisor, containerZipPath, containerProjectPath);
+        const cleanupWorkspace = createForWorkspace(appId, 'preview');
+        if (cleanupWorkspace) {
+          await this.cleanupContainerFiles(cleanupWorkspace.tasks, containerZipPath, containerProjectPath);
         }
       } catch {
         // Ignore cleanup errors
@@ -698,27 +691,27 @@ export class ProjectImportService {
   }
 
   /**
-   * Extract zip file inside the container using dev-supervisor exec
+   * Extract zip file inside the container via workspace tasks
    *
-   * @param devSupervisor - Client to execute commands in container
+   * @param tasks - Workspace tasks interface for running commands in container
    * @param zipPath - Path to zip file inside container filesystem
    * @param extractPath - Destination path for extraction
    * @returns Extraction result
    */
   private async extractZipInContainer(
-    devSupervisor: DevSupervisorClient,
+    tasks: WorkspaceTasks,
     zipPath: string,
     extractPath: string,
     context: { jobId: string; appId: string }
   ): Promise<{ success: boolean; errors?: ValidationError[] }> {
     try {
       // Create extraction directory
-      const mkdirResult = await devSupervisor.exec({
+      const mkdirResult = await tasks.runCommandSync({
         command: `mkdir -p "${extractPath}"`,
-        timeout: 10, // seconds
+        timeoutSeconds: 10,
       });
 
-      if (!mkdirResult.success) {
+      if (mkdirResult.exitCode !== 0) {
         return {
           success: false,
           errors: [{
@@ -730,28 +723,28 @@ export class ProjectImportService {
       }
 
       // Extract zip using unzip command in container
-      const unzipResult = await devSupervisor.exec({
+      const unzipResult = await tasks.runCommandSync({
         command: `unzip -o "${zipPath}" -d "${extractPath}"`,
-        timeout: 60, // 1 minute timeout for extraction (seconds)
+        timeoutSeconds: 60,
       });
 
-      if (!unzipResult.success) {
+      if (unzipResult.exitCode !== 0) {
         this.logger.error('project-import.extract-in-container.failure', {
           jobId: context.jobId,
           appId: context.appId,
           zipPath,
           extractPath,
-          exitCode: unzipResult.exit_code,
+          exitCode: unzipResult.exitCode,
           stderr: unzipResult.stderr,
-          timedOut: unzipResult.timed_out,
-          executionTime: unzipResult.execution_time,
+          timedOut: unzipResult.timedOut,
+          executionTimeMs: unzipResult.executionTimeMs,
         });
         return {
           success: false,
           errors: [{
             key: ValidationErrorKey.ZIP_CORRUPTED,
             message: 'Zip extraction failed in container',
-            details: { stderr: unzipResult.stderr, exitCode: unzipResult.exit_code },
+            details: { stderr: unzipResult.stderr, exitCode: unzipResult.exitCode },
           }],
         };
       }
@@ -800,13 +793,13 @@ export class ProjectImportService {
    *
    * Ignores common zip artifacts like __MACOSX when determining if there's a single subdirectory.
    *
-   * @param devSupervisor - Client to execute commands in container
+   * @param tasks - Workspace tasks interface for running commands in container
    * @param extractPath - Starting path to search from
    * @param maxDepth - Maximum depth to search (default: MAX_PROJECT_DEPTH)
    * @returns Result with found status, project root path, and depth if found
    */
   private async findProjectRootInContainer(
-    devSupervisor: DevSupervisorClient,
+    tasks: WorkspaceTasks,
     extractPath: string,
     maxDepth: number = ProjectImportService.MAX_PROJECT_DEPTH
   ): Promise<{ found: boolean; projectRoot?: string; depth?: number }> {
@@ -814,9 +807,9 @@ export class ProjectImportService {
 
     for (let depth = 0; depth < maxDepth; depth++) {
       // Check if package.json exists at current level
-      const checkResult = await devSupervisor.exec({
+      const checkResult = await tasks.runCommandSync({
         command: `test -f "${currentPath}/package.json" && echo "found" || echo "notfound"`,
-        timeout: 5,
+        timeoutSeconds: 5,
       });
 
       if (checkResult.stdout?.trim() === 'found') {
@@ -824,9 +817,9 @@ export class ProjectImportService {
       }
 
       // If not found, check for single subdirectory to descend into
-      const lsResult = await devSupervisor.exec({
+      const lsResult = await tasks.runCommandSync({
         command: `ls -1 "${currentPath}"`,
-        timeout: 5,
+        timeoutSeconds: 5,
       });
 
       const allEntries = (lsResult.stdout || '').trim().split('\n').filter(Boolean);
@@ -867,7 +860,7 @@ export class ProjectImportService {
    * Checks for package.json, scripts, and detects package manager
    */
   private async validateProjectInContainer(
-    devSupervisor: DevSupervisorClient,
+    tasks: WorkspaceTasks,
     extractPath: string
   ): Promise<{
     valid: boolean;
@@ -885,7 +878,7 @@ export class ProjectImportService {
     const warnings: ValidationError[] = [];
 
     // Find project root - search up to MAX_PROJECT_DEPTH levels for package.json
-    const findResult = await this.findProjectRootInContainer(devSupervisor, extractPath);
+    const findResult = await this.findProjectRootInContainer(tasks, extractPath);
 
     if (!findResult.found || !findResult.projectRoot) {
       errors.push({
@@ -906,12 +899,12 @@ export class ProjectImportService {
     });
 
     // Read package.json content
-    const catResult = await devSupervisor.exec({
+    const catResult = await tasks.runCommandSync({
       command: `cat "${projectRoot}/package.json"`,
-      timeout: 5, // seconds
+      timeoutSeconds: 5,
     });
 
-    if (!catResult.success || !catResult.stdout) {
+    if (catResult.exitCode !== 0 || !catResult.stdout) {
       errors.push({
         key: ValidationErrorKey.PACKAGE_JSON_NOT_FOUND,
         message: 'Could not read package.json',
@@ -939,7 +932,7 @@ export class ProjectImportService {
     }
 
     // Check for supported build tool (required)
-    const buildToolCheck = await isSupportedProjectInContainer(devSupervisor, projectRoot, packageJson);
+    const buildToolCheck = await isSupportedProjectInContainer(tasks, projectRoot, packageJson);
     const supportedToolNames = SUPPORTED_BUILD_TOOLS.map(t => t.name).join(', ');
 
     if (!buildToolCheck.supported) {
@@ -953,7 +946,7 @@ export class ProjectImportService {
     }
 
     // Detect package manager by checking lock files
-    const packageManager = await detectPackageManager(devSupervisor, projectRoot);
+    const packageManager = await detectPackageManager(tasks, projectRoot);
 
     // Check for scripts
     const scripts = packageJson.scripts || {};
@@ -976,9 +969,9 @@ export class ProjectImportService {
     }
 
     // Check if imported project has .gitignore
-    const gitignoreCheckResult = await devSupervisor.exec({
+    const gitignoreCheckResult = await tasks.runCommandSync({
       command: `test -f "${projectRoot}/.gitignore" && echo "found" || echo "notfound"`,
-      timeout: 5, // seconds
+      timeoutSeconds: 5,
     });
     const hasGitignoreFile = gitignoreCheckResult.stdout?.trim() === 'found';
 
@@ -1014,10 +1007,10 @@ export class ProjectImportService {
   /**
    * Copy files from extracted location to app directory inside container
    *
-   * Uses shell commands via dev-supervisor to perform file operations
+   * Uses shell commands via workspace tasks to perform file operations
    */
   private async copyFilesInContainer(
-    devSupervisor: DevSupervisorClient,
+    tasks: WorkspaceTasks,
     projectRoot: string,
     appPath: string
   ): Promise<{ success: boolean; error?: string }> {
@@ -1035,18 +1028,18 @@ export class ProjectImportService {
       // This prevents conflicts when importing Next.js projects into Vite-based containers
       // Note: Using "rm -r -f" instead of "rm -rf" for /node_modules to avoid
       // triggering dev-supervisor's dangerous command detection which blocks "rm -rf /"
-      const deleteResult = await devSupervisor.exec({
+      const deleteResult = await tasks.runCommandSync({
         command: `find "${containerAppPath}" -mindepth 1 -maxdepth 1 ! -name ".git" ! -name ".gitignore" ! -name ".is_ready" ! -name ".import-*" ! -name "public" -exec rm -rf {} + && { [ -d "${containerAppPath}/public" ] && find "${containerAppPath}/public" -mindepth 1 -maxdepth 1 ! -name "assets" -exec rm -rf {} + || true; } && { [ -d /node_modules ] && rm -r -f /node_modules || true; }`,
-        timeout: 30, // seconds
+        timeoutSeconds: 30,
       });
 
-      if (!deleteResult.success) {
+      if (deleteResult.exitCode !== 0) {
         this.logger.error('project-import.copy-in-container.cleanup-failed', {
           projectRoot,
           appPath,
           containerAppPath,
           stderr: deleteResult.stderr,
-          exitCode: deleteResult.exit_code,
+          exitCode: deleteResult.exitCode,
         });
         return {
           success: false,
@@ -1055,12 +1048,12 @@ export class ProjectImportService {
       }
 
       // Copy new content from extracted project (excluding node_modules and .git)
-      const copyResult = await devSupervisor.exec({
+      const copyResult = await tasks.runCommandSync({
         command: `find "${projectRoot}" -mindepth 1 -maxdepth 1 ! -name "node_modules" ! -name ".git" -exec cp -r {} "${containerAppPath}/" \\;`,
-        timeout: 60, // seconds
+        timeoutSeconds: 60,
       });
 
-      if (!copyResult.success) {
+      if (copyResult.exitCode !== 0) {
         return {
           success: false,
           error: `Failed to copy files: ${copyResult.stderr}`,
@@ -1093,12 +1086,12 @@ export class ProjectImportService {
    *    .gitignore (it was preserved during file deletion by excluding it from the find command)
    * 3. Neither has .gitignore: Create default with essential Airo platform patterns
    *
-   * @param devSupervisor - Client to execute commands in container
+   * @param tasks - Workspace tasks interface for running commands in container
    * @param containerAppPath - Path to app directory in container
    * @param importedProjectHadGitignoreFile - Whether the imported project contained a .gitignore
    */
   private async ensureAiroGitignorePatterns(
-    devSupervisor: DevSupervisorClient,
+    tasks: WorkspaceTasks,
     containerAppPath: string,
     importedProjectHadGitignoreFile: boolean
   ): Promise<void> {
@@ -1106,9 +1099,9 @@ export class ProjectImportService {
 
     try {
       // Check if .gitignore exists in app directory
-      const checkResult = await devSupervisor.exec({
+      const checkResult = await tasks.runCommandSync({
         command: `test -f "${gitignorePath}" && echo "exists" || echo "missing"`,
-        timeout: 5,
+        timeoutSeconds: 5,
       });
 
       const exists = checkResult.stdout?.trim() === 'exists';
@@ -1117,16 +1110,16 @@ export class ProjectImportService {
         // Edge case: neither had .gitignore - create default
         this.logger.info('project-import.gitignore.create-default', { containerAppPath });
         const defaultContent = `# Airo Platform\n${AIRO_GITIGNORE_PATTERNS.join('\n')}`;
-        const createResult = await devSupervisor.exec({
+        const createResult = await tasks.runCommandSync({
           command: `cat > "${gitignorePath}" << 'EOF'\n${defaultContent}\nEOF`,
-          timeout: 10,
+          timeoutSeconds: 10,
         });
 
-        if (!createResult.success) {
+        if (createResult.exitCode !== 0) {
           this.logger.warn('project-import.gitignore.create-failed', {
             containerAppPath,
             stderr: createResult.stderr,
-            exitCode: createResult.exit_code,
+            exitCode: createResult.exitCode,
           });
         }
         return;
@@ -1140,9 +1133,9 @@ export class ProjectImportService {
           // Escape single quotes in pattern for shell safety
           const escapedPattern = pattern.replace(/'/g, "'\\''");
           // Use grep -qxF for exact line match, append if not found
-          await devSupervisor.exec({
+          await tasks.runCommandSync({
             command: `grep -qxF '${escapedPattern}' "${gitignorePath}" || echo '${escapedPattern}' >> "${gitignorePath}"`,
-            timeout: 5,
+            timeoutSeconds: 5,
           });
         }
       } else {
@@ -1162,12 +1155,12 @@ export class ProjectImportService {
   /**
    * Clean up temporary files in the container
    *
-   * @param devSupervisor - Client to execute commands in container
+   * @param tasks - Workspace tasks interface for running commands in container
    * @param zipPath - Path to the copied zip file (or null)
    * @param extractPath - Path to the extraction directory (or null)
    */
   private async cleanupContainerFiles(
-    devSupervisor: DevSupervisorClient,
+    tasks: WorkspaceTasks,
     zipPath: string | null,
     extractPath: string | null
   ): Promise<void> {
@@ -1177,9 +1170,9 @@ export class ProjectImportService {
       if (extractPath) paths.push(extractPath);
 
       if (paths.length > 0) {
-        await devSupervisor.exec({
+        await tasks.runCommandSync({
           command: `rm -rf ${paths.map(p => `"${p}"`).join(' ')}`,
-          timeout: 30, // seconds
+          timeoutSeconds: 30,
         });
         this.logger.info('project-import.container-cleanup.success', { paths });
       }

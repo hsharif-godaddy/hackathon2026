@@ -8,11 +8,12 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi, type Mock } from 'vitest';
 import { ProjectImportService, resolveStartCommand } from '../ProjectImportService.js';
-import { DevSupervisorClientFactory } from '../../utils/dev-supervisor-client-factory.js';
+import { createForWorkspace } from '../../workspace/index.js';
 import { AppRepository } from '../../database/repositories/AppRepository.js';
 import { ImportJobRepository } from '../../database/repositories/ImportJobRepository.js';
 import { appRestartService } from '../AppRestartService.js';
-import type { DevSupervisorClient } from '../DevSupervisorClient.js';
+import { makeRunCommandResult } from '../../workspace/__tests__/mock-helpers.js';
+import type { WorkspaceTasks } from '../../workspace/tasks.js';
 import * as fs from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { projectSourceDetectionService } from '../ProjectSourceDetectionService.js';
@@ -20,7 +21,7 @@ import { zipSecurityService } from '../ZipSecurityService.js';
 import { codeSyncFileCleanupService } from '../CodeSyncFileCleanupService.js';
 
 // Mock dependencies
-vi.mock('../../utils/dev-supervisor-client-factory.js');
+vi.mock('../../workspace/index.js');
 vi.mock('../../database/repositories/AppRepository.js');
 vi.mock('../../database/repositories/ImportJobRepository.js');
 vi.mock('../AppRestartService.js', async (importOriginal) => {
@@ -83,24 +84,21 @@ vi.mock('../../logging/index.js', () => ({
 }));
 
 /**
- * Create a mock DevSupervisorClient that simulates a specific directory structure
+ * Create a mock WorkspaceTasks that simulates a specific directory structure
  */
-function createMockDevSupervisor(
+function createMockTasks(
   structure: Record<string, string[] | 'package.json'>
-): DevSupervisorClient {
+): { runCommandSync: Mock } {
   return {
-    exec: vi.fn().mockImplementation(async ({ command }: { command: string }) => {
+    runCommandSync: vi.fn().mockImplementation(async ({ command }: { command: string }) => {
       // Parse test -f command for package.json check
       const packageJsonMatch = command.match(/test -f "([^"]+)\/package\.json"/);
       if (packageJsonMatch) {
         const path = packageJsonMatch[1];
         const hasPackageJson = structure[path] === 'package.json';
-        return {
-          success: true,
+        return makeRunCommandResult({
           stdout: hasPackageJson ? 'found' : 'notfound',
-          stderr: '',
-          exit_code: 0,
-        };
+        });
       }
 
       // Parse ls -1 command for directory listing
@@ -109,35 +107,27 @@ function createMockDevSupervisor(
         const path = lsMatch[1];
         const entries = structure[path];
         if (Array.isArray(entries)) {
-          return {
-            success: true,
+          return makeRunCommandResult({
             stdout: entries.join('\n'),
-            stderr: '',
-            exit_code: 0,
-          };
+          });
         }
         // Path not in structure map - simulate ls failure on non-existent directory
-        return {
-          success: false,
-          stdout: '',
+        return makeRunCommandResult({
+          exitCode: 2,
           stderr: `ls: cannot access '${path}': No such file or directory`,
-          exit_code: 2,
-        };
+        });
       }
 
-      return { success: true, stdout: '', stderr: '', exit_code: 0 };
+      return makeRunCommandResult();
     }),
-  } as unknown as DevSupervisorClient;
+  };
 }
 
 describe('ProjectImportService', () => {
   describe('Smart Start Command Selection', () => {
     let service: ProjectImportService;
-    let mockDevSupervisor: {
-      exec: Mock;
-      stopProcess: Mock;
-      restartProcess: Mock;
-      startProcess: Mock;
+    let mockTasks: {
+      runCommandSync: Mock;
     };
     let mockAppRepo: {
       findById: Mock;
@@ -156,12 +146,9 @@ describe('ProjectImportService', () => {
     beforeEach(() => {
       vi.clearAllMocks();
 
-      // Create mock DevSupervisor client
-      mockDevSupervisor = {
-        exec: vi.fn(),
-        stopProcess: vi.fn().mockResolvedValue(true),
-        restartProcess: vi.fn().mockResolvedValue({ success: true }),
-        startProcess: vi.fn().mockResolvedValue({ state: 'running' }),
+      // Create mock WorkspaceTasks
+      mockTasks = {
+        runCommandSync: vi.fn(),
       };
 
       // Create mock repositories
@@ -181,8 +168,8 @@ describe('ProjectImportService', () => {
         markFailed: vi.fn(),
       };
 
-      // Setup factory mock
-      vi.mocked(DevSupervisorClientFactory.createForApp).mockReturnValue(mockDevSupervisor as any);
+      // Setup workspace mock
+      vi.mocked(createForWorkspace).mockReturnValue({ tasks: mockTasks } as any);
 
       // Setup repository mocks
       vi.mocked(AppRepository).mockImplementation(() => mockAppRepo as any);
@@ -206,40 +193,40 @@ describe('ProjectImportService', () => {
     });
 
     /**
-     * Helper to setup mock exec responses for validateProjectInContainer
+     * Helper to setup mock runCommandSync responses for validateProjectInContainer
      */
     function setupValidationMocks(packageJson: object, options: {
       hasGitignore?: boolean;
       hasPnpmLock?: boolean;
       hasYarnLock?: boolean;
     } = {}) {
-      mockDevSupervisor.exec.mockImplementation(async ({ command }: { command: string }) => {
+      mockTasks.runCommandSync.mockImplementation(async ({ command }: { command: string }) => {
         // Check for package.json at root
         if (command.includes('test -f') && command.includes('package.json')) {
-          return { success: true, stdout: 'found' };
+          return makeRunCommandResult({ stdout: 'found' });
         }
         // Check for .gitignore
         if (command.includes('test -f') && command.includes('.gitignore')) {
-          return { success: true, stdout: options.hasGitignore ? 'found' : 'notfound' };
+          return makeRunCommandResult({ stdout: options.hasGitignore ? 'found' : 'notfound' });
         }
         // Check for pnpm-lock.yaml
         if (command.includes('pnpm-lock.yaml')) {
-          return { success: true, stdout: options.hasPnpmLock ? 'found' : '' };
+          return makeRunCommandResult({ stdout: options.hasPnpmLock ? 'found' : '' });
         }
         // Check for yarn.lock
         if (command.includes('yarn.lock')) {
-          return { success: true, stdout: options.hasYarnLock ? 'found' : '' };
+          return makeRunCommandResult({ stdout: options.hasYarnLock ? 'found' : '' });
         }
         // Read package.json
         if (command.includes('cat') && command.includes('package.json')) {
-          return { success: true, stdout: JSON.stringify(packageJson) };
+          return makeRunCommandResult({ stdout: JSON.stringify(packageJson) });
         }
         // Check for vite.config (build tool detection)
         if (command.includes('test -f') && command.includes('vite.config')) {
-          return { success: true, stdout: 'found' };
+          return makeRunCommandResult({ stdout: 'found' });
         }
         // Default
-        return { success: true, stdout: '' };
+        return makeRunCommandResult();
       });
     }
 
@@ -256,7 +243,7 @@ describe('ProjectImportService', () => {
 
         // Access the private method via reflection for testing
         const validation = await (service as any).validateProjectInContainer(
-          mockDevSupervisor,
+          mockTasks,
           '/tmp/extract'
         );
 
@@ -276,7 +263,7 @@ describe('ProjectImportService', () => {
         setupValidationMocks(packageJson);
 
         const validation = await (service as any).validateProjectInContainer(
-          mockDevSupervisor,
+          mockTasks,
           '/tmp/extract'
         );
 
@@ -297,7 +284,7 @@ describe('ProjectImportService', () => {
         setupValidationMocks(packageJson);
 
         const validation = await (service as any).validateProjectInContainer(
-          mockDevSupervisor,
+          mockTasks,
           '/tmp/extract'
         );
 
@@ -317,7 +304,7 @@ describe('ProjectImportService', () => {
         setupValidationMocks(packageJson);
 
         const validation = await (service as any).validateProjectInContainer(
-          mockDevSupervisor,
+          mockTasks,
           '/tmp/extract'
         );
 
@@ -334,7 +321,7 @@ describe('ProjectImportService', () => {
         setupValidationMocks(packageJson);
 
         const validation = await (service as any).validateProjectInContainer(
-          mockDevSupervisor,
+          mockTasks,
           '/tmp/extract'
         );
 
@@ -410,7 +397,7 @@ describe('ProjectImportService', () => {
         setupValidationMocks(packageJson);
 
         const validation = await (service as any).validateProjectInContainer(
-          mockDevSupervisor,
+          mockTasks,
           '/tmp/extract'
         );
 
@@ -422,7 +409,7 @@ describe('ProjectImportService', () => {
         setupValidationMocks(packageJson, { hasPnpmLock: true });
 
         const validation = await (service as any).validateProjectInContainer(
-          mockDevSupervisor,
+          mockTasks,
           '/tmp/extract'
         );
 
@@ -434,7 +421,7 @@ describe('ProjectImportService', () => {
         setupValidationMocks(packageJson, { hasYarnLock: true });
 
         const validation = await (service as any).validateProjectInContainer(
-          mockDevSupervisor,
+          mockTasks,
           '/tmp/extract'
         );
 
@@ -454,7 +441,7 @@ describe('ProjectImportService', () => {
         setupValidationMocks(packageJson);
 
         const validation = await (service as any).validateProjectInContainer(
-          mockDevSupervisor,
+          mockTasks,
           '/tmp/extract'
         );
 
@@ -471,7 +458,7 @@ describe('ProjectImportService', () => {
         setupValidationMocks(packageJson);
 
         const validation = await (service as any).validateProjectInContainer(
-          mockDevSupervisor,
+          mockTasks,
           '/tmp/extract'
         );
 
@@ -490,26 +477,26 @@ describe('ProjectImportService', () => {
     // Access private method for testing
     const findProjectRoot = async (
       service: ProjectImportService,
-      devSupervisor: DevSupervisorClient,
+      tasks: { runCommandSync: ReturnType<typeof vi.fn> },
       extractPath: string
     ) => {
       // Use bracket notation to access private method
       return (service as unknown as {
         findProjectRootInContainer: (
-          devSupervisor: DevSupervisorClient,
+          tasks: { runCommandSync: ReturnType<typeof vi.fn> },
           extractPath: string
         ) => Promise<{ found: boolean; projectRoot?: string; depth?: number }>;
-      }).findProjectRootInContainer(devSupervisor, extractPath);
+      }).findProjectRootInContainer(tasks, extractPath);
     };
 
     it('should find package.json at root (depth 0)', async () => {
-      const mockDevSupervisor = createMockDevSupervisor({
+      const mockTasks = createMockTasks({
         '/app/.import-123-extract': 'package.json',
       });
 
       const result = await findProjectRoot(
         service,
-        mockDevSupervisor,
+        mockTasks,
         '/app/.import-123-extract'
       );
 
@@ -519,14 +506,14 @@ describe('ProjectImportService', () => {
     });
 
     it('should find package.json in single subdirectory (depth 1)', async () => {
-      const mockDevSupervisor = createMockDevSupervisor({
+      const mockTasks = createMockTasks({
         '/app/.import-123-extract': ['my-app'],
         '/app/.import-123-extract/my-app': 'package.json',
       });
 
       const result = await findProjectRoot(
         service,
-        mockDevSupervisor,
+        mockTasks,
         '/app/.import-123-extract'
       );
 
@@ -536,7 +523,7 @@ describe('ProjectImportService', () => {
     });
 
     it('should find package.json in double-nested structure (depth 2)', async () => {
-      const mockDevSupervisor = createMockDevSupervisor({
+      const mockTasks = createMockTasks({
         '/app/.import-123-extract': ['parent'],
         '/app/.import-123-extract/parent': ['my-app'],
         '/app/.import-123-extract/parent/my-app': 'package.json',
@@ -544,7 +531,7 @@ describe('ProjectImportService', () => {
 
       const result = await findProjectRoot(
         service,
-        mockDevSupervisor,
+        mockTasks,
         '/app/.import-123-extract'
       );
 
@@ -555,14 +542,14 @@ describe('ProjectImportService', () => {
 
     it('should ignore __MACOSX directory when finding project root', async () => {
       // This is the common macOS zip structure
-      const mockDevSupervisor = createMockDevSupervisor({
+      const mockTasks = createMockTasks({
         '/app/.import-123-extract': ['vite-app', '__MACOSX'],
         '/app/.import-123-extract/vite-app': 'package.json',
       });
 
       const result = await findProjectRoot(
         service,
-        mockDevSupervisor,
+        mockTasks,
         '/app/.import-123-extract'
       );
 
@@ -572,14 +559,14 @@ describe('ProjectImportService', () => {
     });
 
     it('should ignore .DS_Store when finding project root', async () => {
-      const mockDevSupervisor = createMockDevSupervisor({
+      const mockTasks = createMockTasks({
         '/app/.import-123-extract': ['my-project', '.DS_Store'],
         '/app/.import-123-extract/my-project': 'package.json',
       });
 
       const result = await findProjectRoot(
         service,
-        mockDevSupervisor,
+        mockTasks,
         '/app/.import-123-extract'
       );
 
@@ -589,7 +576,7 @@ describe('ProjectImportService', () => {
     });
 
     it('should handle nested structure with __MACOSX at multiple levels', async () => {
-      const mockDevSupervisor = createMockDevSupervisor({
+      const mockTasks = createMockTasks({
         '/app/.import-123-extract': ['outer', '__MACOSX'],
         '/app/.import-123-extract/outer': ['inner', '__MACOSX'],
         '/app/.import-123-extract/outer/inner': 'package.json',
@@ -597,7 +584,7 @@ describe('ProjectImportService', () => {
 
       const result = await findProjectRoot(
         service,
-        mockDevSupervisor,
+        mockTasks,
         '/app/.import-123-extract'
       );
 
@@ -607,7 +594,7 @@ describe('ProjectImportService', () => {
     });
 
     it('should stop at max depth (3 levels)', async () => {
-      const mockDevSupervisor = createMockDevSupervisor({
+      const mockTasks = createMockTasks({
         '/app/.import-123-extract': ['level1'],
         '/app/.import-123-extract/level1': ['level2'],
         '/app/.import-123-extract/level1/level2': ['level3'],
@@ -617,7 +604,7 @@ describe('ProjectImportService', () => {
 
       const result = await findProjectRoot(
         service,
-        mockDevSupervisor,
+        mockTasks,
         '/app/.import-123-extract'
       );
 
@@ -626,13 +613,13 @@ describe('ProjectImportService', () => {
     });
 
     it('should fail when multiple directories exist (ambiguous)', async () => {
-      const mockDevSupervisor = createMockDevSupervisor({
+      const mockTasks = createMockTasks({
         '/app/.import-123-extract': ['app1', 'app2'],
       });
 
       const result = await findProjectRoot(
         service,
-        mockDevSupervisor,
+        mockTasks,
         '/app/.import-123-extract'
       );
 
@@ -640,13 +627,13 @@ describe('ProjectImportService', () => {
     });
 
     it('should fail when multiple directories exist after filtering ignored ones', async () => {
-      const mockDevSupervisor = createMockDevSupervisor({
+      const mockTasks = createMockTasks({
         '/app/.import-123-extract': ['app1', 'app2', '__MACOSX'],
       });
 
       const result = await findProjectRoot(
         service,
-        mockDevSupervisor,
+        mockTasks,
         '/app/.import-123-extract'
       );
 
@@ -655,13 +642,13 @@ describe('ProjectImportService', () => {
     });
 
     it('should fail when directory is empty', async () => {
-      const mockDevSupervisor = createMockDevSupervisor({
+      const mockTasks = createMockTasks({
         '/app/.import-123-extract': [],
       });
 
       const result = await findProjectRoot(
         service,
-        mockDevSupervisor,
+        mockTasks,
         '/app/.import-123-extract'
       );
 
@@ -669,13 +656,13 @@ describe('ProjectImportService', () => {
     });
 
     it('should fail when only ignored directories exist', async () => {
-      const mockDevSupervisor = createMockDevSupervisor({
+      const mockTasks = createMockTasks({
         '/app/.import-123-extract': ['__MACOSX', '.DS_Store'],
       });
 
       const result = await findProjectRoot(
         service,
-        mockDevSupervisor,
+        mockTasks,
         '/app/.import-123-extract'
       );
 
@@ -683,14 +670,14 @@ describe('ProjectImportService', () => {
     });
 
     it('should fail when no package.json exists at any level', async () => {
-      const mockDevSupervisor = createMockDevSupervisor({
+      const mockTasks = createMockTasks({
         '/app/.import-123-extract': ['my-app'],
         '/app/.import-123-extract/my-app': ['src', 'public'],
       });
 
       const result = await findProjectRoot(
         service,
-        mockDevSupervisor,
+        mockTasks,
         '/app/.import-123-extract'
       );
 
@@ -708,44 +695,44 @@ describe('ProjectImportService', () => {
     // Access private method for testing
     const copyFilesInContainer = async (
       service: ProjectImportService,
-      devSupervisor: { exec: ReturnType<typeof vi.fn> },
+      tasks: { runCommandSync: ReturnType<typeof vi.fn> },
       projectRoot: string,
       appPath: string
     ) => {
       return (service as unknown as {
         copyFilesInContainer: (
-          devSupervisor: { exec: ReturnType<typeof vi.fn> },
+          tasks: { runCommandSync: ReturnType<typeof vi.fn> },
           projectRoot: string,
           appPath: string
         ) => Promise<{ success: boolean; error?: string }>;
-      }).copyFilesInContainer(devSupervisor, projectRoot, appPath);
+      }).copyFilesInContainer(tasks, projectRoot, appPath);
     };
 
     it('should succeed when /app/public directory exists and cleanup succeeds', async () => {
       // Simulates: /app/public exists, both main cleanup and public cleanup succeed
-      const mockDevSupervisor = {
-        exec: vi.fn().mockImplementation(async ({ command }: { command: string }) => {
+      const mockTasks = {
+        runCommandSync: vi.fn().mockImplementation(async ({ command }: { command: string }) => {
           // Cleanup command - directory exists and find succeeds
           if (command.includes('find "/app"') && command.includes('-exec rm -rf')) {
-            return { success: true, stdout: '', stderr: '', exit_code: 0 };
+            return makeRunCommandResult();
           }
           // Copy command succeeds
           if (command.includes('-exec cp -r')) {
-            return { success: true, stdout: '', stderr: '', exit_code: 0 };
+            return makeRunCommandResult();
           }
-          return { success: true, stdout: '', stderr: '', exit_code: 0 };
+          return makeRunCommandResult();
         }),
       };
 
       const result = await copyFilesInContainer(
         service,
-        mockDevSupervisor,
+        mockTasks,
         '/app/.import-123-extract/my-app',
         '/tmp/apps/test-app/app'
       );
 
       expect(result.success).toBe(true);
-      expect(mockDevSupervisor.exec).toHaveBeenCalledTimes(2); // cleanup + copy
+      expect(mockTasks.runCommandSync).toHaveBeenCalledTimes(2); // cleanup + copy
     });
 
     it('should succeed when /app/public directory does NOT exist (graceful handling via || true)', async () => {
@@ -755,23 +742,23 @@ describe('ProjectImportService', () => {
       // - && short-circuits, find doesn't run
       // - || true makes the whole expression succeed
       // The shell still reports success=true because of || true
-      const mockDevSupervisor = {
-        exec: vi.fn().mockImplementation(async ({ command }: { command: string }) => {
+      const mockTasks = {
+        runCommandSync: vi.fn().mockImplementation(async ({ command }: { command: string }) => {
           // The cleanup command succeeds even when public dir doesn't exist
           // because the shell evaluates: `mainCleanup && { false || true }` = true
           if (command.includes('find "/app"') && command.includes('-exec rm -rf')) {
-            return { success: true, stdout: '', stderr: '', exit_code: 0 };
+            return makeRunCommandResult();
           }
           if (command.includes('-exec cp -r')) {
-            return { success: true, stdout: '', stderr: '', exit_code: 0 };
+            return makeRunCommandResult();
           }
-          return { success: true, stdout: '', stderr: '', exit_code: 0 };
+          return makeRunCommandResult();
         }),
       };
 
       const result = await copyFilesInContainer(
         service,
-        mockDevSupervisor,
+        mockTasks,
         '/app/.import-123-extract/my-app',
         '/tmp/apps/test-app/app'
       );
@@ -781,18 +768,18 @@ describe('ProjectImportService', () => {
 
     it('should verify cleanup command structure with regex for graceful public directory handling', async () => {
       let cleanupCommand = '';
-      const mockDevSupervisor = {
-        exec: vi.fn().mockImplementation(async ({ command }: { command: string }) => {
+      const mockTasks = {
+        runCommandSync: vi.fn().mockImplementation(async ({ command }: { command: string }) => {
           if (command.includes('find "/app"') && command.includes('-exec rm -rf')) {
             cleanupCommand = command;
           }
-          return { success: true, stdout: '', stderr: '', exit_code: 0 };
+          return makeRunCommandResult();
         }),
       };
 
       await copyFilesInContainer(
         service,
-        mockDevSupervisor,
+        mockTasks,
         '/app/.import-123-extract/my-app',
         '/tmp/apps/test-app/app'
       );
@@ -812,24 +799,22 @@ describe('ProjectImportService', () => {
     it('should fail when main cleanup command fails (error propagates correctly)', async () => {
       // Tests that main cleanup failures are NOT masked by || true
       // The braces `{ ... || true; }` ensure || true only applies to public cleanup
-      const mockDevSupervisor = {
-        exec: vi.fn().mockImplementation(async ({ command }: { command: string }) => {
+      const mockTasks = {
+        runCommandSync: vi.fn().mockImplementation(async ({ command }: { command: string }) => {
           // Main cleanup fails due to permission error
           if (command.includes('find "/app"') && command.includes('-exec rm -rf')) {
-            return {
-              success: false,
-              stdout: '',
+            return makeRunCommandResult({
+              exitCode: 1,
               stderr: 'Permission denied',
-              exit_code: 1,
-            };
+            });
           }
-          return { success: true, stdout: '', stderr: '', exit_code: 0 };
+          return makeRunCommandResult();
         }),
       };
 
       const result = await copyFilesInContainer(
         service,
-        mockDevSupervisor,
+        mockTasks,
         '/app/.import-123-extract/my-app',
         '/tmp/apps/test-app/app'
       );
@@ -840,28 +825,26 @@ describe('ProjectImportService', () => {
     });
 
     it('should fail when copy command fails', async () => {
-      const mockDevSupervisor = {
-        exec: vi.fn().mockImplementation(async ({ command }: { command: string }) => {
+      const mockTasks = {
+        runCommandSync: vi.fn().mockImplementation(async ({ command }: { command: string }) => {
           // Cleanup succeeds
           if (command.includes('-exec rm -rf')) {
-            return { success: true, stdout: '', stderr: '', exit_code: 0 };
+            return makeRunCommandResult();
           }
           // Copy fails
           if (command.includes('-exec cp -r')) {
-            return {
-              success: false,
-              stdout: '',
+            return makeRunCommandResult({
+              exitCode: 1,
               stderr: 'No space left on device',
-              exit_code: 1,
-            };
+            });
           }
-          return { success: true, stdout: '', stderr: '', exit_code: 0 };
+          return makeRunCommandResult();
         }),
       };
 
       const result = await copyFilesInContainer(
         service,
-        mockDevSupervisor,
+        mockTasks,
         '/app/.import-123-extract/my-app',
         '/tmp/apps/test-app/app'
       );
@@ -873,18 +856,18 @@ describe('ProjectImportService', () => {
 
     it('should preserve protected directories during cleanup', async () => {
       let cleanupCommand = '';
-      const mockDevSupervisor = {
-        exec: vi.fn().mockImplementation(async ({ command }: { command: string }) => {
+      const mockTasks = {
+        runCommandSync: vi.fn().mockImplementation(async ({ command }: { command: string }) => {
           if (command.includes('find "/app"') && command.includes('-exec rm -rf')) {
             cleanupCommand = command;
           }
-          return { success: true, stdout: '', stderr: '', exit_code: 0 };
+          return makeRunCommandResult();
         }),
       };
 
       await copyFilesInContainer(
         service,
-        mockDevSupervisor,
+        mockTasks,
         '/app/.import-123-extract/my-app',
         '/tmp/apps/test-app/app'
       );
@@ -902,18 +885,18 @@ describe('ProjectImportService', () => {
       // Without braces: `A && B && C || true` - if A fails, || true masks it
       // With braces: `A && { B && C || true; }` - if A fails, failure propagates
       let cleanupCommand = '';
-      const mockDevSupervisor = {
-        exec: vi.fn().mockImplementation(async ({ command }: { command: string }) => {
+      const mockTasks = {
+        runCommandSync: vi.fn().mockImplementation(async ({ command }: { command: string }) => {
           if (command.includes('find "/app"') && command.includes('-exec rm -rf')) {
             cleanupCommand = command;
           }
-          return { success: true, stdout: '', stderr: '', exit_code: 0 };
+          return makeRunCommandResult();
         }),
       };
 
       await copyFilesInContainer(
         service,
-        mockDevSupervisor,
+        mockTasks,
         '/app/.import-123-extract/my-app',
         '/tmp/apps/test-app/app'
       );
@@ -934,14 +917,11 @@ describe('ProjectImportService', () => {
     beforeEach(() => {
       vi.clearAllMocks();
 
-      const mockDevSupervisor = {
-        exec: vi.fn().mockResolvedValue({ success: true, stdout: '', stderr: '', exit_code: 0 }),
-        stopProcess: vi.fn(),
-        restartProcess: vi.fn(),
-        startProcess: vi.fn(),
+      const mockTasks = {
+        runCommandSync: vi.fn().mockResolvedValue(makeRunCommandResult()),
       };
 
-      vi.mocked(DevSupervisorClientFactory.createForApp).mockReturnValue(mockDevSupervisor as any);
+      vi.mocked(createForWorkspace).mockReturnValue({ tasks: mockTasks } as any);
       vi.mocked(AppRepository).mockImplementation(() => ({
         findById: vi.fn().mockReturnValue({
           id: testAppId,
