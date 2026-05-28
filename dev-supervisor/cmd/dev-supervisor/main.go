@@ -111,6 +111,7 @@ type Server struct {
 	smtpProxy              *smtpproxy.Proxy
 	emailGateway           *emailhttp.Gateway
 	httpProxy              *httpproxy.HTTPProxy
+	statusPage             *httpproxy.StatusPage // publish-only fallback HTML; nil otherwise
 	startTime              time.Time
 	config                 *Config
 	processLogging         bool       // Current process logging configuration
@@ -350,6 +351,34 @@ func (s *Server) startHTTPProxyIfEnabled() error {
 		return nil
 	}
 
+	// Build the publish-container fallback status page. Preview containers
+	// have no /dist/current concept, so construction is gated to the publish
+	// variant — leaving statusPage nil makes the proxy middleware a no-op.
+	if sandbox.DetectProcessVariant() == sandbox.VariantPublish {
+		suspended := envSuspended()
+		distDir := config.GetEnvStringWithDefault("DIST_DIR", "/dist")
+		title := os.Getenv("STATUS_PAGE_TITLE")
+		message := os.Getenv("STATUS_PAGE_MESSAGE")
+		sp, err := httpproxy.NewStatusPage(httpproxy.StatusPageConfig{
+			Suspended: suspended,
+			DistDir:   distDir,
+			Title:     title,
+			Message:   message,
+		})
+		if err != nil {
+			slog.Error("status_page.init_failed", "error", err)
+			return err
+		}
+		s.statusPage = sp
+		slog.Info("status_page.configured",
+			"suspended", suspended,
+			"active", s.statusPage.Active(),
+			"dist_dir", distDir,
+			"title_override", title != "",
+			"message_override", message != "",
+		)
+	}
+
 	proxyConfig := httpproxy.Config{
 		Enabled:     true,
 		ListenPort:  s.config.ProxyPort,
@@ -371,6 +400,9 @@ func (s *Server) startHTTPProxyIfEnabled() error {
 		// Share token configuration (for public preview links)
 		EnableShareTokens: s.config.EnableShareTokens,
 		AgentsBaseURL:     s.config.AgentsBaseURL,
+
+		// Publish-container fallback HTML; nil in preview mode.
+		StatusPage: s.statusPage,
 	}
 	s.httpProxy = httpproxy.NewHTTPProxy(proxyConfig)
 
@@ -1096,6 +1128,11 @@ func readAiroConfigFile() (string, []byte) {
 // - First-start: run setup immediately, then start process
 // - Restart: defer setup to first HTTP request (if DeferRestartSetup is true)
 // When no setup script is configured, the process starts immediately (backward compat).
+//
+// Suspension short-circuit: when SUSPENDED=true in a publish container, the API
+// server still starts (so /publish, /unpublish, and health endpoints stay
+// reachable) but the child process is never launched. The HTTP proxy serves
+// the embedded suspended HTML in its place.
 func startServerWithCommand(server *Server, cfg *Config, args []string) {
 	slog.Info("startup.begin", "command", args)
 
@@ -1110,8 +1147,14 @@ func startServerWithCommand(server *Server, cfg *Config, args []string) {
 		startReq.Command = customCmd
 	}
 
-	// Handle conditional startup if setup script is configured
-	deferSetup := handleConditionalSetup(server, cfg, startReq)
+	suspended := isSuspendedPublishContainer()
+
+	// Handle conditional startup if setup script is configured. Skip for
+	// suspended publish containers: there's no customer app to set up.
+	var deferSetup bool
+	if !suspended {
+		deferSetup = handleConditionalSetup(server, cfg, startReq)
+	}
 
 	// Start server in background; serverDone signals when cleanup completes.
 	serverDone := make(chan struct{})
@@ -1133,8 +1176,13 @@ func startServerWithCommand(server *Server, cfg *Config, args []string) {
 		os.Exit(1)
 	}
 
-	// Start process immediately if not deferred
-	if !deferSetup {
+	// Start process immediately if not deferred and not suspended.
+	switch {
+	case suspended:
+		slog.Info("startup.suspended",
+			"reason", "SUSPENDED=true; skipping child launch",
+			"command_skipped", startReq.Command)
+	case !deferSetup:
 		slog.Info("startup.immediate", "command", startReq.Command)
 		if err := server.procMgr.Start(startReq); err != nil {
 			slog.Error("failed to start initial command",
@@ -1155,6 +1203,21 @@ func startServerWithCommand(server *Server, cfg *Config, args []string) {
 	// main() exits. Without this, the process can terminate while the
 	// StartWithConfig goroutine is still running cleanup.
 	<-serverDone
+}
+
+// isSuspendedPublishContainer reports whether the current process is a
+// publish container running with SUSPENDED=true. Preview containers ignore
+// the env var since there is no published-app concept there.
+func isSuspendedPublishContainer() bool {
+	return envSuspended() && sandbox.DetectProcessVariant() == sandbox.VariantPublish
+}
+
+// envSuspended reads the SUSPENDED env var and returns true only for the
+// canonical "true" value. Centralized so the literal isn't repeated across
+// the package (and to make later changes -- e.g. accepting "1" or "yes" --
+// trivially scoped).
+func envSuspended() bool {
+	return os.Getenv("SUSPENDED") == "true"
 }
 
 func main() {

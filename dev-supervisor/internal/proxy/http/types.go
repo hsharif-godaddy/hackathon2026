@@ -103,6 +103,11 @@ type Config struct {
 	// Share token configuration (for public preview links)
 	EnableShareTokens bool   // Enable share token validation (default: false)
 	AgentsBaseURL     string // Base URL for agents API (for share token validation)
+
+	// StatusPage, when non-nil, serves a fallback HTML page in place of the
+	// reverse proxy whenever it reports Active() (suspended site or no
+	// publish archive present). Nil disables the fallback.
+	StatusPage *StatusPage
 }
 
 // Status represents the current status of the HTTP proxy.

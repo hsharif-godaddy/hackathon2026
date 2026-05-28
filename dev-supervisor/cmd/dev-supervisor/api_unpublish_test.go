@@ -1,13 +1,51 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
+
+	httpproxy "github.com/airo-ai-builder/dev-supervisor/internal/proxy/http"
 )
+
+// mustNewStatusPage wraps httpproxy.NewStatusPage so test bodies stay
+// focused on the assertion under test.
+func mustNewStatusPage(t *testing.T, cfg httpproxy.StatusPageConfig) *httpproxy.StatusPage {
+	t.Helper()
+	sp, err := httpproxy.NewStatusPage(cfg)
+	if err != nil {
+		t.Fatalf("NewStatusPage: %v", err)
+	}
+	return sp
+}
+
+func TestIsNoProcessErr(t *testing.T) {
+	cases := []struct {
+		err  string
+		want bool
+	}{
+		// ProcessManager.Stop strings
+		{"no process is running", true},
+		{"process is not running (current state: stopped)", true},
+		// ManagedProcess.Stop strings (race window after pm.mu is released)
+		{"process not running (current state: error)", true},
+		{"process not initialized", true},
+		// Anything else is a real error
+		{"timed out waiting for shutdown", false},
+		{"some other error", false},
+		{"", false},
+	}
+	for _, tc := range cases {
+		if got := isNoProcessErr(errors.New(tc.err)); got != tc.want {
+			t.Errorf("isNoProcessErr(%q) = %v, want %v", tc.err, got, tc.want)
+		}
+	}
+}
 
 func TestHandleUnpublish_SymlinkMissing(t *testing.T) {
 	tmpDir := t.TempDir()
@@ -79,23 +117,91 @@ func TestHandleUnpublish_SymlinkPresent(t *testing.T) {
 
 	s.handleUnpublish(rec, req)
 
-	// Symlink should be removed regardless of restart outcome
+	// Symlink should be removed.
 	if _, err := os.Lstat(currentPath); !os.IsNotExist(err) {
 		t.Fatal("expected current symlink to be removed")
 	}
 
-	// Restart will fail because no process is running, which is expected
-	// in this test environment. The handler returns 500 with "restart_failed".
+	// Stop returns "no process is running" in this test env (no child was
+	// ever launched). That case is tolerated, so the handler returns 200.
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 (stop tolerates no-process), got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var body map[string]any
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if body["status"] != "success" {
+		t.Fatalf("expected status 'success', got %q", body["status"])
+	}
+}
+
+func TestHandlePublish_SuspendedStaysActive(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("DIST_DIR", tmpDir)
+
+	commit := "abc123"
+	if err := os.WriteFile(filepath.Join(tmpDir, commit+".tar.gz"), []byte("archive"), 0644); err != nil {
+		t.Fatalf("failed to create archive: %v", err)
+	}
+
+	s := NewServer()
+	s.statusPage = mustNewStatusPage(t, httpproxy.StatusPageConfig{
+		Suspended: true,
+		DistDir:   tmpDir,
+	})
+
+	rec := httptest.NewRecorder()
+	s.handlePublish(rec, httptest.NewRequest(http.MethodPost, "/publish",
+		bytes.NewBufferString(`{"commitHash":"`+commit+`"}`)))
+
+	// Status page must stay active for a suspended site even after a
+	// successful publish (sticky). The handler runs the normal restart
+	// path, which fails in this test env (no managed process); response
+	// code is incidental — the sticky-Active assertion is what matters.
+	if !s.statusPage.Active() {
+		t.Errorf("status page should remain active for suspended site after publish")
+	}
+}
+
+func TestHandlePublish_RestartFailure_RestoresStatusPage(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("DIST_DIR", tmpDir)
+
+	commit := "abc123"
+	if err := os.WriteFile(filepath.Join(tmpDir, commit+".tar.gz"), []byte("archive"), 0644); err != nil {
+		t.Fatalf("failed to create archive: %v", err)
+	}
+
+	s := NewServer()
+	s.statusPage = mustNewStatusPage(t, httpproxy.StatusPageConfig{DistDir: tmpDir})
+	if !s.statusPage.Active() {
+		t.Fatal("precondition: status page active before publish")
+	}
+
+	// Drive /publish. In this test env procMgr.Restart fails ("no previous
+	// process to restart and no start configuration available"), exercising
+	// the new rollback branch.
+	rec := httptest.NewRecorder()
+	s.handlePublish(rec, httptest.NewRequest(http.MethodPost, "/publish",
+		bytes.NewBufferString(`{"commitHash":"`+commit+`"}`)))
+
 	if rec.Code != http.StatusInternalServerError {
-		t.Fatalf("expected 500 (restart fails with no process), got %d", rec.Code)
+		t.Fatalf("expected 500 (restart failed), got %d: %s", rec.Code, rec.Body.String())
 	}
 
 	var body ErrorResponse
 	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
-		t.Fatalf("failed to decode response: %v", err)
+		t.Fatalf("decode response: %v", err)
 	}
 	if body.Error != "restart_failed" {
-		t.Fatalf("expected error 'restart_failed', got %q", body.Error)
+		t.Errorf("expected error code 'restart_failed', got %q", body.Error)
+	}
+
+	// Critical assertion: the rollback flipped the fallback back on.
+	if !s.statusPage.Active() {
+		t.Errorf("expected status page Active=true after restart failure (rollback)")
 	}
 }
 

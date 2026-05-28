@@ -76,7 +76,6 @@ COPY --from=container-scripts --chown=agent:agent publish/run-app.sh /publish/ru
 COPY --from=container-scripts --chown=agent:agent publish/build-and-run.sh /publish/build-and-run.sh
 COPY --from=container-scripts --chown=agent:agent publish/common.sh /publish/common.sh
 COPY --from=container-scripts --chown=agent:agent publish/entrypoint.sh /publish/entrypoint.sh
-COPY --from=container-scripts --chown=agent:agent publish/status-page.js /publish/status-page.js
 
 # Enable corepack (for pnpm), create directories, and set permissions
 # Pin versions to match project (pnpm@10.17.0) and Node 22 (corepack@0.34.0) for reproducible builds

@@ -684,12 +684,30 @@ func (s *Server) handlePublish(w http.ResponseWriter, r *http.Request) {
 	// Clean up old archives in background
 	go s.pruneOldArchivesSerialized(distDir, maxArchivedVersions)
 
+	// Flip the status-page fallback off now that an archive is current.
+	// MarkPublished is sticky for suspended sites — they stay on the
+	// fallback page even with a current archive — so the restart below may
+	// fork a customer app the user can't reach. Tolerated: publishes
+	// against a suspended container are rare and the wasted Start cycle
+	// has no user-visible effect.
+	if s.statusPage != nil {
+		s.statusPage.MarkPublished()
+	}
+
 	// Restart the Node.js application to load the new version
 	slog.Info("publish.restart.begin", "commit_hash", req.CommitHash)
 	restartReq := processmanager.ProcessRestartRequest{Graceful: true}
 
 	restartStartTime := time.Now()
 	if err := s.procMgr.Restart(restartReq); err != nil {
+		// Roll back the fallback flip so the proxy keeps serving the status
+		// page rather than dropping to a 502/503 against a backend that
+		// didn't actually start. MarkUnpublished sets active=true regardless
+		// of the suspended bit, which is the correct user-visible state for
+		// "publish symlink updated but child failed to launch."
+		if s.statusPage != nil {
+			s.statusPage.MarkUnpublished()
+		}
 		slog.Error("publish.restart.failed", "error", err, "commit_hash", req.CommitHash)
 		s.sendError(
 			w,
@@ -782,20 +800,36 @@ func (s *Server) handleUnpublish(w http.ResponseWriter, _ *http.Request) {
 
 	slog.Info("unpublish.symlink.removed", "symlink", currentSymlink)
 
-	slog.Info("unpublish.restart.begin")
-	restartReq := processmanager.ProcessRestartRequest{Graceful: true}
-	if err := s.procMgr.Restart(restartReq); err != nil {
-		slog.Error("unpublish.restart.failed", "error", err)
-		s.sendError(
-			w,
-			http.StatusInternalServerError,
-			"restart_failed",
-			fmt.Sprintf("Symlink removed but process restart failed: %s", err.Error()),
-		)
-		return
+	// Flip the status-page fallback on so subsequent requests get the
+	// embedded "Coming Soon" HTML rather than racing against a stopping
+	// child process.
+	if s.statusPage != nil {
+		s.statusPage.MarkUnpublished()
 	}
 
-	slog.Info("unpublish.restart.success")
+	// Stop the child process. Previously this called Restart, which would
+	// re-exec run-app.sh against the now-missing archive — wasted work.
+	// "No process is running" is expected (suspended boot, or the child
+	// already exited cleanly) and is treated as success since the symlink
+	// removal already accomplished the unpublish.
+	slog.Info("unpublish.stop.begin")
+	err := s.procMgr.Stop(processmanager.ProcessStopRequest{Signal: "SIGTERM", Timeout: 10})
+	switch {
+	case err == nil:
+		slog.Info("unpublish.stop.success")
+	case isNoProcessErr(err):
+		slog.Info("unpublish.stop.no_process", "detail", err.Error())
+	default:
+		// Symlink-removal and MarkUnpublished already succeeded by the
+		// time we hit this branch, so the unpublish is partially complete.
+		// The dedicated error code lets callers distinguish "the whole
+		// unpublish failed" from "child stop failed after the symlink was
+		// already gone" — the latter is recoverable on the next poll.
+		slog.Error("unpublish.stop.failed", "error", err)
+		s.sendError(w, http.StatusInternalServerError, "stop_failed_after_unpublish",
+			fmt.Sprintf("symlink removed but process stop failed: %s", err.Error()))
+		return
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
@@ -1229,4 +1263,25 @@ func (s *Server) pruneOldArchivesSerialized(distDir string, keep int) {
 	s.pruneMu.Lock()
 	defer s.pruneMu.Unlock()
 	pruneOldArchives(distDir, keep)
+}
+
+// isNoProcessErr matches the "no managed child" error strings the
+// processmanager package can return. Used by unpublish to treat
+// already-stopped (or never-started, e.g. suspended boot) as success.
+//
+// ProcessManager.Stop holds pm.mu only while validating state; it then
+// releases the mutex before calling ManagedProcess.Stop, so the child can
+// transition out of Running between the two checks. Both layers' error
+// strings are matched here:
+//
+//   - "no process is running"                              ProcessManager (currentProcess == nil)
+//   - "process is not running (current state: ...)"        ProcessManager (state != Running)
+//   - "process not running (current state: ...)"           ManagedProcess (state != Running, no "is")
+//   - "process not initialized"                            ManagedProcess (cmd or cmd.Process nil)
+func isNoProcessErr(err error) bool {
+	s := err.Error()
+	return strings.Contains(s, "no process is running") ||
+		strings.Contains(s, "process is not running") ||
+		strings.Contains(s, "process not running") ||
+		strings.Contains(s, "process not initialized")
 }

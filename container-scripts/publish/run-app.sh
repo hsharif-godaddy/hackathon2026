@@ -19,12 +19,16 @@ log "Node version: $(/usr/local/bin/node --version)"
 [[ ! -d "$APP_DIR" ]] && error_exit "App directory not found: $APP_DIR"
 [[ ! -w "$APP_DIR" ]] && error_exit "App directory is not writable: $APP_DIR"
 
-# Serve status page if site is suspended (takes priority over customer app)
+# Suspended-site handling lives in dev-supervisor: it skips invoking this
+# script entirely when SUSPENDED=true and serves the embedded status page
+# from its HTTP proxy.
+#
+# Defense-in-depth: if the supervisor's variant detection ever drifts and
+# this script does run while suspended, exit 0 so dev-supervisor sees a
+# clean exit and the embedded Suspended HTML continues to be served.
 if [[ "${SUSPENDED:-}" == "true" ]]; then
-    log "Site is suspended - serving status page"
-    cp /publish/status-page.js "${APP_DIR}/app.js"
-    cd "$APP_DIR" || error_exit "Failed to change directory to $APP_DIR"
-    exec /usr/local/bin/node ./app.js
+    log "SUSPENDED=true — exiting cleanly so dev-supervisor can serve status page"
+    exit 0
 fi
 
 # Determine archive path from argument or current file
@@ -35,11 +39,12 @@ elif [[ -f "${DIST_DIR}/current" ]]; then
     log "No archive argument - using current"
     readonly ARCHIVE_PATH="${DIST_DIR}/current"
 else
-    log "No archive argument and no current file - serving status page"
-    cp /publish/status-page.js "${APP_DIR}/app.js"
-    log "Created status page app at ${APP_DIR}/app.js"
-    cd "$APP_DIR" || error_exit "Failed to change directory to $APP_DIR"
-    exec /usr/local/bin/node ./app.js
+    # No publish archive yet. Exit cleanly so dev-supervisor's HTTP proxy
+    # can serve the embedded "Coming Soon" status page in place of the
+    # customer app. dev-supervisor only restarts on health-check policy
+    # (not on clean exit), so this does not loop.
+    log "No archive argument and no current file - exiting cleanly so dev-supervisor can serve status page"
+    exit 0
 fi
 
 log "Starting application deployment process"

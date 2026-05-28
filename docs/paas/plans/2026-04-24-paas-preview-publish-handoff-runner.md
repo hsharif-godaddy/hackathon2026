@@ -1,5 +1,11 @@
 # Isolate PaaS publish flow into a dedicated runner
 
+> **Note (superseded sub-detail):** the `SUSPENDED → status-page.js` branch
+> in the diagram below was removed in PR #4145. Status pages are now served
+> by dev-supervisor from an embedded HTML template, with `run-app.sh` exiting
+> cleanly when no archive is present (or when `SUSPENDED=true`). The PaaS
+> dispatch order this doc describes is otherwise unchanged.
+
 ## Why
 
 `container-scripts/publish/build-and-run.sh` currently serves both AAB and PaaS, with PaaS branches scattered through via `IS_PAAS_FLOW` / `SKIP_INSTALL` / `SKIP_BUILD` gates. One shared script means PaaS-only changes can regress AAB (recent dist-validation removal did exactly that). AAB has active users; we want PaaS changes to stop touching the AAB path.

@@ -323,6 +323,14 @@ func (p *HTTPProxy) Start() error {
 			"excludedPaths", p.config.JWTExcludedPaths)
 	}
 
+	// Status-page fallback middleware. When p.config.StatusPage.Active(),
+	// the cached "Coming Soon" / "Suspended" HTML is served in place of
+	// the proxy chain (and child app). /airo/health and /airo/canary_checks
+	// bypass this so infra/load-balancer probes keep working.
+	// Placed inside MethodValidation but outside JWT so status pages
+	// remain reachable without authentication.
+	handler = statusPageMiddleware(p.config.StatusPage)(handler)
+
 	// HTTP method validation middleware
 	// Rejects unsupported methods (CONNECT, TRACE, etc.)
 	handler = middleware.MethodValidation(handler)

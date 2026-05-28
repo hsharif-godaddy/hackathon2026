@@ -19,6 +19,10 @@ type RequestRouter struct {
 
 // ServeHTTP implements http.Handler interface for RequestRouter.
 // Routes requests based on path, method, and configuration.
+//
+// Status-page fallback is handled by statusPageMiddleware higher in the
+// chain (server.go), so suspended / unpublished requests never reach this
+// router.
 func (rr *RequestRouter) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Check if we need to auto-start (any request can trigger it).
 	if rr.procMgr != nil && rr.startOnRequestEnabled {
