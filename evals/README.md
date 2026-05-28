@@ -28,18 +28,6 @@ pnpm --filter corpus-eval eval:skill-loader        # skill-loader corpus
 pnpm --filter corpus-eval eval:assessment:compare  # compare models
 ```
 
-### agentic-qa
-
-Browser-based agentic QA framework using Stagehand. Runs goal-based (not step-based) test scenarios against live AAB deployments. Evaluates website quality across 9 dimensions: functional, content, visual, performance, accessibility, usability, SEO, security, and business-fit.
-
-**Type:** TypeScript (workspace package)
-
-```bash
-pnpm --filter agentic-qa test scenarios/create-site.yaml
-pnpm --filter agentic-qa test --all scenarios/golden-dataset/
-pnpm --filter agentic-qa test -- --quality-only --url <url>
-```
-
 ### agentic-qa-langfuse
 
 Automated Langfuse trace evaluation pipeline. Processes production traces from Langfuse and runs LLM-as-judge evaluators (error detection, intent classification, vertical analysis) to score agent behavior at scale.
@@ -71,7 +59,6 @@ Canonical 10-user baseline dataset for Airo agent regression testing. Contains s
 
 ```
 evals/
-  agentic-qa/           Browser-based goal-driven QA (Stagehand)
   agentic-qa-langfuse/  Langfuse trace evaluation pipeline
   airo-baseline-set/    Shared baseline dataset (personas + scenarios)
   corpus-eval/          Classification accuracy testing (corpora)

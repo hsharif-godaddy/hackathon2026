@@ -69,17 +69,6 @@ pipeline:
             environment: test
             test_filter: e2e-then-regression
 
-        - id: agentic-qa-database-test
-          name: Agentic QA - Database Skill
-          group: validate
-          repo: gdcorp-partners/airo-app-builder
-          workflow: agentic-qa.yml
-          active_run_check: false
-          ref: '{{branch}}'
-          inputs:
-            environment: test
-            scenario: scenarios/feature-tests/skill-database.yaml
-
         - id: health-check-test
           name: Health Check (Test)
           group: validate
@@ -175,17 +164,6 @@ pipeline:
           inputs:
             environment: prod
             test_filter: e2e-then-regression
-
-        - id: agentic-qa-database-prod
-          name: Agentic QA - Database Skill (Prod)
-          group: validate-prod
-          repo: gdcorp-partners/airo-app-builder
-          workflow: agentic-qa.yml
-          active_run_check: false
-          ref: '{{branch}}'
-          inputs:
-            environment: prod
-            scenario: scenarios/feature-tests/skill-database.yaml
 
         - id: health-check-prod
           name: Health Check (Prod)

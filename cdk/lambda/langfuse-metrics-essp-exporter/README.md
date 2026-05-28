@@ -34,10 +34,10 @@ kibana/
 
 Both reads from AWS Secrets Manager:
 
-| Name                          | Shape                                                                                 | Used by                      |
-| ----------------------------- | ------------------------------------------------------------------------------------- | ---------------------------- |
-| `langfuse_test`               | JSON: `{ LANGFUSE_BASE_URL, LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY }`               | Lambda + agentic-qa workflow |
-| `essp_deployment_credentials` | JSON: `{ url \| ingestion_url, api_key \| ingestion_user / ingestion_user_password }` | Lambda                       |
+| Name                          | Shape                                                                                 | Used by  |
+| ----------------------------- | ------------------------------------------------------------------------------------- |----------|
+| `langfuse_test`               | JSON: `{ LANGFUSE_BASE_URL, LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY }`               | Lambda   |
+| `essp_deployment_credentials` | JSON: `{ url \| ingestion_url, api_key \| ingestion_user / ingestion_user_password }` | Lambda   |
 
 > **Note on `langfuse_test`**: yes, the secret name and the URL contain
 > "test". We are still using the test Langfuse cluster as our de-facto prod.

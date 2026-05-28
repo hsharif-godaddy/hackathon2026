@@ -588,7 +588,6 @@ func TestDeployWorkflows(t *testing.T) {
 						{ID: "deploy", Name: "Deploy", Repo: "org/app", Workflow: "deploy.yml"},
 						{ID: "build", Name: "Build", Repo: "org/infra", Workflow: "build.yml"},
 						{ID: "e2e", Name: "E2E", Repo: "org/app", Workflow: "playwright-e2e.yml", ActiveRunCheck: ptr(false)},
-						{ID: "qa", Name: "Agentic QA", Repo: "org/app", Workflow: "agentic-qa.yml", ActiveRunCheck: ptr(false)},
 						{ID: "explicit", Name: "Explicit Check", Repo: "org/app", Workflow: "explicit.yml", ActiveRunCheck: ptr(true)},
 						{ID: "playwright-deploy", Name: "Playwright Deploy", Repo: "org/app", Workflow: "playwright-deploy.yml"},
 						{ID: "check", Name: "Checklist", Type: "checklist", Items: []string{"ok"}},
@@ -637,9 +636,6 @@ func TestDeployWorkflows(t *testing.T) {
 	if _, ok := got["org/app/playwright-e2e.yml"]; ok {
 		t.Error("e2e workflow should be excluded by active_run_check")
 	}
-	if _, ok := got["org/app/agentic-qa.yml"]; ok {
-		t.Error("agentic QA workflow should be excluded by active_run_check")
-	}
 	if len(workflows) != 5 {
 		t.Errorf("got %d workflows, want 5: %v", len(workflows), workflows)
 	}
@@ -661,7 +657,7 @@ func TestDeployWorkflowsActualConfig(t *testing.T) {
 	}
 
 	for _, w := range workflows {
-		if w.Workflow == "playwright-e2e.yml" || w.Workflow == "agentic-qa.yml" || w.Workflow == "simulation_evaluation.yml" {
+		if w.Workflow == "playwright-e2e.yml" || w.Workflow == "simulation_evaluation.yml" {
 			t.Errorf("%s should be excluded by active_run_check", w.Workflow)
 		}
 	}

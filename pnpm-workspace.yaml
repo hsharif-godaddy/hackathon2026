@@ -7,7 +7,6 @@ packages:
   - "cdk"
   - "debug-console"
   - "fanout"
-  - "evals/agentic-qa"
   - "evals/agentic-qa-langfuse"
   - "design-rag"
   - "ts-bridge"
