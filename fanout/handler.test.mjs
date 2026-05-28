@@ -145,6 +145,14 @@ const FEEDBACK_ROW = {
   feedback_text: 'broken thing',
   feedback_topic_list: '["topic-a"]',
   consent_flag: true,
+  // Contact fields — restored in PR #4241 after CMAPI rejected null contactEmail.
+  // CMAPI requires contactPhone OR contactEmail; these come from the BFF's
+  // fetchCustomerProfile at submit time and are read by buildCaseBody.
+  customer_first_name: 'Jane',
+  customer_last_name: 'Doe',
+  customer_email: 'jane.doe@example.com',
+  customer_phone: '5551234567',
+  shopper_id: 'shopper-123',
   // Per-submission Switchboard gate stamped by the BFF. Default fixture
   // is ON so the bulk of fanout tests exercise the full flow; the
   // dedicated `fanout_via_lambda !== true` tests below override this.
@@ -242,6 +250,13 @@ await test('fresh path: opens case, writes state, posts Slack + kickoff note + i
   assert.equal(calls.postNote.length, 1);
   assert.equal(calls.invoke.length, 1);
   assert.equal(calls.postCase[0].body.externalSystemId, 'airo-cust-1-app-1-sub-1');
+  // Contact fields — CMAPI requires contactPhone OR contactEmail (422 if both null).
+  // Pin these so a regression (re-nulling) breaks CI before reaching prod.
+  assert.equal(calls.postCase[0].body.contactEmail, 'jane.doe@example.com');
+  assert.equal(calls.postCase[0].body.contactFirstName, 'Jane');
+  assert.equal(calls.postCase[0].body.contactLastName, 'Doe');
+  assert.equal(calls.postCase[0].body.contactPhone, '5551234567');
+  assert.equal(calls.postCase[0].body.contactName, 'Jane Doe');
   // Slack call routed through buildFormDataFromRow + the issue branch of
   // postSlackMessage — pin the category so a regression that defaults to
   // 'feedback' (which expects rating + comment) is caught here.

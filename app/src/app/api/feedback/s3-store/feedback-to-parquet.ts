@@ -53,7 +53,12 @@ try {
     published_url_full: { type: 'UTF8', optional: true, compression: 'UNCOMPRESSED' },
     full_story_url: { type: 'UTF8', optional: true, compression: 'UNCOMPRESSED' },
     subscription_info: { type: 'UTF8', optional: true, compression: 'UNCOMPRESSED' },
+    // Customer profile fields (BFF best-effort fetch via Profile API).
     shopper_id: { type: 'UTF8', optional: true, compression: 'UNCOMPRESSED' },
+    customer_first_name: { type: 'UTF8', optional: true, compression: 'UNCOMPRESSED' },
+    customer_last_name: { type: 'UTF8', optional: true, compression: 'UNCOMPRESSED' },
+    customer_email: { type: 'UTF8', optional: true, compression: 'UNCOMPRESSED' },
+    customer_phone: { type: 'UTF8', optional: true, compression: 'UNCOMPRESSED' },
     // Per-submission Switchboard gate (`appbuilder-fanout-via-lambda`).
     // Optional so legacy parquet rows (pre-cutover) read back as null and the
     // Lambda treats anything other than strict `true` as no-op.
@@ -114,6 +119,10 @@ function rowForParquet(record: FeedbackS3Record): Record<string, unknown> {
     full_story_url: record.full_story_url,
     subscription_info: record.subscription_info,
     shopper_id: record.shopper_id,
+    customer_first_name: record.customer_first_name,
+    customer_last_name: record.customer_last_name,
+    customer_email: record.customer_email,
+    customer_phone: record.customer_phone,
     fanout_via_lambda: record.fanout_via_lambda,
   };
 }

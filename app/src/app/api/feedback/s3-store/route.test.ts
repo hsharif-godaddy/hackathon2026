@@ -11,9 +11,16 @@ import { S3Client } from '@aws-sdk/client-s3';
 
 const require = createRequire(import.meta.url);
 
-const { mockEncodeFeedbackParquet, mockCheckSwitchboardFlag } = vi.hoisted(() => ({
+const { mockEncodeFeedbackParquet, mockCheckSwitchboardFlag, mockFetchCustomerProfile, mockGetToken } = vi.hoisted(() => ({
   mockEncodeFeedbackParquet: vi.fn(),
   mockCheckSwitchboardFlag: vi.fn(),
+  mockFetchCustomerProfile: vi.fn(),
+  mockGetToken: vi.fn(),
+}));
+
+vi.mock('@/lib/crm', () => ({
+  fetchCustomerProfile: mockFetchCustomerProfile,
+  airoCertTokenService: { getToken: mockGetToken },
 }));
 
 vi.mock('./feedback-to-parquet', async (importOriginal) => {
@@ -110,6 +117,14 @@ describe('/api/feedback/s3-store', function s3StoreTests() {
     // Default: flag OFF — preserves today's parquet column shape for legacy
     // assertions. Cutover-specific tests override per-call.
     mockCheckSwitchboardFlag.mockResolvedValue(false);
+    // Default: profile fetch succeeds with realistic values
+    mockGetToken.mockResolvedValue('sso-token');
+    mockFetchCustomerProfile.mockResolvedValue({
+      firstName: 'Jane',
+      lastName: 'Doe',
+      email: 'jane.doe@example.com',
+      phone: '5551234567',
+    });
   });
 
   afterEach(function cleanup() {
@@ -668,6 +683,59 @@ describe('/api/feedback/s3-store', function s3StoreTests() {
         'feedback.store.s3.failure',
         expect.objectContaining({ appId: 'app-123', error: 'AccessDenied', s3Key: expect.stringContaining('appId=app-123') }),
       );
+    });
+  });
+
+  describe('POST - customer profile enrichment', function profileEnrichmentTests() {
+    it('happy path: profile fields written to parquet row', async function profileHappyPath() {
+      mockS3Send.mockResolvedValueOnce({});
+      const { POST } = await import('./route');
+
+      await POST(createRequest({ app_id: 'app-abc', feedback_text: 'good', consent_flag: true, rating: 5 }));
+
+      const record = await readParquetRow(mockS3Send.mock.calls[0][0].Body);
+      expect(record.customer_first_name).toBe('Jane');
+      expect(record.customer_last_name).toBe('Doe');
+      expect(record.customer_email).toBe('jane.doe@example.com');
+      expect(record.customer_phone).toBe('5551234567');
+    });
+
+    it('failure path: profile fetch throws → warn logged, parquet written with null contact fields, 200 returned', async function profileFetchFails() {
+      mockS3Send.mockResolvedValueOnce({});
+      mockFetchCustomerProfile.mockRejectedValueOnce(new Error('Profile API 503'));
+      const { POST } = await import('./route');
+
+      const response = await POST(createRequest({ app_id: 'app-abc', feedback_text: 'ok', consent_flag: true, rating: 4 }));
+
+      expect(response.status).toBe(200);
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        'feedback.store.s3.profile_fetch_failed',
+        expect.objectContaining({ customerId: 'customer-uuid-123', error: 'Profile API 503' }),
+      );
+      const record = await readParquetRow(mockS3Send.mock.calls[0][0].Body);
+      expect(record.customer_email == null).toBe(true);
+      expect(record.customer_phone == null).toBe(true);
+      expect(record.customer_first_name == null).toBe(true);
+      expect(record.customer_last_name == null).toBe(true);
+    });
+
+    it('no-customerId path: profile fetch skipped, contact fields null', async function noCustomerId() {
+      mockS3Send.mockResolvedValueOnce({});
+      // Clear customerId so the route's `if (authContext.user.customerId)`
+      // guard short-circuits the profile fetch.
+      const saved = mockAuthContext.user.customerId;
+      mockAuthContext.user.customerId = undefined as any;
+      try {
+        const { POST } = await import('./route');
+        await POST(createRequest({ app_id: 'app-abc', feedback_text: 'ok', consent_flag: false, rating: 6 }));
+
+        expect(mockFetchCustomerProfile).not.toHaveBeenCalled();
+        const record = await readParquetRow(mockS3Send.mock.calls[0][0].Body);
+        expect(record.customer_email == null).toBe(true);
+        expect(record.customer_first_name == null).toBe(true);
+      } finally {
+        mockAuthContext.user.customerId = saved;
+      }
     });
   });
 });
