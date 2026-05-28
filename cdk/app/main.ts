@@ -7,6 +7,7 @@ import { AiroJWTKeyStack } from "../lib/airo-jwt-key-stack";
 import { AiroStripeServiceStack } from "../lib/airo-stripe-service-stack";
 import { MonitoringStack } from '../lib/monitoring-stack';
 import { GocaasSpendLambdaStack } from "../lib/gocaas-spend-lambda-stack";
+import { BudgetServiceLakeExportStack } from "../lib/budget-service-lake-export-stack";
 import { ImageSearchStack } from "../lib/image-search-stack";
 import { LangfuseMetricsEsspExporterStack } from "../lib/langfuse-metrics-essp-exporter-stack";
 import { EvalSnapshotsStack } from "../lib/eval-snapshots-stack";
@@ -70,6 +71,11 @@ async function main() {
 
   // Create GoCode Spend ESSP Lambda stack
   new GocaasSpendLambdaStack(app, 'GocaasSpendLambdaStack', { env });
+
+  // Daily snapshot of budget-service Postgres tables to S3 (lake ingestion).
+  // No-op until config.budgetServiceLakeExport.{dbHost,dbName,dbSecretArn}
+  // are populated for the env.
+  new BudgetServiceLakeExportStack(app, 'BudgetServiceLakeExportStack', { env });
 
   // Create Langfuse Metrics ESSP Exporter Lambda stack (5-min cron, hourly buckets)
   new LangfuseMetricsEsspExporterStack(app, 'LangfuseMetricsEsspExporterStack', { env });

@@ -176,6 +176,19 @@ interface Config {
   dataLakeAdminRoleNames: string[];
   /** Cross-account DPaaS EMR batch roles with read/write on the events bucket. */
   eventsEmrBatchRoleArns: string[];
+  /**
+   * Daily budget-service → S3 lake export Lambda.
+   * `dbUrlSecretName` is the Secrets Manager secret *name* (path) whose
+   * SecretString is a libpq connection URL
+   * (postgres://user:pass@host:port/db?sslmode=require) — matches the
+   * existing Katana DATABASE_URL secret budget-service uses. The stack
+   * builds the wildcarded ARN for IAM. Empty value makes
+   * BudgetServiceLakeExportStack a no-op so envs that haven't been wired
+   * up yet still synth/deploy.
+   */
+  budgetServiceLakeExport: {
+    dbUrlSecretName: string;
+  };
 }
 
 const devConfig: Config = {
@@ -296,6 +309,12 @@ const devConfig: Config = {
   // `https://godaddy-corp.atlassian.net/wiki/spaces/CARESFINT/pages/3863389051`.
   // If a sandbox-specific Lightning URL ever ships, override per env.
   salesforceLightningBase: 'https://godaddy2.lightning.force.com',
+  budgetServiceLakeExport: {
+    // Katana-managed DATABASE_URL secret (libpq connection URL).
+    // SuperUser credentials for now — swap to a read-only role secret
+    // before flipping the export on for prod.
+    dbUrlSecretName: '/Katana/Secrets/airobuilde/budget-service/dev-private/DATABASE_URL',
+  },
 };
 
 const testConfig: Config = {
@@ -391,6 +410,9 @@ const testConfig: Config = {
   jiraBaseUrl: 'https://godaddy-corp.atlassian.net',
   jiraProjectKey: 'AABSP',
   salesforceLightningBase: 'https://godaddy2.lightning.force.com',
+  budgetServiceLakeExport: {
+    dbUrlSecretName: '/Katana/Secrets/airobuilde/budget-service/test/DATABASE_URL',
+  },
 };
 
 const prodConfig: Config = {
@@ -498,6 +520,9 @@ const prodConfig: Config = {
   jiraBaseUrl: 'https://godaddy-corp.atlassian.net',
   jiraProjectKey: 'AABSP',
   salesforceLightningBase: 'https://godaddy2.lightning.force.com',
+  budgetServiceLakeExport: {
+    dbUrlSecretName: '/Katana/Secrets/airobuilde/budget-service/prod/DATABASE_URL',
+  },
 };
 
 

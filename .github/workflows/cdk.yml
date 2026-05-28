@@ -25,6 +25,7 @@ on:
           - 'AiroJWTKeyStack'
           - 'AiroStripeServiceStack'
           - 'GocaasSpendLambdaStack'
+          - 'BudgetServiceLakeExportStack'
           - 'LangfuseMetricsEsspExporterStack'
           - 'EvalSnapshotsStack'
           - 'OfflineMLDataS3Stack'
