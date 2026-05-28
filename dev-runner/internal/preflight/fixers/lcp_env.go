@@ -5,17 +5,18 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/airo-ai-builder/dev-runner/internal/preflight"
 )
 
-// LCPEnvFixer generates local-control-plane/.env, deriving AUTH_TYPE from
-// app/.env. The LCP only supports "jwt" (validate tokens) or "none" (skip
-// validation), so non-jwt app modes map to "none".
+// LCPEnvFixer generates local-control-plane/.env, deriving AUTH_TYPE and
+// AWS_PROFILE from app/.env. The LCP only supports "jwt" (validate tokens) or
+// "none" (skip validation), so non-jwt app modes map to "none".
 type LCPEnvFixer struct{}
 
 func (f *LCPEnvFixer) Fix(_ context.Context, projectRoot string) error {
-	authType := readAuthTypeFromAppEnv(projectRoot)
+	values := readLCPValuesFromAppEnv(projectRoot)
 	envPath := filepath.Join(projectRoot, "local-control-plane/.env")
 
 	_, statErr := os.Stat(envPath)
@@ -30,29 +31,47 @@ func (f *LCPEnvFixer) Fix(_ context.Context, projectRoot string) error {
 # AUTH_TYPE: "jwt" to enable SSO JWT validation, "none" to skip
 AUTH_TYPE=%s
 SSO_HOST=sso.dev-godaddy.com
-`, authType)
+
+# AWS Configuration (JWT signing via Secrets Manager)
+AWS_PROFILE=%s
+`, values.authType, values.awsProfile)
 		return writeFileAtomic(envPath, content)
 	}
 
 	// File exists — upsert only the managed vars, preserving any custom overrides.
-	if err := upsertEnvVarUnquoted(envPath, "AUTH_TYPE", authType); err != nil {
+	if err := upsertEnvVarUnquoted(envPath, "AUTH_TYPE", values.authType); err != nil {
 		return err
 	}
-	return upsertEnvVarUnquoted(envPath, "SSO_HOST", "sso.dev-godaddy.com")
+	if err := upsertEnvVarUnquoted(envPath, "SSO_HOST", "sso.dev-godaddy.com"); err != nil {
+		return err
+	}
+	return upsertEnvVarUnquoted(envPath, "AWS_PROFILE", values.awsProfile)
 }
 
-// readAuthTypeFromAppEnv reads AUTH_TYPE from app/.env and normalises it for
-// the local control plane. "mock" is not supported by the LCP, so it maps to
-// "none". Falls back to "none" if app/.env is unreadable.
-func readAuthTypeFromAppEnv(projectRoot string) string {
+type lcpEnvValues struct {
+	authType   string
+	awsProfile string
+}
+
+// readLCPValuesFromAppEnv reads AUTH_TYPE and AWS_PROFILE from app/.env.
+// AUTH_TYPE "mock" is not supported by the LCP, so it maps to "none".
+func readLCPValuesFromAppEnv(projectRoot string) lcpEnvValues {
+	values := lcpEnvValues{
+		authType:   "none",
+		awsProfile: defaultAWSProfile,
+	}
+
 	env, err := preflight.ParseEnvFile(filepath.Join(projectRoot, "app/.env"))
 	if err != nil {
-		return "none"
+		return values
 	}
-	switch env["AUTH_TYPE"] {
-	case "jwt":
-		return "jwt"
-	default:
-		return "none"
+
+	if env["AUTH_TYPE"] == "jwt" {
+		values.authType = "jwt"
 	}
+	if awsProfile := strings.TrimSpace(env["AWS_PROFILE"]); awsProfile != "" {
+		values.awsProfile = awsProfile
+	}
+
+	return values
 }

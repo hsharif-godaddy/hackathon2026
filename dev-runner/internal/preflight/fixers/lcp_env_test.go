@@ -10,7 +10,7 @@ import (
 
 func TestLCPEnvFixer_SyncsJWTAuthType(t *testing.T) {
 	root := t.TempDir()
-	writeEnv(t, root, "app", "AUTH_TYPE=jwt\n")
+	writeEnv(t, root, "app", "AUTH_TYPE=jwt\nAWS_PROFILE=custom-dev-profile\n")
 	if err := os.MkdirAll(filepath.Join(root, "local-control-plane"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -29,6 +29,29 @@ func TestLCPEnvFixer_SyncsJWTAuthType(t *testing.T) {
 	}
 	if !strings.Contains(s, "SSO_HOST=sso.dev-godaddy.com") {
 		t.Errorf("expected SSO_HOST=sso.dev-godaddy.com, got:\n%s", s)
+	}
+	if !strings.Contains(s, "AWS_PROFILE=custom-dev-profile") {
+		t.Errorf("expected AWS_PROFILE=custom-dev-profile, got:\n%s", s)
+	}
+}
+
+func TestLCPEnvFixer_DefaultsAWSProfileWhenAppEnvMissingProfile(t *testing.T) {
+	root := t.TempDir()
+	writeEnv(t, root, "app", "AUTH_TYPE=jwt\n")
+	if err := os.MkdirAll(filepath.Join(root, "local-control-plane"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := (&LCPEnvFixer{}).Fix(context.Background(), root); err != nil {
+		t.Fatalf("Fix() failed: %v", err)
+	}
+
+	content, err := os.ReadFile(filepath.Join(root, "local-control-plane", ".env"))
+	if err != nil {
+		t.Fatalf("reading .env: %v", err)
+	}
+	if !strings.Contains(string(content), "AWS_PROFILE="+defaultAWSProfile) {
+		t.Errorf("expected default AWS_PROFILE, got:\n%s", string(content))
 	}
 }
 
@@ -54,7 +77,7 @@ func TestLCPEnvFixer_NormalizesMockToNone(t *testing.T) {
 
 func TestLCPEnvFixer_PreservesCustomVarsOnUpsert(t *testing.T) {
 	root := t.TempDir()
-	writeEnv(t, root, "app", "AUTH_TYPE=jwt\n")
+	writeEnv(t, root, "app", "AUTH_TYPE=jwt\nAWS_PROFILE=updated-profile\n")
 	lcpDir := filepath.Join(root, "local-control-plane")
 	if err := os.MkdirAll(lcpDir, 0o755); err != nil {
 		t.Fatal(err)
@@ -75,6 +98,9 @@ func TestLCPEnvFixer_PreservesCustomVarsOnUpsert(t *testing.T) {
 	s := string(content)
 	if !strings.Contains(s, "AUTH_TYPE=jwt") {
 		t.Errorf("expected AUTH_TYPE to be updated to jwt, got:\n%s", s)
+	}
+	if !strings.Contains(s, "AWS_PROFILE=updated-profile") {
+		t.Errorf("expected AWS_PROFILE to be updated, got:\n%s", s)
 	}
 	if !strings.Contains(s, "MY_CUSTOM_VAR=keepme") {
 		t.Errorf("expected custom var to be preserved, got:\n%s", s)
@@ -97,5 +123,8 @@ func TestLCPEnvFixer_DefaultsToNoneWhenAppEnvMissing(t *testing.T) {
 	}
 	if !strings.Contains(string(content), "AUTH_TYPE=none") {
 		t.Errorf("expected AUTH_TYPE=none when app/.env missing, got:\n%s", string(content))
+	}
+	if !strings.Contains(string(content), "AWS_PROFILE="+defaultAWSProfile) {
+		t.Errorf("expected default AWS_PROFILE when app/.env missing, got:\n%s", string(content))
 	}
 }

@@ -17,6 +17,7 @@ func (c *LCPEnvCheck) Category() string { return preflight.CategoryEnvironment }
 func (c *LCPEnvCheck) Run(_ context.Context, projectRoot string) preflight.CheckResult {
 	result, _ := checkEnvFile(projectRoot, "local-control-plane/.env", []string{
 		"AUTH_TYPE",
+		"AWS_PROFILE",
 		"SSO_HOST",
 	}, c.Name(), c.Category())
 	return result
