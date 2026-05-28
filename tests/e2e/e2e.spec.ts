@@ -674,7 +674,7 @@ test.describe('E2E - Critical Path', () => {
       await disconnectButton.click();
 
       const disconnectConfirmButton = page.locator(
-        '[data-eid*="domain.disconnect-buttons.confirm"]',
+        '[data-eid*="domain.disconnect.confirm"]',
       );
       await expect(disconnectConfirmButton).toBeVisible({ timeout: DEFAULT_TIMEOUT });
       await expect(disconnectConfirmButton).toBeEnabled();

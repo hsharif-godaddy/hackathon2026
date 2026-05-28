@@ -37,7 +37,7 @@ export function DomainDisconnectConfirmationModal({
         'What happens when you disconnect a domain from your app'
       )}
       onClose={onClose}
-      className="max-w-[680px] w-full !gap-1 [&_.ux-text-lockup--text]:!text-left [&_.ux-corner-actions_.ux-button]:!border-0 [&_.ux-corner-actions_.ux-button]:!shadow-none"
+      className="w-full max-w-[calc(100vw-2rem)] sm:max-w-[680px] !gap-1 [&_.ux-text-lockup--text]:!text-left max-sm:[&_.ux-text-lockup--title]:!text-xl [&_.ux-corner-actions_.ux-button]:!border-0 [&_.ux-corner-actions_.ux-button]:!shadow-none"
       data-partial="componentAiro"
     >
       <Box className="text-left" orientation="vertical">
@@ -77,20 +77,20 @@ export function DomainDisconnectConfirmationModal({
             </text.p>
           </li>
         </ul>
-        <Box orientation="horizontal" gap="md" className="w-full justify-end">
+        <Box orientation="horizontal" gap="sm" className="w-full justify-end">
           <Button
             design="secondary"
             data-partial="componentAiro"
-            data-eid={generateClickEID('domain.disconnect-buttons.cancel')}
+            data-eid={generateClickEID('domain.disconnect.cancel')}
             text={t('builder_domain_disconnect_warning_back', {}, 'No, Go Back')}
             onClick={onClose}
             disabled={isDisconnecting}
-            className="!h-7 !border-intents-ux-boxHighContrast-backgroundColor !text-intents-ux-boxHighContrast-backgroundColor"
+            className="!h-5 sm:!h-7 !text-sm sm:!text-base !border-intents-ux-boxHighContrast-backgroundColor !text-intents-ux-boxHighContrast-backgroundColor"
           />
           <Button
             design="primary"
             data-partial="componentAiro"
-            data-eid={generateClickEID('domain.disconnect-buttons.confirm')}
+            data-eid={generateClickEID('domain.disconnect.confirm')}
             text={
               isDisconnecting
                 ? t('builder_domain_disconnect_seo_warning_disconnecting', {}, 'Disconnecting…')
@@ -98,7 +98,7 @@ export function DomainDisconnectConfirmationModal({
             }
             onClick={onConfirm}
             disabled={isDisconnecting}
-            className="!h-7 !bg-intents-ux-boxHighContrast-backgroundColor !text-intents-ux-boxHighContrast-foregroundColor !border-intents-ux-boxHighContrast-backgroundColor"
+            className="!h-5 sm:!h-7 !text-sm sm:!text-base !bg-intents-ux-boxHighContrast-backgroundColor !text-intents-ux-boxHighContrast-foregroundColor !border-intents-ux-boxHighContrast-backgroundColor"
           />
         </Box>
       </Box>
