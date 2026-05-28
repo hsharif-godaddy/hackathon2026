@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { renderToolCall } from '@/components/agent-tool-renderers';
+import { normalizeToolCall } from '@/lib/agent-message-types';
 import type { MessageSegment, ToolCall } from '@/lib/agent-message-types';
 import { formatTimestamp } from '@/lib/date-utils';
 
@@ -82,7 +83,7 @@ interface MemoryResult {
 type HealthPhase = 'idle' | 'pinging' | 'ready' | 'unreachable';
 
 const LIST_LIMIT = 100;
-const DETAIL_PAGE_SIZE = 50;
+const DETAIL_PAGE_SIZE = 200;
 const HEALTH_MAX_ATTEMPTS = 10;
 const HEALTH_RETRY_DELAY_MS = 10_000;
 const TOOL_CALLS_VISIBLE_DEFAULT = 5;
@@ -951,7 +952,7 @@ function ConversationDetail({ summary, detail, error, loading, onRender, onLoadO
 function MessageBubble({ message }: { message: ConversationMessage }) {
     const [showRaw, setShowRaw] = useState(false);
     const isUser = message.sender === 'user';
-    const toolCalls = message.toolCalls || [];
+    const toolCalls = (message.toolCalls || []).map(normalizeToolCall);
     const agentName = (message.metadata?.agentName as string | undefined) || message.metadata?.agentId as string | undefined;
 
     const avatarIcon = isUser ? '👤' : '🤖';
@@ -1049,7 +1050,7 @@ function buildAgentSteps(message: ConversationMessage): AgentStep[] {
     const segments = message.segments ?? [];
     if (segments.length === 0) {
         if (!message.content && (message.toolCalls?.length ?? 0) === 0) return [];
-        return [{ index: 1, text: message.content ?? '', tools: message.toolCalls ?? [] }];
+        return [{ index: 1, text: message.content ?? '', tools: (message.toolCalls ?? []).map(normalizeToolCall) }];
     }
 
     const steps: AgentStep[] = [];
@@ -1071,7 +1072,7 @@ function buildAgentSteps(message: ConversationMessage): AgentStep[] {
             lastWasTool = false;
         } else if (seg.type === 'tool_call') {
             if (!pending) pending = { index: 0, text: '', tools: [] };
-            if (seg.toolCall) pending.tools.push(seg.toolCall);
+            if (seg.toolCall) pending.tools.push(normalizeToolCall(seg.toolCall));
             lastWasTool = true;
         }
     }

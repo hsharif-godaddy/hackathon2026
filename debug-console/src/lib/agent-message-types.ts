@@ -8,13 +8,31 @@
 
 export interface ToolCall {
     id: string;
+    // Display-shape fields (used by renderers and ToolCallRow)
     name: string;
     input?: unknown;
     result?: unknown;
+    duration?: number;
+    // Wire-format aliases returned by the agents service
+    toolName?: string;
+    toolArgs?: unknown;
+    toolResult?: unknown;
+    durationMs?: number;
+    // Common to both shapes
     status?: string;
     startTime?: string;
     endTime?: string;
-    duration?: number;
+}
+
+/** Normalise a tool call from wire format (toolName/toolArgs) to display format (name/input). */
+export function normalizeToolCall(raw: ToolCall): ToolCall {
+    return {
+        ...raw,
+        name: raw.name ?? raw.toolName ?? 'unknown',
+        input: raw.input ?? raw.toolArgs,
+        result: raw.result ?? raw.toolResult,
+        duration: raw.duration ?? raw.durationMs,
+    };
 }
 
 // Streaming segment captured per agent message. Each segment is either a chunk
