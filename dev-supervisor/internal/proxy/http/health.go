@@ -37,6 +37,22 @@ func (p *HTTPProxy) handleHealthCheck(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Status-page short-circuit: when the publish container is suspended or
+	// has no /dist/current archive, dev-supervisor serves the embedded status
+	// page in front of the (absent) backend. The container itself is healthy —
+	// probing the never-started backend would falsely flag it unhealthy and
+	// pull it from infra rotation, so report healthy here.
+	if p.config.StatusPage != nil && p.config.StatusPage.Active() {
+		resp := ProxyHealthResponse{
+			Status: "healthy",
+		}
+		w.WriteHeader(http.StatusOK)
+		if err := json.NewEncoder(w).Encode(resp); err != nil {
+			slog.Error("proxy.health.encode_error", "error", err)
+		}
+		return
+	}
+
 	// Check if process is stopped but will autostart on request
 	// If backend is not running but autostart is configured, the system is ready to serve requests
 	if p.procMgr != nil {

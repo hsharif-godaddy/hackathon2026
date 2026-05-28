@@ -1710,6 +1710,73 @@ func TestHTTPProxy_HealthCheck_BackendReturns302(t *testing.T) {
 		"reason should indicate backend returned 302")
 }
 
+// TestHTTPProxy_HealthCheck_StatusPageActive verifies that the publish-container
+// status page short-circuits the health check: when the embedded "Coming Soon"
+// or "Suspended" page is in front of the (absent) backend, dev-supervisor
+// itself is healthy and we must not probe a never-started backend.
+func TestHTTPProxy_HealthCheck_StatusPageActive(t *testing.T) {
+	tmpDir := t.TempDir()
+	// No /dist/current present → status page is active.
+	sp, err := NewStatusPage(StatusPageConfig{DistDir: tmpDir})
+	require.NoError(t, err)
+	require.True(t, sp.Active(), "status page should be active with no archive")
+
+	proxy := &HTTPProxy{
+		config: Config{
+			Enabled:    true,
+			ListenPort: 8080,
+			TargetHost: "localhost",
+			TargetPort: 9999, // Non-existent port (no backend running)
+			StatusPage: sp,
+		},
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/airo/health", nil)
+	rec := httptest.NewRecorder()
+	proxy.handleHealthCheck(rec, req)
+
+	assert.Equal(t, http.StatusOK, rec.Code,
+		"health check should return 200 when status page is active")
+
+	var resp ProxyHealthResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	assert.Equal(t, "healthy", resp.Status)
+	assert.Empty(t, resp.Reason, "status-page short-circuit matches the 2xx-backend shape: no reason field")
+}
+
+// TestHTTPProxy_HealthCheck_StatusPagePublished verifies that once the status
+// page reports inactive (publish archive present, MarkPublished called), the
+// short-circuit yields and the health check probes the backend normally.
+func TestHTTPProxy_HealthCheck_StatusPagePublished(t *testing.T) {
+	tmpDir := t.TempDir()
+	sp, err := NewStatusPage(StatusPageConfig{DistDir: tmpDir})
+	require.NoError(t, err)
+	sp.MarkPublished()
+	require.False(t, sp.Active(), "status page should be inactive after publish")
+
+	proxy := &HTTPProxy{
+		config: Config{
+			Enabled:    true,
+			ListenPort: 8080,
+			TargetHost: "localhost",
+			TargetPort: 9999, // No backend running
+			StatusPage: sp,
+		},
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/airo/health", nil)
+	rec := httptest.NewRecorder()
+	proxy.handleHealthCheck(rec, req)
+
+	// Backend is unreachable, so the standard 503 path runs (no short-circuit).
+	assert.Equal(t, http.StatusServiceUnavailable, rec.Code,
+		"published-but-unreachable backend should fall through to 503")
+
+	var resp ProxyHealthResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	assert.Equal(t, "unhealthy", resp.Status)
+}
+
 // TestReverseProxy_ErrorHandler_CORSHeaders tests that error responses
 // include proper CORS headers when backend is unavailable
 func TestReverseProxy_ErrorHandler_CORSHeaders(t *testing.T) {
