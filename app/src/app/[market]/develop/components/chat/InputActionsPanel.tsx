@@ -5,6 +5,7 @@ import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } fro
 import { createPortal } from 'react-dom'
 import { Thinker } from '@airo-ux/pattern-library/chat/thinker'
 import { ChoiceList } from '@airo-ux/pattern-library/input/choice-list'
+import { ThinkingIndicator } from '@airo-ux/pattern-library/primitives/thinking-indicator'
 import { useQueryClient } from '@tanstack/react-query'
 
 import { useSendUserMessage } from '@/app/[market]/develop/components/chat/ChatContext'
@@ -322,7 +323,7 @@ function InputActionsPanelLegacy({ shouldCollapse: _shouldCollapse }: { shouldCo
     return (
       <>
         <div className="flex items-center justify-between px-1 py-0.5 mb-1 min-h-[22px]">
-          <Thinker label={thinkerLabel} />
+          <Thinker label={thinkerLabel} indicator={<ThinkingIndicator variant="spinner" />} />
           {hasPlan && !fullPlanExpanded && (
             <button
               type="button"
@@ -356,7 +357,7 @@ function InputActionsPanelLegacy({ shouldCollapse: _shouldCollapse }: { shouldCo
               className="overflow-hidden"
             >
               {/* Separator between thinking row and expanded plan */}
-              <div className="-mx-1.5 border-b border-border mb-1" />
+              <div className="-mx-1 border-b border-border mb-1" />
               <FullPlanSection
                 list={currentList}
                 completedItems={completedItems}
@@ -374,7 +375,7 @@ function InputActionsPanelLegacy({ shouldCollapse: _shouldCollapse }: { shouldCo
         </AnimatePresence>
 
         {/* Separator between panel and input content */}
-        <div className="-mx-1.5 border-b border-border mb-1" />
+        <div className="-mx-1 border-b border-border mb-1" />
 
         <TodoListModal
           isOpen={isModalOpen}
@@ -534,7 +535,7 @@ function InputActionsPanelLegacy({ shouldCollapse: _shouldCollapse }: { shouldCo
       </div>
 
       {/* Separator between panel and input content */}
-      <div className="-mx-1.5 border-b border-border mb-1" />
+      <div className="-mx-1 border-b border-border mb-1" />
 
       <TodoListModal
         isOpen={isModalOpen}
@@ -1403,7 +1404,7 @@ function InputActionsPanelThemeSelection({
 
         {/* Thinking indicator with optional plan toggle (hide plan when applying theme) */}
         <div className="flex items-center justify-between px-1 py-0.5 mb-1 min-h-[22px]">
-          <Thinker label={thinkerLabel} />
+          <Thinker label={thinkerLabel} indicator={<ThinkingIndicator variant="spinner" />} />
           {hasPlan && !showAnySuggest && (
             <button
               type="button"
@@ -1462,7 +1463,7 @@ function InputActionsPanelThemeSelection({
           )}
         </AnimatePresence>
 
-        <div className="-mx-1.5 border-b border-border mb-1" />
+        <div className="-mx-1 border-b border-border mb-1" />
 
         <TodoListModal
           isOpen={isModalOpen}
@@ -1651,7 +1652,7 @@ function InputActionsPanelThemeSelection({
               {continueBuildingTodoBody}
             </CollapsibleChatInputSection>
           )}
-          <div className="-mx-1.5 mb-1 border-b border-border" />
+          <div className="-mx-1 mb-1 border-b border-border" />
         </>
       )}
 

@@ -121,21 +121,27 @@ describe('ChatInput', () => {
   it('should display textarea with placeholder', () => {
     renderWithProviders(<ChatInput {...defaultProps} />);
 
-    const textarea = screen.getByPlaceholderText('builder_chatinput_ask_airo');
-    expect(textarea).toBeInTheDocument();
+    const textarea = screen.getByRole('textbox');
+    expect(textarea).toHaveAttribute('aria-placeholder', 'builder_chatinput_ask_airo');
   });
 
   it('should display processing placeholder when disabled', () => {
     renderWithProviders(<ChatInput {...defaultProps} isDisabled={true} />);
 
-    expect(screen.getByPlaceholderText('builder_chatinput_processing')).toBeInTheDocument();
+    expect(screen.getByRole('textbox')).toHaveAttribute(
+      'aria-placeholder',
+      'builder_chatinput_processing',
+    );
   });
 
-  it('should display input value', () => {
+  it('should display input value', async () => {
     renderWithProviders(<ChatInput {...defaultProps} inputValue="Test message" />);
 
+    // PromptBox 5.0's ExternalSyncPlugin hydrates the contenteditable with the
+    // controlled `value` on a Lexical update tick (microtask), so the text
+    // isn't visible synchronously after mount.
     const textarea = screen.getByRole('textbox');
-    expect(textarea).toHaveValue('Test message');
+    await waitFor(() => expect(textarea).toHaveTextContent('Test message'));
   });
 
   it('should call onInputChange when typing', async () => {
@@ -481,7 +487,7 @@ describe('ChatInput', () => {
     renderWithProviders(<ChatInput {...defaultProps} isDisabled={true} />);
 
     const textarea = screen.getByRole('textbox');
-    expect(textarea).toBeDisabled();
+    expect(textarea).toHaveAttribute('aria-disabled', 'true');
   });
 
   it('should call onSendMessage when send button clicked', async () => {
@@ -528,6 +534,12 @@ describe('ChatInput', () => {
     expect(onSendMessage).not.toHaveBeenCalled();
   });
 
+  // Modifier+Enter (Alt/Meta/Ctrl) suppresses submit and inserts a newline at
+  // the caret. The exact splice point depends on the browser's selection state;
+  // in jsdom the contenteditable's selection isn't positioned the way it is in
+  // a real browser, so we only assert that *some* newline was emitted to
+  // onInputChange — the splice point is verified manually + by E2E. Tracked
+  // upstream in DF-4879.
   it('should not call onSendMessage when Alt+Enter pressed', async () => {
     const onSendMessage = vi.fn();
     const onInputChange = vi.fn();
@@ -545,7 +557,7 @@ describe('ChatInput', () => {
     await user.keyboard('{Alt>}{Enter}{/Alt}');
 
     expect(onSendMessage).not.toHaveBeenCalled();
-    expect(onInputChange).toHaveBeenCalledWith('Test\n');
+    expect(onInputChange).toHaveBeenCalledWith(expect.stringMatching(/\n/));
   });
 
   it('should not call onSendMessage when Cmd+Enter pressed', async () => {
@@ -565,7 +577,7 @@ describe('ChatInput', () => {
     await user.keyboard('{Meta>}{Enter}{/Meta}');
 
     expect(onSendMessage).not.toHaveBeenCalled();
-    expect(onInputChange).toHaveBeenCalledWith('Test\n');
+    expect(onInputChange).toHaveBeenCalledWith(expect.stringMatching(/\n/));
   });
 
   it('should have correct textarea attributes', () => {
@@ -573,7 +585,6 @@ describe('ChatInput', () => {
 
     const textarea = screen.getByRole('textbox');
     expect(textarea).toHaveAttribute('id', 'chat-input-textarea');
-    expect(textarea).toHaveAttribute('rows', '1'); // Changed from 3 to 1 for auto-grow behavior
   });
 
   it('should have correct send button attributes and log send on click', async () => {
@@ -755,14 +766,17 @@ describe('ChatInput', () => {
     it('should display budget exceeded placeholder when isBudgetExceeded is true', () => {
       renderWithProviders(<ChatInput {...defaultProps} isBudgetExceeded={true} />);
 
-      expect(screen.getByPlaceholderText('builder_chatinput_budget_exceeded')).toBeInTheDocument();
+      expect(screen.getByRole('textbox')).toHaveAttribute(
+        'aria-placeholder',
+        'builder_chatinput_budget_exceeded',
+      );
     });
 
     it('should disable textarea when isBudgetExceeded is true', () => {
       renderWithProviders(<ChatInput {...defaultProps} isBudgetExceeded={true} />);
 
       const textarea = screen.getByRole('textbox');
-      expect(textarea).toBeDisabled();
+      expect(textarea).toHaveAttribute('aria-disabled', 'true');
     });
 
     it('should disable send button when isBudgetExceeded is true even with input value', () => {
@@ -790,8 +804,9 @@ describe('ChatInput', () => {
     it('should prioritize budget exceeded placeholder over processing placeholder', () => {
       renderWithProviders(<ChatInput {...defaultProps} isDisabled={true} isBudgetExceeded={true} />);
 
-      expect(screen.getByPlaceholderText('builder_chatinput_budget_exceeded')).toBeInTheDocument();
-      expect(screen.queryByPlaceholderText('builder_chatinput_processing')).not.toBeInTheDocument();
+      const textarea = screen.getByRole('textbox');
+      expect(textarea).toHaveAttribute('aria-placeholder', 'builder_chatinput_budget_exceeded');
+      expect(textarea).not.toHaveAttribute('aria-placeholder', 'builder_chatinput_processing');
     });
   });
 
@@ -916,13 +931,231 @@ describe('ChatInput', () => {
     });
   });
 
+  describe('multi-element select chips', () => {
+    const elementContext = (n: number, tagName: string) => ({
+      number: n,
+      elementInfo: { tagName },
+    }) as any;
+
+    // Mention chips render inside PromptBox 5.0's Lexical contenteditable as
+    // `<span class="airo-primitives-mention-chip">` with two child spans: the
+    // prefix (`#N`) and the TAG_LABELS-mapped label (e.g. `h1` → "Title",
+    // `img` → "Image"). We query by the chip wrapper class so the assertion
+    // doesn't depend on text-broken-across-spans matching.
+    function getRenderedChips(): HTMLElement[] {
+      return Array.from(
+        document.querySelectorAll<HTMLElement>('.airo-primitives-mention-chip'),
+      );
+    }
+
+    function chipText(chip: HTMLElement): string {
+      const prefix = chip.querySelector('.airo-primitives-mention-chip__prefix')?.textContent ?? '';
+      const label = chip.querySelector('.airo-primitives-mention-chip__label')?.textContent ?? '';
+      return `${prefix} ${label}`;
+    }
+
+    it('should render a chip per aiEditContext using TAG_LABELS for the label', async function renderChips() {
+      renderWithProviders(
+        <ChatInput
+          {...defaultProps}
+          isMultiElementSelect={true}
+          aiEditContexts={[elementContext(1, 'h1'), elementContext(2, 'img')]}
+        />
+      );
+
+      await waitFor(() => expect(getRenderedChips()).toHaveLength(2));
+      const texts = getRenderedChips().map(chipText);
+      expect(texts).toEqual(['#1 Title', '#2 Image']);
+    });
+
+    it('should call onRemoveAiEditContext with the chip number when remove icon clicked', async function chipRemove() {
+      const onRemoveAiEditContext = vi.fn();
+      const { user } = renderWithProviders(
+        <ChatInput
+          {...defaultProps}
+          isMultiElementSelect={true}
+          aiEditContexts={[elementContext(1, 'h1'), elementContext(2, 'img')]}
+          onRemoveAiEditContext={onRemoveAiEditContext}
+        />
+      );
+
+      await waitFor(() => expect(getRenderedChips()).toHaveLength(2));
+      const removeButtons = screen.getAllByRole('button', { name: /remove/i });
+      await user.click(removeButtons[1]!);
+
+      expect(onRemoveAiEditContext).toHaveBeenCalledWith(2);
+    });
+
+    it('should not render multi-element chips when flag is off', async function noChipsWhenOff() {
+      renderWithProviders(
+        <ChatInput
+          {...defaultProps}
+          isMultiElementSelect={false}
+          aiEditContexts={[elementContext(1, 'h1')]}
+        />
+      );
+
+      // Wait a microtask for Lexical's first commit; chips never appear when flag is off.
+      await new Promise(resolve => setTimeout(resolve, 0));
+      expect(getRenderedChips()).toHaveLength(0);
+    });
+
+    it('should skip contexts without a number', async function skipNullNumber() {
+      renderWithProviders(
+        <ChatInput
+          {...defaultProps}
+          isMultiElementSelect={true}
+          aiEditContexts={[
+            { number: null, elementInfo: { tagName: 'h1' } } as any,
+            elementContext(2, 'img'),
+          ]}
+        />
+      );
+
+      await waitFor(() => expect(getRenderedChips()).toHaveLength(1));
+      expect(chipText(getRenderedChips()[0]!)).toBe('#2 Image');
+    });
+
+    // Regression: PromptBox.handleStop fires `onChange("")` synchronously after
+    // `onStop()`. Without the isStopFlowRef guard, that empty value reaches the
+    // editor, ExternalSyncPlugin removes the mention nodes, and the chip-removal
+    // discriminator calls onRemoveAiEditContext for every chip — wiping the
+    // parent's aiEditContexts state every time the user hits stop.
+    it('should not call onRemoveAiEditContext when stop is clicked mid-stream', async function stopPreservesChips() {
+      const onStopGeneration = vi.fn();
+      const onRemoveAiEditContext = vi.fn();
+      const onInputChange = vi.fn();
+      const { user } = renderWithProviders(
+        <ChatInput
+          {...defaultProps}
+          inputValue="Test"
+          isStreaming={true}
+          isMultiElementSelect={true}
+          aiEditContexts={[elementContext(1, 'h1'), elementContext(2, 'img')]}
+          onStopGeneration={onStopGeneration}
+          onRemoveAiEditContext={onRemoveAiEditContext}
+          onInputChange={onInputChange}
+        />
+      );
+
+      await waitFor(() => expect(getRenderedChips()).toHaveLength(2));
+
+      const stopButton = screen.getByTestId('chat-stop-button');
+      await user.click(stopButton);
+
+      await waitFor(() => expect(onStopGeneration).toHaveBeenCalledOnce());
+
+      // Critical: stop must not wipe aiEditContexts via the chip-removal discriminator.
+      expect(onRemoveAiEditContext).not.toHaveBeenCalled();
+      // The PromptBox's synchronous onChange("") must not propagate either.
+      expect(onInputChange).not.toHaveBeenCalledWith('');
+    });
+
+    // The chip-removal discriminator at handleMentionRemoved checks
+    // aiEditContextsRef.current to distinguish user-driven removals (chip ✕,
+    // backspace) from programmatic ones (parent state already updated). When
+    // the parent removes a context first and the resulting onMentionRemoved
+    // cascade fires, the ref no longer contains the number, so
+    // onRemoveAiEditContext must NOT be called (avoiding a double-fire).
+    it('should not call onRemoveAiEditContext when chip removal is programmatic', async function discriminatesProgrammaticRemoval() {
+      const onRemoveAiEditContext = vi.fn();
+      const { rerender } = renderWithProviders(
+        <ChatInput
+          {...defaultProps}
+          isMultiElementSelect={true}
+          aiEditContexts={[elementContext(1, 'h1'), elementContext(2, 'img')]}
+          onRemoveAiEditContext={onRemoveAiEditContext}
+        />
+      );
+
+      await waitFor(() => expect(getRenderedChips()).toHaveLength(2));
+
+      // Parent removes context #2 first; the syncMentionChips effect will
+      // call removeElementMention(2), which fires onMentionRemoved(2) — but
+      // by then aiEditContextsRef.current no longer contains #2, so the
+      // discriminator must short-circuit.
+      rerender(
+        <ChatInput
+          {...defaultProps}
+          isMultiElementSelect={true}
+          aiEditContexts={[elementContext(1, 'h1')]}
+          onRemoveAiEditContext={onRemoveAiEditContext}
+        />
+      );
+
+      await waitFor(() => expect(getRenderedChips()).toHaveLength(1));
+      expect(onRemoveAiEditContext).not.toHaveBeenCalled();
+    });
+
+    // Flipping isMultiElementSelect from true → false while contexts remain
+    // populated must tear down the existing chips. The desired set becomes []
+    // regardless of aiEditContexts, so syncMentionChips removes every tracked
+    // mention.
+    it('should tear down chips when isMultiElementSelect flips from true to false', async function teardownChipsOnFlagOff() {
+      const { rerender } = renderWithProviders(
+        <ChatInput
+          {...defaultProps}
+          isMultiElementSelect={true}
+          aiEditContexts={[elementContext(1, 'h1'), elementContext(2, 'img')]}
+        />
+      );
+
+      await waitFor(() => expect(getRenderedChips()).toHaveLength(2));
+
+      rerender(
+        <ChatInput
+          {...defaultProps}
+          isMultiElementSelect={false}
+          aiEditContexts={[elementContext(1, 'h1'), elementContext(2, 'img')]}
+        />
+      );
+
+      await waitFor(() => expect(getRenderedChips()).toHaveLength(0));
+    });
+
+    // tagAndBindInnerEditor uses a MutationObserver to re-tag and re-bind on
+    // every editor remount (PromptBox could in theory swap its inner Lexical
+    // ContentEditable). Simulate a remount by removing the editor element and
+    // re-inserting a fresh one with the marker class; the observer should
+    // restore the id/data-testid on the new node.
+    it('should re-tag the inner editor with id and data-testid after a remount', async function retagSurvivesRemount() {
+      renderWithProviders(<ChatInput {...defaultProps} />);
+
+      const card = await screen.findByTestId('chat-input-card');
+      const original = card.querySelector<HTMLElement>('.airo-input-prompt-box__entry');
+      expect(original).not.toBeNull();
+      expect(original!.id).toBe('chat-input-textarea');
+      expect(original!.getAttribute('data-testid')).toBe('chat-input-textarea');
+
+      // Force a remount: remove the marker class so the helper stops seeing
+      // it, then re-add it on a fresh node. Wrap in act() so React flushes
+      // any subsequent effects, and give the MutationObserver a tick to fire.
+      await act(async () => {
+        original!.classList.remove('airo-input-prompt-box__entry');
+        original!.removeAttribute('id');
+        original!.removeAttribute('data-testid');
+        const replacement = document.createElement('div');
+        replacement.className = 'airo-input-prompt-box__entry';
+        original!.parentElement!.appendChild(replacement);
+        // MutationObserver fires asynchronously; wait one task.
+        await new Promise(resolve => setTimeout(resolve, 0));
+      });
+
+      const replacement = card.querySelector<HTMLElement>('.airo-input-prompt-box__entry');
+      expect(replacement).not.toBeNull();
+      expect(replacement!.id).toBe('chat-input-textarea');
+      expect(replacement!.getAttribute('data-testid')).toBe('chat-input-textarea');
+    });
+  });
+
   describe('speech recognition', () => {
     it('should disable textarea when listening', function disableTextareaWhileListening() {
       mockSpeechRecognition.isListening = true;
       renderWithProviders(<ChatInput {...defaultProps} inputValue="Test" />);
 
       const textarea = screen.getByRole('textbox');
-      expect(textarea).toBeDisabled();
+      // PromptBox 5.0's `isListening` flips the contenteditable to `contenteditable="false"`.
+      expect(textarea).toHaveAttribute('contenteditable', 'false');
     });
 
     it('should stop speech and reset transcript when sending while listening via button click', async function stopOnButtonClick() {

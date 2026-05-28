@@ -229,10 +229,9 @@ export default function ChatAttachmentMenu({
           <Button
             data-testid="chat-attachment-menu-trigger"
             disabled={disabled || isCapturing}
-            design="stateless"
+            design="tertiary"
             size="sm"
             icon={<PlusIcon />}
-            className={`!bg-intents-ux-box-backgroundColor !border !border-border !rounded-lg transition-all duration-200 hover:!shadow-md ${open ? '!shadow-md' : ''}`}
             onClick={() => logClickEvent('develop.chat_input.attachment_menu', clickContext)()}
             aria-label={t('builder_chatfiles_attach', undefined, 'Attach')}
           />

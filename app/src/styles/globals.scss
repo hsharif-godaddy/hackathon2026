@@ -5,6 +5,13 @@
 @use "./uxcore-icons.css";
 @use "./uxcore-components.css";
 
+/* Reserve room for a 2-line placeholder so it doesn't crowd the toolbar.
+   `box-sizing: border-box` on the editor means min-height includes the
+   block padding (`density * 1.5` top + bottom), so add it back. */
+.airo-input-prompt-box__entry--lexical {
+  min-height: calc(2lh + var(--airo-input-prompt-box-density) * 3);
+}
+
 @custom-variant dark (&:is(.dark *));
 
 @plugin "@ux/tailwind-intents/plugin";

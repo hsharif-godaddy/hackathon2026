@@ -1423,7 +1423,6 @@ function ChatPaneInner({
               onClearAiEditContext={handleClearAiEditContext}
               aiEditContexts={safeAiEditContexts}
               onRemoveAiEditContext={handleRemoveAiEditContext}
-              onClearAiEditContexts={handleClearAllAiEditContexts}
               isMultiElementSelect={Boolean(isMultiElementSelect)}
               onLargePasteDetected={handleLargePasteDetected}
               userMessages={userMessages}

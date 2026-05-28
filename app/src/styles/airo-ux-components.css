@@ -2,5 +2,7 @@
 @import '@airo-ux/loader/styles';
 @import '@airo-ux/pattern-library/chat/thinker/styles';
 @import '@airo-ux/pattern-library/input/choice-list/styles';
+@import '@airo-ux/pattern-library/input/prompt-box/styles';
+@import '@airo-ux/pattern-library/surfaces/floating-footer/styles';
 /* Required by Canvas.Status used in PreviewPane.tsx — do not remove without removing the component usage */
 @import '@airo-ux/pattern-library/surfaces/canvas/styles';

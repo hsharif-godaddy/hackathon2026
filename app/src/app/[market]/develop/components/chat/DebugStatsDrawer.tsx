@@ -1,6 +1,7 @@
 'use client'
 
 import { type ReactElement } from 'react'
+import Button from '@ux/button'
 import Tag from '@ux/tag'
 
 import { SWITCHBOARD_APPBUILDER_DEBUG_DRAWER, SWITCHBOARD_APPBUILDER_SSE_TRANSPORT } from '@/config/switchboard-flags'
@@ -38,15 +39,16 @@ export function DebugStatsToggleButton(): ReactElement | null {
   if (!enabled) return null
 
   return (
-    <button
+    <Button
       type="button"
+      design="tertiary"
+      size="sm"
+      active={open}
       aria-label={open ? 'Close debug stats' : 'Open debug stats'}
       data-testid="debug-stats-toggle"
-      className={`flex items-center justify-center w-7 h-7 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground ${open ? 'bg-muted text-foreground' : ''}`}
+      icon={<FlaskIcon />}
       onClick={() => setOpen(!open)}
-    >
-      <FlaskIcon />
-    </button>
+    />
   )
 }
 

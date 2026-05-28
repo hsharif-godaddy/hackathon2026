@@ -52,6 +52,26 @@ vi.mock('next/font/google', () => ({
 
 // Browser-specific mocks (only when running in jsdom environment)
 if (typeof window !== 'undefined') {
+  // jsdom doesn't implement getBoundingClientRect on Range or Text. Lexical 0.42's
+  // updateDOMSelection (used by PromptBox) calls it after every editor commit and
+  // raises an unhandled TypeError that fails the run even when tests pass. Stub
+  // both with a zero rect — selection scrolling has no meaning in jsdom.
+  const zeroRect = (): DOMRect => ({
+    x: 0, y: 0, top: 0, left: 0, bottom: 0, right: 0, width: 0, height: 0,
+    toJSON: () => ({}),
+  }) as DOMRect;
+  const ensureGBCR = (proto: object) => {
+    if (!('getBoundingClientRect' in proto)) {
+      Object.defineProperty(proto, 'getBoundingClientRect', {
+        configurable: true,
+        writable: true,
+        value: zeroRect,
+      });
+    }
+  };
+  if (typeof Range !== 'undefined') ensureGBCR(Range.prototype);
+  if (typeof Text !== 'undefined') ensureGBCR(Text.prototype);
+
   // Fix getComputedStyle error with pseudo-elements
   const originalGetComputedStyle = window.getComputedStyle;
   window.getComputedStyle = ((element: Element, pseudoElt?: string | null) => {

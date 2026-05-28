@@ -1,15 +1,15 @@
 'use client'
 
 import clsx from 'clsx'
-import { memo, useEffect, useRef, useState } from 'react'
+import { memo, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { TokenBudgetButton } from '@airo-ux/pattern-library/input/prompt-box'
 
 import { useCreditGrants } from '@/hooks/useCreditGrants'
 import { useSubscription } from '@/hooks/useSubscription'
 import { useTranslations } from '@/hooks/useTranslations'
-import CircularGauge from '@/lib/CircularGauge'
 import { shipAnalyticsLog } from '@/lib/logging'
 import { PAYWALL_ITC } from '@/lib/paywall/shared'
-import { Popover, PopoverContent, PopoverTrigger } from '@/lib/shadcn/popover'
+import { Popover, PopoverAnchor, PopoverContent } from '@/lib/shadcn/popover'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { SubscriptionPlan } from '@/types/credits'
 import { getPlanFromSubscription, getTotalCreditsFromGrants } from '@/utils/credits'
@@ -61,6 +61,7 @@ export default memo(function UsageGauge({ appId }: UsageGaugeProps) {
   // Semantically: 0% = credits available but not used; 100% = no usable credits left.
   const { totalCreditsSpent, totalCreditsMax } = getTotalCreditsFromGrants(grants)
   const percentage = totalCreditsMax > 0 ? (totalCreditsSpent / totalCreditsMax) * 100 : 100
+  const remainingBudgetPercent = Math.round(Math.max(0, Math.min(100, 100 - percentage)))
 
   const showLoading = isSubscriptionLoading || isGrantsLoading
 
@@ -97,6 +98,27 @@ export default memo(function UsageGauge({ appId }: UsageGaugeProps) {
     shipAnalyticsLog('usage_gauge.buy_credits.clicked', { appId, percentage, plan: currentPlan })
   }
 
+  const triggerButtonRef = useRef<HTMLButtonElement>(null)
+
+  useLayoutEffect(
+    function syncUsageGaugeTriggerDom() {
+      const el = triggerButtonRef.current
+      if (!el) {
+        return
+      }
+      el.setAttribute('data-eid', generateClickEID('usage_gauge.trigger.open'))
+      el.setAttribute('data-percentage', String(Math.round(percentage)))
+      function preventFocusSteal(e: MouseEvent) {
+        e.preventDefault()
+      }
+      el.addEventListener('mousedown', preventFocusSteal)
+      return () => {
+        el.removeEventListener('mousedown', preventFocusSteal)
+      }
+    },
+    [percentage],
+  )
+
   if (showLoading) {
     return (
       <div className="w-5 h-5 flex items-center justify-center">
@@ -107,26 +129,17 @@ export default memo(function UsageGauge({ appId }: UsageGaugeProps) {
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <button
-          className={clsx(
-            'relative flex items-center justify-center cursor-pointer rounded-full transition-all duration-200 hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-            open && 'scale-105'
-          )}
-          onMouseDown={(e) => e.preventDefault()}
-          data-eid={generateClickEID('usage_gauge.trigger.open')}
-          data-percentage={Math.round(percentage)}
+      <PopoverAnchor asChild>
+        <TokenBudgetButton
+          ref={triggerButtonRef}
+          percent={remainingBudgetPercent}
           aria-label={t('builder_usage_gauge_aria_label', { percentage: String(Math.round(percentage)) })}
-        >
-          <div>
-            <CircularGauge
-              value={percentage}
-              size={22}
-              strokeWidth={4}
-            />
-          </div>
-        </button>
-      </PopoverTrigger>
+          className={clsx('transition-transform duration-200', open && 'scale-105')}
+          onPress={function toggleUsagePopover() {
+            setOpen((v) => !v)
+          }}
+        />
+      </PopoverAnchor>
 
       <PopoverContent
         align="start"

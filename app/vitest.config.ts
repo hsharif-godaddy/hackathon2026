@@ -13,13 +13,13 @@ import react from '@vitejs/plugin-react';
  * default `realpath` rewriting breaks — so we flip `preserveSymlinks` to
  * keep the chain intact. For the normal catalog path this stays false
  * because `preserveSymlinks=true` breaks pnpm's `.pnpm` hoisting of
- * transitive peers (e.g. `use-isomorphic-layout-effect`, `@lexical/utils`).
+ * transitive peers (e.g. `use-isomorphic-layout-effect`).
  *
  * **Known trade-off on the link path:** a few unrelated suites that rely on
  * pnpm's symlink-walk to find transitive peers (useAppArchiveRestore,
- * LexicalChatEditor, useInitialization.test) will fail while the override
- * is active. Run those specific suites on the catalog path (remove the
- * override) or scope your `vitest run` to the suites you're iterating on.
+ * useInitialization.test) will fail while the override is active. Run those
+ * specific suites on the catalog path (remove the override) or scope your
+ * `vitest run` to the suites you're iterating on.
  */
 function hasLinkedAiroComponents(): boolean {
   try {

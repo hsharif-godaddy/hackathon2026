@@ -2,13 +2,12 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useIntl } from 'react-intl'
+import { PromptBox, type PromptBoxHandle } from '@airo-ux/pattern-library/input/prompt-box'
+import { FloatingFooter } from '@airo-ux/pattern-library/surfaces/floating-footer'
 import Button from '@ux/button'
 import Chip from '@ux/chip'
 import CodeIcon from '@ux/icon/code'
 import MicIcon from '@ux/icon/mic'
-import SendIcon from '@ux/icon/send'
-import StopIcon from '@ux/icon/stop'
-import XIcon from '@ux/icon/x'
 
 import AssetInline, { AssetMode } from '@/app/[market]/develop/components/chat/AssetInline'
 import { AssetManagerItem, MediaType } from '@/app/[market]/develop/components/chat/AssetTypes'
@@ -16,7 +15,6 @@ import ChatAttachmentMenu from '@/app/[market]/develop/components/chat/ChatAttac
 import type { SendMessageOptions } from '@/app/[market]/develop/components/chat/ChatContext'
 import { DebugStatsToggleButton } from '@/app/[market]/develop/components/chat/DebugStatsDrawer'
 import InputActionsPanel from '@/app/[market]/develop/components/chat/InputActionsPanel'
-import LexicalChatEditor, { type LexicalChatEditorHandle } from '@/app/[market]/develop/components/chat/LexicalChatEditor'
 import UsageGauge from '@/app/[market]/develop/components/chat/usage-gauge/UsageGauge'
 import { useChatHistoryNavigation } from '@/app/[market]/develop/components/chat/useChatHistoryNavigation'
 import type { AiEditContext } from '@/app/[market]/develop/components/types'
@@ -28,8 +26,48 @@ import { useSpeechRecognition } from '@/hooks/useSpeechRecognition'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
 import { logger } from '@/lib/request-context'
+import { cn } from '@/lib/utils'
 import { logClickEvent } from '@/utils/instrumentation'
-import { handleModifierEnterNewline } from '@/utils/textareaShortcuts'
+
+const PROMPT_BOX_EDITOR_SELECTOR = '.airo-input-prompt-box__entry'
+const PROMPT_BOX_ACTION_BUTTON_SELECTOR = '.airo-input-prompt-box__action button'
+
+/**
+ * Locate the PromptBox inner contenteditable inside the composer card.
+ * Returns null if either the card or the editor is missing; logs a one-shot
+ * warn the first time the editor is missing so a class-name rename in
+ * @airo-ux/pattern-library is visible in production logs without spamming.
+ */
+function findPromptBoxEditor(card: HTMLElement | null): HTMLElement | null {
+  if (!card) return null
+  const editor = card.querySelector<HTMLElement>(PROMPT_BOX_EDITOR_SELECTOR)
+  if (!editor) {
+    warnOnce(
+      'chat-input.prompt-box-editor.not-found',
+      'PromptBox inner editor (.airo-input-prompt-box__entry) not found — class name may have changed upstream.',
+    )
+  }
+  return editor
+}
+
+function findPromptBoxActionButton(card: HTMLElement | null): HTMLButtonElement | null {
+  if (!card) return null
+  const btn = card.querySelector<HTMLButtonElement>(PROMPT_BOX_ACTION_BUTTON_SELECTOR)
+  if (!btn) {
+    warnOnce(
+      'chat-input.prompt-box-action.not-found',
+      'PromptBox action button (.airo-input-prompt-box__action button) not found — class name may have changed upstream.',
+    )
+  }
+  return btn
+}
+
+const warnedSelectors = new Set<string>()
+function warnOnce(event: string, message: string): void {
+  if (warnedSelectors.has(event)) return
+  warnedSelectors.add(event)
+  logger.warn(event, { message })
+}
 
 export interface StagedChatFile {
   id: string
@@ -38,28 +76,11 @@ export interface StagedChatFile {
   previewUrl: string
 }
 
-const MAX_INLINE_PASTE_LENGTH = 4_000
-
 function fileToMediaType(file: File): MediaType {
   if (file.type.startsWith('image/')) return MediaType.IMAGE
   if (file.type.startsWith('video/')) return MediaType.VIDEO
   if (file.type === 'application/pdf') return MediaType.PDF
   return MediaType.FILE
-}
-
-function collectFilesFromClipboard(e: React.ClipboardEvent): File[] {
-  const items = e.clipboardData?.items
-  if (!items) {
-    return []
-  }
-  const files: File[] = []
-  for (const item of Array.from(items)) {
-    if (item.kind === 'file') {
-      const f = item.getAsFile()
-      if (f) files.push(f)
-    }
-  }
-  return files
 }
 
 interface ChatInputProps {
@@ -96,7 +117,6 @@ interface ChatInputProps {
   // Multi-element selection (flag: appbuilder-multi-element-select)
   aiEditContexts?: AiEditContext[]
   onRemoveAiEditContext?: (number: number) => void
-  onClearAiEditContexts?: () => void
   isMultiElementSelect?: boolean
   onLargePasteDetected?: (content: string) => void
   mediaLimitError?: string | null
@@ -132,7 +152,6 @@ export default function ChatInput({
   onClearAiEditContext,
   aiEditContexts = [],
   onRemoveAiEditContext,
-  onClearAiEditContexts,
   isMultiElementSelect = false,
   onLargePasteDetected,
   userMessages = [],
@@ -153,12 +172,19 @@ export default function ChatInput({
     Boolean(isChatGaugeEnabledBySwitchboard) && chatGaugeCohort !== 'treatment';
 
   const textBeforeListeningRef = useRef('')
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const lexicalEditorRef = useRef<LexicalChatEditorHandle>(null)
+  const promptBoxRef = useRef<PromptBoxHandle>(null)
+  const composerCardRef = useRef<HTMLDivElement>(null)
   const [isFileDragOver, setIsFileDragOver] = useState(false)
   const [shouldCollapseUI, setShouldCollapseUI] = useState(false)
   const previousLinesRef = useRef(0)
   const resizeTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  // True for the synchronous duration of PromptBox.handleStop, which fires
+  // onStop → onChange(""). We swallow that "" so the parent's inputValue and
+  // the editor's mentions stay intact (Lexical only commits an explicit-clear
+  // when ExternalSyncPlugin sees a value change). Cleared via queueMicrotask
+  // — onChange("") fires synchronously inside the same event handler, before
+  // any microtask runs. See [[chat-input-stop-flow]].
+  const isStopFlowRef = useRef(false)
 
   const { handleArrowUp, handleArrowDown, resetNavigation, exitNavigationMode, navRevision } =
     useChatHistoryNavigation({
@@ -169,24 +195,16 @@ export default function ChatInput({
       isDisabled: Boolean(isDisabled && !isStreaming),
     })
 
-  // After each navigation, move cursor to end of textarea once React has committed the new value
-  useLayoutEffect(() => {
-    if (navRevision > 0 && textareaRef.current) {
-      const len = textareaRef.current.value.length
-      textareaRef.current.setSelectionRange(len, len)
-    }
-  }, [navRevision])
-
-  // Track input height changes using ResizeObserver (more efficient than useEffect on inputValue)
-  useEffect(() => {
-    // Only enable collapse behavior if feature flag is on
+  // Drives the collapse-on-multiline UI by observing the inner editable. The
+  // editable is retagged with id="chat-input-textarea" by syncEditableAttrs
+  // below, so the same element-id contract from the textarea era still works.
+  useEffect(function watchInputLineCountForCollapse() {
     if (!isMultilineCollapseEnabled) return
 
-    const editorElement = document.getElementById('chat-input-textarea') as HTMLElement
+    const editorElement = document.getElementById('chat-input-textarea')
     if (!editorElement) return
 
     const checkLines = () => {
-      // Calculate number of lines based on height
       const lineHeight = parseFloat(getComputedStyle(editorElement).lineHeight)
       const paddingTop = parseFloat(getComputedStyle(editorElement).paddingTop)
       const paddingBottom = parseFloat(getComputedStyle(editorElement).paddingBottom)
@@ -196,20 +214,16 @@ export default function ChatInput({
 
       const previousLines = previousLinesRef.current
 
-      // Only update state if we detect a meaningful transition
       if (previousLines <= 3 && numberOfLines > 3) {
         setShouldCollapseUI(true)
       } else if (numberOfLines <= 3 && previousLines > 3) {
         setShouldCollapseUI(false)
       }
 
-      // Update the ref for next comparison
       previousLinesRef.current = numberOfLines
     }
 
-    // Use ResizeObserver for efficient height tracking
     const resizeObserver = new ResizeObserver(() => {
-      // Debounce the check to avoid excessive updates
       if (resizeTimeoutRef.current) {
         clearTimeout(resizeTimeoutRef.current)
       }
@@ -218,7 +232,6 @@ export default function ChatInput({
 
     resizeObserver.observe(editorElement)
 
-    // Initial check
     checkLines()
 
     return () => {
@@ -227,50 +240,7 @@ export default function ChatInput({
         clearTimeout(resizeTimeoutRef.current)
       }
     }
-  }, [isMultiElementSelect, isMultilineCollapseEnabled])
-
-  // Auto-resize textarea (only for regular textarea, not Lexical)
-  useEffect(() => {
-    if (!isMultiElementSelect && textareaRef.current) {
-      const textarea = textareaRef.current
-      textarea.style.height = 'auto'
-      // Cap at ~10 lines (210px) - reasonable max before scrolling
-      const maxHeight = 210
-      const newHeight = Math.min(textarea.scrollHeight, maxHeight)
-      textarea.style.height = `${newHeight}px`
-      textarea.style.overflowY = textarea.scrollHeight > maxHeight ? 'auto' : 'hidden'
-    }
-  }, [inputValue, isMultiElementSelect])
-
-  // Sync mentions in Lexical editor with aiEditContexts (multi-select mode)
-  const prevContextNumbersRef = useRef(new Set<number>())
-  useEffect(() => {
-    if (!isMultiElementSelect) {
-      prevContextNumbersRef.current = new Set()
-      return
-    }
-    const currentNumbers = new Set(aiEditContexts.map(c => c.number).filter((n): n is number => n != null))
-
-    // Insert mentions for newly added contexts
-    for (const num of currentNumbers) {
-      if (!prevContextNumbersRef.current.has(num)) {
-        const ctx = aiEditContexts.find(c => c.number === num)
-        if (ctx && lexicalEditorRef.current) {
-          lexicalEditorRef.current.insertElementMention(num, ctx.elementInfo.tagName)
-          lexicalEditorRef.current.focus()
-        }
-      }
-    }
-
-    // Remove mentions for contexts that were removed (e.g., from preview badge click)
-    for (const num of prevContextNumbersRef.current) {
-      if (!currentNumbers.has(num) && lexicalEditorRef.current) {
-        lexicalEditorRef.current.removeElementMention(num)
-      }
-    }
-
-    prevContextNumbersRef.current = currentNumbers
-  }, [isMultiElementSelect, aiEditContexts])
+  }, [isMultilineCollapseEnabled])
 
   const {
     isListening,
@@ -320,79 +290,6 @@ export default function ChatInput({
     resetNavigation()
   }
 
-  const handleLargeTextPaste = useCallback(function handleLargeTextPaste(e: React.ClipboardEvent) {
-    if (!onLargePasteDetected) return
-    const text = e.clipboardData.getData('text/plain')
-    if (text.length <= MAX_INLINE_PASTE_LENGTH) return
-
-    e.preventDefault()
-    onLargePasteDetected(text)
-  }, [onLargePasteDetected])
-
-  function handlePaste(e: React.ClipboardEvent) {
-    handleLargeTextPaste(e)
-    if (e.defaultPrevented) return
-
-    if (isDisabled || isBudgetExceeded || isListening) return
-
-    const files = collectFilesFromClipboard(e)
-    if (files.length > 0 && canStageFiles && onStageFiles) {
-      e.preventDefault()
-      onStageFiles(files)
-      return
-    }
-
-    const items = e.clipboardData?.items
-    if (!items?.length) return
-
-    const imageItem = Array.from(items).find(
-      item => item.type.startsWith('image/')
-    )
-
-    if (!imageItem || !canAddAsset || !onScreenshotCaptured) return
-
-    const file = imageItem.getAsFile()
-    if (!file) return
-
-    e.preventDefault()
-
-    const objectUrl = URL.createObjectURL(file)
-    const img = new Image()
-    img.onload = () => {
-      try {
-        const maxDimension = 1024
-        const scale = Math.min(1, maxDimension / img.width, maxDimension / img.height)
-        const targetWidth = Math.round(img.width * scale)
-        const targetHeight = Math.round(img.height * scale)
-
-        const canvas = document.createElement('canvas')
-        canvas.width = targetWidth
-        canvas.height = targetHeight
-
-        const ctx = canvas.getContext('2d')
-        if (!ctx) return
-
-        ctx.drawImage(img, 0, 0, targetWidth, targetHeight)
-        // onScreenshotCaptured returns void | Promise<void>. The caller
-        // (ChatPane.handleScreenshotCaptured) does work after the upload's
-        // try/finally, so a future throw there would surface here as an
-        // unhandled rejection if we discarded the returned promise.
-        const capture = onScreenshotCaptured(canvas.toDataURL('image/jpeg', 0.75))
-        if (capture instanceof Promise) {
-          capture.catch((err: unknown) =>
-            logger.error('chat-input.screenshot-captured.unexpected', {
-              error: err instanceof Error ? err.message : String(err)
-            })
-          )
-        }
-      } finally {
-        URL.revokeObjectURL(objectUrl)
-      }
-    }
-    img.onerror = () => URL.revokeObjectURL(objectUrl)
-    img.src = objectUrl
-  }
-
   function handleDragEnter(e: React.DragEvent<HTMLDivElement>) {
     if (!canStageFiles || !e.dataTransfer.types.includes('Files')) return
     e.preventDefault()
@@ -426,6 +323,22 @@ export default function ChatInput({
     onStageFiles(files)
   }
 
+  // PromptBox passes an image-only data URL (JPEG, ≤1024px longer edge) — no
+  // extra resizing/canvas work needed here. We coerce the void-or-Promise
+  // return so we can surface paste-time upload errors via the same channel as
+  // the attachment-menu flow without leaking a floating Promise.
+  const handleScreenshotPaste = useCallback((dataUrl: string) => {
+    const result = onScreenshotCaptured?.(dataUrl)
+    if (result instanceof Promise) {
+      void result.catch((err: unknown) => {
+        logger.error('chat-input.screenshot-paste.unexpected', {
+          message: err instanceof Error ? err.message : String(err),
+        })
+        onUploadError?.()
+      })
+    }
+  }, [onScreenshotCaptured, onUploadError])
+
   const canSubmit = Boolean(inputValue?.trim())
 
   function getPlaceholder() {
@@ -434,51 +347,275 @@ export default function ChatInput({
     return t('builder_chatinput_ask_airo');
   }
 
-  const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'ArrowUp') {
-      if (textareaRef.current && handleArrowUp(textareaRef.current)) {
-        e.preventDefault()
-      }
-      return
-    }
-    if (e.key === 'ArrowDown') {
-      if (textareaRef.current && handleArrowDown(textareaRef.current)) {
-        e.preventDefault()
-      }
-      return
-    }
-    if (handleModifierEnterNewline(e, {
-      currentValue: inputValue,
-      onValueChange: (nextValue) => {
-        exitNavigationMode()
-        onInputChange(nextValue)
-      },
-    })) {
-      return
-    }
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      if (
-        canSubmit &&
-        uploadingStagedFileIds.length === 0 &&
-        !((isStreaming || isAwaitingStream) && onStopGeneration)
-      ) {
-        handleSend()
-      }
-    }
+  // Drives PromptBox's `disabled` prop. `isListening` and `isBudgetExceeded`
+  // are now native PromptBox props and excluded here so that PromptBox can
+  // render the appropriate read-only state without conflicting with `disabled`.
+  // `uploadingStagedFileIds` blocks submit only (not typing); enforced via the
+  // action-button DOM toggle in syncActionButtonAttrs.
+  const isPromptDisabled =
+    Boolean(isDisabled) && !isStreaming
+
+  const submitGated =
+    !canSubmit ||
+    uploadingStagedFileIds.length > 0 ||
+    (isAwaitingStream && !isStreaming && !onStopGeneration)
+
+  function handlePromptSubmit(_value: string) {
+    if (uploadingStagedFileIds.length > 0) return
+    if ((isStreaming || isAwaitingStream) && onStopGeneration) return
+    handleSend()
   }
 
-  const cardClassName = `flex flex-col p-1.5 mb-px bg-intents-ux-box-backgroundColor shadow-md rounded-lg focus-within:ring-1 focus-within:ring-ai-light${
-    isFileDragOver ? ' ring-2 ring-ai-light ring-offset-1' : ''
-  }`
+  // PromptBox's controlled-mode handleStop calls `onChange("")` synchronously
+  // right after `onStop`. If we let that "" propagate to the parent, our
+  // controlled value flips to "" and ExternalSyncPlugin's explicit-clear runs:
+  // editor is wiped, mentions are removed, `onMentionRemoved` cascades, and
+  // `handleMentionRemoved` (seeing `aiEditContextsRef` still populated)
+  // silently calls `onRemoveAiEditContext` for every chip — wiping the
+  // parent's `aiEditContexts`.
+  //
+  // Fix: set a ref-only flag for the synchronous duration of the stop flow
+  // and have the PromptBox `onChange` swallow the "" while it's set. The
+  // parent's value never changes, ExternalSyncPlugin sees no diff, and the
+  // editor (text + mentions) stays intact. The flag is cleared in a
+  // microtask — `onChange("")` runs synchronously inside the same event
+  // handler, before any microtask fires.
+  function handlePromptStop() {
+    if (!isStreaming) return
+    logClickEvent('develop.prompt.stop', clickContext)()
+    isStopFlowRef.current = true
+    onStopGeneration?.()
+    queueMicrotask(() => { isStopFlowRef.current = false })
+  }
+
+  // History-nav callbacks — return true to consume the keypress. The hook
+  // already supports the Lexical path (pass null; caller pre-checks position).
+  const handlePromptArrowUp = useCallback((cursorAtStart: boolean) => {
+    if (!cursorAtStart) return false
+    return handleArrowUp(null)
+  }, [handleArrowUp])
+
+  const handlePromptArrowDown = useCallback((cursorAtEnd: boolean) => {
+    if (!cursorAtEnd) return false
+    return handleArrowDown(null)
+  }, [handleArrowDown])
+
+  // Mention chip sync: keeps the editor's element-mention nodes in lockstep
+  // with `aiEditContexts`. We hold a ref of which numbers we've inserted so
+  // we can diff each render: insert new ones, remove obsolete ones. The
+  // `onMentionRemoved` callback distinguishes user-driven removals (chip ✕,
+  // backspace) from programmatic ones by checking whether the number is still
+  // in the parent's state.
+  const editedMentionNumbersRef = useRef<Set<number>>(new Set())
+  // Inline-hydrated so render-vs-effect ordering can't desync the chip-removed
+  // discriminator: a chip ✕ click that fires onMentionRemoved during the same
+  // commit must see the latest aiEditContexts, not a stale ref from an effect
+  // that hasn't run yet.
+  const aiEditContextsRef = useRef(aiEditContexts)
+  aiEditContextsRef.current = aiEditContexts
+
+  useEffect(function syncMentionChips() {
+    const handle = promptBoxRef.current
+    if (!handle) return
+
+    const desired = isMultiElementSelect
+      ? aiEditContexts.filter((c): c is AiEditContext & { number: number } => c.number != null)
+      : []
+    const desiredNumbers = new Set(desired.map(c => c.number))
+    const tracked = editedMentionNumbersRef.current
+
+    // Each insert/remove is wrapped in try/catch: a single Lexical-side
+    // failure (e.g. the editor was unmounted mid-effect) shouldn't permanently
+    // desync the diff for the remaining chips.
+    for (const ctx of desired) {
+      if (!tracked.has(ctx.number)) {
+        try {
+          handle.insertElementMention(ctx.number, ctx.elementInfo.tagName)
+          tracked.add(ctx.number)
+        } catch (err: unknown) {
+          logger.error('chat-input.mention-chip.insert-failed', {
+            number: ctx.number,
+            tagName: ctx.elementInfo.tagName,
+            message: err instanceof Error ? err.message : String(err),
+          })
+        }
+      }
+    }
+
+    for (const num of Array.from(tracked)) {
+      if (!desiredNumbers.has(num)) {
+        try {
+          handle.removeElementMention(num)
+          tracked.delete(num)
+        } catch (err: unknown) {
+          logger.error('chat-input.mention-chip.remove-failed', {
+            number: num,
+            message: err instanceof Error ? err.message : String(err),
+          })
+        }
+      }
+    }
+  }, [aiEditContexts, isMultiElementSelect])
+
+  const handleMentionRemoved = useCallback((num: number) => {
+    // Programmatic removal — parent's state already reflects it. No-op.
+    if (!aiEditContextsRef.current.some(c => c.number === num)) return
+    editedMentionNumbersRef.current.delete(num)
+    onRemoveAiEditContext?.(num)
+  }, [onRemoveAiEditContext])
+
+  // Restore id/data-testid on the inner Lexical contenteditable so test
+  // selectors and shortcutFocus's `#chat-input-textarea` lookup keep working,
+  // and bind the Modifier+Enter newline listener. We share a single
+  // MutationObserver so both side-effects survive any future remount of the
+  // contenteditable (e.g. PromptBox swapping its inner Lexical instance):
+  // every time the matching node appears under the composer card, retag and
+  // re-bind. PromptBox owns the editor's `id` (auto-generated via useId), so
+  // overriding is safe — the auto-id is not used for label association in
+  // PromptBox 6.0.
+  //
+  // Refs so the keydown listener sees fresh values without re-binding
+  // (inputValue / onInputChange change frequently).
+  const inputValueRef = useRef(inputValue)
+  inputValueRef.current = inputValue
+  const onInputChangeRef = useRef(onInputChange)
+  onInputChangeRef.current = onInputChange
+
+  useLayoutEffect(function tagAndBindInnerEditor() {
+    const card = composerCardRef.current
+    if (!card) return
+
+    let currentEditor: HTMLElement | null = null
+
+    // Modifier+Enter (Alt/Meta/Ctrl) → insert newline. PromptBox 6.0's
+    // KeyboardPlugin only treats Shift+Enter as newline; every other modifier
+    // submits. We capture-phase intercept and splice "\n" into `inputValue`
+    // at the caret position derived from window.getSelection(), then let
+    // ExternalSyncPlugin rebuild the editor with the new content. Tracked
+    // for upstream removal in DF-4879.
+    function onKeyDown(e: KeyboardEvent): void {
+      if (e.key !== 'Enter') return
+      if (!(e.altKey || e.metaKey || e.ctrlKey)) return
+      if (e.shiftKey) return // Shift+Enter is already a newline; don't double-handle.
+      e.preventDefault()
+      e.stopPropagation()
+      // WARNING: silences future same-element listeners (PromptBox's submit
+      // listener registers later via Lexical's KeyboardPlugin and would also
+      // see this Enter). Remove together with this whole shim under DF-4879.
+      e.stopImmediatePropagation()
+
+      const editor = currentEditor
+      const current = inputValueRef.current
+      const sel = window.getSelection()
+      let offset = current.length
+      let usedSelection = false
+      if (sel && sel.rangeCount > 0 && editor) {
+        const range = sel.getRangeAt(0)
+        if (editor.contains(range.startContainer)) {
+          const preRange = document.createRange()
+          preRange.selectNodeContents(editor)
+          preRange.setEnd(range.startContainer, range.startOffset)
+          offset = preRange.toString().length
+          usedSelection = true
+        }
+      }
+      if (!usedSelection) {
+        // Selection isn't inside the editor (focus moved during the keydown,
+        // or window.getSelection() is empty). Falling back to end-of-buffer
+        // is correct for the focused-but-empty case but worth a breadcrumb if
+        // it shows up unexpectedly.
+        logger.warn('chat-input.modifier-enter.selection-out-of-editor', {
+          hasSelection: Boolean(sel && sel.rangeCount > 0),
+        })
+      }
+
+      const next = current.slice(0, offset) + '\n' + current.slice(offset)
+      onInputChangeRef.current(next)
+    }
+
+    function attach(editor: HTMLElement): void {
+      if (currentEditor === editor) return
+      detach()
+      currentEditor = editor
+      editor.id = 'chat-input-textarea'
+      editor.setAttribute('data-testid', 'chat-input-textarea')
+      editor.addEventListener('keydown', onKeyDown, { capture: true })
+    }
+
+    function detach(): void {
+      if (!currentEditor) return
+      currentEditor.removeEventListener('keydown', onKeyDown, { capture: true })
+      currentEditor = null
+    }
+
+    function syncFromDOM(): void {
+      const editor = findPromptBoxEditor(card)
+      if (!editor) {
+        detach()
+        return
+      }
+      attach(editor)
+    }
+
+    syncFromDOM()
+    const observer = new MutationObserver(syncFromDOM)
+    observer.observe(card, { childList: true, subtree: true })
+    return () => {
+      observer.disconnect()
+      detach()
+    }
+  }, [])
+
+  // After history navigation, ExternalSyncPlugin rebuilds the editor with the
+  // recalled message but doesn't move the caret to the end. Without this, a
+  // 2nd ArrowUp would report cursorAtStart=true and continue navigating
+  // instead of being gated. We collapse the DOM Selection to the end of the
+  // editable on every navRevision tick. Tracked for upstream removal in DF-4880.
+  useLayoutEffect(function moveCursorToEndAfterHistoryNav() {
+    if (navRevision === 0) return
+    const editor = findPromptBoxEditor(composerCardRef.current)
+    if (!editor) return
+    const range = document.createRange()
+    range.selectNodeContents(editor)
+    range.collapse(false)
+    const sel = window.getSelection()
+    if (!sel) return
+    sel.removeAllRanges()
+    sel.addRange(range)
+  }, [navRevision])
+
+  // Restore id/data-testid on PromptBox's action button + handle the
+  // awaiting-stream "stop visible but disabled" case + uploads-pending submit
+  // gate. PromptBox has no API for either; we reach into its action wrapper
+  // by class name. We OR `isPromptDisabled` so the action button stays
+  // disabled in the isDisabled / isBudgetExceeded cases too.
+  useLayoutEffect(function syncActionButtonAttrs() {
+    const btn = findPromptBoxActionButton(composerCardRef.current)
+    if (!btn) return
+    const isPending = Boolean((isStreaming || isAwaitingStream) && onStopGeneration)
+    if (isPending) {
+      btn.setAttribute('data-testid', 'chat-stop-button')
+      btn.removeAttribute('id')
+      btn.toggleAttribute('disabled', isAwaitingStream && !isStreaming)
+    } else {
+      btn.setAttribute('data-testid', 'chat-send-button')
+      btn.id = 'chat-send-button'
+      btn.toggleAttribute('disabled', submitGated || isPromptDisabled || Boolean(isBudgetExceeded))
+    }
+  }, [isStreaming, isAwaitingStream, onStopGeneration, submitGated, isPromptDisabled, isBudgetExceeded])
 
   return (
     <div className="px-2 sm:px-3 md:px-0 mt-1 mt-auto pb-1">
       <div id="tour-chat-input" className="relative">
-        <div
+        <FloatingFooter
+          ref={composerCardRef}
           data-chat-composer-card
           data-testid="chat-input-card"
-          className={cardClassName}
+          orientation="vertical"
+          className={cn(
+            'mb-px focus-within:ring-1 focus-within:ring-ai-light',
+            isFileDragOver && 'ring-2 ring-ai-light ring-offset-1',
+          )}
           onDragEnter={handleDragEnter}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
@@ -507,7 +644,9 @@ export default function ChatInput({
             </div>
           )}
 
-          {/* AI Edit Context - element-only (no screenshot) — single-select mode only */}
+          {/* AI Edit Context - element-only (no screenshot) — single-select mode only.
+              Multi-element-select renders mentions inline inside PromptBox via
+              insertElementMention(); see syncMentionChips above. */}
           {!isMultiElementSelect && aiEditContext && !aiEditContext.screenshot && (
             <div className="mb-1">
               <Chip
@@ -569,120 +708,70 @@ export default function ChatInput({
             </div>
           )}
 
-          <div className="flex items-stretch space-x-1">
-            <div className="flex-1">
-              {isMultiElementSelect ? (
-                <LexicalChatEditor
-                  ref={lexicalEditorRef}
-                  inputValue={inputValue}
-                  onInputChange={onInputChange}
-                  onSubmit={handleSend}
-                  canSubmit={canSubmit}
-                  isDisabled={Boolean(isDisabled)}
-                  isStreaming={Boolean(isStreaming)}
-                  isBudgetExceeded={Boolean(isBudgetExceeded)}
-                  isListening={isListening}
-                  uploadingStagedFileIds={uploadingStagedFileIds}
-                  onStopGeneration={onStopGeneration}
-                  onLargePasteDetected={onLargePasteDetected}
-                  onStageFiles={onStageFiles}
-                  onScreenshotCaptured={onScreenshotCaptured}
-                  canStageFiles={canStageFiles}
-                  canAddAsset={canAddAsset}
-                  placeholder={isBudgetExceeded ? t('builder_chatinput_budget_exceeded') : (isDisabled && !isStreaming) ? t('builder_chatinput_processing') : t('builder_chatinput_ask_airo')}
-                  onArrowUp={(cursorAtStart) => cursorAtStart ? handleArrowUp(null) : false}
-                  onArrowDown={(cursorAtEnd) => cursorAtEnd ? handleArrowDown(null) : false}
-                  exitNavigationMode={exitNavigationMode}
-                  onMentionRemoved={onRemoveAiEditContext}
-                />
-              ) : (
-                <textarea
-                  ref={textareaRef}
-                  id="chat-input-textarea"
-                  data-testid="chat-input-textarea"
-                  value={inputValue}
-                  onChange={(e) => {
-                    if (isListening) return
-                    exitNavigationMode()
-                    onInputChange(e.target.value)
-                  }}
-                  onPaste={handlePaste}
-                  onKeyDown={onKeyDown}
-                  placeholder={getPlaceholder()}
-                  rows={1}
-                  disabled={(isDisabled && !isStreaming) || isListening || isBudgetExceeded}
-                  className={`w-full resize-none border-0 focus:ring-0 focus:outline-none text-base md:text-sm chat-input-text placeholder:text-intents-ux-controlVoid-foregroundColor`}
-                />
-              )}
-            </div>
-          </div>
-
-          <div className="flex items-center justify-between pt-1">
-            <div className="flex items-center gap-1">
-              {appId && onStageFiles && (
-                <ChatAttachmentMenu
-                  appId={appId}
-                  onStageFiles={onStageFiles}
-                  onScreenshotCaptured={onScreenshotCaptured}
-                  onFileReferencesSelected={onFileReferencesSelected}
-                  onUploadError={onUploadError}
-                  disabled={(isDisabled && !isStreaming) || isBudgetExceeded || !canAddAsset}
-                />
-              )}
-              <DebugStatsToggleButton />
-              {isChatGaugeEnabled && <UsageGauge appId={appId} />}
-            </div>
-
-            <div className="flex items-center gap-0.5">
-              {isSpeechSupported && (
-                <Button
-                  onClick={() => {
-                    logClickEvent('develop.prompt.speech', clickContext)();
-                    toggleSpeech();
-                  }}
-                  onMouseDown={(e) => e.preventDefault()}
-                  disabled={(isDisabled && !isStreaming) || isBudgetExceeded}
-                  design={isListening ? 'primary' : 'control'}
-                  className={isListening
-                    ? '!bg-intents-ux-feedbackHighContrastCritical-feedbackColor !border-none'
-                    : '!bg-transparent'
-                  }
-                  icon={<MicIcon />}
-                  size="sm"
-                  aria-label={isListening ? t('builder_homepage_hero_stop_listening', undefined, 'Stop listening') : t('builder_chatinput_start_listening', undefined, 'Start listening')}
-                  aria-pressed={isListening}
-                />
-              )}
-              {(isStreaming || isAwaitingStream) && onStopGeneration ? (
-                <Button
-                  data-testid="chat-stop-button"
-                  onClick={() => {
-                    if (!isStreaming) return
-                    logClickEvent('develop.prompt.stop', clickContext)();
-                    onStopGeneration();
-                  }}
-                  disabled={!isStreaming}
-                  aria-label={t('builder_chatinput_stop')}
-                  design="primary"
-                  icon={<StopIcon />}
-                  size="sm"
-                />
-              ) : (
-                <Button
-                  id="chat-send-button"
-                  data-testid="chat-send-button"
-                  onClick={handleSend}
-                  disabled={!canSubmit || (isDisabled && !isStreaming) || isBudgetExceeded || uploadingStagedFileIds.length > 0}
-                  aria-label={t('builder_chatinput_send')}
-                  design="primary"
-                  icon={<SendIcon />}
-                  size="sm"
-                  data-partial="componentAiro"
-                />
-              )}
-            </div>
-          </div>
-        </div>
+          <PromptBox
+            ref={promptBoxRef}
+            appearance="borderless"
+            value={inputValue}
+            onChange={(v) => {
+              // PromptBox.handleStop synchronously fires onChange(""). Swallow
+              // it during the stop-flow window so the typed buffer and mention
+              // chips survive — see handlePromptStop comment for details.
+              if (isStopFlowRef.current && v === '') return
+              if (isListening) return
+              exitNavigationMode()
+              onInputChange(v)
+            }}
+            onSubmit={handlePromptSubmit}
+            onStop={handlePromptStop}
+            pending={Boolean((isStreaming || isAwaitingStream) && onStopGeneration)}
+            disabled={isPromptDisabled}
+            isListening={isListening}
+            isBudgetExceeded={Boolean(isBudgetExceeded)}
+            placeholder={getPlaceholder()}
+            submitLabel={t('builder_chatinput_send')}
+            stopLabel={t('builder_chatinput_stop')}
+            canStageFiles={canStageFiles}
+            onStageFiles={onStageFiles}
+            canAddAsset={canAddAsset && Boolean(onScreenshotCaptured)}
+            onScreenshotCaptured={handleScreenshotPaste}
+            onLargePasteDetected={onLargePasteDetected}
+            onArrowUp={handlePromptArrowUp}
+            onArrowDown={handlePromptArrowDown}
+            onMentionRemoved={handleMentionRemoved}
+            toolbarStart={
+              <div className="flex items-center">
+                {appId && onStageFiles && (
+                  <ChatAttachmentMenu
+                    appId={appId}
+                    onStageFiles={onStageFiles}
+                    onScreenshotCaptured={onScreenshotCaptured}
+                    onFileReferencesSelected={onFileReferencesSelected}
+                    onUploadError={onUploadError}
+                    disabled={(Boolean(isDisabled) && !isStreaming) || Boolean(isBudgetExceeded) || !canAddAsset}
+                  />
+                )}
+                <DebugStatsToggleButton />
+                {isChatGaugeEnabled && <UsageGauge appId={appId} />}
+              </div>
+            }
+            beforeSubmit={isSpeechSupported ? (
+              <Button
+                onClick={() => {
+                  logClickEvent('develop.prompt.speech', clickContext)()
+                  toggleSpeech()
+                }}
+                onMouseDown={(e) => e.preventDefault()}
+                disabled={(Boolean(isDisabled) && !isStreaming) || Boolean(isBudgetExceeded)}
+                design="tertiary"
+                active={isListening}
+                icon={<MicIcon />}
+                size="sm"
+                aria-label={isListening ? t('builder_homepage_hero_stop_listening', undefined, 'Stop listening') : t('builder_chatinput_start_listening', undefined, 'Start listening')}
+                aria-pressed={isListening}
+              />
+            ) : null}
+          />
+        </FloatingFooter>
       </div>
     </div>
   )
