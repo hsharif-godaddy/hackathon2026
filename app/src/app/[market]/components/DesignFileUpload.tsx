@@ -152,9 +152,8 @@ export default function DesignFileUpload({ uploadedFile, onFileChange, onError, 
       />
       <Button
         onClick={() => inputRef.current?.click()}
-        design="control"
         size={isBelowSmBreakpoint ? 'sm' : 'md'}
-        className="cursor-pointer !rounded-full aspect-square !border-none !bg-transparent hover:!bg-intents-ux-boxLowContrast-backgroundColor"
+        data-partial="componentAiro"
         icon={<AttachmentIcon />}
         aria-label={t('builder_common_upload_file')}
         disabled={disabled}
@@ -214,7 +213,7 @@ export function DesignFileUploadCard({ uploadedFile, onRemove, disabled }: { upl
 
 export function DesignFileUploadError({ error }: { error: string }) {
   return (
-    <text.p size={-2} emphasis="critical" className="mt-1 px-1">
+    <text.p size={-2} emphasis="critical" role="alert">
       {error}
     </text.p>
   )

@@ -1,6 +1,5 @@
 'use client';
 
-import clsx from 'clsx';
 import { useMemo } from 'react';
 import { useIntl } from 'react-intl';
 import Button from '@ux/button';
@@ -45,14 +44,16 @@ export function SpeechToggleButton({
       onMouseDown={(e) => e.preventDefault()}
       data-eid={generateClickEID('homepage.prompt.speech')}
       disabled={isLoading || isTyping}
-      design={isListening ? 'primary' : 'control'}
-      className={clsx('cursor-pointer !rounded-full aspect-square !border-none', {
-        '!bg-intents-ux-feedbackHighContrastCritical-feedbackColor': isListening,
-        '!bg-transparent hover:!bg-intents-ux-boxLowContrast-backgroundColor': !isListening,
-      })}
+      design={isListening ? 'primary' : 'tertiary'}
+      className={
+        isListening
+          ? '!bg-intents-ux-feedbackHighContrastCritical-feedbackColor !border-transparent'
+          : undefined
+      }
       icon={<MicIcon />}
       aria-label={ariaLabel}
       size={isBelowSmBreakpoint ? 'sm' : 'md'}
+      data-partial="componentAiro"
     />
   );
 }

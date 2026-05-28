@@ -6,12 +6,11 @@ import '@testing-library/jest-dom';
 import { describe, expect, it, vi } from 'vitest';
 import { screen } from '@testing-library/react';
 
+import { MAX_PROMPT_BYTES } from '@/lib/waf-validation';
 import { renderWithProviders } from '@/tests/test-utils';
 import { PromptCharCount } from './PromptCharCount';
 
-vi.mock('@/hooks/useTranslations', () => ({
-  useTranslations: () => (key: string) => key,
-}));
+const enNumberFormat = new Intl.NumberFormat('en');
 
 vi.mock('@ux/text', () => ({
   text: {
@@ -40,12 +39,34 @@ describe('PromptCharCount', () => {
 
   it('shows the remaining byte count in the visible span', () => {
     renderWithProviders(<PromptCharCount bytesRemaining={15} isOverLimit={false} />);
-    expect(screen.getByText('15')).toBeInTheDocument();
+    expect(
+      screen.getByText(`${enNumberFormat.format(15)} / ${enNumberFormat.format(MAX_PROMPT_BYTES)}`)
+    ).toBeInTheDocument();
   });
 
   it('shows negative count prefixed with minus when over limit', () => {
     renderWithProviders(<PromptCharCount bytesRemaining={-5} isOverLimit={true} />);
-    expect(screen.getByText('-5')).toBeInTheDocument();
+    expect(
+      screen.getByText(`${enNumberFormat.format(-5)} / ${enNumberFormat.format(MAX_PROMPT_BYTES)}`)
+    ).toBeInTheDocument();
+  });
+
+  it('announces remaining count and max in the screen reader text', () => {
+    renderWithProviders(<PromptCharCount bytesRemaining={15} isOverLimit={false} />);
+    expect(
+      screen.getByText(
+        `${enNumberFormat.format(15)} of ${enNumberFormat.format(MAX_PROMPT_BYTES)} characters remaining`
+      )
+    ).toBeInTheDocument();
+  });
+
+  it('announces over-limit count and max in the screen reader text', () => {
+    renderWithProviders(<PromptCharCount bytesRemaining={-5} isOverLimit={true} />);
+    expect(
+      screen.getByText(
+        `${enNumberFormat.format(5)} over the ${enNumberFormat.format(MAX_PROMPT_BYTES)} character limit`
+      )
+    ).toBeInTheDocument();
   });
 
   it('has aria-live="polite" for screen reader announcements', () => {

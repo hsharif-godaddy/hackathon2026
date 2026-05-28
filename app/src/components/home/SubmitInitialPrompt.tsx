@@ -29,11 +29,9 @@ export function SubmitInitialPrompt({
   return (
     <Button
       onClick={onClick}
-      data-partial="componentAiro"
       data-eid={generateClickEID('homepage.prompt.submit')}
       disabled={disabled}
       design="primary"
-      className={`cursor-pointer !rounded-full !border-none${children ? '' : ' aspect-square'}`}
       icon={isLoading ? <Spinner size="sm" /> : icon}
       size={isBelowSmBreakpoint ? 'sm' : 'md'}
       aria-label={
@@ -41,6 +39,7 @@ export function SubmitInitialPrompt({
           ? t('builder_homepage_hero_prompt_button_loading')
           : t('builder_homepage_hero_prompt_button')
       }
+      data-partial="componentAiro"
     >
       {children}
     </Button>

@@ -1,5 +1,5 @@
 import clsx from 'clsx'
-import { forwardRef, useImperativeHandle } from 'react'
+import { forwardRef, useImperativeHandle, useState } from 'react'
 import { FormattedMessage } from 'react-intl'
 import Box from '@ux/box'
 import Button from '@ux/button'
@@ -9,8 +9,8 @@ import { text } from '@ux/text'
 import ExamplesSection from '@/app/[market]/components/HeroExamples'
 import TemplateSelector from '@/app/[market]/components/TemplateSelector'
 import { HeroScrollButton } from '@/components/home/HeroScrollButton'
-import { PromptCharCount } from '@/components/home/PromptCharCount'
 import { PromptErrorAlert } from '@/components/home/PromptErrorAlert'
+import { PromptInputErrors } from '@/components/home/PromptInputErrors'
 import { SpeechToggleButton } from '@/components/home/SpeechToggleButton'
 import { SubmitInitialPrompt } from '@/components/home/SubmitInitialPrompt'
 import { HOMEPAGE_ENGAGEMENT_COHORT_IDS } from '@/experiments/homepage-engagement-variations/cohort-ids'
@@ -67,7 +67,7 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
 
   const promptTextareaRef = useTextareaAutoResize({ displayText })
   const animatedPlaceholder = useAnimatedPlaceholder({ isFocused, displayText, isRTL })
-
+  const [fileUploadError, setFileUploadError] = useState<string | null>(null)
   useImperativeHandle(ref, () => ({
     typeText,
     getFirstInputTime: () => firstInputTimeRef.current
@@ -102,7 +102,7 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
             onMouseLeave={onPromptBoxMouseLeave}
           >
             <Box
-              className="rounded-2xl! p-2 transition-all duration-300 ease-out bg-intents-ux-box-backgroundColor outline-4 outline-solid outline-[rgba(0,0,0,0.15)]"
+              className="p-2 transition-all duration-300 ease-out bg-intents-ux-box-backgroundColor outline-4 outline-solid outline-[rgba(0,0,0,0.15)]"
               elevation="float"
               gap={isBelowSmBreakpoint ? 'sm' : 'md'}
             >
@@ -132,14 +132,18 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
               />
 
               <Box orientation="horizontal" blockAlignChildren="spaceBetween" inlineAlignChildren="end">
-                {/* Character Counter */}
-                <PromptCharCount bytesRemaining={bytesRemaining} isOverLimit={isOverLimit} />
+                <PromptInputErrors
+                  bytesRemaining={bytesRemaining}
+                  isOverLimit={isOverLimit}
+                  fileUploadError={fileUploadError}
+                />
                 {/* Action Buttons Container */}
                 <Box orientation="horizontal" gap="sm">
                   {onFileChange && (
                     <DesignFileUpload
                       uploadedFile={uploadedFile ?? null}
                       onFileChange={onFileChange}
+                      onError={setFileUploadError}
                       disabled={isLoading}
                     />
                   )}
