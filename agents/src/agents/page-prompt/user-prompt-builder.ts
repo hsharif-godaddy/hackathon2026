@@ -262,10 +262,15 @@ export function getSizeCategory(dimensions?: { width: number; height: number }):
   return 'hero-suitable';
 }
 
-/** Top-25 dimensioned asset list rendered as bullet lines. */
+/** Cap on assets included in the prompt. Both renderAssetList and
+ *  categorizeAssets see the same top-N slice so the dimensioned list and
+ *  the bucketed view agree on which assets are in scope. */
+const MAX_ASSETS_IN_PROMPT = 30;
+
+/** Dimensioned asset list (top {@link MAX_ASSETS_IN_PROMPT}) rendered as bullet lines. */
 function renderAssetList(assets: AssetInfo[]): string {
   return assets
-    .slice(0, 25)
+    .slice(0, MAX_ASSETS_IN_PROMPT)
     .map(a => {
       const publicPath = normalizeAssetPath(a.localPath);
       const dims = a.dimensions ? `${a.dimensions.width}x${a.dimensions.height}px` : 'unknown size';
@@ -281,7 +286,7 @@ function renderAssetList(assets: AssetInfo[]): string {
     .join('\n');
 }
 
-/** Bucket up to 30 assets into hero/logo/feature/small/unknown sections. */
+/** Bucket the top {@link MAX_ASSETS_IN_PROMPT} assets into hero/logo/feature/small/unknown sections. */
 export function categorizeAssets(assets: AssetInfo[]): string {
   const heroImages: string[] = [];
   const logoImages: string[] = [];
@@ -289,7 +294,7 @@ export function categorizeAssets(assets: AssetInfo[]): string {
   const smallImages: string[] = [];
   const unknownImages: string[] = [];
 
-  for (const asset of assets.slice(0, 30)) {
+  for (const asset of assets.slice(0, MAX_ASSETS_IN_PROMPT)) {
     const publicPath = normalizeAssetPath(asset.localPath);
     const dims = asset.dimensions
       ? `${asset.dimensions.width}x${asset.dimensions.height}`
