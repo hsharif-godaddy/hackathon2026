@@ -189,63 +189,88 @@ export class MediaSlotTool {
         };
       }
 
-      const primaryUrl = urls[0]!;
-      const alternatives = urls.slice(1);
-      const primaryGettyId = gettyIds[0];
-      const alternativeGettyIds = gettyIds.slice(1);
-
       // Extract thumbnail URL for videos (from Getty's display_sizes)
       const thumbnailUrl = mediaType === 'video' ? searchResult.thumbnailUrl : undefined;
 
-      // Build the slot entry
-      const now = new Date().toISOString();
-      const slotEntry: MediaSlot = {
-        mediaType,
-        currentUrl: primaryUrl,
-        ...(thumbnailUrl && { thumbnailUrl }),
-        searchQuery: query,
-        alternatives,
-        userModified: false,
-        createdAt: now,
-        lastUpdated: now,
-        ...(primaryGettyId && { gettyId: primaryGettyId }),
-        ...(alternativeGettyIds.length > 0 && { alternativeGettyIds }),
-      };
-
-      // Add size if provided (mainly for images)
-      if (size) {
-        slotEntry.requestedSize = {
-          width: size.width,
-          height: size.height,
-          fit: size.fit || 'cover',
-        };
-      }
-
-      // Store search filters (convert arrays to comma-separated strings for manifest)
       const toCommaSeparated = (v: string | string[] | undefined): string | undefined => {
         if (!v) return undefined;
         return Array.isArray(v) ? v.join(',') : v;
       };
 
-      if (orientations) slotEntry.orientations = toCommaSeparated(orientations);
-      if (compositions) slotEntry.compositions = toCommaSeparated(compositions);
-      if (moods) slotEntry.moods = moods.join(',');
-      if (graphicalStyles) slotEntry.graphicalStyles = graphicalStyles.join(',');
-      if (sortOrder) slotEntry.sortOrder = sortOrder;
-      if (color) slotEntry.color = color;
-      if (advancedFilters?.numberOfPeople) slotEntry.numberOfPeople = advancedFilters.numberOfPeople.join(',');
-      if (advancedFilters?.ethnicity) slotEntry.ethnicity = advancedFilters.ethnicity.join(',');
-      if (advancedFilters?.ageOfPeople) slotEntry.ageOfPeople = advancedFilters.ageOfPeople.join(',');
-      if (advancedFilters?.minimumSize) slotEntry.minimumSize = advancedFilters.minimumSize;
+      const buildSlot = (manifest: MediaManifest): MediaSlot => {
+        const deduped = MediaSlotTool.dedupAgainstManifest(manifest, normalizedSlot, urls, gettyIds);
+        if (deduped.skippedCount > 0) {
+          logger.info('media_slot.select.deduped', {
+            ...logContext,
+            skippedCount: deduped.skippedCount,
+            promotedIndex: deduped.skippedCount,
+          });
+        }
+        if (deduped.exhausted) {
+          logger.warn('media_slot.select.dedup_exhausted', {
+            ...logContext,
+            candidateCount: urls.length,
+            manifestSize: Object.keys(manifest).length,
+          });
+        }
+        if (deduped.noSignal) {
+          logger.warn('media_slot.select.dedup_no_signal', {
+            ...logContext,
+            candidateCount: urls.length,
+            manifestSize: Object.keys(manifest).length,
+          });
+        }
 
-      // Update the manifest using the centralized service
+        const primaryUrl = deduped.urls[0]!;
+        const alternatives = deduped.urls.slice(1);
+        const primaryGettyId = deduped.gettyIds[0];
+        const alternativeGettyIds = deduped.gettyIds.slice(1);
+
+        const now = new Date().toISOString();
+        const slotEntry: MediaSlot = {
+          mediaType,
+          currentUrl: primaryUrl,
+          ...(thumbnailUrl && { thumbnailUrl }),
+          searchQuery: query,
+          alternatives,
+          userModified: false,
+          createdAt: now,
+          lastUpdated: now,
+          ...(primaryGettyId && { gettyId: primaryGettyId }),
+          ...(alternativeGettyIds.length > 0 && { alternativeGettyIds }),
+        };
+
+        if (size) {
+          slotEntry.requestedSize = {
+            width: size.width,
+            height: size.height,
+            fit: size.fit || 'cover',
+          };
+        }
+
+        if (orientations) slotEntry.orientations = toCommaSeparated(orientations);
+        if (compositions) slotEntry.compositions = toCommaSeparated(compositions);
+        if (moods) slotEntry.moods = moods.join(',');
+        if (graphicalStyles) slotEntry.graphicalStyles = graphicalStyles.join(',');
+        if (sortOrder) slotEntry.sortOrder = sortOrder;
+        if (color) slotEntry.color = color;
+        if (advancedFilters?.numberOfPeople) slotEntry.numberOfPeople = advancedFilters.numberOfPeople.join(',');
+        if (advancedFilters?.ethnicity) slotEntry.ethnicity = advancedFilters.ethnicity.join(',');
+        if (advancedFilters?.ageOfPeople) slotEntry.ageOfPeople = advancedFilters.ageOfPeople.join(',');
+        if (advancedFilters?.minimumSize) slotEntry.minimumSize = advancedFilters.minimumSize;
+
+        return slotEntry;
+      };
+
       // Skip git commit here since AI selections are auto-committed in batches
-      const manifestResult = await mediaManifestService.setSlot(appId, normalizedSlot, slotEntry, true);
-      if (!manifestResult.success) {
+      const manifestResult = await mediaManifestService.setSlot(appId, normalizedSlot, buildSlot, true);
+      if (!manifestResult.success || !manifestResult.builtSlot) {
         throw new Error(manifestResult.error || 'Failed to update manifest');
       }
 
-      // Build the slot URL
+      const chosenPrimaryUrl = manifestResult.builtSlot.currentUrl;
+      const chosenAlternatives = manifestResult.builtSlot.alternatives;
+
       const slotUrl = mediaType === 'video'
         ? `/airo-assets/videos/${normalizedSlot}`
         : `/airo-assets/images/${normalizedSlot}`;
@@ -254,7 +279,7 @@ export class MediaSlotTool {
         ...logContext,
         slot: normalizedSlot,
         slotUrl,
-        alternativeCount: alternatives.length,
+        alternativeCount: chosenAlternatives.length,
       });
 
       return {
@@ -263,10 +288,10 @@ export class MediaSlotTool {
         slotUrl,
         mediaType,
         searchQuery: query,
-        resolvedUrl: primaryUrl,
+        resolvedUrl: chosenPrimaryUrl,
         ...(thumbnailUrl && { thumbnailUrl }),
-        alternatives,
-        alternativeCount: alternatives.length,
+        alternatives: chosenAlternatives,
+        alternativeCount: chosenAlternatives.length,
       };
     } catch (error) {
       logger.error('media_slot.select.error', {
@@ -282,6 +307,67 @@ export class MediaSlotTool {
         error: `Failed to select media: ${error instanceof Error ? error.message : String(error)}`,
       };
     }
+  }
+
+  /** gettyId-only dedup; setSlot rewrites currentUrl to CDN post-builder so URL equality is cross-call meaningless. */
+  static dedupAgainstManifest(
+    manifest: MediaManifest,
+    currentSlotPath: string,
+    urls: string[],
+    gettyIds: string[]
+  ): {
+    urls: string[];
+    gettyIds: string[];
+    skippedCount: number;
+    exhausted: boolean;
+    noSignal: boolean;
+  } {
+    const usedGettyIds = new Set<string>();
+    for (const [slotPath, slot] of Object.entries(manifest)) {
+      if (slotPath === currentSlotPath) continue;
+      if (slot.gettyId) usedGettyIds.add(slot.gettyId);
+    }
+
+    if (usedGettyIds.size === 0) {
+      return { urls, gettyIds, skippedCount: 0, exhausted: false, noSignal: false };
+    }
+
+    const currentId = gettyIds[0] ?? '';
+    const currentIsKnownDup = currentId !== '' && usedGettyIds.has(currentId);
+
+    if (!currentIsKnownDup) {
+      // Top candidate is fresh or unverifiable — respect agent's choice. Flag noSignal if we couldn't verify.
+      return { urls, gettyIds, skippedCount: 0, exhausted: false, noSignal: currentId === '' };
+    }
+
+    const firstFreshIdx = urls.findIndex((_url, i) => {
+      const id = gettyIds[i] ?? '';
+      return id !== '' && !usedGettyIds.has(id);
+    });
+
+    if (firstFreshIdx === -1) {
+      // Top candidate is a known dup and no confidently-fresh alternative exists — caller will ship a duplicate.
+      return { urls, gettyIds, skippedCount: 0, exhausted: true, noSignal: false };
+    }
+
+    const reorderedUrls = [
+      urls[firstFreshIdx]!,
+      ...urls.slice(0, firstFreshIdx),
+      ...urls.slice(firstFreshIdx + 1),
+    ];
+    const reorderedGettyIds = [
+      gettyIds[firstFreshIdx] ?? '',
+      ...gettyIds.slice(0, firstFreshIdx),
+      ...gettyIds.slice(firstFreshIdx + 1),
+    ];
+
+    return {
+      urls: reorderedUrls,
+      gettyIds: reorderedGettyIds,
+      skippedCount: firstFreshIdx,
+      exhausted: false,
+      noSignal: false,
+    };
   }
 
   /**

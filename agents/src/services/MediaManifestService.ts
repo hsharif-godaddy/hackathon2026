@@ -123,6 +123,8 @@ export interface ManifestOperationResult {
   error?: string;
   manifest?: MediaManifest;
   slot?: MediaSlot;
+  /** Pre-CDN-rewrite snapshot of the chosen slot. */
+  builtSlot?: MediaSlot;
   commitHash?: string;
 }
 
@@ -1356,7 +1358,7 @@ export class MediaManifestService {
   async setSlot(
     appId: string,
     slotName: string,
-    slot: MediaSlot,
+    slotOrBuilder: MediaSlot | ((manifest: MediaManifest) => MediaSlot),
     skipGitCommit: boolean = false
   ): Promise<ManifestOperationResult> {
     const app = this.appRepository.findById(appId);
@@ -1391,6 +1393,10 @@ export class MediaManifestService {
         manifest = {};
       }
 
+      // Builder runs under the lock so callers can dedup against the latest manifest.
+      const slot: MediaSlot =
+        typeof slotOrBuilder === 'function' ? slotOrBuilder(manifest) : slotOrBuilder;
+
       // Preserve createdAt and userModified from existing slot
       const existing = manifest[slotName];
       if (existing) {
@@ -1399,6 +1405,8 @@ export class MediaManifestService {
           slot.userModified = true;
         }
       }
+
+      const builtSlot: MediaSlot = structuredClone(slot);
 
       // Upload Getty images to CDN and replace preview URLs
       if (slot.gettyId) {
@@ -1476,6 +1484,7 @@ export class MediaManifestService {
       return {
         success: true,
         slot,
+        builtSlot,
         manifest,
         commitHash,
       };

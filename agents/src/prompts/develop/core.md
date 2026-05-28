@@ -218,7 +218,7 @@ bg-primary text-primary-foreground
 
 ### Media (Images & Videos)
 
-**IMPORTANT: Check existing slots first!** Before creating a new slot, check the "EXISTING MEDIA SLOTS" section in the project context. If a slot already exists for the location you're working with, UPDATE that slot instead of creating a new one.
+**IMPORTANT: Reuse a slot only when the SUBJECT is the same.** A slot represents a specific subject (this person, this product, this hero) — not a layout role. Update an existing slot when you're changing the image for the same subject. Create a NEW slot when the subject is different, even if the layout role is identical. Two stylists need two slots (`team/jane-doe`, `team/john-smith`), not one shared `team/stylist`. The same applies to products, menu items, testimonials, and any repeating distinct subject.
 
 **Slot Naming - Use Semantic, Descriptive Names:**
 
@@ -235,16 +235,31 @@ Slot names should identify the CONTENT, not just the location. This makes it eas
 
 **Rule:** Only use numbered slots for truly interchangeable items (gallery slides, carousel images). For these, numeric names like `gallery/slide-1` are fine. For distinct items like products, menu items, or team members, use descriptive names based on the item's identity.
 
-**Using existing slots (preferred):**
+**Reuse vs. new slot:**
 
 ```typescript
-// When the user wants to change the hero image and "pages/home/hero" already exists
-// DON'T create a new slot - use the existing one with a new search
+// ✅ REUSE — same subject (the home hero), new image
 media({
-  slot: 'pages/home/hero', // Reuse existing slot name
-  query: 'new search query', // New search terms
+  slot: 'pages/home/hero',
+  query: 'new search query',
   orientations: 'horizontal',
   count: 3,
+});
+
+// ✅ NEW SLOT — different subject (a second stylist), even though the layout role
+// (a stylist card photo) is identical to an existing slot
+media({
+  slot: 'team/john-smith-stylist', // NOT 'team/stylist' reused
+  query: 'professional male hairstylist portrait',
+  orientations: 'vertical',
+  count: 3,
+});
+
+// ❌ WRONG — reusing one slot for multiple distinct people will overwrite the first
+// person's image and produce duplicate images across the page
+media({
+  slot: 'team/stylist', // already used for Jane — DON'T reuse for John
+  query: 'professional male hairstylist portrait',
 });
 ```
 
