@@ -79,6 +79,8 @@ const SocialConnectFlow = memo(function SocialConnectFlow(props: SocialConnectFl
     authUrlError,
     isLoadingAuthUrl,
     onClose: props.onClose,
+    appId: props.appId,
+    onSuccess: props.onSuccess,
     t,
   })
 

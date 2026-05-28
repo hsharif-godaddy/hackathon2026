@@ -122,5 +122,5 @@ Only respond if user asks a follow-up question. The widget has already communica
 Do NOT call this tool when:
 
 - User is asking to CREATE posts (use `socialPostCreate` instead)
-- User wants to connect a platform (use `socialConnect` instead)
+- User wants to connect a platform (load the `social-platform` skill instead)
 - There is no `social_publish_ready` context attachment

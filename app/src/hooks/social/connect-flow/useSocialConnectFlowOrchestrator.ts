@@ -118,14 +118,19 @@ export function useSocialConnectFlowOrchestrator({
   const createConnectionFlow = useCreateAndLinkConnection()
   const linkMutation = useLinkConnection()
 
+  // Facebook uses SocialFlowsConnectWidget which handles its own OAuth —
+  // skip the popup-based OAuth flow entirely for Facebook.
+  const isFacebookPlatform = normalizedPlatform.toLowerCase() === SocialPlatform.FACEBOOK
+
   const shouldProceedToOAuth = useMemo(() => {
+    if (isFacebookPlatform) return false
     if (flowState.forceNewConnection) return true
     if (flowState.step === FlowStep.Auth) return true
     if (flowState.step === FlowStep.ValidatingPermissions) return true
     if (isSelectExistingLoading) return false
     if (flowState.showSelectExisting) return false
     return !currentAssociation && platformConnections.length === 0
-  }, [flowState.forceNewConnection, flowState.step, flowState.showSelectExisting, isSelectExistingLoading, currentAssociation, platformConnections])
+  }, [isFacebookPlatform, flowState.forceNewConnection, flowState.step, flowState.showSelectExisting, isSelectExistingLoading, currentAssociation, platformConnections])
 
   const {
     authUrl,
@@ -169,7 +174,7 @@ export function useSocialConnectFlowOrchestrator({
     platform,
     state,
     handleOAuthSuccess,
-    !autoOpen || flowState.forceNewConnection || flowState.showSelectExisting || isSelectExistingLoading
+    isFacebookPlatform || !autoOpen || flowState.forceNewConnection || flowState.showSelectExisting || isSelectExistingLoading
   )
 
   const handleSelectExisting = useCallback(async (socialId: string) => {

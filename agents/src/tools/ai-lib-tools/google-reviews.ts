@@ -29,7 +29,7 @@ USAGE:
 2. After frontend fetches and returns reviews, call this tool again — it returns the reviews data.
 3. Use the reviews to install and configure the GoogleReviews component.
 
-IMPORTANT: Google Business Profile must be connected first (use socialConnect if not).`,
+IMPORTANT: Google Business Profile must be connected first (load the social-platform skill to connect).`,
   z.object({}),
   async (_input, context) => {
     const agentContext = context as AgentsAppContext;

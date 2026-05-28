@@ -193,7 +193,8 @@ function SocialConnectToolRenderer({
         />
       )
     } else {
-      // Active connection flow
+      // Active connection flow — shows existing connections first,
+      // then opens platform-specific connect flow for new connections
       content = (
         <SocialConnectFlow
           platform={r.platform as string}

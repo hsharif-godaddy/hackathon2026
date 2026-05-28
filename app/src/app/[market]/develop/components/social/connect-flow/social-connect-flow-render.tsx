@@ -3,11 +3,12 @@ import { FlowStep } from '@/hooks/social/connect-flow/useSocialConnectFlowStateM
 import { useTranslations } from '@/hooks/useTranslations'
 import { getErrorMessage } from '@/lib/errors'
 import type { PlatformConfig } from '@/lib/social-platforms'
-import type { EnrichedSocialConnection, SocialConnection } from '@/types/social'
+import { type EnrichedSocialConnection, type SocialConnection,SocialPlatform } from '@/types/social'
 import { SocialAuthPrompt } from './SocialAuthPrompt'
 import { FlowStateType, SocialConnectFlowState } from './SocialConnectFlowState'
 import { SocialConnectionSelector } from './SocialConnectionSelector'
 import { SocialConnectionWarning } from './SocialConnectionWarning'
+import SocialFlowsConnectWidget from './SocialFlowsConnectWidget'
 import { SocialPageSelector } from './SocialPageSelector'
 
 export enum RenderState {
@@ -103,6 +104,8 @@ interface GetRenderConfigParams {
   authUrlError: Error | null
   isLoadingAuthUrl: boolean
   onClose?: () => void
+  appId: string
+  onSuccess?: () => void
   t: ReturnType<typeof useTranslations>
 }
 
@@ -136,6 +139,8 @@ export function getRenderConfig({
   authUrlError,
   isLoadingAuthUrl,
   onClose,
+  appId,
+  onSuccess,
   t
 }: GetRenderConfigParams): RenderConfig {
   switch (renderState) {
@@ -241,7 +246,24 @@ export function getRenderConfig({
         content: <SocialConnectFlowState type={FlowStateType.Error} errorMessage={flowStateError || authPopupErrorMessage} onRetry={isRetryable ? openPopup : undefined} onClose={onClose} />
       }
 
-    case RenderState.OAuthPrompt:
+    case RenderState.OAuthPrompt: {
+      const isFacebook = platform.toLowerCase() === SocialPlatform.FACEBOOK
+
+      if (isFacebook && onSuccess) {
+        return {
+          icon: config.Icon,
+          platformName: config.name,
+          content: (
+            <SocialFlowsConnectWidget
+              appId={appId}
+              businessName=""
+              onSuccess={onSuccess}
+              skipLink
+            />
+          )
+        }
+      }
+
       return {
         icon: config.Icon,
         platformName: config.name,
@@ -253,5 +275,6 @@ export function getRenderConfig({
           </>
         )
       }
+    }
   }
 }

@@ -418,6 +418,14 @@ export default makeGasket({
           'https://dashboard.dev-godaddy.com:*',
           'https://dashboard.test-godaddy.com',
           'https://dashboard.test-godaddy.com:*'
+        ],
+        'script-src': [
+          "'self'",
+          'https://img1.wsimg.com'
+        ],
+        'style-src': [
+          "'self'",
+          'https://img1.wsimg.com'
         ]
       }
     }

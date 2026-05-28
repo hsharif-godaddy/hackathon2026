@@ -103,6 +103,7 @@ export const toolRendererRegistry = {
   requestSecrets: SecretsToolRenderer,
   setProjectName: SetProjectNameToolRenderer,
   socialConnect: SocialConnectToolRenderer,
+  'social-platform__socialConnect': SocialConnectToolRenderer,
   skill: SkillToolRenderer,
   publishClient: PublishClientToolRenderer,
   publishing__publish: PublishClientToolRenderer,
