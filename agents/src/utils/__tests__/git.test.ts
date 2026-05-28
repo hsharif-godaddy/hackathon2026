@@ -868,4 +868,70 @@ describe('GitUtils', () => {
       expect(result.stderr).toContain('WebSocket closed unexpectedly');
     });
   });
+
+  describe('getCommitFileStats', () => {
+    it('parses numstat output into entries with added/deleted counts', async () => {
+      mockTasks.runCommandSync.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: '12\t3\tsrc/pages/about.tsx\n0\t0\tpublic/logo.png\n5\t1\tsrc/components/Header.tsx\n',
+        stderr: '',
+        timedOut: false,
+        executionTimeMs: 5,
+        taskId: 'test-task',
+      });
+
+      const result = await gitUtils.getCommitFileStats('/app', 'abc1234');
+
+      expect(result).toEqual([
+        { path: 'src/pages/about.tsx', added: 12, deleted: 3 },
+        { path: 'public/logo.png', added: 0, deleted: 0 },
+        { path: 'src/components/Header.tsx', added: 5, deleted: 1 },
+      ]);
+    });
+
+    it('coerces non-numeric numstat columns (binary `-`) to 0', async () => {
+      mockTasks.runCommandSync.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: '-\t-\tassets/image.png\n',
+        stderr: '',
+        timedOut: false,
+        executionTimeMs: 5,
+        taskId: 'test-task',
+      });
+
+      const result = await gitUtils.getCommitFileStats('/app', 'abc1234');
+
+      expect(result).toEqual([{ path: 'assets/image.png', added: 0, deleted: 0 }]);
+    });
+
+    it('returns [] when the git command fails (e.g. ref unknown)', async () => {
+      mockTasks.runCommandSync.mockResolvedValueOnce({
+        exitCode: 128,
+        stdout: '',
+        stderr: "fatal: bad revision 'abc~99'",
+        timedOut: false,
+        executionTimeMs: 5,
+        taskId: 'test-task',
+      });
+
+      const result = await gitUtils.getCommitFileStats('/app', 'abc1234');
+
+      expect(result).toEqual([]);
+    });
+
+    it('returns [] for an empty/whitespace-only stdout', async () => {
+      mockTasks.runCommandSync.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: '\n   \n',
+        stderr: '',
+        timedOut: false,
+        executionTimeMs: 5,
+        taskId: 'test-task',
+      });
+
+      const result = await gitUtils.getCommitFileStats('/app', 'abc1234');
+
+      expect(result).toEqual([]);
+    });
+  });
 });

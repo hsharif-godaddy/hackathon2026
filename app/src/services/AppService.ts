@@ -318,9 +318,25 @@ export class AppService {
   }
 
   /**
-   * Checkout a specific git commit
+   * Checkout a specific git commit.
+   *
+   * Returns:
+   *  - `pageHint` — a route path for the page that received the largest diff
+   *    in that commit (filename-derived), or `null` if the commit didn't
+   *    touch any page or the response couldn't be parsed.
+   *  - `modulePath` — the source file the hint was derived from (e.g.
+   *    `src/pages/about.tsx`). Sent through to dev-tools so it can resolve
+   *    via the live route registry when the filename heuristic misses
+   *    (skill-installed pages can be mounted at non-filename paths).
+   *
+   * The develop UI uses these to navigate the preview iframe so it doesn't
+   * land on the dev-tools 404 when the user's current path didn't exist yet
+   * at that commit.
    */
-  async checkoutCommit(appId: string, commitHash: string): Promise<void> {
+  async checkoutCommit(
+    appId: string,
+    commitHash: string
+  ): Promise<{ pageHint: string | null; modulePath: string | null }> {
     const apiUrl = await buildDynamicAgentUrl(`apps/${appId}/git/checkout`, appId)
     const response = await agentFetch(apiUrl, {
       siteId: appId,
@@ -331,6 +347,25 @@ export class AppService {
 
     if (!response.ok) {
       throw new Error(`Failed to checkout commit: ${response.status}`)
+    }
+
+    const data = await response.json().catch((error: unknown) => {
+      // The checkout itself succeeded (response.ok); only the body failed
+      // to parse, so don't throw — degrade to "no hint" and let the iframe
+      // sit on its current path. Logged so a malformed agents response
+      // doesn't silently strip page-steering for every checkout.
+      logger.warn('app-service.checkout-commit.parse-failed', {
+        appId,
+        commitHash: commitHash.substring(0, 7),
+        error: error instanceof Error ? error.message : String(error),
+      })
+      return null
+    }) as { pageHint?: unknown; modulePath?: unknown } | null
+    const rawHint = data?.pageHint
+    const rawModule = data?.modulePath
+    return {
+      pageHint: typeof rawHint === 'string' ? rawHint : null,
+      modulePath: typeof rawModule === 'string' ? rawModule : null,
     }
   }
 

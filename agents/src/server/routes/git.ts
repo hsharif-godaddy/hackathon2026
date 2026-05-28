@@ -45,6 +45,72 @@ function parseGitHistoryOffset(value: unknown): number | null {
 }
 
 /**
+ * Map a v8-template page file to its React Router path. Returns null for
+ * non-page files or special files (e.g. `_404.tsx`) that we don't want to
+ * land the iframe on.
+ *
+ * Conventions:
+ *   src/pages/index.tsx             → /
+ *   src/pages/<name>.tsx            → /<name>
+ *   src/pages/<dir>/index.tsx       → /<dir>
+ *   src/pages/<dir>/<name>.tsx      → /<dir>/<name>
+ *   src/pages/_<*>                  → null (private/special)
+ */
+function mapPageFileToRoute(filePath: string): string | null {
+  const match = /^src\/pages\/(.+)\.tsx$/.exec(filePath);
+  if (!match) return null;
+  const segments = match[1]!.split('/');
+  if (segments.some(seg => seg.startsWith('_'))) return null;
+  const last = segments[segments.length - 1]!;
+  const trimmed = last === 'index' ? segments.slice(0, -1) : segments;
+  return '/' + trimmed.join('/');
+}
+
+/** Cap on how far back to walk when looking for page changes. */
+const PAGE_HINT_MAX_COMMITS = 3;
+
+/**
+ * Pick the most likely route the iframe should land on after checking out a
+ * commit, so the preview doesn't 404 on a path that didn't exist yet.
+ *
+ * Walks up to {@link PAGE_HINT_MAX_COMMITS} commits starting at `commitHash`
+ * (target, then `~1`, `~2`, …) and returns the highest-churn page touched by
+ * the first ancestor that modified one, alongside the source file path so
+ * dev-tools can resolve via the live route registry when the filename
+ * heuristic misses (e.g. skill-installed pages mounted at non-filename paths).
+ *
+ * Falling back to ancestors handles commits that only touched components/styles.
+ * If nothing page-shaped is found within the walk, returns `null` for both
+ * fields — the client falls back to leaving the iframe wherever it was. This
+ * is preferable to a fake `/` hint that overwrites the user's current path
+ * with a route that may not exist in this app's route table.
+ */
+async function computePageHint(
+  gitUtils: GitUtils,
+  repoPath: string,
+  commitHash: string,
+): Promise<{ pageHint: string | null; modulePath: string | null }> {
+  for (let depth = 0; depth < PAGE_HINT_MAX_COMMITS; depth++) {
+    const ancestor = depth === 0 ? commitHash : `${commitHash}~${depth}`;
+    const fileStats = await gitUtils.getCommitFileStats(repoPath, ancestor);
+    if (fileStats.length === 0) {
+      // Either the ancestor doesn't exist or git failed (logged inside
+      // getCommitFileStats); either way there's nothing more to walk.
+      break;
+    }
+    const pages = fileStats
+      .map(entry => ({ ...entry, route: mapPageFileToRoute(entry.path) }))
+      .filter((entry): entry is typeof entry & { route: string } => entry.route !== null)
+      .sort((a, b) => (b.added + b.deleted) - (a.added + a.deleted));
+    const top = pages[0];
+    if (top) {
+      return { pageHint: top.route, modulePath: top.path };
+    }
+  }
+  return { pageHint: null, modulePath: null };
+}
+
+/**
  * Get commit history for an app
  * SECURITY: Ownership validation prevents cross-tenant git history access
  */
@@ -525,11 +591,34 @@ router.post('/apps/:id/git/checkout', validateAppOwnership, async (req, res) => 
       warning: 'App is now in detached HEAD state',
     });
 
+    // Hint to the iframe which page the user could land on at this commit
+    // so the preview doesn't 404 when the current path didn't exist yet.
+    // `pageHint` is the filename-derived route guess; `modulePath` is the
+    // source file the guess came from, so dev-tools can cross-check against
+    // its live route registry (skills can mount pages at non-filename paths).
+    let pageHint: string | null = null;
+    let modulePath: string | null = null;
+    try {
+      const gitUtils = new GitUtils(workspace.tasks);
+      const result = await computePageHint(gitUtils, app.path, commitHash);
+      pageHint = result.pageHint;
+      modulePath = result.modulePath;
+    } catch (error) {
+      // Hint is best-effort; never fail the checkout because we couldn't
+      // compute it. Client treats null as "leave the iframe alone".
+      contextLogger.warn('route.git.checkout.page-hint-failed', {
+        message: 'Failed to compute page hint',
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+
     return res.json({
       success: true,
       message: `Checked out commit ${commitHash}`,
       previousBranch: currentBranch,
-      isDetachedHead: true
+      isDetachedHead: true,
+      pageHint,
+      modulePath,
     });
   } catch (error) {
     const contextLogger = log.forApp(req.params.id!);

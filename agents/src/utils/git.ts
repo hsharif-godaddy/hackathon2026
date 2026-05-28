@@ -614,6 +614,62 @@ export class GitUtils {
   }
 
   /**
+   * Return the files touched by a single commit, each with its added/deleted
+   * line counts. Wraps `git show --numstat --format= <hash>`. Files with
+   * binary changes report `0/0` here (numstat emits `-/-`, which we coerce
+   * to 0).
+   *
+   * Returns `[]` when the ref can't be resolved, so callers can degrade
+   * gracefully without aborting the surrounding flow.
+   */
+  async getCommitFileStats(
+    repoPath: string,
+    commitHash: string,
+    options: GitCommandOptions = {}
+  ): Promise<Array<{ path: string; added: number; deleted: number }>> {
+    const result = await this.executeGitCommand(
+      ['--no-pager', 'show', '--numstat', '--format=', commitHash],
+      repoPath,
+      options,
+    );
+
+    if (!result.success) {
+      // Could be an unresolved ref (~N walked past root), a corrupt repo, or
+      // a transient supervisor error. Callers (e.g. `computePageHint`) treat
+      // [] as "stop walking", which is the right behavior in all cases —
+      // but silent failure makes "wrong page hint" tickets unfixable. Warn
+      // once so the cause shows up in logs.
+      logger.warn('git.getCommitFileStats.failed', {
+        commitHash: commitHash.substring(0, 7),
+        exitCode: result.exitCode,
+        stderr: result.stderr.slice(0, 500),
+      });
+      return [];
+    }
+
+    return result.stdout
+      .split('\n')
+      .map(line => line.trim())
+      .filter(line => line.length > 0)
+      .map(line => {
+        // numstat lines: `<added>\t<deleted>\t<path>`. On renames git emits
+        // the path either inline as `old/{a => b}` (no tab in the path field)
+        // or as two tab-separated columns `<old>\t<new>` — `pathParts.join`
+        // collapses the latter into a single string with a literal tab,
+        // which is harmless for downstream filename matching.
+        const [addedRaw, deletedRaw, ...pathParts] = line.split('\t');
+        const added = Number.parseInt(addedRaw ?? '', 10);
+        const deleted = Number.parseInt(deletedRaw ?? '', 10);
+        return {
+          path: pathParts.join('\t'),
+          added: Number.isFinite(added) ? added : 0,
+          deleted: Number.isFinite(deleted) ? deleted : 0,
+        };
+      })
+      .filter(entry => entry.path.length > 0);
+  }
+
+  /**
    * Get the last commit info
    */
   async getLastCommit(repoPath: string, options: GitCommandOptions = {}): Promise<GitCommitInfo | null> {

@@ -61,14 +61,24 @@ const MAX_IFRAME_BOOTSTRAP_RETRIES = 3
  * Restore iframe state (URL and scroll position) via postMessage.
  * The preview iframe is always cross-origin, so direct contentWindow access is not possible.
  *
+ * `modulePath` is the source file for which we want to land on the
+ * registered route — used by dev-tools to resolve via its live React Router
+ * registry when the filename heuristic in `url` would miss (skill-installed
+ * pages mount at non-filename paths). Dev-tools prefers the resolved route
+ * over `url` when both are present.
+ *
  * @param iframe - The iframe element to restore state on
- * @param state - The state to restore containing url and scrollPosition
+ * @param state - The state to restore containing url, scrollPosition, modulePath
  */
 export function restoreIframeState(
   iframe: HTMLIFrameElement,
-  state: { url?: string; scrollPosition?: { x: number; y: number } }
+  state: {
+    url?: string
+    scrollPosition?: { x: number; y: number }
+    modulePath?: string
+  }
 ) {
-  if (!state.url && !state.scrollPosition) {
+  if (!state.url && !state.scrollPosition && !state.modulePath) {
     return
   }
 
@@ -76,7 +86,8 @@ export function restoreIframeState(
     postMessageToIframe(iframe, {
       type: 'RESTORE_STATE_AFTER_REFRESH',
       url: state.url,
-      scrollPosition: state.scrollPosition
+      scrollPosition: state.scrollPosition,
+      modulePath: state.modulePath,
     })
   } catch (error) {
     logger.error('preview-pane.state-restore.failure', {
@@ -612,6 +623,63 @@ export default function PreviewPane({
     }
   }, [])
 
+  // After a git checkout, useGitStore dispatches `preview-navigate-after-checkout`
+  // with the page that was being worked on at that commit (largest diff in
+  // src/pages/). Steer the iframe there so it doesn't land on the dev-tools
+  // 404 when the user's current path didn't exist yet at the older commit.
+  //
+  // We use `restoreIframeState` so dev-tools drives React Router via
+  // originalPushState + popstate instead of swapping `iframe.src`. The src
+  // swap works but produces a visible iframe reload flash; this path updates
+  // the route in-place and lets the post-checkout Vite HMR apply over it.
+  //
+  // `modulePath` is forwarded so dev-tools can re-resolve via its live route
+  // registry when the filename-derived `path` would miss (e.g. skill pages
+  // mounted at non-filename routes). Dev-tools prefers the resolved route.
+  //
+  // If the iframe hasn't bootstrapped yet (post-checkout HMR may have torn
+  // it down), we stash the hint in a ref and re-apply on IFRAME_READY rather
+  // than dropping it on the floor.
+  const pendingCheckoutHintRef = useRef<{
+    path: string | null
+    modulePath: string | null
+  } | null>(null)
+
+  const applyCheckoutHint = useCallback(
+    (hint: { path: string | null; modulePath: string | null }) => {
+      const iframe = iframeRef.current
+      if (!iframe) return false
+      restoreIframeState(iframe, {
+        url: hint.path ?? undefined,
+        modulePath: hint.modulePath ?? undefined,
+        scrollPosition: { x: 0, y: 0 },
+      })
+      return true
+    },
+    []
+  )
+
+  useEffect(() => {
+    function handleNavigateAfterCheckout(event: Event) {
+      const detail = (event as CustomEvent<{
+        appId: string
+        path: string | null
+        modulePath: string | null
+      }>).detail
+      if (!detail || detail.appId !== appId) return
+      const hint = { path: detail.path, modulePath: detail.modulePath }
+      // Try once; if the iframe hasn't bootstrapped yet (e.g. checkout-driven
+      // HMR is in flight), stash for the IFRAME_READY handler to replay.
+      if (!iframeBootstrapped || !applyCheckoutHint(hint)) {
+        pendingCheckoutHintRef.current = hint
+      }
+    }
+    window.addEventListener('preview-navigate-after-checkout', handleNavigateAfterCheckout)
+    return () => {
+      window.removeEventListener('preview-navigate-after-checkout', handleNavigateAfterCheckout)
+    }
+  }, [appId, applyCheckoutHint, iframeBootstrapped])
+
   // Listen for file save events and preview refresh requests to auto-refresh preview
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
@@ -654,6 +722,15 @@ export default function PreviewPane({
         // preview app's own script ran, which means the iframe didn't
         // end up on a builder-redirect or CSP-block.
         setIframeBootstrapped(true)
+
+        // Drain any pending checkout hint that arrived before the iframe
+        // had a message listener installed. Clearing the ref unconditionally
+        // keeps the pending hint at most one cycle old.
+        const pendingHint = pendingCheckoutHintRef.current
+        pendingCheckoutHintRef.current = null
+        if (pendingHint) {
+          applyCheckoutHint(pendingHint)
+        }
 
         // Send devtools translations to iframe
         // Filter and send only keys starting with "devtools_"
@@ -805,7 +882,7 @@ export default function PreviewPane({
         scrollRestoreTimerRef.current = null
       }
     }
-  }, [serverState?.isReady, isWaitingForIframeReady])
+  }, [serverState?.isReady, isWaitingForIframeReady, applyCheckoutHint])
 
   // Bootstrap-race recovery: if the iframe hasn't signalled IFRAME_READY
   // within the timeout, the most likely cause is the preview_auth cookie

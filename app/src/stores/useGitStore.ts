@@ -35,19 +35,27 @@ interface GitStore {
   commitSelectionError: string | null
   
   /**
-   * Select a commit and sync the app to that commit
-   * 
+   * Select a commit and sync the app to that commit.
+   *
+   * Resolves with `{ pageHint, modulePath }`:
+   *  - `pageHint` — a route path for the page that received the largest diff
+   *    in that commit (filename-derived), or `null` if no page was touched.
+   *  - `modulePath` — the source file the hint came from. Forwarded to
+   *    dev-tools so it can re-resolve via the live route registry when the
+   *    filename heuristic misses (skill-installed pages).
+   *
+   * Callers use these to steer the preview iframe so it doesn't 404.
+   *
    * @param appId - Application ID
    * @param commitHash - Git commit hash to sync to
-   * @returns Promise that resolves when sync completes
-   * 
+   *
    * @example
    * ```typescript
    * const selectCommit = useGitStore((state) => state.selectCommit)
-   * await selectCommit('app-123', 'abc123def456')
+   * const { pageHint } = await selectCommit('app-123', 'abc123def456')
    * ```
    */
-  selectCommit: (appId: string, commitHash: string) => Promise<void>
+  selectCommit: (appId: string, commitHash: string) => Promise<{ pageHint: string | null; modulePath: string | null }>
   
   /**
    * Clear any commit selection error
@@ -109,26 +117,50 @@ export const useGitStore = create<GitStore>()(
       
       selectCommit: async (appId, commitHash) => {
         set({ isSelectingCommit: true, commitSelectionError: null })
-        
+
         logger.info('git-store.select-commit.start', {
           appId,
           commitHash: commitHash.substring(0, 7),
         })
-        
+
         try {
           // Perform the checkout operation
-          await appService.checkoutCommit(appId, commitHash)
-          
+          const { pageHint, modulePath } = await appService.checkoutCommit(appId, commitHash)
+
           // Update selection state
           set((state) => {
             state.selectedCommitHashByApp[appId] = commitHash
             state.isSelectingCommit = false
           })
-          
+
           logger.info('git-store.select-commit.success', {
             appId,
             commitHash: commitHash.substring(0, 7),
+            pageHint,
+            modulePath,
           })
+
+          // Steer the preview iframe to the page that received the largest
+          // diff in this commit so it doesn't land on the dev-tools 404 when
+          // the user's current path didn't exist yet at that commit.
+          // PreviewPane listens for this event.
+          //
+          // Dispatch even when `pageHint` is null as long as we have a
+          // `modulePath`: dev-tools can still resolve via its route registry
+          // (skill-installed pages mount at non-filename paths). PreviewPane
+          // only suppresses dispatch when both are missing.
+          if ((pageHint || modulePath) && typeof window !== 'undefined') {
+            window.dispatchEvent(
+              new CustomEvent<{ appId: string; path: string | null; modulePath: string | null }>(
+                'preview-navigate-after-checkout',
+                {
+                  detail: { appId, path: pageHint, modulePath },
+                }
+              )
+            )
+          }
+
+          return { pageHint, modulePath }
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : 'Failed to checkout commit'
           

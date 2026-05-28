@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => {
     getCommitDiff: vi.fn(),
     getStashDiff: vi.fn(),
     getBranchTip: vi.fn(),
+    getCommitFileStats: vi.fn(),
     forApp: vi.fn(),
     logError: vi.fn(),
     createForApp: vi.fn(),
@@ -54,6 +55,7 @@ vi.mock('../../../utils/git.js', () => ({
     getCommitDiff: mocks.getCommitDiff,
     getStashDiff: mocks.getStashDiff,
     getBranchTip: mocks.getBranchTip,
+    getCommitFileStats: mocks.getCommitFileStats,
   })),
 }));
 
@@ -126,6 +128,7 @@ describe('git routes', function gitRouteTests() {
       diffTruncated: false,
     });
     mocks.getBranchTip.mockResolvedValue(null);
+    mocks.getCommitFileStats.mockResolvedValue([]);
     mocks.forApp.mockReturnValue({
       info: vi.fn(),
       warn: vi.fn(),
@@ -651,6 +654,135 @@ describe('git routes', function gitRouteTests() {
       expect(response.status).toBe(500);
       expect(response.body.error).toBe('Failed to read diff');
       expect(response.body.details).toBe('git unreachable');
+    });
+  });
+
+  describe('POST /apps/:id/git/checkout pageHint', function checkoutPageHintTests() {
+    beforeEach(function configureCheckoutMocks() {
+      // Default: every git op the route invokes succeeds. Tests override
+      // individual ones (e.g. getCommitFileStats) to exercise specific paths.
+      mocks.executeGitOperation.mockImplementation(async (_path, opts) => {
+        if (opts?.operation === 'branch') return { success: true, currentBranch: 'main' };
+        if (opts?.operation === 'status') return { success: true, status: { isClean: true, stagedFiles: 0, modifiedFiles: 0, untrackedFiles: 0 } };
+        return { success: true };
+      });
+    });
+
+    it('returns the highest-churn page route and modulePath when the target commit touches a page', async function targetCommitTouchesPage() {
+      mocks.getCommitFileStats.mockResolvedValueOnce([
+        { path: 'src/pages/about.tsx', added: 50, deleted: 10 },
+        { path: 'src/components/Header.tsx', added: 5, deleted: 1 },
+        { path: 'src/pages/index.tsx', added: 3, deleted: 1 },
+      ]);
+
+      const response = await request(createTestApp())
+        .post('/apps/app-123/git/checkout')
+        .send({ commitHash: 'abc1234' });
+
+      expect(response.status).toBe(200);
+      expect(response.body.pageHint).toBe('/about');
+      expect(response.body.modulePath).toBe('src/pages/about.tsx');
+      // Only the target commit needed inspection — no walk into ancestors.
+      expect(mocks.getCommitFileStats).toHaveBeenCalledTimes(1);
+    });
+
+    it('walks up to 3 ancestors when the target commit only touched non-page files', async function walksAncestors() {
+      // Target commit: only components, no page.
+      mocks.getCommitFileStats.mockResolvedValueOnce([
+        { path: 'src/components/Footer.tsx', added: 20, deleted: 5 },
+      ]);
+      // ~1: still no page.
+      mocks.getCommitFileStats.mockResolvedValueOnce([
+        { path: 'src/styles/globals.css', added: 4, deleted: 0 },
+      ]);
+      // ~2: page touched — should win.
+      mocks.getCommitFileStats.mockResolvedValueOnce([
+        { path: 'src/pages/contact.tsx', added: 12, deleted: 3 },
+      ]);
+
+      const response = await request(createTestApp())
+        .post('/apps/app-123/git/checkout')
+        .send({ commitHash: 'abc1234' });
+
+      expect(response.status).toBe(200);
+      expect(response.body.pageHint).toBe('/contact');
+      expect(response.body.modulePath).toBe('src/pages/contact.tsx');
+      expect(mocks.getCommitFileStats).toHaveBeenCalledTimes(3);
+    });
+
+    it('maps src/pages/<dir>/index.tsx to /<dir>', async function indexInDirectory() {
+      mocks.getCommitFileStats.mockResolvedValueOnce([
+        { path: 'src/pages/blog/index.tsx', added: 30, deleted: 0 },
+      ]);
+
+      const response = await request(createTestApp())
+        .post('/apps/app-123/git/checkout')
+        .send({ commitHash: 'abc1234' });
+
+      expect(response.body.pageHint).toBe('/blog');
+      expect(response.body.modulePath).toBe('src/pages/blog/index.tsx');
+    });
+
+    it('skips private/special pages (leading underscore) like _404.tsx', async function skipsPrivatePages() {
+      mocks.getCommitFileStats.mockResolvedValueOnce([
+        { path: 'src/pages/_404.tsx', added: 50, deleted: 0 },
+        { path: 'src/pages/_app.tsx', added: 5, deleted: 0 },
+        { path: 'src/components/Nav.tsx', added: 1, deleted: 0 },
+      ]);
+      // No further ancestors with pages.
+      mocks.getCommitFileStats.mockResolvedValue([]);
+
+      const response = await request(createTestApp())
+        .post('/apps/app-123/git/checkout')
+        .send({ commitHash: 'abc1234' });
+
+      expect(response.body.pageHint).toBeNull();
+      expect(response.body.modulePath).toBeNull();
+    });
+
+    it('returns null pageHint and modulePath when no candidate is found within the walk', async function noCandidateFound() {
+      // None of the ancestors touched a page.
+      mocks.getCommitFileStats.mockResolvedValue([
+        { path: 'src/components/Header.tsx', added: 1, deleted: 1 },
+      ]);
+
+      const response = await request(createTestApp())
+        .post('/apps/app-123/git/checkout')
+        .send({ commitHash: 'abc1234' });
+
+      expect(response.status).toBe(200);
+      expect(response.body.pageHint).toBeNull();
+      expect(response.body.modulePath).toBeNull();
+    });
+
+    it('does not fail the checkout when computePageHint throws', async function pageHintFailureNonFatal() {
+      mocks.getCommitFileStats.mockRejectedValue(new Error('git unreachable'));
+
+      const response = await request(createTestApp())
+        .post('/apps/app-123/git/checkout')
+        .send({ commitHash: 'abc1234' });
+
+      // Checkout itself succeeded — page hint failure should not surface.
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(response.body.pageHint).toBeNull();
+      expect(response.body.modulePath).toBeNull();
+    });
+
+    it('treats binary changes (0/0 numstat) as zero churn', async function binaryFiles() {
+      mocks.getCommitFileStats.mockResolvedValueOnce([
+        { path: 'src/pages/gallery.tsx', added: 0, deleted: 0 },
+        { path: 'src/pages/about.tsx', added: 1, deleted: 0 },
+      ]);
+
+      const response = await request(createTestApp())
+        .post('/apps/app-123/git/checkout')
+        .send({ commitHash: 'abc1234' });
+
+      // Highest churn wins; binary-only edits stay tied at 0 and the
+      // single-line edit beats them.
+      expect(response.body.pageHint).toBe('/about');
+      expect(response.body.modulePath).toBe('src/pages/about.tsx');
     });
   });
 

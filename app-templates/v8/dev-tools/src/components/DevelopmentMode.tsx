@@ -4,6 +4,7 @@ import { captureAndResizeScreenshot, captureViewportScreenshot } from '../utils/
 import { useEditMode } from "../hooks/useEditMode";
 import ElementHoverBar from "./ElementHoverBar";
 import { setTranslations } from "../utils/translations";
+import { resolveRouteForModule } from "../route-discovery";
 
 export default function DevelopmentMode() {
   const [isEditModeActive, setIsEditModeActive] = useState(false); // off by default, parent enables via EDIT_MODE_ENABLED message
@@ -649,14 +650,27 @@ export default function DevelopmentMode() {
             }
           }
         } else if (event.data && event.data.type === 'RESTORE_STATE_AFTER_REFRESH') {
-          // Restore URL/navigation first
-          if (event.data.url) {
-            const currentPath = window.location.pathname + window.location.search + window.location.hash
-            if (currentPath !== event.data.url) {
+          // `modulePath`, when present, is the source file the parent wants
+          // us to land on the registered route for. We resolve it against the
+          // live route registry so skill-installed pages (mounted at
+          // non-filename paths) navigate correctly. Falls back to the raw
+          // `url` when the registry can't help.
+          const url: string | null = typeof event.data.url === 'string' ? event.data.url : null
+          const modulePath: string | null =
+            typeof event.data.modulePath === 'string' ? event.data.modulePath : null
+          const currentPath = window.location.pathname + window.location.search + window.location.hash
+          const resolvePromise: Promise<string | null> = (url || modulePath)
+            ? resolveRouteForModule({ url, modulePath }, currentPath).catch((error) => {
+                console.error('Failed to resolve route for checkout hint:', error)
+                return url && url !== currentPath ? url : null
+              })
+            : Promise.resolve(null)
+
+          resolvePromise.then((target) => {
+            if (target && target !== currentPath) {
               try {
                 // Use original pushState to avoid triggering our monkey-patched navigation handler
-                originalPushState(null, '', event.data.url)
-
+                originalPushState(null, '', target)
                 // Dispatch a popstate event to notify React Router of the navigation
                 const popStateEvent = new PopStateEvent('popstate', { state: null })
                 window.dispatchEvent(popStateEvent)
@@ -664,7 +678,7 @@ export default function DevelopmentMode() {
                 console.error('Failed to restore URL:', error)
               }
             }
-          }
+          })
 
           // Then restore scroll position after a delay to ensure page has updated
           if (event.data.scrollPosition) {

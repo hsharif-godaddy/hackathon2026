@@ -375,6 +375,27 @@ function ChatPaneInner({
     setIsVersionHistoryOpen(activeChatTab === ChatTab.HISTORY)
   }, [activeChatTab, setIsVersionHistoryOpen])
 
+  // While browsing history the user can land the iframe on a page that no
+  // longer exists at HEAD (or that exists at HEAD but not at the commit they
+  // last selected). On the way out of the history tab, steer the iframe back
+  // to `/` so the chat view starts from a known-good route. PreviewPane's
+  // existing `preview-navigate-after-checkout` listener handles dispatch via
+  // dev-tools' route registry — if `/` isn't registered the resolver returns
+  // null and the iframe stays put.
+  const previousChatTabRef = useRef<ChatTab>(activeChatTab)
+  useEffect(() => {
+    const previous = previousChatTabRef.current
+    previousChatTabRef.current = activeChatTab
+    if (previous !== ChatTab.HISTORY || activeChatTab === ChatTab.HISTORY) return
+    if (!appId || typeof window === 'undefined') return
+    window.dispatchEvent(
+      new CustomEvent<{ appId: string; path: string | null; modulePath: string | null }>(
+        'preview-navigate-after-checkout',
+        { detail: { appId, path: '/', modulePath: null } }
+      )
+    )
+  }, [activeChatTab, appId])
+
   // Reset funnel tracking when app changes
   useEffect(() => {
     hasLoggedFirstUserMessageRef.current = false
