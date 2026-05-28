@@ -1,0 +1,85 @@
+@tailwind utilities;
+
+/* ---------------------------------------------------------------------------
+ * PromptStage — animated swap container for input surfaces (PromptBox,
+ * ChoiceList, structured forms, etc.).
+ *
+ * Class names use the `airo-input-prompt-stage__<part>` BEM prefix.
+ * Animation timing matches the ChoiceList multi-step convention (0.25s ease-out).
+ * --------------------------------------------------------------------------- */
+
+.airo-input-prompt-stage {
+  position: relative;
+  /* overflow: hidden clips the exit slot's translateY so it doesn't push
+     surrounding layout during the animation. */
+  overflow: hidden;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* Each slot takes the full width. The active slot sizes the container;
+   the exit slot is absolutely positioned on top so it doesn't affect layout. */
+.airo-input-prompt-stage__slot {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* ---------------------------------------------------------------------------
+   Entrance: slides up from below + fades in.
+   --------------------------------------------------------------------------- */
+
+.airo-input-prompt-stage__slot--enter {
+  animation: airo-input-prompt-stage-enter 0.25s ease-out both;
+}
+
+@keyframes airo-input-prompt-stage-enter {
+  from {
+    opacity: 0;
+    transform: translateY(30%);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Exit: slides upward off-screen + fades out. Absolutely positioned so it
+   overlays (not stacks below) the entering slot.
+   --------------------------------------------------------------------------- */
+
+.airo-input-prompt-stage__slot--exit {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline: 0;
+  animation: airo-input-prompt-stage-exit 0.25s ease-out both;
+}
+
+@keyframes airo-input-prompt-stage-exit {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-30%);
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Reduced-motion: skip animations entirely.
+   --------------------------------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  .airo-input-prompt-stage__slot--enter {
+    animation: none;
+  }
+  /* The exit slot is `position: absolute` so it overlays the entering
+     slot during the animation. With animations off we can't fade it
+     away — `display: none` snaps it out immediately so it neither
+     paints over the new content nor remains in the AT tree. */
+  .airo-input-prompt-stage__slot--exit {
+    animation: none;
+    display: none;
+  }
+}

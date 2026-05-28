@@ -1,0 +1,474 @@
+@tailwind utilities;
+
+/* --------------------------------------------------------------------------
+ * ThinkingIndicator — bouncing dots (default), rotating spinner, or GoDaddy
+ * brand mark with a happy-bounce + brand-color breathing cycle.
+ *
+ * BEM prefix: airo-primitives-thinking-indicator
+ * Variants: --dots (default, three staggered bouncing dots),
+ *           --spinner (single rotating circular arc),
+ *           --godaddy (GoDaddy brand mark with happy bounce + brand-color
+ *                      breathing cycle — heavier branded option).
+ *
+ * All three variants share the same root size envelope: `--airo-primitives-
+ * thinking-indicator-dot-size` is driven by the density intent token times an
+ * optional consumer multiplier, so the indicator stays proportional to
+ * surrounding text regardless of variant. The spinner and godaddy variants
+ * render at 3× the dot size internally so a single glyph reads as visually
+ * balanced with the three-dot variant. Stagger for the dots is baked into the
+ * three keyframes so no animation-delay is needed.
+ * ----------------------------------------------------------------------- */
+
+/* Visually-hidden helper for the live-region label text. Keeps the text
+   in the accessibility tree while pulling it off-screen visually. */
+.airo-primitives-thinking-indicator__sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.airo-primitives-thinking-indicator {
+  --airo-primitives-thinking-indicator-density: intent('ux.box.density');
+  /* Size multiplier — consumer can override via the `size` prop (written as an
+     inline custom property on the root span). Default 1 = one density unit. */
+  --airo-primitives-thinking-indicator-size-multiplier: 1;
+  --airo-primitives-thinking-indicator-dot-size: calc(
+    var(--airo-primitives-thinking-indicator-density) *
+    var(--airo-primitives-thinking-indicator-size-multiplier)
+  );
+  --airo-primitives-thinking-indicator-dot-step: calc(
+    var(--airo-primitives-thinking-indicator-dot-size) /
+    12
+  );
+  display: inline-flex;
+}
+
+/* Inline-flex container holding the three dots. Replaces the previous
+   `box.span` with `gap="sm"` (which resolves to `1 * density` and reads
+   "way too far apart" at compact sizes) so we can express the gap as a
+   calc() value tied to `--…-dot-size`. At `size=0.5`, this resolves to
+   `0.25 * density` — the value the design feedback singled out — and
+   the dot-to-gap ratio (1:0.5) stays constant across the size range. */
+.airo-primitives-thinking-indicator__dots {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: flex-end;
+  gap: calc(var(--airo-primitives-thinking-indicator-dot-size) * 0.5);
+}
+
+.airo-primitives-thinking-indicator__dot {
+  display: inline-block;
+  width: var(--airo-primitives-thinking-indicator-dot-size);
+  height: var(--airo-primitives-thinking-indicator-dot-size);
+  border-radius: 9999px;
+  color: intent('ux.feedbackHighContrastHighlight.feedbackColor');
+  background-color: currentColor;
+  animation-duration: 1.2s;
+  animation-timing-function: cubic-bezier(0.4, 0, 0, 1);
+  animation-iteration-count: infinite;
+}
+
+.airo-primitives-thinking-indicator__dot--1 {
+  animation-name: airo-primitives-thinking-indicator-dot-1;
+}
+
+.airo-primitives-thinking-indicator__dot--2 {
+  animation-name: airo-primitives-thinking-indicator-dot-2;
+}
+
+.airo-primitives-thinking-indicator__dot--3 {
+  animation-name: airo-primitives-thinking-indicator-dot-3;
+}
+
+/* --- spinner variant -------------------------------------------------- */
+
+/* The spinner inherits the root color (set on `.airo-primitives-thinking-
+   indicator` via the same intent token the dots use) through `currentColor`
+   on the SVG strokes/fills. Sized off the same `--…-dot-size` custom
+   property as the dots so the `size` prop scales both variants uniformly,
+   then bumped ~3x because a single circular glyph reads smaller than three
+   stacked dots at the same nominal size. */
+.airo-primitives-thinking-indicator__spinner {
+  width: calc(var(--airo-primitives-thinking-indicator-dot-size) * 3);
+  height: calc(var(--airo-primitives-thinking-indicator-dot-size) * 3);
+  color: intent('ux.feedbackHighContrastHighlight.feedbackColor');
+  animation: airo-primitives-thinking-indicator-spin 0.9s linear infinite;
+}
+
+.airo-primitives-thinking-indicator__spinner-track {
+  opacity: 0.25;
+}
+
+.airo-primitives-thinking-indicator__spinner-arc {
+  opacity: 0.85;
+}
+
+/* --- godaddy variant -------------------------------------------------- */
+
+/* Single source of truth for the GoDaddy brand teal — Everyday Blue 400
+   (#1BDBDB). UXCore2 doesn't tokenize brand identity, so the literal
+   lives here as the only hard-coded brand value (same exception that
+   applies to `AiroWordmark`'s gradient stops). Every other brand-teal
+   appearance in the variant is derived from this color via
+   `color-mix(in srgb, …, transparent)`, so a future brand refresh only
+   touches this one custom property — and the cycle's three stops stay
+   in fixed proportional relationships rather than drifting apart over
+   time. Mixing with `transparent` (instead of `white`) means the alpha
+   channel composites against whatever surface sits behind the mark:
+   on a light surface the cycle reads close to the previous
+   tinted-with-white palette; on a dark surface it composites without
+   looking pre-washed against an assumed-white container. (It does not
+   fully fix dark-mode contrast — alpha makes the mark *less* visible
+   on a dark background, not more — but it removes the fixed palette
+   from the brand-system surface area and is the supported brand
+   pattern.) */
+.airo-primitives-thinking-indicator--godaddy {
+  --airo-primitives-thinking-indicator-godaddy-brand: #1bdbdb;
+  --airo-primitives-thinking-indicator-godaddy-brand-rest: color-mix(
+    in srgb,
+    var(--airo-primitives-thinking-indicator-godaddy-brand) 80%,
+    transparent
+  );
+  --airo-primitives-thinking-indicator-godaddy-brand-light: color-mix(
+    in srgb,
+    var(--airo-primitives-thinking-indicator-godaddy-brand) 50%,
+    transparent
+  );
+  /* Pulse-ring stroke width is exposed as a custom property so downstream
+     themes can adjust it without forking the keyframe. The default `1.5px`
+     is the brand-team reference value (anti-aliased ring strokes thinner
+     than ~1px lose definition on standard-DPI displays). It stays a literal
+     pixel value rather than scaling with `--…-dot-size` because the
+     anti-alias floor is a function of the display, not the indicator size. */
+  --airo-primitives-thinking-indicator-godaddy-pulse-ring-stroke: 1.5px;
+}
+
+/* The brand-mark variant composes two stacked layers — a soft pulse-ring
+   radiating outwards (decorative, no semantic meaning) and the brand
+   mark itself doing the happy-bounce + brand-color breathing cycle.
+   Stage establishes the positioning context for both. Sized at 3× the
+   dot-size for the same reason as the spinner — a single glyph reads
+   smaller than three stacked dots at the same nominal size.
+
+   The negative margin compresses the layout footprint so the flow box
+   tracks just the brand mark, not the 3× envelope sized to host the
+   pulse ring. Visual rendering stays unchanged: the stage and the
+   logo glyph still paint at 3× × 3× and the pulse ring expands beyond
+   that via transform — but neighbouring content sits flush against
+   the mark itself. Anchoring works because `__pulse-ring` uses
+   `position: absolute; inset: 0`, so it pins to the stage's box (not
+   the compressed layout extent) and `transform: scale()` doesn't
+   affect layout. Hosts with `overflow: hidden` on a tight ancestor
+   may clip the pulse-ring expansion; that's a deliberate trade-off
+   for not pushing neighbouring content. */
+.airo-primitives-thinking-indicator__logo-stage {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(var(--airo-primitives-thinking-indicator-dot-size) * 3);
+  height: calc(var(--airo-primitives-thinking-indicator-dot-size) * 3);
+  margin: calc(var(--airo-primitives-thinking-indicator-dot-size) * -0.5);
+}
+
+/* Soft pulse-ring radiating outwards behind the logo. The stroke width is
+   driven by `--…-godaddy-pulse-ring-stroke` (default `1.5px`, declared on
+   the godaddy variant scope) so downstream themes can adjust it without
+   forking the keyframe. */
+.airo-primitives-thinking-indicator__pulse-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: var(--airo-primitives-thinking-indicator-godaddy-pulse-ring-stroke) solid
+    var(--airo-primitives-thinking-indicator-godaddy-brand-rest);
+  pointer-events: none;
+  animation: airo-primitives-thinking-indicator-pulse 1.6s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* The brand mark itself. `transform-origin: center bottom` plants it on
+   its baseline so the bounce reads as a jump rather than a centred
+   wobble. Sits above the pulse ring via `z-index` so the ring fades
+   behind the mark instead of cutting across it. */
+.airo-primitives-thinking-indicator__logo {
+  position: relative;
+  z-index: 2;
+  display: inline-block;
+  width: 100%;
+  height: 100%;
+  color: var(--airo-primitives-thinking-indicator-godaddy-brand-rest);
+  transform-origin: center bottom;
+  animation: airo-primitives-thinking-indicator-bounce 1.6s cubic-bezier(0.34, 1.4, 0.64, 1)
+    infinite, airo-primitives-thinking-indicator-brand-color 1.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .airo-primitives-thinking-indicator__dot {
+    animation: none;
+    opacity: 0.8;
+  }
+  .airo-primitives-thinking-indicator__spinner {
+    animation: none;
+  }
+  .airo-primitives-thinking-indicator__logo {
+    /* Freeze both happyBounce and brand-color cycles, hold on the rest
+       teal so the mark stays recognisable even when motion is disabled. */
+    animation: none;
+    color: var(--airo-primitives-thinking-indicator-godaddy-brand-rest);
+  }
+  .airo-primitives-thinking-indicator__pulse-ring {
+    /* Freeze the pulse mid-flight at a low-opacity rest scale, so the
+       ring stays visible as static decoration without competing with
+       the mark for attention. */
+    animation: none;
+    transform: scale(1);
+    opacity: 0.25;
+  }
+}
+
+@keyframes airo-primitives-thinking-indicator-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Each dot rises to a peak ~1× its own size above the rest line, then
+   eases back down to rest without overshooting. The three dots share
+   an identical shape but stagger their peaks (25% / 33.33% / 41.67%)
+   so the wave reads left-to-right. */
+
+@keyframes airo-primitives-thinking-indicator-dot-1 {
+  0% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  8.33% {
+    transform: translateY(calc(var(--airo-primitives-thinking-indicator-dot-step) * -5));
+    opacity: 0.9;
+  }
+  16.67% {
+    transform: translateY(calc(var(--airo-primitives-thinking-indicator-dot-step) * -10));
+    opacity: 0.8;
+  }
+  25% {
+    transform: translateY(calc(var(--airo-primitives-thinking-indicator-dot-step) * -15));
+    opacity: 0.7;
+  }
+  33.33% {
+    transform: translateY(calc(var(--airo-primitives-thinking-indicator-dot-step) * -12));
+    opacity: 0.6;
+  }
+  41.67% {
+    transform: translateY(calc(var(--airo-primitives-thinking-indicator-dot-step) * -8));
+    opacity: 0.5;
+  }
+  50% {
+    transform: translateY(calc(var(--airo-primitives-thinking-indicator-dot-step) * -6));
+    opacity: 0.4;
+  }
+  58.33% {
+    transform: translateY(calc(var(--airo-primitives-thinking-indicator-dot-step) * -4));
+    opacity: 0.5;
+  }
+  66.67% {
+    transform: translateY(calc(var(--airo-primitives-thinking-indicator-dot-step) * -2));
+    opacity: 0.6;
+  }
+  75% {
+    transform: translateY(calc(var(--airo-primitives-thinking-indicator-dot-step) * -1));
+    opacity: 0.7;
+  }
+  83.33% {
+    transform: translateY(0);
+    opacity: 0.8;
+  }
+  100% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes airo-primitives-thinking-indicator-dot-2 {
+  0% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  8.33% {
+    transform: translateY(calc(var(--airo-primitives-thinking-indicator-dot-step) * -3));
+    opacity: 0.9;
+  }
+  16.67% {
+    transform: translateY(calc(var(--airo-primitives-thinking-indicator-dot-step) * -7));
+    opacity: 0.8;
+  }
+  25% {
+    transform: translateY(calc(var(--airo-primitives-thinking-indicator-dot-step) * -12));
+    opacity: 0.7;
+  }
+  33.33% {
+    transform: translateY(calc(var(--airo-primitives-thinking-indicator-dot-step) * -15));
+    opacity: 0.6;
+  }
+  41.67% {
+    transform: translateY(calc(var(--airo-primitives-thinking-indicator-dot-step) * -12));
+    opacity: 0.5;
+  }
+  50% {
+    transform: translateY(calc(var(--airo-primitives-thinking-indicator-dot-step) * -9));
+    opacity: 0.4;
+  }
+  58.33% {
+    transform: translateY(calc(var(--airo-primitives-thinking-indicator-dot-step) * -6));
+    opacity: 0.5;
+  }
+  66.67% {
+    transform: translateY(calc(var(--airo-primitives-thinking-indicator-dot-step) * -4));
+    opacity: 0.6;
+  }
+  75% {
+    transform: translateY(calc(var(--airo-primitives-thinking-indicator-dot-step) * -2));
+    opacity: 0.7;
+  }
+  83.33% {
+    transform: translateY(calc(var(--airo-primitives-thinking-indicator-dot-step) * -1));
+    opacity: 0.8;
+  }
+  91.67% {
+    transform: translateY(0);
+    opacity: 0.9;
+  }
+  100% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes airo-primitives-thinking-indicator-dot-3 {
+  0% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  8.33% {
+    transform: translateY(calc(var(--airo-primitives-thinking-indicator-dot-step) * -1));
+    opacity: 0.9;
+  }
+  16.67% {
+    transform: translateY(calc(var(--airo-primitives-thinking-indicator-dot-step) * -5));
+    opacity: 0.8;
+  }
+  25% {
+    transform: translateY(calc(var(--airo-primitives-thinking-indicator-dot-step) * -8));
+    opacity: 0.7;
+  }
+  33.33% {
+    transform: translateY(calc(var(--airo-primitives-thinking-indicator-dot-step) * -12));
+    opacity: 0.6;
+  }
+  41.67% {
+    transform: translateY(calc(var(--airo-primitives-thinking-indicator-dot-step) * -15));
+    opacity: 0.5;
+  }
+  50% {
+    transform: translateY(calc(var(--airo-primitives-thinking-indicator-dot-step) * -12));
+    opacity: 0.4;
+  }
+  58.33% {
+    transform: translateY(calc(var(--airo-primitives-thinking-indicator-dot-step) * -9));
+    opacity: 0.5;
+  }
+  66.67% {
+    transform: translateY(calc(var(--airo-primitives-thinking-indicator-dot-step) * -6));
+    opacity: 0.6;
+  }
+  75% {
+    transform: translateY(calc(var(--airo-primitives-thinking-indicator-dot-step) * -3));
+    opacity: 0.7;
+  }
+  83.33% {
+    transform: translateY(calc(var(--airo-primitives-thinking-indicator-dot-step) * -1));
+    opacity: 0.8;
+  }
+  91.67% {
+    transform: translateY(0);
+    opacity: 0.9;
+  }
+  100% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+/* Soft pulse-ring radiating outwards behind the brand mark. Scales from
+   a slightly-inset starting position out past the stage bounds while
+   fading completely, so by the time the mark lands its lift the ring
+   has dissolved. Keyframes copied verbatim from the reference codepen. */
+@keyframes airo-primitives-thinking-indicator-pulse {
+  0% {
+    transform: scale(0.85);
+    opacity: 0.55;
+  }
+  60%,
+  100% {
+    transform: scale(1.9);
+    opacity: 0;
+  }
+}
+
+/* "Happy bounce" — the GoDaddy brand mark squashes and stretches as it
+   leaves and lands, then settles. Keyframes copied verbatim from the
+   reference codepen so the motion matches the canonical brand-team timing. */
+@keyframes airo-primitives-thinking-indicator-bounce {
+  0% {
+    transform: scaleX(1) scaleY(1) translateY(0);
+  }
+  10% {
+    transform: scaleX(1) scaleY(1) translateY(0);
+  }
+  20% {
+    transform: scaleX(1.1) scaleY(0.88) translateY(1px);
+  }
+  38% {
+    transform: scaleX(0.92) scaleY(1.12) translateY(-4px);
+  }
+  52% {
+    transform: scaleX(1.08) scaleY(0.92) translateY(0);
+  }
+  64% {
+    transform: scaleX(0.98) scaleY(1.04) translateY(-1px);
+  }
+  74% {
+    transform: scaleX(1) scaleY(1) translateY(0);
+  }
+  100% {
+    transform: scaleX(1) scaleY(1) translateY(0);
+  }
+}
+
+/* Brand-color breathing — the brand teal subtly cycles between three
+   alpha stops in sync with the bounce's lift/land. Drives the SVG path
+   through `currentColor`. The light stop (lift-off, 38%) reads as a
+   washed/airy tint; the impact stop (squash, 52%) reads as the most
+   saturated form of the brand color; rest (0/74/100%) sits between
+   the two. All three stops derive from
+   `--airo-primitives-thinking-indicator-godaddy-brand` so a brand
+   refresh never has to touch the keyframe. */
+@keyframes airo-primitives-thinking-indicator-brand-color {
+  0%,
+  100% {
+    color: var(--airo-primitives-thinking-indicator-godaddy-brand-rest);
+  }
+  38% {
+    color: var(--airo-primitives-thinking-indicator-godaddy-brand-light);
+  }
+  52% {
+    color: var(--airo-primitives-thinking-indicator-godaddy-brand);
+  }
+  74% {
+    color: var(--airo-primitives-thinking-indicator-godaddy-brand-rest);
+  }
+}

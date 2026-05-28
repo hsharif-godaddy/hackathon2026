@@ -1,0 +1,361 @@
+/*
+ * Temporary vendor — `AiroHeader` renders the vendored `SegmentedController`
+ * (see `src/_vendor/segmented-controller/`). Bundle its stylesheet here so
+ * downstream consumers using `@airo-ux/pattern-library/surfaces/panel-chrome/styles`
+ * automatically get the segmented-controller styles. Must precede
+ * `@tailwind` per CSS spec (`@import` rules cannot follow other rules).
+ * Drop this `@import` (and revert `AiroHeader` to import from
+ * `@godaddy/antares`) when antares ships PR #187.
+ */
+@import '../../_vendor/segmented-controller/styles.css';
+
+@tailwind utilities;
+
+/* --------------------------------------------------------------------------
+ * PanelChrome — shared inner UI for every Airo surface (Panel,
+ * FloatingPanel, FullscreenDialog). Owns the header band, scrollable
+ * content region, and sticky footer slide animation. Surface components
+ * provide the host (Disrupt, plain portal, …), positioning (edge,
+ * floating, centered), and outer animation; this stylesheet stays
+ * surface-agnostic.
+ *
+ * Class names use the `airo-surfaces-panel-chrome__<part>` BEM prefix so
+ * they cannot collide with consumer app styles or with surface-specific
+ * positioning rules. All colors and typography flow through
+ * `@ux/postcss-intents` `intent()` calls (resolved at build time) or CSS
+ * variables set by the Theme API.
+ *
+ * Layout model:
+ *
+ * The chrome root is a flex column that fills the space given by its
+ * surface host. The header is absolutely positioned so the scrollable body
+ * flows behind it; the footer is in normal flex flow below the content.
+ * `padding-block-start` is set to the
+ * header's natural (fully-expanded) height via `--airo-pchr-header-h` and
+ * held there even while the header is hidden, so scrollHeight never shrinks
+ * and scrollTop is never clamped. The footer's height is accounted for by
+ * the flex layout — no JS measurement or padding coordination needed.
+ *
+ * Import guidance:
+ *
+ * - `@airo-ux/pattern-library/surfaces/panel/styles` already bundles these chrome
+ *   styles for back-compat, so Panel consumers only need:
+ *
+ *     import '@airo-ux/pattern-library/surfaces/panel/styles';
+ *
+ * - Other surfaces (FloatingPanel, FullscreenDialog, or direct PanelChrome
+ *   usage) must import this stylesheet alongside their own:
+ *
+ *     import '@airo-ux/pattern-library/surfaces/floating-panel/styles';
+ *     import '@airo-ux/pattern-library/surfaces/panel-chrome/styles';
+ * ----------------------------------------------------------------------- */
+
+.airo-surfaces-panel-chrome {
+  --airo-surfaces-panel-chrome-header-shadow: 0 2px 8px rgba(0, 0, 0, 0.08), 0 1px 0
+    rgba(0, 0, 0, 0.05);
+  --airo-surfaces-panel-chrome-footer-shadow: 0 -2px 8px rgba(0, 0, 0, 0.08), 0 -1px 0
+    rgba(0, 0, 0, 0.05);
+
+  display: flex;
+  flex-direction: column;
+  /* Positioned container so the absolutely-placed header is anchored to the
+     chrome bounds, not the nearest fixed/absolute ancestor. */
+  position: relative;
+  outline: none;
+}
+
+/* --------------------------------------------------------------------------
+ * Header — absolutely positioned at the top of the chrome so the scrollable
+ * content flows behind it.
+ *
+ * When `stickyHeader` is on we toggle `--hidden` to collapse the header to
+ * zero height. The animation uses the grid-template-rows trick (1fr → 0fr on
+ * the parent with the child set to overflow: hidden + min-block-size: 0) so
+ * we get a smooth height transition without JS measurement. Content scrolls
+ * freely behind the header — the hide/show transition does not adjust any
+ * content padding or scroll position.
+ * ----------------------------------------------------------------------- */
+
+.airo-surfaces-panel-chrome__header {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline: 0;
+  z-index: 2;
+  backdrop-filter: blur(var(--airo-surfaces-panel-chrome-backdrop-blur, 12px));
+  -webkit-backdrop-filter: blur(var(--airo-surfaces-panel-chrome-backdrop-blur, 12px));
+  background-color: intent('ux.box.backgroundColor');
+  background-color: color-mix(in srgb, intent('ux.box.backgroundColor') 60%, transparent);
+  box-shadow: var(--airo-surfaces-panel-chrome-header-shadow);
+  display: grid;
+  grid-template-rows: 1fr;
+  /* `max-block-size` snaps instantly here (0s duration) so when the header
+   * reappears the slot opens up immediately and the grid-row animation can
+   * expand into it. On hide, the snap is deferred to the end of the
+   * transition — see `--hidden` below. */
+  transition: grid-template-rows 0.2s cubic-bezier(0.2, 0, 0, 1), max-block-size 0s 0s, opacity
+    0.15s cubic-bezier(0.2, 0, 0, 1);
+  will-change: grid-template-rows, opacity;
+}
+
+/* When the surface is draggable we need a positioned context for the handle.
+ * `position: absolute` already creates a containing block, so no extra rule
+ * is needed — this class is kept for selector specificity and future use. */
+.airo-surfaces-panel-chrome__header--draggable {
+  /* position: absolute (inherited from base rule) is the containing block */
+}
+
+/* Ghost header — transparent, no shadow, no backdrop blur. Used when the
+ * real surface header lives outside the panel (e.g. a full-width app bar)
+ * and the in-panel header band is only a drag-handle affordance. */
+.airo-surfaces-panel-chrome__header--ghost {
+  background-color: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  box-shadow: none;
+}
+
+/* --------------------------------------------------------------------------
+ * Drag handle — a small pill centered at the top of the header. Shown only
+ * when the surface is draggable (`dragHandle` prop on PanelChrome).
+ * Opacity fades from 40 % → 100 % when the header is hovered so sighted
+ * users get a clear affordance without permanently cluttering the surface.
+ * `pointer-events: none` keeps the pill from interfering with drag initiation
+ * or click targets inside the header.
+ * ----------------------------------------------------------------------- */
+
+.airo-surfaces-panel-chrome__drag-handle {
+  position: absolute;
+  inset-block-start: calc(intent('ux.box.density') * 0.5);
+  inset-inline-start: 50%;
+  transform: translateX(-50%);
+  inline-size: calc(intent('ux.box.density') * 4);
+  block-size: intent('ux.box.density');
+  border-radius: intent('ux.box.density');
+  background-color: intent('ux.feedbackHighContrastPassive.feedbackColor');
+  opacity: 0.4;
+  transition: opacity 0.2s ease;
+  pointer-events: none;
+}
+
+.airo-surfaces-panel-chrome__header--draggable:hover .airo-surfaces-panel-chrome__drag-handle {
+  opacity: 1;
+}
+
+/* `--sticky` retains the hide-on-scroll JS behavior (header hides on
+ * scroll-down, reveals on scroll-up). Positional stickiness is handled by
+ * the base absolute rule above; this modifier is kept so consumers relying
+ * on the class name for feature detection continue to work. */
+.airo-surfaces-panel-chrome__header--sticky {
+  /* Absolute positioning at inset-block-start: 0 is equivalent to sticky
+     at the top — no additional CSS needed here. */
+}
+
+/* Belt-and-suspenders collapse:
+ * - `grid-template-rows: 0fr` drives the smooth visual shrink in browsers
+ *   that interpolate `fr` values.
+ * - `opacity: 0` masks any sub-pixel residue the grid row may leave behind.
+ * - `max-block-size: 0` snapped in at the *end* of the transition ensures the
+ *   layout box hits zero — avoids any residual click-target or focus-trap.
+ * - `pointer-events: none` keeps the faded corner-actions from intercepting
+ *   clicks on the revealed content.
+ */
+.airo-surfaces-panel-chrome__header--hidden {
+  grid-template-rows: 0fr;
+  max-block-size: 0;
+  opacity: 0;
+  pointer-events: none;
+  overflow: hidden;
+  transition: grid-template-rows 0.2s cubic-bezier(0.2, 0, 0, 1), max-block-size 0s 0.2s, opacity
+    0.15s cubic-bezier(0.2, 0, 0, 1);
+}
+
+.airo-surfaces-panel-chrome__header-body {
+  min-block-size: 0;
+  overflow: hidden;
+  /* Animate padding-block to 0 alongside the grid-row collapse; @ux/box owns
+   * the actual spacing value. Inline padding doesn't contribute to the
+   * collapsing axis so it needs no transition. */
+  transition: padding-block 0.2s cubic-bezier(0.2, 0, 0, 1);
+}
+
+.airo-surfaces-panel-chrome__header--hidden .airo-surfaces-panel-chrome__header-body {
+  padding-block: 0;
+}
+
+/* --------------------------------------------------------------------------
+ * Content — the scrollable body. `flex: 1 1 auto` fills the chrome's
+ * remaining height between the absolutely-positioned header and the in-flow
+ * footer flex child. `padding-block-start` reserves space at the top so the
+ * first content item is clear of the header band; `--airo-pchr-header-h` is
+ * set from JS via ResizeObserver and is intentionally not transitioned — it
+ * is held at the full header height even while the header is hidden, so
+ * scrollHeight never shrinks and scrollTop is never clamped. No end padding
+ * is needed: the in-flow footer takes up its own space in the flex column.
+ * ----------------------------------------------------------------------- */
+
+.airo-surfaces-panel-chrome__content {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-inline: 0;
+  padding-block-start: var(--airo-pchr-header-h, 0px);
+  scroll-behavior: smooth;
+  outline: none;
+}
+
+.airo-surfaces-panel-chrome__content:focus-visible {
+  outline: 2px solid intent('ux.box.outlineColor');
+  outline-offset: -2px;
+}
+
+/* --------------------------------------------------------------------------
+ * Footer — in-flow flex child below the scrollable content. The
+ * grid-template-rows collapse (1fr → 0fr) animates the height to zero when
+ * hidden, matching the header's collapse technique. `flex-shrink: 0`
+ * prevents the footer from compressing when the chrome is height-constrained.
+ * ----------------------------------------------------------------------- */
+
+.airo-surfaces-panel-chrome__footer {
+  flex-shrink: 0;
+  display: grid;
+  grid-template-rows: 1fr;
+  /* `minmax(0, 1fr)` forces the single grid column to the container's
+   * width with a 0 minimum — without it the implicit `auto` column would
+   * size to the footer content's max-content, so a wide child (e.g. a
+   * `SegmentedController` with many segments) would push `__footer-body`
+   * out past the panel edge. The 0 minimum also lets `min-inline-size: 0`
+   * on the grid child take effect so descendants with their own
+   * `max-inline-size: 100%` can actually clamp. */
+  grid-template-columns: minmax(0, 1fr);
+  background-color: intent('ux.box.backgroundColor');
+  box-shadow: var(--airo-surfaces-panel-chrome-footer-shadow);
+  transition: grid-template-rows 0.2s cubic-bezier(0.2, 0, 0, 1);
+  will-change: grid-template-rows;
+}
+
+.airo-surfaces-panel-chrome__footer--hidden {
+  grid-template-rows: 0fr;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+/* Grid child — must be `min-block-size: 0` so the row can collapse below the
+   content's natural height; `min-inline-size: 0` (paired with the
+   `minmax(0, 1fr)` column track) lets oversized inline children
+   (e.g. a wide `SegmentedController`) shrink to fit instead of forcing
+   the body wider than the panel. `overflow: hidden` clips content during
+   the transition so nothing bleeds outside the shrinking row. */
+.airo-surfaces-panel-chrome__footer-body {
+  min-block-size: 0;
+  min-inline-size: 0;
+  overflow: hidden;
+}
+
+/* Floating composer gutter — `footerChrome="floating"`. The band stays
+   transparent with no top inset so `FloatingFooter` / borderless `PromptBox`
+   supply their own surface; inline inset matches UXCore `lg` (density×3),
+   block-end matches `md` (density×2). */
+.airo-surfaces-panel-chrome__footer--floating {
+  background-color: transparent;
+  box-shadow: none;
+}
+
+.airo-surfaces-panel-chrome__footer-body-skin--floating {
+  box-sizing: border-box;
+  min-block-size: 0;
+  overflow: visible;
+  padding-block-start: 0;
+  padding-inline: calc(intent('ux.box.density') * 3);
+  padding-block-end: calc(intent('ux.box.density') * 2);
+}
+
+/* `footer-body` uses `overflow: hidden` so the default footer row can collapse
+   cleanly; that clips `FloatingFooter`'s `filter` drop-shadow on the block-start
+   edge. When the footer is visible and `footerChrome="floating"`, allow overflow
+   so raised elevation paints outside the gutter. `footer--hidden` keeps the
+   outer footer clipped for the height-collapse animation. */
+.airo-surfaces-panel-chrome__footer--floating:not(.airo-surfaces-panel-chrome__footer--hidden) {
+  overflow: visible;
+}
+
+.airo-surfaces-panel-chrome__footer--floating:not(.airo-surfaces-panel-chrome__footer--hidden)
+  .airo-surfaces-panel-chrome__footer-body {
+  overflow: visible;
+}
+
+/* --------------------------------------------------------------------------
+ * AiroHeader — alternate header variant that swaps the default text-lockup
+ * title for the Airo wordmark and adds a segmented-control section-switcher
+ * row below. Consumed via `<Panel header={<Panel.AiroHeader ... />}>` (or
+ * any other surface that composes PanelChrome). The element nests inside
+ * the standard `__header-body` padding so the hide-on-scroll collapse
+ * behavior still works.
+ * ----------------------------------------------------------------------- */
+
+.airo-surfaces-panel-chrome__airo-header {
+  /* 0.75rem at density=8px (1.5×); no matching Box gap t-shirt size */
+  gap: calc(intent('ux.box.density') * 1.5);
+}
+
+.airo-surfaces-panel-chrome__airo-header-wordmark {
+  min-width: 0;
+}
+
+.airo-surfaces-panel-chrome__airo-header-wordmark svg {
+  display: block;
+  /* 1.375rem at density=8px (2.75×) */
+  height: calc(intent('ux.box.density') * 2.75);
+  width: auto;
+}
+
+/* Sections row — SegmentedController is centered via inlineAlignChildren="center"
+ * on the Box (justify-content: center in a horizontal Box). When the action button
+ * is also present, it is pulled out of flex flow with position: absolute so it does
+ * not shift the controller's center point. `min-width: 0` guards against overflow
+ * in a constrained flex/grid context. */
+.airo-surfaces-panel-chrome__airo-header-sections {
+  position: relative;
+  min-width: 0;
+}
+
+/* Pinned variant: action button anchored to the leading edge, removed from
+ * flex flow so the SegmentedController stays geometrically centered. */
+.airo-surfaces-panel-chrome__airo-header-sections-action--anchored {
+  position: absolute;
+  inset-inline-start: 0;
+  inset-block: 0;
+  display: flex;
+  align-items: center;
+}
+
+/* `@godaddy/antares` `SegmentedController` owns segment layout, focus rings,
+ * the sliding active indicator, and keyboard navigation (via React Aria's
+ * `ToggleButtonGroup`). This class is applied directly to the control via
+ * its `className` prop. Antares's default is `inline-flex`, which already
+ * shrinks to fit its segments — `flex: 0 0 auto` locks that behaviour in
+ * explicitly so the control neither grows to fill the row nor shrinks
+ * below its content width. Segment styling, sizing, and tokens come from
+ * antares's CSS Modules. */
+.airo-surfaces-panel-chrome__airo-header-segmented {
+  flex: 0 0 auto;
+}
+
+/* --------------------------------------------------------------------------
+ * Reduced motion — honor the user's OS preference. We still swap the
+ * end-state classes so the chrome is in the right configuration, but we
+ * drop the transitions so there is no animation.
+ * ----------------------------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  .airo-surfaces-panel-chrome__header,
+  .airo-surfaces-panel-chrome__header--hidden,
+  .airo-surfaces-panel-chrome__header-body,
+  .airo-surfaces-panel-chrome__footer,
+  .airo-surfaces-panel-chrome__drag-handle {
+    transition: none;
+  }
+
+  .airo-surfaces-panel-chrome__content {
+    scroll-behavior: auto;
+  }
+}

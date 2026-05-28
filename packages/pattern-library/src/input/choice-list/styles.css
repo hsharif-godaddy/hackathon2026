@@ -1,0 +1,556 @@
+@tailwind utilities;
+
+/* --------------------------------------------------------------------------
+ * ChoiceList -- decision menu rendered as a listbox. The consumer owns the
+ * outer card surface. Class names use the `airo-input-choice-list__<part>` BEM
+ * prefix so they cannot collide with consumer app styles. Theme tokens
+ * -- colors, border widths/radii, density-based spacing -- flow through
+ * the `ux.*` intents resolved at the app-root intents layer; no hardcoded
+ * theme values here. Layout geometry (container min/max widths) uses literal
+ * values because UXCore2 doesn't tokenize those kinds of layout constraints.
+ *
+ * This stylesheet contains deliberate descendant-selector overrides into
+ * `@ux/*` internals:
+ *
+ * - **Listbox rows** -- `.ux-button:not(.ux-button-inline)` (compact row density)
+ *   and `.ux-button-text` (stretch content to the full button width). Both are
+ *   narrowly scoped to our listbox container. `@ux/listbox` does not forward a
+ *   `size` prop or a per-item render hook, so there is no supported upstream API
+ *   for either behavior today. See each rule's inline comment for rationale and
+ *   re-evaluation triggers.
+ *
+ * - **`@ux/text-entry` (allowOther rows)** -- `.ux-text-entry-shell` and inner
+ *   `.ux-text-entry-field` / `.ux-text-entry-suggestion` for underline-as-row-seam
+ *   geometry and halved inline padding (same intent as `src/input/prompt-box/styles.css`).
+ *   `@ux/text-entry` does not expose props for this row-chrome layout; revisit if
+ *   TextEntry adds surface variants or padding hooks, or if the visual spec changes.
+ * ----------------------------------------------------------------------- */
+
+.airo-input-choice-list {
+  --airo-input-choice-list-density: intent('ux.box.density');
+  --airo-input-choice-list-letter-gap: calc(var(--airo-input-choice-list-density) * 2);
+  display: block;
+  width: 100%;
+}
+
+/* Whole-surface disabled -- fixed opacity is a product affordance, not a theme fill. */
+.airo-input-choice-list--disabled {
+  opacity: 0.4;
+}
+
+/* ---------------------------------------------------------------------------
+   Header chrome -- optional title + step indicator + back/close controls.
+   Rendered inside the Box surface above the listbox when `title` or
+   `ChoiceList.Step` children are present.
+   --------------------------------------------------------------------------- */
+
+.airo-input-choice-list__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: calc(var(--airo-input-choice-list-density) * 3);
+  padding-inline-start: calc(var(--airo-input-choice-list-density) * 1);
+  margin-block-end: calc(var(--airo-input-choice-list-density) * 1);
+  min-height: calc(var(--airo-input-choice-list-density) * 4);
+}
+
+.airo-input-choice-list__title {
+  flex: 1 1 0%;
+  min-width: 0;
+  word-break: break-word;
+}
+
+.airo-input-choice-list__nav {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--airo-input-choice-list-density) * 1);
+  flex-shrink: 0;
+}
+
+/* Compact button density inside the header nav (close) and footer nav
+   (back/forward). Same trade-off as the listbox row override -- @ux/button
+   doesn't expose a density prop smaller than size="small", so we tighten
+   padding via the stable .ux-button class scoped under our own containers.
+   Selectors include .ux-text-size-1 to outrank UXCore's own small-size
+   rules (specificity 0,3,0 for text / 0,4,0 for square).
+   Re-evaluate when @ux/button ships an xs size. */
+.airo-input-choice-list__nav .ux-button.ux-text-size-1:not(.ux-button-inline),
+.airo-input-choice-list__footer-nav .ux-button.ux-text-size-1:not(.ux-button-inline) {
+  padding: 0.1875rem;
+}
+
+.airo-input-choice-list__step-indicator {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------------------------------------------------------------------------
+   Multi-step slide transitions -- only apply when ChoiceList.Step children
+   are used. The `--multi-step` modifier clips overflow during the slide.
+   --------------------------------------------------------------------------- */
+
+/* Multi-step slide clips overflow on the surface (= the root element). */
+.airo-input-choice-list--multi-step.airo-input-choice-list__surface {
+  overflow: hidden;
+}
+
+.airo-input-choice-list__step--enter-forward {
+  animation: airo-input-choice-list-slide-in-right 0.25s ease-out;
+}
+
+.airo-input-choice-list__step--enter-back {
+  animation: airo-input-choice-list-slide-in-left 0.25s ease-out;
+}
+
+@keyframes airo-input-choice-list-slide-in-right {
+  from {
+    opacity: 0;
+    transform: translateX(30%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes airo-input-choice-list-slide-in-left {
+  from {
+    opacity: 0;
+    transform: translateX(-30%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .airo-input-choice-list__step--enter-forward,
+  .airo-input-choice-list__step--enter-back {
+    animation: none;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Single-select -- `@ux/listbox` option buttons (`design="option"`) with a
+   trailing chevron. Single-select always uses `as="listbox"` (`role="option"`).
+   --------------------------------------------------------------------------- */
+
+/* Row layout inside each stretched option button */
+.airo-input-choice-list__option-row-inner {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--airo-input-choice-list-density) * 1);
+  inline-size: 100%;
+  min-inline-size: 0;
+}
+
+.airo-input-choice-list__option-row-body {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+}
+
+/* Decorative chevron at inline-end */
+.airo-input-choice-list__option-chevron {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  color: inherit;
+}
+
+[dir='rtl'] .airo-input-choice-list__option-chevron {
+  transform: scaleX(-1);
+}
+
+/* Compact option density + text wrapping. `@ux/listbox` hard-codes its
+   children to `design="option"` at the default `@ux/button` size, and its
+   public API (`node_modules/@ux/listbox/index.d.ts`) does not forward a
+   `size` prop to child buttons -- so there is no supported way to opt into
+   `size="sm"` on a per-listbox basis today. The default size ships too much
+   vertical air for the agent chrome (stacked options feel fluffy in a small
+   chat card), so this rule re-applies the `@ux/button size="sm"` padding
+   values sourced from the `ux.box.density` intent.
+
+   `@ux/button` also hard-codes `white-space: nowrap` on every padded button
+   (`node_modules/@ux/button/src/styles.css`, `.ux-button:not(.ux-button-inline)`).
+   Option buttons must be allowed to wrap when their label fills the card
+   width, so this rule overrides that to `white-space: normal`. The companion
+   `overflow-wrap: break-word` ensures unbroken strings (e.g. long URLs) wrap
+   rather than forcing a scroll. There is no supported upstream hook for either
+   behavior -- `@ux/listbox` exposes only `{ id, children }` items with no
+   render prop or size/wrapping prop.
+
+   The selector mirrors `@ux/button`'s base rule
+   (`.ux-button:not(.ux-button-inline)`, specificity (0,2,0)) and adds our
+   listbox class on top to land at (0,3,0), so the override wins
+   regardless of stylesheet import order. `:where()` would silently lose
+   that cascade -- don't swap it back in.
+
+   This triggers the `uxcore-internal-selector` review rule; treating it
+   as a documented exception (alongside the `.ux-button-text` rule below)
+   is the same trade-off: visually-correct agent chrome vs. perfectly
+   pure composition. Re-evaluation trigger: any public API that forwards
+   a size / density / wrapping prop from `@ux/listbox` to its child buttons. */
+
+.airo-input-choice-list__listbox-keyboard-wrap {
+  display: flex;
+  flex-direction: column;
+  align-self: stretch;
+  min-inline-size: 0;
+  width: 100%;
+}
+
+.airo-input-choice-list__listbox .ux-button:not(.ux-button-inline) {
+  padding-block: calc(var(--airo-input-choice-list-density) * 1);
+  padding-inline: calc(var(--airo-input-choice-list-density) * 1);
+  white-space: normal;
+  overflow-wrap: break-word;
+}
+
+/* `@ux/button` wraps its content in `<span class="ux-button-text">`, which
+   is `display: inline` by default and shrinks to the intrinsic width of
+   whatever it contains. Without intervention, the `ChoiceListItemContent`
+   lockup below ends up packed at the inline-start of the button-text span
+   and the rest of the (full-width, stretched) button renders as empty
+   space -- a visual regression against every other list / menu pattern
+   where option content spans the full row.
+
+   Stretching the wrapper to `width: 100%` is the only supported way to
+   close that gap today. `@ux/listbox`'s public API (see
+   `node_modules/@ux/listbox/index.d.ts`) accepts only `{ id, children }`
+   items -- no render prop, no wrapper slot, no content-align prop. And
+   `@ux/button` does not expose a "content fills the button" variant.
+
+   This triggers the `uxcore-internal-selector` review rule; treating it
+   as a documented exception instead of removing it is a deliberate
+   trade-off between "perfectly pure composition" and "visually correct
+   row layout". The scope is narrow (selector is ancestor-gated on our
+   listbox class, so only option rows inside `ChoiceList` are affected)
+   and the upstream escape hatch is tracked in README `## Gotchas`. */
+.airo-input-choice-list__listbox .ux-button-text {
+  width: 100%;
+}
+
+/* Optional dividers -- seam between rows (`ux.box.borderWidth` × `ux.box.borderColor`).
+   Option buttons do not always paint a reliable shared edge when borders are removed,
+   so the seam is declared on `:not(:first-child)` instead of relying on collapse. */
+.airo-input-choice-list__listbox--option-dividers > .ux-button:not(:last-child) {
+  border-block-end: none;
+  border-end-start-radius: 0;
+  border-end-end-radius: 0;
+}
+
+.airo-input-choice-list__listbox--option-dividers > .ux-button:not(:first-child) {
+  border-block-start: intent('ux.box.borderWidth') solid intent('ux.box.borderColor');
+  border-start-start-radius: 0;
+  border-start-end-radius: 0;
+}
+
+/* `@ux/listbox` sets `border-color` transparent on the visually focused option --
+   keep the leading divider edge visible so stacked rows don't lose the seam. */
+.airo-input-choice-list__listbox--option-dividers
+  > .ux-button[data-visually-focused]:not(:first-child):not(.ux-button-inline) {
+  border-block-start-color: intent('ux.box.borderColor');
+}
+
+/* Same divider preservation when the option is keyboard-focused via :focus-visible
+   (mirrors the [data-visually-focused] rule above). */
+.airo-input-choice-list__listbox--option-dividers
+  > .ux-button:focus-visible:not(:first-child):not(.ux-button-inline) {
+  border-block-start-color: intent('ux.box.borderColor');
+}
+
+/* Direct keyboard focus on an option button (e.g. via the `1`-`9` number-key
+   shortcut, or programmatic `.focus()`) must paint the same blue option highlight
+   as `@ux/listbox`'s arrow-key navigation. `@ux/listbox` only paints the highlight
+   on `[data-visually-focused]`, an attribute it sets from its own internal React
+   state -- which is bypassed when consumers `.focus()` an option directly.
+   `@ux/button` does not apply an option background on `:focus-visible`; its only
+   `:focus-visible` rule is the outline ring.
+
+   Mirror the same `actionHovered` intent treatment here -- the same intent path
+   that backs `@ux/listbox`'s own `[data-visually-focused]` rule -- so direct
+   option focus reads the same as arrow-key navigation (the `actionOptionFocused`
+   path resolves to transparent/black, not the blue highlight).
+
+   The selector specificity (0,3,0) matches `@ux/listbox`'s
+   `.ux-listbox:where(...) > .ux-button[data-visually-focused]:not(.ux-button-inline)`,
+   and our stylesheet is imported after the peer-dep stylesheets so source order
+   wins on ties. Re-evaluation trigger: any public `@ux/listbox` API for driving
+   the active item from the outside (so we can stop bypassing its internal state). */
+.airo-input-choice-list__listbox > .ux-button:focus-visible:not(.ux-button-inline) {
+  background: intent('ux.actionHovered.backgroundColor');
+  color: intent('ux.actionHovered.foregroundColor');
+  border-color: intent('ux.actionHovered.borderColor');
+}
+
+/* Multi-select -- `@ux/checkbox` rows share interactive surfaces with
+   `@ux/listbox` option buttons. Instead of copying opaque `--ux-<hash>`
+   vars from `@ux/button`'s compiled CSS (those rename across releases),
+   we source every visual property from the semantic `action*` intents
+   which map to the same theme slots. */
+.airo-input-choice-list__multi-option-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  border-radius: intent('ux.action.borderRadius');
+  border: none;
+  margin: 0;
+  padding: 0;
+  min-inline-size: 0;
+}
+
+/* Flush stack -- shared horizontal edge between rows (no gutter). */
+.airo-input-choice-list__multi-option-list .airo-input-choice-list__multi-row:not(:last-child) {
+  border-block-end: none;
+  border-end-start-radius: 0;
+  border-end-end-radius: 0;
+}
+
+.airo-input-choice-list__multi-option-list .airo-input-choice-list__multi-row:not(:first-child) {
+  border-start-start-radius: 0;
+  border-start-end-radius: 0;
+}
+
+/* Optional: seam between rows (`ux.box.borderWidth` × `ux.box.borderColor`). */
+.airo-input-choice-list__multi-option-list--option-dividers
+  .airo-input-choice-list__multi-row:not(:first-child) {
+  border-block-start: intent('ux.box.borderWidth') solid intent('ux.box.borderColor');
+}
+
+/* Focus ring for roving checkbox navigation only. Do not use `:has(:focus-visible)`
+   on the whole fieldset -- `@ux/text-entry` moves focus into the inner input and
+   paints its own shell outline; a fieldset-level ring stacks badly and reads as
+   "double chrome". */
+.airo-input-choice-list__multi-option-list:has(input[type='checkbox']:focus-visible) {
+  outline: 5px auto intent('ux.actionFocused.outlineColor');
+}
+
+.airo-input-choice-list__multi-option-list input[type='checkbox']:focus-visible {
+  outline: none;
+}
+
+.airo-input-choice-list__multi-row {
+  box-sizing: border-box;
+  width: 100%;
+  border-width: intent('ux.action.borderWidth');
+  border-style: solid;
+  border-color: intent('ux.actionOption.borderColor');
+  border-radius: intent('ux.action.borderRadius');
+  background: intent('ux.actionOption.backgroundColor');
+  color: intent('ux.actionOption.foregroundColor');
+  transition: background 0.15s ease-in-out, color 0.15s ease-in-out, border-color 0.15s ease-in-out;
+}
+
+/* `:has` detects disabled checkbox inputs without threading state through TSX today.
+   Guard so legacy browsers without `:has` still get a sensible default (pointer on
+   rows -- items are not disable-able via public API yet). */
+@supports selector(:has(*)) {
+  .airo-input-choice-list__multi-row:not(:has(input:disabled)) {
+    cursor: pointer;
+  }
+}
+
+@supports not selector(:has(*)) {
+  .airo-input-choice-list__multi-row {
+    cursor: pointer;
+  }
+}
+
+.airo-input-choice-list__multi-row:hover:not(:has([aria-disabled='true'])) {
+  background: intent('ux.actionOptionHovered.backgroundColor');
+  color: intent('ux.actionOptionHovered.foregroundColor');
+  border-color: intent('ux.actionOptionHovered.borderColor');
+}
+
+.airo-input-choice-list__multi-row:has(input:checked) {
+  background: intent('ux.actionOptionChosen.backgroundColor');
+  color: intent('ux.actionOptionChosen.foregroundColor');
+  border-color: intent('ux.actionOptionChosen.borderColor');
+}
+
+.airo-input-choice-list__multi-row > * {
+  width: 100%;
+  padding-block: calc(var(--airo-input-choice-list-density) * 1);
+  padding-inline: calc(var(--airo-input-choice-list-density) * 1);
+}
+
+.airo-input-choice-list__multi-row label {
+  min-width: 0;
+}
+
+.airo-input-choice-list__multi-row .airo-input-choice-list__item-content-description {
+  white-space: normal;
+  overflow-wrap: break-word;
+}
+
+.airo-input-choice-list__footer-nav {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--airo-input-choice-list-density) * 1);
+}
+
+/* Footer -- step navigation (left) and continue button (right). */
+.airo-input-choice-list__footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: calc(var(--airo-input-choice-list-density) * 1);
+  margin-block-start: calc(var(--airo-input-choice-list-density) * 1);
+  padding-block-start: calc(var(--airo-input-choice-list-density) * 1);
+  padding-inline-start: calc(var(--airo-input-choice-list-density) * 1);
+  padding-inline-end: calc(var(--airo-input-choice-list-density) * 1);
+  min-height: calc(var(--airo-input-choice-list-density) * 4);
+  border-block-start: intent('ux.box.borderWidth') solid intent('ux.box.borderColor');
+}
+
+.airo-input-choice-list__footer-actions {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--airo-input-choice-list-density) * 1);
+  margin-inline-start: auto;
+}
+
+.airo-input-choice-list__footer .ux-button.ux-text-size-1:not(.ux-button-inline) {
+  padding: 0.1875rem 0.375rem;
+}
+
+.airo-input-choice-list__footer .ux-button.ux-text-size-1.ux-button-square:not(.ux-button-inline) {
+  padding: 0.1875rem;
+}
+
+/* `ChoiceListItemContent` is the canonical lockup inside each option:
+   letter badge, then an optional image / icon, then the text description.
+   Rendered as a full-width flex row so the description slot can absorb
+   the remaining inline space, the letter badge pins to the inline-start
+   edge, and `align-items: center` keeps everything vertically centered
+   regardless of how tall the optional image is. */
+.airo-input-choice-list__item-content {
+  display: flex;
+  align-items: center;
+  column-gap: var(--airo-input-choice-list-letter-gap);
+  width: 100%;
+  text-align: start;
+}
+
+/* The letter badge is a passive-emphasis `@ux/tag`. Stop it from being
+   squeezed when the description wraps or the optional image widens the
+   row; colors, typography, and radius come from `@ux/tag`'s own tokens.
+   `min-inline-size: 1.5em` ties a modest minimum to the tag's font size;
+   wider strings still grow. */
+.airo-input-choice-list__item-content-letter {
+  box-sizing: border-box;
+  display: inline-flex;
+  flex-shrink: 0;
+  justify-content: center;
+  align-items: center;
+  min-inline-size: 1.5em;
+}
+
+/* Media slot (optional image / icon). `display: inline-flex` on the wrapper
+   keeps any inner `<img>` on its own baseline so the row doesn't inherit
+   the inline-baseline gap browsers add beneath images. `flex-shrink: 0`
+   protects the chosen size against narrow cards. */
+.airo-input-choice-list__item-content-media {
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
+/* `flex: 1 1 0%` lets the description absorb the remaining inline space.
+   `min-width: 0` cancels the default `min-width: auto` on flex items so
+   long unbroken words can break mid-line instead of forcing the row
+   wider than the card. */
+.airo-input-choice-list__item-content-description {
+  flex: 1 1 0%;
+  min-width: 0;
+  text-align: start;
+  word-break: break-word;
+}
+
+/* ---------------------------------------------------------------------------
+   Single-select "other" row -- outside `@ux/listbox`; placeholder-only entry.
+   --------------------------------------------------------------------------- */
+
+.airo-input-choice-list__other-row {
+  margin: 0;
+  padding: 0;
+  min-inline-size: 0;
+}
+
+.airo-input-choice-list__other-row--option-dividers {
+  border-block-start: intent('ux.box.borderWidth') solid intent('ux.box.borderColor');
+  margin-block-start: 0;
+}
+
+.airo-input-choice-list__other-row-inner {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  padding-block: calc(var(--airo-input-choice-list-density) * 1);
+  padding-inline: calc(var(--airo-input-choice-list-density) * 1);
+  min-inline-size: 0;
+}
+
+.airo-input-choice-list__other-entry-wrap {
+  flex: 1 1 0%;
+  min-inline-size: 0;
+  width: 100%;
+}
+
+/* Inline submit button sits next to the TextEntry so Enter is not the
+   only submission path — matches the multi-select Continue affordance. */
+.airo-input-choice-list__other-submit {
+  display: inline-flex;
+  align-items: center;
+  margin-inline-start: calc(var(--airo-input-choice-list-density) * 1);
+  flex: 0 0 auto;
+}
+
+/* Bottom edge on the TextEntry shell -- geometry only; underline reads as one row. */
+.airo-input-choice-list__other-entry-wrap .airo-input-choice-list__other-entry.ux-text-entry-shell {
+  border-block-end: intent('ux.box.borderWidth') solid intent('ux.box.borderColor');
+  border-radius: 0;
+}
+
+.airo-input-choice-list__other-entry-wrap
+  .airo-input-choice-list__other-entry.ux-text-entry--size-sm.ux-text-entry-shell
+  > :where(.ux-text-entry-field, .ux-text-entry-suggestion) {
+  padding-inline: calc(var(--uxTextEntry-padding) * 0.5);
+}
+
+/* ---------------------------------------------------------------------------
+   Multi-select "other" row -- checkbox + inline TextEntry (scoped layout only).
+   --------------------------------------------------------------------------- */
+
+.airo-input-choice-list__multi-other-inner {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: calc(var(--airo-input-choice-list-density) * 1);
+  width: 100%;
+  min-inline-size: 0;
+  box-sizing: border-box;
+}
+
+.airo-input-choice-list__multi-other-inner > .ux-checkbox-shell {
+  flex-shrink: 0;
+}
+
+.airo-input-choice-list__multi-other-entry-wrap {
+  flex: 1 1 0%;
+  min-inline-size: 0;
+}
+
+.airo-input-choice-list__multi-other-entry-wrap
+  .airo-input-choice-list__multi-other-entry.ux-text-entry-shell {
+  border-block-end: intent('ux.box.borderWidth') solid intent('ux.box.borderColor');
+  border-radius: 0;
+}
+
+/* Tighter inline padding than default `@ux/text-entry` so placeholder lines up with row copy. */
+.airo-input-choice-list__multi-other-entry-wrap
+  .airo-input-choice-list__multi-other-entry.ux-text-entry--size-sm.ux-text-entry-shell
+  > :where(.ux-text-entry-field, .ux-text-entry-suggestion) {
+  padding-inline: calc(var(--uxTextEntry-padding) * 0.5);
+}

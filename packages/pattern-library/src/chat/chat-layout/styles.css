@@ -1,0 +1,147 @@
+@tailwind utilities;
+
+/* --------------------------------------------------------------------------
+ * ChatLayout — two-pane split for Airo chat surfaces.
+ *
+ * Three grid columns, two named area layouts:
+ *
+ * Centered mode (default):   areas = 'content chat gutter'
+ *   grid-template-columns: 1fr min(chat-max-width, 100%) 1fr
+ *   → equal gutters flank the chat column, centering it.
+ *     The 'content' column acts as the leading gutter (empty in this mode).
+ *
+ * Sidebar mode:              areas = 'chat content gutter'
+ *   grid-template-columns: chat-width 1fr 0fr
+ *   → chat column is pinned to the leading (left in LTR) edge;
+ *     content pane fills remaining space; trailing gutter collapses.
+ *
+ * The transition between modes animates grid-template-columns —
+ * no JS, no requestAnimationFrame. prefers-reduced-motion disables it.
+ *
+ * CSS custom properties (all overrideable per-instance):
+ *   --airo-chat-layout-chat-width           sidebar column width    (default: 24rem)
+ *   --airo-chat-layout-chat-max-width       centered max width      (default: 44rem)
+ *   --airo-chat-layout-transition-duration                          (default: 250ms)
+ *   --airo-chat-layout-header-shadow        drop shadow below header sheet
+ *   --airo-chat-layout-footer-shadow        drop shadow above footer sheet
+ *   --airo-chat-layout-header-backdrop-blur blur radius for header frosted glass (default: 12px)
+ * ----------------------------------------------------------------------- */
+
+.airo-chat-chat-layout {
+  --airo-chat-layout-chat-width: 24rem;
+  --airo-chat-layout-chat-max-width: 44rem;
+  --airo-chat-layout-transition-duration: 250ms;
+  --airo-chat-layout-header-shadow: 0 2px 8px rgba(0, 0, 0, 0.08), 0 1px 0 rgba(0, 0, 0, 0.05);
+  --airo-chat-layout-footer-shadow: 0 -2px 8px rgba(0, 0, 0, 0.08), 0 -1px 0 rgba(0, 0, 0, 0.05);
+
+  display: grid;
+  /* Default: centered mode — equal gutters flank the chat column. */
+  grid-template-columns:
+    1fr
+    min(var(--airo-chat-layout-chat-max-width), 100%)
+    1fr;
+  grid-template-rows: 1fr;
+  grid-template-areas: 'content chat gutter';
+  height: 100%;
+  overflow: hidden;
+  transition: grid-template-columns var(--airo-chat-layout-transition-duration) ease;
+}
+
+/* Sidebar mode: chat leads (left in LTR); content fills remaining space; trailing gutter collapses. */
+.airo-chat-chat-layout--sidebar {
+  grid-template-columns:
+    var(--airo-chat-layout-chat-width)
+    1fr
+    0fr;
+  grid-template-areas: 'chat content gutter';
+}
+
+/* RTL sidebar: mirror the physical column order so chat stays at inline-start (right in RTL). */
+[dir='rtl'] .airo-chat-chat-layout--sidebar,
+.airo-chat-chat-layout--sidebar:dir(rtl) {
+  grid-template-columns:
+    0fr
+    1fr
+    var(--airo-chat-layout-chat-width);
+  grid-template-areas: 'gutter content chat';
+}
+
+/* Content pane — leading area (editor, canvas, etc.) */
+.airo-chat-chat-layout__content {
+  grid-area: content;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* Chat column — leading pane in sidebar mode, centered column in centered mode */
+.airo-chat-chat-layout__chat {
+  grid-area: chat;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* Optional header at the top of the chat column — e.g. AiroHeader.Sections.
+ * Styled as a non-modal sheet: side margins, inner-edge rounding, and
+ * backdrop blur. The bottom corners are rounded so it reads as a sheet
+ * floating above the message thread. */
+.airo-chat-chat-layout__header {
+  flex-shrink: 0;
+  /* Stacking context: paints above scrolling message content.
+   * @ux/box elevation="card" on message bubbles gets will-change:filter from
+   * Box's own stylesheet, creating stacking contexts that would otherwise
+   * overdraw the header's shadow. z-index:1 on this flex item ensures the
+   * header stays on top without touching the message components. */
+  z-index: 1;
+  /* Sheet side margins (SM = density × 0.5) */
+  margin-inline: calc(intent('ux.box.density') * 0.5);
+  /* Bottom corners rounded to match modal/floating-panel rounding */
+  border-end-start-radius: calc(intent('ux.box.density') * 1.5);
+  border-end-end-radius: calc(intent('ux.box.density') * 1.5);
+  overflow: hidden;
+  background-color: intent('ux.box.backgroundColor');
+  background-color: color-mix(in srgb, intent('ux.box.backgroundColor') 60%, transparent);
+  backdrop-filter: blur(var(--airo-chat-layout-header-backdrop-blur, 12px));
+  -webkit-backdrop-filter: blur(var(--airo-chat-layout-header-backdrop-blur, 12px));
+  box-shadow: var(--airo-chat-layout-header-shadow);
+}
+
+/* Message thread — scrollable region */
+.airo-chat-chat-layout__messages {
+  flex: 1;
+  /* min-height: 0 is required on a flex child with overflow-y: auto;
+     without it the child refuses to shrink below its content height. */
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* Composer / prompt box — sticky to the bottom of the chat column.
+ * Styled as a non-modal sheet: side margins, inner-edge rounding, and
+ * surface background. The top corners are rounded so it reads as a sheet
+ * rising from the bottom of the chat pane. */
+.airo-chat-chat-layout__footer {
+  flex-shrink: 0;
+  /* Same stacking-context rationale as __header above. */
+  z-index: 1;
+  /* Sheet side margins (SM = density × 0.5) */
+  margin-inline: calc(intent('ux.box.density') * 0.5);
+  /* Top corners rounded to match modal/floating-panel rounding */
+  border-start-start-radius: calc(intent('ux.box.density') * 1.5);
+  border-start-end-radius: calc(intent('ux.box.density') * 1.5);
+  overflow: hidden;
+  background-color: intent('ux.box.backgroundColor');
+  box-shadow: var(--airo-chat-layout-footer-shadow);
+}
+
+/* Trailing gutter — invisible balance element for the centered layout */
+.airo-chat-chat-layout__trailing-gutter {
+  grid-area: gutter;
+  overflow: hidden;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .airo-chat-chat-layout {
+    transition: none;
+  }
+}

@@ -1,0 +1,176 @@
+@tailwind utilities;
+
+/* --------------------------------------------------------------------------
+ * Canvas + Canvas.Status — surface for AI-generated content (typically an
+ * HTML site preview) and its floating "agent is working" status chip.
+ *
+ * BEM prefixes:
+ * - airo-surfaces-canvas         (Canvas root + slots)
+ * - airo-surfaces-canvas-status  (Canvas.Status pill)
+ *
+ * All colors flow through `@ux/postcss-intents` `intent()` calls. Shadow
+ * geometry uses literal pixel values (allowed exception per repo CLAUDE.md);
+ * shadow color stays black + alpha. No CSS-in-JS, no auto-injected styles —
+ * consumers opt in via `import '@airo-ux/pattern-library/surfaces/canvas/styles'`.
+ * ----------------------------------------------------------------------- */
+
+/* --- Canvas root + layout -------------------------------------------- */
+
+.airo-surfaces-canvas {
+  /* Canvas card-corner radius — 2 × density (16px under godaddy-antares;
+     8px with bare intents). Exposed as a custom property so consumers can
+     override per surface (e.g. tighter corners inside a dialog) without
+     touching the BEM root. */
+  --airo-surfaces-canvas-corner-radius: calc(intent('ux.box.density') * 2);
+  display: flex;
+  flex-direction: column;
+  block-size: 100%;
+  inline-size: 100%;
+  background-color: intent('ux.box.backgroundColor');
+  color: intent('ux.box.foregroundColor');
+  border: 1px solid intent('ux.box.borderColor');
+  border-radius: var(--airo-surfaces-canvas-corner-radius);
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+/* When the canvas's bottom edge touches the viewport bottom, flatten the
+ * trailing-block corners AND drop the bottom border so the canvas reads
+ * as flush with the viewport floor instead of a card hovering above it
+ * with a stranded hairline. Top + leading + trailing borders stay; only
+ * the block-end side reflects the "no edge below me" state. JS toggles
+ * this class via a `getBoundingClientRect` check on scroll/resize.
+ * Logical properties so the right corner flattens correctly under both
+ * LTR and RTL writing modes. */
+.airo-surfaces-canvas--at-viewport-bottom {
+  border-end-start-radius: 0;
+  border-end-end-radius: 0;
+  border-block-end: 0;
+}
+
+.airo-surfaces-canvas__header {
+  flex: 0 0 auto;
+  border-block-end: 1px solid intent('ux.box.borderColor');
+  /* Match the chat-layout footer band — small block padding, medium inline.
+     Consumers can override via padding utilities on their header content. */
+  padding-block: calc(intent('ux.box.density') * 0.5);
+  padding-inline: intent('ux.box.density');
+}
+
+/* Body is the positioning context for the status slot and the scroll
+ * wrapper below. Scrolling itself happens on `__scroll` (a sibling of
+ * `__status-slot`) — keeping the scrollable region one level inside the
+ * body is what lets the gradient fade mask `__scroll` without also
+ * dimming the absolutely-positioned status pill. */
+.airo-surfaces-canvas__body {
+  position: relative;
+  flex: 1 1 auto;
+  min-block-size: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* `__scroll` is the actual scroll container. The gradient mask custom
+ * properties default to 0 (no fade); JS toggles `--faded-top` /
+ * `--faded-bottom` modifier classes to switch them to the configured
+ * fade distance based on `scrollTop` and `scrollHeight - clientHeight`.
+ *
+ * The mask is applied to this element's box (not its scrollable content)
+ * so the fade always sits at the top/bottom edges of the visible viewport
+ * regardless of how far the user has scrolled. The status slot is a
+ * sibling of `__scroll`, not a child, so it's never masked. */
+.airo-surfaces-canvas__scroll {
+  flex: 1 1 auto;
+  min-block-size: 0;
+  overflow: auto;
+  /* Fade distance — 14 × density (56px at default scale). Single source of
+     truth; also overridable by consumers via
+     `style={{ '--airo-surfaces-canvas-fade-distance': '32px' }}`. */
+  --airo-surfaces-canvas-fade-distance: calc(intent('ux.box.density') * 14);
+  --airo-surfaces-canvas-fade-top: 0px;
+  --airo-surfaces-canvas-fade-bottom: 0px;
+}
+
+.airo-surfaces-canvas__scroll--faded-top {
+  --airo-surfaces-canvas-fade-top: var(--airo-surfaces-canvas-fade-distance);
+}
+
+.airo-surfaces-canvas__scroll--faded-bottom {
+  --airo-surfaces-canvas-fade-bottom: var(--airo-surfaces-canvas-fade-distance);
+}
+
+/* Apply the mask only when at least one fade side is active. When neither
+ * modifier class is present the mask declarations don't fire at all, so a
+ * canvas that never overflows pays no mask cost. */
+.airo-surfaces-canvas__scroll--faded-top,
+.airo-surfaces-canvas__scroll--faded-bottom {
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent 0,
+    black var(--airo-surfaces-canvas-fade-top),
+    black calc(100% - var(--airo-surfaces-canvas-fade-bottom)),
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0,
+    black var(--airo-surfaces-canvas-fade-top),
+    black calc(100% - var(--airo-surfaces-canvas-fade-bottom)),
+    transparent 100%
+  );
+}
+
+/* The status anchor is absolutely positioned so it overlays the content
+   without occupying layout space. Logical-property positioning means the
+   chip stays top-center under both LTR and RTL writing modes. The transform
+   centers the chip horizontally regardless of its measured width. */
+.airo-surfaces-canvas__status-slot {
+  position: absolute;
+  inset-block-start: calc(intent('ux.box.density') * 0.75);
+  inset-inline-start: 50%;
+  transform: translateX(-50%);
+  /* Ensure the slot sits above any content (iframes, canvases) without
+     becoming itself a hit-target — the chip inside still receives clicks. */
+  z-index: 1;
+  pointer-events: none;
+}
+
+.airo-surfaces-canvas__status-slot > * {
+  pointer-events: auto;
+}
+
+/* --- Canvas.Status pill ---------------------------------------------- */
+
+/* Layout (display, orientation, padding, gap, alignment) is owned by the
+ * `<Box>` element CanvasStatus wraps around — see CanvasStatus.tsx. This
+ * stylesheet only carries the chrome (border, radius, background,
+ * shadow) and the spinner-size pin below.
+ *
+ * `data-partial="componentAiro"` on the chip root flips the intent
+ * palette (background / foreground / spinner color) to the Airo-purple
+ * surface for a single-color chip read. */
+.airo-surfaces-canvas-status {
+  /* Rounded-full pill — large radius regardless of inline size. */
+  border-radius: 9999px;
+  background-color: intent('ux.box.backgroundColor');
+  color: intent('ux.box.foregroundColor');
+  border: 1px solid intent('ux.box.borderColor');
+  /* Triple-layer literal-px shadow — same recipe as ColorSwatchGroup so the
+     elevation cue is consistent across the library. Black + alpha only. */
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06), 0 4px 12px rgba(0, 0, 0, 0.1), 0 0 0 0.5px
+    rgba(0, 0, 0, 0.04);
+  white-space: nowrap;
+  /* Typography is owned by `<text.span as="label">` inside the chip — no
+     hand-rolled font-size / weight / line-height declarations here. */
+}
+
+/* Pin the spinner to 22px — matches the line-height of the `<text.span
+   as="label">` sitting next to it, so the chip reads as a balanced
+   icon-text pair regardless of the active theme's density. The double-
+   class selector wins over ThinkingIndicator's single-class
+   `dot-size` declaration regardless of stylesheet load order, and goes
+   through the indicator's documented `--…-dot-size` theming hook
+   (spinner = `dot-size × 3`). */
+.airo-surfaces-canvas-status__indicator.airo-primitives-thinking-indicator {
+  --airo-primitives-thinking-indicator-dot-size: calc(22px / 3);
+}

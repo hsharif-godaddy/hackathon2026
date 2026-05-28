@@ -70,7 +70,7 @@ vi.mock('./StreamingMessage', () => ({
   ),
 }));
 
-vi.mock('@airo/components/chat/thinker', () => ({
+vi.mock('@airo-ux/pattern-library/chat/thinker', () => ({
   Thinker: () => <div data-testid="thinking-indicator" />,
 }));
 

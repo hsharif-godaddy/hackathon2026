@@ -28,7 +28,7 @@ export default function OptionInput({
 }: OptionInputProps) {
   const canSubmit = value.trim().length > 0
 
-  // Match @airo/components ChoiceList row: p-1 (0.25rem) row, 0.5rem column gap,
+  // Match @airo-ux/pattern-library ChoiceList row: p-1 (0.25rem) row, 0.5rem column gap,
   // @ux/tag letter badge (size="sm", emphasis="passive"). Keeps the Other row
   // visually aligned with the ChoiceList items above it.
   return (

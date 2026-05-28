@@ -1,0 +1,431 @@
+/* `Thinker` renders `<ThinkingIndicator>` internally — bundle the
+ * primitive's animation keyframes + dot styles into this subpath so
+ * consumers importing only `@airo-ux/pattern-library/chat/thinker/styles` get
+ * a self-contained, working indicator without a second style import. */
+@import '../../primitives/thinking-indicator/styles.css';
+
+@tailwind utilities;
+
+/* --------------------------------------------------------------------------
+ * Thinker — compact "AI is working" indicator + optional reasoning panel.
+ *
+ * Class names use the airo-chat-thinker__<part> BEM prefix so they cannot
+ * collide with consumer app styles. All colors and typography flow through
+ * @ux/tailwind-intents utilities or CSS variables set by the Theme API.
+ * ----------------------------------------------------------------------- */
+
+.airo-chat-thinker {
+  --airo-chat-thinker-density: intent('ux.box.density');
+  --airo-chat-thinker-gap-sm: var(--airo-chat-thinker-density);
+  --airo-chat-thinker-gap-md: calc(var(--airo-chat-thinker-density) * 2);
+  display: inline-block;
+  max-width: 100%;
+}
+
+.airo-chat-thinker__header {
+  align-items: center;
+}
+
+.airo-chat-thinker__status {
+  display: inline-flex;
+  align-items: center;
+  column-gap: var(--airo-chat-thinker-gap-sm);
+}
+
+/* The indicator wrapper would otherwise default to `display: inline`, which
+   pulls the parent's line-height in as a strut and drops the inline-flex
+   `<ThinkingIndicator>` to that line-box's baseline — visually parking the
+   dots at the label's text baseline instead of the row's vertical center.
+   Making the wrapper its own inline-flex container removes the strut so the
+   wrapper's height tracks the indicator content exactly, and `align-items:
+   center` on the parent row keeps the dots vertically centered against the
+   label's line-box. */
+.airo-chat-thinker__indicator {
+  display: inline-flex;
+  align-items: center;
+}
+
+/* The toggle itself is a UXCore2 @ux/button; only layout rules belong here. */
+/* Rotate the caret icon we pass into the button's `icon` slot. */
+.airo-chat-thinker__caret {
+  transform: rotate(0deg);
+  transition: transform 0.2s ease-in-out;
+}
+
+.airo-chat-thinker__caret--open {
+  transform: rotate(180deg);
+}
+
+.airo-chat-thinker__panel {
+  overflow: hidden;
+}
+
+/* --------------------------------------------------------------------------
+ * Complete variant — resolved-state layout where reasoning and details stack
+ * above the label, and the label itself becomes the disclosure trigger.
+ * The inline @ux/button provides focus ring, hover affordance, and link-style
+ * typography; only layout, chevron alignment, and default-state overrides
+ * belong here.
+ * ----------------------------------------------------------------------- */
+
+.airo-chat-thinker__label-button {
+  /* Align the button with the start of the Thinker column and keep long labels
+     from stretching the inline button beyond the available width. */
+  align-self: flex-start;
+  max-width: 100%;
+}
+
+/* The bundled chevron-up SVG already points up; no override required — the
+   base `.airo-chat-thinker__caret` stays at 0° closed and flips to 180° when
+   `--open` is set, giving a down-pointing chevron while the panel is open. */
+
+/* --------------------------------------------------------------------------
+ * ReasoningBlock — collapsible raw LLM thought stream rendered above the
+ * Thinker header.
+ *
+ * The key trick: collapsed state uses `display:flex; flex-direction:column;
+ * justify-content:flex-end` so the 3em clip reveals the *bottom* of the
+ * content — i.e. the most recently streamed text. We measure the child's
+ * scrollHeight (not the container's) because flex-end overflow goes upward
+ * and container scrollHeight doesn't capture it.
+ *
+ * The fade overlay gradient uses --airo-chat-thinker-surface-color so
+ * consumers can match their panel background. Falls back to the CSS system
+ * color Canvas (adapts automatically to light/dark mode).
+ * ----------------------------------------------------------------------- */
+
+.airo-chat-thinker__reasoning-block-wrapper {
+  position: relative;
+}
+
+.airo-chat-thinker__reasoning-block {
+  overflow: hidden;
+  transition: max-height 0.2s ease-in-out;
+}
+
+.airo-chat-thinker__reasoning-block--collapsed {
+  /* max-height is set as an inline px value by ThinkerReasoningBlock so that
+     CSS can transition between successive values as content streams in. */
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+
+.airo-chat-thinker__reasoning-block--expanded {
+  max-height: none;
+}
+
+/* Fade the top of the clipped text to signal there is more content above. */
+.airo-chat-thinker__reasoning-block-fade {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-start: 0;
+  inset-inline-end: 0;
+  block-size: 2em;
+  pointer-events: none;
+  z-index: 1;
+  background: linear-gradient(
+    to bottom,
+    var(--airo-chat-thinker-surface-color, Canvas) 0%,
+    transparent 100%
+  );
+}
+
+/* Transparent full-area button over the collapsed block. Allows click-to-
+   expand without a visible affordance cluttering the stream. */
+.airo-chat-thinker__reasoning-block-expand {
+  position: absolute;
+  inset: 0;
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+/* --------------------------------------------------------------------------
+ * Label shimmer — an animated CSS mask gradient that dips to ~50% opacity
+ * as it shimmers left-to-right over the label text, signalling active
+ * streaming.
+ *
+ * The mask gradient is 300% wide. In the gradient:
+ *   - black (alpha 1) = fully visible text
+ *   - rgba(0,0,0,0.5) (alpha 0.5) = 50% opacity at the shimmer peak
+ * Animating mask-position from 100% → 0% moves the dip from off-screen left
+ * to off-screen right. The 15% / 85% keyframe pauses let the shimmer hold
+ * briefly off-screen; the snap back at loop boundary is invisible.
+ * ----------------------------------------------------------------------- */
+
+.airo-chat-thinker__label--shimmer {
+  /* stylelint-disable property-no-vendor-prefix */
+  -webkit-mask-image: linear-gradient(
+    90deg,
+    black 0%,
+    black 15%,
+    rgba(0, 0, 0, 0.5) 50%,
+    black 85%,
+    black 100%
+  );
+  -webkit-mask-size: 300% 100%;
+  -webkit-mask-repeat: no-repeat;
+  /* stylelint-enable property-no-vendor-prefix */
+  mask-image: linear-gradient(
+    90deg,
+    black 0%,
+    black 15%,
+    rgba(0, 0, 0, 0.5) 50%,
+    black 85%,
+    black 100%
+  );
+  mask-size: 300% 100%;
+  mask-repeat: no-repeat;
+  animation: airo-thinker-label-shimmer 3s linear infinite;
+}
+
+@keyframes airo-thinker-label-shimmer {
+  0%,
+  15% {
+    /* stylelint-disable-next-line property-no-vendor-prefix */
+    -webkit-mask-position: 100% 0;
+    mask-position: 100% 0; /* dip off-screen left — hold */
+  }
+  85%,
+  100% {
+    /* stylelint-disable-next-line property-no-vendor-prefix */
+    -webkit-mask-position: 0% 0;
+    mask-position: 0% 0; /* dip off-screen right — hold */
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .airo-chat-thinker__reasoning-block {
+    transition: none;
+  }
+
+  .airo-chat-thinker__label--shimmer {
+    animation: none;
+    /* stylelint-disable-next-line property-no-vendor-prefix */
+    -webkit-mask: none;
+    mask: none;
+  }
+}
+
+.airo-chat-thinker__timeline {
+  width: 100%;
+}
+
+.airo-chat-thinker__timeline-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 20rem;
+  overflow-y: auto;
+  scroll-behavior: smooth;
+}
+
+/* Left column when an icon is present — stretches to the full row height so
+   the connector can fill the gap between steps when text wraps. */
+.airo-chat-thinker__step-track {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  align-self: stretch;
+  flex-shrink: 0;
+}
+
+/* Icon track emphasis — replaces `@ux/tailwind-intents` text-intents-* utilities in TSX. */
+.airo-chat-thinker__step-track--emphasis-critical {
+  color: intent('ux.feedbackHighContrastCritical.feedbackColor');
+}
+.airo-chat-thinker__step-track--emphasis-warning {
+  color: intent('ux.feedbackHighContrastWarning.feedbackColor');
+}
+.airo-chat-thinker__step-track--emphasis-highlight {
+  color: intent('ux.feedbackHighContrastHighlight.feedbackColor');
+}
+.airo-chat-thinker__step-track--emphasis-success {
+  color: intent('ux.feedbackHighContrastSuccess.feedbackColor');
+}
+.airo-chat-thinker__step-track--emphasis-info {
+  color: intent('ux.feedbackHighContrastInfo.feedbackColor');
+}
+.airo-chat-thinker__step-track--emphasis-neutral {
+  color: intent('ux.feedbackHighContrastNeutral.feedbackColor');
+}
+.airo-chat-thinker__step-track--emphasis-internal {
+  color: intent('ux.feedbackHighContrastInternal.feedbackColor');
+}
+.airo-chat-thinker__step-track--emphasis-passive {
+  color: intent('ux.feedbackHighContrastPassive.feedbackColor');
+}
+.airo-chat-thinker__step-track--emphasis-premium {
+  color: intent('ux.feedbackHighContrastPremium.feedbackColor');
+}
+
+/* Circle badge around the icon. Background is 10% opacity of the icon color
+   (driven by currentColor set by the emphasis intent class on the track).
+   margin-top vertically centers the circle with the first line of adjacent
+   caption text: (caption_line-height − circle_height) / 2. */
+.airo-chat-thinker__step-icon-circle {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.125em;
+  height: 1.125em;
+  border-radius: 9999px;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.airo-chat-thinker__step-icon-circle::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background-color: currentColor;
+  opacity: 0.12;
+}
+
+/* Shrinks the 1em × 1em icon SVG to 0.5625em. */
+.airo-chat-thinker__step-icon {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.5625em;
+  line-height: 0;
+  z-index: 1;
+}
+
+/* Vertical connector between steps. Grows to fill remaining track height when
+   text wraps to multiple lines; minimum 4px keeps a visible gap. 1px margins
+   keep the line from touching the circles above and below. */
+.airo-chat-thinker__step-connector {
+  flex: 1;
+  min-height: 4px;
+  width: 1px;
+  margin-top: 1px;
+  background-color: currentColor;
+  opacity: 0.3;
+}
+
+/* No trailing line below the last icon step. */
+.airo-chat-thinker__step--with-icon:last-child .airo-chat-thinker__step-connector {
+  display: none;
+}
+
+.airo-chat-thinker__step-label {
+  word-break: break-word;
+}
+
+/* --------------------------------------------------------------------------
+ * Checklist — alternate panel body that shows items as a flat checklist
+ * rather than a timestamped timeline. Icon and text are both passive-tinted.
+ * ----------------------------------------------------------------------- */
+
+.airo-chat-thinker__checklist {
+  width: 100%;
+}
+
+.airo-chat-thinker__checklist-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--airo-chat-thinker-gap-sm);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 20rem;
+  overflow-y: auto;
+  scroll-behavior: smooth;
+}
+
+/* Host apps often ship typography/prose rules that add margin or padding on
+   `li` (including logical longhands). Timeline and checklist layout already
+   control spacing via gap / Box. Chain `ol`/`ul` with our classes so
+   specificity beats patterns like `.prose ol li` without resorting to
+   !important. */
+.airo-chat-thinker ol.airo-chat-thinker__timeline-list > li,
+.airo-chat-thinker ul.airo-chat-thinker__checklist-list > li {
+  margin: 0;
+  margin-block: 0;
+  margin-inline: 0;
+  padding: 0;
+  padding-block: 0;
+  padding-inline: 0;
+}
+
+.airo-chat-thinker__checklist-item {
+  display: grid;
+  grid-template-rows: 1fr;
+  overflow: hidden;
+  animation: airo-checklist-item-in .2s ease-out backwards;
+}
+
+/* Cascade: each item waits ~50ms longer than the previous one. */
+.airo-chat-thinker__checklist-item:nth-child(1) {
+  animation-delay: 0ms;
+}
+.airo-chat-thinker__checklist-item:nth-child(2) {
+  animation-delay: 50ms;
+}
+.airo-chat-thinker__checklist-item:nth-child(3) {
+  animation-delay: 100ms;
+}
+.airo-chat-thinker__checklist-item:nth-child(4) {
+  animation-delay: 150ms;
+}
+.airo-chat-thinker__checklist-item:nth-child(5) {
+  animation-delay: 200ms;
+}
+.airo-chat-thinker__checklist-item:nth-child(6) {
+  animation-delay: 250ms;
+}
+.airo-chat-thinker__checklist-item:nth-child(7) {
+  animation-delay: 300ms;
+}
+.airo-chat-thinker__checklist-item:nth-child(8) {
+  animation-delay: 350ms;
+}
+.airo-chat-thinker__checklist-item:nth-child(n + 9) {
+  animation-delay: 400ms;
+}
+
+.airo-chat-thinker__checklist-item-inner {
+  min-height: 0;
+}
+
+.airo-chat-thinker__sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+@keyframes airo-checklist-item-in {
+  from {
+    grid-template-rows: 0fr;
+  }
+  to {
+    grid-template-rows: 1fr;
+  }
+}
+
+/* Passive feedback tint on checklist rows (icons use currentColor). */
+.airo-chat-thinker__checklist-lockup {
+  color: intent('ux.feedbackHighContrastPassive.feedbackColor');
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .airo-chat-thinker__checklist-item {
+    animation: none;
+  }
+
+  .airo-chat-thinker__caret,
+  .airo-chat-thinker__panel {
+    transition: none;
+  }
+}

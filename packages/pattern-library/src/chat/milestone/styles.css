@@ -1,0 +1,91 @@
+@tailwind utilities;
+
+/* --------------------------------------------------------------------------
+ * Milestone — chat-surface "agent finished" indicator with optional reasoning
+ * disclosure, declarative actions row (with ellipsis-menu overflow), and an
+ * optional feedback compound (thumbs-up / thumbs-down with reason picker).
+ *
+ * BEM prefixes:
+ * - airo-chat-milestone           (root + slots)
+ * - airo-chat-milestone-feedback  (the standalone feedback compound)
+ *
+ * All colors flow through `@ux/postcss-intents` `intent()` calls; layout
+ * spacing through `intent('ux.box.density')`. Consumers opt in to styles
+ * via `import '@airo-ux/pattern-library/chat/milestone/styles'`.
+ * ----------------------------------------------------------------------- */
+
+/* --- Milestone root + layout ---------------------------------------- */
+
+.airo-chat-milestone {
+  --airo-chat-milestone-density: intent('ux.box.density');
+  display: inline-block;
+  max-width: 100%;
+}
+
+.airo-chat-milestone__panel {
+  overflow: hidden;
+}
+
+.airo-chat-milestone__header {
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.airo-chat-milestone__label-button {
+  align-self: flex-start;
+  max-inline-size: 100%;
+}
+
+/* Caret icon inside the disclosure-trigger button. Mirror Thinker.complete
+   so the rotation behaviour is consistent across the two surfaces. */
+.airo-chat-milestone__caret {
+  transform: rotate(0deg);
+  transition: transform 0.2s ease-in-out;
+}
+.airo-chat-milestone__caret--open {
+  transform: rotate(180deg);
+}
+
+/* Trailing region for actions + feedback + ellipsis. Pushed to the inline-end
+   edge of the row so the disclosure label sits flush at the inline-start. */
+.airo-chat-milestone__trailing {
+  margin-inline-start: auto;
+}
+
+/* The actions container is the measurement target for the overflow algorithm.
+   Hidden actions (those that have collapsed into the menu) are taken out of
+   layout via `display: none` so they don't reserve width. */
+.airo-chat-milestone__actions {
+  display: inline-flex;
+  align-items: center;
+  column-gap: var(--airo-chat-milestone-density);
+}
+
+.airo-chat-milestone__action--collapsed {
+  display: none;
+}
+
+/* --- Feedback compound ----------------------------------------------- */
+
+/* The feedback row sits next to the actions; both are inline-flex so they
+   compose naturally in the trailing region. */
+.airo-chat-milestone-feedback {
+  display: inline-flex;
+  align-items: center;
+  column-gap: calc(var(--airo-chat-milestone-density, intent('ux.box.density')) * 0.5);
+}
+
+/* Pressed (filled) state for the thumbs buttons.
+ *
+ * `thumbs-up` ships an explicit filled icon (`thumbs-up-filled`); the TSX
+ * swaps the `icon` prop when `value === 'up'`. `thumbs-down` does NOT ship a
+ * filled variant (verified against `@ux/icon@2500.x`), so we approximate the
+ * filled state by giving the BUTTON itself a tinted background while the
+ * outline icon stays put. The two affordances read symmetrically because the
+ * up-button gets the same background treatment alongside its filled icon —
+ * the surface tint is the primary "pressed" cue, the icon swap is the
+ * reinforcing one. See README "Gotchas" for the rationale. */
+.airo-chat-milestone-feedback__button[aria-pressed='true'] {
+  background-color: intent('ux.actionOptionHovered.backgroundColor');
+  color: intent('ux.actionOptionHovered.foregroundColor');
+}

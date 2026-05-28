@@ -1,0 +1,55 @@
+/*
+ * Temporary vendor — `BuilderChatFooter` renders the vendored
+ * `SegmentedController` (see `src/_vendor/segmented-controller/`). Bundle its
+ * stylesheet here so downstream consumers using
+ * `@airo-ux/pattern-library/surfaces/builder-chat-footer/styles` automatically get
+ * the segmented-controller styles. Must precede `@tailwind` per CSS spec.
+ * Drop this `@import` (and revert `BuilderChatFooter` to import from
+ * `@godaddy/antares`) when antares ships PR #187.
+ */
+@import '../../_vendor/segmented-controller/styles.css';
+
+@tailwind utilities;
+
+/* --------------------------------------------------------------------------
+ * BuilderChatFooter — centered band below the chat composer.
+ *
+ * One open content slot (`children`). Default content example is
+ * `BuilderChatFooter.Sections` (antares `SegmentedController` for
+ * chat / media / history / analytics / settings). Layout is a flex
+ * row that centers its children horizontally; the consuming surface
+ * (typically `FloatingFooter`) supplies any outer block padding via
+ * its own `blockPadding` / `gap` props.
+ *
+ * Class names use the `airo-surfaces-builder-chat-footer__<part>`
+ * BEM prefix.
+ * ----------------------------------------------------------------------- */
+
+.airo-surfaces-builder-chat-footer {
+  box-sizing: border-box;
+  inline-size: 100%;
+  max-inline-size: 100%;
+}
+
+/* Wrapper div that receives forwarded HTML attributes from
+ * `BuilderChatFooterSections`. Needs the same overflow constraints as
+ * the SegmentedController it contains — without them the wrapper itself
+ * overflows the panel at min-content width. */
+.airo-surfaces-builder-chat-footer__sections {
+  max-inline-size: 100%;
+  min-inline-size: 0;
+}
+
+/* `@godaddy/antares` `SegmentedController` owns its own segment layout,
+ * focus rings, sliding active indicator, keyboard navigation, AND
+ * its own overflow handling (horizontal scroll when segments don't fit).
+ *
+ * We cap the controller at the BuilderChatFooter's width so it can never
+ * push the panel or composer wider than the panel itself. `min-inline-size: 0`
+ * overrides the default flex `min-content` floor so the controller can
+ * shrink below its natural content width and let antares scroll the
+ * segments instead of bursting out of the container. */
+.airo-surfaces-builder-chat-footer__segmented {
+  max-inline-size: 100%;
+  min-inline-size: 0;
+}

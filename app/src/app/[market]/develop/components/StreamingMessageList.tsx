@@ -1,7 +1,7 @@
 'use client'
 
 import { type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { Thinker } from '@airo/components/chat/thinker'
+import { Thinker } from '@airo-ux/pattern-library/chat/thinker'
 import Box from '@ux/box'
 import Button from '@ux/button'
 import ChevronDownIcon from '@ux/icon/chevron-down'

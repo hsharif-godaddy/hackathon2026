@@ -1,0 +1,520 @@
+/* `PromptBox` renders `<ThinkingIndicator>` in the expansion band when
+ * `expansionThinking` is true — bundle the primitive's animation
+ * keyframes + dot styles into this subpath so consumers importing only
+ * `@airo-ux/pattern-library/input/prompt-box/styles` get a working indicator
+ * without a second style import. */
+@import '../../primitives/thinking-indicator/styles.css';
+
+/* `PromptBox` renders `<MentionChip>` for each inline element-mention
+ * inserted via the `insertElementMention` ref handle method. Bundle the
+ * primitive's chrome into this subpath so consumers importing only
+ * `@airo-ux/pattern-library/input/prompt-box/styles` get the chip's resting,
+ * hover, and focus styles without a second style import. */
+@import '../../primitives/mention-chip/styles.css';
+
+@tailwind utilities;
+
+/* --------------------------------------------------------------------------
+ * PromptBox — auto-expanding chat prompt field with send/stop button and
+ * optional typeahead suggestions flyout.
+ *
+ * Class names use the `airo-input-prompt-box__<part>` BEM prefix.
+ * Colors, borders, radii, and spacing flow through `ux.*` intent tokens —
+ * no raw values.
+ *
+ * This stylesheet contains deliberate descendant-selector overrides into
+ * `@ux/field-frame` and `@ux/text-entry` internals. See each rule's inline
+ * comment for full rationale and re-evaluation triggers.
+ * ----------------------------------------------------------------------- */
+
+.airo-input-prompt-box {
+  --airo-input-prompt-box-density: intent('ux.box.density');
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  /* Override the default `min-width: auto` (= min-content) so the PromptBox
+     never claims more inline space than the host container offers. This
+     stops a long expansion-band title (or wide expansionContent) from
+     inflating the panel and pushing adjacent children — e.g. a
+     BuilderChatFooter SegmentedController stacked beneath — past the
+     container edge. */
+  min-inline-size: 0;
+}
+
+/* Borderless stack: frameless field + toolbar row (attach, token budget, mic, send). */
+.airo-input-prompt-box--borderless {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--airo-input-prompt-box-density) * 1);
+}
+
+/* ── Expansion area ────────────────────────────────────────────────────
+   Collapsible panel that reveals content (file previews, context chips,
+   etc.) above the textarea. Uses the grid-template-rows trick so no JS
+   measurement is needed and dynamic content heights are safe.
+   --------------------------------------------------------------------- */
+
+/* Outer container holding both the summary row (collapsed state) and
+   the expanding wrap (expanded state). Renders as block flow so its two
+   children stack naturally. */
+.airo-input-prompt-box__expansion-block {
+  display: block;
+}
+
+/* Header band — title + (optional) thinking indicator + chevron toggle.
+   Renders whenever `expansionTitle` is set, in both expanded and
+   collapsed states. Owns the chevron so the chrome doesn't shift between
+   states. The bottom-edge separator is routed below: it lives on
+   `__expansion-inner` while the wrap is open and on the band itself
+   while the wrap is collapsed (via `:has()`), so there's never a
+   double hairline. */
+.airo-input-prompt-box__expansion-band {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: calc(var(--airo-input-prompt-box-density) * 1);
+  /* Tight band: only inline-start padding so the title clears the host
+     container's edge. The chevron button on the inline-end side carries
+     its own block + inline padding, so the band height tracks the
+     button and the trailing edge stays flush with the panel. */
+  padding-block: 0;
+  padding-inline-start: calc(var(--airo-input-prompt-box-density) * 1);
+  padding-inline-end: 0;
+  /* Override the default `min-width: auto` (= min-content) on flex items
+     so a long title doesn't widen the band beyond its parent — without
+     this, the PromptBox would push its own container wider, dragging the
+     adjacent BuilderChatFooter / SegmentedController past the panel edge. */
+  min-inline-size: 0;
+}
+
+.airo-input-prompt-box__expansion-band-leading {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--airo-input-prompt-box-density) * 1);
+  min-width: 0;
+}
+
+.airo-input-prompt-box__expansion-band-indicator {
+  flex-shrink: 0;
+}
+
+.airo-input-prompt-box__expansion-band-title {
+  /* Type sizing comes from the wrapping `TextLockup` (default
+     `size="xs"` for string titles, caller-controlled for node titles)
+     so we don't redeclare font-size / line-height here. `min-width: 0`
+     lets the title shrink in the flex row when the band gets narrow;
+     the title wraps to multiple lines naturally — no truncation. */
+  min-width: 0;
+}
+
+/* Bottom border on the band only when the wrap below it is collapsed —
+   the band is then the bottom-most visible element and needs to provide
+   the separator from the textarea. When the wrap is open, its
+   `__expansion-inner` carries the border instead, so we never paint two
+   hairlines stacked. */
+.airo-input-prompt-box__expansion-block:has(
+    .airo-input-prompt-box__expansion-wrap:not(.airo-input-prompt-box__expansion-wrap--open)
+  )
+  .airo-input-prompt-box__expansion-band {
+  border-block-end: 1px solid intent('ux.box.borderColor');
+}
+
+/* Outer grid wrapper — transitions between 0fr (collapsed) and 1fr (open). */
+.airo-input-prompt-box__expansion-wrap {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.2s cubic-bezier(0.2, 0, 0, 1);
+  will-change: grid-template-rows;
+}
+
+.airo-input-prompt-box__expansion-wrap--open {
+  grid-template-rows: 1fr;
+}
+
+/* Inner overflow clip — required for the 0fr collapse to work. The
+   bottom border lives here (not on `.expansion`) so it spans the full
+   input-shell width edge-to-edge, independent of the inline padding
+   inside. While the panel is collapsed via `grid-template-rows: 0fr`,
+   the inner element shrinks to 0 height and the border collapses with it. */
+.airo-input-prompt-box__expansion-inner {
+  overflow: hidden;
+  min-block-size: 0;
+  border-block-end: 1px solid intent('ux.box.borderColor');
+}
+
+/* When the wrap is closed, suppress the border so the composer reads as a
+   single uninterrupted surface (no stray hairline above the textarea). */
+.airo-input-prompt-box__expansion-wrap:not(.airo-input-prompt-box__expansion-wrap--open)
+  .airo-input-prompt-box__expansion-inner {
+  border-block-end: 0;
+}
+
+/* Content container — block/inline padding matches `FloatingFooter`'s `sm`
+   Box padding so the expansion panel and the composer toolbar read as a
+   matched pair. The bottom border lives on `__expansion-inner` (which
+   spans the full input-shell width) so it stays edge-to-edge regardless
+   of the inline padding here. */
+.airo-input-prompt-box__expansion {
+  padding-block: calc(var(--airo-input-prompt-box-density) * 1);
+  padding-inline: calc(var(--airo-input-prompt-box-density) * 1);
+  /* Positioned context for the absolutely-placed `CornerActions` collapse
+     button so it anchors to the panel rather than the document. */
+  position: relative;
+}
+
+/* ── Column layout for default appearance ─────────────────────────────
+   Wraps the expansion + field row so FieldFrame can render both in
+   a single column without changing FieldFrame's own layout. */
+
+.airo-input-prompt-box__column {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
+}
+
+.airo-input-prompt-box__field-row {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-end;
+  width: 100%;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .airo-input-prompt-box__expansion-wrap {
+    transition: none;
+  }
+}
+
+.airo-input-prompt-box__input-shell {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.airo-input-prompt-box__toolbar {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  gap: calc(var(--airo-input-prompt-box-density) * 1);
+  box-sizing: border-box;
+}
+
+.airo-input-prompt-box__toolbar-start {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: calc(var(--airo-input-prompt-box-density) * 1);
+  min-width: 0;
+}
+
+/* Mic + send/stop flush together (no gutter between). */
+.airo-input-prompt-box__toolbar-end {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0;
+  flex-shrink: 0;
+  min-width: 0;
+}
+
+/* Donut gauge for token budget. The track (used arc) is always the
+   neutral `feedbackPassive` ring; only the fill (remaining arc) takes
+   on the active accent. `emphasis` modifiers below swap the fill to a
+   high-contrast feedback intent — the track stays passive. */
+.airo-input-prompt-box__token-gauge {
+  flex-shrink: 0;
+  display: block;
+  /* Stroke geometry is calibrated against the SVG: r=10 + stroke/2 must
+     equal half of the 24-unit viewBox so the outer edge sits flush.
+     `0.25em` (≈4px at the default 16px font-size) satisfies that math
+     and scales with the icon's font-size cascade — UXCore2 has no
+     stroke-width intent token, and the layout `ux.box.density` token
+     would break the calibration. Declared once here and re-used by
+     both circles below. `overflow: visible` keeps a slightly larger
+     stroke (consumer with bigger font-size) from clipping. */
+  --airo-token-gauge-stroke: 0.25em;
+  overflow: visible;
+}
+
+.airo-input-prompt-box__token-gauge-track {
+  stroke: intent('ux.feedbackPassive.feedbackColor');
+  stroke-width: var(--airo-token-gauge-stroke);
+}
+
+.airo-input-prompt-box__token-gauge-fill {
+  stroke: intent('ux.feedbackHighContrastHighlight.feedbackColor');
+  stroke-width: var(--airo-token-gauge-stroke);
+  stroke-linecap: round;
+}
+
+/* Active-arc emphasis — recolors only the fill stroke. The passive track
+   above is intentionally untouched. */
+.airo-input-prompt-box__token-budget--emphasis-critical .airo-input-prompt-box__token-gauge-fill {
+  stroke: intent('ux.feedbackHighContrastCritical.feedbackColor');
+}
+.airo-input-prompt-box__token-budget--emphasis-warning .airo-input-prompt-box__token-gauge-fill {
+  stroke: intent('ux.feedbackHighContrastWarning.feedbackColor');
+}
+.airo-input-prompt-box__token-budget--emphasis-highlight .airo-input-prompt-box__token-gauge-fill {
+  stroke: intent('ux.feedbackHighContrastHighlight.feedbackColor');
+}
+.airo-input-prompt-box__token-budget--emphasis-success .airo-input-prompt-box__token-gauge-fill {
+  stroke: intent('ux.feedbackHighContrastSuccess.feedbackColor');
+}
+.airo-input-prompt-box__token-budget--emphasis-info .airo-input-prompt-box__token-gauge-fill {
+  stroke: intent('ux.feedbackHighContrastInfo.feedbackColor');
+}
+.airo-input-prompt-box__token-budget--emphasis-neutral .airo-input-prompt-box__token-gauge-fill {
+  stroke: intent('ux.feedbackHighContrastNeutral.feedbackColor');
+}
+.airo-input-prompt-box__token-budget--emphasis-internal .airo-input-prompt-box__token-gauge-fill {
+  stroke: intent('ux.feedbackHighContrastInternal.feedbackColor');
+}
+.airo-input-prompt-box__token-budget--emphasis-passive .airo-input-prompt-box__token-gauge-fill {
+  stroke: intent('ux.feedbackHighContrastPassive.feedbackColor');
+}
+.airo-input-prompt-box__token-budget--emphasis-premium .airo-input-prompt-box__token-gauge-fill {
+  stroke: intent('ux.feedbackHighContrastPremium.feedbackColor');
+}
+
+/* ── Lexical editor surface ───────────────────────────────────────────── */
+
+/* Wrapper around the ContentEditable + ghost-text overlay. `position:
+   relative` anchors the absolutely-positioned ghost overlay; `flex: 1`
+   makes the wrapper claim the row's flexible width within `__field-row`;
+   `min-width: 0` lets it shrink below its content's intrinsic width when
+   the host container narrows. */
+.airo-input-prompt-box__editor-wrap {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Center the entry vertically within the FieldFrame so it sits in the
+   middle when at its minimum single-line height. As it grows it naturally
+   pushes the frame taller and the centering has no visible effect. */
+.airo-input-prompt-box__entry {
+  align-self: stretch;
+}
+
+/* Lexical contenteditable: replicates TextEntry's `multiline stretch
+   visualSize="sm"` geometry on a `<div contenteditable>` element.
+   - min-height: 1lh — single-line at rest.
+   - max-height: ~8 lines before content scrolls (matches the previous
+     textarea's auto-grow cap).
+   - white-space: pre-wrap + word-break: break-word — render newlines and
+     wrap long unbroken tokens.
+   - outline: none — the focus ring is owned by the surrounding FieldFrame
+     in the framed appearance.
+   - cursor: text — match a textarea's affordance.
+   - color/font come from the cascade so the consumer's theme tokens flow
+     in via `@ux/themes` at the app root. */
+.airo-input-prompt-box__entry--lexical {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  min-height: 1lh;
+  max-height: calc(var(--airo-input-prompt-box-density) * 20);
+  overflow-y: auto;
+  padding-block: calc(var(--airo-input-prompt-box-density) * 1.5);
+  padding-inline: calc(var(--airo-input-prompt-box-density) * 1);
+  outline: none;
+  cursor: text;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: intent('ux.box.foregroundColor');
+  box-sizing: border-box;
+}
+
+/* Lexical inserts a `<p>` per paragraph; collapse default browser margins
+   so the field opens at exactly 1lh. */
+.airo-input-prompt-box__entry--lexical > p {
+  margin: 0;
+}
+
+/* Read-only state (mic listening / budget exceeded). Lexical sets
+   `contenteditable="false"` via setEditable; aria-disabled mirrors that.
+   Text selection stays enabled — `contenteditable="false"` already blocks
+   edits, and the read-only states (especially `isBudgetExceeded`) preserve
+   the user's typed value precisely so they can still review and copy it. */
+.airo-input-prompt-box__entry--lexical[aria-disabled='true'] {
+  cursor: default;
+}
+
+/* Placeholder rendered by Lexical's PlainTextPlugin. The plugin slots it
+   into the same DOM tree as the contenteditable; we position it absolutely
+   over the editor's inner padding so the user's caret sits at the same
+   spot as the placeholder's first character. `pointer-events: none` keeps
+   clicks from landing on the placeholder instead of the editor. */
+.airo-input-prompt-box__entry-placeholder {
+  position: absolute;
+  inset-block-start: calc(var(--airo-input-prompt-box-density) * 1.5);
+  inset-inline-start: calc(var(--airo-input-prompt-box-density) * 1);
+  pointer-events: none;
+  user-select: none;
+  color: intent('ux.controlVoid.foregroundColor');
+}
+
+/* ── Inline suggestion (ghost completion) ────────────────────────────── */
+
+/* CSS-overlay ghost text. The overlay div sits absolutely over the
+   contenteditable inside `__editor-wrap`; the typed span is transparent
+   (occupies the same space as the user's input) and the rest span is
+   half-opacity ghost text trailing the caret. Matching `font`,
+   `padding`, `line-height`, and `white-space` keep the rest character-
+   aligned with where the editor's caret actually sits.
+
+   Hidden by `data-ghost-visible="false"` (set by GhostTextPlugin when
+   the cursor isn't at end-of-content, the input has a newline, or there
+   is no suggestion to show). */
+.airo-input-prompt-box__ghost {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  user-select: none;
+  padding-block: calc(var(--airo-input-prompt-box-density) * 1.5);
+  padding-inline: calc(var(--airo-input-prompt-box-density) * 1);
+  white-space: pre-wrap;
+  word-break: break-word;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+.airo-input-prompt-box__ghost[data-ghost-visible='false'] {
+  display: none;
+}
+.airo-input-prompt-box__ghost-typed {
+  color: transparent;
+}
+.airo-input-prompt-box__ghost-rest {
+  color: intent('ux.controlVoid.foregroundColor');
+}
+
+/* ── Trailing actions (default appearance) ─────────────────────────────
+   Equal margin on all four sides so the group's footprint sets the
+   FieldFrame's minimum height. `align-self: flex-end` pins actions to the
+   bottom-inline-end as the textarea grows. */
+.airo-input-prompt-box__trailing-actions {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-end;
+  flex-shrink: 0;
+  align-self: flex-end;
+  gap: 0;
+  margin: calc(var(--airo-input-prompt-box-density) * 0.5);
+}
+
+.airo-input-prompt-box__mic,
+.airo-input-prompt-box__attach,
+.airo-input-prompt-box__token-budget,
+.airo-input-prompt-box__before-submit,
+.airo-input-prompt-box__action {
+  flex-shrink: 0;
+}
+
+/* Extras before send/stop (default + borderless toolbar end). */
+.airo-input-prompt-box__before-submit {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0;
+}
+
+.airo-input-prompt-box__action {
+  margin: 0;
+}
+
+/* Restore the button's default border-radius.
+   `@ux/field-frame` ships `border-radius: 0 !important` (physical shorthand,
+   specificity 0,2,0) for every `.ux-button` child so that buttons flush
+   against a text-entry share a flat seam. For PromptBox the button is inset
+   with a small margin and should keep its natural radius on all four corners.
+
+   We match FieldFrame's physical shorthand exactly — overriding with logical
+   longhands doesn't reliably beat a physical shorthand with !important because
+   browsers resolve the physical-vs-logical conflict by source order, not
+   specificity. Using the same physical property with our higher specificity
+   (0,4,0) guarantees ours wins regardless of stylesheet import order.
+
+   `ux.action.borderRadius` is the canonical token `@ux/button` itself uses
+   (via uxButton.borderRadius → ux.action.borderRadius), so the radius stays
+   in sync with any theme override automatically.
+
+   Re-evaluation trigger: an official radius prop on `@ux/field-frame`.
+
+   Trailing actions wrap mic + send in a flex row; each `.ux-button` needs
+   the radius override to beat FieldFrame's `> .ux-button { border-radius: 0 !important }`.
+   Not a direct child combinator because trailing-actions sits inside
+   `__column` > `__field-row` when the expansion area is present. */
+.airo-input-prompt-box .ux-field-frame .airo-input-prompt-box__trailing-actions .ux-button {
+  border-radius: intent('ux.action.borderRadius') !important;
+}
+
+/* ── Suggestions flyout ──────────────────────────────────────────────── */
+
+/* Clip children to the flyout's rounded corners.
+   `@ux/flyout` renders as a `Box` (elevation="overlay") which carries
+   `border-radius` but no `overflow: hidden`, so the hover/focus background
+   on the first/last option bleeds into the rounded corners.
+   Adding `overflow: hidden` here is safe: the drop-shadow is applied via
+   `filter` after painting, so it still extends outside the box regardless
+   of the overflow clip.
+   Re-evaluation trigger: upstream `@ux/flyout` / `@ux/box` adds
+   `overflow: hidden` to overlay-elevation surfaces by default. */
+.airo-input-prompt-box__suggestions-flyout {
+  overflow: hidden;
+}
+
+/* Remove default list styling — the flyout provides its own card surface. */
+.airo-input-prompt-box__suggestions {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* Each suggestion row doubles as the interactive element (button[role="option"]).
+   Full-width so the hit target covers the entire row. Typography and spacing
+   match intent tokens so the list feels native to the UXCore theme.
+   `space-between` pushes the optional Tab hint tag to the inline-end edge. */
+.airo-input-prompt-box__suggestion-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: calc(var(--airo-input-prompt-box-density) * 2);
+  width: 100%;
+  padding-block: calc(var(--airo-input-prompt-box-density) * 1.5);
+  padding-inline: calc(var(--airo-input-prompt-box-density) * 2);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font: inherit;
+  color: intent('ux.box.foregroundColor');
+  text-align: start;
+}
+
+.airo-input-prompt-box__suggestion-btn:hover,
+.airo-input-prompt-box__suggestion-btn.airo-input-prompt-box__suggestion--active {
+  background: intent('ux.actionOptionHovered.backgroundColor');
+  color: intent('ux.actionOptionHovered.foregroundColor');
+}
+
+/* ── Screen-reader status region ─────────────────────────────────────── */
+
+/* Visually hidden but readable by assistive technology.
+   The `role="status"` + `aria-live="polite"` pair announces suggestion
+   count changes without interrupting the user. */
+.airo-input-prompt-box__sr-status {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}

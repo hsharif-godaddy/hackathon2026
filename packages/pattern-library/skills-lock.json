@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "skills": {
+    "accessibility": {
+      "source": "git@github.com:gdcorp-engineering/agent-skills",
+      "sourceType": "git",
+      "computedHash": "3c10fcb8ed7e999fa3e86b79a24cf0469fee93e92342d073ac873e3923cf92a6"
+    },
+    "brand-guidelines": {
+      "source": "git@github.com:gdcorp-engineering/agent-skills",
+      "sourceType": "git",
+      "computedHash": "da6613a678602b439d9a4bd640c99316083b2d9db67fcd3accdf935a1a660483"
+    },
+    "review": {
+      "source": "local",
+      "sourceType": "local"
+    },
+    "gd-figma-component-context": {
+      "source": "git@github.com:gdcorp-engineering/agent-skills",
+      "sourceType": "git",
+      "computedHash": "afb3b8db3634e188997cbbe4a45c58ddfe0588200de7d488a78c703bad31eb42"
+    },
+    "ux-content-guidelines": {
+      "source": "git@github.com:gdcorp-engineering/agent-skills",
+      "sourceType": "git",
+      "computedHash": "22ebb9fcc6d5f5f26457962478dc0b4367115ababb73d25e336267371d983993"
+    },
+    "uxcore": {
+      "source": "git@github.com:gdcorp-engineering/agent-skills",
+      "sourceType": "git",
+      "computedHash": "4e9a4e511f7f28470409dbdfbb3839b073ab8624be45e90f04870b285746fe4e"
+    }
+  }
+}

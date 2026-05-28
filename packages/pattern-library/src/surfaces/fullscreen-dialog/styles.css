@@ -1,0 +1,55 @@
+@tailwind utilities;
+
+/* --------------------------------------------------------------------------
+ * FullscreenDialog — full-viewport modal surface.
+ * Composes @ux/disrupt (scrim, focus trap, portal) + PanelChrome (inner UI).
+ *
+ * The dialog always covers the entire viewport and renders edge-to-edge.
+ * There are no margins, max-size constraints, or border-radius styles here.
+ *
+ * Class names use the `airo-surfaces-fullscreen-dialog__<part>` BEM prefix.
+ * All colors flow through `@ux/postcss-intents` intent() calls — no
+ * hardcoded values.
+ *
+ * Consumers must import both stylesheets:
+ *
+ *   import '@airo-ux/pattern-library/surfaces/fullscreen-dialog/styles';
+ *   import '@airo-ux/pattern-library/surfaces/panel-chrome/styles';
+ * ----------------------------------------------------------------------- */
+
+/* Root — the Disrupt positioning wrapper. `position: fixed; inset: 0`
+ * fills the full viewport. Flex here so the chrome child stretches to fill. */
+.airo-surfaces-fullscreen-dialog {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* Scrim backdrop — same layering as Panel's scrim. */
+  background: intent('ux.boxHighContrastOverlay.backgroundColor');
+  z-index: 300;
+}
+
+/* Chrome: fills the full viewport (parent is `position:fixed; inset:0`).
+ * No border-radius — the dialog is always edge-to-edge. Overflow inside
+ * the content region is handled by PanelChrome's scrollable content area. */
+.airo-surfaces-fullscreen-dialog__chrome {
+  width: 100%;
+  height: 100%;
+  background-color: intent('ux.box.backgroundColor');
+}
+
+/* --------------------------------------------------------------------------
+ * Reduced motion — honour the user's OS preference. The dialog itself has
+ * no CSS-driven entrance animation (it appears instantly via Disrupt's
+ * portal mount), so this section is a safety net for future transitions.
+ * ----------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  .airo-surfaces-fullscreen-dialog {
+    transition: none;
+  }
+
+  .airo-surfaces-fullscreen-dialog__chrome {
+    transition: none;
+  }
+}

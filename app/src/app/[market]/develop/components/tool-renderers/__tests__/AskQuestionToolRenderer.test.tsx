@@ -640,7 +640,7 @@ describe('AskQuestionToolRenderer', () => {
   })
 
   it('Other input keeps typed text across parent re-renders with the same result', () => {
-    // Regression: @airo/components ChoiceList runs an internal reset effect
+    // Regression: @airo-ux/pattern-library ChoiceList runs an internal reset effect
     // whose deps include `activeStep` and `collected`, both derived from the
     // `children` prop via useMemo. If the parent rebuilds the JSX children on
     // every render (the natural shape: `<ChoiceList>{questions.map(...)}</ChoiceList>`),

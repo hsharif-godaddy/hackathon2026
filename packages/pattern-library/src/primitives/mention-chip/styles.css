@@ -1,0 +1,140 @@
+/* --------------------------------------------------------------------------
+ * MentionChip — inline chip primitive for "mention"-shaped references.
+ *
+ * BEM prefix: airo-primitives-mention-chip
+ *
+ * Visual model:
+ *   • Resting / hover / focus-visible track the same three-state token
+ *     family used by `@ux/chip` — `actionControl`, `actionControlHovered`,
+ *     `actionControlFocused`. The chip's `uxChip*` intents are aliases of
+ *     these `actionControl*` paths, so this primitive is visually
+ *     consistent with `@ux/chip` chips at every interaction state.
+ *   • Each state shifts background, border-color, and foreground together
+ *     so contrast is preserved at all theme contrast levels and the chip
+ *     never relies on color alone to announce interactivity.
+ *   • `:focus-visible` paints both the focused-state surface AND an
+ *     explicit 2px outline (with 1px offset). Keyboard users get a
+ *     dedicated ring in addition to the surface shift, mirroring the
+ *     chip's focus treatment.
+ *   • The trailing remove `<button>` is a transparent surface that
+ *     borrows the chip's `actionControlHovered` tokens on hover and
+ *     `actionControlFocused.outlineColor` on focus, so the two
+ *     affordances (activate, remove) read distinctly.
+ *
+ * Spacing is expressed as fractional multiples of `intent('ux.box.density')`
+ * so chip geometry tracks the active theme's density token. Values are
+ * intentionally tiny (¼, ½, ¾ of density) — the chip should sit inline
+ * with body text and feel like punctuation, not a form control.
+ * Font-size remains em-relative so the chip's typography scales with the
+ * inherited body-text size (UXCore2 has no inline-chip font-size token).
+ * ----------------------------------------------------------------------- */
+
+.airo-primitives-mention-chip {
+  display: inline-flex;
+  align-items: center;
+
+  padding-block: calc(intent('ux.box.density') * 0.25);
+  /* Inline padding is symmetric (¾ density on each side) for read-only
+     chips. Trailing padding zeroes when a remove button is present so the
+     icon sits flush against the rounded edge — see `:has(.__remove)` below. */
+  padding-inline: calc(intent('ux.box.density') * 0.75);
+  margin-inline: calc(intent('ux.box.density') * 0.25);
+
+  border: intent('ux.actionControl.borderWidth') solid intent('ux.actionControl.borderColor');
+  /* Pill shape — matches `@ux/chip`'s 2em radius. UXCore2 does not
+     tokenize a pill radius, so the literal value is intentional. */
+  border-radius: 2em;
+  background-color: intent('ux.actionControl.backgroundColor');
+  color: intent('ux.actionControl.foregroundColor');
+
+  font-size: 0.875em;
+  /* Cursor is only "pointer" when the chip body is interactive — i.e. the
+     consumer supplied `onActivate`, in which case the JS layer attaches
+     `role="button"`. A read-only chip (no `onActivate`) inherits the
+     surrounding text cursor so AT users and pointer users both read it
+     as a non-interactive label, not a phantom button. */
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  vertical-align: baseline;
+  user-select: none;
+}
+
+.airo-primitives-mention-chip[role='button'] {
+  cursor: pointer;
+}
+
+/* Interactive states (hover/focus surface shift) only apply when the chip
+   body is actually interactive — i.e. the JS layer attached `role="button"`
+   because `onActivate` is wired. A read-only chip (no `onActivate`) keeps
+   its resting tokens on hover so it doesn't read as clickable. The trailing
+   remove button has its own hover/focus styling and is unaffected. */
+.airo-primitives-mention-chip[role='button']:hover {
+  background-color: intent('ux.actionControlHovered.backgroundColor');
+  color: intent('ux.actionControlHovered.foregroundColor');
+  border-color: intent('ux.actionControlHovered.borderColor');
+}
+
+.airo-primitives-mention-chip[role='button']:focus-visible {
+  background-color: intent('ux.actionControlFocused.backgroundColor');
+  color: intent('ux.actionControlFocused.foregroundColor');
+  border-color: intent('ux.actionControlFocused.borderColor');
+  outline: 2px solid intent('ux.actionControlFocused.outlineColor');
+  outline-offset: 1px;
+}
+
+/* When a remove button is present the chip leans on the icon's built-in
+   side-bearing instead of trailing chip padding, so the icon sits flush
+   against the rounded edge.
+   `:has()` is supported by every browser on the repo's `browserslist`
+   target, but wrap with `@supports selector(:has(*))` to match the
+   pattern used elsewhere in the repo (`choice-list/styles.css`,
+   `secrets-form/styles.css`, `_vendor/segmented-controller/styles.css`).
+   Browsers without `:has()` fall back to the chip's default
+   `padding-inline-end` — slightly looser visual gutter, but the layout
+   stays correct (the remove icon's own side-bearing keeps it inset). */
+@supports selector(:has(*)) {
+  .airo-primitives-mention-chip:has(.airo-primitives-mention-chip__remove) {
+    padding-inline-end: 0;
+  }
+}
+
+.airo-primitives-mention-chip__prefix {
+  /* Replaces flex `gap` so the prefix→label spacing stays intact while the
+     label→remove pair sits flush (the icon supplies its own breathing). */
+  margin-inline-end: calc(intent('ux.box.density') * 0.5);
+  font-weight: 700;
+}
+
+.airo-primitives-mention-chip__label {
+  /* Wrap a pathologically long label rather than blowing the layout
+     out — chips are inline and can sit inside a soft-wrapping paragraph. */
+  word-break: break-word;
+}
+
+.airo-primitives-mention-chip__remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.75em;
+  line-height: 1;
+
+  /* Circular hover surface — matches `@ux/chip`'s remove button. */
+  border-radius: 50%;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.airo-primitives-mention-chip__remove:hover {
+  background-color: intent('ux.actionControlHovered.backgroundColor');
+  color: intent('ux.actionControlHovered.foregroundColor');
+}
+
+.airo-primitives-mention-chip__remove:focus-visible {
+  outline: 2px solid intent('ux.actionControlFocused.outlineColor');
+  outline-offset: 1px;
+}

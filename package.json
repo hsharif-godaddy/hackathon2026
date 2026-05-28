@@ -12,7 +12,7 @@
     "local:prod": "pnpm --parallel --filter @airo/agents --filter website local:prod",
     "dev:agents": "pnpm --filter @airo/agents dev",
     "dev:app": "pnpm --filter website dev",
-    "build": "turbo run build --filter=@airo/shared --filter=@airo/ai-common --filter=@airo/ai-grants --filter=@airo/ai-lib --filter=@airo/ai-transport --filter=@airo/ai-skills --filter=@airo/agents --filter=website",
+    "build": "turbo run build --filter=@airo/shared --filter=@airo-ux/pattern-library --filter=@airo/ai-common --filter=@airo/ai-grants --filter=@airo/ai-lib --filter=@airo/ai-transport --filter=@airo/ai-skills --filter=@airo/agents --filter=website",
     "build:all": "turbo run build",
     "typecheck": "turbo run typecheck",
     "lint": "turbo run lint",
@@ -71,6 +71,9 @@
     ],
     "packages/ai-skills/**/*.{ts,tsx,js,jsx}": [
       "pnpm --filter @airo/ai-skills lint:fix"
+    ],
+    "packages/pattern-library/**/*.{ts,tsx,js,jsx}": [
+      "pnpm --filter @airo-ux/pattern-library lint:fix"
     ],
     "website/**/*.{ts,tsx,js,jsx}": [
       "pnpm --filter website lint --fix"

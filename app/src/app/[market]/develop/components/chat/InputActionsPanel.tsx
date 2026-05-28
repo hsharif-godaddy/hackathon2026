@@ -3,8 +3,8 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Thinker } from '@airo/components/chat/thinker'
-import { ChoiceList } from '@airo/components/input/choice-list'
+import { Thinker } from '@airo-ux/pattern-library/chat/thinker'
+import { ChoiceList } from '@airo-ux/pattern-library/input/choice-list'
 import { useQueryClient } from '@tanstack/react-query'
 
 import { useSendUserMessage } from '@/app/[market]/develop/components/chat/ChatContext'

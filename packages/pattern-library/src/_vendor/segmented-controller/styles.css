@@ -1,0 +1,248 @@
+/*
+ * Temporary vendor: port of the styles proposed in
+ * godaddy/antares PR #187 (head SHA 50c6640).
+ *
+ * Upstream source: packages/@godaddy/antares/components/segmented-controller/src/index.module.css
+ *
+ * Local adaptations (visual behavior unchanged):
+ *   - Class names rewritten from CSS-modules locals (.container, .item, ...) to
+ *     stable BEM names rooted at .airo-vendor-segmented-controller. The
+ *     upstream CSS-variable cascade (--color-action-*, --space-0NN, --ux-*)
+ *     is kept verbatim — those tokens are resolved by the consuming app's
+ *     theme; no intent() rewrite needed for visual parity.
+ *   - Nested rules use explicit `&` prefixes (e.g. `& :where(.foo) { ... }`)
+ *     to match upstream's compiled output. Upstream's CSS-modules build
+ *     emits this form via lightningcss; we write it directly. CSS
+ *     Nesting itself is required either way (Chrome 120+, Safari 17.2+,
+ *     Firefox 117+ — all on the repo's `browserslist` target), but the
+ *     explicit `&` form removes ambiguity between the bare-nested-selector
+ *     spec relaxation (which auto-treats `:where(.foo) { … }` as a
+ *     descendant) and the older Level-1 interpretation that requires a
+ *     parent reference. esbuild and tsup do not run a CSS Nesting
+ *     transform; the compiled output is shipped as-is to the browser.
+ *
+ * Delete this file with the rest of the vendor folder when PR #187 ships.
+ */
+.airo-vendor-segmented-controller {
+  --controller-surface-bg: var(--color-surface-background-passive, var(--ux-l7zq7p, #ffffff));
+  --controller-item-bg-selected: var(--color-action-background-selected, var(--ux-gdy377, #e0e0e0));
+  --controller-item-fg-selected: var(--color-action-foreground-selected, var(--ux-k4fkva, #000));
+  --controller-item-border-selected: var(
+    --color-action-border-selected,
+    var(--ux-187j9dd, transparent)
+  );
+  --controller-font-size-sm: var(--font-body-size-sm, calc(var(--ux-cxbe8g, 16px) / 1.125));
+  --controller-font-size-md: var(--font-body-size-md, var(--ux-cxbe8g, 16px));
+  --controller-font-size-lg: var(--font-body-size-lg, calc(var(--ux-cxbe8g, 16px) * 1.125));
+  --controller-space-005: var(--space-005, calc(var(--ux-1sbfig8, 0.25rem) * 0.5));
+  --controller-space-010: var(--space-010, calc(var(--ux-1sbfig8, 0.25rem) * 1));
+  --controller-space-015: var(--space-015, calc(var(--ux-1sbfig8, 0.25rem) * 1.5));
+  --controller-space-020: var(--space-020, calc(var(--ux-1sbfig8, 0.25rem) * 2));
+  --controller-space-025: var(--space-025, calc(var(--ux-1sbfig8, 0.25rem) * 2.5));
+  --controller-space-030: var(--space-030, calc(var(--ux-1sbfig8, 0.25rem) * 3));
+  --controller-space-040: var(--space-040, calc(var(--ux-1sbfig8, 0.25rem) * 4));
+
+  background: var(--controller-surface-bg);
+
+  /* biome-ignore lint/correctness/noUnknownProperty: interpolate-size is Baseline 2024; older browsers ignore it. */
+  interpolate-size: allow-keywords;
+
+  /*
+   * Per-size knobs. `--inner-radius` is the upstream-shipped variable;
+   * `--controller-icon-only-padding-inline` is a vendor-only addition that
+   * matches the size's `padding-block` so icon-only / collapsed segments
+   * render with symmetric padding (sides = top/bottom).
+   */
+  &:where([data-size='sm']) {
+    --inner-radius: calc(var(--controller-space-015) * 2);
+    border-radius: calc(var(--inner-radius) + var(--controller-space-015));
+    --controller-icon-only-padding-inline: var(--controller-space-005);
+  }
+  &:where([data-size='md']) {
+    --inner-radius: calc(var(--controller-space-030) * 2);
+    border-radius: calc(var(--inner-radius) + var(--controller-space-030));
+    --controller-icon-only-padding-inline: var(--controller-space-015);
+  }
+  &:where([data-size='lg']) {
+    --inner-radius: calc(var(--controller-space-040) * 2);
+    border-radius: calc(var(--inner-radius) + var(--controller-space-040));
+    --controller-icon-only-padding-inline: var(--controller-space-025);
+  }
+
+  :where(&:dir(rtl)) {
+    --icon-direction: scaleX(-1);
+  }
+
+  & :where(.airo-vendor-segmented-controller__item) {
+    position: relative;
+    z-index: 1;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--inner-radius);
+    scroll-margin-inline: var(--controller-space-005);
+    transform: translateZ(0);
+    /*
+     * Set gap via CSS (rather than inline) so collapse mode can drive it to 0
+     * when the label is hidden. Mirror items keep their inline gap.
+     */
+    gap: var(--sp-xs, 2px);
+    transition: gap 200ms cubic-bezier(0.4, 0, 0.2, 1);
+
+    &:where([data-selected]) {
+      z-index: 0;
+    }
+    &:where([data-disabled]) {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      transition: none;
+    }
+  }
+
+  & :where([data-size='sm'] .airo-vendor-segmented-controller__item) {
+    font-size: var(--controller-font-size-sm);
+    padding-inline: var(--controller-space-015);
+    padding-block: var(--controller-space-005);
+  }
+  & :where([data-size='md'] .airo-vendor-segmented-controller__item) {
+    font-size: var(--controller-font-size-md);
+    padding-inline: var(--controller-space-030);
+    padding-block: var(--controller-space-015);
+  }
+  & :where([data-size='lg'] .airo-vendor-segmented-controller__item) {
+    font-size: var(--controller-font-size-lg);
+    padding-inline: var(--controller-space-040);
+    padding-block: var(--controller-space-025);
+  }
+
+  /*
+   * Vendor-only divergence from upstream antares PR #187: icon-only segments
+   * (no `.label` rendered at all) and collapsed-inactive non-selected
+   * segments (`.label--hidden`) get symmetric padding so their content area
+   * is square around the icon, instead of the wider `padding-inline` that
+   * the size-based rules above set for icon+label segments. Matches the
+   * size's `padding-block` so the visual height stays anchored.
+   *
+   * `:has()` is supported by every browser on the repo's `browserslist`
+   * target, but wrap with `@supports selector(:has(*))` to match the
+   * pattern used by `choice-list/styles.css` and `secrets-form/styles.css`.
+   * If the browser drops the rule, structurally-icon-only segments fall
+   * back to the wider size-based `padding-inline` — same as upstream.
+   *
+   * The `[data-collapse-inactive] .item:not([data-selected])` rule below
+   * doesn't use `:has()` and stays out of the `@supports` block.
+   *
+   * If reverting to upstream `@godaddy/antares` `SegmentedController`, drop
+   * these two rules and the `--controller-icon-only-padding-inline` variable
+   * lines in the size blocks above.
+   */
+  @supports selector(:has(*)) {
+    &
+      :where(
+        .airo-vendor-segmented-controller__item:not(:has(.airo-vendor-segmented-controller__label))
+      ) {
+      padding-inline: var(--controller-icon-only-padding-inline);
+    }
+  }
+  &:where([data-collapse-inactive])
+    :where(
+      .airo-vendor-segmented-controller__content
+        .airo-vendor-segmented-controller__item:not([data-selected])
+    ) {
+    padding-inline: var(--controller-icon-only-padding-inline);
+  }
+
+  & :where(.airo-vendor-segmented-controller__content) {
+    background: transparent;
+    overflow-x: auto;
+    scrollbar-width: none;
+
+    &::-webkit-scrollbar {
+      display: none;
+    }
+  }
+
+  & :where(.airo-vendor-segmented-controller__scroll-buttons) {
+    background: transparent;
+  }
+
+  & :where(.airo-vendor-segmented-controller__scroll-btn) {
+    background: transparent;
+    transform: var(--icon-direction);
+  }
+
+  /*
+   * Distribute reserved space automatically: first segment anchors to the leading
+   * edge, last segment anchors to the trailing edge, and any middle segments are
+   * evenly spaced. The `gap` declared on the content row becomes the minimum spacing.
+   */
+  &:where([data-collapse-inactive]) :where(.airo-vendor-segmented-controller__content) {
+    justify-content: space-between;
+  }
+
+  /* When a segment is collapsed (no visible label), close the gap between icon and the zero-width label. */
+  &:where([data-collapse-inactive])
+    :where(
+      .airo-vendor-segmented-controller__content
+        .airo-vendor-segmented-controller__item:not([data-selected])
+    ) {
+    gap: 0;
+  }
+
+  /*
+   * Labels animate width 0 ↔ auto so the button shrinks/grows on the same
+   * 200ms timeline as the selection indicator. `interpolate-size` (Baseline 2024)
+   * unlocks the auto-keyword side of the transition; older browsers fall back
+   * to an abrupt swap (still functional, just not smooth).
+   */
+  & :where(.airo-vendor-segmented-controller__label) {
+    overflow: hidden;
+    white-space: nowrap;
+    width: auto;
+    opacity: 1;
+    transition-property: width, opacity;
+    transition-duration: 200ms;
+    transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+
+    @media (prefers-reduced-motion: reduce) {
+      transition: none;
+    }
+  }
+
+  & :where(.airo-vendor-segmented-controller__label--hidden) {
+    width: 0;
+    opacity: 0;
+  }
+
+  & :where(.airo-vendor-segmented-controller__mirror) {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    position: absolute;
+    inset-block-start: 0;
+    inset-inline-start: 0;
+    visibility: hidden;
+    pointer-events: none;
+    white-space: nowrap;
+  }
+
+  & :where(.airo-vendor-segmented-controller__indicator) {
+    background: var(--controller-item-bg-selected);
+    border: 1px solid var(--controller-item-border-selected);
+    border-radius: var(--inner-radius);
+    position: absolute;
+    z-index: -1;
+    inset-block-start: -1px;
+    inset-inline-start: -1px;
+    width: 100%;
+    height: 100%;
+    transition-property: translate, width;
+    transition-duration: 200ms;
+
+    @media (prefers-reduced-motion: reduce) {
+      transition: none;
+    }
+  }
+}

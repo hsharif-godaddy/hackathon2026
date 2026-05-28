@@ -1,0 +1,427 @@
+@tailwind utilities;
+
+/* --------------------------------------------------------------------------
+ * FloatingPanel — draggable, resizable, non-modal chat window.
+ * Composes react-rnd (positioning, drag, resize) + PanelChrome (inner UI).
+ *
+ * Class names use the `airo-surfaces-floating-panel__<part>` BEM prefix.
+ * Colors and typography flow through `@ux/postcss-intents` intent() calls
+ * or CSS variables set by the Theme API. Layout geometry (z-index, resize
+ * hit areas) uses density-calc intent tokens or documented CSS custom
+ * properties where design-token equivalents exist.
+ *
+ * Consumers must import both stylesheets:
+ *
+ *   import '@airo-ux/pattern-library/surfaces/floating-panel/styles';
+ *   import '@airo-ux/pattern-library/surfaces/panel-chrome/styles';
+ * ----------------------------------------------------------------------- */
+
+/* Root — the Rnd wrapper div. `overflow: hidden` clips the chrome content
+ * and child resize handles to the panel boundary. `display: flex` with
+ * `flex-direction: column` ensures PanelChrome fills the full height so the
+ * scrollable content region grows to occupy the available space. */
+.airo-surfaces-floating-panel {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background-color: intent('ux.box.backgroundColor');
+  border-radius: calc(intent('ux.box.density') * 1.5);
+  /* Shadow: overlay-elevation drop shadow matching @ux/box elevation="overlay".
+   *
+   * TODO: replace the rgba() fallback with the design token reference once
+   * @godaddy/antares or @ux/uxcore2 exposes an elevation/shadow token for
+   * overlay-elevation surfaces (e.g. intent('ux.overlay.boxShadow') or
+   * a CSS variable such as var(--ux-elevation-overlay-shadow)). The three-
+   * layer stack below mirrors the canonical UXCore2 overlay shadow; keep it
+   * in sync with @ux/box until the token is available.
+   *
+   * Override per-instance via the custom property (no component CSS edits):
+   *   .airo-surfaces-floating-panel { --airo-surfaces-floating-panel-shadow: <value>; } */
+  box-shadow: var(
+    --airo-surfaces-floating-panel-shadow,
+    0 3px 8px rgba(0, 0, 0, 0.15),
+    0 4px 4px rgba(0, 0, 0, 0.1),
+    0 0 0.5px rgba(0, 0, 0, 0.2)
+  );
+  /* Keep the panel on top of page content but below modal scrims. */
+  z-index: 200;
+}
+
+/* The chrome root fills the Rnd container. Height must be 100% so the
+ * scrollable content region in PanelChrome grows to the full panel height
+ * instead of collapsing to content size. */
+.airo-surfaces-floating-panel__chrome {
+  height: 100%;
+  width: 100%;
+}
+
+/* Drag handle: the chrome header is the drag target. A `cursor: grab`
+ * (dragging → `cursor: grabbing`) communicates affordance. We scope to
+ * `.airo-surfaces-floating-panel` so non-floating uses of PanelChrome
+ * are unaffected. */
+.airo-surfaces-floating-panel .airo-surfaces-panel-chrome__header {
+  cursor: grab;
+  user-select: none;
+}
+
+.airo-surfaces-floating-panel .airo-surfaces-panel-chrome__header:active {
+  cursor: grabbing;
+}
+
+/* Resize handles — react-rnd renders them as absolutely-positioned children
+ * of the Rnd root div. The default hit area is 10px; we increase it to
+ * density×3 (0.75rem / 12px at the default scale) while keeping the visible
+ * indicator to the panel edge so there is no visible gap. Override via the
+ * custom property if a denser/larger target is needed. */
+.airo-surfaces-floating-panel > span[style] {
+  min-width: var(--airo-surfaces-floating-panel-resize-hit, calc(intent('ux.box.density') * 3));
+  min-height: var(--airo-surfaces-floating-panel-resize-hit, calc(intent('ux.box.density') * 3));
+}
+
+/* --------------------------------------------------------------------------
+ * Expanded (full-screen)
+ *
+ * When the expand button is activated the panel stretches to fill the full
+ * viewport, sitting above the docked-panel z-index layer (200). A subtle
+ * scale-in animation signals the mode change without distracting the user.
+ * The drag-handle pill is hidden in this state (dragHandle={false} in the
+ * component), so no cursor override is needed here.
+ * ----------------------------------------------------------------------- */
+
+.airo-surfaces-floating-panel--expanded {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: 0;
+  /* Sit above viewport-edge docked panels (z-index: 200). */
+  z-index: 201;
+  animation: airo-fp-expand 0.2s cubic-bezier(0.2, 0, 0, 1) both;
+}
+
+@keyframes airo-fp-expand {
+  from {
+    opacity: 0.85;
+    transform: scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* --------------------------------------------------------------------------
+ * Snap-to-dock — docked edge (left / right)
+ *
+ * When the panel snaps to a viewport edge it leaves react-rnd and becomes a
+ * `position: fixed` side panel for the full viewport height. The entrance
+ * animation slides in from the appropriate edge.
+ * ----------------------------------------------------------------------- */
+
+.airo-surfaces-floating-panel--docked-left,
+.airo-surfaces-floating-panel--docked-right {
+  position: fixed;
+  inset-block: 0;
+  height: 100%;
+  border-radius: 0;
+  z-index: 200;
+}
+
+.airo-surfaces-floating-panel--docked-left {
+  inset-inline-start: 0;
+  border-inline-end: 1px solid intent('ux.box.borderColor');
+  animation: airo-fp-dock-left 0.25s cubic-bezier(0.2, 0, 0, 1) both;
+}
+
+.airo-surfaces-floating-panel--docked-right {
+  inset-inline-end: 0;
+  border-inline-start: 1px solid intent('ux.box.borderColor');
+  animation: airo-fp-dock-right 0.25s cubic-bezier(0.2, 0, 0, 1) both;
+}
+
+@keyframes airo-fp-dock-left {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes airo-fp-dock-right {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+/* --------------------------------------------------------------------------
+ * Snap-to-dock — docked into a DropZone (in-page sidebar)
+ *
+ * Fills the DropZone container; no fixed positioning, no border-radius.
+ * The consuming page's CSS controls the zone's size.
+ * ----------------------------------------------------------------------- */
+
+.airo-surfaces-floating-panel--docked-zone {
+  width: 100%;
+  height: 100%;
+  border-radius: 0;
+  /* Positioned context so the absolutely-placed edge-resize handle is
+   * anchored to the panel bounds rather than the DropZone's parent. */
+  position: relative;
+  /* In-flow with the document — let the host page background show through.
+   * The floating / viewport-edge variants keep `box.backgroundColor` so the
+   * panel reads as a raised surface; here the panel IS the page region. */
+  background-color: transparent;
+  /* Header / footer chrome inside the panel inherit `box.backgroundColor`
+   * via `panel-chrome/styles.css`; the body region (between them) stays
+   * transparent so the page surface shows through. */
+  box-shadow: none;
+}
+
+/* --------------------------------------------------------------------------
+ * Drop zone
+ *
+ * Collapses to zero width when empty so it takes no space in the layout.
+ * Expands to `--airo-fp-drop-zone-width` (default 320 px) in two situations:
+ *
+ *   `--active`  — FloatingPanel adds this while the user drags near the zone
+ *                 (preview before docking). Removed when the drag ends.
+ *   `--docked`  — FloatingPanel adds this while a panel is portaled inside.
+ *                 Removed when the panel undocks.
+ *
+ * Consumers can override the target width on the element:
+ *   <FloatingPanel.DropZone style={{ '--airo-fp-drop-zone-width': '400px' }} />
+ *
+ * The dashed outline is a clear "this is where it will land" affordance
+ * without requiring color-only communication.
+ * ----------------------------------------------------------------------- */
+
+.airo-surfaces-floating-panel__drop-zone {
+  flex-shrink: 0;
+  width: 0;
+  overflow: hidden;
+  position: relative;
+  transition: width 0.2s ease;
+  /* `border-box` so the opt-in `borderSides` modifiers below don't add
+     to the configured `--airo-fp-drop-zone-width`. Without this, a
+     `320 px` zone with a `1 px` divider paints `321 px` wide and the
+     adjacent canvas reflows by `+1 px`. */
+  box-sizing: border-box;
+}
+
+.airo-surfaces-floating-panel__drop-zone--active {
+  width: var(--airo-fp-drop-zone-width, 320px);
+}
+
+.airo-surfaces-floating-panel__drop-zone--docked {
+  width: var(--airo-fp-drop-zone-width, 320px);
+}
+
+/* Per-side dividers — opt-in via the `borderSides` prop. Borders sit on
+ * logical sides (`'block-start' | 'block-end' | 'inline-start' | 'inline-end'`)
+ * so RTL layouts mirror correctly without consumer-side `dir="rtl"`
+ * branching. The modifier classes are scoped under `--active` /
+ * `--docked` so a collapsed (zero-width) zone never paints a stray
+ * hairline against the surrounding canvas. */
+.airo-surfaces-floating-panel__drop-zone--active.airo-surfaces-floating-panel__drop-zone--border-block-start,
+.airo-surfaces-floating-panel__drop-zone--docked.airo-surfaces-floating-panel__drop-zone--border-block-start {
+  border-block-start: 1px solid intent('ux.box.borderColor');
+}
+.airo-surfaces-floating-panel__drop-zone--active.airo-surfaces-floating-panel__drop-zone--border-block-end,
+.airo-surfaces-floating-panel__drop-zone--docked.airo-surfaces-floating-panel__drop-zone--border-block-end {
+  border-block-end: 1px solid intent('ux.box.borderColor');
+}
+.airo-surfaces-floating-panel__drop-zone--active.airo-surfaces-floating-panel__drop-zone--border-inline-start,
+.airo-surfaces-floating-panel__drop-zone--docked.airo-surfaces-floating-panel__drop-zone--border-inline-start {
+  border-inline-start: 1px solid intent('ux.box.borderColor');
+}
+.airo-surfaces-floating-panel__drop-zone--active.airo-surfaces-floating-panel__drop-zone--border-inline-end,
+.airo-surfaces-floating-panel__drop-zone--docked.airo-surfaces-floating-panel__drop-zone--border-inline-end {
+  border-inline-end: 1px solid intent('ux.box.borderColor');
+}
+
+/* Inner decorative box — visible only during an active drag preview.
+ * Hidden when docked (the portaled panel fills the zone instead).
+ *
+ * MD spacing (density × 3) creates breathing room between the zone edge
+ * and the dashed border. Border width is `density × 0.375` — thinner than the
+ * prior `× 0.5` hairline, fully intent-derived (no raw px). A `::before`
+ * pseudo-element carries the 10% opacity fill separately from the full-opacity
+ * border. */
+.airo-surfaces-floating-panel__drop-zone-inner {
+  display: none;
+}
+
+.airo-surfaces-floating-panel__drop-zone--active .airo-surfaces-floating-panel__drop-zone-inner {
+  display: block;
+  position: absolute;
+  inset: calc(intent('ux.box.density') * 3);
+  border-width: calc(intent('ux.box.density') * 0.375);
+  border-style: dashed;
+  border-color: intent('ux.actionControlChosen.borderColor');
+  border-radius: calc(intent('ux.box.density') * 4);
+  pointer-events: none;
+  overflow: hidden;
+}
+
+/* White-mixed fill at near-full opacity — kept in ::before so the border stays fully opaque.
+ * color-mix lightens the intent color toward the page background (90% canvas); opacity: 0.9 makes
+ * the tint nearly solid so the zone is clearly highlighted without being heavy.
+ * Degrades gracefully on browsers that don't support color-mix: fill becomes
+ * transparent, but the dashed border still communicates the affordance. */
+.airo-surfaces-floating-panel__drop-zone--active
+  .airo-surfaces-floating-panel__drop-zone-inner::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-color: color-mix(in srgb, intent('ux.actionControlChosen.borderColor') 10%, canvas);
+  opacity: 0.9;
+}
+
+/* --------------------------------------------------------------------------
+ * Snap indicator — ghost preview at a viewport edge while dragging near it.
+ * Appears before the panel actually snaps so users can preview the result.
+ *
+ * The outer element is a transparent fixed container that reserves the
+ * space. The inner `__snap-indicator-inner` element carries the same
+ * decorative treatment as the DropZone active state: a dashed border with
+ * a white-mixed fill at near-full opacity.
+ * ----------------------------------------------------------------------- */
+
+.airo-surfaces-floating-panel__snap-indicator {
+  position: fixed;
+  inset-block: 0;
+  pointer-events: none;
+  z-index: 199;
+}
+
+.airo-surfaces-floating-panel__snap-indicator--left {
+  inset-inline-start: 0;
+}
+
+.airo-surfaces-floating-panel__snap-indicator--right {
+  inset-inline-end: 0;
+}
+
+/* Inner decorative box — same visual language as the DropZone active state. */
+.airo-surfaces-floating-panel__snap-indicator-inner {
+  position: absolute;
+  inset: calc(intent('ux.box.density') * 3);
+  border-width: calc(intent('ux.box.density') * 0.375);
+  border-style: dashed;
+  border-color: intent('ux.actionControlChosen.borderColor');
+  border-radius: calc(intent('ux.box.density') * 4);
+  overflow: hidden;
+  pointer-events: none;
+}
+
+/* White-mixed fill at near-full opacity — same treatment as the DropZone active state.
+ * Degrades to transparent on browsers without color-mix support; dashed border
+ * still communicates the affordance. */
+.airo-surfaces-floating-panel__snap-indicator-inner::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-color: color-mix(in srgb, intent('ux.actionControlChosen.borderColor') 10%, canvas);
+  opacity: 0.9;
+}
+
+/* Header text stays selectable in docked mode — only the drag handle pill is
+ * the drag target (grab cursor applied below). */
+.airo-surfaces-floating-panel--docked-left .airo-surfaces-panel-chrome__header,
+.airo-surfaces-floating-panel--docked-right .airo-surfaces-panel-chrome__header,
+.airo-surfaces-floating-panel--docked-zone .airo-surfaces-panel-chrome__header {
+  cursor: default;
+  user-select: auto;
+}
+
+/* Re-enable the drag handle pill in docked mode so the user can grab it to
+ * undock. Overrides `pointer-events: none` from the base pill rule. */
+.airo-surfaces-floating-panel--docked-left .airo-surfaces-panel-chrome__drag-handle,
+.airo-surfaces-floating-panel--docked-right .airo-surfaces-panel-chrome__drag-handle,
+.airo-surfaces-floating-panel--docked-zone .airo-surfaces-panel-chrome__drag-handle {
+  pointer-events: auto;
+  cursor: grab;
+}
+
+.airo-surfaces-floating-panel--docked-left .airo-surfaces-panel-chrome__drag-handle:active,
+.airo-surfaces-floating-panel--docked-right .airo-surfaces-panel-chrome__drag-handle:active,
+.airo-surfaces-floating-panel--docked-zone .airo-surfaces-panel-chrome__drag-handle:active {
+  cursor: grabbing;
+}
+
+/* --------------------------------------------------------------------------
+ * Edge resize handle — visible only when the panel is docked to the left or
+ * right viewport edge. A thin strip on the inner edge lets the user drag to
+ * resize the panel's width. `touch-action: none` prevents scroll interference
+ * on touch devices; pointer capture in JS keeps the events flowing to this
+ * element even when the pointer leaves it mid-drag.
+ * ----------------------------------------------------------------------- */
+
+.airo-surfaces-floating-panel__edge-resize-handle {
+  position: absolute;
+  inset-block: 0;
+  inline-size: var(--airo-surfaces-floating-panel-edge-handle-inline-size, 6px);
+  cursor: col-resize;
+  z-index: 10;
+  touch-action: none;
+  /* Center the drag-handle grip pill within the hit area */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Vertical drag-handle grip — styled here so consumers need no extra import.
+ * Uses the same color token and opacity convention as the header pill. */
+.airo-surfaces-floating-panel__edge-resize-handle .airo-primitives-drag-handle {
+  background-color: intent('ux.feedbackHighContrastPassive.feedbackColor');
+  border-radius: intent('ux.box.density');
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+
+.airo-surfaces-floating-panel__edge-resize-handle:hover .airo-primitives-drag-handle,
+.airo-surfaces-floating-panel__edge-resize-handle:focus-visible .airo-primitives-drag-handle {
+  opacity: 1;
+}
+
+.airo-surfaces-floating-panel__edge-resize-handle .airo-primitives-drag-handle--vertical {
+  inline-size: calc(intent('ux.box.density') * 0.25);
+  block-size: 75%;
+}
+
+.airo-surfaces-floating-panel__edge-resize-handle:focus-visible {
+  outline: 2px solid intent('ux.box.outlineColor');
+  outline-offset: -2px;
+}
+
+/* Left-docked panel: resize handle sits on the right (inner) edge */
+.airo-surfaces-floating-panel__edge-resize-handle--left {
+  inset-inline-end: 0;
+}
+
+/* Right-docked panel: resize handle sits on the left (inner) edge */
+.airo-surfaces-floating-panel__edge-resize-handle--right {
+  inset-inline-start: 0;
+}
+
+/* --------------------------------------------------------------------------
+ * Reduced motion — honour the user's OS preference. The panel itself has no
+ * CSS-driven open animation (it appears instantly via portal mount), so this
+ * section is a safety net for any future entrance transition added here.
+ * ----------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  .airo-surfaces-floating-panel,
+  .airo-surfaces-floating-panel--docked-left,
+  .airo-surfaces-floating-panel--docked-right,
+  .airo-surfaces-floating-panel--expanded,
+  .airo-surfaces-floating-panel__drop-zone,
+  .airo-surfaces-floating-panel__snap-indicator {
+    transition: none;
+    animation: none;
+  }
+}

@@ -1,0 +1,51 @@
+@tailwind utilities;
+
+/* --------------------------------------------------------------------------
+ * DragHandle — decorative affordance pill for draggable / resizable surfaces.
+ *
+ * Two orientations:
+ *   horizontal  — wide pill used in panel headers (matches the legacy
+ *                 `airo-surfaces-panel-chrome__drag-handle` pill exactly).
+ *   vertical    — tall narrow grip used on resizable edges (e.g. the
+ *                 FloatingPanel edge-resize strip).
+ *
+ * Opacity is 0.4 at rest; transitions to 1.0 when the nearest ancestor
+ * carrying `.airo-primitives-drag-handle__parent` is hovered.  Surface
+ * components apply that class to their container (panel header, resize
+ * handle) so focus styles and pointer-events remain on the interactive
+ * element, not here.
+ *
+ * pointer-events: none  — the pill itself is never a click/drag target.
+ * aria-hidden on the element  — purely decorative; the wrapping container
+ * owns all accessible attributes.
+ * ----------------------------------------------------------------------- */
+
+.airo-primitives-drag-handle {
+  background-color: intent('ux.feedbackHighContrastPassive.feedbackColor');
+  border-radius: intent('ux.box.density');
+  opacity: 0.4;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+
+/* Horizontal pill — 4 density units wide, 1 density unit tall.
+ * Centers itself at the top of the header via absolute positioning in
+ * PanelChrome; when used standalone it is inline-sized by these rules. */
+.airo-primitives-drag-handle--horizontal {
+  inline-size: calc(intent('ux.box.density') * 4);
+  block-size: intent('ux.box.density');
+}
+
+/* Vertical grip — narrow bar filling 75% of the container's block-size.
+ * Used inside the FloatingPanel edge-resize strip. */
+.airo-primitives-drag-handle--vertical {
+  inline-size: calc(intent('ux.box.density') * 0.25);
+  block-size: 75%;
+}
+
+/* Hover trigger — applied to the interactive container (panel header,
+ * resize handle) so the pill brightens when the whole zone is hovered,
+ * not just the pill pixel area. */
+.airo-primitives-drag-handle__parent:hover .airo-primitives-drag-handle {
+  opacity: 1;
+}

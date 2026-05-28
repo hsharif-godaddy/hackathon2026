@@ -1,0 +1,554 @@
+@tailwind utilities;
+
+/* --------------------------------------------------------------------------
+ * UserMessage — right-aligned chat bubble for the end-user's turn.
+ *
+ * Class names use the `airo-chat-user-message__<part>` BEM prefix so they
+ * cannot collide with consumer app styles. Colors, spacing, and radii flow
+ * through `ux.*` intents resolved at the app-root intents layer — no raw
+ * values here.
+ *
+ * The bubble's body is an `@ux/box` with `elevation="card"`, which gives it
+ * the card surface, inline/block padding, and outer corner radius for
+ * three of its four corners. The block-end / inline-end corner is squared
+ * off via a CSS override below so the bubble points at the user's avatar.
+ *
+ * This stylesheet contains one narrow descendant-selector override into
+ * `@ux/card` internals (`.airo-chat-user-message__image .ux-card-shell`,
+ * `.airo-chat-user-message__file .ux-card-shell`) because `@ux/card`'s
+ * public `space` prop defaults to `'lg'` padding on both axes with no
+ * supported way to opt out — the prop resolves `space?.inline || 'lg'`
+ * and never accepts a "none" value. Image tiles must sit flush to the card
+ * edge so the thumbnail fills the full tile; file tiles need tighter
+ * padding than the `lg` default. Each override is scoped to our own BEM
+ * class so nothing outside `UserMessage` is affected. Re-evaluation
+ * trigger: `@ux/card` exposes a `space.inline = 'none'` escape hatch.
+ * ----------------------------------------------------------------------- */
+
+.airo-chat-user-message {
+  --airo-chat-user-message-density: intent('ux.box.density');
+  /* Multi-tile strip height: the Figma file-upload exploration treats
+     `18 × box.density` as the "one band" cap — high enough that a hero
+     image still reads as a preview, short enough that ten uploads don't
+     inflate the bubble vertically. Pinning `block-size` on every strip
+     tile to this var is also how the non-hero tiles match the hero's
+     height ("use the first image's height as the max-height for the
+     rest"): the hero never renders taller than this, and the others
+     inherit the same value. */
+  --airo-chat-user-message-tile-size: calc(var(--airo-chat-user-message-density) * 18);
+  --airo-chat-user-message-single-max: calc(var(--airo-chat-user-message-density) * 30);
+  display: flex;
+  justify-content: flex-end;
+  inline-size: 100%;
+}
+
+/* `max-inline-size: min(calc(100% - lg), 80%, 40rem)` layers three
+   caps; the tightest one wins:
+
+   - `calc(100% - lg)` — guarantees the bubble never spans the full
+     container. An LG-sized gutter (`3 × density`, matching
+     `@ux/space`'s `lg` paddingFactor) is always reserved on the
+     inline-start so the bubble reads as an aligned chat turn rather
+     than a full-width banner. On very narrow viewports (≤ ~240px)
+     this cap is the tightest of the three and is the one doing the
+     work; on wider viewports `80%` / `40rem` take over.
+   - `80%` — historical cap from the Figma breakpoints; prevents the
+     bubble from exceeding 80% of the column even on mid-width layouts
+     where the LG gutter alone would otherwise leave more than 20% of
+     the column inline-start of the bubble.
+   - `40rem` — readability ceiling on wide layouts.
+
+   `min-inline-size: 0` defeats the flex container's default
+   `min-inline-size: auto` — without it, a wide gallery strip (or a
+   very long unbroken word) would push the bubble past
+   `max-inline-size` because `auto` resolves to the content's
+   intrinsic min-size. Pinning to `0` lets `max-inline-size` actually
+   hold.
+
+   `margin-inline-start: auto` pushes the bubble to the flow end
+   (right in LTR, left in RTL) using a logical property so RTL mirrors
+   automatically.
+
+   `border-end-end-radius` squares off the block-end / inline-end
+   corner so the bubble visually points at the user's avatar. We
+   compute it as `1/4` of the card's own radius via the
+   `--ux-box-borderRadius` custom property that `<Box
+   elevation="card">` exposes for exactly this purpose (it's sourced
+   from `intent('uxBoxElevated.borderRadius')` inside `@ux/box`'s
+   stylesheet). Driving the tail corner off the card-radius token
+   keeps the ratio intact if the theme resizes the card radius, and
+   avoids hand-picking a pixel value that would drift out of sync.
+   Logical properties keep this correct in RTL — the tail moves to
+   the opposite side on its own. The other three corners inherit the
+   full card radius from the same token.
+
+   The corner rule is hoisted to the compound selector
+   `.airo-chat-user-message__bubble.ux-box.ux-box--elevation-card`
+   as a specificity override. `@ux/box`'s card rule targets
+   `.ux-box.ux-box--elevation-card:where([data-version='2500'])`
+   which resolves to a `(0, 2, 0)` class-count; a bare single-class
+   `.airo-chat-user-message__bubble` selector is only `(0, 1, 0)`
+   and loses the cascade to `@ux/box`'s `border-radius` shorthand
+   (which expands to all four physical corners, including the one
+   this longhand is trying to square off). Pairing our BEM class
+   with the two `@ux/box` classes already on the element lifts us
+   to `(0, 3, 0)` so the override wins regardless of stylesheet
+   import order — a ties-then-cascade hoist (merely matching
+   `(0, 2, 0)`) is fragile under Storybook's HMR re-injection.
+   This mirrors the precedent in `choice-list/styles.css` where a
+   `@ux/button` internal selector is paired with the component
+   class for the same reason.
+
+   This triggers the `uxcore-internal-selector` review rule; treat
+   it as a documented exception — the alternative (hand-picking a
+   pixel value) would drift out of sync with the theme's card
+   radius and defeat the "1/4 of the card radius" intent. The
+   layout rules above stay on the single-class selector because
+   they don't collide with anything `@ux/box` already sets. */
+.airo-chat-user-message__bubble {
+  min-inline-size: 0;
+  max-inline-size: min(calc(100% - var(--airo-chat-user-message-density) * 3), 80%, 40rem);
+  margin-inline-start: auto;
+}
+
+.airo-chat-user-message__bubble.ux-box.ux-box--elevation-card {
+  border-end-end-radius: calc(var(--ux-box-borderRadius) / 4);
+}
+
+/* The text paragraph inherits `@ux/text`'s paragraph typography; only
+   margin and break behavior belong here. */
+.airo-chat-user-message__text {
+  margin: 0;
+  word-break: break-word;
+  overflow-wrap: break-word;
+}
+
+/* ---------------------------------------------------------------------------
+   Gallery — media region above the text.
+
+   The gallery picks one of two layouts based on its children:
+
+   1. **Strip** (images only): horizontal "hero + thumbs" row. Single-
+      child variants stretch to a larger square (max
+      `--airo-chat-user-message-single-max`). Two-or-more-child variants
+      flow as a scroll strip where the first tile (hero) caps at 75% of
+      the gallery inline-size so the next tile peeks at the trailing
+      edge. Every tile in the strip shares the same `block-size` (= the
+      strip max-height), so the hero's rendered height is the max-height
+      for the remaining tiles. The whole strip is capped at
+      `--airo-chat-user-message-tile-size` (18 × box.density) so a user
+      attaching ten files can't inflate the bubble vertically. Logical
+      overflow properties (`overflow-inline`) aren't broadly supported
+      yet, but `overflow-x: auto` flips on its own in RTL via the
+      browser's direction-aware scroll-position handling.
+
+   2. **List** (any files, or mixed images + files): vertical
+      `@ux/list-item` stack framed by a single `@ux/box elevation="card"`
+      so the rows read as flush slats of one card rather than a column
+      of disconnected tiles. Each row has a 64px-square media slot on
+      the inline-start and a flexible filename caption on the trailing
+      side. The list expands vertically to render every attachment —
+      there's no block-axis max-height or scroll container.
+   --------------------------------------------------------------------------- */
+
+.airo-chat-user-message__gallery--strip {
+  display: flex;
+  flex-wrap: nowrap;
+  /* SM gap between tiles — `@ux/space`'s `sm` gapFactor is `1`, so this
+     matches a `<Box gap="sm">` elsewhere in the message bubble. */
+  gap: calc(var(--airo-chat-user-message-density) * 1);
+  inline-size: 100%;
+  max-inline-size: 100%;
+  /* Horizontal-only scroll strip. Both axes are set explicitly — not
+     the shorthand — because `overflow-y: hidden` is required to break
+     the spec-mandated promotion rule: whenever one overflow axis is
+     non-`visible`, the other axis's `visible` is silently promoted to
+     `auto`. Without this pin, the horizontal scrollbar triggered by
+     `overflow-x: auto` eats a slice of the strip's block-axis content
+     area, pushes the tiles past their available space, and the browser
+     renders a second scrollbar in the cross direction — the classic
+     "both-axis scrollbars" cascade.
+
+     `padding-block-end: 1em` reserves a fixed gutter beneath the tiles
+     for the horizontal scrollbar to land in. Without it, classic
+     scrollbars (Windows, some Linux configs, Chromium's "always on"
+     mode) overlay the bottom slice of the final tile; with it, the
+     scrollbar sits in its own strip and the tiles render unclipped.
+     `1em` is a fixed value rather than an intent token so the gutter
+     stays stable across density themes — a scrollbar's height is a
+     platform constant, not a theme token. The block-end cap for
+     multi-tile strips below accounts for this extra padding so the
+     tile content area itself still resolves to one full
+     `--airo-chat-user-message-tile-size` band. Overlay-scrollbar
+     platforms (macOS, touch devices) will simply render an empty
+     1em band — acceptable trade-off for consistent tile fidelity
+     on the platforms where the scrollbar actually reserves space. */
+  overflow-x: auto;
+  overflow-y: hidden;
+  /* A small inline-padding hint so the first and last tile don't sit
+     flush against the scroll container's rounded corner / edge. Padding
+     uses a logical property so it mirrors in RTL. */
+  padding-inline: 1px;
+  padding-block-end: 1em;
+  /* Opt into smooth scroll-snap so the strip settles on tile boundaries
+     during trackpad / touch scroll. `proximity` lets users land between
+     tiles when they want to see two at once — `mandatory` would be too
+     aggressive for an informational media strip. */
+  scroll-snap-type: x proximity;
+  scroll-padding-inline: calc(var(--airo-chat-user-message-density) / 2);
+}
+
+/* Multi-tile strip: hard-cap the whole gallery at the tile size so the
+   bubble never grows taller than one band, even if a tile's content
+   wants to push past it. The theme sets `box-sizing: border-box`
+   globally, so `max-block-size` includes the strip's own
+   `padding-block-end` — we add `1em` here to match the scrollbar
+   gutter set above so the tile content area stays a full
+   `--airo-chat-user-message-tile-size` band instead of being squeezed
+   by the padding. Single-tile galleries opt out entirely via the
+   `--single` override below. */
+.airo-chat-user-message__gallery--strip:not(.airo-chat-user-message__gallery--single) {
+  max-block-size: calc(var(--airo-chat-user-message-tile-size) + 1em);
+}
+
+/* Default tile behavior in a multi-tile strip: every tile shares the
+   same `block-size` so the row reads as a single band, while the
+   `inline-size: auto` lets image tiles adopt their image's natural
+   aspect ratio. File tiles override this below so the filename caption
+   has a predictable square to wrap inside. */
+.airo-chat-user-message__gallery--strip > * {
+  flex: 0 0 auto;
+  inline-size: auto;
+  block-size: var(--airo-chat-user-message-tile-size);
+  scroll-snap-align: start;
+}
+
+/* Hero tile — cap at 75% of the gallery width so the next tile peeks
+   at the trailing edge of the strip. In practice this keeps a very
+   wide panorama from consuming the whole bubble width and hiding the
+   rest of the attachments behind an invisible scroll. */
+.airo-chat-user-message__gallery--strip:not(.airo-chat-user-message__gallery--single)
+  > :first-child {
+  max-inline-size: 75%;
+}
+
+/* File tiles stay square at the strip height regardless of position in
+   the row — a 2-line filename caption wraps cleanly inside a square,
+   but would collapse or smear inside an aspect-ratio-driven rectangle.
+   This rule only applies in the strip layout; the list layout renders
+   file rows through `@ux/list-item` and owns its own sizing. */
+.airo-chat-user-message__gallery--strip:not(.airo-chat-user-message__gallery--single)
+  > .airo-chat-user-message__file {
+  inline-size: var(--airo-chat-user-message-tile-size);
+}
+
+/* Single-child strip galleries opt out of the scroll strip — there's
+   nothing to scroll through, so the strip affordance just wastes
+   vertical space. The tile is content-driven on both axes (so a
+   landscape image renders as a landscape rectangle, a portrait as a
+   portrait, a square as a square — the image's natural aspect ratio
+   is preserved) and capped at `--airo-chat-user-message-single-max`
+   on both axes and `100%` on the inline axis so the preview never
+   exceeds the bubble. */
+.airo-chat-user-message__gallery--single {
+  overflow-x: visible;
+  padding-inline: 0;
+  /* Single-tile galleries never render a scrollbar, so the 1em gutter
+     reserved for one above is dead space here — reset it so the
+     single preview sits flush against the bubble's own gap below. */
+  padding-block-end: 0;
+}
+
+.airo-chat-user-message__gallery--single > * {
+  inline-size: auto;
+  block-size: auto;
+  max-inline-size: min(100%, var(--airo-chat-user-message-single-max));
+  max-block-size: var(--airo-chat-user-message-single-max);
+}
+
+/* ---------------------------------------------------------------------------
+   Gallery — list layout for mixed / file-bearing galleries.
+
+   The list renders inside an `@ux/box elevation="card"` (see
+   `UserMessageGallery.tsx`) so the stacked `@ux/list-item` rows read as
+   flush slats of a single card surface, rather than a column of
+   disconnected tiles. The gallery Box has no padding or gap of its own
+   — the rows sit edge-to-edge and share the card's border radius — and
+   `overflow: hidden` clips the first/last slat corners to the card's
+   rounded outline so nothing bleeds past the frame. Every attachment
+   renders in full so users can see everything they sent, even when a
+   message has ten uploads; the bubble just grows to fit.
+
+   The inline-start `media` slot on each row is a fixed 64px square so
+   image previews and file icons line up at a common rail, and the
+   filename caption flows on the trailing side with `min-inline-size: 0`
+   so long filenames wrap inside the row instead of pushing the row
+   past the gallery width. Each row opts into `@ux/list-item`'s
+   `compact` variant for the smaller row padding.
+   --------------------------------------------------------------------------- */
+
+.airo-chat-user-message__gallery--list {
+  inline-size: 100%;
+  max-inline-size: 100%;
+  /* Clip slat corners against the card's rounded outline — the list-item
+     rows render with square corners and would otherwise poke past the
+     card radius on the first / last row. */
+  overflow: hidden;
+}
+
+/* Every list-mode child is a full-width row. `@ux/list-item` stretches
+   its own box via its internal `stretch`, but the parent flex column
+   still needs `inline-size: 100%` + `min-inline-size: 0` here so a row's
+   text column can shrink below its content size (otherwise a long
+   filename expands the row past the gallery width and breaks the
+   "contained within the container" contract). */
+.airo-chat-user-message__gallery--list > * {
+  inline-size: 100%;
+  min-inline-size: 0;
+  max-inline-size: 100%;
+}
+
+/* Push the `min-inline-size: 0` into the list item's text column so the
+   TextLockup inside `@ux/list-item` can shrink below its content's
+   intrinsic width. Without this, a long word in the filename caption
+   blocks the flex child from shrinking and the row overflows. The
+   caption rule below then handles the wrap behavior. */
+.airo-chat-user-message__gallery--list .ux-list-item--content {
+  min-inline-size: 0;
+}
+
+/* Shared 64px media square for list-mode image thumbnails and file
+   icons. Fixed `inline-size` + `block-size` so the media rails align
+   across mixed-content rows — the icon box can't grow to meet the
+   tallest tile's natural size. `box-sizing: border-box` pins the outer
+   dimensions to 64px even on the `--icon` variant, which adds vertical
+   padding to buffer the glyph; without border-box, that padding inflates
+   the wrapper past the image variant's size and the two rails fall out
+   of alignment.
+
+   Note: no base `background-color` here. Image thumbnails fill the frame
+   edge-to-edge and shouldn't carry a tonal chip behind the photo — only
+   the `--icon` variant paints a backdrop so a lone glyph reads as a
+   file chip rather than loose iconography. */
+.airo-chat-user-message__file-media {
+  --airo-chat-user-message-media-size: 64px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 var(--airo-chat-user-message-media-size);
+  inline-size: var(--airo-chat-user-message-media-size);
+  block-size: var(--airo-chat-user-message-media-size);
+  border-radius: intent('ux.box.borderRadius');
+  overflow: hidden;
+}
+
+/* Icon media — `boxLowContrast` fill + center alignment so the glyph
+   sits inside a recognizable "file chip". `padding-block: md` per the
+   spec (md = 1.5 × density, matching `<Box blockPadding="md">`);
+   `padding-inline: sm` gives the icon breathing room without
+   squeezing the 64px box. `gap: 0` keeps the icon truly centered. */
+.airo-chat-user-message__file-media--icon {
+  background-color: intent('ux.boxLowContrast.backgroundColor');
+  padding-block: calc(var(--airo-chat-user-message-density) * 1.5);
+  padding-inline: calc(var(--airo-chat-user-message-density) * 1);
+  color: intent('ux.boxLowContrast.foregroundColor');
+}
+
+/* List-mode filename caption: render as plain inline text inside the
+   list-item's TextLockup. Preserve word-break semantics so long
+   filenames wrap at safe boundaries rather than overflowing the row.
+   Unlike the strip tile, we don't line-clamp here — the list row can
+   grow vertically to accommodate a long filename. */
+.airo-chat-user-message__image-list-item .airo-chat-user-message__image-caption,
+.airo-chat-user-message__file-list-item .airo-chat-user-message__file-name {
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+/* ---------------------------------------------------------------------------
+   Image tile — a real `<button>` styled as a card surface. We do not go
+   through `@ux/card as="button"` because the Card's interactive mode
+   overlays a hidden `<input type="button" value="">` on top of the
+   thumbnail, which leaves the effective accessible name empty and skips
+   the image's `alt`. Card's elevation + corner-radius treatment is
+   mirrored here via `elevation='card'` tokens so the tile still looks
+   identical to the surrounding `@ux/card` surfaces. Re-evaluation
+   trigger: `@ux/card` exposes a "plain button" variant that renders a
+   `<button>` (not `<input>`) and accepts an `aria-label` forwarded to it.
+   --------------------------------------------------------------------------- */
+
+/* Image tile wrapper. In both single- and multi-tile galleries the
+   outer dimensions flow from the image's natural aspect ratio: the
+   `--single` rule caps the tile at `--single-max` on both axes, and
+   the multi-tile rule pins the block-size to the strip height. We
+   don't hard-code `inline-size: 100%` / `block-size: 100%` here
+   because that would compete with the content-driven aspect-ratio
+   sizing both gallery modes rely on. */
+.airo-chat-user-message__image {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  border-radius: intent('ux.box.borderRadius');
+}
+
+.airo-chat-user-message__image-button {
+  display: block;
+  inline-size: 100%;
+  block-size: 100%;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  appearance: none;
+  font: inherit;
+  color: inherit;
+}
+
+.airo-chat-user-message__image-button:focus-visible {
+  outline: 2px solid intent('ux.actionFocused.outlineColor');
+  outline-offset: 2px;
+}
+
+/* Base image rendering. `object-fit: contain` is the safety net for
+   cases where the declared `inline-size` / `block-size` don't match
+   the image's natural aspect ratio — for example, a very wide
+   panorama in a hero tile that's hit the 75% inline-size clamp. In
+   that case the image is scaled down proportionally to fit inside
+   the tile, letterboxing on the shorter axis, instead of being
+   cropped by `object-fit: cover`. In the common case the tile has
+   already been sized to match the image's aspect ratio, so no
+   letterboxing is visible. */
+.airo-chat-user-message__image-img {
+  display: block;
+  block-size: 100%;
+  inline-size: 100%;
+  object-fit: contain;
+  pointer-events: none;
+}
+
+/* Single-tile strip mode: the tile's outer dimensions adapt to the
+   image's natural aspect ratio (see the `--single` rules above), so the
+   image itself just needs to render at its natural size — capped to the
+   single-preview max on both axes and to the bubble's inline-size
+   (`min(100%, single-max)`) so an ultra-wide upload doesn't overflow
+   a narrow bubble. `block-size: auto` + `inline-size: auto` lets the
+   browser preserve the image's intrinsic aspect ratio while the max
+   constraints scale it down proportionally. */
+.airo-chat-user-message__gallery--single .airo-chat-user-message__image-img {
+  inline-size: auto;
+  block-size: auto;
+  max-inline-size: min(100%, var(--airo-chat-user-message-single-max));
+  max-block-size: var(--airo-chat-user-message-single-max);
+}
+
+/* Multi-tile strip mode: let the inner image render at its natural aspect
+   ratio. `block-size: 100%` pins the image to the strip's shared
+   block-size; `inline-size: auto` then lets the image's intrinsic
+   width at that resolved height flow up through the button + span,
+   producing a tile whose inline-size matches the image's shape. The
+   hero tile's `max-inline-size: 75%` (set on the flex item above)
+   still wins for very wide panoramas — `object-fit: contain` (from
+   the base rule above) then scales the image down proportionally so
+   its original aspect ratio is preserved, with letterbox bars on the
+   block axis. Scoped to `--strip` so the list layout's 64px media
+   square retains the base `block-size: 100%` / `inline-size: 100%`. */
+.airo-chat-user-message__gallery--strip:not(.airo-chat-user-message__gallery--single)
+  .airo-chat-user-message__image-img {
+  inline-size: auto;
+  max-inline-size: 100%;
+}
+
+/* Unsafe-scheme placeholder: replaces the `<img>` element when the tile's
+   `src` fails its `validateSrc` predicate (e.g. `javascript:`, `data:`,
+   `file:` — see `urlGuard.ts`). Renders as a neutral 1:1 square so the
+   gallery layout doesn't collapse, styled with the same low-contrast
+   surface we use behind file icons in list mode so the placeholder reads
+   as an "uploaded but blocked" slot rather than a broken image icon. */
+.airo-chat-user-message__image-img--unsafe {
+  aspect-ratio: 1 / 1;
+  min-inline-size: var(--airo-chat-user-message-tile-size);
+  background-color: var(--airo-boxLowContrast-backgroundColor, rgba(0, 0, 0, 0.04));
+}
+
+.airo-chat-user-message__image-corner {
+  position: absolute;
+  inset-block-start: calc(var(--airo-chat-user-message-density) / 2);
+  inset-inline-end: calc(var(--airo-chat-user-message-density) / 2);
+  pointer-events: auto;
+}
+
+/* ---------------------------------------------------------------------------
+   File tile — icon + filename caption.
+   --------------------------------------------------------------------------- */
+
+.airo-chat-user-message__file {
+  block-size: 100%;
+  inline-size: 100%;
+}
+
+/* Tighter padding than the card default; the tile is small enough that
+   `'lg'` eats the icon and caption. Same escape-hatch rationale as the
+   image-tile rule above. */
+.airo-chat-user-message__file .ux-card-shell {
+  padding-block: calc(var(--airo-chat-user-message-density) * 1);
+  padding-inline: calc(var(--airo-chat-user-message-density) * 1);
+  gap: calc(var(--airo-chat-user-message-density) / 2);
+  align-items: center;
+  justify-content: center;
+  block-size: 100%;
+}
+
+.airo-chat-user-message__file-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1 1 auto;
+  min-block-size: 0;
+}
+
+/* Shared caption styling. List-mode rows have their own wrap tweaks
+   above — the center-alignment and line-clamp below only make sense
+   inside the strip-layout card tile, so we scope them under
+   `__file` (the card wrapper). */
+.airo-chat-user-message__file-name {
+  inline-size: 100%;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.airo-chat-user-message__file .airo-chat-user-message__file-name {
+  text-align: center;
+  /* Limit long filenames to two lines so the tile height stays consistent
+     across a wrap-row of mixed filenames. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.airo-chat-user-message__file-link {
+  color: intent('ux.navigate.foregroundColor');
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+
+.airo-chat-user-message__file-link:focus-visible {
+  outline: 2px solid intent('ux.navigateFocused.outlineColor');
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* ---------------------------------------------------------------------------
+   Lightbox modal image.
+   --------------------------------------------------------------------------- */
+
+.airo-chat-user-message__lightbox-img {
+  display: block;
+  max-inline-size: 100%;
+  max-block-size: 70vh;
+  margin-inline: auto;
+  object-fit: contain;
+}

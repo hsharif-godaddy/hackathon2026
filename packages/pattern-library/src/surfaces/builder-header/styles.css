@@ -1,0 +1,133 @@
+/*
+ * Temporary vendor — `BuilderHeader` renders the vendored `SegmentedController`
+ * (see `src/_vendor/segmented-controller/`). Bundle its stylesheet here so
+ * downstream consumers using `@airo-ux/pattern-library/surfaces/builder-header/styles`
+ * automatically get the segmented-controller styles. Must precede `@tailwind`
+ * per CSS spec. Drop this `@import` (and revert `BuilderHeader` to import
+ * from `@godaddy/antares`) when antares ships PR #187.
+ */
+@import '../../_vendor/segmented-controller/styles.css';
+
+@tailwind utilities;
+
+/* --------------------------------------------------------------------------
+ * BuilderHeader — top-level builder app header.
+ *
+ * A horizontal strip with three configurable clusters: leading (brand),
+ * center (sections), and trailing (actions). Padding (`lg` inline /
+ * `sm` block) and child gaps come from `@ux/box` props on the root and
+ * sub-components; this file only carries layout glue (per-cluster flex
+ * sizing, brand wordmark color, action card surface).
+ *
+ * Class names use the `airo-surfaces-builder-header__<part>` BEM prefix.
+ * Colors flow through `@ux/postcss-intents` `intent()` calls so theme
+ * overrides stay automatic.
+ *
+ * Mobile collapse (hamburger menu) is planned but not wired up yet —
+ * the responsive logic will live here when it ships.
+ * ----------------------------------------------------------------------- */
+
+/* Root strip — no background on desktop so the page canvas shows
+ * through. Padding is supplied by `@ux/box` props on the React root
+ * (`inlinePadding="lg"` / `blockPadding="sm"`).
+ *
+ * `box-sizing: border-box` + `max-inline-size: 100%` keep the strip
+ * inside its parent regardless of the inline padding — without these,
+ * the inline-padding would add to the 100% width and push the header
+ * past the viewport edge. Mirrors the `FloatingFooter` setup. */
+.airo-surfaces-builder-header {
+  box-sizing: border-box;
+  inline-size: 100%;
+  max-inline-size: 100%;
+  background-color: transparent;
+}
+
+/* Three-cluster row — each cluster takes equal width so the center
+ * cluster (sections) stays geometrically centered regardless of how
+ * wide the leading or trailing content is. `min-width: 0` guards
+ * against overflow when one cluster's content exceeds its share. */
+.airo-surfaces-builder-header__leading,
+.airo-surfaces-builder-header__center,
+.airo-surfaces-builder-header__trailing {
+  display: flex;
+  align-items: center;
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.airo-surfaces-builder-header__leading {
+  justify-content: flex-start;
+}
+
+.airo-surfaces-builder-header__center {
+  justify-content: center;
+}
+
+.airo-surfaces-builder-header__trailing {
+  justify-content: flex-end;
+}
+
+/* --------------------------------------------------------------------------
+ * Brand cluster (leading) — GoDaddy logo + Airo logo + Beta tag.
+ * The default GoDaddy mark is the official `gd-the-go` `AsyncIcon`;
+ * consumers can swap in a different brand asset (full wordmark,
+ * partner co-branding, etc.) via `BuilderHeaderBrandProps#godaddyLogo`.
+ * ----------------------------------------------------------------------- */
+
+.airo-surfaces-builder-header__brand {
+  min-width: 0;
+}
+
+.airo-surfaces-builder-header__godaddy-wordmark {
+  /* `density × 3` = 24 px at the default 8 px density — sized so the
+   * "Go" logomark anchors the brand cluster without overpowering the
+   * Airo wordmark beside it. */
+  display: inline-flex;
+  align-items: center;
+  block-size: calc(intent('ux.box.density') * 3);
+  color: intent('ux.box.foregroundColor');
+}
+
+.airo-surfaces-builder-header__godaddy-wordmark svg {
+  display: block;
+  block-size: 100%;
+  inline-size: auto;
+}
+
+/* --------------------------------------------------------------------------
+ * Sections cluster (center) — `@godaddy/antares` SegmentedController.
+ * antares owns segment layout, focus rings, the sliding active
+ * indicator, and keyboard navigation; we only set `flex: 0 0 auto` so
+ * the control neither grows to fill the row nor shrinks below its
+ * content width.
+ * ----------------------------------------------------------------------- */
+
+/* Wrapper div that receives forwarded HTML attributes from
+ * `BuilderHeaderSections`. Mirrors the overflow constraints on the
+ * center cluster so a wide SegmentedController cannot push the header
+ * past the viewport edge. */
+.airo-surfaces-builder-header__sections {
+  max-inline-size: 100%;
+  min-inline-size: 0;
+}
+
+.airo-surfaces-builder-header__segmented {
+  flex: 0 0 auto;
+}
+
+/* --------------------------------------------------------------------------
+ * Actions cluster (trailing) — refresh / device / share / publish / user.
+ *
+ * Wrapped in a card-like surface with `sm` padding all around (supplied
+ * via `@ux/box` props) and **no border**. Background uses
+ * `box.backgroundColor` so the group reads as a contained surface
+ * against the lower-contrast page canvas (which the header itself is
+ * transparent against).
+ * ----------------------------------------------------------------------- */
+
+.airo-surfaces-builder-header__actions {
+  background-color: intent('ux.box.backgroundColor');
+  /* `density × 1` rounded corners — same scale as `@ux/box` rounding
+   * conventions in this repo. */
+  border-radius: calc(intent('ux.box.density') * 1);
+}

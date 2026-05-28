@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useRef } from 'react'
-import { Thinker } from '@airo/components/chat/thinker'
+import { Thinker } from '@airo-ux/pattern-library/chat/thinker'
 
 import ActionToolGroupRenderer from '@/app/[market]/develop/components/ActionToolGroupRenderer'
 import { useThinkerLabel } from '@/app/[market]/develop/components/chat/useThinkerLabel'

@@ -1,0 +1,170 @@
+@tailwind utilities;
+
+/* --------------------------------------------------------------------------
+ * AgentMessage — AI-authored markdown rendered with UXCore2 typography.
+ *
+ * Class names use the `airo-chat-agent-message__<part>` BEM prefix so they
+ * cannot collide with consumer app styles. Colors, spacing, and radii flow
+ * through `ux.*` intents resolved at the app-root intents layer — no raw
+ * values here.
+ * ----------------------------------------------------------------------- */
+
+/* `box.article` is the root; it carries its own flex + `gap="sm"` styling
+   from UXCore2. These rules only express things Box cannot: the density
+   custom property reused below, max/inline sizing, and word-break hints. */
+.airo-chat-agent-message {
+  --airo-chat-agent-message-density: intent('ux.box.density');
+  max-inline-size: 100%;
+  inline-size: 100%;
+  word-break: break-word;
+  overflow-wrap: break-word;
+}
+
+/* `@ux/text` owns the typographic size/weight/leading — only layout and
+   inheritance overrides belong here. The block-level children have no
+   outer margin: spacing between them comes from the Box `gap="sm"` on the
+   root article. */
+.airo-chat-agent-message__paragraph,
+.airo-chat-agent-message__title {
+  margin-block: 0;
+}
+
+/* Give titles extra breathing room above so `#`/`##`/`###` sections read as
+   section breaks, not just another block. Flex `gap` and `margin-block-start`
+   are additive on flex children, so this adds one density unit (≈8px) on top
+   of the Box `gap="sm"`. The `:not(:first-child)` guard keeps the component
+   flush with its flow container when a title leads the message. */
+.airo-chat-agent-message__title:not(:first-child) {
+  margin-block-start: var(--airo-chat-agent-message-density);
+}
+
+.airo-chat-agent-message__strong,
+.airo-chat-agent-message__em {
+  /* Inherit color from the surrounding paragraph so nested emphasis inside a
+     success / warning / critical text block keeps the same feedback color. */
+  color: inherit;
+}
+
+/* Links use the `navigate` intent — the canonical UXCore2 token for link
+   text — so they pick up the theme's navigate color (and respect dark mode
+   via the theme layer). Underline keeps them recognizable as links without
+   relying on color alone (WCAG 1.4.1). */
+.airo-chat-agent-message__link {
+  color: intent('ux.navigate.foregroundColor');
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+
+.airo-chat-agent-message__link:hover,
+.airo-chat-agent-message__link:focus-visible {
+  text-decoration-thickness: 2px;
+}
+
+.airo-chat-agent-message__link:focus-visible {
+  outline: 2px solid intent('ux.navigateFocused.outlineColor');
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* Lists sit inside the same rhythm as paragraphs; indentation uses the
+   inline-start logical property so RTL flows mirror automatically. The
+   `airo-chat-agent-message__list-item` rule stays thin — bullets and numbers
+   come from the browser default + the list-style-position below, not from
+   custom pseudo-elements, because screen readers on iOS stop counting list
+   items when authors replace the native marker. */
+.airo-chat-agent-message__list {
+  margin-block: 0;
+  padding-inline-start: calc(var(--airo-chat-agent-message-density) * 4);
+  list-style-position: outside;
+}
+
+.airo-chat-agent-message__list-item {
+  margin-block: calc(var(--airo-chat-agent-message-density) / 2);
+}
+
+.airo-chat-agent-message__list-item > .airo-chat-agent-message__paragraph {
+  /* Markdown wraps multi-paragraph list items in `<p>`; collapse their outer
+     margin so the item reads as a single visual block. */
+  margin-block: 0;
+}
+
+.airo-chat-agent-message__list-item > .airo-chat-agent-message__list {
+  margin-block-start: calc(var(--airo-chat-agent-message-density) / 2);
+}
+
+/* Blockquote uses `feedbackInfo` for the accent border and foreground so it
+   reads as a quoted aside without relying on color alone. Inline padding
+   uses the inline-start logical property so RTL flows mirror automatically. */
+.airo-chat-agent-message__blockquote {
+  margin: 0;
+  padding-inline-start: calc(var(--airo-chat-agent-message-density) * 2);
+  border-inline-start-width: 3px;
+  border-inline-start-style: solid;
+  border-inline-start-color: intent('ux.feedbackHighContrastPassive.feedbackColor');
+  color: intent('ux.feedbackHighContrastPassive.feedbackColor');
+}
+
+/* Inline code gets a subtle surface so it reads as inline code without
+   relying on the monospace font alone (users with system fonts that blur
+   the monospace/proportional distinction still see the token).
+   `boxLowContrast` is the theme-level token for subtle surfaces. */
+.airo-chat-agent-message__code {
+  font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono',
+    monospace;
+  font-size: 0.925em;
+  padding-block: 0.1em;
+  padding-inline: 0.3em;
+  border-radius: calc(var(--airo-chat-agent-message-density) / 2);
+  background-color: intent('ux.boxLowContrast.backgroundColor');
+  color: intent('ux.boxLowContrast.foregroundColor');
+}
+
+/* Fenced code blocks route through `@ux/code`, which emits its own
+   `<pre class="ux-code">` shell and applies the theme's `uxCode.*` intents
+   for the background, font, line-height, and every Prism.JS token color.
+   The block-level surface styling lives upstream — we only reset the
+   default margin (the Box `gap="sm"` on the root article owns spacing
+   now), add a rounded corner consistent with the rest of our chat
+   surfaces, and cap the inline size so a long line scrolls horizontally
+   inside the bubble instead of widening it. Consumers MUST side-effect-
+   import `@ux/code/styles` for the token colors to take effect. */
+.airo-chat-agent-message .ux-code {
+  margin: 0;
+  max-inline-size: 100%;
+  border-radius: intent('ux.box.borderRadius');
+}
+
+/* Fallback block for the rare case where the `pre` renderer didn't find a
+   plain-string inner `<code>` (e.g. a consumer override mutated the tree).
+   Uses the same tokens as the inline-code surface so unstyled blocks still
+   read as code and don't inherit paragraph colors. */
+.airo-chat-agent-message__code-block {
+  margin: 0;
+  padding-block: calc(var(--airo-chat-agent-message-density) * 1.5);
+  padding-inline: calc(var(--airo-chat-agent-message-density) * 2);
+  border-radius: intent('ux.box.borderRadius');
+  background-color: intent('ux.boxLowContrast.backgroundColor');
+  color: intent('ux.boxLowContrast.foregroundColor');
+  overflow-x: auto;
+  max-inline-size: 100%;
+}
+
+.airo-chat-agent-message__hr {
+  margin: 0;
+  border: 0;
+  border-block-start-width: 1px;
+  border-block-start-style: solid;
+  border-block-start-color: intent('ux.box.borderColor');
+}
+
+/* Rules are section dividers, so they get extra breathing room on both sides
+   on top of the root Box `gap="sm"`. `:not(:first-child)` / `:not(:last-child)`
+   keep the component flush with its flow container when a rule leads or
+   trails the message (rare, but possible). */
+.airo-chat-agent-message__hr:not(:first-child) {
+  margin-block-start: var(--airo-chat-agent-message-density);
+}
+
+.airo-chat-agent-message__hr:not(:last-child) {
+  margin-block-end: var(--airo-chat-agent-message-density);
+}

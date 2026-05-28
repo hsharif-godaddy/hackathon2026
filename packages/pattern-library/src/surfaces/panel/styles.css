@@ -1,0 +1,172 @@
+/* Include PanelChrome styles so existing consumers who import only
+ * `@airo-ux/pattern-library/surfaces/panel/styles` continue to receive the
+ * full set of chrome styles (header, content, footer) without needing
+ * a second import. New surfaces (FloatingPanel, FullscreenDialog) that
+ * own PanelChrome directly should import panel-chrome/styles separately. */
+@import '../panel-chrome/styles.css';
+
+@tailwind utilities;
+
+/* --------------------------------------------------------------------------
+ * Panel — edge-attached overlay surface. Composes on @ux/disrupt for the
+ * scrim / focus-lock / portal primitives; owns its own slide animation.
+ * Inner UI (header band, scrollable body, sticky footer) is owned by
+ * PanelChrome — see `@airo-ux/pattern-library/surfaces/panel-chrome/styles`.
+ *
+ * Class names use the `airo-surfaces-panel__<part>` BEM prefix so they
+ * cannot collide with consumer app styles or with PanelChrome's
+ * `airo-surfaces-panel-chrome__<part>` rules. All colors and typography
+ * flow through @ux/postcss-intents intent() calls (resolved at build
+ * time) or CSS variables set by the Theme API.
+ *
+ * A single import is sufficient:
+ *
+ *   import '@airo-ux/pattern-library/surfaces/panel/styles';
+ *
+ * (The panel-chrome stylesheet is bundled above via @import. Other surfaces
+ * that import panel-chrome/styles directly will receive duplicate CSS bytes,
+ * though the rules are idempotent and produce the same visual result.)
+ * ----------------------------------------------------------------------- */
+
+/* Scrim — sibling of the panel inside the Disrupt content wrapper. Disrupt's
+ * `fullScreenChildren` mode strips its own backdrop styling (so consumers can
+ * supply their own fullscreen layout), so we render this element to provide
+ * the dim-and-fade-in backdrop and a mouse/touch click-to-close target.
+ * Rendered as a non-interactive `<div role="presentation">` — keyboard users
+ * dismiss via Escape (wired through Disrupt's onClose). */
+.airo-surfaces-panel__scrim {
+  position: fixed;
+  inset: 0;
+  background: intent('ux.boxHighContrastOverlay.backgroundColor');
+  opacity: 0;
+  transition: opacity 0.2s cubic-bezier(0.2, 0, 0, 1);
+  z-index: 0;
+  will-change: opacity;
+}
+
+.airo-surfaces-panel__scrim--open {
+  opacity: 1;
+}
+
+.airo-surfaces-panel__panel {
+  /* Component-scoped variable defaults. Override on :root or
+   * .airo-surfaces-panel__panel to theme without touching component CSS.
+   *
+   * `--airo-surfaces-panel-width` is a deliberate, design-chosen size:
+   * 24rem (= 384px at the default 16px root font size, near the 375px
+   * iPhone-width sweet spot that the Airo conversational surface is
+   * tuned for). It intentionally does *not* derive from
+   * `intent('ux.box.density')` or any other UXCore2 token — those scale
+   * with user font size and component density and are wrong for a
+   * fixed-purpose overlay width. Consumers override per-instance with a
+   * style/CSS-variable override on the panel root (or globally via
+   * `:root`), not by threading a prop:
+   *   .airo-surfaces-panel__panel { --airo-surfaces-panel-width: 28rem; }
+   * Full-screen mode is orthogonal — drive it with `expanded` /
+   * `defaultExpanded` / `onExpandedChange`, which swap the width to
+   * `100%` via the `--expanded` modifier below.
+   *
+   * `--airo-surfaces-panel-shadow` tunes the drop shadow behind the
+   * panel; override the same way. */
+  --airo-surfaces-panel-width: 24rem;
+  /* Shadow: overlay-elevation drop shadow matching @ux/box elevation="overlay".
+   *
+   * TODO: replace the rgba() fallback with the design token reference once
+   * @godaddy/antares or @ux/uxcore2 exposes an elevation/shadow token for
+   * overlay-elevation surfaces (e.g. intent('ux.overlay.boxShadow') or
+   * a CSS variable such as var(--ux-elevation-overlay-shadow)). The three-
+   * layer stack below mirrors the canonical UXCore2 overlay shadow; keep it
+   * in sync with @ux/box until the token is available.
+   *
+   * Override per-instance via the custom property (no component CSS edits):
+   *   .airo-surfaces-panel__panel { --airo-surfaces-panel-shadow: <value>; } */
+  --airo-surfaces-panel-shadow: 0 3px 8px rgba(0, 0, 0, 0.15), 0 4px 4px rgba(0, 0, 0, 0.1), 0 0
+    0.5px rgba(0, 0, 0, 0.2);
+
+  position: fixed;
+  inset-block: 0;
+  inset-inline-end: 0;
+  /* Explicit block-size so PanelChrome's flex column has a definite height
+   * to distribute among its children. `inset-block: 0` alone constrains the
+   * layout box but does not provide the "definite size" the flex algorithm
+   * needs to properly shrink the scrollable content area. Falls back to `vh`
+   * for browsers that don't yet support dynamic viewport units. */
+  block-size: 100vh;
+  block-size: 100dvh;
+  width: min(var(--airo-surfaces-panel-width), 100vw);
+  max-width: 100vw;
+  background-color: intent('ux.box.backgroundColor');
+  box-shadow: var(--airo-surfaces-panel-shadow);
+  transform: translateX(100%);
+  transition: transform 0.2s cubic-bezier(0.2, 0, 0, 1), width 0.2s cubic-bezier(0.2, 0, 0, 1);
+  will-change: transform, width;
+  z-index: 1;
+}
+
+/* Expanded: grows to cover the full viewport width. Uses `inset-inline-end: 0`
+ * (already set on the base rule) as the anchor, so `width: 100%` extends to
+ * the inline-start edge in both LTR and RTL without any direction-specific
+ * overrides. */
+.airo-surfaces-panel__panel--expanded {
+  width: 100%;
+}
+
+/* Flip the off-screen slide direction for RTL. The panel is edge-attached via
+ * logical `inset-inline-end`, so on RTL it lives on the left edge and must
+ * slide in from the left instead of the right. `translateX` is still the
+ * physical axis, so we invert the sign explicitly. */
+[dir='rtl'] .airo-surfaces-panel__panel {
+  transform: translateX(-100%);
+}
+
+.airo-surfaces-panel__panel--open,
+[dir='rtl'] .airo-surfaces-panel__panel--open {
+  transform: translateX(0);
+}
+
+/* Optional: anchor the panel to the viewport **inline-start** edge (physical
+ * left in LTR) instead of the default **inline-end** edge. Merge this class
+ * onto the same element as `airo-surfaces-panel__panel` via `Panel`’s
+ * `className` prop. For a dockable in-page split workspace, prefer
+ * **`FloatingPanel.DropZone`** — **Examples / Floating Chat Panel → Split workspace
+ * (docked, floating composer)**. */
+.airo-surfaces-panel__panel--anchor-inline-start {
+  inset-inline-end: auto;
+  inset-inline-start: 0;
+}
+
+.airo-surfaces-panel__panel--anchor-inline-start:not(.airo-surfaces-panel__panel--open) {
+  transform: translateX(-100%);
+}
+
+[dir='rtl']
+  .airo-surfaces-panel__panel--anchor-inline-start:not(.airo-surfaces-panel__panel--open) {
+  transform: translateX(100%);
+}
+
+/* Fallback portal (showDisrupt={false}) still needs the panel to sit above
+ * the rest of the page. The scrim ancestor supplies z-index in the modal
+ * path, so we only apply a positioning context here. */
+.airo-surfaces-panel--no-scrim {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+}
+
+.airo-surfaces-panel--no-scrim .airo-surfaces-panel__panel {
+  pointer-events: auto;
+}
+
+/* --------------------------------------------------------------------------
+ * Reduced motion — honor the user's OS preference. We still swap the
+ * transform end-state so the component is in the right position, but we
+ * drop the transitions so there is no slide animation.
+ * ----------------------------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  .airo-surfaces-panel__scrim,
+  .airo-surfaces-panel__panel,
+  .airo-surfaces-panel__panel--expanded {
+    transition: none;
+  }
+}

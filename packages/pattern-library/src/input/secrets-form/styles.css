@@ -1,0 +1,281 @@
+@tailwind utilities;
+
+/* --------------------------------------------------------------------------
+ * SecretsForm — inline secret-input card that replaces the chat input when
+ * an AI agent requests an API key or secret.
+ *
+ * Structure: root **`@ux/box`** (`elevation="raised"` in composer, **`base`** in
+ * conversation) → header (locked icon + eyebrow + label; composer adds close) →
+ * @ux/text-entry (single-line) + optional visibility toggle → composer toolbar
+ * (helper + send) or conversation stack (helper under field) + Save/Cancel.
+ *
+ * Composer horizontal cap: **`max-width: min(var(--airo-input-secrets-form-max-width), 100%)`**
+ * (default **`calc(var(--airo-input-secrets-form-density) * 83)`** — scales with **`ux.box.density`**;
+ * hosts may override **`--airo-input-secrets-form-max-width`** on an ancestor, e.g. **`44rem`** to match **`ChatLayout`**).
+ *
+ * Eyebrow (**`<h3>`**): user-agent **block margins** on headings are cleared on
+ * **`.airo-input-secrets-form__eyebrow`**; optional **`--airo-input-secrets-form-eyebrow-margin-block`**
+ * (inherited) replaces the default **`0`** so hosts can add density-scaled space without
+ * editing this package (e.g. **`calc(var(--airo-input-secrets-form-density) * 0.25)`** set on **`.airo-input-secrets-form`**).
+ *
+ * Re-evaluation trigger: `@ux/text-entry` exposes a supported padding / chromeless
+ * API, or we accept default field chrome — today we only style the native
+ * **`input`/`textarea`** under our shell **`className`** (no `.ux-text-entry-*` class
+ * selectors) so UXCore can rename internal classes without breaking this sheet.
+ * ----------------------------------------------------------------------- */
+
+.airo-input-secrets-form {
+  --airo-input-secrets-form-density: intent('ux.box.density');
+  --airo-input-secrets-form-padding: calc(var(--airo-input-secrets-form-density) * 1.5);
+  /* Composer card width cap (~83× box density); override on a host wrapper when the column differs. */
+  --airo-input-secrets-form-max-width: calc(var(--airo-input-secrets-form-density) * 83);
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: min(var(--airo-input-secrets-form-max-width), 100%);
+  /* Transparent border reserves width for composer :focus-within outline; depth comes from Box elevation. */
+  border: intent('ux.box.borderWidth') solid transparent;
+  border-radius: calc(var(--airo-input-secrets-form-density) * 2);
+  background-color: intent('ux.box.backgroundColor');
+  overflow: hidden;
+}
+
+.airo-input-secrets-form:focus-within:not(.airo-input-secrets-form--conversation) {
+  /* Match Airo Builder / borderless prompt strip: dark edge on focus (`ux.box` text color), not `outlineColor` (theme blue). */
+  border-color: intent('ux.box.foregroundColor');
+}
+
+/* In-thread: message-sized card, visible border; elevation is `base` (no raised shadow). */
+.airo-input-secrets-form--conversation {
+  max-width: 100%;
+  border-color: intent('ux.box.borderColor');
+}
+
+/* Borderless: drop the outer card chrome so the form can sit flush inside
+   a host surface (PromptBox expansion, PromptStage swap, etc.) that
+   already provides background and padding. The internal lockup, input
+   row, and toolbar stay intact — only the outer shell is invisible.
+   `overflow: visible` lets focus rings on internal controls show without
+   being clipped by the (now invisible) card bounds. */
+.airo-input-secrets-form--borderless,
+.airo-input-secrets-form--borderless.airo-input-secrets-form--conversation {
+  background-color: transparent;
+  border-color: transparent;
+  border-radius: 0;
+  overflow: visible;
+  max-width: 100%;
+}
+
+.airo-input-secrets-form--borderless:focus-within:not(.airo-input-secrets-form--conversation) {
+  /* Composer focus ring belongs on the host surface in borderless mode. */
+  border-color: transparent;
+}
+
+/* Borderless mode strips the form's *outer* padding (top, bottom, left,
+   right of the form) so the host container's padding is the only padding
+   the user sees. Internal block padding between sections (header bottom,
+   input top/bottom, toolbar top, footer top) stays so the form keeps its
+   own visual rhythm. */
+.airo-input-secrets-form--borderless .airo-input-secrets-form__header,
+.airo-input-secrets-form--borderless .airo-input-secrets-form__input-area,
+.airo-input-secrets-form--borderless .airo-input-secrets-form__toolbar,
+.airo-input-secrets-form--borderless .airo-input-secrets-form__conversation-footer,
+.airo-input-secrets-form--borderless .airo-input-secrets-form__conversation-messages {
+  padding-inline: 0;
+}
+
+.airo-input-secrets-form--borderless .airo-input-secrets-form__header {
+  padding-block-start: 0;
+}
+
+.airo-input-secrets-form--borderless .airo-input-secrets-form__toolbar,
+.airo-input-secrets-form--borderless .airo-input-secrets-form__conversation-footer {
+  padding-block-end: 0;
+}
+
+/* Conversation variant draws an inner bordered field box via margins on
+   `__input-area`. In borderless mode keep the block margins for rhythm
+   between sections, but drop the inline margins so the field stretches
+   edge-to-edge of the host container. */
+.airo-input-secrets-form--borderless.airo-input-secrets-form--conversation
+  .airo-input-secrets-form__input-area {
+  margin-inline: 0;
+}
+
+/* -- Header ------------------------------------------------------------ */
+
+.airo-input-secrets-form__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--airo-input-secrets-form-density);
+  padding: var(--airo-input-secrets-form-padding);
+  border-block-end: intent('ux.box.borderWidth') solid intent('ux.box.borderColor');
+}
+
+.airo-input-secrets-form__header--conversation {
+  justify-content: flex-start;
+}
+
+.airo-input-secrets-form__header-text {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--airo-input-secrets-form-density) * 0.25);
+  min-width: 0;
+}
+
+.airo-input-secrets-form__eyebrow-row {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--airo-input-secrets-form-density) * 0.5);
+  min-width: 0;
+}
+
+.airo-input-secrets-form__secret-lock {
+  flex-shrink: 0;
+  display: inline-flex;
+  /* Density-scaled glyph box (~18px when density is 8); AsyncIcon defaults to em-based sizing. */
+  font-size: calc(var(--airo-input-secrets-form-density) * 2.25);
+  inline-size: 1em;
+  block-size: 1em;
+  align-items: center;
+  justify-content: center;
+  /* Theme figure slot: in godaddy-antares this maps to `ux.figure.figureColor4` (figure slots are theme-defined). */
+  color: intent('ux.figure.figureColor4');
+}
+
+.airo-input-secrets-form__secret-lock :where(svg) {
+  display: block;
+  inline-size: 1em;
+  block-size: 1em;
+}
+
+.airo-input-secrets-form__eyebrow {
+  color: intent('ux.box.foregroundColor');
+  min-width: 0;
+  /* Clear UA heading margins; optional host hook (inherits) — default 0. */
+  margin-block: var(--airo-input-secrets-form-eyebrow-margin-block, 0);
+}
+
+.airo-input-secrets-form__label {
+  color: intent('ux.box.foregroundColor');
+}
+
+/* -- TextEntry row ----------------------------------------------------- */
+
+.airo-input-secrets-form__input-area {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding-inline: var(--airo-input-secrets-form-padding);
+}
+
+.airo-input-secrets-form__input-area > .airo-input-secrets-form__entry {
+  flex: 1 1 0%;
+  min-width: 0;
+  color: intent('ux.box.foregroundColor');
+}
+
+/* Tighter padding than default @ux/text-entry (mirrors PromptBox borderless). */
+.airo-input-secrets-form__input-area > .airo-input-secrets-form__entry :where(input, textarea) {
+  padding-block: calc(var(--airo-input-secrets-form-density) * 1.5);
+  padding-inline: 0;
+  background: transparent;
+}
+
+.airo-input-secrets-form__input-area
+  > .airo-input-secrets-form__entry
+  :where(input, textarea)::placeholder {
+  color: intent('ux.controlVoid.foregroundColor');
+}
+
+/* Conversation: tighten vertical rhythm only (visualSize is already `sm`). */
+.airo-input-secrets-form--conversation
+  .airo-input-secrets-form__input-area
+  > .airo-input-secrets-form__entry
+  :where(input, textarea) {
+  padding-block: calc(var(--airo-input-secrets-form-density) * 1);
+}
+
+.airo-input-secrets-form__entry--plaintext-visible :where(input, textarea) {
+  text-overflow: ellipsis;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+/*
+ * Composer: `@ux/text-entry` draws a shell outline when the native control is focused
+ * (`@ux/text-entry/src/styles.css`). The outer card already uses `:focus-within` for
+ * focus chrome, so we hide the shell ring while the field is focused to avoid doubling.
+ * Conversation keeps the shell’s default UXCore focus treatment.
+ *
+ * `:has` is guarded like `choice-list` — browsers without `:has` keep the TextEntry
+ * outline (double ring with the card is acceptable degradation). Prefer a TextEntry
+ * chromeless API when UXCore exposes one.
+ */
+@supports selector(:has(*)) {
+  .airo-input-secrets-form:not(.airo-input-secrets-form--conversation)
+    .airo-input-secrets-form__input-area
+    > .airo-input-secrets-form__entry:has(:where(input, textarea):focus) {
+    outline: none;
+  }
+}
+
+.airo-input-secrets-form__visibility-toggle {
+  flex-shrink: 0;
+}
+
+.airo-input-secrets-form--conversation .airo-input-secrets-form__input-area {
+  margin-inline: var(--airo-input-secrets-form-padding);
+  margin-block: calc(var(--airo-input-secrets-form-density) * 1);
+  padding-inline: calc(var(--airo-input-secrets-form-density) * 1);
+  padding-block: calc(var(--airo-input-secrets-form-density) * 0.75);
+  border: intent('ux.box.borderWidth') solid intent('ux.box.borderColor');
+  border-radius: calc(var(--airo-input-secrets-form-density) * 1);
+}
+
+.airo-input-secrets-form__conversation-messages {
+  padding-inline: var(--airo-input-secrets-form-padding);
+  padding-block-start: calc(var(--airo-input-secrets-form-density) * 0.5);
+}
+
+.airo-input-secrets-form__conversation-footer {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: calc(var(--airo-input-secrets-form-density) * 1);
+  padding: var(--airo-input-secrets-form-padding);
+  justify-content: flex-start;
+}
+
+/* -- Toolbar ----------------------------------------------------------- */
+
+.airo-input-secrets-form__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: calc(var(--airo-input-secrets-form-density) * 2);
+  padding: var(--airo-input-secrets-form-padding);
+}
+
+.airo-input-secrets-form__toolbar-messages {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--airo-input-secrets-form-density) * 0.25);
+}
+
+.airo-input-secrets-form__helper-text {
+  min-width: 0;
+}
+
+.airo-input-secrets-form__error-text {
+  min-width: 0;
+}
+
+.airo-input-secrets-form__submit {
+  flex-shrink: 0;
+  margin-inline-start: auto;
+}

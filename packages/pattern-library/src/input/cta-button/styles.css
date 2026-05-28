@@ -1,0 +1,200 @@
+@tailwind utilities;
+
+/* --------------------------------------------------------------------------
+ * CtaButton — CTA widget that replaces the chat input when an AI agent
+ * requires an external action (e.g., OAuth authentication, external approval).
+ *
+ * Structure: root **`@ux/box`** (`elevation="raised"`) → header (icon + title +
+ * description; close button when pending) → action area (helper text + primary
+ * button when pending; status message when processing/success/error; error
+ * actions when error).
+ *
+ * Horizontal cap: **`max-width: min(var(--airo-input-cta-button-max-width), 100%)`**
+ * (default **`calc(var(--airo-input-cta-button-density) * 83)`** — scales with
+ * **`ux.box.density`**; hosts may override **`--airo-input-cta-button-max-width`**
+ * on an ancestor to match their layout).
+ *
+ * Icon color: **`--airo-input-cta-button-icon-color`** (defaults to
+ * **`intent('ux.figure.figureColor4')`**) can be overridden on an ancestor
+ * without editing this package.
+ *
+ * Visual alignment with SecretsForm: same density scaling, padding rhythm,
+ * border treatment, and focus behavior.
+ * ----------------------------------------------------------------------- */
+
+.airo-input-cta-button {
+  --airo-input-cta-button-density: intent('ux.box.density');
+  --airo-input-cta-button-padding: calc(var(--airo-input-cta-button-density) * 1.5);
+  --airo-input-cta-button-max-width-default: calc(var(--airo-input-cta-button-density) * 83);
+  --airo-input-cta-button-icon-color-default: intent('ux.figure.figureColor4');
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: min(
+    var(--airo-input-cta-button-max-width, var(--airo-input-cta-button-max-width-default)),
+    100%
+  );
+  /* Transparent border reserves width for :focus-within outline; depth comes from Box elevation. */
+  border: intent('ux.box.borderWidth') solid transparent;
+  border-radius: calc(var(--airo-input-cta-button-density) * 2);
+  background-color: intent('ux.box.backgroundColor');
+  overflow: hidden;
+}
+
+.airo-input-cta-button:focus-within {
+  /* Match SecretsForm / Airo Builder: dark edge on focus (`ux.box` text color), not `outlineColor`. */
+  border-color: intent('ux.box.foregroundColor');
+}
+
+/* Borderless: drop the outer card chrome so the widget can sit flush inside
+   a host surface (PromptBox expansion, PromptStage swap, etc.) that already
+   provides background and padding. The internal lockup and action area stay
+   intact — only the outer shell is invisible. `overflow: visible` lets focus
+   rings on internal controls show without being clipped. */
+.airo-input-cta-button--borderless {
+  background-color: transparent;
+  border: 0;
+  border-radius: 0;
+  overflow: visible;
+  max-width: 100%;
+}
+
+.airo-input-cta-button--borderless:focus-within {
+  /* Focus ring belongs on the host surface in borderless mode. */
+  border-color: transparent;
+}
+
+/* Borderless mode strips the widget's *outer* padding so the host container's
+   padding is the only padding the user sees. Internal block padding between
+   sections (header bottom, action-area top) stays so the widget keeps its own
+   visual rhythm. */
+.airo-input-cta-button--borderless .airo-input-cta-button__header,
+.airo-input-cta-button--borderless .airo-input-cta-button__action-area {
+  padding-inline: 0;
+}
+
+.airo-input-cta-button--borderless .airo-input-cta-button__header {
+  padding-block-start: 0;
+}
+
+.airo-input-cta-button--borderless .airo-input-cta-button__action-area {
+  padding-block-end: 0;
+}
+
+/* -- Header ------------------------------------------------------------ */
+
+.airo-input-cta-button__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--airo-input-cta-button-density);
+  padding: var(--airo-input-cta-button-padding);
+  padding-block-end: calc(var(--airo-input-cta-button-density) * 1);
+}
+
+.airo-input-cta-button__header-content {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--airo-input-cta-button-density) * 0.5);
+  min-width: 0;
+  flex: 1;
+}
+
+.airo-input-cta-button__icon-title-row {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--airo-input-cta-button-density) * 0.5);
+  min-width: 0;
+}
+
+.airo-input-cta-button__icon {
+  flex-shrink: 0;
+  display: inline-flex;
+  /* Density-scaled glyph box (~16px when density is 8). */
+  font-size: calc(var(--airo-input-cta-button-density) * 2);
+  inline-size: 1em;
+  block-size: 1em;
+  align-items: center;
+  justify-content: center;
+  /* Exposed CSS variable defaults to theme figure slot; hosts can override without editing the package. */
+  color: var(--airo-input-cta-button-icon-color, var(--airo-input-cta-button-icon-color-default));
+}
+
+.airo-input-cta-button__icon :where(svg) {
+  display: block;
+  inline-size: 1em;
+  block-size: 1em;
+}
+
+.airo-input-cta-button__title {
+  color: intent('ux.box.foregroundColor');
+  min-width: 0;
+  margin-block: 0;
+}
+
+.airo-input-cta-button__description {
+  color: intent('ux.box.foregroundColor');
+  min-width: 0;
+  margin-block: 0;
+}
+
+/* -- Action Area ------------------------------------------------------- */
+
+.airo-input-cta-button__action-area {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--airo-input-cta-button-density) * 1);
+  padding: var(--airo-input-cta-button-padding);
+  padding-block-start: 0;
+}
+
+.airo-input-cta-button__helper-text {
+  min-width: 0;
+  margin-block: 0;
+}
+
+.airo-input-cta-button__action-button {
+  align-self: flex-start;
+}
+
+.airo-input-cta-button__status-message {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--airo-input-cta-button-density) * 0.5);
+  color: intent('ux.box.foregroundColor');
+}
+
+.airo-input-cta-button__status-message--success {
+  color: intent('ux.feedbackHighContrastSuccess.feedbackColor');
+}
+
+.airo-input-cta-button__status-message--error {
+  color: intent('ux.feedbackHighContrastCritical.feedbackColor');
+}
+
+.airo-input-cta-button__status-icon {
+  flex-shrink: 0;
+  font-size: calc(var(--airo-input-cta-button-density) * 1.5);
+  line-height: 1;
+}
+
+.airo-input-cta-button__error-state {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--airo-input-cta-button-density) * 1);
+}
+
+.airo-input-cta-button__error-message {
+  min-width: 0;
+  margin-block: 0;
+}
+
+.airo-input-cta-button__error-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(var(--airo-input-cta-button-density) * 1);
+}
+
+.airo-input-cta-button__chrome-button {
+  flex-shrink: 0;
+}

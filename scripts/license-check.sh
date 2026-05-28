@@ -55,6 +55,7 @@ KNOWN_EXCEPTIONS=(
   "object-stream"             # MIT (README; missing package.json field; transitive of parquetjs)
   "only"                      # MIT (TJ Holowaychuk, missing metadata)
   "stackframe"                # Unlicense (public domain, LICENSE file present)
+  "@visx/vendor"              # MIT and ISC (lowercase "and" in package.json — semantically equivalent to allowed "MIT AND ISC"; transitive of @godaddy/antares)
 )
 
 # --- Fallback for npm projects (e.g. v8-template) ---

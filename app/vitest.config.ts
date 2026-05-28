@@ -6,7 +6,7 @@ import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 
 /**
- * True when the root `package.json` `pnpm.overrides` points `@airo/components`
+ * True when the root `package.json` `pnpm.overrides` points `@airo-ux/pattern-library`
  * (or any related `@airo/*`) at a `link:` path. In that dev setup the
  * components' peer deps (@ux/*, react) live in the linked repo's own
  * node_modules and get resolved through a symlink chain that vite's
@@ -95,7 +95,7 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
       '@cds/deps-esm': path.resolve(__dirname, './cds/deps-esm.js'),
       // Hard-alias react entrypoints to the consumer's copy so any linked /
-      // overridden dep (e.g. `@airo/components` via pnpm.overrides `link:` to
+      // overridden dep (e.g. `@airo-ux/pattern-library` via pnpm.overrides `link:` to
       // a sibling repo with its own node_modules) resolves every `react` /
       // `react/jsx-runtime` import to this single React instance.
       react: path.resolve(__dirname, 'node_modules/react'),
@@ -105,7 +105,7 @@ export default defineConfig({
     },
     conditions: ['import', 'module', 'browser', 'default'],
     dedupe: ['react', 'react-dom'],
-    // Only enabled when a dev has overridden @airo/components to a local
+    // Only enabled when a dev has overridden @airo-ux/pattern-library to a local
     // link (see `hasLinkedAiroComponents` above). Never set on the catalog
     // path because it breaks pnpm's `.pnpm` hoisting of transitive peers.
     preserveSymlinks: USING_LINKED_AIRO_COMPONENTS,
@@ -136,9 +136,9 @@ export default defineConfig({
     // Limit concurrent tests within each file
     maxConcurrency: 5,
     // Inline workspace packages so Vitest resolves subpath exports correctly.
-    // @airo/components is included so its (linked/overridden) dist reuses the
+    // @airo-ux/pattern-library is included so its (linked/overridden) dist reuses the
     // app's single React instance via vite's module graph. @ux/* is also
-    // included because when @airo/components resolves from a linked repo
+    // included because when @airo-ux/pattern-library resolves from a linked repo
     // (pnpm.overrides `link:`), its @ux/* peer deps live under the linked
     // repo's node_modules and must go through vite's transform to share
     // React with the consumer — otherwise Node resolves a second copy.
@@ -147,7 +147,7 @@ export default defineConfig({
         inline: [
           '@airo/ai-lib',
           '@airo/ai-transport',
-          '@airo/components',
+          '@airo-ux/pattern-library',
           /^@ux\//,
         ],
       },

@@ -1,0 +1,16 @@
+/* --------------------------------------------------------------------------
+ * FloatingFooter — raised-elevation sheet for bottom composer / toolbar chrome.
+ *
+ * Composes `@ux/box elevation="raised"` for background, corner radius, and the
+ * theme’s raised drop-shadow (`filter` from `@ux/box` styles). This file only
+ * carries width constraints so the sheet behaves in flex layouts; do not add a
+ * second shadow stack here — it would stack on top of Box and read too heavy.
+ *
+ * Class prefix: `airo-surfaces-floating-footer`.
+ * ----------------------------------------------------------------------- */
+
+.airo-surfaces-floating-footer {
+  box-sizing: border-box;
+  inline-size: 100%;
+  max-inline-size: 100%;
+}

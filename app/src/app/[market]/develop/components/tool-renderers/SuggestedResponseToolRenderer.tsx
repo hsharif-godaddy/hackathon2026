@@ -1,6 +1,6 @@
 'use client'
 
-import { ChoiceList } from '@airo/components/input/choice-list'
+import { ChoiceList } from '@airo-ux/pattern-library/input/choice-list'
 import Box from '@ux/box'
 
 import { useSendUserMessage } from '@/app/[market]/develop/components/chat/ChatContext'

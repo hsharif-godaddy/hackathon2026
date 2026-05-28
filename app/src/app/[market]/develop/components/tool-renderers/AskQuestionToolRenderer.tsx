@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ChoiceList } from '@airo/components/input/choice-list'
+import { ChoiceList } from '@airo-ux/pattern-library/input/choice-list'
 
 import { useSendUserMessage } from '@/app/[market]/develop/components/chat/ChatContext'
 import type { DefaultToolRendererProps } from '@/app/[market]/develop/components/tool-renderers/DefaultToolRenderer'
@@ -171,7 +171,7 @@ export default function AskQuestionToolRenderer({
 
   // Memoize the step children so the array passed to ChoiceList is reference-
   // stable across parent re-renders (streaming/loading store ticks).
-  // @airo/components ChoiceList tracks `children` through useMemo → activeStep
+  // @airo-ux/pattern-library ChoiceList tracks `children` through useMemo → activeStep
   // / collected → a reset effect that clears the in-progress "Other" draft.
   // Without this memo, every parent render produces fresh `<ChoiceList.Step>`
   // elements and that effect fires on every tick, wiping whatever the user
@@ -239,7 +239,7 @@ export default function AskQuestionToolRenderer({
 
   // allowOther is root-level — disable globally if any question opts out so
   // freeform doesn't leak into authoritative-pick questions. Placeholders
-  // are per-step via ChoiceList.Step (@airo/components >= 4.0). The root
+  // are per-step via ChoiceList.Step (@airo-ux/pattern-library >= 4.0). The root
   // `otherPlaceholder` is the fallback that ChoiceList uses on any step
   // that doesn't set its own — so it must be a generic default. Earlier
   // versions of this code seeded the root from the first question with a

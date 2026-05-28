@@ -1,0 +1,266 @@
+@tailwind utilities;
+
+/* --------------------------------------------------------------------------
+ * Chiclet — Airo-branded pill trigger ("Ask Airo").
+ *
+ * BEM prefix: airo-primitives-chiclet
+ *
+ * Visual model:
+ *   • Pill-shaped surface (border-radius 9999px) with two stacked backgrounds:
+ *       - a `padding-box` background for the inner fill (intent-bound)
+ *       - a `border-box` conic-gradient for the rotating Airo brand ring
+ *     The 2.8px transparent border lets the conic gradient show through as
+ *     a perimeter ring while the inner fill stays solid (or transparent in
+ *     the default state).
+ *   • The conic gradient rotates via `@property --airo-primitives-chiclet-angle`,
+ *     which lets the angle interpolate smoothly on the GPU instead of
+ *     ticking discretely. Two animations are declared together on the
+ *     default rule and switched between via `animation-play-state`:
+ *       - one-shot `airo-primitives-chiclet-spin-once` on mount (a 2s
+ *         intro to draw the eye when the trigger first appears) —
+ *         starts running, stays at its end frame after one iteration.
+ *       - continuous `airo-primitives-chiclet-spin-loop` —
+ *         starts paused, plays only on `:hover` / `:focus-visible`
+ *         (a live invitation to interact).
+ *     Both animations are declared on the default rule and never
+ *     replaced; state changes only toggle `animation-play-state`. This
+ *     avoids the restart-on-state-exit pitfall where swapping the
+ *     `animation` shorthand makes the browser treat the reverted
+ *     declaration as a fresh animation and replay the intro every
+ *     hover→unhover cycle.
+ *   • `:active` (mouse held / Space depressed) flashes the chosen-state
+ *     intent (filled dark purple) for transient pressed feedback. There
+ *     is no persistent "selected" state — the chiclet is a pure trigger,
+ *     so all visual states are interaction-driven and revert to the
+ *     default surface as soon as the user stops engaging.
+ *
+ * Brand gradient colors (`#B688F7`, `#946CEE`, `#5034DC`) match the canonical
+ * Airo palette set in `surfaces/airo-wordmark.tsx`. They have no equivalent
+ * intent token and are deliberately exempt from the "no hardcoded colors"
+ * rule in the same way shadow geometry is — see the root `AGENTS.md`.
+ * Keep them in sync with `airo-wordmark.tsx` if the brand asset is ever
+ * updated.
+ * ----------------------------------------------------------------------- */
+
+/* Animatable angle for the conic gradient. Without `@property`, browsers
+   can't tween a `<angle>` inside `conic-gradient(...)` and the rotation
+   ticks in discrete keyframe jumps. */
+@property --airo-primitives-chiclet-angle {
+  syntax: '<angle>';
+  initial-value: 0deg;
+  inherits: false;
+}
+
+.airo-primitives-chiclet {
+  /* Density-derived padding to match `@ux/button`'s default size:
+     `calc(intent('ux.box.density') * 2) calc(intent('ux.box.density') * 3)`.
+     This intentionally diverges from the Figma source (which used
+     `density × 4` / `density × 6` for the larger 56px-tall chiclet) so the
+     trigger sits at the same overall height as the rest of the button
+     family in a row of UXCore2 controls.
+
+     Padding is logical (`padding-block` / `padding-inline`) so RTL flips
+     the leading edge correctly. */
+  --airo-primitives-chiclet-density: intent('ux.box.density');
+  --airo-primitives-chiclet-padding-block: calc(var(--airo-primitives-chiclet-density) * 2);
+  --airo-primitives-chiclet-padding-inline: calc(var(--airo-primitives-chiclet-density) * 3);
+
+  --airo-primitives-chiclet-border-width: 2.8px;
+
+  /* Default angle starts at 0; animation drives it. */
+  --airo-primitives-chiclet-angle: 0deg;
+
+  /* Reset native button chrome so the styling below has a clean slate.
+     Color/background are reapplied below. */
+  appearance: none;
+  background: none;
+  cursor: pointer;
+  font: inherit;
+  letter-spacing: inherit;
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  /* Match `@ux/button`'s 0.5em icon-to-label gap. Em-based so the gap
+     scales with the inherited label font-size. */
+  column-gap: 0.5em;
+
+  padding-block: var(--airo-primitives-chiclet-padding-block);
+  padding-inline: var(--airo-primitives-chiclet-padding-inline);
+
+  border: var(--airo-primitives-chiclet-border-width) solid transparent;
+  border-radius: 9999px;
+  /* `padding-box` fill = inner surface; `border-box` conic = rotating ring.
+     Stacked backgrounds with two clip values render both at once. */
+  background: linear-gradient(
+      intent('ux.actionSecondary.backgroundColor'),
+      intent('ux.actionSecondary.backgroundColor')
+    )
+    padding-box,
+    conic-gradient(
+      from var(--airo-primitives-chiclet-angle),
+      #b688f7 0deg,
+      #946cee 90deg,
+      #5034dc 180deg,
+      #946cee 270deg,
+      #b688f7 360deg
+    )
+    border-box;
+
+  color: intent('ux.actionSecondary.foregroundColor');
+
+  /* Elevation 200 Overlay — three stacked drop-shadows captured from the
+     Figma source. Shadow geometry (offsets, blurs, spreads) is exempt from
+     the "no hardcoded values" rule per the root `AGENTS.md`; the colors
+     are black-with-alpha. */
+  box-shadow: 0 0 1px 0 rgba(0, 0, 0, 0.2), 0 4px 18px 0 rgba(0, 0, 0, 0.1), 0 6px 8px 0
+    rgba(0, 0, 0, 0.07);
+
+  /* Two animations declared together so the browser never sees a
+     fresh `animation` shorthand on state exit. The intro runs once on
+     mount; the loop is paused by default and only resumed on
+     hover/focus via `animation-play-state` below. Toggling play-state
+     preserves each animation's timeline — the intro stays at its end
+     frame after iteration 1 and never restarts, even after :active,
+     :disabled, or hover are released. */
+  animation: airo-primitives-chiclet-spin-once 2s linear 1, airo-primitives-chiclet-spin-loop 2s
+    linear infinite;
+  animation-play-state: running, paused;
+}
+
+.airo-primitives-chiclet:hover,
+.airo-primitives-chiclet:focus-visible {
+  background: linear-gradient(
+      intent('ux.actionSecondaryHovered.backgroundColor'),
+      intent('ux.actionSecondaryHovered.backgroundColor')
+    )
+    padding-box,
+    conic-gradient(
+      from var(--airo-primitives-chiclet-angle),
+      #b688f7 0deg,
+      #946cee 90deg,
+      #5034dc 180deg,
+      #946cee 270deg,
+      #b688f7 360deg
+    )
+    border-box;
+  color: intent('ux.actionSecondaryHovered.foregroundColor');
+  animation-play-state: paused, running;
+}
+
+.airo-primitives-chiclet:focus-visible {
+  /* Keep the rotating ring as the primary affordance, but add a thin
+     focus outline outside the pill for keyboard users — the gradient is
+     decorative, not a substitute for an accessible focus indicator. */
+  outline: 2px solid intent('ux.actionSecondaryFocused.outlineColor');
+  outline-offset: 2px;
+}
+
+/* Small size modifier — mirrors `@ux/button size="small"`:
+   `calc(density * 1) calc(density * 2)` padding at `--uxText--fontSize-1`
+   (~14px when default text is 16px, per `@ux/text`). Em-based gap, icon
+   wrapper, and label all scale with the smaller font-size automatically;
+   only padding (which is density-driven, not em-driven) needs an explicit
+   override. The fallback `0.875rem` keeps the size sensible if a consumer
+   somehow renders the chiclet without `@ux/text`'s root variables loaded.
+   The 2.8px gradient ring thickness is intentionally NOT scaled — keeping
+   the brand ring at a constant visual weight across sizes. */
+.airo-primitives-chiclet--small {
+  font-size: var(--uxText--fontSize-1, 0.875rem);
+  --airo-primitives-chiclet-padding-block: calc(var(--airo-primitives-chiclet-density) * 1);
+  --airo-primitives-chiclet-padding-inline: calc(var(--airo-primitives-chiclet-density) * 2);
+}
+
+/* Active — transient feedback while the click is held (mouse down / Space
+   depressed). Solid filled surface using the chosen-state intent so the
+   pill reads as "engaged." The rotating ring is hidden during the press
+   because the chiclet is mid-action, not inviting interaction. */
+.airo-primitives-chiclet:active {
+  background: intent('ux.actionSecondaryChosen.backgroundColor');
+  border-color: intent('ux.actionSecondaryChosen.borderColor');
+  color: intent('ux.actionSecondaryChosen.foregroundColor');
+  /* Pause both animations during the press; releasing :active reverts
+     to the default rule's play-state, which leaves the (already-finished)
+     intro at its end frame. Using `animation: none` here would cancel
+     the declarations and cause the intro to replay when the press is
+     released. */
+  animation-play-state: paused, paused;
+}
+
+/* Disabled — neutralise the affordance: dim, pause the ring, block
+   pointer events. Pausing rather than cancelling keeps the intro from
+   replaying if the consumer toggles `disabled` off later. */
+.airo-primitives-chiclet:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+  animation-play-state: paused, paused;
+}
+
+.airo-primitives-chiclet:disabled:hover,
+.airo-primitives-chiclet:disabled:focus-visible {
+  /* Don't switch to hovered tokens or restart the loop while disabled. */
+  background: linear-gradient(
+      intent('ux.actionSecondary.backgroundColor'),
+      intent('ux.actionSecondary.backgroundColor')
+    )
+    padding-box,
+    conic-gradient(
+      from var(--airo-primitives-chiclet-angle),
+      #b688f7 0deg,
+      #946cee 90deg,
+      #5034dc 180deg,
+      #946cee 270deg,
+      #b688f7 360deg
+    )
+    border-box;
+  color: intent('ux.actionSecondary.foregroundColor');
+  animation-play-state: paused, paused;
+  outline: none;
+}
+
+/* Icon wrapper — mirrors `@ux/button`'s `.ux-button-icon` rule:
+   the wrapper is `1.5em × 1.5em` for hit-area / vertical rhythm, but the
+   icon glyph inside renders at 1em (per `@ux/icon`'s base CSS), so the
+   visible icon matches the label cap-height instead of overpowering it.
+   Setting the wrapper size in `em` lets the icon scale with the inherited
+   label font-size. `flex-shrink: 0` prevents the icon from collapsing
+   when the label wraps in a narrow container. */
+.airo-primitives-chiclet__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5em;
+  height: 1.5em;
+  line-height: 0;
+  flex-shrink: 0;
+  vertical-align: middle;
+}
+
+.airo-primitives-chiclet__label {
+  display: inline-flex;
+  align-items: center;
+  /* Wrap is unusual for a chiclet but `word-break: break-word` keeps a
+     pathologically long custom label from blowing out the layout. */
+  word-break: break-word;
+  text-align: center;
+}
+
+@keyframes airo-primitives-chiclet-spin-once {
+  to {
+    --airo-primitives-chiclet-angle: 360deg;
+  }
+}
+
+@keyframes airo-primitives-chiclet-spin-loop {
+  to {
+    --airo-primitives-chiclet-angle: 360deg;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .airo-primitives-chiclet,
+  .airo-primitives-chiclet:hover,
+  .airo-primitives-chiclet:focus-visible {
+    animation: none;
+  }
+}

@@ -5,27 +5,29 @@ on:
     branches: [main, develop]
     types: [opened, synchronize, reopened]
     paths:
-      - "app/**"
-      - "packages/shared/**"
-      - "package.json"
-      - "pnpm-workspace.yaml"
-      - "pnpm-lock.yaml"
-      - "turbo.json"
-      - "scripts/license-check.sh"
-      - ".github/workflows/quality-checks-app.yml"
-      - ".github/workflows/_quality-checks.yml"
+      - 'app/**'
+      - 'packages/pattern-library/**'
+      - 'packages/shared/**'
+      - 'package.json'
+      - 'pnpm-workspace.yaml'
+      - 'pnpm-lock.yaml'
+      - 'turbo.json'
+      - 'scripts/license-check.sh'
+      - '.github/workflows/quality-checks-app.yml'
+      - '.github/workflows/_quality-checks.yml'
   push:
     branches: [main]
     paths:
-      - "app/**"
-      - "packages/shared/**"
-      - "package.json"
-      - "pnpm-workspace.yaml"
-      - "pnpm-lock.yaml"
-      - "turbo.json"
-      - "scripts/license-check.sh"
-      - ".github/workflows/quality-checks-app.yml"
-      - ".github/workflows/_quality-checks.yml"
+      - 'app/**'
+      - 'packages/pattern-library/**'
+      - 'packages/shared/**'
+      - 'package.json'
+      - 'pnpm-workspace.yaml'
+      - 'pnpm-lock.yaml'
+      - 'turbo.json'
+      - 'scripts/license-check.sh'
+      - '.github/workflows/quality-checks-app.yml'
+      - '.github/workflows/_quality-checks.yml'
 
 permissions:
   id-token: write

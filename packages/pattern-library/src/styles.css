@@ -1,0 +1,41 @@
+/*
+ * `@airo-ux/pattern-library/styles` — the omnibus stylesheet.
+ *
+ * Imports every component's styles so consumers who want everything can pull
+ * a single side-effect import:
+ *
+ *   import '@airo-ux/pattern-library/styles';
+ *
+ * For smaller bundles, prefer the per-component `styles` subpath:
+ *
+ *   import '@airo-ux/pattern-library/chat/thinker/styles';
+ *
+ * Keep this list 1:1 with `package.json#exports` `/styles` entries.
+ */
+
+/* primitives */
+@import './primitives/color-swatch/styles.css';
+@import './primitives/color-swatch-group/styles.css';
+@import './primitives/drag-handle/styles.css';
+@import './primitives/thinking-indicator/styles.css';
+
+/* chat */
+@import './chat/agent-message/styles.css';
+@import './chat/chat-layout/styles.css';
+@import './chat/thinker/styles.css';
+@import './chat/user-message/styles.css';
+
+/* input */
+@import './input/choice-list/styles.css';
+@import './input/prompt-box/styles.css';
+@import './input/prompt-stage/styles.css';
+@import './input/secrets-form/styles.css';
+
+/* surfaces */
+@import './surfaces/builder-chat-footer/styles.css';
+@import './surfaces/builder-header/styles.css';
+@import './surfaces/floating-footer/styles.css';
+@import './surfaces/floating-panel/styles.css';
+@import './surfaces/fullscreen-dialog/styles.css';
+@import './surfaces/panel/styles.css';
+@import './surfaces/panel-chrome/styles.css';
