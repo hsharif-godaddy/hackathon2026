@@ -202,16 +202,21 @@ export function ImageEditorPanel({
   // is established before Filerobot tries to load it. Without this, the first load from
   // the hover-bar modify path fails because no prior request has warmed the connection.
   const [editorReady, setEditorReady] = useState(false);
+  // Set when the pre-load retries are exhausted — we render an error instead of Filerobot,
+  // because letting Filerobot mount on a broken source crashes the app once a filter is applied.
+  const [loadFailed, setLoadFailed] = useState(false);
   // Detected Content-Type from HTTP header — covers CDN URLs with no file extension (e.g. isteam).
   const [sourceContentType, setSourceContentType] = useState<string | null>(null);
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     if (!imageUrl) {
       setEditorReady(false);
+      setLoadFailed(false);
       setSourceContentType(null);
       return;
     }
     setEditorReady(false);
+    setLoadFailed(false);
     setSourceContentType(null);
     let cancelled = false;
 
@@ -247,8 +252,10 @@ export function ImageEditorPanel({
         if (attempt < 3) {
           retryTimerRef.current = setTimeout(() => tryLoad(attempt + 1), 500);
         } else {
-          // Give up and let Filerobot show its own error
-          setEditorReady(true);
+          // Give up and surface our own error UI. We avoid mounting Filerobot on a broken
+          // source — applying a filter against a missing image crashes the editor.
+          logger.warn('media_slot_image_editor.load_failed', { appId, slotName, imageUrl });
+          setLoadFailed(true);
         }
       };
       img.src = imageUrl;
@@ -259,7 +266,7 @@ export function ImageEditorPanel({
       cancelled = true;
       if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
     };
-  }, [imageUrl]);
+  }, [imageUrl, appId, slotName]);
 
   const handleSave = useCallback(
     async (savedImageData: SavedImageData) => {
@@ -428,7 +435,14 @@ export function ImageEditorPanel({
         </div>
       )}
       <div className="flex-1">
-        {!editorReady ? (
+        {loadFailed ? (
+          <div
+            role="alert"
+            className="flex items-center justify-center h-64 text-sm text-intents-ux-error-textColor px-4 text-center"
+          >
+            {t('builder_mediaslot_editor_image_load_failed')}
+          </div>
+        ) : !editorReady ? (
           <div className="flex items-center justify-center h-64">
             <Skeleton width="100%" height="400px" />
           </div>
