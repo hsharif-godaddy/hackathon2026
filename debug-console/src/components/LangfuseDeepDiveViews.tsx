@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 
 import { langfuseEbSessionUrl, langfuseEbTraceUrl } from '@/lib/langfuse-eb-ui';
 
@@ -722,6 +722,28 @@ function statusPill(
 }
 
 export function MgmtAppDetailView({ data }: { data: unknown }) {
+  // Hooks must be called unconditionally before any early returns.
+  const [previewShareToken, setPreviewShareToken] = useState<string | null>(null);
+
+  const rawId = isRecord(data) && typeof data.id === 'string' ? data.id : null;
+  const rawPreview = isRecord(data) && isRecord(data.urls) ? (data.urls as Record<string, unknown>)['preview'] : null;
+
+  useEffect(() => {
+    if (typeof rawId !== 'string' || typeof rawPreview !== 'string') {
+      setPreviewShareToken(null);
+      return;
+    }
+    const controller = new AbortController();
+    fetch(`/api/agent/share-token/${encodeURIComponent(rawId)}`, { signal: controller.signal })
+      .then(async res => {
+        if (!res.ok) return;
+        const fetchedData = await res.json() as { token: string | null };
+        if (typeof fetchedData.token === 'string') setPreviewShareToken(fetchedData.token);
+      })
+      .catch(() => { /* fail open */ });
+    return () => controller.abort();
+  }, [rawId, rawPreview]);
+
   if (!isRecord(data) || typeof data.id !== 'string') {
     return (
       <div style={{ marginTop: '0.55rem' }}>
@@ -820,7 +842,21 @@ export function MgmtAppDetailView({ data }: { data: unknown }) {
             <div style={sectionBar}>Live URLs</div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.45rem' }}>
               {typeof urls.agent === 'string' ? <ExternalArrowLink href={urls.agent}>agent</ExternalArrowLink> : null}
-              {typeof urls.preview === 'string' ? <ExternalArrowLink href={urls.preview}>preview</ExternalArrowLink> : null}
+              {typeof urls.preview === 'string' ? (
+                <ExternalArrowLink href={
+                  previewShareToken
+                    ? (() => {
+                        try {
+                          const u = new URL(urls.preview as string);
+                          u.searchParams.set('airoShareToken', previewShareToken);
+                          return u.toString();
+                        } catch {
+                          return urls.preview as string;
+                        }
+                      })()
+                    : urls.preview
+                }>preview</ExternalArrowLink>
+              ) : null}
               {typeof urls.publish === 'string' ? <ExternalArrowLink href={urls.publish}>publish</ExternalArrowLink> : null}
             </div>
           </div>

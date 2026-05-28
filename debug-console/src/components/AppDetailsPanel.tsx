@@ -109,6 +109,7 @@ type ComponentName = typeof COMPONENTS[number];
 interface DetailedStatusBlockProps {
     name: ComponentName;
     url?: string;
+    shareToken?: string | null;
     variant?: MgmtVariantWithLifecycle;
     imageStatus: MgmtImageStatus | null;
     imageStatusLoading: boolean;
@@ -122,8 +123,11 @@ const VARIANT_FOR: Record<ComponentName, string> = {
     'publish': 'publish',
 };
 
-function DetailedStatusBlock({ name, url, variant, imageStatus, imageStatusLoading }: DetailedStatusBlockProps) {
+function DetailedStatusBlock({ name, url, shareToken, variant, imageStatus, imageStatusLoading }: DetailedStatusBlockProps) {
     const image = imageStatus?.images?.find(i => i.imageType === name);
+    const href = shareToken && url
+        ? (() => { const u = new URL(url); u.searchParams.set('airoShareToken', shareToken); return u.toString(); })()
+        : url;
 
     return (
         <div style={{
@@ -144,7 +148,7 @@ function DetailedStatusBlock({ name, url, variant, imageStatus, imageStatusLoadi
                         {name}
                     </span>
                     {url && (
-                        <a href={url} target="_blank" rel="noopener noreferrer"
+                        <a href={href} target="_blank" rel="noopener noreferrer"
                             style={{ color: '#3b82f6', fontFamily: 'monospace', fontSize: '0.8rem', wordBreak: 'break-all' }}>
                             {url}
                         </a>
@@ -622,6 +626,7 @@ export default function AppDetailsPanel({ appId, refreshKey, onRefresh, onSubscr
     const [reloadPhase, setReloadPhase] = useState<'idle' | 'calling' | 'polling'>('idle');
     const [reloadStatusText, setReloadStatusText] = useState('');
     const [reloadError, setReloadError] = useState<string | null>(null);
+    const [previewShareToken, setPreviewShareToken] = useState<string | null>(null);
     const pollingRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     // Stable refs for parent callbacks — avoids including them in the subscription
     // useEffect dep array (which would re-run on every poll tick if passed as new function refs).
@@ -652,6 +657,7 @@ export default function AppDetailsPanel({ appId, refreshKey, onRefresh, onSubscr
         setReloadError(null);
         setSubscription(null);
         setGrants(null);
+        setPreviewShareToken(null);
     }, [appId]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Fetch subscription + grants when subscriptionId becomes known.
@@ -691,6 +697,26 @@ export default function AppDetailsPanel({ appId, refreshKey, onRefresh, onSubscr
         return () => controller.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [app?.subscriptionId]);
+
+    // Fetch share token for preview URL so the link works across all browsers
+    // (third-party cookie blocking prevents the preview_auth cookie path in
+    // Safari/Firefox/incognito). Fails open: bare URL if token unavailable.
+    useEffect(() => {
+        const previewUrl = app?.urls['preview'];
+        if (!previewUrl) {
+            setPreviewShareToken(null);
+            return;
+        }
+        const controller = new AbortController();
+        fetch(`/api/agent/share-token/${encodeURIComponent(appId)}`, { signal: controller.signal })
+            .then(async res => {
+                if (!res.ok) return;
+                const data = await res.json() as { token: string | null };
+                if (typeof data.token === 'string') setPreviewShareToken(data.token);
+            })
+            .catch(err => { if (err.name !== 'AbortError') console.warn('[AppDetailsPanel] share token fetch failed', err); });
+        return () => controller.abort();
+    }, [app, appId]);
 
     const fetchDomainError = useCallback(async function fetchDomainError(fqdn: string) {
         if (!app?.subscriptionId || !app?.systemId) return;
@@ -973,6 +999,7 @@ export default function AppDetailsPanel({ appId, refreshKey, onRefresh, onSubscr
                             key={name}
                             name={name}
                             url={app.urls[name]}
+                            shareToken={name === 'preview' ? previewShareToken : null}
                             variant={app.variantsWithLifecycle.find(v => v.variant === VARIANT_FOR[name])}
                             imageStatus={imageStatus}
                             imageStatusLoading={imageStatusLoading}
