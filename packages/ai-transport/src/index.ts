@@ -28,6 +28,7 @@ export type {
 } from './conversation-event-channel.js'
 export {
   STREAMING_EVENT_TYPES,
+  TOOL_VALIDATION_ERROR_TYPE,
 } from './interfaces.js'
 export type {
   StreamingEvent,
@@ -161,6 +162,8 @@ export { analyzeStreamError, isNetworkError } from './analyze-stream-error.js'
 export type { AnalyzedStreamError } from './analyze-stream-error.js'
 export { classifyTurnError } from './classify-turn-error.js'
 export type { ClassifiedTurnError, TurnErrorType } from './classify-turn-error.js'
+export { classifyStreamBudgetError, isToolValidationError } from './classify-stream-error.js'
+export type { StreamBudgetErrorResult, BudgetErrorSource } from './classify-stream-error.js'
 
 // Turn-level observability primitives (invocation span + error emission).
 export { formatAgentId, emitTurnError, createAgentInvocation } from './agent-invocation.js'

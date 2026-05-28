@@ -382,6 +382,29 @@ describe('MessageExecutionService', () => {
       )
     })
 
+    it('logs sse.tool.input.parse_failure when parsedInput is a string (invalid JSON)', async () => {
+      deps = createMockDeps([
+        { type: 'tool-input-start', id: 'tc1', toolName: 'editFile' },
+        { type: 'tool-input-delta', id: 'tc1', delta: '{invalid json' },
+        { type: 'tool-call', id: 'tc1', toolCallId: 'tc1', toolName: 'editFile' },
+      ])
+      service = new MessageExecutionService(deps as any)
+
+      const loggerMod = await import('../../../logging/index.js')
+      const errorSpy = vi.spyOn(loggerMod.logger, 'error')
+      try {
+        await service.execute(DEFAULT_PARAMS)
+      } finally {
+        const parseFailureLog = errorSpy.mock.calls.find(c => c[0] === 'sse.tool.input.parse_failure')
+        expect(parseFailureLog).toBeDefined()
+        expect(parseFailureLog?.[1]).toMatchObject({
+          toolCallId: 'tc1',
+          toolName: 'editFile',
+        })
+        errorSpy.mockRestore()
+      }
+    })
+
     it('adds messageId, source, and agentId metadata to live events', async () => {
       deps = createMockDeps([{ type: 'text-delta', text: 'hello' }])
       service = new MessageExecutionService(deps as any)
@@ -446,6 +469,149 @@ describe('MessageExecutionService', () => {
           data: expect.objectContaining({ finishReason: 'error', messageId: 'agent-msg-1' }),
         })
       )
+    })
+
+    it('publishes non-terminal error event and processes mock stream for resolved tool validation', async () => {
+      const streamGenerate = vi.fn()
+        .mockResolvedValueOnce({
+          isToolValidationError: true,
+          validationErrorMessage: 'JSON parsing failed',
+          textStream: (async function* () { yield 'corrective feedback text' })(),
+          baseStream: null,
+          getFinalResult: vi.fn().mockResolvedValue({ finishReason: 'error', usage: { totalTokens: 0 }, toolCalls: [] }),
+        })
+      deps.getAgent.mockReturnValue({
+        streamGenerate,
+        getName: vi.fn().mockReturnValue('AI Developer'),
+      })
+      service = new MessageExecutionService(deps as any)
+
+      await service.execute(DEFAULT_PARAMS)
+
+      expect(streamGenerate).toHaveBeenCalledTimes(1)
+      expect(deps.eventChannel.publish).toHaveBeenCalledWith(
+        'conv_1',
+        expect.objectContaining({
+          type: 'error',
+          content: 'Tool call failed due to invalid input format. The agent is retrying with corrections.',
+          data: expect.objectContaining({
+            errorType: 'TOOL_VALIDATION_ERROR',
+            statusCode: 400,
+          }),
+        })
+      )
+      expect(deps.eventChannel.publish).toHaveBeenCalledWith(
+        'conv_1',
+        expect.objectContaining({
+          type: 'chunk',
+          content: 'corrective feedback text',
+        })
+      )
+    })
+
+    it('retries with events when streamGenerate throws a tool validation error', async () => {
+      const streamGenerate = vi.fn()
+        .mockRejectedValueOnce(new Error('toolUse.input is invalid: expected object'))
+        .mockResolvedValueOnce({
+          textStream: (async function* () {})(),
+          baseStream: makeReadableStream([{ type: 'text-delta', text: 'retried response' }]),
+          getFinalResult: vi.fn().mockResolvedValue({ finishReason: 'complete' }),
+        })
+      deps.getAgent.mockReturnValue({
+        streamGenerate,
+        getName: vi.fn().mockReturnValue('AI Developer'),
+      })
+      service = new MessageExecutionService(deps as any)
+
+      await service.execute(DEFAULT_PARAMS)
+
+      expect(streamGenerate).toHaveBeenCalledTimes(2)
+      expect(deps.eventChannel.publish).toHaveBeenCalledWith(
+        'conv_1',
+        expect.objectContaining({ type: 'step_start' })
+      )
+      expect(deps.eventChannel.publish).toHaveBeenCalledWith(
+        'conv_1',
+        expect.objectContaining({
+          type: 'tool_result',
+          content: 'Tool call failed - invalid JSON format',
+        })
+      )
+      expect(deps.eventChannel.publish).toHaveBeenCalledWith(
+        'conv_1',
+        expect.objectContaining({
+          type: 'step_complete',
+          data: expect.objectContaining({ isFinal: false }),
+        })
+      )
+      expect(deps.eventChannel.publish).toHaveBeenCalledWith(
+        'conv_1',
+        expect.objectContaining({
+          type: 'chunk',
+          content: 'retried response',
+        })
+      )
+    })
+
+    it('emits budget error when streamGenerate throws a budget-exceeded APICallError', async () => {
+      const budgetError = new APICallError({
+        message: 'budget limit',
+        url: 'https://x',
+        requestBodyValues: {},
+        statusCode: 401,
+        responseBody: 'ExceededBudget: team limit reached',
+      })
+      deps.getAgent.mockReturnValue({
+        streamGenerate: vi.fn().mockRejectedValue(budgetError),
+        getName: vi.fn().mockReturnValue('AI Developer'),
+      })
+      service = new MessageExecutionService(deps as any)
+
+      await service.execute(DEFAULT_PARAMS)
+
+      const errorCall = deps.eventChannel.publish.mock.calls.find(
+        ([, evt]: [string, any]) => evt.type === 'error'
+      )
+      expect(errorCall).toBeDefined()
+      expect(errorCall![1]).toMatchObject({
+        content: 'Your AI usage budget has been reached.',
+        data: expect.objectContaining({
+          errorType: 'BUDGET_EXCEEDED',
+          statusCode: 401,
+        }),
+      })
+    })
+
+    it('normalizes budget errors thrown during tool validation retry', async () => {
+      const budgetError = new APICallError({
+        message: 'budget failed',
+        url: 'https://x',
+        requestBodyValues: {},
+        statusCode: 401,
+        responseBody: 'LiteLLM exceeded budget',
+      })
+      const streamGenerate = vi.fn()
+        .mockRejectedValueOnce(new Error('JSON parsing failed: unexpected token'))
+        .mockRejectedValueOnce(budgetError)
+      deps.getAgent.mockReturnValue({
+        streamGenerate,
+        getName: vi.fn().mockReturnValue('AI Developer'),
+      })
+      service = new MessageExecutionService(deps as any)
+
+      await service.execute(DEFAULT_PARAMS)
+
+      const errorCall = deps.eventChannel.publish.mock.calls.find(
+        ([, evt]: [string, any]) => evt.type === 'error'
+      )
+      expect(errorCall).toBeDefined()
+      expect(errorCall![1]).toMatchObject({
+        content: 'Your AI usage budget has been reached.',
+        data: expect.objectContaining({
+          errorType: 'BUDGET_EXCEEDED',
+          statusCode: 401,
+        }),
+      })
     })
 
     it('aborts stalled streams on chunk-timeout and emits terminal error + complete', async () => {

@@ -15,7 +15,7 @@ import {
   type TokenUsageSummaryEvent,
 } from '@airo/ai-lib'
 import type { ExecutionStep } from '@airo/ai-lib/budget'
-import { classifyError, BudgetExceededError, isBudgetExceededAPIError, containsBudgetExceededPattern, createLogger } from '@airo/ai-common'
+import { classifyError, BudgetExceededError, isBudgetExceededAPIError, createLogger } from '@airo/ai-common'
 import { stringPayloadLength } from './payload-length.js'
 import { StreamPartProcessor } from './stream-part-processor.js'
 import { awaitResponseMetadata } from './response-metadata-capture.js'
@@ -46,6 +46,7 @@ import { inferProviderFromModelName, type ChatLlmProvider } from './infer-llm-pr
 import { createAgentInvocation, emitTurnError } from './agent-invocation.js'
 import { analyzeStreamError, isNetworkError } from './analyze-stream-error.js'
 import { classifyTurnError } from './classify-turn-error.js'
+import { classifyStreamBudgetError, isToolValidationError } from './classify-stream-error.js'
 import {
   StreamTimingTracker,
   type StreamTimingData,
@@ -1621,37 +1622,20 @@ export class WebSocketServer {
         onStepStart: () => {},
 
         onError: (error) => {
-          // Check for budget exceeded: APICallError with budget pattern in responseBody,
-          // or plain Error with budget pattern in message (mid-stream GoCode errors)
-          if (isBudgetExceededAPIError(error)) {
-            this.logger.error('budget.exceeded', {
-              message: error.message,
-              statusCode: error.statusCode
+          const budget = classifyStreamBudgetError(error)
+          if (budget.type === 'budget_exceeded') {
+            const logKey = budget.source === 'pattern_match' ? 'budget.exceeded.mid_stream' : 'budget.exceeded'
+            this.logger.error(logKey, {
+              message: error instanceof Error ? error.message : String(error),
+              statusCode: (error as { statusCode?: number }).statusCode,
             })
-            throw new BudgetExceededError(
-              'Your AI usage budget has been reached.',
-              error.statusCode ?? 400,
-              error.responseBody
-            )
+            throw budget.budgetError
           }
-          const errorMessage = error instanceof Error ? error.message : String(error)
-          if (containsBudgetExceededPattern(errorMessage)) {
-            this.logger.error('budget.exceeded.mid_stream', {
-              message: errorMessage,
-            })
-            throw new BudgetExceededError(
-              'Your AI usage budget has been reached.',
-              400,
-              errorMessage
-            )
-          }
-
-          // Log and re-throw other errors unchanged
           this.logger.error('stream.error.part', {
-            message: errorMessage,
-            statusCode: APICallError.isInstance(error) ? error.statusCode : undefined
+            message: budget.error.message,
+            statusCode: APICallError.isInstance(error) ? error.statusCode : undefined,
           })
-          throw error instanceof Error ? error : new Error(String(error))
+          throw budget.error
         }
       })
 
@@ -1715,32 +1699,15 @@ export class WebSocketServer {
       // Non-retryable errors (budget exceeded, auth, etc.) should propagate immediately
       const classification = classifyError(error);
       if (!classification.retryable) {
-        // Check for budget exceeded: APICallError with responseBody, or plain Error with pattern in message
-        if (isBudgetExceededAPIError(error)) {
-          this.logger.error('budget.exceeded.non_retryable', {
+        const budget = classifyStreamBudgetError(error)
+        if (budget.type === 'budget_exceeded') {
+          const logKey = budget.source === 'pattern_match' ? 'budget.exceeded.non_retryable.mid_stream' : 'budget.exceeded.non_retryable'
+          this.logger.error(logKey, {
             category: classification.category,
-            message: error.message,
-            statusCode: error.statusCode
+            message: error instanceof Error ? error.message : String(error),
+            statusCode: (error as { statusCode?: number }).statusCode,
           });
-
-          throw new BudgetExceededError(
-            'Your AI usage budget has been reached.',
-            error.statusCode ?? 400,
-            error.responseBody
-          );
-        }
-        const outerErrorMsg = error instanceof Error ? error.message : String(error)
-        if (!BudgetExceededError.isInstance(error) && containsBudgetExceededPattern(outerErrorMsg)) {
-          this.logger.error('budget.exceeded.non_retryable.mid_stream', {
-            category: classification.category,
-            message: outerErrorMsg,
-          });
-
-          throw new BudgetExceededError(
-            'Your AI usage budget has been reached.',
-            400,
-            outerErrorMsg
-          );
+          throw budget.budgetError;
         }
 
         if (!abortController?.signal.aborted) {
@@ -3393,11 +3360,9 @@ export class WebSocketServer {
       const streamErrorInfo = analyzeStreamError(error)
       const streamErrorClassification = classifyError(error)
 
-      const isToolValidationError =
-        error?.message?.includes('toolUse.input is invalid') ||
-        error?.message?.includes('JSON parsing failed')
+      const isToolValError = isToolValidationError(error)
 
-      if (!isToolValidationError) {
+      if (!isToolValError) {
         this.logger.warn('stream.generate.error', {
           socketId: socket.id,
           appId,
@@ -3417,7 +3382,7 @@ export class WebSocketServer {
         })
       }
 
-      if (isToolValidationError) {
+      if (isToolValError) {
         this.logger.error('tool.validation.failure', { message: error.message })
 
         // Publish step start for the failed tool call - subscribers handle delivery and persistence
@@ -3491,12 +3456,15 @@ Please try again with corrected formatting.`
               ...(processedFiles && processedFiles.length > 0 && { files: processedFiles })
             })
           )
-        } catch (retryError: any) {
-          // If retry also fails, fall back to error handling
-          this.logger.error('stream.retry.failure', { message: retryError.message })
-          // End invocation span with error before throwing
+        } catch (retryError: unknown) {
+          const retryMsg = retryError instanceof Error ? retryError.message : String(retryError)
+          this.logger.error('stream.retry.failure', { message: retryMsg })
           invocation.endError(retryError)
-          throw retryError
+          const budget = classifyStreamBudgetError(retryError)
+          if (budget.type === 'budget_exceeded') {
+            throw budget.budgetError
+          }
+          throw budget.error
         }
       } else {
         // Enhanced logging for 400 errors to help diagnose issues

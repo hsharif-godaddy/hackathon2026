@@ -17,9 +17,12 @@ import {
   trackTurnSnapshotEvent,
   runPreflightTools,
   analyzeStreamError,
+  classifyStreamBudgetError,
+  isToolValidationError,
+  TOOL_VALIDATION_ERROR_TYPE,
 } from '@airo/ai-transport'
 import type { ResponseMetadata } from '@airo/ai-transport'
-import { BudgetExceededError, containsBudgetExceededPattern } from '@airo/ai-common'
+import { BudgetExceededError, classifyError } from '@airo/ai-common'
 import { grantSessionManager } from '@airo/ai-grants'
 import { createGrantBudgetRecoveryCallback } from '../grant-budget-recovery-callback.js'
 import { context as otelContext, trace } from '@opentelemetry/api'
@@ -831,6 +834,12 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
       onToolCall: (toolCallId, toolName, parsedInput) => {
         guard?.pause()
         tracker.pauseGapTracking(toolName)
+        if (typeof parsedInput === 'string') {
+          logger.error('sse.tool.input.parse_failure', {
+            toolCallId, toolName,
+            fullInput: parsedInput.slice(0, 200),
+          })
+        }
         const input = typeof parsedInput === 'string' ? {} : parsedInput
         publish({
           conversationId, type: 'tool_call',
@@ -897,15 +906,11 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
         })
       },
       onError: (error) => {
-        const errorMessage = error instanceof Error ? error.message : String(error)
-        if (!BudgetExceededError.isInstance(error) && containsBudgetExceededPattern(errorMessage)) {
-          throw new BudgetExceededError(
-            'Your AI usage budget has been reached.',
-            400,
-            errorMessage
-          )
+        const budget = classifyStreamBudgetError(error)
+        if (budget.type === 'budget_exceeded') {
+          throw budget.budgetError
         }
-        throw error
+        throw budget.error
       },
     })
 
@@ -1005,16 +1010,141 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
       throw new Error(`Stream chunk timeout after ${this.chunkTimeoutMs!}ms`)
     }
 
+    type StreamResult = Awaited<ReturnType<typeof agent.streamGenerate>>
+    const retryAfterToolValidation = async (validationMessage: string): Promise<StreamResult> => {
+      logger.error('sse.tool.validation.failure', { appId, message: validationMessage })
+
+      const step = processor.currentStep
+      publish({
+        conversationId, type: 'step_start', content: '',
+        data: { ...baseEventData, step, stepType: 'reasoning', agentId: agentName, agentName: agent.getName?.() ?? agentName },
+        agentName,
+      })
+      publish({
+        conversationId, type: 'tool_result',
+        content: 'Tool call failed - invalid JSON format',
+        data: {
+          ...baseEventData, step,
+          toolName: 'tool_validation_failed',
+          tool: { id: 'failed-tool-call', name: 'tool_validation_failed', input: {}, output: `Tool call failed due to invalid JSON format: ${validationMessage}. Please check your JSON syntax and try again.` },
+          agentId: agentName,
+        },
+        agentName,
+      })
+      publish({
+        conversationId, type: 'step_complete', content: '',
+        data: {
+          ...baseEventData, step, isFinal: false,
+          toolCalls: [{ id: 'failed-tool-call', name: 'tool_validation_failed', input: {}, output: `Invalid JSON in tool call: ${validationMessage}` }],
+          agentId: agentName,
+        },
+        agentName,
+      })
+
+      const retryPrompt = `The previous tool call failed due to invalid JSON syntax. Error: ${validationMessage}\n\nPlease analyze what went wrong and retry the tool call with properly formatted JSON. Ensure:\n1. All string values are properly quoted with double quotes\n2. All object properties use valid JSON syntax\n3. No trailing commas in objects or arrays\n4. All brackets and braces are properly closed\n5. No undefined or null values are passed as tool arguments\n\nPlease try again with corrected formatting.`
+      const retryMessages = [...messages, { role: 'user' as const, content: message }]
+      try {
+        return await invocation.runUnder(async () =>
+          agent.streamGenerate(retryPrompt, {
+            ...(beforeHistory.length > 0 && { context: beforeHistory }),
+            messages: retryMessages,
+            executionContext: executionContextWithTrace,
+            ...(processedFiles && processedFiles.length > 0 && { files: processedFiles }),
+            abortSignal,
+          }),
+        )
+      } catch (retryError: unknown) {
+        const retryMsg = retryError instanceof Error ? retryError.message : String(retryError)
+        logger.error('sse.stream.retry.failure', { appId, message: retryMsg })
+        invocation.endError(retryError)
+        const budget = classifyStreamBudgetError(retryError)
+        if (budget.type === 'budget_exceeded') {
+          throw budget.budgetError
+        }
+        throw budget.error
+      }
+    }
+
     try {
-      const streamResult: any = await invocation.runUnder(async () =>
-        agent.streamGenerate(message, {
-          ...(beforeHistory.length > 0 && { context: beforeHistory }),
-          ...(messages.length > 0 && { messages }),
-          executionContext: executionContextWithTrace,
-          ...(processedFiles && processedFiles.length > 0 && { files: processedFiles }),
-          abortSignal,
-        }),
-      )
+      let streamResult: StreamResult & { isToolValidationError?: boolean; validationErrorMessage?: string }
+      try {
+        streamResult = await invocation.runUnder(async () =>
+          agent.streamGenerate(message, {
+            ...(beforeHistory.length > 0 && { context: beforeHistory }),
+            ...(messages.length > 0 && { messages }),
+            executionContext: executionContextWithTrace,
+            ...(processedFiles && processedFiles.length > 0 && { files: processedFiles }),
+            abortSignal,
+          }),
+        )
+      } catch (generateError: unknown) {
+        const budget = classifyStreamBudgetError(generateError)
+        if (budget.type === 'budget_exceeded') {
+          const streamErrInfo = analyzeStreamError(generateError)
+          logger.error('sse.budget.exceeded.pre_stream', { appId, statusCode: streamErrInfo.statusCode, message: generateError instanceof Error ? generateError.message : String(generateError) })
+          invocation.endError(generateError)
+          throw budget.budgetError
+        }
+
+        const streamErrorInfo = analyzeStreamError(generateError)
+        const classification = classifyError(generateError)
+        const isToolValError = isToolValidationError(generateError)
+        const errorMessage = generateError instanceof Error ? generateError.message : String(generateError)
+        const errorName = generateError instanceof Error ? generateError.name : undefined
+
+        if (!isToolValError) {
+          logger.warn('sse.stream.generate.error', {
+            appId, agentName,
+            errorName,
+            errorMessage,
+            errorCode: streamErrorInfo.code,
+            causeChain: streamErrorInfo.causeChain,
+            statusCode: streamErrorInfo.statusCode,
+            responseBody: streamErrorInfo.responseBody,
+            isNetworkError: streamErrorInfo.isNetworkError,
+            isAbortError: streamErrorInfo.isAbortError,
+            classification: classification.category,
+          })
+        }
+
+        if (isToolValError) {
+          streamResult = await retryAfterToolValidation(errorMessage)
+        } else {
+          if (streamErrorInfo.statusCode === 400) {
+            logger.warn('sse.llm.api.bad_request', {
+              appId, agentName,
+              statusCode: streamErrorInfo.statusCode,
+              message: errorMessage,
+              responseBodyLength: streamErrorInfo.responseBody?.length,
+              category: classification.category,
+              retryable: classification.retryable,
+            })
+          }
+          if (!classification.retryable) {
+            logger.warn('sse.stream.error.non_retryable', {
+              category: classification.category || 'unknown',
+              statusCode: classification.statusCode,
+            })
+          }
+          invocation.endError(generateError)
+          throw generateError
+        }
+      }
+
+      if (streamResult?.isToolValidationError) {
+        publish({
+          conversationId, type: 'error',
+          content: 'Tool call failed due to invalid input format. The agent is retrying with corrections.',
+          data: {
+            ...baseEventData,
+            errorType: TOOL_VALIDATION_ERROR_TYPE,
+            statusCode: 400,
+            timestamp: new Date().toISOString(),
+            details: streamResult.validationErrorMessage,
+          },
+          agentName,
+        })
+      }
 
       guard?.arm()
       invocation.captureMetadata(streamResult.response)
@@ -1843,13 +1973,13 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
         // detail (BMS API paths). Matches the WS wire contract.
         const clientMessage = classified.clientMessage ?? err.message
         const { errorType, statusCode, retryAttempts, retryReason } = classified
-        const streamErrorInfo = analyzeStreamError(err)
+        const terminalErrorInfo = analyzeStreamError(err)
         logger.error('sse.execution.error', {
           appId, conversationId, ...errorFields(err), ...(requestId && { requestId }),
-          ...(streamErrorInfo.statusCode !== undefined && { statusCode: streamErrorInfo.statusCode }),
-          ...(streamErrorInfo.responseBody !== undefined && { responseBody: streamErrorInfo.responseBody }),
-          errorType: streamErrorInfo.type,
-          isNetworkError: streamErrorInfo.isNetworkError,
+          ...(terminalErrorInfo.statusCode !== undefined && { statusCode: terminalErrorInfo.statusCode }),
+          ...(terminalErrorInfo.responseBody !== undefined && { responseBody: terminalErrorInfo.responseBody }),
+          errorClass: terminalErrorInfo.type,
+          isNetworkError: terminalErrorInfo.isNetworkError,
         })
         if (apmTransaction && !supersededError) {
           apmTransaction.setLabel('finishReason', 'error')
