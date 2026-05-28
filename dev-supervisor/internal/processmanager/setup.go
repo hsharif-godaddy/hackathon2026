@@ -10,12 +10,16 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
 
 	"github.com/airo-ai-builder/dev-supervisor/internal/process"
 )
+
+// stderrTailLines is the number of stderr lines retained for error reporting.
+const stderrTailLines = 20
 
 // RunSetupScriptInternal executes a setup script with structured logging, timeout, and signal cancellation.
 // This is called by main.go for immediate setup and by ProcessManager.ExecuteDeferredSetup for deferred setup.
@@ -113,45 +117,87 @@ func RunSetupScriptInternal(scriptPath string, timeout time.Duration, pid1Mgr *p
 	var wg sync.WaitGroup
 	wg.Add(2)
 
+	stderrTail := newTailBuffer(stderrTailLines)
+
 	go func() {
 		defer wg.Done()
-		streamScriptOutput(stdout, "setup")
+		streamScriptOutput(stdout, "setup", nil)
 	}()
 
 	go func() {
 		defer wg.Done()
-		streamScriptOutput(stderr, "setup")
+		streamScriptOutput(stderr, "setup", stderrTail)
 	}()
 
 	wg.Wait()
 
 	err = cmd.Wait()
 
-	if err != nil {
-		// Check if it was canceled due to timeout or signal
-		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-			slog.Error("startup.setup.timeout", "script", scriptPath, "timeout", timeout)
-			return fmt.Errorf("setup script timed out after %v: %s", timeout, scriptPath)
-		}
-		if errors.Is(ctx.Err(), context.Canceled) {
-			slog.Error("startup.setup.canceled", "script", scriptPath, "reason", "signal received")
-			return fmt.Errorf("setup script canceled due to signal: %s", scriptPath)
-		}
-
-		slog.Error("startup.setup.failed", "script", scriptPath, "error", err)
-		return fmt.Errorf("setup script failed: %w", err)
+	if err == nil {
+		slog.Info("startup.setup.complete", "script", scriptPath)
+		return nil
 	}
 
-	slog.Info("startup.setup.complete", "script", scriptPath)
-	return nil
+	tail := stderrTail.String()
+
+	// Check if it was canceled due to timeout or signal
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		slog.Error("startup.setup.timeout", "script", scriptPath, "timeout", timeout, "stderr_tail", tail)
+		return appendStderr(fmt.Errorf("setup script timed out after %v: %s", timeout, scriptPath), tail)
+	}
+	if errors.Is(ctx.Err(), context.Canceled) {
+		slog.Error("startup.setup.canceled", "script", scriptPath, "reason", "signal received", "stderr_tail", tail)
+		return appendStderr(fmt.Errorf("setup script canceled due to signal: %s", scriptPath), tail)
+	}
+
+	slog.Error("startup.setup.failed", "script", scriptPath, "error", err, "stderr_tail", tail)
+	return appendStderr(fmt.Errorf("setup script failed: %w", err), tail)
 }
 
-// streamScriptOutput reads lines from a reader and logs them with structured logging
-func streamScriptOutput(r io.Reader, source string) {
+// appendStderr appends the stderr tail to an error message when non-empty.
+func appendStderr(err error, tail string) error {
+	if tail == "" {
+		return err
+	}
+	return fmt.Errorf("%w\nstderr:\n%s", err, tail)
+}
+
+// tailBuffer is a fixed-size ring buffer that retains the last N lines written to it.
+type tailBuffer struct {
+	lines []string
+	max   int
+	mu    sync.Mutex
+}
+
+func newTailBuffer(n int) *tailBuffer {
+	return &tailBuffer{max: n}
+}
+
+func (tb *tailBuffer) Add(line string) {
+	tb.mu.Lock()
+	defer tb.mu.Unlock()
+	if len(tb.lines) >= tb.max {
+		tb.lines = tb.lines[1:]
+	}
+	tb.lines = append(tb.lines, line)
+}
+
+func (tb *tailBuffer) String() string {
+	tb.mu.Lock()
+	defer tb.mu.Unlock()
+	return strings.Join(tb.lines, "\n")
+}
+
+// streamScriptOutput reads lines from a reader and logs them with structured logging.
+// If tail is non-nil, each line is also appended to the tail buffer for error reporting.
+func streamScriptOutput(r io.Reader, source string, tail *tailBuffer) {
 	scanner := bufio.NewScanner(r)
 	for scanner.Scan() {
 		line := scanner.Text()
 		slog.Info(source, "message", line)
+		if tail != nil {
+			tail.Add(line)
+		}
 	}
 	if err := scanner.Err(); err != nil {
 		slog.Error("script.stream.error", "source", source, "error", err)

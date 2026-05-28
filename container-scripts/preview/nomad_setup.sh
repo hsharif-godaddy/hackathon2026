@@ -94,7 +94,7 @@ if [ -f "$CUSTOMER_APP_DIR/.git/config" ]; then
 
         # Clean stale lock files from crash/reschedule before any git-aware tooling runs.
         log_step "Cleaning stale git lock files..."
-        rm -f .git/index.lock .git/refs/heads/*.lock .git/packed-refs.lock
+        rm -f .git/HEAD.lock .git/index.lock .git/refs/heads/*.lock .git/packed-refs.lock
 
         # Restore working tree from HEAD
         # reset --hard clears index + working tree, handling more states than checkout .
@@ -154,7 +154,7 @@ if [ -f "$CUSTOMER_APP_DIR/.git/config" ]; then
 
     # Clean stale lock files from crash/reschedule before any git operation
     log_step "Cleaning stale git lock files..."
-    rm -f .git/index.lock .git/refs/heads/*.lock .git/packed-refs.lock
+    rm -f .git/HEAD.lock .git/index.lock .git/refs/heads/*.lock .git/packed-refs.lock
 
     # Restore working tree from HEAD
     # reset --hard clears index + working tree, handling more states than checkout .
