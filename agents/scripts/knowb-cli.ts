@@ -17,7 +17,7 @@
  * Environment:
  *   SSO_JWT                     SSO JWT token for local authentication
  *   KNOWB_URL                   KnowB API URL (optional, defaults to test)
- *   GOCODE_USE_S2S_AUTH         Set to 'true' for S2S authentication
+ *   USE_S2S_AUTH                Set to 'true' for S2S authentication (with S2S_AWS_PROFILE)
  */
 
 import { config } from 'dotenv';
@@ -109,7 +109,7 @@ ${colors.yellow}Commands:${colors.reset}
 ${colors.yellow}Environment Variables:${colors.reset}
   SSO_JWT                  SSO JWT token for local authentication
   KNOWB_URL                KnowB API URL (defaults to test environment)
-  GOCODE_USE_S2S_AUTH      Set to 'true' for S2S authentication
+  USE_S2S_AUTH             Set to 'true' for S2S authentication (with S2S_AWS_PROFILE)
 
 ${colors.yellow}Examples:${colors.reset}
   # Search for design styles
@@ -418,9 +418,9 @@ async function main(): Promise<void> {
   }
 
   // Check for authentication
-  if (!process.env.SSO_JWT && process.env.GOCODE_USE_S2S_AUTH !== 'true') {
+  if (!process.env.SSO_JWT && process.env.USE_S2S_AUTH !== 'true') {
     logError('No authentication configured.');
-    log('Set SSO_JWT environment variable for local auth, or GOCODE_USE_S2S_AUTH=true for S2S.', colors.yellow);
+    log('Set SSO_JWT environment variable for local auth, or USE_S2S_AUTH=true for S2S.', colors.yellow);
     process.exit(1);
   }
 

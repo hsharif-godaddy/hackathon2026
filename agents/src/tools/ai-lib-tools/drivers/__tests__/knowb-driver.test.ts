@@ -9,9 +9,9 @@ vi.mock('@airo/ai-lib', async () => {
   const actual = await vi.importActual<Record<string, unknown>>('@airo/ai-lib');
   return {
     ...actual,
-    getS2SToken: vi.fn().mockResolvedValue('mock-s2s-token'),
-    refreshS2SToken: vi.fn().mockResolvedValue('mock-s2s-token'),
-    isS2SAuthEnabled: vi.fn().mockReturnValue(false),
+    getS2STokenV2: vi.fn().mockResolvedValue('mock-s2s-token'),
+    refreshS2STokenV2: vi.fn().mockResolvedValue('mock-s2s-token'),
+    isS2SAuthV2Enabled: vi.fn().mockReturnValue(false),
   };
 });
 
@@ -63,9 +63,6 @@ describe('dedupByKbNodeId', () => {
   });
 
   it('keeps highest-scoring chunk even when it appears after a lower-scoring duplicate', () => {
-    // Guarantee the sort-inside-helper contract: caller does not need to
-    // pre-sort. If the internal sort is removed, first-occurrence would
-    // retain 'low' instead of 'high'.
     const input: KnowBResultItem[] = [
       { kbNodeId: '/doc-a', text: 'low', score: 0.2 },
       { kbNodeId: '/doc-a', text: 'high', score: 0.9 },
@@ -170,7 +167,6 @@ describe('KnowBDriver.search', () => {
 
   it('treats null response.results as empty (no throw)', async () => {
     vi.spyOn(GoKnowbClientImpl.prototype, 'search').mockResolvedValue({
-      // simulate unexpected API shape
       results: null as unknown as never,
     });
 
@@ -184,7 +180,7 @@ describe('KnowBDriver.search', () => {
 
   it('returns success:false when no auth configured (SSO_JWT + S2S both absent)', async () => {
     delete process.env.SSO_JWT;
-    delete process.env.GOCODE_USE_S2S_AUTH;
+    delete process.env.USE_S2S_AUTH;
     const searchSpy = vi.spyOn(GoKnowbClientImpl.prototype, 'search');
 
     const driver = new KnowBDriver();
@@ -212,17 +208,16 @@ describe('KnowBDriver.search', () => {
 
 describe('KnowBDriver.ensureInitialized (S2S path)', () => {
   beforeEach(() => {
-    // simulate hosted S2S mode
-    (aiLib.isS2SAuthEnabled as unknown as ReturnType<typeof vi.fn>).mockReturnValue(true);
+    (aiLib.isS2SAuthV2Enabled as unknown as ReturnType<typeof vi.fn>).mockReturnValue(true);
     delete process.env.SSO_JWT;
   });
   afterEach(() => {
     vi.restoreAllMocks();
-    (aiLib.isS2SAuthEnabled as unknown as ReturnType<typeof vi.fn>).mockReturnValue(false);
+    (aiLib.isS2SAuthV2Enabled as unknown as ReturnType<typeof vi.fn>).mockReturnValue(false);
   });
 
   it('surfaces S2S token-fetch failures as success:false + caches failure for subsequent calls', async () => {
-    const getS2S = aiLib.getS2SToken as unknown as ReturnType<typeof vi.fn>;
+    const getS2S = aiLib.getS2STokenV2 as unknown as ReturnType<typeof vi.fn>;
     getS2S.mockReset();
     getS2S.mockRejectedValue(new Error('s2s endpoint 503'));
     const clientSearch = vi
@@ -237,7 +232,6 @@ describe('KnowBDriver.ensureInitialized (S2S path)', () => {
     expect(first.success).toBe(false);
     expect(first.error).toContain('s2s endpoint 503');
     expect(second.success).toBe(false);
-    // Second call re-throws the cached failure without hitting S2S again.
     expect(getS2S).toHaveBeenCalledTimes(1);
     expect(clientSearch).not.toHaveBeenCalled();
   });
@@ -303,20 +297,18 @@ function makeJwtWithIatNoExp(iatSeconds: number, extra: Record<string, unknown> 
 
 describe('KnowBDriver.search — S2S token refresh', () => {
   beforeEach(() => {
-    (aiLib.isS2SAuthEnabled as unknown as ReturnType<typeof vi.fn>).mockReturnValue(true);
+    (aiLib.isS2SAuthV2Enabled as unknown as ReturnType<typeof vi.fn>).mockReturnValue(true);
     delete process.env.SSO_JWT;
   });
   afterEach(() => {
     vi.restoreAllMocks();
-    (aiLib.isS2SAuthEnabled as unknown as ReturnType<typeof vi.fn>).mockReturnValue(false);
+    (aiLib.isS2SAuthV2Enabled as unknown as ReturnType<typeof vi.fn>).mockReturnValue(false);
   });
 
   it('proactively refetches the S2S token when cached JWT is within 5min of exp', async () => {
-    const getS2S = aiLib.getS2SToken as unknown as ReturnType<typeof vi.fn>;
+    const getS2S = aiLib.getS2STokenV2 as unknown as ReturnType<typeof vi.fn>;
     getS2S.mockReset();
-    // First call returns a token that expires in 60s (inside 5min buffer)
     const nearExpiry = Math.floor(Date.now() / 1000) + 60;
-    // Second call returns a token that expires in 1h
     const healthy = Math.floor(Date.now() / 1000) + 3600;
     getS2S
       .mockResolvedValueOnce(makeJwtWithExp(nearExpiry))
@@ -333,7 +325,7 @@ describe('KnowBDriver.search — S2S token refresh', () => {
   });
 
   it('caches a healthy token and does not refetch across calls', async () => {
-    const getS2S = aiLib.getS2SToken as unknown as ReturnType<typeof vi.fn>;
+    const getS2S = aiLib.getS2STokenV2 as unknown as ReturnType<typeof vi.fn>;
     getS2S.mockReset();
     const healthy = Math.floor(Date.now() / 1000) + 3600;
     getS2S.mockResolvedValue(makeJwtWithExp(healthy));
@@ -348,9 +340,9 @@ describe('KnowBDriver.search — S2S token refresh', () => {
     expect(getS2S).toHaveBeenCalledTimes(1);
   });
 
-  it('on 401 from GoKnowb: invalidates cache, refetches token, retries once — via refreshS2SToken to bypass upstream cache', async () => {
-    const getS2S = aiLib.getS2SToken as unknown as ReturnType<typeof vi.fn>;
-    const refreshS2S = aiLib.refreshS2SToken as unknown as ReturnType<typeof vi.fn>;
+  it('on 401 from GoKnowb: invalidates cache, refetches token, retries once — via refreshS2STokenV2 to bypass upstream cache', async () => {
+    const getS2S = aiLib.getS2STokenV2 as unknown as ReturnType<typeof vi.fn>;
+    const refreshS2S = aiLib.refreshS2STokenV2 as unknown as ReturnType<typeof vi.fn>;
     getS2S.mockReset();
     refreshS2S.mockReset();
     const healthy = Math.floor(Date.now() / 1000) + 3600;
@@ -367,15 +359,12 @@ describe('KnowBDriver.search — S2S token refresh', () => {
 
     expect(result.success).toBe(true);
     expect(clientSearch).toHaveBeenCalledTimes(2);
-    // First fetch via getS2SToken; reactive retry MUST use refreshS2SToken
-    // so the ai-lib upstream ~60s cache is bypassed — otherwise we'd send
-    // the same rejected JWT and loop.
     expect(getS2S).toHaveBeenCalledTimes(1);
     expect(refreshS2S).toHaveBeenCalledTimes(1);
   });
 
   it('on 401 retry also failing: returns success:false with the 2nd error', async () => {
-    const getS2S = aiLib.getS2SToken as unknown as ReturnType<typeof vi.fn>;
+    const getS2S = aiLib.getS2STokenV2 as unknown as ReturnType<typeof vi.fn>;
     getS2S.mockReset();
     const healthy = Math.floor(Date.now() / 1000) + 3600;
     getS2S.mockResolvedValue(makeJwtWithExp(healthy));
@@ -392,7 +381,7 @@ describe('KnowBDriver.search — S2S token refresh', () => {
   });
 
   it('non-401 errors do not trigger a retry', async () => {
-    const getS2S = aiLib.getS2SToken as unknown as ReturnType<typeof vi.fn>;
+    const getS2S = aiLib.getS2STokenV2 as unknown as ReturnType<typeof vi.fn>;
     getS2S.mockReset();
     const healthy = Math.floor(Date.now() / 1000) + 3600;
     getS2S.mockResolvedValue(makeJwtWithExp(healthy));
@@ -406,7 +395,6 @@ describe('KnowBDriver.search — S2S token refresh', () => {
 
     expect(result.success).toBe(false);
     expect(result.error).toContain('network timeout');
-    // Only one attempt, no reactive refresh for non-auth errors.
     expect(clientSearch).toHaveBeenCalledTimes(1);
     expect(getS2S).toHaveBeenCalledTimes(1);
   });
@@ -414,20 +402,19 @@ describe('KnowBDriver.search — S2S token refresh', () => {
 
 describe('KnowBDriver — self-heal after transient S2S outage', () => {
   beforeEach(() => {
-    (aiLib.isS2SAuthEnabled as unknown as ReturnType<typeof vi.fn>).mockReturnValue(true);
+    (aiLib.isS2SAuthV2Enabled as unknown as ReturnType<typeof vi.fn>).mockReturnValue(true);
     delete process.env.SSO_JWT;
   });
   afterEach(() => {
     vi.restoreAllMocks();
-    (aiLib.isS2SAuthEnabled as unknown as ReturnType<typeof vi.fn>).mockReturnValue(false);
+    (aiLib.isS2SAuthV2Enabled as unknown as ReturnType<typeof vi.fn>).mockReturnValue(false);
   });
 
   it('does NOT wedge after a transient proactive-refresh failure when a token is still cached', async () => {
-    const getS2S = aiLib.getS2SToken as unknown as ReturnType<typeof vi.fn>;
+    const getS2S = aiLib.getS2STokenV2 as unknown as ReturnType<typeof vi.fn>;
     getS2S.mockReset();
     const nearExpiry = Math.floor(Date.now() / 1000) + 60;
     const healthy = Math.floor(Date.now() / 1000) + 3600;
-    // 1st fetch succeeds (near-expiry), 2nd fails (SSO blip), 3rd succeeds.
     getS2S
       .mockResolvedValueOnce(makeJwtWithExp(nearExpiry))
       .mockRejectedValueOnce(new Error('s2s endpoint 502'))
@@ -441,15 +428,13 @@ describe('KnowBDriver — self-heal after transient S2S outage', () => {
     const r3 = await driver.search({ query: 'q3' }); // retries proactive refresh — succeeds
 
     expect(r1.success).toBe(true);
-    // r2's initialize throws — outer catch returns success:false, but driver
-    // is NOT permanently wedged; r3 must recover.
     expect(r2.success).toBe(false);
     expect(r3.success).toBe(true);
     expect(getS2S).toHaveBeenCalledTimes(3);
   });
 
   it('DOES fast-fail subsequent calls when there is no cached token (true initial-fetch failure)', async () => {
-    const getS2S = aiLib.getS2SToken as unknown as ReturnType<typeof vi.fn>;
+    const getS2S = aiLib.getS2STokenV2 as unknown as ReturnType<typeof vi.fn>;
     getS2S.mockReset();
     getS2S.mockRejectedValue(new Error('s2s endpoint 503'));
 
@@ -461,26 +446,23 @@ describe('KnowBDriver — self-heal after transient S2S outage', () => {
 
     expect(r1.success).toBe(false);
     expect(r2.success).toBe(false);
-    // Second call hits the cached-failure fast-path — no retry at S2S or KB.
     expect(getS2S).toHaveBeenCalledTimes(1);
     expect(clientSearch).not.toHaveBeenCalled();
   });
 });
 
-describe('KnowBTokenProvider.needsInitialization — refresh-buffer boundary', () => {
-  // Boundary semantics: refresh fires when `now >= exp - 300`.
-  // Tested via makeJwtWithExp + the driver's observable refetch behavior.
+describe('BaseDriverV2 token refresh — boundary behavior (via KnowBDriver)', () => {
   beforeEach(() => {
-    (aiLib.isS2SAuthEnabled as unknown as ReturnType<typeof vi.fn>).mockReturnValue(true);
+    (aiLib.isS2SAuthV2Enabled as unknown as ReturnType<typeof vi.fn>).mockReturnValue(true);
     delete process.env.SSO_JWT;
   });
   afterEach(() => {
     vi.restoreAllMocks();
-    (aiLib.isS2SAuthEnabled as unknown as ReturnType<typeof vi.fn>).mockReturnValue(false);
+    (aiLib.isS2SAuthV2Enabled as unknown as ReturnType<typeof vi.fn>).mockReturnValue(false);
   });
 
   it('refreshes when cached exp is EXACTLY now + TOKEN_REFRESH_BUFFER_SECONDS (>= boundary)', async () => {
-    const getS2S = aiLib.getS2SToken as unknown as ReturnType<typeof vi.fn>;
+    const getS2S = aiLib.getS2STokenV2 as unknown as ReturnType<typeof vi.fn>;
     getS2S.mockReset();
     const atBoundary = Math.floor(Date.now() / 1000) + 300;
     const healthy = Math.floor(Date.now() / 1000) + 3600;
@@ -497,13 +479,10 @@ describe('KnowBTokenProvider.needsInitialization — refresh-buffer boundary', (
   });
 
   it('falls back to iat + 30min when JWT has no exp claim (GoDaddy SSO tokens)', async () => {
-    const getS2S = aiLib.getS2SToken as unknown as ReturnType<typeof vi.fn>;
+    const getS2S = aiLib.getS2STokenV2 as unknown as ReturnType<typeof vi.fn>;
     getS2S.mockReset();
     const nowSec = Math.floor(Date.now() / 1000);
-    // Token with iat = now - 1500s → effective expiry = iat + 1800s = now + 300s
-    // That lands exactly on the refresh buffer → needsInitialization() triggers.
     const tokenAtBoundary = makeJwtWithIatNoExp(nowSec - 1500);
-    // Follow-up token: iat = now → effective expiry = now + 1800s → outside buffer.
     const healthy = makeJwtWithIatNoExp(nowSec);
     getS2S.mockResolvedValueOnce(tokenAtBoundary).mockResolvedValueOnce(healthy);
     vi.spyOn(GoKnowbClientImpl.prototype, 'search').mockResolvedValue({ results: [] });
@@ -517,7 +496,7 @@ describe('KnowBTokenProvider.needsInitialization — refresh-buffer boundary', (
   });
 
   it('does NOT refresh when cached exp is now + TOKEN_REFRESH_BUFFER_SECONDS + 1 (outside buffer)', async () => {
-    const getS2S = aiLib.getS2SToken as unknown as ReturnType<typeof vi.fn>;
+    const getS2S = aiLib.getS2STokenV2 as unknown as ReturnType<typeof vi.fn>;
     getS2S.mockReset();
     const justOutside = Math.floor(Date.now() / 1000) + 301;
     getS2S.mockResolvedValue(makeJwtWithExp(justOutside));
@@ -533,17 +512,17 @@ describe('KnowBTokenProvider.needsInitialization — refresh-buffer boundary', (
 
 describe('KnowBDriver — 401 retry applies to write ops', () => {
   beforeEach(() => {
-    (aiLib.isS2SAuthEnabled as unknown as ReturnType<typeof vi.fn>).mockReturnValue(true);
+    (aiLib.isS2SAuthV2Enabled as unknown as ReturnType<typeof vi.fn>).mockReturnValue(true);
     delete process.env.SSO_JWT;
   });
   afterEach(() => {
     vi.restoreAllMocks();
-    (aiLib.isS2SAuthEnabled as unknown as ReturnType<typeof vi.fn>).mockReturnValue(false);
+    (aiLib.isS2SAuthV2Enabled as unknown as ReturnType<typeof vi.fn>).mockReturnValue(false);
   });
 
   it('upload retries once on 401 and succeeds', async () => {
-    const getS2S = aiLib.getS2SToken as unknown as ReturnType<typeof vi.fn>;
-    const refreshS2S = aiLib.refreshS2SToken as unknown as ReturnType<typeof vi.fn>;
+    const getS2S = aiLib.getS2STokenV2 as unknown as ReturnType<typeof vi.fn>;
+    const refreshS2S = aiLib.refreshS2STokenV2 as unknown as ReturnType<typeof vi.fn>;
     getS2S.mockReset();
     refreshS2S.mockReset();
     const healthy = Math.floor(Date.now() / 1000) + 3600;
@@ -568,8 +547,8 @@ describe('KnowBDriver — 401 retry applies to write ops', () => {
   });
 
   it('delete retries once on 401 and succeeds', async () => {
-    const getS2S = aiLib.getS2SToken as unknown as ReturnType<typeof vi.fn>;
-    const refreshS2S = aiLib.refreshS2SToken as unknown as ReturnType<typeof vi.fn>;
+    const getS2S = aiLib.getS2STokenV2 as unknown as ReturnType<typeof vi.fn>;
+    const refreshS2S = aiLib.refreshS2STokenV2 as unknown as ReturnType<typeof vi.fn>;
     getS2S.mockReset();
     refreshS2S.mockReset();
     const healthy = Math.floor(Date.now() / 1000) + 3600;

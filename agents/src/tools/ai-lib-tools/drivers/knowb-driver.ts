@@ -2,24 +2,22 @@
  * KnowB Knowledge Base Driver
  *
  * Wraps @godaddy/goknowb-client for knowledge base operations.
+ * Extends BaseDriverV2 for S2S authentication (USE_S2S_AUTH + S2S_AWS_PROFILE)
+ * with SSO_JWT fallback for local development.
  *
- * Configuration:
- * - S2S mode: GOCODE_USE_S2S_AUTH=true (uses gd-auth-client for tokens)
- * - Local mode: SSO_JWT (uses sso-jwt token directly)
- * - API URL: GODADDY_API_BASE_URL (defaults to test environment)
+ * API URL: KNOWB_URL > GODADDY_API_BASE_URL > test environment fallback
  */
-import { getS2SToken, isS2SAuthEnabled, refreshS2SToken } from '@airo/ai-lib';
 import {
   GoKnowbClientImpl,
-  TokenProvider,
+  type TokenProvider,
   SearchType,
   RerankingStrategy,
   type SearchKBRequest,
   type CreateKBNodeRequest,
 } from '@godaddy/goknowb-client';
 
-import { log, Logger, logger as rootLogger } from '../../../logging/index.js';
-import { decodeJwtExp } from '../../../utils/jwt-expiry.js';
+import { log, logger as rootLogger } from '../../../logging/index.js';
+import { BaseDriverV2 } from './base-driver-v2.js';
 
 /**
  * Options for KnowB search
@@ -114,125 +112,6 @@ export interface KnowBDeleteResult {
   error?: string;
 }
 
-const TOKEN_REFRESH_BUFFER_SECONDS = 300;
-
-/**
- * Token provider that uses S2S or SSO_JWT authentication.
- *
- * Note: the @godaddy/goknowb-client `TokenProvider` interface requires a
- * synchronous `getToken()`, so we pre-fetch the S2S token and cache it here.
- * Previously the cache was set-once-forever; with a 1h S2S JWT TTL that meant
- * every container inevitably started returning 401s from GoKnowb after the
- * first hour. Now we:
- *
- *   1. Decode the JWT's `exp` claim on fetch.
- *   2. Re-fetch proactively when within TOKEN_REFRESH_BUFFER_SECONDS of exp.
- *   3. Expose `invalidateToken()` so a 401 response can force the next call
- *      to re-fetch (reactive safety net for clock skew / early revocation).
- */
-class KnowBTokenProvider implements TokenProvider {
-  private readonly ssoJwt: string;
-  private readonly useS2S: boolean;
-  private readonly ssoHost: string;
-  private cachedS2SToken: string | null = null;
-  // unix seconds; null when we couldn't decode exp (treat as non-refreshing).
-  private cachedTokenExpSeconds: number | null = null;
-
-  constructor() {
-    this.ssoJwt = process.env.SSO_JWT || '';
-    this.useS2S = isS2SAuthEnabled();
-    this.ssoHost = process.env.SSO_HOST || 'sso.test-godaddy.com';
-  }
-
-  /**
-   * Fetch an S2S token and update the cache + decoded-exp.
-   *
-   * @param forceRefresh when true, bypasses the upstream @airo/ai-lib
-   *   token cache (which has its own ~60s buffer on `exp`) by calling
-   *   `refreshS2SToken`. Needed on the reactive-401 path: if the 401 came
-   *   from an in-flight cert rotation / early revocation, the upstream
-   *   cache would otherwise hand us back the same rejected token.
-   */
-  async initialize(forceRefresh = false): Promise<void> {
-    if (!this.useS2S) return;
-    const token = forceRefresh
-      ? await refreshS2SToken({ ssoHost: this.ssoHost })
-      : await getS2SToken({ ssoHost: this.ssoHost });
-    this.cachedS2SToken = token;
-    this.cachedTokenExpSeconds = decodeJwtExp(token, (err) => {
-      rootLogger.warn('knowb-driver.token.exp_decode_failed', {
-        message: err instanceof Error ? err.message : String(err),
-      });
-    });
-  }
-
-  /**
-   * True when we have any S2S token cached locally (fresh or stale).
-   * Used by the driver to distinguish a true initial-fetch failure (no
-   * cached token, fast-fail is safe) from a transient proactive-refresh
-   * failure (we still have a usable-ish token — let subsequent calls retry).
-   */
-  hasCachedToken(): boolean {
-    return this.cachedS2SToken !== null;
-  }
-
-  getToken(): string {
-    if (this.useS2S) {
-      if (!this.cachedS2SToken) {
-        throw new Error('S2S token not initialized. Call initialize() first.');
-      }
-      return `sso-jwt ${this.cachedS2SToken}`;
-    }
-
-    if (this.ssoJwt) {
-      return `sso-jwt ${this.ssoJwt}`;
-    }
-
-    throw new Error('No authentication configured. Set GOCODE_USE_S2S_AUTH=true for hosted or SSO_JWT for local.');
-  }
-
-  hasAuth(): boolean {
-    return this.useS2S || !!this.ssoJwt;
-  }
-
-  /**
-   * True when `initialize()` must be called before `getToken()` will work.
-   * Also true when the cached S2S token is within the refresh buffer of
-   * its `exp` — this is what fixes the "dead JWT after 1h" bug.
-   */
-  needsInitialization(): boolean {
-    if (!this.useS2S) return false;
-    if (!this.cachedS2SToken) return true;
-    if (this.cachedTokenExpSeconds === null) {
-      // Un-decodable token: we can't do proactive refresh, so fall back to
-      // the old "cache until explicitly invalidated" behavior. A reactive
-      // 401 in the driver will call invalidateToken().
-      return false;
-    }
-    const nowSeconds = Math.floor(Date.now() / 1000);
-    return nowSeconds >= this.cachedTokenExpSeconds - TOKEN_REFRESH_BUFFER_SECONDS;
-  }
-
-  /**
-   * Drop the cached token so the next `needsInitialization()` returns true
-   * and the next `initialize()` call re-fetches.
-   *
-   * Called by the driver on 401 responses from GoKnowb (reactive refresh).
-   */
-  invalidateToken(): void {
-    this.cachedS2SToken = null;
-    this.cachedTokenExpSeconds = null;
-  }
-
-  /**
-   * For observability / tests — returns the cached JWT's `exp` in unix
-   * seconds, or null if none cached / undecodable.
-   */
-  getCachedTokenExpSeconds(): number | null {
-    return this.cachedTokenExpSeconds;
-  }
-}
-
 const TEST_FALLBACK_URL = 'https://knowb.api.int.test-godaddy.com';
 
 /**
@@ -267,13 +146,14 @@ function getApiUrl(): string {
 
 /**
  * KnowB Knowledge Base Driver
- * Wraps the official @godaddy/goknowb-client
+ * Wraps the official @godaddy/goknowb-client with BaseDriverV2 auth.
+ *
+ * Auth, token caching, proactive refresh, and 401 retry are all inherited
+ * from BaseDriverV2. The SDK's sync `TokenProvider.getToken()` is bridged
+ * to BaseDriverV2's cached token via a thin adapter.
  */
-export class KnowBDriver {
-  protected logger: Logger;
+export class KnowBDriver extends BaseDriverV2 {
   private client: GoKnowbClientImpl;
-  private tokenProvider: KnowBTokenProvider;
-  private initFailure: Error | null = null;
 
   // Default configuration
   // See docs: GoKnowb RAG Configuration Reference (Confluence) + plan 2026-05-04.
@@ -304,94 +184,17 @@ export class KnowBDriver {
   private static readonly DEFAULT_SCORE_THRESHOLD = 0.0;
 
   constructor() {
-    this.logger = Logger.create({ component: 'knowb-driver' });
-    this.tokenProvider = new KnowBTokenProvider();
-
     const apiUrl = getApiUrl();
-    this.client = new GoKnowbClientImpl(apiUrl, this.tokenProvider);
+    super({ serviceName: 'knowb-driver', baseUrl: apiUrl });
 
-    this.logger.info('knowb-driver.config.initialized', {
-      apiUrl,
-      hasAuth: this.tokenProvider.hasAuth(),
-    });
-  }
+    // The goknowb-client SDK requires a sync TokenProvider. BaseDriverV2
+    // pre-fetches the token async (via ensureInitialized before each op),
+    // so getAuthToken() always returns the cached value synchronously.
+    const tokenProvider: TokenProvider = {
+      getToken: () => this.getAuthToken(),
+    };
 
-  /**
-   * Ensure the driver is ready to make an authenticated call.
-   *
-   * Runs on every search/upload/delete/sync — `tokenProvider.needsInitialization()`
-   * returns true both on first use and when the cached S2S JWT is within the
-   * refresh buffer of its `exp`, so this is also the proactive-refresh hook.
-   *
-   * On first S2S-fetch failure we cache the error and fail fast on subsequent
-   * calls, so a single SSO outage doesn't flood Loki with N identical
-   * `knowb-driver.init.s2s_token_failed` entries. A successful refresh clears
-   * the cache — we don't want a 30s transient outage to permanently wedge
-   * the process.
-   */
-  private async ensureInitialized(forceRefresh = false): Promise<void> {
-    // Only fast-fail when we have no cached token at all — a true initial
-    // fetch failure. If we have a cached token but proactive-refresh just
-    // failed, the old token may still be accepted for a few more minutes
-    // and the SSO outage may be transient. Clearing initFailure on any
-    // successful init (or when no refresh is needed) lets the driver
-    // self-heal.
-    if (this.initFailure && !this.tokenProvider.hasCachedToken()) {
-      throw this.initFailure;
-    }
-    if (!forceRefresh && !this.tokenProvider.needsInitialization()) {
-      this.initFailure = null;
-      return;
-    }
-    try {
-      await this.tokenProvider.initialize(forceRefresh);
-      this.initFailure = null;
-    } catch (error) {
-      this.initFailure = error as Error;
-      log.error(this.logger, 'knowb-driver.init.s2s_token_failed', error as Error);
-      throw error;
-    }
-  }
-
-  /**
-   * Inspect a thrown error from @godaddy/goknowb-client to decide if it's a
-   * 401 worth retrying with a fresh token. Client error messages look like:
-   *   "Error performing KB search: Request failed with status code 401"
-   * The AxiosError also has `.response?.status`.
-   */
-  private isUnauthorizedError(error: unknown): boolean {
-    if (!error || typeof error !== 'object') return false;
-    const e = error as { response?: { status?: number }; message?: string };
-    if (e.response?.status === 401) return true;
-    return typeof e.message === 'string' && /status code 401\b/.test(e.message);
-  }
-
-  /**
-   * Wrap an SDK call in a one-shot 401 retry.
-   *
-   * On 401: invalidate the local token snapshot, force a fresh upstream
-   * fetch via ensureInitialized(forceRefresh=true) — this bypasses ai-lib's
-   * own ~60s token cache, otherwise we'd retry with the same rejected JWT
-   * — then retry the SDK call exactly once. Only 401 triggers the retry;
-   * non-auth errors flow through unchanged. Used by search/upload/delete/sync
-   * so any KB op self-heals from mid-session cert rotation or revocation.
-   */
-  private async withRetryOn401<T>(
-    operation: string,
-    logContext: Record<string, unknown>,
-    run: () => Promise<T>,
-  ): Promise<T> {
-    await this.ensureInitialized();
-    try {
-      return await run();
-    } catch (error) {
-      if (!this.isUnauthorizedError(error)) throw error;
-      this.logger.warn(`knowb-driver.${operation}.reauth_retry`, logContext);
-      this.tokenProvider.invalidateToken();
-      this.initFailure = null;
-      await this.ensureInitialized(true);
-      return run();
-    }
+    this.client = new GoKnowbClientImpl(apiUrl, tokenProvider);
   }
 
   /**
@@ -419,13 +222,13 @@ export class KnowBDriver {
       scoreThreshold,
     });
 
-    if (!this.tokenProvider.hasAuth()) {
+    if (!this.hasAuth()) {
       this.logger.warn('knowb-driver.search.no_auth', {
         query: query.substring(0, 100),
       });
       return {
         success: false,
-        error: 'No authentication configured. Set GOCODE_USE_S2S_AUTH=true for hosted or SSO_JWT for local.',
+        error: 'No authentication configured. Set USE_S2S_AUTH=true for hosted or SSO_JWT for local.',
       };
     }
 
@@ -522,11 +325,11 @@ export class KnowBDriver {
     });
 
     try {
-      if (!this.tokenProvider.hasAuth()) {
+      if (!this.hasAuth()) {
         this.logger.warn('knowb-driver.upload.no_auth', { resourceId, kbNodeId });
         return {
           success: false,
-          error: 'No authentication configured. Set GOCODE_USE_S2S_AUTH=true for hosted or SSO_JWT for local.',
+          error: 'No authentication configured. Set USE_S2S_AUTH=true for hosted or SSO_JWT for local.',
         };
       }
 
@@ -588,11 +391,11 @@ export class KnowBDriver {
     });
 
     try {
-      if (!this.tokenProvider.hasAuth()) {
+      if (!this.hasAuth()) {
         this.logger.warn('knowb-driver.delete.no_auth', { resourceId, kbNodeId });
         return {
           success: false,
-          error: 'No authentication configured. Set GOCODE_USE_S2S_AUTH=true for hosted or SSO_JWT for local.',
+          error: 'No authentication configured. Set USE_S2S_AUTH=true for hosted or SSO_JWT for local.',
         };
       }
 
@@ -632,7 +435,7 @@ export class KnowBDriver {
     this.logger.info('knowb-driver.sync.begin', { kbNodeId });
 
     try {
-      if (!this.tokenProvider.hasAuth()) {
+      if (!this.hasAuth()) {
         this.logger.warn('knowb-driver.sync.no_auth', { kbNodeId });
         return {
           success: false,

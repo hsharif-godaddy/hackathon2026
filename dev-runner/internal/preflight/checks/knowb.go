@@ -21,15 +21,15 @@ func (c *KnowBCheck) Run(_ context.Context, projectRoot string) preflight.CheckR
 	var issues []string
 
 	env, err := preflight.ParseEnvFile(envPath)
-	// When GOCODE_USE_S2S_AUTH=true, KnowB uses AWS IAM-based S2S tokens
-	// instead of SSO_JWT, so SSO_JWT is not required.
-	useS2S := env != nil && strings.TrimSpace(env["GOCODE_USE_S2S_AUTH"]) == "true"
+	// When USE_S2S_AUTH=true, KnowB (via BaseDriverV2) uses AWS IAM-based
+	// S2S tokens instead of SSO_JWT, so SSO_JWT is not required.
+	useS2S := env != nil && strings.TrimSpace(env["USE_S2S_AUTH"]) == "true"
 
 	if err != nil {
 		issues = append(issues, "agents/.env not found")
 	} else if !useS2S {
 		if v, ok := env["SSO_JWT"]; !ok || strings.TrimSpace(v) == "" {
-			issues = append(issues, "SSO_JWT missing (set SSO_JWT or use GOCODE_USE_S2S_AUTH=true)")
+			issues = append(issues, "SSO_JWT missing (set SSO_JWT or use USE_S2S_AUTH=true)")
 		}
 	}
 

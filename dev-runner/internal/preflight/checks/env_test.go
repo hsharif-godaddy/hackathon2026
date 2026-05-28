@@ -27,6 +27,8 @@ func TestAgentsEnvCheck_S2SMode_NoAPIKeyRequired(t *testing.T) {
 		"NODE_ENV=development",
 		"AUTH_TYPE=jwt",
 		"GOCODE_USE_S2S_AUTH=true",
+		"USE_S2S_AUTH=true",
+		"S2S_AWS_PROFILE=airobuild-dev-private-sso",
 		"AWS_PROFILE=airobuild-dev-private-sso",
 		"BUDGET_SERVICE_URL=https://budget-service.api.int.dev-godaddy.com",
 	}, "\n"))
@@ -35,6 +37,29 @@ func TestAgentsEnvCheck_S2SMode_NoAPIKeyRequired(t *testing.T) {
 	result := c.Run(context.Background(), root)
 	if result.Status != preflight.StatusPass {
 		t.Fatalf("expected Pass, got %v: %s", result.Status, result.Message)
+	}
+}
+
+func TestAgentsEnvCheck_S2SMode_MissingUseS2SAuth(t *testing.T) {
+	root := t.TempDir()
+	writeAgentsEnv(t, root, strings.Join([]string{
+		"NODE_ENV=development",
+		"AUTH_TYPE=jwt",
+		"GOCODE_USE_S2S_AUTH=true",
+		"AWS_PROFILE=airobuild-dev-private-sso",
+		"BUDGET_SERVICE_URL=https://budget-service.api.int.dev-godaddy.com",
+	}, "\n"))
+
+	c := &AgentsEnvCheck{}
+	result := c.Run(context.Background(), root)
+	if result.Status == preflight.StatusPass {
+		t.Fatal("expected failure when USE_S2S_AUTH and S2S_AWS_PROFILE missing in S2S mode")
+	}
+	if !strings.Contains(result.Message, "USE_S2S_AUTH") {
+		t.Errorf("expected message to mention USE_S2S_AUTH, got: %s", result.Message)
+	}
+	if !strings.Contains(result.Message, "S2S_AWS_PROFILE") {
+		t.Errorf("expected message to mention S2S_AWS_PROFILE, got: %s", result.Message)
 	}
 }
 
@@ -189,6 +214,8 @@ func TestAgentsEnvCheck_S2SMode_StaleApiKeyVars(t *testing.T) {
 		"NODE_ENV=development",
 		"AUTH_TYPE=jwt",
 		"GOCODE_USE_S2S_AUTH=true",
+		"USE_S2S_AUTH=true",
+		"S2S_AWS_PROFILE=airobuild-dev-private-sso",
 		"AWS_PROFILE=airobuild-dev-private-sso",
 		"BUDGET_SERVICE_URL=https://budget-service.api.int.dev-godaddy.com",
 		`OPENAI_BASE_URL="https://caas-gocode-prod.caas-prod.prod.onkatana.net"`,

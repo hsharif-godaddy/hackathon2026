@@ -9,7 +9,7 @@ import (
 
 func TestGettyFixer_SetsDefaultAPIURL(t *testing.T) {
 	root := t.TempDir()
-	writeEnv(t, root, "agents", "GOCODE_USE_S2S_AUTH=true\n")
+	writeEnv(t, root, "agents", "USE_S2S_AUTH=true\n")
 
 	if err := (&GettyFixer{}).Fix(context.Background(), root); err != nil {
 		t.Fatalf("Fix: %v", err)
@@ -26,7 +26,7 @@ func TestGettyFixer_SetsDefaultAPIURL(t *testing.T) {
 
 func TestGettyFixer_DoesNotChangeImageSearchDriver(t *testing.T) {
 	root := t.TempDir()
-	writeEnv(t, root, "agents", "IMAGE_SEARCH_DRIVER=unsplash\nGOCODE_USE_S2S_AUTH=true\n")
+	writeEnv(t, root, "agents", "IMAGE_SEARCH_DRIVER=unsplash\nUSE_S2S_AUTH=true\n")
 
 	if err := (&GettyFixer{}).Fix(context.Background(), root); err != nil {
 		t.Fatalf("Fix: %v", err)
@@ -43,7 +43,7 @@ func TestGettyFixer_DoesNotChangeImageSearchDriver(t *testing.T) {
 func TestGettyFixer_PreservesExistingGettyAPIURL(t *testing.T) {
 	root := t.TempDir()
 	custom := "https://api.test-godaddy.com/getty-proxy"
-	writeEnv(t, root, "agents", "GOCODE_USE_S2S_AUTH=true\nGETTY_IMAGE_PROXY_URL="+custom+"\n")
+	writeEnv(t, root, "agents", "USE_S2S_AUTH=true\nGETTY_IMAGE_PROXY_URL="+custom+"\n")
 
 	if err := (&GettyFixer{}).Fix(context.Background(), root); err != nil {
 		t.Fatalf("Fix: %v", err)
@@ -57,7 +57,7 @@ func TestGettyFixer_PreservesExistingGettyAPIURL(t *testing.T) {
 
 func TestGettyFixer_FillsBlankGettyAPIURL(t *testing.T) {
 	root := t.TempDir()
-	writeEnv(t, root, "agents", "GOCODE_USE_S2S_AUTH=true\nGETTY_IMAGE_PROXY_URL=  \n")
+	writeEnv(t, root, "agents", "USE_S2S_AUTH=true\nGETTY_IMAGE_PROXY_URL=  \n")
 
 	if err := (&GettyFixer{}).Fix(context.Background(), root); err != nil {
 		t.Fatalf("Fix: %v", err)
@@ -69,17 +69,62 @@ func TestGettyFixer_FillsBlankGettyAPIURL(t *testing.T) {
 	}
 }
 
-func TestGettyFixer_MissingAuthErrorMentionsS2S(t *testing.T) {
+func TestGettyFixer_RemovesLegacyGettyToken(t *testing.T) {
+	root := t.TempDir()
+	writeEnv(t, root, "agents", "USE_S2S_AUTH=true\nGETTY_TOKEN=old-bearer\n")
+
+	if err := (&GettyFixer{}).Fix(context.Background(), root); err != nil {
+		t.Fatalf("Fix: %v", err)
+	}
+
+	env := readEnvMap(t, filepath.Join(root, "agents", ".env"))
+	if _, has := env["GETTY_TOKEN"]; has {
+		t.Error("expected GETTY_TOKEN to be removed")
+	}
+}
+
+func TestGettyFixer_RemovesLegacyGettyAPIURL(t *testing.T) {
+	root := t.TempDir()
+	writeEnv(t, root, "agents", "USE_S2S_AUTH=true\nGETTY_API_URL=https://old-proxy\n")
+
+	if err := (&GettyFixer{}).Fix(context.Background(), root); err != nil {
+		t.Fatalf("Fix: %v", err)
+	}
+
+	env := readEnvMap(t, filepath.Join(root, "agents", ".env"))
+	if _, has := env["GETTY_API_URL"]; has {
+		t.Error("expected GETTY_API_URL to be removed")
+	}
+}
+
+func TestGettyFixer_RemovesBothLegacyVars(t *testing.T) {
+	root := t.TempDir()
+	writeEnv(t, root, "agents", "USE_S2S_AUTH=true\nGETTY_TOKEN=tok\nGETTY_API_URL=https://old\n")
+
+	if err := (&GettyFixer{}).Fix(context.Background(), root); err != nil {
+		t.Fatalf("Fix: %v", err)
+	}
+
+	env := readEnvMap(t, filepath.Join(root, "agents", ".env"))
+	if _, has := env["GETTY_TOKEN"]; has {
+		t.Error("expected GETTY_TOKEN to be removed")
+	}
+	if _, has := env["GETTY_API_URL"]; has {
+		t.Error("expected GETTY_API_URL to be removed")
+	}
+}
+
+func TestGettyFixer_MissingS2SAuthErrors(t *testing.T) {
 	root := t.TempDir()
 	writeEnv(t, root, "agents", "NODE_ENV=development\n")
 
 	err := (&GettyFixer{}).Fix(context.Background(), root)
 	if err == nil {
-		t.Fatal("expected error when GOCODE_USE_S2S_AUTH is not set")
+		t.Fatal("expected error when USE_S2S_AUTH is not set")
 	}
 	s := err.Error()
-	if !strings.Contains(s, "GOCODE_USE_S2S_AUTH") {
-		t.Errorf("error should mention GOCODE_USE_S2S_AUTH:\n%s", s)
+	if !strings.Contains(s, "USE_S2S_AUTH") {
+		t.Errorf("error should mention USE_S2S_AUTH:\n%s", s)
 	}
 }
 
@@ -87,7 +132,7 @@ func TestGettyFixer_WritesDefaultsEvenWhenAuthMissing(t *testing.T) {
 	root := t.TempDir()
 	err := (&GettyFixer{}).Fix(context.Background(), root)
 	if err == nil {
-		t.Fatal("expected error when GOCODE_USE_S2S_AUTH is not set")
+		t.Fatal("expected error when auth vars are not set")
 	}
 	env := readEnvMap(t, filepath.Join(root, "agents", ".env"))
 	if _, has := env["IMAGE_SEARCH_DRIVER"]; has {

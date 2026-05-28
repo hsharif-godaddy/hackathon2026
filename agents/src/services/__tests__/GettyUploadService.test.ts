@@ -14,8 +14,8 @@ vi.mock('@airo/ai-lib', async () => {
   const actual = await vi.importActual<Record<string, unknown>>('@airo/ai-lib');
   return {
     ...actual,
-    getS2SToken: vi.fn().mockResolvedValue('mock-s2s-token'),
-    refreshS2SToken: vi.fn().mockResolvedValue('refreshed-s2s-token'),
+    getS2STokenV2: vi.fn().mockResolvedValue('mock-s2s-token'),
+    refreshS2STokenV2: vi.fn().mockResolvedValue('refreshed-s2s-token'),
   };
 });
 
@@ -30,13 +30,13 @@ describe('GettyUploadService', () => {
   beforeEach(() => {
     originalEnv = { ...process.env };
     process.env.GETTY_IMAGE_PROXY_URL = 'https://proxy.test.example.com';
-    process.env.GOCODE_USE_S2S_AUTH = 'true';
+    process.env.USE_S2S_AUTH = 'true';
     delete process.env.SSO_JWT;
     delete process.env.GETTY_TOKEN;
     delete process.env.GETTY_APP_KEY;
 
-    vi.mocked(aiLib.getS2SToken).mockResolvedValue('mock-s2s-token');
-    vi.mocked(aiLib.refreshS2SToken).mockResolvedValue('refreshed-s2s-token');
+    vi.mocked(aiLib.getS2STokenV2).mockResolvedValue('mock-s2s-token');
+    vi.mocked(aiLib.refreshS2STokenV2).mockResolvedValue('refreshed-s2s-token');
 
     vi.stubGlobal('fetch', mockFetch);
     vi.clearAllMocks();
@@ -71,7 +71,7 @@ describe('GettyUploadService', () => {
     });
 
     it('should return empty array when neither auth var is set', async () => {
-      delete process.env.GOCODE_USE_S2S_AUTH;
+      delete process.env.USE_S2S_AUTH;
 
       const service = new GettyUploadService();
 
@@ -85,7 +85,7 @@ describe('GettyUploadService', () => {
     });
 
     it('should mint and use S2S token and make correct POST request', async () => {
-      vi.mocked(aiLib.getS2SToken).mockResolvedValue('iam-jwt-token');
+      vi.mocked(aiLib.getS2STokenV2).mockResolvedValue('iam-jwt-token');
 
       const service = new GettyUploadService();
 
@@ -96,8 +96,8 @@ describe('GettyUploadService', () => {
 
       await service.uploadAndReport(['img-1', 'img-2']);
 
-      expect(aiLib.getS2SToken).toHaveBeenCalledTimes(1);
-      expect(aiLib.getS2SToken).toHaveBeenCalledWith(
+      expect(aiLib.getS2STokenV2).toHaveBeenCalledTimes(1);
+      expect(aiLib.getS2STokenV2).toHaveBeenCalledWith(
         expect.objectContaining({ ssoHost: 'sso.test-godaddy.com' }),
       );
       expect(mockFetch).toHaveBeenCalledTimes(1);
@@ -114,7 +114,7 @@ describe('GettyUploadService', () => {
     });
 
     it('should cache the S2S token across multiple uploadAndReport calls', async () => {
-      vi.mocked(aiLib.getS2SToken).mockResolvedValue('iam-jwt-token');
+      vi.mocked(aiLib.getS2STokenV2).mockResolvedValue('iam-jwt-token');
 
       const service = new GettyUploadService();
 
@@ -127,7 +127,7 @@ describe('GettyUploadService', () => {
       await service.uploadAndReport(['img-2']);
       await service.uploadAndReport(['img-3']);
 
-      expect(aiLib.getS2SToken).toHaveBeenCalledTimes(1);
+      expect(aiLib.getS2STokenV2).toHaveBeenCalledTimes(1);
       expect(mockFetch).toHaveBeenCalledTimes(3);
     });
 
@@ -211,7 +211,7 @@ describe('GettyUploadService', () => {
     });
 
     it('should return empty array and log error when S2S token mint fails', async () => {
-      vi.mocked(aiLib.getS2SToken).mockRejectedValue(new Error('SSO down'));
+      vi.mocked(aiLib.getS2STokenV2).mockRejectedValue(new Error('SSO down'));
 
       const service = new GettyUploadService();
 
@@ -225,9 +225,9 @@ describe('GettyUploadService', () => {
       );
     });
 
-    it('does not hammer getS2SToken after init failure (BaseDriverV2)', async () => {
+    it('does not hammer getS2STokenV2 after init failure (BaseDriverV2)', async () => {
       delete process.env.SSO_JWT;
-      vi.mocked(aiLib.getS2SToken).mockRejectedValue(new Error('SSO down'));
+      vi.mocked(aiLib.getS2STokenV2).mockRejectedValue(new Error('SSO down'));
 
       const service = new GettyUploadService();
 
@@ -236,14 +236,14 @@ describe('GettyUploadService', () => {
 
       expect(r1).toEqual([]);
       expect(r2).toEqual([]);
-      expect(aiLib.getS2SToken).toHaveBeenCalledTimes(1);
+      expect(aiLib.getS2STokenV2).toHaveBeenCalledTimes(1);
       expect(mockFetch).not.toHaveBeenCalled();
     });
 
-    it('retries once on 401 using refreshS2SToken to bypass ai-lib cache', async () => {
+    it('retries once on 401 using refreshS2STokenV2 to bypass ai-lib cache', async () => {
       delete process.env.SSO_JWT;
-      vi.mocked(aiLib.getS2SToken).mockResolvedValue('first-token');
-      vi.mocked(aiLib.refreshS2SToken).mockResolvedValue('force-refreshed-token');
+      vi.mocked(aiLib.getS2STokenV2).mockResolvedValue('first-token');
+      vi.mocked(aiLib.refreshS2STokenV2).mockResolvedValue('force-refreshed-token');
 
       const service = new GettyUploadService();
 
@@ -258,8 +258,8 @@ describe('GettyUploadService', () => {
 
       expect(result).toEqual([{ id: 'img-1', url: 'https://cdn/img-1' }]);
       expect(mockFetch).toHaveBeenCalledTimes(2);
-      expect(aiLib.refreshS2SToken).toHaveBeenCalledTimes(1);
-      expect(aiLib.refreshS2SToken).toHaveBeenCalledWith(
+      expect(aiLib.refreshS2STokenV2).toHaveBeenCalledTimes(1);
+      expect(aiLib.refreshS2STokenV2).toHaveBeenCalledWith(
         expect.objectContaining({ ssoHost: 'sso.test-godaddy.com' }),
       );
     });
@@ -297,7 +297,7 @@ describe('GettyUploadService', () => {
     });
 
     it('should not call fetch when neither auth var is set', () => {
-      delete process.env.GOCODE_USE_S2S_AUTH;
+      delete process.env.USE_S2S_AUTH;
       const service = new GettyUploadService();
       service.reportUsage(['img-1']);
 
@@ -305,7 +305,7 @@ describe('GettyUploadService', () => {
     });
 
     it('should make correct PUT request with S2S token', async () => {
-      vi.mocked(aiLib.getS2SToken).mockResolvedValue('iam-jwt-token');
+      vi.mocked(aiLib.getS2STokenV2).mockResolvedValue('iam-jwt-token');
       const service = new GettyUploadService();
 
       mockFetch.mockResolvedValue({ ok: true });

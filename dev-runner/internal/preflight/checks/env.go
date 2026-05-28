@@ -101,11 +101,12 @@ func (c *AgentsEnvCheck) Run(_ context.Context, projectRoot string) preflight.Ch
 	if fail != nil {
 		return *fail
 	}
-	s2s := strings.EqualFold(strings.TrimSpace(env["GOCODE_USE_S2S_AUTH"]), "true")
+	s2s := strings.EqualFold(strings.TrimSpace(env["USE_S2S_AUTH"]), "true") ||
+		strings.EqualFold(strings.TrimSpace(env["GOCODE_USE_S2S_AUTH"]), "true")
 
 	required := []string{"NODE_ENV", "AUTH_TYPE", "BUDGET_SERVICE_URL"}
 	if s2s {
-		required = append(required, "AWS_PROFILE", "GOCODE_USE_S2S_AUTH")
+		required = append(required, "AWS_PROFILE", "USE_S2S_AUTH", "S2S_AWS_PROFILE")
 	} else {
 		required = append(required,
 			"OPENAI_API_KEY",
@@ -136,7 +137,7 @@ func (c *AgentsEnvCheck) Run(_ context.Context, projectRoot string) preflight.Ch
 				Name:         c.Name(),
 				Category:     c.Category(),
 				FixAvailable: true,
-				Message:      fmt.Sprintf("agents/.env has GOCODE_USE_S2S_AUTH=true but stale api-key vars set: %s", strings.Join(stale, ", ")),
+				Message:      fmt.Sprintf("agents/.env has S2S auth enabled but stale api-key vars set: %s", strings.Join(stale, ", ")),
 			}
 		}
 	}

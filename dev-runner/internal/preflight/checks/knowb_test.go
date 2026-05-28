@@ -44,7 +44,7 @@ func TestKnowBCheck_MissingEnvFile(t *testing.T) {
 
 func TestKnowBCheck_S2SAuth(t *testing.T) {
 	root := t.TempDir()
-	writeAgentsEnv(t, root, "GOCODE_USE_S2S_AUTH=true\n")
+	writeAgentsEnv(t, root, "USE_S2S_AUTH=true\n")
 
 	result := (&KnowBCheck{}).Run(context.Background(), root)
 	if result.Status != preflight.StatusPass {

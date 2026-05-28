@@ -4,8 +4,8 @@ vi.mock('@airo/ai-lib', async () => {
   const actual = await vi.importActual<Record<string, unknown>>('@airo/ai-lib');
   return {
     ...actual,
-    getS2SToken: vi.fn().mockResolvedValue('mock-s2s-token'),
-    refreshS2SToken: vi.fn().mockResolvedValue('refreshed-s2s-token'),
+    getS2STokenV2: vi.fn().mockResolvedValue('mock-s2s-token'),
+    refreshS2STokenV2: vi.fn().mockResolvedValue('refreshed-s2s-token'),
   };
 });
 
@@ -17,8 +17,8 @@ describe('GettyMediaDriver filter expansion', () => {
   let fetchSpy: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
-    vi.mocked(aiLib.getS2SToken).mockReset().mockResolvedValue('mock-s2s-token');
-    process.env.GOCODE_USE_S2S_AUTH = 'true';
+    vi.mocked(aiLib.getS2STokenV2).mockReset().mockResolvedValue('mock-s2s-token');
+    process.env.USE_S2S_AUTH = 'true';
     process.env.GETTY_IMAGE_PROXY_URL = 'https://test-getty.example.com';
 
     driver = new GettyMediaDriver();
@@ -48,7 +48,7 @@ describe('GettyMediaDriver filter expansion', () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
-    delete process.env.GOCODE_USE_S2S_AUTH;
+    delete process.env.USE_S2S_AUTH;
     delete process.env.GETTY_IMAGE_PROXY_URL;
   });
 
@@ -177,15 +177,15 @@ describe('GettyMediaDriver filter relaxation retries', () => {
   };
 
   beforeEach(() => {
-    vi.mocked(aiLib.getS2SToken).mockReset().mockResolvedValue('mock-s2s-token');
-    process.env.GOCODE_USE_S2S_AUTH = 'true';
+    vi.mocked(aiLib.getS2STokenV2).mockReset().mockResolvedValue('mock-s2s-token');
+    process.env.USE_S2S_AUTH = 'true';
     process.env.GETTY_IMAGE_PROXY_URL = 'https://test-getty.example.com';
     driver = new GettyMediaDriver();
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
-    delete process.env.GOCODE_USE_S2S_AUTH;
+    delete process.env.USE_S2S_AUTH;
     delete process.env.GETTY_IMAGE_PROXY_URL;
   });
 
@@ -402,9 +402,9 @@ describe('GettyMediaDriver S2S auth wiring', () => {
   };
 
   beforeEach(() => {
-    vi.mocked(aiLib.getS2SToken).mockReset().mockResolvedValue('mock-s2s-token');
-    vi.mocked(aiLib.refreshS2SToken).mockReset().mockResolvedValue('refreshed-s2s-token');
-    process.env.GOCODE_USE_S2S_AUTH = 'true';
+    vi.mocked(aiLib.getS2STokenV2).mockReset().mockResolvedValue('mock-s2s-token');
+    vi.mocked(aiLib.refreshS2STokenV2).mockReset().mockResolvedValue('refreshed-s2s-token');
+    process.env.USE_S2S_AUTH = 'true';
     process.env.NODE_ENV = 'test';
     delete process.env.GETTY_IMAGE_PROXY_URL;
     delete process.env.SSO_JWT;
@@ -415,18 +415,18 @@ describe('GettyMediaDriver S2S auth wiring', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
-    delete process.env.GOCODE_USE_S2S_AUTH;
+    delete process.env.USE_S2S_AUTH;
     delete process.env.GETTY_IMAGE_PROXY_URL;
   });
 
-  it('mints an S2S token on first search via GOCODE_USE_S2S_AUTH', async () => {
+  it('mints an S2S token on first search via USE_S2S_AUTH', async () => {
     const driver = new GettyMediaDriver();
 
     const result = await driver.search({ query: 'sunset' });
 
     expect(result.success).toBe(true);
-    expect(aiLib.getS2SToken).toHaveBeenCalledTimes(1);
-    expect(aiLib.getS2SToken).toHaveBeenCalledWith(
+    expect(aiLib.getS2STokenV2).toHaveBeenCalledTimes(1);
+    expect(aiLib.getS2STokenV2).toHaveBeenCalledWith(
       expect.objectContaining({ ssoHost: 'sso.test-godaddy.com' }),
     );
     expect(globalThis.fetch).toHaveBeenCalled();
@@ -439,23 +439,23 @@ describe('GettyMediaDriver S2S auth wiring', () => {
     await driver.search({ query: 'beach' });
     await driver.search({ query: 'mountain' });
 
-    expect(aiLib.getS2SToken).toHaveBeenCalledTimes(1);
+    expect(aiLib.getS2STokenV2).toHaveBeenCalledTimes(1);
     expect(vi.mocked(globalThis.fetch)).toHaveBeenCalledTimes(3);
   });
 
   it('returns auth-not-configured error when neither auth var is set', async () => {
-    delete process.env.GOCODE_USE_S2S_AUTH;
+    delete process.env.USE_S2S_AUTH;
 
     const driver = new GettyMediaDriver();
 
     const result = await driver.search({ query: 'sunset' });
 
     expect(result.success).toBe(false);
-    expect(result.error).toContain('GOCODE_USE_S2S_AUTH is not set');
+    expect(result.error).toContain('USE_S2S_AUTH is not set');
   });
 
   it('does not retry token mint after S2S init failure until token is cleared (BaseDriverV2)', async () => {
-    vi.mocked(aiLib.getS2SToken).mockRejectedValue(new Error('SSO down'));
+    vi.mocked(aiLib.getS2STokenV2).mockRejectedValue(new Error('SSO down'));
 
     const driver = new GettyMediaDriver();
 
@@ -464,13 +464,13 @@ describe('GettyMediaDriver S2S auth wiring', () => {
 
     expect(r1.success).toBe(false);
     expect(r2.success).toBe(false);
-    expect(aiLib.getS2SToken).toHaveBeenCalledTimes(1);
+    expect(aiLib.getS2STokenV2).toHaveBeenCalledTimes(1);
     expect(vi.mocked(globalThis.fetch)).not.toHaveBeenCalled();
   });
 
-  it('retries once on 401 using refreshS2SToken to bypass ai-lib cache', async () => {
-    vi.mocked(aiLib.getS2SToken).mockResolvedValue('first-token');
-    vi.mocked(aiLib.refreshS2SToken).mockResolvedValue('force-refreshed-token');
+  it('retries once on 401 using refreshS2STokenV2 to bypass ai-lib cache', async () => {
+    vi.mocked(aiLib.getS2STokenV2).mockResolvedValue('first-token');
+    vi.mocked(aiLib.refreshS2STokenV2).mockResolvedValue('force-refreshed-token');
 
     const unauthorizedResponse = {
       ok: false,
@@ -495,8 +495,8 @@ describe('GettyMediaDriver S2S auth wiring', () => {
 
     expect(result.success).toBe(true);
     expect(vi.mocked(globalThis.fetch)).toHaveBeenCalledTimes(2);
-    expect(aiLib.refreshS2SToken).toHaveBeenCalledTimes(1);
-    expect(aiLib.refreshS2SToken).toHaveBeenCalledWith(
+    expect(aiLib.refreshS2STokenV2).toHaveBeenCalledTimes(1);
+    expect(aiLib.refreshS2STokenV2).toHaveBeenCalledWith(
       expect.objectContaining({ ssoHost: 'sso.test-godaddy.com' }),
     );
   });
@@ -535,7 +535,7 @@ describe('GettyMediaDriver S2S auth wiring', () => {
 
     await driver.search({ query: 'sunset' });
 
-    expect(aiLib.getS2SToken).toHaveBeenCalledWith(
+    expect(aiLib.getS2STokenV2).toHaveBeenCalledWith(
       expect.objectContaining({ ssoHost: 'sso.dev-godaddy.com' }),
     );
   });

@@ -14,15 +14,15 @@ import (
 // See docs/mediasearch.md.
 const defaultLocalGettyAPIURL = "https://getty-images-proxy.api.dev-godaddy.com"
 
-// GettyFixer writes Getty-related entries in agents/.env. It does not set
+// GettyFixer writes Getty-specific entries in agents/.env. It does not set
 // IMAGE_SEARCH_DRIVER (that remains a separate media-search choice).
 //
-// It verifies that GOCODE_USE_S2S_AUTH=true is set (IAM JWT via AWS SSO).
+// Global S2S auth vars (USE_S2S_AUTH, S2S_AWS_PROFILE) are managed by
+// EnvFixer; this fixer only handles Getty-specific config.
+//
+// Removes legacy GETTY_TOKEN and GETTY_API_URL if present.
 //
 // When GETTY_IMAGE_PROXY_URL is unset or blank, it is set to defaultLocalGettyAPIURL.
-//
-// Prior to the migration this fixer fetched GETTY_TOKEN from AWS Secrets
-// Manager. That path is gone — agents now use sso-jwt tokens directly.
 type GettyFixer struct{}
 
 func (f *GettyFixer) Fix(ctx context.Context, projectRoot string) error {
@@ -37,7 +37,13 @@ func (f *GettyFixer) Fix(ctx context.Context, projectRoot string) error {
 		env = map[string]string{}
 	}
 
-	goCodeS2S := strings.EqualFold(strings.TrimSpace(env["GOCODE_USE_S2S_AUTH"]), "true")
+	for _, legacy := range []string{"GETTY_TOKEN", "GETTY_API_URL"} {
+		if strings.TrimSpace(env[legacy]) != "" {
+			if err := removeEnvVar(agentsEnvPath, legacy); err != nil {
+				return fmt.Errorf("removing %s: %w", legacy, err)
+			}
+		}
+	}
 
 	if strings.TrimSpace(env["GETTY_IMAGE_PROXY_URL"]) == "" {
 		if err := upsertEnvVarUnquoted(agentsEnvPath, "GETTY_IMAGE_PROXY_URL", defaultLocalGettyAPIURL); err != nil {
@@ -45,11 +51,11 @@ func (f *GettyFixer) Fix(ctx context.Context, projectRoot string) error {
 		}
 	}
 
-	if !goCodeS2S {
+	s2s := strings.EqualFold(strings.TrimSpace(env["USE_S2S_AUTH"]), "true")
+	if !s2s {
 		return fmt.Errorf(
-			"getty auth is not configured in agents/.env.\n\n" +
-				"Set GOCODE_USE_S2S_AUTH=true (AWS SSO profile mints the IAM JWT).\n\n" +
-				"See docs/mediasearch.md",
+			"USE_S2S_AUTH=true is not set in agents/.env.\n\n" +
+				"Run the main env fixer first to configure S2S auth",
 		)
 	}
 

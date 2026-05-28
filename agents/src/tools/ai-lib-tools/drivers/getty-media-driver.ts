@@ -3,7 +3,7 @@
  *
  * Handles both image and video search through the GoDaddy Getty Images proxy
  * (`api.{test-,}godaddy.com/getty-proxy` or env-configured base). Auth and
- * S2S token lifecycle live in `BaseDriverV2` (`GOCODE_USE_S2S_AUTH`,
+ * S2S token lifecycle live in `BaseDriverV2` (`USE_S2S_AUTH`, `S2S_AWS_PROFILE`,
  * `SSO_HOST`). Proxy base URL: `GETTY_IMAGE_PROXY_URL` or dev direct proxy default.
  *
  * Implements the shared MediaDriver interface for unified access.

@@ -7,7 +7,7 @@
  * with permanent CDN URLs.
  *
  * Auth and HTTP lifecycle use `BaseDriverV2` (same as `GettyMediaDriver`):
- * `GOCODE_USE_S2S_AUTH` and `SSO_HOST` from env.
+ * `USE_S2S_AUTH`, `S2S_AWS_PROFILE`, and `SSO_HOST` from env.
  *
  * The legacy `GETTY_TOKEN` Bearer path has been removed.
  */

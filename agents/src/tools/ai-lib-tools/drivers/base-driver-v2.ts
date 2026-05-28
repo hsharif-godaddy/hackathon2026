@@ -1,4 +1,4 @@
-import { getS2SToken, isS2SAuthEnabled, refreshS2SToken } from '@airo/ai-lib';
+import { getS2STokenV2, isS2SAuthV2Enabled, refreshS2STokenV2, type S2SAuthV2Config } from '@airo/ai-lib';
 
 import { log, Logger } from '../../../logging/index.js';
 import { decodeJwtExp } from '../../../utils/jwt-expiry.js';
@@ -19,7 +19,7 @@ export abstract class BaseDriverV2 {
   private readonly appKey: string;
 
   private readonly useS2S: boolean;
-  private readonly ssoHost: string;
+  private readonly s2sConfig: S2SAuthV2Config;
   private readonly localSsoJwt: string;
   private cachedS2SToken: string | null = null;
   private cachedTokenExpSeconds: number | null = null;
@@ -34,24 +34,31 @@ export abstract class BaseDriverV2 {
     const envAppKey = config.appKeyEnvVar ? process.env[config.appKeyEnvVar] : undefined;
     this.appKey = envAppKey || config.defaultAppKey || 'airo-app-builder';
 
-    this.useS2S = isS2SAuthEnabled();
-    this.ssoHost = process.env.SSO_HOST || 'sso.test-godaddy.com';
+    this.useS2S = isS2SAuthV2Enabled();
+    this.s2sConfig = {
+      awsProfile: process.env.S2S_AWS_PROFILE || 'gocode',
+      ssoHost: process.env.SSO_HOST || 'sso.test-godaddy.com',
+    };
     this.localSsoJwt = process.env.SSO_JWT || '';
 
     this.logger.info(`base-driver-v2.${config.serviceName}.config.initialized`, {
       baseUrl: this.apiBaseUrl,
       hasAuth: this.hasAuth(),
       useS2S: this.useS2S,
+      ...(this.useS2S && {
+        awsProfile: this.s2sConfig.awsProfile,
+        ssoHost: this.s2sConfig.ssoHost,
+      }),
     });
 
     if (!this.hasAuth()) {
       this.logger.warn(`base-driver-v2.${config.serviceName}.auth.missing`, {
-        message: 'Neither GOCODE_USE_S2S_AUTH nor SSO_JWT is set',
+        message: 'Neither USE_S2S_AUTH nor SSO_JWT is set',
       });
     }
   }
 
-  private getAuthToken(): string {
+  protected getAuthToken(): string {
     if (this.useS2S) {
       if (!this.cachedS2SToken) {
         throw new Error('S2S token not initialized. Call ensureInitialized() first.');
@@ -62,7 +69,7 @@ export abstract class BaseDriverV2 {
       return `sso-jwt ${this.localSsoJwt}`;
     }
     throw new Error(
-      'No authentication configured. Set GOCODE_USE_S2S_AUTH=true for hosted or SSO_JWT for local.'
+      'No authentication configured. Set USE_S2S_AUTH=true for hosted or SSO_JWT for local.'
     );
   }
 
@@ -102,9 +109,13 @@ export abstract class BaseDriverV2 {
 
   private async fetchAndCacheToken(forceRefresh: boolean): Promise<void> {
     try {
+      this.logger.info(`base-driver-v2.${this.serviceName}.token.${forceRefresh ? 'refresh' : 'init'}`, {
+        awsProfile: this.s2sConfig.awsProfile,
+        ssoHost: this.s2sConfig.ssoHost,
+      });
       const token = forceRefresh
-        ? await refreshS2SToken({ ssoHost: this.ssoHost })
-        : await getS2SToken({ ssoHost: this.ssoHost });
+        ? await refreshS2STokenV2(this.s2sConfig)
+        : await getS2STokenV2(this.s2sConfig);
       this.cachedS2SToken = token;
       this.cachedTokenExpSeconds = decodeJwtExp(token, (err) => {
         this.logger.warn(`base-driver-v2.${this.serviceName}.token.exp_decode_failed`, {
@@ -160,7 +171,7 @@ export abstract class BaseDriverV2 {
       method,
       endpoint,
       status: response.status,
-      duration: `${Date.now() - startTime}ms`,
+      durationMs: Date.now() - startTime,
     });
 
     return response;

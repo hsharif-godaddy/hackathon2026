@@ -9,14 +9,14 @@ import (
 	"github.com/airo-ai-builder/dev-runner/internal/preflight"
 )
 
-// GettyCheck verifies Getty Images proxy settings in agents/.env when Getty
+// GettyCheck verifies Getty-specific proxy settings in agents/.env when Getty
 // is in scope: IMAGE_SEARCH_DRIVER=getty or non-empty GETTY_IMAGE_PROXY_URL.
 //
-// Agents call the GoDaddy Getty Images proxy directly. Auth uses
-// GOCODE_USE_S2S_AUTH=true (IAM JWT via AWS SSO profile).
+// Global S2S auth vars (USE_S2S_AUTH, S2S_AWS_PROFILE) are validated by
+// AgentsEnvCheck; this check only covers Getty-specific config: proxy URL
+// and legacy vars (GETTY_TOKEN, GETTY_API_URL).
 //
 // GETTY_IMAGE_PROXY_URL is optional (the agent picks a default per NODE_ENV).
-// GETTY_TOKEN is no longer used; we surface a warning if it's still set.
 type GettyCheck struct{}
 
 func (c *GettyCheck) Name() string     { return "Getty Proxy" }
@@ -64,7 +64,7 @@ func (c *GettyCheck) Run(ctx context.Context, projectRoot string) preflight.Chec
 		}
 	}
 
-	s2sEnabled := strings.EqualFold(strings.TrimSpace(env["GOCODE_USE_S2S_AUTH"]), "true")
+	s2sEnabled := strings.EqualFold(strings.TrimSpace(env["USE_S2S_AUTH"]), "true")
 
 	if !s2sEnabled {
 		return preflight.CheckResult{
@@ -72,9 +72,29 @@ func (c *GettyCheck) Run(ctx context.Context, projectRoot string) preflight.Chec
 			Name:         c.Name(),
 			Category:     c.Category(),
 			FixAvailable: true,
-			Message:      "Getty is in scope but GOCODE_USE_S2S_AUTH=true is not set in agents/.env",
-			InstallHint: "Set GOCODE_USE_S2S_AUTH=true and configure AWS SSO (see docs/mediasearch.md). " +
+			Message:      "Getty is in scope but USE_S2S_AUTH=true is not set in agents/.env",
+			InstallHint: "Set USE_S2S_AUTH=true and configure AWS SSO (see docs/mediasearch.md). " +
 				"Run the Getty preflight fixer to add a default GETTY_IMAGE_PROXY_URL.",
+		}
+	}
+
+	var legacyVars []string
+	if strings.TrimSpace(env["GETTY_TOKEN"]) != "" {
+		legacyVars = append(legacyVars, "GETTY_TOKEN")
+	}
+	if strings.TrimSpace(env["GETTY_API_URL"]) != "" {
+		legacyVars = append(legacyVars, "GETTY_API_URL")
+	}
+	if len(legacyVars) > 0 {
+		return preflight.CheckResult{
+			Status:       preflight.StatusWarn,
+			Name:         c.Name(),
+			Category:     c.Category(),
+			FixAvailable: true,
+			Message: fmt.Sprintf(
+				"%s no longer used by agents. Remove from agents/.env.",
+				strings.Join(legacyVars, " and "),
+			),
 		}
 	}
 
@@ -83,19 +103,10 @@ func (c *GettyCheck) Run(ctx context.Context, projectRoot string) preflight.Chec
 		apiURL = defaultGettyDevURL
 	}
 
-	if legacy := strings.TrimSpace(env["GETTY_TOKEN"]); legacy != "" {
-		return preflight.CheckResult{
-			Status:   preflight.StatusWarn,
-			Name:     c.Name(),
-			Category: c.Category(),
-			Message:  "GETTY_TOKEN is set but no longer used by agents (Bearer-to-airo-proxy path was removed). Safe to remove from agents/.env.",
-		}
-	}
-
 	return preflight.CheckResult{
 		Status:   preflight.StatusPass,
 		Name:     c.Name(),
 		Category: c.Category(),
-		Message:  fmt.Sprintf("Getty configured (auth=GOCODE_USE_S2S_AUTH, url=%s)", apiURL),
+		Message:  fmt.Sprintf("Getty configured (url=%s)", apiURL),
 	}
 }
