@@ -206,6 +206,8 @@ import { workspaceScopeFromAppId } from '../memory/interfaces/scope.js';
 import { ConversationContextManager } from '../services/ConversationContextManager.js';
 import { getTemplateIds } from '../agents/template-registry.js';
 import { createAgentRouter } from './agent-router.js';
+import { getModelOverride } from '../utils/model-selection.js';
+import { getActiveModelOverride } from '@airo/ai-lib';
 import { closeDatabase, getDatabase } from '../database/index.js';
 import { AppRepository } from '../database/repositories/AppRepository.js';
 
@@ -259,11 +261,19 @@ function getOrCreateSSEExecutionService(): MessageExecutionService | null {
       }),
     },
     loadConversationHistory: async (conversationId, appId, agentName) => {
+      // Resolution order matches ai-lib-websocket-server.ts messageProvider:
+      // 1. AI_MODEL_OVERRIDE env var (dev/test)
+      // 2. ALS-scoped override set by MessageExecutionService.runWithOverride
+      //    (resolved from JWT/per-project preferences) — required so Kimi traffic
+      //    is identified, skipping Anthropic-only tool-id sanitization and
+      //    preserving the Kimi prompt cache.
+      // 3. 'sonnet' default
+      const modelName = getModelOverride() || getActiveModelOverride() || 'sonnet'
       const historyLoader = sseConversationContextManager.getHistoryLoader()
       const llmMessages = await historyLoader.loadMessagesWithTokenLimitByConversationId(
-        conversationId, 40000, 'sonnet', true, appId
+        conversationId, 40000, modelName, true, appId
       )
-      return historyLoader.formatMessagesForAISDK(llmMessages, appId, agentName)
+      return historyLoader.formatMessagesForAISDK(llmMessages, appId, agentName, modelName)
     },
     conversationPersistence: new AgentsMessagePersistence(),
     eventChannel,

@@ -1,9 +1,9 @@
 /**
- * Restricts model overrides to approved Claude models to prevent cost abuse.
- * isModelSupported() includes expensive non-Claude models like gpt-4,
+ * Restricts model overrides to approved models to prevent cost abuse.
+ * isModelSupported() includes expensive non-allowlisted models like gpt-4,
  * while grants are not model-specific — this allowlist is the primary defense.
  *
- * Update this set when new Claude models are added.
+ * Update this set when new approved models are added.
  */
 export const ALLOWED_OVERRIDE_MODELS = new Set([
   'claude-opus-4-7',
@@ -13,6 +13,7 @@ export const ALLOWED_OVERRIDE_MODELS = new Set([
   'claude-sonnet-4-5',
   'claude-sonnet-4-5-20250929',
   'claude-haiku-4-5',
+  'azure/Kimi-K2.6',
   'sonnet',
   'haiku',
 ]);

@@ -75,7 +75,7 @@ import { fileUploadService } from '../services/FileUploadService.js'
 import { logger, log } from '../logging/index.js'
 import { jwtAuthMiddleware, buildAgentContext, type AgentContext } from './middleware/jwt-auth.js'
 import { getAgentConfig } from '../services/features.js'
-import { runWithModelOverride } from '@airo/ai-lib'
+import { runWithModelOverride, getActiveModelOverride } from '@airo/ai-lib'
 import { resolveProfile, runWithProfile } from '../profiles/index.js'
 import { createAgentRouter } from './agent-router.js'
 import { getModelOverride } from '../utils/model-selection.js'
@@ -879,7 +879,15 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           const app = appRepo.findById(appId);
           const appPath = app?.path;
 
-          const modelName = getModelOverride() || metadata.modelName || 'sonnet';
+          // Resolution order matches getAgentModelWithName():
+          // 1. AI_MODEL_OVERRIDE env var (dev/test)
+          // 2. ALS-scoped override (set by messageMiddleware via runWithModelOverride
+          //    after resolving JWT/per-project preferences) — this is how Kimi traffic
+          //    is identified so we can skip Anthropic-only tool-id sanitization and
+          //    preserve the Kimi prompt cache.
+          // 3. Legacy metadata.modelName (frontend currently never sends this)
+          // 4. 'sonnet' default
+          const modelName = getModelOverride() || getActiveModelOverride() || metadata.modelName || 'sonnet';
           const historyLoader = conversationContextManager.getHistoryLoader();
 
           // SECURITY: Verify conversation belongs to authenticated appId
@@ -926,7 +934,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
             metadata.customerId as string | undefined
           );
 
-          const formattedMessages = historyLoader.formatMessagesForAISDK(llmMessages, appId, agentName);
+          const formattedMessages = historyLoader.formatMessagesForAISDK(llmMessages, appId, agentName, modelName);
 
           contextLogger.debug('websocket.message.provider.loaded', {
             message: 'Loaded messages for specific conversation',

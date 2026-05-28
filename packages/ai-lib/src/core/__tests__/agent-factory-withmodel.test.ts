@@ -4,7 +4,7 @@
 import type { LanguageModel, Tool } from 'ai'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { AgentWrapper } from '../agent-factory.js'
+import { AgentWrapper, PROVIDER_TOOL_FALLBACK } from '../agent-factory.js'
 import type { AgentConfig, SkillToolProvider } from '../types.js'
 
 vi.mock('ai', async importOriginal => {
@@ -260,6 +260,108 @@ describe('AgentWrapper withModel', function withModelSuite() {
 
     expect(newPrepareCall).not.toBe(origPrepareCall)
   })
+
+  it('swaps provider-specific tools when switching from anthropic to non-anthropic', function swapsProviderTools() {
+    const fallbackKey = PROVIDER_TOOL_FALLBACK
+    const anthropicTool = { execute: vi.fn() } as Tool
+    const fallbackTool = { execute: vi.fn() } as Tool
+    ;(anthropicTool as any)[fallbackKey] = fallbackTool
+
+    const originalModel = createLanguageModelStub('orig')
+    const nextModel = createLanguageModelStub('next')
+    const normalTool = { execute: vi.fn() } as Tool
+    const config: AgentConfig = {
+      name: 'test-agent',
+      model: originalModel,
+      modelName: 'claude-sonnet-4-6',
+      system: 'system',
+      tools: {
+        providerTool: anthropicTool,
+        regularTool: normalTool,
+      },
+      logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() }
+    }
+
+    const wrapper = new AgentWrapper(config)
+    const derived = wrapper.withModel(nextModel, 'some-openai-model')
+    const nextCfg = derived.getConfig()
+
+    expect(nextCfg.tools!.providerTool).toBe(fallbackTool)
+    expect(nextCfg.tools!.regularTool).toBe(normalTool)
+  })
+
+  it('preserves provider-specific tools when staying on same provider', function preservesProviderTools() {
+    const fallbackKey = PROVIDER_TOOL_FALLBACK
+    const anthropicTool = { execute: vi.fn() } as Tool
+    const fallbackTool = { execute: vi.fn() } as Tool
+    ;(anthropicTool as any)[fallbackKey] = fallbackTool
+
+    const originalModel = createLanguageModelStub('orig')
+    const nextModel = createLanguageModelStub('next')
+    const config: AgentConfig = {
+      name: 'test-agent',
+      model: originalModel,
+      modelName: 'claude-sonnet-4-6',
+      system: 'system',
+      tools: { providerTool: anthropicTool },
+      logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() }
+    }
+
+    const wrapper = new AgentWrapper(config)
+    const derived = wrapper.withModel(nextModel, 'claude-haiku-4-5')
+    const nextCfg = derived.getConfig()
+
+    expect(nextCfg.tools!.providerTool).toBe(anthropicTool)
+  })
+
+  it('swaps provider-specific tools at construction when initial model is non-anthropic', function swapsAtConstruction() {
+    const fallbackKey = PROVIDER_TOOL_FALLBACK
+    const anthropicTool = {
+      type: 'provider',
+      id: 'anthropic.text_editor_20250728',
+      execute: vi.fn()
+    } as unknown as Tool
+    const fallbackTool = { execute: vi.fn() } as Tool
+    ;(anthropicTool as any)[fallbackKey] = fallbackTool
+
+    const model = createLanguageModelStub('kimi')
+    const config: AgentConfig = {
+      name: 'test-agent',
+      model,
+      // Non-anthropic model supplied from the start (e.g. AI_MODEL_OVERRIDE)
+      modelName: 'azure/Kimi-K2.6',
+      system: 'system',
+      tools: { providerTool: anthropicTool },
+      logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() }
+    }
+
+    const wrapper = new AgentWrapper(config)
+    expect(wrapper.getConfig().tools!.providerTool).toBe(fallbackTool)
+  })
+
+  it('keeps provider-specific tools at construction when initial model is anthropic', function keepsAtConstructionAnthropic() {
+    const fallbackKey = PROVIDER_TOOL_FALLBACK
+    const anthropicTool = {
+      type: 'provider',
+      id: 'anthropic.text_editor_20250728',
+      execute: vi.fn()
+    } as unknown as Tool
+    const fallbackTool = { execute: vi.fn() } as Tool
+    ;(anthropicTool as any)[fallbackKey] = fallbackTool
+
+    const model = createLanguageModelStub('sonnet')
+    const config: AgentConfig = {
+      name: 'test-agent',
+      model,
+      modelName: 'claude-sonnet-4-6',
+      system: 'system',
+      tools: { providerTool: anthropicTool },
+      logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() }
+    }
+
+    const wrapper = new AgentWrapper(config)
+    expect(wrapper.getConfig().tools!.providerTool).toBe(anthropicTool)
+  })
 })
 
 describe('AgentWrapper override delegation', function overrideSuite() {
@@ -270,11 +372,13 @@ describe('AgentWrapper override delegation', function overrideSuite() {
   let MockToolLoopAgent: ReturnType<typeof vi.fn>
   let mockGetActiveModelOverride: ReturnType<typeof vi.fn>
   let mockGetModel: ReturnType<typeof vi.fn>
+  let lastOverrideSettings: any
   const savedEnv = { AI_MODEL_OVERRIDE: undefined as string | undefined }
 
   beforeEach(async () => {
     savedEnv.AI_MODEL_OVERRIDE = process.env.AI_MODEL_OVERRIDE
     delete process.env.AI_MODEL_OVERRIDE
+    lastOverrideSettings = undefined
 
     mockAgent = {
       generate: vi.fn().mockResolvedValue({
@@ -288,7 +392,8 @@ describe('AgentWrapper override delegation', function overrideSuite() {
     const aiModule = await import('ai')
     MockToolLoopAgent = aiModule.ToolLoopAgent as ReturnType<typeof vi.fn>
     MockToolLoopAgent.mockClear()
-    MockToolLoopAgent.mockImplementation(function factory() {
+    MockToolLoopAgent.mockImplementation(function factory(settings: unknown) {
+      lastOverrideSettings = settings
       return mockAgent
     })
 
@@ -349,6 +454,28 @@ describe('AgentWrapper override delegation', function overrideSuite() {
     expect(mockGetModel).toHaveBeenCalledTimes(1)
     // Base + 1 override (reused)
     expect(MockToolLoopAgent).toHaveBeenCalledTimes(2)
+  })
+
+  it('rebuilds system prompt for runtime override agents when configured', async function rebuildsSystem() {
+    mockGetActiveModelOverride.mockReturnValue('azure/Kimi-K2.6')
+    const systemForModel = vi.fn(async function systemForModel(modelName: string) {
+      return `system for ${modelName}`
+    })
+
+    const wrapper = new AgentWrapper({
+      name: 'test-agent',
+      model: createLanguageModelStub('base-model'),
+      modelName: 'base-model',
+      system: 'system for base-model',
+      metadata: {
+        systemForModel
+      },
+      logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+    })
+    await wrapper.generate('hello')
+
+    expect(systemForModel).toHaveBeenCalledWith('azure/Kimi-K2.6')
+    expect(lastOverrideSettings.instructions).toBe('system for azure/Kimi-K2.6')
   })
 
   it('falls back to default on getModel failure', async function fallsBack() {

@@ -153,6 +153,25 @@ describe('model-pricing', () => {
       expect(estimate.provider).toBe('anthropic')
       expect(estimate.cachedInputCost).toBeDefined()
     })
+
+    it('should calculate costs with read caching for azure Kimi', () => {
+      const usage: TokenUsage = {
+        inputTokens: 1000,
+        outputTokens: 500,
+        totalTokens: 1500,
+        cachedInputTokensRead: 200
+      }
+
+      const estimate = calculateCostEstimate(usage, 'azure/Kimi-K2.6')
+
+      expect(estimate.provider).toBe('openai')
+      expect(estimate.inputCost).toBeCloseTo(0.00076, 6)
+      expect(estimate.outputCost).toBe(0.002)
+      expect(estimate.cachedInputCost).toBeCloseTo(0.000032, 6)
+      expect(estimate.totalCost).toBeCloseTo(0.002792, 6)
+      expect(estimate.regularCost).toBeCloseTo(0.00295, 6)
+      expect(estimate.savings).toBeCloseTo(0.000158, 6)
+    })
   })
 
   describe('getCacheHitRate', () => {
@@ -318,6 +337,10 @@ describe('model-pricing', () => {
 
     it('should return false for OpenAI models without caching', () => {
       expect(modelSupportsCaching('gpt-4-turbo')).toBe(false)
+    })
+
+    it('should return true for azure Kimi read cache pricing', () => {
+      expect(modelSupportsCaching('azure/Kimi-K2.6')).toBe(true)
     })
   })
 

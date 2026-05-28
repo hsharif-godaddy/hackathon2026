@@ -20,7 +20,7 @@ import type { GlobalAgentConfig, AgentContext, ProcessedFile, AgentConfig } from
 import type { PipelineContextMessage, ContextPipeline } from './context-pipeline.js'
 import { createDefaultPipeline } from './context-normalization.js'
 import { createDuplicateResponseStopCondition } from './duplicate-detection.js'
-import { mergeProviderOptions } from '../utils/model-normalization.js'
+import { getModelInfo, mergeProviderOptions } from '../utils/model-normalization.js'
 import { createLogger, serializeError, isBudgetExceededAPIError, BudgetExceededError, retryWithBackoff, type RetryContext } from '@airo/ai-common'
 import { addCacheControlToSystemPrompt, logCachingStats } from '../utils/prompt-caching.js'
 import { getModel, llmMetadataContext, type LitellmMetadata } from '../providers/unified-provider.js'
@@ -248,6 +248,28 @@ export type MessageWithCachePoint = ModelMessage & {
   providerOptions?: ProviderOptions
 }
 
+/**
+ * Symbol used to attach a provider-agnostic fallback tool to a provider-specific tool.
+ * AgentWrapper swaps the tool with `tool[PROVIDER_TOOL_FALLBACK]` when the target model's
+ * provider differs from the tool's native provider. Exported so consumers attach the
+ * fallback by importing this symbol rather than recreating it via `Symbol.for(...)`.
+ */
+export const PROVIDER_TOOL_FALLBACK: unique symbol = Symbol.for('ailib.providerToolFallback')
+
+/**
+ * Inspect a Vercel AI SDK tool and return the provider it was defined for, if any.
+ * Provider-defined tools have `type: 'provider'` and an `id` like `anthropic.text_editor_20250728`;
+ * the prefix before the first `.` is the native provider.
+ */
+function detectToolNativeProvider(tool: unknown): string | undefined {
+  if (!tool || typeof tool !== 'object') return undefined
+  const t = tool as { type?: unknown; id?: unknown }
+  if (t.type !== 'provider' && t.type !== 'provider-defined') return undefined
+  if (typeof t.id !== 'string') return undefined
+  const dot = t.id.indexOf('.')
+  return dot > 0 ? t.id.slice(0, dot) : undefined
+}
+
 export class AgentWrapper {
   // Using explicit empty call options type instead of 'any' to avoid 'as never' casts
   // The second and third generics remain 'any' as they're provider-internal types
@@ -297,8 +319,16 @@ export class AgentWrapper {
       stopWhen.push(...config.stopWhen)
     }
 
+    // Swap any provider-specific tools that have a fallback for the target model's
+    // provider. This covers both initial construction (override model set at startup)
+    // and withModel() transitions — both go through this constructor.
+    const resolvedTools = this.resolveProviderTools(config.modelName)
+    if (resolvedTools && resolvedTools !== this.config.tools) {
+      this.config = { ...this.config, tools: resolvedTools }
+    }
+
     // Wrap tools with execution hooks if provided
-    const wrappedTools = this.wrapToolsWithHooks(config.tools || {})
+    const wrappedTools = this.wrapToolsWithHooks(this.config.tools || {})
 
     // Disable SDK-native retries — retryWithBackoff handles retries with proper
     // error classification (429/5xx), jitter, and structured logging.
@@ -808,10 +838,49 @@ export class AgentWrapper {
    * addCacheControlToSystemPrompt, and prepareCall closure for the new model.
    */
   withModel(model: import('ai').LanguageModel, modelName: string): AgentWrapper {
+    // Provider-tool swapping is handled inside the constructor, so we just rebuild
+    // the wrapper with the new model. The constructor will resolve tools against
+    // the new modelName.
     return new AgentWrapper(
       { ...this.config, model, modelName },
       this.skillToolProvider
     )
+  }
+
+  /**
+   * Swap any provider-specific tools that have a fallback for the target model's provider.
+   * Tools can declare a fallback via the exported `PROVIDER_TOOL_FALLBACK` symbol. A tool's
+   * native provider is detected from its `type: 'provider'` / `id: '<provider>.<tool>'`
+   * metadata; tools without that metadata are assumed to be Anthropic-native (the only
+   * SDK that currently emits provider-defined tools in this codebase).
+   */
+  private resolveProviderTools(targetModelName: string | undefined): Record<string, unknown> | undefined {
+    const tools = this.config.tools
+    if (!tools) return undefined
+
+    const targetProvider = this.getProviderOrDefault(targetModelName)
+    let swapped: Record<string, unknown> | undefined
+    for (const [name, tool] of Object.entries(tools)) {
+      const fallback = (tool as any)?.[PROVIDER_TOOL_FALLBACK]
+      if (!fallback) continue
+      const nativeProvider = detectToolNativeProvider(tool) ?? 'anthropic'
+      if (nativeProvider === targetProvider) continue
+      if (!swapped) swapped = { ...tools }
+      swapped[name] = fallback
+    }
+    return swapped ?? tools
+  }
+
+  private getProviderOrDefault(modelName: string | undefined, fallback = 'openai'): string {
+    if (!modelName) return fallback
+    const info = getModelInfo(modelName)
+    if (!info.isSupported) {
+      logger.warn('agent.resolve_provider.unknown_model', {
+        modelName,
+        fallbackProvider: info.provider,
+      })
+    }
+    return info.provider
   }
 
   private async getOrCreateOverrideAgent(modelName: string): Promise<AgentWrapper | undefined> {
@@ -820,7 +889,14 @@ export class AgentWrapper {
 
     try {
       const model = await getModel(modelName)
-      const created = this.withModel(model, modelName)
+      const systemForModel = this.config.metadata?.systemForModel
+      const system = typeof systemForModel === 'function'
+        ? await systemForModel(modelName)
+        : this.config.system
+      const created = new AgentWrapper(
+        { ...this.config, model, modelName, system },
+        this.skillToolProvider
+      )
       this.overrideAgents.set(modelName, created)
       logger.info('agent.override.created', {
         agentName: this.config.name,

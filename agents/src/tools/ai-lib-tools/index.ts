@@ -6,7 +6,7 @@
 import type { Tool } from '@airo/ai-lib';
 
 // Import all individual tools
-export { textEditorAITool } from './text-editor.js';
+export { textEditorAITool, textEditorSchemaAITool } from './text-editor.js';
 export { directoryListingAITool } from './directory-listing.js';
 export { terminalCommandAITool } from './terminal-command.js';
 export { readFileAITool } from './read-file.js';

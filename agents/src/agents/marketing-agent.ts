@@ -49,7 +49,7 @@ export async function createMarketingAgent(): Promise<AgentConfig> {
   const baseTools = {
     seoAnalysis: allAILibTools.seoAnalysis,
     readFile: allAILibTools.readFile,
-    str_replace_based_edit_tool: allAILibTools.str_replace_based_edit_tool,  // Native Anthropic text editor
+    str_replace_based_edit_tool: allAILibTools.str_replace_based_edit_tool,
     todoList: allAILibTools.todoList,
     directoryListing: allAILibTools.directoryListing,
     grepSearch: allAILibTools.grepSearch,

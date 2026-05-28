@@ -1,4 +1,5 @@
 import type { ModelMessage, ToolModelMessage, UserModelMessage, AssistantModelMessage, SystemModelMessage } from 'ai';
+import { getModelProvider } from '@airo/ai-lib';
 import type { ToolCall, ConversationSummary } from '../database/schema.js';
 import type { DatabaseMessage } from '../types/conversation-messages.js';
 import { getMessageStore, getSummaryStore } from '../memory/adapters/index.js';
@@ -14,6 +15,23 @@ import type { CompressionStrategy } from './compression/MessageCompressor.js';
 import type { SummarizationStrategy } from './summarization/SummarizationStrategy.js';
 import { LLMSummarizationStrategy } from './summarization/LLMSummarizationStrategy.js';
 import { safeStringify } from '@airo/shared';
+
+const ANTHROPIC_TOOL_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
+
+/**
+ * Anthropic rejects tool_use.id values that don't match `^[a-zA-Z0-9_-]+$`. OpenAI-compatible
+ * providers (notably LiteLLM/Kimi) emit IDs like `functions.tools_readFile:9` containing `.` and `:`,
+ * which 400s when the same conversation later resumes against Claude. The remap is deterministic so
+ * an assistant tool-call ID and its matching tool-result toolCallId always normalize to the same value.
+ *
+ * Only call this when the target provider is Anthropic. Sanitizing for OpenAI-compatible providers
+ * mutates prompt-prefix bytes that the upstream serving infra (e.g., Kimi) cached against the
+ * original ID format, busting the prompt cache and inflating cost on follow-up turns.
+ */
+export function sanitizeToolUseId(id: string): string {
+  if (ANTHROPIC_TOOL_ID_PATTERN.test(id)) return id;
+  return id.replace(/[^a-zA-Z0-9_-]/g, '_');
+}
 
 /**
  * Tool result part in AI SDK v6 format
@@ -630,13 +648,25 @@ export class ConversationHistoryLoader {
    * @param llmMessages - Array of LLM messages from loadMessagesWithTokenLimitByConversationId
    * @param appId - App ID for logging
    * @param agentId - Agent ID for logging
+   * @param targetModelName - Model the formatted messages will be sent to. Used to decide
+   *   whether to rewrite tool IDs into Anthropic's `^[a-zA-Z0-9_-]+$` shape. Sanitization runs
+   *   only for Anthropic targets so OpenAI-compatible providers (e.g., Kimi via LiteLLM) keep
+   *   their original IDs and stay on their prompt cache. When undefined, sanitization runs
+   *   defensively — preserving the historical (pre-Kimi) behavior on call sites that haven't
+   *   been threaded yet.
    * @returns Array formatted for AI SDK with tool messages in v6 ModelMessage format
    */
   formatMessagesForAISDK(
     llmMessages: LLMMessage[],
     appId: string,
-    agentId: string
+    agentId: string,
+    targetModelName?: string,
   ): Array<ModelMessage> {
+    const shouldSanitizeToolIds = targetModelName
+      ? getModelProvider(targetModelName) === 'anthropic'
+      : true;
+    const maybeSanitize = (id: string): string =>
+      shouldSanitizeToolIds ? sanitizeToolUseId(id) : id;
     let formattedMessages: ModelMessage[] = [];
     
     for (let i = 0; i < llmMessages.length; i++) {
@@ -663,7 +693,7 @@ export class ConversationHistoryLoader {
             role: 'tool',
             content: [{
               type: 'tool-result',
-              toolCallId: toolResult?.toolCallId ?? '',
+              toolCallId: maybeSanitize(toolResult?.toolCallId ?? ''),
               toolName: toolResult?.toolName ?? '',
               output: {
                 type: 'text',
@@ -704,7 +734,7 @@ export class ConversationHistoryLoader {
             role: 'tool',
             content: [{
               type: 'tool-result',
-              toolCallId: msg.tool_call_id,
+              toolCallId: maybeSanitize(msg.tool_call_id),
               toolName: msg.name,
               output: {
                 type: 'text',
@@ -774,7 +804,7 @@ export class ConversationHistoryLoader {
             
             contentParts.push({
               type: 'tool-call',
-              toolCallId: toolCall.id,
+              toolCallId: maybeSanitize(toolCall.id),
               toolName: toolCall.function.name,
               input: parsedArgs  // ← Must be 'input', not 'args' (per AI SDK v6 ToolCallPart specification)
             });

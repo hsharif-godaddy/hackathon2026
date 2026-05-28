@@ -28,7 +28,7 @@ import {
   handleView,
 } from '../../text-editor-handlers.js';
 import { isFileBlocked } from '../../read-file.js';
-import { textEditorAITool } from '../text-editor.js';
+import { textEditorAITool, textEditorSchemaAITool } from '../text-editor.js';
 
 const createExecutionOptions = (appId: string) => ({
   experimental_context: {
@@ -96,6 +96,70 @@ describe('textEditorAITool — blocked path wiring', function textEditorSecurity
         createExecutionOptions(appId),
       ),
     ).rejects.toThrow(/File blocked:/);
+
+    expect(handleView).not.toHaveBeenCalled();
+  });
+
+  it('invokes handleView through the schema tool with execution context', async function schemaViewAllowed() {
+    vi.mocked(handleView).mockResolvedValue('viewed');
+
+    await textEditorSchemaAITool.execute(
+      {
+        command: 'view',
+        path: 'src/app.tsx',
+        view_range: [1, -1],
+      },
+      createExecutionOptions(appId),
+    );
+
+    expect(handleView).toHaveBeenCalledTimes(1);
+    expect(handleView).toHaveBeenCalledWith(
+      join(appPath, 'src/app.tsx'),
+      [1, -1],
+      expect.anything(),
+    );
+  });
+
+  it('rejects invalid view_range before handleView', async function viewRangeInvalid() {
+    await expect(
+      textEditorSchemaAITool.execute(
+        {
+          command: 'view',
+          path: 'src/app.tsx',
+          view_range: [0, 1],
+        },
+        createExecutionOptions(appId),
+      ),
+    ).rejects.toThrow(/view_range must be/);
+
+    expect(handleView).not.toHaveBeenCalled();
+  });
+
+  it('rejects view_range with end < start before handleView', async function viewRangeInverted() {
+    await expect(
+      textEditorSchemaAITool.execute(
+        {
+          command: 'view',
+          path: 'src/app.tsx',
+          view_range: [100, 5],
+        },
+        createExecutionOptions(appId),
+      ),
+    ).rejects.toThrow(/end_line must be >= start_line/);
+
+    expect(handleView).not.toHaveBeenCalled();
+  });
+
+  it('throws App ID is required when schema tool runs without execution context', async function schemaMissingContext() {
+    await expect(
+      textEditorSchemaAITool.execute(
+        {
+          command: 'view',
+          path: 'src/app.tsx',
+        },
+        {} as never,
+      ),
+    ).rejects.toThrow(/App ID is required/);
 
     expect(handleView).not.toHaveBeenCalled();
   });

@@ -26,6 +26,7 @@ vi.mock('ai-tokenizer', () => ({
     'anthropic/claude-sonnet-4.5': true,
     'anthropic/claude-haiku-4.5': true,
     'google/gemini-3-pro-preview': true,
+    'moonshotai/kimi-k2-thinking': true,
     'zai/glm-4.5': true,
   }
 }))
@@ -261,6 +262,10 @@ describe('token-counter', () => {
 
     it('should return correct provider for Gemini models', () => {
       expect(getModelProvider('gemini-3-flash-preview')).toBe('openai')
+    })
+
+    it('should return correct provider for azure Kimi', () => {
+      expect(getModelProvider('azure/Kimi-K2.6')).toBe('openai')
     })
 
     it('should handle unsupported models', () => {

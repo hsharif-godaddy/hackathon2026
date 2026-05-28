@@ -72,7 +72,7 @@ export async function createExampleAgent(): Promise<AgentConfig> {
     tools: {
       // Example tools - in a real agent, you'd select specific tools
       // For now, we'll just include a few basic ones
-      str_replace_based_edit_tool: allAILibTools.str_replace_based_edit_tool,  // Native Anthropic text editor
+      str_replace_based_edit_tool: allAILibTools.str_replace_based_edit_tool,
       readFile: allAILibTools.readFile,
       directoryListing: allAILibTools.directoryListing,
     },

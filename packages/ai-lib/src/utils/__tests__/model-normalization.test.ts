@@ -13,6 +13,7 @@ import {
   getModelInfo,
   getLegacyModelMappings,
   getDefaultProviderOptions,
+  getDefaultModelSettings,
   shouldStripTemperature,
   mergeProviderOptions,
   MODELS,
@@ -70,6 +71,17 @@ describe('model-normalization', () => {
       expect(result.normalizedName).toBe('claude-sonnet-4-6')
     })
 
+    it('should normalize azure Kimi to the OpenAI-compatible provider', () => {
+      const result = normalizeModelName('azure/Kimi-K2.6')
+      expect(result).toEqual({
+        normalizedName: 'azure/kimi-k2.6',
+        fullModelId: 'azure/Kimi-K2.6',
+        provider: 'openai',
+        isSupported: true,
+        originalName: 'azure/Kimi-K2.6'
+      })
+    })
+
     it('should trim whitespace for processing but preserve original', () => {
       const result = normalizeModelName('  claude-sonnet-4-6  ')
       expect(result.normalizedName).toBe('claude-sonnet-4-6')
@@ -105,6 +117,7 @@ describe('model-normalization', () => {
     it('should return true for supported canonical models', () => {
       expect(isModelSupported('gpt-4o')).toBe(true)
       expect(isModelSupported('claude-sonnet-4-6')).toBe(true)
+      expect(isModelSupported('azure/Kimi-K2.6')).toBe(true)
     })
 
     it('should return true for supported aliases', () => {
@@ -129,6 +142,7 @@ describe('model-normalization', () => {
     it('should return full model name for OpenAI models', () => {
       expect(getFullModelName('gpt4o')).toBe('gpt-4o')
       expect(getFullModelName('gpt-4o')).toBe('gpt-4o')
+      expect(getFullModelName('azure/Kimi-K2.6')).toBe('azure/Kimi-K2.6')
     })
 
     it('should return Anthropic name by default for Claude models', () => {
@@ -154,6 +168,7 @@ describe('model-normalization', () => {
     it('should return correct provider for OpenAI models', () => {
       expect(getModelProvider('gpt4o')).toBe('openai')
       expect(getModelProvider('gpt-4-turbo')).toBe('openai')
+      expect(getModelProvider('azure/Kimi-K2.6')).toBe('openai')
     })
 
     it('should return anthropic provider by default for Claude models', () => {
@@ -187,6 +202,7 @@ describe('model-normalization', () => {
       expect(typeof mappings).toBe('object')
       expect(mappings['gpt4o']).toBe('gpt-4o')
       expect(mappings['sonnet']).toBe('claude-sonnet-4-6')
+      expect(mappings['azure/kimi-k2.6']).toBe('azure/Kimi-K2.6')
     })
 
     it('should map Claude models to Anthropic provider', () => {
@@ -269,6 +285,25 @@ describe('model-normalization', () => {
       })
     })
 
+    it('returns reasoning effort none for azure Kimi', () => {
+      expect(getDefaultProviderOptions('azure/Kimi-K2.6')).toEqual({
+        litellm: {
+          extra_body: {
+            reasoning_effort: 'none'
+          },
+          metadata: {
+            guardrails: {
+              'unicode-security': {
+                extra_body: {
+                  mode: 'disabled'
+                }
+              }
+            }
+          }
+        }
+      })
+    })
+
     it('returns effort low for claude-opus-4-7', () => {
       expect(getDefaultProviderOptions('claude-opus-4-7')).toEqual({
         anthropic: { effort: 'low' }
@@ -290,7 +325,47 @@ describe('model-normalization', () => {
     })
   })
 
+  describe('getDefaultModelSettings', () => {
+    it('returns provider options and temperature for azure Kimi', () => {
+      expect(getDefaultModelSettings('azure/Kimi-K2.6')).toEqual({
+        temperature: 0.6,
+        providerOptions: {
+          litellm: {
+            extra_body: {
+              reasoning_effort: 'none'
+            },
+            metadata: {
+              guardrails: {
+                'unicode-security': {
+                  extra_body: {
+                    mode: 'disabled'
+                  }
+                }
+              }
+            }
+          }
+        }
+      })
+    })
+
+    it('returns provider options without temperature for Claude models', () => {
+      expect(getDefaultModelSettings('sonnet')).toEqual({
+        providerOptions: {
+          anthropic: { effort: 'low' }
+        }
+      })
+    })
+
+    it('returns undefined for models without defaults', () => {
+      expect(getDefaultModelSettings('claude-haiku-4-5')).toBeUndefined()
+    })
+  })
+
   describe('shouldStripTemperature', () => {
+    it('returns true for azure Kimi', () => {
+      expect(shouldStripTemperature('azure/Kimi-K2.6')).toBe(true)
+    })
+
     it('returns true for claude-opus-4-7', () => {
       expect(shouldStripTemperature('claude-opus-4-7')).toBe(true)
     })

@@ -20,7 +20,7 @@ import { allAILibTools } from '../tools/ai-lib-tools/index.js'
 import { getPersistentAssetPaths } from '../utils/persistent-assets.js'
 import { skills } from '../services/features.js'
 import { profileFlag } from '../profiles/profile-accessor.js'
-import { readFile } from 'fs/promises'
+import { readFile } from 'node:fs/promises'
 
 /**
  * Develop Agent - AI developer for building web applications
@@ -109,7 +109,34 @@ const afterToolExecution: AfterToolExecutionHook = async (
 /**
  * Build the comprehensive system prompt for the Develop Agent
  */
-async function buildDevelopSystemPrompt(_appPath?: string): Promise<string> {
+type BehaviorPrompt = {
+  fileName: string
+  includeWhenModelMissing?: boolean
+  modelFilters: string[]
+}
+
+const behaviorPrompts: BehaviorPrompt[] = [
+  {
+    fileName: 'claude-behavior.md',
+    includeWhenModelMissing: true,
+    modelFilters: ['anthropic', 'claude', 'opus', 'sonnet'],
+  },
+  {
+    fileName: 'kimi-behavior.md',
+    modelFilters: ['kimi'],
+  },
+]
+
+function shouldLoadBehavior(modelName: string | undefined, behavior: BehaviorPrompt): boolean {
+  if (!modelName) {
+    return behavior.includeWhenModelMissing === true
+  }
+
+  const normalizedModelName = modelName.toLowerCase()
+  return behavior.modelFilters.some(filter => normalizedModelName.includes(filter))
+}
+
+async function buildDevelopSystemPrompt(_appPath?: string, modelName?: string): Promise<string> {
   const promptBuilder = createPromptBuilder();
 
   // Get modular prompt paths using helper utility
@@ -124,6 +151,16 @@ async function buildDevelopSystemPrompt(_appPath?: string): Promise<string> {
 
   // Load filesystem.md as a template (contains {{persistentPublicPath}} and {{persistentPrivatePath}} placeholders)
   const filesystemTemplate = await readFile(paths.getSharedFile('filesystem.md'), 'utf-8');
+  const activeBehaviorPrompts = behaviorPrompts.filter(behavior => shouldLoadBehavior(modelName, behavior))
+
+  logger.debug('develop_agent.prompt.behavior.loaded', {
+    modelName: modelName ?? 'unknown',
+    behaviorPrompts: activeBehaviorPrompts.map(behavior => behavior.fileName),
+  })
+
+  if (modelName && activeBehaviorPrompts.length === 0) {
+    logger.warn('develop_agent.prompt.behavior.no_match', { modelName })
+  }
 
   // Load consolidated prompt sections
   // Order: Identity → Voice → Technical details
@@ -131,7 +168,12 @@ async function buildDevelopSystemPrompt(_appPath?: string): Promise<string> {
     .file(paths.getAgentFile('develop', 'core.md'))
     .file(paths.getSharedFile('communication.md'))
     .file(paths.getSharedFile('security.md'))
-    .file(paths.getAgentFile('develop', 'claude-behavior.md'))
+
+  for (const behavior of activeBehaviorPrompts) {
+    promptBuilder.file(paths.getAgentFile('develop', behavior.fileName))
+  }
+
+  promptBuilder
     .template(filesystemTemplate) // Use template instead of file for dynamic path interpolation
     .file(paths.getAgentFile('develop', 'font-theme.md')) // Font theme tool documentation
     //.file(paths.getAgentFile('develop', 'design.md'))
@@ -206,8 +248,8 @@ function shouldStopAfterSuggestMode(result: unknown): boolean {
  */
 export async function createDevelopAgent(options?: { appPath?: string }): Promise<AgentConfig> {
   const appPath = options?.appPath || process.cwd()
-  const systemPrompt = await buildDevelopSystemPrompt(appPath)
   const { model, modelName } = await getAgentModelWithName('full') // Use full model for complex development tasks
+  const systemPrompt = await buildDevelopSystemPrompt(appPath, modelName)
 
   return {
     id: 'develop',
@@ -219,7 +261,7 @@ export async function createDevelopAgent(options?: { appPath?: string }): Promis
       // Core development tools
       directoryListing: allAILibTools.directoryListing,
       terminalCommand: allAILibTools.terminalCommand,
-      str_replace_based_edit_tool: allAILibTools.str_replace_based_edit_tool,  // Native Anthropic text editor
+      str_replace_based_edit_tool: allAILibTools.str_replace_based_edit_tool,
       readFile: allAILibTools.readFile,
       grepSearch: allAILibTools.grepSearch,
 
@@ -296,6 +338,7 @@ export async function createDevelopAgent(options?: { appPath?: string }): Promis
     enablePromptCaching: true,
 
     metadata: {
+      systemForModel: (nextModelName: string) => buildDevelopSystemPrompt(appPath, nextModelName),
       contextPreferences: {
         includeAppContext: true,
         includeVisualContext: true,

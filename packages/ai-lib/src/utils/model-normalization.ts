@@ -1,6 +1,6 @@
 /**
  * Unified Model Name Normalization System
- * 
+ *
  * Centralizes all model name normalization logic to ensure consistency
  * across providers, token counting, and pricing calculations.
  */
@@ -28,6 +28,11 @@ export interface ModelInfo {
 
 export type ModelProviderOptions = Record<string, unknown>
 
+export interface ModelDefaultSettings {
+  providerOptions?: ModelProviderOptions
+  temperature?: number
+}
+
 /**
  * Model definition with provider-specific identifiers
  */
@@ -40,7 +45,14 @@ interface ModelDefinition {
   anthropic?: string
   /** Provider-specific default options for this model */
   providerOptions?: ModelProviderOptions
-  /** Whether temperature must be omitted from provider requests */
+  /** Model-level default temperature */
+  temperature?: number
+  /**
+   * When true, the caller-provided `temperature` is stripped from outgoing
+   * requests. If `temperature` (above) is also set, that model default is
+   * applied via defaultSettingsMiddleware after stripping; otherwise the
+   * field is genuinely omitted.
+   */
   stripTemperature?: boolean
 }
 
@@ -84,6 +96,30 @@ const MODELS: Record<string, ModelDefinition> = {
   'zai-glm-4.7': {
     normalizedName: 'zai-glm-4.7',
     openai: 'priv/cb.zai-glm-4.7'
+  },
+
+  // Kimi Models (via OpenAI-compatible provider)
+  'azure/kimi-k2.6': {
+    normalizedName: 'azure/kimi-k2.6',
+    openai: 'azure/Kimi-K2.6',
+    stripTemperature: true,
+    temperature: 0.6,
+    providerOptions: {
+      litellm: {
+        extra_body: {
+          reasoning_effort: 'none',
+        },
+        metadata: {
+          guardrails: {
+            'unicode-security': {
+              extra_body: {
+                mode: 'disabled',
+              },
+            },
+          },
+        },
+      },
+    },
   },
 
   // Claude Models (available on multiple providers)
@@ -362,6 +398,25 @@ export function getDefaultProviderOptions(modelName: string): ModelProviderOptio
   const lower = modelName.toLowerCase().trim()
   const canonicalKey = ALIASES[lower] || lower
   return MODELS[canonicalKey]?.providerOptions
+}
+
+export function getDefaultModelSettings(modelName: string): ModelDefaultSettings | undefined {
+  const lower = modelName.toLowerCase().trim()
+  const canonicalKey = ALIASES[lower] || lower
+  const model = MODELS[canonicalKey]
+  if (!model) {
+    return undefined
+  }
+
+  const settings: ModelDefaultSettings = {}
+  if (model.providerOptions) {
+    settings.providerOptions = model.providerOptions
+  }
+  if (model.temperature !== undefined) {
+    settings.temperature = model.temperature
+  }
+
+  return Object.keys(settings).length > 0 ? settings : undefined
 }
 
 export function shouldStripTemperature(modelName: string): boolean {

@@ -124,6 +124,14 @@ const MODEL_PRICING: Record<string, ModelPricing> = {
     currency: 'USD'
   },
 
+  // Kimi Models (via OpenAI-compatible provider)
+  'azure/kimi-k2.6': {
+    inputCostPer1K: 0.00095,
+    outputCostPer1K: 0.004,
+    cachedInputReadCostPer1K: 0.00016,
+    currency: 'USD'
+  },
+
   // Anthropic Models (via Anthropic API)
   'claude-opus-4-7': {
     inputCostPer1K: 0.005,

@@ -148,6 +148,8 @@ export type SupportedModel =
   | 'gemini-3-pro-preview'
   // GLM Models (via OpenAI-compatible provider)
   | 'zai-glm-4.7'
+  // Kimi Models (via OpenAI-compatible provider)
+  | 'azure/kimi-k2.6'
 
 /**
  * Re-export ModelProvider type for compatibility
@@ -184,6 +186,8 @@ const MODEL_TO_TOKENIZER: Record<string, string> = {
   'gemini-3-pro-preview': 'google/gemini-3-pro-preview',
   // GLM models
   'zai-glm-4.7': 'zai/glm-4.5',
+  // Kimi models
+  'azure/kimi-k2.6': 'moonshotai/kimi-k2-thinking',
 }
 
 /**

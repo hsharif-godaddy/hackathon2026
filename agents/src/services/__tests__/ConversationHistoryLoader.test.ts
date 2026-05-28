@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { ConversationHistoryLoader, type LLMMessage } from '../ConversationHistoryLoader.js';
+import { ConversationHistoryLoader, sanitizeToolUseId, type LLMMessage } from '../ConversationHistoryLoader.js';
 import type { MessageStore, SummaryStore } from '../../memory/interfaces/index.js';
 import conversationFixture from './fixtures/conversation-messages.json';
 
@@ -841,6 +841,128 @@ describe('ConversationHistoryLoader', () => {
       // Verify tool result is preserved
       const toolMsg = result.find(msg => msg.role === 'tool') as any;
       expect(toolMsg.content[0].toolCallId).toBe('call_valid');
+    });
+  });
+
+  describe('formatMessagesForAISDK - tool ID sanitization for Anthropic compatibility', () => {
+    const kimiPairMessages = (): LLMMessage[] => [
+      {
+        role: 'assistant',
+        content: ' ',
+        tool_calls: [{
+          id: 'functions.tools_readFile:9',
+          type: 'function',
+          function: { name: 'readFile', arguments: '{"path":"a.txt"}' }
+        }]
+      },
+      {
+        role: 'tool',
+        content: 'file body',
+        tool_call_id: 'functions.tools_readFile:9',
+        name: 'readFile'
+      }
+    ];
+
+    it('sanitizes Kimi/LiteLLM-style tool IDs when target is an Anthropic model', () => {
+      const result = loader.formatMessagesForAISDK(
+        kimiPairMessages(),
+        'test-app',
+        'test-agent',
+        'claude-sonnet-4-6',
+      );
+
+      const assistantMsg = result.find(msg => msg.role === 'assistant') as any;
+      const toolCallPart = assistantMsg.content.find((part: any) => part.type === 'tool-call');
+      const toolMsg = result.find(msg => msg.role === 'tool') as any;
+
+      expect(toolCallPart.toolCallId).toBe('functions_tools_readFile_9');
+      expect(toolMsg.content[0].toolCallId).toBe('functions_tools_readFile_9');
+      expect(toolCallPart.toolCallId).toMatch(/^[a-zA-Z0-9_-]+$/);
+    });
+
+    it('leaves Kimi-style tool IDs untouched when the target is the same OpenAI-compatible provider', () => {
+      const result = loader.formatMessagesForAISDK(
+        kimiPairMessages(),
+        'test-app',
+        'test-agent',
+        'azure/kimi-k2.6',
+      );
+
+      const assistantMsg = result.find(msg => msg.role === 'assistant') as any;
+      const toolCallPart = assistantMsg.content.find((part: any) => part.type === 'tool-call');
+      const toolMsg = result.find(msg => msg.role === 'tool') as any;
+
+      expect(toolCallPart.toolCallId).toBe('functions.tools_readFile:9');
+      expect(toolMsg.content[0].toolCallId).toBe('functions.tools_readFile:9');
+    });
+
+    it('falls back to sanitizing when no target model is provided', () => {
+      const result = loader.formatMessagesForAISDK(kimiPairMessages(), 'test-app', 'test-agent');
+
+      const assistantMsg = result.find(msg => msg.role === 'assistant') as any;
+      const toolCallPart = assistantMsg.content.find((part: any) => part.type === 'tool-call');
+      expect(toolCallPart.toolCallId).toBe('functions_tools_readFile_9');
+    });
+
+    it('preserves the assistant→tool pairing after sanitization', () => {
+      const result = loader.formatMessagesForAISDK(
+        kimiPairMessages(),
+        'test-app',
+        'test-agent',
+        'claude-sonnet-4-6',
+      );
+
+      const assistantMsg = result.find(msg => msg.role === 'assistant') as any;
+      const toolCallId = assistantMsg.content.find((p: any) => p.type === 'tool-call').toolCallId;
+      const toolMsg = result.find(msg => msg.role === 'tool') as any;
+      expect(toolMsg.content[0].toolCallId).toBe(toolCallId);
+      expect(result.length).toBe(2);
+    });
+
+    it('leaves already-valid Anthropic tool IDs untouched', () => {
+      const id = 'toolu_bdrk_014madvBmvYNvN2jPSdyEiGP';
+      const llmMessages: LLMMessage[] = [
+        {
+          role: 'assistant',
+          content: ' ',
+          tool_calls: [{
+            id,
+            type: 'function',
+            function: { name: 'readFile', arguments: '{}' }
+          }]
+        },
+        { role: 'tool', content: 'ok', tool_call_id: id, name: 'readFile' }
+      ];
+
+      const result = loader.formatMessagesForAISDK(
+        llmMessages,
+        'test-app',
+        'test-agent',
+        'claude-sonnet-4-6',
+      );
+
+      const assistantMsg = result.find(msg => msg.role === 'assistant') as any;
+      const toolMsg = result.find(msg => msg.role === 'tool') as any;
+      expect(assistantMsg.content.find((p: any) => p.type === 'tool-call').toolCallId).toBe(id);
+      expect(toolMsg.content[0].toolCallId).toBe(id);
+    });
+  });
+
+  describe('sanitizeToolUseId', () => {
+    it('replaces all non-conformant characters with underscores', () => {
+      expect(sanitizeToolUseId('functions.tools_readFile:9')).toBe('functions_tools_readFile_9');
+      expect(sanitizeToolUseId('a/b c+d=e')).toBe('a_b_c_d_e');
+    });
+
+    it('returns conformant IDs unchanged', () => {
+      expect(sanitizeToolUseId('toolu_01ABCxyz-789')).toBe('toolu_01ABCxyz-789');
+      expect(sanitizeToolUseId('call_abc123')).toBe('call_abc123');
+    });
+
+    it('is deterministic so paired IDs collapse to the same value', () => {
+      const a = sanitizeToolUseId('functions.tools_readFile:9');
+      const b = sanitizeToolUseId('functions.tools_readFile:9');
+      expect(a).toBe(b);
     });
   });
 

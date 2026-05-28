@@ -1,15 +1,28 @@
 import { createDevelopAgent } from '../develop-agent.js';
-import { describe, it, expect, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('../../utils/model-selection.js', () => ({
-  getAgentModelWithName: vi.fn().mockResolvedValue({
-    model: { generate: vi.fn(), streamGenerate: vi.fn() },
-    modelName: 'claude-sonnet-4-6'
-  })
+const { mockGetAgentModelWithName, mockPromptBuilders } = vi.hoisted(() => ({
+  mockGetAgentModelWithName: vi.fn(),
+  mockPromptBuilders: [] as any[],
 }));
 
-vi.mock('fs/promises', async () => {
-  const actual = await vi.importActual('fs/promises');
+vi.mock('../../utils/model-selection.js', () => ({
+  getAgentModelWithName: mockGetAgentModelWithName
+}));
+
+vi.mock('../../tools/ai-lib-tools/index.js', () => {
+  const tool = { execute: vi.fn() };
+  return {
+    allAILibTools: new Proxy({}, {
+      get: function get() {
+        return tool;
+      }
+    })
+  };
+});
+
+vi.mock('node:fs/promises', async () => {
+  const actual = await vi.importActual('node:fs/promises');
   return {
     ...actual,
     readFile: vi.fn().mockResolvedValue('')
@@ -18,14 +31,18 @@ vi.mock('fs/promises', async () => {
 
 vi.mock('@airo/ai-lib', async () => {
   const actual = await vi.importActual('@airo/ai-lib');
-  const mockBuilder = () => {
-    const self: Record<string, any> = {};
-    self.file = vi.fn().mockReturnValue(self);
+  const mockBuilder = function builder() {
+    const self: Record<string, any> = { files: [] };
+    self.file = vi.fn(function file(path: string) {
+      self.files.push(path);
+      return self;
+    });
     self.text = vi.fn().mockReturnValue(self);
     self.template = vi.fn().mockReturnValue(self);
     self.build = vi.fn().mockResolvedValue(
       '# AI Developer\nYou are a senior web developer.'
     );
+    mockPromptBuilders.push(self);
     return self;
   };
   return {
@@ -38,6 +55,15 @@ vi.mock('@airo/ai-lib', async () => {
 });
 
 describe('develop-agent', function developAgentTests() {
+  beforeEach(function setup() {
+    mockPromptBuilders.length = 0;
+    mockGetAgentModelWithName.mockReset();
+    mockGetAgentModelWithName.mockResolvedValue({
+      model: { generate: vi.fn(), streamGenerate: vi.fn() },
+      modelName: 'claude-sonnet-4-6'
+    });
+  });
+
   describe('#createDevelopAgent', function createTests() {
     it('should create agent configuration with correct properties',
       async function create() {
@@ -96,6 +122,53 @@ describe('develop-agent', function developAgentTests() {
         const config = await createDevelopAgent();
 
         expect(config.enablePromptCaching).toBe(true);
+      });
+
+    it('should include Claude behavior guidance for Claude-family models',
+      async function claudeBehavior() {
+        await createDevelopAgent();
+
+        expect(mockPromptBuilders[0].files.some((path: string) => path.endsWith('claude-behavior.md'))).toBe(true);
+      });
+
+    it('should omit Claude behavior guidance for non-Anthropic models',
+      async function nonAnthropic() {
+        mockGetAgentModelWithName.mockResolvedValueOnce({
+          model: { generate: vi.fn(), streamGenerate: vi.fn() },
+          modelName: 'azure/Kimi-K2.6'
+        });
+
+        await createDevelopAgent();
+
+        expect(mockPromptBuilders[0].files.some((path: string) => path.endsWith('claude-behavior.md'))).toBe(false);
+      });
+
+    it('should include Kimi behavior guidance for Kimi models',
+      async function kimiBehavior() {
+        mockGetAgentModelWithName.mockResolvedValueOnce({
+          model: { generate: vi.fn(), streamGenerate: vi.fn() },
+          modelName: 'azure/Kimi-K2.6'
+        });
+
+        await createDevelopAgent();
+
+        expect(mockPromptBuilders[0].files.some((path: string) => path.endsWith('kimi-behavior.md'))).toBe(true);
+      });
+
+    it('should omit Kimi behavior guidance for Claude models',
+      async function claudeModel() {
+        await createDevelopAgent();
+
+        expect(mockPromptBuilders[0].files.some((path: string) => path.endsWith('kimi-behavior.md'))).toBe(false);
+      });
+
+    it('should include Kimi behavior guidance for runtime model overrides',
+      async function modelOverride() {
+        const config = await createDevelopAgent();
+
+        await (config.metadata?.systemForModel as (modelName: string) => Promise<string>)('azure/Kimi-K2.6');
+
+        expect(mockPromptBuilders[1].files.some((path: string) => path.endsWith('kimi-behavior.md'))).toBe(true);
       });
   });
 });

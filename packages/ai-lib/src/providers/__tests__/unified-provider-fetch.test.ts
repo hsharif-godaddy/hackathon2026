@@ -18,7 +18,7 @@ vi.mock('../../utils/s2s-auth.js', () => ({
   getDefaultAnthropicProxyEndpoint: vi.fn().mockReturnValue('https://gocode.example.com'),
 }))
 
-const fetchSpy = vi.fn<Parameters<typeof fetch>, ReturnType<typeof fetch>>()
+const fetchSpy = vi.fn<typeof fetch>()
   .mockResolvedValue(new Response('{}', { status: 200 }))
 
 vi.stubGlobal('fetch', fetchSpy)
@@ -31,6 +31,21 @@ function headersFromCall(callIndex = 0): Headers {
 }
 
 const UUID_V4_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
+
+async function transformAll(modelName: string, params: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const { __test__ } = await import('../unified-provider.js')
+  let transformed = params
+  for (const middleware of __test__.getModelMiddleware(modelName)) {
+    if (middleware.transformParams) {
+      transformed = await middleware.transformParams({
+        params: transformed as any,
+        type: 'stream',
+        model: { modelId: modelName } as any,
+      }) as Record<string, unknown>
+    }
+  }
+  return transformed
+}
 
 describe('createS2SFetchWrapper header injection', () => {
   let wrapper: typeof fetch
@@ -167,6 +182,67 @@ describe('model provider defaults middleware', () => {
     })
 
     expect(transformed?.providerOptions).toEqual({
+      anthropic: { effort: 'low' },
+    })
+  })
+
+  it('applies model defaults for azure Kimi', async () => {
+    const transformed = await transformAll('azure/Kimi-K2.6', {
+      providerOptions: {},
+    })
+
+    expect(transformed.temperature).toBe(0.6)
+    expect(transformed.providerOptions).toEqual({
+      litellm: {
+        extra_body: {
+          reasoning_effort: 'none',
+        },
+        metadata: {
+          guardrails: {
+            'unicode-security': {
+              extra_body: {
+                mode: 'disabled',
+              },
+            },
+          },
+        },
+      },
+    })
+  })
+
+  it('replaces request temperature with model default for azure Kimi', async () => {
+    const transformed = await transformAll('azure/Kimi-K2.6', {
+      temperature: 0.9,
+      providerOptions: {},
+    })
+
+    expect(transformed.temperature).toBe(0.6)
+    expect(transformed.providerOptions).toEqual({
+      litellm: {
+        extra_body: {
+          reasoning_effort: 'none',
+        },
+        metadata: {
+          guardrails: {
+            'unicode-security': {
+              extra_body: {
+                mode: 'disabled',
+              },
+            },
+          },
+        },
+      },
+    })
+  })
+
+  it('keeps temperature for Claude models', async () => {
+    const transformed = await transformAll('sonnet', {
+      temperature: 0.3,
+      providerOptions: {},
+    })
+
+    expect(transformed.temperature).toBe(0.3)
+    expect(transformed.providerOptions).toEqual({
       anthropic: { effort: 'low' },
     })
   })

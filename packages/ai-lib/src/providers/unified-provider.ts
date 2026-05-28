@@ -35,7 +35,7 @@ import {
   getAvailableModels as getAvailableModelsFromNormalization,
   isModelSupported as isModelSupportedFromNormalization,
   getFullModelName as getFullModelNameFromNormalization,
-  getDefaultProviderOptions,
+  getDefaultModelSettings,
   shouldStripTemperature
 } from '../utils/model-normalization.js'
 import { createCostTrackingMiddleware } from './usage-instrumentation-middleware.js'
@@ -581,10 +581,10 @@ function createAnthropicFetch(options: { useS2S: boolean; s2sAuthConfig?: S2SAut
 }
 
 function getModelMiddleware(modelName: string): LanguageModelMiddleware[] {
-  const providerOptions = getDefaultProviderOptions(modelName)
+  const defaultSettings = getDefaultModelSettings(modelName)
   return [
     ...(shouldStripTemperature(modelName) ? [createStripTemperatureMiddleware()] : []),
-    ...(providerOptions ? [defaultSettingsMiddleware({ settings: { providerOptions: providerOptions as any } })] : []),
+    ...(defaultSettings ? [defaultSettingsMiddleware({ settings: defaultSettings as any })] : []),
     createCostTrackingMiddleware(),
   ]
 }
