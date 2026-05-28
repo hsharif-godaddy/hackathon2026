@@ -42,6 +42,7 @@ function GoogleReviewsToolRenderer({
       }
 
       const { userTokenId, locationId } = connection
+      let { accountId } = connection
       if (!userTokenId) {
         throw new Error('No user token found for this Google connection')
       }
@@ -49,7 +50,17 @@ function GoogleReviewsToolRenderer({
         throw new Error('Google Business Profile connection is missing a location. Please reconnect your Google Business Profile and select your business location.')
       }
 
-      const reviews: GoogleReview[] = await socialV2Client.getGoogleReviews(userTokenId, locationId)
+      if (!accountId) {
+        // Soft fallback for connections created before accountId was stored
+        const locations = await socialV2Client.getGoogleLocations(userTokenId)
+        accountId = locations.find(loc => loc.id === locationId)?.accountId
+      }
+
+      if (!accountId) {
+        throw new Error('Google Business Profile connection is missing account info. Please reconnect your Google Business Profile and select your business location.')
+      }
+
+      const reviews: GoogleReview[] = await socialV2Client.getGoogleReviews(userTokenId, accountId, locationId)
 
       logger.info('google-reviews-renderer.fetched', { socialId: id, count: reviews.length })
       setFetchStatus('done')

@@ -68,6 +68,7 @@ export interface InstagramConnection extends BaseSocialConnection {
 export interface GoogleConnection extends BaseSocialConnection {
   platform: SocialPlatformKey.GOOGLE_BUSINESS_PROFILE
   locationId: string
+  accountId?: string
   userId: string
   locationTokenId?: string
   userTokenId?: string

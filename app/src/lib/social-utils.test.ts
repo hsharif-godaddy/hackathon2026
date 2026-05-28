@@ -145,6 +145,7 @@ describe('getSocialConnectionDisplayInfo', () => {
     it('returns location title and formatted address', () => {
       const location: GoogleLocation = {
         id: 'loc-123',
+        accountId: 'acc-123',
         name: 'locations/123',
         title: 'My Business Location',
         storefrontAddress: {
@@ -167,6 +168,7 @@ describe('getSocialConnectionDisplayInfo', () => {
     it('handles missing address parts', () => {
       const location: GoogleLocation = {
         id: 'loc-123',
+        accountId: 'acc-123',
         name: 'locations/123',
         title: 'My Location',
         storefrontAddress: {

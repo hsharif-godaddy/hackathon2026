@@ -113,6 +113,7 @@ export interface FacebookPage {
 
 export interface GoogleLocation {
   id: string
+  accountId: string
   name: string
   title: string
   storefrontAddress?: {
@@ -272,7 +273,8 @@ export class SocialV2Client {
     const allLocations: GoogleLocation[] = []
 
     for (const account of accounts || []) {
-      const accountId = account.name.split('/')[1]
+      const accountId = account.name?.split('/')[1]
+      if (!accountId) continue
 
       const locationsResponse = await fetch(
         `${SOCIAL_V2_BASE_URL}/google/proxy/mybusinessbusinessinformation/v1/accounts/${accountId}/locations?readMask=name,title,storefrontAddress`,
@@ -307,6 +309,7 @@ export class SocialV2Client {
             if (vomData.hasVoiceOfMerchant) {
               allLocations.push({
                 id: locationId,
+                accountId,
                 name: location.name,
                 title: location.title,
                 storefrontAddress: location.storefrontAddress
@@ -322,8 +325,8 @@ export class SocialV2Client {
     return allLocations
   }
 
-  async getGoogleReviews(userTokenId: string, locationId: string, pageSize = 10): Promise<GoogleReview[]> {
-    const url = `${SOCIAL_V2_BASE_URL}/google/proxy/mybusinessreviews/v1/locations/${locationId}/reviews?pageSize=${pageSize}`
+  async getGoogleReviews(userTokenId: string, accountId: string, locationId: string, pageSize = 10): Promise<GoogleReview[]> {
+    const url = `${SOCIAL_V2_BASE_URL}/google/proxy/mybusiness/v4/accounts/${accountId}/locations/${locationId}/reviews?pageSize=${pageSize}`
 
     const response = await fetch(url, {
       credentials: 'include',
@@ -368,6 +371,7 @@ export class SocialV2Client {
     pageId?: string
     pageTokenId?: string
     locationId?: string
+    accountId?: string
     userId: string
   }): Promise<{ socialId: string }> {
     const body = params.pageId
@@ -381,6 +385,7 @@ export class SocialV2Client {
       : {
           platform: params.platform,
           locationId: params.locationId,
+          accountId: params.accountId,
           userId: params.userId,
           userTokenId: params.userTokenId
         }

@@ -12,8 +12,8 @@ describe('useSocialOAuthFlow helpers', () => {
     ]
 
     const mockGoogleLocations: GoogleLocation[] = [
-      { id: 'g1', name: 'locations/123', title: 'Location 1' },
-      { id: 'g2', name: 'locations/456', title: 'Location 2' }
+      { id: 'g1', accountId: 'acc-g1', name: 'locations/123', title: 'Location 1' },
+      { id: 'g2', accountId: 'acc-g2', name: 'locations/456', title: 'Location 2' }
     ]
 
     it('should return filtered Instagram pages for Instagram platform', () => {

@@ -6,6 +6,7 @@ import { useIsFullscreen } from '@/hooks/useFullscreen'
 import { useTranslations } from '@/hooks/useTranslations'
 import { getErrorMessage } from '@/lib/errors'
 import { logger } from '@/lib/request-context'
+import type { GoogleLocation } from '@/lib/social'
 import { socialV2Client } from '@/lib/social'
 import { getPlatformStrategy, PLATFORM_CONFIG, PLATFORM_TRANSFORMS, PlatformConfig, SocialPlatform } from '@/lib/social-platforms'
 import type { EnrichedSocialConnection, SocialConnection } from '@/types/social'
@@ -221,22 +222,31 @@ export function useSocialConnectFlowOrchestrator({
       return
     }
 
+    const accountId = strategy.provider === SocialPlatform.GOOGLE
+      ? (platformPages as GoogleLocation[]).find(loc => loc.id === pageId)?.accountId
+      : undefined
+
     dispatch({ type: SocialFlowAction.ConnectionCreating })
 
     try {
+      if (strategy.provider === SocialPlatform.GOOGLE && !accountId) {
+        throw new Error('Could not find account information for this Google location. Please refresh and try connecting again.')
+      }
+
       await createConnectionFlow.mutateAsync({
         platform,
         appId,
         userTokenId: flowState.userTokenId,
         pageTokens: flowState.pageTokens,
-        pageId
+        pageId,
+        accountId,
       })
 
       dispatch({ type: SocialFlowAction.ConnectionCreated })
     } catch (err) {
       dispatch({ type: SocialFlowAction.Error, error: getErrorMessage(err) })
     }
-  }, [flowState.userTokenId, flowState.pageTokens, platform, appId, createConnectionFlow, dispatch, t])
+  }, [flowState.userTokenId, flowState.pageTokens, platform, appId, createConnectionFlow, dispatch, t, platformPages, strategy.provider])
 
   const handleCancelSelection = useCallback(() => {
     onClose()

@@ -12,6 +12,7 @@ interface CreateAndLinkConnectionParams {
   userTokenId: string
   pageTokens: string[]
   pageId: string
+  accountId?: string
 }
 
 interface CreateAndLinkConnectionResult {
@@ -24,7 +25,7 @@ export function useCreateAndLinkConnection() {
 
   return useMutation<CreateAndLinkConnectionResult, Error, CreateAndLinkConnectionParams>({
     mutationFn: async (params: CreateAndLinkConnectionParams) => {
-      const { platform, appId, userTokenId, pageTokens, pageId } = params
+      const { platform, appId, userTokenId, pageTokens, pageId, accountId } = params
 
       const userId = parseUserId(userTokenId)
       const matchingPageTokenId = findPageToken(pageTokens, pageId)
@@ -38,6 +39,7 @@ export function useCreateAndLinkConnection() {
         pageId: strategy.requiresPageSelection && strategy.provider === SocialPlatform.FACEBOOK ? pageId : undefined,
         pageTokenId: strategy.requiresPageSelection && strategy.provider === SocialPlatform.FACEBOOK ? matchingPageTokenId : undefined,
         locationId: strategy.requiresPageSelection && strategy.provider === SocialPlatform.GOOGLE ? pageId : undefined,
+        accountId: strategy.requiresPageSelection && strategy.provider === SocialPlatform.GOOGLE ? accountId : undefined,
         userId
       })
 

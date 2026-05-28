@@ -65,6 +65,7 @@ describe('SocialPageSelector', () => {
     const locations: GoogleLocation[] = [
       {
         id: 'loc123',
+        accountId: 'acc123',
         name: 'locations/123',
         title: 'My Store',
         storefrontAddress: {

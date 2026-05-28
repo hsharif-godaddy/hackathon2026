@@ -367,6 +367,64 @@ describe('SocialV2Client', () => {
     })
   })
 
+  describe('getGoogleReviews', () => {
+    const MOCK_ACCOUNT_ID = 'acc-12345'
+    const MOCK_LOCATION_ID = 'loc-67890'
+
+    it('uses mybusiness v4 endpoint (not mybusinessreviews)', async () => {
+      vi.mocked(fetch).mockResolvedValueOnce(mockResponse({ reviews: [] }))
+
+      await client.getGoogleReviews(MOCK_TOKENS.user, MOCK_ACCOUNT_ID, MOCK_LOCATION_ID)
+
+      const url = getLastFetchUrl()
+      expect(url).toContain('/mybusiness/v4/')
+      expect(url).not.toContain('mybusinessreviews')
+    })
+
+    it('places accountId and locationId in the correct URL segments', async () => {
+      vi.mocked(fetch).mockResolvedValueOnce(mockResponse({ reviews: [] }))
+
+      await client.getGoogleReviews(MOCK_TOKENS.user, MOCK_ACCOUNT_ID, MOCK_LOCATION_ID)
+
+      expect(getLastFetchUrl()).toContain(
+        `/accounts/${MOCK_ACCOUNT_ID}/locations/${MOCK_LOCATION_ID}/reviews`
+      )
+    })
+
+    it('includes pageSize query param', async () => {
+      vi.mocked(fetch).mockResolvedValueOnce(mockResponse({ reviews: [] }))
+
+      await client.getGoogleReviews(MOCK_TOKENS.user, MOCK_ACCOUNT_ID, MOCK_LOCATION_ID, 5)
+
+      expect(getLastFetchUrl()).toContain('pageSize=5')
+    })
+
+    it('returns the reviews array from the response', async () => {
+      const mockReviews = [{ reviewId: 'r1' }, { reviewId: 'r2' }]
+      vi.mocked(fetch).mockResolvedValueOnce(mockResponse({ reviews: mockReviews }))
+
+      const result = await client.getGoogleReviews(MOCK_TOKENS.user, MOCK_ACCOUNT_ID, MOCK_LOCATION_ID)
+
+      expect(result).toEqual(mockReviews)
+    })
+
+    it('throws on non-ok response', async () => {
+      vi.mocked(fetch).mockResolvedValueOnce(mockFailedResponse(401))
+
+      await expect(
+        client.getGoogleReviews(MOCK_TOKENS.user, MOCK_ACCOUNT_ID, MOCK_LOCATION_ID)
+      ).rejects.toThrow('Failed to fetch Google reviews: 401')
+    })
+
+    it('throws when response body has no reviews array', async () => {
+      vi.mocked(fetch).mockResolvedValueOnce(mockResponse({ data: [] }))
+
+      await expect(
+        client.getGoogleReviews(MOCK_TOKENS.user, MOCK_ACCOUNT_ID, MOCK_LOCATION_ID)
+      ).rejects.toThrow('Unexpected response shape')
+    })
+  })
+
   describe('regression: Facebook Photo permalink_url error', () => {
     it('does NOT request permalink_url for photos', async () => {
       vi.mocked(fetch).mockResolvedValueOnce(mockResponse({ link: MOCK_URLS.facebookPhoto }))
