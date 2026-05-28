@@ -63,13 +63,12 @@ What it does:
 2. Lists embeddables for the brand; reuses the first, or creates one if none exist.
 3. Updates the embeddable with the webChat icon + any color/position provided (backend sync).
 4. Caches `embeddableId` to memory.
-5. Returns `brandId` and `cdnUrl` for you to hardcode in the template.
+5. Returns `brandId` for you to hardcode in the template.
 
 Idempotent — re-running is safe. Color and position are optional (defaults to bottom-right, default color).
 
 **After this tool succeeds**, edit `src/components/ConversationsWidget.tsx`:
 - Set `BRAND_ID` to the returned `brandId`
-- Set `CDN_URL` to the returned `cdnUrl`
 - Set color/position in `_support.ui.widget`:
 
 ```typescript
@@ -109,7 +108,7 @@ The component is side-effect only (renders `null`). It reads the `BRAND_ID` cons
 
 ## Step 4: Verify
 
-1. Confirm `BRAND_ID` and `CDN_URL` are set in `src/components/ConversationsWidget.tsx`.
+1. Confirm `BRAND_ID` is set in `src/components/ConversationsWidget.tsx`.
 2. Refresh preview — accept the cookie banner, then a chat bubble should appear with the configured color/position.
 3. After user confirms, publish.
 

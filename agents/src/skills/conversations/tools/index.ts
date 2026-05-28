@@ -7,7 +7,7 @@
  *   discover_account       — find or auto-create the account for this app
  *   select_account         — manually link/activate an account (override)
  *   setup_widget           — find/create the default embeddable, cache its ID,
- *                            return brandId + cdnUrl for the agent to hardcode
+ *                            return brandId for the agent to hardcode
  *   update_widget_config   — sync widget color/position to backend
  *
  * The agent must ALSO edit ConversationsWidget.tsx to set the same values
@@ -25,7 +25,6 @@ import { MemoryRepository } from '../../../database/repositories/MemoryRepositor
 import { SkillLoaderTool } from '../../../tools/skill-loader-tool.js';
 import { getActionService } from '../../../server/agent-runtime.js';
 import type { IClientActionService } from '../../../services/ClientActionService.js';
-import { resolveEnv } from '../../../utils/gd-env.js';
 import {
   listAccounts,
   activateAccount,
@@ -54,27 +53,6 @@ function getClient(ctx?: ToolContext): IClientActionService | null {
   const socketId = ctx?.socketId;
   if (!socketId || typeof socketId !== 'string') return null;
   return getActionService(socketId);
-}
-
-/**
- * Reamaze serves the widget script from {asset_domain}/assets/reamaze.js,
- * where asset_domain varies per env (see reamaze/config/config.yml).
- * The published customer site loads this URL from their origin.
- */
-function reamazeCdnUrl(): string {
-  const env = resolveEnv();
-  switch (env) {
-    case 'dev':
-      return 'https://www.dev-reamaze.com/assets/reamaze.js';
-    case 'test':
-      return 'https://www.test-reamaze.com/assets/reamaze.js';
-    case 'prod':
-      return 'https://cdn.reamaze.com/assets/reamaze.js';
-    default: {
-      const _exhaustive: never = env;
-      throw new Error(`Unhandled env: ${_exhaustive as string}`);
-    }
-  }
 }
 
 // ============================================================================
@@ -210,7 +188,7 @@ export const setupWidgetTool: SkillToolDefinition = {
     'Wire the Conversations chat widget into this site. Looks up the Conversations account ' +
     '(must already be configured via discover_account/select_account), ensures a default embeddable exists, ' +
     'and syncs color/position/icon to the backend. After this tool succeeds, you MUST edit ' +
-    'src/components/ConversationsWidget.tsx to set BRAND_ID, CDN_URL, and color/position in _support.ui.widget. ' +
+    'src/components/ConversationsWidget.tsx to set BRAND_ID and color/position in _support.ui.widget. ' +
     'Idempotent. If the account is not configured, returns brandNotProvisioned: true.',
   parameters: z.object({
     color: z
@@ -323,10 +301,9 @@ export const setupWidgetTool: SkillToolDefinition = {
     return {
       brandId,
       embeddableId,
-      cdnUrl: reamazeCdnUrl(),
       CRITICAL_NEXT_STEP:
         'You MUST now edit src/components/ConversationsWidget.tsx: set BRAND_ID to ' +
-        `'${brandId}' and CDN_URL to '${reamazeCdnUrl()}'. ` +
+        `'${brandId}'. ` +
         'Then import and mount <ConversationsWidget /> in src/App.tsx — ' +
         'add `import ConversationsWidget from \'./components/ConversationsWidget\';` at the top, ' +
         'then render `<ConversationsWidget />` inside the root JSX (outside <Routes>, at the top level). ' +

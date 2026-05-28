@@ -32,10 +32,6 @@ vi.mock('../../../../tools/skill-loader-tool.js', () => ({
   })),
 }));
 
-vi.mock('../../../../utils/gd-env.js', () => ({
-  resolveEnv: () => 'dev',
-}));
-
 const mockListAccounts = vi.fn();
 const mockActivateAccount = vi.fn();
 const mockListEmbeddables = vi.fn();
@@ -462,11 +458,10 @@ describe('conversations skill tools', () => {
       expect(result.error).toContain('server error');
     });
 
-    it('returns brandId, cdnUrl, and CRITICAL_NEXT_STEP', async () => {
+    it('returns brandId and CRITICAL_NEXT_STEP', async () => {
       const result = await setupWidgetTool.execute({}, context);
 
       expect(result.brandId).toBe('a1b2c3d4-0000-4000-8000-000000000001');
-      expect(result.cdnUrl).toBe('https://www.dev-reamaze.com/assets/reamaze.js');
       expect(result.CRITICAL_NEXT_STEP).toContain('ConversationsWidget');
     });
 
