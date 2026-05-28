@@ -13,8 +13,9 @@ Installs the GoDaddy Conversations chat widget on the site.
 
 ## Architecture
 
-- **The page's `_support` object drives rendering.** The CDN script reads `window._support` to determine what to show — account, icon, color, position. These values are set directly in `ConversationsWidget.tsx`.
-- **The backend is for sync only.** The tools update the embeddable so that widget settings stay consistent when the user edits the widget from other surfaces (e.g. the Conversations dashboard). The agent must always update BOTH the file (page rendering) and the backend (sync).
+- **`src/lib/conversations.config.ts` drives rendering.** The CDN script reads `window._support` to determine what to show. `ConversationsWidget.tsx` sets `window._support = config.support` from the config file — the agent edits the config, never the component.
+- **The agent is the sole writer of the config file.** The `setup_widget` tool returns `brandId` — the agent writes it (along with color/position) into `src/lib/conversations.config.ts`. Tools never write to this file.
+- **The backend is for sync only.** The tools update the embeddable so that widget settings stay consistent when the user edits the widget from other surfaces (e.g. the Conversations dashboard). The agent must always update BOTH the config file (page rendering) and the backend (sync).
 - **Account** — the Conversations tenant for this site. Discovered via `conversations__discover_account` and selected via `conversations__select_account`.
 - **Embeddable** — the backend widget config. Holds position, colors, icon. We use the first (default) one per account, or create one if none exist.
 - **Auth** — tools dispatch calls via `ClientActionService` through the browser to `/api/conversations` (BFF). The BFF validates the user's `auth_idp` cookie and forwards the request. The authenticated builder user is the identity.
@@ -49,7 +50,9 @@ skill({ action: 'install', skill: 'conversations' });
 skill({ action: 'install', skill: 'conversations', overwrite: true });
 ```
 
-Installs `src/components/ConversationsWidget.tsx` — a side-effect component that mounts the Conversations CDN script.
+Installs:
+- `src/lib/conversations.config.ts` — widget configuration (the agent edits this file)
+- `src/components/ConversationsWidget.tsx` — side-effect component that reads the config and mounts the CDN script
 
 ## Step 2: Wire Up the Widget
 
@@ -63,25 +66,28 @@ What it does:
 2. Lists embeddables for the brand; reuses the first, or creates one if none exist.
 3. Updates the embeddable with the webChat icon + any color/position provided (backend sync).
 4. Caches `embeddableId` to memory.
-5. Returns `brandId` for you to hardcode in the template.
+5. Returns `brandId` for you to write into the config file.
 
 Idempotent — re-running is safe. Color and position are optional (defaults to bottom-right, default color).
 
-**After this tool succeeds**, edit `src/components/ConversationsWidget.tsx`:
-- Set `BRAND_ID` to the returned `brandId`
-- Set color/position in `_support.ui.widget`:
+**After this tool succeeds**, edit `src/lib/conversations.config.ts` to set `account` (brandId) and color/position:
 
 ```typescript
-window._support.ui = {
-  widget: {
-    icon: 'webChat',
-    color: '#90ee90',
-    position: 'bottom-left',
+export const config = {
+  support: {
+    account: '<brandId from tool response>',
+    ui: {
+      widget: {
+        icon: 'webChat',
+        color: '#90ee90',
+        position: 'bottom-left',
+      },
+    },
   },
 };
 ```
 
-Only apply the file edit if the tool call succeeded. The tool syncs to the backend; the file edit makes the page render correctly. Both must always match.
+Only apply the file edit if the tool call succeeded. The tool syncs to the backend; the config edit makes the page render correctly. Both must always match.
 
 ## Step 3: Mount the Widget at the App Root
 
@@ -102,15 +108,9 @@ function App() {
 }
 ```
 
-The component is side-effect only (renders `null`). It reads the `BRAND_ID` constant, sets `window._support.account`, and injects the Conversations CDN script.
+The component is side-effect only (renders `null`). It reads `config.support` from `conversations.config.ts`, sets `window._support`, and injects the CDN script.
 
 **Cookie consent:** The widget only loads after the visitor accepts cookies via the CookieBanner (reads `c2_analytics_consent` from localStorage). If consent hasn't been granted, the chat bubble won't appear.
-
-## Step 4: Verify
-
-1. Confirm `BRAND_ID` is set in `src/components/ConversationsWidget.tsx`.
-2. Refresh preview — accept the cookie banner, then a chat bubble should appear with the configured color/position.
-3. After user confirms, publish.
 
 ---
 
@@ -124,14 +124,19 @@ To change color or position after initial setup:
 conversations__update_widget_config({ color: '#1e40af', position: 'bottom-right' });
 ```
 
-2. **Only if the tool succeeds**, edit `src/components/ConversationsWidget.tsx` to update `_support.ui.widget` with the same values:
+2. **Only if the tool succeeds**, edit `src/lib/conversations.config.ts` to update `config.support.ui.widget` with the same values:
 
 ```typescript
-window._support.ui = {
-  widget: {
-    icon: 'webChat',
-    color: '#1e40af',
-    position: 'bottom-right',
+export const config = {
+  support: {
+    account: '...',
+    ui: {
+      widget: {
+        icon: 'webChat',
+        color: '#1e40af',
+        position: 'bottom-right',
+      },
+    },
   },
 };
 ```

@@ -3,9 +3,9 @@
 import { useEffect, useRef } from 'react';
 
 import { getAnalyticsConsent, onConsentChange } from '@/lib/analytics-consent';
+import { config } from '../lib/conversations.config';
 
 const SCRIPT_ID = 'conversations-js';
-const BRAND_ID = ''; // Set by conversations__setup_widget
 
 function getReamazeCdnUrl(): string {
   const hostname = window.location.hostname;
@@ -20,10 +20,7 @@ function getReamazeCdnUrl(): string {
 
 declare global {
   interface Window {
-    _support?: {
-      account?: string;
-      [key: string]: unknown;
-    };
+    _support?: Record<string, unknown>;
   }
 }
 
@@ -32,16 +29,10 @@ export default function ConversationsWidget() {
 
   useEffect(() => {
     function loadWidget(): void {
-      if (!BRAND_ID || scriptInjected.current || document.getElementById(SCRIPT_ID)) return;
+      if (!config.support.account || scriptInjected.current || document.getElementById(SCRIPT_ID)) return;
       scriptInjected.current = true;
 
-      window._support = window._support || {};
-      window._support.account = BRAND_ID;
-      window._support.ui = {
-        widget: {
-          icon: 'webChat',
-        },
-      };
+      window._support = { ...window._support, ...config.support };
 
       const script = document.createElement('script');
       script.id = SCRIPT_ID;

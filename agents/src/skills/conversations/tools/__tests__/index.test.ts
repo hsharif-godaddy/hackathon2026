@@ -462,7 +462,13 @@ describe('conversations skill tools', () => {
       const result = await setupWidgetTool.execute({}, context);
 
       expect(result.brandId).toBe('a1b2c3d4-0000-4000-8000-000000000001');
-      expect(result.CRITICAL_NEXT_STEP).toContain('ConversationsWidget');
+      expect(result.CRITICAL_NEXT_STEP).toContain('conversations.config.ts');
+    });
+
+    it('includes brandId in CRITICAL_NEXT_STEP for agent to write', async () => {
+      const result = await setupWidgetTool.execute({}, context);
+
+      expect(result.CRITICAL_NEXT_STEP).toContain("'a1b2c3d4-0000-4000-8000-000000000001'");
     });
 
     it('returns error when client is unavailable', async () => {

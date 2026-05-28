@@ -6,13 +6,13 @@
  *
  *   discover_account       — find or auto-create the account for this app
  *   select_account         — manually link/activate an account (override)
- *   setup_widget           — find/create the default embeddable, cache its ID,
- *                            return brandId for the agent to hardcode
+ *   setup_widget           — find/create the default embeddable, return brandId
+ *                            for the agent to write into conversations.config.ts
  *   update_widget_config   — sync widget color/position to backend
  *
- * The agent must ALSO edit ConversationsWidget.tsx to set the same values
- * in _support.ui.widget. The tool handles backend sync; the agent handles
- * the page-side config. See skill.md for the full flow.
+ * The agent is the sole writer of src/lib/conversations.config.ts — it sets
+ * account, color, and position. Tools only handle backend sync.
+ * See skill.md for the full flow.
  */
 
 import { z } from 'zod';
@@ -179,7 +179,7 @@ export const selectAccountTool: SkillToolDefinition = {
 };
 
 // ============================================================================
-// setup_widget — find embeddable, write env, restart server. Idempotent.
+// setup_widget — find embeddable, return brandId. Idempotent.
 // ============================================================================
 
 export const setupWidgetTool: SkillToolDefinition = {
@@ -188,7 +188,7 @@ export const setupWidgetTool: SkillToolDefinition = {
     'Wire the Conversations chat widget into this site. Looks up the Conversations account ' +
     '(must already be configured via discover_account/select_account), ensures a default embeddable exists, ' +
     'and syncs color/position/icon to the backend. After this tool succeeds, you MUST edit ' +
-    'src/components/ConversationsWidget.tsx to set BRAND_ID and color/position in _support.ui.widget. ' +
+    'src/lib/conversations.config.ts to set account (brandId) and color/position in config.support.ui.widget. ' +
     'Idempotent. If the account is not configured, returns brandNotProvisioned: true.',
   parameters: z.object({
     color: z
@@ -214,12 +214,23 @@ export const setupWidgetTool: SkillToolDefinition = {
     const app = await appRepository.findById(appId);
     if (!app?.path) return { error: `Could not resolve app path for appId: ${appId}` };
 
-    // 0. Auto-install template if ConversationsWidget.tsx doesn't exist yet
+    // 0. Auto-install templates if either file doesn't exist yet
     const widgetPath = join(app.path, 'src', 'components', 'ConversationsWidget.tsx');
-    try {
-      await access(widgetPath);
-    } catch (err: unknown) {
-      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+    const configPath = join(app.path, 'src', 'lib', 'conversations.config.ts');
+    const fileExists = async (p: string): Promise<boolean> => {
+      try {
+        await access(p);
+        return true;
+      } catch (err: unknown) {
+        if ((err as NodeJS.ErrnoException).code === 'ENOENT') return false;
+        throw err;
+      }
+    };
+    const [widgetExists, configExists] = await Promise.all([
+      fileExists(widgetPath),
+      fileExists(configPath),
+    ]);
+    if (!widgetExists || !configExists) {
       const skillLoader = new SkillLoaderTool();
       const installResult = await skillLoader.installTemplates({ skill: 'conversations', appPath: app.path, appId });
       if (!installResult.success) {
@@ -249,11 +260,13 @@ export const setupWidgetTool: SkillToolDefinition = {
     const embeddableRead = await memoryRepo.get(appId, MEM_EMBEDDABLE_ID);
     let embeddableId: number;
 
+    let needsUpdate = false;
     if (embeddableRead.exists) {
       embeddableId = Number(embeddableRead.value);
       if (!Number.isFinite(embeddableId)) {
         return { error: 'Corrupted embeddableId in memory; re-run conversations__setup_widget.' };
       }
+      needsUpdate = true;
       logger.info('conversations.skill.setup.embeddable.reuse', { appId, brandId, embeddableId });
     } else {
       const list = await listEmbeddables(client, appId, brandId);
@@ -264,6 +277,7 @@ export const setupWidgetTool: SkillToolDefinition = {
       const existing = list.data[0];
       if (existing) {
         embeddableId = existing.id;
+        needsUpdate = true;
         logger.info('conversations.skill.setup.embeddable.found', { appId, brandId, embeddableId });
       } else {
         const created = await createEmbeddable(client, appId, brandId, {
@@ -285,25 +299,27 @@ export const setupWidgetTool: SkillToolDefinition = {
       await memoryRepo.set(appId, MEM_EMBEDDABLE_ID, embeddableId);
     }
 
-    // 3. Update the embeddable with icon + any color/position provided
-    const embeddablePatch: UpdateEmbeddableInput = { shoutbox_icon: 'webChat' };
-    if (input.color) {
-      embeddablePatch.styles = { button_bg_color: input.color, header_bg_color: input.color };
-      embeddablePatch.shoutbox_bg = input.color;
-    }
-    if (input.position) embeddablePatch.shoutbox_position = input.position;
+    // 3. Sync icon/color/position to the backend (skip on fresh create — already set)
+    if (needsUpdate) {
+      const embeddablePatch: UpdateEmbeddableInput = { shoutbox_icon: 'webChat' };
+      if (input.color) {
+        embeddablePatch.styles = { button_bg_color: input.color, header_bg_color: input.color };
+        embeddablePatch.shoutbox_bg = input.color;
+      }
+      if (input.position) embeddablePatch.shoutbox_position = input.position;
 
-    const updateResult = await updateEmbeddable(client, appId, brandId, embeddableId, embeddablePatch);
-    if (!updateResult.success) {
-      return { error: `Failed to update embeddable for brand ${brandId}: ${updateResult.error}` };
+      const updateResult = await updateEmbeddable(client, appId, brandId, embeddableId, embeddablePatch);
+      if (!updateResult.success) {
+        return { error: `Failed to update embeddable for brand ${brandId}: ${updateResult.error}` };
+      }
     }
 
     return {
       brandId,
       embeddableId,
       CRITICAL_NEXT_STEP:
-        'You MUST now edit src/components/ConversationsWidget.tsx: set BRAND_ID to ' +
-        `'${brandId}'. ` +
+        `You MUST now edit src/lib/conversations.config.ts: set account to '${brandId}' ` +
+        'and apply any user-requested preferences. Read the config file to see available fields. ' +
         'Then import and mount <ConversationsWidget /> in src/App.tsx — ' +
         'add `import ConversationsWidget from \'./components/ConversationsWidget\';` at the top, ' +
         'then render `<ConversationsWidget />` inside the root JSX (outside <Routes>, at the top level). ' +
@@ -321,8 +337,8 @@ export const updateWidgetConfigTool: SkillToolDefinition = {
   name: 'update_widget_config',
   description:
     'Sync widget color/position changes to the Conversations backend. Requires conversations__setup_widget ' +
-    'to have run first. After this tool succeeds, you MUST also edit src/components/ConversationsWidget.tsx ' +
-    'to set the same color/position in _support.ui.widget. Omit a field to leave it unchanged.',
+    'to have run first. After this tool succeeds, you MUST also edit src/lib/conversations.config.ts ' +
+    'to set the same color/position in config.support.ui.widget. Omit a field to leave it unchanged.',
   parameters: z.object({
     color: z
       .string()
@@ -384,9 +400,3 @@ export const updateWidgetConfigTool: SkillToolDefinition = {
   },
   config: { requiresApp: true, timeout: 15_000 },
 };
-
-// ============================================================================
-// helpers
-// ============================================================================
-
-
