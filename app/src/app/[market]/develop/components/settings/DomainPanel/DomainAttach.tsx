@@ -75,7 +75,7 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
   const currentAppId = useAppIdFromParams()
   const { isAuthenticated, isLoading: authLoading } = useAuth();
   const isDomainTransferEnabled = useSwitchboard('appbuilder-domain-transfer');
-  const [customDomain, setCustomDomain] = useState(null);
+  const [customDomain, setCustomDomain] = useState('');
   const [customDomainError, setCustomDomainError] = useState<string | null>(null);
   const [debouncedDomain, setDebouncedDomain] = useState('');
   const [showAddConfirmation, setShowAddConfirmation] = useState(false);
@@ -342,7 +342,7 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
     if (!currentAppId) return;
 
     try {
-      setCustomDomain(null);
+      setCustomDomain('');
       await modifyDomainsMutation.mutateAsync({
         siteId: currentAppId,
         payload: {
@@ -506,7 +506,7 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
     // Use the sanitized domain (with protocol removed)
     const sanitizedDomain = sanitizeDomainInput(customDomain);
     await handleConnectDomain(sanitizedDomain);
-    setCustomDomain(null);
+    setCustomDomain('');
     setDebouncedDomain('');
   }
 

@@ -108,6 +108,11 @@ func appToResponse(app *store.App) map[string]any {
 		resp["publishSupervisorPath"] = fmt.Sprintf("tcp://localhost:%d", app.PublishSupervisorPort)
 	}
 
+	// Include custom domains if any have been attached via ModifyDomains.
+	if domains := GetAppDomains(app.ID); len(domains) > 0 {
+		resp["domains"] = domains
+	}
+
 	return resp
 }
 
@@ -348,6 +353,11 @@ func (s *Server) DeleteApp(w http.ResponseWriter, r *http.Request) {
 	if err := os.RemoveAll(baseDir); err != nil {
 		slog.Warn("app.delete.cleanup_failed", "app_id", appID, "error", err)
 	}
+
+	// Drop in-memory domain entries
+	appDomainsMu.Lock()
+	delete(appDomains, appID)
+	appDomainsMu.Unlock()
 
 	if err := s.DB.DeleteApp(appID); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())

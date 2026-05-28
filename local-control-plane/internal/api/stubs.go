@@ -101,10 +101,64 @@ func (s *Server) CheckDomainAvailability(w http.ResponseWriter, r *http.Request)
 	})
 }
 
+// In-memory domain storage for local dev simulation.
+var (
+	appDomains   = map[string][]map[string]any{} // appId → []domain
+	appDomainsMu sync.Mutex
+)
+
+// GetAppDomains returns the stored domains for an app (thread-safe).
+func GetAppDomains(appID string) []map[string]any {
+	appDomainsMu.Lock()
+	defer appDomainsMu.Unlock()
+	return appDomains[appID]
+}
+
 func (s *Server) ModifyDomains(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
+	appID := vars["appId"]
+
+	var body struct {
+		DomainsToCreate []struct {
+			FQDN    string `json:"fqdn"`
+			Primary bool   `json:"primary"`
+		} `json:"domainsToCreate"`
+		DomainsToDelete []struct {
+			FQDN string `json:"fqdn"`
+		} `json:"domainsToDelete"`
+	}
+	_ = readJSON(r, &body)
+
+	appDomainsMu.Lock()
+	now := time.Now().UTC().Format(time.RFC3339)
+	for _, d := range body.DomainsToCreate {
+		appDomains[appID] = append(appDomains[appID], map[string]any{
+			"fqdn":                       d.FQDN,
+			"isPrimary":                  d.Primary,
+			"domainType":                 "fqdn",
+			"prefix":                     "",
+			"status":                     "pending",
+			"anycastIp":                  "76.76.21.21",
+			"certificateValidationCname": fmt.Sprintf("_acme-challenge.%s.dcv.airoapp.ai", d.FQDN),
+			"createdAt":                  now,
+			"updatedAt":                  now,
+		})
+		slog.Info("domain.created", "app_id", appID, "fqdn", d.FQDN)
+	}
+	for _, d := range body.DomainsToDelete {
+		remaining := make([]map[string]any, 0)
+		for _, existing := range appDomains[appID] {
+			if existing["fqdn"] != d.FQDN {
+				remaining = append(remaining, existing)
+			}
+		}
+		appDomains[appID] = remaining
+		slog.Info("domain.deleted", "app_id", appID, "fqdn", d.FQDN)
+	}
+	appDomainsMu.Unlock()
+
 	writeJSON(w, http.StatusOK, map[string]any{
-		"statusJobId": fmt.Sprintf("domain-job-%s", vars["appId"]),
+		"statusJobId": fmt.Sprintf("domain-job-%s", appID),
 		"status":      "completed",
 		"message":     "domains modified (stub)",
 	})
