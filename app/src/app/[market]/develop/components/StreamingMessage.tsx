@@ -180,7 +180,7 @@ function UserMessage({ content, selectedAssets, referencedFiles, uploadedFileNam
         <div className="relative group max-w-full">
           <div
             ref={contentRef}
-            className="relative text-sm leading-relaxed break-words whitespace-pre-wrap font-sans overflow-hidden"
+            className="relative text-sm leading-relaxed wrap-anywhere whitespace-pre-wrap font-sans overflow-hidden"
             style={{ maxHeight: isTruncated ? `${MAX_MESSAGE_HEIGHT}px` : undefined }}
           >
             {content}
