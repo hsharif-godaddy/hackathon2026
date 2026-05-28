@@ -15,7 +15,7 @@
  *  8. Code view + unified search
  *  9. Publish button verification
  * 10. Manual feedback trigger category step
- * 11. Custom domain (e2e.airotesting.shop) — attach, verify DNS records, disconnect
+ * 11. Custom domain (e2e-{env}.airotesting.shop) — attach, verify DNS records, disconnect
  * 12. Page refresh recovery
  *
  * Strategy:
@@ -460,8 +460,14 @@ test.describe('E2E - Critical Path', () => {
       console.log('  Modal closed');
     });
 
-    await test.step('Step 11: Custom domain (e2e.airotesting.shop) — attach, verify DNS, disconnect', async () => {
-      const TARGET_DOMAIN = 'e2e.airotesting.shop';
+    await test.step('Step 11: Custom domain (e2e-{env}.airotesting.shop) — attach, verify DNS, disconnect', async () => {
+      // Subdomain is env-scoped so parallel CI runs across environments
+      // (dev / pre-test / test / prod) never collide on the same FQDN.
+      // The previous shared `e2e.airotesting.shop` left the Add button
+      // disabled whenever a prior run in another env still owned the
+      // domain — the validation API returns available=false until the
+      // other app disconnects. Per-env subdomains sidestep that race.
+      const TARGET_DOMAIN = `e2e-${env}.airotesting.shop`;
       const MAX_DOMAIN_ATTEMPTS = 3;
 
       const escapedTarget = TARGET_DOMAIN.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
