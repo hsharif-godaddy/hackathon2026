@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 import {
   processAndGenerateViteConfig,
@@ -6,10 +6,13 @@ import {
   isEnvPortExpression,
   extractPortFallback,
   addNodePackageExclusions,
+  modifyViteConfig,
 } from '../ViteConfigModifier.js';
 import { parse } from '@babel/parser';
 import * as t from '@babel/types';
 import _generate from '@babel/generator';
+import { makeRunCommandResult } from '../../workspace/__tests__/mock-helpers.js';
+import type { WorkspaceTasks } from '../../workspace/tasks.js';
 
 const generate = _generate.default || _generate;
 
@@ -886,5 +889,131 @@ export default defineConfig(({ mode }) => {
       expect(result.code).toContain('optimizeDeps');
       expect(result.code).not.toContain('ssr');
     });
+  });
+});
+
+describe('modifyViteConfig (runtime)', () => {
+  let mockTasks: WorkspaceTasks;
+
+  beforeEach(() => {
+    mockTasks = {
+      runCommandSync: vi.fn(),
+    } as unknown as WorkspaceTasks;
+  });
+
+  it('returns modified=false when no vite config file exists', async () => {
+    // All file checks return "notfound"
+    (mockTasks.runCommandSync as ReturnType<typeof vi.fn>).mockResolvedValue(
+      makeRunCommandResult({ stdout: 'notfound' })
+    );
+
+    const result = await modifyViteConfig(mockTasks, '/app');
+
+    expect(result.success).toBe(true);
+    expect(result.modified).toBe(false);
+    expect(result.configFile).toBeUndefined();
+  });
+
+  it('returns error when config file cannot be read', async () => {
+    const mock = mockTasks.runCommandSync as ReturnType<typeof vi.fn>;
+    // First call: findViteConfigFile finds vite.config.ts
+    mock.mockResolvedValueOnce(makeRunCommandResult({ stdout: 'found' }));
+    // Second call: readFileFromContainer fails
+    mock.mockResolvedValueOnce(makeRunCommandResult({ exitCode: 1, stderr: 'No such file' }));
+
+    const result = await modifyViteConfig(mockTasks, '/app');
+
+    expect(result.success).toBe(false);
+    expect(result.modified).toBe(false);
+    expect(result.error).toContain('Failed to read');
+  });
+
+  it('modifies vite config and writes it back to container', async () => {
+    const mock = mockTasks.runCommandSync as ReturnType<typeof vi.fn>;
+    const viteConfigContent = `
+import { defineConfig } from 'vite';
+export default defineConfig({
+  plugins: []
+});
+`;
+    // findViteConfigFile: first config file found
+    mock.mockResolvedValueOnce(makeRunCommandResult({ stdout: 'found' }));
+    // readFileFromContainer: return config content
+    mock.mockResolvedValueOnce(makeRunCommandResult({ stdout: viteConfigContent }));
+    // writeFileToContainer: succeed
+    mock.mockResolvedValueOnce(makeRunCommandResult());
+
+    const result = await modifyViteConfig(mockTasks, '/app');
+
+    expect(result.success).toBe(true);
+    expect(result.modified).toBe(true);
+    expect(result.configFile).toBe('vite.config.ts');
+    // Verify the write was called with base64-encoded content
+    expect(mock).toHaveBeenCalledTimes(3);
+    const writeCall = mock.mock.calls[2][0];
+    expect(writeCall.command).toContain('base64');
+    expect(writeCall.command).toContain('vite.config.ts');
+  });
+
+  it('returns modified=false when config already has all required properties', async () => {
+    const mock = mockTasks.runCommandSync as ReturnType<typeof vi.fn>;
+    // Config that already has allowedHosts, port (exact format), dedupe, and optimizeDeps
+    const viteConfigContent = `
+import { defineConfig } from 'vite';
+export default defineConfig({
+  server: {
+    allowedHosts: true,
+    port: parseInt(process.env.PORT || "5173")
+  },
+  resolve: {
+    dedupe: ["react", "react-dom", "react-router-dom"]
+  },
+  optimizeDeps: {
+    include: ["react", "react-dom", "react-router-dom"]
+  }
+});
+`;
+    mock.mockResolvedValueOnce(makeRunCommandResult({ stdout: 'found' }));
+    mock.mockResolvedValueOnce(makeRunCommandResult({ stdout: viteConfigContent }));
+
+    const result = await modifyViteConfig(mockTasks, '/app');
+
+    expect(result.success).toBe(true);
+    expect(result.modified).toBe(false);
+    // Should not attempt to write when no modifications are needed
+    expect(mock).toHaveBeenCalledTimes(2);
+  });
+
+  it('returns error when write fails', async () => {
+    const mock = mockTasks.runCommandSync as ReturnType<typeof vi.fn>;
+    const viteConfigContent = `
+import { defineConfig } from 'vite';
+export default defineConfig({
+  plugins: []
+});
+`;
+    mock.mockResolvedValueOnce(makeRunCommandResult({ stdout: 'found' }));
+    mock.mockResolvedValueOnce(makeRunCommandResult({ stdout: viteConfigContent }));
+    // writeFileToContainer fails
+    mock.mockResolvedValueOnce(makeRunCommandResult({ exitCode: 1, stderr: 'Permission denied' }));
+
+    const result = await modifyViteConfig(mockTasks, '/app');
+
+    expect(result.success).toBe(false);
+    expect(result.modified).toBe(false);
+    expect(result.error).toContain('write');
+  });
+
+  it('returns error when config file contains invalid JavaScript', async () => {
+    const mock = mockTasks.runCommandSync as ReturnType<typeof vi.fn>;
+    const malformedContent = 'export default {{{ not valid js';
+    mock.mockResolvedValueOnce(makeRunCommandResult({ stdout: 'found' }));
+    mock.mockResolvedValueOnce(makeRunCommandResult({ stdout: malformedContent }));
+
+    const result = await modifyViteConfig(mockTasks, '/app');
+
+    expect(result.success).toBe(false);
+    expect(result.modified).toBe(false);
+    expect(result.error).toBeDefined();
   });
 });

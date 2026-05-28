@@ -1,5 +1,5 @@
-import type { DevSupervisorClient, ExecResult } from './DevSupervisorClient.js';
-import { DevSupervisorClientFactory } from '../utils/dev-supervisor-client-factory.js';
+import { createForWorkspace } from '../workspace/index.js';
+import type { WorkspaceTasks, RunCommandResult } from '../workspace/tasks.js';
 import { logger } from '../logging/index.js';
 
 /**
@@ -55,7 +55,7 @@ const DEFAULT_TIMEOUT_SEC = 30;
  * preview nobody is looking at is worse than occasionally missing a check.
  *
  * The `dev-supervisor ...` strings match the wrapped errors produced by
- * `DevSupervisorClient.makeRequest` when the socket/TCP endpoint can't be
+ * `HttpWorkspaceClient` when the socket/TCP endpoint can't be
  * reached; `connection refused` / `econnrefused` / `enoent` / `enotfound`
  * cover the raw Node networking errors that can leak through for TCP mode.
  */
@@ -124,7 +124,7 @@ function classifyExecError(err: unknown): TypecheckResult['reason'] {
  * see in the iframe — not a stale copy in the agent container.
  *
  * This service is deliberately stateless and dependency-free beyond
- * DevSupervisorClientFactory so it can be injected into tests without a
+ * createForWorkspace so it can be injected into tests without a
  * full service-container setup.
  */
 export class TypecheckService {
@@ -148,9 +148,9 @@ export class TypecheckService {
       return { ok: true, errors: [], skipped: true, reason: 'aborted' };
     }
 
-    let devSupervisor: DevSupervisorClient | null;
+    let workspace: { tasks: WorkspaceTasks } | null;
     try {
-      devSupervisor = DevSupervisorClientFactory.createForApp(appId);
+      workspace = createForWorkspace(appId, 'preview');
     } catch (err) {
       logger.warn('agent.typecheck.skipped', {
         appId,
@@ -160,22 +160,22 @@ export class TypecheckService {
       return { ok: true, errors: [], skipped: true, reason: 'no_supervisor' };
     }
 
-    if (!devSupervisor) {
+    if (!workspace) {
       logger.info('agent.typecheck.skipped', { appId, reason: 'no_supervisor' });
       return { ok: true, errors: [], skipped: true, reason: 'no_supervisor' };
     }
 
     // Run the exec and an abort race so a user-stop in the middle of a long
     // check doesn't strand us waiting for dev-supervisor's full timeout+5s.
-    let execResult: ExecResult;
+    let execResult: RunCommandResult;
     const begin = Date.now();
     try {
       execResult = await this.execWithAbort(
-        devSupervisor,
+        workspace.tasks,
         {
           command: 'npx tsc --noEmit --pretty false',
-          working_dir: '/app',
-          timeout: timeoutSec
+          workingDir: '/app',
+          timeoutSeconds: timeoutSec
         },
         options?.signal
       );
@@ -194,7 +194,7 @@ export class TypecheckService {
     }
     const durationMs = Date.now() - begin;
 
-    if (execResult.timed_out) {
+    if (execResult.timedOut) {
       logger.warn('agent.typecheck.skipped', {
         appId,
         reason: 'timeout',
@@ -207,20 +207,20 @@ export class TypecheckService {
     // tsc exits 0 on success, non-zero on errors or internal crashes. We only
     // trust the non-zero branch to contain parseable diagnostics — otherwise
     // we'd convert a true clean run into a fake "0 errors" loop on the agent.
-    if (execResult.exit_code === 0) {
+    if (execResult.exitCode === 0) {
       return { ok: true, errors: [], durationMs };
     }
 
     const errors = parseTscOutput(execResult.stdout, execResult.stderr);
 
-    // exit_code != 0 but nothing matched the error regex: tsc itself crashed
+    // exitCode != 0 but nothing matched the error regex: tsc itself crashed
     // (stack trace, out-of-memory, etc). Don't block the user with a retry
     // loop on something the agent can't actually fix.
     if (errors.length === 0) {
       logger.warn('agent.typecheck.skipped', {
         appId,
         reason: 'exec_failure',
-        exitCode: execResult.exit_code,
+        exitCode: execResult.exitCode,
         stdoutPreview: execResult.stdout.slice(0, 500),
         stderrPreview: execResult.stderr.slice(0, 500),
         durationMs
@@ -232,21 +232,21 @@ export class TypecheckService {
   }
 
   /**
-   * Promise.race a normal `exec` against an abort signal so that aborts
+   * Promise.race a normal `runCommandSync` against an abort signal so that aborts
    * return promptly even when dev-supervisor hasn't yet honoured its
    * internal timeout. The abandoned exec promise drains in the background —
-   * dev-supervisor's own timeout (passed through `ExecOptions.timeout`)
+   * dev-supervisor's own timeout (passed through `timeoutSeconds`)
    * makes sure its side of the socket eventually releases.
    */
   private async execWithAbort(
-    client: DevSupervisorClient,
-    options: { command: string; working_dir: string; timeout: number },
+    tasks: WorkspaceTasks,
+    options: { command: string; workingDir: string; timeoutSeconds: number },
     signal: AbortSignal | undefined
-  ): Promise<ExecResult> {
-    const execPromise = client.exec(options);
+  ): Promise<RunCommandResult> {
+    const execPromise = tasks.runCommandSync(options);
     if (!signal) return execPromise;
 
-    return await new Promise<ExecResult>((resolve, reject) => {
+    return await new Promise<RunCommandResult>((resolve, reject) => {
       const onAbort = () => {
         const abortErr = new Error('Aborted');
         abortErr.name = 'AbortError';

@@ -410,23 +410,6 @@ export class GitOpsService {
       }
 
       const gitTool = new GitTool(workspace.tasks);
-      // Phase 3 services (codeSyncFileCleanupService, modifyViteConfig, injectPortHandling)
-      // still accept DevSupervisorClient — will be migrated separately.
-      const devSupervisor = DevSupervisorClientFactory.createForApp(appId);
-      if (!devSupervisor) {
-        logger.error('git-ops.pull.devSupervisor.unavailable', {
-          appId,
-          jobId,
-          stage: 'pulling',
-          kind: 'devSupervisor',
-        });
-        await this.importJobRepo.markFailed(
-          jobId,
-          'DevSupervisor no longer available for post-pull services',
-          'pulling'
-        );
-        return;
-      }
 
       const result = await gitTool.executeGitOperation(appPath, {
         operation: 'pull',
@@ -487,7 +470,7 @@ export class GitOpsService {
 
       // Clean up junk/security-sensitive files after pull (single command, no scanning).
       // Exclude .git/ — it must be preserved for subsequent pulls to work.
-      await codeSyncFileCleanupService.deleteCleanablePatterns(devSupervisor, '/app', ['.git/']);
+      await codeSyncFileCleanupService.deleteCleanablePatterns(workspace.tasks, '/app', ['.git/']);
       logger.info('git-ops.pull.cleanup-files.complete', { appId, jobId });
 
       projectSourceDetectionService.detectAndLogInBackground({
@@ -504,7 +487,7 @@ export class GitOpsService {
       // Non-fatal: failures are logged as warnings but don't fail the job,
       // matching zip import behavior. The app may still work without this modification.
       if (options.modifyViteConfig) {
-        const viteConfigResult = await modifyViteConfig(devSupervisor, '/app');
+        const viteConfigResult = await modifyViteConfig(workspace.tasks, '/app');
         if (viteConfigResult.modified) {
           logger.info('git-ops.pull.vite-config.modified', {
             appId,
@@ -536,7 +519,7 @@ export class GitOpsService {
           });
 
           const portInjectionResult = await injectPortHandling(
-            devSupervisor,
+            workspace.tasks,
             '/app',
             options.entryFile
           );

@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { codeSyncFileCleanupService, CodeSyncFileCleanupService } from '../CodeSyncFileCleanupService.js';
 import { ValidationErrorKey } from '../../types/import.js';
-import type { DevSupervisorClient } from '../DevSupervisorClient.js';
+import type { WorkspaceTasks } from '../../workspace/tasks.js';
+import { makeRunCommandResult } from '../../workspace/__tests__/mock-helpers.js';
 import * as features from '../features.js';
 
 describe('CodeSyncFileCleanupService', () => {
@@ -66,13 +67,13 @@ describe('CodeSyncFileCleanupService', () => {
   });
 
   describe('deleteCleanablePatterns', () => {
-    let mockDevSupervisor: DevSupervisorClient;
+    let mockTasks: WorkspaceTasks;
 
     beforeEach(() => {
       CodeSyncFileCleanupService.clearCache();
-      mockDevSupervisor = {
-        exec: vi.fn(),
-      } as unknown as DevSupervisorClient;
+      mockTasks = {
+        runCommandSync: vi.fn(),
+      } as unknown as WorkspaceTasks;
     });
 
     afterEach(() => {
@@ -80,26 +81,23 @@ describe('CodeSyncFileCleanupService', () => {
     });
 
     it('should return success when exec succeeds', async () => {
-      (mockDevSupervisor.exec as ReturnType<typeof vi.fn>).mockResolvedValue({ success: true });
+      (mockTasks.runCommandSync as ReturnType<typeof vi.fn>).mockResolvedValue(makeRunCommandResult());
 
       const result = await codeSyncFileCleanupService.deleteCleanablePatterns(
-        mockDevSupervisor,
+        mockTasks,
         '/app'
       );
 
       expect(result.success).toBe(true);
       expect(result.error).toBeUndefined();
-      expect(mockDevSupervisor.exec).toHaveBeenCalledTimes(1);
+      expect(mockTasks.runCommandSync).toHaveBeenCalledTimes(1);
     });
 
-    it('should return failure when exec fails with success=false', async () => {
-      (mockDevSupervisor.exec as ReturnType<typeof vi.fn>).mockResolvedValue({
-        success: false,
-        error: 'Command failed',
-      });
+    it('should return failure when command exits with non-zero exitCode', async () => {
+      (mockTasks.runCommandSync as ReturnType<typeof vi.fn>).mockResolvedValue(makeRunCommandResult({ exitCode: 1, stderr: 'Command failed' }));
 
       const result = await codeSyncFileCleanupService.deleteCleanablePatterns(
-        mockDevSupervisor,
+        mockTasks,
         '/app'
       );
 
@@ -108,12 +106,12 @@ describe('CodeSyncFileCleanupService', () => {
     });
 
     it('should return failure when exec throws an error', async () => {
-      (mockDevSupervisor.exec as ReturnType<typeof vi.fn>).mockRejectedValue(
+      (mockTasks.runCommandSync as ReturnType<typeof vi.fn>).mockRejectedValue(
         new Error('Connection failed')
       );
 
       const result = await codeSyncFileCleanupService.deleteCleanablePatterns(
-        mockDevSupervisor,
+        mockTasks,
         '/app'
       );
 
@@ -122,11 +120,11 @@ describe('CodeSyncFileCleanupService', () => {
     });
 
     it('should build valid command with directory and file patterns', async () => {
-      (mockDevSupervisor.exec as ReturnType<typeof vi.fn>).mockResolvedValue({ success: true });
+      (mockTasks.runCommandSync as ReturnType<typeof vi.fn>).mockResolvedValue(makeRunCommandResult());
 
-      await codeSyncFileCleanupService.deleteCleanablePatterns(mockDevSupervisor, '/app');
+      await codeSyncFileCleanupService.deleteCleanablePatterns(mockTasks, '/app');
 
-      const execCall = (mockDevSupervisor.exec as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      const execCall = (mockTasks.runCommandSync as ReturnType<typeof vi.fn>).mock.calls[0][0];
       const command = execCall.command as string;
 
       // Should have rm command for directories (e.g., __MACOSX/, .idea/, .vscode/, .git/)
@@ -140,11 +138,11 @@ describe('CodeSyncFileCleanupService', () => {
     });
 
     it('should omit excluded patterns from the generated command', async () => {
-      (mockDevSupervisor.exec as ReturnType<typeof vi.fn>).mockResolvedValue({ success: true });
+      (mockTasks.runCommandSync as ReturnType<typeof vi.fn>).mockResolvedValue(makeRunCommandResult());
 
-      await codeSyncFileCleanupService.deleteCleanablePatterns(mockDevSupervisor, '/app', ['.git/']);
+      await codeSyncFileCleanupService.deleteCleanablePatterns(mockTasks, '/app', ['.git/']);
 
-      const command = (mockDevSupervisor.exec as ReturnType<typeof vi.fn>).mock.calls[0][0].command as string;
+      const command = (mockTasks.runCommandSync as ReturnType<typeof vi.fn>).mock.calls[0][0].command as string;
 
       // .git/ must not appear in the rm command — deleting it would break subsequent pulls
       expect(command).not.toContain('/app/.git');
@@ -153,11 +151,11 @@ describe('CodeSyncFileCleanupService', () => {
     });
 
     it('should use single quotes in shell command for safety', async () => {
-      (mockDevSupervisor.exec as ReturnType<typeof vi.fn>).mockResolvedValue({ success: true });
+      (mockTasks.runCommandSync as ReturnType<typeof vi.fn>).mockResolvedValue(makeRunCommandResult());
 
-      await codeSyncFileCleanupService.deleteCleanablePatterns(mockDevSupervisor, '/app');
+      await codeSyncFileCleanupService.deleteCleanablePatterns(mockTasks, '/app');
 
-      const execCall = (mockDevSupervisor.exec as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      const execCall = (mockTasks.runCommandSync as ReturnType<typeof vi.fn>).mock.calls[0][0];
       const command = execCall.command as string;
 
       // Should use single quotes for paths and patterns
@@ -185,7 +183,7 @@ describe('CodeSyncFileCleanupService', () => {
       CodeSyncFileCleanupService.clearCache();
 
       const result = await codeSyncFileCleanupService.deleteCleanablePatterns(
-        mockDevSupervisor,
+        mockTasks,
         '/app'
       );
 
@@ -193,7 +191,7 @@ describe('CodeSyncFileCleanupService', () => {
       expect(result.error).toContain('Unsafe patterns detected');
       expect(result.error).toContain('$(rm -rf /)');
       // Should NOT have called exec
-      expect(mockDevSupervisor.exec).not.toHaveBeenCalled();
+      expect(mockTasks.runCommandSync).not.toHaveBeenCalled();
 
       getZipImportLimitsSpy.mockRestore();
     });
@@ -215,13 +213,13 @@ describe('CodeSyncFileCleanupService', () => {
       CodeSyncFileCleanupService.clearCache();
 
       const result = await codeSyncFileCleanupService.deleteCleanablePatterns(
-        mockDevSupervisor,
+        mockTasks,
         '/app'
       );
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('Unsafe patterns detected');
-      expect(mockDevSupervisor.exec).not.toHaveBeenCalled();
+      expect(mockTasks.runCommandSync).not.toHaveBeenCalled();
 
       getZipImportLimitsSpy.mockRestore();
     });
@@ -243,13 +241,13 @@ describe('CodeSyncFileCleanupService', () => {
       CodeSyncFileCleanupService.clearCache();
 
       const result = await codeSyncFileCleanupService.deleteCleanablePatterns(
-        mockDevSupervisor,
+        mockTasks,
         '/app'
       );
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('Unsafe patterns detected');
-      expect(mockDevSupervisor.exec).not.toHaveBeenCalled();
+      expect(mockTasks.runCommandSync).not.toHaveBeenCalled();
 
       getZipImportLimitsSpy.mockRestore();
     });
@@ -269,15 +267,15 @@ describe('CodeSyncFileCleanupService', () => {
       });
 
       CodeSyncFileCleanupService.clearCache();
-      (mockDevSupervisor.exec as ReturnType<typeof vi.fn>).mockResolvedValue({ success: true });
+      (mockTasks.runCommandSync as ReturnType<typeof vi.fn>).mockResolvedValue(makeRunCommandResult());
 
       const result = await codeSyncFileCleanupService.deleteCleanablePatterns(
-        mockDevSupervisor,
+        mockTasks,
         '/app'
       );
 
       expect(result.success).toBe(true);
-      expect(mockDevSupervisor.exec).toHaveBeenCalledTimes(1);
+      expect(mockTasks.runCommandSync).toHaveBeenCalledTimes(1);
 
       getZipImportLimitsSpy.mockRestore();
     });

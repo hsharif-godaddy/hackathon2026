@@ -10,11 +10,15 @@ import {
   resolveStartCommand,
 } from '../AppRestartService.js';
 import { DevSupervisorClientFactory } from '../../utils/dev-supervisor-client-factory.js';
+import { createForWorkspace } from '../../workspace/index.js';
 import { TerminalTool } from '../../tools/terminal.js';
 import * as fs from 'node:fs/promises';
 
 // Mock dependencies
 vi.mock('../../utils/dev-supervisor-client-factory.js');
+vi.mock('../../workspace/index.js', () => ({
+  createForWorkspace: vi.fn(),
+}));
 vi.mock('../../tools/terminal.js');
 vi.mock('node:fs/promises');
 const { mockLoggerWarn } = vi.hoisted(() => ({
@@ -96,6 +100,11 @@ describe('AppRestartService', () => {
 
     // Setup factory mock
     vi.mocked(DevSupervisorClientFactory.createForApp).mockReturnValue(mockDevSupervisor as any);
+
+    // Setup workspace mock (used by runInstall, runBuild, measureAppDirSize)
+    vi.mocked(createForWorkspace).mockReturnValue({
+      tasks: { runCommandSync: vi.fn().mockResolvedValue({ taskId: 't', exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 1 }) },
+    } as any);
 
     // Setup TerminalTool mock
     vi.mocked(TerminalTool).mockImplementation(() => mockTerminalTool as any);
@@ -240,8 +249,8 @@ describe('AppRestartService', () => {
       });
     });
 
-    it('should return error when dev supervisor is not available', async () => {
-      vi.mocked(DevSupervisorClientFactory.createForApp).mockReturnValue(null);
+    it('should return error when workspace is not available', async () => {
+      vi.mocked(createForWorkspace).mockReturnValue(null);
 
       const result = await service.runInstall(testAppId, testAppPath);
 
@@ -327,8 +336,8 @@ describe('AppRestartService', () => {
       });
     });
 
-    it('should return error when dev supervisor is not available', async () => {
-      vi.mocked(DevSupervisorClientFactory.createForApp).mockReturnValue(null);
+    it('should return error when workspace is not available', async () => {
+      vi.mocked(createForWorkspace).mockReturnValue(null);
 
       const result = await service.runBuild(testAppId, testAppPath);
 
@@ -964,6 +973,14 @@ describe('AppRestartService', () => {
         stderr: '',
       });
       mockExecForRestartCycle();
+      // Mock createForWorkspace for measureAppDirSize (needs stdout with size)
+      vi.mocked(createForWorkspace).mockReturnValue({
+        tasks: {
+          runCommandSync: vi.fn().mockResolvedValue({
+            taskId: 't', exitCode: 0, stdout: '104857600\n', stderr: '', timedOut: false, executionTimeMs: 1,
+          }),
+        },
+      } as any);
     });
 
     it('should collect timing metrics for install, build, and start phases', async () => {
@@ -984,12 +1001,11 @@ describe('AppRestartService', () => {
     });
 
     it('should handle du command failure gracefully', async () => {
-      mockDevSupervisor.exec.mockReset().mockImplementation(({ command }: { command: string }) => {
-        if (command.includes('du -sb')) {
-          return Promise.reject(new Error('du command failed'));
-        }
-        return Promise.resolve({ stdout: '' });
-      });
+      vi.mocked(createForWorkspace).mockReturnValue({
+        tasks: {
+          runCommandSync: vi.fn().mockRejectedValue(new Error('du command failed')),
+        },
+      } as any);
 
       const result = await service.performFullRestartCycle(testAppId, testAppPath);
 
@@ -998,12 +1014,13 @@ describe('AppRestartService', () => {
     });
 
     it('should handle invalid du output gracefully', async () => {
-      mockDevSupervisor.exec.mockReset().mockImplementation(({ command }: { command: string }) => {
-        if (command.includes('du -sb')) {
-          return Promise.resolve({ stdout: 'not-a-number' });
-        }
-        return Promise.resolve({ stdout: '' });
-      });
+      vi.mocked(createForWorkspace).mockReturnValue({
+        tasks: {
+          runCommandSync: vi.fn().mockResolvedValue({
+            taskId: 't', exitCode: 0, stdout: 'not-a-number', stderr: '', timedOut: false, executionTimeMs: 1,
+          }),
+        },
+      } as any);
 
       const result = await service.performFullRestartCycle(testAppId, testAppPath);
 

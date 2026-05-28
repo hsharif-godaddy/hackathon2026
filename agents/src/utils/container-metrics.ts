@@ -1,28 +1,24 @@
 /**
  * Container metrics utilities
  *
- * Provides helper functions for collecting metrics from containers via dev-supervisor.
+ * Provides helper functions for collecting container metrics via workspace tasks
+ * (runCommandSync executed inside the preview container by dev-supervisor).
  */
 
-/**
- * Interface for dev-supervisor exec method (minimal interface for metrics collection)
- */
-export interface DevSupervisorExec {
-  exec(options: { command: string; timeout: number }): Promise<{ stdout?: string }>;
-}
+import type { WorkspaceTasks } from '../workspace/tasks.js';
 
 /**
  * Measure the total size of /app directory including all subdirectories.
  * Best-effort: returns undefined on any error (never throws).
  *
- * @param devSupervisor - Dev supervisor client with exec method
+ * @param tasks - Workspace tasks for executing commands in container
  * @returns Size in bytes, or undefined if measurement fails
  */
-export async function measureAppDirSize(devSupervisor: DevSupervisorExec): Promise<number | undefined> {
+export async function measureAppDirSize(tasks: Pick<WorkspaceTasks, 'runCommandSync'>): Promise<number | undefined> {
   try {
-    const result = await devSupervisor.exec({
+    const result = await tasks.runCommandSync({
       command: 'du -sb ${CUSTOMER_APP_DIR:-/app} 2>/dev/null | cut -f1',
-      timeout: 30,
+      timeoutSeconds: 30,
     });
     if (result.stdout) {
       const sizeBytes = parseInt(result.stdout.trim(), 10);

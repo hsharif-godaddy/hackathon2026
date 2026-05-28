@@ -9,7 +9,7 @@
  */
 
 import { normalize, isAbsolute } from 'node:path';
-import { DevSupervisorClient } from './DevSupervisorClient.js';
+import type { WorkspaceTasks } from '../workspace/tasks.js';
 import { Logger } from '../logging/index.js';
 
 const logger = Logger.create({ component: 'express-port-injector' });
@@ -72,13 +72,13 @@ export interface PortInjectionResult {
  * Injects process.env.PORT and 0.0.0.0 host binding into Express entry files
  * using simple string replacement (no AST).
  *
- * @param devSupervisor - Client to execute commands in container
+ * @param tasks - Workspace tasks for executing commands in container
  * @param projectRoot - Project root path inside container
  * @param entryFile - Entry file path relative to project root (e.g., 'src/server.ts')
  * @returns Result indicating whether injection was successful
  */
 export async function injectPortHandling(
-  devSupervisor: DevSupervisorClient,
+  tasks: WorkspaceTasks,
   projectRoot: string,
   entryFile: string
 ): Promise<PortInjectionResult> {
@@ -100,13 +100,13 @@ export async function injectPortHandling(
   logger.info('express-port-injector.start', { entryFile, filePath });
 
   // Step 1: Read the entry file
-  const readResult = await devSupervisor.exec({
+  const readResult = await tasks.runCommandSync({
     command: `cat "${filePath}"`,
-    working_dir: projectRoot,
-    timeout: 10,
+    workingDir: projectRoot,
+    timeoutSeconds: 10,
   });
 
-  if (readResult.exit_code !== 0) {
+  if (readResult.exitCode !== 0) {
     logger.warn('express-port-injector.file-not-found', {
       entryFile,
       stderr: readResult.stderr,
@@ -147,13 +147,13 @@ export async function injectPortHandling(
 
   // Step 4: Write modified file back using heredoc with quoted delimiter
   // The single-quoted delimiter ('PAAS_PORT_INJECT_EOF') disables shell expansion
-  const writeResult = await devSupervisor.exec({
+  const writeResult = await tasks.runCommandSync({
     command: `cat > "${filePath}" << 'PAAS_PORT_INJECT_EOF'\n${modifiedCode}\nPAAS_PORT_INJECT_EOF`,
-    working_dir: projectRoot,
-    timeout: 10,
+    workingDir: projectRoot,
+    timeoutSeconds: 10,
   });
 
-  if (writeResult.exit_code !== 0) {
+  if (writeResult.exitCode !== 0) {
     logger.error('express-port-injector.write-failed', {
       entryFile,
       stderr: writeResult.stderr,

@@ -10,7 +10,7 @@
 import { Logger } from '../logging/index.js';
 import { getZipImportLimits, type ZipImportLimits } from './features.js';
 import { ValidationErrorKey, type ValidationError } from '../types/import.js';
-import type { DevSupervisorClient } from './DevSupervisorClient.js';
+import type { WorkspaceTasks } from '../workspace/tasks.js';
 
 // Cached patterns to avoid repeated env var parsing (performance optimization)
 let cachedPatterns: ZipImportLimits['cleanablePatterns'] | null = null;
@@ -120,7 +120,7 @@ export class CodeSyncFileCleanupService {
    * @param exclude - Patterns to skip (e.g. ['.git/'] for git pull, where the .git dir must be preserved)
    */
   async deleteCleanablePatterns(
-    devSupervisor: DevSupervisorClient,
+    tasks: WorkspaceTasks,
     containerPath: string,
     exclude: string[] = []
   ): Promise<{ success: boolean; error?: string }> {
@@ -190,17 +190,18 @@ export class CodeSyncFileCleanupService {
     try {
       this.logger.info('code-sync-file-cleanup.delete.start', { containerPath });
 
-      const result = await devSupervisor.exec({ command, timeout: 60 });
+      const result = await tasks.runCommandSync({ command, timeoutSeconds: 60 });
 
+      const success = result.exitCode === 0;
       this.logger.info('code-sync-file-cleanup.delete.complete', {
         containerPath,
-        success: result.success,
-        ...(result.error && { error: result.error }),
+        success,
+        ...(result.stderr && { error: result.stderr }),
       });
 
-      // Return actual result.success status instead of always returning true
-      if (!result.success) {
-        return { success: false, error: result.error || 'Cleanup command failed' };
+      // Return actual success status instead of always returning true
+      if (!success) {
+        return { success: false, error: result.stderr || 'Cleanup command failed' };
       }
 
       return { success: true };

@@ -10,7 +10,7 @@ import _traverse, { NodePath } from '@babel/traverse';
 import _generate from '@babel/generator';
 import * as t from '@babel/types';
 import { Logger } from '../logging/index.js';
-import type { DevSupervisorClient } from './DevSupervisorClient.js';
+import type { WorkspaceTasks } from '../workspace/tasks.js';
 
 /** Vite config file names to check for */
 export const VITE_CONFIG_FILES = ['vite.config.ts', 'vite.config.js', 'vite.config.mjs', 'vite.config.cjs'] as const;
@@ -32,13 +32,13 @@ export interface ViteConfigModifyResult {
  * Find which vite config file exists in the container
  */
 async function findViteConfigFile(
-  devSupervisor: DevSupervisorClient,
+  tasks: WorkspaceTasks,
   containerPath: string
 ): Promise<string | null> {
   for (const configFile of VITE_CONFIG_FILES) {
-    const checkResult = await devSupervisor.exec({
+    const checkResult = await tasks.runCommandSync({
       command: `test -f "${containerPath}/${configFile}" && echo "found" || echo "notfound"`,
-      timeout: 5,
+      timeoutSeconds: 5,
     });
     if (checkResult.stdout?.trim() === 'found') {
       return configFile;
@@ -51,16 +51,16 @@ async function findViteConfigFile(
  * Read file content from container
  */
 async function readFileFromContainer(
-  devSupervisor: DevSupervisorClient,
+  tasks: WorkspaceTasks,
   containerPath: string,
   fileName: string
 ): Promise<string | null> {
-  const result = await devSupervisor.exec({
+  const result = await tasks.runCommandSync({
     command: `cat "${containerPath}/${fileName}"`,
-    timeout: 10,
+    timeoutSeconds: 10,
   });
 
-  if (!result.success || !result.stdout) {
+  if (result.exitCode !== 0 || !result.stdout) {
     return null;
   }
 
@@ -71,7 +71,7 @@ async function readFileFromContainer(
  * Write file content to container
  */
 async function writeFileToContainer(
-  devSupervisor: DevSupervisorClient,
+  tasks: WorkspaceTasks,
   containerPath: string,
   fileName: string,
   content: string
@@ -79,12 +79,12 @@ async function writeFileToContainer(
   // Escape content for shell - use base64 to avoid escaping issues
   const base64Content = Buffer.from(content).toString('base64');
 
-  const result = await devSupervisor.exec({
+  const result = await tasks.runCommandSync({
     command: `echo "${base64Content}" | base64 -d > "${containerPath}/${fileName}"`,
-    timeout: 10,
+    timeoutSeconds: 10,
   });
 
-  return result.success;
+  return result.exitCode === 0;
 }
 
 // =====================================================
@@ -808,13 +808,13 @@ export function processAndGenerateViteConfig(
  * modified and will be skipped. Other sections may still be modified.
  */
 export async function modifyViteConfig(
-  devSupervisor: DevSupervisorClient,
+  tasks: WorkspaceTasks,
   containerPath: string,
   options?: ViteConfigModifyOptions
 ): Promise<ViteConfigModifyResult> {
   try {
     // Find vite config file
-    const configFile = await findViteConfigFile(devSupervisor, containerPath);
+    const configFile = await findViteConfigFile(tasks, containerPath);
 
     if (!configFile) {
       logger.info('vite-config.not-found', { containerPath });
@@ -827,7 +827,7 @@ export async function modifyViteConfig(
     logger.info('vite-config.found', { containerPath, configFile });
 
     // Read the config file
-    const content = await readFileFromContainer(devSupervisor, containerPath, configFile);
+    const content = await readFileFromContainer(tasks, containerPath, configFile);
 
     if (!content) {
       return {
@@ -874,7 +874,7 @@ export async function modifyViteConfig(
     });
 
     // Write the modified file back
-    const writeSuccess = await writeFileToContainer(devSupervisor, containerPath, configFile, modifiedContent);
+    const writeSuccess = await writeFileToContainer(tasks, containerPath, configFile, modifiedContent);
 
     if (!writeSuccess) {
       return {

@@ -6,7 +6,7 @@
  */
 
 import { Logger } from '../logging/index.js';
-import { DevSupervisorClient } from './DevSupervisorClient.js';
+import type { WorkspaceTasks } from '../workspace/tasks.js';
 import { ValidationErrorKey, type ValidationError } from '../types/import.js';
 
 const CLONE_TIMEOUT = parseInt(process.env.GIT_CLONE_TIMEOUT || '300', 10); // 5 minutes default
@@ -33,12 +33,12 @@ export class GitCloneService {
   /**
    * Clone a Git repository inside the container
    *
-   * @param devSupervisor - Client to execute commands in container
+   * @param tasks - Workspace tasks for executing commands in container
    * @param params - Clone parameters
    * @returns Clone result with path and commit hash
    */
   async cloneRepository(
-    devSupervisor: DevSupervisorClient,
+    tasks: WorkspaceTasks,
     params: GitCloneParams
   ): Promise<GitCloneResult> {
     const { appId, gitUrl, gitToken, gitBranch } = params;
@@ -60,12 +60,12 @@ export class GitCloneService {
       });
 
       // Create clone directory
-      const mkdirResult = await devSupervisor.exec({
+      const mkdirResult = await tasks.runCommandSync({
         command: `mkdir -p "${clonePath}"`,
-        timeout: 10,
+        timeoutSeconds: 10,
       });
 
-      if (!mkdirResult.success) {
+      if (mkdirResult.exitCode !== 0) {
         return {
           success: false,
           error: 'Failed to create clone directory',
@@ -91,19 +91,19 @@ export class GitCloneService {
       });
 
       // Execute clone
-      const cloneResult = await devSupervisor.exec({
+      const cloneResult = await tasks.runCommandSync({
         command: cloneCommand,
-        timeout: CLONE_TIMEOUT,
+        timeoutSeconds: CLONE_TIMEOUT,
       });
 
-      if (!cloneResult.success) {
+      if (cloneResult.exitCode !== 0) {
         const error = this.parseCloneError(cloneResult.stderr || '');
 
         this.logger.error('git-clone.failed', {
           appId,
           gitUrl: this.sanitizeGitUrl(gitUrl),
           error: error.message,
-          exitCode: cloneResult.exit_code,
+          exitCode: cloneResult.exitCode,
         });
 
         return {
@@ -114,12 +114,12 @@ export class GitCloneService {
       }
 
       // Get cloned commit hash
-      const hashResult = await devSupervisor.exec({
+      const hashResult = await tasks.runCommandSync({
         command: `cd "${clonePath}" && git rev-parse HEAD`,
-        timeout: 5,
+        timeoutSeconds: 5,
       });
 
-      const commitHash = hashResult.success ? hashResult.stdout?.trim() : undefined;
+      const commitHash = hashResult.exitCode === 0 ? hashResult.stdout?.trim() : undefined;
 
       this.logger.info('git-clone.success', {
         appId,

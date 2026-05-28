@@ -188,6 +188,12 @@ export class ProjectImportService {
         throw new Error('Dev supervisor not available for container operations');
       }
 
+      // WorkspaceTasks for migrated services (cleanup, vite config, port injection, metrics)
+      const workspace = createForWorkspace(appId, 'preview');
+      if (!workspace) {
+        throw new Error('Workspace not available for container operations');
+      }
+
       // Zip import flow
       const zipPath = params.zipPath!;
 
@@ -334,7 +340,7 @@ export class ProjectImportService {
       // Delete all configured patterns from extracted directory so they never overwrite existing app files
       const extractedProjectPath = validation.projectRoot || containerProjectPath!;
       const cleanupResult = await codeSyncFileCleanupService.deleteCleanablePatterns(
-        devSupervisor,
+        workspace.tasks,
         extractedProjectPath
       );
 
@@ -417,7 +423,7 @@ export class ProjectImportService {
         });
 
         const portInjectionResult = await injectPortHandling(
-          devSupervisor,
+          workspace.tasks,
           '/app',
           params.entryFile
         );
@@ -446,7 +452,7 @@ export class ProjectImportService {
 
       // Phase 7b: Modify vite config to allow all hosts (for proxy compatibility)
       // Use '/app' as this is the standard container mount
-      const viteConfigResult = await modifyViteConfig(devSupervisor, '/app');
+      const viteConfigResult = await modifyViteConfig(workspace.tasks, '/app');
       if (viteConfigResult.modified) {
         this.logger.info('project-import.vite-config.modified', {
           jobId,
@@ -633,7 +639,7 @@ export class ProjectImportService {
       }
 
       // Measure /app directory size
-      const appDirSizeBytes = await measureAppDirSize(devSupervisor);
+      const appDirSizeBytes = await measureAppDirSize(workspace.tasks);
 
       // Log consolidated metrics for zip import (use -1 for missing values to keep consistent numeric type in ES)
       this.logger.info('project-import.metrics', {

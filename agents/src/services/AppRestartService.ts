@@ -13,6 +13,7 @@ import { Logger } from '../logging/index.js';
 import { TerminalTool } from '../tools/terminal.js';
 import { DevSupervisorClientFactory } from '../utils/dev-supervisor-client-factory.js';
 import { createForWorkspace } from '../workspace/index.js';
+import type { WorkspaceTasks } from '../workspace/tasks.js';
 import { measureAppDirSize } from '../utils/container-metrics.js';
 
 const RESTART_TIMEOUTS = {
@@ -378,7 +379,7 @@ export class AppRestartService {
         startCommand,
       });
 
-      // Step 1: Stop dev server
+      // Step 1: Stop dev server (uses HTTP client directly, no workspace needed)
       const stopResult = await this.stopDevServer(appId);
       if (!stopResult.success) {
         this.logger.warn('app-restart.stop-server.failed', {
@@ -391,12 +392,20 @@ export class AppRestartService {
         await new Promise(resolve => setTimeout(resolve, 2000));
       }
 
+      // Create workspace for install/build/start phases
+      const workspace = createForWorkspace(appId, 'preview');
+      if (!workspace) {
+        this.logger.error('app-restart.cycle.workspace.unavailable', { appId });
+        result.error = 'Dev supervisor not available';
+        return result;
+      }
+
       // Step 2: Run install (unless skipped)
       let installDurationMs: number | undefined;
       if (!options?.skipInstall) {
         const installCommand = options?.commands?.install || getInstallCommand(packageManager, options?.installOptions ?? {});
         const installStartTime = Date.now();
-        const installResult = await this.runInstallWithRecovery(appId, appPath, installCommand, {
+        const installResult = await this.runInstallWithRecoveryTasks(workspace.tasks, appId, appPath, installCommand, {
           freshInstall: options?.freshInstall,
         });
         installDurationMs = Date.now() - installStartTime;
@@ -425,7 +434,7 @@ export class AppRestartService {
       if (shouldRunBuild) {
         const buildCommand = options?.commands?.build || getBuildCommand(packageManager);
         const buildStartTime = Date.now();
-        const buildResult = await this.runCommand(appId, appPath, buildCommand, 'build');
+        const buildResult = await this.runCommandWithTasks(workspace.tasks, appPath, buildCommand, 'build');
         buildDurationMs = Date.now() - buildStartTime;
         metrics.buildDurationMs = buildDurationMs;
 
@@ -474,12 +483,10 @@ export class AppRestartService {
       }
       result.phases.restart = true;
 
-      // Measure /app directory size
-      if (devSupervisor) {
-        const appDirSizeBytes = await measureAppDirSize(devSupervisor);
-        if (appDirSizeBytes !== undefined) {
-          metrics.appDirSizeBytes = appDirSizeBytes;
-        }
+      // Measure /app directory size (workspace already validated above)
+      const appDirSizeBytes = await measureAppDirSize(workspace.tasks);
+      if (appDirSizeBytes !== undefined) {
+        metrics.appDirSizeBytes = appDirSizeBytes;
       }
 
       result.success = true;
@@ -536,9 +543,10 @@ export class AppRestartService {
   }
 
   /**
-   * Run install, optionally wiping node_modules first; retry once on ENOTEMPTY.
+   * Run install via workspace tasks, optionally wiping node_modules first; retry once on ENOTEMPTY.
    */
-  private async runInstallWithRecovery(
+  private async runInstallWithRecoveryTasks(
+    tasks: WorkspaceTasks,
     appId: string,
     appPath: string,
     installCommand: string,
@@ -551,7 +559,7 @@ export class AppRestartService {
       }
     }
 
-    let installResult = await this.runCommand(appId, appPath, installCommand, 'install');
+    let installResult = await this.runCommandWithTasks(tasks, appPath, installCommand, 'install');
 
     if (!installResult.success && isEnoTemptyInstallError(installResult.output, installResult.error)) {
       this.logger.warn('app-restart.install.enotempty-retry', { appId });
@@ -559,32 +567,24 @@ export class AppRestartService {
       if (!wipeResult.success) {
         return installResult;
       }
-      installResult = await this.runCommand(appId, appPath, installCommand, 'install');
+      installResult = await this.runCommandWithTasks(tasks, appPath, installCommand, 'install');
     }
 
     return installResult;
   }
 
   /**
-   * Run a command via dev-supervisor terminal
+   * Run a command via workspace tasks (pre-resolved workspace).
+   * Used by performFullRestartCycle which hoists workspace creation.
    */
-  private async runCommand(
-    appId: string,
+  private async runCommandWithTasks(
+    tasks: WorkspaceTasks,
     appPath: string,
     command: string,
     phase: 'install' | 'build'
   ): Promise<{ success: boolean; output?: string; error?: string; exitCode?: number }> {
     try {
-      const workspace = createForWorkspace(appId, 'preview');
-
-      if (!workspace) {
-        return {
-          success: false,
-          error: 'Dev supervisor not available',
-        };
-      }
-
-      const terminalTool = new TerminalTool(workspace.tasks);
+      const terminalTool = new TerminalTool(tasks);
       const timeout = phase === 'install' ? RESTART_TIMEOUTS.INSTALL : RESTART_TIMEOUTS.BUILD;
 
       const result = await terminalTool.executeCommand(appPath, {
