@@ -22,7 +22,7 @@ export function createConfig(): Config {
     },
     eval: {
       defaultTrials: 1,
-      maxTurns: parseMaxTurns(30),
+      maxTurns: parseMaxTurns(10),
       turnTimeoutMs: 1_200_000,
       maxConcurrency: parseMaxConcurrency(4),
     },

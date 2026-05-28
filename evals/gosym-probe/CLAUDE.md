@@ -198,7 +198,7 @@ Configured in `.env` (copy from `.env.example`).
 | `GOCODE_USE_S2S_AUTH`   | No       | `false`                     | Set to `true` to use IAM S2S JWT auth instead of a static key                  |
 | `OPENAI_MODEL`          | No       | —                           | Model for the synthetic user (GoCode)                                           |
 | `MAX_CONCURRENCY`       | No       | per-env                     | Max concurrent trials; `--concurrency` overrides                                |
-| `MAX_TURNS`             | No       | `30`                        | Max turns per simulation; `--max-turns` overrides                               |
+| `MAX_TURNS`             | No       | `10`                        | Max turns per simulation; `--max-turns` overrides                               |
 | `AWS_PROFILE`           | No       | `airobuild-dev-private-sso` | AWS SSO profile; required for S2S and AAB                                       |
 | `PROBE_DEBUG_EVENTS`    | No       | —                           | Set to `1` to log AAB socket events                                             |
 

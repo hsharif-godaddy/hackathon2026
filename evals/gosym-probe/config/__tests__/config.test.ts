@@ -151,19 +151,19 @@ describe('loadConfig', () => {
   });
 
   describe('per-environment values', () => {
-    it('local.dev has maxTurns=30', () => {
+    it('local.dev has maxTurns=10', () => {
       process.env.GD_ENV = 'local.dev';
-      expect(loadConfig().eval.maxTurns).toBe(30);
+      expect(loadConfig().eval.maxTurns).toBe(10);
     });
 
-    it('local.test has maxTurns=30', () => {
+    it('local.test has maxTurns=10', () => {
       process.env.GD_ENV = 'local.test';
-      expect(loadConfig().eval.maxTurns).toBe(30);
+      expect(loadConfig().eval.maxTurns).toBe(10);
     });
 
-    it('local.prod has maxTurns=30', () => {
+    it('local.prod has maxTurns=10', () => {
       process.env.GD_ENV = 'local.prod';
-      expect(loadConfig().eval.maxTurns).toBe(30);
+      expect(loadConfig().eval.maxTurns).toBe(10);
     });
 
     it('local.prod ignores https errors in playwright', () => {

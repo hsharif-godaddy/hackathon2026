@@ -134,7 +134,7 @@ If `--persona` was provided, use that. Otherwise, select based on the
 scenario description and print your reasoning.
 
 Both personas have no turn-ceiling setting. The simulation loop uses
-`config.eval.maxTurns` (default 30) as the global ceiling. Per-scenario
+`config.eval.maxTurns` (default 10) as the global ceiling. Per-scenario
 turn limits are not supported; adjust the global config if needed.
 
 #### 2d. Execution mode

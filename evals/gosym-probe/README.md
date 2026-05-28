@@ -515,7 +515,7 @@ src/
 
   personas/
     types.ts
-    beginner.ts           # Low-context user, max 30 turns
+    beginner.ts           # Low-context user, max 10 turns
 
   baselines/
     baseline-store.ts     # Save/load baselines/{scenario}.json
