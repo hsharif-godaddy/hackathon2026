@@ -98,12 +98,10 @@ Detect timezone from user's browser and confirm:
 **How to detect timezone:**
 The user's browser timezone is available in the conversation context.
 
-**If user confirms** (capture for messaging only — `timezone` is NOT in
-`AppointmentsConfigSchema`; date math runs in local-server time unless you extend the
-schema and slot generator together):
+**If user confirms** — use the detected timezone. Store it in `config.timezone` (IANA format):
 
 ```typescript
-const timezone = '<detected_timezone>';
+const timezone = '<detected_timezone>'; // e.g., "America/New_York"
 ```
 
 **If user says no:**
@@ -119,6 +117,10 @@ Convert user input to IANA format:
 ```typescript
 const timezone = '<IANA_timezone>';
 ```
+
+**IMPORTANT:** The `timezone` field is stored in `AppointmentsConfigSchema` and controls
+all time calculations. Business hours, slot availability, and "past time" checks all use
+this timezone. Timestamps are stored as UTC in the database and converted at display time.
 
 **Help them decide - examples by service type:**
 

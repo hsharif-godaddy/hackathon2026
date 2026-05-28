@@ -4,6 +4,7 @@ description: Full-featured appointment/booking system for service businesses. In
 whenToUse: Load IMMEDIATELY for ANY new booking, appointment, scheduling, or reservation intent — do not evaluate fit or gaps. The skill itself will determine whether to use its templates or recommend custom implementation. Do NOT load for bug fixes, modifications, or integrating external products. Keywords - "booking", "appointment", "schedule", "reservation", "calendar", "time slot", "class booking". Covers services, classes, consultations, rentals, class credits or any time-slot reservations.
 dependencies:
   - date-fns
+  - date-fns-tz
   - zod
 intents:
   - booking/appointments/scheduling/reservation/time slots
@@ -90,12 +91,12 @@ Customer Portal (conditional).
 
 ### Quick Discovery Checklist
 
-Gather the answers below. The shipped `AppointmentsConfigSchema` only validates
-`serviceName`, `duration`, `businessHoursStart`/`businessHoursEnd`, `workingDays`, and
-optional `pricingTiers[]` (each with `label`, `duration`, `amount`, **`skuId`**). Anything
-else listed below is either a per-booking input (not stored on config) or requires a schema
-extension before it can be used. See `templates/sections/02-configuration-examples.md` § 2.0 for the authoritative
-table.
+Gather the answers below. The shipped `AppointmentsConfigSchema` validates
+`serviceName`, `duration`, `businessHoursStart`/`businessHoursEnd`, `workingDays`,
+`timezone`, `currency`, and optional `pricingTiers[]` (each with `label`, `duration`,
+`amount`, **`skuId`**). Anything else listed below is either a per-booking input (not
+stored on config) or requires a schema extension before it can be used. See
+`templates/sections/02-configuration-examples.md` § 2.0 for the authoritative table.
 
 1. **Business type:** "What type of appointments are you offering?"
    → Used by discovery to pick suggestions; not stored on config.
@@ -112,22 +113,29 @@ table.
 
 5. **Business hours:** "What days and times are you open?"
    → Stored in `config.workingDays` (0=Sun..6=Sat), `businessHoursStart`,
-   `businessHoursEnd`. Timezone is **not** in the schema — date math is local-server time.
+   `businessHoursEnd`.
 
-6. **Payment (CRITICAL — ALWAYS ASK):** "Do customers pay when they book? (Yes or No)"
+6. **Timezone (ALWAYS ASK):** Auto-detect from browser, then confirm:
+   "I've detected your timezone as {{detected_timezone}}. Is this correct for your
+   business hours?"
+   → Stored in `config.timezone` as IANA format (e.g., `'America/New_York'`).
+   → All business hours and slot availability are calculated in this timezone.
+   → Customers see times labeled with this timezone.
+
+7. **Payment (CRITICAL — ALWAYS ASK):** "Do customers pay when they book? (Yes or No)"
    → If yes, this is expressed as `pricingTiers[]` on config (one entry for fixed price).
    The booking request body sends `requiresPayment: true` and `amount: <tier.amount>`. There
    is no `config.requiresPayment`.
    → If any price is mentioned at any point, treat payment as required.
 
-7. **Pricing structure (if payment required):**
+8. **Pricing structure (if payment required):**
    - Fixed price → `pricingTiers: [{ label, duration, amount, skuId }]` (one entry; `amount`
-     in the smallest unit of the chosen currency — see step 8).
+     in the smallest unit of the chosen currency — see step 9).
    - Variable pricing → `pricingTiers[]` with one entry per option. `skuId` is required on
      every tier.
    - Class packages → **Schema extension required** (`classPackages[]`). See § 12.
 
-8. **Currency (CRITICAL when payment is required):** "What currency are your prices in?"
+9. **Currency (CRITICAL when payment is required):** "What currency are your prices in?"
    → Stored in `config.currency` as an ISO 4217 code (`'USD'`, `'EUR'`, `'GBP'`, `'JPY'`,
    etc.). Defaults to `'USD'`.
    → **Must match the currency the SKUs are priced in inside your GoDaddy Commerce
@@ -136,9 +144,9 @@ table.
    → `amount` values on `pricingTiers` are in the smallest unit of this currency: cents
    for USD/EUR/GBP, yen for JPY, fils for KWD.
 
-9. **Free first consultation (conditional):** If coaching/consulting AND payment required
-   → **Schema extension required.** Add `freeFirstAppointment: boolean` to
-   `AppointmentsConfigSchema` before relying on it.
+10. **Free first consultation (conditional):** If coaching/consulting AND payment required
+    → **Schema extension required.** Add `freeFirstAppointment: boolean` to
+    `AppointmentsConfigSchema` before relying on it.
 
 The full `templates/sections/01-discovery-questions.md` section covers conversational scripts, context-aware
 suggestions per service type, payment detection patterns, and edge cases.
@@ -167,7 +175,7 @@ mishearings/misnamings before they get baked into config, SKUs, and emails.
 >
 > - **Business:** {{serviceName}} ({{serviceType}})
 > - **Service length:** {{duration}} minutes per appointment{{#if bufferTime}}, with {{bufferTime}} minutes between bookings{{/if}}
-> - **Hours:** {{businessHoursStart}}–{{businessHoursEnd}}, {{workingDaysReadable}}{{#if timezone}} ({{timezone}}){{/if}}
+> - **Hours:** {{businessHoursStart}}–{{businessHoursEnd}}, {{workingDaysReadable}} ({{timezone}})
 > - **Payment:** {{#if requiresPayment}}Yes — customers pay when they book{{else}}No — bookings are free{{/if}}
 > - **Price:** {{priceSummaryReadable}}  ← e.g. "$80 per session", "tiers of $50/$90/$140 by length", "class packs of $20 / $90 / $150", or "Free"
 > - **Currency:** {{currency}}{{#if requiresPayment}} (your GoDaddy Commerce SKUs must be priced in {{currency}}){{/if}}

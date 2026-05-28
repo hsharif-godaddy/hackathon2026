@@ -14,6 +14,7 @@ to `defaultConfig` if Zod rejects the file. The validated shape is exactly:
   businessHoursEnd: string;               // 'HH:mm'
   workingDays: number[];                  // 0..6 (Sun..Sat); at least one entry
   currency: string;                       // ISO 4217 (default 'USD'); display formatting + SKU currency hint
+  timezone: string;                       // IANA timezone (default 'UTC'); business hours interpreted in this tz
   pricingTiers?: Array<{                  // omit for free-only services
     label: string;
     duration: number;                     // minutes, 5..480
@@ -29,7 +30,7 @@ Things the docs sometimes mention but the schema does **not** validate:
 | ---------------------- | ------------------------------------------------------------------------ |
 | `requiresPayment`      | Per-booking input on `POST /api/appointments` body (not config).         |
 | `amount`               | Per-booking input; must match a `pricingTiers[].amount` server-side.     |
-| `timezone`             | Not in the schema. The handler treats dates as local-server time.        |
+| `timezone`             | In the schema (IANA format, default `'UTC'`). Controls all time math.    |
 | `bufferTime`           | Not in the schema. Buffer is whatever the slot generator chooses.        |
 | `freeFirstAppointment` | Not in the schema. Requires extending `AppointmentsConfigSchema` (§ 8.7). |
 | `classPackages`        | Not in the schema. Requires extending `AppointmentsConfigSchema` (§ 12). |
@@ -48,8 +49,7 @@ checkout API — GoDaddy derives the actual checkout currency from the SKU's pri
    the field stays on the typed contract for provider portability.
 
 The examples below stay within the validated schema. Sections that need additional fields
-(free-first, class packages, timezone-aware scheduling) call out the schema extension
-explicitly.
+(free-first, class packages) call out the schema extension explicitly.
 
 ### 2.1 Single Fixed Price Configuration
 
@@ -68,6 +68,7 @@ export const config = {
   businessHoursStart: '09:00',
   businessHoursEnd: '17:00',
   currency: 'USD',            // ISO 4217; must match the currency of the SKUs in your store
+  timezone: 'America/New_York', // IANA timezone — business hours interpreted in this tz
   pricingTiers: [
     {
       label: '60-minute Coaching Session',
@@ -95,6 +96,7 @@ export const config = {
   businessHoursStart: '10:00',
   businessHoursEnd: '18:00',
   currency: 'EUR',              // EUR has 2 minor units; amounts below are euro cents
+  timezone: 'Europe/Berlin',    // IANA timezone — business hours interpreted in this tz
   pricingTiers: [
     { label: '30-minute Swedish Massage', duration: 30, amount: 5000,  skuId: 'massage-30' },
     { label: '60-minute Deep Tissue',     duration: 60, amount: 9000,  skuId: 'massage-60' },

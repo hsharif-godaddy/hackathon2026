@@ -17,9 +17,9 @@ import { describe, it, expect, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 
-// templates/lib/appointments.ts imports `date-fns` for its slot-generation helpers.
-// `date-fns` is a customer-app dependency, not an agents devDep — stub it so the
-// schema module loads. The schemas themselves don't call into date-fns.
+// templates/lib/appointments.ts imports `date-fns` and `date-fns-tz` for its
+// slot-generation helpers. These are customer-app dependencies, not agents devDeps —
+// stub them so the schema module loads. The schemas themselves don't call into them.
 vi.mock('date-fns', () => {
   const stub = (): undefined => undefined;
   return {
@@ -33,6 +33,15 @@ vi.mock('date-fns', () => {
     setMinutes: stub,
     setSeconds: stub,
     setMilliseconds: stub,
+  };
+});
+
+vi.mock('date-fns-tz', () => {
+  const stub = (): undefined => undefined;
+  return {
+    toZonedTime: stub,
+    fromZonedTime: stub,
+    formatInTimeZone: stub,
   };
 });
 
@@ -60,6 +69,7 @@ describe('online-appointments skill: doc-vs-schema drift', () => {
       'duration',
       'pricingTiers',
       'serviceName',
+      'timezone',
       'workingDays',
     ];
     expect(shapeKeys(AppointmentsConfigSchema)).toEqual(expected);

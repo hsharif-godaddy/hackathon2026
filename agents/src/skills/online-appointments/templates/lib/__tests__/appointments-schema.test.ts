@@ -210,6 +210,66 @@ describe('AppointmentsConfigSchema currency validation', () => {
 	});
 });
 
+describe('AppointmentsConfigSchema timezone validation', () => {
+	const baseConfig = {
+		serviceName: 'Consultation',
+		duration: 60,
+		businessHoursStart: '09:00',
+		businessHoursEnd: '17:00',
+		workingDays: [1, 2, 3, 4, 5],
+	};
+
+	it('accepts valid IANA timezone', () => {
+		const result = AppointmentsConfigSchema.safeParse({ ...baseConfig, timezone: 'America/New_York' });
+		expect(result.success).toBe(true);
+		if (result.success) {
+			expect(result.data.timezone).toBe('America/New_York');
+		}
+	});
+
+	it('accepts timezone with nested path', () => {
+		const result = AppointmentsConfigSchema.safeParse({ ...baseConfig, timezone: 'America/Indiana/Knox' });
+		expect(result.success).toBe(true);
+		if (result.success) {
+			expect(result.data.timezone).toBe('America/Indiana/Knox');
+		}
+	});
+
+	it('accepts explicit UTC', () => {
+		const result = AppointmentsConfigSchema.safeParse({ ...baseConfig, timezone: 'UTC' });
+		expect(result.success).toBe(true);
+		if (result.success) {
+			expect(result.data.timezone).toBe('UTC');
+		}
+	});
+
+	it('accepts America/Port-au-Prince (hyphenated)', () => {
+		const result = AppointmentsConfigSchema.safeParse({ ...baseConfig, timezone: 'America/Port-au-Prince' });
+		expect(result.success).toBe(true);
+		if (result.success) {
+			expect(result.data.timezone).toBe('America/Port-au-Prince');
+		}
+	});
+
+	it('rejects non-existent timezone', () => {
+		const result = AppointmentsConfigSchema.safeParse({ ...baseConfig, timezone: 'Foo/Bar' });
+		expect(result.success).toBe(false);
+	});
+
+	it('rejects abbreviation (not IANA)', () => {
+		const result = AppointmentsConfigSchema.safeParse({ ...baseConfig, timezone: 'EST' });
+		expect(result.success).toBe(false);
+	});
+
+	it('defaults to UTC when omitted', () => {
+		const result = AppointmentsConfigSchema.safeParse(baseConfig);
+		expect(result.success).toBe(true);
+		if (result.success) {
+			expect(result.data.timezone).toBe('UTC');
+		}
+	});
+});
+
 describe('formatMoney', () => {
 	it('formats USD with two fraction digits', () => {
 		// 8000 minor units = $80.00

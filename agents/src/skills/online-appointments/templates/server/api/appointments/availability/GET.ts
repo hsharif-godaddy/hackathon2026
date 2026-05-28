@@ -1,5 +1,6 @@
 import type { Request, Response } from 'express';
-import { startOfDay, endOfDay, parseISO, isValid } from 'date-fns';
+import { parseISO, isValid } from 'date-fns';
+import { fromZonedTime } from 'date-fns-tz';
 import { and, gte, lte, ne } from 'drizzle-orm';
 import { db } from '../../../db/client';
 import { appointment } from '../../../db/schema';
@@ -26,8 +27,7 @@ import { logger } from '../../../../lib/logger';
  */
 export default async function handler(req: Request, res: Response) {
   try {
-    // Ensure config is loaded before processing
-    await getConfig();
+    const config = await getConfig();
 
     const { date } = req.query;
 
@@ -49,9 +49,9 @@ export default async function handler(req: Request, res: Response) {
       });
     }
 
-    // Get existing appointments for this date
-    const dayStart = startOfDay(parsedDate);
-    const dayEnd = endOfDay(parsedDate);
+    // Compute day boundaries in business timezone, converted to UTC for DB query
+    const dayStartUTC = fromZonedTime(`${date}T00:00:00`, config.timezone);
+    const dayEndUTC = fromZonedTime(`${date}T23:59:59`, config.timezone);
 
     const existingAppointments = await db
       .select({
@@ -62,18 +62,19 @@ export default async function handler(req: Request, res: Response) {
       .from(appointment)
       .where(
         and(
-          gte(appointment.startTime, dayStart),
-          lte(appointment.startTime, dayEnd),
+          gte(appointment.startTime, dayStartUTC),
+          lte(appointment.startTime, dayEndUTC),
           ne(appointment.status, 'cancelled')
         )
       );
 
-    // Calculate available slots
+    // Calculate available slots (uses business timezone internally)
     const slots = getAvailableSlots(parsedDate, existingAppointments);
 
     return res.json({
       date,
       slots,
+      timezone: config.timezone,
     });
   } catch (error) {
     logger.error('appointments.availability.fetch_failed', {

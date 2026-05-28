@@ -78,18 +78,22 @@ eq(sql`lower(${appointment.customerEmail})`, body.customerEmail.toLowerCase());
 
 #### Issue: Time slots not respecting timezone
 
-**Cause:** Client and server using different timezones. The shipped schema has no
-`timezone` field — date math runs in local-server time. If you need cross-timezone
-support, you need to (a) extend `AppointmentsConfigSchema` with `timezone: z.string()`,
-(b) add `date-fns-tz` to the slot generator, and (c) convert client selections at the
-boundary.
+**Cause:** The `config.timezone` field is set incorrectly or missing. All time math uses
+the IANA timezone from `config.timezone` (defaults to `'UTC'` if omitted).
+
+**Fix:** Ensure `appointments.config.ts` has a valid `timezone` value matching the
+business location:
 
 ```typescript
-// After adding `timezone` to AppointmentsConfigSchema:
-import { utcToZonedTime, zonedTimeToUtc } from 'date-fns-tz';
-
-const zonedDate = utcToZonedTime(new Date(`${date}T${time}`), config.timezone);
+// src/lib/appointments.config.ts
+export const config = {
+  // ...
+  timezone: 'America/New_York', // IANA format
+};
 ```
+
+The system stores timestamps as UTC and converts to business timezone at display time.
+If `timezone` is wrong, slots will appear offset from actual business hours.
 
 #### Issue: Build fails with "Cannot find module './config/appointments.config'"
 
@@ -120,7 +124,7 @@ Before going live:
 - [ ] Test free first appointment (if enabled) — including the "abandoned draft does not count" case
 - [ ] Test all pricing tiers (if variable pricing)
 - [ ] Test credit purchase and booking (if class packages)
-- [ ] Verify timezone handling for cross-timezone customers
+- [ ] Verify config.timezone is set correctly and times display in business timezone
 - [ ] Test double-booking prevention (open two tabs, try booking same slot)
 - [ ] Test admin dashboard cancellation
 - [ ] Test edge cases: payment failure, customer closes success page before confirm POST returns

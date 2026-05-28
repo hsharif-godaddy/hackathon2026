@@ -1,6 +1,6 @@
 import type { Request, Response } from 'express';
 import { desc } from 'drizzle-orm';
-import { format } from 'date-fns';
+import { formatInTimeZone } from 'date-fns-tz';
 
 import { db } from '../../db/client';
 import { appointment } from '../../db/schema';
@@ -91,14 +91,15 @@ export default async function handler(req: Request, res: Response) {
 					customerName: apt.customerName,
 					customerEmail: apt.customerEmail,
 					customerPhone: apt.customerPhone || undefined,
-					date: format(apt.startTime, 'yyyy-MM-dd'),
-					time: format(apt.startTime, 'HH:mm'),
-					endTime: format(apt.endTime, 'HH:mm'),
+					date: formatInTimeZone(apt.startTime, config.timezone, 'yyyy-MM-dd'),
+					time: formatInTimeZone(apt.startTime, config.timezone, 'HH:mm'),
+					endTime: formatInTimeZone(apt.endTime, config.timezone, 'HH:mm'),
 					status: apt.status,
 					notes: apt.notes || undefined,
 					requiresPayment: apt.requiresPayment || false,
 					amount: apt.amount || undefined,
 					currency: config.currency,
+					timezone: config.timezone,
 					orderId: apt.orderId || undefined,
 					createdAt: apt.createdAt,
 					serviceName: config.serviceName,

@@ -74,7 +74,7 @@ the email skill's `skill.md`:
 
 ```typescript
 import nodemailer from 'nodemailer';
-import { format } from 'date-fns';
+import { formatInTimeZone } from 'date-fns-tz';
 import { generateICS } from '../../lib/calendar-invite';
 import { getConfig, formatMoney } from '../../lib/appointments';
 
@@ -109,10 +109,8 @@ export async function sendConfirmationEmail(params: ConfirmationEmailParams) {
     notes: params.notes,
   });
 
-  const dateStr = format(params.startTime, 'EEEE, MMMM d, yyyy');
-  const timeStr = format(params.startTime, 'h:mm a');
-  // Server-side: pass an explicit locale (no browser to derive one from). Keep this in
-  // a single place so emails match wherever you run.
+  const dateStr = formatInTimeZone(params.startTime, config.timezone, 'EEEE, MMMM d, yyyy');
+  const timeStr = formatInTimeZone(params.startTime, config.timezone, 'h:mm a');
   const priceStr = params.amount
     ? formatMoney(params.amount, config.currency, 'en-US')
     : 'Free';
@@ -125,7 +123,7 @@ export async function sendConfirmationEmail(params: ConfirmationEmailParams) {
       <h2>Your appointment is confirmed!</h2>
       <p><strong>Service:</strong> ${config.serviceName}</p>
       <p><strong>Date:</strong> ${dateStr}</p>
-      <p><strong>Time:</strong> ${timeStr}</p>
+      <p><strong>Time:</strong> ${timeStr} (${config.timezone.replace(/_/g, ' ')})</p>
       <p><strong>Duration:</strong> ${params.duration} minutes</p>
       <p><strong>Price:</strong> ${priceStr}</p>
       ${params.notes ? `<p><strong>Notes:</strong> ${params.notes}</p>` : ''}

@@ -6,6 +6,8 @@ import type { TimeSlot, Appointment } from './appointments';
 export interface AvailabilityResponse {
   date: string;
   slots: TimeSlot[];
+  /** IANA timezone identifier for the business (e.g., "America/New_York") */
+  timezone: string;
 }
 
 export interface CreateAppointmentRequest {
@@ -27,6 +29,8 @@ export interface CreateAppointmentResponse {
   status: 'confirmed';
   serviceName: string;
   duration: number;
+  /** IANA timezone identifier for the business (e.g., "America/New_York") */
+  timezone: string;
   /** ISO 4217 currency code from config (display formatting). */
   currency?: string;
   requiresPayment?: boolean;

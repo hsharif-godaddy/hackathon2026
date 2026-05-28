@@ -111,8 +111,8 @@ describe('Payment Provider Factory', () => {
 			});
 
 			it('returns provider instance', () => {
-				const provider1 = getPaymentProvider();
-				const provider2 = getPaymentProvider();
+				const provider1 = getPaymentProvider('http://localhost:3000');
+				const provider2 = getPaymentProvider('http://localhost:3000');
 
 				// Both should be valid providers
 				expect(provider1).toBeDefined();

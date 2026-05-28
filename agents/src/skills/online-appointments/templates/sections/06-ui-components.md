@@ -76,9 +76,10 @@ interface TimeSlotPickerProps {
   selectedTime: string | null;
   onSelectTime: (time: string) => void;
   bookedSlots: string[]; // Already booked times
+  timezone?: string; // IANA timezone for display (e.g., "America/New_York")
 }
 
-export function TimeSlotPicker({ slots, selectedTime, onSelectTime, bookedSlots }: TimeSlotPickerProps) {
+export function TimeSlotPicker({ slots, selectedTime, onSelectTime, bookedSlots, timezone }: TimeSlotPickerProps) {
   return (
     <div className="time-slots">
       {slots.map((slot) => {
@@ -96,6 +97,11 @@ export function TimeSlotPicker({ slots, selectedTime, onSelectTime, bookedSlots 
           </button>
         );
       })}
+      {timezone && (
+        <p className="text-sm text-muted-foreground mt-2">
+          All times shown in {timezone.replace(/_/g, ' ')} time
+        </p>
+      )}
     </div>
   );
 }

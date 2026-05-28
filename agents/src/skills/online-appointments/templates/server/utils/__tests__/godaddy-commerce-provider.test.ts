@@ -51,21 +51,21 @@ describe('GoDaddyCommerceProvider', () => {
 		it('reads store ID from environment if not provided', () => {
 			process.env.VITE_GODADDY_STORE_ID = testStoreId;
 
-			const provider = new GoDaddyCommerceProvider();
+			const provider = new GoDaddyCommerceProvider(undefined, testBaseUrl);
 
 			expect(provider).toBeDefined();
 		});
 
-		it('accepts empty base URL', () => {
-			const provider = new GoDaddyCommerceProvider(testStoreId, '');
-
-			expect(provider).toBeDefined();
+		it('throws error when base URL is empty', () => {
+			expect(() => new GoDaddyCommerceProvider(testStoreId, '')).toThrow(
+				/Base URL is required/
+			);
 		});
 
 		it('uses environment VITE_GODADDY_STORE_ID as fallback', () => {
 			process.env.VITE_GODADDY_STORE_ID = 'env-store-id';
 
-			const provider = new GoDaddyCommerceProvider();
+			const provider = new GoDaddyCommerceProvider(undefined, testBaseUrl);
 
 			expect(provider).toBeDefined();
 		});

@@ -162,9 +162,9 @@ export default function BookingPage() {
 }
 ```
 
-**Note:** the shipped `Calendar` component does not need a `timezone` prop — there is no
-`config.timezone`. Date math is local-server time; if you need cross-timezone behaviour,
-extend the schema and the slot generator together.
+**Note:** The availability API response includes a `timezone` field (IANA format). Pass it to
+the `TimeSlotPicker` component so customers see which timezone the displayed times are in.
+The server handles all timezone conversion — the client just displays what the API returns.
 
 ### 7.2 Variable Pricing Flow Modification
 

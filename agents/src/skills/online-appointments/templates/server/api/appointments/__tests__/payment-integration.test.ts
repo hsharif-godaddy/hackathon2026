@@ -7,6 +7,48 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import type { Request, Response } from 'express';
+
+// Mock customer-app dependencies that aren't available in agents workspace.
+vi.mock('date-fns', () => ({
+	parseISO: vi.fn((str: string) => new Date(str)),
+	isValid: vi.fn((d: Date) => !isNaN(d.getTime())),
+	addMinutes: vi.fn((d: Date, m: number) => new Date(d.getTime() + m * 60000)),
+	format: vi.fn(),
+	parse: vi.fn(),
+	isAfter: vi.fn(),
+	isBefore: vi.fn(),
+	isSameDay: vi.fn(),
+	setHours: vi.fn(),
+	setMinutes: vi.fn(),
+	setSeconds: vi.fn(),
+	setMilliseconds: vi.fn(),
+}));
+
+vi.mock('date-fns-tz', () => ({
+	fromZonedTime: vi.fn((dateTimeStr: string) => new Date(dateTimeStr)),
+	toZonedTime: vi.fn((date: Date) => date),
+	formatInTimeZone: vi.fn((date: Date, _tz: string, fmt: string) => {
+		if (fmt === 'HH:mm') {
+			const h = date.getUTCHours().toString().padStart(2, '0');
+			const m = date.getUTCMinutes().toString().padStart(2, '0');
+			return `${h}:${m}`;
+		}
+		if (fmt === 'yyyy-MM-dd') {
+			return date.toISOString().slice(0, 10);
+		}
+		return date.toISOString();
+	}),
+}));
+
+vi.mock('drizzle-orm', () => ({
+	and: vi.fn((...args: any[]) => args),
+	gte: vi.fn((field: string, val: any) => ({ op: 'gte', field, val })),
+	lte: vi.fn((field: string, val: any) => ({ op: 'lte', field, val })),
+	ne: vi.fn((field: string, val: any) => ({ op: 'ne', field, val })),
+	desc: vi.fn((field: string) => ({ op: 'desc', field })),
+	eq: vi.fn(),
+}));
+
 import postHandler from '../POST';
 import getHandler from '../GET';
 
@@ -37,6 +79,8 @@ vi.mock('../../../../lib/appointments', () => ({
 		businessHoursStart: '09:00',
 		businessHoursEnd: '17:00',
 		workingDays: [1, 2, 3, 4, 5],
+		currency: 'USD',
+		timezone: 'America/New_York',
 		pricingTiers: [
 			{ label: '60 minutes', duration: 60, amount: 5000, skuId: 'sku-default' },
 		],
@@ -51,6 +95,11 @@ vi.mock('../../../../lib/appointments', () => ({
 		const [hours, minutes] = time.split(':');
 		const result = new Date(date);
 		result.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+		return result;
+	}),
+	parseTimeSlotUTC: vi.fn((time, dateStr) => {
+		const [hours, minutes] = time.split(':');
+		const result = new Date(`${dateStr}T${hours}:${minutes}:00Z`);
 		return result;
 	}),
 	isPastDate: vi.fn(() => false),
@@ -122,8 +171,10 @@ describe('Appointment Payment Integration', () => {
 		// Reset mocks
 		vi.clearAllMocks();
 
-		// Default: payment configured
+		// Default: payment configured, provider returns the shared mock
+		// (must restore getPaymentProvider after tests that override its implementation)
 		vi.mocked(paymentFactory.isPaymentProviderConfigured).mockReturnValue(true);
+		vi.mocked(paymentFactory.getPaymentProvider).mockReturnValue(getMockProvider() as any);
 	});
 
 	afterEach(() => {
@@ -414,7 +465,7 @@ describe('Appointment Payment Integration', () => {
 			);
 		});
 
-		it('returns 500 Database Error when payment session creation fails with untyped error', async () => {
+		it('returns 500 Internal Server Error when payment session creation fails with untyped error', async () => {
 			getMockProvider().createPaymentSession.mockRejectedValue(
 				new Error('Untyped error')
 			);
@@ -433,8 +484,8 @@ describe('Appointment Payment Integration', () => {
 			expect(statusSpy).toHaveBeenCalledWith(500);
 			expect(jsonSpy).toHaveBeenCalledWith(
 				expect.objectContaining({
-					error: 'Database Error',
-					messageKey: 'appointments.error.saveFailed',
+					error: 'Internal Server Error',
+					messageKey: 'appointments.error.createFailed',
 				})
 			);
 		});
@@ -538,6 +589,8 @@ describe('Appointment Payment Integration', () => {
 				businessHoursStart: '09:00',
 				businessHoursEnd: '17:00',
 				workingDays: [1, 2, 3, 4, 5],
+				currency: 'USD',
+				timezone: 'America/New_York',
 				pricingTiers: [
 					{ label: '30 minutes', duration: 30, amount: 2500, skuId: 'sku_tier1' },
 					{ label: '60 minutes', duration: 60, amount: 5000, skuId: 'sku_tier2' },
@@ -616,6 +669,8 @@ describe('Appointment Payment Integration', () => {
 				businessHoursStart: '09:00',
 				businessHoursEnd: '17:00',
 				workingDays: [1, 2, 3, 4, 5],
+				currency: 'USD',
+				timezone: 'America/New_York',
 				// No pricingTiers
 			});
 
@@ -688,7 +743,7 @@ describe('Appointment Payment Integration', () => {
 		it('lists free appointments without payment status', async () => {
 			vi.mocked(db.select).mockReturnValue({
 				from: vi.fn().mockReturnValue({
-					orderBy: vi.fn().mockResolvedValue([
+					orderBy: vi.fn().mockReturnValue({ limit: vi.fn().mockReturnValue({ offset: vi.fn().mockResolvedValue([
 						{
 							id: 'apt-1',
 							customerName: 'John Doe',
@@ -703,7 +758,7 @@ describe('Appointment Payment Integration', () => {
 							orderId: null,
 							createdAt: new Date('2025-01-20T10:00:00'),
 						},
-					]),
+					]) }) }),
 				}),
 			} as any);
 
@@ -725,7 +780,7 @@ describe('Appointment Payment Integration', () => {
 		it('enriches paid appointments with order status', async () => {
 			vi.mocked(db.select).mockReturnValue({
 				from: vi.fn().mockReturnValue({
-					orderBy: vi.fn().mockResolvedValue([
+					orderBy: vi.fn().mockReturnValue({ limit: vi.fn().mockReturnValue({ offset: vi.fn().mockResolvedValue([
 						{
 							id: 'apt-2',
 							customerName: 'Jane Smith',
@@ -740,7 +795,7 @@ describe('Appointment Payment Integration', () => {
 							orderId: 'draft-order-123',
 							createdAt: new Date('2025-01-20T11:00:00'),
 						},
-					]),
+					]) }) }),
 				}),
 			} as any);
 
@@ -775,7 +830,7 @@ describe('Appointment Payment Integration', () => {
 		it('shows pending payment status', async () => {
 			vi.mocked(db.select).mockReturnValue({
 				from: vi.fn().mockReturnValue({
-					orderBy: vi.fn().mockResolvedValue([
+					orderBy: vi.fn().mockReturnValue({ limit: vi.fn().mockReturnValue({ offset: vi.fn().mockResolvedValue([
 						{
 							id: 'apt-3',
 							customerName: 'Bob Johnson',
@@ -790,7 +845,7 @@ describe('Appointment Payment Integration', () => {
 							orderId: 'draft-order-456',
 							createdAt: new Date('2025-01-20T12:00:00'),
 						},
-					]),
+					]) }) }),
 				}),
 			} as any);
 
@@ -818,7 +873,7 @@ describe('Appointment Payment Integration', () => {
 		it('handles order status fetch failure gracefully', async () => {
 			vi.mocked(db.select).mockReturnValue({
 				from: vi.fn().mockReturnValue({
-					orderBy: vi.fn().mockResolvedValue([
+					orderBy: vi.fn().mockReturnValue({ limit: vi.fn().mockReturnValue({ offset: vi.fn().mockResolvedValue([
 						{
 							id: 'apt-4',
 							customerName: 'Alice Brown',
@@ -833,7 +888,7 @@ describe('Appointment Payment Integration', () => {
 							orderId: 'draft-order-789',
 							createdAt: new Date('2025-01-20T13:00:00'),
 						},
-					]),
+					]) }) }),
 				}),
 			} as any);
 
@@ -859,7 +914,7 @@ describe('Appointment Payment Integration', () => {
 		it('does not fetch order status when includeOrderStatus is false', async () => {
 			vi.mocked(db.select).mockReturnValue({
 				from: vi.fn().mockReturnValue({
-					orderBy: vi.fn().mockResolvedValue([
+					orderBy: vi.fn().mockReturnValue({ limit: vi.fn().mockReturnValue({ offset: vi.fn().mockResolvedValue([
 						{
 							id: 'apt-5',
 							customerName: 'Charlie Davis',
@@ -874,7 +929,7 @@ describe('Appointment Payment Integration', () => {
 							orderId: 'draft-order-999',
 							createdAt: new Date('2025-01-20T14:00:00'),
 						},
-					]),
+					]) }) }),
 				}),
 			} as any);
 
@@ -902,7 +957,7 @@ describe('Appointment Payment Integration', () => {
 
 			vi.mocked(db.select).mockReturnValue({
 				from: vi.fn().mockReturnValue({
-					orderBy: vi.fn().mockResolvedValue([
+					orderBy: vi.fn().mockReturnValue({ limit: vi.fn().mockReturnValue({ offset: vi.fn().mockResolvedValue([
 						{
 							id: 'apt-6',
 							customerName: 'Diana Evans',
@@ -917,7 +972,7 @@ describe('Appointment Payment Integration', () => {
 							orderId: 'draft-order-111',
 							createdAt: new Date('2025-01-20T15:00:00'),
 						},
-					]),
+					]) }) }),
 				}),
 			} as any);
 

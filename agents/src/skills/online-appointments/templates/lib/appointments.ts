@@ -1,4 +1,5 @@
 import { addMinutes, format, parse, isAfter, isBefore, isSameDay, setHours, setMinutes, setSeconds, setMilliseconds } from 'date-fns';
+import { toZonedTime, fromZonedTime, formatInTimeZone } from 'date-fns-tz';
 import { z } from 'zod';
 import { logger } from './logger';
 
@@ -42,6 +43,17 @@ export const AppointmentsConfigSchema = z.object({
     .string()
     .regex(/^[A-Z]{3}$/, 'Use ISO 4217 currency code (3 uppercase letters, e.g. USD, EUR, JPY)')
     .default('USD'),
+  /**
+   * IANA timezone identifier for the business (e.g., "America/New_York").
+   * All business hours are interpreted in this timezone. Stored timestamps use UTC;
+   * this field controls conversion at display and input boundaries.
+   */
+  timezone: z.string()
+    .refine(
+      (tz) => tz === 'UTC' || Intl.supportedValuesOf('timeZone').includes(tz),
+      'Invalid timezone. Use IANA format (e.g., America/New_York, Europe/Berlin, Etc/GMT+5)'
+    )
+    .default('UTC'),
   /** Pricing tiers with SKU mappings. Optional only for free appointments (no payment). */
   pricingTiers: z.array(PricingTierSchema).min(1).optional(),
 }).refine(
@@ -73,6 +85,7 @@ const defaultConfig: AppointmentsConfig = {
   businessHoursEnd: '17:00',
   workingDays: [1, 2, 3, 4, 5],
   currency: 'USD',
+  timezone: 'UTC',
 };
 
 /**
@@ -184,15 +197,17 @@ export interface BookingRequest {
 }
 
 /**
- * Check if a given date is a working day
+ * Check if a given date is a working day (in business timezone)
  */
-export function isWorkingDay(date: Date): boolean {
-  return getConfigSync().workingDays.includes(date.getDay());
+export function isWorkingDay(date: Date, timezone?: string): boolean {
+  const tz = timezone ?? getConfigSync().timezone;
+  const zonedDate = toZonedTime(date, tz);
+  return getConfigSync().workingDays.includes(zonedDate.getDay());
 }
 
 /**
- * Parse time string (HH:mm) and combine with a date
- * Creates a Date object with the specified time on the given date
+ * Parse time string (HH:mm) and combine with a date (local-time interpretation).
+ * For UTC-based operations, use parseTimeSlotUTC instead.
  */
 export function parseTimeSlot(timeStr: string, date: Date): Date {
   const [hours, minutes] = timeStr.split(':').map(Number);
@@ -205,10 +220,25 @@ export function parseTimeSlot(timeStr: string, date: Date): Date {
 }
 
 /**
- * Extract time string (HH:mm) from a Date object
+ * Parse time string (HH:mm) in the business timezone and return a UTC Date.
+ * Use this for server-side operations (DB storage, comparisons against UTC now).
+ *
+ * @param timeStr - Time in "HH:mm" format (business timezone)
+ * @param dateStr - Date in "YYYY-MM-DD" format (business timezone calendar date)
+ * @param timezone - IANA timezone identifier (e.g., "America/New_York")
+ * @returns UTC Date representing that moment
  */
-export function extractTimeString(date: Date): string {
-  return format(date, 'HH:mm');
+export function parseTimeSlotUTC(timeStr: string, dateStr: string, timezone: string): Date {
+  const localDateTimeStr = `${dateStr}T${timeStr}:00`;
+  return fromZonedTime(localDateTimeStr, timezone);
+}
+
+/**
+ * Extract time string (HH:mm) from a Date object in business timezone
+ */
+export function extractTimeString(date: Date, timezone?: string): string {
+  const tz = timezone ?? getConfigSync().timezone;
+  return formatInTimeZone(date, tz, 'HH:mm');
 }
 
 /**
@@ -245,53 +275,60 @@ export function generateTimeSlots(date: Date): string[] {
 }
 
 /**
- * Check if a date is in the past (before today)
+ * Check if a date is in the past (before today in business timezone).
+ * Compares date strings to avoid system-local-tz pitfalls with setHours.
  */
-export function isPastDate(date: Date): boolean {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const checkDate = new Date(date);
-  checkDate.setHours(0, 0, 0, 0);
-  return checkDate < today;
+export function isPastDate(date: Date, timezone?: string): boolean {
+  const tz = timezone ?? getConfigSync().timezone;
+  const todayStr = formatInTimeZone(new Date(), tz, 'yyyy-MM-dd');
+  const checkStr = format(date, 'yyyy-MM-dd');
+  return checkStr < todayStr;
 }
 
 /**
- * Check if a specific time slot is in the past
+ * Check if a specific time slot is in the past (relative to business timezone "now")
+ *
+ * @param dateStr - Date in "YYYY-MM-DD" format (business timezone calendar date)
+ * @param time - Time in "HH:mm" format (business timezone)
+ * @param timezone - IANA timezone identifier
  */
-export function isPastTimeSlot(date: Date, time: string): boolean {
-  const now = new Date();
-  const slotDateTime = parseTimeSlot(time, date);
-  return slotDateTime <= now;
+export function isPastTimeSlot(dateStr: string, time: string, timezone?: string): boolean {
+  const tz = timezone ?? getConfigSync().timezone;
+  const slotUTC = parseTimeSlotUTC(time, dateStr, tz);
+  return slotUTC <= new Date();
 }
 
 /**
- * Get available time slots for a date, excluding already booked slots
- * Uses string-based time comparison to avoid timezone issues
+ * Get available time slots for a date, excluding already booked slots.
+ * All time comparisons use the business timezone from config.
  */
 export function getAvailableSlots(
   date: Date,
   existingAppointments: Array<{ startTime: Date; endTime: Date; status: string | null }>
 ): TimeSlot[] {
+  const config = getConfigSync();
+  const tz = config.timezone;
+
   // Non-working days have no slots
-  if (!isWorkingDay(date)) {
+  if (!isWorkingDay(date, tz)) {
     return [];
   }
 
   // Past dates have no available slots
-  if (isPastDate(date)) {
+  if (isPastDate(date, tz)) {
     return generateTimeSlots(date).map((time) => ({ time, available: false }));
   }
 
   const allSlots = generateTimeSlots(date);
-  const now = new Date();
-  const isToday = isSameDay(date, now);
-  const currentTimeStr = format(now, 'HH:mm');
+  const nowInBizTz = toZonedTime(new Date(), tz);
+  const isToday = isSameDay(date, nowInBizTz);
+  const currentTimeStr = format(nowInBizTz, 'HH:mm');
 
-  // Extract booked time slots as strings for reliable comparison
+  // Extract booked time slots as strings (in business timezone) for reliable comparison
   const bookedTimeSlots = new Set(
     existingAppointments
       .filter((apt) => apt.status !== 'cancelled')
-      .map((apt) => extractTimeString(new Date(apt.startTime)))
+      .map((apt) => extractTimeString(new Date(apt.startTime), tz))
   );
 
   return allSlots.map((time) => {
@@ -305,9 +342,11 @@ export function getAvailableSlots(
       return { time, available: false };
     }
 
-    // For overlapping appointments (longer duration), check time range conflicts
-    const slotStart = parseTimeSlot(time, date);
-    const slotEnd = addMinutes(slotStart, getConfigSync().duration);
+    // For overlapping appointments (longer duration), check time range conflicts.
+    // Use UTC-based comparison since DB stores UTC timestamps.
+    const dateStr = format(date, 'yyyy-MM-dd');
+    const slotStart = parseTimeSlotUTC(time, dateStr, tz);
+    const slotEnd = addMinutes(slotStart, config.duration);
 
     const hasConflict = existingAppointments.some((apt) => {
       if (apt.status === 'cancelled') return false;
@@ -336,17 +375,19 @@ export function calculateEndTime(startTime: Date): Date {
 }
 
 /**
- * Format appointment time for display
+ * Format appointment time for display in business timezone
  */
-export function formatAppointmentTime(date: Date): string {
-  return format(date, 'h:mm a');
+export function formatAppointmentTime(date: Date, timezone?: string): string {
+  const tz = timezone ?? getConfigSync().timezone;
+  return formatInTimeZone(date, tz, 'h:mm a');
 }
 
 /**
- * Format appointment date for display
+ * Format appointment date for display in business timezone
  */
-export function formatAppointmentDate(date: Date): string {
-  return format(date, 'EEEE, MMMM d, yyyy');
+export function formatAppointmentDate(date: Date, timezone?: string): string {
+  const tz = timezone ?? getConfigSync().timezone;
+  return formatInTimeZone(date, tz, 'EEEE, MMMM d, yyyy');
 }
 
 /**

@@ -1,14 +1,14 @@
 import type { Request, Response } from 'express';
-import { parseISO, isValid, startOfDay, endOfDay, format } from 'date-fns';
+import { parseISO, isValid, addMinutes } from 'date-fns';
+import { fromZonedTime, formatInTimeZone } from 'date-fns-tz';
 import { and, eq, gte, lte, ne } from 'drizzle-orm';
 
 import { db } from '../../db/client';
 import { appointment } from '../../db/schema';
 import {
   generateAppointmentId,
-  calculateEndTime,
   getAvailableSlots,
-  parseTimeSlot,
+  parseTimeSlotUTC,
   isPastDate,
   isPastTimeSlot,
   AppointmentInputSchema,
@@ -88,8 +88,8 @@ export default async function handler(req: Request, res: Response) {
       });
     }
 
-    // Reject bookings for past dates
-    if (isPastDate(parsedDate)) {
+    // Reject bookings for past dates (in business timezone)
+    if (isPastDate(parsedDate, config.timezone)) {
       return res.status(400).json({
         error: 'Bad Request',
         message: 'Cannot book appointments for past dates',
@@ -97,8 +97,8 @@ export default async function handler(req: Request, res: Response) {
       });
     }
 
-    // Reject bookings for past time slots (on today)
-    if (isPastTimeSlot(parsedDate, body.time)) {
+    // Reject bookings for past time slots (in business timezone)
+    if (isPastTimeSlot(body.date, body.time, config.timezone)) {
       return res.status(400).json({
         error: 'Bad Request',
         message: 'Cannot book appointments for past times',
@@ -106,11 +106,9 @@ export default async function handler(req: Request, res: Response) {
       });
     }
 
-    // Combine date and time to create the start time
-    const startTime = parseTimeSlot(body.time, parsedDate);
-
-    // Calculate end time based on service duration
-    const endTime = calculateEndTime(startTime);
+    // Convert business-timezone date+time to UTC for storage
+    const startTime = parseTimeSlotUTC(body.time, body.date, config.timezone);
+    const endTime = addMinutes(startTime, config.duration);
     const id = generateAppointmentId();
 
     // Pre-check payment configuration and provider initialization if payment is required (fail fast)
@@ -150,8 +148,8 @@ export default async function handler(req: Request, res: Response) {
 
     // Check availability and reserve slot in transaction, but create payment session outside
     // to avoid holding SQLite write lock during 10s Commerce API call
-    const dayStart = startOfDay(parsedDate);
-    const dayEnd = endOfDay(parsedDate);
+    const dayStartUTC = fromZonedTime(`${body.date}T00:00:00`, config.timezone);
+    const dayEndUTC = fromZonedTime(`${body.date}T23:59:59`, config.timezone);
 
     let orderId: string | null = null;
     let checkoutUrl: string | null = null;
@@ -169,8 +167,8 @@ export default async function handler(req: Request, res: Response) {
           .from(appointment)
           .where(
             and(
-              gte(appointment.startTime, dayStart),
-              lte(appointment.startTime, dayEnd),
+              gte(appointment.startTime, dayStartUTC),
+              lte(appointment.startTime, dayEndUTC),
               ne(appointment.status, 'cancelled')
             )
           );
@@ -349,10 +347,11 @@ export default async function handler(req: Request, res: Response) {
       customerEmail: body.customerEmail,
       date: body.date,
       time: body.time,
-      endTime: format(endTime, 'HH:mm'),
+      endTime: formatInTimeZone(endTime, config.timezone, 'HH:mm'),
       status: 'confirmed',
       serviceName: config.serviceName,
       duration: config.duration,
+      timezone: config.timezone,
       requiresPayment: body.requiresPayment || false,
       currency: config.currency,
     };
