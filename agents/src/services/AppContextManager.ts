@@ -8,7 +8,6 @@ import { appPlanTool, type ColorPalette, type FontTheme } from '../tools/app-pla
 import { logger } from '../logging/index.js';
 import { appContextEvents } from '../logging/events/index.js';
 import { SecretsManagementTool } from '../tools/secrets-management-tool.js';
-import { DevSupervisorClientFactory } from '../utils/dev-supervisor-client-factory.js';
 import { mediaManifestService, type MediaSlot } from './MediaManifestService.js';
 import { AppRepository } from '../database/repositories/AppRepository.js';
 import { getKvMemoryStore } from '../memory/adapters/index.js';
@@ -316,13 +315,12 @@ export class AppContextManager {
    */
   private async getSecretsInfo(appId: string): Promise<any> {
     try {
-      // Create dev-supervisor client for the app
-      const devSupervisor = DevSupervisorClientFactory.createForApp(appId);
-      if (!devSupervisor) {
+      const workspace = createForWorkspace(appId, 'preview');
+      if (!workspace) {
         return null;
       }
 
-      const secretsTool = new SecretsManagementTool(devSupervisor);
+      const secretsTool = new SecretsManagementTool(workspace.tasks);
       const result = await secretsTool.listSecretNames(appId);
 
       if (result.success && result.secretNames.length > 0) {

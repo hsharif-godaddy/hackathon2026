@@ -1,8 +1,8 @@
-import { DevSupervisorClient } from '../services/DevSupervisorClient.js';
 import { Logger } from '../logging/index.js';
 import { getErrorMessage } from '../utils/error.js';
 import { AppRepository } from '../database/repositories/AppRepository.js';
-import { DevSupervisorClientFactory } from '../utils/dev-supervisor-client-factory.js';
+import { createForWorkspace } from '../workspace/index.js';
+import type { WorkspaceTasks } from '../workspace/tasks.js';
 
 /**
  * Secret finding from gitleaks
@@ -126,14 +126,15 @@ export class SecretsScannerTool {
         throw new Error(`App '${appId}' not found`);
       }
 
-      const devSupervisor = DevSupervisorClientFactory.createForApp(appId);
-      if (!devSupervisor) {
-        throw new Error('Dev-supervisor not available. Make sure the app container is running.');
+      const workspace = createForWorkspace(appId, 'preview');
+      if (!workspace) {
+        throw new Error('Workspace not available. Make sure the app container is running.');
       }
+      const tasks = workspace.tasks;
 
       // Check cache if not forcing rescan
       if (!options.forceRescan) {
-        const cachedResult = await this.getCachedResult(appId, devSupervisor);
+        const cachedResult = await this.getCachedResult(appId, tasks);
         if (cachedResult) {
           this.logger.info('secrets-scanner.scan.cache-hit', {
             appId,
@@ -148,7 +149,7 @@ export class SecretsScannerTool {
       }
 
       // Check gitleaks availability (should be pre-installed in container)
-      const gitleaksAvailable = await this.checkGitleaksAvailability(devSupervisor);
+      const gitleaksAvailable = await this.checkGitleaksAvailability(tasks);
       if (!gitleaksAvailable) {
         throw new Error(
           'Gitleaks is not available in the container. ' +
@@ -172,13 +173,13 @@ export class SecretsScannerTool {
       };
 
       // Step 1: Run gitleaks
-      const gitleaksFindings = await this.runGitleaks(devSupervisor, options);
+      const gitleaksFindings = await this.runGitleaks(tasks, options);
       result.findings = gitleaksFindings;
 
       // Step 2: Optionally run Semgrep
       if (!options.skipSemgrep) {
         try {
-          const semgrepFindings = await this.runSemgrep(devSupervisor, options);
+          const semgrepFindings = await this.runSemgrep(tasks, options);
           // Merge and deduplicate findings
           result.findings = this.mergeFindings(gitleaksFindings, semgrepFindings);
         } catch (error) {
@@ -199,7 +200,7 @@ export class SecretsScannerTool {
       result.executionTime = Date.now() - startTime;
 
       // Step 5: Cache result
-      await this.cacheResult(appId, result, devSupervisor);
+      await this.cacheResult(appId, result, tasks);
 
       this.logger.info('secrets-scanner.scan.complete', {
         appId,
@@ -238,15 +239,14 @@ export class SecretsScannerTool {
   /**
    * Check if gitleaks is available in the container
    */
-  private async checkGitleaksAvailability(devSupervisor: DevSupervisorClient): Promise<boolean> {
+  private async checkGitleaksAvailability(tasks: WorkspaceTasks): Promise<boolean> {
     try {
-      const result = await devSupervisor!.exec({
+      const result = await tasks.runCommandSync({
         command: 'gitleaks version',
-        capture_output: true,
-        timeout: 5,
+        timeoutSeconds: 5,
       });
-      
-      if (result.exit_code === 0) {
+
+      if (result.exitCode === 0) {
         this.logger.info('secrets-scanner.gitleaks.found', {
           version: result.stdout?.trim(),
         });
@@ -267,11 +267,11 @@ export class SecretsScannerTool {
    */
   private async getCachedResult(
     appId: string,
-    devSupervisor: DevSupervisorClient
+    tasks: WorkspaceTasks
   ): Promise<SecretsScannerResult | null> {
     try {
       // Get current commit hash
-      const commitHash = await this.getCommitHash(devSupervisor);
+      const commitHash = await this.getCommitHash(tasks);
       if (!commitHash) {
         return null;
       }
@@ -303,10 +303,10 @@ export class SecretsScannerTool {
   private async cacheResult(
     appId: string,
     result: SecretsScannerResult,
-    devSupervisor: DevSupervisorClient
+    tasks: WorkspaceTasks
   ): Promise<void> {
     try {
-      const commitHash = await this.getCommitHash(devSupervisor);
+      const commitHash = await this.getCommitHash(tasks);
       if (commitHash) {
         const cacheKey = `${appId}:${commitHash}`;
         this.cache.set(cacheKey, {
@@ -326,15 +326,14 @@ export class SecretsScannerTool {
   /**
    * Get current git commit hash
    */
-  private async getCommitHash(devSupervisor: DevSupervisorClient): Promise<string | null> {
+  private async getCommitHash(tasks: WorkspaceTasks): Promise<string | null> {
     try {
-      const result = await devSupervisor!.exec({
+      const result = await tasks.runCommandSync({
         command: 'git rev-parse HEAD',
-        capture_output: true,
-        timeout: 5,
+        timeoutSeconds: 5,
       });
 
-      if (result.exit_code === 0 && result.stdout) {
+      if (result.exitCode === 0 && result.stdout) {
         return result.stdout.trim();
       }
       return null;
@@ -375,37 +374,29 @@ export class SecretsScannerTool {
    * Run gitleaks scan
    */
   private async runGitleaks(
-    devSupervisor: DevSupervisorClient,
+    tasks: WorkspaceTasks,
     options: SecretsScannerOptions
   ): Promise<SecretFinding[]> {
     this.logger.info('secrets-scanner.gitleaks.executing');
 
     try {
-      // Gitleaks should be in PATH (/usr/local/bin/gitleaks).
-      // - `--no-git`: scan the working tree directly instead of git history so uncommitted
-      //   edits are included (critical for user-triggered scans after in-session edits).
-      // - `--report-path /dev/stdout`: in gitleaks v8, `--report-format json` defaults to
-      //   writing the JSON report to a FILE (`gitleaks-report.json` in cwd) and sends only
-      //   human-readable summary to stdout. Without this flag we'd read empty stdout and
-      //   silently treat every scan as "no findings".
-      const result = await devSupervisor!.exec({
+      const result = await tasks.runCommandSync({
         command:
           'gitleaks detect --no-git --source /app --report-format json --report-path /dev/stdout --no-banner',
-        capture_output: true,
-        timeout: Math.floor((options.timeout || this.DEFAULT_TIMEOUT) / 1000),
+        timeoutSeconds: Math.floor((options.timeout || this.DEFAULT_TIMEOUT) / 1000),
       });
 
       // Gitleaks returns exit code 1 when findings are found (this is expected)
       // Exit code 0 means no findings
       // Other exit codes indicate errors
-      if (result.exit_code !== 0 && result.exit_code !== 1) {
+      if (result.exitCode !== 0 && result.exitCode !== 1) {
         throw new Error(`Gitleaks execution failed: ${result.stderr || 'Unknown error'}`);
       }
 
       // exit 1 + empty stdout = findings claimed but nothing emitted; refuse
       // to return [] which would mask real findings as a clean scan.
       if (!result.stdout) {
-        if (result.exit_code === 1) {
+        if (result.exitCode === 1) {
           this.logger.error('secrets-scanner.gitleaks.empty-stdout-with-findings-exit', {
             stderr: result.stderr?.slice(0, 500),
           });
@@ -429,7 +420,7 @@ export class SecretsScannerTool {
           preview: trimmedContent.substring(0, 200),
         });
         throw new Error(
-          `Gitleaks produced unparseable output (exit ${result.exit_code}): ${trimmedContent.slice(0, 200)}`,
+          `Gitleaks produced unparseable output (exit ${result.exitCode}): ${trimmedContent.slice(0, 200)}`,
         );
       }
 
@@ -482,44 +473,41 @@ export class SecretsScannerTool {
    * Run Semgrep scan (optional)
    */
   private async runSemgrep(
-    devSupervisor: DevSupervisorClient,
+    tasks: WorkspaceTasks,
     options: SecretsScannerOptions
   ): Promise<SecretFinding[]> {
     this.logger.info('secrets-scanner.semgrep.executing');
 
     try {
       // Check if semgrep is available
-      const semgrepCheck = await devSupervisor!.exec({
+      const semgrepCheck = await tasks.runCommandSync({
         command: 'semgrep --version',
-        capture_output: true,
-        timeout: 5,
+        timeoutSeconds: 5,
       });
 
-      if (semgrepCheck.exit_code !== 0) {
+      if (semgrepCheck.exitCode !== 0) {
         this.logger.warn('secrets-scanner.semgrep.not-available');
         return [];
       }
 
       // Check if config file exists, create if missing
-      const configExists = await devSupervisor!.exec({
+      const configExists = await tasks.runCommandSync({
         command: 'test -f .semgrep-secrets.yml && echo "exists" || echo "missing"',
-        capture_output: true,
-        timeout: 5,
+        timeoutSeconds: 5,
       });
 
       if (configExists.stdout?.trim() === 'missing') {
         // Create default config
-        await this.createDefaultSemgrepConfig(devSupervisor);
+        await this.createDefaultSemgrepConfig(tasks);
       }
 
       // Run semgrep
-      const result = await devSupervisor!.exec({
+      const result = await tasks.runCommandSync({
         command: 'semgrep --config=.semgrep-secrets.yml --json --no-git-ignore',
-        capture_output: true,
-        timeout: Math.floor((options.timeout || this.DEFAULT_TIMEOUT) / 1000),
+        timeoutSeconds: Math.floor((options.timeout || this.DEFAULT_TIMEOUT) / 1000),
       });
 
-      if (result.exit_code !== 0 && result.exit_code !== 1) {
+      if (result.exitCode !== 0 && result.exitCode !== 1) {
         // Exit code 1 means findings found (normal), other codes are errors
         throw new Error(`Semgrep execution failed: ${result.stderr || 'Unknown error'}`);
       }
@@ -570,7 +558,7 @@ export class SecretsScannerTool {
   /**
    * Create default Semgrep config file
    */
-  private async createDefaultSemgrepConfig(devSupervisor: DevSupervisorClient): Promise<void> {
+  private async createDefaultSemgrepConfig(tasks: WorkspaceTasks): Promise<void> {
     // Use printf to create the config file (more reliable than heredoc)
     const configLines = [
       'rules:',
@@ -590,10 +578,9 @@ export class SecretsScannerTool {
     try {
       // Write config line by line using echo
       const configContent = configLines.join('\\n');
-      await devSupervisor!.exec({
+      await tasks.runCommandSync({
         command: `printf '${configContent}' > .semgrep-secrets.yml`,
-        capture_output: true,
-        timeout: 5,
+        timeoutSeconds: 5,
       });
     } catch (error) {
       this.logger.warn('secrets-scanner.semgrep.config-create-failed', {

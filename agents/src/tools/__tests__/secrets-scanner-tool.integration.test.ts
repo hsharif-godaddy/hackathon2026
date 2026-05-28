@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
-  exec: vi.fn(),
-  createForApp: vi.fn(),
+  runCommandSync: vi.fn(),
+  createForWorkspace: vi.fn(),
   findById: vi.fn(),
 }));
 
@@ -14,11 +14,9 @@ vi.mock('../../database/repositories/AppRepository.js', () => ({
   },
 }));
 
-vi.mock('../../utils/dev-supervisor-client-factory.js', () => ({
-  DevSupervisorClientFactory: {
-    createForApp(appId: string) {
-      return mocks.createForApp(appId);
-    },
+vi.mock('../../workspace/index.js', () => ({
+  createForWorkspace(workspaceId: string, variant: string) {
+    return mocks.createForWorkspace(workspaceId, variant);
   },
 }));
 
@@ -52,31 +50,28 @@ describe('SecretsScannerTool integration', function integration() {
     });
 
     mocks.findById.mockReturnValue({ id: 'app-123' });
-    mocks.createForApp.mockReturnValue({ exec: mocks.exec });
-    mocks.exec.mockImplementation(async function exec(args: { command: string }) {
+    mocks.createForWorkspace.mockReturnValue({ tasks: { runCommandSync: mocks.runCommandSync } });
+    mocks.runCommandSync.mockImplementation(async function runCommandSync(args: { command: string }) {
       if (args.command === 'gitleaks version') {
-        return { exit_code: 0, stdout: '8.18.0', stderr: '' };
+        return { exitCode: 0, stdout: '8.18.0', stderr: '', timedOut: false, taskId: 'mock', executionTimeMs: 0 };
       }
       if (args.command === 'git rev-parse HEAD') {
-        return { exit_code: 0, stdout: 'abc123\n', stderr: '' };
+        return { exitCode: 0, stdout: 'abc123\n', stderr: '', timedOut: false, taskId: 'mock', executionTimeMs: 0 };
       }
-      // Mock must match the exact command emitted by the scanner — otherwise
-      // the test silently falls through to the "Unexpected command" throw and
-      // we'd assert on a scanner-failed result instead of a parsed one.
       if (
         args.command ===
         'gitleaks detect --no-git --source /app --report-format json --report-path /dev/stdout --no-banner'
       ) {
-        return { exit_code: 1, stdout: gitleaksOutput, stderr: '' };
+        return { exitCode: 1, stdout: gitleaksOutput, stderr: '', timedOut: false, taskId: 'mock', executionTimeMs: 0 };
       }
       if (args.command === 'semgrep --version') {
-        return { exit_code: 0, stdout: '1.0.0', stderr: '' };
+        return { exitCode: 0, stdout: '1.0.0', stderr: '', timedOut: false, taskId: 'mock', executionTimeMs: 0 };
       }
       if (args.command === 'test -f .semgrep-secrets.yml && echo "exists" || echo "missing"') {
-        return { exit_code: 0, stdout: 'exists', stderr: '' };
+        return { exitCode: 0, stdout: 'exists', stderr: '', timedOut: false, taskId: 'mock', executionTimeMs: 0 };
       }
       if (args.command === 'semgrep --config=.semgrep-secrets.yml --json --no-git-ignore') {
-        return { exit_code: 1, stdout: semgrepOutput, stderr: '' };
+        return { exitCode: 1, stdout: semgrepOutput, stderr: '', timedOut: false, taskId: 'mock', executionTimeMs: 0 };
       }
 
       throw new Error(`Unexpected command: ${args.command}`);
@@ -85,6 +80,7 @@ describe('SecretsScannerTool integration', function integration() {
     const tool = new SecretsScannerTool();
     const result = await tool.scan('app-123', { forceRescan: true });
 
+    expect(mocks.createForWorkspace).toHaveBeenCalledWith('app-123', 'preview');
     expect(result.success).toBe(true);
     expect(result.findings).toHaveLength(2);
     expect(result.summary.total).toBe(2);
@@ -108,22 +104,17 @@ describe('SecretsScannerTool integration', function integration() {
   });
 
   it('throws when gitleaks reports findings (exit 1) but emits no stdout', async function emptyStdoutMisconfig() {
-    // The misconfiguration trap: gitleaks exits 1 (= "I found things") but
-    // produces no readable output. Without the throw, this would render the
-    // secrets tile as a clean run despite the tool reporting findings —
-    // worst-case for a credential scanner.
     mocks.findById.mockReturnValue({ id: 'app-123' });
-    mocks.createForApp.mockReturnValue({ exec: mocks.exec });
-    mocks.exec.mockImplementation(async function exec(args: { command: string }) {
+    mocks.createForWorkspace.mockReturnValue({ tasks: { runCommandSync: mocks.runCommandSync } });
+    mocks.runCommandSync.mockImplementation(async function runCommandSync(args: { command: string }) {
       if (args.command === 'gitleaks version') {
-        return { exit_code: 0, stdout: '8.18.0', stderr: '' };
+        return { exitCode: 0, stdout: '8.18.0', stderr: '', timedOut: false, taskId: 'mock', executionTimeMs: 0 };
       }
       if (args.command === 'git rev-parse HEAD') {
-        return { exit_code: 0, stdout: 'abc123\n', stderr: '' };
+        return { exitCode: 0, stdout: 'abc123\n', stderr: '', timedOut: false, taskId: 'mock', executionTimeMs: 0 };
       }
       if (args.command.startsWith('gitleaks detect')) {
-        // Empty stdout + exit 1 = the misconfig trap.
-        return { exit_code: 1, stdout: '', stderr: 'something is off' };
+        return { exitCode: 1, stdout: '', stderr: 'something is off', timedOut: false, taskId: 'mock', executionTimeMs: 0 };
       }
       throw new Error(`Unexpected command: ${args.command}`);
     });
@@ -140,19 +131,19 @@ describe('SecretsScannerTool integration', function integration() {
 
   it('still returns clean when gitleaks exits 0 with empty stdout', async function emptyStdoutCleanRun() {
     mocks.findById.mockReturnValue({ id: 'app-123' });
-    mocks.createForApp.mockReturnValue({ exec: mocks.exec });
-    mocks.exec.mockImplementation(async function exec(args: { command: string }) {
+    mocks.createForWorkspace.mockReturnValue({ tasks: { runCommandSync: mocks.runCommandSync } });
+    mocks.runCommandSync.mockImplementation(async function runCommandSync(args: { command: string }) {
       if (args.command === 'gitleaks version') {
-        return { exit_code: 0, stdout: '8.18.0', stderr: '' };
+        return { exitCode: 0, stdout: '8.18.0', stderr: '', timedOut: false, taskId: 'mock', executionTimeMs: 0 };
       }
       if (args.command === 'git rev-parse HEAD') {
-        return { exit_code: 0, stdout: 'abc123\n', stderr: '' };
+        return { exitCode: 0, stdout: 'abc123\n', stderr: '', timedOut: false, taskId: 'mock', executionTimeMs: 0 };
       }
       if (args.command.startsWith('gitleaks detect')) {
-        return { exit_code: 0, stdout: '', stderr: '' };
+        return { exitCode: 0, stdout: '', stderr: '', timedOut: false, taskId: 'mock', executionTimeMs: 0 };
       }
       if (args.command === 'semgrep --version') {
-        return { exit_code: 1, stdout: '', stderr: 'not installed' };
+        return { exitCode: 1, stdout: '', stderr: 'not installed', timedOut: false, taskId: 'mock', executionTimeMs: 0 };
       }
       throw new Error(`Unexpected command: ${args.command}`);
     });

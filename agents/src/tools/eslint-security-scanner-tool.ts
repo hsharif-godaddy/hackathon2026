@@ -1,7 +1,7 @@
-import { DevSupervisorClient } from '../services/DevSupervisorClient.js';
 import { Logger } from '../logging/index.js';
 import { getErrorMessage } from '../utils/error.js';
-import { DevSupervisorClientFactory } from '../utils/dev-supervisor-client-factory.js';
+import { createForWorkspace } from '../workspace/index.js';
+import type { WorkspaceTasks } from '../workspace/tasks.js';
 
 /**
  * ESLint Security Scanner Tool (Code Quality / SAST category)
@@ -110,15 +110,16 @@ export class EslintSecurityScannerTool {
     };
 
     try {
-      const devSupervisor = DevSupervisorClientFactory.createForApp(appId);
-      if (!devSupervisor) {
-        throw new Error('Dev-supervisor not available. Make sure the app container is running.');
+      const workspace = createForWorkspace(appId, 'preview');
+      if (!workspace) {
+        throw new Error('Workspace not available. Make sure the app container is running.');
       }
+      const tasks = workspace.tasks;
 
       const configPath = options.configPath ?? DEFAULT_CONFIG_PATH;
       const scanPath = options.scanPath ?? DEFAULT_SCAN_PATH;
 
-      const configReady = await this.ensureConfigPresent(devSupervisor, configPath);
+      const configReady = await this.ensureConfigPresent(tasks, configPath);
       if (!configReady) {
         this.logger.warn('eslint-security-scanner.config.missing', {
           configPath,
@@ -134,7 +135,7 @@ export class EslintSecurityScannerTool {
         };
       }
 
-      const messages = await this.runEslint(devSupervisor, options, configPath, scanPath);
+      const messages = await this.runEslint(tasks, options, configPath, scanPath);
 
       // Diagnostic counters — surface the "exit 1 but 0 findings" pattern explicitly.
       // Common causes: parse errors (null ruleId), missing plugin/parser, files
@@ -194,12 +195,12 @@ export class EslintSecurityScannerTool {
   }
 
   private async ensureConfigPresent(
-    devSupervisor: DevSupervisorClient,
+    tasks: WorkspaceTasks,
     configPath: string,
   ): Promise<boolean> {
-    if (await this.fileExists(devSupervisor, configPath)) return true;
+    if (await this.fileExists(tasks, configPath)) return true;
 
-    if (!(await this.fileExists(devSupervisor, TEMPLATE_FALLBACK_CONFIG_PATH))) {
+    if (!(await this.fileExists(tasks, TEMPLATE_FALLBACK_CONFIG_PATH))) {
       return false;
     }
 
@@ -209,14 +210,13 @@ export class EslintSecurityScannerTool {
     });
 
     try {
-      const cp = await devSupervisor!.exec({
+      const cp = await tasks.runCommandSync({
         command: `cp ${TEMPLATE_FALLBACK_CONFIG_PATH} ${configPath}`,
-        capture_output: true,
-        timeout: 5,
+        timeoutSeconds: 5,
       });
-      if (cp.exit_code !== 0) {
+      if (cp.exitCode !== 0) {
         this.logger.error('eslint-security-scanner.config.self-heal.failed', {
-          exitCode: cp.exit_code,
+          exitCode: cp.exitCode,
           stderr: cp.stderr?.slice(0, 200),
         });
         return false;
@@ -230,18 +230,17 @@ export class EslintSecurityScannerTool {
 
     // Verify the copy actually landed — defensive against silent cp failures
     // (read-only mount, ENOSPC, etc.).
-    return await this.fileExists(devSupervisor, configPath);
+    return await this.fileExists(tasks, configPath);
   }
 
   private async fileExists(
-    devSupervisor: DevSupervisorClient,
-    path: string,
+    tasks: WorkspaceTasks,
+    filePath: string,
   ): Promise<boolean> {
     try {
-      const result = await devSupervisor!.exec({
-        command: `test -f ${path} && echo present || echo missing`,
-        capture_output: true,
-        timeout: 5,
+      const result = await tasks.runCommandSync({
+        command: `test -f ${filePath} && echo present || echo missing`,
+        timeoutSeconds: 5,
       });
       return result.stdout?.trim() === 'present';
     } catch {
@@ -261,7 +260,7 @@ export class EslintSecurityScannerTool {
   }
 
   private async runEslint(
-    devSupervisor: DevSupervisorClient,
+    tasks: WorkspaceTasks,
     options: EslintSecurityScannerOptions,
     configPath: string,
     scanPath: string,
@@ -269,16 +268,15 @@ export class EslintSecurityScannerTool {
     const command = this.buildEslintCommand(configPath, scanPath);
     this.logger.info('eslint-security-scanner.eslint.executing');
 
-    const result = await devSupervisor!.exec({
+    const result = await tasks.runCommandSync({
       command,
-      capture_output: true,
-      timeout: Math.floor((options.timeout ?? this.DEFAULT_TIMEOUT) / 1000),
+      timeoutSeconds: Math.floor((options.timeout ?? this.DEFAULT_TIMEOUT) / 1000),
     });
 
     // 0 = clean, 1 = findings, anything else is a real error
-    if (result.exit_code !== 0 && result.exit_code !== 1) {
+    if (result.exitCode !== 0 && result.exitCode !== 1) {
       throw new Error(
-        `ESLint failed (exit ${result.exit_code}): ${result.stderr?.slice(0, 500) ?? 'unknown'}`,
+        `ESLint failed (exit ${result.exitCode}): ${result.stderr?.slice(0, 500) ?? 'unknown'}`,
       );
     }
 
@@ -287,7 +285,7 @@ export class EslintSecurityScannerTool {
     // exit 1 + empty stdout = findings claimed but nothing emitted; refuse
     // to return [] which would mask real findings as a clean scan.
     if (trimmed.length === 0) {
-      if (result.exit_code === 1) {
+      if (result.exitCode === 1) {
         this.logger.error('eslint-security-scanner.eslint.empty-stdout-with-findings-exit', {
           stderr: result.stderr?.slice(0, 500),
         });
@@ -305,7 +303,7 @@ export class EslintSecurityScannerTool {
         preview: trimmed.slice(0, 200),
       });
       throw new Error(
-        `ESLint produced unparseable output (exit ${result.exit_code}): ${trimmed.slice(0, 200)}`,
+        `ESLint produced unparseable output (exit ${result.exitCode}): ${trimmed.slice(0, 200)}`,
       );
     }
 

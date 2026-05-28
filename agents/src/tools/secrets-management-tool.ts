@@ -1,5 +1,5 @@
 import { Logger } from '../logging/index.js';
-import { DevSupervisorClient } from '../services/DevSupervisorClient.js';
+import type { WorkspaceTasks } from '../workspace/tasks.js';
 
 /**
  * Result from listing secret names
@@ -23,11 +23,11 @@ export interface ListSecretNamesResult {
  */
 export class SecretsManagementTool {
   private logger: Logger;
-  private devSupervisor: DevSupervisorClient | null;
+  private readonly tasks: WorkspaceTasks | null;
 
-  constructor(devSupervisor?: DevSupervisorClient) {
+  constructor(tasks?: WorkspaceTasks) {
     this.logger = Logger.create({ component: 'secrets-management-tool' });
-    this.devSupervisor = devSupervisor || null;
+    this.tasks = tasks || null;
   }
 
   /**
@@ -42,29 +42,25 @@ export class SecretsManagementTool {
     this.logger.info('secrets.list.begin', { appId });
 
     try {
-      // Check if dev-supervisor is available
-      if (!this.devSupervisor?.isAvailable()) {
+      if (!this.tasks) {
         return {
           success: false,
           secretNames: [],
           count: 0,
-          error: 'Dev-supervisor is not available. The app container may not be running or the socket is not accessible.'
+          error: 'Workspace tasks not available. The app container may not be running or the socket is not accessible.'
         };
       }
 
-      // Execute command in container to list secrets using airo-secrets package
-      // Use Node.js --experimental-strip-types to import TypeScript directly
-      const execResult = await this.devSupervisor!.exec({
+      const execResult = await this.tasks.runCommandSync({
         command: `node --experimental-strip-types -e "import('/app/airo-secrets/src/secrets-utils.ts').then(module => module.listSecretNames()).then(data => console.log(JSON.stringify(data))).catch(err => { console.error(err.message); process.exit(1); })"`,
-        working_dir: '/app',
-        timeout: 10,
-        capture_output: true
+        workingDir: '/app',
+        timeoutSeconds: 10,
       });
 
-      if (execResult.exit_code !== 0) {
+      if (execResult.exitCode !== 0) {
         this.logger.error('secrets.list.failure', {
           appId,
-          exitCode: execResult.exit_code,
+          exitCode: execResult.exitCode,
           stderr: execResult.stderr
         });
 

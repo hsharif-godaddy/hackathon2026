@@ -1,9 +1,8 @@
-import * as path from 'node:path';
-import { DevSupervisorClient } from '../services/DevSupervisorClient.js';
 import { Logger } from '../logging/index.js';
 import { getErrorMessage } from '../utils/error.js';
 import { AppRepository } from '../database/repositories/AppRepository.js';
-import { DevSupervisorClientFactory } from '../utils/dev-supervisor-client-factory.js';
+import { createForWorkspace } from '../workspace/index.js';
+import type { WorkspaceTasks } from '../workspace/tasks.js';
 import { safeJoin, UnsafePathError } from '../utils/safe-path.js';
 
 export type MisconfigurationSeverity = 'critical' | 'high' | 'medium' | 'low' | 'info';
@@ -131,10 +130,11 @@ export class SecurityMisconfigurationScannerTool {
         throw new Error(`App '${appId}' not found`);
       }
 
-      const devSupervisor = DevSupervisorClientFactory.createForApp(appId);
-      if (!devSupervisor) {
-        throw new Error('Dev-supervisor not available. Make sure the app container is running.');
+      const workspace = createForWorkspace(appId, 'preview');
+      if (!workspace) {
+        throw new Error('Workspace not available. Make sure the app container is running.');
       }
+      const tasks = workspace.tasks;
 
       // Validate workingDir to prevent path traversal attacks
       let workDir = '/app';
@@ -155,7 +155,7 @@ export class SecurityMisconfigurationScannerTool {
       // 1) Semgrep scan (best-effort)
       if (!normalizedOptions.skipSemgrep) {
         try {
-          const semgrepFindings = await this.runSemgrep(devSupervisor, workDir, normalizedOptions);
+          const semgrepFindings = await this.runSemgrep(tasks, workDir, normalizedOptions);
           findings.push(...semgrepFindings);
         } catch (error) {
           this.logger.warn('security-misconfig.semgrep.failed', {
@@ -166,7 +166,7 @@ export class SecurityMisconfigurationScannerTool {
       }
 
       // 2) Static audit scan (always)
-      const staticFindings = await this.runStaticAudit(devSupervisor, workDir, normalizedOptions);
+      const staticFindings = await this.runStaticAudit(tasks, workDir, normalizedOptions);
       findings.push(...staticFindings);
 
       const merged = this.dedupeFindings(findings);
@@ -210,20 +210,19 @@ export class SecurityMisconfigurationScannerTool {
   }
 
   private async runSemgrep(
-    devSupervisor: DevSupervisorClient,
+    tasks: WorkspaceTasks,
     workDir: string,
     options: Required<SecurityMisconfigurationScannerOptions>
   ): Promise<MisconfigurationFinding[]> {
     this.logger.info('security-misconfig.semgrep.executing');
 
     // Check if semgrep is available
-    const semgrepCheck = await devSupervisor!.exec({
+    const semgrepCheck = await tasks.runCommandSync({
       command: 'semgrep --version',
-      capture_output: true,
-      timeout: 5,
-      working_dir: workDir,
+      timeoutSeconds: 5,
+      workingDir: workDir,
     });
-    if (semgrepCheck.exit_code !== 0) {
+    if (semgrepCheck.exitCode !== 0) {
       this.logger.warn('security-misconfig.semgrep.not-available');
       return [];
     }
@@ -234,18 +233,17 @@ export class SecurityMisconfigurationScannerTool {
     const configPath = `.semgrep-security-misconfig-${timestamp}-${randomSuffix}.yml`;
 
     // Create config file for this scan
-    await this.createDefaultSemgrepConfig(devSupervisor, workDir, configPath);
+    await this.createDefaultSemgrepConfig(tasks, workDir, configPath);
 
     try {
-      const result = await devSupervisor!.exec({
+      const result = await tasks.runCommandSync({
         command: `semgrep --config=${configPath} --json --no-git-ignore`,
-        capture_output: true,
-        timeout: Math.floor((options.timeout || this.DEFAULT_TIMEOUT) / 1000),
-        working_dir: workDir,
+        timeoutSeconds: Math.floor((options.timeout || this.DEFAULT_TIMEOUT) / 1000),
+        workingDir: workDir,
       });
 
       // Exit code 1 can mean findings; other non-zero means error
-      if (result.exit_code !== 0 && result.exit_code !== 1) {
+      if (result.exitCode !== 0 && result.exitCode !== 1) {
         throw new Error(`Semgrep execution failed: ${result.stderr || 'Unknown error'}`);
       }
 
@@ -282,11 +280,10 @@ export class SecurityMisconfigurationScannerTool {
       return out;
     } finally {
       // Always clean up config file after scan
-      await devSupervisor!.exec({
+      await tasks.runCommandSync({
         command: `rm -f ${configPath}`,
-        capture_output: true,
-        timeout: 5,
-        working_dir: workDir,
+        timeoutSeconds: 5,
+        workingDir: workDir,
       }).catch(() => {
         // Ignore cleanup errors
         this.logger.warn('security-misconfig.semgrep.cleanup-failed', { configPath });
@@ -295,7 +292,7 @@ export class SecurityMisconfigurationScannerTool {
   }
 
   private async createDefaultSemgrepConfig(
-    devSupervisor: DevSupervisorClient,
+    tasks: WorkspaceTasks,
     workDir: string,
     configPath: string
   ): Promise<void> {
@@ -326,11 +323,10 @@ export class SecurityMisconfigurationScannerTool {
     ].join('\n');
 
     const writeCmd = this.nodeWriteFileCommand(configPath, yaml);
-    await devSupervisor!.exec({
+    await tasks.runCommandSync({
       command: writeCmd,
-      capture_output: true,
-      timeout: 10,
-      working_dir: workDir,
+      timeoutSeconds: 10,
+      workingDir: workDir,
     });
   }
 
@@ -356,7 +352,7 @@ export class SecurityMisconfigurationScannerTool {
   }
 
   private async runStaticAudit(
-    devSupervisor: DevSupervisorClient,
+    tasks: WorkspaceTasks,
     workDir: string,
     options: Required<SecurityMisconfigurationScannerOptions>
   ): Promise<MisconfigurationFinding[]> {
@@ -369,11 +365,10 @@ export class SecurityMisconfigurationScannerTool {
     const script = this.buildStaticAuditScript();
 
     // Write script to /tmp and execute it with base64-encoded options
-    await devSupervisor!.exec({
+    await tasks.runCommandSync({
       command: this.nodeWriteFileCommand(scriptPath, script),
-      capture_output: true,
-      timeout: 15,
-      working_dir: workDir,
+      timeoutSeconds: 15,
+      workingDir: workDir,
     });
 
     const optsJson = JSON.stringify({
@@ -385,16 +380,15 @@ export class SecurityMisconfigurationScannerTool {
     const optsB64 = Buffer.from(optsJson).toString('base64');
 
     try {
-      const result = await devSupervisor!.exec({
+      const result = await tasks.runCommandSync({
         command: `node ${scriptPath} '${optsB64}'`,
-        capture_output: true,
-        timeout: Math.floor((options.timeout || this.DEFAULT_TIMEOUT) / 1000),
-        working_dir: workDir,
+        timeoutSeconds: Math.floor((options.timeout || this.DEFAULT_TIMEOUT) / 1000),
+        workingDir: workDir,
       });
 
-      if (result.exit_code !== 0) {
+      if (result.exitCode !== 0) {
         this.logger.warn('security-misconfig.static.failed', {
-          exit_code: result.exit_code,
+          exitCode: result.exitCode,
           stderr: result.stderr?.substring(0, 300),
         });
         return [];
@@ -416,11 +410,10 @@ export class SecurityMisconfigurationScannerTool {
       return findings;
     } finally {
       // Always clean up script file after execution
-      await devSupervisor!.exec({
+      await tasks.runCommandSync({
         command: `rm -f ${scriptPath}`,
-        capture_output: true,
-        timeout: 5,
-        working_dir: workDir,
+        timeoutSeconds: 5,
+        workingDir: workDir,
       }).catch(() => {
         // Ignore cleanup errors
         this.logger.warn('security-misconfig.static.cleanup-failed', { scriptPath });
