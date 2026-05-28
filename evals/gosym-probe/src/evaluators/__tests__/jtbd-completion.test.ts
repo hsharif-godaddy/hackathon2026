@@ -221,47 +221,64 @@ describe('JTBDCompletionEvaluator', () => {
       trials: 1,
     };
 
-    it('includes inline html from snapshot in LLM prompt', async () => {
+    it('includes inline body html from snapshot in LLM prompt', async () => {
       mockGocode.complete.mockResolvedValue('pass');
       const snapshot = makeSnapshot({ html: '<html><body>hello</body></html>' });
       const result = await evaluator.evaluate(makeTranscript(), scenario, snapshot);
       const prompt = mockGocode.complete.mock.calls[0][0][0].content as string;
-      expect(prompt).toContain('Preview HTML:');
+      expect(prompt).toContain('Preview body HTML:');
       expect(prompt).not.toContain('truncated to');
-      expect(prompt).toContain('<html><body>hello</body></html>');
+      expect(prompt).toContain('hello');
+      expect(prompt).not.toContain('<html>');
       expect(result.details?.htmlContextAvailable).toBe(true);
     });
 
     it('reads htmlPath from disk when inline html is absent', async () => {
-      vi.mocked(readFile).mockResolvedValue('<html>from-file</html>' as string);
+      vi.mocked(readFile).mockResolvedValue(
+        '<html><body>from-file</body></html>' as string,
+      );
       mockGocode.complete.mockResolvedValue('pass');
       const snapshot = makeSnapshot({ htmlPath: '/tmp/page.html' });
       const result = await evaluator.evaluate(makeTranscript(), scenario, snapshot);
       expect(vi.mocked(readFile)).toHaveBeenCalledWith('/tmp/page.html', 'utf-8');
       const prompt = mockGocode.complete.mock.calls[0][0][0].content as string;
-      expect(prompt).toContain('Preview HTML:');
+      expect(prompt).toContain('Preview body HTML:');
       expect(prompt).not.toContain('truncated to');
-      expect(prompt).toContain('<html>from-file</html>');
+      expect(prompt).toContain('from-file');
+      expect(prompt).not.toContain('<html>');
       expect(result.details?.htmlContextAvailable).toBe(true);
     });
 
-    it('truncates HTML longer than 8000 chars to 8000 + "... [truncated]"', async () => {
+    it('includes body content when head exceeds prompt budget', async () => {
       mockGocode.complete.mockResolvedValue('pass');
-      const longHtml = 'x'.repeat(10_000);
-      const snapshot = makeSnapshot({ html: longHtml });
+      const head = '<head>' + 'h'.repeat(10_000) + '</head>';
+      const body = '<body><main>visible goal content</main></body>';
+      const snapshot = makeSnapshot({ html: `<html>${head}${body}</html>` });
+      await evaluator.evaluate(makeTranscript(), scenario, snapshot);
+      const prompt = mockGocode.complete.mock.calls[0][0][0].content as string;
+      expect(prompt).toContain('visible goal content');
+      expect(prompt).not.toContain('h'.repeat(100));
+    });
+
+    it('truncates body HTML longer than 8000 chars to 8000 + "... [truncated]"', async () => {
+      mockGocode.complete.mockResolvedValue('pass');
+      const longBody = 'x'.repeat(10_000);
+      const snapshot = makeSnapshot({
+        html: `<html><body>${longBody}</body></html>`,
+      });
       await evaluator.evaluate(makeTranscript(), scenario, snapshot);
       const prompt = mockGocode.complete.mock.calls[0][0][0].content as string;
       expect(prompt).toContain('x'.repeat(8_000));
       expect(prompt).toContain('... [truncated]');
       expect(prompt).not.toContain('x'.repeat(8_001));
-      expect(prompt).toContain('Preview HTML (truncated to 8000 chars):');
+      expect(prompt).toContain('Preview body HTML (truncated to 8000 chars):');
     });
 
     it('omits HTML section when snapshot is undefined', async () => {
       mockGocode.complete.mockResolvedValue('pass');
       const result = await evaluator.evaluate(makeTranscript(), scenario, undefined);
       const prompt = mockGocode.complete.mock.calls[0][0][0].content as string;
-      expect(prompt).not.toContain('Preview HTML');
+      expect(prompt).not.toContain('Preview body HTML');
       expect(result.details?.htmlContextAvailable).toBe(false);
     });
 
@@ -272,7 +289,7 @@ describe('JTBDCompletionEvaluator', () => {
       const result = await evaluator.evaluate(makeTranscript(), scenario, snapshot);
       expect(result.verdict).toBe('pass');
       const prompt = mockGocode.complete.mock.calls[0][0][0].content as string;
-      expect(prompt).not.toContain('Preview HTML');
+      expect(prompt).not.toContain('Preview body HTML');
       expect(result.details?.htmlContextAvailable).toBe(false);
     });
   });

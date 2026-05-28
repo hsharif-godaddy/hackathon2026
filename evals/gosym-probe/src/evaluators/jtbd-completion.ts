@@ -2,7 +2,12 @@ import type { EvalResult, Evaluator } from './evaluator.js';
 import type { DOMSnapshot, Transcript } from '../runner/transcript.js';
 import type { Scenario } from '../scenarios/types.js';
 import type { IGocodeClient } from '../clients/gocode-client.js';
-import { readSnapshotHtml, truncate, LLM_PROMPT_HTML_MAX_CHARS } from './shared.js';
+import {
+  extractBodyHtml,
+  LLM_PROMPT_HTML_MAX_CHARS,
+  readSnapshotHtml,
+  truncate,
+} from './shared.js';
 
 function buildTranscriptText(transcript: Transcript): string {
   return transcript.turns
@@ -37,10 +42,11 @@ function verdictToScore(verdict: EvalResult['verdict']): number {
 }
 
 function buildHtmlSection(rawHtml: string): string {
-  const htmlContent = truncate(rawHtml, LLM_PROMPT_HTML_MAX_CHARS);
-  const htmlLabel = rawHtml.length > LLM_PROMPT_HTML_MAX_CHARS
-    ? `Preview HTML (truncated to ${LLM_PROMPT_HTML_MAX_CHARS} chars):`
-    : 'Preview HTML:';
+  const bodyHtml = extractBodyHtml(rawHtml);
+  const htmlContent = truncate(bodyHtml, LLM_PROMPT_HTML_MAX_CHARS);
+  const htmlLabel = bodyHtml.length > LLM_PROMPT_HTML_MAX_CHARS
+    ? `Preview body HTML (truncated to ${LLM_PROMPT_HTML_MAX_CHARS} chars):`
+    : 'Preview body HTML:';
   return `\n${htmlLabel}\n${htmlContent}\n`;
 }
 
