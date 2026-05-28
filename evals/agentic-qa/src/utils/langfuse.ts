@@ -260,7 +260,13 @@ async function listTraces(
       limit: String(limit),
     });
 
-    const result = await request<TracesResponse>(creds, `/api/public/traces?${params}`);
+    let result: TracesResponse;
+    try {
+      result = await request<TracesResponse>(creds, `/api/public/traces?${params}`);
+    } catch (err) {
+      console.warn(`listTraces: skipping page ${page} — ${err instanceof Error ? err.message : err}`);
+      break;
+    }
     traces.push(...result.data);
 
     if (page >= result.meta.totalPages) break;
@@ -285,7 +291,13 @@ async function listObservations(
       limit: String(limit),
     });
 
-    const result = await request<ObservationsResponse>(creds, `/api/public/observations?${params}`);
+    let result: ObservationsResponse;
+    try {
+      result = await request<ObservationsResponse>(creds, `/api/public/observations?${params}`);
+    } catch (err) {
+      console.warn(`listObservations: skipping trace ${traceId} (page ${page}) — ${err instanceof Error ? err.message : err}`);
+      break;
+    }
     observations.push(...result.data);
 
     if (page >= result.meta.totalPages) break;
