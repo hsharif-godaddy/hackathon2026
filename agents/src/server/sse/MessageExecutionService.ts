@@ -16,6 +16,7 @@ import {
   redactSkillOutput,
   trackTurnSnapshotEvent,
   runPreflightTools,
+  analyzeStreamError,
 } from '@airo/ai-transport'
 import type { ResponseMetadata } from '@airo/ai-transport'
 import { BudgetExceededError, containsBudgetExceededPattern } from '@airo/ai-common'
@@ -1842,7 +1843,14 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
         // detail (BMS API paths). Matches the WS wire contract.
         const clientMessage = classified.clientMessage ?? err.message
         const { errorType, statusCode, retryAttempts, retryReason } = classified
-        logger.error('sse.execution.error', { appId, conversationId, ...errorFields(err), ...(requestId && { requestId }) })
+        const streamErrorInfo = analyzeStreamError(err)
+        logger.error('sse.execution.error', {
+          appId, conversationId, ...errorFields(err), ...(requestId && { requestId }),
+          ...(streamErrorInfo.statusCode !== undefined && { statusCode: streamErrorInfo.statusCode }),
+          ...(streamErrorInfo.responseBody !== undefined && { responseBody: streamErrorInfo.responseBody }),
+          errorType: streamErrorInfo.type,
+          isNetworkError: streamErrorInfo.isNetworkError,
+        })
         if (apmTransaction && !supersededError) {
           apmTransaction.setLabel('finishReason', 'error')
           apmTransaction.setLabel('error_message', clientMessage)
