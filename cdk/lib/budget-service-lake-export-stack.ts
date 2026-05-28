@@ -109,19 +109,15 @@ export class BudgetServiceLakeExportStack extends GDStack {
             }),
           ],
         }),
-        // Required for the gd-lake DLMS API client to mint JWTs and call
-        // add_partition (see budget-service-lake-export/app.py). The DLMS
-        // API is hosted in the data-lake account (028140660016 — verified
-        // as the owner of the central data-lake SNS topic and the ARN
-        // referenced by Lake Formation principals in events-s3-stack.ts).
-        // Belt-and-suspenders: the SSG permissions boundary further
-        // restricts the effective scope.
         DlmsApiAccess: new iam.PolicyDocument({
           statements: [
             new iam.PolicyStatement({
               effect: iam.Effect.ALLOW,
               actions: ['execute-api:Invoke'],
-              resources: [`arn:aws:execute-api:${cdk.Aws.REGION}:028140660016:*`],
+              resources: [
+                `arn:aws:execute-api:${cdk.Aws.REGION}:028140660016:*`,
+                ...config.awsIamJwtAccount.map(account => `arn:aws:execute-api:*:${account}:*`),
+              ],
             }),
           ],
         }),
@@ -186,7 +182,7 @@ export class BudgetServiceLakeExportStack extends GDStack {
     const schedule = new events.Rule(this, 'ExportSchedule', {
       ruleName: `${config.envName}-budget-export-schedule`,
       description: 'Daily snapshot of budget-service tables to the budget export bucket',
-      schedule: events.Schedule.cron({ minute: '15', hour: '3' }),
+      schedule: events.Schedule.cron({ minute: '45', hour: '4' }),
     });
     schedule.addTarget(new targets.LambdaFunction(this.exportLambda));
 
@@ -206,7 +202,7 @@ export class BudgetServiceLakeExportStack extends GDStack {
     new cloudwatch.Alarm(this, 'ExportStalenessAlarm', {
       alarmName: `${config.envName}-budget-export-staleness`,
       alarmDescription:
-        'Budget export Lambda has not been invoked in the last 25 hours (expected daily at 03:15 UTC).',
+        'Budget export Lambda has not been invoked in the last 25 hours (expected daily at 04:45 UTC).',
       metric: this.exportLambda.metricInvocations({
         statistic: cloudwatch.Stats.SUM,
         period: cdk.Duration.hours(25),
