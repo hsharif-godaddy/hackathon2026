@@ -19,6 +19,7 @@ import { LocalFileSystemOperations } from '../../filesystem/index.js';
 import { isFileBlocked } from '../read-file.js';
 import {
   isFileImmutable,
+  isProtectedWorkspacePath,
   validateNoApiPaths,
   resolveSourceFile,
   resolveFilePath
@@ -68,7 +69,14 @@ export const textEditorAITool: Tool = anthropic.tools.textEditor_20250728({
       }
     }
 
-    // 2. Immutability checks on modifications (includes create since it can overwrite)
+    // 2. Protected workspace paths (e.g. .airo) — block all modifications
+    if (['str_replace', 'create', 'insert'].includes(command)) {
+      if (isProtectedWorkspacePath(fullPath, app.path)) {
+        throw new Error(`${path} is in a protected directory and cannot be modified.`);
+      }
+    }
+
+    // 3. Immutability checks on modifications (includes create since it can overwrite)
     if (['str_replace', 'create', 'insert'].includes(command)) {
       const immutable = await isFileImmutable(fullPath, fs);
       if (immutable) {
@@ -76,7 +84,7 @@ export const textEditorAITool: Tool = anthropic.tools.textEditor_20250728({
       }
     }
 
-    // 3. API path validation - Prevent upload URLs in source
+    // 4. API path validation - Prevent upload URLs in source
     if (['str_replace', 'create', 'insert'].includes(command)) {
       const content = new_str || file_text || insert_text || '';
       const validation = validateNoApiPaths(content, path);
@@ -85,7 +93,7 @@ export const textEditorAITool: Tool = anthropic.tools.textEditor_20250728({
       }
     }
 
-    // 4. Upload resolution for create
+    // 5. Upload resolution for create
     let resolvedFileText = file_text;
     let binaryCopied = false;
     if (command === 'create' && file_text !== undefined) {

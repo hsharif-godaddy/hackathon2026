@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { FileEditTool } from '../file-edit';
+import { FileEditTool, isProtectedWorkspacePath } from '../file-edit';
 import { mkdirSync, writeFileSync, symlinkSync, rmSync, existsSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -277,6 +277,77 @@ describe('FileEditTool - Security Tests', () => {
       
       expect(result.success).toBe(false);
       expect(result.error).toMatch(/symlink.*outside.*app directory/i);
+    });
+  });
+
+  describe('Protected Workspace Paths', () => {
+    it('isProtectedWorkspacePath: detects .airo dir itself', () => {
+      expect(isProtectedWorkspacePath('/app/.airo', '/app')).toBe(true);
+    });
+
+    it('isProtectedWorkspacePath: detects file inside .airo', () => {
+      expect(isProtectedWorkspacePath('/app/.airo/video.json', '/app')).toBe(true);
+    });
+
+    it('isProtectedWorkspacePath: detects nested path inside .airo', () => {
+      expect(isProtectedWorkspacePath('/app/.airo/qa-runs/qa-run-1.json', '/app')).toBe(true);
+    });
+
+    it('isProtectedWorkspacePath: allows adjacent path with similar prefix', () => {
+      expect(isProtectedWorkspacePath('/app/.airo-backup', '/app')).toBe(false);
+    });
+
+    it('isProtectedWorkspacePath: allows normal source files', () => {
+      expect(isProtectedWorkspacePath('/app/src/index.ts', '/app')).toBe(false);
+    });
+
+    it('editFile: blocks create inside .airo', async () => {
+      mkdirSync(join(testAppDir, '.airo'), { recursive: true });
+
+      const result = await fileEditTool.editFile(testAppDir, {
+        path: '.airo/security-report.json',
+        mode: 'create',
+        content: '{}',
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toMatch(/protected directory/i);
+      expect(existsSync(join(testAppDir, '.airo', 'security-report.json'))).toBe(false);
+    });
+
+    it('editFile: blocks rewrite of existing .airo file', async () => {
+      mkdirSync(join(testAppDir, '.airo'), { recursive: true });
+      writeFileSync(join(testAppDir, '.airo', 'video.json'), '{"original":true}');
+
+      const result = await fileEditTool.editFile(testAppDir, {
+        path: '.airo/video.json',
+        mode: 'rewrite',
+        content: '{}',
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toMatch(/protected directory/i);
+      expect(readFileSync(join(testAppDir, '.airo', 'video.json'), 'utf-8')).toBe('{"original":true}');
+    });
+
+    it('editFile: allows writes to normal files while blocking .airo writes', async () => {
+      mkdirSync(join(testAppDir, '.airo'), { recursive: true });
+
+      const normalResult = await fileEditTool.editFile(testAppDir, {
+        path: 'src/index.ts',
+        mode: 'create',
+        content: 'export {}',
+      });
+      const protectedResult = await fileEditTool.editFile(testAppDir, {
+        path: '.airo/video.json',
+        mode: 'create',
+        content: '{}',
+      });
+
+      expect(normalResult.success).toBe(true);
+      expect(existsSync(join(testAppDir, 'src', 'index.ts'))).toBe(true);
+      expect(protectedResult.success).toBe(false);
+      expect(protectedResult.error).toMatch(/protected directory/i);
     });
   });
 

@@ -84,6 +84,15 @@ export class FileEditTool {
       };
     }
 
+    if (isProtectedWorkspacePath(filePath, appPath)) {
+      return {
+        success: false,
+        path: options.path,
+        mode: options.mode || 'edit',
+        error: `${options.path} is in a protected directory and cannot be modified.`,
+      };
+    }
+
     let mode: 'create' | 'edit' | 'rewrite' | 'delete';
     try {
       mode = options.mode || await this.detectMode(filePath, options);
@@ -790,6 +799,23 @@ export class FileEditTool {
 /**
  * Exported Security Utilities (for reuse in text editor tool)
  */
+
+// Protected workspace paths that cannot be modified via LLM file-edit tools.
+const PROTECTED_PATH_PREFIXES = ['.airo'];
+
+/**
+ * Returns true when filePath falls on or inside a protected workspace directory.
+ */
+export function isProtectedWorkspacePath(filePath: string, appPath: string): boolean {
+  const normalizedApp = resolve(appPath);
+  for (const prefix of PROTECTED_PATH_PREFIXES) {
+    const protectedDir = resolve(normalizedApp, prefix);
+    if (filePath === protectedDir || filePath.startsWith(protectedDir + '/')) {
+      return true;
+    }
+  }
+  return false;
+}
 
 /**
  * Check if a file is marked as immutable
