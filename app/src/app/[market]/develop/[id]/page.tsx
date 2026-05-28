@@ -263,7 +263,7 @@ function DevelopPageContent() {
   const isMultiElementSelect = useSwitchboard('appbuilder-multi-element-select')
   const isIntroTourEnabled = useSwitchboard('appbuilder-intro-tour')
   const autoSendInitialMessage = useAutoSendInitialMessage()
-  const ws = useChatTransport()
+  const ws = useChatTransport({ enabled: imageReadiness.isReady })
   const isLoading = useIsLoading()
   const isStreaming = useIsActivelyStreaming()
   const isAwaitingStream = deriveIsAwaitingStream(

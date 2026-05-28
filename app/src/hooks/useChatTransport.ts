@@ -16,7 +16,7 @@ type TransportResult = ReturnType<typeof useSSEChat> | ReturnType<typeof useStre
  * short-circuits its effects so it does not allocate transports, controllers,
  * or subscriber registrations.
  */
-export function useChatTransport(): TransportResult {
+export function useChatTransport({ enabled = true }: { enabled?: boolean } = {}): TransportResult {
   const sseEnabled = useSwitchboard(SWITCHBOARD_APPBUILDER_SSE_TRANSPORT)
 
   const resolvedRef = useRef<boolean | null>(null)
@@ -30,8 +30,8 @@ export function useChatTransport(): TransportResult {
   const resolved = resolvedRef.current !== null
   const useSSE = resolvedRef.current === true
 
-  const sse = useSSEChat({ enabled: resolved && useSSE })
-  const ws = useStreamingWebSocket({ enabled: resolved && !useSSE })
+  const sse = useSSEChat({ enabled: resolved && useSSE && enabled })
+  const ws = useStreamingWebSocket({ enabled: resolved && !useSSE && enabled })
 
   return useSSE ? sse : ws
 }
