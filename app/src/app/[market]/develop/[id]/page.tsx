@@ -261,6 +261,7 @@ function DevelopPageContent() {
   const setAiEditContext = useSetAiEditContext()
   const addAiEditContext = useAddAiEditContext()
   const isMultiElementSelect = useSwitchboard('appbuilder-multi-element-select')
+  const isIntroTourEnabled = useSwitchboard('appbuilder-intro-tour')
   const autoSendInitialMessage = useAutoSendInitialMessage()
   const ws = useChatTransport()
   const isLoading = useIsLoading()
@@ -1535,13 +1536,14 @@ function DevelopPageContent() {
 
   // Check and trigger intro tour after first message completes
   useEffect(() => {
+    if (!isIntroTourEnabled) return
     if (!appId || !init.isReady) return
 
     // Trigger tour when we have at least one message and no active stream
     if (messages.length > 0 && !activeStream) {
       checkAndTriggerIntroTour()
     }
-  }, [appId, init.isReady, messages.length, activeStream, checkAndTriggerIntroTour])
+  }, [isIntroTourEnabled, appId, init.isReady, messages.length, activeStream, checkAndTriggerIntroTour])
 
   if (init.siteNotFound) {
     return (
