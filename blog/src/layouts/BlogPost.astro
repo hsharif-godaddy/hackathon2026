@@ -97,4 +97,92 @@ function formatDate(date: Date): string {
   </main>
 
   <SiteFooter />
+
+  <div id="lightbox" role="dialog" aria-modal="true" aria-label="Image preview" aria-hidden="true" tabindex="-1">
+    <img id="lightbox-img" src="" alt="" />
+  </div>
 </BaseLayout>
+
+<style is:global>
+  #lightbox {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.88);
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+    cursor: zoom-out;
+  }
+
+  #lightbox.active {
+    display: flex;
+  }
+
+  #lightbox img {
+    max-width: 100%;
+    max-height: 90vh;
+    object-fit: contain;
+    border-radius: 0.5rem;
+    box-shadow: 0 8px 40px rgba(0, 0, 0, 0.6);
+    cursor: zoom-out;
+    margin: 0;
+  }
+
+  article.post-content .prose img {
+    cursor: zoom-in;
+  }
+</style>
+
+<script>
+  const overlayEl = document.getElementById('lightbox');
+  const lightboxImgEl = document.getElementById('lightbox-img');
+
+  if (overlayEl && lightboxImgEl instanceof HTMLImageElement) {
+    const overlay: HTMLElement = overlayEl;
+    const lightboxImg: HTMLImageElement = lightboxImgEl;
+
+    let lastTrigger: HTMLElement | null = null;
+
+    function openLightbox(img: HTMLImageElement): void {
+      lightboxImg.src = img.src;
+      lightboxImg.alt = img.alt;
+      lastTrigger = img;
+      overlay.classList.add('active');
+      overlay.setAttribute('aria-hidden', 'false');
+      overlay.focus();
+    }
+
+    function closeLightbox(): void {
+      overlay.classList.remove('active');
+      overlay.setAttribute('aria-hidden', 'true');
+      lastTrigger?.focus();
+      lastTrigger = null;
+    }
+
+    document.querySelectorAll('.prose img').forEach((img) => {
+      const el = img as HTMLImageElement;
+      el.setAttribute('tabindex', '0');
+      el.setAttribute('role', 'button');
+      el.setAttribute('aria-haspopup', 'dialog');
+      el.addEventListener('click', () => openLightbox(el));
+      el.addEventListener('keydown', (e: KeyboardEvent) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          openLightbox(el);
+        }
+      });
+    });
+
+    overlay.addEventListener('click', () => {
+      closeLightbox();
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        closeLightbox();
+      }
+    });
+  }
+</script>
