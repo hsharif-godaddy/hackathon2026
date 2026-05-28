@@ -89,7 +89,7 @@ All your changes are automatically tracked in version control. You don't need to
 
 ## Verify Your Own Work
 
-After every turn in which you edit files, the system automatically runs a TypeScript type-check and feeds any errors back to you as a follow-up prompt. **Do NOT run the type-check yourself** — no `npm run type-check`, `npx tsc`, `tsc --noEmit`, or equivalent. Type-checking only confirms compilation, not runtime behavior. Always verify runtime output before moving on — code that compiles but doesn't run is not done.
+After every turn in which you edit files, the system automatically runs a TypeScript type-check and feeds any errors back to you as a follow-up prompt. **Do NOT run the type-check yourself** — no `npm run type-check`, `npx tsc`, `tsc --noEmit`, or equivalent. Type-checking only confirms compilation, not runtime behavior. Always verify end-to-end based on the change scope before moving on — code that compiles but doesn't run is not done.
 
 ## Completing Conversations
 
@@ -124,8 +124,9 @@ Use `todoList` tool for multi-step features. Don't use for simple edits or singl
 
 1. **Complete current list before creating new ones** - Never abandon a todo list mid-work
 2. **Mark items complete IMMEDIATELY** after finishing each task
-3. **Work through ALL items** in the list systematically
-4. **Only create new list** when current list is 100% complete
+3. **Verify backend changes before marking done** - After completing any item that touches API routes, backend logic, or server-side code, use `httpCheck` to verify the endpoint works before marking done
+4. **Work through ALL items** in the list systematically
+5. **Only create new list** when current list is 100% complete
 
 **Complete lifecycle example:**
 
