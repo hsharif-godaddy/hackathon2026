@@ -57,6 +57,10 @@ import { invokeBudgetRecoveryCallback, buildContinuationPrompt, MAX_BUDGET_RETRI
 import { parseAgentCommand } from './agent-command-parser.js'
 import { trackTurnSnapshotEvent, type TurnSnapshotState } from './turn-snapshot-tracker.js'
 import { runPreflightTools } from './preflight-tools.js'
+import { assembleMessages as assembleMessagesShared } from './assemble-messages.js'
+import { readTextStreamFallback } from './text-stream-fallback.js'
+
+const neverAbortedSignal = new AbortController().signal
 
 /**
  * APM agent type for tool execution tracking
@@ -1820,32 +1824,26 @@ export class WebSocketServer {
 
     try {
       guard?.arm()
-      for await (const chunk of streamResult.textStream) {
-        // Check if the stream was cancelled
-        if (abortController?.signal.aborted) {
-          this.logger.warn('stream.text.cancelled')
-          break
-        }
-
-        // Record chunk arrival before publishing so timestamps
-        // reflect when the chunk was received. Measured gaps
-        // include publish overhead and for-await backpressure,
-        // but these are small relative to the 90s slow-gap
-        // threshold.
-        tracker.recordChunk()
-        guard?.reset()
-        tracker.recordTextChunk()
-
-        const chunkData = {
-          step: currentStep,
-          source: 'ai_response',
-          agentId: agentName,
-          messageId: agentMessageId,
-        }
-
-        await this.publishToEventChannel(
-          socketId, 'chunk', chunk, chunkData, agentName
-        )
+      await readTextStreamFallback({
+        textStream: streamResult.textStream,
+        abortSignal: abortController?.signal ?? neverAbortedSignal,
+        onChunk: async (chunk) => {
+          tracker.recordTextChunk()
+          const chunkData = {
+            step: currentStep,
+            source: 'ai_response',
+            agentId: agentName,
+            messageId: agentMessageId,
+          }
+          await this.publishToEventChannel(
+            socketId, 'chunk', chunk, chunkData, agentName
+          )
+        },
+        tracker,
+        guard: guard ?? undefined,
+      })
+      if (abortController?.signal.aborted) {
+        this.logger.warn('stream.text.cancelled')
       }
     } catch (error: unknown) {
       const errorInfo = analyzeStreamError(error)
@@ -3011,111 +3009,74 @@ export class WebSocketServer {
   }> {
     const messages: ModelMessage[] = []
     const contextMessages: PipelineContextMessage[] = []
-    const beforeHistoryMessages: PipelineContextMessage[] = []
-    const afterHistoryMessages: PipelineContextMessage[] = []
-
     // Load context messages if provider is configured
+    let loadedContextMessages: PipelineContextMessage[] = []
     if (this.config.contextProvider) {
       try {
         const contextToLoad = context || {}
-        const loadedContextMessages = await this.config.contextProvider.loadContextMessages(contextToLoad)
+        loadedContextMessages = await this.config.contextProvider.loadContextMessages(contextToLoad)
 
-        // Separate messages by insertion order and convert to proper format
-        for (const msg of loadedContextMessages) {
-          const { insertionOrder, ...messageWithoutOrder } = msg
-          const convertedMessage = {
-            role: messageWithoutOrder.role,
-            content: messageWithoutOrder.content,
-            ...(messageWithoutOrder.cachePoint && { cachePoint: messageWithoutOrder.cachePoint })
-          }
-
-          if (insertionOrder === 'before_history') {
-            beforeHistoryMessages.push(convertedMessage)
-          } else {
-            afterHistoryMessages.push(convertedMessage)
-          }
+        let beforeCount = 0
+        let cachePointCount = 0
+        for (const m of loadedContextMessages) {
+          if (m.insertionOrder === 'before_history') beforeCount++
+          if (m.cachePoint) cachePointCount++
         }
-
         this.logger.info('context.load', {
           total: loadedContextMessages.length,
-          beforeHistory: beforeHistoryMessages.length,
-          afterHistory: afterHistoryMessages.length,
-          cachePoints: loadedContextMessages.filter(m => m.cachePoint).length
+          beforeHistory: beforeCount,
+          afterHistory: loadedContextMessages.length - beforeCount,
+          cachePoints: cachePointCount,
         })
       } catch (error) {
         this.logger.error('context.load.failure', error)
-        // Continue without context if loading fails
       }
-    }
-
-    // Assemble final message order:
-    // 1. Context messages marked "before_history" go to contextMessages
-    contextMessages.push(...beforeHistoryMessages)
-
-    // 2. Conversation history (if provided) - preserve full message structure including tool calls
-    // NOTE: We do NOT auto-add cache points here. Cache points are managed centrally by
-    // addCacheControlToMessages() in prompt-caching.ts which handles the last message caching.
-    // Adding cache points here caused exceeding Anthropic's 4 breakpoint limit (5 total).
-    if (data.conversationHistory && data.conversationHistory.length > 0) {
-      this.logger.info('history.add', { messageCount: data.conversationHistory.length })
-      const convertedHistoryMessages = data.conversationHistory.map((msg) => {
-        const converted: any = {
-          role: msg.role,
-          content: msg.content,
-          // Preserve existing cache points from history (e.g., from summarization)
-          ...(msg.cachePoint && { cachePoint: msg.cachePoint })
-        }
-
-        // Preserve tool calls for assistant messages
-        if (msg.role === 'assistant' && msg.tool_calls) {
-          converted.tool_calls = msg.tool_calls
-        }
-
-        // Tool messages already have content in the correct format (array of tool-result parts)
-
-        return converted
-      })
-      messages.push(...convertedHistoryMessages)
     }
 
     // Preflight tool synthesis: when conversation is empty and the agent declares
     // preflightTools in its metadata, run them server-side and prepend synthesized
     // assistant tool_call + tool result pairs so the model sees the result on turn 1.
+    let preflightMessages: Array<{ role: string; content: unknown }> = []
     const isFirstTurn = !data.conversationHistory || data.conversationHistory.length === 0
     if (isFirstTurn && agent && typeof agent.getConfig === 'function') {
       try {
         const agentConfig = agent.getConfig()
         const preflightTools = (agentConfig.metadata as { preflightTools?: string[] } | undefined)?.preflightTools
         if (preflightTools && preflightTools.length > 0) {
-          const preflight = await runPreflightTools({
+          preflightMessages = await runPreflightTools({
             preflightTools,
             tools: agentConfig.tools as Record<string, { execute: (input: unknown, context: unknown) => Promise<unknown> }>,
             context: context ?? {},
             logger: this.logger,
           })
-          messages.push(...preflight)
-          this.logger.info('preflight.injected', { count: preflight.length, tools: preflightTools })
+          this.logger.info('preflight.injected', { count: preflightMessages.length, tools: preflightTools })
         }
       } catch (error) {
         this.logger.warn('preflight.skipped', { reason: 'getConfig failed', error })
       }
     }
 
-    // 3. Context messages marked "after_history" go to messages (after conversation history, before user message)
-    messages.push(...afterHistoryMessages)
+    if (data.conversationHistory && data.conversationHistory.length > 0) {
+      this.logger.info('history.add', { messageCount: data.conversationHistory.length })
+    }
 
-    // 4. Strip leading tool messages that appear before any assistant message
-    // This prevents orphaned tool results from being placed at the start of conversation
-    // which can happen when context messages are prepended to history
-    while (messages.length > 0 && messages[0]?.role === 'tool') {
-      const removedMessage = messages.shift()
-      if (removedMessage) {
+    const assembled = assembleMessagesShared({
+      contextMessages: loadedContextMessages,
+      conversationHistory: data.conversationHistory ?? [],
+      preflightMessages,
+    })
+
+    if (assembled.strippedOrphanTools.length > 0) {
+      for (const removed of assembled.strippedOrphanTools) {
         this.logger.warn('history.strip_orphan_tool', {
-          toolCallId: (removedMessage as any).tool_call_id,
-          reason: 'Tool results must follow assistant tool calls, cannot be first message'
+          toolCallId: removed.tool_call_id,
+          reason: 'Tool results must follow assistant tool calls, cannot be first message',
         })
       }
     }
+
+    contextMessages.push(...assembled.beforeHistory as PipelineContextMessage[])
+    messages.push(...assembled.messages as ModelMessage[])
 
     this.logger.info('message.assembly.complete', {
       contextMessages: contextMessages.length,

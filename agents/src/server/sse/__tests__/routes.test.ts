@@ -211,6 +211,40 @@ describe('SSE routes', () => {
       expect(deps.getEventChannel().getEventsSince).toHaveBeenCalledWith('conv_1', 41)
     })
 
+    it('resets pending client-action timeouts on reconnect', async () => {
+      const mockResetTimeout = vi.fn().mockReturnValue(true)
+      const mockGetPendingRequestIds = vi.fn().mockReturnValue(['req-abc', 'req-def'])
+      mockClientActionServices.set('sse:conv_1', {
+        resetTimeout: mockResetTimeout,
+        getPendingRequestIds: mockGetPendingRequestIds,
+        cleanup: vi.fn(),
+        executeAction: vi.fn(),
+      })
+
+      deps.getEventChannel.mockReturnValue({
+        getEventsSince: vi.fn().mockReturnValue([]),
+        getMetadata: vi.fn().mockReturnValue(null),
+      })
+      ;(deps as any).executionService = {
+        subscribeStream: vi.fn(),
+        hasActiveStream: vi.fn().mockReturnValue(false),
+      }
+
+      await request(app)
+        .get('/api/conversations/abcdefghij/conv_1/stream')
+        .set('Accept', 'text/event-stream')
+        .set('Last-Event-ID', '10')
+        .buffer(false)
+        .parse((res: any, callback: any) => {
+          res.on('data', () => {})
+          setTimeout(() => { res.destroy(); callback(null, '') }, 100)
+        })
+
+      expect(mockResetTimeout).toHaveBeenCalledTimes(2)
+      expect(mockResetTimeout).toHaveBeenCalledWith('req-abc')
+      expect(mockResetTimeout).toHaveBeenCalledWith('req-def')
+    })
+
     it('buffers live events during replay, drops duplicates at high-water, and flushes the tail', async () => {
       let subscribed: { onEvent: (event: any) => Promise<void> } | null = null
       const replayEvents = [

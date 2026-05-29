@@ -5,8 +5,7 @@
  * This service emits client_action events and waits for client_action_result responses.
  */
 
-import { EventEmitter } from 'events'
-import crypto from 'node:crypto'
+import { ClientActionRegistry } from '@airo/ai-transport'
 import { logger } from '../logging/index.js'
 import type { Socket } from 'socket.io'
 
@@ -32,81 +31,58 @@ export interface ClientActionResult {
  */
 export interface IClientActionService {
   executeAction(request: ClientActionRequest): Promise<ClientActionResult>
+  resetTimeout(requestId: string, newTimeoutMs?: number): boolean
+  getPendingRequestIds(): string[]
   cleanup(): void
 }
 
 /**
- * Service for executing client-side actions via WebSocket
+ * Service for executing client-side actions via WebSocket.
+ * Delegates to ClientActionRegistry for timeout/pending management.
  */
 export class ClientActionService implements IClientActionService {
-  private pendingRequests = new Map<
-    string,
-    {
-      resolve: (result: ClientActionResult) => void
-      reject: (error: Error) => void
-      timeout: NodeJS.Timeout
-    }
-  >()
+  private registry: ClientActionRegistry
   private boundHandler: (data: any) => void
 
   constructor(
     private socket: Socket,
     private conversationId: string
   ) {
-    // Store bound handler for proper cleanup
-    this.boundHandler = this.handleClientActionResult.bind(this)
-    // Listen for client_action_result messages
-    this.socket.on('client_action_result', this.boundHandler)
-  }
-
-  /**
-   * Execute a client-side action and wait for the result
-   */
-  async executeAction(request: ClientActionRequest): Promise<ClientActionResult> {
-    const { action, params, timeoutMs = 30000 } = request
-    const requestId = crypto.randomUUID()
-
-    logger.info('client-action.execute', {
-      action,
-      requestId,
-      conversationId: this.conversationId,
-      params: JSON.stringify(params),
-    })
-
-    // Create promise that will be resolved when client responds
-    const resultPromise = new Promise<ClientActionResult>((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        this.pendingRequests.delete(requestId)
+    this.registry = new ClientActionRegistry((request) => {
+      logger.info('client-action.execute', {
+        action: request.action,
+        requestId: request.requestId,
+        conversationId: this.conversationId,
+        params: JSON.stringify(request.params),
+      })
+      this.socket.emit('message', {
+        type: 'client_action',
+        content: `Requesting client to execute: ${request.action}`,
+        data: {
+          action: request.action,
+          params: request.params,
+          requestId: request.requestId,
+          conversationId: this.conversationId,
+        },
+      })
+    }, {
+      onTimeout: (requestId, timeoutMs) => {
         logger.error('client-action.timeout', {
-          action,
           requestId,
           conversationId: this.conversationId,
           timeoutMs,
         })
-        reject(new Error(`Client action timeout after ${timeoutMs}ms`))
-      }, timeoutMs)
-
-      this.pendingRequests.set(requestId, { resolve, reject, timeout })
-    })
-
-    // Emit client_action event to client
-    this.socket.emit('message', {
-      type: 'client_action',
-      content: `Requesting client to execute: ${action}`,
-      data: {
-        action,
-        params,
-        requestId,
-        conversationId: this.conversationId,
       },
     })
 
-    return resultPromise
+    this.boundHandler = this.handleClientActionResult.bind(this)
+    this.socket.on('client_action_result', this.boundHandler)
   }
 
-  /**
-   * Handle client_action_result from client
-   */
+  async executeAction(request: ClientActionRequest): Promise<ClientActionResult> {
+    return this.registry.executeAction(request)
+  }
+
   private handleClientActionResult(data: {
     requestId: string
     success: boolean
@@ -117,58 +93,37 @@ export class ClientActionService implements IClientActionService {
     exitCode?: number
   }): void {
     const { requestId, success, result, error, errorDetails, logs, exitCode } = data
-    const pending = this.pendingRequests.get(requestId)
 
-    if (!pending) {
-      logger.warn('client-action.unknown_request_id', {
-        requestId,
-        conversationId: this.conversationId,
-      })
+    const actionResult: ClientActionResult = success
+      ? { success: true, result }
+      : { success: false, error: error || 'Unknown error', errorDetails, logs, exitCode }
+
+    const resolved = this.registry.resolveAction(requestId, actionResult)
+    if (!resolved) {
+      logger.warn('client-action.unknown_request_id', { requestId, conversationId: this.conversationId })
       return
     }
 
-    // Clear timeout
-    clearTimeout(pending.timeout)
-    this.pendingRequests.delete(requestId)
-
-    // Resolve or reject the promise
     if (success) {
-      logger.info('client-action.success', {
-        requestId,
-        conversationId: this.conversationId,
-      })
-      pending.resolve({ success: true, result })
+      logger.info('client-action.success', { requestId, conversationId: this.conversationId })
     } else {
       logger.error('client-action.error', {
-        requestId,
-        conversationId: this.conversationId,
-        error,
-        hasErrorDetails: !!errorDetails,
-        hasLogs: !!logs,
-        exitCode,
-      })
-      pending.resolve({
-        success: false,
-        error: error || 'Unknown error',
-        errorDetails,
-        logs,
-        exitCode,
+        requestId, conversationId: this.conversationId,
+        error, hasErrorDetails: !!errorDetails, hasLogs: !!logs, exitCode,
       })
     }
   }
 
-  /**
-   * Cleanup when conversation ends
-   */
-  cleanup(): void {
-    // Reject all pending requests
-    for (const [requestId, pending] of this.pendingRequests.entries()) {
-      clearTimeout(pending.timeout)
-      pending.reject(new Error('Conversation ended'))
-      this.pendingRequests.delete(requestId)
-    }
+  resetTimeout(requestId: string, newTimeoutMs?: number): boolean {
+    return this.registry.resetTimeout(requestId, newTimeoutMs)
+  }
 
-    // Remove socket listener using the same bound reference
+  getPendingRequestIds(): string[] {
+    return this.registry.getPendingRequestIds()
+  }
+
+  cleanup(): void {
+    this.registry.cleanup()
     this.socket.off('client_action_result', this.boundHandler)
   }
 }

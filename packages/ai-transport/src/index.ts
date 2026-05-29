@@ -93,6 +93,16 @@ export type {
 export { captureResponseMetadata, awaitResponseMetadata } from './response-metadata-capture.js'
 export type { ResponseMetadata } from './response-metadata-capture.js'
 
+// Message Assembly (shared by WS + SSE)
+export { assembleMessages } from './assemble-messages.js'
+export type { AssembleMessagesInput, AssembleMessagesResult, ContextMessage, HistoryMessage, MessageRole, InsertionOrder } from './assemble-messages.js'
+export { stripLeadingOrphanTools } from './strip-orphan-tools.js'
+export type { StrippedToolMessage } from './strip-orphan-tools.js'
+
+// Text Stream Fallback (shared by WS + SSE)
+export { readTextStreamFallback } from './text-stream-fallback.js'
+export type { TextStreamFallbackDeps } from './text-stream-fallback.js'
+
 // SSE Formatting
 export { formatSSEEvent, safeFormatSSEEvent } from './sse-format.js'
 export type { SSEFormatLogger } from './sse-format.js'

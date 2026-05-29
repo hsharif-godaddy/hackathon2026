@@ -308,6 +308,17 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
         drainBufferedLiveEvents(plan.lastReplaySequence)
         replaceBufferingSubscriberWithDirect()
 
+        // Reset timeout for pending client actions so reconnected clients
+        // have a fresh window to respond after receiving the replayed event.
+        const actionService = getActionService(sseSessionKey(conversationId))
+        if (actionService) {
+          for (const reqId of actionService.getPendingRequestIds()) {
+            if (actionService.resetTimeout(reqId)) {
+              logger.info('sse.recovery.action_timeout_reset', { appId, conversationId, requestId: reqId })
+            }
+          }
+        }
+
         writeFormatted('replay_complete', {
           lastSequence: plan.lastReplaySequence,
           replayedCount,

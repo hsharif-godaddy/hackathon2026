@@ -844,6 +844,98 @@ describe('MessageExecutionService', () => {
       }
     })
 
+    it('falls back to textStream when baseStream read() throws a retryable error', async () => {
+      deps = createMockDeps()
+      let readCount = 0
+      deps.getAgent.mockReturnValue({
+        streamGenerate: vi.fn().mockResolvedValue({
+          textStream: (async function* () {
+            yield 'fallback chunk 1'
+            yield 'fallback chunk 2'
+          })(),
+          baseStream: new ReadableStream({
+            pull(controller) {
+              readCount++
+              if (readCount === 1) {
+                controller.enqueue({ part: { type: 'text-delta', text: 'base chunk' } })
+              } else {
+                const err: any = new Error('Service Unavailable')
+                err.statusCode = 503
+                throw err
+              }
+            },
+          }),
+          getFinalResult: vi.fn().mockResolvedValue({ finishReason: 'complete' }),
+          response: Promise.resolve({ id: 'resp-1', modelId: 'claude-sonnet-4-6' }),
+        }),
+        getName: vi.fn().mockReturnValue('AI Developer'),
+      })
+      service = new MessageExecutionService(deps as any)
+
+      await service.execute(DEFAULT_PARAMS)
+
+      // Base stream delivered first chunk, then fallback delivered the rest
+      expect(deps.eventChannel.publish).toHaveBeenCalledWith(
+        'conv_1',
+        expect.objectContaining({ type: 'chunk', content: 'base chunk' }),
+      )
+      expect(deps.eventChannel.publish).toHaveBeenCalledWith(
+        'conv_1',
+        expect.objectContaining({ type: 'chunk', content: 'fallback chunk 1' }),
+      )
+      expect(deps.eventChannel.publish).toHaveBeenCalledWith(
+        'conv_1',
+        expect.objectContaining({ type: 'chunk', content: 'fallback chunk 2' }),
+      )
+      // Should complete successfully, not error
+      expect(deps.eventChannel.publish).toHaveBeenCalledWith(
+        'conv_1',
+        expect.objectContaining({
+          type: 'complete',
+          data: expect.objectContaining({ finishReason: 'complete' }),
+        }),
+      )
+    })
+
+    it('does not fallback on non-retryable baseStream read() errors', async () => {
+      deps = createMockDeps()
+      deps.getAgent.mockReturnValue({
+        streamGenerate: vi.fn().mockResolvedValue({
+          textStream: (async function* () { yield 'should not appear' })(),
+          baseStream: new ReadableStream({
+            pull() {
+              // 403 Forbidden is always non-retryable
+              throw new APICallError({
+                message: 'Forbidden',
+                statusCode: 403,
+                url: 'https://api.example.com',
+                requestBodyValues: {},
+              })
+            },
+          }),
+          response: Promise.resolve({}),
+        }),
+        getName: vi.fn().mockReturnValue('AI Developer'),
+      })
+      service = new MessageExecutionService(deps as any)
+
+      await service.execute(DEFAULT_PARAMS)
+
+      // Should produce an error terminal event (non-retryable propagates)
+      expect(deps.eventChannel.publish).toHaveBeenCalledWith(
+        'conv_1',
+        expect.objectContaining({
+          type: 'error',
+          content: 'Forbidden',
+        }),
+      )
+      // Fallback text should NOT appear
+      expect(deps.eventChannel.publish).not.toHaveBeenCalledWith(
+        'conv_1',
+        expect.objectContaining({ content: 'should not appear' }),
+      )
+    })
+
     it('unsubscribes SSE subscribers in finally block', async () => {
       const mockSub = { id: 'sse-1', onEvent: vi.fn(), onError: vi.fn() }
       deps.sseRegistry.getSubscribers.mockReturnValue([mockSub])

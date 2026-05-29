@@ -12,6 +12,12 @@ export class SSEClientActionService implements IClientActionService {
     private eventChannel: ConversationEventChannel,
   ) {
     this.registry = new ClientActionRegistry((request) => {
+      logger.info('sse.client-action.execute', {
+        action: request.action,
+        requestId: request.requestId,
+        conversationId: this.conversationId,
+        appId: this.appId,
+      })
       this.eventChannel.publish(this.conversationId, {
         conversationId: this.conversationId,
         type: 'client_action',
@@ -30,15 +36,19 @@ export class SSEClientActionService implements IClientActionService {
           ...errorFields(err),
         })
       })
+    }, {
+      onTimeout: (requestId, timeoutMs) => {
+        logger.error('sse.client-action.timeout', {
+          requestId,
+          conversationId: this.conversationId,
+          appId: this.appId,
+          timeoutMs,
+        })
+      },
     })
   }
 
   async executeAction(request: ClientActionRequest): Promise<ClientActionResult> {
-    logger.info('sse.client-action.execute', {
-      action: request.action,
-      conversationId: this.conversationId,
-      appId: this.appId,
-    })
     return this.registry.executeAction(request)
   }
 
@@ -57,6 +67,12 @@ export class SSEClientActionService implements IClientActionService {
       ? { success: true, result }
       : { success: false, error: error || 'Unknown error', errorDetails, logs, exitCode }
 
+    const resolved = this.registry.resolveAction(requestId, actionResult)
+    if (!resolved) {
+      logger.warn('sse.client-action.unknown_request_id', { requestId, conversationId: this.conversationId, appId: this.appId })
+      return false
+    }
+
     if (success) {
       logger.info('sse.client-action.success', { requestId, conversationId: this.conversationId, appId: this.appId })
     } else {
@@ -70,12 +86,15 @@ export class SSEClientActionService implements IClientActionService {
         exitCode,
       })
     }
+    return true
+  }
 
-    const resolved = this.registry.resolveAction(requestId, actionResult)
-    if (!resolved) {
-      logger.warn('sse.client-action.unknown_request_id', { requestId, conversationId: this.conversationId, appId: this.appId })
-    }
-    return resolved
+  resetTimeout(requestId: string, newTimeoutMs?: number): boolean {
+    return this.registry.resetTimeout(requestId, newTimeoutMs)
+  }
+
+  getPendingRequestIds(): string[] {
+    return this.registry.getPendingRequestIds()
   }
 
   cleanup(): void {

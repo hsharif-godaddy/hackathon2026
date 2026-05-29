@@ -19,21 +19,34 @@ export interface ClientActionResult {
 export interface ClientActionHandler {
   executeAction(request: ClientActionRequest): Promise<ClientActionResult>
   resolveAction(requestId: string, result: ClientActionResult): boolean
+  resetTimeout(requestId: string, newTimeoutMs?: number): boolean
+  getPendingRequestIds(): string[]
   cleanup(): void
+}
+
+export interface ClientActionRegistryOptions {
+  onTimeout?: (requestId: string, timeoutMs: number) => void
 }
 
 interface PendingRequest {
   resolve: (result: ClientActionResult) => void
   reject: (error: Error) => void
   timeout: ReturnType<typeof setTimeout>
+  timeoutMs: number
 }
 
 const DEFAULT_TIMEOUT_MS = 30_000
 
 export class ClientActionRegistry implements ClientActionHandler {
   private pending = new Map<string, PendingRequest>()
+  private onTimeout: ((requestId: string, timeoutMs: number) => void) | undefined
 
-  constructor(private sendRequest: (request: ClientActionRequest) => void) {}
+  constructor(
+    private sendRequest: (request: ClientActionRequest) => void,
+    options?: ClientActionRegistryOptions,
+  ) {
+    this.onTimeout = options?.onTimeout
+  }
 
   executeAction(request: ClientActionRequest): Promise<ClientActionResult> {
     const requestId = request.requestId ?? randomUUID()
@@ -46,10 +59,11 @@ export class ClientActionRegistry implements ClientActionHandler {
     return new Promise<ClientActionResult>((resolve, reject) => {
       const timeout = setTimeout(() => {
         this.pending.delete(requestId)
+        this.onTimeout?.(requestId, timeoutMs)
         reject(new Error(`Client action timed out after ${timeoutMs}ms`))
       }, timeoutMs)
 
-      this.pending.set(requestId, { resolve, reject, timeout })
+      this.pending.set(requestId, { resolve, reject, timeout, timeoutMs })
 
       try {
         this.sendRequest({ ...request, requestId })
@@ -69,6 +83,26 @@ export class ClientActionRegistry implements ClientActionHandler {
     this.pending.delete(requestId)
     entry.resolve(result)
     return true
+  }
+
+  /** Reset the timeout for a pending action (e.g. after SSE reconnect replays the event).
+   *  Falls back to the original per-request timeoutMs if newTimeoutMs is not provided. */
+  resetTimeout(requestId: string, newTimeoutMs?: number): boolean {
+    const entry = this.pending.get(requestId)
+    if (!entry) return false
+
+    clearTimeout(entry.timeout)
+    const timeoutMs = newTimeoutMs ?? entry.timeoutMs
+    entry.timeout = setTimeout(() => {
+      this.pending.delete(requestId)
+      this.onTimeout?.(requestId, timeoutMs)
+      entry.reject(new Error(`Client action timed out after ${timeoutMs}ms`))
+    }, timeoutMs)
+    return true
+  }
+
+  getPendingRequestIds(): string[] {
+    return [...this.pending.keys()]
   }
 
   cleanup(): void {

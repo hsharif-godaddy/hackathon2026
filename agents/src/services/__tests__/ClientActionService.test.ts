@@ -151,7 +151,7 @@ describe('ClientActionService', () => {
       // Advance time past timeout
       vi.advanceTimersByTime(5001)
 
-      await expect(promise).rejects.toThrow('Client action timeout after 5000ms')
+      await expect(promise).rejects.toThrow('Client action timed out after 5000ms')
 
       vi.useRealTimers()
     })
@@ -174,7 +174,7 @@ describe('ClientActionService', () => {
       // Advance past timeout
       vi.advanceTimersByTime(2)
 
-      await expect(promise).rejects.toThrow('Client action timeout after 30000ms')
+      await expect(promise).rejects.toThrow('Client action timed out after 30000ms')
 
       vi.useRealTimers()
     })
@@ -246,8 +246,8 @@ describe('ClientActionService', () => {
       const error1 = await promise1
       const error2 = await promise2
 
-      expect(error1.message).toBe('Conversation ended')
-      expect(error2.message).toBe('Conversation ended')
+      expect(error1.message).toBe('Client action registry cleanup')
+      expect(error2.message).toBe('Client action registry cleanup')
     })
 
     it('should clear all pending timeouts', () => {
@@ -258,11 +258,11 @@ describe('ClientActionService', () => {
       // Catch the rejection to prevent unhandled error
       service.executeAction(request).catch(() => {})
 
-      expect(service['pendingRequests'].size).toBe(1)
+      expect(service.getPendingRequestIds().length).toBe(1)
 
       service.cleanup()
 
-      expect(service['pendingRequests'].size).toBe(0)
+      expect(service.getPendingRequestIds().length).toBe(0)
 
       // Advance time - should not cause timeout rejection since it was cleaned up
       vi.advanceTimersByTime(6000)
@@ -283,11 +283,11 @@ describe('ClientActionService', () => {
       // Catch the rejection to prevent unhandled error
       service.executeAction(request).catch(() => {})
 
-      expect(service['pendingRequests'].size).toBe(1)
+      expect(service.getPendingRequestIds().length).toBe(1)
 
       service.cleanup()
 
-      expect(service['pendingRequests'].size).toBe(0)
+      expect(service.getPendingRequestIds().length).toBe(0)
     })
   })
 

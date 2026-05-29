@@ -19,6 +19,9 @@ import {
   analyzeStreamError,
   classifyStreamBudgetError,
   isToolValidationError,
+  assembleMessages,
+  captureResponseMetadata,
+  readTextStreamFallback,
   TOOL_VALIDATION_ERROR_TYPE,
 } from '@airo/ai-transport'
 import type { ResponseMetadata } from '@airo/ai-transport'
@@ -200,6 +203,8 @@ interface ActiveStream {
   subscriberIds: Set<string>
   requestId?: string
   apmTransaction?: { setLabel: (k: string, v: string | number) => void; setOutcome: (o: 'unknown' | 'success' | 'failure') => void; end: () => void; result?: string | number } | null
+  lastTrackerSnapshot?: { chunksRead: number; streamElapsedMs: number }
+  lastResponseMetadata?: ResponseMetadata
 }
 
 export class MessageExecutionService implements SubscriberLifecycleListener {
@@ -915,11 +920,6 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
     })
 
     const contextResult = await this.deps.contextManager.loadContextMessages(executionContext)
-    const allContextMessages = contextResult.contextMessages
-    const beforeHistory = allContextMessages.filter((m: any) => m.insertionOrder === 'before_history')
-      .map((m: any) => ({ role: m.role, content: m.content, ...(m.cachePoint && { cachePoint: m.cachePoint }) }))
-    const afterHistory = allContextMessages.filter((m: any) => m.insertionOrder !== 'before_history')
-      .map((m: any) => ({ role: m.role, content: m.content, ...(m.cachePoint && { cachePoint: m.cachePoint }) }))
 
     const allImages = collectImagesFromFormattedContexts(contextResult.formattedContexts)
     const processedFiles = allImages.length > 0 ? dataUrlsToProcessedFiles(allImages) : undefined
@@ -949,31 +949,42 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
 
     const extraAfterHistory = [ragContextMessage, todoContextMessage, memoryContextMessage, dynamicDataMessage]
       .filter((m): m is NonNullable<typeof m> => m != null)
-      .map(m => ({ role: m.role, content: m.content }))
-
-    const messages = [...historyMessages, ...afterHistory, ...extraAfterHistory]
+      .map(m => ({ role: m.role, content: m.content, ...(m.cachePoint && { cachePoint: m.cachePoint }) }))
 
     // Preflight tool synthesis: when conversation is empty and the agent declares
     // preflightTools in its metadata, run them server-side and prepend synthesized
     // assistant tool_call + tool result pairs so the model sees the result on turn 1.
+    let preflightMessages: Array<{ role: string; content: unknown }> = []
     const isFirstTurn = historyMessages.length === 0
     if (isFirstTurn && agent && typeof agent.getConfig === 'function') {
       try {
         const agentConfig = agent.getConfig()
         const preflightTools = (agentConfig.metadata as { preflightTools?: string[] } | undefined)?.preflightTools
         if (preflightTools && preflightTools.length > 0) {
-          const preflight = await runPreflightTools({
+          preflightMessages = await runPreflightTools({
             preflightTools,
             tools: agentConfig.tools as Record<string, { execute: (input: unknown, context: unknown) => Promise<unknown> }>,
             context: executionContext ?? {},
             logger: { warn: (event: string, data: Record<string, unknown>) => logger.warn(event, data) },
           })
-          messages.unshift(...preflight)
-          logger.info('preflight.injected', { count: preflight.length, tools: preflightTools })
+          logger.info('preflight.injected', { count: preflightMessages.length, tools: preflightTools })
         }
       } catch (error) {
         logger.warn('preflight.skipped', { reason: 'getConfig failed', ...errorFields(error) })
       }
+    }
+
+    const assembled = assembleMessages({
+      contextMessages: contextResult.contextMessages,
+      conversationHistory: historyMessages,
+      extraAfterHistory,
+      preflightMessages: preflightMessages.length > 0 ? preflightMessages : undefined,
+    })
+    const beforeHistory = assembled.beforeHistory
+    const messages = assembled.messages
+
+    for (const removed of assembled.strippedOrphanTools) {
+      logger.warn('sse.history.strip_orphan_tool', { toolCallId: removed.tool_call_id })
     }
 
     // Create the Langfuse-facing agent-invocation span under the trace context
@@ -1148,10 +1159,14 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
 
       guard?.arm()
       invocation.captureMetadata(streamResult.response)
+      captureResponseMetadata(streamResult.response, (meta) => {
+        streamState.lastResponseMetadata = meta
+      })
 
       const baseStream = streamResult.baseStream
       if (baseStream) {
         const reader: ReadableStreamDefaultReader = (baseStream as ReadableStream).getReader()
+        let readerReleased = false
         try {
           while (true) {
             if (abortSignal.aborted) {
@@ -1163,7 +1178,30 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
               readResult = await reader.read()
             } catch (readError) {
               if (abortSignal.reason === 'chunk_timeout') throwChunkTimeoutError()
-              throw readError
+
+              const classification = classifyError(readError)
+              if (!classification.retryable) throw readError
+
+              logger.warn('sse.stream.base_stream.fallback', {
+                appId, agentName,
+                classification: classification.category,
+                chunksRead: tracker.chunksRead,
+                streamElapsedMs: tracker.streamElapsedMs,
+              })
+              reader.releaseLock()
+              readerReleased = true
+
+              await readTextStreamFallback({
+                textStream: streamResult.textStream,
+                abortSignal,
+                onChunk: async (text) => {
+                  processor.processPart({ type: 'text-delta', text })
+                  await flushPendingWork()
+                },
+                tracker,
+                guard: guard ?? undefined,
+              })
+              break
             }
             const { done, value } = readResult
             if (done) break
@@ -1175,7 +1213,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
             }
           }
         } finally {
-          reader.releaseLock()
+          if (!readerReleased) reader.releaseLock()
           await flushPendingWork()
         }
       } else {
@@ -1259,6 +1297,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
         steps: Array.isArray(finalResult?.steps) ? finalResult.steps : [],
       }
     } catch (err) {
+      streamState.lastTrackerSnapshot = { chunksRead: tracker.chunksRead, streamElapsedMs: tracker.streamElapsedMs }
       if (BudgetExceededError.isInstance(err)) {
         invocation.endError(err, { finishReason: 'budget_exceeded' })
       } else {
@@ -1980,6 +2019,13 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
           ...(terminalErrorInfo.responseBody !== undefined && { responseBody: terminalErrorInfo.responseBody }),
           errorClass: terminalErrorInfo.type,
           isNetworkError: terminalErrorInfo.isNetworkError,
+          ...(streamState.lastTrackerSnapshot && {
+            chunksRead: streamState.lastTrackerSnapshot.chunksRead,
+            streamElapsedMs: streamState.lastTrackerSnapshot.streamElapsedMs,
+          }),
+          ...(streamState.lastResponseMetadata?.headers && { responseHeaders: streamState.lastResponseMetadata.headers }),
+          ...(streamState.lastResponseMetadata?.responseId && { responseId: streamState.lastResponseMetadata.responseId }),
+          ...(streamState.lastResponseMetadata?.modelId && { responseModelId: streamState.lastResponseMetadata.modelId }),
         })
         if (apmTransaction && !supersededError) {
           apmTransaction.setLabel('finishReason', 'error')
