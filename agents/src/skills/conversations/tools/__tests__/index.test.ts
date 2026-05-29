@@ -571,6 +571,31 @@ describe('conversations skill tools', () => {
       );
     });
 
+    it('patches embeddable with labelText and writes label to config', async () => {
+      mockReadWidgetConfig.mockResolvedValue({
+        _support: { account: '', ui: { widget: { icon: 'webChat', color: '', position: 'bottom-right' } } },
+      });
+
+      await updateWidgetConfigTool.execute({ labelText: 'Chat with us!' }, context);
+
+      expect(mockUpdateEmbeddable).toHaveBeenCalledWith(
+        mockClient,
+        'app-123',
+        'a1b2c3d4-0000-4000-8000-000000000001',
+        42,
+        { shoutbox_label: 'Chat with us!' },
+      );
+      expect(mockWriteWidgetConfig).toHaveBeenCalledWith(
+        expect.stringContaining('conversations.config.json'),
+        expect.objectContaining({
+          _support: expect.objectContaining({
+            account: 'a1b2c3d4-0000-4000-8000-000000000001',
+            ui: { widget: { icon: 'webChat', color: '', position: 'bottom-right', label: { text: 'Chat with us!' } } },
+          }),
+        }),
+      );
+    });
+
     it('writes config file with account restored after successful backend sync', async () => {
       mockReadWidgetConfig.mockResolvedValue({
         _support: { account: '', ui: { widget: { icon: 'webChat', color: '', position: 'bottom-right' } } },

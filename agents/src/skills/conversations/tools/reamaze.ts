@@ -62,6 +62,7 @@ export interface UpdateEmbeddableInput {
   shoutbox_position?: string;
   shoutbox_bg?: string;
   shoutbox_icon?: string;
+  shoutbox_label?: string;
   styles?: {
     button_bg_color?: string;
     header_bg_color?: string;

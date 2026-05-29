@@ -5,7 +5,10 @@
       "widget": {
         "icon": "webChat",
         "color": "",
-        "position": "bottom-right"
+        "position": "bottom-right",
+        "label": {
+          "text": "Ask us a question!"
+        }
       }
     }
   }

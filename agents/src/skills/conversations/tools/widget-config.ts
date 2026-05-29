@@ -8,6 +8,9 @@ export interface WidgetConfig {
         icon: string;
         color: string;
         position: string;
+        label?: {
+          text: string;
+        };
       };
     };
   };
@@ -21,6 +24,9 @@ const DEFAULT_CONFIG: WidgetConfig = {
         icon: 'webChat',
         color: '',
         position: 'bottom-right',
+        label: {
+          text: 'Ask us a question!',
+        },
       },
     },
   },

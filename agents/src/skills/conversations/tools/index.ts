@@ -346,11 +346,16 @@ export const updateWidgetConfigTool: SkillToolDefinition = {
       .enum(['bottom-right', 'bottom-left'])
       .optional()
       .describe('Widget corner position'),
+    labelText: z
+      .string()
+      .optional()
+      .describe('Greeting text shown in the chat bubble (e.g. "Chat with us!")'),
   }),
   execute: async (
     input: {
       color?: string;
       position?: 'bottom-right' | 'bottom-left';
+      labelText?: string;
     },
     context?: ToolContext,
   ) => {
@@ -387,6 +392,7 @@ export const updateWidgetConfigTool: SkillToolDefinition = {
       embeddablePatch.shoutbox_bg = input.color;
     }
     if (input.position) embeddablePatch.shoutbox_position = input.position;
+    if (input.labelText) embeddablePatch.shoutbox_label = input.labelText;
 
     if (Object.keys(embeddablePatch).length === 0) {
       return { message: 'No fields provided; nothing updated.' };
@@ -401,6 +407,7 @@ export const updateWidgetConfigTool: SkillToolDefinition = {
     config._support.account = brandId;
     if (input.color) config._support.ui.widget.color = input.color;
     if (input.position) config._support.ui.widget.position = input.position;
+    if (input.labelText) config._support.ui.widget.label = { text: input.labelText };
     await writeWidgetConfig(configPath, config);
 
     logger.info('conversations.skill.update.success', { appId, brandId, embeddableId, updated: Object.keys(embeddablePatch) });

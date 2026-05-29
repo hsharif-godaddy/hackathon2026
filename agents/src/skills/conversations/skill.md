@@ -97,10 +97,10 @@ The component is side-effect only (renders `null`). It reads config from `conver
 
 ## Updating Widget Configuration
 
-To change color or position after initial setup, call the tool:
+To change widget settings after initial setup, call the tool:
 
 ```typescript
-conversations__update_widget_config({ color: '#1e40af', position: 'bottom-right' });
+conversations__update_widget_config({ color: '#1e40af', position: 'bottom-right', labelText: 'Ask us a question!' });
 ```
 
 The tool syncs to the Conversations backend and writes the config file — no manual file editing needed. Omit a field to leave it unchanged.
