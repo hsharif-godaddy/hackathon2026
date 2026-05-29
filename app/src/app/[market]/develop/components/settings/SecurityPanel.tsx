@@ -13,6 +13,7 @@ import { type StructuredVulnerability } from '@/app/api/testpilot/transform-scan
 import { useTranslations } from '@/hooks/useTranslations';
 import { shipAnalyticsLog } from '@/lib/logging';
 import { type TestPilotRunResult } from "@/lib/testpilot";
+import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import { useSecurityQuickFixHandoffStore } from '@/stores/useSecurityQuickFixHandoffStore';
 import { useServerPollingStore } from '@/stores/useServerPollingStore';
 import { formatDate } from '@/utils/common';
@@ -72,13 +73,18 @@ export default function SecurityPanel() {
   const getServerState = useServerPollingStore((state) => state.getServerState);
   const serverState = getServerState(appId);
 
-  const [isLoading, setIsLoading] = useState(false);
   const [isLoadingStoredReport, setIsLoadingStoredReport] = useState(false);
   const [isQuickFixInProgress, setIsQuickFixInProgress] = useState(false);
   const [results, setResults] = useState<{ security?: TestPilotRunResult } | null>(null);
   const [lastScannedAt, setLastScannedAt] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [errorTitle, setErrorTitle] = useState<string | null>(null);
+
+  const setSecurityAnalysisRunning = useDevelopPageStore((s) => s.setSecurityAnalysisRunning);
+  const acquireSecurityAnalysisLock = useDevelopPageStore((s) => s.acquireSecurityAnalysisLock);
+  const isAnyAnalysisRunning = useDevelopPageStore((s) =>
+    appId ? !!s.publishStates[appId]?.isSecurityAnalysisRunning : false
+  );
 
   const handoffCompleteNonce = useSecurityQuickFixHandoffStore((s) => s.handoffCompleteNonce);
   const lastPanelResetNonce = useSecurityQuickFixHandoffStore((s) => s.lastPanelResetNonce);
@@ -133,8 +139,9 @@ export default function SecurityPanel() {
    *
    * @param taskId - The task ID to retry
    * @param currentRetryCount - Current retry attempt number
+   * @param resolvedAppId - appId captured as non-null from the caller after the !appId guard
    */
-  const retryTimedOutTask = async (taskId: string, currentRetryCount: number) => {
+  const retryTimedOutTask = async (taskId: string, currentRetryCount: number, resolvedAppId: string) => {
     try {
       const response = await fetch(`/api/testpilot/${taskId}`, {
         method: 'GET',
@@ -152,26 +159,26 @@ export default function SecurityPanel() {
       if (data.timedOut && currentRetryCount + 1 < 3) {
         // Still timed out, retry again
         setTimeout(() => {
-          retryTimedOutTask(taskId, currentRetryCount + 1);
+          retryTimedOutTask(taskId, currentRetryCount + 1, resolvedAppId);
         }, 2000); // Wait 2 seconds before next retry
       } else {
         setResults({ security: data });
         if (!data.timedOut) {
-          shipAnalyticsLog('security.scan_completed', summarizeScan(data, appId));
+          shipAnalyticsLog('security.scan_completed', summarizeScan(data, resolvedAppId));
         }
-        setIsLoading(false);
+        setSecurityAnalysisRunning(resolvedAppId, false);
       }
     } catch (err) {
       // On retry error, try again unless we've hit max attempts
       if (currentRetryCount + 1 < 3) {
         setTimeout(() => {
-          retryTimedOutTask(taskId, currentRetryCount + 1);
+          retryTimedOutTask(taskId, currentRetryCount + 1, resolvedAppId);
         }, 2000);
       } else {
         const errorMessage = err instanceof Error ? err.message : t('builder_settings_security_error_unknown');
         setError(errorMessage);
         setErrorTitle(t('builder_settings_security_error_attempt_failed_title'));
-        setIsLoading(false);
+        setSecurityAnalysisRunning(resolvedAppId, false);
       }
     }
   };
@@ -188,7 +195,8 @@ export default function SecurityPanel() {
       return;
     }
 
-    setIsLoading(true);
+    if (!acquireSecurityAnalysisLock(appId)) return;
+
     setLastScannedAt(null);
     setError(null);
     setErrorTitle(null);
@@ -215,29 +223,29 @@ export default function SecurityPanel() {
       const codeResult = data?.code;
       if (!codeResult) {
         setError(t('builder_settings_security_error_analysis_failed'));
-        setIsLoading(false);
+        setSecurityAnalysisRunning(appId, false);
       } else if (codeResult.error || codeResult.status === 'failed') {
         setError(codeResult.error || t('builder_settings_security_error_analysis_failed'));
-        setIsLoading(false);
+        setSecurityAnalysisRunning(appId, false);
       } else if (codeResult.timedOut) {
         if (codeResult.taskId) {
           // Start retry process
-          retryTimedOutTask(codeResult.taskId, 0);
+          retryTimedOutTask(codeResult.taskId, 0, appId);
         } else {
           setError(t('builder_settings_security_error_analysis_failed'));
-          setIsLoading(false);
+          setSecurityAnalysisRunning(appId, false);
         }
       } else {
         // Success - rename 'code' to 'security' for backwards compatibility with SecurityResults
         setResults({ security: codeResult });
         setLastScannedAt(new Date().toISOString());
         shipAnalyticsLog('security.scan_completed', summarizeScan(codeResult, appId));
-        setIsLoading(false);
+        setSecurityAnalysisRunning(appId, false);
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : t('builder_settings_security_error_unknown');
       setError(errorMessage);
-      setIsLoading(false);
+      setSecurityAnalysisRunning(appId, false);
     }
   };
 
@@ -249,12 +257,12 @@ export default function SecurityPanel() {
         title={t('builder_settings_security_title')}
         description={t('builder_settings_security_desc')}
         button={
-          !isLoading && !isLoadingStoredReport && (
+          !isAnyAnalysisRunning && !isLoadingStoredReport && (
             <Button
               design="primary"
               size="sm"
               icon={<WandIcon />}
-              disabled={!isReady || isLoading || isQuickFixInProgress || isLoadingStoredReport}
+              disabled={!isReady || isAnyAnalysisRunning || isQuickFixInProgress || isLoadingStoredReport}
               onClick={handleRunAnalysis}
               text={t('builder_settings_security_analysis_run')}
             />
@@ -263,13 +271,13 @@ export default function SecurityPanel() {
         hideStatus={true}
       >
 
-        {isLoadingStoredReport && !isLoading && (
+        {isLoadingStoredReport && !isAnyAnalysisRunning && (
           <Card>
             <SettingsLoadingState />
           </Card>
         )}
 
-        {!isLoadingStoredReport && !isReady && !error && !isLoading && !results && (
+        {!isLoadingStoredReport && !isReady && !error && !isAnyAnalysisRunning && !results && (
           <Card>
             <SettingsLoadingState
               title={t('builder_settings_security_waiting')}
@@ -277,7 +285,7 @@ export default function SecurityPanel() {
           </Card>
         )}
 
-        {isLoading && (
+        {isAnyAnalysisRunning && (
           <Card>
             <SettingsLoadingState
               title={t('builder_settings_security_loading_running')}
@@ -286,7 +294,7 @@ export default function SecurityPanel() {
           </Card>
         )}
 
-        {results && !isLoading && (
+        {results && !isAnyAnalysisRunning && (
           <>
             {!isReady && !isLoadingStoredReport && (
               <Card>

@@ -176,6 +176,7 @@ const createDefaultPublishState = () => {
     marketingSelections: null as { seo: boolean; socialPosts: boolean; blogPost: boolean } | null,
     showPostPublishFeatureSelection: false,
     postPublishFeatureSelectionNonce: 0,
+    isSecurityAnalysisRunning: false,
   };
 }
 
@@ -274,6 +275,7 @@ interface DevelopPageStore {
     marketingSelections: { seo: boolean; socialPosts: boolean; blogPost: boolean } | null
     showPostPublishFeatureSelection: boolean
     postPublishFeatureSelectionNonce: number
+    isSecurityAnalysisRunning: boolean
   }>
 
   domainJobsInProgress: Record<string, DomainJobInProgress>
@@ -377,6 +379,7 @@ interface DevelopPageStore {
     marketingSelections: { seo: boolean; socialPosts: boolean; blogPost: boolean } | null
     showPostPublishFeatureSelection: boolean
     postPublishFeatureSelectionNonce: number
+    isSecurityAnalysisRunning: boolean
   }
 
   // Go Live modal actions
@@ -389,6 +392,8 @@ interface DevelopPageStore {
   markAsGoneLive: (appId: string) => Promise<void>
   hasGoneLive: (appId: string) => boolean
   setPostPublishFeatureSelection: (appId: string, show: boolean) => void
+  setSecurityAnalysisRunning: (appId: string, isRunning: boolean) => void
+  acquireSecurityAnalysisLock: (appId: string) => boolean
 
   // Page loading orchestration
   initializePage: (appId: string) => Promise<void>
@@ -1169,7 +1174,28 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
       if (show) {
         state.publishStates[appId].postPublishFeatureSelectionNonce += 1;
       }
-    })
+    }),
+
+    setSecurityAnalysisRunning: (appId: string, isRunning: boolean) => set((state) => {
+      if (!state.publishStates[appId]) {
+        state.publishStates[appId] = createDefaultPublishState();
+      }
+      state.publishStates[appId].isSecurityAnalysisRunning = isRunning;
+    }),
+
+    acquireSecurityAnalysisLock: (appId: string): boolean => {
+      let acquired = false;
+      set((state) => {
+        if (!state.publishStates[appId]) {
+          state.publishStates[appId] = createDefaultPublishState();
+        }
+        if (!state.publishStates[appId].isSecurityAnalysisRunning) {
+          state.publishStates[appId].isSecurityAnalysisRunning = true;
+          acquired = true;
+        }
+      });
+      return acquired;
+    },
   })), {
     name: 'airo-builder.develop-page-store.v1',
     partialize: () => ({}),

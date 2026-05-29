@@ -36,6 +36,7 @@ import { useSecretsDiff } from '@/hooks/useSecretsDiff';
 import { useSubscription } from '@/hooks/useSubscription';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from '@/hooks/useTranslations';
+import { useTriggerSecurityAnalysis } from '@/hooks/useTriggerSecurityAnalysis';
 import { useIsUpgradePolling } from '@/hooks/useUpgradePurchase';
 import { JourneyTracker } from '@/lib/journeyTracker';
 import { shipAnalyticsLog } from '@/lib/logging';
@@ -152,6 +153,7 @@ export default function AppPublish({ location = 'develop' }: { location?: string
 
   const isUpgradePolling = useIsUpgradePolling();
   const [pendingOpenAfterUpgrade, setPendingOpenAfterUpgrade] = useState(false);
+  const { triggerAnalysis } = useTriggerSecurityAnalysis();
 
   const handlePaywallPurchaseSuccess = useCallback(async () => {
     setPendingOpenAfterUpgrade(true);
@@ -390,6 +392,7 @@ export default function AppPublish({ location = 'develop' }: { location?: string
       });
       JourneyTracker.current()?.trackMilestone('site_published', { appId: currentAppId })
 
+      triggerAnalysis(currentAppId, site?.preview_url ?? undefined);
       // Note: usePublishApp hook polls until deployment appears and triggers refetch
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -401,7 +404,7 @@ export default function AppPublish({ location = 'develop' }: { location?: string
       setPublishError(currentAppId, true);
       setIsPublishing(currentAppId, false);
     }
-  }, [clickContext, currentAppId, site, location, isFirstTimePublishing, isPublishComplianceBlocked, publishComplianceBlockReason, setPublishError, setIsPublishing, clearPublishStatus, publishMutation, runGate]);
+  }, [clickContext, currentAppId, site, location, isFirstTimePublishing, isPublishComplianceBlocked, publishComplianceBlockReason, setPublishError, setIsPublishing, clearPublishStatus, publishMutation, runGate, triggerAnalysis]);
 
   const handleFixBuildError = useCallback(() => {
     if (!currentAppId || !buildErrorDetails) return;
