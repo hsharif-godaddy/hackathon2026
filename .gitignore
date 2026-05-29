@@ -41,6 +41,7 @@ playwright-report/
 *.png
 !blog/public/images/*.png
 !docs/**/*.png
+!app/src/assets/**/*.png
 *.webm
 *.mp4
 app/test-results/
