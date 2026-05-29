@@ -92,6 +92,23 @@ func TestBuildProbeGraduateArgsFromPicker_SetsGraduateAndStability(t *testing.T)
 	if st, ok := got.Target.(probe.ScenarioTarget); !ok || st.Name != "landing-page" {
 		t.Errorf("Target = %v, want ScenarioTarget{Name: %q} (base preserved)", got.Target, "landing-page")
 	}
+	if got.ParallelSuites {
+		t.Error("ParallelSuites = true, want false for ScenarioTarget")
+	}
+}
+
+func TestBuildProbeGraduateArgsFromPicker_SuiteTarget_SetsParallelSuites(t *testing.T) {
+	base := probe.RunArgs{Command: probe.CmdEval, Target: probe.SuiteTarget{Name: "golden-light"}}
+	got := buildProbeGraduateArgsFromPicker(base, "high")
+	if !got.Graduate {
+		t.Error("Graduate = false, want true")
+	}
+	if got.Stability != "high" {
+		t.Errorf("Stability = %q, want %q", got.Stability, "high")
+	}
+	if !got.ParallelSuites {
+		t.Error("ParallelSuites = false, want true for SuiteTarget")
+	}
 }
 
 // --- probePickerActive / openProbeRunPicker / openProbeGraduatePicker / closeProbePickerForm ---

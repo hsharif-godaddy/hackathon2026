@@ -47,6 +47,10 @@ func buildProbeGraduateArgsFromPicker(baseArgs probe.RunArgs, stability string) 
 	result := baseArgs
 	result.Graduate = true
 	result.Stability = stability
+	// nil Target (run-all) intentionally falls through; only suites use --fan-out.
+	if _, ok := result.Target.(probe.SuiteTarget); ok {
+		result.ParallelSuites = true
+	}
 	return result
 }
 
@@ -98,7 +102,8 @@ func (m *Model) openProbeGraduatePicker(baseArgs probe.RunArgs) tea.Cmd {
 		huh.NewGroup(
 			huh.NewSelect[string]().
 				Title("Graduate — Stability Level").
-				Description("low=3 trials  medium=5 trials  high=10 trials").
+				// Values must match STABILITY_TRIALS in evals/gosym-probe/src/scenarios/types.ts.
+				Description("low=5 trials  medium=10 trials  high=20 trials").
 				Options(huhStringOptions(probePickerStabilityOptions)...).
 				Value(&stab),
 		),
