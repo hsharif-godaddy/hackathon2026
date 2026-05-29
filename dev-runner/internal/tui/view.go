@@ -83,6 +83,12 @@ func (m Model) View() tea.View {
 			content = m.overlayModal(base, m.renderE2EPickerLoading())
 		case m.e2ePickerForm != nil:
 			content = m.overlayModal(base, m.renderE2EPicker())
+		case m.probePickerForm != nil:
+			content = m.overlayModal(base, m.renderProbePicker())
+		case m.probeCustomRunForm != nil:
+			content = m.overlayModal(base, m.renderProbeCustomRun())
+		case m.probeEnvEditForm != nil:
+			content = m.overlayModal(base, m.renderProbeEnvEdit())
 		default:
 			content = base
 		}
@@ -135,8 +141,7 @@ func (m Model) renderTabBar() string {
 		tabs = append(tabs, dot+nameStr)
 	}
 
-	// E2E tab — last position. Use the runner's State for the indicator dot
-	// rather than process.State (one-shot lifecycle, not a supervised service).
+	// E2E tab — second-to-last position.
 	{
 		active := m.activeTab == m.e2eTabIndex()
 		bg := lipgloss.Color("236")
@@ -149,6 +154,22 @@ func (m Model) renderTabBar() string {
 		dot := lipgloss.NewStyle().Foreground(dotColor).Background(bg).Render(" ●")
 		nameStr := lipgloss.NewStyle().Foreground(nameFg).Background(bg).
 			Bold(active).Render(" E2E ")
+		tabs = append(tabs, dot+nameStr)
+	}
+
+	// Probe tab — last position.
+	{
+		active := m.activeTab == m.probeTabIndex()
+		bg := lipgloss.Color("236")
+		nameFg := lipgloss.Color("250")
+		if active {
+			bg = lipgloss.Color("62")
+			nameFg = lipgloss.Color("15")
+		}
+		dotColor := probeTabDotColor(m.probeRunner.GetState(), m.allProcessesHealthy(), m.blinkOn)
+		dot := lipgloss.NewStyle().Foreground(dotColor).Background(bg).Render(" ●")
+		nameStr := lipgloss.NewStyle().Foreground(nameFg).Background(bg).
+			Bold(active).Render(" Probe ")
 		tabs = append(tabs, dot+nameStr)
 	}
 
@@ -167,6 +188,9 @@ func (m Model) renderContent() string {
 	if m.activeTab == m.e2eTabIndex() {
 		return m.renderE2EContent()
 	}
+	if m.activeTab == m.probeTabIndex() {
+		return m.renderProbeContent()
+	}
 	return m.renderSingleView()
 }
 
@@ -182,6 +206,11 @@ func (m Model) renderCombinedView() string {
 	// pane doesn't take a quarter of the screen on the All tab.
 	if len(m.e2eRunner.GetLines()) > 0 {
 		rendered = append(rendered, m.renderE2EHeader()+"\n"+m.e2ePane.Viewport.View())
+	}
+
+	// Same for Probe — only include when there is streaming output.
+	if len(m.probeRunner.GetLines()) > 0 {
+		rendered = append(rendered, m.renderProbeHeader()+"\n"+m.probePane.Viewport.View())
 	}
 
 	if len(rendered) == 0 {

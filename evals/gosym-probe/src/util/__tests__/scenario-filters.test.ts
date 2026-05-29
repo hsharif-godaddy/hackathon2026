@@ -6,7 +6,7 @@ import {
   findScenario,
   buildScenarioIndex,
   findScenariosBySuite,
-} from '../args.js';
+} from '../scenario-filters.js';
 import type { Scenario } from '../../scenarios/types.js';
 
 function makeScenario(

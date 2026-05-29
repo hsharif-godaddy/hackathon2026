@@ -23,6 +23,7 @@ import (
 	"github.com/airo-ai-builder/dev-runner/internal/preflight"
 	"github.com/airo-ai-builder/dev-runner/internal/preflight/checks"
 	"github.com/airo-ai-builder/dev-runner/internal/preflight/fixers"
+	"github.com/airo-ai-builder/dev-runner/internal/probe"
 	"github.com/airo-ai-builder/dev-runner/internal/process"
 	"github.com/airo-ai-builder/dev-runner/internal/sso"
 )
@@ -57,6 +58,14 @@ type devSettingsPresetMsg struct {
 }
 
 type devSettingsErrorClearMsg struct{}
+
+// probeBaselineCheckResultMsg is returned by the async HasBaseline check
+// triggered by the "Regression" menu item.
+type probeBaselineCheckResultMsg struct {
+	suite string
+	has   bool
+	err   error
+}
 
 // --- Preflight phase ---
 
@@ -180,6 +189,44 @@ type Model struct {
 	// pressing Esc on the loading screen actually terminates the subprocess
 	// rather than just dismissing the UI.
 	e2ePickerLoadCancel context.CancelFunc
+
+	// Probe tab state
+	probeRunner    *probe.Runner
+	probePane      Pane
+	probeMenu      ProbeMenu
+	discoveryCache *probe.DiscoveryCache
+	probeStatusMsg string      // transient status/warning shown in idle pane
+	probePrevState probe.State // used to detect run completion for cache invalidation
+	blinkOn        bool        // toggled each tick for probe running animation
+
+	// Probe picker — optional run-options form (trials + env override, or stability).
+	probePickerForm     *huh.Form
+	probePickerBaseArgs probe.RunArgs
+	probePickerTrials   *string // bound to trials input field; nil when form not open
+	probePickerEnv      *string // bound to env select field; nil when form not open
+	probePickerStab     *string // bound to stability select field; nil when form not open
+
+	// Probe custom-run form — multi-field form for "Custom Run" menu item.
+	probeCustomRunForm        *huh.Form
+	probeCustomRunScenario    *string
+	probeCustomRunSuite       *string
+	probeCustomRunTrials      *string
+	probeCustomRunConcurrency *string
+	probeCustomRunMaxTurns    *string
+	probeCustomRunEnv         *string
+	probeCustomRunSkipBL      *bool
+	probeCustomRunFanOut      *bool
+
+	// Probe env-edit form — single-field modal for "Config" menu actions.
+	probeEnvEditForm       *huh.Form
+	probeEnvEditValue      *string
+	probeEnvEditOnComplete func(value string) error
+
+	// Probe discovery + view state
+	probeDiscoveryLoading bool           // true while async ListScenarios / ListSuites is in flight
+	probeViewContent      string         // rendered content for "View Scenarios" display
+	probeShowingView      bool           // true when showing probeViewContent instead of menu
+	probeViewViewport     viewport.Model // scrollable viewport for view content (summary.md etc.)
 }
 
 // NewModel creates the initial model.
@@ -213,6 +260,11 @@ func NewModel(cfg *config.Config, projectRoot string) Model {
 	e2ePane := NewPane("E2E", 80, 24)
 	e2eRunner := &e2e.Runner{ProjectRoot: projectRoot}
 
+	probePane := NewPane("Probe", 80, 24)
+	probeRunner := &probe.Runner{ProbeDir: filepath.Join(projectRoot, "evals", "gosym-probe")}
+	discoveryCache := &probe.DiscoveryCache{}
+	probeMenu := newProbeMenu(probeRunner.ProbeDir, discoveryCache, 24)
+
 	return Model{
 		config:              cfg,
 		projectRoot:         projectRoot,
@@ -242,6 +294,11 @@ func NewModel(cfg *config.Config, projectRoot string) Model {
 		authType:            controlPlaneAuthType(projectRoot),
 		e2eRunner:           e2eRunner,
 		e2ePane:             e2ePane,
+		probeRunner:         probeRunner,
+		probePane:           probePane,
+		probeMenu:           probeMenu,
+		discoveryCache:      discoveryCache,
+		probeViewViewport:   newSoftWrapViewport(80, 24),
 	}
 }
 
@@ -467,7 +524,7 @@ func (m Model) processCount() int {
 }
 
 func (m Model) tabCount() int {
-	return 1 + m.processCount() + 1 // All + processes + E2E
+	return 1 + m.processCount() + 2 // All + processes + E2E + Probe
 }
 
 // controlPlaneBaseURL extracts the base URL from the control plane health check config, or defaults to localhost:4100.

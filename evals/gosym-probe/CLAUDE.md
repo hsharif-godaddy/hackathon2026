@@ -26,22 +26,26 @@ pnpm install           # run from repo root
 
 **Run**
 
+Use the **Probe tab** in the dev runner (`pnpm run dev` from the repo root) for
+interactive eval execution, menu-driven scenario browsing, and baseline
+management.
+
+For headless / CI usage:
+
 ```bash
-pnpm start             # interactive CLI (recommended)
-pnpm run eval          # headless eval with flags (CI / scripting)
+pnpm run eval          # headless eval with flags
 ```
 
 ---
 
 ## Scripts
 
-| Script          | Command                                        | Description                        |
-| --------------- | ---------------------------------------------- | ---------------------------------- |
-| `start`         | `tsx --env-file=.env src/cli/main.ts`          | Interactive CLI UI                 |
-| `eval`          | `tsx --env-file=.env src/index.ts`             | Headless eval runner               |
-| `save-baseline` | `tsx --env-file=.env src/cli/save-baseline.ts` | Snapshot a run as the new baseline |
-| `test`          | `vitest run`                                   | Run tests once                     |
-| `test:watch`    | `vitest`                                       | Watch mode                         |
+| Script          | Command                                   | Description                        |
+| --------------- | ----------------------------------------- | ---------------------------------- |
+| `eval`          | `tsx --env-file=.env src/index.ts`        | Headless eval runner               |
+| `save-baseline` | `tsx --env-file=.env src/save-baseline.ts`| Snapshot a run as the new baseline |
+| `test`          | `vitest run`                              | Run tests once                     |
+| `test:watch`    | `vitest`                                  | Watch mode                         |
 
 ### `pnpm run eval` flags
 
@@ -117,8 +121,8 @@ pnpm run save-baseline <run-id> --suite <name> # snapshot one suite
 ## Architecture
 
 ```
-src/cli/          Interactive CLI (main.ts entrypoint, commands/)
 src/index.ts      Headless CLI entrypoint
+src/save-baseline.ts  Baseline snapshot script
 
 src/runner/       SuiteRunner, Simulation, TrialAggregator,
                   GoalTracker, types
@@ -132,7 +136,7 @@ src/baselines/    BaselineStore, RegressionComparator, GraduationRunner,
 src/reporters/    Markdown run reporter
 src/store/        EvalStore (run results persistence)
 src/personas/     Persona types (e.g. beginner)
-src/util/         Shared utilities (e.g. timestamp)
+src/util/         Shared utilities (scenario-filters, concurrency, etc.)
 
 config/
   environments/   Per-env config: local.dev.ts, local.test.ts,
@@ -146,7 +150,7 @@ runs/             Run output — gitignored
 **Execution flow**
 
 ```
-main.ts / index.ts
+index.ts
   └─ SuiteRunner
        ├─ Simulation × k trials
        │    ├─ SyntheticUserAgent  →  GoCode (LLM)
@@ -173,15 +177,13 @@ This ensures trial data survives a partial failure and is available to
   though source files are `.ts`. The bundler resolves `.ts` at build
   time; the `.js` extension is required at runtime.
   ```typescript
-  import { createCompleter } from "./autocomplete.js"; // correct
-  import { createCompleter } from "./autocomplete"; // wrong
+  import { buildScenarioIndex } from "./util/scenario-filters.js"; // correct
+  import { buildScenarioIndex } from "./util/scenario-filters";    // wrong
   ```
 - **Test colocation** — unit tests live in `__tests__/` next to their
   source module (e.g. `src/evaluators/__tests__/jtbd-completion.test.ts`).
 - **TDD** — write tests before implementing. Run `pnpm test` before
   every commit.
-- **Pure functions for rendering** — all visual output functions in
-  `src/cli/renderer.ts` return strings; callers write to stdout.
 - **No default exports** — named exports only.
 
 ---

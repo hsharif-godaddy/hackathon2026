@@ -17,6 +17,8 @@ export class ProgressReporter {
   private readonly total: number;
   private readonly scenarioTrialCounts: Map<string, number>;
   private readonly stream: NodeJS.WriteStream;
+  private readonly isTTY: boolean;
+  private readonly forcedPiped: boolean;
   private completed: number;
   private barRendered: boolean;
   private disabled: boolean;
@@ -30,10 +32,13 @@ export class ProgressReporter {
     this.total = options.total;
     this.scenarioTrialCounts = options.scenarioTrialCounts;
     this.stream = options.stream ?? process.stderr;
+    const realTTY = this.stream.isTTY ?? false;
+    this.forcedPiped = !realTTY && process.env.FORCE_PROGRESS === '1';
+    this.isTTY = realTTY || this.forcedPiped;
     this.completed = Math.min(Math.max(options.offset ?? 0, 0), options.total);
     this.barRendered = false;
     this.disabled = false;
-    if (this.stream.isTTY) {
+    if (this.isTTY) {
       this.renderBar();
     }
   }
@@ -46,7 +51,10 @@ export class ProgressReporter {
     const scenarioTrials = this.scenarioTrialCounts.get(scenarioName) ?? '?';
     const message = `${scenarioName}: trial ${trialIndex + 1}/${scenarioTrials} complete\n`;
 
-    if (this.stream.isTTY) {
+    if (this.forcedPiped) {
+      this.write(message);
+      this.renderBar();
+    } else if (this.isTTY) {
       if (this.barRendered) {
         this.write('\r\x1B[K');
       }
@@ -59,7 +67,11 @@ export class ProgressReporter {
 
   finish(): void {
     if (this.disabled) return;
-    if (this.stream.isTTY && this.barRendered) {
+    if (this.forcedPiped) {
+      this.barRendered = false;
+      return;
+    }
+    if (this.isTTY && this.barRendered) {
       this.write('\r\x1B[K');
       this.barRendered = false;
     }
@@ -74,7 +86,11 @@ export class ProgressReporter {
     const emptyCount = BAR_WIDTH - filledCount;
 
     const bar = FILLED.repeat(filledCount) + EMPTY.repeat(emptyCount);
-    this.write(`Progress: |${bar}| ${clamped}/${this.total}  ${pct}%`);
+    if (this.forcedPiped) {
+      this.write(`Progress: |${bar}| ${clamped}/${this.total}  ${pct}%\n`);
+    } else {
+      this.write(`Progress: |${bar}| ${clamped}/${this.total}  ${pct}%`);
+    }
     if (!this.disabled) {
       this.barRendered = true;
     }

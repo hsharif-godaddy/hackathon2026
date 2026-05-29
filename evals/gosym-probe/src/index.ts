@@ -36,12 +36,13 @@ import {
   filterScenarios,
   findScenario,
   findScenariosBySuite,
-} from './cli/args.js';
+} from './util/scenario-filters.js';
 import {
   resolveStabilityLevel,
   STABILITY_TRIALS,
 } from './scenarios/types.js';
 import { ProgressReporter } from './util/progress-reporter.js';
+import { scenarioToInfo, scanBaselinesDir, scanRunsDir, loadRunDetail } from './util/list-commands.js';
 import type {
   Scenario,
   StabilityLevel,
@@ -86,11 +87,51 @@ async function main(): Promise<void> {
       'graduate-suite':   { type: 'string' },
       resume:             { type: 'string' },
       stability:          { type: 'string' },
+      list:               { type: 'boolean' },
+      'list-baselines':   { type: 'boolean' },
+      'list-runs':        { type: 'boolean' },
+      'run-detail':       { type: 'string' },
     },
   });
 
+  // --list-baselines: filesystem-only, no config or clients needed.
+  if (values['list-baselines']) {
+    const entries = await scanBaselinesDir('baselines');
+    process.stdout.write(JSON.stringify(entries));
+    process.exit(0);
+  }
+
+  // --list-runs: filesystem-only, reads run index and enriches with metadata.
+  if (values['list-runs']) {
+    const runs = await scanRunsDir('runs');
+    process.stdout.write(JSON.stringify(runs));
+    process.exit(0);
+  }
+
+  // --run-detail <id>: filesystem-only, loads aggregated perf data for one run.
+  if (values['run-detail']) {
+    const detail = await loadRunDetail('runs', values['run-detail']);
+    if (!detail) {
+      process.stderr.write(`Error: run not found: ${values['run-detail']}\n`);
+      process.exit(1);
+    }
+    process.stdout.write(JSON.stringify(detail));
+    process.exit(0);
+  }
+
   if (values.env) {
     process.env.GD_ENV = values.env;
+  }
+
+  // --list: construct minimal clients (no network calls) to build scenario registry,
+  // then exit. Bypasses flag validation — other flags are irrelevant.
+  if (values.list) {
+    const listConfig = loadConfig();
+    const listCtrlPlane = new AABCtrlPlaneClient({ baseUrl: listConfig.aab.controlPlaneUrl });
+    const listGocode = new GocodeClient(listConfig.gocode);
+    const allScenarios = createAllScenarios(listGocode, listCtrlPlane);
+    process.stdout.write(JSON.stringify(allScenarios.map(scenarioToInfo)));
+    process.exit(0);
   }
 
   const skipBaseline = values['skip-baseline'] ?? false;

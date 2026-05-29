@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ProgressReporter } from '../progress-reporter.js';
 
 function makeStream(isTTY: boolean): NodeJS.WriteStream {
@@ -333,6 +333,71 @@ describe('ProgressReporter non-TTY fallback', () => {
     (stream.write as ReturnType<typeof vi.fn>).mockClear();
     reporter.finish();
     expect(stream.write).not.toHaveBeenCalled();
+  });
+});
+
+// -- forcedPiped mode (FORCE_PROGRESS=1, non-TTY) -----------------------------
+
+describe('ProgressReporter forcedPiped mode', () => {
+  beforeEach(() => {
+    vi.stubEnv('FORCE_PROGRESS', '1');
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('trialCompleted writes per-trial line followed by bar terminated with newline', () => {
+    const stream = makeStream(false);
+    const reporter = new ProgressReporter({
+      total: 3,
+      scenarioTrialCounts: new Map([['s', 3]]),
+      stream,
+    });
+    (stream.write as ReturnType<typeof vi.fn>).mockClear();
+    reporter.trialCompleted('s', 0);
+    const calls = (stream.write as ReturnType<typeof vi.fn>).mock.calls.map(
+      (c: unknown[]) => c[0] as string,
+    );
+    expect(calls[0]).toBe('s: trial 1/3 complete\n');
+    expect(calls[1]).toMatch(/^Progress: \|.*\| 1\/3\s+33%\n$/);
+  });
+
+  it('emits no \\r or ANSI escape sequences', () => {
+    const stream = makeStream(false);
+    const reporter = new ProgressReporter({
+      total: 2,
+      scenarioTrialCounts: new Map([['s', 2]]),
+      stream,
+    });
+    reporter.trialCompleted('s', 0);
+    reporter.trialCompleted('s', 1);
+    const output = (stream.write as ReturnType<typeof vi.fn>).mock.calls
+      .map((c: unknown[]) => c[0] as string)
+      .join('');
+    expect(output).not.toContain('\r');
+    expect(output).not.toContain('\x1B[');
+  });
+
+  it('finish() does not write and resets barRendered', () => {
+    const stream = makeStream(false);
+    const reporter = new ProgressReporter({
+      total: 2,
+      scenarioTrialCounts: new Map([['s', 2]]),
+      stream,
+    });
+    reporter.trialCompleted('s', 0);
+    (stream.write as ReturnType<typeof vi.fn>).mockClear();
+    reporter.finish();
+    expect(stream.write).not.toHaveBeenCalled();
+    // Verify barRendered was reset: a subsequent trialCompleted should not
+    // attempt to clear a non-existent bar line.
+    reporter.trialCompleted('s', 1);
+    const output = (stream.write as ReturnType<typeof vi.fn>).mock.calls
+      .map((c: unknown[]) => c[0] as string)
+      .join('');
+    expect(output).not.toContain('\r');
+    expect(output).not.toContain('\x1B[');
   });
 });
 

@@ -71,7 +71,7 @@ func (m *Model) resizeForms() {
 	for _, f := range []*huh.Form{m.envForm, m.fixSelectorForm} {
 		m.applyInlineForm(f)
 	}
-	for _, f := range []*huh.Form{m.devSettingsForm, m.quitConfirmForm, m.settingsForm, m.e2ePickerForm} {
+	for _, f := range []*huh.Form{m.devSettingsForm, m.quitConfirmForm, m.settingsForm, m.e2ePickerForm, m.probePickerForm, m.probeCustomRunForm, m.probeEnvEditForm} {
 		m.applyModalForm(f)
 	}
 }
@@ -92,7 +92,7 @@ func stepForm(f *huh.Form, msg tea.Msg) (*huh.Form, tea.Cmd) {
 // user cannot interact with the underlying UI while a modal is visible.
 func (m Model) anyModalOpen() bool {
 	return m.settingsForm != nil || m.devSettingsForm != nil || m.quitConfirmForm != nil ||
-		m.e2ePickerActive()
+		m.e2ePickerActive() || m.probePickerActive() || m.probeCustomRunActive() || m.probeEnvEditActive()
 }
 
 // forwardToActiveForm routes any tea.Msg to the currently-open form's
@@ -117,6 +117,12 @@ func (m *Model) forwardToActiveForm(msg tea.Msg) tea.Cmd {
 		return m.updateFixSelector(msg)
 	case m.e2ePickerForm != nil:
 		return m.updateE2EPicker(msg)
+	case m.probePickerForm != nil:
+		return m.updateProbePicker(msg)
+	case m.probeCustomRunForm != nil:
+		return m.updateProbeCustomRun(msg)
+	case m.probeEnvEditForm != nil:
+		return m.updateProbeEnvEdit(msg)
 	}
 	return nil
 }

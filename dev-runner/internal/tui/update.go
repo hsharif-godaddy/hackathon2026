@@ -13,6 +13,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/airo-ai-builder/dev-runner/internal/preflight"
+	"github.com/airo-ai-builder/dev-runner/internal/probe"
 	"github.com/airo-ai-builder/dev-runner/internal/process"
 )
 
@@ -34,12 +35,14 @@ func (m *Model) shutdownCmd() tea.Cmd {
 	hookDone := m.hookDone
 	mgr := m.manager
 	e2eRunner := m.e2eRunner
+	probeRunner := m.probeRunner
 	return func() tea.Msg {
 		// Wait for hook goroutine to finish (it will be killed by context cancel)
 		if hookDone != nil {
 			<-hookDone
 		}
 		e2eRunner.Stop()
+		probeRunner.Stop()
 		mgr.StopAll()
 		return tea.QuitMsg{}
 	}
@@ -123,7 +126,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case spinner.TickMsg:
 		if m.phase == PhasePreflightChecking || m.phase == PhasePreflightFixing || m.phase == PhasePreflightVerifying ||
-			m.e2ePickerStep == E2EPickerStepLoading {
+			m.e2ePickerStep == E2EPickerStepLoading || m.probeDiscoveryLoading {
 			var cmd tea.Cmd
 			m.spinner, cmd = m.spinner.Update(msg)
 			cmds = append(cmds, cmd)
@@ -245,7 +248,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case tickMsg:
+		m.blinkOn = !m.blinkOn
 		m.refreshPanes()
+		// Invalidate discovery cache when a probe run completes (Running → Stopped/Errored).
+		currentProbeState := m.probeRunner.GetState()
+		if m.probePrevState == probe.StateRunning &&
+			(currentProbeState == probe.StateStopped || currentProbeState == probe.StateErrored) {
+			m.discoveryCache.Invalidate()
+		}
+		m.probePrevState = currentProbeState
 		// Check for new errors and ring bell
 		for i, p := range m.manager.Processes {
 			current := p.ErrorCount
@@ -283,6 +294,130 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmds = append(cmds, cmd)
 		}
 
+	case probeStartRunMsg:
+		if cmd := m.startProbeRun(msg.args); cmd != nil {
+			cmds = append(cmds, cmd)
+		}
+
+	case probeBaselineCheckResultMsg:
+		if msg.err != nil {
+			m.probeStatusMsg = fmt.Sprintf("Baseline check failed: %v", msg.err)
+		} else if !msg.has {
+			m.probeStatusMsg = "No " + msg.suite + " baseline — run option 1 on main branch first."
+		} else {
+			m.probeStatusMsg = ""
+			if cmd := m.startProbeRun(probe.RunArgs{
+				Command:        probe.CmdEval,
+				Target:         probe.SuiteTarget{Name: msg.suite},
+				Trials:         3,
+				ParallelSuites: true,
+				SkipBaseline:   false,
+			}); cmd != nil {
+				cmds = append(cmds, cmd)
+			}
+		}
+
+	case probeDiscoveryLoadingMsg:
+		m.probeDiscoveryLoading = true
+
+	case probeDiscoverySuitesResultMsg:
+		m.probeDiscoveryLoading = false
+		if msg.err != nil {
+			m.probeStatusMsg = fmt.Sprintf("Failed to load suites: %v", msg.err)
+		} else if len(msg.suites) == 0 {
+			m.probeStatusMsg = "No suites found."
+		} else {
+			m.probeMenu.Push(buildSuiteMenuItems(msg.suites))
+		}
+
+	case probeDiscoveryScenariosResultMsg:
+		m.probeDiscoveryLoading = false
+		if msg.err != nil {
+			m.probeStatusMsg = fmt.Sprintf("Failed to load scenarios: %v", msg.err)
+		} else if len(msg.scenarios) == 0 {
+			m.probeStatusMsg = "No scenarios found."
+		} else {
+			m.probeMenu.Push(buildScenarioMenuItems(msg.scenarios))
+		}
+
+	case probeDirectRunsResultMsg:
+		m.probeMenu.Push(buildDirectRunMenuItems(m.probeRunner.ProbeDir, msg.runs))
+
+	case probeOpenPickerMsg:
+		var cmd tea.Cmd
+		if msg.graduate {
+			cmd = m.openProbeGraduatePicker(msg.baseArgs)
+		} else {
+			cmd = m.openProbeRunPicker(msg.baseArgs)
+		}
+		if cmd != nil {
+			cmds = append(cmds, cmd)
+		}
+
+	case probeShowViewMsg:
+		m.probeDiscoveryLoading = false
+		m.probeShowingView = true
+		m.probeViewContent = msg.content
+		m.probeViewViewport.SetContent(msg.content)
+		m.probeViewViewport.GotoTop()
+
+	case probeGraduateScenariosResultMsg:
+		m.probeDiscoveryLoading = false
+		if msg.err != nil {
+			m.probeStatusMsg = fmt.Sprintf("Failed to load scenarios: %v", msg.err)
+		} else if len(msg.scenarios) == 0 {
+			m.probeStatusMsg = "No scenarios found."
+		} else {
+			m.probeMenu.Push(buildGraduateScenarioMenuItems(msg.scenarios))
+		}
+
+	case probeGraduateSuitesResultMsg:
+		m.probeDiscoveryLoading = false
+		if msg.err != nil {
+			m.probeStatusMsg = fmt.Sprintf("Failed to load suites: %v", msg.err)
+		} else if len(msg.suites) == 0 {
+			m.probeStatusMsg = "No suites found."
+		} else {
+			m.probeMenu.Push(buildGraduateSuiteMenuItems(msg.suites))
+		}
+
+	case probeOpenCustomRunMsg:
+		if cmd := m.openProbeCustomRunForm(); cmd != nil {
+			cmds = append(cmds, cmd)
+		}
+
+	case probeEnvKeysLoadedMsg:
+		m.probeDiscoveryLoading = false
+		if msg.err != nil {
+			m.probeStatusMsg = fmt.Sprintf("Error reading .env: %v", msg.err)
+		} else {
+			items := buildEnvKeyMenuItems(msg.lines, msg.envPath)
+			if len(items) == 0 {
+				m.probeStatusMsg = ".env has no key=value entries."
+			} else {
+				m.probeMenu.Push(items)
+			}
+		}
+
+	case probeOpenEnvEditMsg:
+		path := msg.envPath
+		key := msg.key
+		cmd := m.openProbeEnvEditInputForm(msg.key, msg.currentValue, func(newValue string) error {
+			return probe.UpdateEnvFile(path, key, newValue)
+		})
+		if cmd != nil {
+			cmds = append(cmds, cmd)
+		}
+
+	case probeOpenEnvSwitchMsg:
+		path := msg.envPath
+		cmd := m.openProbeEnvSwitchForm(func(newValue string) error {
+			return probe.UpdateEnvFile(path, "GD_ENV", newValue)
+		})
+		if cmd != nil {
+			cmds = append(cmds, cmd)
+		}
+
 	case clickHintMsg:
 		m.clickHint = false
 
@@ -316,6 +451,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.hookViewport.AtBottom() {
 					m.hookAutoFollow = true
 				}
+			}
+		} else if m.activeTab == m.probeTabIndex() && m.probeShowingView {
+			switch msg.Button {
+			case tea.MouseWheelUp:
+				m.probeViewViewport.ScrollUp(3)
+			case tea.MouseWheelDown:
+				m.probeViewViewport.ScrollDown(3)
 			}
 		} else {
 			pane := m.activePanePtr()
@@ -471,6 +613,57 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		return m.updateE2EPicker(msg)
 	}
 
+	// Probe picker intercepts ALL keys when open (mirrors e2e picker pattern).
+	if m.probePickerForm != nil {
+		return m.updateProbePicker(msg)
+	}
+	if m.probeCustomRunForm != nil {
+		return m.updateProbeCustomRun(msg)
+	}
+	if m.probeEnvEditForm != nil {
+		return m.updateProbeEnvEdit(msg)
+	}
+
+	// When the Probe tab is active and the runner is idle, keys are handled by
+	// the view-content display or the navigation menu.
+	// Tab/ShiftTab are excluded so they always reach the tab-cycling handler.
+	// Global shortcuts (m/d/s) are also excluded so they reach the main handler.
+	if m.activeTab == m.probeTabIndex() && m.probeRunner.GetState() == probe.StateIdle &&
+		!key.Matches(msg, m.keys.Tab) && !key.Matches(msg, m.keys.ShiftTab) &&
+		!key.Matches(msg, m.keys.Mouse) && !key.Matches(msg, m.keys.DevSetting) &&
+		!key.Matches(msg, m.keys.Settings) {
+		// Esc exits the "View Scenarios" display back to the menu.
+		if m.probeShowingView && msg.String() == "esc" {
+			m.probeShowingView = false
+			m.probeViewContent = ""
+			return nil
+		}
+		// Forward keys to the scrollable viewport when showing view content.
+		if m.probeShowingView {
+			vp, cmd := m.probeViewViewport.Update(msg)
+			m.probeViewViewport = vp
+			return cmd
+		}
+		// Absorb keys while discovery is loading to prevent spurious menu actions.
+		if m.probeDiscoveryLoading {
+			return nil
+		}
+		var cmd tea.Cmd
+		m.probeMenu, cmd = m.probeMenu.Update(msg)
+		return cmd
+	}
+
+	// Probe tab Esc: first Esc stops a running eval; second Esc returns to menu.
+	if m.activeTab == m.probeTabIndex() && msg.String() == "esc" {
+		switch m.probeRunner.GetState() {
+		case probe.StateRunning:
+			return m.stopProbeRun()
+		case probe.StateStopped, probe.StateErrored:
+			m.probeRunner.Reset()
+			return nil
+		}
+	}
+
 	switch {
 	case key.Matches(msg, m.keys.Quit):
 		return m.openQuitConfirm()
@@ -594,8 +787,11 @@ func (m *Model) handleSearchKey(msg tea.KeyPressMsg) tea.Cmd {
 			m.panes[i].SetSearch(query)
 		}
 		m.e2ePane.SetSearch(query)
+		m.probePane.SetSearch(query)
 	case m.activeTab == m.e2eTabIndex():
 		m.e2ePane.SetSearch(query)
+	case m.activeTab == m.probeTabIndex():
+		m.probePane.SetSearch(query)
 	default:
 		idx := m.activeTab - 1
 		if idx >= 0 && idx < len(m.panes) {
@@ -676,13 +872,17 @@ func (m *Model) resizePanes() {
 
 	switch {
 	case m.activeTab == 0:
-		// "All" view splits across process panes plus the E2E pane when it
-		// has output. Header rows (1 per pane) come out of the viewport
-		// allotment, matching the pre-E2E layout.
+		// "All" view splits across process panes plus the E2E and Probe panes
+		// when they have output. Header rows (1 per pane) come out of the
+		// viewport allotment, matching the pre-E2E layout.
 		includeE2E := len(m.e2eRunner.GetLines()) > 0
+		includeProbe := len(m.probeRunner.GetLines()) > 0
 		nPanes := len(m.panes)
 		total := nPanes
 		if includeE2E {
+			total++
+		}
+		if includeProbe {
 			total++
 		}
 		if total < 1 {
@@ -694,15 +894,21 @@ func (m *Model) resizePanes() {
 			viewportHeight = 1
 		}
 		remainder := contentHeight - (perPane * total)
+		lastProcessPane := nPanes - 1
 		for i := range m.panes {
 			vpH := viewportHeight
-			if !includeE2E && i == nPanes-1 {
+			if !includeE2E && !includeProbe && i == lastProcessPane {
 				vpH += remainder
 			}
 			m.panes[i].SetSize(m.width, vpH)
 		}
-		if includeE2E {
+		if includeE2E && !includeProbe {
 			m.e2ePane.SetSize(m.width, viewportHeight+remainder)
+		} else if includeE2E {
+			m.e2ePane.SetSize(m.width, viewportHeight)
+		}
+		if includeProbe {
+			m.probePane.SetSize(m.width, viewportHeight+remainder)
 		}
 	case m.activeTab == m.e2eTabIndex():
 		// E2E single view: minus the header line that renderE2EContent prints.
@@ -711,6 +917,21 @@ func (m *Model) resizePanes() {
 			viewportHeight = 1
 		}
 		m.e2ePane.SetSize(m.width, viewportHeight)
+	case m.activeTab == m.probeTabIndex():
+		// Probe single view: minus the header line printed by renderProbeContent.
+		viewportHeight := contentHeight - 1
+		if viewportHeight < 1 {
+			viewportHeight = 1
+		}
+		m.probePane.SetSize(m.width, viewportHeight)
+		m.probeMenu.SetHeight(viewportHeight)
+		// View viewport: subtract 1 more for the hint line
+		viewVPHeight := viewportHeight - 1
+		if viewVPHeight < 1 {
+			viewVPHeight = 1
+		}
+		m.probeViewViewport.SetWidth(m.width)
+		m.probeViewViewport.SetHeight(viewVPHeight)
 	default:
 		viewportHeight := contentHeight
 		idx := m.activeTab - 1
@@ -729,8 +950,13 @@ func (m *Model) refreshPanes() {
 		if len(m.e2eRunner.GetLines()) > 0 {
 			m.e2ePane.UpdateContent(m.e2eRunner.GetLines(), false)
 		}
+		if len(m.probeRunner.GetLines()) > 0 {
+			m.probePane.UpdateContent(m.probeRunner.GetLines(), false)
+		}
 	case m.activeTab == m.e2eTabIndex():
 		m.e2ePane.UpdateContent(m.e2eRunner.GetLines(), false)
+	case m.activeTab == m.probeTabIndex():
+		m.probePane.UpdateContent(m.probeRunner.GetLines(), false)
 	default:
 		idx := m.activeTab - 1
 		if idx >= 0 && idx < len(m.panes) {
@@ -825,6 +1051,14 @@ func (m *Model) activePanePtr() *Pane {
 	}
 	if m.activeTab == m.e2eTabIndex() {
 		return &m.e2ePane
+	}
+	if m.activeTab == m.probeTabIndex() {
+		// When the runner is idle the menu is showing — return nil so arrow
+		// keys are not forwarded to the viewport, letting the menu intercept them.
+		if m.probeRunner.GetState() == probe.StateIdle {
+			return nil
+		}
+		return &m.probePane
 	}
 	idx := m.activeTab - 1
 	if idx >= 0 && idx < len(m.panes) {

@@ -4,9 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "tsx --env-file=.env src/cli/main.ts",
     "eval": "tsx --env-file=.env src/index.ts",
-    "save-baseline": "tsx --env-file=.env src/cli/save-baseline.ts",
+    "save-baseline": "tsx --env-file=.env src/save-baseline.ts",
     "build": "tsc",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src/ config/",

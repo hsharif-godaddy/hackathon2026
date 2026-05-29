@@ -1,12 +1,18 @@
 import process from 'node:process';
 import { parseArgs } from 'node:util';
+import { loadConfig } from '../config/index.js';
+import { GocodeClient } from './clients/gocode-client.js';
+import { AABCtrlPlaneClient } from './clients/aab-ctrl-plane-client.js';
+import { createAllScenarios } from './scenarios/registry.js';
+import { EvalStore } from './store/eval-store.js';
+import { BaselineStore } from './baselines/baseline-store.js';
 import {
   buildScenarioIndex,
   findScenariosBySuite,
-} from './args.js';
-import { createCliDeps } from './client-factory.js';
-import { pickGitFields } from '../baselines/types.js';
-import { isValidTrialScore } from '../baselines/trial-scores.js';
+} from './util/scenario-filters.js';
+import { createCliDeps } from './cli/client-factory.js';
+import { pickGitFields } from './baselines/types.js';
+import { isValidTrialScore } from './baselines/trial-scores.js';
 
 async function main(): Promise<void> {
   const { values, positionals } = parseArgs({
@@ -33,12 +39,14 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  const {
-    scenarios: allScenarios,
-    evalStore,
-    baselineStore,
-    config,
-  } = createCliDeps();
+  const config = loadConfig();
+  const ctrlPlane = new AABCtrlPlaneClient({
+    baseUrl: config.aab.controlPlaneUrl,
+  });
+  const gocodeClient = new GocodeClient(config.gocode);
+  const allScenarios = createAllScenarios(gocodeClient, ctrlPlane);
+  const evalStore = new EvalStore();
+  const baselineStore = new BaselineStore();
 
   const metadata = await evalStore.loadRunMetadata(runId);
   if (!metadata) {

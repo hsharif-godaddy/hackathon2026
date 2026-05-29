@@ -214,3 +214,6 @@ export function findScenario(
   }
   return { scenario, error: null };
 }
+
+// Re-exported for completeness — unused by headless runner but part of public API.
+export type { StabilityLevel };
