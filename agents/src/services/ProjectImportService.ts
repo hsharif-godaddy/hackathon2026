@@ -883,7 +883,7 @@ export class ProjectImportService {
     if (!findResult.found || !findResult.projectRoot) {
       errors.push({
         key: ValidationErrorKey.PACKAGE_JSON_NOT_FOUND,
-        message: `No package.json found in zip (searched up to ${ProjectImportService.MAX_PROJECT_DEPTH} levels deep)`,
+        message: `We couldn't find a package.json within your app`,
         details: { searchedPath: extractPath, maxDepth: ProjectImportService.MAX_PROJECT_DEPTH },
       });
       return { valid: false, errors };
