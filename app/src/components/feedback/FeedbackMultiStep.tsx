@@ -4,6 +4,7 @@ import Modal from '@ux/modal';
 import text from '@ux/text';
 
 import { useExperimentsLine } from '@/components/feedback/experimentsLine';
+import { getFeedbackModalPortal } from '@/components/feedback/feedbackModalPortal';
 import { useAuthContext } from '@/components/providers/AuthProvider';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from '@/hooks/useTranslations';
@@ -149,6 +150,8 @@ export function FeedbackMultiStep(props: FeedbackProps) {
   // from the parquet write — UI just calls storeToS3 and short-circuits the BFF flow.
   // When OFF (default, or SSR `undefined`), the existing legacy/3946 flow runs.
   const fanoutViaLambda = useSwitchboard('appbuilder-fanout-via-lambda') === true;
+  const isMobile = useDevelopPageStore((state) => state.isMobile);
+  const portalElem = getFeedbackModalPortal();
 
   // initialStep lets callers (e.g. FeedbackBanner) skip the category screen
   const [step, setStep] = useState<FeedbackStep>(initialStep ?? 'category');
@@ -471,8 +474,12 @@ export function FeedbackMultiStep(props: FeedbackProps) {
   // CRM skip / impersonation sessions cannot submit any feedback.
   // Mirror the legacy Feedback.tsx contract: show a read-only message and no form.
   if (isImpersonating) {
+    if (!portalElem) return null;
+
     return (
       <Modal
+        portalElem={portalElem}
+        isTouch={isMobile}
         className="w-full max-w-2xl"
         title={t('builder_feedback_modal_title')}
         id="feedback-modal"
@@ -493,15 +500,19 @@ export function FeedbackMultiStep(props: FeedbackProps) {
         ? t('builder_feedback_issue_title')
         : t('builder_feedback_share_title');
 
+  if (!portalElem) return null;
+
   return (
     <Modal
+      portalElem={portalElem}
+      isTouch={isMobile}
       className="w-full max-w-2xl"
       title={modalTitle}
       id="feedback-modal"
       onClose={onClose}
       focusLock={{ autoFocus: true, returnFocus: () => { preMountFocusRef.current?.focus(); return false; } }}
     >
-      <div className="flex flex-col min-h-[20rem] max-h-[70vh] w-full overflow-hidden">
+      <div className="flex flex-col max-h-[80vh] w-full min-w-0 max-w-full overflow-hidden">
         {step === 'category' && (
           <CategorySelectStep onSelectCategory={handleSelectCategory} />
         )}

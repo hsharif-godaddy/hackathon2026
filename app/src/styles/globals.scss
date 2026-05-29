@@ -297,7 +297,8 @@
   /* UPP mounts #UpgradeLibraryPortal inside the CDS loader div (not document.body).
      That wrapper has no height, so disrupt backdrops using position:absolute collapse
      to a few pixels on mobile. Pin the portal to the viewport instead. */
-  #UpgradeLibraryPortal {
+  #UpgradeLibraryPortal,
+  #feedback-modal-portal {
     position: fixed;
     inset: 0;
     z-index: 100;
@@ -306,7 +307,9 @@
     .ux-disrupt-backdrop {
       pointer-events: auto;
     }
+  }
 
+  #UpgradeLibraryPortal {
     .tooltip-help-icon svg,
     .PlanBox-featureItemTooltip svg {
       display: inline;

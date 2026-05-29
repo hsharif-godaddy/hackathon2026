@@ -291,9 +291,21 @@ describe('Feedback', function feedbackTests() {
     feedbackSiteStoreApi.getSite.mockReset();
     feedbackSiteStoreApi.getSite.mockImplementation(() => null);
     vi.mocked(getAppIdFromUrl).mockReturnValue(null);
+    document.getElementById('feedback-modal-portal')?.remove();
   });
 
   describe('category selection screen', function categoryTests() {
+    it('should mount the feedback modal in a dedicated viewport portal', async function mountPortal() {
+      mockAuth('basic');
+      renderWithProviders(<Feedback {...defaultProps} />);
+
+      await waitFor(() => {
+        expect(screen.getByRole('dialog')).toBeInTheDocument();
+      });
+
+      expect(document.getElementById('feedback-modal-portal')).toBeInTheDocument();
+    });
+
     it('should render the modal with category selection', async function renderModal() {
       mockAuth('basic');
       renderWithProviders(<Feedback {...defaultProps} />);

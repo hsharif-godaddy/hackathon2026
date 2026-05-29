@@ -11,7 +11,32 @@ html, body {
 }
 
 #feedback-modal.ux-modal {
-  max-width: min(42rem, calc(100vw - 2rem));
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 42rem;
+}
+
+/* using the Tailwind md breakpoint (768px) — max-width 767px matches globals.scss portal rules */
+@media (max-width: 767px) {
+  #feedback-modal-portal .ux-disrupt-backdrop {
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+    box-sizing: border-box;
+  }
+
+  #feedback-modal-portal .ux-disrupt-content {
+    margin: 0 auto !important;
+    width: 100% !important;
+    max-width: 42rem !important;
+    min-width: 0 !important;
+  }
+
+  #feedback-modal-portal #feedback-modal.ux-modal {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+  }
 }
 
 #feedback-modal .nps-rating-buttons .ux-button {
