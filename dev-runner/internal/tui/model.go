@@ -352,6 +352,7 @@ func buildPreflightRunner(projectRoot string) *preflight.Runner {
 					{Check: &checks.NodeCheck{}},
 					{Check: &checks.PnpmCheck{}, Fixer: &fixers.PnpmFixer{}},
 					{Check: &checks.GoCheck{}},
+					{Check: &checks.RustCheck{}},
 					{Check: &checks.MakeCheck{}},
 					{Check: &checks.DockerCheck{}},
 					{Check: &checks.SandboxCheck{}},

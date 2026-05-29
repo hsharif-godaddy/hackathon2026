@@ -1,6 +1,6 @@
 # dev-supervisor Makefile
 
-.PHONY: build build-supervisor build-sandbox build-all clean test test-all test-docker test-docker-go lint lint-all fmt fmt-fix vet run help install deps
+.PHONY: build build-supervisor build-sandbox build-airo-workspace build-all clean test test-all test-docker test-docker-go lint lint-all lint-rust fmt fmt-fix vet run help install deps
 
 # Build variables
 BINARY_NAME := dev-supervisor
@@ -14,8 +14,8 @@ export GOTOOLCHAIN := go1.25.7
 # Default target
 .DEFAULT_GOAL := help
 
-## Build the binary
-build: build-supervisor build-sandbox
+## Build all binaries (Go + Rust)
+build: build-supervisor build-sandbox build-airo-workspace
 
 ## Build the dev-supervisor binary
 build-supervisor:
@@ -28,6 +28,22 @@ build-sandbox:
 	@echo "Building airo-sandbox..."
 	@mkdir -p ${BUILD_DIR}
 	CGO_ENABLED=0 go build ${LDFLAGS} -o ${BUILD_DIR}/airo-sandbox ./cmd/airo-sandbox
+
+## Build the airo-workspace Rust binary (PID1 init)
+build-airo-workspace:
+	@echo "Building airo-workspace..."
+	@mkdir -p ${BUILD_DIR}
+	cd rust && cargo build --release
+	@cp rust/target/release/airo-workspace ${BUILD_DIR}/airo-workspace 2>/dev/null || true
+
+## Build airo-workspace for Linux targets (cross-compile, requires musl targets)
+build-airo-workspace-linux:
+	@echo "Building airo-workspace for Linux..."
+	@mkdir -p ${BUILD_DIR}
+	cd rust && cargo build --release --target x86_64-unknown-linux-musl
+	@cp rust/target/x86_64-unknown-linux-musl/release/airo-workspace ${BUILD_DIR}/airo-workspace-linux-amd64
+	cd rust && cargo build --release --target aarch64-unknown-linux-musl
+	@cp rust/target/aarch64-unknown-linux-musl/release/airo-workspace ${BUILD_DIR}/airo-workspace-linux-arm64
 
 ## Build for multiple platforms
 build-all:
@@ -49,6 +65,7 @@ clean:
 	@echo "Cleaning build artifacts..."
 	@rm -rf ${BUILD_DIR}
 	@go clean
+	cd rust && cargo clean
 
 ## Run tests
 test:
@@ -87,6 +104,16 @@ lint:
 	@golangci-lint config verify
 	@echo "Running linter..."
 	@golangci-lint run --timeout=5m ./...
+
+## Run Rust linter (clippy)
+lint-rust:
+	@echo "Running Rust linter..."
+	cd rust && cargo clippy -- -D warnings
+
+## Run Rust tests
+test-rust:
+	@echo "Running Rust tests..."
+	cd rust && cargo test
 
 ## Run linter for all platforms (catches Linux-specific files on macOS)
 lint-all:
@@ -159,8 +186,8 @@ install-lint:
 		echo "golangci-lint v2.8.0 is already installed"; \
 	fi
 
-## Run all checks (format, vet, lint, test)
-check: fmt-fix vet lint test
+## Run all checks (format, vet, lint, test — Go + Rust)
+check: fmt-fix vet lint lint-rust test test-rust
 
 ## Install the binary to GOPATH/bin
 install: build

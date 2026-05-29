@@ -43,7 +43,7 @@ if (options.token && options.repoUrl) {
 |----------------------------|----------------------|------|---------------------------------------------------------------------------------|
 | **agents/**                | `@airo/agents`       | 4000 | Express API, AI agents, SQLite, WebSocket                                       |
 | **app/**                   | `website`            | 3000 | Next.js BFF + builder UI                                                        |
-| **dev-supervisor/**        | Go binary            | —    | PID1, process lifecycle, HTTP proxy, JWT auth                                   |
+| **dev-supervisor/**        | Go + Rust            | —    | PID1 (Rust), process lifecycle, HTTP proxy, JWT auth (Go)                       |
 | **local-control-plane/**   | Go binary            | 4100 | Local mgmt-airo API, SQLite + Docker                                            |
 | **budget-service/**        | Go binary            | 8080 | Standalone Postgres-backed REST API for cost to credit management               |
 | **packages/shared/**       | `@airo/shared`       | —    | Shared types and pure utilities (grants, context-attachment, social, websocket) |

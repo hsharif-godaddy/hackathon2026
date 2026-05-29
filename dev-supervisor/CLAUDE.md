@@ -1,8 +1,20 @@
 # dev-supervisor
 
-Go-based containerized service acting as PID1 in development Docker containers. Provides process lifecycle management, health monitoring, HTTP/SMTP proxying, JWT authentication, and log streaming via Unix socket API.
+Containerized service providing process lifecycle management, health monitoring, HTTP/SMTP proxying, JWT authentication, and log streaming via Unix socket API.
 
-**Key characteristics:** Pure Go (no Node.js/pnpm), Go 1.25, Linux-only (no Windows support intended), statically linked binary.
+**Key characteristics:** Go 1.25 + Rust, Linux-only (no Windows support intended), statically linked binaries.
+
+## PID1 Architecture
+
+The container runs a two-process init model:
+
+```
+PID1: airo-workspace (Rust)     — zombie reaping, signal forwarding
+  └── dev-supervisor (Go)        — all business logic, HTTP API, proxy
+        └── child processes      — customer app, setup scripts, exec commands
+```
+
+`airo-workspace` is a minimal Rust binary (~150 lines) that handles PID1 responsibilities. The Go binary runs as a child subreaper (`PR_SET_CHILD_SUBREAPER`) and continues to own all HTTP routes and process management. This split enables incremental migration of functionality from Go to Rust.
 
 ## Integration with Monorepo
 
@@ -23,12 +35,16 @@ dev-supervisor is consumed by:
 
 ```bash
 cd dev-supervisor
-make build          # Build binary to dist/
-make test           # Run tests (auto-skips Linux-only on macOS)
-make test-docker    # Docker integration tests
-make lint           # golangci-lint
-make fmt-fix        # Format all files
-make check          # All checks (fmt, vet, lint, test)
+make build                    # Build all binaries (Go + Rust) to dist/
+make build-supervisor         # Go dev-supervisor binary only
+make build-airo-workspace    # Rust airo-workspace binary only
+make test                     # Go tests (auto-skips Linux-only on macOS)
+make test-rust                # Rust tests (integration tests Linux-only)
+make test-docker              # Docker integration tests
+make lint                     # golangci-lint
+make lint-rust                # cargo clippy
+make fmt-fix                  # Format Go files
+make check                    # All checks (fmt, vet, lint, test — Go + Rust)
 ```
 
 ## Conventions That Differ from Monorepo
@@ -71,28 +87,33 @@ Preview variant supports auto-start/stop of idle apps:
 
 ```
 dev-supervisor/
-├── cmd/
-│   ├── dev-supervisor/         # Main binary (PID 1, API, proxy)
-│   └── airo-sandbox/           # Landlock sandbox wrapper binary
+├── rust/                           # Rust workspace (Cargo)
+│   ├── Cargo.toml                  # Workspace root
+│   └── airo-workspace/            # PID1 init binary (signal forwarding, zombie reaping)
+│       ├── Cargo.toml
+│       └── src/main.rs
+├── cmd/                            # Go binaries
+│   ├── dev-supervisor/             # Main binary (API, proxy, process management)
+│   └── airo-sandbox/               # Landlock sandbox wrapper binary
 ├── internal/
-│   ├── allocconfig/            # Config file loading (/alloc/config.json)
-│   ├── auth/                   # JWT middleware, JWKS validation
-│   ├── config/                 # Env-based configuration
-│   ├── health/                 # Health checks (command, HTTP, TCP)
-│   ├── logs/                   # Buffered log manager
-│   ├── middleware/             # Connection tracking, peer validation
-│   ├── ports/                  # Linux port discovery via /proc
-│   ├── process/                # Exit codes, zombie reaping
-│   ├── processmanager/         # Process lifecycle management
-│   ├── proxy/http/             # TLS reverse proxy, WebSocket, persistent assets
-│   ├── proxy/smtp/             # SMTP proxy with header injection + sender enforcement (localhost:25)
-│   ├── proxy/emailhttp/        # HTTP email gateway, POST /api/email/send (localhost:2525)
-│   ├── sandbox/                # Sandbox config, profiles, command wrapping
-│   └── validation/             # Input validation (path traversal, env vars)
-├── docs/SANDBOX.md             # Sandbox architecture and configuration
+│   ├── allocconfig/                # Config file loading (/alloc/config.json)
+│   ├── auth/                       # JWT middleware, JWKS validation
+│   ├── config/                     # Env-based configuration
+│   ├── health/                     # Health checks (command, HTTP, TCP)
+│   ├── logs/                       # Buffered log manager
+│   ├── middleware/                 # Connection tracking, peer validation
+│   ├── ports/                      # Linux port discovery via /proc
+│   ├── process/                    # Exit codes, zombie reaping (subreaper mode)
+│   ├── processmanager/             # Process lifecycle management
+│   ├── proxy/http/                 # TLS reverse proxy, WebSocket, persistent assets
+│   ├── proxy/smtp/                 # SMTP proxy with header injection + sender enforcement (localhost:25)
+│   ├── proxy/emailhttp/            # HTTP email gateway, POST /api/email/send (localhost:2525)
+│   ├── sandbox/                    # Sandbox config, profiles, command wrapping
+│   └── validation/                 # Input validation (path traversal, env vars)
+├── docs/SANDBOX.md                 # Sandbox architecture and configuration
 ├── Makefile
 ├── .golangci.yml
-└── Dockerfile                  # Multi-stage Alpine build
+└── Dockerfile                      # Multi-stage Alpine build (Rust + Go)
 ```
 
 ## Testing
@@ -103,11 +124,25 @@ Three tiers:
 2. **Linux-specific tests** — `*_linux_test.go` with `//go:build linux` (auto-skipped on macOS)
 3. **Docker integration tests** — `make test-docker` (tests actual container PID1 behavior)
 
+## Rust Component
+
+The `rust/airo-workspace/` crate is the PID1 init process. It:
+- Forks and execs the Go `dev-supervisor` binary with all args/env passed through
+- Reaps zombie processes (orphans that escape the Go subreaper)
+- Forwards signals to the Go child (SIGTERM/SIGINT trigger graceful shutdown with 30s timeout)
+- Exits with the Go child's exit code
+
+**Config:** `AIRO_WORKSPACE_VERBOSE=1` enables debug logging to stderr. No other configuration.
+
+**Rust toolchain:** Stable, targets `x86_64-unknown-linux-musl` and `aarch64-unknown-linux-musl` for static linking. Prerequisite: `rustup` (validated by dev-runner preflight).
+
 ## PR Checklist
 
 - [ ] `make fmt-fix` — code formatted
-- [ ] `make lint` — no lint errors
-- [ ] `make test` — tests pass
+- [ ] `make lint` — no Go lint errors
+- [ ] `make lint-rust` — no Rust lint errors
+- [ ] `make test` — Go tests pass
+- [ ] `make test-rust` — Rust tests pass
 - [ ] `make test-docker` — if API changed
 - [ ] TypeScript client updated in `app/src/lib/dev-environment/` — if API changed
 - [ ] Platform-specific code uses build tags with fallback implementation

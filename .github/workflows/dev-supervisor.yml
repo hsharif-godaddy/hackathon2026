@@ -49,6 +49,38 @@ jobs:
             exit 1
           fi
 
+  lint-rust:
+    name: dev-supervisor / Lint Rust
+    runs-on:
+      labels:
+        - airo-cicd-runners
+        - self-hosted
+    env:
+      CARGO_TERM_COLOR: always
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: '1.96'
+          components: clippy, rustfmt
+      - name: Rust cache
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            dev-supervisor/rust/target
+          key: rust-lint-${{ runner.os }}-${{ hashFiles('dev-supervisor/rust/**/Cargo.lock') }}
+          restore-keys: rust-lint-${{ runner.os }}-
+      - name: Check formatting
+        working-directory: dev-supervisor/rust
+        run: cargo fmt --all -- --check
+      - name: Run clippy
+        working-directory: dev-supervisor/rust
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
   test:
     name: dev-supervisor / Test
     runs-on:
@@ -88,13 +120,39 @@ jobs:
           flags: dev-supervisor
           name: dev-supervisor
 
+  test-rust:
+    name: dev-supervisor / Test Rust
+    runs-on:
+      labels:
+        - airo-cicd-runners
+        - self-hosted
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: '1.96'
+      - name: Rust cache
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            dev-supervisor/rust/target
+          key: rust-test-${{ runner.os }}-${{ hashFiles('dev-supervisor/rust/**/Cargo.lock') }}
+          restore-keys: rust-test-${{ runner.os }}-
+      - name: Run tests
+        working-directory: dev-supervisor/rust
+        run: cargo test
+
   test-docker:
     name: dev-supervisor / Docker Integration Tests
     runs-on:
       labels:
         - airo-cicd-runners
         - self-hosted
-    needs: test
+    needs: [test, test-rust]
     steps:
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
@@ -110,7 +168,7 @@ jobs:
       labels:
         - airo-cicd-runners
         - self-hosted
-    needs: [lint, test, test-docker]
+    needs: [lint, lint-rust, test, test-rust, test-docker]
     strategy:
       matrix:
         goos: [linux]
@@ -123,30 +181,47 @@ jobs:
         with:
           go-version: '1.25'
           cache-dependency-path: dev-supervisor/go.sum
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: '1.96'
+      - name: Add cross-compilation targets
+        run: |
+          rustup target add x86_64-unknown-linux-musl aarch64-unknown-linux-musl
+          rustup target list --installed | grep musl
+      - name: Rust cache
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            dev-supervisor/rust/target
+          key: rust-build-${{ runner.os }}-${{ matrix.goarch }}-${{ hashFiles('dev-supervisor/rust/**/Cargo.lock') }}
+          restore-keys: rust-build-${{ runner.os }}-${{ matrix.goarch }}-
 
-      - name: Download dependencies
+      - name: Download Go dependencies
         working-directory: dev-supervisor
         run: go mod download
 
-      - name: Build binaries
+      - name: Build Go binaries
         working-directory: dev-supervisor
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: 0
         run: |
-          BINARY_NAME="dev-supervisor"
-          SANDBOX_NAME="airo-sandbox"
-          if [ "$GOOS" = "windows" ]; then
-            BINARY_NAME="${BINARY_NAME}.exe"
-            SANDBOX_NAME="${SANDBOX_NAME}.exe"
-          fi
-          go build -trimpath -ldflags="-w -s" -o "dist/${BINARY_NAME}-${GOOS}-${GOARCH}" ./cmd/dev-supervisor
+          go build -trimpath -ldflags="-w -s" -o "dist/dev-supervisor-${GOOS}-${GOARCH}" ./cmd/dev-supervisor
+          go build -trimpath -ldflags="-w -s" -o "dist/airo-sandbox-${GOOS}-${GOARCH}" ./cmd/airo-sandbox
 
-          # airo-sandbox requires POSIX sh and is excluded for Windows by build tags
-          if [ "$GOOS" != "windows" ]; then
-            go build -trimpath -ldflags="-w -s" -o "dist/${SANDBOX_NAME}-${GOOS}-${GOARCH}" ./cmd/airo-sandbox
-          fi
+      - name: Build Rust binary
+        working-directory: dev-supervisor/rust
+        run: |
+          case "${{ matrix.goarch }}" in
+            amd64) RUST_TARGET="x86_64-unknown-linux-musl" ;;
+            arm64) RUST_TARGET="aarch64-unknown-linux-musl" ;;
+          esac
+          cargo +1.96 build --release --target "${RUST_TARGET}"
+          cp "target/${RUST_TARGET}/release/airo-workspace" "../dist/airo-workspace-linux-${{ matrix.goarch }}"
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
@@ -160,7 +235,7 @@ jobs:
       labels:
         - airo-cicd-runners
         - self-hosted
-    needs: [lint, test, test-docker]
+    needs: [lint, lint-rust, test, test-rust, test-docker]
     steps:
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6

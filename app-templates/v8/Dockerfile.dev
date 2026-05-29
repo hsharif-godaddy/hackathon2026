@@ -1,5 +1,19 @@
 # =================================================================
-# Stage 0: Build dev-supervisor (CACHED - rarely changes)
+# Stage 0a: Build airo-workspace Rust PID1 binary (CACHED - rarely changes)
+# =================================================================
+FROM rust:1.96-alpine AS rust-builder
+
+RUN apk add --no-cache musl-dev
+
+WORKDIR /build
+
+COPY --from=dev-supervisor rust/ ./rust/
+
+RUN cd rust && cargo build --release && \
+    cp target/release/airo-workspace /usr/local/bin/airo-workspace
+
+# =================================================================
+# Stage 0b: Build dev-supervisor Go binaries (CACHED - rarely changes)
 # =================================================================
 FROM golang:1.25-alpine AS dev-supervisor-builder
 
@@ -133,7 +147,8 @@ WORKDIR /app
 # Copy gitleaks binary from preparer stage
 COPY --chown=agent:agent --from=gitleaks-preparer /usr/local/bin/gitleaks /usr/local/bin/gitleaks
 
-# Copy dev-supervisor binary from build stage (not pre-built image)
+# Copy dev-supervisor binaries from build stages
+COPY --chown=agent:agent --from=rust-builder /usr/local/bin/airo-workspace /usr/local/bin/airo-workspace
 COPY --chown=agent:agent --from=dev-supervisor-builder /usr/local/bin/dev-supervisor /usr/local/bin/dev-supervisor
 COPY --chown=agent:agent --from=dev-supervisor-builder /usr/local/bin/airo-sandbox /usr/local/bin/airo-sandbox
 
@@ -211,5 +226,5 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
 # Mode detection happens internally (checks .git/config existence)
 # Setup script handles both first-start and restart paths
 # Command can be overridden via .airo/config.json (runtime.dev.command)
-ENTRYPOINT ["/usr/local/bin/dev-supervisor"]
+ENTRYPOINT ["/usr/local/bin/airo-workspace", "/usr/local/bin/dev-supervisor"]
 CMD ["npm", "run", "dev"]

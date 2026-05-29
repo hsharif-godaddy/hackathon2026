@@ -1,7 +1,21 @@
 ARG UPSTREAM_VERSION=22
 
 # =================================================================
-# Build dev-supervisor stage
+# Build airo-workspace Rust PID1 binary
+# =================================================================
+FROM rust:1.96-alpine AS rust-builder
+
+RUN apk add --no-cache musl-dev
+
+WORKDIR /build
+
+COPY --from=dev-supervisor rust/ ./rust/
+
+RUN cd rust && cargo build --release && \
+    cp target/release/airo-workspace /usr/local/bin/airo-workspace
+
+# =================================================================
+# Build dev-supervisor Go binaries
 # =================================================================
 FROM golang:1.25-alpine AS dev-supervisor-builder
 
@@ -67,7 +81,8 @@ RUN CONTAINER_UID=${HOST_UID}; \
     fi; \
     adduser -D -G agent -u $CONTAINER_UID agent
 
-# Copy dev-supervisor binary from builder stage
+# Copy dev-supervisor binaries from builder stages
+COPY --chown=agent:agent --from=rust-builder /usr/local/bin/airo-workspace /usr/local/bin/airo-workspace
 COPY --chown=agent:agent --from=dev-supervisor-builder /usr/local/bin/dev-supervisor /usr/local/bin/dev-supervisor
 COPY --chown=agent:agent --from=dev-supervisor-builder /usr/local/bin/airo-sandbox /usr/local/bin/airo-sandbox
 
@@ -97,5 +112,5 @@ USER agent
 WORKDIR /app
 
 # Use dev-supervisor as PID 1 to manage the publish process
-ENTRYPOINT ["/usr/local/bin/dev-supervisor"]
+ENTRYPOINT ["/usr/local/bin/airo-workspace", "/usr/local/bin/dev-supervisor"]
 CMD ["exec", "/publish/run-app.sh"]

@@ -44,11 +44,11 @@ wait_for_socket() {
 echo ""
 echo "Test 1: PID 1 Verification"
 PID1_COMM=$(ps -p 1 -o comm= | tr -d '[:space:]')
-if [ "$PID1_COMM" != "dev-supervisor" ]; then
-    echo "❌ FAIL: Process with PID 1 is '$PID1_COMM', expected 'dev-supervisor'"
+if [ "$PID1_COMM" != "airo-workspace" ]; then
+    echo "❌ FAIL: Process with PID 1 is '$PID1_COMM', expected 'airo-workspace'"
     exit 1
 fi
-echo "✓ PASS: dev-supervisor (airo-supervisor) is running as PID 1"
+echo "✓ PASS: airo-workspace is running as PID 1"
 
 # Wait for socket before running other tests
 wait_for_socket

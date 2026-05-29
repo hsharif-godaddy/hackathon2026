@@ -7,7 +7,7 @@ docker build -f test/Dockerfile.integration -t dev-supervisor:test .
 echo ""
 echo "Running integration tests in Docker..."
 
-# Start container with dev-supervisor as PID 1 (no supervised process)
+# Start container with airo-workspace as PID 1 wrapping dev-supervisor
 CONTAINER_NAME="dev-supervisor-test-$$"
 
 # Start container in detached mode with no command arguments

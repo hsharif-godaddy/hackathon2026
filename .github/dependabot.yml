@@ -3,7 +3,7 @@ version: 2
 registries:
   jfrog-npm:
     type: npm-registry
-    url: "https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt"
+    url: 'https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt'
     jfrog-oidc-provider-name: github
     replaces-base: true
 
@@ -18,197 +18,208 @@ registries:
 updates:
   # Root workspace
   # Dependabot will iterate from here
-  - package-ecosystem: "npm"
-    directory: "/"
+  - package-ecosystem: 'npm'
+    directory: '/'
     registries:
       - jfrog-npm
     ignore:
-      - dependency-name: "*"
+      - dependency-name: '*'
         update-types:
-          - "version-update:semver-major"
+          - 'version-update:semver-major'
       # AI SDK v5->v6 migration changed majors across all packages.
       # Old major lines still receive patches on npm, causing dependabot
       # to propose downgrades. Pin floors to current majors.
-      - dependency-name: "ai"
-        versions: ["< 6.0.0"]
-      - dependency-name: "@ai-sdk/openai"
-        versions: ["< 3.0.0"]
-      - dependency-name: "@ai-sdk/anthropic"
-        versions: ["< 3.0.0"]
-      - dependency-name: "@ai-sdk/google"
-        versions: ["< 3.0.0"]
-      - dependency-name: "@ai-sdk/provider"
-        versions: ["< 3.0.0"]
+      - dependency-name: 'ai'
+        versions: ['< 6.0.0']
+      - dependency-name: '@ai-sdk/openai'
+        versions: ['< 3.0.0']
+      - dependency-name: '@ai-sdk/anthropic'
+        versions: ['< 3.0.0']
+      - dependency-name: '@ai-sdk/google'
+        versions: ['< 3.0.0']
+      - dependency-name: '@ai-sdk/provider'
+        versions: ['< 3.0.0']
     schedule:
-      interval: "daily"
+      interval: 'daily'
     cooldown:
       default-days: 7
     groups:
       # Group AWS SDK updates together
       aws-sdk:
         patterns:
-          - "@aws-sdk/*"
-          - "@aws-crypto/*"
-          - "@smithy/*"
+          - '@aws-sdk/*'
+          - '@aws-crypto/*'
+          - '@smithy/*'
       # Group React ecosystem
       react:
         patterns:
-          - "react"
-          - "react-dom"
-          - "@types/react"
-          - "@types/react-dom"
+          - 'react'
+          - 'react-dom'
+          - '@types/react'
+          - '@types/react-dom'
       # Group Next.js related
       nextjs:
         patterns:
-          - "next"
-          - "@next/*"
+          - 'next'
+          - '@next/*'
       # Group testing dependencies
       testing:
         patterns:
-          - "jest"
-          - "@jest/*"
-          - "vitest"
-          - "@vitest/*"
-          - "@playwright/*"
-          - "@testing-library/*"
+          - 'jest'
+          - '@jest/*'
+          - 'vitest'
+          - '@vitest/*'
+          - '@playwright/*'
+          - '@testing-library/*'
       # Group linting/formatting
       code-quality:
         patterns:
-          - "eslint"
-          - "@typescript-eslint/*"
-          - "prettier"
-          - "typescript"
+          - 'eslint'
+          - '@typescript-eslint/*'
+          - 'prettier'
+          - 'typescript'
       # Group AI SDK packages together
       ai-sdk:
         patterns:
-          - "ai"
-          - "@ai-sdk/*"
+          - 'ai'
+          - '@ai-sdk/*'
 
   # app-templates: standalone npm (excluded from pnpm workspace; see pnpm-workspace.yaml)
   # No registries — v8 template uses only public npm packages. Using JFrog here
   # causes Artifactory resolved URLs in the lockfile, which break CI on runners
   # without JFrog auth.
-  - package-ecosystem: "npm"
-    directory: "/app-templates/v8"
+  - package-ecosystem: 'npm'
+    directory: '/app-templates/v8'
     ignore:
-      - dependency-name: "*"
+      - dependency-name: '*'
         update-types:
-          - "version-update:semver-major"
+          - 'version-update:semver-major'
     schedule:
-      interval: "daily"
+      interval: 'daily'
     cooldown:
       default-days: 7
     groups:
       code-quality:
         patterns:
-          - "eslint"
-          - "@typescript-eslint/*"
-          - "prettier"
-          - "typescript"
+          - 'eslint'
+          - '@typescript-eslint/*'
+          - 'prettier'
+          - 'typescript'
       react:
         patterns:
-          - "react"
-          - "react-dom"
-          - "@types/react"
-          - "@types/react-dom"
+          - 'react'
+          - 'react-dom'
+          - '@types/react'
+          - '@types/react-dom'
       testing:
         patterns:
-          - "vitest"
-          - "@vitest/*"
-          - "@testing-library/*"
+          - 'vitest'
+          - '@vitest/*'
+          - '@testing-library/*'
 
   # Monitor dev-supervisor
-  - package-ecosystem: "gomod"
-    directory: "/dev-supervisor"
+  - package-ecosystem: 'gomod'
+    directory: '/dev-supervisor'
     ignore:
-      - dependency-name: "*"
+      - dependency-name: '*'
         update-types:
-          - "version-update:semver-major"
+          - 'version-update:semver-major'
     schedule:
-      interval: "daily"
+      interval: 'daily'
+    cooldown:
+      default-days: 7
+
+  - package-ecosystem: 'cargo'
+    directory: '/dev-supervisor/rust'
+    ignore:
+      - dependency-name: '*'
+        update-types:
+          - 'version-update:semver-major'
+    schedule:
+      interval: 'daily'
     cooldown:
       default-days: 7
 
   # Monitor go-agent
-  - package-ecosystem: "gomod"
-    directory: "/go-agent"
+  - package-ecosystem: 'gomod'
+    directory: '/go-agent'
     ignore:
-      - dependency-name: "*"
+      - dependency-name: '*'
         update-types:
-          - "version-update:semver-major"
+          - 'version-update:semver-major'
     schedule:
-      interval: "daily"
+      interval: 'daily'
     cooldown:
       default-days: 7
 
   # Monitor local-control-plane
-  - package-ecosystem: "gomod"
-    directory: "/local-control-plane"
+  - package-ecosystem: 'gomod'
+    directory: '/local-control-plane'
     ignore:
-      - dependency-name: "*"
+      - dependency-name: '*'
         update-types:
-          - "version-update:semver-major"
+          - 'version-update:semver-major'
     schedule:
-      interval: "daily"
+      interval: 'daily'
     cooldown:
       default-days: 7
 
   # Monitor knowledge-service
-  - package-ecosystem: "gomod"
-    directory: "/knowledge-service"
+  - package-ecosystem: 'gomod'
+    directory: '/knowledge-service'
     ignore:
-      - dependency-name: "*"
+      - dependency-name: '*'
         update-types:
-          - "version-update:semver-major"
+          - 'version-update:semver-major'
     schedule:
-      interval: "daily"
+      interval: 'daily'
     cooldown:
       default-days: 7
 
   # Monitor image-search-service
-  - package-ecosystem: "gomod"
-    directory: "/image-search-service"
+  - package-ecosystem: 'gomod'
+    directory: '/image-search-service'
     ignore:
-      - dependency-name: "*"
+      - dependency-name: '*'
         update-types:
-          - "version-update:semver-major"
+          - 'version-update:semver-major'
     schedule:
-      interval: "daily"
+      interval: 'daily'
     cooldown:
       default-days: 7
 
   # Monitor budget-service
-  - package-ecosystem: "gomod"
-    directory: "/budget-service"
+  - package-ecosystem: 'gomod'
+    directory: '/budget-service'
     ignore:
-      - dependency-name: "*"
+      - dependency-name: '*'
         update-types:
-          - "version-update:semver-major"
+          - 'version-update:semver-major'
     schedule:
-      interval: "daily"
+      interval: 'daily'
     cooldown:
       default-days: 7
 
   # Monitor packages/go-auth
-  - package-ecosystem: "gomod"
-    directory: "/packages/go-auth"
+  - package-ecosystem: 'gomod'
+    directory: '/packages/go-auth'
     ignore:
-      - dependency-name: "*"
+      - dependency-name: '*'
         update-types:
-          - "version-update:semver-major"
+          - 'version-update:semver-major'
     schedule:
-      interval: "daily"
+      interval: 'daily'
     cooldown:
       default-days: 7
 
   # Monitor GitHub Actions
-  - package-ecosystem: "github-actions"
-    directory: "/"
+  - package-ecosystem: 'github-actions'
+    directory: '/'
     ignore:
-      - dependency-name: "*"
+      - dependency-name: '*'
         update-types:
-          - "version-update:semver-major"
+          - 'version-update:semver-major'
     schedule:
-      interval: "daily"
+      interval: 'daily'
     cooldown:
       default-days: 7

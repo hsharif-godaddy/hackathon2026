@@ -1,0 +1,10 @@
+[workspace]
+members = ["airo-workspace"]
+resolver = "2"
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.96"
+
+[workspace.lints.rust]
+unsafe_code = "warn"

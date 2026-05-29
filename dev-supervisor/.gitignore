@@ -49,3 +49,6 @@ Thumbs.db
 tmp/
 temp/
 .gocache/
+
+# Rust build artifacts
+rust/target/

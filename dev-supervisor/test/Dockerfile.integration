@@ -1,4 +1,11 @@
-FROM golang:1.25-alpine AS builder
+FROM rust:1.96-alpine AS rust-builder
+RUN apk add --no-cache musl-dev
+WORKDIR /build
+COPY rust/ ./rust/
+RUN cd rust && cargo build --release && \
+    cp target/release/airo-workspace /usr/local/bin/airo-workspace
+
+FROM golang:1.25-alpine AS go-builder
 WORKDIR /build
 COPY go.mod go.sum ./
 RUN go mod download
@@ -8,8 +15,9 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /usr/local/bin/dev-supervi
 
 FROM alpine:3.22
 RUN apk add --no-cache bash curl procps
-COPY --from=builder /usr/local/bin/dev-supervisor /usr/local/bin/dev-supervisor
-COPY --from=builder /usr/local/bin/airo-sandbox /usr/local/bin/airo-sandbox
+COPY --from=rust-builder /usr/local/bin/airo-workspace /usr/local/bin/airo-workspace
+COPY --from=go-builder /usr/local/bin/dev-supervisor /usr/local/bin/dev-supervisor
+COPY --from=go-builder /usr/local/bin/airo-sandbox /usr/local/bin/airo-sandbox
 COPY test/docker-integration-tests.sh /test/
 RUN chmod +x /test/docker-integration-tests.sh
-ENTRYPOINT ["/usr/local/bin/dev-supervisor"]
+ENTRYPOINT ["/usr/local/bin/airo-workspace", "/usr/local/bin/dev-supervisor"]

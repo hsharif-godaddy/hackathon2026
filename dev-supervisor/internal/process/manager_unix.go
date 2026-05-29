@@ -57,12 +57,7 @@ func (pm *PID1Manager) Start(shutdownCallback func()) {
 
 		pm.startOrphanReaper()
 	} else {
-		slog.Info("PID 1 behavior disabled", "pid", os.Getpid())
-		if err := setChildSubreaper(); err != nil {
-			slog.Warn("failed to set child subreaper; orphaned grandchildren will not be reaped", "error", err)
-		} else {
-			slog.Info("configured as child subreaper")
-		}
+		slog.Info("PID 1 behavior disabled, deferring orphan reaping to PID 1 (airo-workspace)", "pid", os.Getpid())
 		pm.setupBasicSignalHandling()
 	}
 }
