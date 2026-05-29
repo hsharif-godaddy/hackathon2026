@@ -19,10 +19,8 @@ function AuthProviderComponent(props: any) {
 
 function InnerAuthProvider({
   children,
-  homepageEngagementCohort,
 }: {
   children: ReactNode;
-  homepageEngagementCohort?: string | null;
 }) {
   const authData = useAuth();
   const { isLoading } = authData;
@@ -36,7 +34,7 @@ function InnerAuthProvider({
   // After initial auth completes, keep children mounted during heartbeat revalidations
   // to prevent tearing down websocket connections, form state, etc.
   if (isLoading && !hasInitiallyLoaded.current) {
-    return <LoadingComponent homepageEngagementCohort={homepageEngagementCohort} />;
+    return <LoadingComponent />;
   }
 
   return (
@@ -49,10 +47,8 @@ function InnerAuthProvider({
 // Export the wrapped provider with proper typing
 export default function AuthProvider({
   children,
-  homepageEngagementCohort,
 }: {
   children: ReactNode;
-  homepageEngagementCohort?: string | null;
 }) {
   const [authProvider, setAuthProvider] = useState<any>(null);
   const [isAuthProviderLoading, setIsAuthProviderLoading] = useState(true);
@@ -113,14 +109,14 @@ export default function AuthProvider({
 
   // Show loading while auth provider is loading
   if (isAuthProviderLoading) {
-    return <LoadingComponent homepageEngagementCohort={homepageEngagementCohort} />;
+    return <LoadingComponent />;
   }
 
   // Render with the appropriate provider
   const Provider = authProvider;
   return (
     <Provider>
-      <InnerAuthProvider homepageEngagementCohort={homepageEngagementCohort}>
+      <InnerAuthProvider>
         {children}
       </InnerAuthProvider>
     </Provider>

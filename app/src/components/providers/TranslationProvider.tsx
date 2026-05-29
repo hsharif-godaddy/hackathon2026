@@ -18,7 +18,6 @@ interface TranslationsProviderProps {
   messages?: Record<string, string>;
   packages?: string[];
   children: React.ReactNode;
-  homepageEngagementCohort?: string | null;
 }
 
 const defaultTranslationsState: TranslationsState = {
@@ -67,7 +66,6 @@ export function TranslationsProvider(props: TranslationsProviderProps) {
     messages: messagesFromProps,
     packages,
     children,
-    homepageEngagementCohort,
   } = props;
 
   const gasketData = useGasketData();
@@ -91,7 +89,7 @@ export function TranslationsProvider(props: TranslationsProviderProps) {
     <TranslationsContext.Provider value={ translationsState }>
       <IntlProvider locale={ locale } messages={ messages }>
         { isLoading
-          ? <LoadingComponent homepageEngagementCohort={homepageEngagementCohort} />
+          ? <LoadingComponent />
           : children
         }
       </IntlProvider>

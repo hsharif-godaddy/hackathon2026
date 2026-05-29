@@ -18,7 +18,6 @@ import FrameBuster from "@/components/security/FrameBuster";
 import ItcInitializer from "@/components/tracking/ItcInitializer";
 import JourneyTrackerInit, { JourneyTrackerAuth } from "@/components/tracking/JourneyTrackerInit";
 import ReferralTracker from "@/components/tracking/ReferralTracker";
-import { EXPERIMENT_IDS } from "@/config/experiments";
 import { instrumentPageRequest } from "@/lib/apm-context";
 import { logger } from "@/lib/request-context";
 import { detectTranslationLocale, getServerIntl } from "@/lib/translations";
@@ -152,8 +151,6 @@ async function MarketLayout({
     logger.error('translations.layout.load.failure', { error });
   }
 
-  let homepageEngagementCohort: string | undefined;
-
   try {
     const headersObj: Record<string, string> = {};
     headersList.forEach((value, key) => {
@@ -165,7 +162,6 @@ async function MarketLayout({
         ? await getExperimentCohorts({ headers: headersObj })
         : undefined;
     const aaCohort = cohorts?.['aa-airo-builder'];
-    homepageEngagementCohort = cohorts?.[EXPERIMENT_IDS.homepageEngagement] as string | undefined;
 
     if (aaCohort) {
       logger.info('hivemind.experiment.triggered', {
@@ -192,12 +188,11 @@ async function MarketLayout({
       <FullStoryProvider key="market-fullstory">
         <QueryClientProvider key="market-query-client">
           <TranslationsProvider
-            homepageEngagementCohort={homepageEngagementCohort}
             locale={locale}
             messages={messages}
             packages={['@airo-app-builder/aab']}
           >
-            <AuthProvider homepageEngagementCohort={homepageEngagementCohort}>
+            <AuthProvider>
               <JourneyTrackerAuth key="market-journey-tracker-auth" />
               <SubscriptionCacheProvider key="market-subscription-cache">
                 <main className="flex-1 relative min-h-dvh" key="market-main">
