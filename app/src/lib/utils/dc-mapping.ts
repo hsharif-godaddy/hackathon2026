@@ -276,9 +276,9 @@ const DEFAULT_DATACENTER = 'p3';
  * Get datacenter from marketId (locale string)
  *
  * Determines the optimal datacenter based on the user's market.
- * The marketId is expected to come from `resolveMarketId` (Shopper API +
- * Gasket `visitor.market`), which produces well-formed BCP 47 locale strings
- * (e.g., 'en-US', 'de-DE', 'fr-FR').
+ * The marketId is expected to come from `resolveMarketId`, which reads
+ * `gasket.actions.getVisitor(req).market` and produces well-formed BCP 47
+ * locale strings (e.g., 'en-US', 'de-DE', 'fr-FR').
  *
  * **Input Format Expectations:**
  * - Format: `{language}-{COUNTRY}` (e.g., 'en-US', 'de-DE', 'pt-BR')

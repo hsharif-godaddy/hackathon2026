@@ -94,7 +94,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
 
     logger.info('sites.quick-create.start', { accountId: account_id });
 
-    const { marketId } = await resolveMarketId(request, user.shopperId, authContext.jwt);
+    const { marketId } = await resolveMarketId(request);
 
     // Use control plane adapter
     const adapter = getControlPlaneAdapter();

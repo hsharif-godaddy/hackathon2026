@@ -38,7 +38,6 @@ vi.mock('@/lib/control-plane', () => ({
 
 const mockResolveMarketId = vi.fn().mockResolvedValue({
   marketId: 'en-US',
-  shopperMarket: undefined,
   visitorMarket: 'en-US',
   source: 'visitor-market',
 });
@@ -309,31 +308,25 @@ describe('/api/sites/quick-create market resolution', () => {
     });
   });
 
-  it('passes resolved marketId to createSite and forwards (request, shopperId, jwt) to the helper', async () => {
+  it('passes resolved marketId to createSite and forwards request to the helper', async () => {
     mockResolveMarketId.mockResolvedValueOnce({
       marketId: 'en-IN',
-      shopperMarket: 'en-IN',
-      visitorMarket: 'en-US',
-      source: 'shopper-api',
+      visitorMarket: 'en-IN',
+      source: 'visitor-market',
     });
 
     const { POST } = await import('../route');
     await POST(makeRequest({ initialPrompt: 'test' }));
 
-    expect(mockResolveMarketId).toHaveBeenCalledWith(
-      expect.anything(),
-      'shopper-1',
-      'test-jwt',
-    );
+    expect(mockResolveMarketId).toHaveBeenCalledWith(expect.anything());
     expect(mockCreateSite).toHaveBeenCalledWith(
       expect.objectContaining({ marketId: 'en-IN' })
     );
   });
 
-  it('uses visitor-market resolution when helper picks visitor over shopper', async () => {
+  it('uses visitor-market resolution', async () => {
     mockResolveMarketId.mockResolvedValueOnce({
       marketId: 'de-DE',
-      shopperMarket: 'en-US',
       visitorMarket: 'de-DE',
       source: 'visitor-market',
     });
@@ -349,7 +342,6 @@ describe('/api/sites/quick-create market resolution', () => {
   it('uses fallback en-US when helper returns the fallback source', async () => {
     mockResolveMarketId.mockResolvedValueOnce({
       marketId: 'en-US',
-      shopperMarket: undefined,
       visitorMarket: undefined,
       source: 'fallback',
     });

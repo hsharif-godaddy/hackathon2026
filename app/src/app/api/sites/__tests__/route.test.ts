@@ -52,7 +52,6 @@ vi.mock('@/lib/customer-auth', () => ({
 
 const mockResolveMarketId = vi.fn().mockResolvedValue({
   marketId: 'en-US',
-  shopperMarket: undefined,
   visitorMarket: 'en-US',
   source: 'visitor-market',
 });
@@ -286,12 +285,11 @@ describe('/api/sites', function sitesRouteTests() {
       );
     });
 
-    it('passes resolved marketId to createSite and forwards (request, shopperId, jwt) to the helper', async function passesResolvedMarketId() {
+    it('passes resolved marketId to createSite and forwards request to the helper', async function passesResolvedMarketId() {
       mockResolveMarketId.mockResolvedValueOnce({
         marketId: 'en-IN',
-        shopperMarket: 'en-IN',
-        visitorMarket: 'en-US',
-        source: 'shopper-api',
+        visitorMarket: 'en-IN',
+        source: 'visitor-market',
       });
 
       const { getControlPlaneAdapter } = await import('@/lib/control-plane');
@@ -315,20 +313,15 @@ describe('/api/sites', function sitesRouteTests() {
       const response = await POST(request);
 
       expect(response.status).toBe(201);
-      expect(mockResolveMarketId).toHaveBeenCalledWith(
-        expect.anything(),
-        'shopper-1',
-        'test-jwt-token',
-      );
+      expect(mockResolveMarketId).toHaveBeenCalledWith(expect.anything());
       expect(createSite).toHaveBeenCalledWith(
         expect.objectContaining({ marketId: 'en-IN' })
       );
     });
 
-    it('uses visitor-market resolution when helper picks visitor over shopper', async function passesVisitorMarketId() {
+    it('uses visitor-market resolution', async function passesVisitorMarketId() {
       mockResolveMarketId.mockResolvedValueOnce({
         marketId: 'de-DE',
-        shopperMarket: 'en-US',
         visitorMarket: 'de-DE',
         source: 'visitor-market',
       });
@@ -362,7 +355,6 @@ describe('/api/sites', function sitesRouteTests() {
     it('uses fallback en-US when helper returns the fallback source', async function fallsBackOnFallbackSource() {
       mockResolveMarketId.mockResolvedValueOnce({
         marketId: 'en-US',
-        shopperMarket: undefined,
         visitorMarket: undefined,
         source: 'fallback',
       });

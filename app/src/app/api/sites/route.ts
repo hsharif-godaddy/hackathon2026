@@ -141,7 +141,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
     // Use authenticated user's account ID
     const account_id = user.accountId!;
 
-    const { marketId } = await resolveMarketId(request, user.shopperId, authContext.jwt);
+    const { marketId } = await resolveMarketId(request);
 
     // Create site using control plane adapter
     const adapter = getControlPlaneAdapter();
