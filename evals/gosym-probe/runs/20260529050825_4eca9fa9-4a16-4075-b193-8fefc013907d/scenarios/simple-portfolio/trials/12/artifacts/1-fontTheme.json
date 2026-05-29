@@ -1,0 +1,24 @@
+{
+  "success": true,
+  "message": "Applied font theme: Elegant Geometric",
+  "appliedFont": {
+    "name": "Elegant Geometric",
+    "headerFont": {
+      "name": "Playfair Display",
+      "weights": [
+        "600",
+        "700"
+      ],
+      "category": "serif"
+    },
+    "bodyFont": {
+      "name": "DM Sans",
+      "weights": [
+        "400",
+        "500"
+      ],
+      "category": "sans-serif"
+    }
+  },
+  "suggestedResponse": "Font theme \"Elegant Geometric\" (Playfair Display (headers) + DM Sans (body)) has been applied."
+}

@@ -1,0 +1,24 @@
+{
+  "success": true,
+  "message": "Applied font theme: Editorial Refined",
+  "appliedFont": {
+    "name": "Editorial Refined",
+    "headerFont": {
+      "name": "DM Serif Display",
+      "weights": [
+        "400"
+      ],
+      "category": "serif"
+    },
+    "bodyFont": {
+      "name": "Plus Jakarta Sans",
+      "weights": [
+        "400",
+        "500",
+        "600"
+      ],
+      "category": "sans-serif"
+    }
+  },
+  "suggestedResponse": "Font theme \"Editorial Refined\" (DM Serif Display (headers) + Plus Jakarta Sans (body)) has been applied."
+}

@@ -1,0 +1,127 @@
+Build a full multi-page website for "Artisan Goods Co.", a handmade crafts shop. Here is the complete design direction and build plan.
+
+PROJECT DETAILS:
+- Business: Artisan Goods Co. — handmade crafts shop
+- Categories: Pottery, Textiles, Woodwork, Jewelry
+- Pages needed: Homepage, Product Catalog, About
+
+DESIGN DIRECTION:
+Warm, artisanal aesthetic that feels handcrafted and authentic — like a well-curated maker's market. Rich earth tones with generous whitespace and editorial typography. Should feel premium and tactile, not corporate or generic e-commerce.
+
+LAYOUT TYPE: Standard
+Multi-page site with shared header navigation and footer.
+
+VISUAL DIRECTION:
+- Color: Warm earth palette — deep terracotta, warm cream/off-white, rich walnut brown, and a muted sage green accent. Nothing cold or sterile.
+- Typography: Serif display font for headings (warmth and craft heritage), clean humanist sans-serif for body text. Strong size contrast between headings and body.
+- Layout: Asymmetric hero with full-bleed imagery. Product grid with generous spacing. NO uniform icon grids.
+- Visual elements: Photography-forward (artisan products, textures, hands at work). Warm-toned imagery with natural lighting feel.
+- Motion: Subtle — fade-in on scroll for product cards (staggered), gentle hover lift on product cards, smooth category filter transitions.
+
+LOGO:
+Use the `media-logo` skill to generate a logo for "Artisan Goods Co." — a refined wordmark with a small handcraft icon (like a simple leaf or hand-drawn mark). Warm terracotta or walnut brown color. Place in header top-left.
+
+MOTION DESIGN:
+- Level: Subtle
+- Effects: Staggered fade-in on product cards (scroll-triggered, 80ms stagger), hover lift on cards (translate-y -4px + shadow), smooth filter tab transitions (200ms), hero text fade-in entrance (400ms)
+- Personality: Warm and unhurried — nothing snappy or corporate
+
+SECTION-SPECIFIC:
+
+Hero (Homepage):
+- Full-bleed background image of artisan workspace or handmade goods
+- Headline overlaid with warm overlay gradient (not pure black)
+- Subheadline + primary CTA button ("Shop Now" → /products)
+- Asymmetric composition — headline left-aligned, not centered
+
+Featured Products (Homepage):
+- Section heading: "Handpicked for You"
+- Show 4 featured products fetched from API (featured: true)
+- Staggered card grid (2-col mobile, 4-col desktop)
+- Each card: image, name, category badge, price, hover lift effect
+
+Newsletter Signup (Homepage):
+- Warm-toned section (terracotta or cream background)
+- Headline + short copy + email input + submit button
+- NOT a centered-text-on-colored-band — use asymmetric layout with a decorative element
+
+Product Catalog Page (/products):
+- Page heading + category filter tabs: All | Pottery | Textiles | Woodwork | Jewelry
+- Fetch all products from API, filter client-side by category
+- Product grid: 2-col mobile, 3-col tablet, 4-col desktop
+- Each card: product image, name, category badge, price
+- Smooth filter transition (cards fade when switching categories)
+- Use route loader to fetch products server-side
+
+About Page (/about):
+- Hero section: large headline + mission statement paragraph
+- "Our Story" section: 2-column layout (text left, image right)
+- Team section: grid of team member cards with photo, name, role, short bio
+- Mission statement callout: large pull-quote style, warm background
+
+Header:
+- Logo left, nav links center/right: Home | Shop | About
+- Clean, minimal — warm background (cream/off-white), terracotta accent on active link
+- Sticky on scroll with subtle shadow
+- Mobile hamburger menu
+
+Footer:
+- Multi-column: Brand info + nav links + newsletter teaser
+- Warm dark background (walnut brown), cream text
+- Maintain design quality — not an afterthought
+
+DIFFERENTIATION:
+Oversized serif headline in the hero that breaks the grid — large enough to feel editorial and bold, not like a standard template hero.
+
+CONSISTENCY:
+Maintain warm earth-tone energy throughout all pages and the footer. Animation timing consistent (subtle, 300-400ms). Never let the design get safer or more generic as pages progress.
+
+BUILD ORDER:
+
+Phase 1 — Setup (run in parallel):
+- Generate logo using `media-logo` skill
+- Search for images: artisan workshop hero, pottery/textiles/woodwork/jewelry product photos, team member portraits (warm, natural lighting style)
+- Set font stack using fontTheme tool: serif display (e.g. Playfair Display or Lora) + humanist sans (e.g. Source Sans Pro or DM Sans)
+- Set color scheme using colorScheme tool: terracotta primary, warm cream background, walnut brown dark, sage green accent
+- Build Products API endpoint in `src/server/api/products.ts` and register in `src/server/entry.ts`
+
+Phase 2 — Structure (run in parallel, after Phase 1):
+- Build Header (sticky, logo + nav, mobile menu)
+- Build Footer (multi-column, warm dark background)
+
+Phase 3 — Pages (after Phase 1 & 2):
+- Add routes to routes.tsx: / (Homepage), /products (Catalog with loader), /about (About)
+- Build Homepage (src/pages/index.tsx): hero, featured products, newsletter
+- Build Product Catalog (src/pages/products.tsx): filters + product grid, uses loader data
+- Build About page (src/pages/about.tsx): story, team, mission
+
+Phase 4 — Finalize:
+- Mark all todo items as COMPLETE using the todoList tool
+- Ask for design feedback using askQuestion
+
+PRODUCTS API SPEC:
+Create `GET /api/products` returning an array of products. Include 12+ products across all 4 categories. Each product:
+```json
+{
+  "id": "string",
+  "name": "string",
+  "category": "pottery" | "textiles" | "woodwork" | "jewelry",
+  "price": number,
+  "image": "string (use fetched image URL)",
+  "description": "string",
+  "featured": boolean
+}
+```
+
+ROUTE LOADER:
+The /products page should use a route loader in routes.tsx to fetch from /api/products server-side so the catalog renders with data on first load.
+
+CRITICAL: Build pages LAST — after setup, API, header, and footer are done.
+
+TODO LIST MANAGEMENT:
+After completing all pages, mark all 5 todo items as complete using the todoList tool.
+
+DESIGN FEEDBACK:
+After showing the site, use askQuestion to ask:
+- Question: "How does the site look?"
+- Suggestions: ["Looks great, I'm done!", "Adjust the color scheme", "Change the fonts", "Tweak the homepage hero", "Update product card layout"]

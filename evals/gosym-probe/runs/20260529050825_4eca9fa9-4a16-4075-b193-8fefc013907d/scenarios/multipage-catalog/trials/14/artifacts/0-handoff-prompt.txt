@@ -1,0 +1,124 @@
+Build a full multi-page website for "Artisan Goods Co.", a handmade crafts shop. Full details below.
+
+PROJECT DETAILS:
+- Business: Artisan Goods Co. — handmade crafts shop
+- Categories: Pottery, Textiles, Woodwork, Jewelry
+- Audience: Craft lovers, gift shoppers, design-conscious consumers
+- Goal: Showcase products, tell the brand story, capture newsletter leads
+
+DESIGN DIRECTION:
+Warm, artisanal aesthetic that feels handcrafted and authentic — like a well-curated boutique market stall brought online. Rich earth tones, natural textures, and generous whitespace. NOT a generic e-commerce template — this should feel personal and crafted.
+
+LAYOUT TYPE: Standard
+Multi-page marketing/shop site with full navigation header and footer.
+
+VISUAL DIRECTION:
+- Color: Warm earth palette — terracotta, warm cream/off-white, deep walnut brown, sage green accent. Nothing cold or corporate.
+- Typography: Serif display font for headings (warmth, craft heritage feel), clean sans-serif for body. Generous line-height.
+- Layout: Asymmetric hero with full-bleed imagery. Product grid with subtle hover lifts. NO uniform icon grids.
+
+VISUAL ELEMENTS:
+- Primary: Photography — search for artisan/handmade craft product photos (pottery, textiles, woodwork, jewelry)
+- Style: Warm natural lighting, tactile textures, close-up detail shots
+- Application: Full-bleed hero, product cards, team profile photos on About page
+- Logo: Generate a logo using the media-logo skill — wordmark style with a small hand-drawn craft icon (e.g. a simple pottery wheel or leaf motif), warm terracotta/brown color
+
+MOTION DESIGN:
+- Level: Subtle
+- Effects: Fade-in on scroll for sections (350ms ease-out), hover lift on product cards (translate-y -4px + shadow), smooth nav link underline draw on hover
+- Personality: Warm and unhurried — nothing snappy or corporate
+
+SECTION-SPECIFIC:
+
+Hero (Homepage):
+- Full-bleed background image of artisan at work or product flatlay
+- Headline: "Handcrafted with Heart" — large serif, overlaid on image with warm overlay
+- Subheadline and CTA button ("Shop the Collection" → /products)
+- Subtle fade-in entrance animation
+
+Featured Products (Homepage):
+- Section title "Our Favorites" in serif
+- 4 featured product cards in a 2x2 or horizontal scroll on mobile
+- Each card: product image, name, category tag, price
+- Hover: lift effect + subtle shadow
+
+Newsletter Signup (Homepage):
+- Warm-toned band section (terracotta or deep brown background)
+- Headline: "Join Our Community"
+- Email input + Subscribe button
+- NOT a centered-on-band generic CTA — use asymmetric layout with decorative element
+
+Product Catalog Page (/products):
+- Page title + breadcrumb
+- Category filter tabs: All | Pottery | Textiles | Woodwork | Jewelry
+- Products fetched from /api/products (with optional ?category= query param)
+- Responsive grid: 3 cols desktop, 2 cols tablet, 1 col mobile
+- Product card: image, name, category badge, price
+- Loading skeleton state while fetching
+- Filter updates the displayed products (client-side filter or re-fetch)
+
+About Page (/about):
+- Hero section: "Our Story" with a warm full-bleed image
+- Brand story paragraph (2-3 paragraphs about handmade craft values)
+- Mission statement in a pull-quote style (large serif, centered, terracotta accent)
+- Team section: 3 team member cards with photo, name, role, short bio
+- Staggered fade-in on scroll for team cards
+
+Shared Header:
+- Logo left, nav links right: Home | Shop | About
+- Active link indicator (underline or color)
+- Mobile hamburger menu with slide-in drawer
+- Warm cream/off-white background, walnut brown text
+
+Shared Footer:
+- 3-column: Brand blurb + logo | Quick links | Newsletter mini-signup or social links
+- Warm dark background (deep walnut/charcoal), cream text
+- Maintain design quality — not an afterthought
+
+DIFFERENTIATION:
+Asymmetric hero with large serif headline breaking the grid. Product cards use a warm paper-texture-inspired card background. Pull-quote mission statement on About page creates a memorable typographic moment.
+
+CONSISTENCY:
+Maintain warm earth-tone energy throughout all pages and the footer. Animation timing consistent (subtle, 300-400ms). Serif/sans pairing used consistently across all pages.
+
+BUILD ORDER:
+
+Phase 1 — Setup (run in parallel):
+- Search for images: hero (artisan at work / craft flatlay), product images for each category (pottery, textiles, woodwork, jewelry), team member photos, about page hero
+- Generate logo using media-logo skill (wordmark + craft icon, terracotta/brown)
+- Set font stack using fontTheme tool — serif display (e.g. Playfair Display or Lora) + clean sans (e.g. DM Sans or Nunito)
+- Set color scheme using colorScheme tool — terracotta primary, warm cream background, walnut brown foreground, sage green accent
+
+Phase 2 — API + Routes (after Phase 1):
+- Create src/server/api/products.ts — Express handler for GET /api/products with optional ?category= filter. Returns array of 12–16 mock products across all 4 categories with id, name, category, price, image fields. Import and register in src/server/entry.ts.
+- Add routes to src/routes.tsx: / (homepage), /products (catalog), /about
+
+Phase 3 — Layout (after Phase 1):
+- Update src/layouts/parts/Header.tsx — warm cream bg, logo, nav links (Home/Shop/About), active state, mobile drawer
+- Update src/layouts/parts/Footer.tsx — 3-column dark footer with brand blurb, quick links, social icons
+
+Phase 4 — Pages (after Phase 2 & 3):
+- Build src/pages/index.tsx — homepage with hero, featured products (fetch from /api/products, show first 4), newsletter signup
+- Build src/pages/products.tsx — catalog page with category filter tabs, full product grid fetched from /api/products, loading skeletons
+- Build src/pages/about.tsx — story, mission pull-quote, team profiles
+
+Phase 5 — Finalize:
+- Mark all todo items as COMPLETE using the todoList tool
+- Show the design and ask for feedback using askQuestion
+
+CRITICAL: Build pages LAST — after setup, API, header, and footer are complete.
+
+TODO LIST IDs (mark complete when done):
+- Homepage: 1780065617357-3ujvwsi
+- Product catalog page: 1780065617358-bhrx09x
+- About page: 1780065617358-b2xjj6w
+- Shared navigation & footer: 1780065617358-hc96kia
+- Products API endpoint: 1780065617358-dlxtmi6
+List ID: 1780065617357-o7m011w
+
+INITIAL SCOPE: Build all pages as specified — this is a full multi-page site request.
+
+DESIGN FEEDBACK:
+After showing the site, use askQuestion to ask:
+- "What do you think of the design?"
+- Suggestions: ["Looks great!", "Adjust the color scheme", "Change the fonts", "Tweak the product layout", "Add a product detail page"]

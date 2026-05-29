@@ -1,0 +1,24 @@
+{
+  "success": true,
+  "message": "Applied font theme: Warm & Friendly",
+  "appliedFont": {
+    "name": "Warm & Friendly",
+    "headerFont": {
+      "name": "Nunito",
+      "weights": [
+        "600",
+        "700"
+      ],
+      "category": "sans-serif"
+    },
+    "bodyFont": {
+      "name": "DM Sans",
+      "weights": [
+        "400",
+        "500"
+      ],
+      "category": "sans-serif"
+    }
+  },
+  "suggestedResponse": "Font theme \"Warm & Friendly\" (Nunito (headers) + DM Sans (body)) has been applied."
+}

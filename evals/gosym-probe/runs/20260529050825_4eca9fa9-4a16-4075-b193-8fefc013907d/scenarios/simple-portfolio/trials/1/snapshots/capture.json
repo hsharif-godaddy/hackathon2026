@@ -1,0 +1,98 @@
+{
+  "previewUrl": "https://local.gasket.dev-godaddy.com:5003",
+  "generatedAt": "2026-05-29T05:16:03.414Z",
+  "durationMs": 13148,
+  "outputDir": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/simple-portfolio/trials/1/snapshots",
+  "routes": [
+    {
+      "path": "/",
+      "url": "https://local.gasket.dev-godaddy.com:5003",
+      "origin": "homepage",
+      "status": "ok",
+      "httpStatus": 200
+    }
+  ],
+  "perRoute": [
+    {
+      "route": {
+        "path": "/",
+        "url": "https://local.gasket.dev-godaddy.com:5003",
+        "origin": "homepage",
+        "status": "ok",
+        "httpStatus": 200
+      },
+      "rendered": {
+        "title": "Jordan Ellis — Freelance UX Designer",
+        "h1": "JordanEllis.",
+        "headingText": "JordanEllis. | Building with intention, designing with care. | Let's make something worth remembering.",
+        "bodyPreview": "FREELANCE UX DESIGNER\n\nJordan\nEllis.\n\nDesigning experiences people actually enjoy using.\n\nVIEW WORK\nGET IN TOUCH\nSCROLL\n\nABOUT\n\nBuilding with intention, designing with care.\n\nI'm a freelance UX designer based with over eight years of experience helping startups and established brands create products"
+      },
+      "perViewport": {
+        "mobile": {
+          "tiles": [
+            {
+              "index": 0,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/simple-portfolio/trials/1/snapshots/mobile/home/tile0.png",
+              "yOffset": 0
+            },
+            {
+              "index": 1,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/simple-portfolio/trials/1/snapshots/mobile/home/tile1.png",
+              "yOffset": 637
+            },
+            {
+              "index": 2,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/simple-portfolio/trials/1/snapshots/mobile/home/tile2.png",
+              "yOffset": 1304
+            },
+            {
+              "index": 3,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/simple-portfolio/trials/1/snapshots/mobile/home/tile3.png",
+              "yOffset": 1968
+            },
+            {
+              "index": 4,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/simple-portfolio/trials/1/snapshots/mobile/home/tile4.png",
+              "yOffset": 2633
+            },
+            {
+              "index": 5,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/simple-portfolio/trials/1/snapshots/mobile/home/tile5.png",
+              "yOffset": 3199
+            }
+          ]
+        },
+        "laptop": {
+          "tiles": [
+            {
+              "index": 0,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/simple-portfolio/trials/1/snapshots/laptop/home/tile0.png",
+              "yOffset": 0
+            },
+            {
+              "index": 1,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/simple-portfolio/trials/1/snapshots/laptop/home/tile1.png",
+              "yOffset": 822
+            },
+            {
+              "index": 2,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/simple-portfolio/trials/1/snapshots/laptop/home/tile2.png",
+              "yOffset": 1711
+            },
+            {
+              "index": 3,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/simple-portfolio/trials/1/snapshots/laptop/home/tile3.png",
+              "yOffset": 2182
+            },
+            {
+              "index": 4,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/simple-portfolio/trials/1/snapshots/laptop/home/tile4.png",
+              "yOffset": 2187
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "errors": []
+}

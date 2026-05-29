@@ -1,0 +1,145 @@
+Build a full multi-page website for "Artisan Goods Co.", a handmade crafts shop. All pages must be built and fully functional.
+
+PROJECT DETAILS:
+- Business: Artisan Goods Co. — handmade crafts shop
+- Products: Pottery, textiles, woodwork, jewelry
+- Audience: Craft lovers, gift shoppers, design-conscious consumers
+- Tone: Warm, artisanal, authentic, premium-handmade
+
+DESIGN DIRECTION:
+Warm and earthy aesthetic that feels handcrafted and authentic — like a well-curated artisan market. Rich terracotta, warm cream, and deep forest green palette. Typography mixes a warm serif for headings with a clean sans-serif for body text. Layouts use generous whitespace, organic asymmetry, and full-bleed imagery sections to evoke the texture and warmth of handmade goods.
+
+LAYOUT TYPE: Standard
+Multi-page site with shared header navigation and footer.
+
+VISUAL DIRECTION:
+- Color: Warm earthy tones — terracotta (#C4622D), warm cream (#F5EFE0), deep forest green (#2D4A3E), soft sand (#E8D5B0). NOT generic white/gray.
+- Typography: Warm serif for headings (Playfair Display or Lora), clean humanist sans for body (Source Sans Pro or Nunito). Generous line-height.
+- Layout: Full-bleed hero with overlay text, asymmetric product grids, editorial section breaks. NO uniform icon grids.
+
+VISUAL ELEMENTS:
+- Primary: Photography (product shots, lifestyle, craft process)
+- Style: Warm, natural lighting; textured backgrounds; handmade aesthetic
+- Application: Hero full-bleed, product cards with square images, team photos circular
+- Logo: Generate a logo using the media-logo skill — warm serif wordmark "Artisan Goods Co." with a small handcraft icon (e.g., a simple pottery vessel or leaf motif). Earthy terracotta/green palette.
+
+MOTION DESIGN:
+- Level: Subtle
+- Effects: Fade-in on scroll for sections (400ms ease-out), hover lift on product cards (translateY -4px + shadow), smooth underline draw on nav links, gentle scale on CTA buttons
+- Personality: Warm and unhurried — nothing snappy or corporate
+
+SECTION-SPECIFIC:
+
+Hero (Homepage):
+- Full-bleed background image of handmade goods/workshop
+- Overlaid headline: "Crafted with Care, Made to Last"
+- Subheadline and two CTAs: "Shop Now" → /products, "Our Story" → /about
+- Warm gradient overlay (terracotta to transparent)
+
+Featured Products (Homepage):
+- 4-card asymmetric grid (one card larger/featured)
+- Each card: product image, name, category badge, price, hover reveal "View Product"
+- "Browse All Products" link below
+
+Newsletter Signup (Homepage):
+- Full-width warm-toned section with organic shape accent
+- Headline: "Join Our Craft Community"
+- Email input + subscribe button
+- Subtle background texture
+
+PRODUCT CATALOG PAGE (/products):
+- Page title + category filter tabs: All | Pottery | Textiles | Woodwork | Jewelry
+- Products fetched from /api/products via React Router loader
+- Responsive grid: 3 columns desktop, 2 tablet, 1 mobile
+- Each product card: square image, category badge, name, price, "Add to Cart" button (non-functional, UI only)
+- Filter tabs update displayed products client-side (filter the loaded data)
+- Loading skeleton state while data loads
+
+ABOUT PAGE (/about):
+- Hero section: full-width image with "Our Story" heading
+- Brand story section: 2-column layout (text left, image right) — founding story, values
+- Mission statement: large pull-quote style, centered, terracotta accent
+- Team section: grid of 3-4 team member cards — circular photo, name, role, short bio
+- Closing CTA linking to /products
+
+SHARED HEADER (src/layouts/parts/Header.tsx):
+- Style: Professional with artisan warmth
+- Logo left, nav links center/right: Home | Products | About
+- Warm cream background, terracotta accent on active/hover
+- Mobile hamburger menu
+- Sticky on scroll with subtle shadow
+
+SHARED FOOTER (src/layouts/parts/Footer.tsx):
+- Style: Multi-column
+- Columns: Brand blurb + social icons | Quick Links | Categories | Newsletter mini-form
+- Warm dark background (deep forest green or near-black)
+- Light cream text
+
+DIFFERENTIATION: Asymmetric featured product grid on homepage where one card is 2x size. Full-bleed earthy photography throughout. Warm serif headings create editorial feel unlike generic e-commerce templates.
+
+CONSISTENCY: Maintain earthy warmth throughout — footer as intentional as hero. Terracotta accents used consistently as the action/highlight color.
+
+BUILD ORDER:
+
+Phase 1 — Setup (run in parallel):
+- Search for images: artisan workshop hero, pottery products, textile products, woodwork products, jewelry products, team member portraits, about page hero
+- Set font stack using fontTheme tool: Playfair Display (headings) + Source Sans Pro or Nunito (body)
+- Set color scheme using colorTheme tool: terracotta primary, warm cream background, forest green secondary
+- Generate logo using media-logo skill
+
+Phase 2 — API + Structure (run in parallel after Phase 1):
+- Build /api/products Express endpoint in src/server/api/products.ts — return 12 mock products across 4 categories (pottery, textiles, woodwork, jewelry) each with: id, name, category, price, description, imageUrl (use fetched Getty image URLs)
+- Register the API handler in src/server/entry.ts
+- Build Header (src/layouts/parts/Header.tsx) — sticky, warm cream, logo + nav + mobile menu
+- Build Footer (src/layouts/parts/Footer.tsx) — multi-column, forest green dark background
+
+Phase 3 — Pages (after Phase 1 & 2):
+- Build Homepage (src/pages/index.tsx): hero, featured products (fetch from /api/products, show first 4), newsletter signup
+- Add route loader to routes.tsx for /products that fetches from /api/products
+- Build Product Catalog (src/pages/products.tsx): filter tabs, product grid, loading states
+- Build About page (src/pages/about.tsx): story, mission, team grid
+
+Phase 4 — Routes + Finalize:
+- Update src/routes.tsx to include all three routes: /, /products, /about — with loader on /products
+- Mark all todo items as COMPLETE using the todoList tool
+- Show the finished site
+
+ROUTES (src/routes.tsx):
+```tsx
+[
+  { path: '/', element: <HomePage /> },
+  {
+    path: '/products',
+    element: <ProductsPage />,
+    loader: async () => {
+      const res = await fetch('/api/products');
+      return { products: await res.json() };
+    }
+  },
+  { path: '/about', element: <AboutPage /> }
+]
+```
+
+API SHAPE (/api/products response):
+```json
+[
+  {
+    "id": "1",
+    "name": "Hand-Thrown Terracotta Bowl",
+    "category": "pottery",
+    "price": 48,
+    "description": "Wheel-thrown stoneware with a warm terracotta glaze.",
+    "imageUrl": "<getty image url>"
+  }
+]
+```
+
+TODO LIST MANAGEMENT:
+After completing all pages and the API, mark ALL todo items as complete using the todoList tool:
+- Homepage
+- Product catalog page
+- About page
+- Shared navigation & footer
+- Products API endpoint
+
+INITIAL SCOPE: Build ALL pages as requested — this is a full multi-page site build, not just a homepage preview.

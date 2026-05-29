@@ -1,0 +1,63 @@
+{
+  "previewUrl": "https://local.gasket.dev-godaddy.com:5015",
+  "generatedAt": "2026-05-29T05:35:39.761Z",
+  "durationMs": 8585,
+  "outputDir": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/simple-portfolio/trials/5/snapshots",
+  "routes": [
+    {
+      "path": "/",
+      "url": "https://local.gasket.dev-godaddy.com:5015",
+      "origin": "homepage",
+      "status": "ok",
+      "httpStatus": 200
+    }
+  ],
+  "perRoute": [
+    {
+      "route": {
+        "path": "/",
+        "url": "https://local.gasket.dev-godaddy.com:5015",
+        "origin": "homepage",
+        "status": "ok",
+        "httpStatus": 200
+      },
+      "perViewport": {
+        "mobile": {
+          "tiles": []
+        },
+        "laptop": {
+          "tiles": [
+            {
+              "index": 0,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/simple-portfolio/trials/5/snapshots/laptop/home/tile0.png",
+              "yOffset": 0
+            },
+            {
+              "index": 1,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/simple-portfolio/trials/5/snapshots/laptop/home/tile1.png",
+              "yOffset": 823
+            },
+            {
+              "index": 2,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/simple-portfolio/trials/5/snapshots/laptop/home/tile2.png",
+              "yOffset": 1707
+            },
+            {
+              "index": 3,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/simple-portfolio/trials/5/snapshots/laptop/home/tile3.png",
+              "yOffset": 2412
+            },
+            {
+              "index": 4,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/simple-portfolio/trials/5/snapshots/laptop/home/tile4.png",
+              "yOffset": 2451
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "errors": [
+    "/ @ mobile: page.evaluate: Execution context was destroyed, most likely because of a navigation"
+  ]
+}

@@ -1,0 +1,61 @@
+{
+  "artifacts": [
+    {
+      "index": 0,
+      "turnIndex": 3,
+      "toolName": "handoff",
+      "filename": "0-handoff-prompt.txt",
+      "agentId": "Initial"
+    },
+    {
+      "index": 1,
+      "turnIndex": 3,
+      "toolName": "colorScheme",
+      "filename": "1-colorScheme.json",
+      "agentId": "AI Developer"
+    },
+    {
+      "index": 2,
+      "turnIndex": 3,
+      "toolName": "fontTheme",
+      "filename": "2-fontTheme.json",
+      "agentId": "AI Developer"
+    },
+    {
+      "index": 3,
+      "turnIndex": 3,
+      "toolName": "readFile",
+      "filename": "3-RootLayout.tsx",
+      "agentId": "AI Developer"
+    },
+    {
+      "index": 4,
+      "turnIndex": 7,
+      "toolName": "readFile",
+      "filename": "4-Footer.tsx",
+      "agentId": "AI Developer"
+    },
+    {
+      "index": 5,
+      "turnIndex": 7,
+      "toolName": "readFile",
+      "filename": "5-index.tsx",
+      "agentId": "AI Developer"
+    },
+    {
+      "index": 6,
+      "turnIndex": 7,
+      "toolName": "readFile",
+      "filename": "6-routes.tsx",
+      "agentId": "AI Developer"
+    },
+    {
+      "index": 7,
+      "turnIndex": 7,
+      "toolName": "readFile",
+      "filename": "7-entry.ts",
+      "agentId": "AI Developer"
+    }
+  ],
+  "totalCount": 8
+}

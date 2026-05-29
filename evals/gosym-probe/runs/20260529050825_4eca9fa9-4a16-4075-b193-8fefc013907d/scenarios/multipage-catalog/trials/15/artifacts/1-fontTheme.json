@@ -1,0 +1,24 @@
+{
+  "success": true,
+  "message": "Applied font theme: Editorial Artisan",
+  "appliedFont": {
+    "name": "Editorial Artisan",
+    "headerFont": {
+      "name": "Playfair Display",
+      "weights": [
+        "600",
+        "700"
+      ],
+      "category": "serif"
+    },
+    "bodyFont": {
+      "name": "DM Sans",
+      "weights": [
+        "400",
+        "500"
+      ],
+      "category": "sans-serif"
+    }
+  },
+  "suggestedResponse": "Font theme \"Editorial Artisan\" (Playfair Display (headers) + DM Sans (body)) has been applied."
+}

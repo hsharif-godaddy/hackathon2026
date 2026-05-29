@@ -1,0 +1,30 @@
+{
+  "scenarioName": "simple-portfolio",
+  "trial": 12,
+  "turns": [
+    {
+      "role": "user",
+      "content": "Build me a personal portfolio website with:\n- A hero section with my name and a short tagline\n- An about section describing my background\n- A contact section with an email link and social\n  media icons\nUse a clean, modern design with good spacing.",
+      "durationSeconds": 0
+    },
+    {
+      "role": "assistant",
+      "content": "I'll build this portfolio step by step. Let me start with Phase 1 — all setup tasks in parallel.Colors, fonts loaded. Now generating the logo and searching for a profile image in parallel.Logo and image ready. Now building Header and Footer in parallel.Header and Footer done. Now let me read the existing layout files before updating them.Good. Now let me update the RootLayout with proper SEO defaults and build the homepage.Now building the homepage — the main event:Your portfolio is live in the preview. Here's what was built:\n\n- **Hero** — Full-viewport with an oversized serif name, warm gold accent line, subtle \"AM\" background monogram, and smooth entrance animations\n- **About** — Two-column layout with bio text on the left and a portrait photo with decorative geometric accents on the right, on a warm off-white background\n- **Contact** — Dark section with a large email link, inline social icons (GitHub, LinkedIn, Twitter, Dribbble) with hover scale effects\n- **Header** — Minimal with your generated wordmark logo and nav links with underline-draw hover effect\n- **Footer** — Clean copyright + back-to-top",
+      "durationSeconds": 348.9
+    },
+    {
+      "role": "user",
+      "content": "Looks great! Can you update the placeholder content with my real info? My name is Jordan Blake, I'm a freelance graphic designer with 8 years of experience specializing in brand identity and print design. My tagline is \"Designing brands that mean something.\" My email is jordan@jordanblakedesign.com and my social handles are @jordanblakedesign on both Instagram and LinkedIn.\n\nDONE",
+      "durationSeconds": 4.2
+    },
+    {
+      "role": "assistant",
+      "content": "Instagram doesn't have a lucide icon, so I'll swap to the `Instagram` icon from lucide-react and update all the content now.Now update the RootLayout defaults and the Footer copyright name:All your real info is in — name updated to Jordan Blake throughout, tagline, bio, email, and social links (Instagram + LinkedIn at @jordanblakedesign) are all live.",
+      "durationSeconds": 134.4
+    }
+  ],
+  "summary": {
+    "messageCount": 4,
+    "totalElapsedSeconds": 487.5
+  }
+}

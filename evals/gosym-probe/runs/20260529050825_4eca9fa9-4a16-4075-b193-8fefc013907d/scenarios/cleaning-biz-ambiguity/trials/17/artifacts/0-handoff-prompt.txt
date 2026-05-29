@@ -1,0 +1,70 @@
+Build a homepage design preview with this direction:
+
+PROJECT DETAILS:
+- Business name: Sparkle Clean
+- Service type: Residential house cleaning
+- Primary goal: Get customers to contact / book a cleaning
+
+DESIGN DIRECTION:
+Fresh, bright, and trustworthy — like a home that's just been cleaned. Warm whites and soft sky blues with a pop of citrus yellow as an accent. Should feel approachable and professional, not corporate or cold. Local and personal, not a franchise chain.
+
+LAYOUT TYPE: Standard
+This is a local service business site that needs full navigation structure.
+
+VISUAL DIRECTION:
+- Color: Crisp off-white base, soft sky blue as primary, citrus yellow as accent. Warm and clean — not sterile hospital white or generic blue.
+- Typography: Friendly but professional. A rounded, approachable sans-serif for headings, clean sans for body. Warm and readable.
+- Layout: DO NOT use icon grids for services. Use staggered two-column cards or a bento-style layout with varied card sizes. DO NOT use centered-text-on-colored-band CTA.
+
+VISUAL ELEMENTS:
+- Primary: Photography — bright, airy photos of clean homes, sparkling surfaces, happy homeowners
+- Style: Natural lighting, warm tones, authentic feel (not sterile stock photos)
+- Application: Full hero with photo, service section with lifestyle imagery
+- Logo: A clean, friendly wordmark logo for "Sparkle Clean" with a subtle sparkle or shine mark. Use the media-logo skill to generate it — do NOT use a text wordmark or emoji substitute.
+
+MOTION DESIGN:
+- Level: Subtle
+- Effects: Fade-in on scroll for sections (350ms ease-out), gentle hover lift on service cards (translate-y + soft shadow), smooth button color transitions (200ms)
+- Personality: Warm and welcoming — smooth and gentle, nothing jarring or fast
+
+SECTION-SPECIFIC:
+- Hero: Full-width photo of a beautifully clean living room or kitchen. Bold headline left-aligned, CTA button right. Staggered entrance animation. Trust badge row below (e.g., "Insured & Bonded", "5-Star Rated", "100% Satisfaction Guarantee").
+- Services: Staggered two-column layout showing service types (Standard Clean, Deep Clean, Move-In/Move-Out) with real lifestyle photos — NOT icon cards.
+- Social proof: 3 customer testimonials in a clean card row with star ratings and first names.
+- CTA: Asymmetric section — large headline left, contact form or phone number right. Warm background, not a flat colored band.
+- Footer: Maintain quality — include nav links, phone number, service area, and social icons.
+
+DIFFERENTIATION:
+Oversized, confident headline in the hero that breaks the grid slightly — something like "Your Home, Spotless." in large display type. Citrus yellow used as a punctuation accent (underline, highlight, or button) to create warmth and energy.
+
+CONSISTENCY:
+Maintain warm, clean energy throughout — footer and CTA should feel as intentional as the hero. Animation timing consistent (gentle, 300-400ms).
+
+BUILD ORDER:
+
+Phase 1 — Setup (run these in parallel):
+- Search for images: bright airy clean living room hero, sparkling kitchen lifestyle, happy homeowner, clean bedroom
+- Set font stack using the fontTheme tool — rounded friendly sans for headings (e.g. Plus Jakarta Sans or Nunito), clean sans for body
+- Set color scheme using the colorScheme tool — off-white base, sky blue primary, citrus yellow accent
+- Generate logo using the media-logo skill: friendly wordmark "Sparkle Clean" with a subtle sparkle/shine mark
+
+Phase 2 — Structure (run these in parallel, after Phase 1):
+- Build header with navigation (Home, Services, Pricing, About, Contact) — professional style with logo
+- Build footer with links, phone, service area, and social icons
+
+Phase 3 — Page (after Phase 1 & 2 are complete):
+- Build homepage (index.tsx) with all sections and animations
+
+Phase 4 — Finalize:
+- Mark the "Homepage" todo item as COMPLETE using the todoList tool
+- Ask for design feedback using askQuestion
+
+CRITICAL: Build homepage (index.tsx) LAST — after setup, header, and footer are done.
+
+INITIAL SCOPE:
+Build ONLY the homepage design for this preview. This is a design review, not the full site.
+
+DESIGN FEEDBACK:
+After showing the homepage design, use askQuestion tool to ask:
+- Question: "What do you think of the design?"
+- Suggestions: ["Looks great — let's build the Services page", "Looks great — let's add a Contact form", "Change the color scheme", "Change the fonts", "I'd like to adjust something"]

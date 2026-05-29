@@ -1,0 +1,68 @@
+Build a homepage design preview for a residential house cleaning business.
+
+PROJECT DETAILS:
+- Business type: Residential house cleaning (solo/small operator)
+- Primary goal: Get customers to call or book
+- Audience: Homeowners looking for a trustworthy, reliable cleaner
+
+DESIGN DIRECTION:
+Warm, fresh, and trustworthy — like a neighbor you'd actually let into your home. Clean whites and soft greens convey cleanliness without feeling clinical. Should feel personal and approachable, not corporate.
+
+LAYOUT TYPE: Standard
+Marketing site with full header navigation and footer.
+
+VISUAL DIRECTION:
+- Color: Crisp white base with soft sage green as the primary accent and a warm cream for section backgrounds. Avoid sterile hospital-blue or generic teal.
+- Typography: Friendly but professional — a rounded or soft sans-serif for headings paired with a clean sans for body text. Warm and readable.
+- Layout: DO NOT use icon grids for services. Instead use a 2-column alternating layout with illustrated or photographic cards. DO NOT use centered-text-on-colored-band CTA.
+
+VISUAL ELEMENTS:
+- Primary: Photography — bright, airy images of clean, sunlit interiors (kitchens, living rooms, bathrooms)
+- Style: Natural light, warm tones, real-home feel (not staged hotel shots)
+- Application: Full hero with a bright clean-home photo, service section photos showing specific rooms
+- Logo: Simple, friendly wordmark-style logo with a small leaf or sparkle mark. Use media-logo skill to generate — do NOT substitute text or emoji.
+
+MOTION DESIGN:
+- Level: Subtle
+- Effects: Fade-in on scroll for sections (350ms ease-out), gentle hover lift on service cards (translate-y + soft shadow), smooth button color fill on hover (200ms)
+- Personality: Warm and reassuring — nothing bouncy or flashy
+
+SECTION-SPECIFIC:
+- Hero: Full-width bright interior photo with headline overlay ("A Spotless Home, Every Time"), subheadline, and a prominent "Get a Free Quote" CTA button. Small trust badge row below (e.g., "Insured & Bonded · Eco-Friendly Products · 5-Star Rated").
+- Services: 3 service cards (Regular Cleaning, Deep Cleaning, Move-In/Move-Out) using alternating layout with room photos — NOT icon cards.
+- Trust/Social proof: 3 customer testimonial quotes with star ratings and first names. Simple, warm layout.
+- CTA section: Asymmetric layout — headline left, phone number + button right, soft sage background. Not a centered band.
+- Footer: Warm and clean — business name, nav links, phone number, and a short tagline.
+
+DIFFERENTIATION: Oversized warm headline in the hero with a subtle hand-drawn underline accent on a key word (e.g., "Spotless"). Creates a personal, human touch that stands out from generic cleaning sites.
+
+CONSISTENCY: Maintain warmth and approachability throughout — footer should feel as intentional as the hero. No energy drop-off.
+
+BUILD ORDER:
+
+Phase 1 — Setup (run in parallel):
+- Search for images: bright sunlit kitchen, clean living room, sparkling bathroom, happy homeowner
+- Set font stack using fontTheme tool — choose a warm, friendly sans-serif (e.g., Plus Jakarta Sans or DM Sans for headings, Inter for body)
+- Set color scheme using colorScheme tool — crisp white background, sage green primary, warm cream secondary, dark charcoal text
+- Generate logo using media-logo skill — friendly wordmark with small sparkle/leaf mark
+
+Phase 2 — Structure (run in parallel, after Phase 1):
+- Build header with logo + navigation (Home, Services, About, Contact) + "Book Now" CTA button
+- Build footer with business name, links, phone, and tagline
+
+Phase 3 — Page (after Phase 1 & 2):
+- Build homepage (index.tsx) with all sections: hero, trust badges, services, testimonials, CTA section
+- Ensure all animations are implemented
+
+Phase 4 — Finalize:
+- Mark "Homepage" todo item as complete using todoList tool
+- Ask for design feedback using askQuestion
+
+CRITICAL: Build index.tsx LAST after setup, header, and footer are complete.
+
+INITIAL SCOPE: Homepage design only for review.
+
+DESIGN FEEDBACK:
+After showing the homepage, use askQuestion to ask:
+- Question: "What do you think of the design?"
+- Suggestions: ["Looks great — let's add a Services & Pricing page", "Change the color scheme", "Change the fonts", "I'd like to adjust something specific"]

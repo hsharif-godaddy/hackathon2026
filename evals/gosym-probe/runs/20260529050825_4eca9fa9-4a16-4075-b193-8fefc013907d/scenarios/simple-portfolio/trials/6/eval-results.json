@@ -1,0 +1,322 @@
+[
+  {
+    "evaluator": "bug-hit-rate",
+    "score": 1,
+    "verdict": "pass",
+    "reason": "No unrecovered errors",
+    "details": {
+      "errorCount": 0,
+      "errors": []
+    }
+  },
+  {
+    "evaluator": "tool-failure-rate",
+    "score": 0,
+    "verdict": "observed",
+    "reason": "No tool failures across 28 tool call(s)",
+    "details": {
+      "failedCount": 0,
+      "totalCalls": 28,
+      "failedTools": []
+    }
+  },
+  {
+    "evaluator": "prompt-efficiency",
+    "score": 0.9308615796566533,
+    "verdict": "observed",
+    "reason": "2 user turns",
+    "details": {
+      "userTurns": 2
+    },
+    "evalVersion": "1.0"
+  },
+  {
+    "evaluator": "jtbd-completion",
+    "score": 1,
+    "verdict": "pass",
+    "reason": "LLM judge verdict: pass",
+    "details": {
+      "htmlContextAvailable": true
+    }
+  },
+  {
+    "evaluator": "output-quality",
+    "score": 0.8486950021153032,
+    "verdict": "pass",
+    "reason": "Composite of 9/9 sub-evaluators",
+    "details": {
+      "_composite": true,
+      "breakdown": [
+        {
+          "evaluator": "heading-hierarchy",
+          "score": 1,
+          "verdict": "pass",
+          "reason": "No heading level violations",
+          "scoreable": true
+        },
+        {
+          "evaluator": "semantic-density",
+          "score": 0.21875,
+          "verdict": "fail",
+          "reason": "7 semantic element(s) out of 32 block containers",
+          "scoreable": true
+        },
+        {
+          "evaluator": "accessibility-coverage",
+          "score": 0.9629629629629629,
+          "verdict": "pass",
+          "reason": "Accessibility weighted score across 2 active sub-dimension(s)",
+          "scoreable": true
+        },
+        {
+          "evaluator": "link-quality",
+          "score": 1,
+          "verdict": "pass",
+          "reason": "5 usable link(s) out of 5 total",
+          "scoreable": true
+        },
+        {
+          "evaluator": "responsive-readiness",
+          "score": 1,
+          "verdict": "pass",
+          "reason": "viewport meta, responsive breakpoint classes, flex/grid layout",
+          "scoreable": true
+        },
+        {
+          "evaluator": "inline-style-ratio",
+          "score": 0.9065420560747663,
+          "verdict": "pass",
+          "reason": "10 element(s) with authored inline styles out of 107",
+          "scoreable": true
+        },
+        {
+          "evaluator": "component-decomposition",
+          "score": 0.8500000000000001,
+          "verdict": "pass",
+          "reason": "4 unique file(s) across 3 director(y/ies)",
+          "scoreable": true
+        },
+        {
+          "evaluator": "visual-coherence",
+          "score": 0.88,
+          "verdict": "pass",
+          "reason": "The portfolio demonstrates strong visual coherence with consistent spacing rhythm, clear typographic hierarchy from oversized display headings down to body copy, and a restrained monochromatic palette accented by a single primary color. Minor deductions for animation states leaving elements at opacity:0 during evaluation and some decorative sidebar elements that feel slightly disconnected from the main layout flow.",
+          "scoreable": true
+        },
+        {
+          "evaluator": "content-substance",
+          "score": 0.82,
+          "verdict": "pass",
+          "reason": "The portfolio contains specific personal details (Alex Morgan, 10 years experience, contact email alex@alexmorgan.co), concrete service offerings (Brand Identity, UI/UX Design, Art Direction, Design Systems), and a clear CTA ('Get in touch'), with only minor generic filler in the contact section ('Find me on' lacking linked platforms).",
+          "scoreable": true
+        }
+      ],
+      "scoredCount": 9,
+      "totalCount": 9
+    },
+    "evalVersion": "accessibility-coverage:1.0+component-decomposition:1.0+content-substance:1.0+heading-hierarchy:1.0+inline-style-ratio:1.0+link-quality:1.0+responsive-readiness:1.0+semantic-density:1.0+visual-coherence:1.0"
+  },
+  {
+    "evaluator": "agent-steps",
+    "score": 0.9308615796566533,
+    "verdict": "observed",
+    "reason": "2 agent steps",
+    "details": {
+      "totalSteps": 2
+    },
+    "evalVersion": "1.0"
+  },
+  {
+    "evaluator": "latency",
+    "score": 0.00004476559849116721,
+    "verdict": "observed",
+    "reason": "TTFC=56168ms maxGap=128061ms total=379507ms chunks=36 turns=2 score=0.00 aabInit=51175ms aabTTFC=4988ms",
+    "details": {
+      "timeToFirstChunkMs": 56168,
+      "maxInterChunkGapMs": 128061,
+      "totalMs": 379507,
+      "chunkCount": 36,
+      "perTurn": [
+        {
+          "turnIndex": 0,
+          "timeToFirstChunkMs": 56168,
+          "maxInterChunkGapMs": 128061,
+          "totalTurnMs": 271876,
+          "chunkCount": 22
+        },
+        {
+          "turnIndex": 1,
+          "timeToFirstChunkMs": 59410,
+          "maxInterChunkGapMs": 6623,
+          "totalTurnMs": 103210,
+          "chunkCount": 14
+        }
+      ],
+      "medianTTFC": 57789,
+      "halfLifeMs": 4000,
+      "aabDiagnostics": {
+        "timingSummaries": [
+          {
+            "turnIndex": 0,
+            "timeToStreamStartMs": 2180,
+            "timeToFirstTextChunkMs": null,
+            "maxChunkGapMs": 3906,
+            "chunksRead": 682,
+            "streamDurationMs": 46483
+          },
+          {
+            "turnIndex": 0,
+            "timeToStreamStartMs": 51175,
+            "timeToFirstTextChunkMs": 4988,
+            "maxChunkGapMs": 116497,
+            "chunksRead": 2729,
+            "streamDurationMs": 220436
+          },
+          {
+            "turnIndex": 1,
+            "timeToStreamStartMs": 1515,
+            "timeToFirstTextChunkMs": 57862,
+            "maxChunkGapMs": 5128,
+            "chunksRead": 988,
+            "streamDurationMs": 67876
+          },
+          {
+            "turnIndex": 1,
+            "timeToStreamStartMs": 81216,
+            "timeToFirstTextChunkMs": null,
+            "maxChunkGapMs": 3569,
+            "chunksRead": 111,
+            "streamDurationMs": 10496
+          }
+        ],
+        "slowGaps": [
+          {
+            "turnIndex": 0,
+            "gapMs": 116497,
+            "chunksRead": 159,
+            "streamElapsedMs": 136339
+          }
+        ],
+        "timeouts": []
+      }
+    }
+  },
+  {
+    "evaluator": "tool-parallelism",
+    "score": 0.031746031746031744,
+    "verdict": "observed",
+    "reason": "Tool parallelism ratio: 3%",
+    "details": {
+      "turnsAnalyzed": 2,
+      "totalWeight": 28,
+      "perTurnRatios": [
+        {
+          "toolCallCount": 19,
+          "ratio": 0.04678362573099415
+        },
+        {
+          "toolCallCount": 9,
+          "ratio": 0
+        }
+      ]
+    }
+  },
+  {
+    "evaluator": "tool-batching-efficiency",
+    "score": 0.9629629629629629,
+    "verdict": "observed",
+    "reason": "28 successful calls across 2 productive turns",
+    "details": {
+      "totalSuccessfulCalls": 28,
+      "productiveTurns": 2
+    },
+    "evalVersion": "1.2"
+  },
+  {
+    "evaluator": "turn-duration",
+    "score": 374603,
+    "verdict": "observed",
+    "reason": "Total AAB duration: 374603ms across 2 turns (avg 187302ms)",
+    "details": {
+      "totalDurationMs": 374603,
+      "averageDurationMs": 187301.5,
+      "perTurnMs": [
+        271612,
+        102991
+      ]
+    }
+  },
+  {
+    "evaluator": "token-usage",
+    "score": 1001783,
+    "verdict": "observed",
+    "reason": "aab=1001783 probe=18218 total=1020001 tokens",
+    "details": {
+      "aab": {
+        "inputTokens": 991452,
+        "outputTokens": 10331,
+        "totalTokens": 1001783,
+        "cachedInputTokensRead": 914721,
+        "cachedInputTokensWrite": 75193
+      },
+      "probe": {
+        "promptTokens": 18098,
+        "completionTokens": 120,
+        "totalTokens": 18218,
+        "calls": 2
+      },
+      "total": {
+        "tokens": 1020001
+      }
+    }
+  },
+  {
+    "evaluator": "intent-to-output-alignment",
+    "score": 0.95,
+    "verdict": "observed",
+    "reason": "The final HTML confirms all three required sections are present and correctly populated: Hero with 'Alex Morgan' in oversized display type and the exact tagline 'Designer & Creative Director crafting bold visual experiences'; About section with the 10-year background, startup/Fortune 500 mention, and skill chips; Contact section with mailto:alex@alexmorgan.co and all three social icons linking to the correct handles (alex-morgan-design on GitHub, alexmorgan on LinkedIn and Twitter). The console errors relate to framer-motion hook conflicts but the DOM snapshot shows the content rendered successfully via the error boundary fallback, leaving content intact. Minor deduction only for the animation layer failing at runtime.",
+    "details": {
+      "dimension": "Intent Understanding & Alignment",
+      "inputsUsed": [
+        "conversation",
+        "final_artifacts"
+      ],
+      "advisoryVerdict": "pass",
+      "transcriptErrors": 0
+    },
+    "evalVersion": "2.0"
+  },
+  {
+    "evaluator": "implicit-feature-gap",
+    "score": 0.95,
+    "verdict": "observed",
+    "reason": "All three required sections are fully rendered: Hero with 'Alex Morgan' name and tagline 'Designer & Creative Director crafting bold visual experiences'; About with 10-year background, startup/Fortune 500 mention, and skill chips; Contact with mailto:alex@alexmorgan.co link and GitHub/LinkedIn/Twitter social icons with correct handles. The motion/animation errors in console did not prevent section content from rendering per the DOM snapshot.",
+    "details": {
+      "dimension": "Implicit Feature Completeness",
+      "inputsUsed": [
+        "conversation",
+        "final_artifacts"
+      ],
+      "advisoryVerdict": "pass",
+      "transcriptErrors": 0
+    },
+    "evalVersion": "2.0"
+  },
+  {
+    "evaluator": "silent-hallucination",
+    "score": 0.85,
+    "verdict": "observed",
+    "reason": "All three claimed sections (hero with 'Alex Morgan' name and tagline, about with 10-year background and Fortune 500 mention, contact with alex@alexmorgan.co and three social links) are verified in the final DOM HTML. The agent's claims about social handles (alexmorgan on LinkedIn/Twitter, alex-morgan-design on GitHub) match the rendered href values. Minor gap: motion animations threw a React hook error at runtime (AiroErrorBoundary caught), meaning the stated staggered fade-in animations may not have executed visually, but the static content and structure are fully present and match all agent assertions.",
+    "details": {
+      "dimension": "Consistency & Truthfulness",
+      "inputsUsed": [
+        "conversation",
+        "tool_calls",
+        "final_artifacts"
+      ],
+      "advisoryVerdict": "pass",
+      "transcriptErrors": 0
+    },
+    "evalVersion": "2.0"
+  }
+]

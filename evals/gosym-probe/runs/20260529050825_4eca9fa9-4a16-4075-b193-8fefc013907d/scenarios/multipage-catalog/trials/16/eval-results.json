@@ -1,0 +1,351 @@
+[
+  {
+    "evaluator": "bug-hit-rate",
+    "score": 1,
+    "verdict": "pass",
+    "reason": "No unrecovered errors",
+    "details": {
+      "errorCount": 0,
+      "errors": []
+    }
+  },
+  {
+    "evaluator": "tool-failure-rate",
+    "score": 0,
+    "verdict": "observed",
+    "reason": "No tool failures across 48 tool call(s)",
+    "details": {
+      "failedCount": 0,
+      "totalCalls": 48,
+      "failedTools": []
+    }
+  },
+  {
+    "evaluator": "prompt-efficiency",
+    "score": 0.9002495108803148,
+    "verdict": "observed",
+    "reason": "4 user turns",
+    "details": {
+      "userTurns": 4
+    },
+    "evalVersion": "1.0"
+  },
+  {
+    "evaluator": "jtbd-completion",
+    "score": 1,
+    "verdict": "pass",
+    "reason": "LLM judge verdict: pass",
+    "details": {
+      "htmlContextAvailable": true
+    }
+  },
+  {
+    "evaluator": "output-quality",
+    "score": 0.833933933933934,
+    "verdict": "pass",
+    "reason": "Composite of 9/9 sub-evaluators",
+    "details": {
+      "_composite": true,
+      "breakdown": [
+        {
+          "evaluator": "heading-hierarchy",
+          "score": 1,
+          "verdict": "pass",
+          "reason": "No heading level violations",
+          "scoreable": true
+        },
+        {
+          "evaluator": "semantic-density",
+          "score": 0.16216216216216217,
+          "verdict": "fail",
+          "reason": "6 semantic element(s) out of 37 block containers",
+          "scoreable": true
+        },
+        {
+          "evaluator": "accessibility-coverage",
+          "score": 1,
+          "verdict": "pass",
+          "reason": "Accessibility weighted score across 2 active sub-dimension(s)",
+          "scoreable": true
+        },
+        {
+          "evaluator": "link-quality",
+          "score": 1,
+          "verdict": "pass",
+          "reason": "17 usable link(s) out of 17 total",
+          "scoreable": true
+        },
+        {
+          "evaluator": "responsive-readiness",
+          "score": 1,
+          "verdict": "pass",
+          "reason": "viewport meta, responsive breakpoint classes, flex/grid layout",
+          "scoreable": true
+        },
+        {
+          "evaluator": "inline-style-ratio",
+          "score": 0.9099099099099099,
+          "verdict": "pass",
+          "reason": "10 element(s) with authored inline styles out of 111",
+          "scoreable": true
+        },
+        {
+          "evaluator": "component-decomposition",
+          "score": 0.7333333333333334,
+          "verdict": "pass",
+          "reason": "3 unique file(s) across 3 director(y/ies)",
+          "scoreable": true
+        },
+        {
+          "evaluator": "visual-coherence",
+          "score": 0.88,
+          "verdict": "pass",
+          "reason": "The design demonstrates strong visual coherence with consistent spacing rhythm, clear typographic hierarchy (heading font, tracking-widest labels, body text), and a harmonious warm artisan palette. Minor deductions for truncated/raw HTML visible in body text and some animation states leaving elements at opacity:0 during evaluation.",
+          "scoreable": true
+        },
+        {
+          "evaluator": "content-substance",
+          "score": 0.82,
+          "verdict": "pass",
+          "reason": "The content is largely specific and business-relevant, featuring a named brand (Artisan Goods Co.), concrete product names with prices ($68 Terracotta Serving Bowl, $124 Linen Throw Blanket, etc.), category labels (Pottery, Textiles, Woodwork, Jewelry), and clear CTAs (Shop Now, Our Story, View All). Minor deductions for some truncated/incomplete sections and generic filler phrases like 'time-honored techniques and natural materials.'",
+          "scoreable": true
+        }
+      ],
+      "scoredCount": 9,
+      "totalCount": 9
+    },
+    "evalVersion": "accessibility-coverage:1.0+component-decomposition:1.0+content-substance:1.0+heading-hierarchy:1.0+inline-style-ratio:1.0+link-quality:1.0+responsive-readiness:1.0+semantic-density:1.0+visual-coherence:1.0"
+  },
+  {
+    "evaluator": "agent-steps",
+    "score": 0.9002495108803148,
+    "verdict": "observed",
+    "reason": "4 agent steps",
+    "details": {
+      "totalSteps": 4
+    },
+    "evalVersion": "1.0"
+  },
+  {
+    "evaluator": "latency",
+    "score": 0.11249049424332379,
+    "verdict": "observed",
+    "reason": "TTFC=50899ms maxGap=108658ms total=487691ms chunks=60 turns=4 score=0.11 aabInit=48277ms aabTTFC=2589ms",
+    "details": {
+      "timeToFirstChunkMs": 50899,
+      "maxInterChunkGapMs": 108658,
+      "totalMs": 487691,
+      "chunkCount": 60,
+      "perTurn": [
+        {
+          "turnIndex": 0,
+          "timeToFirstChunkMs": 50899,
+          "maxInterChunkGapMs": 108658,
+          "totalTurnMs": 355880,
+          "chunkCount": 24
+        },
+        {
+          "turnIndex": 1,
+          "timeToFirstChunkMs": 8094,
+          "maxInterChunkGapMs": 14621,
+          "totalTurnMs": 90873,
+          "chunkCount": 18
+        },
+        {
+          "turnIndex": 2,
+          "timeToFirstChunkMs": 17123,
+          "maxInterChunkGapMs": 1537,
+          "totalTurnMs": 22101,
+          "chunkCount": 14
+        },
+        {
+          "turnIndex": 3,
+          "timeToFirstChunkMs": 6347,
+          "maxInterChunkGapMs": 618,
+          "totalTurnMs": 7525,
+          "chunkCount": 4
+        }
+      ],
+      "medianTTFC": 12608.5,
+      "halfLifeMs": 4000,
+      "aabDiagnostics": {
+        "timingSummaries": [
+          {
+            "turnIndex": 0,
+            "timeToStreamStartMs": 1624,
+            "timeToFirstTextChunkMs": null,
+            "maxChunkGapMs": 4666,
+            "chunksRead": 741,
+            "streamDurationMs": 45041
+          },
+          {
+            "turnIndex": 0,
+            "timeToStreamStartMs": 48277,
+            "timeToFirstTextChunkMs": 2589,
+            "maxChunkGapMs": 81587,
+            "chunksRead": 7153,
+            "streamDurationMs": 307384
+          },
+          {
+            "turnIndex": 1,
+            "timeToStreamStartMs": 1462,
+            "timeToFirstTextChunkMs": 6599,
+            "maxChunkGapMs": 9222,
+            "chunksRead": 954,
+            "streamDurationMs": 44538
+          },
+          {
+            "turnIndex": 1,
+            "timeToStreamStartMs": 58600,
+            "timeToFirstTextChunkMs": null,
+            "maxChunkGapMs": 9596,
+            "chunksRead": 267,
+            "streamDurationMs": 21927
+          },
+          {
+            "turnIndex": 2,
+            "timeToStreamStartMs": 1639,
+            "timeToFirstTextChunkMs": 15122,
+            "maxChunkGapMs": 5473,
+            "chunksRead": 104,
+            "streamDurationMs": 19417
+          },
+          {
+            "turnIndex": 3,
+            "timeToStreamStartMs": 2245,
+            "timeToFirstTextChunkMs": 2963,
+            "maxChunkGapMs": 2807,
+            "chunksRead": 20,
+            "streamDurationMs": 3939
+          }
+        ],
+        "slowGaps": [],
+        "timeouts": []
+      }
+    }
+  },
+  {
+    "evaluator": "tool-parallelism",
+    "score": 0.036036036036036036,
+    "verdict": "observed",
+    "reason": "Tool parallelism ratio: 4%",
+    "details": {
+      "turnsAnalyzed": 3,
+      "totalWeight": 48,
+      "perTurnRatios": [
+        {
+          "toolCallCount": 38,
+          "ratio": 0.04551920341394026
+        },
+        {
+          "toolCallCount": 8,
+          "ratio": 0
+        },
+        {
+          "toolCallCount": 2,
+          "ratio": 0
+        }
+      ]
+    }
+  },
+  {
+    "evaluator": "tool-batching-efficiency",
+    "score": 0.9574468085106383,
+    "verdict": "observed",
+    "reason": "48 successful calls across 3 productive turns",
+    "details": {
+      "totalSuccessfulCalls": 48,
+      "productiveTurns": 3
+    },
+    "evalVersion": "1.2"
+  },
+  {
+    "evaluator": "turn-duration",
+    "score": 474192,
+    "verdict": "observed",
+    "reason": "Total AAB duration: 474192ms across 4 turns (avg 118548ms)",
+    "details": {
+      "totalDurationMs": 474192,
+      "averageDurationMs": 118548,
+      "perTurnMs": [
+        355662,
+        90668,
+        21621,
+        6241
+      ]
+    }
+  },
+  {
+    "evaluator": "token-usage",
+    "score": 1815701,
+    "verdict": "observed",
+    "reason": "aab=1815701 probe=86093 total=1901794 tokens",
+    "details": {
+      "aab": {
+        "inputTokens": 1793328,
+        "outputTokens": 22373,
+        "totalTokens": 1815701,
+        "cachedInputTokensRead": 1568532,
+        "cachedInputTokensWrite": 216222
+      },
+      "probe": {
+        "promptTokens": 85888,
+        "completionTokens": 205,
+        "totalTokens": 86093,
+        "calls": 4
+      },
+      "total": {
+        "tokens": 1901794
+      }
+    }
+  },
+  {
+    "evaluator": "intent-to-output-alignment",
+    "score": 0.88,
+    "verdict": "observed",
+    "reason": "All three pages built with React Router and correct content (homepage hero+featured products+newsletter, catalog with category filters, about with team profiles). Product data extracted to `src/lib/products-data.ts` service module per user request. RootLayout wraps all routes via Website.tsx confirmed in HTML dev attributes. Minor motion library hook error caught by error boundary but did not prevent core content from rendering.",
+    "details": {
+      "dimension": "Intent Understanding & Alignment",
+      "inputsUsed": [
+        "conversation",
+        "final_artifacts"
+      ],
+      "advisoryVerdict": "pass",
+      "transcriptErrors": 0
+    },
+    "evalVersion": "2.0"
+  },
+  {
+    "evaluator": "implicit-feature-gap",
+    "score": 0.82,
+    "verdict": "observed",
+    "reason": "Homepage has hero with dual CTAs, featured products grid with names/prices/categories, category navigation grid, and shared nav/footer. Newsletter signup was built per conversation. Missing contact info (address/phone/email) which is a reasonable implicit expectation for a small business shop, and motion errors may affect some animated sections.",
+    "details": {
+      "dimension": "Implicit Feature Completeness",
+      "inputsUsed": [
+        "conversation",
+        "final_artifacts"
+      ],
+      "advisoryVerdict": "pass",
+      "transcriptErrors": 0
+    },
+    "evalVersion": "2.0"
+  },
+  {
+    "evaluator": "silent-hallucination",
+    "score": 0.72,
+    "verdict": "observed",
+    "reason": "The agent successfully created a multi-page site with shared Header/Footer via a RootLayout/Website.tsx layout component (confirmed in final HTML with data-dev-file references to Header.tsx and Website.tsx), built an API endpoint, and extracted product data into src/lib/products-data.ts per user request. However, the agent claimed the shared layout was 'already fully wired up' before any refactoring was done (third turn), which is only partially verifiable. More critically, the console logs show a fatal 'Invalid hook call' / TypeError in motion_react.js caught by AiroErrorBoundary, indicating parts of the site (likely animated sections on catalog or about pages) fail to render, meaning not all pages are confirmed functional through the layout. The homepage content is visible in the snapshot but the catalog and about pages cannot be independently verified as rendering correctly given the runtime error.",
+    "details": {
+      "dimension": "Consistency & Truthfulness",
+      "inputsUsed": [
+        "conversation",
+        "tool_calls",
+        "final_artifacts"
+      ],
+      "advisoryVerdict": "partial",
+      "transcriptErrors": 0
+    },
+    "evalVersion": "2.0"
+  }
+]

@@ -1,0 +1,316 @@
+{
+  "previewUrl": "https://local.gasket.dev-godaddy.com:5016",
+  "generatedAt": "2026-05-29T15:13:17.771Z",
+  "durationMs": 23353,
+  "outputDir": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/multipage-catalog/trials/18/snapshots",
+  "routes": [
+    {
+      "path": "/",
+      "url": "https://local.gasket.dev-godaddy.com:5016",
+      "origin": "homepage",
+      "status": "ok",
+      "httpStatus": 200
+    },
+    {
+      "path": "/products",
+      "url": "https://local.gasket.dev-godaddy.com:5016/products",
+      "origin": "crawl",
+      "status": "ok",
+      "httpStatus": 200
+    },
+    {
+      "path": "/about",
+      "url": "https://local.gasket.dev-godaddy.com:5016/about",
+      "origin": "crawl",
+      "status": "ok",
+      "httpStatus": 200
+    },
+    {
+      "path": "/privacy",
+      "url": "https://local.gasket.dev-godaddy.com:5016/privacy",
+      "origin": "crawl",
+      "status": "ok",
+      "httpStatus": 200,
+      "isRouteEmpty": true
+    },
+    {
+      "path": "/terms",
+      "url": "https://local.gasket.dev-godaddy.com:5016/terms",
+      "origin": "crawl",
+      "status": "ok",
+      "httpStatus": 200,
+      "isRouteEmpty": true
+    }
+  ],
+  "perRoute": [
+    {
+      "route": {
+        "path": "/",
+        "url": "https://local.gasket.dev-godaddy.com:5016",
+        "origin": "homepage",
+        "status": "ok",
+        "httpStatus": 200
+      },
+      "rendered": {
+        "title": "Artisan Goods Co. — Handmade Crafts & Goods",
+        "h1": "Craft thatlasts alifetime.",
+        "headingText": "Craft thatlasts alifetime. | Handpicked for You | Shop by Craft | Stories from the studio, delivered to you.",
+        "bodyPreview": "HANDMADE WITH INTENTION\nCraft that\nlasts a\nlifetime.\n\nPottery, textiles, woodwork, and jewelry — each piece made by hand, by makers who care.\n\nShop Now\nOur Story\nCURATED FOR YOU\nHandpicked for You\nTerracotta Serving Bowl\nPottery\n\n$68\n\nSpeckled Stoneware Mug\nPottery\n\n$42\n\nWoven Throw Blanket\nTextiles"
+      },
+      "perViewport": {
+        "mobile": {
+          "tiles": [
+            {
+              "index": 0,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/multipage-catalog/trials/18/snapshots/mobile/home/tile0.png",
+              "yOffset": 0
+            },
+            {
+              "index": 1,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/multipage-catalog/trials/18/snapshots/mobile/home/tile1.png",
+              "yOffset": 636
+            },
+            {
+              "index": 2,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/multipage-catalog/trials/18/snapshots/mobile/home/tile2.png",
+              "yOffset": 1287
+            },
+            {
+              "index": 3,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/multipage-catalog/trials/18/snapshots/mobile/home/tile3.png",
+              "yOffset": 1951
+            },
+            {
+              "index": 4,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/multipage-catalog/trials/18/snapshots/mobile/home/tile4.png",
+              "yOffset": 2624
+            },
+            {
+              "index": 5,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/multipage-catalog/trials/18/snapshots/mobile/home/tile5.png",
+              "yOffset": 2944
+            }
+          ]
+        },
+        "laptop": {
+          "tiles": [
+            {
+              "index": 0,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/multipage-catalog/trials/18/snapshots/laptop/home/tile0.png",
+              "yOffset": 20
+            },
+            {
+              "index": 1,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/multipage-catalog/trials/18/snapshots/laptop/home/tile1.png",
+              "yOffset": 823
+            },
+            {
+              "index": 2,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/multipage-catalog/trials/18/snapshots/laptop/home/tile2.png",
+              "yOffset": 1717
+            },
+            {
+              "index": 3,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/multipage-catalog/trials/18/snapshots/laptop/home/tile3.png",
+              "yOffset": 1936
+            }
+          ]
+        }
+      }
+    },
+    {
+      "route": {
+        "path": "/products",
+        "url": "https://local.gasket.dev-godaddy.com:5016/products",
+        "origin": "crawl",
+        "status": "ok",
+        "httpStatus": 200
+      },
+      "rendered": {
+        "title": "Shop Handmade Goods — Artisan Goods Co.",
+        "h1": "Our Collection",
+        "headingText": "Our Collection",
+        "bodyPreview": "Our Collection\n\nEvery piece is made by hand, with intention. Browse by craft or explore everything we make.\n\nAll\nPottery\nTextiles\nWoodwork\nJewelry\nTerracotta Serving Bowl\nPottery\n\n$68\n\nSpeckled Stoneware Mug\nPottery\n\n$42\n\nCeramic Bud Vase\nPottery\n\n$54\n\nWoven Throw Blanket\nTextiles\n\n$128\n\nLinen Table"
+      },
+      "perViewport": {
+        "mobile": {
+          "tiles": [
+            {
+              "index": 0,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/multipage-catalog/trials/18/snapshots/mobile/products/tile0.png",
+              "yOffset": 0
+            },
+            {
+              "index": 1,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/multipage-catalog/trials/18/snapshots/mobile/products/tile1.png",
+              "yOffset": 641
+            },
+            {
+              "index": 2,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/multipage-catalog/trials/18/snapshots/mobile/products/tile2.png",
+              "yOffset": 1301
+            },
+            {
+              "index": 3,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/multipage-catalog/trials/18/snapshots/mobile/products/tile3.png",
+              "yOffset": 1968
+            },
+            {
+              "index": 4,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/multipage-catalog/trials/18/snapshots/mobile/products/tile4.png",
+              "yOffset": 2580
+            },
+            {
+              "index": 5,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/multipage-catalog/trials/18/snapshots/mobile/products/tile5.png",
+              "yOffset": 2600
+            }
+          ]
+        },
+        "laptop": {
+          "tiles": [
+            {
+              "index": 0,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/multipage-catalog/trials/18/snapshots/laptop/products/tile0.png",
+              "yOffset": 0
+            },
+            {
+              "index": 1,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/multipage-catalog/trials/18/snapshots/laptop/products/tile1.png",
+              "yOffset": 823
+            },
+            {
+              "index": 2,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/multipage-catalog/trials/18/snapshots/laptop/products/tile2.png",
+              "yOffset": 1300
+            }
+          ]
+        }
+      }
+    },
+    {
+      "route": {
+        "path": "/about",
+        "url": "https://local.gasket.dev-godaddy.com:5016/about",
+        "origin": "crawl",
+        "status": "ok",
+        "httpStatus": 200
+      },
+      "rendered": {
+        "title": "Our Story — Artisan Goods Co.",
+        "h1": "Made by hand.Made with heart.",
+        "headingText": "Made by hand.Made with heart. | A shop built on the belief that craft matters | Meet the team",
+        "bodyPreview": "Made by hand.\nMade with heart.\n\nArtisan Goods Co. exists to celebrate the people who make things with their hands — and to connect their work with homes that will treasure it.\n\nOUR STORY\nA shop built on the belief that craft matters\n\nWe started in 2018 with a simple idea: the world has enough mass-p"
+      },
+      "perViewport": {
+        "mobile": {
+          "tiles": [
+            {
+              "index": 0,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/multipage-catalog/trials/18/snapshots/mobile/about/tile0.png",
+              "yOffset": 297
+            },
+            {
+              "index": 1,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/multipage-catalog/trials/18/snapshots/mobile/about/tile1.png",
+              "yOffset": 666
+            },
+            {
+              "index": 2,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/multipage-catalog/trials/18/snapshots/mobile/about/tile2.png",
+              "yOffset": 1308
+            },
+            {
+              "index": 3,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/multipage-catalog/trials/18/snapshots/mobile/about/tile3.png",
+              "yOffset": 1968
+            },
+            {
+              "index": 4,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/multipage-catalog/trials/18/snapshots/mobile/about/tile4.png",
+              "yOffset": 2638
+            },
+            {
+              "index": 5,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/multipage-catalog/trials/18/snapshots/mobile/about/tile5.png",
+              "yOffset": 3305
+            }
+          ]
+        },
+        "laptop": {
+          "tiles": [
+            {
+              "index": 0,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/multipage-catalog/trials/18/snapshots/laptop/about/tile0.png",
+              "yOffset": 3
+            },
+            {
+              "index": 1,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/multipage-catalog/trials/18/snapshots/laptop/about/tile1.png",
+              "yOffset": 823
+            },
+            {
+              "index": 2,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/multipage-catalog/trials/18/snapshots/laptop/about/tile2.png",
+              "yOffset": 1503
+            },
+            {
+              "index": 3,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/multipage-catalog/trials/18/snapshots/laptop/about/tile3.png",
+              "yOffset": 1535
+            }
+          ]
+        }
+      }
+    },
+    {
+      "route": {
+        "path": "/privacy",
+        "url": "https://local.gasket.dev-godaddy.com:5016/privacy",
+        "origin": "crawl",
+        "status": "ok",
+        "httpStatus": 200,
+        "isRouteEmpty": true
+      },
+      "rendered": {
+        "title": "",
+        "h1": null,
+        "headingText": "",
+        "bodyPreview": ""
+      },
+      "perViewport": {
+        "mobile": {
+          "tiles": []
+        },
+        "laptop": {
+          "tiles": []
+        }
+      }
+    },
+    {
+      "route": {
+        "path": "/terms",
+        "url": "https://local.gasket.dev-godaddy.com:5016/terms",
+        "origin": "crawl",
+        "status": "ok",
+        "httpStatus": 200,
+        "isRouteEmpty": true
+      },
+      "rendered": {
+        "title": "",
+        "h1": null,
+        "headingText": "",
+        "bodyPreview": ""
+      },
+      "perViewport": {
+        "mobile": {
+          "tiles": []
+        },
+        "laptop": {
+          "tiles": []
+        }
+      }
+    }
+  ],
+  "errors": []
+}

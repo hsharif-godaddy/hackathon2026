@@ -1,0 +1,341 @@
+[
+  {
+    "evaluator": "bug-hit-rate",
+    "score": 1,
+    "verdict": "pass",
+    "reason": "No unrecovered errors",
+    "details": {
+      "errorCount": 0,
+      "errors": []
+    }
+  },
+  {
+    "evaluator": "tool-failure-rate",
+    "score": 0.01639344262295082,
+    "verdict": "observed",
+    "reason": "1/61 tool calls failed (2%): media",
+    "details": {
+      "failedCount": 1,
+      "totalCalls": 61,
+      "failedTools": [
+        "media"
+      ]
+    }
+  },
+  {
+    "evaluator": "prompt-efficiency",
+    "score": 0.9002495108803148,
+    "verdict": "observed",
+    "reason": "4 user turns",
+    "details": {
+      "userTurns": 4
+    },
+    "evalVersion": "1.0"
+  },
+  {
+    "evaluator": "jtbd-completion",
+    "score": 1,
+    "verdict": "pass",
+    "reason": "LLM judge verdict: pass",
+    "details": {
+      "htmlContextAvailable": true
+    }
+  },
+  {
+    "evaluator": "output-quality",
+    "score": 0.854941718743075,
+    "verdict": "pass",
+    "reason": "Composite of 9/9 sub-evaluators",
+    "details": {
+      "_composite": true,
+      "breakdown": [
+        {
+          "evaluator": "heading-hierarchy",
+          "score": 1,
+          "verdict": "pass",
+          "reason": "No heading level violations",
+          "scoreable": true
+        },
+        {
+          "evaluator": "semantic-density",
+          "score": 0.10869565217391304,
+          "verdict": "fail",
+          "reason": "5 semantic element(s) out of 46 block containers",
+          "scoreable": true
+        },
+        {
+          "evaluator": "accessibility-coverage",
+          "score": 1,
+          "verdict": "pass",
+          "reason": "Accessibility weighted score across 2 active sub-dimension(s)",
+          "scoreable": true
+        },
+        {
+          "evaluator": "link-quality",
+          "score": 1,
+          "verdict": "pass",
+          "reason": "11 usable link(s) out of 11 total",
+          "scoreable": true
+        },
+        {
+          "evaluator": "responsive-readiness",
+          "score": 1,
+          "verdict": "pass",
+          "reason": "viewport meta, responsive breakpoint classes, flex/grid layout",
+          "scoreable": true
+        },
+        {
+          "evaluator": "inline-style-ratio",
+          "score": 0.9357798165137615,
+          "verdict": "pass",
+          "reason": "7 element(s) with authored inline styles out of 109",
+          "scoreable": true
+        },
+        {
+          "evaluator": "component-decomposition",
+          "score": 0.8500000000000001,
+          "verdict": "pass",
+          "reason": "4 unique file(s) across 4 director(y/ies)",
+          "scoreable": true
+        },
+        {
+          "evaluator": "visual-coherence",
+          "score": 0.88,
+          "verdict": "pass",
+          "reason": "The layout demonstrates strong visual coherence with consistent spacing, a clear typographic hierarchy using font-heading for display text and tracked uppercase labels, and a harmonious warm artisan palette with primary accents. Minor deductions for the truncated/animated opacity-0 states visible in the snapshot and some density variation between sections.",
+          "scoreable": true
+        },
+        {
+          "evaluator": "content-substance",
+          "score": 0.92,
+          "verdict": "pass",
+          "reason": "The content is highly specific with a named brand (Artisan Goods Co.), concrete product listings with names, materials, and prices ($44–$145), category navigation (Pottery, Textiles, Woodwork), and clear CTAs (Shop Now, Our Story, View All). Minor deductions for a truncated section that may contain incomplete content, but overall the copy is business-relevant with no placeholder or lorem ipsum text.",
+          "scoreable": true
+        }
+      ],
+      "scoredCount": 9,
+      "totalCount": 9
+    },
+    "evalVersion": "accessibility-coverage:1.0+component-decomposition:1.0+content-substance:1.0+heading-hierarchy:1.0+inline-style-ratio:1.0+link-quality:1.0+responsive-readiness:1.0+semantic-density:1.0+visual-coherence:1.0"
+  },
+  {
+    "evaluator": "agent-steps",
+    "score": 0.9002495108803148,
+    "verdict": "observed",
+    "reason": "4 agent steps",
+    "details": {
+      "totalSteps": 4
+    },
+    "evalVersion": "1.0"
+  },
+  {
+    "evaluator": "latency",
+    "score": 0.11549281443249625,
+    "verdict": "observed",
+    "reason": "TTFC=72104ms maxGap=100869ms total=518519ms chunks=108 turns=4 score=0.12 aabInit=62217ms aabTTFC=9884ms",
+    "details": {
+      "timeToFirstChunkMs": 72104,
+      "maxInterChunkGapMs": 100869,
+      "totalMs": 518519,
+      "chunkCount": 108,
+      "perTurn": [
+        {
+          "turnIndex": 0,
+          "timeToFirstChunkMs": 72104,
+          "maxInterChunkGapMs": 100869,
+          "totalTurnMs": 432981,
+          "chunkCount": 51
+        },
+        {
+          "turnIndex": 1,
+          "timeToFirstChunkMs": 6842,
+          "maxInterChunkGapMs": 9036,
+          "totalTurnMs": 28807,
+          "chunkCount": 39
+        },
+        {
+          "turnIndex": 2,
+          "timeToFirstChunkMs": 18071,
+          "maxInterChunkGapMs": 5161,
+          "totalTurnMs": 37482,
+          "chunkCount": 12
+        },
+        {
+          "turnIndex": 3,
+          "timeToFirstChunkMs": 5879,
+          "maxInterChunkGapMs": 1142,
+          "totalTurnMs": 8045,
+          "chunkCount": 6
+        }
+      ],
+      "medianTTFC": 12456.5,
+      "halfLifeMs": 4000,
+      "aabDiagnostics": {
+        "timingSummaries": [
+          {
+            "turnIndex": 0,
+            "timeToStreamStartMs": 1745,
+            "timeToFirstTextChunkMs": null,
+            "maxChunkGapMs": 2964,
+            "chunksRead": 948,
+            "streamDurationMs": 57787
+          },
+          {
+            "turnIndex": 0,
+            "timeToStreamStartMs": 62217,
+            "timeToFirstTextChunkMs": 9884,
+            "maxChunkGapMs": 67161,
+            "chunksRead": 7898,
+            "streamDurationMs": 370369
+          },
+          {
+            "turnIndex": 1,
+            "timeToStreamStartMs": 1701,
+            "timeToFirstTextChunkMs": 5108,
+            "maxChunkGapMs": 7581,
+            "chunksRead": 182,
+            "streamDurationMs": 22871
+          },
+          {
+            "turnIndex": 2,
+            "timeToStreamStartMs": 4411,
+            "timeToFirstTextChunkMs": 12510,
+            "maxChunkGapMs": 4159,
+            "chunksRead": 293,
+            "streamDurationMs": 20946
+          },
+          {
+            "turnIndex": 3,
+            "timeToStreamStartMs": 1880,
+            "timeToFirstTextChunkMs": 3967,
+            "maxChunkGapMs": 3846,
+            "chunksRead": 28,
+            "streamDurationMs": 5942
+          }
+        ],
+        "slowGaps": [],
+        "timeouts": []
+      }
+    }
+  },
+  {
+    "evaluator": "tool-parallelism",
+    "score": 0.06783625730994153,
+    "verdict": "observed",
+    "reason": "Tool parallelism ratio: 7%",
+    "details": {
+      "turnsAnalyzed": 2,
+      "totalWeight": 60,
+      "perTurnRatios": [
+        {
+          "toolCallCount": 58,
+          "ratio": 0.07017543859649122
+        },
+        {
+          "toolCallCount": 2,
+          "ratio": 0
+        }
+      ]
+    }
+  },
+  {
+    "evaluator": "tool-batching-efficiency",
+    "score": 0.9661016949152542,
+    "verdict": "observed",
+    "reason": "60 successful calls across 3 productive turns",
+    "details": {
+      "totalSuccessfulCalls": 60,
+      "productiveTurns": 3
+    },
+    "evalVersion": "1.2"
+  },
+  {
+    "evaluator": "turn-duration",
+    "score": 500844,
+    "verdict": "observed",
+    "reason": "Total AAB duration: 500844ms across 4 turns (avg 125211ms)",
+    "details": {
+      "totalDurationMs": 500844,
+      "averageDurationMs": 125211,
+      "perTurnMs": [
+        432587,
+        24658,
+        35710,
+        7889
+      ]
+    }
+  },
+  {
+    "evaluator": "token-usage",
+    "score": 1459060,
+    "verdict": "observed",
+    "reason": "aab=1459060 probe=121151 total=1580211 tokens",
+    "details": {
+      "aab": {
+        "inputTokens": 1435411,
+        "outputTokens": 23649,
+        "totalTokens": 1459060,
+        "cachedInputTokensRead": 1182147,
+        "cachedInputTokensWrite": 244790
+      },
+      "probe": {
+        "promptTokens": 120983,
+        "completionTokens": 168,
+        "totalTokens": 121151,
+        "calls": 4
+      },
+      "total": {
+        "tokens": 1580211
+      }
+    }
+  },
+  {
+    "evaluator": "intent-to-output-alignment",
+    "score": 0.85,
+    "verdict": "observed",
+    "reason": "The site clearly delivers all three required pages (homepage with hero/featured products/newsletter, shop with category filters, about with team profiles), a shared header/footer via a reusable layout component, and products fetched from an API endpoint (/api/products) via route loaders rather than hardcoded in markup. The category list was also updated to derive dynamically from the API response per the follow-up request. Minor deductions: console errors show a motion library hook conflict (AiroErrorBoundary caught a React hook error in MotionDOMComponent) which could impair animations, and the final HTML snapshot only shows the homepage rather than confirming all pages render cleanly.",
+    "details": {
+      "dimension": "Intent Understanding & Alignment",
+      "inputsUsed": [
+        "conversation",
+        "final_artifacts"
+      ],
+      "advisoryVerdict": "pass",
+      "transcriptErrors": 0
+    },
+    "evalVersion": "2.0"
+  },
+  {
+    "evaluator": "implicit-feature-gap",
+    "score": 0.82,
+    "verdict": "observed",
+    "reason": "The rendered HTML confirms homepage hero with dual CTAs, featured products section with 4 API-loaded product cards (names, prices, categories all present), category showcase tiles linking to /shop?category=X, and a newsletter signup section. Shared header (logo, Home/Shop/About nav, Shop Now CTA) and footer are present. The about page and shop catalog with filters are described as built and confirmed via the agent's architecture summary. The only notable gap visible in the snapshot is the newsletter section appears truncated in body text evidence, and there is no explicit contact info or pricing/booking feature — though those are not required for this craft shop catalog scenario. A runtime error (invalid hook call from motion_react) was caught by the error boundary but the page still rendered meaningful content as evidenced by the full product grid in the HTML.",
+    "details": {
+      "dimension": "Implicit Feature Completeness",
+      "inputsUsed": [
+        "conversation",
+        "final_artifacts"
+      ],
+      "advisoryVerdict": "pass",
+      "transcriptErrors": 0
+    },
+    "evalVersion": "2.0"
+  },
+  {
+    "evaluator": "silent-hallucination",
+    "score": 0.82,
+    "verdict": "observed",
+    "reason": "The agent's claims are largely backed by evidence: the HTML snapshot confirms product data (names, prices, categories) is rendering from API-sourced data via useLoaderData(), the Header/Footer components are present in the DOM as reusable layout elements, and tool calls show the API endpoint was built at src/server/api/products/GET.ts with proper category/featured filters. The agent's claim that 'category list is derived dynamically from the API response' was implemented per the last code change. Minor gap: console errors show a React hook violation from motion_react that triggers AiroErrorBoundary, meaning some animated components may not have rendered correctly, slightly undermining the claim that animations work as described. The core data-flow and structural claims are well-supported.",
+    "details": {
+      "dimension": "Consistency & Truthfulness",
+      "inputsUsed": [
+        "conversation",
+        "tool_calls",
+        "final_artifacts"
+      ],
+      "advisoryVerdict": "pass",
+      "transcriptErrors": 0
+    },
+    "evalVersion": "2.0"
+  }
+]

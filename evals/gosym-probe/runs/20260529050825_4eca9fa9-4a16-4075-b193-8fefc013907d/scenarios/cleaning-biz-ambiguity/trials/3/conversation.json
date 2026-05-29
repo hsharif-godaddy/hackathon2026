@@ -1,0 +1,65 @@
+{
+  "scenarioName": "cleaning-biz-ambiguity",
+  "trial": 4,
+  "turns": [
+    {
+      "role": "user",
+      "content": "I need a website for my cleaning business",
+      "durationSeconds": 0
+    },
+    {
+      "role": "user",
+      "content": "I clean houses. The business is called Spotless Home Cleaning.",
+      "durationSeconds": 9.9
+    },
+    {
+      "role": "assistant",
+      "content": "Now let me generate the logo and build the header and footer in parallel.Now let me build the header and footer in parallel:Now let me build the homepage:",
+      "durationSeconds": 283.7
+    },
+    {
+      "role": "user",
+      "content": "Looks good! But does it have a way for people to contact me?",
+      "durationSeconds": 2.6
+    },
+    {
+      "role": "assistant",
+      "content": "There's a contact form right on the homepage (the \"Let's Make Your Home Shine\" section at the bottom), but let me also build out a dedicated Contact page so customers can find it easily from the navigation.Now let me add the contact route:You've got two ways for customers to reach you now:\n\n1. **Homepage contact form** — right at the bottom of the homepage, so visitors never have to go looking\n2. **Dedicated /contact page** — reachable from the \"Contact\" nav link and the \"Get a Quote\" button, with a full form including service selection, email, and a success confirmation message\n\nWould you like to keep building out the site? The Services, Pricing, and About pages are still on the list.",
+      "durationSeconds": 76.8
+    },
+    {
+      "role": "user",
+      "content": "Looks great, thank you! Does my phone number show up anywhere so people can just call me?",
+      "durationSeconds": 2.9
+    },
+    {
+      "role": "assistant",
+      "content": "Yes! Your phone number **(555) 123-4567** shows up in three places already:\n\n1. **Header** — small top bar on desktop with the phone number\n2. **Footer** — in the Contact Us column\n3. **Contact page** — listed alongside the form\n\nYou'll want to swap that placeholder number for your real one. Want me to update it, or would you like to do that yourself? Just share your actual number and I'll replace it everywhere at once.",
+      "durationSeconds": 10.1
+    },
+    {
+      "role": "user",
+      "content": "Oh I didn't even give you my number! It's 555-867-5309, can you put that in?",
+      "durationSeconds": 2
+    },
+    {
+      "role": "assistant",
+      "content": "Done! **(555) 867-5309** is now showing in the header, footer, and contact page. Ready to keep building — want to tackle the Services, Pricing, or About page next?",
+      "durationSeconds": 26.2
+    },
+    {
+      "role": "user",
+      "content": "That's all I need, thanks! It looks great.\n\nDONE",
+      "durationSeconds": 2.7
+    },
+    {
+      "role": "assistant",
+      "content": "You're all set! Your Spotless Home Cleaning website is looking great with a beautiful homepage, contact page, and your real phone number throughout. Whenever you're ready to add the Services, Pricing, or About pages — or anything else — just let me know!",
+      "durationSeconds": 8.4
+    }
+  ],
+  "summary": {
+    "messageCount": 11,
+    "totalElapsedSeconds": 425.4
+  }
+}

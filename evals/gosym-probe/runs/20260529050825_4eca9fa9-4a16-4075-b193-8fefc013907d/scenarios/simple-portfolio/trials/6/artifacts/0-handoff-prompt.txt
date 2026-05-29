@@ -1,0 +1,73 @@
+Build a personal portfolio homepage design preview with this direction:
+
+PROJECT DETAILS:
+- Type: Personal portfolio website
+- Sections: Hero, About, Contact
+- Design goal: Clean, modern, well-spaced — distinctive but not loud
+
+DESIGN DIRECTION:
+Refined and editorial with confident whitespace. Monochrome base (near-black and off-white) with a single warm accent (amber or terracotta) used sparingly as punctuation. Should feel like a thoughtful designer/developer's portfolio — not a generic template.
+
+LAYOUT TYPE: Standard
+This is a portfolio site with header navigation and footer.
+
+VISUAL DIRECTION:
+- Color: Deep charcoal (#1a1a1a) background option OR clean off-white base — go with light base (off-white/warm white) with deep charcoal text and ONE warm accent (amber/terracotta). Avoid pure white and pure black.
+- Typography: Bold, dramatic size contrast in the hero — oversized name that breaks the grid. Body text generous line-height. Mix a strong serif or display font for headings with a clean sans for body.
+- Layout: Asymmetric hero composition. DO NOT center everything. DO NOT use icon grids. Staggered, editorial feel.
+
+VISUAL ELEMENTS:
+- Primary: Typographic — the design IS the visual. No stock photography needed for the initial build.
+- Style: Geometric accent shapes (thin lines, small squares, dots) in the accent color as decorative punctuation
+- Application: Subtle geometric accents near section headings, hero background texture (very subtle dot grid or grain), decorative line elements
+- Logo: Use the media-logo skill to generate a minimal wordmark logo for the header — initials or short name mark, clean and modern
+
+MOTION DESIGN:
+- Level: Subtle
+- Effects:
+  - Hero name: staggered letter or word fade-in on load (400ms, ease-out)
+  - Sections: fade-in + slight upward translate on scroll (viewport: once: true, 300ms)
+  - Nav links: elegant underline-draw hover effect
+  - Contact links: gentle scale + color shift on hover (200ms)
+- Personality: Refined and deliberate — smooth, never bouncy
+
+SECTION-SPECIFIC:
+- Hero: Full-viewport height. Name in oversized display type (think 6xl–8xl). Tagline below in lighter weight. Asymmetric layout — name left-aligned, decorative geometric accent on the right side. Subtle dot-grid or noise background texture. Animated entrance.
+- About: Two-column layout on desktop — short punchy headline left, paragraph text right. Include placeholder skill tags (e.g., "Design", "Development", "Strategy") styled as minimal outlined chips. Fade-in on scroll.
+- Contact: NOT a centered colored band. Instead, a generous section with large "Let's talk" or "Get in touch" heading, email as a styled link (large, hoverable), and social media icons (GitHub, LinkedIn, Twitter/X) as clean icon buttons. Asymmetric layout.
+- Header: Minimal — name/initials logo left, nav links right (About, Contact). Clean and unobtrusive.
+- Footer: Single line, minimal — copyright + "Built with care" or similar. Matches overall refinement.
+
+DIFFERENTIATION:
+Oversized hero typography that breaks the grid — the name should feel monumental. This single choice makes the portfolio immediately distinctive.
+
+CONSISTENCY:
+Maintain editorial quality throughout. The contact section should feel as considered as the hero. Warm accent color used consistently but sparingly across all sections.
+
+BUILD ORDER:
+
+Phase 1 — Setup (run in parallel):
+- Generate logo using media-logo skill (minimal wordmark/initials mark)
+- Set font stack using fontTheme tool — display/serif for headings (e.g., Playfair Display, Cormorant, or similar), clean sans for body (e.g., DM Sans, Plus Jakarta Sans)
+- Set color scheme using colorScheme tool — off-white base, charcoal text, warm amber/terracotta accent
+
+Phase 2 — Structure (run in parallel, after Phase 1):
+- Build Header with minimal nav (logo left, links right)
+- Build Footer (single-line minimal)
+
+Phase 3 — Page (after Phase 1 & 2):
+- Build homepage (index.tsx) with Hero, About, and Contact sections and all animations
+
+Phase 4 — Finalize:
+- Mark "Homepage" todo item as COMPLETE using the todoList tool
+- Ask for design feedback using askQuestion
+
+CRITICAL: Build index.tsx LAST — after setup, header, and footer are complete.
+
+INITIAL SCOPE:
+Build ONLY the homepage (Hero + About + Contact) for this preview. Defer project pages, blog, and resume.
+
+DESIGN FEEDBACK:
+After showing the homepage, use askQuestion to ask:
+- Question: "What do you think of the design?"
+- Suggestions: ["Looks great — let's add a projects section", "Change the color scheme", "Change the fonts", "Adjust the hero layout", "Add a skills or work experience section"]

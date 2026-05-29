@@ -1,0 +1,380 @@
+[
+  {
+    "evaluator": "bug-hit-rate",
+    "score": 1,
+    "verdict": "pass",
+    "reason": "No unrecovered errors",
+    "details": {
+      "errorCount": 0,
+      "errors": []
+    }
+  },
+  {
+    "evaluator": "tool-failure-rate",
+    "score": 0,
+    "verdict": "observed",
+    "reason": "No tool failures across 56 tool call(s)",
+    "details": {
+      "failedCount": 0,
+      "totalCalls": 56,
+      "failedTools": []
+    }
+  },
+  {
+    "evaluator": "prompt-efficiency",
+    "score": 0.8581489350995123,
+    "verdict": "observed",
+    "reason": "6 user turns",
+    "details": {
+      "userTurns": 6
+    },
+    "evalVersion": "1.0"
+  },
+  {
+    "evaluator": "jtbd-completion",
+    "score": 1,
+    "verdict": "pass",
+    "reason": "LLM judge verdict: pass",
+    "details": {
+      "htmlContextAvailable": true
+    }
+  },
+  {
+    "evaluator": "output-quality",
+    "score": 0.8273208273208275,
+    "verdict": "pass",
+    "reason": "Composite of 9/9 sub-evaluators",
+    "details": {
+      "_composite": true,
+      "breakdown": [
+        {
+          "evaluator": "heading-hierarchy",
+          "score": 1,
+          "verdict": "pass",
+          "reason": "No heading level violations",
+          "scoreable": true
+        },
+        {
+          "evaluator": "semantic-density",
+          "score": 0.14285714285714285,
+          "verdict": "fail",
+          "reason": "5 semantic element(s) out of 35 block containers",
+          "scoreable": true
+        },
+        {
+          "evaluator": "accessibility-coverage",
+          "score": 0.9696969696969696,
+          "verdict": "pass",
+          "reason": "Accessibility weighted score across 2 active sub-dimension(s)",
+          "scoreable": true
+        },
+        {
+          "evaluator": "link-quality",
+          "score": 1,
+          "verdict": "pass",
+          "reason": "10 usable link(s) out of 10 total",
+          "scoreable": true
+        },
+        {
+          "evaluator": "responsive-readiness",
+          "score": 1,
+          "verdict": "pass",
+          "reason": "viewport meta, responsive breakpoint classes, flex/grid layout",
+          "scoreable": true
+        },
+        {
+          "evaluator": "inline-style-ratio",
+          "score": 0.9,
+          "verdict": "pass",
+          "reason": "11 element(s) with authored inline styles out of 110",
+          "scoreable": true
+        },
+        {
+          "evaluator": "component-decomposition",
+          "score": 0.7333333333333334,
+          "verdict": "pass",
+          "reason": "3 unique file(s) across 3 director(y/ies)",
+          "scoreable": true
+        },
+        {
+          "evaluator": "visual-coherence",
+          "score": 0.88,
+          "verdict": "pass",
+          "reason": "The site demonstrates strong visual coherence with consistent spacing, clear typographic hierarchy, and a harmonious primary-color palette carried throughout header, hero, stats bar, and services sections. Minor deductions for animated elements caught mid-transition (opacity/transform inline styles) and some slight density variation between sections.",
+          "scoreable": true
+        },
+        {
+          "evaluator": "content-substance",
+          "score": 0.82,
+          "verdict": "pass",
+          "reason": "The site contains well-developed, business-specific content including a named brand (Shine & Co.), specific service tiers (Regular, Deep, Move-In/Move-Out cleaning) with itemized inclusions, a real-format phone number, social proof stats, and clear CTAs. Minor deductions for the placeholder-style phone number (555) 123-4567 and lack of actual pricing details.",
+          "scoreable": true
+        }
+      ],
+      "scoredCount": 9,
+      "totalCount": 9
+    },
+    "evalVersion": "accessibility-coverage:1.0+component-decomposition:1.0+content-substance:1.0+heading-hierarchy:1.0+inline-style-ratio:1.0+link-quality:1.0+responsive-readiness:1.0+semantic-density:1.0+visual-coherence:1.0"
+  },
+  {
+    "evaluator": "agent-steps",
+    "score": 0.8581489350995123,
+    "verdict": "observed",
+    "reason": "6 agent steps",
+    "details": {
+      "totalSteps": 6
+    },
+    "evalVersion": "1.0"
+  },
+  {
+    "evaluator": "latency",
+    "score": 0.17203213671813752,
+    "verdict": "observed",
+    "reason": "TTFC=61136ms maxGap=95923ms total=579412ms chunks=52 turns=5 score=0.17 aabInit=46903ms aabTTFC=14201ms",
+    "details": {
+      "timeToFirstChunkMs": 61136,
+      "maxInterChunkGapMs": 95923,
+      "totalMs": 579412,
+      "chunkCount": 52,
+      "perTurn": [
+        {
+          "turnIndex": 1,
+          "timeToFirstChunkMs": 61136,
+          "maxInterChunkGapMs": 95923,
+          "totalTurnMs": 240467,
+          "chunkCount": 6
+        },
+        {
+          "turnIndex": 2,
+          "timeToFirstChunkMs": 59672,
+          "maxInterChunkGapMs": 362,
+          "totalTurnMs": 94738,
+          "chunkCount": 7
+        },
+        {
+          "turnIndex": 3,
+          "timeToFirstChunkMs": 5328,
+          "maxInterChunkGapMs": 60217,
+          "totalTurnMs": 79640,
+          "chunkCount": 14
+        },
+        {
+          "turnIndex": 4,
+          "timeToFirstChunkMs": 10157,
+          "maxInterChunkGapMs": 37897,
+          "totalTurnMs": 133121,
+          "chunkCount": 16
+        },
+        {
+          "turnIndex": 5,
+          "timeToFirstChunkMs": 4902,
+          "maxInterChunkGapMs": 4016,
+          "totalTurnMs": 11000,
+          "chunkCount": 9
+        }
+      ],
+      "medianTTFC": 10157,
+      "halfLifeMs": 4000,
+      "aabDiagnostics": {
+        "timingSummaries": [
+          {
+            "turnIndex": 0,
+            "timeToStreamStartMs": 1866,
+            "timeToFirstTextChunkMs": null,
+            "maxChunkGapMs": 3569,
+            "chunksRead": 65,
+            "streamDurationMs": 6760
+          },
+          {
+            "turnIndex": 1,
+            "timeToStreamStartMs": 1819,
+            "timeToFirstTextChunkMs": null,
+            "maxChunkGapMs": 3235,
+            "chunksRead": 643,
+            "streamDurationMs": 43224
+          },
+          {
+            "turnIndex": 1,
+            "timeToStreamStartMs": 46903,
+            "timeToFirstTextChunkMs": 14201,
+            "maxChunkGapMs": 48938,
+            "chunksRead": 3572,
+            "streamDurationMs": 193386
+          },
+          {
+            "turnIndex": 2,
+            "timeToStreamStartMs": 1777,
+            "timeToFirstTextChunkMs": 57864,
+            "maxChunkGapMs": 35901,
+            "chunksRead": 1811,
+            "streamDurationMs": 59348
+          },
+          {
+            "turnIndex": 2,
+            "timeToStreamStartMs": 74022,
+            "timeToFirstTextChunkMs": null,
+            "maxChunkGapMs": 3208,
+            "chunksRead": 84,
+            "streamDurationMs": 10282
+          },
+          {
+            "turnIndex": 3,
+            "timeToStreamStartMs": 1732,
+            "timeToFirstTextChunkMs": 3563,
+            "maxChunkGapMs": 35589,
+            "chunksRead": 2351,
+            "streamDurationMs": 67507
+          },
+          {
+            "turnIndex": 4,
+            "timeToStreamStartMs": 1667,
+            "timeToFirstTextChunkMs": 8437,
+            "maxChunkGapMs": 6425,
+            "chunksRead": 2306,
+            "streamDurationMs": 120353
+          },
+          {
+            "turnIndex": 5,
+            "timeToStreamStartMs": 2045,
+            "timeToFirstTextChunkMs": 2825,
+            "maxChunkGapMs": 3043,
+            "chunksRead": 52,
+            "streamDurationMs": 8568
+          }
+        ],
+        "slowGaps": [],
+        "timeouts": []
+      }
+    }
+  },
+  {
+    "evaluator": "tool-parallelism",
+    "score": 0.021442495126705655,
+    "verdict": "observed",
+    "reason": "Tool parallelism ratio: 2%",
+    "details": {
+      "turnsAnalyzed": 4,
+      "totalWeight": 54,
+      "perTurnRatios": [
+        {
+          "toolCallCount": 20,
+          "ratio": 0.05789473684210526
+        },
+        {
+          "toolCallCount": 6,
+          "ratio": 0
+        },
+        {
+          "toolCallCount": 6,
+          "ratio": 0
+        },
+        {
+          "toolCallCount": 22,
+          "ratio": 0
+        }
+      ]
+    }
+  },
+  {
+    "evaluator": "tool-batching-efficiency",
+    "score": 0.9090909090909091,
+    "verdict": "observed",
+    "reason": "56 successful calls across 6 productive turns",
+    "details": {
+      "totalSuccessfulCalls": 56,
+      "productiveTurns": 6
+    },
+    "evalVersion": "1.2"
+  },
+  {
+    "evaluator": "turn-duration",
+    "score": 566039,
+    "verdict": "observed",
+    "reason": "Total AAB duration: 566039ms across 6 turns (avg 94340ms)",
+    "details": {
+      "totalDurationMs": 566039,
+      "averageDurationMs": 94339.83333333333,
+      "perTurnMs": [
+        8633,
+        240291,
+        94418,
+        79391,
+        132554,
+        10752
+      ]
+    }
+  },
+  {
+    "evaluator": "token-usage",
+    "score": 3095559,
+    "verdict": "observed",
+    "reason": "aab=3095559 probe=57081 total=3152640 tokens",
+    "details": {
+      "aab": {
+        "inputTokens": 3070600,
+        "outputTokens": 24959,
+        "totalTokens": 3095559,
+        "cachedInputTokensRead": 2813734,
+        "cachedInputTokensWrite": 255203
+      },
+      "probe": {
+        "promptTokens": 56965,
+        "completionTokens": 116,
+        "totalTokens": 57081,
+        "calls": 6
+      },
+      "total": {
+        "tokens": 3152640
+      }
+    }
+  },
+  {
+    "evaluator": "intent-to-output-alignment",
+    "score": 0.92,
+    "verdict": "observed",
+    "reason": "The site includes a services section (Regular Cleaning, Deep Cleaning, Move-In/Move-Out with descriptions and checklists), contact information prominently displayed (phone number in header, hero, and a dedicated /contact page with quote form), and a central config file (business-info.ts) so the owner can update their real details. The scenario goals are fully met. Minor deduction: console errors from a motion library hook conflict were caught by an error boundary, but the homepage HTML rendered correctly per the snapshot, so the core content is functional.",
+    "details": {
+      "dimension": "Intent Understanding & Alignment",
+      "inputsUsed": [
+        "conversation",
+        "final_artifacts"
+      ],
+      "advisoryVerdict": "pass",
+      "transcriptErrors": 0
+    },
+    "evalVersion": "2.0"
+  },
+  {
+    "evaluator": "implicit-feature-gap",
+    "score": 0.88,
+    "verdict": "observed",
+    "reason": "The rendered homepage clearly shows a services section with three distinct offerings (Regular Cleaning, Deep Cleaning, Move-In/Move-Out) with descriptions and checklists, a phone number (555) 123-4567 prominently in the header and hero CTA, a 'Get a Free Quote' CTA linking to /contact, and trust signals (500+ clients, 5-star rated, insured). A dedicated contact page with form was also built per conversation. The main gap is that contact info uses placeholder values (the user was instructed to edit business-info.ts themselves), and no visible pricing appears on the homepage snapshot — though a services & pricing page at /services was confirmed built. These are minor gaps rather than blocking omissions.",
+    "details": {
+      "dimension": "Implicit Feature Completeness",
+      "inputsUsed": [
+        "conversation",
+        "final_artifacts"
+      ],
+      "advisoryVerdict": "pass",
+      "transcriptErrors": 0
+    },
+    "evalVersion": "2.0"
+  },
+  {
+    "evaluator": "silent-hallucination",
+    "score": 0.82,
+    "verdict": "observed",
+    "reason": "The agent claimed to build a homepage with services section, a services/pricing page, and a contact page — all backed by tool calls (str_replace_based_edit_tool, media fetches, colorScheme, fontTheme) and confirmed in the final HTML snapshot showing services section with three cleaning types and phone number prominently displayed. The agent also truthfully acknowledged placeholder contact info and created a business-info config file to address it. Minor gap: console errors show a React hook crash from motion_react that triggered AiroErrorBoundary, meaning some animated sections may not have rendered correctly, but the core content (services, contact info, nav) is visible in the snapshot HTML.",
+    "details": {
+      "dimension": "Consistency & Truthfulness",
+      "inputsUsed": [
+        "conversation",
+        "tool_calls",
+        "final_artifacts"
+      ],
+      "advisoryVerdict": "pass",
+      "transcriptErrors": 0
+    },
+    "evalVersion": "2.0"
+  }
+]

@@ -1,0 +1,367 @@
+[
+  {
+    "evaluator": "bug-hit-rate",
+    "score": 1,
+    "verdict": "pass",
+    "reason": "No unrecovered errors",
+    "details": {
+      "errorCount": 0,
+      "errors": []
+    }
+  },
+  {
+    "evaluator": "tool-failure-rate",
+    "score": 0,
+    "verdict": "observed",
+    "reason": "No tool failures across 58 tool call(s)",
+    "details": {
+      "failedCount": 0,
+      "totalCalls": 58,
+      "failedTools": []
+    }
+  },
+  {
+    "evaluator": "prompt-efficiency",
+    "score": 0.8807970779778823,
+    "verdict": "observed",
+    "reason": "5 user turns",
+    "details": {
+      "userTurns": 5
+    },
+    "evalVersion": "1.0"
+  },
+  {
+    "evaluator": "jtbd-completion",
+    "score": 1,
+    "verdict": "pass",
+    "reason": "LLM judge verdict: pass",
+    "details": {
+      "htmlContextAvailable": true
+    }
+  },
+  {
+    "evaluator": "output-quality",
+    "score": 0.8448821548821548,
+    "verdict": "pass",
+    "reason": "Composite of 9/9 sub-evaluators",
+    "details": {
+      "_composite": true,
+      "breakdown": [
+        {
+          "evaluator": "heading-hierarchy",
+          "score": 1,
+          "verdict": "pass",
+          "reason": "No heading level violations",
+          "scoreable": true
+        },
+        {
+          "evaluator": "semantic-density",
+          "score": 0.16666666666666666,
+          "verdict": "fail",
+          "reason": "7 semantic element(s) out of 42 block containers",
+          "scoreable": true
+        },
+        {
+          "evaluator": "accessibility-coverage",
+          "score": 1,
+          "verdict": "pass",
+          "reason": "Accessibility weighted score across 2 active sub-dimension(s)",
+          "scoreable": true
+        },
+        {
+          "evaluator": "link-quality",
+          "score": 1,
+          "verdict": "pass",
+          "reason": "5 usable link(s) out of 5 total",
+          "scoreable": true
+        },
+        {
+          "evaluator": "responsive-readiness",
+          "score": 1,
+          "verdict": "pass",
+          "reason": "viewport meta, responsive breakpoint classes, flex/grid layout",
+          "scoreable": true
+        },
+        {
+          "evaluator": "inline-style-ratio",
+          "score": 0.8272727272727273,
+          "verdict": "pass",
+          "reason": "19 element(s) with authored inline styles out of 110",
+          "scoreable": true
+        },
+        {
+          "evaluator": "component-decomposition",
+          "score": 0.8500000000000001,
+          "verdict": "pass",
+          "reason": "4 unique file(s) across 4 director(y/ies)",
+          "scoreable": true
+        },
+        {
+          "evaluator": "visual-coherence",
+          "score": 0.88,
+          "verdict": "pass",
+          "reason": "The portfolio demonstrates strong visual coherence with consistent typographic hierarchy (large display heading, small uppercase tracking labels, muted body copy), a disciplined primary-accent color system, and rhythmic section spacing using generous padding and numbered section markers. Minor deductions for animation states leaving some elements at opacity:0 in the static render, slightly obscuring the full layout rhythm.",
+          "scoreable": true
+        },
+        {
+          "evaluator": "content-substance",
+          "score": 0.88,
+          "verdict": "pass",
+          "reason": "The portfolio contains highly specific, business-relevant content including a named individual (Sarah Bloom), defined disciplines, concrete project names (Oak & Stone Coffee, TrailHead App) with detailed descriptions, real skill sets (React/TypeScript, Figma), and clear navigation with contact section — only minor truncation prevents a perfect score.",
+          "scoreable": true
+        }
+      ],
+      "scoredCount": 9,
+      "totalCount": 9
+    },
+    "evalVersion": "accessibility-coverage:1.0+component-decomposition:1.0+content-substance:1.0+heading-hierarchy:1.0+inline-style-ratio:1.0+link-quality:1.0+responsive-readiness:1.0+semantic-density:1.0+visual-coherence:1.0"
+  },
+  {
+    "evaluator": "agent-steps",
+    "score": 0.8807970779778823,
+    "verdict": "observed",
+    "reason": "5 agent steps",
+    "details": {
+      "totalSteps": 5
+    },
+    "evalVersion": "1.0"
+  },
+  {
+    "evaluator": "latency",
+    "score": 0.019040959630928254,
+    "verdict": "observed",
+    "reason": "TTFC=64242ms maxGap=61911ms total=686110ms chunks=90 turns=5 score=0.02 aabInit=53999ms aabTTFC=10241ms",
+    "details": {
+      "timeToFirstChunkMs": 64242,
+      "maxInterChunkGapMs": 61911,
+      "totalMs": 686110,
+      "chunkCount": 90,
+      "perTurn": [
+        {
+          "turnIndex": 0,
+          "timeToFirstChunkMs": 64242,
+          "maxInterChunkGapMs": 61911,
+          "totalTurnMs": 263072,
+          "chunkCount": 31
+        },
+        {
+          "turnIndex": 1,
+          "timeToFirstChunkMs": 19309,
+          "maxInterChunkGapMs": 34739,
+          "totalTurnMs": 219260,
+          "chunkCount": 35
+        },
+        {
+          "turnIndex": 2,
+          "timeToFirstChunkMs": 22859,
+          "maxInterChunkGapMs": 0,
+          "totalTurnMs": 37868,
+          "chunkCount": 1
+        },
+        {
+          "turnIndex": 3,
+          "timeToFirstChunkMs": 7409,
+          "maxInterChunkGapMs": 1327,
+          "totalTurnMs": 10575,
+          "chunkCount": 11
+        },
+        {
+          "turnIndex": 4,
+          "timeToFirstChunkMs": 59336,
+          "maxInterChunkGapMs": 28149,
+          "totalTurnMs": 138446,
+          "chunkCount": 12
+        }
+      ],
+      "medianTTFC": 22859,
+      "halfLifeMs": 4000,
+      "aabDiagnostics": {
+        "timingSummaries": [
+          {
+            "turnIndex": 0,
+            "timeToStreamStartMs": 4303,
+            "timeToFirstTextChunkMs": null,
+            "maxChunkGapMs": 6279,
+            "chunksRead": 681,
+            "streamDurationMs": 48044
+          },
+          {
+            "turnIndex": 0,
+            "timeToStreamStartMs": 53999,
+            "timeToFirstTextChunkMs": 10241,
+            "maxChunkGapMs": 37146,
+            "chunksRead": 2865,
+            "streamDurationMs": 202237
+          },
+          {
+            "turnIndex": 1,
+            "timeToStreamStartMs": 7515,
+            "timeToFirstTextChunkMs": 10197,
+            "maxChunkGapMs": 12982,
+            "chunksRead": 1546,
+            "streamDurationMs": 130448
+          },
+          {
+            "turnIndex": 1,
+            "timeToStreamStartMs": 157316,
+            "timeToFirstTextChunkMs": 15379,
+            "maxChunkGapMs": 4364,
+            "chunksRead": 207,
+            "streamDurationMs": 49866
+          },
+          {
+            "turnIndex": 2,
+            "timeToStreamStartMs": 1863,
+            "timeToFirstTextChunkMs": 19666,
+            "maxChunkGapMs": 7359,
+            "chunksRead": 363,
+            "streamDurationMs": 20963
+          },
+          {
+            "turnIndex": 3,
+            "timeToStreamStartMs": 3651,
+            "timeToFirstTextChunkMs": 3716,
+            "maxChunkGapMs": 3716,
+            "chunksRead": 54,
+            "streamDurationMs": 6668
+          },
+          {
+            "turnIndex": 4,
+            "timeToStreamStartMs": 3979,
+            "timeToFirstTextChunkMs": 54483,
+            "maxChunkGapMs": 10968,
+            "chunksRead": 737,
+            "streamDurationMs": 111552
+          }
+        ],
+        "slowGaps": [],
+        "timeouts": []
+      }
+    }
+  },
+  {
+    "evaluator": "tool-parallelism",
+    "score": 0.01842105263157895,
+    "verdict": "observed",
+    "reason": "Tool parallelism ratio: 2%",
+    "details": {
+      "turnsAnalyzed": 3,
+      "totalWeight": 57,
+      "perTurnRatios": [
+        {
+          "toolCallCount": 21,
+          "ratio": 0.0380952380952381
+        },
+        {
+          "toolCallCount": 25,
+          "ratio": 0.01
+        },
+        {
+          "toolCallCount": 11,
+          "ratio": 0
+        }
+      ]
+    }
+  },
+  {
+    "evaluator": "tool-batching-efficiency",
+    "score": 0.9473684210526315,
+    "verdict": "observed",
+    "reason": "58 successful calls across 4 productive turns",
+    "details": {
+      "totalSuccessfulCalls": 58,
+      "productiveTurns": 4
+    },
+    "evalVersion": "1.2"
+  },
+  {
+    "evaluator": "turn-duration",
+    "score": 655618,
+    "verdict": "observed",
+    "reason": "Total AAB duration: 655618ms across 5 turns (avg 131124ms)",
+    "details": {
+      "totalDurationMs": 655618,
+      "averageDurationMs": 131123.6,
+      "perTurnMs": [
+        256239,
+        217452,
+        35398,
+        10377,
+        136152
+      ]
+    }
+  },
+  {
+    "evaluator": "token-usage",
+    "score": 2858453,
+    "verdict": "observed",
+    "reason": "aab=2858453 probe=77949 total=2936402 tokens",
+    "details": {
+      "aab": {
+        "inputTokens": 2841974,
+        "outputTokens": 16479,
+        "totalTokens": 2858453,
+        "cachedInputTokensRead": 2626004,
+        "cachedInputTokensWrite": 212666
+      },
+      "probe": {
+        "promptTokens": 77560,
+        "completionTokens": 389,
+        "totalTokens": 77949,
+        "calls": 5
+      },
+      "total": {
+        "tokens": 2936402
+      }
+    }
+  },
+  {
+    "evaluator": "intent-to-output-alignment",
+    "score": 0.95,
+    "verdict": "observed",
+    "reason": "The final HTML snapshot clearly shows all three required sections: a hero with 'Sarah Bloom.' and 'Designer & Creative Director' tagline, an About section with background bio and skill tags, and a Contact section (visible in body text truncation but confirmed by nav link and section numbering). The user's real details (name, email sarah@bloomstudiodesign.com, GitHub/LinkedIn links, Twitter removed) were updated per request. The React hook error in console logs was caught by AiroErrorBoundary and the page recovered (DOM is fully rendered with content), representing a minor runtime warning rather than a blocking failure.",
+    "details": {
+      "dimension": "Intent Understanding & Alignment",
+      "inputsUsed": [
+        "conversation",
+        "final_artifacts"
+      ],
+      "advisoryVerdict": "pass",
+      "transcriptErrors": 0
+    },
+    "evalVersion": "2.0"
+  },
+  {
+    "evaluator": "implicit-feature-gap",
+    "score": 0.92,
+    "verdict": "observed",
+    "reason": "All three required sections (hero with name/tagline, about with background/skills, contact with email link and social icons) are fully rendered in the DOM snapshot. Real personal details (Sarah Bloom, sarah@bloomstudiodesign.com, GitHub/LinkedIn) were applied. A bonus projects section was added. A React hook error appears in console logs but the page recovered and all sections are present in the final snapshot.",
+    "details": {
+      "dimension": "Implicit Feature Completeness",
+      "inputsUsed": [
+        "conversation",
+        "final_artifacts"
+      ],
+      "advisoryVerdict": "pass",
+      "transcriptErrors": 0
+    },
+    "evalVersion": "2.0"
+  },
+  {
+    "evaluator": "silent-hallucination",
+    "score": 0.82,
+    "verdict": "observed",
+    "reason": "The final HTML snapshot confirms all three required sections (hero with 'Sarah Bloom' and 'Designer & Creative Director', about with bio and skills, contact with email and social links) are present and agent claims match observable artifacts. Tool calls back up font/color/logo/media setup and all content updates. Minor gap: console logs show a 'useRef' hook error caught by AiroErrorBoundary during render, suggesting a runtime crash on first load, though the HTML snapshot still renders content (likely recovered after hot reload). The agent also claimed the preview was 'responding fine' after a false alarm, which is partially supported but the hook error is real and not fully acknowledged.",
+    "details": {
+      "dimension": "Consistency & Truthfulness",
+      "inputsUsed": [
+        "conversation",
+        "tool_calls",
+        "final_artifacts"
+      ],
+      "advisoryVerdict": "pass",
+      "transcriptErrors": 0
+    },
+    "evalVersion": "2.0"
+  }
+]

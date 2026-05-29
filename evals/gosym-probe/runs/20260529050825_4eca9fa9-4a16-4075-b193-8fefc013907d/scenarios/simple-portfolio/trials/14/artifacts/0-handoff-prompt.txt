@@ -1,0 +1,98 @@
+Build a homepage design preview with this direction:
+
+PROJECT DETAILS:
+- Name & tagline: Sarah Mitchell — UX Designer & Storyteller
+- Design personality: Bold & creative
+- Social platforms: GitHub, LinkedIn, Dribbble
+
+DESIGN DIRECTION:
+Bold, editorial portfolio that feels like a designer made it — not a template. Strong typographic hierarchy with dramatic size contrasts, confident use of whitespace, and one unexpected accent color that punctuates the monochrome base. The page should feel alive through purposeful motion and creative layout choices.
+
+LAYOUT TYPE: Standard
+Marketing/portfolio site with full navigation header and footer.
+
+VISUAL DIRECTION:
+- Color: Near-black base (#0F0F0F or similar) with a single vivid accent — consider electric violet (#7C3AED) or warm coral (#F97316) as the punctuation color. Off-white text. Muted gray for secondary text.
+- Typography: Dramatic display serif or high-contrast sans for headings (try Playfair Display or Fraunces for hero, DM Sans or Plus Jakarta Sans for body). Oversized hero name that breaks the grid. Mix weights boldly.
+- Layout: Asymmetric compositions throughout. NO centered-text-on-colored-band CTAs. NO uniform icon grids.
+
+VISUAL ELEMENTS:
+- Primary: Abstract geometric shapes — thin lines, circles, dot grids — in the accent color as subtle decorative elements
+- Style: Minimal, precise, editorial — think design magazine aesthetic
+- Application: Hero background accents, section dividers, floating decorative marks
+- Logo: Generate a minimal wordmark logo using the media-logo skill — "SM" monogram or "Sarah Mitchell" wordmark in a clean, bold style matching the dark aesthetic
+
+MOTION DESIGN:
+- Level: Dynamic
+- Effects:
+  - Hero name: staggered letter/word entrance (slide up + fade, 600ms, staggered 80ms per word)
+  - Tagline: fade in after name (400ms delay)
+  - Sections: fade-in + slide-up on scroll (whileInView, once: true, 400ms ease-out)
+  - Hover on social icons: scale(1.15) + accent color shift (150ms)
+  - Decorative shapes: slow ambient float (6-10s, subtle y-axis movement)
+- Personality: Confident and creative — smooth, deliberate, never bouncy
+
+SECTION-SPECIFIC:
+
+Hero:
+- Full-viewport height
+- Sarah's name in massive display type (think 80-120px desktop), breaking the grid
+- Tagline "UX Designer & Storyteller" in a contrasting weight/style below
+- Subtle geometric accent shapes in the background (thin lines or dot grid)
+- Scroll indicator arrow at bottom
+- Staggered entrance animation on load
+
+About:
+- Two-column asymmetric layout: large pull-quote or bold statement on left, paragraph text on right
+- Include placeholder background: "Sarah is a UX designer with 6+ years crafting digital experiences that balance beauty with usability. She believes great design tells a story — one that guides, delights, and earns trust."
+- A small accent shape or decorative element to break the grid
+- Fade-in on scroll
+
+Contact:
+- NOT a centered band — use an asymmetric layout with large typographic CTA on one side
+- Email: hello@sarahmitchell.design (styled as a large hover-underline link)
+- Social icons: GitHub, LinkedIn, Dribbble — with SVG icons from lucide-react or heroicons, hover accent color effect
+- Short line: "Let's make something great together."
+- Fade-in on scroll
+
+Navigation:
+- Minimal header: logo/name left, nav links right (About, Work, Contact)
+- Transparent on hero, solid dark on scroll
+- Clean, no clutter
+
+Footer:
+- Minimal: copyright + "Designed with intention" or similar
+- Maintain dark aesthetic, small type
+
+DIFFERENTIATION:
+Oversized hero typography that genuinely breaks the grid — the name should feel monumental. Pair with razor-thin geometric line accents in the brand color for editorial contrast.
+
+CONSISTENCY:
+Dark aesthetic and bold typography must carry through every section. Footer should feel as intentional as the hero. Accent color appears consistently but sparingly — it should feel like punctuation, not decoration.
+
+BUILD ORDER:
+
+Phase 1 — Setup (run in parallel):
+- Generate logo using media-logo skill: minimal "SM" monogram or wordmark, dark background style
+- Set font stack using fontTheme tool: Fraunces or Playfair Display for display, Plus Jakarta Sans for body
+- Set color scheme using colorScheme tool: near-black background, off-white foreground, vivid violet or coral accent
+
+Phase 2 — Structure (run in parallel after Phase 1):
+- Build Header (transparent → solid on scroll, minimal nav)
+- Build Footer (minimal dark, copyright)
+
+Phase 3 — Page (after Phase 1 & 2):
+- Build homepage index.tsx with Hero, About, Contact sections and all animations
+
+Phase 4 — Finalize:
+- Mark "Homepage" todo item as complete using todoList tool
+- Ask for design feedback using askQuestion
+
+CRITICAL: Build index.tsx LAST — after fonts, colors, header, and footer are ready.
+
+INITIAL SCOPE: Homepage design only — Hero, About, Contact. No additional pages yet.
+
+DESIGN FEEDBACK:
+After showing the design, use askQuestion to ask:
+- Question: "What do you think of the design?"
+- Suggestions: ["Love it — let's build the Projects page", "Change the color scheme", "Change the fonts", "Adjust the hero layout", "I'd like to tweak something specific"]

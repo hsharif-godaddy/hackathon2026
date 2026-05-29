@@ -1,0 +1,65 @@
+{
+  "scenarioName": "cleaning-biz-ambiguity",
+  "trial": 16,
+  "turns": [
+    {
+      "role": "user",
+      "content": "I need a website for my cleaning business",
+      "durationSeconds": 0
+    },
+    {
+      "role": "user",
+      "content": "I clean houses, just need something simple",
+      "durationSeconds": 30.4
+    },
+    {
+      "role": "assistant",
+      "content": "Good — colors, fonts, and images are all set. Now generating the logo and then building the structure.Now building the Header and Footer in parallel:Now building the homepage:",
+      "durationSeconds": 244.7
+    },
+    {
+      "role": "user",
+      "content": "Looks good! Does it have a way for people to contact me?",
+      "durationSeconds": 2.3
+    },
+    {
+      "role": "assistant",
+      "content": "The homepage already has a \"Request a Free Quote\" contact form at the bottom — visitors can fill in their name, email, service needed, and a message. There's also a phone number and email address displayed throughout the page (in the header, hero, and contact section).\n\nWould you like me to wire up the form so submissions actually get sent to your email?",
+      "durationSeconds": 7.6
+    },
+    {
+      "role": "user",
+      "content": "Does it show my phone number and email on there so people can actually reach me?",
+      "durationSeconds": 2.2
+    },
+    {
+      "role": "assistant",
+      "content": "Yes! Your phone number **(555) 123-4567** and email **hello@sparklingclean.com** are already on the site in several places — the header, the hero section, and the contact section at the bottom.\n\nYou'll want to update those to your real details. What's your actual phone number and email address?",
+      "durationSeconds": 7.3
+    },
+    {
+      "role": "user",
+      "content": "Those are just made up numbers — I need my real info on there. My number is 555-867-5309 and my email is cleanwithcare@gmail.com.",
+      "durationSeconds": 2.9
+    },
+    {
+      "role": "assistant",
+      "content": "Done! Your real number **(555) 867-5309** and email **cleanwithcare@gmail.com** are now showing everywhere on the site — the header, hero, contact section, and footer.",
+      "durationSeconds": 69.8
+    },
+    {
+      "role": "user",
+      "content": "That's all set — your real number and email are updated everywhere on the site so customers can actually reach you!\n\nDONE",
+      "durationSeconds": 2.4
+    },
+    {
+      "role": "assistant",
+      "content": "Your real phone number and email are now showing everywhere on the site — in the header, hero section, contact form, and footer.",
+      "durationSeconds": 5.7
+    }
+  ],
+  "summary": {
+    "messageCount": 11,
+    "totalElapsedSeconds": 375.2
+  }
+}

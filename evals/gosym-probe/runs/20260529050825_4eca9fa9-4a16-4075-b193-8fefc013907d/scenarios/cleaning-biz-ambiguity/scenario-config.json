@@ -1,0 +1,30 @@
+{
+  "name": "cleaning-biz-ambiguity",
+  "trials": 3,
+  "persona": {
+    "name": "cleaning-biz-owner",
+    "description": "Vague cleaning business owner with low technical knowledge. Sends short, ambiguous messages and needs the agent to infer business basics and guide the site structure."
+  },
+  "goals": [
+    {
+      "description": "The agent infers cleaning business basics from vague user input and builds a functional site with a services section and contact information",
+      "assertion": "positive"
+    }
+  ],
+  "evaluators": [
+    "bug-hit-rate",
+    "tool-failure-rate",
+    "prompt-efficiency",
+    "jtbd-completion",
+    "output-quality",
+    "agent-steps",
+    "latency",
+    "tool-parallelism",
+    "tool-batching-efficiency",
+    "turn-duration",
+    "token-usage",
+    "intent-to-output-alignment",
+    "implicit-feature-gap",
+    "silent-hallucination"
+  ]
+}

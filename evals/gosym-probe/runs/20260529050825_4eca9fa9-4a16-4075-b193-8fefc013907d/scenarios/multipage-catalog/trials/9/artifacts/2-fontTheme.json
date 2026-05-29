@@ -1,0 +1,24 @@
+{
+  "success": true,
+  "message": "Applied font theme: Artisan Warmth",
+  "appliedFont": {
+    "name": "Artisan Warmth",
+    "headerFont": {
+      "name": "Playfair Display",
+      "weights": [
+        "600",
+        "700"
+      ],
+      "category": "serif"
+    },
+    "bodyFont": {
+      "name": "Lato",
+      "weights": [
+        "400",
+        "500"
+      ],
+      "category": "sans-serif"
+    }
+  },
+  "suggestedResponse": "Font theme \"Artisan Warmth\" (Playfair Display (headers) + Lato (body)) has been applied."
+}

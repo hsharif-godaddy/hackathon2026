@@ -1,0 +1,352 @@
+[
+  {
+    "evaluator": "bug-hit-rate",
+    "score": 1,
+    "verdict": "pass",
+    "reason": "No unrecovered errors",
+    "details": {
+      "errorCount": 0,
+      "errors": []
+    }
+  },
+  {
+    "evaluator": "tool-failure-rate",
+    "score": 0,
+    "verdict": "observed",
+    "reason": "No tool failures across 32 tool call(s)",
+    "details": {
+      "failedCount": 0,
+      "totalCalls": 32,
+      "failedTools": []
+    }
+  },
+  {
+    "evaluator": "prompt-efficiency",
+    "score": 0.8581489350995123,
+    "verdict": "observed",
+    "reason": "6 user turns",
+    "details": {
+      "userTurns": 6
+    },
+    "evalVersion": "1.0"
+  },
+  {
+    "evaluator": "jtbd-completion",
+    "score": 0.5,
+    "verdict": "partial",
+    "reason": "LLM judge verdict: partial",
+    "details": {
+      "htmlContextAvailable": false
+    }
+  },
+  {
+    "evaluator": "output-quality",
+    "score": 0,
+    "verdict": "unknown",
+    "reason": "Composite of 0/9 sub-evaluators (all unknown or errored)",
+    "details": {
+      "_composite": true,
+      "breakdown": [
+        {
+          "evaluator": "heading-hierarchy",
+          "score": 0,
+          "verdict": "unknown",
+          "reason": "No DOM snapshot available",
+          "scoreable": false
+        },
+        {
+          "evaluator": "semantic-density",
+          "score": 0,
+          "verdict": "unknown",
+          "reason": "No DOM snapshot available",
+          "scoreable": false
+        },
+        {
+          "evaluator": "accessibility-coverage",
+          "score": 0,
+          "verdict": "unknown",
+          "reason": "No DOM snapshot available",
+          "scoreable": false
+        },
+        {
+          "evaluator": "link-quality",
+          "score": 0,
+          "verdict": "unknown",
+          "reason": "No DOM snapshot available",
+          "scoreable": false
+        },
+        {
+          "evaluator": "responsive-readiness",
+          "score": 0,
+          "verdict": "unknown",
+          "reason": "No DOM snapshot available",
+          "scoreable": false
+        },
+        {
+          "evaluator": "inline-style-ratio",
+          "score": 0,
+          "verdict": "unknown",
+          "reason": "No DOM snapshot available",
+          "scoreable": false
+        },
+        {
+          "evaluator": "component-decomposition",
+          "score": 0,
+          "verdict": "unknown",
+          "reason": "No DOM snapshot available",
+          "scoreable": false
+        },
+        {
+          "evaluator": "visual-coherence",
+          "score": 0,
+          "verdict": "unknown",
+          "reason": "Insufficient evidence to evaluate (no DOM snapshot)",
+          "scoreable": false
+        },
+        {
+          "evaluator": "content-substance",
+          "score": 0,
+          "verdict": "unknown",
+          "reason": "Insufficient evidence to evaluate (no DOM snapshot)",
+          "scoreable": false
+        }
+      ],
+      "scoredCount": 0,
+      "totalCount": 9
+    },
+    "evalVersion": "accessibility-coverage:1.0+component-decomposition:1.0+content-substance:1.0+heading-hierarchy:1.0+inline-style-ratio:1.0+link-quality:1.0+responsive-readiness:1.0+semantic-density:1.0+visual-coherence:1.0"
+  },
+  {
+    "evaluator": "agent-steps",
+    "score": 0.8581489350995123,
+    "verdict": "observed",
+    "reason": "6 agent steps",
+    "details": {
+      "totalSteps": 6
+    },
+    "evalVersion": "1.0"
+  },
+  {
+    "evaluator": "latency",
+    "score": 0.025068161448515203,
+    "verdict": "observed",
+    "reason": "TTFC=87204ms maxGap=111657ms total=654096ms chunks=36 turns=5 score=0.03 aabInit=61420ms aabTTFC=25756ms",
+    "details": {
+      "timeToFirstChunkMs": 87204,
+      "maxInterChunkGapMs": 111657,
+      "totalMs": 654096,
+      "chunkCount": 36,
+      "perTurn": [
+        {
+          "turnIndex": 1,
+          "timeToFirstChunkMs": 87204,
+          "maxInterChunkGapMs": 111657,
+          "totalTurnMs": 325916,
+          "chunkCount": 3
+        },
+        {
+          "turnIndex": 2,
+          "timeToFirstChunkMs": 21272,
+          "maxInterChunkGapMs": 38829,
+          "totalTurnMs": 255079,
+          "chunkCount": 8
+        },
+        {
+          "turnIndex": 3,
+          "timeToFirstChunkMs": 22477,
+          "maxInterChunkGapMs": 492,
+          "totalTurnMs": 26948,
+          "chunkCount": 14
+        },
+        {
+          "turnIndex": 4,
+          "timeToFirstChunkMs": 7158,
+          "maxInterChunkGapMs": 1718,
+          "totalTurnMs": 10148,
+          "chunkCount": 6
+        },
+        {
+          "turnIndex": 5,
+          "timeToFirstChunkMs": 7058,
+          "maxInterChunkGapMs": 1645,
+          "totalTurnMs": 9395,
+          "chunkCount": 5
+        }
+      ],
+      "medianTTFC": 21272,
+      "halfLifeMs": 4000,
+      "aabDiagnostics": {
+        "timingSummaries": [
+          {
+            "turnIndex": 0,
+            "timeToStreamStartMs": 3164,
+            "timeToFirstTextChunkMs": null,
+            "maxChunkGapMs": 5682,
+            "chunksRead": 67,
+            "streamDurationMs": 11122
+          },
+          {
+            "turnIndex": 1,
+            "timeToStreamStartMs": 3208,
+            "timeToFirstTextChunkMs": null,
+            "maxChunkGapMs": 6720,
+            "chunksRead": 708,
+            "streamDurationMs": 56548
+          },
+          {
+            "turnIndex": 1,
+            "timeToStreamStartMs": 61420,
+            "timeToFirstTextChunkMs": 25756,
+            "maxChunkGapMs": 45738,
+            "chunksRead": 3463,
+            "streamDurationMs": 263893
+          },
+          {
+            "turnIndex": 2,
+            "timeToStreamStartMs": 11842,
+            "timeToFirstTextChunkMs": 9387,
+            "maxChunkGapMs": 23650,
+            "chunksRead": 2108,
+            "streamDurationMs": 144648
+          },
+          {
+            "turnIndex": 2,
+            "timeToStreamStartMs": 180621,
+            "timeToFirstTextChunkMs": 14720,
+            "maxChunkGapMs": 6023,
+            "chunksRead": 128,
+            "streamDurationMs": 22443
+          },
+          {
+            "turnIndex": 2,
+            "timeToStreamStartMs": 222194,
+            "timeToFirstTextChunkMs": null,
+            "maxChunkGapMs": 8580,
+            "chunksRead": 52,
+            "streamDurationMs": 18656
+          },
+          {
+            "turnIndex": 3,
+            "timeToStreamStartMs": 4755,
+            "timeToFirstTextChunkMs": 12955,
+            "maxChunkGapMs": 12955,
+            "chunksRead": 72,
+            "streamDurationMs": 17331
+          },
+          {
+            "turnIndex": 4,
+            "timeToStreamStartMs": 3605,
+            "timeToFirstTextChunkMs": 3518,
+            "maxChunkGapMs": 3352,
+            "chunksRead": 27,
+            "streamDurationMs": 5974
+          },
+          {
+            "turnIndex": 5,
+            "timeToStreamStartMs": 2349,
+            "timeToFirstTextChunkMs": 3585,
+            "maxChunkGapMs": 3347,
+            "chunksRead": 22,
+            "streamDurationMs": 5582
+          }
+        ],
+        "slowGaps": [],
+        "timeouts": []
+      }
+    }
+  },
+  {
+    "evaluator": "tool-parallelism",
+    "score": 0.07590132827324478,
+    "verdict": "observed",
+    "reason": "Tool parallelism ratio: 8%",
+    "details": {
+      "turnsAnalyzed": 2,
+      "totalWeight": 31,
+      "perTurnRatios": [
+        {
+          "toolCallCount": 18,
+          "ratio": 0.13071895424836602
+        },
+        {
+          "toolCallCount": 13,
+          "ratio": 0
+        }
+      ]
+    }
+  },
+  {
+    "evaluator": "tool-batching-efficiency",
+    "score": 0.9354838709677419,
+    "verdict": "observed",
+    "reason": "32 successful calls across 3 productive turns",
+    "details": {
+      "totalSuccessfulCalls": 32,
+      "productiveTurns": 3
+    },
+    "evalVersion": "1.2"
+  },
+  {
+    "evaluator": "turn-duration",
+    "score": 634461,
+    "verdict": "observed",
+    "reason": "Total AAB duration: 634461ms across 6 turns (avg 105744ms)",
+    "details": {
+      "totalDurationMs": 634461,
+      "averageDurationMs": 105743.5,
+      "perTurnMs": [
+        14293,
+        325314,
+        254878,
+        22145,
+        9750,
+        8081
+      ]
+    }
+  },
+  {
+    "evaluator": "token-usage",
+    "score": 1580372,
+    "verdict": "observed",
+    "reason": "aab=1580372 probe=52081 total=1632453 tokens",
+    "details": {
+      "aab": {
+        "inputTokens": 1565097,
+        "outputTokens": 15275,
+        "totalTokens": 1580372,
+        "cachedInputTokensRead": 1353347,
+        "cachedInputTokensWrite": 209639
+      },
+      "probe": {
+        "promptTokens": 51969,
+        "completionTokens": 112,
+        "totalTokens": 52081,
+        "calls": 6
+      },
+      "total": {
+        "tokens": 1632453
+      }
+    }
+  },
+  {
+    "evaluator": "intent-to-output-alignment",
+    "score": 0,
+    "verdict": "unknown",
+    "reason": "Evidence validation failed (snapshot unreadable or empty)",
+    "evalVersion": "2.0"
+  },
+  {
+    "evaluator": "implicit-feature-gap",
+    "score": 0,
+    "verdict": "unknown",
+    "reason": "Evidence validation failed (snapshot unreadable or empty)",
+    "evalVersion": "2.0"
+  },
+  {
+    "evaluator": "silent-hallucination",
+    "score": 0,
+    "verdict": "unknown",
+    "reason": "Evidence validation failed (snapshot unreadable or empty)",
+    "evalVersion": "2.0"
+  }
+]

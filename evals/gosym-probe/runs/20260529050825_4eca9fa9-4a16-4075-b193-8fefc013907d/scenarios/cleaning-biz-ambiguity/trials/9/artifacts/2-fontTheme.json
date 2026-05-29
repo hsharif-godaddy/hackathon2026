@@ -1,0 +1,24 @@
+{
+  "success": true,
+  "message": "Applied font theme: Warm Humanist",
+  "appliedFont": {
+    "name": "Warm Humanist",
+    "headerFont": {
+      "name": "Nunito",
+      "weights": [
+        "600",
+        "700"
+      ],
+      "category": "sans-serif"
+    },
+    "bodyFont": {
+      "name": "Lato",
+      "weights": [
+        "400",
+        "500"
+      ],
+      "category": "sans-serif"
+    }
+  },
+  "suggestedResponse": "Font theme \"Warm Humanist\" (Nunito (headers) + Lato (body)) has been applied."
+}

@@ -1,0 +1,226 @@
+{
+  "previewUrl": "https://local.gasket.dev-godaddy.com:5034",
+  "generatedAt": "2026-05-29T06:16:34.528Z",
+  "durationMs": 9914,
+  "outputDir": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/multipage-catalog/trials/11/snapshots",
+  "routes": [
+    {
+      "path": "/",
+      "url": "https://local.gasket.dev-godaddy.com:5034",
+      "origin": "homepage",
+      "status": "ok",
+      "httpStatus": 200
+    },
+    {
+      "path": "/products",
+      "url": "https://local.gasket.dev-godaddy.com:5034/products",
+      "origin": "crawl",
+      "status": "ok",
+      "httpStatus": 200,
+      "isRouteEmpty": true
+    },
+    {
+      "path": "/about",
+      "url": "https://local.gasket.dev-godaddy.com:5034/about",
+      "origin": "crawl",
+      "status": "ok",
+      "httpStatus": 200,
+      "isRouteEmpty": true
+    },
+    {
+      "path": "/privacy",
+      "url": "https://local.gasket.dev-godaddy.com:5034/privacy",
+      "origin": "crawl",
+      "status": "ok",
+      "httpStatus": 200,
+      "isRouteEmpty": true
+    },
+    {
+      "path": "/terms",
+      "url": "https://local.gasket.dev-godaddy.com:5034/terms",
+      "origin": "crawl",
+      "status": "ok",
+      "httpStatus": 200,
+      "isRouteEmpty": true
+    }
+  ],
+  "perRoute": [
+    {
+      "route": {
+        "path": "/",
+        "url": "https://local.gasket.dev-godaddy.com:5034",
+        "origin": "homepage",
+        "status": "ok",
+        "httpStatus": 200
+      },
+      "rendered": {
+        "title": "Artisan Goods Co. — Handcrafted with Intention",
+        "h1": "Made by Hand,Made to Last",
+        "headingText": "Made by Hand,Made to Last | Handpicked for You | The Difference a Human Hand Makes | Stories from the Studio",
+        "bodyPreview": "HANDCRAFTED WITH INTENTION\n\nMade by Hand,\nMade to Last\n\nEvery piece in our collection is crafted by skilled artisans who pour their heart into their work. Discover goods that carry a story.\n\nShop Now\nOur Story\nPOTTERY\nTEXTILES\nWOODWORK\nJEWELRY\n\nCURATED SELECTION\n\nHandpicked for You\nView All Products"
+      },
+      "perViewport": {
+        "mobile": {
+          "tiles": [
+            {
+              "index": 0,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/multipage-catalog/trials/11/snapshots/mobile/home/tile0.png",
+              "yOffset": 201
+            },
+            {
+              "index": 1,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/multipage-catalog/trials/11/snapshots/mobile/home/tile1.png",
+              "yOffset": 658
+            },
+            {
+              "index": 2,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/multipage-catalog/trials/11/snapshots/mobile/home/tile2.png",
+              "yOffset": 1303
+            },
+            {
+              "index": 3,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/multipage-catalog/trials/11/snapshots/mobile/home/tile3.png",
+              "yOffset": 1967
+            },
+            {
+              "index": 4,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/multipage-catalog/trials/11/snapshots/mobile/home/tile4.png",
+              "yOffset": 2626
+            },
+            {
+              "index": 5,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/multipage-catalog/trials/11/snapshots/mobile/home/tile5.png",
+              "yOffset": 3296
+            }
+          ]
+        },
+        "laptop": {
+          "tiles": [
+            {
+              "index": 0,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/multipage-catalog/trials/11/snapshots/laptop/home/tile0.png",
+              "yOffset": 116
+            },
+            {
+              "index": 1,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/multipage-catalog/trials/11/snapshots/laptop/home/tile1.png",
+              "yOffset": 828
+            },
+            {
+              "index": 2,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/multipage-catalog/trials/11/snapshots/laptop/home/tile2.png",
+              "yOffset": 1719
+            },
+            {
+              "index": 3,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/multipage-catalog/trials/11/snapshots/laptop/home/tile3.png",
+              "yOffset": 2624
+            },
+            {
+              "index": 4,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/multipage-catalog/trials/11/snapshots/laptop/home/tile4.png",
+              "yOffset": 2797
+            }
+          ]
+        }
+      }
+    },
+    {
+      "route": {
+        "path": "/products",
+        "url": "https://local.gasket.dev-godaddy.com:5034/products",
+        "origin": "crawl",
+        "status": "ok",
+        "httpStatus": 200,
+        "isRouteEmpty": true
+      },
+      "rendered": {
+        "title": "",
+        "h1": null,
+        "headingText": "",
+        "bodyPreview": ""
+      },
+      "perViewport": {
+        "mobile": {
+          "tiles": []
+        },
+        "laptop": {
+          "tiles": []
+        }
+      }
+    },
+    {
+      "route": {
+        "path": "/about",
+        "url": "https://local.gasket.dev-godaddy.com:5034/about",
+        "origin": "crawl",
+        "status": "ok",
+        "httpStatus": 200,
+        "isRouteEmpty": true
+      },
+      "rendered": {
+        "title": "",
+        "h1": null,
+        "headingText": "",
+        "bodyPreview": ""
+      },
+      "perViewport": {
+        "mobile": {
+          "tiles": []
+        },
+        "laptop": {
+          "tiles": []
+        }
+      }
+    },
+    {
+      "route": {
+        "path": "/privacy",
+        "url": "https://local.gasket.dev-godaddy.com:5034/privacy",
+        "origin": "crawl",
+        "status": "ok",
+        "httpStatus": 200,
+        "isRouteEmpty": true
+      },
+      "rendered": {
+        "title": "",
+        "h1": null,
+        "headingText": "",
+        "bodyPreview": ""
+      },
+      "perViewport": {
+        "mobile": {
+          "tiles": []
+        },
+        "laptop": {
+          "tiles": []
+        }
+      }
+    },
+    {
+      "route": {
+        "path": "/terms",
+        "url": "https://local.gasket.dev-godaddy.com:5034/terms",
+        "origin": "crawl",
+        "status": "ok",
+        "httpStatus": 200,
+        "isRouteEmpty": true
+      },
+      "rendered": {
+        "title": "",
+        "h1": null,
+        "headingText": "",
+        "bodyPreview": ""
+      },
+      "perViewport": {
+        "mobile": {
+          "tiles": []
+        },
+        "laptop": {
+          "tiles": []
+        }
+      }
+    }
+  ],
+  "errors": []
+}

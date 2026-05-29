@@ -1,0 +1,66 @@
+Build a personal portfolio homepage with this design direction:
+
+PROJECT DETAILS:
+- Type: Personal portfolio website
+- Sections: Hero, About, Contact
+- Design: Clean, modern, good spacing
+
+DESIGN DIRECTION:
+Editorial and confident — a portfolio that feels like a designer's or developer's personal brand, not a generic template. Strong typographic hierarchy, generous whitespace, and one bold accent color that punctuates an otherwise restrained palette. Should feel polished and memorable.
+
+LAYOUT TYPE: Standard
+Full header with navigation and footer.
+
+VISUAL DIRECTION:
+- Color: Near-black base (#0f0f0f or deep charcoal) with off-white text and ONE warm accent (amber/gold or a muted coral — NOT blue or purple). Subtle warm-gray section backgrounds to create depth.
+- Typography: Clash of sizes — oversized display heading in the hero (think 80–120px), clean medium-weight sans for body. Use a distinctive font: Playfair Display or DM Serif Display for the hero name, Inter or DM Sans for body copy.
+- Layout: Full-width sections with asymmetric compositions. Hero has name left-aligned with a large decorative typographic element or abstract line graphic on the right. About section uses a two-column layout (text left, decorative element or subtle portrait placeholder right). Contact is minimal and elegant.
+- Visual elements: Geometric line accents (thin, precise lines and dots) as decorative elements — not blobs. Subtle grid or dot-pattern texture in the hero background.
+- Motion: Subtle — staggered fade-up entrance on hero text (name, tagline, CTA), gentle fade-in on scroll for About and Contact sections, smooth hover underline draw on nav links and social icons.
+
+LOGO:
+Use the media-logo skill to generate a minimal wordmark or monogram logo for the header. Style: clean, typographic, matches the dark/warm-accent palette.
+
+MOTION DESIGN:
+- Level: Subtle
+- Effects: Staggered fade-up on hero (name → tagline → CTA, each 150ms apart), fade-in on scroll for sections (400ms ease-out), hover underline draw on links (200ms), social icon scale on hover (1.0 → 1.1, 150ms)
+- Personality: Refined and confident — smooth, never bouncy
+
+SECTION-SPECIFIC:
+- Hero: Name in oversized display type (left-aligned), tagline below in medium weight, a subtle geometric line accent or abstract shape on the right half. Include a scroll-down indicator. Staggered entrance animation.
+- About: Two-column layout — left has a short bio paragraph with a "Currently working on..." or "Background" subheading; right has a subtle decorative element (geometric lines, or a placeholder for a portrait with a styled frame). Fade-in on scroll.
+- Contact: Clean, minimal section. Large "Get in touch" heading, email as a styled link (with hover underline draw), row of social media icons (GitHub, LinkedIn, Twitter/X, Dribbble — use lucide-react icons). No form needed — just direct links.
+- Header: Minimal — logo/name left, nav links right (About, Work, Contact). Sticky with subtle backdrop blur on scroll.
+- Footer: Single line — copyright and a small "back to top" link. Matches dark palette.
+
+DIFFERENTIATION: Oversized hero name that bleeds near the edge of the viewport, creating an editorial magazine feel. The name itself IS the visual.
+
+CONSISTENCY: Dark, warm, editorial tone throughout. Footer as intentional as hero. Accent color used sparingly — only on key interactive elements and one or two typographic highlights.
+
+BUILD ORDER:
+
+Phase 1 — Setup (run in parallel):
+- Search for a subtle dark texture or geometric line pattern for hero background
+- Set font stack using fontTheme tool: DM Serif Display (display/headings) + Inter (body)
+- Set color scheme using colorScheme tool: deep charcoal background, off-white foreground, warm amber/gold accent
+- Generate logo using media-logo skill: minimal monogram or wordmark, dark palette
+
+Phase 2 — Structure (run in parallel, after Phase 1):
+- Build Header.tsx: sticky, minimal, logo left + nav right, backdrop blur on scroll
+- Build Footer.tsx: single-line dark footer with copyright
+
+Phase 3 — Page (after Phase 1 & 2):
+- Build homepage (index.tsx) with Hero, About, and Contact sections and all animations
+
+Phase 4 — Finalize:
+- Mark "Homepage" todo item as complete using todoList tool
+- Ask for design feedback using askQuestion
+
+CRITICAL: Build index.tsx LAST after setup, header, and footer are complete.
+
+INITIAL SCOPE: Homepage only — Hero, About, Contact sections. This is a design review.
+
+DESIGN FEEDBACK:
+After showing the homepage, use askQuestion to ask:
+- Question: "What do you think of the design?"
+- Suggestions: ["Looks great — let's add a projects/work section", "Change the color scheme", "Change the fonts", "Update the content with my real info", "I'd like to adjust the layout"]

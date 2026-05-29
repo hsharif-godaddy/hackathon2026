@@ -1,0 +1,38 @@
+{
+  "name": "multipage-catalog",
+  "trials": 3,
+  "persona": {
+    "name": "standard",
+    "description": "Average small business owner with basic web literacy. Has a clear business goal and can make decisions about content and design without hand-holding."
+  },
+  "goals": [
+    {
+      "description": "The agent creates a multi-page website with a homepage, a product catalog page with category filtering, and an about page with team member profiles",
+      "assertion": "positive"
+    },
+    {
+      "description": "The product catalog page loads product data from a service module or API endpoint rather than hardcoding product information directly in component markup",
+      "assertion": "positive"
+    },
+    {
+      "description": "All pages share a consistent navigation header and footer through a reusable layout component",
+      "assertion": "positive"
+    }
+  ],
+  "evaluators": [
+    "bug-hit-rate",
+    "tool-failure-rate",
+    "prompt-efficiency",
+    "jtbd-completion",
+    "output-quality",
+    "agent-steps",
+    "latency",
+    "tool-parallelism",
+    "tool-batching-efficiency",
+    "turn-duration",
+    "token-usage",
+    "intent-to-output-alignment",
+    "implicit-feature-gap",
+    "silent-hallucination"
+  ]
+}

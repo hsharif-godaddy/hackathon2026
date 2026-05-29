@@ -1,0 +1,94 @@
+[
+  {
+    "type": "debug",
+    "text": "[vite] connecting..."
+  },
+  {
+    "type": "debug",
+    "text": "[vite] connected."
+  },
+  {
+    "type": "info",
+    "text": "%cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold"
+  },
+  {
+    "type": "error",
+    "text": "Invalid hook call. Hooks can only be called inside of the body of a function component. This could happen for one of the following reasons:\n1. You might have mismatching versions of React and the renderer (such as React DOM)\n2. You might be breaking the Rules of Hooks\n3. You might have more than one copy of React in the same app\nSee https://react.dev/link/invalid-hook-call for tips about how to debug and fix this problem."
+  },
+  {
+    "type": "error",
+    "text": "Invalid hook call. Hooks can only be called inside of the body of a function component. This could happen for one of the following reasons:\n1. You might have mismatching versions of React and the renderer (such as React DOM)\n2. You might be breaking the Rules of Hooks\n3. You might have more than one copy of React in the same app\nSee https://react.dev/link/invalid-hook-call for tips about how to debug and fix this problem."
+  },
+  {
+    "type": "error",
+    "text": "%o\n\n%s\n\n%s\n TypeError: Cannot read properties of null (reading 'useRef')\n    at exports.useRef (https://local.gasket.dev-godaddy.com:5027/node_modules/.vite/deps/chunk-SUHFC5XY.js?v=66391c6a:956:35)\n    at useConstant (https://local.gasket.dev-godaddy.com:5027/node_modules/.vite/deps/motion_react.js?v=c541bb10:24:40)\n    at useScroll (https://local.gasket.dev-godaddy.com:5027/node_modules/.vite/deps/motion_react.js?v=c541bb10:10747:18)\n    at HomePage (https://local.gasket.dev-godaddy.com:5027/src/pages/index.tsx:146:31)\n    at Object.react_stack_bottom_frame (https://local.gasket.dev-godaddy.com:5027/node_modules/.vite/deps/react-dom_client.js?v=a6366629:18509:20)\n    at renderWithHooks (https://local.gasket.dev-godaddy.com:5027/node_modules/.vite/deps/react-dom_client.js?v=a6366629:5654:24)\n    at updateFunctionComponent (https://local.gasket.dev-godaddy.com:5027/node_modules/.vite/deps/react-dom_client.js?v=a6366629:7475:21)\n    at beginWork (https://local.gasket.dev-godaddy.com:5027/node_modules/.vite/deps/react-dom_client.js?v=a6366629:8525:20)\n    at runWithFiberInDEV (https://local.gasket.dev-godaddy.com:5027/node_modules/.vite/deps/react-dom_client.js?v=a6366629:997:72)\n    at performUnitOfWork (https://local.gasket.dev-godaddy.com:5027/node_modules/.vite/deps/react-dom_client.js?v=a6366629:12561:98) The above error occurred in the <HomePage> component. React will try to recreate this component tree from scratch using the error boundary you provided, AiroErrorBoundary."
+  },
+  {
+    "type": "error",
+    "text": "Error caught by AiroErrorBoundary (render): TypeError: Cannot read properties of null (reading 'useRef')\n    at exports.useRef (https://local.gasket.dev-godaddy.com:5027/node_modules/.vite/deps/chunk-SUHFC5XY.js?v=66391c6a:956:35)\n    at useConstant (https://local.gasket.dev-godaddy.com:5027/node_modules/.vite/deps/motion_react.js?v=c541bb10:24:40)\n    at useScroll (https://local.gasket.dev-godaddy.com:5027/node_modules/.vite/deps/motion_react.js?v=c541bb10:10747:18)\n    at HomePage (https://local.gasket.dev-godaddy.com:5027/src/pages/index.tsx:146:31)\n    at Object.react_stack_bottom_frame (https://local.gasket.dev-godaddy.com:5027/node_modules/.vite/deps/react-dom_client.js?v=a6366629:18509:20)\n    at renderWithHooks (https://local.gasket.dev-godaddy.com:5027/node_modules/.vite/deps/react-dom_client.js?v=a6366629:5654:24)\n    at updateFunctionComponent (https://local.gasket.dev-godaddy.com:5027/node_modules/.vite/deps/react-dom_client.js?v=a6366629:7475:21)\n    at beginWork (https://local.gasket.dev-godaddy.com:5027/node_modules/.vite/deps/react-dom_client.js?v=a6366629:8525:20)\n    at runWithFiberInDEV (https://local.gasket.dev-godaddy.com:5027/node_modules/.vite/deps/react-dom_client.js?v=a6366629:997:72)\n    at performUnitOfWork (https://local.gasket.dev-godaddy.com:5027/node_modules/.vite/deps/react-dom_client.js?v=a6366629:12561:98) {componentStack: \n    at HomePage (https://local.gasket.dev-godaddy…ps/@dr__pogodin_react-helmet.js?v=408da146:648:3)}"
+  },
+  {
+    "type": "debug",
+    "text": "[vite] connecting..."
+  },
+  {
+    "type": "debug",
+    "text": "[vite] connected."
+  },
+  {
+    "type": "info",
+    "text": "%cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold"
+  },
+  {
+    "type": "warning",
+    "text": "Please ensure that the container has a non-static position, like 'relative', 'fixed', or 'absolute' to ensure scroll offset is calculated correctly."
+  },
+  {
+    "type": "log",
+    "text": "🎨 Airo Dev Tools activated! Injecting floating dev tools..."
+  },
+  {
+    "type": "log",
+    "text": "✅ Dev tools successfully injected into DOM"
+  },
+  {
+    "type": "error",
+    "text": "Access to script at 'virtual:media-versions' from origin 'https://local.gasket.dev-godaddy.com:5027' has been blocked by CORS policy: Cross origin requests are only supported for protocol schemes: chrome, chrome-untrusted, data, http, https."
+  },
+  {
+    "type": "error",
+    "text": "Failed to load resource: net::ERR_FAILED"
+  },
+  {
+    "type": "debug",
+    "text": "[vite] connecting..."
+  },
+  {
+    "type": "debug",
+    "text": "[vite] connected."
+  },
+  {
+    "type": "info",
+    "text": "%cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold"
+  },
+  {
+    "type": "warning",
+    "text": "Please ensure that the container has a non-static position, like 'relative', 'fixed', or 'absolute' to ensure scroll offset is calculated correctly."
+  },
+  {
+    "type": "log",
+    "text": "🎨 Airo Dev Tools activated! Injecting floating dev tools..."
+  },
+  {
+    "type": "log",
+    "text": "✅ Dev tools successfully injected into DOM"
+  },
+  {
+    "type": "error",
+    "text": "Access to script at 'virtual:media-versions' from origin 'https://local.gasket.dev-godaddy.com:5027' has been blocked by CORS policy: Cross origin requests are only supported for protocol schemes: chrome, chrome-untrusted, data, http, https."
+  },
+  {
+    "type": "error",
+    "text": "Failed to load resource: net::ERR_FAILED"
+  }
+]

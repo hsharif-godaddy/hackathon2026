@@ -1,0 +1,33 @@
+{
+  "artifacts": [
+    {
+      "index": 0,
+      "turnIndex": 1,
+      "toolName": "handoff",
+      "filename": "0-handoff-prompt.txt",
+      "agentId": "Initial"
+    },
+    {
+      "index": 1,
+      "turnIndex": 1,
+      "toolName": "fontTheme",
+      "filename": "1-fontTheme.json",
+      "agentId": "AI Developer"
+    },
+    {
+      "index": 2,
+      "turnIndex": 1,
+      "toolName": "colorScheme",
+      "filename": "2-colorScheme.json",
+      "agentId": "AI Developer"
+    },
+    {
+      "index": 3,
+      "turnIndex": 3,
+      "toolName": "readFile",
+      "filename": "3-index.tsx",
+      "agentId": "AI Developer"
+    }
+  ],
+  "totalCount": 4
+}

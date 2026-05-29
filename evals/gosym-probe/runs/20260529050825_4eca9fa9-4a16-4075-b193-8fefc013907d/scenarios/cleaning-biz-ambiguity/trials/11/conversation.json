@@ -1,0 +1,65 @@
+{
+  "scenarioName": "cleaning-biz-ambiguity",
+  "trial": 12,
+  "turns": [
+    {
+      "role": "user",
+      "content": "I need a website for my cleaning business",
+      "durationSeconds": 0
+    },
+    {
+      "role": "user",
+      "content": "I clean houses. The business is called Sparkle Clean.",
+      "durationSeconds": 17.6
+    },
+    {
+      "role": "assistant",
+      "content": "Now let me generate the logo:Now let me build the Header and Footer in parallel:Now let me build the homepage:",
+      "durationSeconds": 325.9
+    },
+    {
+      "role": "user",
+      "content": "Looks good! But how do people get in touch with me? I don't see my phone number or anything.",
+      "durationSeconds": 2.3
+    },
+    {
+      "role": "assistant",
+      "content": "Good point! Let me add a contact section to the homepage and also build out the Contact page so visitors can easily reach you.I'll add a contact section to the homepage and build a full Contact page at the same time.Now build the Contact page:Now register the route:Done! Here's what I added:\n\n- **Homepage contact strip** — your phone number, email, and hours now appear prominently between the testimonials and the final CTA section\n- **Full Contact page** at `/contact` — includes a quote request form (name, email, phone, service type, message), your contact details, and a \"what happens next\" summary so customers know what to expect\n\nJust update the phone number, email, and hours to match your real info and you're all set. Want to build out any of the other pages next?The curly apostrophes in the string literals are breaking the JS parser.",
+      "durationSeconds": 255.1
+    },
+    {
+      "role": "user",
+      "content": "Looks great, thank you! Where exactly does my phone number show up on the site?",
+      "durationSeconds": 2.4
+    },
+    {
+      "role": "assistant",
+      "content": "Your phone number appears in two places:\n\n1. **Homepage** — there's a contact strip between the testimonials and the final CTA section, showing your phone number, email, and hours side by side.\n2. **Footer** — at the bottom of every page, your phone number is listed alongside your email and service area.\n\nThere's also a full **Contact page** (linked from the \"Get a Free Quote\" button in the header) where visitors can fill out a form to request a booking.\n\nIf you'd like to update the phone number, email, or hours to your real info, just let me know and I'll swap them in everywhere at once.",
+      "durationSeconds": 26.9
+    },
+    {
+      "role": "user",
+      "content": "That sounds good. What number did you put in there — is it a real one or just a placeholder?",
+      "durationSeconds": 2.2
+    },
+    {
+      "role": "assistant",
+      "content": "It's a placeholder — I used **(555) 123-4567** and **hello@sparkleclean.com** as stand-ins. Just share your real phone number and email and I'll update them everywhere on the site at once.",
+      "durationSeconds": 10.1
+    },
+    {
+      "role": "user",
+      "content": "That works for now. The site looks good overall!\n\nDONE",
+      "durationSeconds": 2.2
+    },
+    {
+      "role": "assistant",
+      "content": "Glad you like it! Whenever you're ready to add more — like a Services page, About page, or swap in your real contact details — just say the word.",
+      "durationSeconds": 9.4
+    }
+  ],
+  "summary": {
+    "messageCount": 11,
+    "totalElapsedSeconds": 654.1
+  }
+}

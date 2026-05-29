@@ -1,0 +1,317 @@
+[
+  {
+    "evaluator": "bug-hit-rate",
+    "score": 1,
+    "verdict": "pass",
+    "reason": "No unrecovered errors",
+    "details": {
+      "errorCount": 0,
+      "errors": []
+    }
+  },
+  {
+    "evaluator": "tool-failure-rate",
+    "score": 0.03125,
+    "verdict": "observed",
+    "reason": "1/32 tool calls failed (3%): str_replace_based_edit_tool",
+    "details": {
+      "failedCount": 1,
+      "totalCalls": 32,
+      "failedTools": [
+        "str_replace_based_edit_tool"
+      ]
+    }
+  },
+  {
+    "evaluator": "prompt-efficiency",
+    "score": 0.9308615796566533,
+    "verdict": "observed",
+    "reason": "2 user turns",
+    "details": {
+      "userTurns": 2
+    },
+    "evalVersion": "1.0"
+  },
+  {
+    "evaluator": "jtbd-completion",
+    "score": 1,
+    "verdict": "pass",
+    "reason": "LLM judge verdict: pass",
+    "details": {
+      "htmlContextAvailable": true
+    }
+  },
+  {
+    "evaluator": "output-quality",
+    "score": 0.829729880256196,
+    "verdict": "pass",
+    "reason": "Composite of 9/9 sub-evaluators",
+    "details": {
+      "_composite": true,
+      "breakdown": [
+        {
+          "evaluator": "heading-hierarchy",
+          "score": 1,
+          "verdict": "pass",
+          "reason": "No heading level violations",
+          "scoreable": true
+        },
+        {
+          "evaluator": "semantic-density",
+          "score": 0.2857142857142857,
+          "verdict": "fail",
+          "reason": "4 semantic element(s) out of 14 block containers",
+          "scoreable": true
+        },
+        {
+          "evaluator": "accessibility-coverage",
+          "score": 0.9523809523809523,
+          "verdict": "pass",
+          "reason": "Accessibility weighted score across 2 active sub-dimension(s)",
+          "scoreable": true
+        },
+        {
+          "evaluator": "link-quality",
+          "score": 1,
+          "verdict": "pass",
+          "reason": "6 usable link(s) out of 6 total",
+          "scoreable": true
+        },
+        {
+          "evaluator": "responsive-readiness",
+          "score": 1,
+          "verdict": "pass",
+          "reason": "viewport meta, responsive breakpoint classes, flex/grid layout",
+          "scoreable": true
+        },
+        {
+          "evaluator": "inline-style-ratio",
+          "score": 0.956140350877193,
+          "verdict": "pass",
+          "reason": "5 element(s) with authored inline styles out of 114",
+          "scoreable": true
+        },
+        {
+          "evaluator": "component-decomposition",
+          "score": 0.7333333333333334,
+          "verdict": "pass",
+          "reason": "3 unique file(s) across 3 director(y/ies)",
+          "scoreable": true
+        },
+        {
+          "evaluator": "visual-coherence",
+          "score": 0.82,
+          "verdict": "pass",
+          "reason": "The portfolio demonstrates strong visual coherence with consistent spacing rhythm, clear typographic hierarchy (overline label → large heading → body → CTAs), and a harmonious limited palette using primary accent color purposefully. Minor deductions for animation states leaving elements at opacity:0 during static evaluation and the dot-grid SVG being decorative filler rather than polished imagery.",
+          "scoreable": true
+        },
+        {
+          "evaluator": "content-substance",
+          "score": 0.72,
+          "verdict": "partial",
+          "reason": "The portfolio has real, specific content including a named individual (Alex Morgan), a concrete tagline, working navigation links, a contact email (alex@alexmorgandesign.com), and clear CTAs (Hire Me, Get in touch). However, the about and contact sections appear truncated or absent in the visible body text, and the hero copy is quite brief with no details about skills, experience, or services.",
+          "scoreable": true
+        }
+      ],
+      "scoredCount": 9,
+      "totalCount": 9
+    },
+    "evalVersion": "accessibility-coverage:1.0+component-decomposition:1.0+content-substance:1.0+heading-hierarchy:1.0+inline-style-ratio:1.0+link-quality:1.0+responsive-readiness:1.0+semantic-density:1.0+visual-coherence:1.0"
+  },
+  {
+    "evaluator": "agent-steps",
+    "score": 0.9308615796566533,
+    "verdict": "observed",
+    "reason": "2 agent steps",
+    "details": {
+      "totalSteps": 2
+    },
+    "evalVersion": "1.0"
+  },
+  {
+    "evaluator": "latency",
+    "score": 0.006508879856634861,
+    "verdict": "observed",
+    "reason": "TTFC=49435ms maxGap=86133ms total=368022ms chunks=37 turns=2 score=0.01 aabInit=46167ms aabTTFC=2493ms",
+    "details": {
+      "timeToFirstChunkMs": 49435,
+      "maxInterChunkGapMs": 86133,
+      "totalMs": 368022,
+      "chunkCount": 37,
+      "perTurn": [
+        {
+          "turnIndex": 0,
+          "timeToFirstChunkMs": 49435,
+          "maxInterChunkGapMs": 86133,
+          "totalTurnMs": 243851,
+          "chunkCount": 23
+        },
+        {
+          "turnIndex": 1,
+          "timeToFirstChunkMs": 8672,
+          "maxInterChunkGapMs": 47415,
+          "totalTurnMs": 119494,
+          "chunkCount": 14
+        }
+      ],
+      "medianTTFC": 29053.5,
+      "halfLifeMs": 4000,
+      "aabDiagnostics": {
+        "timingSummaries": [
+          {
+            "turnIndex": 0,
+            "timeToStreamStartMs": 1662,
+            "timeToFirstTextChunkMs": null,
+            "maxChunkGapMs": 3521,
+            "chunksRead": 652,
+            "streamDurationMs": 41724
+          },
+          {
+            "turnIndex": 0,
+            "timeToStreamStartMs": 46167,
+            "timeToFirstTextChunkMs": 2493,
+            "maxChunkGapMs": 78826,
+            "chunksRead": 2960,
+            "streamDurationMs": 195176
+          },
+          {
+            "turnIndex": 1,
+            "timeToStreamStartMs": 1653,
+            "timeToFirstTextChunkMs": 6972,
+            "maxChunkGapMs": 4087,
+            "chunksRead": 1427,
+            "streamDurationMs": 84737
+          },
+          {
+            "turnIndex": 1,
+            "timeToStreamStartMs": 99858,
+            "timeToFirstTextChunkMs": null,
+            "maxChunkGapMs": 3102,
+            "chunksRead": 85,
+            "streamDurationMs": 8946
+          }
+        ],
+        "slowGaps": [],
+        "timeouts": []
+      }
+    }
+  },
+  {
+    "evaluator": "tool-parallelism",
+    "score": 0.020833333333333332,
+    "verdict": "observed",
+    "reason": "Tool parallelism ratio: 2%",
+    "details": {
+      "turnsAnalyzed": 2,
+      "totalWeight": 32,
+      "perTurnRatios": [
+        {
+          "toolCallCount": 19,
+          "ratio": 0.03508771929824561
+        },
+        {
+          "toolCallCount": 13,
+          "ratio": 0
+        }
+      ]
+    }
+  },
+  {
+    "evaluator": "tool-batching-efficiency",
+    "score": 0.9666666666666667,
+    "verdict": "observed",
+    "reason": "31 successful calls across 2 productive turns",
+    "details": {
+      "totalSuccessfulCalls": 31,
+      "productiveTurns": 2
+    },
+    "evalVersion": "1.2"
+  },
+  {
+    "evaluator": "turn-duration",
+    "score": 360531,
+    "verdict": "observed",
+    "reason": "Total AAB duration: 360531ms across 2 turns (avg 180266ms)",
+    "details": {
+      "totalDurationMs": 360531,
+      "averageDurationMs": 180265.5,
+      "perTurnMs": [
+        241344,
+        119187
+      ]
+    }
+  },
+  {
+    "evaluator": "token-usage",
+    "score": 1335538,
+    "verdict": "observed",
+    "reason": "aab=1335538 probe=23436 total=1358974 tokens",
+    "details": {
+      "aab": {
+        "inputTokens": 1323870,
+        "outputTokens": 11668,
+        "totalTokens": 1335538,
+        "cachedInputTokensRead": 1232818,
+        "cachedInputTokensWrite": 87843
+      },
+      "probe": {
+        "promptTokens": 23299,
+        "completionTokens": 137,
+        "totalTokens": 23436,
+        "calls": 2
+      },
+      "total": {
+        "tokens": 1358974
+      }
+    }
+  },
+  {
+    "evaluator": "intent-to-output-alignment",
+    "score": 0.95,
+    "verdict": "observed",
+    "reason": "All three required sections are present: hero with 'Alex Morgan' and tagline 'Designing experiences that connect people and products.', about section with 8-year UX background content, and contact section with email link (alex@alexmorgandesign.com) and social icons (LinkedIn and Dribbble SVG). The user's specific personal details were correctly incorporated in the second turn. Minor gap: social icons in the snapshot appear to be GitHub/LinkedIn/Twitter in the initial build, but the conversation confirms Dribbble was added via custom SVG; the CORS error is unrelated to content delivery.",
+    "details": {
+      "dimension": "Intent Understanding & Alignment",
+      "inputsUsed": [
+        "conversation",
+        "final_artifacts"
+      ],
+      "advisoryVerdict": "pass",
+      "transcriptErrors": 0
+    },
+    "evalVersion": "2.0"
+  },
+  {
+    "evaluator": "implicit-feature-gap",
+    "score": 0.95,
+    "verdict": "observed",
+    "reason": "All three required sections are present with real content: hero with Alex Morgan's name and tagline, about section with 8-year UX background and skills list, and contact section with alex@alexmorgandesign.com email link plus LinkedIn and Dribbble social icons. A 'Hire Me' CTA also appears in the header reinforcing contact accessibility.",
+    "details": {
+      "dimension": "Implicit Feature Completeness",
+      "inputsUsed": [
+        "conversation",
+        "final_artifacts"
+      ],
+      "advisoryVerdict": "pass",
+      "transcriptErrors": 0
+    },
+    "evalVersion": "2.0"
+  },
+  {
+    "evaluator": "silent-hallucination",
+    "score": 0.82,
+    "verdict": "observed",
+    "reason": "All agent claims are backed by observable evidence: (1) The hero section with 'Alex Morgan' name and tagline 'Designing experiences that connect people and products.' is confirmed in the DOM/body text; (2) The header shows the correct email mailto:alex@alexmorgandesign.com matching the stated update; (3) fontTheme and colorScheme tool calls succeeded and are reflected in the dark editorial aesthetic visible in the HTML. Minor gap: the about and contact sections with LinkedIn/Dribbble social links are not visible in the truncated body text snapshot, so their presence cannot be fully confirmed, and a CORS error appears in console logs though it does not appear to block core functionality.",
+    "details": {
+      "dimension": "Consistency & Truthfulness",
+      "inputsUsed": [
+        "conversation",
+        "tool_calls",
+        "final_artifacts"
+      ],
+      "advisoryVerdict": "pass",
+      "transcriptErrors": 0
+    },
+    "evalVersion": "2.0"
+  }
+]

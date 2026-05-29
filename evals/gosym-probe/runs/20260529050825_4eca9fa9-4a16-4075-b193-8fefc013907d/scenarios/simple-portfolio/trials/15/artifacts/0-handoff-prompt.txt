@@ -1,0 +1,68 @@
+Build a personal portfolio homepage with this design direction:
+
+PROJECT DETAILS:
+- Type: Personal portfolio website
+- Sections: Hero, About, Contact
+- Design: Clean, modern, well-spaced
+
+DESIGN DIRECTION:
+Editorial and refined—feels like a thoughtful designer's or developer's personal site, not a generic template. Strong typographic hierarchy with generous whitespace creates a premium, confident impression. Warm neutrals with a single bold accent give it personality without being loud.
+
+LAYOUT TYPE: Standard
+Multi-page portfolio site with full navigation header and footer.
+
+VISUAL DIRECTION:
+- Color: Warm off-white base (#F9F7F4 tone) with deep charcoal text and ONE bold accent—a rich amber/gold. Avoids cold blue/gray defaults.
+- Typography: Mix a high-contrast serif for display headings (Playfair Display or Cormorant Garamond) with a clean geometric sans (DM Sans or Plus Jakarta Sans) for body. The contrast between the two creates editorial sophistication.
+- Layout: NO centered-text-on-colored-band patterns. Use asymmetric compositions with intentional whitespace. Hero has name in oversized serif that breaks the grid.
+- Visual elements: Minimal geometric accents (thin lines, subtle dot grid or noise texture on hero background). No stock photography needed—typography IS the visual.
+- Motion: Subtle—staggered fade-up entrance on hero text, gentle fade-in on scroll for sections, smooth hover underline draws on nav links and social icons.
+
+MOTION DESIGN:
+- Level: Subtle
+- Effects: Staggered fade-up on hero (name first, tagline second, CTA third—each 150ms apart), fade-in on scroll for About and Contact sections (400ms ease-out), hover underline draw on links (200ms), hover color shift on social icons
+- Personality: Calm and refined—nothing bouncy or aggressive
+
+SECTION-SPECIFIC:
+- Hero: Full viewport height. Name in oversized serif (very large, grid-breaking). Tagline in smaller sans below. Subtle animated entrance. Optional: thin decorative line or geometric accent. Scroll indicator at bottom.
+- About: Two-column asymmetric layout—wide text column left, narrow accent column right (could have a subtle geometric shape or skill tags). NOT a centered paragraph block.
+- Contact: Clean, minimal. Email as a large styled link (not a form). Social icons (GitHub, LinkedIn, Twitter/X) with hover animations. Asymmetric layout, not centered-on-band.
+- Header: Minimal—just name/initials logo left, sparse nav right (About, Work, Contact). Transparent over hero, solid on scroll.
+- Footer: Single line, minimal. Matches the refined tone.
+
+DIFFERENTIATION:
+Oversized serif name in hero that breaks the grid—the name itself becomes a design element, not just a label. Thin decorative rule lines used sparingly as section dividers.
+
+CONSISTENCY:
+Maintain editorial quality throughout. Contact section should feel as intentional as the hero. Animation easing consistent (ease-out) across all sections.
+
+LOGO:
+Use the media-logo skill to generate a minimal wordmark or monogram logo for the header. Style: clean, geometric, matches the warm-neutral palette.
+
+BUILD ORDER:
+
+Phase 1 — Setup (run in parallel):
+- Set font stack using fontTheme tool: Cormorant Garamond or Playfair Display for display, DM Sans or Plus Jakarta Sans for body
+- Set color scheme using colorScheme tool: warm off-white background, deep charcoal foreground, rich amber/gold accent
+- Generate logo using media-logo skill
+
+Phase 2 — Structure (run in parallel, after Phase 1):
+- Build Header (minimal, transparent-to-solid on scroll, name/initials left, nav right)
+- Build Footer (single line, minimal)
+
+Phase 3 — Page (after Phase 1 & 2):
+- Build homepage (index.tsx) with Hero, About, and Contact sections with all animations
+
+Phase 4 — Finalize:
+- Mark "Homepage" todo item as COMPLETE using todoList tool
+- Ask for design feedback using askQuestion
+
+CRITICAL: Build index.tsx LAST after setup, header, and footer are complete.
+
+INITIAL SCOPE:
+Build ONLY the homepage design for this preview. Placeholder content is fine (e.g., "Your Name", "Designer & Developer", a short about paragraph, placeholder email and social links).
+
+DESIGN FEEDBACK:
+After showing the homepage, use askQuestion tool to ask:
+- Question: "What do you think of the design?"
+- Suggestions: ["Looks great — let's add a projects section", "Change the color scheme", "Change the fonts", "Update the placeholder content with my real info"]

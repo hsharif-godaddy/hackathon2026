@@ -1,0 +1,78 @@
+{
+  "previewUrl": "https://local.gasket.dev-godaddy.com:5012",
+  "generatedAt": "2026-05-29T15:06:00.130Z",
+  "durationMs": 12167,
+  "outputDir": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/simple-portfolio/trials/18/snapshots",
+  "routes": [
+    {
+      "path": "/",
+      "url": "https://local.gasket.dev-godaddy.com:5012",
+      "origin": "homepage",
+      "status": "ok",
+      "httpStatus": 200
+    }
+  ],
+  "perRoute": [
+    {
+      "route": {
+        "path": "/",
+        "url": "https://local.gasket.dev-godaddy.com:5012",
+        "origin": "homepage",
+        "status": "ok",
+        "httpStatus": 200
+      },
+      "rendered": {
+        "title": "Sarah Chen — UX Designer",
+        "h1": "SarahChen",
+        "headingText": "SarahChen | Background | Get in touch",
+        "bodyPreview": "ABOUT\nCONTACT\n\nPORTFOLIO\n\nSarah\nChen\n\nDesigning experiences that feel effortless.\n\nLEARN MORE\nSCROLL\n\nABOUT\n\nBackground\n\nBased in Austin, TX, I'm a freelance UX designer with 8 years of experience helping startups and mid-size tech companies build products people actually love to use.\n\nMy work spans"
+      },
+      "perViewport": {
+        "mobile": {
+          "tiles": [
+            {
+              "index": 0,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/simple-portfolio/trials/18/snapshots/mobile/home/tile0.png",
+              "yOffset": 0
+            },
+            {
+              "index": 1,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/simple-portfolio/trials/18/snapshots/mobile/home/tile1.png",
+              "yOffset": 636
+            },
+            {
+              "index": 2,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/simple-portfolio/trials/18/snapshots/mobile/home/tile2.png",
+              "yOffset": 1301
+            },
+            {
+              "index": 3,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/simple-portfolio/trials/18/snapshots/mobile/home/tile3.png",
+              "yOffset": 1350
+            }
+          ]
+        },
+        "laptop": {
+          "tiles": [
+            {
+              "index": 0,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/simple-portfolio/trials/18/snapshots/laptop/home/tile0.png",
+              "yOffset": 0
+            },
+            {
+              "index": 1,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/simple-portfolio/trials/18/snapshots/laptop/home/tile1.png",
+              "yOffset": 822
+            },
+            {
+              "index": 2,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/simple-portfolio/trials/18/snapshots/laptop/home/tile2.png",
+              "yOffset": 1171
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "errors": []
+}

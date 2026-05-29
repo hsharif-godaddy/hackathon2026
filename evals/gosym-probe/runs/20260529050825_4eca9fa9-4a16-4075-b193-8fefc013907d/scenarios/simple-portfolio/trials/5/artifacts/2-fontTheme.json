@@ -1,0 +1,23 @@
+{
+  "success": true,
+  "message": "Applied font theme: Editorial Portfolio",
+  "appliedFont": {
+    "name": "Editorial Portfolio",
+    "headerFont": {
+      "name": "DM Serif Display",
+      "weights": [
+        "400"
+      ],
+      "category": "serif"
+    },
+    "bodyFont": {
+      "name": "Inter",
+      "weights": [
+        "400",
+        "500"
+      ],
+      "category": "sans-serif"
+    }
+  },
+  "suggestedResponse": "Font theme \"Editorial Portfolio\" (DM Serif Display (headers) + Inter (body)) has been applied."
+}

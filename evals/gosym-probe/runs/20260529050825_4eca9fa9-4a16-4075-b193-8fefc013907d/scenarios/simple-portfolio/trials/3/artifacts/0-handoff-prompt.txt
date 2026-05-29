@@ -1,0 +1,89 @@
+Build a homepage design preview with this direction:
+
+PROJECT DETAILS:
+- Name: Alex Rivera
+- Profession: Full-Stack Developer
+- Brand personality: Minimal & refined
+
+DESIGN DIRECTION:
+A sophisticated, editorial portfolio that feels like a well-curated design publication — not a developer template. Generous whitespace, deliberate typographic hierarchy, and a restrained palette that lets the content breathe. Every element earns its place.
+
+LAYOUT TYPE: Standard
+Marketing/portfolio site with full navigation structure.
+
+VISUAL DIRECTION:
+- Color: Near-black (#0F0F0F) base with warm off-white (#F7F5F2) backgrounds. ONE subtle accent — a muted warm gold or dusty sage — used sparingly for hover states and dividers. No gradients, no bright colors.
+- Typography: Pair a high-contrast serif (like Playfair Display or DM Serif Display) for the hero name/headline with a clean geometric sans (like DM Sans or Plus Jakarta Sans) for body and nav. Dramatic size contrast — hero name should be large and commanding.
+- Layout: DO NOT use icon grids or card-based layouts. Use a single-column editorial flow with asymmetric spacing. Sections separated by thin rules and generous padding, not background color bands.
+- Visual elements: No stock photography. Use typographic elements, thin geometric lines, and subtle dot/grid texture as accents. Keep it text-forward.
+- Motion: Subtle — staggered fade-up on scroll (400ms ease-out), smooth underline-draw hover on nav links, gentle opacity transitions. Nothing bouncy.
+
+LOGO:
+Use the media-logo skill to generate a minimal wordmark logo — "AR" monogram in a refined style, matching the serif/sans pairing of the site.
+
+MOTION DESIGN:
+- Level: Subtle
+- Effects: Staggered fade-up entrance for hero text (name first, then tagline, then CTA — 150ms stagger), fade-in on scroll for About and Contact sections, underline-draw hover on nav links and social icons, smooth cursor color transitions on buttons
+- Personality: Deliberate and refined — motion should feel like turning pages, not bouncing
+
+SECTION-SPECIFIC:
+
+Hero:
+- Full-viewport height, vertically centered
+- Large serif display for "Alex Rivera" (oversized, grid-breaking — think 6xl to 8xl)
+- Tagline in light-weight sans below: something like "Full-Stack Developer — crafting thoughtful digital experiences"
+- Subtle scroll indicator at bottom (animated chevron or dot)
+- Thin horizontal rule separating hero from next section
+- NO background image — let the typography be the visual
+
+About:
+- Two-column asymmetric layout: narrow left column with a section label ("About" in small caps, muted), wide right column with bio text
+- Bio should be warm and human: "I'm Alex Rivera, a full-stack developer with a passion for building clean, performant web applications. I specialize in React, Node.js, and cloud infrastructure — and I care deeply about the craft of software."
+- Include a short list of technologies (React, TypeScript, Node.js, PostgreSQL, AWS) styled as inline tags — minimal, no colored backgrounds, just bordered pills
+- Staggered fade-up on scroll
+
+Contact:
+- Asymmetric layout matching About section style
+- Section label "Get in Touch" in small caps
+- Headline: "Let's build something together."
+- Email link: alex@alexrivera.dev — styled as large, elegant text link with underline-draw hover
+- Social icons row: GitHub, LinkedIn, Twitter/X — use Lucide icons, minimal, no background circles
+- DO NOT use a centered-on-colored-band CTA layout
+
+Footer:
+- Minimal single-line footer: copyright + "Designed & built by Alex Rivera"
+- Maintain typographic quality — same font stack, muted foreground color
+
+DIFFERENTIATION:
+Oversized hero typography that breaks the grid — "Alex Rivera" should feel monumental on the page. This creates immediate visual impact and signals confidence.
+
+CONSISTENCY:
+Maintain the editorial restraint throughout — footer and contact section should feel as intentional as the hero. No section should feel like a template afterthought.
+
+BUILD ORDER:
+
+Phase 1 — Setup (run in parallel):
+- Set font stack using fontTheme tool: DM Serif Display (display/headings) + Plus Jakarta Sans (body/UI)
+- Set color scheme using colorScheme tool: near-black base, warm off-white background, muted warm gold accent
+- Generate logo using media-logo skill: "AR" monogram, minimal serif style
+
+Phase 2 — Structure (run in parallel, after Phase 1):
+- Build Header with nav links: About, Work, Contact — minimal, no background, underline-draw hover
+- Build Footer: single-line minimal footer
+
+Phase 3 — Page (after Phase 1 & 2):
+- Build homepage (index.tsx) with Hero, About, Contact sections and all animations
+
+Phase 4 — Finalize:
+- Mark "Homepage" todo item as COMPLETE using the todoList tool
+- Ask for design feedback using askQuestion
+
+CRITICAL: Build index.tsx LAST — after setup, header, and footer are done.
+
+INITIAL SCOPE:
+Build ONLY the homepage for this preview. This is a design review.
+
+DESIGN FEEDBACK:
+After showing the homepage, use askQuestion to ask:
+- Question: "What do you think of the design?"
+- Suggestions: ["Looks great — let's add a Projects section", "Change the color scheme", "Change the fonts", "Adjust the hero layout"]

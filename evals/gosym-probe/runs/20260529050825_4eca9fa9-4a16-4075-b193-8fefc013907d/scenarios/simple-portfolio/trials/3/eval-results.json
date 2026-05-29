@@ -1,0 +1,312 @@
+[
+  {
+    "evaluator": "bug-hit-rate",
+    "score": 1,
+    "verdict": "pass",
+    "reason": "No unrecovered errors",
+    "details": {
+      "errorCount": 0,
+      "errors": []
+    }
+  },
+  {
+    "evaluator": "tool-failure-rate",
+    "score": 0,
+    "verdict": "observed",
+    "reason": "No tool failures across 17 tool call(s)",
+    "details": {
+      "failedCount": 0,
+      "totalCalls": 17,
+      "failedTools": []
+    }
+  },
+  {
+    "evaluator": "prompt-efficiency",
+    "score": 0.9168273035060777,
+    "verdict": "observed",
+    "reason": "3 user turns",
+    "details": {
+      "userTurns": 3
+    },
+    "evalVersion": "1.0"
+  },
+  {
+    "evaluator": "jtbd-completion",
+    "score": 1,
+    "verdict": "pass",
+    "reason": "LLM judge verdict: pass",
+    "details": {
+      "htmlContextAvailable": true
+    }
+  },
+  {
+    "evaluator": "output-quality",
+    "score": 0.850207991242474,
+    "verdict": "pass",
+    "reason": "Composite of 9/9 sub-evaluators",
+    "details": {
+      "_composite": true,
+      "breakdown": [
+        {
+          "evaluator": "heading-hierarchy",
+          "score": 1,
+          "verdict": "pass",
+          "reason": "No heading level violations",
+          "scoreable": true
+        },
+        {
+          "evaluator": "semantic-density",
+          "score": 0.21428571428571427,
+          "verdict": "fail",
+          "reason": "6 semantic element(s) out of 28 block containers",
+          "scoreable": true
+        },
+        {
+          "evaluator": "accessibility-coverage",
+          "score": 1,
+          "verdict": "pass",
+          "reason": "Accessibility weighted score across 2 active sub-dimension(s)",
+          "scoreable": true
+        },
+        {
+          "evaluator": "link-quality",
+          "score": 1,
+          "verdict": "pass",
+          "reason": "5 usable link(s) out of 5 total",
+          "scoreable": true
+        },
+        {
+          "evaluator": "responsive-readiness",
+          "score": 1,
+          "verdict": "pass",
+          "reason": "viewport meta, responsive breakpoint classes, flex/grid layout",
+          "scoreable": true
+        },
+        {
+          "evaluator": "inline-style-ratio",
+          "score": 0.8275862068965517,
+          "verdict": "pass",
+          "reason": "15 element(s) with authored inline styles out of 87",
+          "scoreable": true
+        },
+        {
+          "evaluator": "component-decomposition",
+          "score": 0.8500000000000001,
+          "verdict": "pass",
+          "reason": "4 unique file(s) across 3 director(y/ies)",
+          "scoreable": true
+        },
+        {
+          "evaluator": "visual-coherence",
+          "score": 0.88,
+          "verdict": "pass",
+          "reason": "The portfolio demonstrates strong visual coherence with consistent max-width containers, deliberate typographic hierarchy (large display heading, tracked uppercase labels, light-weight body text), and a restrained monochromatic palette with subtle accent dividers. Minor deduction for animation states captured mid-transition (opacity:0 elements) which slightly obscures the full intended layout rhythm.",
+          "scoreable": true
+        },
+        {
+          "evaluator": "content-substance",
+          "score": 0.88,
+          "verdict": "pass",
+          "reason": "The portfolio contains specific, business-relevant content including a named individual (Alex Rivera), a defined role (Full-Stack Developer), concrete skills (React, TypeScript, Node.js, PostgreSQL, AWS), a real contact email (alex@alexrivera.dev), social links, and coherent biographical copy with years of experience — no placeholder or lorem ipsum text present. Minor deduction for lack of project portfolio examples or pricing/service details that would add further substance.",
+          "scoreable": true
+        }
+      ],
+      "scoredCount": 9,
+      "totalCount": 9
+    },
+    "evalVersion": "accessibility-coverage:1.0+component-decomposition:1.0+content-substance:1.0+heading-hierarchy:1.0+inline-style-ratio:1.0+link-quality:1.0+responsive-readiness:1.0+semantic-density:1.0+visual-coherence:1.0"
+  },
+  {
+    "evaluator": "agent-steps",
+    "score": 0.9168273035060777,
+    "verdict": "observed",
+    "reason": "3 agent steps",
+    "details": {
+      "totalSteps": 3
+    },
+    "evalVersion": "1.0"
+  },
+  {
+    "evaluator": "latency",
+    "score": 0.007399405097776502,
+    "verdict": "observed",
+    "reason": "TTFC=51731ms maxGap=74157ms total=207573ms chunks=16 turns=2 score=0.01 aabInit=49083ms aabTTFC=2610ms",
+    "details": {
+      "timeToFirstChunkMs": 51731,
+      "maxInterChunkGapMs": 74157,
+      "totalMs": 207573,
+      "chunkCount": 16,
+      "perTurn": [
+        {
+          "turnIndex": 1,
+          "timeToFirstChunkMs": 51731,
+          "maxInterChunkGapMs": 74157,
+          "totalTurnMs": 189305,
+          "chunkCount": 8
+        },
+        {
+          "turnIndex": 2,
+          "timeToFirstChunkMs": 4896,
+          "maxInterChunkGapMs": 624,
+          "totalTurnMs": 6709,
+          "chunkCount": 8
+        }
+      ],
+      "medianTTFC": 28313.5,
+      "halfLifeMs": 4000,
+      "aabDiagnostics": {
+        "timingSummaries": [
+          {
+            "turnIndex": 0,
+            "timeToStreamStartMs": 1731,
+            "timeToFirstTextChunkMs": null,
+            "maxChunkGapMs": 2522,
+            "chunksRead": 51,
+            "streamDurationMs": 5226
+          },
+          {
+            "turnIndex": 1,
+            "timeToStreamStartMs": 1686,
+            "timeToFirstTextChunkMs": null,
+            "maxChunkGapMs": 3092,
+            "chunksRead": 744,
+            "streamDurationMs": 45819
+          },
+          {
+            "turnIndex": 1,
+            "timeToStreamStartMs": 49083,
+            "timeToFirstTextChunkMs": 2610,
+            "maxChunkGapMs": 63083,
+            "chunksRead": 2276,
+            "streamDurationMs": 139711
+          },
+          {
+            "turnIndex": 2,
+            "timeToStreamStartMs": 1687,
+            "timeToFirstTextChunkMs": 3177,
+            "maxChunkGapMs": 3037,
+            "chunksRead": 35,
+            "streamDurationMs": 4770
+          }
+        ],
+        "slowGaps": [],
+        "timeouts": []
+      }
+    }
+  },
+  {
+    "evaluator": "tool-parallelism",
+    "score": 0.05,
+    "verdict": "observed",
+    "reason": "Tool parallelism ratio: 5%",
+    "details": {
+      "turnsAnalyzed": 1,
+      "totalWeight": 16,
+      "perTurnRatios": [
+        {
+          "toolCallCount": 16,
+          "ratio": 0.05
+        }
+      ]
+    }
+  },
+  {
+    "evaluator": "tool-batching-efficiency",
+    "score": 0.9375,
+    "verdict": "observed",
+    "reason": "17 successful calls across 2 productive turns",
+    "details": {
+      "totalSuccessfulCalls": 17,
+      "productiveTurns": 2
+    },
+    "evalVersion": "1.2"
+  },
+  {
+    "evaluator": "turn-duration",
+    "score": 202274,
+    "verdict": "observed",
+    "reason": "Total AAB duration: 202274ms across 3 turns (avg 67425ms)",
+    "details": {
+      "totalDurationMs": 202274,
+      "averageDurationMs": 67424.66666666667,
+      "perTurnMs": [
+        6958,
+        188795,
+        6521
+      ]
+    }
+  },
+  {
+    "evaluator": "token-usage",
+    "score": 451986,
+    "verdict": "observed",
+    "reason": "aab=451986 probe=11471 total=463457 tokens",
+    "details": {
+      "aab": {
+        "inputTokens": 445079,
+        "outputTokens": 6907,
+        "totalTokens": 451986,
+        "cachedInputTokensRead": 384659,
+        "cachedInputTokensWrite": 56769
+      },
+      "probe": {
+        "promptTokens": 11420,
+        "completionTokens": 51,
+        "totalTokens": 11471,
+        "calls": 3
+      },
+      "total": {
+        "tokens": 463457
+      }
+    }
+  },
+  {
+    "evaluator": "intent-to-output-alignment",
+    "score": 0.95,
+    "verdict": "observed",
+    "reason": "All three required sections (hero with 'Alex Rivera' name and tagline, about with background bio, contact with email link and GitHub/LinkedIn/Twitter icons) are confirmed present in the final HTML. Minor deduction for motion/animation errors that degrade the subtle animation effects, but core content and structure fully satisfy the stated goals.",
+    "details": {
+      "dimension": "Intent Understanding & Alignment",
+      "inputsUsed": [
+        "conversation",
+        "final_artifacts"
+      ],
+      "advisoryVerdict": "pass",
+      "transcriptErrors": 0
+    },
+    "evalVersion": "2.0"
+  },
+  {
+    "evaluator": "implicit-feature-gap",
+    "score": 0.95,
+    "verdict": "observed",
+    "reason": "All three required sections (hero with name and tagline, about with bio and tech stack, contact with email link and social media icons for GitHub/LinkedIn/Twitter) are present and rendered in the DOM. The contact section includes a clear CTA headline and functional mailto link. Minor gap: motion animations appear broken due to a React hook conflict, but content is fully visible.",
+    "details": {
+      "dimension": "Implicit Feature Completeness",
+      "inputsUsed": [
+        "conversation",
+        "final_artifacts"
+      ],
+      "advisoryVerdict": "pass",
+      "transcriptErrors": 0
+    },
+    "evalVersion": "2.0"
+  },
+  {
+    "evaluator": "silent-hallucination",
+    "score": 0.82,
+    "verdict": "observed",
+    "reason": "The final HTML snapshot confirms all three required sections are present and populated: a hero section with 'Alex Rivera' and tagline, an about section with bio text and tech stack tags, and a contact section with mailto link (alex@alexrivera.dev) and GitHub/LinkedIn/Twitter icons. Agent claims about clean/minimal design, font theme (DM Serif Display + Plus Jakarta Sans), color scheme, and logo generation are all backed by observable tool calls (fontTheme, colorScheme, media-logo__generate_logo, str_replace_based_edit_tool). Minor deduction for console errors from motion/react hook mismatches causing an AiroErrorBoundary catch — the animations may not render fully — but the static content is fully present in the DOM as shown by BODY_TEXT and BODY_HTML evidence.",
+    "details": {
+      "dimension": "Consistency & Truthfulness",
+      "inputsUsed": [
+        "conversation",
+        "tool_calls",
+        "final_artifacts"
+      ],
+      "advisoryVerdict": "pass",
+      "transcriptErrors": 0
+    },
+    "evalVersion": "2.0"
+  }
+]

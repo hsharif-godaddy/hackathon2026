@@ -1,0 +1,88 @@
+{
+  "previewUrl": "https://local.gasket.dev-godaddy.com:5033",
+  "generatedAt": "2026-05-29T06:10:01.138Z",
+  "durationMs": 7293,
+  "outputDir": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/simple-portfolio/trials/11/snapshots",
+  "routes": [
+    {
+      "path": "/",
+      "url": "https://local.gasket.dev-godaddy.com:5033",
+      "origin": "homepage",
+      "status": "ok",
+      "httpStatus": 200
+    }
+  ],
+  "perRoute": [
+    {
+      "route": {
+        "path": "/",
+        "url": "https://local.gasket.dev-godaddy.com:5033",
+        "origin": "homepage",
+        "status": "ok",
+        "httpStatus": 200
+      },
+      "rendered": {
+        "title": "Jordan Blake — Graphic Designer",
+        "h1": "JordanBlake",
+        "headingText": "JordanBlake | Craft overconvention. | Let's create a brandworth remembering.",
+        "bodyPreview": "JB\n\nPORTFOLIO\n\nJordan\nBlake\n\nDesigning brands that mean something.\n\nSCROLL\n\nABOUT ME\n\nCraft over\nconvention.\n\nI'm a freelance graphic designer with over eight years of experience helping businesses and individuals build brands that resonate. My work centers on brand identity and print design — the k"
+      },
+      "perViewport": {
+        "mobile": {
+          "tiles": [
+            {
+              "index": 0,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/simple-portfolio/trials/11/snapshots/mobile/home/tile0.png",
+              "yOffset": 0
+            },
+            {
+              "index": 1,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/simple-portfolio/trials/11/snapshots/mobile/home/tile1.png",
+              "yOffset": 640
+            },
+            {
+              "index": 2,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/simple-portfolio/trials/11/snapshots/mobile/home/tile2.png",
+              "yOffset": 1301
+            },
+            {
+              "index": 3,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/simple-portfolio/trials/11/snapshots/mobile/home/tile3.png",
+              "yOffset": 1967
+            },
+            {
+              "index": 4,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/simple-portfolio/trials/11/snapshots/mobile/home/tile4.png",
+              "yOffset": 2118
+            }
+          ]
+        },
+        "laptop": {
+          "tiles": [
+            {
+              "index": 0,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/simple-portfolio/trials/11/snapshots/laptop/home/tile0.png",
+              "yOffset": 2
+            },
+            {
+              "index": 1,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/simple-portfolio/trials/11/snapshots/laptop/home/tile1.png",
+              "yOffset": 830
+            },
+            {
+              "index": 2,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/simple-portfolio/trials/11/snapshots/laptop/home/tile2.png",
+              "yOffset": 1649
+            },
+            {
+              "index": 3,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/simple-portfolio/trials/11/snapshots/laptop/home/tile3.png",
+              "yOffset": 1714
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "errors": []
+}

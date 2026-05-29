@@ -1,0 +1,108 @@
+src/styles/globals.css [107 lines]
+     1|@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600;700&family=Lato:wght@400;500&display=swap');
+     2|
+     3|@tailwind base;
+     4|@tailwind components;
+     5|@tailwind utilities;
+     6|
+     7|@layer base {
+     8|  :root {
+     9|    /* Core Colors */
+    10|    --background: 36 43% 93%;
+    11|    --foreground: 0 0% 4%;
+    12|    --card: 36 43% 93%;
+    13|    --card-foreground: 0 0% 4%;
+    14|    --popover: 36 43% 93%;
+    15|    --popover-foreground: 0 0% 4%;
+    16|    --primary: 21 63% 47%;
+    17|    --primary-foreground: 0 0% 100%;
+    18|    --secondary: 51 63% 47%;
+    19|    --secondary-foreground: 0 0% 100%;
+    20|    --muted: 20 23% 92%;
+    21|    --muted-foreground: 0 0% 4%;
+    22|    --accent: 201 63% 47%;
+    23|    --accent-foreground: 0 0% 100%;
+    24|    --destructive: 0 84% 60%;
+    25|    --destructive-foreground: 0 0% 100%;
+    26|    --border: 0 0% 100%;
+    27|    --input: 0 0% 100%;
+    28|    --ring: 21 63% 47%;
+    29|
+    30|    /* Extended Colors */
+    31|    --chart-1: 21 62% 77%;
+    32|    --chart-2: 21 63% 62%;
+    33|    --chart-3: 21 63% 47%;
+    34|    --chart-4: 21 62% 32%;
+    35|    --chart-5: 21 64% 17%;
+    36|
+    37|    /* Sidebar Colors */
+    38|    --sidebar: 20 23% 92%;
+    39|    --sidebar-foreground: 0 0% 4%;
+    40|    --sidebar-primary: 21 63% 47%;
+    41|    --sidebar-primary-foreground: 0 0% 100%;
+    42|    --sidebar-accent: 201 63% 47%;
+    43|    --sidebar-accent-foreground: 0 0% 100%;
+    44|    --sidebar-border: 0 0% 100%;
+    45|    --sidebar-ring: 21 63% 47%;
+    46|
+    47|    /* Typography */
+    48|    --font-sans: "Lato", -apple-system, BlinkMacSystemFont, sans-serif;
+    49|    --font-heading: "Cormorant Garamond", Georgia, serif;
+    50|    --font-serif: ui-serif, Georgia, "Times New Roman", serif;
+    51|    --font-mono: ui-monospace, "SF Mono", Monaco, "Cascadia Code", "Roboto Mono", Consolas, "Courier New", monospace;
+    52|
+    53|    /* Border Radius */
+    54|    --radius: 0.5rem;
+    55|
+    56|    /* Shadows */
+    57|    --shadow-2xs: 0 1px 3px 0px hsl(0 0% 0% / 0.05);
+    58|    --shadow-xs: 0 1px 3px 0px hsl(0 0% 0% / 0.05);
+    59|    --shadow-sm: 0 1px 3px 0px hsl(0 0% 0% / 0.10), 0 1px 2px -1px hsl(0 0% 0% / 0.10);
+    60|    --shadow: 0 1px 3px 0px hsl(0 0% 0% / 0.10), 0 1px 2px -1px hsl(0 0% 0% / 0.10);
+    61|    --shadow-md: 0 1px 3px 0px hsl(0 0% 0% / 0.10), 0 2px 4px -1px hsl(0 0% 0% / 0.10);
+    62|    --shadow-lg: 0 1px 3px 0px hsl(0 0% 0% / 0.10), 0 4px 6px -1px hsl(0 0% 0% / 0.10);
+    63|    --shadow-xl: 0 1px 3px 0px hsl(0 0% 0% / 0.10), 0 8px 10px -1px hsl(0 0% 0% / 0.10);
+    64|    --shadow-2xl: 0 1px 3px 0px hsl(0 0% 0% / 0.25);
+    65|  }
+    66|
+    67|  * {
+    68|    @apply border-border;
+    69|  }
+    70|
+    71|  body {
+    72|    @apply bg-background text-foreground font-sans;
+    73|  
+    74|    font-family: var(--font-sans);
+    75|  }
+    76|
+    77|  h1, h2, h3, h4, h5, h6 {
+    78|    font-family: var(--font-heading) !important;
+    79|  }
+    80|}
+    81|
+    82|/* Custom utility classes */
+    83|@layer utilities {
+    84|  .animate-in {
+    85|    animation-duration: 0.2s;
+    86|    animation-fill-mode: both;
+    87|  }
+    88|
+    89|  .fade-in {
+    90|    animation-name: fadeIn;
+    91|  }
+    92|
+    93|  @keyframes fadeIn {
+    94|    from {
+    95|      opacity: 0;
+    96|    }
+    97|    to {
+    98|      opacity: 1;
+    99|    }
+   100|  }
+   101|}
+   102|
+   103|/* Unless told otherwise, keep it for smooth scrolling */
+   104|html {
+   105|  scroll-behavior: smooth;
+   106|}
+   107|

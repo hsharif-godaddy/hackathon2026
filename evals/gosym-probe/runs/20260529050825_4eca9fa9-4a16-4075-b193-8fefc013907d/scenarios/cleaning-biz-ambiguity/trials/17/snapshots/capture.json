@@ -1,0 +1,390 @@
+{
+  "previewUrl": "https://local.gasket.dev-godaddy.com:5017",
+  "generatedAt": "2026-05-29T15:19:03.806Z",
+  "durationMs": 25534,
+  "outputDir": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/cleaning-biz-ambiguity/trials/17/snapshots",
+  "routes": [
+    {
+      "path": "/",
+      "url": "https://local.gasket.dev-godaddy.com:5017",
+      "origin": "homepage",
+      "status": "ok",
+      "httpStatus": 200
+    },
+    {
+      "path": "/services",
+      "url": "https://local.gasket.dev-godaddy.com:5017/services",
+      "origin": "crawl",
+      "status": "ok",
+      "httpStatus": 200
+    },
+    {
+      "path": "/pricing",
+      "url": "https://local.gasket.dev-godaddy.com:5017/pricing",
+      "origin": "crawl",
+      "status": "ok",
+      "httpStatus": 200,
+      "isRouteEmpty": true
+    },
+    {
+      "path": "/about",
+      "url": "https://local.gasket.dev-godaddy.com:5017/about",
+      "origin": "crawl",
+      "status": "ok",
+      "httpStatus": 200,
+      "isRouteEmpty": true
+    },
+    {
+      "path": "/contact",
+      "url": "https://local.gasket.dev-godaddy.com:5017/contact",
+      "origin": "crawl",
+      "status": "ok",
+      "httpStatus": 200
+    },
+    {
+      "path": "/privacy",
+      "url": "https://local.gasket.dev-godaddy.com:5017/privacy",
+      "origin": "crawl",
+      "status": "ok",
+      "httpStatus": 200,
+      "isRouteEmpty": true
+    },
+    {
+      "path": "/terms",
+      "url": "https://local.gasket.dev-godaddy.com:5017/terms",
+      "origin": "crawl",
+      "status": "ok",
+      "httpStatus": 200,
+      "isRouteEmpty": true
+    }
+  ],
+  "perRoute": [
+    {
+      "route": {
+        "path": "/",
+        "url": "https://local.gasket.dev-godaddy.com:5017",
+        "origin": "homepage",
+        "status": "ok",
+        "httpStatus": 200
+      },
+      "rendered": {
+        "title": "Sparkle Clean — Professional House Cleaning",
+        "h1": "Your Home, Spotless.",
+        "headingText": "Your Home, Spotless. | Cleaning services built around your life | Don't just take our word for it | Get your free quote in minutes",
+        "bodyPreview": "PROFESSIONAL HOUSE CLEANING\n\nYour Home, Spotless.\n\nWe bring the sparkle back to your home — so you can spend your time on what matters most.\n\nGet a Free Quote\nSee Our Services\nInsured & Bonded\n5-Star Rated\n100% Satisfaction Guarantee\n\nWHAT WE OFFER\n\nCleaning services built around your life\nMost Popu"
+      },
+      "perViewport": {
+        "mobile": {
+          "tiles": [
+            {
+              "index": 0,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/cleaning-biz-ambiguity/trials/17/snapshots/mobile/home/tile0.png",
+              "yOffset": 0
+            },
+            {
+              "index": 1,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/cleaning-biz-ambiguity/trials/17/snapshots/mobile/home/tile1.png",
+              "yOffset": 637
+            },
+            {
+              "index": 2,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/cleaning-biz-ambiguity/trials/17/snapshots/mobile/home/tile2.png",
+              "yOffset": 1297
+            },
+            {
+              "index": 3,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/cleaning-biz-ambiguity/trials/17/snapshots/mobile/home/tile3.png",
+              "yOffset": 1967
+            },
+            {
+              "index": 4,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/cleaning-biz-ambiguity/trials/17/snapshots/mobile/home/tile4.png",
+              "yOffset": 2634
+            },
+            {
+              "index": 5,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/cleaning-biz-ambiguity/trials/17/snapshots/mobile/home/tile5.png",
+              "yOffset": 3305
+            }
+          ]
+        },
+        "laptop": {
+          "tiles": [
+            {
+              "index": 0,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/cleaning-biz-ambiguity/trials/17/snapshots/laptop/home/tile0.png",
+              "yOffset": 98
+            },
+            {
+              "index": 1,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/cleaning-biz-ambiguity/trials/17/snapshots/laptop/home/tile1.png",
+              "yOffset": 832
+            },
+            {
+              "index": 2,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/cleaning-biz-ambiguity/trials/17/snapshots/laptop/home/tile2.png",
+              "yOffset": 1725
+            },
+            {
+              "index": 3,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/cleaning-biz-ambiguity/trials/17/snapshots/laptop/home/tile3.png",
+              "yOffset": 2581
+            },
+            {
+              "index": 4,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/cleaning-biz-ambiguity/trials/17/snapshots/laptop/home/tile4.png",
+              "yOffset": 2661
+            }
+          ]
+        }
+      }
+    },
+    {
+      "route": {
+        "path": "/services",
+        "url": "https://local.gasket.dev-godaddy.com:5017/services",
+        "origin": "crawl",
+        "status": "ok",
+        "httpStatus": 200
+      },
+      "rendered": {
+        "title": "Services — Sparkle Clean",
+        "h1": "Our cleaning services",
+        "headingText": "Our cleaning services | Every service, spelled out | Standard Clean | Deep Clean | Move-In / Move-Out | Recurring Service",
+        "bodyPreview": "WHAT WE OFFER\n\nOur cleaning services\n\nFrom a quick weekly tidy to a full move-out deep clean — we have a service that fits your home and your schedule.\n\nSee all services\nGet a free quote\n\nOUR PACKAGES\n\nEvery service, spelled out\n\nNo guesswork. Here's exactly what's included in each of our cleaning p"
+      },
+      "perViewport": {
+        "mobile": {
+          "tiles": [
+            {
+              "index": 0,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/cleaning-biz-ambiguity/trials/17/snapshots/mobile/services/tile0.png",
+              "yOffset": 1164
+            },
+            {
+              "index": 1,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/cleaning-biz-ambiguity/trials/17/snapshots/mobile/services/tile1.png",
+              "yOffset": 669
+            },
+            {
+              "index": 2,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/cleaning-biz-ambiguity/trials/17/snapshots/mobile/services/tile2.png",
+              "yOffset": 1303
+            },
+            {
+              "index": 3,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/cleaning-biz-ambiguity/trials/17/snapshots/mobile/services/tile3.png",
+              "yOffset": 1972
+            },
+            {
+              "index": 4,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/cleaning-biz-ambiguity/trials/17/snapshots/mobile/services/tile4.png",
+              "yOffset": 2634
+            },
+            {
+              "index": 5,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/cleaning-biz-ambiguity/trials/17/snapshots/mobile/services/tile5.png",
+              "yOffset": 3302
+            }
+          ]
+        },
+        "laptop": {
+          "tiles": [
+            {
+              "index": 0,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/cleaning-biz-ambiguity/trials/17/snapshots/laptop/services/tile0.png",
+              "yOffset": 243
+            },
+            {
+              "index": 1,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/cleaning-biz-ambiguity/trials/17/snapshots/laptop/services/tile1.png",
+              "yOffset": 846
+            },
+            {
+              "index": 2,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/cleaning-biz-ambiguity/trials/17/snapshots/laptop/services/tile2.png",
+              "yOffset": 1720
+            },
+            {
+              "index": 3,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/cleaning-biz-ambiguity/trials/17/snapshots/laptop/services/tile3.png",
+              "yOffset": 2626
+            },
+            {
+              "index": 4,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/cleaning-biz-ambiguity/trials/17/snapshots/laptop/services/tile4.png",
+              "yOffset": 3489
+            },
+            {
+              "index": 5,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/cleaning-biz-ambiguity/trials/17/snapshots/laptop/services/tile5.png",
+              "yOffset": 3567
+            }
+          ]
+        }
+      }
+    },
+    {
+      "route": {
+        "path": "/pricing",
+        "url": "https://local.gasket.dev-godaddy.com:5017/pricing",
+        "origin": "crawl",
+        "status": "ok",
+        "httpStatus": 200,
+        "isRouteEmpty": true
+      },
+      "rendered": {
+        "title": "",
+        "h1": null,
+        "headingText": "",
+        "bodyPreview": ""
+      },
+      "perViewport": {
+        "mobile": {
+          "tiles": []
+        },
+        "laptop": {
+          "tiles": []
+        }
+      }
+    },
+    {
+      "route": {
+        "path": "/about",
+        "url": "https://local.gasket.dev-godaddy.com:5017/about",
+        "origin": "crawl",
+        "status": "ok",
+        "httpStatus": 200,
+        "isRouteEmpty": true
+      },
+      "rendered": {
+        "title": "",
+        "h1": null,
+        "headingText": "",
+        "bodyPreview": ""
+      },
+      "perViewport": {
+        "mobile": {
+          "tiles": []
+        },
+        "laptop": {
+          "tiles": []
+        }
+      }
+    },
+    {
+      "route": {
+        "path": "/contact",
+        "url": "https://local.gasket.dev-godaddy.com:5017/contact",
+        "origin": "crawl",
+        "status": "ok",
+        "httpStatus": 200
+      },
+      "rendered": {
+        "title": "Contact — Sparkle Clean",
+        "h1": "Get your free quote",
+        "headingText": "Get your free quote | Contact info | Request a free quote",
+        "bodyPreview": "GET IN TOUCH\n\nGet your free quote\n\nNo contracts, no surprises. Fill out the form and we'll get back to you within 24 hours — usually much sooner.\n\nContact info\n\nPHONE\n\n(555) 867-5309\n\nSERVICE AREA\n\nGreater metro area & surrounding communities\n\nHOURS\n\nMon – Fri: 8am – 6pm\n\nSat: 9am – 4pm\n\nWhy choose "
+      },
+      "perViewport": {
+        "mobile": {
+          "tiles": [
+            {
+              "index": 0,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/cleaning-biz-ambiguity/trials/17/snapshots/mobile/contact/tile0.png",
+              "yOffset": 32
+            },
+            {
+              "index": 1,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/cleaning-biz-ambiguity/trials/17/snapshots/mobile/contact/tile1.png",
+              "yOffset": 644
+            },
+            {
+              "index": 2,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/cleaning-biz-ambiguity/trials/17/snapshots/mobile/contact/tile2.png",
+              "yOffset": 1305
+            },
+            {
+              "index": 3,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/cleaning-biz-ambiguity/trials/17/snapshots/mobile/contact/tile3.png",
+              "yOffset": 1967
+            },
+            {
+              "index": 4,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/cleaning-biz-ambiguity/trials/17/snapshots/mobile/contact/tile4.png",
+              "yOffset": 2074
+            }
+          ]
+        },
+        "laptop": {
+          "tiles": [
+            {
+              "index": 0,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/cleaning-biz-ambiguity/trials/17/snapshots/laptop/contact/tile0.png",
+              "yOffset": 0
+            },
+            {
+              "index": 1,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/cleaning-biz-ambiguity/trials/17/snapshots/laptop/contact/tile1.png",
+              "yOffset": 603
+            },
+            {
+              "index": 2,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/cleaning-biz-ambiguity/trials/17/snapshots/laptop/contact/tile2.png",
+              "yOffset": 628
+            }
+          ]
+        }
+      }
+    },
+    {
+      "route": {
+        "path": "/privacy",
+        "url": "https://local.gasket.dev-godaddy.com:5017/privacy",
+        "origin": "crawl",
+        "status": "ok",
+        "httpStatus": 200,
+        "isRouteEmpty": true
+      },
+      "rendered": {
+        "title": "",
+        "h1": null,
+        "headingText": "",
+        "bodyPreview": ""
+      },
+      "perViewport": {
+        "mobile": {
+          "tiles": []
+        },
+        "laptop": {
+          "tiles": []
+        }
+      }
+    },
+    {
+      "route": {
+        "path": "/terms",
+        "url": "https://local.gasket.dev-godaddy.com:5017/terms",
+        "origin": "crawl",
+        "status": "ok",
+        "httpStatus": 200,
+        "isRouteEmpty": true
+      },
+      "rendered": {
+        "title": "",
+        "h1": null,
+        "headingText": "",
+        "bodyPreview": ""
+      },
+      "perViewport": {
+        "mobile": {
+          "tiles": []
+        },
+        "laptop": {
+          "tiles": []
+        }
+      }
+    }
+  ],
+  "errors": []
+}

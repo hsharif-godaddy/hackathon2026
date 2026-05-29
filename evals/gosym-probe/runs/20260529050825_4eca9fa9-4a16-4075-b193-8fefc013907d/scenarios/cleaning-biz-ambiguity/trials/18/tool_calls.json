@@ -1,0 +1,338 @@
+{
+  "sequence": [
+    {
+      "index": 0,
+      "turnIndex": 1,
+      "name": "askQuestion",
+      "hasError": false,
+      "startTime": 1780067387832,
+      "endTime": 1780067391054,
+      "agentId": "Initial"
+    },
+    {
+      "index": 1,
+      "turnIndex": 3,
+      "name": "setProjectName",
+      "hasError": false,
+      "startTime": 1780067402335,
+      "endTime": 1780067404025,
+      "agentId": "Initial"
+    },
+    {
+      "index": 2,
+      "turnIndex": 3,
+      "name": "todoList",
+      "hasError": false,
+      "startTime": 1780067408270,
+      "endTime": 1780067410699,
+      "agentId": "Initial"
+    },
+    {
+      "index": 3,
+      "turnIndex": 3,
+      "name": "handoff",
+      "hasError": false,
+      "startTime": 1780067420697,
+      "endTime": 1780067450410,
+      "agentId": "Initial"
+    },
+    {
+      "index": 4,
+      "turnIndex": 3,
+      "name": "todoList",
+      "hasError": false,
+      "startTime": 1780067456343,
+      "endTime": 1780067460157,
+      "agentId": "AI Developer"
+    },
+    {
+      "index": 5,
+      "turnIndex": 3,
+      "name": "skill",
+      "hasError": false,
+      "startTime": 1780067463966,
+      "endTime": 1780067464785,
+      "agentId": "AI Developer"
+    },
+    {
+      "index": 6,
+      "turnIndex": 3,
+      "name": "colorScheme",
+      "hasError": false,
+      "startTime": 1780067464782,
+      "endTime": 1780067469841,
+      "agentId": "AI Developer"
+    },
+    {
+      "index": 7,
+      "turnIndex": 3,
+      "name": "fontTheme",
+      "hasError": false,
+      "startTime": 1780067466812,
+      "endTime": 1780067471535,
+      "agentId": "AI Developer"
+    },
+    {
+      "index": 8,
+      "turnIndex": 3,
+      "name": "media",
+      "hasError": false,
+      "startTime": 1780067466815,
+      "endTime": 1780067471880,
+      "agentId": "AI Developer"
+    },
+    {
+      "index": 9,
+      "turnIndex": 3,
+      "name": "media",
+      "hasError": false,
+      "startTime": 1780067469828,
+      "endTime": 1780067473637,
+      "agentId": "AI Developer"
+    },
+    {
+      "index": 10,
+      "turnIndex": 3,
+      "name": "media",
+      "hasError": false,
+      "startTime": 1780067471528,
+      "endTime": 1780067475760,
+      "agentId": "AI Developer"
+    },
+    {
+      "index": 11,
+      "turnIndex": 3,
+      "name": "media",
+      "hasError": false,
+      "startTime": 1780067473366,
+      "endTime": 1780067476022,
+      "agentId": "AI Developer"
+    },
+    {
+      "index": 12,
+      "turnIndex": 3,
+      "name": "media-logo__generate_logo",
+      "hasError": false,
+      "startTime": 1780067479587,
+      "endTime": 1780067591086,
+      "agentId": "AI Developer"
+    },
+    {
+      "index": 13,
+      "turnIndex": 3,
+      "name": "media-logo__offer_logo_actions",
+      "hasError": false,
+      "startTime": 1780067594196,
+      "endTime": 1780067595084,
+      "agentId": "AI Developer"
+    },
+    {
+      "index": 14,
+      "turnIndex": 3,
+      "name": "readFile",
+      "hasError": false,
+      "startTime": 1780067595084,
+      "endTime": 1780067595708,
+      "agentId": "AI Developer"
+    },
+    {
+      "index": 15,
+      "turnIndex": 3,
+      "name": "readFile",
+      "hasError": false,
+      "startTime": 1780067595706,
+      "endTime": 1780067595902,
+      "agentId": "AI Developer"
+    },
+    {
+      "index": 16,
+      "turnIndex": 3,
+      "name": "str_replace_based_edit_tool",
+      "hasError": false,
+      "startTime": 1780067602494,
+      "endTime": 1780067612762,
+      "agentId": "AI Developer"
+    },
+    {
+      "index": 17,
+      "turnIndex": 3,
+      "name": "str_replace_based_edit_tool",
+      "hasError": false,
+      "startTime": 1780067612753,
+      "endTime": 1780067625618,
+      "agentId": "AI Developer"
+    },
+    {
+      "index": 18,
+      "turnIndex": 3,
+      "name": "todoList",
+      "hasError": false,
+      "startTime": 1780067629664,
+      "endTime": 1780067630842,
+      "agentId": "AI Developer"
+    },
+    {
+      "index": 19,
+      "turnIndex": 3,
+      "name": "str_replace_based_edit_tool",
+      "hasError": false,
+      "startTime": 1780067637062,
+      "endTime": 1780067679712,
+      "agentId": "AI Developer"
+    },
+    {
+      "index": 20,
+      "turnIndex": 3,
+      "name": "todoList",
+      "hasError": false,
+      "startTime": 1780067686540,
+      "endTime": 1780067686846,
+      "agentId": "AI Developer"
+    },
+    {
+      "index": 21,
+      "turnIndex": 3,
+      "name": "viewLogs",
+      "hasError": false,
+      "startTime": 1780067690854,
+      "endTime": 1780067692201,
+      "agentId": "AI Developer"
+    },
+    {
+      "index": 22,
+      "turnIndex": 3,
+      "name": "httpCheck",
+      "hasError": false,
+      "startTime": 1780067696761,
+      "endTime": 1780067697594,
+      "agentId": "AI Developer"
+    },
+    {
+      "index": 23,
+      "turnIndex": 3,
+      "name": "todoList",
+      "hasError": false,
+      "startTime": 1780067701814,
+      "endTime": 1780067701818,
+      "agentId": "AI Developer"
+    },
+    {
+      "index": 24,
+      "turnIndex": 3,
+      "name": "todoList",
+      "hasError": false,
+      "startTime": 1780067701818,
+      "endTime": 1780067702396,
+      "agentId": "AI Developer"
+    },
+    {
+      "index": 25,
+      "turnIndex": 3,
+      "name": "askQuestion",
+      "hasError": false,
+      "startTime": 1780067711046,
+      "endTime": 1780067713978,
+      "agentId": "AI Developer"
+    },
+    {
+      "index": 26,
+      "turnIndex": 7,
+      "name": "grepSearch",
+      "hasError": false,
+      "startTime": 1780067743073,
+      "endTime": 1780067744813,
+      "agentId": "AI Developer"
+    },
+    {
+      "index": 27,
+      "turnIndex": 7,
+      "name": "str_replace_based_edit_tool",
+      "hasError": false,
+      "startTime": 1780067749920,
+      "endTime": 1780067750711,
+      "agentId": "AI Developer"
+    },
+    {
+      "index": 28,
+      "turnIndex": 7,
+      "name": "str_replace_based_edit_tool",
+      "hasError": false,
+      "startTime": 1780067754880,
+      "endTime": 1780067756585,
+      "agentId": "AI Developer"
+    },
+    {
+      "index": 29,
+      "turnIndex": 7,
+      "name": "str_replace_based_edit_tool",
+      "hasError": true,
+      "startTime": 1780067762306,
+      "endTime": 1780067763756,
+      "agentId": "AI Developer"
+    },
+    {
+      "index": 30,
+      "turnIndex": 7,
+      "name": "str_replace_based_edit_tool",
+      "hasError": false,
+      "startTime": 1780067768035,
+      "endTime": 1780067769139,
+      "agentId": "AI Developer"
+    },
+    {
+      "index": 31,
+      "turnIndex": 7,
+      "name": "str_replace_based_edit_tool",
+      "hasError": false,
+      "startTime": 1780067772847,
+      "endTime": 1780067773837,
+      "agentId": "AI Developer"
+    },
+    {
+      "index": 32,
+      "turnIndex": 7,
+      "name": "str_replace_based_edit_tool",
+      "hasError": false,
+      "startTime": 1780067777425,
+      "endTime": 1780067779123,
+      "agentId": "AI Developer"
+    }
+  ],
+  "totalCount": 33,
+  "failedCount": 1,
+  "uniqueTools": [
+    "askQuestion",
+    "colorScheme",
+    "fontTheme",
+    "grepSearch",
+    "handoff",
+    "httpCheck",
+    "media",
+    "media-logo__generate_logo",
+    "media-logo__offer_logo_actions",
+    "readFile",
+    "setProjectName",
+    "skill",
+    "str_replace_based_edit_tool",
+    "todoList",
+    "viewLogs"
+  ],
+  "uniqueCount": 15,
+  "countByTool": {
+    "askQuestion": 2,
+    "setProjectName": 1,
+    "todoList": 6,
+    "handoff": 1,
+    "skill": 1,
+    "colorScheme": 1,
+    "fontTheme": 1,
+    "media": 4,
+    "media-logo__generate_logo": 1,
+    "media-logo__offer_logo_actions": 1,
+    "readFile": 2,
+    "str_replace_based_edit_tool": 9,
+    "viewLogs": 1,
+    "httpCheck": 1,
+    "grepSearch": 1
+  }
+}

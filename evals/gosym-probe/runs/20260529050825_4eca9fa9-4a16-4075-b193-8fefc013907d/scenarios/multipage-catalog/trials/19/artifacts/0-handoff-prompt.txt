@@ -1,0 +1,106 @@
+Build a multi-page website for "Artisan Goods Co.", a handmade crafts shop. Full site build — not just a homepage preview.
+
+PROJECT DETAILS:
+- Business: Artisan Goods Co. — handmade crafts shop
+- Categories: Pottery, Textiles, Woodwork, Jewelry
+- Audience: Craft lovers, gift shoppers, artisan enthusiasts
+- Goal: Showcase products, tell the brand story, grow newsletter list
+
+DESIGN DIRECTION:
+Warm, earthy, artisanal aesthetic that feels handcrafted and authentic. Think independent boutique — not corporate, not generic e-commerce. Rich textures implied through color and typography. Generous whitespace with editorial flair.
+
+LAYOUT TYPE: Standard
+Multi-page site with shared header navigation and footer.
+
+VISUAL DIRECTION:
+- Color: Warm neutrals — cream/off-white backgrounds, warm terracotta accent, deep walnut brown for text. Avoid pure white or cold grays.
+- Typography: Serif display font for headings (warmth, craft heritage feel), clean sans-serif for body. Generous line-height and letter-spacing.
+- Layout: Full-bleed hero with editorial composition. Product grid with hover lift effects. NO icon grids for features.
+
+VISUAL ELEMENTS:
+- Primary: Photography (product shots, lifestyle, team)
+- Style: Warm, natural lighting — artisan workshop feel
+- Application: Full-bleed hero, product cards, team profile photos
+- Logo: Generate a wordmark-style logo using the media-logo skill — warm serif lettering for "Artisan Goods Co." with a subtle craft motif
+
+MOTION DESIGN:
+- Level: Subtle
+- Effects: Fade-in on scroll for sections (350ms ease-out), hover lift on product cards (translate-y -4px + shadow), smooth nav link underline draw on hover
+- Personality: Warm and unhurried — nothing snappy or corporate
+
+SECTION-SPECIFIC:
+- Hero (Homepage): Full-bleed image, large serif headline, short tagline, CTA button. Fade-in entrance animation.
+- Featured Products: 3-4 product cards pulled from API, staggered scroll reveal
+- Newsletter: Asymmetric layout — NOT centered-on-colored-band. Warm background section with inline form.
+- Product Catalog: Category filter tabs/chips at top, responsive product grid (2-col mobile, 3-4 col desktop), card hover lift
+- About Hero: Full-bleed editorial image with overlaid headline
+- Team Profiles: Asymmetric grid with varied card sizes, warm photo treatment
+- Mission Statement: Large typographic treatment, NOT a generic blockquote box
+- Footer: Rich multi-column footer — links, newsletter teaser, social icons. Matches warm brand tone.
+
+DIFFERENTIATION: Oversized serif typography in hero and mission statement that breaks the grid. Product cards with warm shadow and lift on hover.
+
+CONSISTENCY: Maintain warm, artisanal energy throughout all pages. Footer as intentional as hero.
+
+BUILD ORDER:
+
+Phase 1 — Setup (run in parallel):
+- Search for images: hero lifestyle shot of artisan workshop, pottery/textiles/woodwork/jewelry product photos, team member portraits (warm natural lighting)
+- Set font stack using fontTheme tool — serif display (e.g. Playfair Display or Lora) + clean sans (e.g. Inter or DM Sans)
+- Set color scheme using colorTheme tool — cream background, terracotta primary, walnut brown text, warm sand secondary
+- Generate logo using media-logo skill
+
+Phase 2 — Structure (run in parallel, after Phase 1):
+- Build Header.tsx: navigation with links to Home, Shop, About. Logo left, nav right. Warm styling with hover underline draw effect.
+- Build Footer.tsx: multi-column with nav links, newsletter teaser, social icons. Warm brand tone.
+
+Phase 3 — API (after Phase 1):
+- Create src/server/api/products.ts — Express handler for GET /api/products with optional ?category= filter
+- Register in src/server/entry.ts
+- Product data: 12 products across 4 categories (pottery, textiles, woodwork, jewelry), each with id, name, category, price, description, imageUrl
+- Use realistic artisan product names and prices ($18–$280 range)
+
+Phase 4 — Pages (after Phase 1, 2, 3 complete):
+Build all three pages:
+
+A) src/pages/index.tsx (Homepage):
+- Full-bleed hero with serif headline "Handcrafted with Heart", tagline, CTA "Shop Now" → /shop
+- Featured Products section: fetch from /api/products, show 4 featured items, staggered fade-in
+- Newsletter signup section: asymmetric warm layout, email input + subscribe button, no backend needed (UI only with success state)
+
+B) src/pages/shop.tsx (Product Catalog):
+- Add route in routes.tsx: path "/shop"
+- Category filter chips: All, Pottery, Textiles, Woodwork, Jewelry — active state with terracotta fill
+- Fetch from /api/products?category={selected} using useLoaderData or useEffect
+- Responsive product grid: card with image, name, category badge, price. Hover lift effect.
+- Loading skeleton state while fetching
+
+C) src/pages/about.tsx (About Page):
+- Add route in routes.tsx: path "/about"
+- Full-bleed editorial hero image with "Our Story" headline overlay
+- Story section: 2-column layout (text left, image right), warm prose about founding the shop
+- Mission statement: Large oversized serif typography treatment — NOT a blockquote box
+- Team profiles: 3 team members, asymmetric grid, name + role + short bio + photo
+
+Phase 5 — Finalize:
+- Mark all todo items as COMPLETE using the todoList tool
+- Ask for feedback using askQuestion
+
+ROUTES TO ADD in routes.tsx:
+- /shop → ShopPage
+- /about → AboutPage
+
+CRITICAL: Build pages LAST — after setup, header, footer, and API are all done.
+
+TODO LIST IDs:
+- Homepage: 1780067370020-3nkjojq
+- Product catalog page: 1780067370022-la5xpdh
+- About page: 1780067370025-9msx38v
+- Shared navigation & footer: 1780067370026-xid3f9v
+- Products API endpoint: 1780067370027-zkk3amy
+
+Mark each todo complete as you finish it.
+
+DESIGN FEEDBACK after build:
+Use askQuestion to ask: "How does the site look?"
+Suggestions: ["Looks great!", "Adjust the color scheme", "Change the fonts", "Tweak the homepage layout", "Update product data"]

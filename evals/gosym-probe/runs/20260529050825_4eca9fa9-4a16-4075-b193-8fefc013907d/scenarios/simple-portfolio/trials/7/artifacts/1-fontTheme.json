@@ -1,0 +1,23 @@
+{
+  "success": true,
+  "message": "Applied font theme: Elegant Designer Portfolio",
+  "appliedFont": {
+    "name": "Elegant Designer Portfolio",
+    "headerFont": {
+      "name": "DM Serif Display",
+      "weights": [
+        "400"
+      ],
+      "category": "serif"
+    },
+    "bodyFont": {
+      "name": "DM Sans",
+      "weights": [
+        "400",
+        "500"
+      ],
+      "category": "sans-serif"
+    }
+  },
+  "suggestedResponse": "Font theme \"Elegant Designer Portfolio\" (DM Serif Display (headers) + DM Sans (body)) has been applied."
+}

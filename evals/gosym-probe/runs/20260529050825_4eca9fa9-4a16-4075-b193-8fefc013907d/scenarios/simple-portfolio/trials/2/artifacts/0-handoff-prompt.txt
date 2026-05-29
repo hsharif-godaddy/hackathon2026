@@ -1,0 +1,68 @@
+Build a personal portfolio homepage with this design direction:
+
+PROJECT DETAILS:
+- Type: Personal portfolio website
+- Sections: Hero, About, Contact
+- Design: Clean, modern, well-spaced
+
+DESIGN DIRECTION:
+Sophisticated minimal portfolio with strong typographic hierarchy and purposeful whitespace. Should feel like a premium personal brand — confident and refined, not a generic template. One unexpected element: an oversized name treatment in the hero that breaks the grid.
+
+LAYOUT TYPE: Standard
+Full header with navigation and footer.
+
+VISUAL DIRECTION:
+- Color: Near-black base (#0f0f0f or very dark charcoal) with a warm off-white for body text, and ONE warm accent — a muted amber/gold (#c9a84c or similar) used sparingly for highlights and hover states. Not the typical blue or purple.
+- Typography: Pair a high-contrast serif (like Playfair Display or DM Serif Display) for the hero name with a clean geometric sans (like DM Sans or Plus Jakarta Sans) for body text. The contrast between the two creates instant personality.
+- Layout: Asymmetric hero with oversized name spanning full width, tagline offset below. About section uses a two-column layout (text left, visual/decorative element right). Contact section is minimal and elegant — NOT a centered band.
+- Visual elements: Subtle geometric line accents (thin horizontal rules, small decorative marks) in the accent color. No stock photography needed — the typography IS the visual.
+- Motion: Subtle — staggered fade-in entrance on hero text, gentle underline draw on nav hover, smooth section fade-in on scroll.
+
+MOTION DESIGN:
+- Level: Subtle
+- Effects: Hero name fades in with slight upward drift (500ms, easeOut), tagline follows with 150ms delay, nav links get elegant underline-draw hover (200ms), sections fade in on scroll (400ms, once: true)
+- Personality: Refined and deliberate — nothing bouncy or playful
+
+SECTION-SPECIFIC:
+- Hero: Full-viewport height. Oversized name (display size, grid-breaking). Short tagline below, offset to the right. Subtle scroll indicator at bottom. Staggered entrance animation.
+- About: Two-column — left has bio text with generous line height, right has a decorative typographic element or abstract geometric shape in accent color. NOT a photo placeholder.
+- Contact: Clean, open layout. Large "Get in touch" heading, email as a styled link (not a button), social icons (GitHub, LinkedIn, Twitter/X) as minimal icon links with hover color shift to accent. No form needed.
+- Header: Minimal — name/initials as logo on left, sparse nav (About, Contact) on right. Transparent over hero, solid on scroll.
+- Footer: Single line, copyright only. Matches dark aesthetic.
+
+DIFFERENTIATION:
+Oversized hero name that spans the full width — large enough to feel architectural, not just typographic. This creates immediate visual impact and signals design sensibility.
+
+CONSISTENCY:
+Dark, refined aesthetic throughout. The warm accent color appears consistently as the "signature" color — hover states, decorative marks, active nav. Footer maintains the same dark tone as the hero.
+
+BUILD ORDER:
+
+Phase 1 — Setup (run these in parallel):
+- Set font stack using fontTheme tool: DM Serif Display for display/headings, Plus Jakarta Sans for body
+- Set color scheme using colorTheme tool: dark charcoal base, warm off-white text, muted amber/gold accent
+- Search for a professional headshot-style abstract portrait or geometric avatar image (optional, for about section)
+
+Phase 2 — Structure (run in parallel, after Phase 1):
+- Build Header (minimal, transparent-to-solid on scroll, name left / nav right)
+- Build Footer (single line, dark, copyright)
+
+Phase 3 — Page (after Phase 1 & 2):
+- Build homepage (index.tsx) with Hero, About, and Contact sections and all animations
+
+Phase 4 — Finalize:
+- Mark "Homepage" todo item as COMPLETE using todoList tool
+- Ask for design feedback using askQuestion
+
+CRITICAL: Build index.tsx LAST — after setup, header, and footer are complete.
+
+PLACEHOLDER CONTENT:
+Use placeholder name "Alex Morgan" and tagline "Designer & Developer crafting thoughtful digital experiences." About section: 2–3 sentences about background in design and development, passion for clean interfaces, and collaborative work. Contact: email alex@example.com, GitHub/LinkedIn/Twitter icons.
+
+INITIAL SCOPE:
+Homepage design only. Do not create additional pages.
+
+DESIGN FEEDBACK:
+After showing the homepage, use askQuestion to ask:
+- Question: "What would you like to update or build next?"
+- Suggestions: ["Looks great — let's add a projects section", "Change the color scheme", "Update with my real name and info", "Add a projects/work page"]

@@ -1,0 +1,318 @@
+[
+  {
+    "evaluator": "bug-hit-rate",
+    "score": 1,
+    "verdict": "pass",
+    "reason": "No unrecovered errors",
+    "details": {
+      "errorCount": 0,
+      "errors": []
+    }
+  },
+  {
+    "evaluator": "tool-failure-rate",
+    "score": 0,
+    "verdict": "observed",
+    "reason": "No tool failures across 37 tool call(s)",
+    "details": {
+      "failedCount": 0,
+      "totalCalls": 37,
+      "failedTools": []
+    }
+  },
+  {
+    "evaluator": "prompt-efficiency",
+    "score": 0.9002495108803148,
+    "verdict": "observed",
+    "reason": "4 user turns",
+    "details": {
+      "userTurns": 4
+    },
+    "evalVersion": "1.0"
+  },
+  {
+    "evaluator": "jtbd-completion",
+    "score": 1,
+    "verdict": "pass",
+    "reason": "LLM judge verdict: pass",
+    "details": {
+      "htmlContextAvailable": false
+    }
+  },
+  {
+    "evaluator": "output-quality",
+    "score": 0,
+    "verdict": "unknown",
+    "reason": "Composite of 0/9 sub-evaluators (all unknown or errored)",
+    "details": {
+      "_composite": true,
+      "breakdown": [
+        {
+          "evaluator": "heading-hierarchy",
+          "score": 0,
+          "verdict": "unknown",
+          "reason": "No DOM snapshot available",
+          "scoreable": false
+        },
+        {
+          "evaluator": "semantic-density",
+          "score": 0,
+          "verdict": "unknown",
+          "reason": "No DOM snapshot available",
+          "scoreable": false
+        },
+        {
+          "evaluator": "accessibility-coverage",
+          "score": 0,
+          "verdict": "unknown",
+          "reason": "No DOM snapshot available",
+          "scoreable": false
+        },
+        {
+          "evaluator": "link-quality",
+          "score": 0,
+          "verdict": "unknown",
+          "reason": "No DOM snapshot available",
+          "scoreable": false
+        },
+        {
+          "evaluator": "responsive-readiness",
+          "score": 0,
+          "verdict": "unknown",
+          "reason": "No DOM snapshot available",
+          "scoreable": false
+        },
+        {
+          "evaluator": "inline-style-ratio",
+          "score": 0,
+          "verdict": "unknown",
+          "reason": "No DOM snapshot available",
+          "scoreable": false
+        },
+        {
+          "evaluator": "component-decomposition",
+          "score": 0,
+          "verdict": "unknown",
+          "reason": "No DOM snapshot available",
+          "scoreable": false
+        },
+        {
+          "evaluator": "visual-coherence",
+          "score": 0,
+          "verdict": "unknown",
+          "reason": "Insufficient evidence to evaluate (no DOM snapshot)",
+          "scoreable": false
+        },
+        {
+          "evaluator": "content-substance",
+          "score": 0,
+          "verdict": "unknown",
+          "reason": "Insufficient evidence to evaluate (no DOM snapshot)",
+          "scoreable": false
+        }
+      ],
+      "scoredCount": 0,
+      "totalCount": 9
+    },
+    "evalVersion": "accessibility-coverage:1.0+component-decomposition:1.0+content-substance:1.0+heading-hierarchy:1.0+inline-style-ratio:1.0+link-quality:1.0+responsive-readiness:1.0+semantic-density:1.0+visual-coherence:1.0"
+  },
+  {
+    "evaluator": "agent-steps",
+    "score": 0.9002495108803148,
+    "verdict": "observed",
+    "reason": "4 agent steps",
+    "details": {
+      "totalSteps": 4
+    },
+    "evalVersion": "1.0"
+  },
+  {
+    "evaluator": "latency",
+    "score": 0.3095512091989533,
+    "verdict": "observed",
+    "reason": "TTFC=58459ms maxGap=126172ms total=441122ms chunks=110 turns=4 score=0.31 aabInit=55795ms aabTTFC=2633ms",
+    "details": {
+      "timeToFirstChunkMs": 58459,
+      "maxInterChunkGapMs": 126172,
+      "totalMs": 441122,
+      "chunkCount": 110,
+      "perTurn": [
+        {
+          "turnIndex": 0,
+          "timeToFirstChunkMs": 58459,
+          "maxInterChunkGapMs": 126172,
+          "totalTurnMs": 397069,
+          "chunkCount": 58
+        },
+        {
+          "turnIndex": 1,
+          "timeToFirstChunkMs": 7243,
+          "maxInterChunkGapMs": 5101,
+          "totalTurnMs": 17785,
+          "chunkCount": 28
+        },
+        {
+          "turnIndex": 2,
+          "timeToFirstChunkMs": 6291,
+          "maxInterChunkGapMs": 558,
+          "totalTurnMs": 9001,
+          "chunkCount": 19
+        },
+        {
+          "turnIndex": 3,
+          "timeToFirstChunkMs": 5013,
+          "maxInterChunkGapMs": 528,
+          "totalTurnMs": 6273,
+          "chunkCount": 5
+        }
+      ],
+      "medianTTFC": 6767,
+      "halfLifeMs": 4000,
+      "aabDiagnostics": {
+        "timingSummaries": [
+          {
+            "turnIndex": 0,
+            "timeToStreamStartMs": 1919,
+            "timeToFirstTextChunkMs": null,
+            "maxChunkGapMs": 2516,
+            "chunksRead": 895,
+            "streamDurationMs": 51855
+          },
+          {
+            "turnIndex": 0,
+            "timeToStreamStartMs": 55795,
+            "timeToFirstTextChunkMs": 2633,
+            "maxChunkGapMs": 105053,
+            "chunksRead": 7591,
+            "streamDurationMs": 341037
+          },
+          {
+            "turnIndex": 1,
+            "timeToStreamStartMs": 1770,
+            "timeToFirstTextChunkMs": 5441,
+            "maxChunkGapMs": 5294,
+            "chunksRead": 131,
+            "streamDurationMs": 15828
+          },
+          {
+            "turnIndex": 2,
+            "timeToStreamStartMs": 1688,
+            "timeToFirstTextChunkMs": 4570,
+            "maxChunkGapMs": 4333,
+            "chunksRead": 86,
+            "streamDurationMs": 7130
+          },
+          {
+            "turnIndex": 3,
+            "timeToStreamStartMs": 1626,
+            "timeToFirstTextChunkMs": 3351,
+            "maxChunkGapMs": 3197,
+            "chunksRead": 24,
+            "streamDurationMs": 4465
+          }
+        ],
+        "slowGaps": [
+          {
+            "turnIndex": 0,
+            "gapMs": 105053,
+            "chunksRead": 354,
+            "streamElapsedMs": 132747
+          }
+        ],
+        "timeouts": []
+      }
+    }
+  },
+  {
+    "evaluator": "tool-parallelism",
+    "score": 0.0397456279809221,
+    "verdict": "observed",
+    "reason": "Tool parallelism ratio: 4%",
+    "details": {
+      "turnsAnalyzed": 2,
+      "totalWeight": 37,
+      "perTurnRatios": [
+        {
+          "toolCallCount": 35,
+          "ratio": 0.04201680672268908
+        },
+        {
+          "toolCallCount": 2,
+          "ratio": 0
+        }
+      ]
+    }
+  },
+  {
+    "evaluator": "tool-batching-efficiency",
+    "score": 0.9722222222222222,
+    "verdict": "observed",
+    "reason": "37 successful calls across 2 productive turns",
+    "details": {
+      "totalSuccessfulCalls": 37,
+      "productiveTurns": 2
+    },
+    "evalVersion": "1.2"
+  },
+  {
+    "evaluator": "turn-duration",
+    "score": 429485,
+    "verdict": "observed",
+    "reason": "Total AAB duration: 429485ms across 4 turns (avg 107371ms)",
+    "details": {
+      "totalDurationMs": 429485,
+      "averageDurationMs": 107371.25,
+      "perTurnMs": [
+        396833,
+        17646,
+        8866,
+        6140
+      ]
+    }
+  },
+  {
+    "evaluator": "token-usage",
+    "score": 1206386,
+    "verdict": "observed",
+    "reason": "aab=1206386 probe=79840 total=1286226 tokens",
+    "details": {
+      "aab": {
+        "inputTokens": 1185917,
+        "outputTokens": 20469,
+        "totalTokens": 1206386,
+        "cachedInputTokensRead": 960695,
+        "cachedInputTokensWrite": 219389
+      },
+      "probe": {
+        "promptTokens": 79644,
+        "completionTokens": 196,
+        "totalTokens": 79840,
+        "calls": 4
+      },
+      "total": {
+        "tokens": 1286226
+      }
+    }
+  },
+  {
+    "evaluator": "intent-to-output-alignment",
+    "score": 0,
+    "verdict": "unknown",
+    "reason": "Evidence validation failed (snapshot unreadable or empty)",
+    "evalVersion": "2.0"
+  },
+  {
+    "evaluator": "implicit-feature-gap",
+    "score": 0,
+    "verdict": "unknown",
+    "reason": "Evidence validation failed (snapshot unreadable or empty)",
+    "evalVersion": "2.0"
+  },
+  {
+    "evaluator": "silent-hallucination",
+    "score": 0,
+    "verdict": "unknown",
+    "reason": "Evidence validation failed (snapshot unreadable or empty)",
+    "evalVersion": "2.0"
+  }
+]

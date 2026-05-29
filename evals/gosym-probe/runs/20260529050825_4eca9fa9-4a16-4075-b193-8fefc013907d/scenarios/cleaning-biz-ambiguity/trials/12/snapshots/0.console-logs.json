@@ -1,0 +1,86 @@
+[
+  {
+    "type": "debug",
+    "text": "[vite] connecting..."
+  },
+  {
+    "type": "debug",
+    "text": "[vite] connected."
+  },
+  {
+    "type": "info",
+    "text": "%cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold"
+  },
+  {
+    "type": "error",
+    "text": "Invalid hook call. Hooks can only be called inside of the body of a function component. This could happen for one of the following reasons:\n1. You might have mismatching versions of React and the renderer (such as React DOM)\n2. You might be breaking the Rules of Hooks\n3. You might have more than one copy of React in the same app\nSee https://react.dev/link/invalid-hook-call for tips about how to debug and fix this problem."
+  },
+  {
+    "type": "error",
+    "text": "Invalid hook call. Hooks can only be called inside of the body of a function component. This could happen for one of the following reasons:\n1. You might have mismatching versions of React and the renderer (such as React DOM)\n2. You might be breaking the Rules of Hooks\n3. You might have more than one copy of React in the same app\nSee https://react.dev/link/invalid-hook-call for tips about how to debug and fix this problem."
+  },
+  {
+    "type": "error",
+    "text": "%o\n\n%s\n\n%s\n TypeError: Cannot read properties of null (reading 'useContext')\n    at exports.useContext (https://local.gasket.dev-godaddy.com:5002/node_modules/.vite/deps/chunk-SUHFC5XY.js?v=66391c6a:911:27)\n    at MotionDOMComponent (https://local.gasket.dev-godaddy.com:5002/node_modules/.vite/deps/motion_react.js?v=b458b140:8882:40)\n    at Object.react_stack_bottom_frame (https://local.gasket.dev-godaddy.com:5002/node_modules/.vite/deps/react-dom_client.js?v=162c83dd:18509:20)\n    at renderWithHooks (https://local.gasket.dev-godaddy.com:5002/node_modules/.vite/deps/react-dom_client.js?v=162c83dd:5654:24)\n    at updateForwardRef (https://local.gasket.dev-godaddy.com:5002/node_modules/.vite/deps/react-dom_client.js?v=162c83dd:7198:21)\n    at beginWork (https://local.gasket.dev-godaddy.com:5002/node_modules/.vite/deps/react-dom_client.js?v=162c83dd:8735:20)\n    at runWithFiberInDEV (https://local.gasket.dev-godaddy.com:5002/node_modules/.vite/deps/react-dom_client.js?v=162c83dd:997:72)\n    at performUnitOfWork (https://local.gasket.dev-godaddy.com:5002/node_modules/.vite/deps/react-dom_client.js?v=162c83dd:12561:98)\n    at workLoopSync (https://local.gasket.dev-godaddy.com:5002/node_modules/.vite/deps/react-dom_client.js?v=162c83dd:12424:43)\n    at renderRootSync (https://local.gasket.dev-godaddy.com:5002/node_modules/.vite/deps/react-dom_client.js?v=162c83dd:12408:13) The above error occurred in the <ForwardRef(motion.div)> component. React will try to recreate this component tree from scratch using the error boundary you provided, AiroErrorBoundary."
+  },
+  {
+    "type": "error",
+    "text": "Error caught by AiroErrorBoundary (render): TypeError: Cannot read properties of null (reading 'useContext')\n    at exports.useContext (https://local.gasket.dev-godaddy.com:5002/node_modules/.vite/deps/chunk-SUHFC5XY.js?v=66391c6a:911:27)\n    at MotionDOMComponent (https://local.gasket.dev-godaddy.com:5002/node_modules/.vite/deps/motion_react.js?v=b458b140:8882:40)\n    at Object.react_stack_bottom_frame (https://local.gasket.dev-godaddy.com:5002/node_modules/.vite/deps/react-dom_client.js?v=162c83dd:18509:20)\n    at renderWithHooks (https://local.gasket.dev-godaddy.com:5002/node_modules/.vite/deps/react-dom_client.js?v=162c83dd:5654:24)\n    at updateForwardRef (https://local.gasket.dev-godaddy.com:5002/node_modules/.vite/deps/react-dom_client.js?v=162c83dd:7198:21)\n    at beginWork (https://local.gasket.dev-godaddy.com:5002/node_modules/.vite/deps/react-dom_client.js?v=162c83dd:8735:20)\n    at runWithFiberInDEV (https://local.gasket.dev-godaddy.com:5002/node_modules/.vite/deps/react-dom_client.js?v=162c83dd:997:72)\n    at performUnitOfWork (https://local.gasket.dev-godaddy.com:5002/node_modules/.vite/deps/react-dom_client.js?v=162c83dd:12561:98)\n    at workLoopSync (https://local.gasket.dev-godaddy.com:5002/node_modules/.vite/deps/react-dom_client.js?v=162c83dd:12424:43)\n    at renderRootSync (https://local.gasket.dev-godaddy.com:5002/node_modules/.vite/deps/react-dom_client.js?v=162c83dd:12408:13) {componentStack: \n    at MotionDOMComponent (https://local.gasket.d…ps/@dr__pogodin_react-helmet.js?v=ab706db9:648:3)}"
+  },
+  {
+    "type": "debug",
+    "text": "[vite] connecting..."
+  },
+  {
+    "type": "debug",
+    "text": "[vite] connected."
+  },
+  {
+    "type": "info",
+    "text": "%cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold"
+  },
+  {
+    "type": "log",
+    "text": "🎨 Airo Dev Tools activated! Injecting floating dev tools..."
+  },
+  {
+    "type": "log",
+    "text": "✅ Dev tools successfully injected into DOM"
+  },
+  {
+    "type": "error",
+    "text": "Access to script at 'virtual:media-versions' from origin 'https://local.gasket.dev-godaddy.com:5002' has been blocked by CORS policy: Cross origin requests are only supported for protocol schemes: chrome, chrome-untrusted, data, http, https."
+  },
+  {
+    "type": "error",
+    "text": "Failed to load resource: net::ERR_FAILED"
+  },
+  {
+    "type": "debug",
+    "text": "[vite] connecting..."
+  },
+  {
+    "type": "debug",
+    "text": "[vite] connected."
+  },
+  {
+    "type": "info",
+    "text": "%cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold"
+  },
+  {
+    "type": "log",
+    "text": "🎨 Airo Dev Tools activated! Injecting floating dev tools..."
+  },
+  {
+    "type": "log",
+    "text": "✅ Dev tools successfully injected into DOM"
+  },
+  {
+    "type": "error",
+    "text": "Access to script at 'virtual:media-versions' from origin 'https://local.gasket.dev-godaddy.com:5002' has been blocked by CORS policy: Cross origin requests are only supported for protocol schemes: chrome, chrome-untrusted, data, http, https."
+  },
+  {
+    "type": "error",
+    "text": "Failed to load resource: net::ERR_FAILED"
+  }
+]

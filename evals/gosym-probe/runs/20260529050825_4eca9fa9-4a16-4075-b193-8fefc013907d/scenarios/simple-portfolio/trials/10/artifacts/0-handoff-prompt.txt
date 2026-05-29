@@ -1,0 +1,77 @@
+Build a personal portfolio homepage with this design direction:
+
+PROJECT DETAILS:
+- Type: Personal portfolio website
+- Sections: Hero, About, Contact
+- Design: Clean, modern, well-spaced
+
+DESIGN DIRECTION:
+Editorial and refined — a portfolio that feels like a thoughtfully designed magazine spread, not a generic developer template. Strong typographic hierarchy, generous whitespace, and a warm-neutral palette that lets the person's personality shine through.
+
+LAYOUT TYPE: Standard
+Full header with navigation and footer.
+
+VISUAL DIRECTION:
+- Color: Warm off-white background (#F9F7F4 feel) with deep charcoal text and a single warm accent (terracotta or dusty amber — NOT blue or purple). Subtle warm tones throughout.
+- Typography: Pair a refined serif display font (like Playfair Display or DM Serif Display) for headings with a clean geometric sans (like DM Sans or Plus Jakarta Sans) for body. Bold size contrast — hero name should be very large.
+- Layout: DO NOT use centered-everything layout. Use asymmetric compositions — name left-aligned with large scale, about section with offset text/visual columns, contact section integrated elegantly.
+
+VISUAL ELEMENTS:
+- Primary: Minimal geometric accents — thin lines, subtle dot grids, or small geometric shapes as decorative elements
+- Style: Clean and editorial, not flashy
+- Application: Subtle decorative lines near section headings, a soft background texture or shape in the hero
+- Logo: Use the media-logo skill to generate a simple monogram or wordmark logo for the header
+
+MOTION DESIGN:
+- Level: Subtle
+- Effects:
+  - Fade-in + slide-up on scroll for each section (350ms, ease-out)
+  - Staggered entrance for hero text (name first, then tagline)
+  - Gentle hover underline draw on nav links
+  - Hover lift on social media icons (translate-y + opacity)
+- Personality: Smooth and refined — nothing bouncy, everything intentional
+
+SECTION-SPECIFIC:
+- Hero: Large left-aligned name (display serif, very large — 5xl to 7xl), tagline below in sans-serif, a subtle geometric accent or soft shape in the background. Staggered entrance animation.
+- About: Two-column asymmetric layout — text on one side, a visual element (abstract shape, decorative block, or placeholder for photo) on the other. NOT a centered paragraph block.
+- Contact: Elegant, NOT a centered-band CTA. Email as a large styled link, social icons (GitHub, LinkedIn, Twitter/X) with hover effects. Could use a split layout or offset card.
+- Header: Minimal — monogram/logo left, nav links right with hover underline animations
+- Footer: Simple, warm, matches overall tone — not an afterthought
+
+DIFFERENTIATION:
+The hero name should be typographically oversized and bold — breaking the grid slightly to create immediate visual impact. This is the one element that makes it feel like a real designer's portfolio, not a template.
+
+CONSISTENCY:
+Maintain the warm editorial tone throughout — footer should feel as considered as the hero. Keep animation timing consistent (subtle, 300-400ms range).
+
+BUILD ORDER:
+
+Phase 1 — Setup (run these in parallel):
+- Search for a professional headshot placeholder or abstract portrait-style image for the about section
+- Set font stack using the fontTheme tool: DM Serif Display for display/headings, Plus Jakarta Sans for body
+- Set color scheme using the colorScheme tool: warm off-white background, deep charcoal foreground, terracotta/amber accent
+- Generate logo using media-logo skill (simple monogram style)
+
+Phase 2 — Structure (run these in parallel, after Phase 1):
+- Build header with minimal nav (Home, About, Contact links) and logo
+- Build footer with copyright and subtle branding
+
+Phase 3 — Page (after Phase 1 & 2 are complete):
+- Build homepage (index.tsx) with hero, about, and contact sections with all animations
+
+Phase 4 — Finalize:
+- Mark the "Homepage" todo item as COMPLETE using the todoList tool
+- Ask for design feedback using askQuestion
+
+CRITICAL: Build homepage (index.tsx) LAST — after setup, header, and footer are done.
+
+TODO LIST MANAGEMENT:
+After completing the homepage, mark "Homepage" as complete using the todoList tool (list ID: 1780034097818-3ksvs0c, item ID: 1780034097819-qxaj917).
+
+INITIAL SCOPE:
+Build ONLY the homepage for this preview. Use placeholder name "Alex Morgan" and tagline "Designer & Developer crafting thoughtful digital experiences" — the user will update with their real info.
+
+DESIGN FEEDBACK:
+After showing the homepage, use askQuestion to ask:
+- Question: "What do you think of the design?"
+- Suggestions: ["Looks great — let's add project case studies", "Change the color scheme", "Change the fonts", "Update with my real name and info", "I'd like to adjust the layout"]

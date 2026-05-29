@@ -1,0 +1,30 @@
+{
+  "scenarioName": "simple-portfolio",
+  "trial": 9,
+  "turns": [
+    {
+      "role": "user",
+      "content": "Build me a personal portfolio website with:\n- A hero section with my name and a short tagline\n- An about section describing my background\n- A contact section with an email link and social\n  media icons\nUse a clean, modern design with good spacing.",
+      "durationSeconds": 0
+    },
+    {
+      "role": "assistant",
+      "content": "I'll build this portfolio in phases — setup first, then structure, then the page itself.**Phase 1 — running setup in parallel:**Phase 1 done. Now building header and footer in parallel.Now building the header and footer simultaneously:Now building the homepage — the main event:Now update the RootLayout with proper site-wide defaults:Your portfolio is live in the preview. Here's what was built:\n\n- **Hero** — Full-viewport, left-aligned with your name at an oversized typographic scale that breaks the grid. Animated entrance (fade + slide up), staggered tagline and CTA, and a subtle scroll indicator.\n- **About** — Asymmetric two-column layout with a small-caps label, three paragraphs of background copy, a grayscale portrait with an amber tint overlay, and a row of skill tags.\n- **Contact** — Minimal and editorial. Large display heading, a prominent email link with hover animation, and GitHub/LinkedIn/Twitter icons.\n- **Header** — Transparent over the hero, transitions to a solid backdrop on scroll.\n- **Footer** — Single-line dark footer with a \"back to top\" link.",
+      "durationSeconds": 175.5
+    },
+    {
+      "role": "user",
+      "content": "Looks great! This is exactly what I was going for. The hero, about, and contact sections all look really solid.\n\nDONE",
+      "durationSeconds": 2.5
+    },
+    {
+      "role": "assistant",
+      "content": "Glad it hit the mark! Your portfolio is looking sharp — the oversized typography, dark editorial tone, and amber accents all come together nicely. Whenever you're ready to keep building, some natural next steps would be adding a projects/work section, publishing the site live, or swapping in your real name and content.",
+      "durationSeconds": 16.7
+    }
+  ],
+  "summary": {
+    "messageCount": 4,
+    "totalElapsedSeconds": 194.6
+  }
+}

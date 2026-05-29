@@ -1,0 +1,65 @@
+{
+  "scenarioName": "cleaning-biz-ambiguity",
+  "trial": 13,
+  "turns": [
+    {
+      "role": "user",
+      "content": "I need a website for my cleaning business",
+      "durationSeconds": 0
+    },
+    {
+      "role": "user",
+      "content": "I clean houses. Can you just make me a website?",
+      "durationSeconds": 10.9
+    },
+    {
+      "role": "assistant",
+      "content": "Now let me generate the logo and then build the header and footer in parallel.Now let me build the header and footer simultaneously:Now let me build the homepage:",
+      "durationSeconds": 240.5
+    },
+    {
+      "role": "user",
+      "content": "Looks great — let's add a services & pricing page",
+      "durationSeconds": 1.9
+    },
+    {
+      "role": "assistant",
+      "content": "The Services & Pricing page is live at `/services`. It includes all three cleaning packages with staggered image/text layouts, itemized checklists, transparent starting prices, a FAQ section, and a CTA at the bottom.",
+      "durationSeconds": 94.7
+    },
+    {
+      "role": "user",
+      "content": "Looks good! But how do people actually get in touch with me? I don't see my phone number or anything.",
+      "durationSeconds": 2.7
+    },
+    {
+      "role": "assistant",
+      "content": "Your phone number is actually in the header and footer already — but let me add a proper Contact page with a quote request form so customers can easily reach you.The Contact page is live at `/contact` — it shows your phone number, email, hours, and service area prominently on the left, with a quote request form on the right where customers can select their service type, number of bedrooms, and preferred schedule. Click \"Contact\" in the nav to check it out.",
+      "durationSeconds": 79.6
+    },
+    {
+      "role": "user",
+      "content": "That looks much better, but those aren't my real phone number or email — can you put in a spot where I can fill in my own contact info?",
+      "durationSeconds": 2.8
+    },
+    {
+      "role": "assistant",
+      "content": "I'll create a central config file for your business info, then update all the places that reference it at once.Now update all files to use this config:Now update the pages:Now update the contact and services pages:All your contact info now lives in one place: `src/lib/business-info.ts`. Just open that file and update your real phone number, email, hours, and service area — every page on the site will update automatically.",
+      "durationSeconds": 133.1
+    },
+    {
+      "role": "user",
+      "content": "That's perfect, thank you! The site looks great.\n\nDONE",
+      "durationSeconds": 2.1
+    },
+    {
+      "role": "assistant",
+      "content": "So glad it came together well! Your site is looking sharp — homepage, services & pricing, and contact page all set. Don't forget to update `src/lib/business-info.ts` with your real phone number, email, and hours when you're ready.When you're ready to take the next step, publishing the site makes it live for customers to find you.",
+      "durationSeconds": 11
+    }
+  ],
+  "summary": {
+    "messageCount": 11,
+    "totalElapsedSeconds": 579.4
+  }
+}

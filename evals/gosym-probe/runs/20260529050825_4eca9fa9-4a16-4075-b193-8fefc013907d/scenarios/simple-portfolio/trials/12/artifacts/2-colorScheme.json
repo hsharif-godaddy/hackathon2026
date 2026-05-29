@@ -1,0 +1,102 @@
+{
+  "success": true,
+  "message": "Color scheme \"Editorial Amber Dark\" set successfully.",
+  "paletteName": "Editorial Amber Dark",
+  "palette": {
+    "primary": "#D4A843",
+    "secondary": "#b8d443",
+    "accent": "#436fd4",
+    "background": "#1C1A17",
+    "foreground": "#F5F5F5",
+    "muted": "#3e3727",
+    "mutedForeground": "#F5F5F5",
+    "border": "#ffffff",
+    "card": "#1C1A17",
+    "cardForeground": "#F5F5F5",
+    "destructive": "#EF4444",
+    "success": "#10B981",
+    "warning": "#F59E0B",
+    "primaryForeground": "#ffffff",
+    "secondaryForeground": "#494949",
+    "accentForeground": "#FFFFFF",
+    "destructiveForeground": "#ffffff",
+    "successForeground": "#ffffff",
+    "warningForeground": "#ffffff",
+    "chart1": "#f0e2c0",
+    "chart2": "#e2c581",
+    "chart3": "#D4A843",
+    "chart4": "#a57e26",
+    "chart5": "#674f17",
+    "theme": "dark",
+    "displayColors": [
+      {
+        "id": "base",
+        "name": "Base",
+        "hex": "#1C1A17",
+        "role": "Base text and background color",
+        "foreground": "#F5F5F5"
+      },
+      {
+        "id": "primary",
+        "name": "Primary",
+        "hex": "#D4A843",
+        "role": "Main brand color",
+        "foreground": "#ffffff"
+      },
+      {
+        "id": "secondary",
+        "name": "Secondary",
+        "hex": "#b8d443",
+        "role": "Secondary brand color",
+        "foreground": "#494949"
+      },
+      {
+        "id": "accent",
+        "name": "Accent",
+        "hex": "#436fd4",
+        "role": "Accent and highlights",
+        "foreground": "#FFFFFF"
+      },
+      {
+        "id": "muted",
+        "name": "Muted",
+        "hex": "#3e3727",
+        "role": "Subtle backgrounds",
+        "foreground": "#F5F5F5"
+      }
+    ]
+  },
+  "theme": "dark",
+  "widget": {
+    "widgetType": "color-palette",
+    "widgetData": {
+      "name": "Editorial Amber Dark",
+      "palette": {
+        "primary": "#D4A843",
+        "primaryForeground": "#ffffff",
+        "secondary": "#b8d443",
+        "secondaryForeground": "#494949",
+        "accent": "#436fd4",
+        "accentForeground": "#FFFFFF",
+        "background": "#1C1A17",
+        "foreground": "#F5F5F5",
+        "muted": "#3e3727",
+        "mutedForeground": "#F5F5F5",
+        "border": "#ffffff",
+        "card": "#1C1A17",
+        "cardForeground": "#F5F5F5",
+        "destructive": "#EF4444",
+        "destructiveForeground": "#ffffff",
+        "success": "#10B981",
+        "successForeground": "#ffffff",
+        "warning": "#F59E0B",
+        "warningForeground": "#ffffff",
+        "chart1": "#f0e2c0",
+        "chart2": "#e2c581",
+        "chart3": "#D4A843",
+        "chart4": "#a57e26",
+        "chart5": "#674f17"
+      }
+    }
+  }
+}

@@ -1,0 +1,375 @@
+[
+  {
+    "evaluator": "bug-hit-rate",
+    "score": 1,
+    "verdict": "pass",
+    "reason": "No unrecovered errors",
+    "details": {
+      "errorCount": 0,
+      "errors": []
+    }
+  },
+  {
+    "evaluator": "tool-failure-rate",
+    "score": 0.1,
+    "verdict": "observed",
+    "reason": "4/40 tool calls failed (10%): media-logo__generate_logo",
+    "details": {
+      "failedCount": 4,
+      "totalCalls": 40,
+      "failedTools": [
+        "media-logo__generate_logo"
+      ]
+    }
+  },
+  {
+    "evaluator": "prompt-efficiency",
+    "score": 0.8320183851339245,
+    "verdict": "observed",
+    "reason": "7 user turns",
+    "details": {
+      "userTurns": 7
+    },
+    "evalVersion": "1.0"
+  },
+  {
+    "evaluator": "jtbd-completion",
+    "score": 0.5,
+    "verdict": "partial",
+    "reason": "LLM judge verdict: partial",
+    "details": {
+      "htmlContextAvailable": true
+    }
+  },
+  {
+    "evaluator": "output-quality",
+    "score": 0.8205571519795658,
+    "verdict": "pass",
+    "reason": "Composite of 9/9 sub-evaluators",
+    "details": {
+      "_composite": true,
+      "breakdown": [
+        {
+          "evaluator": "heading-hierarchy",
+          "score": 1,
+          "verdict": "pass",
+          "reason": "No heading level violations",
+          "scoreable": true
+        },
+        {
+          "evaluator": "semantic-density",
+          "score": 0.13793103448275862,
+          "verdict": "fail",
+          "reason": "4 semantic element(s) out of 29 block containers",
+          "scoreable": true
+        },
+        {
+          "evaluator": "accessibility-coverage",
+          "score": 1,
+          "verdict": "pass",
+          "reason": "Accessibility weighted score across 2 active sub-dimension(s)",
+          "scoreable": true
+        },
+        {
+          "evaluator": "link-quality",
+          "score": 1,
+          "verdict": "pass",
+          "reason": "12 usable link(s) out of 12 total",
+          "scoreable": true
+        },
+        {
+          "evaluator": "responsive-readiness",
+          "score": 1,
+          "verdict": "pass",
+          "reason": "viewport meta, responsive breakpoint classes, flex/grid layout",
+          "scoreable": true
+        },
+        {
+          "evaluator": "inline-style-ratio",
+          "score": 0.84375,
+          "verdict": "pass",
+          "reason": "15 element(s) with authored inline styles out of 96",
+          "scoreable": true
+        },
+        {
+          "evaluator": "component-decomposition",
+          "score": 0.7333333333333334,
+          "verdict": "pass",
+          "reason": "3 unique file(s) across 3 director(y/ies)",
+          "scoreable": true
+        },
+        {
+          "evaluator": "visual-coherence",
+          "score": 0.85,
+          "verdict": "pass",
+          "reason": "The layout demonstrates strong visual coherence with consistent spacing, clear typographic hierarchy (hero headline to body copy), and a harmonious primary-color accent system used throughout navigation, CTAs, and section headings. Minor deductions for the hidden logo image fallback and some animation opacity states captured mid-transition.",
+          "scoreable": true
+        },
+        {
+          "evaluator": "content-substance",
+          "score": 0.82,
+          "verdict": "pass",
+          "reason": "The site contains specific business name (Shine Bright Cleaning), real phone number, named service tiers (Standard Clean, Deep Clean, Move-In/Move-Out) with descriptions, and clear CTAs (Book Now, Get a Quote). Minor deductions for the placeholder phone number format and some generic tagline copy.",
+          "scoreable": true
+        }
+      ],
+      "scoredCount": 9,
+      "totalCount": 9
+    },
+    "evalVersion": "accessibility-coverage:1.0+component-decomposition:1.0+content-substance:1.0+heading-hierarchy:1.0+inline-style-ratio:1.0+link-quality:1.0+responsive-readiness:1.0+semantic-density:1.0+visual-coherence:1.0"
+  },
+  {
+    "evaluator": "agent-steps",
+    "score": 0.8320183851339245,
+    "verdict": "observed",
+    "reason": "7 agent steps",
+    "details": {
+      "totalSteps": 7
+    },
+    "evalVersion": "1.0"
+  },
+  {
+    "evaluator": "latency",
+    "score": 0.2831228314224067,
+    "verdict": "observed",
+    "reason": "TTFC=58135ms maxGap=61204ms total=316910ms chunks=40 turns=5 score=0.28 aabInit=50372ms aabTTFC=7455ms",
+    "details": {
+      "timeToFirstChunkMs": 58135,
+      "maxInterChunkGapMs": 61204,
+      "totalMs": 316910,
+      "chunkCount": 40,
+      "perTurn": [
+        {
+          "turnIndex": 1,
+          "timeToFirstChunkMs": 58135,
+          "maxInterChunkGapMs": 61204,
+          "totalTurnMs": 215616,
+          "chunkCount": 21
+        },
+        {
+          "turnIndex": 3,
+          "timeToFirstChunkMs": 4251,
+          "maxInterChunkGapMs": 199,
+          "totalTurnMs": 4982,
+          "chunkCount": 2
+        },
+        {
+          "turnIndex": 4,
+          "timeToFirstChunkMs": 8832,
+          "maxInterChunkGapMs": 15515,
+          "totalTurnMs": 51125,
+          "chunkCount": 11
+        },
+        {
+          "turnIndex": 5,
+          "timeToFirstChunkMs": 5204,
+          "maxInterChunkGapMs": 164,
+          "totalTurnMs": 6465,
+          "chunkCount": 2
+        },
+        {
+          "turnIndex": 6,
+          "timeToFirstChunkMs": 7282,
+          "maxInterChunkGapMs": 1502,
+          "totalTurnMs": 11050,
+          "chunkCount": 4
+        }
+      ],
+      "medianTTFC": 7282,
+      "halfLifeMs": 4000,
+      "aabDiagnostics": {
+        "timingSummaries": [
+          {
+            "turnIndex": 0,
+            "timeToStreamStartMs": 1777,
+            "timeToFirstTextChunkMs": null,
+            "maxChunkGapMs": 2822,
+            "chunksRead": 63,
+            "streamDurationMs": 6142
+          },
+          {
+            "turnIndex": 1,
+            "timeToStreamStartMs": 2051,
+            "timeToFirstTextChunkMs": null,
+            "maxChunkGapMs": 3708,
+            "chunksRead": 728,
+            "streamDurationMs": 46910
+          },
+          {
+            "turnIndex": 1,
+            "timeToStreamStartMs": 50372,
+            "timeToFirstTextChunkMs": 7455,
+            "maxChunkGapMs": 51234,
+            "chunksRead": 4304,
+            "streamDurationMs": 164771
+          },
+          {
+            "turnIndex": 2,
+            "timeToStreamStartMs": 1878,
+            "timeToFirstTextChunkMs": null,
+            "maxChunkGapMs": 3072,
+            "chunksRead": 41,
+            "streamDurationMs": 5193
+          },
+          {
+            "turnIndex": 3,
+            "timeToStreamStartMs": 1591,
+            "timeToFirstTextChunkMs": 2627,
+            "maxChunkGapMs": 2458,
+            "chunksRead": 14,
+            "streamDurationMs": 3199
+          },
+          {
+            "turnIndex": 4,
+            "timeToStreamStartMs": 1960,
+            "timeToFirstTextChunkMs": 6841,
+            "maxChunkGapMs": 3444,
+            "chunksRead": 410,
+            "streamDurationMs": 38089
+          },
+          {
+            "turnIndex": 5,
+            "timeToStreamStartMs": 1693,
+            "timeToFirstTextChunkMs": 3222,
+            "maxChunkGapMs": 3222,
+            "chunksRead": 25,
+            "streamDurationMs": 3835
+          },
+          {
+            "turnIndex": 6,
+            "timeToStreamStartMs": 4097,
+            "timeToFirstTextChunkMs": 3151,
+            "maxChunkGapMs": 3024,
+            "chunksRead": 29,
+            "streamDurationMs": 5047
+          }
+        ],
+        "slowGaps": [],
+        "timeouts": []
+      }
+    }
+  },
+  {
+    "evaluator": "tool-parallelism",
+    "score": 0.019963702359346643,
+    "verdict": "observed",
+    "reason": "Tool parallelism ratio: 2%",
+    "details": {
+      "turnsAnalyzed": 2,
+      "totalWeight": 38,
+      "perTurnRatios": [
+        {
+          "toolCallCount": 30,
+          "ratio": 0.02528735632183908
+        },
+        {
+          "toolCallCount": 8,
+          "ratio": 0
+        }
+      ]
+    }
+  },
+  {
+    "evaluator": "tool-batching-efficiency",
+    "score": 0.9142857142857143,
+    "verdict": "observed",
+    "reason": "36 successful calls across 4 productive turns",
+    "details": {
+      "totalSuccessfulCalls": 36,
+      "productiveTurns": 4
+    },
+    "evalVersion": "1.2"
+  },
+  {
+    "evaluator": "turn-duration",
+    "score": 300839,
+    "verdict": "observed",
+    "reason": "Total AAB duration: 300839ms across 7 turns (avg 42977ms)",
+    "details": {
+      "totalDurationMs": 300839,
+      "averageDurationMs": 42977,
+      "perTurnMs": [
+        7924,
+        215144,
+        7072,
+        4837,
+        50339,
+        5810,
+        9713
+      ]
+    }
+  },
+  {
+    "evaluator": "token-usage",
+    "score": 1702076,
+    "verdict": "observed",
+    "reason": "aab=1702076 probe=59480 total=1761556 tokens",
+    "details": {
+      "aab": {
+        "inputTokens": 1688557,
+        "outputTokens": 13519,
+        "totalTokens": 1702076,
+        "cachedInputTokensRead": 1542099,
+        "cachedInputTokensWrite": 144989
+      },
+      "probe": {
+        "promptTokens": 59350,
+        "completionTokens": 130,
+        "totalTokens": 59480,
+        "calls": 7
+      },
+      "total": {
+        "tokens": 1761556
+      }
+    }
+  },
+  {
+    "evaluator": "intent-to-output-alignment",
+    "score": 0.95,
+    "verdict": "observed",
+    "reason": "The site includes a clear services section with Standard Clean, Deep Clean, Move-In/Move-Out, and Regular Maintenance presented in staggered layout, and the phone number (555) 867-5309 appears prominently in the header, hero CTA section, and footer as confirmed by both body text and HTML. The business name 'Shine Bright Cleaning' is correctly set, and CTAs (Book Now, Get a Quote) are present throughout. Minor gap: logo generation failed and fell back to a text wordmark, but this does not affect functional requirements.",
+    "details": {
+      "dimension": "Intent Understanding & Alignment",
+      "inputsUsed": [
+        "conversation",
+        "final_artifacts"
+      ],
+      "advisoryVerdict": "pass",
+      "transcriptErrors": 0
+    },
+    "evalVersion": "2.0"
+  },
+  {
+    "evaluator": "implicit-feature-gap",
+    "score": 0.82,
+    "verdict": "observed",
+    "reason": "The site includes a clear services section with 4 named cleaning types (Standard Clean, Deep Clean, Move-In/Move-Out, Regular Maintenance), the phone number (555) 867-5309 is prominently displayed in the header, CTA section, and footer, and there are multiple 'Book Now' and 'Get a Quote' CTAs throughout. Minor gaps include no contact form rendered in the snapshot and no pricing information, but these are reasonable omissions for a vague-input scenario where the user didn't request them.",
+    "details": {
+      "dimension": "Implicit Feature Completeness",
+      "inputsUsed": [
+        "conversation",
+        "final_artifacts"
+      ],
+      "advisoryVerdict": "pass",
+      "transcriptErrors": 0
+    },
+    "evalVersion": "2.0"
+  },
+  {
+    "evaluator": "silent-hallucination",
+    "score": 0.82,
+    "verdict": "observed",
+    "reason": "Agent claims phone number appears in header, CTA section, and footer — all three are confirmed in the final HTML (tel:+15558675309 in header, visible in body text). Services section with 4 service types (Standard Clean, Deep Clean, Move-In/Move-Out, Regular Maintenance) is verified in the DOM. The only unsupported claim is the logo generation — agent stated it would use a generated logo but logo tool failed three times and a text fallback was used instead, a minor gap that the agent transparently acknowledged.",
+    "details": {
+      "dimension": "Consistency & Truthfulness",
+      "inputsUsed": [
+        "conversation",
+        "tool_calls",
+        "final_artifacts"
+      ],
+      "advisoryVerdict": "pass",
+      "transcriptErrors": 0
+    },
+    "evalVersion": "2.0"
+  }
+]

@@ -1,0 +1,89 @@
+Build a homepage design preview for Marcus Webb's personal portfolio.
+
+PROJECT DETAILS:
+- Name: Marcus Webb
+- Profession: Freelance graphic designer
+- Aesthetic: Minimal & sophisticated
+
+DESIGN DIRECTION:
+Editorial minimalism — generous whitespace, confident typography hierarchy, and restrained color. The page should feel like a well-designed print piece brought to life. Sophisticated without being cold; minimal without being empty.
+
+LAYOUT TYPE: Standard
+Marketing/portfolio site with full navigation structure.
+
+VISUAL DIRECTION:
+- Color: Near-black (#0F0F0F) base with warm off-white (#F7F5F2) backgrounds. ONE subtle accent — a muted warm gold or deep terracotta used sparingly on hover states and dividers. No bright colors.
+- Typography: Serif display font (Playfair Display or DM Serif Display) for the hero name and section headings — elegant and editorial. Clean sans-serif (DM Sans or Outfit) for body and nav. Dramatic size contrast between headings and body.
+- Layout: Asymmetric hero with oversized name as the dominant visual element. Thin horizontal rules as section dividers. Generous vertical rhythm.
+- Visual elements: No photography needed. Typography IS the visual. Subtle geometric line accents (thin rules, small squares) as decorative elements.
+- Motion: Subtle — staggered fade-up entrance on hero text (400ms, ease-out), gentle underline-draw hover on nav links, soft fade-in on scroll for sections. Nothing bouncy.
+
+LOGO:
+Use the media-logo skill to generate a wordmark-style logo for "MW" — minimal monogram mark, clean and geometric.
+
+MOTION DESIGN:
+- Level: Subtle
+- Effects: Hero text staggered fade-up (name first, then tagline, then CTA — 150ms stagger), fade-in on scroll for About and Contact sections (350ms ease-out), underline-draw on nav hover (200ms), subtle opacity shift on social icon hover
+- Personality: Quiet and deliberate — motion should feel like turning a page, not a tech demo
+
+SECTION-SPECIFIC:
+
+Hero:
+- Full-viewport height
+- Oversized "Marcus Webb" in serif display font — large enough to feel architectural (clamp to ~10-14vw)
+- Tagline below: "Freelance Graphic Designer — crafting visual identities that endure"
+- Thin horizontal rule above and below the name
+- Subtle "Scroll" indicator at bottom with a small animated arrow
+- Staggered fade-up entrance animation
+
+About:
+- Two-column layout: left has a large section number ("01") in muted tone, right has the content
+- Headline: "About"
+- Body: 2-3 paragraphs — Marcus is a freelance graphic designer with 8+ years of experience crafting brand identities, print collateral, and visual systems for clients across fashion, hospitality, and culture. He believes great design is invisible — it communicates before words do. Based in Los Angeles, available worldwide.
+- Skills listed as a clean horizontal row of tags (Brand Identity · Typography · Print · Art Direction · Visual Systems)
+- Fade-in on scroll
+
+Contact:
+- Clean, minimal layout
+- Section number "02" treatment matching About
+- Headline: "Let's Work Together"
+- Short line: "Open to new projects and collaborations."
+- Email as a large, styled link: hello@marcuswebb.co — with underline-draw hover
+- Social icons row: Behance, Instagram, LinkedIn — minimal icon style, subtle hover opacity
+- NO colored CTA band — just elegant typography and spacing
+
+Footer:
+- Single line: "© 2024 Marcus Webb — All rights reserved"
+- Matches the minimal, editorial tone
+
+DIFFERENTIATION:
+The oversized hero name that functions as both headline and visual artwork — it should feel like a poster, not a website header.
+
+CONSISTENCY:
+Maintain editorial restraint throughout. The contact section should feel as considered as the hero. No section should feel like an afterthought.
+
+BUILD ORDER:
+
+Phase 1 — Setup (run in parallel):
+- Set font stack using fontTheme tool: DM Serif Display (display/headings) + DM Sans (body/UI)
+- Set color scheme using colorScheme tool: near-black foreground (#0F0F0F), warm off-white background (#F7F5F2), muted warm gold accent
+- Generate logo using media-logo skill: "MW" monogram, minimal geometric style
+
+Phase 2 — Structure (run in parallel, after Phase 1):
+- Build Header: minimal nav — "Marcus Webb" wordmark left, nav links right (Work, About, Contact). Underline-draw hover. Transparent over hero, solid on scroll.
+- Build Footer: single-line minimal footer
+
+Phase 3 — Page (after Phase 1 & 2):
+- Build homepage (index.tsx) with hero, about, and contact sections with all animations
+
+Phase 4 — Finalize:
+- Mark "Homepage" todo item as complete using todoList tool
+- Ask for design feedback using askQuestion
+
+INITIAL SCOPE:
+Build ONLY the homepage for this preview.
+
+DESIGN FEEDBACK:
+After showing the design, use askQuestion to ask:
+- Question: "What do you think of the design, Marcus?"
+- Suggestions: ["Love it — let's build the portfolio gallery", "Change the color scheme", "Adjust the typography", "Tweak the layout or spacing"]

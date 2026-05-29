@@ -1,0 +1,428 @@
+[
+  {
+    "evaluator": "bug-hit-rate",
+    "score": 1,
+    "verdict": "pass",
+    "reason": "No unrecovered errors",
+    "details": {
+      "errorCount": 0,
+      "errors": []
+    }
+  },
+  {
+    "evaluator": "tool-failure-rate",
+    "score": 0,
+    "verdict": "observed",
+    "reason": "No tool failures across 35 tool call(s)",
+    "details": {
+      "failedCount": 0,
+      "totalCalls": 35,
+      "failedTools": []
+    }
+  },
+  {
+    "evaluator": "prompt-efficiency",
+    "score": 0.7685247834990178,
+    "verdict": "observed",
+    "reason": "9 user turns",
+    "details": {
+      "userTurns": 9
+    },
+    "evalVersion": "1.0"
+  },
+  {
+    "evaluator": "jtbd-completion",
+    "score": 1,
+    "verdict": "pass",
+    "reason": "LLM judge verdict: pass",
+    "details": {
+      "htmlContextAvailable": true
+    }
+  },
+  {
+    "evaluator": "output-quality",
+    "score": 0.8284709761521355,
+    "verdict": "pass",
+    "reason": "Composite of 9/9 sub-evaluators",
+    "details": {
+      "_composite": true,
+      "breakdown": [
+        {
+          "evaluator": "heading-hierarchy",
+          "score": 1,
+          "verdict": "pass",
+          "reason": "No heading level violations",
+          "scoreable": true
+        },
+        {
+          "evaluator": "semantic-density",
+          "score": 0.14285714285714285,
+          "verdict": "fail",
+          "reason": "4 semantic element(s) out of 28 block containers",
+          "scoreable": true
+        },
+        {
+          "evaluator": "accessibility-coverage",
+          "score": 0.9722222222222221,
+          "verdict": "pass",
+          "reason": "Accessibility weighted score across 2 active sub-dimension(s)",
+          "scoreable": true
+        },
+        {
+          "evaluator": "link-quality",
+          "score": 1,
+          "verdict": "pass",
+          "reason": "11 usable link(s) out of 11 total",
+          "scoreable": true
+        },
+        {
+          "evaluator": "responsive-readiness",
+          "score": 1,
+          "verdict": "pass",
+          "reason": "viewport meta, responsive breakpoint classes, flex/grid layout",
+          "scoreable": true
+        },
+        {
+          "evaluator": "inline-style-ratio",
+          "score": 0.8478260869565217,
+          "verdict": "pass",
+          "reason": "14 element(s) with authored inline styles out of 92",
+          "scoreable": true
+        },
+        {
+          "evaluator": "component-decomposition",
+          "score": 0.7333333333333334,
+          "verdict": "pass",
+          "reason": "3 unique file(s) across 3 director(y/ies)",
+          "scoreable": true
+        },
+        {
+          "evaluator": "visual-coherence",
+          "score": 0.88,
+          "verdict": "pass",
+          "reason": "The layout demonstrates strong visual coherence with consistent spacing, clear typographic hierarchy (hero headline to subtext to body), and a harmonious palette using primary accent color throughout. Minor deductions for some animation states leaving elements at opacity:0 in the static render, which slightly disrupts the hero section's visual completeness.",
+          "scoreable": true
+        },
+        {
+          "evaluator": "content-substance",
+          "score": 0.88,
+          "verdict": "pass",
+          "reason": "The page contains highly specific, business-relevant content including a named business ('Jen's Cleaning'), a real phone number ((612) 555-0187), concrete service descriptions (Regular Cleaning, Deep Cleaning, Move-In/Move-Out), customer social proof (4.9 rating, 200+ customers), and clear CTAs ('Get a Free Quote'). Minor deductions for what appears to be some truncated/incomplete sections and a placeholder-style phone number format.",
+          "scoreable": true
+        }
+      ],
+      "scoredCount": 9,
+      "totalCount": 9
+    },
+    "evalVersion": "accessibility-coverage:1.0+component-decomposition:1.0+content-substance:1.0+heading-hierarchy:1.0+inline-style-ratio:1.0+link-quality:1.0+responsive-readiness:1.0+semantic-density:1.0+visual-coherence:1.0"
+  },
+  {
+    "evaluator": "agent-steps",
+    "score": 0.7685247834990178,
+    "verdict": "observed",
+    "reason": "9 agent steps",
+    "details": {
+      "totalSteps": 9
+    },
+    "evalVersion": "1.0"
+  },
+  {
+    "evaluator": "latency",
+    "score": 0.3715813503871085,
+    "verdict": "observed",
+    "reason": "TTFC=5235ms maxGap=85381ms total=534092ms chunks=99 turns=8 score=0.37 aabInit=1635ms aabTTFC=3566ms aabWorstGap=64159ms",
+    "details": {
+      "timeToFirstChunkMs": 5235,
+      "maxInterChunkGapMs": 85381,
+      "totalMs": 534092,
+      "chunkCount": 99,
+      "perTurn": [
+        {
+          "turnIndex": 1,
+          "timeToFirstChunkMs": 5235,
+          "maxInterChunkGapMs": 85381,
+          "totalTurnMs": 253384,
+          "chunkCount": 29
+        },
+        {
+          "turnIndex": 2,
+          "timeToFirstChunkMs": 9672,
+          "maxInterChunkGapMs": 35559,
+          "totalTurnMs": 61146,
+          "chunkCount": 26
+        },
+        {
+          "turnIndex": 3,
+          "timeToFirstChunkMs": 4875,
+          "maxInterChunkGapMs": 198,
+          "totalTurnMs": 6988,
+          "chunkCount": 6
+        },
+        {
+          "turnIndex": 4,
+          "timeToFirstChunkMs": 14656,
+          "maxInterChunkGapMs": 1136,
+          "totalTurnMs": 26254,
+          "chunkCount": 3
+        },
+        {
+          "turnIndex": 5,
+          "timeToFirstChunkMs": 6068,
+          "maxInterChunkGapMs": 1084,
+          "totalTurnMs": 8419,
+          "chunkCount": 7
+        },
+        {
+          "turnIndex": 6,
+          "timeToFirstChunkMs": 16133,
+          "maxInterChunkGapMs": 71318,
+          "totalTurnMs": 132642,
+          "chunkCount": 15
+        },
+        {
+          "turnIndex": 7,
+          "timeToFirstChunkMs": 5358,
+          "maxInterChunkGapMs": 1152,
+          "totalTurnMs": 7379,
+          "chunkCount": 6
+        },
+        {
+          "turnIndex": 8,
+          "timeToFirstChunkMs": 4817,
+          "maxInterChunkGapMs": 1089,
+          "totalTurnMs": 7037,
+          "chunkCount": 7
+        }
+      ],
+      "medianTTFC": 5713,
+      "halfLifeMs": 4000,
+      "aabDiagnostics": {
+        "timingSummaries": [
+          {
+            "turnIndex": 0,
+            "timeToStreamStartMs": 1822,
+            "timeToFirstTextChunkMs": null,
+            "maxChunkGapMs": 3847,
+            "chunksRead": 66,
+            "streamDurationMs": 8590
+          },
+          {
+            "turnIndex": 1,
+            "timeToStreamStartMs": 1635,
+            "timeToFirstTextChunkMs": 3566,
+            "maxChunkGapMs": 3573,
+            "chunksRead": 633,
+            "streamDurationMs": 47491
+          },
+          {
+            "turnIndex": 1,
+            "timeToStreamStartMs": 50879,
+            "timeToFirstTextChunkMs": 9985,
+            "maxChunkGapMs": 64159,
+            "chunksRead": 4063,
+            "streamDurationMs": 202321
+          },
+          {
+            "turnIndex": 2,
+            "timeToStreamStartMs": 1769,
+            "timeToFirstTextChunkMs": 7856,
+            "maxChunkGapMs": 19609,
+            "chunksRead": 1386,
+            "streamDurationMs": 49072
+          },
+          {
+            "turnIndex": 3,
+            "timeToStreamStartMs": 1755,
+            "timeToFirstTextChunkMs": 3088,
+            "maxChunkGapMs": 3028,
+            "chunksRead": 30,
+            "streamDurationMs": 5019
+          },
+          {
+            "turnIndex": 4,
+            "timeToStreamStartMs": 1652,
+            "timeToFirstTextChunkMs": 12958,
+            "maxChunkGapMs": 3639,
+            "chunksRead": 60,
+            "streamDurationMs": 14291
+          },
+          {
+            "turnIndex": 5,
+            "timeToStreamStartMs": 2060,
+            "timeToFirstTextChunkMs": 3977,
+            "maxChunkGapMs": 3823,
+            "chunksRead": 30,
+            "streamDurationMs": 6149
+          },
+          {
+            "turnIndex": 6,
+            "timeToStreamStartMs": 2272,
+            "timeToFirstTextChunkMs": 13822,
+            "maxChunkGapMs": 4277,
+            "chunksRead": 187,
+            "streamDurationMs": 93547
+          },
+          {
+            "turnIndex": 6,
+            "timeToStreamStartMs": 107678,
+            "timeToFirstTextChunkMs": null,
+            "maxChunkGapMs": 3736,
+            "chunksRead": 73,
+            "streamDurationMs": 14630
+          },
+          {
+            "turnIndex": 7,
+            "timeToStreamStartMs": 1786,
+            "timeToFirstTextChunkMs": 3540,
+            "maxChunkGapMs": 3202,
+            "chunksRead": 29,
+            "streamDurationMs": 5371
+          },
+          {
+            "turnIndex": 8,
+            "timeToStreamStartMs": 1581,
+            "timeToFirstTextChunkMs": 3197,
+            "maxChunkGapMs": 3090,
+            "chunksRead": 32,
+            "streamDurationMs": 5269
+          }
+        ],
+        "slowGaps": [],
+        "timeouts": []
+      }
+    }
+  },
+  {
+    "evaluator": "tool-parallelism",
+    "score": 0.03235294117647059,
+    "verdict": "observed",
+    "reason": "Tool parallelism ratio: 3%",
+    "details": {
+      "turnsAnalyzed": 4,
+      "totalWeight": 34,
+      "perTurnRatios": [
+        {
+          "toolCallCount": 21,
+          "ratio": 0.05238095238095238
+        },
+        {
+          "toolCallCount": 4,
+          "ratio": 0
+        },
+        {
+          "toolCallCount": 2,
+          "ratio": 0
+        },
+        {
+          "toolCallCount": 7,
+          "ratio": 0
+        }
+      ]
+    }
+  },
+  {
+    "evaluator": "tool-batching-efficiency",
+    "score": 0.8823529411764706,
+    "verdict": "observed",
+    "reason": "35 successful calls across 5 productive turns",
+    "details": {
+      "totalSuccessfulCalls": 35,
+      "productiveTurns": 5
+    },
+    "evalVersion": "1.2"
+  },
+  {
+    "evaluator": "turn-duration",
+    "score": 512241,
+    "verdict": "observed",
+    "reason": "Total AAB duration: 512241ms across 9 turns (avg 56916ms)",
+    "details": {
+      "totalDurationMs": 512241,
+      "averageDurationMs": 56915.666666666664,
+      "perTurnMs": [
+        10416,
+        253201,
+        60956,
+        6826,
+        26061,
+        8259,
+        132418,
+        7210,
+        6894
+      ]
+    }
+  },
+  {
+    "evaluator": "token-usage",
+    "score": 1639869,
+    "verdict": "observed",
+    "reason": "aab=1639869 probe=82590 total=1722459 tokens",
+    "details": {
+      "aab": {
+        "inputTokens": 1624557,
+        "outputTokens": 15312,
+        "totalTokens": 1639869,
+        "cachedInputTokensRead": 1326599,
+        "cachedInputTokensWrite": 295843
+      },
+      "probe": {
+        "promptTokens": 82402,
+        "completionTokens": 188,
+        "totalTokens": 82590,
+        "calls": 9
+      },
+      "total": {
+        "tokens": 1722459
+      }
+    }
+  },
+  {
+    "evaluator": "intent-to-output-alignment",
+    "score": 0.92,
+    "verdict": "observed",
+    "reason": "The final HTML clearly shows a services section with 4 cleaning services (Regular, Deep Clean, Move-In/Out, Home Office), contact information prominently displayed including the user's real phone number (612) 555-0187 and email jen@jenscleaning.com, a 'Get a Free Quote' CTA, and the business name 'Jen's Cleaning' throughout. The site was inferred from minimal vague input ('I clean houses') and fully meets the scenario goals. Minor deduction for a React motion hook error in console logs, though the DOM renders successfully with all required content visible.",
+    "details": {
+      "dimension": "Intent Understanding & Alignment",
+      "inputsUsed": [
+        "conversation",
+        "final_artifacts"
+      ],
+      "advisoryVerdict": "pass",
+      "transcriptErrors": 0
+    },
+    "evalVersion": "2.0"
+  },
+  {
+    "evaluator": "implicit-feature-gap",
+    "score": 0.92,
+    "verdict": "observed",
+    "reason": "The rendered site includes a services section with 4 cleaning services and photos, real contact details (phone (612) 555-0187 and email jen@jenscleaning.com) in multiple locations including a dedicated contact section with a form, and prominent CTAs ('Get a Free Quote') in header and hero. Minor gap: no pricing information, but this is common for residential cleaning businesses and not a hard expectation.",
+    "details": {
+      "dimension": "Implicit Feature Completeness",
+      "inputsUsed": [
+        "conversation",
+        "final_artifacts"
+      ],
+      "advisoryVerdict": "pass",
+      "transcriptErrors": 0
+    },
+    "evalVersion": "2.0"
+  },
+  {
+    "evaluator": "silent-hallucination",
+    "score": 0.82,
+    "verdict": "observed",
+    "reason": "Agent claims about contact details (phone (612) 555-0187, email jen@jenscleaning.com), services section, and business name 'Jen's Cleaning' are all confirmed in the final HTML snapshot. The agent accurately described building hero, services (Regular, Deep Clean, Move-In/Out), contact section, and logo updates — all verifiable in the DOM. Minor gap: agent claimed the logo was updated to 'Jen's Cleaning' but the HTML still shows alt='Jen's Cleaning logo' referencing the airo-assets path, and the hero headline still reads 'A Spotless Home' — logo image content is not directly verifiable from the snapshot. Console errors (motion.js hook issue) suggest a rendering error that may have affected some animated sections, but the static HTML content is still rendered, indicating the error boundary recovered.",
+    "details": {
+      "dimension": "Consistency & Truthfulness",
+      "inputsUsed": [
+        "conversation",
+        "tool_calls",
+        "final_artifacts"
+      ],
+      "advisoryVerdict": "pass",
+      "transcriptErrors": 0
+    },
+    "evalVersion": "2.0"
+  }
+]

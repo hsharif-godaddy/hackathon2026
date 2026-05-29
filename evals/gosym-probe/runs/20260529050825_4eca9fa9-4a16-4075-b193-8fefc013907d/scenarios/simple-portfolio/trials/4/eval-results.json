@@ -1,0 +1,312 @@
+[
+  {
+    "evaluator": "bug-hit-rate",
+    "score": 1,
+    "verdict": "pass",
+    "reason": "No unrecovered errors",
+    "details": {
+      "errorCount": 0,
+      "errors": []
+    }
+  },
+  {
+    "evaluator": "tool-failure-rate",
+    "score": 0,
+    "verdict": "observed",
+    "reason": "No tool failures across 22 tool call(s)",
+    "details": {
+      "failedCount": 0,
+      "totalCalls": 22,
+      "failedTools": []
+    }
+  },
+  {
+    "evaluator": "prompt-efficiency",
+    "score": 0.9168273035060777,
+    "verdict": "observed",
+    "reason": "3 user turns",
+    "details": {
+      "userTurns": 3
+    },
+    "evalVersion": "1.0"
+  },
+  {
+    "evaluator": "jtbd-completion",
+    "score": 1,
+    "verdict": "pass",
+    "reason": "LLM judge verdict: pass",
+    "details": {
+      "htmlContextAvailable": true
+    }
+  },
+  {
+    "evaluator": "output-quality",
+    "score": 0.8135104849009187,
+    "verdict": "pass",
+    "reason": "Composite of 9/9 sub-evaluators",
+    "details": {
+      "_composite": true,
+      "breakdown": [
+        {
+          "evaluator": "heading-hierarchy",
+          "score": 0.5,
+          "verdict": "partial",
+          "reason": "1 heading level skip(s) out of 2 headings",
+          "scoreable": true
+        },
+        {
+          "evaluator": "semantic-density",
+          "score": 0.1935483870967742,
+          "verdict": "fail",
+          "reason": "6 semantic element(s) out of 31 block containers",
+          "scoreable": true
+        },
+        {
+          "evaluator": "accessibility-coverage",
+          "score": 1,
+          "verdict": "pass",
+          "reason": "Accessibility weighted score across 2 active sub-dimension(s)",
+          "scoreable": true
+        },
+        {
+          "evaluator": "link-quality",
+          "score": 1,
+          "verdict": "pass",
+          "reason": "6 usable link(s) out of 6 total",
+          "scoreable": true
+        },
+        {
+          "evaluator": "responsive-readiness",
+          "score": 1,
+          "verdict": "pass",
+          "reason": "viewport meta, responsive breakpoint classes, flex/grid layout",
+          "scoreable": true
+        },
+        {
+          "evaluator": "inline-style-ratio",
+          "score": 0.9080459770114943,
+          "verdict": "pass",
+          "reason": "8 element(s) with authored inline styles out of 87",
+          "scoreable": true
+        },
+        {
+          "evaluator": "component-decomposition",
+          "score": 0.9600000000000001,
+          "verdict": "pass",
+          "reason": "5 unique file(s) across 4 director(y/ies)",
+          "scoreable": true
+        },
+        {
+          "evaluator": "visual-coherence",
+          "score": 0.88,
+          "verdict": "pass",
+          "reason": "The portfolio demonstrates strong visual coherence with consistent spacing rhythm, clear typographic hierarchy (large display heading, small uppercase labels, body text), and a restrained monochromatic palette. Minor deduction for animated opacity-zero states capturing elements mid-transition, slightly reducing perceived completeness.",
+          "scoreable": true
+        },
+        {
+          "evaluator": "content-substance",
+          "score": 0.88,
+          "verdict": "pass",
+          "reason": "The portfolio contains highly specific, business-relevant content including a named designer (Marcus Webb), a concrete professional background (8+ years UX/UI, led design at a Series B fintech, built a design system across six product lines), a real contact email (hello@marcuswebb.com), and clear CTAs. Minor deduction for the about section being the only populated content section with no work/project examples shown.",
+          "scoreable": true
+        }
+      ],
+      "scoredCount": 9,
+      "totalCount": 9
+    },
+    "evalVersion": "accessibility-coverage:1.0+component-decomposition:1.0+content-substance:1.0+heading-hierarchy:1.0+inline-style-ratio:1.0+link-quality:1.0+responsive-readiness:1.0+semantic-density:1.0+visual-coherence:1.0"
+  },
+  {
+    "evaluator": "agent-steps",
+    "score": 0.9168273035060777,
+    "verdict": "observed",
+    "reason": "3 agent steps",
+    "details": {
+      "totalSteps": 3
+    },
+    "evalVersion": "1.0"
+  },
+  {
+    "evaluator": "latency",
+    "score": 0.0032221737360428084,
+    "verdict": "observed",
+    "reason": "TTFC=60392ms maxGap=73217ms total=254294ms chunks=12 turns=2 score=0.00 aabInit=52934ms aabTTFC=7426ms",
+    "details": {
+      "timeToFirstChunkMs": 60392,
+      "maxInterChunkGapMs": 73217,
+      "totalMs": 254294,
+      "chunkCount": 12,
+      "perTurn": [
+        {
+          "turnIndex": 1,
+          "timeToFirstChunkMs": 60392,
+          "maxInterChunkGapMs": 73217,
+          "totalTurnMs": 235258,
+          "chunkCount": 9
+        },
+        {
+          "turnIndex": 2,
+          "timeToFirstChunkMs": 5830,
+          "maxInterChunkGapMs": 462,
+          "totalTurnMs": 6500,
+          "chunkCount": 3
+        }
+      ],
+      "medianTTFC": 33111,
+      "halfLifeMs": 4000,
+      "aabDiagnostics": {
+        "timingSummaries": [
+          {
+            "turnIndex": 0,
+            "timeToStreamStartMs": 2146,
+            "timeToFirstTextChunkMs": null,
+            "maxChunkGapMs": 2761,
+            "chunksRead": 57,
+            "streamDurationMs": 5325
+          },
+          {
+            "turnIndex": 1,
+            "timeToStreamStartMs": 2944,
+            "timeToFirstTextChunkMs": null,
+            "maxChunkGapMs": 3213,
+            "chunksRead": 744,
+            "streamDurationMs": 46721
+          },
+          {
+            "turnIndex": 1,
+            "timeToStreamStartMs": 52934,
+            "timeToFirstTextChunkMs": 7426,
+            "maxChunkGapMs": 34686,
+            "chunksRead": 2585,
+            "streamDurationMs": 181237
+          },
+          {
+            "turnIndex": 2,
+            "timeToStreamStartMs": 1826,
+            "timeToFirstTextChunkMs": 3572,
+            "maxChunkGapMs": 3571,
+            "chunksRead": 37,
+            "streamDurationMs": 4470
+          }
+        ],
+        "slowGaps": [],
+        "timeouts": []
+      }
+    }
+  },
+  {
+    "evaluator": "tool-parallelism",
+    "score": 0.02857142857142857,
+    "verdict": "observed",
+    "reason": "Tool parallelism ratio: 3%",
+    "details": {
+      "turnsAnalyzed": 1,
+      "totalWeight": 21,
+      "perTurnRatios": [
+        {
+          "toolCallCount": 21,
+          "ratio": 0.02857142857142857
+        }
+      ]
+    }
+  },
+  {
+    "evaluator": "tool-batching-efficiency",
+    "score": 0.9523809523809523,
+    "verdict": "observed",
+    "reason": "22 successful calls across 2 productive turns",
+    "details": {
+      "totalSuccessfulCalls": 22,
+      "productiveTurns": 2
+    },
+    "evalVersion": "1.2"
+  },
+  {
+    "evaluator": "turn-duration",
+    "score": 248002,
+    "verdict": "observed",
+    "reason": "Total AAB duration: 248002ms across 3 turns (avg 82667ms)",
+    "details": {
+      "totalDurationMs": 248002,
+      "averageDurationMs": 82667.33333333333,
+      "perTurnMs": [
+        7475,
+        234172,
+        6355
+      ]
+    }
+  },
+  {
+    "evaluator": "token-usage",
+    "score": 692769,
+    "verdict": "observed",
+    "reason": "aab=692769 probe=15843 total=708612 tokens",
+    "details": {
+      "aab": {
+        "inputTokens": 685068,
+        "outputTokens": 7701,
+        "totalTokens": 692769,
+        "cachedInputTokensRead": 620096,
+        "cachedInputTokensWrite": 62920
+      },
+      "probe": {
+        "promptTokens": 15775,
+        "completionTokens": 68,
+        "totalTokens": 15843,
+        "calls": 3
+      },
+      "total": {
+        "tokens": 708612
+      }
+    }
+  },
+  {
+    "evaluator": "intent-to-output-alignment",
+    "score": 0.92,
+    "verdict": "observed",
+    "reason": "The final HTML snapshot confirms all three required sections are present: a hero section with 'Marcus Webb' displayed prominently as an oversized heading and the tagline 'Crafting digital experiences with intention', an about section with multi-paragraph background bio content, and a contact section containing the mailto link 'hello@marcuswebb.com' plus LinkedIn, Dribbble, and Twitter/X social icons. The motion library errors in the console appear to have been gracefully caught by the error boundary, as the DOM still renders all content correctly with inline style animations. Minor gap: the motion animations may be degraded due to the React hook error, but structural and content requirements are fully met.",
+    "details": {
+      "dimension": "Intent Understanding & Alignment",
+      "inputsUsed": [
+        "conversation",
+        "final_artifacts"
+      ],
+      "advisoryVerdict": "pass",
+      "transcriptErrors": 0
+    },
+    "evalVersion": "2.0"
+  },
+  {
+    "evaluator": "implicit-feature-gap",
+    "score": 0.92,
+    "verdict": "observed",
+    "reason": "All three required sections are present and content-rich: hero with 'Marcus Webb', UX/UI Designer tagline, and a CTA; about with three paragraphs of background bio; contact with a mailto email link (hello@marcuswebb.com), LinkedIn/Dribbble/Twitter social icons, and availability statement. Minor gap: no portfolio/work section is rendered despite 'Work' appearing in nav, but this is not a scenario requirement. The motion library errors don't block content rendering as the DOM shows all sections fully populated.",
+    "details": {
+      "dimension": "Implicit Feature Completeness",
+      "inputsUsed": [
+        "conversation",
+        "final_artifacts"
+      ],
+      "advisoryVerdict": "pass",
+      "transcriptErrors": 0
+    },
+    "evalVersion": "2.0"
+  },
+  {
+    "evaluator": "silent-hallucination",
+    "score": 0.82,
+    "verdict": "observed",
+    "reason": "The final DOM confirms all three required sections (hero with 'Marcus Webb' + tagline, about with bio paragraphs, contact with mailto:hello@marcuswebb.com and LinkedIn/Dribbble/Twitter icons) are present and rendered. Tool calls back up every claimed capability: fontTheme, colorScheme, media-logo generation, and file writes for Header, Footer, and index.tsx all succeeded. The agent's summary claim of 'minimal, editorial design with oversized hero type, warm terracotta accents' is directly supported by the colorScheme call (#C17A5A terracotta) and the DOM showing clamp(3.5rem,10vw,8rem) hero text. Minor deduction: console errors show motion/react hook conflicts causing an AiroErrorBoundary recovery, meaning animations may not have rendered as claimed, but the static content and structure are fully intact.",
+    "details": {
+      "dimension": "Consistency & Truthfulness",
+      "inputsUsed": [
+        "conversation",
+        "tool_calls",
+        "final_artifacts"
+      ],
+      "advisoryVerdict": "pass",
+      "transcriptErrors": 0
+    },
+    "evalVersion": "2.0"
+  }
+]

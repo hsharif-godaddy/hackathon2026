@@ -1,0 +1,113 @@
+Build a multi-page artisan crafts website. Full details below.
+
+PROJECT DETAILS:
+- Business: Artisan Goods Co. — handmade crafts shop
+- Pages: Homepage, Product Catalog, About
+- Audience: Craft lovers, gift shoppers, people who value handmade quality
+
+DESIGN DIRECTION:
+Warm, earthy, and artisanal. Should feel like a well-curated craft market — tactile, authentic, and inviting. Not a generic e-commerce template. Think natural textures, generous whitespace, and editorial-quality product presentation.
+
+LAYOUT TYPE: Standard
+Full navigation header and footer shared across all pages.
+
+VISUAL DIRECTION:
+- Color: Warm neutrals — cream/off-white base, warm terracotta accent, deep walnut brown for text and nav. NOT cold whites or generic blues.
+- Typography: Serif display font for headings (warmth, craft heritage feel), clean sans-serif for body. Mix weights confidently.
+- Layout: NO uniform icon grids. Use asymmetric product cards, editorial-style sections, full-bleed imagery moments.
+- Visual elements: Warm photography (natural lighting, wood surfaces, hands at work). Subtle organic shapes as section dividers.
+- Motion: Subtle — gentle fade-in on scroll, hover lift on product cards (shadow + slight translate-y), smooth filter transitions on catalog page.
+
+LOGO:
+Use the media-logo skill to generate a logo for "Artisan Goods Co." — a refined wordmark with a small handcraft motif (needle, leaf, or loom thread). Warm terracotta or walnut brown on cream.
+
+SECTION-SPECIFIC:
+
+Hero (Homepage):
+- Full-bleed hero image (artisan hands working with clay or weaving)
+- Overlaid headline: large serif, warm and inviting copy ("Crafted with intention. Made to last.")
+- CTA button: "Shop the Collection" linking to /catalog
+- Subtle fade-in entrance animation
+
+Featured Products (Homepage):
+- 4 featured products pulled from the API (/api/products?featured=true)
+- Asymmetric card layout — NOT a uniform 4-column grid. Use a 2+2 staggered or bento-style arrangement.
+- Each card: product image, name, category badge, price, hover lift effect
+- "View All Products" link to /catalog
+
+Newsletter Signup (Homepage):
+- Warm, integrated section — NOT a centered-text-on-colored-band
+- Asymmetric layout: headline left, email input + button right
+- Earthy background (terracotta or warm brown band)
+- Subtle hover on submit button
+
+Product Catalog Page (/catalog):
+- Category filter bar at top: All, Pottery, Textiles, Woodwork, Jewelry
+- Filters use smooth transition (active state clearly styled with terracotta accent)
+- Product grid: 3-column responsive grid of cards
+- Each card: product image, name, category, price
+- Products fetched from /api/products (filter by ?category=pottery etc.)
+- Hover lift effect on cards
+- Use route loader for SSR-friendly data fetching
+
+About Page (/about):
+- Hero section: full-width warm image + headline overlay ("Our Story")
+- Brand story: 2-column layout — large pull quote left, narrative text right
+- Mission statement: bold typographic treatment, NOT a card or box
+- Team profiles: 3 members, asymmetric layout with photos, names, roles, and short bios
+- Photos should feel warm and authentic (use media search for artisan/craftsperson portraits)
+
+HEADER:
+- Logo left, navigation links right: Home, Catalog, About
+- Clean, minimal — warm cream background, walnut brown text
+- Sticky on scroll with subtle shadow
+- Mobile hamburger menu
+
+FOOTER:
+- Multi-column: brand tagline left, nav links center, newsletter micro-form or social links right
+- Warm, intentional design — matches site quality, not an afterthought
+- Terracotta accent on hover states
+
+DIFFERENTIATION:
+Staggered/asymmetric product card layout on homepage creates editorial feel. Typography mixing (serif headlines + sans body) gives craft-heritage warmth. Organic shape dividers between sections add depth.
+
+CONSISTENCY:
+Maintain warm, artisanal energy throughout — footer and CTA sections must match hero quality. Animation timing consistent (300-400ms, ease-out). Never get safer or more generic as pages progress.
+
+BUILD ORDER:
+
+Phase 1 — Setup (run in parallel):
+- Search for images: hero (artisan hands/clay/weaving), product shots (pottery, textiles, woodwork, jewelry), team portraits (warm, authentic), about page hero
+- Set font stack using fontTheme tool — serif display + clean sans pairing
+- Set color scheme using colorScheme tool — cream base, terracotta accent, walnut brown
+- Generate logo using media-logo skill
+
+Phase 2 — API + Structure (run in parallel after Phase 1):
+- Build Express API endpoint: GET /api/products — returns array of 12 products across 4 categories (pottery, textiles, woodwork, jewelry), each with id, name, category, price, image, featured flag. Register in src/server/entry.ts.
+- Build Header (src/layouts/parts/Header.tsx) — sticky, cream bg, walnut text, nav links, mobile menu
+- Build Footer (src/layouts/parts/Footer.tsx) — multi-column, warm design
+
+Phase 3 — Pages (after Phase 1 & 2):
+- Build Homepage (src/pages/index.tsx) — hero, featured products (fetched via useEffect or loader), newsletter signup
+- Build Catalog page (src/pages/catalog.tsx) — category filters, product grid, route loader for data
+- Build About page (src/pages/about.tsx) — story, mission, team profiles
+
+Phase 4 — Routes + Finalize:
+- Add /catalog and /about routes to src/routes.tsx
+- Mark all todo items as COMPLETE using todoList tool
+- Ask for design feedback using askQuestion
+
+CRITICAL: Build pages AFTER setup, header, footer, and API are done. This ensures everything renders correctly.
+
+TODO LIST IDs (mark complete when done):
+- Homepage: 1780065614831-yogda2z
+- Product catalog page: 1780065614831-bchiiw1
+- About page: 1780065614831-it2wc2x
+- Shared header & footer: 1780065614831-1y19xx4
+- Products API endpoint: 1780065614831-7hol5fs
+List ID: 1780065614830-icjvo3m
+
+DESIGN FEEDBACK:
+After showing the site, use askQuestion to ask:
+- "What do you think of the design?"
+- Suggestions: ["Looks great — let's add a product detail page", "Adjust the color scheme", "Change the fonts", "Add a shopping cart", "I'd like to tweak something specific"]

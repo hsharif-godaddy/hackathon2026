@@ -1,0 +1,342 @@
+[
+  {
+    "evaluator": "bug-hit-rate",
+    "score": 1,
+    "verdict": "pass",
+    "reason": "No unrecovered errors",
+    "details": {
+      "errorCount": 0,
+      "errors": []
+    }
+  },
+  {
+    "evaluator": "tool-failure-rate",
+    "score": 0.03225806451612903,
+    "verdict": "observed",
+    "reason": "2/62 tool calls failed (3%): media-logo__generate_logo, str_replace_based_edit_tool",
+    "details": {
+      "failedCount": 2,
+      "totalCalls": 62,
+      "failedTools": [
+        "media-logo__generate_logo",
+        "str_replace_based_edit_tool"
+      ]
+    }
+  },
+  {
+    "evaluator": "prompt-efficiency",
+    "score": 0.9002495108803148,
+    "verdict": "observed",
+    "reason": "4 user turns",
+    "details": {
+      "userTurns": 4
+    },
+    "evalVersion": "1.0"
+  },
+  {
+    "evaluator": "jtbd-completion",
+    "score": 1,
+    "verdict": "pass",
+    "reason": "LLM judge verdict: pass",
+    "details": {
+      "htmlContextAvailable": true
+    }
+  },
+  {
+    "evaluator": "output-quality",
+    "score": 0.8394415701732775,
+    "verdict": "pass",
+    "reason": "Composite of 9/9 sub-evaluators",
+    "details": {
+      "_composite": true,
+      "breakdown": [
+        {
+          "evaluator": "heading-hierarchy",
+          "score": 1,
+          "verdict": "pass",
+          "reason": "No heading level violations",
+          "scoreable": true
+        },
+        {
+          "evaluator": "semantic-density",
+          "score": 0.17073170731707318,
+          "verdict": "fail",
+          "reason": "7 semantic element(s) out of 41 block containers",
+          "scoreable": true
+        },
+        {
+          "evaluator": "accessibility-coverage",
+          "score": 1,
+          "verdict": "pass",
+          "reason": "Accessibility weighted score across 2 active sub-dimension(s)",
+          "scoreable": true
+        },
+        {
+          "evaluator": "link-quality",
+          "score": 1,
+          "verdict": "pass",
+          "reason": "13 usable link(s) out of 13 total",
+          "scoreable": true
+        },
+        {
+          "evaluator": "responsive-readiness",
+          "score": 1,
+          "verdict": "pass",
+          "reason": "viewport meta, responsive breakpoint classes, flex/grid layout",
+          "scoreable": true
+        },
+        {
+          "evaluator": "inline-style-ratio",
+          "score": 0.8909090909090909,
+          "verdict": "pass",
+          "reason": "12 element(s) with authored inline styles out of 110",
+          "scoreable": true
+        },
+        {
+          "evaluator": "component-decomposition",
+          "score": 0.7333333333333334,
+          "verdict": "pass",
+          "reason": "3 unique file(s) across 3 director(y/ies)",
+          "scoreable": true
+        },
+        {
+          "evaluator": "visual-coherence",
+          "score": 0.88,
+          "verdict": "pass",
+          "reason": "The design demonstrates strong visual coherence with consistent spacing rhythm, clear typographic hierarchy (font-heading for display, tracked uppercase labels, body text), and a harmonious warm artisan palette with primary color accents. Minor deductions for some truncated/raw HTML leaking into body text and animation opacity states partially visible during render.",
+          "scoreable": true
+        },
+        {
+          "evaluator": "content-substance",
+          "score": 0.88,
+          "verdict": "pass",
+          "reason": "The content is highly specific with a real business identity (Artisan Goods Co.), named product categories (Pottery, Textiles, Woodwork, Jewelry), concrete product names and prices ($48 Earthy Glaze Bowl, $32 Rustic Stoneware Mug, $95 Loom-Woven Throw, $120 Turned Walnut Bowl), and clear CTAs (Shop the Collection, Our Story, Shop Now); minor deduction for some truncated sections that may contain generic filler.",
+          "scoreable": true
+        }
+      ],
+      "scoredCount": 9,
+      "totalCount": 9
+    },
+    "evalVersion": "accessibility-coverage:1.0+component-decomposition:1.0+content-substance:1.0+heading-hierarchy:1.0+inline-style-ratio:1.0+link-quality:1.0+responsive-readiness:1.0+semantic-density:1.0+visual-coherence:1.0"
+  },
+  {
+    "evaluator": "agent-steps",
+    "score": 0.9002495108803148,
+    "verdict": "observed",
+    "reason": "4 agent steps",
+    "details": {
+      "totalSteps": 4
+    },
+    "evalVersion": "1.0"
+  },
+  {
+    "evaluator": "latency",
+    "score": 0.29691564118384406,
+    "verdict": "observed",
+    "reason": "TTFC=54681ms maxGap=112871ms total=531413ms chunks=136 turns=4 score=0.30 aabInit=52503ms aabTTFC=2145ms",
+    "details": {
+      "timeToFirstChunkMs": 54681,
+      "maxInterChunkGapMs": 112871,
+      "totalMs": 531413,
+      "chunkCount": 136,
+      "perTurn": [
+        {
+          "turnIndex": 0,
+          "timeToFirstChunkMs": 54681,
+          "maxInterChunkGapMs": 112871,
+          "totalTurnMs": 399160,
+          "chunkCount": 68
+        },
+        {
+          "turnIndex": 1,
+          "timeToFirstChunkMs": 8204,
+          "maxInterChunkGapMs": 15835,
+          "totalTurnMs": 82817,
+          "chunkCount": 35
+        },
+        {
+          "turnIndex": 2,
+          "timeToFirstChunkMs": 5811,
+          "maxInterChunkGapMs": 612,
+          "totalTurnMs": 12211,
+          "chunkCount": 28
+        },
+        {
+          "turnIndex": 3,
+          "timeToFirstChunkMs": 4857,
+          "maxInterChunkGapMs": 855,
+          "totalTurnMs": 6555,
+          "chunkCount": 5
+        }
+      ],
+      "medianTTFC": 7007.5,
+      "halfLifeMs": 4000,
+      "aabDiagnostics": {
+        "timingSummaries": [
+          {
+            "turnIndex": 0,
+            "timeToStreamStartMs": 1686,
+            "timeToFirstTextChunkMs": null,
+            "maxChunkGapMs": 2327,
+            "chunksRead": 870,
+            "streamDurationMs": 49126
+          },
+          {
+            "turnIndex": 0,
+            "timeToStreamStartMs": 52503,
+            "timeToFirstTextChunkMs": 2145,
+            "maxChunkGapMs": 65857,
+            "chunksRead": 8273,
+            "streamDurationMs": 346105
+          },
+          {
+            "turnIndex": 1,
+            "timeToStreamStartMs": 1739,
+            "timeToFirstTextChunkMs": 6431,
+            "maxChunkGapMs": 4911,
+            "chunksRead": 1408,
+            "streamDurationMs": 69802
+          },
+          {
+            "turnIndex": 2,
+            "timeToStreamStartMs": 1655,
+            "timeToFirstTextChunkMs": 4121,
+            "maxChunkGapMs": 4121,
+            "chunksRead": 128,
+            "streamDurationMs": 10347
+          },
+          {
+            "turnIndex": 3,
+            "timeToStreamStartMs": 1778,
+            "timeToFirstTextChunkMs": 3048,
+            "maxChunkGapMs": 2883,
+            "chunksRead": 31,
+            "streamDurationMs": 4603
+          }
+        ],
+        "slowGaps": [],
+        "timeouts": []
+      }
+    }
+  },
+  {
+    "evaluator": "tool-parallelism",
+    "score": 0.02,
+    "verdict": "observed",
+    "reason": "Tool parallelism ratio: 2%",
+    "details": {
+      "turnsAnalyzed": 2,
+      "totalWeight": 62,
+      "perTurnRatios": [
+        {
+          "toolCallCount": 51,
+          "ratio": 0.02431372549019608
+        },
+        {
+          "toolCallCount": 11,
+          "ratio": 0
+        }
+      ]
+    }
+  },
+  {
+    "evaluator": "tool-batching-efficiency",
+    "score": 0.9830508474576272,
+    "verdict": "observed",
+    "reason": "60 successful calls across 2 productive turns",
+    "details": {
+      "totalSuccessfulCalls": 60,
+      "productiveTurns": 2
+    },
+    "evalVersion": "1.2"
+  },
+  {
+    "evaluator": "turn-duration",
+    "score": 498984,
+    "verdict": "observed",
+    "reason": "Total AAB duration: 498984ms across 4 turns (avg 124746ms)",
+    "details": {
+      "totalDurationMs": 498984,
+      "averageDurationMs": 124746,
+      "perTurnMs": [
+        398609,
+        81881,
+        12062,
+        6432
+      ]
+    }
+  },
+  {
+    "evaluator": "token-usage",
+    "score": 2545290,
+    "verdict": "observed",
+    "reason": "aab=2545290 probe=100615 total=2645905 tokens",
+    "details": {
+      "aab": {
+        "inputTokens": 2517808,
+        "outputTokens": 27482,
+        "totalTokens": 2545290,
+        "cachedInputTokensRead": 2267747,
+        "cachedInputTokensWrite": 243198
+      },
+      "probe": {
+        "promptTokens": 100430,
+        "completionTokens": 185,
+        "totalTokens": 100615,
+        "calls": 4
+      },
+      "total": {
+        "tokens": 2645905
+      }
+    }
+  },
+  {
+    "evaluator": "intent-to-output-alignment",
+    "score": 0.88,
+    "verdict": "observed",
+    "reason": "All three required pages (homepage, products, about) are built with the correct content: hero banner with 'Handcrafted with Heart' headline and CTA, featured products grid, newsletter signup, category filters (Pottery/Textiles/Woodwork/Jewelry), and about page sections. Products are fetched from /api/products via a dedicated service module (products-service.ts) rather than hardcoded in markup, satisfying the data-layer separation requirement. The shared Header/Footer are rendered via RootLayout wrapping all routes through React Router's Outlet pattern. Minor gap: a React hook error from AnimatePresence (duplicate React instances) appears in console logs, which could affect animation functionality on some pages, but the homepage DOM snapshot shows the content rendered successfully with product cards visible.",
+    "details": {
+      "dimension": "Intent Understanding & Alignment",
+      "inputsUsed": [
+        "conversation",
+        "final_artifacts"
+      ],
+      "advisoryVerdict": "pass",
+      "transcriptErrors": 0
+    },
+    "evalVersion": "2.0"
+  },
+  {
+    "evaluator": "implicit-feature-gap",
+    "score": 0.85,
+    "verdict": "observed",
+    "reason": "All requested implicit features are present: hero with CTA, featured products with images/names/prices, newsletter signup, category filters (Pottery/Textiles/Woodwork/Jewelry), team profiles, mission statement, and shared header/footer. A React AnimatePresence hook error triggers the error boundary but the homepage content renders fully in the snapshot. Minor gap: no contact info or individual product detail pages, which a craft shop might reasonably expect.",
+    "details": {
+      "dimension": "Implicit Feature Completeness",
+      "inputsUsed": [
+        "conversation",
+        "final_artifacts"
+      ],
+      "advisoryVerdict": "pass",
+      "transcriptErrors": 0
+    },
+    "evalVersion": "2.0"
+  },
+  {
+    "evaluator": "silent-hallucination",
+    "score": 0.72,
+    "verdict": "observed",
+    "reason": "The agent's core claims are well-supported: tool calls confirm a products API endpoint was created (GET /api/products with category filtering), a products-service.ts module was extracted for data-layer separation, a RootLayout wrapping all routes with shared Header/Footer was built, and all three pages (homepage, products, about) are visible in the DOM with correct content. However, the console logs show a runtime error ('Invalid hook call' / 'Cannot read properties of null (reading useContext)') caught by AiroErrorBoundary from AnimatePresence, indicating the app crashed during rendering—meaning some claimed functionality (e.g., the animated mobile drawer, staggered team card animations) may not actually be operational. Additionally, the agent stated '5/5 todos complete' and 'All APIs working perfectly,' but no explicit API test tool call output confirming the /api/products endpoint response is shown in the summarized tool calls, and the runtime error contradicts the 'everything works' claim.",
+    "details": {
+      "dimension": "Consistency & Truthfulness",
+      "inputsUsed": [
+        "conversation",
+        "tool_calls",
+        "final_artifacts"
+      ],
+      "advisoryVerdict": "partial",
+      "transcriptErrors": 0
+    },
+    "evalVersion": "2.0"
+  }
+]

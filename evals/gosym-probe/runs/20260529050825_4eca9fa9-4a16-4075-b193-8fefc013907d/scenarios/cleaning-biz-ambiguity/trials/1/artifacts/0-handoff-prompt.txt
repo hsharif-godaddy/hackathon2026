@@ -1,0 +1,70 @@
+Build homepage design preview with this direction:
+
+PROJECT DETAILS:
+- Business name: Shine Bright Cleaning
+- Service type: Residential house cleaning
+- Primary goal: Generate quote requests / leads
+
+DESIGN DIRECTION:
+Warm, trustworthy, and spotless — the design should feel like a breath of fresh air. Think clean whites with warm accents that feel inviting and personal, not corporate. This is a one-person house cleaning business, so the personality should be friendly, reliable, and approachable — not a faceless franchise.
+
+LAYOUT TYPE: Standard
+Marketing site with full navigation header and footer.
+
+VISUAL DIRECTION:
+- Color: Crisp white base with a warm sky-blue primary and a soft golden-yellow accent. Feels clean and sunny, not cold or clinical.
+- Typography: Friendly but professional — a rounded sans-serif for headings (warm and approachable), clean sans for body text. Confident without being stiff.
+- Layout: DO NOT use icon grids for services. Instead use a two-column staggered layout with illustrated or photographic cards. DO NOT use centered-text-on-colored-band CTA. Use an asymmetric CTA with a large visual element on one side.
+
+VISUAL ELEMENTS:
+- Primary: Photography — bright, airy photos of clean interiors (sparkling kitchen, fresh bedroom, gleaming bathroom)
+- Style: Natural light, warm tones, lifestyle photography (not sterile stock)
+- Application: Full-bleed hero with overlay, service section uses real room photos in cards
+- Logo: Friendly wordmark-style logo with a subtle shine/sparkle graphic element. Clean, modern, trustworthy. Use the media-logo skill to generate it.
+
+MOTION DESIGN:
+- Level: Subtle
+- Effects: Fade-in on scroll for sections (350ms ease-out), gentle hover lift on service cards (translate-y -4px + shadow), smooth button color transitions (200ms)
+- Personality: Calm and reassuring — nothing bouncy or aggressive
+
+SECTION-SPECIFIC:
+- Hero: Full-bleed bright interior photo with warm overlay. Large friendly headline ("Your Home, Sparkling Clean"), subheadline about reliability and care, prominent "Get a Free Quote" CTA button. Star rating / "100+ happy homes" social proof below fold.
+- Services: Staggered two-column layout with room photos (kitchen, bathroom, bedroom, living room). Each card shows what's included — NOT icon grids.
+- Why Choose Us: 3 trust pillars in a bento-style layout (Insured & Trusted, Eco-Friendly Products, Satisfaction Guaranteed) with varied card sizes.
+- Testimonials: 2-3 customer quotes in a warm, editorial layout — not a generic carousel.
+- CTA: Asymmetric section — large "Ready for a clean home?" headline on left, quote request form snippet or phone number on right. Warm background color.
+- Footer: Warm and friendly, matches brand energy. Phone, email, service area, social links.
+
+DIFFERENTIATION:
+Oversized warm headline typography in the hero that feels personal and inviting — like a note from a neighbor, not a corporate ad.
+
+CONSISTENCY:
+Maintain warm, friendly energy throughout — footer and CTA must match hero quality. Don't get generic toward the bottom.
+
+BUILD ORDER:
+
+Phase 1 — Setup (run these in parallel):
+- Search for images: bright airy interior photos — sparkling kitchen, clean bathroom, fresh bedroom, tidy living room with natural light
+- Set font stack using the fontTheme tool — rounded friendly sans-serif for headings (e.g. Plus Jakarta Sans or Nunito), clean sans for body
+- Set color scheme using the colorScheme tool — crisp white base, warm sky-blue primary, soft golden-yellow accent
+- Generate logo using the media-logo skill: friendly wordmark "Shine Bright Cleaning" with a subtle sparkle/shine graphic element, clean and modern
+
+Phase 2 — Structure (run in parallel, after Phase 1):
+- Build header with navigation (Home, Services, About, Contact) — clean, white, with logo
+- Build footer with contact info, service area, and social links
+
+Phase 3 — Page (after Phase 1 & 2):
+- Build homepage (index.tsx) with all sections and animations as described above
+
+Phase 4 — Finalize:
+- Mark "Homepage" todo item as COMPLETE using the todoList tool
+- Ask for design feedback using askQuestion
+
+CRITICAL: Build homepage (index.tsx) LAST — after setup, header, and footer are done.
+
+INITIAL SCOPE: Build ONLY the homepage design for this preview.
+
+DESIGN FEEDBACK:
+After showing the homepage, use askQuestion to ask:
+- Question: "What do you think of the design?"
+- Suggestions: ["Looks great — let's add a quote form", "Let's build the Services page", "Change the color scheme", "Adjust the fonts or layout"]

@@ -1,0 +1,35 @@
+{
+  "scenarioName": "simple-portfolio",
+  "trial": 15,
+  "turns": [
+    {
+      "role": "user",
+      "content": "Build me a personal portfolio website with:\n- A hero section with my name and a short tagline\n- An about section describing my background\n- A contact section with an email link and social\n  media icons\nUse a clean, modern design with good spacing.",
+      "durationSeconds": 0
+    },
+    {
+      "role": "user",
+      "content": "Sarah Mitchell — UX Designer & Storyteller",
+      "durationSeconds": 14.5
+    },
+    {
+      "role": "assistant",
+      "content": "Bold & creative\n\nGitHub, LinkedIn, DribbbleI'll build Sarah's portfolio in phases. Let me start with setup tasks in parallel.Colors, fonts applied. Now generating the logo in parallel with exploring the project structure.Now building the Header and Footer in parallel.Now building the homepage — the main event.Now update the RootLayout with proper site metadata and remove the default header padding issue:Sarah's portfolio homepage is live. Here's what was built:\n\n- **Hero** — Full-viewport with monumental staggered name entrance, violet accent line + tagline, floating geometric shapes (circles, dot grids, crosshairs), and a scroll indicator\n- **About** — Asymmetric two-column layout with a bold pull-quote on the left and bio text on the right, accent dot-grid decoration\n- **Contact** — Asymmetric layout with a large typographic CTA, hover-underline email link, and GitHub / LinkedIn / Dribbble icons with violet hover effect\n- **Header** — Transparent on the hero, transitions to solid dark on scroll with smooth backdrop blur\n- **Footer** — Minimal dark with \"Designed with intention\"",
+      "durationSeconds": 252.4
+    },
+    {
+      "role": "user",
+      "content": "This looks great! Love the bold creative direction. The site is exactly what I had in mind for Sarah's portfolio.\n\nDONE",
+      "durationSeconds": 2.4
+    },
+    {
+      "role": "assistant",
+      "content": "Glad it hit the mark! The bold editorial aesthetic with the violet accents and dramatic typography came together really well for Sarah's portfolio.\n\nWhen you're ready to keep building, there are a few natural next steps — a **Projects/Work page** with a case study grid, a **Resume/CV page**, or a **Blog** section. Just say the word!",
+      "durationSeconds": 6
+    }
+  ],
+  "summary": {
+    "messageCount": 5,
+    "totalElapsedSeconds": 275.3
+  }
+}

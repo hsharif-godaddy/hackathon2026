@@ -1,0 +1,55 @@
+{
+  "scenarioName": "cleaning-biz-ambiguity",
+  "trial": 2,
+  "turns": [
+    {
+      "role": "user",
+      "content": "I need a website for my cleaning business",
+      "durationSeconds": 0
+    },
+    {
+      "role": "user",
+      "content": "Just call it \"Shine Bright Cleaning\" and I clean houses, that's really all I know.",
+      "durationSeconds": 9.6
+    },
+    {
+      "role": "assistant",
+      "content": "Now let me generate the logo:Logo is ready. Now let me build the header and footer in parallel:Now let me build the homepage:Now let me check the RootLayout to make sure it's wired up correctly:Your Shine Bright Cleaning homepage is live in the preview! Here's what was built:\n\n- **Hero** — Full-bleed kitchen photo with a warm overlay, oversized headline, dual CTAs, and a social proof strip with star ratings\n- **Services** — Staggered two-column cards with real room photos (kitchen, bathroom, bedroom, living room) and included items\n- **Why Choose Us** — Bento-style layout with a large \"Insured & Trusted\" card, eco-friendly and satisfaction guarantee cards, plus a stats row\n- **Testimonials** — Three editorial-style customer quotes with star ratings\n- **CTA** — Asymmetric layout with a big headline on the left and a photo + floating badge on the right\n- **Header & Footer** — Clean navigation with your logo, and a warm footer with contact info and social links",
+      "durationSeconds": 294.9
+    },
+    {
+      "role": "user",
+      "content": "It looks nice! But how do people actually get in touch with me? I don't see my phone number or anything like that.",
+      "durationSeconds": 4.4
+    },
+    {
+      "role": "assistant",
+      "content": "Good point — let me build a proper Contact page with a quote request form, and also add your real contact info. Let me ask for a couple of quick details first:",
+      "durationSeconds": 11.6
+    },
+    {
+      "role": "user",
+      "content": "Just put something like a fake number for now, I just want people to be able to reach me somehow.",
+      "durationSeconds": 2.3
+    },
+    {
+      "role": "assistant",
+      "content": "I'll build a Contact page with a quote request form and update the placeholder contact info throughout the site right now.Now add the route and update the placeholder contact info in the footer and homepage CTA:Now update the footer and homepage CTA with the consistent phone number:Done! A full Contact page is now live at `/contact` with a quote request form, your phone number `(555) 987-6543`, email, service area, and hours. The \"Get a Free Quote\" buttons throughout the site all link directly to it. When you're ready, just swap in your real phone number and email and it'll be good to go.",
+      "durationSeconds": 109.6
+    },
+    {
+      "role": "user",
+      "content": "That's much better, thank you! It looks great overall.\n\nDONE",
+      "durationSeconds": 3.5
+    },
+    {
+      "role": "assistant",
+      "content": "Glad it's all coming together! You've got a solid homepage and a working contact page now. Whenever you're ready, there are still a few pages that would round out the site nicely — a Services page, an About page, and a Testimonials section.",
+      "durationSeconds": 6.7
+    }
+  ],
+  "summary": {
+    "messageCount": 9,
+    "totalElapsedSeconds": 442.4
+  }
+}

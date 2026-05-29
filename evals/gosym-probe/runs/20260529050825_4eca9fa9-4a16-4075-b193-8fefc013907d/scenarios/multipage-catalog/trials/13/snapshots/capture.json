@@ -1,0 +1,277 @@
+{
+  "previewUrl": "https://local.gasket.dev-godaddy.com:5001",
+  "generatedAt": "2026-05-29T14:48:44.413Z",
+  "durationMs": 28216,
+  "outputDir": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/multipage-catalog/trials/13/snapshots",
+  "routes": [
+    {
+      "path": "/",
+      "url": "https://local.gasket.dev-godaddy.com:5001",
+      "origin": "homepage",
+      "status": "ok",
+      "httpStatus": 200
+    },
+    {
+      "path": "/catalog",
+      "url": "https://local.gasket.dev-godaddy.com:5001/catalog",
+      "origin": "crawl",
+      "status": "ok",
+      "httpStatus": 200
+    },
+    {
+      "path": "/about",
+      "url": "https://local.gasket.dev-godaddy.com:5001/about",
+      "origin": "crawl",
+      "status": "ok",
+      "httpStatus": 200
+    }
+  ],
+  "perRoute": [
+    {
+      "route": {
+        "path": "/",
+        "url": "https://local.gasket.dev-godaddy.com:5001",
+        "origin": "homepage",
+        "status": "ok",
+        "httpStatus": 200
+      },
+      "rendered": {
+        "title": "Artisan Goods Co. — Handmade Crafts, Crafted with Intention",
+        "h1": "Crafted with intention. Made to last.",
+        "headingText": "Crafted with intention. Made to last. | Featured Pieces | Stories from the studio.",
+        "bodyPreview": "HANDMADE WITH CARE\n\nCrafted with intention. Made to last.\n\nEvery piece in our collection is made by hand, by makers who care deeply about their craft.\n\nShop the Collection\nPOTTERY\nTEXTILES\nWOODWORK\nJEWELRY\n\nHANDPICKED\n\nFeatured Pieces\nView All Products\nPOTTERY\n$68\nStoneware Serving Bowl\n\nHand-thrown"
+      },
+      "perViewport": {
+        "mobile": {
+          "tiles": [
+            {
+              "index": 0,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/multipage-catalog/trials/13/snapshots/mobile/home/tile0.png",
+              "yOffset": 0
+            },
+            {
+              "index": 1,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/multipage-catalog/trials/13/snapshots/mobile/home/tile1.png",
+              "yOffset": 641
+            },
+            {
+              "index": 2,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/multipage-catalog/trials/13/snapshots/mobile/home/tile2.png",
+              "yOffset": 1292
+            },
+            {
+              "index": 3,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/multipage-catalog/trials/13/snapshots/mobile/home/tile3.png",
+              "yOffset": 1957
+            },
+            {
+              "index": 4,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/multipage-catalog/trials/13/snapshots/mobile/home/tile4.png",
+              "yOffset": 2624
+            },
+            {
+              "index": 5,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/multipage-catalog/trials/13/snapshots/mobile/home/tile5.png",
+              "yOffset": 3291
+            }
+          ]
+        },
+        "laptop": {
+          "tiles": [
+            {
+              "index": 0,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/multipage-catalog/trials/13/snapshots/laptop/home/tile0.png",
+              "yOffset": 172
+            },
+            {
+              "index": 1,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/multipage-catalog/trials/13/snapshots/laptop/home/tile1.png",
+              "yOffset": 830
+            },
+            {
+              "index": 2,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/multipage-catalog/trials/13/snapshots/laptop/home/tile2.png",
+              "yOffset": 1720
+            },
+            {
+              "index": 3,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/multipage-catalog/trials/13/snapshots/laptop/home/tile3.png",
+              "yOffset": 2623
+            },
+            {
+              "index": 4,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/multipage-catalog/trials/13/snapshots/laptop/home/tile4.png",
+              "yOffset": 3335
+            },
+            {
+              "index": 5,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/multipage-catalog/trials/13/snapshots/laptop/home/tile5.png",
+              "yOffset": 3374
+            }
+          ]
+        }
+      }
+    },
+    {
+      "route": {
+        "path": "/catalog",
+        "url": "https://local.gasket.dev-godaddy.com:5001/catalog",
+        "origin": "crawl",
+        "status": "ok",
+        "httpStatus": 200
+      },
+      "rendered": {
+        "title": "Shop All — Artisan Goods Co.",
+        "h1": "Shop All",
+        "headingText": "Shop All | Looking for something specific?",
+        "bodyPreview": "THE COLLECTION\n\nShop All\nAll\nPottery\nTextiles\nWoodwork\nJewelry\n12 pieces\nPOTTERY\n$68\nStoneware Serving Bowl\n\nHand-thrown stoneware bowl with a warm terracotta glaze, perfect for everyday use.\n\nPOTTERY\n$34\nHandmade Ceramic Mug\n\nA cozy, chunky mug with a speckled glaze — made to hold your morning ritu"
+      },
+      "perViewport": {
+        "mobile": {
+          "tiles": [
+            {
+              "index": 0,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/multipage-catalog/trials/13/snapshots/mobile/catalog/tile0.png",
+              "yOffset": 1295
+            },
+            {
+              "index": 1,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/multipage-catalog/trials/13/snapshots/mobile/catalog/tile1.png",
+              "yOffset": 677
+            },
+            {
+              "index": 2,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/multipage-catalog/trials/13/snapshots/mobile/catalog/tile2.png",
+              "yOffset": 1304
+            },
+            {
+              "index": 3,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/multipage-catalog/trials/13/snapshots/mobile/catalog/tile3.png",
+              "yOffset": 1967
+            },
+            {
+              "index": 4,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/multipage-catalog/trials/13/snapshots/mobile/catalog/tile4.png",
+              "yOffset": 2635
+            },
+            {
+              "index": 5,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/multipage-catalog/trials/13/snapshots/mobile/catalog/tile5.png",
+              "yOffset": 3305
+            }
+          ]
+        },
+        "laptop": {
+          "tiles": [
+            {
+              "index": 0,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/multipage-catalog/trials/13/snapshots/laptop/catalog/tile0.png",
+              "yOffset": 103
+            },
+            {
+              "index": 1,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/multipage-catalog/trials/13/snapshots/laptop/catalog/tile1.png",
+              "yOffset": 830
+            },
+            {
+              "index": 2,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/multipage-catalog/trials/13/snapshots/laptop/catalog/tile2.png",
+              "yOffset": 1718
+            },
+            {
+              "index": 3,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/multipage-catalog/trials/13/snapshots/laptop/catalog/tile3.png",
+              "yOffset": 2617
+            },
+            {
+              "index": 4,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/multipage-catalog/trials/13/snapshots/laptop/catalog/tile4.png",
+              "yOffset": 2699
+            }
+          ]
+        }
+      }
+    },
+    {
+      "route": {
+        "path": "/about",
+        "url": "https://local.gasket.dev-godaddy.com:5001/about",
+        "origin": "crawl",
+        "status": "ok",
+        "httpStatus": 200
+      },
+      "rendered": {
+        "title": "Our Story — Artisan Goods Co.",
+        "h1": "Our Story",
+        "headingText": "Our Story | Meet the Team | Ready to find your piece?",
+        "bodyPreview": "WHO WE ARE\n\nOur Story\n\"We started with a simple belief: the things we surround ourselves with should mean something.\"\n\n— Elena Vasquez, Founder\n\nArtisan Goods Co. was born in 2015 out of a frustration with the disposable. Elena Vasquez had spent years watching beautiful craft traditions disappear — "
+      },
+      "perViewport": {
+        "mobile": {
+          "tiles": [
+            {
+              "index": 0,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/multipage-catalog/trials/13/snapshots/mobile/about/tile0.png",
+              "yOffset": 557
+            },
+            {
+              "index": 1,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/multipage-catalog/trials/13/snapshots/mobile/about/tile1.png",
+              "yOffset": 667
+            },
+            {
+              "index": 2,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/multipage-catalog/trials/13/snapshots/mobile/about/tile2.png",
+              "yOffset": 1308
+            },
+            {
+              "index": 3,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/multipage-catalog/trials/13/snapshots/mobile/about/tile3.png",
+              "yOffset": 1972
+            },
+            {
+              "index": 4,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/multipage-catalog/trials/13/snapshots/mobile/about/tile4.png",
+              "yOffset": 2639
+            },
+            {
+              "index": 5,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/multipage-catalog/trials/13/snapshots/mobile/about/tile5.png",
+              "yOffset": 3302
+            }
+          ]
+        },
+        "laptop": {
+          "tiles": [
+            {
+              "index": 0,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/multipage-catalog/trials/13/snapshots/laptop/about/tile0.png",
+              "yOffset": 84
+            },
+            {
+              "index": 1,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/multipage-catalog/trials/13/snapshots/laptop/about/tile1.png",
+              "yOffset": 826
+            },
+            {
+              "index": 2,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/multipage-catalog/trials/13/snapshots/laptop/about/tile2.png",
+              "yOffset": 1711
+            },
+            {
+              "index": 3,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/multipage-catalog/trials/13/snapshots/laptop/about/tile3.png",
+              "yOffset": 2510
+            },
+            {
+              "index": 4,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/multipage-catalog/trials/13/snapshots/laptop/about/tile4.png",
+              "yOffset": 2561
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "errors": []
+}

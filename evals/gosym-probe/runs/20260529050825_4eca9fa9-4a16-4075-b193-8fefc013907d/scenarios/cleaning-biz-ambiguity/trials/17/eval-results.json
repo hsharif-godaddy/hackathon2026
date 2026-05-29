@@ -1,0 +1,436 @@
+[
+  {
+    "evaluator": "bug-hit-rate",
+    "score": 1,
+    "verdict": "pass",
+    "reason": "No unrecovered errors",
+    "details": {
+      "errorCount": 0,
+      "errors": []
+    }
+  },
+  {
+    "evaluator": "tool-failure-rate",
+    "score": 0,
+    "verdict": "observed",
+    "reason": "No tool failures across 54 tool call(s)",
+    "details": {
+      "failedCount": 0,
+      "totalCalls": 54,
+      "failedTools": []
+    }
+  },
+  {
+    "evaluator": "prompt-efficiency",
+    "score": 0.7685247834990178,
+    "verdict": "observed",
+    "reason": "9 user turns",
+    "details": {
+      "userTurns": 9
+    },
+    "evalVersion": "1.0"
+  },
+  {
+    "evaluator": "jtbd-completion",
+    "score": 1,
+    "verdict": "pass",
+    "reason": "LLM judge verdict: pass",
+    "details": {
+      "htmlContextAvailable": true
+    }
+  },
+  {
+    "evaluator": "output-quality",
+    "score": 0.8271332077142475,
+    "verdict": "pass",
+    "reason": "Composite of 9/9 sub-evaluators",
+    "details": {
+      "_composite": true,
+      "breakdown": [
+        {
+          "evaluator": "heading-hierarchy",
+          "score": 1,
+          "verdict": "pass",
+          "reason": "No heading level violations",
+          "scoreable": true
+        },
+        {
+          "evaluator": "semantic-density",
+          "score": 0.12121212121212122,
+          "verdict": "fail",
+          "reason": "4 semantic element(s) out of 33 block containers",
+          "scoreable": true
+        },
+        {
+          "evaluator": "accessibility-coverage",
+          "score": 0.9722222222222221,
+          "verdict": "pass",
+          "reason": "Accessibility weighted score across 2 active sub-dimension(s)",
+          "scoreable": true
+        },
+        {
+          "evaluator": "link-quality",
+          "score": 1,
+          "verdict": "pass",
+          "reason": "11 usable link(s) out of 11 total",
+          "scoreable": true
+        },
+        {
+          "evaluator": "responsive-readiness",
+          "score": 1,
+          "verdict": "pass",
+          "reason": "viewport meta, responsive breakpoint classes, flex/grid layout",
+          "scoreable": true
+        },
+        {
+          "evaluator": "inline-style-ratio",
+          "score": 0.9174311926605505,
+          "verdict": "pass",
+          "reason": "9 element(s) with authored inline styles out of 109",
+          "scoreable": true
+        },
+        {
+          "evaluator": "component-decomposition",
+          "score": 0.7333333333333334,
+          "verdict": "pass",
+          "reason": "3 unique file(s) across 3 director(y/ies)",
+          "scoreable": true
+        },
+        {
+          "evaluator": "visual-coherence",
+          "score": 0.88,
+          "verdict": "pass",
+          "reason": "The layout demonstrates strong visual coherence with consistent spacing, clear typographic hierarchy (hero headline → section headers → body text), and a harmonious palette using primary, accent, and neutral tones throughout. Minor deductions for animation states causing some elements to render at opacity 0, and the truncated sections prevent full evaluation of lower-page consistency.",
+          "scoreable": true
+        },
+        {
+          "evaluator": "content-substance",
+          "score": 0.82,
+          "verdict": "pass",
+          "reason": "The site contains specific business details including a named brand (Sparkle Clean), phone number, multiple defined service tiers (Standard Clean, Deep Clean, Move-In/Move-Out), clear CTAs (Get a Free Quote), and domain-relevant vocabulary throughout. Minor deductions for a placeholder-style phone number (555) 867-5309 and some truncated/generic descriptive copy that lacks pricing specifics despite a Pricing nav link.",
+          "scoreable": true
+        }
+      ],
+      "scoredCount": 9,
+      "totalCount": 9
+    },
+    "evalVersion": "accessibility-coverage:1.0+component-decomposition:1.0+content-substance:1.0+heading-hierarchy:1.0+inline-style-ratio:1.0+link-quality:1.0+responsive-readiness:1.0+semantic-density:1.0+visual-coherence:1.0"
+  },
+  {
+    "evaluator": "agent-steps",
+    "score": 0.7685247834990178,
+    "verdict": "observed",
+    "reason": "9 agent steps",
+    "details": {
+      "totalSteps": 9
+    },
+    "evalVersion": "1.0"
+  },
+  {
+    "evaluator": "latency",
+    "score": 0.21120999302901172,
+    "verdict": "observed",
+    "reason": "TTFC=67663ms maxGap=107535ms total=729488ms chunks=85 turns=7 score=0.21 aabInit=44832ms aabTTFC=22798ms",
+    "details": {
+      "timeToFirstChunkMs": 67663,
+      "maxInterChunkGapMs": 107535,
+      "totalMs": 729488,
+      "chunkCount": 85,
+      "perTurn": [
+        {
+          "turnIndex": 1,
+          "timeToFirstChunkMs": 67663,
+          "maxInterChunkGapMs": 107535,
+          "totalTurnMs": 315754,
+          "chunkCount": 13
+        },
+        {
+          "turnIndex": 3,
+          "timeToFirstChunkMs": 5763,
+          "maxInterChunkGapMs": 63478,
+          "totalTurnMs": 198519,
+          "chunkCount": 29
+        },
+        {
+          "turnIndex": 4,
+          "timeToFirstChunkMs": 9081,
+          "maxInterChunkGapMs": 1064,
+          "totalTurnMs": 14105,
+          "chunkCount": 10
+        },
+        {
+          "turnIndex": 5,
+          "timeToFirstChunkMs": 8973,
+          "maxInterChunkGapMs": 239,
+          "totalTurnMs": 13866,
+          "chunkCount": 9
+        },
+        {
+          "turnIndex": 6,
+          "timeToFirstChunkMs": 30382,
+          "maxInterChunkGapMs": 56402,
+          "totalTurnMs": 124360,
+          "chunkCount": 8
+        },
+        {
+          "turnIndex": 7,
+          "timeToFirstChunkMs": 5893,
+          "maxInterChunkGapMs": 1173,
+          "totalTurnMs": 8474,
+          "chunkCount": 8
+        },
+        {
+          "turnIndex": 8,
+          "timeToFirstChunkMs": 5569,
+          "maxInterChunkGapMs": 968,
+          "totalTurnMs": 7873,
+          "chunkCount": 8
+        }
+      ],
+      "medianTTFC": 8973,
+      "halfLifeMs": 4000,
+      "aabDiagnostics": {
+        "timingSummaries": [
+          {
+            "turnIndex": 0,
+            "timeToStreamStartMs": 1726,
+            "timeToFirstTextChunkMs": null,
+            "maxChunkGapMs": 3785,
+            "chunksRead": 62,
+            "streamDurationMs": 7299
+          },
+          {
+            "turnIndex": 1,
+            "timeToStreamStartMs": 1988,
+            "timeToFirstTextChunkMs": null,
+            "maxChunkGapMs": 3654,
+            "chunksRead": 653,
+            "streamDurationMs": 41225
+          },
+          {
+            "turnIndex": 1,
+            "timeToStreamStartMs": 44832,
+            "timeToFirstTextChunkMs": 22798,
+            "maxChunkGapMs": 95026,
+            "chunksRead": 4551,
+            "streamDurationMs": 270629
+          },
+          {
+            "turnIndex": 2,
+            "timeToStreamStartMs": 1666,
+            "timeToFirstTextChunkMs": null,
+            "maxChunkGapMs": 4617,
+            "chunksRead": 48,
+            "streamDurationMs": 18113
+          },
+          {
+            "turnIndex": 3,
+            "timeToStreamStartMs": 1702,
+            "timeToFirstTextChunkMs": 4020,
+            "maxChunkGapMs": 33174,
+            "chunksRead": 2684,
+            "streamDurationMs": 125721
+          },
+          {
+            "turnIndex": 3,
+            "timeToStreamStartMs": 139111,
+            "timeToFirstTextChunkMs": null,
+            "maxChunkGapMs": 4785,
+            "chunksRead": 81,
+            "streamDurationMs": 16449
+          },
+          {
+            "turnIndex": 3,
+            "timeToStreamStartMs": 170028,
+            "timeToFirstTextChunkMs": null,
+            "maxChunkGapMs": 6448,
+            "chunksRead": 221,
+            "streamDurationMs": 16980
+          },
+          {
+            "turnIndex": 4,
+            "timeToStreamStartMs": 4454,
+            "timeToFirstTextChunkMs": 3861,
+            "maxChunkGapMs": 3705,
+            "chunksRead": 60,
+            "streamDurationMs": 7093
+          },
+          {
+            "turnIndex": 5,
+            "timeToStreamStartMs": 2661,
+            "timeToFirstTextChunkMs": 4025,
+            "maxChunkGapMs": 4024,
+            "chunksRead": 54,
+            "streamDurationMs": 7023
+          },
+          {
+            "turnIndex": 6,
+            "timeToStreamStartMs": 3777,
+            "timeToFirstTextChunkMs": 25361,
+            "maxChunkGapMs": 48077,
+            "chunksRead": 2448,
+            "streamDurationMs": 108643
+          },
+          {
+            "turnIndex": 7,
+            "timeToStreamStartMs": 1846,
+            "timeToFirstTextChunkMs": 4013,
+            "maxChunkGapMs": 3846,
+            "chunksRead": 35,
+            "streamDurationMs": 6404
+          },
+          {
+            "turnIndex": 8,
+            "timeToStreamStartMs": 1829,
+            "timeToFirstTextChunkMs": 3708,
+            "maxChunkGapMs": 3552,
+            "chunksRead": 36,
+            "streamDurationMs": 5843
+          }
+        ],
+        "slowGaps": [
+          {
+            "turnIndex": 1,
+            "gapMs": 95026,
+            "chunksRead": 296,
+            "streamElapsedMs": 127727
+          }
+        ],
+        "timeouts": []
+      }
+    }
+  },
+  {
+    "evaluator": "tool-parallelism",
+    "score": 0.03906994473032209,
+    "verdict": "observed",
+    "reason": "Tool parallelism ratio: 4%",
+    "details": {
+      "turnsAnalyzed": 4,
+      "totalWeight": 53,
+      "perTurnRatios": [
+        {
+          "toolCallCount": 23,
+          "ratio": 0.05138339920948617
+        },
+        {
+          "toolCallCount": 3,
+          "ratio": 0
+        },
+        {
+          "toolCallCount": 17,
+          "ratio": 0
+        },
+        {
+          "toolCallCount": 10,
+          "ratio": 0.08888888888888889
+        }
+      ]
+    }
+  },
+  {
+    "evaluator": "tool-batching-efficiency",
+    "score": 0.9245283018867925,
+    "verdict": "observed",
+    "reason": "54 successful calls across 5 productive turns",
+    "details": {
+      "totalSuccessfulCalls": 54,
+      "productiveTurns": 5
+    },
+    "evalVersion": "1.2"
+  },
+  {
+    "evaluator": "turn-duration",
+    "score": 705319,
+    "verdict": "observed",
+    "reason": "Total AAB duration: 705319ms across 9 turns (avg 78369ms)",
+    "details": {
+      "totalDurationMs": 705319,
+      "averageDurationMs": 78368.77777777778,
+      "perTurnMs": [
+        9029,
+        315461,
+        19780,
+        198178,
+        13212,
+        10647,
+        122955,
+        8329,
+        7728
+      ]
+    }
+  },
+  {
+    "evaluator": "token-usage",
+    "score": 2879375,
+    "verdict": "observed",
+    "reason": "aab=2879375 probe=156824 total=3036199 tokens",
+    "details": {
+      "aab": {
+        "inputTokens": 2854665,
+        "outputTokens": 24710,
+        "totalTokens": 2879375,
+        "cachedInputTokensRead": 2478242,
+        "cachedInputTokensWrite": 374074
+      },
+      "probe": {
+        "promptTokens": 156663,
+        "completionTokens": 161,
+        "totalTokens": 156824,
+        "calls": 9
+      },
+      "total": {
+        "tokens": 3036199
+      }
+    }
+  },
+  {
+    "evaluator": "intent-to-output-alignment",
+    "score": 0.93,
+    "verdict": "observed",
+    "reason": "The final site clearly matches the user's stated goals: it includes a services section (Standard Clean, Deep Clean, Move-In/Move-Out cards on homepage plus a full /services page), contact information (phone number (555) 867-5309 in the header top bar and footer, plus a /contact page with a quote request form), and is branded as 'Sparkle Clean'. The user explicitly confirmed satisfaction ('This is exactly what I needed'). Minor deduction for the React hook error in console logs (motion library conflict) which may affect animation rendering, but the core content and structure render correctly as evidenced by the body HTML.",
+    "details": {
+      "dimension": "Intent Understanding & Alignment",
+      "inputsUsed": [
+        "conversation",
+        "final_artifacts"
+      ],
+      "advisoryVerdict": "pass",
+      "transcriptErrors": 0
+    },
+    "evalVersion": "2.0"
+  },
+  {
+    "evaluator": "implicit-feature-gap",
+    "score": 0.82,
+    "verdict": "observed",
+    "reason": "The rendered site clearly contains a services section on the homepage (Standard Clean, Deep Clean, Move-In/Move-Out cards with descriptions and feature lists) plus a dedicated /services page with four packages. Contact information is present in at least two places: phone number (555) 867-5309 in the header top bar and a contact form page with name/email/phone/service selector fields. A prominent CTA ('Get a Free Quote') appears in both the header and hero. Minor gaps: no pricing page content is rendered (nav link exists but page appears unbuilt), and there is a React hook error in the console that may affect animation rendering, though the core content sections appear in the DOM snapshot.",
+    "details": {
+      "dimension": "Implicit Feature Completeness",
+      "inputsUsed": [
+        "conversation",
+        "final_artifacts"
+      ],
+      "advisoryVerdict": "pass",
+      "transcriptErrors": 0
+    },
+    "evalVersion": "2.0"
+  },
+  {
+    "evaluator": "silent-hallucination",
+    "score": 0.82,
+    "verdict": "observed",
+    "reason": "Agent claims about services section, contact information, and phone number are all confirmed in the final DOM: services grid (Standard Clean, Deep Clean, Move-In/Move-Out) renders in the HTML, phone number (555) 867-5309 appears in the header top bar and is confirmed in body text, and a contact page with form was built with validated API route. The agent's claim that '500 is expected in preview' for the email gateway is a truthful and justified explanation rather than a false claim. Minor gap: the agent claimed the contact page sidebar shows 'Call us directly' block — this isn't directly verifiable from the homepage snapshot, and there are React hook errors in console logs related to motion library that could affect some rendered sections, but core content is observable.",
+    "details": {
+      "dimension": "Consistency & Truthfulness",
+      "inputsUsed": [
+        "conversation",
+        "tool_calls",
+        "final_artifacts"
+      ],
+      "advisoryVerdict": "pass",
+      "transcriptErrors": 0
+    },
+    "evalVersion": "2.0"
+  }
+]

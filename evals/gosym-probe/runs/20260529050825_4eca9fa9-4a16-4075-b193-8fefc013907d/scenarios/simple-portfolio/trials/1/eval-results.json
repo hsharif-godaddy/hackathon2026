@@ -1,0 +1,310 @@
+[
+  {
+    "evaluator": "bug-hit-rate",
+    "score": 1,
+    "verdict": "pass",
+    "reason": "No unrecovered errors",
+    "details": {
+      "errorCount": 0,
+      "errors": []
+    }
+  },
+  {
+    "evaluator": "tool-failure-rate",
+    "score": 0.05714285714285714,
+    "verdict": "observed",
+    "reason": "2/35 tool calls failed (6%): media-logo__generate_logo, str_replace_based_edit_tool",
+    "details": {
+      "failedCount": 2,
+      "totalCalls": 35,
+      "failedTools": [
+        "media-logo__generate_logo",
+        "str_replace_based_edit_tool"
+      ]
+    }
+  },
+  {
+    "evaluator": "prompt-efficiency",
+    "score": 0.9308615796566533,
+    "verdict": "observed",
+    "reason": "2 user turns",
+    "details": {
+      "userTurns": 2
+    },
+    "evalVersion": "1.0"
+  },
+  {
+    "evaluator": "jtbd-completion",
+    "score": 1,
+    "verdict": "pass",
+    "reason": "LLM judge verdict: pass",
+    "details": {
+      "htmlContextAvailable": true
+    }
+  },
+  {
+    "evaluator": "output-quality",
+    "score": 0.8156084656084656,
+    "verdict": "pass",
+    "reason": "Composite of 9/9 sub-evaluators",
+    "details": {
+      "_composite": true,
+      "breakdown": [
+        {
+          "evaluator": "heading-hierarchy",
+          "score": 1,
+          "verdict": "pass",
+          "reason": "No heading level violations",
+          "scoreable": true
+        },
+        {
+          "evaluator": "semantic-density",
+          "score": 0.15,
+          "verdict": "fail",
+          "reason": "6 semantic element(s) out of 40 block containers",
+          "scoreable": true
+        },
+        {
+          "evaluator": "accessibility-coverage",
+          "score": 1,
+          "verdict": "pass",
+          "reason": "Accessibility weighted score across 2 active sub-dimension(s)",
+          "scoreable": true
+        },
+        {
+          "evaluator": "link-quality",
+          "score": 1,
+          "verdict": "pass",
+          "reason": "6 usable link(s) out of 6 total",
+          "scoreable": true
+        },
+        {
+          "evaluator": "responsive-readiness",
+          "score": 1,
+          "verdict": "pass",
+          "reason": "viewport meta, responsive breakpoint classes, flex/grid layout",
+          "scoreable": true
+        },
+        {
+          "evaluator": "inline-style-ratio",
+          "score": 0.8571428571428571,
+          "verdict": "pass",
+          "reason": "15 element(s) with authored inline styles out of 105",
+          "scoreable": true
+        },
+        {
+          "evaluator": "component-decomposition",
+          "score": 0.7333333333333334,
+          "verdict": "pass",
+          "reason": "3 unique file(s) across 3 director(y/ies)",
+          "scoreable": true
+        },
+        {
+          "evaluator": "visual-coherence",
+          "score": 0.88,
+          "verdict": "pass",
+          "reason": "The portfolio demonstrates strong visual coherence with consistent typographic hierarchy (large display heading, small uppercase tracking labels, readable body text), harmonious spacing rhythm using generous padding and section separators, and a restrained two-tone palette (foreground/primary accent). Minor deduction for some elements still in animated opacity-0 states during capture, which slightly disrupts perceived layout completeness.",
+          "scoreable": true
+        },
+        {
+          "evaluator": "content-substance",
+          "score": 0.72,
+          "verdict": "partial",
+          "reason": "The portfolio has a real name (Jordan Ellis), specific role (Freelance UX Designer), eight years of experience, named disciplines, and clear CTAs (View Work, Get in Touch), but project entries are generic placeholders (e.g., 'Brand Identity System', 'Mobile App Redesign') with no client names, dates, or outcomes, and the contact section appears truncated with raw HTML/template artifacts visible in the body text.",
+          "scoreable": true
+        }
+      ],
+      "scoredCount": 9,
+      "totalCount": 9
+    },
+    "evalVersion": "accessibility-coverage:1.0+component-decomposition:1.0+content-substance:1.0+heading-hierarchy:1.0+inline-style-ratio:1.0+link-quality:1.0+responsive-readiness:1.0+semantic-density:1.0+visual-coherence:1.0"
+  },
+  {
+    "evaluator": "agent-steps",
+    "score": 0.9308615796566533,
+    "verdict": "observed",
+    "reason": "2 agent steps",
+    "details": {
+      "totalSteps": 2
+    },
+    "evalVersion": "1.0"
+  },
+  {
+    "evaluator": "latency",
+    "score": 0.00017419610665501446,
+    "verdict": "observed",
+    "reason": "TTFC=46015ms maxGap=103447ms total=347473ms chunks=49 turns=2 score=0.00 aabInit=43272ms aabTTFC=2710ms",
+    "details": {
+      "timeToFirstChunkMs": 46015,
+      "maxInterChunkGapMs": 103447,
+      "totalMs": 347473,
+      "chunkCount": 49,
+      "perTurn": [
+        {
+          "turnIndex": 0,
+          "timeToFirstChunkMs": 46015,
+          "maxInterChunkGapMs": 103447,
+          "totalTurnMs": 267257,
+          "chunkCount": 36
+        },
+        {
+          "turnIndex": 1,
+          "timeToFirstChunkMs": 53881,
+          "maxInterChunkGapMs": 6319,
+          "totalTurnMs": 76367,
+          "chunkCount": 13
+        }
+      ],
+      "medianTTFC": 49948,
+      "halfLifeMs": 4000,
+      "aabDiagnostics": {
+        "timingSummaries": [
+          {
+            "turnIndex": 0,
+            "timeToStreamStartMs": 2553,
+            "timeToFirstTextChunkMs": null,
+            "maxChunkGapMs": 2491,
+            "chunksRead": 672,
+            "streamDurationMs": 38889
+          },
+          {
+            "turnIndex": 0,
+            "timeToStreamStartMs": 43272,
+            "timeToFirstTextChunkMs": 2710,
+            "maxChunkGapMs": 45481,
+            "chunksRead": 3610,
+            "streamDurationMs": 223819
+          },
+          {
+            "turnIndex": 1,
+            "timeToStreamStartMs": 1659,
+            "timeToFirstTextChunkMs": 52186,
+            "maxChunkGapMs": 3819,
+            "chunksRead": 1059,
+            "streamDurationMs": 64325
+          }
+        ],
+        "slowGaps": [],
+        "timeouts": []
+      }
+    }
+  },
+  {
+    "evaluator": "tool-parallelism",
+    "score": 0.010884353741496598,
+    "verdict": "observed",
+    "reason": "Tool parallelism ratio: 1%",
+    "details": {
+      "turnsAnalyzed": 2,
+      "totalWeight": 35,
+      "perTurnRatios": [
+        {
+          "toolCallCount": 22,
+          "ratio": 0.017316017316017316
+        },
+        {
+          "toolCallCount": 13,
+          "ratio": 0
+        }
+      ]
+    }
+  },
+  {
+    "evaluator": "tool-batching-efficiency",
+    "score": 0.96875,
+    "verdict": "observed",
+    "reason": "33 successful calls across 2 productive turns",
+    "details": {
+      "totalSuccessfulCalls": 33,
+      "productiveTurns": 2
+    },
+    "evalVersion": "1.2"
+  },
+  {
+    "evaluator": "turn-duration",
+    "score": 343242,
+    "verdict": "observed",
+    "reason": "Total AAB duration: 343242ms across 2 turns (avg 171621ms)",
+    "details": {
+      "totalDurationMs": 343242,
+      "averageDurationMs": 171621,
+      "perTurnMs": [
+        267092,
+        76150
+      ]
+    }
+  },
+  {
+    "evaluator": "token-usage",
+    "score": 1492015,
+    "verdict": "observed",
+    "reason": "aab=1492015 probe=22524 total=1514539 tokens",
+    "details": {
+      "aab": {
+        "inputTokens": 1479623,
+        "outputTokens": 12392,
+        "totalTokens": 1492015,
+        "cachedInputTokensRead": 1325184,
+        "cachedInputTokensWrite": 153087
+      },
+      "probe": {
+        "promptTokens": 22433,
+        "completionTokens": 91,
+        "totalTokens": 22524,
+        "calls": 2
+      },
+      "total": {
+        "tokens": 1514539
+      }
+    }
+  },
+  {
+    "evaluator": "intent-to-output-alignment",
+    "score": 0.95,
+    "verdict": "observed",
+    "reason": "All three required sections are present and populated with real user data: hero shows 'Jordan Ellis.' with the exact tagline, about section includes 8-year UX designer bio, and contact section has email and social icons. Console errors from motion/react were caught by error boundary and did not prevent content rendering.",
+    "details": {
+      "dimension": "Intent Understanding & Alignment",
+      "inputsUsed": [
+        "conversation",
+        "final_artifacts"
+      ],
+      "advisoryVerdict": "pass",
+      "transcriptErrors": 0
+    },
+    "evalVersion": "2.0"
+  },
+  {
+    "evaluator": "implicit-feature-gap",
+    "score": 0.95,
+    "verdict": "observed",
+    "reason": "All three required sections are present and populated with real user data: Hero shows 'Jordan Ellis' with correct tagline, About has full bio with 8 years UX experience and discipline tags, Contact section exists with jordan@jordanellis.design email and GitHub/LinkedIn @jordanellis icons. A bonus Work section with 4 project cards was also included. Minor deduction as contact section body text was truncated in snapshot but HTML confirms correct content.",
+    "details": {
+      "dimension": "Implicit Feature Completeness",
+      "inputsUsed": [
+        "conversation",
+        "final_artifacts"
+      ],
+      "advisoryVerdict": "pass",
+      "transcriptErrors": 0
+    },
+    "evalVersion": "2.0"
+  },
+  {
+    "evaluator": "silent-hallucination",
+    "score": 0.82,
+    "verdict": "observed",
+    "reason": "The final DOM clearly shows Jordan Ellis's name, tagline 'Designing experiences people actually enjoy using.', an about section with 8-year UX background bio, and a contact section — all backed by tool calls (colorScheme, fontTheme, str_replace_based_edit_tool). The agent's claims about real info being populated (name, email at jordan@jordanellis.design, GitHub/LinkedIn @jordanellis) are supported by the HTML. Minor gap: console errors from motion/react mismatched React versions caused an error boundary trigger on initial render, though the page ultimately rendered (DOM is populated), and the Twitter icon removal claim is stated but the final artifact still imports Twitter in the truncated tool trace — slight inconsistency. Overall claims are well-supported by observable evidence.",
+    "details": {
+      "dimension": "Consistency & Truthfulness",
+      "inputsUsed": [
+        "conversation",
+        "tool_calls",
+        "final_artifacts"
+      ],
+      "advisoryVerdict": "pass",
+      "transcriptErrors": 0
+    },
+    "evalVersion": "2.0"
+  }
+]

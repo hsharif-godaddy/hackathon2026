@@ -1,0 +1,67 @@
+Build a homepage design preview for a residential house cleaning business.
+
+PROJECT DETAILS:
+- Business type: Residential house cleaning (solo/small operation)
+- Primary goal: Get potential customers to call or contact
+- Tone: Warm, trustworthy, approachable
+
+DESIGN DIRECTION:
+Clean and inviting with a fresh, bright aesthetic that communicates reliability and care. Should feel like a trusted local business — personal and warm, not a corporate franchise. Crisp whites and soft greens evoke cleanliness without feeling sterile.
+
+LAYOUT TYPE: Standard
+Marketing site with full navigation header and footer.
+
+VISUAL DIRECTION:
+- Color: Fresh and clean — soft sage green as primary, warm white backgrounds, a pop of sky blue as accent. Feels naturally "clean" without being cold or clinical.
+- Typography: Friendly and approachable — rounded or humanist sans-serif for headings, clean sans for body. Warm and readable.
+- Layout: NO icon grids for services. Use a staggered two-column layout with real imagery. NO centered-text-on-colored-band CTA.
+
+VISUAL ELEMENTS:
+- Primary: Photography — bright, airy photos of clean interiors (kitchens, living rooms), and happy homeowners
+- Style: Natural lighting, warm tones, real-feeling (not overly staged stock)
+- Application: Full hero with lifestyle photo, service section with room photos
+- Logo: Simple wordmark logo with a small leaf or sparkle mark — clean and friendly. Use the media-logo skill to generate it.
+
+MOTION DESIGN:
+- Level: Subtle
+- Effects: Fade-in on scroll for sections (350ms ease-out), gentle hover lift on service cards (translate-y + soft shadow), smooth button color transitions (200ms)
+- Personality: Warm and reassuring — nothing bouncy or flashy
+
+SECTION-SPECIFIC:
+- Hero: Full-width lifestyle photo of a bright clean home, headline left-aligned, phone number / "Get a Free Quote" CTA prominently placed. Add a small social proof badge (e.g. "100+ Happy Customers").
+- Services: Staggered two-column layout — photo on one side, service description on the other. Alternate sides. NOT icon cards.
+- Trust signals: Simple row of 3 trust badges (Insured & Bonded, Eco-Friendly Products, Satisfaction Guaranteed)
+- Testimonials: 2-3 short customer quotes in a clean card row with star ratings
+- CTA: Asymmetric section — large friendly headline left, contact button right. Warm background color, not a generic colored band.
+- Footer: Warm and simple — phone, email, social links. Matches overall tone.
+
+DIFFERENTIATION: Oversized warm headline in hero that feels personal and direct, like a neighbor recommending a service — not a corporate tagline.
+
+CONSISTENCY: Maintain warmth and friendliness throughout. Footer should feel as considered as the hero. No design energy drop-off.
+
+BUILD ORDER:
+
+Phase 1 — Setup (run in parallel):
+- Search for images: bright clean home interiors (kitchen, living room), happy homeowner photos, eco-friendly cleaning supplies
+- Set font stack using fontTheme tool — humanist/rounded sans-serif that feels warm and approachable
+- Set color scheme using colorScheme tool — soft sage green primary, warm white background, sky blue accent
+
+Phase 2 — Structure (run in parallel, after Phase 1):
+- Build header with simple navigation (Home, Services, About, Contact) and phone number prominent
+- Build footer with contact info and warm branding
+
+Phase 3 — Page (after Phase 1 & 2):
+- Build homepage (index.tsx) with all sections: hero, trust badges, services (staggered), testimonials, CTA
+
+Phase 4 — Finalize:
+- Mark "Homepage" todo item as COMPLETE using the todoList tool
+- Ask for design feedback using askQuestion
+
+CRITICAL: Build index.tsx LAST after setup, header, and footer are complete.
+
+INITIAL SCOPE: Homepage design only for review. All other pages deferred.
+
+DESIGN FEEDBACK:
+After showing the homepage, use askQuestion to ask:
+- Question: "What do you think of the design?"
+- Suggestions: ["Looks great — let's add a contact form", "Let's build a Services page", "Change the color scheme", "Adjust the fonts or layout"]

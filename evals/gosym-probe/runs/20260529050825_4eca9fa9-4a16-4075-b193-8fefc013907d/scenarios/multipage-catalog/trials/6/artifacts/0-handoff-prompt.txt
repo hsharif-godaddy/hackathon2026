@@ -1,0 +1,92 @@
+Build a full multi-page website for "Artisan Goods Co.", a handmade crafts shop. All pages, API, navigation, and footer must be built together.
+
+PROJECT DETAILS:
+- Business: Artisan Goods Co. — handmade crafts shop
+- Categories: Pottery, Textiles, Woodwork, Jewelry
+- Pages: Homepage, Product Catalog, About
+- Data: Products served from an Express API endpoint
+
+DESIGN DIRECTION:
+Warm, artisanal aesthetic that feels handcrafted and human — like a well-curated independent shop. Rich earthy tones with generous whitespace. Typography mixes a warm serif display font with a clean readable sans-serif. Avoid anything that feels corporate, sterile, or mass-produced.
+
+LAYOUT TYPE: Standard
+Full header navigation and footer across all pages.
+
+VISUAL DIRECTION:
+- Color: Warm earthy palette — terracotta, warm cream/off-white, deep walnut brown, and a muted sage green accent. Never pure white or cold grays.
+- Typography: Warm serif (e.g. Playfair Display or Lora) for headings; clean humanist sans (e.g. Source Sans 3 or Nunito) for body. Generous line-height and letter-spacing.
+- Layout: Asymmetric product grids, full-bleed hero imagery, editorial-style About page. DO NOT use uniform icon grids or centered-text-on-band CTAs.
+- Visual elements: Photography-first (product shots, studio/workshop atmosphere). Subtle organic texture accents (thin dividers, warm background washes).
+- Motion: Subtle — fade-in on scroll for product cards (staggered), gentle hover lift on product cards, smooth page transitions.
+
+LOGO:
+Use the `media-logo` skill to generate a logo for "Artisan Goods Co." — a refined mark with a handcrafted feel (e.g. a small pottery/leaf/weave motif). Place in the header left-aligned. Do NOT substitute a text wordmark or emoji.
+
+MOTION DESIGN:
+- Level: Subtle
+- Effects: Staggered fade-in + slide-up on product cards when they enter viewport (300ms, ease-out, 60ms stagger), hover lift on cards (translate-y -4px + shadow, 200ms), smooth filter transition on catalog category buttons (150ms)
+- Personality: Warm and unhurried — nothing snappy or corporate
+
+BUILD ORDER:
+
+Phase 1 — Setup (run in parallel):
+- Generate logo via `media-logo` skill
+- Search for images: hero lifestyle shot (workshop/studio with handmade goods), product category hero images (pottery, textiles, woodwork, jewelry), team member portrait photos (3 people), and general artisan/craft atmosphere shots
+- Set font stack using fontTheme tool: Playfair Display (display/headings) + Source Sans 3 or Nunito (body)
+- Set color scheme using colorTheme tool: terracotta primary, warm cream background, walnut brown foreground, sage green accent
+- Create Express API endpoint at `src/server/api/products.ts` and register it in `src/server/entry.ts` at `GET /api/products`. Return an array of ~16 products across 4 categories (pottery, textiles, woodwork, jewelry) with fields: id, name, category, price, description, imageSlot (use placeholder image slot references). Also support `?category=` query param filter.
+
+Phase 2 — Structure (run in parallel, after Phase 1):
+- Build Header (`src/layouts/parts/Header.tsx`): Professional style, logo left, nav links center/right: Home, Shop, About. Mobile hamburger menu. Warm cream background, walnut brown text.
+- Build Footer (`src/layouts/parts/Footer.tsx`): Multi-column — brand tagline left, nav links center, newsletter mini-form right. Warm walnut/terracotta tones.
+
+Phase 3 — Routes setup (after Phase 2):
+- Update `src/routes.tsx` to add routes for `/`, `/shop`, `/about`
+- Each route should have a loader that fetches from the API (homepage fetches featured products `?featured=true`, shop fetches all products)
+
+Phase 4 — Pages (after Phase 3, build in parallel):
+
+**Homepage (`src/pages/index.tsx`)**:
+- Hero: Full-bleed image, large serif headline ("Handcrafted with Care"), subheadline, two CTAs (Shop Now → /shop, Our Story → /about). Text overlaid with warm dark gradient. Subtle fade-in entrance animation.
+- Featured Products: 4-card grid pulled from API loader data. Staggered card entrance on scroll. Each card: product image, category badge, name, price, hover lift effect.
+- Category Showcase: 4 category tiles (pottery, textiles, woodwork, jewelry) in a 2×2 or horizontal strip with images and labels — links to /shop?category=X
+- Newsletter Signup: Warm terracotta band section, email input + subscribe button. Asymmetric layout (headline left, form right). NOT a centered-text-on-band.
+
+**Product Catalog (`src/pages/shop.tsx`)**:
+- Page header: "Our Collection" with a short tagline
+- Category filter bar: "All", "Pottery", "Textiles", "Woodwork", "Jewelry" — pill-style buttons. Active state uses terracotta. Smooth transition on filter change.
+- Product grid: Responsive (1 col mobile, 2 col tablet, 3-4 col desktop). Each card: product image (aspect-ratio 4/3), category badge, product name, price, subtle hover lift.
+- Filter behavior: Client-side filter using URL search params (`?category=`) so links are shareable. Read initial category from URL on mount.
+- Products fetched via route loader from `/api/products`.
+
+**About Page (`src/pages/about.tsx`)**:
+- Mission statement: Large editorial section, warm cream background, serif quote-style text. Full-bleed or large image alongside.
+- Our Story: Two-column layout — text narrative left, atmospheric workshop image right. Rich storytelling copy about the founding of Artisan Goods Co.
+- Team profiles: 3 team member cards with photo, name, role, and short bio. Asymmetric layout (not uniform 3-column grid). Staggered entrance animation.
+- Values section: 3-4 brand values displayed as large typographic statements with short descriptions — NOT icon cards.
+
+SECTION-SPECIFIC:
+- Hero: Full-bleed image with warm gradient overlay, serif headline, dual CTA buttons
+- Product cards: Image top, category badge (small pill), name, price. Hover: lift + shadow. NO icon grids anywhere.
+- Category filters: Pill buttons, NOT tabs or dropdowns
+- CTA sections: Asymmetric layouts only — never centered text on a colored band
+- Footer: Warm and intentional — matches header quality
+
+DIFFERENTIATION:
+The newsletter section uses an asymmetric split layout (headline + copy left, form right) on a terracotta background — feels editorial, not generic. Product cards use a warm cream card background with subtle border, not harsh white.
+
+CONSISTENCY:
+Maintain warm artisanal energy throughout all three pages and the footer. Animation timing consistent (300ms ease-out). Color palette never breaks into cold grays or pure whites.
+
+TODO LIST MANAGEMENT:
+After completing all pages, use the todoList tool to mark ALL items as complete:
+- "Homepage"
+- "Product catalog page"
+- "About page"
+- "Shared navigation & footer"
+- "Products API endpoint"
+
+FINAL STEP:
+After marking todos complete, use askQuestion tool to ask:
+- Question: "Your Artisan Goods Co. site is ready! What would you like to refine?"
+- Suggestions: ["Looks great — let's add product detail pages", "Update the color scheme", "Add a shopping cart", "Adjust the typography"]

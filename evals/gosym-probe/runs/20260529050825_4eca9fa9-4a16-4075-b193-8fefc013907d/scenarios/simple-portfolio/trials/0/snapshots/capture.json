@@ -1,0 +1,98 @@
+{
+  "previewUrl": "https://local.gasket.dev-godaddy.com:5000",
+  "generatedAt": "2026-05-29T05:15:32.770Z",
+  "durationMs": 13333,
+  "outputDir": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/simple-portfolio/trials/0/snapshots",
+  "routes": [
+    {
+      "path": "/",
+      "url": "https://local.gasket.dev-godaddy.com:5000",
+      "origin": "homepage",
+      "status": "ok",
+      "httpStatus": 200
+    }
+  ],
+  "perRoute": [
+    {
+      "route": {
+        "path": "/",
+        "url": "https://local.gasket.dev-godaddy.com:5000",
+        "origin": "homepage",
+        "status": "ok",
+        "httpStatus": 200
+      },
+      "rendered": {
+        "title": "Jordan Lee — Full-Stack Developer & Creator",
+        "h1": "JordanLee",
+        "headingText": "JordanLee | Engineer by trade,creator by nature. | Things I've shipped. | Let's buildsomething.",
+        "bodyPreview": "FULL-STACK ENGINEER\nJordanLee\n\nFull-stack developer & creator — building products that are fast, thoughtful, and built to last.\n\nVIEW MY WORK\nGET IN TOUCH\nABOUT ME\nEngineer by trade,\ncreator by nature.\n\nI'm Jordan Lee — a full-stack software engineer with a passion for building products that sit at "
+      },
+      "perViewport": {
+        "mobile": {
+          "tiles": [
+            {
+              "index": 0,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/simple-portfolio/trials/0/snapshots/mobile/home/tile0.png",
+              "yOffset": 0
+            },
+            {
+              "index": 1,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/simple-portfolio/trials/0/snapshots/mobile/home/tile1.png",
+              "yOffset": 636
+            },
+            {
+              "index": 2,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/simple-portfolio/trials/0/snapshots/mobile/home/tile2.png",
+              "yOffset": 1305
+            },
+            {
+              "index": 3,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/simple-portfolio/trials/0/snapshots/mobile/home/tile3.png",
+              "yOffset": 1971
+            },
+            {
+              "index": 4,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/simple-portfolio/trials/0/snapshots/mobile/home/tile4.png",
+              "yOffset": 2638
+            },
+            {
+              "index": 5,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/simple-portfolio/trials/0/snapshots/mobile/home/tile5.png",
+              "yOffset": 3301
+            }
+          ]
+        },
+        "laptop": {
+          "tiles": [
+            {
+              "index": 0,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/simple-portfolio/trials/0/snapshots/laptop/home/tile0.png",
+              "yOffset": 0
+            },
+            {
+              "index": 1,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/simple-portfolio/trials/0/snapshots/laptop/home/tile1.png",
+              "yOffset": 823
+            },
+            {
+              "index": 2,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/simple-portfolio/trials/0/snapshots/laptop/home/tile2.png",
+              "yOffset": 1711
+            },
+            {
+              "index": 3,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/simple-portfolio/trials/0/snapshots/laptop/home/tile3.png",
+              "yOffset": 2425
+            },
+            {
+              "index": 4,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/simple-portfolio/trials/0/snapshots/laptop/home/tile4.png",
+              "yOffset": 2464
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "errors": []
+}

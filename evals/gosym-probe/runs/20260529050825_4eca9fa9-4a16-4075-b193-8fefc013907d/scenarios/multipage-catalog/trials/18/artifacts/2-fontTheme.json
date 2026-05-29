@@ -1,0 +1,24 @@
+{
+  "success": true,
+  "message": "Applied font theme: Craft Heritage",
+  "appliedFont": {
+    "name": "Craft Heritage",
+    "headerFont": {
+      "name": "Playfair Display",
+      "weights": [
+        "700",
+        "900"
+      ],
+      "category": "serif"
+    },
+    "bodyFont": {
+      "name": "DM Sans",
+      "weights": [
+        "400",
+        "500"
+      ],
+      "category": "sans-serif"
+    }
+  },
+  "suggestedResponse": "Font theme \"Craft Heritage\" (Playfair Display (headers) + DM Sans (body)) has been applied."
+}

@@ -1,0 +1,24 @@
+{
+  "success": true,
+  "message": "Applied font theme: Warm & Friendly Clean",
+  "appliedFont": {
+    "name": "Warm & Friendly Clean",
+    "headerFont": {
+      "name": "Plus Jakarta Sans",
+      "weights": [
+        "600",
+        "700"
+      ],
+      "category": "sans-serif"
+    },
+    "bodyFont": {
+      "name": "DM Sans",
+      "weights": [
+        "400",
+        "500"
+      ],
+      "category": "sans-serif"
+    }
+  },
+  "suggestedResponse": "Font theme \"Warm & Friendly Clean\" (Plus Jakarta Sans (headers) + DM Sans (body)) has been applied."
+}

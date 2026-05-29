@@ -1,0 +1,50 @@
+{
+  "scenarioName": "cleaning-biz-ambiguity",
+  "trial": 10,
+  "turns": [
+    {
+      "role": "user",
+      "content": "I need a website for my cleaning business",
+      "durationSeconds": 0
+    },
+    {
+      "role": "user",
+      "content": "I clean houses, just need something simple to get started",
+      "durationSeconds": 21.9
+    },
+    {
+      "role": "assistant",
+      "content": "Now let me generate the logo and then build the header and footer in parallel.Now let me build the header and footer in parallel:Now let me build the homepage:Now let me check the RootLayout to make sure the header/footer are wired correctly:Everything is wired up. Let me update the default meta description:Your Sparkle Clean homepage is live in the preview! It features a full-bleed hero with a bright kitchen photo, a staggered two-column services section, customer testimonials, and an asymmetric CTA with a living room photo — all with warm teal colors, Nunito headings, and gentle scroll animations.",
+      "durationSeconds": 332
+    },
+    {
+      "role": "user",
+      "content": "Looks good! But how do customers actually get in touch with me? I don't see a phone number or anything like that.",
+      "durationSeconds": 2.5
+    },
+    {
+      "role": "user",
+      "content": "Phone call works, and my number is (555) 867-5309.",
+      "durationSeconds": 26.6
+    },
+    {
+      "role": "assistant",
+      "content": "Good call — let me update the phone number everywhere and add a proper Contact page so customers can easily reach you.Now I'll update the phone number everywhere and build the Contact page all at once:Now build the Contact page:Now wire up the route and add a simple API endpoint to handle form submissions:Now add the contact API endpoint:API is live. Let me mark the Contact page done:Done! Here's what changed:\n\n- Updated your phone number to **(555) 867-5309** in the hero, CTA section, and footer\n- Added a full **Contact page** at `/contact` with a quote request form (name, phone, email, service type, and a notes field), a prominent call button, and a \"what happens next\" walkthrough\n- The form submits to a live backend endpoint — when customers fill it out, you'll see their info in your server logs (and we can wire up email notifications anytime you're ready)Line 61 has a curly apostrophe in the string literal. Let me fix it:",
+      "durationSeconds": 255.2
+    },
+    {
+      "role": "user",
+      "content": "That looks much better, thank you! Does my phone number show up clearly so people can actually see it?\n\nDONE",
+      "durationSeconds": 3.2
+    },
+    {
+      "role": "assistant",
+      "content": "Yes! Your number **(555) 867-5309** shows up in three places:\n\n1. **Hero section** — right on the homepage as a call button next to \"Get a Free Quote\"\n2. **CTA section** — a \"Call Now\" button at the bottom of the homepage\n3. **Footer** — visible on every page\n4. **Contact page** — prominently featured in a teal card with a direct call button\n\nOn mobile, tapping any of those will dial you directly. You're all set for customers to reach you.",
+      "durationSeconds": 21.8
+    }
+  ],
+  "summary": {
+    "messageCount": 8,
+    "totalElapsedSeconds": 663.3
+  }
+}

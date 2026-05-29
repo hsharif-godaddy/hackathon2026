@@ -1,0 +1,333 @@
+[
+  {
+    "evaluator": "bug-hit-rate",
+    "score": 1,
+    "verdict": "pass",
+    "reason": "No unrecovered errors",
+    "details": {
+      "errorCount": 0,
+      "errors": []
+    }
+  },
+  {
+    "evaluator": "tool-failure-rate",
+    "score": 0.047619047619047616,
+    "verdict": "observed",
+    "reason": "2/42 tool calls failed (5%): str_replace_based_edit_tool",
+    "details": {
+      "failedCount": 2,
+      "totalCalls": 42,
+      "failedTools": [
+        "str_replace_based_edit_tool"
+      ]
+    }
+  },
+  {
+    "evaluator": "prompt-efficiency",
+    "score": 0.9168273035060777,
+    "verdict": "observed",
+    "reason": "3 user turns",
+    "details": {
+      "userTurns": 3
+    },
+    "evalVersion": "1.0"
+  },
+  {
+    "evaluator": "jtbd-completion",
+    "score": 1,
+    "verdict": "pass",
+    "reason": "LLM judge verdict: pass",
+    "details": {
+      "htmlContextAvailable": true
+    }
+  },
+  {
+    "evaluator": "output-quality",
+    "score": 0.8408508977361436,
+    "verdict": "pass",
+    "reason": "Composite of 9/9 sub-evaluators",
+    "details": {
+      "_composite": true,
+      "breakdown": [
+        {
+          "evaluator": "heading-hierarchy",
+          "score": 1,
+          "verdict": "pass",
+          "reason": "No heading level violations",
+          "scoreable": true
+        },
+        {
+          "evaluator": "semantic-density",
+          "score": 0.23809523809523808,
+          "verdict": "fail",
+          "reason": "5 semantic element(s) out of 21 block containers",
+          "scoreable": true
+        },
+        {
+          "evaluator": "accessibility-coverage",
+          "score": 1,
+          "verdict": "pass",
+          "reason": "Accessibility weighted score across 2 active sub-dimension(s)",
+          "scoreable": true
+        },
+        {
+          "evaluator": "link-quality",
+          "score": 1,
+          "verdict": "pass",
+          "reason": "6 usable link(s) out of 6 total",
+          "scoreable": true
+        },
+        {
+          "evaluator": "responsive-readiness",
+          "score": 1,
+          "verdict": "pass",
+          "reason": "viewport meta, responsive breakpoint classes, flex/grid layout",
+          "scoreable": true
+        },
+        {
+          "evaluator": "inline-style-ratio",
+          "score": 0.9262295081967213,
+          "verdict": "pass",
+          "reason": "9 element(s) with authored inline styles out of 122",
+          "scoreable": true
+        },
+        {
+          "evaluator": "component-decomposition",
+          "score": 0.7333333333333334,
+          "verdict": "pass",
+          "reason": "3 unique file(s) across 3 director(y/ies)",
+          "scoreable": true
+        },
+        {
+          "evaluator": "visual-coherence",
+          "score": 0.82,
+          "verdict": "pass",
+          "reason": "The portfolio demonstrates strong visual coherence with consistent spacing rhythms, clear typographic hierarchy from hero headline to body text, and a harmonious restrained palette using primary accents on a clean background. Minor deductions for the raw HTML/debug attribute leakage visible in the body text and some decorative elements that appear slightly generic.",
+          "scoreable": true
+        },
+        {
+          "evaluator": "content-substance",
+          "score": 0.85,
+          "verdict": "pass",
+          "reason": "The portfolio contains specific, business-relevant content including a named individual (Jordan Reeves), a concrete email (jordan@jordanreeves.design), defined services (brand identity, logo design, print design, typography, packaging, brand guidelines), years of experience (6 years), and clear CTAs (Hire Me, Get in Touch). Minor deduction for some truncated/dev artifact text visible in the body text.",
+          "scoreable": true
+        }
+      ],
+      "scoredCount": 9,
+      "totalCount": 9
+    },
+    "evalVersion": "accessibility-coverage:1.0+component-decomposition:1.0+content-substance:1.0+heading-hierarchy:1.0+inline-style-ratio:1.0+link-quality:1.0+responsive-readiness:1.0+semantic-density:1.0+visual-coherence:1.0"
+  },
+  {
+    "evaluator": "agent-steps",
+    "score": 0.9168273035060777,
+    "verdict": "observed",
+    "reason": "3 agent steps",
+    "details": {
+      "totalSteps": 3
+    },
+    "evalVersion": "1.0"
+  },
+  {
+    "evaluator": "latency",
+    "score": 0.04948894165405676,
+    "verdict": "observed",
+    "reason": "TTFC=73724ms maxGap=98240ms total=576086ms chunks=39 turns=3 score=0.05 aabInit=60875ms aabTTFC=10954ms",
+    "details": {
+      "timeToFirstChunkMs": 73724,
+      "maxInterChunkGapMs": 98240,
+      "totalMs": 576086,
+      "chunkCount": 39,
+      "perTurn": [
+        {
+          "turnIndex": 0,
+          "timeToFirstChunkMs": 73724,
+          "maxInterChunkGapMs": 78941,
+          "totalTurnMs": 293694,
+          "chunkCount": 25
+        },
+        {
+          "turnIndex": 1,
+          "timeToFirstChunkMs": 16806,
+          "maxInterChunkGapMs": 98240,
+          "totalTurnMs": 252394,
+          "chunkCount": 12
+        },
+        {
+          "turnIndex": 2,
+          "timeToFirstChunkMs": 17347,
+          "maxInterChunkGapMs": 1345,
+          "totalTurnMs": 22754,
+          "chunkCount": 2
+        }
+      ],
+      "medianTTFC": 17347,
+      "halfLifeMs": 4000,
+      "aabDiagnostics": {
+        "timingSummaries": [
+          {
+            "turnIndex": 0,
+            "timeToStreamStartMs": 11353,
+            "timeToFirstTextChunkMs": null,
+            "maxChunkGapMs": 3370,
+            "chunksRead": 660,
+            "streamDurationMs": 44690
+          },
+          {
+            "turnIndex": 0,
+            "timeToStreamStartMs": 60875,
+            "timeToFirstTextChunkMs": 10954,
+            "maxChunkGapMs": 59887,
+            "chunksRead": 3424,
+            "streamDurationMs": 227128
+          },
+          {
+            "turnIndex": 1,
+            "timeToStreamStartMs": 8299,
+            "timeToFirstTextChunkMs": 5026,
+            "maxChunkGapMs": 12508,
+            "chunksRead": 2147,
+            "streamDurationMs": 180193
+          },
+          {
+            "turnIndex": 1,
+            "timeToStreamStartMs": 203412,
+            "timeToFirstTextChunkMs": null,
+            "maxChunkGapMs": 6254,
+            "chunksRead": 98,
+            "streamDurationMs": 15630
+          },
+          {
+            "turnIndex": 2,
+            "timeToStreamStartMs": 6003,
+            "timeToFirstTextChunkMs": 10085,
+            "maxChunkGapMs": 10085,
+            "chunksRead": 35,
+            "streamDurationMs": 12659
+          }
+        ],
+        "slowGaps": [],
+        "timeouts": []
+      }
+    }
+  },
+  {
+    "evaluator": "tool-parallelism",
+    "score": 0.021645021645021644,
+    "verdict": "observed",
+    "reason": "Tool parallelism ratio: 2%",
+    "details": {
+      "turnsAnalyzed": 2,
+      "totalWeight": 42,
+      "perTurnRatios": [
+        {
+          "toolCallCount": 23,
+          "ratio": 0.039525691699604744
+        },
+        {
+          "toolCallCount": 19,
+          "ratio": 0
+        }
+      ]
+    }
+  },
+  {
+    "evaluator": "tool-batching-efficiency",
+    "score": 0.9743589743589743,
+    "verdict": "observed",
+    "reason": "40 successful calls across 2 productive turns",
+    "details": {
+      "totalSuccessfulCalls": 40,
+      "productiveTurns": 2
+    },
+    "evalVersion": "1.2"
+  },
+  {
+    "evaluator": "turn-duration",
+    "score": 557327,
+    "verdict": "observed",
+    "reason": "Total AAB duration: 557327ms across 3 turns (avg 185776ms)",
+    "details": {
+      "totalDurationMs": 557327,
+      "averageDurationMs": 185775.66666666666,
+      "perTurnMs": [
+        288004,
+        246749,
+        22574
+      ]
+    }
+  },
+  {
+    "evaluator": "token-usage",
+    "score": 1890775,
+    "verdict": "observed",
+    "reason": "aab=1890775 probe=43422 total=1934197 tokens",
+    "details": {
+      "aab": {
+        "inputTokens": 1876494,
+        "outputTokens": 14281,
+        "totalTokens": 1890775,
+        "cachedInputTokensRead": 1756462,
+        "cachedInputTokensWrite": 118509
+      },
+      "probe": {
+        "promptTokens": 43291,
+        "completionTokens": 131,
+        "totalTokens": 43422,
+        "calls": 3
+      },
+      "total": {
+        "tokens": 1934197
+      }
+    }
+  },
+  {
+    "evaluator": "intent-to-output-alignment",
+    "score": 0.95,
+    "verdict": "observed",
+    "reason": "All three required sections are present in the final HTML: hero with 'Jordan Reeves.' and correct tagline, about section with 6 years of graphic design experience and relevant skills, and contact section with jordan@jordanreeves.design email and GitHub/LinkedIn social links. The user explicitly confirmed satisfaction with the result.",
+    "details": {
+      "dimension": "Intent Understanding & Alignment",
+      "inputsUsed": [
+        "conversation",
+        "final_artifacts"
+      ],
+      "advisoryVerdict": "pass",
+      "transcriptErrors": 0
+    },
+    "evalVersion": "2.0"
+  },
+  {
+    "evaluator": "implicit-feature-gap",
+    "score": 0.95,
+    "verdict": "observed",
+    "reason": "All three required sections (hero, about, contact) are rendered with Jordan Reeves' real info: name and tagline in hero, 6-year background and skills in about, email link and GitHub/LinkedIn icons in contact. A CTA 'Get in touch' button is present in the hero. Minor React hook errors from motion library appear but content rendered successfully via error boundary fallback.",
+    "details": {
+      "dimension": "Implicit Feature Completeness",
+      "inputsUsed": [
+        "conversation",
+        "final_artifacts"
+      ],
+      "advisoryVerdict": "pass",
+      "transcriptErrors": 0
+    },
+    "evalVersion": "2.0"
+  },
+  {
+    "evaluator": "silent-hallucination",
+    "score": 0.82,
+    "verdict": "observed",
+    "reason": "The final DOM snapshot confirms Jordan Reeves' name, tagline 'Crafting brands that people remember.', hero section, about section with 6 years/brand identity background, and contact section with jordan@jordanreeves.design and social links — all matching agent claims. Tool calls (fontTheme, colorScheme, media, str_replace_based_edit_tool) back up stated design features. Minor gap: console errors from motion/react hook conflicts suggest animations may not render fully, though core content is present and visible in the HTML.",
+    "details": {
+      "dimension": "Consistency & Truthfulness",
+      "inputsUsed": [
+        "conversation",
+        "tool_calls",
+        "final_artifacts"
+      ],
+      "advisoryVerdict": "pass",
+      "transcriptErrors": 0
+    },
+    "evalVersion": "2.0"
+  }
+]

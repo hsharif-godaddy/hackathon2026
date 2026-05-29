@@ -1,0 +1,79 @@
+Build a personal portfolio homepage with this design direction:
+
+PROJECT DETAILS:
+- Type: Personal portfolio website
+- Sections: Hero, About, Contact
+- Design goal: Clean, modern, well-spaced — distinctive without being loud
+
+DESIGN DIRECTION:
+Refined and editorial — a portfolio that feels like a thoughtful designer/developer's personal brand. Generous whitespace, confident typography, and a monochrome-leaning palette with one warm accent. Should feel premium and intentional, not like a generic template.
+
+LAYOUT TYPE: Standard
+Multi-page site with full header/footer navigation.
+
+VISUAL DIRECTION:
+- Color: Near-black base (#0f0f0f or deep charcoal) with off-white text and ONE warm accent (amber/gold or soft coral — not blue, not purple). Sections alternate between dark and light backgrounds for rhythm.
+- Typography: Serif display font for the hero name (elegant, editorial weight) paired with a clean geometric sans-serif for body. Large size contrast between heading and body.
+- Layout: DO NOT use icon grids or centered-text-on-band CTAs. Use asymmetric compositions — name large and left-anchored in hero, about section with a two-column layout (text left, visual/decorative element right), contact section with generous spacing and inline social links.
+
+VISUAL ELEMENTS:
+- Primary: Geometric typographic treatment — oversized initials or name as a background design element in the hero
+- Style: Minimal decorative elements — thin lines, subtle grid accents, geometric shapes in the accent color
+- Application: Hero uses large typographic composition; about section uses a subtle geometric accent shape; contact section is clean and spacious
+- Logo: Use the media-logo skill to generate a minimal wordmark logo for the header
+
+MOTION DESIGN:
+- Level: Subtle
+- Effects:
+  - Hero name fades and slides up on load (500ms, easeOut)
+  - Tagline fades in with a slight delay (200ms after name)
+  - About and Contact sections fade in on scroll (viewport: once: true, 400ms)
+  - Hover states on social icons: scale(1.1) + accent color shift (150ms)
+  - Nav links: subtle underline draw on hover
+- Personality: Calm and confident — smooth, never bouncy
+
+SECTION-SPECIFIC:
+- Hero: Full-viewport height. Name displayed very large (display size, serif). Tagline below in smaller sans-serif. Subtle geometric accent or oversized initial letter as background decoration. CTA arrow or "scroll down" indicator. Entrance animation on load.
+- About: Two-column layout — left has bio text with a section label ("About Me" in small caps or muted label style), right has a placeholder profile image area or decorative geometric shape. NOT a centered paragraph block.
+- Contact: Spacious section. Email as a large, styled link (not a button). Social icons (GitHub, LinkedIn, Twitter/X, Dribbble) as inline icon row with hover effects. Short intro line above. No form needed — just direct links.
+- Header: Minimal — logo/name left, nav links right (About, Contact). Clean and unobtrusive.
+- Footer: Minimal — copyright line and a small "back to top" link. Matches the dark aesthetic.
+
+DIFFERENTIATION:
+Oversized serif name in the hero that nearly fills the viewport width — typographic as art. This creates immediate impact and memorability without relying on photography.
+
+CONSISTENCY:
+Maintain editorial quality throughout. The contact section should feel as considered as the hero. Animation easing should be consistent (easeOut) across all scroll reveals.
+
+BUILD ORDER:
+
+Phase 1 — Setup (run these in parallel):
+- Search for a minimal profile/avatar placeholder image and a subtle dark texture or geometric background asset
+- Set font stack using the fontTheme tool: serif display (e.g. Playfair Display or Cormorant Garamond) + geometric sans (e.g. DM Sans or Plus Jakarta Sans)
+- Set color scheme using the colorScheme tool: deep charcoal background, off-white foreground, warm amber/gold accent
+- Generate logo using the media-logo skill: minimal wordmark, clean sans-serif, matches the portfolio aesthetic
+
+Phase 2 — Structure (run in parallel, after Phase 1):
+- Build Header: minimal, logo left + nav right (About, Contact links)
+- Build Footer: minimal dark footer, copyright + back-to-top
+
+Phase 3 — Page (after Phase 1 & 2):
+- Build homepage (index.tsx) with Hero, About, and Contact sections using placeholder content (name: "Alex Morgan", tagline: "Designer & Developer crafting thoughtful digital experiences", bio paragraph about background in design and development)
+- Include all Motion animations as specified
+
+Phase 4 — Finalize:
+- Mark "Homepage" todo item as COMPLETE using the todoList tool
+- Ask for design feedback using askQuestion
+
+CRITICAL: Build index.tsx LAST — after setup, header, and footer are complete.
+
+TODO LIST MANAGEMENT:
+After completing the homepage, mark "Homepage" as complete in the todoList tool (list ID: 1780034534632-srtctle, item ID: 1780034534632-2bdjf2h).
+
+INITIAL SCOPE:
+Build ONLY the homepage (Hero + About + Contact) for this preview. Defer project pages, skills page, and blog.
+
+DESIGN FEEDBACK:
+After showing the homepage, use askQuestion to ask:
+- Question: "What do you think of the design?"
+- Suggestions: ["Looks great — let's add a projects section", "Change the color scheme", "Change the fonts", "Update the placeholder content with my real info", "Adjust the layout or spacing"]

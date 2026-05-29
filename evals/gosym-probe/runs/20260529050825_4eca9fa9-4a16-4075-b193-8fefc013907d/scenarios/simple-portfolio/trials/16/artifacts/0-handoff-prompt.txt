@@ -1,0 +1,73 @@
+Build a personal portfolio homepage with this design direction:
+
+PROJECT DETAILS:
+- Type: Personal portfolio website
+- Sections: Hero, About, Contact
+- Audience: Potential employers, clients, collaborators
+
+DESIGN DIRECTION:
+Editorial and confident — clean whitespace with bold typographic hierarchy. Should feel like a thoughtful designer/developer's portfolio, not a generic template. Monochrome base with a single warm accent that punctuates key moments.
+
+LAYOUT TYPE: Standard
+Multi-page marketing site with full navigation header and footer.
+
+VISUAL DIRECTION:
+- Color: Near-black (#0f0f0f) and off-white (#f9f7f4) base with ONE warm accent (amber or terracotta). Avoid pure black/white — use warm near-neutrals for depth.
+- Typography: Confident weight mixing — oversized display serif or high-contrast sans for name/headings, clean geometric sans for body. Generous line-height and letter-spacing.
+- Layout: NO centered-text-on-colored-band CTAs. Asymmetric hero composition. Staggered about section. Contact section integrated naturally, not bolted on.
+
+VISUAL ELEMENTS:
+- Primary: Typographic — the name and tagline ARE the hero visual
+- Style: Minimal geometric accents (thin lines, subtle grid marks) as decorative punctuation
+- Application: Sparse decorative elements that frame content without competing
+- Logo: Text wordmark — first name or initials in the display font, top-left in header
+
+MOTION DESIGN:
+- Level: Subtle
+- Effects:
+  - Hero name: staggered character or word fade-up on load (400ms, ease-out)
+  - Sections: fade-in on scroll with slight upward translate (300ms)
+  - Nav links: elegant underline-draw hover (200ms)
+  - Social icons: gentle scale + color shift on hover (150ms)
+- Personality: Refined and deliberate — nothing bouncy, nothing flashy
+
+SECTION-SPECIFIC:
+- Hero: Full-viewport height. Name in oversized display type (left-aligned or asymmetric). Tagline below in lighter weight. Subtle scroll indicator. Staggered entrance animation.
+- About: Two-column asymmetric layout — short bold statement left, paragraph text right. Include placeholder for a profile photo slot on one side. Fade-in on scroll.
+- Contact: Clean, open section. Email as a large styled link (not a button). Social icons (GitHub, LinkedIn, Twitter/X) with hover states. No form needed — keep it simple.
+- Header: Minimal — wordmark left, sparse nav links right (About, Work, Contact). Transparent over hero, solid on scroll.
+- Footer: Single line — copyright and a subtle back-to-top link. Matches overall refined tone.
+
+DIFFERENTIATION:
+Oversized hero typography that breaks the expected scale — name should feel monumental, not just large. The contrast between the massive display type and the delicate body text creates the memorable moment.
+
+CONSISTENCY:
+Warm near-neutral palette throughout. Accent color used sparingly — 2-3 moments max. Animation easing consistent (ease-out everywhere). Footer maintains the refined, minimal energy.
+
+BUILD ORDER:
+
+Phase 1 — Setup (run in parallel):
+- Set font stack using fontTheme tool: display serif or high-contrast sans for headings, geometric sans for body (e.g. Playfair Display + DM Sans, or Syne + Inter)
+- Set color scheme using colorScheme tool: warm near-black background variant or light off-white base with warm accent (amber/terracotta)
+- Search for a minimal abstract portrait placeholder or warm-toned texture image for the about section
+
+Phase 2 — Structure (run in parallel, after Phase 1):
+- Build Header.tsx: transparent/sticky, wordmark left, nav right, smooth scroll behavior
+- Build Footer.tsx: single-line minimal footer
+
+Phase 3 — Page (after Phase 1 & 2):
+- Build homepage (index.tsx) with hero, about, and contact sections and all animations
+
+Phase 4 — Finalize:
+- Mark "Homepage" todo item as COMPLETE using the todoList tool
+- Ask for design feedback using askQuestion
+
+CRITICAL: Build index.tsx LAST — after setup, header, and footer are done.
+
+INITIAL SCOPE:
+Build ONLY the homepage (hero + about + contact) for this preview. Use placeholder name "Alex Morgan" and placeholder tagline "Designer & Developer crafting thoughtful digital experiences" — the user will update with their real info.
+
+DESIGN FEEDBACK:
+After showing the homepage, use askQuestion tool:
+- Question: "How does the design look? Ready to make it yours?"
+- Suggestions: ["Looks great — let's add my real name and info", "Add a projects/work section", "Change the color scheme", "Adjust the typography"]

@@ -1,0 +1,344 @@
+[
+  {
+    "evaluator": "bug-hit-rate",
+    "score": 1,
+    "verdict": "pass",
+    "reason": "No unrecovered errors",
+    "details": {
+      "errorCount": 0,
+      "errors": []
+    }
+  },
+  {
+    "evaluator": "tool-failure-rate",
+    "score": 0,
+    "verdict": "observed",
+    "reason": "No tool failures across 27 tool call(s)",
+    "details": {
+      "failedCount": 0,
+      "totalCalls": 27,
+      "failedTools": []
+    }
+  },
+  {
+    "evaluator": "prompt-efficiency",
+    "score": 0.9002495108803148,
+    "verdict": "observed",
+    "reason": "4 user turns",
+    "details": {
+      "userTurns": 4
+    },
+    "evalVersion": "1.0"
+  },
+  {
+    "evaluator": "jtbd-completion",
+    "score": 1,
+    "verdict": "pass",
+    "reason": "LLM judge verdict: pass",
+    "details": {
+      "htmlContextAvailable": true
+    }
+  },
+  {
+    "evaluator": "output-quality",
+    "score": 0.8035210065415027,
+    "verdict": "pass",
+    "reason": "Composite of 9/9 sub-evaluators",
+    "details": {
+      "_composite": true,
+      "breakdown": [
+        {
+          "evaluator": "heading-hierarchy",
+          "score": 1,
+          "verdict": "pass",
+          "reason": "No heading level violations",
+          "scoreable": true
+        },
+        {
+          "evaluator": "semantic-density",
+          "score": 0.13636363636363635,
+          "verdict": "fail",
+          "reason": "6 semantic element(s) out of 44 block containers",
+          "scoreable": true
+        },
+        {
+          "evaluator": "accessibility-coverage",
+          "score": 0.9629629629629629,
+          "verdict": "pass",
+          "reason": "Accessibility weighted score across 2 active sub-dimension(s)",
+          "scoreable": true
+        },
+        {
+          "evaluator": "link-quality",
+          "score": 1,
+          "verdict": "pass",
+          "reason": "2 usable link(s) out of 2 total",
+          "scoreable": true
+        },
+        {
+          "evaluator": "responsive-readiness",
+          "score": 1,
+          "verdict": "pass",
+          "reason": "viewport meta, responsive breakpoint classes, flex/grid layout",
+          "scoreable": true
+        },
+        {
+          "evaluator": "inline-style-ratio",
+          "score": 0.6990291262135923,
+          "verdict": "partial",
+          "reason": "31 element(s) with authored inline styles out of 103",
+          "scoreable": true
+        },
+        {
+          "evaluator": "component-decomposition",
+          "score": 0.7333333333333334,
+          "verdict": "pass",
+          "reason": "3 unique file(s) across 3 director(y/ies)",
+          "scoreable": true
+        },
+        {
+          "evaluator": "visual-coherence",
+          "score": 0.82,
+          "verdict": "pass",
+          "reason": "The portfolio demonstrates strong visual coherence with a consistent cyan/primary accent color system, clear typographic hierarchy from large hero headings down to body text, and well-maintained spacing rhythm across sections. Minor deductions for some animation states caught mid-render (opacity:0 transforms visible in markup) and the generic dot-grid background feeling slightly disconnected from the overall refined aesthetic.",
+          "scoreable": true
+        },
+        {
+          "evaluator": "content-substance",
+          "score": 0.88,
+          "verdict": "pass",
+          "reason": "The portfolio contains highly specific, business-relevant content including a named individual (Jordan Lee), concrete role (Full-Stack Engineer), quantified experience claims (5+ years, 20+ projects, 50k+ concurrent connections, sub-100ms latency), named technologies (TypeScript, React, Node.js, WebSockets), a real project description (Pulse Dashboard), and clear CTAs (View My Work, Get In Touch, Hire Me). Minor deduction for some truncated sections that couldn't be fully evaluated.",
+          "scoreable": true
+        }
+      ],
+      "scoredCount": 9,
+      "totalCount": 9
+    },
+    "evalVersion": "accessibility-coverage:1.0+component-decomposition:1.0+content-substance:1.0+heading-hierarchy:1.0+inline-style-ratio:1.0+link-quality:1.0+responsive-readiness:1.0+semantic-density:1.0+visual-coherence:1.0"
+  },
+  {
+    "evaluator": "agent-steps",
+    "score": 0.9002495108803148,
+    "verdict": "observed",
+    "reason": "4 agent steps",
+    "details": {
+      "totalSteps": 4
+    },
+    "evalVersion": "1.0"
+  },
+  {
+    "evaluator": "latency",
+    "score": 0.4648219168269909,
+    "verdict": "observed",
+    "reason": "TTFC=46213ms maxGap=58949ms total=316634ms chunks=59 turns=3 score=0.46 aabInit=44219ms aabTTFC=1962ms",
+    "details": {
+      "timeToFirstChunkMs": 46213,
+      "maxInterChunkGapMs": 58949,
+      "totalMs": 316634,
+      "chunkCount": 59,
+      "perTurn": [
+        {
+          "turnIndex": 1,
+          "timeToFirstChunkMs": 46213,
+          "maxInterChunkGapMs": 58949,
+          "totalTurnMs": 205131,
+          "chunkCount": 38
+        },
+        {
+          "turnIndex": 2,
+          "timeToFirstChunkMs": 4421,
+          "maxInterChunkGapMs": 28829,
+          "totalTurnMs": 85960,
+          "chunkCount": 15
+        },
+        {
+          "turnIndex": 3,
+          "timeToFirstChunkMs": 4250,
+          "maxInterChunkGapMs": 282,
+          "totalTurnMs": 5479,
+          "chunkCount": 6
+        }
+      ],
+      "medianTTFC": 4421,
+      "halfLifeMs": 4000,
+      "aabDiagnostics": {
+        "timingSummaries": [
+          {
+            "turnIndex": 0,
+            "timeToStreamStartMs": 3441,
+            "timeToFirstTextChunkMs": null,
+            "maxChunkGapMs": 2555,
+            "chunksRead": 84,
+            "streamDurationMs": 6795
+          },
+          {
+            "turnIndex": 1,
+            "timeToStreamStartMs": 2121,
+            "timeToFirstTextChunkMs": null,
+            "maxChunkGapMs": 2164,
+            "chunksRead": 700,
+            "streamDurationMs": 40417
+          },
+          {
+            "turnIndex": 1,
+            "timeToStreamStartMs": 44219,
+            "timeToFirstTextChunkMs": 1962,
+            "maxChunkGapMs": 51915,
+            "chunksRead": 3697,
+            "streamDurationMs": 160717
+          },
+          {
+            "turnIndex": 2,
+            "timeToStreamStartMs": 1776,
+            "timeToFirstTextChunkMs": 2613,
+            "maxChunkGapMs": 24161,
+            "chunksRead": 1297,
+            "streamDurationMs": 51369
+          },
+          {
+            "turnIndex": 2,
+            "timeToStreamStartMs": 64948,
+            "timeToFirstTextChunkMs": null,
+            "maxChunkGapMs": 2702,
+            "chunksRead": 112,
+            "streamDurationMs": 10761
+          },
+          {
+            "turnIndex": 3,
+            "timeToStreamStartMs": 1808,
+            "timeToFirstTextChunkMs": 2411,
+            "maxChunkGapMs": 2236,
+            "chunksRead": 26,
+            "streamDurationMs": 3453
+          }
+        ],
+        "slowGaps": [],
+        "timeouts": []
+      }
+    }
+  },
+  {
+    "evaluator": "tool-parallelism",
+    "score": 0.09722222222222222,
+    "verdict": "observed",
+    "reason": "Tool parallelism ratio: 10%",
+    "details": {
+      "turnsAnalyzed": 3,
+      "totalWeight": 27,
+      "perTurnRatios": [
+        {
+          "toolCallCount": 2,
+          "ratio": 1
+        },
+        {
+          "toolCallCount": 17,
+          "ratio": 0.03676470588235294
+        },
+        {
+          "toolCallCount": 8,
+          "ratio": 0
+        }
+      ]
+    }
+  },
+  {
+    "evaluator": "tool-batching-efficiency",
+    "score": 0.9230769230769231,
+    "verdict": "observed",
+    "reason": "27 successful calls across 3 productive turns",
+    "details": {
+      "totalSuccessfulCalls": 27,
+      "productiveTurns": 3
+    },
+    "evalVersion": "1.2"
+  },
+  {
+    "evaluator": "turn-duration",
+    "score": 306260,
+    "verdict": "observed",
+    "reason": "Total AAB duration: 306260ms across 4 turns (avg 76565ms)",
+    "details": {
+      "totalDurationMs": 306260,
+      "averageDurationMs": 76565,
+      "perTurnMs": [
+        10237,
+        204938,
+        85773,
+        5312
+      ]
+    }
+  },
+  {
+    "evaluator": "token-usage",
+    "score": 1070806,
+    "verdict": "observed",
+    "reason": "aab=1070806 probe=26587 total=1097393 tokens",
+    "details": {
+      "aab": {
+        "inputTokens": 1057153,
+        "outputTokens": 13653,
+        "totalTokens": 1070806,
+        "cachedInputTokensRead": 894579,
+        "cachedInputTokensWrite": 159335
+      },
+      "probe": {
+        "promptTokens": 26481,
+        "completionTokens": 106,
+        "totalTokens": 26587,
+        "calls": 4
+      },
+      "total": {
+        "tokens": 1097393
+      }
+    }
+  },
+  {
+    "evaluator": "intent-to-output-alignment",
+    "score": 0.95,
+    "verdict": "observed",
+    "reason": "The final HTML snapshot confirms all three required sections are present and populated: a Hero section with 'Jordan Lee' and tagline 'Full-stack developer & creator', an About section with bio prose and stat cards, and a Contact section (visible in body text truncated but confirmed in agent summary with email link and social icons). The site uses a dark background with cyan accents matching the requested aesthetic. The React hook errors in console logs are from motion/react but the static HTML renders correctly per the snapshot, and this does not block the stated goal of having the three sections present.",
+    "details": {
+      "dimension": "Intent Understanding & Alignment",
+      "inputsUsed": [
+        "conversation",
+        "final_artifacts"
+      ],
+      "advisoryVerdict": "pass",
+      "transcriptErrors": 0
+    },
+    "evalVersion": "2.0"
+  },
+  {
+    "evaluator": "implicit-feature-gap",
+    "score": 0.9,
+    "verdict": "observed",
+    "reason": "Hero (name, tagline, CTAs), About (bio prose, stat cards), and Contact (email link, social icons per agent description confirmed by user) are all rendered. A bonus Projects section was added. Minor deduction for contact section content being truncated in the snapshot, though user confirmed satisfaction with all three required sections.",
+    "details": {
+      "dimension": "Implicit Feature Completeness",
+      "inputsUsed": [
+        "conversation",
+        "final_artifacts"
+      ],
+      "advisoryVerdict": "pass",
+      "transcriptErrors": 0
+    },
+    "evalVersion": "2.0"
+  },
+  {
+    "evaluator": "silent-hallucination",
+    "score": 0.85,
+    "verdict": "observed",
+    "reason": "The final HTML confirms all three required sections are present: a hero with 'Jordan Lee' and tagline, an about section with bio and stat cards, and a contact section with email link and social icons — all matching agent claims. Tool calls back up every stated feature (fontTheme, colorScheme, logo generation, file writes). Minor gap: console errors show a React hook conflict with motion/react causing an error boundary trigger, which could affect animation rendering, but the DOM snapshot shows all content sections rendered successfully.",
+    "details": {
+      "dimension": "Consistency & Truthfulness",
+      "inputsUsed": [
+        "conversation",
+        "tool_calls",
+        "final_artifacts"
+      ],
+      "advisoryVerdict": "pass",
+      "transcriptErrors": 0
+    },
+    "evalVersion": "2.0"
+  }
+]

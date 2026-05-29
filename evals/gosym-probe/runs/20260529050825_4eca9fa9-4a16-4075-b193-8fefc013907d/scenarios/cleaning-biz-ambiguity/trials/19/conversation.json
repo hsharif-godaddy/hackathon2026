@@ -1,0 +1,65 @@
+{
+  "scenarioName": "cleaning-biz-ambiguity",
+  "trial": 20,
+  "turns": [
+    {
+      "role": "user",
+      "content": "I need a website for my cleaning business",
+      "durationSeconds": 0
+    },
+    {
+      "role": "user",
+      "content": "Just call it \"Shine Bright Cleaning\" and I clean houses, that's pretty much it.",
+      "durationSeconds": 18.8
+    },
+    {
+      "role": "assistant",
+      "content": "Now let me generate the logo and then build the header and footer in parallel.Now let me build the header and footer in parallel:Now let me update the RootLayout meta description and build the homepage:Your Shine Bright Cleaning homepage is live in the preview. Here's what was built:\n\n- A full-bleed hero with a bright interior photo, bold headline, yellow CTA button, and trust badges\n- Three photo-backed service cards (Regular, Deep Clean, Move-In/Out) with hover lift animations\n- An asymmetric \"Why Choose Us\" section with a floating stats badge\n- Warm cream testimonials section with real-feeling customer quotes\n- A bold CTA banner with decorative shapes\n- A rich dark footer with contact info and quick links",
+      "durationSeconds": 295.6
+    },
+    {
+      "role": "user",
+      "content": "Looks good! But does it have my phone number on there so people can call me?",
+      "durationSeconds": 2.4
+    },
+    {
+      "role": "assistant",
+      "content": "The phone number shown is a placeholder `(555) 123-4567`. What's your real number?",
+      "durationSeconds": 9.7
+    },
+    {
+      "role": "user",
+      "content": "I don't really have one yet, just put something fake on there for now.",
+      "durationSeconds": 1.8
+    },
+    {
+      "role": "assistant",
+      "content": "No problem — the placeholder `(555) 123-4567` is already on the site, so you're all set for now. Whenever you have a real number, just let me know and I'll swap it in everywhere in seconds.",
+      "durationSeconds": 10.5
+    },
+    {
+      "role": "user",
+      "content": "That's good. Does it have like a contact form or something so people can reach me?",
+      "durationSeconds": 1.7
+    },
+    {
+      "role": "assistant",
+      "content": "Not yet — the homepage has CTAs that link to a contact page, but the page itself doesn't exist yet. Let me build it now with a contact form, phone number, and service area info.Now I'll build the contact page and wire it up:Done! The contact page is live at `/contact` — you can click \"Get a Free Quote\" on the homepage to see it. It includes a form with name, email, phone, service type, and a message field, plus a sidebar with your phone number, email, hours, and a trust checklist. When someone submits the form, they get a friendly confirmation message.",
+      "durationSeconds": 107.7
+    },
+    {
+      "role": "user",
+      "content": "That looks great, thanks! I think that's all I need for now.\n\nDONE",
+      "durationSeconds": 2.5
+    },
+    {
+      "role": "assistant",
+      "content": "You're all set! Your Shine Bright Cleaning website is looking great with a homepage and contact form ready to go. Whenever you're ready to add more — like a Services page, an About page, or even online booking — just come back and we'll build it out. Good luck with the business!",
+      "durationSeconds": 11
+    }
+  ],
+  "summary": {
+    "messageCount": 11,
+    "totalElapsedSeconds": 461.8
+  }
+}

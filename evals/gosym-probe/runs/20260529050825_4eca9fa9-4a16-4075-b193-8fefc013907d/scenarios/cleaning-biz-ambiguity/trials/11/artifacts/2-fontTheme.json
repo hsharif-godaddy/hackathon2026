@@ -1,0 +1,24 @@
+{
+  "success": true,
+  "message": "Applied font theme: Friendly & Professional",
+  "appliedFont": {
+    "name": "Friendly & Professional",
+    "headerFont": {
+      "name": "Nunito",
+      "weights": [
+        "600",
+        "700"
+      ],
+      "category": "sans-serif"
+    },
+    "bodyFont": {
+      "name": "Open Sans",
+      "weights": [
+        "400",
+        "500"
+      ],
+      "category": "sans-serif"
+    }
+  },
+  "suggestedResponse": "Font theme \"Friendly & Professional\" (Nunito (headers) + Open Sans (body)) has been applied."
+}

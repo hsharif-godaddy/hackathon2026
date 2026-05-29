@@ -1,0 +1,35 @@
+{
+  "scenarioName": "simple-portfolio",
+  "trial": 5,
+  "turns": [
+    {
+      "role": "user",
+      "content": "Build me a personal portfolio website with:\n- A hero section with my name and a short tagline\n- An about section describing my background\n- A contact section with an email link and social\n  media icons\nUse a clean, modern design with good spacing.",
+      "durationSeconds": 0
+    },
+    {
+      "role": "user",
+      "content": "My name is Marcus Webb, I'm a UX/UI Designer, and I want the site to feel minimal and refined.",
+      "durationSeconds": 10.4
+    },
+    {
+      "role": "assistant",
+      "content": "Phase 1 — running logo, fonts, and colors in parallel.Fonts and colors applied. Now generating the logo.Logo generated. Now building Header and Footer in parallel.Now building Header and Footer simultaneously.Now building the homepage — the main event.",
+      "durationSeconds": 235.3
+    },
+    {
+      "role": "user",
+      "content": "Looks great! The site is exactly the kind of clean, professional look I was going for. I'm happy with it as is.\n\nDONE",
+      "durationSeconds": 2.1
+    },
+    {
+      "role": "assistant",
+      "content": "Your portfolio is live and looking sharp, Marcus. The minimal, editorial design with the oversized hero type, warm terracotta accents, and refined typography is all in place — exactly the kind of presence a UX/UI designer should have online.",
+      "durationSeconds": 6.5
+    }
+  ],
+  "summary": {
+    "messageCount": 5,
+    "totalElapsedSeconds": 254.3
+  }
+}

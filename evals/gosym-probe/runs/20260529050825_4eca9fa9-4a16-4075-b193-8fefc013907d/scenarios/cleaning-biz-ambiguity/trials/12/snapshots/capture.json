@@ -1,0 +1,294 @@
+{
+  "previewUrl": "https://local.gasket.dev-godaddy.com:5002",
+  "generatedAt": "2026-05-29T14:50:24.305Z",
+  "durationMs": 24807,
+  "outputDir": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/cleaning-biz-ambiguity/trials/12/snapshots",
+  "routes": [
+    {
+      "path": "/",
+      "url": "https://local.gasket.dev-godaddy.com:5002",
+      "origin": "homepage",
+      "status": "ok",
+      "httpStatus": 200
+    },
+    {
+      "path": "/services",
+      "url": "https://local.gasket.dev-godaddy.com:5002/services",
+      "origin": "crawl",
+      "status": "ok",
+      "httpStatus": 200
+    },
+    {
+      "path": "/about",
+      "url": "https://local.gasket.dev-godaddy.com:5002/about",
+      "origin": "crawl",
+      "status": "ok",
+      "httpStatus": 200,
+      "isRouteEmpty": true
+    },
+    {
+      "path": "/contact",
+      "url": "https://local.gasket.dev-godaddy.com:5002/contact",
+      "origin": "crawl",
+      "status": "ok",
+      "httpStatus": 200
+    }
+  ],
+  "perRoute": [
+    {
+      "route": {
+        "path": "/",
+        "url": "https://local.gasket.dev-godaddy.com:5002",
+        "origin": "homepage",
+        "status": "ok",
+        "httpStatus": 200
+      },
+      "rendered": {
+        "title": "Shine & Co. — Professional House Cleaning",
+        "h1": "Your Home Deserves to Shine",
+        "headingText": "Your Home Deserves to Shine | Cleaning Services Built for Your Home | Real People, Real Results | Ready for a Spotless Home?",
+        "bodyPreview": "TRUSTED HOUSE CLEANING\n\nYour Home Deserves to Shine\n\nProfessional, reliable house cleaning that gives you back your time — and your peace of mind.\n\nGet a Free Quote\n(555) 123-4567\n500+\nHappy Clients\n5-Star\nRated on Google\nFully\nInsured & Bonded\n\nWHAT WE OFFER\n\nCleaning Services Built for Your Home\n0"
+      },
+      "perViewport": {
+        "mobile": {
+          "tiles": [
+            {
+              "index": 0,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/cleaning-biz-ambiguity/trials/12/snapshots/mobile/home/tile0.png",
+              "yOffset": 0
+            },
+            {
+              "index": 1,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/cleaning-biz-ambiguity/trials/12/snapshots/mobile/home/tile1.png",
+              "yOffset": 636
+            },
+            {
+              "index": 2,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/cleaning-biz-ambiguity/trials/12/snapshots/mobile/home/tile2.png",
+              "yOffset": 1300
+            },
+            {
+              "index": 3,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/cleaning-biz-ambiguity/trials/12/snapshots/mobile/home/tile3.png",
+              "yOffset": 1972
+            },
+            {
+              "index": 4,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/cleaning-biz-ambiguity/trials/12/snapshots/mobile/home/tile4.png",
+              "yOffset": 2635
+            },
+            {
+              "index": 5,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/cleaning-biz-ambiguity/trials/12/snapshots/mobile/home/tile5.png",
+              "yOffset": 3293
+            }
+          ]
+        },
+        "laptop": {
+          "tiles": [
+            {
+              "index": 0,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/cleaning-biz-ambiguity/trials/12/snapshots/laptop/home/tile0.png",
+              "yOffset": 209
+            },
+            {
+              "index": 1,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/cleaning-biz-ambiguity/trials/12/snapshots/laptop/home/tile1.png",
+              "yOffset": 832
+            },
+            {
+              "index": 2,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/cleaning-biz-ambiguity/trials/12/snapshots/laptop/home/tile2.png",
+              "yOffset": 1726
+            },
+            {
+              "index": 3,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/cleaning-biz-ambiguity/trials/12/snapshots/laptop/home/tile3.png",
+              "yOffset": 2616
+            },
+            {
+              "index": 4,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/cleaning-biz-ambiguity/trials/12/snapshots/laptop/home/tile4.png",
+              "yOffset": 3302
+            },
+            {
+              "index": 5,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/cleaning-biz-ambiguity/trials/12/snapshots/laptop/home/tile5.png",
+              "yOffset": 3333
+            }
+          ]
+        }
+      }
+    },
+    {
+      "route": {
+        "path": "/services",
+        "url": "https://local.gasket.dev-godaddy.com:5002/services",
+        "origin": "crawl",
+        "status": "ok",
+        "httpStatus": 200
+      },
+      "rendered": {
+        "title": "Services & Pricing — Shine & Co.",
+        "h1": "Services & Pricing",
+        "headingText": "Services & Pricing | Regular Cleaning | Deep Cleaning | Move-In / Move-Out | Common Questions | Not sure which service is right for you?",
+        "bodyPreview": "WHAT WE OFFER\n\nServices & Pricing\n\nStraightforward pricing, no hidden fees. Every service is backed by our satisfaction guarantee.\n\n01\nRegular Cleaning\n\nKeep your home consistently fresh\n\nOur most popular service. We visit on a schedule that works for you — weekly, bi-weekly, or monthly — and keep e"
+      },
+      "perViewport": {
+        "mobile": {
+          "tiles": [
+            {
+              "index": 0,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/cleaning-biz-ambiguity/trials/12/snapshots/mobile/services/tile0.png",
+              "yOffset": 531
+            },
+            {
+              "index": 1,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/cleaning-biz-ambiguity/trials/12/snapshots/mobile/services/tile1.png",
+              "yOffset": 667
+            },
+            {
+              "index": 2,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/cleaning-biz-ambiguity/trials/12/snapshots/mobile/services/tile2.png",
+              "yOffset": 1304
+            },
+            {
+              "index": 3,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/cleaning-biz-ambiguity/trials/12/snapshots/mobile/services/tile3.png",
+              "yOffset": 1968
+            },
+            {
+              "index": 4,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/cleaning-biz-ambiguity/trials/12/snapshots/mobile/services/tile4.png",
+              "yOffset": 2638
+            },
+            {
+              "index": 5,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/cleaning-biz-ambiguity/trials/12/snapshots/mobile/services/tile5.png",
+              "yOffset": 3302
+            }
+          ]
+        },
+        "laptop": {
+          "tiles": [
+            {
+              "index": 0,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/cleaning-biz-ambiguity/trials/12/snapshots/laptop/services/tile0.png",
+              "yOffset": 110
+            },
+            {
+              "index": 1,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/cleaning-biz-ambiguity/trials/12/snapshots/laptop/services/tile1.png",
+              "yOffset": 837
+            },
+            {
+              "index": 2,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/cleaning-biz-ambiguity/trials/12/snapshots/laptop/services/tile2.png",
+              "yOffset": 1717
+            },
+            {
+              "index": 3,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/cleaning-biz-ambiguity/trials/12/snapshots/laptop/services/tile3.png",
+              "yOffset": 2625
+            },
+            {
+              "index": 4,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/cleaning-biz-ambiguity/trials/12/snapshots/laptop/services/tile4.png",
+              "yOffset": 2759
+            }
+          ]
+        }
+      }
+    },
+    {
+      "route": {
+        "path": "/about",
+        "url": "https://local.gasket.dev-godaddy.com:5002/about",
+        "origin": "crawl",
+        "status": "ok",
+        "httpStatus": 200,
+        "isRouteEmpty": true
+      },
+      "rendered": {
+        "title": "",
+        "h1": null,
+        "headingText": "",
+        "bodyPreview": ""
+      },
+      "perViewport": {
+        "mobile": {
+          "tiles": []
+        },
+        "laptop": {
+          "tiles": []
+        }
+      }
+    },
+    {
+      "route": {
+        "path": "/contact",
+        "url": "https://local.gasket.dev-godaddy.com:5002/contact",
+        "origin": "crawl",
+        "status": "ok",
+        "httpStatus": 200
+      },
+      "rendered": {
+        "title": "Contact & Free Quote — Shine & Co.",
+        "h1": "Request a Free Quote",
+        "headingText": "Request a Free Quote | Contact Details | Tell us about your home",
+        "bodyPreview": "GET IN TOUCH\n\nRequest a Free Quote\n\nFill out the form below or give us a call. We'll get back to you within 24 hours.\n\nContact Details\nPHONE\n(555) 123-4567\nEMAIL\nhello@shineandco.com\nHOURS\nMon – Sat: 8am – 6pm\nSunday: Closed\nSERVICE AREA\nLocal & surrounding areas\nContact us to confirm your location\n"
+      },
+      "perViewport": {
+        "mobile": {
+          "tiles": [
+            {
+              "index": 0,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/cleaning-biz-ambiguity/trials/12/snapshots/mobile/contact/tile0.png",
+              "yOffset": 23
+            },
+            {
+              "index": 1,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/cleaning-biz-ambiguity/trials/12/snapshots/mobile/contact/tile1.png",
+              "yOffset": 643
+            },
+            {
+              "index": 2,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/cleaning-biz-ambiguity/trials/12/snapshots/mobile/contact/tile2.png",
+              "yOffset": 1301
+            },
+            {
+              "index": 3,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/cleaning-biz-ambiguity/trials/12/snapshots/mobile/contact/tile3.png",
+              "yOffset": 1932
+            },
+            {
+              "index": 4,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/cleaning-biz-ambiguity/trials/12/snapshots/mobile/contact/tile4.png",
+              "yOffset": 1956
+            }
+          ]
+        },
+        "laptop": {
+          "tiles": [
+            {
+              "index": 0,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/cleaning-biz-ambiguity/trials/12/snapshots/laptop/contact/tile0.png",
+              "yOffset": 0
+            },
+            {
+              "index": 1,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/cleaning-biz-ambiguity/trials/12/snapshots/laptop/contact/tile1.png",
+              "yOffset": 625
+            },
+            {
+              "index": 2,
+              "path": "runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/scenarios/cleaning-biz-ambiguity/trials/12/snapshots/laptop/contact/tile2.png",
+              "yOffset": 653
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "errors": []
+}

@@ -1,0 +1,358 @@
+[
+  {
+    "evaluator": "bug-hit-rate",
+    "score": 1,
+    "verdict": "pass",
+    "reason": "No unrecovered errors",
+    "details": {
+      "errorCount": 0,
+      "errors": []
+    }
+  },
+  {
+    "evaluator": "tool-failure-rate",
+    "score": 0.037037037037037035,
+    "verdict": "observed",
+    "reason": "2/54 tool calls failed (4%): str_replace_based_edit_tool",
+    "details": {
+      "failedCount": 2,
+      "totalCalls": 54,
+      "failedTools": [
+        "str_replace_based_edit_tool"
+      ]
+    }
+  },
+  {
+    "evaluator": "prompt-efficiency",
+    "score": 0.8807970779778823,
+    "verdict": "observed",
+    "reason": "5 user turns",
+    "details": {
+      "userTurns": 5
+    },
+    "evalVersion": "1.0"
+  },
+  {
+    "evaluator": "jtbd-completion",
+    "score": 1,
+    "verdict": "pass",
+    "reason": "LLM judge verdict: pass",
+    "details": {
+      "htmlContextAvailable": true
+    }
+  },
+  {
+    "evaluator": "output-quality",
+    "score": 0.8635978835978836,
+    "verdict": "pass",
+    "reason": "Composite of 9/9 sub-evaluators",
+    "details": {
+      "_composite": true,
+      "breakdown": [
+        {
+          "evaluator": "heading-hierarchy",
+          "score": 1,
+          "verdict": "pass",
+          "reason": "No heading level violations",
+          "scoreable": true
+        },
+        {
+          "evaluator": "semantic-density",
+          "score": 0.1875,
+          "verdict": "fail",
+          "reason": "6 semantic element(s) out of 32 block containers",
+          "scoreable": true
+        },
+        {
+          "evaluator": "accessibility-coverage",
+          "score": 0.9791666666666666,
+          "verdict": "pass",
+          "reason": "Accessibility weighted score across 2 active sub-dimension(s)",
+          "scoreable": true
+        },
+        {
+          "evaluator": "link-quality",
+          "score": 1,
+          "verdict": "pass",
+          "reason": "10 usable link(s) out of 10 total",
+          "scoreable": true
+        },
+        {
+          "evaluator": "responsive-readiness",
+          "score": 1,
+          "verdict": "pass",
+          "reason": "viewport meta, responsive breakpoint classes, flex/grid layout",
+          "scoreable": true
+        },
+        {
+          "evaluator": "inline-style-ratio",
+          "score": 0.8857142857142857,
+          "verdict": "pass",
+          "reason": "12 element(s) with authored inline styles out of 105",
+          "scoreable": true
+        },
+        {
+          "evaluator": "component-decomposition",
+          "score": 0.9600000000000001,
+          "verdict": "pass",
+          "reason": "5 unique file(s) across 4 director(y/ies)",
+          "scoreable": true
+        },
+        {
+          "evaluator": "visual-coherence",
+          "score": 0.88,
+          "verdict": "pass",
+          "reason": "The portfolio demonstrates strong visual coherence with consistent typographic hierarchy (large display heading, tracked uppercase nav labels, muted body text), harmonious neutral palette with accent highlights, and disciplined spacing rhythm using generous padding and hairline dividers. Minor deductions for some elements still in animated opacity-0 states and a cookie banner slightly disrupting the refined aesthetic.",
+          "scoreable": true
+        },
+        {
+          "evaluator": "content-substance",
+          "score": 0.88,
+          "verdict": "pass",
+          "reason": "The portfolio contains specific, business-relevant content including a named individual (Marcus Webb), a defined profession (Freelance Graphic Designer), 8+ years experience, listed disciplines, location (Los Angeles), a real contact email (hello@marcuswebb.co), and clear CTAs (Start a Project, View Work, Full Inquiry Form). Minor deductions for limited pricing/project detail specificity and some generic tagline phrasing.",
+          "scoreable": true
+        }
+      ],
+      "scoredCount": 9,
+      "totalCount": 9
+    },
+    "evalVersion": "accessibility-coverage:1.0+component-decomposition:1.0+content-substance:1.0+heading-hierarchy:1.0+inline-style-ratio:1.0+link-quality:1.0+responsive-readiness:1.0+semantic-density:1.0+visual-coherence:1.0"
+  },
+  {
+    "evaluator": "agent-steps",
+    "score": 0.8807970779778823,
+    "verdict": "observed",
+    "reason": "5 agent steps",
+    "details": {
+      "totalSteps": 5
+    },
+    "evalVersion": "1.0"
+  },
+  {
+    "evaluator": "latency",
+    "score": 0.06973974987242157,
+    "verdict": "observed",
+    "reason": "TTFC=53077ms maxGap=128168ms total=740542ms chunks=102 turns=4 score=0.07 aabInit=49282ms aabTTFC=2923ms",
+    "details": {
+      "timeToFirstChunkMs": 53077,
+      "maxInterChunkGapMs": 128168,
+      "totalMs": 740542,
+      "chunkCount": 102,
+      "perTurn": [
+        {
+          "turnIndex": 1,
+          "timeToFirstChunkMs": 53077,
+          "maxInterChunkGapMs": 93301,
+          "totalTurnMs": 267931,
+          "chunkCount": 38
+        },
+        {
+          "turnIndex": 2,
+          "timeToFirstChunkMs": 18034,
+          "maxInterChunkGapMs": 28552,
+          "totalTurnMs": 189189,
+          "chunkCount": 25
+        },
+        {
+          "turnIndex": 3,
+          "timeToFirstChunkMs": 5133,
+          "maxInterChunkGapMs": 4491,
+          "totalTurnMs": 18102,
+          "chunkCount": 8
+        },
+        {
+          "turnIndex": 4,
+          "timeToFirstChunkMs": 12701,
+          "maxInterChunkGapMs": 128168,
+          "totalTurnMs": 245607,
+          "chunkCount": 31
+        }
+      ],
+      "medianTTFC": 15367.5,
+      "halfLifeMs": 4000,
+      "aabDiagnostics": {
+        "timingSummaries": [
+          {
+            "turnIndex": 0,
+            "timeToStreamStartMs": 3175,
+            "timeToFirstTextChunkMs": null,
+            "maxChunkGapMs": 3915,
+            "chunksRead": 57,
+            "streamDurationMs": 6994
+          },
+          {
+            "turnIndex": 1,
+            "timeToStreamStartMs": 1850,
+            "timeToFirstTextChunkMs": null,
+            "maxChunkGapMs": 2964,
+            "chunksRead": 705,
+            "streamDurationMs": 45046
+          },
+          {
+            "turnIndex": 1,
+            "timeToStreamStartMs": 49282,
+            "timeToFirstTextChunkMs": 2923,
+            "maxChunkGapMs": 81807,
+            "chunksRead": 3099,
+            "streamDurationMs": 214238
+          },
+          {
+            "turnIndex": 2,
+            "timeToStreamStartMs": 2773,
+            "timeToFirstTextChunkMs": 15007,
+            "maxChunkGapMs": 20523,
+            "chunksRead": 3389,
+            "streamDurationMs": 173585
+          },
+          {
+            "turnIndex": 3,
+            "timeToStreamStartMs": 1541,
+            "timeToFirstTextChunkMs": 3293,
+            "maxChunkGapMs": 3125,
+            "chunksRead": 89,
+            "streamDurationMs": 15338
+          },
+          {
+            "turnIndex": 4,
+            "timeToStreamStartMs": 2603,
+            "timeToFirstTextChunkMs": 10066,
+            "maxChunkGapMs": 47576,
+            "chunksRead": 7417,
+            "streamDurationMs": 230373
+          }
+        ],
+        "slowGaps": [],
+        "timeouts": []
+      }
+    }
+  },
+  {
+    "evaluator": "tool-parallelism",
+    "score": 0.0385082202361249,
+    "verdict": "observed",
+    "reason": "Tool parallelism ratio: 4%",
+    "details": {
+      "turnsAnalyzed": 4,
+      "totalWeight": 53,
+      "perTurnRatios": [
+        {
+          "toolCallCount": 19,
+          "ratio": 0.04093567251461988
+        },
+        {
+          "toolCallCount": 20,
+          "ratio": 0.06315789473684211
+        },
+        {
+          "toolCallCount": 2,
+          "ratio": 0
+        },
+        {
+          "toolCallCount": 12,
+          "ratio": 0
+        }
+      ]
+    }
+  },
+  {
+    "evaluator": "tool-batching-efficiency",
+    "score": 0.9215686274509803,
+    "verdict": "observed",
+    "reason": "52 successful calls across 5 productive turns",
+    "details": {
+      "totalSuccessfulCalls": 52,
+      "productiveTurns": 5
+    },
+    "evalVersion": "1.2"
+  },
+  {
+    "evaluator": "turn-duration",
+    "score": 724511,
+    "verdict": "observed",
+    "reason": "Total AAB duration: 724511ms across 5 turns (avg 144902ms)",
+    "details": {
+      "totalDurationMs": 724511,
+      "averageDurationMs": 144902.2,
+      "perTurnMs": [
+        10173,
+        263521,
+        188686,
+        16881,
+        245250
+      ]
+    }
+  },
+  {
+    "evaluator": "token-usage",
+    "score": 2553091,
+    "verdict": "observed",
+    "reason": "aab=2553091 probe=61222 total=2614313 tokens",
+    "details": {
+      "aab": {
+        "inputTokens": 2521347,
+        "outputTokens": 31744,
+        "totalTokens": 2553091,
+        "cachedInputTokensRead": 2286791,
+        "cachedInputTokensWrite": 231383
+      },
+      "probe": {
+        "promptTokens": 61115,
+        "completionTokens": 107,
+        "totalTokens": 61222,
+        "calls": 5
+      },
+      "total": {
+        "tokens": 2614313
+      }
+    }
+  },
+  {
+    "evaluator": "intent-to-output-alignment",
+    "score": 1,
+    "verdict": "observed",
+    "reason": "All three required sections are present and fully implemented: hero with 'Marcus Webb' name and tagline, about section with background copy and disciplines, and contact section with email link (hello@marcuswebb.co) and social icons (Behance, Instagram, LinkedIn). The clean minimal design matches the stated intent.",
+    "details": {
+      "dimension": "Intent Understanding & Alignment",
+      "inputsUsed": [
+        "conversation",
+        "final_artifacts"
+      ],
+      "advisoryVerdict": "pass",
+      "transcriptErrors": 0
+    },
+    "evalVersion": "2.0"
+  },
+  {
+    "evaluator": "implicit-feature-gap",
+    "score": 0.95,
+    "verdict": "observed",
+    "reason": "The rendered HTML confirms all three required sections are present and content-rich: a hero with 'Marcus Webb' name and tagline 'Freelance Graphic Designer — crafting visual identities that endure'; an about section with background paragraphs, location, and disciplines list; and a contact section with a mailto link (hello@marcuswebb.co) and Behance/Instagram/LinkedIn social icons. The motion/React hook error appears to cause an error boundary fallback in some components, but the final snapshot shows all section content rendered successfully, indicating the error was recovered from. Only minor gap is the social links use generic URLs rather than profile-specific ones.",
+    "details": {
+      "dimension": "Implicit Feature Completeness",
+      "inputsUsed": [
+        "conversation",
+        "final_artifacts"
+      ],
+      "advisoryVerdict": "pass",
+      "transcriptErrors": 0
+    },
+    "evalVersion": "2.0"
+  },
+  {
+    "evaluator": "silent-hallucination",
+    "score": 0.92,
+    "verdict": "observed",
+    "reason": "The final HTML snapshot confirms all three required sections are present and populated: a hero section with 'Marcus Webb' and tagline, an about section (id='about') with background copy and disciplines, and a contact section (id='contact') with the email link 'hello@marcuswebb.co' and Behance/Instagram/LinkedIn social icons. Tool calls (fontTheme, colorScheme, media-logo__generate_logo, str_replace_based_edit_tool) directly back every claim the agent made about fonts, colors, logo, and layout. The only minor gap is a React hook error in console logs (motion.js useContext failure) that triggered an error boundary, though the page still rendered correctly per the body HTML — motion animations may have partially degraded but the core content is intact.",
+    "details": {
+      "dimension": "Consistency & Truthfulness",
+      "inputsUsed": [
+        "conversation",
+        "tool_calls",
+        "final_artifacts"
+      ],
+      "advisoryVerdict": "pass",
+      "transcriptErrors": 0
+    },
+    "evalVersion": "2.0"
+  }
+]

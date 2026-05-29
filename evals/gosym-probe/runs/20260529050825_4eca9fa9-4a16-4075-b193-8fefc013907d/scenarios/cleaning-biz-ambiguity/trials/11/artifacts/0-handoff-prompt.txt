@@ -1,0 +1,74 @@
+Build a homepage design preview for a residential house cleaning business called Sparkle Clean.
+
+PROJECT DETAILS:
+- Business name: Sparkle Clean
+- Service type: Residential house cleaning
+- Primary goal: Get customers to contact / book a cleaning
+
+DESIGN DIRECTION:
+Fresh, bright, and trustworthy — the kind of site that makes a homeowner feel instantly confident handing over their keys. Clean whites and soft aquas create a sense of cleanliness without feeling clinical. Warm accents and real photography make it feel personal and approachable, not corporate.
+
+LAYOUT TYPE: Standard
+Marketing site with full header navigation and footer.
+
+VISUAL DIRECTION:
+- Color: Crisp white base with a soft aqua/teal primary and a warm coral or sunny yellow accent. Feels clean, fresh, and inviting — not the typical blue-gray corporate palette.
+- Typography: Friendly but professional. A rounded or soft sans-serif for headings (approachable, not stiff), paired with a clean readable sans for body text. Generous line height.
+- Layout: DO NOT use icon grids for services. Instead use a staggered two-column layout alternating image and text. DO NOT use a centered-text-on-colored-band CTA. Use an asymmetric CTA section with a large background image and overlaid text.
+
+VISUAL ELEMENTS:
+- Primary: Photography — bright, airy images of clean homes, sparkling surfaces, and happy homeowners
+- Style: Natural light, warm tones, real-feeling (not overly staged stock)
+- Application: Full-bleed hero with overlay, alternating image/text in services section, testimonial section with soft background
+- Logo: Clean, modern wordmark-style logo with a small sparkle or shine icon mark. Use the media-logo skill to generate it. Aqua/teal color with the sparkle element as the accent.
+
+MOTION DESIGN:
+- Level: Subtle
+- Effects: Fade-in on scroll for each section (350ms ease-out), gentle hover lift on service cards (translateY -4px + shadow), smooth button color fill on hover (200ms)
+- Personality: Warm and reassuring — motion should feel effortless, like a freshly cleaned home
+
+SECTION-SPECIFIC:
+- Hero: Full-bleed bright home interior photo with soft overlay. Large headline ("Your Home, Spotless."), subheadline, and a prominent "Get a Free Quote" CTA button. Staggered fade-in entrance for headline, subheadline, and button.
+- Services: 3 services (Regular Cleaning, Deep Clean, Move-In/Move-Out) shown in staggered two-column rows — image one side, description the other. NOT icon cards.
+- Trust signals: Row of 3-4 trust badges (Insured & Bonded, Eco-Friendly Products, Satisfaction Guaranteed, 5-Star Rated) — use simple inline badges, not icon grid cards.
+- Testimonials: 2-3 customer quotes in a warm-toned section. Names and star ratings.
+- CTA: Asymmetric section — large background photo of a clean kitchen, overlaid with bold headline and "Book Your Cleaning" button. Not a plain colored band.
+- Footer: Maintain quality — include logo, nav links, phone number, and a warm tagline.
+
+DIFFERENTIATION:
+Oversized hero headline that breaks the grid slightly — large, confident type that immediately communicates professionalism. The staggered service layout (not icon grid) creates a premium editorial feel that most cleaning sites lack.
+
+CONSISTENCY:
+Maintain warmth and brightness throughout — footer and CTA should feel as polished as the hero. Do not let the design get generic toward the bottom of the page.
+
+BUILD ORDER:
+
+Phase 1 — Setup (run these in parallel):
+- Search for images: bright airy home interior for hero, clean kitchen/bathroom for CTA section, lifestyle cleaning photos for services
+- Set font stack using the fontTheme tool (rounded/soft sans for headings, clean sans for body — e.g. Nunito + Inter or Poppins + Inter)
+- Set color scheme using the colorScheme tool: crisp white background, soft aqua/teal primary, warm coral or sunny yellow accent
+- Generate logo using the media-logo skill: modern wordmark "Sparkle Clean" with a small sparkle/shine icon, aqua/teal color
+
+Phase 2 — Structure (run in parallel, after Phase 1):
+- Build Header with logo and navigation (Home, Services, About, Contact) — clean, minimal, white background
+- Build Footer with logo, nav links, phone placeholder, and warm tagline
+
+Phase 3 — Page (after Phase 1 & 2):
+- Build homepage (index.tsx) with all sections: Hero, Services (staggered), Trust Badges, Testimonials, CTA, with scroll animations
+
+Phase 4 — Finalize:
+- Mark "Homepage" todo item as COMPLETE using the todoList tool
+- Ask for design feedback using askQuestion
+
+CRITICAL: Build homepage (index.tsx) LAST — after setup, header, and footer are complete.
+
+TODO LIST MANAGEMENT:
+After completing the homepage, mark "Homepage" as complete in the todoList tool.
+
+INITIAL SCOPE:
+Build ONLY the homepage design for this preview. All other pages are deferred for user approval.
+
+DESIGN FEEDBACK:
+After showing the homepage, use askQuestion to ask:
+- Question: "What do you think of the design?"
+- Suggestions: ["Looks great — let's add a Services page", "Change the color scheme", "Change the fonts", "I'd like to adjust something specific"]

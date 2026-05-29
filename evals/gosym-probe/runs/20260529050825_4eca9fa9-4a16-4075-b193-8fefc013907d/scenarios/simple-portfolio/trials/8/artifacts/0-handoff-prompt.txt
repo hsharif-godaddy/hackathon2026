@@ -1,0 +1,69 @@
+Build a homepage design preview with this direction:
+
+PROJECT DETAILS:
+- Type: Personal portfolio website
+- Sections: Hero, About, Contact
+- Design: Clean, modern, well-spaced
+
+DESIGN DIRECTION:
+Editorial and confident—a portfolio that feels like a designer/developer who has taste. Not a generic template. Strong typographic hierarchy with generous whitespace and one unexpected accent color that creates personality without overwhelming.
+
+LAYOUT TYPE: Standard
+Marketing/portfolio site with full navigation structure.
+
+VISUAL DIRECTION:
+- Color: Near-black base (#0f0f0f or deep charcoal) with warm off-white text, and ONE warm accent (amber/gold or soft coral—NOT blue or purple). Feels sophisticated and personal.
+- Typography: Mix a bold serif or high-contrast display font for the hero name (something like Playfair Display or DM Serif Display) with a clean geometric sans (like DM Sans or Plus Jakarta Sans) for body. Creates warmth and editorial feel.
+- Layout: DO NOT use centered text with a button below as the hero. Instead, use a left-aligned typographic hero with the name displayed at oversized scale (breaking the grid). About section uses a two-column asymmetric layout. Contact section is minimal and elegant—NOT a form-heavy band.
+
+VISUAL ELEMENTS:
+- Primary: Typographic—the name itself is the hero visual
+- Style: Minimal decorative elements; a subtle geometric accent line or shape near the hero name
+- Application: Thin horizontal rule or bracket-style accent near the name; subtle dot or line pattern as section divider
+- Logo: No logo needed—name in header as wordmark
+
+MOTION DESIGN:
+- Level: Subtle
+- Effects: Hero name fades and slides up on load (400ms, ease-out), staggered entrance for tagline and CTA link (150ms delay each), section content fades in on scroll with viewport trigger
+- Personality: Refined and deliberate—nothing bouncy, smooth ease-out curves throughout
+
+SECTION-SPECIFIC:
+- Hero: Full-viewport height, left-aligned. Oversized name (display size, possibly multi-line). Short tagline below in muted tone. A subtle "scroll down" indicator or arrow. Animated entrance.
+- About: Two-column asymmetric layout—left column has a short bold label ("About Me" in small caps or overline style), right column has 2-3 paragraphs of placeholder background text. Add a subtle skill tags row at the bottom.
+- Contact: Clean and minimal. Large heading "Let's work together." followed by an email link styled prominently (not a button—an underlined link with hover animation). Social media icons (GitHub, LinkedIn, Twitter/X) in a row below, with hover color transitions. NO contact form.
+- Header: Minimal—name/wordmark left, nav links right (About, Contact). Transparent over hero, solid on scroll.
+- Footer: Single line—copyright and a small "back to top" link. Matches dark aesthetic.
+
+DIFFERENTIATION:
+The hero name should be displayed at a scale that feels almost too large—breaking the expected grid. This typographic boldness is the signature element that makes it memorable.
+
+CONSISTENCY:
+Dark, editorial tone throughout. The warm accent appears on hover states, the email link, and subtle decorative elements—used sparingly so it pops. Footer matches hero energy.
+
+BUILD ORDER:
+
+Phase 1 — Setup (run these in parallel):
+- Set font stack using fontTheme tool: DM Serif Display (display/headings) + DM Sans (body)
+- Set color scheme using colorScheme tool: deep charcoal background, off-white foreground, warm amber/gold accent
+- Search for a professional headshot-style placeholder image (optional, for about section)
+
+Phase 2 — Structure (run these in parallel, after Phase 1):
+- Build header: transparent/minimal with name wordmark left, nav right
+- Build footer: single-line dark footer
+
+Phase 3 — Page (after Phase 1 & 2 complete):
+- Build homepage (index.tsx) with hero, about, and contact sections and all animations
+
+Phase 4 — Finalize:
+- Mark "Homepage" todo item as COMPLETE using todoList tool
+- Ask for design feedback using askQuestion
+
+CRITICAL: Build index.tsx LAST—after setup, header, and footer are done.
+
+INITIAL SCOPE:
+Build ONLY the homepage with the three requested sections. This is a design review.
+
+DESIGN FEEDBACK:
+After showing the design, use askQuestion to ask:
+- Question: "What do you think of the design?"
+- Suggestions: ["Looks great — let's add a projects section", "Change the color scheme", "Change the fonts", "Swap to a light/white background", "I'd like to adjust something specific"]
