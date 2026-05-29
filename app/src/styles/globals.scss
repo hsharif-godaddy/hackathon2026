@@ -294,12 +294,37 @@
     z-index: 1;
   }
 
-  /* Ensure tooltip icons are inline with text in upgrade library portal */
+  /* UPP mounts #UpgradeLibraryPortal inside the CDS loader div (not document.body).
+     That wrapper has no height, so disrupt backdrops using position:absolute collapse
+     to a few pixels on mobile. Pin the portal to the viewport instead. */
   #UpgradeLibraryPortal {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    pointer-events: none;
+
+    .ux-disrupt-backdrop {
+      pointer-events: auto;
+    }
+
     .tooltip-help-icon svg,
     .PlanBox-featureItemTooltip svg {
       display: inline;
     }
+
+    /* On mobile, allow the plan grid to scroll horizontally instead of being clipped.
+       The ux-disrupt-backdrop sets overflow-x: hidden which hides plan cards that
+       exceed the mobile viewport width. */
+    @media (max-width: 767px) {
+      .ux-disrupt-backdrop {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+      }
+    }
+  }
+
+  body:has(#UpgradeLibraryPortal .ux-modal) .tooltip[role="tooltip"] {
+    z-index: 101 !important;
   }
 
   /* SSO login modal styling to account for iframe padding */

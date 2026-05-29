@@ -81,13 +81,13 @@ export function PaywallLoadingModal({
         stretch
       >
         <div
-          className="flex flex-col items-center w-full mx-auto max-w-[1280px] px-6 py-10"
+          className="flex flex-col items-center w-full mx-auto max-w-[1280px] px-4 sm:px-6 py-10"
         >
-          <Skeleton size="lg" width="340px" height="36px" />
-          <Skeleton size="md" width="420px" height="20px" className="mt-3" />
-          <Skeleton size="md" width="280px" height="40px" className="mt-4 rounded-full" />
+          <Skeleton size="lg" width="min(340px, 100%)" height="36px" />
+          <Skeleton size="md" width="min(420px, 100%)" height="20px" className="mt-3" />
+          <Skeleton size="md" width="min(280px, 100%)" height="40px" className="mt-4 rounded-full" />
           <div
-            className="w-full mt-10 grid grid-cols-3 gap-x-4"
+            className="w-full mt-10 grid grid-cols-1 sm:grid-cols-3 gap-4"
           >
             <SkeletonPlanCard />
             <SkeletonPlanCard />
