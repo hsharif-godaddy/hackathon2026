@@ -57,7 +57,12 @@ function makeLogsService(response: CustomerLogsResponse): {
 
 function makeAgentLogsService(
   logs: SanitizedLogEntry[],
-  options?: { errorStage?: string; diagnoseSnapshotPath?: string; detectedPackageManager?: 'npm' }
+  options?: {
+    errorStage?: string;
+    diagnoseSnapshotPath?: string;
+    detectedPackageManager?: 'npm';
+    importSource?: 'zip' | 'git_pull' | 'git_push';
+  }
 ): {
   getFailureLogs: ReturnType<typeof vi.fn>;
 } {
@@ -66,6 +71,7 @@ function makeAgentLogsService(
       logs,
       total: logs.length,
       source: logs.length > 0 ? 'import_job' : 'none',
+      importSource: options?.importSource,
       errorStage: options?.errorStage,
       diagnoseSnapshotPath: options?.diagnoseSnapshotPath,
       detectedPackageManager: options?.detectedPackageManager,
@@ -819,6 +825,7 @@ const llm = new FakeClassifier('llm', async () => ({
       const logs = makeLogsService({ success: true, logs: makeLogs(), total: 1 });
       const agentLogs = makeAgentLogsService(makeLogs(), {
         errorStage: 'building',
+        importSource: 'git_pull',
         diagnoseSnapshotPath: '/tmp/snapshots/job-1',
         detectedPackageManager: 'npm',
       });
@@ -846,6 +853,7 @@ const llm = new FakeClassifier('llm', async () => ({
         })
       );
       expect(llm.lastContext?.contextSource).toBe('snapshot');
+      expect(llm.lastContext?.importSource).toBe('git_pull');
       if (llm.lastContext?.contextSource === 'snapshot') {
         expect(llm.lastContext.snapshotPath).toBe('/tmp/snapshots/job-1');
       }

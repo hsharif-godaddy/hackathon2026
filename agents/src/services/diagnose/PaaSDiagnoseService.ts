@@ -168,6 +168,7 @@ export class PaaSDiagnoseService implements DiagnoseService {
     let logs = logsResponse.logs;
     let logsAnalyzed = logsResponse.total;
     let logSource: 'customer' | 'import_job' = 'customer';
+    let importSource: AppContext['importSource'];
     let snapshotPath: string | undefined;
     let errorStage: string | undefined;
     let packageManager: AppContext['packageManager'];
@@ -183,6 +184,7 @@ export class PaaSDiagnoseService implements DiagnoseService {
         logs = agentLogs.logs;
         logsAnalyzed = agentLogs.total;
         logSource = 'import_job';
+        importSource = agentLogs.importSource;
         snapshotPath = agentLogs.diagnoseSnapshotPath;
         errorStage = agentLogs.errorStage;
         packageManager = agentLogs.detectedPackageManager;
@@ -190,6 +192,7 @@ export class PaaSDiagnoseService implements DiagnoseService {
           appId: request.appId,
           target: request.target,
           logSource,
+          importSource,
           errorStage: agentLogs.errorStage,
           lineCount: agentLogs.total,
           hasSnapshot: Boolean(snapshotPath),
@@ -222,6 +225,7 @@ export class PaaSDiagnoseService implements DiagnoseService {
       appId: request.appId,
       target: request.target,
       logSource,
+      importSource,
       errorStage,
       packageManager,
       snapshotPath,

@@ -125,6 +125,23 @@ describe('LlmClassifier', () => {
       expect(user).toContain('publish');
       expect(user).toContain('error 1');
       expect(user).toContain('error 2');
+      expect(user).toContain('importSource: unknown');
+    });
+
+    it('embeds importSource in the user message when import logs are used', async () => {
+      const classifier = new LlmClassifier(client);
+      await classifier.classify(
+        [logLine('[agent/import:validation] PACKAGE_JSON_NOT_FOUND')],
+        appContext({
+          logSource: 'import_job',
+          importSource: 'zip',
+          errorStage: 'validating',
+        })
+      );
+
+      const user = client.lastArgs!.user;
+      expect(user).toContain('logSource: import_job');
+      expect(user).toContain('importSource: zip');
     });
 
     it('supplies a zod schema that validates the output', async () => {

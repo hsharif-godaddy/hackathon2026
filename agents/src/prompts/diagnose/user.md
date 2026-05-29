@@ -3,6 +3,7 @@
 - appId: {{appId}}
 - target: {{target}}
 - logSource: {{logSource}}
+- importSource: {{importSource}}
 - errorStage: {{errorStage}}
 - packageManager: {{packageManager}}
 

@@ -5,6 +5,7 @@ import type { SanitizedLogEntry } from '../log-sanitizer.js';
 export type DiagnoseTarget = 'preview' | 'publish';
 
 export type DiagnoseContextSource = 'snapshot' | 'workspace' | 'none';
+export type DiagnoseImportSource = 'zip' | 'git_pull' | 'git_push';
 
 export type IssueSeverity = 'error' | 'warning';
 
@@ -172,6 +173,7 @@ export interface AppContextBase {
   appId: string;
   target: DiagnoseTarget;
   logSource?: 'customer' | 'import_job';
+  importSource?: DiagnoseImportSource;
   errorStage?: string;
   packageManager?: 'npm' | 'yarn' | 'pnpm';
 }

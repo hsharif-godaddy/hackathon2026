@@ -48,6 +48,7 @@ describe('AgentOperationLogsService', () => {
     });
 
     expect(result.source).toBe('import_job');
+    expect(result.importSource).toBe('zip');
     expect(result.errorStage).toBe('validating');
     expect(result.total).toBeGreaterThan(0);
     expect(result.logs.some((l) => l.message.includes('[agent/import:validation] PACKAGE_JSON_NOT_FOUND'))).toBe(

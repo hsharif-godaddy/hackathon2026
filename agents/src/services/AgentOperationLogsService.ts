@@ -15,6 +15,7 @@ export interface AgentOperationLogsResponse {
   logs: SanitizedLogEntry[];
   total: number;
   source: 'import_job' | 'none';
+  importSource?: ImportJob['sourceType'];
   /** Stage from the latest failed import attempt (when source is import_job) */
   errorStage?: string;
   /** Host path to preserved project files for diagnose (failed imports) */
@@ -108,6 +109,7 @@ export class AgentOperationLogsService {
       logs,
       total: logs.length,
       source: 'import_job',
+      importSource: job.sourceType,
       errorStage: job.errorStage,
       diagnoseSnapshotPath: job.diagnoseSnapshotPath,
       detectedPackageManager: job.detectedPackageManager,

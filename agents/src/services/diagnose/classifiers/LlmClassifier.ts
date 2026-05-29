@@ -221,6 +221,7 @@ export class LlmClassifier implements Classifier {
         logs: logText,
         projectContext,
         logSource: ctx.logSource ?? 'customer',
+        importSource: ctx.importSource ?? 'unknown',
         errorStage: ctx.errorStage ?? 'unknown',
         packageManager: ctx.packageManager ?? 'npm',
       });
