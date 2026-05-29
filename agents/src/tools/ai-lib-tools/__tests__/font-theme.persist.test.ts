@@ -1,7 +1,13 @@
-import { readFile, writeFile } from 'node:fs/promises'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-vi.mock('node:fs/promises')
+const mockView = vi.fn()
+const mockWrite = vi.fn().mockResolvedValue({ bytesWritten: 100 })
+
+vi.mock('../../../workspace/index.js', () => ({
+  createForWorkspace: vi.fn(() => ({
+    files: { view: mockView, write: mockWrite }
+  }))
+}))
 vi.mock('../../../logging/index.js', () => ({
   Logger: {
     create: vi.fn(() => ({
@@ -71,8 +77,8 @@ describe('font-theme persistence', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
-    vi.mocked(readFile).mockResolvedValue(mockCss)
-    vi.mocked(writeFile).mockResolvedValue()
+    mockView.mockResolvedValue({ content: mockCss, encoding: 'utf-8', lines: 8, size: mockCss.length, truncated: false, path: 'src/styles/globals.css' })
+    mockWrite.mockResolvedValue({ bytesWritten: 100 })
     mockAppPlanExecute.mockResolvedValue({ success: true })
 
     originalFetch = global.fetch
@@ -148,7 +154,7 @@ describe('font-theme persistence', () => {
 
       // CSS was still applied successfully
       expect(result.success).toBe(true)
-      expect(writeFile).toHaveBeenCalled()
+      expect(mockWrite).toHaveBeenCalled()
     })
 
     it('should persist curated theme to app plan', async () => {

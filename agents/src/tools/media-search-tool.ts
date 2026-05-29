@@ -43,9 +43,7 @@ import {
   toolImageGenerationEvents,
 } from '../logging/events/index.js';
 import OpenAI from 'openai';
-import fs from 'node:fs';
-import path from 'node:path';
-import { getPersistentPublicDir } from '../utils/persistent-assets.js';
+import { createForWorkspace } from '../workspace/index.js';
 
 /**
  * Media type enumeration - now includes generate
@@ -574,19 +572,16 @@ export class MediaSearchTool {
         };
       }
 
-      // Get the app's actual path from the database
-      const appRepository = new AppRepository();
-      const app = appRepository.findById(appId);
-      if (!app) {
+      const workspace = createForWorkspace(appId, 'preview');
+      if (!workspace) {
         return {
           success: false,
-          error: `App not found: ${appId}`,
+          error: `Workspace not available for app: ${appId}`,
         };
       }
 
-      const appPath = app.path;
-      const imagesDir = path.join(getPersistentPublicDir(appPath), 'images');
-      fs.mkdirSync(imagesDir, { recursive: true });
+      const appRepository = new AppRepository();
+      const app = appRepository.findById(appId);
 
       const result = await openaiClient.images.generate({
         model: 'gpt-image-1',
@@ -620,7 +615,7 @@ export class MediaSearchTool {
           .substring(0, 40);
 
       const fullFilename = `${safeFilename}-${nanoid(6)}.png`;
-      const filePath = path.join(imagesDir, fullFilename);
+      const uploadPath = `public/assets/images/${fullFilename}`;
 
       let imageBuffer: Buffer;
       if (imageData.b64_json) {
@@ -633,7 +628,7 @@ export class MediaSearchTool {
         imageBuffer = Buffer.from(await res.arrayBuffer());
       }
 
-      fs.writeFileSync(filePath, imageBuffer);
+      await workspace.files.upload({ path: uploadPath, data: imageBuffer });
 
       const publicPath = `${AIRO_ASSET_UPLOADS_URL_PREFIX}${fullFilename}`;
       const executionTime = Date.now() - startTime;
@@ -648,22 +643,21 @@ export class MediaSearchTool {
         },
         resultStats: {
           success: true,
-          filePath,
+          filePath: uploadPath,
           publicPath,
           fileSize: imageBuffer.length,
           executionTime,
         },
       });
 
-      // Get app's preview URL (app was already fetched earlier)
-      const imageUrl = app.previewUrl
+      const imageUrl = app?.previewUrl
         ? `${app.previewUrl.replace(/\/+$/, '')}${publicPath}`
         : publicPath;
 
       return {
         success: true,
         url: imageUrl,
-        filepath: filePath,
+        filepath: uploadPath,
         publicPath,
         ...(imageData.b64_json && { base64Data: imageData.b64_json }),
       };

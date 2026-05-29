@@ -73,3 +73,6 @@ pids
 
 # Import temporary files
 .import-*
+
+# Agent memory store
+.memory/

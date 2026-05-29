@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { DevSupervisorError } from '../../../services/DevSupervisorClient.js'
 import { FileUploadContextRenderer } from '../FileUploadContextRenderer.js'
 
 vi.mock('../../../workspace/index.js', () => ({
@@ -89,7 +90,7 @@ describe('FileUploadContextRenderer', () => {
   })
 
   it('returns not-found message when workspace download throws for image', async () => {
-    mockDownload.mockRejectedValue(new Error('HTTP 404: not_found: src/assets/missing.png'))
+    mockDownload.mockRejectedValue(new DevSupervisorError('not_found', 404, 'src/assets/missing.png'))
 
     const result = await renderer.render(
       { type: 'file_upload', data: { name: 'missing.png', isImage: true } },
@@ -101,7 +102,7 @@ describe('FileUploadContextRenderer', () => {
   })
 
   it('returns not-found message when workspace view throws for text', async () => {
-    mockView.mockRejectedValue(new Error('HTTP 404: not_found: docs/missing.md'))
+    mockView.mockRejectedValue(new DevSupervisorError('not_found', 404, 'docs/missing.md'))
 
     const result = await renderer.render(
       { type: 'file_upload', data: { name: 'missing.md', isImage: false } },

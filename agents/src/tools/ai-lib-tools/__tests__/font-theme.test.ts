@@ -1,7 +1,12 @@
-import { readFile, writeFile } from 'node:fs/promises'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-vi.mock('node:fs/promises')
+const mockView = vi.fn()
+const mockWrite = vi.fn().mockResolvedValue({ bytesWritten: 100 })
+const mockFiles = { view: mockView, write: mockWrite } as any
+
+vi.mock('../../../workspace/index.js', () => ({
+  createForWorkspace: vi.fn(() => ({ files: mockFiles }))
+}))
 vi.mock('../../../logging/index.js', () => ({
   Logger: {
     create: vi.fn(() => ({
@@ -53,9 +58,6 @@ const { updateCssFontVariables, FONT_THEMES, clearFontValidationCache, validateA
 
 describe('font-theme', function packageTests() {
   describe('#updateCssFontVariables', function updateTests() {
-    const mockAppPath = '/test/app'
-    const mockCssPath = `${mockAppPath}/src/styles/globals.css`
-    
     const testFont = {
       name: 'Inter',
       weights: ['400', '700'],
@@ -83,14 +85,14 @@ describe('font-theme', function packageTests() {
   }
 }`
 
-      vi.mocked(readFile).mockResolvedValue(mockCss)
-      vi.mocked(writeFile).mockResolvedValue()
+      mockView.mockResolvedValue({ content: mockCss, encoding: 'utf-8' })
+      mockWrite.mockResolvedValue({ bytesWritten: 100 })
 
-      const result = await updateCssFontVariables(mockAppPath, testFont, testFont)
+      const result = await updateCssFontVariables(mockFiles, testFont, testFont)
 
       expect(result.success).toBe(true)
       expect(result.message).toContain('Inter')
-      expect(writeFile).toHaveBeenCalledOnce()
+      expect(mockWrite).toHaveBeenCalledOnce()
     })
 
     it('should add Google Fonts import at the top', async function addGoogleFonts() {
@@ -102,12 +104,12 @@ describe('font-theme', function packageTests() {
   }
 }`
 
-      vi.mocked(readFile).mockResolvedValue(mockCss)
-      vi.mocked(writeFile).mockResolvedValue()
+      mockView.mockResolvedValue({ content: mockCss, encoding: 'utf-8' })
+      mockWrite.mockResolvedValue({ bytesWritten: 100 })
 
-      await updateCssFontVariables(mockAppPath, testFont, testFont)
+      await updateCssFontVariables(mockFiles, testFont, testFont)
 
-      const writtenContent = vi.mocked(writeFile).mock.calls[0][1] as string
+      const writtenContent = mockWrite.mock.calls[0][0].content as string
       expect(writtenContent).toMatch(/^@import url\('https:\/\/fonts\.googleapis\.com/)
       expect(writtenContent).toContain('family=Inter')
     })
@@ -124,12 +126,12 @@ describe('font-theme', function packageTests() {
   }
 }`
 
-      vi.mocked(readFile).mockResolvedValue(mockCss)
-      vi.mocked(writeFile).mockResolvedValue()
+      mockView.mockResolvedValue({ content: mockCss, encoding: 'utf-8' })
+      mockWrite.mockResolvedValue({ bytesWritten: 100 })
 
-      await updateCssFontVariables(mockAppPath, testFont, testFont)
+      await updateCssFontVariables(mockFiles, testFont, testFont)
 
-      const writtenContent = vi.mocked(writeFile).mock.calls[0][1] as string
+      const writtenContent = mockWrite.mock.calls[0][0].content as string
       const importMatches = writtenContent.match(/@import url\('https:\/\/fonts\.googleapis\.com/g)
       expect(importMatches).toHaveLength(1) // Only the new import should exist
     })
@@ -141,12 +143,12 @@ describe('font-theme', function packageTests() {
   }
 }`
 
-      vi.mocked(readFile).mockResolvedValue(mockCss)
-      vi.mocked(writeFile).mockResolvedValue()
+      mockView.mockResolvedValue({ content: mockCss, encoding: 'utf-8' })
+      mockWrite.mockResolvedValue({ bytesWritten: 100 })
 
-      await updateCssFontVariables(mockAppPath, testFont, testFont)
+      await updateCssFontVariables(mockFiles, testFont, testFont)
 
-      const writtenContent = vi.mocked(writeFile).mock.calls[0][1] as string
+      const writtenContent = mockWrite.mock.calls[0][0].content as string
       expect(writtenContent).toContain(`--font-sans: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;`)
     })
 
@@ -158,12 +160,12 @@ describe('font-theme', function packageTests() {
   }
 }`
 
-      vi.mocked(readFile).mockResolvedValue(mockCss)
-      vi.mocked(writeFile).mockResolvedValue()
+      mockView.mockResolvedValue({ content: mockCss, encoding: 'utf-8' })
+      mockWrite.mockResolvedValue({ bytesWritten: 100 })
 
-      await updateCssFontVariables(mockAppPath, testFont, testFont)
+      await updateCssFontVariables(mockFiles, testFont, testFont)
 
-      const writtenContent = vi.mocked(writeFile).mock.calls[0][1] as string
+      const writtenContent = mockWrite.mock.calls[0][0].content as string
       expect(writtenContent).toContain(`--font-heading: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;`)
     })
 
@@ -178,12 +180,12 @@ describe('font-theme', function packageTests() {
   }
 }`
 
-      vi.mocked(readFile).mockResolvedValue(mockCss)
-      vi.mocked(writeFile).mockResolvedValue()
+      mockView.mockResolvedValue({ content: mockCss, encoding: 'utf-8' })
+      mockWrite.mockResolvedValue({ bytesWritten: 100 })
 
-      await updateCssFontVariables(mockAppPath, testFont, testFont)
+      await updateCssFontVariables(mockFiles, testFont, testFont)
 
-      const writtenContent = vi.mocked(writeFile).mock.calls[0][1] as string
+      const writtenContent = mockWrite.mock.calls[0][0].content as string
       expect(writtenContent).toContain('h1, h2, h3, h4, h5, h6')
       expect(writtenContent).toContain('font-family: var(--font-heading) !important')
     })
@@ -195,21 +197,21 @@ describe('font-theme', function packageTests() {
   }
 }`
 
-      vi.mocked(readFile).mockResolvedValue(mockCss)
-      vi.mocked(writeFile).mockResolvedValue()
+      mockView.mockResolvedValue({ content: mockCss, encoding: 'utf-8' })
+      mockWrite.mockResolvedValue({ bytesWritten: 100 })
 
-      const result = await updateCssFontVariables(mockAppPath, testFont, testFont)
+      const result = await updateCssFontVariables(mockFiles, testFont, testFont)
 
       expect(result.success).toBe(true)
-      const writtenContent = vi.mocked(writeFile).mock.calls[0][1] as string
+      const writtenContent = mockWrite.mock.calls[0][0].content as string
       expect(writtenContent).toContain('--font-sans: "Inter"')
       expect(writtenContent).toContain('--font-heading: "Inter"')
     })
 
     it('should handle file read errors gracefully', async function handleReadError() {
-      vi.mocked(readFile).mockRejectedValue(new Error('ENOENT: no such file or directory'))
+      mockView.mockRejectedValue(new Error('ENOENT: no such file or directory'))
 
-      const result = await updateCssFontVariables(mockAppPath, testFont, testFont)
+      const result = await updateCssFontVariables(mockFiles, testFont, testFont)
 
       expect(result.success).toBe(false)
       expect(result.message).toContain('Failed to update fonts')
@@ -223,10 +225,10 @@ describe('font-theme', function packageTests() {
   }
 }`
 
-      vi.mocked(readFile).mockResolvedValue(mockCss)
-      vi.mocked(writeFile).mockRejectedValue(new Error('EACCES: permission denied'))
+      mockView.mockResolvedValue({ content: mockCss, encoding: 'utf-8' })
+      mockWrite.mockRejectedValue(new Error('EACCES: permission denied'))
 
-      const result = await updateCssFontVariables(mockAppPath, testFont, testFont)
+      const result = await updateCssFontVariables(mockFiles, testFont, testFont)
 
       expect(result.success).toBe(false)
       expect(result.message).toContain('Failed to update fonts')
@@ -245,8 +247,8 @@ describe('font-theme', function packageTests() {
   }
 }`
 
-      vi.mocked(readFile).mockResolvedValue(mockCss)
-      vi.mocked(writeFile).mockResolvedValue()
+      mockView.mockResolvedValue({ content: mockCss, encoding: 'utf-8' })
+      mockWrite.mockResolvedValue({ bytesWritten: 100 })
 
       // Test with serif and sans-serif themes
       const testThemes = ['modern-professional', 'elegant-serif']
@@ -254,12 +256,12 @@ describe('font-theme', function packageTests() {
       for (const themeId of testThemes) {
         vi.clearAllMocks()
         const theme = FONT_THEMES[themeId]
-        const result = await updateCssFontVariables(mockAppPath, theme.headerFont, theme.bodyFont)
+        const result = await updateCssFontVariables(mockFiles, theme.headerFont, theme.bodyFont)
 
         expect(result.success).toBe(true)
         expect(result.message).toContain(theme.headerFont.name)
 
-        const writtenContent = vi.mocked(writeFile).mock.calls[0][1] as string
+        const writtenContent = mockWrite.mock.calls[0][0].content as string
         expect(writtenContent).toContain(theme.headerFont.name)
         expect(writtenContent).toContain(theme.bodyFont.name)
       }
@@ -290,12 +292,12 @@ describe('font-theme', function packageTests() {
   }
 }`
 
-      vi.mocked(readFile).mockResolvedValue(mockCss)
-      vi.mocked(writeFile).mockResolvedValue()
+      mockView.mockResolvedValue({ content: mockCss, encoding: 'utf-8' })
+      mockWrite.mockResolvedValue({ bytesWritten: 100 })
 
-      await updateCssFontVariables(mockAppPath, testFont, testFont)
+      await updateCssFontVariables(mockFiles, testFont, testFont)
 
-      const writtenContent = vi.mocked(writeFile).mock.calls[0][1] as string
+      const writtenContent = mockWrite.mock.calls[0][0].content as string
       expect(writtenContent).toContain('/* Custom styles */')
       expect(writtenContent).toContain('--color-primary: #3b82f6')
       expect(writtenContent).toContain('--spacing-md: 1rem')
@@ -318,12 +320,12 @@ describe('font-theme', function packageTests() {
   }
 }`
 
-      vi.mocked(readFile).mockResolvedValue(mockCss)
-      vi.mocked(writeFile).mockResolvedValue()
+      mockView.mockResolvedValue({ content: mockCss, encoding: 'utf-8' })
+      mockWrite.mockResolvedValue({ bytesWritten: 100 })
 
-      await updateCssFontVariables(mockAppPath, testFont, testFont)
+      await updateCssFontVariables(mockFiles, testFont, testFont)
 
-      const writtenContent = vi.mocked(writeFile).mock.calls[0][1] as string
+      const writtenContent = mockWrite.mock.calls[0][0].content as string
       expect(writtenContent).toContain('--font-sans: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;')
       expect(writtenContent).toContain('--font-heading: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;')
     })
@@ -343,12 +345,12 @@ describe('font-theme', function packageTests() {
   }
 }`
 
-      vi.mocked(readFile).mockResolvedValue(mockCss)
-      vi.mocked(writeFile).mockResolvedValue()
+      mockView.mockResolvedValue({ content: mockCss, encoding: 'utf-8' })
+      mockWrite.mockResolvedValue({ bytesWritten: 100 })
 
-      await updateCssFontVariables(mockAppPath, testFont, testFont)
+      await updateCssFontVariables(mockFiles, testFont, testFont)
 
-      const writtenContent = vi.mocked(writeFile).mock.calls[0][1] as string
+      const writtenContent = mockWrite.mock.calls[0][0].content as string
       expect(writtenContent).toContain('--font-sans: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;')
       expect(writtenContent).toContain('--font-heading: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;')
     })
@@ -373,12 +375,12 @@ describe('font-theme', function packageTests() {
   }
 }`
 
-      vi.mocked(readFile).mockResolvedValue(mockCss)
-      vi.mocked(writeFile).mockResolvedValue()
+      mockView.mockResolvedValue({ content: mockCss, encoding: 'utf-8' })
+      mockWrite.mockResolvedValue({ bytesWritten: 100 })
 
-      await updateCssFontVariables(mockAppPath, testFont, testFont)
+      await updateCssFontVariables(mockFiles, testFont, testFont)
 
-      const writtenContent = vi.mocked(writeFile).mock.calls[0][1] as string
+      const writtenContent = mockWrite.mock.calls[0][0].content as string
       expect(writtenContent).toContain('body {')
       expect(writtenContent).toContain('font-family: var(--font-sans)')
     })
@@ -394,12 +396,12 @@ describe('font-theme', function packageTests() {
   }
 }`
 
-      vi.mocked(readFile).mockResolvedValue(mockCss)
-      vi.mocked(writeFile).mockResolvedValue()
+      mockView.mockResolvedValue({ content: mockCss, encoding: 'utf-8' })
+      mockWrite.mockResolvedValue({ bytesWritten: 100 })
 
-      await updateCssFontVariables(mockAppPath, testFont, testFont)
+      await updateCssFontVariables(mockFiles, testFont, testFont)
 
-      const writtenContent = vi.mocked(writeFile).mock.calls[0][1] as string
+      const writtenContent = mockWrite.mock.calls[0][0].content as string
       expect(writtenContent).toContain('--font-sans: "Inter"')
       expect(writtenContent).toContain('--font-heading: "Inter"')
       expect(writtenContent).toContain('body {')
@@ -425,12 +427,12 @@ describe('font-theme', function packageTests() {
   }
 }`
 
-      vi.mocked(readFile).mockResolvedValue(mockCss)
-      vi.mocked(writeFile).mockResolvedValue()
+      mockView.mockResolvedValue({ content: mockCss, encoding: 'utf-8' })
+      mockWrite.mockResolvedValue({ bytesWritten: 100 })
 
-      await updateCssFontVariables(mockAppPath, testFont, testFont)
+      await updateCssFontVariables(mockFiles, testFont, testFont)
 
-      const writtenContent = vi.mocked(writeFile).mock.calls[0][1] as string
+      const writtenContent = mockWrite.mock.calls[0][0].content as string
       expect(writtenContent).toContain('font-family: var(--font-sans)')
       expect(writtenContent).not.toContain('Arial, Helvetica')
     })
@@ -516,8 +518,8 @@ describe('font-theme', function packageTests() {
   }
 }`
 
-      vi.mocked(readFile).mockResolvedValue(mockCss)
-      vi.mocked(writeFile).mockResolvedValue()
+      mockView.mockResolvedValue({ content: mockCss, encoding: 'utf-8' })
+      mockWrite.mockResolvedValue({ bytesWritten: 100 })
 
       const { updateCssFontVariables } = await import('../font-theme.js')
 
@@ -532,11 +534,11 @@ describe('font-theme', function packageTests() {
         category: 'sans-serif' as const,
       }
 
-      const result = await updateCssFontVariables(mockAppPath, headerFont, bodyFont)
+      const result = await updateCssFontVariables(mockFiles, headerFont, bodyFont)
 
       expect(result.success).toBe(true)
 
-      const writtenContent = vi.mocked(writeFile).mock.calls[0]![1] as string
+      const writtenContent = mockWrite.mock.calls[0][0].content as string
       expect(writtenContent).toContain('--font-heading: "Playfair Display"')
       expect(writtenContent).toContain('--font-sans: "Inter"')
     })
@@ -549,8 +551,8 @@ describe('font-theme', function packageTests() {
   }
 }`
 
-      vi.mocked(readFile).mockResolvedValue(mockCss)
-      vi.mocked(writeFile).mockResolvedValue()
+      mockView.mockResolvedValue({ content: mockCss, encoding: 'utf-8' })
+      mockWrite.mockResolvedValue({ bytesWritten: 100 })
 
       const { updateCssFontVariables } = await import('../font-theme.js')
 
@@ -565,9 +567,9 @@ describe('font-theme', function packageTests() {
         category: 'sans-serif' as const,
       }
 
-      await updateCssFontVariables(mockAppPath, headerFont, bodyFont)
+      await updateCssFontVariables(mockFiles, headerFont, bodyFont)
 
-      const writtenContent = vi.mocked(writeFile).mock.calls[0]![1] as string
+      const writtenContent = mockWrite.mock.calls[0][0].content as string
       expect(writtenContent).toContain('Playfair+Display')
       expect(writtenContent).toContain('Inter')
     })
@@ -580,8 +582,8 @@ describe('font-theme', function packageTests() {
   }
 }`
 
-      vi.mocked(readFile).mockResolvedValue(mockCss)
-      vi.mocked(writeFile).mockResolvedValue()
+      mockView.mockResolvedValue({ content: mockCss, encoding: 'utf-8' })
+      mockWrite.mockResolvedValue({ bytesWritten: 100 })
 
       const { updateCssFontVariables } = await import('../font-theme.js')
 
@@ -591,9 +593,9 @@ describe('font-theme', function packageTests() {
         category: 'sans-serif' as const,
       }
 
-      await updateCssFontVariables(mockAppPath, font, font)
+      await updateCssFontVariables(mockFiles, font, font)
 
-      const writtenContent = vi.mocked(writeFile).mock.calls[0]![1] as string
+      const writtenContent = mockWrite.mock.calls[0][0].content as string
       // Should only have one family parameter
       const familyMatches = writtenContent.match(/family=Inter/g)
       expect(familyMatches).toHaveLength(1)
@@ -614,8 +616,8 @@ describe('font-theme', function packageTests() {
 
     beforeEach(() => {
       vi.clearAllMocks()
-      vi.mocked(readFile).mockResolvedValue(mockCss)
-      vi.mocked(writeFile).mockResolvedValue()
+      mockView.mockResolvedValue({ content: mockCss, encoding: 'utf-8' })
+      mockWrite.mockResolvedValue({ bytesWritten: 100 })
 
       // Mock fetch to return success for all Google Fonts validation requests
       originalFetch = global.fetch
@@ -655,7 +657,7 @@ describe('font-theme', function packageTests() {
 
       expect(result.success).toBe(true)
       expect(result.themeName).toBe('Modern Roastery')
-      const writtenContent = vi.mocked(writeFile).mock.calls[0]![1] as string
+      const writtenContent = mockWrite.mock.calls[0][0].content as string
       expect(writtenContent).toContain('"Merriweather"')
       expect(writtenContent).toContain('"Lato"')
     })
@@ -687,7 +689,7 @@ describe('font-theme', function packageTests() {
       ) as any
 
       expect(result.success).toBe(true)
-      const writtenContent = vi.mocked(writeFile).mock.calls[0]![1] as string
+      const writtenContent = mockWrite.mock.calls[0][0].content as string
       expect(writtenContent).toContain('"Georgia"')
     })
 
@@ -780,8 +782,8 @@ describe('font-theme', function packageTests() {
     beforeEach(() => {
       vi.clearAllMocks()
       clearFontValidationCache() // Prevent cache pollution from other tests
-      vi.mocked(readFile).mockResolvedValue(mockCss)
-      vi.mocked(writeFile).mockResolvedValue()
+      mockView.mockResolvedValue({ content: mockCss, encoding: 'utf-8' })
+      mockWrite.mockResolvedValue({ bytesWritten: 100 })
 
       fetchCallCount = 0
       originalFetch = global.fetch

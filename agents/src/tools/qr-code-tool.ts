@@ -1,11 +1,9 @@
-import fs from 'node:fs';
-import path from 'node:path';
 import QRCode from 'qrcode';
 import { nanoid } from 'nanoid';
 import { AppRepository } from '../database/repositories/AppRepository.js';
 import type { IClientActionService } from '../services/ClientActionService.js';
 import { logger } from '../logging/index.js';
-import { getPersistentPublicDir } from '../utils/persistent-assets.js';
+import { createForWorkspace } from '../workspace/index.js';
 
 export interface QRCodeOptions {
   targetPage?: string;
@@ -27,12 +25,6 @@ export interface QRCodeResult {
  * QR Code generation tool for creating QR codes that link to app pages
  */
 export class QRCodeTool {
-  private appsBaseDir: string;
-
-  constructor(appsBaseDir?: string) {
-    this.appsBaseDir = appsBaseDir || process.env.APPS_BASE_DIR || '/tmp/airo-app-builder';
-  }
-
   /**
    * Generate a QR code for a specific page of the app
    */
@@ -50,7 +42,7 @@ export class QRCodeTool {
 
     try {
       // Get app and preview URL from local SQLite
-      const appRepository = new AppRepository();
+      const appRepository: AppRepository = new AppRepository();
       const app = appRepository.findById(appId);
 
       if (!app) {
@@ -93,7 +85,7 @@ export class QRCodeTool {
       }
 
       // Prefer published URL over preview URL for QR codes
-      const baseUrl = publishedUrl || app.previewUrl;
+      const baseUrl: string | undefined = publishedUrl || app.previewUrl;
       if (!baseUrl) {
         logger.error('qrCode.generate.failure', {
           ...logData,
@@ -106,28 +98,15 @@ export class QRCodeTool {
       }
 
       // Construct target URL
-      const cleanPage = targetPage.startsWith('/') ? targetPage : `/${targetPage}`;
-      const targetUrl = `${baseUrl.replace(/\/+$/, '')}${cleanPage}`;
-
-      // Setup directories using the app's actual path
-      const appPath = app.path;
-      const publicDir = getPersistentPublicDir(appPath);
-      const qrCodesDir = path.join(publicDir, 'qr-codes');
-
-      if (!fs.existsSync(publicDir)) {
-        fs.mkdirSync(publicDir, { recursive: true });
-      }
-      if (!fs.existsSync(qrCodesDir)) {
-        fs.mkdirSync(qrCodesDir, { recursive: true });
-      }
+      const cleanPage: string = targetPage.startsWith('/') ? targetPage : `/${targetPage}`;
+      const targetUrl: string = `${baseUrl.replace(/\/+$/, '')}${cleanPage}`;
 
       // Generate safe filename from page path
-      const pageSlug = cleanPage === '/' ? 'home' : cleanPage.replace(/^\//, '').replace(/\//g, '_');
-      const filename = `qr-${pageSlug}-${nanoid(6)}.png`;
-      const filePath = path.join(qrCodesDir, filename);
+      const pageSlug: string = cleanPage === '/' ? 'home' : cleanPage.replace(/^\//, '').replace(/\//g, '_');
+      const filename: string = `qr-${pageSlug}-${nanoid(6)}.png`;
 
-      // Generate QR code
-      await QRCode.toFile(filePath, targetUrl, {
+      // Generate QR code to buffer
+      const qrBuffer: Buffer = await QRCode.toBuffer(targetUrl, {
         width: size,
         margin: 4,
         color: {
@@ -137,22 +116,37 @@ export class QRCodeTool {
         errorCorrectionLevel: 'M'
       });
 
+      // Upload via workspace files
+      const workspace = createForWorkspace(appId, 'preview');
+      if (!workspace) {
+        logger.error('qrCode.generate.failure', {
+          ...logData,
+          error: 'Workspace not available'
+        });
+        return {
+          success: false,
+          error: 'Workspace not available'
+        };
+      }
+
+      const uploadPath: string = `public/assets/qr-codes/${filename}`;
+      await workspace.files.upload({ path: uploadPath, data: qrBuffer });
+
       // Generate base64 version for chat display
-      const qrImageBuffer = fs.readFileSync(filePath);
-      const base64QRCode = `data:image/png;base64,${qrImageBuffer.toString('base64')}`;
+      const base64QRCode: string = `data:image/png;base64,${qrBuffer.toString('base64')}`;
 
       logger.info('qrCode.generate.success', {
         ...logData,
         resultStats: {
           success: true,
-          filePath,
+          uploadPath,
           targetUrl
         }
       });
 
       return {
         success: true,
-        filepath: filePath,
+        filepath: uploadPath,
         targetUrl,
         size,
         base64: base64QRCode
@@ -174,6 +168,6 @@ export class QRCodeTool {
  * Function interface for QR code generation
  */
 export async function generateQRCode(options: QRCodeOptions): Promise<QRCodeResult> {
-  const tool = new QRCodeTool();
+  const tool: QRCodeTool = new QRCodeTool();
   return tool.generateQRCode(options);
 }

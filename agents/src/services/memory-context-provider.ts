@@ -38,27 +38,13 @@ export class MemoryContextProvider {
     this.schemaRegistry = schemaRegistry;
   }
 
-  /**
-   * Get context data for an app
-   * 
-   * Loads all memory entries marked with includeInContext: true
-   * and returns them as a structured object.
-   * 
-   * @param appPath - Path to the app directory
-   * @param appId - App ID for logging
-   * @param useCache - Whether to use cached data (default: true)
-   * @returns Object mapping keys to values
-   */
   async getContextData(
-    appPath: string,
     appId: string,
     useCache: boolean = true
   ): Promise<Record<string, any>> {
-    const cacheKey = `${appId}:${appPath}`;
-
     if (useCache) {
-      const cached = this.cache.get(cacheKey);
-      
+      const cached = this.cache.get(appId);
+
       if (cached && Date.now() - cached.timestamp < MemoryContextProvider.CACHE_TTL_MS) {
         logger.info('memory.context.cache_hit', {
           appId,
@@ -82,7 +68,7 @@ export class MemoryContextProvider {
       keyCount: keys.length,
     });
 
-    const entries = await this.memoryService.batchGet(appPath, keys);
+    const entries = await this.memoryService.batchGet(appId, keys);
     const data: Record<string, any> = {};
 
     for (const [key, entry] of Object.entries(entries)) {
@@ -95,7 +81,7 @@ export class MemoryContextProvider {
       }
     }
 
-    this.cache.set(cacheKey, {
+    this.cache.set(appId, {
       data,
       timestamp: Date.now(),
     });
@@ -110,23 +96,11 @@ export class MemoryContextProvider {
     return data;
   }
 
-  /**
-   * Get formatted context string for agent
-   * 
-   * Converts context data into a human-readable markdown string
-   * suitable for inclusion in agent prompts.
-   * 
-   * @param appPath - Path to the app directory
-   * @param appId - App ID for logging
-   * @param useCache - Whether to use cached data (default: true)
-   * @returns Formatted markdown string
-   */
   async getContextString(
-    appPath: string,
     appId: string,
     useCache: boolean = true
   ): Promise<string> {
-    const data = await this.getContextData(appPath, appId, useCache);
+    const data = await this.getContextData(appId, useCache);
 
     if (Object.keys(data).length === 0) {
       return '';
@@ -156,15 +130,8 @@ export class MemoryContextProvider {
     return lines.join('\n').trim();
   }
 
-  /**
-   * Invalidate cache for an app
-   * 
-   * @param appId - App ID
-   * @param appPath - Path to the app directory
-   */
-  invalidateCache(appId: string, appPath: string): void {
-    const cacheKey = `${appId}:${appPath}`;
-    const existed = this.cache.delete(cacheKey);
+  invalidateCache(appId: string): void {
+    const existed = this.cache.delete(appId);
 
     if (existed) {
       logger.info('memory.context.cache_invalidated', {

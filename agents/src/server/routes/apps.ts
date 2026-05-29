@@ -23,7 +23,7 @@ import { AppRepository } from '../../database/index.js';
 import type { CreateAppRequest, UpdateAppRequest } from '../../database/index.js';
 import { DirectoryListingTool } from '../../tools/directory-listing.js';
 import { createForWorkspace } from '../../workspace/index.js';
-import { FileEditTool } from '../../tools/file-edit.js';
+import { DevSupervisorError } from '../../services/DevSupervisorClient.js';
 import { ASTStyleEditor } from '../../tools/ast-style-editor.js';
 import { ASTTextEditor } from '../../tools/ast-text-editor.js';
 import { TextFixAgent } from '../../agents/text-fix-agent.js';
@@ -43,7 +43,6 @@ const router: IRouter = Router();
 
 const appRepo = new AppRepository();
 const directoryTool = new DirectoryListingTool();
-const fileEditTool = new FileEditTool();
 const astStyleEditor = new ASTStyleEditor();
 const astTextEditor = new ASTTextEditor();
 
@@ -632,25 +631,25 @@ router.post('/:id/files/write', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'File path and content are required' });
     }
 
-    const app = appRepo.findById(id);
-    if (!app) {
-      return res.status(404).json({ error: 'App not found' });
+    const workspace = createForWorkspace(id, 'preview');
+    if (!workspace) {
+      return res.status(404).json({ error: 'Workspace not available' });
     }
 
-    const result = await fileEditTool.editFile(app.path, {
-      path: filePath,
-      content: content,
-      mode: mode || 'rewrite',
-      createDirs: true
-    }, {
-      appId: id
-    });
-
-    if (!result.success) {
-      return res.status(400).json({ error: result.error });
+    if (mode === 'create') {
+      try {
+        const writeResult = await workspace.files.write({ path: filePath, content, createOnly: true });
+        return res.json({ success: true, path: filePath, mode: 'create', bytesWritten: writeResult.bytesWritten });
+      } catch (createErr) {
+        if (createErr instanceof DevSupervisorError && createErr.code === 'file_exists') {
+          return res.status(409).json({ error: `File already exists: ${filePath}` });
+        }
+        throw createErr;
+      }
     }
 
-    return res.json(result);
+    const writeResult = await workspace.files.write({ path: filePath, content });
+    return res.json({ success: true, path: filePath, mode: mode || 'rewrite', bytesWritten: writeResult.bytesWritten });
   } catch (error) {
     const contextLogger = req.params.id ? log.forApp(req.params.id) : logger;
     log.error(contextLogger, 'route.apps.files.write.error', error as Error, {});
@@ -674,24 +673,34 @@ router.post('/:id/files/edit', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'File path and edits array are required' });
     }
 
-    const app = appRepo.findById(id);
-    if (!app) {
-      return res.status(404).json({ error: 'App not found' });
+    const workspace = createForWorkspace(id, 'preview');
+    if (!workspace) {
+      return res.status(404).json({ error: 'Workspace not available' });
     }
 
-    const result = await fileEditTool.editFile(app.path, {
+    const results: Array<{ old: string; applied: number; error?: string }> = [];
+    for (const edit of edits) {
+      try {
+        const editResult = await workspace.files.edit({
+          path: filePath,
+          oldString: edit.old,
+          newString: edit.new,
+        });
+        results.push({ old: edit.old, applied: editResult.applied });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        results.push({ old: edit.old, applied: 0, error: msg });
+      }
+    }
+
+    const allSucceeded = results.every(r => r.applied > 0);
+    return res.json({
+      success: allSucceeded,
       path: filePath,
       mode: 'edit',
-      edits: edits
-    }, {
-      appId: id
+      edits: results,
+      ...(allSucceeded ? {} : { error: 'Some edits failed' }),
     });
-
-    if (!result.success) {
-      return res.status(400).json({ error: result.error });
-    }
-
-    return res.json(result);
   } catch (error) {
     const contextLogger = req.params.id ? log.forApp(req.params.id) : logger;
     log.error(contextLogger, 'route.apps.files.edit.error', error as Error, {});

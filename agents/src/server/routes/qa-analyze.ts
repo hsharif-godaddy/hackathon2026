@@ -9,6 +9,7 @@ import { z } from 'zod';
 
 import { AppRepository } from '../../database/repositories/AppRepository.js';
 import { logger } from '../../logging/index.js';
+import { createForWorkspace } from '../../workspace/index.js';
 import { qaAnalyzeAITool, markIssuesAsFixed } from '../../tools/ai-lib-tools/qa-analyze.js';
 import type { AuthenticatedRequest } from '../middleware/jwt-auth.js';
 import {requirePermission} from "../middleware/index.js";
@@ -93,14 +94,14 @@ router.post('/qa-analyze/mark-fixed', async (req: Request, res: Response) => {
   try {
     const { appId, runId, issueIds } = markFixedSchema.parse(req.body);
 
-    logger.info('qa-analyze.mark-fixed.start', { appId, runId, issueCount: issueIds.length });
-
-    const app = await appRepo.findById(appId);
-    if (!app) {
+    const workspace = createForWorkspace(appId, 'preview');
+    if (!workspace) {
       return res.status(404).json({ error: `App '${appId}' not found` });
     }
 
-    await markIssuesAsFixed(app.path, runId, issueIds);
+    logger.info('qa-analyze.mark-fixed.start', { appId, runId, issueCount: issueIds.length });
+
+    await markIssuesAsFixed(appId, runId, issueIds);
 
     logger.info('qa-analyze.mark-fixed.complete', { appId, runId, fixedCount: issueIds.length });
 

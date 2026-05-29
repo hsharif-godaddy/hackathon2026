@@ -156,6 +156,42 @@ func TestWorkspaceFilesWrite_CreateFile(t *testing.T) {
 	}
 }
 
+func TestWorkspaceFilesWrite_CreateOnly_Success(t *testing.T) {
+	server, dir := newTestServerWithDir(t)
+
+	w := postJSON(t, server.handleWorkspaceFilesWrite, map[string]any{
+		"path": "new.txt", "content": "hello", "createOnly": true,
+	})
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	data, _ := os.ReadFile(filepath.Join(dir, "new.txt"))
+	if string(data) != "hello" {
+		t.Errorf("expected 'hello', got %q", string(data))
+	}
+}
+
+func TestWorkspaceFilesWrite_CreateOnly_Conflict(t *testing.T) {
+	server, dir := newTestServerWithDir(t)
+	os.WriteFile(filepath.Join(dir, "existing.txt"), []byte("old"), 0o644)
+
+	w := postJSON(t, server.handleWorkspaceFilesWrite, map[string]any{
+		"path": "existing.txt", "content": "new", "createOnly": true,
+	})
+
+	if w.Code != http.StatusConflict {
+		t.Fatalf("expected 409, got %d: %s", w.Code, w.Body.String())
+	}
+
+	// Original content preserved
+	data, _ := os.ReadFile(filepath.Join(dir, "existing.txt"))
+	if string(data) != "old" {
+		t.Errorf("file was overwritten: %q", string(data))
+	}
+}
+
 func TestWorkspaceFilesWrite_Base64(t *testing.T) {
 	server, dir := newTestServerWithDir(t)
 	binary := []byte{0x00, 0x01, 0x02, 0x03}
@@ -275,6 +311,108 @@ func TestWorkspaceFilesEdit_PreservesPermissions(t *testing.T) {
 
 	postJSON(t, server.handleWorkspaceFilesEdit, map[string]any{
 		"path": "script.sh", "oldString": "echo old", "newString": "echo new",
+	})
+
+	info, _ := os.Stat(path)
+	if info.Mode().Perm() != 0o755 {
+		t.Errorf("expected 0755, got %04o", info.Mode().Perm())
+	}
+}
+
+// --- Insert tests ---
+
+func TestWorkspaceFilesInsert_Middle(t *testing.T) {
+	server, dir := newTestServerWithDir(t)
+	os.WriteFile(filepath.Join(dir, "app.ts"), []byte("line1\nline2\nline3\n"), 0o644)
+
+	w := postJSON(t, server.handleWorkspaceFilesInsert, map[string]any{
+		"path": "app.ts", "line": 2, "content": "inserted",
+	})
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp wsFilesInsertResponse
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	if resp.Lines != 5 {
+		t.Errorf("expected 5 lines, got %d", resp.Lines)
+	}
+
+	data, _ := os.ReadFile(filepath.Join(dir, "app.ts"))
+	if string(data) != "line1\ninserted\nline2\nline3\n" {
+		t.Errorf("unexpected content: %q", string(data))
+	}
+}
+
+func TestWorkspaceFilesInsert_Prepend(t *testing.T) {
+	server, dir := newTestServerWithDir(t)
+	os.WriteFile(filepath.Join(dir, "app.ts"), []byte("line1\nline2\n"), 0o644)
+
+	w := postJSON(t, server.handleWorkspaceFilesInsert, map[string]any{
+		"path": "app.ts", "line": 0, "content": "header",
+	})
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	data, _ := os.ReadFile(filepath.Join(dir, "app.ts"))
+	if string(data) != "header\nline1\nline2\n" {
+		t.Errorf("unexpected content: %q", string(data))
+	}
+}
+
+func TestWorkspaceFilesInsert_Append(t *testing.T) {
+	server, dir := newTestServerWithDir(t)
+	os.WriteFile(filepath.Join(dir, "app.ts"), []byte("line1\nline2\n"), 0o644)
+
+	w := postJSON(t, server.handleWorkspaceFilesInsert, map[string]any{
+		"path": "app.ts", "line": 999, "content": "footer",
+	})
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	data, _ := os.ReadFile(filepath.Join(dir, "app.ts"))
+	if string(data) != "line1\nline2\nfooter\n" {
+		t.Errorf("unexpected content: %q", string(data))
+	}
+}
+
+func TestWorkspaceFilesInsert_FileTooLarge(t *testing.T) {
+	server, dir := newTestServerWithDir(t)
+	f, _ := os.Create(filepath.Join(dir, "big.txt"))
+	f.Truncate(2 * 1024 * 1024) // 2MB > 1MB limit
+	f.Close()
+
+	w := postJSON(t, server.handleWorkspaceFilesInsert, map[string]any{
+		"path": "big.txt", "line": 1, "content": "x",
+	})
+
+	if w.Code != http.StatusRequestEntityTooLarge {
+		t.Errorf("expected 413, got %d", w.Code)
+	}
+}
+
+func TestWorkspaceFilesInsert_NotFound(t *testing.T) {
+	server, _ := newTestServerWithDir(t)
+	w := postJSON(t, server.handleWorkspaceFilesInsert, map[string]any{
+		"path": "nope.txt", "line": 1, "content": "x",
+	})
+	if w.Code != http.StatusNotFound {
+		t.Errorf("expected 404, got %d", w.Code)
+	}
+}
+
+func TestWorkspaceFilesInsert_PreservesPermissions(t *testing.T) {
+	server, dir := newTestServerWithDir(t)
+	path := filepath.Join(dir, "script.sh")
+	os.WriteFile(path, []byte("#!/bin/bash\necho hello"), 0o755)
+
+	postJSON(t, server.handleWorkspaceFilesInsert, map[string]any{
+		"path": "script.sh", "line": 1, "content": "# comment",
 	})
 
 	info, _ := os.Stat(path)

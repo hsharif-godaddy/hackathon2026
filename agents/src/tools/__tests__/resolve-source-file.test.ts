@@ -1,13 +1,26 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mkdir, rm } from 'fs/promises'
 import { existsSync } from 'fs'
-import { join } from 'path'
-import { resolveSourceFile } from '../file-edit.js'
+import { resolveSourceFile } from '../file-edit-utils.js'
 import { fileUploadService } from '../../services/FileUploadService.js'
+import type { WorkspaceFiles } from '../../workspace/files.js'
 
 describe('resolveSourceFile - exact match only', () => {
   const testAppId = 'test-app-exact-match'
   const testProjectDir = `/tmp/test-project-resolve/${testAppId}`
+
+  const mockFiles: WorkspaceFiles = {
+    view: vi.fn(),
+    tree: vi.fn(),
+    search: vi.fn(),
+    write: vi.fn(),
+    edit: vi.fn(),
+    insert: vi.fn(),
+    delete: vi.fn(),
+    move: vi.fn(),
+    upload: vi.fn().mockResolvedValue(undefined),
+    download: vi.fn(),
+  };
 
   async function seedUpload(originalName: string, content: string | Buffer): Promise<string> {
     const file = {
@@ -21,6 +34,7 @@ describe('resolveSourceFile - exact match only', () => {
   }
 
   beforeEach(async () => {
+    vi.clearAllMocks()
     for (const dir of [testProjectDir]) {
       if (existsSync(dir)) await rm(dir, { recursive: true, force: true })
       await mkdir(dir, { recursive: true })
@@ -47,10 +61,14 @@ describe('resolveSourceFile - exact match only', () => {
       testAppId,
       'public/assets/logo.png',
       '',
-      join(testProjectDir, 'public/assets/logo.png')
+      mockFiles
     )
     expect(result).not.toBeNull()
     expect(result!.binaryCopied).toBe(true)
+    expect(mockFiles.upload).toHaveBeenCalledWith({
+      path: 'public/assets/logo.png',
+      data: expect.any(Buffer),
+    })
   })
 
   it('should NOT resolve when filenames differ only by name (same extension)', async () => {
@@ -59,7 +77,7 @@ describe('resolveSourceFile - exact match only', () => {
       testAppId,
       'public/assets/banner.jpg',
       '',
-      join(testProjectDir, 'public/assets/banner.jpg')
+      mockFiles
     )
     expect(result).toBeNull()
   })
@@ -69,7 +87,8 @@ describe('resolveSourceFile - exact match only', () => {
     const result = await resolveSourceFile(
       testAppId,
       'public/assets/logo.png',
-      'some content'
+      'some content',
+      mockFiles
     )
     expect(result).toBeNull()
   })
@@ -78,7 +97,8 @@ describe('resolveSourceFile - exact match only', () => {
     const result = await resolveSourceFile(
       testAppId,
       'public/assets/logo.png',
-      ''
+      '',
+      mockFiles
     )
     expect(result).toBeNull()
   })
@@ -88,7 +108,8 @@ describe('resolveSourceFile - exact match only', () => {
     const result = await resolveSourceFile(
       testAppId,
       'public/data/data.json',
-      ''
+      '',
+      mockFiles
     )
     expect(result).not.toBeNull()
     expect(result!.content).toBe('{"key": "value"}')
@@ -104,7 +125,7 @@ describe('resolveSourceFile - exact match only', () => {
       testAppId,
       `public/assets/${storedFilename}`,
       '',
-      join(testProjectDir, `public/assets/${storedFilename}`)
+      mockFiles
     )
     expect(result).not.toBeNull()
   })
@@ -114,7 +135,7 @@ describe('resolveSourceFile - exact match only', () => {
     await new Promise(r => setTimeout(r, 50))
     await seedUpload('data.json', '{"version": "new"}')
 
-    const result = await resolveSourceFile(testAppId, 'public/data/data.json', '')
+    const result = await resolveSourceFile(testAppId, 'public/data/data.json', '', mockFiles)
     expect(result).not.toBeNull()
     expect(result!.content).toBe('{"version": "new"}')
   })

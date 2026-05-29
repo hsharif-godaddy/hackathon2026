@@ -3,7 +3,9 @@ import { z } from 'zod'
 import { AppRepository } from '../../database/repositories/AppRepository.js'
 import { getKvMemoryStore } from '../../memory/adapters/index.js'
 import { customerIdFromContext, workspaceScopeFromAppId } from '../../memory/interfaces/scope.js'
-import { FileEditTool } from '../file-edit.js'
+import { DevSupervisorError } from '../../services/DevSupervisorClient.js'
+import { createForWorkspace } from '../../workspace/index.js'
+import { GitTool } from '../git-tool.js'
 import { Logger } from '../../logging/index.js'
 
 const logger = Logger.create({ component: 'set-project-name-tool' })
@@ -107,38 +109,47 @@ export const setProjectNameAITool: Tool = createTool(
       if (existingApp.path) {
         try {
           const defaultTitle = '<title>App Template</title>'
-          // Escape for JSX text content (HTML entities + JSX `{`/`}` delimiters)
           const safeTitle = escapeJsxText(input.name)
           const newTitle = `<title>${safeTitle}</title>`
 
-          const fileEditTool = new FileEditTool()
-          const result = await fileEditTool.editFile(existingApp.path, {
-            path: 'src/layouts/RootLayout.tsx',
-            mode: 'edit',
-            edits: [{ old: defaultTitle, new: newTitle }],
-            autoCommit: true,
-            commitMessage: `Set page title to "${input.name}"`
-          }, { appId })
+          const workspace = createForWorkspace(appId, 'preview')
+          if (workspace) {
+            const editResult = await workspace.files.edit({
+              path: 'src/layouts/RootLayout.tsx',
+              oldString: defaultTitle,
+              newString: newTitle,
+            })
 
-          if (result.success) {
-            logger.info('setProjectName.titleUpdated', { appId, title: input.name })
-          } else if (
-            result.error?.includes('Search text not found') ||
-            result.error?.includes('No changes were applied')
-          ) {
-            // Title was already customized - the default title string wasn't found
-            logger.info('setProjectName.titleSkipped', { appId, reason: 'already-customized' })
+            if (editResult.applied > 0) {
+              const gitTool = new GitTool(workspace.tasks)
+              await gitTool.executeGitOperation(existingApp.path, {
+                operation: 'add',
+                files: ['src/layouts/RootLayout.tsx'],
+              })
+              await gitTool.executeGitOperation(existingApp.path, {
+                operation: 'commit',
+                message: `Set page title to "${input.name}"`,
+              })
+              logger.info('setProjectName.titleUpdated', { appId, title: input.name })
+            } else {
+              logger.info('setProjectName.titleSkipped', { appId, reason: 'already-customized' })
+            }
           } else {
             logger.warn('setProjectName.titleUpdateFailed', {
               appId,
-              error: result.error || 'Unknown error',
+              error: 'Could not connect to workspace',
             })
           }
         } catch (err) {
-          logger.warn('setProjectName.titleUpdateFailed', {
-            appId,
-            error: err instanceof Error ? err.message : String(err),
-          })
+          if (err instanceof DevSupervisorError && (err.code === 'no_match' || err.code === 'not_found')) {
+            logger.info('setProjectName.titleSkipped', { appId, reason: 'already-customized' })
+          } else {
+            const errMsg = err instanceof Error ? err.message : String(err)
+            logger.warn('setProjectName.titleUpdateFailed', {
+              appId,
+              error: errMsg,
+            })
+          }
         }
       }
 

@@ -245,6 +245,7 @@ func (s *Server) setupRoutes() {
 	wsFilesRouter.HandleFunc("/search", s.handleWorkspaceFilesSearch).Methods("POST")
 	wsFilesRouter.HandleFunc("/write", s.handleWorkspaceFilesWrite).Methods("POST")
 	wsFilesRouter.HandleFunc("/edit", s.handleWorkspaceFilesEdit).Methods("POST")
+	wsFilesRouter.HandleFunc("/insert", s.handleWorkspaceFilesInsert).Methods("POST")
 	wsFilesRouter.HandleFunc("/delete", s.handleWorkspaceFilesDelete).Methods("POST")
 	wsFilesRouter.HandleFunc("/move", s.handleWorkspaceFilesMove).Methods("POST")
 

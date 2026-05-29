@@ -3,13 +3,14 @@ import { llmMetadataContext, type LitellmMetadata } from '@airo/ai-common'
 import { buildLitellmMetadataFromContext, LlmCallSource, type ExecutionContext } from '@airo/ai-grants'
 import { extractBudgetContext, withBudgetFields, type ToolBudgetContext } from './tool-budget-context.js'
 import path from 'node:path'
-import { readFile, writeFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import { z } from 'zod'
 
 import { AppRepository } from '../../database/repositories/AppRepository.js'
 import { getKvMemoryStore } from '../../memory/adapters/index.js'
 import { customerIdFromContext, workspaceScopeFromAppId } from '../../memory/interfaces/scope.js'
+import { createForWorkspace } from '../../workspace/index.js'
+import type { WorkspaceFiles } from '../../workspace/files.js'
 
 import { appPlanTool } from '../app-plan-tool.js'
 import { getAgentModelWithName } from '../../utils/model-selection.js'
@@ -658,14 +659,15 @@ async function persistFontThemeToPlan(
 }
 
 export async function updateCssFontVariables(
-  appPath: string,
+  files: WorkspaceFiles,
   headerFont: { name: string; weights: string[]; category: FontCategory },
   bodyFont: { name: string; weights: string[]; category: FontCategory }
 ): Promise<{ success: boolean; message: string }> {
-  const cssPath = `${appPath}/src/styles/globals.css`
+  const cssPath = 'src/styles/globals.css'
 
   try {
-    let cssContent = await readFile(cssPath, 'utf8')
+    const viewResult = await files.view({ path: cssPath })
+    let cssContent = viewResult.content
 
     // Remove ALL existing Google Fonts imports to avoid stacking
     cssContent = cssContent.replace(/@import url\('https:\/\/fonts\.googleapis\.com\/css2\?[^']+'\);\s*/g, '')
@@ -778,7 +780,7 @@ export async function updateCssFontVariables(
       }
     }
 
-    await writeFile(cssPath, cssContent, 'utf8')
+    await files.write({ path: cssPath, content: cssContent })
 
     const fontDescription = headerFont.name === bodyFont.name
       ? headerFont.name
@@ -935,13 +937,13 @@ MODE SELECTION GUIDE:
 
         const selectedFont = llmFonts[0]!
 
-        const app = await appRepo.findById(appId)
-        if (!app) {
-          throw new Error(`App not found: ${appId}`)
+        const setWorkspace = createForWorkspace(appId, 'preview')
+        if (!setWorkspace) {
+          throw new Error('Workspace not available for this app')
         }
 
         // Apply the font pairing
-        const result = await updateCssFontVariables(app.path, selectedFont.headerFont, selectedFont.bodyFont)
+        const result = await updateCssFontVariables(setWorkspace.files, selectedFont.headerFont, selectedFont.bodyFont)
 
         if (!result.success) {
           throw new Error(result.message)
@@ -1082,9 +1084,9 @@ MODE SELECTION GUIDE:
         throw new Error('App ID is required for apply mode')
       }
 
-      const app = appRepo.findById(appId)
-      if (!app) {
-        throw new Error(`App '${appId}' not found`)
+      const applyWorkspace = createForWorkspace(appId, 'preview')
+      if (!applyWorkspace) {
+        throw new Error('Workspace not available for this app')
       }
 
       let headerFont: FontInfo
@@ -1282,7 +1284,7 @@ MODE SELECTION GUIDE:
         })
       }
 
-      const result = await updateCssFontVariables(app.path, headerFont, bodyFont)
+      const result = await updateCssFontVariables(applyWorkspace.files, headerFont, bodyFont)
 
       if (!result.success) {
         throw new Error(result.message)

@@ -38,7 +38,7 @@ vi.mock('../../../logging/index.js', () => {
 // Stub remaining imports that apps.ts pulls in (not under test)
 vi.mock('../../../tools/directory-listing.js', () => ({ DirectoryListingTool: vi.fn() }));
 vi.mock('../../../tools/read-file.js', () => ({ ReadFileTool: vi.fn() }));
-vi.mock('../../../tools/file-edit.js', () => ({ FileEditTool: vi.fn() }));
+vi.mock('../../../tools/file-edit.js', () => ({}));
 vi.mock('../../../tools/ast-style-editor.js', () => ({ ASTStyleEditor: vi.fn() }));
 vi.mock('../../../tools/ast-text-editor.js', () => ({ ASTTextEditor: vi.fn() }));
 vi.mock('../../../tools/server-management-tool.js', () => ({ ServerManagementTool: vi.fn() }));

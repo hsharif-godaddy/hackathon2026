@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { DevSupervisorError } from '../DevSupervisorClient.js';
 
 // Mock all external dependencies before importing the module under test
 vi.mock('../../database/repositories/AppRepository.js');
@@ -167,7 +168,7 @@ describe('AppContextManager publish state', () => {
     });
 
     it('should return null when view throws (e.g. file not found)', async () => {
-      mockView.mockRejectedValue(new Error('HTTP 404: not_found'));
+      mockView.mockRejectedValue(new DevSupervisorError('not_found', 404, 'file not found'));
 
       const context = { metadata: { appId: 'app-123' } } as any;
       const result = await (manager as any).getPackageInfo(context);

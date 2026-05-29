@@ -7,12 +7,17 @@ const createExecutionOptions = (appId?: string) => ({
   }
 })
 
-// Mock FileEditTool
-const mockEditFile = vi.fn()
-vi.mock('../../file-edit.js', () => ({
-  FileEditTool: vi.fn(() => ({
-    editFile: mockEditFile
-  }))
+// Mock workspace
+const mockFilesEdit = vi.fn()
+const mockExecuteGitOperation = vi.fn()
+const mockCreateForWorkspace = vi.fn()
+vi.mock('../../../workspace/index.js', () => ({
+  createForWorkspace: (...args: unknown[]) => mockCreateForWorkspace(...args),
+}))
+vi.mock('../../git-tool.js', () => ({
+  GitTool: vi.fn(() => ({
+    executeGitOperation: mockExecuteGitOperation,
+  })),
 }))
 
 // Mock database connection
@@ -66,6 +71,13 @@ describe('set-project-name', function setProjectNameTests() {
     // Default: memory get returns empty, set succeeds
     mockMemoryGet.mockResolvedValue({ success: true, exists: false, value: null })
     mockMemorySet.mockResolvedValue({ success: true })
+    // Default: workspace available, edit succeeds, git succeeds
+    mockCreateForWorkspace.mockReturnValue({
+      files: { edit: mockFilesEdit },
+      tasks: {},
+    })
+    mockFilesEdit.mockResolvedValue({ applied: 1 })
+    mockExecuteGitOperation.mockResolvedValue({ success: true })
   })
 
   describe('RootLayout.tsx title update', function titleUpdateTests() {
@@ -80,7 +92,6 @@ describe('set-project-name', function setProjectNameTests() {
         path: appPath
       })
       mockUpdate.mockReturnValue({ id: appId, name: newName })
-      mockEditFile.mockResolvedValue({ success: true, path: 'src/layouts/RootLayout.tsx', mode: 'edit' })
 
       const result = await setProjectNameAITool.execute(
         { name: newName },
@@ -89,17 +100,20 @@ describe('set-project-name', function setProjectNameTests() {
 
       expect(result).toContain('Project Name Set')
       expect(result).toContain(newName)
-      expect(mockEditFile).toHaveBeenCalledWith(
-        appPath,
-        {
-          path: 'src/layouts/RootLayout.tsx',
-          mode: 'edit',
-          edits: [{ old: '<title>App Template</title>', new: `<title>${newName}</title>` }],
-          autoCommit: true,
-          commitMessage: `Set page title to "${newName}"`
-        },
-        { appId }
-      )
+      expect(mockCreateForWorkspace).toHaveBeenCalledWith(appId, 'preview')
+      expect(mockFilesEdit).toHaveBeenCalledWith({
+        path: 'src/layouts/RootLayout.tsx',
+        oldString: '<title>App Template</title>',
+        newString: `<title>${newName}</title>`,
+      })
+      expect(mockExecuteGitOperation).toHaveBeenCalledWith(appPath, {
+        operation: 'add',
+        files: ['src/layouts/RootLayout.tsx'],
+      })
+      expect(mockExecuteGitOperation).toHaveBeenCalledWith(appPath, {
+        operation: 'commit',
+        message: `Set page title to "${newName}"`,
+      })
     })
 
     it('should not update RootLayout.tsx title when already customized', async function skipCustomizedTitle() {
@@ -113,14 +127,7 @@ describe('set-project-name', function setProjectNameTests() {
         path: appPath
       })
       mockUpdate.mockReturnValue({ id: appId, name: newName })
-      // FileEditTool returns this exact error when search string not found
-      // (see file-edit.ts:1220/1246)
-      mockEditFile.mockResolvedValue({
-        success: false,
-        path: 'src/layouts/RootLayout.tsx',
-        mode: 'edit',
-        error: 'Search text not found'
-      })
+      mockFilesEdit.mockResolvedValue({ applied: 0 })
 
       const result = await setProjectNameAITool.execute(
         { name: newName },
@@ -128,10 +135,11 @@ describe('set-project-name', function setProjectNameTests() {
       )
 
       expect(result).toContain('Project Name Set')
-      expect(mockEditFile).toHaveBeenCalled()
+      expect(mockFilesEdit).toHaveBeenCalled()
+      expect(mockExecuteGitOperation).not.toHaveBeenCalled()
     })
 
-    it('should continue successfully if FileEditTool fails', async function handleEditError() {
+    it('should continue successfully if workspace edit throws', async function handleEditError() {
       const appId = 'test-app-3'
       const newName = 'My App'
       const appPath = '/tmp/apps/test-app-3/app'
@@ -142,7 +150,7 @@ describe('set-project-name', function setProjectNameTests() {
         path: appPath
       })
       mockUpdate.mockReturnValue({ id: appId, name: newName })
-      mockEditFile.mockRejectedValue(new Error('File not found'))
+      mockFilesEdit.mockRejectedValue(new Error('File not found'))
 
       const result = await setProjectNameAITool.execute(
         { name: newName },
@@ -171,7 +179,7 @@ describe('set-project-name', function setProjectNameTests() {
       )
 
       expect(result).toContain('Project Name Set')
-      expect(mockEditFile).not.toHaveBeenCalled()
+      expect(mockCreateForWorkspace).not.toHaveBeenCalled()
     })
 
     it('should escape HTML and JSX delimiters in project name', async function escapeJsxTextChars() {
@@ -187,25 +195,17 @@ describe('set-project-name', function setProjectNameTests() {
         path: appPath
       })
       mockUpdate.mockReturnValue({ id: appId, name: maliciousName })
-      mockEditFile.mockResolvedValue({ success: true, path: 'src/layouts/RootLayout.tsx', mode: 'edit' })
 
       await setProjectNameAITool.execute(
         { name: maliciousName },
         createExecutionOptions(appId)
       )
 
-      // Verify HTML special characters are escaped in the edit
-      expect(mockEditFile).toHaveBeenCalledWith(
-        appPath,
-        {
-          path: 'src/layouts/RootLayout.tsx',
-          mode: 'edit',
-          edits: [{ old: '<title>App Template</title>', new: `<title>${escapedName}</title>` }],
-          autoCommit: true,
-          commitMessage: `Set page title to "${maliciousName}"`
-        },
-        { appId }
-      )
+      expect(mockFilesEdit).toHaveBeenCalledWith({
+        path: 'src/layouts/RootLayout.tsx',
+        oldString: '<title>App Template</title>',
+        newString: `<title>${escapedName}</title>`,
+      })
     })
   })
 

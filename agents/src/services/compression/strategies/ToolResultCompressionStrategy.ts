@@ -6,7 +6,7 @@ import {
   isAIToolMessage,
   isOpenAIMessage,
 } from '../../ConversationHistoryLoader.js';
-import { EDIT_SUCCESS_PREFIXES } from '../../../tools/text-editor-handlers.js';
+import { EDIT_SUCCESS_PREFIXES } from '../../../tools/text-editor-workspace.js';
 
 interface EditRecord {
   filePath: string;

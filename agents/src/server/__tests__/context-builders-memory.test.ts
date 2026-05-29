@@ -57,7 +57,6 @@ import { buildMemoryContextMessage } from '../context-builders.js';
 
 describe('buildMemoryContextMessage', () => {
   beforeEach(() => {
-    mockFindById.mockReset();
     mockGetContextString.mockReset();
   });
   afterEach(() => {
@@ -67,37 +66,22 @@ describe('buildMemoryContextMessage', () => {
   it('returns null when appId is empty', async () => {
     const result = await buildMemoryContextMessage({ appId: '' });
     expect(result).toBeNull();
-    expect(mockFindById).not.toHaveBeenCalled();
-  });
-
-  it('returns null when app is not found', async () => {
-    mockFindById.mockReturnValueOnce(undefined);
-    const result = await buildMemoryContextMessage({ appId: 'app-1' });
-    expect(result).toBeNull();
-  });
-
-  it('returns null when app has no path', async () => {
-    mockFindById.mockReturnValueOnce({ id: 'app-1', name: 'Test' });
-    const result = await buildMemoryContextMessage({ appId: 'app-1' });
-    expect(result).toBeNull();
+    expect(mockGetContextString).not.toHaveBeenCalled();
   });
 
   it('returns null when contextString is empty', async () => {
-    mockFindById.mockReturnValueOnce({ id: 'app-1', path: '/tmp/app' });
     mockGetContextString.mockResolvedValueOnce('');
     const result = await buildMemoryContextMessage({ appId: 'app-1' });
     expect(result).toBeNull();
   });
 
   it('returns null when contextString is null', async () => {
-    mockFindById.mockReturnValueOnce({ id: 'app-1', path: '/tmp/app' });
     mockGetContextString.mockResolvedValueOnce(null);
     const result = await buildMemoryContextMessage({ appId: 'app-1' });
     expect(result).toBeNull();
   });
 
   it('returns context message when memory entries exist', async () => {
-    mockFindById.mockReturnValueOnce({ id: 'app-1', path: '/tmp/app' });
     const contextContent = '## Memory\n\napp.title: My App\napp.description: A test app';
     mockGetContextString.mockResolvedValueOnce(contextContent);
 
@@ -111,7 +95,6 @@ describe('buildMemoryContextMessage', () => {
   });
 
   it('returns null and logs warning when provider throws', async () => {
-    mockFindById.mockReturnValueOnce({ id: 'app-1', path: '/tmp/app' });
     mockGetContextString.mockRejectedValueOnce(new Error('DB connection failed'));
 
     const result = await buildMemoryContextMessage({ appId: 'app-1' });

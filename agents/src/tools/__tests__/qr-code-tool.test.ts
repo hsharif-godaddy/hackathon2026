@@ -1,9 +1,15 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import fs from 'node:fs'
-import path from 'node:path'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { generateQRCode, QRCodeTool } from '../qr-code-tool.js'
-import { logger } from '../../logging/index.js'
 import { AppRepository } from '../../database/repositories/AppRepository.js'
+
+const mockUpload = vi.fn().mockResolvedValue({ bytesWritten: 1024 })
+
+// Mock workspace
+vi.mock('../../workspace/index.js', () => ({
+  createForWorkspace: vi.fn().mockReturnValue({
+    files: { upload: (...args: unknown[]) => mockUpload(...args) }
+  })
+}))
 
 // Mock AppRepository
 vi.mock('../../database/repositories/AppRepository.js', () => ({
@@ -18,22 +24,9 @@ vi.mock('../../database/repositories/AppRepository.js', () => ({
 
 describe('qr-code-tool', function packageTests() {
   const testAppId = 'test-app-123'
-  const testAppsDir = '/tmp/test-qr-codes'
 
   beforeEach(() => {
-    // Create test directory
-    if (!fs.existsSync(testAppsDir)) {
-      fs.mkdirSync(testAppsDir, { recursive: true })
-    }
-  })
-
-  afterEach(() => {
-    // Cleanup test files
-    if (fs.existsSync(testAppsDir)) {
-      fs.rmSync(testAppsDir, { recursive: true, force: true })
-    }
-    // Cleanup environment
-    delete process.env.SHARED_STORAGE_DIR
+    mockUpload.mockClear()
   })
 
   describe('#generateQRCode', function generateTests() {
@@ -47,7 +40,15 @@ describe('qr-code-tool', function packageTests() {
       expect(result.success).toBe(true)
       expect(result.targetUrl).toBe('https://test-app.preview.airo.dev/')
       expect(result.base64).toBeDefined()
+      expect(result.base64).toMatch(/^data:image\/png;base64,/)
       expect(result.size).toBe(1000)
+      expect(mockUpload).toHaveBeenCalledOnce()
+      expect(mockUpload).toHaveBeenCalledWith(
+        expect.objectContaining({
+          path: expect.stringMatching(/^public\/assets\/qr-codes\/qr-home-.*\.png$/),
+          data: expect.any(Buffer)
+        })
+      )
     })
 
     it('should generate QR code for specific page', async function generateSpecific() {
@@ -61,6 +62,11 @@ describe('qr-code-tool', function packageTests() {
       expect(result.targetUrl).toBe('https://test-app.preview.airo.dev/about')
       expect(result.size).toBe(400)
       expect(result.base64).toBeDefined()
+      expect(mockUpload).toHaveBeenCalledWith(
+        expect.objectContaining({
+          path: expect.stringMatching(/^public\/assets\/qr-codes\/qr-about-.*\.png$/)
+        })
+      )
     })
 
     it('should use default size if not specified', async function generateDefaultSize() {
@@ -84,7 +90,6 @@ describe('qr-code-tool', function packageTests() {
     })
 
     it('should fail gracefully when app not found', async function generateNotFound() {
-      // Mock AppRepository to return null
       vi.mocked(AppRepository).mockImplementationOnce(() => ({
         findById: vi.fn().mockReturnValue(null)
       } as any))
@@ -123,41 +128,29 @@ describe('qr-code-tool', function packageTests() {
       expect(result.success).toBe(true)
       expect(result.targetUrl).toBe('https://test-app.preview.airo.dev/blog/post-1')
       expect(result.base64).toBeDefined()
+      expect(mockUpload).toHaveBeenCalledWith(
+        expect.objectContaining({
+          path: expect.stringMatching(/^public\/assets\/qr-codes\/qr-blog_post-1-.*\.png$/)
+        })
+      )
     })
 
-    it('should write QR code to production path when SHARED_STORAGE_DIR is set', async function generateProduction() {
-      // Set up production environment
-      const prodAssetsDir = path.join(testAppsDir, 'shared-storage')
-      process.env.SHARED_STORAGE_DIR = prodAssetsDir
-
-      // Create production directory structure
-      const publicDir = path.join(prodAssetsDir, 'public', 'assets')
-      const qrCodesDir = path.join(publicDir, 'qr-codes')
-      fs.mkdirSync(qrCodesDir, { recursive: true })
+    it('should fail when workspace is not available', async function generateNoWorkspace() {
+      const { createForWorkspace } = await import('../../workspace/index.js')
+      vi.mocked(createForWorkspace).mockReturnValueOnce(null)
 
       const result = await generateQRCode({
         appId: testAppId,
-        targetPage: '/',
-        size: 500
+        targetPage: '/'
       })
 
-      expect(result.success).toBe(true)
-      expect(result.filepath).toBeDefined()
-
-      // Verify file was written to production path (with /assets subdirectory)
-      const expectedDir = path.join(prodAssetsDir, 'public', 'assets', 'qr-codes')
-      expect(result.filepath).toContain(expectedDir)
-      expect(fs.existsSync(result.filepath!)).toBe(true)
+      expect(result.success).toBe(false)
+      expect(result.error).toContain('Workspace not available')
     })
   })
 
   describe('QRCodeTool class', function classTests() {
-    it('should create instance with custom apps dir', function createInstance() {
-      const tool = new QRCodeTool(testAppsDir)
-      expect(tool).toBeInstanceOf(QRCodeTool)
-    })
-
-    it('should use default apps dir if not provided', function createDefault() {
+    it('should create instance', function createInstance() {
       const tool = new QRCodeTool()
       expect(tool).toBeInstanceOf(QRCodeTool)
     })

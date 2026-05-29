@@ -5,9 +5,7 @@ import { AppRepository } from '../database/repositories/AppRepository.js';
 import { nanoid } from 'nanoid';
 import { logger } from '../logging/index.js';
 import { toolImageGenerationEvents } from '../logging/events/index.js';
-import fs from 'node:fs';
-import path from 'node:path';
-import { getPersistentPublicDir } from '../utils/persistent-assets.js';
+import { createForWorkspace } from '../workspace/index.js';
 
 export interface ImageEditorOptions {
   prompt: string;
@@ -27,11 +25,9 @@ export interface ImageEditorResult {
 }
 
 export class ImageEditorTool {
-  private appsBaseDir: string;
   private appRepository: AppRepository;
 
   constructor(appRepository?: AppRepository) {
-    this.appsBaseDir = process.env.APPS_BASE_DIR || '/tmp/airo-app-builder';
     this.appRepository = appRepository || new AppRepository();
   }
 
@@ -58,9 +54,10 @@ export class ImageEditorTool {
         };
       }
 
-      const appPath = app.path;
-      const imagesDir = path.join(getPersistentPublicDir(appPath), 'images');
-      fs.mkdirSync(imagesDir, { recursive: true });
+      const workspace = createForWorkspace(appId, 'preview');
+      if (!workspace) {
+        return { success: false, error: 'Workspace not available' };
+      }
 
       const result = await generateImageWithModel({
         prompt: prompt.trim(),
@@ -86,10 +83,10 @@ export class ImageEditorTool {
           .substring(0, 40);
 
       const fullFilename = `${safeFilename}-${nanoid(6)}.png`;
-      const filePath = path.join(imagesDir, fullFilename);
+      const uploadPath = `public/assets/images/${fullFilename}`;
 
       const imageBuffer = Buffer.from(result.image, 'base64');
-      fs.writeFileSync(filePath, imageBuffer);
+      await workspace.files.upload({ path: uploadPath, data: imageBuffer });
 
       const publicPath = `${AIRO_ASSET_UPLOADS_URL_PREFIX}${fullFilename}`;
       const executionTime = Date.now() - startTime;
@@ -105,7 +102,7 @@ export class ImageEditorTool {
         },
         resultStats: {
           success: true,
-          filePath,
+          filePath: uploadPath,
           publicPath,
           fileSize: imageBuffer.length,
           executionTime,
@@ -120,7 +117,7 @@ export class ImageEditorTool {
       return {
         success: true,
         url: imageUrl,
-        filepath: filePath,
+        filepath: uploadPath,
         publicPath,
         base64Data: result.image,
       };

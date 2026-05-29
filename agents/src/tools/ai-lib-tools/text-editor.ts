@@ -18,25 +18,24 @@ import { z } from 'zod';
 import { createTool, PROVIDER_TOOL_FALLBACK } from '@airo/ai-lib';
 import type { Tool, AgentContext } from '@airo/ai-lib';
 import { AppRepository } from '../../database/repositories/AppRepository.js';
-import type { FileSystemOperations } from '../../filesystem/index.js';
-import { LocalFileSystemOperations } from '../../filesystem/index.js';
+import { DevSupervisorError } from '../../services/DevSupervisorClient.js';
 import { isFileBlocked } from '../read-file.js';
 import {
-  isFileImmutable,
   isProtectedWorkspacePath,
   validateNoApiPaths,
   resolveSourceFile,
   resolveFilePath
-} from '../file-edit.js';
+} from '../file-edit-utils.js';
 import {
   handleView,
   handleStrReplace,
   handleCreate,
-  handleInsert
-} from '../text-editor-handlers.js';
+  handleInsert,
+} from '../text-editor-workspace.js';
+import { createForWorkspace } from '../../workspace/index.js';
+import type { WorkspaceFiles } from '../../workspace/files.js';
 
 const appRepo = new AppRepository();
-const fs: FileSystemOperations = new LocalFileSystemOperations();
 
 interface TextEditorInput {
   command: 'view' | 'str_replace' | 'create' | 'insert';
@@ -72,6 +71,23 @@ function resolveViewRange(viewRange: number[] | undefined): [number, number] | u
   return [start!, end!];
 }
 
+async function isFileImmutableViaWorkspace(
+  files: WorkspaceFiles,
+  path: string,
+): Promise<boolean> {
+  try {
+    const result = await files.view({ path, limit: 1 });
+    if (result.encoding === 'base64') return false;
+    const firstLine = result.content.split('\n')[0] ?? '';
+    return firstLine.includes('TREAT AS IMMUTABLE');
+  } catch (err: unknown) {
+    if (err instanceof DevSupervisorError && err.code === 'not_found') {
+      return false;
+    }
+    throw err;
+  }
+}
+
 async function executeTextEditor(input: TextEditorInput, context: AgentContext | undefined): Promise<string> {
   const { command, path, view_range, old_str, new_str, file_text, insert_line, insert_text } = input;
 
@@ -87,6 +103,15 @@ async function executeTextEditor(input: TextEditorInput, context: AgentContext |
 
   const fullPath = resolveFilePath(app.path, path);
 
+  // Get workspace files API
+  const workspace = createForWorkspace(appId, 'preview');
+  if (!workspace) {
+    throw new Error('Workspace not available for this app');
+  }
+  const { files } = workspace;
+
+  // === SECURITY LAYER ===
+
   if (['view', 'str_replace', 'insert'].includes(command)) {
     const blockCheck = isFileBlocked(path);
     if (blockCheck.blocked) {
@@ -101,7 +126,7 @@ async function executeTextEditor(input: TextEditorInput, context: AgentContext |
   }
 
   if (['str_replace', 'create', 'insert'].includes(command)) {
-    const immutable = await isFileImmutable(fullPath, fs);
+    const immutable = await isFileImmutableViaWorkspace(files, path);
     if (immutable) {
       throw new Error('File is immutable (contains "TREAT AS IMMUTABLE") — cannot edit.');
     }
@@ -118,7 +143,7 @@ async function executeTextEditor(input: TextEditorInput, context: AgentContext |
   let resolvedFileText = file_text;
   let binaryCopied = false;
   if (command === 'create' && file_text !== undefined) {
-    const resolvedFile = await resolveSourceFile(appId, path, file_text, fullPath, fs);
+    const resolvedFile = await resolveSourceFile(appId, path, file_text, files);
     if (resolvedFile) {
       if (resolvedFile.binaryCopied) {
         binaryCopied = true;
@@ -130,14 +155,14 @@ async function executeTextEditor(input: TextEditorInput, context: AgentContext |
 
   switch (command) {
     case 'view': {
-      return handleView(fullPath, resolveViewRange(view_range), fs);
+      return handleView(files, path, resolveViewRange(view_range));
     }
 
     case 'str_replace':
       if (!old_str || new_str === undefined) {
         throw new Error('str_replace requires old_str and new_str');
       }
-      return handleStrReplace(fullPath, old_str, new_str, fs);
+      return handleStrReplace(files, path, old_str, new_str);
 
     case 'create':
       if (binaryCopied) {
@@ -146,13 +171,13 @@ async function executeTextEditor(input: TextEditorInput, context: AgentContext |
       if (resolvedFileText == null) {
         throw new Error('create requires file_text');
       }
-      return handleCreate(fullPath, resolvedFileText, fs);
+      return handleCreate(files, path, resolvedFileText);
 
     case 'insert':
       if (insert_line === undefined || !insert_text) {
         throw new Error('insert requires insert_line and insert_text');
       }
-      return handleInsert(fullPath, insert_line, insert_text, fs);
+      return handleInsert(files, path, insert_line, insert_text);
 
     default:
       throw new Error(`Unknown command: ${command}`);

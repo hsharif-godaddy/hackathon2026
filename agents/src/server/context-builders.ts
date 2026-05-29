@@ -244,10 +244,7 @@ export async function buildMemoryContextMessage(opts: {
   if (!appId) return null
 
   try {
-    const app = appRepo.findById(appId)
-    if (!app?.path) return null
-
-    const contextString = await memoryContextProvider.getContextString(app.path, appId)
+    const contextString = await memoryContextProvider.getContextString(appId)
     if (!contextString) return null
 
     return {

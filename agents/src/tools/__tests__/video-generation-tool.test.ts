@@ -3,7 +3,6 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { VideoGenerationTool } from '../video-generation-tool.js';
 import { WebsiteScraperDriver } from '../ai-lib-tools/drivers/website-scraper-driver.js';
-import { getPersistentPublicDir } from '../../utils/persistent-assets.js';
 
 vi.mock('execa', () => ({
   execa: vi.fn()
@@ -29,7 +28,8 @@ vi.mock('../../logging/index.js', () => ({
     warn: vi.fn(),
     error: vi.fn(),
     debug: vi.fn()
-  }
+  },
+  Logger: { create: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }) }
 }));
 
 vi.mock('../ai-lib-tools/drivers/website-scraper-driver.js', () => ({
@@ -47,6 +47,55 @@ vi.mock('../../server/ai-lib-websocket-server.js', () => ({
   emitToApp: (appId: string, event: string, payload: unknown) => emitToAppMock(appId, event, payload),
 }));
 
+// Workspace mock — delegates to local filesystem for .airo/video.json reads/writes
+const { MockDevSupervisorError, testBaseDir, testAppPath, hoistedFs, hoistedPath } = vi.hoisted(() => {
+  /* eslint-disable @typescript-eslint/no-require-imports */
+  const _fs = require('node:fs') as typeof import('node:fs');
+  const _path = require('node:path') as typeof import('node:path');
+  /* eslint-enable @typescript-eslint/no-require-imports */
+  class _Err extends Error {
+    code = 'not_found';
+    statusCode = 404;
+  }
+  const _testBaseDir = `/tmp/test-video-gen-${process.pid}-${Date.now()}`;
+  const _testAppPath = `${_testBaseDir}/preview`;
+  return { MockDevSupervisorError: _Err, testBaseDir: _testBaseDir, testAppPath: _testAppPath, hoistedFs: _fs, hoistedPath: _path };
+});
+
+vi.mock('../../services/DevSupervisorClient.js', () => ({
+  DevSupervisorError: MockDevSupervisorError,
+}));
+
+vi.mock('../../workspace/index.js', () => ({
+  createForWorkspace: vi.fn((_appId: string) => {
+    const files = {
+      view: vi.fn(async ({ path: filePath }: { path: string }) => {
+        const fullPath = hoistedPath.join(testAppPath, filePath);
+        if (!hoistedFs.existsSync(fullPath)) {
+          throw new MockDevSupervisorError(`file not found: ${filePath}`);
+        }
+        const content = hoistedFs.readFileSync(fullPath, 'utf-8');
+        return { content, encoding: 'utf-8', path: filePath, lines: content.split('\n').length, size: content.length, truncated: false };
+      }),
+      write: vi.fn(async ({ path: filePath, content }: { path: string; content: string }) => {
+        const fullPath = hoistedPath.join(testAppPath, filePath);
+        hoistedFs.mkdirSync(hoistedPath.dirname(fullPath), { recursive: true });
+        hoistedFs.writeFileSync(fullPath, content);
+        return { bytesWritten: content.length };
+      }),
+      tree: vi.fn(),
+      search: vi.fn(),
+      edit: vi.fn(),
+      insert: vi.fn(),
+      delete: vi.fn(),
+      move: vi.fn(),
+      upload: vi.fn(),
+      download: vi.fn(),
+    };
+    return { files };
+  }),
+}));
+
 import { execa } from 'execa';
 import { videoApiFetch } from '../../helper/video-api-helper.js';
 import { logger } from '../../logging/index.js';
@@ -54,12 +103,9 @@ import { logger } from '../../logging/index.js';
 describe('video-generation-tool', function packageTests() {
   // Use unique test base directory to avoid /tmp/assets collision in parallel tests
   // Structure: /tmp/test-video-gen-{pid}-{timestamp}/preview
-  // This ensures getPersistentPublicDir returns .../{pid}-{timestamp}/assets/public (unique per test)
-  const testBaseDir = `/tmp/test-video-gen-${process.pid}-${Date.now()}`;
-  const testAppPath = path.join(testBaseDir, 'preview');
   const airoDir = path.join(testAppPath, '.airo');
   // Use persistent assets path to match production behavior
-  const imagesDir = path.join(getPersistentPublicDir(testAppPath), 'images');
+  const imagesDir = path.join(testAppPath, 'public', 'assets', 'images');
   const defaultCtx = { appId: 'test-app-123', appPath: testAppPath, previewUrl: 'https://test-app.preview.airo.dev' };
 
   function createTool(overrides = {}) {

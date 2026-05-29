@@ -9,6 +9,23 @@ import { buildCurlCommand } from '../utils/command-builder.js';
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const RESTART_REQUEST_TIMEOUT_MS = 60_000;
 
+/**
+ * Structured error from the dev-supervisor HTTP API.
+ * The dev-supervisor returns JSON `{error: "code", message: "detail"}` on all
+ * non-2xx responses. This class preserves that structure so callers can switch
+ * on `.code` instead of string-matching `.message`.
+ */
+export class DevSupervisorError extends Error {
+  constructor(
+    public readonly code: string,
+    public readonly statusCode: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = 'DevSupervisorError';
+  }
+}
+
 export interface ExecOptions {
   /** The command to execute */
   command: string;
@@ -1029,8 +1046,9 @@ export class DevSupervisorClient {
             if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
               resolve(response);
             } else {
-              const errorDetail = [response.error, response.message].filter(Boolean).join(': ');
-              reject(new Error(`HTTP ${res.statusCode}: ${errorDetail || 'Request failed'}`));
+              const code = response.error || 'unknown';
+              const detail = response.message || 'Request failed';
+              reject(new DevSupervisorError(code, res.statusCode ?? 500, detail));
             }
           } catch (error) {
             reject(new Error(`Failed to parse response: ${body}`));
@@ -1128,10 +1146,11 @@ export class DevSupervisorClient {
             const body = Buffer.concat(chunks).toString();
             try {
               const response = JSON.parse(body);
-              const errorDetail = [response.error, response.message].filter(Boolean).join(': ');
-              reject(new Error(`HTTP ${res.statusCode}: ${errorDetail || 'Request failed'}`));
+              const code = response.error || 'unknown';
+              const detail = response.message || 'Request failed';
+              reject(new DevSupervisorError(code, res.statusCode ?? 500, detail));
             } catch {
-              reject(new Error(`HTTP ${res.statusCode}: ${body}`));
+              reject(new DevSupervisorError('unknown', res.statusCode ?? 500, body));
             }
           });
         }

@@ -1,6 +1,7 @@
 import { createTool, type Tool } from '@airo/ai-lib'
 import { updateCssColorPalette, generatePalette, type ColorPalette } from '../css-color-tool.js'
 import { AppRepository } from '../../database/repositories/AppRepository.js'
+import { createForWorkspace } from '../../workspace/index.js'
 import { appPlanTool } from '../app-plan-tool.js'
 import { logger } from '../../logging/index.js'
 import { z } from 'zod'
@@ -137,7 +138,12 @@ Use this tool instead of str_replace_based_edit_tool when updating color schemes
       throw new Error(`App '${appId}' not found`)
     }
 
-    const result = await updateCssColorPalette(app.path, paletteInput)
+    const workspace = createForWorkspace(appId, 'preview')
+    if (!workspace) {
+      throw new Error(`Workspace not available for app '${appId}'`)
+    }
+
+    const result = await updateCssColorPalette(workspace.files, paletteInput)
 
     if (!result.success) {
       throw new Error(result.message)

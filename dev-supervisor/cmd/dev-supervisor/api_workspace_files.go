@@ -175,9 +175,10 @@ type wsFilesSearchResponse struct {
 }
 
 type wsFilesWriteRequest struct {
-	Path     string `json:"path"`
-	Content  string `json:"content"`
-	Encoding string `json:"encoding,omitempty"` // "utf-8" (default) or "base64"
+	Path       string `json:"path"`
+	Content    string `json:"content"`
+	Encoding   string `json:"encoding,omitempty"`   // "utf-8" (default) or "base64"
+	CreateOnly bool   `json:"createOnly,omitempty"` // if true, fail with 409 when file exists
 }
 
 type wsFilesWriteResponse struct {
@@ -193,6 +194,16 @@ type wsFilesEditRequest struct {
 
 type wsFilesEditResponse struct {
 	Applied int `json:"applied"`
+}
+
+type wsFilesInsertRequest struct {
+	Path    string `json:"path"`
+	Line    int    `json:"line"` // 1-based: 0 = prepend, > total lines = append
+	Content string `json:"content"`
+}
+
+type wsFilesInsertResponse struct {
+	Lines int `json:"lines"` // total lines after insert
 }
 
 type wsFilesDeleteRequest struct {
@@ -690,6 +701,14 @@ func (s *Server) handleWorkspaceFilesWrite(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	if req.CreateOnly {
+		if _, statErr := os.Stat(resolved); statErr == nil {
+			s.sendError(w, http.StatusConflict, "file_exists",
+				fmt.Sprintf("file already exists: %s", req.Path))
+			return
+		}
+	}
+
 	slog.Debug("workspace.files.write.start", "path", req.Path)
 
 	var data []byte
@@ -811,6 +830,100 @@ func (s *Server) handleWorkspaceFilesEdit(w http.ResponseWriter, r *http.Request
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(wsFilesEditResponse{Applied: applied}); err != nil {
 		slog.Error("workspace.files.edit.encode_failed", "error", err)
+	}
+}
+
+func (s *Server) handleWorkspaceFilesInsert(w http.ResponseWriter, r *http.Request) {
+	var req wsFilesInsertRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.sendError(w, http.StatusBadRequest, "invalid_request", "Invalid JSON payload")
+		return
+	}
+
+	if req.Path == "" {
+		s.sendError(w, http.StatusBadRequest, "validation_failed", "path is required")
+		return
+	}
+	if req.Content == "" {
+		s.sendError(w, http.StatusBadRequest, "validation_failed", "content is required")
+		return
+	}
+
+	resolved, err := validation.ValidateFilePath(req.Path, s.fsBaseDir())
+	if err != nil {
+		s.sendError(w, http.StatusBadRequest, "validation_failed", err.Error())
+		return
+	}
+
+	slog.Debug("workspace.files.insert.start", "path", req.Path, "line", req.Line)
+
+	info, err := os.Stat(resolved)
+	if err != nil {
+		s.sendWsFilesError(w, "workspace.files.insert", req.Path, err)
+		return
+	}
+	if info.Size() > wsFilesMaxEditBytes {
+		s.sendError(w, http.StatusRequestEntityTooLarge, "file_too_large",
+			fmt.Sprintf("file size %d exceeds edit maximum %d", info.Size(), wsFilesMaxEditBytes))
+		return
+	}
+
+	data, err := os.ReadFile(resolved)
+	if err != nil {
+		s.sendWsFilesError(w, "workspace.files.insert", req.Path, err)
+		return
+	}
+
+	content := string(data)
+	lines := strings.Split(content, "\n")
+
+	// Handle trailing newline: if file ends with \n, last split element is empty — strip it
+	// and restore the trailing newline after splicing.
+	trailingNewline := len(lines) > 0 && lines[len(lines)-1] == ""
+	if trailingNewline {
+		lines = lines[:len(lines)-1]
+	}
+
+	// Determine insertion index (line is 1-based; 0 = prepend, line=N inserts before line N)
+	idx := min(max(req.Line, 1)-1, len(lines))
+	if req.Line == 0 {
+		idx = 0
+	}
+
+	// Splice: insert content at idx
+	result := make([]string, 0, len(lines)+1)
+	result = append(result, lines[:idx]...)
+	result = append(result, req.Content)
+	result = append(result, lines[idx:]...)
+
+	newContent := strings.Join(result, "\n")
+	if trailingNewline {
+		newContent += "\n"
+	}
+
+	// Atomic write: preserve original file permissions
+	tmpFile := resolved + ".tmp"
+	if err := os.WriteFile(tmpFile, []byte(newContent), 0o600); err != nil {
+		s.sendWsFilesError(w, "workspace.files.insert", req.Path, err)
+		return
+	}
+	if err := os.Chmod(tmpFile, info.Mode().Perm()); err != nil {
+		_ = os.Remove(tmpFile)
+		s.sendWsFilesError(w, "workspace.files.insert", req.Path, err)
+		return
+	}
+	if err := os.Rename(tmpFile, resolved); err != nil {
+		_ = os.Remove(tmpFile)
+		s.sendWsFilesError(w, "workspace.files.insert", req.Path, err)
+		return
+	}
+
+	totalLines := len(strings.Split(newContent, "\n"))
+	slog.Debug("workspace.files.insert.completed", "path", req.Path, "lines", totalLines)
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(wsFilesInsertResponse{Lines: totalLines}); err != nil {
+		slog.Error("workspace.files.insert.encode_failed", "error", err)
 	}
 }
 

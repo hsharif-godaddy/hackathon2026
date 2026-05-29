@@ -4,6 +4,7 @@ import { buildLitellmMetadataFromContext, LlmCallSource, type ExecutionContext }
 import { z } from 'zod'
 
 import { generatePalette, updateCssColorPalette, type ColorPalette } from '../css-color-tool.js'
+import { createForWorkspace } from '../../workspace/index.js'
 import { extractBudgetContext, withBudgetFields, type ToolBudgetContext } from './tool-budget-context.js'
 
 interface ColorPaletteGridWidget {
@@ -474,7 +475,12 @@ IMPORTANT:
         hasSemanticOverrides: !!(input.muted || input.card || input.border)
       })
 
-      const result = await updateCssColorPalette(app.path, paletteInput)
+      const workspace = createForWorkspace(appId, 'preview')
+      if (!workspace) {
+        throw new Error(`Workspace not available for app '${appId}'`)
+      }
+
+      const result = await updateCssColorPalette(workspace.files, paletteInput)
 
       if (!result.success) {
         throw new Error(result.message)
@@ -640,7 +646,13 @@ IMPORTANT:
       const paletteInput = llmPalette as unknown as ColorPalette
 
       const fullPalette = generatePalette(paletteInput)
-      const result = await updateCssColorPalette(app.path, paletteInput)
+
+      const workspace = createForWorkspace(appId, 'preview')
+      if (!workspace) {
+        throw new Error(`Workspace not available for app '${appId}'`)
+      }
+
+      const result = await updateCssColorPalette(workspace.files, paletteInput)
 
       if (!result.success) {
         throw new Error(result.message)

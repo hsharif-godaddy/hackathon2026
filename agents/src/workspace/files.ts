@@ -53,6 +53,7 @@ export interface WriteOptions {
   path: string;
   content: string;
   encoding?: 'utf-8' | 'base64';
+  createOnly?: boolean;
 }
 
 export interface WriteResult {
@@ -68,6 +69,16 @@ export interface EditOptions {
 
 export interface EditResult {
   applied: number;
+}
+
+export interface InsertOptions {
+  path: string;
+  line: number;
+  content: string;
+}
+
+export interface InsertResult {
+  lines: number;
 }
 
 export interface DeleteOptions {
@@ -100,6 +111,7 @@ export interface WorkspaceFiles {
   search(options: SearchOptions): Promise<SearchMatch[]>;
   write(options: WriteOptions): Promise<WriteResult>;
   edit(options: EditOptions): Promise<EditResult>;
+  insert(options: InsertOptions): Promise<InsertResult>;
   delete(options: DeleteOptions): Promise<void>;
   move(options: MoveOptions): Promise<void>;
   upload(options: FileUploadOptions): Promise<WriteResult>;

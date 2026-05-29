@@ -4,8 +4,20 @@ import { join } from 'node:path';
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { mockFindById } = vi.hoisted(() => ({
+const { mockFindById, mockFiles } = vi.hoisted(() => ({
   mockFindById: vi.fn(),
+  mockFiles: {
+    view: vi.fn(),
+    tree: vi.fn(),
+    search: vi.fn(),
+    write: vi.fn(),
+    edit: vi.fn(),
+    insert: vi.fn(),
+    delete: vi.fn(),
+    move: vi.fn(),
+    upload: vi.fn(),
+    download: vi.fn(),
+  },
 }));
 
 vi.mock('../../../database/repositories/AppRepository.js', () => ({
@@ -14,7 +26,15 @@ vi.mock('../../../database/repositories/AppRepository.js', () => ({
   })),
 }));
 
-vi.mock('../../text-editor-handlers.js', () => ({
+vi.mock('../../../workspace/index.js', () => ({
+  createForWorkspace: vi.fn(() => ({
+    workspaceId: 'test-app',
+    variant: 'preview',
+    files: mockFiles,
+  })),
+}));
+
+vi.mock('../../text-editor-workspace.js', () => ({
   handleCreate: vi.fn(),
   handleInsert: vi.fn(),
   handleStrReplace: vi.fn(),
@@ -26,7 +46,7 @@ import {
   handleInsert,
   handleStrReplace,
   handleView,
-} from '../../text-editor-handlers.js';
+} from '../../text-editor-workspace.js';
 import { isFileBlocked } from '../../read-file.js';
 import { textEditorAITool, textEditorSchemaAITool } from '../text-editor.js';
 
@@ -46,6 +66,7 @@ describe('textEditorAITool — blocked path wiring', function textEditorSecurity
     appPath = join(tmpdir(), `text-editor-sec-${unique}`);
     mkdirSync(appPath, { recursive: true });
     mockFindById.mockReturnValue({ id: appId, path: appPath });
+    mockFiles.view.mockResolvedValue({ content: '', encoding: 'utf-8', lines: 0, size: 0, truncated: false, path: '' });
   });
 
   afterEach(function teardown() {
@@ -114,9 +135,9 @@ describe('textEditorAITool — blocked path wiring', function textEditorSecurity
 
     expect(handleView).toHaveBeenCalledTimes(1);
     expect(handleView).toHaveBeenCalledWith(
-      join(appPath, 'src/app.tsx'),
+      mockFiles,
+      'src/app.tsx',
       [1, -1],
-      expect.anything(),
     );
   });
 
@@ -180,9 +201,9 @@ describe('textEditorAITool — blocked path wiring', function textEditorSecurity
 
     expect(handleCreate).toHaveBeenCalledTimes(1);
     expect(handleCreate).toHaveBeenCalledWith(
-      join(appPath, 'public/assets/hero.webp'),
+      mockFiles,
+      'public/assets/hero.webp',
       'minimal placeholder',
-      expect.anything(),
     );
   });
 
@@ -201,10 +222,38 @@ describe('textEditorAITool — blocked path wiring', function textEditorSecurity
 
     expect(handleStrReplace).toHaveBeenCalledTimes(1);
     expect(handleStrReplace).toHaveBeenCalledWith(
-      join(appPath, 'src/app.tsx'),
+      mockFiles,
+      'src/app.tsx',
       'foo',
       'bar',
-      expect.anything(),
     );
   });
 });
+
+describe('isProtectedWorkspacePath', () => {
+  it('detects .airo dir itself', async () => {
+    const { isProtectedWorkspacePath } = await import('../../file-edit-utils.js');
+    expect(isProtectedWorkspacePath('/app/.airo', '/app')).toBe(true);
+  });
+
+  it('detects file inside .airo', async () => {
+    const { isProtectedWorkspacePath } = await import('../../file-edit-utils.js');
+    expect(isProtectedWorkspacePath('/app/.airo/video.json', '/app')).toBe(true);
+  });
+
+  it('detects nested path inside .airo', async () => {
+    const { isProtectedWorkspacePath } = await import('../../file-edit-utils.js');
+    expect(isProtectedWorkspacePath('/app/.airo/qa-runs/qa-run-1.json', '/app')).toBe(true);
+  });
+
+  it('allows adjacent path with similar prefix', async () => {
+    const { isProtectedWorkspacePath } = await import('../../file-edit-utils.js');
+    expect(isProtectedWorkspacePath('/app/.airo-backup', '/app')).toBe(false);
+  });
+
+  it('allows normal source files', async () => {
+    const { isProtectedWorkspacePath } = await import('../../file-edit-utils.js');
+    expect(isProtectedWorkspacePath('/app/src/index.ts', '/app')).toBe(false);
+  });
+});
+

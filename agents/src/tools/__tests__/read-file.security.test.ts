@@ -10,9 +10,11 @@ function createMockFiles(overrides?: Partial<WorkspaceFiles>): WorkspaceFiles {
     search: vi.fn(),
     write: vi.fn(),
     edit: vi.fn(),
+    insert: vi.fn(),
     delete: vi.fn(),
     move: vi.fn(),
     upload: vi.fn(),
+    download: vi.fn(),
     ...overrides,
   } as unknown as WorkspaceFiles;
 }

@@ -3,11 +3,11 @@ import { llmMetadataContext, type LitellmMetadata } from '@airo/ai-common'
 import { buildLitellmMetadataFromContext, LlmCallSource, type ExecutionContext } from '@airo/ai-grants'
 import { extractBudgetContext, withBudgetFields, type ToolBudgetContext } from './tool-budget-context.js'
 import { z } from 'zod'
-import { readFile, writeFile, mkdir, access } from 'node:fs/promises'
-import { join, dirname } from 'node:path'
-import { readdir } from 'node:fs/promises'
 
 import { AppRepository } from '../../database/repositories/AppRepository.js'
+import { DevSupervisorError } from '../../services/DevSupervisorClient.js'
+import { createForWorkspace } from '../../workspace/index.js'
+import type { WorkspaceFiles } from '../../workspace/files.js'
 
 import { appPlanTool } from '../app-plan-tool.js'
 import { getAgentModelWithName } from '../../utils/model-selection.js'
@@ -30,49 +30,12 @@ async function generateWithMetadata(
     return generateTextWithTracking(options)
 }
 
-/**
- * QA History file path - stores all QA runs permanently
- */
-function getQAHistoryPath(appPath: string): string {
-    return join(appPath, '.airo', 'qa-history.json')
+const QA_HISTORY_PATH = '.airo/qa-history.json'
+
+function getQARunPath(runId: string): string {
+    return `.airo/qa-runs/qa-run-${runId}.json`
 }
 
-/**
- * QA Run file path - stores individual QA run with timestamp
- */
-function getQARunFilePath(appPath: string, runId: string): string {
-    return join(appPath, '.airo', 'qa-runs', `qa-run-${runId}.json`)
-}
-
-/**
- * Get the latest QA run file path
- */
-async function getLatestQARunFilePath(appPath: string): Promise<string | null> {
-    try {
-        const runsDir = join(appPath, '.airo', 'qa-runs')
-        await access(runsDir)
-
-        const files = await readdir(runsDir)
-        const runFiles = files
-            .filter(f => f.startsWith('qa-run-') && f.endsWith('.json'))
-            .map(f => {
-                const match = f.match(/qa-run-(\d+)\.json/)
-                if (match && match[1]) {
-                    return { file: f, timestamp: parseInt(match[1], 10) }
-                }
-                return null
-            })
-            .filter((f): f is { file: string; timestamp: number } => f !== null)
-            .sort((a, b) => b.timestamp - a.timestamp) // Most recent first
-
-        if (runFiles.length === 0) return null
-        const latestFile = runFiles[0]
-        if (!latestFile) return null
-        return join(runsDir, latestFile.file)
-    } catch {
-        return null
-    }
-}
 
 /**
  * Individual QA run file structure
@@ -90,67 +53,55 @@ interface QARunFile {
     fixedIssueIds: string[] // Issue IDs that have been marked as fixed
 }
 
-/**
- * Save QA run to timestamped file
- */
-async function saveQARunFile(appPath: string, runFile: QARunFile): Promise<void> {
-    const runFilePath = getQARunFilePath(appPath, runFile.runId)
-    const runsDir = dirname(runFilePath)
-
-    // Ensure directory exists
-    await mkdir(runsDir, { recursive: true })
-
-    // Write run file
-    await writeFile(runFilePath, JSON.stringify(runFile, null, 2), 'utf-8')
+async function saveQARunFile(files: WorkspaceFiles, runFile: QARunFile): Promise<void> {
+    const runPath = getQARunPath(runFile.runId)
+    await files.write({ path: runPath, content: JSON.stringify(runFile, null, 2) })
 
     logger.info('qa_analyze.run_file_saved', {
-        appPath,
         runId: runFile.runId,
-        filePath: runFilePath
+        filePath: runPath
     })
 }
 
-/**
- * Read QA run file by run ID
- */
-async function readQARunFile(appPath: string, runId: string): Promise<QARunFile | null> {
+async function readQARunFile(files: WorkspaceFiles, runId: string): Promise<QARunFile | null> {
     try {
-        const runFilePath = getQARunFilePath(appPath, runId)
-        await access(runFilePath)
-
-        const content = await readFile(runFilePath, 'utf-8')
-        return JSON.parse(content) as QARunFile
-    } catch {
+        const result = await files.view({ path: getQARunPath(runId) })
+        return JSON.parse(result.content) as QARunFile
+    } catch (error) {
+        if (error instanceof DevSupervisorError && error.code === 'not_found') return null
+        logger.warn('qa_analyze.run_file.read_error', {
+            runId,
+            error: error instanceof Error ? error.message : String(error)
+        })
         return null
     }
 }
 
-/**
- * Mark issues as fixed in a QA run file
- */
 export async function markIssuesAsFixed(
-    appPath: string,
+    appId: string,
     runId: string,
     issueIds: string[]
 ): Promise<void> {
-    const runFile = await readQARunFile(appPath, runId)
+    const workspace = createForWorkspace(appId, 'preview')
+    if (!workspace) {
+        throw new Error(`Workspace not available for app: ${appId}`)
+    }
+
+    const runFile = await readQARunFile(workspace.files, runId)
     if (!runFile) {
         throw new Error(`QA run file not found for runId: ${runId}`)
     }
 
-    // Add issue IDs to fixedIssueIds (avoid duplicates)
     const fixedSet = new Set(runFile.fixedIssueIds)
     for (const issueId of issueIds) {
         fixedSet.add(issueId)
     }
 
     runFile.fixedIssueIds = Array.from(fixedSet)
-
-    // Save updated run file
-    await saveQARunFile(appPath, runFile)
+    await saveQARunFile(workspace.files, runFile)
 
     logger.info('qa_analyze.issues_marked_fixed', {
-        appPath,
+        appId,
         runId,
         issueCount: issueIds.length,
         totalFixed: runFile.fixedIssueIds.length
@@ -193,18 +144,11 @@ interface QAHistory {
     lastRun: QARunRecord | null
 }
 
-/**
- * Read QA history from file
- */
-async function readQAHistory(appPath: string): Promise<QAHistory> {
+async function readQAHistory(files: WorkspaceFiles): Promise<QAHistory> {
     try {
-        const historyPath = getQAHistoryPath(appPath)
-        await access(historyPath)
+        const result = await files.view({ path: QA_HISTORY_PATH })
+        const history: QAHistory = JSON.parse(result.content)
 
-        const historyContent = await readFile(historyPath, 'utf-8')
-        const history: QAHistory = JSON.parse(historyContent)
-
-        // Validate structure
         if (!history.runs || !Array.isArray(history.runs)) {
             return { runs: [], fixedIssues: {}, lastRun: null }
         }
@@ -213,7 +157,6 @@ async function readQAHistory(appPath: string): Promise<QAHistory> {
             history.fixedIssues = {}
         }
 
-        // Set lastRun to most recent run
         if (history.runs.length > 0) {
             const lastRun = history.runs[history.runs.length - 1]
             history.lastRun = lastRun || null
@@ -223,9 +166,8 @@ async function readQAHistory(appPath: string): Promise<QAHistory> {
 
         return history
     } catch (error) {
-        // File doesn't exist or is invalid - start fresh
-        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
-            logger.debug('qa_analyze.history.read_error', {
+        if (!(error instanceof DevSupervisorError && error.code === 'not_found')) {
+            logger.warn('qa_analyze.history.read_error', {
                 error: error instanceof Error ? error.message : String(error)
             })
         }
@@ -233,28 +175,16 @@ async function readQAHistory(appPath: string): Promise<QAHistory> {
     }
 }
 
-/**
- * Write QA history to file
- */
-async function writeQAHistory(appPath: string, history: QAHistory): Promise<void> {
+async function writeQAHistory(files: WorkspaceFiles, history: QAHistory): Promise<void> {
     try {
-        const historyPath = getQAHistoryPath(appPath)
-        const historyDir = dirname(historyPath)
-
-        // Ensure .airo directory exists
-        await mkdir(historyDir, { recursive: true })
-
-        await writeFile(historyPath, JSON.stringify(history, null, 2), 'utf-8')
+        await files.write({ path: QA_HISTORY_PATH, content: JSON.stringify(history, null, 2) })
 
         logger.info('qa_analyze.history.written', {
-            appPath,
             runCount: history.runs.length,
             fixedCount: Object.keys(history.fixedIssues).length
         })
     } catch (error) {
-        // Don't fail analysis if history write fails
         logger.warn('qa_analyze.history.write_error', {
-            appPath,
             error: error instanceof Error ? error.message : String(error)
         })
     }
@@ -266,14 +196,14 @@ async function writeQAHistory(appPath: string, history: QAHistory): Promise<void
  * @param allIssueIds - All issue IDs from the analysis - for quick lookup
  */
 async function addQARunToHistory(
-    appPath: string,
+    files: WorkspaceFiles,
     appId: string,
     mode: 'semantic' | 'technical' | 'full',
     report: ReturnType<typeof createQAReport>,
-    allIssues: QAIssue[], // All issues found in analysis (before filtering) - needed for proper initialization
-    allIssueIds: Set<string> // All issue IDs from the analysis (before filtering) - for quick lookup
+    allIssues: QAIssue[],
+    allIssueIds: Set<string>
 ): Promise<void> {
-    const history = await readQAHistory(appPath)
+    const history = await readQAHistory(files)
     const now = Date.now()
 
     // Extract issue IDs from current report (filtered issues shown to user)
@@ -340,7 +270,7 @@ async function addQARunToHistory(
                     } else {
                         // Couldn't find issue details - log warning but continue
                         logger.warn('qa_analyze.cannot_find_issue_details', {
-                            appPath,
+                            appId,
                             issueId: previousIssueId,
                             message: 'Issue was in previous run but details not found in report'
                         })
@@ -423,7 +353,7 @@ async function addQARunToHistory(
     history.lastRun = newRun
 
     // Write updated history
-    await writeQAHistory(appPath, history)
+    await writeQAHistory(files, history)
 }
 
 const QA_ANALYSIS_PROMPT = `You are a QA analyst. Return ONLY valid JSON (no markdown, no code blocks):
@@ -563,169 +493,74 @@ function sampleFileContent(content: string, priority: FilePriority): string {
     return prefix + '\n... (middle content omitted for low-priority file) ...' + keySections + '\n... (file continues)'
 }
 
-async function readAppFiles(appPath: string): Promise<FileWithPriority[]> {
-    async function scanDirectory(dir: string, basePath: string = ''): Promise<FileWithPriority[]> {
-        try {
-            const entries = await readdir(dir, { withFileTypes: true })
-
-            // Process all entries in parallel
-            const results = await Promise.all(
-                entries.map(async (entry) => {
-                    const fullPath = join(dir, entry.name)
-                    const relativePath = basePath ? `${basePath}/${entry.name}` : entry.name
-
-                    if (entry.isDirectory()) {
-                        // Skip build artifacts and dependencies
-                        if (entry.name === 'node_modules' || entry.name === '.git' || entry.name === 'dist' || entry.name === 'build' || entry.name === '.next' || entry.name === 'coverage') {
-                            return []
-                        }
-                        // Skip UI component library directories (they're not business content)
-                        if (relativePath.includes('components/ui/')) {
-                            return []
-                        }
-                        return scanDirectory(fullPath, relativePath)
-                    } else if (entry.isFile()) {
-                        // Include all TypeScript/JavaScript files that might contain content
-                        if (entry.name.endsWith('.tsx') || entry.name.endsWith('.ts') || entry.name.endsWith('.jsx') || entry.name.endsWith('.js')) {
-                            try {
-                                const content = await readFile(fullPath, 'utf-8')
-
-                                // Skip DemoContent component - it's part of the default engine template
-                                if (entry.name === 'DemoContent.tsx' || entry.name === 'DemoContent.ts' ||
-                                    entry.name === 'DemoContent.jsx' || entry.name === 'DemoContent.js' ||
-                                    content.includes('export default function DemoContent') ||
-                                    content.includes('export default DemoContent') ||
-                                    (content.includes('function DemoContent') && content.includes('Demo Content'))) {
-                                    return []
-                                }
-
-                                // Include files from important directories (content, UI, data layer, backend APIs)
-                                const isRelevantFile =
-                                    relativePath.includes('pages/') ||
-                                    relativePath.includes('components/') ||
-                                    relativePath.includes('layouts/') ||
-                                    relativePath.includes('lib/') ||
-                                    relativePath.includes('data/') ||
-                                    relativePath.includes('content/') ||
-                                    relativePath.includes('server/api/') ||  // Backend API routes (to verify endpoints exist)
-                                    relativePath.includes('hooks/') ||       // Data fetching hooks
-                                    relativePath.includes('services/') ||    // Service layer
-                                    relativePath.includes('store/') ||       // State management (zustand, etc.)
-                                    relativePath.includes('stores/') ||      // State management (plural)
-                                    relativePath.includes('actions/') ||     // Server actions
-                                    relativePath.includes('App.tsx') ||
-                                    relativePath.includes('main.tsx') ||
-                                    relativePath.includes('routes.tsx')
-
-                                // Exclude config files, test files, and utility-only files
-                                const isExcludedFile =
-                                    relativePath.includes('.test.') ||
-                                    relativePath.includes('.spec.') ||
-                                    relativePath.includes('setup.ts') ||
-                                    relativePath.includes('types.ts') ||
-                                    relativePath.includes('constants.ts')
-
-                                if (isRelevantFile && !isExcludedFile) {
-                                    const priority = getFilePriority(relativePath)
-                                    return [{ path: relativePath, content, priority }]
-                                }
-                            } catch (error) {
-                                logger.warn('qa_analyze.file_read_error', {
-                                    path: relativePath,
-                                    error: error instanceof Error ? error.message : String(error)
-                                })
-                            }
-                        }
-                    }
-                    return []
-                })
-            )
-
-            // Flatten results from all entries
-            return results.flat()
-        } catch (error) {
-            logger.warn('qa_analyze.directory_scan_error', {
-                dir,
-                error: error instanceof Error ? error.message : String(error)
-            })
-            return []
-        }
-    }
-
-    // Scan all relevant source directories in parallel
-    const directoriesToScan = [
-        // Frontend content
-        { dir: join(appPath, 'src', 'pages'), basePath: 'src/pages' },
-        { dir: join(appPath, 'src', 'components'), basePath: 'src/components' },
-        { dir: join(appPath, 'src', 'layouts'), basePath: 'src/layouts' },
-        { dir: join(appPath, 'src', 'content'), basePath: 'src/content' },
-        // Backend API routes
-        { dir: join(appPath, 'src', 'api'), basePath: 'src/api' },
-        // Data layer and state management
-        { dir: join(appPath, 'src', 'lib'), basePath: 'src/lib' },
-        { dir: join(appPath, 'src', 'data'), basePath: 'src/data' },
-        { dir: join(appPath, 'src', 'hooks'), basePath: 'src/hooks' },
-        { dir: join(appPath, 'src', 'services'), basePath: 'src/services' },
-        { dir: join(appPath, 'src', 'store'), basePath: 'src/store' },
-        { dir: join(appPath, 'src', 'stores'), basePath: 'src/stores' },
-        { dir: join(appPath, 'src', 'actions'), basePath: 'src/actions' }
-    ]
-
-    // Scan all directories in parallel
-    const directoryResults = await Promise.all(
-        directoriesToScan.map(async ({ dir, basePath }) => {
-            try {
-                return await scanDirectory(dir, basePath)
-            } catch {
-                logger.debug('qa_analyze.directory_not_found', { path: dir })
-                return []
-            }
-        })
-    )
-
-    // Scan root-level files in src/ (App.tsx, main.tsx, routes.tsx, etc.) in parallel
-    let rootFiles: FileWithPriority[] = []
-    const srcRootDir = join(appPath, 'src')
+async function readAppFiles(files: WorkspaceFiles): Promise<FileWithPriority[]> {
     try {
-        const rootEntries = await readdir(srcRootDir, { withFileTypes: true })
-        const rootFileResults = await Promise.all(
-            rootEntries
-                .filter(entry => entry.isFile() && (entry.name.endsWith('.tsx') || entry.name.endsWith('.ts') || entry.name.endsWith('.jsx') || entry.name.endsWith('.js')))
-                .map(async (entry) => {
-                    const fullPath = join(srcRootDir, entry.name)
-                    try {
-                        const content = await readFile(fullPath, 'utf-8')
+        const treeResult = await files.tree({
+            path: 'src',
+            recursive: true,
+            excludeGlobs: [
+                'node_modules', '.git', 'dist', 'build', '.next', 'coverage'
+            ]
+        })
 
-                        // Skip DemoContent component - it's part of the default engine template
-                        if (entry.name === 'DemoContent.tsx' || entry.name === 'DemoContent.ts' ||
-                            entry.name === 'DemoContent.jsx' || entry.name === 'DemoContent.js' ||
-                            content.includes('export default function DemoContent') ||
-                            content.includes('export default DemoContent') ||
-                            (content.includes('function DemoContent') && content.includes('Demo Content'))) {
-                            return null
-                        }
+        const relevantEntries = treeResult.entries.filter(entry => {
+            if (entry.kind !== 'file') return false
+            const p = entry.path
+            if (!(p.endsWith('.tsx') || p.endsWith('.ts') || p.endsWith('.jsx') || p.endsWith('.js'))) return false
+            if (p.includes('.test.') || p.includes('.spec.') || p.includes('components/ui/')) return false
+            const filename = p.split('/').pop() || ''
+            if (filename === 'setup.ts' || filename === 'types.ts' || filename === 'constants.ts') return false
+            return p.includes('pages/') ||
+                p.includes('components/') ||
+                p.includes('layouts/') ||
+                p.includes('lib/') ||
+                p.includes('data/') ||
+                p.includes('content/') ||
+                p.includes('server/api/') ||
+                p.includes('hooks/') ||
+                p.includes('services/') ||
+                p.includes('store/') ||
+                p.includes('stores/') ||
+                p.includes('actions/') ||
+                p.endsWith('App.tsx') || p.endsWith('App.ts') ||
+                p.endsWith('main.tsx') || p.endsWith('main.ts') ||
+                p.endsWith('routes.tsx') || p.endsWith('routes.ts') ||
+                p.endsWith('router.tsx') || p.endsWith('router.ts')
+        })
 
-                        // Include root-level files that are likely to have content
-                        if (entry.name.includes('App') || entry.name.includes('main') || entry.name.includes('routes') || entry.name.includes('router')) {
-                            const priority = getFilePriority(`src/${entry.name}`)
-                            return { path: `src/${entry.name}`, content, priority }
-                        }
-                    } catch (error) {
-                        logger.warn('qa_analyze.file_read_error', {
-                            path: `src/${entry.name}`,
-                            error: error instanceof Error ? error.message : String(error)
-                        })
+        const results = await Promise.all(
+            relevantEntries.map(async (entry) => {
+                try {
+                    const result = await files.view({ path: entry.path })
+                    const content = result.content
+                    const filename = entry.path.split('/').pop() || ''
+
+                    if (filename.startsWith('DemoContent.') ||
+                        content.includes('export default function DemoContent') ||
+                        content.includes('export default DemoContent') ||
+                        (content.includes('function DemoContent') && content.includes('Demo Content'))) {
+                        return null
                     }
-                    return null
-                })
-        )
-        rootFiles = rootFileResults.filter((file): file is FileWithPriority => file !== null)
-    } catch {
-        logger.debug('qa_analyze.no_src_root', { path: srcRootDir })
-    }
 
-    // Combine all results
-    return [...directoryResults.flat(), ...rootFiles]
+                    const priority = getFilePriority(entry.path)
+                    return { path: entry.path, content, priority }
+                } catch (error) {
+                    logger.warn('qa_analyze.file_read_error', {
+                        path: entry.path,
+                        error: error instanceof Error ? error.message : String(error)
+                    })
+                    return null
+                }
+            })
+        )
+
+        return results.filter((file): file is FileWithPriority => file !== null)
+    } catch (error) {
+        logger.warn('qa_analyze.directory_scan_error', {
+            error: error instanceof Error ? error.message : String(error)
+        })
+        return []
+    }
 }
 
 function extractBusinessInfoFromFiles(fileContents: FileWithPriority[]): {
@@ -1026,10 +861,11 @@ OUTPUT:
             throw new Error('App ID is required for QA analysis')
         }
 
-        const app = appRepo.findById(appId)
-        if (!app) {
-            throw new Error(`App '${appId}' not found`)
+        const workspace = createForWorkspace(appId, 'preview')
+        if (!workspace) {
+            throw new Error(`Workspace not available for app: ${appId}`)
         }
+        const { files } = workspace
 
         logger.info('qa_analyze.begin', {
             appId,
@@ -1041,7 +877,7 @@ OUTPUT:
         const forceRefresh = input.forceRefresh || false
 
         // Check for existing history first
-        const history = await readQAHistory(app.path)
+        const history = await readQAHistory(files)
         const existingRun = history.lastRun && history.lastRun.mode === mode ? history.lastRun : null
 
         // Return existing results if available and not forcing refresh
@@ -1061,26 +897,15 @@ OUTPUT:
                 appId: existingRun.appId
             }
 
-            // Try to find the latest run file for this cached run
-            const latestRunFilePath = await getLatestQARunFilePath(app.path)
-            let runId: string | undefined
+            // Try to load the run file for this cached run
+            const runId = existingRun.timestamp.toString()
             let fixedIssueIds: string[] = []
 
-            if (latestRunFilePath) {
-                const match = latestRunFilePath.match(/qa-run-(\d+)\.json/)
-                if (match && match[1]) {
-                    runId = match[1]
-                    const runFile = await readQARunFile(app.path, runId)
-                    if (runFile) {
-                        fixedIssueIds = runFile.fixedIssueIds
-                    }
-                }
-            }
-
-            // If no run file found, create one for this cached run
-            if (!runId) {
-                runId = existingRun.timestamp.toString()
-                const runFile: QARunFile = {
+            const runFile = await readQARunFile(files, runId)
+            if (runFile) {
+                fixedIssueIds = runFile.fixedIssueIds
+            } else {
+                const newRunFile: QARunFile = {
                     runId,
                     timestamp: existingRun.timestamp,
                     appId: existingRun.appId,
@@ -1092,7 +917,7 @@ OUTPUT:
                     issueIds: existingRun.issueIds,
                     fixedIssueIds: []
                 }
-                await saveQARunFile(app.path, runFile)
+                await saveQARunFile(files, newRunFile)
             }
 
             return {
@@ -1124,7 +949,7 @@ OUTPUT:
                     brandVoice: appPlanResult.data?.planData?.brandVoice || 'Professional'
                 }
 
-                const fileContents = await readAppFiles(app.path)
+                const fileContents = await readAppFiles(files)
 
                 logger.info('qa_analyze.files_read', {
                     appId,
@@ -1150,7 +975,7 @@ OUTPUT:
                 }
 
                 // Store this run in permanent history (this will update fixed issue tracking)
-                await addQARunToHistory(app.path, appId, mode, report, issues, allIssueIds)
+                await addQARunToHistory(files, appId, mode, report, issues, allIssueIds)
 
                 // Create timestamped run file
                 const runId = Date.now().toString()
@@ -1166,7 +991,7 @@ OUTPUT:
                     issueIds: Array.from(allIssueIds),
                     fixedIssueIds: [] // Initially no issues are fixed
                 }
-                await saveQARunFile(app.path, runFile)
+                await saveQARunFile(files, runFile)
 
                 return {
                     success: true,

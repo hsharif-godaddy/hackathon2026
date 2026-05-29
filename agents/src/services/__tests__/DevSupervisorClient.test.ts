@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { DevSupervisorClient, isDevSupervisorAvailable, createDevSupervisorClient } from '../DevSupervisorClient.js';
+import { DevSupervisorClient, DevSupervisorError, isDevSupervisorAvailable, createDevSupervisorClient } from '../DevSupervisorClient.js';
 import * as fs from 'fs';
 import http from 'http';
 
@@ -98,7 +98,9 @@ describe('DevSupervisorClient', () => {
 
       const options = { command: 'invalid command' };
 
-      await expect(client.exec(options)).rejects.toThrow('HTTP 500: Command failed');
+      await expect(client.exec(options)).rejects.toSatisfy((err: unknown) =>
+        err instanceof DevSupervisorError && err.code === 'Command failed' && err.statusCode === 500
+      );
     });
 
     it('should combine error type and message in validation failures', async () => {
@@ -108,8 +110,12 @@ describe('DevSupervisorClient', () => {
       });
       vi.mocked(http.request).mockReturnValue(mockRequest as any);
 
-      await expect(client.exec({ command: '' }))
-        .rejects.toThrow('HTTP 400: validation_failed: command cannot be empty');
+      await expect(client.exec({ command: '' })).rejects.toSatisfy((err: unknown) =>
+        err instanceof DevSupervisorError &&
+        err.code === 'validation_failed' &&
+        err.statusCode === 400 &&
+        err.message === 'command cannot be empty'
+      );
     });
 
     it('should use message field when error field is absent', async () => {
@@ -118,16 +124,24 @@ describe('DevSupervisorClient', () => {
       });
       vi.mocked(http.request).mockReturnValue(mockRequest as any);
 
-      await expect(client.exec({ command: 'test' }))
-        .rejects.toThrow('HTTP 400: Invalid JSON payload');
+      await expect(client.exec({ command: 'test' })).rejects.toSatisfy((err: unknown) =>
+        err instanceof DevSupervisorError &&
+        err.code === 'unknown' &&
+        err.statusCode === 400 &&
+        err.message === 'Invalid JSON payload'
+      );
     });
 
     it('should fall back to default text when no error details provided', async () => {
       const mockRequest = createMockRequest(400, {});
       vi.mocked(http.request).mockReturnValue(mockRequest as any);
 
-      await expect(client.exec({ command: 'test' }))
-        .rejects.toThrow('HTTP 400: Request failed');
+      await expect(client.exec({ command: 'test' })).rejects.toSatisfy((err: unknown) =>
+        err instanceof DevSupervisorError &&
+        err.code === 'unknown' &&
+        err.statusCode === 400 &&
+        err.message === 'Request failed'
+      );
     });
 
     it('should capture timed_out field from response', async () => {
@@ -408,7 +422,9 @@ describe('DevSupervisorClient getRaw', () => {
     vi.mocked(http.request).mockReturnValue(mockRequest as any);
 
     await expect(client.getRaw('/workspace/files/download?path=nope'))
-      .rejects.toThrow('HTTP 404: not_found: file not found');
+      .rejects.toSatisfy((err: unknown) =>
+        err instanceof DevSupervisorError && err.code === 'not_found' && err.statusCode === 404
+      );
   });
 
   it('rejects with raw body on non-JSON error response', async () => {
@@ -416,7 +432,9 @@ describe('DevSupervisorClient getRaw', () => {
     vi.mocked(http.request).mockReturnValue(mockRequest as any);
 
     await expect(client.getRaw('/workspace/files/download?path=x'))
-      .rejects.toThrow('HTTP 500: internal error');
+      .rejects.toSatisfy((err: unknown) =>
+        err instanceof DevSupervisorError && err.statusCode === 500 && err.message === 'internal error'
+      );
   });
 });
 

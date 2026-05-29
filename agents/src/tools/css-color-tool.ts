@@ -1,5 +1,4 @@
-import { readFile, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import type { WorkspaceFiles } from '../workspace/files.js'
 import { logger } from '../logging/index.js'
 
 /**
@@ -475,9 +474,10 @@ function generateChartColors(primary: string): string[] {
 /**
  * Update CSS custom properties in globals.css
  */
-export async function updateCssColors(appPath: string, palette: GeneratedPalette): Promise<void> {
-  const cssPath = join(appPath, 'src/styles/globals.css')
-  let content = await readFile(cssPath, 'utf-8')
+export async function updateCssColors(files: WorkspaceFiles, palette: GeneratedPalette): Promise<void> {
+  const cssRelativePath = 'src/styles/globals.css'
+  const viewResult = await files.view({ path: cssRelativePath })
+  let content = viewResult.content
 
   // Map palette to CSS variables (shadcn/ui structure)
   const colorMap: Record<string, string> = {
@@ -533,7 +533,7 @@ export async function updateCssColors(appPath: string, palette: GeneratedPalette
     content = content.replace(regex, `$1${cssValue};`)
   }
 
-  await writeFile(cssPath, content, 'utf-8')
+  await files.write({ path: cssRelativePath, content })
 }
 
 /**
@@ -549,7 +549,7 @@ export interface CssColorToolResult {
  * Main CSS color tool function
  */
 export async function updateCssColorPalette(
-  appPath: string,
+  files: WorkspaceFiles,
   input: ColorPalette
 ): Promise<CssColorToolResult> {
   try {
@@ -562,7 +562,7 @@ export async function updateCssColorPalette(
     const palette = isCompletePalette ? (input as unknown as GeneratedPalette) : generatePalette(input)
 
     // Update CSS file
-    await updateCssColors(appPath, palette)
+    await updateCssColors(files, palette)
 
     return {
       success: true,

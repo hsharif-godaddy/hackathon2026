@@ -1,12 +1,13 @@
 import { createTool, type Tool } from '@airo/ai-lib'
-import { readFile } from 'node:fs/promises'
-import path from 'node:path'
 import { z } from 'zod'
 
 import { AppRepository } from '../../database/repositories/AppRepository.js'
 import { Logger } from '../../logging/index.js'
+import { DevSupervisorError } from '../../services/DevSupervisorClient.js'
 import { RebuildOrchestrationService } from '../../services/RebuildOrchestrationService.js'
 import type { RebuildWorkflowState, SitemapData } from '../../types/rebuild.js'
+import { createForWorkspace } from '../../workspace/index.js'
+import type { WorkspaceFiles } from '../../workspace/files.js'
 
 const logger = Logger.create({ component: 'rebuild-page-selector-tool' })
 const appRepo = new AppRepository()
@@ -34,32 +35,24 @@ export function slugToTitle(slug: string): string {
   return slug === 'homepage' ? 'Homepage' : slug.charAt(0).toUpperCase() + slug.slice(1).replace(/-/g, ' ')
 }
 
-/**
- * Load workflow state from disk
- */
-export async function loadWorkflowState(appPath: string): Promise<RebuildWorkflowState | null> {
+export async function loadWorkflowState(files: WorkspaceFiles): Promise<RebuildWorkflowState | null> {
   try {
-    const statePath = path.join(appPath, '.source-site', 'workflow-state.json')
-    const content = await readFile(statePath, 'utf-8')
-    return JSON.parse(content)
+    const result = await files.view({ path: '.source-site/workflow-state.json' })
+    return JSON.parse(result.content)
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null
-    logger.warn('rebuild-page-selector.workflow-state-read-error', { appPath, error })
+    if (error instanceof DevSupervisorError && error.code === 'not_found') return null
+    logger.warn('rebuild-page-selector.workflow-state-read-error', { error })
     return null
   }
 }
 
-/**
- * Load sitemap from disk
- */
-export async function loadSitemap(appPath: string): Promise<SitemapData | null> {
+export async function loadSitemap(files: WorkspaceFiles): Promise<SitemapData | null> {
   try {
-    const sitemapPath = path.join(appPath, '.source-site', 'sitemap.json')
-    const content = await readFile(sitemapPath, 'utf-8')
-    return JSON.parse(content)
+    const result = await files.view({ path: '.source-site/sitemap.json' })
+    return JSON.parse(result.content)
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null
-    logger.warn('rebuild-page-selector.sitemap-read-error', { appPath, error })
+    if (error instanceof DevSupervisorError && error.code === 'not_found') return null
+    logger.warn('rebuild-page-selector.sitemap-read-error', { error })
     return null
   }
 }
@@ -69,14 +62,14 @@ export async function loadSitemap(appPath: string): Promise<SitemapData | null> 
  */
 export async function hasUnbuiltRebuildPages(appId: string): Promise<boolean> {
   try {
-    const app = appRepo.findById(appId)
-    if (!app) return false
+    const workspace = createForWorkspace(appId, 'preview')
+    if (!workspace) return false
 
-    const workflowState = await loadWorkflowState(app.path)
-    if (!workflowState) return false
-
-    const sitemap = await loadSitemap(app.path)
-    if (!sitemap) return false
+    const [workflowState, sitemap] = await Promise.all([
+      loadWorkflowState(workspace.files),
+      loadSitemap(workspace.files)
+    ])
+    if (!workflowState || !sitemap) return false
 
     return sitemap.pages
       .filter(p => p.scraped && !workflowState.pagesBuilt.includes(p.slug))
@@ -138,7 +131,16 @@ Tool returns: { success: true, pagePrompt: "Build an about page..." }`,
       throw new Error(`App not found: ${appId}`)
     }
 
-    const workflowState = await loadWorkflowState(app.path)
+    const workspace = createForWorkspace(appId, 'preview')
+    if (!workspace) {
+      throw new Error('Workspace not available for this app')
+    }
+    const { files } = workspace
+
+    const [workflowState, sitemap] = await Promise.all([
+      loadWorkflowState(files),
+      loadSitemap(files)
+    ])
     if (!workflowState) {
       return {
         success: false,
@@ -146,8 +148,6 @@ Tool returns: { success: true, pagePrompt: "Build an about page..." }`,
         message: 'No rebuild workflow found for this app.'
       }
     }
-
-    const sitemap = await loadSitemap(app.path)
     if (!sitemap) {
       return {
         success: false,
@@ -163,7 +163,6 @@ Tool returns: { success: true, pagePrompt: "Build an about page..." }`,
         builtPages: workflowState.pagesBuilt.length
       })
 
-      // Get available pages (scraped but not built, excluding homepage)
       const availablePages = sitemap.pages
         .filter(p => p.scraped)
         .map(p => ({
@@ -214,7 +213,6 @@ Tool returns: { success: true, pagePrompt: "Build an about page..." }`,
         pageSlug: input.pageSlug
       })
 
-      // Check if page exists and is scraped
       const page = sitemap.pages.find(p => p.slug === input.pageSlug)
       if (!page) {
         return {
@@ -232,7 +230,6 @@ Tool returns: { success: true, pagePrompt: "Build an about page..." }`,
         }
       }
 
-      // Check if already built
       if (workflowState.pagesBuilt.includes(input.pageSlug)) {
         return {
           success: false,
@@ -241,7 +238,6 @@ Tool returns: { success: true, pagePrompt: "Build an about page..." }`,
         }
       }
 
-      // Generate the page prompt
       const service = new RebuildOrchestrationService(app.path)
       const pagePrompt = await service.buildPage(appId, input.pageSlug)
 

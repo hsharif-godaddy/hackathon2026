@@ -5,9 +5,6 @@ import {
   memorySchemaRegistry as schemaRegistry,
   memoryContextProvider as contextProvider,
 } from '../../services/memory-singletons.js'
-import { AppRepository } from '../../database/repositories/AppRepository.js'
-
-const appRepo = new AppRepository()
 
 /**
  * Memory Tool for AI-Lib
@@ -39,11 +36,6 @@ Operations:
       throw new Error('App ID is required for memory operations')
     }
 
-    const app = appRepo.findById(appId)
-    if (!app) {
-      throw new Error(`App '${appId}' not found`)
-    }
-
     const { operation, key, keys, value, prefix } = input
 
     switch (operation) {
@@ -60,7 +52,7 @@ Operations:
           throw new Error(`Validation failed: ${validation.error}`)
         }
 
-        const existingEntry = await memoryService.get(app.path, key)
+        const existingEntry = await memoryService.get(appId, key)
         const oldValue = existingEntry?.value
 
         const transformedValue = await schemaRegistry.executeBeforeSetHook(
@@ -70,13 +62,12 @@ Operations:
         )
 
         const entry = await memoryService.set(
-          app.path,
           appId,
           key,
           transformedValue
         )
 
-        contextProvider.invalidateCache(appId, app.path)
+        contextProvider.invalidateCache(appId)
 
         await schemaRegistry.executeAfterSetHook(
           key,
@@ -96,7 +87,7 @@ Operations:
           throw new Error('Key is required for get operation')
         }
 
-        const entry = await memoryService.get(app.path, key)
+        const entry = await memoryService.get(appId, key)
 
         if (!entry) {
           const defaultValue = schemaRegistry.getDefaultValue(key)
@@ -133,7 +124,7 @@ Operations:
           throw new Error('Key is required for delete operation')
         }
 
-        const entry = await memoryService.get(app.path, key)
+        const entry = await memoryService.get(appId, key)
 
         if (!entry) {
           return `Key "${key}" not found`
@@ -148,13 +139,13 @@ Operations:
           throw new Error(`Delete operation prevented by beforeDelete hook for key: ${key}`)
         }
 
-        const deleted = await memoryService.delete(app.path, appId, key)
+        const deleted = await memoryService.delete(appId, key)
 
         if (!deleted) {
           return `Key "${key}" not found`
         }
 
-        contextProvider.invalidateCache(appId, app.path)
+        contextProvider.invalidateCache(appId)
 
         await schemaRegistry.executeAfterDeleteHook(key, entry.value)
 
@@ -162,7 +153,7 @@ Operations:
       }
 
       case 'list': {
-        const entries = await memoryService.list(app.path, prefix)
+        const entries = await memoryService.list(appId, prefix)
 
         if (entries.length === 0) {
           return prefix
@@ -192,7 +183,7 @@ Operations:
           throw new Error('Keys array is required for batch-get operation')
         }
 
-        const entries = await memoryService.batchGet(app.path, keys)
+        const entries = await memoryService.batchGet(appId, keys)
 
         const lines: string[] = [
           `Batch get results (${Object.keys(entries).length}/${keys.length} found):`,

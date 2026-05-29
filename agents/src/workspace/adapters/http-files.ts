@@ -11,6 +11,8 @@ import type {
   WriteResult,
   EditOptions,
   EditResult,
+  InsertOptions,
+  InsertResult,
   DeleteOptions,
   MoveOptions,
   FileUploadOptions,
@@ -46,6 +48,11 @@ export class HttpFiles implements WorkspaceFiles {
   async edit(options: EditOptions): Promise<EditResult> {
     const response = await this.client.post('/workspace/files/edit', options);
     return response as EditResult;
+  }
+
+  async insert(options: InsertOptions): Promise<InsertResult> {
+    const response = await this.client.post('/workspace/files/insert', options);
+    return response as InsertResult;
   }
 
   async delete(options: DeleteOptions): Promise<void> {

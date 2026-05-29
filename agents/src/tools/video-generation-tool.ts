@@ -10,7 +10,8 @@
  * completed video, the cached result is returned immediately.
  */
 import { execa } from 'execa';
-import { access, mkdir, readFile, rename, stat, unlink, writeFile } from 'node:fs/promises';
+import { access, mkdir, mkdtemp, readFile, rename, rm, stat, unlink, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { nanoid } from 'nanoid';
 import { createOpenAIClient } from '@airo/ai-lib';
@@ -18,8 +19,10 @@ import { AIRO_ASSET_UPLOADS_URL_PREFIX } from '@airo/shared/media';
 import { videoApiFetch } from '../helper/video-api-helper.js';
 import { logger } from '../logging/index.js';
 import { emitToApp } from '../server/ai-lib-websocket-server.js';
-import { getPersistentPublicDir } from '../utils/persistent-assets.js';
+import { DevSupervisorError } from '../services/DevSupervisorClient.js';
 import { getVideoPromptGenerationService } from '../services/video-prompt-generation.js';
+import { createForWorkspace } from '../workspace/index.js';
+import type { WorkspaceFiles } from '../workspace/files.js';
 import { WebsiteScraperDriver } from './ai-lib-tools/drivers/website-scraper-driver.js';
 
 /**
@@ -77,8 +80,7 @@ export class VideoGenerationTool {
   private readonly appId: string;
   private readonly appPath: string;
   private readonly previewUrl?: string;
-  private readonly airoDir: string;
-  private readonly videoMetadataPath: string;
+  private readonly workspace: WorkspaceFiles | null;
   private readonly pollIntervalMs: number;
   private readonly maxPollAttempts: number;
 
@@ -86,8 +88,8 @@ export class VideoGenerationTool {
     this.appId = ctx.appId;
     this.appPath = ctx.appPath;
     this.previewUrl = ctx.previewUrl;
-    this.airoDir = path.join(ctx.appPath, '.airo');
-    this.videoMetadataPath = path.join(ctx.appPath, '.airo', 'video.json');
+    const ws = createForWorkspace(ctx.appId, 'preview');
+    this.workspace = ws?.files ?? null;
     this.pollIntervalMs = ctx.pollIntervalMs ?? 10000;
     this.maxPollAttempts = ctx.maxPollAttempts ?? 100;
   }
@@ -202,14 +204,23 @@ export class VideoGenerationTool {
     url?: string,
     error?: string | null
   ): Promise<void> {
-    try {
-      await mkdir(this.airoDir, { recursive: true });
+    if (!this.workspace) {
+      logger.warn('video-generation.metadata-save-skipped', {
+        appId: this.appId,
+        reason: 'workspace unavailable',
+      });
+      return;
+    }
 
+    try {
       let existingMetadata: Record<string, unknown> = {};
       try {
-        existingMetadata = JSON.parse(await readFile(this.videoMetadataPath, 'utf-8'));
-      } catch {
-        /* file may not exist yet */
+        const result = await this.workspace.view({ path: '.airo/video.json' });
+        existingMetadata = JSON.parse(result.content);
+      } catch (err: unknown) {
+        if (!(err instanceof DevSupervisorError && err.code === 'not_found')) {
+          logger.warn('video-generation.metadata-read-error', { appId: this.appId, error: err instanceof Error ? err.message : String(err) });
+        }
       }
 
       const now = new Date().toISOString();
@@ -222,7 +233,10 @@ export class VideoGenerationTool {
         error: error ?? null,
       };
 
-      await writeFile(this.videoMetadataPath, JSON.stringify(videoMetadata, null, 2));
+      await this.workspace.write({
+        path: '.airo/video.json',
+        content: JSON.stringify(videoMetadata, null, 2),
+      });
 
       logger.info('video-generation.metadata-saved', {
         appId: this.appId,
@@ -270,37 +284,37 @@ export class VideoGenerationTool {
   async startGeneration(options: VideoGenerationOptions): Promise<VideoStatusResult> {
     const { duration = 12, resolution = '720x1280' } = options;
 
-    try {
-      const videoMetadata = JSON.parse(await readFile(this.videoMetadataPath, 'utf-8'));
+    if (this.workspace) {
+      try {
+        const result = await this.workspace.view({ path: '.airo/video.json' });
+        const videoMetadata = JSON.parse(result.content);
 
-      if (videoMetadata.status === 'completed' && videoMetadata.url) {
-        try {
-          // URL is /airo-assets/uploads/{filename}; resolve to persistent storage path
-          const filename = path.basename(videoMetadata.url);
-          await access(path.join(getPersistentPublicDir(this.appPath), 'images', filename));
-          return {
-            status: 'completed',
-            url: this.previewUrl
-              ? `${this.previewUrl.replace(/\/+$/, '')}${videoMetadata.url}`
-              : videoMetadata.url,
-          };
-        } catch {
-          /* video file missing, regenerate */
+        if (videoMetadata.status === 'completed' && videoMetadata.url) {
+          try {
+            // URL is /airo-assets/uploads/{filename}; resolve to local workspace path
+            const filename = path.basename(videoMetadata.url);
+            await access(path.join(this.appPath, 'public', 'assets', 'images', filename));
+            return {
+              status: 'completed',
+              url: this.previewUrl
+                ? `${this.previewUrl.replace(/\/+$/, '')}${videoMetadata.url}`
+                : videoMetadata.url,
+            };
+          } catch {
+            /* video file missing, regenerate */
+          }
         }
-      }
 
-      if (
-        videoMetadata.status !== 'failed' &&
-        (videoMetadata.jobId || videoMetadata.status === 'pending')
-      ) {
-        return { status: videoMetadata.status || 'pending' };
-      }
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
-        logger.warn('video-generation.start.metadata-read-failed', {
-          appId: this.appId,
-          error: error instanceof Error ? error.message : String(error),
-        });
+        if (
+          videoMetadata.status !== 'failed' &&
+          (videoMetadata.jobId || videoMetadata.status === 'pending')
+        ) {
+          return { status: videoMetadata.status || 'pending' };
+        }
+      } catch (err: unknown) {
+        if (!(err instanceof DevSupervisorError && err.code === 'not_found')) {
+          logger.warn('video-generation.metadata-read-error', { appId: this.appId, error: err instanceof Error ? err.message : String(err) });
+        }
       }
     }
 
@@ -349,23 +363,24 @@ export class VideoGenerationTool {
   private async initiateGeneration(options: VideoGenerationOptions): Promise<void> {
     const { duration = 12, resolution = '720x1280', publishedUrl } = options;
 
-    await mkdir(this.airoDir, { recursive: true });
-    const now = new Date().toISOString();
-    await writeFile(
-      this.videoMetadataPath,
-      JSON.stringify(
-        {
-          jobId: null,
-          status: 'pending',
-          createdAt: now,
-          updatedAt: now,
-          url: null,
-          error: null,
-        },
-        null,
-        2
-      )
-    );
+    if (this.workspace) {
+      const now = new Date().toISOString();
+      await this.workspace.write({
+        path: '.airo/video.json',
+        content: JSON.stringify(
+          {
+            jobId: null,
+            status: 'pending',
+            createdAt: now,
+            updatedAt: now,
+            url: null,
+            error: null,
+          },
+          null,
+          2
+        ),
+      });
+    }
 
     let metadataSaved = false;
     let failureReason = 'Video generation failed';
@@ -493,20 +508,34 @@ export class VideoGenerationTool {
           openaiStatus,
         });
 
-        try {
-          const currentMetadata = JSON.parse(await readFile(this.videoMetadataPath, 'utf-8'));
-          currentMetadata.status = openaiStatus === 'queued' ? 'pending' : openaiStatus;
-          currentMetadata.updatedAt = new Date().toISOString();
-          await writeFile(this.videoMetadataPath, JSON.stringify(currentMetadata, null, 2));
-        } catch (metadataError) {
-          // ENOENT means the file was externally deleted — treat as cancellation
-          if ((metadataError as NodeJS.ErrnoException).code === 'ENOENT') throw metadataError;
-          logger.warn('video-generation.polling.metadata-update-failed', {
-            appId: this.appId,
-            videoId,
-            attempt,
-            error: metadataError instanceof Error ? metadataError.message : String(metadataError),
-          });
+        if (this.workspace) {
+          try {
+            const viewResult = await this.workspace.view({ path: '.airo/video.json' });
+            const currentMetadata = JSON.parse(viewResult.content);
+            currentMetadata.status = openaiStatus === 'queued' ? 'pending' : openaiStatus;
+            currentMetadata.updatedAt = new Date().toISOString();
+            await this.workspace.write({
+              path: '.airo/video.json',
+              content: JSON.stringify(currentMetadata, null, 2),
+            });
+          } catch (metadataError) {
+            if (metadataError instanceof DevSupervisorError && metadataError.code === 'not_found') {
+              logger.info('video-generation.polling.cancelled', {
+                appId: this.appId,
+                videoId,
+                attempt,
+                reason: 'metadata file deleted',
+              });
+              return;
+            }
+            const msg = metadataError instanceof Error ? metadataError.message : String(metadataError);
+            logger.warn('video-generation.polling.metadata-update-failed', {
+              appId: this.appId,
+              videoId,
+              attempt,
+              error: msg,
+            });
+          }
         }
 
         if (openaiStatus === 'completed') {
@@ -530,16 +559,6 @@ export class VideoGenerationTool {
           return;
         }
       } catch (pollError) {
-        // ENOENT from any read/write means video.json was deleted — treat as cancellation
-        if ((pollError as NodeJS.ErrnoException).code === 'ENOENT') {
-          logger.info('video-generation.polling.cancelled', {
-            appId: this.appId,
-            videoId,
-            attempt,
-            reason: 'metadata file deleted',
-          });
-          return;
-        }
         logger.warn('video-generation.polling.error', {
           appId: this.appId,
           videoId,
@@ -612,6 +631,7 @@ export class VideoGenerationTool {
 
   /**
    * Download completed video from OpenAI, validate, stitch outro, and emit WebSocket event.
+   * Uses a temp directory for ffmpeg processing, then uploads via workspace API.
    * On failure: deletes video.json and emits WebSocket failure event.
    */
   private async downloadAndProcessVideo(
@@ -620,9 +640,6 @@ export class VideoGenerationTool {
     openaiClient: any
   ): Promise<void> {
     const { resolution = '720x1280' } = options;
-    const imagesDir = path.join(getPersistentPublicDir(this.appPath), 'images');
-
-    await mkdir(imagesDir, { recursive: true });
 
     const contentResponse = await videoApiFetch(openaiClient, `/videos/${videoId}/content`);
     if (!contentResponse.ok) {
@@ -644,56 +661,69 @@ export class VideoGenerationTool {
     }
 
     const fullFilename = `go_live-video-${nanoid(6)}.mp4`;
-    const filePath = path.join(imagesDir, fullFilename);
-
-    await writeFile(filePath, videoBuffer);
-
-    logger.info('video-generation.downloaded', {
-      appId: this.appId,
-      videoId,
-      filename: fullFilename,
-      size: videoBuffer.length,
-    });
-
-    const validationError = await this.validateVideoFile(filePath);
-    if (validationError) {
-      logger.error('video-generation.invalid-file', {
-        appId: this.appId,
-        videoId,
-        filePath,
-        reason: validationError,
-      });
-      await unlink(filePath).catch(() => {});
-      await this.deleteMetadata(videoId, `Invalid video file: ${validationError}`);
-      return;
-    }
+    const tempDir = await mkdtemp(path.join(tmpdir(), 'airo-video-'));
+    const tempFilePath = path.join(tempDir, fullFilename);
 
     try {
-      await this.processOutroStitching(filePath, resolution);
-    } catch (outroError) {
-      logger.warn('video-generation.outro-stitch-failed', {
+      await writeFile(tempFilePath, videoBuffer);
+
+      logger.info('video-generation.downloaded', {
         appId: this.appId,
         videoId,
-        error: outroError instanceof Error ? outroError.message : String(outroError),
+        filename: fullFilename,
+        size: videoBuffer.length,
       });
+
+      const validationError = await this.validateVideoFile(tempFilePath);
+      if (validationError) {
+        logger.error('video-generation.invalid-file', {
+          appId: this.appId,
+          videoId,
+          filePath: tempFilePath,
+          reason: validationError,
+        });
+        await this.deleteMetadata(videoId, `Invalid video file: ${validationError}`);
+        return;
+      }
+
+      try {
+        await this.processOutroStitching(tempFilePath, resolution);
+      } catch (outroError) {
+        logger.warn('video-generation.outro-stitch-failed', {
+          appId: this.appId,
+          videoId,
+          error: outroError instanceof Error ? outroError.message : String(outroError),
+        });
+      }
+
+      // Upload final processed video via workspace API
+      const finalBuffer = await readFile(tempFilePath);
+      if (this.workspace) {
+        await this.workspace.upload({
+          path: `public/assets/images/${fullFilename}`,
+          data: finalBuffer,
+        });
+      }
+
+      const publicPath = `${AIRO_ASSET_UPLOADS_URL_PREFIX}${fullFilename}`;
+      await this.saveVideoMetadata(videoId, 'completed', publicPath);
+      logger.info('video-generation.completed', {
+        appId: this.appId,
+        videoId,
+        filename: fullFilename,
+      });
+
+      const videoUrl = this.previewUrl
+        ? `${this.previewUrl.replace(/\/+$/, '')}${publicPath}`
+        : publicPath;
+
+      this.emitVideoEvent({
+        status: 'completed',
+        jobId: videoId,
+        videoUrl,
+      });
+    } finally {
+      await rm(tempDir, { recursive: true }).catch(() => {});
     }
-
-    const publicPath = `${AIRO_ASSET_UPLOADS_URL_PREFIX}${fullFilename}`;
-    await this.saveVideoMetadata(videoId, 'completed', publicPath);
-    logger.info('video-generation.completed', {
-      appId: this.appId,
-      videoId,
-      filename: fullFilename,
-    });
-
-    const videoUrl = this.previewUrl
-      ? `${this.previewUrl.replace(/\/+$/, '')}${publicPath}`
-      : publicPath;
-
-    this.emitVideoEvent({
-      status: 'completed',
-      jobId: videoId,
-      videoUrl,
-    });
   }
 }
