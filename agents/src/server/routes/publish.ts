@@ -110,7 +110,6 @@ router.post('/apps/:id/publish', requirePermission('canPublish'), async (req, re
       return res.status(404).json({ error: 'App not found' });
     }
 
-    const devSupervisor = DevSupervisorClientFactory.createForApp(id);
     const workspace = createForWorkspace(id, 'preview');
 
     if (!workspace) {
@@ -119,15 +118,6 @@ router.post('/apps/:id/publish', requirePermission('canPublish'), async (req, re
     }
 
     const gitUtils = new GitUtils(workspace.tasks);
-
-    // Check if dev-supervisor is available
-    if (!devSupervisor) {
-      contextLogger.error('route.publish.build.supervisor-unavailable', {});
-      return res.status(500).json({
-        error: 'Dev supervisor not available',
-        details: 'Unable to execute build - dev supervisor connection not established'
-      });
-    }
 
     // Detect environment and job type for archive path
     const isLocalDev = !process.env.NOMAD_ALLOC_DIR;
@@ -146,7 +136,7 @@ router.post('/apps/:id/publish', requirePermission('canPublish'), async (req, re
       appId: id,
       appPath: app.path,
       targetDir,
-      devSupervisor,
+      tasks: workspace.tasks,
       gitUtils,
       logger: contextLogger,
     };

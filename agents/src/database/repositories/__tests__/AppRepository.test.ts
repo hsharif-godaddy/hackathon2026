@@ -20,7 +20,7 @@ vi.mock('fs');
 vi.mock('path');
 vi.mock('../../connection.js');
 vi.mock('../../../utils/git.js');
-vi.mock('../../../utils/dev-supervisor-client-factory.js');
+vi.mock('../../../workspace/index.js');
 vi.mock('../../../logging/index.js');
 vi.mock('../../../utils/error.js');
 
@@ -115,12 +115,6 @@ describe('AppRepository', () => {
       createInitialCommit: vi.fn().mockResolvedValue({ success: true }),
     };
     vi.mocked(GitUtils).mockImplementation(() => mockGitUtils);
-
-    // Mock DevSupervisorClientFactory
-    const { DevSupervisorClientFactory } = await import('../../../utils/dev-supervisor-client-factory.js');
-    vi.mocked(DevSupervisorClientFactory).createForApp = vi.fn().mockReturnValue(null);
-    vi.mocked(DevSupervisorClientFactory).getAppInfo = vi.fn().mockReturnValue(null);
-    vi.mocked(DevSupervisorClientFactory).isAvailableForApp = vi.fn().mockReturnValue(false);
 
     // Mock logger
     const { Logger } = await import('../../../logging/index.js');
@@ -793,7 +787,7 @@ describe('AppRepository', () => {
         expect(result).toBe(false);
       });
 
-      it('should return false when no dev supervisor available in local mode', async () => {
+      it('should return false when no workspace available in local mode', async () => {
         const mockGetStatement = {
           get: vi.fn().mockReturnValue({
             id: mockAppId,
@@ -814,14 +808,17 @@ describe('AppRepository', () => {
           }),
         };
         mockDb.prepare.mockReturnValue(mockGetStatement);
+
+        const { createForWorkspace } = await import('../../../workspace/index.js');
+        vi.mocked(createForWorkspace).mockReturnValue(null);
 
         const result = await appRepository.restartServer(mockAppId);
 
         expect(result).toBe(false);
-        expect(mockLogger.warn).toHaveBeenCalledWith('app.server.restart.no_supervisor', expect.any(Object));
+        expect(mockLogger.warn).toHaveBeenCalledWith('app.server.restart.no_workspace', expect.any(Object));
       });
 
-      it('should use dev supervisor when available', async () => {
+      it('should use workspace tasks when available', async () => {
         const mockGetStatement = {
           get: vi.fn().mockReturnValue({
             id: mockAppId,
@@ -843,18 +840,78 @@ describe('AppRepository', () => {
         };
         mockDb.prepare.mockReturnValue(mockGetStatement);
 
-        const mockDevSupervisor = {
-          exec: vi.fn().mockResolvedValue({ exit_code: 0 }),
-        };
+        const mockRunCommandSync = vi.fn().mockResolvedValue({ exitCode: 0, stdout: '', stderr: '', timedOut: false, taskId: 'mock', executionTimeMs: 0 });
 
-        const { DevSupervisorClientFactory } = await import('../../../utils/dev-supervisor-client-factory.js');
-        vi.mocked(DevSupervisorClientFactory).createForApp = vi.fn().mockReturnValue(mockDevSupervisor);
-        vi.mocked(DevSupervisorClientFactory).getAppInfo = vi.fn().mockReturnValue({ socketPath: '/tmp/sock' });
+        const { createForWorkspace } = await import('../../../workspace/index.js');
+        vi.mocked(createForWorkspace).mockReturnValue({ tasks: { runCommandSync: mockRunCommandSync } } as any);
 
         const result = await appRepository.restartServer(mockAppId);
 
         expect(result).toBe(true);
-        expect(mockDevSupervisor.exec).toHaveBeenCalled();
+        expect(mockRunCommandSync).toHaveBeenCalledWith(expect.objectContaining({
+          command: 'npm run dev',
+          workingDir: '/tmp/apps/test-app-123',
+          timeoutSeconds: 30,
+        }));
+      });
+
+      it('should return false when runCommandSync returns non-zero exit code', async () => {
+        const mockGetStatement = {
+          get: vi.fn().mockReturnValue({
+            id: mockAppId,
+            name: 'Test App',
+            path: '/tmp/apps/test-app-123',
+            site_id: null,
+            template_id: null,
+            subscription_id: null,
+            customer_id: null,
+            status: 'created',
+            initial_build_complete: 0,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          }),
+        };
+        mockDb.prepare.mockReturnValue(mockGetStatement);
+
+        const mockRunCommandSync = vi.fn().mockResolvedValue({ exitCode: 1, stdout: '', stderr: 'Error: port in use', timedOut: false, taskId: 'mock', executionTimeMs: 500 });
+
+        const { createForWorkspace } = await import('../../../workspace/index.js');
+        vi.mocked(createForWorkspace).mockReturnValue({ tasks: { runCommandSync: mockRunCommandSync } } as any);
+
+        const result = await appRepository.restartServer(mockAppId);
+
+        expect(result).toBe(false);
+      });
+
+      it('should return false and log error when runCommandSync throws', async () => {
+        const mockGetStatement = {
+          get: vi.fn().mockReturnValue({
+            id: mockAppId,
+            name: 'Test App',
+            path: '/tmp/apps/test-app-123',
+            site_id: null,
+            template_id: null,
+            subscription_id: null,
+            customer_id: null,
+            status: 'created',
+            initial_build_complete: 0,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          }),
+        };
+        mockDb.prepare.mockReturnValue(mockGetStatement);
+
+        const mockRunCommandSync = vi.fn().mockRejectedValue(new Error('Connection refused'));
+
+        const { createForWorkspace } = await import('../../../workspace/index.js');
+        vi.mocked(createForWorkspace).mockReturnValue({ tasks: { runCommandSync: mockRunCommandSync } } as any);
+
+        const result = await appRepository.restartServer(mockAppId);
+
+        expect(result).toBe(false);
+        expect(mockLogger.error).toHaveBeenCalledWith('app.server.restart.workspace.failed', expect.objectContaining({
+          appId: mockAppId,
+        }));
       });
     });
   });

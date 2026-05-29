@@ -1,6 +1,7 @@
 import type { DevSupervisorClient, PublishRequest, PublishResponse } from '../../../../services/DevSupervisorClient.js';
 import type { GitUtils } from '../../../../utils/git.js';
 import type { ILogger } from '../../../../logging/types.js';
+import type { WorkspaceTasks } from '../../../../workspace/tasks.js';
 
 export type DeploymentStrategy = 'default' | 'paas';
 
@@ -8,7 +9,7 @@ export interface PublishContext {
   appId: string;
   appPath: string;
   targetDir?: string;
-  devSupervisor: DevSupervisorClient;
+  tasks: WorkspaceTasks;
   gitUtils: GitUtils;
   logger: ILogger;
 }

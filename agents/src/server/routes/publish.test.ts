@@ -27,13 +27,16 @@ vi.mock('../../utils/git.js', () => ({
   })),
 }));
 
-const mockCreateForApp = vi.fn().mockReturnValue(null);
+const mockCreateForWorkspace = vi.fn().mockReturnValue(null);
+vi.mock('../../workspace/index.js', () => ({
+  createForWorkspace(workspaceId: string, variant: string) {
+    return mockCreateForWorkspace(workspaceId, variant);
+  },
+}));
+
 vi.mock('../../utils/dev-supervisor-client-factory.js', () => ({
   DevSupervisorClientFactory: {
-    getInstance: vi.fn(() => ({
-      build: vi.fn()
-    })),
-    createForApp: mockCreateForApp,
+    createForSocketPath: vi.fn().mockReturnValue(null),
   }
 }));
 
@@ -230,6 +233,18 @@ describe('Publish Route Authorization', () => {
       expect(response.body.error).toBe('App not found');
       expect(mockFindById).toHaveBeenCalledWith('test-app-id');
     });
+
+    it('should return 503 when workspace is unavailable', async () => {
+      mockFindById.mockReturnValue({ id: 'test-app-id', path: '/tmp/test-app' });
+      mockCreateForWorkspace.mockReturnValue(null);
+
+      const response = await request(app)
+        .post('/apps/test-app-id/publish')
+        .send({})
+        .expect(503);
+
+      expect(response.body.error).toBe('Preview container is not available');
+    });
   });
 
   describe('Security - Permission Bypass Prevention', () => {
@@ -337,7 +352,7 @@ describe('Publish Route Authorization', () => {
       } as any);
 
       mockFindById.mockReturnValue({ id: 'test-app-id', path: '/tmp/test-app' });
-      mockCreateForApp.mockReturnValue({ exec: vi.fn() }); // dev-supervisor available
+      mockCreateForWorkspace.mockReturnValue({ tasks: { runCommandSync: vi.fn() } });
       vi.mocked(getPublishStrategy).mockReturnValue({
         key: 'default',
         prepareBuild: vi.fn().mockResolvedValue({
@@ -385,7 +400,7 @@ describe('Publish Route Authorization', () => {
       } as any);
 
       mockFindById.mockReturnValue({ id: 'test-app-id', path: '/tmp/test-app' });
-      mockCreateForApp.mockReturnValue({ exec: vi.fn() });
+      mockCreateForWorkspace.mockReturnValue({ tasks: { runCommandSync: vi.fn() } });
 
       const preflight = {
         hasAiroConfig: false,

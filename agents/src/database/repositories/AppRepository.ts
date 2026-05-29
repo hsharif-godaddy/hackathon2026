@@ -3,7 +3,7 @@ import path from 'path';
 import { getDatabase } from '../connection.js';
 import { GitUtils } from '../../utils/git.js';
 import type { App, UpdateAppRequest } from '../schema.js';
-import { DevSupervisorClientFactory } from '../../utils/dev-supervisor-client-factory.js';
+import { createForWorkspace } from '../../workspace/index.js';
 import { Logger } from '../../logging/index.js';
 import { getErrorMessage } from '../../utils/error.js';
 import { appCleanupEvents } from '../../logging/events/index.js';
@@ -724,43 +724,32 @@ export class AppRepository {
       }
     }
 
-    // Use dev supervisor for restart in local mode
-    const devSupervisor = DevSupervisorClientFactory.createForApp(appId);
-    if (devSupervisor) {
+    const workspace = createForWorkspace(appId, 'preview');
+    if (workspace) {
       try {
-        const appInfo = DevSupervisorClientFactory.getAppInfo(appId);
+        this.logger.info('app.server.restart.workspace.begin', { appId });
 
-        this.logger.info('app.server.restart.devsupervisor.begin', {
-          appId,
-          connectionPath: appInfo?.socketPath
-        });
-
-        // Dev supervisor handles the restart logic internally
-        const result = await devSupervisor.exec({
-          command: 'npm run dev', // or appropriate restart command
-          working_dir: app.path,
-          timeout: 30,
-          capture_output: true
+        const result = await workspace.tasks.runCommandSync({
+          command: 'npm run dev',
+          workingDir: app.path,
+          timeoutSeconds: 30,
         });
 
         this.logger.info('app.server.restart.success', {
           appId,
-          exitCode: result.exit_code
+          exitCode: result.exitCode
         });
 
-        return result.exit_code === 0;
+        return result.exitCode === 0;
       } catch (error) {
-        this.logger.error('app.server.restart.devsupervisor.failed', {
+        this.logger.error('app.server.restart.workspace.failed', {
           appId,
           error: getErrorMessage(error)
         });
         return false;
       }
     } else {
-      this.logger.warn('app.server.restart.no_supervisor', {
-        appId,
-        available: DevSupervisorClientFactory.isAvailableForApp(appId)
-      });
+      this.logger.warn('app.server.restart.no_workspace', { appId });
       return false;
     }
   }

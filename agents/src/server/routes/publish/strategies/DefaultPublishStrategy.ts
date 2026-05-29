@@ -16,7 +16,7 @@ export class DefaultPublishStrategy implements PublishStrategy {
   readonly key: DeploymentStrategy = 'default';
 
   async prepareBuild(context: PublishContext): Promise<BuildResult> {
-    const { logger, gitUtils, appPath, devSupervisor, targetDir } = context;
+    const { logger, gitUtils, appPath, targetDir } = context;
 
     // 1. Ensure on main branch (merge feature branch if needed)
     const commitHash = await this.ensureMainBranch(context);
@@ -214,40 +214,34 @@ export class DefaultPublishStrategy implements PublishStrategy {
    * Run production build
    */
   private async build(context: PublishContext, commitHash: string): Promise<void> {
-    const { logger, devSupervisor } = context;
+    const { logger, tasks } = context;
 
     logger.info(`route.publish.${this.key}.build.begin`, {
       commitHash: commitHash.substring(0, 7),
     });
 
-    // Build the application for production
-    // Always use /app as working directory since all deployments are containerized
-    // The app.path is the host path, but inside the container it's always /app
-    // NOTE: Explicitly set NODE_ENV=production so Vite builds with import.meta.env.DEV=false
-    // The preview container has NODE_ENV=development by default, which would cause DEV=true
-    const buildResult = await devSupervisor.exec({
+    const buildResult = await tasks.runCommandSync({
       command: 'NODE_ENV=production npm run build',
-      working_dir: '/app',
-      timeout: 120,
-      capture_output: true
+      workingDir: '/app',
+      timeoutSeconds: 120,
     });
 
-    if (!buildResult.success) {
+    if (buildResult.exitCode !== 0) {
       logger.error(`route.publish.${this.key}.build.failed`, {
         commitHash: commitHash.substring(0, 7),
-        exitCode: buildResult.exit_code,
+        exitCode: buildResult.exitCode,
         stderr: buildResult.stderr,
       });
       throw new BuildError(
         'Build failed',
         buildResult.stderr || buildResult.stdout,
-        buildResult.exit_code
+        buildResult.exitCode
       );
     }
 
     logger.info(`route.publish.${this.key}.build.success`, {
       commitHash: commitHash.substring(0, 7),
-      executionTime: buildResult.execution_time
+      executionTime: buildResult.executionTimeMs
     });
   }
 

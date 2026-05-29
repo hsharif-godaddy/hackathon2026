@@ -125,7 +125,7 @@ export class PaaSPublishStrategy implements PublishStrategy {
   }
 
   async prepareBuild(context: PublishContext): Promise<BuildResult> {
-    const { logger, devSupervisor, gitUtils, appPath, targetDir } = context;
+    const { logger, gitUtils, appPath, targetDir } = context;
 
     // Step 0: Ensure preview is running before proceeding
     await this.ensurePreviewRunning(context);
@@ -184,28 +184,18 @@ export class PaaSPublishStrategy implements PublishStrategy {
    * instead of hanging for the full health-check timeout.
    */
   private async preflightStartCommand(context: PublishContext): Promise<void> {
-    const { logger, devSupervisor, appId } = context;
+    const { logger, tasks, appId } = context;
 
-    // Single shell call, two cat invocations separated by a sentinel.
     // `|| true` on each cat keeps the overall exit code 0 when a file is
-    // missing — otherwise the last cat's non-zero status makes
-    // `result.success` false, and we can't tell "supervisor unreachable"
-    // from "file absent" (the case we actually want to detect).
+    // missing — without it a non-zero status makes exitCode !== 0 and we
+    // can't distinguish "infrastructure failure" from "file absent".
     const SEP = '---airo-preflight-sep---';
-    const result = await devSupervisor.exec({
+    const result = await tasks.runCommandSync({
       command: `cat /app/.airo/config.json 2>/dev/null || true; printf '\\n${SEP}\\n'; cat /app/package.json 2>/dev/null || true`,
-      timeout: 10,
-      capture_output: true,
+      timeoutSeconds: 10,
     });
 
-    // If exec itself failed (supervisor unreachable, etc.), we can't
-    // distinguish "config missing" from "couldn't read the container" —
-    // skipping the preflight lets the archive ship and the existing
-    // health-check timeout catches a genuinely broken app. Failing hard
-    // here would surface as a misleading 412 "add a start script" when the
-    // real cause was infrastructure. Same judgement as `emitArchiveManifest`:
-    // don't fail the publish on instrumentation.
-    if (!result.success) {
+    if (result.exitCode !== 0) {
       logger.warn(`route.publish.${this.key}.preflight.exec-failed`, {
         appId,
         stderr: result.stderr?.slice(0, 500),
@@ -213,9 +203,9 @@ export class PaaSPublishStrategy implements PublishStrategy {
       return;
     }
 
-    // exec "success" only tells us the shell ran; the cats may have failed
-    // individually. We detect each file's presence by whether its section
-    // parses as JSON.
+    // exitCode === 0 only tells us the shell ran; individual cats may have
+    // produced empty output. We detect each file's presence by whether its
+    // section parses as JSON.
     const [airoRaw = '', packageRaw = ''] = (result.stdout ?? '').split(SEP);
 
     const airoConfig = safeJsonParse(airoRaw);
@@ -248,26 +238,24 @@ export class PaaSPublishStrategy implements PublishStrategy {
 
   /**
    * Ensure preview HTTP server is responding before allowing publish.
-   * Uses curl via exec to verify the HTTP server responds with 2xx/3xx.
+   * Uses curl via runCommandSync to verify the HTTP server responds with 2xx/3xx.
    * Note: $FRONTEND_DOMAIN is resolved inside the Preview container where it's defined.
    */
   private async ensurePreviewRunning(context: PublishContext): Promise<void> {
-    const { logger, devSupervisor } = context;
+    const { logger, tasks } = context;
 
     logger.info(`route.publish.${this.key}.preview-check.begin`, {});
 
     try {
-      // $FRONTEND_DOMAIN is resolved by shell inside Preview container
-      const result = await devSupervisor.exec({
+      const result = await tasks.runCommandSync({
         command: 'curl -s -o /dev/null -w "%{http_code}" --max-time 5 https://$FRONTEND_DOMAIN',
-        timeout: 10,
-        capture_output: true,
+        timeoutSeconds: 10,
       });
 
       const statusCode = parseInt(result.stdout?.trim() || '0', 10);
       logger.info(`route.publish.${this.key}.preview-check.result`, {
         statusCode,
-        success: result.success,
+        success: result.exitCode === 0,
       });
 
       // Accept 2xx and 3xx status codes

@@ -22,49 +22,52 @@ function buildPreflightStdout(
 }
 
 /**
- * Route mocked exec calls to responses based on a command substring match.
- * Returns the mock so individual tests can override.
+ * Route mocked runCommandSync calls to responses based on a command substring match.
  */
 function installExecRouter(
-  mockDevSupervisor: { exec: ReturnType<typeof vi.fn> },
+  mockTasks: { runCommandSync: ReturnType<typeof vi.fn> },
   opts: {
     previewStatus?: string;
-    previewSuccess?: boolean;
+    previewExitCode?: number;
     previewThrows?: Error;
     airoConfig?: object | null;
     packageJson?: object | null;
-    preflightSuccess?: boolean;
+    preflightExitCode?: number;
   } = {}
 ): void {
   const {
     previewStatus = '200',
-    previewSuccess = true,
+    previewExitCode = 0,
     previewThrows,
     airoConfig = { runtime: { serve: { command: 'npm start' } } },
     packageJson = { scripts: { start: 'node server.js' } },
-    preflightSuccess = true,
+    preflightExitCode = 0,
   } = opts;
 
-  mockDevSupervisor.exec.mockImplementation(async (args: { command: string }) => {
+  mockTasks.runCommandSync.mockImplementation(async (args: { command: string }) => {
     if (args.command.includes('curl')) {
       if (previewThrows) throw previewThrows;
-      return { stdout: previewStatus, success: previewSuccess };
+      return { stdout: previewStatus, exitCode: previewExitCode, stderr: '', timedOut: false, taskId: 'mock', executionTimeMs: 0 };
     }
     if (args.command.includes('airo-preflight-sep')) {
       return {
         stdout: buildPreflightStdout(airoConfig, packageJson),
-        success: preflightSuccess,
+        exitCode: preflightExitCode,
+        stderr: '',
+        timedOut: false,
+        taskId: 'mock',
+        executionTimeMs: 0,
       };
     }
-    throw new Error(`Unexpected exec command: ${args.command}`);
+    throw new Error(`Unexpected command: ${args.command}`);
   });
 }
 
 describe('PaaSPublishStrategy', () => {
   let strategy: PaaSPublishStrategy;
   let mockContext: PublishContext;
-  let mockDevSupervisor: {
-    exec: ReturnType<typeof vi.fn>;
+  let mockTasks: {
+    runCommandSync: ReturnType<typeof vi.fn>;
   };
   let mockGitUtils: {
     createArchive: ReturnType<typeof vi.fn>;
@@ -78,8 +81,8 @@ describe('PaaSPublishStrategy', () => {
   beforeEach(() => {
     strategy = new PaaSPublishStrategy();
 
-    mockDevSupervisor = {
-      exec: vi.fn(),
+    mockTasks = {
+      runCommandSync: vi.fn(),
     };
 
     mockGitUtils = {
@@ -99,7 +102,7 @@ describe('PaaSPublishStrategy', () => {
       appId: 'test-app-id',
       appPath: '/tmp/test-app',
       targetDir: '/dist',
-      devSupervisor: mockDevSupervisor as any,
+      tasks: mockTasks as any,
       gitUtils: mockGitUtils as any,
       logger: mockLogger as any,
     };
@@ -107,7 +110,7 @@ describe('PaaSPublishStrategy', () => {
 
   describe('prepareBuild', () => {
     beforeEach(() => {
-      installExecRouter(mockDevSupervisor);
+      installExecRouter(mockTasks);
     });
 
     it('should generate hex timestamp identifier', async () => {
@@ -177,7 +180,7 @@ describe('PaaSPublishStrategy', () => {
 
   describe('preview health check', () => {
     it('should proceed when HTTP returns 200', async () => {
-      installExecRouter(mockDevSupervisor, { previewStatus: '200' });
+      installExecRouter(mockTasks, { previewStatus: '200' });
 
       const result = await strategy.prepareBuild(mockContext);
 
@@ -193,7 +196,7 @@ describe('PaaSPublishStrategy', () => {
     });
 
     it('should proceed when HTTP returns 301 (3xx)', async () => {
-      installExecRouter(mockDevSupervisor, { previewStatus: '301' });
+      installExecRouter(mockTasks, { previewStatus: '301' });
 
       const result = await strategy.prepareBuild(mockContext);
 
@@ -201,25 +204,25 @@ describe('PaaSPublishStrategy', () => {
     });
 
     it('should throw PreviewNotRunningError when HTTP returns 404', async () => {
-      installExecRouter(mockDevSupervisor, { previewStatus: '404' });
+      installExecRouter(mockTasks, { previewStatus: '404' });
 
       await expect(strategy.prepareBuild(mockContext)).rejects.toThrow(PreviewNotRunningError);
     });
 
     it('should throw PreviewNotRunningError when HTTP returns 500', async () => {
-      installExecRouter(mockDevSupervisor, { previewStatus: '500' });
+      installExecRouter(mockTasks, { previewStatus: '500' });
 
       await expect(strategy.prepareBuild(mockContext)).rejects.toThrow(PreviewNotRunningError);
     });
 
     it('should throw PreviewNotRunningError when curl fails (connection refused)', async () => {
-      installExecRouter(mockDevSupervisor, { previewStatus: '000', previewSuccess: false });
+      installExecRouter(mockTasks, { previewStatus: '000', previewExitCode: 7 });
 
       await expect(strategy.prepareBuild(mockContext)).rejects.toThrow(PreviewNotRunningError);
     });
 
     it('should throw PreviewNotRunningError with isSystemError when exec throws', async () => {
-      installExecRouter(mockDevSupervisor, { previewThrows: new Error('Connection refused') });
+      installExecRouter(mockTasks, { previewThrows: new Error('Connection refused') });
 
       const error = await strategy.prepareBuild(mockContext).catch((e) => e);
       expect(error).toBeInstanceOf(PreviewNotRunningError);
@@ -234,7 +237,7 @@ describe('PaaSPublishStrategy', () => {
 
   describe('preflight start command', () => {
     it('passes when .airo/config.json has runtime.serve.command', async () => {
-      installExecRouter(mockDevSupervisor, {
+      installExecRouter(mockTasks, {
         airoConfig: { runtime: { serve: { command: 'node dist/server.js' } } },
         packageJson: { scripts: {} }, // no start script — fine, airo config covers it
       });
@@ -259,7 +262,7 @@ describe('PaaSPublishStrategy', () => {
     });
 
     it('passes when package.json has scripts.start and .airo/config.json is missing', async () => {
-      installExecRouter(mockDevSupervisor, {
+      installExecRouter(mockTasks, {
         airoConfig: null,
         packageJson: { scripts: { start: 'node server.js' } },
       });
@@ -279,7 +282,7 @@ describe('PaaSPublishStrategy', () => {
     });
 
     it('throws MissingStartCommandError and emits event when neither is set', async () => {
-      installExecRouter(mockDevSupervisor, {
+      installExecRouter(mockTasks, {
         airoConfig: { runtime: { serve: { command: '' } } }, // empty ≡ missing
         packageJson: { scripts: { dev: 'vite' } },           // start absent
       });
@@ -311,13 +314,12 @@ describe('PaaSPublishStrategy', () => {
     });
 
     it('treats malformed JSON the same as missing', async () => {
-      // Stream-level: override installExecRouter directly with bad JSON text.
-      mockDevSupervisor.exec.mockImplementation(async (args: { command: string }) => {
+      mockTasks.runCommandSync.mockImplementation(async (args: { command: string }) => {
         if (args.command.includes('curl')) {
-          return { stdout: '200', success: true };
+          return { stdout: '200', exitCode: 0, stderr: '', timedOut: false, taskId: 'mock', executionTimeMs: 0 };
         }
         if (args.command.includes('airo-preflight-sep')) {
-          return { stdout: '{not json\n---airo-preflight-sep---\nalso not json', success: true };
+          return { stdout: '{not json\n---airo-preflight-sep---\nalso not json', exitCode: 0, stderr: '', timedOut: false, taskId: 'mock', executionTimeMs: 0 };
         }
         throw new Error('unexpected');
       });
@@ -335,7 +337,7 @@ describe('PaaSPublishStrategy', () => {
     });
 
     it('treats whitespace-only commands as missing', async () => {
-      installExecRouter(mockDevSupervisor, {
+      installExecRouter(mockTasks, {
         airoConfig: { runtime: { serve: { command: '   ' } } },
         packageJson: { scripts: { start: '   ' } },
       });
@@ -347,7 +349,7 @@ describe('PaaSPublishStrategy', () => {
 
     it('treats airoConfig with runtime but no serve.command as missing', async () => {
       // Optional-chaining case: runtime present, serve key absent.
-      installExecRouter(mockDevSupervisor, {
+      installExecRouter(mockTasks, {
         airoConfig: { runtime: { build: { command: 'npm run build' } } } as any,
         packageJson: { scripts: { dev: 'vite' } },
       });
@@ -364,7 +366,7 @@ describe('PaaSPublishStrategy', () => {
     it('passes when airoConfig is valid and package.json is absent entirely', async () => {
       // Edge case: tar ships .airo/config.json without a package.json
       // (unusual but technically valid — the serve command is self-sufficient).
-      installExecRouter(mockDevSupervisor, {
+      installExecRouter(mockTasks, {
         airoConfig: { runtime: { serve: { command: 'node dist/server.js' } } },
         packageJson: null,
       });
@@ -382,15 +384,12 @@ describe('PaaSPublishStrategy', () => {
     });
 
     it('skips preflight and allows publish to continue when exec itself fails', async () => {
-      // Supervisor-level failure: shell ran but reported non-zero. We should
-      // NOT surface a misleading 412 "add a start script" — let the archive
-      // ship and fall back to the existing health-check timeout.
-      mockDevSupervisor.exec.mockImplementation(async (args: { command: string }) => {
+      mockTasks.runCommandSync.mockImplementation(async (args: { command: string }) => {
         if (args.command.includes('curl')) {
-          return { stdout: '200', success: true };
+          return { stdout: '200', exitCode: 0, stderr: '', timedOut: false, taskId: 'mock', executionTimeMs: 0 };
         }
         if (args.command.includes('airo-preflight-sep')) {
-          return { stdout: '', success: false, stderr: 'supervisor: dial tcp: connection refused' };
+          return { stdout: '', exitCode: 1, stderr: 'supervisor: dial tcp: connection refused', timedOut: false, taskId: 'mock', executionTimeMs: 0 };
         }
         throw new Error('unexpected');
       });
