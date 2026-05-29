@@ -1,28 +1,28 @@
 packages:
-  - "agents"
-  - "app"
-  - "blog"
-  - "packages/*"
-  - "setup"
-  - "cdk"
-  - "debug-console"
-  - "fanout"
-  - "evals/agentic-qa-langfuse"
-  - "design-rag"
-  - "ts-bridge"
-  - "evals/corpus-eval"
-  - "evals/gosym-probe"
-  - "evals/rebuild-prompts"
-  - "!app-templates/**"
+  - 'agents'
+  - 'app'
+  - 'blog'
+  - 'packages/*'
+  - 'setup'
+  - 'cdk'
+  - 'debug-console'
+  - 'fanout'
+  - 'evals/agentic-qa-langfuse'
+  - 'design-rag'
+  - 'ts-bridge'
+  - 'evals/corpus-eval'
+  - 'evals/gosym-probe'
+  - 'evals/rebuild-prompts'
+  - '!app-templates/**'
 
 catalog:
   # Tooling - single source of truth for shared dev dependencies.
   # Note: eslint, prettier, vitest, and dotenv also exist in pnpm.overrides
   # (root package.json) to enforce versions for transitive deps pulled by
   # plugins/configs.
-  "@ai-sdk/openai": ^3.0.63
-  "@ai-sdk/provider": ^3.0.10
-  "@aws-sdk/client-lambda": ^3.1048.0
+  '@ai-sdk/openai': ^3.0.63
+  '@ai-sdk/provider': ^3.0.10
+  '@aws-sdk/client-lambda': ^3.1048.0
 
   # Shared runtime
   '@babel/generator': ^7.29.1
@@ -109,3 +109,9 @@ catalog:
   # AWS SDK - not cataloged; pinned versions are sensitive to
   # Artifactory mirror lag for transitive @smithy/* deps.
   # Coordinate AWS SDK bumps manually across app/ and ai-lib/.
+
+# False-positive malware advisories on internal Artifactory-only @gdcorp-digitalcare/* packages.
+auditConfig:
+  ignoreGhsas:
+    - GHSA-gxw8-54vm-j6h5
+    - GHSA-mr89-h5vv-pr3v
