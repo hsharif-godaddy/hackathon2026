@@ -50,6 +50,13 @@ vi.mock('fs/promises', () => ({
   access: (...args: unknown[]) => mockAccess(...args),
 }));
 
+const mockReadWidgetConfig = vi.fn();
+const mockWriteWidgetConfig = vi.fn();
+vi.mock('../widget-config.js', () => ({
+  readWidgetConfig: (...args: unknown[]) => mockReadWidgetConfig(...args),
+  writeWidgetConfig: (...args: unknown[]) => mockWriteWidgetConfig(...args),
+}));
+
 const { discoverAccountTool, selectAccountTool, setupWidgetTool, updateWidgetConfigTool } =
   await import('../index.js');
 
@@ -65,6 +72,10 @@ describe('conversations skill tools', () => {
     mockFindById.mockResolvedValue({ path: '/tmp/airo-app-builder/app-123/preview', name: 'My App' });
     mockInstallTemplates.mockResolvedValue({ success: true });
     mockAccess.mockResolvedValue(undefined);
+    mockReadWidgetConfig.mockResolvedValue({
+      _support: { account: '', ui: { widget: { icon: 'webChat', color: '', position: 'bottom-right' } } },
+    });
+    mockWriteWidgetConfig.mockResolvedValue(undefined);
   });
 
   // --------------------------------------------------------------------------
@@ -414,7 +425,7 @@ describe('conversations skill tools', () => {
       });
 
       const result = await setupWidgetTool.execute(
-        { color: '#1e40af', position: 'bottom-left' },
+        { color: '#1e40af' },
         context,
       );
 
@@ -424,7 +435,6 @@ describe('conversations skill tools', () => {
         'a1b2c3d4-0000-4000-8000-000000000001',
         expect.objectContaining({
           title: 'My App',
-          shoutbox_position: 'bottom-left',
           shoutbox_icon: 'webChat',
           shoutbox_bg: '#1e40af',
           styles: { button_bg_color: '#1e40af', header_bg_color: '#1e40af' },
@@ -458,17 +468,31 @@ describe('conversations skill tools', () => {
       expect(result.error).toContain('server error');
     });
 
-    it('returns brandId and CRITICAL_NEXT_STEP', async () => {
+    it('returns brandId and writes config file', async () => {
       const result = await setupWidgetTool.execute({}, context);
 
       expect(result.brandId).toBe('a1b2c3d4-0000-4000-8000-000000000001');
-      expect(result.CRITICAL_NEXT_STEP).toContain('conversations.config.ts');
+      expect(result.configWritten).toContain('conversations.config.json');
+      expect(mockWriteWidgetConfig).toHaveBeenCalledWith(
+        expect.stringContaining('conversations.config.json'),
+        expect.objectContaining({
+          _support: expect.objectContaining({ account: 'a1b2c3d4-0000-4000-8000-000000000001' }),
+        }),
+      );
     });
 
-    it('includes brandId in CRITICAL_NEXT_STEP for agent to write', async () => {
-      const result = await setupWidgetTool.execute({}, context);
+    it('writes color to config when provided', async () => {
+      const result = await setupWidgetTool.execute({ color: '#aabbcc' }, context);
 
-      expect(result.CRITICAL_NEXT_STEP).toContain("'a1b2c3d4-0000-4000-8000-000000000001'");
+      expect(result.NEXT_STEP).toContain('ConversationsWidget');
+      expect(mockWriteWidgetConfig).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          _support: expect.objectContaining({
+            ui: { widget: { icon: 'webChat', color: '#aabbcc', position: 'bottom-right' } },
+          }),
+        }),
+      );
     });
 
     it('returns error when client is unavailable', async () => {
@@ -545,6 +569,32 @@ describe('conversations skill tools', () => {
         42,
         { shoutbox_position: 'bottom-left' },
       );
+    });
+
+    it('writes config file with account restored after successful backend sync', async () => {
+      mockReadWidgetConfig.mockResolvedValue({
+        _support: { account: '', ui: { widget: { icon: 'webChat', color: '', position: 'bottom-right' } } },
+      });
+
+      await updateWidgetConfigTool.execute({ color: '#ff0000', position: 'bottom-left' }, context);
+
+      expect(mockWriteWidgetConfig).toHaveBeenCalledWith(
+        expect.stringContaining('conversations.config.json'),
+        expect.objectContaining({
+          _support: expect.objectContaining({
+            account: 'a1b2c3d4-0000-4000-8000-000000000001',
+            ui: { widget: { icon: 'webChat', color: '#ff0000', position: 'bottom-left' } },
+          }),
+        }),
+      );
+    });
+
+    it('does not write config file when backend sync fails', async () => {
+      mockUpdateEmbeddable.mockResolvedValue({ success: false, error: 'rate limited' });
+
+      await updateWidgetConfigTool.execute({ color: '#aabbcc' }, context);
+
+      expect(mockWriteWidgetConfig).not.toHaveBeenCalled();
     });
 
     it('returns error when updateEmbeddable fails', async () => {

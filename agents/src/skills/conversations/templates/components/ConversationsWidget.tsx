@@ -3,7 +3,7 @@
 import { useEffect, useRef } from 'react';
 
 import { getAnalyticsConsent, onConsentChange } from '@/lib/analytics-consent';
-import { config } from '../lib/conversations.config';
+import config from '../lib/conversations.config.json';
 
 const SCRIPT_ID = 'conversations-js';
 
@@ -29,10 +29,10 @@ export default function ConversationsWidget() {
 
   useEffect(() => {
     function loadWidget(): void {
-      if (!config.support.account || scriptInjected.current || document.getElementById(SCRIPT_ID)) return;
+      if (!config._support.account || scriptInjected.current || document.getElementById(SCRIPT_ID)) return;
       scriptInjected.current = true;
 
-      window._support = { ...window._support, ...config.support };
+      window._support = { ...window._support, ...config._support };
 
       const script = document.createElement('script');
       script.id = SCRIPT_ID;
