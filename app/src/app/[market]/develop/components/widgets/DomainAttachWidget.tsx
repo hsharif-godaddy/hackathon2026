@@ -38,7 +38,14 @@ import { DomainMode, DomainStatus } from '@/lib/mgmt-airo/types';
 import { logger } from '@/lib/request-context';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import { useSiteStore } from '@/stores/useSiteStore';
-import { isBlockedAiroDomain, isCustomerDomain, sanitizeDomainInput, validateDomain } from '@/utils/domain';
+import {
+  dedupeSiteDomainsByFqdn,
+  isBlockedAiroDomain,
+  isCustomerDomain,
+  normalizeFqdn,
+  sanitizeDomainInput,
+  validateDomain,
+} from '@/utils/domain';
 import { getDomainErrorMessage, translateDomainApiError } from '@/utils/domain-validation';
 import { hasBeenPublished } from '@/utils/site';
 
@@ -167,17 +174,22 @@ export default function DomainAttachWidget({
     requiresManualDnsSetup,
   } = useCustomerDomainAttach(appDetails, domains);
 
-  const pendingDomain = useMemo(() => {
-    if (!appDetails?.domains) return null;
+  const siteDomains = useMemo(
+    () => dedupeSiteDomainsByFqdn(appDetails?.domains ?? []),
+    [appDetails?.domains],
+  );
 
+  const pendingDomain = useMemo(() => {
     // First, check for customer domain that requires manual DNS setup
     // This covers: external nameservers OR attach API failed
     if (requiresManualDnsSetup && pendingCustomerDomainForAttach) {
       return pendingCustomerDomainForAttach.fqdn;
     }
 
+    if (!siteDomains.length) return null;
+
     // Then check for custom domains (not customer-owned)
-    const pending = appDetails.domains.find((d) => {
+    const pending = siteDomains.find((d) => {
       if (d.domainType === 'prefix') return false;
       if (isCustomerDomain(d.fqdn, domains)) return false;
       // ERROR/FAILED/INACTIVE are terminal, and no-status means we don't yet know — don't show DNS instructions for either.
@@ -185,10 +197,10 @@ export default function DomainAttachWidget({
     });
 
     return pending ? pending.fqdn : null;
-  }, [appDetails, domains, requiresManualDnsSetup, pendingCustomerDomainForAttach]);
+  }, [siteDomains, domains, requiresManualDnsSetup, pendingCustomerDomainForAttach]);
 
   const pendingDomainDetails = pendingDomain
-    ? appDetails?.domains?.find((d) => d.fqdn === pendingDomain)
+    ? siteDomains.find((d) => normalizeFqdn(d.fqdn) === normalizeFqdn(pendingDomain))
     : null;
 
   const domainDnsOwnershipEnabled = !!pendingDomain && !!pendingDomainDetails;
@@ -362,7 +374,6 @@ export default function DomainAttachWidget({
 
   async function handleConnectDomain(domainName: string) {
     if (!appId) return;
-
     const isGoDaddyDomain = isCustomerDomain(domainName, domains);
 
     try {
@@ -603,11 +614,11 @@ export default function DomainAttachWidget({
 
   // Get customer domain entries (includes root domains + connected subdomains)
   const customerDomainEntries = (isDomainsFetched && isAppDetailsFetched) ? domains.map((domain) => {
-    const connectedDomains = appDetails?.domains?.filter(
+    const connectedDomains = siteDomains.filter(
       (appDomain) =>
         appDomain.domainType !== 'prefix' &&
         isCustomerDomain(appDomain.fqdn, [domain])
-    ) || [];
+    );
 
     return {
       customerDomain: domain,
@@ -616,20 +627,22 @@ export default function DomainAttachWidget({
   }) : [];
 
   // Get custom domains (not prefix, not owned by customer)
-  const customDomains = (isDomainsFetched && isAppDetailsFetched && appDetails?.domains) ? appDetails.domains.filter(
-    (appDomain) =>
-      appDomain.domainType !== 'prefix' &&
-      !isCustomerDomain(appDomain.fqdn, domains)
-  ) : [];
+  const customDomains = (isDomainsFetched && isAppDetailsFetched)
+    ? siteDomains.filter(
+      (appDomain) =>
+        appDomain.domainType !== 'prefix' &&
+        !isCustomerDomain(appDomain.fqdn, domains)
+    )
+    : [];
 
   // Check if there's already a domain being added or active
   const hasActiveOrPendingCustomDomain = customDomains.some(
     (d) => d.status === DomainStatus.PENDING || d.status === DomainStatus.ACTIVE
   );
 
-  const hasActiveOrPendingDomain = appDetails?.domains
-    ?.filter((d) => d.domainType !== 'prefix')
-    ?.some((d) => d.status === DomainStatus.PENDING || d.status === DomainStatus.ACTIVE);
+  const hasActiveOrPendingDomain = siteDomains
+    .filter((d) => d.domainType !== 'prefix')
+    .some((d) => d.status === DomainStatus.PENDING || d.status === DomainStatus.ACTIVE);
 
   const isPublished = hasBeenPublished(site);
 
@@ -783,7 +796,9 @@ export default function DomainAttachWidget({
               gap="sm"
             >
               {(() => {
-                const rootAppDomain = entry.connectedDomains.find((d) => d.fqdn === domainName);
+                const rootAppDomain = entry.connectedDomains.find(
+                  (d) => normalizeFqdn(d.fqdn) === normalizeFqdn(domainName),
+                );
                 return (
                   <DomainItem
                     domain={entry.customerDomain}
@@ -799,7 +814,7 @@ export default function DomainAttachWidget({
               })()}
 
               {entry.connectedDomains
-                .filter((d) => d.fqdn !== domainName)
+                .filter((d) => normalizeFqdn(d.fqdn) !== normalizeFqdn(domainName))
                 .map((subdomain, subIndex) => (
                   <DomainItem
                     key={`subdomain-${index}-${subIndex}-${subdomain.fqdn}`}

@@ -36,7 +36,14 @@ import { PAYWALL_ITC } from '@/lib/paywall/shared';
 import { logger } from '@/lib/request-context';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import { useSiteStore } from "@/stores/useSiteStore";
-import { isBlockedAiroDomain, isCustomerDomain, sanitizeDomainInput, validateDomain } from '@/utils/domain';
+import {
+  dedupeSiteDomainsByFqdn,
+  isBlockedAiroDomain,
+  isCustomerDomain,
+  normalizeFqdn,
+  sanitizeDomainInput,
+  validateDomain,
+} from '@/utils/domain';
 import { getDomainErrorMessage, translateDomainApiError } from '@/utils/domain-validation';
 import { getRootDomain } from '@/utils/getRootDomain';
 import { generateClickEID } from '@/utils/instrumentation';
@@ -141,17 +148,22 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
     requiresManualDnsSetup,
   } = useCustomerDomainAttach(appDetails, domains);
 
-  const pendingDomain = useMemo(() => {
-    if (!appDetails?.domains) return null;
+  const siteDomains = useMemo(
+    () => dedupeSiteDomainsByFqdn(appDetails?.domains ?? []),
+    [appDetails?.domains],
+  );
 
+  const pendingDomain = useMemo(() => {
     // First, check for customer domain that requires manual DNS setup
     // This covers: external nameservers OR attach API failed
     if (requiresManualDnsSetup && pendingCustomerDomainForAttach) {
       return pendingCustomerDomainForAttach.fqdn;
     }
 
+    if (!siteDomains.length) return null;
+
     // Then check for custom domains (not customer-owned)
-    const pending = appDetails.domains.find((d) => {
+    const pending = siteDomains.find((d) => {
       // Exclude prefix/project domains
       if (d.domainType === 'prefix') return false;
 
@@ -163,10 +175,10 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
     });
 
     return pending ? pending.fqdn : null;
-  }, [appDetails, domains, requiresManualDnsSetup, pendingCustomerDomainForAttach]);
+  }, [siteDomains, domains, requiresManualDnsSetup, pendingCustomerDomainForAttach]);
 
   const pendingDomainDetails = pendingDomain
-    ? appDetails?.domains?.find((d) => d.fqdn === pendingDomain)
+    ? siteDomains.find((d) => normalizeFqdn(d.fqdn) === normalizeFqdn(pendingDomain))
     : null;
 
   const domainDnsOwnershipEnabled = !!pendingDomain && !!pendingDomainDetails;
@@ -241,24 +253,27 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
   // On first render (or app switch), baseline the statuses without firing events —
   // only subsequent changes (pending → active, active → failed, etc.) are emitted.
   useEffect(() => {
-    if (!currentAppId || !appDetails?.domains) return;
+    if (!currentAppId) return;
 
-    const nonPrefixDomains = appDetails.domains.filter(
+    const nonPrefixDomains = siteDomains.filter(
       (d) => d.domainType !== 'prefix' && d.domainType !== 'customer',
     );
 
     if (trackedAppIdRef.current !== currentAppId) {
-      domainStatusRef.current = new Map(nonPrefixDomains.map((d) => [d.fqdn, d.status]));
+      domainStatusRef.current = new Map(
+        nonPrefixDomains.map((d) => [normalizeFqdn(d.fqdn), d.status]),
+      );
       trackedAppIdRef.current = currentAppId;
       return;
     }
 
     for (const domain of nonPrefixDomains) {
-      const prevStatus = domainStatusRef.current.get(domain.fqdn);
+      const fqdnKey = normalizeFqdn(domain.fqdn);
+      const prevStatus = domainStatusRef.current.get(fqdnKey);
       const currStatus = domain.status;
 
       if (prevStatus === undefined) {
-        domainStatusRef.current.set(domain.fqdn, currStatus);
+        domainStatusRef.current.set(fqdnKey, currStatus);
         continue;
       }
 
@@ -269,15 +284,15 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
           status: currStatus,
           prevStatus,
         });
-        domainStatusRef.current.set(domain.fqdn, currStatus);
+        domainStatusRef.current.set(fqdnKey, currStatus);
       }
     }
 
-    const activeFqdns = new Set(nonPrefixDomains.map((d) => d.fqdn));
+    const activeFqdns = new Set(nonPrefixDomains.map((d) => normalizeFqdn(d.fqdn)));
     for (const key of domainStatusRef.current.keys()) {
       if (!activeFqdns.has(key)) domainStatusRef.current.delete(key);
     }
-  }, [appDetails?.domains, currentAppId]);
+  }, [siteDomains, currentAppId]);
 
   /**
    * Handle custom domain input change with debouncing
@@ -519,11 +534,11 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
   // Only compute once both queries have fetched
   const customerDomainEntries = (isDomainsFetched && isAppDetailsFetched) ? domains.map((domain) => {
     // Find all connected domains that match this customer domain (exact or subdomain)
-    const connectedDomains = appDetails?.domains?.filter(
+    const connectedDomains = siteDomains.filter(
       (appDomain) =>
         appDomain.domainType !== 'prefix' &&
         isCustomerDomain(appDomain.fqdn, [domain])
-    ) || [];
+    );
 
     return {
       customerDomain: domain,
@@ -534,11 +549,13 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
   // Get custom domains (not prefix domains, not owned by customer)
   // This excludes both exact matches and subdomains of customer domains
   // Only compute once both queries have fetched
-  const customDomains = (isDomainsFetched && isAppDetailsFetched && appDetails?.domains) ? appDetails.domains.filter(
-    (appDomain) =>
-      appDomain.domainType !== 'prefix' &&
-      !isCustomerDomain(appDomain.fqdn, domains)
-  ) : [];
+  const customDomains = (isDomainsFetched && isAppDetailsFetched)
+    ? siteDomains.filter(
+      (appDomain) =>
+        appDomain.domainType !== 'prefix' &&
+        !isCustomerDomain(appDomain.fqdn, domains)
+    )
+    : [];
 
   // Separate connected vs available domains
   const connectedCustomerDomains = customerDomainEntries.filter(
@@ -559,9 +576,9 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
     (d) => d.status === DomainStatus.PENDING || d.status === DomainStatus.ACTIVE
   );
 
-  const hasActiveOrPendingDomain = appDetails?.domains
-    ?.filter((d) => d.domainType !== 'prefix')
-    ?.some((d) => d.status === DomainStatus.PENDING || d.status === DomainStatus.ACTIVE);
+  const hasActiveOrPendingDomain = siteDomains
+    .filter((d) => d.domainType !== 'prefix')
+    .some((d) => d.status === DomainStatus.PENDING || d.status === DomainStatus.ACTIVE);
 
   const isPublished = hasBeenPublished(site);
 
@@ -573,7 +590,7 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
   const isDomainDataReady = isDomainsFetched && isAppDetailsFetched;
 
   const customDomainSectionStatus = useMemo(() => {
-    const connectedDomains = appDetails?.domains?.filter((d) => d.domainType !== 'prefix') || [];
+    const connectedDomains = siteDomains.filter((d) => d.domainType !== 'prefix');
     if (connectedDomains.length === 0) return undefined;
 
     if (hasActiveDomainJob) return Status.PENDING;
@@ -597,7 +614,7 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
     }
 
     return undefined;
-  }, [appDetails, hasActiveDomainJob]);
+  }, [siteDomains, hasActiveDomainJob]);
 
   return (
     <SettingsSection
@@ -642,7 +659,9 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
               <Box key={`connected-customer-domain-${index}-${domainName}`} gap="sm">
                 {/* Root domain */}
                 {(() => {
-                  const rootAppDomain = entry.connectedDomains.find((d) => d.fqdn === domainName);
+                  const rootAppDomain = entry.connectedDomains.find(
+                    (d) => normalizeFqdn(d.fqdn) === normalizeFqdn(domainName),
+                  );
                   return (
                     <DomainItem
                       domain={entry.customerDomain}
@@ -660,7 +679,7 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
 
                 {/* Connected subdomains */}
                 {entry.connectedDomains
-                  .filter((d) => d.fqdn !== domainName)
+                  .filter((d) => normalizeFqdn(d.fqdn) !== normalizeFqdn(domainName))
                   .map((subdomain, subIndex) => (
                     <DomainItem
                       key={`connected-subdomain-${index}-${subIndex}-${subdomain.fqdn}`}

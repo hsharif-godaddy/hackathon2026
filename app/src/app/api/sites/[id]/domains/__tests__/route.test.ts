@@ -82,6 +82,27 @@ describe('/api/sites/[id]/domains', function domainsRouteTests() {
     });
   });
 
+  it('lowercases fqdn in domainsToCreate and domainsToDelete', async function lowercasesFqdn() {
+    const { POST } = await import('../route');
+    const request = createRequest({
+      domainsToCreate: [{ fqdn: 'Example.COM' }],
+      domainsToDelete: [{ fqdn: 'Other.NET' }],
+    });
+
+    const response = await POST(request, routeParams('site-1'));
+
+    expect(response.status).toBe(200);
+    expect(mockModifyDomains).toHaveBeenCalledWith(
+      'sub-1',
+      'sys-1',
+      'site-1',
+      expect.objectContaining({
+        domainsToCreate: [{ fqdn: 'example.com' }],
+        domainsToDelete: [{ fqdn: 'other.net' }],
+      }),
+    );
+  });
+
   it('passes transferFromMWP through to client.modifyDomains', async function validTransferFromMwp() {
     const { POST } = await import('../route');
     const request = createRequest({

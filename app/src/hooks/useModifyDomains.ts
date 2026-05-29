@@ -4,6 +4,7 @@ import { appFetch } from '@/lib/gasket-config';
 import { MWP_V2_APP_OWNER_TYPE } from '@/lib/mgmt-airo/types';
 import { logger } from '@/lib/request-context';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
+import { normalizeFqdn } from '@/utils/domain';
 
 /**
  * Domain to create for an app
@@ -73,6 +74,20 @@ export class DomainMutationError extends Error {
   }
 }
 
+function normalizeModifyDomainsPayload(payload: ModifyDomainsPayload): ModifyDomainsPayload {
+  return {
+    ...payload,
+    domainsToCreate: payload.domainsToCreate?.map((domain) => ({
+      ...domain,
+      fqdn: normalizeFqdn(domain.fqdn),
+    })),
+    domainsToDelete: payload.domainsToDelete?.map((domain) => ({
+      ...domain,
+      fqdn: normalizeFqdn(domain.fqdn),
+    })),
+  };
+}
+
 /**
  * React Query mutation hook for modifying app domains
  *
@@ -107,12 +122,13 @@ export function useModifyDomains() {
       siteId: string;
       payload: ModifyDomainsPayload;
     }): Promise<ModifyDomainsResponse> => {
+      const normalizedPayload = normalizeModifyDomainsPayload(payload);
       const response = await appFetch(`/api/sites/${siteId}/domains`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(normalizedPayload),
       }, { authLevel: 3 });
 
       if (!response.ok) {
@@ -203,11 +219,11 @@ export function useModifyDomains() {
           `Failed to modify domains: ${response.status}`;
 
         const domainSpecificError: Record<string, string> = {};
-        for (const d of payload.domainsToCreate ?? []) {
-          domainSpecificError[d.fqdn.trim().toLowerCase()] = errorMessage;
+        for (const d of normalizedPayload.domainsToCreate ?? []) {
+          domainSpecificError[normalizeFqdn(d.fqdn)] = errorMessage;
         }
-        for (const d of payload.domainsToDelete ?? []) {
-          domainSpecificError[d.fqdn.trim().toLowerCase()] = errorMessage;
+        for (const d of normalizedPayload.domainsToDelete ?? []) {
+          domainSpecificError[normalizeFqdn(d.fqdn)] = errorMessage;
         }
         logger.error('domain-operations.modify.failure', {
           message: errorMessage,

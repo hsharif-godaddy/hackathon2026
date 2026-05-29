@@ -117,6 +117,55 @@ export function sanitizeDomainInput(input: string): string {
 }
 
 /**
+ * Canonical FQDN form for comparisons and API payloads (trim + lowercase).
+ * DNS hostnames are case-insensitive; mgmt-airo normalizes on write.
+ */
+export function normalizeFqdn(fqdn: string): string {
+  return fqdn.trim().toLowerCase();
+}
+
+/**
+ * Collapse site domain rows that differ only by FQDN casing.
+ * Prefers stronger status first (active > pending > others), then lowercase fqdn.
+ * Returns original row objects; only comparisons/dedup keys are normalized.
+ */
+export function dedupeSiteDomainsByFqdn<T extends { fqdn: string; status?: string | null }>(domains: T[]): T[] {
+  const activeStatus = String(DomainStatus.ACTIVE).toLowerCase();
+  const pendingStatus = String(DomainStatus.PENDING).toLowerCase();
+  function rank(status?: string | null): number {
+    const normalized = (status ?? '').toLowerCase();
+    if (normalized === activeStatus) return 2;
+    if (normalized === pendingStatus) return 1;
+    return 0;
+  }
+
+  const byKey = new Map<string, T>();
+  for (const domain of domains) {
+    const key = normalizeFqdn(domain.fqdn);
+    const existing = byKey.get(key);
+    if (!existing) {
+      byKey.set(key, domain);
+      continue;
+    }
+
+    const existingRank = rank(existing.status);
+    const nextRank = rank(domain.status);
+    if (nextRank > existingRank) {
+      byKey.set(key, domain);
+      continue;
+    }
+    if (existingRank > nextRank) continue;
+
+    const existingCanonical = existing.fqdn === normalizeFqdn(existing.fqdn);
+    const nextCanonical = domain.fqdn === normalizeFqdn(domain.fqdn);
+    if (nextCanonical && !existingCanonical) {
+      byKey.set(key, domain);
+    }
+  }
+  return [...byKey.values()];
+}
+
+/**
  * Parse a domain string into its components
  * Returns null if the domain cannot be parsed
  *
@@ -251,7 +300,8 @@ export function findCustomerDomain<T extends { domain?: string; name?: string; i
 
   const exactMatch = customerDomains.find((customerDomain) => {
     const customerDomainName = customerDomain.domain || customerDomain.name || customerDomain.internationalDisplayName;
-    return customerDomainName === parsed.fqdn;
+    if (!customerDomainName) return false;
+    return normalizeFqdn(customerDomainName) === normalizeFqdn(parsed.fqdn);
   });
 
   if (exactMatch) return exactMatch;
@@ -259,7 +309,8 @@ export function findCustomerDomain<T extends { domain?: string; name?: string; i
   if (parsed.isSubdomain) {
     const rootMatch = customerDomains.find((customerDomain) => {
       const customerDomainName = customerDomain.domain || customerDomain.name || customerDomain.internationalDisplayName;
-      return customerDomainName === parsed.rootDomain;
+      if (!customerDomainName) return false;
+      return normalizeFqdn(customerDomainName) === normalizeFqdn(parsed.rootDomain);
     });
     return rootMatch || null;
   }

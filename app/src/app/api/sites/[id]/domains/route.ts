@@ -6,6 +6,7 @@ import { type AiroApiError, type AiroApiErrorV2, AiroHttpError, AiroMgmtClient }
 import { mgmtAiro401Response } from '@/lib/mgmt-airo/auth-error';
 import { logger } from '@/lib/request-context';
 import { ApiErrorCode } from '@/utils/api-errors';
+import { normalizeFqdn } from '@/utils/domain';
 import { DomainApiErrorCode } from '@/utils/domain-validation';
 
 export const dynamic = 'force-dynamic';
@@ -165,8 +166,14 @@ export const POST = withCustomerAuth(async (
       site.system_id,
       siteId,
       {
-        domainsToCreate,
-        domainsToDelete,
+        domainsToCreate: domainsToCreate.map((domain: { fqdn: string; primary?: boolean }) => ({
+          ...domain,
+          fqdn: normalizeFqdn(domain.fqdn),
+        })),
+        domainsToDelete: domainsToDelete.map((domain: { fqdn: string }) => ({
+          ...domain,
+          fqdn: normalizeFqdn(domain.fqdn),
+        })),
         createCdn,
         isWildcardDomain: true,
         transferFrom,

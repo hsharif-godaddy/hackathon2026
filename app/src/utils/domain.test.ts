@@ -2,12 +2,14 @@ import { describe, expect, it } from 'vitest';
 
 import { DomainStatus, DomainType, type SiteDomain } from '@/lib/control-plane/types';
 import {
+  dedupeSiteDomainsByFqdn,
   findCustomerDomain,
   getDnsRecords,
   hasExternalNameservers,
   isAiroSubdomain,
   isBlockedAiroDomain,
   isCustomerDomain,
+  normalizeFqdn,
   parseDomain,
   resolveSiteFqdn,
   sanitizeDomainInput,
@@ -360,6 +362,12 @@ describe('isCustomerDomain', () => {
       const domains = [{ domain: 'example.com', name: 'ignored.com' }];
       expect(isCustomerDomain('example.com', domains)).toBe(true);
       expect(isCustomerDomain('ignored.com', domains)).toBe(false);
+    });
+
+    it('should match customer and app FQDNs case-insensitively', () => {
+      const domains = [{ domain: 'Example.COM' }];
+      expect(isCustomerDomain('example.com', domains)).toBe(true);
+      expect(isCustomerDomain('EXAMPLE.COM', domains)).toBe(true);
     });
   });
 });
@@ -846,6 +854,76 @@ describe('findCustomerDomain', () => {
       const result = findCustomerDomain('münchen.de', domains);
       expect(result).toEqual(domains[0]);
     });
+  });
+
+  describe('case insensitivity', () => {
+    it('should match when customer list casing differs from app FQDN', () => {
+      const domains = [{ domain: 'Example.COM' }];
+      const result = findCustomerDomain('example.com', domains);
+      expect(result).toEqual(domains[0]);
+    });
+  });
+});
+
+describe('normalizeFqdn', () => {
+  it('should trim and lowercase', () => {
+    expect(normalizeFqdn('  Example.COM  ')).toBe('example.com');
+  });
+});
+
+describe('dedupeSiteDomainsByFqdn', () => {
+  it('should return empty array when input is empty', () => {
+    expect(dedupeSiteDomainsByFqdn([])).toEqual([]);
+  });
+
+  it('should return single row unchanged', () => {
+    const domains = [{ fqdn: 'Example.COM', status: 'active' }];
+    const result = dedupeSiteDomainsByFqdn(domains);
+    expect(result).toHaveLength(1);
+    expect(result[0]).toEqual(domains[0]);
+  });
+
+  it('should collapse rows that differ only by casing', () => {
+    const domains = [
+      { fqdn: 'Example.COM', status: 'pending' },
+      { fqdn: 'example.com', status: 'active' },
+    ];
+    const result = dedupeSiteDomainsByFqdn(domains);
+    expect(result).toHaveLength(1);
+    expect(result[0]?.fqdn).toBe('example.com');
+    expect(result[0]?.status).toBe('active');
+  });
+
+  it('should prefer higher-status row before canonical casing', () => {
+    const domains = [
+      { fqdn: 'example.com', status: 'pending' },
+      { fqdn: 'Example.COM', status: 'active' },
+    ];
+    const result = dedupeSiteDomainsByFqdn(domains);
+    expect(result).toHaveLength(1);
+    expect(result[0]?.fqdn).toBe('Example.COM');
+    expect(result[0]?.status).toBe('active');
+  });
+
+  it('should keep first row when both rows are lowercase with equal status rank', () => {
+    const domains = [
+      { fqdn: 'example.com', status: 'inactive', source: 'first' },
+      { fqdn: 'example.com', status: 'failed', source: 'second' },
+    ];
+    const result = dedupeSiteDomainsByFqdn(domains);
+    expect(result).toHaveLength(1);
+    expect(result[0]?.source).toBe('first');
+  });
+
+  it('should keep first row when both rows are mixed-case with equal status rank', () => {
+    const domains = [
+      { fqdn: 'Example.COM', status: 'inactive', source: 'first' },
+      { fqdn: 'EXAMPLE.com', status: 'failed', source: 'second' },
+    ];
+    const result = dedupeSiteDomainsByFqdn(domains);
+    expect(result).toHaveLength(1);
+    expect(result[0]?.source).toBe('first');
+    expect(result[0]?.fqdn).toBe('Example.COM');
   });
 });
 
