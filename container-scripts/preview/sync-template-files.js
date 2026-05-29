@@ -194,7 +194,8 @@ const SYNC_MANIFEST = [
       '03d2c6061dba1a2d61870ba1c9e3e406', // Before import retry for transient Vite dep optimization errors
       '0b3e1d30a5b646e0fabfa7e657a582c9', // before <!--app-head--> / <!--app-html--> SSR markers
       'f2faa351e9111fb14ed707d0d55e7ce7', // before static main entry restored for CSS hoisting
-      '9170b78302b5d16948b51b7acdae6d72'  // before airoShareToken-strip script + same-origin referrer-policy
+      '9170b78302b5d16948b51b7acdae6d72', // before airoShareToken-strip script + same-origin referrer-policy
+      '17827fb25e25787b2f7bd0fd7d5e0e37'  // before share-token rationale comments were removed
     ],
     force: false
   },
