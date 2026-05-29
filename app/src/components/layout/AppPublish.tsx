@@ -176,7 +176,8 @@ export default function AppPublish({ location = 'develop' }: { location?: string
   });
 
   const { data: subscription } = useSubscription();
-  const planName = subscription?.plan ? t(getPlanDisplayLabelKey(subscription.plan)) : '';
+  const planLabelKey = subscription?.plan ? getPlanDisplayLabelKey(subscription.plan) : '';
+  const planName = planLabelKey ? t(planLabelKey) : '';
   const publishLimit = getPublishLimit(subscription?.plan);
 
   // Get publish state for current app
