@@ -10,17 +10,19 @@ import { mockInstrumentation } from '@/tests/mocks';
 import { renderWithProviders } from '@/tests/test-utils';
 import { logClickEvent } from '@/utils/instrumentation';
 import DevelopHeader from './Header';
-import { ViewMode } from '../types';
+import { MobileMode, ViewMode } from '../types';
 
 const mockDevelopStore = {
   chatPaneWidth: 400,
   isMobile: false,
   viewMode: ViewMode.PREVIEW,
+  mobileMode: MobileMode.TOOLS,
   isRestarting: false,
   hasUnsavedChanges: false,
   isChatPaneCollapsed: false,
   isVersionHistoryOpen: false,
   handleViewModeChange: vi.fn(),
+  handleMobileModeChange: vi.fn(),
   toggleChatPaneCollapse: vi.fn(),
 };
 
@@ -104,12 +106,14 @@ vi.mock('@/hooks/useChatTabs', () => ({
   }),
 }));
 
+
 describe('DevelopHeader', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockDevelopStore.chatPaneWidth = 400;
     mockDevelopStore.isMobile = false;
     mockDevelopStore.viewMode = ViewMode.PREVIEW;
+    mockDevelopStore.mobileMode = MobileMode.TOOLS;
     mockDevelopStore.isChatPaneCollapsed = false;
     mockDevelopStore.isVersionHistoryOpen = false;
     mockAuthContext.isAuthenticated = true;
@@ -237,4 +241,5 @@ describe('DevelopHeader', () => {
 
     expect(vi.mocked(logClickEvent)).toHaveBeenCalledWith('develop.header.edit_mode', { appId: 'app-123' });
   });
+
 });

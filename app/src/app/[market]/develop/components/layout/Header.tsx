@@ -47,6 +47,12 @@ const MOBILE_MODE_EID_MAP: Record<string, string> = {
   [MobileMode.PREVIEW]: 'develop.mobile_header.preview',
 };
 
+// Tailwind fragments for the segmented Preview/Edit pill.
+// `bg-ai` = Airo violet active state for "you are editing"; transparent
+// inactive state lets the rail bg show through so the pill reads as one toggle.
+const SEGMENTED_INACTIVE_TRANSPARENT = '[&[aria-checked=false]]:!bg-transparent';
+const ACTIVE_AI_PILL = '[&[aria-checked=true]]:bg-ai [&[aria-checked=true]]:text-intents-ux-boxHighContrast-foregroundColor';
+
 interface DevelopHeaderProps {
   onPreviewRefresh: () => void;
 }
@@ -71,6 +77,11 @@ export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) 
   const handleViewModeChange = useDevelopPageStore((state) => state.handleViewModeChange)
   const handleMobileModeChange = useDevelopPageStore((state) => state.handleMobileModeChange)
   const toggleChatPaneCollapse = useDevelopPageStore((state) => state.toggleChatPaneCollapse)
+
+  const handleViewModeButtonChange = (value: string) => {
+    handleViewModeChange(value as ViewMode, hasUnsavedChanges)
+    if (VIEW_MODE_EID_MAP[value]) logClickEvent(VIEW_MODE_EID_MAP[value], clickContext)()
+  }
 
   return (
     <header data-testid="airo-header" className="flex">
@@ -122,32 +133,53 @@ export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) 
           >
             {/* Left side controls */}
             <Box orientation="horizontal" gap="sm" inlineAlignChildren='center'>
-              <ButtonGroup
-                value={viewMode}
-                onChange={(value) => {
-                  handleViewModeChange(value as ViewMode, hasUnsavedChanges);
-                  if (VIEW_MODE_EID_MAP[value]) logClickEvent(VIEW_MODE_EID_MAP[value], clickContext)();
-                }}
-              >
-                {isBrandBookEnabled && (
+              {/* Secondary tools (icon-only): Brand. role="group" — not part of the
+                  Preview/Edit mutually-exclusive pair from an ARIA standpoint. */}
+              {isBrandBookEnabled && (
+                <ButtonGroup
+                  value={viewMode}
+                  onChange={handleViewModeButtonChange}
+                  role="group"
+                >
                   <ButtonGroup.Item
                     value={ViewMode.BRAND}
                     icon={<ColorPaletteIcon className="size-2.5" />}
                     label="Logo & Brand"
                     disabled={isVersionHistoryOpen}
                   />
-                )}
+                </ButtonGroup>
+              )}
+
+              {/* Primary mode toggle: segmented Preview ↔ Edit. Inactive items are transparent so the
+                  rail reads as a single track; the active pill is the only distinct element. */}
+              <ButtonGroup
+                value={viewMode}
+                onChange={handleViewModeButtonChange}
+                className="!gap-0"
+              >
                 <ButtonGroup.Item
                   value={ViewMode.PREVIEW}
                   icon={<WebsiteFilledIcon className="size-2.5" />}
                   label={t('builder_preview_button_preview')}
+                  data-eid="develop.header.iframe"
+                  className={`px-2 !rounded-r-none ${SEGMENTED_INACTIVE_TRANSPARENT}`}
                 />
                 <ButtonGroup.Item
                   value={ViewMode.EDIT}
                   icon={<InlineEditIcon className="size-2.5" />}
                   label={t('builder_preview_button_edit')}
                   disabled={isVersionHistoryOpen}
+                  data-eid="develop.header.edit_mode"
+                  className={`px-2 !rounded-l-none ${SEGMENTED_INACTIVE_TRANSPARENT} ${ACTIVE_AI_PILL}`}
                 />
+              </ButtonGroup>
+
+              {/* Secondary tools (icon-only): Code, Domain, Inbox. role="group" — see Brand note. */}
+              <ButtonGroup
+                value={viewMode}
+                onChange={handleViewModeButtonChange}
+                role="group"
+              >
                 <ButtonGroup.Item
                   value={ViewMode.CODE}
                   icon={<CodeIcon className="size-2.5" />}

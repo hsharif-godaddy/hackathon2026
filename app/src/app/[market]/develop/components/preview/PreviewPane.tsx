@@ -180,6 +180,7 @@ export default function PreviewPane({
 
   const previewViewMode = useDevelopPageStore((state) => state.previewViewMode)
   const viewMode = useDevelopPageStore((state) => state.viewMode)
+  const isEditModeEnabled = useDevelopPageStore((state) => state.isEditModeEnabled)
   const selectedDeviceId = useDevelopPageStore((state) => state.selectedDeviceId)
   const setPreviewViewMode = useDevelopPageStore((state) => state.setPreviewViewMode)
   const mobileMode = useDevelopPageStore((state) => state.mobileMode)
@@ -1179,9 +1180,10 @@ export default function PreviewPane({
                     <div
                       ref={previewShellRef}
                       className={clsx(
-                        'relative border rounded-lg md:rounded-b-none bg-intents-ux-boxLowContrast-backgroundColor overflow-hidden', {
+                        'relative border rounded-lg md:rounded-b-none bg-intents-ux-boxLowContrast-backgroundColor overflow-hidden transition-shadow duration-200', {
                           'w-full h-full': isFullSize || isMobile,
-                          'my-auto': !isFullSize && !isMobile
+                          'my-auto': !isFullSize && !isMobile,
+                          'ring-2 ring-ai/60': isEditModeEnabled,
                         }
                       )}
                       style={!isFullSize && !isMobile ? {

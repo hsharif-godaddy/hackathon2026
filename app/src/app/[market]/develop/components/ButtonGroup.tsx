@@ -15,10 +15,13 @@ import {
 } from 'react';
 import Tooltip from '@ux/tooltip';
 
+type ButtonGroupRole = 'radiogroup' | 'group';
+
 interface ButtonGroupContextValue {
   value?: string;
   onChange?: (value: string) => void;
   groupId: string;
+  role: ButtonGroupRole;
   registerActiveWidth: (id: string, width: number) => void;
   registerInactiveWidth: (id: string, width: number) => void;
   unregisterWidths: (id: string) => void;
@@ -40,10 +43,17 @@ interface ButtonGroupProps {
   onChange?: (value: string) => void;
   children: React.ReactNode;
   className?: string;
+  /**
+   * ARIA role for the container. Use 'radiogroup' (default) when items are
+   * mutually exclusive selections; use 'group' when items are a visual cluster
+   * of independent buttons. Items only get role="radio" + aria-checked when
+   * the container is a radiogroup.
+   */
+  role?: ButtonGroupRole;
   'data-eid'?: string;
 }
 
-function ButtonGroupRoot({ value, onChange, children, className, 'data-eid': dataEid }: ButtonGroupProps) {
+function ButtonGroupRoot({ value, onChange, children, className, role = 'radiogroup', 'data-eid': dataEid }: ButtonGroupProps) {
   const groupId = useId();
   const widthsRef = useRef<Map<string, { active: number; inactive: number }>>(new Map());
   const [maxActiveWidth, setMaxActiveWidth] = useState(0);
@@ -89,6 +99,7 @@ function ButtonGroupRoot({ value, onChange, children, className, 'data-eid': dat
       value,
       onChange,
       groupId,
+      role,
       registerActiveWidth,
       registerInactiveWidth,
       unregisterWidths,
@@ -99,6 +110,7 @@ function ButtonGroupRoot({ value, onChange, children, className, 'data-eid': dat
       value,
       onChange,
       groupId,
+      role,
       registerActiveWidth,
       registerInactiveWidth,
       unregisterWidths,
@@ -110,7 +122,7 @@ function ButtonGroupRoot({ value, onChange, children, className, 'data-eid': dat
   return (
     <ButtonGroupContext.Provider value={contextValue}>
       <div
-        role="radiogroup"
+        role={role}
         className={clsx(
           'relative flex items-center gap-0.5 p-0.5 rounded-lg bg-intents-ux-box-backgroundColor',
           className
@@ -125,7 +137,7 @@ function ButtonGroupRoot({ value, onChange, children, className, 'data-eid': dat
 
 interface ButtonGroupItemProps extends Omit<HTMLMotionProps<'button'>, 'onClick' | 'ref' | 'animate' | 'transition' | 'initial' | 'exit'> {
   value?: string;
-  icon: React.ReactNode;
+  icon?: React.ReactNode;
   label?: string;
   disabled?: boolean;
   onClick?: () => void;
@@ -233,8 +245,8 @@ const ButtonGroupItem = forwardRef<HTMLButtonElement, ButtonGroupItemProps>(func
   return (
     <motion.button
       type="button"
-      role={isControlled ? "radio" : undefined}
-      aria-checked={isControlled ? isActive : undefined}
+      role={isControlled && context?.role === 'radiogroup' ? "radio" : undefined}
+      aria-checked={isControlled && context?.role === 'radiogroup' ? isActive : undefined}
       aria-label={label}
       disabled={disabled}
       onClick={handleClick}
@@ -265,24 +277,24 @@ const ButtonGroupItem = forwardRef<HTMLButtonElement, ButtonGroupItemProps>(func
             aria-hidden
             className="pointer-events-none invisible absolute left-0 top-0 flex items-center p-1 whitespace-nowrap"
           >
-            <span className="flex items-center size-2.5">{icon}</span>
-            <span className="ml-1 text-sm font-medium">{label}</span>
+            {icon && <span className="flex items-center size-2.5">{icon}</span>}
+            <span className={clsx('text-sm font-medium', icon && 'ml-1')}>{label}</span>
           </span>
           <span
             ref={inactiveMeasureRef}
             aria-hidden
             className="pointer-events-none invisible absolute left-0 top-0 flex items-center p-1 whitespace-nowrap"
           >
-            <span className="flex items-center size-2.5">{icon}</span>
+            {icon && <span className="flex items-center size-2.5">{icon}</span>}
             {showLabelAlways ? (
-              <span className="ml-1 text-sm font-medium">{label}</span>
+              <span className={clsx('text-sm font-medium', icon && 'ml-1')}>{label}</span>
             ) : null}
           </span>
         </>
       )}
-      <span className="flex items-center size-2.5">{icon}</span>
+      {icon && <span className="flex items-center size-2.5">{icon}</span>}
       {label && showLabelAlways ? (
-        <span className="ml-1 text-sm font-medium whitespace-nowrap">{label}</span>
+        <span className={clsx('text-sm font-medium whitespace-nowrap', icon && 'ml-1')}>{label}</span>
       ) : (
         <AnimatePresence initial={false}>
           {isActive && label && (

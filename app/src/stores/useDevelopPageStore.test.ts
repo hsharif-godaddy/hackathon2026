@@ -1332,4 +1332,5 @@ describe('useDevelopPageStore', function useDevelopPageStoreTests() {
       expect(state.isEditModeEnabled).toBe(true);
     });
   });
+
 });
