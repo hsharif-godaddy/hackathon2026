@@ -25,7 +25,6 @@ import { MobileMode, ViewMode } from '@/app/[market]/develop/components/types'
 import { useAppIdFromParams } from '@/app/[market]/develop/components/utils'
 import { AiroLogo } from '@/components/layout/AiroLogo';
 import AppPublish from '@/components/layout/AppPublish';
-import GoDaddyLink from '@/components/layout/GoDaddyLink';
 import HeaderUpgradeButton from '@/components/layout/HeaderUpgradeButton';
 import IframeCloseButton from '@/components/layout/IframeCloseButton';
 import UserMenu from '@/components/layout/UserMenu';
@@ -88,7 +87,6 @@ export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) 
         }}
       >
         <div className="flex items-center gap-1" data-partial="componentAiro">
-          <GoDaddyLink location={location} className="mr-0.5" />
           <Link
             href="/"
             className="flex items-center"

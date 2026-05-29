@@ -61,11 +61,30 @@ describe('Header', () => {
     expect(airoLink).toBeInTheDocument();
   });
 
-  it('should render GoDaddy logo link', () => {
-    renderWithProviders(<Header />);
+  it('should render GoDaddy logo link on homepage', () => {
+    renderWithProviders(<Header location="homepage" />);
 
     const godaddyLink = screen.getByRole('link', { name: 'builder_common_back_godaddy' });
     expect(godaddyLink).toBeInTheDocument();
+  });
+
+  it('should render GoDaddy logo link on marketing landing pages', () => {
+    renderWithProviders(<Header location="landing-games" />);
+
+    const godaddyLink = screen.getByRole('link', { name: 'builder_common_back_godaddy' });
+    expect(godaddyLink).toBeInTheDocument();
+  });
+
+  it('should not render GoDaddy logo link on internal pages', () => {
+    renderWithProviders(<Header location="sites" />);
+
+    expect(screen.queryByRole('link', { name: 'builder_common_back_godaddy' })).not.toBeInTheDocument();
+  });
+
+  it('should not render GoDaddy logo link on manage plan', () => {
+    renderWithProviders(<Header location="manage-plan" />);
+
+    expect(screen.queryByRole('link', { name: 'builder_common_back_godaddy' })).not.toBeInTheDocument();
   });
 
   it('should render beta tag', () => {

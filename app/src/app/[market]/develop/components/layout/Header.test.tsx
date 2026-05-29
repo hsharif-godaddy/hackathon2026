@@ -130,11 +130,10 @@ describe('DevelopHeader', () => {
     expect(airoLink).toBeInTheDocument();
   });
 
-  it('should render GoDaddy logo link', () => {
+  it('should not render GoDaddy logo link', () => {
     renderWithProviders(<DevelopHeader />);
 
-    const godaddyLink = screen.getByRole('link', { name: 'builder_common_back_godaddy' });
-    expect(godaddyLink).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'builder_common_back_godaddy' })).not.toBeInTheDocument();
   });
 
   it('should render beta tag', () => {

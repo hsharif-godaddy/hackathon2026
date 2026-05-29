@@ -33,6 +33,7 @@ export default function Header({ actions, onShowMockLogin, location = 'unknown',
   const showAuthenticatedUI = !isLoading && isAuthenticated;
 
   const isHomepage = location === 'homepage';
+  const isMarketingPage = isHomepage || location.startsWith('landing');
   const godaddyUrl = 'https://www.godaddy.com';
 
   return (
@@ -46,7 +47,9 @@ export default function Header({ actions, onShowMockLogin, location = 'unknown',
       <div className="mx-auto px-2 sm:px-3 lg:px-4">
         <div className="flex justify-between items-center h-8">
           <div className="flex items-center space-x-1.5" data-partial="componentAiro">
-            <GoDaddyLink location={location} className="mr-2" />
+            {isMarketingPage && (
+              <GoDaddyLink location={location} className="mr-2" />
+            )}
             <Link
               href={isHomepage ? godaddyUrl : '/'}
               className="flex items-center"
