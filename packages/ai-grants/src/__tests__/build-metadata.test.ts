@@ -811,6 +811,7 @@ describe('build-metadata', function tests() {
       expect(result?.user).toBe('airo-build:sid:sub-bms-123')
       expect(result?.budgetId).toBe('budget-uuid-1')
       expect(result?.budgetSessionId).toBe('session-uuid-1')
+      expect(result?.tags).toContain('budgetId:budget-uuid-1')
     })
 
     it('does not double-prefix already prefixed subscriptionId in BMS mode', function bmsNoDoublePrefix() {
@@ -962,6 +963,7 @@ describe('build-metadata', function tests() {
       expect(result).toBeDefined()
       expect(result?.budgetId).toBeUndefined()
       expect(result?.budgetSessionId).toBeUndefined()
+      expect(result?.tags?.some((t) => t.startsWith('budgetId:'))).toBeFalsy()
     })
 
     it('omits budget fields for BudgetOverride sessions', function overrideNoBudget() {
@@ -995,6 +997,27 @@ describe('build-metadata', function tests() {
       expect(result).toBeDefined()
       expect(result?.budgetId).toBeUndefined()
       expect(result?.budgetSessionId).toBeUndefined()
+      expect(result?.tags?.some((t) => t.startsWith('budgetId:'))).toBeFalsy()
+    })
+
+    it('omits budgetId tag when bmsBudgetId present but budgetServiceEnabled is false', function legacyGrantsNoBudgetTag() {
+      const context = {
+        metadata: {
+          appId: 'app-1',
+          subscriptionId: 'sub-1',
+          customerId: 'customer-123',
+          bmsBudgetId: 'budget-uuid-stale',
+          budgetSessionId: 'session-uuid-stale',
+          budgetServiceEnabled: false,
+        },
+      }
+
+      const result = buildLitellmMetadataFromContext(context, { source: LlmCallSource.UserChat })
+
+      expect(result).toBeDefined()
+      expect(result?.budgetId).toBeUndefined()
+      expect(result?.budgetSessionId).toBeUndefined()
+      expect(result?.tags?.some((t) => t.startsWith('budgetId:'))).toBeFalsy()
     })
 
     it('includes budget fields alongside BMS user in BMS mode (grants skipped)', function budgetWithGrants() {
@@ -1019,6 +1042,7 @@ describe('build-metadata', function tests() {
       expect(result?.user).toBe('airo-build:sid:sub-1')
       expect(result?.budgetId).toBe('budget-uuid-1')
       expect(result?.budgetSessionId).toBe('session-uuid-1')
+      expect(result?.tags).toContain('budgetId:budget-uuid-1')
     })
   })
 

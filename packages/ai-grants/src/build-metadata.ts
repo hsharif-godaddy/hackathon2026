@@ -128,6 +128,7 @@ export function buildLitellmMetadataFromContext(
   // BMS session fields for GoCode cost reporting (x-gocode-budget-* headers)
   // Only present when budget service is enabled and session was created
   const hasBudgetFields = !!(metadata.budgetServiceEnabled && metadata.bmsBudgetId && metadata.budgetSessionId)
+  if (hasBudgetFields) tags.push(`budgetId:${metadata.bmsBudgetId}`)
   const budgetFields: Pick<LitellmMetadata, 'budgetId' | 'budgetSessionId'> = hasBudgetFields
     ? { budgetId: metadata.bmsBudgetId!, budgetSessionId: metadata.budgetSessionId! }
     : {}
