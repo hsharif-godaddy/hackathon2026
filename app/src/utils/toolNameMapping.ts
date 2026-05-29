@@ -163,6 +163,25 @@ export function getToolDisplayName(toolName: string): string {
       return 'Social Post Create'
     case 'websiteScraper':
       return 'Website Details'
+    // Commerce MCP skill tools. The CommerceMcpToolRenderer renders
+    // a richer label from the tool input (e.g. "Commerce: get_store_info"),
+    // so these are just fallbacks for places that only have the name.
+    case 'commerce__search_tools':
+    case 'commerce_search_tools':
+    case 'commerceSearchTools':
+      return 'Finding commerce tools'
+    case 'commerce__execute_tool':
+    case 'commerce_execute_tool':
+    case 'commerceExecuteTool':
+      return 'Running commerce tool'
+    case 'commerce__commerce_store_setup':
+      return 'Setting up Commerce store'
+    case 'commerce__commerce_store_list':
+      return 'Listing Commerce stores'
+    case 'commerce__commerce_store_get':
+      return 'Getting Commerce store'
+    case 'commerce__commerce_store_channels_get':
+      return 'Getting Commerce channels'
     case 'restore':
       return 'User Restore Commit'
     default: {

@@ -1,30 +1,64 @@
 /**
  * MCP Call Action Executor
  *
- * Proxies MCP (Model Context Protocol) tool calls through the browser.
- * This allows the browser to make the request with its auth_idp cookie,
- * avoiding the need to pass JWT tokens through the agent context.
+ * Same-origin browser bridge for agent-initiated MCP calls.
  *
- * Security benefit: User credentials never leave the browser.
+ * The agent emits a `mcp_call` client action with:
+ *   { serverId, request: { jsonrpc: '2.0', method, params, id } }
  *
- * The MCP server returns responses in Server-Sent Events (SSE) format,
- * so we use @microsoft/fetch-event-source to properly parse the stream.
+ * The browser POSTs to /api/mcp/proxy (same-origin, authenticated via
+ * existing AAB session). The BFF:
+ *   - validates server allowlist + policy
+ *   - exchanges the customer JWT for a scoped OAuth token
+ *   - forwards the JSON-RPC request to the external MCP server
+ *   - returns a normalized JSON-RPC response
+ *
+ * The raw auth_idp cookie is never forwarded to the external MCP server.
  */
 
-import { fetchEventSource } from '@microsoft/fetch-event-source'
-
+import { appFetch } from '@/lib/gasket-config'
 import { logger } from '@/lib/request-context'
 import type { ClientActionExecutor } from './types'
 
-interface McpCallParams {
-  serverUrl: string
-  toolName: string
-  input: Record<string, unknown>
+/**
+ * Parameters emitted by the agent when dispatching `mcp_call`.
+ *
+ * We accept both the new same-origin shape and a legacy
+ * `{ serverUrl, toolName, input }` shape so in-flight callers keep
+ * working while the migration lands. Legacy calls are translated
+ * into the new JSON-RPC shape before hitting the proxy.
+ */
+interface McpCallParamsV2 {
+  serverId: string
+  request: {
+    jsonrpc: '2.0'
+    method: string
+    id?: number | string | null
+    params?: {
+      name?: string
+      arguments?: Record<string, unknown>
+      [key: string]: unknown
+    }
+  }
 }
 
-interface McpJsonRpcResponse {
+interface McpCallParamsLegacy {
+  /** Legacy: full MCP server URL. Ignored — serverId is resolved on BFF. */
+  serverUrl: string
+  /** Legacy: MCP tool name. */
+  toolName: string
+  /** Legacy: tool arguments. */
+  input?: Record<string, unknown>
+  /**
+   * Optional serverId hint for legacy callers. If omitted we default to
+   * 'commerce' since that is the only configured MCP server today.
+   */
+  serverId?: string
+}
+
+interface McpJsonRpcMessage {
   jsonrpc: string
-  id: number | string
+  id?: number | string | null
   result?: unknown
   error?: {
     code: number
@@ -33,162 +67,159 @@ interface McpJsonRpcResponse {
   }
 }
 
-/**
- * Execute an MCP tool call via the browser
- * The browser includes the auth_idp cookie automatically via credentials: 'include'
- *
- * MCP servers return SSE (Server-Sent Events) format responses, so we parse
- * the event stream and extract the final JSON-RPC result.
- */
-export const mcpCallAction: ClientActionExecutor = async (params, context) => {
-  const { serverUrl, toolName, input } = params as unknown as McpCallParams
+const PROXY_PATH = '/api/mcp/proxy'
+const DEFAULT_SERVER_ID = 'commerce'
 
-  // Validate required parameters
-  if (!serverUrl || typeof serverUrl !== 'string') {
-    throw new Error('serverUrl is required and must be a string')
+function normalizeParams(raw: unknown): McpCallParamsV2 | { error: string } {
+  if (!raw || typeof raw !== 'object') {
+    return { error: 'mcp_call: params must be an object' }
   }
-  if (!toolName || typeof toolName !== 'string') {
-    throw new Error('toolName is required and must be a string')
+  const p = raw as Record<string, unknown>
+
+  if (p.serverId && p.request && typeof p.request === 'object') {
+    if (typeof p.serverId !== 'string' || p.serverId.length === 0) {
+      return { error: 'mcp_call: serverId must be a non-empty string' }
+    }
+    return { serverId: p.serverId, request: p.request as McpCallParamsV2['request'] }
   }
 
-  logger.info('mcp-call-action.start', {
-    serverUrl,
-    toolName,
-    inputKeys: input ? Object.keys(input) : [],
-  })
-
-  return new Promise((resolve, reject) => {
-    let finalResult: unknown = null
-    let hasError = false
-    const abortController = new AbortController()
-
-    fetchEventSource(serverUrl, {
-      method: 'POST',
-      credentials: 'include', // Sends auth_idp cookie automatically
-      headers: {
-        'Content-Type': 'application/json',
-        Accept: 'application/json, text/event-stream',
-        'X-App-Key': 'airo-builder',
-      },
-      body: JSON.stringify({
+  // Legacy shape compatibility.
+  const legacy = p as unknown as McpCallParamsLegacy
+  if (typeof legacy.toolName === 'string' && legacy.toolName.length > 0) {
+    if (legacy.serverId !== undefined && typeof legacy.serverId !== 'string') {
+      return { error: 'mcp_call: legacy serverId must be a string when provided' }
+    }
+    return {
+      serverId: legacy.serverId ?? DEFAULT_SERVER_ID,
+      request: {
         jsonrpc: '2.0',
         method: 'tools/call',
-        params: {
-          name: toolName,
-          arguments: input || {},
-        },
         id: Date.now(),
-      }),
-      signal: abortController.signal,
-
-      async onopen(response) {
-        if (!response.ok) {
-          const errorText = await response.text().catch(() => 'Unknown error')
-          logger.error('mcp-call-action.http-error', {
-            appId: context.currentAppId,
-            serverUrl,
-            toolName,
-            status: response.status,
-            statusText: response.statusText,
-            errorText: errorText.substring(0, 500),
-          })
-          hasError = true
-          reject(new Error(`MCP call failed: ${response.status} ${response.statusText}`))
-          abortController.abort()
-        }
+        params: {
+          name: legacy.toolName,
+          arguments: legacy.input ?? {},
+        },
       },
+    }
+  }
 
-      onmessage(event) {
-        // MCP sends events with data containing JSON-RPC responses
-        // Event format: event: message\ndata: {...json...}
-        if (event.data) {
-          try {
-            const parsed = JSON.parse(event.data) as McpJsonRpcResponse
+  return { error: 'mcp_call: expected { serverId, request } or legacy { toolName, input }' }
+}
 
-            // Check for JSON-RPC error in the response
-            if (parsed.error) {
-              logger.error('mcp-call-action.rpc-error', {
-                appId: context.currentAppId,
-                serverUrl,
-                toolName,
-                errorCode: parsed.error.code,
-                errorMessage: parsed.error.message,
-              })
-              hasError = true
-              reject(new Error(`MCP error: ${parsed.error.message}`))
-              abortController.abort()
-              return
-            }
+export const mcpCallAction: ClientActionExecutor = async (params, context) => {
+  const normalized = normalizeParams(params)
+  if ('error' in normalized) {
+    throw new Error(normalized.error)
+  }
 
-            // Store the result - we'll return the last one received
-            if (parsed.result !== undefined) {
-              finalResult = parsed.result
-            }
-          } catch (parseError) {
-            // Log parse errors but don't fail - might be a progress notification
-            logger.warn('mcp-call-action.parse-warning', {
-              serverUrl,
-              toolName,
-              data: event.data.substring(0, 200),
-              error: parseError instanceof Error ? parseError.message : String(parseError),
-            })
-          }
-        }
-      },
+  const { serverId, request } = normalized
+  const toolName =
+    request.method === 'tools/call' && typeof request.params?.name === 'string'
+      ? request.params.name
+      : undefined
 
-      onclose() {
-        // Stream closed - resolve with the final result
-        if (!hasError) {
-          if (finalResult !== null) {
-            logger.info('mcp-call-action.success', {
-              serverUrl,
-              toolName,
-            })
-            resolve(finalResult)
-          } else {
-            logger.error('mcp-call-action.no-result', {
-              appId: context.currentAppId,
-              serverUrl,
-              toolName,
-            })
-            reject(new Error('MCP call completed but no result was received'))
-          }
-        }
-      },
-
-      onerror(error) {
-        // Don't log/reject if we already handled an error
-        if (hasError) return
-
-        logger.error('mcp-call-action.unexpected-error', {
-          appId: context.currentAppId,
-          serverUrl,
-          toolName,
-          error: error instanceof Error ? error.message : String(error),
-        })
-
-        hasError = true
-        reject(
-          new Error(
-            `Failed to execute MCP tool ${toolName}: ${error instanceof Error ? error.message : String(error)}`
-          )
-        )
-      },
-    }).catch((error) => {
-      // Handle any errors from fetchEventSource itself
-      if (!hasError) {
-        logger.error('mcp-call-action.fetch-error', {
-          appId: context.currentAppId,
-          serverUrl,
-          toolName,
-          error: error instanceof Error ? error.message : String(error),
-        })
-        reject(
-          new Error(
-            `Failed to execute MCP tool ${toolName}: ${error instanceof Error ? error.message : String(error)}`
-          )
-        )
-      }
-    })
+  logger.info('mcp-call-action.start', {
+    serverId,
+    method: request.method,
+    toolName,
+    appId: context.currentAppId,
   })
+
+  let response: Response
+  try {
+    response = await appFetch(
+      PROXY_PATH,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        body: JSON.stringify({ serverId, request, appId: context.currentAppId }),
+      },
+      { handle401: { level: 3 } },
+    )
+  } catch (err) {
+    logger.error('mcp-call-action.network_error', {
+      serverId,
+      method: request.method,
+      toolName,
+      error: err instanceof Error ? err.message : String(err),
+    })
+    throw new Error(
+      `mcp_call network error: ${err instanceof Error ? err.message : String(err)}`,
+    )
+  }
+
+  const text = await response.text()
+  let parsed: McpJsonRpcMessage | { error?: string; status?: number } | null = null
+  try {
+    parsed = text.length > 0 ? (JSON.parse(text) as McpJsonRpcMessage) : null
+  } catch {
+    parsed = null
+  }
+
+  if (!response.ok) {
+    const message = buildProxyErrorMessage(parsed, response.status)
+    logger.error('mcp-call-action.proxy_error', {
+      serverId,
+      method: request.method,
+      toolName,
+      status: response.status,
+      message,
+    })
+    throw new Error(message)
+  }
+
+  if (!parsed || typeof parsed !== 'object') {
+    logger.error('mcp-call-action.empty_response', {
+      serverId,
+      method: request.method,
+      toolName,
+      status: response.status,
+    })
+    throw new Error('mcp_call: empty response from proxy')
+  }
+
+  const rpc = parsed as McpJsonRpcMessage
+  if (rpc.error) {
+    logger.error('mcp-call-action.rpc_error', {
+      serverId,
+      method: request.method,
+      toolName,
+      errorCode: rpc.error.code,
+      errorMessage: rpc.error.message,
+    })
+    throw new Error(`mcp_call error: ${rpc.error.message}`)
+  }
+
+  logger.info('mcp-call-action.success', {
+    serverId,
+    method: request.method,
+    toolName,
+  })
+
+  return rpc.result
+}
+
+function buildProxyErrorMessage(
+  parsed: McpJsonRpcMessage | { error?: string; message?: string; authReason?: number; status?: number } | null,
+  status: number,
+): string {
+  if (parsed && typeof parsed === 'object') {
+    const body = parsed as Record<string, unknown>
+    const error = typeof body.error === 'string' ? body.error : undefined
+    const message = typeof body.message === 'string' ? body.message : undefined
+    const authReason = typeof body.authReason === 'number' ? body.authReason : undefined
+
+    if (error && message) {
+      return authReason !== undefined
+        ? `${error}: ${message} (authReason=${authReason})`
+        : `${error}: ${message}`
+    }
+    if (message) return message
+    if (error) return error
+  }
+
+  return `mcp_call failed: HTTP ${status}`
 }

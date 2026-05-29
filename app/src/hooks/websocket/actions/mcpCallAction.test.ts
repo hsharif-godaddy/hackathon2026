@@ -1,325 +1,227 @@
 /**
  * MCP Call Action Tests
+ *
+ * Covers the same-origin BFF bridge behavior:
+ *   - new { serverId, request } shape
+ *   - legacy { serverUrl, toolName, input } shape (translated)
+ *   - result normalization + error surfacing
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { mcpCallAction } from './mcpCallAction'
-import type { MessageContext } from '../handlers/types'
+import type { DataHandlerContext } from '../handlers/types'
 
-// Mock dependencies
 vi.mock('@/lib/request-context', () => ({
-  logger: {
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-  },
+  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }))
 
-// Mock @microsoft/fetch-event-source
-const mockFetchEventSource = vi.fn()
-vi.mock('@microsoft/fetch-event-source', () => ({
-  fetchEventSource: (...args: unknown[]) => mockFetchEventSource(...args),
-}))
+const baseContext = { currentAppId: 'app-1' } as DataHandlerContext
+
+function mockProxyResponse(body: unknown, init: { status?: number; headers?: Record<string, string> } = {}) {
+  return new Response(JSON.stringify(body), {
+    status: init.status ?? 200,
+    headers: init.headers ?? { 'content-type': 'application/json' },
+  })
+}
 
 describe('mcpCallAction', () => {
-  const mockContext = {} as MessageContext
+  let fetchSpy: ReturnType<typeof vi.spyOn>
 
   beforeEach(() => {
-    vi.clearAllMocks()
+    vi.restoreAllMocks()
+    fetchSpy = vi.spyOn(globalThis, 'fetch')
   })
 
   describe('parameter validation', () => {
-    it('should throw error if serverUrl is missing', async () => {
-      await expect(
-        mcpCallAction({ toolName: 'test_tool', input: {} }, mockContext)
-      ).rejects.toThrow('serverUrl is required and must be a string')
+    it('rejects non-object params', async () => {
+      await expect(mcpCallAction('oops' as unknown as Record<string, unknown>, baseContext))
+        .rejects.toThrow(/params must be an object/)
     })
 
-    it('should throw error if serverUrl is not a string', async () => {
-      await expect(
-        mcpCallAction({ serverUrl: 123, toolName: 'test_tool', input: {} }, mockContext)
-      ).rejects.toThrow('serverUrl is required and must be a string')
+    it('rejects params missing both shapes', async () => {
+      await expect(mcpCallAction({}, baseContext)).rejects.toThrow(
+        /serverId.*request.*toolName/,
+      )
     })
 
-    it('should throw error if toolName is missing', async () => {
+    it('rejects non-string serverId for v2 shape', async () => {
       await expect(
-        mcpCallAction({ serverUrl: 'https://example.com/mcp', input: {} }, mockContext)
-      ).rejects.toThrow('toolName is required and must be a string')
-    })
-
-    it('should throw error if toolName is not a string', async () => {
-      await expect(
-        mcpCallAction({ serverUrl: 'https://example.com/mcp', toolName: 123, input: {} }, mockContext)
-      ).rejects.toThrow('toolName is required and must be a string')
+        mcpCallAction(
+          {
+            serverId: 123,
+            request: { jsonrpc: '2.0', method: 'tools/list' },
+          } as unknown as Record<string, unknown>,
+          baseContext,
+        ),
+      ).rejects.toThrow(/serverId must be a non-empty string/)
     })
   })
 
-  describe('successful MCP calls', () => {
-    it('should call fetchEventSource with credentials and correct headers', async () => {
-      const mockResult = { content: [{ type: 'text', text: 'Success' }] }
-
-      mockFetchEventSource.mockImplementation((_url: string, options: { onmessage?: (event: { data: string }) => void; onclose?: () => void }) => {
-        // Simulate receiving a message event with the result
-        options.onmessage?.({ data: JSON.stringify({ jsonrpc: '2.0', id: 1, result: mockResult }) })
-        // Then close the stream
-        options.onclose?.()
-        return Promise.resolve()
-      })
-
-      await mcpCallAction(
-        {
-          serverUrl: 'https://example.com/mcp',
-          toolName: 'test_tool',
-          input: { foo: 'bar' },
-        },
-        mockContext
+  describe('v2 shape', () => {
+    it('POSTs same-origin to /api/mcp/proxy with serverId + request', async () => {
+      fetchSpy.mockResolvedValueOnce(
+        mockProxyResponse({ jsonrpc: '2.0', id: 1, result: { ok: true } }),
       )
-
-      expect(mockFetchEventSource).toHaveBeenCalledWith(
-        'https://example.com/mcp',
-        expect.objectContaining({
-          method: 'POST',
-          credentials: 'include',
-          headers: {
-            'Content-Type': 'application/json',
-            Accept: 'application/json, text/event-stream',
-            'X-App-Key': 'airo-builder',
+      const result = await mcpCallAction(
+        {
+          serverId: 'commerce',
+          request: {
+            jsonrpc: '2.0',
+            method: 'tools/call',
+            id: 1,
+            params: { name: 'search_tools', arguments: { query: 'foo' } },
           },
-        })
+        },
+        baseContext,
       )
+      expect(result).toEqual({ ok: true })
+      const [url, init] = fetchSpy.mock.calls[0]! as unknown as [string, RequestInit]
+      expect(url).toBe('/api/mcp/proxy')
+      expect(init.method).toBe('POST')
+      expect(init.credentials).toBe('include')
+      const body = JSON.parse(init.body as string) as { serverId: string; appId?: string; request: { method: string } }
+      expect(body.serverId).toBe('commerce')
+      expect(body.appId).toBe('app-1')
+      expect(body.request.method).toBe('tools/call')
     })
+  })
 
-    it('should format MCP JSON-RPC request correctly', async () => {
-      const mockResult = { content: [{ type: 'text', text: 'Success' }] }
-
-      mockFetchEventSource.mockImplementation((_url: string, options: { body?: string; onmessage?: (event: { data: string }) => void; onclose?: () => void }) => {
-        options.onmessage?.({ data: JSON.stringify({ jsonrpc: '2.0', id: 1, result: mockResult }) })
-        options.onclose?.()
-        return Promise.resolve()
-      })
-
-      await mcpCallAction(
+  describe('legacy shape', () => {
+    it('translates { toolName, input } into a tools/call request', async () => {
+      fetchSpy.mockResolvedValueOnce(
+        mockProxyResponse({ jsonrpc: '2.0', id: 1, result: { legacy: true } }),
+      )
+      const result = await mcpCallAction(
         {
-          serverUrl: 'https://example.com/mcp',
-          toolName: 'generate_logo',
-          input: { businessName: 'Test Corp' },
+          serverUrl: 'https://ignored.example.com/mcp',
+          toolName: 'commerce_store_setup',
+          input: { storeName: 'test' },
         },
-        mockContext
+        baseContext,
       )
-
-      const callArgs = mockFetchEventSource.mock.calls[0]
-      const body = JSON.parse(callArgs[1].body as string)
-
-      expect(body).toMatchObject({
-        jsonrpc: '2.0',
-        method: 'tools/call',
-        params: {
-          name: 'generate_logo',
-          arguments: { businessName: 'Test Corp' },
-        },
-      })
-      expect(body.id).toBeDefined()
-    })
-
-    it('should return result from successful MCP SSE response', async () => {
-      const mockResult = {
-        content: [{ type: 'image', data: 'base64data' }],
+      expect(result).toEqual({ legacy: true })
+      const legacyInit = fetchSpy.mock.calls[0]![1] as RequestInit
+      const body = JSON.parse(legacyInit.body as string) as {
+        serverId: string
+        request: { method: string; params: { name: string; arguments: Record<string, unknown> } }
       }
-
-      mockFetchEventSource.mockImplementation((_url: string, options: { onmessage?: (event: { data: string }) => void; onclose?: () => void }) => {
-        options.onmessage?.({ data: JSON.stringify({ jsonrpc: '2.0', id: 1, result: mockResult }) })
-        options.onclose?.()
-        return Promise.resolve()
-      })
-
-      const result = await mcpCallAction(
-        {
-          serverUrl: 'https://example.com/mcp',
-          toolName: 'generate_image',
-          input: { prompt: 'A sunset' },
-        },
-        mockContext
-      )
-
-      expect(result).toEqual(mockResult)
+      expect(body.serverId).toBe('commerce')
+      expect(body.request.method).toBe('tools/call')
+      expect(body.request.params.name).toBe('commerce_store_setup')
+      expect(body.request.params.arguments).toEqual({ storeName: 'test' })
     })
 
-    it('should handle empty input', async () => {
-      const mockResult = { content: [] }
-
-      mockFetchEventSource.mockImplementation((_url: string, options: { body?: string; onmessage?: (event: { data: string }) => void; onclose?: () => void }) => {
-        options.onmessage?.({ data: JSON.stringify({ jsonrpc: '2.0', id: 1, result: mockResult }) })
-        options.onclose?.()
-        return Promise.resolve()
-      })
-
+    it('accepts explicit serverId override in legacy shape', async () => {
+      fetchSpy.mockResolvedValueOnce(
+        mockProxyResponse({ jsonrpc: '2.0', id: 1, result: {} }),
+      )
       await mcpCallAction(
         {
-          serverUrl: 'https://example.com/mcp',
-          toolName: 'test_tool',
-        },
-        mockContext
-      )
-
-      const callArgs = mockFetchEventSource.mock.calls[0]
-      const body = JSON.parse(callArgs[1].body as string)
-
-      expect(body.params.arguments).toEqual({})
-    })
-
-    it('should handle multiple SSE messages and return the last result', async () => {
-      const progressMessage = { method: 'notifications/progress', params: { progress: 50 } }
-      const finalResult = { content: [{ type: 'text', text: 'Done' }] }
-
-      mockFetchEventSource.mockImplementation((_url: string, options: { onmessage?: (event: { data: string }) => void; onclose?: () => void }) => {
-        // Simulate progress notification (no result field)
-        options.onmessage?.({ data: JSON.stringify(progressMessage) })
-        // Then the final result
-        options.onmessage?.({ data: JSON.stringify({ jsonrpc: '2.0', id: 1, result: finalResult }) })
-        options.onclose?.()
-        return Promise.resolve()
-      })
-
-      const result = await mcpCallAction(
-        {
-          serverUrl: 'https://example.com/mcp',
-          toolName: 'test_tool',
+          serverUrl: 'https://ignored.example.com/mcp',
+          serverId: 'future-server',
+          toolName: 'x',
           input: {},
         },
-        mockContext
+        baseContext,
       )
-
-      expect(result).toEqual(finalResult)
+      const overrideInit = fetchSpy.mock.calls[0]![1] as RequestInit
+      const body = JSON.parse(overrideInit.body as string) as { serverId: string }
+      expect(body.serverId).toBe('future-server')
     })
   })
 
   describe('error handling', () => {
-    it('should throw on HTTP error', async () => {
-      mockFetchEventSource.mockImplementation((_url: string, options: { onopen?: (response: Response) => Promise<void> }) => {
-        const mockResponse = {
-          ok: false,
-          status: 500,
-          statusText: 'Internal Server Error',
-          text: () => Promise.resolve('Server error'),
-        } as Response
-
-        return options.onopen?.(mockResponse)
-      })
-
+    it('throws with the proxy error message on non-2xx', async () => {
+      fetchSpy.mockResolvedValueOnce(
+        mockProxyResponse({ error: 'mcp_proxy: tool is blocked by policy: dangerous' }, { status: 403 }),
+      )
       await expect(
         mcpCallAction(
           {
-            serverUrl: 'https://example.com/mcp',
-            toolName: 'test_tool',
-            input: {},
-          },
-          mockContext
-        )
-      ).rejects.toThrow('MCP call failed: 500 Internal Server Error')
-    })
-
-    it('should throw on MCP error response', async () => {
-      mockFetchEventSource.mockImplementation((_url: string, options: { onmessage?: (event: { data: string }) => void }) => {
-        options.onmessage?.({
-          data: JSON.stringify({
-            jsonrpc: '2.0',
-            id: 1,
-            error: {
-              code: -32600,
-              message: 'Invalid request',
+            serverId: 'commerce',
+            request: {
+              jsonrpc: '2.0',
+              method: 'tools/call',
+              id: 1,
+              params: { name: 'dangerous', arguments: {} },
             },
-          }),
-        })
-        return Promise.resolve()
-      })
-
-      await expect(
-        mcpCallAction(
-          {
-            serverUrl: 'https://example.com/mcp',
-            toolName: 'test_tool',
-            input: {},
           },
-          mockContext
-        )
-      ).rejects.toThrow('MCP error: Invalid request')
+          baseContext,
+        ),
+      ).rejects.toThrow(/tool is blocked/)
     })
 
-    it('should handle network errors via onerror callback', async () => {
-      mockFetchEventSource.mockImplementation((_url: string, options: { onerror?: (error: Error) => void }) => {
-        options.onerror?.(new Error('Network error'))
-        return Promise.resolve()
-      })
-
+    it('includes BFF auth failure details on non-2xx', async () => {
+      fetchSpy.mockResolvedValueOnce(
+        mockProxyResponse(
+          {
+            error: 'Unauthorized',
+            message: 'Level 3 authentication requires a recent heartbeat',
+            authReason: 2,
+          },
+          { status: 401 },
+        ),
+      )
       await expect(
         mcpCallAction(
           {
-            serverUrl: 'https://example.com/mcp',
-            toolName: 'test_tool',
-            input: {},
+            serverId: 'commerce',
+            request: { jsonrpc: '2.0', method: 'tools/list', id: 1 },
           },
-          mockContext
-        )
-      ).rejects.toThrow('Failed to execute MCP tool test_tool: Network error')
+          baseContext,
+        ),
+      ).rejects.toThrow(/recent heartbeat.*authReason=2/)
     })
 
-    it('should handle 401 unauthorized', async () => {
-      mockFetchEventSource.mockImplementation((_url: string, options: { onopen?: (response: Response) => Promise<void> }) => {
-        const mockResponse = {
-          ok: false,
-          status: 401,
-          statusText: 'Unauthorized',
-          text: () => Promise.resolve('Authentication required'),
-        } as Response
-
-        return options.onopen?.(mockResponse)
-      })
-
+    it('throws when JSON-RPC body contains an error', async () => {
+      fetchSpy.mockResolvedValueOnce(
+        mockProxyResponse({
+          jsonrpc: '2.0',
+          id: 1,
+          error: { code: -32601, message: 'Method not found' },
+        }),
+      )
       await expect(
         mcpCallAction(
           {
-            serverUrl: 'https://example.com/mcp',
-            toolName: 'test_tool',
-            input: {},
+            serverId: 'commerce',
+            request: { jsonrpc: '2.0', method: 'tools/call', id: 1, params: { name: 'x' } },
           },
-          mockContext
-        )
-      ).rejects.toThrow('MCP call failed: 401 Unauthorized')
+          baseContext,
+        ),
+      ).rejects.toThrow(/Method not found/)
     })
 
-    it('should throw error when stream closes without result', async () => {
-      mockFetchEventSource.mockImplementation((_url: string, options: { onclose?: () => void }) => {
-        // Close without sending any messages
-        options.onclose?.()
-        return Promise.resolve()
-      })
-
+    it('throws on network failures', async () => {
+      fetchSpy.mockRejectedValueOnce(new Error('ECONNREFUSED'))
       await expect(
         mcpCallAction(
           {
-            serverUrl: 'https://example.com/mcp',
-            toolName: 'test_tool',
-            input: {},
+            serverId: 'commerce',
+            request: { jsonrpc: '2.0', method: 'tools/list', id: 1 },
           },
-          mockContext
-        )
-      ).rejects.toThrow('MCP call completed but no result was received')
+          baseContext,
+        ),
+      ).rejects.toThrow(/network error/)
     })
 
-    it('should handle fetchEventSource promise rejection', async () => {
-      mockFetchEventSource.mockRejectedValue(new Error('Fetch failed'))
-
+    it('throws on empty response body', async () => {
+      fetchSpy.mockResolvedValueOnce(
+        new Response('', {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+      )
       await expect(
         mcpCallAction(
           {
-            serverUrl: 'https://example.com/mcp',
-            toolName: 'test_tool',
-            input: {},
+            serverId: 'commerce',
+            request: { jsonrpc: '2.0', method: 'tools/list', id: 1 },
           },
-          mockContext
-        )
-      ).rejects.toThrow('Failed to execute MCP tool test_tool: Fetch failed')
+          baseContext,
+        ),
+      ).rejects.toThrow(/empty response/)
     })
   })
 })

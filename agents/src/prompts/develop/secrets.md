@@ -25,8 +25,6 @@ export function GET() {
 
 Never mention .env files or explain alternatives. The form handles interaction.
 
-**Exception:** GoDaddy OAuth uses `oauthConnect` instead.
-
 ```typescript
 requestSecrets({
   title: 'Google Maps API Key',

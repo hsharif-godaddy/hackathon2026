@@ -190,22 +190,84 @@ func TestGeneratePublishEnvironmentNoPorts(t *testing.T) {
 	}
 }
 
-func TestGeneratePublishEnvironmentGoDaddyAPIBaseURL(t *testing.T) {
+func TestGenerateEnvironmentGoDaddyCommerceConfig(t *testing.T) {
 	app := &store.App{ID: "test123"}
+	isolateProjectEnv := func(t *testing.T) {
+		t.Helper()
+		t.Setenv("PROJECT_ROOT", t.TempDir())
+		t.Setenv("GODADDY_API_BASE_URL", "")
+		t.Setenv("GODADDY_OAUTH_CLIENT_ID", "")
+		t.Setenv("GODADDY_OAUTH_CLIENT_SECRET", "")
+		t.Setenv("VITE_GODADDY_API_HOST", "")
+		t.Setenv("VITE_GODADDY_CLIENT_ID", "")
+	}
 
-	t.Run("set when env var present", func(t *testing.T) {
+	t.Run("publish includes server and public storefront env", func(t *testing.T) {
+		isolateProjectEnv(t)
 		t.Setenv("GODADDY_API_BASE_URL", "https://api.dev-godaddy.com")
+		t.Setenv("GODADDY_OAUTH_CLIENT_ID", "client-id")
+		t.Setenv("GODADDY_OAUTH_CLIENT_SECRET", "client-secret")
+
 		env := generatePublishEnvironment(app)
+
 		if env["GODADDY_API_BASE_URL"] != "https://api.dev-godaddy.com" {
-			t.Errorf("expected https://api.dev-godaddy.com, got %q", env["GODADDY_API_BASE_URL"])
+			t.Errorf("GODADDY_API_BASE_URL = %q", env["GODADDY_API_BASE_URL"])
+		}
+		if env["VITE_GODADDY_API_HOST"] != "api.dev-godaddy.com" {
+			t.Errorf("VITE_GODADDY_API_HOST = %q", env["VITE_GODADDY_API_HOST"])
+		}
+		if env["VITE_GODADDY_CLIENT_ID"] != "client-id" {
+			t.Errorf("VITE_GODADDY_CLIENT_ID = %q", env["VITE_GODADDY_CLIENT_ID"])
+		}
+		if _, ok := env["GODADDY_OAUTH_CLIENT_SECRET"]; ok {
+			t.Error("GODADDY_OAUTH_CLIENT_SECRET must not be exposed as process env")
 		}
 	})
 
-	t.Run("absent when env var not set", func(t *testing.T) {
-		t.Setenv("GODADDY_API_BASE_URL", "")
+	t.Run("preview includes public storefront env", func(t *testing.T) {
+		isolateProjectEnv(t)
+		t.Setenv("GODADDY_API_BASE_URL", "https://api.test-godaddy.com")
+		t.Setenv("GODADDY_OAUTH_CLIENT_ID", "client-id")
+
+		env := generatePreviewEnvironment(app)
+
+		if env["VITE_GODADDY_API_HOST"] != "api.test-godaddy.com" {
+			t.Errorf("VITE_GODADDY_API_HOST = %q", env["VITE_GODADDY_API_HOST"])
+		}
+		if env["VITE_GODADDY_CLIENT_ID"] != "client-id" {
+			t.Errorf("VITE_GODADDY_CLIENT_ID = %q", env["VITE_GODADDY_CLIENT_ID"])
+		}
+	})
+
+	t.Run("explicit VITE env overrides derived public values", func(t *testing.T) {
+		isolateProjectEnv(t)
+		t.Setenv("GODADDY_API_BASE_URL", "https://api.dev-godaddy.com")
+		t.Setenv("GODADDY_OAUTH_CLIENT_ID", "system-client-id")
+		t.Setenv("VITE_GODADDY_API_HOST", "api.override.example")
+		t.Setenv("VITE_GODADDY_CLIENT_ID", "public-client-id")
+
+		env := generatePreviewEnvironment(app)
+
+		if env["VITE_GODADDY_API_HOST"] != "api.override.example" {
+			t.Errorf("VITE_GODADDY_API_HOST = %q", env["VITE_GODADDY_API_HOST"])
+		}
+		if env["VITE_GODADDY_CLIENT_ID"] != "public-client-id" {
+			t.Errorf("VITE_GODADDY_CLIENT_ID = %q", env["VITE_GODADDY_CLIENT_ID"])
+		}
+	})
+
+	t.Run("absent when project env is empty", func(t *testing.T) {
+		isolateProjectEnv(t)
+
 		env := generatePublishEnvironment(app)
 		if _, ok := env["GODADDY_API_BASE_URL"]; ok {
 			t.Error("expected GODADDY_API_BASE_URL to be absent when env var is empty")
+		}
+		if _, ok := env["VITE_GODADDY_API_HOST"]; ok {
+			t.Error("expected VITE_GODADDY_API_HOST to be absent when env var is empty")
+		}
+		if _, ok := env["VITE_GODADDY_CLIENT_ID"]; ok {
+			t.Error("expected VITE_GODADDY_CLIENT_ID to be absent when env var is empty")
 		}
 	})
 }

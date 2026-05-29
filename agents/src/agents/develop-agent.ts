@@ -304,8 +304,6 @@ export async function createDevelopAgent(options?: { appPath?: string }): Promis
       // Secrets management (for API keys, credentials)
       requestSecrets: allAILibTools.requestSecrets,
 
-      // OAuth (used by commerce skill for GoDaddy auth)
-      oauthConnect: allAILibTools.oauthConnect,
       // Handoff and conversation control tools will be added by the factory when needed
     },
 

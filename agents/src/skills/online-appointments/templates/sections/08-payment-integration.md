@@ -510,7 +510,9 @@ The system supports any ISO 4217 currency. The contract:
 **Setup checklist for a non-USD merchant:**
 
 1. Set `config.currency: 'EUR'` (or whatever ISO code).
-2. Use `commerce__manage_products` to create SKUs **priced in that currency**.
+2. Use the `commerce` skill to create SKUs **priced in that currency**: call
+   `commerce__search_tools` to find the product/SKU creation tool, then call
+   `commerce__execute_tool` with the MCP tool name and arguments.
 3. Fill `pricingTiers[].skuId` with the resulting SKU IDs and `pricingTiers[].amount` in
    the smallest unit of that currency.
 4. All UI templates already call `formatMoney(...)` — no further display changes needed.

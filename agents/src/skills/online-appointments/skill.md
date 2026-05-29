@@ -333,7 +333,9 @@ or `'use client'` directives.
 2. Set `config.currency` to the same ISO 4217 code (e.g. `'EUR'`) the merchant's GoDaddy
    Commerce store SKUs are priced in. The store catalog is the source of truth at checkout
    time; this field drives display formatting on our side.
-3. Create SKUs for each tier via `commerce__manage_products` **in that currency**. Each
+3. Create SKUs for each tier with the `commerce` skill: call `commerce__search_tools`
+   to find the product/SKU creation tool, then call `commerce__execute_tool` with the
+   MCP tool name and arguments. Price those SKUs **in that currency**. Each
    `pricingTiers[]` entry **requires** a `skuId` — Zod rejects the config otherwise. Tier
    amounts are integers in the smallest unit of the chosen currency:
    ```typescript

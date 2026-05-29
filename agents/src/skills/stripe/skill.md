@@ -1,7 +1,7 @@
 ---
 name: stripe
 description: Add Stripe payment integration for one-time purchases and subscriptions.
-whenToUse: User explicitly mentions Stripe for payments. Phrases like "add Stripe", "Stripe checkout", "Stripe payments", "Stripe subscription". Only use this skill when the user specifically asks for Stripe — for general e-commerce requests, use the commerce skill instead.
+whenToUse: User explicitly mentions Stripe for payments. Phrases like "add Stripe", "Stripe checkout", "Stripe payments", "Stripe subscription". Only use this skill when the user specifically asks for Stripe — for general e-commerce requests backed by GoDaddy Commerce, load the `commerce` skill (plus `commerce-storefront` or `commerce-one-time-payment` UI skills when UI is needed) instead.
 enablementId: stripe
 dependencies:
   - stripe@^20.2.0

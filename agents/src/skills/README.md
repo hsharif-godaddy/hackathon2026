@@ -288,7 +288,7 @@ Current skills (22):
 - **authentication** - User authentication and login flows
 - **blog** - Install and activate the blog system (routes, pages, components)
 - **blog-writing** - Create blog post content for sites with blog system installed
-- **commerce** - GoDaddy Commerce product catalog and checkout integration
+- **commerce** - GoDaddy Commerce store, catalog, product, inventory, channel, and order operations
 - **commerce-one-time-payment** - One-time payment processing via Commerce API
 - **commerce-storefront** - Storefront setup and product display
 - **custom-domain** - Purchase new domains or attach existing ones to the app

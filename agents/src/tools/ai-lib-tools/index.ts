@@ -32,7 +32,6 @@ export { cssColorAITool } from './css-color.js';
 export { cssSuggestAITool } from './css-suggest.js';
 export { suggestedResponseAITool } from './suggested-response.js';
 export { seoAnalyze } from './seo-analyze.js';
-export { oauthConnect } from './oauth-tool.js';
 export { requestSecrets } from './secrets-tool.js';
 export { socialRead } from './social-read.js';
 export { googleReviews } from './google-reviews.js';
@@ -82,7 +81,6 @@ import { cssColorAITool } from './css-color.js';
 import { cssSuggestAITool } from './css-suggest.js';
 import { suggestedResponseAITool } from './suggested-response.js';
 import { seoAnalyze } from './seo-analyze.js';
-import { oauthConnect } from './oauth-tool.js';
 import { requestSecrets } from './secrets-tool.js';
 import { socialRead } from './social-read.js';
 import { googleReviews } from './google-reviews.js';
@@ -135,7 +133,6 @@ export const allAILibTools: Record<string, Tool> = {
   cssSuggest: cssSuggestAITool,
   suggestedResponse: suggestedResponseAITool,
   seoAnalysis: seoAnalyze,
-  oauthConnect: oauthConnect,
   requestSecrets: requestSecrets,
   socialRead: socialRead,
   googleReviews: googleReviews,

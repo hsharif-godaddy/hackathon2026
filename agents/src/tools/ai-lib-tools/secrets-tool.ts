@@ -63,7 +63,6 @@ WHEN TO USE:
 - Any integration that requires credentials
 
 DO NOT use this for:
-- GoDaddy OAuth (use oauthConnect instead)
 - System-managed secrets
 
 The tool returns secretsRequired=true and displays a form for the user to fill in.

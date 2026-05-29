@@ -378,6 +378,7 @@ func buildPreflightRunner(projectRoot string) *preflight.Runner {
 					{Check: &checks.AWSSSOCheck{}, Fixer: &fixers.AWSSSOFixer{}},
 					{Check: &checks.GasketDevCertsCheck{}},
 					{Check: &checks.S2SCertsCheck{}, Fixer: &fixers.S2SCertsFixer{}},
+					{Check: &checks.AiroAppBuilderOAuthCheck{}, Fixer: &fixers.AiroAppBuilderOAuthFixer{}},
 					{Check: &checks.CommerceOAuthCheck{}, Fixer: &fixers.CommerceOAuthFixer{}},
 					{Check: &checks.JWTKeysCheck{}, Fixer: &fixers.JWTKeysFixer{}},
 					{Check: &checks.GettyCheck{}, Fixer: &fixers.GettyFixer{}},

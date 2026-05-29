@@ -2,13 +2,26 @@ package preflight
 
 import (
 	"context"
+	"strings"
 	"testing"
+	"time"
 )
 
 type fakeCheck struct {
 	name     string
 	category string
 	result   CheckResult
+}
+
+type hangingCheck struct {
+	name     string
+	category string
+}
+
+func (h *hangingCheck) Name() string     { return h.name }
+func (h *hangingCheck) Category() string { return h.category }
+func (h *hangingCheck) Run(_ context.Context, _ string) CheckResult {
+	select {}
 }
 
 func (f *fakeCheck) Name() string     { return f.name }
@@ -47,6 +60,46 @@ func TestRunnerRunAll(t *testing.T) {
 	}
 	if results[1].Status != StatusFail {
 		t.Errorf("expected Go fail, got %v", results[1].Status)
+	}
+}
+
+func TestRunAll_TimesOutHungCheck(t *testing.T) {
+	runner := &Runner{
+		CheckTimeout: 20 * time.Millisecond,
+		Categories: []CategoryGroup{
+			{
+				Name: "Tools",
+				Checks: []CheckWithFixer{
+					{Check: &hangingCheck{name: "Docker", category: "Tools"}},
+					{Check: &fakeCheck{
+						name:     "Node.js",
+						category: "Tools",
+						result:   CheckResult{Status: StatusPass, Name: "Node.js", Category: "Tools"},
+					}},
+				},
+			},
+		},
+	}
+
+	start := time.Now()
+	results := runner.RunAll(context.Background(), "/tmp")
+	if elapsed := time.Since(start); elapsed > 500*time.Millisecond {
+		t.Fatalf("expected hung check to be bounded by timeout, took %s", elapsed)
+	}
+	if len(results) != 2 {
+		t.Fatalf("expected 2 results, got %d", len(results))
+	}
+	if results[0].Status != StatusFail {
+		t.Fatalf("expected timed-out check to fail, got %v", results[0].Status)
+	}
+	if results[0].Name != "Docker" {
+		t.Fatalf("expected timed-out check name Docker, got %q", results[0].Name)
+	}
+	if !strings.Contains(results[0].Message, "timed out") {
+		t.Fatalf("expected timeout message, got %q", results[0].Message)
+	}
+	if results[1].Status != StatusPass {
+		t.Fatalf("expected other check to pass, got %v", results[1].Status)
 	}
 }
 

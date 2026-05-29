@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
-import { COMMERCE_PRODUCTS } from '../../../lib/commerce/products';
-import { formatPrice } from '../../../lib/commerce-client';
+import { COMMERCE_PRODUCTS } from '../../lib/commerce/products';
+import { formatPrice } from '../../lib/commerce-client';
 
 export default function CommerceProductsPage() {
   if (COMMERCE_PRODUCTS.length === 0) {

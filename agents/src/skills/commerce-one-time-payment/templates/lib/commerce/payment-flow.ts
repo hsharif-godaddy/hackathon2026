@@ -3,7 +3,7 @@ import { createCheckoutSession, type CheckoutCustomer } from '../commerce-client
 /**
  * Store ID configuration
  *
- * Reads from VITE_GODADDY_STORE_ID environment variable (set by commerce skill setup).
+ * Reads from VITE_GODADDY_STORE_ID when present.
  * Final fallback to code constant for manual configuration.
  */
 const STORE_ID = 'REPLACE_WITH_STORE_ID';
@@ -41,7 +41,7 @@ export async function startOneTimeCommerceCheckout(params: {
   if (!storeId || storeId === 'REPLACE_WITH_STORE_ID') {
     return {
       success: false,
-      error: 'Store ID is not configured. Set VITE_GODADDY_STORE_ID environment variable via commerce skill setup.',
+      error: 'Store ID is not configured. Set VITE_GODADDY_STORE_ID or update STORE_ID in src/lib/commerce/payment-flow.ts.',
     };
   }
 

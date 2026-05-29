@@ -9,8 +9,7 @@
 
 import AskQuestionToolRenderer from './AskQuestionToolRenderer'
 import ColorSchemeToolRenderer from './ColorSchemeToolRenderer'
-import CommerceInstallStorefrontToolRenderer from './CommerceInstallStorefrontToolRenderer'
-import CommerceToolRenderer from './CommerceToolRenderer'
+import CommerceMcpToolRenderer from './CommerceMcpToolRenderer'
 import CssColorToolRenderer from './CssColorToolRenderer'
 import CssSuggestToolRenderer from './CssSuggestToolRenderer'
 import DefaultToolRenderer, { type DefaultToolRendererProps } from './DefaultToolRenderer'
@@ -29,7 +28,6 @@ import LogoActionsToolRenderer from './LogoActionsToolRenderer'
 import LogoGeneratorToolRenderer from './LogoGeneratorToolRenderer'
 import MediaSearchToolRenderer from './MediaSearchToolRenderer'
 import MediaSlotToolRenderer from './MediaSlotToolRenderer'
-import OAuthToolRenderer from './OAuthToolRenderer'
 import PublishClientToolRenderer from './PublishClientToolRenderer'
 import QRCodeToolRenderer from './QRCodeToolRenderer'
 import ReadFileToolRenderer from './ReadFileToolRenderer'
@@ -65,14 +63,17 @@ export type ToolRendererProps = DefaultToolRendererProps
 export const toolRendererRegistry = {
   askQuestion: AskQuestionToolRenderer,
   colorScheme: ColorSchemeToolRenderer,
-  commerce__setup_store: CommerceToolRenderer,
-  commerce__fetch_catalog: CommerceToolRenderer,
-  commerce__install_storefront: CommerceInstallStorefrontToolRenderer,
-  commerce__manage_products: CommerceToolRenderer,
-  commerce__manage_inventory: CommerceToolRenderer,
-  commerce__manage_pricing: CommerceToolRenderer,
-  commerce__manage_media: CommerceToolRenderer,
-  commerce__get_orders: CommerceToolRenderer,
+  // Commerce MCP skill tools. Keep legacy global names for historical chat messages.
+  commerce__search_tools: CommerceMcpToolRenderer,
+  commerce__execute_tool: CommerceMcpToolRenderer,
+  commerce__commerce_store_setup: CommerceMcpToolRenderer,
+  commerce__commerce_store_list: CommerceMcpToolRenderer,
+  commerce__commerce_store_get: CommerceMcpToolRenderer,
+  commerce__commerce_store_channels_get: CommerceMcpToolRenderer,
+  commerceSearchTools: CommerceMcpToolRenderer,
+  commerce_search_tools: CommerceMcpToolRenderer,
+  commerceExecuteTool: CommerceMcpToolRenderer,
+  commerce_execute_tool: CommerceMcpToolRenderer,
   cssColor: CssColorToolRenderer,
   listDesignSystems: DesignSystemToolRenderer,
   installDesignSystem: DesignSystemToolRenderer,
@@ -98,7 +99,6 @@ export const toolRendererRegistry = {
   validateCode: ValidateCodeToolRenderer,
   restore: GitRestoreDiffRenderer,
   suggestedResponse: SuggestedResponseToolRenderer,
-  oauthConnect: OAuthToolRenderer,
   qrCode: QRCodeToolRenderer,
   requestSecrets: SecretsToolRenderer,
   setProjectName: SetProjectNameToolRenderer,
@@ -157,8 +157,7 @@ export function getToolRenderer(toolName: string) {
 export {
   AskQuestionToolRenderer,
   ColorSchemeToolRenderer,
-  CommerceInstallStorefrontToolRenderer,
-  CommerceToolRenderer,
+  CommerceMcpToolRenderer,
   CssColorToolRenderer,
   CssSuggestToolRenderer,
   DefaultToolRenderer,
@@ -176,7 +175,6 @@ export {
   LogoGeneratorToolRenderer,
   MediaSearchToolRenderer,
   MediaSlotToolRenderer,
-  OAuthToolRenderer,
   PublishClientToolRenderer,
   QRCodeToolRenderer,
   ReadFileToolRenderer,

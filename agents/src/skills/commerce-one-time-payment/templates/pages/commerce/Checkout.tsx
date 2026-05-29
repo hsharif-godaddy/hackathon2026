@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { Link, useLocation, useParams } from 'react-router-dom';
-import { type CheckoutCustomer, formatPrice } from '../../../lib/commerce-client';
-import { getCommerceProductBySkuId } from '../../../lib/commerce/products';
-import { startOneTimeCommerceCheckout } from '../../../lib/commerce/payment-flow';
+import { type CheckoutCustomer, formatPrice } from '../../lib/commerce-client';
+import { getCommerceProductBySkuId } from '../../lib/commerce/products';
+import { startOneTimeCommerceCheckout } from '../../lib/commerce/payment-flow';
 
 export default function CommerceCheckoutPage() {
   const { skuId } = useParams<{ skuId: string }>();

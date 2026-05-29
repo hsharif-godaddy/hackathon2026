@@ -197,7 +197,7 @@ async function getAccessToken(): Promise<string> {
 async function queryOrderStatus(
 	accessToken: string,
 	orderId: string,
-): Promise<GraphQLOrderResponse["data"]["orderById"]> {
+): Promise<NonNullable<GraphQLOrderResponse["data"]>["orderById"]> {
 	const config = getCommerceConfigCached();
 	const orderApiUrl = config.orderApiUrl;
 

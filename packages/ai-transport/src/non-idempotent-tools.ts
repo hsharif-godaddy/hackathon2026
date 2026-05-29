@@ -5,6 +5,11 @@
  * Matched by base tool name (after stripping skill namespace prefix).
  * E.g., "commerce__manage_products" matches "manage_products".
  *
+ * Commerce MCP currently routes many inner operations through the generic
+ * commerce__execute_tool wrapper. Because the budget-recovery interface only
+ * receives completed wrapper names, treat that wrapper as non-idempotent until
+ * the caller passes inner tool metadata through this seam.
+ *
  * Matching is case-insensitive after stripping skill namespace prefix (e.g., "commerce__" removed).
  * Commerce tools use snake_case (manage_products), core tools use camelCase (socialPostPublish).
  *
@@ -16,6 +21,8 @@ const NON_IDEMPOTENT_TOOL_NAMES = new Set([
   'manage_inventory',
   'manage_pricing',
   'manage_media',
+  'execute_tool',
+  'commerce_store_setup',
   'insertrow',
   'updaterow',
   'deleterow',

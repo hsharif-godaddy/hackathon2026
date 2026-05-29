@@ -19,6 +19,8 @@ describe('hasNonIdempotentTools', () => {
     expect(hasNonIdempotentTools(['commerce__manage_inventory'])).toBe(true)
     expect(hasNonIdempotentTools(['commerce__manage_pricing'])).toBe(true)
     expect(hasNonIdempotentTools(['commerce__manage_media'])).toBe(true)
+    expect(hasNonIdempotentTools(['commerce__execute_tool'])).toBe(true)
+    expect(hasNonIdempotentTools(['commerce__commerce_store_setup'])).toBe(true)
     expect(hasNonIdempotentTools(['database__insertRow'])).toBe(true)
   })
 
@@ -34,7 +36,7 @@ describe('hasNonIdempotentTools', () => {
   })
 
   it('detects non-idempotent in mixed list', () => {
-    expect(hasNonIdempotentTools(['readFile', 'commerce__manage_products', 'str_replace_based_edit_tool'])).toBe(true)
+    expect(hasNonIdempotentTools(['readFile', 'commerce__execute_tool', 'str_replace_based_edit_tool'])).toBe(true)
   })
 
   it('returns false for tools with similar names that are not in the list', () => {

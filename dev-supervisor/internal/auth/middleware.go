@@ -190,6 +190,28 @@ func (m *JWTMiddleware) tryShareTokenAuth(
 	return false // No share token found or validation failed, try JWT
 }
 
+func clearShareTokenCookies(w http.ResponseWriter) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     "airo_share_token",
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1, // Delete unpartitioned variant
+		HttpOnly: true,
+		Secure:   true,
+		SameSite: http.SameSiteNoneMode,
+	})
+	http.SetCookie(w, &http.Cookie{
+		Name:        "airo_share_token",
+		Value:       "",
+		Path:        "/",
+		MaxAge:      -1, // Delete partitioned variant
+		HttpOnly:    true,
+		Secure:      true,
+		SameSite:    http.SameSiteNoneMode,
+		Partitioned: true,
+	})
+}
+
 // handleShareToken validates a share token and handles the request if valid
 // Returns true if the request was handled (either successfully or with error), false to fall through to JWT
 func (m *JWTMiddleware) handleShareToken(
@@ -216,25 +238,7 @@ func (m *JWTMiddleware) handleShareToken(
 		// Delete both partitioned and unpartitioned variants since Chrome treats
 		// them as separate entries (per CHIPS spec)
 		if source == "cookie" {
-			http.SetCookie(w, &http.Cookie{
-				Name:     "airo_share_token",
-				Value:    "",
-				Path:     "/",
-				MaxAge:   -1, // Delete unpartitioned variant
-				HttpOnly: true,
-				Secure:   true,
-				SameSite: http.SameSiteNoneMode,
-			})
-			http.SetCookie(w, &http.Cookie{
-				Name:        "airo_share_token",
-				Value:       "",
-				Path:        "/",
-				MaxAge:      -1, // Delete partitioned variant
-				HttpOnly:    true,
-				Secure:      true,
-				SameSite:    http.SameSiteNoneMode,
-				Partitioned: true,
-			})
+			clearShareTokenCookies(w)
 		}
 		slog.Warn("share.validation.failed",
 			"share_token", shareToken,
@@ -247,8 +251,17 @@ func (m *JWTMiddleware) handleShareToken(
 	if m.config.SiteID != "" && appID != m.config.SiteID {
 		slog.Warn("share.siteid_mismatch",
 			"share_token", shareToken,
+			"source", source,
 			"expected_site_id", m.config.SiteID,
 			"actual_site_id", appID)
+		if source == "cookie" {
+			// Local preview origins share the same host across app ports, so an
+			// airo_share_token cookie set by one preview is sent to every other
+			// local preview. A valid-but-wrong-site cookie must not block the
+			// normal JWT bootstrap path; clear it and fall through to JWT.
+			clearShareTokenCookies(w)
+			return false
+		}
 		m.handleAuthFailure(w, r, "token not valid for this site")
 		return true // Handled with error
 	}

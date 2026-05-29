@@ -240,8 +240,9 @@ func newShareValidator(t *testing.T, token, appID string, expiresAt time.Time) *
 
 // newShareMiddleware creates a JWTMiddleware configured with share token validation.
 // The JWT validator always succeeds (for fallthrough tests).
-func newShareMiddleware(t *testing.T, siteID string, sv *auth.ShareValidator) http.Handler {
+func newShareMiddleware(t *testing.T, sv *auth.ShareValidator) http.Handler {
 	t.Helper()
+	const siteID = "test-site"
 
 	mw := auth.NewJWTMiddleware(auth.JWTMiddlewareConfig{
 		Enabled: true,
@@ -297,7 +298,7 @@ func findShareDeletionCookies(t *testing.T, rec *httptest.ResponseRecorder) []*h
 func TestShareCookie_SetOnQueryParam(t *testing.T) {
 	siteID := "test-site"
 	sv := newShareValidator(t, "valid-share-token", siteID, time.Now().Add(1*time.Hour))
-	handler := newShareMiddleware(t, siteID, sv)
+	handler := newShareMiddleware(t, sv)
 
 	req := httptest.NewRequest(http.MethodGet, "/page?airoShareToken=valid-share-token", nil)
 	rec := httptest.NewRecorder()
@@ -356,7 +357,7 @@ func TestShareCookie_SetOnQueryParam(t *testing.T) {
 func TestShareCookie_NotSetOnCookieAuth(t *testing.T) {
 	siteID := "test-site"
 	sv := newShareValidator(t, "valid-share-token", siteID, time.Now().Add(1*time.Hour))
-	handler := newShareMiddleware(t, siteID, sv)
+	handler := newShareMiddleware(t, sv)
 
 	// Auth via cookie (not query param) — should NOT set a new cookie
 	req := httptest.NewRequest(http.MethodGet, "/page", nil)
@@ -372,6 +373,45 @@ func TestShareCookie_NotSetOnCookieAuth(t *testing.T) {
 	c := findShareCookie(t, rec)
 	if c != nil {
 		t.Error("airo_share_token cookie should NOT be set when auth comes from cookie")
+	}
+}
+
+func TestShareCookie_SiteMismatchClearsCookieAndFallsBackToJWT(t *testing.T) {
+	sv := newShareValidator(t, "other-site-token", "other-site", time.Now().Add(1*time.Hour))
+	handler := newShareMiddleware(t, sv)
+
+	// Local preview apps share a host across ports, so a share-token cookie
+	// from another app can be sent to this app. It should be cleared and JWT
+	// auth should still be allowed to bootstrap preview_auth.
+	req := httptest.NewRequest(http.MethodGet, "/page", nil)
+	req.AddCookie(&http.Cookie{Name: "airo_share_token", Value: "other-site-token"})
+	req.Header.Set("Authorization", "Bearer test-jwt")
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 via JWT fallback, got %d", rec.Code)
+	}
+
+	delCookies := findShareDeletionCookies(t, rec)
+	if len(delCookies) < 2 {
+		t.Fatalf("expected 2 deletion cookies (unpartitioned + partitioned), got %d", len(delCookies))
+	}
+}
+
+func TestShareQueryParam_SiteMismatchDoesNotFallBackToJWT(t *testing.T) {
+	sv := newShareValidator(t, "other-site-token", "other-site", time.Now().Add(1*time.Hour))
+	handler := newShareMiddleware(t, sv)
+
+	req := httptest.NewRequest(http.MethodGet, "/page?airoShareToken=other-site-token", nil)
+	req.Header.Set("Authorization", "Bearer test-jwt")
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for explicit wrong-site share URL without redirect config, got %d", rec.Code)
 	}
 }
 

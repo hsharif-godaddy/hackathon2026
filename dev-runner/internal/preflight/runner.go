@@ -2,14 +2,23 @@ package preflight
 
 import (
 	"context"
+	"fmt"
 	"sync"
+	"time"
 )
 
 // Runner orchestrates preflight checks by category.
 // Categories run sequentially; checks within a category run concurrently.
 type Runner struct {
 	Categories []CategoryGroup
+
+	// CheckTimeout bounds each individual check so one slow external
+	// dependency (for example, a wedged Docker CLI) cannot leave the TUI stuck
+	// on "Checking prerequisites..." forever. Zero uses DefaultCheckTimeout.
+	CheckTimeout time.Duration
 }
+
+const DefaultCheckTimeout = 10 * time.Second
 
 // CategoryGroup holds checks for a single category.
 //
@@ -71,11 +80,42 @@ func (r *Runner) runCategory(ctx context.Context, projectRoot string, cat Catego
 		wg.Add(1)
 		go func(idx int, c Check) {
 			defer wg.Done()
-			results[idx] = c.Run(ctx, projectRoot)
+			results[idx] = r.runCheck(ctx, projectRoot, c)
 		}(i, cwf.Check)
 	}
 	wg.Wait()
 	return results
+}
+
+func (r *Runner) runCheck(ctx context.Context, projectRoot string, c Check) CheckResult {
+	timeout := r.CheckTimeout
+	if timeout <= 0 {
+		timeout = DefaultCheckTimeout
+	}
+
+	checkCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	resultCh := make(chan CheckResult, 1)
+	go func() {
+		resultCh <- c.Run(checkCtx, projectRoot)
+	}()
+
+	select {
+	case result := <-resultCh:
+		return result
+	case <-checkCtx.Done():
+		message := fmt.Sprintf("timed out after %s", timeout)
+		if err := ctx.Err(); err != nil {
+			message = "cancelled: " + err.Error()
+		}
+		return CheckResult{
+			Status:   StatusFail,
+			Name:     c.Name(),
+			Category: c.Category(),
+			Message:  message,
+		}
+	}
 }
 
 // FailedChecks returns CheckWithFixer entries whose checks failed and have fixers.

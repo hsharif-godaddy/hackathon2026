@@ -2,6 +2,7 @@ package docker
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -282,9 +283,7 @@ func generatePreviewEnvironment(app *store.App) map[string]string {
 		env["DEV_SUPERVISOR_AGENTS_BASE_URL"] = agentsBaseURL
 	}
 
-	if v := projectenv.Resolve("GODADDY_API_BASE_URL"); v != "" {
-		env["GODADDY_API_BASE_URL"] = v
-	}
+	addGoDaddyCommerceEnvironment(env)
 
 	return env
 }
@@ -322,9 +321,10 @@ func generatePublishEnvironment(app *store.App) map[string]string {
 		),
 	}
 
-	if v := projectenv.Resolve("GODADDY_API_BASE_URL"); v != "" {
-		env["GODADDY_API_BASE_URL"] = v
-	}
+	// Publish often serves built static assets, but AAB source archives can still
+	// run a Vite build in the publish container. These public VITE_* values are
+	// embedded at build time; for prebuilt dist archives they are inert.
+	addGoDaddyCommerceEnvironment(env)
 
 	if app.PublishSupervisorPort > 0 {
 		env["DEV_SUPERVISOR_USE_TCP"] = "true"
@@ -344,6 +344,41 @@ func generatePublishEnvironment(app *store.App) map[string]string {
 	}
 
 	return env
+}
+
+func addGoDaddyCommerceEnvironment(env map[string]string) {
+	apiBaseURL := projectenv.Resolve("GODADDY_API_BASE_URL")
+	if apiBaseURL != "" {
+		env["GODADDY_API_BASE_URL"] = apiBaseURL
+	}
+
+	clientID := projectenv.Resolve("VITE_GODADDY_CLIENT_ID")
+	if clientID == "" {
+		// Safe to expose: this is the public OAuth client identifier used by
+		// @godaddy/react storefront components. The same client_id is registered
+		// for confidential server-side and public browser flows; only the client
+		// secret is sensitive and must never be exposed.
+		clientID = projectenv.Resolve("GODADDY_OAUTH_CLIENT_ID")
+	}
+	if clientID != "" {
+		env["VITE_GODADDY_CLIENT_ID"] = clientID
+	}
+
+	apiHost := projectenv.Resolve("VITE_GODADDY_API_HOST")
+	if apiHost == "" && apiBaseURL != "" {
+		apiHost = deriveHostOnly(apiBaseURL)
+	}
+	if apiHost != "" {
+		env["VITE_GODADDY_API_HOST"] = apiHost
+	}
+}
+
+func deriveHostOnly(rawURL string) string {
+	parsed, err := url.Parse(rawURL)
+	if err != nil || parsed.Host == "" {
+		return ""
+	}
+	return parsed.Host
 }
 
 func formatEnvLines(env map[string]string) string {

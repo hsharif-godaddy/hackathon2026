@@ -703,10 +703,12 @@ intents:
         'search rankings', 'meta tags',
         'only when user explicitly says Stripe',
         // Routing-time ordering hints for commerce sub-skills. Without
-        // these the LLM may load the storefront / one-time-payment UI
-        // skill before commerce has been set up, producing UI wired to
+        // these the LLM may build storefront / one-time-payment UI before
+        // Commerce MCP has verified/setup store data, producing UI wired to
         // an unconfigured store.
-        'storefront UI/cart UI/checkout UI (load commerce first)',
+        'storefront UI/shop page/product detail page/PDP',
+        'build/update shop page/product catalog/product grid/load products from API',
+        'product detail page/product page/PDP/product route',
         'charge customers (load commerce first)',
       ];
       for (const phrase of phrases) {

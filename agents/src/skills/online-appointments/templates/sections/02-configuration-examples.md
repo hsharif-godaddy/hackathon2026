@@ -74,7 +74,7 @@ export const config = {
       label: '60-minute Coaching Session',
       duration: 60,
       amount: 8000,           // cents — $80.00 (USD has 2 minor units)
-      skuId: 'coaching-60',   // REQUIRED — get from `commerce__manage_products`
+      skuId: 'coaching-60',   // REQUIRED — get via commerce__search_tools + commerce__execute_tool
     },
   ],
 };

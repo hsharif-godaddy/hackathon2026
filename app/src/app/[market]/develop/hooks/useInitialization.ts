@@ -451,6 +451,18 @@ export function resetStaleAppContext(
 }
 
 /**
+ * True when a temporary job route should be replaced with its resolved app id.
+ * The creation state machine can leave `creating` before React runs URL-sync
+ * effects, so this predicate intentionally depends on URL identity rather than
+ * machine phase.
+ *
+ * Exported for testing.
+ */
+export function shouldReplaceJobRoute(appId: string | null, isJobId: boolean, realAppId: string | null): boolean {
+  return Boolean(isJobId && appId && realAppId && realAppId !== appId)
+}
+
+/**
  * True from the moment a creation flow begins (sessionStorage flag set on the
  * homepage) until the auto-send actually starts streaming. Covers the job-id
  * stage and the post-switch waitingForWebSocket → first-chunk window, letting
@@ -865,8 +877,7 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
 
   // EFFECT: Update URL when we get real app ID
   useEffect(() => {
-    const phase = getPhaseFromState(state)
-    if (phase === 'creating' && realAppId && realAppId !== appId) {
+    if (shouldReplaceJobRoute(appId, isJobId, realAppId)) {
       const jobId = appId
       sessionStorage.setItem(`initial-job-id-${realAppId}`, jobId)
       const initialPromptText = sessionStorage.getItem(`initial-prompt-text-${jobId}`)
@@ -875,7 +886,7 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
       }
       router.replace(`/develop/${realAppId}`, { scroll: false })
     }
-  }, [state, realAppId, appId, router])
+  }, [realAppId, appId, isJobId, router])
 
   // EFFECT: Hydrate machine context when appId changes post-creation (job→app transition)
   // This ensures machine context.appId and context.isJobId are updated after router navigation

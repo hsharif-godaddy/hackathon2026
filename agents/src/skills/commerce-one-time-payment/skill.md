@@ -1,7 +1,7 @@
 ---
 name: commerce-one-time-payment
 description: Render a simple GoDaddy Commerce one-time checkout UI (products, checkout, success/cancel pages) using existing Commerce SKUs. UI only.
-whenToUse: Trigger when user wants simple payments or a buy-now checkout — "accept payments", "charge customers", "one-time service payment", "payment page", "buy now page", "single product checkout", "one-time payment". Backed by GoDaddy Commerce SKU data, not a full cart storefront. Load commerce first to verify/setup store/catalog data, then use this skill for UI wiring.
+whenToUse: Trigger when user wants simple payments or a buy-now checkout — "accept payments", "charge customers", "one-time service payment", "payment page", "buy now page", "single product checkout", "one-time payment". Backed by GoDaddy Commerce SKU data, not a full cart storefront. Load the `commerce` skill first to verify/setup store/catalog data, then use this skill for UI wiring.
 intents:
   - accept payments/buy-now/one-time payment/charge customers (load commerce first)
 ---
@@ -13,23 +13,24 @@ Use this skill when the user wants a **simple buy-now checkout flow**.
 This skill is **UI wiring only**.
 
 - It does **not** create stores/products/prices/inventory.
-- Use `commerce` skill first for Commerce management operations.
+- Load the `commerce` skill for Commerce store/catalog/product/pricing/inventory/order operations.
 
 ## Scope Split
 
-| Skill                       | Purpose                                                           |
-| --------------------------- | ----------------------------------------------------------------- |
-| `commerce`                  | Store setup + catalog/product/pricing/inventory/media/orders APIs |
-| `commerce-one-time-payment` | Simple one-time checkout UI pages                                 |
-| `commerce-storefront`       | Full storefront UI (catalog + cart + product details)             |
+| Tool / Skill                  | Purpose                                                                                   |
+| ----------------------------- | ----------------------------------------------------------------------------------------- |
+| `commerce`                    | Store setup + catalog/product/pricing/inventory/media/orders through GoDaddy Commerce MCP |
+| `commerce-one-time-payment`   | Simple one-time checkout UI pages                                                         |
+| `commerce-storefront`         | Full storefront UI (catalog + cart + product details)                                     |
 
 ## Absolute Rules
 
-1. **Load `commerce` skill first** and use existing Commerce data.
+1. **Resolve Commerce data first** by loading the `commerce` skill and using its Commerce MCP tools.
 2. **Use SKU IDs for checkout** (`product.skuId`), never SKU Group IDs.
-3. **Do NOT modify** `src/server/api/commerce/create-checkout-session/POST.ts` (immutable route).
+3. **Do NOT modify** `src/server/api/commerce/create-checkout-session/POST.ts` or `src/server/api/commerce/order-status/GET.ts` (immutable routes).
 4. Keep preview URL fallback behavior for return/success URLs.
-5. Do not request Commerce OAuth secrets manually (system-managed in task-local config.json).
+5. Do not request Commerce OAuth secrets manually — the `src/server/api/commerce/*` routes read system-managed OAuth credentials from task-local config (`$NOMAD_TASK_DIR/config.json`, usually `/local/config.json`; `/alloc/config.json` is a compatibility symlink).
+6. This one-time payment flow does **not** require `VITE_GODADDY_CLIENT_ID` or `VITE_GODADDY_API_HOST`; those browser-side public vars are only needed by the full `@godaddy/react` storefront flow.
 
 ## Understanding draftOrderId and Payment Flow
 
@@ -59,16 +60,21 @@ Wait for confirmation before proceeding.
 
 ## Required Pre-Step: Prepare Commerce Data
 
+Load the `commerce` skill, then use its Commerce MCP tools.
+
 ```typescript
+// 1. Load Commerce platform/data tools
 skill({ action: 'load', skill: 'commerce' });
+
+// 2. Discover and execute the Commerce MCP tools you need
 ```
 
-Then verify store/catalog data:
+Use discovery to find the right tools:
 
-- `commerce__setup_store` → get `storeId`, `channelId`, `locationId`
-- `commerce__fetch_catalog` → get existing products/SKUs
+- a `store`/`setup` tool → get `storeId`, `channelId`, `locationId`
+- a `catalog`/`products` tool → get existing products/SKUs
 
-If catalog is empty, stop and ask whether to run the `commerce` management workflow first.
+If the catalog is empty, stop and ask whether to run the Commerce management workflow (product/catalog/pricing tools via the `commerce` skill) first.
 
 ---
 
@@ -81,23 +87,27 @@ skill({ action: 'install', skill: 'commerce-one-time-payment' });
 Installs:
 
 - `src/lib/commerce-client.ts`
-- `src/server/api/commerce/create-checkout-session/POST.ts`
 - `src/lib/commerce/products.ts`
 - `src/lib/commerce/payment-flow.ts`
 - `src/pages/commerce/Products.tsx`
 - `src/pages/commerce/Checkout.tsx`
 - `src/pages/commerce/Success.tsx`
 - `src/pages/commerce/Cancel.tsx`
+- `src/server/lib/logger.ts`
+- `src/server/api/commerce/create-checkout-session/POST.ts`
+- `src/server/api/commerce/order-status/GET.ts`
 
 Read these templates before customization so checkout wiring remains correct.
 
+`order-status/GET.ts` is installed for flows that need to confirm paid status after the hosted checkout redirects back (for example appointment booking or reservation flows). The basic one-time product template stores/displays the draft order ID but does not call this route by default.
+
 ---
 
-## Step 2: Populate Product Data from `commerce__fetch_catalog`
+## Step 2: Populate Product Data from Commerce MCP
 
-Update `src/lib/commerce/products.ts` by replacing the empty `COMMERCE_PRODUCTS` array.
+Fetch catalog data via the `commerce` skill (pick the tool surfaced by a `catalog fetch products` search), then update `src/lib/commerce/products.ts` by replacing the empty `COMMERCE_PRODUCTS` array.
 
-Mapping from `commerce__fetch_catalog` output:
+Mapping from the catalog/products MCP tool output:
 
 - `product.skus[i].id` → `skuId`
 - `product.label` (or `sku.label`) → `title`
@@ -122,7 +132,7 @@ export const STORE_ID = 'REPLACE_WITH_STORE_ID';
 export const CHANNEL_ID = 'REPLACE_WITH_CHANNEL_ID';
 ```
 
-Use `storeId` and `channelId` from `commerce__setup_store`. `channelId` is required for order number assignment in the GoDaddy Commerce admin.
+Use `storeId` and `channelId` from the Commerce MCP store setup tool (discovered and executed via the `commerce` skill). `channelId` is required for order number assignment in the GoDaddy Commerce admin.
 
 ---
 
@@ -179,7 +189,8 @@ You may restyle page layout/copy, but keep checkout payload as `lineItems: [{ sk
 4. Verify checkout request sends `lineItems: [{ skuId, quantity: 1 }]`
 5. Verify redirect to Commerce checkout URL
 6. Complete payment and verify `/checkout/success`
-7. Cancel checkout and verify `/checkout/cancel`
+7. If the app uses paid-status confirmation, verify `GET /api/commerce/order-status?orderId={orderId}` with the returned draft order ID
+8. Cancel checkout and verify `/checkout/cancel`
 
 ---
 
@@ -191,3 +202,4 @@ Report:
 - store ID configured
 - routes added
 - checkout flow validation outcome
+- order-status route validation outcome, if used by the installed flow

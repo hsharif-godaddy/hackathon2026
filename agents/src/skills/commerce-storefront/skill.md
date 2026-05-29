@@ -1,9 +1,11 @@
 ---
 name: commerce-storefront
-description: Render GoDaddy Commerce storefront UI (catalog, product detail, cart, and checkout success/cancel pages) from existing Commerce store/catalog data. UI only.
-whenToUse: Trigger for requests like "build the product catalog", "build the shop/storefront", "add cart", or "wire checkout" when catalog data should come from GoDaddy Commerce. For ambiguous e-commerce prompts, load commerce first to verify/setup store data, then use this skill for UI wiring. Do NOT hand-build static catalog/cart pages when the user intends Commerce integration.
+description: Render GoDaddy Commerce storefront UI (shop/catalog page, product detail/PDP, cart, and checkout success/cancel pages) from existing Commerce store/catalog data. UI only.
+whenToUse: Trigger for requests like "build/update the product catalog", "build the shop/storefront", "wire the shop page", "wire the product detail/PDP page", "load products from the API", "add cart", or "wire checkout" when catalog data should come from GoDaddy Commerce. Load the `commerce` skill first to verify/setup store data, then use this skill for UI wiring. Do NOT hand-build static catalog/cart pages, custom product API routes, or `useProducts` hooks when the user intends Commerce integration.
 intents:
-  - build product catalog UI/storefront UI/cart UI/checkout UI (load commerce first)
+  - product catalog UI/storefront UI/shop page/product detail page/PDP/cart UI/checkout UI (load commerce first)
+  - build/update shop page/product catalog/product grid/load products from API (load commerce first)
+  - product detail page/product page/PDP/product route (load commerce first)
 dependencies:
   - "@godaddy/react"
   - "@godaddy/localizations"
@@ -17,19 +19,19 @@ Use this skill for a **catalog + cart storefront UI**.
 This skill is **UI wiring only**:
 
 - It does **not** create stores/products/prices/inventory.
-- Use `commerce` skill first for Commerce management operations.
+- Load the `commerce` skill for Commerce store/catalog/product/pricing/inventory/order operations.
 
 ## Scope Split
 
-| Skill                       | Purpose                                                           |
-| --------------------------- | ----------------------------------------------------------------- |
-| `commerce`                  | Store setup + catalog/product/pricing/inventory/media/orders APIs |
-| `commerce-storefront`       | Storefront UI (shop, product page, cart, checkout redirects)      |
-| `commerce-one-time-payment` | Simple one-time checkout UI (no storefront cart flow)             |
+| Tool / Skill                            | Purpose                                                                                                       |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `commerce`                              | Store setup + catalog/product/pricing/inventory/media/orders through GoDaddy Commerce MCP                     |
+| `commerce-storefront`                   | Storefront UI (shop, product page, cart, checkout redirects)                                                  |
+| `commerce-one-time-payment`             | Simple one-time checkout UI (no storefront cart flow)                                                         |
 
 ## Absolute Rules
 
-1. **Load `commerce` skill first** for store/catalog data.
+1. **Resolve store/catalog data first** by loading the `commerce` skill and using its Commerce MCP tools (for example `catalog_search`, `store_get`).
 2. Use `ProductGrid`, `ProductDetails`, and `Cart` from `@godaddy/react` (do not hand-roll storefront/cart primitives).
 3. `Cart.onCheckout(orderId)` **must** call checkout session creation with `draftOrderId: orderId`.
 4. Catalog and product pages **must** wire `onAddToCartSuccess` to open the cart.
@@ -53,8 +55,8 @@ assume they likely want Commerce integration unless they explicitly ask for stat
 
 In that case:
 
-1. Load `commerce` first.
-2. Verify/setup store + catalog (`commerce__setup_store`, `commerce__fetch_catalog`).
+1. Load the `commerce` skill.
+2. Use the Commerce MCP tools from that skill to verify/setup store + catalog (for example MCP tools like `store_get`, `catalog_search`, or the current setup/install equivalents returned by discovery).
 3. Then install/use this storefront skill.
 
 Do not skip directly to hand-built static catalog pages.
@@ -63,16 +65,23 @@ Do not skip directly to hand-built static catalog pages.
 
 ## Required Pre-Step: Prepare Commerce Data
 
+Load the `commerce` skill, then use its Commerce MCP tools.
+
 ```typescript
+// 1. Load Commerce platform/data tools
 skill({ action: 'load', skill: 'commerce' });
+
+// 2. Discover available Commerce tools with the commerce skill's search tool
+
+// 3. Execute the tools discovery surfaced (names returned by search_tools)
 ```
 
-Then verify data exists:
+Use discovery to find the right tools for your step, for example:
 
-- `commerce__setup_store` → get `storeId`, `channelId`, `locationId`
-- `commerce__fetch_catalog` → confirm products/SKUs exist
+- a `store`/`setup` tool → get `storeId`, `channelId`, `locationId`
+- a `catalog`/`products` search tool → confirm products/SKUs exist
 
-If catalog is empty, stop and ask user whether to run the `commerce` management workflow first.
+If the catalog is empty, stop and ask the user whether to run the Commerce management workflow (product/catalog/pricing tools via the `commerce` skill) first.
 
 ---
 
@@ -100,7 +109,9 @@ Read these files before customizing so checkout/provider wiring stays intact.
 
 ## Step 2: Configure Runtime Environment
 
-Preferred: if available in current flow, use `commerce__install_storefront` from the `commerce` skill to write env vars automatically.
+Preferred: load `commerce`, discover an `install_storefront`-style Commerce MCP tool, and execute it to write app-specific storefront env/config automatically.
+
+Platform-provided public env vars (`VITE_GODADDY_CLIENT_ID`, `VITE_GODADDY_API_HOST`) should already be present in the app runtime for the full storefront flow. The agent should usually only need to set store/channel IDs. If `import.meta.env.VITE_GODADDY_CLIENT_ID` is missing, stop and report that the app runtime is missing storefront public env vars; do not try to expose or request OAuth secrets manually.
 
 Otherwise, add/update `.env` manually:
 
@@ -108,17 +119,19 @@ Otherwise, add/update `.env` manually:
 VITE_GODADDY_CLIENT_ID=<from /alloc/config.json GODADDY_OAUTH_CLIENT_ID.VALUE>
 VITE_GODADDY_API_HOST=<hostname from GODADDY_API_BASE_URL, no https://>
 GODADDY_API_BASE_URL=https://<same-host-as-VITE_GODADDY_API_HOST>
-VITE_GODADDY_STORE_ID=<storeId from commerce__setup_store>
-VITE_GODADDY_CHANNEL_ID=<channelId from commerce__setup_store>
+VITE_GODADDY_STORE_ID=<storeId from Commerce MCP store setup tool>
+VITE_GODADDY_CHANNEL_ID=<channelId from Commerce MCP store setup tool>
 VITE_PREVIEW_URL=http://[app-id].preview.dev-godaddy.com:[port]
 ```
 
 Notes:
 
+- `VITE_GODADDY_CLIENT_ID` is a public OAuth client identifier for browser-side `@godaddy/react` storefront APIs; never expose `GODADDY_OAUTH_CLIENT_SECRET` as a `VITE_` var.
 - `VITE_GODADDY_API_HOST` must be host only (no protocol).
 - `GODADDY_API_BASE_URL` must include protocol (for example `https://api.dev-godaddy.com`) so server checkout routes can call Commerce APIs.
 - `VITE_PREVIEW_URL` is used for checkout return/success redirects; runtime falls back to `window.location.origin`.
 - `storefront-config.ts` supports env-first IDs with constants as fallback.
+- One-time payment pages do not need `VITE_GODADDY_CLIENT_ID`/`VITE_GODADDY_API_HOST`; only the full storefront skill uses browser-side `@godaddy/react` data/cart APIs.
 
 ---
 
@@ -131,7 +144,7 @@ export const STOREFRONT_STORE_ID = 'REPLACE_WITH_STORE_ID';
 export const STOREFRONT_CHANNEL_ID = 'REPLACE_WITH_CHANNEL_ID';
 ```
 
-Use values from `commerce__setup_store`.
+Use values from the Commerce MCP store setup tool (discover via the `commerce` skill).
 
 ---
 

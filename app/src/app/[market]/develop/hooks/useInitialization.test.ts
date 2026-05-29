@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { SiteStatus } from '@/lib/control-plane/types';
 import type { Site } from '@/stores/useSitesStore';
-import { applyMarkInitialPromptSentEffects, checkHasInitialPrompt, deriveIsAwaitingStream, getEditPaths, isCompletedFileEdit, isInCreationHandoff, isSiteForCurrentApp, resetStaleAppContext, shouldFireSiteAwareHydration, shouldHydrateInitialPromptFromSite } from './useInitialization';
+import { applyMarkInitialPromptSentEffects, checkHasInitialPrompt, deriveIsAwaitingStream, getEditPaths, isCompletedFileEdit, isInCreationHandoff, isSiteForCurrentApp, resetStaleAppContext, shouldFireSiteAwareHydration, shouldHydrateInitialPromptFromSite, shouldReplaceJobRoute } from './useInitialization';
 
 function makeSite(overrides: Partial<Site>): Site {
   return {
@@ -159,6 +159,24 @@ describe('useInitialization', function hookTests() {
       expect(didReset).toBe(true);
       expect(setCurrentAppId).toHaveBeenCalledWith('job-new-456');
       expect(reset).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('shouldReplaceJobRoute', function shouldReplaceJobRouteTests() {
+    it('replaces a job route once the real app id is known', function replacesJobRoute() {
+      expect(shouldReplaceJobRoute('job-123', true, 'app-456')).toBe(true);
+    });
+
+    it('does not replace non-job routes', function ignoresNonJobRoute() {
+      expect(shouldReplaceJobRoute('app-456', false, 'app-789')).toBe(false);
+    });
+
+    it('does not replace before the real app id is known', function waitsForRealAppId() {
+      expect(shouldReplaceJobRoute('job-123', true, null)).toBe(false);
+    });
+
+    it('does not replace when the URL already has the real app id', function alreadyReplaced() {
+      expect(shouldReplaceJobRoute('app-456', true, 'app-456')).toBe(false);
     });
   });
 

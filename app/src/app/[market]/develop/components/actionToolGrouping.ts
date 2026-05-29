@@ -1,9 +1,10 @@
 import type { ToolCall } from '@/stores/useStreamingConversationStore'
 import type { ContentBlock } from './contentBlocks'
 
-// Convert snake_case to camelCase so a single canonical list handles both variants.
+// Convert snake_case / skill__tool names to camelCase so a single canonical
+// list handles both variants.
 function toCamelCase(name: string): string {
-  return name.replace(/_([a-z])/g, (_, c) => c.toUpperCase())
+  return name.replace(/_+([a-z])/g, (_, c) => c.toUpperCase())
 }
 
 // Allowlist of tools known to render as compact one-line action rows (camelCase canonical form).
@@ -37,15 +38,13 @@ const ACTION_GROUP_TOOL_NAMES = new Set([
   'listDesignSystems',
   'installDesignSystem',
   'loadUiKit',
-  // Commerce skill tools (toCamelCase converts commerce__setup_store → commerce_SetupStore)
-  'commerce_SetupStore',
-  'commerce_FetchCatalog',
-  'commerce_InstallStorefront',
-  'commerce_ManageProducts',
-  'commerce_ManageInventory',
-  'commerce_ManagePricing',
-  'commerce_ManageMedia',
-  'commerce_GetOrders',
+  // Commerce MCP skill tools
+  'commerceSearchTools',
+  'commerceExecuteTool',
+  'commerceCommerceStoreSetup',
+  'commerceCommerceStoreList',
+  'commerceCommerceStoreGet',
+  'commerceCommerceStoreChannelsGet',
 ])
 
 export function isMediaSlotTool(name?: string): boolean {

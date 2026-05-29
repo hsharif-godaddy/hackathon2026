@@ -10,7 +10,8 @@ export interface CommerceSkillProduct {
 }
 
 /**
- * Populate from commerce__fetch_catalog tool output.
+ * Populate from a GoDaddy Commerce MCP catalog/fetch tool (invoked via the
+ * Commerce MCP tools exposed by the `commerce` skill).
  * Use sku.id values (not skuGroup/product IDs).
  *
  * Intentionally starts empty so no dummy product data is shipped by default.

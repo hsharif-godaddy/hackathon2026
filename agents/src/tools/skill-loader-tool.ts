@@ -12,7 +12,7 @@ import { regenerateEntryApiRegistrations } from '../utils/entry-api-sync.js';
  * Options for loading a skill
  */
 export interface SkillLoaderOptions {
-  /** Name of the skill to load (e.g., 'blog', 'commerce') */
+  /** Name of the skill to load (e.g., 'blog', 'commerce-storefront') */
   skill: string;
 }
 
