@@ -1,5 +1,19 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { RipgrepUtil } from '../ripgrep-util';
+import { makeRunCommandResult } from '../../workspace/__tests__/mock-helpers.js';
+
+vi.mock('../../logging/index.js', () => ({
+  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+}));
+
+vi.mock('../../logging/events/index.js', () => ({
+  toolCodeSearchEvents: {
+    ripgrepError: vi.fn(),
+    spawnError: vi.fn(),
+    parseError: vi.fn(),
+    fallback: vi.fn(),
+  },
+}));
 
 describe('RipgrepUtil', () => {
   describe('buildCommand', () => {
@@ -322,6 +336,44 @@ describe('RipgrepUtil', () => {
       expect(result.matches).toHaveLength(2);
       expect(result.matches[0].contextAfter).toEqual([]);
       expect(result.matches[1].contextBefore).toEqual([{ line: 12, text: 'equidistant' }]);
+    });
+  });
+
+  describe('search', () => {
+    it('should return error when command times out', async () => {
+      const mockTasks = {
+        runCommandSync: vi.fn().mockResolvedValue(
+          makeRunCommandResult({ exitCode: -1, timedOut: true, executionTimeMs: 30_000 })
+        ),
+      };
+
+      const result = await RipgrepUtil.search(mockTasks as any, '.', 'query');
+
+      expect(result.error).toBe('Search timed out');
+      expect(result.matches).toEqual([]);
+      expect(result.totalMatches).toBe(0);
+    });
+
+    it('should return error on exit code 2', async () => {
+      const mockTasks = {
+        runCommandSync: vi.fn().mockResolvedValue(
+          makeRunCommandResult({ exitCode: 2, stderr: 'regex parse error' })
+        ),
+      };
+
+      const result = await RipgrepUtil.search(mockTasks as any, '.', 'query');
+
+      expect(result.error).toBe('Search failed');
+      expect(result.matches).toEqual([]);
+    });
+
+    it('should return empty query error', async () => {
+      const mockTasks = { runCommandSync: vi.fn() };
+
+      const result = await RipgrepUtil.search(mockTasks as any, '.', '  ');
+
+      expect(result.error).toBe('Query cannot be empty');
+      expect(mockTasks.runCommandSync).not.toHaveBeenCalled();
     });
   });
 });

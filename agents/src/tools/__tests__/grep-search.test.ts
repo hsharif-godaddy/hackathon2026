@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { mockFindById, mockCreateSupervisor, mockRipgrepSearch } = vi.hoisted(() => ({
+const { mockFindById, mockCreateForWorkspace, mockRipgrepSearch } = vi.hoisted(() => ({
   mockFindById: vi.fn(),
-  mockCreateSupervisor: vi.fn(),
+  mockCreateForWorkspace: vi.fn(),
   mockRipgrepSearch: vi.fn(),
 }));
 
@@ -12,8 +12,8 @@ vi.mock('../../database/repositories/AppRepository.js', () => ({
   }))
 }));
 
-vi.mock('../../utils/dev-supervisor-client-factory.js', () => ({
-  createDevSupervisorClientForApp: mockCreateSupervisor
+vi.mock('../../workspace/index.js', () => ({
+  createForWorkspace: mockCreateForWorkspace
 }));
 
 vi.mock('../../utils/ripgrep-util.js', () => ({
@@ -69,7 +69,7 @@ function makeMatch(path: string, line: number, text: string, opts?: {
 describe('grepSearchAITool', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockCreateSupervisor.mockReturnValue({ exec: vi.fn() });
+    mockCreateForWorkspace.mockReturnValue({ tasks: { runCommandSync: vi.fn() } });
   });
 
   describe('Schema', () => {
@@ -115,13 +115,13 @@ describe('grepSearchAITool', () => {
         .rejects.toThrow("App 'nonexistent' not found");
     });
 
-    it('should throw when supervisor not available', async () => {
+    it('should throw when workspace not available', async () => {
       mockFindById.mockReturnValue({ path: '/tmp/app' });
-      mockCreateSupervisor.mockReturnValue(null);
+      mockCreateForWorkspace.mockReturnValue(null);
       await expect(executeTool(
         { pattern: 'test', output_mode: 'content', head_limit: 0, offset: 0, multiline: false, '-n': true },
         'test-app'
-      )).rejects.toThrow('Dev-supervisor not available');
+      )).rejects.toThrow('Workspace not available for grep search');
     });
 
     it('should throw when ripgrep returns error', async () => {

@@ -92,13 +92,6 @@ export function getBuildCommand(packageManager: PackageManager = 'npm', producti
   }
 }
 
-/**
- * Interface for dev-supervisor exec method (minimal interface for detectPackageManager)
- */
-export interface DevSupervisorExec {
-  exec(options: { command: string; timeout: number }): Promise<{ success?: boolean; stdout?: string }>;
-}
-
 export interface PackageJsonScripts {
   hasBuildScript: boolean;
   hasStartScript: boolean;
@@ -129,7 +122,7 @@ function warnPackageScriptsReadFailed(
  * a warning — unlike zip import, which fails the job with structured validation errors.
  */
 export async function readPackageJsonScripts(
-  devSupervisor: DevSupervisorExec,
+  tasks: WorkspaceTasks,
   projectRoot = '/app',
   appId?: string
 ): Promise<PackageJsonScripts> {
@@ -140,12 +133,12 @@ export async function readPackageJsonScripts(
   };
 
   try {
-    const catResult = await devSupervisor.exec({
+    const catResult = await tasks.runCommandSync({
       command: `cat "${projectRoot}/package.json"`,
-      timeout: 5,
+      timeoutSeconds: 5,
     });
 
-    if (catResult.success === false) {
+    if (catResult.exitCode !== 0) {
       warnPackageScriptsReadFailed(appId, projectRoot, 'exec_failed');
       return empty;
     }
@@ -380,10 +373,7 @@ export class AppRestartService {
       this.logger.info('app-restart.package-manager.detected', { appId, packageManager });
 
       // Read package.json scripts for build/start command resolution
-      const devSupervisor = DevSupervisorClientFactory.createForApp(appId);
-      const scripts = devSupervisor
-        ? await readPackageJsonScripts(devSupervisor, '/app', appId)
-        : { hasBuildScript: false, hasStartScript: false, hasDevScript: false };
+      const scripts = await readPackageJsonScripts(workspace.tasks, '/app', appId);
 
       const userStart = options?.commands?.start ?? options?.devCommand;
       const { startCommand, serveCommandSource } = resolveStartCommand(
@@ -507,10 +497,10 @@ export class AppRestartService {
    */
   async removeNodeModules(appId: string, appPath: string): Promise<{ success: boolean; error?: string }> {
     try {
-      const devSupervisor = DevSupervisorClientFactory.createForApp(appId);
+      const workspace = createForWorkspace(appId, 'preview');
 
-      if (!devSupervisor) {
-        return { success: false, error: 'Dev supervisor not available' };
+      if (!workspace) {
+        return { success: false, error: 'Workspace not available' };
       }
 
       const nodeModulesPath = `${appPath}/node_modules`;
@@ -520,15 +510,26 @@ export class AppRestartService {
 
       this.logger.info('app-restart.node-modules.remove.begin', { appId, appPath });
 
-      const result = await devSupervisor.exec({ command, timeout: 60 });
+      const result = await workspace.tasks.runCommandSync({ command, timeoutSeconds: 60 });
 
-      if (!result.success) {
+      if (result.timedOut) {
         this.logger.warn('app-restart.node-modules.remove.failed', {
           appId,
           appPath,
-          error: result.error,
+          taskId: result.taskId,
+          error: 'Command timed out after 60s',
         });
-        return { success: false, error: result.error || 'Failed to remove node_modules' };
+        return { success: false, error: 'Remove node_modules timed out after 60s' };
+      }
+
+      if (result.exitCode !== 0) {
+        this.logger.warn('app-restart.node-modules.remove.failed', {
+          appId,
+          appPath,
+          taskId: result.taskId,
+          error: result.stderr,
+        });
+        return { success: false, error: result.stderr || 'Failed to remove node_modules' };
       }
 
       this.logger.info('app-restart.node-modules.remove.success', { appId, appPath });

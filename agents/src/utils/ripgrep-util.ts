@@ -1,4 +1,4 @@
-import type { DevSupervisorClient } from '../services/DevSupervisorClient.js';
+import type { WorkspaceTasks } from '../workspace/tasks.js';
 import { logger } from '../logging/index.js';
 import { toolCodeSearchEvents } from '../logging/events/index.js';
 
@@ -55,7 +55,7 @@ export class RipgrepUtil {
    * Execute ripgrep search via dev-supervisor
    */
   static async search(
-    supervisor: DevSupervisorClient,
+    tasks: WorkspaceTasks,
     directory: string,
     query: string,
     options: RipgrepOptions = {},
@@ -74,13 +74,27 @@ export class RipgrepUtil {
     const command = this.buildCommand(query, directory, options)
 
     try {
-      const result = await supervisor.exec({
+      const result = await tasks.runCommandSync({
         command,
-        timeout: 30,
-        capture_output: true
+        timeoutSeconds: 30,
       })
 
-      if (result.exit_code === 2) {
+      if (result.timedOut) {
+        toolCodeSearchEvents.ripgrepError(logger, {
+          toolName: 'ripgrep-service',
+          query,
+          directory,
+          stderr: 'Search timed out after 30s'
+        })
+        return {
+          matches: [],
+          totalMatches: 0,
+          truncated: false,
+          error: 'Search timed out'
+        }
+      }
+
+      if (result.exitCode === 2) {
         toolCodeSearchEvents.ripgrepError(logger, {
           toolName: 'ripgrep-service',
           query,
@@ -308,16 +322,15 @@ export class RipgrepUtil {
   }
 
   /**
-   * Check if ripgrep is available via dev-supervisor
+   * Check if ripgrep is available in the container
    */
-  static async isAvailable(supervisor: DevSupervisorClient): Promise<boolean> {
+  static async isAvailable(tasks: WorkspaceTasks): Promise<boolean> {
     try {
-      const result = await supervisor.exec({
+      const result = await tasks.runCommandSync({
         command: 'which rg',
-        timeout: 5,
-        capture_output: true
+        timeoutSeconds: 5,
       })
-      return result.exit_code === 0
+      return result.exitCode === 0
     } catch {
       return false
     }

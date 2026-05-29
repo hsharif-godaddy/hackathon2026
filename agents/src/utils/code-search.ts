@@ -1,4 +1,5 @@
-import { createDevSupervisorClientForApp } from './dev-supervisor-client-factory.js'
+import { createForWorkspace } from '../workspace/index.js'
+import type { WorkspaceTasks } from '../workspace/tasks.js'
 import { FileSearch } from './file-search.js'
 import { isFileBlocked } from '../tools/read-file.js'
 import { logger } from '../logging/index.js'
@@ -54,16 +55,16 @@ export async function searchCode(
   query: string,
   options: SearchOptions = {}
 ): Promise<SearchResult> {
-  const supervisor = createDevSupervisorClientForApp(appId)
+  const workspace = createForWorkspace(appId, 'preview')
 
-  if (supervisor) {
-    const hasRipgrep = await RipgrepUtil.isAvailable(supervisor)
+  if (workspace) {
+    const hasRipgrep = await RipgrepUtil.isAvailable(workspace.tasks)
 
     if (hasRipgrep) {
-      // RipgrepUtil runs inside the container via dev-supervisor, whose CWD
+      // RipgrepUtil runs inside the container via workspace tasks, whose CWD
       // is already the app root. Pass '.' so ripgrep searches from there
       // instead of the absolute host path (which doesn't exist in container).
-      return searchWithRipgrep(supervisor, '.', query, options)
+      return searchWithRipgrep(workspace.tasks, '.', query, options)
     }
 
     toolCodeSearchEvents.fallback(logger, {
@@ -73,7 +74,7 @@ export async function searchCode(
   } else {
     toolCodeSearchEvents.fallback(logger, {
       toolName: 'code-search',
-      message: 'Dev-supervisor not available, using Node.js fallback'
+      message: 'Workspace not available, using Node.js fallback'
     })
   }
 
@@ -81,10 +82,10 @@ export async function searchCode(
 }
 
 /**
- * Search using ripgrep via dev-supervisor
+ * Search using ripgrep via workspace tasks
  */
 async function searchWithRipgrep(
-  supervisor: any,
+  tasks: WorkspaceTasks,
   directory: string,
   query: string,
   options: SearchOptions
@@ -108,7 +109,7 @@ async function searchWithRipgrep(
   }
 
   const result: RipgrepResult = await RipgrepUtil.search(
-    supervisor,
+    tasks,
     directory,
     query,
     ripgrepOptions,

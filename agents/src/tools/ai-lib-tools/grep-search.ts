@@ -2,7 +2,7 @@ import { createTool, type Tool } from '@airo/ai-lib'
 import { z } from 'zod'
 import * as path from 'node:path'
 import { AppRepository } from '../../database/repositories/AppRepository.js'
-import { createDevSupervisorClientForApp } from '../../utils/dev-supervisor-client-factory.js'
+import { createForWorkspace } from '../../workspace/index.js'
 import { RipgrepUtil, type RipgrepMatch } from '../../utils/ripgrep-util.js'
 import { isPathSafe } from '../../utils/path-helper.js'
 import { logger } from '../../logging/index.js'
@@ -122,9 +122,9 @@ export const grepSearchAITool: Tool = createTool(
       throw new Error(`App '${appId}' not found`)
     }
 
-    const supervisor = createDevSupervisorClientForApp(appId)
-    if (!supervisor) {
-      throw new Error('Dev-supervisor not available for grep search')
+    const workspace = createForWorkspace(appId, 'preview')
+    if (!workspace) {
+      throw new Error('Workspace not available for grep search')
     }
 
     // Resolve and validate the search target locally (host paths), then
@@ -147,7 +147,7 @@ export const grepSearchAITool: Tool = createTool(
     const contextLines = input['-C'] ?? input.context
 
     const ripgrepResult = await RipgrepUtil.search(
-      supervisor,
+      workspace.tasks,
       searchTarget,
       input.pattern,
       {

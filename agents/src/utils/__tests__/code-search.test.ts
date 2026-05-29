@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-vi.mock('../dev-supervisor-client-factory.js', () => ({
-  createDevSupervisorClientForApp: vi.fn()
+vi.mock('../../workspace/index.js', () => ({
+  createForWorkspace: vi.fn()
 }));
 
 vi.mock('../ripgrep-util.js', () => ({
@@ -35,7 +35,7 @@ vi.mock('../../logging/events/index.js', () => ({
 }));
 
 import { searchCode } from '../code-search.js';
-import { createDevSupervisorClientForApp } from '../dev-supervisor-client-factory.js';
+import { createForWorkspace } from '../../workspace/index.js';
 import { RipgrepUtil } from '../ripgrep-util.js';
 import { FileSearch } from '../file-search.js';
 
@@ -46,8 +46,9 @@ describe('code-search', () => {
 
   describe('#searchCode', () => {
     it('should pass "." to ripgrep instead of the host directory path', async () => {
-      const mockSupervisor = {};
-      vi.mocked(createDevSupervisorClientForApp).mockReturnValue(mockSupervisor as any);
+      const mockTasks = { runCommandSync: vi.fn() };
+      const mockWorkspace = { tasks: mockTasks };
+      vi.mocked(createForWorkspace).mockReturnValue(mockWorkspace as any);
       vi.mocked(RipgrepUtil.isAvailable).mockResolvedValue(true);
       vi.mocked(RipgrepUtil.search).mockResolvedValue({
         matches: [],
@@ -58,7 +59,7 @@ describe('code-search', () => {
       await searchCode('app-123', '/tmp/airo-app-builder/app-123/preview', 'query');
 
       expect(RipgrepUtil.search).toHaveBeenCalledWith(
-        mockSupervisor,
+        mockTasks,
         '.',
         'query',
         expect.any(Object),
@@ -67,7 +68,7 @@ describe('code-search', () => {
     });
 
     it('should use the host directory for the Node.js fallback', async () => {
-      vi.mocked(createDevSupervisorClientForApp).mockReturnValue(null);
+      vi.mocked(createForWorkspace).mockReturnValue(null);
       vi.mocked(FileSearch.search).mockResolvedValue({
         matches: [],
         totalMatches: 0,
@@ -84,8 +85,8 @@ describe('code-search', () => {
     });
 
     it('should fall back to Node.js when ripgrep is not available', async () => {
-      const mockSupervisor = {};
-      vi.mocked(createDevSupervisorClientForApp).mockReturnValue(mockSupervisor as any);
+      const mockTasks = { runCommandSync: vi.fn() };
+      vi.mocked(createForWorkspace).mockReturnValue({ tasks: mockTasks } as any);
       vi.mocked(RipgrepUtil.isAvailable).mockResolvedValue(false);
       vi.mocked(FileSearch.search).mockResolvedValue({
         matches: [],
@@ -104,7 +105,8 @@ describe('code-search', () => {
     });
 
     it('should propagate the error field from ripgrep results', async () => {
-      vi.mocked(createDevSupervisorClientForApp).mockReturnValue({} as any);
+      const mockTasks = { runCommandSync: vi.fn() };
+      vi.mocked(createForWorkspace).mockReturnValue({ tasks: mockTasks } as any);
       vi.mocked(RipgrepUtil.isAvailable).mockResolvedValue(true);
       vi.mocked(RipgrepUtil.search).mockResolvedValue({
         matches: [],
@@ -120,7 +122,8 @@ describe('code-search', () => {
     });
 
     it('should not include error field when ripgrep succeeds', async () => {
-      vi.mocked(createDevSupervisorClientForApp).mockReturnValue({} as any);
+      const mockTasks = { runCommandSync: vi.fn() };
+      vi.mocked(createForWorkspace).mockReturnValue({ tasks: mockTasks } as any);
       vi.mocked(RipgrepUtil.isAvailable).mockResolvedValue(true);
       vi.mocked(RipgrepUtil.search).mockResolvedValue({
         matches: [{ path: 'index.ts', line: 1, column: 1, text: 'test', matchStart: 0, matchEnd: 4, contextBefore: [], contextAfter: [] }],
@@ -135,8 +138,8 @@ describe('code-search', () => {
     });
 
     it('should forward SearchOptions to ripgrep', async () => {
-      const mockSupervisor = {};
-      vi.mocked(createDevSupervisorClientForApp).mockReturnValue(mockSupervisor as any);
+      const mockTasks = { runCommandSync: vi.fn() };
+      vi.mocked(createForWorkspace).mockReturnValue({ tasks: mockTasks } as any);
       vi.mocked(RipgrepUtil.isAvailable).mockResolvedValue(true);
       vi.mocked(RipgrepUtil.search).mockResolvedValue({
         matches: [],
@@ -152,7 +155,7 @@ describe('code-search', () => {
       });
 
       expect(RipgrepUtil.search).toHaveBeenCalledWith(
-        mockSupervisor,
+        mockTasks,
         '.',
         'query',
         {

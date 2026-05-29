@@ -1,7 +1,7 @@
-import { DevSupervisorClient } from '../services/DevSupervisorClient.js';
 import { Logger } from '../logging/index.js';
 import { getErrorMessage } from '../utils/error.js';
-import { DevSupervisorClientFactory } from '../utils/dev-supervisor-client-factory.js';
+import { createForWorkspace } from '../workspace/index.js';
+import type { WorkspaceTasks } from '../workspace/tasks.js';
 
 /**
  * Supply Chain Scanner Tool (Supply Chain category)
@@ -197,13 +197,13 @@ export class SupplyChainScannerTool {
     };
 
     try {
-      const devSupervisor = DevSupervisorClientFactory.createForApp(appId);
-      if (!devSupervisor) {
-        throw new Error('Dev-supervisor not available. Make sure the app container is running.');
+      const workspace = createForWorkspace(appId, 'preview');
+      if (!workspace) {
+        throw new Error('Workspace not available. Make sure the app container is running.');
       }
 
       const lockfilePath = options.lockfilePath ?? DEFAULT_LOCKFILE_PATH;
-      const lockfileExists = await this.checkLockfileExists(devSupervisor, lockfilePath);
+      const lockfileExists = await this.checkLockfileExists(workspace.tasks, lockfilePath);
       if (!lockfileExists) {
         // Not a hard error — some apps use yarn/pnpm. Mark as not-applicable rather than failed.
         this.logger.warn('supply-chain-scanner.lockfile.missing', { lockfilePath });
@@ -214,7 +214,7 @@ export class SupplyChainScannerTool {
         };
       }
 
-      const findings = await this.runLockfileLint(devSupervisor, options, lockfilePath);
+      const findings = await this.runLockfileLint(workspace.tasks, options, lockfilePath);
       const summary = this.summarize(findings);
 
       const result: SupplyChainScannerResult = {
@@ -243,17 +243,24 @@ export class SupplyChainScannerTool {
   }
 
   private async checkLockfileExists(
-    devSupervisor: DevSupervisorClient,
+    tasks: WorkspaceTasks,
     path: string,
   ): Promise<boolean> {
     try {
-      const result = await devSupervisor!.exec({
+      const result = await tasks.runCommandSync({
         command: `test -f ${path} && echo present || echo missing`,
-        capture_output: true,
-        timeout: 5,
+        timeoutSeconds: 5,
       });
-      return result.stdout?.trim() === 'present';
-    } catch {
+      if (result.timedOut) {
+        throw new Error('Lockfile existence check timed out');
+      }
+      return result.stdout.trim() === 'present';
+    } catch (error) {
+      // Re-throw timeout errors so they propagate to scan() as a real failure
+      // rather than being silently treated as "lockfile missing."
+      if (error instanceof Error && error.message.includes('timed out')) {
+        throw error;
+      }
       return false;
     }
   }
@@ -291,7 +298,7 @@ export class SupplyChainScannerTool {
   }
 
   private async runLockfileLint(
-    devSupervisor: DevSupervisorClient,
+    tasks: WorkspaceTasks,
     options: SupplyChainScannerOptions,
     lockfilePath: string,
   ): Promise<SupplyChainFinding[]> {
@@ -299,11 +306,17 @@ export class SupplyChainScannerTool {
     const command = this.buildLockfileLintCommand(lockfilePath, allowedHosts);
     this.logger.info('supply-chain-scanner.lockfile-lint.executing', { allowedHosts });
 
-    const result = await devSupervisor!.exec({
+    const timeoutSeconds = Math.floor((options.timeout ?? this.DEFAULT_TIMEOUT) / 1000);
+    const result = await tasks.runCommandSync({
       command,
-      capture_output: true,
-      timeout: Math.floor((options.timeout ?? this.DEFAULT_TIMEOUT) / 1000),
+      timeoutSeconds,
     });
+
+    if (result.timedOut) {
+      throw new Error(
+        `lockfile-lint timed out after ${timeoutSeconds}s`,
+      );
+    }
 
     // 0 = clean, 1 = validation failures, anything else = real error. We can't
     // use stderr-vs-stdout to distinguish: lockfile-lint v4 writes violation
@@ -311,22 +324,22 @@ export class SupplyChainScannerTool {
     // stdout and a populated stderr. Treat exit > 1 as a real error and parse
     // both streams concatenated for findings — `detected ... for package: ...`
     // lines are unique to violations, so noise from either stream is harmless.
-    if (result.exit_code !== 0 && result.exit_code !== 1) {
+    if (result.exitCode !== 0 && result.exitCode !== 1) {
       throw new Error(
-        `lockfile-lint failed (exit ${result.exit_code}): ${
-          (result.stderr ?? result.stdout ?? 'unknown').slice(0, 500)
+        `lockfile-lint failed (exit ${result.exitCode}): ${
+          (result.stderr || result.stdout || 'unknown').slice(0, 500)
         }`,
       );
     }
 
-    const combined = `${result.stdout ?? ''}\n${result.stderr ?? ''}`;
+    const combined = `${result.stdout}\n${result.stderr}`;
     // exit 1 + empty output = violations claimed but nothing emitted; refuse
     // to return [] which would mask real findings as a clean scan.
     if (!combined.trim()) {
-      if (result.exit_code === 1) {
+      if (result.exitCode === 1) {
         this.logger.error('supply-chain-scanner.lockfile-lint.empty-output-with-findings-exit', {
-          stdout: result.stdout?.slice(0, 500),
-          stderr: result.stderr?.slice(0, 500),
+          stdout: result.stdout.slice(0, 500),
+          stderr: result.stderr.slice(0, 500),
         });
         throw new Error(
           'lockfile-lint exited 1 (violations) but output is empty — possible flag/config drift',
@@ -339,10 +352,10 @@ export class SupplyChainScannerTool {
 
     // exit_code===1 with zero parsed findings means the parser drifted — throw
     // so the orchestrator can distinguish "parser desync" from "scanner ran clean."
-    if (result.exit_code === 1 && findings.length === 0) {
+    if (result.exitCode === 1 && findings.length === 0) {
       this.logger.error('supply-chain-scanner.parser-desync', {
-        stdoutPreview: result.stdout?.slice(0, 300),
-        stderrPreview: result.stderr?.slice(0, 300),
+        stdoutPreview: result.stdout.slice(0, 300),
+        stderrPreview: result.stderr.slice(0, 300),
       });
       throw new Error(
         'lockfile-lint reported violations (exit 1) but plain-text parser found none — upstream message format may have changed. Re-pin lockfile-lint to a known-good 4.13.x patch.',

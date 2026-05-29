@@ -1,43 +1,40 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
-  exec: vi.fn(),
-  createForApp: vi.fn(),
+  runCommandSync: vi.fn(),
+  createForWorkspace: vi.fn(),
 }));
 
-vi.mock('../../utils/dev-supervisor-client-factory.js', () => ({
-  DevSupervisorClientFactory: {
-    createForApp(appId: string) {
-      return mocks.createForApp(appId);
-    },
+vi.mock('../../workspace/index.js', () => ({
+  createForWorkspace(workspaceId: string, variant: string) {
+    return mocks.createForWorkspace(workspaceId, variant);
   },
 }));
 
 import { SupplyChainScannerTool } from '../supply-chain-scanner-tool.js';
+import { makeRunCommandResult } from '../../workspace/__tests__/mock-helpers.js';
 
 const APP_ID = 'app-supply-chain-test';
 
-interface ExecResp { exit_code: number; stdout?: string; stderr?: string; }
-
-function setupExec(handler: (cmd: string) => ExecResp) {
-  mocks.createForApp.mockReturnValue({ exec: mocks.exec });
-  mocks.exec.mockImplementation(async (args: { command: string }) => handler(args.command));
+function setupExec(handler: (cmd: string) => ReturnType<typeof makeRunCommandResult>) {
+  mocks.createForWorkspace.mockReturnValue({ tasks: { runCommandSync: mocks.runCommandSync } });
+  mocks.runCommandSync.mockImplementation(async (args: { command: string }) => handler(args.command));
 }
 
 /** Convenience: the lockfile-lint command emits violations via stderr in v4. */
-function lockfileLintRun(stderr: string, exitCode = 1): ExecResp {
-  return { exit_code: exitCode, stdout: '', stderr };
+function lockfileLintRun(stderr: string, exitCode = 1): ReturnType<typeof makeRunCommandResult> {
+  return makeRunCommandResult({ exitCode, stdout: '', stderr });
 }
 
 describe('SupplyChainScannerTool', () => {
   beforeEach(() => {
-    mocks.exec.mockReset();
-    mocks.createForApp.mockReset();
+    mocks.runCommandSync.mockReset();
+    mocks.createForWorkspace.mockReset();
   });
 
   it('returns not-applicable error when package-lock.json is missing', async () => {
     setupExec((cmd) => {
-      if (cmd.startsWith('test -f')) return { exit_code: 0, stdout: 'missing\n', stderr: '' };
+      if (cmd.startsWith('test -f')) return makeRunCommandResult({ stdout: 'missing\n' });
       throw new Error(`Unexpected command: ${cmd}`);
     });
 
@@ -49,10 +46,27 @@ describe('SupplyChainScannerTool', () => {
     expect(result.findings).toEqual([]);
   });
 
+  it('reports timeout error when lockfile existence check times out', async () => {
+    setupExec((cmd) => {
+      if (cmd.startsWith('test -f')) {
+        return makeRunCommandResult({ exitCode: -1, timedOut: true, executionTimeMs: 5_000 });
+      }
+      throw new Error(`Unexpected command: ${cmd}`);
+    });
+
+    const tool = new SupplyChainScannerTool();
+    const result = await tool.scan(APP_ID);
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('timed out');
+    // Must NOT report "package-lock.json not found" — that masks the real issue
+    expect(result.error).not.toContain('not found');
+  });
+
   it('returns clean on exit_code 0', async () => {
     setupExec((cmd) => {
-      if (cmd.startsWith('test -f')) return { exit_code: 0, stdout: 'present\n', stderr: '' };
-      if (cmd.includes('lockfile-lint')) return { exit_code: 0, stdout: '', stderr: '' };
+      if (cmd.startsWith('test -f')) return makeRunCommandResult({ stdout: 'present\n' });
+      if (cmd.includes('lockfile-lint')) return makeRunCommandResult();
       throw new Error(`Unexpected command: ${cmd}`);
     });
 
@@ -92,7 +106,7 @@ describe('SupplyChainScannerTool', () => {
     ].join('\n');
 
     setupExec((cmd) => {
-      if (cmd.startsWith('test -f')) return { exit_code: 0, stdout: 'present\n', stderr: '' };
+      if (cmd.startsWith('test -f')) return makeRunCommandResult({ stdout: 'present\n' });
       if (cmd.includes('lockfile-lint')) return lockfileLintRun(stderr);
       throw new Error(`Unexpected command: ${cmd}`);
     });
@@ -118,10 +132,10 @@ describe('SupplyChainScannerTool', () => {
   it('passes --allowed-hosts npm github (space-separated) by default', async () => {
     let invokedCommand = '';
     setupExec((cmd) => {
-      if (cmd.startsWith('test -f')) return { exit_code: 0, stdout: 'present\n', stderr: '' };
+      if (cmd.startsWith('test -f')) return makeRunCommandResult({ stdout: 'present\n' });
       if (cmd.includes('lockfile-lint')) {
         invokedCommand = cmd;
-        return { exit_code: 0, stdout: '', stderr: '' };
+        return makeRunCommandResult();
       }
       throw new Error(`Unexpected command: ${cmd}`);
     });
@@ -137,10 +151,10 @@ describe('SupplyChainScannerTool', () => {
   it('accepts an array of hosts and joins them with spaces', async () => {
     let invokedCommand = '';
     setupExec((cmd) => {
-      if (cmd.startsWith('test -f')) return { exit_code: 0, stdout: 'present\n', stderr: '' };
+      if (cmd.startsWith('test -f')) return makeRunCommandResult({ stdout: 'present\n' });
       if (cmd.includes('lockfile-lint')) {
         invokedCommand = cmd;
-        return { exit_code: 0, stdout: '', stderr: '' };
+        return makeRunCommandResult();
       }
       throw new Error(`Unexpected command: ${cmd}`);
     });
@@ -154,10 +168,10 @@ describe('SupplyChainScannerTool', () => {
   it('back-compat: accepts a legacy comma-separated string and splits it', async () => {
     let invokedCommand = '';
     setupExec((cmd) => {
-      if (cmd.startsWith('test -f')) return { exit_code: 0, stdout: 'present\n', stderr: '' };
+      if (cmd.startsWith('test -f')) return makeRunCommandResult({ stdout: 'present\n' });
       if (cmd.includes('lockfile-lint')) {
         invokedCommand = cmd;
-        return { exit_code: 0, stdout: '', stderr: '' };
+        return makeRunCommandResult();
       }
       throw new Error(`Unexpected command: ${cmd}`);
     });
@@ -175,7 +189,7 @@ describe('SupplyChainScannerTool', () => {
     const stderr = 'detected new fancy validation issue for package: unknown@1.0.0';
 
     setupExec((cmd) => {
-      if (cmd.startsWith('test -f')) return { exit_code: 0, stdout: 'present\n', stderr: '' };
+      if (cmd.startsWith('test -f')) return makeRunCommandResult({ stdout: 'present\n' });
       if (cmd.includes('lockfile-lint')) return lockfileLintRun(stderr);
       throw new Error(`Unexpected command: ${cmd}`);
     });
@@ -194,9 +208,9 @@ describe('SupplyChainScannerTool', () => {
     // returns empty, the upstream message phrasing has drifted. This MUST
     // throw, not silently pass — otherwise supply chain reads as score 100.
     setupExec((cmd) => {
-      if (cmd.startsWith('test -f')) return { exit_code: 0, stdout: 'present\n', stderr: '' };
+      if (cmd.startsWith('test -f')) return makeRunCommandResult({ stdout: 'present\n' });
       if (cmd.includes('lockfile-lint')) {
-        return { exit_code: 1, stdout: '', stderr: 'completely unrelated noise without "detected" lines' };
+        return makeRunCommandResult({ exitCode: 1, stderr: 'completely unrelated noise without "detected" lines' });
       }
       throw new Error(`Unexpected command: ${cmd}`);
     });
@@ -210,8 +224,8 @@ describe('SupplyChainScannerTool', () => {
 
   it('throws on real lockfile-lint failure (exit code > 1)', async () => {
     setupExec((cmd) => {
-      if (cmd.startsWith('test -f')) return { exit_code: 0, stdout: 'present\n', stderr: '' };
-      if (cmd.includes('lockfile-lint')) return { exit_code: 2, stdout: '', stderr: 'OOM' };
+      if (cmd.startsWith('test -f')) return makeRunCommandResult({ stdout: 'present\n' });
+      if (cmd.includes('lockfile-lint')) return makeRunCommandResult({ exitCode: 2, stderr: 'OOM' });
       throw new Error(`Unexpected command: ${cmd}`);
     });
 
@@ -220,5 +234,21 @@ describe('SupplyChainScannerTool', () => {
 
     expect(result.success).toBe(false);
     expect(result.error).toContain('lockfile-lint failed');
+  });
+
+  it('reports timeout when lockfile-lint exceeds time limit', async () => {
+    setupExec((cmd) => {
+      if (cmd.startsWith('test -f')) return makeRunCommandResult({ stdout: 'present\n' });
+      if (cmd.includes('lockfile-lint')) {
+        return makeRunCommandResult({ exitCode: -1, timedOut: true, executionTimeMs: 30_000 });
+      }
+      throw new Error(`Unexpected command: ${cmd}`);
+    });
+
+    const tool = new SupplyChainScannerTool();
+    const result = await tool.scan(APP_ID);
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('timed out');
   });
 });

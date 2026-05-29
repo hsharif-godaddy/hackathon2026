@@ -59,27 +59,29 @@ describe('AppRestartService', () => {
     } = {}
   ): void {
     const scripts = options.packageJsonScripts ?? { build: 'vite build', start: 'node server.js' };
-    mockDevSupervisor.exec.mockImplementation(({ command }: { command: string }) => {
+    const mockRunCommandSync = vi.fn().mockImplementation(({ command }: { command: string }) => {
       if (command.includes('pnpm-lock.yaml')) {
-        return Promise.resolve({ stdout: options.pnpm ? 'found' : '' });
+        return Promise.resolve(makeRunCommandResult({ stdout: options.pnpm ? 'found' : '' }));
       }
       if (command.includes('yarn.lock')) {
-        return Promise.resolve({ stdout: options.yarn ? 'found' : '' });
+        return Promise.resolve(makeRunCommandResult({ stdout: options.yarn ? 'found' : '' }));
       }
       if (command.includes('package.json')) {
-        return Promise.resolve({
-          success: true,
+        return Promise.resolve(makeRunCommandResult({
           stdout: JSON.stringify({ scripts }),
-        });
+        }));
       }
       if (command.includes('du -sb')) {
-        return Promise.resolve({ stdout: '104857600' });
+        return Promise.resolve(makeRunCommandResult({ stdout: '104857600' }));
       }
       if (command.includes('node_modules')) {
-        return Promise.resolve({ success: true, stdout: '' });
+        return Promise.resolve(makeRunCommandResult());
       }
-      return Promise.resolve({ stdout: '' });
+      throw new Error(`mockExecForRestartCycle: unhandled command: ${command}`);
     });
+    vi.mocked(createForWorkspace).mockReturnValue({
+      tasks: { runCommandSync: mockRunCommandSync },
+    } as any);
   }
 
   beforeEach(() => {
@@ -122,37 +124,57 @@ describe('AppRestartService', () => {
   });
 
   describe('removeNodeModules', () => {
-    it('should remove app and template-root node_modules via dev-supervisor', async () => {
-      mockDevSupervisor.exec.mockResolvedValue({ success: true });
+    it('should remove app and template-root node_modules via workspace tasks', async () => {
+      const mockRunCommandSync = vi.fn().mockResolvedValue(makeRunCommandResult());
+      vi.mocked(createForWorkspace).mockReturnValue({
+        tasks: { runCommandSync: mockRunCommandSync },
+      } as any);
 
       const result = await service.removeNodeModules(testAppId, testAppPath);
 
       expect(result.success).toBe(true);
-      expect(mockDevSupervisor.exec).toHaveBeenCalledWith({
+      expect(createForWorkspace).toHaveBeenCalledWith(testAppId, 'preview');
+      expect(mockRunCommandSync).toHaveBeenCalledWith({
         command: `rm -rf "${testAppPath}/node_modules" && ( [ ! -d /node_modules ] || rm -r -f /node_modules )`,
-        timeout: 60,
+        timeoutSeconds: 60,
       });
     });
 
-    it('should fail when dev supervisor is unavailable', async () => {
-      vi.mocked(DevSupervisorClientFactory.createForApp).mockReturnValue(null);
+    it('should fail when workspace is unavailable', async () => {
+      vi.mocked(createForWorkspace).mockReturnValue(null);
 
       const result = await service.removeNodeModules(testAppId, testAppPath);
 
       expect(result.success).toBe(false);
-      expect(result.error).toBe('Dev supervisor not available');
+      expect(result.error).toBe('Workspace not available');
     });
 
     it('should fail when rm command exits non-zero', async () => {
-      mockDevSupervisor.exec.mockResolvedValue({
-        success: false,
-        error: 'rm: cannot remove: Permission denied',
-      });
+      const mockRunCommandSync = vi.fn().mockResolvedValue(
+        makeRunCommandResult({ exitCode: 1, stderr: 'rm: cannot remove: Permission denied' })
+      );
+      vi.mocked(createForWorkspace).mockReturnValue({
+        tasks: { runCommandSync: mockRunCommandSync },
+      } as any);
 
       const result = await service.removeNodeModules(testAppId, testAppPath);
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('rm: cannot remove: Permission denied');
+    });
+
+    it('should fail with timeout message when command times out', async () => {
+      const mockRunCommandSync = vi.fn().mockResolvedValue(
+        makeRunCommandResult({ exitCode: -1, timedOut: true, executionTimeMs: 60_000 })
+      );
+      vi.mocked(createForWorkspace).mockReturnValue({
+        tasks: { runCommandSync: mockRunCommandSync },
+      } as any);
+
+      const result = await service.removeNodeModules(testAppId, testAppPath);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('timed out');
     });
   });
 
@@ -549,12 +571,15 @@ describe('AppRestartService', () => {
 
   describe('readPackageJsonScripts', () => {
     it('should detect scripts from package.json', async () => {
-      mockDevSupervisor.exec.mockResolvedValueOnce({
-        success: true,
-        stdout: JSON.stringify({ scripts: { build: 'vite build', dev: 'vite', start: 'node s.js' } }),
-      });
+      const mockTasks = {
+        runCommandSync: vi.fn().mockResolvedValueOnce(
+          makeRunCommandResult({
+            stdout: JSON.stringify({ scripts: { build: 'vite build', dev: 'vite', start: 'node s.js' } }),
+          })
+        ),
+      };
 
-      const scripts = await readPackageJsonScripts(mockDevSupervisor);
+      const scripts = await readPackageJsonScripts(mockTasks as any);
 
       expect(scripts).toEqual({
         hasBuildScript: true,
@@ -564,9 +589,13 @@ describe('AppRestartService', () => {
     });
 
     it('should return no scripts and warn when exec fails', async () => {
-      mockDevSupervisor.exec.mockResolvedValueOnce({ success: false, stdout: '' });
+      const mockTasks = {
+        runCommandSync: vi.fn().mockResolvedValueOnce(
+          makeRunCommandResult({ exitCode: 1, stdout: '' })
+        ),
+      };
 
-      const scripts = await readPackageJsonScripts(mockDevSupervisor, '/app', testAppId);
+      const scripts = await readPackageJsonScripts(mockTasks as any, '/app', testAppId);
 
       expect(scripts).toEqual({
         hasBuildScript: false,
@@ -581,9 +610,13 @@ describe('AppRestartService', () => {
     });
 
     it('should return no scripts and warn when stdout is empty', async () => {
-      mockDevSupervisor.exec.mockResolvedValueOnce({ success: true, stdout: '' });
+      const mockTasks = {
+        runCommandSync: vi.fn().mockResolvedValueOnce(
+          makeRunCommandResult({ exitCode: 0, stdout: '' })
+        ),
+      };
 
-      const scripts = await readPackageJsonScripts(mockDevSupervisor, '/app', testAppId);
+      const scripts = await readPackageJsonScripts(mockTasks as any, '/app', testAppId);
 
       expect(scripts).toEqual({
         hasBuildScript: false,
@@ -598,9 +631,13 @@ describe('AppRestartService', () => {
     });
 
     it('should return no scripts and warn when package.json is invalid JSON', async () => {
-      mockDevSupervisor.exec.mockResolvedValueOnce({ success: true, stdout: 'not-json' });
+      const mockTasks = {
+        runCommandSync: vi.fn().mockResolvedValueOnce(
+          makeRunCommandResult({ exitCode: 0, stdout: 'not-json' })
+        ),
+      };
 
-      const scripts = await readPackageJsonScripts(mockDevSupervisor, '/app', testAppId);
+      const scripts = await readPackageJsonScripts(mockTasks as any, '/app', testAppId);
 
       expect(scripts).toEqual({
         hasBuildScript: false,
@@ -741,11 +778,12 @@ describe('AppRestartService', () => {
       });
 
       expect(result.success).toBe(true);
-      expect(mockDevSupervisor.exec).toHaveBeenCalledWith(
-        expect.objectContaining({
-          command: expect.stringContaining(`rm -rf "${testAppPath}/node_modules"`),
-        })
+      const workspaceMock = vi.mocked(createForWorkspace).mock.results[0]?.value;
+      const runCommandSyncCalls = workspaceMock.tasks.runCommandSync.mock.calls;
+      const rmCall = runCommandSyncCalls.find(
+        (call: [{ command: string }]) => call[0].command.includes(`rm -rf "${testAppPath}/node_modules"`)
       );
+      expect(rmCall).toBeDefined();
     });
 
     it('should retry install after ENOTEMPTY by removing node_modules', async () => {
@@ -770,8 +808,9 @@ describe('AppRestartService', () => {
         call[1].command.includes('install')
       );
       expect(installCalls).toHaveLength(2);
-      const rmCalls = mockDevSupervisor.exec.mock.calls.filter(([args]) =>
-        args.command.includes(`${testAppPath}/node_modules`)
+      const workspaceMock = vi.mocked(createForWorkspace).mock.results[0]?.value;
+      const rmCalls = workspaceMock.tasks.runCommandSync.mock.calls.filter(
+        (call: [{ command: string }]) => call[0].command.includes(`${testAppPath}/node_modules`)
       );
       expect(rmCalls.length).toBeGreaterThanOrEqual(1);
     });
@@ -837,7 +876,6 @@ describe('AppRestartService', () => {
       let mockRunCommandSync: Mock;
 
       beforeEach(() => {
-        mockDevSupervisor.exec.mockReset();
         mockDevSupervisor.stopProcess.mockResolvedValue(true);
         mockDevSupervisor.startProcess.mockResolvedValue({ state: 'running' });
         mockTerminalTool.executeCommand.mockResolvedValue({
@@ -847,16 +885,44 @@ describe('AppRestartService', () => {
           stderr: '',
         });
 
-        // Set up workspace.tasks.runCommandSync for detectPackageManager
-        mockRunCommandSync = vi.fn().mockResolvedValue(makeRunCommandResult({ stdout: '' }));
+        // Set up workspace.tasks.runCommandSync for all commands in performFullRestartCycle
+        mockRunCommandSync = vi.fn().mockImplementation(({ command }: { command: string }) => {
+          if (command.includes('pnpm-lock.yaml') || command.includes('yarn.lock')) {
+            return Promise.resolve(makeRunCommandResult({ stdout: '' }));
+          }
+          if (command.includes('package.json')) {
+            return Promise.resolve(makeRunCommandResult({
+              stdout: JSON.stringify({ scripts: { build: 'vite build', start: 'node server.js' } }),
+            }));
+          }
+          if (command.includes('du -sb')) {
+            return Promise.resolve(makeRunCommandResult({ stdout: '104857600' }));
+          }
+          throw new Error(`PM detection beforeEach: unhandled command: ${command}`);
+        });
         vi.mocked(createForWorkspace).mockReturnValue({
           tasks: { runCommandSync: mockRunCommandSync },
         } as any);
       });
 
       it('should detect pnpm and use pnpm commands', async () => {
-        mockExecForRestartCycle({ pnpm: true });
-        mockRunCommandSync.mockResolvedValueOnce(makeRunCommandResult({ stdout: 'found' })); // pnpm check
+        mockRunCommandSync.mockImplementation(({ command }: { command: string }) => {
+          if (command.includes('pnpm-lock.yaml')) {
+            return Promise.resolve(makeRunCommandResult({ stdout: 'found' }));
+          }
+          if (command.includes('yarn.lock')) {
+            return Promise.resolve(makeRunCommandResult({ stdout: '' }));
+          }
+          if (command.includes('package.json')) {
+            return Promise.resolve(makeRunCommandResult({
+              stdout: JSON.stringify({ scripts: { build: 'vite build', start: 'node server.js' } }),
+            }));
+          }
+          if (command.includes('du -sb')) {
+            return Promise.resolve(makeRunCommandResult({ stdout: '104857600' }));
+          }
+          throw new Error(`pnpm test: unhandled command: ${command}`);
+        });
 
         await service.performFullRestartCycle(testAppId, testAppPath);
 
@@ -880,10 +946,23 @@ describe('AppRestartService', () => {
       });
 
       it('should detect yarn and use yarn commands', async () => {
-        mockExecForRestartCycle({ yarn: true });
-        mockRunCommandSync
-          .mockResolvedValueOnce(makeRunCommandResult({ stdout: '' })) // pnpm check - not found
-          .mockResolvedValueOnce(makeRunCommandResult({ stdout: 'found' })); // yarn check
+        mockRunCommandSync.mockImplementation(({ command }: { command: string }) => {
+          if (command.includes('pnpm-lock.yaml')) {
+            return Promise.resolve(makeRunCommandResult({ stdout: '' }));
+          }
+          if (command.includes('yarn.lock')) {
+            return Promise.resolve(makeRunCommandResult({ stdout: 'found' }));
+          }
+          if (command.includes('package.json')) {
+            return Promise.resolve(makeRunCommandResult({
+              stdout: JSON.stringify({ scripts: { build: 'vite build', start: 'node server.js' } }),
+            }));
+          }
+          if (command.includes('du -sb')) {
+            return Promise.resolve(makeRunCommandResult({ stdout: '104857600' }));
+          }
+          throw new Error(`yarn test: unhandled command: ${command}`);
+        });
 
         await service.performFullRestartCycle(testAppId, testAppPath);
 
@@ -907,11 +986,7 @@ describe('AppRestartService', () => {
       });
 
       it('should default to npm when no lock file exists', async () => {
-        mockExecForRestartCycle();
-        mockRunCommandSync
-          .mockResolvedValueOnce(makeRunCommandResult({ stdout: '' })) // pnpm check - not found
-          .mockResolvedValueOnce(makeRunCommandResult({ stdout: '' })); // yarn check - not found
-
+        // Default mockRunCommandSync returns empty stdout for lock checks
         await service.performFullRestartCycle(testAppId, testAppPath);
 
         // Verify npm install command was used
@@ -948,8 +1023,23 @@ describe('AppRestartService', () => {
       });
 
       it('should use custom install command over detected PM', async () => {
-        mockExecForRestartCycle({ pnpm: true });
-        mockRunCommandSync.mockResolvedValueOnce(makeRunCommandResult({ stdout: 'found' })); // pnpm detected
+        mockRunCommandSync.mockImplementation(({ command }: { command: string }) => {
+          if (command.includes('pnpm-lock.yaml')) {
+            return Promise.resolve(makeRunCommandResult({ stdout: 'found' }));
+          }
+          if (command.includes('yarn.lock')) {
+            return Promise.resolve(makeRunCommandResult({ stdout: '' }));
+          }
+          if (command.includes('package.json')) {
+            return Promise.resolve(makeRunCommandResult({
+              stdout: JSON.stringify({ scripts: { build: 'vite build', start: 'node server.js' } }),
+            }));
+          }
+          if (command.includes('du -sb')) {
+            return Promise.resolve(makeRunCommandResult({ stdout: '104857600' }));
+          }
+          throw new Error(`custom install test: unhandled command: ${command}`);
+        });
 
         await service.performFullRestartCycle(testAppId, testAppPath, {
           commands: { install: 'custom-install-command' },
@@ -961,8 +1051,23 @@ describe('AppRestartService', () => {
       });
 
       it('should use custom build command over detected PM', async () => {
-        mockExecForRestartCycle({ pnpm: true, packageJsonScripts: {} });
-        mockRunCommandSync.mockResolvedValueOnce(makeRunCommandResult({ stdout: 'found' })); // pnpm detected
+        mockRunCommandSync.mockImplementation(({ command }: { command: string }) => {
+          if (command.includes('pnpm-lock.yaml')) {
+            return Promise.resolve(makeRunCommandResult({ stdout: 'found' }));
+          }
+          if (command.includes('yarn.lock')) {
+            return Promise.resolve(makeRunCommandResult({ stdout: '' }));
+          }
+          if (command.includes('package.json')) {
+            return Promise.resolve(makeRunCommandResult({
+              stdout: JSON.stringify({ scripts: {} }),
+            }));
+          }
+          if (command.includes('du -sb')) {
+            return Promise.resolve(makeRunCommandResult({ stdout: '104857600' }));
+          }
+          throw new Error(`custom build test: unhandled command: ${command}`);
+        });
 
         await service.performFullRestartCycle(testAppId, testAppPath, {
           commands: { build: 'custom-build-command' },
@@ -991,12 +1096,22 @@ describe('AppRestartService', () => {
         stdout: 'Success',
         stderr: '',
       });
-      mockExecForRestartCycle();
       vi.mocked(createForWorkspace).mockReturnValue({
         tasks: {
-          runCommandSync: vi.fn().mockResolvedValue(
-            makeRunCommandResult({ stdout: '104857600\n' }),
-          ),
+          runCommandSync: vi.fn().mockImplementation(({ command }: { command: string }) => {
+            if (command.includes('pnpm-lock.yaml') || command.includes('yarn.lock')) {
+              return Promise.resolve(makeRunCommandResult({ stdout: '' }));
+            }
+            if (command.includes('package.json')) {
+              return Promise.resolve(makeRunCommandResult({
+                stdout: JSON.stringify({ scripts: { build: 'vite build', start: 'node server.js' } }),
+              }));
+            }
+            if (command.includes('du -sb')) {
+              return Promise.resolve(makeRunCommandResult({ stdout: '104857600\n' }));
+            }
+            throw new Error(`metrics beforeEach: unhandled command: ${command}`);
+          }),
         },
       } as any);
     });
@@ -1021,7 +1136,20 @@ describe('AppRestartService', () => {
     it('should handle du command failure gracefully', async () => {
       vi.mocked(createForWorkspace).mockReturnValue({
         tasks: {
-          runCommandSync: vi.fn().mockRejectedValue(new Error('du command failed')),
+          runCommandSync: vi.fn().mockImplementation(({ command }: { command: string }) => {
+            if (command.includes('pnpm-lock.yaml') || command.includes('yarn.lock')) {
+              return Promise.resolve(makeRunCommandResult({ stdout: '' }));
+            }
+            if (command.includes('package.json')) {
+              return Promise.resolve(makeRunCommandResult({
+                stdout: JSON.stringify({ scripts: { build: 'vite build', start: 'node server.js' } }),
+              }));
+            }
+            if (command.includes('du -sb')) {
+              return Promise.reject(new Error('du command failed'));
+            }
+            throw new Error(`du failure test: unhandled command: ${command}`);
+          }),
         },
       } as any);
 
@@ -1034,7 +1162,20 @@ describe('AppRestartService', () => {
     it('should handle invalid du output gracefully', async () => {
       vi.mocked(createForWorkspace).mockReturnValue({
         tasks: {
-          runCommandSync: vi.fn().mockResolvedValue(makeRunCommandResult({ stdout: 'not-a-number' })),
+          runCommandSync: vi.fn().mockImplementation(({ command }: { command: string }) => {
+            if (command.includes('pnpm-lock.yaml') || command.includes('yarn.lock')) {
+              return Promise.resolve(makeRunCommandResult({ stdout: '' }));
+            }
+            if (command.includes('package.json')) {
+              return Promise.resolve(makeRunCommandResult({
+                stdout: JSON.stringify({ scripts: { build: 'vite build', start: 'node server.js' } }),
+              }));
+            }
+            if (command.includes('du -sb')) {
+              return Promise.resolve(makeRunCommandResult({ stdout: 'not-a-number' }));
+            }
+            throw new Error(`invalid du test: unhandled command: ${command}`);
+          }),
         },
       } as any);
 
