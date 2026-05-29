@@ -1,18 +1,22 @@
 ---
 evaluatorId: "airo-build-success"
-name: build_success
-description: "Boolean evaluator — did the user express satisfaction with the Airo Builder output?"
+name: User Satisfaction
+description: "Categorical evaluator - was the user satisfied, neutral, or dissatisfied with the Airo Builder output?"
 
 type: llm
-scoreType: BOOLEAN
-scoreName: build_success
+scoreType: CATEGORICAL
+scoreName: user_satisfied
+
+scoreConfig:
+  categories:
+    - satisfied
+    - neutral
+    - dissatisfied
 
 llmConfig:
   model: gpt-4o-mini
   temperature: 0
   maxTokens: 300
-
-projectId: "8606"
 
 staticContext: 'Judge only from user messages in the conversation. Look for explicit or implicit
   satisfaction signals. Do not infer from agent responses.'
@@ -25,23 +29,21 @@ criteriaSchema:
 template: |
   You are evaluating whether the user was happy with the output from Airo Builder.
 
-  PASS (score = true) when the user:
+  Score "satisfied" when the user:
   - Explicitly approves ("looks good", "perfect", "thanks", "publish it", "that's what I wanted")
   - Moves forward without complaints after seeing the result
   - Asks to publish or share the site
 
-  FAIL (score = false) when the user:
+  Score "dissatisfied" when the user:
   - Explicitly expresses dissatisfaction ("this is wrong", "that's not what I wanted", "start over")
   - Abandons the session mid-way after a failed result
   - Reports the output is broken or unusable
 
-  If the conversation ends without a clear signal either way, lean PASS.
+  Score "neutral" when:
+  - The conversation ends without a clear signal either way
+  - The user is still iterating with no clear outcome
 
   ## Conversation
-  {{#if conversation.originalPrompt}}
-  Original request: {{conversation.originalPrompt}}
-  {{/if}}
-
   {{#each conversation.messages}}
   {{uppercase role}}: {{content}}
   {{/each}}
@@ -50,7 +52,7 @@ template: |
 
   Respond with JSON only:
   {
-    "score": true or false,
+    "score": "satisfied" or "neutral" or "dissatisfied",
     "summary": "one sentence citing the specific user message that drove your decision"
   }
 
