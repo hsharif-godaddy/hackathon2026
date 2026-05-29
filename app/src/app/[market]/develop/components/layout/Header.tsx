@@ -8,11 +8,11 @@ import Apps2Icon from '@ux/icon/apps2'
 import CodeIcon from '@ux/icon/code'
 import ColorPaletteIcon from '@ux/icon/color-palette'
 import ConversationsIcon from '@ux/icon/conversations'
+import InlineEditIcon from '@ux/icon/inline-edit'
 import MobilePhoneIcon from '@ux/icon/mobile-phone'
 import RefreshIcon from '@ux/icon/refresh'
 import SidebarCollapseIcon from '@ux/icon/sidebar-collapse'
 import SidebarExpandIcon from '@ux/icon/sidebar-expand'
-import WandIcon from '@ux/icon/wand'
 import WebsiteFilledIcon from '@ux/icon/website-filled'
 import WorldIcon from '@ux/icon/world'
 import Tag from '@ux/tag';
@@ -144,7 +144,7 @@ export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) 
                 />
                 <ButtonGroup.Item
                   value={ViewMode.EDIT}
-                  icon={<WandIcon className="size-2.5" />}
+                  icon={<InlineEditIcon className="size-2.5" />}
                   label={t('builder_preview_button_edit')}
                   disabled={isVersionHistoryOpen}
                 />

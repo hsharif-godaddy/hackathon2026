@@ -9,9 +9,9 @@ import ConversationsIcon from '@ux/icon/conversations'
 import GraphIcon from '@ux/icon/graph'
 import HistoryIcon from '@ux/icon/history'
 import ImageIcon from '@ux/icon/image'
+import InlineEditIcon from '@ux/icon/inline-edit'
 import RefreshIcon from '@ux/icon/refresh'
 import ShowIcon from '@ux/icon/show'
-import WandIcon from '@ux/icon/wand'
 
 import { ButtonGroup } from '@/app/[market]/develop/components/ButtonGroup'
 import IconButton from '@/app/[market]/develop/components/IconButton'
@@ -249,7 +249,7 @@ export default function ChatToolbar({
                   transition={{ duration: 0.2, ease: 'easeInOut', delay: 0.5 }}
                 >
                   <IconButton
-                    icon={<WandIcon className="size-2.5" />}
+                    icon={<InlineEditIcon className="size-2.5" />}
                     onClick={() => {
                       logClickEvent('develop.chat_toolbar.inline_edit', clickContext)()
                       toggleMobileInlineEdit()
