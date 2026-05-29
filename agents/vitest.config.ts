@@ -18,6 +18,7 @@ export default defineConfig({
   test: {
     environment: 'node',
     globals: true,
+    setupFiles: ['./vitest.setup.ts'],
     // Use forks pool to isolate memory per test file (prevents OOM)
     pool: 'forks',
     poolOptions: {

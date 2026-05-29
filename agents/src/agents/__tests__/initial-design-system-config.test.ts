@@ -8,8 +8,8 @@ vi.mock('../../utils/model-selection.js', () => ({
   }),
 }))
 
-vi.mock('@airo/ai-lib', async () => {
-  const actual = await vi.importActual('@airo/ai-lib')
+vi.mock('@airo/ai-lib', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@airo/ai-lib')>()
   return {
     ...actual,
     createPromptBuilder: () => {
