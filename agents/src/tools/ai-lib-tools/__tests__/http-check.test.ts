@@ -39,12 +39,13 @@ const execute = (
     body?: string;
     headers?: Record<string, string>;
     expectStatus?: number;
+    expectContentType?: string;
     timeoutMs?: number;
   },
   appBaseUrl?: string
 ): Promise<unknown> =>
   httpCheckAITool.execute!(
-    { method: 'GET', timeoutMs: 5000, ...input },
+    { method: 'GET', timeoutMs: 5000, expectContentType: 'application/json', ...input },
     makeContext(appBaseUrl) as never
   );
 
@@ -168,7 +169,7 @@ describe('httpCheckAITool', function httpCheckTests() {
     it('returns ok:false with mismatchReason when expectStatus does not match', async function expectStatusMismatch() {
       mockFetch.mockResolvedValue(makeResponse({ status: 200 }));
       const result = await execute({ url: 'http://127.0.0.1:3000/api', expectStatus: 201 });
-      expect(result).toMatchObject({ ok: false, mismatchReason: 'Expected 201, got 200' });
+      expect(result).toMatchObject({ ok: false, mismatchReason: 'Expected status 201, got 200' });
     });
   });
 
@@ -176,12 +177,12 @@ describe('httpCheckAITool', function httpCheckTests() {
     it('fails when response is HTML and no expectStatus is given', async function htmlAutoFail() {
       mockFetch.mockResolvedValue(makeResponse({ status: 200, contentType: 'text/html; charset=utf-8', body: '<html></html>' }));
       const result = await execute({ url: 'http://127.0.0.1:3000/api' });
-      expect(result).toMatchObject({ ok: false, mismatchReason: expect.stringContaining('HTML') });
+      expect(result).toMatchObject({ ok: false, mismatchReason: expect.stringContaining('text/html') });
     });
 
-    it('does not auto-fail HTML when expectStatus is set', async function htmlExpectStatusOverride() {
+    it('does not auto-fail HTML when expectStatus and expectContentType are set', async function htmlExpectStatusOverride() {
       mockFetch.mockResolvedValue(makeResponse({ status: 200, contentType: 'text/html; charset=utf-8', body: '<html></html>' }));
-      const result = await execute({ url: 'http://127.0.0.1:3000/api', expectStatus: 200 });
+      const result = await execute({ url: 'http://127.0.0.1:3000/api', expectStatus: 200, expectContentType: 'text/html' });
       expect(result).toMatchObject({ ok: true, status: 200 });
     });
   });

@@ -4,7 +4,7 @@ import { z } from 'zod';
 
 const tlsSkipAgent = new Agent({ connect: { rejectUnauthorized: false } });
 
-export type HttpCheckErrorKind = 'timeout' | 'network' | 'config' | 'expectation_mismatch' | null;
+export type HttpCheckErrorKind = 'timeout' | 'network' | 'config' | 'expectation_mismatch' | 'authentication_required' | null;
 
 export const httpCheckAITool: Tool = createTool(
   "Verify an HTTP handler responds correctly. Evaluate both the status code and response body to confirm the handler behaves as expected. For app routes use relative paths ('/api/...'); for external URLs use absolute paths.",
@@ -14,6 +14,7 @@ export const httpCheckAITool: Tool = createTool(
     body: z.string().optional().describe('Request body for POST/PUT/PATCH (use minimal valid JSON to avoid validation errors)'),
     headers: z.record(z.string(), z.string()).optional(),
     expectStatus: z.number().optional().describe('Expected status code for this handler'),
+    expectContentType: z.string().default('application/json').describe("Expected response content-type (e.g. 'application/json', 'text/html'). Defaults to 'application/json' — set to 'text/html' for frontend/page routes."),
     timeoutMs: z.number().min(500).max(10000).default(5000),
   }),
   async (input, context) => {
@@ -40,7 +41,8 @@ export const httpCheckAITool: Tool = createTool(
       // while setting the correct pathname.
       let base: URL;
       try {
-        base = new URL(appBaseUrl);
+        const normalizedBase = /^https?:\/\//i.test(appBaseUrl) ? appBaseUrl : `https://${appBaseUrl}`;
+        base = new URL(normalizedBase);
       } catch {
         return {
           ok: false,
@@ -118,18 +120,19 @@ export const httpCheckAITool: Tool = createTool(
       }
 
       const contentType = response.headers.get('content-type') ?? '';
-      const servedHtml = contentType.includes('text/html');
 
       const statusOk = input.expectStatus !== undefined
         ? response.status === input.expectStatus
         : response.ok; // default: require 2xx
-      // Only auto-fail on HTML when no expectStatus was given — if the caller
-      // explicitly specified a status, trust that they know the response type.
-      const htmlFail = servedHtml && input.expectStatus === undefined;
-      const ok = statusOk && !htmlFail;
+      const contentTypeOk = contentType.includes(input.expectContentType);
+      const authBlocked = input.expectStatus === undefined && (response.status === 401 || response.status === 403);
+      const ok = statusOk && contentTypeOk;
+      const errorKind: HttpCheckErrorKind = ok ? null
+        : authBlocked ? 'authentication_required'
+        : 'expectation_mismatch';
       return {
         ok,
-        errorKind: ok ? null : 'expectation_mismatch' as HttpCheckErrorKind,
+        errorKind,
         resolvedUrl: targetUrl,
         status: response.status,
         contentType,
@@ -138,10 +141,12 @@ export const httpCheckAITool: Tool = createTool(
         bodyTruncated,
         ...(!statusOk ? {
           mismatchReason: input.expectStatus !== undefined
-            ? `Expected ${input.expectStatus}, got ${response.status}`
+            ? `Expected status ${input.expectStatus}, got ${response.status}`
+            : authBlocked
+            ? `Route returned ${response.status} — handler is protected and cannot be verified without credentials`
             : `Got ${response.status} — expected a 2xx response`,
-        } : htmlFail ? {
-          mismatchReason: `Handler returned HTML (content-type: ${contentType}) — likely matched the frontend catch-all route instead of the API handler`,
+        } : !contentTypeOk ? {
+          mismatchReason: `Expected content-type '${input.expectContentType}', got '${contentType}'`,
         } : {}),
       };
     } catch (error: unknown) {
