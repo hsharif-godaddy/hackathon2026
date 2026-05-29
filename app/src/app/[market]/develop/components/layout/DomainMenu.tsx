@@ -24,6 +24,7 @@ import {
 import { Separator } from '@/lib/shadcn/separator';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import { logClickEvent } from '@/utils/instrumentation';
+import { withPreviewParam } from '@/utils/previewUrl';
 import { hasBeenPublished } from '@/utils/site';
 
 type TranslationFn = (key: string, values?: Record<string, unknown>, fallback?: string) => string;
@@ -107,6 +108,7 @@ export default function DomainMenu() {
 
   // Share links feature flag
   const isShareLinksEnabled = useSwitchboard('appbuilder-share-links');
+  const isPreviewHeaderEnabled = useSwitchboard('appbuilder-preview-header') === true;
 
   // Share tokens - fetch when popover opens
   const {
@@ -168,7 +170,7 @@ export default function DomainMenu() {
         message: err instanceof Error ? err.message : 'Unknown instrumentation error',
       });
     }
-    window.open(previewUrl, '_blank', 'noopener,noreferrer');
+    window.open(isPreviewHeaderEnabled ? withPreviewParam(previewUrl) : previewUrl, '_blank', 'noopener,noreferrer');
     setOpen(false);
   };
 

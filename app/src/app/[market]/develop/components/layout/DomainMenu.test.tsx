@@ -242,7 +242,33 @@ describe('DomainMenu', () => {
       expect(screen.queryByTestId('header-view-share-preview')).not.toBeInTheDocument();
     });
 
-    it('opens preview URL in new tab on click', async () => {
+    it('opens preview URL with airoPreview param when preview header flag is on', async () => {
+      mockUseSwitchboard.mockImplementation((flag: string) => flag === 'appbuilder-preview-header');
+
+      const mockOpen = vi.spyOn(window, 'open').mockImplementation(() => null);
+
+      renderWithProviders(<DomainMenu />);
+      fireEvent.click(screen.getByTestId('header-view-share-button'));
+
+      const previewRow = await screen.findByTestId('header-view-share-preview');
+      fireEvent.click(previewRow);
+
+      expect(mockOpen).toHaveBeenCalledWith(
+        'https://preview.example.com?airoPreview=1',
+        '_blank',
+        'noopener,noreferrer'
+      );
+      mockOpen.mockRestore();
+    });
+
+    it('opens preview URL without airoPreview param when preview header flag is off', async () => {
+      mockUseSwitchboard.mockImplementation((flag: string) => {
+        if (flag === 'appbuilder-preview-header') {
+          return false;
+        }
+        return true;
+      });
+
       const mockOpen = vi.spyOn(window, 'open').mockImplementation(() => null);
 
       renderWithProviders(<DomainMenu />);

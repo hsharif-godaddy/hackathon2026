@@ -91,7 +91,7 @@ import {
 } from '@/stores/useStreamingConversationStore'
 import { useTodoListStore } from '@/stores/useTodoListStore'
 import type { RuntimeErrorData } from '@/types/runtime-error'
-import { logAiroHQEvent, logImpressionEvent, setInstrumentationAppId } from '@/utils/instrumentation'
+import { logAiroHQEvent, logClickEvent, logImpressionEvent, setInstrumentationAppId } from '@/utils/instrumentation'
 import { postMessageToIframe } from '@/utils/postMessage'
 
 // Lazy-load features that are conditionally rendered or behind user interaction
@@ -357,6 +357,23 @@ function DevelopPageContent() {
   const setShowPaywallModal = useDevelopPageStore((state) => state.setShowPaywallModal);
 
   usePaywallDeeplinkWithStore({ enabled: loadingPhase === 'ready' });
+  useEffect(() => {
+    const openPublish = searchParams.get('openPublish')
+    if (loadingPhase !== 'loading-conversations' && loadingPhase !== 'ready') return
+    if (!appId || isJobId) return
+    if (useDevelopPageStore.getState().currentAppId !== appId) return
+    if (!openPublish) return
+    const timerId = window.setTimeout(() => {
+      const state = useDevelopPageStore.getState()
+      if (state.currentAppId !== appId) return
+      logClickEvent('preview_header.publish.button', { appId })()
+      state.requestPublishPopoverOpen(appId)
+      const url = new URL(window.location.href)
+      url.searchParams.delete('openPublish')
+      window.history.replaceState({}, '', url)
+    }, 0)
+    return () => window.clearTimeout(timerId)
+  }, [loadingPhase, appId, isJobId, searchParams])
 
   const gitHistoryQuery = useGitHistoryQuery({
     appId: appId || '',

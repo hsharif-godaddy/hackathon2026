@@ -40,6 +40,7 @@ import { shouldShowAppNonCompliantOrAccountComplianceTag } from '@/lib/subscript
 import { useSitesStore } from '@/stores/useSitesStore'
 import { formatDate } from '@/utils/common'
 import { generateClickEID, logClickEvent } from '@/utils/instrumentation'
+import { withPreviewParam } from '@/utils/previewUrl'
 import { hasBeenPublished } from '@/utils/site'
 
 interface AlertState {
@@ -85,6 +86,7 @@ export default function AppCard({ site, transferAllowed = false }: { site: SiteI
   const refreshSites = useSitesStore((state) => state.refreshSites)
   const { mutate: renameApp, isPending: isRenamePending } = useAppRename()
   const isUnpublishEnabled = useSwitchboard('appbuilder-unpublish')
+  const isPreviewHeaderEnabled = useSwitchboard('appbuilder-preview-header') === true
   const { data: subscription } = useSubscription()
   const suspendedComplianceBannerEnabled = useSwitchboard('appbuilder-suspended-compliance-banner')
   const unpublishMutation = useUnpublishApp()
@@ -354,7 +356,7 @@ export default function AppCard({ site, transferAllowed = false }: { site: SiteI
           design="control"
           size="sm"
           icon={<WindowNewIcon />}
-          onClick={() => window.open(site.preview_url, '_blank', 'noopener,noreferrer')}
+          onClick={() => window.open(isPreviewHeaderEnabled ? withPreviewParam(site.preview_url) : site.preview_url, '_blank', 'noopener,noreferrer')}
           data-eid={generateClickEID('apps.app.preview_corner')}
           data-testid="app-card-preview-button"
           aria-label={t('builder_apps_menu_preview')}
@@ -412,7 +414,7 @@ export default function AppCard({ site, transferAllowed = false }: { site: SiteI
           )}
           {site.status === SiteStatus.Running && site.preview_url && (
             <MenuItem
-              onClick={() => window.open(site.preview_url, '_blank', 'noopener,noreferrer')}
+              onClick={() => window.open(isPreviewHeaderEnabled ? withPreviewParam(site.preview_url) : site.preview_url, '_blank', 'noopener,noreferrer')}
               data-eid={generateClickEID('apps.app.view')}
               data-testid="app-card-view-button"
             >

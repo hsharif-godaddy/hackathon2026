@@ -293,7 +293,9 @@ describe('AppCard', () => {
   });
 
   describe('handles menu item clicks', () => {
-    it('should open preview URL in new window when preview is clicked', async () => {
+    it('should open preview URL with airoPreview param when preview header flag is on', async () => {
+      vi.mocked(useSwitchboard).mockImplementation((flag: string) => flag === 'appbuilder-preview-header');
+
       const { user } = renderWithProviders(<AppCard site={mockSite} />);
 
       const actionsMenuButton = screen.getByRole('button', { name: 'builder_apps_menu_actions' });
@@ -307,7 +309,34 @@ describe('AppCard', () => {
       await user.click(previewItem);
 
       expect(mockWindowOpen).toHaveBeenCalledWith(
-        mockSite.preview_url,
+        'https://preview.test/app?airoPreview=1',
+        '_blank',
+        'noopener,noreferrer'
+      );
+    });
+
+    it('should open preview URL without airoPreview param when preview header flag is off', async () => {
+      vi.mocked(useSwitchboard).mockImplementation((flag: string) => {
+        if (flag === 'appbuilder-preview-header') {
+          return false;
+        }
+        return true;
+      });
+
+      const { user } = renderWithProviders(<AppCard site={mockSite} />);
+
+      const actionsMenuButton = screen.getByRole('button', { name: 'builder_apps_menu_actions' });
+      await user.click(actionsMenuButton);
+
+      await waitFor(() => {
+        expect(screen.getByText('builder_apps_menu_preview')).toBeInTheDocument();
+      });
+
+      const previewItem = screen.getByText('builder_apps_menu_preview');
+      await user.click(previewItem);
+
+      expect(mockWindowOpen).toHaveBeenCalledWith(
+        'https://preview.test/app',
         '_blank',
         'noopener,noreferrer'
       );
