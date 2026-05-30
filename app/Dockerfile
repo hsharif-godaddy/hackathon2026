@@ -45,6 +45,10 @@ RUN --mount=type=secret,id=npmrc,target=/workspace/.npmrc \
 # Copy full source (only invalidates on actual code changes, not install layer)
 COPY --from=pruner /workspace/out/full/ /workspace/
 
+# Ensure public assets survive turbo prune (*.png is in .gitignore for test artifacts,
+# but turbo prune may skip tracked files matching gitignore patterns)
+COPY --from=pruner /workspace/app/public/ /workspace/app/public/
+
 # Build upstream package dependencies of the app
 RUN pnpm exec turbo run build --filter=website^...
 

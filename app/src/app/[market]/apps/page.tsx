@@ -15,7 +15,6 @@ import text from '@ux/text'
 import AppCard from '@/app/[market]/apps/AppCard'
 import AcceptTransferDialog from '@/app/[market]/apps/components/AcceptTransferDialog'
 import { APPS_GRID_PAGE_SIZE } from '@/app/[market]/apps/constants'
-import emptyProjectsImg from '@/assets/images/empty-projects.png'
 import { ProtectedRoute } from '@/components/auth'
 import { DevelopmentAdminSection } from '@/components/development'
 import Header from '@/components/layout/Header'
@@ -211,7 +210,7 @@ function SitesPageContent() {
         {totalSites === 0 ? (
           <div className="flex-1 flex flex-col items-center justify-center gap-4 w-full bg-intents-ux-boxLowContrast-backgroundColor rounded-xl mb-4 pb-4 md:mb-0 md:pb-8">
             <Image
-              src={emptyProjectsImg}
+              src="/images/empty-projects.png"
               alt=""
               width={192}
               height={192}
