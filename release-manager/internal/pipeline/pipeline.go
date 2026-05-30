@@ -841,7 +841,7 @@ func (p *Pipeline) FetchRollbackSnapshot(ctx context.Context) error {
 	imgSrc := cfg.Sources.ImageTags
 	imagesFullyOverridden := ov.AgentImageTag != "" && ov.PreviewImageTag != "" && ov.PublishImageTag != ""
 	if imgSrc.Repo != "" && imgSrc.Workflow != "" && !imagesFullyOverridden {
-		runs, err := p.Runner.ListRuns(ctx, imgSrc.Repo, imgSrc.Workflow, "success", 10)
+		runs, err := p.Runner.ListRuns(ctx, imgSrc.Repo, imgSrc.Workflow, "success", 20)
 		if err != nil {
 			return fmt.Errorf("listing image tag runs: %w", err)
 		}
