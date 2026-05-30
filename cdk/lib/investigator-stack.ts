@@ -272,6 +272,15 @@ export class AiroInvestigatorStack extends GDStack {
         CRM_KEY_SECRET_ARN: config.crmKeySecretArn,
         DEBUG_CONSOLE_BASE_URL: config.debugConsoleBaseUrl,
         AIRO_SSO_ENDPOINT: config.ssoEndpoint,
+        // Direct-mode (fanout / source=feedback) evidence collection reads
+        // ENVIRONMENT_NAME in `_loki_env` and `_es_control_plane_index`
+        // (investigator/skills/airo-log-investigate/search_frontend_logs.py)
+        // to resolve the Loki `env` label and the ES control-plane index
+        // suffix. The console-proxy path applies the same resolution via
+        // `resolvedEnv` in debug-console/src/lib/log-sources.ts; setting
+        // the var here keeps both sides on the same contract so prod
+        // fanout runs don't fall back to "dev" and silently return 0 logs.
+        ENVIRONMENT_NAME: config.envName,
         // Direct evidence query URLs (no secrets — plain env vars)
         LOKI_ENDPOINT: config.lokiEndpoint,
         EB_LANGFUSE_BASE_URL: config.ebLangfuseBaseUrl,

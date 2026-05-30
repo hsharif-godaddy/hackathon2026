@@ -903,15 +903,24 @@ def _loki_merged_query(app_id: str) -> str:
     return f'{{job=~"({job_pattern})",env="{env}"}} |= "\\"app_id\\":\\"{app_id}\\""'
 
 
-# Loki API caps a single response at the `limit` query param (max 5000 in
-# our cluster). Without continuation a noisy bucket silently drops every log
-# past 5000. We page using direction=backward + shrinking `end` to the
-# oldest ts_ns we've seen, capped at _LOKI_MAX_PAGES iterations per bucket
-# to bound worst-case wall time. 5 pages × 5000 lines = 25K lines / bucket
-# / source, which is far above realistic per-bucket volume but still
-# bounded if the query becomes pathological.
+# Loki direct-mode pagination knobs. Loki's /query_range caps a single
+# response at the `limit` query param (cluster-side max is _LOKI_BUCKET_LIMIT
+# below); without continuation a noisy bucket silently drops every entry
+# past that cap. We paginate with direction=backward + shrinking `end` to
+# the oldest ts_ns seen so far, bounded by both _LOKI_MAX_PAGES (line
+# ceiling = _LOKI_MAX_PAGES × _LOKI_BUCKET_LIMIT lines per bucket for the
+# merged 3-job query) and _LOKI_PER_BUCKET_BUDGET_S (wall-clock ceiling
+# regardless of page count). The two ceilings together keep one slow or
+# pathological bucket from starving Lambda's MAX_RUN_MS even on degraded
+# upstream days. Worst-case Loki-section wall-clock is
+# `ceil(buckets / max_workers=8) × _LOKI_PER_BUCKET_BUDGET_S` — at 24h /
+# 1h buckets that's 3 × 200s = 600s, leaving ≥240s headroom against
+# Lambda's 840s MAX_RUN_MS for downstream analysis. Typical bucket
+# finishes in 1–2 pages (~15s).
 _LOKI_BUCKET_LIMIT = 5000
-_LOKI_MAX_PAGES = 5
+_LOKI_MAX_PAGES = 12
+_LOKI_PER_PAGE_TIMEOUT_S = 45
+_LOKI_PER_BUCKET_BUDGET_S = 200
 
 
 def _fetch_loki_bucket(
@@ -919,13 +928,15 @@ def _fetch_loki_bucket(
     api_key: str,
     query: str,
     bucket: "TimeBucket",
-    per_bucket_timeout: int,
+    per_page_timeout: int = _LOKI_PER_PAGE_TIMEOUT_S,
+    per_bucket_budget: int = _LOKI_PER_BUCKET_BUDGET_S,
 ) -> tuple[str, list[dict[str, Any]], bool]:
     """Fetch one time bucket from Loki, paginating past the per-call limit.
 
     Returns (bucket_label, logs, ok). `ok` is True only when the bucket was
-    fully drained (or the cap was reached cleanly); a transport error mid-
-    pagination still returns whatever was collected so far with ok=False.
+    fully drained; transport errors, the per-bucket time budget being
+    exhausted mid-pagination, and the page cap all return ok=False so the
+    caller records an incomplete-coverage entry.
     """
     start_ns = int(parse_iso(bucket.start).timestamp() * 1_000_000_000)
     end_ns_initial = int(parse_iso(bucket.end).timestamp() * 1_000_000_000)
@@ -941,14 +952,24 @@ def _fetch_loki_bucket(
     logs: list[dict[str, Any]] = []
     end_ns = end_ns_initial
     pages = 0
+    deadline = time.monotonic() + max(1, per_bucket_budget)
     try:
         while pages < _LOKI_MAX_PAGES:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                print(
+                    f"[direct] loki bucket {bucket.label} hit per-bucket budget "
+                    f"({per_bucket_budget}s) at page {pages}",
+                    file=sys.stderr,
+                )
+                return bucket.label, logs, False
+            page_timeout = max(5, min(per_page_timeout, int(remaining)))
             resp = _http_get_json(
                 f"{endpoint}/loki/api/v1/query_range",
                 headers,
                 {"query": query, "start": str(start_ns), "end": str(end_ns),
                  "limit": str(_LOKI_BUCKET_LIMIT), "direction": "backward"},
-                per_bucket_timeout,
+                page_timeout,
             )
             page_lines = 0
             oldest_ts_ns: int | None = None
@@ -971,29 +992,29 @@ def _fetch_loki_bucket(
                     parsed["_source_id"] = job_to_source.get(job, job)
                     logs.append(parsed)
             pages += 1
-            # Done when this page didn't fill the limit (no more data) or we
-            # somehow got an empty page (defensive — Loki shouldn't return 0
-            # rows mid-pagination but if it does we'd otherwise loop forever).
+            # Page didn't fill the limit (or returned nothing) → bucket fully
+            # drained. The empty-page guard avoids an infinite loop if Loki
+            # ever returns 0 rows mid-pagination.
             if page_lines < _LOKI_BUCKET_LIMIT or oldest_ts_ns is None:
                 return bucket.label, logs, True
-            # direction=backward: each subsequent page asks for entries
-            # strictly older than the oldest we've seen. -1ns avoids re-
-            # fetching the boundary entry. If this drops below start_ns, the
-            # range is exhausted.
+            # direction=backward: ask for entries strictly older than the
+            # oldest seen. -1ns avoids re-fetching the boundary entry.
             next_end = oldest_ts_ns - 1
             if next_end <= start_ns:
                 return bucket.label, logs, True
             end_ns = next_end
-        # Hit page cap. Still mark ok=True — we've fetched _LOKI_MAX_PAGES *
-        # _LOKI_BUCKET_LIMIT lines; calling this "incomplete" would spam the
-        # warning section without being actionable. The caller may surface
-        # via topSignatures if truncation matters.
-        print(f"[direct] loki bucket {bucket.label} hit page cap ({_LOKI_MAX_PAGES} pages × {_LOKI_BUCKET_LIMIT})", file=sys.stderr)
-        return bucket.label, logs, True
+        # Page cap reached with `page_lines == _LOKI_BUCKET_LIMIT` on the
+        # last iteration → there's more data we didn't fetch. Return
+        # ok=False so the index marks the bucket incomplete and consumers
+        # know coverage is truncated.
+        print(
+            f"[direct] loki bucket {bucket.label} hit page cap "
+            f"({_LOKI_MAX_PAGES} pages × {_LOKI_BUCKET_LIMIT})",
+            file=sys.stderr,
+        )
+        return bucket.label, logs, False
     except Exception as err:  # noqa: BLE001
         print(f"[direct] loki bucket {bucket.label} failed at page {pages}: {err}", file=sys.stderr)
-        # Return what we collected — partial > nothing. Marking ok=False so
-        # the bucket is recorded as incomplete in the index.
         return bucket.label, logs, False
 
 
@@ -1001,13 +1022,14 @@ def _fetch_loki_all_sources(
     app_id: str,
     window: "Window",
     bucket_hours: int | None,
-    timeout: int,
+    timeout: int,  # noqa: ARG001 — kept for caller-signature parity; Loki uses its own constants
 ) -> dict[str, dict[str, Any]]:
     """
     Fetches merged Loki logs for airo-agents / airo-preview / airo-publish
     using time-bucketed queries (same as console). Returns a dict of
     sourceId -> source_result, parallelised across buckets.
     """
+    del timeout  # ES/Langfuse/FullStory still use it; Loki has its own budget
     endpoint = os.environ.get("LOKI_ENDPOINT", "").rstrip("/")
     api_key = os.environ.get("LOKI_API_KEY", "")
     source_ids = ["airo-agents", "airo-preview", "airo-publish"]
@@ -1018,7 +1040,11 @@ def _fetch_loki_all_sources(
 
     buckets = build_time_buckets(window, bucket_hours)
     query = _loki_merged_query(app_id)
-    per_bucket_timeout = max(10, timeout // max(len(buckets), 1))
+    # Loki uses its own per-page timeout / per-bucket budget (constants
+    # above). The shared `timeout` arg drives ES/Langfuse/FullStory only —
+    # those are single-shot calls where the previous default was already
+    # adequate. Splitting the budget here avoids regressing the other
+    # sources when widening Loki's headroom.
 
     # Fetch all buckets in parallel
     all_pages_by_source: dict[str, list[dict[str, Any]]] = {sid: [] for sid in source_ids}
@@ -1026,7 +1052,8 @@ def _fetch_loki_all_sources(
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=min(len(buckets), 8)) as pool:
         futures = {
-            pool.submit(_fetch_loki_bucket, endpoint, api_key, query, bucket, per_bucket_timeout): bucket
+            pool.submit(_fetch_loki_bucket, endpoint, api_key, query, bucket,
+                        _LOKI_PER_PAGE_TIMEOUT_S, _LOKI_PER_BUCKET_BUDGET_S): bucket
             for bucket in buckets
         }
         for future in concurrent.futures.as_completed(futures):
@@ -1653,9 +1680,10 @@ def fetch_direct_evidence(app_id: str, window_label: str, fullstory_url: str | N
     window = parse_window(window_label)
     start_iso = window.start
     end_iso = window.end
-    # 3h buckets: smaller than the console default to avoid Loki 502s on high-volume apps.
-    # Same total log coverage — just more, smaller requests.
-    bucket_hours = 3
+    # Defer to `build_time_buckets`'s window-aware heuristic (1h ≤24h /
+    # 3h ≤72h / 6h >72h). A single hard-coded value silently regresses
+    # 7d direct-mode invocations into ~168 buckets.
+    bucket_hours = None
 
     # Dispatch all independent sources in parallel (6 workers — one per source group)
     with concurrent.futures.ThreadPoolExecutor(max_workers=6) as pool:
@@ -1807,7 +1835,16 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--page-size", type=int, default=500)
     parser.add_argument("--bucket-hours", type=int, default=None)
     parser.add_argument("--workers", type=int, default=8)
-    parser.add_argument("--timeout", type=int, default=45)
+    parser.add_argument(
+        "--timeout",
+        type=int,
+        default=45,
+        help=(
+            "Per-HTTP-call timeout (seconds) for ES / Langfuse / FullStory "
+            "sources. Loki uses its own per-page / per-bucket budget "
+            "(see _LOKI_PER_PAGE_TIMEOUT_S / _LOKI_PER_BUCKET_BUDGET_S)."
+        ),
+    )
     parser.add_argument("--fail-on-incomplete", action="store_true")
     parser.add_argument("--batched-evidence", action=argparse.BooleanOptionalAction, default=True)
     return run(parser.parse_args(argv))
