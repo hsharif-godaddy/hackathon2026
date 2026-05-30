@@ -63,6 +63,47 @@ await test('summary kept verbatim when ≤80 chars', () => {
   assert.equal(body.fields.summary, 'short text');
 });
 
+// Jira summary rejects newline characters with 400. Multi-line customer
+// feedback (Enter key in SOS dialog) used to leak through buildSummary
+// because the original implementation only `.trim()`d. Now \s+ is
+// collapsed to single space before truncation. Both ≤80 and >80 paths
+// must produce a single-line summary.
+await test('summary collapses newlines and other whitespace', () => {
+  const body = buildJiraIssueBody(
+    { ...BASE_ROW, feedback_text: 'Ask Airo this:\n\nI will be using my site.' },
+    PROJECT_KEY,
+    S3_REF,
+  );
+  assert.ok(!/[\r\n\t]/.test(body.fields.summary), 'summary contains a newline/tab character');
+  assert.equal(body.fields.summary, 'Ask Airo this: I will be using my site.');
+});
+
+await test('summary collapses newlines on >80-char path', () => {
+  const longMultiline = 'Q1?\nQ2?\n' + 'x'.repeat(200);
+  const body = buildJiraIssueBody({ ...BASE_ROW, feedback_text: longMultiline }, PROJECT_KEY, S3_REF);
+  assert.equal(body.fields.summary.length, 80);
+  assert.ok(body.fields.summary.endsWith('…'));
+  assert.ok(!/[\r\n\t]/.test(body.fields.summary), 'truncated summary contains a newline/tab');
+});
+
+// Newline collapse must apply to every category that reaches Jira
+// (issue/support/feedback) — buildJiraIssueBody calls buildSummary
+// unconditionally, but lock the contract per category so a future
+// branch can't regress one path.
+for (const category of ['issue', 'support', 'feedback']) {
+  await test(`summary collapses newlines for ${category} category`, () => {
+    const row = {
+      ...BASE_ROW,
+      feedback_category: category,
+      feedback_text: 'Line1\nLine2\r\nLine3',
+      ...(category === 'feedback' ? { rating: 3 } : {}),
+    };
+    const body = buildJiraIssueBody(row, PROJECT_KEY, S3_REF);
+    assert.ok(!/[\r\n\t]/.test(body.fields.summary), `${category} summary leaked newline`);
+    assert.equal(body.fields.summary, 'Line1 Line2 Line3');
+  });
+}
+
 await test('empty feedback_text + issue → "Bug | App ID - <id>" fallback', () => {
   const body = buildJiraIssueBody({ ...BASE_ROW, feedback_text: '' }, PROJECT_KEY, S3_REF);
   assert.equal(body.fields.summary, 'Bug | App ID - app-1');

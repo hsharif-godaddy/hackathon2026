@@ -70,8 +70,14 @@ function summaryTypeLabel(category) {
   return 'Feedback';
 }
 
+// Jira summary rejects newlines: 400 "The summary is invalid because it
+// contains newline characters." Multi-line customer feedback (Enter-pressed
+// SOS questions) hits this. Collapse all whitespace runs (\n, \r, \t,
+// repeated spaces) into single spaces BEFORE truncating so a multi-line
+// prompt becomes a single-line summary while the full text is preserved
+// in the description ADF.
 function buildSummary(row) {
-  const text = (row.feedback_text ?? '').trim();
+  const text = (row.feedback_text ?? '').replace(/\s+/g, ' ').trim();
   if (!text) {
     return `${summaryTypeLabel(row.feedback_category)} | App ID - ${row.app_id ?? 'unknown'}`;
   }
