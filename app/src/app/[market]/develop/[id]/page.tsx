@@ -93,8 +93,11 @@ import {
 } from '@/stores/useStreamingConversationStore'
 import { useTodoListStore } from '@/stores/useTodoListStore'
 import type { RuntimeErrorData } from '@/types/runtime-error'
+import { dispatch as dispatchBusEvent, registerTrackEventBus } from '@/utils/eventBus'
 import { logAiroHQEvent, logClickEvent, logImpressionEvent, setInstrumentationAppId } from '@/utils/instrumentation'
 import { postMessageToIframe } from '@/utils/postMessage'
+
+registerTrackEventBus()
 
 // Lazy-load features that are conditionally rendered or behind user interaction
 const AnalyticsPanel = dynamic(() => import('@/app/[market]/develop/components/settings/Analytics/AnalyticsPanel'), { loading: () => <SettingsLoadingState fullPage /> })
@@ -1047,6 +1050,8 @@ function DevelopPageContent() {
       const isFromSameWindow = event.source === window
 
       if (!isFromIframe && !isFromSameWindow) return
+
+      if (dispatchBusEvent(event.data)) return
 
       switch (event.data.type) {
         case 'TEXT_UPDATED':

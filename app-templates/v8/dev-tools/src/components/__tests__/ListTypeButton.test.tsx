@@ -88,6 +88,23 @@ describe('ListTypeButton', () => {
     });
   });
 
+  describe('tracking', () => {
+    it('fires devtools.toolbar.list_type click on apply (not on toolbar open)', () => {
+      const list = makeList();
+      render(createElement(Controlled, { selectedElement: list }));
+      const trackCalls = () =>
+        vi.mocked(safePostMessage).mock.calls.filter(
+          ([, msg]) => (msg as { type?: string })?.type === 'TRACK_EVENT',
+        );
+      fireEvent.click(screen.getByRole('button', { name: 'List type' }));
+      expect(trackCalls()).toHaveLength(0);
+      fireEvent.click(screen.getByRole('button', { name: 'List disc' }));
+      expect(trackCalls()).toEqual([
+        [window.parent, { type: 'TRACK_EVENT', kind: 'click', eid: 'devtools.toolbar.list_type', properties: undefined }],
+      ]);
+    });
+  });
+
   describe('list type selection', () => {
     it('adds list-disc and [&>*]:list-item when selecting disc', () => {
       const list = makeList();

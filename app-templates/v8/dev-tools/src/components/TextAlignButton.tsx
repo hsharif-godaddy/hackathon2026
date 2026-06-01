@@ -6,6 +6,7 @@ import { t } from "../utils/translations";
 import { safePostMessage } from "../utils/postMessage";
 import { addStyleEditListener, StyleMessageEventType } from "../utils/elementStyleListeners";
 import { extractDevContext, generatePreciseSelector, getElementClassName } from "../utils/element-helpers";
+import { trackEventBus } from "../utils/eventBus";
 
 enum TextAlign {
   Left = "left",
@@ -73,6 +74,7 @@ export default function TextAlignButton({ selectedElement, isOpen, onOpenChange 
   const handleTextAlignChange = useCallback(
     (newTextAlign: TextAlign | null) => {
       if (!selectedElement) return;
+      trackEventBus.click("devtools.toolbar.text_align");
 
       const originalClassName = selectedElement.className;
       // Optimistic DOM update: remove any existing alignment class, then add the new one.

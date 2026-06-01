@@ -5,6 +5,7 @@ import { t } from "../utils/translations";
 import { safePostMessage } from "../utils/postMessage";
 import { addStyleEditListener, StyleMessageEventType } from "../utils/elementStyleListeners";
 import { extractDevContext, generatePreciseSelector, getElementClassName } from "../utils/element-helpers";
+import { trackEventBus } from "../utils/eventBus";
 
 interface ItalicButtonProps {
   selectedElement: HTMLElement | null;
@@ -17,6 +18,7 @@ export default function ItalicButton({ selectedElement }: ItalicButtonProps) {
 
   const handleToggleItalic = useCallback(() => {
     if (!selectedElement) return;
+    trackEventBus.click("devtools.toolbar.italic");
 
     const isAdding = !selectedElement.classList.contains("italic");
     const originalClassName = selectedElement.className;

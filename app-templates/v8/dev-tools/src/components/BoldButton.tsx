@@ -6,6 +6,7 @@ import { safePostMessage } from "../utils/postMessage";
 import { addStyleEditListener, StyleMessageEventType } from "../utils/elementStyleListeners";
 import { extractDevContext, generatePreciseSelector, getElementClassName } from "../utils/element-helpers";
 import { ensureBoldFontLoaded } from "../utils/text-editing-helpers";
+import { trackEventBus } from "../utils/eventBus";
 
 interface BoldButtonProps {
   selectedElement: HTMLElement | null;
@@ -22,6 +23,7 @@ export default function BoldButton({ selectedElement }: BoldButtonProps) {
 
   const handleToggleBold = useCallback(() => {
     if (!selectedElement) return;
+    trackEventBus.click("devtools.toolbar.bold");
 
     const isAdding = !selectedElement.classList.contains("font-bold");
     const originalClassName = selectedElement.className;

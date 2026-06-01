@@ -118,6 +118,22 @@ describe('TextColorButton', () => {
   });
 
   describe('color commit', () => {
+    it('fires devtools.toolbar.text_color click track event on commit (not on preview)', () => {
+      const paragraph = makeParagraph();
+      render(reactCreateElement(TextColorButton, { selectedElement: paragraph }));
+      fireEvent.click(screen.getByRole('button', { name: 'Text color' }));
+      const trackCalls = () =>
+        vi.mocked(safePostMessage).mock.calls.filter(
+          ([, msg]) => (msg as { type?: string })?.type === 'TRACK_EVENT',
+        );
+      fireEvent.click(screen.getByRole('button', { name: 'preview color' }));
+      expect(trackCalls()).toHaveLength(0);
+      fireEvent.click(screen.getByRole('button', { name: 'commit color' }));
+      expect(trackCalls()).toEqual([
+        [window.parent, { type: 'TRACK_EVENT', kind: 'click', eid: 'devtools.toolbar.text_color', properties: undefined }],
+      ]);
+    });
+
     it('updates element style.color on commit', () => {
       const paragraph = makeParagraph();
       render(reactCreateElement(TextColorButton, { selectedElement: paragraph }));

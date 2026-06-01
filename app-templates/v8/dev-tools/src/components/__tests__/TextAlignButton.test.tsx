@@ -85,6 +85,23 @@ describe('TextAlignButton', () => {
     });
   });
 
+  describe('tracking', () => {
+    it('fires devtools.toolbar.text_align click on apply (not on toolbar open)', () => {
+      const paragraph = makeParagraph();
+      render(createElement(TextAlignButton, { selectedElement: paragraph }));
+      const trackCalls = () =>
+        vi.mocked(safePostMessage).mock.calls.filter(
+          ([, msg]) => (msg as { type?: string })?.type === 'TRACK_EVENT',
+        );
+      fireEvent.click(screen.getByRole('button', { name: 'Text alignment' }));
+      expect(trackCalls()).toHaveLength(0);
+      fireEvent.click(screen.getByRole('button', { name: 'Align center' }));
+      expect(trackCalls()).toEqual([
+        [window.parent, { type: 'TRACK_EVENT', kind: 'click', eid: 'devtools.toolbar.text_align', properties: undefined }],
+      ]);
+    });
+  });
+
   describe('alignment selection', () => {
     it('adds the alignment class to the element', () => {
       const paragraph = makeParagraph();

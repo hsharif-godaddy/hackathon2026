@@ -6,6 +6,7 @@ import { t } from "../utils/translations";
 import { safePostMessage } from "../utils/postMessage";
 import { addStyleEditListener, StyleMessageEventType } from "../utils/elementStyleListeners";
 import { extractDevContext, generatePreciseSelector, getElementClassName } from "../utils/element-helpers";
+import { trackEventBus } from "../utils/eventBus";
 
 enum ListType {
   DISC = "disc",
@@ -49,6 +50,7 @@ export default function ListTypeButton({ selectedElement, isOpen, onOpenChange }
   const handleListTypeChange = useCallback(
     (newListType: ListType | null) => {
       if (!selectedElement) return;
+      trackEventBus.click("devtools.toolbar.list_type");
 
       const originalClassName = selectedElement.className;
       Object.values(ListType).forEach((type) => selectedElement.classList.remove(`list-${type}`));

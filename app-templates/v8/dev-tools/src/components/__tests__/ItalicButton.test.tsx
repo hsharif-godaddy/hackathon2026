@@ -104,6 +104,20 @@ describe('ItalicButton', () => {
     });
   });
 
+  describe('tracking', () => {
+    it('fires devtools.toolbar.italic click track event', () => {
+      const paragraph = makeParagraph();
+      render(createElement(ItalicButton, { selectedElement: paragraph }));
+      fireEvent.click(screen.getByRole('button', { name: 'Toggle italic' }));
+      expect(safePostMessage).toHaveBeenCalledWith(window.parent, {
+        type: 'TRACK_EVENT',
+        kind: 'click',
+        eid: 'devtools.toolbar.italic',
+        properties: undefined,
+      });
+    });
+  });
+
   describe('postMessage', () => {
     it('posts UPDATED with fontStyle italic when adding italic', () => {
       const paragraph = makeParagraph();

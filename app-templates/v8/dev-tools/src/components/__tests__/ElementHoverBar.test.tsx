@@ -189,3 +189,97 @@ describe('ElementHoverBar - Commerce product image gating', () => {
     expect(screen.queryByTitle('Edit with AI')).not.toBeNull();
   });
 });
+
+import { safePostMessage } from '../../utils/postMessage';
+
+const trackCalls = () =>
+  vi.mocked(safePostMessage).mock.calls.filter(
+    ([, msg]) => (msg as { type?: string })?.type === 'TRACK_EVENT',
+  );
+
+const findTrackCall = (eid: string) =>
+  trackCalls().find(([, msg]) => (msg as { eid?: string })?.eid === eid);
+
+function makeTextHover(): HoveredElement {
+  const p = document.createElement('p');
+  p.textContent = 'Hello world';
+  p.getBoundingClientRect = vi.fn(() => ({
+    top: 100, left: 100, width: 200, height: 30, right: 300, bottom: 130, x: 100, y: 100, toJSON: () => {},
+  } as DOMRect));
+  document.body.appendChild(p);
+  return { type: 'text', element: p } as HoveredElement;
+}
+
+describe('ElementHoverBar - tracking', () => {
+  it('fires toolbar-view impression with surface=image when toolbar opens on an image', () => {
+    vi.stubEnv('VITE_GODADDY_STORE_ID', '');
+    const img = makeImageElement();
+    const hovered: HoveredElement = {
+      type: 'image', element: img, imageUrl: 'x', isMediaSlot: false, slotPath: null,
+    };
+    renderHoverBar(hovered);
+    fireEvent.click(img);
+    expect(findTrackCall('devtools.toolbar.view')).toEqual([
+      window.parent,
+      { type: 'TRACK_EVENT', kind: 'impression', eid: 'devtools.toolbar.view', properties: { surface: 'image' } },
+    ]);
+  });
+
+  it('fires toolbar-view impression with surface=text when toolbar opens on a text element', () => {
+    const hovered = makeTextHover();
+    renderHoverBar(hovered);
+    fireEvent.click(hovered.element);
+    expect(findTrackCall('devtools.toolbar.view')).toEqual([
+      window.parent,
+      { type: 'TRACK_EVENT', kind: 'impression', eid: 'devtools.toolbar.view', properties: { surface: 'text' } },
+    ]);
+  });
+
+  it('fires replace_image click when Replace is clicked', () => {
+    vi.stubEnv('VITE_GODADDY_STORE_ID', '');
+    const img = makeImageElement();
+    const hovered: HoveredElement = {
+      type: 'image', element: img, imageUrl: 'https://x/y.jpg', isMediaSlot: false, slotPath: null,
+    };
+    renderHoverBar(hovered);
+    fireEvent.click(img);
+    fireEvent.click(screen.getByTitle('Replace image'));
+    expect(findTrackCall('devtools.toolbar.replace_image')).toBeTruthy();
+  });
+
+  it('fires modify_image click when Modify is clicked', () => {
+    vi.stubEnv('VITE_GODADDY_STORE_ID', '');
+    const img = makeImageElement();
+    const hovered: HoveredElement = {
+      type: 'image', element: img, imageUrl: 'https://x/y.jpg', isMediaSlot: false, slotPath: null,
+    };
+    renderHoverBar(hovered);
+    fireEvent.click(img);
+    fireEvent.click(screen.getByTitle('Modify image'));
+    expect(findTrackCall('devtools.toolbar.modify_image')).toBeTruthy();
+  });
+
+  it('fires multi_select_add click when Reference is clicked', () => {
+    vi.stubEnv('VITE_GODADDY_STORE_ID', '');
+    const img = makeImageElement();
+    const hovered: HoveredElement = {
+      type: 'image', element: img, imageUrl: 'https://x/y.jpg', isMediaSlot: false, slotPath: null,
+    };
+    renderHoverBar(hovered);
+    fireEvent.click(img);
+    fireEvent.click(screen.getByTitle('Add as reference'));
+    expect(findTrackCall('devtools.toolbar.multi_select_add')).toBeTruthy();
+  });
+
+  it('fires sparkles click when Edit with AI is clicked', () => {
+    vi.stubEnv('VITE_GODADDY_STORE_ID', '');
+    const img = makeImageElement();
+    const hovered: HoveredElement = {
+      type: 'image', element: img, imageUrl: 'https://x/y.jpg', isMediaSlot: false, slotPath: null,
+    };
+    renderHoverBar(hovered);
+    fireEvent.click(img);
+    fireEvent.click(screen.getByTitle('Edit with AI'));
+    expect(findTrackCall('devtools.toolbar.sparkles')).toBeTruthy();
+  });
+});

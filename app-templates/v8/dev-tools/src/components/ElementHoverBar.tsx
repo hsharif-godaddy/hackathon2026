@@ -11,6 +11,7 @@ import {
 import type { HoveredElement } from "../hooks/useImageHoverDetection";
 import { Bookmark, Image, Pencil, Pointer, Sparkles } from "lucide-react";
 import { isClickable, isTextElement, isTextBlockElement, isListElement } from "../utils/element-detection";
+import { trackEventBus } from "../utils/eventBus";
 import { t } from "../utils/translations";
 import { HoverBar, HoverBarButton } from "./HoverBar";
 import { QuickEditBar } from "./QuickEditBar";
@@ -188,6 +189,14 @@ export default function ElementHoverBar({
     onQuickEditModeChange?.(toolbarMode || quickEditMode);
   }, [toolbarMode, quickEditMode, onQuickEditModeChange]);
 
+  // Toolbar-view impression: fires once per appearance. The element prop is
+  // frozen by DevelopmentMode while toolbarMode is true, so deps can be just
+  // [toolbarMode].
+  useEffect(() => {
+    if (!toolbarMode) return;
+    trackEventBus.impression("devtools.toolbar.view", { surface: isImage ? "image" : "text" });
+  }, [toolbarMode]);
+
   // Release the freeze when this component unmounts
   useEffect(() => {
     return () => onQuickEditModeChange?.(false);
@@ -323,6 +332,7 @@ export default function ElementHoverBar({
     const el = toolbarElementRef.current;
     const hovered = toolbarHoveredElementRef.current;
     if (!el || !hovered || hovered.type !== "image") return;
+    trackEventBus.click("devtools.toolbar.replace_image");
     const { imageUrl, isMediaSlot, slotPath } = hovered;
     if (isMediaSlot && slotPath) {
       safePostMessage(window.parent, { type: "OPEN_MEDIA_SLOT_DIALOG", slotName: slotPath });
@@ -344,6 +354,7 @@ export default function ElementHoverBar({
     const el = toolbarElementRef.current;
     const hovered = toolbarHoveredElementRef.current;
     if (!el || !hovered || hovered.type !== "image") return;
+    trackEventBus.click("devtools.toolbar.modify_image");
     const { imageUrl, isMediaSlot, slotPath } = hovered;
     if (isMediaSlot && slotPath) {
       safePostMessage(window.parent, { type: "OPEN_IMAGE_EDITOR", slotName: slotPath });
@@ -408,6 +419,7 @@ export default function ElementHoverBar({
   const handleReference = useCallback(() => {
     const el = toolbarElementRef.current;
     if (!el) return;
+    trackEventBus.click("devtools.toolbar.multi_select_add");
 
     let selectionNumber: number | undefined;
     if (isMultiSelectActive) {
@@ -415,6 +427,7 @@ export default function ElementHoverBar({
       selectionNumber = getNextSelectionNumber();
       const num = selectionNumber;
       addNumberedOverlay(el, num, () => {
+        trackEventBus.click("devtools.toolbar.multi_select_remove");
         removeNumberedOverlay(num);
         safePostMessage(window.parent, { type: "REMOVE_SELECTION_FROM_PREVIEW", data: { number: num } });
       });
@@ -429,6 +442,7 @@ export default function ElementHoverBar({
   // Sparkles: build context locally and open Quick Edit — no selection overlay,
   // no postMessage until the user submits the prompt
   const handleEditWithAI = useCallback(() => {
+    trackEventBus.click("devtools.toolbar.sparkles");
     pendingContextRef.current = buildContextData();
     setToolbarMode(false);
     setQuickEditMode(true);
@@ -436,6 +450,7 @@ export default function ElementHoverBar({
 
   // On submit: send context first so the store is set before QUICK_EDIT_SEND reads it
   const handleQuickEditSubmit = useCallback((prompt: string) => {
+    trackEventBus.click("devtools.toolbar.quick_edit_submit");
     if (pendingContextRef.current) {
       safePostMessage(window.parent, { type: "EDIT_WITH_AI", data: pendingContextRef.current });
       pendingContextRef.current = null;
@@ -445,6 +460,7 @@ export default function ElementHoverBar({
   }, []);
 
   const handleQuickEditDismiss = useCallback(() => {
+    trackEventBus.click("devtools.toolbar.quick_edit_dismiss");
     setQuickEditMode(false);
   }, []);
 
@@ -475,9 +491,15 @@ export default function ElementHoverBar({
   const handleFixAccept = useCallback(() => {
     const el = toolbarElementRef.current;
     if (!el) return;
+    trackEventBus.click("devtools.toolbar.text_fix_accept");
     fix.accept(el);
     setToolbarMode(false);
   }, [fix.accept]);
+
+  const handleFixReject = useCallback(() => {
+    trackEventBus.click("devtools.toolbar.text_fix_reject");
+    fix.reject();
+  }, [fix.reject]);
 
   // Bold/Italic: show for any text-bearing element (less strict than isTextEditable
   // which also rejects data-dev-dynamic — we only need class toggle, not text editing).
@@ -524,7 +546,7 @@ export default function ElementHoverBar({
         oldText={oldDisplay}
         newText={newDisplay}
         onAccept={handleFixAccept}
-        onReject={fix.reject}
+        onReject={handleFixReject}
         onMouseEnter={onMouseEnter}
         onMouseLeave={onMouseLeave}
       />

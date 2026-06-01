@@ -140,6 +140,18 @@ describe('BoldButton', () => {
       );
     });
 
+    it('fires devtools.toolbar.bold click track event', () => {
+      const paragraph = makeParagraph();
+      render(createElement(BoldButton, { selectedElement: paragraph }));
+      fireEvent.click(screen.getByRole('button', { name: 'Toggle bold' }));
+      expect(safePostMessage).toHaveBeenCalledWith(window.parent, {
+        type: 'TRACK_EVENT',
+        kind: 'click',
+        eid: 'devtools.toolbar.bold',
+        properties: undefined,
+      });
+    });
+
     it('registers a style edit listener for rollback', () => {
       const paragraph = makeParagraph();
       render(createElement(BoldButton, { selectedElement: paragraph }));

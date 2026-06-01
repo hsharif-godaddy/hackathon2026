@@ -6,6 +6,7 @@ import { addStyleEditListener, StyleMessageEventType } from "../utils/elementSty
 import { extractDevContext, generatePreciseSelector, getElementClassName } from "../utils/element-helpers";
 import { extractThemeColors } from "../utils/text-editing-helpers";
 import { rgbToHex, normalizeHex } from "../utils/color";
+import { trackEventBus } from "../utils/eventBus";
 import ColorPicker from "./ColorPicker";
 
 const DEFAULT_COLOR = "#000000";
@@ -164,6 +165,7 @@ export default function TextColorButton({ selectedElement, isOpen, onOpenChange 
   // This is the only path that talks to the agent.
   const handleColorChange = useCallback((hex: string) => {
     if (!selectedElement) return;
+    trackEventBus.click("devtools.toolbar.text_color");
 
     selectedElement.style.color = hex;
     // Advance the "last committed" baseline so a close after this commit
