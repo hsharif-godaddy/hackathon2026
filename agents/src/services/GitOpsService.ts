@@ -13,6 +13,7 @@ import { DevSupervisorClientFactory } from '../utils/dev-supervisor-client-facto
 import { createForWorkspace } from '../workspace/index.js';
 import { isSupportedProjectOnHost, matchesBuildToolOnHost, SUPPORTED_BUILD_TOOLS } from '../server/middleware/git-import-validation.js';
 import { appRestartService, type BuildToolType } from './AppRestartService.js';
+import type { WorkspaceTasks } from '../workspace/tasks.js';
 import { modifyViteConfig } from './ViteConfigModifier.js';
 import { injectPortHandling } from './ExpressPortInjector.js';
 import { codeSyncFileCleanupService } from './CodeSyncFileCleanupService.js';
@@ -66,6 +67,24 @@ export interface GitPullParams extends GitSyncParams {
   entryFile?: string;
   /** Custom commands to override defaults */
   commands?: CommandOverrides;
+  /** When true, wipe the /app working tree (preserving .git, .gitignore,
+   *  .is_ready, .import-*, public/assets) before pulling, so the customer's
+   *  repo replaces — rather than merges into — whatever is currently in /app.
+   *
+   *  PaaS UI should set this on **any user-initiated repo bind or switch**:
+   *    - first git connect on app creation
+   *    - switching the git repo from settings
+   *    - binding git after an earlier zip import
+   *
+   *  It is a no-op on a freshly-initialised PaaS workspace (only `.git/`
+   *  present), so callers don't need to distinguish "first connect on a
+   *  new app" from "switch / re-bind." Pre-this-PR PaaS apps still carry
+   *  the legacy AAB template scaffold and rely on this flag to clear it
+   *  on their first import.
+   *
+   *  AAB callers and ordinary subsequent pulls (routine sync) must leave
+   *  this unset, otherwise local-only commits get clobbered. */
+  clearWorkingTree?: boolean;
 }
 
 /**
@@ -281,7 +300,7 @@ export class GitOpsService {
    * @returns Result with job ID for status polling
    */
   async startPull(params: GitPullParams): Promise<GitOperationStartResult> {
-    const { appId, remoteName, branch, token, repoUrl, modifyViteConfig: shouldModifyViteConfig } = params;
+    const { appId, remoteName, branch, token, repoUrl, modifyViteConfig: shouldModifyViteConfig, clearWorkingTree } = params;
 
     logger.info('git-ops.pull.begin', {
       appId,
@@ -351,6 +370,7 @@ export class GitOpsService {
           modifyViteConfig: shouldModifyViteConfig,
           entryFile: params.entryFile,
           commands: params.commands,
+          clearWorkingTree,
         });
       });
 
@@ -388,6 +408,7 @@ export class GitOpsService {
       modifyViteConfig?: boolean;
       entryFile?: string;
       commands?: CommandOverrides;
+      clearWorkingTree?: boolean;
     }
   ): Promise<void> {
 
@@ -410,6 +431,24 @@ export class GitOpsService {
       }
 
       const gitTool = new GitTool(workspace.tasks);
+
+      // Caller-driven tree clear. Used by the PaaS UI for "first git connect"
+      // (wipes the empty PaaS scaffold) and "switch git repo" (wipes the prior
+      // repo's contents). Ordinary subsequent pulls leave clearWorkingTree
+      // unset and behave as merges. Preserved paths match the zip-import
+      // wipe: .git (so the pull works), .gitignore, .is_ready, .import-*,
+      // public/assets.
+      if (options.clearWorkingTree) {
+        const wipeResult = await this.wipeAppBeforePull(workspace.tasks, appId, jobId);
+        if (!wipeResult.success) {
+          await this.importJobRepo.markFailed(
+            jobId,
+            wipeResult.error || 'Failed to clear app working tree before pull',
+            'pulling'
+          );
+          return;
+        }
+      }
 
       const result = await gitTool.executeGitOperation(appPath, {
         operation: 'pull',
@@ -718,6 +757,45 @@ export class GitOpsService {
         errorCode: 'INTERNAL_ERROR',
       };
     }
+  }
+
+  /**
+   * Wipe /app contents before a git pull, preserving the same set of paths
+   * used by the zip-import flow so persistent mounts and platform files
+   * survive: .git (so the pull works), .gitignore, .is_ready, .import-*,
+   * public/assets.
+   *
+   * Mirrors ProjectImportService.copyFilesInContainer's wipe command.
+   */
+  private async wipeAppBeforePull(
+    tasks: WorkspaceTasks,
+    appId: string,
+    jobId: string
+  ): Promise<{ success: boolean; error?: string }> {
+    const containerAppPath = '/app';
+    const wipeCommand =
+      `find "${containerAppPath}" -mindepth 1 -maxdepth 1 ` +
+      `! -name ".git" ! -name ".gitignore" ! -name ".is_ready" ! -name ".import-*" ! -name "public" ` +
+      `-exec rm -rf {} + && ` +
+      `{ [ -d "${containerAppPath}/public" ] && find "${containerAppPath}/public" -mindepth 1 -maxdepth 1 ! -name "assets" -exec rm -rf {} + || true; }`;
+
+    const result = await tasks.runCommandSync({
+      command: wipeCommand,
+      timeoutSeconds: 30,
+    });
+
+    if (result.exitCode !== 0) {
+      logger.error('git-ops.pull.wipe.failed', {
+        appId,
+        jobId,
+        stderr: result.stderr,
+        exitCode: result.exitCode,
+      });
+      return { success: false, error: `Pre-pull wipe failed: ${result.stderr}` };
+    }
+
+    logger.info('git-ops.pull.wipe.success', { appId, jobId });
+    return { success: true };
   }
 }
 

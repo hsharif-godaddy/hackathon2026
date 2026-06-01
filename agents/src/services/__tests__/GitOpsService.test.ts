@@ -598,6 +598,100 @@ describe('GitOpsService', () => {
     });
   });
 
+  describe('executePullInBackground - clearWorkingTree wipe', () => {
+    let mockRunCommandSync: Mock;
+
+    beforeEach(() => {
+      mockRunCommandSync = vi.fn().mockResolvedValue({ exitCode: 0, stdout: '', stderr: '' });
+      vi.mocked(createForWorkspace).mockReturnValue({ tasks: { runCommandSync: mockRunCommandSync } } as any);
+
+      mockGitTool.executeGitOperation.mockResolvedValue({ success: true, output: 'Pull successful' });
+      vi.mocked(appRestartService.performFullRestartCycle).mockResolvedValue({
+        success: true,
+        phases: { install: true, build: true, restart: true },
+      });
+    });
+
+    it('runs the wipe before pull when clearWorkingTree=true', async () => {
+      await service.startPull({
+        appId: testAppId,
+        token: 'ghp_test_token',
+        repoUrl: 'https://github.com/user/repo.git',
+        clearWorkingTree: true,
+      });
+
+      await vi.runAllTimersAsync();
+
+      const wipeCall = mockRunCommandSync.mock.calls.find(([arg]) =>
+        typeof arg?.command === 'string' && arg.command.includes('find "/app"')
+      );
+      expect(wipeCall).toBeDefined();
+      expect(wipeCall[0].command).toContain('! -name ".git"');
+      expect(wipeCall[0].command).toContain('! -name ".gitignore"');
+      expect(wipeCall[0].command).toContain('! -name ".is_ready"');
+      expect(wipeCall[0].command).toContain('! -name "public"');
+
+      const pullCall = mockGitTool.executeGitOperation.mock.calls.find((call) => call[1].operation === 'pull');
+      expect(pullCall).toBeDefined();
+    });
+
+    it('does not run the wipe when clearWorkingTree=false', async () => {
+      await service.startPull({
+        appId: testAppId,
+        token: 'ghp_test_token',
+        repoUrl: 'https://github.com/user/repo.git',
+        clearWorkingTree: false,
+      });
+
+      await vi.runAllTimersAsync();
+
+      const wipeCall = mockRunCommandSync.mock.calls.find(([arg]) =>
+        typeof arg?.command === 'string' && arg.command.includes('find "/app"')
+      );
+      expect(wipeCall).toBeUndefined();
+
+      const pullCall = mockGitTool.executeGitOperation.mock.calls.find((call) => call[1].operation === 'pull');
+      expect(pullCall).toBeDefined();
+    });
+
+    it('does not run the wipe when clearWorkingTree is omitted', async () => {
+      await service.startPull({
+        appId: testAppId,
+        token: 'ghp_test_token',
+        repoUrl: 'https://github.com/user/repo.git',
+      });
+
+      await vi.runAllTimersAsync();
+
+      const wipeCall = mockRunCommandSync.mock.calls.find(([arg]) =>
+        typeof arg?.command === 'string' && arg.command.includes('find "/app"')
+      );
+      expect(wipeCall).toBeUndefined();
+    });
+
+    it('marks job failed and skips pull when wipe fails', async () => {
+      mockRunCommandSync.mockResolvedValue({ exitCode: 1, stdout: '', stderr: 'permission denied' });
+
+      await service.startPull({
+        appId: testAppId,
+        token: 'ghp_test_token',
+        repoUrl: 'https://github.com/user/repo.git',
+        clearWorkingTree: true,
+      });
+
+      await vi.runAllTimersAsync();
+
+      expect(mockImportJobRepo.markFailed).toHaveBeenCalledWith(
+        testJobId,
+        expect.stringContaining('Pre-pull wipe failed'),
+        'pulling'
+      );
+
+      const pullCall = mockGitTool.executeGitOperation.mock.calls.find((call) => call[1].operation === 'pull');
+      expect(pullCall).toBeUndefined();
+    });
+  });
+
   describe('getJobStatus', () => {
     it('should return job status successfully', async () => {
       const mockJob = {

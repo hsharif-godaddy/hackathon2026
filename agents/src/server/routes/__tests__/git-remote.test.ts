@@ -402,6 +402,74 @@ describe('git-remote routes', function gitRemoteTests() {
     });
   });
 
+  describe('/git/pull clearWorkingTree parameter', function clearWorkingTreeTests() {
+    beforeEach(() => {
+      process.env.ENABLE_GIT_REMOTE_SYNC = 'true';
+      app = createTestApp();
+    });
+
+    it('should forward clearWorkingTree=true to gitOpsService.startPull', async function passClearWorkingTreeTrue() {
+      vi.mocked(gitOpsService.startPull).mockResolvedValue({
+        success: true,
+        jobId: 'test-job-id',
+        status: ImportJobStatus.PENDING,
+      });
+
+      await request(app)
+        .post('/apps/test-id/git/pull')
+        .send({ clearWorkingTree: true })
+        .expect(202);
+
+      expect(gitOpsService.startPull).toHaveBeenCalledWith(
+        expect.objectContaining({ clearWorkingTree: true })
+      );
+    });
+
+    it('should forward clearWorkingTree=false to gitOpsService.startPull', async function passClearWorkingTreeFalse() {
+      vi.mocked(gitOpsService.startPull).mockResolvedValue({
+        success: true,
+        jobId: 'test-job-id',
+        status: ImportJobStatus.PENDING,
+      });
+
+      await request(app)
+        .post('/apps/test-id/git/pull')
+        .send({ clearWorkingTree: false })
+        .expect(202);
+
+      expect(gitOpsService.startPull).toHaveBeenCalledWith(
+        expect.objectContaining({ clearWorkingTree: false })
+      );
+    });
+
+    it('should pass clearWorkingTree: undefined when not provided', async function passClearWorkingTreeUndefined() {
+      vi.mocked(gitOpsService.startPull).mockResolvedValue({
+        success: true,
+        jobId: 'test-job-id',
+        status: ImportJobStatus.PENDING,
+      });
+
+      await request(app)
+        .post('/apps/test-id/git/pull')
+        .send({})
+        .expect(202);
+
+      expect(gitOpsService.startPull).toHaveBeenCalledWith(
+        expect.objectContaining({ clearWorkingTree: undefined })
+      );
+    });
+
+    it('should return 400 when clearWorkingTree is not a boolean', async function invalidClearWorkingTreeType() {
+      const response = await request(app)
+        .post('/apps/test-id/git/pull')
+        .send({ clearWorkingTree: 'true' })
+        .expect(400);
+
+      expect(response.body.error).toBe('clearWorkingTree must be a boolean');
+      expect(gitOpsService.startPull).not.toHaveBeenCalled();
+    });
+  });
+
   describe('workspace-null guard', function workspaceNullTests() {
     it('should return 503 when createForWorkspace returns null on /git/remote/configure', async function configureWorkspaceNull() {
       process.env.ENABLE_GIT_REMOTE_SYNC = 'true';

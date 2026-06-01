@@ -104,12 +104,20 @@ if [ -f "$CUSTOMER_APP_DIR/.git/config" ]; then
         git reset --hard
         log_step "Working tree restored"
 
-        # Node_modules recovery — only when missing. Honors the customer's package
-        # manager via lockfile detection (mirrors detectPackageManager in
-        # agents/src/services/AppRestartService.ts). Install invocations match
-        # getInstallCommand(pm, { legacyPeerDeps: true }) (INSTALL_FLAGS in
-        # AppRestartService.ts) — same as zip import / git-pull install paths.
-        if [ ! -d "$CUSTOMER_APP_DIR/node_modules" ]; then
+        # Node_modules recovery — only when missing AND there's a package.json
+        # to install from. Without the package.json guard, a container restart
+        # between PaaS first-start and the customer's first zip/git import
+        # would run install against an empty tree (only .git/), fail under
+        # `set -e`, and prevent the container from coming up. That gap exists
+        # because PaaS first-start no longer copies the AAB template scaffold.
+        # Honors the customer's package manager via lockfile detection
+        # (mirrors detectPackageManager in agents/src/services/AppRestartService.ts).
+        # Install invocations match getInstallCommand(pm, { legacyPeerDeps: true })
+        # (INSTALL_FLAGS in AppRestartService.ts) — same as zip import / git-pull
+        # install paths.
+        if [ ! -f "$CUSTOMER_APP_DIR/package.json" ]; then
+            log_step "package.json missing; skipping install (PaaS app awaiting first import)"
+        elif [ ! -d "$CUSTOMER_APP_DIR/node_modules" ]; then
             # First-match wins (pnpm > yarn > npm) — matches
             # detectPackageManager in agents/src/services/AppRestartService.ts.
             pm=npm
@@ -223,36 +231,57 @@ fi
 if [ ! -f "$CUSTOMER_APP_DIR/.git/config" ]; then
     # FIRST-START PATH: New application initialization
     log_step "=== FIRST-START PATH detected ==="
-    log_step "Will: initialize git, copy template files, and install dependencies"
 
     cd "$CUSTOMER_APP_DIR"
 
-    # Initialize git repository (must be done before copy to avoid copying .git)
-    log_step "Step 1/5: Initializing git repository..."
-    git init --initial-branch=main
-    log_step "Step 1/5: Git repository initialized"
+    if is_paas_flow; then
+        # PaaS first-start: customer brings their own code via zip or git import.
+        # We still git init so the .git/config sentinel flips to "restart" on next
+        # boot, and create an empty initial commit so the restart path's
+        # `git reset --hard` (line ~104) has a HEAD to reset to. No template
+        # copy and no dependency install — those happen during zip/git import.
+        log_step "=== FIRST-START PATH (PaaS) ==="
+        log_step "Will: initialize empty git repository (skip template copy, skip install)"
 
-    # Copy template files, including hidden files (.gitignore, .api, .version, .npmrc and etc)
-    # This ensures the app gets the latest template version from the base Docker image
-    log_step "Step 2/5: Copying template files from $BASE_APP_DIR to $CUSTOMER_APP_DIR..."
-    cp -r "$BASE_APP_DIR"/. "$CUSTOMER_APP_DIR"
-    log_step "Step 2/5: Template files copied successfully"
+        log_step "Step 1/2: Initializing git repository..."
+        git init --initial-branch=main
+        log_step "Step 1/2: Git repository initialized"
 
-    # Install dependencies from cache (not pre-installed in image for size/cache optimization)
-    log_step "Step 3/5: Installing dependencies with npm ci (this may take a few minutes)..."
-    CI=true npm ci --registry=https://registry.npmjs.org/ --no-fund --no-audit
-    log_step "Step 3/5: Dependencies installed successfully"
+        log_step "Step 2/2: Creating empty initial commit..."
+        git commit --allow-empty -m "PaaS init"
+        log_step "Step 2/2: Empty initial commit created"
 
-    # Initial commit with all template files
-    log_step "Step 4/5: Adding files to git..."
-    git add .
-    log_step "Step 4/5: Files added to git"
+        log_step "=== FIRST-START SETUP COMPLETE (PaaS) ==="
+    else
+        log_step "Will: initialize git, copy template files, and install dependencies"
 
-    log_step "Step 5/5: Creating initial commit..."
-    git commit -m "Initial application setup"
-    log_step "Step 5/5: Initial commit created"
+        # Initialize git repository (must be done before copy to avoid copying .git)
+        log_step "Step 1/5: Initializing git repository..."
+        git init --initial-branch=main
+        log_step "Step 1/5: Git repository initialized"
 
-    log_step "=== FIRST-START SETUP COMPLETE ==="
+        # Copy template files, including hidden files (.gitignore, .api, .version, .npmrc and etc)
+        # This ensures the app gets the latest template version from the base Docker image
+        log_step "Step 2/5: Copying template files from $BASE_APP_DIR to $CUSTOMER_APP_DIR..."
+        cp -r "$BASE_APP_DIR"/. "$CUSTOMER_APP_DIR"
+        log_step "Step 2/5: Template files copied successfully"
+
+        # Install dependencies from cache (not pre-installed in image for size/cache optimization)
+        log_step "Step 3/5: Installing dependencies with npm ci (this may take a few minutes)..."
+        CI=true npm ci --registry=https://registry.npmjs.org/ --no-fund --no-audit
+        log_step "Step 3/5: Dependencies installed successfully"
+
+        # Initial commit with all template files
+        log_step "Step 4/5: Adding files to git..."
+        git add .
+        log_step "Step 4/5: Files added to git"
+
+        log_step "Step 5/5: Creating initial commit..."
+        git commit -m "Initial application setup"
+        log_step "Step 5/5: Initial commit created"
+
+        log_step "=== FIRST-START SETUP COMPLETE ==="
+    fi
 fi
 
 # Customer env (SYSTEM_MANAGED=false from config.json) is loaded by dev-supervisor from

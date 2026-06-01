@@ -282,6 +282,7 @@ router.post(
       buildCommand,
       devCommand,
       startCommand,
+      clearWorkingTree,
     } = req.body;
 
     if (!appId) {
@@ -291,6 +292,11 @@ router.post(
 
     if (modifyViteConfig !== undefined && typeof modifyViteConfig !== 'boolean') {
       res.status(400).json({ error: 'modifyViteConfig must be a boolean' });
+      return;
+    }
+
+    if (clearWorkingTree !== undefined && typeof clearWorkingTree !== 'boolean') {
+      res.status(400).json({ error: 'clearWorkingTree must be a boolean' });
       return;
     }
 
@@ -306,6 +312,7 @@ router.post(
       commands: (installCommand || buildCommand || devCommand || startCommand)
         ? { install: installCommand, build: buildCommand, dev: devCommand, start: startCommand }
         : undefined,
+      clearWorkingTree,
     });
 
     if (!result.success) {
