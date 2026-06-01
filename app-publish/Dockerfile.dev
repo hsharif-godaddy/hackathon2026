@@ -37,8 +37,9 @@ RUN go mod download
 COPY --from=dev-supervisor . .
 
 # Build binaries with static linking for Alpine
-RUN CGO_ENABLED=0 GOOS=linux go build -a -ldflags '-extldflags "-static" -w -s' -o /usr/local/bin/dev-supervisor ./cmd/dev-supervisor
-RUN CGO_ENABLED=0 GOOS=linux go build -a -ldflags '-extldflags "-static" -w -s' -o /usr/local/bin/airo-sandbox ./cmd/airo-sandbox
+ARG VERSION=dev
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-w -s -X main.Version=${VERSION}" -o /usr/local/bin/dev-supervisor ./cmd/dev-supervisor
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-w -s" -o /usr/local/bin/airo-sandbox ./cmd/airo-sandbox
 
 # =================================================================
 # Build publish app stage

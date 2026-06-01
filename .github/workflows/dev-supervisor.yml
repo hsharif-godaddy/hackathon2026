@@ -210,7 +210,8 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: 0
         run: |
-          go build -trimpath -ldflags="-w -s" -o "dist/dev-supervisor-${GOOS}-${GOARCH}" ./cmd/dev-supervisor
+          VERSION="${GITHUB_REF_NAME:-${GITHUB_SHA::8}}"
+          go build -trimpath -ldflags="-w -s -X main.Version=${VERSION}" -o "dist/${BINARY_NAME}-${GOOS}-${GOARCH}" ./cmd/dev-supervisor
           go build -trimpath -ldflags="-w -s" -o "dist/airo-sandbox-${GOOS}-${GOARCH}" ./cmd/airo-sandbox
 
       - name: Build Rust binary
@@ -244,10 +245,12 @@ jobs:
       - name: Build Docker image
         working-directory: dev-supervisor
         run: |
+          VERSION="${GITHUB_REF_NAME:-${GITHUB_SHA::8}}"
           docker buildx build \
             --platform linux/amd64,linux/arm64 \
             --cache-from type=gha \
             --cache-to type=gha,mode=max \
+            --build-arg VERSION=${VERSION} \
             --tag dev-supervisor:latest \
             --file Dockerfile \
             .

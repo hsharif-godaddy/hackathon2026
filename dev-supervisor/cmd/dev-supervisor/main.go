@@ -34,7 +34,6 @@ import (
 )
 
 const (
-	Version            = "0.2.0"
 	AppName            = "airo-supervisor"
 	defaultTimeout     = 120 * time.Second
 	serverReadyTimeout = 5 * time.Second
@@ -43,6 +42,11 @@ const (
 	startupModeFirstStart = "first-start"
 	startupModeRestart    = "restart"
 )
+
+// Version is the -ldflags "-X main.Version=..." target. Falls back to the
+// literal default below when no caller passes the flag. Constants can't
+// receive -X writes; this MUST stay a var.
+var Version = "0.2.0"
 
 // Config is an alias for config.Config
 type Config = config.Config

@@ -129,15 +129,16 @@ func (m *Manager) ensureImages() error {
 	if projectRoot == "" {
 		projectRoot = ".."
 	}
+	version := resolveDevSupervisorVersion(projectRoot)
 
-	if err := m.buildImage("aab-template-v8:latest", projectRoot); err != nil {
+	if err := m.buildImage("aab-template-v8:latest", projectRoot, version); err != nil {
 		return err
 	}
 
-	return m.buildPublishImage(projectRoot)
+	return m.buildPublishImage(projectRoot, version)
 }
 
-func (m *Manager) buildImage(imageName, projectRoot string) error {
+func (m *Manager) buildImage(imageName, projectRoot, version string) error {
 	slog.Info("docker.image.build", "image", imageName)
 	start := time.Now()
 
@@ -154,6 +155,7 @@ func (m *Manager) buildImage(imageName, projectRoot string) error {
 		"--load",
 		"--build-arg", fmt.Sprintf("HOST_UID=%d", uid),
 		"--build-arg", fmt.Sprintf("HOST_GID=%d", gid),
+		"--build-arg", "VERSION="+version,
 		"--build-context", "dev-supervisor="+filepath.Join(projectRoot, "dev-supervisor"),
 		"--build-context", "container-scripts="+filepath.Join(projectRoot, "container-scripts"),
 		"-f", filepath.Join(templateDir, "Dockerfile.dev"),
@@ -170,7 +172,7 @@ func (m *Manager) buildImage(imageName, projectRoot string) error {
 	return nil
 }
 
-func (m *Manager) buildPublishImage(projectRoot string) error {
+func (m *Manager) buildPublishImage(projectRoot, version string) error {
 	imageName := "aab-publish:latest"
 	slog.Info("docker.image.build", "image", imageName)
 	start := time.Now()
@@ -184,6 +186,7 @@ func (m *Manager) buildPublishImage(projectRoot string) error {
 		"--load",
 		"--build-arg", fmt.Sprintf("HOST_UID=%d", uid),
 		"--build-arg", fmt.Sprintf("HOST_GID=%d", gid),
+		"--build-arg", "VERSION="+version,
 		"--build-context", "dev-supervisor="+filepath.Join(projectRoot, "dev-supervisor"),
 		"--build-context", "container-scripts="+filepath.Join(projectRoot, "container-scripts"),
 		"-f", filepath.Join(publishDir, "Dockerfile.dev"),
@@ -399,4 +402,18 @@ func hostUserIDs() (uid, gid int) {
 		gid = 790
 	}
 	return uid, gid
+}
+
+// resolveDevSupervisorVersion returns the short SHA of the project's git HEAD,
+// stamped into the dev-supervisor binary at build time so operators can
+// correlate `dev-supervisor --version` with the local source tree.
+func resolveDevSupervisorVersion(projectRoot string) string {
+	cmd := exec.Command("git", "rev-parse", "--short", "HEAD")
+	cmd.Dir = projectRoot
+	out, err := cmd.Output()
+	if err != nil {
+		slog.Warn("docker.version.resolve.failed", "project_root", projectRoot, "error", err)
+		return "dev"
+	}
+	return strings.TrimSpace(string(out))
 }
