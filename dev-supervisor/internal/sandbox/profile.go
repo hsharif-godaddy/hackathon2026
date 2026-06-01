@@ -56,12 +56,13 @@ func DetectProcessVariant() ProcessVariant {
 //   - 80/443  — HTTP(S) to package registries, APIs, CDNs
 //   - 53      — DNS resolution
 //   - 3306    — MySQL (customer apps connecting to their provisioned DB)
-//   - 25      — SMTP (dev-supervisor's SMTP proxy on localhost:2525 forwards here)
+//   - 25      — SMTP relay (dev-supervisor's SMTP proxy on localhost:25 forwards to relay-hosting)
+//   - 2525    — HTTP email gateway (POST /api/email/send, see internal/proxy/emailhttp)
 //
 // Narrowing this list further (e.g. per-skill or per-command allowlists) would
 // require a more expressive profile system and is not part of the current
 // threat model.
-var ConnectTCPPorts = []uint16{80, 443, 53, 3306, 25}
+var ConnectTCPPorts = []uint16{80, 443, 53, 3306, 25, 2525}
 
 // ExecPaths returns filesystem access rules for agent one-off commands (/exec).
 // Only relevant in preview containers — publish containers don't expose /exec.
@@ -71,6 +72,8 @@ func ExecPaths(sharedStorageDir string) []PathRule {
 		{Mode: "rwc", Path: "/app"},
 		{Mode: "rwc", Path: "/tmp"},
 		{Mode: "rwc", Path: "/dist"},
+		// NOMAD_TASK_DIR — git config, npm cache, and other tools write to $HOME which is /local.
+		{Mode: "rwc", Path: "/local"},
 		{Mode: "rwc", Path: "/home/agent"},
 		{Mode: "rwc", Path: "/git-repo"},
 		{Mode: "rwc", Path: "/private"},
@@ -78,8 +81,10 @@ func ExecPaths(sharedStorageDir string) []PathRule {
 		// store (e.g. agent-driven `npm install <new-pkg>`), so it must be writable.
 		{Mode: "rwc", Path: "/npm-cache"},
 		// Preview image stores dependencies at /node_modules (not /app/node_modules)
-		// and puts /node_modules/.bin on PATH (vite, tsc, etc.).
+		// and puts /node_modules/.bin on PATH (vite, tsc, etc.). Both paths listed
+		// for compatibility across image versions.
 		{Mode: "rx", Path: "/node_modules"},
+		{Mode: "rx", Path: "/app/node_modules"},
 	}
 	if sharedStorageDir != "" {
 		paths = append(paths, PathRule{Mode: "rwc", Path: filepath.Join(sharedStorageDir, "public", "assets")})
@@ -93,10 +98,15 @@ func PreviewProcessPaths(sharedStorageDir string) []PathRule {
 	paths := []PathRule{
 		{Mode: "rwc", Path: "/app"},
 		{Mode: "rwc", Path: "/tmp"},
+		// NOMAD_TASK_DIR — HOME for the customer process; tools write configs/cache here.
+		{Mode: "rwc", Path: "/local"},
 		{Mode: "rwc", Path: "/home/agent"},
 		{Mode: "rwc", Path: "/private"},
-		// v8 template dependency store; /node_modules/.bin is on PATH (vite, tsc, etc.).
+		// Preview image stores dependencies at /node_modules (not /app/node_modules)
+		// and puts /node_modules/.bin on PATH (vite, tsc, etc.). Both paths listed
+		// for compatibility across image versions.
 		{Mode: "rx", Path: "/node_modules"},
+		{Mode: "rx", Path: "/app/node_modules"},
 	}
 	if sharedStorageDir != "" {
 		paths = append(paths, PathRule{Mode: "rwc", Path: filepath.Join(sharedStorageDir, "public", "assets")})
@@ -111,10 +121,13 @@ func PublishProcessPaths(sharedStorageDir string) []PathRule {
 	paths := []PathRule{
 		{Mode: "rwc", Path: "/app"},
 		{Mode: "rwc", Path: "/tmp"},
+		// NOMAD_TASK_DIR — HOME for the customer process; tools write configs/cache here.
+		{Mode: "rwc", Path: "/local"},
 		{Mode: "rwc", Path: "/home/agent"},
 		{Mode: "rwc", Path: "/private"},
 		{Mode: "rwc", Path: "/dist"},
 		{Mode: "rx", Path: "/publish"},
+		{Mode: "rx", Path: "/app/node_modules"},
 	}
 	if sharedStorageDir != "" {
 		paths = append(paths, PathRule{Mode: "rwc", Path: filepath.Join(sharedStorageDir, "public", "assets")})

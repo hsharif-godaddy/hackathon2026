@@ -32,11 +32,13 @@ func TestExecPaths(t *testing.T) {
 	assertPath(t, pathMap, "/app", "rwc")
 	assertPath(t, pathMap, "/tmp", "rwc")
 	assertPath(t, pathMap, "/dist", "rwc")
+	assertPath(t, pathMap, "/local", "rwc")
 	assertPath(t, pathMap, "/home/agent", "rwc")
 	assertPath(t, pathMap, "/git-repo", "rwc")
 	assertPath(t, pathMap, "/private", "rwc")
 	assertPath(t, pathMap, "/npm-cache", "rwc")
 	assertPath(t, pathMap, "/node_modules", "rx")
+	assertPath(t, pathMap, "/app/node_modules", "rx")
 	assertPath(t, pathMap, "/shared-storage/public/assets", "rwc")
 
 	// Must NOT include paths that child processes shouldn't access
@@ -64,9 +66,11 @@ func TestPreviewProcessPaths(t *testing.T) {
 
 	assertPath(t, pathMap, "/app", "rwc")
 	assertPath(t, pathMap, "/tmp", "rwc")
+	assertPath(t, pathMap, "/local", "rwc")
 	assertPath(t, pathMap, "/home/agent", "rwc")
 	assertPath(t, pathMap, "/private", "rwc")
 	assertPath(t, pathMap, "/node_modules", "rx")
+	assertPath(t, pathMap, "/app/node_modules", "rx")
 	assertPath(t, pathMap, "/shared-storage/public/assets", "rwc")
 
 	// Publish-only paths and forbidden paths
@@ -87,10 +91,12 @@ func TestPublishProcessPaths(t *testing.T) {
 
 	assertPath(t, pathMap, "/app", "rwc")
 	assertPath(t, pathMap, "/tmp", "rwc")
+	assertPath(t, pathMap, "/local", "rwc")
 	assertPath(t, pathMap, "/home/agent", "rwc")
 	assertPath(t, pathMap, "/private", "rwc")
 	assertPath(t, pathMap, "/dist", "rwc")
 	assertPath(t, pathMap, "/publish", "rx")
+	assertPath(t, pathMap, "/app/node_modules", "rx")
 	assertPath(t, pathMap, "/shared-storage/public/assets", "rwc")
 
 	// Preview-only paths and forbidden paths
@@ -112,6 +118,22 @@ func TestProcessPaths_Dispatches(t *testing.T) {
 	publish := makePathMap(sandbox.ProcessPaths(sandbox.VariantPublish, ""))
 	assertPath(t, publish, "/publish", "rx")
 	assertNoPath(t, publish, "/node_modules")
+}
+
+func TestConnectTCPPorts(t *testing.T) {
+	t.Parallel()
+
+	portSet := make(map[uint16]bool, len(sandbox.ConnectTCPPorts))
+	for _, p := range sandbox.ConnectTCPPorts {
+		portSet[p] = true
+	}
+
+	required := []uint16{80, 443, 53, 3306, 25, 2525}
+	for _, port := range required {
+		if !portSet[port] {
+			t.Errorf("ConnectTCPPorts missing required port %d", port)
+		}
+	}
 }
 
 func TestBuildExecProfile(t *testing.T) {

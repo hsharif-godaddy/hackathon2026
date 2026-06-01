@@ -117,6 +117,10 @@ func (ce *CommandExecutor) Execute(req validation.CommandRequest) (*CommandResul
 		cmd.Env = childEnv
 	}
 
+	// WaitDelay ensures cmd.Wait() returns promptly after the process is killed
+	// even if orphan child processes still hold stdout/stderr pipe FDs open.
+	cmd.WaitDelay = 500 * time.Millisecond
+
 	// Attach a status pipe for wrapper-level failures (only meaningful when sandboxed).
 	var statusRead *os.File
 	if sandboxCmd != nil {
