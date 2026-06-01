@@ -116,17 +116,25 @@ async function loadConfig(): Promise<AppointmentsConfig> {
   }
 }
 
+let _configPromise: Promise<AppointmentsConfig> | null = null;
 let _config: AppointmentsConfig | null = null;
 
 /**
  * Get the appointments configuration.
- * Loads and caches config on first call; returns cached value thereafter.
+ * Caches the loading promise to prevent concurrent callers from triggering
+ * multiple loadConfig() calls before the first resolves.
  */
 export async function getConfig(): Promise<AppointmentsConfig> {
-  if (!_config) {
-    _config = await loadConfig();
+  if (!_configPromise) {
+    _configPromise = loadConfig().then((cfg) => {
+      _config = cfg;
+      return cfg;
+    }).catch((err) => {
+      _configPromise = null;
+      throw err;
+    });
   }
-  return _config;
+  return _configPromise;
 }
 
 /**

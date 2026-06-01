@@ -14,35 +14,32 @@ import type {
 import { PaymentProviderError, PaymentProviderErrorCode } from "./payment-provider";
 import { logger } from "../../lib/logger";
 
+const COMMERCE_STATUS_MAP: Record<string, OrderStatus["status"]> = {
+	paid: "paid",
+	completed: "paid",
+	complete: "paid",
+	pending: "pending",
+	processing: "pending",
+	unpaid: "pending",
+	cancelled: "cancelled",
+	canceled: "cancelled",
+	refunded: "refunded",
+	failed: "failed",
+};
+
 /**
- * Maps GoDaddy Commerce order status to standardized status
+ * Maps GoDaddy Commerce order status to standardized status.
+ * Uses exact match against known statuses to avoid substring false positives
+ * (e.g. "unpaid".includes("paid") === true).
  */
 function mapCommerceStatus(
 	commerceStatus: string,
 ): OrderStatus["status"] {
-	const status = commerceStatus.toLowerCase();
+	const mapped = COMMERCE_STATUS_MAP[commerceStatus.toLowerCase()];
+	if (mapped) return mapped;
 
-	// Map various Commerce statuses to our standard statuses
-	if (status.includes("paid") || status.includes("complete")) {
-		return "paid";
-	}
-	if (status.includes("pending") || status.includes("processing")) {
-		return "pending";
-	}
-	if (status.includes("cancel")) {
-		return "cancelled";
-	}
-	if (status.includes("refund")) {
-		return "refunded";
-	}
-	if (status.includes("fail")) {
-		return "failed";
-	}
-
-	// Default to pending for unknown statuses
-	// Log warning so new statuses ("disputed", "chargeback") are visible
 	logger.warn('commerce.status.unknown', {
-		commerceStatus: status,
+		commerceStatus,
 		message: 'Unknown commerce status, mapping to pending'
 	});
 	return "pending";

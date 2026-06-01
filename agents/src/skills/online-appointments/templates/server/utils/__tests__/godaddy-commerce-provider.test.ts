@@ -367,6 +367,10 @@ describe('GoDaddyCommerceProvider', () => {
 				await testStatusMapping('FAILED', 'failed');
 			});
 
+			it('maps UNPAID to pending (regression: substring "paid" must not match)', async () => {
+				await testStatusMapping('UNPAID', 'pending');
+			});
+
 			it('maps unknown status to pending', async () => {
 				await testStatusMapping('UNKNOWN_STATUS', 'pending');
 			});
