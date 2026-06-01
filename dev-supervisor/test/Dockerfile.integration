@@ -1,5 +1,11 @@
 FROM rust:1.96-alpine AS rust-builder
-RUN apk add --no-cache musl-dev
+# Route linking through cc so /usr/lib and /usr/lib/gcc/... are searched
+# (proc-macro / build-script compiles need libgcc_s, libc, libgcc).
+# Overrides the rust-lld setting in rust/.cargo/config.toml for this
+# Alpine native build only; final binary stays statically linked.
+RUN apk add --no-cache musl-dev gcc
+ENV CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER=cc
+ENV CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=cc
 WORKDIR /build
 COPY rust/ ./rust/
 RUN cd rust && cargo build --release && \

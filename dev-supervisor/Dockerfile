@@ -1,7 +1,25 @@
 # Rust builder stage — builds the airo-workspace PID1 init binary
 FROM rust:1.96-alpine AS rust-builder
 
-RUN apk add --no-cache musl-dev
+# musl-dev: musl C library for the final binary.
+# gcc: provides the system C linker plus libgcc / libgcc_s. Proc-macro
+# crates (e.g. tokio-macros) and build scripts produce intermediate
+# artifacts that must dynamically link to libgcc/libc; the rust-lld
+# default doesn't search /usr/lib, so we route linking through cc/gcc
+# below.
+RUN apk add --no-cache musl-dev gcc
+
+# Override the per-target linker set in rust/.cargo/config.toml for the
+# Alpine native build. cc (= gcc on Alpine) auto-includes /usr/lib and
+# /usr/lib/gcc/... in its search path, so proc-macro / build-script
+# compiles can resolve -lgcc_s / -lc / -lgcc. The cross-compile path in
+# CI is unaffected (glibc host has the libs in standard locations and
+# rust-lld works there). crt-static stays on by default for the musl
+# target, so the final binary is still fully static. Cargo documents
+# CARGO_TARGET_<triple>_LINKER as overriding the config-file setting,
+# which is more explicit than RUSTFLAGS=-C linker=cc would be.
+ENV CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER=cc
+ENV CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=cc
 
 WORKDIR /build
 COPY rust/ rust/

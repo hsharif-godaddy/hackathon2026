@@ -5,7 +5,16 @@ ARG UPSTREAM_VERSION=22
 # =================================================================
 FROM rust:1.96-alpine AS rust-builder
 
-RUN apk add --no-cache musl-dev
+# musl-dev: musl C library for the static binary. gcc: provides libgcc_s
+# plus the system C linker. cc (= gcc on Alpine) auto-includes /usr/lib
+# and /usr/lib/gcc/... in its search path so proc-macro / build-script
+# compiles can resolve -lgcc_s / -lc / -lgcc. Override the per-target
+# linker that rust/.cargo/config.toml sets to rust-lld; the cross-compile
+# path in CI is unaffected. crt-static stays on by default for the musl
+# target, so the final binary is still fully static.
+RUN apk add --no-cache musl-dev gcc
+ENV CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER=cc
+ENV CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=cc
 
 WORKDIR /build
 
