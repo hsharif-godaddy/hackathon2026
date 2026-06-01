@@ -282,6 +282,85 @@ describe('AssetProcessingService - analyzePageAssets return value', () => {
   });
 });
 
+describe('AssetProcessingService - Atlas-provided dimensions and placement', () => {
+  it('uses provided dimensions instead of reading file header', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'asset-dims-'));
+    try {
+      const assetsDir = path.join(dir, '.source-site', 'assets', 'images');
+      await mkdir(assetsDir, { recursive: true });
+      const fakeImagePath = path.join(assetsDir, 'test-hero.jpg');
+      await writeFile(fakeImagePath, Buffer.from('fake-jpg-data'));
+
+      const svc = new AssetProcessingService(dir);
+
+      vi.spyOn(svc as any, 'downloadAsset').mockResolvedValue({
+        success: true,
+        localPath: '.source-site/assets/images/test-hero.jpg',
+      });
+
+      const dimSpy = vi.spyOn(svc as any, 'getImageDimensions');
+
+      const sourcePages = new Map([['https://example.com/hero.jpg', ['https://example.com/']]]);
+      const manifest = await svc.process(
+        [{
+          url: 'https://example.com/hero.jpg',
+          type: 'image',
+          sourceUrl: 'https://example.com/',
+          dimensions: { width: 1920, height: 1080 },
+        }],
+        sourcePages,
+      );
+
+      expect(dimSpy).not.toHaveBeenCalled();
+      const hero = manifest.assets.find(a => a.url === 'https://example.com/hero.jpg');
+      expect(hero?.dimensions).toEqual({ width: 1920, height: 1080 });
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('passes placement through to AssetInfo output', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'asset-placement-'));
+    try {
+      const assetsDir = path.join(dir, '.source-site', 'assets', 'images');
+      await mkdir(assetsDir, { recursive: true });
+      const fakeImagePath = path.join(assetsDir, 'test-logo.png');
+      await writeFile(fakeImagePath, Buffer.from('fake-png-data'));
+
+      const svc = new AssetProcessingService(dir);
+
+      vi.spyOn(svc as any, 'downloadAsset').mockResolvedValue({
+        success: true,
+        localPath: '.source-site/assets/images/test-logo.png',
+      });
+
+      const sourcePages = new Map([['https://example.com/logo.png', ['https://example.com/']]]);
+      const manifest = await svc.process(
+        [{
+          url: 'https://example.com/logo.png',
+          type: 'image',
+          sourceUrl: 'https://example.com/',
+          dimensions: { width: 200, height: 60 },
+          placement: {
+            inHeader: true,
+            inFooter: false,
+            inFirstSection: false,
+            nearH1: false,
+            isFirstInContainer: true,
+          },
+        }],
+        sourcePages,
+      );
+
+      const logo = manifest.assets.find(a => a.url === 'https://example.com/logo.png');
+      expect(logo?.placement?.inHeader).toBe(true);
+      expect(logo?.placement?.isFirstInContainer).toBe(true);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe('AssetProcessingService - process merge', () => {
   it('resolves processAssetsWithConcurrency immediately for empty input', async function emptyConcurrency() {
     const svc = new AssetProcessingService(path.join(os.tmpdir(), 'asset-processing-empty'));

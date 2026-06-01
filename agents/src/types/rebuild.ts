@@ -201,6 +201,22 @@ export interface PageMetadata {
 }
 
 /**
+ * Placement signals for an image on the source page — carried from Atlas's
+ * per-image SSM extraction. Tells the prompt layer where the image sat
+ * relative to page landmarks (header, footer, H1, first section).
+ */
+export interface ImagePlacement {
+  inHeader: boolean;
+  inFooter: boolean;
+  inFirstSection: boolean;
+  nearH1: boolean;
+  isFirstInContainer: boolean;
+  linkedTo?: string;
+  classes?: string[];
+  siblingText?: string;
+}
+
+/**
  * Asset information
  */
 export interface AssetInfo {
@@ -217,6 +233,8 @@ export interface AssetInfo {
   };
   fileSize?: number;
   sourcePages: string[];
+  /** Atlas image placement signals. Absent for non-image assets and legacy scraper. */
+  placement?: ImagePlacement;
 }
 
 /**

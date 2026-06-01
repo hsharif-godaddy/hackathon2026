@@ -239,6 +239,101 @@ describe('AtlasCrawlerAdapter', () => {
       await expect(promise).rejects.toThrow('Atlas API returned invalid submit response');
       await expect(promise).rejects.toMatchObject({ code: 'import_failed' });
     });
+
+    it('attaches image placement signals and dimensions from Atlas images to ExtractedAssets', async () => {
+      const mockResult = createMockCrawlResult({
+        assets: [
+          { url: 'https://example.com/logo.png', type: 'image', referencedBy: ['https://example.com/'] },
+          { url: 'https://example.com/hero.jpg', type: 'image', referencedBy: ['https://example.com/'] },
+        ],
+        images: [
+          {
+            url: 'https://example.com/logo.png',
+            alt: 'Company Logo',
+            width: 200,
+            height: 60,
+            sourceUrl: 'https://example.com/',
+            element: 'img',
+            inHeader: true,
+            inFooter: false,
+            inFirstSection: false,
+            nearH1: false,
+            isFirstInContainer: true,
+            linkedTo: 'https://example.com/',
+            classes: ['site-logo'],
+            siblingText: 'Company Name',
+          },
+          {
+            url: 'https://example.com/hero.jpg',
+            alt: 'Hero Image',
+            width: 1920,
+            height: 1080,
+            sourceUrl: 'https://example.com/',
+            element: 'img',
+            inHeader: false,
+            inFooter: false,
+            inFirstSection: true,
+            nearH1: true,
+            isFirstInContainer: true,
+            classes: ['hero-banner'],
+          },
+        ],
+      });
+
+      fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ jobId: 'job-img', status: 'pending' }) });
+      fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ status: 'completed' }) });
+      fetchMock.mockResolvedValueOnce({ ok: true, json: async () => mockResult });
+
+      const output = await adapter.crawlSite('https://example.com');
+
+      const logo = output.assets.find(a => a.url === 'https://example.com/logo.png');
+      expect(logo?.dimensions).toEqual({ width: 200, height: 60 });
+      expect(logo?.placement).toEqual({
+        inHeader: true,
+        inFooter: false,
+        inFirstSection: false,
+        nearH1: false,
+        isFirstInContainer: true,
+        linkedTo: 'https://example.com/',
+        classes: ['site-logo'],
+        siblingText: 'Company Name',
+      });
+
+      const hero = output.assets.find(a => a.url === 'https://example.com/hero.jpg');
+      expect(hero?.dimensions).toEqual({ width: 1920, height: 1080 });
+      expect(hero?.placement?.inFirstSection).toBe(true);
+      expect(hero?.placement?.nearH1).toBe(true);
+    });
+
+    it('attaches placement signals to non-manifest SSM images', async () => {
+      const mockResult = createMockCrawlResult({
+        assets: [],
+        images: [
+          {
+            url: 'https://example.com/bg.jpg',
+            width: 800,
+            height: 600,
+            sourceUrl: 'https://example.com/',
+            element: 'img',
+            inHeader: false,
+            inFooter: false,
+            inFirstSection: true,
+            nearH1: false,
+            isFirstInContainer: false,
+          },
+        ],
+      });
+
+      fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ jobId: 'job-ssm', status: 'pending' }) });
+      fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ status: 'completed' }) });
+      fetchMock.mockResolvedValueOnce({ ok: true, json: async () => mockResult });
+
+      const output = await adapter.crawlSite('https://example.com');
+
+      const bg = output.assets.find(a => a.url === 'https://example.com/bg.jpg');
+      expect(bg?.dimensions).toEqual({ width: 800, height: 600 });
+      expect(bg?.placement?.inFirstSection).toBe(true);
+    });
   });
 
   describe('pollUntilComplete', () => {

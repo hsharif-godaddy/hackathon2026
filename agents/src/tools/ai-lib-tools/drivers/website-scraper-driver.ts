@@ -137,6 +137,10 @@ export interface ExtractedAsset {
   altText?: string;
   context?: string;
   sourceUrl: string;
+  /** Atlas-measured dimensions. When present, AssetProcessingService skips header-read. */
+  dimensions?: { width: number; height: number };
+  /** Image placement signals from Atlas SSM. */
+  placement?: import('../../../types/rebuild.js').ImagePlacement;
 }
 
 // ============================================================================

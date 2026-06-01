@@ -9,7 +9,16 @@ import { Logger } from '../logging/index.js';
 import { createAgentTelemetryLogger } from '../utils/agent-logger.js';
 import { normalizeAssetPath } from '../utils/asset-paths.js';
 import { getPersistentPublicDir } from '../utils/persistent-assets.js';
-import type { AssetInfo, AssetManifest } from '../types/rebuild.js';
+import type { AssetInfo, AssetManifest, ImagePlacement } from '../types/rebuild.js';
+
+interface AssetRow {
+  url: string;
+  type: 'image' | 'font' | 'icon' | 'other';
+  altText?: string;
+  sourceUrl: string;
+  dimensions?: { width: number; height: number };
+  placement?: ImagePlacement;
+}
 
 const logger = Logger.create({ component: 'asset-processing-service' });
 
@@ -54,7 +63,7 @@ export class AssetProcessingService {
    * @returns Promise resolving to asset manifest
    */
   async process(
-    assets: Array<{ url: string; type: 'image' | 'font' | 'icon' | 'other'; altText?: string; sourceUrl: string }>,
+    assets: AssetRow[],
     sourcePages: Map<string, string[]>,
     options?: { merge?: boolean }
   ): Promise<AssetManifest> {
@@ -77,12 +86,7 @@ export class AssetProcessingService {
         }
       }
 
-      const toProcess: Array<{
-        url: string;
-        type: 'image' | 'font' | 'icon' | 'other';
-        altText?: string;
-        sourceUrl: string;
-      }> = [];
+      const toProcess: AssetRow[] = [];
       const queuedUrl = new Set<string>();
 
       for (const row of assets) {
@@ -91,7 +95,9 @@ export class AssetProcessingService {
         if (hit) {
           byUrl.set(row.url, {
             ...hit,
-            sourcePages: this.combineSourcePages(hit.sourcePages, pagesForUrl)
+            sourcePages: this.combineSourcePages(hit.sourcePages, pagesForUrl),
+            ...(!hit.dimensions && row.dimensions ? { dimensions: row.dimensions } : {}),
+            ...(!hit.placement && row.placement ? { placement: row.placement } : {}),
           });
           continue;
         }
@@ -173,7 +179,7 @@ export class AssetProcessingService {
    * @returns Promise resolving to array of processed assets
    */
   private async processAssetsWithConcurrency(
-    assets: Array<{ url: string; type: 'image' | 'font' | 'icon' | 'other'; altText?: string; sourceUrl: string }>,
+    assets: AssetRow[],
     sourcePages: Map<string, string[]>
   ): Promise<(AssetInfo | null)[]> {
     if (assets.length === 0) {
@@ -230,7 +236,7 @@ export class AssetProcessingService {
    * @returns Promise resolving to asset info or null
    */
   private async processAsset(
-    asset: { url: string; type: 'image' | 'font' | 'icon' | 'other'; altText?: string; sourceUrl: string },
+    asset: AssetRow,
     sourcePages: string[]
   ): Promise<AssetInfo | null> {
     try {
@@ -250,10 +256,14 @@ export class AssetProcessingService {
       };
 
       if (asset.type === 'image') {
-        // Get image dimensions
-        const dimensions = await this.getImageDimensions(downloadResult.localPath);
+        // Prefer Atlas-provided dimensions; fall back to reading file header
+        const dimensions = asset.dimensions ?? await this.getImageDimensions(downloadResult.localPath);
         if (dimensions) {
           assetInfo.dimensions = dimensions;
+        }
+
+        if (asset.placement) {
+          assetInfo.placement = asset.placement;
         }
 
         // Get file size

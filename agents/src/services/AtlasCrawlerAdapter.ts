@@ -14,6 +14,7 @@ import {
 } from '../types/rebuild.js';
 import type {
   FormHint,
+  ImagePlacement,
   NavigationItem,
   SiteContactInfo,
   SiteMetadata,
@@ -515,12 +516,32 @@ export class AtlasCrawlerAdapter {
   }
 
   mapToExtractedAssets(result: AtlasCrawlResult): ExtractedAsset[] {
-    // Build alt-text lookup from result.images (richer SSM extraction has alt
-    // text that ManifestAsset doesn't carry).
-    const altMap = new Map<string, string>();
+    // Build signal lookup from result.images — carries alt text, dimensions,
+    // and placement signals that ManifestAsset doesn't have.
+    const imageSignalMap = new Map<string, {
+      altText?: string;
+      dimensions?: { width: number; height: number };
+      placement: ImagePlacement;
+    }>();
     if (result.images) {
       for (const img of result.images) {
-        if (img.alt && !altMap.has(img.url)) altMap.set(img.url, img.alt);
+        if (imageSignalMap.has(img.url)) continue;
+        const placement: ImagePlacement = {
+          inHeader: img.inHeader,
+          inFooter: img.inFooter,
+          inFirstSection: img.inFirstSection,
+          nearH1: img.nearH1,
+          isFirstInContainer: img.isFirstInContainer,
+          ...(img.linkedTo ? { linkedTo: img.linkedTo } : {}),
+          ...(img.classes && img.classes.length > 0 ? { classes: img.classes } : {}),
+          ...(img.siblingText ? { siblingText: img.siblingText } : {}),
+        };
+        const dimensions = img.width && img.height ? { width: img.width, height: img.height } : undefined;
+        imageSignalMap.set(img.url, {
+          ...(img.alt ? { altText: img.alt } : {}),
+          ...(dimensions ? { dimensions } : {}),
+          placement,
+        });
       }
     }
 
@@ -547,10 +568,17 @@ export class AtlasCrawlerAdapter {
         ? manifestAsset.referencedBy
         : [result.baseUrl];
 
-      const altText = altMap.get(manifestAsset.url);
+      const signals = imageSignalMap.get(manifestAsset.url);
 
       for (const sourceUrl of referrers) {
-        assets.push({ url: manifestAsset.url, type, sourceUrl, ...(altText ? { altText } : {}) });
+        assets.push({
+          url: manifestAsset.url,
+          type,
+          sourceUrl,
+          ...(signals?.altText ? { altText: signals.altText } : {}),
+          ...(signals?.dimensions ? { dimensions: signals.dimensions } : {}),
+          ...(type === 'image' && signals ? { placement: signals.placement } : {}),
+        });
       }
       tracked.add(manifestAsset.url);
     }
@@ -561,11 +589,14 @@ export class AtlasCrawlerAdapter {
       for (const img of result.images) {
         if (tracked.has(img.url)) continue;
         tracked.add(img.url);
+        const signals = imageSignalMap.get(img.url);
         assets.push({
           url: img.url,
           type: 'image',
           sourceUrl: img.sourceUrl,
-          ...(img.alt ? { altText: img.alt } : {}),
+          ...(signals?.altText ? { altText: signals.altText } : {}),
+          ...(signals?.dimensions ? { dimensions: signals.dimensions } : {}),
+          ...(signals ? { placement: signals.placement } : {}),
         });
       }
     }
