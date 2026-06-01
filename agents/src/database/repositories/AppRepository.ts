@@ -1,4 +1,3 @@
-import { existsSync, rmSync } from 'fs';
 import path from 'path';
 import { getDatabase } from '../connection.js';
 import { GitUtils } from '../../utils/git.js';
@@ -6,7 +5,6 @@ import type { App, UpdateAppRequest } from '../schema.js';
 import { createForWorkspace } from '../../workspace/index.js';
 import { Logger } from '../../logging/index.js';
 import { getErrorMessage } from '../../utils/error.js';
-import { appCleanupEvents } from '../../logging/events/index.js';
 
 /**
  * Parameters for registering or updating an app
@@ -603,93 +601,23 @@ export class AppRepository {
   }
 
   /**
-   * Delete an app and its directory
+   * Delete an app row.
+   *
+   * Container teardown is owned by the control plane (mhp-core in production,
+   * local-control-plane in dev) — the agents service only owns its own DB row.
+   * Local dev currently leaks the host workspace directory at
+   * /tmp/airo-app-builder/<id>; that's the control plane's job to clean up.
    */
   async delete(id: string): Promise<boolean> {
-    // Ensure this repository is initialized
     await this.initialize();
 
-    // Get the app first to retrieve its path
-    const app = this.findById(id);
-    if (!app) return false;
-
-    // Server stopping is now handled by deployment adapters
-
-    // Remove deployment artifacts (containers, images, etc.)
-    if (this.deploymentAdapter) {
-      try {
-        await this.deploymentAdapter.removeApp(id);
-        appCleanupEvents.directorySuccess(this.logger, {
-          appId: id,
-          operation: 'docker',
-          itemsCleaned: 1
-        });
-      } catch (error) {
-        this.logger.warn('app.cleanup.docker.failed', {
-          appId: id,
-          error: getErrorMessage(error)
-        });
-        // Don't fail the delete operation if artifact cleanup fails
-      }
-    }
+    if (!this.findById(id)) return false;
 
     const stmt = this.db.prepare('DELETE FROM apps WHERE id = ?');
     const result = stmt.run(id);
 
-    if (result.changes > 0) {
-      // Try to remove the app directory
-      try {
-        rmSync(app.path, { recursive: true, force: true });
-        appCleanupEvents.directorySuccess(this.logger, {
-          appId: id,
-          operation: 'directory',
-          itemsCleaned: 1
-        });
-      } catch (error) {
-        this.logger.warn('app.cleanup.directory.failed', {
-          appId: id,
-          path: app.path,
-          error: getErrorMessage(error)
-        });
-        // Don't fail the operation if directory cleanup fails
-      }
-    }
-
     return result.changes > 0;
   }
-
-
-
-  /**
-   * Detect if app is using v3 template by checking for specific files
-   */
-  private isV3Template(appPath: string): boolean {
-    const v3Indicators = [
-      path.join(appPath, 'src', 'frontend'),
-      path.join(appPath, 'src', 'backend'),
-      path.join(appPath, 'vite.config.ts'),
-    ];
-
-    return v3Indicators.some(indicator => existsSync(indicator));
-  }
-
-  /**
-   * Check if an app is using V3 template by app ID
-   */
-  private isV3TemplateById(appId: string): boolean {
-    const app = this.findById(appId);
-    if (!app) {
-      return false;
-    }
-    return this.isV3Template(app.path);
-  }
-
-
-
-  /**
-   * Get running development servers
-   */
-
 
 
 
@@ -731,7 +659,7 @@ export class AppRepository {
 
         const result = await workspace.tasks.runCommandSync({
           command: 'npm run dev',
-          workingDir: app.path,
+          workingDir: '/app',
           timeoutSeconds: 30,
         });
 

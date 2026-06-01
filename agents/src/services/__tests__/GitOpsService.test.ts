@@ -33,8 +33,7 @@ vi.mock('../../utils/dev-supervisor-client-factory.js', () => ({
 }));
 
 vi.mock('../../server/middleware/git-import-validation.js', () => ({
-  isSupportedProjectOnHost: vi.fn(),
-  matchesBuildToolOnHost: vi.fn(),
+  isSupportedProjectInContainer: vi.fn(),
   SUPPORTED_BUILD_TOOLS: [{ name: 'vite' }, { name: 'nodejs' }],
 }));
 
@@ -65,7 +64,12 @@ vi.mock('../ProjectSourceDetectionService.js', () => ({
 }));
 
 vi.mock('../../workspace/index.js', () => ({
-  createForWorkspace: vi.fn(() => ({ tasks: {} })),
+  createForWorkspace: vi.fn(() => ({
+    tasks: {},
+    files: {
+      view: vi.fn().mockResolvedValue({ content: '{}' }),
+    },
+  })),
 }));
 
 const mockLogger = vi.hoisted(() => ({
@@ -85,7 +89,7 @@ import { AppRepository } from '../../database/repositories/AppRepository.js';
 import { ImportJobRepository } from '../../database/repositories/ImportJobRepository.js';
 import { GitTool } from '../../tools/git-tool.js';
 import { DevSupervisorClientFactory } from '../../utils/dev-supervisor-client-factory.js';
-import { isSupportedProjectOnHost, matchesBuildToolOnHost } from '../../server/middleware/git-import-validation.js';
+import { isSupportedProjectInContainer } from '../../server/middleware/git-import-validation.js';
 import { appRestartService } from '../AppRestartService.js';
 import { projectSourceDetectionService } from '../ProjectSourceDetectionService.js';
 import { createForWorkspace } from '../../workspace/index.js';
@@ -159,12 +163,16 @@ describe('GitOpsService', () => {
       status: ImportJobStatus.PENDING,
     });
 
-    // Default: project is supported (matchesBuildToolOnHost returns true for the first tool)
-    vi.mocked(isSupportedProjectOnHost).mockReturnValue(true);
-    vi.mocked(matchesBuildToolOnHost).mockReturnValue(true);
+    // Default: project is supported (in-container helper returns the first tool)
+    vi.mocked(isSupportedProjectInContainer).mockResolvedValue({ supported: true, matchedTool: 'vite' });
 
-    // Default: workspace is available
-    vi.mocked(createForWorkspace).mockReturnValue({ tasks: {} } as any);
+    // Default: workspace is available with stubbed package.json read
+    vi.mocked(createForWorkspace).mockReturnValue({
+      tasks: {},
+      files: {
+        view: vi.fn().mockResolvedValue({ content: '{}' }),
+      },
+    } as any);
 
     service = new GitOpsService();
   });
@@ -499,7 +507,7 @@ describe('GitOpsService', () => {
     });
 
     it('should rollback and fail when project is unsupported', async () => {
-      vi.mocked(matchesBuildToolOnHost).mockReturnValue(false);
+      vi.mocked(isSupportedProjectInContainer).mockResolvedValue({ supported: false });
 
       // Setup reset for rollback
       mockGitTool.executeGitOperation
@@ -529,6 +537,54 @@ describe('GitOpsService', () => {
 
       // Verify restart was NOT called
       expect(appRestartService.performFullRestartCycle).not.toHaveBeenCalled();
+    });
+
+    // Locks in the transport-vs-not-found distinction added in PR #4345
+    // review. Transient supervisor errors on the package.json read must NOT
+    // be misclassified as "unsupported project" + auto-rollback once a tool
+    // with non-empty packageNames is reintroduced.
+    it('should fail the job (no rollback) when package.json read errors with non-not-found', async () => {
+      const transportErr = new Error('supervisor unreachable: connect ECONNREFUSED');
+      vi.mocked(createForWorkspace).mockReturnValue({
+        tasks: {},
+        files: {
+          view: vi.fn().mockRejectedValue(transportErr),
+        },
+      } as any);
+
+      mockGitTool.executeGitOperation
+        .mockResolvedValueOnce({ success: true, output: 'Pull successful' }); // pull only
+
+      await service.startPull({
+        appId: testAppId,
+        token: 'ghp_test_token',
+        repoUrl: 'https://github.com/user/repo.git',
+      });
+
+      await vi.runAllTimersAsync();
+
+      // Job marked failed via the outer catch (transport error message),
+      // NOT via the unsupported-project branch.
+      expect(mockImportJobRepo.markFailed).toHaveBeenCalledWith(
+        testJobId,
+        expect.stringContaining('supervisor unreachable'),
+        'pulling',
+      );
+      expect(mockImportJobRepo.markFailed).not.toHaveBeenCalledWith(
+        testJobId,
+        expect.stringContaining('Unsupported project'),
+        expect.anything(),
+      );
+
+      // Critically: no rollback was triggered — code that worked pre-pull
+      // is left untouched and the user gets a transient-error message they
+      // can retry, instead of a confusing "Unsupported project" rollback.
+      const gitCalls = mockGitTool.executeGitOperation.mock.calls;
+      const resetCall = gitCalls.find((call) => call[1].operation === 'reset');
+      expect(resetCall).toBeUndefined();
+
+      // isSupportedProjectInContainer should never have been reached.
+      expect(isSupportedProjectInContainer).not.toHaveBeenCalled();
     });
 
     it('should log metrics with correct payload after successful pull', async () => {

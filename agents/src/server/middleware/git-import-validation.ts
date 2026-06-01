@@ -27,8 +27,6 @@
  */
 
 import { Request, Response, NextFunction } from 'express';
-import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { Logger, log } from '../../logging/index.js';
 import { ValidationErrorKey, type ValidationError } from '../../types/import.js';
 import type { WorkspaceTasks } from '../../workspace/tasks.js';
@@ -479,43 +477,6 @@ export function hasDependency(packageJson: PackageJsonDeps, packageNames: readon
   return packageNames.some(pkg =>
     packageJson.dependencies?.[pkg] || packageJson.devDependencies?.[pkg]
   );
-}
-
-/**
- * Checks if any config files exist on the host filesystem.
- */
-export function hasConfigFileOnHost(appPath: string, configFiles: readonly string[]): boolean {
-  return configFiles.some(configFile => existsSync(join(appPath, configFile)));
-}
-
-/**
- * Checks if a project matches a build tool on the host filesystem.
- */
-export function matchesBuildToolOnHost(appPath: string, buildTool: BuildToolConfig): boolean {
-  if (buildTool.configFiles.length > 0 && hasConfigFileOnHost(appPath, buildTool.configFiles)) {
-    return true;
-  }
-
-  const packageJsonPath = join(appPath, 'package.json');
-  if (existsSync(packageJsonPath)) {
-    try {
-      const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
-      return hasDependency(packageJson, buildTool.packageNames);
-    } catch {
-      return false;
-    }
-  }
-  return false;
-}
-
-/**
- * Checks if a project matches any supported build tool on the host filesystem.
- */
-export function isSupportedProjectOnHost(
-  appPath: string,
-  supportedTools: readonly BuildToolConfig[] = SUPPORTED_BUILD_TOOLS
-): boolean {
-  return supportedTools.some(tool => matchesBuildToolOnHost(appPath, tool));
 }
 
 /**

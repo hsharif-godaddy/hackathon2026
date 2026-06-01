@@ -10,8 +10,9 @@ import { ImportJobRepository } from '../database/repositories/ImportJobRepositor
 import { ImportJobStatus, type ImportJob } from '../types/import.js';
 import { GitTool } from '../tools/git-tool.js';
 import { DevSupervisorClientFactory } from '../utils/dev-supervisor-client-factory.js';
+import { isDevSupervisorNotFound } from './DevSupervisorClient.js';
 import { createForWorkspace } from '../workspace/index.js';
-import { isSupportedProjectOnHost, matchesBuildToolOnHost, SUPPORTED_BUILD_TOOLS } from '../server/middleware/git-import-validation.js';
+import { isSupportedProjectInContainer, SUPPORTED_BUILD_TOOLS, type PackageJsonDeps } from '../server/middleware/git-import-validation.js';
 import { appRestartService, type BuildToolType } from './AppRestartService.js';
 import type { WorkspaceTasks } from '../workspace/tasks.js';
 import { modifyViteConfig } from './ViteConfigModifier.js';
@@ -475,9 +476,34 @@ export class GitOpsService {
         return;
       }
 
-      // Validate pulled code uses a supported build tool and detect which one
+      // Validate pulled code uses a supported build tool and detect which one.
+      // Reads happen inside the preview container via dev-supervisor — the host
+      // path is no longer agent-readable.
       const supportedToolNames = SUPPORTED_BUILD_TOOLS.map(t => t.name).join(', ');
-      const matchedTool = SUPPORTED_BUILD_TOOLS.find(tool => matchesBuildToolOnHost(appPath, tool));
+
+      // Only swallow a legitimate "package.json missing" 404 — let transport
+      // and parse failures propagate so a transient supervisor blip doesn't
+      // get misclassified as "unsupported project" and trigger an automatic
+      // rollback the user can't tell apart from a real schema problem.
+      let packageJson: PackageJsonDeps = {};
+      try {
+        const pkgView = await workspace.files.view({ path: 'package.json' });
+        packageJson = JSON.parse(pkgView.content);
+      } catch (err) {
+        if (!isDevSupervisorNotFound(err)) {
+          throw err;
+        }
+        logger.info('git-ops.pull.package-json.absent', { appId, jobId });
+      }
+
+      const buildToolCheck = await isSupportedProjectInContainer(
+        workspace.tasks,
+        '/app',
+        packageJson
+      );
+      const matchedTool = buildToolCheck.supported
+        ? SUPPORTED_BUILD_TOOLS.find(t => t.name === buildToolCheck.matchedTool)
+        : undefined;
 
       if (!matchedTool) {
         logger.error('git-ops.pull.unsupported-project', { appId, jobId, supportedTools: supportedToolNames });

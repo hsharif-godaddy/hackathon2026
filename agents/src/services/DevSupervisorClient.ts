@@ -26,6 +26,14 @@ export class DevSupervisorError extends Error {
   }
 }
 
+/**
+ * True when `err` is a dev-supervisor 404 (typed `not_found`).
+ * Use to swallow "missing file/directory" errors without string-matching.
+ */
+export function isDevSupervisorNotFound(err: unknown): boolean {
+  return err instanceof DevSupervisorError && err.code === 'not_found';
+}
+
 export interface ExecOptions {
   /** The command to execute */
   command: string;

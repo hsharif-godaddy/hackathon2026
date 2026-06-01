@@ -7,9 +7,6 @@ import {
   validateGitUrl,
   validateToken,
   hasDependency,
-  hasConfigFileOnHost,
-  matchesBuildToolOnHost,
-  isSupportedProjectOnHost,
   hasConfigFileInContainer,
   matchesBuildToolInContainer,
   isSupportedProjectInContainer,
@@ -326,55 +323,6 @@ describe('hasDependency', () => {
       const packageJson: PackageJsonDeps = {};
       expect(hasDependency(packageJson, NODEJS_BUILD_TOOL.packageNames)).toBe(true);
     });
-  });
-});
-
-// Mock fs for host filesystem tests
-import { existsSync, readFileSync } from 'node:fs';
-
-vi.mock('node:fs', async () => {
-  const actual = await vi.importActual('node:fs');
-  return {
-    ...actual,
-    existsSync: vi.fn(),
-    readFileSync: vi.fn(),
-  };
-});
-
-describe('isSupportedProjectOnHost', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  it('should return true when project has valid package.json', () => {
-    vi.mocked(existsSync).mockImplementation((path: any) => {
-      return path.toString().endsWith('package.json');
-    });
-    vi.mocked(readFileSync).mockReturnValue(JSON.stringify({
-      dependencies: { anything: '^1.0.0' },
-    }));
-
-    expect(isSupportedProjectOnHost('/app/project')).toBe(true);
-  });
-
-  it('should return false when package.json does not exist', () => {
-    vi.mocked(existsSync).mockReturnValue(false);
-
-    expect(isSupportedProjectOnHost('/app/project')).toBe(false);
-  });
-
-  it('should work with custom build tools array', () => {
-    const customTool: BuildToolConfig = {
-      name: 'Custom',
-      configFiles: ['custom.config.js'],
-      packageNames: ['custom-bundler'],
-    };
-
-    vi.mocked(existsSync).mockImplementation((path: any) => {
-      return path.toString().endsWith('custom.config.js');
-    });
-
-    expect(isSupportedProjectOnHost('/app/project', [customTool])).toBe(true);
   });
 });
 

@@ -176,7 +176,9 @@ describe('AppContextManager publish state', () => {
       expect(result).toBeNull();
     });
 
-    it('should return null when JSON.parse fails', async () => {
+    it('propagates non-not-found errors instead of silently swallowing them', async () => {
+      // Parse failures and supervisor outages must not be hidden behind a
+      // silent null — only DevSupervisorError(not_found) is "no info."
       mockView.mockResolvedValue({
         path: 'package.json',
         content: 'not valid json {{{',
@@ -187,9 +189,15 @@ describe('AppContextManager publish state', () => {
       });
 
       const context = { metadata: { appId: 'app-123' } } as any;
-      const result = await (manager as any).getPackageInfo(context);
+      await expect((manager as any).getPackageInfo(context)).rejects.toThrow();
+    });
 
-      expect(result).toBeNull();
+    it('propagates supervisor transport failures', async () => {
+      mockView.mockRejectedValue(new Error('supervisor unreachable'));
+
+      const context = { metadata: { appId: 'app-123' } } as any;
+      await expect((manager as any).getPackageInfo(context))
+        .rejects.toThrow('supervisor unreachable');
     });
   });
 });

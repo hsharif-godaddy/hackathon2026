@@ -52,7 +52,7 @@ func (t *TemplateSetup) GetBasePath(appID string) string {
 }
 
 // Provision creates the full app workspace:
-// directories, template copy, git init, SSL certs, symlinks, config.json.
+// directories, template copy, git init, SSL certs, config.json.
 func (t *TemplateSetup) Provision(appID string, previewPort, publishPort, supervisorPort int, dbCreds *DBCredentials) error {
 	base := t.GetBasePath(appID)
 
@@ -127,7 +127,10 @@ func (t *TemplateSetup) copyTemplate(destPath string) error {
 }
 
 // initGitWithTemplate initializes git in preview/, commits template files,
-// moves .git to git-repo/, and creates a symlink preview/.git → ../git-repo/.git.
+// then moves .git to git-repo/. Inside the preview container, git-repo/.git
+// is bind-mounted directly at /app/.git (see docker/compose.go), so no host
+// symlink in preview/ is required — every consumer of git state goes through
+// dev-supervisor against the in-container /app workdir.
 func (t *TemplateSetup) initGitWithTemplate(appID, previewPath, gitRepoPath string) error {
 	// Initialize git in preview workspace
 	cmd := exec.Command("git", "init", "--initial-branch=main")
@@ -176,7 +179,8 @@ func (t *TemplateSetup) initGitWithTemplate(appID, previewPath, gitRepoPath stri
 		return fmt.Errorf("git commit: %w", err)
 	}
 
-	// Move .git from preview to git-repo
+	// Move .git from preview/ to git-repo/. The container bind-mounts
+	// git-repo/.git at /app/.git, so no preview/.git symlink is needed.
 	previewGit := filepath.Join(previewPath, ".git")
 	gitRepoGit := filepath.Join(gitRepoPath, ".git")
 
@@ -188,13 +192,7 @@ func (t *TemplateSetup) initGitWithTemplate(appID, previewPath, gitRepoPath stri
 			return fmt.Errorf("move .git to git-repo: %w", err)
 		}
 
-		// Create symlink: preview/.git → ../git-repo/.git
-		if err := os.Symlink("../git-repo/.git", previewGit); err != nil {
-			return fmt.Errorf("create git symlink: %w", err)
-		}
-
-		slog.Info("setup.git.linked", "app_id", appID,
-			"link", previewGit, "target", "../git-repo/.git")
+		slog.Info("setup.git.moved", "app_id", appID, "from", previewGit, "to", gitRepoGit)
 	}
 
 	return nil

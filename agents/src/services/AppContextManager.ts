@@ -1,7 +1,3 @@
-import { existsSync } from 'fs';
-import { resolve, join } from 'path';
-import { execFile } from 'child_process';
-import { promisify } from 'util';
 import type { AgentExecutionContext } from '../base/agent.interface.js';
 import { DirectoryListingTool } from '../tools/directory-listing.js';
 import { appPlanTool, type ColorPalette, type FontTheme } from '../tools/app-plan-tool.js';
@@ -14,8 +10,8 @@ import { getKvMemoryStore } from '../memory/adapters/index.js';
 import type { KvMemoryStore } from '../memory/interfaces/index.js';
 import { customerIdFromContext, workspaceScopeFromAppId } from '../memory/interfaces/scope.js';
 import { createForWorkspace } from '../workspace/index.js';
-
-const execFileAsync = promisify(execFile);
+import { buildShellCommand } from '../utils/shell-utils.js';
+import { isDevSupervisorNotFound } from './DevSupervisorClient.js';
 
 /**
  * Result of app context generation, split into stable and dynamic parts for cache efficiency
@@ -76,7 +72,7 @@ export class AppContextManager {
         this.getDesignSystemInfo(appId, customerId),
         this.getSecretsInfo(appId),
         this.getMediaSlotsInfo(appId),
-        this.getGitStatusInfo(appPath),
+        this.getGitStatusInfo(appId),
         this.getPublishStateInfo(appId),
       ]);
 
@@ -152,46 +148,49 @@ export class AppContextManager {
 
     appContextEvents.packageBegin(logger, { appId });
 
+    const workspace = createForWorkspace(appId, 'preview');
+    if (!workspace) return null;
+
+    let packageJson: Record<string, unknown>;
     try {
-      const workspace = createForWorkspace(appId, 'preview');
-      if (!workspace) {
-        appContextEvents.packageFailure(logger, new Error('workspace unavailable'), { appId, packageJsonFound: false });
+      const viewResult = await workspace.files.view({ path: 'package.json', limit: 10000 });
+      packageJson = JSON.parse(viewResult.content);
+    } catch (error) {
+      // No package.json yet (e.g. fresh template) is a legitimate "no info"
+      // signal — return null. Anything else (transport, parse error)
+      // propagates so the outer context-generation path fails loudly.
+      if (isDevSupervisorNotFound(error)) {
+        appContextEvents.packageFailure(logger, error as Error, { appId, packageJsonFound: false });
         return null;
       }
-      const viewResult = await workspace.files.view({ path: 'package.json', limit: 10000 });
-      const packageJson = JSON.parse(viewResult.content);
-
-      // Check if dependencies are installed by comparing lock file modification time
-      const dependenciesInstalled = await this.checkDependenciesInstalled(context);
-
-      const result = {
-        name: packageJson.name,
-        version: packageJson.version,
-        description: packageJson.description,
-        dependencies: Object.keys(packageJson.dependencies || {}),
-        devDependencies: Object.keys(packageJson.devDependencies || {}),
-        scripts: Object.keys(packageJson.scripts || {}),
-        dependenciesInstalled
-      };
-
-      appContextEvents.packageSuccess(logger, {
-        appId,
-        packageJsonFound: true,
-        packageName: result.name,
-        packageVersion: result.version,
-        dependencyCount: result.dependencies.length,
-        devDependencyCount: result.devDependencies.length,
-        scriptCount: result.scripts.length,
-        dependenciesInstalled: result.dependenciesInstalled,
-        installationCheckMethod: 'timestamps'
-      });
-
-      return result;
-    } catch (error) {
-      const err = error instanceof Error ? error : new Error(String(error));
-      appContextEvents.packageFailure(logger, err, { appId, packageJsonFound: false });
-      return null;
+      throw error;
     }
+
+    const dependenciesInstalled = await this.checkDependenciesInstalled(context);
+
+    const result = {
+      name: packageJson.name as string | undefined,
+      version: packageJson.version as string | undefined,
+      description: packageJson.description as string | undefined,
+      dependencies: Object.keys((packageJson.dependencies as Record<string, string> | undefined) || {}),
+      devDependencies: Object.keys((packageJson.devDependencies as Record<string, string> | undefined) || {}),
+      scripts: Object.keys((packageJson.scripts as Record<string, string> | undefined) || {}),
+      dependenciesInstalled,
+    };
+
+    appContextEvents.packageSuccess(logger, {
+      appId,
+      packageJsonFound: true,
+      packageName: result.name,
+      packageVersion: result.version,
+      dependencyCount: result.dependencies.length,
+      devDependencyCount: result.devDependencies.length,
+      scriptCount: result.scripts.length,
+      dependenciesInstalled: result.dependenciesInstalled,
+      installationCheckMethod: 'timestamps'
+    });
+
+    return result;
   }
 
   /**
@@ -314,26 +313,18 @@ export class AppContextManager {
    * @returns Secrets information or null
    */
   private async getSecretsInfo(appId: string): Promise<any> {
-    try {
-      const workspace = createForWorkspace(appId, 'preview');
-      if (!workspace) {
-        return null;
-      }
+    const workspace = createForWorkspace(appId, 'preview');
+    if (!workspace) return null;
 
-      const secretsTool = new SecretsManagementTool(workspace.tasks);
-      const result = await secretsTool.listSecretNames(appId);
+    // Supervisor failures propagate; "no secrets configured yet" is encoded
+    // in the result.success / empty list — not via thrown errors.
+    const secretsTool = new SecretsManagementTool(workspace.tasks);
+    const result = await secretsTool.listSecretNames(appId);
 
-      if (result.success && result.secretNames.length > 0) {
-        return result.secretNames;
-      }
-      return null;
-    } catch (error) {
-      logger.warn('app.context.secrets.failure', {
-        appId,
-        error: error instanceof Error ? error.message : String(error)
-      });
-      return null;
+    if (result.success && result.secretNames.length > 0) {
+      return result.secretNames;
     }
+    return null;
   }
 
   /**
@@ -496,69 +487,69 @@ Note: This is the current project context including dependencies and design syst
 
 
   /**
-   * Get git status information for the app workspace
-   * @param appPath - The app workspace path
-   * @returns Git status info or null if no git repo
+   * Get git status information for the app workspace via dev-supervisor.
+   *
+   * Returns null only for legitimate "nothing to report" cases (no workspace
+   * bound yet, or all git commands exit non-zero — e.g. no commits in a fresh
+   * repo). Transport / supervisor failures propagate to the caller — if
+   * dev-supervisor is unreachable the agent context cannot be assembled, and
+   * silently dropping just the git panel would hide the real problem.
    */
-  private async getGitStatusInfo(appPath: string): Promise<{
+  private async getGitStatusInfo(appId: string): Promise<{
     branch: string | null;
     uncommittedCount: number | null;
     lastCommitHash: string | null;
     lastCommitMessage: string | null;
   } | null> {
-    try {
-      const gitRepoPath = resolve(join(appPath, '..', 'git-repo'));
+    const workspace = createForWorkspace(appId, 'preview');
+    if (!workspace) return null;
 
-      if (!existsSync(gitRepoPath)) {
-        return null;
-      }
+    // workingDir: '/app' is explicit (matches GitTool / SecretsManagementTool).
+    // Non-zero exit → null (e.g. no commits yet); rejection (supervisor down)
+    // propagates so the outer context-generation path fails loudly.
+    const runGit = (args: string[]) =>
+      workspace.tasks
+        .runCommandSync({
+          command: buildShellCommand(['git', ...args]),
+          workingDir: '/app',
+          timeoutSeconds: 5,
+        })
+        .then((r) => (r.exitCode === 0 ? r : null));
 
-      const gitOpts = { env: { ...process.env, GIT_DIR: gitRepoPath, GIT_WORK_TREE: appPath }, timeout: 5000 };
+    const [branchResult, statusResult, logResult] = await Promise.all([
+      runGit(['rev-parse', '--abbrev-ref', 'HEAD']),
+      runGit(['status', '--porcelain']),
+      runGit(['log', '-1', '--format=%h %s']),
+    ]);
 
-      // Run all git commands in parallel
-      const [branchResult, statusResult, logResult] = await Promise.all([
-        execFileAsync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], gitOpts).catch(() => null),
-        execFileAsync('git', ['status', '--porcelain'], gitOpts).catch(() => null),
-        execFileAsync('git', ['log', '-1', '--format=%h %s'], gitOpts).catch(() => null),
-      ]);
-
-      // If all git commands failed, git is unavailable — return null to omit the section
-      if (!branchResult && !statusResult && !logResult) {
-        return null;
-      }
-
-      let branch: string | null = branchResult?.stdout.trim() || null;
-      if (branch === 'HEAD') {
-        try {
-          const { stdout: hashOut } = await execFileAsync('git', ['rev-parse', '--short', 'HEAD'], gitOpts);
-          branch = `detached:${hashOut.trim()}`;
-        } catch { branch = null; }
-      }
-
-      const uncommittedCount = statusResult
-        ? (statusResult.stdout.trim() ? statusResult.stdout.trim().split('\n').length : 0)
-        : null;
-
-      let lastCommitHash: string | null = null;
-      let lastCommitMessage: string | null = null;
-      const logTrimmed = logResult?.stdout.trim() || '';
-      if (logTrimmed) {
-        const spaceIdx = logTrimmed.indexOf(' ');
-        if (spaceIdx === -1) {
-          lastCommitHash = logTrimmed;
-        } else {
-          lastCommitHash = logTrimmed.substring(0, spaceIdx);
-          lastCommitMessage = logTrimmed.substring(spaceIdx + 1);
-        }
-      }
-
-      return { branch, uncommittedCount, lastCommitHash, lastCommitMessage };
-    } catch (error) {
-      logger.warn('app.context.gitStatus.failure', {
-        error: error instanceof Error ? error.message : String(error)
-      });
+    if (!branchResult && !statusResult && !logResult) {
       return null;
     }
+
+    const uncommittedCount = statusResult
+      ? (statusResult.stdout.trim() ? statusResult.stdout.trim().split('\n').length : 0)
+      : null;
+
+    let lastCommitHash: string | null = null;
+    let lastCommitMessage: string | null = null;
+    const logTrimmed = logResult?.stdout.trim() || '';
+    if (logTrimmed) {
+      const spaceIdx = logTrimmed.indexOf(' ');
+      if (spaceIdx === -1) {
+        lastCommitHash = logTrimmed;
+      } else {
+        lastCommitHash = logTrimmed.substring(0, spaceIdx);
+        lastCommitMessage = logTrimmed.substring(spaceIdx + 1);
+      }
+    }
+
+    // Detached HEAD: reuse the short hash from `git log` instead of a 4th call.
+    const rawBranch = branchResult?.stdout.trim() || null;
+    const branch = rawBranch === 'HEAD'
+      ? (lastCommitHash ? `detached:${lastCommitHash}` : null)
+      : rawBranch;
+
+    return { branch, uncommittedCount, lastCommitHash, lastCommitMessage };
   }
 
   /**

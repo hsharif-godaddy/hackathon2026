@@ -176,11 +176,6 @@ export class ProjectImportService {
         throw new Error(`App not found: ${appId}`);
       }
 
-      // Validate app path exists (shared mount point)
-      if (!app.path || !existsSync(app.path)) {
-        throw new Error(`App path not found or not accessible: ${app.path}`);
-      }
-
       // Create workspace for container operations
       const workspace = createForWorkspace(appId, 'preview');
       if (!workspace) {

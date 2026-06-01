@@ -11,7 +11,6 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { AppRepository } from '../AppRepository.js';
-import { existsSync, rmSync } from 'fs';
 import path from 'path';
 import type { App, UpdateAppRequest } from '../../schema.js';
 
@@ -132,10 +131,6 @@ describe('AppRepository', () => {
     vi.mocked(getErrorMessage).mockImplementation((error: any) =>
       error instanceof Error ? error.message : String(error)
     );
-
-    // Mock filesystem functions with default success behavior
-    vi.mocked(existsSync).mockReturnValue(true);
-    vi.mocked(rmSync).mockReturnValue(undefined);
 
     // Mock path functions
     vi.mocked(path.join).mockImplementation((...args) => args.join('/'));
@@ -850,7 +845,7 @@ describe('AppRepository', () => {
         expect(result).toBe(true);
         expect(mockRunCommandSync).toHaveBeenCalledWith(expect.objectContaining({
           command: 'npm run dev',
-          workingDir: '/tmp/apps/test-app-123',
+          workingDir: '/app',
           timeoutSeconds: 30,
         }));
       });
@@ -952,10 +947,7 @@ describe('AppRepository', () => {
       const result = await appRepository.delete(mockAppId);
 
       expect(result).toBe(true);
-      expect(vi.mocked(rmSync)).toHaveBeenCalledWith('/tmp/apps/test-app-123', {
-        recursive: true,
-        force: true,
-      });
+      expect(mockDeleteStatement.run).toHaveBeenCalledWith(mockAppId);
     });
 
     it('should return false when app does not exist', async () => {
@@ -967,47 +959,6 @@ describe('AppRepository', () => {
       const result = await appRepository.delete('nonexistent-app');
 
       expect(result).toBe(false);
-    });
-
-    it('should handle filesystem cleanup errors gracefully', async () => {
-      vi.mocked(rmSync).mockImplementation(() => {
-        throw new Error('Permission denied');
-      });
-
-      const mockGetStatement = {
-        get: vi.fn().mockReturnValue({
-          id: mockAppId,
-          name: 'Test App',
-          path: '/tmp/apps/test-app-123',
-          port: 3000,
-          socket_path: null,
-          publish_supervisor_path: null,
-          preview_url: null,
-          initial_prompt: 'Test',
-          template_version: null,
-          subscription_id: null,
-          customer_id: null,
-          status: 'created',
-          initial_build_complete: 0,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        }),
-      };
-
-      const mockDeleteStatement = {
-        run: vi.fn().mockReturnValue({ changes: 1 }),
-      };
-
-      mockDb.prepare.mockImplementation((sql: string) => {
-        if (sql.includes('DELETE')) {
-          return mockDeleteStatement;
-        }
-        return mockGetStatement;
-      });
-
-      const result = await appRepository.delete(mockAppId);
-
-      expect(result).toBe(true); // Should still succeed despite cleanup error
     });
   });
 

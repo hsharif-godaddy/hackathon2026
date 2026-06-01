@@ -1,42 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { AppContextManager } from '../AppContextManager.js';
 
-// Mock execFileAsync
-const mockExecFile = vi.fn();
-vi.mock('child_process', () => ({
-  execFile: (...args: any[]) => mockExecFile(...args)
+vi.mock('../../workspace/index.js', () => ({
+  createForWorkspace: vi.fn()
 }));
 
-vi.mock('util', async (importOriginal) => {
-  const actual = await importOriginal() as any;
-  return {
-    ...actual,
-    promisify: (fn: any) => (...args: any[]) => {
-      // Return a promise wrapper around our mock
-      return new Promise((resolve, reject) => {
-        fn(...args, (err: any, result: any) => {
-          if (err) reject(err);
-          else resolve(result);
-        });
-      });
-    }
-  };
-});
-
-// Mock fs.existsSync — vi.hoisted() ensures the variable is available when the
-// hoisted vi.mock() factory runs, before any module-level imports execute.
-const { mockExistsSync } = vi.hoisted(() => ({
-  mockExistsSync: vi.fn().mockReturnValue(false),
-}));
-vi.mock('fs', async (importOriginal) => {
-  const actual = await importOriginal() as any;
-  return {
-    ...actual,
-    existsSync: (...args: any[]) => mockExistsSync(...args),
-  };
-});
-
-// Mock dependencies to prevent side effects
 vi.mock('../../tools/directory-listing.js', () => ({
   DirectoryListingTool: vi.fn().mockImplementation(() => ({
     listDirectory: vi.fn().mockResolvedValue('')
@@ -79,10 +46,6 @@ vi.mock('../../tools/secrets-management-tool.js', () => ({
   SecretsManagementTool: vi.fn()
 }));
 
-vi.mock('../../utils/dev-supervisor-client-factory.js', () => ({
-  DevSupervisorClientFactory: { createForApp: vi.fn().mockReturnValue(null) }
-}));
-
 vi.mock('../MediaManifestService.js', () => ({
   mediaManifestService: { getManifest: vi.fn().mockResolvedValue({ success: false }) }
 }));
@@ -92,6 +55,28 @@ vi.mock('../../database/repositories/AppRepository.js', () => ({
     findById: vi.fn().mockReturnValue(null)
   }))
 }));
+
+import { AppContextManager } from '../AppContextManager.js';
+import { createForWorkspace } from '../../workspace/index.js';
+import { makeRunCommandResult } from '../../workspace/__tests__/mock-helpers.js';
+
+const TEST_APP_ID = 'test-app-gitstatus';
+
+type GitInvocation = (command: string) => ReturnType<typeof makeRunCommandResult> | null;
+
+function workspaceWithGit(invocation: GitInvocation) {
+  return {
+    tasks: {
+      runCommandSync: vi.fn(async ({ command }: { command: string }) => {
+        const result = invocation(command);
+        if (!result) {
+          return makeRunCommandResult({ exitCode: 1, stderr: 'failed' });
+        }
+        return result;
+      }),
+    },
+  };
+}
 
 describe('AppContextManager - git status', () => {
   let manager: AppContextManager;
@@ -103,7 +88,6 @@ describe('AppContextManager - git status', () => {
 
   describe('formatGitStatusSection', () => {
     it('returns null when gitInfo is null', () => {
-      // Access private method via any cast
       const result = (manager as any).formatGitStatusSection(null);
       expect(result).toBeNull();
     });
@@ -189,32 +173,22 @@ describe('AppContextManager - git status', () => {
   });
 
   describe('getGitStatusInfo', () => {
-    it('returns null when git-repo directory does not exist', async () => {
-      mockExistsSync.mockReturnValue(false);
-
-      const result = await (manager as any).getGitStatusInfo('/tmp/app/preview');
+    it('returns null when workspace is unavailable', async () => {
+      vi.mocked(createForWorkspace).mockReturnValue(null);
+      const result = await (manager as any).getGitStatusInfo(TEST_APP_ID);
       expect(result).toBeNull();
     });
 
     it('returns git status when repo exists with commits', async () => {
-      mockExistsSync.mockReturnValue(true);
-
-      // Mock execFile callback-style calls
-      mockExecFile.mockImplementation((_cmd: string, args: string[], _opts: any, callback: any) => {
-        if (args.includes('--abbrev-ref')) {
-          callback(null, { stdout: 'main\n', stderr: '' });
-        } else if (args.includes('--porcelain')) {
-          callback(null, { stdout: ' M file1.ts\n M file2.ts\n', stderr: '' });
-        } else if (args.includes('--format=%h %s')) {
-          callback(null, { stdout: 'abc1234 feat: add feature\n', stderr: '' });
-        } else if (args.includes('--short')) {
-          callback(null, { stdout: 'abc1234\n', stderr: '' });
-        } else {
-          callback(null, { stdout: '', stderr: '' });
-        }
+      const workspace = workspaceWithGit((command) => {
+        if (command.includes('--abbrev-ref')) return makeRunCommandResult({ stdout: 'main\n' });
+        if (command.includes('--porcelain')) return makeRunCommandResult({ stdout: ' M file1.ts\n M file2.ts\n' });
+        if (command.includes('--format=%h %s')) return makeRunCommandResult({ stdout: 'abc1234 feat: add feature\n' });
+        return makeRunCommandResult();
       });
+      vi.mocked(createForWorkspace).mockReturnValue(workspace as never);
 
-      const result = await (manager as any).getGitStatusInfo('/tmp/app/preview');
+      const result = await (manager as any).getGitStatusInfo(TEST_APP_ID);
       expect(result).toEqual({
         branch: 'main',
         uncommittedCount: 2,
@@ -224,40 +198,29 @@ describe('AppContextManager - git status', () => {
     });
 
     it('handles detached HEAD state', async () => {
-      mockExistsSync.mockReturnValue(true);
-
-      mockExecFile.mockImplementation((_cmd: string, args: string[], _opts: any, callback: any) => {
-        if (args.includes('--abbrev-ref')) {
-          callback(null, { stdout: 'HEAD\n', stderr: '' });
-        } else if (args.includes('--short')) {
-          callback(null, { stdout: 'def5678\n', stderr: '' });
-        } else if (args.includes('--porcelain')) {
-          callback(null, { stdout: '', stderr: '' });
-        } else if (args.includes('--format=%h %s')) {
-          callback(null, { stdout: 'def5678 some commit\n', stderr: '' });
-        } else {
-          callback(null, { stdout: '', stderr: '' });
-        }
+      const workspace = workspaceWithGit((command) => {
+        if (command.includes('--abbrev-ref')) return makeRunCommandResult({ stdout: 'HEAD\n' });
+        if (command.includes('--short')) return makeRunCommandResult({ stdout: 'def5678\n' });
+        if (command.includes('--porcelain')) return makeRunCommandResult({ stdout: '' });
+        if (command.includes('--format=%h %s')) return makeRunCommandResult({ stdout: 'def5678 some commit\n' });
+        return makeRunCommandResult();
       });
+      vi.mocked(createForWorkspace).mockReturnValue(workspace as never);
 
-      const result = await (manager as any).getGitStatusInfo('/tmp/app/preview');
+      const result = await (manager as any).getGitStatusInfo(TEST_APP_ID);
       expect(result?.branch).toBe('detached:def5678');
     });
 
     it('handles repo with no commits yet', async () => {
-      mockExistsSync.mockReturnValue(true);
-
-      mockExecFile.mockImplementation((_cmd: string, args: string[], _opts: any, callback: any) => {
-        if (args.includes('--abbrev-ref') || args.includes('--format=%h %s')) {
-          callback(new Error('fatal: bad default revision'), null);
-        } else if (args.includes('--porcelain')) {
-          callback(null, { stdout: '?? newfile.ts\n', stderr: '' });
-        } else {
-          callback(new Error('not found'), null);
-        }
+      const workspace = workspaceWithGit((command) => {
+        if (command.includes('--abbrev-ref')) return null;
+        if (command.includes('--format=%h %s')) return null;
+        if (command.includes('--porcelain')) return makeRunCommandResult({ stdout: '?? newfile.ts\n' });
+        return null;
       });
+      vi.mocked(createForWorkspace).mockReturnValue(workspace as never);
 
-      const result = await (manager as any).getGitStatusInfo('/tmp/app/preview');
+      const result = await (manager as any).getGitStatusInfo(TEST_APP_ID);
       expect(result).toEqual({
         branch: null,
         uncommittedCount: 1,
@@ -267,32 +230,23 @@ describe('AppContextManager - git status', () => {
     });
 
     it('returns null when all git commands fail', async () => {
-      mockExistsSync.mockReturnValue(true);
+      const workspace = workspaceWithGit(() => null);
+      vi.mocked(createForWorkspace).mockReturnValue(workspace as never);
 
-      mockExecFile.mockImplementation((_cmd: string, _args: string[], _opts: any, callback: any) => {
-        callback(new Error('git failed'), null);
-      });
-
-      const result = await (manager as any).getGitStatusInfo('/tmp/app/preview');
+      const result = await (manager as any).getGitStatusInfo(TEST_APP_ID);
       expect(result).toBeNull();
     });
 
     it('returns null uncommittedCount when status fails but branch/log succeed', async () => {
-      mockExistsSync.mockReturnValue(true);
-
-      mockExecFile.mockImplementation((_cmd: string, args: string[], _opts: any, callback: any) => {
-        if (args.includes('--abbrev-ref')) {
-          callback(null, { stdout: 'main\n', stderr: '' });
-        } else if (args.includes('--porcelain')) {
-          callback(new Error('permission denied'), null);
-        } else if (args.includes('--format=%h %s')) {
-          callback(null, { stdout: 'abc1234 some commit\n', stderr: '' });
-        } else {
-          callback(null, { stdout: '', stderr: '' });
-        }
+      const workspace = workspaceWithGit((command) => {
+        if (command.includes('--abbrev-ref')) return makeRunCommandResult({ stdout: 'main\n' });
+        if (command.includes('--porcelain')) return null;
+        if (command.includes('--format=%h %s')) return makeRunCommandResult({ stdout: 'abc1234 some commit\n' });
+        return makeRunCommandResult();
       });
+      vi.mocked(createForWorkspace).mockReturnValue(workspace as never);
 
-      const result = await (manager as any).getGitStatusInfo('/tmp/app/preview');
+      const result = await (manager as any).getGitStatusInfo(TEST_APP_ID);
       expect(result).toEqual({
         branch: 'main',
         uncommittedCount: null,
@@ -302,22 +256,31 @@ describe('AppContextManager - git status', () => {
     });
 
     it('handles clean repo with no uncommitted changes', async () => {
-      mockExistsSync.mockReturnValue(true);
-
-      mockExecFile.mockImplementation((_cmd: string, args: string[], _opts: any, callback: any) => {
-        if (args.includes('--abbrev-ref')) {
-          callback(null, { stdout: 'main\n', stderr: '' });
-        } else if (args.includes('--porcelain')) {
-          callback(null, { stdout: '', stderr: '' });
-        } else if (args.includes('--format=%h %s')) {
-          callback(null, { stdout: 'abc1234 initial commit\n', stderr: '' });
-        } else {
-          callback(null, { stdout: '', stderr: '' });
-        }
+      const workspace = workspaceWithGit((command) => {
+        if (command.includes('--abbrev-ref')) return makeRunCommandResult({ stdout: 'main\n' });
+        if (command.includes('--porcelain')) return makeRunCommandResult({ stdout: '' });
+        if (command.includes('--format=%h %s')) return makeRunCommandResult({ stdout: 'abc1234 initial commit\n' });
+        return makeRunCommandResult();
       });
+      vi.mocked(createForWorkspace).mockReturnValue(workspace as never);
 
-      const result = await (manager as any).getGitStatusInfo('/tmp/app/preview');
+      const result = await (manager as any).getGitStatusInfo(TEST_APP_ID);
       expect(result?.uncommittedCount).toBe(0);
+    });
+
+    // Supervisor failure is not a recoverable state — it must propagate so
+    // the outer context-generation path can fail loudly. Silently returning
+    // null here would hide a real outage behind "no git repo".
+    it('propagates exceptions when runCommandSync rejects', async () => {
+      const workspace = {
+        tasks: {
+          runCommandSync: vi.fn().mockRejectedValue(new Error('supervisor unreachable')),
+        },
+      };
+      vi.mocked(createForWorkspace).mockReturnValue(workspace as never);
+
+      await expect((manager as any).getGitStatusInfo(TEST_APP_ID))
+        .rejects.toThrow('supervisor unreachable');
     });
   });
 });

@@ -14,17 +14,17 @@ import type { AuthenticatedRequest } from '../middleware/jwt-auth.js';
 
 // Mock dependencies BEFORE imports
 const mockFindById = vi.fn();
-const mockExistsSync = vi.fn(() => true);
-const mockCreateWriteStream = vi.fn();
-const mockCreateReadStream = vi.fn();
-const mockUnlinkSync = vi.fn();
-const mockMkdirSync = vi.fn();
 const mockArchiverFn = vi.fn();
+const mockCreateForWorkspace = vi.fn();
 
 vi.mock('../../database/index.js', () => ({
   AppRepository: vi.fn().mockImplementation(() => ({
     findById: mockFindById
   }))
+}));
+
+vi.mock('../../workspace/index.js', () => ({
+  createForWorkspace: mockCreateForWorkspace,
 }));
 
 const mockLogger = () => ({
@@ -47,14 +47,6 @@ vi.mock('../../logging/index.js', () => ({
 vi.mock('../../config/app-download.js', () => ({
   ALLOWED_DIRECTORIES: ['src', 'public'],
   ALLOWED_CONFIG_FILES: ['package.json', '.env.example']
-}));
-
-vi.mock('fs', () => ({
-  existsSync: mockExistsSync,
-  createWriteStream: mockCreateWriteStream,
-  createReadStream: mockCreateReadStream,
-  unlinkSync: mockUnlinkSync,
-  mkdirSync: mockMkdirSync,
 }));
 
 vi.mock('archiver', () => ({
@@ -337,10 +329,9 @@ describe('Download Route Authorization', () => {
   });
 });
 
-describe('Archive Error Handling', () => {
+describe('Archive Workspace Integration', () => {
   let app: Express;
   let mockArchive: EventEmitter & Record<string, any>;
-  let mockOutput: EventEmitter & Record<string, any>;
   const appId = 'klmnopqrst';
 
   function createPermittedApp(): Express {
@@ -361,95 +352,100 @@ describe('Archive Error Handling', () => {
     return testApp;
   }
 
+  function makeArchive() {
+    const archive: any = Object.assign(new EventEmitter(), {
+      pipe: vi.fn(function pipeImpl(this: PassThrough, target: any) {
+        // Default: emit a tiny payload and end the response stream so
+        // supertest sees a finished response.
+        process.nextTick(() => {
+          target.write(Buffer.from('zip'));
+          target.end();
+        });
+      }),
+      append: vi.fn(),
+      finalize: vi.fn().mockResolvedValue(undefined),
+      pointer: vi.fn(() => 1234),
+    });
+    return archive;
+  }
+
   beforeEach(() => {
     vi.clearAllMocks();
 
-    mockArchive = Object.assign(new EventEmitter(), {
-      pipe: vi.fn(),
-      directory: vi.fn(),
-      file: vi.fn(),
-      finalize: vi.fn(),
-      pointer: vi.fn(() => 1234),
-    });
-
-    mockOutput = Object.assign(new EventEmitter(), {
-      destroy: vi.fn(),
-    });
+    mockArchive = makeArchive();
+    mockArchiverFn.mockReturnValue(mockArchive);
 
     mockFindById.mockReturnValue({
       id: appId,
       name: 'Test App',
-      path: `/tmp/apps/${appId}/app`
+      path: `/tmp/apps/${appId}/app`,
     });
-
-    mockExistsSync.mockReturnValue(true);
-    mockCreateWriteStream.mockReturnValue(mockOutput);
-    mockArchiverFn.mockReturnValue(mockArchive);
 
     app = createPermittedApp();
   });
 
-  it('should return 500 when archive emits error instead of crashing', async function archiveError() {
-    mockArchive.finalize.mockImplementation(() => {
-      process.nextTick(() => {
-        mockArchive.emit('error', new Error('disk corruption'));
-      });
-    });
+  it('returns 503 when workspace is unavailable', async () => {
+    mockCreateForWorkspace.mockReturnValue(null);
 
     const response = await request(app)
       .get(`/apps/${appId}/zip`)
-      .expect(500);
+      .expect(503);
 
-    expect(response.body.error).toBe('Failed to create zip archive');
-    expect(response.body.details).toBe('disk corruption');
-    expect(mockOutput.destroy).toHaveBeenCalled();
+    expect(response.body.error).toBe('App workspace is not available');
   });
 
-  it('should return 500 when archive emits non-ENOENT warning instead of crashing', async function nonEnoentWarning() {
-    mockArchive.finalize.mockImplementation(() => {
-      process.nextTick(() => {
-        mockArchive.emit('warning', Object.assign(new Error('permission denied'), { code: 'EPERM' }));
-      });
+  /**
+   * Build a strict, Map-keyed workspace mock so unknown paths reject — i.e. the
+   * mock encodes dev-supervisor's actual contract: tree returns entries
+   * relative to the requested directory; download paths are workspace-root
+   * relative.
+   */
+  function strictWorkspace(opts: {
+    tree?: Record<string, Array<{ path: string; kind: 'file' | 'directory' }>>;
+    files?: Record<string, Buffer | Error>;
+  }) {
+    const treeMap = new Map(Object.entries(opts.tree ?? {}));
+    const fileMap = new Map(Object.entries(opts.files ?? {}));
+
+    const tree = vi.fn(async ({ path }: { path: string }) => {
+      const entries = treeMap.get(path);
+      if (!entries) {
+        const err: any = new (await import('../../services/DevSupervisorClient.js')).DevSupervisorError('not_found', 404, `${path}: not found`);
+        throw err;
+      }
+      return { entries: entries.map((e) => ({ ...e, size: 1, modifiedAt: '' })), truncated: false };
     });
 
-    const response = await request(app)
-      .get(`/apps/${appId}/zip`)
-      .expect(500);
-
-    expect(response.body.error).toBe('Failed to create zip archive');
-    expect(response.body.details).toBe('permission denied');
-    expect(mockOutput.destroy).toHaveBeenCalled();
-  });
-
-  it('should return 500 when output stream emits error instead of crashing', async function outputError() {
-    mockArchive.finalize.mockImplementation(() => {
-      process.nextTick(() => {
-        mockOutput.emit('error', new Error('disk full'));
-      });
+    const download = vi.fn(async ({ path }: { path: string }) => {
+      const data = fileMap.get(path);
+      if (data instanceof Error) throw data;
+      if (!data) {
+        const err: any = new (await import('../../services/DevSupervisorClient.js')).DevSupervisorError('not_found', 404, `${path}: not found`);
+        throw err;
+      }
+      return { data, contentType: 'application/octet-stream' };
     });
 
-    const response = await request(app)
-      .get(`/apps/${appId}/zip`)
-      .expect(500);
+    return { tree, download };
+  }
 
-    expect(response.body.error).toBe('Failed to create zip archive');
-    expect(response.body.details).toBe('disk full');
-    expect(mockOutput.destroy).toHaveBeenCalled();
-  });
-
-  it('should continue successfully when archive emits ENOENT warning', async function enoentWarning() {
-    mockCreateReadStream.mockImplementation(() => {
-      const stream = new PassThrough();
-      process.nextTick(() => stream.end(Buffer.from('fake-zip-data')));
-      return stream;
+  it('streams a zip archive built from workspace files', async () => {
+    const ws = strictWorkspace({
+      tree: {
+        src: [
+          { path: 'index.ts', kind: 'file' },
+          { path: 'components/Foo.tsx', kind: 'file' },
+        ],
+        public: [{ path: 'logo.png', kind: 'file' }],
+      },
+      files: {
+        'src/index.ts': Buffer.from('export {}'),
+        'src/components/Foo.tsx': Buffer.from('export const Foo = () => null'),
+        'public/logo.png': Buffer.from('PNG'),
+        'package.json': Buffer.from('{}'),
+      },
     });
-
-    mockArchive.finalize.mockImplementation(() => {
-      process.nextTick(() => {
-        mockArchive.emit('warning', Object.assign(new Error('file not found'), { code: 'ENOENT' }));
-        process.nextTick(() => mockOutput.emit('close'));
-      });
-    });
+    mockCreateForWorkspace.mockReturnValue({ files: ws });
 
     const response = await request(app)
       .get(`/apps/${appId}/zip`)
@@ -457,5 +453,93 @@ describe('Archive Error Handling', () => {
 
     expect(response.status).toBe(200);
     expect(response.headers['content-type']).toBe('application/zip');
+    expect(ws.tree).toHaveBeenCalledWith({ path: 'src', recursive: true });
+    expect(ws.tree).toHaveBeenCalledWith({ path: 'public', recursive: true });
+
+    // Critical: download paths must be re-prefixed with their directory.
+    const downloadedPaths = ws.download.mock.calls.map((c) => c[0].path);
+    expect(downloadedPaths).toEqual(
+      expect.arrayContaining([
+        'src/index.ts',
+        'src/components/Foo.tsx',
+        'public/logo.png',
+        'package.json',
+      ]),
+    );
+    // Bare entry paths should never reach download.
+    expect(downloadedPaths).not.toContain('index.ts');
+    expect(downloadedPaths).not.toContain('components/Foo.tsx');
+
+    expect(mockArchive.append).toHaveBeenCalled();
+    expect(mockArchive.finalize).toHaveBeenCalled();
+  });
+
+  it('returns 500 when workspace.tree throws unexpectedly', async () => {
+    const treeMock = vi.fn().mockRejectedValue(new Error('upstream boom'));
+    const downloadMock = vi.fn();
+    mockCreateForWorkspace.mockReturnValue({
+      files: { tree: treeMock, download: downloadMock },
+    });
+
+    const response = await request(app)
+      .get(`/apps/${appId}/zip`)
+      .expect(500);
+
+    expect(response.body.error).toBe('Failed to create zip archive');
+  });
+
+  it('destroys the response when a file download fails mid-stream after pipe', async () => {
+    const ws = strictWorkspace({
+      tree: { src: [{ path: 'index.ts', kind: 'file' }], public: [] },
+      files: { 'src/index.ts': new Error('disk read failure') },
+    });
+    mockCreateForWorkspace.mockReturnValue({ files: ws });
+
+    // pipe writes some bytes (so headersSent === true) but doesn't end —
+    // route's catch path must call res.destroy(err).
+    let destroyedWith: Error | undefined;
+    mockArchive.pipe.mockImplementation(function pipeImpl(target: any) {
+      const origDestroy = target.destroy?.bind(target);
+      target.destroy = (err?: Error) => {
+        if (err) destroyedWith = err;
+        if (origDestroy) origDestroy(err);
+      };
+      target.write(Buffer.from('zip-header'));
+    });
+
+    // res.destroy(err) surfaces to supertest as a socket hang-up — that's
+    // exactly what the production client sees, and the absence of a clean
+    // 200+body is the signal we care about.
+    await request(app).get(`/apps/${appId}/zip`).buffer(true).catch(() => undefined);
+
+    expect(destroyedWith).toBeInstanceOf(Error);
+    expect(destroyedWith?.message).toBe('disk read failure');
+  });
+
+  it('rethrows archive errors after finalize so success is not logged on a poisoned archive', async () => {
+    const ws = strictWorkspace({
+      tree: { src: [], public: [] },
+      files: { 'package.json': Buffer.from('{}') },
+    });
+    mockCreateForWorkspace.mockReturnValue({ files: ws });
+
+    let destroyedWith: Error | undefined;
+    mockArchive.pipe.mockImplementation(function pipeImpl(target: any) {
+      const origDestroy = target.destroy?.bind(target);
+      target.destroy = (err?: Error) => {
+        if (err) destroyedWith = err;
+        if (origDestroy) origDestroy(err);
+      };
+      target.write(Buffer.from('zip-header'));
+    });
+
+    mockArchive.finalize.mockImplementation(async () => {
+      mockArchive.emit('error', new Error('zip corruption'));
+    });
+
+    await request(app).get(`/apps/${appId}/zip`).buffer(true).catch(() => undefined);
+
+    expect(destroyedWith).toBeInstanceOf(Error);
+    expect(destroyedWith?.message).toBe('zip corruption');
   });
 });
