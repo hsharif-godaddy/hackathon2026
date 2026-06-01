@@ -22,6 +22,8 @@ export interface SkillToolDefinition {
     timeout?: number
     requiresApp?: boolean
     validate?: (input: any, context?: any) => Promise<void> | void
+    /** When true, agent factory should stop the turn after this tool completes */
+    stopAfter?: boolean
   }
 }
 
@@ -44,6 +46,8 @@ export interface SkillToolRegistry {
   skillToTools: Map<string, string[]>
   /** Mapping of skill name to its lifecycle hooks */
   skillHooks: Map<string, SkillHooks>
+  /** Prefixed tool names that should trigger stopAfterTools when executed */
+  stopAfterToolNames: string[]
 }
 
 /**
@@ -142,7 +146,8 @@ export function registerSkillTools(
   const result: SkillToolRegistry = registry || {
     tools: {},
     skillToTools: new Map(),
-    skillHooks: new Map()
+    skillHooks: new Map(),
+    stopAfterToolNames: [],
   }
 
   if (toolDefs.length === 0) return result
@@ -152,6 +157,10 @@ export function registerSkillTools(
   for (const toolDef of toolDefs) {
     const prefixedName = buildSkillToolName(skillName, toolDef.name)
     toolNames.push(toolDef.name)
+
+    if (toolDef.config?.stopAfter) {
+      result.stopAfterToolNames.push(prefixedName)
+    }
 
     // Create AI SDK tool instance
     result.tools[prefixedName] = tool({
@@ -196,7 +205,8 @@ export async function buildAllSkillTools(skillsDir: string): Promise<SkillToolRe
   let registry: SkillToolRegistry = {
     tools: {},
     skillToTools: new Map(),
-    skillHooks: new Map()
+    skillHooks: new Map(),
+    stopAfterToolNames: [],
   }
 
   try {

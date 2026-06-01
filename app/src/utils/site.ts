@@ -1,3 +1,5 @@
+import { hasBeenPublished as hasBeenPublishedShared, type PublishCheckableSite } from '@airo/shared';
+
 import { DomainStatus, DomainType, SiteStatus } from '@/lib/control-plane/types';
 
 type SiteWithOptionalStatus = { status?: SiteStatus } | null | undefined;
@@ -9,51 +11,13 @@ export function isSiteSuspended(site: SiteWithOptionalStatus): boolean {
   return site?.status === SiteStatus.Suspended;
 }
 
-/**
- * Minimal shape required for checking publish status.
- * Allows passing partial objects in tests without full SiteInfo.
- */
-type PublishCheckableSite = {
-  variants?: string[];
-  variantsWithLifecycle?: Array<{
-    variant: string;
-    status: string;
-  }>;
-} | null | undefined;
+export type { PublishCheckableSite } from '@airo/shared';
 
 /**
- * Check if a site is treated as published for UI gating.
- *
- * When `variantsWithLifecycle` is present, only a `publish` row with status `active`
- * or `provisioning` counts (domains panel / new-publish guidance). There is no
- * fallback to coarse `variants` in that case.
- *
- * When lifecycle is absent, uses legacy `variants.includes('publish')`.
- *
- * @param site - The site information object (only needs variants/variantsWithLifecycle)
- * @returns true if the site should be considered published for gating
- *
- * @example
- * ```typescript
- * if (hasBeenPublished(site)) {
- *   // Show published status
- * }
- * ```
+ * @see {@link hasBeenPublishedShared} in `@airo/shared` — shared with agents SEO audit gating.
  */
 export function hasBeenPublished(site: PublishCheckableSite): boolean {
-  if (site?.variantsWithLifecycle?.length) {
-    return site.variantsWithLifecycle.some(
-      v =>
-        v.variant === 'publish' &&
-        (v.status === 'active' || v.status === 'provisioning')
-    );
-  }
-
-  if (site?.variants?.length) {
-    return site.variants.includes('publish');
-  }
-
-  return false;
+  return hasBeenPublishedShared(site);
 }
 
 type DomainListSite = {

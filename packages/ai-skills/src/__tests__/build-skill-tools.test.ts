@@ -161,6 +161,28 @@ describe('registerSkillTools', () => {
       expect(registry.skillToTools.get('blog')).toEqual(['createPost', 'listPosts'])
     })
 
+    it('should record stopAfter tool names on the registry', () => {
+      const toolDefs: SkillToolDefinition[] = [
+        {
+          name: 'audit',
+          description: 'Run audit',
+          parameters: z.object({}),
+          execute: vi.fn(),
+          config: { stopAfter: true },
+        },
+        {
+          name: 'other',
+          description: 'Other tool',
+          parameters: z.object({}),
+          execute: vi.fn(),
+        },
+      ]
+
+      const registry = registerSkillTools('seo', toolDefs)
+
+      expect(registry.stopAfterToolNames).toEqual(['seo__audit'])
+    })
+
     it('should extend existing registry when provided', () => {
       const blogTool: SkillToolDefinition = {
         name: 'createPost',

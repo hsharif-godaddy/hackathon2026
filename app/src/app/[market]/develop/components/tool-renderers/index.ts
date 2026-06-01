@@ -33,6 +33,7 @@ import QRCodeToolRenderer from './QRCodeToolRenderer'
 import ReadFileToolRenderer from './ReadFileToolRenderer'
 import RebuildPageSelectorToolRenderer from './RebuildPageSelectorToolRenderer'
 import SecretsToolRenderer from './SecretsToolRenderer'
+import SeoAuditToolRenderer from './SeoAuditToolRenderer'
 import SetProjectNameToolRenderer from './SetProjectNameToolRenderer'
 import SetVentureLogoToolRenderer from './SetVentureLogoToolRenderer'
 import SkillToolRenderer from './SkillToolRenderer'
@@ -101,6 +102,8 @@ export const toolRendererRegistry = {
   suggestedResponse: SuggestedResponseToolRenderer,
   qrCode: QRCodeToolRenderer,
   requestSecrets: SecretsToolRenderer,
+  seo__audit: SeoAuditToolRenderer,
+  seoAnalysis: SeoAuditToolRenderer,
   setProjectName: SetProjectNameToolRenderer,
   socialConnect: SocialConnectToolRenderer,
   'social-platform__socialConnect': SocialConnectToolRenderer,

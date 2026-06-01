@@ -41,6 +41,9 @@ export type { SupportedAuthType, AuthType } from './auth/index.js';
 export { fqdnIsConnectedOrProvisioningOnSite } from './domain/index.js';
 export type { SiteDomainForAttachCheck } from './domain/index.js';
 
+// Site publish gating (shared by app UI and agents SEO audit)
+export { hasBeenPublished, type PublishCheckableSite } from './site/index.js';
+
 // JSON
 export { safeStringify } from './json/index.js';
 

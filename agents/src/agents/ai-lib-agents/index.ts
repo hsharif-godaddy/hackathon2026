@@ -196,11 +196,24 @@ export async function createUnifiedAgentFactory(options?: {
   // Stop execution after handoff, suggestedResponse, or secrets request tool is called
   // requestSecrets: Agent stops so secrets can be saved (auto or manual) before continuing
   // Merge with any profile-gated stopAfterTools (e.g., askQuestion) set in develop-agent.ts
-  developConfig.stopAfterTools = [...(developConfig.stopAfterTools ?? []), 'handoff', 'suggestedResponse', 'requestSecrets']
+  const skillStopAfterTools = skillToolManager.getStopAfterToolNames()
+  developConfig.stopAfterTools = [
+    ...(developConfig.stopAfterTools ?? []),
+    'handoff',
+    'suggestedResponse',
+    'requestSecrets',
+    ...skillStopAfterTools,
+  ]
 
   for (const config of Object.values(profileDevelopConfigs)) {
     config.tools = { ...(config.tools || {}), handoff: developHandoffTool }
-    config.stopAfterTools = [...(config.stopAfterTools ?? []), 'handoff', 'suggestedResponse', 'requestSecrets']
+    config.stopAfterTools = [
+      ...(config.stopAfterTools ?? []),
+      'handoff',
+      'suggestedResponse',
+      'requestSecrets',
+      ...skillStopAfterTools,
+    ]
   }
 
   const marketingHandoffTool = createHandoffTool({
@@ -214,7 +227,7 @@ export async function createUnifiedAgentFactory(options?: {
     handoff: marketingHandoffTool
   }
   // Stop execution after handoff tool is called
-  marketingConfig.stopAfterTools = ['handoff']
+  marketingConfig.stopAfterTools = ['handoff', 'seoAnalysis', ...skillStopAfterTools]
 
   // For initial agent variants tied to profiles with develop flags, update the handoff
   // to target the develop variant instead of the default 'develop' agent.

@@ -1,56 +1,48 @@
 import { createTool } from '@airo/ai-lib';
 import { z } from 'zod';
 import { AppRepository } from '../../database/repositories/AppRepository.js';
+import { formatSeoAuditSummary, runSeoCheck } from '../../services/seo-audit.js';
+import { resolveSiteSeoContextFromToolContext } from '../../services/site-published-url.js';
+import {
+  buildSeoStrategyContext,
+  seoStrategyInputSchema,
+} from '../../services/seo-strategy-context.js';
 import { getErrorMessage } from '../../utils/error.js';
 import { logger } from '../../logging/index.js';
 
 const appRepo = new AppRepository();
 
+const seoAnalyzeInputSchema = seoStrategyInputSchema.extend({
+  includeAudit: z
+    .boolean()
+    .optional()
+    .describe('When true (default), run technical SEO audit and show the report widget with strategy context'),
+  includeSourceScan: z
+    .boolean()
+    .optional()
+    .describe('When includeAudit is true: scan src/pages for Helmet and seo-routes (default true)'),
+  useCachedAudit: z
+    .boolean()
+    .optional()
+    .describe('When includeAudit is true: reuse a recent audit if still fresh (default true)'),
+});
+
 export const seoAnalyze = createTool(
-  'Collects business context and app information for intelligent SEO analysis. Returns structured data for the agent to analyze using other tools.',
-  z.object({
-    businessInfo: z
-      .object({
-        name: z.string().describe('Business or brand name'),
-        type: z
-          .string()
-          .optional()
-          .describe('Business type (e.g., restaurant, SaaS, ecommerce, consulting)'),
-        location: z.string().optional().describe('Physical location if applicable'),
-        targetAudience: z.string().optional().describe('Primary target audience description'),
-      })
-      .describe('Essential business context for personalized SEO strategy'),
-    targetKeywords: z
-      .array(z.string())
-      .optional()
-      .describe('Keywords the business wants to rank for'),
-    targetQuestions: z
-      .array(z.string())
-      .optional()
-      .describe('Questions your target audience is asking'),
-    competitorUrls: z
-      .array(z.string())
-      .optional()
-      .describe('Competitor websites for competitive analysis'),
-    brandVoice: z
-      .string()
-      .optional()
-      .describe('Brand voice and tone (e.g., professional, friendly, technical)'),
-    uniqueSellingPoints: z
-      .array(z.string())
-      .optional()
-      .describe('What makes this business unique'),
-  }),
-  async (input, context: any) => {
-    const appId = context?.metadata?.appId as string;
+  'Runs SEO analysis: business/strategy context plus a structured technical audit report (default). Use includeAudit:false for strategy text only.',
+  seoAnalyzeInputSchema,
+  async (input, context) => {
+    const appId = context?.metadata?.appId as string | undefined;
     if (!appId) {
       throw new Error('App ID is required for SEO analysis');
     }
 
     const app = appRepo.findById(appId);
-    if (!app) {
+    if (!app?.path) {
       throw new Error(`App '${appId}' not found`);
     }
+
+    const includeAudit = input.includeAudit !== false;
+    const { includeAudit: _ia, includeSourceScan, useCachedAudit, ...strategyInput } = input;
 
     const contextLogger = logger.withContext({
       toolName: 'seoAnalyze',
@@ -59,59 +51,79 @@ export const seoAnalyze = createTool(
 
     contextLogger.info('seo_analyze.begin', {
       appPath: app.path,
-      businessInfo: input.businessInfo,
-      hasKeywords: !!input.targetKeywords?.length,
-      hasQuestions: !!input.targetQuestions?.length,
+      includeAudit,
+      hasBusinessInfo: Boolean(strategyInput.businessInfo),
+      hasKeywords: !!strategyInput.targetKeywords?.length,
+      hasQuestions: !!strategyInput.targetQuestions?.length,
     });
 
     try {
-      // Build analysis context
-      const analysisContext = {
-        appId,
-        appPath: app.path,
-        businessInfo: input.businessInfo,
-        ...(input.targetKeywords && { targetKeywords: input.targetKeywords }),
-        ...(input.targetQuestions && { targetQuestions: input.targetQuestions }),
-        ...(input.competitorUrls && { competitorUrls: input.competitorUrls }),
-        ...(input.brandVoice && { brandVoice: input.brandVoice }),
-        ...(input.uniqueSellingPoints && { uniqueSellingPoints: input.uniqueSellingPoints }),
-      };
+      if (includeAudit) {
+        const siteSeo = await resolveSiteSeoContextFromToolContext(appId, context);
+        const report = await runSeoCheck({
+          appId,
+          appPath: app.path,
+          publishedUrl: siteSeo.publishedUrl,
+          previewUrl: siteSeo.previewUrl ?? app.previewUrl ?? null,
+          isPublished: siteSeo.isPublished,
+          includeSourceScan: includeSourceScan !== false,
+          useCachedAudit: useCachedAudit !== false,
+          strategyInput,
+          appDisplayName: app.name,
+        });
 
-      const analysisGuidance = generateAnalysisGuidance(analysisContext);
+        const summary = formatSeoAuditSummary(report);
+        const offerFix = report.summary.issueCount > 0;
+        const strategyName = report.strategy?.businessInfo.name ?? 'your site';
+
+        contextLogger.info('seo_analyze.complete', {
+          appId,
+          includeAudit: true,
+          issueCount: report.summary.issueCount,
+        });
+
+        return {
+          success: true,
+          widgetType: 'seo-audit-report',
+          widgetData: {
+            type: 'seo-audit-report',
+            appId,
+            report,
+            offerFix,
+          },
+          message: `${summary}
+
+Strategy context prepared for ${strategyName}.
+
+${offerFix
+  ? 'STOP — analysis complete. Do not edit code in this turn. Tell the user the report is above and they can click "Fix SEO issues" when ready.'
+  : 'No critical technical issues in the audit. You may note optional strategy enhancements only if the user asks.'}`,
+          analysisGuidance: report.strategy?.analysisGuidance,
+        };
+      }
+
+      const strategy = buildSeoStrategyContext(strategyInput, { appName: app.name });
 
       contextLogger.info('seo_analyze.complete', {
         appId,
+        includeAudit: false,
         hasBusinessContext: true,
       });
 
       return {
         success: true,
-        message: `SEO analysis context prepared for ${input.businessInfo.name}`,
-        analysisContext,
-        analysisGuidance,
-        nextSteps: `
-Use the following tools to analyze the app:
-
-1. **directoryListing** - Find pages to analyze:
-   - Look for pages in common directories (pages/, src/pages/, app/)
-   - Identify key pages: home, about, products/services, contact
-
-2. **readFile** - Read page contents:
-   - Examine each important page's content and structure
-   - Look for metadata, headings, content quality
-
-3. **grepSearch** - Search for specific patterns:
-   - Find metadata exports or Head components
-   - Search for SEO-related patterns
-   - Identify content that matches target keywords
-
-4. **str_replace_based_edit_tool** - Make strategic improvements:
-   - Update metadata based on business context
-   - Improve content to align with brand voice
-   - Add structured data where appropriate
-
-Remember: Focus on improvements that make sense for THIS specific business.
-        `.trim(),
+        message: `SEO analysis context prepared for ${strategy.businessInfo.name}`,
+        analysisContext: {
+          appId,
+          appPath: app.path,
+          businessInfo: strategy.businessInfo,
+          ...(strategy.targetKeywords && { targetKeywords: strategy.targetKeywords }),
+          ...(strategy.targetQuestions && { targetQuestions: strategy.targetQuestions }),
+          ...(strategy.competitorUrls && { competitorUrls: strategy.competitorUrls }),
+          ...(strategy.brandVoice && { brandVoice: strategy.brandVoice }),
+          ...(strategy.uniqueSellingPoints && { uniqueSellingPoints: strategy.uniqueSellingPoints }),
+        },
+        analysisGuidance: strategy.analysisGuidance,
       };
     } catch (error) {
       contextLogger.error('seo_analyze.error', {
@@ -123,50 +135,5 @@ Remember: Focus on improvements that make sense for THIS specific business.
         error: getErrorMessage(error),
       };
     }
-  }
+  },
 );
-
-function generateAnalysisGuidance(context: any): string {
-  const { businessInfo, targetKeywords, targetQuestions, brandVoice, uniqueSellingPoints } = context;
-
-  let guidance = `You are analyzing the SEO for ${businessInfo.name}`;
-
-  if (businessInfo.type) {
-    guidance += `, a ${businessInfo.type} business`;
-  }
-  if (businessInfo.location) {
-    guidance += ` located in ${businessInfo.location}`;
-  }
-  guidance += '.\n\n';
-
-  if (businessInfo.targetAudience) {
-    guidance += `Target Audience: ${businessInfo.targetAudience}\n`;
-  }
-  if (brandVoice) {
-    guidance += `Brand Voice: ${brandVoice}\n`;
-  }
-  if (uniqueSellingPoints?.length > 0) {
-    guidance += `Unique Selling Points:\n${uniqueSellingPoints.map((usp: string) => `- ${usp}`).join('\n')}\n`;
-  }
-  if (targetKeywords?.length > 0) {
-    guidance += `\nTarget Keywords: ${targetKeywords.join(', ')}\n`;
-  }
-  if (targetQuestions?.length > 0) {
-    guidance += `\nTarget Questions:\n${targetQuestions.map((q: string) => `- ${q}`).join('\n')}\n`;
-  }
-
-  guidance += `
-\nWhen analyzing pages, consider:
-1. How well each page serves the target audience
-2. Whether content effectively communicates the unique selling points
-3. Alignment with brand voice and business goals
-4. Natural opportunities to incorporate target keywords
-5. How to answer target audience questions
-6. Technical improvements specific to each page's purpose
-7. Content gaps and opportunities
-
-Provide intelligent, context-aware recommendations that make sense for THIS specific business and brand.
-`;
-
-  return guidance;
-}

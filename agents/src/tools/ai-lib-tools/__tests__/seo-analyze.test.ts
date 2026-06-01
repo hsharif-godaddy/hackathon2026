@@ -10,11 +10,26 @@ const createExecutionOptions = (appId?: string) => ({
 
 // Mock dependencies
 vi.mock('../../../database/connection.js', () => ({
+  getDatabase: vi.fn().mockReturnValue({
+    prepare: vi.fn().mockReturnValue({
+      get: vi.fn(),
+      all: vi.fn().mockReturnValue([]),
+      run: vi.fn(),
+    }),
+  }),
   db: {
     prepare: vi.fn(),
     exec: vi.fn(),
-    transaction: vi.fn()
-  }
+    transaction: vi.fn(),
+  },
+}));
+
+vi.mock('../../../services/site-published-url.js', () => ({
+  resolveSiteSeoContextFromToolContext: vi.fn().mockResolvedValue({
+    publishedUrl: 'https://example.com',
+    previewUrl: 'https://preview.example.com',
+    isPublished: true,
+  }),
 }));
 
 vi.mock('../../../logging/index.js', () => ({
@@ -33,6 +48,27 @@ vi.mock('../../../logging/index.js', () => ({
     }))
   }
 }));
+
+vi.mock('../../../services/seo-audit.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../../services/seo-audit.js')>();
+  return {
+    ...actual,
+    runSeoCheck: vi.fn().mockResolvedValue({
+      appId: 'test-app-123',
+      auditedAt: new Date().toISOString(),
+      htmlBaseUrl: 'https://example.com',
+      auditMode: 'published',
+      routes: ['/'],
+      pages: [],
+      summary: { totalPages: 1, pagesWithIssues: 0, issueCount: 0 },
+      strategy: {
+        businessInfo: { name: 'Test Business' },
+        analysisGuidance: 'Guidance for Test Business',
+      },
+    }),
+    formatSeoAuditSummary: vi.fn().mockReturnValue('SEO audit summary'),
+  };
+});
 
 // Mock AppRepository
 vi.mock('../../../database/repositories/AppRepository.js', () => {
@@ -80,8 +116,9 @@ describe('seo-analyze', function seoAnalyzeTests() {
       }, createExecutionOptions('test-app-123'));
 
       expect(result.success).toBe(true);
+      expect(result.widgetType).toBe('seo-audit-report');
       expect(result.message).toContain('Test Business');
-      expect(result.analysisContext.businessInfo.name).toBe('Test Business');
+      expect(result.widgetData.report.strategy?.businessInfo.name).toBe('Test Business');
     });
 
     it('should include all provided business context', async function fullContext() {
@@ -92,6 +129,7 @@ describe('seo-analyze', function seoAnalyzeTests() {
       mockFindById.mockReturnValue(mockApp);
 
       const input = {
+        includeAudit: false,
         businessInfo: {
           name: 'Awesome Restaurant',
           type: 'restaurant',
@@ -128,6 +166,7 @@ describe('seo-analyze', function seoAnalyzeTests() {
       mockFindById.mockReturnValue(mockApp);
 
       const result = await seoAnalyze.execute({
+        includeAudit: false,
         businessInfo: {
           name: 'Tech Startup',
           type: 'SaaS',
@@ -142,23 +181,6 @@ describe('seo-analyze', function seoAnalyzeTests() {
       expect(result.analysisGuidance).toContain('Small businesses');
       expect(result.analysisGuidance).toContain('project management software');
       expect(result.analysisGuidance).toContain('Professional and innovative');
-    });
-
-    it('should include next steps instructions', async function nextSteps() {
-      const mockApp = {
-        id: 'test-app-123',
-        path: '/tmp/apps/test-app-123/app'
-      };
-      mockFindById.mockReturnValue(mockApp);
-
-      const result = await seoAnalyze.execute({
-        businessInfo: { name: 'Test' }
-      }, createExecutionOptions('test-app-123'));
-
-      expect(result.nextSteps).toContain('directoryListing');
-      expect(result.nextSteps).toContain('readFile');
-      expect(result.nextSteps).toContain('grepSearch');
-      expect(result.nextSteps).toContain('str_replace_based_edit_tool');
     });
 
     it('should throw error when appId is missing', async function noAppId() {
@@ -194,14 +216,15 @@ describe('seo-analyze', function seoAnalyzeTests() {
 
       expect(mockLogger.info).toHaveBeenCalledWith('seo_analyze.begin', expect.objectContaining({
         appPath: '/tmp/apps/test-app-123/app',
-        businessInfo: { name: 'Test' },
+        includeAudit: true,
+        hasBusinessInfo: true,
         hasKeywords: true,
         hasQuestions: true
       }));
 
       expect(mockLogger.info).toHaveBeenCalledWith('seo_analyze.complete', expect.objectContaining({
         appId: 'test-app-123',
-        hasBusinessContext: true
+        includeAudit: true,
       }));
     });
 
@@ -226,6 +249,7 @@ describe('seo-analyze', function seoAnalyzeTests() {
       mockFindById.mockReturnValue(mockApp);
 
       const result = await seoAnalyze.execute({
+        includeAudit: false,
         businessInfo: {
           name: 'Minimal Business'
         }
@@ -246,6 +270,7 @@ describe('seo-analyze', function seoAnalyzeTests() {
       mockFindById.mockReturnValue(mockApp);
 
       const result = await seoAnalyze.execute({
+        includeAudit: false,
         businessInfo: {
           name: 'Denver Pizza Co',
           type: 'restaurant',
@@ -266,6 +291,7 @@ describe('seo-analyze', function seoAnalyzeTests() {
       mockFindById.mockReturnValue(mockApp);
 
       const result = await seoAnalyze.execute({
+        includeAudit: false,
         businessInfo: { name: 'Test' },
         uniqueSellingPoints: ['24/7 support', 'Free shipping', 'Made in USA']
       }, createExecutionOptions('test-app-123'));
@@ -284,8 +310,8 @@ describe('seo-analyze', function seoAnalyzeTests() {
     });
 
     it('should have descriptive description', function description() {
-      expect(seoAnalyze.description).toContain('business context');
-      expect(seoAnalyze.description).toContain('SEO analysis');
+      expect(seoAnalyze.description).toContain('strategy');
+      expect(seoAnalyze.description).toContain('audit report');
     });
 
     it('should validate input schema', async function schema() {
@@ -295,15 +321,16 @@ describe('seo-analyze', function seoAnalyzeTests() {
       };
       mockFindById.mockReturnValue(mockApp);
 
-      // When called without businessInfo, the internal try-catch returns success: false
       const emptyResult = await seoAnalyze.execute({}, { experimental_context: { metadata: { appId: 'test-app-123' } } } as any) as any;
-      expect(emptyResult.success).toBe(false);
+      expect(emptyResult.success).toBe(true);
+      expect(emptyResult.widgetType).toBe('seo-audit-report');
 
-      // Should succeed with minimal required fields
-      const result = await seoAnalyze.execute({
+      const strategyOnly = await seoAnalyze.execute({
+        includeAudit: false,
         businessInfo: { name: 'Test' }
       }, createExecutionOptions('test-app-123')) as any;
-      expect(result.success).toBe(true);
+      expect(strategyOnly.success).toBe(true);
+      expect(strategyOnly.analysisContext.businessInfo.name).toBe('Test');
     });
   });
 });

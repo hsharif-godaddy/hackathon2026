@@ -139,7 +139,7 @@ function checkRobotsNoindex(html: string, expectNoindex: boolean): string | null
   return null;
 }
 
-function runChecks(html: string, options?: Pick<ValidateOptions, 'expectNoindex'>): string[] {
+export function runSeoHtmlChecks(html: string, options?: Pick<ValidateOptions, 'expectNoindex'>): string[] {
   const warnings: string[] = [];
   const add = (w: string | null) => {
     if (w) warnings.push(w);
@@ -162,38 +162,46 @@ function runChecks(html: string, options?: Pick<ValidateOptions, 'expectNoindex'
   return warnings;
 }
 
-export async function validatePublishedSeo(
+export async function fetchPublishedPageHtml(
   url: string,
-  options?: ValidateOptions,
-): Promise<SeoCheckResult> {
+  options?: Pick<ValidateOptions, 'timeoutMs'>,
+): Promise<{ ok: true; html: string } | { ok: false; detail: string }> {
   const timeoutMs = options?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-  const logger = options?.logger;
-
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
-  const fetchFailed = (detail: string, data: Record<string, unknown>): SeoCheckResult => {
-    logger?.warn('seo.validation.fetch-failed', { url, ...data });
-    return { ok: false, warnings: [`fetch failed: ${detail}`] };
-  };
-
-  let html: string;
   try {
     const res = await fetch(url, {
       method: 'GET',
       headers: { 'User-Agent': 'AiroSeoValidator/1.0', Accept: 'text/html' },
       signal: controller.signal,
     });
-    if (!res.ok) return fetchFailed(`HTTP ${res.status}`, { status: res.status });
-    html = await res.text();
+    if (!res.ok) {
+      return { ok: false, detail: `HTTP ${res.status}` };
+    }
+    const html = await res.text();
+    return { ok: true, html };
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
-    return fetchFailed(reason, { error: reason });
+    return { ok: false, detail: reason };
   } finally {
     clearTimeout(timer);
   }
+}
 
-  const warnings = runChecks(html, { expectNoindex: options?.expectNoindex });
+export async function validatePublishedSeo(
+  url: string,
+  options?: ValidateOptions,
+): Promise<SeoCheckResult> {
+  const logger = options?.logger;
+
+  const fetched = await fetchPublishedPageHtml(url, options);
+  if (!fetched.ok) {
+    logger?.warn('seo.validation.fetch-failed', { url, error: fetched.detail });
+    return { ok: false, warnings: [`fetch failed: ${fetched.detail}`] };
+  }
+
+  const warnings = runSeoHtmlChecks(fetched.html, { expectNoindex: options?.expectNoindex });
   for (const check of warnings) {
     logger?.warn('seo.validation.missing', { check, url });
   }

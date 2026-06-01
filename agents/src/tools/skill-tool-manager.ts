@@ -153,7 +153,12 @@ export class SkillToolManager {
         error: error instanceof Error ? error.message : String(error)
       });
       // Initialize with empty registry so we don't fail completely
-      this.toolRegistry = { tools: {}, skillToTools: new Map(), skillHooks: new Map() };
+      this.toolRegistry = {
+        tools: {},
+        skillToTools: new Map(),
+        skillHooks: new Map(),
+        stopAfterToolNames: [],
+      };
       this.initialized = true;
     }
   }
@@ -167,6 +172,17 @@ export class SkillToolManager {
       return {};
     }
     return this.toolRegistry.tools;
+  }
+
+  /**
+   * Prefixed skill tool names that should stop the agent turn after execution.
+   * Declared per tool via SkillToolDefinition.config.stopAfter in the skill's tools/.
+   */
+  getStopAfterToolNames(): string[] {
+    if (!this.toolRegistry) {
+      return [];
+    }
+    return [...this.toolRegistry.stopAfterToolNames];
   }
 
   /**

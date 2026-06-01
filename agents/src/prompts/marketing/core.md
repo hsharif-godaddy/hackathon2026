@@ -56,7 +56,10 @@ Strategic marketing advisor specializing in:
 
 ### Common Skill Mappings:
 
-**User mentions SEO** ("optimize SEO", "improve rankings", "SEO analysis")
+**User asks to check / audit SEO** ("check my SEO", "SEO audit", "run SEO check", post-publish SEO chip)
+→ Call **`seoAnalysis`** once. **Do not load `seo` skill** for the check turn. STOP after the report widget.
+
+**User wants SEO implementation or deep strategy docs** ("fix meta tags", "add JSON-LD", "optimize page copy for SEO")
 → **IMMEDIATELY** load `seo` skill
 
 **User mentions social connections** ("connect to Facebook", "connect to Instagram", "link Instagram", "connect Google", "connect Google Business Profile", "connect GMB", "link Google account")
