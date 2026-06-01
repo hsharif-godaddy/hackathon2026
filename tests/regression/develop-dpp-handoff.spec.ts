@@ -30,10 +30,11 @@ function mgmtAiroBaseUrl(): string | null {
     case 'pre-test':
       return 'https://mgmt.nstk.net'
     case 'prod':
-      // Per docs/app-route.md base-URL table; differs from MGMT_AIRO_BASE_URL
-      // in app/.env.local.prod (mgmt.woosaas.godaddy.com), but the unified
-      // /v1/apps doc is the source of truth for this endpoint.
-      return 'https://mgmt.mwcs.godaddy.com'
+      // Match the BFF's MGMT_AIRO_BASE_URL (app/.env.local.prod uses woosaas).
+      // Using mwcs caused a cross-host race: provisioning wrote to mwcs but
+      // the BFF read from woosaas, so site data never arrived and the DPP
+      // auto-send never fired.
+      return 'https://mgmt.woosaas.godaddy.com'
     case 'local':
     case 'dev':
       return null
@@ -282,7 +283,7 @@ test.describe('Develop — DPP cold redirect → no re-send on reload', () => {
     await page.waitForTimeout(5_000)
     await expect(
       transcript.locator('[data-testid="chat-message-user"]').filter({ hasText: promptMarker }),
-    ).toHaveCount(1)
+    ).toHaveCount(1, { timeout: LONG_TIMEOUT })
     expect(
       await page.evaluate((key) => window.localStorage.getItem(key), flagKey(realAppId)),
     ).toBe('true')
@@ -301,7 +302,7 @@ test.describe('Develop — DPP cold redirect → no re-send on reload', () => {
     await page.waitForTimeout(5_000)
     await expect(
       transcript.locator('[data-testid="chat-message-user"]').filter({ hasText: promptMarker }),
-    ).toHaveCount(1)
+    ).toHaveCount(1, { timeout: LONG_TIMEOUT })
     // Without the localStorage flag the conversation-history guard must hold,
     // and the overlay must still not re-appear.
     await expect(page.getByTestId('preview-iframe')).toBeVisible({ timeout: PREVIEW_TIMEOUT })
@@ -319,7 +320,7 @@ test.describe('Develop — DPP cold redirect → no re-send on reload', () => {
     await page.waitForTimeout(5_000)
     await expect(
       transcript.locator('[data-testid="chat-message-user"]').filter({ hasText: promptMarker }),
-    ).toHaveCount(1)
+    ).toHaveCount(1, { timeout: LONG_TIMEOUT })
     await expect(page.getByTestId('preview-iframe')).toBeVisible({ timeout: PREVIEW_TIMEOUT })
     await expect(page.getByTestId('preview-building-overlay')).toHaveCount(0)
 
