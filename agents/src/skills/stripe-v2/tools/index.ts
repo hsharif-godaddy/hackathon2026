@@ -67,8 +67,7 @@ function buildProvisioningUnavailableResult(error: StripeServiceError) {
     stripeProvisioningUnavailable: true,
     retryAfterSeconds: STRIPE_PROVISIONING_RETRY_SECONDS,
     message:
-      'Stripe is still being provisioned for this Airo Builder deployment. ' +
-      'Tell the user we will turn it on shortly and they should try again later.',
+      "Stripe isn't ready for your project yet. I'm still getting it set up — try again in a little while.",
     upstreamCode: error.code,
     upstreamStatus: error.status,
   };

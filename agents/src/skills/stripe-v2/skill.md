@@ -26,8 +26,8 @@ Both tools are read-mostly: setup is server-side idempotent on `appId` (re-runni
 
 Sample framing for the chat reply:
 
-> ✅ Your Stripe sandbox is ready. You can build and test payment flows with Stripe's test cards (e.g. `4242 4242 4242 4242`) right now.
-> 📌 Save this URL for when you're ready to take real payments — you'll claim the sandbox here: \<claimUrl>
+> Your Stripe sandbox is ready. You can build and test payment flows with Stripe's test cards (e.g. `4242 4242 4242 4242`) right now.
+> Save this URL for when you're ready to take real payments — you'll claim the sandbox here: \<claimUrl>
 > Want me to start setting up checkout, products, and pricing now?
 
 ## Idempotency and reuse
@@ -37,7 +37,7 @@ Sample framing for the chat reply:
 
 ## Graceful degradation
 
-If `stripe-v2__setup` returns `{stripeProvisioningUnavailable: true, message, retryAfterSeconds}`, the upstream Stripe API has rejected the request — usually because the v2 preview API isn't enabled for this Airo Builder deployment yet. Tell the user the literal `message`. Don't retry within the same conversation; suggest they try again later. This is the expected state until the platform Stripe access is fully wired up.
+If `stripe-v2__setup` returns `{stripeProvisioningUnavailable: true, message, retryAfterSeconds}`, the upstream Stripe API has rejected the request — usually because the v2 preview API isn't enabled for this project yet. Tell the user the literal `message`. Don't retry within the same conversation; suggest they try again later. This is the expected state until the platform Stripe access is fully wired up.
 
 ## MCP tools (products, prices, customers, etc.)
 

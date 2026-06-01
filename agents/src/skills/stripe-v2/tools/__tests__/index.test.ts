@@ -106,7 +106,7 @@ describe('stripe-v2 skill tools', () => {
         upstreamCode: 'STRIPE_CREATE_FAILED',
         upstreamStatus: 502,
       });
-      expect((result as { message: string }).message).toContain('still being provisioned');
+      expect((result as { message: string }).message).toContain('your project');
 
       // Pin the level: degrade is expected/recoverable so it logs at WARN.
       // A regression that bumps this to ERROR would page oncall on every
