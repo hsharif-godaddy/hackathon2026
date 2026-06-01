@@ -100,8 +100,8 @@ test.describe('Brand Book Tab', () => {
     await dismissOverlays(page);
     console.log('Step 2: Switching to Brand Book tab...');
 
-    // Brand Book tab is a radio button in the header ButtonGroup
-    const brandBookTab = page.getByRole('radio', { name: /logo.*brand/i });
+    // Brand Book tab is a button in the header ButtonGroup (role="group" wrapper since #4291).
+    const brandBookTab = page.getByRole('button', { name: /logo.*brand/i });
 
     // If the flag is not enabled, the tab won't exist — skip gracefully
     const tabVisible = await brandBookTab.isVisible().catch(() => false);

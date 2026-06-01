@@ -170,7 +170,7 @@ test.describe('Edit Interactions', () => {
     await dismissOverlays(page);
     console.log('Step 2: Switching to code view...');
 
-    const codeViewButton = page.getByRole('radio', { name: /builder_preview_button_code|Code/i });
+    const codeViewButton = page.getByRole('button', { name: /builder_preview_button_code|Code/i });
     await expect(codeViewButton).toBeVisible({ timeout: DEFAULT_TIMEOUT });
     await codeViewButton.click({ force: true });
 

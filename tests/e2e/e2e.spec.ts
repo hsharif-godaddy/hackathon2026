@@ -329,7 +329,7 @@ test.describe('E2E - Critical Path', () => {
     await test.step('Step 8: Code view + unified search', async () => {
       await dismissOverlays(page);
 
-      const codeViewButton = page.getByRole('radio', { name: /builder_preview_button_code|Code/i });
+      const codeViewButton = page.getByRole('button', { name: /builder_preview_button_code|Code/i });
       await expect(codeViewButton).toBeVisible({ timeout: DEFAULT_TIMEOUT });
       await codeViewButton.click({ force: true });
 
