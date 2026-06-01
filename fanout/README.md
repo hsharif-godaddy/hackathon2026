@@ -186,8 +186,8 @@ Lightning instance differs), the `Case` link is omitted entirely; the
 rest of the Slack message renders unchanged. Triagers can still find
 the case via Nexus or the kickoff note in the CRM case itself.
 
-Happy-path NPS submissions (rating ≥ 5) get NO triage links — there's
-no CRM/Jira/investigator to link to. The Slack message renders
+Happy-path NPS submissions (rating = 7, top score) get NO triage links —
+there's no CRM/Jira/investigator to link to. The Slack message renders
 identically to the legacy UI Block Kit shape (backward compat).
 
 ## Jira fanout (AABSP)
@@ -203,7 +203,7 @@ prior fanouts — the surrounding fanouts always complete first.
 | ---------- | --------------------------------------------------- | --------------- |
 | `issue`    | Always create                                       | `Bug`           |
 | `support`  | Always create                                       | `SOS Support`   |
-| `feedback` | Only when `rating != null && rating < 5`            | `Prod Feedback` |
+| `feedback` | Only when `rating != null && rating < 7`            | `Prod Feedback` |
 
 ### Auth
 

@@ -690,7 +690,27 @@ await test('jira: createIssue body carries S3 Object Reference custom field buil
   assert.ok(s3Ref.includes(S3_EVENT.Records[0].s3.object.key));
 });
 
-await test('downstream: feedback rating=5 → eligibility skip for Jira AND investigator AND CRM (Slack still runs)', async () => {
+await test('downstream: feedback rating=7 → eligibility skip for Jira AND investigator AND CRM (Slack still runs)', async () => {
+  readStateImpl = freshReadStateImpl();
+  parseFeedbackParquetImpl = async () => ({
+    ...FEEDBACK_ROW,
+    feedback_category: 'feedback',
+    rating: 7,
+  });
+
+  await handler(S3_EVENT);
+
+  assert.equal(calls.jiraFind.length, 0);
+  assert.equal(calls.jiraCreate.length, 0);
+  // Investigator shares same gate as Jira — happy NPS (top score) = no investigation
+  assert.equal(calls.invoke.length, 0);
+  // CRM never opens cases for feedback category (NPS surveys ≠ issues)
+  assert.equal(calls.postCase.length, 0, 'NPS feedback never opens CRM case');
+  // Slack always runs regardless of category/rating (mirrors all signals)
+  assert.equal(calls.slack.length, 1);
+});
+
+await test('downstream: feedback rating=5 → Jira + investigator run (mid-NPS now eligible), CRM still skipped', async () => {
   readStateImpl = freshReadStateImpl();
   parseFeedbackParquetImpl = async () => ({
     ...FEEDBACK_ROW,
@@ -700,14 +720,25 @@ await test('downstream: feedback rating=5 → eligibility skip for Jira AND inve
 
   await handler(S3_EVENT);
 
-  assert.equal(calls.jiraFind.length, 0);
-  assert.equal(calls.jiraCreate.length, 0);
-  // Investigator shares same gate as Jira — happy NPS = no investigation
-  assert.equal(calls.invoke.length, 0);
-  // CRM never opens cases for feedback category (NPS surveys ≠ issues)
-  assert.equal(calls.postCase.length, 0, 'NPS feedback never opens CRM case');
-  // Slack always runs regardless of category/rating (mirrors all signals)
+  assert.equal(calls.jiraCreate.length, 1);
+  assert.equal(calls.invoke.length, 1);
+  assert.equal(calls.postCase.length, 0, 'feedback rating=5 still does not open CRM case');
   assert.equal(calls.slack.length, 1);
+});
+
+await test('downstream: feedback rating=6 → Jira + investigator run (boundary, just below threshold)', async () => {
+  readStateImpl = freshReadStateImpl();
+  parseFeedbackParquetImpl = async () => ({
+    ...FEEDBACK_ROW,
+    feedback_category: 'feedback',
+    rating: 6,
+  });
+
+  await handler(S3_EVENT);
+
+  assert.equal(calls.jiraCreate.length, 1);
+  assert.equal(calls.invoke.length, 1);
+  assert.equal(calls.postCase.length, 0, 'feedback rating=6 still does not open CRM case');
 });
 
 await test('downstream: feedback rating=null → eligibility skip for Jira AND investigator AND CRM', async () => {
@@ -767,11 +798,11 @@ await test('crm: feedback rating=2 (low NPS) → Jira + investigator run, CRM st
 
   await handler(S3_EVENT);
 
-  // Jira + investigator fire on rating < 5 (eligibility gate)
+  // Jira + investigator fire on rating < 7 (eligibility gate)
   assert.equal(calls.jiraCreate.length, 1);
   assert.equal(calls.invoke.length, 1);
   // CRM does NOT — feedback category never opens a case regardless of rating
-  assert.equal(calls.postCase.length, 0, 'feedback rating<5 still does not open CRM case');
+  assert.equal(calls.postCase.length, 0, 'feedback rating<7 still does not open CRM case');
   // Slack runs
   assert.equal(calls.slack.length, 1);
 });

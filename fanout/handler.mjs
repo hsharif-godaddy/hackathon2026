@@ -269,7 +269,7 @@ async function handleFreshPath({ row, customerId, appId, submissionId, stateBuck
   // truth; manual replay from the parquet S3 event is the recovery path
   // for any genuinely-needed retry.
   // CRM new-case eligibility: issue/support open cases for support agents;
-  // NPS feedback (rating-based survey) NEVER opens a case — even rating < 5.
+  // NPS feedback (rating-based survey) NEVER opens a case — even rating < 7.
   // Mirrors the legacy BFF contract from `/api/crm/case` which was
   // issue/support only. Without this gate every NPS submission would
   // create a case and flood the support queue with non-issues.
@@ -428,8 +428,8 @@ async function handleFreshPath({ row, customerId, appId, submissionId, stateBuck
   }
 
   // Investigator — same eligibility gate as Jira: issue + support always,
-  // NPS feedback only when rating < 5. Skips happy NPS submissions
-  // (rating >= 5) where there's no problem to investigate.
+  // NPS feedback only when rating < 7. Skips happy NPS submissions
+  // (rating >= 7) where there's no problem to investigate.
   if (shouldFanoutDownstream(row)) {
     try {
       // Payload shape mirrors the legacy BFF
@@ -587,7 +587,7 @@ function buildEnrichment({ caseRecordId, caseNumber, jiraKey }) {
  * Eligibility for downstream fanout (AABSP Jira ticket + investigator).
  *   - issue:    always
  *   - support:  always
- *   - feedback: only if rating != null && rating < 5
+ *   - feedback: only if rating != null && rating < 7
  *
  * Slack always runs (separate gating) because Slack mirrors all signals.
  * CRM gating lives in its own block (issue + support only).
@@ -595,7 +595,7 @@ function buildEnrichment({ caseRecordId, caseNumber, jiraKey }) {
 function shouldFanoutDownstream(row) {
   const cat = row.feedback_category;
   if (cat === 'issue' || cat === 'support') return true;
-  if (cat === 'feedback' && row.rating != null && row.rating < 5) return true;
+  if (cat === 'feedback' && row.rating != null && row.rating < 7) return true;
   return false;
 }
 
@@ -603,7 +603,7 @@ function shouldFanoutDownstream(row) {
  * Eligibility for opening a NEW CRM case.
  *   - issue:    always (real customers)
  *   - support:  always (real customers)
- *   - feedback: NEVER (even rating < 5)
+ *   - feedback: NEVER (even rating < 7)
  *
  * Internal-user gate: GoDaddy employees have 3-char shopperIds (TLA — three
  * letter acronym). They MUST NOT open CRM cases — internal employees
@@ -618,7 +618,7 @@ function shouldFanoutDownstream(row) {
  * legacy: Slack always pings); CRM is the only blocked downstream here.
  *
  * Distinct from `shouldFanoutDownstream` (which gates investigator + Jira)
- * because NPS rating < 5 still warrants AI investigation + Jira triage,
+ * because NPS rating < 7 still warrants AI investigation + Jira triage,
  * but should not flood the support queue with cases — survey ratings
  * aren't issues.
  */

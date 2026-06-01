@@ -4,7 +4,7 @@
  * Issue type per category:
  *   - issue    → "Bug"
  *   - support  → "SOS Support"
- *   - feedback → "Prod Feedback" (fanout gate already restricts to rating < 5)
+ *   - feedback → "Prod Feedback" (fanout gate already restricts to rating < 7)
  *
  * Custom fields populate the typed AABSP fields (App ID, Subscription/Plan,
  * Origin, Topics, Customer Consent, Feedback ID, S3 Object Reference,
@@ -174,7 +174,7 @@ function topicToLabel(topic) {
 }
 
 // 0/7 IS a valid option in the AABSP Rating select. The fanout
-// `rating < 5` gate doesn't exclude 0, so a rating=0 row legitimately
+// `rating < 7` gate doesn't exclude 0, so a rating=0 row legitimately
 // produces a Prod Feedback ticket with `{value: "0/7"}`. Rejecting it
 // would silently drop the rating signal from a worst-NPS submission.
 // (Source of truth for valid options is the live AABSP project
