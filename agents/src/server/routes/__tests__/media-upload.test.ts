@@ -74,13 +74,15 @@ describe('POST /media/:appId/slots/:slotName/upload', () => {
         contentType: 'text/plain',
       });
 
-    expect(response.status).toBe(400);
-    expect(response.body.error).toContain('Only JPEG, PNG, WebP, and GIF images are supported');
-  });
+    expect(response.status).toBe(400)
+    expect(response.body.error).toContain(
+      'Only JPEG, PNG, WebP, GIF images and MP4, WebM, MOV videos are supported'
+    )
+  })
 
-  it('should reject files larger than 10MB', async () => {
-    // Create a buffer larger than 10MB
-    const largeBuffer = Buffer.alloc(11 * 1024 * 1024);
+  it('should reject files larger than 50MB', async () => {
+    // Create a buffer larger than 50MB
+    const largeBuffer = Buffer.alloc(51 * 1024 * 1024)
 
     const response = await request(app)
       .post('/media/test-app/slots/hero/upload')
@@ -89,9 +91,9 @@ describe('POST /media/:appId/slots/:slotName/upload', () => {
         contentType: 'image/jpeg',
       });
 
-    expect(response.status).toBe(400);
-    expect(response.body.error).toContain('10MB');
-  });
+    expect(response.status).toBe(400)
+    expect(response.body.error).toContain('50MB')
+  })
 
   it('should reject files with valid MIME type but invalid magic bytes', async () => {
     // Send random bytes claiming to be JPEG
@@ -528,9 +530,168 @@ describe('POST /media/:appId/slots/:slotName/upload — chatFilenameOverwrite', 
 
     expect(response.status).toBe(200);
     // Invalid chatFilenameOverwrite ignored — falls through to normal processUpload
-    expect(fileUploadService.findUploadedFilePath).not.toHaveBeenCalled();
-  });
-});
+    expect(fileUploadService.findUploadedFilePath).not.toHaveBeenCalled()
+  })
+})
+
+describe('POST /media/:appId/slots/:slotName/upload — video uploads', () => {
+  let app: express.Application
+
+  beforeAll(async () => {
+    const { default: mediaRouter } = await import('../media.js')
+    app = express()
+    app.use('/media', mediaRouter)
+  })
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  /** Build a minimal valid MP4 buffer (ftyp box at offset 4) */
+  function makeMp4(): Buffer {
+    // Minimal ftyp box: [size(4)][ftyp(4)][brand(4)]
+    const buf = Buffer.alloc(16)
+    buf.writeUInt32BE(16, 0) // box size
+    buf.write('ftyp', 4, 'ascii') // box type
+    buf.write('isom', 8, 'ascii') // major brand
+    return buf
+  }
+
+  /** Build a minimal valid WebM buffer (EBML header) */
+  function makeWebm(): Buffer {
+    const buf = Buffer.alloc(16)
+    buf[0] = 0x1A
+    buf[1] = 0x45
+    buf[2] = 0xDF
+    buf[3] = 0xA3
+    return buf
+  }
+
+  it('should accept a valid MP4 upload and call updateSlotWithUpload with isVideo:true', async () => {
+    const { mediaManifestService } = await import('../../../services/MediaManifestService.js')
+    vi.mocked(mediaManifestService.getSlot).mockResolvedValue({
+      success: true,
+      slot: {
+        mediaType: 'video',
+        currentUrl: 'https://media.gettyimages.com/old.mp4',
+        searchQuery: 'hero video',
+        alternatives: [],
+        userModified: false,
+        createdAt: new Date().toISOString(),
+        lastUpdated: new Date().toISOString(),
+      },
+    })
+    vi.mocked(mediaManifestService.updateSlotWithUpload).mockResolvedValue({
+      success: true,
+      slot: {
+        mediaType: 'video',
+        currentUrl: '/airo-assets/uploads/hero-abc123.mp4',
+        searchQuery: 'hero video',
+        alternatives: [],
+        userModified: true,
+        createdAt: new Date().toISOString(),
+        lastUpdated: new Date().toISOString(),
+      },
+    })
+
+    const response = await request(app)
+      .post('/media/test-app/slots/hero/upload')
+      .attach('image', makeMp4(), { filename: 'clip.mp4', contentType: 'video/mp4' })
+
+    expect(response.status).toBe(200)
+    expect(response.body.success).toBe(true)
+    expect(response.body.uploadedUrl).toMatch(/\.mp4$/)
+    expect(mediaManifestService.updateSlotWithUpload).toHaveBeenCalledWith(
+      'test-app',
+      'hero',
+      expect.stringContaining('.mp4'),
+      expect.objectContaining({ isVideo: true })
+    )
+  })
+
+  it('should accept a valid WebM upload', async () => {
+    const { mediaManifestService } = await import('../../../services/MediaManifestService.js')
+    vi.mocked(mediaManifestService.getSlot).mockResolvedValue({
+      success: true,
+      slot: {
+        mediaType: 'video',
+        currentUrl: 'https://example.com/old.webm',
+        searchQuery: 'test',
+        alternatives: [],
+        userModified: false,
+        createdAt: new Date().toISOString(),
+        lastUpdated: new Date().toISOString(),
+      },
+    })
+    vi.mocked(mediaManifestService.updateSlotWithUpload).mockResolvedValue({
+      success: true,
+      slot: {
+        mediaType: 'video',
+        currentUrl: '/airo-assets/uploads/hero-abc123.webm',
+        searchQuery: 'test',
+        alternatives: [],
+        userModified: true,
+        createdAt: new Date().toISOString(),
+        lastUpdated: new Date().toISOString(),
+      },
+    })
+
+    const response = await request(app)
+      .post('/media/test-app/slots/hero/upload')
+      .attach('image', makeWebm(), { filename: 'clip.webm', contentType: 'video/webm' })
+
+    expect(response.status).toBe(200)
+    expect(response.body.success).toBe(true)
+    expect(response.body.uploadedUrl).toMatch(/\.webm$/)
+  })
+
+  it('should reject video with invalid magic bytes', async () => {
+    const fakeVideo = Buffer.from('this is not a real video file at all')
+
+    const response = await request(app)
+      .post('/media/test-app/slots/hero/upload')
+      .attach('image', fakeVideo, { filename: 'fake.mp4', contentType: 'video/mp4' })
+
+    expect(response.status).toBe(400)
+    expect(response.body.error).toContain('does not match')
+  })
+
+  it('should skip image processing for video uploads (extension is mp4, not jpg)', async () => {
+    const { mediaManifestService } = await import('../../../services/MediaManifestService.js')
+    vi.mocked(mediaManifestService.getSlot).mockResolvedValue({
+      success: true,
+      slot: {
+        mediaType: 'video',
+        currentUrl: 'https://example.com/old.mp4',
+        searchQuery: 'test',
+        alternatives: [],
+        userModified: false,
+        createdAt: new Date().toISOString(),
+        lastUpdated: new Date().toISOString(),
+      },
+    })
+    vi.mocked(mediaManifestService.updateSlotWithUpload).mockResolvedValue({
+      success: true,
+      slot: {
+        mediaType: 'video',
+        currentUrl: '/airo-assets/uploads/hero-abc123.mp4',
+        searchQuery: 'test',
+        alternatives: [],
+        userModified: true,
+        createdAt: new Date().toISOString(),
+        lastUpdated: new Date().toISOString(),
+      },
+    })
+
+    const response = await request(app)
+      .post('/media/test-app/slots/hero/upload')
+      .attach('image', makeMp4(), { filename: 'clip.mp4', contentType: 'video/mp4' })
+
+    expect(response.status).toBe(200)
+    // Video uploads keep the original extension (mp4) — no sharp processing
+    expect(response.body.uploadedUrl).toMatch(/\.mp4$/)
+  })
+})
 
 describe('DELETE /media/:appId/uploads/:filename', () => {
   let app: express.Application;

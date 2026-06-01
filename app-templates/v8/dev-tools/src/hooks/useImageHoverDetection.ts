@@ -8,10 +8,11 @@ export interface HoveredImage {
   imageUrl: string;
   isMediaSlot: boolean;
   slotPath: string | null;
+  isVideo: boolean;
 }
 
 export type HoveredElement =
-  | { type: "image"; element: HTMLElement; imageUrl: string; isMediaSlot: boolean; slotPath: string | null }
+  | { type: "image"; element: HTMLElement; imageUrl: string; isMediaSlot: boolean; slotPath: string | null; isVideo: boolean }
   | { type: "content"; element: HTMLElement };
 
 /**
@@ -202,6 +203,7 @@ export function useImageHoverDetection(
           imageUrl: imageInfo.imageUrl!,
           isMediaSlot: slotPath !== null,
           slotPath,
+          isVideo: imageInfo.isVideo ?? false,
         });
       }, delay);
     };

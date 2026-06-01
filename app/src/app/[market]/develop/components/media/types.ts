@@ -43,6 +43,8 @@ export interface MediaSlot {
   gettyId?: string;
   /** Getty image IDs for alternative images (parallel to alternatives array) */
   alternativeGettyIds?: string[];
+  /** URLs of AI-generated media for this slot (from generate_video tool) */
+  aiGeneratedUrls?: string[];
   /** Maps upload URLs to original chat upload filenames for dedup display */
   uploadSources?: Record<string, string>;
   /** Maps transparent URL → solid-background URL for logo variants.

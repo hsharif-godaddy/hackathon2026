@@ -98,7 +98,6 @@ describe('enforceRules', () => {
     expect(result.terms).toEqual(['warm', 'cozy'])
   })
 
-
   it('caps phrases at 2 and terms at 8', () => {
     const result = enforceRules({
       phrases: ['a b', 'c d', 'e f'],
@@ -128,5 +127,3 @@ describe('buildQueryString', () => {
     expect(buildQueryString({ phrases: [], terms: [] })).toBe('')
   })
 })
-
-

@@ -560,6 +560,46 @@ publicRouter.get('/uploads/:appId/:filename', async (req: Request, res: Response
     }
 
     // Read and serve the file
+    const isVideo = matchingFile.mimeType?.startsWith('video/') ?? false
+
+    // For video files, support Range requests so <video> elements can seek/play
+    if (isVideo) {
+      const { stat } = await import('fs/promises')
+      const { createReadStream } = await import('fs')
+      const fileStats = await stat(filePath)
+      const fileSize = fileStats.size
+      const range = req.headers.range
+
+      res.setHeader('Content-Type', matchingFile.mimeType || 'video/mp4')
+      res.setHeader('Accept-Ranges', 'bytes')
+      res.setHeader('X-Content-Type-Options', 'nosniff')
+
+      if (range) {
+        const parts = range.replace(/bytes=/, '').split('-')
+        const start = parseInt(parts[0]!, 10)
+        const rawEnd = parts[1] ? parseInt(parts[1], 10) : fileSize - 1
+        const end = isNaN(rawEnd) ? fileSize - 1 : rawEnd
+
+        if (isNaN(start) || start < 0 || start >= fileSize || end < start) {
+          res.writeHead(416, { 'Content-Range': `bytes */${fileSize}` })
+          return res.end()
+        }
+
+        const clampedEnd = Math.min(end, fileSize - 1)
+        const chunkSize = clampedEnd - start + 1
+
+        res.writeHead(206, {
+          'Content-Range': `bytes ${start}-${clampedEnd}/${fileSize}`,
+          'Content-Length': chunkSize,
+        })
+        createReadStream(filePath, { start, end: clampedEnd }).pipe(res)
+      } else {
+        res.setHeader('Content-Length', fileSize)
+        createReadStream(filePath).pipe(res)
+      }
+      return
+    }
+
     const fileBuffer = await readFile(filePath)
 
     // HTML/XML round-trip back to browsers via signed URLs; force-download to

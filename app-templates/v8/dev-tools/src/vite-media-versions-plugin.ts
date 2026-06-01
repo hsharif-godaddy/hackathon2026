@@ -15,24 +15,29 @@ const RESOLVED_VIRTUAL_ID = '\0' + VIRTUAL_MODULE_ID;
 export function mediaVersionsPlugin(): Plugin {
   let manifestPath = '';
   let currentVersions: Record<string, string> = {};
+  let currentMediaTypes: Record<string, string> = {};
 
-  function extractVersions(): Record<string, string> {
+  function extractData(): { versions: Record<string, string>; mediaTypes: Record<string, string> } {
     try {
       if (fs.existsSync(manifestPath)) {
         const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
         const versions: Record<string, string> = {};
+        const mediaTypes: Record<string, string> = {};
         for (const [slotName, slot] of Object.entries(manifest)) {
-          const s = slot as { lastUpdated?: string };
+          const s = slot as { lastUpdated?: string; mediaType?: string };
           if (s.lastUpdated) {
             versions[slotName] = String(new Date(s.lastUpdated).getTime());
           }
+          if (s.mediaType) {
+            mediaTypes[slotName] = s.mediaType;
+          }
         }
-        return versions;
+        return { versions, mediaTypes };
       }
     } catch {
       // File may be mid-write or malformed
     }
-    return {};
+    return { versions: {}, mediaTypes: {} };
   }
 
   function startWatching(server: { ws: { send: (event: string, data: unknown) => void }; httpServer?: { on: (event: string, cb: () => void) => void } | null }) {
@@ -40,10 +45,12 @@ export function mediaVersionsPlugin(): Plugin {
       const watcher = fs.watch(manifestPath, () => {
         // Small delay to ensure atomic rename is complete
         setTimeout(() => {
-          const newVersions = extractVersions();
-          if (JSON.stringify(newVersions) !== JSON.stringify(currentVersions)) {
-            currentVersions = newVersions;
-            server.ws.send('media-versions-update', { versions: currentVersions });
+          const { versions, mediaTypes } = extractData();
+          if (JSON.stringify(versions) !== JSON.stringify(currentVersions) ||
+              JSON.stringify(mediaTypes) !== JSON.stringify(currentMediaTypes)) {
+            currentVersions = versions;
+            currentMediaTypes = mediaTypes;
+            server.ws.send('media-versions-update', { versions: currentVersions, mediaTypes: currentMediaTypes });
           }
         }, 50);
       });
@@ -54,8 +61,10 @@ export function mediaVersionsPlugin(): Plugin {
       const dirWatcher = fs.watch(path.dirname(manifestPath), () => {
         if (fs.existsSync(manifestPath)) {
           dirWatcher.close();
-          currentVersions = extractVersions();
-          server.ws.send('media-versions-update', { versions: currentVersions });
+          const data = extractData();
+          currentVersions = data.versions;
+          currentMediaTypes = data.mediaTypes;
+          server.ws.send('media-versions-update', { versions: currentVersions, mediaTypes: currentMediaTypes });
           startWatching(server);
         }
       });
@@ -69,8 +78,31 @@ export function mediaVersionsPlugin(): Plugin {
 
     configureServer(server) {
       manifestPath = path.join(server.config.root, MANIFEST_FILENAME);
-      currentVersions = extractVersions();
+      const data = extractData();
+      currentVersions = data.versions;
+      currentMediaTypes = data.mediaTypes;
       startWatching(server);
+
+      // Serve /airo-media.json from project root so airo-video-slots.js can fetch it
+      // (Vite only auto-serves public/ at root URLs; the manifest lives at project root)
+      server.middlewares.use((req, res, next) => {
+        if (req.url === '/' + MANIFEST_FILENAME) {
+          try {
+            if (fs.existsSync(manifestPath)) {
+              const content = fs.readFileSync(manifestPath, 'utf-8');
+              res.setHeader('Content-Type', 'application/json');
+              res.end(content);
+              return;
+            }
+          } catch {
+            // Fall through to 404
+          }
+          res.statusCode = 404;
+          res.end('{}');
+          return;
+        }
+        next();
+      });
     },
 
     resolveId(id: string) {
@@ -84,10 +116,15 @@ export function mediaVersionsPlugin(): Plugin {
       if (id === RESOLVED_VIRTUAL_ID) {
         return `
           let versions = ${JSON.stringify(currentVersions)};
+          let mediaTypes = ${JSON.stringify(currentMediaTypes)};
           const listeners = [];
 
           export function getVersions() {
             return versions;
+          }
+
+          export function getMediaTypes() {
+            return mediaTypes;
           }
 
           export function onVersionsUpdate(cb) {
@@ -101,7 +138,8 @@ export function mediaVersionsPlugin(): Plugin {
           if (import.meta.hot) {
             import.meta.hot.on('media-versions-update', (data) => {
               versions = data.versions;
-              listeners.forEach(cb => cb(versions));
+              mediaTypes = data.mediaTypes;
+              listeners.forEach(cb => cb(versions, mediaTypes));
             });
           }
         `;

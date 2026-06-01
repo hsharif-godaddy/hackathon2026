@@ -235,20 +235,34 @@ export default function DevelopmentMode() {
 
     // Media version cache-busting via MutationObserver
     // Watches for dynamically added/changed images and applies version params
-    let mediaVersions: Record<string, string> = {}
+    // Use a single mutable state object to avoid closure-capture drift when async callbacks update values
+    const mediaState = { versions: {} as Record<string, string>, types: {} as Record<string, string> }
+    // Track slots recently updated by RELOAD_MEDIA_SLOT to prevent HMR-driven patchAllImages
+    // from reverting them with stale manifest data (race between postMessage and file-watcher)
+    const recentSlotOverrides: Record<string, number> = {}
     let mediaVersionsCleanup: (() => void) | null = null
     let mediaObserver: MutationObserver | null = null
 
     const SLOT_URL_PREFIX = '/airo-assets/images/'
+    const SLOT_URL_PREFIX_VIDEOS = '/airo-assets/videos/'
+
+    /** Extract the slot path from an /airo-assets/images/ or /airo-assets/videos/ URL */
+    function extractSlotPath(url: string): { slotPath: string; prefix: string } | null {
+      for (const prefix of [SLOT_URL_PREFIX, SLOT_URL_PREFIX_VIDEOS]) {
+        const prefixIdx = url.indexOf(prefix)
+        if (prefixIdx !== -1) {
+          const afterPrefix = url.substring(prefixIdx + prefix.length)
+          return { slotPath: afterPrefix.split('?')[0], prefix }
+        }
+      }
+      return null
+    }
 
     function applyVersionToUrl(url: string): string | null {
-      const prefixIdx = url.indexOf(SLOT_URL_PREFIX)
-      if (prefixIdx === -1) return null
+      const extracted = extractSlotPath(url)
+      if (!extracted) return null
 
-      const afterPrefix = url.substring(prefixIdx + SLOT_URL_PREFIX.length)
-      // Extract slot path (everything before ? or end)
-      const slotPath = afterPrefix.split('?')[0]
-      const version = mediaVersions[slotPath]
+      const version = mediaState.versions[extracted.slotPath]
       if (!version) return null
 
       try {
@@ -265,26 +279,153 @@ export default function DevelopmentMode() {
       if (!img.src) return
       const patched = applyVersionToUrl(img.src)
       if (patched) img.src = patched
+
+      // Check if this image's slot has mediaType 'video' — if so, add a <video> sibling
+      const extracted = extractSlotPath(img.src)
+      if (extracted && mediaState.types[extracted.slotPath] === 'video') {
+        if (img.getAttribute('data-airo-video-patched')) return
+        const videoUrl = new URL(window.location.origin + SLOT_URL_PREFIX_VIDEOS + extracted.slotPath)
+        const version = mediaState.versions[extracted.slotPath]
+        if (version) videoUrl.searchParams.set('_v', version)
+        videoUrl.searchParams.set('_t', String(Date.now()))
+        insertVideoSibling(img, videoUrl.toString(), extracted.slotPath)
+      }
+    }
+
+    /** Create a <video> element and insert it after the given <img>, hiding the img.
+     *  Removes any existing sibling video for this slot first to prevent orphans
+     *  if React re-renders the <img> without removing the previous <video>. */
+    function insertVideoSibling(img: HTMLImageElement, videoSrc: string, slotPath: string) {
+      // Clean up any existing video for this slot to prevent duplicates
+      const existing = img.parentNode?.querySelector(`video[data-slot="${slotPath}"]`) as HTMLVideoElement | null
+      if (existing) existing.remove()
+
+      const video = document.createElement('video')
+      video.src = videoSrc
+      video.autoplay = true
+      video.muted = true
+      video.loop = true
+      video.playsInline = true
+      video.className = img.className
+      video.style.cssText = img.style.cssText
+      if (img.width) video.width = img.width
+      if (img.height) video.height = img.height
+      video.setAttribute('data-airo-video', '')
+      video.setAttribute('data-slot', slotPath)
+      img.setAttribute('data-airo-video-patched', 'true')
+      img.style.display = 'none'
+      img.parentNode?.insertBefore(video, img.nextSibling)
+    }
+
+    /** Patch <video> elements: apply version params, or remove if slot changed to image */
+    function patchVideoElement(video: HTMLVideoElement) {
+      if (!video.src) return
+      // Skip our own injected video siblings
+      if (!video.hasAttribute('data-airo-video')) return
+      const slotPath = video.getAttribute('data-slot')
+      if (!slotPath) return
+      if (mediaState.types[slotPath] !== 'video') {
+        // Slot reverted to image — remove video, un-hide img
+        const prevImg = video.previousElementSibling as HTMLElement | null
+        if (prevImg?.tagName === 'IMG') {
+          prevImg.removeAttribute('data-airo-video-patched')
+          prevImg.style.display = ''
+        }
+        video.remove()
+        return
+      }
+      const version = mediaState.versions[slotPath]
+      if (!version) return
+      try {
+        const parsed = new URL(video.src, window.location.origin)
+        if (parsed.searchParams.get('_v') === version) return
+        parsed.searchParams.set('_v', version)
+        video.src = parsed.toString()
+      } catch {
+        // ignore
+      }
     }
 
     function patchBackgroundImage(el: HTMLElement) {
-      const bgImage = el.style.backgroundImage
-      if (!bgImage?.includes(SLOT_URL_PREFIX)) return
+      // Check inline style first, then fall back to computed style for CSS-class backgrounds
+      let bgImage = el.style.backgroundImage
+      if (!bgImage || bgImage === 'none' || (!bgImage.includes(SLOT_URL_PREFIX) && !bgImage.includes(SLOT_URL_PREFIX_VIDEOS))) {
+        bgImage = window.getComputedStyle(el).backgroundImage
+      }
+      if (!bgImage || bgImage === 'none') return
+      if (!bgImage.includes(SLOT_URL_PREFIX) && !bgImage.includes(SLOT_URL_PREFIX_VIDEOS)) return
       const urlMatch = bgImage.match(/url\(["']?([^"')]+)["']?\)/)
       if (!urlMatch?.[1]) return
+
+      // Check if this background slot is a video — if so, insert a video element
+      const extracted = extractSlotPath(urlMatch[1])
+      if (extracted && mediaState.types[extracted.slotPath] === 'video') {
+        if (el.getAttribute('data-airo-video-bg-patched') === extracted.slotPath) return
+        const existingBgVideo = el.querySelector<HTMLVideoElement>('video[data-airo-bg-video]')
+        if (existingBgVideo) existingBgVideo.remove()
+        el.style.backgroundImage = 'none'
+        el.setAttribute('data-airo-video-bg-patched', extracted.slotPath)
+        const videoUrl = new URL(window.location.origin + SLOT_URL_PREFIX_VIDEOS + extracted.slotPath)
+        const version = mediaState.versions[extracted.slotPath]
+        if (version) videoUrl.searchParams.set('_v', version)
+        videoUrl.searchParams.set('_t', String(Date.now()))
+        const video = document.createElement('video')
+        video.src = videoUrl.toString()
+        video.autoplay = true
+        video.muted = true
+        video.loop = true
+        video.playsInline = true
+        video.setAttribute('data-airo-bg-video', '')
+        video.setAttribute('data-slot', extracted.slotPath)
+        video.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:-1;'
+        const pos = window.getComputedStyle(el).position
+        if (pos === 'static') el.style.position = 'relative'
+        el.insertBefore(video, el.firstChild)
+        return
+      }
+
       const patched = applyVersionToUrl(urlMatch[1])
       if (patched) el.style.backgroundImage = `url("${patched}")`
     }
 
     function patchAllImages() {
       document.querySelectorAll<HTMLImageElement>('img').forEach(patchImageElement)
+      document.querySelectorAll<HTMLVideoElement>('video').forEach(patchVideoElement)
       // Use getComputedStyle for full scan to catch CSS-applied backgrounds,
       // not just inline styles (the MutationObserver can only detect inline changes)
       document.querySelectorAll<HTMLElement>('*').forEach((el) => {
         const bgImage = window.getComputedStyle(el).backgroundImage
-        if (!bgImage || bgImage === 'none' || !bgImage.includes(SLOT_URL_PREFIX)) return
+        if (!bgImage || bgImage === 'none' || (!bgImage.includes(SLOT_URL_PREFIX) && !bgImage.includes(SLOT_URL_PREFIX_VIDEOS))) return
         const urlMatch = bgImage.match(/url\(["']?([^"')]+)["']?\)/)
         if (!urlMatch?.[1]) return
+
+        // Check if this background slot is a video — if so, insert a video element
+        const extracted = extractSlotPath(urlMatch[1])
+        if (extracted && mediaState.types[extracted.slotPath] === 'video') {
+          if (el.getAttribute('data-airo-video-bg-patched') === extracted.slotPath) return
+          const existingBgVideo = el.querySelector<HTMLVideoElement>('video[data-airo-bg-video]')
+          if (existingBgVideo) existingBgVideo.remove()
+          el.style.backgroundImage = 'none'
+          el.setAttribute('data-airo-video-bg-patched', extracted.slotPath)
+          const videoUrl = new URL(window.location.origin + SLOT_URL_PREFIX_VIDEOS + extracted.slotPath)
+          const version = mediaState.versions[extracted.slotPath]
+          if (version) videoUrl.searchParams.set('_v', version)
+          videoUrl.searchParams.set('_t', String(Date.now()))
+          const video = document.createElement('video')
+          video.src = videoUrl.toString()
+          video.autoplay = true
+          video.muted = true
+          video.loop = true
+          video.playsInline = true
+          video.setAttribute('data-airo-bg-video', '')
+          video.setAttribute('data-slot', extracted.slotPath)
+          video.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:-1;'
+          const pos = window.getComputedStyle(el).position
+          if (pos === 'static') el.style.position = 'relative'
+          el.insertBefore(video, el.firstChild)
+          return
+        }
+
         const patched = applyVersionToUrl(urlMatch[1])
         if (patched) el.style.backgroundImage = `url("${patched}")`
       })
@@ -301,8 +442,9 @@ export default function DevelopmentMode() {
             }
             // Check descendants of added nodes
             node.querySelectorAll<HTMLImageElement>('img').forEach(patchImageElement)
-            if (node.style?.backgroundImage) patchBackgroundImage(node)
-            node.querySelectorAll<HTMLElement>('[style*="background"]').forEach(patchBackgroundImage)
+            // Check added element and descendants for background-images (inline or CSS-class)
+            patchBackgroundImage(node)
+            node.querySelectorAll<HTMLElement>('[style*="background"], section, div, header, main').forEach(patchBackgroundImage)
           }
         } else if (mutation.type === 'attributes') {
           const target = mutation.target as HTMLElement
@@ -327,41 +469,208 @@ export default function DevelopmentMode() {
     // older apps without the mediaVersionsPlugin will gracefully fall back via .catch()
     if (import.meta.env.MODE === 'development') {
       const mediaVersionsModule = 'virtual:' + 'media-versions'
-      import(/* @vite-ignore */ mediaVersionsModule).then(({ getVersions, onVersionsUpdate }) => {
-        mediaVersions = getVersions()
+      import(/* @vite-ignore */ mediaVersionsModule).then(({ getVersions, getMediaTypes, onVersionsUpdate }) => {
+        mediaState.versions = getVersions()
+        mediaState.types = getMediaTypes()
         patchAllImages()
-        mediaVersionsCleanup = onVersionsUpdate((newVersions: Record<string, string>) => {
-          mediaVersions = newVersions
+        mediaVersionsCleanup = onVersionsUpdate((newVersions: Record<string, string>, newMediaTypes: Record<string, string>) => {
+          mediaState.versions = newVersions
+          // Apply new mediaTypes but preserve recent RELOAD_MEDIA_SLOT overrides
+          // (prevents stale file-watcher data from reverting explicit swaps)
+          const now = Date.now()
+          for (const [slot, type] of Object.entries(newMediaTypes)) {
+            const overrideTime = recentSlotOverrides[slot]
+            if (overrideTime && now - overrideTime < 5000) {
+              // Skip — this slot was explicitly set by RELOAD_MEDIA_SLOT within the last 5s
+              continue
+            }
+            mediaState.types[slot] = type
+          }
+          // Also remove types that no longer exist in manifest (unless overridden)
+          for (const slot of Object.keys(mediaState.types)) {
+            if (!(slot in newMediaTypes) && !recentSlotOverrides[slot]) {
+              delete mediaState.types[slot]
+            }
+          }
           patchAllImages()
         })
       }).catch(() => {
-        // Virtual module not available — plugin may not be loaded
+        // Virtual module not available (e.g. CORS error through dev-supervisor proxy) —
+        // fall back to fetching /airo-media.json directly for mediaTypes
+        fetch('/airo-media.json').then(r => r.ok ? r.json() : {}).then((manifest: Record<string, { lastUpdated?: string; mediaType?: string }>) => {
+          for (const [slot, data] of Object.entries(manifest)) {
+            if (data.lastUpdated) mediaState.versions[slot] = String(new Date(data.lastUpdated).getTime())
+            if (data.mediaType) mediaState.types[slot] = data.mediaType
+          }
+          patchAllImages()
+        }).catch(() => { /* no manifest available */ })
       })
     }
 
-    // Reload images for a specific media slot by adding cache-busting timestamp
-    function reloadMediaSlot(slotPath: string) {
-      const timestamp = Date.now()
-      const slotUrlPattern = `/airo-assets/images/${slotPath}`
+    // Reload images for a specific media slot by adding cache-busting timestamp.
+    // When isVideo is true, replace <img> elements with <video> elements.
+    // Check if an element matches a media slot by src URL or data-slot attribute
+    function matchesMediaSlot(src: string, el: HTMLElement, imagePattern: string, videoPattern: string): boolean {
+      if (src.includes(imagePattern) || src.includes(videoPattern)) return true
+      // Also check the raw attribute (property .src is resolved to absolute but getAttribute preserves original)
+      const rawSrc = el.getAttribute('src') || ''
+      if (rawSrc.includes(imagePattern) || rawSrc.includes(videoPattern)) return true
+      // Also match elements created by airo-video-slots.js (direct CDN URLs with data-slot)
+      const dataSlot = el.getAttribute('data-slot')
+      if (dataSlot === imagePattern.replace('/airo-assets/images/', '')) return true
+      if (dataSlot === videoPattern.replace('/airo-assets/videos/', '')) return true
+      return false
+    }
 
-      // Reload <img> elements
+    function reloadMediaSlot(slotPath: string, isVideo?: boolean) {
+      const timestamp = Date.now()
+      const imageSlotPattern = `/airo-assets/images/${slotPath}`
+      const videoSlotPattern = `/airo-assets/videos/${slotPath}`
+
+      // Mark this slot as explicitly updated to prevent HMR file-watcher from reverting it
+      recentSlotOverrides[slotPath] = timestamp
+
+      // Update mediaTypes immediately so future MutationObserver patches use the right type.
+      // This is critical for carousel slides that aren't in the DOM yet — when the user
+      // navigates to them, React creates a new <img> and the observer calls patchImageElement,
+      // which checks mediaTypes to decide whether to add a video sibling.
+      if (isVideo) {
+        mediaState.types[slotPath] = 'video'
+      } else if (mediaState.types[slotPath] === 'video') {
+        mediaState.types[slotPath] = 'image'
+      }
+
+      // Reload <img> elements — or add <video> sibling for video slots
       document.querySelectorAll<HTMLImageElement>('img').forEach((img) => {
-        if (img.src.includes(slotUrlPattern)) {
-          const url = new URL(img.src)
-          url.searchParams.set('_t', String(timestamp))
-          img.src = url.toString()
+        if (matchesMediaSlot(img.src, img, imageSlotPattern, videoSlotPattern)) {
+          if (isVideo) {
+            // Remove existing video sibling if any
+            const existingVideo = img.nextElementSibling
+            if (existingVideo?.hasAttribute('data-airo-video')) {
+              existingVideo.remove()
+            }
+            img.removeAttribute('data-airo-video-patched')
+            img.style.display = ''
+            // Create video sibling
+            const videoUrl = new URL(window.location.origin + videoSlotPattern)
+            videoUrl.searchParams.set('_t', String(timestamp))
+            insertVideoSibling(img, videoUrl.toString(), slotPath)
+          } else {
+            // Un-hide img if it was patched, remove video sibling
+            if (img.getAttribute('data-airo-video-patched')) {
+              const videoSibling = img.nextElementSibling
+              if (videoSibling?.hasAttribute('data-airo-video')) {
+                videoSibling.remove()
+              }
+              img.removeAttribute('data-airo-video-patched')
+              img.style.display = ''
+            }
+            // Remove ?src= so the proxy resolves from the manifest's updated currentUrl
+            // instead of re-serving the old URL that was baked into the DOM by React.
+            const url = new URL(img.src)
+            url.searchParams.delete('src')
+            url.searchParams.set('_t', String(timestamp))
+            img.src = url.toString()
+          }
         }
       })
 
-      // Reload CSS background images
-      document.querySelectorAll<HTMLElement>('[style*="background"]').forEach((el) => {
-        const bgImage = window.getComputedStyle(el).backgroundImage
-        if (bgImage?.includes(slotUrlPattern)) {
-          const urlMatch = bgImage.match(/url\(["']?([^"')]+)["']?\)/)
-          if (urlMatch?.[1]) {
-            const url = new URL(urlMatch[1], window.location.origin)
+      // Reload <video> elements
+      document.querySelectorAll<HTMLVideoElement>('video').forEach((video) => {
+        if (matchesMediaSlot(video.src || '', video, imageSlotPattern, videoSlotPattern)) {
+          if (!isVideo) {
+            // Slot changed from video to image — remove video, un-hide img if present
+            const prevImg = video.previousElementSibling as HTMLElement | null
+            if (prevImg?.tagName === 'IMG' && prevImg.getAttribute('data-airo-video-patched')) {
+              prevImg.removeAttribute('data-airo-video-patched')
+              prevImg.style.display = ''
+              const url = new URL(prevImg.getAttribute('src') || window.location.origin + imageSlotPattern)
+              url.searchParams.set('_t', String(timestamp))
+              ;(prevImg as HTMLImageElement).src = url.toString()
+            } else if (!video.hasAttribute('data-airo-bg-video')) {
+              // Agent wrote <video> directly (no hidden img sibling) — replace with <img>
+              const img = document.createElement('img')
+              const imgUrl = new URL(window.location.origin + imageSlotPattern)
+              imgUrl.searchParams.set('_t', String(timestamp))
+              img.src = imgUrl.toString()
+              img.className = video.className
+              img.style.cssText = video.style.cssText
+              img.alt = video.getAttribute('aria-label') || ''
+              video.parentNode?.replaceChild(img, video)
+              return // skip video.remove() below since replaceChild already removed it
+            }
+            video.remove()
+          } else {
+            const url = new URL(video.src)
+            url.pathname = videoSlotPattern
             url.searchParams.set('_t', String(timestamp))
-            el.style.backgroundImage = `url("${url.toString()}")`
+            video.src = url.toString()
+            video.load()
+          }
+        }
+      })
+
+      // Reload CSS background images — or replace with video for video slots
+      // Query inline-style backgrounds + already-patched elements + common structural elements
+      // (covers CSS-class-based background-images that don't appear in inline style attributes)
+      const bgCandidates = new Set<HTMLElement>()
+      document.querySelectorAll<HTMLElement>('[style*="background"], [data-airo-video-bg-patched]').forEach((el) => bgCandidates.add(el))
+      if (isVideo) {
+        document.querySelectorAll<HTMLElement>('section, div, header, main, [class*="hero"], [class*="banner"], [class*="background"]').forEach((el) => {
+          if (!bgCandidates.has(el)) bgCandidates.add(el)
+        })
+      }
+      bgCandidates.forEach((el) => {
+        const bgImage = window.getComputedStyle(el).backgroundImage
+        const wasBgPatched = el.getAttribute('data-airo-video-bg-patched') === slotPath
+        if (!wasBgPatched && !(bgImage && (bgImage.includes(imageSlotPattern) || bgImage.includes(videoSlotPattern)))) return
+
+        if (isVideo) {
+          // Replace background-image with a <video> element filling the container
+          const existingBgVideo = el.querySelector<HTMLVideoElement>('video[data-airo-bg-video]')
+          if (existingBgVideo) existingBgVideo.remove()
+          el.style.backgroundImage = 'none'
+          el.setAttribute('data-airo-video-bg-patched', slotPath)
+          const videoUrl = new URL(window.location.origin + videoSlotPattern)
+          videoUrl.searchParams.set('_t', String(timestamp))
+          const video = document.createElement('video')
+          video.src = videoUrl.toString()
+          video.autoplay = true
+          video.muted = true
+          video.loop = true
+          video.playsInline = true
+          video.setAttribute('data-airo-bg-video', '')
+          video.setAttribute('data-slot', slotPath)
+          video.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:-1;'
+          // Ensure parent is positioned so the video fills it
+          const pos = window.getComputedStyle(el).position
+          if (pos === 'static') el.style.position = 'relative'
+          el.insertBefore(video, el.firstChild)
+        } else {
+          // Remove bg video if slot changed back to image
+          const bgVideo = el.querySelector<HTMLVideoElement>('video[data-airo-bg-video]')
+          if (bgVideo) {
+            bgVideo.remove()
+            el.removeAttribute('data-airo-video-bg-patched')
+            // Restore background-image with the image slot URL (inline style was set to 'none' during patching)
+            const imgUrl = new URL(window.location.origin + imageSlotPattern)
+            imgUrl.searchParams.set('_t', String(timestamp))
+            el.style.backgroundImage = `url("${imgUrl.toString()}")`
+          } else if (wasBgPatched) {
+            // Element was marked as patched but video already gone — just restore bg
+            el.removeAttribute('data-airo-video-bg-patched')
+            const imgUrl = new URL(window.location.origin + imageSlotPattern)
+            imgUrl.searchParams.set('_t', String(timestamp))
+            el.style.backgroundImage = `url("${imgUrl.toString()}")`
+          } else {
+            // Normal image bg reload — just cache-bust the URL
+            const urlMatch = bgImage.match(/url\(["']?([^"')]+)["']?\)/)
+            if (urlMatch?.[1]) {
+              const url = new URL(urlMatch[1], window.location.origin)
+              url.searchParams.delete('src')
+              url.searchParams.set('_t', String(timestamp))
+              el.style.backgroundImage = `url("${url.toString()}")`
+            }
           }
         }
       })
@@ -725,7 +1034,7 @@ export default function DevelopmentMode() {
             console.error('Viewport eval screenshot: Error capturing:', error)
           })
         } else if (event.data?.type === 'RELOAD_MEDIA_SLOT' && event.data.slotPath) {
-          reloadMediaSlot(event.data.slotPath)
+          reloadMediaSlot(event.data.slotPath, event.data.isVideo)
         } else if (event.data?.type === 'PREVIEW_THEME' && event.data.palette) {
           applyThemePreview(event.data.palette)
         } else if (event.data?.type === 'REVERT_THEME') {

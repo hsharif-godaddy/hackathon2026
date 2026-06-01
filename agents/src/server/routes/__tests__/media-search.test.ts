@@ -238,3 +238,165 @@ describe("GET /media/:appId/search", () => {
     expect(headers["Authorization"]).toBeUndefined();
   });
 });
+
+function makeGettyVideoResponse(videos: Array<{ id: string; previewUri: string; thumbUri?: string }>) {
+  return {
+    ok: true,
+    text: async () => '',
+    json: async () => ({
+      result_count: videos.length,
+      videos: videos.map(({ id, previewUri, thumbUri }) => ({
+        id,
+        display_sizes: [
+          { name: 'comp', uri: previewUri },
+          ...(thumbUri ? [{ name: 'comp_poster', uri: thumbUri }] : []),
+        ],
+      })),
+    }),
+  };
+}
+
+describe("GET /media/:appId/video-search", () => {
+  let app: express.Express;
+  let mockFetch: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    app = createApp();
+    mockFetch = vi.fn();
+    vi.stubGlobal("fetch", mockFetch);
+    process.env.SSO_JWT = 'test-jwt';
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    delete process.env.SSO_JWT;
+    delete process.env.GOCODE_USE_S2S_AUTH;
+  });
+
+  it("returns 400 when q param is missing", async () => {
+    const res = await request(app).get("/media/test-app/video-search");
+    expect(res.status).toBe(400);
+    expect(res.body.success).toBe(false);
+    expect(res.body.error).toMatch(/q is required/i);
+  });
+
+  it("returns 400 when q is an empty string", async () => {
+    const res = await request(app).get("/media/test-app/video-search?q=   ");
+    expect(res.status).toBe(400);
+    expect(res.body.success).toBe(false);
+  });
+
+  it("returns videos, thumbnails and gettyIds on success", async () => {
+    mockFetch.mockResolvedValueOnce(makeGettyVideoResponse([
+      { id: "v1", previewUri: "https://cdn.getty.com/vid1.mp4", thumbUri: "https://cdn.getty.com/thumb1.jpg" },
+      { id: "v2", previewUri: "https://cdn.getty.com/vid2.mp4" },
+    ]));
+
+    const res = await request(app).get("/media/test-app/video-search?q=ocean");
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.videos).toEqual([
+      "https://cdn.getty.com/vid1.mp4",
+      "https://cdn.getty.com/vid2.mp4",
+    ]);
+    expect(res.body.thumbnails).toEqual([
+      "https://cdn.getty.com/thumb1.jpg",
+      "https://cdn.getty.com/vid2.mp4",
+    ]);
+    expect(res.body.gettyIds).toEqual(["v1", "v2"]);
+  });
+
+  it("deduplicates items by id", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      text: async () => '',
+      json: async () => ({
+        result_count: 2,
+        videos: [
+          { id: "v1", display_sizes: [{ name: "comp", uri: "https://cdn.getty.com/vid1.mp4" }] },
+          { id: "v1", display_sizes: [{ name: "comp", uri: "https://cdn.getty.com/vid1-dup.mp4" }] },
+        ],
+      }),
+    });
+
+    const res = await request(app).get("/media/test-app/video-search?q=ocean");
+
+    expect(res.body.videos).toHaveLength(1);
+    expect(res.body.gettyIds).toEqual(["v1"]);
+  });
+
+  it("passes orientations to Getty API when provided", async () => {
+    mockFetch.mockResolvedValueOnce(makeGettyVideoResponse([]));
+
+    await request(app).get("/media/test-app/video-search?q=ocean&orientations=horizontal");
+
+    const [calledUrl] = mockFetch.mock.calls[0] as [string];
+    expect(calledUrl).toContain("orientations=horizontal");
+  });
+
+  it("omits orientations param when value is 'any'", async () => {
+    mockFetch.mockResolvedValueOnce(makeGettyVideoResponse([]));
+
+    await request(app).get("/media/test-app/video-search?q=ocean&orientations=any");
+
+    const [calledUrl] = mockFetch.mock.calls[0] as [string];
+    expect(calledUrl).not.toContain("orientations");
+  });
+
+  it("returns 502 when Getty API responds with non-OK status", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 401,
+      text: async () => "Unauthorized",
+    });
+
+    const res = await request(app).get("/media/test-app/video-search?q=ocean");
+
+    expect(res.status).toBe(502);
+    expect(res.body.success).toBe(false);
+    expect(res.body.error).toMatch(/Getty video search failed/i);
+  });
+
+  it("returns 500 when fetch throws a network error", async () => {
+    mockFetch.mockRejectedValueOnce(new Error("ECONNREFUSED"));
+
+    const res = await request(app).get("/media/test-app/video-search?q=ocean");
+
+    expect(res.status).toBe(500);
+    expect(res.body.success).toBe(false);
+  });
+
+  it("clamps pageSize to 24", async () => {
+    mockFetch.mockResolvedValueOnce(makeGettyVideoResponse([]));
+
+    await request(app).get("/media/test-app/video-search?q=ocean&pageSize=100");
+
+    const [calledUrl] = mockFetch.mock.calls[0] as [string];
+    expect(calledUrl).toContain("page_size=24");
+  });
+
+  it("uses sso-jwt auth header (not deprecated Bearer GETTY_TOKEN)", async () => {
+    process.env.SSO_JWT = 'my-sso-jwt';
+    mockFetch.mockResolvedValueOnce(makeGettyVideoResponse([]));
+
+    await request(app).get("/media/test-app/video-search?q=ocean");
+
+    const [, fetchInit] = mockFetch.mock.calls[0] as [string, RequestInit];
+    const headers = fetchInit.headers as Record<string, string>;
+    expect(headers["Authorization"]).toBe('sso-jwt my-sso-jwt');
+  });
+
+  it("normalizes long queries before sending to Getty", async () => {
+    const { normalizeSearchQuery } = await import("../../../services/image-search/normalize.js");
+    const mockNormalize = vi.mocked(normalizeSearchQuery);
+    mockNormalize.mockResolvedValueOnce("ocean waves");
+    mockFetch.mockResolvedValueOnce(makeGettyVideoResponse([]));
+
+    await request(app).get("/media/test-app/video-search?q=a+beautiful+video+of+ocean+waves");
+
+    const [calledUrl] = mockFetch.mock.calls[0] as [string];
+    expect(calledUrl).toContain("phrase=ocean+waves");
+  });
+});

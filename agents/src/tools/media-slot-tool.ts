@@ -238,6 +238,10 @@ export class MediaSlotTool {
           lastUpdated: now,
           ...(primaryGettyId && { gettyId: primaryGettyId }),
           ...(alternativeGettyIds.length > 0 && { alternativeGettyIds }),
+          // Preserve AI-generated video URLs so they aren't lost when stock search runs on the same slot
+          ...(manifest[normalizedSlot]?.aiGeneratedUrls?.length && {
+            aiGeneratedUrls: manifest[normalizedSlot].aiGeneratedUrls,
+          }),
         };
 
         if (size) {

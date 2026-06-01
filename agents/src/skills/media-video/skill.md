@@ -10,9 +10,12 @@ Generate videos from text prompts via `ImagegenService`.
 
 ## Placement
 
-1. Tool returns `structuredContent.url` (mp4).
-2. **Place immediately** when building pages — use `<video src={url} controls playsInline />` (add `poster` for a preview frame).
-3. **Present first** when the user only asked to generate a clip; embed when they ask.
+1. Tool returns `structuredContent.url` (mp4) and `structuredContent.slotUrl` for the proxy-resolved path.
+2. **Always pass `slotName`** — this registers the video in the Media Panel so the user can manage it.
+   - **Replacing an existing image/video slot:** pass the EXACT existing slot path (e.g., `"pages/home/featured-1"`). This updates that slot in-place so the Media Panel grid reflects the change.
+   - **New placement:** use the standard slot naming convention (e.g., `"pages/home/hero"`).
+3. When `slotUrl` is returned, use it in source code (`<video src={slotUrl} ...>`) instead of the raw URL — this enables runtime resolution and user swapping.
+4. **Present first** when the user only asked to generate a clip; embed when they ask.
 
 ## Usage Notes
 

@@ -73,6 +73,7 @@ export default function ElementHoverBar({
 }: ElementHoverBarProps) {
   const { element } = hoveredElement;
   const isImage = hoveredElement.type === "image";
+  const isVideo = hoveredElement.type === "image" && hoveredElement.isVideo;
 
   // Commerce Storefront (VITE_GODADDY_STORE_ID): product images come from the
   // Commerce API — hide Replace/Modify for images without data-dev-id or media slot.
@@ -542,12 +543,14 @@ export default function ElementHoverBar({
             icon={<Image width={15} height={15} />}
             label={t("devtools_image_replace", "Replace")}
           />
-          <HoverBarButton
-            onClick={handleModify}
-            title={t("devtools_image_modify_title", "Modify image")}
-            icon={<Pencil width={15} height={15} />}
-            label={t("devtools_image_modify", "Modify")}
-          />
+          {!isVideo && (
+            <HoverBarButton
+              onClick={handleModify}
+              title={t("devtools_image_modify_title", "Modify image")}
+              icon={<Pencil width={15} height={15} />}
+              label={t("devtools_image_modify", "Modify")}
+            />
+          )}
         </>
       )}
       {elementIsText && (

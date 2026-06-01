@@ -16,7 +16,7 @@ import { AppRepository } from '../../database/repositories/AppRepository.js';
  * - Original search context is preserved for re-searching
  */
 export const mediaSlotAITool: Tool = createTool(
-  'Select an image or video for a specific location in the app. Returns a slot URL (like "/airo-assets/images/pages/home/hero") that you should use in the code. The actual image is resolved at runtime, allowing users to easily swap images without code changes. Use descriptive slot names that reflect the image location and purpose.',
+  'Select an image or video for a specific location in the app. Returns a slot URL that you should use in the code. For images the URL is like "/airo-assets/images/pages/home/hero" — use in <img src="...">. For videos the URL is like "/airo-assets/videos/pages/home/hero" — you MUST use <video src="..."> (NOT <img>). The actual media is resolved at runtime, allowing users to easily swap without code changes.',
   z.object({
     slot: z.string().describe(
       `Semantic path identifying this media's PURPOSE and CONTENT. Format: "{location}/{descriptive-name}"
@@ -182,9 +182,15 @@ EXAMPLES:
       mediaType: result.mediaType,
       searchQuery: result.searchQuery,
       ...(result.resolvedUrl && { resolvedUrl: result.resolvedUrl }),
+      ...(result.thumbnailUrl && { thumbnailUrl: result.thumbnailUrl }),
       ...(result.alternatives && { alternatives: result.alternatives }),
       ...(result.alternativeCount !== undefined && { alternativeCount: result.alternativeCount }),
     };
+
+    // Add explicit element guidance for videos so agent doesn't use <img>
+    if (result.mediaType === 'video') {
+      (response as unknown as Record<string, unknown>).note = `IMPORTANT: Use <video src="${result.slotUrl}" autoPlay muted loop playsInline /> in the code. Do NOT use <img> for video slots. If replacing an existing <img>, change the element to <video>.`;
+    }
 
     return JSON.stringify(response, null, 2);
   }

@@ -314,6 +314,14 @@ describe('element-detection', () => {
     it('returns null for null input', () => {
       expect(getMediaSlotPath(null)).toBeNull();
     });
+
+    it('extracts slot path from /airo-assets/videos/ URL', () => {
+      expect(getMediaSlotPath('/airo-assets/videos/pages/home/hero')).toBe('pages/home/hero');
+    });
+
+    it('extracts slot path from /airo-assets/videos/ URL with query string', () => {
+      expect(getMediaSlotPath('/airo-assets/videos/pages/home/hero?_v=123&_t=456')).toBe('pages/home/hero');
+    });
   });
 
   // ─── resolveContentKey ────────────────────────────────────────────────────────

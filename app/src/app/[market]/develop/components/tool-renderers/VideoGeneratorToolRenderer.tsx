@@ -1,17 +1,19 @@
 'use client'
 
 import { Play, Video } from 'lucide-react'
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import type { DefaultToolRendererProps } from '@/app/[market]/develop/components/tool-renderers/DefaultToolRenderer'
 import MediaModal from '@/app/[market]/develop/components/tool-renderers/MediaModal'
 import ToolHeader from '@/app/[market]/develop/components/tool-renderers/ToolHeader'
 import { logger } from '@/lib/request-context'
 import { useToolDetailsModal } from '@/stores/useToolDetailsModalStore'
+import { postMessageToIframe } from '@/utils/postMessage'
 
 interface VideoResult {
   url: string
   description?: string
+  slotPath?: string
 }
 
 /**
@@ -62,9 +64,13 @@ export default function VideoGeneratorToolRenderer({
       if (resultObj) {
         // Handle structuredContent.url from MCP response
         if (resultObj.structuredContent?.url) {
+          // Extract slot path from slotUrl like "/airo-assets/videos/pages/home/hero"
+          const slotUrl = resultObj.structuredContent.slotUrl as string | undefined
+          const slotPath = slotUrl?.replace(/^\/airo-assets\/videos\//, '')
           video = {
             url: resultObj.structuredContent.url,
-            description: undefined
+            description: undefined,
+            slotPath
           }
           // Try to find description from content array
           if (resultObj.content && Array.isArray(resultObj.content)) {
@@ -106,6 +112,23 @@ export default function VideoGeneratorToolRenderer({
 
   const hasVideo = video !== null
   const hasDetails = hasVideo
+
+  // Notify the preview iframe to reload the media slot when the video is generated
+  const hasNotifiedRef = useRef(false)
+  const slotPath = video?.slotPath
+  useEffect(() => {
+    if (toolStatus === 'completed' && hasVideo && slotPath && !hasNotifiedRef.current) {
+      hasNotifiedRef.current = true
+      const iframe = document.getElementById('preview-iframe') as HTMLIFrameElement
+      if (iframe) {
+        postMessageToIframe(iframe, {
+          type: 'RELOAD_MEDIA_SLOT',
+          slotPath,
+          isVideo: true,
+        })
+      }
+    }
+  }, [toolStatus, hasVideo, slotPath])
 
   const handleInlinePlayPause = () => {
     if (inlineVideoRef.current) {
@@ -174,20 +197,20 @@ export default function VideoGeneratorToolRenderer({
             {!isPlaying && (
               <button
                 onClick={handleInlinePlayPause}
-                className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/30 transition-colors cursor-pointer"
+                className="absolute inset-0 flex items-center justify-center bg-black/50 cursor-pointer"
               >
-                <div className="w-16 h-16 rounded-full bg-intents-ux-boxHighContrast-backgroundColor flex items-center justify-center">
-                  <Play className="w-8 h-8 text-intents-ux-boxHighContrast-foregroundColor ml-1" />
+                <div className="w-9 h-9 rounded-full bg-black/90 flex items-center justify-center shadow-lg">
+                  <Play className="w-4 h-4 text-white ml-0.5" fill="white" />
                 </div>
               </button>
             )}
             {/* Expand button */}
             <button
               onClick={handleModalOpen}
-              className="absolute top-2 right-2 p-2 rounded-lg bg-intents-ux-boxHighContrast-backgroundColor opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+              className="absolute top-1.5 right-1.5 w-7 h-7 rounded-full bg-black/90 flex items-center justify-center cursor-pointer shadow-lg"
               title="Open fullscreen"
             >
-              <svg className="w-4 h-4 text-intents-ux-boxHighContrast-foregroundColor" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
               </svg>
             </button>

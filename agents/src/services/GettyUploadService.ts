@@ -111,6 +111,62 @@ export class GettyUploadService extends BaseDriverV2 {
   }
 
   /**
+   * Upload a Getty video to CDN and report usage.
+   * Calls the proxy's /v1/videos/upload endpoint which licenses the video,
+   * downloads the unwatermarked version, and re-hosts it on CDN.
+   *
+   * @param gettyVideoId - Getty video ID to upload
+   * @returns CDN URL for the unwatermarked video, or null on failure
+   */
+  async uploadVideo(gettyVideoId: string): Promise<string | null> {
+    if (!gettyVideoId) return null;
+
+    if (!this.apiBaseUrl || !this.hasAuth()) {
+      logger.warn('getty_video_upload.missing_config', {
+        hasBaseUrl: !!this.apiBaseUrl,
+        hasAuth: this.hasAuth(),
+      });
+      return null;
+    }
+
+    try {
+      logger.info('getty_video_upload.begin', { videoId: gettyVideoId });
+
+      const response = await this.post('/v1/videos/upload?reportUsage=false', { id: gettyVideoId });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        logger.error('getty_video_upload.upstream_error', {
+          status: response.status,
+          error: errorText,
+          videoId: gettyVideoId,
+        });
+        return null;
+      }
+
+      const data = await response.json() as { id: string; videoUrl: string };
+
+      if (!data?.videoUrl) {
+        logger.error('getty_video_upload.no_video_url', { videoId: gettyVideoId });
+        return null;
+      }
+
+      logger.info('getty_video_upload.success', {
+        videoId: gettyVideoId,
+        videoUrl: data.videoUrl,
+      });
+
+      return data.videoUrl;
+    } catch (error) {
+      logger.error('getty_video_upload.error', {
+        videoId: gettyVideoId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return null;
+    }
+  }
+
+  /**
    * Report usage for already-uploaded images (e.g., when re-using a CDN image).
    * Fire-and-forget — does not block on response.
    */

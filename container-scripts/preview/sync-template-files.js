@@ -181,6 +181,19 @@ const SYNC_MANIFEST = [
     force: false
   },
   {
+    file: 'public/airo-video-slots.js',
+    description: 'Runtime script for published apps — replaces img slots with video elements when mediaType is video',
+    known_hashes: [
+      '9a930fd9c986fe6910aae1c11777b910',  // initial version
+      '4df75c79e9f3d41e4a6e4fc91b75ba21',  // orphan-cleanup fix
+      '133e1dbc34d51514c0dbd56a9ee21924',  // remove Vite bailout — run in both dev and prod
+      'c76ce339273fe8313654245af3452f0a',  // fix polling leak, observer re-entrancy, dev-mode detection
+      '29eabf3c435ab5dabff0bac38c0e3abc',  // PR review feedback fixes
+      '6ef38ed9111284e38e23a94a84ff5338'   // broaden bg-image scan to cover CSS-class backgrounds
+    ],
+    force: false
+  },
+  {
     file: 'index.html',
     // Intentionally NOT in syncGroup: 'ssrMigration'. Agents edit index.html
     // frequently (e.g. <title>, favicon, analytics), so a customer-modified
@@ -195,7 +208,7 @@ const SYNC_MANIFEST = [
       '0b3e1d30a5b646e0fabfa7e657a582c9', // before <!--app-head--> / <!--app-html--> SSR markers
       'f2faa351e9111fb14ed707d0d55e7ce7', // before static main entry restored for CSS hoisting
       '9170b78302b5d16948b51b7acdae6d72', // before airoShareToken-strip script + same-origin referrer-policy
-      '17827fb25e25787b2f7bd0fd7d5e0e37'  // before share-token rationale comments were removed
+      '17827fb25e25787b2f7bd0fd7d5e0e37'  // before airo-video-slots.js script tag + share-token rationale comments removed
     ],
     force: false
   },

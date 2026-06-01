@@ -428,12 +428,13 @@ describe('GitUtils', () => {
     it('should copy airo-media.json into dist/ when it exists', async () => {
       const commitHash = 'abc1234';
 
-      // Flow: dist check -> manifest check (found) -> copy manifest -> mkdir -> tar
+      // Flow: dist check -> manifest check (found) -> copy manifest -> copy to dist/client -> mkdir -> tar
       // Note: Using explicit includeSource: false to skip auto-detect
       mockTasks.runCommandSync
         .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // dist/ check
         .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // airo-media.json check (found)
         .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // cp airo-media.json dist/
+        .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // cp airo-media.json dist/client/
         .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // mkdir output dir
         .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' }); // tar
 
@@ -444,8 +445,8 @@ describe('GitUtils', () => {
         commitHash
       });
 
-      // Verify 5 calls including the copy
-      expect(mockTasks.runCommandSync).toHaveBeenCalledTimes(5);
+      // Verify 6 calls including both copies
+      expect(mockTasks.runCommandSync).toHaveBeenCalledTimes(6);
 
       // Verify manifest was copied to dist/
       const copyCallArgs = mockTasks.runCommandSync.mock.calls[2][0];
@@ -453,10 +454,35 @@ describe('GitUtils', () => {
       expect(copyCallArgs.command).toContain('airo-media.json');
       expect(copyCallArgs.command).toContain('dist/airo-media.json');
 
+      // Verify manifest was also copied to dist/client/
+      const clientCopyArgs = mockTasks.runCommandSync.mock.calls[3][0];
+      expect(clientCopyArgs.command).toContain('dist/client');
+
       // Verify final tar only archives dist/
-      const tarCallArgs = mockTasks.runCommandSync.mock.calls[4][0];
+      const tarCallArgs = mockTasks.runCommandSync.mock.calls[5][0];
       expect(tarCallArgs.command).toContain('tar');
       expect(tarCallArgs.command).toContain('dist');
+    });
+
+    it('should copy airo-media.json to dist/client/ for AI video runtime discovery', async () => {
+      const commitHash = 'a1b2c3d';
+
+      // Flow: dist check -> manifest check (found) -> cp to dist/ -> cp to dist/client/ -> mkdir -> tar
+      mockTasks.runCommandSync
+        .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // dist/ check
+        .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // airo-media.json check (found)
+        .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // cp airo-media.json dist/
+        .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // cp airo-media.json dist/client/
+        .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // mkdir output dir
+        .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' }); // tar
+
+      await gitUtils.createArchive('/app', commitHash, undefined, { includeSource: false });
+
+      // Verify the dist/client copy command (call index 3)
+      // This ensures airo-video-slots.js can fetch /airo-media.json at runtime in published apps
+      const clientCopyArgs = mockTasks.runCommandSync.mock.calls[3][0];
+      expect(clientCopyArgs.command).toContain('dist/client');
+      expect(clientCopyArgs.command).toContain('airo-media.json');
     });
 
     it('should throw error when copying airo-media.json fails', async () => {

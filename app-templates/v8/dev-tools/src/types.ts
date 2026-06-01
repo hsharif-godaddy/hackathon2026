@@ -57,6 +57,7 @@ export interface RuntimeErrorsCycleMessage {
 export interface ReloadMediaSlotMessage {
   type: 'RELOAD_MEDIA_SLOT'
   slotPath: string // e.g., "pages/home/hero"
+  isVideo?: boolean
 }
 
 /**

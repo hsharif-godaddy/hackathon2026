@@ -201,9 +201,10 @@ export function detectImage(element: HTMLElement): {
   isImage: boolean;
   imageUrl: string | null;
   imageElement: HTMLElement | null;
-  type: "img" | "background" | null;
+  type: "img" | "video" | "background" | null;
+  isVideo: boolean;
 } {
-  const none = { isImage: false, imageUrl: null, imageElement: null, type: null } as const;
+  const none = { isImage: false, imageUrl: null, imageElement: null, type: null, isVideo: false } as const;
 
   if (element.tagName.toLowerCase() === "img") {
     const img = element as HTMLImageElement;
@@ -212,6 +213,20 @@ export function detectImage(element: HTMLElement): {
       imageUrl: img.src || img.currentSrc || null,
       imageElement: element,
       type: "img",
+      isVideo: false,
+    };
+  }
+
+  if (element.tagName.toLowerCase() === "video") {
+    const video = element as HTMLVideoElement;
+    const sourceEl = video.querySelector("source") as HTMLSourceElement | null;
+    const videoUrl = video.src || sourceEl?.src || video.currentSrc || null;
+    return {
+      isImage: true,
+      imageUrl: videoUrl,
+      imageElement: element,
+      type: "video",
+      isVideo: true,
     };
   }
 
@@ -229,6 +244,18 @@ export function detectImage(element: HTMLElement): {
   ];
   for (const candidate of candidates) {
     if (candidate === element) continue;
+    if (candidate.tagName.toLowerCase() === "video") {
+      const video = candidate as HTMLVideoElement;
+      const sourceEl = video.querySelector("source") as HTMLSourceElement | null;
+      const videoUrl = video.src || sourceEl?.src || video.currentSrc || null;
+      return {
+        isImage: true,
+        imageUrl: videoUrl,
+        imageElement: candidate as HTMLElement,
+        type: "video",
+        isVideo: true,
+      };
+    }
     if (candidate.tagName.toLowerCase() === "img") {
       const img = candidate as HTMLImageElement;
       return {
@@ -236,12 +263,25 @@ export function detectImage(element: HTMLElement): {
         imageUrl: img.src || img.currentSrc || null,
         imageElement: candidate as HTMLElement,
         type: "img",
+        isVideo: false,
       };
     }
   }
 
   for (const sibling of siblings) {
     if (sibling === element) continue;
+    const nestedVideo = sibling.querySelector("video") as HTMLVideoElement | null;
+    if (nestedVideo) {
+      const sourceEl = nestedVideo.querySelector("source") as HTMLSourceElement | null;
+      const videoUrl = nestedVideo.src || sourceEl?.src || nestedVideo.currentSrc || null;
+      return {
+        isImage: true,
+        imageUrl: videoUrl,
+        imageElement: nestedVideo,
+        type: "video",
+        isVideo: true,
+      };
+    }
     const nestedImg = sibling.querySelector("img") as HTMLImageElement | null;
     if (nestedImg) {
       return {
@@ -249,6 +289,7 @@ export function detectImage(element: HTMLElement): {
         imageUrl: nestedImg.src || nestedImg.currentSrc || null,
         imageElement: nestedImg,
         type: "img",
+        isVideo: false,
       };
     }
   }
@@ -259,6 +300,6 @@ export function detectImage(element: HTMLElement): {
 /** Check if a URL is a media slot and extract the slot path */
 export function getMediaSlotPath(url: string | null): string | null {
   if (!url) return null;
-  const match = url.match(/\/airo-assets\/images\/(.+?)(?:\?|$)/);
+  const match = url.match(/\/airo-assets\/(?:images|videos)\/(.+?)(?:\?|$)/);
   return match ? match[1] : null;
 }

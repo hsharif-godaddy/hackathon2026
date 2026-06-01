@@ -359,6 +359,8 @@ var allowedImageRedirectHosts = map[string]struct{}{
 	"media.istockphoto.com":                     {},
 	"oaidalleapiprodscus.blob.core.windows.net": {}, // DALL-E
 	"blobby.wsimg.com":                          {}, // GoDaddy image hosting
+	"blobby.test-wsimg.com":                     {}, // GoDaddy image hosting (test environment)
+	"blobby.dev-wsimg.com":                      {}, // GoDaddy image hosting (dev environment)
 	"img1.wsimg.com":                            {}, // isteam CDN (Getty licensed images)
 	"isteam.wsimg.com":                          {}, // Logo CDN (genai-assistant logos)
 	"isteam.test-wsimg.com":                     {}, // Logo CDN (test environment)
@@ -398,6 +400,13 @@ const videoSlotPrefix = "/airo-assets/videos/"
 var allowedVideoRedirectHosts = map[string]struct{}{
 	"media.gettyimages.com":  {},
 	"media.istockphoto.com":  {},
+	"blobby.wsimg.com":       {}, // GoDaddy CDN (Getty licensed videos)
+	"blobby.test-wsimg.com":  {}, // GoDaddy CDN (test environment)
+	"blobby.dev-wsimg.com":   {}, // GoDaddy CDN (dev environment)
+	"img1.wsimg.com":         {}, // isteam CDN
+	"isteam.wsimg.com":       {}, // isteam CDN
+	"isteam.test-wsimg.com":  {}, // isteam CDN (test environment)
+	"isteam.dev-wsimg.com":   {}, // isteam CDN (dev environment)
 	"cdn.videvo.net":         {},
 	"player.vimeo.com":       {},
 	"www.youtube.com":        {},

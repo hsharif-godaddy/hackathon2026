@@ -42,6 +42,7 @@ vi.mock('../GettyUploadService.js', () => ({
   gettyUploadService: {
     uploadAndReport: vi.fn().mockResolvedValue([]),
     reportUsage: vi.fn(),
+    uploadVideo: vi.fn().mockResolvedValue(null),
   },
 }));
 
@@ -360,7 +361,7 @@ describe('MediaManifestService - Getty upload integration', () => {
       const result = await service.updateSlot('test-app', 'hero-image', {
         newUrl: 'https://preview.getty.com/watermarked.jpg',
         allowExternalUrl: true,
-        gettyId: 'getty-search-1',
+        gettyAsset: { id: 'getty-search-1', mediaType: 'image' },
         markUserModified: true,
       });
 
@@ -381,7 +382,7 @@ describe('MediaManifestService - Getty upload integration', () => {
       const result = await service.updateSlot('test-app', 'hero-image', {
         newUrl: 'https://preview.getty.com/watermarked.jpg',
         allowExternalUrl: true,
-        gettyId: 'getty-search-1',
+        gettyAsset: { id: 'getty-search-1', mediaType: 'image' },
         markUserModified: true,
       });
 
@@ -405,13 +406,133 @@ describe('MediaManifestService - Getty upload integration', () => {
       const result = await service.updateSlot('test-app', 'hero-image', {
         newUrl: 'https://preview.getty.com/watermarked.jpg',
         allowExternalUrl: true,
-        gettyId: 'getty-search-1',
+        gettyAsset: { id: 'getty-search-1', mediaType: 'image' },
         searchQuery: 'new query',
         markUserModified: true,
       });
 
       expect(result.success).toBe(true);
       expect(result.slot?.searchQuery).toBe('new query');
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // ---------------------------------------------------------------------------
+  // updateSlot — video branch (gettyAsset.mediaType === 'video')
+  // ---------------------------------------------------------------------------
+  describe('updateSlot with gettyAsset video', () => {
+    it('calls uploadVideo (not uploadAndReport) when gettyAsset.mediaType is video', async () => {
+      const existingSlot = makeSlot({ mediaType: 'image' });
+      vi.mocked(fs.readFile).mockResolvedValue(
+        JSON.stringify({ 'hero': existingSlot })
+      );
+      vi.mocked(gettyUploadService.uploadVideo).mockResolvedValue(
+        'https://cdn.example.com/licensed-video.mp4'
+      );
+
+      const result = await service.updateSlot('test-app', 'hero', {
+        newUrl: 'https://preview.getty.com/watermarked.mp4',
+        allowExternalUrl: true,
+        gettyAsset: { id: 'getty-video-1', mediaType: 'video' },
+      });
+
+      expect(result.success).toBe(true);
+      expect(gettyUploadService.uploadVideo).toHaveBeenCalledWith('getty-video-1');
+      expect(gettyUploadService.uploadAndReport).not.toHaveBeenCalled();
+      expect(result.slot?.currentUrl).toBe('https://cdn.example.com/licensed-video.mp4');
+    });
+
+    it('returns error when uploadVideo returns null (prevents watermark persistence)', async () => {
+      const existingSlot = makeSlot({ mediaType: 'image' });
+      vi.mocked(fs.readFile).mockResolvedValue(
+        JSON.stringify({ 'hero': existingSlot })
+      );
+      vi.mocked(gettyUploadService.uploadVideo).mockResolvedValue(null);
+
+      const result = await service.updateSlot('test-app', 'hero', {
+        newUrl: 'https://preview.getty.com/watermarked.mp4',
+        allowExternalUrl: true,
+        gettyAsset: { id: 'getty-video-1', mediaType: 'video' },
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toMatch(/Failed to license Getty video/);
+    });
+
+    it('sets mediaType to video when gettyAsset.mediaType is video and slot is not logo/generated', async () => {
+      const existingSlot = makeSlot({ mediaType: 'image' });
+      vi.mocked(fs.readFile).mockResolvedValue(
+        JSON.stringify({ 'hero': existingSlot })
+      );
+      vi.mocked(gettyUploadService.uploadVideo).mockResolvedValue(
+        'https://cdn.example.com/video.mp4'
+      );
+
+      const result = await service.updateSlot('test-app', 'hero', {
+        newUrl: 'https://preview.getty.com/video.mp4',
+        allowExternalUrl: true,
+        gettyAsset: { id: 'getty-video-1', mediaType: 'video' },
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.slot?.mediaType).toBe('video');
+    });
+
+    it('preserves logo mediaType even when gettyAsset.mediaType is video', async () => {
+      const existingSlot = makeSlot({ mediaType: 'logo' });
+      vi.mocked(fs.readFile).mockResolvedValue(
+        JSON.stringify({ 'logo-slot': existingSlot })
+      );
+      vi.mocked(gettyUploadService.uploadVideo).mockResolvedValue(
+        'https://cdn.example.com/video.mp4'
+      );
+
+      const result = await service.updateSlot('test-app', 'logo-slot', {
+        newUrl: 'https://preview.getty.com/video.mp4',
+        allowExternalUrl: true,
+        gettyAsset: { id: 'getty-video-1', mediaType: 'video' },
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.slot?.mediaType).toBe('logo');
+    });
+
+    it('preserves generated mediaType even when gettyAsset.mediaType is video', async () => {
+      const existingSlot = makeSlot({ mediaType: 'generated' });
+      vi.mocked(fs.readFile).mockResolvedValue(
+        JSON.stringify({ 'gen-slot': existingSlot })
+      );
+      vi.mocked(gettyUploadService.uploadVideo).mockResolvedValue(
+        'https://cdn.example.com/video.mp4'
+      );
+
+      const result = await service.updateSlot('test-app', 'gen-slot', {
+        newUrl: 'https://preview.getty.com/video.mp4',
+        allowExternalUrl: true,
+        gettyAsset: { id: 'getty-video-1', mediaType: 'video' },
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.slot?.mediaType).toBe('generated');
+    });
+
+    it('reverts mediaType from video to image when gettyAsset.mediaType is image on a video slot', async () => {
+      const existingSlot = makeSlot({ mediaType: 'video' });
+      vi.mocked(fs.readFile).mockResolvedValue(
+        JSON.stringify({ 'hero': existingSlot })
+      );
+      vi.mocked(gettyUploadService.uploadAndReport).mockResolvedValue([
+        { id: 'getty-img-1', url: 'https://cdn.example.com/img.jpg' },
+      ]);
+
+      const result = await service.updateSlot('test-app', 'hero', {
+        newUrl: 'https://preview.getty.com/img.jpg',
+        allowExternalUrl: true,
+        gettyAsset: { id: 'getty-img-1', mediaType: 'image' },
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.slot?.mediaType).toBe('image');
     });
   });
 

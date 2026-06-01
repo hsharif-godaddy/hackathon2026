@@ -65,6 +65,8 @@ export interface MediaSlot {
   gettyId?: string;
   /** Getty image IDs for alternative images (parallel to alternatives array) */
   alternativeGettyIds?: string[];
+  /** URLs of AI-generated media for this slot (from generate_video tool) */
+  aiGeneratedUrls?: string[];
   /** Source element reference (fileName:lineNumber) for import dedup — distinguishes
    *  different elements that share the same URL or derived slot path */
   sourceRef?: string;
@@ -109,8 +111,10 @@ export interface UpdateSlotOptions {
   markUserModified?: boolean;
   /** Allow injecting a URL that is not currently in the slot's alternatives (e.g. from user search) */
   allowExternalUrl?: boolean;
-  /** Getty image ID to associate with an externally-injected URL (triggers CDN licensing) */
-  gettyId?: string;
+  /** Getty asset to associate with an externally-injected URL (triggers CDN licensing) */
+  gettyAsset?: { id: string; mediaType: 'image' | 'video' };
+  /** Media type hint when no Getty asset is provided (for video/image detection without CDN licensing) */
+  mediaTypeHint?: 'image' | 'video';
   /** Update the slot's search query metadata (shown in subtext under slot name) */
   searchQuery?: string;
 }
@@ -158,6 +162,26 @@ async function acquireLock(appId: string): Promise<() => void> {
     appLocks.delete(appId);
     releaseLock!();
   };
+}
+
+/** Media types that should not be overwritten by image/video swap logic */
+function isProtectedMediaType(mediaType: MediaSlot['mediaType']): boolean {
+  return mediaType === 'logo' || mediaType === 'generated';
+}
+
+/** Resolve the new mediaType for a slot during a swap or upload */
+function resolveMediaTypeUpdate(
+  existingMediaType: MediaSlot['mediaType'],
+  isVideo: boolean,
+  isImage: boolean,
+): Partial<Pick<MediaSlot, 'mediaType'>> {
+  if (isVideo && !isProtectedMediaType(existingMediaType)) {
+    return { mediaType: 'video' };
+  }
+  if (isImage && existingMediaType === 'video') {
+    return { mediaType: 'image' };
+  }
+  return {};
 }
 
 /**
@@ -423,12 +447,22 @@ export class MediaManifestService {
 
   /**
    * Write the manifest atomically (temp file + rename).
+   * Also writes a copy to public/ so Vite's dev server can serve it at /airo-media.json
+   * (Vite only auto-serves files from the public/ directory at root URLs).
    */
   private async writeManifest(manifestPath: string, manifest: MediaManifest): Promise<void> {
-    const tempPath = `${manifestPath}.tmp`;
     const content = JSON.stringify(manifest, null, 2);
+    const tempPath = `${manifestPath}.tmp`;
     await fs.writeFile(tempPath, content, 'utf-8');
     await fs.rename(tempPath, manifestPath);
+
+    // Mirror to public/ for browser access in dev mode (Vite serves public/ at root)
+    const publicCopy = path.join(path.dirname(manifestPath), 'public', MANIFEST_FILENAME);
+    try {
+      await fs.writeFile(publicCopy, content, 'utf-8');
+    } catch {
+      // public/ may not exist (e.g. in test environments) — non-fatal
+    }
   }
 
   /**
@@ -787,7 +821,7 @@ export class MediaManifestService {
           // Allow injecting an arbitrary URL from user-driven search (e.g. Getty search panel).
           // The existing allUrls remain as alternatives; the injected URL becomes current.
           newCurrentUrl = options.newUrl;
-          newCurrentGettyId = options.gettyId || undefined;
+          newCurrentGettyId = options.gettyAsset?.id || undefined;
           const altGettyIds = existingSlot.alternativeGettyIds || [];
           const urlToGettyId = new Map<string, string>();
           urlToGettyId.set(existingSlot.currentUrl, existingSlot.gettyId || '');
@@ -822,23 +856,43 @@ export class MediaManifestService {
         newAlternativeGettyIds = newAlternatives.map((url) => urlToGettyId.get(url) || '');
       }
 
-      // If the newly-active image has a Getty ID, upload it to CDN and report usage
+      // If the newly-active media has a Getty ID, upload it to CDN and report usage
+      const effectiveMediaType = options.gettyAsset?.mediaType || options.mediaTypeHint
+      const isVideo = effectiveMediaType === 'video'
+      const isImage = effectiveMediaType === 'image'
       if (newCurrentGettyId) {
-        const uploadResults = await gettyUploadService.uploadAndReport([newCurrentGettyId]);
-        if (uploadResults.length > 0 && uploadResults[0]?.url) {
-          newCurrentUrl = uploadResults[0].url;
-          logger.info('media_manifest.update_slot.getty_upload_complete', {
-            ...logContext,
-            gettyId: newCurrentGettyId,
-            cdnUrl: newCurrentUrl,
-          });
-        } else if (options.allowExternalUrl) {
-          // Search-selected URLs are watermarked comp images — never persist without a CDN URL.
-          logger.warn('media_manifest.update_slot.getty_cdn_upload_failed', {
-            ...logContext,
-            gettyId: newCurrentGettyId,
-          });
-          return { success: false, error: 'Failed to license Getty image. Please try again.' };
+        if (isVideo) {
+          const videoUrl = await gettyUploadService.uploadVideo(newCurrentGettyId);
+          if (videoUrl) {
+            newCurrentUrl = videoUrl;
+            logger.info('media_manifest.update_slot.getty_video_upload_complete', {
+              ...logContext,
+              gettyId: newCurrentGettyId,
+              cdnUrl: newCurrentUrl,
+            });
+          } else {
+            logger.error('media_manifest.update_slot.getty_video_upload_failed', {
+              ...logContext,
+              gettyId: newCurrentGettyId,
+            });
+            return { success: false, error: 'Failed to license Getty video. Please try again.' };
+          }
+        } else {
+          const uploadResults = await gettyUploadService.uploadAndReport([newCurrentGettyId]);
+          if (uploadResults.length > 0 && uploadResults[0]?.url) {
+            newCurrentUrl = uploadResults[0].url;
+            logger.info('media_manifest.update_slot.getty_upload_complete', {
+              ...logContext,
+              gettyId: newCurrentGettyId,
+              cdnUrl: newCurrentUrl,
+            });
+          } else if (options.allowExternalUrl) {
+            logger.warn('media_manifest.update_slot.getty_cdn_upload_failed', {
+              ...logContext,
+              gettyId: newCurrentGettyId,
+            });
+            return { success: false, error: 'Failed to license Getty image. Please try again.' };
+          }
         }
       }
 
@@ -872,6 +926,8 @@ export class MediaManifestService {
         alternativeGettyIds: newAlternativeGettyIds.some((id) => id)
           ? newAlternativeGettyIds
           : undefined,
+        // Update mediaType when swapping between image and video (preserve logo/generated)
+        ...resolveMediaTypeUpdate(existingSlot.mediaType, isVideo, isImage),
         ...(options.searchQuery !== undefined && { searchQuery: options.searchQuery }),
       };
 
@@ -921,8 +977,9 @@ export class MediaManifestService {
     appId: string,
     slotName: string,
     uploadedUrl: string,
-    sourceFilename?: string
+    options?: { sourceFilename?: string; isVideo?: boolean }
   ): Promise<ManifestOperationResult> {
+    const { sourceFilename, isVideo } = options || {};
     const app = this.appRepository.findById(appId);
     if (!app) {
       return {
@@ -1010,8 +1067,11 @@ export class MediaManifestService {
         alternativeGettyIds: newAlternativeGettyIds.some((id) => id)
           ? newAlternativeGettyIds
           : undefined,
-        uploadSources:
-          Object.keys(updatedUploadSources).length > 0 ? updatedUploadSources : undefined,
+        uploadSources: Object.keys(updatedUploadSources).length > 0
+          ? updatedUploadSources
+          : undefined,
+        // Update mediaType when uploading a video or reverting to an image (preserve logo/generated)
+        ...resolveMediaTypeUpdate(existingSlot.mediaType, !!isVideo, isVideo === false),
       };
 
       manifest[slotName] = updatedSlot;

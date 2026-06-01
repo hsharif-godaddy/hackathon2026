@@ -342,4 +342,93 @@ describe('GettyUploadService', () => {
       });
     });
   });
+
+  describe('uploadVideo', () => {
+    it('should return null for empty input', async () => {
+      const service = new GettyUploadService();
+      const result = await service.uploadVideo('');
+
+      expect(result).toBeNull();
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it('should return null when auth is not configured', async () => {
+      delete process.env.USE_S2S_AUTH;
+      delete process.env.SSO_JWT;
+      const service = new GettyUploadService();
+
+      const result = await service.uploadVideo('video-1');
+
+      expect(result).toBeNull();
+      expect(mockFetch).not.toHaveBeenCalled();
+      expect(logger.warn).toHaveBeenCalledWith('getty_video_upload.missing_config', expect.anything());
+    });
+
+    it('should POST to /v1/videos/upload and return videoUrl on success', async () => {
+      vi.mocked(aiLib.getS2STokenV2).mockResolvedValue('iam-jwt-token');
+      const service = new GettyUploadService();
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({ id: 'video-1', videoUrl: 'https://cdn.example.com/video-1.mp4' }),
+      });
+
+      const result = await service.uploadVideo('video-1');
+
+      expect(result).toBe('https://cdn.example.com/video-1.mp4');
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      const [url, options] = mockFetch.mock.calls[0];
+      expect(url).toBe('https://proxy.test.example.com/v1/videos/upload?reportUsage=false');
+      expect(options.method).toBe('POST');
+      expect(JSON.parse(options.body)).toEqual({ id: 'video-1' });
+    });
+
+    it('should return null and log error on non-ok response', async () => {
+      const service = new GettyUploadService();
+
+      mockFetch.mockResolvedValue({
+        ok: false,
+        status: 502,
+        text: async () => 'Bad Gateway',
+      });
+
+      const result = await service.uploadVideo('video-1');
+
+      expect(result).toBeNull();
+      expect(logger.error).toHaveBeenCalledWith('getty_video_upload.upstream_error', expect.objectContaining({
+        status: 502,
+        videoId: 'video-1',
+      }));
+    });
+
+    it('should return null when response has no videoUrl', async () => {
+      const service = new GettyUploadService();
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({ id: 'video-1' }), // missing videoUrl
+      });
+
+      const result = await service.uploadVideo('video-1');
+
+      expect(result).toBeNull();
+      expect(logger.error).toHaveBeenCalledWith('getty_video_upload.no_video_url', expect.objectContaining({
+        videoId: 'video-1',
+      }));
+    });
+
+    it('should return null and log error on network failure', async () => {
+      const service = new GettyUploadService();
+
+      mockFetch.mockRejectedValue(new Error('ECONNREFUSED'));
+
+      const result = await service.uploadVideo('video-1');
+
+      expect(result).toBeNull();
+      expect(logger.error).toHaveBeenCalledWith('getty_video_upload.error', expect.objectContaining({
+        videoId: 'video-1',
+        error: 'ECONNREFUSED',
+      }));
+    });
+  });
 });

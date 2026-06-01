@@ -69,7 +69,8 @@ const BLOCKED_MIME_TYPES = new Set([
   'application/java-archive'
 ])
 
-const MAX_FILE_SIZE = 10 * 1024 * 1024
+const MAX_IMAGE_FILE_SIZE = 10 * 1024 * 1024 // 10MB for images and data files
+const MAX_VIDEO_FILE_SIZE = 50 * 1024 * 1024 // 50MB for videos
 const MAX_FILES_PER_UPLOAD = 5
 
 // SECURITY: Zod schemas for metadata validation
@@ -192,9 +193,12 @@ export class FileUploadService {
       )
     }
 
-    if (file.size > MAX_FILE_SIZE) {
+    const isVideo = file.mimetype?.startsWith('video/') ?? false
+    const maxSize = isVideo ? MAX_VIDEO_FILE_SIZE : MAX_IMAGE_FILE_SIZE
+    if (file.size > maxSize) {
+      const limitMB = maxSize / (1024 * 1024)
       throw new FileValidationError(
-        `File size ${file.size} bytes exceeds maximum allowed size of ${MAX_FILE_SIZE} bytes`
+        `File size ${file.size} bytes exceeds maximum allowed size of ${limitMB}MB for ${isVideo ? 'videos' : 'images/data files'}`
       )
     }
   }

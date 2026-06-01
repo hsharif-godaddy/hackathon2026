@@ -20,6 +20,7 @@ interface UploadDeleteConfirmationModalProps {
   otherUsageLocations: string[];
   canRemoveFromCurrentSlot: boolean;
   isDeleting: boolean;
+  isVideo?: boolean;
   error?: string | null;
   /** Outer region that receives the dimmed overlay. */
   overlayBounds?: UploadDeleteOverlayBounds | null;
@@ -41,6 +42,7 @@ export function UploadDeleteConfirmationModal({
   otherUsageLocations,
   canRemoveFromCurrentSlot,
   isDeleting,
+  isVideo,
   error,
   overlayBounds,
   bounds,
@@ -199,7 +201,9 @@ export function UploadDeleteConfirmationModal({
             {t(
               'builder_mediaslot_delete_confirm_description',
               undefined,
-              'Are you sure you want to delete this image?'
+              isVideo
+                ? 'Are you sure you want to delete this video?'
+                : 'Are you sure you want to delete this image?'
             )}
           </p>
           {otherUsageLocations.length > 0 && (
@@ -208,7 +212,9 @@ export function UploadDeleteConfirmationModal({
                 {t(
                   'builder_mediaslot_delete_confirm_also_used_in',
                   undefined,
-                  'This image is also used in:'
+                  isVideo
+                    ? 'This video is also used in:'
+                    : 'This image is also used in:'
                 )}
               </p>
               <ul className="m-0 list-none p-0">

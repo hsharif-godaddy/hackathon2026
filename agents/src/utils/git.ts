@@ -874,6 +874,13 @@ export class GitUtils {
       if (copyResult.exitCode !== 0) {
         throw new Error(`Failed to copy airo-media.json to dist/: ${copyResult.stderr || 'Unknown error'}`);
       }
+      // Also copy to dist/client/ so the published Express server can serve
+      // it as a static file at /airo-media.json (used by airo-video-slots.js)
+      await this.tasks!.runCommandSync({
+        command: buildShellCommand(['sh', '-c', 'test -d dist/client && cp airo-media.json dist/client/airo-media.json || true']),
+        workingDir: '/app',
+        timeoutSeconds: 5,
+      });
     }
 
     // Create output directory

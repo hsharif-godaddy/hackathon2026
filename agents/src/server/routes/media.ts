@@ -35,20 +35,48 @@ import { getPersistentPublicDir } from '../../utils/persistent-assets.js';
 
 const router: IRouter = Router();
 
+// Canonical MIME type constants for video formats
+export const VIDEO_MIME_TYPE = {
+  MP4: 'video/mp4',
+  WEBM: 'video/webm',
+  QUICKTIME: 'video/quicktime',
+} as const;
+
+// Canonical MIME type constants for image formats
+export const IMAGE_MIME_TYPE = {
+  JPEG: 'image/jpeg',
+  PNG: 'image/png',
+  WEBP: 'image/webp',
+  GIF: 'image/gif',
+} as const;
+
 // Allowed image MIME types → file extensions
 const ALLOWED_IMAGE_TYPES: Record<string, string> = {
-  'image/jpeg': 'jpg',
-  'image/png': 'png',
-  'image/webp': 'webp',
-  'image/gif': 'gif',
+  [IMAGE_MIME_TYPE.JPEG]: 'jpg',
+  [IMAGE_MIME_TYPE.PNG]: 'png',
+  [IMAGE_MIME_TYPE.WEBP]: 'webp',
+  [IMAGE_MIME_TYPE.GIF]: 'gif',
+};
+
+// Allowed video MIME types → file extensions
+const ALLOWED_VIDEO_TYPES: Record<string, string> = {
+  [VIDEO_MIME_TYPE.MP4]: 'mp4',
+  [VIDEO_MIME_TYPE.WEBM]: 'webm',
+  [VIDEO_MIME_TYPE.QUICKTIME]: 'mov',
+};
+
+// All allowed media MIME types (images + videos)
+const ALLOWED_MEDIA_TYPES: Record<string, string> = {
+  ...ALLOWED_IMAGE_TYPES,
+  ...ALLOWED_VIDEO_TYPES,
 };
 
 // Magic byte signatures for image validation
 const IMAGE_SIGNATURES: Array<{ mime: string; bytes: number[] }> = [
-  { mime: 'image/jpeg', bytes: [0xff, 0xd8, 0xff] },
-  { mime: 'image/png', bytes: [0x89, 0x50, 0x4e, 0x47] },
-  { mime: 'image/webp', bytes: [0x52, 0x49, 0x46, 0x46] }, // RIFF header (bytes 8-11 checked separately)
-  { mime: 'image/gif', bytes: [0x47, 0x49, 0x46, 0x38] }, // GIF8
+  { mime: IMAGE_MIME_TYPE.JPEG, bytes: [0xFF, 0xD8, 0xFF] },
+  { mime: IMAGE_MIME_TYPE.PNG, bytes: [0x89, 0x50, 0x4E, 0x47] },
+  { mime: IMAGE_MIME_TYPE.WEBP, bytes: [0x52, 0x49, 0x46, 0x46] }, // RIFF header (bytes 8-11 checked separately)
+  { mime: IMAGE_MIME_TYPE.GIF, bytes: [0x47, 0x49, 0x46, 0x38] },  // GIF8
 ];
 
 function validateImageMagicBytes(buffer: Buffer, mimeType: string): boolean {
@@ -58,7 +86,7 @@ function validateImageMagicBytes(buffer: Buffer, mimeType: string): boolean {
   if (!sig.bytes.every((byte, i) => buffer[i] === byte)) return false;
 
   // WebP is a RIFF container — verify bytes 8-11 are "WEBP" to distinguish from WAV/AVI
-  if (mimeType === 'image/webp') {
+  if (mimeType === IMAGE_MIME_TYPE.WEBP) {
     if (buffer.length < 12) return false;
     return buffer[8] === 0x57 && buffer[9] === 0x45 && buffer[10] === 0x42 && buffer[11] === 0x50;
   }
@@ -66,11 +94,27 @@ function validateImageMagicBytes(buffer: Buffer, mimeType: string): boolean {
   return true;
 }
 
-// Configure multer for memory storage with 10MB limit
+/** Validate video magic bytes: MP4/MOV check for 'ftyp' box, WebM checks EBML header. */
+function validateVideoMagicBytes(buffer: Buffer, mimeType: string): boolean {
+  if (buffer.length < 12) return false;
+
+  if (mimeType === VIDEO_MIME_TYPE.WEBM) {
+    return buffer[0] === 0x1A && buffer[1] === 0x45 && buffer[2] === 0xDF && buffer[3] === 0xA3;
+  }
+
+  if (mimeType === VIDEO_MIME_TYPE.MP4 || mimeType === VIDEO_MIME_TYPE.QUICKTIME) {
+    // ISO base media file format: bytes 4-7 should be 'ftyp'
+    return buffer.toString('ascii', 4, 8) === 'ftyp';
+  }
+
+  return false;
+}
+
+// Configure multer for memory storage with 50MB limit (videos can be larger than images)
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: 10 * 1024 * 1024, // 10MB
+    fileSize: 50 * 1024 * 1024, // 50MB
   },
 });
 
@@ -347,6 +391,138 @@ router.get('/:appId/search', async (req: Request, res: Response) => {
 });
 
 /**
+ * Getty API video item shape returned by the proxy video search endpoint
+ */
+interface GettyVideoItem {
+  id: string;
+  title?: string;
+  caption?: string;
+  display_sizes: Array<{ name: string; uri: string; is_watermarked?: boolean }>;
+}
+
+interface GettyVideoSearchResponse {
+  result_count?: number;
+  videos?: GettyVideoItem[];
+}
+
+function extractVideoPreviewUrl(item: GettyVideoItem): string | null {
+  const comp = item.display_sizes.find((s) => s.name === 'comp');
+  if (comp?.uri) return comp.uri;
+  const fallback = item.display_sizes.find((s) => s.name === 'preview' || s.name === 'thumb');
+  return fallback?.uri || null;
+}
+
+function extractVideoThumbnailUrl(item: GettyVideoItem): string | null {
+  const poster = item.display_sizes.find((s) => s.name === 'comp_poster');
+  if (poster?.uri) return poster.uri;
+  const thumb = item.display_sizes.find((s) => s.name === 'thumb');
+  return thumb?.uri || null;
+}
+
+/**
+ * GET /media/:appId/video-search
+ * Search Getty Videos and return preview URLs + IDs for the media panel.
+ * Query params: q, page (default 1), pageSize (default 9, max 24), orientations
+ */
+router.get('/:appId/video-search', async (req: Request, res: Response) => {
+  const appId = req.params.appId;
+  if (!appId) {
+    return res.status(400).json({ success: false, error: 'App ID is required' });
+  }
+
+  const q = typeof req.query.q === 'string' ? req.query.q.trim() : '';
+  if (!q) {
+    return res.status(400).json({ success: false, error: 'Query parameter q is required' });
+  }
+
+  // Normalize verbose queries into concise Getty-friendly search terms
+  const phrase = await normalizeSearchQuery(q);
+
+  const page = Math.max(1, parseInt(String(req.query.page || '1'), 10) || 1);
+  const pageSize = Math.min(24, Math.max(1, parseInt(String(req.query.pageSize || '9'), 10) || 9));
+  const orientations = typeof req.query.orientations === 'string' && req.query.orientations !== 'any'
+    ? req.query.orientations
+    : null;
+
+  const gettyBaseUrl = (process.env.GETTY_IMAGE_PROXY_URL || 'https://getty-images-proxy.api.dev-godaddy.com')
+    .replace(/\/(v1|img).*$/, '');
+  const appKey = process.env.GETTY_APP_KEY || 'airo-app-builder';
+
+  let authHeader = '';
+  if (isS2SAuthEnabled()) {
+    authHeader = `sso-jwt ${await getS2SToken({ ssoHost: process.env.SSO_HOST || 'sso.test-godaddy.com' })}`;
+  } else if (process.env.SSO_JWT) {
+    authHeader = `sso-jwt ${process.env.SSO_JWT}`;
+  }
+
+  const params = new URLSearchParams({
+    phrase,
+    page: String(page),
+    page_size: String(pageSize),
+    enableUpload: 'true',
+    reportUsage: 'false',
+  });
+  if (orientations) {
+    params.append('orientations', orientations);
+  }
+
+  logger.info('route.media.video_search', { appId, query: q, phrase, page, pageSize, orientations });
+
+  try {
+    const response = await fetch(`${gettyBaseUrl}/v1/videos/search?${params.toString()}`, {
+      method: 'GET',
+      headers: {
+        ...(authHeader && { Authorization: authHeader }),
+        'x-app-key': appKey,
+        Accept: 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      logger.warn('route.media.video_search.upstream_error', { appId, status: response.status, text: text.slice(0, 200) });
+      return res.status(502).json({ success: false, error: 'Getty video search failed' });
+    }
+
+    const data = (await response.json()) as GettyVideoSearchResponse | GettyVideoItem[];
+    const rawVideos = Array.isArray(data) ? data : (data?.videos ?? []);
+    const items: GettyVideoItem[] = Array.isArray(rawVideos) ? rawVideos : [];
+
+    const seenIds = new Set<string>();
+    const videos: string[] = [];
+    const thumbnails: string[] = [];
+    const gettyIds: string[] = [];
+
+    for (const item of items) {
+      if (seenIds.has(item.id)) continue;
+      const previewUrl = extractVideoPreviewUrl(item);
+      const thumbUrl = extractVideoThumbnailUrl(item);
+      if (previewUrl) {
+        seenIds.add(item.id);
+        videos.push(previewUrl);
+        thumbnails.push(thumbUrl || previewUrl);
+        gettyIds.push(item.id);
+      }
+    }
+
+    return res.json({
+      success: true,
+      videos,
+      thumbnails,
+      gettyIds,
+      totalResults: (Array.isArray(data) ? data.length : data?.result_count) ?? 0,
+    });
+  } catch (error) {
+    logger.error('route.media.video_search.error', {
+      appId,
+      q,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return res.status(500).json({ success: false, error: 'Failed to search videos' });
+  }
+});
+
+/**
  * DELETE /media/:appId/uploads/:filename
  * Delete a chat/persistent uploaded image and remove manifest references safely.
  */
@@ -468,7 +644,7 @@ router.delete('/:appId/uploads/:filename', async (req: Request, res: Response) =
 
 /**
  * DELETE /media/:appId/slots/:slotName/uploads/:filename
- * Remove an uploaded image from one media slot while leaving the upload available elsewhere.
+ * Remove an uploaded media from one media slot while leaving the upload available elsewhere.
  */
 router.delete(
   '/:appId/slots/:slotName(*)/uploads/:filename',
@@ -640,7 +816,7 @@ router.put('/:appId/slots/:slotName(*)', async (req: Request, res: Response) => 
       });
     }
 
-    const { newUrl, alternativeIndex, allowExternalUrl, gettyId, searchQuery } = req.body;
+    const { newUrl, alternativeIndex, allowExternalUrl, gettyId, searchQuery, isVideo } = req.body;
 
     if (!newUrl && alternativeIndex === undefined) {
       return res.status(400).json({
@@ -660,9 +836,13 @@ router.put('/:appId/slots/:slotName(*)', async (req: Request, res: Response) => 
       alternativeIndex,
       markUserModified: true,
       allowExternalUrl: allowExternalUrl === true,
-      gettyId: typeof gettyId === 'string' ? gettyId : undefined,
-      searchQuery:
-        typeof searchQuery === 'string' && searchQuery.trim() ? searchQuery.trim() : undefined,
+      gettyAsset: typeof gettyId === 'string'
+        ? { id: gettyId, mediaType: isVideo === true ? 'video' : 'image' }
+        : undefined,
+      mediaTypeHint: typeof gettyId !== 'string' && typeof isVideo === 'boolean'
+        ? (isVideo ? 'video' : 'image')
+        : undefined,
+      searchQuery: typeof searchQuery === 'string' && searchQuery.trim() ? searchQuery.trim() : undefined,
     });
 
     if (!result.success) {
@@ -704,7 +884,7 @@ function handleMulterError(
     if (err.code === 'LIMIT_FILE_SIZE') {
       res.status(400).json({
         success: false,
-        error: 'File size exceeds 10MB limit',
+        error: 'File size exceeds 50MB limit',
       });
       return;
     }
@@ -783,13 +963,36 @@ router.post(
         return res.status(404).json({ success: false, error: 'Upload file not found on disk' });
       }
 
-      // Read and process the image
+      // Read the file
       const fileBuffer = await fs.readFile(sourceFilePath);
-      const processed = await imageProcessingService.processImage(fileBuffer, {
-        maxWidth: 2048,
-        maxHeight: 2048,
-        quality: 85,
-      });
+      const isVideo = matchingFile.mimeType?.startsWith('video/') ?? false;
+
+      // Validate magic bytes for videos (images are validated during initial upload)
+      if (isVideo) {
+        if (!matchingFile.mimeType || !ALLOWED_VIDEO_TYPES[matchingFile.mimeType]) {
+          return res.status(400).json({ success: false, error: 'Unsupported video type' });
+        }
+        if (!validateVideoMagicBytes(fileBuffer, matchingFile.mimeType)) {
+          return res.status(400).json({ success: false, error: 'File content does not match declared video type' });
+        }
+      }
+
+      // For videos, skip image processing — write raw buffer with correct extension.
+      // For images, process through sharp for resizing/quality.
+      let outputBuffer: Buffer;
+      let ext: string;
+      if (isVideo) {
+        outputBuffer = fileBuffer;
+        ext = ALLOWED_VIDEO_TYPES[matchingFile.mimeType ?? ''] || 'mp4';
+      } else {
+        const processed = await imageProcessingService.processImage(fileBuffer, {
+          maxWidth: 2048,
+          maxHeight: 2048,
+          quality: 85,
+        });
+        outputBuffer = processed.buffer;
+        ext = processed.format === 'jpeg' ? 'jpg' : processed.format;
+      }
 
       // Generate filename and write to persistent media directory
       const appRepository = new AppRepository();
@@ -799,8 +1002,7 @@ router.post(
       }
 
       const sanitizedSlot = slotName.replace(/\//g, '-').replace(/[^a-zA-Z0-9-]/g, '');
-      const hash = crypto.createHash('sha256').update(processed.buffer).digest('hex').slice(0, 8);
-      const ext = processed.format === 'jpeg' ? 'jpg' : processed.format;
+      const hash = crypto.createHash('sha256').update(outputBuffer).digest('hex').slice(0, 8);
       const mediaFilename = `${sanitizedSlot}-${hash}.${ext}`;
 
       // mediaFilename is derived from sanitizedSlot (alphanumeric+dash only) and a content
@@ -817,7 +1019,7 @@ router.post(
       }
 
       const tempPath = `${filePath}.tmp.${Date.now()}`; // nosemgrep: path-traversal
-      await fs.writeFile(tempPath, processed.buffer); // nosemgrep: path-traversal
+      await fs.writeFile(tempPath, outputBuffer); // nosemgrep: path-traversal
       await fs.rename(tempPath, filePath); // nosemgrep: path-traversal
 
       const uploadedUrl = `${AIRO_ASSET_UPLOADS_URL_PREFIX}${mediaFilename}`;
@@ -826,7 +1028,7 @@ router.post(
         appId,
         slotName,
         uploadedUrl,
-        filename // Track which chat upload produced this persistent URL
+        { sourceFilename: filename, isVideo }
       );
 
       if (!updateResult.success) {
@@ -918,26 +1120,37 @@ router.post(
       }
 
       // Validate MIME type and magic bytes to prevent arbitrary content uploads
-      if (!ALLOWED_IMAGE_TYPES[file.mimetype]) {
+      if (!ALLOWED_MEDIA_TYPES[file.mimetype]) {
         return res.status(400).json({
           success: false,
-          error: 'Only JPEG, PNG, WebP, and GIF images are supported',
+          error: 'Only JPEG, PNG, WebP, GIF images and MP4, WebM, MOV videos are supported',
         });
       }
 
-      if (!validateImageMagicBytes(file.buffer, file.mimetype)) {
-        logger.warn(
-          'route.media.upload.magic_bytes_mismatch',
-          {
-            appId,
-            slotName,
-            mimetype: file.mimetype,
-          },
-          { tags: ['security'] }
-        );
+      const isVideoUpload = !!ALLOWED_VIDEO_TYPES[file.mimetype];
+
+      // Validate magic bytes — images use strict signature check, videos use header check
+      if (!isVideoUpload && !validateImageMagicBytes(file.buffer, file.mimetype)) {
+        logger.warn('route.media.upload.magic_bytes_mismatch', {
+          appId,
+          slotName,
+          mimetype: file.mimetype,
+        }, { tags: ['security'] });
         return res.status(400).json({
           success: false,
           error: 'File content does not match declared image type',
+        });
+      }
+
+      if (isVideoUpload && !validateVideoMagicBytes(file.buffer, file.mimetype)) {
+        logger.warn('route.media.upload.video_magic_bytes_mismatch', {
+          appId,
+          slotName,
+          mimetype: file.mimetype,
+        }, { tags: ['security'] });
+        return res.status(400).json({
+          success: false,
+          error: 'File content does not match declared video type',
         });
       }
 
@@ -1005,9 +1218,15 @@ router.post(
         filename = overwriteFilename!;
       } else {
         // Generate filename: {sanitized-slot}-{hash}.{ext}
-        const sanitizedSlot = slotName.replace(/\//g, '-').replace(/[^a-zA-Z0-9-]/g, '');
-        const hash = crypto.createHash('sha256').update(file.buffer).digest('hex').slice(0, 8);
-        const ext = ALLOWED_IMAGE_TYPES[file.mimetype];
+        const sanitizedSlot = slotName
+          .replace(/\//g, '-')
+          .replace(/[^a-zA-Z0-9-]/g, '');
+        const hash = crypto
+          .createHash('sha256')
+          .update(file.buffer)
+          .digest('hex')
+          .slice(0, 8);
+        const ext = ALLOWED_MEDIA_TYPES[file.mimetype];
         filename = `${sanitizedSlot}-${hash}.${ext}`;
       }
 
@@ -1056,7 +1275,7 @@ router.post(
       if (isOverwrite) {
         // Overwriting a local upload in place — URL is unchanged so no manifest
         // update is needed. Also overwrite the corresponding chat upload file so
-        // the thumbnail in UploadedImagesSection shows the updated image.
+        // the thumbnail in UploadedMediaSection shows the updated image.
         const chatFilename = slotResult.slot?.uploadSources?.[uploadedUrl];
         if (chatFilename) {
           try {
@@ -1217,7 +1436,7 @@ router.post(
         appId,
         slotName,
         uploadedUrl,
-        chatUploadFilename
+        { sourceFilename: chatUploadFilename, isVideo: isVideoUpload }
       );
 
       if (!updateResult.success) {
