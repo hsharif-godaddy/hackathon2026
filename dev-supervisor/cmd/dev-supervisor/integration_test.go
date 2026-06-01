@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"net"
 	"net/http"
-	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -76,9 +75,10 @@ func (tc *TestClient) parseJSONResponse(resp *http.Response, target any) error {
 	return json.NewDecoder(resp.Body).Decode(target)
 }
 
-// IntegrationTestSuite contains all integration tests
+// IntegrationTestSuite contains all integration tests. The server behind
+// `socketPath` may be in-process or a subprocess — see strangler_harness_test.go.
+// Lifecycle is driven via t.Cleanup registered inside bootServer.
 type IntegrationTestSuite struct {
-	server     *Server
 	client     *TestClient
 	socketPath string
 	tempDir    string
@@ -88,104 +88,22 @@ type IntegrationTestSuite struct {
 func SetupTestSuite(t *testing.T) *IntegrationTestSuite {
 	configureSMTPTestEnv(t)
 
-	// Create temporary directory for test files (auto-cleaned up by t.TempDir)
-	// Note: t.TempDir() typically uses /tmp on Unix systems
 	tempDir := t.TempDir()
-
 	// Create unique socket path for this test (keep it short for macOS)
 	socketPath := filepath.Join(tempDir, "test.sock")
 
-	// Create server instance
-	server := NewServer()
+	bootServer(t, socketPath)
 
-	// Create test client
-	client := NewTestClient(socketPath)
-
-	suite := &IntegrationTestSuite{
-		server:     server,
-		client:     client,
+	return &IntegrationTestSuite{
+		client:     NewTestClient(socketPath),
 		socketPath: socketPath,
 		tempDir:    tempDir,
 	}
-
-	// Start server in background
-	go func() {
-		// Override the default socket path for testing
-		originalSocketPath := socketPath
-		defer func() {
-			// Restore original socket path
-			_ = originalSocketPath
-		}()
-
-		// Start server with test socket path
-		if err := suite.startTestServer(); err != nil {
-			t.Errorf("Failed to start test server: %v", err)
-		}
-	}()
-
-	// Wait for server to start
-	suite.waitForServer(t)
-
-	return suite
 }
 
-// TeardownTestSuite cleans up the test environment
-func (suite *IntegrationTestSuite) TeardownTestSuite(_ *testing.T) {
-	// Temp directory cleanup is handled automatically by t.TempDir()
-}
-
-// startTestServer starts the server with test configuration
-func (suite *IntegrationTestSuite) startTestServer() error {
-	// Remove existing socket file if it exists
-	if err := os.Remove(suite.socketPath); err != nil && !os.IsNotExist(err) {
-		return err
-	}
-
-	// Create Unix domain socket listener
-	listener, err := net.Listen("unix", suite.socketPath)
-	if err != nil {
-		return err
-	}
-
-	// Set socket permissions
-	if err := os.Chmod(suite.socketPath, 0666); err != nil {
-		listener.Close()
-		return err
-	}
-
-	// Start PID 1 manager (but won't activate since not PID 1)
-	suite.server.pid1Mgr.Start(func() {
-		// Test shutdown callback
-	})
-
-	// Create HTTP server
-	httpServer := &http.Server{
-		Handler:      suite.server.router,
-		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 30 * time.Second,
-		IdleTimeout:  60 * time.Second,
-	}
-
-	// Serve in background
-	return httpServer.Serve(listener)
-}
-
-// waitForServer waits for the server to become available
-func (suite *IntegrationTestSuite) waitForServer(t *testing.T) {
-	maxAttempts := 30
-	for range maxAttempts {
-		resp, err := suite.client.makeRequest("GET", "/health", nil)
-		if err == nil && resp.StatusCode == http.StatusOK {
-			resp.Body.Close()
-			return
-		}
-		if resp != nil {
-			resp.Body.Close()
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-	t.Fatalf("Server failed to start within timeout")
-}
+// TeardownTestSuite is retained as a no-op for callers that defer it; the
+// server is stopped via t.Cleanup registered inside bootServer.
+func (suite *IntegrationTestSuite) TeardownTestSuite(_ *testing.T) {}
 
 // TestHealthEndpoint tests the basic health endpoint
 func TestHealthEndpoint(t *testing.T) {

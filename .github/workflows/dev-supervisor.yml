@@ -146,6 +146,34 @@ jobs:
         working-directory: dev-supervisor/rust
         run: cargo test
 
+  test-integration-subproc:
+    name: dev-supervisor / Integration (subproc)
+    runs-on:
+      labels:
+        - airo-cicd-runners
+        - self-hosted
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - name: Set up Go
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
+        with:
+          go-version: '1.25'
+          cache-dependency-path: dev-supervisor/go.sum
+
+      - name: Install ripgrep
+        run: command -v rg || sudo apt-get install -y ripgrep
+        env:
+          DEBIAN_FRONTEND: noninteractive
+
+      - name: Download dependencies
+        working-directory: dev-supervisor
+        run: go mod download
+
+      - name: Run integration tests (subproc)
+        working-directory: dev-supervisor
+        run: make test-integration-subproc
+
   test-docker:
     name: dev-supervisor / Docker Integration Tests
     runs-on:
@@ -168,7 +196,7 @@ jobs:
       labels:
         - airo-cicd-runners
         - self-hosted
-    needs: [lint, lint-rust, test, test-rust, test-docker]
+    needs: [lint, lint-rust, test, test-integration-subproc, test-rust, test-docker]
     strategy:
       matrix:
         goos: [linux]
@@ -236,7 +264,7 @@ jobs:
       labels:
         - airo-cicd-runners
         - self-hosted
-    needs: [lint, lint-rust, test, test-rust, test-docker]
+    needs: [lint, lint-rust, test, test-integration-subproc, test-rust, test-docker]
     steps:
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6

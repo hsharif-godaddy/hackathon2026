@@ -124,6 +124,16 @@ Three tiers:
 2. **Linux-specific tests** — `*_linux_test.go` with `//go:build linux` (auto-skipped on macOS)
 3. **Docker integration tests** — `make test-docker` (tests actual container PID1 behavior)
 
+### Strangler-fig acceptance harness
+
+The integration tests under `cmd/dev-supervisor/` boot the server through a pluggable harness (`strangler_harness_test.go`) selected by `DEV_SUPERVISOR_TEST_HARNESS`:
+
+- **`inproc`** (default) — Go server in the test process. Fastest. Used by `make test-integration`.
+- **`subproc`** — exec the built `dist/dev-supervisor` binary as a child and talk to it via the public socket. Validates the real binary boot path. Used by `make test-integration-subproc`.
+- **`strangler`** — RESERVED. Future PR will boot a Rust listener forwarding to a Go subproc; the same suite must pass identically to inproc/subproc. This is the safety net for the Go-to-Rust migration.
+
+Test bodies are black-box (no `suite.server.*` access). When adding new integration tests, keep them socket-only so they continue to work in every mode.
+
 ## Rust Component
 
 The `rust/airo-workspace/` crate is the PID1 init process. It:

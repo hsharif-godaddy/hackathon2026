@@ -1,6 +1,6 @@
 # dev-supervisor Makefile
 
-.PHONY: build build-supervisor build-sandbox build-airo-workspace build-all clean test test-all test-docker test-docker-go lint lint-all lint-rust fmt fmt-fix vet run help install deps
+.PHONY: build build-supervisor build-sandbox build-airo-workspace build-all clean test test-all test-integration test-integration-subproc test-docker test-docker-go lint lint-all lint-rust fmt fmt-fix vet run help install deps
 
 # Build variables
 BINARY_NAME := dev-supervisor
@@ -72,10 +72,17 @@ test:
 	@echo "Running tests..."
 	go test -v -race -coverprofile=coverage.out ./...
 
-## Run integration tests
+## Run integration tests (in-process Go server, default harness mode)
 test-integration:
-	@echo "Running integration tests..."
+	@echo "Running integration tests (inproc)..."
 	go test -v -timeout 60s ./cmd/dev-supervisor
+
+## Run integration tests against the built dev-supervisor binary as a subprocess.
+## Validates real binary boot path and is a precondition for the strangler-fig
+## migration: the same suite must pass in every harness mode.
+test-integration-subproc: build-supervisor
+	@echo "Running integration tests (subproc against $(BUILD_DIR)/$(BINARY_NAME))..."
+	DEV_SUPERVISOR_TEST_HARNESS=subproc go test -v -timeout 240s ./cmd/dev-supervisor
 
 ## Run tests with coverage report
 test-coverage: test
