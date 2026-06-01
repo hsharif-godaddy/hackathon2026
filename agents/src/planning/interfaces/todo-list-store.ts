@@ -42,6 +42,7 @@ export interface TodoListStore {
   createList(scope: WorkspaceScope, name: string, description?: string, items?: PlanningCreateItemInput[]): Promise<PlanningTodoList>;
   getListById(listId: string): Promise<PlanningTodoList | null>;
   getAllLists(scope: WorkspaceScope): Promise<PlanningTodoList[]>;
+  getCurrentIncompleteList(scope: WorkspaceScope): Promise<PlanningTodoList | null>;
   deleteList(listId: string): Promise<boolean>;
   updateListTimestamp(listId: string): Promise<void>;
 

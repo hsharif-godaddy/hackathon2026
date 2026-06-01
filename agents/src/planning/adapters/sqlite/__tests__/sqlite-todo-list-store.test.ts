@@ -8,6 +8,7 @@ describe('SqliteTodoListStore', function storeTests() {
     createList: vi.fn(),
     getListById: vi.fn(),
     getAllLists: vi.fn(),
+    getCurrentIncompleteList: vi.fn(),
     deleteList: vi.fn(),
     updateListTimestamp: vi.fn(),
     addItem: vi.fn(),
@@ -73,5 +74,19 @@ describe('SqliteTodoListStore', function storeTests() {
     mockRepo.getAllLists.mockReturnValue([]);
     await store.getAllLists(local);
     expect(mockRepo.getAllLists).toHaveBeenCalledWith('local-app');
+  });
+
+  it('should forward getCurrentIncompleteList with appId from scope', async function forwardGetCurrentIncomplete() {
+    const mockList = { id: 'list-1', name: 'Test', appId: 'app-1', items: [{ id: 'i1', completed: false }] };
+    mockRepo.getCurrentIncompleteList.mockReturnValue(mockList);
+    const result = await store.getCurrentIncompleteList(scope);
+    expect(result).toBe(mockList);
+    expect(mockRepo.getCurrentIncompleteList).toHaveBeenCalledWith('app-1');
+  });
+
+  it('should return null from getCurrentIncompleteList when no incomplete lists', async function noIncomplete() {
+    mockRepo.getCurrentIncompleteList.mockReturnValue(null);
+    const result = await store.getCurrentIncompleteList(scope);
+    expect(result).toBeNull();
   });
 });

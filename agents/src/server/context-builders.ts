@@ -91,10 +91,24 @@ export async function buildTodoContextMessage(opts: {
     }
   }
 
-  if (!selectedTodoListId || !appId) return null
+  if (!appId) return null
+
+  const todoContextManager = getTodoContextManager()
 
   try {
-    const todoContextManager = getTodoContextManager()
+    if (!selectedTodoListId) {
+      const incompleteList = await todoContextManager.getCurrentIncompleteList(appId)
+      if (incompleteList) {
+        selectedTodoListId = incompleteList.id
+        stateManager.setSelectedTodoList(sessionId, incompleteList.id)
+        logger.info('todo.list.selection.resolved_from_db', {
+          sessionId, appId, listId: incompleteList.id,
+        })
+      }
+    }
+
+    if (!selectedTodoListId) return null
+
     const todoContext = await todoContextManager.generateTodoContext(
       { metadata } as any,
       selectedTodoListId

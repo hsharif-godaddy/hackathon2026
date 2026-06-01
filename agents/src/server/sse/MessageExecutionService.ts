@@ -941,6 +941,9 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
           ? [{ type: 'todo_list_context', data: todoListContext }]
           : undefined,
         stateManager: this.deps.stateManager,
+      }).catch(err => {
+        logger.warn('sse.execution.todo_context_failed', { appId, conversationId, ...errorFields(err) })
+        return null
       }),
       buildMemoryContextMessage({ appId }),
       this.deps.loadConversationHistory(conversationId, appId, agentName).catch(err => {

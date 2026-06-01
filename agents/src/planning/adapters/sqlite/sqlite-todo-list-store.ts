@@ -27,6 +27,10 @@ export class SqliteTodoListStore implements TodoListStore {
     return this.repo.getAllLists(scope.appId);
   }
 
+  async getCurrentIncompleteList(scope: WorkspaceScope): Promise<PlanningTodoList | null> {
+    return this.repo.getCurrentIncompleteList(scope.appId);
+  }
+
   async deleteList(listId: string): Promise<boolean> {
     return this.repo.deleteList(listId);
   }

@@ -153,6 +153,36 @@ export class TodoListRepository {
   }
 
   /**
+   * Get the most recently updated list for an app that has at least one incomplete item
+   * and was updated within the last 24 hours. Returns null if all lists are fully complete,
+   * no lists exist, or the only incomplete lists are stale (abandoned features).
+   */
+  getCurrentIncompleteList(appId: string): TodoList | null {
+    const stmt = this.db.prepare(`
+      SELECT tl.id, tl.app_id, tl.name, tl.description, tl.created_at, tl.updated_at
+      FROM todo_lists tl
+      WHERE tl.app_id = ?
+        AND EXISTS (SELECT 1 FROM todo_items ti WHERE ti.list_id = tl.id AND ti.completed = 0)
+        AND tl.updated_at >= datetime('now', '-24 hours')
+      ORDER BY tl.updated_at DESC
+      LIMIT 1
+    `)
+
+    const row = stmt.get(appId) as any
+    if (!row) return null
+
+    return {
+      id: row.id,
+      appId: row.app_id,
+      name: row.name,
+      description: row.description,
+      createdAt: new Date(row.created_at),
+      updatedAt: new Date(row.updated_at),
+      items: this.getItemsByListId(row.id)
+    }
+  }
+
+  /**
    * Get all todo lists, optionally filtered by appId
    */
   getAllLists(appId?: string): TodoList[] {

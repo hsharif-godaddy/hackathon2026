@@ -33,14 +33,12 @@ export class TodoContextManager {
       return null;
     }
 
-    // If no specific list is selected, show a message indicating no active list
     if (!selectedTodoListId) {
       logger.debug('todo.context.no_selection', { appId });
       return '[Current Todo List]\n\nNo active todo list. Create one with todoList tool if starting a new feature.';
     }
 
     try {
-      // Get the selected todo list
       const todoList = await this.todoListStore.getListById(selectedTodoListId);
 
       if (!todoList) {
@@ -51,7 +49,6 @@ export class TodoContextManager {
         return '[Current Todo List]\n\nNo active todo list. Create one with todoList tool if starting a new feature.';
       }
 
-      // Verify the list belongs to this app
       if (todoList.appId !== appId) {
         logger.warn('todo.context.app_mismatch', {
           appId,
@@ -61,7 +58,6 @@ export class TodoContextManager {
         return '[Current Todo List]\n\nNo active todo list. Create one with todoList tool if starting a new feature.';
       }
 
-      // Format the todo list context (including fully complete lists so the agent knows what was built)
       const formattedContext = this.formatTodoList(todoList);
 
       logger.debug('todo.context.generated', {
@@ -143,6 +139,15 @@ export class TodoContextManager {
     }
 
     return sections.join('\n');
+  }
+
+  /**
+   * Get the current incomplete todo list for an app.
+   * Returns the most recently updated list that has at least one incomplete item,
+   * or null if all lists are fully complete (or no lists exist).
+   */
+  async getCurrentIncompleteList(appId: string): Promise<PlanningTodoList | null> {
+    return this.todoListStore.getCurrentIncompleteList(workspaceScopeFromAppId(appId));
   }
 
   /**
