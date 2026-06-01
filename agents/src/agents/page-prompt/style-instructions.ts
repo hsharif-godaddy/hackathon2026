@@ -6,7 +6,7 @@
  * "Let Airo Decide" branches inline a redesign template; explicit choices
  * (suggest-new, simplify, modernize, bold, custom) emit a focused directive.
  */
-import type { SiteMetadata, StylePreferences } from '../../types/rebuild.js';
+import type { SiteMetadata, StylePreferences, TypographyScaleEntry } from '../../types/rebuild.js';
 
 export function buildColorInstructions(prefs: StylePreferences, metadata: SiteMetadata): string {
   if (prefs.colorPreference === 'keep-original') {
@@ -54,9 +54,8 @@ FRONTEND AESTHETICS DIRECTION:
 Create a distinctive design that avoids generic "AI slop" aesthetics.
 
 Typography Direction:
-- Choose fonts that are distinctive and appropriate for "${metadata.brandVoice}" brand voice
-- AVOID: Inter, Roboto, Arial, system fonts
-- Specify the typography mood (e.g., "friendly but professional", "bold and confident", "elegant and refined")
+- Use fonts appropriate for "${metadata.brandVoice}" brand voice
+- Specify the typography mood (e.g., "friendly but professional", "bold and confident", "elegant and refined")${metadata.typography.headingFonts.length > 0 || metadata.typography.bodyFonts.length > 0 ? '\n- See TYPOGRAPHY DIRECTION section for specific font guidance' : ''}
 
 Color Application:
 - Commit to a cohesive aesthetic with dominant colors and sharp accents
@@ -118,4 +117,54 @@ Create a striking, attention-grabbing design.
   }
 
   return '';
+}
+
+export function buildTypographyInstructions(prefs: StylePreferences, metadata: SiteMetadata): string {
+  const { headingFonts, bodyFonts, scale } = metadata.typography;
+
+  if (headingFonts.length === 0 && bodyFonts.length === 0) return '';
+
+  if (prefs.typographyStyle === 'keep-original') {
+    const fontBullets: string[] = [];
+    if (headingFonts.length > 0) fontBullets.push(`- Heading font: ${headingFonts.join(', ')}`);
+    if (bodyFonts.length > 0) fontBullets.push(`- Body font: ${bodyFonts.join(', ')}`);
+
+    const renderedScale = scale && scale.length > 0 ? renderScale(scale) : '';
+    const scaleBlock = renderedScale
+      ? `\nSource typography scale (preserve these proportions):\n${renderedScale}`
+      : '';
+
+    return `TYPOGRAPHY DIRECTION (Preserve Source Fonts):
+The source site uses these typefaces. Preserve them:
+${fontBullets.join('\n')}
+${scaleBlock}
+Use these exact fonts in the rebuild. Do NOT substitute with different fonts.
+If Google Fonts provides them, import them. If not, use the closest available match and note the substitution.`;
+  }
+
+  const headingList = headingFonts.join(', ') || 'not detected';
+  const bodyList = bodyFonts.join(', ') || 'not detected';
+
+  const styleLabel = prefs.typographyStyle === 'modern' ? 'modern, clean'
+    : prefs.typographyStyle === 'classic' ? 'classic, refined'
+    : 'playful, expressive';
+
+  return `TYPOGRAPHY DIRECTION (${prefs.typographyStyle}):
+The source site used: Headings: ${headingList}, Body: ${bodyList}.
+You may choose different fonts that feel ${styleLabel}, but use the source as a reference for the proportional scale (heading-to-body size ratio, weight contrast).`;
+}
+
+// Only heading/body roles reach the prompt — nav/button/input sizing is handled by component defaults
+function renderScale(scale: TypographyScaleEntry[]): string {
+  const headings = scale.filter(s => s.role === 'heading');
+  const body = scale.filter(s => s.role === 'body');
+
+  const lines: string[] = [];
+  for (const entry of headings.slice(0, 3)) {
+    lines.push(`  Heading: ${entry.fontFamily} ${entry.fontSize} / weight ${entry.fontWeight} / line-height ${entry.lineHeight}`);
+  }
+  for (const entry of body.slice(0, 2)) {
+    lines.push(`  Body: ${entry.fontFamily} ${entry.fontSize} / weight ${entry.fontWeight} / line-height ${entry.lineHeight}`);
+  }
+  return lines.join('\n');
 }

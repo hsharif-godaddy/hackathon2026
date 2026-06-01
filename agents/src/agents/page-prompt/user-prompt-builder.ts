@@ -28,7 +28,7 @@ import type {
 import { normalizeAssetPath } from '../../utils/asset-paths.js';
 import { buildSiteTypeRules } from '../site-type-helpers.js';
 import { extractKeyContent } from './extract-key-content.js';
-import { buildColorInstructions, buildDesignInstructions } from './style-instructions.js';
+import { buildColorInstructions, buildDesignInstructions, buildTypographyInstructions } from './style-instructions.js';
 
 export interface BuildUserPromptArgs {
   siteMetadata: SiteMetadata;
@@ -52,6 +52,7 @@ export function buildUserPrompt(args: BuildUserPromptArgs): string {
 
   const colorInstructions = isFirstPage ? buildColorInstructions(stylePreferences, siteMetadata) : '';
   const designInstructions = isFirstPage ? buildDesignInstructions(stylePreferences, siteMetadata) : '';
+  const typographyInstructions = buildTypographyInstructions(stylePreferences, siteMetadata);
 
   const siteType = siteMetadata.siteType ?? 'content';
   const siteTypeRules = buildSiteTypeRules(siteType, isFirstPage);
@@ -75,7 +76,7 @@ SITE METADATA:
 - Brand Voice: ${siteMetadata.brandVoice}
 - Current Design Style: ${siteMetadata.designStyle}
 - Current Colors: Primary: ${siteMetadata.colorPalette.primary.join(', ') || 'Not specified'}, Secondary: ${siteMetadata.colorPalette.secondary.join(', ') || 'Not specified'}
-- Current Typography: Headings: ${siteMetadata.typography.headingFonts.join(', ') || 'Not specified'}, Body: ${siteMetadata.typography.bodyFonts.join(', ') || 'Not specified'}
+- Current Typography: Headings: ${siteMetadata.typography.headingFonts.join(', ') || 'Not specified'}, Body: ${siteMetadata.typography.bodyFonts.join(', ') || 'Not specified'}${siteMetadata.typography.scale && siteMetadata.typography.scale.length > 0 ? ` (${siteMetadata.typography.scale.length} scale entries available)` : ''}
 
 STYLE PREFERENCES FROM USER:
 - Design Direction: ${stylePreferences.designDirection}
@@ -86,6 +87,8 @@ STYLE PREFERENCES FROM USER:
 ${colorInstructions}
 
 ${designInstructions}
+
+${typographyInstructions}
 
 PAGE CONTENT TO REBUILD:
 - Title: ${pageContent.title}

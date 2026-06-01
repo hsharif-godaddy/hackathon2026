@@ -135,6 +135,32 @@ const CONTRACTS: Record<string, Contract[]> = {
       check: (p) => !/homepage structure requirements/i.test(p),
     },
   ],
+  'with-typography-scale': [
+    {
+      description: 'Prompt mentions the source heading font (Playfair Display)',
+      check: (p) => /Playfair Display/i.test(p),
+    },
+    {
+      description: 'Prompt mentions the source body font (Source Sans Pro)',
+      check: (p) => /Source Sans Pro/i.test(p),
+    },
+    {
+      description: 'Prompt includes heading font size from scale (56px)',
+      check: (p, f) => {
+        const headingScale = f.generateArgs.siteMetadata.typography?.scale
+          ?.find((s: { role: string }) => s.role === 'heading');
+        return !!headingScale && p.includes(headingScale.fontSize);
+      },
+    },
+    {
+      description: 'Prompt includes a preservation/keep directive for typography',
+      check: (p) => /preserve|must use|use these exact|use.*exactly|keep.*font|import.*font/i.test(p),
+    },
+    {
+      description: 'Prompt does NOT contain AVOID system fonts directive',
+      check: (p) => !/AVOID:.*Inter|AVOID:.*Roboto|AVOID:.*Arial|AVOID:.*system fonts/i.test(p),
+    },
+  ],
 };
 
 async function listFixtureNames(): Promise<string[]> {
