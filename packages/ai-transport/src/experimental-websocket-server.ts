@@ -1531,19 +1531,12 @@ export class WebSocketServer {
           pendingPublishes.push(this.publishToEventChannel(socketId, 'tool_input_delta', '', toolInputDeltaData, agentName))
         },
 
+        onToolInputParseFailure: (toolCallId, toolName, rawInput) => {
+          this.logger.error('tool.input.parse_failure', { toolCallId, toolName, fullInput: rawInput.slice(0, 200) })
+        },
         onToolCall: (toolCallId, toolName, parsedInput) => {
           guard?.pause()
           tracker.pauseGapTracking(toolName)
-          if (typeof parsedInput === 'string') {
-            this.logger.error('tool.input.parse_failure', {
-              toolCallId,
-              toolName,
-              // Preserve the pre-refactor field name so existing Grafana /
-              // Loki queries keyed on `fullInput` keep matching. Truncated
-              // to 200 chars to cap log-shipper payloads.
-              fullInput: parsedInput.slice(0, 200),
-            })
-          }
           const toolCallData = {
             step: currentStep,
             tool: {

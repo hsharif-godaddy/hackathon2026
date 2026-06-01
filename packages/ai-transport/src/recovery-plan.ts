@@ -28,6 +28,9 @@ export interface RecoveryPlanInput {
    * between agent steps and misreport a still-running turn as completed.
    */
   hasActiveStream: boolean
+  /** Drops resolved client_action events from replay. Optional; omit on
+   *  transports that don't publish client_action through this channel (WS). */
+  isClientActionPending?: (requestId: string) => boolean
 }
 
 export interface RecoveryPlan {
@@ -48,13 +51,24 @@ export interface RecoveryPlan {
 }
 
 export function computeRecoveryPlan(input: RecoveryPlanInput): RecoveryPlan {
-  const { conversationId, channel, clientHasNoState, hasActiveStream } = input
+  const { conversationId, channel, clientHasNoState, hasActiveStream, isClientActionPending } = input
   const preReplaySequence = input.lastDeliveredSequence ?? -1
   const replayFromSequence = clientHasNoState ? -1 : preReplaySequence
 
   const filtered = channel
     .getEventsSince(conversationId, replayFromSequence)
     .filter(e => {
+      // client_action events carry no messageId, so they slip past the
+      // persisted-message filter below and would otherwise be replayed
+      // verbatim on every reconnect — including ones whose results we
+      // already received. Drop the ones the registry no longer tracks.
+      // Skip the lookup when requestId isn't a string — producers always
+      // emit string IDs today, but a runtime check is cheaper than the
+      // surprise of an event silently dropped from replay.
+      if (e.type === 'client_action' && isClientActionPending) {
+        const requestId = e.data?.requestId
+        if (typeof requestId === 'string' && !isClientActionPending(requestId)) return false
+      }
       // Events tied to a message are already in the history snapshot once
       // persisted — only their non-persisted tail needs to flow so the
       // client can keep rendering the active turn. Control events carry no

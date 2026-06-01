@@ -39,6 +39,20 @@ function event(seq: number, type = 'chunk', messageId = 'm1', persisted = false)
   } as unknown as StreamingEvent
 }
 
+function actionEvent(seq: number, requestId: string): StreamingEvent {
+  return {
+    id: `ca-${requestId}`,
+    sequence: seq,
+    type: 'client_action',
+    content: '',
+    conversationId: 'c',
+    data: { requestId },
+    timestamp: new Date(),
+    agentName: 'system',
+    persisted: false,
+  } as unknown as StreamingEvent
+}
+
 describe('computeRecoveryPlan', () => {
   it('replays the full buffer when clientHasNoState=true, regardless of cursor', () => {
     const channel = mockChannel(
@@ -157,6 +171,99 @@ describe('computeRecoveryPlan', () => {
 
     expect(plan.streamCompleted).toBe(true)
     expect(plan.eventsToReplay.map(e => e.sequence)).toEqual([102])
+  })
+
+  it('drops resolved client_action events on full replay', () => {
+    const channel = mockChannel(
+      [actionEvent(10, 'req-resolved'), actionEvent(11, 'req-pending')],
+      { firstSequence: 10, lastSequence: 11, pendingMessageIds: [] }
+    )
+
+    const plan = computeRecoveryPlan({
+      conversationId: 'c',
+      channel,
+      lastDeliveredSequence: null,
+      clientHasNoState: true,
+      hasActiveStream: false,
+      isClientActionPending: (rid) => rid === 'req-pending',
+    })
+
+    const ids = plan.eventsToReplay.map(e => e.id)
+    expect(ids).toContain('ca-req-pending')
+    expect(ids).not.toContain('ca-req-resolved')
+  })
+
+  it('drops resolved client_action events on delta replay too (clientHasNoState=false)', () => {
+    // Same filter must apply on the delta path — a future refactor that
+    // branches the filter under clientHasNoState would silently regress
+    // reconnects, since reconnects without a fresh page load also flow here.
+    const channel = mockChannel(
+      [actionEvent(10, 'req-resolved'), actionEvent(11, 'req-pending')],
+      { firstSequence: 10, lastSequence: 11, pendingMessageIds: [] }
+    )
+
+    const plan = computeRecoveryPlan({
+      conversationId: 'c',
+      channel,
+      lastDeliveredSequence: 9,
+      clientHasNoState: false,
+      hasActiveStream: true,
+      isClientActionPending: (rid) => rid === 'req-pending',
+    })
+
+    const ids = plan.eventsToReplay.map(e => e.id)
+    expect(ids).toContain('ca-req-pending')
+    expect(ids).not.toContain('ca-req-resolved')
+  })
+
+  it('passes through client_action events that lack a string requestId (no oracle to consult)', () => {
+    // Producers always emit string requestIds today, but if a malformed
+    // event somehow lands in the buffer the filter must err on "keep" —
+    // dropping a payload we can't identify is worse than replaying it.
+    const malformed: StreamingEvent = {
+      id: 'ca-malformed',
+      sequence: 10,
+      type: 'client_action',
+      content: '',
+      conversationId: 'c',
+      data: { /* no requestId */ },
+      timestamp: new Date(),
+      agentName: 'system',
+      persisted: false,
+    } as unknown as StreamingEvent
+    const channel = mockChannel(
+      [malformed],
+      { firstSequence: 10, lastSequence: 10, pendingMessageIds: [] }
+    )
+
+    const plan = computeRecoveryPlan({
+      conversationId: 'c',
+      channel,
+      lastDeliveredSequence: null,
+      clientHasNoState: true,
+      hasActiveStream: false,
+      isClientActionPending: () => false, // would drop everything if consulted
+    })
+
+    expect(plan.eventsToReplay.map(e => e.id)).toEqual(['ca-malformed'])
+  })
+
+  it('keeps all client_action events when isClientActionPending is omitted (WS path)', () => {
+    const channel = mockChannel(
+      [actionEvent(10, 'r1'), actionEvent(11, 'r2')],
+      { firstSequence: 10, lastSequence: 11, pendingMessageIds: [] }
+    )
+
+    const plan = computeRecoveryPlan({
+      conversationId: 'c',
+      channel,
+      lastDeliveredSequence: null,
+      clientHasNoState: true,
+      hasActiveStream: false,
+      // isClientActionPending intentionally omitted
+    })
+
+    expect(plan.eventsToReplay.map(e => e.id).sort()).toEqual(['ca-r1', 'ca-r2'])
   })
 
   it('keeps messageId-less control events regardless of persisted flag', () => {

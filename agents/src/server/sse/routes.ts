@@ -221,6 +221,13 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
       writeFormatted('replay_complete', { lastSequence: -1, replayedCount: 0 })
     } else {
       try {
+        // Snapshot of pending client_action requestIds at recovery time —
+        // captured up-front so the recovery filter can drop already-resolved
+        // actions from the replay (otherwise the client re-executes them and
+        // the server returns 404 + sse.client-action.unknown_request_id).
+        const actionService = getActionService(sseSessionKey(conversationId))
+        const pendingClientActions = new Set(actionService?.getPendingRequestIds() ?? [])
+
         const plan = computeRecoveryPlan({
           conversationId,
           channel: eventChannel,
@@ -229,6 +236,7 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
           // execute() registers activeStreams synchronously before its first
           // awaited operation, so the answer is truthful at reconnect time.
           hasActiveStream: deps.executionService?.hasActiveStream(conversationId) === true,
+          isClientActionPending: (requestId: string) => pendingClientActions.has(requestId),
         })
 
         // Avoids a separate HTTP round-trip for the client to reload history.
@@ -310,9 +318,10 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
 
         // Reset timeout for pending client actions so reconnected clients
         // have a fresh window to respond after receiving the replayed event.
-        const actionService = getActionService(sseSessionKey(conversationId))
+        // Use the snapshot taken before computeRecoveryPlan (above) — anything
+        // that landed since is already on a fresh timeout.
         if (actionService) {
-          for (const reqId of actionService.getPendingRequestIds()) {
+          for (const reqId of pendingClientActions) {
             if (actionService.resetTimeout(reqId)) {
               logger.info('sse.recovery.action_timeout_reset', { appId, conversationId, requestId: reqId })
             }

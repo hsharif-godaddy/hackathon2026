@@ -245,6 +245,47 @@ describe('SSE routes', () => {
       expect(mockResetTimeout).toHaveBeenCalledWith('req-def')
     })
 
+    it('drops resolved client_action events from replay (only pending requestIds get re-sent)', async () => {
+      // Regression guard for the wiring between routes.ts and computeRecoveryPlan:
+      // a previous bug replayed every buffered client_action on reconnect, causing
+      // the client to re-execute resolved actions and post results for requestIds
+      // the server no longer tracked (sse.client-action.unknown_request_id 404s).
+      mockClientActionServices.set('sse:conv_1', {
+        resetTimeout: vi.fn().mockReturnValue(true),
+        getPendingRequestIds: vi.fn().mockReturnValue(['req-pending']), // 'req-resolved' deliberately absent
+        cleanup: vi.fn(),
+        executeAction: vi.fn(),
+      })
+
+      const bufferedEvents = [
+        { id: 'ca-resolved', type: 'client_action', sequence: 10, conversationId: 'conv_1', content: '', data: { requestId: 'req-resolved', action: 'publish' } },
+        { id: 'ca-pending', type: 'client_action', sequence: 11, conversationId: 'conv_1', content: '', data: { requestId: 'req-pending', action: 'getSiteData' } },
+      ]
+      deps.getEventChannel.mockReturnValue({
+        getEventsSince: vi.fn().mockReturnValue(bufferedEvents),
+        getMetadata: vi.fn().mockReturnValue({ pendingMessageIds: [], firstSequence: 10, lastSequence: 11 }),
+      })
+      ;(deps as any).executionService = {
+        subscribeStream: vi.fn(),
+        // Active stream so replay isn't suppressed (the actual production
+        // case where unknown_request_id fired was a mid-turn reconnect).
+        hasActiveStream: vi.fn().mockReturnValue(true),
+      }
+
+      let capturedData = ''
+      await request(app)
+        .get('/api/conversations/abcdefghij/conv_1/stream')
+        .set('Accept', 'text/event-stream')
+        .buffer(false)
+        .parse((res: any, callback: any) => {
+          res.on('data', (chunk: Buffer) => { capturedData += chunk.toString() })
+          setTimeout(() => { res.destroy(); callback(null, capturedData) }, 100)
+        })
+
+      expect(capturedData).toContain('req-pending')
+      expect(capturedData).not.toContain('req-resolved')
+    })
+
     it('buffers live events during replay, drops duplicates at high-water, and flushes the tail', async () => {
       let subscribed: { onEvent: (event: any) => Promise<void> } | null = null
       const replayEvents = [

@@ -11,6 +11,13 @@ export interface PartProcessorCallbacks {
   onTextDelta(content: string, accumulated: string): void
   onToolStart(toolCallId: string, toolName: string, step: number): void
   onToolInputDelta(toolCallId: string, delta: string, accumulated: string, toolName: string | undefined): void
+  /** Fires when the streamed tool-input buffer fails to JSON.parse on the
+   * `tool-call` part. The processor will still invoke `onToolCall` afterwards
+   * with `parsedInput` set to the raw string, so callers retain control over
+   * the wire-shape fallback. Required so a future transport can't silently
+   * forget to log/observe parse failures — the whole point of lifting this
+   * hook into shared code is to prevent that drift. */
+  onToolInputParseFailure(toolCallId: string, toolName: string, rawInput: string): void
   onToolCall(toolCallId: string, toolName: string, parsedInput: unknown): void
   /** `sdkInput` is `part.input` from the AI SDK when present — the SDK's
    * authoritative final parsed input (post-schema coercion/defaults). The
@@ -126,6 +133,7 @@ export class StreamPartProcessor {
           parsedInput = rawInput ? JSON.parse(rawInput) : {}
         } catch {
           parsedInput = rawInput
+          this.callbacks.onToolInputParseFailure(id, toolName, rawInput)
         }
 
         const toolCall = this.state.toolCalls.get(id)

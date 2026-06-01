@@ -345,10 +345,16 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
       return
     }
 
+    // SSE-only: WS uses PersistenceSubscriber to flag events as persisted during
+    // streaming; SSE batches via completeConversation and back-fills here. If WS
+    // is ever migrated to this batched model, lift this loop into shared code.
     for (const messageId of agentMessageIds) {
       const marked = this.deps.eventChannel.markMessageEventsPersisted(conversationId, messageId)
       if (marked === 0) {
-        logger.warn('sse.execution.persisted_marker.no_events_marked', {
+        // Legitimately zero whenever the turn was aborted (user_stopped, upstream
+        // error) before any events with this messageId reached the buffer. The
+        // marker is a replay-dedup optimization, not a correctness signal — debug.
+        logger.debug('sse.execution.persisted_marker.no_events_marked', {
           appId,
           conversationId,
           messageId,
@@ -836,15 +842,12 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
           data: { ...baseEventData, toolId: toolCallId, toolName, delta }, agentName,
         })
       },
+      onToolInputParseFailure: (toolCallId, toolName, rawInput) => {
+        logger.error('tool.input.parse_failure', { toolCallId, toolName, fullInput: rawInput.slice(0, 200) })
+      },
       onToolCall: (toolCallId, toolName, parsedInput) => {
         guard?.pause()
         tracker.pauseGapTracking(toolName)
-        if (typeof parsedInput === 'string') {
-          logger.error('sse.tool.input.parse_failure', {
-            toolCallId, toolName,
-            fullInput: parsedInput.slice(0, 200),
-          })
-        }
         const input = typeof parsedInput === 'string' ? {} : parsedInput
         publish({
           conversationId, type: 'tool_call',

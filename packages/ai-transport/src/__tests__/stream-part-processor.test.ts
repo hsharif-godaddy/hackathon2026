@@ -7,6 +7,7 @@ function createMockCallbacks(): PartProcessorCallbacks {
     onTextDelta: vi.fn(),
     onToolStart: vi.fn(),
     onToolInputDelta: vi.fn(),
+    onToolInputParseFailure: vi.fn(),
     onToolCall: vi.fn(),
     onToolResult: vi.fn(),
     onToolError: vi.fn(),
@@ -67,6 +68,19 @@ describe('StreamPartProcessor', () => {
       expect(cb.onToolCall).toHaveBeenCalledWith('tc1', 'readFile', {})
       expect(cb.onToolResult).toHaveBeenCalledWith('tc1', 'file contents', undefined, 'readFile')
       expect(processor.getState().toolCalls.get('tc1')).toMatchObject({ status: 'completed' })
+    })
+
+    it('fires onToolInputParseFailure (and still onToolCall with the raw string) when buffered JSON is invalid', () => {
+      const cb = createMockCallbacks()
+      const processor = new StreamPartProcessor(cb)
+
+      processor.processPart({ type: 'tool-input-start', id: 'tc1', toolName: 'media' })
+      processor.processPart({ type: 'tool-input-delta', id: 'tc1', delta: '{"slot":"hero","extras":{' })
+      processor.processPart({ type: 'tool-call', id: 'tc1', toolName: 'media' })
+
+      expect(cb.onToolInputParseFailure).toHaveBeenCalledWith('tc1', 'media', '{"slot":"hero","extras":{')
+      // Wire-shape fallback stays at the call site, so the raw string still flows through onToolCall.
+      expect(cb.onToolCall).toHaveBeenCalledWith('tc1', 'media', '{"slot":"hero","extras":{')
     })
 
     it('handles tool-error', () => {

@@ -382,7 +382,7 @@ describe('MessageExecutionService', () => {
       )
     })
 
-    it('logs sse.tool.input.parse_failure when parsedInput is a string (invalid JSON)', async () => {
+    it('logs tool.input.parse_failure when parsedInput is a string (invalid JSON)', async () => {
       deps = createMockDeps([
         { type: 'tool-input-start', id: 'tc1', toolName: 'editFile' },
         { type: 'tool-input-delta', id: 'tc1', delta: '{invalid json' },
@@ -395,7 +395,7 @@ describe('MessageExecutionService', () => {
       try {
         await service.execute(DEFAULT_PARAMS)
       } finally {
-        const parseFailureLog = errorSpy.mock.calls.find(c => c[0] === 'sse.tool.input.parse_failure')
+        const parseFailureLog = errorSpy.mock.calls.find(c => c[0] === 'tool.input.parse_failure')
         expect(parseFailureLog).toBeDefined()
         expect(parseFailureLog?.[1]).toMatchObject({
           toolCallId: 'tc1',
@@ -1075,22 +1075,22 @@ describe('MessageExecutionService', () => {
       expect(deps.eventChannel.markMessageEventsPersisted).toHaveBeenCalledWith('conv_1', 'agent-msg-1')
     })
 
-    it('warns when completeConversation succeeds but no buffered events are marked persisted', async () => {
+    it('debug-logs when completeConversation succeeds but no buffered events are marked persisted', async () => {
       deps = createMockDeps([{ type: 'text-delta', text: 'Hello' }])
       deps.eventChannel.markMessageEventsPersisted.mockReturnValueOnce(0)
       service = new MessageExecutionService(deps as any)
 
       const loggerMod = await import('../../../logging/index.js')
-      const warnSpy = vi.spyOn(loggerMod.logger, 'warn')
-      let warnCalls: any[][] = []
+      const debugSpy = vi.spyOn(loggerMod.logger, 'debug')
+      let debugCalls: any[][] = []
       try {
         await service.execute(DEFAULT_PARAMS)
       } finally {
-        warnCalls = warnSpy.mock.calls.slice()
-        warnSpy.mockRestore()
+        debugCalls = debugSpy.mock.calls.slice()
+        debugSpy.mockRestore()
       }
 
-      const markerLog = warnCalls.find(c => c[0] === 'sse.execution.persisted_marker.no_events_marked')
+      const markerLog = debugCalls.find(c => c[0] === 'sse.execution.persisted_marker.no_events_marked')
       expect(markerLog).toBeDefined()
       expect(markerLog?.[1]).toMatchObject({ conversationId: 'conv_1', messageId: 'agent-msg-1' })
     })
