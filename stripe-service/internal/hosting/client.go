@@ -273,3 +273,112 @@ func (c *Client) secretsURL(appID string) string {
 	return fmt.Sprintf("%s/hosting/v1/apps/%s/secrets",
 		c.baseURL, url.PathEscape(appID))
 }
+
+// probeProbeAppID is the placeholder appId used by ProbeReach. Hosting will
+// 401 (auth path failed) or 404/400 (auth passed, app not found or validation
+// reject) for any non-existent app — no side effects either way.
+const probeProbeAppID = "_probe"
+
+// probeSentinelSecretName is the secret name on the no-op delete op
+// ProbeReach issues. The pairing of probeProbeAppID + probeSentinelSecretName
+// guarantees no real state is modified even if mhp-core somehow processes the
+// request: the app doesn't exist, and the secret name is namespaced to
+// signal "diagnostic-only".
+const probeSentinelSecretName = "_PROBE_DOES_NOT_EXIST"
+
+// ProbeAuth verifies the configured AuthProvider can produce credentials
+// for an outbound request. Calls ApplyAuth against a dummy request and
+// returns the resulting Authorization scheme prefix ("sso-jwt", "Bearer",
+// or "noop" when no header is set). The full token is intentionally NOT
+// returned — only the scheme — so the probe response is safe to log or
+// expose via /v1/_probe.
+//
+// No network I/O for NoopAuth or AwsIamAuth (the latter mints via the
+// gd-auth-lib in-process cache); CertSSOAuth performs an outbound TLS
+// handshake to SSO if its cache is cold.
+func (c *Client) ProbeAuth(ctx context.Context) (string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL, nil)
+	if err != nil {
+		return "", fmt.Errorf("hosting probe-auth: build dummy request: %w", err)
+	}
+	if err := c.auth.ApplyAuth(ctx, req); err != nil {
+		return "", err
+	}
+	authHeader := req.Header.Get("Authorization")
+	if authHeader == "" {
+		return "noop", nil
+	}
+	scheme, _, _ := strings.Cut(authHeader, " ")
+	return scheme, nil
+}
+
+// ProbeReach exercises the full auth path against mhp-core's hosting
+// service by issuing a side-effect-free POST /hosting/v1/apps/_probe/secrets
+// with a single delete op for a sentinel secret name. Returns mhp-core's
+// response status and a body preview. Distinguishes:
+//
+//   - 401 from Edge ("Missing authentication token") → frontdoor rejected
+//   - 401 from middleware ("Certificate CN not authorized") → mhp-core
+//     rejected the cert (CN typo, allowlist not deployed yet)
+//   - 401 from middleware ("Authentication required") → secrets endpoint
+//     not yet wired to JWTOrCert for cert callers (mhp-core PR not deployed)
+//   - 404 ("App not found") → auth passed, _probe app doesn't exist
+//   - 400 (schema reject) → auth passed, mhp-core didn't like the body shape
+//   - 5xx → mhp-core internal issue
+//
+// Never returns 2xx — the _probe app does not exist by convention.
+//
+// POST (not GET) is deliberate: the frontdoor pioneermgmt route only allows
+// awsiam on POST /api/hosting/v1/apps/, so a GET would fall through to the
+// catch-all /api/ rule (idp,jomax,cert only) and false-negative for
+// MGMT_API_AUTH=awsiam. POST routes through the same rule the production
+// UpdateSecrets call does, exercising the actual auth path end-to-end.
+//
+// The body is a no-op: a single delete op for probeSentinelSecretName on
+// probeProbeAppID. mhp-core never processes it (404 on app, or 400 on
+// schema), but if validation somehow accepts it the delete targets a name
+// that cannot exist on a non-existent app — zero side effects.
+func (c *Client) ProbeReach(ctx context.Context) (status int, bodyPreview string, err error) {
+	body := struct {
+		Operations   []SecretOp `json:"operations"`
+		WorkflowName string     `json:"workflowName"`
+	}{
+		Operations: []SecretOp{{
+			Type: SecretOpDelete,
+			Secret: SecretPayload{
+				Name: probeSentinelSecretName,
+			},
+		}},
+		WorkflowName: c.workflowName,
+	}
+	encoded, err := json.Marshal(body)
+	if err != nil {
+		return 0, "", fmt.Errorf("hosting probe-reach: marshal body: %w", err)
+	}
+
+	rawURL := c.secretsURL(probeProbeAppID)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, rawURL, bytes.NewReader(encoded))
+	if err != nil {
+		return 0, "", fmt.Errorf("hosting probe-reach: build request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("X-Source-Service", "stripe-service")
+	req.Header.Set("X-Request-ID", newRequestID())
+	if err := c.auth.ApplyAuth(ctx, req); err != nil {
+		return 0, "", fmt.Errorf("hosting probe-reach: attach auth: %w", err)
+	}
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return 0, "", fmt.Errorf("hosting probe-reach: http do: %w", err)
+	}
+	defer resp.Body.Close()
+
+	rb, _ := io.ReadAll(io.LimitReader(resp.Body, errorBodyLimit+1))
+	preview := string(rb)
+	if len(preview) > errorBodyLimit {
+		preview = preview[:errorBodyLimit] + "…"
+	}
+	return resp.StatusCode, preview, nil
+}

@@ -26,7 +26,12 @@ type Server struct {
 	// pushing Stripe-issued credentials into a customer app's alloc env
 	// (POST /hosting/v1/apps/:appId/secrets). Always non-nil in production;
 	// wired from buildHostingClient.
-	Secrets         secretsPusher
+	Secrets secretsPusher
+	// HostingProber exposes side-effect-free probes against the hosting
+	// client so /v1/_probe can verify mhp-core auth + reachability. May be
+	// nil in tests that don't exercise the probe; getProbe skips its steps
+	// when nil.
+	HostingProber   hostingProber
 	Events          eventStore
 	WebhookVerifier *webhook.Verifier
 	// EventFetcher expands thin v2 event IDs into full payloads via GET

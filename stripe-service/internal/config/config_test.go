@@ -14,6 +14,8 @@ func clearEnv(t *testing.T) {
 		"SERVER_CERT_PATH", "SERVER_KEY_PATH",
 		"AUTH_TYPE", "SSO_HOST",
 		"MHP_AIRO_BASE_URL", "MHP_AIRO_TIMEOUT", "MHP_AIRO_AUTH",
+		"MGMT_API_BASE_URL", "MGMT_API_TIMEOUT", "MGMT_API_AUTH",
+		"CLIENT_CERTIFICATE_CRT", "CLIENT_CERTIFICATE_KEY",
 		"STRIPE_CLIENT", "STRIPE_API_BASE_URL", "STRIPE_API_VERSION",
 	} {
 		t.Setenv(k, "")
@@ -381,6 +383,63 @@ func TestLoadHostingFallsBackToLegacyMHPAiroEnvVars(t *testing.T) {
 	}
 	if cfg.Hosting.Timeout.Seconds() != 9 {
 		t.Errorf("Hosting.Timeout: want 9s legacy fallback, got %s", cfg.Hosting.Timeout)
+	}
+}
+
+func TestLoadHostingCertAuthRequiresPEM(t *testing.T) {
+	cases := []struct {
+		name string
+		cert string
+		key  string
+	}{
+		{"both unset", "", ""},
+		{"cert only", "-----BEGIN CERTIFICATE-----\n…\n-----END CERTIFICATE-----\n", ""},
+		{"key only", "", "-----BEGIN RSA PRIVATE KEY-----\n…\n-----END RSA PRIVATE KEY-----\n"},
+		{"cert whitespace-only", "   \t\n", "-----BEGIN RSA PRIVATE KEY-----\n…\n-----END RSA PRIVATE KEY-----\n"},
+		{"key whitespace-only", "-----BEGIN CERTIFICATE-----\n…\n-----END CERTIFICATE-----\n", "   \t\n"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			clearEnv(t)
+			t.Setenv("AUTH_TYPE", "jwt")
+			t.Setenv("SSO_HOST", "sso.dev-godaddy.com")
+			t.Setenv("MGMT_API_BASE_URL", "https://mgmt.nstk.net")
+			t.Setenv("MGMT_API_AUTH", "cert")
+			t.Setenv("CLIENT_CERTIFICATE_CRT", c.cert)
+			t.Setenv("CLIENT_CERTIFICATE_KEY", c.key)
+			_, err := Load()
+			if err == nil {
+				t.Fatal("want error when MGMT_API_AUTH=cert and PEM env vars are missing/whitespace")
+			}
+			if !strings.Contains(err.Error(), "CLIENT_CERTIFICATE_CRT") {
+				t.Errorf("error should mention CLIENT_CERTIFICATE_CRT; got %q", err)
+			}
+		})
+	}
+}
+
+func TestLoadHostingCertAuthAcceptsBothPEM(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("AUTH_TYPE", "jwt")
+	t.Setenv("SSO_HOST", "sso.dev-godaddy.com")
+	t.Setenv("MGMT_API_BASE_URL", "https://mgmt.nstk.net")
+	t.Setenv("MGMT_API_AUTH", "cert")
+	// PEM contents are passed through verbatim; config doesn't parse them.
+	// Validity is enforced at hosting.NewCertSSOAuth construction time.
+	t.Setenv("CLIENT_CERTIFICATE_CRT", "-----BEGIN CERTIFICATE-----\nMIIB...\n-----END CERTIFICATE-----\n")
+	t.Setenv("CLIENT_CERTIFICATE_KEY", "-----BEGIN RSA PRIVATE KEY-----\nMIIE...\n-----END RSA PRIVATE KEY-----\n")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Hosting.Auth != "cert" {
+		t.Errorf("Hosting.Auth: want cert, got %q", cfg.Hosting.Auth)
+	}
+	if !strings.Contains(cfg.Hosting.ClientCert, "BEGIN CERTIFICATE") {
+		t.Errorf("Hosting.ClientCert: PEM contents lost in load; got %q", cfg.Hosting.ClientCert)
+	}
+	if !strings.Contains(cfg.Hosting.ClientKey, "BEGIN RSA PRIVATE KEY") {
+		t.Errorf("Hosting.ClientKey: PEM contents lost in load; got %q", cfg.Hosting.ClientKey)
 	}
 }
 

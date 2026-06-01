@@ -80,11 +80,19 @@ type HostingConfig struct {
 	// Timeout is the per-request HTTP timeout passed to the client.
 	Timeout time.Duration
 
-	// Auth is "awsiam" (mint an AWS-IAM JWT via gd-auth-lib) or "none"
-	// (attach no Authorization header; for local-control-plane dev, which
-	// runs with AUTH_TYPE=none). Defaults mirror the top-level AuthType:
-	// jwt→awsiam, none→none.
+	// Auth selects the AuthProvider used for outbound hosting calls:
+	//   - "awsiam": mint an AWS-IAM JWT via gd-auth-lib (Bearer scheme)
+	//   - "cert":   exchange a client cert for an SSO JWT (sso-jwt scheme)
+	//   - "none":   attach no Authorization header (local-control-plane)
+	// Defaults mirror the top-level AuthType: jwt→awsiam, none→none.
 	Auth string
+
+	// ClientCert / ClientKey are the PEM contents (not file paths) of the
+	// cert and key used when Auth="cert". They arrive via env vars because
+	// Katana exposes secrets only as env vars — there is no file-mount
+	// option. Required when Auth="cert" and ignored otherwise.
+	ClientCert string
+	ClientKey  string
 }
 
 // ResourceNames holds the fully-qualified AWS resource names for this env,
@@ -241,8 +249,14 @@ func loadHostingConfig(authType string) (HostingConfig, error) {
 	switch out.Auth {
 	case "awsiam", "none":
 		// ok
+	case "cert":
+		out.ClientCert = os.Getenv("CLIENT_CERTIFICATE_CRT")
+		out.ClientKey = os.Getenv("CLIENT_CERTIFICATE_KEY")
+		if strings.TrimSpace(out.ClientCert) == "" || strings.TrimSpace(out.ClientKey) == "" {
+			return HostingConfig{}, fmt.Errorf("CLIENT_CERTIFICATE_CRT and CLIENT_CERTIFICATE_KEY must both be set (PEM contents) when MGMT_API_AUTH=cert")
+		}
 	default:
-		return HostingConfig{}, fmt.Errorf("MGMT_API_AUTH must be one of awsiam|none; got %q", out.Auth)
+		return HostingConfig{}, fmt.Errorf("MGMT_API_AUTH must be one of awsiam|cert|none; got %q", out.Auth)
 	}
 
 	return out, nil

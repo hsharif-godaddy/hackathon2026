@@ -475,3 +475,158 @@ func TestNew_AppliesCustomWorkflowName(t *testing.T) {
 // api package (which is package-private there). Kept private here so it
 // doesn't leak from the hosting package's exported surface.
 func boolPtrLocal(b bool) *bool { return &b }
+
+// --- ProbeAuth ---
+
+func TestProbeAuth_ReturnsBearerScheme(t *testing.T) {
+	auth := &mockAuth{token: "abc"}
+	c, err := New(Config{BaseURL: "http://x", Auth: auth, Timeout: time.Second})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	scheme, err := c.ProbeAuth(context.Background())
+	if err != nil {
+		t.Fatalf("ProbeAuth: %v", err)
+	}
+	if scheme != "Bearer" {
+		t.Errorf("scheme: want Bearer, got %q", scheme)
+	}
+	// Must not leak the token itself.
+	if strings.Contains(scheme, "abc") {
+		t.Errorf("scheme leaks token: %q", scheme)
+	}
+}
+
+func TestProbeAuth_ReturnsNoopForNoopAuth(t *testing.T) {
+	c, err := New(Config{BaseURL: "http://x", Auth: NoopAuth{}, Timeout: time.Second})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	scheme, err := c.ProbeAuth(context.Background())
+	if err != nil {
+		t.Fatalf("ProbeAuth: %v", err)
+	}
+	if scheme != "noop" {
+		t.Errorf("scheme: want noop, got %q", scheme)
+	}
+}
+
+func TestProbeAuth_PropagatesAuthError(t *testing.T) {
+	auth := &mockAuth{err: errors.New("mint exploded")}
+	c, err := New(Config{BaseURL: "http://x", Auth: auth, Timeout: time.Second})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	_, err = c.ProbeAuth(context.Background())
+	if err == nil {
+		t.Fatal("want error from auth, got nil")
+	}
+	if !strings.Contains(err.Error(), "mint exploded") {
+		t.Errorf("error should wrap auth error; got %q", err.Error())
+	}
+}
+
+// --- ProbeReach ---
+
+func TestProbeReach_HitsSecretsURLWithPost(t *testing.T) {
+	var got recordedRequest
+	c, _, _ := newFakeServer(t, &got, http.StatusNotFound, `{"error":"app not found"}`)
+
+	status, body, err := c.ProbeReach(context.Background())
+	if err != nil {
+		t.Fatalf("ProbeReach: %v", err)
+	}
+	if status != http.StatusNotFound {
+		t.Errorf("status: want 404, got %d", status)
+	}
+	if !strings.Contains(body, "app not found") {
+		t.Errorf("body should pass through preview; got %q", body)
+	}
+	// POST (not GET) is deliberate — frontdoor's POST-only awsiam allowlist
+	// would false-negative a GET probe. See ProbeReach godoc.
+	if got.Method != http.MethodPost {
+		t.Errorf("method: want POST, got %s", got.Method)
+	}
+	if want := "/hosting/v1/apps/_probe/secrets"; got.Path != want {
+		t.Errorf("path: want %q, got %q", want, got.Path)
+	}
+	if got.AuthHeader == "" {
+		t.Errorf("auth header should be set; got empty")
+	}
+	if got.SourceHeader != "stripe-service" {
+		t.Errorf("X-Source-Service: want stripe-service, got %q", got.SourceHeader)
+	}
+}
+
+// TestProbeReach_BodyIsSideEffectFree pins the no-op shape of the probe
+// body: a single delete op against a sentinel secret name. Validates that
+// no Upsert ops are sent (which would carry real values) and that the
+// delete name is namespaced enough that mhp-core can't accidentally
+// delete a real secret on a real app.
+func TestProbeReach_BodyIsSideEffectFree(t *testing.T) {
+	var got recordedRequest
+	c, _, _ := newFakeServer(t, &got, http.StatusNotFound, `{}`)
+
+	if _, _, err := c.ProbeReach(context.Background()); err != nil {
+		t.Fatalf("ProbeReach: %v", err)
+	}
+
+	bodyStr := string(got.Body)
+	if !strings.Contains(bodyStr, `"type":"delete"`) {
+		t.Errorf("probe body must use delete op (no value upserts); got %s", bodyStr)
+	}
+	if !strings.Contains(bodyStr, `"name":"_PROBE_DOES_NOT_EXIST"`) {
+		t.Errorf("probe body must target sentinel name; got %s", bodyStr)
+	}
+	if strings.Contains(bodyStr, `"value"`) {
+		t.Errorf("probe body must not carry a value (delete op); got %s", bodyStr)
+	}
+}
+
+func TestProbeReach_Returns401WhenAuthRejected(t *testing.T) {
+	var got recordedRequest
+	c, _, _ := newFakeServer(t, &got, http.StatusUnauthorized, `{"error":"Certificate CN not authorized"}`)
+
+	status, body, err := c.ProbeReach(context.Background())
+	if err != nil {
+		t.Fatalf("ProbeReach must not surface 401 as error (the call itself succeeded): %v", err)
+	}
+	if status != http.StatusUnauthorized {
+		t.Errorf("status: want 401, got %d", status)
+	}
+	if !strings.Contains(body, "CN not authorized") {
+		t.Errorf("body should expose mhp-core's reason; got %q", body)
+	}
+}
+
+func TestProbeReach_PropagatesAuthError(t *testing.T) {
+	auth := &mockAuth{err: errors.New("cert mint failed")}
+	c, err := New(Config{BaseURL: "http://x", Auth: auth, Timeout: time.Second})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	status, _, err := c.ProbeReach(context.Background())
+	if err == nil {
+		t.Fatal("want error when auth fails, got nil")
+	}
+	if status != 0 {
+		t.Errorf("status on auth failure: want 0, got %d", status)
+	}
+	if !strings.Contains(err.Error(), "cert mint failed") {
+		t.Errorf("error should wrap auth error; got %q", err.Error())
+	}
+}
+
+func TestProbeReach_TruncatesLongBody(t *testing.T) {
+	var got recordedRequest
+	long := strings.Repeat("X", errorBodyLimit*2)
+	c, _, _ := newFakeServer(t, &got, http.StatusInternalServerError, long)
+
+	_, body, err := c.ProbeReach(context.Background())
+	if err != nil {
+		t.Fatalf("ProbeReach: %v", err)
+	}
+	if !strings.HasSuffix(body, "…") {
+		t.Errorf("long body should be truncated with ellipsis; got len=%d", len(body))
+	}
+}

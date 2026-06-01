@@ -121,8 +121,8 @@ func TestProbeOneTableFailsProdMasksError(t *testing.T) {
 	if events.OK {
 		t.Errorf("dynamodb.events should have failed")
 	}
-	if events.Error != "describe failed" {
-		t.Errorf("dynamodb.events.Error (prod): want %q, got %q", "describe failed", events.Error)
+	if events.Error != "probe failed" {
+		t.Errorf("dynamodb.events.Error (prod): want %q, got %q", "probe failed", events.Error)
 	}
 	if okCount != 4 {
 		t.Errorf("expected 4 other checks to succeed, got %d", okCount)
@@ -214,6 +214,141 @@ func TestProbeResponseShape(t *testing.T) {
 			}
 		}
 	}
+}
+
+// fakeHostingProber returns canned values from ProbeAuth/ProbeReach so the
+// /v1/_probe handler tests don't need a real HTTP server.
+type fakeHostingProber struct {
+	authScheme string
+	authErr    error
+
+	reachStatus int
+	reachBody   string
+	reachErr    error
+}
+
+func (f *fakeHostingProber) ProbeAuth(context.Context) (string, error) {
+	return f.authScheme, f.authErr
+}
+
+func (f *fakeHostingProber) ProbeReach(context.Context) (int, string, error) {
+	return f.reachStatus, f.reachBody, f.reachErr
+}
+
+func TestProbe_SkipsHostingStepsWhenProberNil(t *testing.T) {
+	s := newTestServer(&fakeProber{})
+	// HostingProber intentionally nil
+	rr := httptest.NewRecorder()
+	s.getProbe(rr, httptest.NewRequest(http.MethodGet, "/v1/_probe", nil))
+
+	resp := decodeProbeResponse(t, rr.Body.Bytes())
+	for _, c := range resp.Checks {
+		if strings.HasPrefix(c.Name, "hosting.") {
+			t.Errorf("expected no hosting.* checks when HostingProber is nil; got %q", c.Name)
+		}
+	}
+}
+
+func TestProbe_HostingAuthSurfacesScheme(t *testing.T) {
+	s := newTestServer(&fakeProber{})
+	s.HostingProber = &fakeHostingProber{
+		authScheme:  "sso-jwt",
+		reachStatus: http.StatusNotFound,
+		reachBody:   `{"error":"app not found"}`,
+	}
+	rr := httptest.NewRecorder()
+	s.getProbe(rr, httptest.NewRequest(http.MethodGet, "/v1/_probe", nil))
+
+	resp := decodeProbeResponse(t, rr.Body.Bytes())
+	authCheck := findCheck(t, resp, "hosting.auth")
+	if !authCheck.OK {
+		t.Errorf("hosting.auth.OK: want true, got false (err=%q)", authCheck.Error)
+	}
+	if !strings.Contains(authCheck.Details, "scheme=sso-jwt") {
+		t.Errorf("hosting.auth.Details should expose scheme; got %q", authCheck.Details)
+	}
+}
+
+func TestProbe_HostingReachTreats4xxAsCallSucceeded(t *testing.T) {
+	// 401/404 from mhp-core mean the probe call itself succeeded (we got a
+	// clean response) — only 5xx or transport errors mark the step as
+	// not-OK. This is what makes the probe useful for diagnosing auth state
+	// without flipping the overall /v1/_probe status to 503.
+	s := newTestServer(&fakeProber{})
+	s.HostingProber = &fakeHostingProber{
+		authScheme:  "sso-jwt",
+		reachStatus: http.StatusUnauthorized,
+		reachBody:   `{"error":"Certificate CN not authorized"}`,
+	}
+	rr := httptest.NewRecorder()
+	s.getProbe(rr, httptest.NewRequest(http.MethodGet, "/v1/_probe", nil))
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("overall probe status: want 200 (4xx mhp-core is informational), got %d", rr.Code)
+	}
+	resp := decodeProbeResponse(t, rr.Body.Bytes())
+	reachCheck := findCheck(t, resp, "hosting.reach")
+	if !reachCheck.OK {
+		t.Errorf("hosting.reach.OK: want true on 401 (call succeeded), got false")
+	}
+	if !strings.Contains(reachCheck.Details, "status=401") {
+		t.Errorf("Details should expose status; got %q", reachCheck.Details)
+	}
+	if !strings.Contains(reachCheck.Details, "CN not authorized") {
+		t.Errorf("Details should expose mhp-core's body; got %q", reachCheck.Details)
+	}
+}
+
+func TestProbe_HostingReachMarks5xxNotOK(t *testing.T) {
+	s := newTestServer(&fakeProber{})
+	s.HostingProber = &fakeHostingProber{
+		authScheme:  "sso-jwt",
+		reachStatus: http.StatusInternalServerError,
+		reachBody:   "boom",
+	}
+	rr := httptest.NewRecorder()
+	s.getProbe(rr, httptest.NewRequest(http.MethodGet, "/v1/_probe", nil))
+
+	if rr.Code != http.StatusServiceUnavailable {
+		t.Errorf("overall probe status: want 503 (5xx mhp-core is real failure), got %d", rr.Code)
+	}
+	resp := decodeProbeResponse(t, rr.Body.Bytes())
+	reachCheck := findCheck(t, resp, "hosting.reach")
+	if reachCheck.OK {
+		t.Errorf("hosting.reach.OK: want false on 5xx, got true")
+	}
+}
+
+func TestProbe_HostingAuthFailureIsNotOK(t *testing.T) {
+	s := newTestServer(&fakeProber{})
+	s.HostingProber = &fakeHostingProber{
+		authErr: errors.New("cert mint exploded"),
+	}
+	rr := httptest.NewRecorder()
+	s.getProbe(rr, httptest.NewRequest(http.MethodGet, "/v1/_probe", nil))
+
+	if rr.Code != http.StatusServiceUnavailable {
+		t.Errorf("overall probe status: want 503 on auth failure, got %d", rr.Code)
+	}
+	resp := decodeProbeResponse(t, rr.Body.Bytes())
+	authCheck := findCheck(t, resp, "hosting.auth")
+	if authCheck.OK {
+		t.Errorf("hosting.auth.OK: want false on auth error, got true")
+	}
+	if !strings.Contains(authCheck.Error, "cert mint exploded") {
+		t.Errorf("hosting.auth.Error should wrap the auth error; got %q", authCheck.Error)
+	}
+}
+
+func findCheck(t *testing.T, resp probeResponse, name string) probeCheck {
+	t.Helper()
+	for _, c := range resp.Checks {
+		if c.Name == name {
+			return c
+		}
+	}
+	t.Fatalf("check %q not present in response: %+v", name, resp.Checks)
+	return probeCheck{}
 }
 
 func slicesEqual(a, b []string) bool {

@@ -109,6 +109,7 @@ func main() {
 		Stripe:          stripeClient,
 		Sandboxes:       sandboxes,
 		Secrets:         secretsClient,
+		HostingProber:   secretsClient,
 		Events:          events,
 		WebhookVerifier: verifier,
 		EventFetcher:    stripeAPIClient, // nil when STRIPE_CLIENT=fake
@@ -250,6 +251,12 @@ func buildHostingClient(cfg config.Config) (*hosting.Client, error) {
 		a, err := hosting.NewAwsIamAuth(gd, cfg.SSOHost)
 		if err != nil {
 			return nil, fmt.Errorf("hosting: init aws-iam auth: %w", err)
+		}
+		auth = a
+	case "cert":
+		a, err := hosting.NewCertSSOAuth(cfg.SSOHost, []byte(cfg.Hosting.ClientCert), []byte(cfg.Hosting.ClientKey))
+		if err != nil {
+			return nil, fmt.Errorf("hosting: init cert auth: %w", err)
 		}
 		auth = a
 	default:

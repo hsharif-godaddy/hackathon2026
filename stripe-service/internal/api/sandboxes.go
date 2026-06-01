@@ -37,6 +37,14 @@ type secretsPusher interface {
 	UpdateSecrets(ctx context.Context, appID string, ops []hosting.SecretOp) error
 }
 
+// hostingProber is the subset of hosting.Client used by /v1/_probe. Kept
+// separate from secretsPusher so the existing fakeSecretsPusher in
+// sandboxes_test.go doesn't need to grow probe stubs.
+type hostingProber interface {
+	ProbeAuth(ctx context.Context) (string, error)
+	ProbeReach(ctx context.Context) (int, string, error)
+}
+
 // boolPtr returns a *bool for the given value. Used to set Protected on
 // payloads where the field uses *bool to distinguish "explicitly set" from
 // "omitted" (the hosting schema treats omitted as false; we want explicit
