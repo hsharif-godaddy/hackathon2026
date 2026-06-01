@@ -285,17 +285,8 @@ describe('PreviewPane', () => {
     expect(codeOverlay).toHaveAttribute('aria-hidden', 'true');
   });
 
-  it('should apply violet edit-mode ring on iframe wrapper when isEditModeEnabled', async () => {
+  it('should not apply edit-mode ring on iframe wrapper', async () => {
     mockDevelopPageStore.isEditModeEnabled = true;
-
-    renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} />);
-
-    const iframe = await screen.findByTestId('preview-iframe');
-    expect(iframe.parentElement?.className).toContain('ring-ai/60');
-  });
-
-  it('should not apply edit-mode ring when isEditModeEnabled is false', async () => {
-    mockDevelopPageStore.isEditModeEnabled = false;
 
     renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} />);
 

@@ -1183,7 +1183,6 @@ export default function PreviewPane({
                         'relative border rounded-lg md:rounded-b-none bg-intents-ux-boxLowContrast-backgroundColor overflow-hidden transition-shadow duration-200', {
                           'w-full h-full': isFullSize || isMobile,
                           'my-auto': !isFullSize && !isMobile,
-                          'ring-2 ring-ai/60': isEditModeEnabled,
                         }
                       )}
                       style={!isFullSize && !isMobile ? {
