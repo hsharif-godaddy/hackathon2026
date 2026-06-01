@@ -95,7 +95,10 @@ export default function StreamingIntegratedResponse({
           const toolId = segment.toolCall.id
 
           if (segment.type === 'tool_call') {
-            // For persisted tool_call segments, we have complete tool information
+            // tool_call is the canonical persisted form. When the same id
+            // already has a block (prior tool_start/tool_result, or a
+            // duplicate from a validator+retry merge) overwrite in place;
+            // pushing a second block would emit a duplicate React key.
             const toolCall: ContentBlock['toolCall'] = {
               id: segment.toolCall.id,
               name: segment.toolCall.name,
@@ -109,11 +112,21 @@ export default function StreamingIntegratedResponse({
               partialInput: segment.toolCall.partialInput
             }
 
-            blocks.push({
-              type: 'tool',
-              toolCall,
-              order: order++
-            })
+            if (!toolCallsMap.has(toolId)) {
+              toolCallsMap.set(toolId, toolCall)
+              blocks.push({
+                type: 'tool',
+                toolCall,
+                order: order++
+              })
+            } else {
+              // Per-field merge so a sparser later entry doesn't strip
+              // populated `result` / `endTime` off the existing block.
+              const existingTool = toolCallsMap.get(toolId)!
+              for (const [key, value] of Object.entries(toolCall)) {
+                if (value !== undefined) (existingTool as any)[key] = value
+              }
+            }
           } else {
             // For streaming tool_start/tool_result segments, combine them
             if (!toolCallsMap.has(toolId)) {

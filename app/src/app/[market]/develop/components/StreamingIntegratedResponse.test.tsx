@@ -669,5 +669,129 @@ describe('StreamingIntegratedResponse', function streamingIntegratedResponseTest
       // Running tool renders standalone (visible outside the group)
       expect(screen.getByText('Server Restart')).toBeInTheDocument();
     });
+
+    it('dedupes blocks when the same tool id appears in multiple tool_call segments', function dedupesDuplicateToolCallSegments() {
+      renderWithProviders(
+        <StreamingIntegratedResponse
+          message={{
+            id: 'msg-dup-tool-call',
+            role: 'assistant',
+            content: '',
+            timestamp: new Date(),
+            segments: [
+              {
+                id: 'seg-1',
+                type: 'tool_call',
+                content: '',
+                timestamp: new Date(),
+                toolCall: { id: 'logs', name: 'viewLogs', input: {}, status: 'completed' }
+              },
+              {
+                id: 'seg-2',
+                type: 'tool_call',
+                content: '',
+                timestamp: new Date(),
+                toolCall: { id: 'logs', name: 'viewLogs', input: {}, status: 'completed', result: { lines: [] } }
+              },
+              {
+                id: 'seg-3',
+                type: 'tool_call',
+                content: '',
+                timestamp: new Date(),
+                toolCall: { id: 'restart', name: 'serverRestart', input: {}, status: 'completed' }
+              }
+            ]
+          }}
+          streamingState="idle"
+        />
+      );
+
+      // Only two unique tool ids → two grouped actions, not three. Without
+      // dedup, the duplicate `logs` segment would push a third block and the
+      // group label would read 'Show 3 actions'.
+      expect(screen.getByRole('button', { name: 'Show 2 actions' })).toBeInTheDocument();
+    });
+
+    it('dedupes blocks when tool_call comes before tool_start with the same id', function dedupesToolCallThenToolStart() {
+      // tool_start arriving after tool_call flows through the streaming branch
+      // and must read the toolCallsMap entry that the tool_call branch
+      // populated. Without the dedup added in the tool_call branch the map
+      // lookup would miss and a second block would render with the same id.
+      renderWithProviders(
+        <StreamingIntegratedResponse
+          message={{
+            id: 'msg-tool-call-then-start',
+            role: 'assistant',
+            content: '',
+            timestamp: new Date(),
+            segments: [
+              {
+                id: 'seg-1',
+                type: 'tool_call',
+                content: '',
+                timestamp: new Date(),
+                toolCall: { id: 'logs', name: 'viewLogs', input: {}, status: 'completed', result: { lines: [] } }
+              },
+              {
+                id: 'seg-2',
+                type: 'tool_start',
+                content: '',
+                timestamp: new Date(),
+                toolCall: { id: 'logs', name: 'viewLogs', input: { query: 'errors' }, status: 'running' }
+              },
+              {
+                id: 'seg-3',
+                type: 'tool_call',
+                content: '',
+                timestamp: new Date(),
+                toolCall: { id: 'restart', name: 'serverRestart', input: {}, status: 'completed' }
+              }
+            ]
+          }}
+          streamingState="idle"
+        />
+      );
+
+      expect(screen.getByRole('button', { name: 'Show 2 actions' })).toBeInTheDocument();
+    });
+
+    it('dedupes blocks when tool_start and tool_call segments share an id', function dedupesAcrossSegmentTypes() {
+      renderWithProviders(
+        <StreamingIntegratedResponse
+          message={{
+            id: 'msg-dup-mixed',
+            role: 'assistant',
+            content: '',
+            timestamp: new Date(),
+            segments: [
+              {
+                id: 'seg-1',
+                type: 'tool_start',
+                content: '',
+                timestamp: new Date(),
+                toolCall: { id: 'logs', name: 'viewLogs', input: {}, status: 'running' }
+              },
+              {
+                id: 'seg-2',
+                type: 'tool_call',
+                content: '',
+                timestamp: new Date(),
+                toolCall: { id: 'logs', name: 'viewLogs', input: {}, status: 'completed' }
+              },
+              {
+                id: 'seg-3',
+                type: 'tool_call',
+                content: '',
+                timestamp: new Date(),
+                toolCall: { id: 'restart', name: 'serverRestart', input: {}, status: 'completed' }
+              }
+            ]
+          }}
+          streamingState="idle"
+        />
+      );
+
+      expect(screen.getByRole('button', { name: 'Show 2 actions' })).toBeInTheDocument();
+    });
   });
 });

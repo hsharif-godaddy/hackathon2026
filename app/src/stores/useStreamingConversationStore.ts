@@ -419,7 +419,7 @@ function appendValidationToAssistant(message: ChatMessage, msg: AgentConversatio
 
   return {
     ...message,
-    segments: [
+    segments: dedupeSegmentsByToolId([
       ...textSegments,
       {
         id: `${toolCall.id}_segment`,
@@ -428,9 +428,62 @@ function appendValidationToAssistant(message: ChatMessage, msg: AgentConversatio
         timestamp,
         toolCall
       }
-    ],
-    toolCalls: [...existingToolCalls, toolCall]
+    ]),
+    toolCalls: dedupeToolCallsById([...existingToolCalls, toolCall])
   }
+}
+
+// Merge later toolCall data over earlier, but never overwrite a populated
+// field with `undefined`. The chronological "later is more complete"
+// assumption usually holds (completed status + result arrives after running)
+// but a sparser later entry must not strip a populated `result` / `endTime`
+// off the earlier one.
+export function mergeToolCallData<T extends object>(existing: T, incoming: T): T {
+  const merged = { ...existing } as Record<string, unknown>
+  for (const [key, value] of Object.entries(incoming)) {
+    if (value !== undefined) merged[key] = value
+  }
+  return merged as T
+}
+
+function dedupeSegmentsByToolId(segments: StreamSegment[]): StreamSegment[] {
+  const result: StreamSegment[] = []
+  const indexById = new Map<string, number>()
+  for (const segment of segments) {
+    const toolId = segment.toolCall?.id
+    if (toolId === undefined) {
+      result.push(segment)
+      continue
+    }
+    const existingIndex = indexById.get(toolId)
+    if (existingIndex !== undefined) {
+      // First-seen position wins; later toolCall data wins per field.
+      const existing = result[existingIndex]!
+      const mergedToolCall = existing.toolCall
+        ? mergeToolCallData(existing.toolCall, segment.toolCall!)
+        : segment.toolCall
+      result[existingIndex] = { ...existing, toolCall: mergedToolCall }
+      continue
+    }
+    indexById.set(toolId, result.length)
+    result.push(segment)
+  }
+  return result
+}
+
+function dedupeToolCallsById(toolCalls: ToolCall[]): ToolCall[] {
+  const result: ToolCall[] = []
+  const indexById = new Map<string, number>()
+  for (const toolCall of toolCalls) {
+    const existingIndex = indexById.get(toolCall.id)
+    if (existingIndex !== undefined) {
+      result[existingIndex] = mergeToolCallData(result[existingIndex]!, toolCall)
+      continue
+    }
+    indexById.set(toolCall.id, result.length)
+    result.push(toolCall)
+  }
+  return result
 }
 
 function getRenderableSegments(message: ChatMessage): StreamSegment[] {
@@ -458,8 +511,8 @@ function mergeAssistantMessages(previous: ChatMessage, next: ChatMessage): ChatM
   return {
     ...previous,
     content: [previous.content, next.content].filter(Boolean).join('\n\n'),
-    segments: [...previousSegments, ...nextSegments],
-    toolCalls: [...previousToolCalls, ...nextToolCalls],
+    segments: dedupeSegmentsByToolId([...previousSegments, ...nextSegments]),
+    toolCalls: dedupeToolCallsById([...previousToolCalls, ...nextToolCalls]),
     commitHash: next.commitHash ?? previous.commitHash,
     maxStepsReached: previous.maxStepsReached || next.maxStepsReached,
     outputTokenLimitReached: previous.outputTokenLimitReached || next.outputTokenLimitReached,
@@ -1546,30 +1599,53 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
 
     let messages = normalized
     let activeStream: StreamingMessage | null = null
+    // Skip hydration when a live stream is already accumulating chunks: SSE
+    // recovery's clearActiveStream + reload-history sequence races with
+    // startNewStream when the user prompts during recovery, and overwriting
+    // the live activeStream would erase the in-flight response.
+    const liveActiveStream = get().activeStream
 
-    // Extract in-progress message if requested
     if (detectInProgress && normalized.length > 0) {
       const lastMsg = normalized[normalized.length - 1]
       const isInProgress = lastMsg.role === 'assistant' &&
         (lastMsg.metadata as any)?.inProgress === true
 
       if (isInProgress) {
-        activeStream = {
-          id: lastMsg.id,
-          role: 'assistant',
-          content: lastMsg.content || '',
-          segments: lastMsg.segments || [],
-          toolCalls: lastMsg.toolCalls || [],
-          timestamp: lastMsg.timestamp,
-          isComplete: false,
-          origin: lastMsg.origin,
-        }
         messages = normalized.slice(0, -1)
 
-        logger.debug('streaming-store.in-progress-detected', {
-          messageId: activeStream.id,
-          contentLength: activeStream.content.length
-        })
+        if (liveActiveStream) {
+          // Persisted in-progress placeholder ids are server-generated;
+          // live activeStream ids are client-generated (`generateId()` in
+          // `startNewStream`). They systematically diverge for the SAME
+          // logical turn. The ids-match path is rare; the divergent path
+          // is the common race shape — log warn so any unexpected
+          // divergence (e.g. a stranded prior-session placeholder) is
+          // visible in production rather than masked at debug.
+          const idsMatch = lastMsg.id === liveActiveStream.id
+          const logFn = idsMatch ? logger.debug : logger.warn
+          logFn('streaming-store.in-progress-skipped', {
+            messageId: lastMsg.id,
+            liveStreamId: liveActiveStream.id,
+            idsMatch,
+            reason: 'live_active_stream_present'
+          })
+        } else {
+          activeStream = {
+            id: lastMsg.id,
+            role: 'assistant',
+            content: lastMsg.content || '',
+            segments: lastMsg.segments || [],
+            toolCalls: lastMsg.toolCalls || [],
+            timestamp: lastMsg.timestamp,
+            isComplete: false,
+            origin: lastMsg.origin,
+          }
+
+          logger.debug('streaming-store.in-progress-detected', {
+            messageId: activeStream.id,
+            contentLength: activeStream.content.length
+          })
+        }
       }
     }
 

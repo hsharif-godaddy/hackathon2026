@@ -227,6 +227,90 @@ describe('useStreamingConversationStore', function packageTests() {
       ])
     });
 
+    it('should dedupe tool ids that appear in both the original and retry assistant turns', function dedupeAcrossMerge() {
+      // The merge across validator + retry concatenates segments and toolCalls.
+      // If the persisted history happens to share a tool id across both turns
+      // (e.g. an incremental save captured the live tool_call before the
+      // canonical end-of-turn save wrote it again, or a turn restart re-emits
+      // the same id) the merged message must collapse to one entry per id;
+      // duplicate ids drive duplicate React keys in MessageContentRenderer.
+      const messages = normalizeConversationMessages([
+        {
+          id: 'assistant-1',
+          sender: 'assistant',
+          content: 'First edit',
+          createdAt: '2026-01-01T00:00:00.000Z',
+          segments: [{
+            id: 'segment-1',
+            type: 'tool_call',
+            content: '',
+            toolCall: {
+              id: 'shared-tool-id',
+              name: 'fileEdit',
+              input: {},
+              status: 'running'
+            }
+          }],
+          toolCalls: [{
+            id: 'shared-tool-id',
+            name: 'fileEdit',
+            input: {},
+            status: 'running'
+          }]
+        },
+        {
+          id: 'validation-1',
+          sender: 'user',
+          content: 'Fix this runtime error',
+          createdAt: '2026-01-01T00:00:01.000Z',
+          metadata: {
+            source: 'post_stream_validator',
+            displayAs: 'validation',
+            validationStatus: 'failed'
+          }
+        },
+        {
+          id: 'assistant-2',
+          sender: 'assistant',
+          content: 'Retry edit',
+          createdAt: '2026-01-01T00:00:02.000Z',
+          segments: [{
+            id: 'segment-2',
+            type: 'tool_call',
+            content: '',
+            toolCall: {
+              id: 'shared-tool-id',
+              name: 'fileEdit',
+              input: { path: '/app/index.ts' },
+              status: 'completed',
+              result: { success: true }
+            }
+          }],
+          toolCalls: [{
+            id: 'shared-tool-id',
+            name: 'fileEdit',
+            input: { path: '/app/index.ts' },
+            status: 'completed',
+            result: { success: true }
+          }]
+        }
+      ])
+
+      expect(messages).toHaveLength(1)
+
+      const toolCallIds = messages[0].toolCalls?.map((toolCall) => toolCall.id) ?? []
+      expect(new Set(toolCallIds).size).toBe(toolCallIds.length)
+
+      const segmentToolIds = messages[0].segments
+        ?.filter((segment) => segment.toolCall)
+        .map((segment) => segment.toolCall!.id) ?? []
+      expect(new Set(segmentToolIds).size).toBe(segmentToolIds.length)
+
+      const sharedToolCall = messages[0].toolCalls?.find((tc) => tc.id === 'shared-tool-id')
+      expect(sharedToolCall?.status).toBe('completed')
+      expect(sharedToolCall?.result).toEqual({ success: true })
+    });
+
     it('should keep orphan validation messages renderable as validation user messages', function orphanValidation() {
       const messages = normalizeConversationMessages([
         {
@@ -1331,6 +1415,151 @@ describe('useStreamingConversationStore', function packageTests() {
 
       // Should not crash
       expect(useStreamingConversationStore.getState().messages).toHaveLength(0);
+    });
+  });
+
+  describe('#loadAndPersistHistory', function loadAndPersistHistoryTests() {
+    it('preserves a live activeStream when a server-id placeholder races in via replace', function preservesLiveStreamReplace() {
+      // Recovery race: SSE recovery clears activeStream and triggers an async
+      // history reload. If the user submits a new prompt before the reload
+      // completes, the response below races against startNewStream. Live
+      // activeStream.id is client-generated; the persisted DB placeholder
+      // for the same logical turn is server-generated, so the ids diverge.
+      // Without a guard, detectInProgress hydrates the new turn's placeholder
+      // with the stale DB segments, wiping the live chunks already in memory.
+      const store = useStreamingConversationStore.getState();
+      act(() => {
+        store.setCurrentAppId('app-1');
+        store.startNewStream('User submits while history reload races');
+      });
+
+      const liveAssistantId = useStreamingConversationStore.getState().activeStream?.id;
+      expect(liveAssistantId).toBeDefined();
+
+      act(() => {
+        useStreamingConversationStore.getState().appendToStream('Live chunk content');
+      });
+
+      act(() => {
+        useStreamingConversationStore.getState().loadAndPersistHistory({
+          appId: 'app-1',
+          mode: 'replace',
+          detectInProgress: true,
+          rawMessages: [
+            {
+              id: 'older-user-msg',
+              sender: 'user',
+              content: 'previous prompt',
+              createdAt: '2026-01-01T00:00:00.000Z'
+            },
+            {
+              id: 'server-placeholder-divergent-id',
+              sender: 'assistant',
+              content: 'stale partial answer',
+              createdAt: '2026-01-01T00:00:01.000Z',
+              metadata: { inProgress: true },
+              segments: []
+            }
+          ]
+        });
+      });
+
+      const state = useStreamingConversationStore.getState();
+      expect(state.activeStream?.id).toBe(liveAssistantId);
+      expect(state.activeStream?.content).toBe('Live chunk content');
+      // The divergent server placeholder is dropped from messages so the
+      // chat doesn't render the placeholder AND the live stream side by side.
+      expect(state.messages.find((m) => m.id === 'server-placeholder-divergent-id')).toBeUndefined();
+    });
+
+    it('preserves the just-submitted user message when history races in via prepend', function preservesLiveStreamPrepend() {
+      // Production callers (useSSEChat.flushHistoryBatch, HistoryMessageHandler)
+      // pick mode 'prepend' whenever an activeStream exists. The just-submitted
+      // user message must survive the prepend, the live stream must not be
+      // overwritten, and the divergent-id server placeholder must be dropped.
+      const store = useStreamingConversationStore.getState();
+      act(() => {
+        store.setCurrentAppId('app-1');
+        store.startNewStream('Just submitted user prompt');
+      });
+
+      const liveAssistantId = useStreamingConversationStore.getState().activeStream?.id;
+      expect(liveAssistantId).toBeDefined();
+
+      act(() => {
+        useStreamingConversationStore.getState().appendToStream('Live chunk content');
+      });
+
+      const userMessageId = useStreamingConversationStore.getState().messages[0]?.id;
+      expect(userMessageId).toBeDefined();
+
+      act(() => {
+        useStreamingConversationStore.getState().loadAndPersistHistory({
+          appId: 'app-1',
+          mode: 'prepend',
+          detectInProgress: true,
+          rawMessages: [
+            {
+              id: 'older-history-1',
+              sender: 'user',
+              content: 'older prompt',
+              createdAt: '2026-01-01T00:00:00.000Z'
+            },
+            {
+              id: 'older-history-2',
+              sender: 'assistant',
+              content: 'older response',
+              createdAt: '2026-01-01T00:00:00.500Z'
+            },
+            {
+              id: 'server-placeholder-divergent-id',
+              sender: 'assistant',
+              content: 'stale partial answer',
+              createdAt: '2026-01-01T00:00:01.000Z',
+              metadata: { inProgress: true },
+              segments: []
+            }
+          ]
+        });
+      });
+
+      const state = useStreamingConversationStore.getState();
+      expect(state.activeStream?.id).toBe(liveAssistantId);
+      expect(state.activeStream?.content).toBe('Live chunk content');
+      expect(state.messages.find((m) => m.id === userMessageId)).toBeDefined();
+      expect(state.messages.find((m) => m.id === 'older-history-1')).toBeDefined();
+      expect(state.messages.find((m) => m.id === 'older-history-2')).toBeDefined();
+      expect(state.messages.find((m) => m.id === 'server-placeholder-divergent-id')).toBeUndefined();
+    });
+
+    it('still hydrates an in-progress placeholder when no live activeStream is present', function hydratesWhenNoLiveStream() {
+      const store = useStreamingConversationStore.getState();
+      act(() => {
+        store.setCurrentAppId('app-1');
+      });
+
+      act(() => {
+        useStreamingConversationStore.getState().loadAndPersistHistory({
+          appId: 'app-1',
+          mode: 'replace',
+          detectInProgress: true,
+          rawMessages: [
+            {
+              id: 'in-progress-msg',
+              sender: 'assistant',
+              content: 'partial answer from server',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              metadata: { inProgress: true },
+              segments: []
+            }
+          ]
+        });
+      });
+
+      const state = useStreamingConversationStore.getState();
+      expect(state.activeStream?.id).toBe('in-progress-msg');
+      expect(state.activeStream?.content).toBe('partial answer from server');
+      expect(state.streamingState).toBe('streaming');
     });
   });
 
