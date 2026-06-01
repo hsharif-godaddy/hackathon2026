@@ -22,10 +22,12 @@ import { ChatTab, IframeMessageType, MobileMode, SettingsSection, ViewMode } fro
 import { extractNewPageRoute, handlePreviewRefresh, navigatePreviewToRoute, requestPreviewScreenshot, useAppIdFromParams } from '@/app/[market]/develop/components/utils'
 import { clearExpiredWidgetStates } from '@/app/[market]/develop/components/widgets'
 import { sendPendingAutoSendMessage } from '@/app/[market]/develop/hooks/sendPendingAutoSendMessage'
+import { useAgentWorkFeedbackTrigger } from '@/app/[market]/develop/hooks/useAgentWorkFeedbackTrigger'
 import { useAppGenerationFeedbackTrigger } from '@/app/[market]/develop/hooks/useAppGenerationFeedbackTrigger'
 import { useChatPaneLoadingState } from '@/app/[market]/develop/hooks/useChatPaneLoadingState'
 import { useDevToolsSpeechBridge } from '@/app/[market]/develop/hooks/useDevToolsSpeechBridge'
 import { useEvalSnapshotCapture } from '@/app/[market]/develop/hooks/useEvalSnapshotCapture'
+import { useInitialBuildRevealSignals } from '@/app/[market]/develop/hooks/useInitialBuildRevealSignals'
 import { deriveIsAwaitingStream, useInitialization } from '@/app/[market]/develop/hooks/useInitialization'
 import { usePublishSnapshotCapture } from '@/app/[market]/develop/hooks/usePublishSnapshotCapture'
 import { broadcast as broadcastProcessingState, handle as handleProcessingState } from '@/app/[market]/develop/utils/iframeProcessingState'
@@ -149,7 +151,12 @@ function DevelopPageContent() {
 
   // Shows the "happy with how your app looks?" banner on the first app
   // generation complete. Localstorage-gated per-app; fires at most once.
-  useAppGenerationFeedbackTrigger(init.context.hasSeenFirstFileEdit)
+  const initialBuildReveal = useInitialBuildRevealSignals(
+    init.context.hasSeenFirstFileEdit,
+    appId
+  )
+  useAppGenerationFeedbackTrigger(initialBuildReveal.isRevealReady)
+  useAgentWorkFeedbackTrigger(initialBuildReveal)
 
   // Check for venture home logo to airo builder experiment
   const { cohort: ventureHomeLogoCohort } = useHivemind(EXPERIMENT_IDS.ventureHomeLogo);

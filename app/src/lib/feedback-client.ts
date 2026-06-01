@@ -26,7 +26,8 @@ export interface SubmitFeedbackInput {
    * per-turn, etc. Each surface picks. */
   targetLevel: FeedbackTargetLevel
   /** Stable identifier for the rated target. For app-generation this is the
-   * appId; for invocation-level feedback it's the rated invocation's id. */
+   * appId; for invocation-level feedback it's the rated invocation's id; for
+   * conversation-level feedback it's the conversationId (same value as on the POST). */
   targetId: string
   /** OTel trace ID of the turn being rated. 32-char hex. Optional — only
    * present when the backend emitted it on the complete WS event. */
@@ -39,13 +40,28 @@ export interface SubmitFeedbackInput {
    * the complete WS event. Optional for surfaces that can't identify the
    * producing agent; backend canonicalizes to the repo-scoped form. */
   agentName?: string
+  /** When the client triggered feedback (ISO-8601 UTC). Server defaults if omitted. */
+  eventCreationTimestamp?: string
+  /** Optional numeric rating (e.g. 1–5). */
+  rating?: number
+  /** Optional category (e.g. UI dropdown). */
+  feedbackCategory?: string
+  /** Optional free-form user feedback. */
+  feedbackText?: string
+  /** Whether detailed feedback (text/category) is included. Server defaults false. */
+  hasDetailedFeedback?: boolean
 }
 
 export interface SubmitFeedbackResult {
   /** True when the agents route accepted the POST (2xx). */
   ok: boolean
-  /** Populated when the call failed for a non-HTTP reason (cookie missing, network). */
-  reason?: 'missing_conversation_id' | 'network_error'
+  /** Populated when the call did not succeed. */
+  reason?:
+    | 'missing_conversation_id'
+    | 'network_error'
+    | 'http_error'
+    | 'no_app_id'
+    | 'in_flight'
 }
 
 /**
@@ -57,6 +73,12 @@ export interface SubmitFeedbackResult {
  * this cookie before any turn completes, so a missing value means something
  * upstream broke; callers should treat it as a non-recoverable dismiss.
  */
+export interface InvocationFeedbackTraceIds {
+  traceId?: string;
+  observationId?: string;
+  agentName?: string;
+}
+
 export async function submitFeedback(input: SubmitFeedbackInput): Promise<SubmitFeedbackResult> {
   const conversationId = getConversationIdFromCookie(input.appId)
   if (!conversationId) return { ok: false, reason: 'missing_conversation_id' }
@@ -75,9 +97,21 @@ export async function submitFeedback(input: SubmitFeedbackInput): Promise<Submit
         ...(input.traceId !== undefined && { traceId: input.traceId }),
         ...(input.observationId !== undefined && { observationId: input.observationId }),
         ...(input.agentName !== undefined && { agentName: input.agentName }),
+        ...(input.eventCreationTimestamp !== undefined && {
+          eventCreationTimestamp: input.eventCreationTimestamp,
+        }),
+        ...(input.rating !== undefined && { rating: input.rating }),
+        ...(input.feedbackCategory !== undefined && { feedbackCategory: input.feedbackCategory }),
+        ...(input.feedbackText !== undefined && { feedbackText: input.feedbackText }),
+        ...(input.hasDetailedFeedback !== undefined && {
+          hasDetailedFeedback: input.hasDetailedFeedback,
+        }),
       }),
     })
-    return { ok: response.ok }
+    if (!response.ok) {
+      return { ok: false, reason: 'http_error' }
+    }
+    return { ok: true }
   } catch {
     return { ok: false, reason: 'network_error' }
   }

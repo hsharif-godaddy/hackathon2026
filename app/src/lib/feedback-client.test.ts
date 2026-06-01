@@ -115,11 +115,11 @@ describe('submitFeedback', () => {
     expect(result).toEqual({ ok: false, reason: 'network_error' })
   })
 
-  it('returns ok:false without a reason when the route returns non-2xx', async () => {
+  it('returns http_error when the route returns non-2xx', async () => {
     mockAgentFetch.mockResolvedValue({ ok: false, status: 503 })
 
     const result = await submitFeedback(baseInput)
 
-    expect(result).toEqual({ ok: false })
+    expect(result).toEqual({ ok: false, reason: 'http_error' })
   })
 })

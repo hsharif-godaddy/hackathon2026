@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 /**
  * @vitest-environment jsdom
  */
@@ -11,11 +11,13 @@ import { useDevelopPageStore } from './useDevelopPageStore';
 describe('useDevelopPageStore', function useDevelopPageStoreTests() {
   beforeEach(function setup() {
     act(function reset() {
+      useDevelopPageStore.getState().dismissResponseFeedbackThanksBanner();
       useDevelopPageStore.setState({
         showCreditsModal: false,
         creditsModalSource: null,
         showUpgradeModal: false,
         upgradeModalSource: null,
+        showResponseFeedbackThanksBanner: false,
       });
     });
   });
@@ -1333,4 +1335,77 @@ describe('useDevelopPageStore', function useDevelopPageStoreTests() {
     });
   });
 
+  describe('#showResponseFeedbackThanksBannerTemporarily', function thanksBannerTests() {
+    beforeEach(function useFakeTimers() {
+      vi.useFakeTimers();
+    });
+
+    afterEach(function useRealTimers() {
+      vi.useRealTimers();
+    });
+
+    it('should show the thanks banner immediately', function showBanner() {
+      act(function show() {
+        useDevelopPageStore.getState().showResponseFeedbackThanksBannerTemporarily();
+      });
+
+      expect(useDevelopPageStore.getState().showResponseFeedbackThanksBanner).toBe(true);
+    });
+
+    it('should hide the thanks banner after 3 seconds', function autoHideBanner() {
+      act(function show() {
+        useDevelopPageStore.getState().showResponseFeedbackThanksBannerTemporarily();
+      });
+
+      act(function advance() {
+        vi.advanceTimersByTime(3000);
+      });
+
+      expect(useDevelopPageStore.getState().showResponseFeedbackThanksBanner).toBe(false);
+    });
+
+    it('should reset the auto-hide timer when called again', function resetTimer() {
+      act(function show() {
+        useDevelopPageStore.getState().showResponseFeedbackThanksBannerTemporarily();
+      });
+
+      act(function advancePartial() {
+        vi.advanceTimersByTime(2000);
+      });
+
+      act(function showAgain() {
+        useDevelopPageStore.getState().showResponseFeedbackThanksBannerTemporarily();
+      });
+
+      act(function advanceBeforeExpiry() {
+        vi.advanceTimersByTime(2000);
+      });
+
+      expect(useDevelopPageStore.getState().showResponseFeedbackThanksBanner).toBe(true);
+
+      act(function advanceToExpiry() {
+        vi.advanceTimersByTime(1000);
+      });
+
+      expect(useDevelopPageStore.getState().showResponseFeedbackThanksBanner).toBe(false);
+    });
+
+    it('should clear the pending timer when dismissed', function dismissClearsTimer() {
+      act(function show() {
+        useDevelopPageStore.getState().showResponseFeedbackThanksBannerTemporarily();
+      });
+
+      act(function dismiss() {
+        useDevelopPageStore.getState().dismissResponseFeedbackThanksBanner();
+      });
+
+      expect(useDevelopPageStore.getState().showResponseFeedbackThanksBanner).toBe(false);
+
+      act(function advance() {
+        vi.advanceTimersByTime(3000);
+      });
+
+      expect(useDevelopPageStore.getState().showResponseFeedbackThanksBanner).toBe(false);
+    });
+  });
 });

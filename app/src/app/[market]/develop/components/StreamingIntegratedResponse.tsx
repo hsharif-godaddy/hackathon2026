@@ -15,6 +15,7 @@ import { hasValidSegments, isStreamingMessage } from '@/app/[market]/develop/com
 import { useAuthContext } from '@/components/providers/AuthProvider'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
+import { traceIdsFromMessage } from '@/lib/trace-ids-from-message'
 import type { ChatMessage, StreamingMessage as StreamingMessageType, ToolCall } from '@/stores/useStreamingConversationStore'
 
 interface StreamingIntegratedResponseProps {
@@ -31,7 +32,12 @@ interface StreamingIntegratedResponseProps {
 }
 
 export default function StreamingIntegratedResponse({
-  message, isActiveStream = false, isLastAssistantMessage = false, startTime, streamingState, showThinking = false,
+  message,
+  isActiveStream = false,
+  isLastAssistantMessage = false,
+  startTime,
+  streamingState,
+  showThinking = false,
   onUndo,
   onRestore,
 }: StreamingIntegratedResponseProps) {
@@ -345,6 +351,8 @@ export default function StreamingIntegratedResponse({
           duration={message.timestamp.getTime() - startTime.getTime()}
           content={getFullResponseText()}
           usedFreeGrants={message.usedFreeGrants}
+          messageId={message.id}
+          traceIds={traceIdsFromMessage(message)}
           onUndo={onUndo}
           onRestore={onRestore}
         />

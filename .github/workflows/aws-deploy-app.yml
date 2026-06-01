@@ -4,35 +4,35 @@ on:
   workflow_dispatch:
     inputs:
       DEPLOY_TO_ENV:
-        description: "Environment to deploy the artifact"
+        description: 'Environment to deploy the artifact'
         required: true
-        default: "test"
+        default: 'test'
         type: choice
         options:
-          - "dev-private-ecs"
-          - "pre-test"
-          - "test"
-          - "NA"
+          - 'dev-private-ecs'
+          - 'pre-test'
+          - 'test'
+          - 'NA'
       sha:
-        description: "Commit SHA to build (defaults to branch tip)"
+        description: 'Commit SHA to build (defaults to branch tip)'
         required: false
         type: string
-        default: ""
+        default: ''
 
   # Allow triggering from other workflows (e.g. deploy-test-e2e)
   workflow_call:
     inputs:
       DEPLOY_TO_ENV:
-        description: "Environment to deploy the artifact"
+        description: 'Environment to deploy the artifact'
         required: true
         type: string
       sha:
-        description: "Commit SHA to build (defaults to branch tip)"
+        description: 'Commit SHA to build (defaults to branch tip)'
         required: false
         type: string
-        default: ""
+        default: ''
 
-run-name: "[APP - ${{ inputs.DEPLOY_TO_ENV }}] branch: ${{ github.ref_name }} | actor: ${{ github.actor }}"
+run-name: '[APP - ${{ inputs.DEPLOY_TO_ENV }}] branch: ${{ github.ref_name }} | actor: ${{ github.actor }}'
 
 permissions:
   id-token: write # required for artifactory token login
@@ -40,7 +40,7 @@ permissions:
 
 jobs:
   continuous-integration:
-    name: "[APP - ${{ inputs.DEPLOY_TO_ENV }}] branch: ${{ github.ref_name }}"
+    name: '[APP - ${{ inputs.DEPLOY_TO_ENV }}] branch: ${{ github.ref_name }}'
     if: ${{ (inputs.DEPLOY_TO_ENV == 'test' && github.ref_name == 'main') || inputs.DEPLOY_TO_ENV != 'test' }}
     runs-on:
       labels:

@@ -44,12 +44,29 @@ const SPAN_ID_REGEX = /^[0-9a-f]{16}$/i;
 const INVALID_TRACE_ID = '0'.repeat(32);
 const INVALID_SPAN_ID = '0'.repeat(16);
 
+const EVENT_CREATION_TIMESTAMP_REGEX =
+  /^[0-9]{4}-(?:0[1-9]|1[0-2])-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]{1,3})?Z$/;
+
 function isValidTraceId(id: string | undefined): id is string {
   return typeof id === 'string' && TRACE_ID_REGEX.test(id) && id.toLowerCase() !== INVALID_TRACE_ID;
 }
 
 function isValidSpanId(id: string | undefined): id is string {
   return typeof id === 'string' && SPAN_ID_REGEX.test(id) && id.toLowerCase() !== INVALID_SPAN_ID;
+}
+
+function resolveEventCreationTimestamp(isoTimestamp: string | undefined): Date {
+  if (!isoTimestamp) {
+    return new Date();
+  }
+
+  const parsed = new Date(isoTimestamp);
+  if (Number.isNaN(parsed.getTime())) {
+    logger.warn('feedback.invalid_event_creation_timestamp', { isoTimestamp });
+    return new Date();
+  }
+
+  return parsed;
 }
 
 const FeedbackRequestSchema = z.object({
@@ -76,6 +93,11 @@ const FeedbackRequestSchema = z.object({
   // can identify the producing agent; the canonical `airo-app-builder-` prefix
   // is applied server-side to match the rest of the observability stack.
   agentName: z.string().min(1).max(64).optional(),
+  eventCreationTimestamp: z.string().regex(EVENT_CREATION_TIMESTAMP_REGEX).optional(),
+  rating: z.number().int().optional(),
+  feedbackCategory: z.string().min(1).max(256).optional(),
+  feedbackText: z.string().min(1).max(4096).optional(),
+  hasDetailedFeedback: z.boolean().optional(),
 });
 
 export type FeedbackRequest = z.infer<typeof FeedbackRequestSchema>;
@@ -102,6 +124,11 @@ router.post(
       appId,
       conversationId,
       agentName,
+      eventCreationTimestamp,
+      rating,
+      feedbackCategory,
+      feedbackText,
+      hasDetailedFeedback,
     } = parseResult.data;
 
     // Canonicalize to `airo-app-builder-{name}` so feedback events carry the
@@ -165,9 +192,11 @@ router.post(
               targetLevel,
               targetId,
               feedback,
-              eventCreationTimestamp: new Date(),
-              // V1 MVP: no free-form text or category surface yet.
-              hasDetailedFeedback: false,
+              eventCreationTimestamp: resolveEventCreationTimestamp(eventCreationTimestamp),
+              hasDetailedFeedback: hasDetailedFeedback ?? false,
+              ...(rating !== undefined && { rating }),
+              ...(feedbackCategory !== undefined && { feedbackCategory }),
+              ...(feedbackText !== undefined && { feedbackText }),
             }),
           });
         },

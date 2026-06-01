@@ -57,7 +57,7 @@ function buildApp(router: express.Router, siteId: string = SITE_ID): Express {
       sessionId: 'sess-1',
       authType: 'basic',
       product: 'AiroAppBuilder',
-    } as AuthenticatedRequest['agentContext'];
+    } as unknown as AuthenticatedRequest['agentContext'];
     next();
   });
   app.use('/', router);
@@ -126,6 +126,30 @@ describe('feedback route', () => {
         },
       }),
     );
+  });
+
+  it('parses eventCreationTimestamp into a Date for createUserFeedback', async () => {
+    const { default: feedbackRouter } = await import('../feedback.js');
+    const app = buildApp(feedbackRouter);
+
+    const isoTimestamp = '2026-05-26T12:34:56.789Z';
+    await request(app).post('/feedback').send({ ...validBody, eventCreationTimestamp: isoTimestamp });
+
+    const helperArg = vi.mocked(createUserFeedback).mock.calls[0][0];
+    expect(helperArg.eventCreationTimestamp).toBeInstanceOf(Date);
+    expect((helperArg.eventCreationTimestamp as Date).toISOString()).toBe(isoTimestamp);
+  });
+
+  it('returns 400 when eventCreationTimestamp has month 00', async () => {
+    const { default: feedbackRouter } = await import('../feedback.js');
+    const app = buildApp(feedbackRouter);
+
+    const res = await request(app)
+      .post('/feedback')
+      .send({ ...validBody, eventCreationTimestamp: '2026-00-15T12:00:00Z' });
+
+    expect(res.status).toBe(400);
+    expect(createUserFeedback).not.toHaveBeenCalled();
   });
 
   it('forwards feedback: "negative" unchanged', async () => {

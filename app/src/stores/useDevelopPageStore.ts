@@ -222,6 +222,8 @@ interface DevelopPageStore {
 
   // Feedback banner UI
   showFeedbackBanner: boolean
+  showResponseFeedbackThanksBanner: boolean
+  responseFeedbackThanksBannerTimeoutId: ReturnType<typeof setTimeout> | null
 
   // App-generation feedback (thumbs up/down on first app generation)
   /** Updated on every WS 'complete' event so the trigger can snapshot the latest IDs. */
@@ -230,6 +232,13 @@ interface DevelopPageStore {
   appGenerationFeedbackTraceIds: TraceIds | null
   showAppGenerationFeedbackBanner: boolean
   appGenerationFeedbackSubmitted: boolean
+
+  // Agent-work feedback (thumbs up/down on how the agent performed)
+  agentWorkFeedbackAgentId: string | null
+  agentWorkFeedbackTraceIds: TraceIds | null
+  agentWorkFeedbackRevealMilestone: string | null
+  showAgentWorkFeedbackBanner: boolean
+  agentWorkFeedbackSubmitted: boolean
 
   // Tour UI
   showIntroTour: boolean
@@ -319,11 +328,22 @@ interface DevelopPageStore {
 
   // Feedback banner actions
   setShowFeedbackBanner: (show: boolean) => void
+  showResponseFeedbackThanksBannerTemporarily: () => void
+  dismissResponseFeedbackThanksBanner: () => void
 
   // App-generation feedback actions
   setLastCompleteTraceIds: (ids: TraceIds | null) => void
   setShowAppGenerationFeedbackBanner: (show: boolean, ids: TraceIds | null) => void
   markAppGenerationFeedbackSubmitted: () => void
+
+  // Agent-work feedback actions
+  setShowAgentWorkFeedbackBanner: (
+    show: boolean,
+    agentId: string | null,
+    traceIds?: TraceIds | null,
+    revealMilestone?: string | null
+  ) => void
+  markAgentWorkFeedbackSubmitted: () => void
 
   // Tour actions
   setShowIntroTour: (show: boolean) => void
@@ -449,12 +469,21 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
 
     // Feedback banner state
     showFeedbackBanner: false,
+    showResponseFeedbackThanksBanner: false,
+    responseFeedbackThanksBannerTimeoutId: null,
 
     // App-generation feedback state
     lastCompleteTraceIds: null,
     appGenerationFeedbackTraceIds: null,
     showAppGenerationFeedbackBanner: false,
     appGenerationFeedbackSubmitted: false,
+
+    // Agent-work feedback state
+    agentWorkFeedbackAgentId: null,
+    agentWorkFeedbackTraceIds: null,
+    agentWorkFeedbackRevealMilestone: null,
+    showAgentWorkFeedbackBanner: false,
+    agentWorkFeedbackSubmitted: false,
 
     // Tour state
     showIntroTour: false,
@@ -689,6 +718,35 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     setShowFeedbackBanner: (show: boolean) => set((state) => {
       state.showFeedbackBanner = show
     }),
+    showResponseFeedbackThanksBannerTemporarily: () => {
+      set((state) => {
+        if (state.responseFeedbackThanksBannerTimeoutId !== null) {
+          clearTimeout(state.responseFeedbackThanksBannerTimeoutId)
+          state.responseFeedbackThanksBannerTimeoutId = null
+        }
+        state.showResponseFeedbackThanksBanner = true
+      })
+
+      const timeoutId = setTimeout(() => {
+        set((state) => {
+          state.showResponseFeedbackThanksBanner = false
+          state.responseFeedbackThanksBannerTimeoutId = null
+        })
+      }, 3000)
+
+      set((state) => {
+        state.responseFeedbackThanksBannerTimeoutId = timeoutId
+      })
+    },
+    dismissResponseFeedbackThanksBanner: () => {
+      set((state) => {
+        if (state.responseFeedbackThanksBannerTimeoutId !== null) {
+          clearTimeout(state.responseFeedbackThanksBannerTimeoutId)
+          state.responseFeedbackThanksBannerTimeoutId = null
+        }
+        state.showResponseFeedbackThanksBanner = false
+      })
+    },
 
     // App-generation feedback actions
     setLastCompleteTraceIds: (ids: TraceIds | null) => set((state) => {
@@ -701,6 +759,21 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     markAppGenerationFeedbackSubmitted: () => set((state) => {
       state.appGenerationFeedbackSubmitted = true
       state.showAppGenerationFeedbackBanner = false
+    }),
+
+    // Agent-work feedback actions
+    setShowAgentWorkFeedbackBanner: (show, agentId, traceIds = null, revealMilestone = null) => set((state) => {
+      state.showAgentWorkFeedbackBanner = show
+      state.agentWorkFeedbackAgentId = show ? agentId : null
+      state.agentWorkFeedbackTraceIds = show ? traceIds : null
+      state.agentWorkFeedbackRevealMilestone = show ? revealMilestone : null
+    }),
+    markAgentWorkFeedbackSubmitted: () => set((state) => {
+      state.agentWorkFeedbackSubmitted = true
+      state.showAgentWorkFeedbackBanner = false
+      state.agentWorkFeedbackAgentId = null
+      state.agentWorkFeedbackTraceIds = null
+      state.agentWorkFeedbackRevealMilestone = null
     }),
 
     // Tour actions

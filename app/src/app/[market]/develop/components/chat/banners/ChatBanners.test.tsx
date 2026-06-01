@@ -32,15 +32,52 @@ vi.mock('@/hooks/usePaywallEligibility', () => ({
 const mockStoreState = {
   openFeedbackModal: vi.fn(),
   showFeedbackBanner: false,
+  showAppGenerationFeedbackBanner: false,
+  showAgentWorkFeedbackBanner: false,
+  appGenerationFeedbackTraceIds: { traceId: 'trace-1', observationId: 'obs-1' },
+  currentAppId: 'test-app',
+  agentWorkFeedbackAgentId: 'airo-app-builder-InitialAgent',
+  agentWorkFeedbackTraceIds: { traceId: 'trace-1', observationId: 'obs-1' },
+  agentWorkFeedbackRevealMilestone: 'firstFileEdit',
+  markAppGenerationFeedbackSubmitted: vi.fn(),
+  setShowAppGenerationFeedbackBanner: vi.fn(),
+  markAgentWorkFeedbackSubmitted: vi.fn(),
+  setShowAgentWorkFeedbackBanner: vi.fn(),
+  showResponseFeedbackThanksBannerTemporarily: vi.fn(),
 };
 
 vi.mock('@/stores/useDevelopPageStore', () => ({
-  useDevelopPageStore: vi.fn((selector: any) => selector(mockStoreState)),
+  useDevelopPageStore: vi.fn((selector: (state: typeof mockStoreState) => unknown) => selector(mockStoreState)),
+}));
+
+vi.mock('@/stores/useStreamingConversationStore', () => ({
+  useStreamingConversationStore: (selector: (state: Record<string, unknown>) => unknown) =>
+    selector({
+      availableAgents: [{ id: 'InitialAgent', name: 'Initial Agent' }],
+      currentAgentName: 'InitialAgent',
+    }),
+  useIsActivelyStreaming: () => false,
+  useIsLoading: () => false,
+}));
+
+vi.mock('@/hooks/websocket/useWebSocketHelpers', () => ({
+  getConversationIdFromCookie: () => 'conv-1',
+}));
+
+vi.mock('@/lib/agent-fetch', () => ({
+  agentFetch: vi.fn().mockResolvedValue({ ok: true, status: 200 }),
+}));
+
+vi.mock('@/config/dynamic-api', () => ({
+  dynamicApiConfigService: {
+    getConfigForSite: vi.fn().mockResolvedValue({ baseUrl: 'http://agents.test' }),
+  },
 }));
 
 vi.mock('@/utils/instrumentation', () => ({
   logImpressionEvent: vi.fn(() => vi.fn()),
   logClickEvent: vi.fn(() => vi.fn()),
+  generateClickEID: (id: string) => id,
 }));
 
 describe('ChatBanners', function chatBannersTests() {
@@ -48,6 +85,8 @@ describe('ChatBanners', function chatBannersTests() {
     vi.clearAllMocks();
     // Reset store state
     mockStoreState.showFeedbackBanner = false;
+    mockStoreState.showAppGenerationFeedbackBanner = false;
+    mockStoreState.showAgentWorkFeedbackBanner = false;
   });
 
   describe('banner priority', function priorityTests() {
@@ -147,6 +186,62 @@ describe('ChatBanners', function chatBannersTests() {
       renderWithProviders(<ChatBanners appId="my-app-id" />);
 
       expect(useUsage).toHaveBeenCalledWith({ appId: 'my-app-id', enabled: true });
+    });
+
+    it('should show AppGenerationFeedbackBanner when store flag is set', async function showAppGenerationBanner() {
+      const { useUsage } = await import('@/hooks/useUsage');
+      const { useSwitchboard } = await import('@/hooks/useSwitchboard');
+      const { usePaywallEligibility } = await import('@/hooks/usePaywallEligibility');
+
+      vi.mocked(useUsage).mockReturnValue({
+        isWarningBannerActive: false,
+        percentage: 50,
+        warningLevel: WarningLevel.CAUTION,
+        isLoading: false,
+      });
+      vi.mocked(useSwitchboard).mockReturnValue(false);
+      vi.mocked(usePaywallEligibility).mockReturnValue({
+        showPaywall: false,
+        isLoading: false,
+        isError: false,
+        error: null,
+      });
+
+      mockStoreState.showAppGenerationFeedbackBanner = true;
+
+      renderWithProviders(<ChatBanners appId="test-app" />);
+
+      await waitFor(function waitForBanner() {
+        expect(screen.getByTestId('app-generation-feedback-banner')).toBeInTheDocument();
+      });
+    });
+
+    it('should show AgentWorkFeedbackBanner when store flag is set', async function showAgentWorkBanner() {
+      const { useUsage } = await import('@/hooks/useUsage');
+      const { useSwitchboard } = await import('@/hooks/useSwitchboard');
+      const { usePaywallEligibility } = await import('@/hooks/usePaywallEligibility');
+
+      vi.mocked(useUsage).mockReturnValue({
+        isWarningBannerActive: false,
+        percentage: 50,
+        warningLevel: WarningLevel.CAUTION,
+        isLoading: false,
+      });
+      vi.mocked(useSwitchboard).mockReturnValue(false);
+      vi.mocked(usePaywallEligibility).mockReturnValue({
+        showPaywall: false,
+        isLoading: false,
+        isError: false,
+        error: null,
+      });
+
+      mockStoreState.showAgentWorkFeedbackBanner = true;
+
+      renderWithProviders(<ChatBanners appId="test-app" />);
+
+      await waitFor(function waitForBanner() {
+        expect(screen.getByTestId('agent-work-feedback-banner')).toBeInTheDocument();
+      });
     });
 
     it('should disable useUsage when appId is null', async function disableWithNullAppId() {
