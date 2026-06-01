@@ -27,6 +27,8 @@ export default function GoDaddyLink({ location = 'unknown', className = '' }: Go
   return (
     <Link
       href={targetUrl}
+      target="_blank"
+      rel="noopener noreferrer"
       className={`flex items-center ${className}`}
       data-eid={generateClickEID(`${location}.header.godaddy_logo`)}
       aria-label={t('builder_common_back_godaddy')}

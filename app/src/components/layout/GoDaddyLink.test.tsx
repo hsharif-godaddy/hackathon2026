@@ -32,6 +32,8 @@ describe('GoDaddyLink', () => {
 
     const link = screen.getByRole('link', { name: 'builder_common_back_godaddy' });
     expect(link).toHaveAttribute('href', 'https://www.godaddy.com');
+    expect(link).toHaveAttribute('target', '_blank');
+    expect(link).toHaveAttribute('rel', 'noopener noreferrer');
   });
 
   it('should render link to My Products when authenticated', () => {

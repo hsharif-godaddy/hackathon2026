@@ -88,7 +88,11 @@ export default function UserMenu({ onShowMockLogin, location = 'unknown' }: User
 
   const handleAllProjects = () => {
     setOpen(false);
-    router.push('/apps');
+    if (isDevelopPage) {
+      window.open('/apps', '_blank', 'noopener,noreferrer');
+    } else {
+      router.push('/apps');
+    }
   };
 
   const handleReferFriend = () => {
@@ -109,12 +113,12 @@ export default function UserMenu({ onShowMockLogin, location = 'unknown' }: User
 
   const handleMyProducts = () => {
     setOpen(false);
-    window.location.href = getMyProductsUrl();
+    window.open(getMyProductsUrl(), '_blank', 'noopener,noreferrer');
   };
 
   const handleMyDashboard = (id: string) => {
     setOpen(false);
-    window.location.href = getMyDashboardUrl(id);
+    window.open(getMyDashboardUrl(id), '_blank', 'noopener,noreferrer');
   };
 
   const handleGiveFeedback = () => {
@@ -127,7 +131,7 @@ export default function UserMenu({ onShowMockLogin, location = 'unknown' }: User
 
   const handleGoDaddy = useCallback(() => {
     setOpen(false);
-    window.location.href = GODADDY_URL;
+    window.open(GODADDY_URL, '_blank', 'noopener,noreferrer');
   }, []);
 
   const showManagePlan = !!(isManagePlanEnabled && activeSubscription?.builderEntitlementId);

@@ -49,8 +49,10 @@ const mockUseAuthContext = vi.fn();
 const mockLogClickEvent = vi.fn(() => vi.fn());
 const mockLogImpressionEvent = vi.fn((_eid: string) => vi.fn());
 
+const mockUsePathname = vi.fn(() => '/develop');
+
 vi.mock('next/navigation', () => ({
-  usePathname: () => '/develop',
+  usePathname: () => mockUsePathname(),
   useRouter: () => ({ ...mockRouter(), push: mockPush, prefetch: mockPrefetch }),
 }));
 
@@ -146,18 +148,46 @@ describe('UserMenu', function userMenuTests() {
       expect(screen.queryByText('builder_common_signin')).not.toBeInTheDocument();
     });
 
-    it('should navigate to /apps when All Projects is clicked', async function navigateAllProjects() {
-      const { user } = renderWithProviders(<UserMenu location="develop" />);
+    it('should open /apps in new tab when All Projects is clicked on develop page', async function navigateAllProjectsDevelop() {
+      const mockOpen = vi.spyOn(window, 'open').mockImplementation(() => null);
 
-      await user.click(screen.getByLabelText('builder_user_menu_label'));
-      await waitFor(function checkAllProjects() {
-        expect(screen.getByText('builder_user_menu_all_projects')).toBeInTheDocument();
-      });
+      try {
+        const { user } = renderWithProviders(<UserMenu location="develop" />);
 
-      await user.click(screen.getByText('builder_user_menu_all_projects'));
+        await user.click(screen.getByLabelText('builder_user_menu_label'));
+        await waitFor(function checkAllProjects() {
+          expect(screen.getByText('builder_user_menu_all_projects')).toBeInTheDocument();
+        });
 
-      expect(mockLogClickEvent).toHaveBeenCalledWith('develop.user_menu.all_projects', { appId: 'test-app-123' });
-      expect(mockPush).toHaveBeenCalledWith('/apps');
+        await user.click(screen.getByText('builder_user_menu_all_projects'));
+
+        expect(mockLogClickEvent).toHaveBeenCalledWith('develop.user_menu.all_projects', { appId: 'test-app-123' });
+        expect(mockOpen).toHaveBeenCalledWith('/apps', '_blank', 'noopener,noreferrer');
+      } finally {
+        mockOpen.mockRestore();
+      }
+    });
+
+    it('should navigate to /apps in same tab when All Projects is clicked outside develop page', async function navigateAllProjectsHomepage() {
+      mockUsePathname.mockReturnValue('/apps');
+      const mockOpen = vi.spyOn(window, 'open').mockImplementation(() => null);
+
+      try {
+        const { user } = renderWithProviders(<UserMenu location="homepage" />);
+
+        await user.click(screen.getByLabelText('builder_user_menu_label'));
+        await waitFor(function checkAllProjects() {
+          expect(screen.getByText('builder_user_menu_all_projects')).toBeInTheDocument();
+        });
+
+        await user.click(screen.getByText('builder_user_menu_all_projects'));
+
+        expect(mockPush).toHaveBeenCalledWith('/apps');
+        expect(mockOpen).not.toHaveBeenCalled();
+      } finally {
+        mockOpen.mockRestore();
+        mockUsePathname.mockReturnValue('/develop');
+      }
     });
 
     it('should log menu trigger click', async function logMenuTrigger() {
@@ -318,17 +348,7 @@ describe('UserMenu', function userMenuTests() {
     });
 
     it('should navigate to account products page when clicked', async function navigate() {
-      const originalLocation = window.location;
-      const hrefSetter = vi.fn();
-      Object.defineProperty(window, 'location', {
-        value: { ...originalLocation, href: '' },
-        writable: true,
-        configurable: true,
-      });
-      Object.defineProperty(window.location, 'href', {
-        set: hrefSetter,
-        configurable: true,
-      });
+      const mockOpen = vi.spyOn(window, 'open').mockImplementation(() => null);
 
       try {
         const { user } = renderWithProviders(<UserMenu location="develop" />);
@@ -340,13 +360,13 @@ describe('UserMenu', function userMenuTests() {
 
         await user.click(screen.getByText('builder_user_menu_my_products'));
 
-        expect(hrefSetter).toHaveBeenCalledWith('https://account.godaddy.com/products');
+        expect(mockOpen).toHaveBeenCalledWith(
+          'https://account.godaddy.com/products',
+          '_blank',
+          'noopener,noreferrer'
+        );
       } finally {
-        Object.defineProperty(window, 'location', {
-          value: originalLocation,
-          writable: true,
-          configurable: true,
-        });
+        mockOpen.mockRestore();
       }
     });
   });
@@ -401,17 +421,7 @@ describe('UserMenu', function userMenuTests() {
       enableVentureConnectionFlag();
       mockUseVenture.mockReturnValue({ ventureId: 'venture-abc', isLoading: false });
 
-      const originalLocation = window.location;
-      const hrefSetter = vi.fn();
-      Object.defineProperty(window, 'location', {
-        value: { ...originalLocation, href: '' },
-        writable: true,
-        configurable: true,
-      });
-      Object.defineProperty(window.location, 'href', {
-        set: hrefSetter,
-        configurable: true,
-      });
+      const mockOpen = vi.spyOn(window, 'open').mockImplementation(() => null);
 
       try {
         const { user } = renderWithProviders(<UserMenu location="develop" />);
@@ -423,15 +433,13 @@ describe('UserMenu', function userMenuTests() {
 
         await user.click(screen.getByText('builder_user_menu_dashboard'));
 
-        expect(hrefSetter).toHaveBeenCalledWith(
-          'https://dashboard.godaddy.com/venture?ventureId=venture-abc'
+        expect(mockOpen).toHaveBeenCalledWith(
+          'https://dashboard.godaddy.com/venture?ventureId=venture-abc',
+          '_blank',
+          'noopener,noreferrer'
         );
       } finally {
-        Object.defineProperty(window, 'location', {
-          value: originalLocation,
-          writable: true,
-          configurable: true,
-        });
+        mockOpen.mockRestore();
       }
     });
 
@@ -467,17 +475,7 @@ describe('UserMenu', function userMenuTests() {
     });
 
     it('should navigate to godaddy.com when clicked', async function navigate() {
-      const originalLocation = window.location;
-      const hrefSetter = vi.fn();
-      Object.defineProperty(window, 'location', {
-        value: { ...originalLocation, href: '' },
-        writable: true,
-        configurable: true,
-      });
-      Object.defineProperty(window.location, 'href', {
-        set: hrefSetter,
-        configurable: true,
-      });
+      const mockOpen = vi.spyOn(window, 'open').mockImplementation(() => null);
 
       try {
         const { user } = renderWithProviders(<UserMenu location="develop" />);
@@ -489,13 +487,9 @@ describe('UserMenu', function userMenuTests() {
 
         await user.click(screen.getByText('builder_user_menu_godaddy'));
 
-        expect(hrefSetter).toHaveBeenCalledWith('https://www.godaddy.com');
+        expect(mockOpen).toHaveBeenCalledWith('https://www.godaddy.com', '_blank', 'noopener,noreferrer');
       } finally {
-        Object.defineProperty(window, 'location', {
-          value: originalLocation,
-          writable: true,
-          configurable: true,
-        });
+        mockOpen.mockRestore();
       }
     });
   });
