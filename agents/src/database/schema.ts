@@ -296,10 +296,14 @@ export function initializeSchema(db: Database): void {
  * Configure database settings and pragmas
  */
 function configureDatabaseSettings(db: Database): void {
-  // Enable WAL mode for better concurrency
   db.exec('PRAGMA journal_mode = WAL');
-  db.exec('PRAGMA synchronous = FULL');
+  // NORMAL is safe with WAL mode and avoids the per-write fsync overhead of FULL
+  db.exec('PRAGMA synchronous = NORMAL');
   db.exec('PRAGMA cache_size = 1000');
+  db.exec('PRAGMA mmap_size = 0');
+  db.exec('PRAGMA temp_store = FILE');
+  db.exec('PRAGMA soft_heap_limit = 134217728');
+  db.exec('PRAGMA hard_heap_limit = 268435456');
   db.exec('PRAGMA foreign_keys = ON');
 }
 
