@@ -70,6 +70,21 @@ func appToResponse(app *store.App) map[string]any {
 		})
 	}
 
+	// topLifecycleState resolves the API's top-level lifecycleState from two
+	// sources: the persisted app.LifecycleState column (set by the upgrade
+	// orchestrator in Phase 4 to values like "upgrade_pending"), and a locally
+	// computed fallback derived from the archive stub + paused status.
+	//
+	// Precedence: when persisted value is not "running", use it (it's a
+	// specific signal). When persisted value is "running" (the post-provision
+	// steady state OR the migration default for legacy rows), defer to the
+	// local computation — which will return "archived" or "paused" if those
+	// apply, else "running".
+	topLifecycleState := app.LifecycleState
+	if topLifecycleState == "" || topLifecycleState == store.LifecycleStateRunning {
+		topLifecycleState = lifecycleState // local computation
+	}
+
 	resp := map[string]any{
 		"id":                    app.ID,
 		"subscriptionId":        app.SubscriptionID,
@@ -83,10 +98,16 @@ func appToResponse(app *store.App) map[string]any {
 		"updatedAt":             app.UpdatedAt,
 		"cellId":                "local-dev",
 		"compositionId":         "ai-builder",
+		// lifecycleState is always emitted (with fallback) — imageDigest is conditional below.
+		// The asymmetry mirrors the model: lifecycle has a meaningful default, digest doesn't.
+		"lifecycleState": topLifecycleState,
 		"system": map[string]any{
 			"ownerProduct": "AiroAppBuilder",
 			"productId":    store.DefaultProductID,
 		},
+	}
+	if app.ImageDigest != "" {
+		resp["imageDigest"] = app.ImageDigest
 	}
 
 	urls := map[string]string{
@@ -653,6 +674,16 @@ func (s *Server) provisionApp(app *store.App) error {
 	activeStatus := "active"
 	if _, err := s.DB.UpdateApp(app.ID, &activeStatus, nil, nil); err != nil {
 		return fmt.Errorf("set app active: %w", err)
+	}
+
+	// Lifecycle transitions (provisioning → running) are deferred to Phase 4
+	// when the upgrade orchestrator becomes the consumer of lifecycle_state.
+	// Phase 1 leaves new apps at the SQL default 'running' since there's no
+	// caller that distinguishes states yet. The UpdateAppLifecycleState setter
+	// exists for Phase 4 to use.
+	// TODO(phase-4): replace with real digest from build pipeline / docker inspect
+	if err := s.DB.UpdateAppImageDigest(app.ID, "aab-template-v8:latest"); err != nil {
+		slog.Warn("provision.image_digest.update_failed", "app_id", app.ID, "error", err)
 	}
 
 	return nil

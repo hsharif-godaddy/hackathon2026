@@ -8,11 +8,16 @@ import (
 // ErrSubscriptionNotOwned is returned when a subscription exists but belongs to a different customer.
 var ErrSubscriptionNotOwned = errors.New("access denied: not subscription owner")
 
+// ErrAppNotFound is returned when an app ID does not match any row.
+var ErrAppNotFound = errors.New("app not found")
+
 type App struct {
 	ID                    string            `json:"id"`
 	SubscriptionID        string            `json:"subscriptionId"`
 	SystemID              string            `json:"systemId"`
 	Status                string            `json:"status"`
+	ImageDigest           string            `json:"imageDigest,omitempty"`
+	LifecycleState        string            `json:"lifecycleState,omitempty"`
 	Variables             map[string]any    `json:"variables,omitempty"`
 	Variants              []string          `json:"variants,omitempty"`
 	CreatedAt             time.Time         `json:"createdAt"`

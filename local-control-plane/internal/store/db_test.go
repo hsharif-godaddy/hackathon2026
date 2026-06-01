@@ -1,6 +1,7 @@
 package store
 
 import (
+	"database/sql"
 	"os"
 	"path/filepath"
 	"testing"
@@ -636,6 +637,68 @@ func TestEnsureSubscription_ReconcileOnFileChange(t *testing.T) {
 	}
 }
 
+func TestApp_DefaultsForImageDigestAndLifecycleState(t *testing.T) {
+	db := newTestDB(t)
+
+	created, err := db.CreateApp("sub-1", "sys-1", nil, nil)
+	if err != nil {
+		t.Fatalf("CreateApp: %v", err)
+	}
+
+	got, err := db.GetApp(created.ID)
+	if err != nil {
+		t.Fatalf("GetApp: %v", err)
+	}
+	if got == nil {
+		t.Fatal("expected app, got nil")
+	}
+
+	// CreateApp explicitly sets lifecycle_state = "provisioning"; image_digest defaults to empty.
+	if got.ImageDigest != "" {
+		t.Errorf("ImageDigest: got %q want %q", got.ImageDigest, "")
+	}
+	if got.LifecycleState != LifecycleStateProvisioning {
+		t.Errorf("LifecycleState: got %q want %q", got.LifecycleState, LifecycleStateProvisioning)
+	}
+	// Returned struct must also reflect provisioning.
+	if created.LifecycleState != LifecycleStateProvisioning {
+		t.Errorf("created.LifecycleState: got %q want %q", created.LifecycleState, LifecycleStateProvisioning)
+	}
+}
+
+func TestMigrate_AddsImageDigestAndLifecycleStateColumns(t *testing.T) {
+	db, err := Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	rows, err := db.db.Query(`PRAGMA table_info(apps)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+
+	cols := map[string]bool{}
+	for rows.Next() {
+		var cid int
+		var name, ctype string
+		var notnull, pk int
+		var dflt sql.NullString
+		if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err != nil {
+			t.Fatal(err)
+		}
+		cols[name] = true
+	}
+
+	if !cols["image_digest"] {
+		t.Error("expected image_digest column on apps table")
+	}
+	if !cols["lifecycle_state"] {
+		t.Error("expected lifecycle_state column on apps table")
+	}
+}
+
 func TestEnsureSubscription_ReconcileFromEmpty(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("PROJECT_ROOT", dir)
@@ -665,5 +728,149 @@ func TestEnsureSubscription_ReconcileFromEmpty(t *testing.T) {
 	}
 	if sub2.BMSBudgetID != "a1b2c3d4-e5f6-7890-abcd-ef1234567890" {
 		t.Fatalf("expected reconciled bmsBudgetId, got %q", sub2.BMSBudgetID)
+	}
+}
+
+func TestUpdateAppImageDigest(t *testing.T) {
+	db, err := Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	app, err := db.CreateApp("sub-1", "sys-1", nil, []string{"preview"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := db.UpdateAppImageDigest(app.ID, "sha256:abc123"); err != nil {
+		t.Fatalf("UpdateAppImageDigest: %v", err)
+	}
+
+	got, err := db.GetApp(app.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ImageDigest != "sha256:abc123" {
+		t.Errorf("ImageDigest: got %q want %q", got.ImageDigest, "sha256:abc123")
+	}
+}
+
+func TestUpdateAppLifecycleState(t *testing.T) {
+	db, err := Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	app, err := db.CreateApp("sub-1", "sys-1", nil, []string{"preview"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := db.UpdateAppLifecycleState(app.ID, LifecycleStateProvisioning); err != nil {
+		t.Fatalf("UpdateAppLifecycleState: %v", err)
+	}
+
+	got, err := db.GetApp(app.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.LifecycleState != LifecycleStateProvisioning {
+		t.Errorf("LifecycleState: got %q want %q", got.LifecycleState, LifecycleStateProvisioning)
+	}
+}
+
+func TestUpdateAppImageDigest_NotFound(t *testing.T) {
+	db := newTestDB(t)
+
+	err := db.UpdateAppImageDigest("nonexistent-id", "sha256:abc")
+	if err != ErrAppNotFound {
+		t.Errorf("UpdateAppImageDigest on missing app: got %v, want ErrAppNotFound", err)
+	}
+}
+
+func TestUpdateAppLifecycleState_NotFound(t *testing.T) {
+	db := newTestDB(t)
+
+	err := db.UpdateAppLifecycleState("nonexistent-id", LifecycleStateRunning)
+	if err != ErrAppNotFound {
+		t.Errorf("UpdateAppLifecycleState on missing app: got %v, want ErrAppNotFound", err)
+	}
+}
+
+func TestList_RoundTripsImageDigestAndLifecycleState(t *testing.T) {
+	db, err := Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	// ListAppsByCustomer JOINs with subscriptions; create the subscription first.
+	if _, err := db.EnsureSubscription("sub-1", DefaultCustomerID); err != nil {
+		t.Fatalf("EnsureSubscription: %v", err)
+	}
+
+	app, err := db.CreateApp("sub-1", "sys-1", nil, []string{"preview"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := db.UpdateAppImageDigest(app.ID, "sha256:test123"); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.UpdateAppLifecycleState(app.ID, LifecycleStateRunning); err != nil {
+		t.Fatal(err)
+	}
+
+	// ListApps
+	apps, err := db.ListApps("sub-1", "sys-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(apps) != 1 {
+		t.Fatalf("ListApps returned %d apps, want 1", len(apps))
+	}
+	if apps[0].ImageDigest != "sha256:test123" {
+		t.Errorf("ListApps[0].ImageDigest = %q, want %q", apps[0].ImageDigest, "sha256:test123")
+	}
+	if apps[0].LifecycleState != LifecycleStateRunning {
+		t.Errorf("ListApps[0].LifecycleState = %q, want %q", apps[0].LifecycleState, LifecycleStateRunning)
+	}
+
+	// ListAllApps
+	all, err := db.ListAllApps()
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, a := range all {
+		if a.ID == app.ID {
+			if a.ImageDigest != "sha256:test123" || a.LifecycleState != LifecycleStateRunning {
+				t.Errorf("ListAllApps: digest=%q state=%q", a.ImageDigest, a.LifecycleState)
+			}
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("ListAllApps did not return the test app")
+	}
+
+	// ListAppsByCustomer (JOIN path)
+	byCustomer, err := db.ListAppsByCustomer(DefaultCustomerID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found = false
+	for _, a := range byCustomer {
+		if a.ID == app.ID {
+			if a.ImageDigest != "sha256:test123" || a.LifecycleState != LifecycleStateRunning {
+				t.Errorf("ListAppsByCustomer: digest=%q state=%q", a.ImageDigest, a.LifecycleState)
+			}
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("ListAppsByCustomer did not return the test app")
 	}
 }

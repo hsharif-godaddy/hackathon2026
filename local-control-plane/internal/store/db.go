@@ -127,6 +127,18 @@ func (d *DB) migrate() error {
 		}
 	}
 
+	if _, err := d.db.Exec(`ALTER TABLE apps ADD COLUMN image_digest TEXT NOT NULL DEFAULT ''`); err != nil {
+		if !strings.Contains(err.Error(), "duplicate column") {
+			return fmt.Errorf("add image_digest column: %w", err)
+		}
+	}
+
+	if _, err := d.db.Exec(`ALTER TABLE apps ADD COLUMN lifecycle_state TEXT NOT NULL DEFAULT 'running'`); err != nil {
+		if !strings.Contains(err.Error(), "duplicate column") {
+			return fmt.Errorf("add lifecycle_state column: %w", err)
+		}
+	}
+
 	if _, err := d.db.Exec(`ALTER TABLE jobs ADD COLUMN job_type TEXT DEFAULT 'airo-job'`); err != nil {
 		if !strings.Contains(err.Error(), "duplicate column") {
 			return fmt.Errorf("add job_type column: %w", err)
@@ -219,16 +231,17 @@ func (d *DB) CreateApp(subscriptionID, systemID string, variables map[string]any
 	}
 
 	_, err = d.db.Exec(
-		`INSERT INTO apps (id, subscription_id, system_id, status, variables, variants, created_at, updated_at)
-		 VALUES (?, ?, ?, 'provisioning', ?, ?, ?, ?)`,
+		`INSERT INTO apps (id, subscription_id, system_id, status, variables, variants, lifecycle_state, created_at, updated_at)
+		 VALUES (?, ?, ?, 'provisioning', ?, ?, ?, ?, ?)`,
 		id, subscriptionID, systemID, string(varsJSON), string(variantsJSON),
+		LifecycleStateProvisioning,
 		now.Format(time.RFC3339), now.Format(time.RFC3339),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("insert app: %w", err)
 	}
 
-	return &App{
+	app := &App{
 		ID:             id,
 		SubscriptionID: subscriptionID,
 		SystemID:       systemID,
@@ -237,7 +250,9 @@ func (d *DB) CreateApp(subscriptionID, systemID string, variables map[string]any
 		Variants:       variants,
 		CreatedAt:      now,
 		UpdatedAt:      now,
-	}, nil
+	}
+	app.LifecycleState = LifecycleStateProvisioning
+	return app, nil
 }
 
 // GetApp retrieves an app by ID.
@@ -259,12 +274,14 @@ func (d *DB) getAppUnlocked(id string) (*App, error) {
 
 	err := d.db.QueryRow(
 		`SELECT id, subscription_id, system_id, status, variables, variants,
-		        preview_port, publish_port, supervisor_port, publish_supervisor_port, created_at, updated_at
+		        preview_port, publish_port, supervisor_port, publish_supervisor_port,
+		        image_digest, lifecycle_state, created_at, updated_at
 		 FROM apps WHERE id = ?`, id,
 	).Scan(
 		&app.ID, &app.SubscriptionID, &app.SystemID, &app.Status,
 		&varsJSON, &variantsJSON,
 		&app.PreviewPort, &app.PublishPort, &app.SupervisorPort, &app.PublishSupervisorPort,
+		&app.ImageDigest, &app.LifecycleState,
 		&createdAt, &updatedAt,
 	)
 	if err == sql.ErrNoRows {
@@ -293,7 +310,8 @@ func (d *DB) ListApps(subscriptionID, systemID string) ([]*App, error) {
 
 	rows, err := d.db.Query(
 		`SELECT id, subscription_id, system_id, status, variables, variants,
-		        preview_port, publish_port, supervisor_port, publish_supervisor_port, created_at, updated_at
+		        preview_port, publish_port, supervisor_port, publish_supervisor_port,
+		        image_digest, lifecycle_state, created_at, updated_at
 		 FROM apps WHERE subscription_id = ? AND system_id = ?
 		 ORDER BY created_at DESC`, subscriptionID, systemID,
 	)
@@ -312,7 +330,8 @@ func (d *DB) ListAllApps() ([]*App, error) {
 
 	rows, err := d.db.Query(
 		`SELECT id, subscription_id, system_id, status, variables, variants,
-		        preview_port, publish_port, supervisor_port, publish_supervisor_port, created_at, updated_at
+		        preview_port, publish_port, supervisor_port, publish_supervisor_port,
+		        image_digest, lifecycle_state, created_at, updated_at
 		 FROM apps ORDER BY created_at DESC`,
 	)
 	if err != nil {
@@ -330,7 +349,7 @@ func (d *DB) ListAppsByCustomer(customerID string) ([]*App, error) {
 	rows, err := d.db.Query(
 		`SELECT a.id, a.subscription_id, a.system_id, a.status, a.variables, a.variants,
 		        a.preview_port, a.publish_port, a.supervisor_port, a.publish_supervisor_port,
-		        a.created_at, a.updated_at
+		        a.image_digest, a.lifecycle_state, a.created_at, a.updated_at
 		 FROM apps a
 		 JOIN subscriptions s ON a.subscription_id = s.id
 		 WHERE s.customer_id = ?
@@ -359,6 +378,7 @@ func (d *DB) scanApps(rows *sql.Rows) ([]*App, error) {
 			&app.ID, &app.SubscriptionID, &app.SystemID, &app.Status,
 			&varsJSON, &variantsJSON,
 			&app.PreviewPort, &app.PublishPort, &app.SupervisorPort, &app.PublishSupervisorPort,
+			&app.ImageDigest, &app.LifecycleState,
 			&createdAt, &updatedAt,
 		); err != nil {
 			return nil, fmt.Errorf("scan app: %w", err)
@@ -439,6 +459,54 @@ func (d *DB) UpdateAppPorts(id string, previewPort, publishPort, supervisorPort,
 		previewPort, publishPort, supervisorPort, publishSupervisorPort, id,
 	)
 	return err
+}
+
+// UpdateAppImageDigest sets the image_digest for an app.
+func (d *DB) UpdateAppImageDigest(appID, digest string) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	res, err := d.db.Exec(
+		`UPDATE apps SET image_digest = ?, updated_at = ? WHERE id = ?`,
+		digest,
+		time.Now().UTC().Format(time.RFC3339),
+		appID,
+	)
+	if err != nil {
+		return fmt.Errorf("update app image_digest: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("check rows affected: %w", err)
+	}
+	if n == 0 {
+		return ErrAppNotFound
+	}
+	return nil
+}
+
+// UpdateAppLifecycleState sets the lifecycle_state for an app.
+func (d *DB) UpdateAppLifecycleState(appID, state string) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	res, err := d.db.Exec(
+		`UPDATE apps SET lifecycle_state = ?, updated_at = ? WHERE id = ?`,
+		state,
+		time.Now().UTC().Format(time.RFC3339),
+		appID,
+	)
+	if err != nil {
+		return fmt.Errorf("update app lifecycle_state: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("check rows affected: %w", err)
+	}
+	if n == 0 {
+		return ErrAppNotFound
+	}
+	return nil
 }
 
 // DeleteApp removes an app by ID.
