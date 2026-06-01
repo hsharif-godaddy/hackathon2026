@@ -182,10 +182,6 @@ async function buildDevelopSystemPrompt(_appPath?: string, modelName?: string): 
     promptBuilder.file(paths.getAgentFile('develop', 'prompt-optimization.md'))
   }
 
-  if (profileFlag('develop.suggestedResponse', false)) {
-    promptBuilder.file(paths.getAgentFile('develop', 'suggested-response.md'))
-  }
-
   promptBuilder
     .file(paths.getAgentFile('develop', 'handoff.md'))
     .file(paths.getAgentFile('develop', 'backend.md'))
@@ -299,7 +295,6 @@ export async function createDevelopAgent(options?: { appPath?: string }): Promis
 
       // User interaction
       ...(profileFlag('develop.promptOptimization', true) ? { askQuestion: allAILibTools.askQuestion } : {}),
-      ...(profileFlag('develop.suggestedResponse', false) ? { suggestedResponse: allAILibTools.suggestedResponse } : {}),
 
       // Secrets management (for API keys, credentials)
       requestSecrets: allAILibTools.requestSecrets,

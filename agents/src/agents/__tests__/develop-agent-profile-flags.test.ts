@@ -59,7 +59,7 @@ describe('develop-agent profile flag gating', () => {
       expect(config.tools).toHaveProperty('askQuestion')
     })
 
-    it('does not include suggestedResponse tool (defaults false)', async () => {
+    it('does not include suggestedResponse tool', async () => {
       const config = await createDevelopAgent()
       expect(config.tools).not.toHaveProperty('suggestedResponse')
     })
@@ -73,12 +73,6 @@ describe('develop-agent profile flag gating', () => {
       await createDevelopAgent()
       const hasPromptOpt = loadedFiles.some(f => f.includes('prompt-optimization.md'))
       expect(hasPromptOpt).toBe(true)
-    })
-
-    it('does not load suggested-response.md', async () => {
-      await createDevelopAgent()
-      const hasSuggestedResponse = loadedFiles.some(f => f.includes('suggested-response.md'))
-      expect(hasSuggestedResponse).toBe(false)
     })
   })
 
@@ -103,78 +97,6 @@ describe('develop-agent profile flag gating', () => {
       await runWithProfile(profile, () => createDevelopAgent())
       const hasPromptOpt = loadedFiles.some(f => f.includes('prompt-optimization.md'))
       expect(hasPromptOpt).toBe(false)
-    })
-  })
-
-  describe('develop.suggestedResponse=true (opt in)', () => {
-    const profile: ProfileData = {
-      name: 'test-with-sr',
-      description: 'test profile enabling suggested response',
-      properties: { 'develop.suggestedResponse': true }
-    }
-
-    it('includes suggestedResponse tool', async () => {
-      const config = await runWithProfile(profile, () => createDevelopAgent())
-      expect(config.tools).toHaveProperty('suggestedResponse')
-    })
-
-    it('loads suggested-response.md', async () => {
-      await runWithProfile(profile, () => createDevelopAgent())
-      const hasSuggestedResponse = loadedFiles.some(f => f.includes('suggested-response.md'))
-      expect(hasSuggestedResponse).toBe(true)
-    })
-  })
-
-  describe('develop.suggestedResponse=false (explicit)', () => {
-    const profile: ProfileData = {
-      name: 'test-no-sr',
-      description: 'test profile explicitly disabling suggested response',
-      properties: { 'develop.suggestedResponse': false }
-    }
-
-    it('does not include suggestedResponse tool', async () => {
-      const config = await runWithProfile(profile, () => createDevelopAgent())
-      expect(config.tools).not.toHaveProperty('suggestedResponse')
-    })
-
-    it('does not load suggested-response.md', async () => {
-      await runWithProfile(profile, () => createDevelopAgent())
-      const hasSuggestedResponse = loadedFiles.some(f => f.includes('suggested-response.md'))
-      expect(hasSuggestedResponse).toBe(false)
-    })
-  })
-
-  describe('both flags: promptOptimization=false, suggestedResponse=true', () => {
-    const profile: ProfileData = {
-      name: 'test-legacy',
-      description: 'test profile reverting to legacy behavior',
-      properties: {
-        'develop.promptOptimization': false,
-        'develop.suggestedResponse': true
-      }
-    }
-
-    it('does not include askQuestion tool', async () => {
-      const config = await runWithProfile(profile, () => createDevelopAgent())
-      expect(config.tools).not.toHaveProperty('askQuestion')
-    })
-
-    it('includes suggestedResponse tool', async () => {
-      const config = await runWithProfile(profile, () => createDevelopAgent())
-      expect(config.tools).toHaveProperty('suggestedResponse')
-    })
-
-    it('does not set stopAfterTools', async () => {
-      const config = await runWithProfile(profile, () => createDevelopAgent())
-      expect(config.stopAfterTools).toBeUndefined()
-    })
-
-    it('does not load prompt-optimization.md but loads suggested-response.md', async () => {
-      await runWithProfile(profile, () => createDevelopAgent())
-      const hasPromptOpt = loadedFiles.some(f => f.includes('prompt-optimization.md'))
-      const hasSuggestedResponse = loadedFiles.some(f => f.includes('suggested-response.md'))
-      expect(hasPromptOpt).toBe(false)
-      expect(hasSuggestedResponse).toBe(true)
     })
   })
 })

@@ -30,28 +30,12 @@ Your response must be a JSON object with this exact structure:
 
 ## Font Pairing Principles
 
-### 1. CONTRAST IS KEY
-
-The best font pairings create visual interest through contrast:
-
-- **Serif + Sans-serif**: Classic pairing (e.g., Playfair Display headers + Inter body)
-- **Display + Readable**: Bold display font for headers, clean readable font for body
-- **Same family different weights**: Use bold/heavy for headers, regular for body
-
-### 2. MAINTAIN HARMONY
-
-Despite contrast, fonts should share qualities:
-
-- Similar x-height for visual consistency
-- Complementary proportions
-- Matching mood/tone (both modern, both traditional, etc.)
-
-### 3. HIERARCHY MATTERS
-
-Headers need impact, body needs readability:
-
-- **Headers**: Can use display fonts, serifs, or bold sans-serifs (weights 600-900)
-- **Body**: Prioritize readability with clean fonts (weights 400-500)
+- Create contrast: serif + sans-serif, display + readable, or weight contrast in one family
+- Keep harmony through compatible x-height, proportions, and tone
+- Prioritize hierarchy: impactful headers, readable body text
+- Header weights should typically be 600-900
+- Body weights should typically be 400-500 (600 optional)
+- Keep pairings suitable for the requested use case and mood
 
 ## Font Selection Guidelines
 
@@ -82,13 +66,11 @@ Headers need impact, body needs readability:
 **For Headers:**
 
 - Include bold weights: 600, 700, or 900
-- Format as string array: ["600", "700"]
 
 **For Body:**
 
 - Include regular and medium: 400, 500
 - Optionally 600 for emphasis
-- Format as string array: ["400", "500", "600"]
 
 ### CATEGORY SELECTION
 
@@ -129,7 +111,7 @@ Accurately classify each font into one of 5 CSS categories:
     {
       "id": "elegant-editorial",
       "name": "Elegant Editorial",
-      "description": "Sophisticated serif pairing ideal for publishing and editorial content.",
+      "description": "Sophisticated serif pairing for publishing and editorial content.",
       "headerFont": {
         "name": "Playfair Display",
         "weights": ["600", "700"],
@@ -139,21 +121,6 @@ Accurately classify each font into one of 5 CSS categories:
         "name": "Lora",
         "weights": ["400", "500"],
         "category": "serif"
-      }
-    },
-    {
-      "id": "bold-creative",
-      "name": "Bold Creative",
-      "description": "Eye-catching pairing for creative agencies and portfolios.",
-      "headerFont": {
-        "name": "Bebas Neue",
-        "weights": ["400"],
-        "category": "sans-serif"
-      },
-      "bodyFont": {
-        "name": "Work Sans",
-        "weights": ["400", "500"],
-        "category": "sans-serif"
       }
     }
   ]

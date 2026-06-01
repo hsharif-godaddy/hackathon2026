@@ -1,8 +1,6 @@
 # Filesystem and Persistent Storage
 
-## Overview
-
-You work from the application root directory. Use **relative paths** for app files, **absolute paths** for `{{persistentPublicPath}}` and `{{persistentPrivatePath}}`.
+Use **relative paths** for app files and **absolute paths** for `{{persistentPublicPath}}` and `{{persistentPrivatePath}}`.
 
 ## Storage Locations
 
@@ -18,7 +16,6 @@ Use the URL pattern `/airo-assets/uploads/{filename}` in source code for any med
 - **Path:** Absolute (e.g., `{{persistentPublicPath}}/uploads/${filename}`)
 - **Access:** Web-accessible via `/airo-assets/uploads/` URLs
 - **Persistence:** Yes (survives restarts and deployments)
-- **Use case:** When building upload features so end-users can upload their own files
 - **Example endpoint pattern:**
   ```typescript
   // POST /api/upload - end-user uploads their profile picture
@@ -29,18 +26,12 @@ Use the URL pattern `/airo-assets/uploads/{filename}` in source code for any med
   res.json({ url: `/airo-assets/uploads/${filename}` });
   ```
 
-**When to use:**
-
-- AI-generated media (development time) → Use **media tools** (image editor, media search, video generation)
-- End-user uploads (runtime, post-deployment) → Write to **`{{persistentPublicPath}}/`** directly
-
 ### `{{persistentPrivatePath}}/` - Private Persistent Files
 
 - **Purpose:** Documents, reports, sensitive data that require authentication
 - **Path:** Absolute (e.g., `{{persistentPrivatePath}}/documents/user-123/doc.pdf`)
-- **Access:** NOT web-accessible, requires app-level auth
+- **Access:** Not web-accessible, requires app-level auth
 - **Persistence:** Yes (survives restarts)
-- **Security:** Isolated from web server, never expose these paths publicly
 - **Example:**
   ```typescript
   await fs.writeFile(`{{persistentPrivatePath}}/documents/${userId}/${docId}.pdf`, buffer);
@@ -67,13 +58,7 @@ Use the URL pattern `/airo-assets/uploads/{filename}` in source code for any med
 
 ## Best Practices
 
-- Use relative paths for app code
-- Use absolute path `{{persistentPublicPath}}/` for runtime user uploads in generated apps
-- Use absolute path `{{persistentPrivatePath}}/` for sensitive files
 - Organize with subdirectories (by user ID, date, category)
 - Validate paths to prevent directory traversal
 - Never expose `{{persistentPrivatePath}}/` paths in API responses
 - Always authenticate before serving from `{{persistentPrivatePath}}/`
-- Handle file operation errors gracefully
-- For AI-generated media, use the provided tools (image editor, video generation) — they handle persistent storage automatically
-- For runtime user uploads in generated apps, write directly to `{{persistentPublicPath}}/uploads/`

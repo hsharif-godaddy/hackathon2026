@@ -10,41 +10,13 @@ ALWAYS use `fontTheme` for font/typography requests. NEVER respond with plain te
 
 ## Usage
 
-### Set Mode (Automated Flows)
+| Mode | When | Call |
+| --- | --- | --- |
+| `set` | Automated and rebuild flows | `fontTheme({ mode: 'set', description: 'elegant serif for luxury brand' })` |
+| `suggest` | User asks for options | `fontTheme({ mode: 'suggest', description: 'elegant serif for luxury brand', count: 4 })` |
+| `apply` | User clicks Apply button | `fontTheme({ mode: 'apply', themeName: 'Professional Geometric' })` |
 
-Use when you want to pick and apply a font directly without showing options:
-
-```typescript
-fontTheme({ mode: 'set', description: 'elegant serif for luxury brand' });
-```
-
-This will:
-
-1. Generate ONE font recommendation based on description
-2. Apply it immediately
-3. Return confirmation
-
-Perfect for:
-
-- Rebuild flows where you're setting up the site automatically
-- Initial site setup where you want to make design decisions
-- Any automated flow where user interaction isn't needed
-
-### Suggest Mode (Interactive Flows)
-
-With style/use case:
-
-```typescript
-fontTheme({ mode: 'suggest', description: 'elegant serif for luxury brand', count: 4 });
-```
-
-General request:
-
-```typescript
-fontTheme({ mode: 'suggest' });
-```
-
-Description: 5-10 words, style + use case (e.g., "modern sans-serif for tech startup")
+Description for `set` and `suggest`: 5-10 words, style + use case.
 
 ## 🚨 CRITICAL: Parsing Apply Messages
 
@@ -60,24 +32,11 @@ CRITICAL: "apply" in chat ≠ apply mode. Only button clicks trigger apply mode.
 
 ### Apply Mode
 
-From widget (user clicks Apply):
+From widget (user clicks Apply), use the variant the UI sent:
 
-```typescript
-// Message: "Apply font theme: Professional Geometric"
-fontTheme({ mode: 'apply', themeName: 'Professional Geometric' });
-```
-
-Curated theme:
-
-```typescript
-fontTheme({ mode: 'apply', themeId: 'modern-professional' });
-```
-
-Custom font:
-
-```typescript
-fontTheme({ mode: 'apply', fontName: 'Crimson Text', weights: ['400', '600'] });
-```
+- Curated theme: `fontTheme({ mode: 'apply', themeId: '...' })`
+- Named suggestion: `fontTheme({ mode: 'apply', themeName: '...' })`
+- Custom font: `fontTheme({ mode: 'apply', fontName: '...', weights: ['400', '500'] })`
 
 ## After Applying
 

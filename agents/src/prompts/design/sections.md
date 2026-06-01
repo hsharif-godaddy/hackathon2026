@@ -1,6 +1,7 @@
 # Design Section Specifications
 
 Detailed guidance for each of the 8 design sections.
+All sections: be concise. Formatting: headings, bullets, bold for emphasis.
 
 ## 1. Brand Personality (1-2 Paragraphs)
 
@@ -39,8 +40,6 @@ The healthcare patient portal embodies trust, care, and empowerment - creating a
 - Semantic colors (success, warning, error)
 - Brief WCAG accessibility notes
 
-**Keep it simple:** Just the essential colors, not every shade variation.
-
 ## 3. Typography
 
 **Purpose:** Define font families and basic type hierarchy
@@ -52,8 +51,6 @@ The healthcare patient portal embodies trust, care, and empowerment - creating a
 - Monospace font if needed
 - Basic type scale (H1, H2, Body, etc.)
 
-**Keep it brief:** Just the main fonts and sizes, not exhaustive specifications.
-
 ## 4. Iconography & Graphics
 
 **Purpose:** Define icon style and visual approach
@@ -63,8 +60,6 @@ The healthcare patient portal embodies trust, care, and empowerment - creating a
 - Icon style description (e.g., "Rounded line icons, 2px stroke")
 - Icon sizes (standard, small, large)
 - Brief notes on photography or illustration style
-
-**Keep it brief:** General style guidance only.
 
 ## 5. Layout & UI Elements
 
@@ -76,8 +71,6 @@ The healthcare patient portal embodies trust, care, and empowerment - creating a
 - Spacing scale (e.g., 8px base unit)
 - Brief component patterns (cards, buttons, forms)
 
-**Keep it focused:** Core patterns only, not every UI state.
-
 ## 6. Voice & Messaging (1-2 Paragraphs)
 
 **Purpose:** Define tone and writing style
@@ -87,8 +80,6 @@ The healthcare patient portal embodies trust, care, and empowerment - creating a
 - 1-2 paragraph overview of voice attributes
 - 3-5 voice characteristics
 - A few writing examples (buttons, errors, confirmations)
-
-**Keep it concise:** Brief overview, not a comprehensive style guide.
 
 ## 7. Features
 
@@ -156,22 +147,7 @@ Brief description of page organization (1-2 sentences)
 - NO navigation structure details
 - Just the page hierarchy with paths
 
-## General Guidelines for All Sections
-
-### Length Guidelines
-
-- **Text sections** (Brand, Voice): 1-2 paragraphs maximum
-- **List sections** (Colors, Typography): 5-10 items maximum
-- **Hierarchical sections** (Features, Site Map): 10-20 items maximum
-
-### Formatting
-
-- Use clear headings
-- Use bullet points for lists
-- Use bold for emphasis
-- Keep it scannable
-
-### Storage
+## Storage
 
 Each section is stored in memory with these keys:
 

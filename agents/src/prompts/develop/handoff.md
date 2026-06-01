@@ -40,13 +40,7 @@ Use the `handoff` tool to delegate specialized tasks to other agents.
 - ❌ "Add a contact form" → Stay (new feature)
 - ❌ "Center the logo" → Stay (positioning)
 
-## Handoff Rules
-
-1. **One handoff per request** - Don't hand off multiple times for same request
-2. **Complete handoff** - Stop execution immediately after handoff
-3. **Clear context** - Provide enough context for the other agent
-4. **Trust the specialist** - Don't try to do their work
-5. **Return gracefully** - When receiving handoff back, acknowledge and continue
+Use one handoff per request, stop execution after handoff, and provide clear context.
 
 ## Tool Usage
 

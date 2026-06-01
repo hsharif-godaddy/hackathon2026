@@ -12,7 +12,6 @@ All secrets are **backend-only**. NEVER prefix secret names with `VITE_`, `NEXT_
 If frontend needs a secret-protected service, create a backend API route:
 
 ```typescript
-// /api/config/maps - Backend route
 import { getSecret } from '#airo/secrets';
 export function GET() {
   return Response.json({ key: getSecret('GOOGLE_MAPS_API_KEY') });
@@ -29,7 +28,7 @@ Never mention .env files or explain alternatives. The form handles interaction.
 requestSecrets({
   title: 'Google Maps API Key',
   description: 'Get from Google Cloud Console → Credentials',
-  secrets: [{ name: 'GOOGLE_MAPS_API_KEY', required: true }], // NO VITE_ prefix!
+  secrets: [{ name: 'GOOGLE_MAPS_API_KEY', required: true }],
   mode: 'add',
   allowMultiple: false,
   showSettingsLink: true,

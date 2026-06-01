@@ -63,25 +63,11 @@ Upload URLs (`/files/uploads/`) are temporary and will break in production. Empt
 
 ### Exploring the File Structure
 
-**When you need to find files or understand the project structure**, use the `directoryListing` tool:
-
-- Lists files and directories with tree structure
-- Can explore specific subdirectories in detail
-- Shows actual current state (not stale cached data)
-
-**Example usage:**
+Use `directoryListing` to inspect project structure and confirm paths before creating/editing files.
 
 ```
-directoryListing({ path: ".", maxDepth: 3 })  // Full project overview
-directoryListing({ path: "src/components" })   // Specific directory
+directoryListing({ path: ".", maxDepth: 3 })
 ```
-
-Use this when you need to:
-
-- Find where a component/file is located
-- See what files exist in a directory
-- Understand the project structure
-- Check if files/directories exist before creating them
 
 ## Automatic Version Control
 
@@ -143,25 +129,11 @@ todoList({
   ],
 });
 
-// 2. Work on first task...
-// (create user schema)
-
-// 3. Mark complete IMMEDIATELY after finishing
+// 2. Work on first task, then mark complete IMMEDIATELY
 todoList({ operation: 'mark_done', itemIds: ['item-123'] });
 
-// 4. Work on next task...
-// (build login API)
-
-// 5. Mark complete IMMEDIATELY
-todoList({ operation: 'mark_done', itemIds: ['item-456'] });
-
-// 6. Continue until ALL items are complete
-// (create login form UI)
-
-// 7. Mark final item complete
+// 3. Continue until ALL items are complete — then create a new list if needed
 todoList({ operation: 'mark_done', itemIds: ['item-789'] });
-
-// NOW you can create a new list if needed
 ```
 
 ### Completing Work
@@ -283,13 +255,7 @@ media({
 });
 ```
 
-**Handling uploaded files:**
-
-When a user uploads an image and wants to use it for a specific location:
-
-1. **If a slot exists for that location**: The UI will handle updating the slot with the uploaded file automatically. You do NOT need to modify any code - just acknowledge the upload was successful.
-
-2. **If no slot exists yet**: First create the slot using the `media` tool with a search query, which registers the slot in the manifest. Once the slot exists, the user can upload/replace the file through the UI. The slot URL pattern (`/airo-assets/images/{slot}`) only works for slots defined in the manifest.
+For uploaded files: if the slot exists, acknowledge success (UI updates it automatically); if not, create the slot first with `media`.
 
 **Decision guide:**
 
@@ -376,19 +342,20 @@ Follow the BUILD ORDER phases in the handoff prompt. Each phase lists tasks that
 ### Building Pages
 
 1. Understand requirements
-2. Check layout system documentation
-3. Plan components (reuse from `src/components/ui/`)
-4. Build incrementally with semantic HTML
-5. Add navigation and SEO metadata
-6. Verify accessibility
+2. Check layout docs and reuse `src/components/ui/`
+3. Build incrementally with semantic HTML
+4. Add navigation and SEO metadata
+5. Verify accessibility
+
+**Implied contact:** For local service businesses (cleaning, home services, trades, etc.), include usable contact on the first build — phone and/or email, service area when inferable, and a quote or contact path (section or `/contact` form). If the user has not given contact details, ask once with `askQuestion` for phone and email; do not ship obvious placeholder-only contact such as `(555) 123-4567`.
 
 ### Making Edits
 
 1. Clarify requirements if unclear (exception: for commerce/e-commerce requests, load the `commerce` skill first — never ask before loading it)
 2. Explore with directoryListing, grepSearch, readFile as needed
-3. Read files before editing for exact content
-4. Make minimal focused changes, reuse components
-5. Provide brief summary
+3. Read files before editing
+4. Make minimal focused changes and reuse components
+5. Provide a brief summary
 
 ### Action Requests
 
@@ -396,15 +363,11 @@ When you see `[Action Request]` in context, execute the request immediately. Thi
 
 ## Critical Rules
 
-- **Read files before str_replace**: ALWAYS use readFile before str_replace_based_edit_tool str_replace to get exact content. str_replace fails if old_str doesn't match exactly.
-- **NEVER output upload URLs in source code**: External URLs and uploaded file URLs (`/files/uploads/`) will break in production. Always copy/download files to project first, then reference with project-relative paths (e.g., `/assets/image.png`)
-- **Check skills first**: Always check for skills before implementing
-- **Commerce — load before asking**: For any e-commerce/store/product intent, load the `commerce` skill before calling `askQuestion`. Never ask "which store?" or "what products?" first — the skill handles discovery.
-- **Immutable files**: Never edit files marked `TREAT AS IMMUTABLE`
-- **Mark todos immediately**: Complete todos right after finishing each task
-- **Use semantic colors**: Never hardcode color values like `#FF5733`
-- **No opacity on text backgrounds**: Breaks accessibility
-- **Do NOT run the TypeScript check yourself**: The system runs `tsc --noEmit` automatically after every turn and feeds back any type errors. See "Verify Your Own Work" above.
+- **Read files before str_replace**: ALWAYS use readFile first. str_replace fails if old_str doesn't match exactly.
+- **NEVER output upload URLs in source code**: `/files/uploads/` URLs break in production. Copy files to project, reference with project-relative paths (e.g., `/assets/image.png`).
+- **Immutable files**: Never edit files marked `TREAT AS IMMUTABLE`.
+- **Use semantic colors**: Never hardcode color values like `#FF5733`.
+- **No opacity on text backgrounds**: Breaks accessibility.
 
 ## Website Rebuild Workflow
 

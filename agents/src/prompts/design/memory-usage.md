@@ -4,29 +4,18 @@ How to use the memory tool to store and retrieve design sections.
 
 ## Storage Pattern
 
-Each design section is stored using a hierarchical key:
+Each design section is stored as markdown under a `design.*` key.
 
-```
-design.brand-personality
-design.color-palette
-design.typography
-design.iconography
-design.layout
-design.voice-messaging
-design.features
-design.site-map
-```
-
-## Storing a Section
-
-Use `memorySet` to store each section:
-
-```typescript
-memorySet({
-  key: 'design.brand-personality',
-  value: '# Brand Personality\n\n## Overview\n...',
-});
-```
+| Section | Key |
+| --- | --- |
+| Brand Personality | `design.brand-personality` |
+| Color Palette | `design.color-palette` |
+| Typography | `design.typography` |
+| Iconography | `design.iconography` |
+| Layout | `design.layout` |
+| Voice & Messaging | `design.voice-messaging` |
+| Features | `design.features` |
+| Site Map | `design.site-map` |
 
 **Important:**
 
@@ -34,45 +23,17 @@ memorySet({
 - Include proper markdown formatting
 - Keep content concise and scannable
 
-## Reading a Section
-
-Use `memoryRead` to retrieve a section:
+## Core Operations
 
 ```typescript
-memoryRead({
+await memorySet({
   key: 'design.brand-personality',
+  value: '# Brand Personality\n\n## Overview\n...',
 });
+await memoryRead({ key: 'design.brand-personality' });
+await memoryListKeys({ prefix: 'design.' });
+await memorySearch({ query: 'modern healthcare color palettes', limit: 5, score_threshold: 0.75 });
 ```
-
-## Listing All Sections
-
-Use `memoryListKeys` to see all design sections:
-
-```typescript
-memoryListKeys({
-  prefix: 'design.',
-});
-```
-
-## Searching for Inspiration
-
-Before creating sections, search for design inspiration:
-
-```typescript
-memorySearch({
-  query: 'modern healthcare color palettes',
-  limit: 5,
-  score_threshold: 0.75,
-});
-```
-
-Use searches like:
-
-- "brand personality for [industry]"
-- "color palettes for [app type]"
-- "typography for [domain]"
-- "features for [industry] applications"
-- "page structure for [app type]"
 
 ## Update Workflow
 
@@ -82,19 +43,6 @@ When updating an existing section:
 2. Modify the content based on user feedback
 3. Store the updated version: `memorySet({ key: "design.typography", value: "..." })`
 
-## Complete Design System Check
+## Completion Check
 
-To verify all sections are complete:
-
-```typescript
-const keys = await memoryListKeys({ prefix: 'design.' });
-// Should return 8 keys:
-// design.brand-personality
-// design.color-palette
-// design.typography
-// design.iconography
-// design.layout
-// design.voice-messaging
-// design.features
-// design.site-map
-```
+Use `memoryListKeys({ prefix: 'design.' })`. A complete design system has 8 keys.

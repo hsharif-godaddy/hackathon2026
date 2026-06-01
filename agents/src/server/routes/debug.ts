@@ -7,6 +7,7 @@ import { getModularPromptPaths } from '../../utils/prompt-utils.js'
 import { validateAppOwnership } from '../middleware/app-ownership.js'
 import { getPersistentAssetPaths } from '../../utils/persistent-assets.js'
 import { AppContextManager } from '../../services/AppContextManager.js'
+import { profileFlag } from '../../profiles/profile-accessor.js'
 import { readFile } from 'fs/promises'
 
 const router: Router = Router()
@@ -50,19 +51,25 @@ async function buildDevelopSystemPrompt(): Promise<string> {
   // Load filesystem.md as a template (contains {{persistentPublicPath}} and {{persistentPrivatePath}} placeholders)
   const filesystemTemplate = await readFile(paths.getSharedFile('filesystem.md'), 'utf-8');
 
-  // Load all modular prompt sections in order (same as develop agent)
+  // Load modular prompt sections in the same order as develop-agent.ts
   promptBuilder
     .file(paths.getAgentFile('develop', 'core.md'))
     .file(paths.getSharedFile('communication.md'))
+    .file(paths.getSharedFile('security.md'))
     .file(paths.getAgentFile('develop', 'claude-behavior.md'))
-    .template(filesystemTemplate) // Use template instead of file for dynamic path interpolation
+    .template(filesystemTemplate)
     .file(paths.getAgentFile('develop', 'font-theme.md'))
+
+  if (profileFlag('develop.promptOptimization', true)) {
+    promptBuilder.file(paths.getAgentFile('develop', 'prompt-optimization.md'))
+  }
+
+  promptBuilder
     .file(paths.getAgentFile('develop', 'handoff.md'))
     .file(paths.getAgentFile('develop', 'backend.md'))
     .file(paths.getAgentFile('develop', 'frontend.md'))
     .file(paths.getAgentFile('develop', 'seo.md'))
     .file(paths.getAgentFile('develop', 'secrets.md'))
-    .file(paths.getSharedFile('security.md'))
 
   // Build with context containing dynamic persistent asset paths
   const persistentAssetPaths = getPersistentAssetPaths();
