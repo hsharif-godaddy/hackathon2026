@@ -59,28 +59,33 @@ export default function SetVentureLogoToolRenderer({
         { key: 'square', url: urls.squareUrl },
       ]
 
-      let sent = 0
-      try {
-        for (const { key, url } of targets) {
+      const data = await Promise.all(
+        targets.map(async ({ key, url }) => {
           try {
             const dataUrl = await fetchAsDataUrl(url)
-            window.parent.postMessage(
-              { action: 'set-as-logo', sender: 'airo-hq', imageUrl: dataUrl },
-              parentOrigin
-            )
-            sent++
+            return { key, dataUrl }
           } catch (err) {
-            logger.warn('setVentureLogo.fetchFailed', { variant: key, error: err })
+            logger.warn('setVentureLogo.fetchFailed', { variant: key, url, error: err })
+            return null
           }
-        }
-      } catch (err) {
-        // Defensive: any unexpected throw outside the per-variant try/catch
-        // (e.g., postMessage validation, structured-clone rejection) — flag
-        // the renderer as failed rather than leaving it stuck on 'sending'.
-        logger.warn('setVentureLogo.unexpectedError', { error: err })
+        })
+      )
+
+      if (data.filter(Boolean).length === 0) {
+        setPhase('error')
+        return
       }
 
-      setPhase(sent > 0 ? 'done' : 'error')
+      try {
+        window.parent.postMessage(
+          { action: 'add-to-library', sender: 'airo-hq', data },
+          parentOrigin
+        )
+        setPhase('done')
+      } catch (err) {
+        logger.warn('setVentureLogo.postMessageFailed', { error: err })
+        setPhase('error')
+      }
     })()
   }, [shouldRender, urls, parentOrigin])
 

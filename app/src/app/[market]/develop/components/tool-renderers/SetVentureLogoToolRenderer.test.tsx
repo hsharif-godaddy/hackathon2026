@@ -131,7 +131,7 @@ describe('SetVentureLogoToolRenderer', () => {
     })
   })
 
-  it('fires both postMessages with data URLs in horizontal-then-square order when embedded', async () => {
+  it('fires a single add-to-library postMessage with both data URLs when embedded', async () => {
     const postMessageSpy = vi.spyOn(window.parent, 'postMessage')
 
     renderWithProviders(
@@ -143,22 +143,25 @@ describe('SetVentureLogoToolRenderer', () => {
     )
 
     await waitFor(() => {
-      expect(postMessageSpy).toHaveBeenCalledTimes(2)
+      expect(postMessageSpy).toHaveBeenCalledTimes(1)
     })
 
     expect(postMessageSpy.mock.calls[0]).toEqual([
-      { action: 'set-as-logo', sender: 'airo-hq', imageUrl: 'data:image/png;base64,https://cdn/h.png' },
-      'https://dashboard.godaddy.com',
-    ])
-    expect(postMessageSpy.mock.calls[1]).toEqual([
-      { action: 'set-as-logo', sender: 'airo-hq', imageUrl: 'data:image/png;base64,https://cdn/s.png' },
+      {
+        action: 'add-to-library',
+        sender: 'airo-hq',
+        data: [
+          { key: 'horizontal', dataUrl: 'data:image/png;base64,https://cdn/h.png' },
+          { key: 'square', dataUrl: 'data:image/png;base64,https://cdn/s.png' },
+        ],
+      },
       'https://dashboard.godaddy.com',
     ])
 
     postMessageSpy.mockRestore()
   })
 
-  it('fires postMessages exactly once across re-renders', async () => {
+  it('fires postMessage exactly once across re-renders', async () => {
     const postMessageSpy = vi.spyOn(window.parent, 'postMessage')
 
     const { rerender } = renderWithProviders(
@@ -170,7 +173,7 @@ describe('SetVentureLogoToolRenderer', () => {
     )
 
     await waitFor(() => {
-      expect(postMessageSpy).toHaveBeenCalledTimes(2)
+      expect(postMessageSpy).toHaveBeenCalledTimes(1)
     })
 
     rerender(
@@ -181,12 +184,12 @@ describe('SetVentureLogoToolRenderer', () => {
       />
     )
 
-    // Still only 2 calls — no re-fire
-    expect(postMessageSpy).toHaveBeenCalledTimes(2)
+    // Still only 1 call — no re-fire
+    expect(postMessageSpy).toHaveBeenCalledTimes(1)
     postMessageSpy.mockRestore()
   })
 
-  it('fires postMessages exactly once when transitioning from running to completed', async () => {
+  it('fires postMessage exactly once when transitioning from running to completed', async () => {
     const postMessageSpy = vi.spyOn(window.parent, 'postMessage')
 
     const { rerender } = renderWithProviders(
@@ -210,7 +213,7 @@ describe('SetVentureLogoToolRenderer', () => {
     )
 
     await waitFor(() => {
-      expect(postMessageSpy).toHaveBeenCalledTimes(2)
+      expect(postMessageSpy).toHaveBeenCalledTimes(1)
     })
 
     postMessageSpy.mockRestore()
@@ -228,7 +231,7 @@ describe('SetVentureLogoToolRenderer', () => {
     )
 
     await waitFor(() => {
-      expect(postMessageSpy).toHaveBeenCalledTimes(2)
+      expect(postMessageSpy).toHaveBeenCalledTimes(1)
     })
 
     expect(vi.mocked(logImpressionEvent)).toHaveBeenCalledTimes(1)
@@ -268,10 +271,17 @@ describe('SetVentureLogoToolRenderer', () => {
       expect(postMessageSpy).toHaveBeenCalledTimes(1)
     })
 
-    expect(postMessageSpy.mock.calls[0]?.[0]).toMatchObject({
-      action: 'set-as-logo',
-      imageUrl: expect.stringContaining('data:image/png;base64,https://cdn/h.png'),
-    })
+    expect(postMessageSpy.mock.calls[0]).toEqual([
+      {
+        action: 'add-to-library',
+        sender: 'airo-hq',
+        data: [
+          { key: 'horizontal', dataUrl: 'data:image/png;base64,https://cdn/h.png' },
+          null,
+        ],
+      },
+      'https://dashboard.godaddy.com',
+    ])
 
     // Partial success still surfaces the success copy — at least one variant reached the dashboard.
     await waitFor(() => {
