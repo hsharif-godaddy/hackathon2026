@@ -104,6 +104,7 @@ export default function ListTypeButton({ selectedElement, isOpen, onOpenChange }
       <HoverBarButton
         onClick={() => onOpenChange(!isOpen)}
         title={t("devtools_list_type_title", "List type")}
+        suppressTooltip={isOpen}
         icon={<CurrentIcon width={15} height={15} />}
         active={isOpen || !!currentListType}
       />

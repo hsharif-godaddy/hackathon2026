@@ -214,6 +214,7 @@ export default function TextColorButton({ selectedElement, isOpen, onOpenChange 
       <HoverBarButton
         onClick={toggleMenu}
         title={t("devtools_text_color_title", "Text color")}
+        suppressTooltip={isOpen}
         icon={
           <span style={{
             display: "block",

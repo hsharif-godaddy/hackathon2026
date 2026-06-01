@@ -163,6 +163,7 @@ export default function TextSizeStepperButton({ selectedElement, isOpen, onOpenC
       <HoverBarButton
         onClick={() => onOpenChange(!isOpen)}
         title={t("devtools_text_size_title", "Text size")}
+        suppressTooltip={isOpen}
         icon={<ALargeSmall width={15} height={15} />}
         active={isOpen}
       />

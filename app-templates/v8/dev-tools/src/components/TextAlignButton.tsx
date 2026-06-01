@@ -127,6 +127,7 @@ export default function TextAlignButton({ selectedElement, isOpen, onOpenChange 
       <HoverBarButton
         onClick={() => onOpenChange(!isOpen)}
         title={t("devtools_text_align_title", "Text alignment")}
+        suppressTooltip={isOpen}
         icon={<CurrentIcon width={15} height={15} />}
         active={isOpen || !!currentTextAlign}
       />
