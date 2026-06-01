@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { readFile, mkdir, writeFile, unlink, open } from 'node:fs/promises';
+import { mkdir, open, readFile, stat, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
 import { createAgentFactory, getModel, createFileInput, processFile } from '@airo/ai-lib';
@@ -658,8 +658,8 @@ Respond ONLY with valid JSON in this exact format:
   private async getFileSize(localPath: string): Promise<number | null> {
     try {
       const filePath = path.join(this.appPath, localPath);
-      const buffer = await readFile(filePath);
-      return buffer.length;
+      const stats = await stat(filePath);
+      return stats.size;
     } catch (error) {
       logger.warn('asset-processing.filesize-error', {
         localPath,
@@ -952,18 +952,28 @@ Respond ONLY with valid JSON in this exact format:
         unanalyzedImages: unanalyzedImages.length
       });
 
-      if (unanalyzedImages.length > 0) {
-        await this.analyzeImageBatch(unanalyzedImages);
+      const toAnalyze = unanalyzedImages.slice(0, this.MAX_IMAGES_TO_DESCRIBE);
+
+      if (toAnalyze.length > 0) {
+        if (unanalyzedImages.length > this.MAX_IMAGES_TO_DESCRIBE) {
+          logger.info('asset-processing.image-cap-applied', {
+            pageUrl,
+            total: unanalyzedImages.length,
+            capped: this.MAX_IMAGES_TO_DESCRIBE,
+            dropped: unanalyzedImages.length - this.MAX_IMAGES_TO_DESCRIBE,
+          });
+        }
+        await this.analyzeImageBatch(toAnalyze);
 
         await this.saveManifest(assetManifest);
 
         logger.info('asset-processing.manifest-updated-after-analysis', {
           pageUrl,
-          imagesAnalyzed: unanalyzedImages.length
+          imagesAnalyzed: toAnalyze.length,
         });
       }
 
-      return { pageAssets, analyzedImageCount: unanalyzedImages.length };
+      return { pageAssets, analyzedImageCount: toAnalyze.length };
     } catch (error) {
       logger.error('asset-processing.analyze-page-assets.error', {
         pageUrl,
