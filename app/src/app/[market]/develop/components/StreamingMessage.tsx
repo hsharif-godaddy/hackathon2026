@@ -150,8 +150,8 @@ function FullMessageModal({ content, isOpen, onClose }: { content: string; isOpe
         />
       }
     >
-      <div className="max-w-3xl w-full mx-4 max-h-[80vh] flex min-h-0 flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
-        <pre className="min-h-0 flex-1 overflow-y-auto text-sm whitespace-pre-wrap break-words font-sans leading-relaxed">
+      <div className="max-h-[70vh] flex min-h-0 flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
+        <pre className="min-h-0 flex-1 overflow-y-auto text-sm whitespace-pre-wrap wrap-anywhere font-sans leading-relaxed">
           {content}
         </pre>
       </div>
