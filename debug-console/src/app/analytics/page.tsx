@@ -461,10 +461,7 @@ function AnalyticsContent() {
   const [c1CustomStart, setC1CustomStart] = useState<string>('');
   const [c1CustomEnd, setC1CustomEnd] = useState<string>('');
 
-  // Feedback tab
-  const [feedbackDatePreset, setFeedbackDatePreset] = useState<StandardDatePreset>('7d');
-  const [feedbackCustomStart, setFeedbackCustomStart] = useState<string>('');
-  const [feedbackCustomEnd, setFeedbackCustomEnd] = useState<string>('');
+  // Feedback tab — owned by FeedbackAnalyticsPanel via URL state.
 
   // Cloudflare tab — CDN logs (airo-app-cloudflare-cdn-logs-prod-*).
   // Same preset family as Dynamic section since the index is near-real-time.
@@ -2221,17 +2218,7 @@ function AnalyticsContent() {
             aria-labelledby="analytics-tab-feedback"
             style={{ marginBottom: '1.25rem' }}
           >
-            <DateRangeSelector
-              presets={['1d', '7d', '14d', '30d', 'custom'] as const}
-              value={feedbackDatePreset}
-              onValueChange={setFeedbackDatePreset}
-              customStart={feedbackCustomStart}
-              customEnd={feedbackCustomEnd}
-              onCustomStartChange={setFeedbackCustomStart}
-              onCustomEndChange={setFeedbackCustomEnd}
-              onCustomApply={() => { /* FeedbackAnalyticsPanel props drive the fetch */ }}
-            />
-            <FeedbackAnalyticsPanel datePreset={feedbackDatePreset} customStart={feedbackCustomStart} customEnd={feedbackCustomEnd} />
+            <FeedbackAnalyticsPanel />
           </div>
         )}
 

@@ -62,6 +62,45 @@ export function feedbackWindowCacheKey(window: FeedbackWindow): string {
   return `abs:${window.startYmd}:${window.endYmd}`;
 }
 
+export interface FeedbackFilters {
+  scores?: ReadonlySet<number>;
+  topics?: ReadonlySet<string>;
+  experiments?: ReadonlySet<string>;
+  categories?: ReadonlySet<string>;
+}
+
+export function parseFeedbackFilters(sp: URLSearchParams): FeedbackFilters {
+  const splitList = (raw: string | null): string[] =>
+    (raw ?? '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+
+  const scores = new Set<number>();
+  for (const raw of splitList(sp.get('scores'))) {
+    const n = Number.parseInt(raw, 10);
+    if (Number.isInteger(n) && n >= 1 && n <= 7) scores.add(n);
+  }
+  const topics = new Set(splitList(sp.get('topics')));
+  const experiments = new Set(splitList(sp.get('experiments')));
+  const categories = new Set(splitList(sp.get('categories')).map((s) => s.toLowerCase()));
+
+  return {
+    scores: scores.size > 0 ? scores : undefined,
+    topics: topics.size > 0 ? topics : undefined,
+    experiments: experiments.size > 0 ? experiments : undefined,
+    categories: categories.size > 0 ? categories : undefined,
+  };
+}
+
+export function feedbackFiltersCacheKey(filters: FeedbackFilters): string {
+  const numList = (s: ReadonlySet<number> | undefined): string =>
+    s ? Array.from(s).sort((a, b) => a - b).join(',') : '';
+  const strList = (s: ReadonlySet<string> | undefined): string =>
+    s ? Array.from(s).sort().join(',') : '';
+  return `s=${numList(filters.scores)}|t=${strList(filters.topics)}|e=${strList(filters.experiments)}|c=${strList(filters.categories)}`;
+}
+
 function inclusiveUtcDayCount(startYmd: string, endYmd: string): number {
   const startMs = new Date(`${startYmd}T00:00:00.000Z`).getTime();
   const endMs = new Date(`${endYmd}T00:00:00.000Z`).getTime();
@@ -560,7 +599,8 @@ function buildDaily(inWindow: FeedbackItem[], window: FeedbackWindow): FeedbackD
     const ymd = utcYmdFromDate(ts);
     const bucket = map.get(ymd);
     if (!bucket) continue;
-    const r = Number(item.rating) || 0;
+    const r = Number(item.rating);
+    if (!Number.isFinite(r) || r < 1) continue;
     const s = classifySentiment(r);
     bucket.total += 1;
     if (s === 'positive') bucket.positive += 1;
@@ -585,6 +625,7 @@ export function buildFeedbackSummary(
       neutral: 0,
       negative: 0,
       total: 0,
+      categoryCounts: {} as Record<string, number>,
       daily: [] as FeedbackDailyRow[],
       merged_truncated: mergedTruncated,
       rangeDays: window.kind === 'rolling' ? window.days : undefined,
@@ -595,22 +636,35 @@ export function buildFeedbackSummary(
 
   const inWindow = filterFeedbackItemsForWindow(items, window);
 
+  // Sentiment split is meaningful only on rows the user actually scored,
+  // and only on the "feedback" category — issues/bugs/support carry rating
+  // contracts that don't translate to positive/neutral/negative the same way.
+  const categoryCounts: Record<string, number> = {};
   let positive = 0;
   let neutral = 0;
   let negative = 0;
   for (const item of inWindow) {
-    const r = Number(item.rating) || 0;
+    // Items without an explicit `feedback_category` are presumed to be
+    // user-submitted feedback (the historical default before the field
+    // was added) — both for the type counts and the sentiment split.
+    const cat = strField(item, ['feedback_category'])?.toLowerCase() || 'feedback';
+    categoryCounts[cat] = (categoryCounts[cat] ?? 0) + 1;
+    if (cat !== 'feedback') continue;
+    const r = Number(item.rating);
+    if (!Number.isFinite(r) || r < 1) continue;
     const s = classifySentiment(r);
     if (s === 'positive') positive += 1;
     else if (s === 'neutral') neutral += 1;
     else negative += 1;
   }
+  const total = positive + neutral + negative;
 
   return {
     positive,
     neutral,
     negative,
-    total: inWindow.length,
+    total,
+    categoryCounts,
     daily: buildDaily(inWindow, window),
     merged_truncated: mergedTruncated,
     rangeDays: window.kind === 'rolling' ? window.days : undefined,
@@ -628,6 +682,12 @@ export interface FeedbackRecentRow {
   shortTime?: string;
   userKey?: string;
   appId?: string;
+  /** Stable feedback record id — used to deeplink each row to the per-app
+   * Dashboard Feedback tab via `?appId=…&tab=feedback&feedbackId=…`. */
+  feedbackId?: string;
+  /** `feedback_category` from the source row — typically "feedback",
+   * "issue", "bug", or "support". Surfaced as the Type column. */
+  category?: string;
   channel: string;
   sentiment: string;
   summary: string;
@@ -747,6 +807,8 @@ export function buildFeedbackRecent(
       shortTime,
       userKey: shortUser,
       appId: appId ?? undefined,
+      feedbackId: strField(item, ['feedback_id']),
+      category: strField(item, ['feedback_category']),
       channel: '#feedback',
       sentiment,
       summary: feedbackText,
@@ -824,6 +886,147 @@ function parseTopicsField(item: FeedbackItem): string[] {
     // Malformed topic JSON — drop, don't poison the UI.
   }
   return [];
+}
+
+interface ExperimentEntry {
+  name: string;
+  variant: string;
+}
+
+// Mirrors parseExperiments() in FeedbacksPanel.tsx so the filter facet on the
+// analytics page indexes by the same names the per-app drilldown displays.
+function extractExperimentEntries(raw: string | undefined): ExperimentEntry[] {
+  if (!raw) return [];
+  const re = /<[^|>]+\|([^>]+)>:\s*([^,\n<]+)/g;
+  const out: ExperimentEntry[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(raw)) !== null) {
+    out.push({ name: m[1].trim(), variant: m[2].trim() });
+  }
+  return out;
+}
+
+function extractExperimentNames(raw: string | undefined): string[] {
+  return extractExperimentEntries(raw).map((e) => e.name);
+}
+
+export function applyFeedbackFilters(items: FeedbackItem[], filters: FeedbackFilters): FeedbackItem[] {
+  if (!filters.scores && !filters.topics && !filters.experiments && !filters.categories) return items;
+  return items.filter((item) => {
+    if (filters.scores) {
+      const r = Number(item.rating);
+      if (!Number.isFinite(r) || !filters.scores.has(r)) return false;
+    }
+    if (filters.topics) {
+      const itemTopics = parseTopicsField(item);
+      if (!itemTopics.some((t) => filters.topics!.has(t))) return false;
+    }
+    if (filters.experiments) {
+      const expRaw = strField(item, ['experiments_line']);
+      const names = extractExperimentNames(expRaw);
+      if (!names.some((n) => filters.experiments!.has(n))) return false;
+    }
+    if (filters.categories) {
+      const cat = strField(item, ['feedback_category'])?.toLowerCase();
+      if (!cat || !filters.categories.has(cat)) return false;
+    }
+    return true;
+  });
+}
+
+export interface FeedbackFacets {
+  topics: string[];
+  experiments: string[];
+  categories: string[];
+}
+
+export interface ExperimentVariantStats {
+  variant: string;
+  total: number;
+  positive: number;
+  neutral: number;
+  negative: number;
+  avgRating: number | null;
+}
+
+export type ExperimentCohorts = Record<string, ExperimentVariantStats[]>;
+
+interface VariantAccumulator {
+  total: number;
+  positive: number;
+  neutral: number;
+  negative: number;
+  ratingSum: number;
+  ratingCount: number;
+}
+
+export function buildExperimentCohorts(
+  items: FeedbackItem[],
+  experimentNames: ReadonlySet<string>,
+): ExperimentCohorts {
+  if (experimentNames.size === 0) return {};
+  const map = new Map<string, Map<string, VariantAccumulator>>();
+  for (const name of experimentNames) {
+    map.set(name, new Map());
+  }
+  for (const item of items) {
+    const raw = strField(item, ['experiments_line']);
+    if (!raw) continue;
+    const r = Number(item.rating);
+    // rating<1 = no score (bug/issue raised) — exclude from cohort stats.
+    if (!Number.isFinite(r) || r < 1) continue;
+    const sentiment = classifySentiment(r);
+    for (const { name, variant } of extractExperimentEntries(raw)) {
+      const variantMap = map.get(name);
+      if (!variantMap) continue;
+      let bucket = variantMap.get(variant);
+      if (!bucket) {
+        bucket = { total: 0, positive: 0, neutral: 0, negative: 0, ratingSum: 0, ratingCount: 0 };
+        variantMap.set(variant, bucket);
+      }
+      bucket.total += 1;
+      if (sentiment === 'positive') bucket.positive += 1;
+      else if (sentiment === 'neutral') bucket.neutral += 1;
+      else if (sentiment === 'negative') bucket.negative += 1;
+      bucket.ratingSum += r;
+      bucket.ratingCount += 1;
+    }
+  }
+  const out: ExperimentCohorts = {};
+  for (const [name, variantMap] of map) {
+    const variants: ExperimentVariantStats[] = [];
+    for (const [variant, b] of variantMap) {
+      variants.push({
+        variant,
+        total: b.total,
+        positive: b.positive,
+        neutral: b.neutral,
+        negative: b.negative,
+        avgRating: b.ratingCount > 0 ? b.ratingSum / b.ratingCount : null,
+      });
+    }
+    variants.sort((a, b) => b.total - a.total);
+    out[name] = variants;
+  }
+  return out;
+}
+
+export function buildFeedbackFacets(items: FeedbackItem[]): FeedbackFacets {
+  const topics = new Set<string>();
+  const experiments = new Set<string>();
+  const categories = new Set<string>();
+  for (const item of items) {
+    for (const t of parseTopicsField(item)) topics.add(t);
+    const expRaw = strField(item, ['experiments_line']);
+    for (const n of extractExperimentNames(expRaw)) experiments.add(n);
+    const cat = strField(item, ['feedback_category']);
+    if (cat) categories.add(cat.toLowerCase());
+  }
+  return {
+    topics: Array.from(topics).sort((a, b) => a.localeCompare(b)),
+    experiments: Array.from(experiments).sort((a, b) => a.localeCompare(b)),
+    categories: Array.from(categories).sort((a, b) => a.localeCompare(b)),
+  };
 }
 
 export function buildFeedbackByApp(

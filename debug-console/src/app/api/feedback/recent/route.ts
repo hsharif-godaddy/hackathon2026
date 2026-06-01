@@ -2,11 +2,14 @@ import { NextResponse } from 'next/server';
 
 import { withAuth } from '@/lib/api-auth';
 import {
+  applyFeedbackFilters,
   buildFeedbackByApp,
   buildFeedbackRecent,
+  feedbackFiltersCacheKey,
   feedbackWindowCacheKey,
   getFeedbackItemsCached,
   getFeedbackS3Bucket,
+  parseFeedbackFilters,
   parseFeedbackRequest,
   type FeedbackWindow,
 } from '@/lib/feedback-s3';
@@ -38,11 +41,16 @@ export const GET = withAuth(async (request, _auth) => {
       window = parsed;
     }
 
+    // Score / topics / experiments only apply to the analytics caller (no
+    // appId). The per-app dashboard wants the full row set so it can drive
+    // its own client-side expansion + deeplink-target search.
+    const filters = appId ? { scores: undefined, topics: undefined, experiments: undefined } : parseFeedbackFilters(sp);
+
     const limitRaw = sp.get('limit');
     const parsedLimit = limitRaw ? Number.parseInt(limitRaw, 10) : NaN;
     const limit = Number.isInteger(parsedLimit) && parsedLimit > 0 ? Math.min(parsedLimit, 500) : undefined;
     const recentOpts = limit !== undefined ? { limit, summaryMaxLen: 0 } : undefined;
-    const cacheKey = `feedback_recent_${feedbackWindowCacheKey(window)}_app${appId ?? ''}_l${limit ?? 'def'}_fs2`;
+    const cacheKey = `feedback_recent_${feedbackWindowCacheKey(window)}_app${appId ?? ''}_l${limit ?? 'def'}_${feedbackFiltersCacheKey(filters)}_fs2`;
 
     // `?force=1` from the panel's Refresh button bypasses BOTH the
     // 180s route cache and the 120s in-process item cache. Without this,
@@ -59,8 +67,9 @@ export const GET = withAuth(async (request, _auth) => {
           partition_errors,
         };
       }
+      const filtered = applyFeedbackFilters(items, filters);
       return {
-        ...buildFeedbackRecent(items, window, merged_truncated, recentOpts),
+        ...buildFeedbackRecent(filtered, window, merged_truncated, recentOpts),
         partition_errors,
       };
     };
