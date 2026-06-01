@@ -196,14 +196,6 @@ vi.mock('@airo-ux/loader', () => ({
   Loader: () => <div data-testid="loader">Loading...</div>,
 }));
 
-const mockUseHivemind = vi.hoisted(() =>
-  vi.fn((_experimentId: string) => ({ cohort: undefined as string | undefined, data: undefined, experiment: undefined })),
-);
-
-vi.mock('@/hooks/useHivemind', () => ({
-  useHivemind: (experimentId: string) => mockUseHivemind(experimentId),
-}));
-
 const mockUseImpression = vi.hoisted(() => vi.fn());
 
 vi.mock('@/hooks/useImpression', () => ({
@@ -239,8 +231,6 @@ describe('PreviewPane', () => {
     for (const key of Object.keys(mockSwitchboardResults)) {
       delete mockSwitchboardResults[key];
     }
-    mockUseHivemind.mockReset();
-    mockUseHivemind.mockReturnValue({ cohort: undefined, data: undefined, experiment: undefined });
     mockUseImpression.mockReset();
     mockUseLatestNBAs.mockReset();
     mockUseLatestNBAs.mockReturnValue(null);
@@ -1419,16 +1409,12 @@ describe('PreviewPane — Ask Airo to fix button', () => {
     expect(secondary).toBeDisabled();
   });
 
-  describe('build overlay question experiment', () => {
-    const BUILD_OVERLAY_FLAG = 'appbuilder-build-overlay-question-message';
-
+  describe('build overlay askQuestion behavior', () => {
     beforeEach(() => {
       mockServerPollingStore.getServerState = vi.fn(() => ({ isReady: true, url: 'http://localhost:3000' }));
     });
 
-    it('shows question overlay when cohort is on, flag enabled, and askQuestion pending', () => {
-      mockSwitchboardResults[BUILD_OVERLAY_FLAG] = true;
-      mockUseHivemind.mockReturnValue({ cohort: 'on', data: undefined, experiment: undefined });
+    it('shows question overlay when askQuestion is pending during build', () => {
       mockUseLatestNBAs.mockReturnValue({ source: 'askQuestion', question: 'Pick a color', suggestions: [] });
 
       renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} showBuildingOverlay />);
@@ -1436,122 +1422,8 @@ describe('PreviewPane — Ask Airo to fix button', () => {
       expect(screen.getByText('Action needed to continue')).toBeInTheDocument();
     });
 
-    it('shows default overlay when cohort is off and flag enabled', () => {
-      mockSwitchboardResults[BUILD_OVERLAY_FLAG] = true;
-      mockUseHivemind.mockReturnValue({ cohort: 'off', data: undefined, experiment: undefined });
-      mockUseLatestNBAs.mockReturnValue({ source: 'askQuestion', question: 'Pick a color', suggestions: [] });
-      mockServerPollingStore.getServerState = vi.fn(() => ({ isReady: false, url: '' }));
-
-      renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} showBuildingOverlay />);
-
-      expect(screen.queryByText('Action needed to continue')).not.toBeInTheDocument();
-    });
-
-    it('shows default overlay when flag is disabled regardless of cohort', () => {
-      mockSwitchboardResults[BUILD_OVERLAY_FLAG] = false;
-      mockUseHivemind.mockReturnValue({ cohort: 'on', data: undefined, experiment: undefined });
-      mockUseLatestNBAs.mockReturnValue({ source: 'askQuestion', question: 'Pick a color', suggestions: [] });
-      mockServerPollingStore.getServerState = vi.fn(() => ({ isReady: false, url: '' }));
-
-      renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} showBuildingOverlay />);
-
-      expect(screen.queryByText('Action needed to continue')).not.toBeInTheDocument();
-    });
-
-    it('fires exposure for on cohort when askQuestion pending during initial build', () => {
-      mockSwitchboardResults[BUILD_OVERLAY_FLAG] = true;
-      mockUseHivemind.mockReturnValue({ cohort: 'on', data: undefined, experiment: undefined });
-      mockUseLatestNBAs.mockReturnValue({ source: 'askQuestion', question: 'Pick a color', suggestions: [] });
-      mockIsInitialBuildFunnelActive.mockReturnValue(true);
-      mockIsInitialBuildComplete.mockReturnValue(false);
-
-      renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} />);
-
-      expect(mockUseImpression).toHaveBeenCalledWith(
-        'develop.initialBuild.overlayQuestion',
-        expect.objectContaining({
-          enabled: true,
-          customProperties: { cohort: 'on' },
-        }),
-      );
-    });
-
-    it('fires exposure for off cohort when askQuestion pending during initial build', () => {
-      mockSwitchboardResults[BUILD_OVERLAY_FLAG] = true;
-      mockUseHivemind.mockReturnValue({ cohort: 'off', data: undefined, experiment: undefined });
-      mockUseLatestNBAs.mockReturnValue({ source: 'askQuestion', question: 'Pick a color', suggestions: [] });
-      mockIsInitialBuildFunnelActive.mockReturnValue(true);
-      mockIsInitialBuildComplete.mockReturnValue(false);
-
-      renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} />);
-
-      expect(mockUseImpression).toHaveBeenCalledWith(
-        'develop.initialBuild.overlayQuestion',
-        expect.objectContaining({
-          enabled: true,
-          customProperties: { cohort: 'off' },
-        }),
-      );
-    });
-
-    it('does not fire exposure when flag is disabled', () => {
-      mockSwitchboardResults[BUILD_OVERLAY_FLAG] = false;
-      mockUseHivemind.mockReturnValue({ cohort: 'on', data: undefined, experiment: undefined });
-      mockUseLatestNBAs.mockReturnValue({ source: 'askQuestion', question: 'Pick a color', suggestions: [] });
-
-      renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} />);
-
-      expect(mockUseImpression).toHaveBeenCalledWith(
-        'develop.initialBuild.overlayQuestion',
-        expect.objectContaining({ enabled: false }),
-      );
-    });
-
-    it('does not fire exposure when cohort is undefined (ineligible)', () => {
-      mockSwitchboardResults[BUILD_OVERLAY_FLAG] = true;
-      mockUseHivemind.mockReturnValue({ cohort: undefined, data: undefined, experiment: undefined });
-      mockUseLatestNBAs.mockReturnValue({ source: 'askQuestion', question: 'Pick a color', suggestions: [] });
-
-      renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} />);
-
-      expect(mockUseImpression).toHaveBeenCalledWith(
-        'develop.initialBuild.overlayQuestion',
-        expect.objectContaining({ enabled: false }),
-      );
-    });
-
-    it('does not fire exposure when initial build is already complete', () => {
-      mockSwitchboardResults[BUILD_OVERLAY_FLAG] = true;
-      mockUseHivemind.mockReturnValue({ cohort: 'on', data: undefined, experiment: undefined });
-      mockUseLatestNBAs.mockReturnValue({ source: 'askQuestion', question: 'Pick a color', suggestions: [] });
-      mockIsInitialBuildComplete.mockReturnValue(true);
-
-      renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} />);
-
-      expect(mockUseImpression).toHaveBeenCalledWith(
-        'develop.initialBuild.overlayQuestion',
-        expect.objectContaining({ enabled: false }),
-      );
-    });
-
-    it('does not fire exposure when initial build funnel is inactive', () => {
-      mockSwitchboardResults[BUILD_OVERLAY_FLAG] = true;
-      mockUseHivemind.mockReturnValue({ cohort: 'on', data: undefined, experiment: undefined });
-      mockUseLatestNBAs.mockReturnValue({ source: 'askQuestion', question: 'Pick a color', suggestions: [] });
-      mockIsInitialBuildFunnelActive.mockReturnValue(false);
-
-      renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} />);
-
-      expect(mockUseImpression).toHaveBeenCalledWith(
-        'develop.initialBuild.overlayQuestion',
-        expect.objectContaining({ enabled: false }),
-      );
-    });
-
-    it('shows default building overlay when cohort is off and askQuestion pending', () => {
-      mockSwitchboardResults[BUILD_OVERLAY_FLAG] = true;
-      mockUseHivemind.mockReturnValue({ cohort: 'off', data: undefined, experiment: undefined });
-      mockUseLatestNBAs.mockReturnValue({ source: 'askQuestion', question: 'Pick a color', suggestions: [] });
+    it('shows default building overlay when no askQuestion is pending', () => {
+      mockUseLatestNBAs.mockReturnValue(undefined);
       mockServerPollingStore.getServerState = vi.fn(() => ({ isReady: false, url: '' }));
       mockServerPollingStore.isPollingServer = vi.fn(() => true);
 

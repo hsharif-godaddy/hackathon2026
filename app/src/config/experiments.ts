@@ -11,8 +11,6 @@ export const EXPERIMENT_IDS = {
   ventureHomeLogo: 'vh_dashboard_logo_to_airo_builder_redirect',
   /** Initial agent selection: maps cohort → agent profile. Only one agent-config experiment should run at a time. */
   initialAgent: 'airo-build-initial-agent',
-  /** Build overlay question: show "Action needed" text when askQuestion is pending during initial build */
-  buildOverlayQuestion: 'aab_first_build_action_needed_copy',
   /** Budget service: allocates new users to BMS (treatment) or grants (control). Default is grants. */
   budgetService: 'airo-app-builder-budget-service-launch',
 } as const

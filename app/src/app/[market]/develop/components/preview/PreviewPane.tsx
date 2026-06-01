@@ -26,9 +26,7 @@ import { MobileMode, PreviewViewMode, ViewMode } from '@/app/[market]/develop/co
 import { useAppIdFromParams } from '@/app/[market]/develop/components/utils'
 import ErrorBoundary from '@/components/ErrorBoundary'
 import { buildDynamicApiUrl } from '@/config/dynamic-api'
-import { COHORT_OFF, COHORT_ON, EXPERIMENT_IDS, INELIGIBLE_COHORT } from '@/config/experiments'
 import { isInitialBuildComplete, isInitialBuildFunnelActive } from '@/hooks/shared/initialBuildFunnel'
-import { useHivemind } from '@/hooks/useHivemind'
 import { useImpression } from '@/hooks/useImpression'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
@@ -154,23 +152,12 @@ export default function PreviewPane({
   const isInboxEnabled = useSwitchboard('app-builder-inbox-button');
   /** Switchboard: translucent creation overlay + edit chip behavior. */
   const isPreviewEnhancedOverlaysEnabled = useSwitchboard('appbuilder-preview-enhanced-overlays') === true;
-  const isBuildOverlayQuestionMessageEnabled =
-    useSwitchboard('appbuilder-build-overlay-question-message') === true;
-  const { cohort: buildOverlayCohort } = useHivemind(EXPERIMENT_IDS.buildOverlayQuestion);
 
   const latestNBA = useLatestNBAs();
-  const isAwaitingAskQuestion =
-    isBuildOverlayQuestionMessageEnabled && buildOverlayCohort === COHORT_ON && latestNBA?.source === 'askQuestion';
+  const isAwaitingAskQuestion = latestNBA?.source === 'askQuestion';
 
-  const isExposureEligible =
-    isBuildOverlayQuestionMessageEnabled &&
-    (buildOverlayCohort === COHORT_ON || buildOverlayCohort === COHORT_OFF) &&
-    latestNBA?.source === 'askQuestion';
-
-  // Funnel state is non-reactive (module-level); latestNBA re-renders ensure freshness here.
   useImpression('develop.initialBuild.overlayQuestion', {
-    enabled: isExposureEligible && isInitialBuildFunnelActive() && !isInitialBuildComplete(),
-    customProperties: { cohort: buildOverlayCohort ?? INELIGIBLE_COHORT },
+    enabled: isAwaitingAskQuestion && isInitialBuildFunnelActive() && !isInitialBuildComplete(),
   });
 
   const getServerState = useServerPollingStore((state) => state.getServerState)
