@@ -94,6 +94,18 @@ describe('MentionChip', () => {
   });
 
   describe('label', () => {
+    it('renders an icon when icon prop is provided', () => {
+      render(<MentionChip icon="code" label="Code" />);
+      expect(screen.getByTestId('async-icon-code')).toBeInTheDocument();
+    });
+
+    it('does not render an icon slot when icon is omitted', () => {
+      const { container } = render(<MentionChip label="Button" />);
+      expect(
+        container.querySelector('.airo-primitives-mention-chip__icon'),
+      ).not.toBeInTheDocument();
+    });
+
     it('renders the label inside the BEM __label span', () => {
       render(<MentionChip label="Button" />);
       const label = screen.getByText('Button');

@@ -70,41 +70,10 @@ import {
   useState,
 } from 'react';
 
-import { MentionChip } from '../../primitives/mention-chip';
+import { MentionChip, getMentionTagLabel } from '../../primitives/mention-chip';
 import type { PromptBoxHandle, PromptSuggestion } from './PromptBox';
 
 const DEFAULT_MAX_INLINE_PASTE_LENGTH = 4_000;
-
-// HTML-tag → human-readable label for the element-mention badge body
-// (e.g. `h2` → `Heading`, `pre` → `Code`). The mention value stores the
-// raw tag (`<h2>`); this map renders the friendly label next to `#<n>`.
-const TAG_LABELS: Record<string, string> = {
-  h1: 'Title',
-  h2: 'Heading',
-  h3: 'Heading',
-  h4: 'Heading',
-  h5: 'Heading',
-  h6: 'Heading',
-  p: 'Text',
-  span: 'Text',
-  blockquote: 'Quote',
-  figcaption: 'Caption',
-  img: 'Image',
-  picture: 'Image',
-  video: 'Video',
-  svg: 'Icon',
-  a: 'Link',
-  button: 'Button',
-  ul: 'List',
-  ol: 'List',
-  li: 'List item',
-  code: 'Code',
-  pre: 'Code',
-  section: 'Section',
-  nav: 'Nav',
-  header: 'Header',
-  footer: 'Footer',
-};
 
 interface ElementMentionProps {
   trigger: string;
@@ -143,7 +112,7 @@ function ElementMentionComponent({
   const match = value.match(/^(\d+)\s*<([^>]+)>/);
   const num = match?.[1] ?? value;
   const tag = match?.[2] ?? '';
-  const label = TAG_LABELS[tag] ?? tag;
+  const label = getMentionTagLabel(tag);
 
   return (
     <MentionChip

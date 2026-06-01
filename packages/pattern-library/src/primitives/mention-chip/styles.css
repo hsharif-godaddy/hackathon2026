@@ -32,6 +32,7 @@
 .airo-primitives-mention-chip {
   display: inline-flex;
   align-items: center;
+  gap: calc(intent('ux.box.density') * 0.375);
 
   padding-block: calc(intent('ux.box.density') * 0.25);
   /* Inline padding is symmetric (¾ density on each side) for read-only
@@ -48,6 +49,7 @@
   color: intent('ux.actionControl.foregroundColor');
 
   font-size: 0.875em;
+  line-height: 1;
   /* Cursor is only "pointer" when the chip body is interactive — i.e. the
      consumer supplied `onActivate`, in which case the JS layer attaches
      `role="button"`. A read-only chip (no `onActivate`) inherits the
@@ -94,26 +96,36 @@
 @supports selector(:has(*)) {
   .airo-primitives-mention-chip:has(.airo-primitives-mention-chip__remove) {
     padding-inline-end: 0;
+    padding-block: calc(intent('ux.box.density') * 0.375);
   }
 }
 
 .airo-primitives-mention-chip__prefix {
-  /* Replaces flex `gap` so the prefix→label spacing stays intact while the
-     label→remove pair sits flush (the icon supplies its own breathing). */
-  margin-inline-end: calc(intent('ux.box.density') * 0.5);
   font-weight: 700;
+  white-space: nowrap;
+}
+
+.airo-primitives-mention-chip__icon {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  font-size: 0.875em;
+  line-height: 1;
 }
 
 .airo-primitives-mention-chip__label {
   /* Wrap a pathologically long label rather than blowing the layout
      out — chips are inline and can sit inside a soft-wrapping paragraph. */
   word-break: break-word;
+  white-space: nowrap;
 }
 
 .airo-primitives-mention-chip__remove {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
+  align-self: center;
 
   appearance: none;
   border: none;
@@ -121,12 +133,22 @@
   color: inherit;
   cursor: pointer;
   font: inherit;
-  font-size: 0.75em;
   line-height: 1;
+
+  min-width: max(14px, calc(intent('ux.box.density') * 1.75));
+  min-height: max(14px, calc(intent('ux.box.density') * 1.75));
+  margin-inline: calc(intent('ux.box.density') * 0.125) calc(intent('ux.box.density') * 0.25);
 
   /* Circular hover surface — matches `@ux/chip`'s remove button. */
   border-radius: 50%;
   transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.airo-primitives-mention-chip__remove svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  pointer-events: none;
 }
 
 .airo-primitives-mention-chip__remove:hover {

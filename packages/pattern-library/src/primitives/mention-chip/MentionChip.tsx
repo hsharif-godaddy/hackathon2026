@@ -20,6 +20,10 @@ import {
 export interface MentionChipProps
   extends Omit<HTMLAttributes<HTMLSpanElement>, 'onSelect' | 'prefix'> {
   /**
+   * Optional `@ux/icon/async-icon` glyph rendered before the prefix/label.
+   */
+  icon?: string;
+  /**
    * Optional bold prefix rendered before the label. Typically a small
    * integer like `"1"` (rendered as the visible string `#1`); pass any
    * `ReactNode` if you need a different prefix shape (icon, abbreviation).
@@ -100,6 +104,7 @@ export interface MentionChipProps
  */
 export const MentionChip = forwardRef<HTMLSpanElement, MentionChipProps>(function MentionChip(
   {
+    icon,
     prefix,
     label,
     onActivate,
@@ -166,6 +171,11 @@ export const MentionChip = forwardRef<HTMLSpanElement, MentionChipProps>(functio
       onMouseDown={handleMouseDown}
       {...rest}
     >
+      {icon && (
+        <span className="airo-primitives-mention-chip__icon" aria-hidden="true">
+          <AsyncIcon icon={icon} />
+        </span>
+      )}
       {prefix !== undefined && prefix !== null && prefix !== '' && (
         <span className="airo-primitives-mention-chip__prefix">#{prefix}</span>
       )}
@@ -194,7 +204,7 @@ export const MentionChip = forwardRef<HTMLSpanElement, MentionChipProps>(functio
             onRemove();
           }}
         >
-          <AsyncIcon icon="x-thick" aria-hidden="true" />
+          <AsyncIcon icon="x" aria-hidden="true" width={14} height={14} />
         </button>
       )}
     </span>

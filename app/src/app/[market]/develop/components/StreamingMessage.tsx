@@ -3,13 +3,15 @@
 import clsx from 'clsx'
 import { Check, ClipboardCopy, Expand, Headset, Paperclip } from 'lucide-react'
 import type { ComponentType } from 'react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { isRestoreMetadata } from '@airo/shared/websocket'
 import Button from '@ux/button'
 import Modal from '@ux/modal'
 
 import { AttachmentList } from '@/app/[market]/develop/components/chat/AttachmentBadge'
+import ElementMentionChipList from '@/app/[market]/develop/components/chat/ElementMentionChipList'
 import { FileReferenceList } from '@/app/[market]/develop/components/chat/FileReferenceBadge'
+import { parseElementMentions } from '@/app/[market]/develop/components/chat/parseElementMentions'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
 import { logger } from '@/lib/request-context'
@@ -167,23 +169,25 @@ function UserMessage({ content, selectedAssets, referencedFiles, uploadedFileNam
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [isTruncated, setIsTruncated] = useState(false)
   const contentRef = useRef<HTMLDivElement>(null)
+  const { mentions, text } = useMemo(() => parseElementMentions(content), [content])
 
   useEffect(() => {
     if (contentRef.current) {
       setIsTruncated(contentRef.current.scrollHeight > MAX_MESSAGE_HEIGHT)
     }
-  }, [content])
+  }, [text])
 
   return (
     <>
       <div className="flex flex-col">
+        {mentions.length > 0 && <ElementMentionChipList mentions={mentions} />}
         <div className="relative group max-w-full">
           <div
             ref={contentRef}
-            className="relative text-sm leading-relaxed wrap-anywhere whitespace-pre-wrap font-sans overflow-hidden"
+            className="relative text-sm leading-relaxed wrap-anywhere font-sans overflow-hidden"
             style={{ maxHeight: isTruncated ? `${MAX_MESSAGE_HEIGHT}px` : undefined }}
           >
-            {content}
+            <span className="whitespace-pre-wrap">{text}</span>
             {isTruncated && (
               <div
                 className="absolute bottom-0 left-0 right-0 h-6 pointer-events-none"
