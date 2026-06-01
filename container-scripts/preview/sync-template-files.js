@@ -208,7 +208,8 @@ const SYNC_MANIFEST = [
       '0b3e1d30a5b646e0fabfa7e657a582c9', // before <!--app-head--> / <!--app-html--> SSR markers
       'f2faa351e9111fb14ed707d0d55e7ce7', // before static main entry restored for CSS hoisting
       '9170b78302b5d16948b51b7acdae6d72', // before airoShareToken-strip script + same-origin referrer-policy
-      '17827fb25e25787b2f7bd0fd7d5e0e37'  // before airo-video-slots.js script tag + share-token rationale comments removed
+      '17827fb25e25787b2f7bd0fd7d5e0e37', // before airo-video-slots.js script tag + share-token rationale comments removed
+      'ba06ea07c92a093f90d70b2b52199652'  // before airo-video-slots.js script tag (corrects mis-hashed entry above)
     ],
     force: false
   },

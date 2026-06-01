@@ -219,4 +219,28 @@ describe('htmlToJsxStructured', () => {
     expect(result.rootTag).toBeNull();
     expect(result.rootAttributes).toBeNull();
   });
+
+  it('strips cursor from style attribute (Hover Bar pointer leak)', () => {
+    const result = htmlToJsxStructured('<p style="cursor: pointer">text</p>');
+    expect(result.rootTag).toBeNull();
+    expect(result.rootAttributes).toBeNull();
+  });
+
+  it('strips cursor but preserves other inline styles', () => {
+    const result = htmlToJsxStructured('<p style="color: red; cursor: pointer; font-weight: 700">text</p>');
+    expect(result.rootTag).toBeNull();
+    expect(result.rootAttributes).toBe("style={{color: 'red', fontWeight: '700'}}");
+  });
+
+  it('strips all data-dev-* markers injected by source-mapper', () => {
+    expect(
+      htmlToJsx('<p><em data-dev-id="a" data-dev-file="/x.tsx" data-dev-line="10" data-dev-content-key="k" data-dev-dynamic="">italic</em></p>'),
+    ).toBe('<em>italic</em>');
+  });
+
+  it('collapses span chains whose only attributes are source-mapper markers', () => {
+    expect(
+      htmlToJsx('<p><span data-dev-id="a"><span data-dev-id="b"><span data-dev-id="c">text</span></span></span></p>'),
+    ).toBe('text');
+  });
 });

@@ -5,6 +5,11 @@ import { Logger } from '../logging/index.js';
 
 const logger = Logger.create({ component: 'ast-text-editor' });
 
+const TEXT_CONTAINER_TAGS = new Set([
+  'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+  'li', 'blockquote', 'figcaption', 'pre', 'label',
+]);
+
 export type TextEditContext = BaseEditContext;
 
 export interface TextEditRequest {
@@ -397,21 +402,31 @@ export class ASTTextEditor extends ASTEditorBase {
 
     let elementFound = false;
     let actualOldText = '';
-    const candidates: Array<{ element: t.JSXElement; line: number; text: string }> = [];
+    const candidates: Array<{ element: t.JSXElement; line: number; text: string; isWrapper: boolean; isTextContainer: boolean }> = [];
 
-    // First pass: collect all JSX elements near the target line
     this.traverse(ast, {
       JSXElement: (path: any): void => {
         const element = path.node as t.JSXElement;
         const elementLine = element.loc?.start.line;
 
         if (elementLine) {
-          const text = this.extractTextContent(element);
-          candidates.push({ element, line: elementLine, text });
+          const shallowText = this.extractTextContent(element);
+          const elementChildCount = element.children.filter(c => this.t.isJSXElement(c)).length;
+          const baseTag = this.getFullTagName(element).split('.').pop()!.toLowerCase();
+          const isTextContainer = TEXT_CONTAINER_TAGS.has(baseTag);
+          const isWrapper = shallowText.length === 0 && (
+            elementChildCount >= 2 || (elementChildCount === 1 && isTextContainer)
+          );
+          const text = isWrapper
+            ? this.extractFullTextContent(element).replace(/\s+/g, ' ').trim()
+            : shallowText;
+          candidates.push({ element, line: elementLine, text, isWrapper, isTextContainer });
 
           logger.debug('ast.text-editor.candidate', {
             line: elementLine,
-            text: text.slice(0, 50)
+            text: text.slice(0, 50),
+            isWrapper,
+            isTextContainer,
           });
         }
       }
@@ -460,18 +475,20 @@ export class ASTTextEditor extends ASTEditorBase {
         matchType = 'dev-id';
       }
 
-      // Text matching (highest priority after dev-id)
       if (normalizedCandidateText === normalizedOldText) {
-        score += 10000; // Exact text match dominates
-        matchType = 'exact-text';
-
-        // Track exact matches for occurrence-based selection
-        exactMatches.push({ element: candidate.element, line: candidate.line, score });
+        if (candidate.isWrapper) {
+          score += candidate.isTextContainer ? 11000 : 8000;
+          matchType = candidate.isTextContainer ? 'text-container-wrapper-exact' : 'wrapper-exact';
+        } else {
+          score += 10000;
+          matchType = 'exact-text';
+          exactMatches.push({ element: candidate.element, line: candidate.line, score });
+        }
       } else if (normalizedCandidateText.includes(normalizedOldText)) {
-        score += 5000; // Contains target text
-        matchType = 'contains-text';
+        score += candidate.isWrapper ? 1500 : 5000;
+        matchType = candidate.isWrapper ? 'wrapper-contains' : 'contains-text';
       } else if (normalizedOldText.includes(normalizedCandidateText) && normalizedCandidateText.length > 0) {
-        score += 2500; // Target contains element text (partial)
+        score += 2500;
         matchType = 'partial-text';
       }
 

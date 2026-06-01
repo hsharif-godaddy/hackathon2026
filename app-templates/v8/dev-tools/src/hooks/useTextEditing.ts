@@ -368,6 +368,8 @@ export function useTextEditing(isEditModeActive: boolean) {
       }
 
       const originalText = element.textContent?.trim() || "";
+      const originalInnerHtml = element.innerHTML;
+      const originalHasStructure = element.querySelector("a, span, em, strong, b, i, code, br") !== null;
       const parentOriginalText = brParent?.textContent?.trim() || "";
       element.contentEditable = "true";
       element.style.outline = "none";
@@ -383,14 +385,19 @@ export function useTextEditing(isEditModeActive: boolean) {
       }
 
       const onBlur = () => {
-        element.contentEditable = "false";
+        // removeAttribute (not = "false") so outerHTML below doesn't carry contenteditable="false".
+        element.removeAttribute("contenteditable");
+        element.style.outline = "";
         element.removeEventListener("blur", onBlur);
         blurHandlerRef.current = null;
         const newText = element.textContent?.trim() || "";
+        const hasStructureNow = element.querySelector("a, span, em, strong, b, i, code, br") !== null;
+        const htmlChanged = element.innerHTML !== originalInnerHtml;
+        const newHtml = (originalHasStructure || hasStructureNow) && htmlChanged ? element.outerHTML : null;
         if (brParent) {
-          handleSegmentCommit(element, brParent, parentOriginalText, newText, null);
+          handleSegmentCommit(element, brParent, parentOriginalText, newText, newHtml);
         } else {
-          handleCommit(element, originalText, newText, null);
+          handleCommit(element, originalText, newText, newHtml);
         }
       };
       blurHandlerRef.current = onBlur;
@@ -474,7 +481,7 @@ export function useTextEditing(isEditModeActive: boolean) {
     if (!isEditModeActive) return;
 
     const handleClick = (e: MouseEvent) => {
-      if (!e.isTrusted) return; // Let synthetic events (e.g. Follow button) through
+      if (!e.isTrusted) return;
       const rawTarget = e.target as HTMLElement;
       if (!rawTarget || isDevToolsElement(rawTarget)) return;
 
@@ -503,9 +510,7 @@ export function useTextEditing(isEditModeActive: boolean) {
       } else {
         target = findEditableContainer(rawTarget);
       }
-      if (!target) {
-        return;
-      }
+      if (!target) return;
 
       e.preventDefault();
       e.stopPropagation();

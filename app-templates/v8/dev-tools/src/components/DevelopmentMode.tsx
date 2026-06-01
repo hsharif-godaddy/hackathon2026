@@ -11,7 +11,7 @@ export default function DevelopmentMode() {
   const [isMultiSelectActive, setIsMultiSelectActive] = useState(false); // off by default, parent enables via MULTI_SELECT_ENABLED message
   const [, setTranslationsLoaded] = useState(0); // counter that always changes to force re-render
 
-  const { hoveredElement, handleBarMouseEnter, handleBarMouseLeave } = useEditMode(isEditModeActive, isMultiSelectActive)
+  const { hoveredElement, toolbarMode, setToolbarMode, handleBarMouseEnter, handleBarMouseLeave } = useEditMode(isEditModeActive, isMultiSelectActive)
   const [quickEditActive, setQuickEditActive] = useState(false)
   const frozenElementRef = useRef(hoveredElement)
 
@@ -1117,6 +1117,8 @@ export default function DevelopmentMode() {
         <ElementHoverBar
           hoveredElement={effectiveElement}
           isMultiSelectActive={isMultiSelectActive}
+          toolbarMode={toolbarMode}
+          setToolbarMode={setToolbarMode}
           onMouseEnter={handleBarMouseEnter}
           onMouseLeave={handleBarMouseLeave}
           onQuickEditModeChange={setQuickEditActive}

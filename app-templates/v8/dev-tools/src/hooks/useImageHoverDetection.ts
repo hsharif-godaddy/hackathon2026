@@ -15,16 +15,81 @@ export type HoveredElement =
   | { type: "image"; element: HTMLElement; imageUrl: string; isMediaSlot: boolean; slotPath: string | null; isVideo: boolean }
   | { type: "content"; element: HTMLElement };
 
+const INLINE_DEFER_TAGS = ["span", "em", "strong", "b", "i", "code"];
+const ABSORBER_SELECTOR = "p, h1, h2, h3, h4, h5, h6, li, blockquote, figcaption, label, a, button, pre";
+const DIRECT_CONTENT_TAGS = [
+  "p", "h1", "h2", "h3", "h4", "h5", "h6",
+  "span", "a", "button", "label", "li", "blockquote", "code", "pre", "figcaption",
+  "ul", "ol",
+];
+const DIRECT_IMAGE_TAGS = ["img", "video", "picture", "canvas", "svg"];
+
+function deferToAbsorber(el: HTMLElement): HTMLElement {
+  const tag = el.tagName.toLowerCase();
+  if (!INLINE_DEFER_TAGS.includes(tag)) return el;
+  const absorber = el.closest(ABSORBER_SELECTOR);
+  if (!absorber || absorber === el) return el;
+  return absorber as HTMLElement;
+}
+
+function resolveHoverableAnchor(target: HTMLElement): HoveredElement | null {
+  if (isDevToolsElement(target)) return null;
+
+  const tag = target.tagName.toLowerCase();
+  const isDirectContentTag = DIRECT_CONTENT_TAGS.includes(tag);
+  const isDirectImageTag = DIRECT_IMAGE_TAGS.includes(tag);
+
+  // Anchor content before image detection so headings on top of hero images aren't claimed as the image.
+  if (isDirectContentTag && !isDirectImageTag && isContentElement(target)) {
+    return { type: "content", element: deferToAbsorber(target) };
+  }
+
+  let imageInfo = detectImage(target);
+  if (!imageInfo.isImage) {
+    let ancestor = target.parentElement;
+    while (ancestor && ancestor !== document.body) {
+      const ancestorInfo = detectImage(ancestor);
+      if (ancestorInfo.isImage && ancestorInfo.type === "background") {
+        imageInfo = ancestorInfo;
+        break;
+      }
+      ancestor = ancestor.parentElement;
+    }
+  }
+
+  if (imageInfo.isImage && imageInfo.imageUrl && imageInfo.imageElement) {
+    const slotPath = getMediaSlotPath(imageInfo.imageUrl);
+    return {
+      type: "image",
+      element: imageInfo.imageElement,
+      imageUrl: imageInfo.imageUrl,
+      isMediaSlot: slotPath !== null,
+      slotPath,
+      isVideo: imageInfo.isVideo,
+    };
+  }
+
+  if (tag !== "body" && tag !== "html" && isContentElement(target)) {
+    return { type: "content", element: deferToAbsorber(target) };
+  }
+
+  return null;
+}
+
 /**
  * Hook for detecting when the user hovers over an image element.
  * Provides the hovered image state and mouse handlers for the ImageHoverBar.
  */
 export function useImageHoverDetection(
   isEditModeActive: boolean,
-  editingStateRef: React.RefObject<{ editingElement: HTMLElement | null }>,
+  editingStateRef: React.RefObject<{ editingElement: HTMLElement | null; saveStatus?: string }>,
 ) {
   const [hoveredImage, setHoveredImage] = useState<HoveredImage | null>(null);
   const [hoveredElement, setHoveredElement] = useState<HoveredElement | null>(null);
+  // toolbarMode lives here (not in ElementHoverBar) so that a click can update
+  // hoveredElement and toolbarMode atomically inside one flushSync — making
+  // first-click bar appearance deterministic regardless of hover-timer races.
+  const [toolbarMode, setToolbarMode] = useState(false);
   const hoveredImageRef = useRef<HoveredImage | null>(null);
   const hoveredElementRef = useRef<HoveredElement | null>(null);
   const showBarTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -55,7 +120,14 @@ export function useImageHoverDetection(
 
     const handleMouseOver = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
-      if (!target || isDevToolsElement(target)) return;
+      if (!target || isDevToolsElement(target)) {
+        // Cancel any pending hover commit so it doesn't fire while the user is on the bar.
+        if (showBarTimerRef.current) {
+          clearTimeout(showBarTimerRef.current);
+          showBarTimerRef.current = null;
+        }
+        return;
+      }
       if (isInsideNavSurface(target)) {
         // Nav links navigate; never show hover bar for them
         if (showBarTimerRef.current) {
@@ -83,55 +155,11 @@ export function useImageHoverDetection(
         }
       }
 
-      // Check if the target is a direct content element (heading, paragraph, etc.)
-      // BEFORE image detection, since image detection walks siblings/children
-      // and might incorrectly claim a heading inside an image card.
-      const tag = target.tagName.toLowerCase();
-      const isDirectContentTag = ["p", "h1", "h2", "h3", "h4", "h5", "h6",
-        "span", "a", "button", "label", "li", "blockquote", "code", "pre", "figcaption",
-        "ul", "ol"].includes(tag);
-      const directImageTag = tag === "img" || tag === "video" || tag === "picture" || tag === "canvas" || tag === "svg";
+      const anchor = resolveHoverableAnchor(target);
 
-      // For direct content tags (not images), skip image detection and go straight to content path.
-      // Content elements take priority over images they overlap (e.g. heading on top of hero image).
-      if (isDirectContentTag && !directImageTag && isContentElement(target)) {
-        if (hideBarTimerRef.current) { clearTimeout(hideBarTimerRef.current); hideBarTimerRef.current = null; }
-        if (hoveredElementRef.current?.element === target) return;
-        if (showBarTimerRef.current) clearTimeout(showBarTimerRef.current);
-        // Update ref immediately so mouseout bounds check uses this element
-        hoveredElementRef.current = { type: "content", element: target };
-        hoveredImageRef.current = null;
-        // On mobile, show immediately on tap (no delay); on desktop use delay for hover
-        const delay = isMobile ? 0 : 150;
-        showBarTimerRef.current = setTimeout(() => {
-          showBarTimerRef.current = null;
-          updateHoveredImage(null);
-          updateHoveredElement({ type: "content", element: target });
-        }, delay);
-        return;
-      }
-
-      let imageInfo = detectImage(target);
-
-      // If the direct target isn't an image, walk up ancestors to find a
-      // parent with a background image. This handles overlaying elements
-      // (SVGs, decorative divs with pointer-events) that sit on top of a
-      // background-image container and intercept mouse events.
-      if (!imageInfo.isImage) {
-        let ancestor = target.parentElement;
-        while (ancestor && ancestor !== document.body) {
-          const ancestorInfo = detectImage(ancestor);
-          if (ancestorInfo.isImage && ancestorInfo.type === "background") {
-            imageInfo = ancestorInfo;
-            break;
-          }
-          ancestor = ancestor.parentElement;
-        }
-      }
-
-      if (!imageInfo.isImage || !imageInfo.imageUrl) {
+      if (!anchor) {
         // If the bar is already showing and the mouse is still within the
-        // hovered element's bounding rect, keep the bar visible.
+        // hovered element's bounding rect, keep it visible.
         if (hoveredElementRef.current) {
           const rect = hoveredElementRef.current.element.getBoundingClientRect();
           if (
@@ -146,27 +174,11 @@ export function useImageHoverDetection(
           }
         }
 
-        // Not an image — check if it's a content element (text, heading, link, etc.)
-        const tag = target.tagName.toLowerCase();
-        if (tag !== "body" && tag !== "html" && isContentElement(target)) {
-          if (hideBarTimerRef.current) { clearTimeout(hideBarTimerRef.current); hideBarTimerRef.current = null; }
-          if (hoveredElementRef.current?.element === target) return;
-          if (showBarTimerRef.current) clearTimeout(showBarTimerRef.current);
-          // On mobile, show immediately on tap (no delay); on desktop use delay for hover
-          const delay = isMobile ? 0 : 150;
-          showBarTimerRef.current = setTimeout(() => {
-            showBarTimerRef.current = null;
-            updateHoveredImage(null); // Clear image state
-            updateHoveredElement({ type: "content", element: target });
-          }, delay);
-          return;
-        }
-
         if (showBarTimerRef.current) {
           clearTimeout(showBarTimerRef.current);
           showBarTimerRef.current = null;
         }
-        // Delay the null to prevent flicker when mouse briefly crosses
+        // Debounce the null to prevent flicker when the mouse briefly crosses
         // non-content wrapper elements between content elements.
         if (!hideBarTimerRef.current) {
           hideBarTimerRef.current = setTimeout(() => {
@@ -177,34 +189,38 @@ export function useImageHoverDetection(
         return;
       }
 
-      if (hideBarTimerRef.current) {
-        clearTimeout(hideBarTimerRef.current);
-        hideBarTimerRef.current = null;
-      }
-
-      // If we're already showing the bar for this exact image element
-      // (e.g., mouse moved between overlay siblings), skip the delay.
-      const imgElement = imageInfo.imageElement!;
-      if (hoveredImageRef.current?.element === imgElement) {
+      if (anchor.type === "content") {
+        if (hideBarTimerRef.current) { clearTimeout(hideBarTimerRef.current); hideBarTimerRef.current = null; }
+        if (hoveredElementRef.current?.element === anchor.element) return;
+        if (showBarTimerRef.current) clearTimeout(showBarTimerRef.current);
+        // Update ref immediately so mouseout bounds check uses this element
+        hoveredElementRef.current = anchor;
+        hoveredImageRef.current = null;
+        const delay = isMobile ? 0 : 150;
+        showBarTimerRef.current = setTimeout(() => {
+          showBarTimerRef.current = null;
+          updateHoveredImage(null);
+          updateHoveredElement(anchor);
+          // Hover-driven element change: bar must wait for an explicit click.
+          setToolbarMode(false);
+        }, delay);
         return;
       }
 
-      if (showBarTimerRef.current) {
-        clearTimeout(showBarTimerRef.current);
-      }
-
-      const slotPath = getMediaSlotPath(imageInfo.imageUrl);
-      // On mobile, show immediately on tap (no delay); on desktop use delay for hover
+      if (hideBarTimerRef.current) { clearTimeout(hideBarTimerRef.current); hideBarTimerRef.current = null; }
+      if (hoveredImageRef.current?.element === anchor.element) return;
+      if (showBarTimerRef.current) clearTimeout(showBarTimerRef.current);
       const delay = isMobile ? 0 : SHOW_DELAY_MS;
       showBarTimerRef.current = setTimeout(() => {
         showBarTimerRef.current = null;
         updateHoveredImage({
-          element: imgElement,
-          imageUrl: imageInfo.imageUrl!,
-          isMediaSlot: slotPath !== null,
-          slotPath,
-          isVideo: imageInfo.isVideo ?? false,
+          element: anchor.element,
+          imageUrl: anchor.imageUrl,
+          isMediaSlot: anchor.isMediaSlot,
+          slotPath: anchor.slotPath,
+          isVideo: anchor.isVideo,
         });
+        setToolbarMode(false);
       }, delay);
     };
 
@@ -239,21 +255,9 @@ export function useImageHoverDetection(
       }, 300);
     };
 
-    // The mouseover handler refs (`hoveredElementRef` / `hoveredImageRef`) are
-    // updated synchronously, but the corresponding React state lags by a
-    // SHOW_DELAY_MS / 150ms timer to avoid bar flicker on accidental hovers.
-    // If the user clicks fast enough that mousedown fires before the timer,
-    // ElementHoverBar's click handler — whose closure reads `element` from
-    // props — sees a stale value and bails. Flush pending hover state
-    // synchronously here so the click that follows lands on a re-rendered
-    // ElementHoverBar with a fresh closure.
-    //
-    // Capture phase + flushSync (not the batched setState path): React's
-    // automatic batching would defer the commit until after `click` had
-    // already dispatched, which defeats the purpose. flushSync forces commit
-    // + useLayoutEffect synchronously, so ElementHoverBar's click listener
-    // (also useLayoutEffect) re-registers with the correct `element` before
-    // the click event reaches it.
+    // Hover state lags refs by a 150ms flicker-guard timer. flushSync in
+    // capture phase commits the pending state before the click reaches
+    // ElementHoverBar's closure, which would otherwise see stale props.
     const handleMouseDown = (e: MouseEvent) => {
       if (!showBarTimerRef.current) return;
       const target = e.target as HTMLElement | null;
@@ -275,13 +279,72 @@ export function useImageHoverDetection(
       });
     };
 
+    // Click is the source of truth for opening the bar. Registered after
+    // useTextEditing's capture handler so text edit claims the event first;
+    // bail during in-flight save to preserve the optimistic overlay.
+    const handleClick = (e: MouseEvent) => {
+      const rawTarget = e.target as HTMLElement | null;
+      if (!rawTarget) return;
+      if (isDevToolsElement(rawTarget)) return;
+      if (editingStateRef.current?.saveStatus === "saving") return;
+      // Nav links pass through to native navigation — mirror the hover and
+      // useTextEditing-click bails so a click on a nav link doesn't open the
+      // bar over the link before (or instead of) the route change.
+      if (isInsideNavSurface(rawTarget)) return;
+
+      let anchor = resolveHoverableAnchor(rawTarget);
+      if (!anchor) {
+        // Click-only fallback: wrappers don't get continuous pointer events to land on a content child.
+        let current: HTMLElement | null = rawTarget.parentElement;
+        while (current && current !== document.body) {
+          const t = current.tagName.toLowerCase();
+          if (t !== "body" && t !== "html" && isContentElement(current)) {
+            anchor = { type: "content", element: current };
+            break;
+          }
+          current = current.parentElement;
+        }
+      }
+      if (!anchor) return;
+
+      if (showBarTimerRef.current) {
+        clearTimeout(showBarTimerRef.current);
+        showBarTimerRef.current = null;
+      }
+      if (hideBarTimerRef.current) {
+        clearTimeout(hideBarTimerRef.current);
+        hideBarTimerRef.current = null;
+      }
+
+      // flushSync so React commits hoveredElement + toolbarMode together
+      // before any subsequent events fire — ElementHoverBar mounts with the
+      // correct element prop and toolbarMode=true in a single layout pass.
+      flushSync(() => {
+        if (anchor.type === "image") {
+          updateHoveredImage({
+            element: anchor.element,
+            imageUrl: anchor.imageUrl,
+            isMediaSlot: anchor.isMediaSlot,
+            slotPath: anchor.slotPath,
+            isVideo: anchor.isVideo,
+          });
+        } else {
+          updateHoveredImage(null);
+          updateHoveredElement(anchor);
+        }
+        setToolbarMode(true);
+      });
+    };
+
     document.addEventListener("mouseover", handleMouseOver);
     document.addEventListener("mouseout", handleMouseOut);
     document.addEventListener("mousedown", handleMouseDown, true);
+    document.addEventListener("click", handleClick, true);
     return () => {
       document.removeEventListener("mouseover", handleMouseOver);
       document.removeEventListener("mouseout", handleMouseOut);
       document.removeEventListener("mousedown", handleMouseDown, true);
+      document.removeEventListener("click", handleClick, true);
       if (showBarTimerRef.current) clearTimeout(showBarTimerRef.current);
       if (hideBarTimerRef.current) clearTimeout(hideBarTimerRef.current);
     };
@@ -298,12 +361,15 @@ export function useImageHoverDetection(
     hideBarTimerRef.current = setTimeout(() => {
       updateHoveredImage(null);
       updateHoveredElement(null);
+      setToolbarMode(false);
     }, 300);
   }, [updateHoveredImage, updateHoveredElement]);
 
   return {
     hoveredImage,
     hoveredElement,
+    toolbarMode,
+    setToolbarMode,
     handleBarMouseEnter,
     handleBarMouseLeave,
   };

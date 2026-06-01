@@ -53,11 +53,9 @@ export function useSpeechBridge(): UseSpeechBridgeReturn {
     };
 
     window.addEventListener("message", handleMessage);
-    // The IFRAME_READY -> SPEECH_SUPPORT broadcast races with this hook's
-    // mount: the bridge only exists while ElementHoverBar is rendered
-    // (user is hovering an element), which is typically *after* IFRAME_READY
-    // already fired. Ask the parent to re-broadcast so we get the support
-    // flag on the first hover.
+    // IFRAME_READY's SPEECH_SUPPORT broadcast races this hook's mount (it
+    // mounts on hover, after IFRAME_READY usually fires). Ask the parent to
+    // re-broadcast so the support flag arrives on first hover.
     if (window.parent !== window) {
       safePostMessage(window.parent, { type: "SPEECH_QUERY_SUPPORT" });
     }
@@ -69,11 +67,8 @@ export function useSpeechBridge(): UseSpeechBridgeReturn {
     safePostMessage(window.parent, { type: isListening ? "SPEECH_STOP" : "SPEECH_START" });
   }, [isListening]);
 
-  // Stop the parent's recognition when this hook unmounts. Covers every
-  // toolbar-close path — dismiss button, Esc, hover loss, edit mode off,
-  // selection cleared — without each call site needing to remember to stop.
-  // Uses a ref so the cleanup reads the latest listening state instead of a
-  // stale closure value.
+  // Stop parent recognition on every unmount path. Ref so the cleanup reads
+  // the latest listening state, not a stale closure.
   const isListeningRef = useRef(isListening);
   isListeningRef.current = isListening;
   useEffect(function stopListeningOnUnmount() {

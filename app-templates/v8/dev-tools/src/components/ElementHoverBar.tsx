@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { safePostMessage } from "../utils/postMessage";
 import { generatePreciseSelector, extractDevContext, getElementClassName } from "../utils/element-helpers";
 import { isTouchDevice } from "../utils/device";
@@ -60,6 +60,8 @@ function ensureHoverPulseKeyframes(): void {
 interface ElementHoverBarProps {
   hoveredElement: HoveredElement;
   isMultiSelectActive: boolean;
+  toolbarMode: boolean;
+  setToolbarMode: (open: boolean) => void;
   onMouseEnter: () => void;
   onMouseLeave: () => void;
   onQuickEditModeChange?: (active: boolean) => void;
@@ -68,6 +70,8 @@ interface ElementHoverBarProps {
 export default function ElementHoverBar({
   hoveredElement,
   isMultiSelectActive,
+  toolbarMode,
+  setToolbarMode,
   onMouseEnter,
   onMouseLeave,
   onQuickEditModeChange,
@@ -82,7 +86,6 @@ export default function ElementHoverBar({
   const isUneditableImage = isImage && !element.getAttribute("data-dev-id") && !hoveredElement.isMediaSlot;
   const showImageActions = isImage && !(isCommerceIntegrated && isUneditableImage);
 
-  const [toolbarMode, setToolbarMode] = useState(false);
   const [quickEditMode, setQuickEditMode] = useState(false);
   // Single source of truth for which Hover Bar popover is open (Color Picker /
   // Size Stepper / Text Align). Children are controlled — opening one
@@ -157,9 +160,10 @@ export default function ElementHoverBar({
     };
   }, [element]);
 
-  // Reset all modes when the hovered element changes
+  // Reset auxiliary modes when the hovered element changes. toolbarMode is
+  // owned by useImageHoverDetection so resetting it here would race click
+  // commits and close the bar on first click.
   useEffect(() => {
-    setToolbarMode(false);
     setQuickEditMode(false);
     setOpenMenu(null);
     pendingContextRef.current = null;
@@ -202,38 +206,16 @@ export default function ElementHoverBar({
     return () => onQuickEditModeChange?.(false);
   }, [onQuickEditModeChange]);
 
-  // Clicking the element opens the toolbar.
-  // Registered at document capture phase so it fires alongside useTextEditing's
-  // capture handler — text editing still activates normally on the same click.
-  //
-  // useLayoutEffect (not useEffect) so closure re-registration happens
-  // synchronously during commit. Pairs with the mousedown→flushSync handler
-  // in useImageHoverDetection: when the user clicks within the hover-detect
-  // showBarTimer window, that handler flushes the pending `hoveredElement`
-  // state, React commits + runs this layout effect, the new closure (with the
-  // fresh `element` prop) is attached — all before the click event fires.
-  // With plain useEffect, the cleanup/reattach would be deferred past the
-  // click and the stale closure would still bail on the target check.
-  useLayoutEffect(() => {
-    const handleClick = (e: MouseEvent) => {
-      const target = e.target as HTMLElement;
-      if (!target) return;
-      // Ignore clicks inside dev-tools overlays (toolbar, Lexical editor, etc.)
-      if (
-        target.closest(".edit-mode-hover-bar") ||
-        target.closest("[data-airo-dev-tools]") ||
-        target.closest("[data-dev-tools]")
-      ) return;
-      // Only act when the click target is the tracked element or a descendant
-      if (target !== element && !element.contains(target)) return;
-      // Capture the element and hoveredElement at the moment the toolbar opens
+  // Capture the element/hoveredElement when toolbar opens so action handlers
+  // (Replace, Modify, Reference, etc.) target the element the user clicked,
+  // even if the cursor has since moved away. The click handler that flips
+  // toolbarMode lives in useImageHoverDetection.
+  useEffect(() => {
+    if (toolbarMode) {
       toolbarElementRef.current = element;
       toolbarHoveredElementRef.current = hoveredElement;
-      setToolbarMode(true);
-    };
-    document.addEventListener("click", handleClick, true);
-    return () => document.removeEventListener("click", handleClick, true);
-  }, [element, hoveredElement]);
+    }
+  }, [toolbarMode, element, hoveredElement]);
 
   // Dismiss toolbar/quick edit when clicking outside the bar, the element, or editor overlays
   useEffect(() => {

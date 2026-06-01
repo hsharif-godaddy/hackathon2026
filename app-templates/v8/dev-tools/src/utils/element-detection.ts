@@ -105,7 +105,7 @@ export function isTextEditable(element: HTMLElement): boolean {
     : element.children.length === 0 ||
       Array.from(element.children).every((child) => {
         const tag = child.tagName.toLowerCase();
-        return tag === "br" || tag === "span" || tag === "strong" || tag === "em" || tag === "b" || tag === "i";
+        return tag === "br" || tag === "span" || tag === "strong" || tag === "em" || tag === "b" || tag === "i" || tag === "a";
       });
 
   return (TEXT_TAGS.has(tagName) || isListContainer) && hasText && hasOnlyText;

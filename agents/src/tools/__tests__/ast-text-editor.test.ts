@@ -866,6 +866,78 @@ export default function HeroPage() {
       expect(burgerCount).toBe(1);
     });
 
+    it('should target <p> over inner <a> when newHtml adds text around the link', async () => {
+      // Regression: shallow text drops a single-child <p><a>...</a></p>, the inner <a> wins exact-text, and structural save nests <a> inside <a>.
+      const fixture = `export default function Page() {
+  return (
+    <section>
+      <p><a href="/x">link</a></p>
+    </section>
+  );
+}`;
+      const fixturePath = join(testAppPath, 'src', 'pages', 'p-with-a.tsx');
+      await writeFile(fixturePath, fixture);
+
+      const { result, updatedContent } = await editAndRead({
+        selector: 'p',
+        oldText: 'link',
+        newText: 'Hello link',
+        newHtml: 'Hello <a href="/x">link</a>',
+        devContext: {
+          fileName: 'src/pages/p-with-a.tsx',
+          componentName: 'unknown',
+          lineNumber: 4,
+        }
+      });
+
+      expect(result.success).toBe(true);
+      const anchorCount = (updatedContent.match(/<a /g) || []).length;
+      expect(anchorCount).toBe(1);
+      expect(updatedContent).toContain('Hello');
+      expect(updatedContent).toContain('href="/x"');
+    });
+
+    it('should match the multi-element parent (no devId) for structural save — no nesting', async () => {
+      // Regression: shallow extractTextContent skipped this h1 → descendants won partial-text → structural save nested the h1's content inside them, doubling each edit.
+      const fixture = `export default function Page() {
+  return (
+    <div>
+      <h1 className="font-heading">
+        <span className="text-white">The Art of</span>
+        <br />
+        <em className="text-amber-300">the Cake</em>
+      </h1>
+    </div>
+  );
+}`;
+      const fixturePath = join(testAppPath, 'src', 'pages', 'multi-color.tsx');
+      await writeFile(fixturePath, fixture);
+
+      const { result, updatedContent } = await editAndRead({
+        selector: 'h1',
+        oldText: 'The Art of the Cake',
+        newText: 'The Art of the Pie',
+        newHtml: '<span className="text-white">The Art of</span><br /><em className="text-amber-300">the Pie</em>',
+        devContext: {
+          fileName: 'src/pages/multi-color.tsx',
+          componentName: 'unknown',
+          lineNumber: 4,
+        }
+      });
+
+      expect(result.success).toBe(true);
+      // Structure intact — no nested duplication
+      const spanCount = (updatedContent.match(/<span/g) || []).length;
+      const emCount = (updatedContent.match(/<em/g) || []).length;
+      const brCount = (updatedContent.match(/<br/g) || []).length;
+      expect(spanCount).toBe(1);
+      expect(emCount).toBe(1);
+      expect(brCount).toBe(1);
+      // Edit applied
+      expect(updatedContent).toContain('the Pie');
+      expect(updatedContent).not.toContain('the Cake');
+    });
+
     it('should compute correct devId for same-tag siblings after expression wrappers', async () => {
       // Source-mapper counts ALL same-tag elements under a JSXElement ancestor
       // frame, including those inside .map() or conditionals. The static <h1>

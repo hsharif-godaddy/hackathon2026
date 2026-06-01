@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, cleanup } from '@testing-library/react';
+import { render, screen, cleanup } from '@testing-library/react';
 import { createElement } from 'react';
 import type { HoveredElement } from '../../hooks/useImageHoverDetection';
 
@@ -73,11 +73,15 @@ function makeImageElement(attrs: Record<string, string> = {}): HTMLElement {
   return img;
 }
 
+// toolbarMode is owned by useImageHoverDetection in production, but for unit
+// tests we render with toolbarMode=true directly to exercise the open-bar UI.
 function renderHoverBar(hoveredElement: HoveredElement) {
   return render(
     createElement(ElementHoverBar, {
       hoveredElement,
       isMultiSelectActive: false,
+      toolbarMode: true,
+      setToolbarMode: vi.fn(),
       onMouseEnter: vi.fn(),
       onMouseLeave: vi.fn(),
     })
@@ -106,9 +110,6 @@ describe('ElementHoverBar - Commerce product image gating', () => {
 
     renderHoverBar(hovered);
 
-    // Click to open toolbar
-    fireEvent.click(img);
-
     expect(screen.queryByTitle('Replace image')).not.toBeNull();
     expect(screen.queryByTitle('Modify image')).not.toBeNull();
   });
@@ -126,7 +127,6 @@ describe('ElementHoverBar - Commerce product image gating', () => {
     };
 
     renderHoverBar(hovered);
-    fireEvent.click(img);
 
     expect(screen.queryByTitle('Replace image')).toBeNull();
     expect(screen.queryByTitle('Modify image')).toBeNull();
@@ -145,7 +145,6 @@ describe('ElementHoverBar - Commerce product image gating', () => {
     };
 
     renderHoverBar(hovered);
-    fireEvent.click(img);
 
     expect(screen.queryByTitle('Replace image')).not.toBeNull();
     expect(screen.queryByTitle('Modify image')).not.toBeNull();
@@ -164,7 +163,6 @@ describe('ElementHoverBar - Commerce product image gating', () => {
     };
 
     renderHoverBar(hovered);
-    fireEvent.click(img);
 
     expect(screen.queryByTitle('Replace image')).not.toBeNull();
     expect(screen.queryByTitle('Modify image')).not.toBeNull();
@@ -183,7 +181,6 @@ describe('ElementHoverBar - Commerce product image gating', () => {
     };
 
     renderHoverBar(hovered);
-    fireEvent.click(img);
 
     expect(screen.queryByTitle('Add as reference')).not.toBeNull();
     expect(screen.queryByTitle('Edit with AI')).not.toBeNull();

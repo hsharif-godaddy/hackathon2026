@@ -106,11 +106,8 @@ export function QuickEditBar({
     setValue(base + separator + speech.transcript);
   }, [speech?.isListening, speech?.transcript]);
 
-  // Stop speech when this component unmounts via any path — element-change
-  // reset, edit mode disabled, hover lost, etc. — since the mic UI lives
-  // here, leaving it recording with no off-switch would orphan the session.
-  // Use a ref so the cleanup reads the latest controller, not a stale
-  // closure value.
+  // Stop speech on every unmount path (mic UI lives here, so unmount = no
+  // off-switch). Ref so the cleanup reads the latest controller.
   const speechRef = useRef(speech);
   speechRef.current = speech;
   useEffect(function stopSpeechOnUnmount() {

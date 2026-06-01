@@ -15,7 +15,7 @@ export function useEditMode(isEditModeActive: boolean, isMultiSelectActive = fal
 
   useHoverHint(isEditModeActive, stateRef, isMultiSelectActive);
 
-  const { hoveredImage, hoveredElement, handleBarMouseEnter, handleBarMouseLeave } =
+  const { hoveredImage, hoveredElement, toolbarMode, setToolbarMode, handleBarMouseEnter, handleBarMouseLeave } =
     useImageHoverDetection(isEditModeActive, stateRef);
 
   return {
@@ -24,6 +24,8 @@ export function useEditMode(isEditModeActive: boolean, isMultiSelectActive = fal
     saveStatus,
     hoveredImage,
     hoveredElement,
+    toolbarMode,
+    setToolbarMode,
     handleBarMouseEnter,
     handleBarMouseLeave,
     stopEditing,

@@ -42,6 +42,9 @@ function camelCase(prop: string): string {
   return prop.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
 }
 
+// whiteSpace from Lexical, cursor from ElementHoverBar — both leak via outerHTML.
+const DEV_TOOLS_STYLE_PROPS = new Set(['whiteSpace', 'cursor']);
+
 function styleToJsx(css: string): string | null {
   const entries = css
     .split(';')
@@ -54,7 +57,7 @@ function styleToJsx(css: string): string | null {
       const value = decl.slice(i + 1).trim().replace(/\\/g, '\\\\').replace(/'/g, "\\'");
       return [[prop, value] as const];
     })
-    .filter(([prop]) => prop !== 'whiteSpace');
+    .filter(([prop]) => !DEV_TOOLS_STYLE_PROPS.has(prop));
 
   if (entries.length === 0) return null;
   return '{{' + entries.map(([p, v]) => `${p}: '${v}'`).join(', ') + '}}';
@@ -69,7 +72,8 @@ const EDITOR_ARTIFACT_ATTRS = new Set(['dir', 'spellcheck', 'autocorrect', 'auto
 function attributesToJsx(el: Element): string[] {
   const parts: string[] = [];
   for (const attr of Array.from(el.attributes)) {
-    if (EDITOR_ARTIFACT_ATTRS.has(attr.name) || attr.name.startsWith('data-lexical-')) continue;
+    // Strip source-mapper injections (data-dev-*) — re-injected on every build, would compound across edits.
+    if (EDITOR_ARTIFACT_ATTRS.has(attr.name) || attr.name.startsWith('data-dev-') || attr.name.startsWith('data-lexical-')) continue;
     if (attr.name === 'style') {
       const jsx = styleToJsx(attr.value);
       if (jsx) parts.push(`style=${jsx}`);
