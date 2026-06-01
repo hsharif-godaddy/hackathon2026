@@ -43,7 +43,13 @@ export const GET = withCustomerAuth(async (
     });
 
     const includeAttributes = request.nextUrl.searchParams.get('include') === 'attributes';
-    const subscription = await client.getSubscription(subscriptionId, { includeAttributes });
+    // The attributes read drives the conversion-event fire decision (free-plan
+    // orderId / conversionEventDate). Bypass cache so client polling observes a
+    // freshly provisioned attribute instead of a stale subscription.
+    const subscription = await client.getSubscription(subscriptionId, {
+      includeAttributes,
+      ...(includeAttributes ? { noCache: true } : {}),
+    });
 
     // Verify subscription belongs to the authenticated customer
     if (subscription.customerId !== authContext.user.customerId) {

@@ -5,7 +5,7 @@
  * Returns the best/active subscription as `data` along with the full `subscriptions` array.
  */
 
-import { type QueryClient, useQuery } from '@tanstack/react-query';
+import { type Query, type QueryClient, useQuery } from '@tanstack/react-query';
 
 import { HttpError } from '@/lib/errors';
 import { appFetch } from '@/lib/gasket-config';
@@ -15,9 +15,19 @@ const QUERY_KEY = ['subscriptions'] as const;
 const STALE_TIME = 5 * 60 * 1000;
 const GC_TIME = 10 * 60 * 1000;
 
+/** Shape cached under the `['subscriptions']` query key. */
+export interface SubscriptionQueryData {
+  subscriptions: AiroSubscription[];
+  active: AiroSubscription | null;
+}
+
 interface UseSubscriptionOptions {
   enabled?: boolean;
-  refetchInterval?: number | false;
+  /** Number, false, or a predicate over the cached query — mirrors TanStack's refetchInterval. */
+  refetchInterval?:
+    | number
+    | false
+    | ((query: Query<SubscriptionQueryData>) => number | false | undefined);
 }
 
 interface UseSubscriptionResult {

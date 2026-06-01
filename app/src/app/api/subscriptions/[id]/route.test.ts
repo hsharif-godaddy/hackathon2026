@@ -123,7 +123,10 @@ describe('GET /api/subscriptions/[id]', function describeRoute() {
       const response = await GET(request, authContext, { params });
 
       expect(response.status).toBe(200);
-      expect(mockClient.getSubscription).toHaveBeenCalledWith('sub-123', { includeAttributes: true });
+      // Attributes read drives the conversion-event decision, so it must bypass
+      // cache — a stale subscription missing a freshly provisioned attribute would
+      // defeat client polling (see the noCache rationale in route.ts).
+      expect(mockClient.getSubscription).toHaveBeenCalledWith('sub-123', { includeAttributes: true, noCache: true });
     });
 
     it('should not pass includeAttributes for non-attributes include value', async function otherInclude() {

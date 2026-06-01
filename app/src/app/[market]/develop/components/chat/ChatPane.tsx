@@ -260,7 +260,7 @@ function ChatPaneInner({
   const setCurrentAppId = useSetCurrentAppId();
 
   const { data: subscription } = useSubscription();
-  useConversionEvent(subscription);
+  useConversionEvent();
   const areChatPlansEnabled = useSwitchboard('airo-builder-chat-plans');
   const isThemeSelectionChatEnabled = useSwitchboard('airo-builder-theme-selection-chat');
   const isGoLiveFeatureEnabled = useSwitchboard(SWITCHBOARD_APPBUILDER_GO_LIVE_FEATURE) === true;
