@@ -30,6 +30,7 @@ import { ProtectedRoute } from "@/components/auth";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import { useCreditGrants } from "@/hooks/useCreditGrants";
 import { useIsCreditPolling } from "@/hooks/useCreditPurchase";
+import { useCreditsDeeplink } from "@/hooks/useCreditsDeeplink";
 import { useEcommSubscriptionAutoRenew } from "@/hooks/useEcommSubscriptionAutoRenew";
 import { useEcommSubscriptionAutoRenewStatus } from "@/hooks/useEcommSubscriptionAutoRenewStatus";
 import { useGasketData } from "@/hooks/useGasketData";
@@ -43,7 +44,12 @@ import { useSwitchboard } from "@/hooks/useSwitchboard";
 import { useTranslations } from "@/hooks/useTranslations";
 import { useIsUpgradePolling } from "@/hooks/useUpgradePurchase";
 import { ClientLogBuffer, shipAnalyticsLog } from "@/lib/logging";
-import { isPaidPlanForGrants, type PaywallType } from "@/lib/paywall/shared";
+import {
+  isPaidPlanForGrants,
+  PAYWALL_ITC,
+  PAYWALL_TYPE,
+  type PaywallType,
+} from "@/lib/paywall/shared";
 import { useSites } from "@/stores/useSitesStore";
 import type { CreditGrant } from "@/types/credits";
 import {
@@ -224,6 +230,16 @@ function ManagePlanContent() {
 
   usePaywallDeeplink({
     openPaywall,
+    enabled: !isSubscriptionLoading && !isSubscriptionError,
+  });
+
+  const openCredits = useCallback(
+    (source: string) => openPaywall(source, PAYWALL_TYPE.CREDITS, PAYWALL_ITC.CREDITS),
+    [openPaywall],
+  );
+
+  useCreditsDeeplink({
+    openCredits,
     enabled: !isSubscriptionLoading && !isSubscriptionError,
   });
 

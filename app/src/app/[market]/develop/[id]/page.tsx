@@ -47,6 +47,7 @@ import { useAppHibernation } from '@/hooks/useAppHibernation'
 import { useChatTabs } from '@/hooks/useChatTabs'
 import { useChatTransport } from '@/hooks/useChatTransport'
 import { useConversationsBrandId } from '@/hooks/useConversationsBrandId'
+import { useCreditsDeeplinkWithStore } from '@/hooks/useCreditsDeeplinkWithStore'
 import { useGitHistoryQuery } from '@/hooks/useGitHistory'
 import { useHivemind } from '@/hooks/useHivemind'
 import { useImageReadiness } from '@/hooks/useImageReadiness'
@@ -367,6 +368,8 @@ function DevelopPageContent() {
   const setShowPaywallModal = useDevelopPageStore((state) => state.setShowPaywallModal);
 
   usePaywallDeeplinkWithStore({ enabled: loadingPhase === 'ready' });
+  useCreditsDeeplinkWithStore({ enabled: loadingPhase === 'ready' });
+
   useEffect(() => {
     const openPublish = searchParams.get('openPublish')
     if (loadingPhase !== 'loading-conversations' && loadingPhase !== 'ready') return
