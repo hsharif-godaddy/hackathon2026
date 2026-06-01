@@ -216,6 +216,7 @@ export function buildPageSpec(
       slug: pageSlug,
       title: pageContent.title,
       isFirstPage,
+      metadata: pageContent.metadata,
     },
     site: {
       sourceUrl: siteMetadata.sourceUrl,

@@ -232,4 +232,35 @@ describe('PagePersistenceService.savePage (Atlas branch)', () => {
       expect.anything(),
     );
   });
+
+  it('persists full page metadata (OG tags, description, canonical, keywords) when provided', async () => {
+    const metadata = {
+      title: 'About Us',
+      description: 'Learn about our company',
+      ogTitle: 'About | Example',
+      ogDescription: 'Our story',
+      ogImage: 'https://example.com/about-og.jpg',
+      canonicalUrl: 'https://example.com/about',
+      keywords: ['about', 'company'],
+    };
+    await persistence.savePage(
+      { url: 'https://example.com/about', sanitizedContent: '<h1>About Us</h1>', html: '<p>hi</p>', metadata },
+      'about',
+      [],
+      true,
+    );
+    const saved = JSON.parse(await readFile(path.join(sourceSiteDir, 'pages', 'about.json'), 'utf-8'));
+    expect(saved.metadata).toEqual(metadata);
+  });
+
+  it('falls back to title-only metadata when no metadata provided (backward compat)', async () => {
+    await persistence.savePage(
+      { url: 'https://example.com/', sanitizedContent: '<h1>Home Page</h1>', html: '<p>hi</p>' },
+      'homepage',
+      [],
+      true,
+    );
+    const saved = JSON.parse(await readFile(path.join(sourceSiteDir, 'pages', 'homepage.json'), 'utf-8'));
+    expect(saved.metadata).toEqual({ title: 'Home Page' });
+  });
 });

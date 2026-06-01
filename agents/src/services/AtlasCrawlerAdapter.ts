@@ -7,7 +7,7 @@ import {
   AtlasJobStatusResponseSchema,
   AtlasSubmitResponseSchema,
 } from '../types/atlas-api.js';
-import type { AtlasCrawlResult, AtlasExtractedForm } from '../types/atlas-api.js';
+import type { AtlasCrawlResult, AtlasExtractedForm, AtlasPage } from '../types/atlas-api.js';
 import {
   WEBSITE_REBUILD_IMPORT_FAILED_USER_MESSAGE,
   createRebuildError,
@@ -16,6 +16,7 @@ import type {
   FormHint,
   ImagePlacement,
   NavigationItem,
+  PageMetadata,
   SiteContactInfo,
   SiteMetadata,
   SitemapData,
@@ -61,6 +62,8 @@ export function mapAtlasForms(atlasForms: AtlasExtractedForm[] | undefined): For
     return {
       ...(form.action ? { action: form.action } : {}),
       method,
+      ...(form.id ? { id: form.id } : {}),
+      ...(form.className ? { className: form.className } : {}),
       fields: fields.map(f => ({
         type: f.type,
         ...(f.name ? { name: f.name } : {}),
@@ -505,14 +508,32 @@ export class AtlasCrawlerAdapter {
   private mapToPageScrapeResults(result: AtlasCrawlResult): PageScrapeResult[] {
     return result.pages.map(page => {
       const forms = mapAtlasForms(page.visual?.forms);
+      const metadata = this.mapPageMetadata(page);
       return {
         url: page.url,
         success: page.statusCode >= 200 && page.statusCode < 400,
         sanitizedContent: page.text ?? '',
         html: page.html,
         ...(forms.length > 0 ? { forms } : {}),
+        ...(metadata ? { metadata } : {}),
       };
     });
+  }
+
+  private mapPageMetadata(page: AtlasPage): PageMetadata | undefined {
+    const m = page.metadata;
+    if (!m) return undefined;
+
+    const out: PageMetadata = { title: m.title };
+    if (m.description) out.description = m.description;
+    if (m.ogTitle) out.ogTitle = m.ogTitle;
+    if (m.ogDescription) out.ogDescription = m.ogDescription;
+    if (m.ogImage) out.ogImage = m.ogImage;
+    if (m.canonical) out.canonicalUrl = m.canonical;
+    if (m.keywords && m.keywords.length > 0) out.keywords = m.keywords;
+
+    const hasContent = out.title || Object.keys(out).length > 1;
+    return hasContent ? out : undefined;
   }
 
   mapToExtractedAssets(result: AtlasCrawlResult): ExtractedAsset[] {

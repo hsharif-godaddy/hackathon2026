@@ -115,6 +115,9 @@ export interface PageScrapeResult extends BaseResult, ScrapedContent {
   /** Forms extracted by Atlas's per-page visual SSM. Empty/undefined for the legacy
    * scraper path which doesn't produce structured form data. */
   forms?: import('../../../types/rebuild.js').FormHint[];
+  /** Page-level metadata (OG tags, description, canonical, keywords) from Atlas.
+   * Undefined for the legacy scraper path. */
+  metadata?: import('../../../types/rebuild.js').PageMetadata;
 }
 
 /**

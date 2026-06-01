@@ -130,7 +130,8 @@ export class RebuildOrchestrationService {
         sanitizedContent: sanitized,
         html: page.html,
         screenshotBase64: page.screenshotBase64,
-        forms: page.forms
+        forms: page.forms,
+        metadata: page.metadata,
       },
       rootPath,
       navigation

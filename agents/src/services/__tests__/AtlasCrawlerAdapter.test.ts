@@ -240,6 +240,62 @@ describe('AtlasCrawlerAdapter', () => {
       await expect(promise).rejects.toMatchObject({ code: 'import_failed' });
     });
 
+    it('propagates page metadata from Atlas pages to PageScrapeResult', async () => {
+      const mockResult = createMockCrawlResult({
+        pages: [
+          createMockPage({
+            url: 'https://example.com/',
+            path: '/',
+            metadata: {
+              title: 'Example Site',
+              description: 'A great site for examples',
+              ogTitle: 'Example | Home',
+              ogDescription: 'Welcome to Example',
+              ogImage: 'https://example.com/og-hero.jpg',
+              canonical: 'https://example.com/',
+              keywords: ['example', 'demo'],
+            },
+          }),
+        ],
+      });
+
+      fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ jobId: 'job-meta', status: 'pending' }) });
+      fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ status: 'completed' }) });
+      fetchMock.mockResolvedValueOnce({ ok: true, json: async () => mockResult });
+
+      const output = await adapter.crawlSite('https://example.com');
+
+      expect(output.pages[0]?.metadata).toEqual({
+        title: 'Example Site',
+        description: 'A great site for examples',
+        ogTitle: 'Example | Home',
+        ogDescription: 'Welcome to Example',
+        ogImage: 'https://example.com/og-hero.jpg',
+        canonicalUrl: 'https://example.com/',
+        keywords: ['example', 'demo'],
+      });
+    });
+
+    it('omits absent metadata fields rather than setting undefined', async () => {
+      const mockResult = createMockCrawlResult({
+        pages: [
+          createMockPage({
+            url: 'https://example.com/',
+            path: '/',
+            metadata: { title: 'Minimal', description: '' },
+          }),
+        ],
+      });
+
+      fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ jobId: 'job-min', status: 'pending' }) });
+      fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ status: 'completed' }) });
+      fetchMock.mockResolvedValueOnce({ ok: true, json: async () => mockResult });
+
+      const output = await adapter.crawlSite('https://example.com');
+
+      expect(output.pages[0]?.metadata).toEqual({ title: 'Minimal' });
+    });
+
     it('attaches image placement signals and dimensions from Atlas images to ExtractedAssets', async () => {
       const mockResult = createMockCrawlResult({
         assets: [

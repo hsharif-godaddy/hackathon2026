@@ -18,6 +18,7 @@ import {
   type FormHint,
   type NavigationItem,
   type PageContent,
+  type PageMetadata,
   type SiteMetadata,
   type SitemapData,
   type SourceSiteData,
@@ -31,6 +32,7 @@ export interface SavePageInput {
   html?: string;
   screenshotBase64?: string;
   forms?: FormHint[];
+  metadata?: PageMetadata;
 }
 
 export class PagePersistenceService {
@@ -80,6 +82,7 @@ export class PagePersistenceService {
     const pageContent: PageContent = {
       url: page.url,
       slug,
+      // title from extractTitle(<h1>) — may differ from metadata.title (Atlas <title> tag)
       title,
       content: page.sanitizedContent || '',
       sanitizedContent: page.sanitizedContent || '',
@@ -92,7 +95,7 @@ export class PagePersistenceService {
         ...(interactivePatterns.length > 0 ? { interactivePatterns } : {}),
         ...(forms.length > 0 ? { forms } : {}),
       },
-      metadata: { title },
+      metadata: page.metadata ?? { title },
       scrapedAt: new Date().toISOString(),
     };
 

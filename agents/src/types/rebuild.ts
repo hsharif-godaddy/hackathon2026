@@ -117,6 +117,9 @@ export interface FormFieldHint {
 export interface FormHint {
   action?: string;
   method: 'get' | 'post';
+  id?: string;
+  /** Raw space-separated class string — consumers must tokenize */
+  className?: string;
   fields: FormFieldHint[];
   submitButton?: { text: string };
 }
@@ -140,6 +143,7 @@ export interface PageBuildSpec {
     slug: string;
     title: string;
     isFirstPage: boolean;
+    metadata: PageMetadata;
   };
   site: {
     sourceUrl: string;

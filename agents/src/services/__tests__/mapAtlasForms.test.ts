@@ -86,4 +86,32 @@ describe('mapAtlasForms', () => {
 
     expect(mapAtlasForms(input)[0]?.fields[0]?.options).toEqual(['small', 'medium', 'large']);
   });
+
+  it('preserves form id and className when present', () => {
+    const input: AtlasExtractedForm[] = [{
+      action: '/contact',
+      method: 'post',
+      id: 'newsletter-form',
+      className: 'contact-us signup-form',
+      fields: [{ tag: 'input', type: 'email', name: 'email', required: true }],
+      submitButton: { text: 'Send', type: 'submit' },
+    }];
+
+    const result = mapAtlasForms(input);
+    expect(result[0]).toMatchObject({
+      id: 'newsletter-form',
+      className: 'contact-us signup-form',
+    });
+  });
+
+  it('omits id and className when absent', () => {
+    const input: AtlasExtractedForm[] = [{
+      method: 'get',
+      fields: [{ tag: 'input', type: 'text', required: false }],
+    }];
+
+    const result = mapAtlasForms(input);
+    expect(result[0]).not.toHaveProperty('id');
+    expect(result[0]).not.toHaveProperty('className');
+  });
 });
