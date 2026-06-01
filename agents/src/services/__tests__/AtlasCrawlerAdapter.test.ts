@@ -390,6 +390,113 @@ describe('AtlasCrawlerAdapter', () => {
       expect(bg?.dimensions).toEqual({ width: 800, height: 600 });
       expect(bg?.placement?.inFirstSection).toBe(true);
     });
+
+    it('extracts typography scale (fontSize, fontWeight, lineHeight, letterSpacing) from Atlas design tokens', async () => {
+      const mockResult = createMockCrawlResult({
+        visual: {
+          designTokens: {
+            colors: [],
+            typography: [
+              { fontFamily: 'Playfair Display', fontSize: '48px', fontWeight: '700', lineHeight: '1.1', letterSpacing: '-0.02em', elements: ['h1'], role: 'heading' },
+              { fontFamily: 'Playfair Display', fontSize: '36px', fontWeight: '700', lineHeight: '1.2', letterSpacing: '-0.01em', elements: ['h2'], role: 'heading' },
+              { fontFamily: 'Open Sans', fontSize: '16px', fontWeight: '400', lineHeight: '1.6', letterSpacing: '0', elements: ['p'], role: 'body' },
+              { fontFamily: 'Open Sans', fontSize: '14px', fontWeight: '600', lineHeight: '1.4', letterSpacing: '0.01em', elements: ['nav a'], role: 'navigation' },
+            ],
+            spacing: [],
+            borders: { radius: [] },
+            shadows: [],
+          },
+        },
+      });
+
+      fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ jobId: 'job-typo', status: 'pending' }) });
+      fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ status: 'completed' }) });
+      fetchMock.mockResolvedValueOnce({ ok: true, json: async () => mockResult });
+
+      const output = await adapter.crawlSite('https://example.com');
+
+      expect(output.designTokenMetadata.typography?.scale).toEqual([
+        { fontFamily: 'Playfair Display', fontSize: '48px', fontWeight: '700', lineHeight: '1.1', letterSpacing: '-0.02em', role: 'heading' },
+        { fontFamily: 'Playfair Display', fontSize: '36px', fontWeight: '700', lineHeight: '1.2', letterSpacing: '-0.01em', role: 'heading' },
+        { fontFamily: 'Open Sans', fontSize: '16px', fontWeight: '400', lineHeight: '1.6', letterSpacing: '0', role: 'body' },
+        { fontFamily: 'Open Sans', fontSize: '14px', fontWeight: '600', lineHeight: '1.4', letterSpacing: '0.01em', role: 'navigation' },
+      ]);
+    });
+
+    it('omits typography metadata when no design tokens present', async () => {
+      const mockResult = createMockCrawlResult({
+        visual: {
+          designTokens: {
+            colors: [],
+            typography: [],
+            spacing: [],
+            borders: { radius: [] },
+            shadows: [],
+          },
+        },
+      });
+
+      fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ jobId: 'job-no-typo', status: 'pending' }) });
+      fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ status: 'completed' }) });
+      fetchMock.mockResolvedValueOnce({ ok: true, json: async () => mockResult });
+
+      const output = await adapter.crawlSite('https://example.com');
+
+      expect(output.designTokenMetadata.typography).toBeUndefined();
+    });
+
+    it('applies cleanFontFamily to scale entries', async () => {
+      const mockResult = createMockCrawlResult({
+        visual: {
+          designTokens: {
+            colors: [],
+            typography: [
+              { fontFamily: "'Playfair Display', serif", fontSize: '48px', fontWeight: '700', lineHeight: '1.1', letterSpacing: '-0.02em', elements: ['h1'], role: 'heading' },
+            ],
+            spacing: [],
+            borders: { radius: [] },
+            shadows: [],
+          },
+        },
+      });
+
+      fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ jobId: 'job-clean', status: 'pending' }) });
+      fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ status: 'completed' }) });
+      fetchMock.mockResolvedValueOnce({ ok: true, json: async () => mockResult });
+
+      const output = await adapter.crawlSite('https://example.com');
+
+      expect(output.designTokenMetadata.typography?.scale?.[0]?.fontFamily).toBe('Playfair Display');
+    });
+
+    it('preserves typography scale when only non-heading/body roles are present', async () => {
+      const mockResult = createMockCrawlResult({
+        visual: {
+          designTokens: {
+            colors: [],
+            typography: [
+              { fontFamily: 'Open Sans', fontSize: '14px', fontWeight: '600', lineHeight: '1.4', letterSpacing: '0.01em', elements: ['nav a'], role: 'navigation' },
+              { fontFamily: 'Open Sans', fontSize: '13px', fontWeight: '500', lineHeight: '1.3', letterSpacing: '0', elements: ['button'], role: 'button' },
+            ],
+            spacing: [],
+            borders: { radius: [] },
+            shadows: [],
+          },
+        },
+      });
+
+      fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ jobId: 'job-nav-only', status: 'pending' }) });
+      fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ status: 'completed' }) });
+      fetchMock.mockResolvedValueOnce({ ok: true, json: async () => mockResult });
+
+      const output = await adapter.crawlSite('https://example.com');
+
+      expect(output.designTokenMetadata.typography).toBeDefined();
+      expect(output.designTokenMetadata.typography?.headingFonts).toEqual([]);
+      expect(output.designTokenMetadata.typography?.bodyFonts).toEqual([]);
+      expect(output.designTokenMetadata.typography?.scale).toHaveLength(2);
+      expect(output.designTokenMetadata.typography?.scale?.[0]?.role).toBe('navigation');
+    });
   });
 
   describe('pollUntilComplete', () => {

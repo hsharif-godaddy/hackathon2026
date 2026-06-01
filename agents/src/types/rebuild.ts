@@ -27,6 +27,21 @@ export interface StylePreferences {
  */
 export type SiteType = 'content' | 'app' | 'commerce' | 'dashboard';
 
+import type { TypographyRole } from './atlas-api.js';
+
+/**
+ * A single typography usage record from Atlas — captures the full CSS
+ * properties observed for a given role on the source site.
+ */
+export interface TypographyScaleEntry {
+  fontFamily: string;
+  fontSize: string;
+  fontWeight: string;
+  lineHeight: string;
+  letterSpacing: string;
+  role: TypographyRole;
+}
+
 /**
  * Aggregated contact info extracted from the source site (Atlas SSM).
  * Site-level: same data appears on every page's footer; we persist once on
@@ -62,6 +77,9 @@ export interface SiteMetadata {
   typography: {
     headingFonts: string[];
     bodyFonts: string[];
+    /** Full typography scale from Atlas — per-role records preserving size, weight,
+     * line-height, and letter-spacing. Absent when derived from the SiteAnalyzer/AI fallback path. */
+    scale?: TypographyScaleEntry[];
   };
   /** Site-level contact info (phones, emails, addresses, hours, social). Atlas-only. */
   contact?: SiteContactInfo;

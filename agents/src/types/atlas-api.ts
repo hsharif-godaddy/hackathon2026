@@ -7,6 +7,8 @@
 
 import { z } from 'zod';
 
+export type TypographyRole = 'heading' | 'body' | 'navigation' | 'button' | 'input';
+
 export interface AtlasJobResponse {
   jobId: string;
   url: string;
@@ -150,7 +152,7 @@ export interface AtlasTypographyUsage {
   lineHeight: string;
   letterSpacing: string;
   elements: string[];
-  role: 'heading' | 'body' | 'navigation' | 'button' | 'input';
+  role: TypographyRole;
 }
 
 export interface AtlasNavItem {

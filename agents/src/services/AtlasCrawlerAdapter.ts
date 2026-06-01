@@ -7,7 +7,7 @@ import {
   AtlasJobStatusResponseSchema,
   AtlasSubmitResponseSchema,
 } from '../types/atlas-api.js';
-import type { AtlasCrawlResult, AtlasExtractedForm, AtlasPage } from '../types/atlas-api.js';
+import type { AtlasCrawlResult, AtlasExtractedForm, AtlasPage, AtlasTypographyUsage } from '../types/atlas-api.js';
 import {
   WEBSITE_REBUILD_IMPORT_FAILED_USER_MESSAGE,
   createRebuildError,
@@ -21,6 +21,7 @@ import type {
   SiteMetadata,
   SitemapData,
   SitemapPage,
+  TypographyScaleEntry,
 } from '../types/rebuild.js';
 import type { ZodSchema } from 'zod';
 import type {
@@ -640,7 +641,7 @@ export class AtlasCrawlerAdapter {
       metadata.colorPalette = colorPalette;
     }
 
-    if (typographyData.headingFonts.length > 0 || typographyData.bodyFonts.length > 0) {
+    if (typographyData.headingFonts.length > 0 || typographyData.bodyFonts.length > 0 || (typographyData.scale?.length ?? 0) > 0) {
       metadata.typography = typographyData;
     }
 
@@ -820,7 +821,7 @@ export class AtlasCrawlerAdapter {
     return { primary, secondary, accent };
   }
 
-  private extractTypography(typography: Array<{ fontFamily: string; role: string }>): SiteMetadata['typography'] {
+  private extractTypography(typography: AtlasTypographyUsage[]): SiteMetadata['typography'] {
     if (typography.length === 0) {
       return { headingFonts: [], bodyFonts: [] };
     }
@@ -837,7 +838,17 @@ export class AtlasCrawlerAdapter {
         .map(t => this.cleanFontFamily(t.fontFamily))
     );
 
-    return { headingFonts, bodyFonts };
+    // Intentionally undeduped — each entry is one observed (role, size, weight, …) tuple
+    const scale: TypographyScaleEntry[] = typography.map(t => ({
+      fontFamily: this.cleanFontFamily(t.fontFamily),
+      fontSize: t.fontSize,
+      fontWeight: t.fontWeight,
+      lineHeight: t.lineHeight,
+      letterSpacing: t.letterSpacing,
+      role: t.role,
+    }));
+
+    return { headingFonts, bodyFonts, scale };
   }
 
 
