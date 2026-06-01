@@ -27,14 +27,14 @@ export interface PinnedContextMessage {
  */
 export async function buildPinnedSkillsContextMessages(
   conversationId: string,
-  appPath?: string
+  appId?: string,
 ): Promise<PinnedContextMessage[]> {
-  // Lazy hydrate from `<appPath>/.airo/pinned-skills.json` before reading
-  // pins. The first context-load per appPath after process start pays the
-  // disk read; subsequent calls short-circuit. PaaS conversations without
-  // a known app path skip persistence — pins still work in-memory.
-  if (appPath) {
-    await skillToolManager.hydrateFromAppPath(appPath);
+  // Lazy hydrate from `.airo/pinned-skills.json` via workspace API before
+  // reading pins. The first context-load per appId after process start pays
+  // the read; subsequent calls short-circuit. PaaS conversations without a
+  // known appId skip persistence — pins still work in-memory.
+  if (appId) {
+    await skillToolManager.hydrateFromWorkspace(appId);
   }
   const names = skillToolManager.getPinnedSkills(conversationId);
   if (names.length === 0) return [];

@@ -21,11 +21,70 @@ vi.mock('../terminal.js', () => ({
   }))
 }));
 
-vi.mock('../../utils/dev-supervisor-client-factory.js', () => ({
-  DevSupervisorClientFactory: {
-    createForApp: vi.fn().mockReturnValue({})
+const { DevSupervisorError: MockDevSupervisorError } = vi.hoisted(() => {
+  class DevSupervisorError extends Error {
+    constructor(public readonly code: string, public readonly statusCode: number, message: string) {
+      super(message);
+      this.name = 'DevSupervisorError';
+    }
   }
+  return { DevSupervisorError };
+});
+
+vi.mock('../../services/DevSupervisorClient.js', () => ({
+  DevSupervisorError: MockDevSupervisorError,
 }));
+
+vi.mock('../../workspace/index.js', () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const nodeFs = require('fs');
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const nodePath = require('path');
+  return {
+    createForWorkspace: (_appId: string) => {
+      const basePath = (globalThis as Record<string, unknown>).__skillLoaderTestAppDir as string | undefined;
+      if (!basePath) return null;
+      const files = {
+        view: async ({ path: filePath }: { path: string }) => {
+          const full = nodePath.join(basePath, filePath);
+          if (!nodeFs.existsSync(full)) {
+            throw new MockDevSupervisorError('not_found', 404, `${filePath}: no such file or directory`);
+          }
+          const content = nodeFs.readFileSync(full, 'utf-8');
+          return { content, encoding: 'utf-8', path: filePath, lines: content.split('\n').length, size: content.length, truncated: false };
+        },
+        write: async ({ path: filePath, content }: { path: string; content: string }) => {
+          const full = nodePath.join(basePath, filePath);
+          nodeFs.mkdirSync(nodePath.dirname(full), { recursive: true });
+          nodeFs.writeFileSync(full, content);
+          return { bytesWritten: content.length };
+        },
+        tree: async ({ path: treePath, recursive }: { path?: string; recursive?: boolean } = {}) => {
+          const base = nodePath.join(basePath, treePath ?? '');
+          const entries: Array<{ path: string; kind: string; size: number; modifiedAt: string }> = [];
+          function walk(dir: string): void {
+            let names: string[];
+            try { names = nodeFs.readdirSync(dir); } catch { return; }
+            for (const name of names) {
+              const full = nodePath.join(dir, name);
+              const stat = nodeFs.statSync(full);
+              const rel = nodePath.relative(basePath, full);
+              if (stat.isDirectory()) {
+                entries.push({ path: rel, kind: 'directory', size: 0, modifiedAt: '' });
+                if (recursive) walk(full);
+              } else {
+                entries.push({ path: rel, kind: 'file', size: stat.size, modifiedAt: '' });
+              }
+            }
+          }
+          walk(base);
+          return { entries, truncated: false };
+        },
+      };
+      return { files, tasks: undefined };
+    },
+  };
+});
 
 describe('skill-loader-tool', function packageTests() {
   describe('#validatePackageName', function validateTests() {
@@ -416,6 +475,7 @@ devDependencies:
       tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'skill-install-test-'));
       skillsDir = path.join(tempDir, 'skills');
       appDir = path.join(tempDir, 'app');
+      (globalThis as Record<string, unknown>).__skillLoaderTestAppDir = appDir;
       await fs.mkdir(skillsDir, { recursive: true });
       await fs.mkdir(path.join(appDir, 'src/server/api/health'), { recursive: true });
       (tool as any).skillsDir = skillsDir;

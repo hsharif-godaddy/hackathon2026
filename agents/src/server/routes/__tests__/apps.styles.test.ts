@@ -1,9 +1,38 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import request from 'supertest';
 import express from 'express';
 import { readFile, writeFile, mkdir, rm } from 'fs/promises';
 import { join } from 'path';
 import { existsSync } from 'fs';
+
+vi.mock('../../../workspace/index.js', () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const nodeFs = require('fs');
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const nodePath = require('path');
+  return {
+    createForWorkspace: () => {
+      const basePath = (globalThis as Record<string, unknown>).__stylesTestAppPath as string;
+      if (!basePath) return null;
+      const files = {
+        view: async ({ path: filePath }: { path: string }) => {
+          const full = nodePath.join(basePath, filePath);
+          if (!nodeFs.existsSync(full)) throw new Error(`ENOENT: file not found: ${filePath}`);
+          const content = nodeFs.readFileSync(full, 'utf-8');
+          return { content, encoding: 'utf-8', path: filePath, lines: content.split('\n').length, size: content.length, truncated: false };
+        },
+        write: async ({ path: filePath, content }: { path: string; content: string }) => {
+          const full = nodePath.join(basePath, filePath);
+          nodeFs.mkdirSync(nodePath.dirname(full), { recursive: true });
+          nodeFs.writeFileSync(full, content);
+          return { bytesWritten: content.length };
+        },
+      };
+      return { files, tasks: undefined };
+    },
+  };
+});
+
 import { appsRouter } from '../apps.js';
 import { AppRepository } from '../../../database/index.js';
 
@@ -32,8 +61,8 @@ describe('Apps Styles Edit API', () => {
   });
 
   beforeEach(async () => {
-    // Create a test app with sample files
     testAppPath = `/tmp/test-app-${Date.now()}`;
+    (globalThis as Record<string, unknown>).__stylesTestAppPath = testAppPath;
     await mkdir(testAppPath, { recursive: true });
     await mkdir(join(testAppPath, 'src', 'frontend', 'pages'), { recursive: true });
 

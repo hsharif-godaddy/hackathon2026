@@ -5,21 +5,11 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { SkillToolManager } from '../skill-tool-manager.js';
 
-// Mock logger
-vi.mock('../../logging/index.js', () => ({
-  logger: {
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
-    child: vi.fn(() => ({
-      info: vi.fn(),
-      warn: vi.fn(),
-      error: vi.fn(),
-      debug: vi.fn()
-    }))
-  }
+vi.mock('../../workspace/index.js', () => ({
+  createForWorkspace: vi.fn(() => null),
 }));
+
+vi.mock('../../logging/index.js');
 
 // Mock hook handlers for testing (hoisted so vi.mock factory can reference them)
 const { mockOnInstallHook, mockOnLoadHook } = vi.hoisted(() => ({

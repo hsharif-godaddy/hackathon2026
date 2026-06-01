@@ -16,7 +16,9 @@ import { ConversationSkillState, buildAllSkillTools, buildSkillToolName, type Sk
 import { join } from 'path';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
-import { promises as fs } from 'fs';
+import { createForWorkspace } from '../workspace/index.js';
+import type { WorkspaceFiles } from '../workspace/files.js';
+import { DevSupervisorError } from '../services/DevSupervisorClient.js';
 
 /** Number of steps of inactivity before auto-unloading a skill (configurable via env) */
 const INACTIVITY_THRESHOLD_STEPS = parseInt(process.env.SKILL_INACTIVITY_THRESHOLD_STEPS || '30', 10);
@@ -30,8 +32,10 @@ const INACTIVITY_THRESHOLD_STEPS = parseInt(process.env.SKILL_INACTIVITY_THRESHO
  */
 const MAX_PERSISTED_CONVERSATIONS = 100;
 
-/** Schema version for `<appPath>/.airo/pinned-skills.json`. Bump on breaking changes. */
+/** Schema version for `.airo/pinned-skills.json`. Bump on breaking changes. */
 const PINNED_SKILLS_FILE_VERSION = 1;
+
+const PINNED_SKILLS_PATH = '.airo/pinned-skills.json';
 
 interface PinnedSkillsFileV1 {
   version: 1;
@@ -68,13 +72,13 @@ export class SkillToolManager {
   // explicitly unpinned.
   private pinnedByConversation = new Map<string, Set<string>>();
 
-  // conversationId -> appPath, populated whenever a pin/unpin call provides an
-  // appPath. Used by `persistPins` to write only the conversations that
+  // conversationId -> appId, populated whenever a pin/unpin call provides an
+  // appId. Used by `persistPins` to write only the conversations that
   // belong to a given workspace, so co-tenant agent processes do not clobber
   // each other's `.airo/pinned-skills.json`.
-  private convToAppPath = new Map<string, string>();
+  private convToAppId = new Map<string, string>();
 
-  // In-flight (or already settled) hydration promises keyed on appPath.
+  // In-flight (or already settled) hydration promises keyed on appId.
   // Concurrent callers await the same promise so a second context-load
   // cannot read pins before the first finishes parsing the file. Once
   // resolved, the entry stays in the map and subsequent awaits return
@@ -82,9 +86,9 @@ export class SkillToolManager {
   private hydrationPromises = new Map<string, Promise<void>>();
 
   // Serialize concurrent persist writes per workspace so two near-simultaneous
-  // pin/unpin calls do not race on `tmp -> rename`. The chain is per-appPath
-  // because each workspace owns its own file.
-  private persistChainByAppPath = new Map<string, Promise<void>>();
+  // pin/unpin calls do not race. The chain is per-appId because each workspace
+  // owns its own file.
+  private persistChainByAppId = new Map<string, Promise<void>>();
 
   constructor() {
     // Get skills directory relative to this file
@@ -95,6 +99,11 @@ export class SkillToolManager {
       skillsDir: this.skillsDir,
       inactivityThreshold: INACTIVITY_THRESHOLD_STEPS
     });
+  }
+
+  private getWorkspaceFiles(appId: string): WorkspaceFiles | null {
+    const workspace = createForWorkspace(appId, 'preview');
+    return workspace?.files ?? null;
   }
 
   /**
@@ -352,7 +361,7 @@ export class SkillToolManager {
    * unknown skills) rather than silently storing a name that will fail to
    * load every turn.
    */
-  pinSkill(conversationId: string, skillName: string, appPath?: string): SkillRegistrationResult {
+  pinSkill(conversationId: string, skillName: string, appId?: string): SkillRegistrationResult {
     if (!this.validateSkillName(skillName)) {
       return {
         success: false,
@@ -380,9 +389,9 @@ export class SkillToolManager {
     }
     set.add(skillName);
 
-    if (appPath) {
-      this.convToAppPath.set(conversationId, appPath);
-      this.schedulePersist(appPath);
+    if (appId) {
+      this.convToAppId.set(conversationId, appId);
+      this.schedulePersist(appId);
     }
 
     logger.info('skill.pinned', {
@@ -398,7 +407,7 @@ export class SkillToolManager {
    * Unpin a skill. No-op if not pinned. Does not unload the skill's tools;
    * the caller can follow up with `unloadSkill` if desired.
    */
-  unpinSkill(conversationId: string, skillName: string, appPath?: string): void {
+  unpinSkill(conversationId: string, skillName: string, appId?: string): void {
     const set = this.pinnedByConversation.get(conversationId);
     if (!set) return;
     const removed = set.delete(skillName);
@@ -406,9 +415,9 @@ export class SkillToolManager {
       this.pinnedByConversation.delete(conversationId);
     }
 
-    const persistPath = appPath ?? this.convToAppPath.get(conversationId);
-    if (persistPath) {
-      this.schedulePersist(persistPath);
+    const resolvedAppId = appId ?? this.convToAppId.get(conversationId);
+    if (resolvedAppId) {
+      this.schedulePersist(resolvedAppId);
     }
 
     if (removed) {
@@ -484,17 +493,14 @@ export class SkillToolManager {
    * Mirrors `ConversationSkillState.clearConversation` so the singleton
    * doesn't accumulate pin entries across long-lived agent processes.
    */
-  clearConversation(conversationId: string, appPath?: string): void {
+  clearConversation(conversationId: string, appId?: string): void {
     this.conversationState.clearConversation(conversationId);
     this.pinnedByConversation.delete(conversationId);
-    const knownPath = this.convToAppPath.get(conversationId);
-    this.convToAppPath.delete(conversationId);
-    // Prefer the explicit caller-supplied path so a conversation deleted
-    // before the agent process ever observed it (e.g. cross-process delete
-    // immediately after restart) still has its disk entry removed.
-    const persistPath = appPath ?? knownPath;
-    if (persistPath) {
-      this.schedulePersist(persistPath);
+    const knownAppId = this.convToAppId.get(conversationId);
+    this.convToAppId.delete(conversationId);
+    const resolvedAppId = appId ?? knownAppId;
+    if (resolvedAppId) {
+      this.schedulePersist(resolvedAppId);
     }
   }
 
@@ -504,35 +510,34 @@ export class SkillToolManager {
    * return immediately. Missing or unreadable files are not fatal — the
    * conversation simply starts with no pins (matching the in-memory default).
    *
-   * Persistence shape (`<appPath>/.airo/pinned-skills.json`, v1):
+   * Persistence shape (`.airo/pinned-skills.json`, v1):
    * `{ "version": 1, "conversations": { "<conversationId>": ["skillName", ...] } }`
    *
    * Existing in-memory pins are preserved: the set is unioned with the
    * file's contents. This avoids dropping pins set in this process before
    * the first context-load triggered hydration.
    */
-  hydrateFromAppPath(appPath: string): Promise<void> {
-    // Not `async`: an async wrapper would create a fresh promise on every
-    // call, breaking the in-flight dedupe. Return the cached promise
-    // reference directly so concurrent callers await the same instance.
-    let inFlight = this.hydrationPromises.get(appPath);
+  hydrateFromWorkspace(appId: string): Promise<void> {
+    let inFlight = this.hydrationPromises.get(appId);
     if (inFlight) return inFlight;
-    inFlight = this.hydrateFromAppPathInner(appPath);
-    this.hydrationPromises.set(appPath, inFlight);
+    inFlight = this.hydrateFromWorkspaceInner(appId);
+    this.hydrationPromises.set(appId, inFlight);
     return inFlight;
   }
 
-  private async hydrateFromAppPathInner(appPath: string): Promise<void> {
-    const file = join(appPath, '.airo', 'pinned-skills.json');
+  private async hydrateFromWorkspaceInner(appId: string): Promise<void> {
+    const files = this.getWorkspaceFiles(appId);
+    if (!files) return;
+
     let raw: string;
     try {
-      raw = await fs.readFile(file, 'utf8');
+      const result = await files.view({ path: PINNED_SKILLS_PATH });
+      raw = result.content;
     } catch (error) {
-      const code = (error as NodeJS.ErrnoException).code;
-      if (code === 'ENOENT') return;
+      if (error instanceof DevSupervisorError && error.code === 'not_found') return;
       logger.warn('skill.pinned.hydrate.read_failed', {
-        appPath,
-        error: error instanceof Error ? error.message : String(error)
+        appId,
+        error: error instanceof Error ? error.message : String(error),
       });
       return;
     }
@@ -542,15 +547,15 @@ export class SkillToolManager {
       parsed = JSON.parse(raw);
     } catch (error) {
       logger.warn('skill.pinned.hydrate.parse_failed', {
-        appPath,
-        error: error instanceof Error ? error.message : String(error)
+        appId,
+        error: error instanceof Error ? error.message : String(error),
       });
       return;
     }
 
     if (!parsed || typeof parsed !== 'object') return;
 
-    const conversations = this.extractConversationsForVersion(parsed, appPath);
+    const conversations = this.extractConversationsForVersion(parsed, appId);
     if (!conversations) return;
 
     let restored = 0;
@@ -568,34 +573,29 @@ export class SkillToolManager {
         }
       }
       if (set.size > 0) {
-        this.convToAppPath.set(convId, appPath);
+        this.convToAppId.set(convId, appId);
       } else {
         this.pinnedByConversation.delete(convId);
       }
     }
 
-    logger.info('skill.pinned.hydrated', { appPath, restored });
+    logger.info('skill.pinned.hydrated', { appId, restored });
   }
 
-  /**
-   * Resolve the `conversations` map from a parsed file payload. Rejects
-   * unknown versions so a future v2 file does not get silently misread by
-   * an old agent process.
-   */
   private extractConversationsForVersion(
     parsed: object,
-    appPath: string
+    appId: string,
   ): Record<string, unknown> | null {
     const obj = parsed as Record<string, unknown>;
     if (typeof obj.version !== 'number') {
-      logger.warn('skill.pinned.hydrate.missing_version', { appPath });
+      logger.warn('skill.pinned.hydrate.missing_version', { appId });
       return null;
     }
     if (obj.version !== PINNED_SKILLS_FILE_VERSION) {
       logger.warn('skill.pinned.hydrate.unknown_version', {
-        appPath,
+        appId,
         fileVersion: obj.version,
-        supportedVersion: PINNED_SKILLS_FILE_VERSION
+        supportedVersion: PINNED_SKILLS_FILE_VERSION,
       });
       return null;
     }
@@ -605,60 +605,58 @@ export class SkillToolManager {
   }
 
   /**
-   * Schedule an atomic persist of this workspace's pins. Writes are
-   * serialized per-`appPath` to avoid `tmp -> rename` races between two
-   * near-simultaneous pin/unpin calls. Failures are logged but do not
-   * propagate — the in-memory state stays authoritative.
+   * Schedule a persist of this workspace's pins. Writes are serialized
+   * per-appId to avoid races between near-simultaneous pin/unpin calls.
+   * Failures are logged but do not propagate — in-memory state is authoritative.
    */
-  private schedulePersist(appPath: string): void {
-    const prev = this.persistChainByAppPath.get(appPath) ?? Promise.resolve();
-    const next = prev.then(() => this.persistPins(appPath)).catch(() => {
+  private schedulePersist(appId: string): void {
+    const prev = this.persistChainByAppId.get(appId) ?? Promise.resolve();
+    const next = prev.then(() => this.persistPins(appId)).catch(() => {
       // already logged inside persistPins; swallow so the chain stays alive.
     });
-    this.persistChainByAppPath.set(appPath, next);
+    this.persistChainByAppId.set(appId, next);
   }
 
-  private async persistPins(appPath: string): Promise<void> {
-    // Map iteration order is insertion order, so the most-recently-added
-    // conversations live at the end. If we exceed the cap, drop from the
-    // front (oldest first) — coarse but matches the failsafe intent.
+  private async persistPins(appId: string): Promise<void> {
     const entries: [string, string[]][] = [];
     for (const [convId, set] of this.pinnedByConversation) {
-      if (this.convToAppPath.get(convId) !== appPath) continue;
+      if (this.convToAppId.get(convId) !== appId) continue;
       if (set.size === 0) continue;
       entries.push([convId, Array.from(set)]);
     }
 
-    let dropped = 0;
     let kept = entries;
     if (entries.length > MAX_PERSISTED_CONVERSATIONS) {
-      dropped = entries.length - MAX_PERSISTED_CONVERSATIONS;
+      const dropped = entries.length - MAX_PERSISTED_CONVERSATIONS;
       kept = entries.slice(-MAX_PERSISTED_CONVERSATIONS);
       logger.warn('skill.pinned.persist.cap_exceeded', {
-        appPath,
+        appId,
         total: entries.length,
         dropped,
-        cap: MAX_PERSISTED_CONVERSATIONS
+        cap: MAX_PERSISTED_CONVERSATIONS,
       });
     }
 
     const payload: PinnedSkillsFileV1 = {
       version: PINNED_SKILLS_FILE_VERSION,
-      conversations: Object.fromEntries(kept)
+      conversations: Object.fromEntries(kept),
     };
 
-    const dir = join(appPath, '.airo');
-    const file = join(dir, 'pinned-skills.json');
+    const files = this.getWorkspaceFiles(appId);
+    if (!files) {
+      logger.warn('skill.pinned.persist_failed', { appId, error: 'workspace not found' });
+      return;
+    }
 
     try {
-      await fs.mkdir(dir, { recursive: true });
-      const tmp = `${file}.tmp.${process.pid}.${Date.now()}`;
-      await fs.writeFile(tmp, JSON.stringify(payload, null, 2), 'utf8');
-      await fs.rename(tmp, file);
+      await files.write({
+        path: PINNED_SKILLS_PATH,
+        content: JSON.stringify(payload, null, 2),
+      });
     } catch (error) {
       logger.warn('skill.pinned.persist_failed', {
-        appPath,
-        error: error instanceof Error ? error.message : String(error)
+        appId,
+        error: error instanceof Error ? error.message : String(error),
       });
     }
   }

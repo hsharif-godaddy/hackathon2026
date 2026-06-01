@@ -1,21 +1,8 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { SkillToolManager } from '../skill-tool-manager'
 
-// Mock logger
-vi.mock('../../logging/index.js', () => ({
-  logger: {
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
-    child: vi.fn(() => ({
-      info: vi.fn(),
-      warn: vi.fn(),
-      error: vi.fn(),
-      debug: vi.fn()
-    }))
-  }
-}))
+vi.mock('../../logging/index.js');
+vi.mock('../../workspace/index.js');
 
 describe('Skill Tool Integration', () => {
   let manager: SkillToolManager

@@ -151,8 +151,7 @@ export function createSSEContextLoader(
     const pinSelection = selectCacheConversationId(context as AgentsAppContext)
     const contextMessages = [...result.contextMessages]
     if (pinSelection.value) {
-      const pinAppPath = appId && deps.getAppContextFields ? deps.getAppContextFields(appId)?.path : undefined
-      const pinnedMessages = await buildPinnedSkillsContextMessages(pinSelection.value, pinAppPath)
+      const pinnedMessages = await buildPinnedSkillsContextMessages(pinSelection.value, appId)
       for (const msg of pinnedMessages) {
         contextMessages.push(msg)
       }

@@ -1,18 +1,45 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { readFile, writeFile, mkdir, rmdir } from 'fs/promises';
-import { join } from 'path';
-import { existsSync } from 'fs';
+import { join, dirname } from 'path';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
+
+let testAppPath = '';
+const hoistedFs = { existsSync, mkdirSync, readFileSync, writeFileSync };
+const hoistedPath = { join, dirname };
+
+vi.mock('../../workspace/index.js', () => ({
+  createForWorkspace: vi.fn(() => {
+    const files = {
+      view: vi.fn(async ({ path: filePath }: { path: string }) => {
+        const fullPath = hoistedPath.join(testAppPath, filePath);
+        if (!hoistedFs.existsSync(fullPath)) {
+          throw new Error(`ENOENT: file not found: ${filePath}`);
+        }
+        const content = hoistedFs.readFileSync(fullPath, 'utf-8');
+        return { content, encoding: 'utf-8', path: filePath, lines: content.split('\n').length, size: content.length, truncated: false };
+      }),
+      write: vi.fn(async ({ path: filePath, content }: { path: string; content: string }) => {
+        const fullPath = hoistedPath.join(testAppPath, filePath);
+        hoistedFs.mkdirSync(hoistedPath.dirname(fullPath), { recursive: true });
+        hoistedFs.writeFileSync(fullPath, content);
+        return { bytesWritten: content.length };
+      }),
+    };
+    return { files, tasks: undefined };
+  }),
+}));
+
 import { ASTStyleEditor } from '../ast-style-editor.js';
+
+const TEST_APP_ID = 'test-app-id';
 
 describe('AST Style Editor Integration Tests', () => {
   let astEditor: ASTStyleEditor;
-  let testAppPath: string;
   let testFilePath: string;
 
   beforeEach(async () => {
     astEditor = new ASTStyleEditor();
-    
-    // Create test directory
+
     testAppPath = `/tmp/ast-test-${Date.now()}`;
     await mkdir(testAppPath, { recursive: true });
     await mkdir(join(testAppPath, 'src', 'frontend', 'pages'), { recursive: true });
@@ -79,7 +106,7 @@ export default function HomePage() {
         }
       };
 
-      const result = await astEditor.editElementStyle(testAppPath, request);
+      const result = await astEditor.editElementStyle(testAppPath, request, TEST_APP_ID);
 
       expect(result.success).toBe(true);
       expect(result.changes.property).toBe('color');
@@ -117,7 +144,7 @@ export default function HomePage() {
         }
       };
 
-      const result = await astEditor.editElementStyle(testAppPath, request);
+      const result = await astEditor.editElementStyle(testAppPath, request, TEST_APP_ID);
 
       expect(result.success).toBe(true);
       expect(result.changes.property).toBe('backgroundColor');
@@ -158,7 +185,7 @@ export default function HomePage() {
         },
       };
 
-      const result = await astEditor.editElementStyle(testAppPath, request);
+      const result = await astEditor.editElementStyle(testAppPath, request, TEST_APP_ID);
 
       expect(result.success).toBe(true);
       const updatedFile = await readFile(testFilePath, 'utf-8');
@@ -189,7 +216,7 @@ export default function HomePage() {
         }
       };
 
-      const result = await astEditor.editElementStyle(testAppPath, request);
+      const result = await astEditor.editElementStyle(testAppPath, request, TEST_APP_ID);
 
       expect(result.success).toBe(true);
       expect(result.changes.property).toBe('fontSize');
@@ -228,7 +255,7 @@ export default function HomePage() {
         }
       };
 
-      const result = await astEditor.editElementStyle(testAppPath, request);
+      const result = await astEditor.editElementStyle(testAppPath, request, TEST_APP_ID);
 
       expect(result.success).toBe(true);
       expect(result.changes.newClassName).toContain('text-base');
@@ -272,7 +299,7 @@ export default function Page() {
         },
       };
 
-      const result = await astEditor.editElementStyle(testAppPath, request);
+      const result = await astEditor.editElementStyle(testAppPath, request, TEST_APP_ID);
 
       expect(result.success).toBe(true);
       const updatedFile = await readFile(testFilePath, 'utf-8');
@@ -320,7 +347,7 @@ export default function Page() {
         },
       };
 
-      const result = await astEditor.editElementStyle(testAppPath, request);
+      const result = await astEditor.editElementStyle(testAppPath, request, TEST_APP_ID);
 
       expect(result.success).toBe(true);
       const updatedFile = await readFile(testFilePath, 'utf-8');
@@ -366,7 +393,7 @@ export default function Page() {
         },
       };
 
-      const result = await astEditor.editElementStyle(testAppPath, request);
+      const result = await astEditor.editElementStyle(testAppPath, request, TEST_APP_ID);
 
       expect(result.success).toBe(true);
       const updatedFile = await readFile(testFilePath, 'utf-8');
@@ -414,7 +441,7 @@ export default function Page() {
         },
       };
 
-      const result = await astEditor.editElementStyle(testAppPath, request);
+      const result = await astEditor.editElementStyle(testAppPath, request, TEST_APP_ID);
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('INLINE_STYLE_NOT_EDITABLE');
@@ -457,7 +484,7 @@ export default function Page() {
         },
       };
 
-      const result = await astEditor.editElementStyle(testAppPath, request);
+      const result = await astEditor.editElementStyle(testAppPath, request, TEST_APP_ID);
 
       expect(result.success).toBe(true);
       const updatedFile = await readFile(testFilePath, 'utf-8');
@@ -503,7 +530,7 @@ export default function Page() {
         },
       };
 
-      const result = await astEditor.editElementStyle(testAppPath, request);
+      const result = await astEditor.editElementStyle(testAppPath, request, TEST_APP_ID);
 
       expect(result.success).toBe(true);
       const updatedFile = await readFile(testFilePath, 'utf-8');
@@ -550,7 +577,7 @@ export default function Page() {
         },
       };
 
-      const result = await astEditor.editElementStyle(testAppPath, request);
+      const result = await astEditor.editElementStyle(testAppPath, request, TEST_APP_ID);
 
       expect(result.success).toBe(true);
       const updatedFile = await readFile(testFilePath, 'utf-8');
@@ -592,7 +619,7 @@ export default function Page() {
         },
       };
 
-      const result = await astEditor.editElementStyle(testAppPath, request);
+      const result = await astEditor.editElementStyle(testAppPath, request, TEST_APP_ID);
 
       expect(result.success).toBe(true);
       const updatedFile = await readFile(testFilePath, 'utf-8');
@@ -638,7 +665,7 @@ export default function Page() {
         },
       };
 
-      const result = await astEditor.editElementStyle(testAppPath, request);
+      const result = await astEditor.editElementStyle(testAppPath, request, TEST_APP_ID);
 
       expect(result.success).toBe(true);
       const updatedFile = await readFile(testFilePath, 'utf-8');
@@ -685,7 +712,7 @@ export default function Page() {
         },
       };
 
-      const result = await astEditor.editElementStyle(testAppPath, request);
+      const result = await astEditor.editElementStyle(testAppPath, request, TEST_APP_ID);
 
       expect(result.success).toBe(true);
       const updatedFile = await readFile(testFilePath, 'utf-8');
@@ -720,7 +747,7 @@ export default function Page() {
         }
       };
 
-      const colorResult = await astEditor.editElementStyle(testAppPath, colorRequest);
+      const colorResult = await astEditor.editElementStyle(testAppPath, colorRequest, TEST_APP_ID);
       expect(colorResult.success).toBe(true);
 
       // Second edit: Change heading size
@@ -746,7 +773,7 @@ export default function Page() {
         }
       };
 
-      const sizeResult = await astEditor.editElementStyle(testAppPath, sizeRequest);
+      const sizeResult = await astEditor.editElementStyle(testAppPath, sizeRequest, TEST_APP_ID);
       expect(sizeResult.success).toBe(true);
 
       // Verify both changes were applied
@@ -782,7 +809,7 @@ export default function Page() {
         }
       };
 
-      const result = await astEditor.editElementStyle(testAppPath, request);
+      const result = await astEditor.editElementStyle(testAppPath, request, TEST_APP_ID);
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('ENOENT');
@@ -811,7 +838,7 @@ export default function Page() {
         }
       };
 
-      const result = await astEditor.editElementStyle(testAppPath, request);
+      const result = await astEditor.editElementStyle(testAppPath, request, TEST_APP_ID);
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('Element not found');
@@ -856,7 +883,7 @@ export default function SimplePage() {
         }
       };
 
-      const result = await astEditor.editElementStyle(testAppPath, request);
+      const result = await astEditor.editElementStyle(testAppPath, request, TEST_APP_ID);
 
       expect(result.success).toBe(true);
       expect(result.changes.oldClassName).toBe('');
@@ -906,7 +933,7 @@ export default function DynamicPage() {
         }
       };
 
-      const result = await astEditor.editElementStyle(testAppPath, request);
+      const result = await astEditor.editElementStyle(testAppPath, request, TEST_APP_ID);
 
       // This should fail gracefully since we can't easily edit template literals
       expect(result.success).toBe(false);
@@ -949,7 +976,7 @@ export default function Page() {
         }
       };
 
-      const result = await astEditor.editElementStyle(testAppPath, request);
+      const result = await astEditor.editElementStyle(testAppPath, request, TEST_APP_ID);
 
       expect(result.success).toBe(true);
       const updatedFile = await readFile(testFilePath, 'utf-8');
@@ -992,7 +1019,7 @@ export default function Page() {
         }
       };
 
-      const result = await astEditor.editElementStyle(testAppPath, request);
+      const result = await astEditor.editElementStyle(testAppPath, request, TEST_APP_ID);
 
       expect(result.success).toBe(true);
       const updatedFile = await readFile(testFilePath, 'utf-8');
@@ -1035,7 +1062,7 @@ export default function Page() {
         }
       };
 
-      const result = await astEditor.editElementStyle(testAppPath, request);
+      const result = await astEditor.editElementStyle(testAppPath, request, TEST_APP_ID);
 
       expect(result.success).toBe(true);
       const updatedFile = await readFile(testFilePath, 'utf-8');
@@ -1078,7 +1105,7 @@ export default function Page() {
         }
       };
 
-      const result = await astEditor.editElementStyle(testAppPath, request);
+      const result = await astEditor.editElementStyle(testAppPath, request, TEST_APP_ID);
 
       expect(result.success).toBe(true);
       const updatedFile = await readFile(testFilePath, 'utf-8');
@@ -1121,7 +1148,7 @@ export default function Page() {
         }
       };
 
-      const result = await astEditor.editElementStyle(testAppPath, request);
+      const result = await astEditor.editElementStyle(testAppPath, request, TEST_APP_ID);
 
       expect(result.success).toBe(true);
       const updatedFile = await readFile(testFilePath, 'utf-8');
@@ -1163,7 +1190,7 @@ export default function Page() {
         }
       };
 
-      const result = await astEditor.editElementStyle(testAppPath, request);
+      const result = await astEditor.editElementStyle(testAppPath, request, TEST_APP_ID);
 
       expect(result.success).toBe(true);
       const updatedFile = await readFile(testFilePath, 'utf-8');
@@ -1205,7 +1232,7 @@ export default function Page() {
         }
       };
 
-      const result = await astEditor.editElementStyle(testAppPath, request);
+      const result = await astEditor.editElementStyle(testAppPath, request, TEST_APP_ID);
 
       expect(result.success).toBe(true);
       const updatedFile = await readFile(testFilePath, 'utf-8');
@@ -1249,7 +1276,7 @@ export default function Page() {
         }
       };
 
-      const result = await astEditor.editElementStyle(testAppPath, request);
+      const result = await astEditor.editElementStyle(testAppPath, request, TEST_APP_ID);
 
       expect(result.success).toBe(true);
       const updatedFile = await readFile(testFilePath, 'utf-8');
@@ -1292,7 +1319,7 @@ export default function Page() {
         }
       };
 
-      const result = await astEditor.editElementStyle(testAppPath, request);
+      const result = await astEditor.editElementStyle(testAppPath, request, TEST_APP_ID);
 
       expect(result.success).toBe(true);
       const updatedFile = await readFile(testFilePath, 'utf-8');
@@ -1336,7 +1363,7 @@ export default function Page() {
         }
       };
 
-      const result = await astEditor.editElementStyle(testAppPath, request);
+      const result = await astEditor.editElementStyle(testAppPath, request, TEST_APP_ID);
 
       expect(result.success).toBe(true);
       const updatedFile = await readFile(testFilePath, 'utf-8');
@@ -1379,7 +1406,7 @@ export default function Page() {
         }
       };
 
-      const result = await astEditor.editElementStyle(testAppPath, request);
+      const result = await astEditor.editElementStyle(testAppPath, request, TEST_APP_ID);
 
       expect(result.success).toBe(true);
       const updatedFile = await readFile(testFilePath, 'utf-8');
@@ -1420,7 +1447,7 @@ export default function Page() {
         }
       };
 
-      const result = await astEditor.editElementStyle(testAppPath, request);
+      const result = await astEditor.editElementStyle(testAppPath, request, TEST_APP_ID);
 
       expect(result.success).toBe(true);
       const updatedFile = await readFile(testFilePath, 'utf-8');
@@ -1465,7 +1492,7 @@ export default function Page() {
         },
       };
 
-      const result = await astEditor.editElementStyle(testAppPath, request);
+      const result = await astEditor.editElementStyle(testAppPath, request, TEST_APP_ID);
 
       expect(result.success).toBe(true);
       const updatedFile = await readFile(testFilePath, 'utf-8');
@@ -1508,7 +1535,7 @@ export default function Page() {
         },
       };
 
-      const result = await astEditor.editElementStyle(testAppPath, request);
+      const result = await astEditor.editElementStyle(testAppPath, request, TEST_APP_ID);
 
       expect(result.success).toBe(true);
       const updatedFile = await readFile(testFilePath, 'utf-8');
@@ -1551,7 +1578,7 @@ export default function Page() {
         },
       };
 
-      const result = await astEditor.editElementStyle(testAppPath, request);
+      const result = await astEditor.editElementStyle(testAppPath, request, TEST_APP_ID);
 
       expect(result.success).toBe(true);
       const updatedFile = await readFile(testFilePath, 'utf-8');
@@ -1594,7 +1621,7 @@ export default function Page() {
         },
       };
 
-      const result = await astEditor.editElementStyle(testAppPath, request);
+      const result = await astEditor.editElementStyle(testAppPath, request, TEST_APP_ID);
 
       expect(result.success).toBe(true);
       const updatedFile = await readFile(testFilePath, 'utf-8');
@@ -1641,7 +1668,7 @@ export default function Page() {
         }
       };
 
-      const result = await astEditor.editElementStyle(testAppPath, request);
+      const result = await astEditor.editElementStyle(testAppPath, request, TEST_APP_ID);
 
       expect(result.success).toBe(true);
       const updatedFile = await readFile(testFilePath, 'utf-8');
@@ -1685,7 +1712,7 @@ export default function Page() {
         }
       };
 
-      const result = await astEditor.editElementStyle(testAppPath, request);
+      const result = await astEditor.editElementStyle(testAppPath, request, TEST_APP_ID);
 
       expect(result.success).toBe(true);
       const updatedFile = await readFile(testFilePath, 'utf-8');
@@ -1730,7 +1757,7 @@ export default function Page() {
         }
       };
 
-      const result = await astEditor.editElementStyle(testAppPath, request);
+      const result = await astEditor.editElementStyle(testAppPath, request, TEST_APP_ID);
 
       expect(result.success).toBe(true);
       const updatedFile = await readFile(testFilePath, 'utf-8');
@@ -1774,7 +1801,7 @@ export default function Page() {
         }
       };
 
-      const result = await astEditor.editElementStyle(testAppPath, request);
+      const result = await astEditor.editElementStyle(testAppPath, request, TEST_APP_ID);
 
       expect(result.success).toBe(true);
       const updatedFile = await readFile(testFilePath, 'utf-8');
@@ -1820,7 +1847,7 @@ export default function Page() {
         }
       };
 
-      const result = await astEditor.editElementStyle(testAppPath, request);
+      const result = await astEditor.editElementStyle(testAppPath, request, TEST_APP_ID);
 
       expect(result.success).toBe(true);
       const updatedFile = await readFile(testFilePath, 'utf-8');
@@ -1863,7 +1890,7 @@ export default function Page() {
         }
       };
 
-      const result = await astEditor.editElementStyle(testAppPath, request);
+      const result = await astEditor.editElementStyle(testAppPath, request, TEST_APP_ID);
 
       expect(result.success).toBe(true);
       const updatedFile = await readFile(testFilePath, 'utf-8');
@@ -1914,7 +1941,7 @@ export default function Page() {
         }
       };
 
-      const result = await astEditor.editElementStyle(testAppPath, request);
+      const result = await astEditor.editElementStyle(testAppPath, request, TEST_APP_ID);
 
       expect(result.success).toBe(true);
       expect(result.changes.property).toBe('color');
@@ -1961,7 +1988,7 @@ export default function Page() {
         }
       };
 
-      const result = await astEditor.editElementStyle(testAppPath, request);
+      const result = await astEditor.editElementStyle(testAppPath, request, TEST_APP_ID);
 
       expect(result.success).toBe(true);
       const updatedFile = await readFile(testFilePath, 'utf-8');
@@ -2138,17 +2165,17 @@ export default function Page() {
         },
       };
 
-      const result = await astEditor.editElementStyle(testAppPath, request, 'commit-test-app');
+      const result = await astEditor.editElementStyle(testAppPath, request, TEST_APP_ID);
 
       expect(result.success).toBe(true);
       expect(commitSpy).toHaveBeenCalledTimes(1);
       const callArgs = commitSpy.mock.calls[0];
-      expect(callArgs[3]).toBe('commit-test-app'); // appId is the 4th arg
       expect(callArgs[2]).toContain('fontSize'); // commit message includes the property
+      expect(callArgs[3]).toBeDefined(); // gitTool instance passed
       expect(result.commitHash).toBe('faked-commit-hash');
     });
 
-    it('skips commitChanges when no appId is provided (legacy callers / tests)', async () => {
+    it('always commits when appId is provided', async () => {
       const commitSpy = vi
         .spyOn(astEditor as unknown as { commitChanges: () => Promise<string | undefined> }, 'commitChanges')
         .mockResolvedValue('faked-commit-hash');
@@ -2175,10 +2202,11 @@ export default function Page() {
         },
       };
 
-      const result = await astEditor.editElementStyle(testAppPath, request);
+      const result = await astEditor.editElementStyle(testAppPath, request, TEST_APP_ID);
 
       expect(result.success).toBe(true);
-      expect(commitSpy).not.toHaveBeenCalled();
+      expect(commitSpy).toHaveBeenCalledTimes(1);
+      expect(result.commitHash).toBe('faked-commit-hash');
     });
   });
 });

@@ -109,8 +109,7 @@ export const skillAITool: Tool = createTool(
         throw new Error('Conversation ID not found in context. Pin action requires conversation context.');
       }
       const pinAppId = context?.metadata?.appId as string | undefined;
-      const pinAppPath = pinAppId ? appRepo.findById(pinAppId)?.path : undefined;
-      const pinResult = skillToolManager.pinSkill(conversationId, input.skill, pinAppPath);
+      const pinResult = skillToolManager.pinSkill(conversationId, input.skill, pinAppId);
       if (!pinResult.success) {
         return {
           success: false,
@@ -133,8 +132,7 @@ export const skillAITool: Tool = createTool(
         throw new Error('Conversation ID not found in context. Unpin action requires conversation context.');
       }
       const unpinAppId = context?.metadata?.appId as string | undefined;
-      const unpinAppPath = unpinAppId ? appRepo.findById(unpinAppId)?.path : undefined;
-      skillToolManager.unpinSkill(conversationId, input.skill, unpinAppPath);
+      skillToolManager.unpinSkill(conversationId, input.skill, unpinAppId);
       return {
         success: true,
         skill: input.skill,

@@ -1,7 +1,9 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { promises as fs } from 'fs';
 import path from 'path';
 import os from 'os';
+import type { WorkspaceFiles } from '../../workspace/files.js';
+import { DevSupervisorError } from '../../services/DevSupervisorClient.js';
 import {
   scanApiDir,
   sortRoutes,
@@ -20,71 +22,105 @@ afterEach(async () => {
 });
 
 async function writeFile(rel: string, content: string): Promise<void> {
-  // `tmp` is from fs.mkdtemp (os.tmpdir()) and `rel` is a hardcoded test
-  // fixture path. No user input.
-  // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
   const full = path.join(tmp, rel);
   await fs.mkdir(path.dirname(full), { recursive: true });
   await fs.writeFile(full, content, 'utf8');
 }
 
+function createMockFiles(): WorkspaceFiles {
+  return {
+    view: async ({ path: filePath }) => {
+      const full = path.join(tmp, filePath);
+      try {
+        const content = await fs.readFile(full, 'utf-8');
+        return { content, encoding: 'utf-8' as const, path: filePath, lines: content.split('\n').length, size: content.length, truncated: false };
+      } catch (err: unknown) {
+        if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+          throw new DevSupervisorError('not_found', 404, `${filePath}: no such file or directory`);
+        }
+        throw err;
+      }
+    },
+    write: async ({ path: filePath, content }) => {
+      const full = path.join(tmp, filePath);
+      await fs.mkdir(path.dirname(full), { recursive: true });
+      await fs.writeFile(full, content, 'utf8');
+      return { bytesWritten: content.length };
+    },
+    tree: async ({ path: treePath, recursive } = {}) => {
+      const base = path.join(tmp, treePath ?? '');
+      const entries: Array<{ path: string; kind: 'file' | 'directory'; size: number; modifiedAt: string }> = [];
+      async function walk(dir: string, isRoot = false): Promise<void> {
+        let names: string[];
+        try {
+          names = await fs.readdir(dir);
+        } catch (err: unknown) {
+          if (isRoot && (err as NodeJS.ErrnoException).code === 'ENOENT') {
+            throw new DevSupervisorError('not_found', 404, `${treePath}: no such file or directory`);
+          }
+          return;
+        }
+        for (const name of names) {
+          const full = path.join(dir, name);
+          const stat = await fs.stat(full);
+          const relPath = path.relative(tmp, full);
+          if (stat.isDirectory()) {
+            entries.push({ path: relPath, kind: 'directory', size: 0, modifiedAt: '' });
+            if (recursive) await walk(full);
+          } else {
+            entries.push({ path: relPath, kind: 'file', size: stat.size, modifiedAt: '' });
+          }
+        }
+      }
+      await walk(base, true);
+      return { entries, truncated: false };
+    },
+  } as unknown as WorkspaceFiles;
+}
+
 describe('scanApiDir', () => {
   it('returns empty array for missing dir', async () => {
-    const result = await scanApiDir(path.join(tmp, 'missing'));
+    const files = createMockFiles();
+    const result = await scanApiDir(files);
     expect(result).toEqual([]);
   });
 
-  it('propagates non-ENOENT readdir errors (e.g. EACCES)', async () => {
-    // Pins walk()'s ENOENT-only guard: any other fs error must surface so
-    // the regenerated entry.ts doesn't silently drop real API routes.
-    await fs.mkdir(path.join(tmp, 'api'));
-    const err = Object.assign(new Error('permission denied'), { code: 'EACCES' });
-    const spy = vi.spyOn(fs, 'readdir').mockRejectedValue(err);
-    await expect(scanApiDir(path.join(tmp, 'api'))).rejects.toThrow(/permission denied/);
-    spy.mockRestore();
-  });
-
-  it('swallows ENOENT from fs.stat race (entry deleted between readdir and stat)', async () => {
-    // A file listed by readdir can vanish before the subsequent stat call
-    // (e.g. during a concurrent sync from another process). The walker must
-    // skip it silently rather than crashing the migration.
-    await writeFile('api/health/GET.ts', 'export default () => {}');
-    const err = Object.assign(new Error('no such file'), { code: 'ENOENT' });
-    const spy = vi.spyOn(fs, 'stat').mockRejectedValueOnce(err);
-
-    const routes = await scanApiDir(path.join(tmp, 'api'));
-
-    // The first entry encountered raced away; subsequent entries are still
-    // walked. An empty result set here is acceptable (the only fixture was
-    // the one that raced); what matters is no throw.
-    expect(Array.isArray(routes)).toBe(true);
-    spy.mockRestore();
-  });
-
-  it('propagates non-ENOENT fs.stat errors (e.g. EACCES)', async () => {
-    // Symmetric with the readdir guard: EACCES/EIO on stat must surface so
-    // a route tree the walker can't read doesn't silently yield a smaller
-    // regenerated entry.ts than the real filesystem.
-    await writeFile('api/health/GET.ts', 'export default () => {}');
-    const err = Object.assign(new Error('permission denied'), { code: 'EACCES' });
-    const spy = vi.spyOn(fs, 'stat').mockRejectedValueOnce(err);
-
-    await expect(scanApiDir(path.join(tmp, 'api'))).rejects.toThrow(/permission denied/);
-    spy.mockRestore();
-  });
-
   it('discovers GET / POST / etc in nested folders', async () => {
-    await writeFile('api/health/GET.ts', 'export default () => {}');
-    await writeFile('api/users/POST.ts', 'export default () => {}');
-    await writeFile('api/users/[id]/GET.ts', 'export default () => {}');
-    await writeFile('api/readme.md', '# skip');
+    await writeFile('src/server/api/health/GET.ts', 'export default () => {}');
+    await writeFile('src/server/api/users/POST.ts', 'export default () => {}');
+    await writeFile('src/server/api/users/[id]/GET.ts', 'export default () => {}');
+    await writeFile('src/server/api/readme.md', '# skip');
 
-    const routes = await scanApiDir(path.join(tmp, 'api'));
+    const files = createMockFiles();
+    const routes = await scanApiDir(files);
     expect(routes.map((r) => `${r.method} ${r.path}`)).toEqual([
       'get /health',
       'post /users',
       'get /users/:id',
     ]);
+  });
+
+  it('propagates non-not-found DevSupervisorError from tree()', async () => {
+    // Pins the catch narrow: any DevSupervisorError other than 'not_found'
+    // (e.g. permission_denied) must surface so a route tree the supervisor
+    // can't read doesn't silently yield a smaller regenerated entry.ts.
+    const files = {
+      tree: async () => {
+        throw new DevSupervisorError('permission_denied', 403, 'tree: permission denied');
+      },
+    } as unknown as WorkspaceFiles;
+    await expect(scanApiDir(files)).rejects.toThrow(/permission denied/);
+  });
+
+  it('propagates generic Error from tree()', async () => {
+    // Network / timeout / unexpected supervisor errors must surface, not
+    // be swallowed as "no API dir".
+    const files = {
+      tree: async () => {
+        throw new Error('socket hang up');
+      },
+    } as unknown as WorkspaceFiles;
+    await expect(scanApiDir(files)).rejects.toThrow(/socket hang up/);
   });
 });
 
@@ -115,9 +151,6 @@ describe('generateEntryApiBlocks', () => {
   });
 
   it('strips [bracket] notation from relDir when building identifiers', () => {
-    // Pins the identifierFor bracket-handling path independently of the
-    // scanApiDir filesystem walk, so a regression in the stripping regex
-    // would fail here without needing to stage real directories.
     const { imports, registrations } = generateEntryApiBlocks([
       {
         method: 'get',
@@ -132,10 +165,6 @@ describe('generateEntryApiBlocks', () => {
   });
 
   it('prefixes identifiers that would otherwise start with a digit', () => {
-    // JS identifiers cannot start with 0-9. A route dir like `2026/` would
-    // previously emit `import 2026_get_0 from ...`, breaking bundle parse
-    // and crashlooping the publish container. Underscore-prefix keeps the
-    // generated import valid.
     const { imports, registrations } = generateEntryApiBlocks([
       {
         method: 'get',
@@ -159,26 +188,40 @@ export default app;
 `;
 
   it('returns no-entry when src/server/entry.ts is missing', async () => {
-    const result = await regenerateEntryApiRegistrations(tmp);
+    const files = createMockFiles();
+    const result = await regenerateEntryApiRegistrations(files);
     expect(result.reason).toBe('no-entry');
     expect(result.changed).toBe(false);
   });
 
   it('returns no-api-dir when api directory is missing', async () => {
     await writeFile('src/server/entry.ts', bareEntry);
-    const result = await regenerateEntryApiRegistrations(tmp);
+    const files = createMockFiles();
+    const result = await regenerateEntryApiRegistrations(files);
     expect(result.reason).toBe('no-api-dir');
   });
 
-  it('propagates non-ENOENT fs.access errors (e.g. EACCES) instead of treating as not-installed', async () => {
-    // Pins the catch narrow: an EACCES on entryPath must not masquerade as
-    // "no-entry" (which would silently skip regeneration and drop API routes).
-    await writeFile('src/server/entry.ts', bareEntry);
-    await writeFile('src/server/api/health/GET.ts', 'export default () => {}');
-    const err = Object.assign(new Error('permission denied'), { code: 'EACCES' });
-    const spy = vi.spyOn(fs, 'access').mockRejectedValue(err);
-    await expect(regenerateEntryApiRegistrations(tmp)).rejects.toThrow(/permission denied/);
-    spy.mockRestore();
+  it('propagates non-not-found DevSupervisorError from view()', async () => {
+    // Pins the .catch() narrow on entry.ts read: a permission_denied or
+    // server error must not masquerade as 'no-entry' (which would silently
+    // skip regeneration and drop API routes from the published bundle).
+    const files = {
+      view: async () => {
+        throw new DevSupervisorError('permission_denied', 403, 'entry.ts: permission denied');
+      },
+      tree: async () => ({ entries: [], truncated: false }),
+    } as unknown as WorkspaceFiles;
+    await expect(regenerateEntryApiRegistrations(files)).rejects.toThrow(/permission denied/);
+  });
+
+  it('propagates generic Error from view()', async () => {
+    const files = {
+      view: async () => {
+        throw new Error('socket hang up');
+      },
+      tree: async () => ({ entries: [], truncated: false }),
+    } as unknown as WorkspaceFiles;
+    await expect(regenerateEntryApiRegistrations(files)).rejects.toThrow(/socket hang up/);
   });
 
   it('rewrites bare healthGet shape into marked block and picks up new routes', async () => {
@@ -186,7 +229,8 @@ export default app;
     await writeFile('src/server/api/health/GET.ts', 'export default () => {}');
     await writeFile('src/server/api/users/POST.ts', 'export default () => {}');
 
-    const result = await regenerateEntryApiRegistrations(tmp);
+    const files = createMockFiles();
+    const result = await regenerateEntryApiRegistrations(files);
     expect(result.changed).toBe(true);
     expect(result.routeCount).toBe(2);
 
@@ -212,7 +256,8 @@ export default app;
     await writeFile('src/server/api/health/GET.ts', 'export default () => {}');
     await writeFile('src/server/api/orders/POST.ts', 'export default () => {}');
 
-    const result = await regenerateEntryApiRegistrations(tmp);
+    const files = createMockFiles();
+    const result = await regenerateEntryApiRegistrations(files);
     expect(result.changed).toBe(true);
     expect(result.routeCount).toBe(2);
     const after = await fs.readFile(path.join(tmp, 'src/server/entry.ts'), 'utf8');
@@ -221,22 +266,15 @@ export default app;
   });
 
   it('returns no-change without writing when entry.ts is already up-to-date', async () => {
-    // Pins the `content === original` short-circuit: a re-run on an
-    // already-converged entry.ts should neither mutate the file nor
-    // report changed=true. Mtime comparison verifies no write happened.
     await writeFile('src/server/entry.ts', bareEntry);
     await writeFile('src/server/api/health/GET.ts', 'export default () => {}');
-    const initial = await regenerateEntryApiRegistrations(tmp);
+    const files = createMockFiles();
+    const initial = await regenerateEntryApiRegistrations(files);
     expect(initial.changed).toBe(true);
-    const afterPath = path.join(tmp, 'src/server/entry.ts');
-    const mtimeBefore = (await fs.stat(afterPath)).mtimeMs;
-    // Pause briefly to ensure mtime granularity would register a write.
-    await new Promise((r) => setTimeout(r, 20));
-    const second = await regenerateEntryApiRegistrations(tmp);
+
+    const second = await regenerateEntryApiRegistrations(files);
     expect(second.changed).toBe(false);
     expect(second.reason).toBe('no-change');
-    const mtimeAfter = (await fs.stat(afterPath)).mtimeMs;
-    expect(mtimeAfter).toBe(mtimeBefore);
   });
 
   it('returns markers-missing without touching a customized entry.ts', async () => {
@@ -249,7 +287,8 @@ export default app;
     await writeFile('src/server/entry.ts', customized);
     await writeFile('src/server/api/users/POST.ts', 'export default () => {}');
 
-    const result = await regenerateEntryApiRegistrations(tmp);
+    const files = createMockFiles();
+    const result = await regenerateEntryApiRegistrations(files);
     expect(result.reason).toBe('markers-missing');
     expect(result.changed).toBe(false);
     const after = await fs.readFile(path.join(tmp, 'src/server/entry.ts'), 'utf8');

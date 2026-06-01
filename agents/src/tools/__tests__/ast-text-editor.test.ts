@@ -1,7 +1,34 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { readFile, writeFile, mkdir, rm } from 'fs/promises';
-import { join } from 'path';
-import { existsSync } from 'fs';
+import { join, dirname } from 'path';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
+
+let testAppPath = '';
+const hoistedFs = { existsSync, mkdirSync, readFileSync, writeFileSync };
+const hoistedPath = { join, dirname };
+
+vi.mock('../../workspace/index.js', () => ({
+  createForWorkspace: vi.fn(() => {
+    const files = {
+      view: vi.fn(async ({ path: filePath }: { path: string }) => {
+        const fullPath = hoistedPath.join(testAppPath, filePath);
+        if (!hoistedFs.existsSync(fullPath)) {
+          throw new Error(`ENOENT: file not found: ${filePath}`);
+        }
+        const content = hoistedFs.readFileSync(fullPath, 'utf-8');
+        return { content, encoding: 'utf-8', path: filePath, lines: content.split('\n').length, size: content.length, truncated: false };
+      }),
+      write: vi.fn(async ({ path: filePath, content }: { path: string; content: string }) => {
+        const fullPath = hoistedPath.join(testAppPath, filePath);
+        hoistedFs.mkdirSync(hoistedPath.dirname(fullPath), { recursive: true });
+        hoistedFs.writeFileSync(fullPath, content);
+        return { bytesWritten: content.length };
+      }),
+    };
+    return { files, tasks: undefined };
+  }),
+}));
+
 import { ASTTextEditor } from '../ast-text-editor.js';
 
 /**
@@ -144,8 +171,8 @@ export default function HomePage() {
 
 describe('ASTTextEditor — Hello World test app', () => {
   let editor: ASTTextEditor;
-  let testAppPath: string;
   let testFilePath: string;
+  const TEST_APP_ID = 'test-app-id';
 
   beforeEach(async () => {
     editor = new ASTTextEditor();
@@ -163,7 +190,7 @@ describe('ASTTextEditor — Hello World test app', () => {
 
   // ── Helper to run an edit and return the updated file content ──
   async function editAndRead(request: Parameters<ASTTextEditor['editElementText']>[1]) {
-    const result = await editor.editElementText(testAppPath, request);
+    const result = await editor.editElementText(testAppPath, request, TEST_APP_ID);
     const filePath = join(testAppPath, request.devContext.fileName);
     const updatedContent = await readFile(filePath, 'utf-8');
     return { result, updatedContent };
@@ -996,7 +1023,7 @@ export default function HeroPage() {
           componentName: 'unknown',
           lineNumber: 10
         }
-      });
+      }, TEST_APP_ID);
 
       // BUG: the editor reports success=true because it finds a "partial-text" match
       // (the target text "This text does not exist anywhere" contains the element's text).
@@ -1070,7 +1097,7 @@ export default function HeroPage() {
           componentName: 'unknown',
           lineNumber: 4
         }
-      });
+      }, TEST_APP_ID);
 
       expect(result.success).toBe(true);
 
@@ -1100,8 +1127,8 @@ export default function DevIdPage() {
   );
 }`);
 
-      const editor = new ASTTextEditor();
-      const result = await editor.editElementText(testAppPath, {
+      const devIdEditor = new ASTTextEditor();
+      const result = await devIdEditor.editElementText(testAppPath, {
         selector: 'p',
         oldText: 'Original text here',
         newText: 'Updated text here',
@@ -1111,7 +1138,7 @@ export default function DevIdPage() {
           lineNumber: 999, // Intentionally wrong
           devId: 'bbb222',
         },
-      });
+      }, TEST_APP_ID);
 
       expect(result.success).toBe(true);
 

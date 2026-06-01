@@ -1,14 +1,58 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { promises as fs } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
+
+vi.mock('../../workspace/index.js');
+
+import { createForWorkspace } from '../../workspace/index.js';
+
+const mockedCreateForWorkspace = vi.mocked(createForWorkspace);
+
+function mockWorkspaceForPath(basePath: string): void {
+  mockedCreateForWorkspace.mockImplementation(() => {
+    const files = {
+      view: async ({ path: filePath }: { path: string }) => {
+        const full = join(basePath, filePath);
+        const content = await fs.readFile(full, 'utf-8');
+        return { content, encoding: 'utf-8' as const, path: filePath, lines: content.split('\n').length, size: content.length, truncated: false };
+      },
+      write: async ({ path: filePath, content }: { path: string; content: string }) => {
+        const full = join(basePath, filePath);
+        await fs.mkdir(join(full, '..'), { recursive: true });
+        await fs.writeFile(full, content);
+        return { bytesWritten: content.length };
+      },
+    };
+    return { files, tasks: undefined } as ReturnType<typeof createForWorkspace>;
+  });
+}
+
+function mockWorkspaceForPaths(paths: Map<string, string>): void {
+  mockedCreateForWorkspace.mockImplementation((appId: string) => {
+    const basePath = paths.get(appId);
+    if (!basePath) return null;
+    const files = {
+      view: async ({ path: filePath }: { path: string }) => {
+        const full = join(basePath, filePath);
+        const content = await fs.readFile(full, 'utf-8');
+        return { content, encoding: 'utf-8' as const, path: filePath, lines: content.split('\n').length, size: content.length, truncated: false };
+      },
+      write: async ({ path: filePath, content }: { path: string; content: string }) => {
+        const full = join(basePath, filePath);
+        await fs.mkdir(join(full, '..'), { recursive: true });
+        await fs.writeFile(full, content);
+        return { bytesWritten: content.length };
+      },
+    };
+    return { files, tasks: undefined } as ReturnType<typeof createForWorkspace>;
+  });
+}
+
 import { SkillToolManager } from '../skill-tool-manager.js';
 
 async function flushPersist(mgr: SkillToolManager): Promise<void> {
-  // Force the persist chain for every tracked appPath to settle. The
-  // chain map is private; reach in via index access since we own the
-  // type.
-  const chain = (mgr as unknown as { persistChainByAppPath: Map<string, Promise<void>> }).persistChainByAppPath;
+  const chain = (mgr as unknown as { persistChainByAppId: Map<string, Promise<void>> }).persistChainByAppId;
   await Promise.all(Array.from(chain.values()));
 }
 
@@ -117,18 +161,21 @@ describe('SkillToolManager pinning', () => {
 describe('SkillToolManager persistence', () => {
   let mgr: SkillToolManager;
   let workDir: string;
+  const APP_ID = 'test-persist-app';
 
   beforeEach(async () => {
     mgr = new SkillToolManager();
     workDir = await fs.mkdtemp(join(tmpdir(), 'pin-persist-'));
+    mockWorkspaceForPath(workDir);
   });
 
   afterEach(async () => {
+    mockedCreateForWorkspace.mockReset();
     await fs.rm(workDir, { recursive: true, force: true });
   });
 
   it('writes .airo/pinned-skills.json on pin and reads it back on hydrate', async () => {
-    mgr.pinSkill('conv-A', 'deep-build', workDir);
+    mgr.pinSkill('conv-A', 'deep-build', APP_ID);
     await flushPersist(mgr);
 
     const file = join(workDir, '.airo', 'pinned-skills.json');
@@ -137,14 +184,14 @@ describe('SkillToolManager persistence', () => {
 
     // Fresh manager — hydrate should restore.
     const mgr2 = new SkillToolManager();
-    await mgr2.hydrateFromAppPath(workDir);
+    await mgr2.hydrateFromWorkspace(APP_ID);
     expect(mgr2.isPinned('conv-A', 'deep-build')).toBe(true);
   });
 
   it('removes the entry from disk when the last skill is unpinned', async () => {
-    mgr.pinSkill('conv-A', 'deep-build', workDir);
+    mgr.pinSkill('conv-A', 'deep-build', APP_ID);
     await flushPersist(mgr);
-    mgr.unpinSkill('conv-A', 'deep-build', workDir);
+    mgr.unpinSkill('conv-A', 'deep-build', APP_ID);
     await flushPersist(mgr);
 
     const file = join(workDir, '.airo', 'pinned-skills.json');
@@ -153,29 +200,29 @@ describe('SkillToolManager persistence', () => {
   });
 
   it('hydrate is idempotent — second call does not re-read', async () => {
-    mgr.pinSkill('conv-A', 'deep-build', workDir);
+    mgr.pinSkill('conv-A', 'deep-build', APP_ID);
     await flushPersist(mgr);
 
     const mgr2 = new SkillToolManager();
-    await mgr2.hydrateFromAppPath(workDir);
+    await mgr2.hydrateFromWorkspace(APP_ID);
     // Mutate file after first hydrate; second call must not pick the change up.
     await fs.writeFile(
       join(workDir, '.airo', 'pinned-skills.json'),
       JSON.stringify({ version: 1, conversations: { 'conv-B': ['seo'] } })
     );
-    await mgr2.hydrateFromAppPath(workDir);
+    await mgr2.hydrateFromWorkspace(APP_ID);
     expect(mgr2.isPinned('conv-B', 'seo')).toBe(false);
   });
 
   it('concurrent hydrate calls share the same in-flight promise', async () => {
-    mgr.pinSkill('conv-A', 'deep-build', workDir);
+    mgr.pinSkill('conv-A', 'deep-build', APP_ID);
     await flushPersist(mgr);
 
     const mgr2 = new SkillToolManager();
     // Fire two concurrent hydrates. Without the in-flight cache, the
     // second would short-circuit before the first finished its read and
     // observe an empty pin set.
-    const [p1, p2] = [mgr2.hydrateFromAppPath(workDir), mgr2.hydrateFromAppPath(workDir)];
+    const [p1, p2] = [mgr2.hydrateFromWorkspace(APP_ID), mgr2.hydrateFromWorkspace(APP_ID)];
     // Both must resolve to the same promise instance, not two separate reads.
     expect(p1).toBe(p2);
     await Promise.all([p1, p2]);
@@ -188,7 +235,7 @@ describe('SkillToolManager persistence', () => {
       join(workDir, '.airo', 'pinned-skills.json'),
       JSON.stringify({ 'conv-A': ['deep-build'] }) // legacy unversioned shape
     );
-    await mgr.hydrateFromAppPath(workDir);
+    await mgr.hydrateFromWorkspace(APP_ID);
     expect(mgr.getPinnedSkills('conv-A')).toEqual([]);
   });
 
@@ -198,13 +245,13 @@ describe('SkillToolManager persistence', () => {
       join(workDir, '.airo', 'pinned-skills.json'),
       JSON.stringify({ version: 999, conversations: { 'conv-A': ['deep-build'] } })
     );
-    await mgr.hydrateFromAppPath(workDir);
+    await mgr.hydrateFromWorkspace(APP_ID);
     expect(mgr.getPinnedSkills('conv-A')).toEqual([]);
   });
 
   it('caps persisted conversations at 100 (drops oldest)', async () => {
     for (let i = 0; i < 105; i++) {
-      mgr.pinSkill(`conv-${i.toString().padStart(3, '0')}`, 'deep-build', workDir);
+      mgr.pinSkill(`conv-${i.toString().padStart(3, '0')}`, 'deep-build', APP_ID);
     }
     await flushPersist(mgr);
 
@@ -227,20 +274,23 @@ describe('SkillToolManager persistence', () => {
         conversations: { 'conv-A': ['deep-build', '../etc/passwd', 12345] }
       })
     );
-    await mgr.hydrateFromAppPath(workDir);
+    await mgr.hydrateFromWorkspace(APP_ID);
     expect(mgr.getPinnedSkills('conv-A')).toEqual(['deep-build']);
   });
 
   it('missing file is not an error', async () => {
-    await mgr.hydrateFromAppPath(workDir);
+    await mgr.hydrateFromWorkspace(APP_ID);
     expect(mgr.getPinnedSkills('conv-A')).toEqual([]);
   });
 
-  it('does not persist conversations that belong to a different appPath', async () => {
+  it('does not persist conversations that belong to a different appId', async () => {
     const otherDir = await fs.mkdtemp(join(tmpdir(), 'pin-persist-other-'));
+    const OTHER_APP_ID = 'other-persist-app';
+    const paths = new Map<string, string>([[APP_ID, workDir], [OTHER_APP_ID, otherDir]]);
+    mockWorkspaceForPaths(paths);
     try {
-      mgr.pinSkill('conv-A', 'deep-build', workDir);
-      mgr.pinSkill('conv-B', 'seo', otherDir);
+      mgr.pinSkill('conv-A', 'deep-build', APP_ID);
+      mgr.pinSkill('conv-B', 'seo', OTHER_APP_ID);
       await flushPersist(mgr);
 
       const fileA = JSON.parse(
@@ -264,15 +314,15 @@ describe('SkillToolManager persistence', () => {
 
   it('clearConversation(appPath) removes a conversation the manager never observed', async () => {
     // Simulate prior process: pin A in this workspace, then restart.
-    mgr.pinSkill('conv-A', 'deep-build', workDir);
+    mgr.pinSkill('conv-A', 'deep-build', APP_ID);
     await flushPersist(mgr);
 
     // Fresh manager — the agent process never observed conv-A as a pin in
     // memory. Clearing should still remove it from the disk file because
     // the caller knows the appPath (e.g., DELETE /conversations route).
     const mgr2 = new SkillToolManager();
-    await mgr2.hydrateFromAppPath(workDir);
-    mgr2.clearConversation('conv-A', workDir);
+    await mgr2.hydrateFromWorkspace(APP_ID);
+    mgr2.clearConversation('conv-A', APP_ID);
     await flushPersist(mgr2);
 
     const content = JSON.parse(

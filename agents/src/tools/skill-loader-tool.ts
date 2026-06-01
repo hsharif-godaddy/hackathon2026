@@ -6,6 +6,7 @@ import { logger } from '../logging/index.js';
 import { skills, getFeatures } from '../services/features.js';
 import { TerminalTool } from './terminal.js';
 import { createForWorkspace } from '../workspace/index.js';
+import { DevSupervisorError } from '../services/DevSupervisorClient.js';
 import { regenerateEntryApiRegistrations } from '../utils/entry-api-sync.js';
 
 /**
@@ -34,9 +35,9 @@ export interface SkillDependencyConfig {
 export interface InstallTemplatesOptions {
   /** Name of the skill */
   skill: string;
-  /** Base directory where app code lives (e.g., '/tmp/apps/abc123/app') */
+  /** Base directory for terminal command CWD */
   appPath: string;
-  /** App ID for terminal command execution */
+  /** App ID for workspace file operations and terminal commands */
   appId: string;
   /** @internal Set of skills being installed to prevent circular dependencies */
   installingSkills?: Set<string>;
@@ -432,6 +433,12 @@ export class SkillLoaderTool {
         this.logger.info('skill.install.no_templates', { skill });
       }
 
+      const workspace = createForWorkspace(appId, 'preview');
+      if (!workspace) {
+        this.logger.error('skill.install.workspace_unavailable', { skill, appId });
+        return { success: false, skill, filesInstalled: 0, installedFiles: [], error: 'Workspace not found' };
+      }
+
       if (hasTemplates) {
         const templates = await this.loadTemplateFiles(templatesDir, '');
 
@@ -439,71 +446,51 @@ export class SkillLoaderTool {
           this.logger.info('skill.install.empty_templates', { skill });
         }
 
-        // Copy each template file to destination
         for (const template of templates) {
-          const destPath = this.getDestinationPath(skill, template.path, appPath);
+          const destRelPath = this.getDestinationPath(skill, template.path);
 
           try {
-            // Skip existing files unless overwrite is explicitly requested
             if (config.overwrite !== true) {
               try {
-                await fs.access(destPath);
-                this.logger.info('skill.install.skip_existing', {
-                  skill,
-                  path: destPath
-                });
+                await workspace.files.view({ path: destRelPath, limit: 1 });
+                this.logger.info('skill.install.skip_existing', { skill, path: destRelPath });
                 filesSkipped++;
                 continue;
-              } catch {
-                // File doesn't exist, proceed with install
+              } catch (error) {
+                if (!(error instanceof DevSupervisorError && error.code === 'not_found')) {
+                  throw error;
+                }
               }
             }
 
-            // Ensure destination directory exists
-            const destDir = path.dirname(destPath);
-            await fs.mkdir(destDir, { recursive: true });
-
-            // Write file
-            await fs.writeFile(destPath, template.content, 'utf-8');
-            installedFiles.push(destPath);
+            await workspace.files.write({ path: destRelPath, content: template.content });
+            installedFiles.push(destRelPath);
 
             this.logger.info('skill.install.file_copied', {
               skill,
               from: template.path,
-              to: destPath
+              to: destRelPath,
             });
           } catch (error) {
             this.logger.error('skill.install.file_failed', {
               skill,
               path: template.path,
-              destPath,
-              error: error instanceof Error ? error.message : String(error)
+              destPath: destRelPath,
+              error: error instanceof Error ? error.message : String(error),
             });
-            // Continue with other files even if one fails
           }
         }
       }
 
       // If the skill installed any API route files under src/server/api/**,
       // regenerate the import + registration blocks in src/server/entry.ts.
-      // Under the v8 SSR template, API routes must be explicitly registered
-      // in entry.ts (filesystem routing was removed). Without this, skill
-      // installs that ship API routes would silently 404 until the preview
-      // container's template sync migration runs on its next restart.
-      // Match both nested handlers (src/server/api/foo/GET.ts) AND root-level
-      // handlers (src/server/api/GET.ts). The `.+/` form required a subdir
-      // segment, which would silently skip a root GET.ts and leave the route
-      // 404ing until the next preview restart.
       const installedApiRoute = installedFiles.some((p) =>
-        /\/src\/server\/api\/(?:.+\/)?(GET|POST|PUT|PATCH|DELETE)\.(ts|js)$/.test(p),
+        /src\/server\/api\/(?:.+\/)?(GET|POST|PUT|PATCH|DELETE)\.(ts|js)$/.test(p),
       );
       if (installedApiRoute) {
         try {
-          const result = await regenerateEntryApiRegistrations(appPath);
+          const result = await regenerateEntryApiRegistrations(workspace.files);
           if (result.reason === 'markers-missing') {
-            // Distinct warn event: the skill shipped API routes but entry.ts has
-            // no regeneration markers, so those routes will 404. Same log shape
-            // as a successful no-op would hide this from operators.
             this.logger.warn('skill.install.entry_markers_missing', {
               skill,
               routeCount: result.routeCount,
@@ -603,28 +590,24 @@ export class SkillLoaderTool {
    * Get destination path for a template file
    * Maps template paths to app paths (e.g., components/BlogCard.tsx -> src/components/blog/BlogCard.tsx)
    */
-  private getDestinationPath(skill: string, templatePath: string, appPath: string): string {
-    // Skill-specific path mapping
+  private getDestinationPath(skill: string, templatePath: string): string {
     if (skill === 'blog') {
       let destPath = templatePath;
-
-      // Map template directories to app directories
       if (templatePath.startsWith('components/')) {
         destPath = templatePath.replace('components/', 'components/blog/');
       } else if (templatePath.startsWith('content/')) {
         destPath = templatePath.replace('content/', 'content/blog/');
       }
-
-      return path.join(appPath, 'src', destPath);
+      return `src/${destPath}`;
     }
 
     // Database skill: drizzle.config.ts goes to app root
     if (skill === 'database' && templatePath === 'drizzle.config.ts') {
-      return path.join(appPath, templatePath);
+      return templatePath;
     }
 
     // Default: copy to src/{templatePath}
-    return path.join(appPath, 'src', templatePath);
+    return `src/${templatePath}`;
   }
 
   /**

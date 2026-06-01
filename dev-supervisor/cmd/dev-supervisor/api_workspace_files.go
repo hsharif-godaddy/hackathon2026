@@ -729,8 +729,15 @@ func (s *Server) handleWorkspaceFilesWrite(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	// Atomic write: tmp + rename so readers never see a partial file
+	tmpFile := resolved + ".tmp"
 	//nolint:gosec // workspace files are intentionally world-readable
-	if err := os.WriteFile(resolved, data, 0o644); err != nil {
+	if err := os.WriteFile(tmpFile, data, 0o644); err != nil {
+		s.sendWsFilesError(w, "workspace.files.write", req.Path, err)
+		return
+	}
+	if err := os.Rename(tmpFile, resolved); err != nil {
+		_ = os.Remove(tmpFile)
 		s.sendWsFilesError(w, "workspace.files.write", req.Path, err)
 		return
 	}

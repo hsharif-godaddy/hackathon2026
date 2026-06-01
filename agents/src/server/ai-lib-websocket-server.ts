@@ -820,8 +820,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           const pinSelection = selectCacheConversationId(agentsAppContext);
           if (pinSelection.value) {
             const pinAppId = agentsAppContext.metadata?.appId as string | undefined;
-            const pinAppPath = pinAppId ? appRepo.findById(pinAppId)?.path : undefined;
-            const pinnedMessages = await buildPinnedSkillsContextMessages(pinSelection.value, pinAppPath);
+            const pinnedMessages = await buildPinnedSkillsContextMessages(pinSelection.value, pinAppId);
             for (const msg of pinnedMessages) {
               allMessages.push(msg);
             }

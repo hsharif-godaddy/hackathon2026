@@ -1,13 +1,33 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { readFile, writeFile, mkdir, mkdtemp, rm } from 'fs/promises';
-import { join } from 'path';
+import { join, dirname } from 'path';
 import { tmpdir } from 'os';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 
-// Mock git operations and logging
-vi.mock('../../utils/dev-supervisor-client-factory.js', () => ({
-  DevSupervisorClientFactory: {
-    createForApp: vi.fn().mockReturnValue(null),
-  },
+let appPath = '';
+const hoistedFs = { existsSync, mkdirSync, readFileSync, writeFileSync };
+const hoistedPath = { join, dirname };
+
+vi.mock('../../workspace/index.js', () => ({
+  createForWorkspace: vi.fn(() => {
+    const files = {
+      view: vi.fn(async ({ path: filePath }: { path: string }) => {
+        const fullPath = hoistedPath.join(appPath, filePath);
+        if (!hoistedFs.existsSync(fullPath)) {
+          throw new Error(`ENOENT: file not found: ${filePath}`);
+        }
+        const content = hoistedFs.readFileSync(fullPath, 'utf-8');
+        return { content, encoding: 'utf-8', path: filePath, lines: content.split('\n').length, size: content.length, truncated: false };
+      }),
+      write: vi.fn(async ({ path: filePath, content }: { path: string; content: string }) => {
+        const fullPath = hoistedPath.join(appPath, filePath);
+        hoistedFs.mkdirSync(hoistedPath.dirname(fullPath), { recursive: true });
+        hoistedFs.writeFileSync(fullPath, content);
+        return { bytesWritten: content.length };
+      }),
+    };
+    return { files, tasks: undefined };
+  }),
 }));
 
 vi.mock('../../logging/index.js', () => {
@@ -107,7 +127,6 @@ const SOURCE_FILE = 'src/pages/index.tsx';
 describe('ASTImageEditor - slot indirection', () => {
   let editor: ASTImageEditor;
   let testDir: string;
-  let appPath: string;
   let sourcePath: string;
 
   beforeEach(async () => {
@@ -375,7 +394,6 @@ export default function Hero({ heroUrl }: { heroUrl: string }) {
 describe('ASTImageEditor - dynamic src expressions', () => {
   let editor: ASTImageEditor;
   let testDir: string;
-  let appPath: string;
   let sourcePath: string;
 
   beforeEach(async () => {

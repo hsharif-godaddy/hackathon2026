@@ -593,7 +593,7 @@ export class ASTTextEditor extends ASTEditorBase {
    * @param appId - Optional app ID for git operations
    * @returns Text edit result with old and new text
    */
-  async editElementText(appPath: string, request: TextEditRequest, appId?: string): Promise<TextEditResult> {
+  async editElementText(appPath: string, request: TextEditRequest, appId: string): Promise<TextEditResult> {
     this.lastProcessResult = null;
     this.lastDiagnostics = null;
 

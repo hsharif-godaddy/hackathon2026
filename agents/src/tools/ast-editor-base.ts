@@ -1,6 +1,3 @@
-import { resolve } from 'path';
-import type { FileSystemOperations } from '../filesystem/index.js';
-import { LocalFileSystemOperations } from '../filesystem/index.js';
 import { parse } from '@babel/parser';
 import _traverse from '@babel/traverse';
 import _generate from '@babel/generator';
@@ -10,6 +7,7 @@ import { translateDockerPath } from '../utils/path-helper.js';
 import { logger } from '../logging/index.js';
 import { toolAstEditEvents } from '../logging/events/index.js';
 import { createForWorkspace } from '../workspace/index.js';
+import type { WorkspaceFiles } from '../workspace/files.js';
 
 const traverse = _traverse.default || _traverse;
 const generate = _generate.default || _generate;
@@ -34,14 +32,12 @@ export abstract class ASTEditorBase {
   protected generate = generate;
   protected t = t;
 
-  constructor(protected readonly fs: FileSystemOperations = new LocalFileSystemOperations()) {}
-
-  /**
-   * Create a GitTool instance for the specified app
-   */
-  protected createGitTool(appId: string): GitTool {
+  protected getWorkspace(appId: string): { files: WorkspaceFiles; gitTool: GitTool } {
     const workspace = createForWorkspace(appId, 'preview');
-    return new GitTool(workspace?.tasks)
+    if (!workspace) {
+      throw new Error(`Workspace not found for app ${appId}`);
+    }
+    return { files: workspace.files, gitTool: new GitTool(workspace.tasks) };
   }
 
   /**
@@ -62,27 +58,11 @@ export abstract class ASTEditorBase {
   }
 
   /**
-   * Resolve file path within the app directory
+   * Translate a file name (potentially Docker-pathed) to a workspace-relative path.
+   * Path containment is enforced by the dev-supervisor.
    */
-  protected resolveFilePath(appPath: string, fileName: string): string {
-    // Handle Docker paths
-    const translatedPath = translateDockerPath(fileName);
-    const fullPath = resolve(appPath, translatedPath);
-
-    logger.debug('Resolving AST edit file path', {
-      component: 'ASTEditorBase',
-      appPath,
-      fileName,
-      translatedPath,
-      fullPath
-    });
-
-    // Ensure the file is within the app directory (security check)
-    if (!fullPath.startsWith(appPath)) {
-      throw new Error(`File path must be within the app directory. Resolved: ${fullPath}, App path: ${appPath}`);
-    }
-
-    return fullPath;
+  protected resolveRelativePath(fileName: string): string {
+    return translateDockerPath(fileName);
   }
 
   /**
@@ -105,18 +85,13 @@ export abstract class ASTEditorBase {
     });
   }
 
-  /**
-   * Read source file
-   */
-  protected async readSourceFile(filePath: string): Promise<string> {
-    return await this.fs.readFile(filePath, 'utf-8');
+  protected async readSourceFile(files: WorkspaceFiles, relativePath: string): Promise<string> {
+    const result = await files.view({ path: relativePath });
+    return result.content;
   }
 
-  /**
-   * Write source file
-   */
-  protected async writeSourceFile(filePath: string, content: string): Promise<void> {
-    await this.fs.writeFile(filePath, content, 'utf-8');
+  protected async writeSourceFile(files: WorkspaceFiles, relativePath: string, content: string): Promise<void> {
+    await files.write({ path: relativePath, content });
   }
 
   /**
@@ -225,83 +200,62 @@ export abstract class ASTEditorBase {
     return '';
   }
 
-  /**
-   * Template method for editing operations
-   */
   protected async editTemplate<TRequest, TResult extends BaseEditResult>(
     appPath: string,
     request: TRequest,
     getFilePath: (request: TRequest) => string,
     shouldCommit = false,
     editType: 'style' | 'component' | 'generic' = 'generic',
-    appId?: string
+    appId: string,
   ): Promise<TResult> {
     const startTime = Date.now();
-    const filePath = this.resolveFilePath(appPath, getFilePath(request));
+    const relativePath = this.resolveRelativePath(getFilePath(request));
 
-    // Build logging data
     const logData = {
       toolName: 'ast-editor',
-      ...(appId && { appId }),
-      filePath,
-      editType
+      appId,
+      filePath: relativePath,
+      editType,
     };
 
-    // Log operation begin
     toolAstEditEvents.begin(logger, logData);
 
     try {
-      // Read the source file
-      const sourceCode = await this.readSourceFile(filePath);
+      const { files, gitTool } = this.getWorkspace(appId);
 
-      // Parse the AST
+      const sourceCode = await this.readSourceFile(files, relativePath);
       const ast = this.parseAST(sourceCode);
-
-      // Process the AST (implemented by subclasses)
       const processResult = this.processAST(ast, request);
 
       if (!processResult.success) {
-        // Log failure
         toolAstEditEvents.failure(logger, new Error(processResult.error || 'AST processing failed'), logData);
-
         return {
           success: false,
-          filePath,
-          error: processResult.error
+          filePath: relativePath,
+          error: processResult.error,
         } as TResult;
       }
 
-      // Generate the updated code
       const { code: updatedCode } = this.generateCode(ast);
-
-      // Check if the file content actually changed
       const hasChanges = sourceCode !== updatedCode;
 
       if (!hasChanges) {
-        logger.debug('No changes detected in AST edit', {
-          component: 'ASTEditorBase',
-          filePath,
-          editType
-        });
-
         return {
           success: true,
-          filePath,
-          diff: 'No changes made'
+          filePath: relativePath,
+          diff: 'No changes made',
         } as TResult;
       }
 
-      // Write the updated file
-      await this.writeSourceFile(filePath, updatedCode);
+      await this.writeSourceFile(files, relativePath, updatedCode);
 
-      // Optionally commit changes
       let commitHash: string | undefined;
-      if (shouldCommit && appId) {
+      if (shouldCommit) {
         commitHash = await this.commitChanges(
           appPath,
-          filePath,
+          relativePath,
           this.generateCommitMessage(processResult.changes, request),
-          appId
+          gitTool,
         );
       }
 
@@ -309,7 +263,6 @@ export abstract class ASTEditorBase {
       const diff = this.generateDiff(sourceCode, updatedCode);
       const linesChanged = diff.split('\n').filter(line => line.startsWith('+') || line.startsWith('-')).length;
 
-      // Log success
       toolAstEditEvents.success(logger, {
         ...logData,
         changes: processResult.changes,
@@ -318,108 +271,74 @@ export abstract class ASTEditorBase {
           hasChanges,
           linesChanged,
           ...(commitHash && { commitHash }),
-          executionTime
-        }
+          executionTime,
+        },
       });
 
       return {
         success: true,
-        filePath,
+        filePath: relativePath,
         diff,
-        ...(commitHash && { commitHash })
+        ...(commitHash && { commitHash }),
       } as TResult;
-
     } catch (error) {
-      // Log failure
       toolAstEditEvents.failure(logger, error as Error, logData);
-
       return {
         success: false,
         filePath: '',
-        error: error instanceof Error ? error.message : 'Unknown error occurred'
+        error: error instanceof Error ? error.message : 'Unknown error occurred',
       } as TResult;
     }
   }
 
-  /**
-   * Commit changes to git (optional, can be overridden)
-   */
   protected async commitChanges(
     appPath: string,
-    filePath: string,
+    relativePath: string,
     commitMessage: string,
-    appId: string
+    gitTool: GitTool,
   ): Promise<string | undefined> {
-    const { relative } = await import('path');
-    const relativePath = relative(appPath, filePath);
-
     try {
-
-      logger.debug('Committing AST changes to git', {
-        component: 'ASTEditorBase',
-        relativePath,
-        commitMessage
-      });
-
-      // Create git tool with dev-supervisor for this specific app
-      const gitTool = this.createGitTool(appId)
-
-      // Add the file to git
       const addResult = await gitTool.executeGitOperation(appPath, {
         operation: 'add',
-        files: [relativePath]
+        files: [relativePath],
       });
 
       if (!addResult.success) {
         logger.warn('Failed to add AST edited file to git', {
           component: 'ASTEditorBase',
           relativePath,
-          error: addResult.error
+          error: addResult.error,
         });
         return undefined;
       }
 
-      // Commit the changes
       const commitResult = await gitTool.executeGitOperation(appPath, {
         operation: 'commit',
-        message: commitMessage
+        message: commitMessage,
       });
 
       if (!commitResult.success) {
         logger.warn('Failed to commit AST changes', {
           component: 'ASTEditorBase',
           relativePath,
-          commitMessage,
-          error: commitResult.error
+          error: commitResult.error,
         });
         return undefined;
       }
 
-      // Get the last commit to retrieve the hash
       const logResult = await gitTool.executeGitOperation(appPath, {
         operation: 'log',
-        options: { count: 1 }
+        options: { count: 1 },
       });
 
       if (logResult.success && logResult.commits && logResult.commits.length > 0) {
-        const hash = logResult.commits[0]?.hash;
-        logger.debug('AST changes committed successfully', {
-          component: 'ASTEditorBase',
-          relativePath,
-          commitHash: hash
-        });
-        return hash;
+        return logResult.commits[0]?.hash;
       }
-
-      logger.debug('AST commit succeeded but could not retrieve commit hash', {
-        component: 'ASTEditorBase',
-        relativePath
-      });
       return undefined;
     } catch (error) {
       logger.warn('Failed to commit AST changes', {
         error: error instanceof Error ? error.message : String(error),
-        relativePath
+        relativePath,
       });
       return undefined;
     }

@@ -59,7 +59,7 @@ export class ASTStyleEditor extends ASTEditorBase {
   async editElementStyle(
     appPath: string,
     request: StyleEditRequest,
-    appId?: string
+    appId: string,
   ): Promise<StyleEditResult> {
     const baseResult = await this.editTemplate<StyleEditRequest, StyleEditResult>(
       appPath,
