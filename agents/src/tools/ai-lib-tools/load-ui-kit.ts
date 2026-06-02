@@ -1,43 +1,119 @@
 import { createTool, type Tool } from '@airo/ai-lib'
 import { z } from 'zod'
-import { existsSync, readFileSync, readdirSync, statSync } from 'fs'
-import { join, relative } from 'path'
-import { AppRepository } from '../../database/repositories/AppRepository.js'
+import { createForWorkspace } from '../../workspace/index.js'
+import { isDevSupervisorNotFound } from '../../services/DevSupervisorClient.js'
 import { logger } from '../../logging/index.js'
-
-const appRepo = new AppRepository()
+import type { WorkspaceFiles } from '../../workspace/files.js'
 
 const AUTO_LOAD_DIRS = ['primitives', 'components']
 const LIST_ONLY_DIRS = ['layouts', 'showcase']
+const KIT_PATH = 'docs/ui-kit'
+// `view.limit` on the supervisor is a LINE count, not bytes. 65,536 lines is
+// effectively unbounded for kit docs but bounded enough to fit a single tool
+// turn even in pathological cases. See dev-supervisor's wsFilesDefaultMaxLines.
+const VIEW_MAX_LINES = 65_536
+// dev-supervisor caps `stat({ paths })` at wsFilesMaxStatPaths = 100. The
+// schema's `.describe()` advertises a soft limit so the LLM doesn't request
+// hundreds of includes in one call; we still chunk defensively below so a
+// large include never hard-fails the request.
+const STAT_CHUNK_SIZE = 100
 
-function collectFiles(dir: string, base: string): string[] {
-  const results: string[] = []
-  if (!existsSync(dir)) return results
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    const full = join(dir, entry.name)
-    if (entry.isDirectory()) {
-      results.push(...collectFiles(full, base))
-    } else {
-      results.push(relative(base, full))
+const KIT_DOC_EXTS = ['.md', '.json'] as const
+function isKitDoc(path: string): boolean {
+  const lower = path.toLowerCase()
+  return KIT_DOC_EXTS.some((ext) => lower.endsWith(ext))
+}
+
+function stripKitPrefix(p: string): string {
+  return p.startsWith(`${KIT_PATH}/`) ? p.slice(KIT_PATH.length + 1) : p
+}
+
+/**
+ * List file paths under a kit subdirectory. Returns workspace-relative paths
+ * (re-prefixed with `dir` because `tree()` returns dir-relative entries — see
+ * the docstring on `TreeEntry`).
+ *
+ * Logs once on truncation, matching the pattern in `routes/download.ts`.
+ */
+async function listKitFiles(files: WorkspaceFiles, dir: string): Promise<string[]> {
+  let result
+  try {
+    result = await files.tree({ path: dir, recursive: true })
+  } catch (err) {
+    if (isDevSupervisorNotFound(err)) return []
+    throw err
+  }
+  if (result.truncated) {
+    logger.warn('tool.load_ui_kit.tree_truncated', {
+      dir,
+      entryCount: result.entries.length,
+    })
+  }
+  return result.entries
+    .filter((e) => e.kind === 'file')
+    .map((e) => `${dir}/${e.path}`)
+}
+
+async function readKitFile(
+  files: WorkspaceFiles,
+  path: string,
+): Promise<string | null> {
+  try {
+    const result = await files.view({ path, limit: VIEW_MAX_LINES })
+    if (result.truncated) {
+      logger.warn('tool.load_ui_kit.view_truncated', { path, lines: result.lines })
+    }
+    return result.content
+  } catch (err) {
+    if (isDevSupervisorNotFound(err)) return null
+    throw err
+  }
+}
+
+async function statChunked(
+  files: WorkspaceFiles,
+  paths: string[],
+): Promise<Map<string, 'file' | 'directory' | undefined>> {
+  const out = new Map<string, 'file' | 'directory' | undefined>()
+  for (let i = 0; i < paths.length; i += STAT_CHUNK_SIZE) {
+    const chunk = paths.slice(i, i + STAT_CHUNK_SIZE)
+    const stats = await files.stat({ paths: chunk })
+    for (const entry of stats.entries) {
+      out.set(entry.path, entry.error === undefined ? entry.kind : undefined)
     }
   }
-  return results
+  return out
 }
 
 export const loadUiKitAITool: Tool = createTool(
   'Load the UI kit design system from docs/ui-kit/. By default loads primitives and components in full, and lists layouts/landing-pages/showcase. Use the include parameter to load specific additional files.',
   z.object({
-    include: z.array(z.string()).optional().describe('Additional file paths (relative to docs/ui-kit/) to load in full, e.g. ["layouts/recipe-editorial.md"]'),
+    include: z.array(z.string()).optional().describe('Additional file paths (relative to docs/ui-kit/) to load in full, e.g. ["layouts/recipe-editorial.md"]. Keep the list under 100 entries.'),
   }),
   async (input, context) => {
     const appId = context?.metadata?.appId as string
     if (!appId) return 'Error: App ID required'
 
-    const app = appRepo.findById(appId)
-    if (!app) return `Error: App '${appId}' not found`
+    const workspace = createForWorkspace(appId, 'preview')
+    if (!workspace) return `Error: App '${appId}' not found`
+    const files = workspace.files
 
-    const kitPath = join(app.path, 'docs', 'ui-kit')
-    if (!existsSync(kitPath)) {
+    // Existence check via a single stat() round trip. Only "not_found" or
+    // "kind !== directory" produces the friendly user-facing message; other
+    // failure modes (permission_denied, invalid_path, transport errors)
+    // propagate so the caller sees the real problem.
+    const kitStat = await files.stat({ paths: [KIT_PATH] })
+    const kitEntry = kitStat.entries[0]
+    if (!kitEntry) {
+      return 'No UI kit found. This app does not have a design system at docs/ui-kit/.'
+    }
+    if (kitEntry.error !== undefined) {
+      if (kitEntry.error === 'not_found') {
+        return 'No UI kit found. This app does not have a design system at docs/ui-kit/.'
+      }
+      throw new Error(`workspace.files.stat('${KIT_PATH}') returned error '${kitEntry.error}'`)
+    }
+    if (kitEntry.kind !== 'directory') {
       return 'No UI kit found. This app does not have a design system at docs/ui-kit/.'
     }
 
@@ -48,60 +124,86 @@ export const loadUiKitAITool: Tool = createTool(
       // Include mode: only load the requested files (primitives/components already in context)
       sections.push('# UI Kit — Requested References')
       sections.push('')
-      for (const reqPath of input.include!) {
+
+      const requested = input.include!
+      const validRequests: { reqPath: string; relativePath: string }[] = []
+      for (const reqPath of requested) {
         const normalized = reqPath.replace(/\\/g, '/')
         if (normalized.includes('..') || normalized.startsWith('/')) {
           sections.push(`**${reqPath}**: Skipped (invalid path)`)
           continue
         }
-        const fullPath = join(kitPath, normalized)
-        if (!existsSync(fullPath) || !statSync(fullPath).isFile()) {
-          sections.push(`**${reqPath}**: Not found`)
-          continue
-        }
-        try {
-          const content = readFileSync(fullPath, 'utf-8')
-          sections.push(`---`)
+        validRequests.push({ reqPath, relativePath: `${KIT_PATH}/${normalized}` })
+      }
+
+      if (validRequests.length > 0) {
+        const kindByPath = await statChunked(files, validRequests.map((r) => r.relativePath))
+        const reads = await Promise.all(
+          validRequests.map(async ({ reqPath, relativePath }) => {
+            if (kindByPath.get(relativePath) !== 'file') {
+              return { reqPath, content: null as string | null }
+            }
+            const content = await readKitFile(files, relativePath)
+            return { reqPath, content }
+          }),
+        )
+
+        for (const { reqPath, content } of reads) {
+          if (content === null) {
+            sections.push(`**${reqPath}**: Not found`)
+            continue
+          }
+          sections.push('---')
           sections.push(`## ${reqPath}`)
           sections.push('')
           sections.push(content)
           sections.push('')
-        } catch {
-          sections.push(`**${reqPath}**: Failed to read`)
         }
       }
     } else {
-      // Default mode: load primitives + components, list everything else
+      // Default mode: load primitives + components, list everything else.
       sections.push('# UI Kit — Design System')
       sections.push('')
 
-      for (const dir of AUTO_LOAD_DIRS) {
-        const dirPath = join(kitPath, dir)
-        if (!existsSync(dirPath)) continue
-        const files = collectFiles(dirPath, kitPath)
-        for (const filePath of files) {
-          if (!filePath.endsWith('.md') && !filePath.endsWith('.json')) continue
-          const fullPath = join(kitPath, filePath)
-          try {
-            const content = readFileSync(fullPath, 'utf-8')
-            sections.push(`---`)
-            sections.push(`## ${filePath}`)
-            sections.push('')
-            sections.push(content)
-            sections.push('')
-          } catch {
-            logger.warn('tool.load_ui_kit.read_error', { path: filePath })
-          }
+      const autoLoadFiles = (
+        await Promise.all(AUTO_LOAD_DIRS.map((dir) => listKitFiles(files, `${KIT_PATH}/${dir}`)))
+      )
+        .flat()
+        .filter(isKitDoc)
+
+      const reads = await Promise.all(
+        autoLoadFiles.map(async (fullPath) => {
+          const displayPath = stripKitPrefix(fullPath)
+          const content = await readKitFile(files, fullPath)
+          return { displayPath, content }
+        }),
+      )
+
+      for (const { displayPath, content } of reads) {
+        sections.push('---')
+        sections.push(`## ${displayPath}`)
+        sections.push('')
+        if (content === null) {
+          // tree() listed the path moments ago; a not_found here means the
+          // file vanished mid-call (rare race). Surface a Failed-to-load
+          // marker so the LLM knows the kit is partial — silent drops cause
+          // it to confidently produce code against a spec it never read.
+          logger.warn('tool.load_ui_kit.read_error', { path: displayPath })
+          sections.push(`**${displayPath}**: Failed to load (file vanished or unreadable)`)
+        } else {
+          sections.push(content)
         }
+        sections.push('')
       }
 
-      const available: string[] = []
-      for (const dir of LIST_ONLY_DIRS) {
-        const dirPath = join(kitPath, dir)
-        if (!existsSync(dirPath)) continue
-        const files = collectFiles(dirPath, kitPath)
-        available.push(...files)
-      }
+      const available = (
+        await Promise.all(
+          LIST_ONLY_DIRS.map(async (dir) => {
+            const all = await listKitFiles(files, `${KIT_PATH}/${dir}`)
+            return all.filter(isKitDoc).map(stripKitPrefix)
+          }),
+        )
+      ).flat()
 
       if (available.length > 0) {
         sections.push('---')
