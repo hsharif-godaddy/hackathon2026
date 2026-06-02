@@ -1,11 +1,11 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import Box from '@ux/box';
 import CheckmarkIcon from '@ux/icon/checkmark';
 import CopyIcon from '@ux/icon/copy';
 import Modal from '@ux/modal';
 import text from '@ux/text';
-import TextInput from '@ux/text-input';
 
 import IconButton from '@/app/[market]/develop/components/IconButton';
 import { useTranslations } from '@/hooks/useTranslations';
@@ -110,34 +110,37 @@ export default function FirstPublishCongratsModal({ appId }: FirstPublishCongrat
       id="first-publish-congrats-modal"
       description={t('builder_first_publish_congrats_description_v2')}
     >
-      <div>
-        <text.label size={-1} htmlFor='BuilderFirstPublishInput' as='label'>
+      <Box orientation='vertical' gap='sm'>
+        <text.label size={-1} as='label'>
           {t('builder_domain_title')}
         </text.label>
-        <div className='relative'>
-          <TextInput
-            id='BuilderFirstPublishInput'
-            value={displayDomain}
-            readOnly
-            label={null}
+        <Box
+          orientation='horizontal'
+          gap='sm'
+          inlineAlignChildren='center'
+          blockAlignChildren='center'
+          inlinePadding='md'
+          blockPadding='sm'
+          className='rounded-md bg-intents-ux-boxLowContrast-backgroundColor'
+        >
+          <text.span size={0} className='min-w-0 flex-1'>
+            {displayDomain}
+          </text.span>
+          <IconButton
+            icon={
+              copied ? (
+                <CheckmarkIcon className='size-2.5 text-intents-ux-feedbackHighContrastSuccess-feedbackColor' />
+              ) : (
+                <CopyIcon className='size-2.5' />
+              )
+            }
+            onClick={copyDomain}
+            label={copied ? t('builder_common_copied') : t('builder_common_copy_clipboard')}
+            showLabelWhenActive={false}
+            inverted
           />
-          <div className='absolute end-[6px] top-1/2 -translate-y-1/2 flex gap-0.5 items-center'>
-            <IconButton
-              icon={
-                copied ? (
-                  <CheckmarkIcon className='size-2.5 text-intents-ux-feedbackHighContrastSuccess-feedbackColor' />
-                ) : (
-                  <CopyIcon className='size-2.5' />
-                )
-              }
-              onClick={copyDomain}
-              label={copied ? t('builder_common_copied') : t('builder_common_copy_clipboard')}
-              showLabelWhenActive={false}
-              inverted
-            />
-          </div>
-        </div>
-      </div>
+        </Box>
+      </Box>
     </Modal>
   );
 }

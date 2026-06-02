@@ -86,22 +86,9 @@ vi.mock('@ux/modal', () => ({
 
 vi.mock('@ux/text', () => ({
   default: {
-    label: ({ children, htmlFor }: { children: ReactNode; htmlFor?: string }) => (
-      <label htmlFor={htmlFor}>{children}</label>
-    ),
+    label: ({ children }: { children: ReactNode }) => <label>{children}</label>,
+    span: ({ children }: { children: ReactNode }) => <span>{children}</span>,
   },
-}));
-
-vi.mock('@ux/text-input', () => ({
-  default: ({
-    id,
-    value,
-    readOnly,
-  }: {
-    id?: string;
-    value?: string;
-    readOnly?: boolean;
-  }) => <input id={id} readOnly={readOnly} value={value ?? ''} />,
 }));
 
 describe('FirstPublishCongratsModal', function firstPublishCongratsModalTests() {
@@ -158,14 +145,15 @@ describe('FirstPublishCongratsModal', function firstPublishCongratsModalTests() 
     expect(logImpressionEvent).not.toHaveBeenCalled();
   });
 
-  it('should show the domain read-only field and copy control when FQDN is available', function domainField() {
+  it('should show the published URL display and copy control when FQDN is available', function domainDisplay() {
     mockDevelopStore.publishStates[appId] = { showFirstPublishCongrats: true };
     vi.mocked(resolveSiteFqdn).mockReturnValue('https://myapp.airoapp.ai');
 
     renderWithProviders(<FirstPublishCongratsModal appId={appId} />);
 
     expect(screen.getByText('builder_domain_title')).toBeInTheDocument();
-    expect(screen.getByRole('textbox')).toHaveValue('myapp.airoapp.ai');
+    expect(screen.getByText('myapp.airoapp.ai')).toBeInTheDocument();
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'builder_common_copy_clipboard' })).toBeInTheDocument();
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
   });
