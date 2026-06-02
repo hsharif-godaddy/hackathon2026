@@ -27,12 +27,14 @@ const mockCreateAgentInvocationSpan = vi.fn(function () { return {
   end: mockInvocationEnd,
 }; })
 const mockGetBudgetServiceClient = vi.hoisted(() => vi.fn(function () { return null; }))
+const mockEmitConversationStart = vi.hoisted(() => vi.fn())
 vi.mock('@godaddy/agent-otel-sdk', async () => {
   const actual = await vi.importActual<Record<string, unknown>>('@godaddy/agent-otel-sdk')
   return {
     ...actual,
     createAgentContext: vi.fn(function () { return otelContext.active(); }),
     createAgentInvocationSpan: (...args: any[]) => mockCreateAgentInvocationSpan(...args),
+    emitConversationStart: (...args: any[]) => mockEmitConversationStart(...args),
   }
 })
 
@@ -207,6 +209,7 @@ describe('MessageExecutionService', () => {
     mockGetBudgetServiceClient.mockReturnValue(null)
     mockInvocationEnd.mockReset()
     mockCreateAgentInvocationSpan.mockClear()
+    mockEmitConversationStart.mockClear()
     deps = createMockDeps()
     service = new MessageExecutionService(deps as any)
   })
@@ -218,6 +221,30 @@ describe('MessageExecutionService', () => {
     await service.execute(DEFAULT_PARAMS)
 
     expect(deps.eventChannel.subscribe).toHaveBeenCalledWith('conv_1', mockSub)
+  })
+
+  describe('conversation-start observability event', () => {
+    it('emits conversation-start on the first turn (isInitialPrompt)', async () => {
+      await service.execute({ ...DEFAULT_PARAMS, lifecycleContext: { isInitialPrompt: true } })
+
+      expect(mockEmitConversationStart).toHaveBeenCalledTimes(1)
+      expect(mockEmitConversationStart).toHaveBeenCalledWith({
+        conversationId: 'conv_1',
+        agentId: 'airo-app-builder-develop',
+      })
+    })
+
+    it('does not emit conversation-start on follow-up turns', async () => {
+      await service.execute({ ...DEFAULT_PARAMS, lifecycleContext: { isInitialPrompt: false } })
+
+      expect(mockEmitConversationStart).not.toHaveBeenCalled()
+    })
+
+    it('does not emit conversation-start when lifecycleContext is absent', async () => {
+      await service.execute(DEFAULT_PARAMS)
+
+      expect(mockEmitConversationStart).not.toHaveBeenCalled()
+    })
   })
 
   describe('streaming loop', () => {

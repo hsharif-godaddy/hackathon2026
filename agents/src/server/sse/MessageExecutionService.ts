@@ -55,7 +55,7 @@ import { resolveProfile, runWithProfile } from '../../profiles/index.js'
 import { guardAllowedOverrideModel, resolveOverride } from '../model-override.js'
 import type { AssessmentOutcome, ClassifierMode } from '../../agents/assessment-agent/index.js'
 import { PARALLEL_ASSESSMENT_TIMEOUT_MS } from '../assessment-executor.js'
-import { createAgentContext } from '@godaddy/agent-otel-sdk'
+import { createAgentContext, emitConversationStart } from '@godaddy/agent-otel-sdk'
 import {
   buildContextAttachments,
   type BuildContextAttachmentAsset,
@@ -1360,6 +1360,36 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
     await otelContext.with(traceCtx, () => this.executeUnderTrace(params))
   }
 
+  /**
+   * Emit the OTel conversation-start event on the first turn of a conversation.
+   *
+   * Intentionally duplicates the WS emit in conversation-persistence.ts
+   * `startConversation` (gated on `isNewConversation`), which SSE never reaches —
+   * SSE always continues a conversation row already created by `POST /:appId`.
+   * There is no shared seam: WS creates the conversation inline during the turn,
+   * SSE splits creation and execution across two requests with two trace contexts.
+   *
+   * Caller MUST be inside `execute`'s `otelContext.with(traceCtx, ...)` scope:
+   * `emitConversationStart` no-ops without an active span and otherwise binds to
+   * the turn's trace id (as WS does). Emitting from `POST /:appId` would bind it
+   * to the wrong trace or drop it. `isInitialPrompt` is SSE's first-turn signal.
+   *
+   * Must stay a method called as a single statement — an inline `if` in
+   * `executeUnderTrace` trips tsc (TS2304 "Cannot find name 'this'") on the
+   * `typeof this.streamAgentTurn` type query later in that method.
+   */
+  private emitConversationStartIfFirstTurn(
+    lifecycleContext: LifecycleContext | undefined,
+    conversationId: string,
+    resolvedAgentId: string,
+  ): void {
+    if (!lifecycleContext?.isInitialPrompt) return
+    emitConversationStart({
+      conversationId,
+      agentId: formatAgentId(resolvedAgentId),
+    })
+  }
+
   private async executeUnderTrace(params: ExecuteParams): Promise<void> {
     const {
       appId, conversationId, content, siteId, agentId, agentProfile,
@@ -1444,6 +1474,8 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
       this.deps.eventChannel.subscribe(conversationId, sub)
       streamState.subscriberIds.add(sub.id)
     }
+
+    this.emitConversationStartIfFirstTurn(lifecycleContext, conversationId, resolvedAgentId)
 
     let activeAgentMessageId: string | undefined
     const openedAgentMessageIds = new Set<string>()
