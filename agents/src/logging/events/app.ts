@@ -266,7 +266,6 @@ export interface ToolDirectoryListingData {
     directoryCount: number;
     fileCount: number;
     truncated: boolean;
-    errorCount: number;
   };
 }
 

@@ -1,6 +1,5 @@
 import { resolve, relative, basename } from 'path';
-import type { FileSystemOperations } from '../filesystem/index.js';
-import { defaultLocalFs } from '../filesystem/index.js';
+import { readFile } from 'node:fs/promises';
 import { translateDockerPath, deriveAssetsDir, validateNoEscapingSymlinks } from '../utils/path-helper.js';
 import { logger } from '../logging/index.js';
 import { fileUploadService } from '../services/FileUploadService.js';
@@ -18,26 +17,6 @@ export function isProtectedWorkspacePath(filePath: string, appPath: string): boo
     }
   }
   return false;
-}
-
-export async function isFileImmutable(filePath: string, fsOps: FileSystemOperations = defaultLocalFs): Promise<boolean> {
-  // No outer catch — EACCES/EPERM must surface so the caller sees a permission
-  // error instead of silently treating a protected file as mutable (which would
-  // bypass the "TREAT AS IMMUTABLE" guard). fsOps.exists() only returns false
-  // for ENOENT; other errors propagate.
-  if (!(await fsOps.exists(filePath))) {
-    return false;
-  }
-
-  const buffer = Buffer.alloc(500);
-  const fd = await fsOps.open(filePath, 'r');
-  try {
-    const { bytesRead } = await fd.read(buffer, 0, 500, 0);
-    const firstLine = buffer.toString('utf-8', 0, bytesRead).split('\n')[0] ?? '';
-    return firstLine.includes('TREAT AS IMMUTABLE');
-  } finally {
-    await fd.close();
-  }
 }
 
 export function validateNoApiPaths(content: string, filePath: string): { valid: boolean; error?: string } {
@@ -84,8 +63,7 @@ export async function resolveSourceFile(
   appId: string,
   targetPath: string,
   content: string,
-  files: WorkspaceFiles,
-  fsOps: FileSystemOperations = defaultLocalFs
+  files: WorkspaceFiles
 ): Promise<{ content: string; binaryCopied?: boolean } | null> {
   try {
     const filename = basename(targetPath);
@@ -104,8 +82,10 @@ export async function resolveSourceFile(
     const { file: matchingFile, sourcePath } = match;
     const isBinary = BINARY_FILE_REGEX.test(filename) && !filename.toLowerCase().endsWith('.svg');
 
+    // sourcePath points at the agent's host-side upload staging area, not
+    // the preview workspace — read it directly with fs/promises.
     if (isBinary) {
-      const data = await fsOps.readFile(sourcePath) as Buffer;
+      const data = await readFile(sourcePath);
       await files.upload({ path: targetPath, data });
 
       logger.info('file-edit.auto-resolved', {
@@ -128,7 +108,7 @@ export async function resolveSourceFile(
       size: matchingFile.size
     });
 
-    return { content: await fsOps.readFile(sourcePath, 'utf-8') };
+    return { content: await readFile(sourcePath, 'utf-8') };
   } catch (error) {
     logger.error('file-edit.auto-resolve.error', {
       appId,

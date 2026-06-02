@@ -1,6 +1,6 @@
 export { DirectoryListingTool } from './directory-listing.js';
 export { TerminalTool } from './terminal.js';
-export { isFileImmutable, validateNoApiPaths, resolveFilePath, resolveSourceFile } from './file-edit.js';
+export { validateNoApiPaths, resolveFilePath, resolveSourceFile } from './file-edit.js';
 export { GitTool } from './git-tool.js';
 export { ReadFileTool } from './read-file.js';
 // MediaSearchTool kept as internal implementation for MediaSlotTool

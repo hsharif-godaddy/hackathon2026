@@ -21,7 +21,7 @@ import { parseAgentCommand } from '@airo/ai-transport';
 import multer from 'multer';
 import { AppRepository } from '../../database/index.js';
 import type { CreateAppRequest, UpdateAppRequest } from '../../database/index.js';
-import { DirectoryListingTool } from '../../tools/directory-listing.js';
+import { DirectoryListingTool, DirectoryListingNotFoundError } from '../../tools/directory-listing.js';
 import { createForWorkspace } from '../../workspace/index.js';
 import { DevSupervisorError } from '../../services/DevSupervisorClient.js';
 import { ASTStyleEditor } from '../../tools/ast-style-editor.js';
@@ -42,7 +42,6 @@ import { resolveScreenshotDir } from './screenshot-paths.js';
 const router: IRouter = Router();
 
 const appRepo = new AppRepository();
-const directoryTool = new DirectoryListingTool();
 const astStyleEditor = new ASTStyleEditor();
 const astTextEditor = new ASTTextEditor();
 
@@ -557,7 +556,13 @@ router.get('/:id/files', async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'App not found' });
     }
 
-    const result = await directoryTool.listDirectory(app.path, {
+    const workspace = createForWorkspace(id, 'preview');
+    if (!workspace) {
+      return res.status(503).json({ error: 'App workspace is not available' });
+    }
+
+    const directoryTool = new DirectoryListingTool(workspace.files);
+    const result = await directoryTool.listDirectory({
       path: path as string,
       maxDepth: maxDepth ? parseInt(maxDepth as string) : 3,
       showHidden: false
@@ -567,6 +572,15 @@ router.get('/:id/files', async (req: Request, res: Response) => {
   } catch (error) {
     const contextLogger = req.params.id ? log.forApp(req.params.id) : logger;
     log.error(contextLogger, 'route.apps.files.list.error', error as Error, {});
+    if (error instanceof DirectoryListingNotFoundError) {
+      return res.status(404).json({ error: error.message });
+    }
+    if (error instanceof DevSupervisorError) {
+      if (error.code === 'permission_denied') {
+        return res.status(403).json({ error: error.message });
+      }
+      return res.status(503).json({ error: 'Workspace temporarily unavailable' });
+    }
     return res.status(500).json({ error: 'Internal server error' });
   }
 });

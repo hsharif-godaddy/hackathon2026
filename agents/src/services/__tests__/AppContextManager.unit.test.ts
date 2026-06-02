@@ -117,10 +117,17 @@ describe('AppContextManager publish state', () => {
 
   describe('getPackageInfo', () => {
     const mockView = vi.fn();
+    const mockTree = vi.fn();
 
     beforeEach(() => {
+      // checkDependenciesInstalled (invoked from getPackageInfo) calls
+      // workspace.files.tree with includeGlobs to stat package*.json. Default
+      // to "no entries" so dependenciesInstalled is false but the call
+      // doesn't throw; individual tests can override.
+      mockTree.mockReset();
+      mockTree.mockResolvedValue({ entries: [], truncated: false });
       (createForWorkspace as ReturnType<typeof vi.fn>).mockReturnValue({
-        files: { view: mockView },
+        files: { view: mockView, tree: mockTree },
       });
     });
 
@@ -198,6 +205,81 @@ describe('AppContextManager publish state', () => {
       const context = { metadata: { appId: 'app-123' } } as any;
       await expect((manager as any).getPackageInfo(context))
         .rejects.toThrow('supervisor unreachable');
+    });
+  });
+
+  describe('checkDependenciesInstalled', () => {
+    const mockTree = vi.fn();
+
+    function withTimes(pkgIso: string, lockIso: string | null): void {
+      const entries: Array<{ path: string; kind: string; size: number; modifiedAt: string }> = [
+        { path: 'package.json', kind: 'file', size: 100, modifiedAt: pkgIso },
+      ];
+      if (lockIso !== null) {
+        entries.push({ path: 'package-lock.json', kind: 'file', size: 200, modifiedAt: lockIso });
+      }
+      mockTree.mockResolvedValue({ entries, truncated: false });
+    }
+
+    beforeEach(() => {
+      mockTree.mockReset();
+      (createForWorkspace as ReturnType<typeof vi.fn>).mockReturnValue({
+        files: { tree: mockTree },
+      });
+    });
+
+    const ctx = { metadata: { appId: 'app-123' } } as any;
+
+    it('returns true when lockfile is newer than package.json', async () => {
+      withTimes('2026-06-01T00:00:00Z', '2026-06-01T00:01:00Z');
+      const result = await (manager as any).checkDependenciesInstalled(ctx);
+      expect(result).toBe(true);
+    });
+
+    it('returns true when lock and pkg have identical times', async () => {
+      withTimes('2026-06-01T00:00:00Z', '2026-06-01T00:00:00Z');
+      const result = await (manager as any).checkDependenciesInstalled(ctx);
+      expect(result).toBe(true);
+    });
+
+    it('returns true when pkg is newer than lock by <=5s (WSL2 tolerance)', async () => {
+      withTimes('2026-06-01T00:00:04.900Z', '2026-06-01T00:00:00Z');
+      const result = await (manager as any).checkDependenciesInstalled(ctx);
+      expect(result).toBe(true);
+    });
+
+    it('returns false when pkg is newer than lock by >5s (out of tolerance)', async () => {
+      withTimes('2026-06-01T00:00:05.100Z', '2026-06-01T00:00:00Z');
+      const result = await (manager as any).checkDependenciesInstalled(ctx);
+      expect(result).toBe(false);
+    });
+
+    it('returns false when only package.json is present', async () => {
+      withTimes('2026-06-01T00:00:00Z', null);
+      const result = await (manager as any).checkDependenciesInstalled(ctx);
+      expect(result).toBe(false);
+    });
+
+    it('returns false when only package-lock.json is present', async () => {
+      mockTree.mockResolvedValue({
+        entries: [
+          { path: 'package-lock.json', kind: 'file', size: 200, modifiedAt: '2026-06-01T00:00:00Z' },
+        ],
+        truncated: false,
+      });
+      const result = await (manager as any).checkDependenciesInstalled(ctx);
+      expect(result).toBe(false);
+    });
+
+    it('returns false when supervisor reports not_found', async () => {
+      mockTree.mockRejectedValue(new DevSupervisorError('not_found', 404, 'workspace missing'));
+      const result = await (manager as any).checkDependenciesInstalled(ctx);
+      expect(result).toBe(false);
+    });
+
+    it('propagates non-not-found supervisor errors instead of silently returning false', async () => {
+      mockTree.mockRejectedValue(new DevSupervisorError('transport_error', 500, 'connection refused'));
+      await expect((manager as any).checkDependenciesInstalled(ctx)).rejects.toThrow(DevSupervisorError);
     });
   });
 });

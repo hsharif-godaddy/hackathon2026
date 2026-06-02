@@ -1,5 +1,4 @@
 import type { AgentExecutionContext } from '../base/agent.interface.js';
-import { DirectoryListingTool } from '../tools/directory-listing.js';
 import { appPlanTool, type ColorPalette, type FontTheme } from '../tools/app-plan-tool.js';
 import { logger } from '../logging/index.js';
 import { appContextEvents } from '../logging/events/index.js';
@@ -38,11 +37,9 @@ export interface AppContextResult {
  * - Secrets and media slots
  */
 export class AppContextManager {
-  private directoryTool: DirectoryListingTool;
   private appRepository: AppRepository;
 
   constructor(private kvMemoryStore: KvMemoryStore = getKvMemoryStore()) {
-    this.directoryTool = new DirectoryListingTool();
     this.appRepository = new AppRepository();
   }
 
@@ -152,8 +149,10 @@ export class AppContextManager {
     if (!workspace) return null;
 
     let packageJson: Record<string, unknown>;
+    let viewedContent: string | null = null;
     try {
       const viewResult = await workspace.files.view({ path: 'package.json', limit: 10000 });
+      viewedContent = viewResult.content;
       packageJson = JSON.parse(viewResult.content);
     } catch (error) {
       // No package.json yet (e.g. fresh template) is a legitimate "no info"
@@ -162,6 +161,16 @@ export class AppContextManager {
       if (isDevSupervisorNotFound(error)) {
         appContextEvents.packageFailure(logger, error as Error, { appId, packageJsonFound: false });
         return null;
+      }
+      // Parse failures are recoverable in principle but indicate template corruption;
+      // emit a high-signal log with a content snippet so the cause is visible without
+      // grepping for the generic generateFailure event.
+      if (error instanceof SyntaxError && viewedContent !== null) {
+        logger.error('app.context.package.parse.failure', {
+          appId,
+          parseError: error.message,
+          contentSnippet: viewedContent.slice(0, 200),
+        });
       }
       throw error;
     }
@@ -200,65 +209,49 @@ export class AppContextManager {
    * @returns Promise<boolean> - true if dependencies appear to be installed
    */
   private async checkDependenciesInstalled(context: AgentExecutionContext): Promise<boolean> {
+    const appId = context.metadata?.appId as string;
+    if (!appId) return false;
+
+    const workspace = createForWorkspace(appId, 'preview');
+    if (!workspace) return false;
+
+    let entries;
     try {
-      // Get app path from context
-      const appPath = context.metadata?.appPath as string;
-      if (!appPath) {
-        return false;
-      }
-
-      // Get file stats for both package.json and package-lock.json using directory listing
-      const listing = await this.directoryTool.listDirectory(appPath, {
-        path: '',
-        maxDepth: 1,
-        showHidden: false,
-        directoriesOnly: false
+      const result = await workspace.files.tree({
+        recursive: false,
+        includeGlobs: ['package.json', 'package-lock.json'],
       });
-
-      if (!listing || typeof listing !== 'string') {
-        return false;
-      }
-
-      // Look for modification times in the directory listing
-      // The directory listing should show file modification times
-      const listingStr = listing as string;
-      const packageJsonMatch = listingStr.match(/package\.json.*?(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2})/);
-      const packageLockMatch = listingStr.match(/package-lock\.json.*?(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2})/);
-
-      if (!packageJsonMatch || !packageLockMatch) {
-        // If we can't find both files with timestamps, assume not installed
-        return false;
-      }
-
-      const packageJsonTime = new Date(packageJsonMatch[1]!);
-      const packageLockTime = new Date(packageLockMatch[1]!);
-
-      // Calculate time difference in seconds
-      const timeDiffSeconds = Math.abs(packageLockTime.getTime() - packageJsonTime.getTime()) / 1000;
-
-      // If package-lock.json is newer than package.json OR within 5 seconds (for WSL2 time inconsistencies)
-      // consider dependencies installed
-      const isInstalled = packageLockTime >= packageJsonTime || timeDiffSeconds <= 5;
-
-      logger.debug('app.context.dependencies.check', {
-        appId: context.metadata?.appId as string,
-        packageJsonTime: packageJsonTime.toISOString(),
-        packageLockTime: packageLockTime.toISOString(),
-        timeDifferenceSeconds: Number(timeDiffSeconds.toFixed(2)),
-        dependenciesInstalled: isInstalled,
-        toleranceSeconds: 5
-      });
-
-      return isInstalled;
+      entries = result.entries;
     } catch (error) {
-      const err = error instanceof Error ? error : new Error(String(error));
-      logger.warn('app.context.dependencies.check.failure', {
-        appId: context.metadata?.appId as string,
-        error: err.message,
-        reason: 'Failed to check dependency installation status'
-      });
-      return false;
+      // Missing root means there's nothing to check yet — fresh app, no template.
+      // Anything else (transport, etc.) propagates so the outer context-generation
+      // path can decide how to surface the failure.
+      if (isDevSupervisorNotFound(error)) return false;
+      throw error;
     }
+
+    const pkg = entries.find((e) => e.kind === 'file' && e.path === 'package.json');
+    const lock = entries.find((e) => e.kind === 'file' && e.path === 'package-lock.json');
+    if (!pkg || !lock) return false;
+
+    const pkgTime = new Date(pkg.modifiedAt);
+    const lockTime = new Date(lock.modifiedAt);
+    // Only the pkg-newer arm needs the tolerance window — when lock >= pkg the diff is non-positive.
+    const pkgAheadSeconds = Math.max(0, pkgTime.getTime() - lockTime.getTime()) / 1000;
+
+    // Lockfile newer-or-equal means deps are in sync. Allow a 5s tolerance for WSL2.
+    const isInstalled = pkgAheadSeconds <= 5;
+
+    logger.debug('app.context.dependencies.check', {
+      appId,
+      packageJsonTime: pkgTime.toISOString(),
+      packageLockTime: lockTime.toISOString(),
+      pkgAheadSeconds: Number(pkgAheadSeconds.toFixed(2)),
+      dependenciesInstalled: isInstalled,
+      toleranceSeconds: 5,
+    });
+
+    return isInstalled;
   }
 
   /**

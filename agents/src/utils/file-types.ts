@@ -5,9 +5,6 @@
  * Used for security validation and content handling across the agents service.
  */
 
-import type { FileSystemOperations } from '../filesystem/index.js'
-import { defaultLocalFs } from '../filesystem/index.js'
-
 /**
  * Source code file extensions that should not contain temporary upload URLs
  *
@@ -118,26 +115,3 @@ export function getFileExtension(filePath: string): string {
   return match?.[1]?.toLowerCase() ?? ''
 }
 
-const SNIFF_SIZE = 8192
-
-/**
- * Detect binary content by checking for null bytes in the first 8KB.
- * This is the same heuristic Git uses — text files virtually never
- * contain 0x00, while binary files almost always do.
- */
-export async function isBinaryFile(filePath: string, fs: FileSystemOperations = defaultLocalFs): Promise<boolean> {
-  let fh
-  try {
-    fh = await fs.open(filePath, 'r')
-    const buf = Buffer.alloc(SNIFF_SIZE)
-    const { bytesRead } = await fh.read(buf, 0, SNIFF_SIZE, 0)
-    return buf.subarray(0, bytesRead).includes(0x00)
-  } catch (err) {
-    // Missing file isn't binary — let the subsequent read produce the real error.
-    // Permission/IO errors should propagate so callers see the real cause.
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return false
-    throw err
-  } finally {
-    await fh?.close()
-  }
-}

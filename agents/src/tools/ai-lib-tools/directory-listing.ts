@@ -1,12 +1,7 @@
 import { createTool, type Tool } from '@airo/ai-lib'
 import { z } from 'zod'
 import { DirectoryListingTool, DirectoryListingOptions } from '../directory-listing.js'
-import { LocalFileSystemOperations } from '../../filesystem/index.js'
-import { AppRepository } from '../../database/repositories/AppRepository.js'
-
-// Initialize tool instances
-const directoryTool = new DirectoryListingTool(new LocalFileSystemOperations())
-const appRepo = new AppRepository()
+import { createForWorkspace } from '../../workspace/index.js'
 
 /**
  * Directory Listing Tool for AI-Lib
@@ -28,12 +23,13 @@ export const directoryListingAITool: Tool = createTool(
       throw new Error('App ID is required for directory listing')
     }
 
-    const app = appRepo.findById(appId)
-    if (!app) {
-      throw new Error(`App '${appId}' not found`)
+    const workspace = createForWorkspace(appId, 'preview')
+    if (!workspace) {
+      throw new Error(`Workspace for app '${appId}' is not available`)
     }
 
-    const result = await directoryTool.listDirectory(app.path, input as DirectoryListingOptions, { appId })
-    return directoryTool.formatAsTree(result)
+    const tool = new DirectoryListingTool(workspace.files)
+    const result = await tool.listDirectory(input as DirectoryListingOptions, { appId })
+    return tool.formatAsTree(result)
   }
 )

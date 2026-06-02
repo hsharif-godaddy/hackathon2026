@@ -958,7 +958,6 @@ export class DevelopmentHandler implements LogHandler {
         if (resultStats.directoryCount) statParts.push(`${resultStats.directoryCount}dirs`);
         if (resultStats.fileCount) statParts.push(`${resultStats.fileCount}files`);
         if (resultStats.truncated) statParts.push(this.yellow('truncated'));
-        if (resultStats.errorCount > 0) statParts.push(this.red(`${resultStats.errorCount}errors`));
         
         if (statParts.length > 0) {
           parts.push(`[${statParts.join(' ')}]`);

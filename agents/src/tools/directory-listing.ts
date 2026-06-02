@@ -1,11 +1,24 @@
-import { join, relative } from 'path';
-import type { FileSystemOperations } from '../filesystem/index.js';
-import { LocalFileSystemOperations } from '../filesystem/index.js';
 import { logger } from '../logging/index.js';
 import { toolDirectoryListingEvents } from '../logging/events/index.js';
+import type { TreeOptions, WorkspaceFiles } from '../workspace/files.js';
+import { isDevSupervisorNotFound } from '../services/DevSupervisorClient.js';
+
+/**
+ * Thrown by `DirectoryListingTool.listDirectory` when the requested path does
+ * not exist in the preview workspace. Distinct from a transport failure: HTTP
+ * routes should map this to 404, not 500.
+ */
+export class DirectoryListingNotFoundError extends Error {
+  public readonly path: string;
+  constructor(targetPath: string) {
+    super(`Path does not exist: ${targetPath}`);
+    this.name = 'DirectoryListingNotFoundError';
+    this.path = targetPath;
+  }
+}
 
 export interface DirectoryListingOptions {
-  /** The path to list (defaults to app root) */
+  /** The path within the workspace to list (defaults to workspace root) */
   path?: string;
   /** Only show directories, not files */
   directoriesOnly?: boolean;
@@ -26,7 +39,7 @@ export interface DirectoryListingOptions {
 export interface DirectoryEntry {
   /** Name of the file or directory */
   name: string;
-  /** Full path relative to the app root */
+  /** Full path relative to the workspace root */
   path: string;
   /** Whether this is a directory */
   isDirectory: boolean;
@@ -34,7 +47,7 @@ export interface DirectoryEntry {
   size?: number;
   /** Last modified date */
   modified: string;
-  /** Depth level from the root */
+  /** Depth relative to the requested path (0 = direct child of `path`). */
   depth: number;
 }
 
@@ -51,35 +64,25 @@ export interface DirectoryTreeResult {
   entries: DirectoryEntry[];
   /** Whether the listing was truncated due to size limits */
   truncated: boolean;
-  /** Any errors encountered during listing */
-  errors: string[];
 }
 
 interface TreeNode {
-  /** Name of the file or directory */
   name: string;
-  /** Full path relative to the app root */
   path: string;
-  /** Whether this is a directory */
   isDirectory: boolean;
-  /** Size in bytes (for files) */
   size: number | undefined;
-  /** Child nodes */
   children: TreeNode[];
 }
 
 /**
  * Directory Listing Tool
- * Provides a comprehensive directory tree listing with filtering capabilities
+ *
+ * Walks the preview workspace via dev-supervisor's `workspace.files.tree` API.
+ * The agent process never reads the host filesystem directly — every traversal
+ * goes through the WorkspaceFiles client bound to a specific app workspace.
  */
 export class DirectoryListingTool {
-  private readonly MAX_ENTRIES = 1000; // Prevent overwhelming responses
-
-  constructor(private readonly fs: FileSystemOperations = new LocalFileSystemOperations()) {}
-
-  /**
-   * Default patterns to ignore during directory traversal
-   */
+  /** Default basename patterns excluded from traversal (skips matching subtrees server-side). */
   private readonly DEFAULT_IGNORE_PATTERNS = [
     'node_modules',
     '.git',
@@ -117,7 +120,7 @@ export class DirectoryListingTool {
     'env',
     '.env.local',
     '.env.*.local',
-    
+
     // Lock files (sync with isFileBlocked in read-file.ts)
     'package-lock.json',
     'pnpm-lock.yaml',
@@ -127,7 +130,7 @@ export class DirectoryListingTool {
     'Pipfile.lock',
     'poetry.lock',
 
-    // things in the template we want to hide for now
+    // template files we want to hide for now
     'dev-supervisor',
     'dev-tools',
     'airo-secrets',
@@ -135,13 +138,14 @@ export class DirectoryListingTool {
     'fullstory-plugin.ts',
   ];
 
+  constructor(private readonly files: WorkspaceFiles) {}
+
   /**
    * List directory contents as a tree structure
    */
   async listDirectory(
-    appPath: string,
     options: DirectoryListingOptions = {},
-    context?: { appId?: string }
+    context?: { appId?: string },
   ): Promise<DirectoryTreeResult> {
     const {
       path: relativePath = '',
@@ -154,23 +158,12 @@ export class DirectoryListingTool {
       disableDefaultIgnores = false,
     } = options;
 
-    // Construct the target path, ensuring it's within the app directory
-    let targetPath: string;
-    try {
-      targetPath = await this.resolveSafePath(appPath, relativePath);
-    } catch (error) {
-      toolDirectoryListingEvents.failure(logger, error as Error, {
-        toolName: 'DirectoryListingTool',
-        targetPath: relativePath || '.',
-        ...(context?.appId && { appId: context.appId }),
-      });
-      throw error;
-    }
+    const targetPath = relativePath.replace(/^\/+|\/+$/g, '');
+    const rootLabel = targetPath || '.';
 
-    // Log the beginning of the directory listing operation
     toolDirectoryListingEvents.begin(logger, {
       toolName: 'DirectoryListingTool',
-      targetPath: relative(appPath, targetPath) || '.',
+      targetPath: rootLabel,
       ...(context?.appId && { appId: context.appId }),
       options: {
         directoriesOnly,
@@ -182,301 +175,135 @@ export class DirectoryListingTool {
       },
     });
 
-    // Combine default ignores with user-provided ignores
     const allIgnorePatterns = disableDefaultIgnores
       ? ignorePatterns
       : [...this.DEFAULT_IGNORE_PATTERNS, ...ignorePatterns];
 
     const result: DirectoryTreeResult = {
-      rootPath: relative(appPath, targetPath) || '.',
+      rootPath: rootLabel,
       totalEntries: 0,
       directoryCount: 0,
       fileCount: 0,
       entries: [],
       truncated: false,
-      errors: [],
     };
 
+    // Map maxDepth to the dev-supervisor API:
+    //   Infinity → recursive, no maxDepth (server uses its own ceiling)
+    //   0        → flat (immediate children only)
+    //   N > 0    → recursive walk to depth N
+    const treeOpts: TreeOptions = {
+      ...(targetPath && { path: targetPath }),
+      recursive: maxDepth !== 0,
+      ...(Number.isFinite(maxDepth) && maxDepth > 0 && { maxDepth }),
+      ...(allIgnorePatterns.length > 0 && { excludeGlobs: allIgnorePatterns }),
+    };
+
+    let tree;
     try {
-      await this.walkDirectory(
-        targetPath,
-        appPath,
-        result,
-        0,
-        maxDepth,
-        directoriesOnly,
-        pattern,
-        search,
-        showHidden,
-        allIgnorePatterns,
-        context
-      );
-
-      // Log successful completion
-      toolDirectoryListingEvents.success(logger, {
-        toolName: 'DirectoryListingTool',
-        targetPath: relative(appPath, targetPath) || '.',
-        ...(context?.appId && { appId: context.appId }),
-        options: {
-          directoriesOnly,
-          ...(pattern && { pattern }),
-          ...(search && { search }),
-          ...(maxDepth !== Infinity && { maxDepth }),
-          showHidden,
-          ...(ignorePatterns.length > 0 && { ignorePatterns }),
-        },
-        resultStats: {
-          totalEntries: result.totalEntries,
-          directoryCount: result.directoryCount,
-          fileCount: result.fileCount,
-          truncated: result.truncated,
-          errorCount: result.errors.length,
-        },
-      });
+      tree = await this.files.tree(treeOpts);
     } catch (error) {
-      result.errors.push(`Failed to read directory: ${error instanceof Error ? error.message : String(error)}`);
+      const wrapped = isDevSupervisorNotFound(error)
+        ? new DirectoryListingNotFoundError(rootLabel)
+        : (error instanceof Error ? error : new Error(String(error)));
 
-      toolDirectoryListingEvents.failure(logger, error as Error, {
+      toolDirectoryListingEvents.failure(logger, wrapped, {
         toolName: 'DirectoryListingTool',
-        targetPath: relative(appPath, targetPath) || '.',
+        targetPath: rootLabel,
         ...(context?.appId && { appId: context.appId }),
       });
+      throw wrapped;
     }
+
+    if (tree.truncated) result.truncated = true;
+
+    for (const e of tree.entries) {
+      const segments = e.path.split('/');
+      const entryName = segments[segments.length - 1] ?? e.path;
+
+      // Hidden filter: any segment starting with '.' counts as hidden.
+      if (!showHidden && segments.some((s) => s.startsWith('.'))) continue;
+
+      const isDirectory = e.kind === 'directory';
+
+      if (directoriesOnly && !isDirectory) continue;
+      if (pattern && !this.matchesPattern(entryName, pattern)) continue;
+      if (search && !entryName.toLowerCase().includes(search.toLowerCase())) continue;
+
+      const fullPath = targetPath ? `${targetPath}/${e.path}` : e.path;
+      const depth = segments.length - 1;
+
+      result.entries.push({
+        name: entryName,
+        path: fullPath,
+        isDirectory,
+        ...(isDirectory ? {} : { size: e.size }),
+        modified: e.modifiedAt,
+        depth,
+      });
+      result.totalEntries++;
+      if (isDirectory) result.directoryCount++;
+      else result.fileCount++;
+    }
+
+    toolDirectoryListingEvents.success(logger, {
+      toolName: 'DirectoryListingTool',
+      targetPath: rootLabel,
+      ...(context?.appId && { appId: context.appId }),
+      options: {
+        directoriesOnly,
+        ...(pattern && { pattern }),
+        ...(search && { search }),
+        ...(maxDepth !== Infinity && { maxDepth }),
+        showHidden,
+        ...(ignorePatterns.length > 0 && { ignorePatterns }),
+      },
+      resultStats: {
+        totalEntries: result.totalEntries,
+        directoryCount: result.directoryCount,
+        fileCount: result.fileCount,
+        truncated: result.truncated,
+      },
+    });
 
     return result;
   }
 
-  /**
-   * Recursively walk directory structure
-   */
-  private async walkDirectory(
-    currentPath: string,
-    appPath: string,
-    result: DirectoryTreeResult,
-    depth: number,
-    maxDepth: number,
-    directoriesOnly: boolean,
-    pattern?: string,
-    search?: string,
-    showHidden: boolean = false,
-    ignorePatterns: string[] = [],
-    context?: { appId?: string }
-  ): Promise<void> {
-    if (depth > maxDepth || result.entries.length >= this.MAX_ENTRIES) {
-      if (result.entries.length >= this.MAX_ENTRIES) {
-        result.truncated = true;
-        // Only log truncation at debug level to reduce noise
-        logger.debug('Directory listing truncated due to max entries limit', {
-          toolName: 'DirectoryListingTool',
-          currentPath: relative(appPath, currentPath),
-          maxEntries: this.MAX_ENTRIES,
-          ...(context?.appId && { appId: context.appId }),
-        });
-      }
-      return;
-    }
-
-
-    try {
-      const entries = await this.fs.readdir(currentPath);
-
-      for (const entry of entries) {
-        if (result.entries.length >= this.MAX_ENTRIES) {
-          result.truncated = true;
-          break;
-        }
-
-        const fullPath = join(currentPath, entry);
-        const relativePath = relative(appPath, fullPath);
-
-        // Skip hidden files/directories unless explicitly requested
-        if (!showHidden && entry.startsWith('.')) {
-          continue;
-        }
-
-        // Skip entries matching ignore patterns
-        if (this.shouldIgnore(entry, ignorePatterns)) {
-          continue;
-        }
-
-        try {
-          const stats = await this.fs.stat(fullPath);
-          const isDirectory = stats.isDirectory();
-
-          // Apply directory-only filter
-          if (directoriesOnly && !isDirectory) {
-            continue;
-          }
-
-          // Apply pattern filter
-          if (pattern && !this.matchesPattern(entry, pattern)) {
-            continue;
-          }
-
-          // Apply search filter
-          if (search && !entry.toLowerCase().includes(search.toLowerCase())) {
-            continue;
-          }
-
-          const directoryEntry: DirectoryEntry = {
-            name: entry,
-            path: relativePath,
-            isDirectory,
-            ...(isDirectory ? {} : { size: stats.size }),
-            modified: stats.mtime.toISOString(),
-            depth,
-          };
-
-          result.entries.push(directoryEntry);
-          result.totalEntries++;
-
-          if (isDirectory) {
-            result.directoryCount++;
-            // Recursively process subdirectories
-            await this.walkDirectory(
-              fullPath,
-              appPath,
-              result,
-              depth + 1,
-              maxDepth,
-              directoriesOnly,
-              pattern,
-              search,
-              showHidden,
-              ignorePatterns,
-              context
-            );
-          } else {
-            result.fileCount++;
-          }
-        } catch (error) {
-          const errorMessage = `Failed to stat ${relativePath}: ${error instanceof Error ? error.message : String(error)}`;
-          result.errors.push(errorMessage);
-
-          // Only log stat errors at debug level to reduce noise
-          logger.debug('File stat error', {
-            toolName: 'DirectoryListingTool',
-            currentPath: relativePath,
-            depth,
-            error: error instanceof Error ? error.message : String(error),
-            ...(context?.appId && { appId: context.appId }),
-          });
-        }
-      }
-    } catch (error) {
-      const errorMessage = `Failed to read directory ${relative(appPath, currentPath)}: ${error instanceof Error ? error.message : String(error)}`;
-      result.errors.push(errorMessage);
-
-      // Only log directory read errors at debug level to reduce noise
-      logger.debug('Directory read error', {
-        toolName: 'DirectoryListingTool',
-        currentPath: relative(appPath, currentPath),
-        depth,
-        error: error instanceof Error ? error.message : String(error),
-        ...(context?.appId && { appId: context.appId }),
-      });
-    }
-  }
-
-  /**
-   * Simple pattern matching (supports * wildcard)
-   */
+  /** Simple pattern matching (supports `*` and `?` wildcards) */
   private matchesPattern(filename: string, pattern: string): boolean {
     const regex = new RegExp(
       '^' + pattern.replace(/\*/g, '.*').replace(/\?/g, '.') + '$',
-      'i'
+      'i',
     );
     return regex.test(filename);
   }
 
-  /**
-   * Check if an entry should be ignored based on ignore patterns
-   */
-  private shouldIgnore(entryName: string, ignorePatterns: string[]): boolean {
-    return ignorePatterns.some(pattern => this.matchesPattern(entryName, pattern));
-  }
-
-  /**
-   * Resolve a path safely within the app directory
-   * Prevents directory traversal attacks
-   */
-  private async resolveSafePath(appPath: string, relativePath: string): Promise<string> {
-    const resolved = join(appPath, relativePath);
-    const normalized = join(resolved); // Normalize the path
-
-    // Ensure the resolved path is within the app directory
-    if (!normalized.startsWith(appPath)) {
-      const error = new Error('Path is outside the allowed app directory');
-      logger.warn('Directory listing path validation failed', {
-        appPath,
-        relativePath,
-        resolvedPath: normalized,
-        reason: 'path_outside_app_directory',
-      });
-      throw error;
-    }
-
-    // Check if path exists
-    if (!(await this.fs.exists(normalized))) {
-      const error = new Error(`Path does not exist: ${relativePath || '.'}`);
-      logger.warn('Directory listing path not found', {
-        appPath,
-        relativePath,
-        resolvedPath: normalized,
-        reason: 'path_not_found',
-      });
-      throw error;
-    }
-
-    return normalized;
-  }
-
-  /**
-   * Format the result as a tree view string
-   */
+  /** Format the result as a tree view string */
   formatAsTree(result: DirectoryTreeResult): string {
     const lines: string[] = [];
 
     lines.push(`${result.rootPath} (${result.directoryCount} dirs, ${result.fileCount} files)`);
 
-    if (result.errors.length > 0) {
-      lines.push(`${result.errors.length} errors`);
-    }
-
     if (result.truncated) {
-      lines.push(`truncated (${this.MAX_ENTRIES}+ items)`);
+      lines.push(`truncated (1000+ items)`);
     }
 
     if (lines.length > 1) lines.push('');
 
-    // Build a hierarchical structure for proper tree rendering
     const treeStructure = this.buildTreeStructure(result.entries);
-
-    // Render the tree with proper markers
     const treeLines = this.renderTreeNode(treeStructure, '', true);
     lines.push(...treeLines);
-
-    if (result.errors.length > 0) {
-      lines.push('');
-      lines.push('Errors:');
-      for (const error of result.errors) {
-        lines.push(`${error}`);
-      }
-    }
 
     return lines.join('\n');
   }
 
-  /**
-   * Build a hierarchical tree structure from flat entries
-   */
+  /** Build a hierarchical tree structure from flat entries */
   private buildTreeStructure(entries: DirectoryEntry[]): TreeNode {
     const root: TreeNode = { name: '', path: '', isDirectory: true, size: undefined, children: [] };
     const nodeMap = new Map<string, TreeNode>();
     nodeMap.set('', root);
 
-    // Sort entries by path to ensure parents are processed before children
-    const sortedEntries = entries.sort((a, b) => {
+    const sortedEntries = entries.slice().sort((a, b) => {
       if (a.depth !== b.depth) return a.depth - b.depth;
       return a.path.localeCompare(b.path);
     });
@@ -487,13 +314,12 @@ export class DirectoryListingTool {
         path: entry.path,
         isDirectory: entry.isDirectory,
         size: entry.size,
-        children: []
+        children: [],
       };
 
       nodeMap.set(entry.path, node);
 
-      // Find parent path
-      const pathParts = entry.path.split('/').filter(part => part.length > 0);
+      const pathParts = entry.path.split('/').filter((part) => part.length > 0);
       const parentPath = pathParts.slice(0, -1).join('/');
 
       const parent = nodeMap.get(parentPath);
@@ -504,15 +330,10 @@ export class DirectoryListingTool {
       }
     }
 
-    // Sort children: directories first, then alphabetically
     this.sortTreeNodes(root);
-
     return root;
   }
 
-  /**
-   * Recursively sort tree nodes
-   */
   private sortTreeNodes(node: TreeNode): void {
     node.children.sort((a, b) => {
       if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1;
@@ -524,13 +345,9 @@ export class DirectoryListingTool {
     }
   }
 
-  /**
-   * Render a tree node with proper ASCII tree markers
-   */
   private renderTreeNode(node: TreeNode, prefix: string, isLast: boolean): string[] {
     const lines: string[] = [];
 
-    // Skip rendering the root node itself
     if (node.name) {
       const marker = isLast ? '└── ' : '├── ';
       const dirMarker = node.isDirectory ? '/' : '';
@@ -538,10 +355,7 @@ export class DirectoryListingTool {
       lines.push(`${prefix}${marker}${node.name}${dirMarker}${size}`);
     }
 
-    // Render children
-    const childPrefix = node.name ?
-      (prefix + (isLast ? '    ' : '│   ')) :
-      '';
+    const childPrefix = node.name ? prefix + (isLast ? '    ' : '│   ') : '';
 
     for (let i = 0; i < node.children.length; i++) {
       const child = node.children[i];
@@ -555,9 +369,6 @@ export class DirectoryListingTool {
     return lines;
   }
 
-  /**
-   * Format file size in human-readable format
-   */
   private formatSize(bytes: number): string {
     const units = ['B', 'K', 'M', 'G'];
     let size = bytes;
