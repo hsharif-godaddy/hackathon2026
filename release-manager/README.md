@@ -108,9 +108,9 @@ pipeline:
 2. **Deploy lock** — acquires an SSM Parameter Store lock to prevent concurrent deploys
 3. **Rollback snapshot** — fetches current production state from GitHub for verification
 4. **Release notes + commit pinning** — resolves the target branch to a specific commit SHA, then lists merged PRs since the last production deploy. The pinned SHA is stored and used by all subsequent stages, ensuring deterministic builds even if the branch advances during the deploy.
-5. **Test deployment** — deploys app + builds images in parallel, then E2E tests + manual checklist
+5. **Test deployment** — deploys app + builds images in parallel, then E2E + regression tests + manual checklist
 6. **Production gate** — confirmation prompt before prod deploy
-7. **Production deployment** — promotes images, then promotes app + upserts pre-prov in parallel, then E2E + prod checklist
+7. **Production deployment** — promotes images, then promotes app + upserts pre-prov in parallel, then E2E + regression tests + prod checklist
 8. **Completion** — offers Done or Rollback options
 
 ## Commit SHA Pinning

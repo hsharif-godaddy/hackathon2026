@@ -57,9 +57,11 @@ pipeline:
               job_match: 'build-airo-app-builder-publish.*Send Notifications'
               pattern: 'MOST_SPECIFIC_IMMUTABLE_TAG_SUFFIX=(pi-[a-f0-9]+-ext-[a-f0-9]+)'
 
-        # --- E2E + manual checklist run in parallel after deploy group finishes ---
+        # --- E2E + regression + manual checklist run in parallel after deploy group finishes ---
+        # e2e and regression dispatch as two independent playwright-e2e.yml runs (separate run URLs,
+        # independent retry) rather than one combined e2e-then-regression run.
         - id: e2e-test
-          name: E2E + Regression Tests
+          name: E2E Tests
           group: validate
           repo: gdcorp-partners/airo-app-builder
           workflow: playwright-e2e.yml
@@ -67,7 +69,18 @@ pipeline:
           ref: '{{branch}}'
           inputs:
             environment: test
-            test_filter: e2e-then-regression
+            test_filter: e2e
+
+        - id: regression-test
+          name: Regression Tests
+          group: validate
+          repo: gdcorp-partners/airo-app-builder
+          workflow: playwright-e2e.yml
+          active_run_check: false
+          ref: '{{branch}}'
+          inputs:
+            environment: test
+            test_filter: regression
 
         - id: health-check-test
           name: Health Check (Test)
@@ -153,9 +166,9 @@ pipeline:
             appTemplateName: default
             batchConcurrency: '5'
 
-        # --- E2E + manual checklist run in parallel ---
+        # --- E2E + regression + manual checklist run in parallel ---
         - id: e2e-prod
-          name: E2E + Regression Tests (Prod)
+          name: E2E Tests (Prod)
           group: validate-prod
           repo: gdcorp-partners/airo-app-builder
           workflow: playwright-e2e.yml
@@ -163,7 +176,18 @@ pipeline:
           ref: '{{branch}}'
           inputs:
             environment: prod
-            test_filter: e2e-then-regression
+            test_filter: e2e
+
+        - id: regression-prod
+          name: Regression Tests (Prod)
+          group: validate-prod
+          repo: gdcorp-partners/airo-app-builder
+          workflow: playwright-e2e.yml
+          active_run_check: false
+          ref: '{{branch}}'
+          inputs:
+            environment: prod
+            test_filter: regression
 
         - id: health-check-prod
           name: Health Check (Prod)

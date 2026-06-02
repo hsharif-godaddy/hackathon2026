@@ -540,11 +540,16 @@ jobs:
   #          integration branch or @main once the HWA PR merges)
 
   # --- prod: runs tests from main ---
+  # Filter gate intentionally excludes 'regression': a prod release dispatches
+  # this workflow twice (separate 'e2e' and 'regression' runs), so gating on
+  # 'e2e' (+ 'e2e-then-regression' for legacy callers) triggers the PaaS suite
+  # exactly once per release. Scheduled prod runs still trigger it via the
+  # github.event_name == 'schedule' branch regardless of filter.
   host-paas-e2e:
     if: >
       ${{ (inputs.environment || 'prod') == 'prod'
           && (github.event_name == 'schedule'
-              || contains(fromJSON('["e2e", "regression", "e2e-then-regression"]'), inputs.test_filter || 'e2e')) }}
+              || contains(fromJSON('["e2e", "e2e-then-regression"]'), inputs.test_filter || 'e2e')) }}
     name: E2E Tests (host-paas, prod)
     uses: gdcorp-partners/hosting-web-apps/.github/workflows/e2e-playwright.yml@main
     with:
