@@ -1,0 +1,44 @@
+metadata:
+  name: Skill Loader - RSS
+  version: 1.0.0
+
+cases:
+  # --- Positive: rss skill should load ---
+
+  - id: add-rss-feed-explicit
+    prompt: 'Add an RSS feed to my site'
+    expectedSkill: rss
+    tags: [positive]
+    rationale: Direct RSS feed request — clearest signal to load the rss skill
+
+  - id: blog-feed
+    prompt: 'I want a blog feed so people can subscribe'
+    expectedSkill: rss
+    tags: [positive]
+    rationale: Blog feed with subscribe intent maps directly to RSS
+
+  - id: xml-feed
+    prompt: 'Create an XML feed for my blog posts'
+    expectedSkill: rss
+    tags: [positive]
+    rationale: XML feed for blog content is RSS
+
+  # --- Negative: should NOT load the skill ---
+
+  - id: email-newsletter
+    prompt: 'Set up an email newsletter for my blog subscribers'
+    expectedSkill: null
+    tags: [negative, hard]
+    rationale: Email newsletter is a different subscription mechanism, not RSS
+
+  - id: create-blog
+    prompt: 'Add a blog to my site'
+    expectedSkill: null
+    tags: [negative]
+    rationale: Blog creation uses the blog skill, not RSS
+
+  - id: add-contact-form
+    prompt: 'Add a contact form to my site'
+    expectedSkill: null
+    tags: [negative]
+    rationale: Feature addition — no feed intent
