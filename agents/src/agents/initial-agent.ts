@@ -321,7 +321,8 @@ export async function createInitialAgent(
   }
 
   // Design-system named variant: list/install design systems and load UI kit reference
-  if (isNamedVariant && trimmedPromptVersion === 'design-system') {
+  // Covers 'design-system' and any future 'design-system-*' variants (e.g. design-system-homepage-build)
+  if (isNamedVariant && trimmedPromptVersion.startsWith('design-system')) {
     tools.listDesignSystems = allAILibTools.listDesignSystems
     tools.installDesignSystem = allAILibTools.installDesignSystem
     tools.loadUiKit = allAILibTools.loadUiKit

@@ -17,6 +17,7 @@ import {
   createDevelopAgent,
   createMarketingAgent,
   createInitialAgent,
+  createDebugAgent,
   DevelopAgent,
   MarketingAgent,
   ExampleAgent,
@@ -93,6 +94,7 @@ export async function createUnifiedAgentFactory(options?: {
     }
   }
 
+  const debugConfig = await createDebugAgent()
   const marketingConfig = await createMarketingAgent()
   const initialConfig = await createInitialAgent(stateManager)
   const initialV2Config = await createInitialAgent(stateManager, undefined, '2.0')
@@ -308,6 +310,7 @@ export async function createUnifiedAgentFactory(options?: {
     develop: developConfig,
     ...profileDevelopConfigs,
     marketing: marketingConfig,
+    debug: debugConfig,
     ...templateInitialConfigs,
   }
 

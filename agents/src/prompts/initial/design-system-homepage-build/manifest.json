@@ -1,0 +1,11 @@
+{
+  "base": "3.0",
+  "preflightTools": ["listDesignSystems"],
+  "files": [
+    { "src": "base", "file": "identity.md" },
+    { "src": "base", "file": "project-name.md" },
+    { "src": "variant", "file": "questioning-phase1.md" },
+    { "src": "variant", "file": "auto-select.md" },
+    { "src": "base", "file": "feature-list.md" }
+  ]
+}

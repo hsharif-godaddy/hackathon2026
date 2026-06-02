@@ -30,6 +30,8 @@ vi.mock('fs', async () => {
     existsSync: (path: string) => {
       if (path.includes('initial/design-system/manifest.json')) return true
       if (path.includes('initial/design-system/')) return true
+      if (path.includes('initial/design-system-homepage-build/manifest.json')) return true
+      if (path.includes('initial/design-system-homepage-build/')) return true
       if (path.includes('initial/3.0/')) return true
       if (path.includes('initial/1.0/manifest.json')) return false
       if (path.includes('core.md')) return true
@@ -37,6 +39,17 @@ vi.mock('fs', async () => {
     },
     readFileSync: (path: string, encoding?: string) => {
       if (typeof path === 'string' && path.includes('initial/design-system/manifest.json')) {
+        return JSON.stringify({
+          base: '3.0',
+          preflightTools: ['listDesignSystems'],
+          files: [
+            { src: 'base', file: 'identity.md' },
+            { src: 'variant', file: 'questioning-phase1.md' },
+            { src: 'variant', file: 'auto-select.md' },
+          ],
+        })
+      }
+      if (typeof path === 'string' && path.includes('initial/design-system-homepage-build/manifest.json')) {
         return JSON.stringify({
           base: '3.0',
           preflightTools: ['listDesignSystems'],
@@ -56,6 +69,15 @@ describe('createInitialAgent (design-system variant)', () => {
   it('wires listDesignSystems + installDesignSystem + loadUiKit and declares preflightTools', async () => {
     const cfg = await createInitialAgent(undefined, undefined, 'design-system')
     expect(cfg.id).toBe('initial-design-system')
+    expect(cfg.tools).toHaveProperty('listDesignSystems')
+    expect(cfg.tools).toHaveProperty('installDesignSystem')
+    expect(cfg.tools).toHaveProperty('loadUiKit')
+    expect((cfg.metadata as any).preflightTools).toContain('listDesignSystems')
+  })
+
+  it('wires design-system tools for the design-system-homepage-build variant', async () => {
+    const cfg = await createInitialAgent(undefined, undefined, 'design-system-homepage-build')
+    expect(cfg.id).toBe('initial-design-system-homepage-build')
     expect(cfg.tools).toHaveProperty('listDesignSystems')
     expect(cfg.tools).toHaveProperty('installDesignSystem')
     expect(cfg.tools).toHaveProperty('loadUiKit')

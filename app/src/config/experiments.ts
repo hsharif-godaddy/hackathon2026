@@ -29,6 +29,7 @@ export const INITIAL_AGENT_COHORT_TO_PROFILE: Readonly<Record<string, string>> =
   initial_agent_v3: 'initial-agent-v3',
   prompt_enhancer: 'prompt-enhancer',
   initial_agent_design_system: 'initial-agent-design-system',
+  initial_agent_design_system_homepage_build: 'initial-agent-design-system-homepage-build',
 }
 
 /** Hivemind treatment cohort — BMS for new users (budgetService experiment). */

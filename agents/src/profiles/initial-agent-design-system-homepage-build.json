@@ -1,0 +1,7 @@
+{
+  "name": "initial-agent-design-system-homepage-build",
+  "description": "Initial agent variant: design-system with narrower handoff template focused on homepage-only build to reduce build times",
+  "properties": {
+    "initial.promptVersion": "design-system-homepage-build"
+  }
+}

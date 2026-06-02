@@ -5,4 +5,8 @@ describe('discoverNamedInitialVariants', () => {
   it('includes design-system', () => {
     expect(discoverNamedInitialVariants()).toContain('design-system')
   })
+
+  it('includes design-system-homepage-build', () => {
+    expect(discoverNamedInitialVariants()).toContain('design-system-homepage-build')
+  })
 })
