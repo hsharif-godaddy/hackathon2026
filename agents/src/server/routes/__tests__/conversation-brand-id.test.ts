@@ -65,7 +65,7 @@ describe('GET /apps/:id/conversation-brand-id', () => {
         appId: 'test-app-id',
         customerId: 'test-customer-id',
       }),
-      'integrations.conversations.brandId'
+      'integrations.inbox.brandId'
     );
   });
 

@@ -120,7 +120,7 @@ export enum SettingsSection {
   ANALYTICS = 'analytics',
   MARKETING = 'marketing',
   LOGS = 'logs',
-  CONVERSATIONS = 'conversations',
+  INBOX = 'inbox',
   FEEDBACK = 'feedback'
 }
 

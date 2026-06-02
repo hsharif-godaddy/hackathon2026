@@ -262,7 +262,7 @@ describe('agent-router', function agentRouterTests() {
     it('returns develop-<profile> when session is develop and profile has skill.* flags', async function sessionToDevelopVariantSkillFlags() {
       resolveProfileSpy.mockReturnValue(profile({
         name: 'skillonly',
-        properties: { 'skill.conversations.enabled': true },
+        properties: { 'skill.inbox.enabled': true },
       }))
 
       const id = await resolveAgent({
@@ -281,7 +281,7 @@ describe('agent-router', function agentRouterTests() {
     })
     resolveProfileSpy.mockReturnValue(profile({
       name: 'skillonly',
-      properties: { 'skill.conversations.enabled': true },
+      properties: { 'skill.inbox.enabled': true },
     }))
 
     const id = await resolveAgentWithMessages({

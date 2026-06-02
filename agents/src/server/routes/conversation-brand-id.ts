@@ -2,7 +2,7 @@
  * Conversation Brand ID Route
  *
  * Fetches the linked conversation brand ID from the memory table.
- * Data is stored in Memory by the conversations skill after linking an account.
+ * Data is stored in Memory by the inbox skill after linking an account.
  */
 
 import { Router, Request, Response } from 'express';
@@ -32,12 +32,12 @@ router.get('/apps/:id/conversation-brand-id', validateAppOwnership, async (req: 
     const scope = workspaceScopeFromAppId(appId!, customerId);
 
     // Fetch brand ID from memory
-    const brandIdResult = await memory.get(scope, 'integrations.conversations.brandId');
+    const brandIdResult = await memory.get(scope, 'integrations.inbox.brandId');
 
     if (!brandIdResult.success) {
       contextLogger.warn('conversationBrandId.route.memoryRead.failed', {
         appId,
-        key: 'integrations.conversations.brandId',
+        key: 'integrations.inbox.brandId',
         error: brandIdResult.error
       });
       res.status(500).json({

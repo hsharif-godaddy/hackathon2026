@@ -1,9 +1,9 @@
-/** Mounts the Conversations chat widget. Gated behind cookie consent (c2_analytics_consent). */
+/** Mounts the Inbox chat widget. Gated behind cookie consent (c2_analytics_consent). */
 
 import { useEffect, useRef } from 'react';
 
 import { getAnalyticsConsent, onConsentChange } from '@/lib/analytics-consent';
-import config from '../lib/conversations.config.json';
+import config from '../lib/inboxChat.config.json';
 
 const SCRIPT_ID = 'conversations-js';
 
@@ -24,7 +24,7 @@ declare global {
   }
 }
 
-export default function ConversationsWidget() {
+export default function InboxChatWidget() {
   const scriptInjected = useRef(false);
 
   useEffect(() => {

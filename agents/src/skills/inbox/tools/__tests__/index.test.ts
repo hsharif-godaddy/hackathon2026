@@ -65,7 +65,7 @@ const { discoverAccountTool, selectAccountTool, setupWidgetTool, updateWidgetCon
 const context = { metadata: { appId: 'app-123' }, socketId: 'socket-1' };
 const mockClient = {} as any;
 
-describe('conversations skill tools', () => {
+describe('inbox skill tools', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockGetActionService.mockReturnValue(mockClient);
@@ -130,7 +130,7 @@ describe('conversations skill tools', () => {
       expect(result.accountId).toBe('a1b2c3d4-0000-4000-8000-000000000001');
       expect(mockMemorySet).toHaveBeenCalledWith(
         'app-123',
-        'integrations.conversations.brandId',
+        'integrations.inbox.brandId',
         'a1b2c3d4-0000-4000-8000-000000000001',
       );
     });
@@ -160,7 +160,7 @@ describe('conversations skill tools', () => {
       expect(mockActivateAccount).toHaveBeenCalledWith(mockClient, 'app-123', 'ent-1', 'My App');
       expect(mockMemorySet).toHaveBeenCalledWith(
         'app-123',
-        'integrations.conversations.brandId',
+        'integrations.inbox.brandId',
         'a1b2c3d4-0000-4000-8000-000000000003',
       );
     });
@@ -245,7 +245,7 @@ describe('conversations skill tools', () => {
       expect(result.accountId).toBe('a1b2c3d4-0000-4000-8000-000000000001');
       expect(mockMemorySet).toHaveBeenCalledWith(
         'app-123',
-        'integrations.conversations.brandId',
+        'integrations.inbox.brandId',
         'a1b2c3d4-0000-4000-8000-000000000001',
       );
     });
@@ -282,7 +282,7 @@ describe('conversations skill tools', () => {
       expect(result.activated).toBe(true);
       expect(mockMemorySet).toHaveBeenCalledWith(
         'app-123',
-        'integrations.conversations.brandId',
+        'integrations.inbox.brandId',
         'a1b2c3d4-0000-4000-8000-000000000003',
       );
     });
@@ -320,10 +320,10 @@ describe('conversations skill tools', () => {
   describe('setup_widget', () => {
     beforeEach(() => {
       mockMemoryGet.mockImplementation(function (_appId: string, key: string) {
-        if (key === 'integrations.conversations.brandId') {
+        if (key === 'integrations.inbox.brandId') {
           return Promise.resolve({ exists: true, value: 'a1b2c3d4-0000-4000-8000-000000000001' });
         }
-        if (key === 'integrations.conversations.embeddableId') {
+        if (key === 'integrations.inbox.embeddableId') {
           return Promise.resolve({ exists: false });
         }
         return Promise.resolve({ exists: false });
@@ -357,13 +357,13 @@ describe('conversations skill tools', () => {
       expect(result.brandNotProvisioned).toBe(true);
     });
 
-    it('auto-installs template when ConversationsWidget.tsx is missing', async () => {
+    it('auto-installs template when InboxChatWidget.tsx is missing', async () => {
       mockAccess.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
 
       await setupWidgetTool.execute({}, context);
 
       expect(mockInstallTemplates).toHaveBeenCalledWith({
-        skill: 'conversations',
+        skill: 'inbox',
         appPath: '/tmp/airo-app-builder/app-123/preview',
         appId: 'app-123',
       });
@@ -388,10 +388,10 @@ describe('conversations skill tools', () => {
 
     it('reuses cached embeddable from memory', async () => {
       mockMemoryGet.mockImplementation(function (_appId: string, key: string) {
-        if (key === 'integrations.conversations.brandId') {
+        if (key === 'integrations.inbox.brandId') {
           return Promise.resolve({ exists: true, value: 'a1b2c3d4-0000-4000-8000-000000000001' });
         }
-        if (key === 'integrations.conversations.embeddableId') {
+        if (key === 'integrations.inbox.embeddableId') {
           return Promise.resolve({ exists: true, value: 42 });
         }
         return Promise.resolve({ exists: false });
@@ -412,7 +412,7 @@ describe('conversations skill tools', () => {
       expect(mockCreateEmbeddable).not.toHaveBeenCalled();
       expect(mockMemorySet).toHaveBeenCalledWith(
         'app-123',
-        'integrations.conversations.embeddableId',
+        'integrations.inbox.embeddableId',
         10,
       );
     });
@@ -472,9 +472,9 @@ describe('conversations skill tools', () => {
       const result = await setupWidgetTool.execute({}, context);
 
       expect(result.brandId).toBe('a1b2c3d4-0000-4000-8000-000000000001');
-      expect(result.configWritten).toContain('conversations.config.json');
+      expect(result.configWritten).toContain('inboxChat.config.json');
       expect(mockWriteWidgetConfig).toHaveBeenCalledWith(
-        expect.stringContaining('conversations.config.json'),
+        expect.stringContaining('inboxChat.config.json'),
         expect.objectContaining({
           _support: expect.objectContaining({ account: 'a1b2c3d4-0000-4000-8000-000000000001' }),
         }),
@@ -484,7 +484,7 @@ describe('conversations skill tools', () => {
     it('writes color to config when provided', async () => {
       const result = await setupWidgetTool.execute({ color: '#aabbcc' }, context);
 
-      expect(result.NEXT_STEP).toContain('ConversationsWidget');
+      expect(result.NEXT_STEP).toContain('InboxChatWidget');
       expect(mockWriteWidgetConfig).toHaveBeenCalledWith(
         expect.any(String),
         expect.objectContaining({
@@ -511,10 +511,10 @@ describe('conversations skill tools', () => {
   describe('update_widget_config', () => {
     beforeEach(() => {
       mockMemoryGet.mockImplementation(function (_appId: string, key: string) {
-        if (key === 'integrations.conversations.brandId') {
+        if (key === 'integrations.inbox.brandId') {
           return Promise.resolve({ exists: true, value: 'a1b2c3d4-0000-4000-8000-000000000001' });
         }
-        if (key === 'integrations.conversations.embeddableId') {
+        if (key === 'integrations.inbox.embeddableId') {
           return Promise.resolve({ exists: true, value: 42 });
         }
         return Promise.resolve({ exists: false });
@@ -532,7 +532,7 @@ describe('conversations skill tools', () => {
 
       const result = await updateWidgetConfigTool.execute({ color: '#ff0000' }, context);
 
-      expect(result.error).toContain('Run conversations__setup_widget first');
+      expect(result.error).toContain('Run inbox__setup_widget first');
     });
 
     it('returns message when no fields provided', async () => {
@@ -586,7 +586,7 @@ describe('conversations skill tools', () => {
         { shoutbox_label: 'Chat with us!' },
       );
       expect(mockWriteWidgetConfig).toHaveBeenCalledWith(
-        expect.stringContaining('conversations.config.json'),
+        expect.stringContaining('inboxChat.config.json'),
         expect.objectContaining({
           _support: expect.objectContaining({
             account: 'a1b2c3d4-0000-4000-8000-000000000001',
@@ -604,7 +604,7 @@ describe('conversations skill tools', () => {
       await updateWidgetConfigTool.execute({ color: '#ff0000', position: 'bottom-left' }, context);
 
       expect(mockWriteWidgetConfig).toHaveBeenCalledWith(
-        expect.stringContaining('conversations.config.json'),
+        expect.stringContaining('inboxChat.config.json'),
         expect.objectContaining({
           _support: expect.objectContaining({
             account: 'a1b2c3d4-0000-4000-8000-000000000001',

@@ -1,15 +1,15 @@
 /**
- * Conversations Skill Tools
+ * Inbox Skill Tools
  *
- * Tools for connecting a Conversations (Reamaze) chat widget to the site.
- * The account ID is persisted in memory under `integrations.conversations.brandId`.
+ * Tools for connecting an Airo Inbox (Reamaze) chat widget to the site.
+ * The account ID is persisted in memory under `integrations.inbox.brandId`.
  *
  *   discover_account       — find or auto-create the account for this app
  *   select_account         — manually link/activate an account (override)
  *   setup_widget           — find/create the default embeddable, write config
  *   update_widget_config   — sync widget settings to backend + config file
  *
- * Tools own the config file (src/lib/conversations.config.json). They read it,
+ * Tools own the config file (src/lib/inboxChat.config.json). They read it,
  * merge changes, and write it back. The agent never edits the config directly.
  * See skill.md for the full flow.
  */
@@ -34,12 +34,12 @@ import {
 } from './reamaze.js';
 import { readWidgetConfig, writeWidgetConfig } from './widget-config.js';
 
-const logger = Logger.create({ component: 'conversations.skill' });
+const logger = Logger.create({ component: 'inbox.skill' });
 const memoryRepo = new MemoryRepository();
 
 // Memory keys — per-app pointers to Reamaze resources.
-const MEM_BRAND_ID = 'integrations.conversations.brandId';
-const MEM_EMBEDDABLE_ID = 'integrations.conversations.embeddableId';
+const MEM_BRAND_ID = 'integrations.inbox.brandId';
+const MEM_EMBEDDABLE_ID = 'integrations.inbox.embeddableId';
 
 // Tools receive socketId on context (ai-lib sets it at execution time, not on the
 // declared type — matches the pattern in agents/src/tools/ai-lib-tools/qr-code.ts:51).
@@ -61,7 +61,7 @@ function getClient(ctx?: ToolContext): IClientActionService | null {
 
 export const hooks: SkillHooks = {
   onInstall: async (ctx) => {
-    logger.info('conversations.skill.installed', { appPath: ctx.appPath });
+    logger.info('inbox.skill.installed', { appPath: ctx.appPath });
   },
 };
 
@@ -72,13 +72,14 @@ export const hooks: SkillHooks = {
 export const discoverAccountTool: SkillToolDefinition = {
   name: 'discover_account',
   description:
-    'Discover or provision the Conversations account for this app. ' +
+    'Discover or provision the Inbox account for this app. ' +
     'If an account is already saved in memory, returns it immediately (idempotent). ' +
     'If listAccounts returns an account already linked to this app (matching aabAppId), ' +
     'saves it to memory and returns it. Otherwise, auto-creates a new account from the ' +
     'first available entitlement. Returns alreadyConfigured or accountCreated on success, ' +
     'noAccounts if no entitlements are available. ' +
-    'After this succeeds, proceed directly to conversations__setup_widget.',
+    'After this succeeds, proceed directly to inbox__setup_widget.',
+
   parameters: z.object({}),
   execute: async (_input: Record<string, never>, context?: ToolContext) => {
     const appId = getAppId(context);
@@ -105,7 +106,7 @@ export const discoverAccountTool: SkillToolDefinition = {
     const linkedToThisApp = accounts.find((a) => a.aabAppId === appId);
     if (linkedToThisApp) {
       await memoryRepo.set(appId, MEM_BRAND_ID, linkedToThisApp.brandUrl);
-      logger.info('conversations.skill.discover_account.found_linked', { appId, brandUrl: linkedToThisApp.brandUrl });
+      logger.info('inbox.skill.discover_account.found_linked', { appId, brandUrl: linkedToThisApp.brandUrl });
       return { alreadyConfigured: true, accountId: linkedToThisApp.brandUrl };
     }
 
@@ -120,14 +121,14 @@ export const discoverAccountTool: SkillToolDefinition = {
 
       const brandUrl = activateResult.data.brandUrl;
       await memoryRepo.set(appId, MEM_BRAND_ID, brandUrl);
-      logger.info('conversations.skill.discover_account.auto_created', { appId, brandUrl });
+      logger.info('inbox.skill.discover_account.auto_created', { appId, brandUrl });
       return { accountCreated: true, accountId: brandUrl };
     }
 
     return {
       noAccounts: true,
       message:
-        'No Conversations accounts found for this app and no entitlements available for creating a new one.',
+        'No Inbox accounts found for this app and no entitlements available for creating a new one.',
     };
   },
   config: { requiresApp: true, timeout: 30_000 },
@@ -140,7 +141,7 @@ export const discoverAccountTool: SkillToolDefinition = {
 export const selectAccountTool: SkillToolDefinition = {
   name: 'select_account',
   description:
-    'Manually select an existing Conversations account or activate a new one from an entitlement. ' +
+    'Manually select an existing Inbox account or activate a new one from an entitlement. ' +
     'Normally discover_account handles this automatically. Use select_account only if you need to ' +
     'override — e.g. pick a specific existing account instead of creating a new one. ' +
     'Pass accountUrl: "create_new" with an entitlementId to activate, or a brandUrl to select.',
@@ -166,12 +167,12 @@ export const selectAccountTool: SkillToolDefinition = {
 
       const brandUrl = result.data.brandUrl;
       await memoryRepo.set(appId, MEM_BRAND_ID, brandUrl);
-      logger.info('conversations.skill.select_account.activated', { appId, accountId: brandUrl });
+      logger.info('inbox.skill.select_account.activated', { appId, accountId: brandUrl });
       return { success: true, accountId: brandUrl, activated: true };
     }
 
     await memoryRepo.set(appId, MEM_BRAND_ID, input.accountUrl);
-    logger.info('conversations.skill.select_account.linked', { appId, accountId: input.accountUrl });
+    logger.info('inbox.skill.select_account.linked', { appId, accountId: input.accountUrl });
 
     return { success: true, accountId: input.accountUrl };
   },
@@ -185,10 +186,10 @@ export const selectAccountTool: SkillToolDefinition = {
 export const setupWidgetTool: SkillToolDefinition = {
   name: 'setup_widget',
   description:
-    'Wire the Conversations chat widget into this site. Looks up the Conversations account ' +
+    'Wire the Inbox chat widget into this site. Looks up the Inbox account ' +
     '(must already be configured via discover_account/select_account), ensures a default embeddable exists, ' +
     'syncs color/icon to the backend, and writes the config file. ' +
-    'After this tool succeeds, you MUST import and mount <ConversationsWidget /> in src/App.tsx. ' +
+    'After this tool succeeds, you MUST import and mount <InboxChatWidget /> in src/App.tsx. ' +
     'Idempotent. If the account is not configured, returns brandNotProvisioned: true.',
   parameters: z.object({
     color: z
@@ -210,8 +211,8 @@ export const setupWidgetTool: SkillToolDefinition = {
     if (!app?.path) return { error: `Could not resolve app path for appId: ${appId}` };
 
     // 0. Auto-install templates if either file doesn't exist yet
-    const widgetPath = join(app.path, 'src', 'components', 'ConversationsWidget.tsx');
-    const configPath = join(app.path, 'src', 'lib', 'conversations.config.json');
+    const widgetPath = join(app.path, 'src', 'components', 'InboxChatWidget.tsx');
+    const configPath = join(app.path, 'src', 'lib', 'inboxChat.config.json');
     const fileExists = async (p: string): Promise<boolean> => {
       try {
         await access(p);
@@ -227,21 +228,21 @@ export const setupWidgetTool: SkillToolDefinition = {
     ]);
     if (!widgetExists || !configExists) {
       const skillLoader = new SkillLoaderTool();
-      const installResult = await skillLoader.installTemplates({ skill: 'conversations', appPath: app.path, appId });
+      const installResult = await skillLoader.installTemplates({ skill: 'inbox', appPath: app.path, appId });
       if (!installResult.success) {
-        return { error: `Failed to auto-install conversations template: ${installResult.error}` };
+        return { error: `Failed to auto-install inbox template: ${installResult.error}` };
       }
     }
 
     // 1. Account must already exist (set via discover_account + select_account)
     const brandRead = await memoryRepo.get(appId, MEM_BRAND_ID);
     if (!brandRead.exists) {
-      logger.warn('conversations.skill.setup.brand_not_provisioned', { appId });
+      logger.warn('inbox.skill.setup.brand_not_provisioned', { appId });
       return {
         brandNotProvisioned: true,
         message:
-          'No Conversations account is configured for this site. ' +
-          'Run conversations__discover_account first to let the user choose their account.',
+          'No Inbox account is configured for this site. ' +
+          'Run inbox__discover_account first to let the user choose their account.',
       };
     }
     const brandId = brandRead.value as string;
@@ -259,10 +260,10 @@ export const setupWidgetTool: SkillToolDefinition = {
     if (embeddableRead.exists) {
       embeddableId = Number(embeddableRead.value);
       if (!Number.isFinite(embeddableId)) {
-        return { error: 'Corrupted embeddableId in memory; re-run conversations__setup_widget.' };
+        return { error: 'Corrupted embeddableId in memory; re-run inbox__setup_widget.' };
       }
       needsUpdate = true;
-      logger.info('conversations.skill.setup.embeddable.reuse', { appId, brandId, embeddableId });
+      logger.info('inbox.skill.setup.embeddable.reuse', { appId, brandId, embeddableId });
     } else {
       const list = await listEmbeddables(client, appId, brandId);
       if (!list.success) {
@@ -273,7 +274,7 @@ export const setupWidgetTool: SkillToolDefinition = {
       if (existing) {
         embeddableId = existing.id;
         needsUpdate = true;
-        logger.info('conversations.skill.setup.embeddable.found', { appId, brandId, embeddableId });
+        logger.info('inbox.skill.setup.embeddable.found', { appId, brandId, embeddableId });
       } else {
         const created = await createEmbeddable(client, appId, brandId, {
           title: app.name ?? 'Chat Widget',
@@ -287,7 +288,7 @@ export const setupWidgetTool: SkillToolDefinition = {
           return { error: `Failed to create embeddable for brand ${brandId}: ${created.error}` };
         }
         embeddableId = created.data.id;
-        logger.info('conversations.skill.setup.embeddable.created', { appId, brandId, embeddableId });
+        logger.info('inbox.skill.setup.embeddable.created', { appId, brandId, embeddableId });
       }
 
       await memoryRepo.set(appId, MEM_EMBEDDABLE_ID, embeddableId);
@@ -318,9 +319,9 @@ export const setupWidgetTool: SkillToolDefinition = {
       embeddableId,
       configWritten: configPath,
       NEXT_STEP:
-        'Import and mount <ConversationsWidget /> in src/App.tsx — ' +
-        "add `import ConversationsWidget from './components/ConversationsWidget';` at the top, " +
-        'then render `<ConversationsWidget />` inside the root JSX (outside <Routes>, at the top level). ' +
+        'Import and mount <InboxChatWidget /> in src/App.tsx — ' +
+        "add `import InboxChatWidget from './components/InboxChatWidget';` at the top, " +
+        'then render `<InboxChatWidget />` inside the root JSX (outside <Routes>, at the top level). ' +
         'The widget will NOT appear until this is done.',
     };
   },
@@ -334,8 +335,8 @@ export const setupWidgetTool: SkillToolDefinition = {
 export const updateWidgetConfigTool: SkillToolDefinition = {
   name: 'update_widget_config',
   description:
-    'Update widget settings: syncs to the Conversations backend and writes the config file. ' +
-    'Requires conversations__setup_widget to have run first. Omit a field to leave it unchanged.',
+    'Update widget settings: syncs to the Inbox backend and writes the config file. ' +
+    'Requires inbox__setup_widget to have run first. Omit a field to leave it unchanged.',
   parameters: z.object({
     color: z
       .string()
@@ -369,13 +370,13 @@ export const updateWidgetConfigTool: SkillToolDefinition = {
     const embeddableRead = await memoryRepo.get(appId, MEM_EMBEDDABLE_ID);
     if (!brandRead.exists || !embeddableRead.exists) {
       return {
-        error: 'Run conversations__setup_widget first — account or embeddable ID missing from memory.',
+        error: 'Run inbox__setup_widget first — account or embeddable ID missing from memory.',
       };
     }
     const brandId = brandRead.value as string;
     const embeddableId = Number(embeddableRead.value);
     if (!Number.isFinite(embeddableId)) {
-      return { error: 'Corrupted embeddableId in memory; re-run conversations__setup_widget.' };
+      return { error: 'Corrupted embeddableId in memory; re-run inbox__setup_widget.' };
     }
 
     const client = getClient(context);
@@ -402,7 +403,7 @@ export const updateWidgetConfigTool: SkillToolDefinition = {
     if (!result.success) return { error: `Failed to update embeddable: ${result.error}` };
 
     // Write the config file — always restore account from memory in case the file was deleted
-    const configPath = join(app.path, 'src', 'lib', 'conversations.config.json');
+    const configPath = join(app.path, 'src', 'lib', 'inboxChat.config.json');
     const config = await readWidgetConfig(configPath);
     config._support.account = brandId;
     if (input.color) config._support.ui.widget.color = input.color;
@@ -410,7 +411,7 @@ export const updateWidgetConfigTool: SkillToolDefinition = {
     if (input.labelText) config._support.ui.widget.label = { text: input.labelText };
     await writeWidgetConfig(configPath, config);
 
-    logger.info('conversations.skill.update.success', { appId, brandId, embeddableId, updated: Object.keys(embeddablePatch) });
+    logger.info('inbox.skill.update.success', { appId, brandId, embeddableId, updated: Object.keys(embeddablePatch) });
     return { brandId, embeddableId, updated: Object.keys(embeddablePatch), configWritten: configPath };
   },
   config: { requiresApp: true, timeout: 15_000 },

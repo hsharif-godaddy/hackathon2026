@@ -24,7 +24,7 @@ describe('widget-config', () => {
         },
       }));
 
-      const config = await readWidgetConfig('/app/src/lib/conversations.config.json');
+      const config = await readWidgetConfig('/app/src/lib/inboxChat.config.json');
 
       expect(config._support.account).toBe('my-brand');
       expect(config._support.ui.widget.color).toBe('#ff0000');
@@ -34,7 +34,7 @@ describe('widget-config', () => {
     it('returns defaults when file does not exist', async () => {
       mockReadFile.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
 
-      const config = await readWidgetConfig('/app/src/lib/conversations.config.json');
+      const config = await readWidgetConfig('/app/src/lib/inboxChat.config.json');
 
       expect(config._support.account).toBe('');
       expect(config._support.ui.widget.icon).toBe('webChat');
@@ -44,13 +44,13 @@ describe('widget-config', () => {
     it('throws when file contains invalid JSON', async () => {
       mockReadFile.mockResolvedValue('not valid json {{{');
 
-      await expect(readWidgetConfig('/app/src/lib/conversations.config.json')).rejects.toThrow(SyntaxError);
+      await expect(readWidgetConfig('/app/src/lib/inboxChat.config.json')).rejects.toThrow(SyntaxError);
     });
 
     it('throws on non-ENOENT read errors', async () => {
       mockReadFile.mockRejectedValue(Object.assign(new Error('EACCES'), { code: 'EACCES' }));
 
-      await expect(readWidgetConfig('/app/src/lib/conversations.config.json')).rejects.toThrow('EACCES');
+      await expect(readWidgetConfig('/app/src/lib/inboxChat.config.json')).rejects.toThrow('EACCES');
     });
   });
 
@@ -63,10 +63,10 @@ describe('widget-config', () => {
         },
       };
 
-      await writeWidgetConfig('/app/src/lib/conversations.config.json', config);
+      await writeWidgetConfig('/app/src/lib/inboxChat.config.json', config);
 
       expect(mockWriteFile).toHaveBeenCalledWith(
-        '/app/src/lib/conversations.config.json',
+        '/app/src/lib/inboxChat.config.json',
         JSON.stringify(config, null, 2) + '\n',
       );
     });

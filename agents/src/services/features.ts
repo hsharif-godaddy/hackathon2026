@@ -348,7 +348,7 @@ export const agents = {
 export const profileGatedSkills: Set<string> = new Set([
   // Add skill enablementIds here as they adopt profile-based gating.
   'complianceDocs',
-  'conversations',
+  'inbox',
   'stripe-v2',
 ]);
 
