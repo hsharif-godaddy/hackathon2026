@@ -1,11 +1,9 @@
 /**
- * Single tree entry. **`path` is relative to the requested `TreeOptions.path`,
- * NOT the workspace root.** A `tree({ path: 'docs/ui-kit/primitives' })` call
- * returns entries like `{ path: 'button.md' }` and `{ path: '_meta/foo.md' }`,
- * never `docs/ui-kit/primitives/button.md`. Callers that pass `path` to other
- * `WorkspaceFiles` methods (view, download, stat) must re-prefix with the
- * requested `dir`. See `agents/src/server/routes/download.ts:171-176` and
- * `agents/src/services/memory-service.ts:118` for the canonical pattern.
+ * Single tree entry. `path` is **workspace-rooted** — i.e. relative to the
+ * workspace root, with `TreeOptions.path` already joined in. A
+ * `tree({ path: 'docs/ui-kit/primitives' })` call returns entries like
+ * `{ path: 'docs/ui-kit/primitives/button.md' }`. Pass these paths straight
+ * back into `view` / `download` / `stat` without re-prefixing.
  */
 export interface TreeEntry {
   path: string;
@@ -17,8 +15,8 @@ export interface TreeEntry {
 export interface TreeOptions {
   /**
    * Workspace-relative directory to walk. Empty / omitted = workspace root.
-   * Note that returned `TreeEntry.path` values are relative to THIS path, not
-   * the workspace root — see `TreeEntry`.
+   * Returned `TreeEntry.path` values are workspace-rooted (this prefix is
+   * joined in by the server) — see `TreeEntry`.
    */
   path?: string;
   recursive?: boolean;
@@ -29,8 +27,8 @@ export interface TreeOptions {
 
 export interface TreeResult {
   /**
-   * Tree entries with paths relative to `TreeOptions.path` (NOT workspace
-   * root). Re-prefix before passing to `view`/`download`/`stat`.
+   * Workspace-rooted tree entries (the request `path` is already joined in).
+   * Pass straight back into `view` / `download` / `stat` without re-prefixing.
    */
   entries: TreeEntry[];
   /** True when the result was capped at the supervisor's max-entries limit. */

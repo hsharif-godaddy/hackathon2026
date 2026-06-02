@@ -293,6 +293,30 @@ func (s *Server) handleWorkspaceFilesTree(w http.ResponseWriter, r *http.Request
 		maxDepth = req.MaxDepth
 	}
 
+	// Returned entry paths are workspace-rooted (joined to the requested
+	// `path`), not bare directory-relative names. The TS contract on
+	// `WorkspaceFiles.tree` documents this; callers pass the result straight
+	// back into view/download/stat without re-prefixing.
+	//
+	// `ValidateFilePath` accepts both relative (`src`) and in-sandbox absolute
+	// (`/app/src`) inputs; the prefix must always be workspace-relative so
+	// callers never receive `/app/...` paths. For absolute inputs, rebase
+	// against the (un-resolved) sandbox base — the same namespace
+	// `ValidateFilePath` compares in before symlink resolution, so this stays
+	// correct even when the base itself is a symlink.
+	pathPrefix := filepath.Clean(req.Path)
+	if filepath.IsAbs(pathPrefix) {
+		rel, relErr := filepath.Rel(filepath.Clean(s.fsBaseDir()), pathPrefix)
+		if relErr != nil {
+			s.sendError(w, http.StatusBadRequest, "validation_failed", relErr.Error())
+			return
+		}
+		pathPrefix = rel
+	}
+	if pathPrefix == "." {
+		pathPrefix = ""
+	}
+
 	slog.Debug("workspace.files.tree.start", "path", basePath, "recursive", req.Recursive)
 
 	var entries []wsFilesTreeEntry
@@ -300,9 +324,9 @@ func (s *Server) handleWorkspaceFilesTree(w http.ResponseWriter, r *http.Request
 	var treeErr error
 
 	if req.Recursive {
-		entries, truncated, treeErr = s.wsFilesTreeRecursive(resolved, req, maxDepth, maxEntries)
+		entries, truncated, treeErr = s.wsFilesTreeRecursive(resolved, req, pathPrefix, maxDepth, maxEntries)
 	} else {
-		entries, truncated, treeErr = s.wsFilesTreeFlat(resolved, req, maxEntries)
+		entries, truncated, treeErr = s.wsFilesTreeFlat(resolved, req, pathPrefix, maxEntries)
 	}
 	if treeErr != nil {
 		s.sendWsFilesError(w, "workspace.files.tree", basePath, treeErr)
@@ -323,6 +347,7 @@ func (s *Server) handleWorkspaceFilesTree(w http.ResponseWriter, r *http.Request
 func (s *Server) wsFilesTreeFlat(
 	resolved string,
 	req wsFilesTreeRequest,
+	pathPrefix string,
 	maxEntries int,
 ) ([]wsFilesTreeEntry, bool, error) {
 	rawEntries, err := os.ReadDir(resolved)
@@ -339,7 +364,7 @@ func (s *Server) wsFilesTreeFlat(
 		if infoErr != nil {
 			continue
 		}
-		result = append(result, wsFilesBuildEntry(e.Name(), info))
+		result = append(result, wsFilesBuildEntry(wsFilesJoinPath(pathPrefix, e.Name()), info))
 		if len(result) >= maxEntries {
 			return result, true, nil
 		}
@@ -350,6 +375,7 @@ func (s *Server) wsFilesTreeFlat(
 func (s *Server) wsFilesTreeRecursive(
 	rootDir string,
 	req wsFilesTreeRequest,
+	pathPrefix string,
 	maxDepth int,
 	maxEntries int,
 ) ([]wsFilesTreeEntry, bool, error) {
@@ -361,7 +387,7 @@ func (s *Server) wsFilesTreeRecursive(
 
 	sandboxDir := s.fsBaseDir()
 	result := make([]wsFilesTreeEntry, 0, min(maxEntries, 256))
-	stack := []walkItem{{absDir: rootDir, relDir: "", depth: 0}}
+	stack := []walkItem{{absDir: rootDir, relDir: pathPrefix, depth: 0}}
 
 	for len(stack) > 0 {
 		item := stack[len(stack)-1]
@@ -415,6 +441,16 @@ func (s *Server) wsFilesTreeRecursive(
 	}
 
 	return result, false, nil
+}
+
+// wsFilesJoinPath joins a workspace-rooted directory prefix with a child name.
+// Empty prefix means the entry is at the workspace root, so no separator is
+// added. POSIX separator only — the wire format is always forward-slash.
+func wsFilesJoinPath(prefix, name string) string {
+	if prefix == "" {
+		return name
+	}
+	return prefix + "/" + name
 }
 
 func wsFilesBuildEntry(path string, info fs.FileInfo) wsFilesTreeEntry {

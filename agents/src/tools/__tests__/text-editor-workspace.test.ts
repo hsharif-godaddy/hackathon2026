@@ -127,8 +127,8 @@ describe('text-editor-workspace', () => {
       );
       const mockTree = vi.fn<() => Promise<TreeResult>>().mockResolvedValue({
         entries: [
-          { path: 'index.ts', kind: 'file', size: 100, modifiedAt: '2026-01-01T00:00:00Z' },
-          { path: 'utils/', kind: 'directory', size: 0, modifiedAt: '2026-01-01T00:00:00Z' },
+          { path: 'src/index.ts', kind: 'file', size: 100, modifiedAt: '2026-01-01T00:00:00Z' },
+          { path: 'src/utils', kind: 'directory', size: 0, modifiedAt: '2026-01-01T00:00:00Z' },
         ],
         truncated: false,
       });

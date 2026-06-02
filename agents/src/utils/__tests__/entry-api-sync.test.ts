@@ -100,6 +100,19 @@ describe('scanApiDir', () => {
     ]);
   });
 
+  it('depends on tree() returning workspace-rooted entry paths', async () => {
+    // scanApiDir derives route paths via path.relative('src/server/api', ...);
+    // it only works if tree() returns workspace-rooted paths. Pin the mock to
+    // that contract so a future server regression (or mock drift back to
+    // dir-relative names) fails loudly here rather than silently mis-routing.
+    await writeFile('src/server/api/health/GET.ts', 'export default () => {}');
+    const files = createMockFiles();
+    const tree = await files.tree({ path: 'src/server/api', recursive: true });
+    for (const entry of tree.entries) {
+      expect(entry.path.startsWith('src/server/api/')).toBe(true);
+    }
+  });
+
   it('propagates non-not-found DevSupervisorError from tree()', async () => {
     // Pins the catch narrow: any DevSupervisorError other than 'not_found'
     // (e.g. permission_denied) must surface so a route tree the supervisor

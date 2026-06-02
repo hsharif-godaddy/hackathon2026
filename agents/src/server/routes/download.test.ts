@@ -395,10 +395,10 @@ describe('Archive Workspace Integration', () => {
   });
 
   /**
-   * Build a strict, Map-keyed workspace mock so unknown paths reject — i.e. the
-   * mock encodes dev-supervisor's actual contract: tree returns entries
-   * relative to the requested directory; download paths are workspace-root
-   * relative.
+   * Build a strict, Map-keyed workspace mock so unknown paths reject. Encodes
+   * dev-supervisor's contract: tree returns workspace-rooted entries (the
+   * request `path` is already joined in); download paths are workspace-root
+   * relative. Both flow through unchanged.
    */
   function strictWorkspace(opts: {
     tree?: Record<string, Array<{ path: string; kind: 'file' | 'directory' }>>;
@@ -433,10 +433,10 @@ describe('Archive Workspace Integration', () => {
     const ws = strictWorkspace({
       tree: {
         src: [
-          { path: 'index.ts', kind: 'file' },
-          { path: 'components/Foo.tsx', kind: 'file' },
+          { path: 'src/index.ts', kind: 'file' },
+          { path: 'src/components/Foo.tsx', kind: 'file' },
         ],
-        public: [{ path: 'logo.png', kind: 'file' }],
+        public: [{ path: 'public/logo.png', kind: 'file' }],
       },
       files: {
         'src/index.ts': Buffer.from('export {}'),
@@ -456,7 +456,7 @@ describe('Archive Workspace Integration', () => {
     expect(ws.tree).toHaveBeenCalledWith({ path: 'src', recursive: true });
     expect(ws.tree).toHaveBeenCalledWith({ path: 'public', recursive: true });
 
-    // Critical: download paths must be re-prefixed with their directory.
+    // Tree entries flow straight through to download with no transformation.
     const downloadedPaths = ws.download.mock.calls.map((c) => c[0].path);
     expect(downloadedPaths).toEqual(
       expect.arrayContaining([
@@ -466,9 +466,12 @@ describe('Archive Workspace Integration', () => {
         'package.json',
       ]),
     );
-    // Bare entry paths should never reach download.
+    // Pin the bug shape directly: a re-added `${dir}/` re-prefix would emit
+    // the bare entry path alongside the workspace-rooted one. arrayContaining
+    // wouldn't catch that, so assert the bare forms never reach download.
     expect(downloadedPaths).not.toContain('index.ts');
     expect(downloadedPaths).not.toContain('components/Foo.tsx');
+    expect(downloadedPaths).not.toContain('logo.png');
 
     expect(mockArchive.append).toHaveBeenCalled();
     expect(mockArchive.finalize).toHaveBeenCalled();
@@ -490,7 +493,7 @@ describe('Archive Workspace Integration', () => {
 
   it('destroys the response when a file download fails mid-stream after pipe', async () => {
     const ws = strictWorkspace({
-      tree: { src: [{ path: 'index.ts', kind: 'file' }], public: [] },
+      tree: { src: [{ path: 'src/index.ts', kind: 'file' }], public: [] },
       files: { 'src/index.ts': new Error('disk read failure') },
     });
     mockCreateForWorkspace.mockReturnValue({ files: ws });

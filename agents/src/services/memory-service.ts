@@ -115,7 +115,7 @@ export class MemoryService {
 
     for (const filePath of fileNames) {
       try {
-        const result = await files.view({ path: `${MemoryService.MEMORY_DIR}/${filePath}` });
+        const result = await files.view({ path: filePath });
         const entry = this.parseMemoryContent(result.content);
 
         if (prefix && !entry.fullKey.startsWith(prefix)) continue;

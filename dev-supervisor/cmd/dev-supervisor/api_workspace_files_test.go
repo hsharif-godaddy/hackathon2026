@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/airo-ai-builder/dev-supervisor/internal/config"
@@ -526,6 +527,158 @@ func TestWorkspaceFilesTree_InvalidGlob(t *testing.T) {
 	})
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("expected 400 for bad glob, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+// Pinned contract: tree() returns workspace-rooted paths, not bare
+// directory-relative names. Callers feed these paths straight back into
+// view/download/stat without re-prefixing.
+func TestWorkspaceFilesTree_PathsAreWorkspaceRooted_Flat(t *testing.T) {
+	server, dir := newTestServerWithDir(t)
+	if err := os.MkdirAll(filepath.Join(dir, "docs", "ui-kit", "primitives"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	buttonPath := filepath.Join(dir, "docs", "ui-kit", "primitives", "button.md")
+	if err := os.WriteFile(buttonPath, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cases := []struct {
+		name     string
+		req      map[string]any
+		expected []string
+	}{
+		{
+			name:     "root: bare filenames",
+			req:      map[string]any{"path": "."},
+			expected: []string{"docs"},
+		},
+		{
+			name:     "subdir: prefixed by request path",
+			req:      map[string]any{"path": "docs/ui-kit/primitives"},
+			expected: []string{"docs/ui-kit/primitives/button.md"},
+		},
+		{
+			name:     "subdir with trailing slash: cleaned",
+			req:      map[string]any{"path": "docs/ui-kit/primitives/"},
+			expected: []string{"docs/ui-kit/primitives/button.md"},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			w := postJSON(t, server.handleWorkspaceFilesTree, tc.req)
+			if w.Code != http.StatusOK {
+				t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+			}
+			var resp wsFilesTreeResponse
+			if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+				t.Fatal(err)
+			}
+			got := pathsOf(resp.Entries)
+			for _, want := range tc.expected {
+				if !slices.Contains(got, want) {
+					t.Errorf("expected entry %q in %v", want, got)
+				}
+			}
+		})
+	}
+}
+
+func TestWorkspaceFilesTree_PathsAreWorkspaceRooted_Recursive(t *testing.T) {
+	server, dir := newTestServerWithDir(t)
+	if err := os.MkdirAll(filepath.Join(dir, "src", "components"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "src", "index.ts"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "src", "components", "Foo.tsx"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("from root: depth-0 entries are bare, deeper entries dir-relative to root", func(t *testing.T) {
+		w := postJSON(t, server.handleWorkspaceFilesTree, map[string]any{"path": ".", "recursive": true})
+		if w.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+		var resp wsFilesTreeResponse
+		if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+			t.Fatal(err)
+		}
+		paths := pathsOf(resp.Entries)
+		mustContain(t, paths, "src")
+		mustContain(t, paths, "src/index.ts")
+		mustContain(t, paths, "src/components")
+		mustContain(t, paths, "src/components/Foo.tsx")
+	})
+
+	t.Run("from subdir: every entry prefixed with request path", func(t *testing.T) {
+		w := postJSON(t, server.handleWorkspaceFilesTree, map[string]any{"path": "src", "recursive": true})
+		if w.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+		var resp wsFilesTreeResponse
+		if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+			t.Fatal(err)
+		}
+		paths := pathsOf(resp.Entries)
+		mustContain(t, paths, "src/index.ts")
+		mustContain(t, paths, "src/components")
+		mustContain(t, paths, "src/components/Foo.tsx")
+		for _, p := range paths {
+			if p == "index.ts" || p == "components" || p == "components/Foo.tsx" {
+				t.Errorf("entry %q is missing the request-path prefix; tree() must return workspace-rooted paths", p)
+			}
+		}
+	})
+}
+
+// Globs match against the bare entry name (wsFilesMatchesGlobs(e.Name(), ...)),
+// independent of the workspace-rooted path prefix. Pin that the prefix change
+// did not shift glob matching onto the full path.
+func TestWorkspaceFilesTree_GlobsMatchBareNamesAfterPrefix(t *testing.T) {
+	server, dir := newTestServerWithDir(t)
+	if err := os.MkdirAll(filepath.Join(dir, "src", "components"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "src", "index.ts"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "src", "components", "Foo.tsx"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	w := postJSON(t, server.handleWorkspaceFilesTree, map[string]any{
+		"path":         "src",
+		"recursive":    true,
+		"excludeGlobs": []string{"*.tsx"},
+	})
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var resp wsFilesTreeResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	paths := pathsOf(resp.Entries)
+	mustContain(t, paths, "src/index.ts")
+	if slices.Contains(paths, "src/components/Foo.tsx") {
+		t.Errorf("expected *.tsx exclude to drop src/components/Foo.tsx, got %v", paths)
+	}
+}
+
+func pathsOf(entries []wsFilesTreeEntry) []string {
+	out := make([]string, 0, len(entries))
+	for _, e := range entries {
+		out = append(out, e.Path)
+	}
+	return out
+}
+
+func mustContain(t *testing.T, paths []string, want string) {
+	t.Helper()
+	if !slices.Contains(paths, want) {
+		t.Errorf("expected path %q in %v", want, paths)
 	}
 }
 

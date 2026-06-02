@@ -30,11 +30,14 @@ function makeFiles(impl: (opts?: TreeOptions) => Promise<TreeResult>): Workspace
 describe('DirectoryListingTool', () => {
   describe('listDirectory', () => {
     it('returns entries from tree() with workspace-root paths and computed depth', async () => {
+      // tree() returns workspace-rooted paths (with the request `path`
+      // already joined in). DirectoryListingTool passes them through and
+      // computes depth relative to the requested root.
       const files = makeFiles(async () =>
         makeTreeResult([
-          { path: 'index.ts', kind: 'file', size: 100, modifiedAt: '2026-06-01T00:00:00Z' },
-          { path: 'components', kind: 'directory', size: 0, modifiedAt: '2026-06-01T00:00:00Z' },
-          { path: 'components/Foo.tsx', kind: 'file', size: 200, modifiedAt: '2026-06-01T00:00:00Z' },
+          { path: 'src/index.ts', kind: 'file', size: 100, modifiedAt: '2026-06-01T00:00:00Z' },
+          { path: 'src/components', kind: 'directory', size: 0, modifiedAt: '2026-06-01T00:00:00Z' },
+          { path: 'src/components/Foo.tsx', kind: 'file', size: 200, modifiedAt: '2026-06-01T00:00:00Z' },
         ]),
       );
 
@@ -211,7 +214,7 @@ describe('DirectoryListingTool', () => {
     it('normalizes leading and trailing slashes on the path argument', async () => {
       const files = makeFiles(async () =>
         makeTreeResult([
-          { path: 'index.ts', kind: 'file', size: 100, modifiedAt: '2026-06-01T00:00:00Z' },
+          { path: 'sub/index.ts', kind: 'file', size: 100, modifiedAt: '2026-06-01T00:00:00Z' },
         ]),
       );
 

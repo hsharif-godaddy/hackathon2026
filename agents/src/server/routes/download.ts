@@ -168,12 +168,9 @@ async function listDirectoryFiles(
         entryCount: tree.entries.length,
       });
     }
-    // dev-supervisor returns paths relative to the requested directory
-    // (e.g. `index.ts`, `components/Foo.tsx` for path: 'src'); re-prefix so
-    // download() resolves against the workspace root.
     return tree.entries
       .filter((e) => e.kind === 'file')
-      .map((e) => `${dir}/${e.path}`);
+      .map((e) => e.path);
   } catch (err) {
     if (isDevSupervisorNotFound(err)) return [];
     throw err;

@@ -29,11 +29,8 @@ function stripKitPrefix(p: string): string {
 }
 
 /**
- * List file paths under a kit subdirectory. Returns workspace-relative paths
- * (re-prefixed with `dir` because `tree()` returns dir-relative entries — see
- * the docstring on `TreeEntry`).
- *
- * Logs once on truncation, matching the pattern in `routes/download.ts`.
+ * List workspace-rooted file paths under a kit subdirectory. Logs once on
+ * truncation, matching the pattern in `routes/download.ts`.
  */
 async function listKitFiles(files: WorkspaceFiles, dir: string): Promise<string[]> {
   let result
@@ -51,7 +48,7 @@ async function listKitFiles(files: WorkspaceFiles, dir: string): Promise<string[
   }
   return result.entries
     .filter((e) => e.kind === 'file')
-    .map((e) => `${dir}/${e.path}`)
+    .map((e) => e.path)
 }
 
 async function readKitFile(

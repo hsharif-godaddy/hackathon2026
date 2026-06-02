@@ -217,9 +217,29 @@ export class DirectoryListingTool {
 
     if (tree.truncated) result.truncated = true;
 
+    // tree() returns workspace-rooted paths (e.g. `src/components/Foo.tsx`
+    // for a `path: 'src'` request). Compute depth, entry name, and hidden
+    // checks against the path *relative to* the requested root so they don't
+    // double-count `targetPath` segments.
+    const targetPrefix = targetPath ? `${targetPath}/` : '';
     for (const e of tree.entries) {
-      const segments = e.path.split('/');
-      const entryName = segments[segments.length - 1] ?? e.path;
+      let relativePath = e.path;
+      if (targetPrefix) {
+        if (e.path.startsWith(targetPrefix)) {
+          relativePath = e.path.slice(targetPrefix.length);
+        } else {
+          // tree() must return workspace-rooted paths (this PR's contract).
+          // A bare entry here means the server contract regressed; surface it
+          // instead of silently computing wrong depth/name/hidden values.
+          logger.warn('tool.directory_listing.contract_violation', {
+            targetPath,
+            entryPath: e.path,
+            ...(context?.appId && { appId: context.appId }),
+          });
+        }
+      }
+      const segments = relativePath.split('/');
+      const entryName = segments[segments.length - 1] ?? relativePath;
 
       // Hidden filter: any segment starting with '.' counts as hidden.
       if (!showHidden && segments.some((s) => s.startsWith('.'))) continue;
@@ -230,7 +250,7 @@ export class DirectoryListingTool {
       if (pattern && !this.matchesPattern(entryName, pattern)) continue;
       if (search && !entryName.toLowerCase().includes(search.toLowerCase())) continue;
 
-      const fullPath = targetPath ? `${targetPath}/${e.path}` : e.path;
+      const fullPath = e.path;
       const depth = segments.length - 1;
 
       result.entries.push({

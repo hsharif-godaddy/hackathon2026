@@ -121,30 +121,30 @@ describe('loadUiKitAITool', () => {
   })
 
   describe('default mode', () => {
-    // Fixtures encode the REAL dev-supervisor contract: tree() returns paths
-    // relative to the requested directory (e.g. 'button.md', NOT
-    // 'docs/ui-kit/primitives/button.md'). See the docstring on TreeEntry.
+    // Fixtures encode the dev-supervisor contract: tree() returns
+    // workspace-rooted paths (the request `path` is already joined in). See
+    // the docstring on TreeEntry.
     const treeByPath: Record<string, TreeResult> = {
       'docs/ui-kit/primitives': {
         entries: [
-          { path: 'button.md', kind: 'file', size: 100, modifiedAt: '' },
-          { path: 'tokens.json', kind: 'file', size: 50, modifiedAt: '' },
-          { path: '_meta', kind: 'directory', size: 0, modifiedAt: '' },
+          { path: 'docs/ui-kit/primitives/button.md', kind: 'file', size: 100, modifiedAt: '' },
+          { path: 'docs/ui-kit/primitives/tokens.json', kind: 'file', size: 50, modifiedAt: '' },
+          { path: 'docs/ui-kit/primitives/_meta', kind: 'directory', size: 0, modifiedAt: '' },
         ],
         truncated: false,
       },
       'docs/ui-kit/components': {
         entries: [
-          { path: 'card.md', kind: 'file', size: 80, modifiedAt: '' },
-          { path: '_README.txt', kind: 'file', size: 10, modifiedAt: '' },
-          { path: 'NOTES.MD', kind: 'file', size: 12, modifiedAt: '' }, // upper-case ext, must match
+          { path: 'docs/ui-kit/components/card.md', kind: 'file', size: 80, modifiedAt: '' },
+          { path: 'docs/ui-kit/components/_README.txt', kind: 'file', size: 10, modifiedAt: '' },
+          { path: 'docs/ui-kit/components/NOTES.MD', kind: 'file', size: 12, modifiedAt: '' }, // upper-case ext, must match
         ],
         truncated: false,
       },
       'docs/ui-kit/layouts': {
         entries: [
-          { path: 'recipe-editorial.md', kind: 'file', size: 120, modifiedAt: '' },
-          { path: '.DS_Store', kind: 'file', size: 6, modifiedAt: '' }, // must be filtered out
+          { path: 'docs/ui-kit/layouts/recipe-editorial.md', kind: 'file', size: 120, modifiedAt: '' },
+          { path: 'docs/ui-kit/layouts/.DS_Store', kind: 'file', size: 6, modifiedAt: '' }, // must be filtered out
         ],
         truncated: false,
       },
@@ -174,7 +174,7 @@ describe('loadUiKitAITool', () => {
       })
     }
 
-    it('loads primitives + components, lists layouts + showcase using dir-relative tree paths', async () => {
+    it('loads primitives + components, lists layouts + showcase using workspace-rooted tree paths', async () => {
       wireDefault()
       const out = await runTool({}, ctx('app-1'))
 
@@ -202,7 +202,7 @@ describe('loadUiKitAITool', () => {
       workspaceFilesMock.stat.mockResolvedValue({ entries: [dirEntry('docs/ui-kit')] })
       workspaceFilesMock.tree.mockImplementation(async ({ path }: { path: string }): Promise<TreeResult> => {
         if (path === 'docs/ui-kit/primitives') {
-          return { entries: [{ path: 'button.md', kind: 'file', size: 1, modifiedAt: '' }], truncated: false }
+          return { entries: [{ path: 'docs/ui-kit/primitives/button.md', kind: 'file', size: 1, modifiedAt: '' }], truncated: false }
         }
         throw new MockDevSupervisorError('not_found', 404, `no such dir: ${path}`)
       })
@@ -226,8 +226,8 @@ describe('loadUiKitAITool', () => {
         if (path === 'docs/ui-kit/primitives') {
           return {
             entries: [
-              { path: 'button.md', kind: 'file', size: 1, modifiedAt: '' },
-              { path: 'gone.md', kind: 'file', size: 1, modifiedAt: '' },
+              { path: 'docs/ui-kit/primitives/button.md', kind: 'file', size: 1, modifiedAt: '' },
+              { path: 'docs/ui-kit/primitives/gone.md', kind: 'file', size: 1, modifiedAt: '' },
             ],
             truncated: false,
           }
@@ -257,7 +257,7 @@ describe('loadUiKitAITool', () => {
       workspaceFilesMock.tree.mockImplementation(async ({ path }: { path: string }): Promise<TreeResult> => {
         if (path === 'docs/ui-kit/primitives') {
           return {
-            entries: [{ path: 'button.md', kind: 'file', size: 1, modifiedAt: '' }],
+            entries: [{ path: 'docs/ui-kit/primitives/button.md', kind: 'file', size: 1, modifiedAt: '' }],
             truncated: true,
           }
         }
@@ -283,7 +283,7 @@ describe('loadUiKitAITool', () => {
       workspaceFilesMock.stat.mockResolvedValue({ entries: [dirEntry('docs/ui-kit')] })
       workspaceFilesMock.tree.mockImplementation(async ({ path }: { path: string }): Promise<TreeResult> => {
         if (path === 'docs/ui-kit/primitives') {
-          return { entries: [{ path: 'huge.md', kind: 'file', size: 9999, modifiedAt: '' }], truncated: false }
+          return { entries: [{ path: 'docs/ui-kit/primitives/huge.md', kind: 'file', size: 9999, modifiedAt: '' }], truncated: false }
         }
         throw new MockDevSupervisorError('not_found', 404, `no such dir: ${path}`)
       })
@@ -314,7 +314,7 @@ describe('loadUiKitAITool', () => {
       workspaceFilesMock.stat.mockResolvedValue({ entries: [dirEntry('docs/ui-kit')] })
       workspaceFilesMock.tree.mockImplementation(async ({ path }: { path: string }): Promise<TreeResult> => {
         if (path === 'docs/ui-kit/primitives') {
-          return { entries: [{ path: 'button.md', kind: 'file', size: 1, modifiedAt: '' }], truncated: false }
+          return { entries: [{ path: 'docs/ui-kit/primitives/button.md', kind: 'file', size: 1, modifiedAt: '' }], truncated: false }
         }
         throw new MockDevSupervisorError('not_found', 404, `no such dir: ${path}`)
       })
