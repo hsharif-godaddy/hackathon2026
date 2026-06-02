@@ -88,7 +88,6 @@ export interface RisqKpiSnapshot {
   feedback: { loading: boolean; error?: string; negative: number; total: number };
   traces: { loading: boolean; error?: string; total: number };
   wau: { loading: boolean; error?: string; curr_wau: number; pct_change: number };
-  agenticQa: { loading: boolean; error?: string; passed: number; failed: number; total: number };
   e2e: {
     loading: boolean;
     error?: string;
@@ -103,9 +102,8 @@ export type RisqKpiRowProps = RisqKpiSnapshot & {
   onFeedbackClick?: () => void;
   onTracesClick?: () => void;
   onWauClick?: () => void;
-  onAgenticQaClick?: () => void;
   onE2eClick?: () => void;
-  qualityPanelSelection?: 'agentic' | 'e2e' | null;
+  qualityPanelSelection?: 'e2e' | null;
 };
 
 const kpiInteractiveSelected: CSSProperties = {
@@ -139,12 +137,10 @@ export default function RisqKpiRow({
   feedback,
   traces,
   wau,
-  agenticQa,
   e2e,
   onFeedbackClick,
   onTracesClick,
   onWauClick,
-  onAgenticQaClick,
   onE2eClick,
   qualityPanelSelection,
 }: RisqKpiRowProps) {
@@ -166,15 +162,6 @@ export default function RisqKpiRow({
     wau.loading || wau.error ? '' : `${wau.pct_change >= 0 ? '+' : ''}${wau.pct_change}% vs prev`;
 
   const wauHealthy = !wau.loading && !wau.error && wau.pct_change >= 0;
-
-  const aqMain =
-    agenticQa.loading ? '…' : agenticQa.error ? '—' : `${agenticQa.passed}/${agenticQa.total}`;
-  const aqMainColor =
-    agenticQa.loading || agenticQa.error
-      ? '#64748b'
-      : agenticQa.failed > 0
-        ? '#dc2626'
-        : '#111827';
 
   const e2eMain =
     e2e.loading ? '…' : e2e.error ? '—' : e2e.total > 0 ? `${e2e.passed}/${e2e.total}` : '—';
@@ -205,26 +192,11 @@ export default function RisqKpiRow({
         </>
       ), false)}
 
-      {kpiShell(Boolean(onAgenticQaClick), onAgenticQaClick, (
-        <>
-          <div style={titleStyle}>Agentic QA</div>
-          <div style={{ fontSize: '1.65rem', fontWeight: 800, color: aqMainColor, lineHeight: 1.12, flex: 1 }}>{aqMain}</div>
-          {subMuted('Last 7 days')}
-          {agenticQa.error ? (
-            pill('error', 'UNAVAILABLE')
-          ) : agenticQa.loading ? null : agenticQa.failed > 0 ? (
-            pill('error', `${agenticQa.failed} FAILURES`)
-          ) : (
-            pill('green', 'ALL PASS')
-          )}
-        </>
-      ), qualityPanelSelection === 'agentic')}
-
       {kpiShell(Boolean(onE2eClick), onE2eClick, (
         <>
           <div style={titleStyle}>E2E tests</div>
           <div style={{ fontSize: '1.65rem', fontWeight: 800, color: e2eMainColor, lineHeight: 1.12, flex: 1 }}>{e2eMain}</div>
-          {subMuted('Last 10 prod runs')}
+          {subMuted('Last 10 scheduled runs')}
           {e2e.error ? (
             pill('error', 'UNAVAILABLE')
           ) : e2e.loading ? null : e2e.total === 0 ? (

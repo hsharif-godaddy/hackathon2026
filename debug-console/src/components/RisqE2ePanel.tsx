@@ -14,6 +14,14 @@ interface E2eRunRow {
   runNumber: string;
 }
 
+export type E2eWindow = '1d' | '7d' | '30d';
+
+export const E2E_WINDOW_LABELS: Record<E2eWindow, string> = {
+  '1d': '24h',
+  '7d': '7 days',
+  '30d': '30 days',
+};
+
 function ghWorkflowActive(status: string): boolean {
   const s = status.toLowerCase();
   return s === 'queued' || s === 'in_progress' || s === 'waiting' || s === 'requested' || s === 'pending';
@@ -82,10 +90,13 @@ const td: CSSProperties = {
 export interface RisqE2ePanelProps {
   /** When set, shows a Close control in the header (e.g. RISQ expandable panel). */
   onDismiss?: () => void;
+  /** When set, fetch runs within this time window instead of the last 10. */
+  timeWindow?: E2eWindow;
 }
 
-export default function RisqE2ePanel({ onDismiss }: RisqE2ePanelProps) {
+export default function RisqE2ePanel({ onDismiss, timeWindow }: RisqE2ePanelProps) {
   const [runs, setRuns] = useState<E2eRunRow[]>([]);
+  const [totalInWindow, setTotalInWindow] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -95,19 +106,29 @@ export default function RisqE2ePanel({ onDismiss }: RisqE2ePanelProps) {
       setLoading(true);
       setError(null);
       try {
-        const listRes = await fetch('/api/e2e-runs?action=list');
-        const listBody = (await listRes.json().catch(() => ({}))) as { error?: string; runs?: E2eRunRow[] };
+        const url = timeWindow
+          ? `/api/e2e-runs?action=list&window=${timeWindow}`
+          : '/api/e2e-runs?action=list';
+        const listRes = await fetch(url);
+        const listBody = (await listRes.json().catch(() => ({}))) as {
+          error?: string;
+          runs?: E2eRunRow[];
+          totalInWindow?: number;
+        };
         if (cancelled) return;
         if (listRes.ok && Array.isArray(listBody.runs)) {
           setRuns(listBody.runs);
+          setTotalInWindow(typeof listBody.totalInWindow === 'number' ? listBody.totalInWindow : null);
           setError(null);
         } else {
           setRuns([]);
+          setTotalInWindow(null);
           setError(typeof listBody.error === 'string' ? listBody.error : `HTTP ${listRes.status}`);
         }
       } catch (e) {
         if (!cancelled) {
           setRuns([]);
+          setTotalInWindow(null);
           setError(e instanceof Error ? e.message : 'Request failed');
         }
       } finally {
@@ -118,7 +139,7 @@ export default function RisqE2ePanel({ onDismiss }: RisqE2ePanelProps) {
     return function cleanup() {
       cancelled = true;
     };
-  }, []);
+  }, [timeWindow]);
 
   return (
     <div
@@ -147,9 +168,12 @@ export default function RisqE2ePanel({ onDismiss }: RisqE2ePanelProps) {
             ✅
           </span>
           <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#0f172a', letterSpacing: '-0.02em' }}>
-            E2E Test Results - Last 10 Prod Runs
+            E2E Test Results · {timeWindow ? `Last ${E2E_WINDOW_LABELS[timeWindow]}` : 'Last 10 Scheduled Runs'} (main)
           </h3>
-          <span style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 600 }}>playwright-e2e.yml · GitHub</span>
+          <span style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 600 }}>
+            playwright-e2e.yml · GitHub
+            {totalInWindow != null && totalInWindow > runs.length ? ` · showing ${runs.length} of ${totalInWindow}` : ''}
+          </span>
         </div>
         {onDismiss ? (
           <button

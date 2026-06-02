@@ -39,10 +39,10 @@ const layer5Tools: ReadonlyArray<{
     href: 'https://airobuilde-prod-usw2.kb.us-west-2.aws.found.io:9243/app/home',
   },
   {
-    icon: '🤖',
-    title: 'Agentic QA Reports',
-    description: 'Full scenario logs, screenshots at top/middle/bottom, 9-dimension quality scores',
-    href: 'https://console.airo-builder.godaddy.com/agentic-qa-results',
+    icon: '✅',
+    title: 'E2E Run Dashboard',
+    description: 'Scheduled Playwright E2E runs on main — success rate, per-run status and duration, links to the GitHub run report',
+    href: 'https://console.airo-builder.godaddy.com/e2e-run-dashboard',
   },
   {
     icon: '🎬',

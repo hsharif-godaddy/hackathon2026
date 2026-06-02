@@ -20,6 +20,7 @@ interface GhWorkflowRun {
   created_at?: string;
   updated_at?: string;
   run_started_at?: string | null;
+  event?: string;
 }
 
 interface GhListResponse {
@@ -48,8 +49,16 @@ function runTitle(run: GhWorkflowRun): string {
   return typeof run.name === 'string' ? run.name.trim() : '';
 }
 
-function isProdRunTitle(title: string): boolean {
-  return /E2E Tests\s*-\s*prod\b/i.test(title);
+// The scheduled-E2E gate: the dashboard only counts the critical-path E2E
+// suite that runs on main against prod every 2h (cron '0 */2 * * *'). The GH
+// query already constrains event=schedule & branch=main, but scheduled
+// regression (cron '0 6 * * *') shares that event/branch, so we additionally
+// require the `[e2e]` run-name tag. '[e2e]' is NOT a substring of
+// '[e2e-then-regression]', so this also rejects that manual variant.
+function isScheduledE2eOnMain(run: GhWorkflowRun): boolean {
+  if ((run.event ?? '') !== 'schedule') return false;
+  if ((run.head_branch ?? '') !== 'main') return false;
+  return /\[e2e\]/i.test(runTitle(run));
 }
 
 function parseEnvLabel(title: string): string {
@@ -85,14 +94,17 @@ function mapRun(run: GhWorkflowRun) {
   };
 }
 
-const PROD_RUNS_KPI_LIMIT = 10;
+const SCHEDULED_E2E_KPI_LIMIT = 10;
 
-function summarizeLastProdRuns(runs: GhWorkflowRun[]) {
-  const prodOnly = runs.filter((run) => isProdRunTitle(runTitle(run))).slice(0, PROD_RUNS_KPI_LIMIT);
+function summarizeScheduledE2eRuns(
+  runs: GhWorkflowRun[],
+  limit: number,
+): { passed: number; failed: number; total: number; running: number } {
+  const recent = runs.filter(isScheduledE2eOnMain).slice(0, limit);
   let passed = 0;
   let failed = 0;
   let running = 0;
-  for (const run of prodOnly) {
+  for (const run of recent) {
     const st = (run.status ?? '').toLowerCase();
     if (st !== 'completed') {
       running++;
@@ -101,7 +113,42 @@ function summarizeLastProdRuns(runs: GhWorkflowRun[]) {
     if (run.conclusion === 'success') passed++;
     else failed++;
   }
-  return { passed, failed, total: prodOnly.length, running };
+  return { passed, failed, total: recent.length, running };
+}
+
+// Time-window mode (dashboard): aggregate every scheduled [e2e] main run created
+// within the window rather than a fixed count, paginating the GitHub API.
+// WINDOW_MAX_PAGES caps the fan-out — ~13 scheduled runs/day (incl. regression)
+// means 30d ≈ 4 pages; 5 is safe headroom. Mode is opt-in via ?window=; callers
+// that omit it (e.g. the RISQ KPI) keep the legacy last-10 behavior.
+const WINDOW_DAYS: Record<string, number> = { '1d': 1, '7d': 7, '30d': 30 };
+const WINDOW_MAX_PAGES = 5;
+const LIST_DISPLAY_CAP = 100;
+
+function windowSinceIso(days: number): string {
+  return new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+}
+
+async function fetchScheduledMainRunsSince(
+  wfPath: string,
+  token: string,
+  sinceIso: string,
+): Promise<GhWorkflowRun[]> {
+  const all: GhWorkflowRun[] = [];
+  for (let page = 1; page <= WINDOW_MAX_PAGES; page++) {
+    const qs = new URLSearchParams({
+      per_page: '100',
+      page: String(page),
+      event: 'schedule',
+      branch: 'main',
+      created: `>=${sinceIso}`,
+    });
+    const body = (await ghGetJson(`${wfPath}?${qs}`, token)) as GhListResponse;
+    const runs = Array.isArray(body.workflow_runs) ? body.workflow_runs : [];
+    all.push(...runs);
+    if (runs.length < 100) break;
+  }
+  return all;
 }
 
 export const GET = withAuth(async (request, _auth) => {
@@ -115,23 +162,49 @@ export const GET = withAuth(async (request, _auth) => {
   const action = request.nextUrl.searchParams.get('action') || 'list';
 
   try {
+    // Optional time window (?window=1d|7d|30d). When present, aggregate over the
+    // window; when absent, fall back to the legacy last-10 behavior (RISQ KPI).
+    const windowParam = request.nextUrl.searchParams.get('window');
+    const windowDays =
+      windowParam && Object.prototype.hasOwnProperty.call(WINDOW_DAYS, windowParam)
+        ? WINDOW_DAYS[windowParam]
+        : null;
+
     if (action === 'summary') {
-      const data = await routeCached('github_e2e_runs_summary_v3', 45_000, async () => {
-        const qs = new URLSearchParams({ per_page: '100' });
+      if (windowDays != null) {
+        const data = await routeCached(`github_e2e_runs_summary_window_${windowDays}d`, 45_000, async () => {
+          const runs = await fetchScheduledMainRunsSince(wfPath, token, windowSinceIso(windowDays));
+          return summarizeScheduledE2eRuns(runs, Number.POSITIVE_INFINITY);
+        });
+        return NextResponse.json(data);
+      }
+      const data = await routeCached('github_e2e_runs_summary_v4', 45_000, async () => {
+        const qs = new URLSearchParams({ per_page: '100', event: 'schedule', branch: 'main' });
         const body = (await ghGetJson(`${wfPath}?${qs}`, token)) as GhListResponse;
         const runs = Array.isArray(body.workflow_runs) ? body.workflow_runs : [];
-        return summarizeLastProdRuns(runs);
+        return summarizeScheduledE2eRuns(runs, SCHEDULED_E2E_KPI_LIMIT);
       });
       return NextResponse.json(data);
     }
 
     if (action === 'list') {
-      const data = await routeCached('github_e2e_runs_list_prod', 45_000, async () => {
-        const qs = new URLSearchParams({ per_page: '100' });
+      if (windowDays != null) {
+        const data = await routeCached(`github_e2e_runs_list_window_${windowDays}d`, 45_000, async () => {
+          const runs = await fetchScheduledMainRunsSince(wfPath, token, windowSinceIso(windowDays));
+          const scheduledE2e = runs.filter(isScheduledE2eOnMain);
+          return {
+            runs: scheduledE2e.slice(0, LIST_DISPLAY_CAP).map(mapRun),
+            totalInWindow: scheduledE2e.length,
+          };
+        });
+        return NextResponse.json(data);
+      }
+      const data = await routeCached('github_e2e_runs_list_scheduled_main', 45_000, async () => {
+        const qs = new URLSearchParams({ per_page: '100', event: 'schedule', branch: 'main' });
         const body = (await ghGetJson(`${wfPath}?${qs}`, token)) as GhListResponse;
         const runs = Array.isArray(body.workflow_runs) ? body.workflow_runs : [];
-        const prodOnly = runs.filter((run) => isProdRunTitle(runTitle(run)));
-        return { runs: prodOnly.slice(0, 10).map(mapRun) };
+        const scheduledE2e = runs.filter(isScheduledE2eOnMain);
+        return { runs: scheduledE2e.slice(0, SCHEDULED_E2E_KPI_LIMIT).map(mapRun) };
       });
       return NextResponse.json(data);
     }

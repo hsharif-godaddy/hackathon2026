@@ -859,7 +859,7 @@ export default function Dashboard() {
               RISQ
             </a>
             <a
-              href="/agentic-qa-results"
+              href="/e2e-run-dashboard"
               style={{
                 display: "inline-block",
                 padding: "0.375rem 0.875rem",
@@ -871,7 +871,7 @@ export default function Dashboard() {
                 fontWeight: 600,
               }}
             >
-              QA Results
+              E2E Runs
             </a>
             <a
               href="/image-search"

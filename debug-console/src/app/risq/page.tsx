@@ -4,13 +4,12 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 
 import ProtectedRoute from '@/components/ProtectedRoute';
 import polish from '@/components/risq-polish.module.css';
-import RisqAgenticQaPanel from '@/components/RisqAgenticQaPanel';
 import RisqE2ePanel from '@/components/RisqE2ePanel';
 import RisqKpiRow, { type RisqKpiSnapshot } from '@/components/RisqKpiRow';
 import RisqReleasesPanel, { type RisqReleasesPayload } from '@/components/RisqReleasesPanel';
 import RisqSignalsSection, { type RisqSignalsTab } from '@/components/RisqSignalsSection';
 
-type QualityKpiPanel = 'agentic' | 'e2e';
+type QualityKpiPanel = 'e2e';
 
 interface LangfuseModelPayload {
   model: string | null;
@@ -41,7 +40,6 @@ const kpiInitial: RisqKpiSnapshot = {
   feedback: { loading: true, negative: 0, total: 0 },
   traces: { loading: true, total: 0 },
   wau: { loading: true, curr_wau: 0, pct_change: 0 },
-  agenticQa: { loading: true, passed: 0, failed: 0, total: 0 },
   e2e: { loading: true, passed: 0, failed: 0, total: 0, running: 0 },
 };
 
@@ -122,36 +120,14 @@ function RisqContent() {
       const toIso = now.toISOString();
       const lfUrl = `/api/langfuse-analytics?action=overview&fromTimestamp=${encodeURIComponent(from7d)}&toTimestamp=${encodeURIComponent(toIso)}`;
 
-      const [fbRes, lfRes, wauRes, qaRes, e2eRes] = await Promise.all([
+      const [fbRes, lfRes, wauRes, e2eRes] = await Promise.all([
         fetch('/api/feedback/summary?days=1'),
         fetch(lfUrl),
         fetch('/api/c1-analytics?action=wau'),
-        fetch('/api/qa-results?action=summary-7d'),
         fetch('/api/e2e-runs?action=summary'),
       ]);
 
       if (cancelled) return;
-
-      const qaJson = (await qaRes.json().catch(() => ({}))) as {
-        error?: string;
-        passed?: number;
-        failed?: number;
-        total?: number;
-      };
-      const agenticQa: RisqKpiSnapshot['agenticQa'] = qaRes.ok
-        ? {
-            loading: false,
-            passed: qaJson.passed ?? 0,
-            failed: qaJson.failed ?? 0,
-            total: qaJson.total ?? 0,
-          }
-        : {
-            loading: false,
-            error: typeof qaJson.error === 'string' ? qaJson.error : `HTTP ${qaRes.status}`,
-            passed: 0,
-            failed: 0,
-            total: 0,
-          };
 
       const e2eJson = (await e2eRes.json().catch(() => ({}))) as {
         error?: string;
@@ -222,7 +198,7 @@ function RisqContent() {
             pct_change: 0,
           };
 
-      setKpi({ feedback, traces, wau, agenticQa, e2e });
+      setKpi({ feedback, traces, wau, e2e });
     }
     void loadKpis();
     return function cleanupKpis() {
@@ -336,11 +312,6 @@ function RisqContent() {
             onTracesClick={function kpiTracesNavigate() {
               navigateToSignalsTab('langfuse');
             }}
-            onAgenticQaClick={function kpiAgenticToggle() {
-              setQualityPanel(function (v) {
-                return v === 'agentic' ? null : 'agentic';
-              });
-            }}
             onE2eClick={function kpiE2eToggle() {
               setQualityPanel(function (v) {
                 return v === 'e2e' ? null : 'e2e';
@@ -353,58 +324,6 @@ function RisqContent() {
           />
         </div>
 
-        <div
-          hidden={qualityPanel !== 'agentic'}
-          id="risq-kpi-detail-agentic"
-            className={polish.detailPanel}
-            style={{
-              marginBottom: '1.15rem',
-              borderRadius: 16,
-              border: '1px solid #e4eaf4',
-              background: 'linear-gradient(180deg, #ffffff 0%, #fbfdff 100%)',
-              boxShadow: '0 6px 28px rgba(59, 130, 246, 0.07)',
-              overflow: 'hidden',
-              scrollMarginTop: '0.75rem',
-            }}
-          >
-            <div
-              style={{
-                display: 'flex',
-                flexWrap: 'wrap',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                gap: '0.75rem',
-                padding: '0.75rem 1rem',
-                borderBottom: '1px solid #edf2fa',
-                background: 'linear-gradient(180deg, #ffffff 0%, #f7faff 100%)',
-              }}
-            >
-              <h2 style={{ margin: 0, fontSize: '0.92rem', fontWeight: 800, letterSpacing: '-0.02em', color: '#0f172a' }}>
-                Agentic QA
-              </h2>
-              <button
-                type="button"
-                onClick={function dismissQualityPanel() {
-                  setQualityPanel(null);
-                }}
-                style={{
-                  padding: '0.4rem 0.85rem',
-                  fontSize: '0.75rem',
-                  fontWeight: 600,
-                  color: '#475569',
-                  backgroundColor: '#ffffff',
-                  border: '1px solid #e2e8f0',
-                  borderRadius: 8,
-                  cursor: 'pointer',
-                }}
-              >
-                Close
-              </button>
-            </div>
-            <div style={{ padding: '0.65rem 0.75rem 1rem' }}>
-              <RisqAgenticQaPanel />
-            </div>
-          </div>
         <div
           hidden={qualityPanel !== 'e2e'}
           id="risq-kpi-detail-e2e"
