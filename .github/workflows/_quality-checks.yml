@@ -21,22 +21,22 @@ on:
         required: true
         type: string
       node-version:
-        description: "Node.js version to use"
+        description: 'Node.js version to use'
         required: false
         type: string
-        default: "22.12"
+        default: '22.12'
       skip-tests:
-        description: "Skip running tests"
+        description: 'Skip running tests'
         required: false
         type: boolean
         default: false
       skip-lint-build:
-        description: "Skip lint, license check, and build"
+        description: 'Skip lint, license check, and build'
         required: false
         type: boolean
         default: false
       cache-next-build:
-        description: "Cache Next.js build output (app only)"
+        description: 'Cache Next.js build output (app only)'
         required: false
         type: boolean
         default: false
@@ -44,7 +44,17 @@ on:
         description: "Test script to run (e.g., 'test', 'test:unit', 'test:integration')"
         required: false
         type: string
-        default: "test"
+        default: 'test'
+      testla-pcp-app-id:
+        description: 'PCP App ID for Testla result uploads'
+        required: false
+        type: string
+        default: ''
+      testla-run-name:
+        description: 'Display name for the Testla test run (e.g., "Agents - Unit Tests")'
+        required: false
+        type: string
+        default: ''
 
 jobs:
   # Job 1: Lint, License Check, and Build (runs in parallel with tests)
@@ -238,3 +248,17 @@ jobs:
 
       - name: Run tests
         run: pnpm exec turbo run "${{ inputs.test-script }}" --filter="${{ inputs.pnpm-filter }}"
+
+      - name: Upload results to Testla
+        if: always() && !cancelled() && inputs.testla-pcp-app-id != ''
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          pnpm exec testla upload-results \
+            --pcp-app-id "${{ inputs.testla-pcp-app-id }}" \
+            --file "${{ inputs.working-directory }}/junit-results.xml" \
+            --coverage-file "${{ inputs.working-directory }}/coverage/cobertura-coverage.xml" \
+            --coverage-format cobertura \
+            --framework vitest \
+            --name "${{ inputs.testla-run-name || inputs.package-name }}"

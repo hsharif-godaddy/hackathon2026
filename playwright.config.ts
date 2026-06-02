@@ -88,8 +88,8 @@ export default defineConfig({
   // total_shards > 1, so non-sharded CI keeps the `github` reporter unchanged.
   reporter: process.env.CI
     ? (process.env.PLAYWRIGHT_BLOB_REPORT
-        ? [['list'], ['blob'], ['./tests/reporters/elasticsearch-reporter.ts']]
-        : [['list'], ['github'], ['./tests/reporters/elasticsearch-reporter.ts']])
+        ? [['list'], ['blob'], ['./tests/reporters/elasticsearch-reporter.ts'], ['junit', { outputFile: `test-results/junit-shard-${process.env.SHARD || '1'}.xml` }]]
+        : [['list'], ['github'], ['./tests/reporters/elasticsearch-reporter.ts'], ['junit', { outputFile: 'test-results/junit.xml' }]])
     : [['list'], ['html'], ['./tests/reporters/elasticsearch-reporter.ts']],
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
   use: {

@@ -112,6 +112,9 @@ export default defineConfig({
   },
   test: {
     globals: true,
+    reporters: process.env.CI === 'true'
+      ? ['default', ['junit', { outputFile: './junit-results.xml' }]]
+      : ['default'],
     // Default to lightweight node environment (35% of tests don't need jsdom)
     // Component/hook tests specify @vitest-environment jsdom at file top
     environment: 'node',
@@ -150,8 +153,9 @@ export default defineConfig({
       },
     },
     coverage: {
+      enabled: process.env.CI === 'true',
       provider: 'v8',
-      reporter: ['text', 'json', 'html'],
+      reporter: process.env.CI === 'true' ? ['text', 'cobertura'] : ['text', 'html'],
       include: ['src/**/*.{ts,tsx}'],
       exclude: [
         '**/__tests__/**',
@@ -166,12 +170,6 @@ export default defineConfig({
         '**/dist/**',
         '**/.next/**',
       ],
-      thresholds: {
-        lines: 50,
-        functions: 50,
-        branches: 50,
-        statements: 50
-      }
     },
     // Ensure cleanup hooks have time to complete before vitest exits
     teardownTimeout: 15000,

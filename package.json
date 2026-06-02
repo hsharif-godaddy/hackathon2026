@@ -43,6 +43,7 @@
     "@babel/types": "catalog:",
     "@elastic/elasticsearch": "catalog:",
     "@playwright/test": "^1.59.1",
+    "@testla/cli": "0.6.4",
     "gray-matter": "catalog:",
     "husky": "^8.0.3",
     "lint-staged": "^15.5.2",

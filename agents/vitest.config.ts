@@ -19,6 +19,9 @@ export default defineConfig({
     environment: 'node',
     globals: true,
     setupFiles: ['./vitest.setup.ts'],
+    reporters: process.env.CI === 'true'
+      ? ['default', ['junit', { outputFile: './junit-results.xml' }]]
+      : ['default'],
     // Use forks pool to isolate memory per test file (prevents OOM)
     pool: 'forks',
     maxWorkers: optimalForks, // Dynamically set based on CPU cores
@@ -32,12 +35,13 @@ export default defineConfig({
       NODE_ENV: 'test',
     },
     coverage: {
+      enabled: process.env.CI === 'true',
       provider: 'v8',
-      reporter: ['text', 'json', 'html'],
+      reporter: process.env.CI === 'true' ? ['text', 'cobertura'] : ['text', 'html'],
       exclude: [
         'node_modules/**',
         'dist/**',
-        '**/*.integration.test.ts', // Exclude integration tests from coverage
+        '**/*.integration.test.ts',
       ],
     },
     // Test categorization

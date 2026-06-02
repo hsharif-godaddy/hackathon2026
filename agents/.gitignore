@@ -31,6 +31,9 @@ logs/
 # Coverage
 coverage/
 
+# Test reporters (CI only)
+junit-results.xml
+
 # Temporary files
 *.tmp
 *.temp

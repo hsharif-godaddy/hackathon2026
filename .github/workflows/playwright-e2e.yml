@@ -77,6 +77,7 @@ on:
 permissions:
   id-token: write # required for artifactory token login
   contents: read
+  pull-requests: write
 
 jobs:
   # Resolve the test filter and build the matrix payload for the `test` job.
@@ -435,6 +436,26 @@ jobs:
             echo "Running --project=$PROJECT ${SHARD_FLAG:-(no shard)}"
             npx playwright test --project="$PROJECT" $SHARD_FLAG
           fi
+
+      - name: Upload results to Testla
+        if: always() && !cancelled()
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          JUNIT_FILE="./test-results/junit-shard-${{ matrix.shard }}.xml"
+          if [ ! -f "$JUNIT_FILE" ]; then
+            JUNIT_FILE="./test-results/junit.xml"
+          fi
+          NAME="${{ matrix.project }}"
+          if [ "${{ matrix.total }}" -gt 1 ]; then
+            NAME="${NAME}-shard-${{ matrix.shard }}"
+          fi
+          pnpm exec testla upload-results \
+            --pcp-app-id 6082 \
+            --file "$JUNIT_FILE" \
+            --framework playwright \
+            --name "$NAME"
 
       - name: Upload Test Results
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7

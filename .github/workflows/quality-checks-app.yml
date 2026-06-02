@@ -32,6 +32,7 @@ on:
 permissions:
   id-token: write
   contents: read
+  pull-requests: write
 
 jobs:
   quality-checks-app-lint-build:
@@ -53,6 +54,8 @@ jobs:
       cache-next-build: false
       skip-lint-build: true
       test-script: test:unit
+      testla-pcp-app-id: '6082'
+      testla-run-name: 'App - Unit Tests'
     secrets: inherit
 
   quality-checks-app-integration-tests:
@@ -64,4 +67,6 @@ jobs:
       cache-next-build: false
       skip-lint-build: true
       test-script: test:integration
+      testla-pcp-app-id: '6082'
+      testla-run-name: 'App - Integration Tests'
     secrets: inherit

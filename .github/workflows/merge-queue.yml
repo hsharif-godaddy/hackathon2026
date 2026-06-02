@@ -20,6 +20,7 @@ on:
 permissions:
   id-token: write
   contents: read
+  pull-requests: write
 
 jobs:
   # Only runs in the merge queue. Passes immediately so developers have a link
@@ -42,6 +43,8 @@ jobs:
       package-name: agents
       pnpm-filter: "@airo/agents"
       working-directory: ./agents
+      testla-pcp-app-id: '7548'
+      testla-run-name: 'Agents - Unit Tests'
     secrets: inherit
 
   app-lint-build:
@@ -64,6 +67,8 @@ jobs:
       working-directory: ./app
       skip-lint-build: true
       test-script: test:unit
+      testla-pcp-app-id: '6082'
+      testla-run-name: 'App - Unit Tests'
     secrets: inherit
 
   app-integration-tests:
@@ -75,6 +80,8 @@ jobs:
       working-directory: ./app
       skip-lint-build: true
       test-script: test:integration
+      testla-pcp-app-id: '6082'
+      testla-run-name: 'App - Integration Tests'
     secrets: inherit
 
   # v8 template checks — gated because template changes flow into agents via

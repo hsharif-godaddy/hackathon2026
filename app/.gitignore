@@ -12,6 +12,7 @@
 
 # testing
 /coverage
+junit-results.xml
 
 # next.js
 /.next/

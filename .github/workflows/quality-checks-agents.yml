@@ -40,6 +40,7 @@ on:
 permissions:
   id-token: write
   contents: read
+  pull-requests: write
 
 jobs:
   quality-checks-agents:
@@ -49,4 +50,6 @@ jobs:
       pnpm-filter: "@airo/agents"
       working-directory: ./agents
       skip-tests: false
+      testla-pcp-app-id: '7548'
+      testla-run-name: 'Agents - Unit Tests'
     secrets: inherit
