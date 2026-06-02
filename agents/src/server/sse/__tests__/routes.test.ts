@@ -1223,7 +1223,6 @@ describe('SSE routes', () => {
           subscriptionId: 'sub_x',
           bmsBudgetId: 'budget_x',
           useAtlasCrawler: true,
-          googleReviewsEnabled: true,
         }
         next()
       })
@@ -1265,7 +1264,6 @@ describe('SSE routes', () => {
             subscriptionId: 'sub_x',
             bmsBudgetId: 'budget_x',
             useAtlasCrawler: true,
-            googleReviewsEnabled: true,
           }),
         }),
       )

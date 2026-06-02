@@ -2605,7 +2605,6 @@ describe('MessageExecutionService', () => {
             budgetServiceEnabled: true,
             bmsBudgetId: 'budget-from-jwt',
             useAtlasCrawler: true,
-            googleReviewsEnabled: true,
           },
         },
       })
@@ -2624,7 +2623,6 @@ describe('MessageExecutionService', () => {
         budgetServiceEnabled: true,
         bmsBudgetId: 'budget-from-jwt',
         useAtlasCrawler: true,
-        googleReviewsEnabled: true,
       }))
     })
 

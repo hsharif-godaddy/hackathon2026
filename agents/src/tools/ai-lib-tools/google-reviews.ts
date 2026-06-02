@@ -35,11 +35,6 @@ IMPORTANT: Google Business Profile must be connected first (load the social-plat
     const agentContext = context as AgentsAppContext;
     const appId = agentContext?.metadata?.appId as string;
 
-    if (!agentContext?.metadata?.googleReviewsEnabled) {
-      logger.warn('google-reviews.feature-disabled', { appId: appId || 'unknown' });
-      return { success: false, error: 'Google Reviews feature is not enabled for this account.' };
-    }
-
     if (!appId) {
       logger.error('google-reviews.missing-app-id', {});
       return { success: false, error: 'App ID is required', reviews: [] };

@@ -642,10 +642,6 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
                 agentsAppContext.metadata.appBaseUrl = resolveAppBaseUrl(app.previewUrl, appId)
               }
 
-              if (agentContext?.googleReviewsEnabled) {
-                agentsAppContext.metadata.googleReviewsEnabled = true
-              }
-
               // NOTE: SSO JWT is NOT passed through context for security reasons.
               // MCP tools that need user authentication use ClientActionService to proxy
               // calls through the browser, where the auth_idp cookie is available.

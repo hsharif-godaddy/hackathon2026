@@ -2,7 +2,6 @@
 name: google-reviews
 description: Display Google Business Profile reviews on the site
 whenToUse: User wants to show Google reviews, customer testimonials from Google, or star ratings from their Google Business Profile.
-enablementId: googleReviews
 intents:
   - Google reviews/star ratings/Google Business Profile reviews
 ---
