@@ -53,6 +53,9 @@ export { brandIdentityAITool } from './brand-identity.js';
 export { httpCheckAITool } from './http-check.js';
 export { listDesignSystemsAITool } from './list-design-systems.js'
 export { installDesignSystemAITool } from './install-design-system.js'
+export { showDocAITool } from './show-doc.js';
+export { runAgentAITool } from './run-agent.js'
+export { returnToParentAITool } from './return-to-parent.js';
 
 // Re-import for registry
 import { textEditorAITool } from './text-editor.js';
@@ -101,6 +104,9 @@ import { brandIdentityAITool } from './brand-identity.js';
 import { httpCheckAITool } from './http-check.js';
 import { listDesignSystemsAITool } from './list-design-systems.js';
 import { installDesignSystemAITool } from './install-design-system.js';
+import { showDocAITool } from './show-doc.js';
+import { runAgentAITool } from './run-agent.js'
+import { returnToParentAITool } from './return-to-parent.js';
 
 /**
  * Complete registry of all AI-Lib converted tools
@@ -152,6 +158,9 @@ export const allAILibTools: Record<string, Tool> = {
   httpCheck: httpCheckAITool,
   listDesignSystems: listDesignSystemsAITool,
   installDesignSystem: installDesignSystemAITool,
+  showDoc: showDocAITool,
+  runAgent: runAgentAITool,
+  returnToParent: returnToParentAITool,
 };
 
 /**

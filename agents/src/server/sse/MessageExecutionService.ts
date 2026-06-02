@@ -75,6 +75,8 @@ import {
   checkAndTriggerSummarization,
 } from '../context-builders.js'
 import { computeDebugTurnStats } from '../../utils/debug-turn-stats.js'
+import { interactiveSubAgentManager } from '../../agents/interactive-sub-agent-manager.js'
+import { AppRepository } from '../../database/repositories/index.js'
 
 /** Short timeout for awaiting the classifier on an errored turn — the user is
  *  already seeing a failure, so don't delay terminal events for a slow classifier.
@@ -89,7 +91,7 @@ const NO_SUBSCRIBER_ABORT_TIMEOUT_MS = (() => {
 interface ExecutionDeps {
   getAgent: (agentId?: string) => any
   contextManager: { loadContextMessages: (context: Record<string, unknown>) => Promise<{ contextMessages: any[]; formattedContexts?: any[] }> }
-  loadConversationHistory: (conversationId: string, appId: string, agentName: string) => Promise<ConversationMessage[]>
+  loadConversationHistory: (conversationId: string, appId: string, agentName: string, excludeTags?: string[]) => Promise<ConversationMessage[]>
   conversationPersistence: AgentsMessagePersistence
   eventChannel: ConversationEventChannel
   sseRegistry: EventStreamRegistry
@@ -945,7 +947,12 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
         return null
       }),
       buildMemoryContextMessage({ appId }),
-      this.deps.loadConversationHistory(conversationId, appId, agentName).catch(err => {
+      this.deps.loadConversationHistory(
+        conversationId, appId, agentName,
+        interactiveSubAgentManager.isInteractiveAgent(sseSocketId, agentName)
+          ? undefined
+          : ['interactiveSubAgent']
+      ).catch(err => {
         logger.warn('sse.execution.history_load_failed', { appId, conversationId, ...errorFields(err) })
         return [] as ConversationMessage[]
       }),
@@ -1522,12 +1529,21 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
 
     const streamingEvents: PersistenceStreamingEvent[] = []
 
+    // Resolve appPath so tools (e.g. runAgent) can access the filesystem path
+    const appPath = (() => {
+      try {
+        const appRepo = new AppRepository()
+        return appRepo.findById(appId)?.path
+      } catch { return undefined }
+    })()
+
     // Shared execution context - tools modify this in-place (e.g. __autoContinue)
     const executionContext: Record<string, unknown> = {
       metadata: {
         sessionId: sseSocketId,
         appId, siteId, conversationId, templateId, modelOverride, agentProfile,
         agentId: resolvedAgentId,
+        ...(appPath && { appPath }),
         ...(subscriptionId && { subscriptionId }),
         ...(agentCtx?.customerId && { customerId: agentCtx.customerId }),
         ...(agentCtx?.budgetServiceEnabled !== undefined && { budgetServiceEnabled: agentCtx.budgetServiceEnabled }),
@@ -1549,6 +1565,31 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
       },
       ...(contextAttachments.length > 0 && { contextAttachments }),
       todoListContext, isActionRequest, customContext,
+    }
+
+    // Inject event emitter for sub-agent streaming events (used by runAgent tool).
+    // Mirrors the WebSocket path in ai-lib-websocket-server.ts.
+    const execMeta = executionContext.metadata as Record<string, unknown>
+    execMeta.eventEmitter = {
+      emit: (type: string, data: unknown): void => {
+        if (type === 'subagent_event') {
+          this.publishNonTerminal(appId, conversationId, {
+            conversationId,
+            type: 'subagent_event',
+            content: '',
+            data: data as Record<string, unknown>,
+            agentName: (data as Record<string, unknown>)?.agent as string ?? '',
+          })
+        } else if (type === 'debug_turn_stats') {
+          this.publishNonTerminal(appId, conversationId, {
+            conversationId,
+            type: 'debug_turn_stats',
+            content: '',
+            data: data as Record<string, unknown>,
+            agentName: (data as Record<string, unknown>)?.agentName as string ?? '',
+          })
+        }
+      },
     }
 
     // Resolve agent profile + model override from flags (per-project metadata
@@ -1715,11 +1756,10 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
         },
         onHandoff: async (oldAgent, newAgent) => {
           logger.info('sse.handoff.detected', { conversationId, appId, fromAgent: oldAgent, toAgent: newAgent })
+          interactiveSubAgentManager.handleHandoff(sseSocketId, oldAgent, newAgent)
           try {
             await this.deps.onAgentChanged?.(conversationId, oldAgent, newAgent, appId)
           } catch (err) {
-            // Tag handoff hook failures distinctly — without this, the outer
-            // catch logs them as a generic sse.execution.error.
             logger.error('sse.handoff.agent_changed_failed', {
               appId, conversationId, fromAgent: oldAgent, toAgent: newAgent, ...errorFields(err),
             })

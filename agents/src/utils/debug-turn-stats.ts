@@ -11,6 +11,7 @@ export interface ComputeDebugTurnStatsInput {
   totalTokens: number
   cachedInputTokens?: number
   cacheWriteInputTokens?: number
+  steps?: number
 }
 
 export function computeDebugTurnStats(input: ComputeDebugTurnStatsInput): DebugTurnStatsEvent {
@@ -46,5 +47,6 @@ export function computeDebugTurnStats(input: ComputeDebugTurnStatsInput): DebugT
     contextWindowUtilization: contextWindowUtilization / 100,
     costUsd: costEstimate.totalCost,
     timestamp: new Date().toISOString(),
+    ...(input.steps !== undefined && { steps: input.steps }),
   }
 }

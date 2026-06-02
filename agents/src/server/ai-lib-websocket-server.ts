@@ -79,6 +79,7 @@ import { getAgentConfig } from '../services/features.js'
 import { runWithModelOverride, getActiveModelOverride } from '@airo/ai-lib'
 import { resolveProfile, runWithProfile } from '../profiles/index.js'
 import { createAgentRouter } from './agent-router.js'
+import { skillToolManager } from '../tools/skill-tool-manager.js'
 import { getModelOverride } from '../utils/model-selection.js'
 import {
   guardAllowedOverrideModel,
@@ -99,6 +100,7 @@ import {
   collectImagesFromFormattedContexts,
   checkAndTriggerSummarization,
 } from './context-builders.js'
+import { interactiveSubAgentManager } from '../agents/interactive-sub-agent-manager.js'
 import { buildSharedPostStreamValidator } from './post-stream-validator.js'
 import { buildPinnedSkillsContextMessages } from './pinned-skills-context.js'
 import {
@@ -1277,6 +1279,36 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           }
         }
 
+        // Resolve appPath from AppRepository so tools (e.g. runAgent) can access
+        // the app's filesystem path via context.metadata.appPath
+        const app = appRepo.findById(appId)
+        if (app?.path) {
+          rawContext.metadata = {
+            ...(rawContext.metadata as Record<string, unknown>),
+            appPath: app.path,
+          }
+        }
+
+        // Add event emitter for sub-agent streaming events (used by runAgent tool)
+        if (socket) {
+          rawContext.metadata = {
+            ...(rawContext.metadata as Record<string, unknown>),
+            eventEmitter: {
+              emit: (type: string, data: unknown): void => {
+                try {
+                  if (type === 'subagent_event') {
+                    socket.emit('subagent_event', data)
+                  } else if (type === 'debug_turn_stats') {
+                    socket.emit('debug_turn_stats', data)
+                  }
+                } catch {
+                  // Transport disconnected — don't kill the sub-agent stream
+                }
+              }
+            }
+          }
+        }
+
         // Authentication already validated at WebSocket handshake
         const contextLogger = log.forApp(appId);
         contextLogger.debug('websocket.context.validated', {
@@ -1849,6 +1881,17 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         })
       },
 
+      // Surface conversation-level state on every `complete` event so the
+      // client can drive mode-specific UI (e.g. deep-build overlay copy).
+      // Returns `pinnedSkill: ''` when no skill is pinned so an explicit
+      // unpin propagates and replaces a stale value.
+      getCompleteEventMetadata: (_socketId: string, context?: Record<string, unknown>) => {
+        const typedContext = context as AgentsAppContext | undefined
+        const conversationId = typedContext?.conversation?.conversationId
+        if (!conversationId) return {}
+        const pinnedSkill = skillToolManager.getPinnedSkills(conversationId)[0] ?? ''
+        return { pinnedSkill }
+      },
       onMessageComplete: async (socketId: string, result: any, context?: Record<string, unknown>) => {
         const duration = result.duration || 'unknown';
         const steps = result.steps || 0;
@@ -2390,6 +2433,10 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         finalizeMessage(socketId, 'aborted', { appId: appId ?? undefined });
       },
 
+      onHandoffWithSocket: (socketId: string, oldAgentName: string, newAgentName: string) => {
+        interactiveSubAgentManager.handleHandoff(socketId, oldAgentName, newAgentName)
+      },
+
       onAgentChanged: async (conversationId: string, oldAgentName: string, newAgentName: string, appId?: string) => {
         logger.info('websocket.agent.handoff', {
           conversationId,
@@ -2574,6 +2621,18 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         conversationPersistence: true,
         conversationHistoryLoading: true
       }
+    })
+
+    // Initialize interactive sub-agent manager with runtime deps
+    interactiveSubAgentManager.setDeps({
+      switchAgent: (sessionId, targetAgentId, prompt) =>
+        stateManager.switchAgent(sessionId, targetAgentId, prompt),
+      registerAgent: (agentId, config) =>
+        agentFactory.factory.createAgent({ ...(config as any), id: agentId }),
+      removeAgent: (agentId) => {
+        // Remove from factory's internal agent cache
+        (agentFactory.factory as any).agents?.delete?.(agentId)
+      },
     })
 
     // Store io instance for use in other services

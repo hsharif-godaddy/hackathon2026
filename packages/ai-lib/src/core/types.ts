@@ -143,6 +143,7 @@ export interface AgentConfig {
    *  On success (non-empty return), the result is cached and the callback is not called again for that conversationId.
    *  On failure (empty return or throw), retries up to 3 times across subsequent turns, then gives up. */
   onSkillsLoad?: (conversationId: string) => Promise<PipelineContextMessage[]>
+
 }
 
 /**

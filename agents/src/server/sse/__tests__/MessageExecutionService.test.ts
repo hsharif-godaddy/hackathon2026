@@ -1364,7 +1364,7 @@ describe('MessageExecutionService', () => {
 
       await service.execute(DEFAULT_PARAMS)
 
-      expect(deps.loadConversationHistory).toHaveBeenCalledWith('conv_1', 'app_1', 'develop')
+      expect(deps.loadConversationHistory).toHaveBeenCalledWith('conv_1', 'app_1', 'develop', ['interactiveSubAgent'])
       expect(deps.getAgent().streamGenerate).toHaveBeenCalledWith(
         'Hello',
         expect.objectContaining({ messages: expect.arrayContaining(historyMessages) })

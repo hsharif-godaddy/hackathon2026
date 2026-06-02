@@ -72,14 +72,17 @@ export function getValidatedTemplateVersion(appPath: string): TemplateVersion | 
 /**
  * Get the base prompts directory path
  * @param currentModuleUrl - The import.meta.url of the calling module
+ * @param depth - Number of parent directory levels to traverse before appending 'prompts'. Default 1.
+ *   Use 2 for modules nested one level deeper than agents/ (e.g., agents/sub-agents/).
  * @returns The full path to the prompts directory
  */
-function getPromptsDir(currentModuleUrl: string): string {
+function getPromptsDir(currentModuleUrl: string, depth: number = 1): string {
   const currentDir = path.dirname(fileURLToPath(currentModuleUrl))
-  
+  const upSegments: string[] = Array.from({ length: depth }, () => '..')
+
   // Safe: Uses static literals relative to module location, no user input
   // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
-  return path.resolve(currentDir, '..', 'prompts')
+  return path.resolve(currentDir, ...upSegments, 'prompts')
 }
 
 /**
@@ -181,15 +184,23 @@ export function getToolPromptFile(toolName: string, fileName: string, currentMod
 /**
  * Modular prompt builder helper that returns common directory paths
  * @param currentModuleUrl - The import.meta.url of the calling module
+ * @param depth - Number of parent directory levels to traverse before appending 'prompts'. Default 1.
+ *   Use 2 for modules nested one level deeper than agents/ (e.g., agents/sub-agents/).
  * @returns Object with common directory paths for building modular prompts
  */
-export function getModularPromptPaths(currentModuleUrl: string) {
+export function getModularPromptPaths(currentModuleUrl: string, depth: number = 1) {
+  const resolvedPromptsDir = getPromptsDir(currentModuleUrl, depth)
   return {
-    promptsDir: getPromptsDir(currentModuleUrl),
-    sharedDir: getSharedPromptDir(currentModuleUrl),
-    getAgentDir: (agentName: string) => getAgentPromptDir(agentName, currentModuleUrl),
-    getAgentFile: (agentName: string, fileName: string) => getAgentPromptFile(agentName, fileName, currentModuleUrl),
-    getSharedFile: (fileName: string) => getSharedPromptFile(fileName, currentModuleUrl),
-    getToolFile: (toolName: string, fileName: string) => getToolPromptFile(toolName, fileName, currentModuleUrl)
+    promptsDir: resolvedPromptsDir,
+    // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
+    sharedDir: path.join(resolvedPromptsDir, 'shared'),
+    // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
+    getAgentDir: (agentName: string) => path.join(resolvedPromptsDir, agentName),
+    // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
+    getAgentFile: (agentName: string, fileName: string) => path.join(resolvedPromptsDir, agentName, fileName),
+    // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
+    getSharedFile: (fileName: string) => path.join(resolvedPromptsDir, 'shared', fileName),
+    // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
+    getToolFile: (toolName: string, fileName: string) => path.join(resolvedPromptsDir, toolName, fileName),
   }
 }

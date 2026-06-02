@@ -448,6 +448,14 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
                     })
                   })
                 }
+              } else if (type === 'subagent_event') {
+                const payload = event.data as { subagentToolId?: string; agent?: string; event?: string; detail?: string }
+                if (payload.subagentToolId && payload.agent) {
+                  store.addSubagentEvent(
+                    payload.subagentToolId,
+                    { event: payload.event ?? '', agent: payload.agent, detail: payload.detail ?? '' },
+                  )
+                }
               } else if (type === 'stream_retry') {
                 // Guard only fires when BOTH event and ref requestIds are present — a retry without
                 // requestId (legacy server, first conversation) intentionally bypasses to clear the UI.

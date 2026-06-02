@@ -343,6 +343,7 @@ export const STREAMING_EVENT_TYPES = [
   'budget_update',
   'budget_status',
   'debug_turn_stats',
+  'subagent_event',
   'stream_retry',
   'video',
   'request_grant_refresh',

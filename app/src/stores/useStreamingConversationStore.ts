@@ -146,6 +146,7 @@ export interface ChatMessage {
     source?: string
     displayAs?: string
     validationStatus?: ValidationStatus
+    pinnedSkill?: string             // Server-pushed: name of the conversation's pinned orchestrator skill (e.g. 'deep-build'). Drives mode-specific UI like the build overlay copy.
     [key: string]: unknown
   }
 }
@@ -232,7 +233,13 @@ export interface StreamingConversationState {
   // Server capabilities (for backwards compatibility)
   serverCapabilities: ServerCapabilities | null
 
+  // Subagent events keyed by tool ID
+  subagentEvents: Record<string, Array<{ event: string; agent: string; detail: string }>>
+
   // === CORE STREAMING ACTIONS ===
+
+  addSubagentEvent: (toolId: string, event: { event: string; agent: string; detail: string }) => void
+  clearSubagentEvents: () => void
 
   // Stream lifecycle
   startNewStream: (userMessage: string, selectedAssets?: any[], referencedFiles?: Array<{ path: string; content: string }>, origin?: MessageOrigin, uploadedFileName?: string) => void
@@ -659,6 +666,7 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
   historyNextCursor: null,
   historyLoadingMore: false,
   serverCapabilities: null,
+  subagentEvents: {},
 
   // === CORE STREAMING ACTIONS ===
 
@@ -700,8 +708,19 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
       streamingState: 'streaming',
       currentStep: 1,
       inputValue: '', // Clear input
-      isLoading: true
+      isLoading: true,
+      subagentEvents: {},
     }))
+  },
+
+  addSubagentEvent: (toolId: string, event: { event: string; agent: string; detail: string }) => {
+    const current = get().subagentEvents
+    const existing = current[toolId] ?? []
+    set({ subagentEvents: { ...current, [toolId]: [...existing, event] } })
+  },
+
+  clearSubagentEvents: () => {
+    set({ subagentEvents: {} })
   },
 
   appendToStream: (content: string) => {
@@ -1750,3 +1769,19 @@ export const useBuildErrorContext = () => useStreamingConversationStore(state =>
 export const useAvailableAgents = () => useStreamingConversationStore(state => state.availableAgents)
 export const useDefaultAgentId = () => useStreamingConversationStore(state => state.defaultAgentId)
 export const useCurrentAgentName = () => useStreamingConversationStore(state => state.currentAgentName)
+
+// Latest pinned-skill name surfaced from server metadata. Walks newest →
+// oldest assistant messages and returns the first message's pinnedSkill.
+// Empty string is treated as "no pin" so an explicit unpin (server emits
+// '') propagates. Returns undefined when no assistant message has spoken
+// to the question yet — caller treats that as "unknown, render default".
+export const useLatestPinnedSkill = (): string | undefined =>
+  useStreamingConversationStore(state => {
+    for (let i = state.messages.length - 1; i >= 0; i--) {
+      const m = state.messages[i]
+      if (m.role !== 'assistant') continue
+      const v = m.metadata?.pinnedSkill
+      if (typeof v === 'string') return v
+    }
+    return undefined
+  })
