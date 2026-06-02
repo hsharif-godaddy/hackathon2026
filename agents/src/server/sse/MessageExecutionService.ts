@@ -22,6 +22,7 @@ import {
   assembleMessages,
   captureResponseMetadata,
   readTextStreamFallback,
+  recordTokenUsageObservability,
   TOOL_VALIDATION_ERROR_TYPE,
 } from '@airo/ai-transport'
 import type { ResponseMetadata } from '@airo/ai-transport'
@@ -50,7 +51,7 @@ import {
   type ExecutionStep,
 } from '@airo/ai-lib/budget'
 import { checkCorrelationIdRace, safeProcessBudgetReport } from '../budget-report-handler.js'
-import { parseChunkTimeoutMs, runWithModelOverride } from '@airo/ai-lib'
+import { parseChunkTimeoutMs, runWithModelOverride, buildTokenUsage } from '@airo/ai-lib'
 import { resolveProfile, runWithProfile } from '../../profiles/index.js'
 import { guardAllowedOverrideModel, resolveOverride } from '../model-override.js'
 import type { AssessmentOutcome, ClassifierMode } from '../../agents/assessment-agent/index.js'
@@ -1292,11 +1293,26 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
         invocation.endError(finalResultError, { finishReason })
       } else {
         const usageToTrack = finalResult?.totalUsage ?? finalResult?.usage
+        // Per-LLM-call token observability (cost/cache logs + APM), shared with
+        // the WS path via recordTokenUsageObservability. Returns the estimated
+        // cost so the Langfuse invocation span carries it like WS does.
+        let totalCost: number | undefined
+        if (usageToTrack) {
+          const { totalCost: cost } = recordTokenUsageObservability({
+            usage: buildTokenUsage(usageToTrack),
+            metadata: { appId, agentName, modelName, conversationId },
+            apmTracker: this.deps.conversationPersistence,
+            logger,
+            eventPrefix: 'sse.token_usage',
+          })
+          totalCost = cost
+        }
         invocation.endSuccess({
           outputText: accumulatedContent,
           responseType,
           ...(usageToTrack && { usage: usageToTrack }),
           finishReason,
+          ...(totalCost !== undefined && { totalCost }),
         })
       }
 

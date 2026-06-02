@@ -176,6 +176,13 @@ export { classifyStreamBudgetError, isToolValidationError } from './classify-str
 export type { StreamBudgetErrorResult, BudgetErrorSource } from './classify-stream-error.js'
 
 // Turn-level observability primitives (invocation span + error emission).
+export { recordTokenUsageObservability } from './token-usage-observability.js'
+export type {
+  TokenUsageObservabilityParams,
+  TokenUsageObservabilityResult,
+  TokenUsageObservabilityLogger,
+  TokenUsageApmTracker,
+} from './token-usage-observability.js'
 export { formatAgentId, emitTurnError, createAgentInvocation } from './agent-invocation.js'
 export type {
   EmitTurnErrorOptions,

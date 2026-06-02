@@ -241,6 +241,14 @@ vi.mock('@/lib/request-context', () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }))
 
+vi.mock('@/hooks/useTranslations', () => ({
+  useTranslations: () => (id: string) => id,
+}))
+
+vi.mock('@ux/growl', () => ({
+  default: { addGrowlMessage: vi.fn() },
+}))
+
 const mockSetLaunchVideoResult = vi.fn()
 const mockSetLastCompleteTraceIds = vi.fn()
 
@@ -2015,9 +2023,11 @@ describe('useSSEChat', () => {
         await flushPromises()
       })
 
+      // Matches the WS VideoHandler reference: the store carries a generic
+      // failure message; the specific error is logged, not surfaced here.
       expect(mockSetLaunchVideoResult).toHaveBeenCalledWith(
         'test-app-123',
-        { type: 'error', message: 'Render timeout' }
+        { type: 'error', message: 'Video generation failed' }
       )
     })
 

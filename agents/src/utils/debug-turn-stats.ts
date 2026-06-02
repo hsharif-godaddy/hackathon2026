@@ -1,6 +1,5 @@
-import { calculateCostEstimate, type TokenUsage } from '@airo/ai-lib'
+import { calculateCostEstimate, calculateCacheMetrics, calculateContextWindowUtilization, type TokenUsage } from '@airo/ai-lib'
 import { DEBUG_TURN_STATS_EVENT, type DebugTurnStatsEvent } from '@airo/shared/websocket'
-import { calculateCacheMetrics, calculateContextWindowUtilization } from './model-context-window.js'
 
 export interface ComputeDebugTurnStatsInput {
   conversationId: string

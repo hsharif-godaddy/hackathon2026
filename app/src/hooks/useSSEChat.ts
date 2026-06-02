@@ -52,9 +52,11 @@ import {
 import { mapToolCall, mapToolResult, mapToolStart } from './shared/toolMappers'
 import { handleToolCallSideEffects, handleToolResultSideEffects } from './shared/toolSideEffects'
 import { buildValidationToolCallFromEvent } from './shared/validationToolCallBuilder'
+import { handleVideoNotification } from './shared/videoNotification'
 import { useBudgetUpdate } from './useBudgetUpdate'
 import { useGrantContext } from './useGrantContext'
 import type { SendMessageOptions } from './useStreamingWebSocket'
+import { useTranslations } from './useTranslations'
 
 const BROWSER_TIMEZONE: string = Intl.DateTimeFormat().resolvedOptions().timeZone
 
@@ -180,6 +182,13 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
 
   const tokenAuthTypeRef = useRef(tokenAuthType)
   tokenAuthTypeRef.current = tokenAuthType
+
+  // Captured in a ref so the onEvent handler can show localized toasts
+  // without the locale being a dependency of the transport-setup effect
+  // (which would tear down the SSE connection on every locale change).
+  const t = useTranslations()
+  const tRef = useRef(t)
+  tRef.current = t
 
   const [transportState, setTransportState] = useState<TransportState>('disconnected')
   const [connectionError, setConnectionError] = useState<unknown>(undefined)
@@ -689,25 +698,13 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
                   })
                 })
               } else if (type === 'video') {
-                const videoData = event.data as any
-                const videoAppId = videoData?.appId ?? store.currentAppId
-                if (videoAppId) {
-                  import('@/stores/useDevelopPageStore').then(({ useDevelopPageStore }) => {
-                    if (videoData?.status === 'completed' && videoData?.videoUrl) {
-                      useDevelopPageStore.getState().setLaunchVideoResult(videoAppId, { type: 'success', url: videoData.videoUrl })
-                    } else if (videoData?.status === 'failed') {
-                      useDevelopPageStore.getState().setLaunchVideoResult(videoAppId, { type: 'error', message: videoData?.error ?? 'Video generation failed' })
-                    }
-                  }).catch(err => {
-                    // Covers chunk-load failures AND any throw from inside
-                    // the .then (store teardown, future additions). Log so
-                    // "video result never rendered" is diagnosable.
-                    logger.warn('sse.video.store_update_failed', {
-                      appId: videoAppId, status: videoData?.status,
-                      error: err instanceof Error ? err.message : String(err),
-                    })
-                  })
-                }
+                // Shared with the WS VideoHandler: store update + Growl toast.
+                handleVideoNotification({
+                  raw: event.data,
+                  clientAppId: store.currentAppId,
+                  t: tRef.current,
+                  logPrefix: 'sse.video',
+                })
               } else if (type === 'recovery_status') {
                 const payload = event.data as any
                 recoveryHandshakePendingRef.current = false

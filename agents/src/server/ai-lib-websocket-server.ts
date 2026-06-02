@@ -5,12 +5,12 @@
 
 import { Server as HTTPServer } from 'node:http'
 import {
-  calculateCostEstimate,
   parseChunkTimeoutMs,
 } from '@airo/ai-lib'
 import {
   createWebSocketServer,
   hasNonIdempotentTools,
+  recordTokenUsageObservability,
   type MessageProvider,
   type ContextProvider,
   type ConversationMessage,
@@ -85,10 +85,6 @@ import {
   guardAllowedOverrideModel,
   resolveOverride,
 } from './model-override.js'
-import {
-  calculateCacheMetrics,
-  calculateContextWindowUtilization
-} from '../utils/model-context-window.js'
 import type { AgentsAppContext } from '../types/websocket-context.js'
 import { selectCacheConversationId } from './budget-report-conversation-id.js'
 import { AppRepository } from '../database/repositories/AppRepository.js'
@@ -1137,72 +1133,36 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         customerId?: string
         context?: Record<string, unknown>
       }) => {
-        // Only track if we have appId
-        if (!metadata.appId) {
-          logger.warn('websocket.token_usage.no_app_id', {
-            agentName: metadata.agentName,
-            modelName: metadata.modelName,
-            conversationId: metadata.conversationId
-          })
-          return
-        }
-
-        try {
-          // Calculate accurate cost including cache pricing
-          const costEstimate = calculateCostEstimate(
-            {
-              inputTokens: usage.inputTokens,
-              outputTokens: usage.outputTokens,
-              totalTokens: usage.totalTokens,
-              ...(usage.cachedInputTokens !== undefined && { cachedInputTokensRead: usage.cachedInputTokens }),
-              ...(usage.cacheWriteInputTokens !== undefined && { cachedInputTokensWrite: usage.cacheWriteInputTokens })
-            },
-            metadata.modelName
-          )
-
-          // Track in APM
-          messagePersistence.trackTokenUsageInAPM(
-            'main_agent',
-            {
-              inputTokens: usage.inputTokens,
-              outputTokens: usage.outputTokens,
-              totalTokens: usage.totalTokens,
-              cacheReadTokens: usage.cachedInputTokens || 0,
-              cacheWriteTokens: usage.cacheWriteInputTokens || 0,
-            },
-            {
-              conversationId: metadata.conversationId || 'unknown',
-              appId: metadata.appId,
-              agentName: metadata.agentName,
-              modelName: metadata.modelName,
-            }
-          )
-
-          // Calculate cache metrics for all token usage logs
-          const cacheMetrics = calculateCacheMetrics(
-            usage.inputTokens,
-            usage.cachedInputTokens
-          )
-          const contextUtilization = calculateContextWindowUtilization(
-            usage.inputTokens,
-            metadata.modelName
-          )
-
-          logger.info('websocket.token_usage.tracked', {
+        // Granular + consolidated cost/cache logging + APM token tracking,
+        // shared with the SSE path via recordTokenUsageObservability. Returns
+        // the estimated cost, which the WS base server attaches to the
+        // invocation span. Self-contained: never throws.
+        const tokenUsageResult = recordTokenUsageObservability({
+          usage: {
+            inputTokens: usage.inputTokens,
+            outputTokens: usage.outputTokens,
+            totalTokens: usage.totalTokens,
+            ...(usage.cachedInputTokens !== undefined && { cachedInputTokensRead: usage.cachedInputTokens }),
+            ...(usage.cacheWriteInputTokens !== undefined && { cachedInputTokensWrite: usage.cacheWriteInputTokens }),
+          },
+          metadata: {
             appId: metadata.appId,
             agentName: metadata.agentName,
             modelName: metadata.modelName,
             conversationId: metadata.conversationId,
-            inputTokens: usage.inputTokens,
-            cachedInputTokens: cacheMetrics.cachedTokens,
-            freshInputTokens: cacheMetrics.freshTokens,
-            totalTokens: usage.totalTokens,
-            cost: costEstimate.totalCost,
-            contextWindowUtilization: contextUtilization,
-            cacheHitRate: cacheMetrics.cacheHitRate,
-            hasConversation: !!metadata.conversationId
-          })
+          },
+          apmTracker: messagePersistence,
+          logger,
+          eventPrefix: 'websocket.token_usage',
+        })
 
+        // Debug-stats emit is WS-specific (socket-targeted). Background
+        // summarization runs on both transports but from each transport's own
+        // path with its own summarizer instance (SSE triggers it in
+        // MessageExecutionService), so both stay out of the shared
+        // observability helper. Both only run with an appId.
+        if (!metadata.appId) return tokenUsageResult
+        try {
           maybeEmitDebugTurnStats({
             appId: metadata.appId,
             conversationId: typeof metadata.conversationId === 'string' ? metadata.conversationId : 'unknown',
@@ -1218,7 +1178,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           if (backgroundSummarizer) {
             checkAndTriggerSummarization({
               inputTokens: usage.inputTokens,
-              appId: metadata.appId!,
+              appId: metadata.appId,
               conversationId: metadata.conversationId as string | undefined,
               subscriptionId: metadata.subscriptionId as string | undefined,
               customerId: metadata.customerId as string | undefined,
@@ -1232,6 +1192,8 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
             agentName: metadata.agentName
           })
         }
+
+        return tokenUsageResult
       },
 
       // Context extractor to validate appId and inject JWT permissions

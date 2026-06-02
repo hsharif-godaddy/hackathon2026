@@ -38,6 +38,7 @@ export {
   type GeminiImageGenerationResult
 } from './utils/image-generation.js'
 export * from './utils/model-pricing.js'
+export * from './utils/model-context-window.js'
 export * from './utils/token-usage-events.js'
 export * from './utils/token-counter.js'
 export * from './utils/s2s-auth.js'

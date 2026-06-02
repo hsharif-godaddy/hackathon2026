@@ -8,8 +8,6 @@ import { createAgentFactory } from '@airo/ai-lib'
 import {
   buildTokenUsage,
   calculateCostEstimate,
-  formatCostEstimate,
-  getCacheHitRate,
   dataUrlsToProcessedFiles,
   TOKEN_USAGE_SUMMARY_EVENT,
   type TokenUsageSummaryEvent,
@@ -257,7 +255,10 @@ export interface WebSocketConfig {
     subscriptionId?: string
     customerId?: string
     context?: Record<string, unknown>
-  }) => void | Promise<void>
+  }) =>
+    | void
+    | { totalCost?: number }
+    | Promise<void | { totalCost?: number }>
 
   /** LLM call observability hooks */
   onLlmStart?: (data: {
@@ -3578,74 +3579,55 @@ Please try again with corrected formatting.`
           modelName = agentName || 'unknown'
         }
 
-        this.logger.info('token.usage', {
-          inputTokens: usage.inputTokens || 0,
-          outputTokens: usage.outputTokens || 0,
-          totalTokens: usage.totalTokens || 0
-        })
+        // The granular token.usage / token.cache(.none) / token.cost logs,
+        // APM token tracking, and the consolidated *.token_usage.tracked log
+        // now flow through the shared recordTokenUsageObservability helper,
+        // invoked via the onTokenUsage callback below (which returns the cost
+        // we attach to the invocation span). This keeps WS and SSE in lockstep.
 
-        // Log cache usage if available
-        const totalCachedTokens = (usage.cachedInputTokensRead || 0) + (usage.cachedInputTokensWrite || 0)
-        if (totalCachedTokens > 0) {
-          const cacheHitRate = getCacheHitRate(usage)
-          const cacheDetails: any = {
-            totalCachedTokens,
-            cacheHitRate: cacheHitRate.toFixed(1) + '%'
+        // WS-only TOKEN_USAGE_SUMMARY socket diagnostic (dev tooling, gated by
+        // SOCKET_DIAGNOSTICS). Compute the cost estimate only when emitting it,
+        // so production does no redundant cost computation.
+        if (process.env.SOCKET_DIAGNOSTICS === 'true') {
+          const costEstimate = calculateCostEstimate(usage, modelName)
+          const payload: TokenUsageSummaryEvent = {
+            inputTokens: usage.inputTokens,
+            outputTokens: usage.outputTokens,
+            totalTokens: usage.totalTokens,
+            ...(usage.cachedInputTokensRead !== undefined
+              && { cachedInputTokensRead:
+                usage.cachedInputTokensRead }),
+            ...(usage.cachedInputTokensWrite !== undefined
+              && { cachedInputTokensWrite:
+                usage.cachedInputTokensWrite }),
+            modelName,
+            totalCost: costEstimate.totalCost,
+            inputCost: costEstimate.inputCost,
+            outputCost: costEstimate.outputCost,
+            ...(costEstimate.cachedInputCost !== undefined
+              && { cachedInputCost:
+                costEstimate.cachedInputCost }),
+            savings: costEstimate.savings,
+            currency: costEstimate.currency,
           }
-          if (usage.cachedInputTokensRead && usage.cachedInputTokensWrite) {
-            cacheDetails.read = usage.cachedInputTokensRead
-            cacheDetails.write = usage.cachedInputTokensWrite
-          } else if (usage.cachedInputTokensRead) {
-            cacheDetails.read = usage.cachedInputTokensRead
-          } else if (usage.cachedInputTokensWrite) {
-            cacheDetails.write = usage.cachedInputTokensWrite
-          }
-          this.logger.info('token.cache', cacheDetails)
-        } else {
-          this.logger.info('token.cache.none')
+          this.emitDiagnostic(
+            socket,
+            TOKEN_USAGE_SUMMARY_EVENT,
+            payload,
+            { socketId: socket.id, appId, agentName, modelName }
+          )
         }
 
-        // Calculate and log cost estimate using accurate model pricing
-        const costEstimate = calculateCostEstimate(usage, modelName)
-        costEstimateTotalCost = costEstimate.totalCost
-        const costLines = formatCostEstimate(costEstimate, usage)
-        this.logger.info('token.cost', { details: costLines.join('; ') })
-
-        const payload: TokenUsageSummaryEvent = {
-          inputTokens: usage.inputTokens,
-          outputTokens: usage.outputTokens,
-          totalTokens: usage.totalTokens,
-          ...(usage.cachedInputTokensRead !== undefined
-            && { cachedInputTokensRead:
-              usage.cachedInputTokensRead }),
-          ...(usage.cachedInputTokensWrite !== undefined
-            && { cachedInputTokensWrite:
-              usage.cachedInputTokensWrite }),
-          modelName,
-          totalCost: costEstimate.totalCost,
-          inputCost: costEstimate.inputCost,
-          outputCost: costEstimate.outputCost,
-          ...(costEstimate.cachedInputCost !== undefined
-            && { cachedInputCost:
-              costEstimate.cachedInputCost }),
-          savings: costEstimate.savings,
-          currency: costEstimate.currency,
-        }
-        this.emitDiagnostic(
-          socket,
-          TOKEN_USAGE_SUMMARY_EVENT,
-          payload,
-          { socketId: socket.id, appId, agentName, modelName }
-        )
-
-        // Call onTokenUsage callback with accurate multi-step usage
+        // Call onTokenUsage callback with accurate multi-step usage. The
+        // adapter runs the shared token observability and returns the estimated
+        // cost, which we attach to the invocation span below.
         if (this.config.onTokenUsage) {
           try {
             const processedContext = context as ProcessedContext
             const contextAppId = processedContext?.appId || (processedContext?.metadata as MetadataRecord)?.appId
             const contextSubscriptionId = (processedContext?.metadata as MetadataRecord)?.subscriptionId
             const contextCustomerId = (processedContext?.metadata as MetadataRecord)?.customerId as string | undefined
-            await this.config.onTokenUsage(
+            const tokenUsageResult = await this.config.onTokenUsage(
               {
                 inputTokens: usage.inputTokens || 0,
                 outputTokens: usage.outputTokens || 0,
@@ -3662,8 +3644,20 @@ Please try again with corrected formatting.`
                 ...(contextCustomerId ? { customerId: contextCustomerId } : {})
               }
             )
+            if (tokenUsageResult && typeof tokenUsageResult.totalCost === 'number') {
+              costEstimateTotalCost = tokenUsageResult.totalCost
+            }
           } catch (error) {
-            this.logger.error('token.usage.callback_error', { error })
+            // Span cost now comes solely from this callback's return, so a
+            // fault here yields a successful span with no cost — log turn
+            // context to correlate the two.
+            this.logger.error('token.usage.callback_error', {
+              error: error instanceof Error ? error.message : String(error),
+              ...(appId !== undefined && { appId }),
+              ...(conversationId !== undefined && { conversationId }),
+              agentName,
+              modelName,
+            })
           }
         }
       }
