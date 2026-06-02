@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/rs/cors"
+	"golang.org/x/net/netutil"
 
 	"github.com/airo-ai-builder/dev-supervisor/internal/auth"
 	"github.com/airo-ai-builder/dev-supervisor/internal/email/signing"
@@ -111,6 +112,16 @@ func (p *HTTPProxy) Start() error {
 		IdleConnTimeout:       90 * time.Second,
 		TLSHandshakeTimeout:   10 * time.Second,
 		ExpectContinueTimeout: 1 * time.Second,
+		// ResponseHeaderTimeout caps how long we wait for the backend to send
+		// response headers. Without it, a wedged app (e.g. a handler stuck in a
+		// retry loop) holds the proxied connection open indefinitely, letting a
+		// modest request rate balloon into tens of thousands of stuck sockets.
+		// The resulting "timeout awaiting response headers" error is NOT matched
+		// by isRetryableError, so it returns 502 without triggering the retry
+		// loop. It does not affect WebSocket/SSE body streaming, since those
+		// headers (101/200) arrive promptly before the long-lived stream begins.
+		// 0 disables the timeout.
+		ResponseHeaderTimeout: p.config.ResponseHeaderTimeout,
 		// ForceAttemptHTTP2 enables HTTP/2 for non-TLS connections (h2c)
 		// Not enabled by default as backend typically uses HTTP/1.1
 		// ForceAttemptHTTP2: true,
@@ -364,6 +375,19 @@ func (p *HTTPProxy) Start() error {
 			"excludedPaths", p.config.JWTExcludedPaths)
 	}
 
+	// Per-IP concurrency limiting. Placed OUTSIDE JWT (wraps the JWT handler, so
+	// it runs first) to reject abusive IPs before spending JWKS signature
+	// verification on them, but INSIDE method-validation/CORS so the 429 still
+	// gets CORS headers. Health/canary probes (JWTExcludedPaths) bypass it.
+	// 0 disables the layer.
+	if p.config.MaxConnsPerIP > 0 {
+		ipLimiter := middleware.NewIPConnLimiter(p.config.MaxConnsPerIP, p.config.JWTExcludedPaths, rateLimitKey)
+		handler = ipLimiter.Wrap(handler)
+		slog.Info("per-IP connection limiting enabled",
+			"max_conns_per_ip", p.config.MaxConnsPerIP,
+			"excluded_paths", p.config.JWTExcludedPaths)
+	}
+
 	// Status-page fallback middleware. When p.config.StatusPage.Active(),
 	// the cached "Coming Soon" / "Suspended" HTML is served in place of
 	// the proxy chain (and child app). /airo/health and /airo/canary_checks
@@ -409,9 +433,18 @@ func (p *HTTPProxy) Start() error {
 		Handler:     handler,
 		TLSConfig:   tlsConfig,
 		ReadTimeout: 30 * time.Second,
+		// ReadHeaderTimeout guards against slow-loris clients that dribble
+		// request headers to hold connections open. 0 disables it.
+		ReadHeaderTimeout: p.config.ReadHeaderTimeout,
 		// WriteTimeout intentionally omitted - would break WebSockets and SSE
 		// WebSocket and SSE connections are long-lived and can't have write timeouts
 		IdleTimeout: 120 * time.Second,
+	}
+
+	// Bound request header size to blunt header-stuffing abuse.
+	// <=0 leaves net/http's default (1 MiB).
+	if p.config.MaxHeaderBytes > 0 {
+		p.server.MaxHeaderBytes = p.config.MaxHeaderBytes
 	}
 
 	// Create listener (TLS or plain HTTP)
@@ -420,6 +453,20 @@ func (p *HTTPProxy) Start() error {
 	listener, err := net.Listen("tcp", listenAddr)
 	if err != nil {
 		return fmt.Errorf("failed to create listener on port %d: %w", p.config.ListenPort, err)
+	}
+
+	// Cap concurrent accepted connections. Wrapping the RAW TCP listener (before
+	// tls.NewListener) means the cap also bounds concurrent TLS handshakes - the
+	// expensive per-connection work - not just post-handshake connections. This
+	// prevents a flood from exhausting CPU/file descriptors. 0 = unlimited.
+	//
+	// Note: the cap counts every accepted connection, including idle HTTP
+	// keep-alive sockets between requests (server IdleTimeout is 120s). A small
+	// set of clients holding many idle keep-alives therefore consumes slots; the
+	// per-IP limiter and IdleTimeout bound that, but tune MaxConnections with the
+	// keep-alive population in mind, not just the active-request count.
+	if p.config.MaxConnections > 0 {
+		listener = netutil.LimitListener(listener, p.config.MaxConnections)
 	}
 
 	// Wrap with TLS if enabled
@@ -436,11 +483,13 @@ func (p *HTTPProxy) Start() error {
 		slog.Info("HTTP proxy started with TLS",
 			"listen_addr", actualAddr,
 			"target_url", targetURL.String(),
-			"tls_cert", p.config.TLSCertPath)
+			"tls_cert", p.config.TLSCertPath,
+			"max_connections", p.config.MaxConnections)
 	} else {
 		slog.Info("HTTP proxy started without TLS",
 			"listen_addr", actualAddr,
-			"target_url", targetURL.String())
+			"target_url", targetURL.String(),
+			"max_connections", p.config.MaxConnections)
 	}
 
 	// Start serving in background

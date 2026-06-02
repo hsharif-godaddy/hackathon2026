@@ -60,6 +60,18 @@ func getRayID(req *http.Request) string {
 	return strings.TrimSpace(req.Header.Get("Cf-Ray"))
 }
 
+// rateLimitKey returns the key used for per-IP connection limiting. The proxy
+// is always fronted by Cloudflare, so the real client IP arrives in
+// Cf-Connecting-Ip; we fall back to the connection's remote address when the
+// header is absent (e.g. direct/internal traffic).
+func rateLimitKey(req *http.Request) string {
+	if ip := getClientIP(req); ip != "" {
+		return ip
+	}
+	srcIP, _ := getSrcIPAndPort(req.RemoteAddr)
+	return srcIP
+}
+
 // getShareToken extracts the share token from query param or cookie.
 // Checks query param first (airoShareToken), then cookie (airo_share_token).
 // Returns empty string if not present.
@@ -88,6 +100,14 @@ type Config struct {
 	MaxRetries     int           // Maximum number of retries for connection errors (default: 5)
 	InitialBackoff time.Duration // Initial backoff duration (default: 100ms)
 	MaxBackoff     time.Duration // Maximum backoff duration (default: 2s)
+
+	// Connection-flood / abuse protection. All knobs are env-configurable with
+	// safe defaults; set a limit to 0 to disable that layer.
+	ResponseHeaderTimeout time.Duration // Max wait for backend response headers (default 90s; 0 = off)
+	ReadHeaderTimeout     time.Duration // Slow-loris guard on client request headers (default 15s; 0 = off)
+	MaxHeaderBytes        int           // Max client request header size, bytes (default 1 MiB; <=0 = net/http default)
+	MaxConnections        int           // Max concurrent accepted conns; bounds TLS handshakes (default 4096; 0 = off)
+	MaxConnsPerIP         int           // Max concurrent in-flight requests per client IP (default 100; 0 = off)
 
 	APIPrefix      string   // API route prefix (default: "/api")
 	AllowedOrigins []string // CORS allowed origins (whitelist)

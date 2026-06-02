@@ -1922,3 +1922,59 @@ func TestReverseProxy_ErrorHandler_NoCORSForDisallowedOrigin(t *testing.T) {
 	assert.Empty(t, rec.Header().Get("Access-Control-Allow-Credentials"),
 		"should not set CORS headers for disallowed origin")
 }
+
+// TestResponseHeaderTimeout_ReturnsBadGatewayWithoutHanging verifies that a
+// backend which accepts the connection but never sends response headers (e.g. a
+// handler wedged in a retry loop) no longer holds the proxied connection open
+// indefinitely. With ResponseHeaderTimeout set, the proxy must fail fast with a
+// 502 instead of hanging until the downstream client gives up.
+func TestResponseHeaderTimeout_ReturnsBadGatewayWithoutHanging(t *testing.T) {
+	// Backend accepts the request but never writes a response until either the
+	// (long) timer fires or the proxy cancels the upstream request context.
+	backend := newIPv4TestServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		select {
+		case <-time.After(5 * time.Second):
+		case <-r.Context().Done():
+		}
+	}))
+	defer backend.Close()
+
+	backendURL, err := url.Parse(backend.URL)
+	require.NoError(t, err)
+
+	// validateConfig() rejects port 0, so reserve a real free port.
+	portReservation, err := net.Listen("tcp4", "127.0.0.1:0")
+	require.NoError(t, err)
+	listenPort := portReservation.Addr().(*net.TCPAddr).Port
+	require.NoError(t, portReservation.Close())
+
+	proxy := NewHTTPProxy(Config{
+		Enabled:    true,
+		ListenPort: listenPort,
+		TargetHost: backendURL.Hostname(),
+		TargetPort: mustParsePort(t, backendURL.Port()),
+	})
+	// Override the env-derived default with a short timeout for a fast test.
+	proxy.config.ResponseHeaderTimeout = 250 * time.Millisecond
+
+	require.NoError(t, proxy.Start())
+	defer func() { _ = proxy.Stop() }()
+
+	proxyURL := fmt.Sprintf("http://127.0.0.1:%d/api/test", listenPort)
+
+	ctx := context.Background()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, proxyURL, nil)
+	require.NoError(t, err)
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	start := time.Now()
+	resp, err := client.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	elapsed := time.Since(start)
+
+	assert.Equal(t, http.StatusBadGateway, resp.StatusCode,
+		"non-responding backend should yield 502 once ResponseHeaderTimeout fires")
+	assert.Less(t, elapsed, 3*time.Second,
+		"request should fail fast via ResponseHeaderTimeout, not hang")
+}
