@@ -26,4 +26,9 @@ COPY --from=go-builder /usr/local/bin/dev-supervisor /usr/local/bin/dev-supervis
 COPY --from=go-builder /usr/local/bin/airo-sandbox /usr/local/bin/airo-sandbox
 COPY test/docker-integration-tests.sh /test/
 RUN chmod +x /test/docker-integration-tests.sh
+# Opt the integration test into the strangler topology — the whole point of
+# this Dockerfile is to validate the airo-workspace -> dev-supervisor proxy
+# end-to-end. Production deployments leave this unset until PR #4 moves the
+# peer-sec auth check into Rust.
+ENV AIRO_WORKSPACE_PROXY=1
 ENTRYPOINT ["/usr/local/bin/airo-workspace", "/usr/local/bin/dev-supervisor"]

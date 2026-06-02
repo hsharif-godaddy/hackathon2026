@@ -5,12 +5,16 @@
 // that is the safety net for the Go-to-Rust migration.
 //
 // Mode is selected via the DEV_SUPERVISOR_TEST_HARNESS env var:
-//   - inproc   (default) — Go server in this test process, fastest
-//   - subproc            — exec the built dev-supervisor binary as a child
-//   - strangler          — RESERVED, future PR: Rust listener forwarding to Go subproc
+//   - inproc    (default) — Go server in this test process, fastest
+//   - subproc             — exec the built dev-supervisor binary as a child
+//   - strangler           — exec airo-workspace, which binds the public socket
+//                           and proxies to the dev-supervisor on an internal
+//                           socket. Validates that the proxy is bit-perfect
+//                           against the Go-only paths.
 //
-// subproc mode requires the binary to exist; build with `make build-supervisor`
-// or set DEV_SUPERVISOR_BIN to an absolute path.
+// subproc/strangler mode require their respective binaries to exist; build
+// with `make build` or override paths via DEV_SUPERVISOR_BIN /
+// AIRO_WORKSPACE_BIN.
 
 package main
 
@@ -28,9 +32,10 @@ import (
 )
 
 const (
-	testHarnessEnv     = "DEV_SUPERVISOR_TEST_HARNESS"
-	harnessModeInproc  = "inproc"
-	harnessModeSubproc = "subproc"
+	testHarnessEnv       = "DEV_SUPERVISOR_TEST_HARNESS"
+	harnessModeInproc    = "inproc"
+	harnessModeSubproc   = "subproc"
+	harnessModeStrangler = "strangler"
 )
 
 // serverHandle owns the lifecycle of a dev-supervisor instance under test.
@@ -55,8 +60,10 @@ func bootServer(t *testing.T, socketPath string) serverHandle {
 		h, err = startInproc(t, socketPath)
 	case harnessModeSubproc:
 		h, err = startSubproc(t, socketPath)
+	case harnessModeStrangler:
+		h, err = startStrangler(t, socketPath)
 	default:
-		t.Fatalf("bootServer: mode %q has no startInproc/startSubproc impl", mode)
+		t.Fatalf("bootServer: mode %q has no impl", mode)
 	}
 	if err != nil {
 		t.Fatalf("start server (mode=%s): %v", mode, err)
@@ -72,8 +79,10 @@ func selectHarnessMode(t *testing.T) string {
 		return harnessModeInproc
 	case harnessModeSubproc:
 		return harnessModeSubproc
+	case harnessModeStrangler:
+		return harnessModeStrangler
 	default:
-		t.Fatalf("unknown %s=%q (want inproc|subproc)", testHarnessEnv, m)
+		t.Fatalf("unknown %s=%q (want inproc|subproc|strangler)", testHarnessEnv, m)
 		return ""
 	}
 }
@@ -115,49 +124,62 @@ func (h *inprocHandle) Stop() {
 	}
 }
 
-// --- subproc mode -----------------------------------------------------------
+// --- subproc/strangler shared lifecycle ------------------------------------
 
-// subprocHandle exec's the built dev-supervisor binary so tests exercise the
-// real boot path, not just the in-process Server type.
-type subprocHandle struct {
-	t      *testing.T
-	cmd    *exec.Cmd
-	stderr *bytes.Buffer
-	exited chan struct{}
+// childHandle owns a child binary's lifecycle. Both subproc (dev-supervisor
+// only) and strangler (airo-workspace + dev-supervisor) modes use it; they
+// differ only in what gets exec'd, which env they pass, and their teardown
+// signal target.
+//
+// Expected exit outcomes that Stop accepts as clean: zero exit code, or
+// terminated by the SIGTERM we sent. Anything else — non-zero exit, SIGKILL
+// after the deadline, an exit that happened before Stop ran — is a regression
+// the harness must surface, regardless of whether stderr captured anything.
+type childHandle struct {
+	t           *testing.T
+	cmd         *exec.Cmd
+	stderr      *bytes.Buffer
+	exited      chan struct{}
+	label       string
+	killTimeout time.Duration
+	signalGroup bool
 }
 
-func startSubproc(t *testing.T, socketPath string) (*subprocHandle, error) {
+func startChild(t *testing.T, h *childHandle, socketPath, startErrPrefix string) error {
 	t.Helper()
-	binPath := devSupervisorBinaryPath(t)
-	stderr := &bytes.Buffer{}
-	cmd := exec.Command(binPath, "--socket", socketPath)
-	cmd.Env = childEnv()
-	cmd.Stderr = stderr
-	// Own process group so SIGTERM in Stop only hits the child.
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-
-	h := &subprocHandle{t: t, cmd: cmd, stderr: stderr, exited: make(chan struct{})}
-	if err := cmd.Start(); err != nil {
-		return nil, fmt.Errorf("start dev-supervisor binary: %w", err)
+	if err := h.cmd.Start(); err != nil {
+		return fmt.Errorf("%s: %w", startErrPrefix, err)
 	}
 	go func() {
-		_ = cmd.Wait()
+		_ = h.cmd.Wait()
 		close(h.exited)
 	}()
 	if err := waitForSocket(socketPath); err != nil {
 		h.Stop()
-		return nil, fmt.Errorf("subproc not ready: %w (stderr: %s)", err, stderr.String())
+		return fmt.Errorf("%s not ready: %w (stderr: %s)", h.label, err, h.stderr.String())
 	}
-	return h, nil
+	return nil
 }
 
-func (h *subprocHandle) Stop() {
+func (h *childHandle) Stop() {
 	if h.cmd.Process != nil {
-		_ = h.cmd.Process.Signal(syscall.SIGTERM)
+		// signalGroup=true sends to -PID (process group) so a parent like
+		// airo-workspace and its dev-supervisor child both shut down at once
+		// — faster than letting the parent's 30s graceful-shutdown deadline
+		// run before propagation. signalGroup=false targets just the child PID.
+		target := h.cmd.Process.Pid
+		if h.signalGroup {
+			target = -target
+		}
+		_ = syscall.Kill(target, syscall.SIGTERM)
 		select {
 		case <-h.exited:
-		case <-time.After(10 * time.Second):
-			_ = h.cmd.Process.Kill()
+		case <-time.After(h.killTimeout):
+			if h.signalGroup {
+				_ = syscall.Kill(-h.cmd.Process.Pid, syscall.SIGKILL)
+			} else {
+				_ = h.cmd.Process.Kill()
+			}
 			<-h.exited
 		}
 	}
@@ -165,17 +187,39 @@ func (h *subprocHandle) Stop() {
 	if state == nil {
 		return
 	}
-	// Expected outcomes: clean exit (Success), or signaled by the SIGTERM we
-	// sent. Anything else — non-zero exit, SIGKILL after our 10s deadline, an
-	// exit that happened before Stop ran — is a regression the harness must
-	// surface, regardless of whether stderr captured anything.
 	if state.Success() {
 		return
 	}
 	if ws, ok := state.Sys().(syscall.WaitStatus); ok && ws.Signaled() && ws.Signal() == syscall.SIGTERM {
 		return
 	}
-	h.t.Errorf("dev-supervisor subproc terminated unexpectedly: %s; stderr:\n%s", state, h.stderr.String())
+	h.t.Errorf("%s terminated unexpectedly: %s; stderr:\n%s", h.label, state, h.stderr.String())
+}
+
+// --- subproc mode -----------------------------------------------------------
+
+// subproc exec's the built dev-supervisor binary so tests exercise the real
+// boot path, not just the in-process Server type.
+func startSubproc(t *testing.T, socketPath string) (*childHandle, error) {
+	t.Helper()
+	stderr := &bytes.Buffer{}
+	cmd := exec.Command(devSupervisorBinaryPath(t), "--socket", socketPath)
+	cmd.Env = childEnv()
+	cmd.Stderr = stderr
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+
+	h := &childHandle{
+		t:           t,
+		cmd:         cmd,
+		stderr:      stderr,
+		exited:      make(chan struct{}),
+		label:       "dev-supervisor subproc",
+		killTimeout: 10 * time.Second,
+	}
+	if err := startChild(t, h, socketPath, "start dev-supervisor binary"); err != nil {
+		return nil, err
+	}
+	return h, nil
 }
 
 // childEnv returns the inherited environment minus the harness-mode var, so a
@@ -214,23 +258,80 @@ func waitForSocket(socketPath string) error {
 // directory; override with DEV_SUPERVISOR_BIN.
 func devSupervisorBinaryPath(t *testing.T) string {
 	t.Helper()
-	if v := os.Getenv("DEV_SUPERVISOR_BIN"); v != "" {
+	return resolveBinary(t, "DEV_SUPERVISOR_BIN", "dev-supervisor", "make build-supervisor")
+}
+
+// airoWorkspaceBinaryPath resolves the airo-workspace binary used in strangler
+// mode. Falls back to dist/airo-workspace; override with AIRO_WORKSPACE_BIN.
+func airoWorkspaceBinaryPath(t *testing.T) string {
+	t.Helper()
+	return resolveBinary(t, "AIRO_WORKSPACE_BIN", "airo-workspace", "make build-airo-workspace")
+}
+
+func resolveBinary(t *testing.T, envVar, binName, buildHint string) string {
+	t.Helper()
+	if v := os.Getenv(envVar); v != "" {
 		if _, err := os.Stat(v); err != nil {
-			t.Fatalf("DEV_SUPERVISOR_BIN=%s not usable: %v", v, err)
+			t.Fatalf("%s=%s not usable: %v", envVar, v, err)
 		}
 		return v
 	}
 	// Test binaries run with cwd = package dir (cmd/dev-supervisor); the build
-	// output lives at ../../dist/dev-supervisor.
-	candidate, err := filepath.Abs(filepath.Join("..", "..", "dist", "dev-supervisor"))
+	// output lives at ../../dist/<bin>.
+	candidate, err := filepath.Abs(filepath.Join("..", "..", "dist", binName))
 	if err != nil {
 		t.Fatalf("resolve binary path: %v", err)
 	}
 	if _, err := os.Stat(candidate); err != nil {
-		t.Fatalf(
-			"dev-supervisor binary not found at %s; run `make build-supervisor` or set DEV_SUPERVISOR_BIN",
-			candidate,
-		)
+		t.Fatalf("%s not found at %s; run `%s` or set %s",
+			binName, candidate, buildHint, envVar)
 	}
 	return candidate
+}
+
+// --- strangler mode ---------------------------------------------------------
+
+// strangler exec's airo-workspace with the dev-supervisor binary as its
+// child. airo-workspace binds the public socket; the Go child binds an
+// internal socket the proxy forwards to. Validates the cross-process boundary
+// in the topology that production will run.
+func startStrangler(t *testing.T, socketPath string) (*childHandle, error) {
+	t.Helper()
+	// The internal socket is per-test (in the same temp dir as the public one)
+	// so parallel test runs don't collide on /tmp/supervisor/internal.sock.
+	internalSocket := filepath.Join(filepath.Dir(socketPath), "internal.sock")
+
+	stderr := &bytes.Buffer{}
+	// airo-workspace is invoked with the dev-supervisor binary as its child;
+	// no --socket flag is passed because airo-workspace overrides the child's
+	// socket env to the internal path.
+	cmd := exec.Command(airoWorkspaceBinaryPath(t), devSupervisorBinaryPath(t))
+	cmd.Env = append(childEnv(),
+		// Proxy is opt-in; without this airo-workspace just exec's
+		// dev-supervisor with no path injection. The whole point of the
+		// strangler harness is to exercise the proxy path, so turn it on.
+		"AIRO_WORKSPACE_PROXY=1",
+		"AIRO_PUBLIC_SOCKET_PATH="+socketPath,
+		"AIRO_INTERNAL_SOCKET_PATH="+internalSocket,
+		// The Go child reads DEV_SUPERVISOR_SOCKET_PATH; clear any inherited
+		// value so airo-workspace's injected env is the only source.
+		"DEV_SUPERVISOR_SOCKET_PATH=",
+		"AIRO_SUPERVISOR_SOCKET_PATH=",
+	)
+	cmd.Stderr = stderr
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+
+	h := &childHandle{
+		t:           t,
+		cmd:         cmd,
+		stderr:      stderr,
+		exited:      make(chan struct{}),
+		label:       "airo-workspace strangler",
+		killTimeout: 15 * time.Second,
+		signalGroup: true,
+	}
+	if err := startChild(t, h, socketPath, "start airo-workspace"); err != nil {
+		return nil, err
+	}
+	return h, nil
 }

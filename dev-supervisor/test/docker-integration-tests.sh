@@ -1,7 +1,9 @@
 #!/bin/bash
 set -e
 
-SOCKET_PATH="/tmp/airo-supervisor.sock"
+# Public socket airo-workspace binds; the Go child binds an internal socket
+# at /tmp/supervisor/internal.sock that callers do not touch.
+SOCKET_PATH="/tmp/supervisor/dev-supervisor.sock"
 TEST_TIMEOUT=30
 
 echo "=== Docker Integration Tests for dev-supervisor ==="

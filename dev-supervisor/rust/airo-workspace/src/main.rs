@@ -1,35 +1,39 @@
+//! airo-workspace: PID1 + reverse proxy for the dev-supervisor container.
+//!
+//! Runs as PID 1, exec's the Go dev-supervisor as a child, forwards signals,
+//! and reaps zombies. Optionally also owns the public Unix socket and proxies
+//! to the Go binary on a private internal socket — the strangler-fig
+//! topology that future PRs will progressively migrate handlers into.
+//!
+//! Proxy is **off by default**. When enabled, dev-supervisor sees the
+//! proxy's SELinux context (`airo_app_container.process`) on accepted
+//! connections instead of the actual caller's, which would break Go's
+//! `PeerSec` auth in production. The fix lives in PR #4 (peer-sec moves
+//! into Rust at the listener); until then production stays on the
+//! exec-only path and only test/staging environments opt in.
+//!
+//! Configuration (env):
+//!   AIRO_WORKSPACE_PROXY        Set to enable the proxy. Default: off
+//!                               (Go binds the public socket directly,
+//!                               pre-strangler behavior — required for
+//!                               production until PR #4 lands).
+//!   AIRO_PUBLIC_SOCKET_PATH     Public socket Rust binds when the proxy
+//!                               is enabled. Falls back to
+//!                               DEV_SUPERVISOR_SOCKET_PATH then the default.
+//!   AIRO_INTERNAL_SOCKET_PATH   Private socket Go binds via injected env
+//!                               when the proxy is enabled.
+//!                               Default: /tmp/supervisor/internal.sock.
+//!   AIRO_WORKSPACE_VERBOSE      Stderr debug logging.
+
+mod proxy;
+mod supervisor;
+
 use std::env;
-use std::os::unix::process::CommandExt;
-use std::process::{Command, exit};
-use std::sync::OnceLock;
-use std::time::{Duration, Instant};
+use std::path::{Path, PathBuf};
+use std::process::exit;
 
-use nix::sys::signal::{self, SigSet, Signal};
-use nix::sys::wait::{self, WaitPidFlag, WaitStatus};
-use nix::unistd::Pid;
-
-#[cfg(target_os = "linux")]
-use nix::poll::{PollFd, PollFlags, PollTimeout, poll};
-#[cfg(target_os = "linux")]
-use nix::sys::signalfd::SignalFd;
-#[cfg(target_os = "linux")]
-use std::os::fd::AsFd;
-
-const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(30);
-
-static VERBOSE: OnceLock<bool> = OnceLock::new();
-
-fn verbose() -> bool {
-    *VERBOSE.get_or_init(|| env::var("AIRO_WORKSPACE_VERBOSE").is_ok())
-}
-
-macro_rules! debug {
-    ($($arg:tt)*) => {
-        if verbose() {
-            eprintln!("[airo-workspace] {}", format!($($arg)*));
-        }
-    };
-}
+const DEFAULT_PUBLIC_SOCKET: &str = "/tmp/supervisor/dev-supervisor.sock";
+const DEFAULT_INTERNAL_SOCKET: &str = "/tmp/supervisor/internal.sock";
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -38,177 +42,66 @@ fn main() {
         exit(1);
     }
 
-    let all_signals = SigSet::all();
-    if let Err(e) =
-        signal::pthread_sigmask(signal::SigmaskHow::SIG_SETMASK, Some(&all_signals), None)
-    {
-        eprintln!("airo-workspace: failed to block signals: {e}");
-        exit(1);
+    // Mask signals BEFORE spawning anything; tokio worker threads spawned by
+    // the proxy inherit the mask, which is exactly what we want — only the
+    // main thread's signalfd loop sees signals.
+    supervisor::block_all_signals();
+
+    let proxy_enabled = env::var("AIRO_WORKSPACE_PROXY").is_ok();
+    let internal_socket = resolve_internal_socket();
+    let public_socket = resolve_public_socket();
+
+    if proxy_enabled {
+        // Production Dockerfiles mkdir /tmp/supervisor at image-build time,
+        // but bind-mounted /tmp (e.g. test/Dockerfile.integration via -v)
+        // hides that. Doing it here once at startup makes the binary safe
+        // to drop into any /tmp layout — both our bind() and the child's
+        // bind() need this dir.
+        ensure_parent_dir(&public_socket);
+        ensure_parent_dir(&internal_socket);
     }
 
-    let child_pid = spawn_child(&args[1..]);
-    debug!("spawned child pid={child_pid}");
-
-    run_supervisor(child_pid);
-}
-
-fn spawn_child(args: &[String]) -> Pid {
-    let mut cmd = Command::new(&args[0]);
-    cmd.args(&args[1..]);
-
-    // SAFETY: runs post-fork, only calls async-signal-safe sigprocmask.
-    #[allow(unsafe_code)]
-    unsafe {
-        cmd.pre_exec(|| {
-            let empty = SigSet::empty();
-            signal::pthread_sigmask(signal::SigmaskHow::SIG_SETMASK, Some(&empty), None)
-                .map_err(|e| std::io::Error::from_raw_os_error(e as i32))?;
-            Ok(())
-        });
-    }
-
-    match cmd.spawn() {
-        Ok(child) => Pid::from_raw(child.id() as i32),
-        Err(e) => {
-            eprintln!("airo-workspace: failed to spawn child: {e}");
-            exit(1);
-        }
-    }
-}
-
-#[cfg(target_os = "linux")]
-fn wait_for_signal(sfd: &SignalFd, timeout: Option<Duration>) -> Option<Signal> {
-    let poll_timeout = match timeout {
-        Some(d) => {
-            let millis: u16 = d.as_millis().try_into().unwrap_or(u16::MAX);
-            PollTimeout::from(millis.max(100))
-        }
-        None => PollTimeout::NONE,
+    let child_internal_path = if proxy_enabled {
+        Some(internal_socket.as_path())
+    } else {
+        None
     };
+    let child_pid = supervisor::spawn_child(&args[1..], child_internal_path);
+    supervisor::debug!("spawned child pid={child_pid}");
 
-    let poll_fd = PollFd::new(sfd.as_fd(), PollFlags::POLLIN);
-    match poll(&mut [poll_fd], poll_timeout) {
-        Ok(0) => return None,
-        Ok(_) => {}
-        Err(nix::errno::Errno::EINTR) => return None,
-        Err(e) => {
-            eprintln!("airo-workspace: poll failed: {e}");
-            exit(1);
-        }
+    if proxy_enabled {
+        proxy::run_in_background(public_socket, internal_socket);
     }
 
-    match sfd.read_signal() {
-        Ok(Some(info)) => Signal::try_from(info.ssi_signo as i32).ok(),
-        Ok(None) => None,
-        Err(e) => {
-            eprintln!("airo-workspace: read_signal failed: {e}");
-            exit(1);
-        }
+    supervisor::run(child_pid);
+}
+
+fn ensure_parent_dir(path: &Path) {
+    let Some(parent) = path.parent() else {
+        return;
+    };
+    if parent.as_os_str().is_empty() {
+        return;
     }
-}
-
-#[cfg(not(target_os = "linux"))]
-fn wait_for_signal(_timeout: Option<Duration>) -> Option<Signal> {
-    let all = SigSet::all();
-    all.wait().ok()
-}
-
-/// Signals to forward to the child — matches the Go setupSignalForwarding allowlist.
-fn should_forward(sig: Signal) -> bool {
-    matches!(
-        sig,
-        Signal::SIGHUP
-            | Signal::SIGUSR1
-            | Signal::SIGUSR2
-            | Signal::SIGWINCH
-            | Signal::SIGCONT
-            | Signal::SIGALRM
-    )
-}
-
-fn run_supervisor(child_pid: Pid) -> ! {
-    #[cfg(target_os = "linux")]
-    let sfd = SignalFd::new(&SigSet::all()).unwrap_or_else(|e| {
-        eprintln!("airo-workspace: failed to create signalfd: {e}");
+    if let Err(e) = std::fs::create_dir_all(parent) {
+        eprintln!(
+            "airo-workspace: create parent dir {} for socket {}: {e}",
+            parent.display(),
+            path.display(),
+        );
         exit(1);
-    });
-
-    let mut shutdown_deadline: Option<Instant> = None;
-    let mut child_exit_status: Option<i32> = None;
-    let mut kill_sent: bool = false;
-
-    loop {
-        if !kill_sent
-            && let Some(deadline) = shutdown_deadline
-            && deadline.elapsed() >= SHUTDOWN_TIMEOUT
-        {
-            debug!("shutdown timeout, sending SIGKILL to child");
-            let _ = signal::kill(child_pid, Signal::SIGKILL);
-            kill_sent = true;
-        }
-
-        if let Some(code) = child_exit_status {
-            reap_zombies(child_pid, &mut child_exit_status);
-            debug!("exiting with code={code}");
-            exit(code);
-        }
-
-        let timeout = shutdown_deadline.map(|d| SHUTDOWN_TIMEOUT.saturating_sub(d.elapsed()));
-
-        #[cfg(target_os = "linux")]
-        let sig = wait_for_signal(&sfd, timeout);
-        #[cfg(not(target_os = "linux"))]
-        let sig = wait_for_signal(timeout);
-
-        let sig = match sig {
-            Some(s) => s,
-            None => continue,
-        };
-
-        debug!("received signal {sig}");
-
-        match sig {
-            Signal::SIGCHLD => {
-                reap_zombies(child_pid, &mut child_exit_status);
-            }
-            Signal::SIGTERM | Signal::SIGINT if shutdown_deadline.is_none() => {
-                debug!("initiating shutdown, forwarding {sig} to child");
-                let _ = signal::kill(child_pid, sig);
-                shutdown_deadline = Some(Instant::now());
-            }
-            _ if should_forward(sig) => {
-                debug!("forwarding {sig} to child");
-                let _ = signal::kill(child_pid, sig);
-            }
-            _ => {}
-        }
     }
 }
 
-fn reap_zombies(child_pid: Pid, child_exit_status: &mut Option<i32>) {
-    loop {
-        match wait::waitpid(Pid::from_raw(-1), Some(WaitPidFlag::WNOHANG)) {
-            Ok(WaitStatus::Exited(pid, code)) => {
-                if pid == child_pid {
-                    debug!("child exited with code={code}");
-                    *child_exit_status = Some(code);
-                } else {
-                    debug!("reaped orphan pid={pid} code={code}");
-                }
-            }
-            Ok(WaitStatus::Signaled(pid, sig, _)) => {
-                let code = 128 + sig as i32;
-                if pid == child_pid {
-                    debug!("child killed by signal {sig}");
-                    *child_exit_status = Some(code);
-                } else {
-                    debug!("reaped orphan pid={pid} signal={sig}");
-                }
-            }
-            Ok(WaitStatus::StillAlive) => break,
-            Ok(_) => continue,
-            Err(nix::errno::Errno::ECHILD) => break,
-            Err(_) => break,
-        }
-    }
+fn resolve_public_socket() -> PathBuf {
+    env::var_os("AIRO_PUBLIC_SOCKET_PATH")
+        .or_else(|| env::var_os("DEV_SUPERVISOR_SOCKET_PATH"))
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(DEFAULT_PUBLIC_SOCKET))
+}
+
+fn resolve_internal_socket() -> PathBuf {
+    env::var_os("AIRO_INTERNAL_SOCKET_PATH")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(DEFAULT_INTERNAL_SOCKET))
 }

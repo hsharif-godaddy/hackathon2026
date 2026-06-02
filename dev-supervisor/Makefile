@@ -1,6 +1,6 @@
 # dev-supervisor Makefile
 
-.PHONY: build build-supervisor build-sandbox build-airo-workspace build-all clean test test-all test-integration test-integration-subproc test-docker test-docker-go lint lint-all lint-rust fmt fmt-fix vet run help install deps
+.PHONY: build build-supervisor build-sandbox build-airo-workspace build-all clean test test-all test-integration test-integration-subproc test-integration-strangler test-docker test-docker-go lint lint-all lint-rust fmt fmt-fix vet run help install deps
 
 # Build variables
 BINARY_NAME := dev-supervisor
@@ -83,6 +83,14 @@ test-integration:
 test-integration-subproc: build-supervisor
 	@echo "Running integration tests (subproc against $(BUILD_DIR)/$(BINARY_NAME))..."
 	DEV_SUPERVISOR_TEST_HARNESS=subproc go test -v -timeout 240s ./cmd/dev-supervisor
+
+## Run integration tests with airo-workspace (Rust) in front of dev-supervisor (Go).
+## airo-workspace binds the public socket and proxies to the Go child on an
+## internal socket — this is the strangler-fig topology that production uses.
+## The same test suite must pass identically to inproc/subproc.
+test-integration-strangler: build-supervisor build-airo-workspace
+	@echo "Running integration tests (strangler: airo-workspace -> dev-supervisor)..."
+	DEV_SUPERVISOR_TEST_HARNESS=strangler go test -v -timeout 240s ./cmd/dev-supervisor
 
 ## Run tests with coverage report
 test-coverage: test
