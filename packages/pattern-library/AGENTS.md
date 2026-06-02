@@ -4,15 +4,19 @@ Airo's component library: React primitives for AI-powered conversational and
 generative UI, built on GoDaddy UXCore2 (Antares).
 
 This package was vendored from `gdcorp-ux/airo-components` into this
-monorepo. The upstream repo's tooling (Biome, Storybook, Changesets,
-Aichemy/MCP, codex publishing, GitHub Pages) was intentionally left
-behind. Operational commands now come from the monorepo, not from this
-package.
+monorepo. The upstream repo's tooling (Biome, Changesets, Aichemy/MCP,
+codex publishing, GitHub Pages) was intentionally left behind.
+Operational commands now come from the monorepo, not from this package.
+
+Storybook was reintroduced as a local-only dev surface — run
+`pnpm storybook` from the repo root (delegates to this package's
+`storybook dev -p 6006`). Stories live alongside components in
+`src/<area>/<name>/<Name>.stories.tsx`; config lives in `.storybook/`.
 
 For monorepo-wide commands (`pnpm dev`, `pnpm typecheck`, `pnpm lint`,
-`pnpm build`, test filtering, env vars, etc.), defer to the root
-[`CLAUDE.md`](../../CLAUDE.md). This file documents only what is
-specific to this package.
+`pnpm build`, test filtering, env vars, etc.), defer to the
+[monorepo root agent guide](../../CLAUDE.md). This file documents only
+what is specific to this package.
 
 ## What's specific to this package
 
@@ -39,6 +43,33 @@ imports.
 | Peer DS | `@ux/box`, `@ux/button`, `@ux/intents`, `@ux/text-lockup`, etc. | External UXCore2 primitives. **Peer dependencies**, never bundled. |
 | Runtime deps | `@ux/tailwind-intents`, `classnames`, `react-markdown`, `react-rnd`, `rehype-sanitize`, `remark-gfm` | Always safe to import. |
 | This package | `src/<area>/<name>/` | Airo-specific compositions of UXCore2. |
+
+### Self-containment
+
+Components in this package **must be self-contained**. They render in any
+React 18/19 host (Storybook, Next.js client, Vite SPA, RN-web wrappers)
+with literals and event handlers alone — no consumer-app coupling, no
+server-only modules, no environmental assumptions:
+
+- **No translations / i18n.** All user-visible text arrives as props (or
+  is authored as a sensible English default that consumers override). Do
+  not import from `next-intl`, `react-intl`, `i18next`, the consuming
+  app's translation bundle, or any other translation system. The
+  consuming app owns the translation layer and passes already-translated
+  strings in.
+- **No business logic.** Pricing, entitlement checks, feature flags,
+  domain validation, API calls, telemetry side effects — all belong to
+  the consuming app. Components take callbacks and rendered state, not
+  fetchers or rules engines.
+- **No server-only modules.** No `next/headers`, no `node:*` imports,
+  no env-var reads, no `process.env`.
+- **No app-specific config.** Routes, auth contexts, GoCaaS/GoCode
+  endpoints — none of these belong here. If a component needs context,
+  expose it as a prop and let the consumer wire their provider.
+
+Rule of thumb: if you can't render the component meaningfully in a
+Storybook story with literals and event handlers alone, the dependency
+belongs upstream in the consuming app.
 
 ### Peer-dep ranges
 
@@ -101,8 +132,10 @@ API conventions, and the wiring checklist for a new `src/<area>/<name>/`.
 
 ## Available skills
 
-Vendored skills under [`.agents/skills/`](.agents/skills/) (symlinked
-into `.claude/skills/` for Claude Code):
+Vendored skills under [`.agents/skills/`](.agents/skills/). Tools that
+look in their own conventional skill directory (e.g. `.claude/skills/`,
+`.codex/skills/`) reach the same content via symlinks, so all agents
+working in this package have access:
 
 | Skill | When to use |
 |-------|-------------|

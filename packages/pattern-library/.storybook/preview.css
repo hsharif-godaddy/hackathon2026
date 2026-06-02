@@ -1,0 +1,39 @@
+/*
+ * Storybook preview stylesheet.
+ *
+ * Consumer-root style imports live here, not inside component CSS.
+ * Component stylesheets (src/<area>/<name>/styles.css) ship only their
+ * own BEM-scoped rules — UXCore2 peer styles are imported once, at the
+ * consumer root, so consumers (apps and Storybook) don't pay for them
+ * multiple times. This file is the Storybook "consumer root".
+ *
+ * Theme tokens are injected at runtime by the `@ux/storybook-theming`
+ * addon (see `preview.ts`), which fetches CSS from the GoDaddy Theme API
+ * and wires the toolbar switcher. No local theme.css is needed.
+ */
+
+@import '@ux/box/styles';
+@import '@ux/button/styles';
+@import '@ux/card/styles';
+@import '@ux/corner-actions/styles';
+@import '@ux/disrupt/styles';
+@import '@ux/field-frame/styles';
+@import '@ux/flyout/styles';
+@import '@ux/list-item/styles';
+@import '@ux/modal/styles';
+@import '@ux/tag/styles';
+@import '@ux/text-entry/styles';
+@import '@ux/text-lockup/styles';
+@import '@ux/text/styles';
+
+@tailwind utilities;
+
+/*
+ * Also hide the "Show code" toggle while the Panel is open. The button sits
+ * in the action-bar row below each story preview; even with the backdrop
+ * elevated, dimming it behind a semi-transparent scrim looks unintentional.
+ * The button reappears automatically once the panel closes.
+ */
+body:has(.airo-surfaces-panel) .docblock-code-toggle {
+  display: none;
+}
