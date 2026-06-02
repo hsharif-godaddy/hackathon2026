@@ -165,7 +165,6 @@ export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) 
                   value={ViewMode.PREVIEW}
                   icon={<WebsiteFilledIcon className="size-2.5" />}
                   label={t('builder_preview_button_preview')}
-                  data-eid="develop.header.iframe"
                   className={`px-2 !rounded-r-none ${SEGMENTED_INACTIVE_TRANSPARENT}`}
                 />
                 <ButtonGroup.Item
@@ -173,7 +172,6 @@ export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) 
                   icon={<InlineEditIcon className="size-2.5" />}
                   label={t('builder_preview_button_edit')}
                   disabled={isVersionHistoryOpen}
-                  data-eid="develop.header.edit_mode"
                   className={`px-2 !rounded-l-none ${SEGMENTED_INACTIVE_TRANSPARENT} ${ACTIVE_AI_PILL}`}
                 />
               </ButtonGroup>
