@@ -28,6 +28,9 @@ const (
 	wsFilesEncodingUTF8   = "utf-8"
 	wsFilesEncodingBase64 = "base64"
 
+	wsFilesKindFile      = "file"
+	wsFilesKindDirectory = "directory"
+
 	wsFilesMaxReadBytes   = 10 * 1024 * 1024  // 10MB max file read (view)
 	wsFilesMaxEditBytes   = 1 * 1024 * 1024   // 1MB max file for edit (full in-memory replacement)
 	wsFilesMaxBodySize    = 10 * 1024 * 1024  // 10MB max request body (JSON endpoints)
@@ -39,6 +42,8 @@ const (
 	wsFilesDefaultMaxLines   = 2000
 	wsFilesDefaultMaxResults = 50
 	wsFilesMaxMaxResults     = 1000
+
+	wsFilesMaxStatPaths = 100
 )
 
 // --- Shared infrastructure ---
@@ -128,9 +133,12 @@ type wsFilesTreeRequest struct {
 }
 
 type wsFilesTreeEntry struct {
-	Path       string `json:"path"`
-	Kind       string `json:"kind"` // "file" or "directory"
-	Size       int64  `json:"size,omitempty"`
+	Path string `json:"path"`
+	Kind string `json:"kind"` // "file" or "directory"
+	// Size is always present (0 for directories) so the wire format matches
+	// the TS interface — `omitempty` would silently drop the field for dirs
+	// and break callers that access `entry.size` without a kind guard.
+	Size       int64  `json:"size"`
 	ModifiedAt string `json:"modifiedAt"`
 }
 
@@ -214,6 +222,35 @@ type wsFilesDeleteRequest struct {
 type wsFilesMoveRequest struct {
 	From string `json:"from"`
 	To   string `json:"to"`
+}
+
+type wsFilesStatRequest struct {
+	Paths []string `json:"paths"`
+}
+
+// wsFilesStatEntry is one entry in a /workspace/files/stat response.
+//
+// Successful entries set Kind/Size/ModifiedAt and leave Error empty.
+// Failed entries set Error to a typed code ("not_found" | "permission_denied"
+// | "invalid_path") and leave the metadata fields zero. Each path resolves
+// independently — a missing path produces a per-entry error rather than
+// failing the whole call.
+//
+// On successful entries, Size is emitted unconditionally (0 for directories)
+// rather than `omitempty`'d — the TS `StatEntryFound` type declares
+// `size: number` as required, and silently dropping the field for directories
+// would force every consumer into a `kind === 'file'` guard before reading it.
+// On error entries, Size is still 0 / Kind is "" — those drop via omitempty.
+type wsFilesStatEntry struct {
+	Path       string `json:"path"`
+	Kind       string `json:"kind,omitempty"`
+	Size       int64  `json:"size"`
+	ModifiedAt string `json:"modifiedAt,omitempty"`
+	Error      string `json:"error,omitempty"`
+}
+
+type wsFilesStatResponse struct {
+	Entries []wsFilesStatEntry `json:"entries"`
 }
 
 // --- Middleware ---
@@ -381,9 +418,9 @@ func (s *Server) wsFilesTreeRecursive(
 }
 
 func wsFilesBuildEntry(path string, info fs.FileInfo) wsFilesTreeEntry {
-	kind := "file"
+	kind := wsFilesKindFile
 	if info.IsDir() {
-		kind = "directory"
+		kind = wsFilesKindDirectory
 	}
 	entry := wsFilesTreeEntry{
 		Path:       path,
@@ -1140,6 +1177,81 @@ func wsFilesUploadMiddleware(next http.Handler) http.Handler {
 		r.Body = http.MaxBytesReader(w, r.Body, wsFilesMaxUploadBytes)
 		next.ServeHTTP(w, r)
 	})
+}
+
+// handleWorkspaceFilesStat returns metadata for one or more paths in a single
+// round-trip. This is the cheap stat-equivalent that callers should reach for
+// instead of view() (which downloads file content) or tree() (which walks a
+// directory).
+//
+// Path-level outcomes inline as one of three typed errors and do NOT fail the
+// call: "not_found" (path doesn't exist), "permission_denied" (EACCES), and
+// "invalid_path" (failed validation, e.g. path traversal). Other unexpected
+// errors (EIO, etc.) still 500 the whole request — they're rare and a partial
+// response with no signal would be worse.
+func (s *Server) handleWorkspaceFilesStat(w http.ResponseWriter, r *http.Request) {
+	var req wsFilesStatRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.sendError(w, http.StatusBadRequest, "invalid_request", "Invalid JSON payload")
+		return
+	}
+
+	if len(req.Paths) == 0 {
+		s.sendError(w, http.StatusBadRequest, "validation_failed", "paths is required and must be non-empty")
+		return
+	}
+	if len(req.Paths) > wsFilesMaxStatPaths {
+		s.sendError(
+			w, http.StatusBadRequest, "validation_failed",
+			fmt.Sprintf("paths length %d exceeds maximum %d", len(req.Paths), wsFilesMaxStatPaths),
+		)
+		return
+	}
+
+	base := s.fsBaseDir()
+	entries := make([]wsFilesStatEntry, 0, len(req.Paths))
+	for _, p := range req.Paths {
+		entry := wsFilesStatEntry{Path: p}
+
+		resolved, err := validation.ValidateFilePath(p, base)
+		if err != nil {
+			entry.Error = "invalid_path"
+			entries = append(entries, entry)
+			continue
+		}
+
+		info, statErr := os.Stat(resolved)
+		if statErr != nil {
+			switch {
+			case os.IsNotExist(statErr):
+				entry.Error = "not_found"
+			case os.IsPermission(statErr):
+				entry.Error = "permission_denied"
+			default:
+				slog.Error("workspace.files.stat.failed", "path", p, "error", statErr)
+				s.sendError(w, http.StatusInternalServerError, "workspace.files.stat_failed", statErr.Error())
+				return
+			}
+			entries = append(entries, entry)
+			continue
+		}
+
+		if info.IsDir() {
+			entry.Kind = wsFilesKindDirectory
+		} else {
+			entry.Kind = wsFilesKindFile
+			entry.Size = info.Size()
+		}
+		entry.ModifiedAt = info.ModTime().Format(time.RFC3339)
+		entries = append(entries, entry)
+	}
+
+	slog.Debug("workspace.files.stat.completed", "count", len(entries))
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(wsFilesStatResponse{Entries: entries}); err != nil {
+		slog.Error("workspace.files.stat.encode_failed", "error", err)
+	}
 }
 
 // sendWsFilesError maps filesystem errors to HTTP status codes.

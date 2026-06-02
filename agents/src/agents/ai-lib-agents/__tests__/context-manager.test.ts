@@ -54,6 +54,40 @@ vi.mock('../../../database/repositories/AppRepository.js', () => ({
   }
 }))
 
+const { workspaceFilesMock, MockDevSupervisorError, mockLogger } = vi.hoisted(() => {
+  class _Err extends Error {
+    code: string
+    statusCode = 404
+    constructor(code: string, msg: string) { super(msg); this.code = code; this.name = 'DevSupervisorError' }
+  }
+  const _logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }
+  return {
+    workspaceFilesMock: {
+      view: vi.fn(),
+      tree: vi.fn(),
+      stat: vi.fn(),
+    },
+    MockDevSupervisorError: _Err,
+    mockLogger: _logger,
+  }
+})
+
+vi.mock('../../../logging/index.js', () => ({
+  logger: mockLogger,
+  log: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), forApp: vi.fn(() => mockLogger) },
+  Logger: { create: vi.fn(() => mockLogger) },
+}))
+
+vi.mock('../../../services/DevSupervisorClient.js', () => ({
+  DevSupervisorError: MockDevSupervisorError,
+  isDevSupervisorNotFound: (err: unknown): boolean =>
+    err instanceof MockDevSupervisorError && err.code === 'not_found',
+}))
+
+vi.mock('../../../workspace/index.js', () => ({
+  createForWorkspace: vi.fn(() => ({ files: workspaceFilesMock })),
+}))
+
 describe('AILibContextManager', () => {
   beforeEach(() => {
     latestSummary.value = null
@@ -62,6 +96,17 @@ describe('AILibContextManager', () => {
     getMessageById.mockClear()
     mockedRegistryRender.mockClear()
     appContextResult.value = null
+    workspaceFilesMock.view.mockReset()
+    workspaceFilesMock.tree.mockReset()
+    workspaceFilesMock.stat.mockReset()
+    mockLogger.warn.mockClear()
+    // Default: every workspace.files.* call signals "not found" (no UI kit, no classification).
+    // stat() returns inline per-path errors; view/tree throw not_found errors.
+    workspaceFilesMock.view.mockRejectedValue(new MockDevSupervisorError('not_found', 'no such file'))
+    workspaceFilesMock.tree.mockRejectedValue(new MockDevSupervisorError('not_found', 'no such directory'))
+    workspaceFilesMock.stat.mockImplementation(async ({ paths }: { paths: string[] }) => ({
+      entries: paths.map((path) => ({ path, error: 'not_found' as const })),
+    }))
   })
 
   it('injects summary as cached USER memory message (not system, for security)', async () => {
@@ -229,6 +274,108 @@ describe('AILibContextManager', () => {
         (msg) => msg.role === 'user' && msg.content.includes('# Memory')
       )
       expect(memoryMsg?.content).toContain('Fallback Summary')
+    })
+  })
+
+  describe('workspace-backed UI kit + upload classification', () => {
+    function viewByPath(byPath: Record<string, string>): void {
+      workspaceFilesMock.view.mockImplementation(async ({ path }: { path: string }) => {
+        const content = byPath[path]
+        if (content === undefined) {
+          throw new MockDevSupervisorError('not_found', `no such file: ${path}`)
+        }
+        return { path, content, encoding: 'utf-8', lines: content.split('\n').length, size: content.length, truncated: false }
+      })
+    }
+
+    function statHasFile(filePath: string): void {
+      workspaceFilesMock.stat.mockImplementation(async ({ paths }: { paths: string[] }) => ({
+        entries: paths.map((p) =>
+          p === filePath
+            ? { path: p, kind: 'file' as const, size: 100, modifiedAt: '2026-06-01T00:00:00Z' }
+            : { path: p, error: 'not_found' as const },
+        ),
+      }))
+    }
+
+    it('injects UI-kit anchor when docs/ui-kit/kit-meta.json exists in the workspace', async () => {
+      statHasFile('docs/ui-kit/kit-meta.json')
+
+      const cm = new AILibContextManager()
+      const result = await cm.buildContextMessages(
+        '',
+        { metadata: { appId: 'app-123' } },
+        { includeTemplateDescription: false, includeAppContext: false }
+      )
+
+      const anchor = result.contextMessages.find((m) => m.content.includes('UI kit design system'))
+      expect(anchor).toBeDefined()
+      expect(workspaceFilesMock.stat).toHaveBeenCalledWith({
+        paths: ['docs/ui-kit/kit-meta.json'],
+      })
+    })
+
+    it('does not inject UI-kit anchor when kit-meta.json is missing (not_found)', async () => {
+      // beforeEach already wires every stat → not_found per-path
+      const cm = new AILibContextManager()
+      const result = await cm.buildContextMessages(
+        '',
+        { metadata: { appId: 'app-123' } },
+        { includeTemplateDescription: false, includeAppContext: false }
+      )
+
+      const anchor = result.contextMessages.find((m) => m.content.includes('UI kit design system'))
+      expect(anchor).toBeUndefined()
+    })
+
+    it('injects upload classification when docs/.upload-classification.json exists', async () => {
+      viewByPath({ 'docs/.upload-classification.json': JSON.stringify({ fileName: 'logo.png' }) })
+
+      const cm = new AILibContextManager()
+      const result = await cm.buildContextMessages(
+        '',
+        { metadata: { appId: 'app-123' } },
+        { includeTemplateDescription: false, includeAppContext: false }
+      )
+
+      const classification = result.contextMessages.find((m) => m.content.includes('Upload Classification'))
+      expect(classification).toBeDefined()
+      expect(classification?.content).toContain('logo.png')
+      expect(classification?.content).toContain('src/assets/logo.png')
+      expect(workspaceFilesMock.view).toHaveBeenCalledWith({ path: 'docs/.upload-classification.json', limit: 65536 })
+    })
+
+    it('propagates non-not-found errors from workspace.files.view (no silent fallback)', async () => {
+      workspaceFilesMock.view.mockRejectedValue(new MockDevSupervisorError('transport_error', 'connection refused'))
+
+      const cm = new AILibContextManager()
+      await expect(cm.buildContextMessages(
+        '',
+        { metadata: { appId: 'app-123' } },
+        { includeTemplateDescription: false, includeAppContext: false }
+      )).rejects.toMatchObject({ code: 'transport_error' })
+    })
+
+    it('logs context.upload-classification.parse-failed and skips the message when JSON is malformed', async () => {
+      // view() returns content, but it is not valid JSON.
+      viewByPath({ 'docs/.upload-classification.json': '{ this is { not valid' })
+
+      const cm = new AILibContextManager()
+      const result = await cm.buildContextMessages(
+        '',
+        { metadata: { appId: 'app-123' } },
+        { includeTemplateDescription: false, includeAppContext: false }
+      )
+
+      // (a) Build did not reject.
+      // (b) No "Upload Classification" message was appended.
+      const classification = result.contextMessages.find((m) => m.content.includes('Upload Classification'))
+      expect(classification).toBeUndefined()
+      // (c) The warn fired with the expected event name + appId + error fields.
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        'context.upload-classification.parse-failed',
+        expect.objectContaining({ appId: 'app-123', error: expect.any(String) }),
+      )
     })
   })
 

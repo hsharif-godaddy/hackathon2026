@@ -23,6 +23,14 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 import { contextAttachmentRegistry } from '../../services/ContextAttachmentRegistry.js'
 import type { ContextAttachment } from '@airo/shared/context-attachment'
+import { createForWorkspace } from '../../workspace/index.js'
+import { isDevSupervisorNotFound } from '../../services/DevSupervisorClient.js'
+import type { ViewResult } from '../../workspace/files.js'
+
+const swallowNotFound = <T>(fallback: T) => (err: unknown): T => {
+    if (isDevSupervisorNotFound(err)) return fallback
+    throw err
+}
 
 type AttachmentContextMessage = {
   role: 'user' | 'system'
@@ -139,10 +147,28 @@ export class AILibContextManager {
             })
         }
 
-        // Detect UI kit on disk and inject design-language anchor
-        const uiKitAppId = context.metadata?.appId as string | undefined
-        const uiKitApp = uiKitAppId ? this.appRepository.findById(uiKitAppId) : null
-        if (uiKitApp?.path && existsSync(path.join(uiKitApp.path, 'docs', 'ui-kit', 'kit-meta.json'))) {
+        // UI-kit anchor + persisted upload classification both live in the preview workspace.
+        // Reads run in parallel because they're independent; this is hot-path code.
+        const workspaceAppId = context.metadata?.appId as string | undefined
+        const workspaceForApp = workspaceAppId ? createForWorkspace(workspaceAppId, 'preview') : null
+
+        const [kitMetaExists, classification] = workspaceForApp
+            ? await Promise.all([
+                // stat() returns per-path inline errors — not_found does not throw,
+                // so a missing UI kit just yields entry.error = 'not_found'. Any
+                // other failure (transport, etc.) propagates through Promise.all.
+                workspaceForApp.files.stat({ paths: ['docs/ui-kit/kit-meta.json'] })
+                    .then((s) => {
+                        const entry = s.entries[0]
+                        return !!entry && entry.error === undefined && entry.kind === 'file'
+                    }),
+                // view() is right here — we use the parsed content below.
+                workspaceForApp.files.view({ path: 'docs/.upload-classification.json', limit: 65536 })
+                    .catch(swallowNotFound<ViewResult | null>(null)),
+            ])
+            : [false, null]
+
+        if (kitMetaExists) {
             conversationContextMessages.push({
                 role: 'user',
                 content: [
@@ -162,24 +188,22 @@ export class AILibContextManager {
             })
         }
 
-        // Re-inject persisted upload classification if present on disk
-        const classificationAppId = context.metadata?.appId as string | undefined
-        const classificationApp = classificationAppId ? this.appRepository.findById(classificationAppId) : null
-        if (classificationApp?.path) {
-            const classificationPath = path.join(classificationApp.path, 'docs', '.upload-classification.json')
-            if (existsSync(classificationPath)) {
-                try {
-                    const classificationData = readFileSync(classificationPath, 'utf-8')
-                    const parsed = JSON.parse(classificationData)
-                    const fileName = parsed.fileName || 'unknown'
-                    const isImage = /\.(png|jpg|jpeg|gif|svg|webp)$/i.test(fileName)
-                    const filePath = isImage ? `src/assets/${fileName}` : `docs/${fileName}`
-                    conversationContextMessages.push({
-                        role: 'user',
-                        content: `## Upload Classification\n\n\`\`\`json\n${classificationData}\n\`\`\`\n\nFile location: \`${filePath}\``,
-                        insertionOrder: 'after_history'
-                    })
-                } catch { /* skip if unreadable */ }
+        if (classification) {
+            try {
+                const parsed = JSON.parse(classification.content)
+                const fileName = parsed.fileName || 'unknown'
+                const isImage = /\.(png|jpg|jpeg|gif|svg|webp)$/i.test(fileName)
+                const filePath = isImage ? `src/assets/${fileName}` : `docs/${fileName}`
+                conversationContextMessages.push({
+                    role: 'user',
+                    content: `## Upload Classification\n\n\`\`\`json\n${classification.content}\n\`\`\`\n\nFile location: \`${filePath}\``,
+                    insertionOrder: 'after_history'
+                })
+            } catch (err: unknown) {
+                logger.warn('context.upload-classification.parse-failed', {
+                    appId: workspaceAppId,
+                    error: err instanceof Error ? err.message : String(err),
+                })
             }
         }
 

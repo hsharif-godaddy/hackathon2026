@@ -700,3 +700,82 @@ func TestWorkspaceFilesSearch_NoMatches(t *testing.T) {
 		t.Errorf("expected 0 matches, got %d", len(resp.Matches))
 	}
 }
+
+// --- Stat tests ---
+
+func TestWorkspaceFilesStat_Mixed(t *testing.T) {
+	server, dir := newTestServerWithDir(t)
+	os.WriteFile(filepath.Join(dir, "present.txt"), []byte("hello"), 0o644)
+	os.MkdirAll(filepath.Join(dir, "somedir"), 0o755)
+
+	w := postJSON(t, server.handleWorkspaceFilesStat, map[string]any{
+		"paths": []string{"present.txt", "somedir", "missing.txt"},
+	})
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp wsFilesStatResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	if len(resp.Entries) != 3 {
+		t.Fatalf("expected 3 entries, got %d", len(resp.Entries))
+	}
+
+	// Order is preserved.
+	if resp.Entries[0].Path != "present.txt" || resp.Entries[0].Kind != "file" || resp.Entries[0].Size != 5 {
+		t.Errorf("entry[0]: expected file present.txt size=5, got %+v", resp.Entries[0])
+	}
+	if resp.Entries[0].ModifiedAt == "" {
+		t.Errorf("entry[0]: expected modifiedAt, got empty")
+	}
+	if resp.Entries[1].Path != "somedir" || resp.Entries[1].Kind != "directory" || resp.Entries[1].Size != 0 {
+		t.Errorf("entry[1]: expected directory somedir, got %+v", resp.Entries[1])
+	}
+	if resp.Entries[2].Path != "missing.txt" || resp.Entries[2].Error != "not_found" || resp.Entries[2].Kind != "" {
+		t.Errorf("entry[2]: expected not_found error, got %+v", resp.Entries[2])
+	}
+}
+
+func TestWorkspaceFilesStat_PathTraversalPerEntry(t *testing.T) {
+	server, _ := newTestServerWithDir(t)
+
+	w := postJSON(t, server.handleWorkspaceFilesStat, map[string]any{
+		"paths": []string{"../../../etc/passwd"},
+	})
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 (per-entry error), got %d: %s", w.Code, w.Body.String())
+	}
+	var resp wsFilesStatResponse
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	if len(resp.Entries) != 1 || resp.Entries[0].Error != "invalid_path" {
+		t.Errorf("expected one invalid_path entry, got %+v", resp.Entries)
+	}
+}
+
+func TestWorkspaceFilesStat_EmptyPaths(t *testing.T) {
+	server, _ := newTestServerWithDir(t)
+
+	w := postJSON(t, server.handleWorkspaceFilesStat, map[string]any{
+		"paths": []string{},
+	})
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for empty paths, got %d", w.Code)
+	}
+}
+
+func TestWorkspaceFilesStat_TooManyPaths(t *testing.T) {
+	server, _ := newTestServerWithDir(t)
+	paths := make([]string, wsFilesMaxStatPaths+1)
+	for i := range paths {
+		paths[i] = "x.txt"
+	}
+
+	w := postJSON(t, server.handleWorkspaceFilesStat, map[string]any{"paths": paths})
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for too many paths, got %d", w.Code)
+	}
+}

@@ -117,17 +117,19 @@ describe('AppContextManager publish state', () => {
 
   describe('getPackageInfo', () => {
     const mockView = vi.fn();
-    const mockTree = vi.fn();
+    const mockStat = vi.fn();
 
     beforeEach(() => {
       // checkDependenciesInstalled (invoked from getPackageInfo) calls
-      // workspace.files.tree with includeGlobs to stat package*.json. Default
-      // to "no entries" so dependenciesInstalled is false but the call
-      // doesn't throw; individual tests can override.
-      mockTree.mockReset();
-      mockTree.mockResolvedValue({ entries: [], truncated: false });
+      // workspace.files.stat for package.json + package-lock.json. Default to
+      // "both not_found" so dependenciesInstalled resolves to false; individual
+      // tests can override.
+      mockStat.mockReset();
+      mockStat.mockImplementation(async ({ paths }: { paths: string[] }) => ({
+        entries: paths.map((path) => ({ path, error: 'not_found' as const })),
+      }));
       (createForWorkspace as ReturnType<typeof vi.fn>).mockReturnValue({
-        files: { view: mockView, tree: mockTree },
+        files: { view: mockView, stat: mockStat },
       });
     });
 
@@ -209,22 +211,28 @@ describe('AppContextManager publish state', () => {
   });
 
   describe('checkDependenciesInstalled', () => {
-    const mockTree = vi.fn();
+    const mockStat = vi.fn();
 
-    function withTimes(pkgIso: string, lockIso: string | null): void {
-      const entries: Array<{ path: string; kind: string; size: number; modifiedAt: string }> = [
-        { path: 'package.json', kind: 'file', size: 100, modifiedAt: pkgIso },
-      ];
-      if (lockIso !== null) {
-        entries.push({ path: 'package-lock.json', kind: 'file', size: 200, modifiedAt: lockIso });
-      }
-      mockTree.mockResolvedValue({ entries, truncated: false });
+    type StatEntry =
+      | { path: string; kind: 'file' | 'directory'; size: number; modifiedAt: string }
+      | { path: string; error: 'not_found' | 'permission_denied' | 'invalid_path' };
+
+    function statEntry(path: string, modifiedAt: string | null): StatEntry {
+      return modifiedAt === null
+        ? { path, error: 'not_found' as const }
+        : { path, kind: 'file' as const, size: 100, modifiedAt };
+    }
+
+    function withTimes(pkgIso: string | null, lockIso: string | null): void {
+      mockStat.mockResolvedValue({
+        entries: [statEntry('package.json', pkgIso), statEntry('package-lock.json', lockIso)],
+      });
     }
 
     beforeEach(() => {
-      mockTree.mockReset();
+      mockStat.mockReset();
       (createForWorkspace as ReturnType<typeof vi.fn>).mockReturnValue({
-        files: { tree: mockTree },
+        files: { stat: mockStat },
       });
     });
 
@@ -261,25 +269,35 @@ describe('AppContextManager publish state', () => {
     });
 
     it('returns false when only package-lock.json is present', async () => {
-      mockTree.mockResolvedValue({
-        entries: [
-          { path: 'package-lock.json', kind: 'file', size: 200, modifiedAt: '2026-06-01T00:00:00Z' },
-        ],
-        truncated: false,
-      });
+      withTimes(null, '2026-06-01T00:00:00Z');
       const result = await (manager as any).checkDependenciesInstalled(ctx);
       expect(result).toBe(false);
     });
 
-    it('returns false when supervisor reports not_found', async () => {
-      mockTree.mockRejectedValue(new DevSupervisorError('not_found', 404, 'workspace missing'));
+    it('returns false when both files are not_found', async () => {
+      withTimes(null, null);
       const result = await (manager as any).checkDependenciesInstalled(ctx);
       expect(result).toBe(false);
     });
 
     it('propagates non-not-found supervisor errors instead of silently returning false', async () => {
-      mockTree.mockRejectedValue(new DevSupervisorError('transport_error', 500, 'connection refused'));
+      mockStat.mockRejectedValue(new DevSupervisorError('transport_error', 500, 'connection refused'));
       await expect((manager as any).checkDependenciesInstalled(ctx)).rejects.toThrow(DevSupervisorError);
+    });
+
+    it('calls workspace.files.stat with both filenames', async () => {
+      withTimes('2026-06-01T00:00:00Z', '2026-06-01T00:00:00Z');
+      await (manager as any).checkDependenciesInstalled(ctx);
+      expect(mockStat).toHaveBeenCalledWith({ paths: ['package.json', 'package-lock.json'] });
+    });
+
+    it('returns false when modifiedAt is malformed (NaN guard, not silent false)', async () => {
+      // Malformed RFC3339 → new Date(...).getTime() === NaN.
+      // Without the guard, NaN <= 5 === false would silently report
+      // "not installed"; with the guard we log a warn and return false explicitly.
+      withTimes('not-a-date', '2026-06-01T00:00:00Z');
+      const result = await (manager as any).checkDependenciesInstalled(ctx);
+      expect(result).toBe(false);
     });
   });
 });

@@ -3,6 +3,8 @@ import type {
   WorkspaceFiles,
   TreeOptions,
   TreeResult,
+  StatOptions,
+  StatResult,
   ViewOptions,
   ViewResult,
   SearchOptions,
@@ -26,6 +28,11 @@ export class HttpFiles implements WorkspaceFiles {
   async tree(options?: TreeOptions): Promise<TreeResult> {
     const response = await this.client.post('/workspace/files/tree', options ?? {});
     return response as TreeResult;
+  }
+
+  async stat(options: StatOptions): Promise<StatResult> {
+    const response = await this.client.post('/workspace/files/stat', options);
+    return response as StatResult;
   }
 
   async view(options: ViewOptions): Promise<ViewResult> {

@@ -215,29 +215,35 @@ export class AppContextManager {
     const workspace = createForWorkspace(appId, 'preview');
     if (!workspace) return false;
 
-    let entries;
-    try {
-      const result = await workspace.files.tree({
-        recursive: false,
-        includeGlobs: ['package.json', 'package-lock.json'],
-      });
-      entries = result.entries;
-    } catch (error) {
-      // Missing root means there's nothing to check yet — fresh app, no template.
-      // Anything else (transport, etc.) propagates so the outer context-generation
-      // path can decide how to surface the failure.
-      if (isDevSupervisorNotFound(error)) return false;
-      throw error;
-    }
-
-    const pkg = entries.find((e) => e.kind === 'file' && e.path === 'package.json');
-    const lock = entries.find((e) => e.kind === 'file' && e.path === 'package-lock.json');
+    // stat() returns per-path inline errors, so a missing pkg/lock yields
+    // entry.error = 'not_found' rather than throwing. Transport / supervisor
+    // failures still throw and propagate up.
+    const stat = await workspace.files.stat({
+      paths: ['package.json', 'package-lock.json'],
+    });
+    const findFile = (p: string): { modifiedAt: string } | undefined => {
+      const entry = stat.entries.find((e) => e.path === p);
+      return entry && entry.error === undefined && entry.kind === 'file' ? entry : undefined;
+    };
+    const pkg = findFile('package.json');
+    const lock = findFile('package-lock.json');
     if (!pkg || !lock) return false;
 
     const pkgTime = new Date(pkg.modifiedAt);
     const lockTime = new Date(lock.modifiedAt);
     // Only the pkg-newer arm needs the tolerance window — when lock >= pkg the diff is non-positive.
     const pkgAheadSeconds = Math.max(0, pkgTime.getTime() - lockTime.getTime()) / 1000;
+
+    // A malformed RFC3339 from the supervisor would yield NaN here, which compares as false
+    // against the tolerance and silently reports "not installed." Surface it instead.
+    if (Number.isNaN(pkgAheadSeconds)) {
+      logger.warn('app.context.dependencies.malformed-modifiedAt', {
+        appId,
+        packageJsonModifiedAt: pkg.modifiedAt,
+        packageLockModifiedAt: lock.modifiedAt,
+      });
+      return false;
+    }
 
     // Lockfile newer-or-equal means deps are in sync. Allow a 5s tolerance for WSL2.
     const isInstalled = pkgAheadSeconds <= 5;

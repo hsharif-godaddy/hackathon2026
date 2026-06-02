@@ -83,7 +83,41 @@ vi.mock('../../workspace/index.js', () => ({
         hoistedFs.writeFileSync(fullPath, content);
         return { bytesWritten: content.length };
       }),
-      tree: vi.fn(),
+      tree: vi.fn(async ({ path: dirPath, includeGlobs }: { path?: string; recursive?: boolean; includeGlobs?: string[] } = {}) => {
+        const fullPath = dirPath ? hoistedPath.join(testAppPath, dirPath) : testAppPath;
+        if (!hoistedFs.existsSync(fullPath)) {
+          throw new MockDevSupervisorError(`directory not found: ${dirPath}`);
+        }
+        const entries: Array<{ path: string; kind: 'file' | 'directory'; size: number; modifiedAt: string }> = [];
+        for (const name of hoistedFs.readdirSync(fullPath)) {
+          if (includeGlobs && includeGlobs.length > 0 && !includeGlobs.includes(name)) continue;
+          const stat = hoistedFs.statSync(hoistedPath.join(fullPath, name));
+          entries.push({
+            path: name,
+            kind: stat.isDirectory() ? 'directory' : 'file',
+            size: stat.size,
+            modifiedAt: stat.mtime.toISOString(),
+          });
+        }
+        return { entries, truncated: false };
+      }),
+      // stat() returns per-path inline errors — never throws on missing files.
+      stat: vi.fn(async ({ paths }: { paths: string[] }) => {
+        const entries = paths.map((p) => {
+          const fullPath = hoistedPath.join(testAppPath, p);
+          if (!hoistedFs.existsSync(fullPath)) {
+            return { path: p, error: 'not_found' as const };
+          }
+          const s = hoistedFs.statSync(fullPath);
+          return {
+            path: p,
+            kind: (s.isDirectory() ? 'directory' : 'file') as 'directory' | 'file',
+            size: s.size,
+            modifiedAt: s.mtime.toISOString(),
+          };
+        });
+        return { entries };
+      }),
       search: vi.fn(),
       edit: vi.fn(),
       insert: vi.fn(),
@@ -167,6 +201,58 @@ describe('video-generation-tool', function packageTests() {
       const result = await tool.startGeneration({});
 
       expect(result.status).toBe('pending');
+    });
+
+    it('propagates non-not-found errors from the cached-video existence check', async function transportError() {
+      // Set up a completed metadata pointing at a video file we'll fail to stat.
+      const url = '/airo-assets/uploads/transport-fail.mp4';
+      fs.writeFileSync(
+        path.join(airoDir, 'video.json'),
+        JSON.stringify({ jobId: 'vid-x', status: 'completed', url })
+      );
+
+      // Override workspace.stat (used for the existence check) to throw a
+      // non-not_found error so a supervisor outage cannot silently regenerate
+      // instead of surfacing the failure.
+      const tool = createTool();
+      const tools: any = tool;
+      const transportErr = new MockDevSupervisorError('connection refused');
+      transportErr.code = 'transport_error';
+      tools.workspace.stat = vi.fn(async () => { throw transportErr; });
+
+      await expect(tool.startGeneration({})).rejects.toMatchObject({ code: 'transport_error' });
+    });
+
+    it('propagates transport errors from the .airo/video.json metadata read (no silent regenerate)', async function metadataTransportError() {
+      // Don't write video.json to disk. Override workspace.view for that exact path
+      // to throw a non-not_found error; the outer catch must rethrow rather than
+      // fall through to a fresh generation.
+      const tool = createTool();
+      const tools: any = tool;
+      const initiateSpy = vi.spyOn(tools, 'initiateGeneration').mockResolvedValue({ status: 'pending' as const });
+      const originalView = tools.workspace.view;
+      tools.workspace.view = vi.fn(async ({ path: filePath }: { path: string }) => {
+        if (filePath === '.airo/video.json') {
+          const err = new MockDevSupervisorError('connection refused');
+          err.code = 'transport_error';
+          throw err;
+        }
+        return originalView({ path: filePath });
+      });
+
+      await expect(tool.startGeneration({})).rejects.toMatchObject({ code: 'transport_error' });
+      expect(initiateSpy).not.toHaveBeenCalled();
+    });
+
+    it('propagates JSON.parse failures from a corrupted .airo/video.json (no silent regenerate)', async function metadataParseError() {
+      // Corrupted JSON on disk → JSON.parse throws → outer catch must rethrow.
+      fs.writeFileSync(path.join(airoDir, 'video.json'), '{ definitely not { valid json');
+
+      const tool = createTool();
+      const initiateSpy = vi.spyOn(tool as any, 'initiateGeneration').mockResolvedValue({ status: 'pending' as const });
+
+      await expect(tool.startGeneration({})).rejects.toThrow(SyntaxError);
+      expect(initiateSpy).not.toHaveBeenCalled();
     });
   });
 

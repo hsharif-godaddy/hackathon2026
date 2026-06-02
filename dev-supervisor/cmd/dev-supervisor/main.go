@@ -245,6 +245,7 @@ func (s *Server) setupRoutes() {
 	wsFilesRouter := s.router.PathPrefix("/workspace/files").Subrouter()
 	wsFilesRouter.Use(wsFilesMaxBodyMiddleware)
 	wsFilesRouter.HandleFunc("/tree", s.handleWorkspaceFilesTree).Methods("POST")
+	wsFilesRouter.HandleFunc("/stat", s.handleWorkspaceFilesStat).Methods("POST")
 	wsFilesRouter.HandleFunc("/view", s.handleWorkspaceFilesView).Methods("POST")
 	wsFilesRouter.HandleFunc("/search", s.handleWorkspaceFilesSearch).Methods("POST")
 	wsFilesRouter.HandleFunc("/write", s.handleWorkspaceFilesWrite).Methods("POST")

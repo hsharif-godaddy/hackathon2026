@@ -78,6 +78,10 @@ export class VideoGenerationTool {
     sendEvent: (appId: string, type: string, data: Record<string, unknown>) => void;
   } | null = null;
   private readonly appId: string;
+  // appPath was the host-side preview directory; all preview-fs reads now go
+  // through `this.workspace`. Retained for the AIROBUILD-2023 capstone (drop
+  // `app.path` from the apps table) — once that lands, this field + the
+  // VideoAppContext.appPath input go with it.
   private readonly appPath: string;
   private readonly previewUrl?: string;
   private readonly workspace: WorkspaceFiles | null;
@@ -290,19 +294,22 @@ export class VideoGenerationTool {
         const videoMetadata = JSON.parse(result.content);
 
         if (videoMetadata.status === 'completed' && videoMetadata.url) {
-          try {
-            // URL is /airo-assets/uploads/{filename}; resolve to local workspace path
-            const filename = path.basename(videoMetadata.url);
-            await access(path.join(this.appPath, 'public', 'assets', 'images', filename));
+          // URL is /airo-assets/uploads/{filename}; check existence via stat —
+          // view() would download + base64 the whole mp4 (or hit the 10MB cap).
+          const filename = path.basename(videoMetadata.url);
+          const stat = await this.workspace.stat({
+            paths: [`public/assets/images/${filename}`],
+          });
+          const entry = stat.entries[0];
+          if (entry && entry.error === undefined && entry.kind === 'file') {
             return {
               status: 'completed',
               url: this.previewUrl
                 ? `${this.previewUrl.replace(/\/+$/, '')}${videoMetadata.url}`
                 : videoMetadata.url,
             };
-          } catch {
-            /* video file missing, regenerate */
           }
+          // Cached video file missing → fall through to regenerate.
         }
 
         if (
@@ -312,8 +319,14 @@ export class VideoGenerationTool {
           return { status: videoMetadata.status || 'pending' };
         }
       } catch (err: unknown) {
+        // Two not_found sources are legitimate "no prior generation" signals and
+        // fall through to a fresh generation: missing .airo/video.json (no metadata
+        // ever written), and missing public/assets/images (no cached output dir).
+        // Anything else (transport, permission, JSON.parse on a corrupted metadata
+        // file) propagates so a supervisor outage isn't masked as a silent retry.
         if (!(err instanceof DevSupervisorError && err.code === 'not_found')) {
           logger.warn('video-generation.metadata-read-error', { appId: this.appId, error: err instanceof Error ? err.message : String(err) });
+          throw err;
         }
       }
     }
