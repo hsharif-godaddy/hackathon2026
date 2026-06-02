@@ -296,9 +296,8 @@ dev-supervisor/
 │   └── validation/                # Input validation (path traversal, env vars)
 ├── examples/                      # Example configuration files
 ├── test/
-│   ├── Dockerfile.integration     # Docker image for integration tests
 │   ├── docker-integration-tests.sh # Bash test suite for Docker
-│   └── run-docker-tests.sh        # Docker test runner script
+│   └── run-docker-tests.sh        # Builds the real Dockerfile and runs the suite
 ├── docs/
 │   └── DEVELOPMENT.md             # Development guide
 ├── go.mod                         # Go module definition

@@ -1,8 +1,11 @@
 #!/bin/bash
 set -e
 
+# Build the real production image (dev-supervisor/Dockerfile) so these tests
+# validate the actual shipped build path end-to-end — not a separate test-only
+# Dockerfile that can drift from it.
 echo "Building Docker image for integration tests..."
-docker build -f test/Dockerfile.integration -t dev-supervisor:test .
+docker build -f Dockerfile -t dev-supervisor:test .
 
 echo ""
 echo "Running integration tests in Docker..."
@@ -10,12 +13,16 @@ echo "Running integration tests in Docker..."
 # Start container with airo-workspace as PID 1 wrapping dev-supervisor
 CONTAINER_NAME="dev-supervisor-test-$$"
 
-# Start container in detached mode with no command arguments
-# This makes dev-supervisor PID 1 but with no supervised child process
+# Start container in detached mode with no command arguments. This makes
+# airo-workspace PID 1 supervising dev-supervisor with no managed child.
+# AIRO_WORKSPACE_PROXY=1 exercises the airo-workspace -> dev-supervisor proxy
+# topology (airo-workspace owns the public socket); the test script is mounted
+# read-only rather than baked into the image.
 if ! docker run -d --name "$CONTAINER_NAME" \
     --init=false \
+    -e AIRO_WORKSPACE_PROXY=1 \
     -e DEV_SUPERVISOR_SANDBOX_ENABLED=true \
-    -v /tmp/test-docker-integration:/tmp \
+    -v "$(pwd)/test/docker-integration-tests.sh:/test/docker-integration-tests.sh:ro" \
     dev-supervisor:test; then
     echo "❌ Failed to start container"
     exit 99
@@ -24,8 +31,14 @@ fi
 # Give dev-supervisor a moment to start up
 sleep 2
 
+# The production image ships only ca-certificates/tzdata. The test harness
+# needs bash (script shebang), curl (--unix-socket API calls) and procps
+# (ps -p/-o comm=, which busybox lacks). Install them into the throwaway test
+# container at runtime so the shipped image stays minimal.
+docker exec "$CONTAINER_NAME" apk add --no-cache bash curl procps
+
 # Execute test script as external client via docker exec
-if docker exec "$CONTAINER_NAME" /test/docker-integration-tests.sh; then
+if docker exec "$CONTAINER_NAME" bash /test/docker-integration-tests.sh; then
     TEST_EXIT=0
     echo ""
     echo "✅ All Docker integration tests passed"

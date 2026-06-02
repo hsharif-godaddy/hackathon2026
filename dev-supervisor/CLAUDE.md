@@ -159,7 +159,7 @@ The `rust/airo-workspace/` crate is the PID1 init process. It:
 - `src/supervisor.rs` — signal masking, signalfd loop (Linux) / sigsuspend loop (Darwin), child spawn + reap.
 - `src/proxy.rs` — UDS reverse proxy with hyper 1.x and HTTP/1.1 Upgrade bridging.
 
-**Rust toolchain:** Stable, targets `x86_64-unknown-linux-musl` and `aarch64-unknown-linux-musl` for static linking. Prerequisite: `rustup` (validated by dev-runner preflight).
+**Rust toolchain:** Stable, targets `x86_64-unknown-linux-musl` and `aarch64-unknown-linux-musl` for static linking. Prerequisite: `rustup` (validated by dev-runner preflight). **CI builds and validates amd64 (`x86_64-unknown-linux-musl`) only**; arm64 (`aarch64-unknown-linux-musl`) is compiled natively in local dev and `make test-docker` on Apple Silicon, so an arm64-specific regression surfaces on a developer machine rather than in CI.
 
 ## PR Checklist
 

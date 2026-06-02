@@ -53,10 +53,9 @@ fn main() {
 
     if proxy_enabled {
         // Production Dockerfiles mkdir /tmp/supervisor at image-build time,
-        // but bind-mounted /tmp (e.g. test/Dockerfile.integration via -v)
-        // hides that. Doing it here once at startup makes the binary safe
-        // to drop into any /tmp layout — both our bind() and the child's
-        // bind() need this dir.
+        // but a bind-mounted /tmp hides that. Doing it here once at startup
+        // makes the binary safe to drop into any /tmp layout — both our
+        // bind() and the child's bind() need this dir.
         ensure_parent_dir(&public_socket);
         ensure_parent_dir(&internal_socket);
     }

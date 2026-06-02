@@ -1,0 +1,8 @@
+# Build outputs — never belong in the build context. Keeps a local
+# `docker build` / `make test-docker` from copying a developer's populated
+# rust/target and dist/ into the image (bloats the context and can shadow
+# freshly built artifacts). CI checkouts are clean, so this only matters
+# locally.
+rust/target/
+dist/
+coverage.out
