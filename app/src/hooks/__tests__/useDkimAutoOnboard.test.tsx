@@ -28,6 +28,7 @@ describe('useDkimAutoOnboard', () => {
   beforeEach(() => {
     mockAppFetch.mockReset();
     mockAppFetch.mockResolvedValue(new Response(JSON.stringify({ result: 'activated' }), { status: 200 }));
+    localStorage.clear();
   });
 
   it('does not fire when enabled is false', () => {

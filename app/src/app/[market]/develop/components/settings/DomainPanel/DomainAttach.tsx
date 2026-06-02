@@ -16,7 +16,7 @@ import { DomainDisconnectConfirmationModal } from '@/app/[market]/develop/compon
 import type { AppDetailsResponse } from '@/hooks/useAppDetails';
 import { useAuth } from '@/hooks/useAuth';
 import { useCustomerDomainAttach } from '@/hooks/useCustomerDomainAttach';
-import { useDkimAutoOnboard } from '@/hooks/useDkimAutoOnboard';
+import { clearDkimOnboardRecord, useDkimAutoOnboard } from '@/hooks/useDkimAutoOnboard';
 import { useDomainDnsOwnership } from '@/hooks/useDomainDnsOwnership';
 import { useDomainsQuery } from '@/hooks/useDomainsQuery';
 import { useDomainTransfer } from '@/hooks/useDomainTransfer';
@@ -440,6 +440,12 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
         appId: currentAppId,
         domainName
       });
+
+      // Clear the DKIM onboard record so re-attaching the domain triggers
+      // a fresh onboard call.
+      if (currentAppId && domainName) {
+        clearDkimOnboardRecord(currentAppId, domainName);
+      }
 
       // Best-effort DKIM teardown — only fires when the feature flag is on.
       // When the flag is off, the route would return {result:'skipped'}
