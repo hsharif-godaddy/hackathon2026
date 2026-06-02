@@ -7,7 +7,7 @@
 // Build-shape adaptations (behavior unchanged):
 //   - cx (cva) -> classNames (already a runtime dep here)
 //   - CSS Modules -> plain BEM in ./styles.css
-//   - #components/{layout/flex,button,icon,tooltip} -> public @godaddy/antares barrel
+//   - #components/{layout/flex,button,icon} -> public @godaddy/antares barrel
 //
 // Behavioral / visual divergences (catalogued in ./README.md > "Local
 // divergences from upstream"): zero inter-segment gap, square padding
@@ -17,7 +17,9 @@
 //
 // When PR #187 ships in @godaddy/antares, delete this folder and replace consumer
 // imports with `import { SegmentedController } from '@godaddy/antares'`.
-import { Button, Flex, type FlexOwnProps, Icon, Tooltip, TooltipTrigger } from '@godaddy/antares';
+import { Button, Flex, type FlexOwnProps, Icon } from '@godaddy/antares';
+import text from '@ux/text';
+import Tooltip from '@ux/tooltip';
 import classNames from 'classnames';
 import React, {
   createContext,
@@ -42,6 +44,11 @@ import {
 import { prefersReducedMotion, useHorizontalScroll } from './useHorizontalScroll';
 
 const ROOT_CLASS = 'airo-vendor-segmented-controller';
+const LABEL_SIZE_BY_CONTROLLER_SIZE = {
+  sm: -2,
+  md: -1,
+  lg: 0,
+} as const;
 const styles = {
   container: ROOT_CLASS,
   item: `${ROOT_CLASS}__item`,
@@ -49,6 +56,7 @@ const styles = {
   label: `${ROOT_CLASS}__label`,
   labelHidden: `${ROOT_CLASS}__label--hidden`,
   content: `${ROOT_CLASS}__content`,
+  itemContent: `${ROOT_CLASS}__item-content`,
   scrollButtons: `${ROOT_CLASS}__scroll-buttons`,
   scrollBtn: `${ROOT_CLASS}__scroll-btn`,
   mirror: `${ROOT_CLASS}__mirror`,
@@ -56,11 +64,13 @@ const styles = {
 
 interface SegmentedControllerContextValue {
   collapseInactive: boolean;
+  labelSize: (typeof LABEL_SIZE_BY_CONTROLLER_SIZE)[keyof typeof LABEL_SIZE_BY_CONTROLLER_SIZE];
   selectedValue: string | undefined;
 }
 
 const SegmentedControllerContext = createContext<SegmentedControllerContextValue>({
   collapseInactive: false,
+  labelSize: LABEL_SIZE_BY_CONTROLLER_SIZE.md,
   selectedValue: undefined,
 });
 
@@ -110,12 +120,14 @@ export interface SegmentedControllerItemProps
  */
 export function SegmentedControllerItem(props: SegmentedControllerItemProps) {
   const { className, children, value, icon, ...rest } = props;
-  const { collapseInactive, selectedValue } = useContext(SegmentedControllerContext);
+  const { collapseInactive, labelSize, selectedValue } = useContext(SegmentedControllerContext);
 
   const isSelected = selectedValue === value;
   const canCollapse = collapseInactive && icon !== undefined;
   const showLabel = !canCollapse || isSelected;
   const tooltipDisabled = !canCollapse || isSelected;
+  const tooltipAnchorRef = useRef<HTMLButtonElement | null>(null);
+  const [isTooltipOpen, setTooltipOpen] = useState(false);
 
   if (process.env.NODE_ENV !== 'production' && collapseInactive && icon === undefined) {
     // Surface the misuse loudly in dev — render path falls back to showing the label.
@@ -134,9 +146,43 @@ export function SegmentedControllerItem(props: SegmentedControllerItemProps) {
         block: 'nearest',
         behavior: prefersReducedMotion() ? 'auto' : 'smooth',
       });
+      if (!tooltipDisabled) setTooltipOpen(true);
       rest.onFocus?.(e);
     },
-    [rest.onFocus],
+    [rest.onFocus, tooltipDisabled],
+  );
+
+  const handleBlur = useCallback(
+    function handleBlur(e: Parameters<NonNullable<RACToggleButtonProps['onBlur']>>[0]) {
+      setTooltipOpen(false);
+      rest.onBlur?.(e);
+    },
+    [rest.onBlur],
+  );
+
+  const handleHoverStart = useCallback(
+    function handleHoverStart(
+      e: Parameters<NonNullable<RACToggleButtonProps['onHoverStart']>>[0],
+    ) {
+      if (!tooltipDisabled) setTooltipOpen(true);
+      rest.onHoverStart?.(e);
+    },
+    [rest.onHoverStart, tooltipDisabled],
+  );
+
+  const handleHoverEnd = useCallback(
+    function handleHoverEnd(e: Parameters<NonNullable<RACToggleButtonProps['onHoverEnd']>>[0]) {
+      setTooltipOpen(false);
+      rest.onHoverEnd?.(e);
+    },
+    [rest.onHoverEnd],
+  );
+
+  useEffect(
+    function closeTooltip() {
+      if (tooltipDisabled) setTooltipOpen(false);
+    },
+    [tooltipDisabled],
   );
 
   // When the label is collapsed via CSS (width: 0; opacity: 0), some browsers
@@ -151,35 +197,55 @@ export function SegmentedControllerItem(props: SegmentedControllerItemProps) {
     <Flex
       as={RACToggleButton}
       {...rest}
+      ref={tooltipAnchorRef}
       id={value}
       alignItems="center"
+      onBlur={handleBlur}
       onFocus={handleFocus}
+      onHoverEnd={handleHoverEnd}
+      onHoverStart={handleHoverStart}
       aria-label={fallbackAriaLabel}
       className={classNames(styles.item, className)}
     >
       <Flex as={RACSelectionIndicator} className={styles.indicator} />
-      {icon !== undefined ? (
-        <>
-          {icon}
-          {children !== undefined ? (
-            <span className={classNames(styles.label, !showLabel && styles.labelHidden)}>
-              {children}
-            </span>
-          ) : null}
-        </>
-      ) : (
-        children
-      )}
+      <span className={styles.itemContent}>
+        {icon !== undefined ? (
+          <>
+            {icon}
+            {children !== undefined ? (
+              <text.span
+                as="label"
+                size={labelSize}
+                className={classNames(styles.label, !showLabel && styles.labelHidden)}
+              >
+                {children}
+              </text.span>
+            ) : null}
+          </>
+        ) : typeof children === 'string' || typeof children === 'number' ? (
+          // Wrap textual children in `.label` so they're treated as a real label
+          // (regular inline padding), not as an icon-only segment. Element
+          // children (e.g. a bare <Icon> in the IconOnly pattern) stay unwrapped
+          // so the `:not(:has(.label))` square-padding rule still applies to them.
+          <text.span as="label" size={labelSize} className={styles.label}>
+            {children}
+          </text.span>
+        ) : (
+          children
+        )}
+      </span>
     </Flex>
   );
 
   if (!canCollapse) return button;
 
   return (
-    <TooltipTrigger isDisabled={tooltipDisabled} delay={150}>
+    <>
       {button}
-      <Tooltip placement="bottom">{children}</Tooltip>
-    </TooltipTrigger>
+      <Tooltip anchorRef={tooltipAnchorRef} open={isTooltipOpen && !tooltipDisabled}>
+        {children}
+      </Tooltip>
+    </>
   );
 }
 
@@ -270,6 +336,7 @@ export function SegmentedController(props: SegmentedControllerProps) {
   const [internalSelected, setInternalSelected] = useState<string | undefined>(
     value ?? defaultValue,
   );
+  const labelSize = LABEL_SIZE_BY_CONTROLLER_SIZE[size];
   const selectedValue = value ?? internalSelected;
 
   const handleSelectionChange = useCallback(
@@ -301,6 +368,18 @@ export function SegmentedController(props: SegmentedControllerProps) {
 
   const mirrorRef = useRef<HTMLDivElement>(null);
   const [minWidth, setMinWidth] = useState<number | null>(null);
+  const selectedMeasureIndex =
+    measureItems?.findIndex(function selected(item) {
+      return item.value === selectedValue;
+    }) ?? -1;
+  const selectedPosition =
+    measureItems && selectedMeasureIndex >= 0
+      ? selectedMeasureIndex === 0
+        ? 'first'
+        : selectedMeasureIndex === measureItems.length - 1
+          ? 'last'
+          : 'middle'
+      : undefined;
 
   useEffect(
     function measureFixedWidth() {
@@ -314,27 +393,32 @@ export function SegmentedController(props: SegmentedControllerProps) {
       const items = measureItems; // capture so the inner closure has a non-null reference
 
       function compute() {
-        let sumCollapsed = 0;
-        let maxDelta = 0;
-        for (const item of items) {
-          const sel = (state: 'expanded' | 'collapsed') =>
-            mirror.querySelector<HTMLElement>(
-              `[data-measure="${state}"][data-value="${CSS.escape(item.value)}"]`,
-            );
-          const eW = sel('expanded')?.getBoundingClientRect().width ?? 0;
-          const cW = sel('collapsed')?.getBoundingClientRect().width ?? 0;
-          sumCollapsed += cW;
-          const delta = eW - cW;
-          if (delta > maxDelta) maxDelta = delta;
+        const widths = items.map(function measure(item) {
+          const expanded = mirror
+            .querySelector<HTMLElement>(
+              `[data-measure="expanded"][data-value="${CSS.escape(item.value)}"]`,
+            )
+            ?.getBoundingClientRect().width ?? 0;
+          const collapsed = mirror
+            .querySelector<HTMLElement>(
+              `[data-measure="collapsed"][data-value="${CSS.escape(item.value)}"]`,
+            )
+            ?.getBoundingClientRect().width ?? 0;
+          return { expanded, collapsed };
+        });
+        const sumCollapsed = widths.reduce(function sum(total, width) {
+          return total + width.collapsed;
+        }, 0);
+        let maxSelectedWidth = 0;
+        for (const width of widths) {
+          const selectedWidth = sumCollapsed - width.collapsed + width.expanded;
+          if (selectedWidth > maxSelectedWidth) maxSelectedWidth = selectedWidth;
         }
 
         const cs = getComputedStyle(visible);
         const gap = Number.parseFloat(cs.columnGap || cs.gap || '0') || 0;
-        const padInline =
-          (Number.parseFloat(cs.paddingInlineStart || cs.paddingLeft || '0') || 0) +
-          (Number.parseFloat(cs.paddingInlineEnd || cs.paddingRight || '0') || 0);
         const n = items.length;
-        setMinWidth(sumCollapsed + maxDelta + Math.max(0, n - 1) * gap + padInline);
+        setMinWidth(maxSelectedWidth + Math.max(0, n - 1) * gap);
       }
 
       compute();
@@ -349,14 +433,14 @@ export function SegmentedController(props: SegmentedControllerProps) {
         ro.disconnect();
       };
     },
-    [measureItems, containerRef],
+    [labelSize, measureItems, containerRef],
   );
 
   const ctx = useMemo(
     function buildCtx() {
-      return { collapseInactive, selectedValue };
+      return { collapseInactive, labelSize, selectedValue };
     },
-    [collapseInactive, selectedValue],
+    [collapseInactive, labelSize, selectedValue],
   );
 
   return (
@@ -382,6 +466,7 @@ export function SegmentedController(props: SegmentedControllerProps) {
         selectedKeys={value !== undefined ? [value] : undefined}
         data-size={size}
         data-collapse-inactive={collapseInactive || undefined}
+        data-collapse-selected-position={selectedPosition}
         className={classNames(styles.container, className)}
       >
         {/*
@@ -392,7 +477,7 @@ export function SegmentedController(props: SegmentedControllerProps) {
         <Flex
           ref={containerRef}
           gap="0"
-          padding="xs"
+          padding="0"
           className={styles.content}
           style={minWidth != null ? { minWidth: `${minWidth}px` } : undefined}
         >
@@ -436,7 +521,9 @@ export function SegmentedController(props: SegmentedControllerProps) {
                   data-value={item.value}
                 >
                   {item.icon}
-                  <span className={styles.label}>{item.label}</span>
+                  <text.span as="label" size={labelSize} className={styles.label}>
+                    {item.label}
+                  </text.span>
                 </Flex>
               );
             })}

@@ -53,6 +53,7 @@ catalog:
   '@types/supertest': ^7.2.0
   '@types/tar': ^7.0.87
   '@types/ws': ^8.18.1
+  '@ux/tooltip': ^2500.11.1
   '@ux/util': ^2400.11.0
   '@vitest/coverage-v8': ^4.1.0
   '@vitest/ui': ^4.1.0

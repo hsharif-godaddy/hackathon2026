@@ -24,49 +24,74 @@
  * Delete this file with the rest of the vendor folder when PR #187 ships.
  */
 .airo-vendor-segmented-controller {
-  --controller-surface-bg: var(--color-surface-background-passive, var(--ux-l7zq7p, #ffffff));
+  /*
+   * Track background. Upstream uses --color-surface-background-passive
+   * (which resolves to white in light themes) — that's too high-contrast
+   * against most of our chat/builder surfaces. Substitute a translucent
+   * passive feedback color so the track reads as a subtle gray in any
+   * theme without us hand-picking a literal.
+   */
+  --controller-surface-bg: color-mix(
+    in srgb,
+    intent('ux.feedbackHighContrastPassive.feedbackColor') 10%,
+    transparent
+  );
   --controller-item-bg-selected: var(--color-action-background-selected, var(--ux-gdy377, #e0e0e0));
   --controller-item-fg-selected: var(--color-action-foreground-selected, var(--ux-k4fkva, #000));
   --controller-item-border-selected: var(
     --color-action-border-selected,
     var(--ux-187j9dd, transparent)
   );
-  --controller-font-size-sm: var(--font-body-size-sm, calc(var(--ux-cxbe8g, 16px) / 1.125));
-  --controller-font-size-md: var(--font-body-size-md, var(--ux-cxbe8g, 16px));
-  --controller-font-size-lg: var(--font-body-size-lg, calc(var(--ux-cxbe8g, 16px) * 1.125));
-  --controller-space-005: var(--space-005, calc(var(--ux-1sbfig8, 0.25rem) * 0.5));
-  --controller-space-010: var(--space-010, calc(var(--ux-1sbfig8, 0.25rem) * 1));
-  --controller-space-015: var(--space-015, calc(var(--ux-1sbfig8, 0.25rem) * 1.5));
-  --controller-space-020: var(--space-020, calc(var(--ux-1sbfig8, 0.25rem) * 2));
-  --controller-space-025: var(--space-025, calc(var(--ux-1sbfig8, 0.25rem) * 2.5));
-  --controller-space-030: var(--space-030, calc(var(--ux-1sbfig8, 0.25rem) * 3));
-  --controller-space-040: var(--space-040, calc(var(--ux-1sbfig8, 0.25rem) * 4));
+  /* Track outline is intentionally invisible (transparent) but the border is
+     kept at 1px width so it still occupies its slot in the height budget
+     (track height = border + filled items). Swap in a visible color here if
+     the track ever needs a rendered edge. */
+  --controller-track-border: transparent;
 
+  box-sizing: border-box;
   background: var(--controller-surface-bg);
+  border: 1px solid var(--controller-track-border);
+  align-items: stretch;
 
   /* biome-ignore lint/correctness/noUnknownProperty: interpolate-size is Baseline 2024; older browsers ignore it. */
   interpolate-size: allow-keywords;
 
   /*
-   * Per-size knobs. `--inner-radius` is the upstream-shipped variable;
-   * `--controller-icon-only-padding-inline` is a vendor-only addition that
-   * matches the size's `padding-block` so icon-only / collapsed segments
-   * render with symmetric padding (sides = top/bottom).
+   * Per-size knobs. SIZING IS REM-BASED HERE BY DESIGN: this deliberately
+   * diverges from the repo's "density units + intent tokens on component
+   * internals" guidance (per explicit direction for this refactor). 1rem =
+   * 16px. Heights are border-box, so each track height already includes its
+   * 1px top + bottom border; items fill the remaining inner height.
+   *
+   *   size  track    border budget        items fill
+   *   sm    24px     1px×2 = 2px           22px
+   *   md    40px     1px×2 = 2px           38px
+   *   lg    56px     1px×2 = 2px           54px
+   *
+   * `--inner-radius` (item corner radius) is left on the upstream token scale;
+   * the track radius is `--inner-radius + 1px` so the track edge stays
+   * concentric with the items now that the content row has no inset.
+   * `padding-block` stays at 0.125rem for every size. `padding-inline` and
+   * `--controller-icon-only-padding-inline` scale per size; square icon-only /
+   * collapsed segments are enforced by the per-size min-width rules below.
    */
   &:where([data-size='sm']) {
-    --inner-radius: calc(var(--controller-space-015) * 2);
-    border-radius: calc(var(--inner-radius) + var(--controller-space-015));
-    --controller-icon-only-padding-inline: var(--controller-space-005);
+    height: 1.5rem;
+    --inner-radius: calc(var(--space-015, calc(var(--ux-1sbfig8, 0.25rem) * 1.5)) * 2);
+    border-radius: calc(var(--inner-radius) + 1px);
+    --controller-icon-only-padding-inline: 0.125rem;
   }
   &:where([data-size='md']) {
-    --inner-radius: calc(var(--controller-space-030) * 2);
-    border-radius: calc(var(--inner-radius) + var(--controller-space-030));
-    --controller-icon-only-padding-inline: var(--controller-space-015);
+    height: 2.5rem;
+    --inner-radius: calc(var(--space-030, calc(var(--ux-1sbfig8, 0.25rem) * 3)) * 2);
+    border-radius: calc(var(--inner-radius) + 1px);
+    --controller-icon-only-padding-inline: 0.25rem;
   }
   &:where([data-size='lg']) {
-    --inner-radius: calc(var(--controller-space-040) * 2);
-    border-radius: calc(var(--inner-radius) + var(--controller-space-040));
-    --controller-icon-only-padding-inline: var(--controller-space-025);
+    height: 3.5rem;
+    --inner-radius: calc(var(--space-040, calc(var(--ux-1sbfig8, 0.25rem) * 4)) * 2);
+    border-radius: calc(var(--inner-radius) + 1px);
+    --controller-icon-only-padding-inline: 0.5rem;
   }
 
   :where(&:dir(rtl)) {
@@ -75,12 +100,12 @@
 
   & :where(.airo-vendor-segmented-controller__item) {
     position: relative;
-    z-index: 1;
+    box-sizing: border-box;
+    align-items: center;
     background: transparent;
     border: 1px solid transparent;
     border-radius: var(--inner-radius);
-    scroll-margin-inline: var(--controller-space-005);
-    transform: translateZ(0);
+    scroll-margin-inline: var(--space-005, calc(var(--ux-1sbfig8, 0.25rem) * 0.5));
     /*
      * Set gap via CSS (rather than inline) so collapse mode can drive it to 0
      * when the label is hidden. Mirror items keep their inline gap.
@@ -88,9 +113,6 @@
     gap: var(--sp-xs, 2px);
     transition: gap 200ms cubic-bezier(0.4, 0, 0.2, 1);
 
-    &:where([data-selected]) {
-      z-index: 0;
-    }
     &:where([data-disabled]) {
       opacity: 0.4;
       cursor: not-allowed;
@@ -101,29 +123,52 @@
     }
   }
 
+  & :where(.airo-vendor-segmented-controller__item-content) {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: inherit;
+  }
+
+  /*
+   * Item padding is rem-based (per this refactor's direction): 0.125rem (2px)
+   * block for every size, with inline padding scaling by size. Items stretch to
+   * fill the track's inner height, so `padding-block` is a centered inset rather
+   * than what drives height — the per-size track heights above do that. Label
+   * typography comes from the UXCore text component.
+   */
   & :where([data-size='sm'] .airo-vendor-segmented-controller__item) {
-    font-size: var(--controller-font-size-sm);
-    padding-inline: var(--controller-space-015);
-    padding-block: var(--controller-space-005);
+    min-height: calc(1.5rem - 2px);
+    padding-block: 0.125rem;
+    padding-inline: 0.25rem;
   }
   & :where([data-size='md'] .airo-vendor-segmented-controller__item) {
-    font-size: var(--controller-font-size-md);
-    padding-inline: var(--controller-space-030);
-    padding-block: var(--controller-space-015);
+    min-height: calc(2.5rem - 2px);
+    padding-block: 0.125rem;
+    padding-inline: 0.5rem;
   }
   & :where([data-size='lg'] .airo-vendor-segmented-controller__item) {
-    font-size: var(--controller-font-size-lg);
-    padding-inline: var(--controller-space-040);
-    padding-block: var(--controller-space-025);
+    min-height: calc(3.5rem - 2px);
+    padding-block: 0.125rem;
+    padding-inline: 1rem;
+  }
+
+  /*
+   * sm constrains item icons to 16px (1rem) regardless of the size the consumer
+   * passed to <Icon> — CSS width/height override the SVG's presentation
+   * attributes. Scoped to `.item` so the scroll-button chevrons (which live
+   * outside the item) keep their own sizing. md/lg leave icon size to the caller.
+   */
+  & :where([data-size='sm'] .airo-vendor-segmented-controller__item) svg {
+    width: 1rem;
+    height: 1rem;
+    flex-shrink: 0;
   }
 
   /*
    * Vendor-only divergence from upstream antares PR #187: icon-only segments
    * (no `.label` rendered at all) and collapsed-inactive non-selected
-   * segments (`.label--hidden`) get symmetric padding so their content area
-   * is square around the icon, instead of the wider `padding-inline` that
-   * the size-based rules above set for icon+label segments. Matches the
-   * size's `padding-block` so the visual height stays anchored.
+   * segments (`.label--hidden`) stay square and center the icon.
    *
    * `:has()` is supported by every browser on the repo's `browserslist`
    * target, but wrap with `@supports selector(:has(*))` to match the
@@ -143,7 +188,29 @@
       :where(
         .airo-vendor-segmented-controller__item:not(:has(.airo-vendor-segmented-controller__label))
       ) {
+      justify-content: center;
       padding-inline: var(--controller-icon-only-padding-inline);
+    }
+
+    &:where([data-size='sm'])
+      :where(
+        .airo-vendor-segmented-controller__item:not(:has(.airo-vendor-segmented-controller__label))
+      ) {
+      min-width: calc(1.5rem - 2px);
+    }
+
+    &:where([data-size='md'])
+      :where(
+        .airo-vendor-segmented-controller__item:not(:has(.airo-vendor-segmented-controller__label))
+      ) {
+      min-width: calc(2.5rem - 2px);
+    }
+
+    &:where([data-size='lg'])
+      :where(
+        .airo-vendor-segmented-controller__item:not(:has(.airo-vendor-segmented-controller__label))
+      ) {
+      min-width: calc(3.5rem - 2px);
     }
   }
   &:where([data-collapse-inactive])
@@ -151,11 +218,41 @@
       .airo-vendor-segmented-controller__content
         .airo-vendor-segmented-controller__item:not([data-selected])
     ) {
+    justify-content: center;
     padding-inline: var(--controller-icon-only-padding-inline);
+  }
+  &:where([data-size='sm'][data-collapse-inactive])
+    :where(
+      .airo-vendor-segmented-controller__content
+        .airo-vendor-segmented-controller__item:not([data-selected])
+    ) {
+    min-width: calc(1.5rem - 2px);
+  }
+  &:where([data-size='md'][data-collapse-inactive])
+    :where(
+      .airo-vendor-segmented-controller__content
+        .airo-vendor-segmented-controller__item:not([data-selected])
+    ) {
+    min-width: calc(2.5rem - 2px);
+  }
+  &:where([data-size='lg'][data-collapse-inactive])
+    :where(
+      .airo-vendor-segmented-controller__content
+        .airo-vendor-segmented-controller__item:not([data-selected])
+    ) {
+    min-width: calc(3.5rem - 2px);
   }
 
   & :where(.airo-vendor-segmented-controller__content) {
     background: transparent;
+    /* No inset of its own: the content row spans the full track inner box and
+       its items stretch to fill that height (the `padding="0"` set in the TSX
+       removes the old `xs` inset). Track height = border + items, nothing else. */
+    box-sizing: border-box;
+    flex: 0 0 auto;
+    height: 100%;
+    width: auto;
+    align-items: stretch;
     overflow-x: auto;
     scrollbar-width: none;
 
@@ -173,13 +270,14 @@
     transform: var(--icon-direction);
   }
 
-  /*
-   * Distribute reserved space automatically: first segment anchors to the leading
-   * edge, last segment anchors to the trailing edge, and any middle segments are
-   * evenly spaced. The `gap` declared on the content row becomes the minimum spacing.
-   */
   &:where([data-collapse-inactive]) :where(.airo-vendor-segmented-controller__content) {
+    flex: 1 1 auto;
     justify-content: space-between;
+    width: 100%;
+  }
+  &:where([data-collapse-inactive][data-collapse-selected-position='middle'])
+    :where(.airo-vendor-segmented-controller__content) {
+    justify-content: space-evenly;
   }
 
   /* When a segment is collapsed (no visible label), close the gap between icon and the zero-width label. */
@@ -233,9 +331,8 @@
     border: 1px solid var(--controller-item-border-selected);
     border-radius: var(--inner-radius);
     position: absolute;
-    z-index: -1;
-    inset-block-start: -1px;
-    inset-inline-start: -1px;
+    inset-block-start: 0;
+    inset-inline-start: 0;
     width: 100%;
     height: 100%;
     transition-property: translate, width;

@@ -148,9 +148,10 @@ export function CollapseInactiveExample() {
 - The container uses Baseline-2024 `interpolate-size: allow-keywords` for
   the smooth label width animation. Older browsers fall back to an abrupt
   swap; collapse functionality is unchanged.
-- This vendor imports from `@godaddy/antares` (`Flex`, `Button`, `Icon`,
-  `Tooltip`, `TooltipTrigger`) and `react-aria-components`. Both are
-  already in the consumer's dependency graph; no new install needed.
+- This vendor imports layout/icon primitives from `@godaddy/antares`,
+  interaction primitives from `react-aria-components`, typography from
+  `@ux/text`, and tooltips from `@ux/tooltip`. `@ux/tooltip` is a peer
+  dependency for package consumers.
 
 ## Local divergences from upstream
 
@@ -168,7 +169,7 @@ comment, so `git grep "Local divergence"` reaches them all.
 | Where | Change | Reason |
 |-------|--------|--------|
 | `SegmentedController.tsx` (root `<Flex>`) | `gap="0"` between segments (was `gap="xs"`) | PR-author request — segments sit flush against each other. |
-| `styles.css` (per-size blocks + new override rules) | `padding-inline` matches `padding-block` for icon-only segments and collapsed-inactive non-selected segments | PR-author request — symmetric padding around the icon. |
+| `styles.css` (per-size blocks + new override rules) | Icon-only segments and collapsed-inactive non-selected segments use per-size minimum widths so they stay square and center the icon | PR-author request — symmetric icon-only presentation. |
 | `SegmentedController.tsx` (mirror-measurement effect) and `useHorizontalScroll.ts` | `typeof ResizeObserver === 'undefined'` early-return guard | Older browsers / constrained webviews lack the API. Matches the guard pattern used elsewhere in this repo (`PanelChrome.tsx`). |
 | `useHorizontalScroll.ts` (`update`) | `setState` uses a functional updater that compares values and bails when nothing changed | Scroll events fire every animation frame; without the bailout, each tick allocated a fresh state object and forced a re-render. |
 | `SegmentedController.tsx` (`defaultSelectedKeys`/`selectedKeys`) | Explicit `value !== undefined` check (was a truthy test) | `value` and `defaultValue` are typed `string`, so `''` is a valid segment key and shouldn't read as unset. |

@@ -109,6 +109,7 @@ export default defineConfig({
     '@ux/text',
     '@ux/text-entry',
     '@ux/text-lockup',
+    '@ux/tooltip',
     // Required by `src/_vendor/segmented-controller/`. Already a transitive
     // dep of `@godaddy/antares`; kept external here so we don't ship a
     // second copy. Drop alongside the vendor folder when antares PR #187 ships.

@@ -124,7 +124,7 @@ export function BuilderChatFooterSections({
     <div {...rest} className={classnames('airo-surfaces-builder-chat-footer__sections', className)}>
       <SegmentedController
         aria-label={ariaLabel}
-        size="sm"
+        size="md"
         collapseInactive={collapseInactive}
         {...(activeSectionId !== undefined
           ? { value: activeSectionId }

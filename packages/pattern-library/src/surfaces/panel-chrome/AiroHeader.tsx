@@ -360,7 +360,7 @@ export function AiroHeaderSections({
       {hasTabs ? (
         <SegmentedController
           aria-label={sectionsAriaLabel}
-          size="sm"
+          size="md"
           {...(activeTabId !== undefined
             ? { value: activeTabId }
             : { defaultValue: effectiveDefault })}
