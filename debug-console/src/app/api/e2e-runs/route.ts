@@ -21,6 +21,7 @@ interface GhWorkflowRun {
   updated_at?: string;
   run_started_at?: string | null;
   event?: string;
+  run_attempt?: number;
 }
 
 interface GhListResponse {
@@ -133,9 +134,11 @@ async function fetchScheduledMainRunsSince(
   wfPath: string,
   token: string,
   sinceIso: string,
+  maxPages: number = WINDOW_MAX_PAGES,
 ): Promise<GhWorkflowRun[]> {
   const all: GhWorkflowRun[] = [];
-  for (let page = 1; page <= WINDOW_MAX_PAGES; page++) {
+  let lastPageFull = false;
+  for (let page = 1; page <= maxPages; page++) {
     const qs = new URLSearchParams({
       per_page: '100',
       page: String(page),
@@ -146,9 +149,200 @@ async function fetchScheduledMainRunsSince(
     const body = (await ghGetJson(`${wfPath}?${qs}`, token)) as GhListResponse;
     const runs = Array.isArray(body.workflow_runs) ? body.workflow_runs : [];
     all.push(...runs);
-    if (runs.length < 100) break;
+    lastPageFull = runs.length === 100;
+    if (!lastPageFull) break;
+  }
+  // Stopped at the page cap with a still-full final page → the window may be
+  // truncated (e.g. scheduled cadence increased). Surface it rather than
+  // silently undercount.
+  if (lastPageFull) {
+    logger.warn('api.e2e_runs.page_cap_hit', { maxPages, fetched: all.length, sinceIso });
   }
   return all;
+}
+
+// ── Metrics mode (dashboard analytics) ────────────────────────────────────
+// One cached call fetches 2× the window so the current window can be compared
+// to the prior equal window; all other figures are derived in-process.
+const METRICS_MAX_PAGES = 9; // 2×30d ≈ 780 raw runs / 100 → headroom
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+interface WindowStats {
+  passed: number;
+  failed: number;
+  running: number;
+  completed: number;
+  total: number;
+  passRatePct: number | null;
+}
+
+interface TrendDay {
+  ymd: string;
+  label: string;
+  passed: number;
+  failed: number;
+  total: number;
+  passRatePct: number | null;
+}
+
+interface E2eMetrics {
+  window: { days: number };
+  current: WindowStats;
+  previous: WindowStats;
+  deltaPoints: number | null;
+  duration: { avgSec: number; p50Sec: number; p95Sec: number; sampleCount: number };
+  reliability: {
+    streakType: 'pass' | 'fail' | 'none';
+    streakCount: number;
+    lastGreenIso: string | null;
+    lastGreenAgeHours: number | null;
+    rerunCount: number;
+    rerunRatePct: number;
+    totalRuns: number;
+  };
+  trend: TrendDay[];
+}
+
+// Nearest-rank percentile over an ascending-sorted array.
+function percentile(sortedAscSecs: number[], p: number): number {
+  if (sortedAscSecs.length === 0) return 0;
+  const rank = Math.ceil((p / 100) * sortedAscSecs.length) - 1;
+  const idx = Math.min(sortedAscSecs.length - 1, Math.max(0, rank));
+  return sortedAscSecs[idx] ?? 0;
+}
+
+function utcDayKey(iso: string): string {
+  return iso.slice(0, 10); // GitHub timestamps are UTC ('…Z') → YYYY-MM-DD
+}
+
+function dayLabel(ymd: string): string {
+  const [, m, d] = ymd.split('-');
+  return `${Number(m)}/${Number(d)}`;
+}
+
+function createdMs(run: GhWorkflowRun): number {
+  const t = run.created_at ? new Date(run.created_at).getTime() : Number.NaN;
+  return Number.isNaN(t) ? 0 : t;
+}
+
+function isCompleted(run: GhWorkflowRun): boolean {
+  return (run.status ?? '').toLowerCase() === 'completed';
+}
+
+function windowStats(runs: GhWorkflowRun[]): WindowStats {
+  let passed = 0;
+  let failed = 0;
+  let running = 0;
+  for (const run of runs) {
+    if (!isCompleted(run)) {
+      running++;
+      continue;
+    }
+    if (run.conclusion === 'success') passed++;
+    else failed++;
+  }
+  const completed = passed + failed;
+  return {
+    passed,
+    failed,
+    running,
+    completed,
+    total: runs.length,
+    passRatePct: completed > 0 ? Math.round((passed / completed) * 100) : null,
+  };
+}
+
+function buildE2eMetrics(runsAll: GhWorkflowRun[], windowDays: number): E2eMetrics {
+  const nowMs = Date.now();
+  const currentSince = nowMs - windowDays * DAY_MS;
+  const previousSince = nowMs - 2 * windowDays * DAY_MS;
+
+  const scheduled = runsAll.filter(isScheduledE2eOnMain);
+  const current = scheduled.filter((r) => createdMs(r) >= currentSince);
+  const previous = scheduled.filter((r) => {
+    const t = createdMs(r);
+    return t >= previousSince && t < currentSince;
+  });
+
+  const cur = windowStats(current);
+  const prev = windowStats(previous);
+  const deltaPoints =
+    cur.passRatePct != null && prev.passRatePct != null ? cur.passRatePct - prev.passRatePct : null;
+
+  // Duration stats over completed current-window runs.
+  const durs = current
+    .filter(isCompleted)
+    .map(durationSeconds)
+    .filter((s): s is number => typeof s === 'number')
+    .sort((a, b) => a - b);
+  const avgSec = durs.length ? Math.round(durs.reduce((sum, v) => sum + v, 0) / durs.length) : 0;
+
+  // "Right now" health (streak + last green) walks completed runs newest-first
+  // across the full fetched span (2× window), not just the current window — so a
+  // short window still reports an accurate streak and last-green time.
+  const completedDesc = [...scheduled].filter(isCompleted).sort((a, b) => createdMs(b) - createdMs(a));
+  const newest = completedDesc[0];
+  const streakType: 'pass' | 'fail' | 'none' =
+    newest == null ? 'none' : newest.conclusion === 'success' ? 'pass' : 'fail';
+  let streakCount = 0;
+  if (streakType !== 'none') {
+    const wantPass = streakType === 'pass';
+    for (const r of completedDesc) {
+      if ((r.conclusion === 'success') === wantPass) streakCount++;
+      else break;
+    }
+  }
+  const lastGreen = completedDesc.find((r) => r.conclusion === 'success');
+  const lastGreenIso = lastGreen?.created_at ?? null;
+  const lastGreenAgeHours = lastGreenIso
+    ? Math.round(((nowMs - new Date(lastGreenIso).getTime()) / (60 * 60 * 1000)) * 10) / 10
+    : null;
+  const rerunCount = current.filter((r) => (r.run_attempt ?? 1) > 1).length;
+
+  // Per-day pass-rate trend within the current window (only days with runs).
+  const byDay = new Map<string, { passed: number; failed: number; total: number }>();
+  for (const r of current) {
+    if (!r.created_at) continue;
+    const key = utcDayKey(r.created_at);
+    const bucket = byDay.get(key) ?? { passed: 0, failed: 0, total: 0 };
+    bucket.total++;
+    if (isCompleted(r)) {
+      if (r.conclusion === 'success') bucket.passed++;
+      else bucket.failed++;
+    }
+    byDay.set(key, bucket);
+  }
+  const trend: TrendDay[] = [...byDay.entries()]
+    .sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
+    .map(([ymd, b]) => {
+      const completed = b.passed + b.failed;
+      return {
+        ymd,
+        label: dayLabel(ymd),
+        passed: b.passed,
+        failed: b.failed,
+        total: b.total,
+        passRatePct: completed > 0 ? Math.round((b.passed / completed) * 100) : null,
+      };
+    });
+
+  return {
+    window: { days: windowDays },
+    current: cur,
+    previous: prev,
+    deltaPoints,
+    duration: { avgSec, p50Sec: percentile(durs, 50), p95Sec: percentile(durs, 95), sampleCount: durs.length },
+    reliability: {
+      streakType,
+      streakCount,
+      lastGreenIso,
+      lastGreenAgeHours,
+      rerunCount,
+      rerunRatePct: current.length ? Math.round((rerunCount / current.length) * 100) : 0,
+      totalRuns: current.length,
+    },
+    trend,
+  };
 }
 
 export const GET = withAuth(async (request, _auth) => {
@@ -205,6 +399,22 @@ export const GET = withAuth(async (request, _auth) => {
         const runs = Array.isArray(body.workflow_runs) ? body.workflow_runs : [];
         const scheduledE2e = runs.filter(isScheduledE2eOnMain);
         return { runs: scheduledE2e.slice(0, SCHEDULED_E2E_KPI_LIMIT).map(mapRun) };
+      });
+      return NextResponse.json(data);
+    }
+
+    if (action === 'metrics') {
+      if (windowDays == null) {
+        return NextResponse.json({ error: 'metrics requires a window (1d|7d|30d)' }, { status: 400 });
+      }
+      const data = await routeCached(`github_e2e_runs_metrics_window_${windowDays}d`, 60_000, async () => {
+        const runs = await fetchScheduledMainRunsSince(
+          wfPath,
+          token,
+          windowSinceIso(2 * windowDays),
+          METRICS_MAX_PAGES,
+        );
+        return buildE2eMetrics(runs, windowDays);
       });
       return NextResponse.json(data);
     }
