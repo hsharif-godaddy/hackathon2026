@@ -1,6 +1,6 @@
 # dev-supervisor Makefile
 
-.PHONY: build build-supervisor build-sandbox build-airo-workspace build-all clean test test-all test-integration test-integration-subproc test-integration-strangler test-docker test-docker-go lint lint-all lint-rust fmt fmt-fix vet run help install deps
+.PHONY: build build-supervisor build-sandbox build-airo-workspace build-all clean test test-all test-integration test-integration-subproc test-integration-strangler test-linux test-docker test-docker-go lint lint-all lint-rust fmt fmt-fix vet run help install deps
 
 # Build variables
 BINARY_NAME := dev-supervisor
@@ -101,6 +101,39 @@ test-coverage: test
 ## Run all tests including Linux-specific (same as test on Linux, cross-platform elsewhere)
 test-all: test
 	@echo "Note: On Linux, all tests run automatically. On other platforms, Linux-specific tests are skipped."
+
+# --- Linux source-of-truth test runner -------------------------------------
+# dev-supervisor is a Linux-only service (Landlock, SO_PEERSEC, signalfd,
+# SCM_RIGHTS, fd passing); the macOS targets above are best-effort and their
+# stubs can mask or fake Linux behaviour. `make test-linux` runs the full suite
+# (lint, vet, fmt, go test -race, cargo fmt/clippy/test, integration subproc +
+# strangler) inside a container with the exact CI toolchains, so local == CI.
+# The Docker integration test stays separate: `make test-docker`.
+TEST_IMAGE := dev-supervisor-test:local
+# Caches live OUTSIDE the repo so the in-container tools (gofmt -l ., go vet
+# ./..., cargo) don't recurse into dependency sources mounted under /src.
+TEST_CACHE := $(HOME)/.cache/dev-supervisor-test
+
+## Run the full suite in the Linux test image (CI parity, source of truth)
+test-linux:
+	@[ "$$(basename $(CURDIR))" = "dev-supervisor" ] || { echo "run from dev-supervisor/ (CURDIR=$(CURDIR) is mounted into the container at /src)"; exit 1; }
+	@echo "Building Linux test image ($(TEST_IMAGE))..."
+	# --pull: rust:1.96-bookworm is a mutable tag; refresh it so the pinned
+	# toolchain claim doesn't silently drift as upstream republishes the tag.
+	docker build --pull -t $(TEST_IMAGE) - < test/Dockerfile.linux
+	@mkdir -p $(TEST_CACHE)/go $(TEST_CACHE)/gomod $(TEST_CACHE)/cargo
+	@chmod +x test/run-linux-tests.sh
+	@echo "Running full suite in Linux container (as host user $$(id -u):$$(id -g))..."
+	docker run --rm \
+	  -u $$(id -u):$$(id -g) \
+	  -v "$(CURDIR)":/src \
+	  -v "$(TEST_CACHE)/go":/cache/go \
+	  -v "$(TEST_CACHE)/gomod":/cache/gomod \
+	  -v "$(TEST_CACHE)/cargo":/cache/cargo \
+	  -e HOME=/tmp \
+	  -e GOCACHE=/cache/go -e GOMODCACHE=/cache/gomod -e CARGO_HOME=/cache/cargo \
+	  -w /src \
+	  $(TEST_IMAGE) test/run-linux-tests.sh
 
 ## Run Docker integration tests
 test-docker:

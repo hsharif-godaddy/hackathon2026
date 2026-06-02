@@ -43,8 +43,9 @@ cd dev-supervisor
 make build                    # Build all binaries (Go + Rust) to dist/
 make build-supervisor         # Go dev-supervisor binary only
 make build-airo-workspace    # Rust airo-workspace binary only
-make test                     # Go tests (auto-skips Linux-only on macOS)
+make test                     # Go tests (auto-skips Linux-only on macOS; best-effort)
 make test-rust                # Rust tests (integration tests Linux-only)
+make test-linux               # FULL suite in a Linux container, CI parity — source of truth
 make test-docker              # Docker integration tests
 make lint                     # golangci-lint
 make lint-rust                # cargo clippy
@@ -123,11 +124,30 @@ dev-supervisor/
 
 ## Testing
 
-Three tiers:
+**`make test-linux` is the source of truth.** This service is Linux-only
+(Landlock, SO_PEERSEC, signalfd, `/proc`, SCM_RIGHTS, fd passing); the macOS
+build/test path uses stubs that fake or mask that behaviour, so a green `make
+test` on macOS proves little and a red one is often a false negative. `make
+test-linux` runs the **full** suite — lint, `go vet`, gofmt, `go test -race`,
+`cargo fmt`/`clippy`/`test`, and integration (`subproc` + `strangler`) — inside
+a container (`test/Dockerfile.linux`) pinned to the exact CI toolchains (Go 1.25,
+Rust 1.96, golangci-lint v2.8.0, ripgrep), as the **host user** so
+permission-assertion tests match CI. Run it before pushing anything Linux-touching.
+Go/Cargo caches persist in `$HOME/.cache/dev-supervisor-test` (outside the repo, so
+the in-container `gofmt`/`go vet`/cargo don't recurse into mounted dependency
+sources), so re-runs are fast.
 
-1. **Cross-platform unit tests** — `make test` (runs everywhere)
-2. **Linux-specific tests** — `*_linux_test.go` with `//go:build linux` (auto-skipped on macOS)
+The native targets below remain for fast inner-loop iteration on cross-platform
+logic, but are **best-effort** — defer to `make test-linux` and CI for anything
+platform-sensitive. (The Docker PID1 integration test is separate and runs on
+the host: `make test-docker`.)
+
+Tiers:
+
+1. **Cross-platform unit tests** — `make test` (runs everywhere; best-effort on macOS)
+2. **Linux-specific tests** — `*_linux_test.go` with `//go:build linux` (auto-skipped on macOS; only meaningfully exercised by `make test-linux`/CI)
 3. **Docker integration tests** — `make test-docker` (tests actual container PID1 behavior)
+4. **Full Linux suite** — `make test-linux` (CI parity; the authoritative gate)
 
 ### Strangler-fig acceptance harness
 
@@ -163,11 +183,12 @@ The `rust/airo-workspace/` crate is the PID1 init process. It:
 
 ## PR Checklist
 
-- [ ] `make fmt-fix` — code formatted
-- [ ] `make lint` — no Go lint errors
-- [ ] `make lint-rust` — no Rust lint errors
-- [ ] `make test` — Go tests pass
-- [ ] `make test-rust` — Rust tests pass
-- [ ] `make test-docker` — if API changed
+- [ ] `make test-linux` — full suite passes in the Linux container (CI parity; the authoritative gate)
+- [ ] `make test-docker` — if API or container behavior changed
 - [ ] TypeScript client updated in `app/src/lib/dev-environment/` — if API changed
 - [ ] Platform-specific code uses build tags with fallback implementation
+
+`make test-linux` covers fmt, vet, lint, `go test -race`, Rust fmt/clippy/test,
+and integration (subproc + strangler). The native `make fmt-fix` / `lint` /
+`test` / `test-rust` targets are fine for quick local iteration but are not the
+gate — see Testing above.

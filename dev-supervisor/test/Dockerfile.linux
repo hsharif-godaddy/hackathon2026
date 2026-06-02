@@ -1,0 +1,35 @@
+# Test image for `make test-linux`: the source of truth for this Linux-tied
+# service. Bundles the exact toolchains CI uses (Go 1.25, Rust 1.96 + clippy +
+# rustfmt, golangci-lint v2.8.0, ripgrep) so the full suite — including the
+# Linux-only behaviour macOS can't exercise (Landlock, SO_PEERSEC, signalfd,
+# SCM_RIGHTS, fd passing) — runs identically to CI on a developer machine.
+#
+# Built and run by `make test-linux`. Layers are stable, so it builds once and
+# caches; only changes when this file changes.
+FROM rust:1.96-bookworm
+
+ARG GO_VERSION=1.25.7
+ARG GOLANGCI_VERSION=v2.8.0
+
+# Toolchain + test deps. Rust/clippy/rustfmt come from the base image.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ca-certificates curl git make build-essential ripgrep \
+ && rm -rf /var/lib/apt/lists/* \
+ && rustup component add clippy rustfmt
+
+# Go (arch-matched to the build platform).
+RUN arch="$(dpkg --print-architecture)" \
+ && curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-${arch}.tar.gz" | tar -C /usr/local -xz
+
+# golangci-lint pinned to the CI version. The install script is fetched from the
+# matching version tag (not master) so the same Dockerfile produces the same
+# image over time — CI uses the SHA-pinned action, so this closes the parity gap.
+RUN curl -sSfL "https://raw.githubusercontent.com/golangci/golangci-lint/${GOLANGCI_VERSION}/install.sh" \
+    | sh -s -- -b /usr/local/bin "${GOLANGCI_VERSION}"
+
+ENV PATH=/usr/local/go/bin:/usr/local/cargo/bin:${PATH}
+# buildvcs off: the mounted source is a git worktree the container user may not
+# own, which otherwise trips `go build`'s VCS stamping.
+ENV GOFLAGS=-buildvcs=false
+
+WORKDIR /src
