@@ -208,6 +208,58 @@ describe('QuickEditBar', () => {
     });
   });
 
+  describe('keyboard event isolation', () => {
+    // The bar renders into the same document as the customer app. Slide decks
+    // and similar apps bind global keydown/keyup handlers (arrow keys → next
+    // slide, space → advance). Keystrokes typed into the prompt must never
+    // reach those host listeners. See AIROBUILD-2018.
+    it('does not propagate keydown to document-level host listeners', () => {
+      const hostKeydown = vi.fn();
+      document.addEventListener('keydown', hostKeydown);
+      try {
+        render(
+          createElement(QuickEditBar, { onSubmit: vi.fn(), onDismiss: vi.fn() }),
+        );
+        fireEvent.keyDown(getInput(), { key: 'ArrowRight' });
+        expect(hostKeydown).not.toHaveBeenCalled();
+      } finally {
+        document.removeEventListener('keydown', hostKeydown);
+      }
+    });
+
+    it('does not propagate keyup to document-level host listeners', () => {
+      const hostKeyup = vi.fn();
+      document.addEventListener('keyup', hostKeyup);
+      try {
+        render(
+          createElement(QuickEditBar, { onSubmit: vi.fn(), onDismiss: vi.fn() }),
+        );
+        fireEvent.keyUp(getInput(), { key: ' ' });
+        expect(hostKeyup).not.toHaveBeenCalled();
+      } finally {
+        document.removeEventListener('keyup', hostKeyup);
+      }
+    });
+
+    it('still handles Enter for submit even though propagation is stopped', () => {
+      const onSubmit = vi.fn();
+      const hostKeydown = vi.fn();
+      document.addEventListener('keydown', hostKeydown);
+      try {
+        render(
+          createElement(QuickEditBar, { onSubmit, onDismiss: vi.fn() }),
+        );
+        const input = getInput();
+        fireEvent.change(input, { target: { value: 'make it bigger' } });
+        fireEvent.keyDown(input, { key: 'Enter' });
+        expect(onSubmit).toHaveBeenCalledWith('make it bigger');
+        expect(hostKeydown).not.toHaveBeenCalled();
+      } finally {
+        document.removeEventListener('keydown', hostKeydown);
+      }
+    });
+  });
+
   describe('dismiss while listening', () => {
     it('clicking X button calls speech.toggle() and onDismiss()', () => {
       const onSubmit = vi.fn();

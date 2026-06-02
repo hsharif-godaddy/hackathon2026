@@ -163,9 +163,15 @@ export function QuickEditBar({
         placeholder={t("devtools_quick_edit_placeholder", "Tell me how to change this...")}
         style={INPUT_STYLES}
         onKeyDown={(e) => {
+          // The bar renders into the host app's document. Keep keystrokes from
+          // reaching the app's global key handlers — e.g. a slide deck that
+          // advances on spacebar / arrow keys. React's stopPropagation also
+          // stops the native event, so document/window listeners never fire.
+          e.stopPropagation();
           if (e.key === "Enter" && value.trim()) handleSubmit();
           if (e.key === "Escape") handleDismiss();
         }}
+        onKeyUp={(e) => { e.stopPropagation(); }}
       />
       {showMic && (
         <button
