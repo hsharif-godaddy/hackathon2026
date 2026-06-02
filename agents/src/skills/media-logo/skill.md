@@ -19,6 +19,7 @@ Generated logos auto-save to the media slot system. Use the returned `slotUrl` i
 <img src="/airo-assets/images/logo/primary" alt="Sunrise Cafe logo" />
 
 // If background is required — append ?variant=solid to any slot (only use if the logo is the same color as the background, otherwise it may look worse)
+// NEVER combine ?variant=solid with brightness-0 or invert — it produces a solid-color blob
 <img src="/airo-assets/images/logo/horizontal?variant=solid" alt="Sunrise Cafe logo" />
 ```
 
