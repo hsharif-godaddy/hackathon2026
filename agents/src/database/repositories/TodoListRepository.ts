@@ -10,6 +10,7 @@ export interface TodoItem {
   title: string
   description?: string
   completed: boolean
+  inProgress: boolean
   order: number
   createdAt: Date
   updatedAt: Date
@@ -71,6 +72,7 @@ export class TodoListRepository {
         title TEXT NOT NULL,
         description TEXT,
         completed INTEGER DEFAULT 0,
+        in_progress INTEGER DEFAULT 0,
         item_order INTEGER DEFAULT 0,
         created_at TEXT DEFAULT CURRENT_TIMESTAMP,
         updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
@@ -78,10 +80,19 @@ export class TodoListRepository {
       )
     `)
 
+    try {
+      this.db.exec('ALTER TABLE todo_items ADD COLUMN in_progress INTEGER DEFAULT 0')
+    } catch (error) {
+      if (!(error instanceof Error) || !error.message.includes('duplicate column name')) {
+        throw error
+      }
+    }
+
     this.db.exec(`
       CREATE INDEX IF NOT EXISTS idx_todo_lists_app_id ON todo_lists(app_id);
       CREATE INDEX IF NOT EXISTS idx_todo_items_list_id ON todo_items(list_id);
       CREATE INDEX IF NOT EXISTS idx_todo_items_completed ON todo_items(completed);
+      CREATE INDEX IF NOT EXISTS idx_todo_items_in_progress ON todo_items(in_progress);
     `)
   }
 
@@ -236,8 +247,8 @@ export class TodoListRepository {
 
     const id = this.generateId()
     const stmt = this.db.prepare(`
-      INSERT INTO todo_items (id, list_id, title, description, item_order, completed)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO todo_items (id, list_id, title, description, item_order, completed, in_progress)
+      VALUES (?, ?, ?, ?, ?, ?, 0)
     `)
 
     stmt.run(id, listId, title, description || null, order, completed ? 1 : 0)
@@ -257,7 +268,7 @@ export class TodoListRepository {
    */
   getItemById(itemId: string): TodoItem | null {
     const stmt = this.db.prepare(`
-      SELECT id, list_id, title, description, completed, item_order, created_at, updated_at
+      SELECT id, list_id, title, description, completed, in_progress, item_order, created_at, updated_at
       FROM todo_items
       WHERE id = ?
     `)
@@ -274,6 +285,7 @@ export class TodoListRepository {
       title: row.title,
       description: row.description,
       completed: row.completed === 1,
+      inProgress: row.in_progress === 1,
       order: row.item_order,
       createdAt: new Date(row.created_at),
       updatedAt: new Date(row.updated_at)
@@ -285,7 +297,7 @@ export class TodoListRepository {
    */
   getItemsByListId(listId: string): TodoItem[] {
     const stmt = this.db.prepare(`
-      SELECT id, list_id, title, description, completed, item_order, created_at, updated_at
+      SELECT id, list_id, title, description, completed, in_progress, item_order, created_at, updated_at
       FROM todo_items
       WHERE list_id = ?
       ORDER BY item_order ASC, created_at ASC
@@ -299,6 +311,7 @@ export class TodoListRepository {
       title: row.title,
       description: row.description,
       completed: row.completed === 1,
+      inProgress: row.in_progress === 1,
       order: row.item_order,
       createdAt: new Date(row.created_at),
       updatedAt: new Date(row.updated_at)
@@ -379,7 +392,7 @@ export class TodoListRepository {
   markItemCompleted(itemId: string, completed: boolean): TodoItem {
     const stmt = this.db.prepare(`
       UPDATE todo_items
-      SET completed = ?, updated_at = CURRENT_TIMESTAMP
+      SET completed = ?, in_progress = 0, updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `)
 
@@ -436,7 +449,7 @@ export class TodoListRepository {
     const placeholders = itemIds.map(() => '?').join(',')
     const stmt = this.db.prepare(`
       UPDATE todo_items
-      SET completed = ?, updated_at = CURRENT_TIMESTAMP
+      SET completed = ?, in_progress = 0, updated_at = CURRENT_TIMESTAMP
       WHERE id IN (${placeholders})
     `)
 
@@ -448,6 +461,33 @@ export class TodoListRepository {
       .filter((item): item is TodoItem => item !== null)
 
     // Update timestamps for all affected lists
+    const uniqueListIds = [...new Set(items.map(item => item.listId))]
+    uniqueListIds.forEach(listId => this.updateListTimestamp(listId))
+
+    return items
+  }
+
+  /**
+   * Mark multiple items as in progress in a single operation
+   */
+  markItemsInProgress(itemIds: string[], inProgress: boolean): TodoItem[] {
+    if (itemIds.length === 0) {
+      return []
+    }
+
+    const placeholders = itemIds.map(() => '?').join(',')
+    const stmt = this.db.prepare(`
+      UPDATE todo_items
+      SET in_progress = ?, completed = CASE WHEN ? = 1 THEN 0 ELSE completed END, updated_at = CURRENT_TIMESTAMP
+      WHERE id IN (${placeholders})
+    `)
+
+    stmt.run(inProgress ? 1 : 0, inProgress ? 1 : 0, ...itemIds)
+
+    const items = itemIds
+      .map(id => this.getItemById(id))
+      .filter((item): item is TodoItem => item !== null)
+
     const uniqueListIds = [...new Set(items.map(item => item.listId))]
     uniqueListIds.forEach(listId => this.updateListTimestamp(listId))
 

@@ -70,4 +70,8 @@ export class SqliteTodoListStore implements TodoListStore {
   async markItemsCompleted(itemIds: string[], completed: boolean): Promise<PlanningTodoItem[]> {
     return this.repo.markItemsCompleted(itemIds, completed);
   }
+
+  async markItemsInProgress(itemIds: string[], inProgress: boolean): Promise<PlanningTodoItem[]> {
+    return this.repo.markItemsInProgress(itemIds, inProgress);
+  }
 }

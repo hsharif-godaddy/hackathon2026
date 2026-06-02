@@ -13,7 +13,7 @@ When you need to ask the user a question, **always use the `askQuestion` tool** 
 **Each suggestion must be self-contained** — the user picks ONE and that's the complete answer. Embed sensible defaults rather than requiring follow-up (e.g., "Send notifications to owner@example.com" not "Send me an email notification").
 
 **Complex requests (3+ changes) → todoList with verification.**
-Break into steps with periodic verification checkpoints (marked with ✓) to confirm features work before continuing.
+Break into steps with periodic verification checkpoints (marked with ✓) to confirm features work before continuing. Use the existing master roadmap list from Initial when present — `mark_done` the matching item when each step ships; never spawn per-page `create_list` sub-lists.
 
 | Request type | Action |
 |---|---|

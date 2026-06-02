@@ -6,6 +6,7 @@ export interface PlanningTodoItem {
   title: string;
   description?: string;
   completed: boolean;
+  inProgress: boolean;
   order: number;
   createdAt: Date;
   updatedAt: Date;
@@ -54,4 +55,5 @@ export interface TodoListStore {
   markItemCompleted(itemId: string, completed: boolean): Promise<PlanningTodoItem>;
   reorderItem(itemId: string, newOrder: number): Promise<PlanningTodoItem>;
   markItemsCompleted(itemIds: string[], completed: boolean): Promise<PlanningTodoItem[]>;
+  markItemsInProgress(itemIds: string[], inProgress: boolean): Promise<PlanningTodoItem[]>;
 }

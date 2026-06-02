@@ -58,13 +58,22 @@ function summarizeOutput(name: string, output: unknown): unknown {
     const list = obj.list as Record<string, unknown> | undefined;
     if (list && Array.isArray(list.items)) {
       const items = (list.items as Array<Record<string, unknown>>).map(
-        (it) => ({ id: it.id, title: it.title, completed: it.completed }),
+        (it) => ({
+          id: it.id,
+          title: it.title,
+          completed: it.completed,
+          inProgress: it.inProgress,
+        }),
       );
       return { success: obj.success, operation: obj.operation, items };
     }
     if (Array.isArray(obj.items)) {
       const items = (obj.items as Array<Record<string, unknown>>).map(
-        (it) => ({ id: it.id, completed: it.completed }),
+        (it) => ({
+          id: it.id,
+          completed: it.completed,
+          inProgress: it.inProgress,
+        }),
       );
       return { success: obj.success, operation: obj.operation, items };
     }
@@ -154,7 +163,12 @@ const CHECKLIST_SECTIONS: ChecklistSection[] = [
       { id: 'B2', question: 'In the final build turn, what tool call index was mark_done?', flagIf: 'absent' },
       { id: 'B3', question: 'In the final build turn, what tool call index was askQuestion or suggestedResponse (whichever appeared)?', flagIf: 'Never — this is informational' },
       { id: 'B4', question: 'Was mark_done called BEFORE askQuestion/suggestedResponse in that turn? (lower index = earlier)', flagIf: 'No, askQuestion first, suggestedResponse first, or Not called' },
-      { id: 'B5', question: 'Was there any turn where askQuestion fired but no mark_done ran, despite the list having incomplete items at that point?', flagIf: 'Yes' },
+      {
+        id: 'B5',
+        question:
+          'Was there any turn where askQuestion fired while a current-milestone item (inProgress and not completed) still needed mark_done in that turn — excluding deferred roadmap items (pending: not inProgress, not completed)?',
+        flagIf: 'Yes',
+      },
     ],
   },
   {
@@ -180,6 +194,8 @@ function buildChecklistPrompt(serializedTrace: string): string {
 
   return `You are a strict trace auditor for an AI web builder agent. Your job is to answer a static checklist about how the agent managed its todo list during a build session. You are looking for specific failure modes: items never marked done, mark_done skipped because a stop-after tool fired first, and an incorrect post-build question (e.g., asking for the project name after it was already set).
 
+For B5, scope to the **current milestone** only: items that were inProgress (and not completed) when askQuestion ran and still needed mark_done in that same turn. **Deferred roadmap** items (pending: not inProgress, not completed) may legitimately stay open after a partial build (e.g., homepage-only preview) — do not FLAG B5 when askQuestion fires with only deferred items still open.
+
 Answer EVERY question. For each question, provide:
 1. "reasoning" — a brief explanation (1-2 sentences) of what you observed in the trace that led to your answer.
 2. "answer" — a short answer (5 words or fewer): "Yes", "No", a number, or "N/A".
@@ -199,7 +215,7 @@ Respond with a single JSON object. Do NOT output anything outside the JSON.
 TRACE
 ════════════════════════════════════════════
 
-A "turn" is one agent response. Tool calls within a turn are listed in call order (index 0 = first called). startTime/endTime are ms epoch.
+A "turn" is one agent response. Tool calls within a turn are listed in call order (index 0 = first called). startTime/endTime are ms epoch. todoList outputs may include item inProgress and completed flags — use them for B5 (inProgress = current milestone; pending deferred items are not inProgress).
 
 ${serializedTrace}
 

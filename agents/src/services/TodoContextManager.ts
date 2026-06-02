@@ -58,7 +58,22 @@ export class TodoContextManager {
         return '[Current Todo List]\n\nNo active todo list. Create one with todoList tool if starting a new feature.';
       }
 
-      const formattedContext = this.formatTodoList(todoList);
+      let siblingWarning: string | null = null
+      try {
+        siblingWarning = await this.formatSiblingListWarning(appId, selectedTodoListId)
+      } catch (error) {
+        const err = error instanceof Error ? error : new Error(String(error))
+        logger.warn('todo.context.sibling_warning_failure', {
+          appId,
+          todoListId: selectedTodoListId,
+          error: err.message,
+        })
+      }
+
+      const formattedContext = [
+        this.formatTodoList(todoList),
+        siblingWarning,
+      ].filter(Boolean).join('\n');
 
       logger.debug('todo.context.generated', {
         appId,
@@ -106,8 +121,20 @@ export class TodoContextManager {
     sections.push('');
 
     if (items.length > 0) {
-      const pendingItems = items.filter(item => !item.completed);
+      const inProgressItems = items.filter(item => item.inProgress && !item.completed);
+      const pendingItems = items.filter(item => !item.completed && !item.inProgress);
       const completedItemsList = items.filter(item => item.completed);
+
+      if (inProgressItems.length > 0) {
+        sections.push(`In-Progress Items (${inProgressItems.length}):`);
+        inProgressItems.forEach((item, index) => {
+          sections.push(`  ${index + 1}. ⏳ ${item.title} (ID: ${item.id})`);
+          if (item.description) {
+            sections.push(`     ${item.description}`);
+          }
+        });
+        sections.push('');
+      }
 
       if (pendingItems.length > 0) {
         sections.push(`Pending Items (${pendingItems.length}):`);
@@ -133,12 +160,43 @@ export class TodoContextManager {
     }
 
     if (totalItems > 0 && items.some(item => !item.completed)) {
-      sections.push('Note: This is your active todo list. Mark items complete immediately after finishing each task using todoList tool with operation: "mark_done" and the item ID(s). Use operation: "show_list" to display your completed work.');
+      sections.push('Note: This is your active todo list. When you finish a task, call operation: "mark_done" with its item ID(s) in the same turn. Do not create_list for sub-tasks while items here are open — use add_items or mark_done on this list. create_list is blocked until every list is complete.');
     } else if (totalItems > 0) {
       sections.push('Note: All items complete. Do not create a new list unless the user explicitly requests a new multi-step feature.');
     }
 
     return sections.join('\n');
+  }
+
+  private async formatSiblingListWarning(
+    appId: string,
+    selectedListId: string,
+  ): Promise<string | null> {
+    const allLists = await this.todoListStore.getAllLists(workspaceScopeFromAppId(appId));
+    const othersWithOpen = allLists.filter((list) => {
+      if (list.id === selectedListId) {
+        return false;
+      }
+      return (list.items ?? []).some((item) => !item.completed);
+    });
+
+    if (othersWithOpen.length === 0) {
+      return null;
+    }
+
+    const names = othersWithOpen
+      .map((list) => {
+        const openCount = (list.items ?? []).filter((item) => !item.completed).length;
+        return `"${list.name}" (${openCount} open)`;
+      })
+      .join(', ');
+
+    return [
+      '[Other Todo Lists]',
+      '',
+      `This app also has list(s) with open items: ${names}.`,
+      'Prefer mark_done on the currently-selected list above — do not create_list for per-page work while those items are open.',
+    ].join('\n');
   }
 
   /**

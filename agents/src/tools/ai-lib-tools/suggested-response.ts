@@ -5,7 +5,6 @@ import { getTodoListStore } from '../../planning/adapters/index.js'
 import { Logger } from '../../logging/index.js'
 
 const logger = Logger.create({ component: 'suggested-response-tool' })
-const todoListStore = getTodoListStore()
 
 /**
  * Suggestion schema
@@ -62,42 +61,44 @@ Example use cases:
       suggestionCount: suggestions.length
     })
 
-    // Check for pending todo items that should be marked done.
-    // The LLM sees this reminder in the tool result and calls mark_done itself.
-    let todoReminder = ''
-    try {
-      const sessionId = context?.metadata?.sessionId as string
-      const stateManager = context?.metadata?.stateManager as { getSelectedTodoList: (id: string) => string | undefined } | undefined
-      if (sessionId && stateManager?.getSelectedTodoList) {
-        const selectedListId = stateManager.getSelectedTodoList(sessionId)
+    let completionMessage = ''
+    const todoListStore = getTodoListStore()
+    const sessionId = context?.metadata?.sessionId as string | undefined
+    const stateManager = context?.metadata?.stateManager as { getSelectedTodoList: (id: string) => string | undefined } | undefined
+
+    if (sessionId && stateManager?.getSelectedTodoList) {
+      let itemIds: string[] = []
+      let selectedListId: string | undefined
+      try {
+        selectedListId = stateManager.getSelectedTodoList(sessionId)
         if (selectedListId) {
           const list = await todoListStore.getListById(selectedListId)
-          const pendingItems = list && list.appId === appId
-            ? list.items?.filter(item => !item.completed) || []
+          const inProgressItems = list && list.appId === appId
+            ? list.items?.filter(item => item.inProgress && !item.completed) || []
             : []
-          if (pendingItems.length > 0) {
-            const itemList = pendingItems
-              .map(item => `- "${item.title.replace(/[\n\r]/g, ' ')}" (ID: ${item.id})`)
-              .join('\n')
-            todoReminder = `\n\nACTION REQUIRED: You have uncompleted todo items. If you finished any of these, call todoList with operation "mark_done" and the item ID(s) NOW before ending your turn:\n${itemList}`
-            logger.info('suggested-response.todo-reminder-injected', {
-              appId,
-              pendingCount: pendingItems.length,
-            })
-          }
+          itemIds = inProgressItems.map(item => item.id)
         }
+      } catch (error) {
+        logger.warn('suggested-response.todo-check-failed', {
+          appId,
+          error: error instanceof Error ? error.message : String(error),
+        })
       }
-    } catch (error) {
-      logger.warn('suggested-response.todo-check-failed', {
-        appId,
-        error: error instanceof Error ? error.message : String(error),
-      })
+
+      if (itemIds.length > 0) {
+        completionMessage = `\n\nWarning: ${itemIds.length} in-progress todo item${itemIds.length === 1 ? '' : 's'} still open (${itemIds.join(', ')}) — call mark_done on those IDs in this turn before showing suggested responses.`
+        logger.warn('suggested-response.todo-in-progress', {
+          appId,
+          itemIds,
+          listId: selectedListId,
+        })
+      }
     }
 
     // Build message in one place
     let message = `Suggested response rendered with ${suggestions.length} option${suggestions.length === 1 ? '' : 's'}`
-    if (todoReminder) {
-      message += todoReminder
+    if (completionMessage) {
+      message += completionMessage
     }
 
     return {

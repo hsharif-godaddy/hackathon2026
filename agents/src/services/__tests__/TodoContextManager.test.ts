@@ -37,13 +37,13 @@ describe('TodoContextManager', function todoContextManagerTests() {
         appId: 'app-1',
         name: 'Test',
         items: [
-          { id: 'i1', title: 'Homepage', completed: true },
-          { id: 'i2', title: 'About', completed: false }
+          { id: 'i1', title: 'Homepage', completed: true, inProgress: false },
+          { id: 'i2', title: 'About', completed: false, inProgress: false }
         ]
       })
 
       const result = await manager.generateTodoContext(makeContext('app-1') as any, 'list-1')
-      expect(result).toContain('Mark items complete immediately')
+      expect(result).toContain('operation: "mark_done"')
       expect(result).not.toContain('All items complete')
     })
 
@@ -53,15 +53,15 @@ describe('TodoContextManager', function todoContextManagerTests() {
         appId: 'app-1',
         name: 'Test',
         items: [
-          { id: 'i1', title: 'Homepage', completed: true },
-          { id: 'i2', title: 'About', completed: true }
+          { id: 'i1', title: 'Homepage', completed: true, inProgress: false },
+          { id: 'i2', title: 'About', completed: true, inProgress: false }
         ]
       })
 
       const result = await manager.generateTodoContext(makeContext('app-1') as any, 'list-1')
       expect(result).toContain('All items complete')
       expect(result).toContain('Do not create a new list')
-      expect(result).not.toContain('Mark items complete immediately')
+      expect(result).not.toContain('operation: "mark_in_progress"')
     })
 
     it('should not show "All items complete" for empty list', async function emptyListNote() {
@@ -83,9 +83,9 @@ describe('TodoContextManager', function todoContextManagerTests() {
         appId: 'app-1',
         name: 'Pawfect Grooming',
         items: [
-          { id: 'i1', title: 'Homepage', completed: true },
-          { id: 'i2', title: 'Services', completed: true },
-          { id: 'i3', title: 'Contact', completed: true }
+          { id: 'i1', title: 'Homepage', completed: true, inProgress: false },
+          { id: 'i2', title: 'Services', completed: true, inProgress: false },
+          { id: 'i3', title: 'Contact', completed: true, inProgress: false }
         ]
       })
 
@@ -96,6 +96,62 @@ describe('TodoContextManager', function todoContextManagerTests() {
       expect(result).toContain('3/3 complete (100%)')
       expect(result).not.toContain('Create a new list')
       expect(result).not.toContain('No active todo list')
+    })
+  })
+
+  describe('sibling list warning', function siblingWarning() {
+    it('should warn when another list has open items', async function otherListOpen() {
+      mockRepo.getListById.mockReturnValue({
+        id: 'list-1',
+        appId: 'app-1',
+        name: 'Kinetic Website',
+        items: [
+          { id: 'i1', title: 'Homepage', completed: true, inProgress: false },
+          { id: 'i2', title: 'About', completed: false, inProgress: false },
+        ],
+      })
+      mockRepo.getAllLists.mockReturnValue([
+        {
+          id: 'list-1',
+          appId: 'app-1',
+          name: 'Kinetic Website',
+          items: [
+            { id: 'i1', title: 'Homepage', completed: true, inProgress: false },
+            { id: 'i2', title: 'About', completed: false, inProgress: false },
+          ],
+        },
+        {
+          id: 'list-2',
+          appId: 'app-1',
+          name: 'Homepage Build',
+          items: [{ id: 'i3', title: 'Hero', completed: false, inProgress: false }],
+        },
+      ])
+
+      const result = await manager.generateTodoContext(makeContext('app-1') as any, 'list-1')
+      expect(result).toContain('[Other Todo Lists]')
+      expect(result).toContain('Homepage Build')
+      expect(result).toContain('mark_done on the currently-selected list')
+    })
+
+    it('should still show active list when sibling warning lookup fails', async function siblingLookupFailure() {
+      mockRepo.getListById.mockReturnValue({
+        id: 'list-1',
+        appId: 'app-1',
+        name: 'Kinetic Website',
+        items: [
+          { id: 'i1', title: 'Homepage', completed: false, inProgress: false },
+        ],
+      })
+      mockRepo.getAllLists.mockImplementation(() => {
+        throw new Error('db locked')
+      })
+
+      const result = await manager.generateTodoContext(makeContext('app-1') as any, 'list-1')
+      expect(result).toContain('[Current Todo List]')
+      expect(result).toContain('Kinetic Website')
+      expect(result).not.toContain('No active todo list')
+      expect(result).not.toContain('[Other Todo Lists]')
     })
   })
 })

@@ -175,7 +175,7 @@ describe('TodoLifecycleEvaluator', () => {
         { id: 'B2', reasoning: 'Not in final turn', answer: 'absent', result: 'FLAG' },
         { id: 'B3', reasoning: 'askQuestion at index 2', answer: '2', result: 'PASS' },
         { id: 'B4', reasoning: 'mark_done never called', answer: 'Not called', result: 'FLAG' },
-        { id: 'B5', reasoning: 'askQuestion fired with incomplete items', answer: 'Yes', result: 'FLAG' },
+        { id: 'B5', reasoning: 'askQuestion fired with in-progress item still open', answer: 'Yes', result: 'FLAG' },
         { id: 'C1', reasoning: 'askQuestion called', answer: 'Yes', result: 'PASS' },
         { id: 'C2', reasoning: 'setProjectName called earlier', answer: 'Yes', result: 'PASS' },
         { id: 'C3', reasoning: 'No name question', answer: 'No', result: 'PASS' },
@@ -306,6 +306,31 @@ describe('TodoLifecycleEvaluator', () => {
     const result = await evaluator.evaluate(transcript, makeScenario());
     expect(result.verdict).not.toBe('unknown');
     expect(result.evaluatorFailed).toBeUndefined();
+  });
+
+  it('includes current-milestone B5 guidance in prompt sent to GoCode', async () => {
+    mockGocode.complete.mockResolvedValue(
+      JSON.stringify({ questions: [{ id: 'A1', reasoning: 'Called', answer: 'Yes', result: 'PASS' }], overall: 'pass' }),
+    );
+
+    const transcript = makeTranscript({
+      turns: [
+        makeTurn({
+          toolCalls: [
+            makeToolCall('todoList', {
+              operation: 'create_list',
+              items: [{ id: 'itm_1', title: 'Homepage' }],
+            }),
+          ],
+        }),
+      ],
+    });
+    await evaluator.evaluate(transcript, makeScenario());
+
+    const prompt = mockGocode.complete.mock.calls[0][0][0].content as string;
+    expect(prompt).toContain('current milestone');
+    expect(prompt).toContain('deferred roadmap');
+    expect(prompt).toContain('inProgress');
   });
 
   it('includes serialized trace in prompt sent to GoCode', async () => {

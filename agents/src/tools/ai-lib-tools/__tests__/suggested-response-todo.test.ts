@@ -1,7 +1,8 @@
 import { describe, it, expect, vi } from 'vitest'
 
-const { mockGetListById } = vi.hoisted(() => ({
-  mockGetListById: vi.fn()
+const { mockGetListById, mockMarkItemsCompleted } = vi.hoisted(() => ({
+  mockGetListById: vi.fn(),
+  mockMarkItemsCompleted: vi.fn(),
 }))
 
 vi.mock('../../../logging/index.js', () => ({
@@ -21,10 +22,10 @@ vi.mock('../../../database/repositories/AppRepository.js', () => ({
   }; })
 }))
 
-vi.mock('../../../database/repositories/TodoListRepository.js', () => ({
-  TodoListRepository: vi.fn(function () { return {
+vi.mock('../../../planning/adapters/index.js', () => ({
+  getTodoListStore: vi.fn(function () { return {
     getListById: mockGetListById,
-    initializeSchema: vi.fn()
+    markItemsCompleted: mockMarkItemsCompleted,
   }; })
 }))
 
@@ -49,21 +50,25 @@ function createExecutionOptions(overrides: Record<string, unknown> = {}) {
 const baseSuggestions = [{ text: 'Next step' }]
 
 describe('suggestedResponse todo reminder', function suggestedResponseTodoTests() {
-  it('should not include reminder when stateManager is missing', async function noStateManager() {
+  it('should not warn when stateManager is missing', async function noStateManager() {
+    mockMarkItemsCompleted.mockReset()
     const result = await (suggestedResponseAITool as any).execute(
       { question: 'What next?', suggestions: baseSuggestions },
       createExecutionOptions({ stateManager: undefined })
     )
-    expect(result.message).not.toContain('ACTION REQUIRED')
+    expect(result.message).not.toContain('mark_done')
+    expect(mockMarkItemsCompleted).not.toHaveBeenCalled()
   })
 
-  it('should not include reminder when no pending items', async function noPending() {
+  it('should not warn when no in-progress items', async function noPending() {
+    mockMarkItemsCompleted.mockReset()
     mockGetListById.mockReturnValue({
       id: 'list-1',
       name: 'Test',
       appId: 'test-app',
       items: [
-        { id: 'item-1', title: 'Homepage', completed: true }
+        { id: 'item-1', title: 'Homepage', completed: true, inProgress: false },
+        { id: 'item-2', title: 'Settings', completed: false, inProgress: false }
       ]
     })
 
@@ -71,18 +76,20 @@ describe('suggestedResponse todo reminder', function suggestedResponseTodoTests(
       { question: 'What next?', suggestions: baseSuggestions },
       createExecutionOptions()
     )
-    expect(result.message).not.toContain('ACTION REQUIRED')
+    expect(result.message).not.toContain('mark_done')
+    expect(mockMarkItemsCompleted).not.toHaveBeenCalled()
   })
 
-  it('should include reminder with item IDs when pending items exist', async function withPending() {
+  it('should warn when in-progress items exist', async function withPending() {
+    mockMarkItemsCompleted.mockReset()
     mockGetListById.mockReturnValue({
       id: 'list-1',
       name: 'Test',
       appId: 'test-app',
       items: [
-        { id: 'item-1', title: 'Homepage', completed: true },
-        { id: 'item-2', title: 'Template gallery', completed: false },
-        { id: 'item-3', title: 'Download & share', completed: false }
+        { id: 'item-1', title: 'Homepage', completed: true, inProgress: false },
+        { id: 'item-2', title: 'Template gallery', completed: false, inProgress: true },
+        { id: 'item-3', title: 'Download & share', completed: false, inProgress: false }
       ]
     })
 
@@ -90,19 +97,19 @@ describe('suggestedResponse todo reminder', function suggestedResponseTodoTests(
       { question: 'What next?', suggestions: baseSuggestions },
       createExecutionOptions()
     )
-    expect(result.message).toContain('ACTION REQUIRED')
-    expect(result.message).toContain('item-2')
-    expect(result.message).toContain('Template gallery')
-    expect(result.message).toContain('item-3')
+    expect(result.message).toContain('1 in-progress todo item still open (item-2)')
+    expect(result.message).toContain('mark_done')
+    expect(mockMarkItemsCompleted).not.toHaveBeenCalled()
   })
 
-  it('should not include reminder when list belongs to a different app', async function appIdMismatch() {
+  it('should not warn when list belongs to a different app', async function appIdMismatch() {
+    mockMarkItemsCompleted.mockReset()
     mockGetListById.mockReturnValue({
       id: 'list-1',
       name: 'Test',
       appId: 'other-app',
       items: [
-        { id: 'item-1', title: 'Homepage', completed: false }
+        { id: 'item-1', title: 'Homepage', completed: false, inProgress: true }
       ]
     })
 
@@ -110,7 +117,8 @@ describe('suggestedResponse todo reminder', function suggestedResponseTodoTests(
       { question: 'What next?', suggestions: baseSuggestions },
       createExecutionOptions()
     )
-    expect(result.message).not.toContain('ACTION REQUIRED')
+    expect(result.message).not.toContain('mark_done')
+    expect(mockMarkItemsCompleted).not.toHaveBeenCalled()
   })
 
   it('should not throw when stateManager.getSelectedTodoList throws', async function stateManagerError() {
@@ -123,6 +131,6 @@ describe('suggestedResponse todo reminder', function suggestedResponseTodoTests(
       })
     )
     expect(result.success).toBe(true)
-    expect(result.message).not.toContain('ACTION REQUIRED')
+    expect(result.message).not.toContain('mark_done')
   })
 })

@@ -8,7 +8,7 @@ import { customerIdFromContext } from '../../memory/interfaces/scope.js'
  * Comprehensive planning tool with SQLite storage
  */
 export const todoListAITool: Tool = createTool(
-  'Create and manage todo lists for planning. CRITICAL: Call mark_done in the SAME TURN you finish a task — before suggestedResponse, before ending your response. The user sees the plan update in real-time; if you forget, it looks like nothing was accomplished. Never batch mark_done calls or defer them. Use show_list to display completed work. Use select_list to switch between todo lists. Use this to break down complex tasks and track progress in real-time.',
+  'Create and manage todo lists for planning. CRITICAL: Use ONE roadmap create_list per build — put every page/feature as items on that list; never create a parent list plus per-page sub-lists. create_list is rejected while any list for this app still has open items — mark_done those items first or use add_items on the current list. Call mark_done in the SAME TURN you finish each item — before suggestedResponse, before askQuestion, and before ending your response. Use show_list to display completed work.',
   z.object({
     operation: z.enum([
       'create_list',
@@ -20,9 +20,10 @@ export const todoListAITool: Tool = createTool(
       'update_items',
       'delete_items',
       'mark_done',
+      'mark_in_progress',
       'mark_undone',
       'select_list'
-    ]).describe('The operation to perform. Use show_list to display a completed todo list. Use select_list to switch to a different list.'),
+    ]).describe('The operation to perform. Use mark_done when finished. Use mark_in_progress only when starting work you will finish in a later turn — if you use mark_in_progress, call mark_done before askQuestion or suggestedResponse in the same turn. Use show_list to display a completed todo list. Use select_list to switch to a different list.'),
     appId: z.string().optional().describe('App ID to associate the list with (usually from context)'),
     listId: z.string().optional().describe('ID of the todo list (required for get_list, show_list, select_list, delete_list, add_items)'),
     listName: z.string().optional().describe('Name of the todo list (required for create_list)'),
@@ -33,7 +34,7 @@ export const todoListAITool: Tool = createTool(
       completed: z.boolean().optional().describe('Whether the item is completed (default: false)'),
       order: z.number().optional().describe('Order/position of the item (auto-assigned if not specified)')
     })).optional().describe('Array of items - for create_list (with list) or add_items (to existing list). Can be single item or multiple.'),
-    itemIds: z.array(z.string()).optional().describe('Array of item IDs - for mark_done, mark_undone, delete_items. Can be single ID or multiple.'),
+    itemIds: z.array(z.string()).optional().describe('Array of item IDs - for mark_done, mark_in_progress, mark_undone, delete_items. Can be single ID or multiple.'),
     updates: z.array(z.object({
       itemId: z.string().describe('ID of the item to update'),
       title: z.string().optional().describe('New title'),

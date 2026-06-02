@@ -14,7 +14,7 @@ import { logger } from '../logging/index.js'
 export type { TodoItem, TodoList, CreateItemInput }
 
 export interface TodoListToolOptions {
-  operation: 'create_list' | 'get_list' | 'list_all' | 'delete_list' | 'add_items' | 'update_items' | 'delete_items' | 'mark_done' | 'mark_undone' | 'show_list' | 'select_list'
+  operation: 'create_list' | 'get_list' | 'list_all' | 'delete_list' | 'add_items' | 'update_items' | 'delete_items' | 'mark_done' | 'mark_in_progress' | 'mark_undone' | 'show_list' | 'select_list'
   appId?: string
   listId?: string
   listName?: string
@@ -81,6 +81,8 @@ class TodoListTool {
           return await this.deleteItems(options)
         case 'mark_done':
           return await this.markDone(options)
+        case 'mark_in_progress':
+          return await this.markInProgress(options)
         case 'mark_undone':
           return await this.markUndone(options)
         case 'select_list':
@@ -125,6 +127,13 @@ class TodoListTool {
         success: false,
         error: 'appId is required'
       }
+    }
+
+    const openListGuard = await this.openListCreateGuard(
+      workspaceScopeFromAppId(options.appId, options.customerId),
+    )
+    if (openListGuard) {
+      return openListGuard
     }
 
     const list = await this.store.createList(
@@ -419,7 +428,7 @@ class TodoListTool {
   }
 
   /**
-   * Mark items as done (batch operation, works for single or multiple)
+   * Mark items as done (batch operation, works for single or multiple).
    */
   private async markDone(options: TodoListToolOptions): Promise<TodoListToolResult> {
     if (!options.itemIds || options.itemIds.length === 0) {
@@ -429,11 +438,77 @@ class TodoListTool {
       }
     }
 
-    const items = await this.store.markItemsCompleted(options.itemIds, true)
+    const foundIds: string[] = []
+    const missingIds: string[] = []
+    for (const itemId of options.itemIds) {
+      const item = await this.store.getItemById(itemId)
+      if (!item) {
+        missingIds.push(itemId)
+        continue
+      }
+      foundIds.push(itemId)
+    }
+
+    if (foundIds.length === 0) {
+      return {
+        success: false,
+        error: `Item(s) not found: ${missingIds.join(', ')}`
+      }
+    }
+
+    const items = await this.store.markItemsCompleted(foundIds, true)
+
+    let message = `Marked ${items.length} item${items.length === 1 ? '' : 's'} as done`
+    if (missingIds.length > 0) {
+      message += `; ${missingIds.length} not found: ${missingIds.join(', ')}`
+    }
 
     return {
       success: true,
-      message: `Marked ${items.length} item${items.length === 1 ? '' : 's'} as done`,
+      message,
+      items
+    }
+  }
+
+  /**
+   * Mark items as in progress (batch operation, works for single or multiple)
+   */
+  private async markInProgress(options: TodoListToolOptions): Promise<TodoListToolResult> {
+    if (!options.itemIds || options.itemIds.length === 0) {
+      return {
+        success: false,
+        error: 'At least one item ID is required'
+      }
+    }
+
+    const foundIds: string[] = []
+    const missingIds: string[] = []
+    for (const itemId of options.itemIds) {
+      const item = await this.store.getItemById(itemId)
+      if (!item) {
+        missingIds.push(itemId)
+        continue
+      }
+      foundIds.push(itemId)
+    }
+
+    if (foundIds.length === 0) {
+      return {
+        success: false,
+        error: `Item(s) not found: ${missingIds.join(', ')}`
+      }
+    }
+
+    const items = await this.store.markItemsInProgress(foundIds, true)
+
+    let message = `Marked ${items.length} item${items.length === 1 ? '' : 's'} as in progress`
+    if (missingIds.length > 0) {
+      message += `; ${missingIds.length} not found: ${missingIds.join(', ')}`
+    }
+
+    return {
+      success: true,
+      message,
       items
     }
   }
@@ -455,6 +530,50 @@ class TodoListTool {
       success: true,
       message: `Marked ${items.length} item${items.length === 1 ? '' : 's'} as not done`,
       items
+    }
+  }
+
+  /**
+   * Blocks create_list while any existing list still has incomplete items.
+   */
+  private async openListCreateGuard(
+    scope: ReturnType<typeof workspaceScopeFromAppId>,
+  ): Promise<TodoListToolResult | null> {
+    const existingLists = await this.store.getAllLists(scope)
+    const blockers: Array<{ name: string; openCount: number; openIds: string[] }> = []
+
+    for (const existing of existingLists) {
+      const openItems = existing.items?.filter((item) => !item.completed) ?? []
+      if (openItems.length > 0) {
+        blockers.push({
+          name: existing.name,
+          openCount: openItems.length,
+          openIds: openItems.map((item) => item.id),
+        })
+      }
+    }
+
+    if (blockers.length === 0) {
+      return null
+    }
+
+    const summary = blockers
+      .map((b) => `"${b.name}" (${b.openCount} open)`)
+      .join(', ')
+    const sampleIds = blockers.flatMap((b) => b.openIds).slice(0, 8).join(', ')
+
+    logger.warn('todo_list.create_list.blocked_open_items', {
+      scope,
+      blockers: blockers.map((b) => ({ name: b.name, openCount: b.openCount })),
+    })
+
+    return {
+      success: false,
+      error:
+        `Cannot create_list while other lists have open items: ${summary}. ` +
+        `mark_done every open item on the current list first` +
+        (sampleIds ? ` (e.g. ${sampleIds})` : '') +
+        ', or use add_items on that list instead of a nested create_list.',
     }
   }
 

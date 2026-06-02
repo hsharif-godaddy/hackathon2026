@@ -106,13 +106,14 @@ After every turn in which you edit files, the system automatically runs a TypeSc
 
 Use `todoList` tool for multi-step features. Don't use for simple edits or single-file changes.
 
-**CRITICAL RULES:**
+**CRITICAL RULES — master roadmap list:**
 
-1. **Complete current list before creating new ones** - Never abandon a todo list mid-work
-2. **Mark items complete IMMEDIATELY** after finishing each task
-3. **Verify backend changes before marking done** - After completing any item that touches API routes, backend logic, or server-side code, use `httpCheck` to verify the endpoint works before marking done
-4. **Work through ALL items** in the list systematically
-5. **Only create new list** when current list is 100% complete
+1. **One roadmap list per app** — Initial agent already created it (Homepage + future pages/features). Keep every page/feature as items on that list. Never create a parent list plus per-page sub-lists; `create_list` is rejected while any list still has open items. Never abandon a todo list mid-work.
+2. **Mark the matching roadmap item when you ship work** — After building a page or feature (e.g. Product catalog), call `mark_done` with that item's ID from the master list in the **same turn**, before `suggestedResponse`, `askQuestion`, or ending your response. Mark items complete IMMEDIATELY after finishing each task. Use IDs from todo context or `get_list` — do not invent IDs.
+3. **Verify backend changes before marking done** — After completing any item that touches API routes, backend logic, or server-side code, use `httpCheck` to verify the endpoint works before marking done.
+4. **Deferred items stay open** — During initial homepage-only preview, only mark Homepage complete; leave future pages open until you build them. Do not bulk `mark_done` on items you did not build.
+5. **Sub-steps use `add_items`** — Break work into sub-tasks with `add_items` on the current list, not a new `create_list`. Work through ALL items systematically.
+6. **New list only when every list is 100% complete** — Only then, and only if the user explicitly starts a new multi-step feature.
 
 **Complete lifecycle example:**
 

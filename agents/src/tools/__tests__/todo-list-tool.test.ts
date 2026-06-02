@@ -1,5 +1,12 @@
+import { randomUUID } from 'node:crypto'
+
 import { describe, it, expect } from 'vitest'
+
 import { todoListTool } from '../todo-list-tool.js'
+
+function testAppId(prefix: string): string {
+  return `${prefix}-${randomUUID()}`
+}
 
 describe('todo-list-tool', function todoListToolTests() {
   describe('#execute', function executeTests() {
@@ -8,21 +15,77 @@ describe('todo-list-tool', function todoListToolTests() {
         operation: 'create_list',
         listName: 'Test Project',
         listDescription: 'A test todo list',
-        appId: 'test-app-1'
+        appId: testAppId('create')
       })
 
       expect(result.success).toBe(true)
       expect(result.list).toBeDefined()
       expect(result.list?.name).toBe('Test Project')
       expect(result.list?.description).toBe('A test todo list')
-      expect(result.list?.appId).toBe('test-app-1')
+      expect(result.list?.appId).toMatch(/^create-/)
+    })
+
+    it('should reject create_list when another list has open items', async function guardOpenList() {
+      const appId = testAppId('guard-open')
+
+      const first = await todoListTool.execute({
+        operation: 'create_list',
+        listName: 'Roadmap',
+        appId,
+        items: [{ title: 'Homepage' }, { title: 'About' }],
+      })
+
+      const homepageId = first.list?.items?.[0].id
+      await todoListTool.execute({
+        operation: 'mark_done',
+        itemIds: [homepageId!],
+      })
+
+      const blocked = await todoListTool.execute({
+        operation: 'create_list',
+        listName: 'Homepage Build',
+        appId,
+        items: [{ title: 'Hero section' }],
+      })
+
+      expect(blocked.success).toBe(false)
+      expect(blocked.error).toContain('Cannot create_list')
+      expect(blocked.error).toContain('Roadmap')
+    })
+
+    it('should allow create_list when every existing list is complete', async function guardAllComplete() {
+      const appId = testAppId('guard-done')
+
+      const first = await todoListTool.execute({
+        operation: 'create_list',
+        listName: 'Phase One',
+        appId,
+        items: [{ title: 'Only task' }],
+      })
+
+      const itemId = first.list?.items?.[0].id
+      expect(itemId).toBeDefined()
+      await todoListTool.execute({
+        operation: 'mark_done',
+        itemIds: [itemId as string],
+      })
+
+      const second = await todoListTool.execute({
+        operation: 'create_list',
+        listName: 'Phase Two',
+        appId,
+        items: [{ title: 'Next task' }],
+      })
+
+      expect(second.success).toBe(true)
+      expect(second.list?.name).toBe('Phase Two')
     })
 
     it('should add items to a todo list', async function addItems() {
       const createResult = await todoListTool.execute({
         operation: 'create_list',
         listName: 'Feature Implementation',
-        appId: 'test-app-2'
+        appId: testAppId('add-items')
       })
 
       expect(createResult.success).toBe(true)
@@ -49,7 +112,7 @@ describe('todo-list-tool', function todoListToolTests() {
       const createResult = await todoListTool.execute({
         operation: 'create_list',
         listName: 'Tasks',
-        appId: 'test-app-3',
+        appId: testAppId('mark-done'),
         items: [{ title: 'Complete task' }]
       })
 
@@ -62,24 +125,135 @@ describe('todo-list-tool', function todoListToolTests() {
 
       expect(markResult.success).toBe(true)
       expect(markResult.items?.[0].completed).toBe(true)
+      expect(markResult.items?.[0].inProgress).toBe(false)
+    })
+
+    it('should mark items as in progress', async function markInProgress() {
+      const createResult = await todoListTool.execute({
+        operation: 'create_list',
+        listName: 'Tasks In Progress',
+        appId: testAppId('mark-in-progress'),
+        items: [{ title: 'Start task' }]
+      })
+
+      const itemId = createResult.list?.items?.[0].id
+
+      const markResult = await todoListTool.execute({
+        operation: 'mark_in_progress',
+        itemIds: [itemId!]
+      })
+
+      expect(markResult.success).toBe(true)
+      expect(markResult.items?.[0].inProgress).toBe(true)
+      expect(markResult.items?.[0].completed).toBe(false)
+    })
+
+    it('should return error when mark_in_progress references missing item', async function markInProgressMissing() {
+      const result = await todoListTool.execute({
+        operation: 'mark_in_progress',
+        itemIds: ['missing-item-id']
+      })
+
+      expect(result.success).toBe(false)
+      expect(result.error).toContain('not found')
+    })
+
+    it('should mark_in_progress valid ids when batch includes missing ids', async function markInProgressPartial() {
+      const createResult = await todoListTool.execute({
+        operation: 'create_list',
+        listName: 'Partial In Progress',
+        appId: testAppId('partial-in-progress'),
+        items: [{ title: 'Task A' }]
+      })
+
+      const itemId = createResult.list?.items?.[0].id
+
+      const markResult = await todoListTool.execute({
+        operation: 'mark_in_progress',
+        itemIds: [itemId!, 'missing-item-id']
+      })
+
+      expect(markResult.success).toBe(true)
+      expect(markResult.items?.[0].inProgress).toBe(true)
+      expect(markResult.message).toContain('not found')
+    })
+
+    it('should batch mark_done without prior mark_in_progress', async function mergeMarkBatch() {
+      const createResult = await todoListTool.execute({
+        operation: 'create_list',
+        listName: 'Merge Mark Batch',
+        appId: testAppId('merge-batch'),
+        items: [{ title: 'Task A' }, { title: 'Task B' }]
+      })
+
+      const ids = createResult.list?.items?.map((item) => item.id) ?? []
+
+      const markResult = await todoListTool.execute({
+        operation: 'mark_done',
+        itemIds: ids
+      })
+
+      expect(markResult.success).toBe(true)
+      expect(markResult.items?.every((item) => item.completed)).toBe(true)
+      expect(markResult.items?.every((item) => !item.inProgress)).toBe(true)
+    })
+
+    it('should return error when mark_done references missing item', async function mergeMarkMissing() {
+      const result = await todoListTool.execute({
+        operation: 'mark_done',
+        itemIds: ['missing-item-id']
+      })
+
+      expect(result.success).toBe(false)
+      expect(result.error).toContain('not found')
+    })
+
+    it('should mark_done valid ids when batch includes missing ids', async function mergeMarkPartial() {
+      const createResult = await todoListTool.execute({
+        operation: 'create_list',
+        listName: 'Partial Mark',
+        appId: testAppId('partial-mark'),
+        items: [{ title: 'Task A' }]
+      })
+
+      const itemId = createResult.list?.items?.[0].id
+
+      const markResult = await todoListTool.execute({
+        operation: 'mark_done',
+        itemIds: [itemId!, 'missing-item-id']
+      })
+
+      expect(markResult.success).toBe(true)
+      expect(markResult.items?.[0].completed).toBe(true)
+      expect(markResult.message).toContain('not found')
     })
 
     it('should list all todo lists', async function listAll() {
-      await todoListTool.execute({
+      const appId = testAppId('list-all')
+
+      const first = await todoListTool.execute({
         operation: 'create_list',
         listName: 'List 1',
-        appId: 'test-app-4'
+        appId,
+        items: [{ title: 'Only task' }],
+      })
+
+      const itemId = first.list?.items?.[0].id
+      expect(itemId).toBeDefined()
+      await todoListTool.execute({
+        operation: 'mark_done',
+        itemIds: [itemId as string],
       })
 
       await todoListTool.execute({
         operation: 'create_list',
         listName: 'List 2',
-        appId: 'test-app-4'
+        appId,
       })
 
       const result = await todoListTool.execute({
         operation: 'list_all',
-        appId: 'test-app-4'
+        appId,
       })
 
       expect(result.success).toBe(true)
@@ -91,7 +265,7 @@ describe('todo-list-tool', function todoListToolTests() {
       const createResult = await todoListTool.execute({
         operation: 'create_list',
         listName: 'Project Tasks',
-        appId: 'test-app-5',
+        appId: testAppId('get-list'),
         items: [
           { title: 'Task 1' },
           { title: 'Task 2' }
@@ -114,7 +288,7 @@ describe('todo-list-tool', function todoListToolTests() {
       const createResult = await todoListTool.execute({
         operation: 'create_list',
         listName: 'Updates',
-        appId: 'test-app-6',
+        appId: testAppId('update'),
         items: [{ title: 'Original title' }]
       })
 
@@ -138,7 +312,7 @@ describe('todo-list-tool', function todoListToolTests() {
       const createResult = await todoListTool.execute({
         operation: 'create_list',
         listName: 'Deletions',
-        appId: 'test-app-7',
+        appId: testAppId('delete-item'),
         items: [{ title: 'To be deleted' }]
       })
 
@@ -164,7 +338,7 @@ describe('todo-list-tool', function todoListToolTests() {
       const createResult = await todoListTool.execute({
         operation: 'create_list',
         listName: 'To Delete',
-        appId: 'test-app-8'
+        appId: testAppId('delete-list')
       })
 
       const listId = createResult.list?.id
@@ -189,7 +363,7 @@ describe('todo-list-tool', function todoListToolTests() {
         operation: 'create_list',
         listName: 'Full Project',
         listDescription: 'Project with predefined tasks',
-        appId: 'test-app-9',
+        appId: testAppId('create-with-items'),
         items: [
           { title: 'Design schema', description: 'Create database tables' },
           { title: 'Build API', completed: false },
@@ -209,7 +383,7 @@ describe('todo-list-tool', function todoListToolTests() {
       const createResult = await todoListTool.execute({
         operation: 'create_list',
         listName: 'Batch Tasks',
-        appId: 'test-app-10',
+        appId: testAppId('mark-many-done'),
         items: [
           { title: 'Task 1' },
           { title: 'Task 2' },
@@ -242,7 +416,7 @@ describe('todo-list-tool', function todoListToolTests() {
       const createResult = await todoListTool.execute({
         operation: 'create_list',
         listName: 'Reset Tasks',
-        appId: 'test-app-11',
+        appId: testAppId('mark-many-undone'),
         items: [
           { title: 'Task 1', completed: true },
           { title: 'Task 2', completed: true },

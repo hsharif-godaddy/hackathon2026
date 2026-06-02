@@ -1,6 +1,7 @@
 import { createTool, type Tool } from '@airo/ai-lib'
 import { z } from 'zod'
 
+import { getTodoListStore } from '../../planning/adapters/index.js'
 import { Logger } from '../../logging/index.js'
 
 const logger = Logger.create({ component: 'ask-question-tool' })
@@ -132,6 +133,39 @@ EXCEPTION: Use this tool to present concrete store or business choices returned 
   async (input, context) => {
     const { questions } = input
     const appId = context?.metadata?.appId as string | undefined
+    let completionMessage = ''
+    const todoListStore = getTodoListStore()
+    const sessionId = context?.metadata?.sessionId as string | undefined
+    const stateManager = context?.metadata?.stateManager as { getSelectedTodoList: (id: string) => string | undefined } | undefined
+
+    if (sessionId && stateManager?.getSelectedTodoList) {
+      let itemIds: string[] = []
+      let selectedListId: string | undefined
+      try {
+        selectedListId = stateManager.getSelectedTodoList(sessionId)
+        if (selectedListId) {
+          const list = await todoListStore.getListById(selectedListId)
+          const inProgressItems = list && list.appId === appId
+            ? list.items?.filter(item => item.inProgress && !item.completed) || []
+            : []
+          itemIds = inProgressItems.map(item => item.id)
+        }
+      } catch (error) {
+        logger.warn('ask-question.todo-check-failed', {
+          appId,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      }
+
+      if (itemIds.length > 0) {
+        completionMessage = ` Warning: ${itemIds.length} in-progress todo item${itemIds.length === 1 ? '' : 's'} still open (${itemIds.join(', ')}) — call mark_done on those IDs in this turn before asking questions.`
+        logger.warn('ask-question.todo-in-progress', {
+          appId,
+          itemIds,
+          listId: selectedListId,
+        })
+      }
+    }
 
     logger.info('ask-question.called', {
       appId,
@@ -148,7 +182,7 @@ EXCEPTION: Use this tool to present concrete store or business choices returned 
         currentQuestionIndex: 0,
         answers: []
       },
-      message: `Asked ${questions.length} question${questions.length === 1 ? '' : 's'}`
+      message: `Asked ${questions.length} question${questions.length === 1 ? '' : 's'}${completionMessage}`
     }
   }
 )
