@@ -10,14 +10,14 @@ import { usePaywallModal } from './usePaywallModal';
 
 // Stable mock references to avoid destabilizing useMemo dependencies
 const mockOpenUpgradeModal = vi.fn();
-const mockGetSite = vi.fn(() => ({ name: 'Test Site' }));
+const mockGetSite = vi.fn(function () { return { name: 'Test Site' }; });
 
 // Mock dependencies
 vi.mock('@/lib/logging', () => ({
   shipAnalyticsLog: vi.fn(),
 }));
 vi.mock('@/stores/useDevelopPageStore', () => ({
-  useDevelopPageStore: vi.fn((selector) => {
+  useDevelopPageStore: vi.fn(function (selector) {
     const state = {
       openUpgradeModal: mockOpenUpgradeModal,
     };
@@ -25,7 +25,7 @@ vi.mock('@/stores/useDevelopPageStore', () => ({
   }),
 }));
 vi.mock('@/stores/useSiteStore', () => ({
-  useSiteStore: vi.fn((selector) => {
+  useSiteStore: vi.fn(function (selector) {
     const state = {
       getSite: mockGetSite,
     };
@@ -33,18 +33,18 @@ vi.mock('@/stores/useSiteStore', () => ({
   }),
 }));
 vi.mock('./useSwitchboard', () => ({
-  useSwitchboard: vi.fn(() => (true)),
+  useSwitchboard: vi.fn(function () { return true; }),
 }));
 vi.mock('./usePaywallEligibility', () => ({
-  usePaywallEligibility: vi.fn(() => ({
+  usePaywallEligibility: vi.fn(function () { return {
     showPaywall: false,
     isLoading: false,
     isError: false,
     error: null,
-  })),
+  }; }),
 }));
 vi.mock('@/lib/jwt-regeneration', () => ({
-  regenerateToken: vi.fn(() => Promise.resolve()),
+  regenerateToken: vi.fn(function () { return Promise.resolve(); }),
 }));
 
 describe('usePaywallModal', () => {

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 vi.mock('@airo/ai-lib', () => ({
-  isS2SAuthV2Enabled: vi.fn(() => false),
+  isS2SAuthV2Enabled: vi.fn(function () { return false; }),
   getS2STokenV2: vi.fn(),
   refreshS2STokenV2: vi.fn(),
 }));
@@ -466,7 +466,7 @@ describe('BaseDriverV2', () => {
     it('should not let forceRefresh piggyback on a non-force in-flight promise', async () => {
       let resolveFirst!: (v: string) => void;
       vi.mocked(getS2STokenV2).mockImplementation(
-        () => new Promise(r => { resolveFirst = r; }),
+        function () { return new Promise(r => { resolveFirst = r; }); },
       );
       vi.mocked(refreshS2STokenV2).mockResolvedValue('force-refreshed-token');
 
@@ -517,7 +517,7 @@ describe('BaseDriverV2', () => {
     it('should deduplicate concurrent getS2STokenV2 calls', async () => {
       let resolveToken: (v: string) => void;
       vi.mocked(getS2STokenV2).mockImplementation(
-        () => new Promise(r => { resolveToken = r; }),
+        function () { return new Promise(r => { resolveToken = r; }); },
       );
       vi.spyOn(globalThis, 'fetch').mockResolvedValue(mockFetchResponse());
 

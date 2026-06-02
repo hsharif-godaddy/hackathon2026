@@ -218,7 +218,7 @@ describe('SegmentedController (vendor)', () => {
     describe('missing icon (dev warning)', () => {
       let warnSpy: ReturnType<typeof vi.spyOn>;
       beforeEach(() => {
-        warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        warnSpy = vi.spyOn(console, 'warn').mockImplementation(function () {});
       });
       afterEach(() => {
         warnSpy.mockRestore();

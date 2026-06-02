@@ -27,7 +27,7 @@ vi.mock('@airo/ai-lib', async () => {
   const actual = await vi.importActual('@airo/ai-lib')
   const mockBuilder = () => {
     const self: Record<string, any> = {}
-    self.file = vi.fn().mockImplementation((path: string) => {
+    self.file = vi.fn().mockImplementation(function (path: string) {
       loadedFiles.push(path)
       return self
     })

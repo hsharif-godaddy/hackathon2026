@@ -33,8 +33,8 @@ const mockFileTreeState = {
   files: {},
   loading: {},
   errors: {},
-  loadFiles: vi.fn(() => Promise.resolve()),
-  loadFilesFromCacheOrFetch: vi.fn(() => Promise.resolve()),
+  loadFiles: vi.fn(function () { return Promise.resolve(); }),
+  loadFilesFromCacheOrFetch: vi.fn(function () { return Promise.resolve(); }),
   reset: vi.fn(),
   setFiles: vi.fn(),
   invalidate: vi.fn()
@@ -42,7 +42,7 @@ const mockFileTreeState = {
 
 vi.mock('@/stores/useFileTreeStore', () => {
   const store = Object.assign(
-    vi.fn((selector: any) => selector(mockFileTreeState)),
+    vi.fn(function (selector: any) { return selector(mockFileTreeState); }),
     { getState: () => mockFileTreeState }
   );
   return { useFileTreeStore: store };
@@ -58,30 +58,28 @@ const mockDevelopPageState = {
   loadingError: null as string | null,
   currentAppId: null as string | null,
   viewMode: ViewMode.PREVIEW,
-  initializePage: vi.fn(() => Promise.resolve()),
+  initializePage: vi.fn(function () { return Promise.resolve(); }),
 };
 
 vi.mock('@/stores/useDevelopPageStore', () => {
   const store = Object.assign(
-    vi.fn((selector: any) => selector(mockDevelopPageState)),
+    vi.fn(function (selector: any) { return selector(mockDevelopPageState); }),
     { getState: () => mockDevelopPageState }
   );
   return { useDevelopPageStore: store };
 });
 
 vi.mock('@/stores/useSiteCreationStore', () => ({
-  useSiteCreationStore: vi.fn((selector: any) =>
-    selector({
+  useSiteCreationStore: vi.fn(function (selector: any) { return selector({
       realAppId: null,
-    })
+    }); }
   ),
 }));
 
 vi.mock('@/stores/useServerPollingStore', () => ({
-  useServerPollingStore: vi.fn((selector: any) =>
-    selector({
+  useServerPollingStore: vi.fn(function (selector: any) { return selector({
       getServerState: () => ({ url: 'http://localhost:3000' }),
-    })
+    }); }
   ),
 }));
 
@@ -91,14 +89,14 @@ const mockCodeSyncState = {
   clearFileChange: vi.fn(),
   addConflict: vi.fn(),
   resolveConflict: vi.fn(),
-  hasConflict: vi.fn(() => false),
-  getFileChange: vi.fn(() => null),
+  hasConflict: vi.fn(function () { return false; }),
+  getFileChange: vi.fn(function () { return null; }),
   fileChanges: new Map(),
 };
 
 vi.mock('@/stores/useCodeSyncStore', () => {
   const store = Object.assign(
-    vi.fn((selector: any) => selector(mockCodeSyncState)),
+    vi.fn(function (selector: any) { return selector(mockCodeSyncState); }),
     { getState: () => mockCodeSyncState }
   );
   return { useCodeSyncStore: store };
@@ -139,15 +137,14 @@ describe('PreviewCode', () => {
 
   it('should not fetch files until loadingPhase is ready', async () => {
     const { useDevelopPageStore } = await import('@/stores/useDevelopPageStore');
-    vi.mocked(useDevelopPageStore).mockImplementation((selector: any) =>
-      selector({
+    vi.mocked(useDevelopPageStore).mockImplementation(function (selector: any) { return selector({
         isMobile: false,
         isFileTreeCollapsed: false,
         setIsFileTreeCollapsed: vi.fn(),
         setHasUnsavedChanges: vi.fn(),
         loadingPhase: 'loading-app',
         loadingError: null,
-      })
+      }); }
     );
 
     renderWithProviders(<PreviewCode appId="test-app-123" />);
@@ -160,15 +157,14 @@ describe('PreviewCode', () => {
 
     // Start with loading-app phase
     let currentLoadingPhase = 'loading-app';
-    vi.mocked(useDevelopPageStore).mockImplementation((selector: any) =>
-      selector({
+    vi.mocked(useDevelopPageStore).mockImplementation(function (selector: any) { return selector({
         isMobile: false,
         isFileTreeCollapsed: false,
         setIsFileTreeCollapsed: vi.fn(),
         setHasUnsavedChanges: vi.fn(),
         loadingPhase: currentLoadingPhase,
         loadingError: null,
-      })
+      }); }
     );
 
     const { rerender } = renderWithProviders(<PreviewCode appId="test-app-123" />);
@@ -178,15 +174,14 @@ describe('PreviewCode', () => {
 
     // Transition to ready phase
     currentLoadingPhase = 'ready';
-    vi.mocked(useDevelopPageStore).mockImplementation((selector: any) =>
-      selector({
+    vi.mocked(useDevelopPageStore).mockImplementation(function (selector: any) { return selector({
         isMobile: false,
         isFileTreeCollapsed: false,
         setIsFileTreeCollapsed: vi.fn(),
         setHasUnsavedChanges: vi.fn(),
         loadingPhase: currentLoadingPhase,
         loadingError: null,
-      })
+      }); }
     );
 
     // Re-render to trigger the effect with new loadingPhase
@@ -223,20 +218,18 @@ describe('PreviewCode', () => {
     const { useDevelopPageStore } = await import('@/stores/useDevelopPageStore');
 
     // Setup: loadingPhase is ready
-    vi.mocked(useDevelopPageStore).mockImplementation((selector: any) =>
-      selector({
+    vi.mocked(useDevelopPageStore).mockImplementation(function (selector: any) { return selector({
         isMobile: false,
         isFileTreeCollapsed: false,
         setIsFileTreeCollapsed: vi.fn(),
         setHasUnsavedChanges: vi.fn(),
         loadingPhase: 'ready',
         loadingError: null,
-      })
+      }); }
     );
 
     // Setup: realAppId is null
-    vi.mocked(useSiteCreationStore).mockImplementation((selector: any) =>
-      selector({ realAppId: null })
+    vi.mocked(useSiteCreationStore).mockImplementation(function (selector: any) { return selector({ realAppId: null }); }
     );
 
     renderWithProviders(<PreviewCode appId="test-app-123" />);
@@ -252,20 +245,18 @@ describe('PreviewCode', () => {
     const { useDevelopPageStore } = await import('@/stores/useDevelopPageStore');
 
     // Setup: loadingPhase is ready
-    vi.mocked(useDevelopPageStore).mockImplementation((selector: any) =>
-      selector({
+    vi.mocked(useDevelopPageStore).mockImplementation(function (selector: any) { return selector({
         isMobile: false,
         isFileTreeCollapsed: false,
         setIsFileTreeCollapsed: vi.fn(),
         setHasUnsavedChanges: vi.fn(),
         loadingPhase: 'ready',
         loadingError: null,
-      })
+      }); }
     );
 
     // Setup: realAppId is set (app creation completed)
-    vi.mocked(useSiteCreationStore).mockImplementation((selector: any) =>
-      selector({ realAppId: 'real-app-xyz' })
+    vi.mocked(useSiteCreationStore).mockImplementation(function (selector: any) { return selector({ realAppId: 'real-app-xyz' }); }
     );
 
     renderWithProviders(<PreviewCode appId="temp-job-123" />);
@@ -281,19 +272,18 @@ describe('PreviewCode', () => {
     const { useDevelopPageStore } = await import('@/stores/useDevelopPageStore');
 
     // Setup: loadingPhase is ready
-    vi.mocked(useDevelopPageStore).mockImplementation((selector: any) =>
-      selector({
+    vi.mocked(useDevelopPageStore).mockImplementation(function (selector: any) { return selector({
         isMobile: false,
         isFileTreeCollapsed: false,
         setIsFileTreeCollapsed: vi.fn(),
         setHasUnsavedChanges: vi.fn(),
         loadingPhase: 'ready',
         loadingError: null,
-      })
+      }); }
     );
 
     // Start with no realAppId
-    const mockStore = vi.fn((selector: any) => selector({ realAppId: null }));
+    const mockStore = vi.fn(function (selector: any) { return selector({ realAppId: null }); });
     vi.mocked(useSiteCreationStore).mockImplementation(mockStore);
 
     const { rerender } = renderWithProviders(<PreviewCode appId="temp-job-123" />);
@@ -306,7 +296,7 @@ describe('PreviewCode', () => {
     vi.clearAllMocks();
 
     // Now simulate realAppId being set (temp→real ID transition)
-    mockStore.mockImplementation((selector: any) => selector({ realAppId: 'real-app-xyz' }));
+    mockStore.mockImplementation(function (selector: any) { return selector({ realAppId: 'real-app-xyz' }); });
 
     // Force re-render to trigger effectiveAppId change
     rerender(<PreviewCode appId="temp-job-123" />);
@@ -320,15 +310,14 @@ describe('PreviewCode', () => {
   it('should open search tab when search button is clicked', async () => {
     const { useDevelopPageStore } = await import('@/stores/useDevelopPageStore');
 
-    vi.mocked(useDevelopPageStore).mockImplementation((selector: any) =>
-      selector({
+    vi.mocked(useDevelopPageStore).mockImplementation(function (selector: any) { return selector({
         isMobile: false,
         isFileTreeCollapsed: false,
         setIsFileTreeCollapsed: vi.fn(),
         setHasUnsavedChanges: vi.fn(),
         loadingPhase: 'ready',
         loadingError: null,
-      })
+      }); }
     );
 
     mockFileTreeState.files['test-app-123'] = [];
@@ -350,8 +339,7 @@ describe('PreviewCode', () => {
   it('should show search input when search tab is active', async () => {
     const { useDevelopPageStore } = await import('@/stores/useDevelopPageStore');
 
-    vi.mocked(useDevelopPageStore).mockImplementation((selector: any) =>
-      selector({
+    vi.mocked(useDevelopPageStore).mockImplementation(function (selector: any) { return selector({
         isMobile: false,
         isFileTreeCollapsed: false,
         setIsFileTreeCollapsed: vi.fn(),
@@ -359,7 +347,7 @@ describe('PreviewCode', () => {
         loadingPhase: 'ready',
         loadingError: null,
         viewMode: ViewMode.PREVIEW,
-      })
+      }); }
     );
 
     mockFileTreeState.files['test-app-123'] = [];
@@ -378,15 +366,14 @@ describe('PreviewCode', () => {
   describe('page initialization states', () => {
     it('should show spinner when loadingPhase is not ready', async () => {
       const { useDevelopPageStore } = await import('@/stores/useDevelopPageStore');
-      vi.mocked(useDevelopPageStore).mockImplementation((selector: any) =>
-        selector({
+      vi.mocked(useDevelopPageStore).mockImplementation(function (selector: any) { return selector({
           isMobile: false,
           isFileTreeCollapsed: false,
           setIsFileTreeCollapsed: vi.fn(),
           setHasUnsavedChanges: vi.fn(),
           loadingPhase: 'loading-app',
           loadingError: null,
-        })
+        }); }
       );
 
       renderWithProviders(<PreviewCode appId="test-app-123" />);
@@ -399,13 +386,11 @@ describe('PreviewCode', () => {
     it('should show error with retry button when init fails', async () => {
       const { useDevelopPageStore } = await import('@/stores/useDevelopPageStore');
       const { useSiteCreationStore } = await import('@/stores/useSiteCreationStore');
-      const mockInitializePage = vi.fn(() => Promise.resolve());
+      const mockInitializePage = vi.fn(function () { return Promise.resolve(); });
 
-      vi.mocked(useSiteCreationStore).mockImplementation((selector: any) =>
-        selector({ realAppId: null })
+      vi.mocked(useSiteCreationStore).mockImplementation(function (selector: any) { return selector({ realAppId: null }); }
       );
-      vi.mocked(useDevelopPageStore).mockImplementation((selector: any) =>
-        selector({
+      vi.mocked(useDevelopPageStore).mockImplementation(function (selector: any) { return selector({
           isMobile: false,
           isFileTreeCollapsed: false,
           setIsFileTreeCollapsed: vi.fn(),
@@ -413,7 +398,7 @@ describe('PreviewCode', () => {
           loadingPhase: 'idle',
           loadingError: 'Network request failed',
           currentAppId: 'test-app-123',
-        })
+        }); }
       );
       Object.assign(vi.mocked(useDevelopPageStore), {
         getState: () => ({ initializePage: mockInitializePage }),
@@ -438,8 +423,7 @@ describe('PreviewCode', () => {
 
       // Start in PREVIEW mode
       let currentViewMode = ViewMode.PREVIEW;
-      vi.mocked(useDevelopPageStore).mockImplementation((selector: any) =>
-        selector({
+      vi.mocked(useDevelopPageStore).mockImplementation(function (selector: any) { return selector({
           isMobile: false,
           isFileTreeCollapsed: false,
           setIsFileTreeCollapsed: vi.fn(),
@@ -447,7 +431,7 @@ describe('PreviewCode', () => {
           loadingPhase: 'ready',
           loadingError: null,
           viewMode: currentViewMode,
-        })
+        }); }
       );
 
       mockFileTreeState.files['test-app-123'] = [];
@@ -459,8 +443,7 @@ describe('PreviewCode', () => {
 
       // Switch to CODE view
       currentViewMode = ViewMode.CODE;
-      vi.mocked(useDevelopPageStore).mockImplementation((selector: any) =>
-        selector({
+      vi.mocked(useDevelopPageStore).mockImplementation(function (selector: any) { return selector({
           isMobile: false,
           isFileTreeCollapsed: false,
           setIsFileTreeCollapsed: vi.fn(),
@@ -468,7 +451,7 @@ describe('PreviewCode', () => {
           loadingPhase: 'ready',
           loadingError: null,
           viewMode: currentViewMode,
-        })
+        }); }
       );
 
       rerender(<PreviewCode appId="test-app-123" />);
@@ -484,8 +467,7 @@ describe('PreviewCode', () => {
 
       // Start in PREVIEW mode with loading phase
       let currentViewMode = ViewMode.PREVIEW;
-      vi.mocked(useDevelopPageStore).mockImplementation((selector: any) =>
-        selector({
+      vi.mocked(useDevelopPageStore).mockImplementation(function (selector: any) { return selector({
           isMobile: false,
           isFileTreeCollapsed: false,
           setIsFileTreeCollapsed: vi.fn(),
@@ -493,7 +475,7 @@ describe('PreviewCode', () => {
           loadingPhase: 'loading-app',
           loadingError: null,
           viewMode: currentViewMode,
-        })
+        }); }
       );
 
       mockFileTreeState.files['test-app-123'] = [];
@@ -502,8 +484,7 @@ describe('PreviewCode', () => {
 
       // Switch to CODE view while still loading
       currentViewMode = ViewMode.CODE;
-      vi.mocked(useDevelopPageStore).mockImplementation((selector: any) =>
-        selector({
+      vi.mocked(useDevelopPageStore).mockImplementation(function (selector: any) { return selector({
           isMobile: false,
           isFileTreeCollapsed: false,
           setIsFileTreeCollapsed: vi.fn(),
@@ -511,7 +492,7 @@ describe('PreviewCode', () => {
           loadingPhase: 'loading-app',
           loadingError: null,
           viewMode: currentViewMode,
-        })
+        }); }
       );
 
       rerender(<PreviewCode appId="test-app-123" />);
@@ -526,8 +507,7 @@ describe('PreviewCode', () => {
       // Start in PREVIEW mode with loading phase
       let currentViewMode = ViewMode.PREVIEW;
       let currentLoadingPhase = 'loading-app';
-      vi.mocked(useDevelopPageStore).mockImplementation((selector: any) =>
-        selector({
+      vi.mocked(useDevelopPageStore).mockImplementation(function (selector: any) { return selector({
           isMobile: false,
           isFileTreeCollapsed: false,
           setIsFileTreeCollapsed: vi.fn(),
@@ -535,7 +515,7 @@ describe('PreviewCode', () => {
           loadingPhase: currentLoadingPhase,
           loadingError: null,
           viewMode: currentViewMode,
-        })
+        }); }
       );
 
       mockFileTreeState.files['test-app-123'] = [];
@@ -544,8 +524,7 @@ describe('PreviewCode', () => {
 
       // Switch to CODE view while still loading
       currentViewMode = ViewMode.CODE;
-      vi.mocked(useDevelopPageStore).mockImplementation((selector: any) =>
-        selector({
+      vi.mocked(useDevelopPageStore).mockImplementation(function (selector: any) { return selector({
           isMobile: false,
           isFileTreeCollapsed: false,
           setIsFileTreeCollapsed: vi.fn(),
@@ -553,7 +532,7 @@ describe('PreviewCode', () => {
           loadingPhase: currentLoadingPhase,
           loadingError: null,
           viewMode: currentViewMode,
-        })
+        }); }
       );
 
       rerender(<PreviewCode appId="test-app-123" />);
@@ -563,8 +542,7 @@ describe('PreviewCode', () => {
 
       // Now loading completes
       currentLoadingPhase = 'ready';
-      vi.mocked(useDevelopPageStore).mockImplementation((selector: any) =>
-        selector({
+      vi.mocked(useDevelopPageStore).mockImplementation(function (selector: any) { return selector({
           isMobile: false,
           isFileTreeCollapsed: false,
           setIsFileTreeCollapsed: vi.fn(),
@@ -572,7 +550,7 @@ describe('PreviewCode', () => {
           loadingPhase: currentLoadingPhase,
           loadingError: null,
           viewMode: currentViewMode,
-        })
+        }); }
       );
 
       rerender(<PreviewCode appId="test-app-123" />);
@@ -586,8 +564,7 @@ describe('PreviewCode', () => {
     it('should auto-expand search when page loads directly in CODE view', async () => {
       const { useDevelopPageStore } = await import('@/stores/useDevelopPageStore');
 
-      vi.mocked(useDevelopPageStore).mockImplementation((selector: any) =>
-        selector({
+      vi.mocked(useDevelopPageStore).mockImplementation(function (selector: any) { return selector({
           isMobile: false,
           isFileTreeCollapsed: false,
           setIsFileTreeCollapsed: vi.fn(),
@@ -595,7 +572,7 @@ describe('PreviewCode', () => {
           loadingPhase: 'ready',
           loadingError: null,
           viewMode: ViewMode.CODE,
-        })
+        }); }
       );
 
       mockFileTreeState.files['test-app-123'] = [];
@@ -613,8 +590,7 @@ describe('PreviewCode', () => {
       const { useDevelopPageStore } = await import('@/stores/useDevelopPageStore');
 
       let currentViewMode = ViewMode.BRAND;
-      vi.mocked(useDevelopPageStore).mockImplementation((selector: any) =>
-        selector({
+      vi.mocked(useDevelopPageStore).mockImplementation(function (selector: any) { return selector({
           isMobile: false,
           isFileTreeCollapsed: false,
           setIsFileTreeCollapsed: vi.fn(),
@@ -622,7 +598,7 @@ describe('PreviewCode', () => {
           loadingPhase: 'ready',
           loadingError: null,
           viewMode: currentViewMode,
-        })
+        }); }
       );
 
       mockFileTreeState.files['test-app-123'] = [];
@@ -632,8 +608,7 @@ describe('PreviewCode', () => {
       expect(screen.queryByTestId('search-panel')).not.toBeInTheDocument();
 
       currentViewMode = ViewMode.CODE;
-      vi.mocked(useDevelopPageStore).mockImplementation((selector: any) =>
-        selector({
+      vi.mocked(useDevelopPageStore).mockImplementation(function (selector: any) { return selector({
           isMobile: false,
           isFileTreeCollapsed: false,
           setIsFileTreeCollapsed: vi.fn(),
@@ -641,7 +616,7 @@ describe('PreviewCode', () => {
           loadingPhase: 'ready',
           loadingError: null,
           viewMode: currentViewMode,
-        })
+        }); }
       );
 
       rerender(<PreviewCode appId="test-app-123" />);
@@ -656,8 +631,7 @@ describe('PreviewCode', () => {
 
       // Start in PREVIEW mode
       let currentViewMode = ViewMode.PREVIEW;
-      vi.mocked(useDevelopPageStore).mockImplementation((selector: any) =>
-        selector({
+      vi.mocked(useDevelopPageStore).mockImplementation(function (selector: any) { return selector({
           isMobile: false,
           isFileTreeCollapsed: false,
           setIsFileTreeCollapsed: vi.fn(),
@@ -665,7 +639,7 @@ describe('PreviewCode', () => {
           loadingPhase: 'ready',
           loadingError: null,
           viewMode: currentViewMode,
-        })
+        }); }
       );
 
       mockFileTreeState.files['test-app-123'] = [];
@@ -680,8 +654,7 @@ describe('PreviewCode', () => {
 
       // Switch to CODE view
       currentViewMode = ViewMode.CODE;
-      vi.mocked(useDevelopPageStore).mockImplementation((selector: any) =>
-        selector({
+      vi.mocked(useDevelopPageStore).mockImplementation(function (selector: any) { return selector({
           isMobile: false,
           isFileTreeCollapsed: false,
           setIsFileTreeCollapsed: vi.fn(),
@@ -689,7 +662,7 @@ describe('PreviewCode', () => {
           loadingPhase: 'ready',
           loadingError: null,
           viewMode: currentViewMode,
-        })
+        }); }
       );
 
       rerender(<PreviewCode appId="test-app-123" />);
@@ -713,8 +686,7 @@ describe('PreviewCode', () => {
         loadingError: null,
         viewMode: ViewMode.CODE as ViewMode,
       };
-      vi.mocked(useDevelopPageStore).mockImplementation((selector: any) =>
-        selector(mockStoreState)
+      vi.mocked(useDevelopPageStore).mockImplementation(function (selector: any) { return selector(mockStoreState); }
       );
 
       mockFileTreeState.files['test-app-123'] = [];

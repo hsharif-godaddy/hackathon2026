@@ -15,7 +15,7 @@ vi.mock('@airo/ai-lib', () => ({
 }));
 
 vi.mock('@airo/ai-common', () => ({
-  llmMetadataContext: { run: vi.fn((_meta: unknown, fn: () => unknown) => fn()) },
+  llmMetadataContext: { run: vi.fn(function (_meta: unknown, fn: () => unknown) { return fn(); }) },
 }));
 
 const { DiagnoseLlmClient } = await import('../DiagnoseLlmClient.js');
@@ -53,7 +53,7 @@ describe('DiagnoseLlmClient', () => {
     vi.useFakeTimers();
 
     let capturedSignal: AbortSignal | undefined;
-    mockGenerateTextWithTracking.mockImplementation((opts: { abortSignal?: AbortSignal }) => {
+    mockGenerateTextWithTracking.mockImplementation(function (opts: { abortSignal?: AbortSignal }) {
       capturedSignal = opts.abortSignal;
       return new Promise((_, reject) => {
         opts.abortSignal?.addEventListener('abort', () => {
@@ -77,7 +77,7 @@ describe('DiagnoseLlmClient', () => {
     vi.useFakeTimers();
 
     let capturedSignal: AbortSignal | undefined;
-    mockGenerateTextWithTracking.mockImplementation((opts: { abortSignal?: AbortSignal }) => {
+    mockGenerateTextWithTracking.mockImplementation(function (opts: { abortSignal?: AbortSignal }) {
       capturedSignal = opts.abortSignal;
       return Promise.resolve({
         text: '{"ok":true}',

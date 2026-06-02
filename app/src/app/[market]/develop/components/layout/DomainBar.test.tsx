@@ -21,10 +21,10 @@ const mockDevelopStore = {
 
 const mockSendMessage = vi.fn();
 const mockShipAnalyticsLog = vi.fn();
-const mockGetSite = vi.fn((_id: string) => null);
+const mockGetSite = vi.fn(function (_id: string) { return null; });
 
 vi.mock('@/app/[market]/develop/components/utils', () => ({
-  useAppIdFromParams: vi.fn(() => 'app-123'),
+  useAppIdFromParams: vi.fn(function () { return 'app-123'; }),
 }));
 
 vi.mock('@/stores/useDevelopPageStore', () => ({
@@ -32,10 +32,9 @@ vi.mock('@/stores/useDevelopPageStore', () => ({
 }));
 
 vi.mock('@/stores/useSiteStore', () => ({
-  useSiteStore: vi.fn((selector: any) =>
-    selector({
+  useSiteStore: vi.fn(function (selector: any) { return selector({
       getSite: () => null,
-    }),
+    }); },
   ),
 }));
 
@@ -44,12 +43,12 @@ vi.mock('@/contexts/WebSocketContext', () => ({
 }));
 
 vi.mock('@/stores/useStreamingConversationStore', () => ({
-  useIsActivelyStreaming: vi.fn(() => false),
-  useIsLoading: vi.fn(() => false),
+  useIsActivelyStreaming: vi.fn(function () { return false; }),
+  useIsLoading: vi.fn(function () { return false; }),
 }));
 
 vi.mock('@/hooks/useDomainSearch', () => ({
-  useDomainSearch: vi.fn(() => ({ data: null, isError: false })),
+  useDomainSearch: vi.fn(function () { return { data: null, isError: false }; }),
 }));
 
 vi.mock('@/hooks/useTranslations', () => ({
@@ -57,20 +56,20 @@ vi.mock('@/hooks/useTranslations', () => ({
 }));
 
 vi.mock('@/utils/instrumentation', () => ({
-  generateClickEID: vi.fn((id) => id),
+  generateClickEID: vi.fn(function (id) { return id; }),
 }));
 
 vi.mock('@/lib/logging', () => ({
-  shipAnalyticsLog: vi.fn(() => mockShipAnalyticsLog),
+  shipAnalyticsLog: vi.fn(function () { return mockShipAnalyticsLog; }),
 }));
 
 vi.mock('@/utils/site', () => ({
-  hasBeenPublished: vi.fn(() => true),
+  hasBeenPublished: vi.fn(function () { return true; }),
 }));
 
 vi.mock('@/utils/domain', () => ({
-  isAiroSubdomain: vi.fn((fqdn: string) => fqdn?.includes('airoapp.ai')),
-  resolveSiteFqdn: vi.fn((site: any) => site?.domains?.[0]?.fqdn || null),
+  isAiroSubdomain: vi.fn(function (fqdn: string) { return fqdn?.includes('airoapp.ai'); }),
+  resolveSiteFqdn: vi.fn(function (site: any) { return site?.domains?.[0]?.fqdn || null; }),
 }));
 
 // Import mocked modules to control their behavior
@@ -83,12 +82,11 @@ describe('DomainBar', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockGetSite.mockReset();
-    mockGetSite.mockImplementation(() => null);
+    mockGetSite.mockImplementation(function () { return null; });
     vi.mocked(useAppIdFromParams).mockReturnValue('app-123');
-    vi.mocked(useSiteStore).mockImplementation((selector: any) =>
-      selector({
+    vi.mocked(useSiteStore).mockImplementation(function (selector: any) { return selector({
         getSite: mockGetSite,
-      }),
+      }); },
     );
     mockDevelopStore.site = {
       name: 'Test App',
@@ -212,10 +210,9 @@ describe('DomainBar', () => {
       variants: ['publish'],
       domains: [{ fqdn: 'cached.airoapp.ai', domainType: 'prefix' }],
     };
-    vi.mocked(useSiteStore).mockImplementation((selector: any) =>
-      selector({
+    vi.mocked(useSiteStore).mockImplementation(function (selector: any) { return selector({
         getSite: (id: string) => (id === 'app-123' ? cachedPublished : null),
-      }),
+      }); },
     );
     vi.mocked(useDomainSearch).mockReturnValue({
       data: {
@@ -244,10 +241,9 @@ describe('DomainBar', () => {
       name: 'Cached Custom',
       domains: [{ fqdn: 'owner-custom.example.com', domainType: 'custom' }],
     };
-    vi.mocked(useSiteStore).mockImplementation((selector: any) =>
-      selector({
+    vi.mocked(useSiteStore).mockImplementation(function (selector: any) { return selector({
         getSite: (id: string) => (id === 'app-123' ? cachedCustom : null),
-      }),
+      }); },
     );
     vi.mocked(useDomainSearch).mockReturnValue({
       data: {

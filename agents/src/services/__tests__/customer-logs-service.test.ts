@@ -50,8 +50,7 @@ describe('CustomerLogsService', () => {
       // that request `source: 'stdout'` only get stdout entries — matters
       // now that CustomerLogsService defaults to filtered-per-source
       // requests instead of one unfiltered call.
-      getLogs: vi.fn().mockImplementation((opts: { source?: string } = {}) =>
-        Promise.resolve(opts.source ? mockLogs.filter((l) => l.source === opts.source) : mockLogs)
+      getLogs: vi.fn().mockImplementation(function (opts: { source?: string } = {}) { return Promise.resolve(opts.source ? mockLogs.filter((l) => l.source === opts.source) : mockLogs); }
       )
     };
 
@@ -238,8 +237,7 @@ describe('CustomerLogsService', () => {
         { timestamp: '2025-01-22T10:00:00Z', source: 'stdout', message: 'Info log', level: 'info' },
         { timestamp: '2025-01-22T10:01:00Z', source: 'stdout', message: 'Debug log', level: 'debug' }
       ];
-      mockDevSupervisorClient.getLogs = vi.fn().mockImplementation((opts: { source?: string } = {}) =>
-        Promise.resolve(opts.source ? logsWithDebug.filter((l) => l.source === opts.source) : logsWithDebug)
+      mockDevSupervisorClient.getLogs = vi.fn().mockImplementation(function (opts: { source?: string } = {}) { return Promise.resolve(opts.source ? logsWithDebug.filter((l) => l.source === opts.source) : logsWithDebug); }
       );
 
       const result = await service.getLogs({ ...defaultParams });
@@ -303,8 +301,7 @@ describe('CustomerLogsService', () => {
         { timestamp: '2025-01-22T10:01:00Z', source: 'stderr', message: 'oldest-stderr', level: 'error' },
         { timestamp: '2025-01-22T10:03:00Z', source: 'stderr', message: 'newest-stderr', level: 'error' }
       ];
-      mockDevSupervisorClient.getLogs = vi.fn().mockImplementation((opts: { source?: string } = {}) =>
-        Promise.resolve(opts.source === 'stderr' ? stderrLogs : stdoutLogs)
+      mockDevSupervisorClient.getLogs = vi.fn().mockImplementation(function (opts: { source?: string } = {}) { return Promise.resolve(opts.source === 'stderr' ? stderrLogs : stdoutLogs); }
       );
 
       const result = await service.getLogs({ ...defaultParams, lines: 2, sources: ['stdout', 'stderr'] });

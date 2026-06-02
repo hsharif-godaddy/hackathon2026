@@ -58,7 +58,7 @@ vi.mock('@/lib/share/inject-preview-token', () => ({
 }));
 
 vi.mock('@/lib/control-plane', () => ({
-  getControlPlaneAdapter: vi.fn(() => ({ getSite: mockGetSite })),
+  getControlPlaneAdapter: vi.fn(function () { return { getSite: mockGetSite }; }),
 }));
 
 /**

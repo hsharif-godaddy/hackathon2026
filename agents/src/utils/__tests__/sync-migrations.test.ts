@@ -106,8 +106,8 @@ describe('sync-template-files migrations', () => {
 
   beforeEach(() => {
     dir = mkdtempSync(join(tmpdir(), 'sync-migrations-'));
-    consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-    consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(function () {});
+    consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(function () {});
   });
 
   afterEach(() => {

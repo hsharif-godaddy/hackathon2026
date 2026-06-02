@@ -5,12 +5,12 @@ import sharp from 'sharp';
 
 // Mock the app-ownership middleware to bypass authentication
 vi.mock('../../middleware/app-ownership.js', () => ({
-  validateAppOwnership: vi.fn((req, res, next) => next()),
+  validateAppOwnership: vi.fn(function (req, res, next) { return next(); }),
 }));
 
 // Mock persistent assets helper to use test paths
 vi.mock('../../../utils/persistent-assets.js', () => ({
-  getPersistentPublicDir: vi.fn((appPath: string) => `${appPath}/public`),
+  getPersistentPublicDir: vi.fn(function (appPath: string) { return `${appPath}/public`; }),
 }));
 
 // Mock dependencies
@@ -26,9 +26,9 @@ vi.mock('../../../services/MediaManifestService.js', () => ({
 }));
 
 vi.mock('../../../database/repositories/AppRepository.js', () => ({
-  AppRepository: vi.fn().mockImplementation(() => ({
+  AppRepository: vi.fn().mockImplementation(function () { return {
     findById: vi.fn().mockReturnValue({ id: 'test-app', path: '/tmp/test-app' }),
-  })),
+  }; }),
 }));
 
 vi.mock('../../../services/FileUploadService.js', () => ({

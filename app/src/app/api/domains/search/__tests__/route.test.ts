@@ -16,10 +16,10 @@ const mockFindExact = vi.fn();
 const mockFindSpins = vi.fn();
 
 vi.mock('@site/domain-services', () => ({
-  DomainServices: vi.fn(() => ({
+  DomainServices: vi.fn(function () { return {
     findExact: mockFindExact,
     findSpins: mockFindSpins,
-  })),
+  }; }),
 }));
 
 vi.mock('@/lib/customer-auth', () => ({
@@ -41,7 +41,7 @@ vi.mock('@/lib/request-context', () => ({
 }));
 
 vi.mock('@/lib/translations', () => ({
-  detectTranslationLocale: vi.fn(() => 'en-US'),
+  detectTranslationLocale: vi.fn(function () { return 'en-US'; }),
 }));
 
 vi.mock('@/lib/switchboard/server', () => ({
@@ -433,7 +433,7 @@ describe('POST /api/domains/search', () => {
     });
 
     it('should return 500 for unexpected errors', async () => {
-      mockFindExact.mockImplementation(() => { throw new Error('Unexpected boom'); });
+      mockFindExact.mockImplementation(function () { throw new Error('Unexpected boom'); });
 
       const response = await POST(createRequest({ query: 'mybrand' }));
       const data = await response.json();

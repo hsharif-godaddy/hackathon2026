@@ -2,8 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../../tools/ai-lib-tools/drivers/knowb-driver.js', () => {
   const search = vi.fn();
-  const formatResultsAsMarkdown = vi.fn((items: unknown[]) =>
-    (items as Array<{ kbNodeId: string }>).map((i) => `## ${i.kbNodeId}`).join('\n---\n'),
+  const formatResultsAsMarkdown = vi.fn(function (items: unknown[]) { return (items as Array<{ kbNodeId: string }>).map((i) => `## ${i.kbNodeId}`).join('\n---\n'); },
   );
   return {
     knowBDriver: { search, formatResultsAsMarkdown },

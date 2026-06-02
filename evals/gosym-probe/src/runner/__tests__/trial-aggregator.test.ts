@@ -782,7 +782,7 @@ describe('TrialAggregator', () => {
     });
 
     it('omits evalVersion and warns when trials report different versions', () => {
-      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(function () {});
       const trials = [
         makeTrialWithVersion(0, 'eval', 'pass', '1.0.0'),
         makeTrialWithVersion(1, 'eval', 'pass', '2.0.0'),
@@ -806,7 +806,7 @@ describe('TrialAggregator', () => {
     });
 
     it('omits evalVersion without warning when no trials carry a version', () => {
-      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(function () {});
       const trials = [
         makeTrialWithVersion(0, 'eval', 'pass'),
         makeTrialWithVersion(1, 'eval', 'pass'),

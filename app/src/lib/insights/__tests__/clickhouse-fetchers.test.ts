@@ -656,7 +656,7 @@ describe('clickhouse-fetchers', () => {
   describe('request deduplication', () => {
     it('should deduplicate identical concurrent requests', async () => {
       let callCount = 0
-      vi.stubGlobal('fetch', vi.fn().mockImplementation(() => {
+      vi.stubGlobal('fetch', vi.fn().mockImplementation(function () {
         callCount++
         return Promise.resolve(mockClickhouseResponse([{ page_path: '/', page_views: 10 }]))
       }))

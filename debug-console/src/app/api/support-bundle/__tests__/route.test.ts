@@ -247,7 +247,7 @@ describe('streamLokiLogs', () => {
 
   it('still returns the Loki error when the fallback archive entry cannot be appended', async () => {
     mockedBuildLokiQuery.mockRejectedValue(new Error('network down'));
-    const append = vi.fn(() => {
+    const append = vi.fn(function () {
       throw new Error('append failed');
     });
 
@@ -326,8 +326,7 @@ describe('streamConfiguredLogSources', () => {
         raw: { '@timestamp': '2026-04-22T00:10:00Z', message: 'hello' },
       },
     ]);
-    const fetchSpy = vi.spyOn(global, 'fetch').mockImplementation(async () =>
-      new Response('{"hits":{"hits":[]}}', { status: 200 }) as unknown as Response,
+    const fetchSpy = vi.spyOn(global, 'fetch').mockImplementation(async function () { return new Response('{"hits":{"hits":[]}}', { status: 200 }) as unknown as Response; },
     );
 
     const { archive, appended } = instrumentArchive();
@@ -361,10 +360,9 @@ describe('streamConfiguredLogSources', () => {
 
   it('records an error for a misconfigured Loki source but still emits ES entries', async () => {
     delete process.env.LOKI_ENDPOINT;
-    const fetchSpy = vi.spyOn(global, 'fetch').mockImplementation(async () =>
-      new Response('{"hits":{"hits":[]}}', { status: 200 }) as unknown as Response,
+    const fetchSpy = vi.spyOn(global, 'fetch').mockImplementation(async function () { return new Response('{"hits":{"hits":[]}}', { status: 200 }) as unknown as Response; },
     );
-    vi.spyOn(console, 'warn').mockImplementation(() => { /* silence */ });
+    vi.spyOn(console, 'warn').mockImplementation(function () { /* silence */ });
 
     const { archive, appended } = instrumentArchive();
 
@@ -394,12 +392,11 @@ describe('streamConfiguredLogSources', () => {
 
   it('keeps metadata when fallback archive appends fail', async () => {
     delete process.env.LOKI_ENDPOINT;
-    vi.spyOn(global, 'fetch').mockImplementation(async () =>
-      new Response('{"hits":{"hits":[]}}', { status: 200 }) as unknown as Response,
+    vi.spyOn(global, 'fetch').mockImplementation(async function () { return new Response('{"hits":{"hits":[]}}', { status: 200 }) as unknown as Response; },
     );
-    vi.spyOn(console, 'warn').mockImplementation(() => { /* silence */ });
+    vi.spyOn(console, 'warn').mockImplementation(function () { /* silence */ });
     mockedLoggerError.mockReset();
-    const append = vi.fn(() => {
+    const append = vi.fn(function () {
       throw new Error('append failed');
     });
 

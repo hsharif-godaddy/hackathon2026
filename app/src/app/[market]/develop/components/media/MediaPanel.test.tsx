@@ -42,17 +42,16 @@ vi.mock('@/hooks/useMediaManifest', () => ({
 }));
 
 vi.mock('@/stores/useDevelopPageStore', () => {
-  const mockGetState = vi.fn(() => ({
+  const mockGetState = vi.fn(function () { return {
     activeChatTab: mockActiveChatTab,
     chatPaneWidth: 400,
     setChatPaneWidth: vi.fn(),
     handleMobileModeChange: mockHandleMobileModeChange,
-  }));
-  const mockUseDevelopPageStore = vi.fn((selector: (s: Record<string, unknown>) => unknown) =>
-    selector({
+  }; });
+  const mockUseDevelopPageStore = vi.fn(function (selector: (s: Record<string, unknown>) => unknown) { return selector({
       activeChatTab: mockActiveChatTab,
       chatPaneWidth: 400,
-    })
+    }); }
   ) as unknown as { getState: typeof mockGetState };
   (mockUseDevelopPageStore as unknown as { getState: typeof mockGetState }).getState = mockGetState;
   return {

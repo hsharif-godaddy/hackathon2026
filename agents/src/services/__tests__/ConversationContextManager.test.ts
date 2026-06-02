@@ -10,7 +10,7 @@ vi.mock('../../logging/index.js', () => {
   mockLogger.child.mockReturnValue(mockLogger);
   return {
     logger: mockLogger,
-    Logger: { create: vi.fn(() => mockLogger) },
+    Logger: { create: vi.fn(function () { return mockLogger; }) },
   };
 });
 const mockRegisterCompressionStrategy = vi.fn();
@@ -18,9 +18,9 @@ vi.mock('../ConversationHistoryLoader.js', async (importOriginal) => {
   const original = await importOriginal() as any;
   return {
     ...original,
-    ConversationHistoryLoader: vi.fn().mockImplementation(() => ({
+    ConversationHistoryLoader: vi.fn().mockImplementation(function () { return {
       registerCompressionStrategy: mockRegisterCompressionStrategy,
-    })),
+    }; }),
   };
 });
 

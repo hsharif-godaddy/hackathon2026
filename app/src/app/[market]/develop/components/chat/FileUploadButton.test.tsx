@@ -20,7 +20,7 @@ vi.mock('@/lib/file-agent', () => ({
   })
 }));
 
-const mockLogImpressionEvent = vi.fn(() => vi.fn());
+const mockLogImpressionEvent = vi.fn(function () { return vi.fn(); });
 vi.mock('@/utils/instrumentation', () => ({
   logImpressionEvent: (...args: unknown[]) => mockLogImpressionEvent(...args),
 }));

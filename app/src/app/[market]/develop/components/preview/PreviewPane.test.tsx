@@ -66,10 +66,10 @@ vi.mock('@/app/[market]/develop/components/preview/ConversationsIframe', () => (
 
 // Mock stores
 const mockServerPollingStore = {
-  getServerState: vi.fn(() => ({ isReady: true, url: 'http://localhost:3000' })),
+  getServerState: vi.fn(function () { return { isReady: true, url: 'http://localhost:3000' }; }),
   startPollingForServer: vi.fn(),
   stopPollingForServer: vi.fn(),
-  isPollingServer: vi.fn(() => false),
+  isPollingServer: vi.fn(function () { return false; }),
 };
 
 const mockDevelopPageStore = {
@@ -85,7 +85,7 @@ const mockDevelopPageStore = {
 };
 
 const mockGitStore = {
-  getSelectedCommitHash: vi.fn(() => null),
+  getSelectedCommitHash: vi.fn(function () { return null; }),
 };
 
 let mockGitHistoryData: { commits: Array<{ hash: string }> } = { commits: [] };
@@ -176,16 +176,16 @@ vi.mock('@/hooks/useDomainSearch', () => ({
 }));
 
 vi.mock('@/utils/domain', () => ({
-  isAiroSubdomain: vi.fn(() => false),
-  resolveSiteFqdn: vi.fn(() => null),
+  isAiroSubdomain: vi.fn(function () { return false; }),
+  resolveSiteFqdn: vi.fn(function () { return null; }),
 }));
 
 vi.mock('@/utils/site', () => ({
-  hasBeenPublished: vi.fn(() => false),
+  hasBeenPublished: vi.fn(function () { return false; }),
 }));
 
 vi.mock('@/utils/instrumentation', () => ({
-  generateClickEID: vi.fn((id) => id),
+  generateClickEID: vi.fn(function (id) { return id; }),
 }));
 
 vi.mock('@/lib/logging', () => ({
@@ -203,15 +203,15 @@ vi.mock('@/hooks/useImpression', () => ({
 }));
 
 const mockUseLatestNBAs = vi.hoisted(() =>
-  vi.fn(() => null as { source?: string; question?: string; suggestions?: unknown[] } | null),
+  vi.fn(function () { return null as { source?: string; question?: string; suggestions?: unknown[] } | null; }),
 );
 
 vi.mock('@/app/[market]/develop/components/chat/useLatestNBAs', () => ({
   useLatestNBAs: () => mockUseLatestNBAs(),
 }));
 
-const mockIsInitialBuildFunnelActive = vi.hoisted(() => vi.fn(() => true));
-const mockIsInitialBuildComplete = vi.hoisted(() => vi.fn(() => false));
+const mockIsInitialBuildFunnelActive = vi.hoisted(() => vi.fn(function () { return true; }));
+const mockIsInitialBuildComplete = vi.hoisted(() => vi.fn(function () { return false; }));
 
 vi.mock('@/hooks/shared/initialBuildFunnel', () => ({
   isInitialBuildFunnelActive: () => mockIsInitialBuildFunnelActive(),
@@ -224,9 +224,9 @@ describe('PreviewPane', () => {
     mockDevelopPageStore.viewMode = ViewMode.PREVIEW;
     mockDevelopPageStore.mobileMode = MobileMode.PREVIEW;
     mockDevelopPageStore.publishStates = { 'test-app-123': { isPublishing: false } };
-    mockServerPollingStore.getServerState = vi.fn(() => ({ isReady: true, url: 'http://localhost:3000' }));
+    mockServerPollingStore.getServerState = vi.fn(function () { return { isReady: true, url: 'http://localhost:3000' }; });
     mockGitHistoryData = { commits: [] };
-    mockGitStore.getSelectedCommitHash = vi.fn(() => null);
+    mockGitStore.getSelectedCommitHash = vi.fn(function () { return null; });
     mockDevelopPageStore.isVersionHistoryOpen = false;
     for (const key of Object.keys(mockSwitchboardResults)) {
       delete mockSwitchboardResults[key];
@@ -326,11 +326,11 @@ describe('PreviewPane', () => {
   });
 
   it('should show tips overlay and make iframe non-interactive when showBuildingOverlay is true', () => {
-    mockServerPollingStore.getServerState = vi.fn(() => ({
+    mockServerPollingStore.getServerState = vi.fn(function () { return {
       isReady: true,
       url: 'http://localhost:3000',
       status: 'running'
-    }));
+    }; });
 
     renderWithProviders(
       <PreviewPane
@@ -659,12 +659,12 @@ describe('PreviewPane', () => {
   });
 
   it('should show cookie-blocked overlay when cookieVerified is false', () => {
-    mockServerPollingStore.getServerState = vi.fn(() => ({
+    mockServerPollingStore.getServerState = vi.fn(function () { return {
       isReady: false,
       url: 'http://localhost:3000',
       healthCheckPassed: true,
       cookieVerified: false,
-    }));
+    }; });
 
     renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} />);
 
@@ -681,12 +681,12 @@ describe('PreviewPane', () => {
   });
 
   it('should not show cookie-blocked overlay when cookieVerified is undefined', () => {
-    mockServerPollingStore.getServerState = vi.fn(() => ({
+    mockServerPollingStore.getServerState = vi.fn(function () { return {
       isReady: false,
       url: 'http://localhost:3000',
       healthCheckPassed: true,
       cookieVerified: undefined,
-    }));
+    }; });
 
     renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} />);
 
@@ -694,7 +694,7 @@ describe('PreviewPane', () => {
   });
 
   it('should show error when iframe fails to load', async () => {
-    mockServerPollingStore.getServerState = vi.fn(() => ({ isReady: false, url: null, error: 'Server failed' }));
+    mockServerPollingStore.getServerState = vi.fn(function () { return { isReady: false, url: null, error: 'Server failed' }; });
 
     renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} />);
 
@@ -716,7 +716,7 @@ describe('PreviewPane', () => {
 
   it('should render BrandBookView alone when viewMode is BRAND and server is NOT ready', () => {
     mockDevelopPageStore.viewMode = ViewMode.BRAND;
-    mockServerPollingStore.getServerState = vi.fn(() => ({ isReady: false, url: null }));
+    mockServerPollingStore.getServerState = vi.fn(function () { return { isReady: false, url: null }; });
 
     renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} />);
 
@@ -817,7 +817,7 @@ describe('PreviewPane', () => {
   it('should not show loading state when isHibernated and viewMode is DOMAIN', async () => {
     mockDevelopPageStore.viewMode = ViewMode.DOMAIN;
     mockSwitchboardResults['appbuilder-domain-top-level'] = true;
-    mockServerPollingStore.getServerState = vi.fn(() => ({ isReady: false, url: null }));
+    mockServerPollingStore.getServerState = vi.fn(function () { return { isReady: false, url: null }; });
 
     renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} isHibernated={true} />);
 
@@ -835,7 +835,7 @@ describe('PreviewPane', () => {
       mockDevelopPageStore.viewMode = ViewMode.INBOX;
       (mockDevelopPageStore as any).conversationsBrandId = mockConversationsBrandId;
       // resumeFailed prop causes early-return guards to trigger, but INBOX should bypass them
-      mockServerPollingStore.getServerState = vi.fn(() => ({ isReady: false, url: null }));
+      mockServerPollingStore.getServerState = vi.fn(function () { return { isReady: false, url: null }; });
 
       renderWithProviders(
         <PreviewPane
@@ -852,7 +852,7 @@ describe('PreviewPane', () => {
       mockSwitchboardResults['app-builder-inbox-button'] = true;
       mockDevelopPageStore.viewMode = ViewMode.INBOX;
       (mockDevelopPageStore as any).conversationsBrandId = mockConversationsBrandId;
-      mockServerPollingStore.getServerState = vi.fn(() => ({ isReady: false, url: null }));
+      mockServerPollingStore.getServerState = vi.fn(function () { return { isReady: false, url: null }; });
 
       renderWithProviders(
         <PreviewPane
@@ -869,7 +869,7 @@ describe('PreviewPane', () => {
       mockSwitchboardResults['app-builder-inbox-button'] = true;
       mockDevelopPageStore.viewMode = ViewMode.INBOX;
       (mockDevelopPageStore as any).conversationsBrandId = mockConversationsBrandId;
-      mockServerPollingStore.getServerState = vi.fn(() => ({ isReady: false, url: null }));
+      mockServerPollingStore.getServerState = vi.fn(function () { return { isReady: false, url: null }; });
 
       renderWithProviders(
         <PreviewPane
@@ -929,7 +929,7 @@ describe('PreviewPane', () => {
 
     it('should show loading when isHibernated and viewMode is PREVIEW (not INBOX)', () => {
       mockDevelopPageStore.viewMode = ViewMode.PREVIEW;
-      mockServerPollingStore.getServerState = vi.fn(() => ({ isReady: false, url: null }));
+      mockServerPollingStore.getServerState = vi.fn(function () { return { isReady: false, url: null }; });
 
       renderWithProviders(
         <PreviewPane
@@ -960,11 +960,11 @@ describe('PreviewPane — iframe bootstrap-timeout auto-remount', () => {
     vi.useFakeTimers();
     mockDevelopPageStore.viewMode = ViewMode.PREVIEW;
     mockDevelopPageStore.publishStates = { 'test-app-123': { isPublishing: false } };
-    mockServerPollingStore.getServerState = vi.fn(() => ({
+    mockServerPollingStore.getServerState = vi.fn(function () { return {
       isReady: true,
       url: 'http://localhost:3000',
-    }));
-    mockServerPollingStore.isPollingServer = vi.fn(() => false);
+    }; });
+    mockServerPollingStore.isPollingServer = vi.fn(function () { return false; });
     const { logger } = await import('@/lib/request-context');
     mockLoggerWarn = logger.warn as ReturnType<typeof vi.fn>;
   });
@@ -1050,10 +1050,10 @@ describe('PreviewPane — iframe bootstrap-timeout auto-remount', () => {
     // on `!serverState?.isReady`. Without this guard, a still-provisioning
     // app would spin auto-retries while the preview iframe isn't even
     // rendered yet.
-    mockServerPollingStore.getServerState = vi.fn(() => ({
+    mockServerPollingStore.getServerState = vi.fn(function () { return {
       isReady: false,
       url: 'http://localhost:3000',
-    }));
+    }; });
     renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} />);
 
     // Advance well past the timeout — must NOT fire.
@@ -1065,10 +1065,10 @@ describe('PreviewPane — iframe bootstrap-timeout auto-remount', () => {
     // Negative-path guard: same effect short-circuits on !previewUrl.
     // serverState ready but URL not yet resolved — keep the iframe
     // gated and the retry timer dormant.
-    mockServerPollingStore.getServerState = vi.fn(() => ({
+    mockServerPollingStore.getServerState = vi.fn(function () { return {
       isReady: true,
       url: null,
-    }));
+    }; });
     renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} />);
 
     await vi.advanceTimersByTimeAsync(IFRAME_BOOTSTRAP_RETRY_MS * 2);
@@ -1144,10 +1144,10 @@ describe('PreviewPane — iframe bootstrap-timeout auto-remount', () => {
     // Server hands out a new allocation URL — counter must reset so the
     // user gets a fresh budget on the new URL. Without this, exhausted
     // state from the old URL would skip auto-recovery on the new one.
-    mockServerPollingStore.getServerState = vi.fn(() => ({
+    mockServerPollingStore.getServerState = vi.fn(function () { return {
       isReady: true,
       url: 'http://localhost:4000', // different URL
-    }));
+    }; });
     rerender(<PreviewPane onPreviewRefresh={vi.fn()} />);
 
     // First post-URL-change timeout fires the warn — proof the counter reset.
@@ -1183,7 +1183,7 @@ describe('publish-snapshot-request handling', function publishSnapshotHandlingTe
     vi.clearAllMocks()
     vi.useFakeTimers()
     mockDevelopPageStore.viewMode = ViewMode.PREVIEW
-    mockServerPollingStore.getServerState = vi.fn(() => ({ isReady: true, url: 'http://localhost:3000' }))
+    mockServerPollingStore.getServerState = vi.fn(function () { return { isReady: true, url: 'http://localhost:3000' }; })
     for (const key of Object.keys(mockSwitchboardResults)) {
       delete mockSwitchboardResults[key];
     }
@@ -1324,13 +1324,13 @@ describe('PreviewPane — Ask Airo to fix button', () => {
   });
 
   it('shows "Ask Airo to fix" alongside Try Again when failureKind is crash-loop', async () => {
-    mockServerPollingStore.getServerState = vi.fn(() => ({
+    mockServerPollingStore.getServerState = vi.fn(function () { return {
       isReady: false,
       url: null,
       status: 'failed',
       failureKind: 'crash-loop',
       error: undefined,
-    }));
+    }; });
     const onAskAiroToFix = vi.fn();
     const { user } = renderWithProviders(
       <PreviewPane onPreviewRefresh={vi.fn()} onAskAiroToFix={onAskAiroToFix} />
@@ -1348,12 +1348,12 @@ describe('PreviewPane — Ask Airo to fix button', () => {
   });
 
   it('shows "Ask Airo to fix" on any status=error|failed (incl. BFF/network failures)', async () => {
-    mockServerPollingStore.getServerState = vi.fn(() => ({
+    mockServerPollingStore.getServerState = vi.fn(function () { return {
       isReady: false,
       url: null,
       status: 'error',
       error: 'Network error',
-    }));
+    }; });
     const onAskAiroToFix = vi.fn();
     const { user } = renderWithProviders(
       <PreviewPane onPreviewRefresh={vi.fn()} onAskAiroToFix={onAskAiroToFix} />
@@ -1371,12 +1371,12 @@ describe('PreviewPane — Ask Airo to fix button', () => {
   });
 
   it('does NOT show "Ask Airo to fix" when onAskAiroToFix prop is not provided', async () => {
-    mockServerPollingStore.getServerState = vi.fn(() => ({
+    mockServerPollingStore.getServerState = vi.fn(function () { return {
       isReady: false,
       url: null,
       status: 'failed',
       failureKind: 'crash-loop',
-    }));
+    }; });
     renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} />);
 
     await waitFor(() => {
@@ -1387,12 +1387,12 @@ describe('PreviewPane — Ask Airo to fix button', () => {
   });
 
   it('disables "Ask Airo to fix" button while agent is processing', async () => {
-    mockServerPollingStore.getServerState = vi.fn(() => ({
+    mockServerPollingStore.getServerState = vi.fn(function () { return {
       isReady: false,
       url: null,
       status: 'failed',
       failureKind: 'crash-loop',
-    }));
+    }; });
     renderWithProviders(
       <PreviewPane
         onPreviewRefresh={vi.fn()}
@@ -1411,7 +1411,7 @@ describe('PreviewPane — Ask Airo to fix button', () => {
 
   describe('build overlay askQuestion behavior', () => {
     beforeEach(() => {
-      mockServerPollingStore.getServerState = vi.fn(() => ({ isReady: true, url: 'http://localhost:3000' }));
+      mockServerPollingStore.getServerState = vi.fn(function () { return { isReady: true, url: 'http://localhost:3000' }; });
     });
 
     it('shows question overlay when askQuestion is pending during build', () => {
@@ -1424,8 +1424,8 @@ describe('PreviewPane — Ask Airo to fix button', () => {
 
     it('shows default building overlay when no askQuestion is pending', () => {
       mockUseLatestNBAs.mockReturnValue(undefined);
-      mockServerPollingStore.getServerState = vi.fn(() => ({ isReady: false, url: '' }));
-      mockServerPollingStore.isPollingServer = vi.fn(() => true);
+      mockServerPollingStore.getServerState = vi.fn(function () { return { isReady: false, url: '' }; });
+      mockServerPollingStore.isPollingServer = vi.fn(function () { return true; });
 
       renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} showBuildingOverlay />);
 

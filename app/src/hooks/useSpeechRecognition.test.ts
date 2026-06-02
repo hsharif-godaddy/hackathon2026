@@ -295,7 +295,7 @@ describe('useSpeechRecognition', function hookTests() {
   })
 
   it('should warn when microphone becomes unavailable for an owned session', function warnOnPermissionDenied() {
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(function () { return undefined; })
     mockTranscriptState.isMicrophoneAvailable = true
 
     const { result, rerender } = renderHook(() => useSpeechRecognition())

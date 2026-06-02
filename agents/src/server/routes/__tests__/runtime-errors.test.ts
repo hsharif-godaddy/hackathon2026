@@ -13,7 +13,7 @@ vi.mock('../../../logging/index.js', () => ({
 }));
 
 vi.mock('../../middleware/app-ownership.js', () => ({
-  validateAppOwnership: vi.fn((req: any, res: any, next: any) => {
+  validateAppOwnership: vi.fn(function (req: any, res: any, next: any) {
     if (!req.agentContext?.siteId) {
       return res.status(401).json({ error: 'auth' });
     }

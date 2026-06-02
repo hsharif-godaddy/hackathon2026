@@ -27,7 +27,7 @@ vi.mock('@/lib/social', () => ({
   },
 }))
 
-const mockIsGoogleConnection = vi.fn(() => true)
+const mockIsGoogleConnection = vi.fn(function () { return true; })
 vi.mock('@/lib/utils/social-type-guards', () => ({
   isGoogleConnection: (...args: unknown[]) => mockIsGoogleConnection(...args),
 }))
@@ -84,7 +84,7 @@ describe('GoogleReviewsToolRenderer', () => {
   })
 
   it('shows loading state before fetch completes', () => {
-    mockGetConnectionById.mockImplementation(() => new Promise(() => {}))
+    mockGetConnectionById.mockImplementation(function () { return new Promise(() => {}); })
 
     renderRenderer()
 

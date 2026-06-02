@@ -28,7 +28,7 @@ describe('ensureViteNodePackagesExcluded', () => {
   });
 
   it('should patch vite config when found and modified', () => {
-    vi.mocked(existsSync).mockImplementation((p) => String(p).endsWith('vite.config.ts'));
+    vi.mocked(existsSync).mockImplementation(function (p) { return String(p).endsWith('vite.config.ts'); });
     vi.mocked(readFileSync).mockReturnValue('export default {}');
     vi.mocked(addNodePackageExclusions).mockReturnValue({ code: 'patched', modified: true });
 
@@ -39,7 +39,7 @@ describe('ensureViteNodePackagesExcluded', () => {
   });
 
   it('should not write when no changes needed', () => {
-    vi.mocked(existsSync).mockImplementation((p) => String(p).endsWith('vite.config.ts'));
+    vi.mocked(existsSync).mockImplementation(function (p) { return String(p).endsWith('vite.config.ts'); });
     vi.mocked(readFileSync).mockReturnValue('export default {}');
     vi.mocked(addNodePackageExclusions).mockReturnValue({ code: 'same', modified: false });
 
@@ -58,13 +58,13 @@ describe('ensureViteNodePackagesExcluded', () => {
   });
 
   it('should not throw on errors', () => {
-    vi.mocked(existsSync).mockImplementation(() => { throw new Error('fs error'); });
+    vi.mocked(existsSync).mockImplementation(function () { throw new Error('fs error'); });
 
     expect(() => ensureViteNodePackagesExcluded('/app', PACKAGES)).not.toThrow();
   });
 
   it('should handle .js config files as non-TypeScript', () => {
-    vi.mocked(existsSync).mockImplementation((p) => String(p).endsWith('vite.config.js'));
+    vi.mocked(existsSync).mockImplementation(function (p) { return String(p).endsWith('vite.config.js'); });
     vi.mocked(readFileSync).mockReturnValue('export default {}');
     vi.mocked(addNodePackageExclusions).mockReturnValue({ code: 'patched', modified: true });
 
@@ -74,7 +74,7 @@ describe('ensureViteNodePackagesExcluded', () => {
   });
 
   it('should handle process error from modifier', () => {
-    vi.mocked(existsSync).mockImplementation((p) => String(p).endsWith('vite.config.ts'));
+    vi.mocked(existsSync).mockImplementation(function (p) { return String(p).endsWith('vite.config.ts'); });
     vi.mocked(readFileSync).mockReturnValue('export default {}');
     vi.mocked(addNodePackageExclusions).mockReturnValue({ code: '', modified: false, error: 'parse error' });
 

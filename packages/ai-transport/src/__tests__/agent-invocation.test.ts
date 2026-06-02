@@ -8,20 +8,20 @@ vi.mock('@godaddy/agent-otel-sdk', async () => {
   return {
     ...actual,
     emitError: vi.fn(),
-    createAgentContext: vi.fn(() => otelContext.active()),
-    createAgentInvocationSpan: vi.fn(() => ({
+    createAgentContext: vi.fn(function () { return otelContext.active(); }),
+    createAgentInvocationSpan: vi.fn(function () { return {
       context: otelContext.active(),
-      end: vi.fn((input: unknown) => {
+      end: vi.fn(function (input: unknown) {
         spanEndCalls.push(input)
       }),
-    })),
+    }; }),
   }
 })
 vi.mock('@godaddy/agent-observability-events', async () => {
   const actual = await vi.importActual<Record<string, unknown>>('@godaddy/agent-observability-events')
   return {
     ...actual,
-    createError: vi.fn((input: unknown) => ({ kind: 'error', input })),
+    createError: vi.fn(function (input: unknown) { return { kind: 'error', input }; }),
   }
 })
 
@@ -41,7 +41,7 @@ describe('emitTurnError', () => {
 
   beforeEach(() => {
     vi.mocked(emitError).mockReset()
-    vi.mocked(createError).mockReset().mockImplementation((input: unknown) => ({ kind: 'error', input }) as any)
+    vi.mocked(createError).mockReset().mockImplementation(function (input: unknown) { return ({ kind: 'error', input }) as any; })
     warn.mockReset()
   })
 
@@ -113,7 +113,7 @@ describe('emitTurnError', () => {
   })
 
   it('swallows telemetry failures and logs a warning with telemetryError field populated', () => {
-    vi.mocked(emitError).mockImplementation(() => { throw new Error('telemetry down') })
+    vi.mocked(emitError).mockImplementation(function () { throw new Error('telemetry down') })
     expect(() => emitTurnError({
       conversationId: 'c', agentId: 'a', error: new Error('x'), logger,
     })).not.toThrow()
@@ -126,12 +126,12 @@ describe('emitTurnError', () => {
   })
 
   it('does not throw even when the logger itself throws (Never-throws contract), and console.error carries telemetryError', () => {
-    vi.mocked(emitError).mockImplementation(() => { throw new Error('telemetry down') })
-    const throwingLogger = { warn: vi.fn(() => { throw new Error('logger broken') }) }
+    vi.mocked(emitError).mockImplementation(function () { throw new Error('telemetry down') })
+    const throwingLogger = { warn: vi.fn(function () { throw new Error('logger broken') }) }
     // Silence the console.error fallback so test output stays clean; we
     // only care that the overall call does not throw and that the triage
     // context (telemetryError) is preserved.
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(function () {})
     try {
       expect(() => emitTurnError({
         conversationId: 'c', agentId: 'a', error: new Error('x'), logger: throwingLogger,
@@ -233,10 +233,10 @@ describe('createAgentInvocation', () => {
   // console.error if the logger itself throws, never bubble.
   describe('safeEnd fallback (logger guard around invocation.end)', () => {
     function mockThrowingSpan(): void {
-      vi.mocked(createAgentInvocationSpan).mockImplementationOnce(() => ({
+      vi.mocked(createAgentInvocationSpan).mockImplementationOnce(function () { return ({
         context: otelContext.active(),
-        end: vi.fn(() => { throw new Error('otel sdk exploded') }),
-      }) as any)
+        end: vi.fn(function () { throw new Error('otel sdk exploded') }),
+      }) as any; })
     }
 
     it('endSuccess swallows span.end throws and warns with agentId + conversationId + telemetryError', () => {
@@ -277,8 +277,8 @@ describe('createAgentInvocation', () => {
 
     it('falls back to console.error when both span.end and logger.warn throw', () => {
       mockThrowingSpan()
-      const throwingLogger = { warn: vi.fn(() => { throw new Error('logger broken') }) }
-      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const throwingLogger = { warn: vi.fn(function () { throw new Error('logger broken') }) }
+      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(function () {})
       try {
         const inv = createAgentInvocation({
           agent: { getConfig: () => ({ modelName: 'claude-sonnet-4-6' }) },

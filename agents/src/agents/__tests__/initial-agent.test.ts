@@ -17,9 +17,9 @@ vi.mock('../../tools/skill-tool-manager.js', () => ({
 }));
 
 vi.mock('../../tools/skill-loader-tool.js', () => ({
-  SkillLoaderTool: vi.fn().mockImplementation(() => ({
+  SkillLoaderTool: vi.fn().mockImplementation(function () { return {
     loadSkill: (...args: unknown[]) => mockLoadSkill(...args),
-  }))
+  }; })
 }));
 
 const fileCalls: string[] = [];
@@ -37,7 +37,7 @@ vi.mock('@airo/ai-lib', async () => {
     ...actual,
     createPromptBuilder: () => {
       const builder = {
-        file: vi.fn().mockImplementation((path: string) => {
+        file: vi.fn().mockImplementation(function (path: string) {
           fileCalls.push(path);
           return builder;
         }),

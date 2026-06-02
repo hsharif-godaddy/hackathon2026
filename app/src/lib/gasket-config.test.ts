@@ -13,7 +13,7 @@ vi.mock('@/lib/gasket-config', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/gasket-config')>();
   return {
     ...actual,
-    getGasketConfig: vi.fn(() => Promise.resolve(mockConfig)),
+    getGasketConfig: vi.fn(function () { return Promise.resolve(mockConfig); }),
   };
 });
 

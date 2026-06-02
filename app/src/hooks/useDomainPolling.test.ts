@@ -8,7 +8,7 @@ import { renderHookWithProviders } from '@/tests/test-utils';
 
 // Capture the refetchInterval function passed to useAppDetails so we can test it directly.
 let capturedRefetchInterval: ((data: any) => number | false) | undefined;
-const mockUseAppDetails = vi.fn((_siteId: string, options: any) => {
+const mockUseAppDetails = vi.fn(function (_siteId: string, options: any) {
   capturedRefetchInterval = options?.refetchInterval;
   return { data: undefined, isFetched: false };
 });

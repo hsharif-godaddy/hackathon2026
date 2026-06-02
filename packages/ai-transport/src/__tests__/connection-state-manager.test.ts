@@ -453,7 +453,7 @@ describe('ConnectionStateManager', () => {
     })
 
     it('returns true during cleanup', async () => {
-      const slowCleanup = vi.fn(async () => {
+      const slowCleanup = vi.fn(async function () {
         await new Promise(resolve => setTimeout(resolve, 100))
       })
       const managerWithSlowCleanup = new ConnectionStateManager(

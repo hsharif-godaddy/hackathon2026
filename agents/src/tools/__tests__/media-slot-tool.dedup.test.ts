@@ -66,11 +66,7 @@ function installLockingSetSlotMock(initial: MediaManifest = {}): {
   let chain: Promise<void> = Promise.resolve();
 
   setSlotMock.mockImplementation(
-    async (
-      _appId: string,
-      slotName: string,
-      slotOrBuilder: MediaSlot | ((m: MediaManifest) => MediaSlot)
-    ) => {
+    async function (_appId: string, slotName: string, slotOrBuilder: MediaSlot | ((m: MediaManifest) => MediaSlot)) {
       let builtSlot!: MediaSlot;
       const run = chain.then(async () => {
         const slot = typeof slotOrBuilder === 'function' ? slotOrBuilder(manifest) : slotOrBuilder;
@@ -264,7 +260,7 @@ describe('MediaSlotTool.selectMedia integration', () => {
       urls: ['https://cdn/1', 'https://cdn/2'],
       gettyIds: ['1', '2'],
     });
-    const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => {});
+    const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(function () {});
 
     const tool = new MediaSlotTool();
     const result = await tool.selectMedia({ slot: 'team/john', query: 'q', appId: APP_ID });

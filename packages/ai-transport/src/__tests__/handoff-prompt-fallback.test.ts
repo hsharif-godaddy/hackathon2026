@@ -1,10 +1,10 @@
 import { describe, it, expect, vi } from 'vitest'
 
 vi.mock('socket.io', () => ({
-  Server: vi.fn().mockImplementation(() => ({
+  Server: vi.fn().mockImplementation(function () { return {
     on: vi.fn(),
     close: vi.fn()
-  }))
+  }; })
 }))
 
 vi.mock('@signals/otel-sdk', () => ({

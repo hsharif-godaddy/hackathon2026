@@ -10,6 +10,8 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
+    // vitest 4 no longer clears vi.fn() call history on restoreAllMocks.
+    clearMocks: true,
     include: ['src/**/__tests__/**/*.test.ts', 'src/**/*.test.ts'],
     coverage: {
       provider: 'v8',

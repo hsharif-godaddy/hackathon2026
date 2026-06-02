@@ -27,22 +27,22 @@ vi.mock('@/stores/useStreamingConversationStore', () => ({
   useIsActivelyStreaming: vi.fn(),
   useIsLoading: vi.fn(),
   useMessages: vi.fn(),
-  useActiveStream: vi.fn(() => null),
-  useActiveRunningToolName: vi.fn(() => null)
+  useActiveStream: vi.fn(function () { return null; }),
+  useActiveRunningToolName: vi.fn(function () { return null; })
 }))
 
 vi.mock('@/app/[market]/develop/hooks/useRebuildPages', () => ({
-  useRebuildPages: vi.fn(() => ({ data: null, isLoading: false }))
+  useRebuildPages: vi.fn(function () { return { data: null, isLoading: false }; })
 }))
 
 vi.mock('@/stores/useTodoListStore', () => ({
   useCurrentList: vi.fn(),
   useViewState: vi.fn(),
   useTodoListStore: {
-    getState: vi.fn(() => ({
+    getState: vi.fn(function () { return {
       currentList: null,
       setCurrentList: vi.fn()
-    }))
+    }; })
   }
 }))
 
@@ -51,7 +51,7 @@ vi.mock('./useLatestNBAs', () => ({
 }))
 
 vi.mock('@/hooks/useSwitchboard', () => ({
-  useSwitchboard: vi.fn((flag: string) => {
+  useSwitchboard: vi.fn(function (flag: string) {
     if (flag === 'airo-builder-theme-selection-chat') {
       return true
     }
@@ -68,11 +68,11 @@ vi.mock('@/app/[market]/develop/components/utils/previewThemeInIframe', () => ({
 }))
 
 vi.mock('@/app/[market]/develop/components/utils', () => ({
-  useAppIdFromParams: vi.fn(() => 'test-app-id')
+  useAppIdFromParams: vi.fn(function () { return 'test-app-id'; })
 }))
 
 vi.mock('@/app/[market]/develop/hooks/useNextActions', () => ({
-  useNextActions: vi.fn(() => ({ data: null, isLoading: false, isError: false }))
+  useNextActions: vi.fn(function () { return { data: null, isLoading: false, isError: false }; })
 }))
 
 describe('InputActionsPanel', () => {
@@ -103,7 +103,7 @@ describe('InputActionsPanel', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
-    vi.mocked(Switchboard.useSwitchboard).mockImplementation((flag: string) => {
+    vi.mocked(Switchboard.useSwitchboard).mockImplementation(function (flag: string) {
       if (flag === 'airo-builder-theme-selection-chat') {
         return true
       }
@@ -116,8 +116,7 @@ describe('InputActionsPanel', () => {
     vi.mocked(TodoListStore.useCurrentList).mockReturnValue(null)
     vi.mocked(TodoListStore.useViewState).mockReturnValue(null)
     vi.mocked(useLatestNBAsModule.useLatestNBAs).mockReturnValue(null)
-    vi.mocked(DevelopPageStore.useDevelopPageStore).mockImplementation((selector: any) =>
-      selector({ viewMode: ViewMode.PREVIEW, isMobile: false })
+    vi.mocked(DevelopPageStore.useDevelopPageStore).mockImplementation(function (selector: any) { return selector({ viewMode: ViewMode.PREVIEW, isMobile: false }); }
     )
   })
 
@@ -224,7 +223,7 @@ describe('InputActionsPanel', () => {
     })
 
     it('hides plan preview items while askQuestion is active in the legacy variant', () => {
-      vi.mocked(Switchboard.useSwitchboard).mockImplementation((flag: string) => {
+      vi.mocked(Switchboard.useSwitchboard).mockImplementation(function (flag: string) {
         if (flag === 'airo-builder-theme-selection-chat') return false
         return false
       })
@@ -436,8 +435,7 @@ describe('InputActionsPanel', () => {
     })
 
     it('should pass disabled=false when in PREVIEW mode', () => {
-      vi.mocked(DevelopPageStore.useDevelopPageStore).mockImplementation((selector: any) =>
-        selector({ viewMode: ViewMode.PREVIEW })
+      vi.mocked(DevelopPageStore.useDevelopPageStore).mockImplementation(function (selector: any) { return selector({ viewMode: ViewMode.PREVIEW }); }
       )
 
       renderWithProviders(
@@ -451,8 +449,7 @@ describe('InputActionsPanel', () => {
     })
 
     it('should pass disabled=false when in EDIT mode', () => {
-      vi.mocked(DevelopPageStore.useDevelopPageStore).mockImplementation((selector: any) =>
-        selector({ viewMode: ViewMode.EDIT })
+      vi.mocked(DevelopPageStore.useDevelopPageStore).mockImplementation(function (selector: any) { return selector({ viewMode: ViewMode.EDIT }); }
       )
 
       renderWithProviders(
@@ -466,8 +463,7 @@ describe('InputActionsPanel', () => {
     })
 
     it('should pass disabled=true when in CODE mode', () => {
-      vi.mocked(DevelopPageStore.useDevelopPageStore).mockImplementation((selector: any) =>
-        selector({ viewMode: ViewMode.CODE })
+      vi.mocked(DevelopPageStore.useDevelopPageStore).mockImplementation(function (selector: any) { return selector({ viewMode: ViewMode.CODE }); }
       )
 
       renderWithProviders(
@@ -481,8 +477,7 @@ describe('InputActionsPanel', () => {
     })
 
     it('should pass disabled=true when in BRAND mode', () => {
-      vi.mocked(DevelopPageStore.useDevelopPageStore).mockImplementation((selector: any) =>
-        selector({ viewMode: ViewMode.BRAND })
+      vi.mocked(DevelopPageStore.useDevelopPageStore).mockImplementation(function (selector: any) { return selector({ viewMode: ViewMode.BRAND }); }
       )
 
       renderWithProviders(
@@ -505,8 +500,7 @@ describe('InputActionsPanel', () => {
       expect(radios[1].checked).toBe(true)
       expect(radios[0].checked).toBe(false)
 
-      vi.mocked(DevelopPageStore.useDevelopPageStore).mockImplementation((selector: any) =>
-        selector({ viewMode: ViewMode.BRAND })
+      vi.mocked(DevelopPageStore.useDevelopPageStore).mockImplementation(function (selector: any) { return selector({ viewMode: ViewMode.BRAND }); }
       )
 
       rerender(<InputActionsPanel activeColorSchemeSuggest={activeColorSchemeSuggest} />)
@@ -525,13 +519,11 @@ describe('InputActionsPanel', () => {
 
       vi.mocked(previewThemeInIframe).mockClear()
 
-      vi.mocked(DevelopPageStore.useDevelopPageStore).mockImplementation((selector: any) =>
-        selector({ viewMode: ViewMode.CODE })
+      vi.mocked(DevelopPageStore.useDevelopPageStore).mockImplementation(function (selector: any) { return selector({ viewMode: ViewMode.CODE }); }
       )
       rerender(<InputActionsPanel activeColorSchemeSuggest={activeColorSchemeSuggest} />)
 
-      vi.mocked(DevelopPageStore.useDevelopPageStore).mockImplementation((selector: any) =>
-        selector({ viewMode: ViewMode.PREVIEW })
+      vi.mocked(DevelopPageStore.useDevelopPageStore).mockImplementation(function (selector: any) { return selector({ viewMode: ViewMode.PREVIEW }); }
       )
       rerender(<InputActionsPanel activeColorSchemeSuggest={activeColorSchemeSuggest} />)
 
@@ -542,8 +534,7 @@ describe('InputActionsPanel', () => {
     })
 
     it('should preserve selection when switching between PREVIEW and EDIT modes', async () => {
-      vi.mocked(DevelopPageStore.useDevelopPageStore).mockImplementation((selector: any) =>
-        selector({ viewMode: ViewMode.PREVIEW })
+      vi.mocked(DevelopPageStore.useDevelopPageStore).mockImplementation(function (selector: any) { return selector({ viewMode: ViewMode.PREVIEW }); }
       )
 
       const { rerender, user } = renderWithProviders(
@@ -557,8 +548,7 @@ describe('InputActionsPanel', () => {
       expect(radios[0].checked).toBe(false)
 
       // Switch to EDIT mode
-      vi.mocked(DevelopPageStore.useDevelopPageStore).mockImplementation((selector: any) =>
-        selector({ viewMode: ViewMode.EDIT })
+      vi.mocked(DevelopPageStore.useDevelopPageStore).mockImplementation(function (selector: any) { return selector({ viewMode: ViewMode.EDIT }); }
       )
 
       rerender(<InputActionsPanel activeColorSchemeSuggest={activeColorSchemeSuggest} />)
@@ -575,8 +565,7 @@ describe('InputActionsPanel', () => {
       )
 
       // Switch to CODE mode
-      vi.mocked(DevelopPageStore.useDevelopPageStore).mockImplementation((selector: any) =>
-        selector({ viewMode: ViewMode.CODE })
+      vi.mocked(DevelopPageStore.useDevelopPageStore).mockImplementation(function (selector: any) { return selector({ viewMode: ViewMode.CODE }); }
       )
 
       rerender(<InputActionsPanel activeColorSchemeSuggest={activeColorSchemeSuggest} />)
@@ -606,8 +595,7 @@ describe('InputActionsPanel', () => {
         { id: 'msg-1', role: 'user', content: 'test', timestamp: new Date() },
       ])
       vi.mocked(useLatestNBAsModule.useLatestNBAs).mockReturnValue(null)
-      vi.mocked(DevelopPageStore.useDevelopPageStore).mockImplementation((selector: any) =>
-        selector({ viewMode: ViewMode.PREVIEW, isMobile: true }),
+      vi.mocked(DevelopPageStore.useDevelopPageStore).mockImplementation(function (selector: any) { return selector({ viewMode: ViewMode.PREVIEW, isMobile: true }); },
       )
     })
 

@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@aws-sdk/client-secrets-manager', () => ({
-  SecretsManagerClient: vi.fn().mockImplementation(() => ({
+  SecretsManagerClient: vi.fn().mockImplementation(function () { return {
     send: vi.fn(),
-  })),
+  }; }),
   GetSecretValueCommand: vi.fn(),
 }));
 

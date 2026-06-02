@@ -20,53 +20,53 @@ vi.mock('@ux/modal', () => ({
 // -- Hook mocks --
 
 vi.mock('@/hooks/useSwitchboard', () => ({
-  useSwitchboard: vi.fn(() => (true)),
+  useSwitchboard: vi.fn(function () { return true; }),
 }));
 
 vi.mock('@/hooks/useAuth', () => ({
-  useAuth: vi.fn(() => ({ isAuthenticated: true, isLoading: false })),
+  useAuth: vi.fn(function () { return { isAuthenticated: true, isLoading: false }; }),
 }));
 
 vi.mock('@/hooks/useAppDetails', () => ({
-  useAppDetails: vi.fn(() => ({
+  useAppDetails: vi.fn(function () { return {
     data: undefined,
     isFetched: true,
-  })),
+  }; }),
 }));
 
 vi.mock('@/hooks/useDomainsQuery', () => ({
-  useDomainsQuery: vi.fn(() => ({
+  useDomainsQuery: vi.fn(function () { return {
     data: [],
     isLoading: false,
     error: null,
     isFetched: true,
-  })),
+  }; }),
 }));
 
 vi.mock('@/hooks/useCustomerDomainAttach', () => ({
-  useCustomerDomainAttach: vi.fn(() => ({
+  useCustomerDomainAttach: vi.fn(function () { return {
     pendingCustomerDomain: null,
     isPolling: false,
     hasExternalNameservers: false,
     requiresManualDnsSetup: false,
-  })),
+  }; }),
 }));
 
 vi.mock('@/hooks/useDomainValidationQuery', () => ({
-  useDomainValidationQuery: vi.fn(() => ({
+  useDomainValidationQuery: vi.fn(function () { return {
     data: null,
     isLoading: false,
     isError: false,
-  })),
+  }; }),
 }));
 
 vi.mock('@/hooks/useDomainDnsOwnership', () => ({
-  useDomainDnsOwnership: vi.fn(() => ({
+  useDomainDnsOwnership: vi.fn(function () { return {
     data: { isGdDomain: false },
     isPending: false,
     isLoading: false,
     isError: false,
-  })),
+  }; }),
 }));
 
 const { mockModifyDomainsMutation } = vi.hoisted(function hoisted() {
@@ -83,30 +83,30 @@ const { mockModifyDomainsMutation } = vi.hoisted(function hoisted() {
 });
 
 vi.mock('@/hooks/useModifyDomains', () => ({
-  useModifyDomains: vi.fn(() => mockModifyDomainsMutation),
+  useModifyDomains: vi.fn(function () { return mockModifyDomainsMutation; }),
   DomainMutationError: class extends Error {},
 }));
 
 // -- Component utility mocks --
 
 vi.mock('@/app/[market]/develop/components/chat/ChatContext', () => ({
-  useSendUserMessage: vi.fn(() => vi.fn()),
+  useSendUserMessage: vi.fn(function () { return vi.fn(); }),
 }));
 
 vi.mock('@/app/[market]/develop/components/utils', () => ({
-  useAppIdFromParams: vi.fn(() => 'test-app-123'),
+  useAppIdFromParams: vi.fn(function () { return 'test-app-123'; }),
 }));
 
 // -- Store mocks --
 
 vi.mock('@/stores/useSiteStore', () => ({
-  useSiteStore: vi.fn((selector: any) => selector({
+  useSiteStore: vi.fn(function (selector: any) { return selector({
     getSite: () => ({
       id: 'test-app-123',
       subscription_id: 'sub-123',
       variants: ['publish'],
     }),
-  })),
+  }); }),
 }));
 
 // -- Utility / logging mocks --
@@ -124,16 +124,16 @@ vi.mock('@/lib/request-context', () => ({
 }));
 
 vi.mock('@/utils/site', () => ({
-  hasBeenPublished: vi.fn(() => true),
+  hasBeenPublished: vi.fn(function () { return true; }),
 }));
 
 vi.mock('@/utils/domain-validation', () => ({
-  getDomainErrorMessage: vi.fn(() => undefined),
-  translateDomainApiError: vi.fn(() => 'Translated error'),
+  getDomainErrorMessage: vi.fn(function () { return undefined; }),
+  translateDomainApiError: vi.fn(function () { return 'Translated error'; }),
 }));
 
 vi.mock('@/utils/instrumentation', () => ({
-  generateClickEID: vi.fn((id: string) => `${id}.click`),
+  generateClickEID: vi.fn(function (id: string) { return `${id}.click`; }),
 }));
 
 // DomainItem child dependency
@@ -500,7 +500,7 @@ describe('DomainAttachWidget', function domainAttachWidgetTests() {
     it('should return null when domain attach feature flag is disabled', async function disabled() {
       const { useSwitchboard } = await import('@/hooks/useSwitchboard');
 
-      vi.mocked(useSwitchboard).mockImplementation((feature: string) => {
+      vi.mocked(useSwitchboard).mockImplementation(function (feature: string) {
         if (feature === 'appbuilder-domain-attach') {
           return false;
         }
@@ -515,7 +515,7 @@ describe('DomainAttachWidget', function domainAttachWidgetTests() {
     it('should return null while feature flag is loading', async function loading() {
       const { useSwitchboard } = await import('@/hooks/useSwitchboard');
 
-      vi.mocked(useSwitchboard).mockImplementation((feature: string) => {
+      vi.mocked(useSwitchboard).mockImplementation(function (feature: string) {
         if (feature === 'appbuilder-domain-attach') {
           return undefined;
         }
@@ -580,7 +580,7 @@ describe('DomainAttachWidget', function domainAttachWidgetTests() {
       error: null,
       isFetched: true,
     } as any);
-    vi.mocked(useSwitchboard).mockImplementation(() => true);
+    vi.mocked(useSwitchboard).mockImplementation(function () { return true; });
     vi.mocked(useDomainValidationQuery).mockReturnValue({
       data: { available: true, errors: [] },
       isLoading: false,
@@ -634,7 +634,7 @@ describe('DomainAttachWidget', function domainAttachWidgetTests() {
       error: null,
       isFetched: true,
     } as any);
-    vi.mocked(useSwitchboard).mockImplementation(() => true);
+    vi.mocked(useSwitchboard).mockImplementation(function () { return true; });
     vi.mocked(useDomainValidationQuery).mockReturnValue({
       data: { available: true, errors: [] },
       isLoading: false,

@@ -16,13 +16,13 @@ import type { Request, Response } from 'express';
 // All vi.mock() calls must precede module imports (vitest hoists them automatically).
 // Mock customer-app dependencies that aren't available in agents workspace.
 vi.mock('date-fns', () => ({
-	parseISO: vi.fn((str: string) => {
+	parseISO: vi.fn(function (str: string) {
 		// Real parseISO only accepts ISO 8601 (YYYY-MM-DD). Reject obvious non-ISO.
 		if (!/^\d{4}-\d{2}-\d{2}/.test(str)) return new Date(NaN);
 		return new Date(str);
 	}),
-	isValid: vi.fn((d: Date) => !isNaN(d.getTime())),
-	addMinutes: vi.fn((d: Date, m: number) => new Date(d.getTime() + m * 60000)),
+	isValid: vi.fn(function (d: Date) { return !isNaN(d.getTime()); }),
+	addMinutes: vi.fn(function (d: Date, m: number) { return new Date(d.getTime() + m * 60000); }),
 	format: vi.fn(),
 	parse: vi.fn(),
 	isAfter: vi.fn(),
@@ -35,10 +35,10 @@ vi.mock('date-fns', () => ({
 }));
 
 vi.mock('drizzle-orm', () => ({
-	and: vi.fn((...args: any[]) => args),
-	gte: vi.fn((field: string, val: any) => ({ op: 'gte', field, val })),
-	lte: vi.fn((field: string, val: any) => ({ op: 'lte', field, val })),
-	ne: vi.fn((field: string, val: any) => ({ op: 'ne', field, val })),
+	and: vi.fn(function (...args: any[]) { return args; }),
+	gte: vi.fn(function (field: string, val: any) { return { op: 'gte', field, val }; }),
+	lte: vi.fn(function (field: string, val: any) { return { op: 'lte', field, val }; }),
+	ne: vi.fn(function (field: string, val: any) { return { op: 'ne', field, val }; }),
 	desc: vi.fn(),
 	eq: vi.fn(),
 }));
@@ -67,7 +67,7 @@ vi.mock('../../../../lib/appointments', () => ({
 		currency: 'USD',
 		timezone: 'America/New_York',
 	}),
-	getAvailableSlots: vi.fn(() => [
+	getAvailableSlots: vi.fn(function () { return [
 		{ time: '09:00', available: true },
 		{ time: '10:00', available: true },
 		{ time: '11:00', available: false },
@@ -76,11 +76,11 @@ vi.mock('../../../../lib/appointments', () => ({
 		{ time: '14:00', available: true },
 		{ time: '15:00', available: true },
 		{ time: '16:00', available: true },
-	]),
+	]; }),
 }));
 
 // Mock date-fns-tz to capture fromZonedTime calls and verify timezone boundary computation
-const mockFromZonedTime = vi.fn((dateTimeStr: string, _tz: string) => {
+const mockFromZonedTime = vi.fn(function (dateTimeStr: string, _tz: string) {
 	return new Date(dateTimeStr);
 });
 
@@ -108,7 +108,7 @@ function createMockReq(query: Record<string, string> = {}): Partial<Request> {
 
 function createMockRes(): { res: Partial<Response>; json: ReturnType<typeof vi.fn>; status: ReturnType<typeof vi.fn> } {
 	const json = vi.fn();
-	const status = vi.fn(() => ({ json }));
+	const status = vi.fn(function () { return { json }; });
 	return {
 		res: { json, status } as Partial<Response>,
 		json,
@@ -303,7 +303,7 @@ describe('GET /api/appointments/availability', () => {
 			let capturedWhere: any;
 			vi.mocked(db.select).mockReturnValue({
 				from: vi.fn().mockReturnValue({
-					where: vi.fn().mockImplementation((...args) => {
+					where: vi.fn().mockImplementation(function (...args) {
 						capturedWhere = args;
 						return Promise.resolve([]);
 					}),

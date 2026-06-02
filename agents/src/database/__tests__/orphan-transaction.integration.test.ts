@@ -158,7 +158,7 @@ describe('Schema migration transaction safety', () => {
   let errorSpy: MockInstance;
 
   beforeEach(() => {
-    errorSpy = vi.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    errorSpy = vi.spyOn(Logger.prototype, 'error').mockImplementation(function () { return undefined; });
   });
 
   afterEach(() => {

@@ -9,10 +9,10 @@ vi.mock('../../../../logging/index.js', () => ({
 const mockMemoryGet = vi.fn();
 const mockMemorySet = vi.fn();
 vi.mock('../../../../database/repositories/MemoryRepository.js', () => ({
-  MemoryRepository: vi.fn().mockImplementation(() => ({
+  MemoryRepository: vi.fn().mockImplementation(function () { return {
     get: mockMemoryGet,
     set: mockMemorySet,
-  })),
+  }; }),
 }));
 
 const mockFindById = vi.fn();
@@ -27,9 +27,9 @@ vi.mock('../../../../server/agent-runtime.js', () => ({
 
 const mockInstallTemplates = vi.fn();
 vi.mock('../../../../tools/skill-loader-tool.js', () => ({
-  SkillLoaderTool: vi.fn().mockImplementation(() => ({
+  SkillLoaderTool: vi.fn().mockImplementation(function () { return {
     installTemplates: mockInstallTemplates,
-  })),
+  }; }),
 }));
 
 const mockListAccounts = vi.fn();
@@ -319,7 +319,7 @@ describe('conversations skill tools', () => {
 
   describe('setup_widget', () => {
     beforeEach(() => {
-      mockMemoryGet.mockImplementation((_appId: string, key: string) => {
+      mockMemoryGet.mockImplementation(function (_appId: string, key: string) {
         if (key === 'integrations.conversations.brandId') {
           return Promise.resolve({ exists: true, value: 'a1b2c3d4-0000-4000-8000-000000000001' });
         }
@@ -387,7 +387,7 @@ describe('conversations skill tools', () => {
     });
 
     it('reuses cached embeddable from memory', async () => {
-      mockMemoryGet.mockImplementation((_appId: string, key: string) => {
+      mockMemoryGet.mockImplementation(function (_appId: string, key: string) {
         if (key === 'integrations.conversations.brandId') {
           return Promise.resolve({ exists: true, value: 'a1b2c3d4-0000-4000-8000-000000000001' });
         }
@@ -510,7 +510,7 @@ describe('conversations skill tools', () => {
 
   describe('update_widget_config', () => {
     beforeEach(() => {
-      mockMemoryGet.mockImplementation((_appId: string, key: string) => {
+      mockMemoryGet.mockImplementation(function (_appId: string, key: string) {
         if (key === 'integrations.conversations.brandId') {
           return Promise.resolve({ exists: true, value: 'a1b2c3d4-0000-4000-8000-000000000001' });
         }

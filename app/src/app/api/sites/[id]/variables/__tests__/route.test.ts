@@ -24,10 +24,10 @@ const {
 }));
 
 vi.mock('@/lib/control-plane', () => ({
-  getControlPlaneAdapter: vi.fn(() => ({
+  getControlPlaneAdapter: vi.fn(function () { return {
     getSite: mockGetSite,
     updateSiteVariables: mockUpdateSiteVariables,
-  })),
+  }; }),
 }));
 vi.mock('@/lib/request-context', () => ({ logger: mockLogger }));
 
@@ -40,7 +40,7 @@ vi.mock('@/lib/customer-auth', () => ({
         ...args,
       ),
   authenticateCustomer: mockAuthenticateCustomer,
-  customerHasAccount: vi.fn(() => true),
+  customerHasAccount: vi.fn(function () { return true; }),
   createCustomerAuthError: vi.fn(),
 }));
 
@@ -62,10 +62,10 @@ describe('PATCH /api/sites/[id]/variables — fqdn validation', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockGetSite.mockResolvedValue({ id: APP_ID });
-    mockUpdateSiteVariables.mockImplementation(async (_id: string, vars: Record<string, unknown>) => ({
+    mockUpdateSiteVariables.mockImplementation(async function (_id: string, vars: Record<string, unknown>) { return {
       id: APP_ID,
       ...vars,
-    }));
+    }; });
     // Default: level-3 escalation succeeds. The fqdn-bearing tests rely on
     // this; non-fqdn tests never invoke it.
     mockAuthenticateCustomer.mockResolvedValue({

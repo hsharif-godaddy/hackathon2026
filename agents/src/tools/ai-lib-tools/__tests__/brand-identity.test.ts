@@ -18,21 +18,21 @@ vi.mock('../../../database/connection.js', () => ({
 // Mock Logger
 vi.mock('../../../logging/index.js', () => ({
   Logger: {
-    create: vi.fn(() => ({
+    create: vi.fn(function () { return {
       info: vi.fn(),
       warn: vi.fn(),
       error: vi.fn(),
       debug: vi.fn(),
-    })),
+    }; }),
   },
 }))
 
 // Mock MemoryRepository
 vi.mock('../../../database/repositories/MemoryRepository.js', () => ({
-  MemoryRepository: vi.fn(() => ({
+  MemoryRepository: vi.fn(function () { return {
     get: mockMemoryGet,
     set: mockMemorySet,
-  })),
+  }; }),
 }))
 
 // Import after mocks

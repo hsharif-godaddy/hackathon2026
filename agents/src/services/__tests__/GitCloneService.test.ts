@@ -6,12 +6,12 @@ import { ValidationErrorKey } from '../../types/import.js';
 
 vi.mock('../../logging/index.js', () => ({
   Logger: {
-    create: vi.fn(() => ({
+    create: vi.fn(function () { return {
       info: vi.fn(),
       warn: vi.fn(),
       error: vi.fn(),
       debug: vi.fn(),
-    })),
+    }; }),
   },
 }));
 

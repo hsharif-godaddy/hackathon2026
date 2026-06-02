@@ -292,7 +292,7 @@ describe('RemoteModulePage', () => {
   it('should render loading spinner initially', async () => {
     const { loadRemoteComponentConfig } = await import('@/utils/moduleFederation');
     vi.mocked(loadRemoteComponentConfig).mockImplementation(
-      () => new Promise(() => {}) // Never resolves
+      function () { return new Promise(() => {}); } // Never resolves
     );
 
     renderWithProviders(

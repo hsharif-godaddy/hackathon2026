@@ -24,7 +24,7 @@ vi.mock('@/lib/customer-auth', () => ({
     // Wrap the handler to inject mockAuthContext automatically
     return (request: NextRequest) => handler(request, mockAuthContext);
   },
-  createCustomerAuthError: vi.fn((message: string, status: number) => {
+  createCustomerAuthError: vi.fn(function (message: string, status: number) {
     return new Response(JSON.stringify({ error: 'Forbidden', message }), {
       status,
       headers: { 'Content-Type': 'application/json' }
@@ -42,27 +42,27 @@ vi.mock('@/lib/request-context', () => ({
 }));
 
 vi.mock('@/lib/control-plane', () => ({
-  getControlPlaneAdapter: vi.fn(() => mockControlPlaneAdapter),
+  getControlPlaneAdapter: vi.fn(function () { return mockControlPlaneAdapter; }),
 }));
 
 vi.mock('@/lib/marketing/get-calendar-events', () => ({
-  generateMilestoneEvents: vi.fn(() => []),
-  getMonthDateRange: vi.fn(() => ({
+  generateMilestoneEvents: vi.fn(function () { return []; }),
+  getMonthDateRange: vi.fn(function () { return {
     startDate: '2024-01-01',
     endDate: '2024-01-31',
-  })),
+  }; }),
 }));
 
 vi.mock('@/lib/marketing/scan-scheduled-posts', () => ({
-  getScheduledPostsForMonth: vi.fn(() => []),
+  getScheduledPostsForMonth: vi.fn(function () { return []; }),
 }));
 
 vi.mock('@/utils/getServerRootDomain', () => ({
-  getApiBaseUrl: vi.fn(() => 'https://content-inspirations.api.test'),
+  getApiBaseUrl: vi.fn(function () { return 'https://content-inspirations.api.test'; }),
 }));
 
 vi.mock('@/lib/marketing/social-posts', () => ({
-  fetchSocialPostsFromAgents: vi.fn(() => Promise.resolve([])),
+  fetchSocialPostsFromAgents: vi.fn(function () { return Promise.resolve([]); }),
 }));
 
 /**
@@ -325,7 +325,7 @@ describe('Marketing Calendar API Route', () => {
   describe('External API Timeout Handling', () => {
     it('should handle timeout from Content Inspirations API', async () => {
       // Mock fetch to simulate timeout
-      (global.fetch as any).mockImplementation(() => {
+      (global.fetch as any).mockImplementation(function () {
         return new Promise((_, reject) => {
           setTimeout(() => {
             const error = new Error('The operation was aborted');

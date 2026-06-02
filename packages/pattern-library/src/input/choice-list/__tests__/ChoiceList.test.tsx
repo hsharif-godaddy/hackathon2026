@@ -1153,7 +1153,7 @@ describe('ChoiceList allowOther (single-select)', () => {
   });
 
   it('maps deprecated string otherLabel to placeholder when otherPlaceholder is omitted', () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const warn = vi.spyOn(console, 'warn').mockImplementation(function () {});
     render(
       <ChoiceList ariaLabel="Pick" allowOther otherLabel="Legacy hint">
         <ChoiceList.Item value="a">Alpha</ChoiceList.Item>

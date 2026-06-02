@@ -13,7 +13,7 @@ describe('warnLine — core behavior (TTY)', () => {
 
   it('writes \\r\\x1B[K to stderr before console.warn when isTTY is true', () => {
     const stderrWriteSpy = vi.spyOn(process.stderr, 'write').mockReturnValue(true);
-    const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(function () { return undefined; });
 
     warnLine('retry attempt 1');
 
@@ -26,7 +26,7 @@ describe('warnLine — core behavior (TTY)', () => {
 
   it('calls console.warn(message, data) when data is provided', () => {
     vi.spyOn(process.stderr, 'write').mockReturnValue(true);
-    const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(function () { return undefined; });
     const data = { attempt: 1, waitMs: 30_000 };
 
     warnLine('retrying after rate limit', data);
@@ -36,7 +36,7 @@ describe('warnLine — core behavior (TTY)', () => {
 
   it('calls console.warn(message) without trailing undefined when data is omitted', () => {
     vi.spyOn(process.stderr, 'write').mockReturnValue(true);
-    const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(function () { return undefined; });
 
     warnLine('exhausted retries');
 
@@ -54,7 +54,7 @@ describe('warnLine — non-TTY fallback', () => {
   it('skips \\r\\x1B[K when isTTY is false', () => {
     Object.defineProperty(process.stderr, 'isTTY', { value: false, configurable: true });
     const stderrWriteSpy = vi.spyOn(process.stderr, 'write').mockReturnValue(true);
-    const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(function () { return undefined; });
 
     warnLine('ci warning');
 
@@ -65,7 +65,7 @@ describe('warnLine — non-TTY fallback', () => {
   it('skips \\r\\x1B[K when isTTY is undefined', () => {
     Object.defineProperty(process.stderr, 'isTTY', { value: undefined, configurable: true });
     const stderrWriteSpy = vi.spyOn(process.stderr, 'write').mockReturnValue(true);
-    const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(function () { return undefined; });
 
     warnLine('piped warning');
 
@@ -84,10 +84,10 @@ describe('warnLine — error resilience', () => {
   });
 
   it('does not throw if process.stderr.write throws', () => {
-    vi.spyOn(process.stderr, 'write').mockImplementation(() => {
+    vi.spyOn(process.stderr, 'write').mockImplementation(function () {
       throw new Error('broken pipe');
     });
-    const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(function () { return undefined; });
 
     expect(() => warnLine('after broken pipe')).not.toThrow();
     expect(consoleWarnSpy).toHaveBeenCalledWith('after broken pipe');

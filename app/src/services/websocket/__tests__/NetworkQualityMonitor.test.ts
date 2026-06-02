@@ -44,10 +44,10 @@ describe('NetworkQualityMonitor', () => {
     function createMockSocketWithEngine() {
       const engineListeners: Record<string, () => void> = {}
       const engine = {
-        on: vi.fn((event: string, fn: () => void) => {
+        on: vi.fn(function (event: string, fn: () => void) {
           engineListeners[event] = fn
         }),
-        off: vi.fn((event: string, fn: () => void) => {
+        off: vi.fn(function (event: string, fn: () => void) {
           if (engineListeners[event] === fn) {
             delete engineListeners[event]
           }
@@ -338,7 +338,7 @@ describe('NetworkQualityMonitor', () => {
     it('should clean up engine listeners', () => {
       const engineListeners: Record<string, () => void> = {}
       const engine = {
-        on: vi.fn((event: string, fn: () => void) => {
+        on: vi.fn(function (event: string, fn: () => void) {
           engineListeners[event] = fn
         }),
         off: vi.fn(),

@@ -40,7 +40,7 @@ vi.mock('@/lib/mgmt-airo', () => ({
 }));
 
 vi.mock('@/lib/mgmt-airo/auth-error', () => ({
-  mgmtAiro401Response: vi.fn(() => null),
+  mgmtAiro401Response: vi.fn(function () { return null; }),
 }));
 
 vi.mock('@/lib/jwt-service', () => ({

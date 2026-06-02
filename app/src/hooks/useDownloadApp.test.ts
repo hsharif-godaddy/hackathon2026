@@ -42,7 +42,7 @@ describe('useDownloadApp', () => {
     }
 
     // Reset URL.createObjectURL mock
-    global.URL.createObjectURL = vi.fn(() => 'blob:mock-url');
+    global.URL.createObjectURL = vi.fn(function () { return 'blob:mock-url'; });
     global.URL.revokeObjectURL = vi.fn();
 
     // Mock document methods

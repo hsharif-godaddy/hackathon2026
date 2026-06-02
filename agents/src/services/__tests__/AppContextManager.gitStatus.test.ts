@@ -5,9 +5,9 @@ vi.mock('../../workspace/index.js', () => ({
 }));
 
 vi.mock('../../tools/directory-listing.js', () => ({
-  DirectoryListingTool: vi.fn().mockImplementation(() => ({
+  DirectoryListingTool: vi.fn().mockImplementation(function () { return {
     listDirectory: vi.fn().mockResolvedValue('')
-  }))
+  }; })
 }));
 
 vi.mock('../../tools/app-plan-tool.js', () => ({
@@ -16,12 +16,12 @@ vi.mock('../../tools/app-plan-tool.js', () => ({
 
 vi.mock('../../logging/index.js', () => ({
   Logger: {
-    create: vi.fn(() => ({
+    create: vi.fn(function () { return {
       info: vi.fn(),
       warn: vi.fn(),
       error: vi.fn(),
       debug: vi.fn()
-    }))
+    }; })
   },
   logger: {
     info: vi.fn(),
@@ -51,9 +51,9 @@ vi.mock('../MediaManifestService.js', () => ({
 }));
 
 vi.mock('../../database/repositories/AppRepository.js', () => ({
-  AppRepository: vi.fn().mockImplementation(() => ({
+  AppRepository: vi.fn().mockImplementation(function () { return {
     findById: vi.fn().mockReturnValue(null)
-  }))
+  }; })
 }));
 
 import { AppContextManager } from '../AppContextManager.js';
@@ -67,7 +67,7 @@ type GitInvocation = (command: string) => ReturnType<typeof makeRunCommandResult
 function workspaceWithGit(invocation: GitInvocation) {
   return {
     tasks: {
-      runCommandSync: vi.fn(async ({ command }: { command: string }) => {
+      runCommandSync: vi.fn(async function ({ command }: { command: string }) {
         const result = invocation(command);
         if (!result) {
           return makeRunCommandResult({ exitCode: 1, stderr: 'failed' });

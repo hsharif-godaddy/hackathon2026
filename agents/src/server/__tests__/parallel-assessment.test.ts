@@ -12,14 +12,14 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 // Mock the assessment agent - must be before any imports that use it
 vi.mock('../../agents/assessment-agent/index.js', () => ({
-  getAssessmentAgent: vi.fn(() => ({
+  getAssessmentAgent: vi.fn(function () { return {
     classify: vi.fn().mockResolvedValue({
       result: { taskType: 'general', confidence: 85 },
       overrideApplied: false,
       appliedBudget: null,
       durationMs: 100,
     }),
-  })),
+  }; }),
   AssessmentTaskType: {
     General: 'general',
     Fix: 'fix',

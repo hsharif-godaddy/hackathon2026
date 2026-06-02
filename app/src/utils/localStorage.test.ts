@@ -42,7 +42,7 @@ describe('localStorage utils', () => {
     });
 
     it('returns null and logs a warning when localStorage throws', () => {
-      vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      vi.spyOn(Storage.prototype, 'getItem').mockImplementation(function () {
         throw new DOMException('Access denied', 'SecurityError');
       });
 
@@ -56,7 +56,7 @@ describe('localStorage utils', () => {
     });
 
     it('uses String(error) when a non-Error value is thrown', () => {
-      vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      vi.spyOn(Storage.prototype, 'getItem').mockImplementation(function () {
         throw 'quota exceeded';
       });
 
@@ -86,7 +86,7 @@ describe('localStorage utils', () => {
     });
 
     it('logs a warning when localStorage throws', () => {
-      vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function () {
         throw new DOMException('QuotaExceededError', 'QuotaExceededError');
       });
 
@@ -99,7 +99,7 @@ describe('localStorage utils', () => {
     });
 
     it('does not throw when localStorage throws', () => {
-      vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function () {
         throw new DOMException('QuotaExceededError', 'QuotaExceededError');
       });
 
@@ -107,7 +107,7 @@ describe('localStorage utils', () => {
     });
 
     it('uses String(error) when a non-Error value is thrown', () => {
-      vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function () {
         throw 'storage full';
       });
 

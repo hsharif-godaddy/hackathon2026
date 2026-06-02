@@ -20,9 +20,8 @@ vi.mock('@/lib/customer-auth', () => ({
       return handler(request, mockAuthContext, ctx);
     };
   },
-  customerHasAccount: vi.fn(() => true),
-  createCustomerAuthError: vi.fn((msg: string, status: number) =>
-    new Response(JSON.stringify({ error: msg }), { status, headers: { 'Content-Type': 'application/json' } })
+  customerHasAccount: vi.fn(function () { return true; }),
+  createCustomerAuthError: vi.fn(function (msg: string, status: number) { return new Response(JSON.stringify({ error: msg }), { status, headers: { 'Content-Type': 'application/json' } }); }
   ),
 }));
 

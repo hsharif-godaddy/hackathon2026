@@ -28,11 +28,11 @@ const { mockLoggerInfo, mockLoggerWarn, mockLoggerError, mockLogError } = vi.hoi
 // Mock Logger
 vi.mock('../../../logging/index.js', () => ({
   Logger: {
-    create: vi.fn(() => ({
+    create: vi.fn(function () { return {
       info: mockLoggerInfo,
       warn: mockLoggerWarn,
       error: mockLoggerError,
-    })),
+    }; }),
   },
   log: {
     error: mockLogError,
@@ -765,7 +765,7 @@ describe('validateGitSync middleware', () => {
   describe('Error handling', () => {
     it('should return 500 for unexpected errors', async () => {
       // Force an error by making fetch throw
-      vi.mocked(global.fetch).mockImplementation(() => {
+      vi.mocked(global.fetch).mockImplementation(function () {
         throw new Error('Network error');
       });
 

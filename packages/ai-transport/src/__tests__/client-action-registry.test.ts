@@ -43,7 +43,7 @@ describe('ClientActionRegistry', () => {
   })
 
   it('rejects immediately if sendRequest throws', async () => {
-    const sendRequest = vi.fn().mockImplementation(() => { throw new Error('send failed') })
+    const sendRequest = vi.fn().mockImplementation(function () { throw new Error('send failed') })
     const registry = new ClientActionRegistry(sendRequest)
 
     await expect(registry.executeAction({ action: 'a', params: {} }))

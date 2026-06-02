@@ -6,22 +6,22 @@ vi.mock('@airo/ai-lib', () => ({
 }));
 
 vi.mock('@gd-asm/asm-client', () => ({
-  ASMClient: vi.fn().mockImplementation((_baseUrl: string, opts: { jwtTokenProvider: { getToken: () => Promise<string> } }) => ({
+  ASMClient: vi.fn().mockImplementation(function (_baseUrl: string, opts: { jwtTokenProvider: { getToken: () => Promise<string> } }) { return {
     _opts: opts,
-  })),
+  }; }),
 }));
 
 vi.mock('../asm-client-wrapper.js', () => ({
-  AsmClientWrapper: vi.fn().mockImplementation((_client: unknown) => ({
+  AsmClientWrapper: vi.fn().mockImplementation(function (_client: unknown) { return {
     _type: 'wrapper',
     _client,
-  })),
+  }; }),
 }));
 
 vi.mock('../asm-conversation-store.js', () => ({
-  AsmConversationLifecycleStore: vi.fn().mockImplementation((_client: unknown, _serviceId: string) => ({
+  AsmConversationLifecycleStore: vi.fn().mockImplementation(function (_client: unknown, _serviceId: string) { return {
     _type: 'lifecycle',
-  })),
+  }; }),
   LABEL_APP_ID: 'appId',
   LABEL_CUSTOMER_ID: 'customerId',
   LABEL_AGENT_ID: 'agentId',
@@ -30,17 +30,17 @@ vi.mock('../asm-conversation-store.js', () => ({
 }));
 
 vi.mock('../asm-message-store.js', () => ({
-  AsmMessageStore: vi.fn().mockImplementation(() => ({
+  AsmMessageStore: vi.fn().mockImplementation(function () { return {
     _type: 'message',
     registerMessageAddedHook: vi.fn(),
-  })),
+  }; }),
 }));
 
 vi.mock('../asm-token-store.js', () => ({
-  AsmConversationTokenStore: vi.fn().mockImplementation(() => ({
+  AsmConversationTokenStore: vi.fn().mockImplementation(function () { return {
     _type: 'token',
     recordMessageTimestamp: vi.fn(),
-  })),
+  }; }),
 }));
 
 describe('asm/index auth wiring', function asmIndexTests() {

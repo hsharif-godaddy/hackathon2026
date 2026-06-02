@@ -117,7 +117,7 @@ describe('ProgressReporter offset validation boundary', () => {
 describe('ProgressReporter error paths', () => {
   it('disables reporter after stream.write throws (EPIPE)', () => {
     const stream = makeStream(true);
-    (stream.write as ReturnType<typeof vi.fn>).mockImplementation(() => {
+    (stream.write as ReturnType<typeof vi.fn>).mockImplementation(function () {
       throw new Error('EPIPE');
     });
     const reporter = new ProgressReporter({
@@ -138,7 +138,7 @@ describe('ProgressReporter error paths', () => {
 
   it('finish() is a no-op once disabled', () => {
     const stream = makeStream(true);
-    (stream.write as ReturnType<typeof vi.fn>).mockImplementation(() => {
+    (stream.write as ReturnType<typeof vi.fn>).mockImplementation(function () {
       throw new Error('EPIPE');
     });
     const reporter = new ProgressReporter({

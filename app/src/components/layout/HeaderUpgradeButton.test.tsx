@@ -13,7 +13,7 @@ import HeaderUpgradeButton from './HeaderUpgradeButton';
 
 const mockOpenUpgradeModal = vi.fn();
 const mockShipAnalyticsLog = vi.fn();
-const mockLogClickEvent = vi.fn(() => vi.fn());
+const mockLogClickEvent = vi.fn(function () { return vi.fn(); });
 
 vi.mock('@/utils/instrumentation', () => ({
   logClickEvent: (...args: unknown[]) => {
@@ -23,11 +23,11 @@ vi.mock('@/utils/instrumentation', () => ({
 }));
 
 vi.mock('@/hooks/usePaywallEligibility', () => ({
-  usePaywallEligibility: vi.fn(() => ({ showPaywall: true, isLoading: false, isError: false, error: null })),
+  usePaywallEligibility: vi.fn(function () { return { showPaywall: true, isLoading: false, isError: false, error: null }; }),
 }));
 
 vi.mock('@/hooks/useSwitchboard', () => ({
-  useSwitchboard: vi.fn((flag: string) => {
+  useSwitchboard: vi.fn(function (flag: string) {
     if (flag === 'appbuilder-airoplus-upgrade-button') {
       return true;
     }
@@ -36,7 +36,7 @@ vi.mock('@/hooks/useSwitchboard', () => ({
 }));
 
 vi.mock('@/hooks/useBreakpoints', () => ({
-  useBreakpoints: vi.fn(() => ({ isBelowSmBreakpoint: false, isSmBreakpoint: false, isMdBreakpoint: false, isLgBreakpoint: false })),
+  useBreakpoints: vi.fn(function () { return { isBelowSmBreakpoint: false, isSmBreakpoint: false, isMdBreakpoint: false, isLgBreakpoint: false }; }),
 }));
 
 vi.mock('@/stores/useDevelopPageStore', () => ({
@@ -51,11 +51,11 @@ vi.mock('@/lib/logging', () => ({
 }));
 
 vi.mock('@/hooks/useSubscription', () => ({
-  useSubscription: vi.fn(() => ({ data: null, isLoading: false })),
+  useSubscription: vi.fn(function () { return { data: null, isLoading: false }; }),
 }));
 
 vi.mock('next/navigation', () => ({
-  usePathname: vi.fn(() => '/develop/test-app'),
+  usePathname: vi.fn(function () { return '/develop/test-app'; }),
 }));
 
 describe('HeaderUpgradeButton', function headerUpgradeButtonTests() {
@@ -72,7 +72,7 @@ describe('HeaderUpgradeButton', function headerUpgradeButtonTests() {
       const { useSwitchboard } = await import('@/hooks/useSwitchboard');
 
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: false, isError: false, error: null });
-      vi.mocked(useSwitchboard).mockImplementation((flag: string) => {
+      vi.mocked(useSwitchboard).mockImplementation(function (flag: string) {
         if (flag === 'appbuilder-airoplus-upgrade-button') return true;
         return false;
       });
@@ -90,7 +90,7 @@ describe('HeaderUpgradeButton', function headerUpgradeButtonTests() {
       const { useSubscription } = await import('@/hooks/useSubscription');
 
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: false, isLoading: false, isError: false, error: null });
-      vi.mocked(useSwitchboard).mockImplementation((flag: string) => {
+      vi.mocked(useSwitchboard).mockImplementation(function (flag: string) {
         if (flag === 'appbuilder-airoplus-upgrade-button') return true;
         return false;
       });
@@ -125,7 +125,7 @@ describe('HeaderUpgradeButton', function headerUpgradeButtonTests() {
       const { useSwitchboard } = await import('@/hooks/useSwitchboard');
 
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: false, isError: false, error: null });
-      vi.mocked(useSwitchboard).mockImplementation((flag: string) => {
+      vi.mocked(useSwitchboard).mockImplementation(function (flag: string) {
         if (flag === 'appbuilder-airoplus-upgrade-button') return false;
         return false;
       });
@@ -138,7 +138,7 @@ describe('HeaderUpgradeButton', function headerUpgradeButtonTests() {
     it('should not render while feature flag is loading', async function noRenderWhileFeatureLoading() {
       const { useSwitchboard } = await import('@/hooks/useSwitchboard');
 
-      vi.mocked(useSwitchboard).mockImplementation((flag: string) => {
+      vi.mocked(useSwitchboard).mockImplementation(function (flag: string) {
         if (flag === 'appbuilder-airoplus-upgrade-button') return undefined;
         return false;
       });
@@ -164,7 +164,7 @@ describe('HeaderUpgradeButton', function headerUpgradeButtonTests() {
       const nextNavigation = await import('next/navigation');
 
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: false, isError: false, error: null });
-      vi.mocked(useSwitchboard).mockImplementation((flag: string) => {
+      vi.mocked(useSwitchboard).mockImplementation(function (flag: string) {
         if (flag === 'appbuilder-airoplus-upgrade-button') return true;
         return false;
       });
@@ -181,7 +181,7 @@ describe('HeaderUpgradeButton', function headerUpgradeButtonTests() {
       const { useBreakpoints } = await import('@/hooks/useBreakpoints');
 
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: false, isError: false, error: null });
-      vi.mocked(useSwitchboard).mockImplementation((flag: string) => {
+      vi.mocked(useSwitchboard).mockImplementation(function (flag: string) {
         if (flag === 'appbuilder-airoplus-upgrade-button') return true;
         return false;
       });
@@ -200,7 +200,7 @@ describe('HeaderUpgradeButton', function headerUpgradeButtonTests() {
       const { useBreakpoints } = await import('@/hooks/useBreakpoints');
 
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: false, isError: false, error: null });
-      vi.mocked(useSwitchboard).mockImplementation((flag: string) => {
+      vi.mocked(useSwitchboard).mockImplementation(function (flag: string) {
         if (flag === 'appbuilder-airoplus-upgrade-button') return true;
         return false;
       });
@@ -220,7 +220,7 @@ describe('HeaderUpgradeButton', function headerUpgradeButtonTests() {
       const { useSwitchboard } = await import('@/hooks/useSwitchboard');
 
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: false, isError: false, error: null });
-      vi.mocked(useSwitchboard).mockImplementation((flag: string) => {
+      vi.mocked(useSwitchboard).mockImplementation(function (flag: string) {
         if (flag === 'appbuilder-airoplus-upgrade-button') return true;
         return false;
       });
@@ -245,7 +245,7 @@ describe('HeaderUpgradeButton', function headerUpgradeButtonTests() {
       const { useSwitchboard } = await import('@/hooks/useSwitchboard');
 
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: false, isError: false, error: null });
-      vi.mocked(useSwitchboard).mockImplementation((flag: string) => {
+      vi.mocked(useSwitchboard).mockImplementation(function (flag: string) {
         if (flag === 'appbuilder-airoplus-upgrade-button') return true;
         return false;
       });
@@ -267,7 +267,7 @@ describe('HeaderUpgradeButton', function headerUpgradeButtonTests() {
       const { useSwitchboard } = await import('@/hooks/useSwitchboard');
 
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: false, isError: false, error: null });
-      vi.mocked(useSwitchboard).mockImplementation((flag: string) => {
+      vi.mocked(useSwitchboard).mockImplementation(function (flag: string) {
         if (flag === 'appbuilder-airoplus-upgrade-button') return true;
         return false;
       });
@@ -293,7 +293,7 @@ describe('HeaderUpgradeButton', function headerUpgradeButtonTests() {
       const { useSwitchboard } = await import('@/hooks/useSwitchboard');
 
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: false, isError: false, error: null });
-      vi.mocked(useSwitchboard).mockImplementation((flag: string) => {
+      vi.mocked(useSwitchboard).mockImplementation(function (flag: string) {
         if (flag === 'appbuilder-airoplus-upgrade-button') return true;
         return false;
       });
@@ -325,7 +325,7 @@ describe('HeaderUpgradeButton', function headerUpgradeButtonTests() {
 
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: false, isLoading: false, isError: false, error: null });
       vi.mocked(useSubscription).mockReturnValue({ data: { id: 'sub-1', plan: SubscriptionPlan.Starter, builderEntitlementId: 'ent-1' }, isLoading: false } as ReturnType<typeof useSubscription>);
-      vi.mocked(useSwitchboard).mockImplementation((flag: string) => {
+      vi.mocked(useSwitchboard).mockImplementation(function (flag: string) {
         if (flag === 'appbuilder-airoplus-upgrade-button') return true;
         return false;
       });
@@ -344,7 +344,7 @@ describe('HeaderUpgradeButton', function headerUpgradeButtonTests() {
 
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: false, isLoading: false, isError: false, error: null });
       vi.mocked(useSubscription).mockReturnValue({ data: { id: 'sub-1', plan: SubscriptionPlan.Ultimate, builderEntitlementId: 'ent-1' }, isLoading: false } as ReturnType<typeof useSubscription>);
-      vi.mocked(useSwitchboard).mockImplementation((flag: string) => {
+      vi.mocked(useSwitchboard).mockImplementation(function (flag: string) {
         if (flag === 'appbuilder-airoplus-upgrade-button') return true;
         return false;
       });
@@ -361,7 +361,7 @@ describe('HeaderUpgradeButton', function headerUpgradeButtonTests() {
 
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: false, isLoading: false, isError: false, error: null });
       vi.mocked(useSubscription).mockReturnValue({ data: { id: 'sub-1', plan: SubscriptionPlan.Starter, builderEntitlementId: 'ent-1' }, isLoading: false } as ReturnType<typeof useSubscription>);
-      vi.mocked(useSwitchboard).mockImplementation((flag: string) => {
+      vi.mocked(useSwitchboard).mockImplementation(function (flag: string) {
         if (flag === 'appbuilder-airoplus-upgrade-button') return true;
         return false;
       });
@@ -385,7 +385,7 @@ describe('HeaderUpgradeButton', function headerUpgradeButtonTests() {
 
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: false, isLoading: false, isError: false, error: null });
       vi.mocked(useSubscription).mockReturnValue({ data: { id: 'sub-1', plan: SubscriptionPlan.Professional, builderEntitlementId: 'ent-1' }, isLoading: false } as ReturnType<typeof useSubscription>);
-      vi.mocked(useSwitchboard).mockImplementation((flag: string) => {
+      vi.mocked(useSwitchboard).mockImplementation(function (flag: string) {
         if (flag === 'appbuilder-airoplus-upgrade-button') return true;
         return false;
       });
@@ -410,7 +410,7 @@ describe('HeaderUpgradeButton', function headerUpgradeButtonTests() {
       const { useSwitchboard } = await import('@/hooks/useSwitchboard');
 
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: false, isError: false, error: null });
-      vi.mocked(useSwitchboard).mockImplementation((flag: string) => {
+      vi.mocked(useSwitchboard).mockImplementation(function (flag: string) {
         if (flag === 'appbuilder-airoplus-upgrade-button') return true;
         return false;
       });

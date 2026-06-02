@@ -252,12 +252,11 @@ describe('httpCheckAITool', function httpCheckTests() {
 
     it('reports timeout message when request is aborted by the timeout', async function timeoutAbort() {
       vi.useFakeTimers();
-      mockFetch.mockImplementation((_url: string, opts: RequestInit): Promise<Response> =>
-        new Promise<Response>((_, reject) => {
+      mockFetch.mockImplementation(function (_url: string, opts: RequestInit) { return new Promise<Response>((_, reject) => {
           (opts.signal as AbortSignal).addEventListener('abort', () =>
             reject(new DOMException('Aborted', 'AbortError'))
           );
-        })
+        }); }
       );
 
       const resultPromise = execute({ url: 'http://127.0.0.1:3000/api', timeoutMs: 500 });

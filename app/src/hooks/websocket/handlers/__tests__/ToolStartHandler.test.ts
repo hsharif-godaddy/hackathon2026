@@ -10,7 +10,7 @@ import { ToolStartHandler } from '../ToolStartHandler'
 import type { MessageContext, WebSocketMessage } from '../types'
 
 vi.mock('@/utils/instrumentation', () => ({
-  logActionEvent: vi.fn(() => vi.fn()),
+  logActionEvent: vi.fn(function () { return vi.fn(); }),
 }))
 
 vi.mock('@/stores/useDevelopPageStore', () => ({

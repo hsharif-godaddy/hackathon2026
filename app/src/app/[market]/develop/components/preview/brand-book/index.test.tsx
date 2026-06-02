@@ -33,21 +33,21 @@ const { mockManifest, mockIsManifestLoading } = vi.hoisted(() => ({
 }));
 
 vi.mock('@/hooks/useBrandData', () => ({
-  useBrandData: vi.fn(() => ({ data: mockBrandData, isLoading: false, error: null })),
+  useBrandData: vi.fn(function () { return { data: mockBrandData, isLoading: false, error: null }; }),
 }));
 
 vi.mock('@/hooks/useAppName', () => ({
-  useAppName: vi.fn(() => ({ data: 'TestApp' })),
+  useAppName: vi.fn(function () { return { data: 'TestApp' }; }),
 }));
 
 vi.mock('@/hooks/useMediaManifest', () => ({
-  useMediaManifest: vi.fn(() => ({
+  useMediaManifest: vi.fn(function () { return {
     manifest: mockManifest.value,
     slotNames: mockManifest.value ? Object.keys(mockManifest.value) : [],
     isLoading: mockIsManifestLoading.value,
     error: null,
     refetch: vi.fn(),
-  })),
+  }; }),
 }));
 
 vi.mock('@/lib/request-context', () => ({
@@ -57,10 +57,10 @@ vi.mock('@/lib/request-context', () => ({
 vi.mock('./brand-book.module.css', () => ({ default: new Proxy({}, { get: (_, key) => String(key) }) }));
 
 vi.mock('./hooks', () => ({
-  useBrandIntentOverrides: vi.fn(() => ({})),
-  useBrandStyle: vi.fn(() => ({ primary: '#000', primaryFg: '#fff', headingFont: 'Inter', bodyFont: 'Roboto' })),
+  useBrandIntentOverrides: vi.fn(function () { return {}; }),
+  useBrandStyle: vi.fn(function () { return { primary: '#000', primaryFg: '#fff', headingFont: 'Inter', bodyFont: 'Roboto' }; }),
   useGoogleFonts: vi.fn(),
-  useIsBrandGenerating: vi.fn(() => false),
+  useIsBrandGenerating: vi.fn(function () { return false; }),
 }));
 
 vi.mock('next/image', () => ({

@@ -30,7 +30,7 @@ const { mockGetConfig, mockInsert, mockLogger } = vi.hoisted(() => ({
 }));
 
 vi.mock('node:crypto', () => ({
-  randomUUID: vi.fn(() => FIXED_FEEDBACK_ID),
+  randomUUID: vi.fn(function () { return FIXED_FEEDBACK_ID; }),
 }));
 
 vi.mock('@/lib/request-context', () => ({ logger: mockLogger }));
@@ -39,7 +39,7 @@ vi.mock('@/lib/customer-auth', async () => {
   const actual = await vi.importActual<typeof import('@/lib/customer-auth')>('@/lib/customer-auth');
   return {
     ...actual,
-    withCustomerAuth: vi.fn((handler: (req: NextRequest, ctx: unknown) => Promise<Response>) => {
+    withCustomerAuth: vi.fn(function (handler: (req: NextRequest, ctx: unknown) => Promise<Response>) {
       return async function wrapped(request: NextRequest) {
         return handler(request, {
           isAuthenticated: true,

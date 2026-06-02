@@ -107,7 +107,7 @@ describe('storeUpdateBuffer', () => {
     it('preserves exact arrival order of text and tool segments', () => {
       const order: string[] = []
 
-      mockAppendTextSegment.mockImplementation((text: string) => order.push(`text:${text}`))
+      mockAppendTextSegment.mockImplementation(function (text: string) { return order.push(`text:${text}`); })
 
       bufferTextChunk('Hello ')
       bufferStoreUpdate(() => order.push('tool:start'))
@@ -154,7 +154,7 @@ describe('storeUpdateBuffer', () => {
 
     it('continues processing after appendTextSegment throws', () => {
       const order: string[] = []
-      mockAppendTextSegment.mockImplementationOnce(() => { throw new Error('text error') })
+      mockAppendTextSegment.mockImplementationOnce(function () { throw new Error('text error') })
 
       bufferTextChunk('will-fail')
       bufferStoreUpdate(() => order.push('after-error'))

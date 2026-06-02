@@ -98,7 +98,7 @@ describe('Transfer Validate Routes', function transferValidateTests() {
     });
 
     it('should return 500 when repository throws', async function repoError() {
-      mockOAuthRepo.findOne.mockImplementation(() => {
+      mockOAuthRepo.findOne.mockImplementation(function () {
         throw new Error('Database error');
       });
 

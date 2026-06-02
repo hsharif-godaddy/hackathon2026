@@ -31,8 +31,8 @@ vi.mock('@/hooks/useTranslations', () => ({
 }));
 
 vi.mock('@/utils/instrumentation', () => ({
-  generateClickEID: vi.fn((event: string) => `appbuilder.${event}.click`),
-  logImpressionEvent: vi.fn(() => vi.fn()),
+  generateClickEID: vi.fn(function (event: string) { return `appbuilder.${event}.click`; }),
+  logImpressionEvent: vi.fn(function () { return vi.fn(); }),
 }));
 
 vi.mock('react-intl', async (importOriginal) => {
@@ -86,7 +86,7 @@ const createMockSite = (overrides: Partial<SiteInfo> = {}): SiteInfo => ({
 });
 
 vi.mock('@/utils/credits', () => ({
-  getPlanDisplayLabelKey: vi.fn((plan: string) => `builder_manageplan_plan_${plan}`),
+  getPlanDisplayLabelKey: vi.fn(function (plan: string) { return `builder_manageplan_plan_${plan}`; }),
 }));
 
 describe('PublishLimitModal', function publishLimitModalTests() {
@@ -154,7 +154,7 @@ describe('PublishLimitModal', function publishLimitModalTests() {
 
   describe('upgrade and manage buttons', function upgradeAndManageButtonsTests() {
     beforeEach(function setup() {
-      mockUseSwitchboard.mockImplementation((flag: string) => {
+      mockUseSwitchboard.mockImplementation(function (flag: string) {
         if (flag === 'appbuilder-unpublish') return { data: true, isLoading: false };
         return { data: false, isLoading: false };
       });
@@ -273,7 +273,7 @@ describe('PublishLimitModal', function publishLimitModalTests() {
 
   describe('different plan types', function planTypeTests() {
     beforeEach(function setup() {
-      mockUseSwitchboard.mockImplementation(() => ({ data: false, isLoading: false }));
+      mockUseSwitchboard.mockImplementation(function () { return { data: false, isLoading: false }; });
     });
 
     it('should show Upgrade for Free plan', function upgradeForFree() {
@@ -331,7 +331,7 @@ describe('PublishLimitModal', function publishLimitModalTests() {
 
   describe('data attributes', function dataAttributeTests() {
     beforeEach(function setup() {
-      mockUseSwitchboard.mockImplementation(() => ({ data: false, isLoading: false }));
+      mockUseSwitchboard.mockImplementation(function () { return { data: false, isLoading: false }; });
     });
 
     it('should have data-eid attribute on Upgrade button', function hasDataEidUpgrade() {

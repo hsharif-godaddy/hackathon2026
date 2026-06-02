@@ -108,11 +108,11 @@ describe('DatabaseImportService', () => {
     // Mock SqlStatementSplitter
     const { SqlStatementSplitter } = await import('../SqlStatementSplitter.js');
     vi.mocked(SqlStatementSplitter.estimateStatementCount).mockResolvedValue(100);
-    vi.mocked(SqlStatementSplitter).mockImplementation(() => ({
+    vi.mocked(SqlStatementSplitter).mockImplementation(function () { return ({
       splitStatements: vi.fn().mockReturnValue([]),
       flush: vi.fn().mockReturnValue([]),
       reset: vi.fn(),
-    }) as any);
+    }) as any; });
 
     // Mock createReadStream to return an async iterable
     const { createReadStream } = await import('node:fs');
@@ -222,7 +222,7 @@ describe('DatabaseImportService', () => {
   describe('processImport — drop tables stage', () => {
     it('should drop user tables and skip system tables', async () => {
       // SHOW TABLES returns mix of user and system tables
-      mockConnection.query.mockImplementation(async (sql: any) => {
+      mockConnection.query.mockImplementation(async function (sql: any) {
         const query = typeof sql === 'string' ? sql : sql.sql;
         if (query === 'SHOW TABLES') {
           return [[
@@ -245,7 +245,7 @@ describe('DatabaseImportService', () => {
     });
 
     it('should fail with DROP_TABLES_FAILED on error', async () => {
-      mockConnection.query.mockImplementation(async (sql: any) => {
+      mockConnection.query.mockImplementation(async function (sql: any) {
         const query = typeof sql === 'string' ? sql : sql.sql;
         if (query === 'SHOW TABLES') {
           return [[{ 'Tables_in_testdb': 'users' }], []];
@@ -286,13 +286,13 @@ describe('DatabaseImportService', () => {
 
     it('should classify connection lost errors', async () => {
       const { SqlStatementSplitter } = await import('../SqlStatementSplitter.js');
-      vi.mocked(SqlStatementSplitter).mockImplementation(() => ({
+      vi.mocked(SqlStatementSplitter).mockImplementation(function () { return ({
         splitStatements: vi.fn().mockReturnValue(['SELECT 1']),
         flush: vi.fn().mockReturnValue([]),
         reset: vi.fn(),
-      }) as any);
+      }) as any; });
 
-      mockConnection.query.mockImplementation(async (sql: any) => {
+      mockConnection.query.mockImplementation(async function (sql: any) {
         const query = typeof sql === 'string' ? sql : sql.sql;
         if (query === 'SELECT 1') {
           throw new Error('Connection lost: The server closed the connection.');

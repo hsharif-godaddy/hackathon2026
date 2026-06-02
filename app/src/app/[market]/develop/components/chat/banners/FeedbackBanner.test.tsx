@@ -17,8 +17,8 @@ vi.mock('@/stores/useDevelopPageStore', () => ({
   useDevelopPageStore: (selector: any) => selector({ openFeedbackModal: mockOpenFeedbackModal }),
 }));
 
-const mockLogImpressionEvent = vi.fn((_eid: string) => vi.fn());
-const mockLogClickEvent = vi.fn((_eid: string) => vi.fn());
+const mockLogImpressionEvent = vi.fn(function (_eid: string) { return vi.fn(); });
+const mockLogClickEvent = vi.fn(function (_eid: string) { return vi.fn(); });
 
 vi.mock('@/utils/instrumentation', () => ({
   logImpressionEvent: (eid: string) => mockLogImpressionEvent(eid),

@@ -34,14 +34,14 @@ vi.mock('@/lib/customer-auth', () => ({
       return handler(request, mockAuthContext, routeContext);
     };
   },
-  customerHasAccount: vi.fn(() => true),
+  customerHasAccount: vi.fn(function () { return true; }),
   createCustomerAuthError: vi.fn(),
 }));
 
 vi.mock('@/lib/control-plane', () => ({
-  getControlPlaneAdapter: vi.fn(() => ({
+  getControlPlaneAdapter: vi.fn(function () { return {
     getSite: mockGetSite,
-  })),
+  }; }),
 }));
 
 vi.mock('@/lib/mgmt-airo', async () => {

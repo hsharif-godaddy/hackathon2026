@@ -41,7 +41,7 @@ vi.mock('@/lib/control-plane', function mockControlPlaneModule() {
 
 vi.mock('@/lib/mgmt-airo', function mockMgmtAiroModule() {
   return {
-    AiroMgmtClient: vi.fn().mockImplementation(() => mockAiroMgmtClient)
+    AiroMgmtClient: vi.fn().mockImplementation(function () { return mockAiroMgmtClient; })
   };
 });
 

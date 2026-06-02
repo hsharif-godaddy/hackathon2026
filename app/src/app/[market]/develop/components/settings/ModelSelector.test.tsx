@@ -10,30 +10,30 @@ import { renderWithProviders } from '@/tests/test-utils';
 import ModelSelector from './ModelSelector';
 
 vi.mock('@/app/[market]/develop/components/utils', () => ({
-  useAppIdFromParams: vi.fn(() => 'test-app-123'),
+  useAppIdFromParams: vi.fn(function () { return 'test-app-123'; }),
 }));
 
 vi.mock('@/config/dynamic-api', () => ({
-  buildDynamicAgentUrl: vi.fn(async () => 'https://agent.test/api/models'),
+  buildDynamicAgentUrl: vi.fn(async function () { return 'https://agent.test/api/models'; }),
 }));
 
 vi.mock('@/lib/agent-fetch', () => ({
-  agentFetch: vi.fn(async () => new Response(
+  agentFetch: vi.fn(async function () { return new Response(
     JSON.stringify({
       models: [
         { shortName: 'claude-opus-4-6', fullName: 'Claude Opus 4.6', provider: 'anthropic', isSupported: true },
       ],
     }),
     { status: 200, headers: { 'content-type': 'application/json' } }
-  )),
+  ); }),
 }));
 
 vi.mock('@/hooks/useSwitchboard', () => ({
-  useSwitchboard: vi.fn(() => (false)),
+  useSwitchboard: vi.fn(function () { return false; }),
 }));
 
 vi.mock('@/components/providers/AuthProvider', () => ({
-  useAuthContext: vi.fn(() => ({ authState: { authType: 'basic' } })),
+  useAuthContext: vi.fn(function () { return { authState: { authType: 'basic' } }; }),
 }));
 
 vi.mock('@/stores/useDevelopPageStore', () => {

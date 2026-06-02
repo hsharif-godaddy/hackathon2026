@@ -88,8 +88,7 @@ describe('usePricingOffers', () => {
 
   describe('successful fetch', () => {
     it('should fetch and return pricing data for all plans', async () => {
-      global.fetch = vi.fn(() =>
-        Promise.resolve({
+      global.fetch = vi.fn(function () { return Promise.resolve({
           ok: true,
           json: () =>
             Promise.resolve({
@@ -100,7 +99,7 @@ describe('usePricingOffers', () => {
                 },
               },
             }),
-        } as Response)
+        } as Response); }
       )
 
       const { result } = renderHookWithProviders(() => usePricingOffers())
@@ -121,8 +120,7 @@ describe('usePricingOffers', () => {
     })
 
     it('should return null for missing plans', async () => {
-      global.fetch = vi.fn(() =>
-        Promise.resolve({
+      global.fetch = vi.fn(function () { return Promise.resolve({
           ok: true,
           json: () =>
             Promise.resolve({
@@ -133,7 +131,7 @@ describe('usePricingOffers', () => {
                 },
               },
             }),
-        } as Response)
+        } as Response); }
       )
 
       const { result } = renderHookWithProviders(() => usePricingOffers())
@@ -150,8 +148,7 @@ describe('usePricingOffers', () => {
     })
 
     it('should handle empty offers array', async () => {
-      global.fetch = vi.fn(() =>
-        Promise.resolve({
+      global.fetch = vi.fn(function () { return Promise.resolve({
           ok: true,
           json: () =>
             Promise.resolve({
@@ -162,7 +159,7 @@ describe('usePricingOffers', () => {
                 },
               },
             }),
-        } as Response)
+        } as Response); }
       )
 
       const { result } = renderHookWithProviders(() => usePricingOffers())
@@ -181,12 +178,11 @@ describe('usePricingOffers', () => {
 
   describe('error handling', () => {
     it('should handle HTTP error', async () => {
-      global.fetch = vi.fn(() =>
-        Promise.resolve({
+      global.fetch = vi.fn(function () { return Promise.resolve({
           ok: false,
           status: 500,
           statusText: 'Internal Server Error',
-        } as Response)
+        } as Response); }
       )
 
       const { result } = renderHookWithProviders(() => usePricingOffers())
@@ -200,8 +196,7 @@ describe('usePricingOffers', () => {
     })
 
     it('should handle API error response', async () => {
-      global.fetch = vi.fn(() =>
-        Promise.resolve({
+      global.fetch = vi.fn(function () { return Promise.resolve({
           ok: true,
           json: () =>
             Promise.resolve({
@@ -209,7 +204,7 @@ describe('usePricingOffers', () => {
               error: 'API Error',
               message: 'Something went wrong',
             }),
-        } as Response)
+        } as Response); }
       )
 
       const { result } = renderHookWithProviders(() => usePricingOffers())

@@ -44,9 +44,9 @@ vi.mock('@/utils/domain', () => ({
 }));
 
 vi.mock('@/utils/instrumentation', () => ({
-  generateClickEID: vi.fn((event: string) => `${event}.click`),
-  logAiroHQEvent: vi.fn(() => vi.fn()),
-  logImpressionEvent: vi.fn(() => vi.fn()),
+  generateClickEID: vi.fn(function (event: string) { return `${event}.click`; }),
+  logAiroHQEvent: vi.fn(function () { return vi.fn(); }),
+  logImpressionEvent: vi.fn(function () { return vi.fn(); }),
 }));
 
 vi.mock('canvas-confetti', () => ({

@@ -3,10 +3,10 @@ import { Server as HTTPServer } from 'http'
 import { WebSocketServer } from '../experimental-websocket-server.js'
 
 vi.mock('socket.io', () => ({
-  Server: vi.fn().mockImplementation(() => ({
+  Server: vi.fn().mockImplementation(function () { return {
     on: vi.fn(),
     close: vi.fn(),
-  })),
+  }; }),
 }))
 
 vi.mock('@signals/otel-sdk', () => ({

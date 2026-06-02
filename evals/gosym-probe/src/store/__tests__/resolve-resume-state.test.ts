@@ -249,7 +249,7 @@ describe('resolveResumeState', () => {
         acquireRunLock: vi.fn().mockResolvedValue(releaseLock),
         listCompletedTrialIndices: vi.fn().mockResolvedValue([0, 2]),
         loadTrialResultByDirName: vi.fn().mockImplementation(
-          (_dir: string, _scenario: string, trialIndex: number) => {
+          function (_dir: string, _scenario: string, trialIndex: number) {
             if (trialIndex === 0) return Promise.resolve(trial0);
             if (trialIndex === 2) return Promise.resolve(trial2);
             return Promise.resolve(null);
@@ -286,7 +286,7 @@ describe('resolveResumeState', () => {
         acquireRunLock: vi.fn().mockResolvedValue(releaseLock),
         listCompletedTrialIndices: vi.fn().mockResolvedValue([0, 1, 5, 10]),
         loadTrialResultByDirName: vi.fn().mockImplementation(
-          (_dir: string, _scenario: string, trialIndex: number) => {
+          function (_dir: string, _scenario: string, trialIndex: number) {
             if (trialIndex === 0) return Promise.resolve(trial0);
             if (trialIndex === 1) return Promise.resolve(makeTrialResult(1));
             return Promise.resolve(null);
@@ -322,7 +322,7 @@ describe('resolveResumeState', () => {
         acquireRunLock: vi.fn().mockResolvedValue(releaseLock),
         listCompletedTrialIndices: vi.fn().mockResolvedValue([0, 1, 2]),
         loadTrialResultByDirName: vi.fn().mockImplementation(
-          (_dir: string, _scenario: string, trialIndex: number) => {
+          function (_dir: string, _scenario: string, trialIndex: number) {
             if (trialIndex === 1) return Promise.resolve(trial1);
             return Promise.resolve(null);
           },

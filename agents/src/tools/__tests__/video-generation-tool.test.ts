@@ -33,16 +33,16 @@ vi.mock('../../logging/index.js', () => ({
 }));
 
 vi.mock('../ai-lib-tools/drivers/website-scraper-driver.js', () => ({
-  WebsiteScraperDriver: vi.fn().mockImplementation(() => ({
+  WebsiteScraperDriver: vi.fn().mockImplementation(function () { return {
     fetchScreenshotBuffer: vi.fn().mockResolvedValue({
       buffer: Buffer.from('fake-png-bytes'),
       contentType: 'image/png'
     })
-  }))
+  }; })
 }));
 
 // Mock emitToApp so tests can assert per-app scoped WS emits.
-const emitToAppMock = vi.fn(() => 1);
+const emitToAppMock = vi.fn(function () { return 1; });
 vi.mock('../../server/ai-lib-websocket-server.js', () => ({
   emitToApp: (appId: string, event: string, payload: unknown) => emitToAppMock(appId, event, payload),
 }));
@@ -67,9 +67,9 @@ vi.mock('../../services/DevSupervisorClient.js', () => ({
 }));
 
 vi.mock('../../workspace/index.js', () => ({
-  createForWorkspace: vi.fn((_appId: string) => {
+  createForWorkspace: vi.fn(function (_appId: string) {
     const files = {
-      view: vi.fn(async ({ path: filePath }: { path: string }) => {
+      view: vi.fn(async function ({ path: filePath }: { path: string }) {
         const fullPath = hoistedPath.join(testAppPath, filePath);
         if (!hoistedFs.existsSync(fullPath)) {
           throw new MockDevSupervisorError(`file not found: ${filePath}`);
@@ -77,7 +77,7 @@ vi.mock('../../workspace/index.js', () => ({
         const content = hoistedFs.readFileSync(fullPath, 'utf-8');
         return { content, encoding: 'utf-8', path: filePath, lines: content.split('\n').length, size: content.length, truncated: false };
       }),
-      write: vi.fn(async ({ path: filePath, content }: { path: string; content: string }) => {
+      write: vi.fn(async function ({ path: filePath, content }: { path: string; content: string }) {
         const fullPath = hoistedPath.join(testAppPath, filePath);
         hoistedFs.mkdirSync(hoistedPath.dirname(fullPath), { recursive: true });
         hoistedFs.writeFileSync(fullPath, content);
@@ -215,9 +215,9 @@ describe('video-generation-tool', function packageTests() {
     });
 
     it('should proceed without input_reference when screenshot capture fails', async function screenshotFails() {
-      vi.mocked(WebsiteScraperDriver).mockImplementationOnce(() => ({
+      vi.mocked(WebsiteScraperDriver).mockImplementationOnce(function () { return {
         fetchScreenshotBuffer: vi.fn().mockRejectedValue(new Error('screenshot service unavailable'))
-      } as any));
+      } as any; });
 
       vi.mocked(videoApiFetch).mockResolvedValueOnce({
         ok: true,
@@ -361,7 +361,7 @@ describe('video-generation-tool', function packageTests() {
           ok: true,
           json: async () => ({ status: 'queued' })
         } as any)
-        .mockImplementationOnce(async () => {
+        .mockImplementationOnce(async function () {
           capturedMetadata = JSON.parse(fs.readFileSync(path.join(airoDir, 'video.json'), 'utf-8'));
           return { ok: true, json: async () => ({ status: 'completed' }) } as any;
         });
@@ -385,7 +385,7 @@ describe('video-generation-tool', function packageTests() {
           ok: true,
           json: async () => ({ status: 'in_progress' })
         } as any)
-        .mockImplementationOnce(async () => {
+        .mockImplementationOnce(async function () {
           fs.unlinkSync(path.join(airoDir, 'video.json'));
           return { ok: true, json: async () => ({ status: 'in_progress' }) } as any;
         });

@@ -3,10 +3,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 const mockGetToken = vi.fn()
 
 vi.mock('gd-auth-client', () => ({
-  IamTokenClient: vi.fn().mockImplementation(() => ({
+  IamTokenClient: vi.fn().mockImplementation(function () { return {
     getToken: mockGetToken,
     once: vi.fn(),
-  })),
+  }; }),
 }))
 
 vi.mock('@aws-sdk/credential-providers', () => ({

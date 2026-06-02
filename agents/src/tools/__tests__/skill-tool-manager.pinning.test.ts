@@ -10,7 +10,7 @@ import { createForWorkspace } from '../../workspace/index.js';
 const mockedCreateForWorkspace = vi.mocked(createForWorkspace);
 
 function mockWorkspaceForPath(basePath: string): void {
-  mockedCreateForWorkspace.mockImplementation(() => {
+  mockedCreateForWorkspace.mockImplementation(function () {
     const files = {
       view: async ({ path: filePath }: { path: string }) => {
         const full = join(basePath, filePath);
@@ -29,7 +29,7 @@ function mockWorkspaceForPath(basePath: string): void {
 }
 
 function mockWorkspaceForPaths(paths: Map<string, string>): void {
-  mockedCreateForWorkspace.mockImplementation((appId: string) => {
+  mockedCreateForWorkspace.mockImplementation(function (appId: string) {
     const basePath = paths.get(appId);
     if (!basePath) return null;
     const files = {

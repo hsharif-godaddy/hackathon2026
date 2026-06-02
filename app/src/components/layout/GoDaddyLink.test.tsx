@@ -14,10 +14,10 @@ vi.mock('@/components/providers/AuthProvider', () => ({
   useAuthContext: vi.fn(),
 }));
 vi.mock('@/utils/instrumentation', () => ({
-  generateClickEID: vi.fn((id) => id),
+  generateClickEID: vi.fn(function (id) { return id; }),
 }));
 vi.mock('@/utils/getRootDomain', () => ({
-  getRootDomain: vi.fn(() => 'godaddy.com'),
+  getRootDomain: vi.fn(function () { return 'godaddy.com'; }),
 }));
 
 const { useAuthContext } = await import('@/components/providers/AuthProvider');

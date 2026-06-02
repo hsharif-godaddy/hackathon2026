@@ -102,11 +102,11 @@ describe('Media tool stack overflow diagnostic', () => {
     process.env.GETTY_IMAGE_PROXY_URL = 'http://fake-getty';
     delete process.env.SSO_JWT;
     delete process.env.GETTY_TOKEN;
-    vi.spyOn(console, 'error').mockImplementation(() => {});
-    vi.spyOn(console, 'info').mockImplementation(() => {});
-    vi.spyOn(console, 'warn').mockImplementation(() => {});
-    vi.spyOn(console, 'debug').mockImplementation(() => {});
-    vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(function () {});
+    vi.spyOn(console, 'info').mockImplementation(function () {});
+    vi.spyOn(console, 'warn').mockImplementation(function () {});
+    vi.spyOn(console, 'debug').mockImplementation(function () {});
+    vi.spyOn(console, 'log').mockImplementation(function () {});
   });
 
   afterEach(() => {

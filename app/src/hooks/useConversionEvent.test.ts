@@ -103,7 +103,7 @@ function mockEndpoints(opts: MockEndpointOptions = {}) {
     success: true,
     data: { ...makeSubscription({ id }), attributes: [freePlanAttribute({ orderId: `order-${id}`, conversionEventDate: null }, id)] },
   });
-  mockAppFetch.mockImplementation((url: string, init?: RequestInit) => {
+  mockAppFetch.mockImplementation(function (url: string, init?: RequestInit) {
     if (typeof url === 'string' && url.includes('?include=attributes')) {
       return Promise.resolve(opts.attributesResponse ?? defaultAttrs);
     }
@@ -217,7 +217,7 @@ describe('useConversionEvent', () => {
     // a regression that dropped refetchInterval from either query would never reach the fire.
     let listActive: AiroSubscription | null = null;
     let attrsValue: Record<string, unknown> = {};
-    mockAppFetch.mockImplementation((url: string, init?: RequestInit) => {
+    mockAppFetch.mockImplementation(function (url: string, init?: RequestInit) {
       if (typeof url === 'string' && url.includes('?include=attributes')) {
         return Promise.resolve(okJson({
           success: true,

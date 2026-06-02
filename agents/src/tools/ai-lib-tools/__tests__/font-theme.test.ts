@@ -5,16 +5,16 @@ const mockWrite = vi.fn().mockResolvedValue({ bytesWritten: 100 })
 const mockFiles = { view: mockView, write: mockWrite } as any
 
 vi.mock('../../../workspace/index.js', () => ({
-  createForWorkspace: vi.fn(() => ({ files: mockFiles }))
+  createForWorkspace: vi.fn(function () { return { files: mockFiles }; })
 }))
 vi.mock('../../../logging/index.js', () => ({
   Logger: {
-    create: vi.fn(() => ({
+    create: vi.fn(function () { return {
       info: vi.fn(),
       error: vi.fn(),
       warn: vi.fn(),
       debug: vi.fn()
-    }))
+    }; })
   },
   logger: {
     info: vi.fn(),
@@ -23,9 +23,9 @@ vi.mock('../../../logging/index.js', () => ({
   }
 }))
 vi.mock('../../../database/repositories/AppRepository.js', () => ({
-  AppRepository: vi.fn().mockImplementation(() => ({
-    findById: vi.fn((id: string) => id === 'test-app' ? { path: '/test/app' } : undefined)
-  }))
+  AppRepository: vi.fn().mockImplementation(function () { return {
+    findById: vi.fn(function (id: string) { return id === 'test-app' ? { path: '/test/app' } : undefined; })
+  }; })
 }))
 
 // Create mock functions that can be accessed from tests
@@ -45,11 +45,11 @@ vi.mock('@airo/ai-lib', async (importOriginal) => {
   return {
     ...actual,
     generateTextWithTracking: mockGenerateTextWithTracking,
-    createTool: vi.fn((desc, schema, fn) => ({ execute: fn })),
-    createPromptBuilder: vi.fn(() => ({
+    createTool: vi.fn(function (desc, schema, fn) { return { execute: fn }; }),
+    createPromptBuilder: vi.fn(function () { return {
       file: vi.fn().mockReturnThis(),
       build: vi.fn().mockResolvedValue('test prompt')
-    }))
+    }; })
   }
 })
 
@@ -621,8 +621,7 @@ describe('font-theme', function packageTests() {
 
       // Mock fetch to return success for all Google Fonts validation requests
       originalFetch = global.fetch
-      global.fetch = vi.fn(() =>
-        Promise.resolve({ ok: true, status: 200 } as Response)
+      global.fetch = vi.fn(function () { return Promise.resolve({ ok: true, status: 200 } as Response); }
       ) as any
     })
 
@@ -788,7 +787,7 @@ describe('font-theme', function packageTests() {
       fetchCallCount = 0
       originalFetch = global.fetch
       // Track fetch calls
-      global.fetch = vi.fn(() => {
+      global.fetch = vi.fn(function () {
         fetchCallCount++
         return Promise.resolve({ ok: true, status: 200 } as Response)
       }) as any
@@ -883,7 +882,7 @@ describe('font-theme', function packageTests() {
       ]
 
       // Mock fetch: 200 for Inter+Roboto, 400 for Nova Classe/Fake Font
-      global.fetch = vi.fn((url: string | URL) => {
+      global.fetch = vi.fn(function (url: string | URL) {
         const urlStr = url.toString()
         if (urlStr.includes('Inter') && urlStr.includes('Roboto')) {
           return Promise.resolve({ ok: true, status: 200 } as Response)
@@ -921,7 +920,7 @@ describe('font-theme', function packageTests() {
       ]
 
       // Mock fetch: 503 for Network Font (network error), 400 for Invalid Font
-      global.fetch = vi.fn((url: string | URL) => {
+      global.fetch = vi.fn(function (url: string | URL) {
         const urlStr = url.toString()
         if (urlStr.includes('Network+Font')) {
           return Promise.resolve({ ok: false, status: 503, statusText: 'Service Unavailable' } as Response)
@@ -959,7 +958,7 @@ describe('font-theme', function packageTests() {
         }
       ]
 
-      global.fetch = vi.fn(() => {
+      global.fetch = vi.fn(function () {
         return Promise.resolve({ ok: false, status: 503 } as Response)
       }) as any
 
@@ -986,7 +985,7 @@ describe('font-theme', function packageTests() {
         }
       ]
 
-      global.fetch = vi.fn(() => {
+      global.fetch = vi.fn(function () {
         return Promise.resolve({ ok: false, status: 400 } as Response)
       }) as any
 
@@ -1006,7 +1005,7 @@ describe('font-theme', function packageTests() {
         }
       ]
 
-      global.fetch = vi.fn(() => {
+      global.fetch = vi.fn(function () {
         return Promise.resolve({ ok: true, status: 200 } as Response)
       }) as any
 
@@ -1030,7 +1029,7 @@ describe('font-theme', function packageTests() {
         }
       ]
 
-      global.fetch = vi.fn(() => {
+      global.fetch = vi.fn(function () {
         return Promise.resolve({ ok: false, status: 503 } as Response)
       }) as any
 

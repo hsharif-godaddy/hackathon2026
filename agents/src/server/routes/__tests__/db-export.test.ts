@@ -5,12 +5,12 @@ import request from 'supertest';
 
 // Mock AppRepository
 vi.mock('../../../database/index.js', () => ({
-  AppRepository: vi.fn().mockImplementation(() => ({
-    findById: vi.fn((id: string) => {
+  AppRepository: vi.fn().mockImplementation(function () { return {
+    findById: vi.fn(function (id: string) {
       if (id === 'missing-app') return null;
       return { id, path: '/tmp/test' };
     }),
-  })),
+  }; }),
 }));
 
 // Mock MySQLUtils — use vi.hoisted so mocks are available at vi.mock time
@@ -21,12 +21,12 @@ const { mockGetTableSchema, mockStreamTableData, mockLoadCredentialsFromApp } = 
 }));
 
 vi.mock('../../../utils/mysql-utils.js', () => ({
-  MySQLUtils: vi.fn().mockImplementation(() => ({
+  MySQLUtils: vi.fn().mockImplementation(function () { return {
     getTableSchema: mockGetTableSchema,
     streamTableData: mockStreamTableData,
     loadCredentialsFromApp: mockLoadCredentialsFromApp,
-  })),
-  isSystemTable: vi.fn((name: string) => name === '__drizzle_migrations'),
+  }; }),
+  isSystemTable: vi.fn(function (name: string) { return name === '__drizzle_migrations'; }),
   SYSTEM_TABLES: ['__drizzle_migrations'],
 }));
 

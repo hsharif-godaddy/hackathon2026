@@ -25,7 +25,7 @@ const speechRecognitionState = {
 const lastSpeechOptions: { value: { language?: string } | undefined } = { value: undefined }
 
 vi.mock('@/hooks/useSpeechRecognition', () => ({
-  useSpeechRecognition: vi.fn((options: { language?: string } = {}) => {
+  useSpeechRecognition: vi.fn(function (options: { language?: string } = {}) {
     lastSpeechOptions.value = options
     return {
       isListening: speechRecognitionState.isListening,

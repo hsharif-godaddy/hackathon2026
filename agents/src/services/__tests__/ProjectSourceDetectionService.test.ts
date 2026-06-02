@@ -389,7 +389,7 @@ describe('ProjectSourceDetectionService', () => {
         resolveDetect = resolve;
       });
 
-      const detectAndLogSpy = vi.spyOn(service, 'detectAndLog').mockImplementation(async () => {
+      const detectAndLogSpy = vi.spyOn(service, 'detectAndLog').mockImplementation(async function () {
         await detectGate;
         return {
           detectedSources: [],

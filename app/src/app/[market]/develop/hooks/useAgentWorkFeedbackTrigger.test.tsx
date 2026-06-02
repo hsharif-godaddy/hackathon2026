@@ -6,8 +6,8 @@ import '@testing-library/jest-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/hooks/useSwitchboard', () => ({
-  useSwitchboard: vi.fn(() => true),
-  getSwitchboardFlag: vi.fn(() => true),
+  useSwitchboard: vi.fn(function () { return true; }),
+  getSwitchboardFlag: vi.fn(function () { return true; }),
 }));
 
 import { useAgentWorkFeedbackTrigger } from '@/app/[market]/develop/hooks/useAgentWorkFeedbackTrigger';

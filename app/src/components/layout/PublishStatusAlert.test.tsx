@@ -25,7 +25,7 @@ const mockDevelopStore = {
   dismissPublishSuccess: vi.fn(),
   clearPublishStatus: vi.fn(),
   setShowGoLiveModal: vi.fn(),
-  getPublishState: vi.fn((appId: string) => mockDevelopStore.publishStates[appId] || null),
+  getPublishState: vi.fn(function (appId: string) { return mockDevelopStore.publishStates[appId] || null; }),
 };
 const mockSiteStore = {
   getSite: vi.fn(),
@@ -68,10 +68,10 @@ vi.mock('@/stores/useStreamingConversationStore', () => ({
   useIsActivelyStreaming: () => mockStreamingStore.isActivelyStreaming,
 }));
 vi.mock('@/utils/instrumentation', () => ({
-  generateClickEID: vi.fn((id) => id),
+  generateClickEID: vi.fn(function (id) { return id; }),
 }));
 vi.mock('@/utils/site', () => ({
-  hasBeenPublished: vi.fn((site) => !!site?.published_url),
+  hasBeenPublished: vi.fn(function (site) { return !!site?.published_url; }),
 }));
 vi.mock('@/lib/request-context', () => ({
   logger: {

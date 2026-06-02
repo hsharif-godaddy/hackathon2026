@@ -16,7 +16,7 @@ const { streamingMocks } = vi.hoisted(() => ({
 }));
 
 vi.mock('@/app/[market]/develop/components/utils', () => ({
-  useAppIdFromParams: vi.fn(() => 'app-123'),
+  useAppIdFromParams: vi.fn(function () { return 'app-123'; }),
 }));
 
 vi.mock('@/config/dynamic-api', () => ({

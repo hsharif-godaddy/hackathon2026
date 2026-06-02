@@ -4,12 +4,12 @@ import type { ProbeUsageSource } from '../../clients/gocode-client.js';
 
 function makeMockGocode(): ProbeUsageSource & { getModel(): string } {
   return {
-    getAccumulatedUsage: vi.fn(() => ({
+    getAccumulatedUsage: vi.fn(function () { return {
       promptTokens: 0,
       completionTokens: 0,
       totalTokens: 0,
       calls: 0,
-    })),
+    }; }),
     getModel: () => 'claude-sonnet-4-6',
   };
 }

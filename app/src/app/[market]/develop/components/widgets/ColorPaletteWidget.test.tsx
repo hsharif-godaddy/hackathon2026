@@ -16,7 +16,7 @@ vi.mock('@/app/[market]/develop/components/utils/previewThemeInIframe', () => ({
 }))
 
 vi.mock('@/hooks/useSwitchboard', () => ({
-  useSwitchboard: vi.fn((flag: string) => {
+  useSwitchboard: vi.fn(function (flag: string) {
     if (flag === 'airo-builder-theme-selection-chat') {
       return { data: true, isLoading: false, error: null }
     }

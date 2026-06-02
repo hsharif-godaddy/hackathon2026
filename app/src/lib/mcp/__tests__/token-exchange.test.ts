@@ -25,13 +25,13 @@ describe('exchangeCustomerJwtForOAuthToken', () => {
       AIRO_APP_BUILDER_CLIENT_ID: 'client-abc',
       AIRO_APP_BUILDER_CLIENT_SECRET: 'secret-xyz',
     }
-    vi.restoreAllMocks()
   })
 
   afterEach(() => {
     __resetMcpTokenCacheForTests()
     process.env = { ...ORIGINAL_ENV }
-    vi.restoreAllMocks()
+    // vitest 4: resetAllMocks clears vi.fn() impls; restoreAllMocks no longer does.
+    vi.resetAllMocks()
   })
 
   it('POSTs to the derived token endpoint with jwt-bearer grant', async () => {
@@ -115,8 +115,7 @@ describe('exchangeCustomerJwtForOAuthToken', () => {
     // "Body is unusable" on the second .json() read.
     const fetchSpy = vi
       .spyOn(globalThis, 'fetch')
-      .mockImplementation(async () =>
-        mockTokenResponse({ access_token: 't', token_type: 'Bearer', expires_in: 300 }),
+      .mockImplementation(async function () { return mockTokenResponse({ access_token: 't', token_type: 'Bearer', expires_in: 300 }); },
       )
     await exchangeCustomerJwtForOAuthToken({
       customerJwt: 'jwt',

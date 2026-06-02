@@ -59,7 +59,7 @@ describe('AgentWrapper - exhausted grants refresh', function exhaustedGrantsTest
 
     const aiModule = await import('ai')
     const MockToolLoopAgent = aiModule.ToolLoopAgent as any
-    MockToolLoopAgent.mockImplementation(() => ({ stream: mockStream }))
+    MockToolLoopAgent.mockImplementation(function () { return { stream: mockStream }; })
 
     agentWrapper = new AgentWrapper(agentConfig)
   })

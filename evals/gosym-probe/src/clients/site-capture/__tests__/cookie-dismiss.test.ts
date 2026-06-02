@@ -31,13 +31,13 @@ function makeLocator(opts: {
   const loc: FakeLocator = {
     count: vi.fn().mockResolvedValue(opts.count ?? 0),
     isVisible: vi.fn().mockResolvedValue(opts.visible ?? false),
-    click: vi.fn().mockImplementation(async () => {
+    click: vi.fn().mockImplementation(async function () {
       if (opts.clickThrows) throw new Error('not clickable');
     }),
     waitFor: vi.fn().mockResolvedValue(undefined),
-    locator: vi.fn().mockImplementation((sel: string) => ({
+    locator: vi.fn().mockImplementation(function (sel: string) { return {
       first: () => children[sel] ?? makeLocator({}),
-    })),
+    }; }),
   };
   return loc;
 }
@@ -46,7 +46,7 @@ function makePage(
   selectorMap: Record<string, FakeLocator>,
   opts: { extraFrames?: FakeFrame[] } = {},
 ): { page: FakePage; locator: ReturnType<typeof vi.fn> } {
-  const locator = vi.fn().mockImplementation((sel: string) => {
+  const locator = vi.fn().mockImplementation(function (sel: string) {
     const target = selectorMap[sel] ?? makeLocator({});
     return { first: () => target };
   });
@@ -208,7 +208,7 @@ describe('util/cookie-dismiss', () => {
       const inFrameBtn = makeLocator({ count: 1, visible: true });
       const consentFrame: FakeFrame = {
         url: () => 'https://cdn.cookiebot.com/consent.html',
-        locator: vi.fn().mockImplementation((sel: string) => {
+        locator: vi.fn().mockImplementation(function (sel: string) {
           if (sel === 'button:has-text("Accept All")') {
             return { first: () => inFrameBtn };
           }
@@ -227,7 +227,7 @@ describe('util/cookie-dismiss', () => {
     const adBtn = makeLocator({ count: 1, visible: true });
     const adFrame: FakeFrame = {
       url: () => 'https://ads.example.com/banner',
-      locator: vi.fn().mockImplementation(() => ({ first: () => adBtn })),
+      locator: vi.fn().mockImplementation(function () { return { first: () => adBtn }; }),
     };
     const { page } = makePage({}, { extraFrames: [adFrame] });
 

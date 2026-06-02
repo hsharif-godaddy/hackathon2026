@@ -214,7 +214,7 @@ describe('authPreflight', () => {
       supportUrl: '',
     };
 
-    vi.stubGlobal('fetch', vi.fn((url: string) => {
+    vi.stubGlobal('fetch', vi.fn(function (url: string) {
       if (url.includes('/api/auth/validate')) return Promise.resolve(response401());
       if (url.includes('/api/config')) {
         return Promise.resolve(new Response(JSON.stringify(configBody), {
@@ -258,7 +258,7 @@ describe('authPreflight', () => {
     const { logger } = await import('@/lib/request-context');
 
     const resp401 = response401();
-    vi.stubGlobal('fetch', vi.fn((url: string) => {
+    vi.stubGlobal('fetch', vi.fn(function (url: string) {
       if (url.includes('/api/auth/validate')) return Promise.resolve(resp401);
       if (url.includes('/api/config')) {
         return Promise.resolve(new Response('boom', { status: 500 }));

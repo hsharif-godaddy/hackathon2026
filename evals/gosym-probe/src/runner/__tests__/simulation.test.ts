@@ -115,7 +115,7 @@ function makeSnapshotMeta(): {
 function makeAutoAgent(response = 'done'): MockAgentClient {
   const agent = new MockAgentClient();
   const origSend = agent.send.bind(agent);
-  agent.send = vi.fn().mockImplementation((msg: string) => {
+  agent.send = vi.fn().mockImplementation(function (msg: string) {
     origSend(msg);
     Promise.resolve().then(() =>
       agent.emit({ type: 'complete', content: response }),
@@ -134,12 +134,12 @@ describe('Simulation', () => {
   it('calls setup() before first nextMessage()', async () => {
     const callOrder: string[] = [];
     const scenario = makeScenario({
-      setup: vi.fn().mockImplementation(async () => {
+      setup: vi.fn().mockImplementation(async function () {
         callOrder.push('setup');
       }),
     });
     const syntheticUser: SyntheticUserAgent = {
-      nextMessage: vi.fn().mockImplementation(async () => {
+      nextMessage: vi.fn().mockImplementation(async function () {
         callOrder.push('nextMessage');
         return null;
       }),
@@ -269,7 +269,7 @@ describe('Simulation', () => {
     };
     // Agent emits an error followed by complete on each send().
     const agent = new MockAgentClient();
-    agent.send = vi.fn().mockImplementation((msg: string) => {
+    agent.send = vi.fn().mockImplementation(function (msg: string) {
       agent.sent.push(msg);
       Promise.resolve().then(() => {
         agent.emit({ type: 'error', error: 'tool failed' });
@@ -300,9 +300,9 @@ describe('Simulation', () => {
       };
       const warnSpy = vi
         .spyOn(console, 'warn')
-        .mockImplementation(() => {});
+        .mockImplementation(function () {});
       const agent = new MockAgentClient();
-      agent.send = vi.fn().mockImplementation((msg: string) => {
+      agent.send = vi.fn().mockImplementation(function (msg: string) {
         agent.sent.push(msg);
         Promise.resolve().then(() => {
           agent.emit({ type: 'error', error: '429 Too Many Requests' });
@@ -336,9 +336,9 @@ describe('Simulation', () => {
     };
     const warnSpy = vi
       .spyOn(console, 'warn')
-      .mockImplementation(() => {});
+      .mockImplementation(function () {});
     const agent = new MockAgentClient();
-    agent.send = vi.fn().mockImplementation((msg: string) => {
+    agent.send = vi.fn().mockImplementation(function (msg: string) {
       agent.sent.push(msg);
       Promise.resolve().then(() => {
         agent.emit({ type: 'error', error: 'tool failed' });
@@ -408,7 +408,7 @@ describe('Simulation', () => {
     const callOrder: string[] = [];
     const scenario = makeScenario({
       setup: vi.fn().mockResolvedValue({ appId: 'app' }),
-      teardown: vi.fn().mockImplementation(async () => {
+      teardown: vi.fn().mockImplementation(async function () {
         callOrder.push('teardown');
       }),
     });
@@ -419,7 +419,7 @@ describe('Simulation', () => {
         .mockResolvedValue(null),
     };
     const mockSiteCapture = {
-      capture: vi.fn().mockImplementation(async () => {
+      capture: vi.fn().mockImplementation(async function () {
         callOrder.push('snapshot');
         return { snapshot: makeSnapshotMeta() };
       }),
@@ -496,7 +496,7 @@ describe('Simulation', () => {
     async () => {
       const warnSpy = vi
         .spyOn(console, 'warn')
-        .mockImplementation(() => {});
+        .mockImplementation(function () {});
       const scenario = makeScenario({
         setup: vi.fn().mockResolvedValue({ appId: 'app' }),
       });
@@ -538,7 +538,7 @@ describe('Simulation', () => {
   it('routes getTrialOutputDir failure to captureErrors, not errors', async () => {
     const warnSpy = vi
       .spyOn(console, 'warn')
-      .mockImplementation(() => {});
+      .mockImplementation(function () {});
     const scenario = makeScenario({
       setup: vi.fn().mockResolvedValue({ appId: 'app' }),
     });
@@ -601,7 +601,7 @@ describe('Simulation', () => {
         .mockResolvedValue(null),
     };
     const agent = new MockAgentClient();
-    agent.send = vi.fn().mockImplementation((msg: string) => {
+    agent.send = vi.fn().mockImplementation(function (msg: string) {
       agent.sent.push(msg);
       Promise.resolve().then(() => {
         agent.emit({
@@ -646,7 +646,7 @@ describe('Simulation', () => {
         .mockResolvedValue(null),
     };
     const agent = new MockAgentClient();
-    agent.send = vi.fn().mockImplementation((msg: string) => {
+    agent.send = vi.fn().mockImplementation(function (msg: string) {
       agent.sent.push(msg);
       Promise.resolve().then(() => {
         agent.emit({
@@ -688,7 +688,7 @@ describe('Simulation', () => {
   });
 
   it('falls back to tool_start input when accumulated deltas are malformed JSON', async () => {
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(function () {});
     const scenario = makeScenario();
     const syntheticUser: SyntheticUserAgent = {
       nextMessage: vi
@@ -697,7 +697,7 @@ describe('Simulation', () => {
         .mockResolvedValue(null),
     };
     const agent = new MockAgentClient();
-    agent.send = vi.fn().mockImplementation((msg: string) => {
+    agent.send = vi.fn().mockImplementation(function (msg: string) {
       agent.sent.push(msg);
       Promise.resolve().then(() => {
         agent.emit({
@@ -745,7 +745,7 @@ describe('Simulation', () => {
     };
     let callCount = 0;
     const agent = new MockAgentClient();
-    agent.send = vi.fn().mockImplementation((msg: string) => {
+    agent.send = vi.fn().mockImplementation(function (msg: string) {
       agent.sent.push(msg);
       const turn = ++callCount;
       Promise.resolve().then(() => {
@@ -801,7 +801,7 @@ describe('Simulation', () => {
         .mockResolvedValue(null),
     };
     const agent = new MockAgentClient();
-    agent.send = vi.fn().mockImplementation((msg: string) => {
+    agent.send = vi.fn().mockImplementation(function (msg: string) {
       agent.sent.push(msg);
       Promise.resolve().then(() => {
         // First call: tool_start + delta + tool_result
@@ -848,7 +848,7 @@ describe('Simulation', () => {
   });
 
   it('warns when empty-string delta is accumulated and parse fails', async () => {
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(function () {});
     const scenario = makeScenario();
     const syntheticUser: SyntheticUserAgent = {
       nextMessage: vi
@@ -857,7 +857,7 @@ describe('Simulation', () => {
         .mockResolvedValue(null),
     };
     const agent = new MockAgentClient();
-    agent.send = vi.fn().mockImplementation((msg: string) => {
+    agent.send = vi.fn().mockImplementation(function (msg: string) {
       agent.sent.push(msg);
       Promise.resolve().then(() => {
         agent.emit({
@@ -906,7 +906,7 @@ describe('Simulation', () => {
         .mockResolvedValue(null),
     };
     const agent = new MockAgentClient();
-    agent.send = vi.fn().mockImplementation((msg: string) => {
+    agent.send = vi.fn().mockImplementation(function (msg: string) {
       agent.sent.push(msg);
       Promise.resolve().then(() => {
         // Orphaned sequence: delta + result with no prior tool_start
@@ -1002,10 +1002,10 @@ describe('Simulation', () => {
       };
       const warnSpy = vi
         .spyOn(console, 'warn')
-        .mockImplementation(() => {});
+        .mockImplementation(function () {});
       const sensitiveError = '429 rate limit: token=sk-secret-abc123';
       const agent = new MockAgentClient();
-      agent.send = vi.fn().mockImplementation((msg: string) => {
+      agent.send = vi.fn().mockImplementation(function (msg: string) {
         agent.sent.push(msg);
         Promise.resolve().then(() => {
           agent.emit({ type: 'error', error: sensitiveError });
@@ -1091,7 +1091,7 @@ describe('Simulation', () => {
     async () => {
       const errorSpy = vi
         .spyOn(console, 'error')
-        .mockImplementation(() => {});
+        .mockImplementation(function () {});
       const scenario = makeScenario({
         name: 'leaky-scenario',
         teardown: vi
@@ -1129,7 +1129,7 @@ describe('Simulation', () => {
     async () => {
       const errorSpy = vi
         .spyOn(console, 'error')
-        .mockImplementation(() => {});
+        .mockImplementation(function () {});
       const scenario = makeScenario({
         name: 'leak-scenario',
         teardown: vi
@@ -1198,7 +1198,7 @@ describe('Simulation', () => {
     async () => {
       const errorSpy = vi
         .spyOn(console, 'error')
-        .mockImplementation(() => {});
+        .mockImplementation(function () {});
       const scenario = makeScenario({
         name: 'double-fault',
         setup: vi
@@ -1243,7 +1243,7 @@ describe('Simulation', () => {
         .mockResolvedValue(null),
     };
     const agent = new MockAgentClient();
-    agent.send = vi.fn().mockImplementation((msg: string) => {
+    agent.send = vi.fn().mockImplementation(function (msg: string) {
       agent.sent.push(msg);
       Promise.resolve().then(() => {
         agent.emit({
@@ -1278,7 +1278,7 @@ describe('Simulation', () => {
         .mockResolvedValue(null),
     };
     const agent = new MockAgentClient();
-    agent.send = vi.fn().mockImplementation((msg: string) => {
+    agent.send = vi.fn().mockImplementation(function (msg: string) {
       agent.sent.push(msg);
       Promise.resolve().then(() => {
         agent.emit({
@@ -1313,7 +1313,7 @@ describe('Simulation', () => {
         .mockResolvedValue(null),
     };
     const agent = new MockAgentClient();
-    agent.send = vi.fn().mockImplementation((msg: string) => {
+    agent.send = vi.fn().mockImplementation(function (msg: string) {
       agent.sent.push(msg);
       Promise.resolve().then(() => {
         agent.emit({ type: 'step_complete', content: 'step result' });
@@ -1343,7 +1343,7 @@ describe('Simulation', () => {
         .mockResolvedValue(null),
     };
     const agent = new MockAgentClient();
-    agent.send = vi.fn().mockImplementation((msg: string) => {
+    agent.send = vi.fn().mockImplementation(function (msg: string) {
       agent.sent.push(msg);
       Promise.resolve().then(() => {
         agent.emit({ type: 'step_complete', content: 'first agent' });
@@ -1376,7 +1376,7 @@ describe('Simulation', () => {
     };
     let callCount = 0;
     const agent = new MockAgentClient();
-    agent.send = vi.fn().mockImplementation((msg: string) => {
+    agent.send = vi.fn().mockImplementation(function (msg: string) {
       agent.sent.push(msg);
       const turn = ++callCount;
       Promise.resolve().then(() => {
@@ -1410,7 +1410,7 @@ describe('Simulation', () => {
         .mockResolvedValue(null),
     };
     const agent = new MockAgentClient();
-    agent.send = vi.fn().mockImplementation((msg: string) => {
+    agent.send = vi.fn().mockImplementation(function (msg: string) {
       agent.sent.push(msg);
       Promise.resolve().then(() => {
         agent.emit({ type: 'step_start', agentName: 'develop' });
@@ -1449,7 +1449,7 @@ describe('Simulation', () => {
           .mockResolvedValue(null),
       };
       const agent = new MockAgentClient();
-      agent.send = vi.fn().mockImplementation((msg: string) => {
+      agent.send = vi.fn().mockImplementation(function (msg: string) {
         agent.sent.push(msg);
         Promise.resolve().then(() => {
           agent.emit({
@@ -1487,7 +1487,7 @@ describe('Simulation', () => {
         .mockResolvedValue(null),
     };
     const agent = new MockAgentClient();
-    agent.send = vi.fn().mockImplementation((msg: string) => {
+    agent.send = vi.fn().mockImplementation(function (msg: string) {
       agent.sent.push(msg);
       Promise.resolve().then(() => {
         agent.emit({ type: 'step_start', agentName: 'initial' });
@@ -1539,7 +1539,7 @@ describe('Simulation', () => {
     };
     let callCount = 0;
     const agent = new MockAgentClient();
-    agent.send = vi.fn().mockImplementation((msg: string) => {
+    agent.send = vi.fn().mockImplementation(function (msg: string) {
       agent.sent.push(msg);
       const turn = ++callCount;
       Promise.resolve().then(() => {
@@ -1724,7 +1724,7 @@ describe('fatal AAB error abort', () => {
       // turn timeout.
       const agent = new MockAgentClient();
       agent.send = vi.fn().mockImplementation(
-        (msg: string) => {
+        function (msg: string) {
           agent.sent.push(msg);
           Promise.resolve().then(() => {
             agent.emit({
@@ -1801,11 +1801,7 @@ describe('GoalTracker integration', () => {
     let capturedTracker: unknown;
     const syntheticUser: SyntheticUserAgent = {
       nextMessage: vi.fn().mockImplementation(
-        async (
-          _history: unknown,
-          _scenario: unknown,
-          tracker: unknown,
-        ) => {
+        async function (_history: unknown, _scenario: unknown, tracker: unknown) {
           capturedTracker = tracker;
           return null;
         },
@@ -1834,11 +1830,7 @@ describe('GoalTracker integration', () => {
     let callCount = 0;
     const syntheticUser: SyntheticUserAgent = {
       nextMessage: vi.fn().mockImplementation(
-        async (
-          _history: unknown,
-          _scenario: unknown,
-          tracker?: GoalTracker,
-        ) => {
+        async function (_history: unknown, _scenario: unknown, tracker?: GoalTracker) {
           seenGoals.push(tracker?.nextGoal() ?? null);
           return ++callCount <= 2 ? 'message' : null;
         },
@@ -1978,7 +1970,7 @@ describe('first-turn inactivity timeout', () => {
     // Turn 1: responds immediately. Turn 2: never responds.
     let callCount = 0;
     const agent = new MockAgentClient();
-    agent.send = vi.fn().mockImplementation(() => {
+    agent.send = vi.fn().mockImplementation(function () {
       callCount++;
       if (callCount === 1) {
         Promise.resolve().then(() => {
@@ -2051,11 +2043,11 @@ describe('onConversationComplete callback', () => {
         .mockResolvedValueOnce('hello')
         .mockResolvedValue(null),
     };
-    const onConversationComplete = vi.fn().mockImplementation(async () => {
+    const onConversationComplete = vi.fn().mockImplementation(async function () {
       callOrder.push('callback');
     });
     const mockSiteCapture = {
-      capture: vi.fn().mockImplementation(async () => {
+      capture: vi.fn().mockImplementation(async function () {
         callOrder.push('capture');
         return { snapshot: makeSnapshotMeta() };
       }),
@@ -2092,7 +2084,7 @@ describe('onConversationComplete callback', () => {
     let capturedTranscript: Transcript | undefined;
     const onConversationComplete = vi
       .fn()
-      .mockImplementation(async (_idx: number, t: Transcript) => {
+      .mockImplementation(async function (_idx: number, t: Transcript) {
         capturedTranscript = t;
       });
     const agent = makeAutoAgent('agent response');

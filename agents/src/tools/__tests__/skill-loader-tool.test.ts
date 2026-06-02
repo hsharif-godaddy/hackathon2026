@@ -13,12 +13,12 @@ import { SkillLoaderTool, buildSkillsPromptSection } from '../skill-loader-tool.
 const capturedCommands: string[] = [];
 
 vi.mock('../terminal.js', () => ({
-  TerminalTool: vi.fn().mockImplementation(() => ({
-    executeCommand: vi.fn().mockImplementation(async (_path: string, opts: { command: string }) => {
+  TerminalTool: vi.fn().mockImplementation(function () { return {
+    executeCommand: vi.fn().mockImplementation(async function (_path: string, opts: { command: string }) {
       capturedCommands.push(opts.command);
       return { success: true, exitCode: 0 };
     })
-  }))
+  }; })
 }));
 
 const { DevSupervisorError: MockDevSupervisorError } = vi.hoisted(() => {

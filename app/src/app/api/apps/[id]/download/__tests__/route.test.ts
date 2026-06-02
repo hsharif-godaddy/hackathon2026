@@ -52,7 +52,7 @@ vi.mock('@/lib/control-plane', function mockControlPlaneModule() {
 
 vi.mock('@/lib/mgmt-airo', function mockMgmtAiroModule() {
   return {
-    AiroMgmtClient: vi.fn().mockImplementation(() => mockAiroMgmtClient)
+    AiroMgmtClient: vi.fn().mockImplementation(function () { return mockAiroMgmtClient; })
   };
 });
 
@@ -64,7 +64,7 @@ vi.mock('@/lib/jwt-service', function mockJwtServiceModule() {
 
 vi.mock('@/lib/paywall/core', function mockPaywallCoreModule() {
   return {
-    checkPaywallEligibility: vi.fn().mockImplementation(() => mockPaywallProvider.checkPaywallEligibility()),
+    checkPaywallEligibility: vi.fn().mockImplementation(function () { return mockPaywallProvider.checkPaywallEligibility(); }),
     PaywallAction: {
       Publish: 'publish',
       Download: 'download',

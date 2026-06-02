@@ -23,7 +23,7 @@ describe('useTextareaHoverTracking', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     nowValue = 1000;
-    vi.spyOn(performance, 'now').mockImplementation(() => nowValue);
+    vi.spyOn(performance, 'now').mockImplementation(function () { return nowValue; });
   });
 
   afterEach(() => {

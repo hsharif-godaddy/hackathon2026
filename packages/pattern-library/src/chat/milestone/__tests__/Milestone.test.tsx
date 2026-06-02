@@ -5,7 +5,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { Milestone } from '../index';
 
 beforeAll(() => {
-  vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
+  vi.spyOn(globalThis, 'fetch').mockImplementation(function (input) {
     const url =
       typeof input === 'string' ? input : input instanceof Request ? input.url : input.href;
 

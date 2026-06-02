@@ -96,7 +96,7 @@ describe('ReplayCompleteHandler', () => {
     })
 
     // Simulate maybeSendRecoveryAck clearing the ref (as the real implementation does)
-    ;(context.helpers.maybeSendRecoveryAck as any).mockImplementation(() => {
+    ;(context.helpers.maybeSendRecoveryAck as any).mockImplementation(function () {
       pendingRef.current = null
     })
 
@@ -147,7 +147,7 @@ describe('ReplayCompleteHandler', () => {
       },
     })
 
-    ;(context.helpers.maybeSendRecoveryAck as any).mockImplementation(() => {
+    ;(context.helpers.maybeSendRecoveryAck as any).mockImplementation(function () {
       pendingRef.current = null
     })
 

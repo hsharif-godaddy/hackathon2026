@@ -14,13 +14,13 @@ const mockChatDispose = vi.fn();
 
 vi.mock('@gdcorp-digitalcare/ux', () => {
   return {
-    default: vi.fn().mockImplementation(() => ({
+    default: vi.fn().mockImplementation(function () { return {
       chat: {
         init: mockChatInit,
         launch: mockChatLaunch,
         dispose: mockChatDispose,
       },
-    })),
+    }; }),
   };
 });
 
@@ -138,7 +138,7 @@ describe('useSupportChat', () => {
     it('should update isLoading based on ready state', async () => {
       let capturedReadyStateHandler: ((state: ChatReadyState) => void) | null = null;
 
-      mockChatInit.mockImplementation((options) => {
+      mockChatInit.mockImplementation(function (options) {
         capturedReadyStateHandler = options.readyStateHandler;
         return Promise.resolve();
       });
@@ -178,7 +178,7 @@ describe('useSupportChat', () => {
     it('should set isLoading to false on TimedOut state', async () => {
       let capturedReadyStateHandler: ((state: ChatReadyState) => void) | null = null;
 
-      mockChatInit.mockImplementation((options) => {
+      mockChatInit.mockImplementation(function (options) {
         capturedReadyStateHandler = options.readyStateHandler;
         return Promise.resolve();
       });
@@ -203,7 +203,7 @@ describe('useSupportChat', () => {
     it('should set isLoading to false on Disabled state', async () => {
       let capturedReadyStateHandler: ((state: ChatReadyState) => void) | null = null;
 
-      mockChatInit.mockImplementation((options) => {
+      mockChatInit.mockImplementation(function (options) {
         capturedReadyStateHandler = options.readyStateHandler;
         return Promise.resolve();
       });

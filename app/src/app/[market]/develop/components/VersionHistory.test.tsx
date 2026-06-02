@@ -136,8 +136,8 @@ describe('VersionHistory', () => {
       delete pageData[key]
     })
 
-    mockGitStore.getSelectedCommitHash.mockImplementation(() => selectedCommitHash);
-    mockGitStore.setSelectedCommitHash.mockImplementation((_appId: string, hash: string) => {
+    mockGitStore.getSelectedCommitHash.mockImplementation(function () { return selectedCommitHash; });
+    mockGitStore.setSelectedCommitHash.mockImplementation(function (_appId: string, hash: string) {
       selectedCommitHash = hash;
     });
     mockUpdateCommitMessageMutation.isPending = false;

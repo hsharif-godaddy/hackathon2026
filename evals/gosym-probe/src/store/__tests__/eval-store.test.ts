@@ -262,11 +262,11 @@ describe('EvalStore', () => {
     mockReaddir.mockResolvedValue([]);
     mockRender = vi.fn().mockReturnValue('# mock summary');
     vi.mocked(MdReporter).mockImplementation(
-      () => ({ render: mockRender }) as unknown as MdReporter,
+      function () { return ({ render: mockRender }) as unknown as MdReporter; },
     );
     mockNarrativeRender = vi.fn().mockResolvedValue('# narrative summary');
     vi.mocked(NarrativeSummaryReporter).mockImplementation(
-      () => ({ render: mockNarrativeRender }) as unknown as NarrativeSummaryReporter,
+      function () { return ({ render: mockNarrativeRender }) as unknown as NarrativeSummaryReporter; },
     );
     mockRenderTrialEvalResultsMarkdown.mockReturnValue(
       '## mock eval results\n',
@@ -389,7 +389,7 @@ describe('EvalStore', () => {
     });
 
     it('logs warning for unexpected git sha error (e.g. permissions)', async () => {
-      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(function () {});
       const unexpectedError = Object.assign(
         new Error('permission denied'),
         { code: 1 },
@@ -466,7 +466,7 @@ describe('EvalStore', () => {
     });
 
     it('logs warning for unexpected git branch error', async () => {
-      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(function () {});
       mockExecFile.mockResolvedValueOnce({ stdout: 'abc123def456\n', stderr: '' });
       const unexpectedError = Object.assign(
         new Error('git index corrupted'),
@@ -1790,7 +1790,7 @@ describe('EvalStore', () => {
       const writeError = new Error('disk full');
       const consoleErrorSpy = vi
         .spyOn(console, 'error')
-        .mockImplementation(() => {});
+        .mockImplementation(function () {});
       mockWriteFile
         .mockResolvedValueOnce(undefined)
         .mockRejectedValueOnce(writeError);
@@ -1814,7 +1814,7 @@ describe('EvalStore', () => {
         const store = new EvalStore();
         const trial = makeTrialResult(0);
         const renderError = new Error('render failed');
-        mockRenderConversation.mockImplementationOnce(() => {
+        mockRenderConversation.mockImplementationOnce(function () {
           throw renderError;
         });
 
@@ -2388,7 +2388,7 @@ describe('EvalStore', () => {
     });
 
     it('logs console.error and rejects on I/O failure', async () => {
-      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(function () {});
       const store = new EvalStore();
       const transcript = makeTrialResult(0).transcript;
       const ioError = new Error('ENOSPC: no space left on device');

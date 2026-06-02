@@ -30,7 +30,7 @@ vi.mock('../../../services/features.js', async (importOriginal) => {
 const mockClientActionServices = new Map<string, any>()
 vi.mock('../../agent-runtime.js', () => ({
   getAgentFactory: vi.fn().mockReturnValue(null),
-  getActionService: vi.fn((key: string) => mockClientActionServices.get(key) ?? null),
+  getActionService: vi.fn(function (key: string) { return mockClientActionServices.get(key) ?? null; }),
 }))
 
 const mockBudgetPreCheck = vi.fn()
@@ -43,7 +43,7 @@ const EXPECTED_SSE_OPEN_PADDING_MIN_BYTES = 4096
 function createMockDeps() {
   return {
     registry: new EventStreamRegistry(),
-    authenticate: vi.fn((req: any, _res: any, next: any) => {
+    authenticate: vi.fn(function (req: any, _res: any, next: any) {
       req.agentContext = { siteId: req.params.appId ?? 'abcdefghij' }
       next()
     }),
@@ -54,14 +54,11 @@ function createMockDeps() {
     resolveAgent: vi.fn().mockResolvedValue('develop'),
     getStateManager: vi.fn().mockReturnValue(null),
     lifecycle: {
-      create: vi.fn().mockImplementation((scope: { appId: string }, agentId: string) =>
-        Promise.resolve({ id: 'conv_new', appId: scope.appId, agentId })
+      create: vi.fn().mockImplementation(function (scope: { appId: string }, agentId: string) { return Promise.resolve({ id: 'conv_new', appId: scope.appId, agentId }); }
       ),
-      getOrCreateForApp: vi.fn().mockImplementation((scope: { appId: string }, agentId: string) =>
-        Promise.resolve({ conversation: { id: 'conv_new', appId: scope.appId, agentId }, isNew: true })
+      getOrCreateForApp: vi.fn().mockImplementation(function (scope: { appId: string }, agentId: string) { return Promise.resolve({ conversation: { id: 'conv_new', appId: scope.appId, agentId }, isNew: true }); }
       ),
-      getById: vi.fn().mockImplementation((id: string) =>
-        Promise.resolve({ id, appId: 'abcdefghij', agentId: 'develop' })
+      getById: vi.fn().mockImplementation(function (id: string) { return Promise.resolve({ id, appId: 'abcdefghij', agentId: 'develop' }); }
       ),
       getLatestForApp: vi.fn().mockResolvedValue(null),
       updateAgentId: vi.fn().mockResolvedValue(undefined),
@@ -297,7 +294,7 @@ describe('SSE routes', () => {
       const unsubscribe = vi.fn()
 
       deps.getEventChannel.mockReturnValue({
-        getEventsSince: vi.fn().mockImplementation(() => {
+        getEventsSince: vi.fn().mockImplementation(function () {
           void subscribed?.onEvent(duplicateLive43)
           void subscribed?.onEvent(live44)
           return replayEvents
@@ -306,7 +303,7 @@ describe('SSE routes', () => {
         unsubscribe,
       })
       ;(deps as any).executionService = {
-        subscribeStream: vi.fn((_conversationId: string, subscriber: any) => {
+        subscribeStream: vi.fn(function (_conversationId: string, subscriber: any) {
           subscribed = subscriber
         }),
         hasActiveStream: vi.fn().mockReturnValue(true),
@@ -648,7 +645,7 @@ describe('SSE routes', () => {
       let subscribed: { onEvent: (event: any) => Promise<void> } | null = null
       const unsubscribe = vi.fn()
       deps.getEventChannel.mockReturnValue({
-        getEventsSince: vi.fn(() => {
+        getEventsSince: vi.fn(function () {
           void subscribed?.onEvent({
             id: 'live_after_failure',
             type: 'chunk',
@@ -662,7 +659,7 @@ describe('SSE routes', () => {
         unsubscribe,
       })
       ;(deps as any).executionService = {
-        subscribeStream: vi.fn((_conversationId: string, subscriber: any) => {
+        subscribeStream: vi.fn(function (_conversationId: string, subscriber: any) {
           subscribed = subscriber
         }),
         hasActiveStream: vi.fn().mockReturnValue(true),
@@ -1209,7 +1206,7 @@ describe('SSE routes', () => {
 
     it('forwards requestHeaders and JWT visitor, traffic, and customer ids to execute()', async () => {
       const mockExecute = vi.fn().mockResolvedValue(undefined)
-      const authenticateWithJwt = vi.fn((req: any, _res: any, next: any) => {
+      const authenticateWithJwt = vi.fn(function (req: any, _res: any, next: any) {
         req.agentContext = {
           siteId: 'abcdefghij',
           customerId: 'cust_x',
@@ -1304,7 +1301,7 @@ describe('SSE routes', () => {
       const txn = { setLabel: vi.fn(), setOutcome: vi.fn(), end: vi.fn(), result: undefined as string | undefined }
       mockStartTransaction.mockReturnValueOnce(txn)
       const mockExecute = vi.fn().mockResolvedValue(undefined)
-      const authenticateWithCtx = vi.fn((req: any, _res: any, next: any) => {
+      const authenticateWithCtx = vi.fn(function (req: any, _res: any, next: any) {
         req.agentContext = { siteId: 'abcdefghij', customerId: 'cust-123', trafficSessionId: 'sess-456' }
         req.requestId = 'apm-req-id'
         next()
@@ -1458,7 +1455,7 @@ describe('SSE routes', () => {
         hasActiveStream: vi.fn().mockReturnValue(false),
       }
       ;(deps as any).executionService = mockExec
-      ;(deps.authenticate as any).mockImplementation((req: any, _res: any, next: any) => {
+      ;(deps.authenticate as any).mockImplementation(function (req: any, _res: any, next: any) {
         req.agentContext = {
           siteId: req.params.appId ?? 'abcdefghij',
           budgetServiceEnabled: true,

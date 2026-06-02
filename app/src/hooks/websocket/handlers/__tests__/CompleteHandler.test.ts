@@ -11,9 +11,9 @@ import type { WebSocketMessage } from '../types'
 
 const mockInvalidateQueries = vi.fn().mockResolvedValue(undefined)
 vi.mock('@/components/providers/QueryClientProvider', () => ({
-  getQueryClient: vi.fn(() => ({
+  getQueryClient: vi.fn(function () { return {
     invalidateQueries: mockInvalidateQueries,
-  })),
+  }; }),
 }))
 
 vi.mock('@/stores/useStreamingConversationStore', () => ({
@@ -37,9 +37,9 @@ vi.mock('@/stores/useSitesStore', () => ({
 const mockSetLastCompleteTraceIds = vi.fn()
 vi.mock('@/stores/useDevelopPageStore', () => ({
   useDevelopPageStore: {
-    getState: vi.fn(() => ({
+    getState: vi.fn(function () { return {
       setLastCompleteTraceIds: mockSetLastCompleteTraceIds,
-    })),
+    }; }),
   },
 }))
 

@@ -5,7 +5,7 @@ vi.mock('@/lib/apm-context', () => ({
 }));
 
 vi.mock('@/lib/logging/client-log-buffer', () => ({
-  ClientLogBuffer: { add: vi.fn(), getSessionId: vi.fn(() => 'test-session') },
+  ClientLogBuffer: { add: vi.fn(), getSessionId: vi.fn(function () { return 'test-session'; }) },
 }));
 
 import { logger, RequestContextService } from './request-context';
@@ -18,7 +18,7 @@ describe('createLogEvent context injection', () => {
     // output is JSON.stringify'd and parseable. Without this, NODE_ENV=development
     // routes through prettyServerOutput (ANSI strings) and JSON.parse throws.
     vi.stubEnv('NODE_ENV', 'test');
-    consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    consoleSpy = vi.spyOn(console, 'log').mockImplementation(function () {});
   });
 
   afterEach(() => {

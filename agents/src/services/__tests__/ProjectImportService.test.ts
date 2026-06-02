@@ -90,7 +90,7 @@ function createMockTasks(
   structure: Record<string, string[] | 'package.json'>
 ): { runCommandSync: Mock } {
   return {
-    runCommandSync: vi.fn().mockImplementation(async ({ command }: { command: string }) => {
+    runCommandSync: vi.fn().mockImplementation(async function ({ command }: { command: string }) {
       // Parse test -f command for package.json check
       const packageJsonMatch = command.match(/test -f "([^"]+)\/package\.json"/);
       if (packageJsonMatch) {
@@ -172,8 +172,8 @@ describe('ProjectImportService', () => {
       vi.mocked(createForWorkspace).mockReturnValue({ tasks: mockTasks } as any);
 
       // Setup repository mocks
-      vi.mocked(AppRepository).mockImplementation(() => mockAppRepo as any);
-      vi.mocked(ImportJobRepository).mockImplementation(() => mockImportJobRepo as any);
+      vi.mocked(AppRepository).mockImplementation(function () { return mockAppRepo as any; });
+      vi.mocked(ImportJobRepository).mockImplementation(function () { return mockImportJobRepo as any; });
 
       // Setup AppRestartService mocks
       vi.mocked(appRestartService.stopDevServer).mockResolvedValue({ success: true });
@@ -200,7 +200,7 @@ describe('ProjectImportService', () => {
       hasPnpmLock?: boolean;
       hasYarnLock?: boolean;
     } = {}) {
-      mockTasks.runCommandSync.mockImplementation(async ({ command }: { command: string }) => {
+      mockTasks.runCommandSync.mockImplementation(async function ({ command }: { command: string }) {
         // Check for package.json at root
         if (command.includes('test -f') && command.includes('package.json')) {
           return makeRunCommandResult({ stdout: 'found' });
@@ -711,7 +711,7 @@ describe('ProjectImportService', () => {
     it('should succeed when /app/public directory exists and cleanup succeeds', async () => {
       // Simulates: /app/public exists, both main cleanup and public cleanup succeed
       const mockTasks = {
-        runCommandSync: vi.fn().mockImplementation(async ({ command }: { command: string }) => {
+        runCommandSync: vi.fn().mockImplementation(async function ({ command }: { command: string }) {
           // Cleanup command - directory exists and find succeeds
           if (command.includes('find "/app"') && command.includes('-exec rm -rf')) {
             return makeRunCommandResult();
@@ -743,7 +743,7 @@ describe('ProjectImportService', () => {
       // - || true makes the whole expression succeed
       // The shell still reports success=true because of || true
       const mockTasks = {
-        runCommandSync: vi.fn().mockImplementation(async ({ command }: { command: string }) => {
+        runCommandSync: vi.fn().mockImplementation(async function ({ command }: { command: string }) {
           // The cleanup command succeeds even when public dir doesn't exist
           // because the shell evaluates: `mainCleanup && { false || true }` = true
           if (command.includes('find "/app"') && command.includes('-exec rm -rf')) {
@@ -769,7 +769,7 @@ describe('ProjectImportService', () => {
     it('should verify cleanup command structure with regex for graceful public directory handling', async () => {
       let cleanupCommand = '';
       const mockTasks = {
-        runCommandSync: vi.fn().mockImplementation(async ({ command }: { command: string }) => {
+        runCommandSync: vi.fn().mockImplementation(async function ({ command }: { command: string }) {
           if (command.includes('find "/app"') && command.includes('-exec rm -rf')) {
             cleanupCommand = command;
           }
@@ -800,7 +800,7 @@ describe('ProjectImportService', () => {
       // Tests that main cleanup failures are NOT masked by || true
       // The braces `{ ... || true; }` ensure || true only applies to public cleanup
       const mockTasks = {
-        runCommandSync: vi.fn().mockImplementation(async ({ command }: { command: string }) => {
+        runCommandSync: vi.fn().mockImplementation(async function ({ command }: { command: string }) {
           // Main cleanup fails due to permission error
           if (command.includes('find "/app"') && command.includes('-exec rm -rf')) {
             return makeRunCommandResult({
@@ -826,7 +826,7 @@ describe('ProjectImportService', () => {
 
     it('should fail when copy command fails', async () => {
       const mockTasks = {
-        runCommandSync: vi.fn().mockImplementation(async ({ command }: { command: string }) => {
+        runCommandSync: vi.fn().mockImplementation(async function ({ command }: { command: string }) {
           // Cleanup succeeds
           if (command.includes('-exec rm -rf')) {
             return makeRunCommandResult();
@@ -857,7 +857,7 @@ describe('ProjectImportService', () => {
     it('should preserve protected directories during cleanup', async () => {
       let cleanupCommand = '';
       const mockTasks = {
-        runCommandSync: vi.fn().mockImplementation(async ({ command }: { command: string }) => {
+        runCommandSync: vi.fn().mockImplementation(async function ({ command }: { command: string }) {
           if (command.includes('find "/app"') && command.includes('-exec rm -rf')) {
             cleanupCommand = command;
           }
@@ -886,7 +886,7 @@ describe('ProjectImportService', () => {
       // With braces: `A && { B && C || true; }` - if A fails, failure propagates
       let cleanupCommand = '';
       const mockTasks = {
-        runCommandSync: vi.fn().mockImplementation(async ({ command }: { command: string }) => {
+        runCommandSync: vi.fn().mockImplementation(async function ({ command }: { command: string }) {
           if (command.includes('find "/app"') && command.includes('-exec rm -rf')) {
             cleanupCommand = command;
           }
@@ -922,20 +922,20 @@ describe('ProjectImportService', () => {
       };
 
       vi.mocked(createForWorkspace).mockReturnValue({ tasks: mockTasks } as any);
-      vi.mocked(AppRepository).mockImplementation(() => ({
+      vi.mocked(AppRepository).mockImplementation(function () { return ({
         findById: vi.fn().mockReturnValue({
           id: testAppId,
           path: testAppPath,
           status: 'created',
         }),
         updateStatus: vi.fn(),
-      }) as any);
-      vi.mocked(ImportJobRepository).mockImplementation(() => ({
+      }) as any; });
+      vi.mocked(ImportJobRepository).mockImplementation(function () { return ({
         update: vi.fn(),
         updateStatus: vi.fn(),
         markCompleted: vi.fn(),
         markFailed: vi.fn(),
-      }) as any);
+      }) as any; });
       vi.mocked(existsSync).mockReturnValue(true);
       vi.mocked(zipSecurityService.validate).mockResolvedValue({
         valid: true,

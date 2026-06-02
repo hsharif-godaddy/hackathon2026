@@ -89,7 +89,7 @@ describe('SsoLoginPrompt', () => {
   it('renders MockLoginDialog when isMockAuth and onShowMockLogin fires', () => {
     mockIsMockAuth.current = true;
     let onShowMockLogin: (() => void) | undefined;
-    mockSignIn.mockImplementation((opts: { onShowMockLogin?: () => void }) => {
+    mockSignIn.mockImplementation(function (opts: { onShowMockLogin?: () => void }) {
       onShowMockLogin = opts.onShowMockLogin;
     });
 
@@ -107,7 +107,7 @@ describe('SsoLoginPrompt', () => {
 
   it('does not render MockLoginDialog when isMockAuth=false even if callback fires', () => {
     let onShowMockLogin: (() => void) | undefined;
-    mockSignIn.mockImplementation((opts: { onShowMockLogin?: () => void }) => {
+    mockSignIn.mockImplementation(function (opts: { onShowMockLogin?: () => void }) {
       onShowMockLogin = opts.onShowMockLogin;
     });
 

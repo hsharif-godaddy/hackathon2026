@@ -7,7 +7,7 @@ import { SSETransport } from '../SSETransport'
 import type { ChatTransportCallbacks } from '../types'
 
 vi.mock('@/lib/agent-fetch', () => ({
-  agentFetch: vi.fn((url: string, init: any) => {
+  agentFetch: vi.fn(function (url: string, init: any) {
     const { siteId: _siteId, ...rest } = init ?? {}
     return fetch(url, {
       ...rest,
@@ -29,13 +29,13 @@ let eventSourceInstances: any[] = []
 let autoFireInitialize = true
 
 vi.mock('eventsource', () => ({
-  EventSource: vi.fn().mockImplementation((url: string, options: any) => {
+  EventSource: vi.fn().mockImplementation(function (url: string, options: any) {
     lastEventSourceOptions = options
     const instance = {
       url,
       readyState: 1,
       close: vi.fn(),
-      addEventListener: vi.fn().mockImplementation((type: string, handler: (e: MessageEvent) => void) => {
+      addEventListener: vi.fn().mockImplementation(function (type: string, handler: (e: MessageEvent) => void) {
         if (!eventListeners[type]) eventListeners[type] = []
         eventListeners[type].push(handler)
       }),
@@ -421,16 +421,16 @@ describe('SSETransport', () => {
       const focusListeners: Array<() => void> = []
       const visibilityListeners: Array<() => void> = []
       const mockWindow = {
-        addEventListener: vi.fn((_e: string, fn: () => void) => { focusListeners.push(fn) }),
-        removeEventListener: vi.fn((_e: string, fn: () => void) => {
+        addEventListener: vi.fn(function (_e: string, fn: () => void) { focusListeners.push(fn) }),
+        removeEventListener: vi.fn(function (_e: string, fn: () => void) {
           const idx = focusListeners.indexOf(fn)
           if (idx >= 0) focusListeners.splice(idx, 1)
         }),
       }
       const mockDocument = {
         visibilityState: 'visible',
-        addEventListener: vi.fn((_e: string, fn: () => void) => { visibilityListeners.push(fn) }),
-        removeEventListener: vi.fn((_e: string, fn: () => void) => {
+        addEventListener: vi.fn(function (_e: string, fn: () => void) { visibilityListeners.push(fn) }),
+        removeEventListener: vi.fn(function (_e: string, fn: () => void) {
           const idx = visibilityListeners.indexOf(fn)
           if (idx >= 0) visibilityListeners.splice(idx, 1)
         }),

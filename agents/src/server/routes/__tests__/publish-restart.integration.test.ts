@@ -11,9 +11,9 @@ const originalEnv = { ...process.env };
 vi.mock('../../../database/repositories/AppRepository.js', () => {
   const mockFindById = vi.fn();
   return {
-    AppRepository: vi.fn().mockImplementation(() => ({
+    AppRepository: vi.fn().mockImplementation(function () { return {
       findById: mockFindById,
-    })),
+    }; }),
   };
 });
 
@@ -25,7 +25,7 @@ vi.mock('../../../utils/dev-supervisor-client-factory.js', () => ({
 }));
 
 vi.mock('../../../utils/git.js', () => ({
-  GitUtils: vi.fn().mockImplementation(() => ({})),
+  GitUtils: vi.fn().mockImplementation(function () { return {}; }),
 }));
 
 import publishRouter from '../publish.js';

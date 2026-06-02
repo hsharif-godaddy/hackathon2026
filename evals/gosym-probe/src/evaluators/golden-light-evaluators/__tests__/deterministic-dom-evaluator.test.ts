@@ -236,7 +236,7 @@ describe('DeterministicDomEvaluator', function tests() {
 
   describe('error logging', function errorLogging() {
     it('logs spec name and error message to console.warn when spec throws', async function logsOnThrow() {
-      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(function () {});
       const evaluator = new DeterministicDomEvaluator(
         makeSpec({ name: 'broken_spec', scoreResult: 'throw' }),
       );

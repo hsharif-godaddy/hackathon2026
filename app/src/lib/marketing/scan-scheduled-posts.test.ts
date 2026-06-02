@@ -16,7 +16,7 @@ vi.mock('@/lib/request-context', () => ({
 }));
 
 vi.mock('gray-matter', () => ({
-  default: vi.fn((content: string) => {
+  default: vi.fn(function (content: string) {
     // Simple frontmatter parser for testing
     const match = content.match(/^---\n([\s\S]*?)\n---/);
     if (!match) return { data: {}, content };
@@ -201,7 +201,7 @@ Content`;
 
       let scanCount = 0;
       (fs.access as any).mockResolvedValue(undefined);
-      (fs.readdir as any).mockImplementation(async () => {
+      (fs.readdir as any).mockImplementation(async function () {
         scanCount++;
         // Simulate slow file system operation
         await new Promise(resolve => setTimeout(resolve, 50));

@@ -100,9 +100,9 @@ describe('GET /api/support-bundle inFlightBundles cleanup', () => {
     // the cleanup test above must distinguish from a permanent block.
     let release!: () => void;
     streamConfiguredLogSourcesMock.mockImplementation(
-      () => new Promise((resolve) => {
+      function () { return new Promise((resolve) => {
         release = () => resolve({});
-      }),
+      }); },
     );
 
     const first = await GET(makeRequest('busy-app'), stubCtx);

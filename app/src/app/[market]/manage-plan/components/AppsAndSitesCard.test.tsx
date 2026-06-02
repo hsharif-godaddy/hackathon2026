@@ -144,7 +144,7 @@ describe('AppsAndSitesCard', function appsAndSitesCardTests() {
     vi.restoreAllMocks();
     Object.defineProperty(window, 'matchMedia', {
       writable: true,
-      value: vi.fn().mockImplementation((query: string) => ({
+      value: vi.fn().mockImplementation(function (query: string) { return {
         matches: false,
         media: query,
         onchange: null,
@@ -153,7 +153,7 @@ describe('AppsAndSitesCard', function appsAndSitesCardTests() {
         addEventListener: vi.fn(),
         removeEventListener: vi.fn(),
         dispatchEvent: vi.fn(),
-      })),
+      }; }),
     });
     // Mock fetch for site details (used when opening unpublish modal)
     global.fetch = vi.fn().mockResolvedValue({
@@ -730,7 +730,7 @@ describe('AppsAndSitesCard', function appsAndSitesCardTests() {
       mockPublishMutateAsync.mockRejectedValueOnce(new Error('Initial error'));
 
       // Mock unpublish to capture the call
-      mockUnpublishMutate.mockImplementation(() => {});
+      mockUnpublishMutate.mockImplementation(function () {});
 
       renderWithProviders(
         <AppsAndSitesCard
@@ -763,7 +763,7 @@ describe('AppsAndSitesCard', function appsAndSitesCardTests() {
       });
 
       // Mock unpublish to return success without domainJobId
-      mockUnpublishMutate.mockImplementation((params, options) => {
+      mockUnpublishMutate.mockImplementation(function (params, options) {
         options?.onSuccess?.({ success: true, message: 'Unpublished' });
       });
 

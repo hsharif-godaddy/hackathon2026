@@ -57,7 +57,7 @@ const mockLogger = {
 vi.mock('socket.io-client', async () => {
   const { createSocketSimulator } = await import('./test-utils/socket-simulator')
   return {
-    io: vi.fn(() => {
+    io: vi.fn(function () {
       const socket = createSocketSimulator()
       mockSockets.push(socket)
       return socket
@@ -66,21 +66,21 @@ vi.mock('socket.io-client', async () => {
 })
 
 vi.mock('uuid', () => ({
-  validate: vi.fn(() => true),
+  validate: vi.fn(function () { return true; }),
 }))
 
 vi.mock('@tanstack/react-query', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@tanstack/react-query')>()
   return {
     ...actual,
-    useQueryClient: vi.fn(() => ({
+    useQueryClient: vi.fn(function () { return {
       invalidateQueries: vi.fn(),
-    })),
-    useQuery: vi.fn(() => ({
+    }; }),
+    useQuery: vi.fn(function () { return {
       data: false,
       isLoading: false,
       error: null,
-    })),
+    }; }),
   }
 })
 
@@ -88,49 +88,49 @@ vi.mock('@tanstack/react-query', async (importOriginal) => {
 const mockGetState = vi.fn()
 
 vi.mock('@/stores/useStreamingConversationStore', () => ({
-  useWebSocketState: vi.fn(() => ({ connected: false, status: 'idle' })),
-  useCurrentAppId: vi.fn(() => storeState?.currentAppId ?? null),
-  useIsActivelyStreaming: vi.fn(() => false),
-  useStartNewStream: vi.fn(() => mockStartNewStream),
-  useAppendTextSegment: vi.fn(() => mockAppendTextSegment),
-  useAddToolStartSegment: vi.fn(() => mockAddToolStartSegment),
-  useAddToolCallSegment: vi.fn(() => mockAddToolCallSegment),
-  useAddToolResultSegment: vi.fn(() => mockAddToolResultSegment),
-  useMarkMaxStepsReached: vi.fn(() => mockMarkMaxStepsReached),
-  useMarkUpstreamError: vi.fn(() => mockMarkUpstreamError),
-  useMarkBudgetExceeded: vi.fn(() => mockMarkBudgetExceeded),
-  useFinalizeStream: vi.fn(() => mockFinalizeStream),
-  useSetWebSocketState: vi.fn(() => mockSetWebSocketState),
-  useSetStreamingState: vi.fn(() => mockSetStreamingState),
-  useSetIsLoading: vi.fn(() => mockSetIsLoading),
+  useWebSocketState: vi.fn(function () { return { connected: false, status: 'idle' }; }),
+  useCurrentAppId: vi.fn(function () { return storeState?.currentAppId ?? null; }),
+  useIsActivelyStreaming: vi.fn(function () { return false; }),
+  useStartNewStream: vi.fn(function () { return mockStartNewStream; }),
+  useAppendTextSegment: vi.fn(function () { return mockAppendTextSegment; }),
+  useAddToolStartSegment: vi.fn(function () { return mockAddToolStartSegment; }),
+  useAddToolCallSegment: vi.fn(function () { return mockAddToolCallSegment; }),
+  useAddToolResultSegment: vi.fn(function () { return mockAddToolResultSegment; }),
+  useMarkMaxStepsReached: vi.fn(function () { return mockMarkMaxStepsReached; }),
+  useMarkUpstreamError: vi.fn(function () { return mockMarkUpstreamError; }),
+  useMarkBudgetExceeded: vi.fn(function () { return mockMarkBudgetExceeded; }),
+  useFinalizeStream: vi.fn(function () { return mockFinalizeStream; }),
+  useSetWebSocketState: vi.fn(function () { return mockSetWebSocketState; }),
+  useSetStreamingState: vi.fn(function () { return mockSetStreamingState; }),
+  useSetIsLoading: vi.fn(function () { return mockSetIsLoading; }),
   useStreamingConversationStore: {
     getState: mockGetState,
     setState: vi.fn(),
-    subscribe: vi.fn(() => vi.fn()),
+    subscribe: vi.fn(function () { return vi.fn(); }),
   },
 }))
 
 vi.mock('@/components/providers/AuthProvider', () => ({
-  useAuthContext: vi.fn(() => ({
+  useAuthContext: vi.fn(function () { return {
     tokenAuthType: 'basic',
     isAuthenticated: true,
     isLoading: false,
-  }))
+  }; })
 }))
 
 vi.mock('@/stores/useTodoListStore', () => ({
   useTodoListStore: {
-    getState: vi.fn(() => ({
+    getState: vi.fn(function () { return {
       updateFromToolCall: vi.fn(),
-    })),
+    }; }),
   },
 }))
 
 vi.mock('@/stores/useGitStore', () => ({
   useGitStore: {
-    getState: vi.fn(() => ({
+    getState: vi.fn(function () { return {
       selectCommit: vi.fn(),
-    })),
+    }; }),
   },
 }))
 
@@ -140,26 +140,26 @@ vi.mock('@/lib/request-context', () => ({
 
 vi.mock('@/lib/socketRegistry', () => ({
   setSharedSocket: vi.fn(),
-  getSharedSocket: vi.fn(() => null),
+  getSharedSocket: vi.fn(function () { return null; }),
 }))
 
 vi.mock('@/services/AgentService', () => ({
   AgentService: {
-    getInstance: vi.fn(() => ({})),
+    getInstance: vi.fn(function () { return {}; }),
   },
 }))
 
 vi.mock('@/app/[market]/develop/components/visualContextCapture', () => ({
-  captureVisualContext: vi.fn(() => Promise.resolve(null)),
+  captureVisualContext: vi.fn(function () { return Promise.resolve(null); }),
 }))
 
 vi.mock('@/utils/instrumentation', () => ({
-  logImpressionEvent: vi.fn(() => vi.fn()),
+  logImpressionEvent: vi.fn(function () { return vi.fn(); }),
 }))
 
 vi.mock('@/config/dynamic-api', () => ({
   dynamicApiConfigService: {
-    getConfigForSite: vi.fn(() => Promise.resolve({ baseUrl: 'http://localhost:4000' })),
+    getConfigForSite: vi.fn(function () { return Promise.resolve({ baseUrl: 'http://localhost:4000' }); }),
   },
 }))
 
@@ -188,7 +188,7 @@ describe('WebSocket Recovery Integration', () => {
 
     // IMPORTANT: Set up mockGetState to always return the latest storeState reference
     // This must be done AFTER storeState is created and AFTER vi.clearAllMocks()
-    mockGetState.mockImplementation(() => storeState)
+    mockGetState.mockImplementation(function () { return storeState; })
 
     // Reset action mocks
     mockSetWebSocketState.mockReset()
@@ -225,7 +225,7 @@ describe('WebSocket Recovery Integration', () => {
     mockLogger.error.mockReset()
 
     // Mock fetch for JWT token
-    global.fetch = vi.fn((url) => {
+    global.fetch = vi.fn(function (url) {
       const urlString = String(url)
       if (urlString.includes('/api/auth/agent-token')) {
         return Promise.resolve({

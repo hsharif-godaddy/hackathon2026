@@ -86,7 +86,7 @@ vi.mock('@/stores/useDevelopPageStore', () => ({
     (selector: (state: typeof mockDevelopState) => unknown) => selector(mockDevelopState),
     {
       getState: () => mockDevelopState,
-      subscribe: vi.fn(() => () => {}),
+      subscribe: vi.fn(function () { return () => {}; }),
     },
   ),
 }));
@@ -112,7 +112,7 @@ describe('usePublishApp', () => {
   });
 
   it('includes dnsUpdateConsent=true in deployment payload', async () => {
-    mockAppFetch.mockImplementation((url: string) => {
+    mockAppFetch.mockImplementation(function (url: string) {
       if (url.includes('/deployments')) {
         return Promise.resolve({
           ok: false,
@@ -158,7 +158,7 @@ describe('usePublishApp', () => {
   });
 
   it('omits dnsUpdateConsent when it is undefined', async () => {
-    mockAppFetch.mockImplementation((url: string) => {
+    mockAppFetch.mockImplementation(function (url: string) {
       if (url.includes('/deployments')) {
         return Promise.resolve({
           ok: false,
@@ -203,7 +203,7 @@ describe('usePublishApp', () => {
   });
 
   it('includes dnsUpdateConsent=false in deployment payload', async () => {
-    mockAppFetch.mockImplementation((url: string) => {
+    mockAppFetch.mockImplementation(function (url: string) {
       if (url.includes('/deployments')) {
         return Promise.resolve({
           ok: false,

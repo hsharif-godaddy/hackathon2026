@@ -15,9 +15,9 @@ import type { Request, Response } from 'express';
 
 // Mock customer-app dependencies that aren't available in agents workspace.
 vi.mock('date-fns', () => ({
-	parseISO: vi.fn((str: string) => new Date(str)),
-	isValid: vi.fn((d: Date) => !isNaN(d.getTime())),
-	addMinutes: vi.fn((d: Date, m: number) => new Date(d.getTime() + m * 60000)),
+	parseISO: vi.fn(function (str: string) { return new Date(str); }),
+	isValid: vi.fn(function (d: Date) { return !isNaN(d.getTime()); }),
+	addMinutes: vi.fn(function (d: Date, m: number) { return new Date(d.getTime() + m * 60000); }),
 	format: vi.fn(),
 	parse: vi.fn(),
 	isAfter: vi.fn(),
@@ -30,9 +30,9 @@ vi.mock('date-fns', () => ({
 }));
 
 vi.mock('date-fns-tz', () => ({
-	fromZonedTime: vi.fn((dateTimeStr: string) => new Date(dateTimeStr)),
-	toZonedTime: vi.fn((date: Date) => date),
-	formatInTimeZone: vi.fn((date: Date, tz: string, fmt: string) => {
+	fromZonedTime: vi.fn(function (dateTimeStr: string) { return new Date(dateTimeStr); }),
+	toZonedTime: vi.fn(function (date: Date) { return date; }),
+	formatInTimeZone: vi.fn(function (date: Date, tz: string, fmt: string) {
 		// Apply offset for America/New_York (UTC-5 in winter) to match test expectations
 		const offset = tz === 'America/New_York' ? -5 : 0;
 		const adjusted = new Date(date.getTime() + offset * 3600000);
@@ -49,11 +49,11 @@ vi.mock('date-fns-tz', () => ({
 }));
 
 vi.mock('drizzle-orm', () => ({
-	and: vi.fn((...args: any[]) => args),
-	gte: vi.fn((field: string, val: any) => ({ op: 'gte', field, val })),
-	lte: vi.fn((field: string, val: any) => ({ op: 'lte', field, val })),
-	ne: vi.fn((field: string, val: any) => ({ op: 'ne', field, val })),
-	desc: vi.fn((field: string) => ({ op: 'desc', field })),
+	and: vi.fn(function (...args: any[]) { return args; }),
+	gte: vi.fn(function (field: string, val: any) { return { op: 'gte', field, val }; }),
+	lte: vi.fn(function (field: string, val: any) { return { op: 'lte', field, val }; }),
+	ne: vi.fn(function (field: string, val: any) { return { op: 'ne', field, val }; }),
+	desc: vi.fn(function (field: string) { return { op: 'desc', field }; }),
 	eq: vi.fn(),
 }));
 
@@ -87,11 +87,11 @@ vi.mock('../../../../lib/appointments', () => ({
 }));
 
 vi.mock('../../../utils/payment-provider-factory', () => ({
-	getPaymentProvider: vi.fn(() => ({
+	getPaymentProvider: vi.fn(function () { return {
 		createPaymentSession: vi.fn(),
 		getOrderStatus: vi.fn(),
-	})),
-	isPaymentProviderConfigured: vi.fn(() => false),
+	}; }),
+	isPaymentProviderConfigured: vi.fn(function () { return false; }),
 }));
 
 vi.mock('../../../../lib/logger', () => ({
@@ -120,13 +120,13 @@ function createMockReq(query: Record<string, string> = {}): Partial<Request> {
 	return {
 		query,
 		protocol: 'http',
-		get: vi.fn(() => 'localhost:3000'),
+		get: vi.fn(function () { return 'localhost:3000'; }),
 	};
 }
 
 function createMockRes(): { res: Partial<Response>; json: ReturnType<typeof vi.fn>; status: ReturnType<typeof vi.fn> } {
 	const json = vi.fn();
-	const status = vi.fn(() => ({ json }));
+	const status = vi.fn(function () { return { json }; });
 	return {
 		res: { json, status } as Partial<Response>,
 		json,

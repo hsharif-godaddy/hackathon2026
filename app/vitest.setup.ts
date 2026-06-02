@@ -84,7 +84,7 @@ if (typeof window !== 'undefined') {
   }) as typeof window.getComputedStyle;
 
   // Mock IntersectionObserver
-  global.IntersectionObserver = vi.fn().mockImplementation(() => ({
+  global.IntersectionObserver = vi.fn().mockImplementation(function () { return {
     observe: vi.fn(),
     unobserve: vi.fn(),
     disconnect: vi.fn(),
@@ -92,19 +92,19 @@ if (typeof window !== 'undefined') {
     rootMargin: '',
     thresholds: [],
     takeRecords: () => [],
-  }));
+  }; });
 
   // Mock ResizeObserver
-  global.ResizeObserver = vi.fn().mockImplementation(() => ({
+  global.ResizeObserver = vi.fn().mockImplementation(function () { return {
     observe: vi.fn(),
     unobserve: vi.fn(),
     disconnect: vi.fn(),
-  }));
+  }; });
 
   // Mock window.matchMedia
   Object.defineProperty(window, 'matchMedia', {
     writable: true,
-    value: vi.fn().mockImplementation((query: string) => ({
+    value: vi.fn().mockImplementation(function (query: string) { return {
       matches: false,
       media: query,
       onchange: null,
@@ -113,7 +113,7 @@ if (typeof window !== 'undefined') {
       addEventListener: vi.fn(),
       removeEventListener: vi.fn(),
       dispatchEvent: vi.fn(),
-    })),
+    }; }),
   });
 }
 

@@ -508,7 +508,7 @@ describe('AtlasCrawlerAdapter', () => {
       // ~18s on its own. Intercept just those two values; let AbortSignal.timeout
       // and any other timers continue using the real clock.
       realSetTimeout = global.setTimeout;
-      vi.spyOn(global, 'setTimeout').mockImplementation(((fn: () => void, ms?: number) => {
+      vi.spyOn(global, 'setTimeout').mockImplementation((function (fn: () => void, ms?: number) {
         if (ms === 2000 || ms === 5000) {
           Promise.resolve().then(fn);
           return 0 as never;

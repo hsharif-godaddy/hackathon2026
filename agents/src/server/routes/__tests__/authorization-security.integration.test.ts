@@ -34,7 +34,7 @@ describe('Cross-Tenant Authorization Security - Integration Tests', () => {
 
   beforeAll(() => {
     // Mock JWT auth middleware to inject test agent contexts
-    vi.spyOn(jwtAuthMiddleware, 'authenticate').mockImplementation((req: any, res, next) => {
+    vi.spyOn(jwtAuthMiddleware, 'authenticate').mockImplementation(function (req: any, res, next) {
       const authHeader = req.headers.authorization;
 
       if (!authHeader) {

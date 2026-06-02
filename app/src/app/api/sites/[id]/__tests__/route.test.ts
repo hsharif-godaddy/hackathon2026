@@ -23,7 +23,7 @@ const {
 }));
 
 vi.mock('@/lib/control-plane', () => ({
-  getControlPlaneAdapter: vi.fn(() => ({ getSite: mockGetSite })),
+  getControlPlaneAdapter: vi.fn(function () { return { getSite: mockGetSite }; }),
 }));
 vi.mock('@/lib/agent-fetch', () => ({ agentFetch: mockAgentFetch }));
 vi.mock('@/lib/switchboard/server', () => ({
@@ -34,7 +34,7 @@ vi.mock('@/lib/request-context', () => ({ logger: mockLogger }));
 vi.mock('@/lib/customer-auth', () => ({
   withCustomerAuth: (handler: any) => async (request: NextRequest, ...args: any[]) =>
     handler(request, { isAuthenticated: true, jwt: 'test-jwt', user: {} }, ...args),
-  customerHasAccount: vi.fn(() => true),
+  customerHasAccount: vi.fn(function () { return true; }),
   createCustomerAuthError: vi.fn(),
 }));
 

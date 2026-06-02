@@ -34,7 +34,7 @@ vi.mock('@/lib/mgmt-airo', async () => {
   const actual = await vi.importActual<any>('@/lib/mgmt-airo');
   return {
     ...actual,
-    AiroMgmtClient: vi.fn().mockImplementation(() => mockMgmtClient)
+    AiroMgmtClient: vi.fn().mockImplementation(function () { return mockMgmtClient; })
   };
 });
 

@@ -4,11 +4,11 @@ import { applyPortReplacements, injectPortHandling } from '../ExpressPortInjecto
 // Mock Logger
 vi.mock('../../logging/index.js', () => ({
   Logger: {
-    create: vi.fn(() => ({
+    create: vi.fn(function () { return {
       info: vi.fn(),
       warn: vi.fn(),
       error: vi.fn(),
-    })),
+    }; }),
   },
 }));
 

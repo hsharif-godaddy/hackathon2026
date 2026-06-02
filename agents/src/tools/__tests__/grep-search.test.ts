@@ -7,9 +7,9 @@ const { mockFindById, mockCreateForWorkspace, mockRipgrepSearch } = vi.hoisted((
 }));
 
 vi.mock('../../database/repositories/AppRepository.js', () => ({
-  AppRepository: vi.fn().mockImplementation(() => ({
+  AppRepository: vi.fn().mockImplementation(function () { return {
     findById: mockFindById
-  }))
+  }; })
 }));
 
 vi.mock('../../workspace/index.js', () => ({
@@ -25,7 +25,7 @@ vi.mock('../../utils/ripgrep-util.js', () => ({
 vi.mock('../../utils/path-helper.js', async () => {
   const nodePath = await import('node:path');
   return {
-    isPathSafe: vi.fn().mockImplementation((filePath: string, appPath: string) => {
+    isPathSafe: vi.fn().mockImplementation(function (filePath: string, appPath: string) {
       const resolved = nodePath.resolve(filePath);
       const rel = nodePath.relative(appPath, resolved);
       return rel !== '..' && !rel.startsWith(`..${nodePath.sep}`);

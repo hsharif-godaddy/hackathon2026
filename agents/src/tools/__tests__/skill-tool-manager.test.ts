@@ -6,7 +6,7 @@ import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { SkillToolManager } from '../skill-tool-manager.js';
 
 vi.mock('../../workspace/index.js', () => ({
-  createForWorkspace: vi.fn(() => null),
+  createForWorkspace: vi.fn(function () { return null; }),
 }));
 
 vi.mock('../../logging/index.js');

@@ -11,7 +11,7 @@ import HeroExamples from '@/experiments/homepage-engagement-variations/hero_cont
 import { renderWithProviders } from '@/tests/test-utils';
 
 const mockLogEngagement = vi.hoisted(() => vi.fn());
-const mockUseSwitchboard = vi.hoisted(() => vi.fn(() => undefined));
+const mockUseSwitchboard = vi.hoisted(() => vi.fn(function () { return undefined; }));
 
 vi.mock('@/hooks/useAnalytics', () => ({
   useAnalytics: () => ({ cohort: 'c', logAnalytics: mockLogEngagement }),
@@ -35,7 +35,7 @@ vi.mock('@/hooks/useSwitchboard', () => ({
 
 vi.mock('@/utils/instrumentation', () => ({
   generateClickEID: (id: string) => id,
-  logClickEvent: vi.fn(() => vi.fn()),
+  logClickEvent: vi.fn(function () { return vi.fn(); }),
 }));
 
 describe('HeroExamples (hero_content_improvement)', () => {

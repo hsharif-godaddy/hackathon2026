@@ -42,8 +42,8 @@ vi.mock('ai', async importOriginal => {
   return {
     ...actual,
     ToolLoopAgent: MockToolLoopAgent,
-    stepCountIs: vi.fn((value: number) => ({ type: 'step_count', value })),
-    hasToolCall: vi.fn((name: string) => ({ type: 'has_tool_call', value: name }))
+    stepCountIs: vi.fn(function (value: number) { return { type: 'step_count', value }; }),
+    hasToolCall: vi.fn(function (name: string) { return { type: 'has_tool_call', value: name }; })
   }
 })
 
@@ -64,7 +64,7 @@ describe('AgentWrapper integration with ToolLoopAgent settings', () => {
 
     const aiModule = await import('ai')
     MockToolLoopAgent = aiModule.ToolLoopAgent as any
-    MockToolLoopAgent.mockImplementation((settings: unknown) => {
+    MockToolLoopAgent.mockImplementation(function (settings: unknown) {
       lastSettings = settings
       return mockAgent
     })

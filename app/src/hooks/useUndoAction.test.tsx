@@ -42,7 +42,7 @@ vi.mock('@/app/[market]/develop/components/utils', () => ({
 vi.mock('@/contexts/WebSocketContext', () => ({
   useWebSocketContext: () => ({
     sendMessage: vi.fn(),
-    loadHistory: vi.fn(() => true),
+    loadHistory: vi.fn(function () { return true; }),
     stopGeneration: mockStopGeneration,
   }),
 }));
@@ -290,9 +290,9 @@ describe('useUndoAction', () => {
       // can assert that the mutation hasn't fired before the ack lands.
       let resolveStop: () => void = () => {};
       mockStopGeneration.mockImplementationOnce(
-        () => new Promise<void>((resolve) => {
+        function () { return new Promise<void>((resolve) => {
           resolveStop = resolve;
-        }),
+        }); },
       );
 
       const { result } = renderHook(() => useUndoAction(), { wrapper: createWrapper() });
@@ -383,7 +383,7 @@ describe('useUndoAction', () => {
       vi.useFakeTimers();
       try {
         mockIsStreaming.value = true;
-        mockStopGeneration.mockImplementationOnce(() => new Promise<void>(() => { /* never resolves */ }));
+        mockStopGeneration.mockImplementationOnce(function () { return new Promise<void>(() => { /* never resolves */ }); });
 
         const { result } = renderHook(() => useUndoAction(), { wrapper: createWrapper() });
 

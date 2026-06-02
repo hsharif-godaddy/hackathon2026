@@ -34,7 +34,7 @@ describe('useAppThumbnail', () => {
   });
 
   it('should return loading state initially', () => {
-    vi.mocked(agentFetch).mockImplementation(() => new Promise(() => {}));
+    vi.mocked(agentFetch).mockImplementation(function () { return new Promise(() => {}); });
 
     const { result } = renderHookWithProviders(() => useAppThumbnail(mockSiteId));
 

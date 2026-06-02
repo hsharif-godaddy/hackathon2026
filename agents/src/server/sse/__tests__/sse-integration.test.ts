@@ -19,14 +19,11 @@ describe('SSE integration', () => {
   let registry: EventStreamRegistry
 
   const mockLifecycle = {
-    create: vi.fn().mockImplementation((scope: { appId: string }, agentId: string) =>
-      Promise.resolve({ id: 'conv_new', appId: scope.appId, agentId })
+    create: vi.fn().mockImplementation(function (scope: { appId: string }, agentId: string) { return Promise.resolve({ id: 'conv_new', appId: scope.appId, agentId }); }
     ),
-    getOrCreateForApp: vi.fn().mockImplementation((scope: { appId: string }, agentId: string) =>
-      Promise.resolve({ conversation: { id: 'conv_new', appId: scope.appId, agentId }, isNew: true })
+    getOrCreateForApp: vi.fn().mockImplementation(function (scope: { appId: string }, agentId: string) { return Promise.resolve({ conversation: { id: 'conv_new', appId: scope.appId, agentId }, isNew: true }); }
     ),
-    getById: vi.fn().mockImplementation((id: string) =>
-      Promise.resolve({ id, appId: 'abcdefghij', agentId: 'develop' })
+    getById: vi.fn().mockImplementation(function (id: string) { return Promise.resolve({ id, appId: 'abcdefghij', agentId: 'develop' }); }
     ),
     getLatestForApp: vi.fn().mockResolvedValue(null),
   }

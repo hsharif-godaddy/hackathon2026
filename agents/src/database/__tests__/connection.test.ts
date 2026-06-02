@@ -47,7 +47,10 @@ function makeMockDb() {
 
 describe('database connection', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    // resetAllMocks (not just clearAllMocks) so vi.fn() implementations
+    // set in one test (e.g. mockUnlinkSync throwing EACCES) don't leak into
+    // the next. vitest 4's restoreAllMocks only restores vi.spyOn spies.
+    vi.resetAllMocks();
     vi.resetModules();
   });
 
@@ -74,7 +77,7 @@ describe('database connection', () => {
     });
 
     it('removes stale SHM file before opening', async () => {
-      mockExistsSync.mockImplementation((p: string) => p.endsWith('-shm'));
+      mockExistsSync.mockImplementation(function (p: string) { return p.endsWith('-shm'); });
       mockDatabaseCtor.mockReturnValue(makeMockDb());
 
       const { getDatabase } = await loadModule();
@@ -84,8 +87,8 @@ describe('database connection', () => {
     });
 
     it('throws when SHM unlink fails with EACCES', async () => {
-      mockExistsSync.mockImplementation((p: string) => p.endsWith('-shm'));
-      mockUnlinkSync.mockImplementation(() => {
+      mockExistsSync.mockImplementation(function (p: string) { return p.endsWith('-shm'); });
+      mockUnlinkSync.mockImplementation(function () {
         const err = new Error('permission denied') as NodeJS.ErrnoException;
         err.code = 'EACCES';
         throw err;
@@ -111,7 +114,7 @@ describe('database connection', () => {
     });
 
     it('still closes database when checkpoint fails', async () => {
-      mockPragma.mockImplementation(() => { throw new Error('db locked'); });
+      mockPragma.mockImplementation(function () { throw new Error('db locked'); });
       mockDatabaseCtor.mockReturnValue(makeMockDb());
 
       const { getDatabase, closeDatabase } = await loadModule();

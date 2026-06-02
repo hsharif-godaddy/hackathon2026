@@ -80,7 +80,7 @@ describe('useMockAuth', () => {
 
   it('should update state when subscription callback called', async () => {
     let subscriptionCallback: ((state: any) => void) | null = null;
-    vi.mocked(mockAuthManager.subscribe).mockImplementation((callback) => {
+    vi.mocked(mockAuthManager.subscribe).mockImplementation(function (callback) {
       subscriptionCallback = callback;
       return () => {};
     });

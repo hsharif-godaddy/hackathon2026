@@ -4,18 +4,18 @@ const mockView = vi.fn()
 const mockWrite = vi.fn().mockResolvedValue({ bytesWritten: 100 })
 
 vi.mock('../../../workspace/index.js', () => ({
-  createForWorkspace: vi.fn(() => ({
+  createForWorkspace: vi.fn(function () { return {
     files: { view: mockView, write: mockWrite }
-  }))
+  }; })
 }))
 vi.mock('../../../logging/index.js', () => ({
   Logger: {
-    create: vi.fn(() => ({
+    create: vi.fn(function () { return {
       info: vi.fn(),
       error: vi.fn(),
       warn: vi.fn(),
       debug: vi.fn()
-    }))
+    }; })
   },
   logger: {
     info: vi.fn(),
@@ -24,9 +24,9 @@ vi.mock('../../../logging/index.js', () => ({
   }
 }))
 vi.mock('../../../database/repositories/AppRepository.js', () => ({
-  AppRepository: vi.fn().mockImplementation(() => ({
-    findById: vi.fn((id: string) => id === 'test-app' ? { path: '/test/app' } : undefined)
-  }))
+  AppRepository: vi.fn().mockImplementation(function () { return {
+    findById: vi.fn(function (id: string) { return id === 'test-app' ? { path: '/test/app' } : undefined; })
+  }; })
 }))
 
 const mockAppPlanExecute = vi.fn().mockResolvedValue({ success: true })
@@ -46,14 +46,14 @@ vi.mock('../../utils/model-selection.js', () => ({
 
 vi.mock('@airo/ai-lib', () => ({
   generateTextWithTracking: vi.fn(),
-  createTool: vi.fn((_desc: any, _schema: any, fn: any) => ({ execute: fn })),
-  createPromptBuilder: vi.fn(() => ({
+  createTool: vi.fn(function (_desc: any, _schema: any, fn: any) { return { execute: fn }; }),
+  createPromptBuilder: vi.fn(function () { return {
     file: vi.fn().mockReturnThis(),
     build: vi.fn().mockResolvedValue('test prompt')
-  }))
+  }; })
 }))
 vi.mock('@airo/ai-common', () => ({
-  llmMetadataContext: { getStore: vi.fn(), run: vi.fn((_meta: any, fn: any) => fn()) }
+  llmMetadataContext: { getStore: vi.fn(), run: vi.fn(function (_meta: any, fn: any) { return fn(); }) }
 }))
 vi.mock('@airo/ai-grants', () => ({
   buildLitellmMetadataFromContext: vi.fn(),
@@ -82,8 +82,7 @@ describe('font-theme persistence', () => {
     mockAppPlanExecute.mockResolvedValue({ success: true })
 
     originalFetch = global.fetch
-    global.fetch = vi.fn(() =>
-      Promise.resolve({ ok: true, status: 200 } as Response)
+    global.fetch = vi.fn(function () { return Promise.resolve({ ok: true, status: 200 } as Response); }
     ) as any
   })
 

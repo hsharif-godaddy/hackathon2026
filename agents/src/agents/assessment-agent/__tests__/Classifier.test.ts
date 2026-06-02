@@ -115,7 +115,7 @@ describe('Classifier pipeline', () => {
     })
 
     mocks.llmMetadataContextRun.mockImplementation(
-      async (_metadata: unknown, fn: () => Promise<unknown>) => fn()
+      async function (_metadata: unknown, fn: () => Promise<unknown>) { return fn(); }
     )
 
     mocks.embeddingClassifierInitialize.mockResolvedValue(undefined)
@@ -387,7 +387,7 @@ describe('Classifier pipeline', () => {
 
     it('should apply billing-safety fallback when Haiku times out and classifier returned fix (requiresHaikuVerification)', async () => {
       mockLRClassify.mockResolvedValue(lrFix(75, true))
-      mockGenerateText.mockImplementation(async () => {
+      mockGenerateText.mockImplementation(async function () {
         await new Promise((resolve) => setTimeout(resolve, 2000))
         return { text: JSON.stringify({ taskType: AssessmentTaskType.Fix, confidence: 90 }) }
       })

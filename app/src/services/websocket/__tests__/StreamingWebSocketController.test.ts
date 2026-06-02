@@ -699,7 +699,7 @@ describe('StreamingWebSocketController', () => {
       // Previously, machine.stop() was called before disconnect(), causing async connection
       // events to arrive after machine was stopped, resulting in XState warnings and leaks
 
-      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(function () {})
 
       // Start connection but don't complete it yet
       const connectPromise = controller.connect('app-123')

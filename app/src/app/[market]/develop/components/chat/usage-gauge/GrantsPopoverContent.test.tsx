@@ -13,7 +13,7 @@ import { GrantType, SubscriptionPlan } from '@/types/credits';
 import { GrantsPopoverContent } from './GrantsPopoverContent';
 
 vi.mock('@/utils/instrumentation', () => ({
-  generateClickEID: vi.fn((eid: string) => `appbuilder.${eid}.click`),
+  generateClickEID: vi.fn(function (eid: string) { return `appbuilder.${eid}.click`; }),
 }));
 
 vi.mock('@/hooks/useSubscriptionWithPolling', () => ({

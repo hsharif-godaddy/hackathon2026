@@ -43,11 +43,11 @@ vi.mock('@tanstack/react-query', async () => {
 });
 
 vi.mock('@/hooks/useSwitchboard', () => ({
-  useSwitchboard: vi.fn(() => false),
+  useSwitchboard: vi.fn(function () { return false; }),
 }));
 
 vi.mock('@/hooks/useSubscription', () => ({
-  useSubscription: vi.fn(() => ({
+  useSubscription: vi.fn(function () { return {
     data: {
       id: 'test-subscription-123',
       builderEntitlementId: 'test-entitlement-123',
@@ -55,11 +55,11 @@ vi.mock('@/hooks/useSubscription', () => ({
     },
     isLoading: false,
     isError: false,
-  })),
+  }; }),
 }));
 
 vi.mock('@/hooks/useCreditGrants', () => ({
-  useCreditGrants: vi.fn(() => ({
+  useCreditGrants: vi.fn(function () { return {
     data: [
       {
         id: 'initial-plan-monthly-grant-id',
@@ -75,7 +75,7 @@ vi.mock('@/hooks/useCreditGrants', () => ({
     isError: false,
     error: null,
     refetch: vi.fn(),
-  })),
+  }; }),
 }));
 
 
@@ -91,7 +91,7 @@ vi.mock('@/lib/logging', () => ({
 }));
 
 vi.mock('@/lib/paywall/shared', () => ({
-  isPlanUpgrade: vi.fn((oldPlan, newPlan) => {
+  isPlanUpgrade: vi.fn(function (oldPlan, newPlan) {
     const priority: Record<string, number> = { free: 0, starter: 1, professional: 2, ultimate: 3 };
     return (priority[newPlan as string] ?? 0) > (priority[oldPlan as string] ?? 0);
   }),
@@ -102,7 +102,7 @@ vi.mock('@/utils/focus', () => ({
 }));
 
 vi.mock('@/utils/instrumentation', () => ({
-  logImpressionEvent: vi.fn(() => vi.fn()),
+  logImpressionEvent: vi.fn(function () { return vi.fn(); }),
 }));
 
 let componentLoaderMountCount = 0;
@@ -233,7 +233,7 @@ describe('HigherPlansUpgradeContainer', function higherPlansUpgradeContainerTest
     } as ReturnType<typeof useCreditGrants>);
     mockHandlePurchaseSuccess.mockResolvedValue({ planAfterPurchase: 'ultimate', updated: true, grantUpdated: true });
     // Mock getQueryData for subscriptions cache (used in handleSuccess)
-    mockGetQueryData.mockImplementation((queryKey: unknown[]) => {
+    mockGetQueryData.mockImplementation(function (queryKey: unknown[]) {
       if (queryKey[0] === 'subscriptions') {
         return {
           active: {
@@ -561,7 +561,7 @@ describe('HigherPlansUpgradeContainer', function higherPlansUpgradeContainerTest
 
   it('includes downgradedPlan from cached data when re-upgrading', async function includesDowngradedPlan() {
     // Override subscriptions cache to include downgradedPlan
-    mockGetQueryData.mockImplementation((queryKey: unknown[]) => {
+    mockGetQueryData.mockImplementation(function (queryKey: unknown[]) {
       if (queryKey[0] === 'subscriptions') {
         return {
           active: {

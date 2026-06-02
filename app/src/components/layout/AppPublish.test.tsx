@@ -79,7 +79,7 @@ const mockStreaming = {
 
 const mockRefetchGitHistory = vi.fn();
 const mockRefetchDeployments = vi.fn();
-const mockLogClickEvent = vi.fn(() => vi.fn());
+const mockLogClickEvent = vi.fn(function () { return vi.fn(); });
 const mockRunGate = vi.fn();
 const mockMutateAsync = vi.fn().mockResolvedValue(undefined);
 let mockDnsConflictModal: ReactNode = null;
@@ -125,10 +125,10 @@ vi.mock('@/hooks/useIsHistoryDisabled', () => ({
 
 let capturedOnPurchaseSuccess: (() => Promise<void>) | undefined;
 vi.mock('@/hooks/usePaywallModal', () => ({
-  usePaywallModal: vi.fn((options: { onPurchaseSuccess?: () => Promise<void> }) => {
+  usePaywallModal: vi.fn(function (options: { onPurchaseSuccess?: () => Promise<void> }) {
     capturedOnPurchaseSuccess = options.onPurchaseSuccess;
     return {
-      checkAndShowPaywall: vi.fn((callback: () => void | Promise<void>) => {
+      checkAndShowPaywall: vi.fn(function (callback: () => void | Promise<void>) {
         void callback();
       }),
       paywallModal: null,
@@ -171,7 +171,7 @@ const appPublishSwitchboardTestState = vi.hoisted(() => ({
 const mockSwitchboardOverrides: Record<string, boolean> = {};
 
 vi.mock('@/hooks/useSwitchboard', () => ({
-  useSwitchboard: vi.fn((feature: string) => {
+  useSwitchboard: vi.fn(function (feature: string) {
     if (feature in mockSwitchboardOverrides) {
       return mockSwitchboardOverrides[feature];
     }
@@ -225,8 +225,8 @@ vi.mock('@/stores/useStreamingConversationStore', () => ({
 }));
 
 vi.mock('@/utils/instrumentation', () => ({
-  generateClickEID: vi.fn((id: string) => id),
-  logAiroHQEvent: vi.fn(() => vi.fn()),
+  generateClickEID: vi.fn(function (id: string) { return id; }),
+  logAiroHQEvent: vi.fn(function () { return vi.fn(); }),
   logClickEvent: (...args: unknown[]) => {
     mockLogClickEvent(...args);
     return vi.fn();
@@ -265,11 +265,11 @@ describe('AppPublish', () => {
         agent_url: 'https://app-123.agent.test',
       })
     );
-    global.ResizeObserver = vi.fn().mockImplementation(() => ({
+    global.ResizeObserver = vi.fn().mockImplementation(function () { return {
       observe: vi.fn(),
       unobserve: vi.fn(),
       disconnect: vi.fn(),
-    }));
+    }; });
     for (const key of Object.keys(mockSwitchboardOverrides)) {
       delete mockSwitchboardOverrides[key];
     }
@@ -830,7 +830,7 @@ describe('AppPublish', () => {
         published_url: 'https://published.example.com',
       })
     );
-    const windowOpen = vi.spyOn(window, 'open').mockImplementation(() => null);
+    const windowOpen = vi.spyOn(window, 'open').mockImplementation(function () { return null; });
 
     try {
       mockDeploymentsData = [{ id: 'dep-1', status: 'IN_PROGRESS' }];

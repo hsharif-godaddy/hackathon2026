@@ -51,7 +51,7 @@ describe('agent-router', function agentRouterTests() {
   })
 
   it('falls back to initial-v3 when modular variant failed to register at startup', async function modularMissing() {
-    const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => {})
+    const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(function () {})
     resolveProfileSpy.mockReturnValue(profile({
       name: 'broken',
       properties: { 'initial.modularPromptFiles': 'identity.md' },
@@ -133,7 +133,7 @@ describe('agent-router', function agentRouterTests() {
   })
 
   it('falls back to initial and warns when named variant is unregistered (e.g. typo or build failure)', async function namedVariantMissing() {
-    const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => {})
+    const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(function () {})
     resolveProfileSpy.mockReturnValue(profile({
       name: 'typo',
       properties: { 'initial.promptVersion': 'prompt_enhancer' },
@@ -170,7 +170,7 @@ describe('agent-router', function agentRouterTests() {
   })
 
   it('does not warn for legacy numeric promptVersion 1.0 (falls through, no named-variant branch)', async function legacyNumeric() {
-    const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => {})
+    const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(function () {})
     resolveProfileSpy.mockReturnValue(profile({
       name: 'legacy',
       properties: { 'initial.promptVersion': '1.0' },
@@ -189,7 +189,7 @@ describe('agent-router', function agentRouterTests() {
   })
 
   it('treats whitespace-only promptVersion as absent (no named-variant routing, no warn)', async function whitespaceOnly() {
-    const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => {})
+    const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(function () {})
     resolveProfileSpy.mockReturnValue(profile({
       name: 'ws',
       properties: { 'initial.promptVersion': '   ' },

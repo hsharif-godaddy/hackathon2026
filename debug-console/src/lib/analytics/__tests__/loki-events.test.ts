@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/lib/log-sources', () => ({
-  requireLokiEndpoint: vi.fn(() => 'https://loki.test'),
+  requireLokiEndpoint: vi.fn(function () { return 'https://loki.test'; }),
 }));
 
 import {

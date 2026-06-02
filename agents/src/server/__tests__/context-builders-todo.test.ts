@@ -1,11 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../../database/connection.js', () => ({
-  getDatabase: vi.fn(() => ({
-    prepare: vi.fn(() => ({ get: vi.fn(), all: vi.fn(), run: vi.fn() })),
+  getDatabase: vi.fn(function () { return {
+    prepare: vi.fn(function () { return { get: vi.fn(), all: vi.fn(), run: vi.fn() }; }),
     exec: vi.fn(),
     pragma: vi.fn(),
-  })),
+  }; }),
 }));
 
 vi.mock('../../logging/index.js', () => ({

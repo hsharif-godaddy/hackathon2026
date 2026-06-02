@@ -5,9 +5,9 @@ import { tmpdir } from 'node:os';
 
 const { workspaceView, createForWorkspaceMock } = vi.hoisted(() => {
   const workspaceView = vi.fn();
-  const createForWorkspaceMock = vi.fn(() => ({
+  const createForWorkspaceMock = vi.fn(function () { return {
     files: { view: workspaceView },
-  }));
+  }; });
   return { workspaceView, createForWorkspaceMock };
 });
 

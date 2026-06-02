@@ -34,18 +34,18 @@ vi.mock('../../../services/site-published-url.js', () => ({
 
 vi.mock('../../../logging/index.js', () => ({
   logger: {
-    withContext: vi.fn(() => ({
+    withContext: vi.fn(function () { return {
       info: vi.fn(),
       error: vi.fn()
-    }))
+    }; })
   },
   Logger: {
-    create: vi.fn(() => ({
+    create: vi.fn(function () { return {
       info: vi.fn(),
       error: vi.fn(),
       warn: vi.fn(),
       debug: vi.fn()
-    }))
+    }; })
   }
 }));
 
@@ -74,9 +74,9 @@ vi.mock('../../../services/seo-audit.js', async importOriginal => {
 vi.mock('../../../database/repositories/AppRepository.js', () => {
   const mockFindById = vi.fn();
   return {
-    AppRepository: vi.fn(() => ({
+    AppRepository: vi.fn(function () { return {
       findById: mockFindById
-    })),
+    }; }),
     mockFindById
   };
 });

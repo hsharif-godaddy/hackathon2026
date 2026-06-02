@@ -39,7 +39,7 @@ vi.mock('@/lib/customer-auth', async () => {
   )
   return {
     ...actual,
-    withCustomerAuth: vi.fn((handler: any) => {
+    withCustomerAuth: vi.fn(function (handler: any) {
       return async (request: NextRequest, ...rest: any[]) => {
         const authContext = await mockAuthenticateCustomer(request)
         if (!authContext.isAuthenticated) {

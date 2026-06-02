@@ -26,7 +26,7 @@ vi.mock('@/lib/customer-auth', () => ({
       });
     };
   },
-  customerHasAccount: vi.fn(() => true),
+  customerHasAccount: vi.fn(function () { return true; }),
   createCustomerAuthError: vi.fn(),
   setSpanAppId: vi.fn(),
   setSpanJobId: vi.fn(),

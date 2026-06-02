@@ -12,8 +12,8 @@ vi.mock('../../../memory/adapters/index.js', () => ({
   getMessageStore: () => ({ getMessageById }),
   getKvMemoryStore: () => ({}),
   getSummaryStore: () => ({
-    findLatestForApp: vi.fn().mockImplementation(async (_scope: any) => latestSummary.value),
-    findById: vi.fn().mockImplementation(async (id: string) => summaryStore.get(id) ?? null),
+    findLatestForApp: vi.fn().mockImplementation(async function (_scope: any) { return latestSummary.value; }),
+    findById: vi.fn().mockImplementation(async function (id: string) { return summaryStore.get(id) ?? null; }),
   }),
 }))
 
@@ -44,7 +44,7 @@ const { appContextResult } = vi.hoisted(() => ({
 
 vi.mock('../../../services/AppContextManager.js', () => ({
   AppContextManager: class {
-    generateContextMessage = vi.fn().mockImplementation(async () => appContextResult.value ?? {})
+    generateContextMessage = vi.fn().mockImplementation(async function () { return appContextResult.value ?? {}; })
   }
 }))
 

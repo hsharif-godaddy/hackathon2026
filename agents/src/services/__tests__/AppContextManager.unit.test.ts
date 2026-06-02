@@ -58,9 +58,9 @@ describe('AppContextManager publish state', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockFindById = vi.fn();
-    vi.mocked(AppRepository).mockImplementation(() => ({
+    vi.mocked(AppRepository).mockImplementation(function () { return ({
       findById: mockFindById,
-    }) as any);
+    }) as any; });
     manager = new AppContextManager();
   });
 
@@ -90,7 +90,7 @@ describe('AppContextManager publish state', () => {
     });
 
     it('should return null and warn on error', async () => {
-      mockFindById.mockImplementation(() => { throw new Error('db failure'); });
+      mockFindById.mockImplementation(function () { throw new Error('db failure'); });
       const result = await (manager as any).getPublishStateInfo('app-123');
       expect(result).toBeNull();
     });

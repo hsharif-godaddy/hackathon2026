@@ -241,7 +241,7 @@ describe('createGoldenLightScenario', () => {
     it('does not call deleteApp or warn when appId is absent', async () => {
       const warnSpy = vi
         .spyOn(console, 'warn')
-        .mockImplementation(() => {});
+        .mockImplementation(function () {});
       let deleteCalled = false;
       const spyCtrlPlane = makeSpyCtrlPlane(() => { deleteCalled = true; });
       const scenario = createGoldenLightScenario(

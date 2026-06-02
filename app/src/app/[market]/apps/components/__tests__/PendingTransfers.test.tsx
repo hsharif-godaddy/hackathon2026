@@ -45,7 +45,7 @@ const mockIncomingTransfer = {
 };
 
 function mockFetchResponses(outgoing: any[] = [], incoming: any[] = []) {
-  vi.mocked(appFetch).mockImplementation(async (url: string) => {
+  vi.mocked(appFetch).mockImplementation(async function (url: string) {
     if (typeof url === 'string' && url.includes('direction=incoming')) {
       return {
         ok: true,
@@ -167,7 +167,7 @@ describe('PendingTransfers', function pendingTests() {
   });
 
   it('should show outgoing error when only outgoing fetch fails', async function partialOutgoingError() {
-    vi.mocked(appFetch).mockImplementation(async (url: string) => {
+    vi.mocked(appFetch).mockImplementation(async function (url: string) {
       if (typeof url === 'string' && url.includes('direction=incoming')) {
         return {
           ok: true,
@@ -189,7 +189,7 @@ describe('PendingTransfers', function pendingTests() {
   });
 
   it('should remove outgoing transfer after successful cancel', async function cancelTransfer() {
-    vi.mocked(appFetch).mockImplementation(async (url: string) => {
+    vi.mocked(appFetch).mockImplementation(async function (url: string) {
       if (typeof url === 'string' && url.includes('/cancel')) {
         return { ok: true, status: 200, json: async () => ({ status: 'cancelled' }) } as Response;
       }
@@ -217,7 +217,7 @@ describe('PendingTransfers', function pendingTests() {
   });
 
   it('should show error message when cancel fails', async function cancelError() {
-    vi.mocked(appFetch).mockImplementation(async (url: string) => {
+    vi.mocked(appFetch).mockImplementation(async function (url: string) {
       if (typeof url === 'string' && url.includes('/cancel')) {
         return { ok: false, status: 400, json: async () => ({ error: 'CANCEL_FAILED' }) } as Response;
       }

@@ -55,7 +55,7 @@ vi.mock('@/lib/paywall/core', () => ({
 }))
 
 vi.mock('@/lib/paywall/client-provider', () => ({
-  ClientPaywallProvider: vi.fn().mockImplementation(() => ({})),
+  ClientPaywallProvider: vi.fn().mockImplementation(function () { return {}; }),
 }))
 
 vi.mock('@/lib/jwt-regeneration', () => ({
@@ -107,7 +107,7 @@ describe('publishAction', () => {
       setShowPaywallModal: vi.fn(),
       setShowFirstPublishCongrats: vi.fn(),
       setFirstPublishDeployPending: vi.fn(),
-      getPublishState: vi.fn(() => ({ firstPublishDeployPending: false })),
+      getPublishState: vi.fn(function () { return { firstPublishDeployPending: false }; }),
       openUpgradeModal: vi.fn(),
     }
 
@@ -122,7 +122,7 @@ describe('publishAction', () => {
         status: SiteStatus.Running,
         variants: ['publish'],
       }),
-      getQueryData: vi.fn((key: unknown[]) => {
+      getQueryData: vi.fn(function (key: unknown[]) {
         if (key[0] === 'featureFlag' && key[1] === 'appbuilder-suspended-compliance-banner') {
           return false
         }
@@ -171,7 +171,7 @@ describe('publishAction', () => {
       variants: ['publish'],
     }
 
-    vi.mocked(appFetch).mockImplementation(async (url: string) => {
+    vi.mocked(appFetch).mockImplementation(async function (url: string) {
       if (url.startsWith('/api/sites/app-123')) {
         return {
           ok: true,
@@ -196,7 +196,7 @@ describe('publishAction', () => {
     // Default: simulate successful deployment completion via store subscription.
     // useDeploymentsQuery already polls mgmt-airo; publishAction subscribes to the
     // store and resolves when deploymentInProgressId is cleared.
-    vi.mocked(useDevelopPageStore.subscribe).mockImplementation((callback: any) => {
+    vi.mocked(useDevelopPageStore.subscribe).mockImplementation(function (callback: any) {
       Promise.resolve().then(() => {
         callback({
           publishStates: {
@@ -333,7 +333,7 @@ describe('publishAction', () => {
       const context = createMockMessageContext()
       const params = { appId: 'app-123', commitHash: 'abc123' }
 
-      mockStoreActions.setShowPaywallModal.mockImplementation(() => {
+      mockStoreActions.setShowPaywallModal.mockImplementation(function () {
         throw new Error('Store error')
       })
 
@@ -377,7 +377,7 @@ describe('publishAction', () => {
       const context = createMockMessageContext()
       const params = { appId: 'app-123', commitHash: 'abc123' }
 
-      vi.mocked(mockQueryClient.getQueryData).mockImplementation((key: unknown[]) => {
+      vi.mocked(mockQueryClient.getQueryData).mockImplementation(function (key: unknown[]) {
         if (key[0] === 'featureFlag' && key[1] === 'appbuilder-suspended-compliance-banner') {
           return true
         }
@@ -437,7 +437,7 @@ describe('publishAction', () => {
       const context = createMockMessageContext()
       const params = { appId: 'app-123', commitHash: 'abc123' }
 
-      mockStoreActions.clearPublishStatus.mockImplementation(() => {
+      mockStoreActions.clearPublishStatus.mockImplementation(function () {
         throw new Error('Store error')
       })
 
@@ -481,7 +481,7 @@ describe('publishAction', () => {
       const params = { appId: 'app-123', commitHash: 'abc123' }
 
       // Mock appFetch for app details (fallback) and secrets sync
-      vi.mocked(appFetch).mockImplementation(async (url: string) => {
+      vi.mocked(appFetch).mockImplementation(async function (url: string) {
         if (url.startsWith('/api/sites/app-123')) {
           return {
             ok: true,
@@ -524,7 +524,7 @@ describe('publishAction', () => {
       const params = { appId: 'app-123', commitHash: 'abc123' }
 
       // Mock appFetch for app details and secrets sync
-      vi.mocked(appFetch).mockImplementation(async (url: string) => {
+      vi.mocked(appFetch).mockImplementation(async function (url: string) {
         if (url.startsWith('/api/sites/app-123')) {
           return {
             ok: true,
@@ -557,7 +557,7 @@ describe('publishAction', () => {
       const params = { appId: 'app-123', commitHash: 'abc123' }
 
       // Mock appFetch for app details and secrets sync
-      vi.mocked(appFetch).mockImplementation(async (url: string) => {
+      vi.mocked(appFetch).mockImplementation(async function (url: string) {
         if (url.startsWith('/api/sites/app-123')) {
           return {
             ok: true,
@@ -885,12 +885,12 @@ describe('publishAction', () => {
       // Mock store state so that showPaywallModal is initially false, and becomes true after setShowPaywallModal is called
       let showPaywallModal = false
       const originalSetShowPaywallModal = mockStoreActions.setShowPaywallModal
-      const statefulSetShowPaywallModal = vi.fn((appId: string, value: boolean) => {
+      const statefulSetShowPaywallModal = vi.fn(function (appId: string, value: boolean) {
         showPaywallModal = value
         return originalSetShowPaywallModal(appId, value)
       })
 
-      vi.mocked(useDevelopPageStore.getState).mockImplementation(() => ({
+      vi.mocked(useDevelopPageStore.getState).mockImplementation(function () { return {
         ...mockStoreActions,
         setShowPaywallModal: statefulSetShowPaywallModal,
         publishStates: {
@@ -900,7 +900,7 @@ describe('publishAction', () => {
             publishError: false,
           },
         },
-      }))
+      }; })
 
       await expect(publishAction(params, context)).rejects.toThrow('Airo Plus subscription required')
 
@@ -930,7 +930,7 @@ describe('publishAction', () => {
         },
       })
 
-      vi.mocked(appFetch).mockImplementation(async (url: string) => {
+      vi.mocked(appFetch).mockImplementation(async function (url: string) {
         if (url.startsWith('/api/sites/app-123')) {
           return {
             ok: true,
@@ -972,7 +972,7 @@ describe('publishAction', () => {
         publishStates: {},
       })
 
-      vi.mocked(appFetch).mockImplementation(async (url: string) => {
+      vi.mocked(appFetch).mockImplementation(async function (url: string) {
         if (url.startsWith('/api/sites/app-123')) {
           return {
             ok: true,
@@ -1020,7 +1020,7 @@ describe('publishAction', () => {
         },
       })
 
-      mockStoreActions.setPublishError.mockImplementation(() => {
+      mockStoreActions.setPublishError.mockImplementation(function () {
         throw new Error('Store error')
       })
 
@@ -1117,7 +1117,7 @@ describe('publishAction', () => {
       const context = createMockMessageContext()
       const params = { appId: 'app-123', commitHash: 'abc123' }
 
-      mockStoreActions.setDeploymentInProgressId.mockImplementation(() => {
+      mockStoreActions.setDeploymentInProgressId.mockImplementation(function () {
         throw new Error('Store error')
       })
 
@@ -1155,7 +1155,7 @@ describe('publishAction', () => {
       const context = createMockMessageContext()
       const params = { appId: 'app-123', commitHash: 'abc123' }
 
-      vi.mocked(useDevelopPageStore.subscribe).mockImplementation((callback: any) => {
+      vi.mocked(useDevelopPageStore.subscribe).mockImplementation(function (callback: any) {
         Promise.resolve().then(() => {
           callback({
             publishStates: {
@@ -1331,7 +1331,7 @@ describe('publishAction', () => {
       const params = { appId: 'app-123' }
 
       // Mock analytics failure
-      vi.mocked(logAiroHQEvent).mockImplementation(() => {
+      vi.mocked(logAiroHQEvent).mockImplementation(function () {
         throw new Error('Analytics error')
       })
 
@@ -1373,7 +1373,7 @@ describe('publishAction', () => {
       })
 
       // Mock appFetch for app details and secrets sync
-      vi.mocked(appFetch).mockImplementation(async (url: string) => {
+      vi.mocked(appFetch).mockImplementation(async function (url: string) {
         if (url.startsWith('/api/sites/app-123')) {
           return {
             ok: true,

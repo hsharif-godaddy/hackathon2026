@@ -166,7 +166,7 @@ describe('SsoLogin redirect handling', function ssoLoginRedirectTests() {
 
   it('navigates to same-origin redirect path', async function redirectsToSameOrigin() {
     setRedirectParam('/develop/ghe4xo1sbb?siteId=ghe4xo1sbb');
-    const assignSpy = vi.spyOn(window.location, 'assign').mockImplementation(() => {});
+    const assignSpy = vi.spyOn(window.location, 'assign').mockImplementation(function () {});
 
     renderWithProviders(<SsoLogin />);
     await triggerAuth();
@@ -178,7 +178,7 @@ describe('SsoLogin redirect handling', function ssoLoginRedirectTests() {
 
   it('blocks absolute cross-origin redirects', async function blocksCrossOrigin() {
     setRedirectParam('https://evil.com/phish');
-    const assignSpy = vi.spyOn(window.location, 'assign').mockImplementation(() => {});
+    const assignSpy = vi.spyOn(window.location, 'assign').mockImplementation(function () {});
 
     renderWithProviders(<SsoLogin />);
     await triggerAuth();
@@ -190,7 +190,7 @@ describe('SsoLogin redirect handling', function ssoLoginRedirectTests() {
 
   it('blocks protocol-relative redirects', async function blocksProtocolRelative() {
     setRedirectParam('//evil.com/phish');
-    const assignSpy = vi.spyOn(window.location, 'assign').mockImplementation(() => {});
+    const assignSpy = vi.spyOn(window.location, 'assign').mockImplementation(function () {});
 
     renderWithProviders(<SsoLogin />);
     await triggerAuth();
@@ -284,7 +284,7 @@ describe('SsoLogin redirect handling', function ssoLoginRedirectTests() {
 
   it('prefers store redirectUrl over SSO redirect_url pointing to root', async function storeOverSso() {
     mockAuthUIState.redirectUrl = '/develop/abc123';
-    const assignSpy = vi.spyOn(window.location, 'assign').mockImplementation(() => {});
+    const assignSpy = vi.spyOn(window.location, 'assign').mockImplementation(function () {});
 
     renderWithProviders(<SsoLogin />);
     await triggerAuth({ data: { redirect_url: 'https://airo-builder.test/' } });
@@ -297,7 +297,7 @@ describe('SsoLogin redirect handling', function ssoLoginRedirectTests() {
 
   it('redirects to absolute same-origin store redirectUrl after auth', async function redirectsToAbsoluteSameOriginStoreRedirect() {
     mockAuthUIState.redirectUrl = 'https://airo-builder.test/develop/abc123';
-    const assignSpy = vi.spyOn(window.location, 'assign').mockImplementation(() => {});
+    const assignSpy = vi.spyOn(window.location, 'assign').mockImplementation(function () {});
 
     renderWithProviders(<SsoLogin />);
     await triggerAuth({ data: { redirect_url: 'https://airo-builder.test/' } });
@@ -311,7 +311,7 @@ describe('SsoLogin redirect handling', function ssoLoginRedirectTests() {
   it('uses SSO redirect_url when no store redirectUrl is set', async function ssoFallback() {
     mockAuthUIState.redirectUrl = null;
     overrideWindowLocation('https://airo-builder.test/');
-    const assignSpy = vi.spyOn(window.location, 'assign').mockImplementation(() => {});
+    const assignSpy = vi.spyOn(window.location, 'assign').mockImplementation(function () {});
 
     renderWithProviders(<SsoLogin />);
     await triggerAuth({ data: { redirect_url: 'https://airo-builder.test/some-page' } });
@@ -324,7 +324,7 @@ describe('SsoLogin redirect handling', function ssoLoginRedirectTests() {
   it('reloads current page when no redirect is available', async function reloadFallback() {
     mockAuthUIState.redirectUrl = null;
     overrideWindowLocation('https://airo-builder.test/develop/abc123');
-    const reloadSpy = vi.spyOn(window.location, 'reload').mockImplementation(() => {});
+    const reloadSpy = vi.spyOn(window.location, 'reload').mockImplementation(function () {});
 
     renderWithProviders(<SsoLogin />);
     await triggerAuth();
@@ -470,8 +470,8 @@ describe('SsoLogin in-flight reauth', function inFlightReauthTests() {
     // iframe consumingPath, but the post-auth navigation must be skipped.
     mockAuthUIState.inFlightReauth = true;
     mockAuthUIState.redirectUrl = 'https://airo-builder.test/develop/abc123';
-    const assignSpy = vi.spyOn(window.location, 'assign').mockImplementation(() => {});
-    const reloadSpy = vi.spyOn(window.location, 'reload').mockImplementation(() => {});
+    const assignSpy = vi.spyOn(window.location, 'assign').mockImplementation(function () {});
+    const reloadSpy = vi.spyOn(window.location, 'reload').mockImplementation(function () {});
 
     renderWithProviders(<SsoLogin />);
     await triggerAuth({ data: { redirect_url: 'https://airo-builder.test/' } });
@@ -488,7 +488,7 @@ describe('SsoLogin in-flight reauth', function inFlightReauthTests() {
   it('takes the navigation path when inFlightReauth is false (existing behavior)', async function nonInFlightStillNavigates() {
     mockAuthUIState.inFlightReauth = false;
     mockAuthUIState.redirectUrl = 'https://airo-builder.test/develop/abc123';
-    const assignSpy = vi.spyOn(window.location, 'assign').mockImplementation(() => {});
+    const assignSpy = vi.spyOn(window.location, 'assign').mockImplementation(function () {});
 
     renderWithProviders(<SsoLogin />);
     await triggerAuth();

@@ -24,7 +24,7 @@ vi.mock('@/lib/request-context', () => ({
 }));
 
 vi.mock('@/utils/image-compression', () => ({
-  compressImageFile: vi.fn().mockImplementation((f: File) => Promise.resolve(f)),
+  compressImageFile: vi.fn().mockImplementation(function (f: File) { return Promise.resolve(f); }),
 }));
 
 vi.mock('@/utils/instrumentation', () => ({

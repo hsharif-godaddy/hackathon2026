@@ -22,7 +22,7 @@ const {
 }));
 
 vi.mock('@/lib/control-plane', () => ({
-  getControlPlaneAdapter: vi.fn(() => ({ getSite: mockGetSite })),
+  getControlPlaneAdapter: vi.fn(function () { return { getSite: mockGetSite }; }),
 }));
 vi.mock('@/lib/agent-fetch', () => ({ agentFetch: mockAgentFetch }));
 vi.mock('@/lib/switchboard/server', () => ({ checkSwitchboardFlag: mockCheckSwitchboardFlag }));
@@ -37,7 +37,7 @@ vi.mock('@/lib/customer-auth', async () => {
   let counter = 0;
   return {
     ...actual,
-    withCustomerAuth: vi.fn((handler: any, options?: unknown) => {
+    withCustomerAuth: vi.fn(function (handler: any, options?: unknown) {
       // First withCustomerAuth call in route.ts is GET, second is POST.
       const tag = counter++ === 0 ? 'GET' : 'POST';
       capturedAuthOptions.set(tag, options);

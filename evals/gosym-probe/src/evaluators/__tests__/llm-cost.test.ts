@@ -516,10 +516,9 @@ describe('LLMCostEvaluator', () => {
     it('score equals aabData.totalCost for each trial independently', async () => {
       const collector: TokenUsageCollector = {
         hook: vi.fn(),
-        collect: vi.fn().mockImplementation((trialIndex: number) =>
-          makeTrialTokenData({
+        collect: vi.fn().mockImplementation(function (trialIndex: number) { return makeTrialTokenData({
             totalCost: trialIndex === 0 ? 0.10 : 0.20,
-          }),
+          }); },
         ),
         unhook: vi.fn(),
       } as unknown as TokenUsageCollector;
@@ -550,10 +549,9 @@ describe('LLMCostEvaluator', () => {
     it('details total costUsd is correct per trial', async () => {
       const collector: TokenUsageCollector = {
         hook: vi.fn(),
-        collect: vi.fn().mockImplementation((trialIndex: number) =>
-          makeTrialTokenData({
+        collect: vi.fn().mockImplementation(function (trialIndex: number) { return makeTrialTokenData({
             totalCost: trialIndex === 0 ? 0.10 : 0.20,
-          }),
+          }); },
         ),
         unhook: vi.fn(),
       } as unknown as TokenUsageCollector;

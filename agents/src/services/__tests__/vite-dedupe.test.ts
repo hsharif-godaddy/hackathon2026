@@ -25,7 +25,7 @@ describe('ensureViteResolveDedupe', () => {
   });
 
   it('should patch vite config when found and modified', () => {
-    vi.mocked(existsSync).mockImplementation((p) => String(p).endsWith('vite.config.ts'));
+    vi.mocked(existsSync).mockImplementation(function (p) { return String(p).endsWith('vite.config.ts'); });
     vi.mocked(readFileSync).mockReturnValue('export default {}');
     vi.mocked(processAndGenerateViteConfig).mockReturnValue({ code: 'patched', modified: true });
 
@@ -35,7 +35,7 @@ describe('ensureViteResolveDedupe', () => {
   });
 
   it('should not write when no changes needed', () => {
-    vi.mocked(existsSync).mockImplementation((p) => String(p).endsWith('vite.config.ts'));
+    vi.mocked(existsSync).mockImplementation(function (p) { return String(p).endsWith('vite.config.ts'); });
     vi.mocked(readFileSync).mockReturnValue('export default {}');
     vi.mocked(processAndGenerateViteConfig).mockReturnValue({ code: 'same', modified: false });
 
@@ -54,7 +54,7 @@ describe('ensureViteResolveDedupe', () => {
   });
 
   it('should not throw on errors', () => {
-    vi.mocked(existsSync).mockImplementation(() => { throw new Error('fs error'); });
+    vi.mocked(existsSync).mockImplementation(function () { throw new Error('fs error'); });
 
     expect(() => ensureViteResolveDedupe('/app')).not.toThrow();
   });

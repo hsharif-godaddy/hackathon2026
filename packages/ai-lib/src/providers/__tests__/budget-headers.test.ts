@@ -20,7 +20,7 @@ describe('Budget header injection (production code)', () => {
   beforeEach(() => {
     capturedHeaders = null
     capturedBody = null
-    mockFetch.mockImplementation(async (_url: RequestInfo | URL, init?: RequestInit) => {
+    mockFetch.mockImplementation(async function (_url: RequestInfo | URL, init?: RequestInit) {
       capturedHeaders = new Headers(init?.headers)
       capturedBody = init?.body as string
       return new Response(JSON.stringify({ choices: [] }), { status: 200 })

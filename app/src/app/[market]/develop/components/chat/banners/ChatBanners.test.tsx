@@ -12,20 +12,20 @@ import ChatBanners from './ChatBanners';
 
 // Mock hooks that child components use
 vi.mock('@/hooks/useUsage', () => ({
-  useUsage: vi.fn(() => ({
+  useUsage: vi.fn(function () { return {
     isWarningBannerActive: false,
     percentage: 0,
     warningLevel: 'none',
     isLoading: false,
-  })),
+  }; }),
 }));
 
 vi.mock('@/hooks/useSwitchboard', () => ({
-  useSwitchboard: vi.fn(() => (true)),
+  useSwitchboard: vi.fn(function () { return true; }),
 }));
 
 vi.mock('@/hooks/usePaywallEligibility', () => ({
-  usePaywallEligibility: vi.fn(() => ({ showPaywall: true, isLoading: false, isError: false, error: null })),
+  usePaywallEligibility: vi.fn(function () { return { showPaywall: true, isLoading: false, isError: false, error: null }; }),
 }));
 
 // Create a mocked store state that can be updated in tests
@@ -47,7 +47,7 @@ const mockStoreState = {
 };
 
 vi.mock('@/stores/useDevelopPageStore', () => ({
-  useDevelopPageStore: vi.fn((selector: (state: typeof mockStoreState) => unknown) => selector(mockStoreState)),
+  useDevelopPageStore: vi.fn(function (selector: (state: typeof mockStoreState) => unknown) { return selector(mockStoreState); }),
 }));
 
 vi.mock('@/stores/useStreamingConversationStore', () => ({
@@ -75,8 +75,8 @@ vi.mock('@/config/dynamic-api', () => ({
 }));
 
 vi.mock('@/utils/instrumentation', () => ({
-  logImpressionEvent: vi.fn(() => vi.fn()),
-  logClickEvent: vi.fn(() => vi.fn()),
+  logImpressionEvent: vi.fn(function () { return vi.fn(); }),
+  logClickEvent: vi.fn(function () { return vi.fn(); }),
   generateClickEID: (id: string) => id,
 }));
 
@@ -150,7 +150,7 @@ describe('ChatBanners', function chatBannersTests() {
       });
 
       // Mock switchboard to return false for upgrade banner and true for feedback banner
-      vi.mocked(useSwitchboard).mockImplementation((flag: string) => {
+      vi.mocked(useSwitchboard).mockImplementation(function (flag: string) {
         if (flag === 'appbuilder-airoplus-upgrade-banner') {
           return false;
         }

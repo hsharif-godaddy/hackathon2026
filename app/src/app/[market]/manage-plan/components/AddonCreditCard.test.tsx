@@ -25,7 +25,7 @@ vi.mock('@/hooks/useTranslations', () => ({
 }));
 
 vi.mock('@/utils/instrumentation', () => ({
-  generateClickEID: vi.fn((event: string) => `${event}.click`),
+  generateClickEID: vi.fn(function (event: string) { return `${event}.click`; }),
 }));
 
 function createMockGrant(overrides: Partial<CreditGrant> = {}): CreditGrant {

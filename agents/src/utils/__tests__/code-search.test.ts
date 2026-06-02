@@ -18,7 +18,7 @@ vi.mock('../file-search.js', () => ({
 }));
 
 vi.mock('../../tools/read-file.js', () => ({
-  isFileBlocked: vi.fn(() => ({ blocked: false }))
+  isFileBlocked: vi.fn(function () { return { blocked: false }; })
 }));
 
 vi.mock('../../logging/index.js', () => ({

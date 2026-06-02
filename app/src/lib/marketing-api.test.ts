@@ -12,7 +12,7 @@ vi.mock('@/lib/request-context', () => ({
 }))
 
 vi.mock('@/utils/getRootDomain', () => ({
-  getRootDomain: vi.fn(() => 'godaddy.com')
+  getRootDomain: vi.fn(function () { return 'godaddy.com'; })
 }))
 
 describe('scheduleInstagramPost', () => {

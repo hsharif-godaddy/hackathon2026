@@ -3,7 +3,7 @@ import express from "express";
 import request from "supertest";
 
 vi.mock("../../middleware/app-ownership.js", () => ({
-  validateAppOwnership: vi.fn((_req: unknown, _res: unknown, next: () => void) => next()),
+  validateAppOwnership: vi.fn(function (_req: unknown, _res: unknown, next: () => void) { return next(); }),
 }));
 
 vi.mock("../../../logging/index.js", () => ({
@@ -30,11 +30,11 @@ vi.mock("../../../services/MediaManifestService.js", () => ({
 }));
 
 vi.mock("../../../database/repositories/AppRepository.js", () => ({
-  AppRepository: vi.fn().mockImplementation(() => ({})),
+  AppRepository: vi.fn().mockImplementation(function () { return {}; }),
 }));
 
 vi.mock("../../../services/image-search/normalize.js", () => ({
-  normalizeSearchQuery: vi.fn((q: string) => Promise.resolve(q)),
+  normalizeSearchQuery: vi.fn(function (q: string) { return Promise.resolve(q); }),
 }));
 
 const { default: mediaRouter } = await import("../media.js");

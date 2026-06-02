@@ -13,9 +13,9 @@ vi.mock("../../../database/repositories/AppRepository.js", () => {
     publishSupervisorPath: null,
   });
   return {
-    AppRepository: vi.fn().mockImplementation(() => ({
+    AppRepository: vi.fn().mockImplementation(function () { return {
       findById: mockFindById,
-    })),
+    }; }),
   };
 });
 
@@ -53,14 +53,14 @@ vi.mock("../../../utils/git.js", () => {
     .mockResolvedValue({ path: "/dist/abc123.tar.gz", commitHash: "abc123" });
 
   return {
-    GitUtils: vi.fn().mockImplementation(() => ({
+    GitUtils: vi.fn().mockImplementation(function () { return {
       getCurrentBranch: mockGetCurrentBranch,
       getCurrentCommit: mockGetCurrentCommit,
       hasUncommittedChanges: mockHasUncommittedChanges,
       getStatus: mockGetStatus,
       getCommitHistory: mockGetCommitHistory,
       createArchive: mockCreateArchive,
-    })),
+    }; }),
   };
 });
 

@@ -114,7 +114,7 @@ describe('useToolDeltaBuffer', () => {
     })
 
     it('clears buffer even if flush throws error', () => {
-      mockUpdateToolDelta.mockImplementation(() => {
+      mockUpdateToolDelta.mockImplementation(function () {
         throw new Error('Flush error')
       })
 

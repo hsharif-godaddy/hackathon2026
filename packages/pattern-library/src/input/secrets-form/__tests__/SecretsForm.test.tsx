@@ -7,7 +7,7 @@ import { SecretsForm, type SecretsFormComposerProps, type SecretsFormProps } fro
 
 beforeAll(() => {
   // `@ux/icon/async-icon.js` fetches SVG from an asset host; jsdom has no network.
-  vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
+  vi.spyOn(globalThis, 'fetch').mockImplementation(function (input) {
     const url =
       typeof input === 'string' ? input : input instanceof Request ? input.url : input.href;
 
@@ -293,7 +293,7 @@ describe('SecretsForm', () => {
     });
 
     it('stays mounted when onSubmit throws', async () => {
-      const onSubmit = vi.fn(() => {
+      const onSubmit = vi.fn(function () {
         throw new Error('boom');
       });
       const user = userEvent.setup();
@@ -309,10 +309,9 @@ describe('SecretsForm', () => {
     it('dismisses after async onSubmit resolves', async () => {
       let finish!: () => void;
       const onSubmit = vi.fn(
-        () =>
-          new Promise<void>((resolve) => {
+        function () { return new Promise<void>((resolve) => {
             finish = () => resolve();
-          }),
+          }); },
       );
       const user = userEvent.setup();
       renderForm({ onSubmit });
@@ -330,10 +329,9 @@ describe('SecretsForm', () => {
     it('does not log unmounted state-update warnings when async onSubmit resolves after unmount', async () => {
       let finish!: () => void;
       const onSubmit = vi.fn(
-        () =>
-          new Promise<void>((resolve) => {
+        function () { return new Promise<void>((resolve) => {
             finish = () => resolve();
-          }),
+          }); },
       );
       const user = userEvent.setup();
       const { unmount } = renderForm({ onSubmit, value: 'tok', onChange: vi.fn() });
@@ -341,7 +339,7 @@ describe('SecretsForm', () => {
       await user.click(screen.getByRole('button', { name: 'Send' }));
       unmount();
 
-      const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const spy = vi.spyOn(console, 'error').mockImplementation(function () {});
       finish();
       await waitFor(() => {
         expect(onSubmit).toHaveBeenCalled();
@@ -356,10 +354,9 @@ describe('SecretsForm', () => {
     it('does not run onSubmit twice while a previous async onSubmit is still pending', async () => {
       let finish!: () => void;
       const onSubmit = vi.fn(
-        () =>
-          new Promise<void>((resolve) => {
+        function () { return new Promise<void>((resolve) => {
             finish = () => resolve();
-          }),
+          }); },
       );
       const user = userEvent.setup();
       renderForm({ onSubmit, value: 'tok' });
@@ -376,7 +373,7 @@ describe('SecretsForm', () => {
     });
 
     it('stays mounted when async onSubmit rejects', async () => {
-      const onSubmit = vi.fn(() => Promise.reject(new Error('fail')));
+      const onSubmit = vi.fn(function () { return Promise.reject(new Error('fail')); });
       const user = userEvent.setup();
       renderForm({ onSubmit });
 

@@ -44,7 +44,7 @@ function installExecRouter(
     preflightExitCode = 0,
   } = opts;
 
-  mockTasks.runCommandSync.mockImplementation(async (args: { command: string }) => {
+  mockTasks.runCommandSync.mockImplementation(async function (args: { command: string }) {
     if (args.command.includes('curl')) {
       if (previewThrows) throw previewThrows;
       return { stdout: previewStatus, exitCode: previewExitCode, stderr: '', timedOut: false, taskId: 'mock', executionTimeMs: 0 };
@@ -314,7 +314,7 @@ describe('PaaSPublishStrategy', () => {
     });
 
     it('treats malformed JSON the same as missing', async () => {
-      mockTasks.runCommandSync.mockImplementation(async (args: { command: string }) => {
+      mockTasks.runCommandSync.mockImplementation(async function (args: { command: string }) {
         if (args.command.includes('curl')) {
           return { stdout: '200', exitCode: 0, stderr: '', timedOut: false, taskId: 'mock', executionTimeMs: 0 };
         }
@@ -384,7 +384,7 @@ describe('PaaSPublishStrategy', () => {
     });
 
     it('skips preflight and allows publish to continue when exec itself fails', async () => {
-      mockTasks.runCommandSync.mockImplementation(async (args: { command: string }) => {
+      mockTasks.runCommandSync.mockImplementation(async function (args: { command: string }) {
         if (args.command.includes('curl')) {
           return { stdout: '200', exitCode: 0, stderr: '', timedOut: false, taskId: 'mock', executionTimeMs: 0 };
         }

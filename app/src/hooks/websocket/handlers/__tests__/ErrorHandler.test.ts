@@ -8,7 +8,7 @@ import { createMockMessageContext } from './testUtils'
 import { ErrorHandler } from '../ErrorHandler'
 import type { WebSocketMessage } from '../types'
 
-const mockLogImpressionEvent = vi.fn(() => vi.fn())
+const mockLogImpressionEvent = vi.fn(function () { return vi.fn(); })
 vi.mock('@/utils/instrumentation', () => ({
   logImpressionEvent: (...args: unknown[]) => mockLogImpressionEvent(...args),
 }))

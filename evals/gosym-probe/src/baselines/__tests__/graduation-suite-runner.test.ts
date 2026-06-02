@@ -6,9 +6,9 @@ const { mockGraduationRunnerRun } = vi.hoisted(() => ({
 }));
 
 vi.mock('../graduation-runner.js', () => ({
-  GraduationRunner: vi.fn().mockImplementation(() => ({
+  GraduationRunner: vi.fn().mockImplementation(function () { return {
     run: mockGraduationRunnerRun,
-  })),
+  }; }),
   isDeferredResult: (r: { scenarioResult?: unknown }) => r.scenarioResult !== undefined,
 }));
 
@@ -19,9 +19,9 @@ const { mockRunCapped, mockSuiteRunnerRun } = vi.hoisted(() => ({
 
 vi.mock('../../runner/suite-runner.js', () => ({
   runCapped: mockRunCapped,
-  SuiteRunner: vi.fn().mockImplementation(() => ({
+  SuiteRunner: vi.fn().mockImplementation(function () { return {
     run: mockSuiteRunnerRun,
-  })),
+  }; }),
 }));
 
 vi.mock('../../util/sleep.js', () => ({
@@ -388,7 +388,7 @@ describe('GraduationSuiteRunner', () => {
   it('passes trialConcurrency to GraduationRunner', async () => {
     const scenarios = [makeScenario('alpha')];
     mockRunCapped.mockImplementation(
-      async (_count: number, _cap: number, fn: (i: number) => Promise<GraduationResult>) => {
+      async function (_count: number, _cap: number, fn: (i: number) => Promise<GraduationResult>) {
         return [await fn(0)];
       },
     );
@@ -415,7 +415,7 @@ describe('GraduationSuiteRunner', () => {
   it('passes stabilityLevelOverride and maxTurnsOverride through', async () => {
     const scenarios = [makeScenario('alpha')];
     mockRunCapped.mockImplementation(
-      async (_count: number, _cap: number, fn: (i: number) => Promise<GraduationResult>) => {
+      async function (_count: number, _cap: number, fn: (i: number) => Promise<GraduationResult>) {
         return [await fn(0)];
       },
     );
@@ -442,7 +442,7 @@ describe('GraduationSuiteRunner', () => {
   it('creates a new BaselineStore for each scenario', async () => {
     const scenarios = [makeScenario('alpha'), makeScenario('beta')];
     mockRunCapped.mockImplementation(
-      async (count: number, _cap: number, fn: (i: number) => Promise<GraduationResult>) => {
+      async function (count: number, _cap: number, fn: (i: number) => Promise<GraduationResult>) {
         const results: GraduationResult[] = [];
         for (let i = 0; i < count; i++) {
           results.push(await fn(i));
@@ -639,7 +639,7 @@ describe('GraduationSuiteRunner', () => {
       const scenarios = [makeScenario('alpha')];
       const onTrialEvaluated = vi.fn();
       mockRunCapped.mockImplementation(
-        async (_count: number, _cap: number, fn: (i: number) => Promise<GraduationResult>) => {
+        async function (_count: number, _cap: number, fn: (i: number) => Promise<GraduationResult>) {
           return [await fn(0)];
         },
       );
@@ -661,7 +661,7 @@ describe('GraduationSuiteRunner', () => {
     it('does not pass onTrialEvaluated to GraduationRunner when omitted', async () => {
       const scenarios = [makeScenario('alpha')];
       mockRunCapped.mockImplementation(
-        async (_count: number, _cap: number, fn: (i: number) => Promise<GraduationResult>) => {
+        async function (_count: number, _cap: number, fn: (i: number) => Promise<GraduationResult>) {
           return [await fn(0)];
         },
       );
@@ -886,7 +886,7 @@ describe('GraduationSuiteRunner — suiteMode: parallel', () => {
     mockSuiteRunnerRun.mockResolvedValue([makeScenarioResult('alpha')]);
 
     const trialLifecycle: TrialLifecycle = {
-      runInScope: vi.fn().mockImplementation((_, __, fn: () => Promise<unknown>) => fn()),
+      runInScope: vi.fn().mockImplementation(function (_, __, fn: () => Promise<unknown>) { return fn(); }),
       release: vi.fn(),
     };
 
@@ -995,11 +995,11 @@ describe('GraduationSuiteRunner — suiteMode: parallel', () => {
     const trial = makeTrialResult({ trialIndex: 0 });
 
     let capturedCallback: ((scenarioName: string, trial: TrialResult) => void) | undefined;
-    vi.mocked(SuiteRunner).mockImplementationOnce(((opts: SuiteRunnerOptions) => {
+    vi.mocked(SuiteRunner).mockImplementationOnce((function (opts: SuiteRunnerOptions) {
       capturedCallback = opts.onTrialEvaluated;
       return { run: mockSuiteRunnerRun };
     }) as never);
-    mockSuiteRunnerRun.mockImplementation(async () => {
+    mockSuiteRunnerRun.mockImplementation(async function () {
       capturedCallback?.('alpha', trial);
       return [makeScenarioResult('alpha', { trials: [trial] })];
     });
@@ -1024,11 +1024,11 @@ describe('GraduationSuiteRunner — suiteMode: parallel', () => {
     const trial = makeTrialResult({ trialIndex: 0 });
 
     let capturedCallback: ((scenarioName: string, trial: TrialResult) => void) | undefined;
-    vi.mocked(SuiteRunner).mockImplementationOnce(((opts: SuiteRunnerOptions) => {
+    vi.mocked(SuiteRunner).mockImplementationOnce((function (opts: SuiteRunnerOptions) {
       capturedCallback = opts.onTrialEvaluated;
       return { run: mockSuiteRunnerRun };
     }) as never);
-    mockSuiteRunnerRun.mockImplementation(async () => {
+    mockSuiteRunnerRun.mockImplementation(async function () {
       capturedCallback?.('alpha', trial);
       return [makeScenarioResult('alpha', { trials: [trial] })];
     });

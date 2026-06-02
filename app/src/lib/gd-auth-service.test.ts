@@ -7,9 +7,9 @@ const mockAuthenticate = vi.fn();
 
 // Mock gd-auth library with shared instance
 vi.mock('gd-auth', () => ({
-  GdAuth: vi.fn().mockImplementation(() => ({
+  GdAuth: vi.fn().mockImplementation(function () { return {
     authenticate: mockAuthenticate
-  }))
+  }; })
 }));
 vi.mock('gd-auth/src/fetch-key', () => ({}));
 vi.mock('@/lib/features', () => ({
@@ -104,7 +104,7 @@ describe('extractTokenFromRequest (standalone function)', () => {
   it('should extract token from Bearer authorization header', () => {
     const request = {
       headers: {
-        get: vi.fn((name: string) => {
+        get: vi.fn(function (name: string) {
           if (name === 'authorization') return 'Bearer standalone-token-123';
           return null;
         })
@@ -120,7 +120,7 @@ describe('extractTokenFromRequest (standalone function)', () => {
   it('should extract token from sso-jwt authorization header', () => {
     const request = {
       headers: {
-        get: vi.fn((name: string) => {
+        get: vi.fn(function (name: string) {
           if (name === 'authorization') return 'sso-jwt standalone-token-456';
           return null;
         })
@@ -135,9 +135,9 @@ describe('extractTokenFromRequest (standalone function)', () => {
 
   it('should extract token from auth_idp cookie', () => {
     const request = {
-      headers: { get: vi.fn(() => null) },
+      headers: { get: vi.fn(function () { return null; }) },
       cookies: {
-        get: vi.fn((name: string) => {
+        get: vi.fn(function (name: string) {
           if (name === 'auth_idp') return { value: 'cookie-token-standalone' };
           return null;
         })
@@ -151,8 +151,8 @@ describe('extractTokenFromRequest (standalone function)', () => {
 
   it('should return null when no token is present', () => {
     const request = {
-      headers: { get: vi.fn(() => null) },
-      cookies: { get: vi.fn(() => null) }
+      headers: { get: vi.fn(function () { return null; }) },
+      cookies: { get: vi.fn(function () { return null; }) }
     };
 
     const token = extractTokenFromRequest(request);
@@ -162,7 +162,7 @@ describe('extractTokenFromRequest (standalone function)', () => {
 
   it('should handle missing cookies object gracefully', () => {
     const request = {
-      headers: { get: vi.fn(() => null) },
+      headers: { get: vi.fn(function () { return null; }) },
       cookies: undefined
     };
 
@@ -286,7 +286,7 @@ describe('GdAuthService', () => {
     it('should extract token from Bearer authorization header', () => {
       const request = {
         headers: {
-          get: vi.fn((name: string) => {
+          get: vi.fn(function (name: string) {
             if (name === 'authorization') return 'Bearer test-token-123';
             return null;
           })
@@ -304,7 +304,7 @@ describe('GdAuthService', () => {
     it('should extract token from sso-jwt authorization header', () => {
       const request = {
         headers: {
-          get: vi.fn((name: string) => {
+          get: vi.fn(function (name: string) {
             if (name === 'authorization') return 'sso-jwt test-token-456';
             return null;
           })
@@ -322,10 +322,10 @@ describe('GdAuthService', () => {
     it('should extract token from cookie if no header', () => {
       const request = {
         headers: {
-          get: vi.fn(() => null)
+          get: vi.fn(function () { return null; })
         },
         cookies: {
-          get: vi.fn((name: string) => {
+          get: vi.fn(function (name: string) {
             if (name === 'auth_idp') return { value: 'cookie-token-789' };
             return null;
           })
@@ -340,10 +340,10 @@ describe('GdAuthService', () => {
     it('should return null if no token found', () => {
       const request = {
         headers: {
-          get: vi.fn(() => null)
+          get: vi.fn(function () { return null; })
         },
         cookies: {
-          get: vi.fn(() => null)
+          get: vi.fn(function () { return null; })
         }
       };
 

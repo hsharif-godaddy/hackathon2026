@@ -54,7 +54,7 @@ const mockClient = {
 
 // Mock the import
 vi.mock('@/lib/mgmt-airo/client', () => ({
-  AiroMgmtClient: vi.fn().mockImplementation(() => mockClient)
+  AiroMgmtClient: vi.fn().mockImplementation(function () { return mockClient; })
 }))
 
 // Mock logger

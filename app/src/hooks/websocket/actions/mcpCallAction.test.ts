@@ -29,7 +29,6 @@ describe('mcpCallAction', () => {
   let fetchSpy: ReturnType<typeof vi.spyOn>
 
   beforeEach(() => {
-    vi.restoreAllMocks()
     fetchSpy = vi.spyOn(globalThis, 'fetch')
   })
 

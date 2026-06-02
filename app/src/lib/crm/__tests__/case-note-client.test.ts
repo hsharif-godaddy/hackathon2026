@@ -29,7 +29,7 @@ describe('addCrmCaseNote', () => {
 
   it('uses caseExternalId for an async referenceId-shaped caseId', async () => {
     let captured: { url: string; init: any } | undefined;
-    globalThis.fetch = vi.fn(async (url: any, init?: any) => {
+    globalThis.fetch = vi.fn(async function (url: any, init?: any) {
       captured = { url, init };
       return new Response('', { status: 200 });
     }) as any;
@@ -48,7 +48,7 @@ describe('addCrmCaseNote', () => {
 
   it('uses caseRecordId for a Salesforce 15-char Case ID', async () => {
     let captured: { init: any } | undefined;
-    globalThis.fetch = vi.fn(async (_url: any, init?: any) => {
+    globalThis.fetch = vi.fn(async function (_url: any, init?: any) {
       captured = { init };
       return new Response('', { status: 200 });
     }) as any;
@@ -66,7 +66,7 @@ describe('addCrmCaseNote', () => {
     // IDs through the externalId branch and CMAPI would fail to find
     // them (review S-7).
     let captured: { init: any } | undefined;
-    globalThis.fetch = vi.fn(async (_url: any, init?: any) => {
+    globalThis.fetch = vi.fn(async function (_url: any, init?: any) {
       captured = { init };
       return new Response('', { status: 200 });
     }) as any;
@@ -78,7 +78,7 @@ describe('addCrmCaseNote', () => {
   });
 
   it('throws on non-2xx', async () => {
-    globalThis.fetch = vi.fn(async () => new Response('boom', { status: 500 })) as any;
+    globalThis.fetch = vi.fn(async function () { return new Response('boom', { status: 500 }); }) as any;
     const { addCrmCaseNote } = await import('../case-note-client');
     await expect(
       addCrmCaseNote({ caseId: 'x', note: 'n' }),

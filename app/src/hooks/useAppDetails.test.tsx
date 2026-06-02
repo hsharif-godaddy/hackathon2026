@@ -160,7 +160,7 @@ describe('useAppDetails', () => {
       json: async () => mockAppDetails,
     } as Response);
 
-    const refetchIntervalFn = vi.fn((data) => {
+    const refetchIntervalFn = vi.fn(function (data) {
       const hasPending = data?.domains?.some((d: any) => d.status === 'pending');
       return hasPending ? 5000 : false;
     });

@@ -246,7 +246,7 @@ describe('AABCtrlPlaneClient', () => {
     });
 
     it('recovers from transient poll HTTP error internally', async () => {
-      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(function () {});
 
       mockFetch
         .mockResolvedValueOnce({
@@ -273,7 +273,7 @@ describe('AABCtrlPlaneClient', () => {
     });
 
     it('throws non-retryable after consecutive poll HTTP errors', async () => {
-      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(function () {});
 
       mockFetch
         .mockResolvedValueOnce({
@@ -461,7 +461,7 @@ describe('AABCtrlPlaneClient', () => {
     });
 
     it('recovers from ZodError (malformed poll shape) and completes', async () => {
-      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(function () {});
 
       mockFetch
         .mockResolvedValueOnce({
@@ -492,7 +492,7 @@ describe('AABCtrlPlaneClient', () => {
     });
 
     it('throws NonRetryableProvisionError after repeated ZodErrors exceed threshold', async () => {
-      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(function () {});
 
       mockFetch
         .mockResolvedValueOnce({
@@ -512,7 +512,7 @@ describe('AABCtrlPlaneClient', () => {
     });
 
     it('recovers from SyntaxError (invalid JSON body) and completes', async () => {
-      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(function () {});
 
       mockFetch
         .mockResolvedValueOnce({
@@ -543,7 +543,7 @@ describe('AABCtrlPlaneClient', () => {
     });
 
     it('recovers from AbortError (per-request timeout) and completes', async () => {
-      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(function () {});
       const abortError = new DOMException('signal timed out', 'AbortError');
 
       mockFetch
@@ -572,7 +572,7 @@ describe('AABCtrlPlaneClient', () => {
     });
 
     it('recovers from network TypeError (DNS/ECONNRESET) and completes', async () => {
-      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(function () {});
 
       mockFetch
         .mockResolvedValueOnce({
@@ -600,7 +600,7 @@ describe('AABCtrlPlaneClient', () => {
     });
 
     it('does not re-signup when poll errors are transient', async () => {
-      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(function () {});
 
       mockFetch
         .mockResolvedValueOnce({

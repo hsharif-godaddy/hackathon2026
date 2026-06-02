@@ -11,7 +11,7 @@ function makeDeps(overrides: Partial<SSEContextLoaderDeps> = {}): SSEContextLoad
       },
     },
     contextMgr: {
-      convertToEnhancedContext: vi.fn((ctx: unknown) => ({ enhanced: ctx })),
+      convertToEnhancedContext: vi.fn(function (ctx: unknown) { return { enhanced: ctx }; }),
       buildContextMessages: vi.fn().mockResolvedValue({
         contextMessages: [{ role: 'system', content: 'ctx' }],
         formattedContexts: [{ type: 'fmt' }],
@@ -95,7 +95,7 @@ describe('createSSEContextLoader', () => {
 
   it('continues context loading when getApp throws', async () => {
     const deps = makeDeps({
-      getAppContextFields: vi.fn(() => { throw new Error('SQLITE_BUSY') }),
+      getAppContextFields: vi.fn(function () { throw new Error('SQLITE_BUSY') }),
     })
     const loader = createSSEContextLoader(deps)
     const context: Record<string, unknown> = { metadata: { appId: 'app-1' } }
@@ -200,13 +200,13 @@ describe('createSSEContextLoader', () => {
 
   it('runs hasUnbuiltRebuildPages in parallel with buildContextMessages', async () => {
     const order: string[] = []
-    const hasUnbuiltRebuildPages = vi.fn(async () => {
+    const hasUnbuiltRebuildPages = vi.fn(async function () {
       order.push('rebuild-start')
       await new Promise(r => setTimeout(r, 10))
       order.push('rebuild-end')
       return true
     })
-    const buildContextMessages = vi.fn(async () => {
+    const buildContextMessages = vi.fn(async function () {
       order.push('build-start')
       await new Promise(r => setTimeout(r, 10))
       order.push('build-end')
@@ -215,7 +215,7 @@ describe('createSSEContextLoader', () => {
     const deps = makeDeps({
       hasUnbuiltRebuildPages,
       contextMgr: {
-        convertToEnhancedContext: vi.fn(ctx => ctx),
+        convertToEnhancedContext: vi.fn(function (ctx) { return ctx; }),
         buildContextMessages,
       },
     })
@@ -232,7 +232,7 @@ describe('createSSEContextLoader', () => {
     const formatted = [{ type: 'f1' }]
     const deps = makeDeps({
       contextMgr: {
-        convertToEnhancedContext: vi.fn(c => c),
+        convertToEnhancedContext: vi.fn(function (c) { return c; }),
         buildContextMessages: vi.fn().mockResolvedValue({
           contextMessages: messages,
           formattedContexts: formatted,

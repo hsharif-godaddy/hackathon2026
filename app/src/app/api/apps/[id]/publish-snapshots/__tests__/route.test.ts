@@ -29,7 +29,7 @@ vi.mock('@/lib/customer-auth', async function mockCustomerAuth() {
 })
 
 vi.mock('@/lib/control-plane', () => ({
-  getControlPlaneAdapter: vi.fn(() => ({ getSite: mockGetSite })),
+  getControlPlaneAdapter: vi.fn(function () { return { getSite: mockGetSite }; }),
 }))
 
 vi.mock('@aws-sdk/client-s3', () => ({

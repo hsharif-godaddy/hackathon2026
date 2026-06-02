@@ -17,7 +17,7 @@ const shipAnalyticsLogMock = vi.hoisted(() => vi.fn());
 vi.mock('@/lib/gasket-config');
 vi.mock('@/hooks/useHivemind', () => ({
   useHivemind: () => ({ cohort: 'test-cohort', data: undefined, experiment: undefined }),
-  useIsInCohort: vi.fn(() => false),
+  useIsInCohort: vi.fn(function () { return false; }),
 }));
 vi.mock('@/lib/logging', async (importOriginal) => {
   const mod = await importOriginal<typeof import('@/lib/logging')>();
@@ -33,12 +33,12 @@ vi.mock('next/navigation', () => ({
   usePathname: () => '/',
 }));
 vi.mock('@/utils/instrumentation', () => ({
-  generateClickEID: vi.fn((eid: string) => eid),
-  logActionEvent: vi.fn(() => vi.fn()),
-  logAiroHQEvent: vi.fn(() => vi.fn()),
-  logClickEvent: vi.fn(() => vi.fn()),
-  logErrorEvent: vi.fn(() => vi.fn()),
-  logImpressionEvent: vi.fn(() => vi.fn()),
+  generateClickEID: vi.fn(function (eid: string) { return eid; }),
+  logActionEvent: vi.fn(function () { return vi.fn(); }),
+  logAiroHQEvent: vi.fn(function () { return vi.fn(); }),
+  logClickEvent: vi.fn(function () { return vi.fn(); }),
+  logErrorEvent: vi.fn(function () { return vi.fn(); }),
+  logImpressionEvent: vi.fn(function () { return vi.fn(); }),
 }));
 vi.mock('@/lib/features', () => ({
   isFeatureEnabled: {
@@ -49,7 +49,7 @@ vi.mock('@/lib/features', () => ({
   MAX_PROMPT_LENGTH: 40000,
   auth: { enabled: false },
   authUtils: {
-    getSupportedAuthTypes: vi.fn(() => ['sso']),
+    getSupportedAuthTypes: vi.fn(function () { return ['sso']; }),
   },
 }));
 vi.mock('@/components/providers/AuthProvider', () => ({
@@ -299,7 +299,7 @@ describe('Home Page', () => {
       const mod = await import('@/components/providers/AuthProvider')
       const originalUseAuthContext = mod.useAuthContext
       try {
-        const mockUnauthContext = vi.fn(() => mockAuthContext({ isAuthenticated: false }))
+        const mockUnauthContext = vi.fn(function () { return mockAuthContext({ isAuthenticated: false }); })
         vi.mocked(mod).useAuthContext = mockUnauthContext as any
 
         renderWithProviders(<HomeContent serverFeatures={{ showPricingSection: true }} />)

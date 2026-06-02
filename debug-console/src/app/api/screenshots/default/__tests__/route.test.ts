@@ -27,9 +27,9 @@ describe('debug-console /api/screenshots/default/[appId] GET', () => {
       transformToWebStream: vi.fn().mockReturnValue(new ReadableStream()),
     }
 
-    ;(S3Client as any).mockImplementation(() => ({
+    ;(S3Client as any).mockImplementation(function () { return {
       send: vi.fn().mockResolvedValue({ Body: mockStream }),
-    }))
+    }; })
 
     const { GET } = await import('../[appId]/route')
 
@@ -52,13 +52,13 @@ describe('debug-console /api/screenshots/default/[appId] GET', () => {
   it('should return 404 when screenshot not found in S3', async () => {
     const { S3Client } = await import('@aws-sdk/client-s3')
 
-    ;(S3Client as any).mockImplementation(() => ({
+    ;(S3Client as any).mockImplementation(function () { return {
       send: vi.fn().mockRejectedValue(
         Object.assign(new Error('The specified key does not exist.'), {
           name: 'NoSuchKey',
         })
       ),
-    }))
+    }; })
 
     const { GET } = await import('../[appId]/route')
 
@@ -73,13 +73,13 @@ describe('debug-console /api/screenshots/default/[appId] GET', () => {
   it('should return 500 on S3 access denied', async () => {
     const { S3Client } = await import('@aws-sdk/client-s3')
 
-    ;(S3Client as any).mockImplementation(() => ({
+    ;(S3Client as any).mockImplementation(function () { return {
       send: vi.fn().mockRejectedValue(
         Object.assign(new Error('Access Denied'), {
           name: 'AccessDenied',
         })
       ),
-    }))
+    }; })
 
     const { GET } = await import('../[appId]/route')
 
@@ -94,9 +94,9 @@ describe('debug-console /api/screenshots/default/[appId] GET', () => {
   it('should return 500 on unexpected S3 error', async () => {
     const { S3Client } = await import('@aws-sdk/client-s3')
 
-    ;(S3Client as any).mockImplementation(() => ({
+    ;(S3Client as any).mockImplementation(function () { return {
       send: vi.fn().mockRejectedValue(new Error('Network timeout')),
-    }))
+    }; })
 
     const { GET } = await import('../[appId]/route')
 
@@ -114,11 +114,11 @@ describe('debug-console /api/screenshots/default/[appId] GET', () => {
       transformToWebStream: vi.fn().mockReturnValue(mockWebStream),
     }
 
-    ;(S3Client as any).mockImplementation(() => ({
+    ;(S3Client as any).mockImplementation(function () { return {
       send: vi.fn().mockResolvedValue({
         Body: mockStream,
       }),
-    }))
+    }; })
 
     const { GET } = await import('../[appId]/route')
 
@@ -139,11 +139,11 @@ describe('debug-console /api/screenshots/default/[appId] GET', () => {
       transformToWebStream: vi.fn().mockReturnValue(mockWebStream),
     }
 
-    ;(S3Client as any).mockImplementation(() => ({
+    ;(S3Client as any).mockImplementation(function () { return {
       send: vi.fn().mockResolvedValue({
         Body: mockStream,
       }),
-    }))
+    }; })
 
     const { GET } = await import('../[appId]/route')
 
@@ -162,9 +162,9 @@ describe('debug-console /api/screenshots/default/[appId] GET', () => {
       transformToWebStream: vi.fn().mockReturnValue(mockWebStream),
     }
 
-    ;(S3Client as any).mockImplementation(() => ({
+    ;(S3Client as any).mockImplementation(function () { return {
       send: vi.fn().mockResolvedValue({ Body: mockStream }),
-    }))
+    }; })
 
     const { GET } = await import('../[appId]/route')
 
@@ -181,9 +181,9 @@ describe('debug-console /api/screenshots/default/[appId] GET', () => {
 
     const { S3Client } = await import('@aws-sdk/client-s3')
 
-    ;(S3Client as any).mockImplementation(() => ({
+    ;(S3Client as any).mockImplementation(function () { return {
       send: vi.fn(),
-    }))
+    }; })
 
     const { GET } = await import('../[appId]/route')
 
@@ -204,9 +204,9 @@ describe('debug-console /api/screenshots/default/[appId] GET', () => {
       transformToWebStream: vi.fn().mockReturnValue(mockWebStream),
     }
 
-    ;(S3Client as any).mockImplementation(() => ({
+    ;(S3Client as any).mockImplementation(function () { return {
       send: vi.fn().mockResolvedValue({ Body: mockStream }),
-    }))
+    }; })
 
     const { GET } = await import('../[appId]/route')
 
@@ -220,11 +220,11 @@ describe('debug-console /api/screenshots/default/[appId] GET', () => {
   it('should handle falsy Body in S3 response', async () => {
     const { S3Client } = await import('@aws-sdk/client-s3')
 
-    ;(S3Client as any).mockImplementation(() => ({
+    ;(S3Client as any).mockImplementation(function () { return {
       send: vi.fn().mockResolvedValue({
         Body: null,
       }),
-    }))
+    }; })
 
     const { GET } = await import('../[appId]/route')
 

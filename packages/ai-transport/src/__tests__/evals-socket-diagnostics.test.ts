@@ -30,7 +30,7 @@ const mockIO = {
 }
 
 vi.mock('socket.io', () => ({
-  Server: vi.fn().mockImplementation(() => mockIO),
+  Server: vi.fn().mockImplementation(function () { return mockIO; }),
 }))
 
 const { mockCreateTraceContext } = vi.hoisted(() => ({
@@ -70,7 +70,7 @@ async function setupServerWithConnection(
     | null = null
 
   mockIO.on.mockImplementation(
-    (event: string, handler: any) => {
+    function (event: string, handler: any) {
       if (event === 'connection') {
         connectionHandler = handler
       }
@@ -276,7 +276,7 @@ describe('Evals Socket Diagnostics', () => {
         setupSuccessfulStream()
 
         mockSocket.emit.mockImplementation(
-          (event: string) => {
+          function (event: string) {
             if (event === 'stream.timing.summary') {
               throw new Error('socket closed')
             }
@@ -532,7 +532,7 @@ describe('Evals Socket Diagnostics', () => {
         setupSuccessfulStream()
 
         mockSocket.emit.mockImplementation(
-          (event: string) => {
+          function (event: string) {
             if (event === TOKEN_USAGE_SUMMARY_EVENT) {
               throw new Error('socket closed')
             }
@@ -705,7 +705,7 @@ describe('Evals Socket Diagnostics', () => {
       // second chunk jumps to T=92100 (91s gap).
       let now = 1000
       dateNowSpy = vi.spyOn(Date, 'now')
-        .mockImplementation(() => now)
+        .mockImplementation(function () { return now; })
 
       const reader = createMockReader(
         textDelta('a'),
@@ -716,7 +716,7 @@ describe('Evals Socket Diagnostics', () => {
       const originalRead = reader.read
       let readCount = 0
       reader.read = vi.fn().mockImplementation(
-        () => {
+        function () {
           readCount++
           if (readCount === 1) now = 1100
           if (readCount === 2) now = 92100
@@ -814,7 +814,7 @@ describe('Evals Socket Diagnostics', () => {
           },
         },
       })
-      readMock.mockImplementationOnce(() => {
+      readMock.mockImplementationOnce(function () {
         const ac = (srv as any).stateManager
           .getAbortController('test-socket-id')
         if (ac) ac.abort('chunk_timeout')

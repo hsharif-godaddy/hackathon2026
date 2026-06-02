@@ -84,9 +84,9 @@ vi.mock('@/app/[market]/develop/components/media/UploadedMediaSection', () => ({
 }));
 
  
-const mockLogImpressionEvent: any = vi.fn(() => vi.fn());
+const mockLogImpressionEvent: any = vi.fn(function () { return vi.fn(); });
 vi.mock('@/utils/instrumentation', () => ({
-  generateClickEID: vi.fn((id: string) => id),
+  generateClickEID: vi.fn(function (id: string) { return id; }),
   logImpressionEvent: (...args: unknown[]) => mockLogImpressionEvent(...args),
 }));
 

@@ -25,11 +25,11 @@ vi.mock('@/components/feedback/utils', () => ({
 }));
 
 // Mock ResizeObserver for UX components
-global.ResizeObserver = vi.fn().mockImplementation(() => ({
+global.ResizeObserver = vi.fn().mockImplementation(function () { return {
   observe: vi.fn(),
   unobserve: vi.fn(),
   disconnect: vi.fn(),
-}));
+}; });
 
 // Mock clipboard API
 Object.defineProperty(navigator, 'clipboard', {
@@ -46,10 +46,10 @@ const mockUseSwitchboard = vi.fn();
 const mockUseSubscription = vi.fn();
 const mockUseVenture = vi.fn();
 const mockUseAuthContext = vi.fn();
-const mockLogClickEvent = vi.fn(() => vi.fn());
-const mockLogImpressionEvent = vi.fn((_eid: string) => vi.fn());
+const mockLogClickEvent = vi.fn(function () { return vi.fn(); });
+const mockLogImpressionEvent = vi.fn(function (_eid: string) { return vi.fn(); });
 
-const mockUsePathname = vi.fn(() => '/develop');
+const mockUsePathname = vi.fn(function () { return '/develop'; });
 
 vi.mock('next/navigation', () => ({
   usePathname: () => mockUsePathname(),
@@ -68,8 +68,7 @@ vi.mock('@/utils/instrumentation', () => ({
 }));
 
 vi.mock('@/stores/useDevelopPageStore', () => ({
-  useDevelopPageStore: vi.fn((selector: (state: { currentAppId: string | null }) => unknown) =>
-    selector({ currentAppId: 'test-app-123' })),
+  useDevelopPageStore: vi.fn(function (selector: (state: { currentAppId: string | null }) => unknown) { return selector({ currentAppId: 'test-app-123' }); }),
 }));
 
 vi.mock('@/hooks/useSsoSignIn', () => ({
@@ -149,7 +148,7 @@ describe('UserMenu', function userMenuTests() {
     });
 
     it('should open /apps in new tab when All Projects is clicked on develop page', async function navigateAllProjectsDevelop() {
-      const mockOpen = vi.spyOn(window, 'open').mockImplementation(() => null);
+      const mockOpen = vi.spyOn(window, 'open').mockImplementation(function () { return null; });
 
       try {
         const { user } = renderWithProviders(<UserMenu location="develop" />);
@@ -170,7 +169,7 @@ describe('UserMenu', function userMenuTests() {
 
     it('should navigate to /apps in same tab when All Projects is clicked outside develop page', async function navigateAllProjectsHomepage() {
       mockUsePathname.mockReturnValue('/apps');
-      const mockOpen = vi.spyOn(window, 'open').mockImplementation(() => null);
+      const mockOpen = vi.spyOn(window, 'open').mockImplementation(function () { return null; });
 
       try {
         const { user } = renderWithProviders(<UserMenu location="homepage" />);
@@ -348,7 +347,7 @@ describe('UserMenu', function userMenuTests() {
     });
 
     it('should navigate to account products page when clicked', async function navigate() {
-      const mockOpen = vi.spyOn(window, 'open').mockImplementation(() => null);
+      const mockOpen = vi.spyOn(window, 'open').mockImplementation(function () { return null; });
 
       try {
         const { user } = renderWithProviders(<UserMenu location="develop" />);
@@ -373,7 +372,7 @@ describe('UserMenu', function userMenuTests() {
 
   describe('Dashboard menu item', function dashboardTests() {
     function enableVentureConnectionFlag() {
-      mockUseSwitchboard.mockImplementation((flag: string) => flag === 'aab-venture-connection');
+      mockUseSwitchboard.mockImplementation(function (flag: string) { return flag === 'aab-venture-connection'; });
     }
 
     it('should not show Dashboard when ventureId is unavailable', async function hideWithoutVenture() {
@@ -421,7 +420,7 @@ describe('UserMenu', function userMenuTests() {
       enableVentureConnectionFlag();
       mockUseVenture.mockReturnValue({ ventureId: 'venture-abc', isLoading: false });
 
-      const mockOpen = vi.spyOn(window, 'open').mockImplementation(() => null);
+      const mockOpen = vi.spyOn(window, 'open').mockImplementation(function () { return null; });
 
       try {
         const { user } = renderWithProviders(<UserMenu location="develop" />);
@@ -475,7 +474,7 @@ describe('UserMenu', function userMenuTests() {
     });
 
     it('should navigate to godaddy.com when clicked', async function navigate() {
-      const mockOpen = vi.spyOn(window, 'open').mockImplementation(() => null);
+      const mockOpen = vi.spyOn(window, 'open').mockImplementation(function () { return null; });
 
       try {
         const { user } = renderWithProviders(<UserMenu location="develop" />);

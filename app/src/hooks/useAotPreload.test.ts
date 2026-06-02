@@ -7,9 +7,9 @@ import { renderHookWithProviders } from '@/tests/test-utils';
 import { useAotPreload } from './useAotPreload';
 
 describe('useAotPreload', () => {
-  const importA = vi.fn(() => Promise.resolve({ default: {} }));
-  const importB = vi.fn(() => Promise.resolve({ default: {} }));
-  const importC = vi.fn(() => Promise.resolve({ default: {} }));
+  const importA = vi.fn(function () { return Promise.resolve({ default: {} }); });
+  const importB = vi.fn(function () { return Promise.resolve({ default: {} }); });
+  const importC = vi.fn(function () { return Promise.resolve({ default: {} }); });
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -31,7 +31,7 @@ describe('useAotPreload', () => {
 
     beforeEach(() => {
       ricCallback = null;
-      mockRIC = vi.fn((cb: () => void) => { ricCallback = cb; return 42; });
+      mockRIC = vi.fn(function (cb: () => void) { ricCallback = cb; return 42; });
       mockCIC = vi.fn();
       globalThis.requestIdleCallback = mockRIC as any;
       globalThis.cancelIdleCallback = mockCIC;

@@ -8,34 +8,34 @@ import { useAuth } from './useAuth';
 
 // Mock dependencies
 vi.mock('@godaddy/gasket-auth', () => ({
-  useAuthState: vi.fn(() => ({
+  useAuthState: vi.fn(function () { return {
     status: 'authenticated',
     valid: true,
     details: { email: 'test@example.com', cid: 'customer-123' },
-  })),
+  }; }),
   AuthRealmType: {},
   AuthRiskType: {},
   AuthIdpType: {},
 }));
 
 vi.mock('@/hooks/useMockAuth', () => ({
-  useMockAuth: vi.fn(() => ({
+  useMockAuth: vi.fn(function () { return {
     isAuthenticated: false,
     isLoading: false,
     user: null,
     login: vi.fn(),
     logout: vi.fn(),
-  })),
+  }; }),
 }));
 
 vi.mock('@/lib/features', () => ({
   auth: {
-    getType: vi.fn(() => 'MOCK'),
-    isMock: vi.fn(() => true),
-    isJWT: vi.fn(() => false),
+    getType: vi.fn(function () { return 'MOCK'; }),
+    isMock: vi.fn(function () { return true; }),
+    isJWT: vi.fn(function () { return false; }),
   },
   authUtils: {
-    getSupportedAuthTypes: vi.fn(() => ['sso']),
+    getSupportedAuthTypes: vi.fn(function () { return ['sso']; }),
   },
 }));
 
@@ -63,11 +63,10 @@ const defaultTestConfig = {
 let mockGasketConfig = { ...defaultTestConfig };
 
 vi.mock('@/lib/gasket-config', () => ({
-  getGasketConfig: vi.fn(() => Promise.resolve(mockGasketConfig)),
-  getLoginUrl: vi.fn((returnUrl?: string) =>
-    Promise.resolve(`${mockGasketConfig.sso.loginUrl}?app=airo-builder${returnUrl ? `&path=${encodeURIComponent(returnUrl)}` : ''}`)
+  getGasketConfig: vi.fn(function () { return Promise.resolve(mockGasketConfig); }),
+  getLoginUrl: vi.fn(function (returnUrl?: string) { return Promise.resolve(`${mockGasketConfig.sso.loginUrl}?app=airo-builder${returnUrl ? `&path=${encodeURIComponent(returnUrl)}` : ''}`); }
   ),
-  getLogoutUrl: vi.fn(() => {
+  getLogoutUrl: vi.fn(function () {
     return Promise.resolve(`${mockGasketConfig.sso.logoutUrl}?app=airo-builder&redirect=${encodeURIComponent(mockGasketConfig.redirects.logoutRedirectUrl)}`);
   }),
   authConfigs: {
@@ -79,9 +78,9 @@ vi.mock('@/lib/gasket-config', () => ({
       use12HourExpiration: true,
     },
   },
-  isAuthMockSync: vi.fn(() => true),
-  isAuthJWTSync: vi.fn(() => false),
-  getAuthTypeSync: vi.fn(() => 'MOCK'),
+  isAuthMockSync: vi.fn(function () { return true; }),
+  isAuthJWTSync: vi.fn(function () { return false; }),
+  getAuthTypeSync: vi.fn(function () { return 'MOCK'; }),
   GasketConfig: {},
 }));
 
@@ -96,7 +95,7 @@ vi.mock('@/lib/request-context', () => ({
 
 const { mockUseAuthUIStore } = vi.hoisted(() => {
   const store = {};
-  const useAuthUIStore: any = vi.fn((selector?: (state: typeof store) => any) => {
+  const useAuthUIStore: any = vi.fn(function (selector?: (state: typeof store) => any) {
     return selector ? selector(store) : store;
   });
   useAuthUIStore.getState = () => store;
@@ -116,7 +115,7 @@ describe('useAuth', () => {
 
     // Reset getGasketConfig mock implementation
     const gasketConfigModule = await import('@/lib/gasket-config');
-    vi.mocked(gasketConfigModule.getGasketConfig).mockImplementation(() => Promise.resolve(mockGasketConfig));
+    vi.mocked(gasketConfigModule.getGasketConfig).mockImplementation(function () { return Promise.resolve(mockGasketConfig); });
     vi.mocked(gasketConfigModule.isAuthMockSync).mockReturnValue(true);
     vi.mocked(gasketConfigModule.isAuthJWTSync).mockReturnValue(false);
     vi.mocked(gasketConfigModule.getAuthTypeSync).mockReturnValue('MOCK');

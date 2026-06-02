@@ -12,7 +12,7 @@ import { renderWithProviders } from '@/tests/test-utils';
 
 
 vi.mock('@/hooks/useSwitchboard', () => ({
-  useSwitchboard: vi.fn(() => (false)),
+  useSwitchboard: vi.fn(function () { return false; }),
 }));
 
 beforeEach(() => {
@@ -78,7 +78,7 @@ describe('DomainDNS', () => {
 
   it('shows provisioning spinner when DCV enabled and certificateValidationCname is missing', async () => {
     const { useSwitchboard } = await import('@/hooks/useSwitchboard');
-    vi.mocked(useSwitchboard).mockImplementation((feature: string) => {
+    vi.mocked(useSwitchboard).mockImplementation(function (feature: string) {
       if (feature === 'appbuilder-domain-dcv') {
         return true;
       }

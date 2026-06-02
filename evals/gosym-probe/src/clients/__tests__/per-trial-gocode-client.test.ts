@@ -5,9 +5,9 @@ const { mockCreate } = vi.hoisted(() => ({
 }));
 
 vi.mock('openai', () => ({
-  default: vi.fn().mockImplementation(() => ({
+  default: vi.fn().mockImplementation(function () { return {
     chat: { completions: { create: mockCreate } },
-  })),
+  }; }),
 }));
 
 vi.mock('@airo/ai-lib', () => ({

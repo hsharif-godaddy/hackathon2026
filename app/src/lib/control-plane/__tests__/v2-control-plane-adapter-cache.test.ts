@@ -25,13 +25,13 @@ const mockClient = {
     { id: 'sub-1', status: 'active' },
     { id: 'sub-2', status: 'active' }
   ]),
-  getSystems: vi.fn().mockImplementation(async (subId: string) => [
+  getSystems: vi.fn().mockImplementation(async function (subId: string) { return [
     { id: `sys-${subId}-1`, name: `System 1 for ${subId}` }
-  ]),
-  getAppsForSystem: vi.fn().mockImplementation(async (subId: string, sysId: string) => [
+  ]; }),
+  getAppsForSystem: vi.fn().mockImplementation(async function (subId: string, sysId: string) { return [
     { id: 'test-app-id', systemId: sysId, subscriptionId: subId }
-  ]),
-  getApp: vi.fn().mockImplementation(async (subId: string, sysId: string, appId: string) => ({
+  ]; }),
+  getApp: vi.fn().mockImplementation(async function (subId: string, sysId: string, appId: string) { return {
     id: appId,
     systemId: sysId,
     subscriptionId: subId,
@@ -39,7 +39,7 @@ const mockClient = {
     variables: { title: 'Test App', initialPrompt: 'Test prompt' },
     createdAt: '2023-01-01T00:00:00Z',
     updatedAt: '2023-01-01T00:00:00Z'
-  })),
+  }; }),
   getAiroJobApps: vi.fn().mockRejectedValue({
     status: 404,
     message: 'Job not found'
@@ -49,7 +49,7 @@ const mockClient = {
 
 // Mock the AiroMgmtClient
 vi.mock('@/lib/mgmt-airo/client', () => ({
-  AiroMgmtClient: vi.fn().mockImplementation(() => mockClient)
+  AiroMgmtClient: vi.fn().mockImplementation(function () { return mockClient; })
 }))
 
 // Mock logger
@@ -151,7 +151,7 @@ describe('V2ControlPlaneAdapter with Cache', function adapterCacheTests() {
     })
 
     // Mock 404 error for getApp calls with deleted app
-    mockClient.getApp.mockImplementation(async (subId: string, sysId: string, appId: string) => {
+    mockClient.getApp.mockImplementation(async function (subId: string, sysId: string, appId: string) {
       if (appId === deletedAppId) {
         const error: any = new Error('App not found')
         error.status = 404
@@ -170,7 +170,7 @@ describe('V2ControlPlaneAdapter with Cache', function adapterCacheTests() {
     })
 
     // Mock getAppsForSystem to not include deleted app
-    mockClient.getAppsForSystem.mockImplementation(async () => {
+    mockClient.getAppsForSystem.mockImplementation(async function () {
       // Don't return deleted app in the list
       return []
     })

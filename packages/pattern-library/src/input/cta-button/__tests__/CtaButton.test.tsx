@@ -7,7 +7,7 @@ import { CtaButton, type CtaButtonProps } from '../index';
 
 beforeAll(() => {
   // `@ux/icon/async-icon.js` fetches SVG from an asset host; jsdom has no network.
-  vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
+  vi.spyOn(globalThis, 'fetch').mockImplementation(function (input) {
     const url =
       typeof input === 'string' ? input : input instanceof Request ? input.url : input.href;
 
@@ -240,7 +240,7 @@ describe('CtaButton', () => {
       const promise = new Promise<void>((res) => {
         resolvePromise = res;
       });
-      const onAction = vi.fn(() => promise);
+      const onAction = vi.fn(function () { return promise; });
 
       renderCta({ onAction, actionLabel: 'Go' });
       const button = screen.getByRole('button', { name: 'Go' });
@@ -265,7 +265,7 @@ describe('CtaButton', () => {
       const promise = new Promise<void>((res) => {
         resolvePromise = res;
       });
-      const onAction = vi.fn(() => promise);
+      const onAction = vi.fn(function () { return promise; });
 
       renderCta({ onAction, actionLabel: 'Go' });
       const button = screen.getByRole('button', { name: 'Go' });
@@ -300,7 +300,7 @@ describe('CtaButton', () => {
       const promise = new Promise<void>((res) => {
         resolvePromise = res;
       });
-      const onAction = vi.fn(() => promise);
+      const onAction = vi.fn(function () { return promise; });
 
       renderCta({ status: 'pending', onAction, actionLabel: 'Go' });
       const button = screen.getByRole('button', { name: 'Go' });
@@ -320,7 +320,7 @@ describe('CtaButton', () => {
 
     it('supports async onAction', async () => {
       let resolved = false;
-      const onAction = vi.fn(async () => {
+      const onAction = vi.fn(async function () {
         await new Promise((res) => setTimeout(res, 10));
         resolved = true;
       });
@@ -343,7 +343,7 @@ describe('CtaButton', () => {
 
     it('wraps sync onAction in Promise.resolve', async () => {
       let called = false;
-      const onAction = vi.fn(() => {
+      const onAction = vi.fn(function () {
         called = true;
       });
 

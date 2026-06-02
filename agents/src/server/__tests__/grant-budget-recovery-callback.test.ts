@@ -10,7 +10,7 @@ vi.mock('@airo/ai-grants', () => ({
 }))
 
 vi.mock('@airo/ai-transport', () => ({
-  hasNonIdempotentTools: vi.fn((names: string[]) => names.includes('git__commit')),
+  hasNonIdempotentTools: vi.fn(function (names: string[]) { return names.includes('git__commit'); }),
 }))
 
 import { grantSessionManager } from '@airo/ai-grants'
@@ -97,7 +97,7 @@ describe('createGrantBudgetRecoveryCallback', () => {
   })
 
   it('returns retry:false on internal error and logs at error level', async () => {
-    vi.mocked(grantSessionManager.advanceToNextGrant).mockImplementation(() => { throw new Error('DB failure') })
+    vi.mocked(grantSessionManager.advanceToNextGrant).mockImplementation(function () { throw new Error('DB failure') })
 
     const callback = createGrantBudgetRecoveryCallback({ logger: mockLogger })
     const result = await callback(sessionId, error, [])

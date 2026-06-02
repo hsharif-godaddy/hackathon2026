@@ -15,9 +15,9 @@ vi.mock('../../../workspace/index.js', () => ({
   createForWorkspace: (...args: unknown[]) => mockCreateForWorkspace(...args),
 }))
 vi.mock('../../git-tool.js', () => ({
-  GitTool: vi.fn(() => ({
+  GitTool: vi.fn(function () { return {
     executeGitOperation: mockExecuteGitOperation,
-  })),
+  }; }),
 }))
 
 // Mock database connection
@@ -32,12 +32,12 @@ vi.mock('../../../database/connection.js', () => ({
 // Mock Logger
 vi.mock('../../../logging/index.js', () => ({
   Logger: {
-    create: vi.fn(() => ({
+    create: vi.fn(function () { return {
       info: vi.fn(),
       error: vi.fn(),
       warn: vi.fn(),
       debug: vi.fn()
-    }))
+    }; })
   }
 }))
 
@@ -45,19 +45,19 @@ vi.mock('../../../logging/index.js', () => ({
 const mockFindById = vi.fn()
 const mockUpdate = vi.fn()
 vi.mock('../../../database/repositories/AppRepository.js', () => ({
-  AppRepository: vi.fn(() => ({
+  AppRepository: vi.fn(function () { return {
     findById: mockFindById,
     update: mockUpdate
-  }))
+  }; })
 }))
 
 // Mock the KV memory store
 const mockMemoryGet = vi.fn()
 const mockMemorySet = vi.fn()
-const mockGetKvMemoryStore = vi.fn(() => ({
+const mockGetKvMemoryStore = vi.fn(function () { return {
   get: mockMemoryGet,
   set: mockMemorySet,
-}))
+}; })
 vi.mock('../../../memory/adapters/index.js', () => ({
   getKvMemoryStore: () => mockGetKvMemoryStore(),
 }))
@@ -317,7 +317,7 @@ describe('set-project-name', function setProjectNameTests() {
       mockFindById.mockReturnValue({ id: appId, name: 'Old', path: undefined })
       mockUpdate.mockReturnValue({ id: appId, name: newName })
       // Simulate the store initialization throwing (e.g. locked DB on first access)
-      mockGetKvMemoryStore.mockImplementationOnce(() => { throw new Error('DB locked') })
+      mockGetKvMemoryStore.mockImplementationOnce(function () { throw new Error('DB locked') })
 
       const result = await setProjectNameAITool.execute(
         { name: newName },

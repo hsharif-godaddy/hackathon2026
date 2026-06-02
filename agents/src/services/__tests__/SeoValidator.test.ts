@@ -127,7 +127,7 @@ describe('validatePublishedSeo', () => {
     // invalid-json-ld; a RangeError (or anything else) should surface so a
     // future flattening of the type guard fails loudly.
     mockFetchReturning(htmlResponse(FULL_HTML));
-    const parseSpy = vi.spyOn(JSON, 'parse').mockImplementation(() => {
+    const parseSpy = vi.spyOn(JSON, 'parse').mockImplementation(function () {
       throw new RangeError('synthetic non-SyntaxError');
     });
     try {
@@ -342,14 +342,13 @@ describe('validatePublishedSeo', () => {
   it('emits fetch timeout warning when request exceeds timeoutMs', async () => {
     // Exercises the AbortController path: a fetch that never resolves must
     // be aborted by the signal rather than hanging indefinitely.
-    const abortedFetch = vi.fn().mockImplementation((_url, opts: RequestInit) =>
-      new Promise((_resolve, reject) => {
+    const abortedFetch = vi.fn().mockImplementation(function (_url, opts: RequestInit) { return new Promise((_resolve, reject) => {
         opts.signal?.addEventListener('abort', () => {
           const err = new Error('The operation was aborted.');
           err.name = 'AbortError';
           reject(err);
         });
-      }),
+      }); },
     );
     vi.stubGlobal('fetch', abortedFetch);
     const result = await validatePublishedSeo('https://e.com/', { logger, timeoutMs: 20 });

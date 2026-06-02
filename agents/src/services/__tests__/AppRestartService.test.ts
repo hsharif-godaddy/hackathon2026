@@ -59,7 +59,7 @@ describe('AppRestartService', () => {
     } = {}
   ): void {
     const scripts = options.packageJsonScripts ?? { build: 'vite build', start: 'node server.js' };
-    const mockRunCommandSync = vi.fn().mockImplementation(({ command }: { command: string }) => {
+    const mockRunCommandSync = vi.fn().mockImplementation(function ({ command }: { command: string }) {
       if (command.includes('pnpm-lock.yaml')) {
         return Promise.resolve(makeRunCommandResult({ stdout: options.pnpm ? 'found' : '' }));
       }
@@ -110,7 +110,7 @@ describe('AppRestartService', () => {
     } as any);
 
     // Setup TerminalTool mock
-    vi.mocked(TerminalTool).mockImplementation(() => mockTerminalTool as any);
+    vi.mocked(TerminalTool).mockImplementation(function () { return mockTerminalTool as any; });
 
     // Setup fs mocks
     vi.mocked(fs.mkdir).mockResolvedValue(undefined);
@@ -886,7 +886,7 @@ describe('AppRestartService', () => {
         });
 
         // Set up workspace.tasks.runCommandSync for all commands in performFullRestartCycle
-        mockRunCommandSync = vi.fn().mockImplementation(({ command }: { command: string }) => {
+        mockRunCommandSync = vi.fn().mockImplementation(function ({ command }: { command: string }) {
           if (command.includes('pnpm-lock.yaml') || command.includes('yarn.lock')) {
             return Promise.resolve(makeRunCommandResult({ stdout: '' }));
           }
@@ -906,7 +906,7 @@ describe('AppRestartService', () => {
       });
 
       it('should detect pnpm and use pnpm commands', async () => {
-        mockRunCommandSync.mockImplementation(({ command }: { command: string }) => {
+        mockRunCommandSync.mockImplementation(function ({ command }: { command: string }) {
           if (command.includes('pnpm-lock.yaml')) {
             return Promise.resolve(makeRunCommandResult({ stdout: 'found' }));
           }
@@ -946,7 +946,7 @@ describe('AppRestartService', () => {
       });
 
       it('should detect yarn and use yarn commands', async () => {
-        mockRunCommandSync.mockImplementation(({ command }: { command: string }) => {
+        mockRunCommandSync.mockImplementation(function ({ command }: { command: string }) {
           if (command.includes('pnpm-lock.yaml')) {
             return Promise.resolve(makeRunCommandResult({ stdout: '' }));
           }
@@ -1023,7 +1023,7 @@ describe('AppRestartService', () => {
       });
 
       it('should use custom install command over detected PM', async () => {
-        mockRunCommandSync.mockImplementation(({ command }: { command: string }) => {
+        mockRunCommandSync.mockImplementation(function ({ command }: { command: string }) {
           if (command.includes('pnpm-lock.yaml')) {
             return Promise.resolve(makeRunCommandResult({ stdout: 'found' }));
           }
@@ -1051,7 +1051,7 @@ describe('AppRestartService', () => {
       });
 
       it('should use custom build command over detected PM', async () => {
-        mockRunCommandSync.mockImplementation(({ command }: { command: string }) => {
+        mockRunCommandSync.mockImplementation(function ({ command }: { command: string }) {
           if (command.includes('pnpm-lock.yaml')) {
             return Promise.resolve(makeRunCommandResult({ stdout: 'found' }));
           }
@@ -1098,7 +1098,7 @@ describe('AppRestartService', () => {
       });
       vi.mocked(createForWorkspace).mockReturnValue({
         tasks: {
-          runCommandSync: vi.fn().mockImplementation(({ command }: { command: string }) => {
+          runCommandSync: vi.fn().mockImplementation(function ({ command }: { command: string }) {
             if (command.includes('pnpm-lock.yaml') || command.includes('yarn.lock')) {
               return Promise.resolve(makeRunCommandResult({ stdout: '' }));
             }
@@ -1136,7 +1136,7 @@ describe('AppRestartService', () => {
     it('should handle du command failure gracefully', async () => {
       vi.mocked(createForWorkspace).mockReturnValue({
         tasks: {
-          runCommandSync: vi.fn().mockImplementation(({ command }: { command: string }) => {
+          runCommandSync: vi.fn().mockImplementation(function ({ command }: { command: string }) {
             if (command.includes('pnpm-lock.yaml') || command.includes('yarn.lock')) {
               return Promise.resolve(makeRunCommandResult({ stdout: '' }));
             }
@@ -1162,7 +1162,7 @@ describe('AppRestartService', () => {
     it('should handle invalid du output gracefully', async () => {
       vi.mocked(createForWorkspace).mockReturnValue({
         tasks: {
-          runCommandSync: vi.fn().mockImplementation(({ command }: { command: string }) => {
+          runCommandSync: vi.fn().mockImplementation(function ({ command }: { command: string }) {
             if (command.includes('pnpm-lock.yaml') || command.includes('yarn.lock')) {
               return Promise.resolve(makeRunCommandResult({ stdout: '' }));
             }

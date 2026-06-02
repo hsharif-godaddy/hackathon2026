@@ -2,9 +2,9 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 // Mock dependencies — factories cannot reference outer variables (hoisted)
 vi.mock('../../database/repositories/AppRepository.js', () => ({
-  AppRepository: vi.fn().mockImplementation(() => ({
+  AppRepository: vi.fn().mockImplementation(function () { return {
     findById: vi.fn(),
-  })),
+  }; }),
 }));
 
 vi.mock('../../utils/dev-supervisor-client-factory.js', () => ({
@@ -14,7 +14,7 @@ vi.mock('../../utils/dev-supervisor-client-factory.js', () => ({
 }));
 
 vi.mock('../../utils/git.js', () => ({
-  GitUtils: vi.fn().mockImplementation(() => ({
+  GitUtils: vi.fn().mockImplementation(function () { return {
     isGitRepository: vi.fn(),
     getCurrentBranch: vi.fn(),
     hasUncommittedChanges: vi.fn(),
@@ -31,7 +31,7 @@ vi.mock('../../utils/git.js', () => ({
     updateRef: vi.fn(),
     getCommitHistory: vi.fn(),
     cleanupOldBranches: vi.fn(),
-  })),
+  }; }),
 }));
 
 vi.mock('../../logging/index.js', () => ({
@@ -114,7 +114,7 @@ describe('GitHookService', () => {
         getCommitHistory: vi.fn().mockResolvedValue([]),
         cleanupOldBranches: vi.fn().mockResolvedValue({ needed: false, deleted: 0, failed: [], gcPerformed: false }),
       };
-      vi.mocked(GitUtils).mockImplementation(() => mockImpl as unknown as GitUtils);
+      vi.mocked(GitUtils).mockImplementation(function () { return mockImpl as unknown as GitUtils; });
       return mockImpl;
     }
 
@@ -224,7 +224,7 @@ describe('GitHookService', () => {
         getCommitHistory: vi.fn().mockResolvedValue([]),
         cleanupOldBranches: vi.fn().mockResolvedValue({ needed: false, deleted: 0, failed: [], gcPerformed: false }),
       };
-      vi.mocked(GitUtils).mockImplementation(() => mockImpl as unknown as GitUtils);
+      vi.mocked(GitUtils).mockImplementation(function () { return mockImpl as unknown as GitUtils; });
       return mockImpl;
     }
 
@@ -372,7 +372,7 @@ describe('GitHookService', () => {
         getCommitHistory: vi.fn().mockResolvedValue([{ hash: 'abc1234' }]),
         cleanupOldBranches: vi.fn().mockResolvedValue({ needed: false, deleted: 0, failed: [], gcPerformed: false }),
       };
-      vi.mocked(GitUtils).mockImplementation(() => mockImpl as unknown as GitUtils);
+      vi.mocked(GitUtils).mockImplementation(function () { return mockImpl as unknown as GitUtils; });
       return mockImpl;
     }
 

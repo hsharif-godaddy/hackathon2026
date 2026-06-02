@@ -18,15 +18,15 @@ const flushBackgroundWork = () => new Promise(resolve => setTimeout(resolve, 50)
 const mockFetchScreenshotBuffer = vi.hoisted(() => vi.fn());
 
 vi.mock('../../../tools/ai-lib-tools/drivers/website-scraper-driver.js', () => ({
-  WebsiteScraperDriver: vi.fn().mockImplementation(() => ({
+  WebsiteScraperDriver: vi.fn().mockImplementation(function () { return {
     fetchScreenshotBuffer: mockFetchScreenshotBuffer,
-  })),
+  }; }),
 }));
 
 vi.mock('../../../utils/git.js', () => ({
-  GitUtils: vi.fn().mockImplementation(() => ({
+  GitUtils: vi.fn().mockImplementation(function () { return {
     getCurrentCommit: vi.fn().mockResolvedValue(''),
-  })),
+  }; }),
 }));
 
 import { captureScreenshotRouter, recentCaptures } from '../capture-screenshot.js';
@@ -37,10 +37,10 @@ vi.mock('../../../services/name-suggestion.js', () => ({
   getNameSuggestionService: () => ({ suggestName: vi.fn() }),
 }));
 vi.mock('../../../tools/ast-style-editor.js', () => ({
-  ASTStyleEditor: vi.fn().mockImplementation(() => ({})),
+  ASTStyleEditor: vi.fn().mockImplementation(function () { return {}; }),
 }));
 vi.mock('../../../tools/ast-text-editor.js', () => ({
-  ASTTextEditor: vi.fn().mockImplementation(() => ({})),
+  ASTTextEditor: vi.fn().mockImplementation(function () { return {}; }),
 }));
 vi.mock('../../../tools/ast-image-editor.js', () => ({
   astImageEditor: {},
@@ -52,7 +52,7 @@ vi.mock('../../../utils/code-search.js', () => ({
   searchCode: vi.fn(),
 }));
 vi.mock('../../../tools/server-management-tool.js', () => ({
-  ServerManagementTool: vi.fn().mockImplementation(() => ({})),
+  ServerManagementTool: vi.fn().mockImplementation(function () { return {}; }),
 }));
 
 import { AppRepository } from '../../../database/index.js';

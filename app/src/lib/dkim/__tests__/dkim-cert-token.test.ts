@@ -25,7 +25,7 @@ import { _clearTokenCacheForTesting, getDkimServiceToken } from '../dkim-cert-to
 // emits. Tests pass a body string + statusCode; the helper drives the
 // callback chain so makeTokenRequest resolves with the parsed token.
 function mockHttpsResponse({ body, statusCode = 200 }: { body: string; statusCode?: number }) {
-  mockHttpsRequest.mockImplementationOnce((_options: unknown, callback: (res: unknown) => void) => {
+  mockHttpsRequest.mockImplementationOnce(function (_options: unknown, callback: (res: unknown) => void) {
     const dataHandlers: Array<(chunk: string) => void> = [];
     const endHandlers: Array<() => void> = [];
     const res = {
@@ -54,7 +54,7 @@ function mockHttpsResponse({ body, statusCode = 200 }: { body: string; statusCod
 }
 
 function mockHttpsError(error: Error) {
-  mockHttpsRequest.mockImplementationOnce(() => {
+  mockHttpsRequest.mockImplementationOnce(function () {
     const errorHandlers: Array<(err: Error) => void> = [];
     const req = {
       on: (event: string, fn: (...args: unknown[]) => void) => {

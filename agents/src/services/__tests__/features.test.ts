@@ -105,7 +105,7 @@ describe("features", () => {
       process.env.AUTH_TYPE = "none";
 
       const { Logger } = await import("../../logging/index.js");
-      const errorSpy = vi.spyOn(Logger.prototype, "error").mockImplementation(() => {});
+      const errorSpy = vi.spyOn(Logger.prototype, "error").mockImplementation(function () {});
 
       const { getFeatures, AuthType } = await import("../features.js");
       expect(getFeatures().authType).toBe(AuthType.MOCK);
@@ -123,7 +123,7 @@ describe("features", () => {
       process.env.SITE_ID = "prod-site-12345";
 
       const { Logger } = await import("../../logging/index.js");
-      vi.spyOn(Logger.prototype, "error").mockImplementation(() => {});
+      vi.spyOn(Logger.prototype, "error").mockImplementation(function () {});
 
       const { getFeatures, validateConfiguration, AuthType } = await import("../features.js");
       expect(getFeatures().authType).toBe(AuthType.JWT);

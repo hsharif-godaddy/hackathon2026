@@ -32,7 +32,7 @@ vi.mock('@/stores/useStreamingConversationStore', () => ({
 }))
 
 vi.mock('@/utils/instrumentation', () => ({
-  logImpressionEvent: vi.fn(() => vi.fn()),
+  logImpressionEvent: vi.fn(function () { return vi.fn(); }),
 }))
 
 // Helper to create wrapper with QueryClient

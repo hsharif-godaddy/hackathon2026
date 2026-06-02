@@ -45,7 +45,7 @@ describe('AgentWrapper - Cache Point Preservation', () => {
 
     const aiModule = await import('ai')
     MockToolLoopAgent = aiModule.ToolLoopAgent as any
-    MockToolLoopAgent.mockImplementation((settings: any) => {
+    MockToolLoopAgent.mockImplementation(function (settings: any) {
       lastSettings = settings
       return mockAgent
     })
@@ -299,7 +299,7 @@ describe('AgentWrapper - Automatic Prompt Caching', () => {
 
     const aiModule = await import('ai')
     MockToolLoopAgent = aiModule.ToolLoopAgent as any
-    MockToolLoopAgent.mockImplementation((settings: any) => {
+    MockToolLoopAgent.mockImplementation(function (settings: any) {
       lastSettings = settings
       return mockAgent
     })
@@ -939,7 +939,7 @@ describe('AgentWrapper - advanceCacheBreakpoint via prepareStep', () => {
 
     const aiModule = await import('ai')
     MockToolLoopAgent = aiModule.ToolLoopAgent as any
-    MockToolLoopAgent.mockImplementation((settings: any) => {
+    MockToolLoopAgent.mockImplementation(function (settings: any) {
       lastSettings = settings
       return mockAgent
     })

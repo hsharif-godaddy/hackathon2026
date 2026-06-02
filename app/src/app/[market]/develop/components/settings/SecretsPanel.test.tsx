@@ -67,14 +67,14 @@ function createMockQueryResult(overrides: {
 }
 
 vi.mock('@/hooks/useSecrets', () => ({
-  useSecrets: vi.fn(() => createMockQueryResult()),
+  useSecrets: vi.fn(function () { return createMockQueryResult(); }),
 }));
 
 vi.mock('@/hooks/useSecretOperations', () => ({
-  useSecretOperations: vi.fn(() => ({
+  useSecretOperations: vi.fn(function () { return {
     mutateAsync: mockMutateAsync,
     isPending: false,
-  })),
+  }; }),
 }));
 
 // Mock Growl static method
@@ -94,7 +94,7 @@ import Growl from '@ux/growl';
 
 import { useSecrets } from '@/hooks/useSecrets';
 
-const clipboardWriteTextMock = vi.fn(() => Promise.resolve());
+const clipboardWriteTextMock = vi.fn(function () { return Promise.resolve(); });
 
 const defaultProps = {
   appId: 'test-app-id',
@@ -404,10 +404,9 @@ describe('SecretsPanel', () => {
     it('disables global save while a row save mutation is pending', async function globalSaveDisabledDuringRowSave() {
       let resolveRow!: (value: unknown) => void;
       mockMutateAsync.mockImplementationOnce(
-        () =>
-          new Promise((resolve) => {
+        function () { return new Promise((resolve) => {
             resolveRow = resolve;
-          })
+          }); }
       );
 
       vi.mocked(useSecrets).mockReturnValue(createMockQueryResult({
@@ -455,7 +454,7 @@ describe('SecretsPanel', () => {
         dataUpdatedAt: 1000,
       };
 
-      vi.mocked(useSecrets).mockImplementation(() => createMockQueryResult(queryState));
+      vi.mocked(useSecrets).mockImplementation(function () { return createMockQueryResult(queryState); });
 
       const { user, rerender } = renderSecretsPanel();
 

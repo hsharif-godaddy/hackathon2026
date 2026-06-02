@@ -9,7 +9,7 @@ vi.mock('@/lib/gd-auth-service', () => ({
 }));
 
 vi.mock('@/lib/getRootDomain', () => ({
-    getRootDomainFromHeaders: vi.fn(() => 'godaddy.com'),
+    getRootDomainFromHeaders: vi.fn(function () { return 'godaddy.com'; }),
 }));
 
 vi.mock('@/lib/logger', () => ({

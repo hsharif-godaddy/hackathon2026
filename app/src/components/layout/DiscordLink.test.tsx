@@ -11,7 +11,7 @@ import { renderWithProviders } from '@/tests/test-utils';
 import DiscordLink, { DiscordLinkVariant } from './DiscordLink';
 
 vi.mock('@/utils/instrumentation', () => ({
-  generateClickEID: vi.fn((id) => id),
+  generateClickEID: vi.fn(function (id) { return id; }),
 }));
 
 describe('DiscordLink', function discordLinkTests() {

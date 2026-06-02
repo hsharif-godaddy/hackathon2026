@@ -17,14 +17,14 @@ describe('createForWorkspace', () => {
   });
 
   it('returns null when createForApp throws (unknown workspace)', () => {
-    vi.spyOn(DevSupervisorClientFactory, 'createForApp').mockImplementation(() => {
+    vi.spyOn(DevSupervisorClientFactory, 'createForApp').mockImplementation(function () {
       throw new Error('App with ID unknown not found');
     });
     expect(createForWorkspace('unknown', 'preview')).toBeNull();
   });
 
   it('returns null when createForPublishSupervisor throws', () => {
-    vi.spyOn(DevSupervisorClientFactory, 'createForPublishSupervisor').mockImplementation(() => {
+    vi.spyOn(DevSupervisorClientFactory, 'createForPublishSupervisor').mockImplementation(function () {
       throw new Error('App with ID unknown not found');
     });
     expect(createForWorkspace('unknown', 'publish')).toBeNull();

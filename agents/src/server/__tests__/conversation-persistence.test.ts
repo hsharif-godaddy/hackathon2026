@@ -7,7 +7,7 @@ vi.mock('nanoid', async (importOriginal) => {
   const actual = await importOriginal<typeof import('nanoid')>()
   return {
     ...actual,
-    nanoid: vi.fn().mockImplementation(() => `id-${++nanoidCounter}`)
+    nanoid: vi.fn().mockImplementation(function () { return `id-${++nanoidCounter}`; })
   }
 })
 
@@ -79,17 +79,17 @@ vi.mock('@airo/ai-lib', async (importOriginal) => {
 })
 
 vi.mock('../../tools/git-tool.js', () => ({
-  GitTool: vi.fn().mockImplementation(() => ({
+  GitTool: vi.fn().mockImplementation(function () { return {
     executeGitOperation: vi.fn().mockResolvedValue({ success: false }),
-  })),
+  }; }),
 }))
 
 vi.mock('../../utils/git.js', () => ({
-  GitUtils: vi.fn().mockImplementation(() => ({
+  GitUtils: vi.fn().mockImplementation(function () { return {
     getCurrentBranch: vi.fn().mockResolvedValue('main'),
     getStatus: vi.fn().mockResolvedValue({ stagedFiles: 0, modifiedFiles: 0, untrackedFiles: 0 }),
     getCommitHistory: vi.fn().mockResolvedValue([]),
-  })),
+  }; }),
 }))
 
 vi.mock('../../utils/dev-supervisor-client-factory.js', () => ({

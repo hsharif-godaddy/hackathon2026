@@ -111,8 +111,8 @@ vi.mock('@/hooks/useGasketData', () => ({
 }));
 
 vi.mock('@/utils/instrumentation', () => ({
-  generateClickEID: vi.fn((event: string) => `${event}.click`),
-  logImpressionEvent: vi.fn(() => vi.fn()),
+  generateClickEID: vi.fn(function (event: string) { return `${event}.click`; }),
+  logImpressionEvent: vi.fn(function () { return vi.fn(); }),
 }));
 
 vi.mock('@/lib/logging', () => ({
@@ -128,7 +128,7 @@ vi.mock('@/utils/getRootDomain', () => ({
 
 vi.mock('@/stores/useSitesStore', () => ({
   useSites: (...args: unknown[]) => mockUseSites(...args),
-  useSitesStore: vi.fn((selector) => {
+  useSitesStore: vi.fn(function (selector) {
     const state = {
       allSites: [],
       isLoadingAll: false,
@@ -878,7 +878,7 @@ describe('ManagePlan', function managePlanTests() {
       const { logImpressionEvent } = await import('@/utils/instrumentation');
 
       // Setup mutate to call onSuccess callback
-      mockSetAutoRenewMutate.mockImplementation((_params: unknown, options?: { onSuccess?: () => void }) => {
+      mockSetAutoRenewMutate.mockImplementation(function (_params: unknown, options?: { onSuccess?: () => void }) {
         options?.onSuccess?.();
       });
 

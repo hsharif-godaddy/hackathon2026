@@ -25,28 +25,28 @@ vi.mock('ai', () => ({
 }))
 
 vi.mock('../../database/repositories/AppRepository.js', () => ({
-  AppRepository: vi.fn().mockImplementation(() => ({
+  AppRepository: vi.fn().mockImplementation(function () { return {
     findById: mockFindById,
-  })),
+  }; }),
 }))
 
 vi.mock('../../database/repositories/ConversationRepository.js', () => ({
-  ConversationRepository: vi.fn().mockImplementation(() => ({
+  ConversationRepository: vi.fn().mockImplementation(function () { return {
     getMessagesAfterMessageId: mockGetMessagesAfterMessageId,
     getRecentMessagesForApp: mockGetRecentMessagesForApp,
-  })),
+  }; }),
 }))
 
 vi.mock('../../database/repositories/SummaryRepository.js', () => ({
-  SummaryRepository: vi.fn().mockImplementation(() => ({
+  SummaryRepository: vi.fn().mockImplementation(function () { return {
     findLatestForApp: mockFindLatestForApp,
-  })),
+  }; }),
 }))
 
 vi.mock('../../database/repositories/TodoListRepository.js', () => ({
-  TodoListRepository: vi.fn().mockImplementation(() => ({
+  TodoListRepository: vi.fn().mockImplementation(function () { return {
     getAllLists: mockGetAllLists,
-  })),
+  }; }),
 }))
 
 vi.mock('../../logging/index.js', () => ({

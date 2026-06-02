@@ -98,13 +98,13 @@ vi.mock('@ux/menu', () => ({
 }));
 
 vi.mock('@/hooks/useSwitchboard', () => ({
-  useSwitchboard: vi.fn(() => (true)),
+  useSwitchboard: vi.fn(function () { return true; }),
 }));
 
 vi.mock('@/hooks/useAuth', () => ({
-  useAuth: vi.fn(() => ({
+  useAuth: vi.fn(function () { return {
     authState: { details: { shopperId: '123456789' } },
-  })),
+  }; }),
 }));
 
 vi.mock('@/lib/features', () => ({
@@ -116,15 +116,15 @@ vi.mock('@/lib/features', () => ({
   MAX_PROMPT_LENGTH: 40000,
   auth: { enabled: false },
   authUtils: {
-    getSupportedAuthTypes: vi.fn(() => ['sso']),
+    getSupportedAuthTypes: vi.fn(function () { return ['sso']; }),
   },
 }));
 
 vi.mock('@/utils/instrumentation', () => ({
-  logImpressionEvent: vi.fn(() => vi.fn()),
-  logActionEvent: vi.fn(() => vi.fn()),
-  logErrorEvent: vi.fn(() => vi.fn()),
-  generateClickEID: vi.fn((eid: string) => eid),
+  logImpressionEvent: vi.fn(function () { return vi.fn(); }),
+  logActionEvent: vi.fn(function () { return vi.fn(); }),
+  logErrorEvent: vi.fn(function () { return vi.fn(); }),
+  generateClickEID: vi.fn(function (eid: string) { return eid; }),
 }));
 
 describe('Sites Page', () => {

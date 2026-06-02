@@ -13,7 +13,7 @@ import { createCostTrackingMiddleware } from '../usage-instrumentation-middlewar
 const { mockRecordCost, mockCreateCostRecorder, mockCalculateCostEstimate, mockWarn } = vi.hoisted(() => ({
   mockRecordCost: vi.fn(),
   mockCreateCostRecorder: vi.fn(),
-  mockCalculateCostEstimate: vi.fn(() => ({
+  mockCalculateCostEstimate: vi.fn(function () { return {
     totalCost: 0.005,
     inputCost: 0.003,
     outputCost: 0.002,
@@ -23,7 +23,7 @@ const { mockRecordCost, mockCreateCostRecorder, mockCalculateCostEstimate, mockW
     currency: 'USD',
     model: 'test-model',
     provider: 'anthropic'
-  })),
+  }; }),
   mockWarn: vi.fn()
 }))
 
@@ -145,7 +145,7 @@ describe('usage-instrumentation-middleware', () => {
     })
 
     it('should not throw when cost recording fails', async () => {
-      mockCreateCostRecorder.mockImplementationOnce(() => { throw new Error('span error') })
+      mockCreateCostRecorder.mockImplementationOnce(function () { throw new Error('span error') })
       const middleware = createCostTrackingMiddleware()
       const result = makeGenerateResult(makeUsage())
       const doGenerate = vi.fn().mockResolvedValue(result)
@@ -252,11 +252,11 @@ describe('usage-instrumentation-middleware', () => {
 
     it('should capture cost recorder before calling doStream', async () => {
       const callOrder: string[] = []
-      mockCreateCostRecorder.mockImplementationOnce(() => {
+      mockCreateCostRecorder.mockImplementationOnce(function () {
         callOrder.push('createCostRecorder')
         return mockRecordCost
       })
-      const doStream = vi.fn().mockImplementation(async () => {
+      const doStream = vi.fn().mockImplementation(async function () {
         callOrder.push('doStream')
         return makeStreamResult([
           { type: 'finish', usage: makeUsage(), finishReason: STOP_REASON },
@@ -273,7 +273,7 @@ describe('usage-instrumentation-middleware', () => {
     })
 
     it('should log warning when calculateCostEstimate throws during stream', async () => {
-      mockCalculateCostEstimate.mockImplementationOnce(() => { throw new Error('pricing error') })
+      mockCalculateCostEstimate.mockImplementationOnce(function () { throw new Error('pricing error') })
       const middleware = createCostTrackingMiddleware()
       const parts: LanguageModelV3StreamPart[] = [
         { type: 'finish', usage: makeUsage(), finishReason: STOP_REASON },
@@ -332,7 +332,7 @@ describe('usage-instrumentation-middleware', () => {
     })
 
     it('should return unmodified stream when createCostRecorder throws', async () => {
-      mockCreateCostRecorder.mockImplementationOnce(() => { throw new Error('no active span') })
+      mockCreateCostRecorder.mockImplementationOnce(function () { throw new Error('no active span') })
       const middleware = createCostTrackingMiddleware()
       const parts: LanguageModelV3StreamPart[] = [
         { type: 'text-start', id: '1' },

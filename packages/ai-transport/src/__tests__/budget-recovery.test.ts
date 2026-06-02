@@ -194,7 +194,7 @@ describe('invokeBudgetRecoveryCallback', () => {
 
   it('returns null on timeout and logs callback_timeout with timeoutMs', async () => {
     const callback: BudgetRecoveryCallback = vi.fn().mockImplementation(
-      () => new Promise((resolve) => setTimeout(resolve, 20_000))
+      function () { return new Promise((resolve) => setTimeout(resolve, 20_000)); }
     )
 
     vi.useFakeTimers()

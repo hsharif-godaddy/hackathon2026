@@ -7,7 +7,7 @@ import { DomainApiErrorCode, getDomainErrorMessage, translateDomainApiError } fr
 describe('getDomainErrorMessage', () => {
   // Mock translation function
   const createMockTranslations = () => {
-    const t = vi.fn((key: string) => {
+    const t = vi.fn(function (key: string) {
       const translations: Record<string, string> = {
         'builder_domain_error_default': 'An error occurred with your domain.',
         'builder_domain_error_format_invalid': 'Invalid domain format.',
@@ -325,7 +325,7 @@ describe('getDomainErrorMessage', () => {
 
 describe('translateDomainApiError', () => {
   const createMockTranslations = () => {
-    const t = vi.fn((key: string) => key);
+    const t = vi.fn(function (key: string) { return key; });
     return t as unknown as ReturnType<typeof import('@/hooks/useTranslations').useTranslations>;
   };
 

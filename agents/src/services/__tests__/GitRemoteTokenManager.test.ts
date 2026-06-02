@@ -2,10 +2,10 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 vi.mock('../git-providers/GitProviderFactory.js', () => ({
   GitProviderFactory: {
-    getProvider: vi.fn(() => ({
+    getProvider: vi.fn(function () { return {
       name: 'github',
       getHostname: () => 'github.com',
-    })),
+    }; }),
   },
 }));
 
@@ -20,11 +20,11 @@ vi.mock('../../logging/index.js', () => ({
 }));
 
 vi.mock('../../utils/error.js', () => ({
-  getErrorMessage: vi.fn((err: unknown) => err instanceof Error ? err.message : String(err)),
+  getErrorMessage: vi.fn(function (err: unknown) { return err instanceof Error ? err.message : String(err); }),
 }));
 
 vi.mock('../../utils/nomad-config.js', () => ({
-  getNomadAllocConfig: vi.fn(() => null),
+  getNomadAllocConfig: vi.fn(function () { return null; }),
 }));
 
 import { GitRemoteTokenManager } from '../GitRemoteTokenManager.js';

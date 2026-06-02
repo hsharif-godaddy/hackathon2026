@@ -11,9 +11,9 @@ vi.mock('node:fs/promises', () => ({
 }));
 
 vi.mock('../../database/repositories/AppRepository.js', () => ({
-  AppRepository: vi.fn().mockImplementation(() => ({
+  AppRepository: vi.fn().mockImplementation(function () { return {
     findById: vi.fn().mockReturnValue({ id: 'test-app', path: '/tmp/test-app' }),
-  })),
+  }; }),
 }));
 
 vi.mock('../../utils/dev-supervisor-client-factory.js', () => ({

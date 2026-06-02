@@ -7,9 +7,9 @@ const { mockCreate, mockGetS2SToken, mockRefreshS2SToken } = vi.hoisted(() => ({
 }));
 
 vi.mock('openai', () => ({
-  default: vi.fn().mockImplementation(() => ({
+  default: vi.fn().mockImplementation(function () { return {
     chat: { completions: { create: mockCreate } },
-  })),
+  }; }),
 }));
 
 vi.mock('@airo/ai-lib', () => ({
@@ -253,7 +253,7 @@ describe('GocodeClient', () => {
     });
 
     it('emits console.warn when response.usage is absent', async () => {
-      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(function () {});
       mockCreate.mockResolvedValue({
         choices: [{ message: { content: 'no usage' } }],
       });

@@ -26,7 +26,7 @@ function queueResponse({ statusCode = 200, body }: MockResponseOptions): void {
   req.end = vi.fn();
   req.destroy = vi.fn();
 
-  vi.mocked(https.request).mockImplementationOnce(((_options: unknown, cb: (res: EventEmitter & { statusCode: number }) => void) => {
+  vi.mocked(https.request).mockImplementationOnce((function (_options: unknown, cb: (res: EventEmitter & { statusCode: number }) => void) {
     const res = new EventEmitter() as EventEmitter & { statusCode: number };
     res.statusCode = statusCode;
     setImmediate(() => {

@@ -95,7 +95,7 @@ describe('SSESubscriber', () => {
 
   it('suppresses write errors on closed connections', async () => {
     const writer = makeWriter()
-    ;(writer.write as any).mockImplementation(() => { throw new Error('write after end') })
+    ;(writer.write as any).mockImplementation(function () { throw new Error('write after end') })
     const sub = new SSESubscriber(writer, 'app1')
 
     await expect(sub.onEvent(makeEvent())).resolves.toBeUndefined()
@@ -115,7 +115,7 @@ describe('SSESubscriber', () => {
 
   it('logs when writer.write throws unexpectedly (non-closed)', async () => {
     const writer = makeWriter()
-    ;(writer.write as any).mockImplementation(() => {
+    ;(writer.write as any).mockImplementation(function () {
       const err = new Error('zlib error') as NodeJS.ErrnoException
       err.code = 'ERR_STREAM_DESTROYED'
       throw err
@@ -141,8 +141,8 @@ describe('SSESubscriber', () => {
   it('does not advance lastSequence when delivery fails', async () => {
     const writer = makeWriter()
     ;(writer.write as any)
-      .mockImplementationOnce(() => {})        // first write succeeds
-      .mockImplementationOnce(() => { throw new Error('boom') }) // second throws
+      .mockImplementationOnce(function () {})        // first write succeeds
+      .mockImplementationOnce(function () { throw new Error('boom') }) // second throws
     const sub = new SSESubscriber(writer, 'app1')
 
     // Use non-coalesceable events so each write is immediate
@@ -342,7 +342,7 @@ describe('SSESubscriber', () => {
   // angle.
   it('does not block the producer when writer.write throws on every event', async () => {
     const writer = makeWriter()
-    ;(writer.write as any).mockImplementation(() => { throw new Error('socket gone') })
+    ;(writer.write as any).mockImplementation(function () { throw new Error('socket gone') })
     const logger = { warn: vi.fn() }
     const sub = new SSESubscriber(writer, 'app1', logger)
 
@@ -364,7 +364,7 @@ describe('SSESubscriber', () => {
     // First call (original event) would format fine but never reaches write
     // because the BigInt below makes safeFormatSSEEvent return null.
     // Second call (the fallback frame) throws, so the client is stranded.
-    ;(writer.write as any).mockImplementation(() => { throw new Error('socket gone') })
+    ;(writer.write as any).mockImplementation(function () { throw new Error('socket gone') })
     const warn = vi.fn()
     const sub = new SSESubscriber(writer, 'app1', { warn })
 

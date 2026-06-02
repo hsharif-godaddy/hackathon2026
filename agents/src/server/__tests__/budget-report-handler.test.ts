@@ -1184,7 +1184,7 @@ describe('safeProcessBudgetReport', () => {
     }
 
     // Mock processBudgetReport to throw for this test
-    const originalProcessBudgetReport = vi.fn().mockImplementation(() => {
+    const originalProcessBudgetReport = vi.fn().mockImplementation(function () {
       throw new Error('Attribution calculation failed')
     })
 

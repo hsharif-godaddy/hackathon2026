@@ -70,8 +70,8 @@ describe('useGrantContext', function useGrantContextTests() {
       })
 
       const controller = {
-        emitGrantContext: vi.fn(() => true),
-        onGrantRefreshRequested: vi.fn(() => vi.fn()),
+        emitGrantContext: vi.fn(function () { return true; }),
+        onGrantRefreshRequested: vi.fn(function () { return vi.fn(); }),
       }
 
       renderHookWithProviders(() =>
@@ -97,10 +97,10 @@ describe('useGrantContext', function useGrantContextTests() {
         isLoading: false,
       })
 
-      const emitGrantContext = vi.fn(() => true)
+      const emitGrantContext = vi.fn(function () { return true; })
       const controller = {
         emitGrantContext,
-        onGrantRefreshRequested: vi.fn(() => vi.fn()),
+        onGrantRefreshRequested: vi.fn(function () { return vi.fn(); }),
       }
 
       renderHookWithProviders(() =>
@@ -122,9 +122,9 @@ describe('useGrantContext', function useGrantContextTests() {
         isLoading: false,
       })
 
-      const onGrantRefreshRequested = vi.fn(() => vi.fn())
+      const onGrantRefreshRequested = vi.fn(function () { return vi.fn(); })
       const controller = {
-        emitGrantContext: vi.fn(() => true),
+        emitGrantContext: vi.fn(function () { return true; }),
         onGrantRefreshRequested,
       }
 
@@ -155,10 +155,10 @@ describe('useGrantContext', function useGrantContextTests() {
         isLoading: false,
       })
 
-      const emitGrantContext = vi.fn(() => true)
+      const emitGrantContext = vi.fn(function () { return true; })
       const controller = {
         emitGrantContext,
-        onGrantRefreshRequested: vi.fn(() => vi.fn()),
+        onGrantRefreshRequested: vi.fn(function () { return vi.fn(); }),
       }
 
       renderHookWithProviders(() =>
@@ -204,10 +204,10 @@ describe('useGrantContext', function useGrantContextTests() {
         isLoading: false,
       })
 
-      const emitGrantContext = vi.fn(() => true)
+      const emitGrantContext = vi.fn(function () { return true; })
       const controller = {
         emitGrantContext,
-        onGrantRefreshRequested: vi.fn(() => vi.fn()),
+        onGrantRefreshRequested: vi.fn(function () { return vi.fn(); }),
       }
 
       // Start with streaming active
@@ -262,8 +262,8 @@ describe('useGrantContext', function useGrantContextTests() {
       })
 
       const controller = {
-        emitGrantContext: vi.fn(() => true),
-        onGrantRefreshRequested: vi.fn(() => vi.fn()),
+        emitGrantContext: vi.fn(function () { return true; }),
+        onGrantRefreshRequested: vi.fn(function () { return vi.fn(); }),
       }
 
       vi.useFakeTimers()
@@ -300,8 +300,8 @@ describe('useGrantContext', function useGrantContextTests() {
       })
 
       const controller = {
-        emitGrantContext: vi.fn(() => true),
-        onGrantRefreshRequested: vi.fn(() => vi.fn()),
+        emitGrantContext: vi.fn(function () { return true; }),
+        onGrantRefreshRequested: vi.fn(function () { return vi.fn(); }),
       }
 
       renderHookWithProviders(() =>
@@ -337,10 +337,10 @@ describe('useGrantContext', function useGrantContextTests() {
     })
 
     let refreshHandler: (() => void) | undefined
-    const emitGrantContext = vi.fn(() => true)
+    const emitGrantContext = vi.fn(function () { return true; })
     const controller = {
       emitGrantContext,
-      onGrantRefreshRequested: vi.fn((cb: () => void) => {
+      onGrantRefreshRequested: vi.fn(function (cb: () => void) {
         refreshHandler = cb
         return vi.fn()
       }),
@@ -395,10 +395,10 @@ describe('useGrantContext', function useGrantContextTests() {
     })
 
     let refreshHandler: (() => void) | undefined
-    const emitGrantContext = vi.fn(() => true)
+    const emitGrantContext = vi.fn(function () { return true; })
     const controller = {
       emitGrantContext,
-      onGrantRefreshRequested: vi.fn((cb: () => void) => {
+      onGrantRefreshRequested: vi.fn(function (cb: () => void) {
         refreshHandler = cb
         return vi.fn()
       }),
@@ -444,10 +444,10 @@ describe('useGrantContext', function useGrantContextTests() {
     })
 
     let refreshHandler: (() => void) | undefined
-    const emitGrantContext = vi.fn(() => true)
+    const emitGrantContext = vi.fn(function () { return true; })
     const controller = {
       emitGrantContext,
-      onGrantRefreshRequested: vi.fn((cb: () => void) => {
+      onGrantRefreshRequested: vi.fn(function (cb: () => void) {
         refreshHandler = cb
         return vi.fn()
       }),
@@ -497,10 +497,10 @@ describe('useGrantContext', function useGrantContextTests() {
     })
 
     let refreshHandler: (() => void) | undefined
-    const emitGrantContext = vi.fn(() => true)
+    const emitGrantContext = vi.fn(function () { return true; })
     const controller = {
       emitGrantContext,
-      onGrantRefreshRequested: vi.fn((cb: () => void) => {
+      onGrantRefreshRequested: vi.fn(function (cb: () => void) {
         refreshHandler = cb
         return vi.fn()
       }),
@@ -557,10 +557,10 @@ describe('useGrantContext', function useGrantContextTests() {
         isLoading: false,
       })
 
-      const emitGrantContext = vi.fn(() => true)
+      const emitGrantContext = vi.fn(function () { return true; })
       const controller = {
         emitGrantContext,
-        onGrantRefreshRequested: vi.fn(() => vi.fn()),
+        onGrantRefreshRequested: vi.fn(function () { return vi.fn(); }),
       }
 
       renderHookWithProviders(() =>
@@ -604,10 +604,10 @@ describe('useGrantContext', function useGrantContextTests() {
         isLoading: false,
       })
 
-      const emitGrantContext = vi.fn(() => true)
+      const emitGrantContext = vi.fn(function () { return true; })
       const controller = {
         emitGrantContext,
-        onGrantRefreshRequested: vi.fn(() => vi.fn()),
+        onGrantRefreshRequested: vi.fn(function () { return vi.fn(); }),
       }
 
       renderHookWithProviders(() =>
@@ -649,10 +649,10 @@ describe('useGrantContext', function useGrantContextTests() {
         isLoading: false,
       })
 
-      const emitGrantContext = vi.fn(() => true)
+      const emitGrantContext = vi.fn(function () { return true; })
       const controller = {
         emitGrantContext,
-        onGrantRefreshRequested: vi.fn(() => vi.fn()),
+        onGrantRefreshRequested: vi.fn(function () { return vi.fn(); }),
       }
 
       renderHookWithProviders(() =>
@@ -698,10 +698,10 @@ describe('useGrantContext', function useGrantContextTests() {
         isLoading: false,
       })
 
-      const emitGrantContext = vi.fn(() => true)
+      const emitGrantContext = vi.fn(function () { return true; })
       const controller = {
         emitGrantContext,
-        onGrantRefreshRequested: vi.fn(() => vi.fn()),
+        onGrantRefreshRequested: vi.fn(function () { return vi.fn(); }),
       }
 
       streamingRef.current = true
@@ -756,10 +756,10 @@ describe('useGrantContext', function useGrantContextTests() {
         isLoading: false,
       })
 
-      const emitGrantContext = vi.fn(() => true)
+      const emitGrantContext = vi.fn(function () { return true; })
       const controller = {
         emitGrantContext,
-        onGrantRefreshRequested: vi.fn(() => vi.fn()),
+        onGrantRefreshRequested: vi.fn(function () { return vi.fn(); }),
       }
 
       streamingRef.current = true
@@ -810,10 +810,10 @@ describe('useGrantContext', function useGrantContextTests() {
         isLoading: false,
       })
 
-      const emitGrantContext = vi.fn(() => true)
+      const emitGrantContext = vi.fn(function () { return true; })
       const controller = {
         emitGrantContext,
-        onGrantRefreshRequested: vi.fn(() => vi.fn()),
+        onGrantRefreshRequested: vi.fn(function () { return vi.fn(); }),
       }
 
       streamingRef.current = true
@@ -867,10 +867,10 @@ describe('useGrantContext', function useGrantContextTests() {
         isLoading: false,
       })
 
-      const emitGrantContext = vi.fn(() => true)
+      const emitGrantContext = vi.fn(function () { return true; })
       const controller = {
         emitGrantContext,
-        onGrantRefreshRequested: vi.fn(() => vi.fn()),
+        onGrantRefreshRequested: vi.fn(function () { return vi.fn(); }),
       }
 
       streamingRef.current = true

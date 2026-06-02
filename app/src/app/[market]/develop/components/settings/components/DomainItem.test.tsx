@@ -37,7 +37,7 @@ vi.mock('@/hooks/useDomainJobPolling', () => ({
 }));
 
 vi.mock('@/utils/instrumentation', () => ({
-  generateClickEID: vi.fn((id: string) => `${id}.click`),
+  generateClickEID: vi.fn(function (id: string) { return `${id}.click`; }),
 }));
 
 vi.mock('@/lib/request-context', () => ({
@@ -49,7 +49,7 @@ vi.mock('@/lib/request-context', () => ({
 }));
 
 vi.mock('@/utils/domain-validation', () => ({
-  translateDomainApiError: vi.fn((_code: string, _t: unknown, fallback?: string) => fallback ?? 'Translated error'),
+  translateDomainApiError: vi.fn(function (_code: string, _t: unknown, fallback?: string) { return fallback ?? 'Translated error'; }),
 }));
 
 const baseDomain: Domain = {

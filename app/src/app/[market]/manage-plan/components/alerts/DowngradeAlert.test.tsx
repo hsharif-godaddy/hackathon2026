@@ -19,8 +19,8 @@ vi.mock('@/hooks/useTranslations', () => ({
 }));
 
 vi.mock('@/utils/instrumentation', () => ({
-  generateClickEID: vi.fn((event: string) => `appbuilder.${event}.click`),
-  logImpressionEvent: vi.fn(() => vi.fn()),
+  generateClickEID: vi.fn(function (event: string) { return `appbuilder.${event}.click`; }),
+  logImpressionEvent: vi.fn(function () { return vi.fn(); }),
 }));
 
 let capturedFormattedMessageValues: Record<string, unknown> | null = null;

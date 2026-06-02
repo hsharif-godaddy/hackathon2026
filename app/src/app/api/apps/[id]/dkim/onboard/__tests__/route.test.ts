@@ -16,13 +16,13 @@ const {
 }));
 
 vi.mock('@/lib/control-plane', () => ({
-  getControlPlaneAdapter: vi.fn(() => ({ getSite: mockGetSite })),
+  getControlPlaneAdapter: vi.fn(function () { return { getSite: mockGetSite }; }),
 }));
 vi.mock('@/lib/mgmt-airo', () => ({
-  AiroMgmtClient: vi.fn(() => ({ getDomainDnsOwnership: mockGetDomainDnsOwnership })),
+  AiroMgmtClient: vi.fn(function () { return { getDomainDnsOwnership: mockGetDomainDnsOwnership }; }),
 }));
 vi.mock('@/lib/dkim/dkim-service', () => ({
-  DkimService: vi.fn(() => ({ activate: mockActivate })),
+  DkimService: vi.fn(function () { return { activate: mockActivate }; }),
 }));
 vi.mock('@/lib/request-context', () => ({ logger: mockLogger }));
 vi.mock('@/lib/switchboard/server', () => ({
@@ -34,7 +34,7 @@ vi.mock('@/lib/customer-auth', async () => {
   const actual = await vi.importActual<typeof import('@/lib/customer-auth')>('@/lib/customer-auth');
   return {
     ...actual,
-    withCustomerAuth: vi.fn((handler: any, options?: unknown) => {
+    withCustomerAuth: vi.fn(function (handler: any, options?: unknown) {
       capturedAuthOptions.set('POST', options);
       return (req: NextRequest, ...args: any[]) =>
         handler(req, { isAuthenticated: true, jwt: 'test-jwt', user: { shopperId: 'sh1', customerId: 'c1' } }, ...args);

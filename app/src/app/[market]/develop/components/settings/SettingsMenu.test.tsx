@@ -51,7 +51,7 @@ vi.mock('@/hooks/useSwitchboard', () => ({
 }));
 
 vi.mock('@/utils/instrumentation', () => ({
-  logClickEvent: vi.fn(() => vi.fn()),
+  logClickEvent: vi.fn(function () { return vi.fn(); }),
 }));
 
 describe('SettingsMenu', () => {

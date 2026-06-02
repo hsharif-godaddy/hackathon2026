@@ -20,7 +20,7 @@ const mockDevelopStore = {
   openCreditsModal: vi.fn(),
 };
 
-const mockUseSwitchboard = vi.hoisted(() => vi.fn((feature: string) => {
+const mockUseSwitchboard = vi.hoisted(() => vi.fn(function (feature: string) {
   if (feature === 'appbuilder-image-manager') return true;
   if (feature === 'appbuilder-chat-gauge') return true;
   if (feature === 'airo-builder-chat-collapse-multiline-input') return true;
@@ -28,12 +28,12 @@ const mockUseSwitchboard = vi.hoisted(() => vi.fn((feature: string) => {
 }));
 
 const mockUseHivemind = vi.hoisted(() =>
-  vi.fn((_experimentId: string) => ({ cohort: undefined as string | undefined, data: undefined, experiment: undefined })),
+  vi.fn(function (_experimentId: string) { return { cohort: undefined as string | undefined, data: undefined, experiment: undefined }; }),
 );
 
 vi.mock('@/utils/instrumentation', () => ({
-  generateClickEID: vi.fn((id: string) => id),
-  logClickEvent: vi.fn(() => vi.fn()),
+  generateClickEID: vi.fn(function (id: string) { return id; }),
+  logClickEvent: vi.fn(function () { return vi.fn(); }),
 }));
 vi.mock('@/stores/useDevelopPageStore', () => ({
   useDevelopPageStore: (selector: any) => selector(mockDevelopStore),
@@ -84,7 +84,7 @@ vi.mock('@/hooks/useSpeechRecognition', () => ({
 }));
 
 // Mock InputActionsPanel to spy on shouldCollapse prop
-const mockInputActionsPanel = vi.hoisted(() => vi.fn((props: any) => null));
+const mockInputActionsPanel = vi.hoisted(() => vi.fn(function (props: any) { return null; }));
 vi.mock('@/app/[market]/develop/components/chat/InputActionsPanel', () => ({
   default: mockInputActionsPanel,
 }));
@@ -102,7 +102,7 @@ describe('ChatInput', () => {
     mockDevelopStore.isMobile = false;
     mockDevelopStore.isAssetManagerOpen = false;
     mockSpeechRecognition.isListening = false;
-    mockUseSwitchboard.mockImplementation((feature: string) => {
+    mockUseSwitchboard.mockImplementation(function (feature: string) {
       if (feature === 'appbuilder-image-manager') return true;
       if (feature === 'appbuilder-chat-gauge') return true;
       if (feature === 'airo-builder-chat-collapse-multiline-input') return true;
@@ -687,12 +687,12 @@ describe('ChatInput', () => {
     });
 
     it('should not render UsageGauge when switchboard is on and user is in treatment cohort', function switchboardOnTreatmentHidesGauge() {
-      mockUseSwitchboard.mockImplementation((feature: string) => {
+      mockUseSwitchboard.mockImplementation(function (feature: string) {
         if (feature === 'appbuilder-image-manager') return true;
         if (feature === 'appbuilder-chat-gauge') return true;
         return false;
       });
-      mockUseHivemind.mockImplementation((experimentId: string) => {
+      mockUseHivemind.mockImplementation(function (experimentId: string) {
         if (experimentId === EXPERIMENT_IDS.chatGauge) {
           return { cohort: 'treatment', data: undefined, experiment: undefined };
         }
@@ -705,7 +705,7 @@ describe('ChatInput', () => {
     });
 
     it('should not render UsageGauge when switchboard is off even if not in treatment cohort', function switchboardOffHidesGauge() {
-      mockUseSwitchboard.mockImplementation((feature: string) => {
+      mockUseSwitchboard.mockImplementation(function (feature: string) {
         if (feature === 'appbuilder-image-manager') return true;
         if (feature === 'appbuilder-chat-gauge') return false;
         return false;
@@ -718,12 +718,12 @@ describe('ChatInput', () => {
     });
 
     it('should not render UsageGauge when switchboard is off even if user is in treatment cohort', function switchboardOffTreatmentStillHidesGauge() {
-      mockUseSwitchboard.mockImplementation((feature: string) => {
+      mockUseSwitchboard.mockImplementation(function (feature: string) {
         if (feature === 'appbuilder-image-manager') return true;
         if (feature === 'appbuilder-chat-gauge') return false;
         return false;
       });
-      mockUseHivemind.mockImplementation((experimentId: string) => {
+      mockUseHivemind.mockImplementation(function (experimentId: string) {
         if (experimentId === EXPERIMENT_IDS.chatGauge) {
           return { cohort: 'treatment', data: undefined, experiment: undefined };
         }
@@ -736,7 +736,7 @@ describe('ChatInput', () => {
     });
 
     it('should render UsageGauge when switchboard is on and user is not in treatment cohort', function gaugeVisibleWhenNotTreatment() {
-      mockUseSwitchboard.mockImplementation((feature: string) => {
+      mockUseSwitchboard.mockImplementation(function (feature: string) {
         if (feature === 'appbuilder-image-manager') return true;
         if (feature === 'appbuilder-chat-gauge') return true;
         return false;
@@ -749,7 +749,7 @@ describe('ChatInput', () => {
     });
 
     it('should render UsageGauge when switchboard is on and user is ineligible (not control, not treatment)', function gaugeVisibleWhenIneligible() {
-      mockUseSwitchboard.mockImplementation((feature: string) => {
+      mockUseSwitchboard.mockImplementation(function (feature: string) {
         if (feature === 'appbuilder-image-manager') return true;
         if (feature === 'appbuilder-chat-gauge') return true;
         return false;
@@ -1244,7 +1244,7 @@ describe('ChatInput', () => {
 
       // Mock document.getElementById to find element by data-testid if id lookup fails
       const originalGetElementById = document.getElementById.bind(document);
-      document.getElementById = vi.fn((id: string) => {
+      document.getElementById = vi.fn(function (id: string) {
         const elem = originalGetElementById(id);
         if (elem) return elem;
         // Fallback: find by data-testid if id attribute not set yet
@@ -1255,17 +1255,17 @@ describe('ChatInput', () => {
       }) as any;
 
       // Mock getComputedStyle to return valid CSS values
-      window.getComputedStyle = vi.fn(() => ({
+      window.getComputedStyle = vi.fn(function () { return {
         lineHeight: '21px',
         paddingTop: '0px',
         paddingBottom: '0px',
-        getPropertyValue: vi.fn((prop: string) => {
+        getPropertyValue: vi.fn(function (prop: string) {
           if (prop === 'line-height') return '21px';
           if (prop === 'padding-top') return '0px';
           if (prop === 'padding-bottom') return '0px';
           return '';
         }),
-      })) as any;
+      }; }) as any;
 
       // Install controllable ResizeObserver mock
       vi.stubGlobal(
@@ -1281,7 +1281,7 @@ describe('ChatInput', () => {
       );
 
       // Enable chat plans and multiline collapse feature flags
-      mockUseSwitchboard.mockImplementation((feature: string) => {
+      mockUseSwitchboard.mockImplementation(function (feature: string) {
         if (feature === 'airo-builder-chat-plans') return true;
         if (feature === 'airo-builder-chat-collapse-multiline-input') return true;
         if (feature === 'appbuilder-image-manager') return true;
@@ -1445,7 +1445,7 @@ describe('ChatInput', () => {
 
     it('should not collapse when feature flag is off', () => {
       // Override beforeEach to disable the flag
-      mockUseSwitchboard.mockImplementation((feature: string) => {
+      mockUseSwitchboard.mockImplementation(function (feature: string) {
         if (feature === 'airo-builder-chat-plans') return true;
         if (feature === 'airo-builder-chat-collapse-multiline-input') return false; // Flag OFF
         if (feature === 'appbuilder-image-manager') return true;

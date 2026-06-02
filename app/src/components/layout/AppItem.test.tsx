@@ -12,15 +12,15 @@ import { renderWithProviders } from '@/tests/test-utils';
 import AppItem, { AppItemNew, AppItemSeeAll, AppItemSkeleton } from './AppItem';
 
 const mockPush = vi.fn();
-const mockUseRouter = vi.fn(() => ({ push: mockPush }));
-const mockUseParams = vi.fn(() => ({}));
+const mockUseRouter = vi.fn(function () { return { push: mockPush }; });
+const mockUseParams = vi.fn(function () { return {}; });
 
 vi.mock('next/navigation', () => ({
   useRouter: () => mockUseRouter(),
   useParams: () => mockUseParams(),
 }));
 vi.mock('@/utils/instrumentation', () => ({
-  generateClickEID: vi.fn((id) => id),
+  generateClickEID: vi.fn(function (id) { return id; }),
 }));
 
 const { mockAppThumbnail } = vi.hoisted(() => ({

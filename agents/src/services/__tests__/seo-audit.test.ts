@@ -102,7 +102,7 @@ describe('seo-audit', () => {
   });
 
   it('runSeoAudit audits multiple published routes', async () => {
-    const fetchMock = vi.fn().mockImplementation((input: RequestInfo | URL) => {
+    const fetchMock = vi.fn().mockImplementation(function (input: RequestInfo | URL) {
       const url = String(input);
       const html = FULL_HTML.replace(/https:\/\/example\.com\/about/g, url.replace(/\/$/, '') || url);
       return Promise.resolve(
@@ -134,7 +134,7 @@ describe('seo-audit', () => {
   });
 
   it('runSeoAudit uses previewUrl when publishedUrl is missing', async () => {
-    const fetchMock = vi.fn().mockImplementation((input: RequestInfo | URL) => {
+    const fetchMock = vi.fn().mockImplementation(function (input: RequestInfo | URL) {
       const url = String(input);
       const html = FULL_HTML.replace(/https:\/\/example\.com\/about/g, url.replace(/\/$/, '') || url);
       return Promise.resolve(
@@ -163,7 +163,7 @@ describe('seo-audit', () => {
   });
 
   it('runSeoAudit uses preview when published URL exists but isPublished is false', async () => {
-    const fetchMock = vi.fn().mockImplementation((input: RequestInfo | URL) => {
+    const fetchMock = vi.fn().mockImplementation(function (input: RequestInfo | URL) {
       const url = String(input);
       const html = FULL_HTML.replace(/https:\/\/example\.com\/about/g, url.replace(/\/$/, '') || url);
       return Promise.resolve(
@@ -211,13 +211,12 @@ describe('seo-audit', () => {
   });
 
   it('runSeoAudit html-audits page routes not in seo-routes and flags registry gap', async () => {
-    const fetchMock = vi.fn().mockImplementation(() =>
-      Promise.resolve(
+    const fetchMock = vi.fn().mockImplementation(function () { return Promise.resolve(
         new Response('<html><head></head><body></body></html>', {
           status: 200,
           headers: { 'content-type': 'text/html' },
         }),
-      ),
+      ); },
     );
     vi.stubGlobal('fetch', fetchMock);
 

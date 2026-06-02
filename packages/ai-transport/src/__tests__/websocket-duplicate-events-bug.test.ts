@@ -22,7 +22,7 @@ const mockIO = {
 }
 
 vi.mock('socket.io', () => ({
-  Server: vi.fn().mockImplementation(() => mockIO)
+  Server: vi.fn().mockImplementation(function () { return mockIO; })
 }))
 
 // Mock agent
@@ -71,7 +71,7 @@ describe('WebSocket Duplicate Events Bug - Multiple Reconnection Cycles', () => 
     // Step 1: Create initial socket-A with events
     const mockSocketA = {
       id: 'socket-A',
-      emit: vi.fn((event: string, data: any) => {
+      emit: vi.fn(function (event: string, data: any) {
         // Simulate Socket.IO adapter storing packets
         socketIOPacketBuffer.push({ socketId: 'socket-A', event, data })
         socketAReceivedEvents.push(`${data.type}:${data.content}`)
@@ -271,13 +271,13 @@ describe('WebSocket Duplicate Events Bug - Multiple Reconnection Cycles', () => 
     // Socket with volatile emit support
     const mockSocketA = {
       id: 'socket-A',
-      emit: vi.fn((event: string, data: any) => {
+      emit: vi.fn(function (event: string, data: any) {
         // Normal emit - stored by Socket.IO
         socketIOPacketBuffer.push({ socketId: 'socket-A', event, data, volatile: false })
         socketAReceivedEvents.push(`${data.type}:${data.content}`)
       }),
       volatile: {
-        emit: vi.fn((event: string, data: any) => {
+        emit: vi.fn(function (event: string, data: any) {
           // Volatile emit - NOT stored by Socket.IO
           // Just send to client, don't add to buffer
           socketAReceivedEvents.push(`${data.type}:${data.content}`)

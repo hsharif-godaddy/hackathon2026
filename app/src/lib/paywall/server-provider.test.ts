@@ -34,13 +34,13 @@ const mockGetAppsForSystem = vi.fn();
 const mockGetAllAppsForCustomer = vi.fn();
 
 vi.mock('@/lib/mgmt-airo', () => ({
-  AiroMgmtClient: vi.fn().mockImplementation(() => ({
+  AiroMgmtClient: vi.fn().mockImplementation(function () { return {
     getSubscriptions: mockGetSubscriptions,
     getEntitlements: mockGetEntitlements,
     getSystems: mockGetSystems,
     getAppsForSystem: mockGetAppsForSystem,
     getAllAppsForCustomer: mockGetAllAppsForCustomer,
-  })),
+  }; }),
   AIRO_OWNER_PRODUCTS: {
     AIRO_APP_BUILDER: 'AiroAppBuilder',
   },
@@ -54,9 +54,9 @@ vi.mock('@/lib/mgmt-airo', () => ({
 
 // Mock venture service
 vi.mock('@/lib/venture-service', () => ({
-  VentureService: vi.fn().mockImplementation(() => ({
+  VentureService: vi.fn().mockImplementation(function () { return {
     getCustomerProjects: vi.fn().mockResolvedValue({ projects: { edges: [] } }),
-  })),
+  }; }),
 }));
 
 describe('ServerPaywallProvider', () => {
@@ -76,7 +76,7 @@ describe('ServerPaywallProvider', () => {
 
   describe('checkSwitchboardFlags', () => {
     function stubFlags(map: Record<string, boolean>) {
-      mockCheckSwitchboardFlag.mockImplementation((name: string) => Promise.resolve(map[name] ?? false));
+      mockCheckSwitchboardFlag.mockImplementation(function (name: string) { return Promise.resolve(map[name] ?? false); });
     }
 
     it('returns bypassPublishLimit flag from switchboard', async () => {

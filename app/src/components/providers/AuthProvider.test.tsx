@@ -35,10 +35,10 @@ vi.mock('@/hooks/useAuth', () => ({
 
 vi.mock('@/lib/gasket-config', () => ({
   getGasketConfig: vi.fn().mockResolvedValue({ auth: { isJWT: false } }),
-  isAuthJWTSync: vi.fn(() => false),
-  isAuthMockSync: vi.fn(() => false),
+  isAuthJWTSync: vi.fn(function () { return false; }),
+  isAuthMockSync: vi.fn(function () { return false; }),
   
-  getAuthTypeSync: vi.fn(() => 'mock'),
+  getAuthTypeSync: vi.fn(function () { return 'mock'; }),
 }));
 
 vi.mock('@/lib/request-context', () => ({

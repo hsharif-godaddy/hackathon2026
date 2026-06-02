@@ -271,12 +271,11 @@ describe('UnifiedSearch', () => {
   it('should show loading state when searching', async () => {
     const { appService } = await import('@/services/AppService')
     // Mock a slow response
-    vi.mocked(appService.searchCode).mockImplementation(() =>
-      new Promise(resolve => setTimeout(() => resolve({
+    vi.mocked(appService.searchCode).mockImplementation(function () { return new Promise(resolve => setTimeout(() => resolve({
         matches: [],
         totalMatches: 0,
         truncated: false
-      }), 1000))
+      }), 1000)); }
     )
 
     const { rerender } = renderWithProviders(

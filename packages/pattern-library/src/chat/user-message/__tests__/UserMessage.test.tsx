@@ -10,7 +10,7 @@ beforeAll(() => {
   // `@ux/icon/async-icon.js` lazily fetches its SVG from an asset server.
   // In jsdom we return an empty SVG so the fetch resolves synchronously and
   // the component tree never throws.
-  vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
+  vi.spyOn(globalThis, 'fetch').mockImplementation(function (input) {
     const url =
       typeof input === 'string' ? input : input instanceof Request ? input.url : input.href;
 
@@ -240,7 +240,7 @@ describe('UserMessage', () => {
 
     it('lets the consumer cancel the lightbox via event.preventDefault()', async () => {
       const user = userEvent.setup();
-      const onClick = vi.fn((event: React.MouseEvent) => event.preventDefault());
+      const onClick = vi.fn(function (event: React.MouseEvent) { return event.preventDefault(); });
       render(
         <UserMessage>
           <UserMessage.Gallery>

@@ -153,7 +153,7 @@ describe('resolveAuth', () => {
     const { resolveAuth } = await import('@/lib/gasket-config');
     const { useAuthUIStore } = await import('@/stores/useAuthUIStore');
 
-    const fetchMock = vi.fn().mockImplementation((_url: string, init?: RequestInit) => {
+    const fetchMock = vi.fn().mockImplementation(function (_url: string, init?: RequestInit) {
       // Hang the probe forever; AbortController will abort it after timeout
       return new Promise((_resolve, reject) => {
         init?.signal?.addEventListener('abort', () => {
@@ -181,7 +181,7 @@ describe('resolveAuth', () => {
     const { useAuthUIStore } = await import('@/stores/useAuthUIStore');
 
     let callCount = 0;
-    const fetchMock = vi.fn().mockImplementation((_url: string, init?: RequestInit) => {
+    const fetchMock = vi.fn().mockImplementation(function (_url: string, init?: RequestInit) {
       callCount += 1;
       if (callCount === 1) return Promise.resolve(response401());
       // Verify hangs until aborted

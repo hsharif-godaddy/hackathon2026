@@ -41,11 +41,11 @@ describe('file-agent', () => {
 
     it('should fetch token and resolve URL in parallel', async function parallel() {
       const order: string[] = []
-      mockAppFetch.mockImplementation(async () => {
+      mockAppFetch.mockImplementation(async function () {
         order.push('fetch')
         return mockTokenResponse('app-parallel')
       })
-      mockBuildDynamicAgentUrl.mockImplementation(async () => {
+      mockBuildDynamicAgentUrl.mockImplementation(async function () {
         order.push('url')
         return 'http://agent:4000/files/upload'
       })

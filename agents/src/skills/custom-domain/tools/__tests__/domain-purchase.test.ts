@@ -20,15 +20,15 @@ vi.mock('../../../../server/agent-runtime.js', () => ({
 }))
 
 vi.mock('../../../../tools/memory-tool.js', () => ({
-    MemoryTool: vi.fn().mockImplementation(() => ({
+    MemoryTool: vi.fn().mockImplementation(function () { return {
         setMemory: mockSetMemory,
-    })),
+    }; }),
 }))
 
 vi.mock('../../../../database/repositories/AppRepository.js', () => ({
-    AppRepository: vi.fn().mockImplementation(() => ({
+    AppRepository: vi.fn().mockImplementation(function () { return {
         findById: vi.fn().mockReturnValue({ path: '/fake/app/path' }),
-    })),
+    }; }),
 }))
 
 import { domainPurchaseTool } from '../index.js'
@@ -232,7 +232,7 @@ describe('custom-domain', function packageTests() {
         })
 
         it('should auto-attach domain when app is published and domain is provided', async function autoAttach() {
-            const mockExecuteAction = vi.fn().mockImplementation(({ action }) => {
+            const mockExecuteAction = vi.fn().mockImplementation(function ({ action }) {
                 if (action === 'getSiteData') {
                     return Promise.resolve({ success: true, result: { variants: ['publish'], domains: [] } })
                 }
@@ -257,7 +257,7 @@ describe('custom-domain', function packageTests() {
         })
 
         it('should skip attachDomain when domain is already active on site', async function skipDuplicateAttach() {
-            const mockExecuteAction = vi.fn().mockImplementation(({ action }) => {
+            const mockExecuteAction = vi.fn().mockImplementation(function ({ action }) {
                 if (action === 'getSiteData') {
                     return Promise.resolve({
                         success: true,
@@ -290,7 +290,7 @@ describe('custom-domain', function packageTests() {
         })
 
         it('should fall back to widget when auto-attach fails', async function autoAttachFallback() {
-            const mockExecuteAction = vi.fn().mockImplementation(({ action }) => {
+            const mockExecuteAction = vi.fn().mockImplementation(function ({ action }) {
                 if (action === 'getSiteData') {
                     return Promise.resolve({ success: true, result: { variants: ['publish'] } })
                 }
@@ -312,7 +312,7 @@ describe('custom-domain', function packageTests() {
         })
 
         it('should fall back to widget when auto-attach throws', async function autoAttachError() {
-            const mockExecuteAction = vi.fn().mockImplementation(({ action }) => {
+            const mockExecuteAction = vi.fn().mockImplementation(function ({ action }) {
                 if (action === 'getSiteData') {
                     return Promise.resolve({ success: true, result: { variants: ['publish'] } })
                 }
@@ -354,7 +354,7 @@ describe('custom-domain', function packageTests() {
         })
 
         it('should store domain.purchased in memory when domain is provided', async function storeMemory() {
-            const mockExecuteAction = vi.fn().mockImplementation(({ action }) => {
+            const mockExecuteAction = vi.fn().mockImplementation(function ({ action }) {
                 if (action === 'getSiteData') {
                     return Promise.resolve({ success: true, result: { variants: ['publish'] } })
                 }
@@ -457,7 +457,7 @@ describe('custom-domain', function packageTests() {
 
         it('should allow to proceed when publish status cannot be determined', async function failOpen() {
             let callCount = 0
-            const mockExecuteAction = vi.fn().mockImplementation(() => {
+            const mockExecuteAction = vi.fn().mockImplementation(function () {
                 callCount++
                 // First call is getSiteData — reject to trigger fail-open
                 if (callCount === 1) return Promise.reject(new Error('timeout'))
@@ -479,7 +479,7 @@ describe('custom-domain', function packageTests() {
         })
 
         it('should allow to proceed when getSiteData returns success: false', async function siteDataFailed() {
-            const mockExecuteAction = vi.fn().mockImplementation(({ action }) => {
+            const mockExecuteAction = vi.fn().mockImplementation(function ({ action }) {
                 if (action === 'getSiteData') {
                     return Promise.resolve({ success: false, error: 'Site not found' })
                 }

@@ -9,7 +9,7 @@ import { render } from '@testing-library/react';
 import LoadingComponent from '@/components/auth/LoadingComponent';
 
 vi.mock('@/utils/instrumentation', () => ({
-  logImpressionEvent: vi.fn(() => vi.fn()),
+  logImpressionEvent: vi.fn(function () { return vi.fn(); }),
 }));
 
 describe('LoadingComponent', () => {

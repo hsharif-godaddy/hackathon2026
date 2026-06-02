@@ -44,7 +44,7 @@ vi.mock('@/lib/request-context', () => ({
  * Mock jwt-utils to return test customer ID
  */
 vi.mock('@/lib/utils/jwt-utils', () => ({
-  extractCustomerId: vi.fn(() => 'customer-123')
+  extractCustomerId: vi.fn(function () { return 'customer-123'; })
 }));
 
 /**

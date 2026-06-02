@@ -12,42 +12,42 @@ import ProjectPanel from './ProjectPanel';
 
 // Mock hooks and utilities
 vi.mock('@/hooks/useDownloadApp', () => ({
-  useDownloadApp: vi.fn(() => ({
+  useDownloadApp: vi.fn(function () { return {
     download: vi.fn(),
     isDownloading: false,
     error: null,
-  })),
+  }; }),
 }));
 
 vi.mock('@/hooks/usePaywallModal', () => ({
-  usePaywallModal: vi.fn(() => ({
-    checkAndShowPaywall: vi.fn((callback) => callback()),
+  usePaywallModal: vi.fn(function () { return {
+    checkAndShowPaywall: vi.fn(function (callback) { return callback(); }),
     paywallModal: null,
     shouldShowPaywall: false,
     isPaywallLoading: false,
     isPublishLimitLoading: false,
-  })),
+  }; }),
 }));
 
 vi.mock('@/hooks/usePurgeCache', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/hooks/usePurgeCache')>();
   return {
     ...actual,
-    usePurgeCache: vi.fn(() => ({
+    usePurgeCache: vi.fn(function () { return {
       trigger: vi.fn(),
       status: PurgeStatus.IDLE,
       errorCode: null,
-    })),
+    }; }),
   };
 });
 
 vi.mock('@/app/[market]/develop/components/utils', () => ({
-  useAppIdFromParams: vi.fn(() => 'test-app-123'),
+  useAppIdFromParams: vi.fn(function () { return 'test-app-123'; }),
 }));
 
 vi.mock('@/utils/instrumentation', () => ({
-  generateClickEID: vi.fn((eid: string) => `appbuilder.${eid}.click`),
-  logAiroHQEvent: vi.fn(() => vi.fn()),
+  generateClickEID: vi.fn(function (eid: string) { return `appbuilder.${eid}.click`; }),
+  logAiroHQEvent: vi.fn(function () { return vi.fn(); }),
 }));
 
 vi.mock('@/components/providers/AuthProvider', () => ({
@@ -87,7 +87,7 @@ describe('ProjectPanel', () => {
     it('should log AiroHQ analytics event when download button is clicked', async () => {
       const user = userEvent.setup();
       const mockDownload = vi.fn();
-      const mockCheckAndShowPaywall = vi.fn((callback) => callback());
+      const mockCheckAndShowPaywall = vi.fn(function (callback) { return callback(); });
 
       vi.mocked(useDownloadApp).mockReturnValue({
         download: mockDownload,
@@ -121,7 +121,7 @@ describe('ProjectPanel', () => {
     it('should trigger download after paywall check', async () => {
       const user = userEvent.setup();
       const mockDownload = vi.fn();
-      const mockCheckAndShowPaywall = vi.fn((callback) => callback());
+      const mockCheckAndShowPaywall = vi.fn(function (callback) { return callback(); });
 
       vi.mocked(useDownloadApp).mockReturnValue({
         download: mockDownload,

@@ -162,7 +162,7 @@ vi.mock('@/stores/useDevelopPageStore', () => ({
 
 vi.mock('@/utils/instrumentation', () => ({
   generateClickEID: (id: string) => `eid-${id}`,
-  logImpressionEvent: vi.fn(() => vi.fn()),
+  logImpressionEvent: vi.fn(function () { return vi.fn(); }),
 }))
 
 vi.mock('@/components/ui/InfoTooltip', () => ({
@@ -189,10 +189,10 @@ vi.mock('@/components/providers/AuthProvider', () => ({
 }))
 
 vi.mock('@/hooks/useHivemind', () => ({
-  useIsInCohort: vi.fn(() => false),
+  useIsInCohort: vi.fn(function () { return false; }),
 }));
 
-const mockUseIsUpgradePolling = vi.fn(() => false)
+const mockUseIsUpgradePolling = vi.fn(function () { return false; })
 vi.mock('@/hooks/useUpgradePurchase', () => ({
   useIsUpgradePolling: () => mockUseIsUpgradePolling(),
 }));

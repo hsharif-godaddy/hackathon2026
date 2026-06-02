@@ -27,15 +27,15 @@ vi.mock('@/hooks/useSwitchboard', () => ({
 }));
 
 const mockUseShareTokens = vi.hoisted(() =>
-  vi.fn(() => ({ data: [], refetch: vi.fn().mockResolvedValue(undefined) }))
+  vi.fn(function () { return { data: [], refetch: vi.fn().mockResolvedValue(undefined) }; })
 );
 const mockMutateAsync = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 const mockUseCreateShareToken = vi.hoisted(() =>
-  vi.fn(() => ({
+  vi.fn(function () { return {
     mutateAsync: mockMutateAsync,
     isPending: false,
     isError: false,
-  }))
+  }; })
 );
 vi.mock('@/hooks/useShareTokens', () => ({
   useShareTokens: mockUseShareTokens,
@@ -43,13 +43,13 @@ vi.mock('@/hooks/useShareTokens', () => ({
 }));
 
 const mockUsePublishSyncState = vi.hoisted(() =>
-  vi.fn(() => ({
+  vi.fn(function () { return {
     isInSync: true,
     changesSincePublish: 0,
     isLoading: false,
     hasNeverBeenPublished: false,
     isError: false,
-  }))
+  }; })
 );
 vi.mock('@/hooks/usePublishSyncState', () => ({
   usePublishSyncState: mockUsePublishSyncState,
@@ -65,7 +65,7 @@ vi.mock('@/utils/site', () => ({
   hasBeenPublished: mockHasBeenPublished,
 }));
 
-const mockLogClickEvent = vi.hoisted(() => vi.fn(() => vi.fn()));
+const mockLogClickEvent = vi.hoisted(() => vi.fn(function () { return vi.fn(); }));
 vi.mock('@/utils/instrumentation', () => ({
   ...mockInstrumentation(),
   logClickEvent: mockLogClickEvent,
@@ -116,7 +116,7 @@ describe('DomainMenu', () => {
     vi.clearAllMocks();
     mockUseSwitchboard.mockReturnValue(true);
     mockHasBeenPublished.mockReturnValue(false);
-    mockUseDevelopPageStore.mockImplementation((selector: (state: any) => any) => {
+    mockUseDevelopPageStore.mockImplementation(function (selector: (state: any) => any) {
       const state = {
         site: {
           preview_url: 'https://preview.example.com',
@@ -143,7 +143,7 @@ describe('DomainMenu', () => {
       hasNeverBeenPublished: false,
       isError: false,
     });
-    mockLogClickEvent.mockImplementation(() => vi.fn());
+    mockLogClickEvent.mockImplementation(function () { return vi.fn(); });
     mockWriteText.mockClear();
     mockWriteText.mockResolvedValue(undefined);
     // Stub the clipboard API for each test
@@ -167,7 +167,7 @@ describe('DomainMenu', () => {
     });
 
     it('disables button when no preview URL and not published', () => {
-      mockUseDevelopPageStore.mockImplementation((selector: (state: any) => any) => {
+      mockUseDevelopPageStore.mockImplementation(function (selector: (state: any) => any) {
         const state = { site: { preview_url: null, published_url: null } };
         return selector(state);
       });
@@ -184,7 +184,7 @@ describe('DomainMenu', () => {
     });
 
     it('enables button when published', () => {
-      mockUseDevelopPageStore.mockImplementation((selector: (state: any) => any) => {
+      mockUseDevelopPageStore.mockImplementation(function (selector: (state: any) => any) {
         const state = { site: { preview_url: null, published_url: 'https://published.example.com' } };
         return selector(state);
       });
@@ -227,7 +227,7 @@ describe('DomainMenu', () => {
     });
 
     it('hides preview row when no preview URL', async () => {
-      mockUseDevelopPageStore.mockImplementation((selector: (state: any) => any) => {
+      mockUseDevelopPageStore.mockImplementation(function (selector: (state: any) => any) {
         const state = { site: { preview_url: null, published_url: 'https://published.example.com' } };
         return selector(state);
       });
@@ -243,9 +243,9 @@ describe('DomainMenu', () => {
     });
 
     it('opens preview URL with airoPreview param when preview header flag is on', async () => {
-      mockUseSwitchboard.mockImplementation((flag: string) => flag === 'appbuilder-preview-header');
+      mockUseSwitchboard.mockImplementation(function (flag: string) { return flag === 'appbuilder-preview-header'; });
 
-      const mockOpen = vi.spyOn(window, 'open').mockImplementation(() => null);
+      const mockOpen = vi.spyOn(window, 'open').mockImplementation(function () { return null; });
 
       renderWithProviders(<DomainMenu />);
       fireEvent.click(screen.getByTestId('header-view-share-button'));
@@ -262,14 +262,14 @@ describe('DomainMenu', () => {
     });
 
     it('opens preview URL without airoPreview param when preview header flag is off', async () => {
-      mockUseSwitchboard.mockImplementation((flag: string) => {
+      mockUseSwitchboard.mockImplementation(function (flag: string) {
         if (flag === 'appbuilder-preview-header') {
           return false;
         }
         return true;
       });
 
-      const mockOpen = vi.spyOn(window, 'open').mockImplementation(() => null);
+      const mockOpen = vi.spyOn(window, 'open').mockImplementation(function () { return null; });
 
       renderWithProviders(<DomainMenu />);
       fireEvent.click(screen.getByTestId('header-view-share-button'));
@@ -340,7 +340,7 @@ describe('DomainMenu', () => {
 
     it('opens published URL in new tab on click', async () => {
       mockHasBeenPublished.mockReturnValue(true);
-      const mockOpen = vi.spyOn(window, 'open').mockImplementation(() => null);
+      const mockOpen = vi.spyOn(window, 'open').mockImplementation(function () { return null; });
 
       renderWithProviders(<DomainMenu />);
       fireEvent.click(screen.getByTestId('header-view-share-button'));
@@ -605,7 +605,7 @@ describe('DomainMenu', () => {
 
   describe('Analytics', () => {
     it('logs preview click event', async () => {
-      const mockOpen = vi.spyOn(window, 'open').mockImplementation(() => null);
+      const mockOpen = vi.spyOn(window, 'open').mockImplementation(function () { return null; });
 
       renderWithProviders(<DomainMenu />);
       fireEvent.click(screen.getByTestId('header-view-share-button'));
@@ -622,7 +622,7 @@ describe('DomainMenu', () => {
 
     it('logs published click event', async () => {
       mockHasBeenPublished.mockReturnValue(true);
-      const mockOpen = vi.spyOn(window, 'open').mockImplementation(() => null);
+      const mockOpen = vi.spyOn(window, 'open').mockImplementation(function () { return null; });
 
       renderWithProviders(<DomainMenu />);
       fireEvent.click(screen.getByTestId('header-view-share-button'));

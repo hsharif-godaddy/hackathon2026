@@ -19,18 +19,21 @@ const { mockCreate, mockSimulationRun } = vi.hoisted(() => ({
 }));
 
 vi.mock('openai', () => ({
-  default: vi.fn().mockImplementation(() => ({
+  default: vi.fn().mockImplementation(function () { return {
     chat: { completions: { create: mockCreate } },
-  })),
+  }; }),
+  // vitest 4 surfaces missing named exports as load errors instead of silently
+  // returning undefined; retry-on-429 imports RateLimitError, so stub it.
+  RateLimitError: class RateLimitError extends Error {},
 }));
 
 // Simulation is mocked to avoid real Socket.IO connections. The .run() mock
 // calls gocodeClient.complete() inside the trial scope so token accumulation
 // is exercised without a live AAB instance.
 vi.mock('../simulation.js', () => ({
-  Simulation: vi.fn().mockImplementation(() => ({
+  Simulation: vi.fn().mockImplementation(function () { return {
     run: mockSimulationRun,
-  })),
+  }; }),
   InactivityTimeoutError: class InactivityTimeoutError extends Error {
     constructor(ms: number) {
       super(`Inactivity timeout: ${ms}ms`);
@@ -42,7 +45,7 @@ vi.mock('../simulation.js', () => ({
 // Remove stagger delays to keep tests fast and deterministic.
 vi.mock('../../util/stagger.js', () => ({
   staggeredRun: vi.fn().mockImplementation(
-    (_i: number, _cap: number, fn: () => Promise<unknown>) => fn(),
+    function (_i: number, _cap: number, fn: () => Promise<unknown>) { return fn(); },
   ),
   computeStaggerDelay: vi.fn().mockReturnValue(0),
   STAGGER_INTERVAL_MS: 0,
@@ -120,7 +123,7 @@ beforeEach(() => {
   // Trial 0 → 1 gocode call; Trial 1 → 2 gocode calls.
   // SuiteRunner wraps each makeRun in trialLifecycle.runInScope(scenario, trialIndex, ...), so
   // gocodeClient.complete() routes to the correct per-trial instance here.
-  mockSimulationRun.mockImplementation(async (trialIndex: number): Promise<Transcript> => {
+  mockSimulationRun.mockImplementation(async function (trialIndex: number) {
     const callCount = trialIndex === 0 ? 1 : 2;
     for (let i = 0; i < callCount; i++) {
       await gocodeClient.complete(MESSAGES);
@@ -368,7 +371,7 @@ describe('TokenUsageEvaluator probe delta isolation via SuiteRunner', () => {
     // Trial 0 explodes; trial 1 succeeds normally.
     mockSimulationRun
       .mockRejectedValueOnce(new Error('trial exploded'))
-      .mockImplementationOnce(async (trialIndex: number): Promise<Transcript> => {
+      .mockImplementationOnce(async function (trialIndex: number) {
         await gocodeClient.complete(MESSAGES);
         return {
           scenarioName: 'test-scenario',
@@ -423,7 +426,7 @@ describe('TokenUsageEvaluator probe delta isolation via SuiteRunner', () => {
     // from the Simulation constructor.
     let lastConstructedScenarioName = '';
     const { Simulation } = await import('../simulation.js');
-    vi.mocked(Simulation).mockImplementation((opts: unknown) => {
+    vi.mocked(Simulation).mockImplementation(function (opts: unknown) {
       const { scenario } = opts as { scenario: { name: string } };
       lastConstructedScenarioName = scenario.name;
       return {

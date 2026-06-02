@@ -7,10 +7,10 @@ const mockAcceptTransfer = vi.fn();
 const mockGetTransferMetadataByToken = vi.fn();
 
 vi.mock('@/lib/mgmt-airo', () => ({
-  AiroMgmtClient: vi.fn().mockImplementation(() => ({
+  AiroMgmtClient: vi.fn().mockImplementation(function () { return {
     acceptTransfer: mockAcceptTransfer,
     getTransferMetadataByToken: mockGetTransferMetadataByToken,
-  })),
+  }; }),
   AiroHttpError: class extends Error {
     status: number;
     statusText: string;
@@ -25,7 +25,7 @@ vi.mock('@/lib/mgmt-airo', () => ({
 }));
 
 vi.mock('@/lib/mgmt-airo/auth-error', () => ({
-  mgmtAiro401Response: vi.fn(() => null),
+  mgmtAiro401Response: vi.fn(function () { return null; }),
 }));
 
 vi.mock('@/lib/request-context', () => ({

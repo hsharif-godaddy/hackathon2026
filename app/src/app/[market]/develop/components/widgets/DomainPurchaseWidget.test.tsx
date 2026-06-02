@@ -18,12 +18,12 @@ const {
   mockUseOfferEligibility,
 } = vi.hoisted(() => ({
   mockCheckoutProps: { current: null as any },
-  mockUseSwitchboard: vi.fn((): any => true),
+  mockUseSwitchboard: vi.fn(function () { return true; }),
   mockUseDomainSearch: vi.fn(
-    (): any => ({ data: null, isLoading: false, error: null })
+    function () { return { data: null, isLoading: false, error: null }; }
   ),
-  mockUseIscResolver: vi.fn((): any => ({ isc: null, source: null })),
-  mockUseOfferEligibility: vi.fn((): any => ({ eligible: false })),
+  mockUseIscResolver: vi.fn(function () { return { isc: null, source: null }; }),
+  mockUseOfferEligibility: vi.fn(function () { return { eligible: false }; }),
 }));
 
 // -- Hook mocks --
@@ -45,29 +45,27 @@ vi.mock('@/hooks/useOfferEligibility', () => ({
 }));
 
 vi.mock('@/app/[market]/develop/components/chat/ChatContext', () => ({
-  useSendUserMessage: vi.fn(() => vi.fn()),
+  useSendUserMessage: vi.fn(function () { return vi.fn(); }),
 }));
 
 vi.mock('@/app/[market]/develop/components/utils', () => ({
-  useAppIdFromParams: vi.fn(() => 'test-app-123'),
+  useAppIdFromParams: vi.fn(function () { return 'test-app-123'; }),
 }));
 
 vi.mock('@/stores/useSiteStore', () => ({
-  useSiteStore: vi.fn((selector: any) =>
-    selector({
+  useSiteStore: vi.fn(function (selector: any) { return selector({
       getSite: () => ({ id: 'test-app-123', name: 'Test App' }),
-    })
+    }); }
   ),
 }));
 
 // -- Utility / logging mocks --
 
 vi.mock('@/lib/gasket-config', () => ({
-  appFetch: vi.fn(() =>
-    Promise.resolve({
+  appFetch: vi.fn(function () { return Promise.resolve({
       ok: true,
       json: () => Promise.resolve({ apiKeyName: 'test-api-key' }),
-    })
+    }); }
   ),
 }));
 
@@ -80,7 +78,7 @@ vi.mock('@/lib/request-context', () => ({
 }));
 
 vi.mock('@/utils/getRootDomain', () => ({
-  getRootDomain: vi.fn(() => 'godaddy.com'),
+  getRootDomain: vi.fn(function () { return 'godaddy.com'; }),
 }));
 
 vi.mock('@/utils/reactCompat', () => ({
@@ -172,16 +170,16 @@ describe('DomainPurchaseWidget', function () {
   beforeEach(function () {
     vi.clearAllMocks();
     mockUseSwitchboard.mockImplementation(
-      (): any => (true)
+      function () { return true; }
     );
     mockUseDomainSearch.mockImplementation(
-      (): any => ({ data: null, isLoading: false, error: null })
+      function () { return { data: null, isLoading: false, error: null }; }
     );
     mockUseIscResolver.mockImplementation(
-      (): any => ({ isc: null, source: null })
+      function () { return { isc: null, source: null }; }
     );
     mockUseOfferEligibility.mockImplementation(
-      (): any => ({ eligible: false })
+      function () { return { eligible: false }; }
     );
     mockCheckoutProps.current = null;
   });
@@ -278,13 +276,13 @@ describe('DomainPurchaseWidget — ISC offer flow', function () {
     vi.clearAllMocks();
     mockUseSwitchboard.mockReturnValue(true);
     mockUseDomainSearch.mockImplementation(
-      (): any => ({ data: null, isLoading: false, error: null })
+      function () { return { data: null, isLoading: false, error: null }; }
     );
     mockUseIscResolver.mockReturnValue({ isc: null, source: null });
     mockUseOfferEligibility.mockReturnValue({ eligible: false });
     const mod = await import('@/lib/gasket-config');
     mockedAppFetch = vi.mocked(mod.appFetch);
-    mockedAppFetch.mockImplementation((url: string) => {
+    mockedAppFetch.mockImplementation(function (url: string) {
       if (typeof url === 'string' && url.includes('/api/domains/config')) {
         return Promise.resolve({
           ok: true,
@@ -365,7 +363,7 @@ describe('DomainPurchaseWidget — ISC offer flow', function () {
   });
 
   it('does not crash when the mint call fails', async function () {
-    mockedAppFetch.mockImplementation((url: string) => {
+    mockedAppFetch.mockImplementation(function (url: string) {
       if (typeof url === 'string' && url.includes('/api/domains/config')) {
         return Promise.resolve({
           ok: true,
@@ -427,7 +425,7 @@ describe('DomainPurchaseWidget — ISC offer flow', function () {
     // Both the parent appbuilder-domain-purchase (true) and the offer-specific
     // appbuilder-domain-offers-isc (false). The widget should still render
     // (parent flag gates rendering), but the offer flow stays dormant.
-    mockUseSwitchboard.mockImplementation((name: string): any => {
+    mockUseSwitchboard.mockImplementation(function (name: string) {
       if (name === 'appbuilder-domain-offers-isc') return false;
       return true;
     });

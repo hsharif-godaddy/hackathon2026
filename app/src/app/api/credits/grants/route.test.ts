@@ -107,7 +107,7 @@ describe('GET /api/credits/grants', () => {
 
     // Mock AiroMgmtClient constructor
     const { AiroMgmtClient } = await import('@/lib/mgmt-airo');
-    vi.mocked(AiroMgmtClient as any).mockImplementation(() => mockClient);
+    vi.mocked(AiroMgmtClient as any).mockImplementation(function () { return mockClient; });
 
     // Import the route handler after mocks are set up
     const routeModule = await import('./route');
@@ -364,7 +364,7 @@ describe('GET /api/credits/grants', () => {
       mockFetchHivemindCohorts.mockResolvedValue({ 'airo-app-builder-budget-service-launch': { cohortId: 'off' } });
 
       // bmsExistingEnabled=true; budgetServiceEnabled=true but cohort=off so experiment disabled
-      mockCheckSwitchboardFlag.mockImplementation((flag: string) => {
+      mockCheckSwitchboardFlag.mockImplementation(function (flag: string) {
         if (flag === 'app-builder-budget-service') return Promise.resolve(true);
         if (flag === 'app-builder-bms-existing') return Promise.resolve(true);
         return Promise.resolve(false);
@@ -427,7 +427,7 @@ describe('GET /api/credits/grants', () => {
       mockFetchHivemindCohorts.mockResolvedValue({ 'airo-app-builder-budget-service-launch': { cohortId: 'on' } });
 
       // Only bmsExistingEnabled is true, but this is a NEW user (no migration attribute)
-      mockCheckSwitchboardFlag.mockImplementation((flag: string) => {
+      mockCheckSwitchboardFlag.mockImplementation(function (flag: string) {
         if (flag === 'app-builder-budget-service') return Promise.resolve(false);
         if (flag === 'app-builder-bms-existing') return Promise.resolve(true);
         return Promise.resolve(false);
@@ -455,7 +455,7 @@ describe('GET /api/credits/grants', () => {
       const authContext = createAuthContext('jwt-token');
 
       // Only budgetServiceEnabled is true, but this is an EXISTING user (has migration attribute)
-      mockCheckSwitchboardFlag.mockImplementation((flag: string) => {
+      mockCheckSwitchboardFlag.mockImplementation(function (flag: string) {
         if (flag === 'app-builder-budget-service') return Promise.resolve(true);
         if (flag === 'app-builder-bms-existing') return Promise.resolve(false);
         return Promise.resolve(false);

@@ -15,7 +15,7 @@ function createMockWriter(): SSEWriter {
     write: vi.fn(),
     comment: vi.fn(),
     retry: vi.fn(),
-    end: vi.fn(() => { closed = true }),
+    end: vi.fn(function () { closed = true }),
     isClosed: () => closed,
     getBacklogBytes: () => 0,
   }
@@ -126,7 +126,7 @@ describe('EventStreamRegistry', () => {
   it('sendToAll removes connections whose writer throws', () => {
     const good = createMockWriter()
     const bad = createMockWriter()
-    ;(bad.write as any).mockImplementation(() => { throw new Error('broken pipe') })
+    ;(bad.write as any).mockImplementation(function () { throw new Error('broken pipe') })
 
     registry.register('conv_1', 'app_1', good)
     registry.register('conv_1', 'app_1', bad)
@@ -145,7 +145,7 @@ describe('EventStreamRegistry', () => {
   it('eviction path still completes when writer.end() throws', () => {
     for (let i = 0; i < 10; i++) {
       const w = createMockWriter()
-      ;(w.end as any).mockImplementation(() => { throw new Error('zlib destroyed') })
+      ;(w.end as any).mockImplementation(function () { throw new Error('zlib destroyed') })
       registry.register('conv_1', 'app_1', w)
     }
     expect(registry.getConnectionCount('conv_1')).toBe(10)
@@ -234,7 +234,7 @@ describe('EventStreamRegistry', () => {
 
   it('sendToAll cleanup survives dispose() throwing on a dead connection', () => {
     const bad = createMockWriter()
-    ;(bad.write as any).mockImplementation(() => { throw new Error('write after end') })
+    ;(bad.write as any).mockImplementation(function () { throw new Error('write after end') })
 
     const { subscriber } = registry.register('conv_1', 'app_1', bad)
     // Force dispose() to throw — sendToAll must still prune the connection.
@@ -279,7 +279,7 @@ describe('EventStreamRegistry', () => {
 
     it('calls onLastSubscriberLeft when sendToAll removes the last dead writer', () => {
       const bad = createMockWriter()
-      ;(bad.write as any).mockImplementation(() => { throw new Error('broken pipe') })
+      ;(bad.write as any).mockImplementation(function () { throw new Error('broken pipe') })
       registry.register('conv_1', 'app_1', bad)
       ;(listener.onSubscriberAdded as any).mockClear()
 

@@ -30,8 +30,8 @@ describe('visualContextCapture', () => {
       vi.spyOn(document, 'getElementById').mockReturnValue(mockIframe);
 
       // Mock console methods to avoid noise in tests
-      vi.spyOn(console, 'warn').mockImplementation(() => {});
-      vi.spyOn(console, 'error').mockImplementation(() => {});
+      vi.spyOn(console, 'warn').mockImplementation(function () {});
+      vi.spyOn(console, 'error').mockImplementation(function () {});
     });
 
     describe('valid preview domain origins', () => {

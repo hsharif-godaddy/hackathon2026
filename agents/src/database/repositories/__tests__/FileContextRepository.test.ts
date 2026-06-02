@@ -437,7 +437,7 @@ describe('FileContextRepository', () => {
     });
 
     it('should handle database constraint violations gracefully', () => {
-      mockStatement.run.mockImplementation(() => {
+      mockStatement.run.mockImplementation(function () {
         throw new Error('UNIQUE constraint failed: file_context.app_path, file_context.file_path');
       });
 
@@ -496,7 +496,7 @@ describe('FileContextRepository', () => {
 
   describe('Error Handling', () => {
     it('should propagate database errors', () => {
-      mockStatement.get.mockImplementation(() => {
+      mockStatement.get.mockImplementation(function () {
         throw new Error('Database connection lost');
       });
 

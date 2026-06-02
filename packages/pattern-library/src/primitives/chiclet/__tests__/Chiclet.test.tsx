@@ -32,7 +32,7 @@ describe('Chiclet', () => {
     it('defaults type="button" so it does not submit the surrounding form', () => {
       // Submitting must be opt-in — a Chiclet inside a <form> shouldn't
       // accidentally trigger a submit when clicked.
-      const onSubmit = vi.fn((e) => e.preventDefault());
+      const onSubmit = vi.fn(function (e) { return e.preventDefault(); });
       render(
         <form onSubmit={onSubmit}>
           <Chiclet />

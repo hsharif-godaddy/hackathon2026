@@ -17,21 +17,21 @@ vi.mock('ai', async importOriginal => {
   return {
     ...actual,
     ToolLoopAgent: MockToolLoopAgent,
-    stepCountIs: vi.fn((value: number) => ({ type: 'step_count', value })),
-    hasToolCall: vi.fn((name: string) => ({ type: 'has_tool_call', value: name }))
+    stepCountIs: vi.fn(function (value: number) { return { type: 'step_count', value }; }),
+    hasToolCall: vi.fn(function (name: string) { return { type: 'has_tool_call', value: name }; })
   }
 })
 
 function createMockSkillToolProvider(overrides: Partial<SkillToolProvider> = {}): SkillToolProvider {
   return {
-    getAllTools: vi.fn(() => ({
+    getAllTools: vi.fn(function () { return {
       'skill__foo__doStuff': { execute: vi.fn() } as any,
       'skill__bar__doOther': { execute: vi.fn() } as any
-    })),
-    getSkillToolNames: vi.fn(() => ['skill__foo__doStuff', 'skill__bar__doOther']),
-    getActiveToolNames: vi.fn(() => ['skill__foo__doStuff']),
+    }; }),
+    getSkillToolNames: vi.fn(function () { return ['skill__foo__doStuff', 'skill__bar__doOther']; }),
+    getActiveToolNames: vi.fn(function () { return ['skill__foo__doStuff']; }),
     updateSkillUsage: vi.fn(),
-    cleanupInactiveSkills: vi.fn(() => []),
+    cleanupInactiveSkills: vi.fn(function () { return []; }),
     ...overrides
   }
 }
@@ -52,7 +52,7 @@ describe('AgentWrapper skill cleanup and activeTools stability', () => {
 
     const aiModule = await import('ai')
     MockToolLoopAgent = aiModule.ToolLoopAgent as any
-    MockToolLoopAgent.mockImplementation((settings: unknown) => {
+    MockToolLoopAgent.mockImplementation(function (settings: unknown) {
       lastSettings = settings
       return mockAgent
     })
@@ -157,7 +157,7 @@ describe('AgentWrapper skill cleanup and activeTools stability', () => {
   it('should pick up newly activated skills in prepareStep', async () => {
     let activeSkills = ['skill__foo__doStuff']
     const skillProvider = createMockSkillToolProvider({
-      getActiveToolNames: vi.fn(() => activeSkills)
+      getActiveToolNames: vi.fn(function () { return activeSkills; })
     })
 
     const config: AgentConfig = {
@@ -193,7 +193,7 @@ describe('AgentWrapper skill cleanup and activeTools stability', () => {
 
   it('should not call cleanupInactiveSkills during prepareStep', async () => {
     const skillProvider = createMockSkillToolProvider({
-      cleanupInactiveSkills: vi.fn(() => ['skill__bar__doOther'])
+      cleanupInactiveSkills: vi.fn(function () { return ['skill__bar__doOther']; })
     })
 
     const config: AgentConfig = {
@@ -328,7 +328,7 @@ describe('AgentWrapper initialSkills auto-registration', () => {
 
     const aiModule = await import('ai')
     MockToolLoopAgent = aiModule.ToolLoopAgent as any
-    MockToolLoopAgent.mockImplementation((settings: unknown) => {
+    MockToolLoopAgent.mockImplementation(function (settings: unknown) {
       lastSettings = settings
       return mockAgent
     })
@@ -340,9 +340,9 @@ describe('AgentWrapper initialSkills auto-registration', () => {
   })
 
   it('should call onSkillsLoad on first prepareCall', async () => {
-    const onSkillsLoad = vi.fn(async () => [
+    const onSkillsLoad = vi.fn(async function () { return [
       { role: 'system' as const, content: '# Media Logo\nUse this skill...', insertionOrder: 'after_history' as const }
-    ])
+    ]; })
     const skillProvider = createMockSkillToolProvider()
 
     const config: AgentConfig = {
@@ -367,9 +367,9 @@ describe('AgentWrapper initialSkills auto-registration', () => {
   })
 
   it('should not re-call onSkillsLoad on subsequent prepareCall invocations', async () => {
-    const onSkillsLoad = vi.fn(async () => [
+    const onSkillsLoad = vi.fn(async function () { return [
       { role: 'system' as const, content: 'skill instructions', insertionOrder: 'after_history' as const }
-    ])
+    ]; })
     const skillProvider = createMockSkillToolProvider()
 
     const config: AgentConfig = {
@@ -398,7 +398,7 @@ describe('AgentWrapper initialSkills auto-registration', () => {
 
   it('should retry onSkillsLoad when it returns empty array', async () => {
     let callCount = 0
-    const onSkillsLoad = vi.fn(async () => {
+    const onSkillsLoad = vi.fn(async function () {
       callCount++
       if (callCount >= 2) {
         return [{ role: 'system' as const, content: 'skill instructions', insertionOrder: 'after_history' as const }]
@@ -438,7 +438,7 @@ describe('AgentWrapper initialSkills auto-registration', () => {
   })
 
   it('should stop retrying onSkillsLoad after 3 failed attempts', async () => {
-    const onSkillsLoad = vi.fn(async () => [])
+    const onSkillsLoad = vi.fn(async function () { return []; })
     const skillProvider = createMockSkillToolProvider()
 
     const config: AgentConfig = {
@@ -470,9 +470,9 @@ describe('AgentWrapper initialSkills auto-registration', () => {
   })
 
   it('should call onSkillsLoad once per conversation when reused across conversations', async () => {
-    const onSkillsLoad = vi.fn(async () => [
+    const onSkillsLoad = vi.fn(async function () { return [
       { role: 'system' as const, content: 'skill instructions', insertionOrder: 'after_history' as const }
-    ])
+    ]; })
     const skillProvider = createMockSkillToolProvider()
 
     const config: AgentConfig = {
@@ -530,7 +530,7 @@ describe('AgentWrapper initialSkills auto-registration', () => {
   })
 
   it('should handle onSkillsLoad failure gracefully without throwing', async () => {
-    const onSkillsLoad = vi.fn(async () => { throw new Error('skill load failed') })
+    const onSkillsLoad = vi.fn(async function () { throw new Error('skill load failed') })
     const skillProvider = createMockSkillToolProvider()
 
     const config: AgentConfig = {

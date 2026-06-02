@@ -4,7 +4,7 @@ import { ApiErrorCode, translateApiError } from './api-errors';
 
 describe('translateApiError', () => {
   const createMockTranslations = () => {
-    const t = vi.fn((key: string) => key);
+    const t = vi.fn(function (key: string) { return key; });
     return t as unknown as ReturnType<typeof import('@/hooks/useTranslations').useTranslations>;
   };
 

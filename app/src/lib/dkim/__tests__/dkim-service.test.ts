@@ -20,10 +20,10 @@ const {
 }));
 
 vi.mock('../dkim-client', () => ({
-  DkimClient: vi.fn(() => ({
+  DkimClient: vi.fn(function () { return {
     activateDkim: mockActivateDkim,
     deactivateDkim: mockDeactivateDkim,
-  })),
+  }; }),
 }));
 vi.mock('@/lib/switchboard/server', () => ({
   checkSwitchboardFlag: mockCheckSwitchboardFlag,

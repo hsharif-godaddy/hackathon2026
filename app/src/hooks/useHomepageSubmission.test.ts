@@ -7,15 +7,15 @@ import { act, renderHook } from '@testing-library/react'
 import { logImpressionEvent } from '@/utils/instrumentation'
 import { useHomepageSubmission } from './useHomepageSubmission'
 
-const mockAuthContext = vi.hoisted(() => vi.fn(() => ({ isAuthenticated: true, isLoading: false })))
-const mockUseSubscription = vi.hoisted(() => vi.fn(() => ({ subscriptions: [] as { id: string }[], isLoading: false, isError: false })))
+const mockAuthContext = vi.hoisted(() => vi.fn(function () { return { isAuthenticated: true, isLoading: false }; }))
+const mockUseSubscription = vi.hoisted(() => vi.fn(function () { return { subscriptions: [] as { id: string }[], isLoading: false, isError: false }; }))
 const mockFetchQuickCreate = vi.hoisted(() => vi.fn())
 const mockRouterPush = vi.hoisted(() => vi.fn())
 
 vi.mock('@/utils/instrumentation', () => ({
-  logImpressionEvent: vi.fn(() => vi.fn()),
-  logClickEvent: vi.fn(() => vi.fn()),
-  logAiroHQEvent: vi.fn(() => vi.fn()),
+  logImpressionEvent: vi.fn(function () { return vi.fn(); }),
+  logClickEvent: vi.fn(function () { return vi.fn(); }),
+  logAiroHQEvent: vi.fn(function () { return vi.fn(); }),
 }))
 vi.mock('@/lib/logging', () => ({ shipAnalyticsLog: vi.fn() }))
 vi.mock('@/lib/request-context', () => ({

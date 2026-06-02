@@ -233,7 +233,7 @@ describe('event-modal helpers', () => {
       // Mock Intl to throw error
       const originalIntl = global.Intl;
       (global as any).Intl = {
-        DateTimeFormat: vi.fn(() => {
+        DateTimeFormat: vi.fn(function () {
           throw new Error('Timezone not supported');
         }),
       };

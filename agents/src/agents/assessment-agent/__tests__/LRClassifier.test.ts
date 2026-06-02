@@ -100,7 +100,7 @@ describe('LRClassifier', () => {
     mocks.readFile.mockResolvedValue(makeArtifact(-5))
     mocks.getEmbeddingModel.mockResolvedValue({ modelId: 'text-embedding-3-small' })
     mocks.llmMetadataContextRun.mockImplementation(
-      async (_meta: unknown, fn: () => Promise<unknown>) => fn()
+      async function (_meta: unknown, fn: () => Promise<unknown>) { return fn(); }
     )
   })
 

@@ -15,10 +15,10 @@ vi.mock('../clickhouse-fetchers', () => ({
 }))
 
 vi.mock('../clickhouse-queries', () => ({
-  buildPageViewsPerPathQuery: vi.fn(() => 'MOCK_VIEWS_PER_PATH_QUERY'),
-  buildPageViewsPerHostQuery: vi.fn(() => 'MOCK_VIEWS_PER_HOST_QUERY'),
-  buildClickAnalyticsHostTotalsQuery: vi.fn(() => 'MOCK_CLICK_TOTALS_QUERY'),
-  buildClicksByElementQuery: vi.fn(() => 'MOCK_CLICKS_BY_ELEMENT_QUERY'),
+  buildPageViewsPerPathQuery: vi.fn(function () { return 'MOCK_VIEWS_PER_PATH_QUERY'; }),
+  buildPageViewsPerHostQuery: vi.fn(function () { return 'MOCK_VIEWS_PER_HOST_QUERY'; }),
+  buildClickAnalyticsHostTotalsQuery: vi.fn(function () { return 'MOCK_CLICK_TOTALS_QUERY'; }),
+  buildClicksByElementQuery: vi.fn(function () { return 'MOCK_CLICKS_BY_ELEMENT_QUERY'; }),
 }))
 
 import { safeFetch } from '../clickhouse-fetchers'

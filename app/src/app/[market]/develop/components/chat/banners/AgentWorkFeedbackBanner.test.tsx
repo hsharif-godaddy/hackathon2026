@@ -9,8 +9,8 @@ import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { renderWithProviders } from '@/tests/test-utils';
 import AgentWorkFeedbackBanner from './AgentWorkFeedbackBanner';
 
-const mockLogImpression = vi.fn((_eid: string) => vi.fn());
-const mockLogClick = vi.fn((_eid: string) => vi.fn());
+const mockLogImpression = vi.fn(function (_eid: string) { return vi.fn(); });
+const mockLogClick = vi.fn(function (_eid: string) { return vi.fn(); });
 const mockShipAnalyticsLog = vi.fn();
 const mockMarkSubmitted = vi.fn();
 const mockSetShowBanner = vi.fn();

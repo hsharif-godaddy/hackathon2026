@@ -60,41 +60,41 @@ vi.mock('../../../logging/events/index.js', async (importOriginal) => {
 });
 
 vi.mock('../../../utils/error.js', () => ({
-  getErrorMessage: vi.fn().mockImplementation((error) => error.message || 'Unknown error')
+  getErrorMessage: vi.fn().mockImplementation(function (error) { return error.message || 'Unknown error'; })
 }));
 
 // Mock child_process to prevent actual process creation
 vi.mock('child_process', () => ({
-  spawn: vi.fn().mockImplementation(() => ({
+  spawn: vi.fn().mockImplementation(function () { return {
     pid: 12345,
     unref: vi.fn(),
     on: vi.fn(),
     kill: vi.fn(),
-  }))
+  }; })
 }));
 
 // Mock net with proper structure
 vi.mock('net', () => ({
   default: {
-    createServer: vi.fn().mockImplementation(() => ({
-      listen: vi.fn().mockImplementation((port, callback) => {
+    createServer: vi.fn().mockImplementation(function () { return {
+      listen: vi.fn().mockImplementation(function (port, callback) {
         setTimeout(callback, 10); // Simulate port available
       }),
-      close: vi.fn().mockImplementation((callback) => {
+      close: vi.fn().mockImplementation(function (callback) {
         setTimeout(callback, 10);
       }),
       on: vi.fn()
-    }))
+    }; })
   },
-  createServer: vi.fn().mockImplementation(() => ({
-    listen: vi.fn().mockImplementation((port, callback) => {
+  createServer: vi.fn().mockImplementation(function () { return {
+    listen: vi.fn().mockImplementation(function (port, callback) {
       setTimeout(callback, 10); // Simulate port available
     }),
-    close: vi.fn().mockImplementation((callback) => {
+    close: vi.fn().mockImplementation(function (callback) {
       setTimeout(callback, 10);
     }),
     on: vi.fn()
-  }))
+  }; })
 }));
 
 describe('AppRepository Integration Tests', () => {
@@ -309,7 +309,7 @@ describe('AppRepository Integration Tests', () => {
       // testing we want to verify successful flow
       let portCounter = 3000;
       const mockPortManager = {
-        getNextAvailablePort: vi.fn().mockImplementation(() => Promise.resolve(portCounter++))
+        getNextAvailablePort: vi.fn().mockImplementation(function () { return Promise.resolve(portCounter++); })
       };
       
       // Temporarily replace the port manager in the repository

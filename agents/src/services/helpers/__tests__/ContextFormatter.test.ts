@@ -13,7 +13,7 @@ vi.mock('../../../services/FileUploadService.js', () => {
 
   return {
     fileUploadService: mockService,
-    FileUploadService: vi.fn(() => mockService)
+    FileUploadService: vi.fn(function () { return mockService; })
   }
 })
 

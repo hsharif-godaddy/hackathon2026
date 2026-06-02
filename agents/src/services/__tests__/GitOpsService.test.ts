@@ -4,26 +4,26 @@ import { ImportJobStatus } from '../../types/import.js';
 
 // Mock dependencies
 vi.mock('../../database/repositories/AppRepository.js', () => ({
-  AppRepository: vi.fn().mockImplementation(() => ({
+  AppRepository: vi.fn().mockImplementation(function () { return {
     findById: vi.fn(),
-  })),
+  }; }),
 }));
 
 vi.mock('../../database/repositories/ImportJobRepository.js', () => ({
-  ImportJobRepository: vi.fn().mockImplementation(() => ({
+  ImportJobRepository: vi.fn().mockImplementation(function () { return {
     findByAppId: vi.fn(),
     findById: vi.fn(),
     create: vi.fn(),
     updateStatus: vi.fn(),
     markCompleted: vi.fn(),
     markFailed: vi.fn(),
-  })),
+  }; }),
 }));
 
 vi.mock('../../tools/git-tool.js', () => ({
-  GitTool: vi.fn().mockImplementation(() => ({
+  GitTool: vi.fn().mockImplementation(function () { return {
     executeGitOperation: vi.fn(),
-  })),
+  }; }),
 }));
 
 vi.mock('../../utils/dev-supervisor-client-factory.js', () => ({
@@ -64,12 +64,12 @@ vi.mock('../ProjectSourceDetectionService.js', () => ({
 }));
 
 vi.mock('../../workspace/index.js', () => ({
-  createForWorkspace: vi.fn(() => ({
+  createForWorkspace: vi.fn(function () { return {
     tasks: {},
     files: {
       view: vi.fn().mockResolvedValue({ content: '{}' }),
     },
-  })),
+  }; }),
 }));
 
 const mockLogger = vi.hoisted(() => ({
@@ -145,9 +145,9 @@ describe('GitOpsService', () => {
     };
 
     // Setup constructor mocks
-    vi.mocked(AppRepository).mockImplementation(() => mockAppRepo as any);
-    vi.mocked(ImportJobRepository).mockImplementation(() => mockImportJobRepo as any);
-    vi.mocked(GitTool).mockImplementation(() => mockGitTool as any);
+    vi.mocked(AppRepository).mockImplementation(function () { return mockAppRepo as any; });
+    vi.mocked(ImportJobRepository).mockImplementation(function () { return mockImportJobRepo as any; });
+    vi.mocked(GitTool).mockImplementation(function () { return mockGitTool as any; });
     vi.mocked(DevSupervisorClientFactory.createForApp).mockReturnValue(mockDevSupervisor as any);
 
     // Default: app exists

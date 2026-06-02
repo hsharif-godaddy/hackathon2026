@@ -18,9 +18,9 @@ const mockArchiverFn = vi.fn();
 const mockCreateForWorkspace = vi.fn();
 
 vi.mock('../../database/index.js', () => ({
-  AppRepository: vi.fn().mockImplementation(() => ({
+  AppRepository: vi.fn().mockImplementation(function () { return {
     findById: mockFindById
-  }))
+  }; })
 }));
 
 vi.mock('../../workspace/index.js', () => ({
@@ -143,7 +143,7 @@ describe('Download Route Authorization', () => {
         iat: Math.floor(Date.now() / 1000)
       });
 
-      mockFindById.mockImplementation(() => {
+      mockFindById.mockImplementation(function () {
         throw new Error('Should not reach here');
       });
 
@@ -315,7 +315,7 @@ describe('Download Route Authorization', () => {
 
   describe('Security - Middleware Ordering', () => {
     it('should check permission before any app operations', async function permissionBeforeDb() {
-      mockFindById.mockImplementation(() => {
+      mockFindById.mockImplementation(function () {
         throw new Error('Should not reach here');
       });
 
@@ -364,7 +364,7 @@ describe('Archive Workspace Integration', () => {
       }),
       append: vi.fn(),
       finalize: vi.fn().mockResolvedValue(undefined),
-      pointer: vi.fn(() => 1234),
+      pointer: vi.fn(function () { return 1234; }),
     });
     return archive;
   }
@@ -407,7 +407,7 @@ describe('Archive Workspace Integration', () => {
     const treeMap = new Map(Object.entries(opts.tree ?? {}));
     const fileMap = new Map(Object.entries(opts.files ?? {}));
 
-    const tree = vi.fn(async ({ path }: { path: string }) => {
+    const tree = vi.fn(async function ({ path }: { path: string }) {
       const entries = treeMap.get(path);
       if (!entries) {
         const err: any = new (await import('../../services/DevSupervisorClient.js')).DevSupervisorError('not_found', 404, `${path}: not found`);
@@ -416,7 +416,7 @@ describe('Archive Workspace Integration', () => {
       return { entries: entries.map((e) => ({ ...e, size: 1, modifiedAt: '' })), truncated: false };
     });
 
-    const download = vi.fn(async ({ path }: { path: string }) => {
+    const download = vi.fn(async function ({ path }: { path: string }) {
       const data = fileMap.get(path);
       if (data instanceof Error) throw data;
       if (!data) {
@@ -533,7 +533,7 @@ describe('Archive Workspace Integration', () => {
       target.write(Buffer.from('zip-header'));
     });
 
-    mockArchive.finalize.mockImplementation(async () => {
+    mockArchive.finalize.mockImplementation(async function () {
       mockArchive.emit('error', new Error('zip corruption'));
     });
 

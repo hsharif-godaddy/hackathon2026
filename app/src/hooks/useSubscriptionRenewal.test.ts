@@ -135,7 +135,7 @@ describe('useSubscriptionRenewal', function useSubscriptionRenewalTests() {
         json: async () => ({ success: true }),
       } as Response);
 
-      vi.mocked(waitForQueryUpdate).mockImplementation(async (_queryClient, _queryKey, condition) => {
+      vi.mocked(waitForQueryUpdate).mockImplementation(async function (_queryClient, _queryKey, condition) {
         capturedCondition = condition as (data: unknown) => boolean;
         return true;
       });
@@ -168,7 +168,7 @@ describe('useSubscriptionRenewal', function useSubscriptionRenewalTests() {
         ok: true,
         json: async () => ({ success: true }),
       } as Response);
-      vi.mocked(waitForQueryUpdate).mockImplementation(() => waitPromise);
+      vi.mocked(waitForQueryUpdate).mockImplementation(function () { return waitPromise; });
 
       const { result } = renderHookWithProviders(() => useSubscriptionRenewal());
 

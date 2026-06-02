@@ -199,7 +199,7 @@ describe('usePurgeCache', () => {
   it('should transition to error when MAX_POLL_DURATION_MS is exceeded', async function pollTimeout() {
     // Capture setTimeout callbacks so we can invoke them manually
     let capturedCallback: (() => void) | null = null;
-    const setTimeoutSpy = vi.spyOn(global, 'setTimeout').mockImplementation(((fn: () => void) => {
+    const setTimeoutSpy = vi.spyOn(global, 'setTimeout').mockImplementation((function (fn: () => void) {
       capturedCallback = fn;
       return 0 as unknown as ReturnType<typeof setTimeout>;
     }) as typeof setTimeout);

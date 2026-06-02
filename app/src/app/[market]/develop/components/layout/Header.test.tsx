@@ -90,11 +90,11 @@ vi.mock('@/stores/useStreamingConversationStore', () => ({
 }));
 
 vi.mock('@/hooks/useDomainSearch', () => ({
-  useDomainSearch: vi.fn(() => ({ data: null, isError: false })),
+  useDomainSearch: vi.fn(function () { return { data: null, isError: false }; }),
 }));
 
 vi.mock('@/utils/site', () => ({
-  hasBeenPublished: vi.fn(() => false),
+  hasBeenPublished: vi.fn(function () { return false; }),
 }));
 
 vi.mock('@/utils/domain', () => ({
@@ -114,10 +114,10 @@ vi.mock('@/hooks/useChatTabs', () => ({
 }));
 
 vi.mock('@/hooks/useSupportChat', () => ({
-  useSupportChat: vi.fn(() => ({
+  useSupportChat: vi.fn(function () { return {
     launchSupportChat: vi.fn(),
     isLoading: false,
-  })),
+  }; }),
 }));
 
 describe('DevelopHeader', () => {

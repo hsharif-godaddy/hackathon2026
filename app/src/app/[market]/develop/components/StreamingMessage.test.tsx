@@ -55,7 +55,7 @@ describe('StreamingMessage — user-action branch', function streamingMessageUse
   beforeEach(function resetMocks() {
     vi.clearAllMocks()
     // Default renderer stub — returns a distinguishable element per toolName.
-    getToolRendererSpy.mockImplementation((toolName: string) => {
+    getToolRendererSpy.mockImplementation(function (toolName: string) {
       const Stub: ComponentType<Record<string, unknown>> = (props) => (
         <div data-testid={`tool-renderer-${toolName}`} data-result={JSON.stringify(props.result)} />
       )

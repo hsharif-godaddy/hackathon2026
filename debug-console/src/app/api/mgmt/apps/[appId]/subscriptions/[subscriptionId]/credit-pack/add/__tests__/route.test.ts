@@ -28,7 +28,7 @@ vi.mock('@/lib/analytics/es-client', () => ({
 }));
 
 vi.mock('@/lib/credit-pack-utils', () => ({
-    getCreditPackDoc: vi.fn(() => ({
+    getCreditPackDoc: vi.fn(function () { return {
         es_id: 'doc-1',
         timestamp: '2026-04-04T00:00:00Z',
         app_id: 'app-1',
@@ -38,7 +38,7 @@ vi.mock('@/lib/credit-pack-utils', () => ({
         use_before: '2026-05-04T00:00:00Z',
         next_credit_allowed_after: '2026-04-05T00:00:00Z',
         notes: 'valid note',
-    })),
+    }; }),
     indexCreditPackDoc: vi.fn().mockResolvedValue(true),
     CREDIT_PACK_STATUS: { INIT: 'init', COMPLETE: 'complete', FAILED: 'failed' },
     CREDIT_PACK_OPTIONS: [100, 250],
@@ -58,9 +58,8 @@ vi.mock('@/lib/mgmt-control-plane-adapter', () => ({
 vi.mock('@/lib/mgmt-helpers', () => ({
     APP_ID_RE: /^[a-z0-9]+$/,
     SUBSCRIPTION_ID_RE: /^[a-z0-9]+$/,
-    validateId: vi.fn(() => null),
-    handleMgmtError: vi.fn((_err: unknown, msg: string) =>
-        NextResponse.json({ error: msg }, { status: 500 })
+    validateId: vi.fn(function () { return null; }),
+    handleMgmtError: vi.fn(function (_err: unknown, msg: string) { return NextResponse.json({ error: msg }, { status: 500 }); }
     ),
 }));
 

@@ -6,7 +6,7 @@ vi.mock('@airo/ai-lib', () => ({
 }))
 
 vi.mock('@airo/ai-common', () => ({
-  llmMetadataContext: { run: vi.fn((_meta: unknown, fn: () => unknown) => fn()) },
+  llmMetadataContext: { run: vi.fn(function (_meta: unknown, fn: () => unknown) { return fn(); }) },
 }))
 
 vi.mock('ai', () => ({

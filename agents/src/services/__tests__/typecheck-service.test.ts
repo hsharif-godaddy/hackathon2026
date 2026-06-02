@@ -10,12 +10,12 @@ vi.mock('../../logging/index.js', () => ({
     debug: vi.fn()
   },
   Logger: {
-    create: vi.fn(() => ({
+    create: vi.fn(function () { return {
       info: vi.fn(),
       warn: vi.fn(),
       error: vi.fn(),
       debug: vi.fn(),
-    })),
+    }; }),
   },
 }));
 
@@ -109,7 +109,7 @@ describe('TypecheckService.runTypecheck', () => {
   });
 
   it('returns skipped=no_supervisor when workspace factory throws (e.g. app not found)', async () => {
-    vi.mocked(createForWorkspace).mockImplementation(() => {
+    vi.mocked(createForWorkspace).mockImplementation(function () {
       throw new Error('App with ID test-app-typecheck not found');
     });
 

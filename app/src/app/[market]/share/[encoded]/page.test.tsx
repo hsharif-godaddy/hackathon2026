@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { encodeSharePayload } from '@airo/shared';
 
 const mockRedirect = vi.hoisted(() => vi.fn());
-const mockNotFound = vi.hoisted(() => vi.fn(() => {
+const mockNotFound = vi.hoisted(() => vi.fn(function () {
   throw new Error('NEXT_NOT_FOUND');
 }));
 vi.mock('next/navigation', () => ({
@@ -42,7 +42,7 @@ describe('SharePage (Server Component)', () => {
   beforeEach(() => {
     mockRedirect.mockReset();
     mockNotFound.mockReset();
-    mockNotFound.mockImplementation(() => {
+    mockNotFound.mockImplementation(function () {
       throw new Error('NEXT_NOT_FOUND');
     });
     mockLogger.info.mockReset();

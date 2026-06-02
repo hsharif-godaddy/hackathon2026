@@ -74,28 +74,28 @@ describe('logo-designer-preview-switch-storage', () => {
 
   describe('localStorage failures', () => {
     it('isLogoDesignerApp returns false when localStorage.getItem throws', () => {
-      vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      vi.spyOn(Storage.prototype, 'getItem').mockImplementation(function () {
         throw new Error('localStorage unavailable')
       })
       expect(isLogoDesignerApp('app-1')).toBe(false)
     })
 
     it('markLogoDesignerApp does not throw when localStorage.setItem throws', () => {
-      vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function () {
         throw new Error('quota exceeded')
       })
       expect(() => markLogoDesignerApp('app-1')).not.toThrow()
     })
 
     it('hasAutoSwitchedLogoDesignerPreview returns false when localStorage.getItem throws', () => {
-      vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      vi.spyOn(Storage.prototype, 'getItem').mockImplementation(function () {
         throw new Error('localStorage unavailable')
       })
       expect(hasAutoSwitchedLogoDesignerPreview('app-1')).toBe(false)
     })
 
     it('markAutoSwitchedLogoDesignerPreview does not throw when localStorage.setItem throws', () => {
-      vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function () {
         throw new Error('quota exceeded')
       })
       expect(() => markAutoSwitchedLogoDesignerPreview('app-1')).not.toThrow()

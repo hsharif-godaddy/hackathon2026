@@ -58,7 +58,7 @@ describe('setVentureLogoTool', () => {
   });
 
   it('returns horizontal + square URLs when both slots are populated', async () => {
-    mockGetSlot.mockImplementation(async (_appId: string, slotPath: string) => {
+    mockGetSlot.mockImplementation(async function (_appId: string, slotPath: string) {
       if (slotPath === 'logo/horizontal') {
         return { success: true, slot: { currentUrl: 'https://cdn/h.png' } };
       }
@@ -85,7 +85,7 @@ describe('setVentureLogoTool', () => {
   });
 
   it('returns error when horizontal slot is missing', async () => {
-    mockGetSlot.mockImplementation(async (_appId: string, slotPath: string) => {
+    mockGetSlot.mockImplementation(async function (_appId: string, slotPath: string) {
       if (slotPath === 'logo/primary') {
         return { success: true, slot: { currentUrl: 'https://cdn/s.png' } };
       }
@@ -100,7 +100,7 @@ describe('setVentureLogoTool', () => {
   });
 
   it('returns error when square slot is missing', async () => {
-    mockGetSlot.mockImplementation(async (_appId: string, slotPath: string) => {
+    mockGetSlot.mockImplementation(async function (_appId: string, slotPath: string) {
       if (slotPath === 'logo/horizontal') {
         return { success: true, slot: { currentUrl: 'https://cdn/h.png' } };
       }
@@ -122,7 +122,7 @@ describe('setVentureLogoTool', () => {
   });
 
   it('returns error when slot lookup succeeds but returns slot: undefined', async () => {
-    mockGetSlot.mockImplementation(async (_appId: string, slotPath: string) => {
+    mockGetSlot.mockImplementation(async function (_appId: string, slotPath: string) {
       if (slotPath === 'logo/horizontal') {
         return { success: true, slot: undefined };
       }
@@ -139,7 +139,7 @@ describe('setVentureLogoTool', () => {
   });
 
   it('returns error when currentUrl is an empty string', async () => {
-    mockGetSlot.mockImplementation(async (_appId: string, slotPath: string) => {
+    mockGetSlot.mockImplementation(async function (_appId: string, slotPath: string) {
       if (slotPath === 'logo/horizontal') {
         return { success: true, slot: { currentUrl: '' } };
       }

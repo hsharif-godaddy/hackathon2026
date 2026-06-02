@@ -14,7 +14,7 @@ vi.mock('@airo/ai-lib', async (importOriginal) => {
     ...actual,
     createPromptBuilder: () => {
       const builder = {
-        file: vi.fn().mockImplementation((_path: string) => builder),
+        file: vi.fn().mockImplementation(function (_path: string) { return builder; }),
         build: vi.fn().mockResolvedValue('# Design System Agent\nYou help users build with a design system.'),
       }
       return builder

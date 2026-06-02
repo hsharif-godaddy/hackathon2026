@@ -226,7 +226,7 @@ describe('WebsiteQualityEvaluator', () => {
       };
 
       let callIndex = 0;
-      mockGocode.complete.mockImplementation(async () => {
+      mockGocode.complete.mockImplementation(async function () {
         callIndex += 1;
         if (callIndex === 1) {
           return JSON.stringify({ verdict: 'broken', score: 0.1, summary: 'Layout broken on mobile' });

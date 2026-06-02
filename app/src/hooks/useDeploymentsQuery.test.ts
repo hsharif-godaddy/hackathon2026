@@ -36,17 +36,17 @@ vi.mock('@/lib/logging', () => ({
 }));
 
 vi.mock('@/utils/instrumentation', () => ({
-  logAiroHQEvent: vi.fn(() => vi.fn()),
-  logImpressionEvent: vi.fn(() => vi.fn()),
+  logAiroHQEvent: vi.fn(function () { return vi.fn(); }),
+  logImpressionEvent: vi.fn(function () { return vi.fn(); }),
 }));
 
 vi.mock('@/utils/site', () => ({
-  hasBeenPublished: vi.fn(() => false),
+  hasBeenPublished: vi.fn(function () { return false; }),
 }));
 
 vi.mock('@/hooks/useSwitchboard', () => ({
-  getSwitchboardFlag: vi.fn(() => false),
-  useSwitchboard: vi.fn(() => false),
+  getSwitchboardFlag: vi.fn(function () { return false; }),
+  useSwitchboard: vi.fn(function () { return false; }),
 }));
 
 const mockSetDeploymentInProgressId = vi.hoisted(() => vi.fn());
@@ -55,10 +55,10 @@ const mockSetPublishSuccess = vi.hoisted(() => vi.fn());
 const mockSetShowFirstPublishCongrats = vi.hoisted(() => vi.fn());
 const mockSetShowGoLiveModal = vi.hoisted(() => vi.fn());
 const mockGetPublishState = vi.hoisted(() => vi.fn());
-const mockHasGoneLive = vi.hoisted(() => vi.fn(() => false));
+const mockHasGoneLive = vi.hoisted(() => vi.fn(function () { return false; }));
 
 vi.mock('@/stores/useDevelopPageStore', () => ({
-  useDevelopPageStore: vi.fn((selector: (state: any) => any) => {
+  useDevelopPageStore: vi.fn(function (selector: (state: any) => any) {
     const state = {
       getPublishState: mockGetPublishState,
       setDeploymentInProgressId: mockSetDeploymentInProgressId,
@@ -73,10 +73,10 @@ vi.mock('@/stores/useDevelopPageStore', () => ({
 }));
 
 vi.mock('@/stores/useSiteStore', () => ({
-  useSiteStore: vi.fn((selector: (state: any) => any) => {
+  useSiteStore: vi.fn(function (selector: (state: any) => any) {
     const state = {
-      fetchSite: vi.fn(() => Promise.resolve({})),
-      getSite: vi.fn(() => null),
+      fetchSite: vi.fn(function () { return Promise.resolve({}); }),
+      getSite: vi.fn(function () { return null; }),
     };
     return selector(state);
   }),

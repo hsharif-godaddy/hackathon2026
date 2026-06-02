@@ -8,8 +8,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 // Flag defaults to on so existing behavioral tests don't have to mock it.
 // Individual tests override with mockReturnValueOnce for flag-off coverage.
 vi.mock('@/hooks/useSwitchboard', () => ({
-  useSwitchboard: vi.fn(() => true),
-  getSwitchboardFlag: vi.fn(() => true),
+  useSwitchboard: vi.fn(function () { return true; }),
+  getSwitchboardFlag: vi.fn(function () { return true; }),
 }))
 
 import { useAppGenerationFeedbackTrigger } from '@/app/[market]/develop/hooks/useAppGenerationFeedbackTrigger'

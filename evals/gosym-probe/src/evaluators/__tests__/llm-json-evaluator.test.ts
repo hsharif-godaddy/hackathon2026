@@ -233,7 +233,7 @@ describe('LLMJsonEvaluator — score clamping', () => {
 
 describe('LLMJsonEvaluator — validateEvidence', () => {
   it('returns unknown without calling LLM when validateEvidence returns false', async () => {
-    const gocode = { complete: vi.fn(async () => validResponse()) } as unknown as GocodeClient;
+    const gocode = { complete: vi.fn(async function () { return validResponse(); }) } as unknown as GocodeClient;
     const evaluator = new LLMJsonEvaluator(gocode, {
       name: 'test-evaluator',
       evalVersion: 'v1',
@@ -259,7 +259,7 @@ describe('LLMJsonEvaluator — validateEvidence', () => {
   });
 
   it('proceeds to LLM call when validateEvidence returns true', async () => {
-    const gocode = { complete: vi.fn(async () => validResponse(0.9)) } as unknown as GocodeClient;
+    const gocode = { complete: vi.fn(async function () { return validResponse(0.9); }) } as unknown as GocodeClient;
     const evaluator = new LLMJsonEvaluator(gocode, {
       name: 'test-evaluator',
       schema: TestSchema,
@@ -282,7 +282,7 @@ describe('LLMJsonEvaluator — validateEvidence', () => {
   });
 
   it('skips validateEvidence when not configured', async () => {
-    const gocode = { complete: vi.fn(async () => validResponse(0.7)) } as unknown as GocodeClient;
+    const gocode = { complete: vi.fn(async function () { return validResponse(0.7); }) } as unknown as GocodeClient;
     const evaluator = new LLMJsonEvaluator(gocode, {
       name: 'test-evaluator',
       schema: TestSchema,
@@ -333,7 +333,7 @@ describe('LLMJsonEvaluator — rate-limit retry', () => {
 
   beforeEach(() => {
     vi.mocked(sleep).mockClear();
-    warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    warnSpy = vi.spyOn(console, 'warn').mockImplementation(function () {});
   });
 
   afterEach(() => {

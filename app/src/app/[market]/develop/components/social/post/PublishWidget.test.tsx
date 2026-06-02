@@ -33,7 +33,7 @@ vi.mock('@/utils/social/events', () => ({
 }))
 
 vi.mock('@/utils/instrumentation', () => ({
-  generateClickEID: vi.fn(() => 'test-eid')
+  generateClickEID: vi.fn(function () { return 'test-eid'; })
 }))
 
 

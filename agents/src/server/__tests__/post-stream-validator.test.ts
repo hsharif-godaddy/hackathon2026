@@ -20,7 +20,7 @@ function makeArgs(overrides: Partial<Parameters<ReturnType<typeof createPostStre
     agentName: AGENT_NAME,
     toolCalls: [{ toolName: 'fileEdit' }] as Array<{ toolName: string }>,
     abortSignal: abortController.signal,
-    emitChunk: vi.fn(async (_text: string) => {}),
+    emitChunk: vi.fn(async function (_text: string) {}),
     ...overrides
   };
 }
@@ -69,14 +69,12 @@ function makeDeps(overrides: {
   const logger = { info: vi.fn(), warn: vi.fn() };
   const typecheckService = {
     runTypecheck: vi.fn(
-      async (_appId: string, _opts: unknown): Promise<TypecheckResult> =>
-        overrides.typecheckResult ?? { ok: true, errors: [] }
+      async function (_appId: string, _opts: unknown) { return overrides.typecheckResult ?? { ok: true, errors: [] }; }
     )
   };
   const previousCycleId = overrides.previousCycleId;
   const pollRuntimeErrors = vi.fn(
-    async (_appId: string, _opts: unknown): Promise<RuntimeErrorResult> =>
-      overrides.runtimeResult ?? { ok: true, errors: [] }
+    async function (_appId: string, _opts: unknown) { return overrides.runtimeResult ?? { ok: true, errors: [] }; }
   );
   // Re-poll replaces the first-poll result on the next call. We wire
   // this via `mockImplementationOnce` in the restart tests rather than
@@ -84,22 +82,17 @@ function makeDeps(overrides: {
   // test that doesn't care about the re-poll shape still gets sane
   // behavior.
   if (overrides.rePollResult !== undefined) {
-    pollRuntimeErrors.mockImplementationOnce(async () => overrides.runtimeResult ?? { ok: true, errors: [] });
-    pollRuntimeErrors.mockImplementationOnce(async () => overrides.rePollResult!);
+    pollRuntimeErrors.mockImplementationOnce(async function () { return overrides.runtimeResult ?? { ok: true, errors: [] }; });
+    pollRuntimeErrors.mockImplementationOnce(async function () { return overrides.rePollResult!; });
   }
   const waitForCycleAdvance = vi.fn(
-    async (
-      appId: string,
-      prev: number | undefined,
-      opts: { timeoutMs: number; signal?: AbortSignal }
-    ): Promise<{ advanced: boolean; newCycleId?: number; durationMs: number }> =>
-      overrides.waitForCycleAdvance
+    async function (appId: string, prev: number | undefined, opts: { timeoutMs: number; signal?: AbortSignal }) { return overrides.waitForCycleAdvance
         ? overrides.waitForCycleAdvance(appId, prev, opts)
         : {
             advanced: true,
             newCycleId: (prev ?? 0) + 1,
             durationMs: 10
-          }
+          }; }
   );
   const runtimeErrorService = {
     pollRuntimeErrors,
@@ -107,8 +100,8 @@ function makeDeps(overrides: {
     // behavior in isolation) don't fire the "no cycle established"
     // warning path. The dedicated observability test below overrides
     // this to `false`.
-    hasCycleEstablished: vi.fn((_appId: string): boolean => overrides.cycleEstablished ?? true),
-    getCurrentCycleId: vi.fn((_appId: string): number | undefined => previousCycleId),
+    hasCycleEstablished: vi.fn(function (_appId: string) { return overrides.cycleEstablished ?? true; }),
+    getCurrentCycleId: vi.fn(function (_appId: string) { return previousCycleId; }),
     waitForCycleAdvance
   };
   const tscCounters = new Map<string, number>();
@@ -122,8 +115,8 @@ function makeDeps(overrides: {
   const hasUncommittedChangesFn = (() => {
     const override = overrides.hasUncommittedChanges;
     if (typeof override === 'function') return vi.fn(override);
-    if (typeof override === 'boolean') return vi.fn(async () => override);
-    return vi.fn(async () => true);
+    if (typeof override === 'boolean') return vi.fn(async function () { return override; });
+    return vi.fn(async function () { return true; });
   })();
   const restartPreviewMock = overrides.restartPreview
     ? vi.fn(overrides.restartPreview)
@@ -229,7 +222,7 @@ describe('createPostStreamValidator', () => {
       }
     });
     const validator = createPostStreamValidator(deps);
-    const emitValidationStart = vi.fn(async () => {});
+    const emitValidationStart = vi.fn(async function () {});
     const result = await validator(makeArgs({
       agentName: 'initial',
       emitValidationStart
@@ -244,7 +237,7 @@ describe('createPostStreamValidator', () => {
   it('skips both phases when the working tree has no uncommitted changes', async () => {
     const { deps, mocks } = makeDeps({ hasUncommittedChanges: false });
     const validator = createPostStreamValidator(deps);
-    const emitValidationStart = vi.fn(async () => {});
+    const emitValidationStart = vi.fn(async function () {});
     const result = await validator(
       makeArgs({
         emitValidationStart,
@@ -269,7 +262,7 @@ describe('createPostStreamValidator', () => {
   it('emits validation start when the working tree has uncommitted changes', async () => {
     const { deps, mocks } = makeDeps({ hasUncommittedChanges: true });
     const validator = createPostStreamValidator(deps);
-    const emitValidationStart = vi.fn(async () => {});
+    const emitValidationStart = vi.fn(async function () {});
     const result = await validator(makeArgs({ emitValidationStart }));
     expect(result).toBeUndefined();
     expect(emitValidationStart).toHaveBeenCalledTimes(1);
@@ -333,7 +326,7 @@ describe('createPostStreamValidator', () => {
       tscMaxRetries: 2
     });
     const validator = createPostStreamValidator(deps);
-    const emitChunk = vi.fn(async (_text: string) => {});
+    const emitChunk = vi.fn(async function (_text: string) {});
     const result = await validator(makeArgs({ emitChunk }));
     expect(result).toMatchObject({
       skipped: true,
@@ -386,7 +379,7 @@ describe('createPostStreamValidator', () => {
       rtRetryCount: 2,
       rtMaxRetries: 2
     });
-    const emitChunk = vi.fn(async (_text: string) => {});
+    const emitChunk = vi.fn(async function (_text: string) {});
     const validator = createPostStreamValidator(deps);
     const result = await validator(makeArgs({ emitChunk }));
     expect(result).toMatchObject({
@@ -413,7 +406,7 @@ describe('createPostStreamValidator', () => {
       rtRetryCount: 2,
       rtMaxRetries: 2
     });
-    const emitChunk = vi.fn(async (_text: string) => {});
+    const emitChunk = vi.fn(async function (_text: string) {});
     const validator = createPostStreamValidator(deps);
     const result = await validator(makeArgs({ emitChunk }));
     expect(result).toMatchObject({
@@ -501,7 +494,7 @@ describe('createPostStreamValidator', () => {
       rtMaxRetries: 2
     });
     const validator = createPostStreamValidator(deps);
-    const emitChunk = vi.fn(async (_text: string) => {});
+    const emitChunk = vi.fn(async function (_text: string) {});
     const result = await validator(makeArgs({ emitChunk }));
     expect(result).toMatchObject({
       skipped: true,
@@ -773,8 +766,8 @@ describe('createPostStreamValidator', () => {
       });
       mocks.pollRuntimeErrors
         .mockReset()
-        .mockImplementationOnce(async () => ({ ok: false, errors: runtimeErrors }))
-        .mockImplementationOnce(async () => {
+        .mockImplementationOnce(async function () { return { ok: false, errors: runtimeErrors }; })
+        .mockImplementationOnce(async function () {
           throw new Error('buffer gone');
         });
       const validator = createPostStreamValidator(deps);
@@ -865,7 +858,7 @@ describe('createPostStreamValidator', () => {
         previousCycleId: 100,
         restartPreview: async () => ({ success: true })
       });
-      const emitChunk = vi.fn(async (_text: string) => {});
+      const emitChunk = vi.fn(async function (_text: string) {});
       const validator = createPostStreamValidator(deps);
       const result = await validator(makeArgs({ emitChunk }));
       expect(result).toMatchObject({
@@ -953,7 +946,7 @@ describe('createPostStreamValidator', () => {
         rtRetryCount: 2,
         rtMaxRetries: 2,
       });
-      const emitChunk = vi.fn(async (_text: string) => {});
+      const emitChunk = vi.fn(async function (_text: string) {});
       const validator = createPostStreamValidator(deps);
       const result = await validator(makeArgs({ emitChunk }));
       expect(result).toMatchObject({

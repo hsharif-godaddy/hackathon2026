@@ -231,7 +231,7 @@ describe('POST /apps/:id/share — purpose gating', () => {
       // findByAppId is called with the purpose filter — the route's guard only
       // sees tokens for the requested purpose. Cert2s asks for archive_snapshot,
       // and the user-purpose row already in the DB shouldn't trigger 409.
-      mockShareTokenRepo.findByAppId.mockImplementation((_appId: string, purpose?: string) => {
+      mockShareTokenRepo.findByAppId.mockImplementation(function (_appId: string, purpose?: string) {
         if (purpose === 'archive_snapshot') return [];
         return [
           {

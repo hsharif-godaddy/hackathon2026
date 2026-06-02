@@ -432,10 +432,9 @@ describe('TokenUsageEvaluator', () => {
     it('score equals aabData.totalTokens for each trial independently', async () => {
       const collector: TokenUsageCollector = {
         hook: vi.fn(),
-        collect: vi.fn().mockImplementation((trialIndex: number) =>
-          makeTrialTokenData({
+        collect: vi.fn().mockImplementation(function (trialIndex: number) { return makeTrialTokenData({
             totalTokens: trialIndex === 0 ? 1000 : 2000,
-          }),
+          }); },
         ),
         unhook: vi.fn(),
       } as unknown as TokenUsageCollector;
@@ -465,10 +464,9 @@ describe('TokenUsageEvaluator', () => {
     it('details total tokens are correct per trial', async () => {
       const collector: TokenUsageCollector = {
         hook: vi.fn(),
-        collect: vi.fn().mockImplementation((trialIndex: number) =>
-          makeTrialTokenData({
+        collect: vi.fn().mockImplementation(function (trialIndex: number) { return makeTrialTokenData({
             totalTokens: trialIndex === 0 ? 1000 : 2000,
-          }),
+          }); },
         ),
         unhook: vi.fn(),
       } as unknown as TokenUsageCollector;

@@ -38,22 +38,22 @@ function renderWithMessages(ui: React.ReactElement) {
 const mockOpenUpgradeModal = vi.fn();
 
 vi.mock('@/hooks/usePaywallEligibility', () => ({
-  usePaywallEligibility: vi.fn(() => ({ showPaywall: true, isLoading: false, isError: false, error: null })),
+  usePaywallEligibility: vi.fn(function () { return { showPaywall: true, isLoading: false, isError: false, error: null }; }),
 }));
 
 vi.mock('@/hooks/useSwitchboard', () => ({
-  useSwitchboard: vi.fn(() => (true)),
+  useSwitchboard: vi.fn(function () { return true; }),
 }));
 
 vi.mock('@/hooks/useSubscription', () => ({
-  useSubscription: vi.fn(() => ({
+  useSubscription: vi.fn(function () { return {
     data: null,
     subscriptions: [],
     isLoading: false,
     isError: false,
     error: null,
     refetch: vi.fn(),
-  })),
+  }; }),
 }));
 
 vi.mock('@/stores/useDevelopPageStore', () => ({
@@ -64,8 +64,8 @@ vi.mock('@/lib/logging', () => ({
   shipAnalyticsLog: vi.fn(),
 }));
 
-const mockLogImpressionEvent = vi.fn((_eid: string) => vi.fn());
-const mockLogClickEvent = vi.fn((_eid: string) => vi.fn());
+const mockLogImpressionEvent = vi.fn(function (_eid: string) { return vi.fn(); });
+const mockLogClickEvent = vi.fn(function (_eid: string) { return vi.fn(); });
 
 vi.mock('@/utils/instrumentation', () => ({
   logImpressionEvent: (eid: string) => mockLogImpressionEvent(eid) as unknown,

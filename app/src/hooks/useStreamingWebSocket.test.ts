@@ -43,7 +43,7 @@ const createStreamingStoreState = () => ({
   startConnectionRetry: vi.fn(),
   setEscalationTimeout: vi.fn(),
   clearConnectionRetry: vi.fn(),
-  checkStaleRetry: vi.fn(() => false),
+  checkStaleRetry: vi.fn(function () { return false; }),
   setWebSocketState: mockSetWebSocketState,  // Use shared mock for assertions
   setStreamingState: vi.fn(),
   setIsLoading: mockSetIsLoadingAction,
@@ -79,19 +79,19 @@ const createMockSocket = () => {
     connected: false,
     recovered: false,
     emit: vi.fn(),
-    on: vi.fn((event, handler) => {
+    on: vi.fn(function (event, handler) {
       handlers[event] = handlers[event] || []
       handlers[event]!.push(handler)
       return socket
     }),
-    once: vi.fn((event, handler) => {
+    once: vi.fn(function (event, handler) {
       const onceWrapper = (...args: any[]) => {
         socket.off(event, onceWrapper)
         handler(...args)
       }
       return socket.on(event, onceWrapper)
     }),
-    off: vi.fn((event, handler) => {
+    off: vi.fn(function (event, handler) {
       if (!handlers[event]) return socket
       if (handler) {
         handlers[event] = handlers[event]!.filter((h) => h !== handler)
@@ -100,13 +100,13 @@ const createMockSocket = () => {
       }
       return socket
     }),
-    removeAllListeners: vi.fn(() => {
+    removeAllListeners: vi.fn(function () {
       Object.keys(handlers).forEach((event) => {
         handlers[event] = []
       })
     }),
     disconnect: vi.fn(),
-    connect: vi.fn(() => {
+    connect: vi.fn(function () {
       socket.connected = true
       // Trigger connect event when connect() is called
       setTimeout(() => socket.trigger('connect'), 0)
@@ -173,68 +173,68 @@ const triggerMessage = async (socket: any, payload: any) => {
 
 // Mock all external dependencies
 vi.mock('socket.io-client', () => ({
-  io: vi.fn(() => createMockSocket())
+  io: vi.fn(function () { return createMockSocket(); })
 }))
 
 vi.mock('uuid', () => ({
-  validate: vi.fn(() => true)
+  validate: vi.fn(function () { return true; })
 }));
 
 vi.mock('@tanstack/react-query', () => ({
-  useQueryClient: vi.fn(() => ({
+  useQueryClient: vi.fn(function () { return {
     invalidateQueries: vi.fn()
-  })),
-  useQuery: vi.fn(() => ({
+  }; }),
+  useQuery: vi.fn(function () { return {
     data: false,
     isLoading: false,
     error: null,
-  })),
+  }; }),
 }));
 
 vi.mock('@/components/providers/AuthProvider', () => ({
-  useAuthContext: vi.fn(() => ({
+  useAuthContext: vi.fn(function () { return {
     tokenAuthType: 'basic',
     isAuthenticated: true,
     isLoading: false,
-  }))
+  }; })
 }));
 
 vi.mock('@/stores/useStreamingConversationStore', () => ({
-  useWebSocketState: vi.fn(() => ({ connected: false, status: 'idle' })),
-  useCurrentAppId: vi.fn(() => null),
-  useIsActivelyStreaming: vi.fn(() => false),
-  useStartNewStream: vi.fn(() => vi.fn()),
-  useAppendTextSegment: vi.fn(() => vi.fn()),
-  useAddToolStartSegment: vi.fn(() => vi.fn()),
-  useAddToolCallSegment: vi.fn(() => vi.fn()),
-  useAddToolResultSegment: vi.fn(() => vi.fn()),
-  useMarkMaxStepsReached: vi.fn(() => vi.fn()),
-  useMarkUpstreamError: vi.fn(() => mockMarkUpstreamErrorAction),
-  useMarkBudgetExceeded: vi.fn(() => vi.fn()),
-  useFinalizeStream: vi.fn(() => vi.fn()),
-  useSetWebSocketState: vi.fn(() => mockSetWebSocketState),
-  useSetStreamingState: vi.fn(() => vi.fn()),
-  useSetIsLoading: vi.fn(() => mockSetIsLoadingAction),
+  useWebSocketState: vi.fn(function () { return { connected: false, status: 'idle' }; }),
+  useCurrentAppId: vi.fn(function () { return null; }),
+  useIsActivelyStreaming: vi.fn(function () { return false; }),
+  useStartNewStream: vi.fn(function () { return vi.fn(); }),
+  useAppendTextSegment: vi.fn(function () { return vi.fn(); }),
+  useAddToolStartSegment: vi.fn(function () { return vi.fn(); }),
+  useAddToolCallSegment: vi.fn(function () { return vi.fn(); }),
+  useAddToolResultSegment: vi.fn(function () { return vi.fn(); }),
+  useMarkMaxStepsReached: vi.fn(function () { return vi.fn(); }),
+  useMarkUpstreamError: vi.fn(function () { return mockMarkUpstreamErrorAction; }),
+  useMarkBudgetExceeded: vi.fn(function () { return vi.fn(); }),
+  useFinalizeStream: vi.fn(function () { return vi.fn(); }),
+  useSetWebSocketState: vi.fn(function () { return mockSetWebSocketState; }),
+  useSetStreamingState: vi.fn(function () { return vi.fn(); }),
+  useSetIsLoading: vi.fn(function () { return mockSetIsLoadingAction; }),
   useStreamingConversationStore: {
-    getState: vi.fn(() => streamingStoreState),
+    getState: vi.fn(function () { return streamingStoreState; }),
     setState: vi.fn(),
-    subscribe: vi.fn(() => vi.fn())
+    subscribe: vi.fn(function () { return vi.fn(); })
   }
 }));
 
 vi.mock('@/stores/useTodoListStore', () => ({
   useTodoListStore: {
-    getState: vi.fn(() => ({
+    getState: vi.fn(function () { return {
       updateFromToolCall: vi.fn()
-    }))
+    }; })
   }
 }));
 
 vi.mock('@/stores/useGitStore', () => ({
   useGitStore: {
-    getState: vi.fn(() => ({
+    getState: vi.fn(function () { return {
       selectCommit: vi.fn()
-    }))
+    }; })
   }
 }));
 
@@ -249,30 +249,30 @@ vi.mock('@/lib/request-context', () => ({
 
 vi.mock('@/lib/socketRegistry', () => ({
   setSharedSocket: vi.fn(),
-  getSharedSocket: vi.fn(() => null)
+  getSharedSocket: vi.fn(function () { return null; })
 }));
 
 vi.mock('@/services/AgentService', () => ({
   AgentService: {
-    getInstance: vi.fn(() => ({}))
+    getInstance: vi.fn(function () { return {}; })
   }
 }));
 
 vi.mock('@/app/[market]/develop/components/visualContextCapture', () => ({
-  captureVisualContext: vi.fn(() => Promise.resolve(null))
+  captureVisualContext: vi.fn(function () { return Promise.resolve(null); })
 }));
 
 vi.mock('@/hooks/useTranslations', () => ({
-  useTranslations: vi.fn(() => (id: string) => id)
+  useTranslations: vi.fn(function () { return (id: string) => id; })
 }));
 
 vi.mock('@/utils/instrumentation', () => ({
-  logImpressionEvent: vi.fn(() => vi.fn())
+  logImpressionEvent: vi.fn(function () { return vi.fn(); })
 }));
 
 vi.mock('../config/dynamic-api', () => ({
   dynamicApiConfigService: {
-    getConfigForSite: vi.fn(() => Promise.resolve({ baseUrl: 'http://localhost:4000' }))
+    getConfigForSite: vi.fn(function () { return Promise.resolve({ baseUrl: 'http://localhost:4000' }); })
   }
 }));
 
@@ -290,7 +290,7 @@ describe('useStreamingWebSocket', () => {
     mockSetError.mockReset();
 
     // Mock fetch for JWT token
-    global.fetch = vi.fn((url) => {
+    global.fetch = vi.fn(function (url) {
       const urlString = String(url)
       if (urlString.includes('/api/auth/agent-token')) {
         return Promise.resolve({
@@ -493,7 +493,7 @@ describe('useStreamingWebSocket', () => {
     it('should reset loading state when controller.sendMessage throws synchronously', async () => {
       vi.useFakeTimers();
       const { StreamingWebSocketController } = await import('@/services/websocket/StreamingWebSocketController');
-      const controllerSpy = vi.spyOn(StreamingWebSocketController.prototype, 'sendMessage').mockImplementationOnce(() => {
+      const controllerSpy = vi.spyOn(StreamingWebSocketController.prototype, 'sendMessage').mockImplementationOnce(function () {
         throw new Error('sync failure');
       });
 
@@ -650,7 +650,7 @@ describe('useStreamingWebSocket', () => {
       const { useCurrentAppId } = await import('@/stores/useStreamingConversationStore');
 
       // Make fetch fail
-      global.fetch = vi.fn(() => Promise.reject(new Error('Network error'))) as any;
+      global.fetch = vi.fn(function () { return Promise.reject(new Error('Network error')); }) as any;
       vi.mocked(useCurrentAppId).mockReturnValue('test-app-123');
 
       // Should not throw
@@ -744,7 +744,7 @@ describe('useStreamingWebSocket', () => {
       const { useCurrentAppId } = await import('@/stores/useStreamingConversationStore');
       const { ConnectionManager } = await import('@/services/websocket/ConnectionManager');
 
-      vi.mocked(useCurrentAppId).mockImplementation(() => streamingStoreState.currentAppId);
+      vi.mocked(useCurrentAppId).mockImplementation(function () { return streamingStoreState.currentAppId; });
 
       const connectSpy = vi.spyOn(ConnectionManager.prototype, 'connect');
 
@@ -795,7 +795,7 @@ describe('useStreamingWebSocket', () => {
       const { useStreamingWebSocket } = await import('./useStreamingWebSocket');
       const { useCurrentAppId } = await import('@/stores/useStreamingConversationStore');
 
-      vi.mocked(useCurrentAppId).mockImplementation(() => streamingStoreState.currentAppId);
+      vi.mocked(useCurrentAppId).mockImplementation(function () { return streamingStoreState.currentAppId; });
 
       streamingStoreState.currentAppId = 'midload-a';
       const { rerender } = renderHook(() => useStreamingWebSocket());

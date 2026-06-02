@@ -14,17 +14,17 @@ import type { AuthenticatedRequest } from '../middleware/jwt-auth.js';
 const mockFindById = vi.fn();
 
 vi.mock('../../database/repositories/AppRepository.js', () => ({
-  AppRepository: vi.fn().mockImplementation(() => ({
+  AppRepository: vi.fn().mockImplementation(function () { return {
     findById: mockFindById
-  }))
+  }; })
 }));
 
 vi.mock('../../utils/git.js', () => ({
-  GitUtils: vi.fn().mockImplementation(() => ({
+  GitUtils: vi.fn().mockImplementation(function () { return {
     resolveCommitHash: vi.fn(),
     getCommitDetails: vi.fn(),
     createArchive: vi.fn(),
-  })),
+  }; }),
 }));
 
 const mockCreateForWorkspace = vi.fn().mockReturnValue(null);
@@ -42,9 +42,9 @@ vi.mock('../../utils/dev-supervisor-client-factory.js', () => ({
 
 // Mock app-ownership middleware to pass through (tests set up their own auth context)
 vi.mock('../middleware/app-ownership.js', () => ({
-  validateAppOwnership: vi.fn((_req: any, _res: any, next: any) => next()),
-  validateAppOwnershipFromBody: vi.fn(() => (_req: any, _res: any, next: any) => next()),
-  validateAppOwnershipFromQuery: vi.fn(() => (_req: any, _res: any, next: any) => next())
+  validateAppOwnership: vi.fn(function (_req: any, _res: any, next: any) { return next(); }),
+  validateAppOwnershipFromBody: vi.fn(function () { return (_req: any, _res: any, next: any) => next(); }),
+  validateAppOwnershipFromQuery: vi.fn(function () { return (_req: any, _res: any, next: any) => next(); })
 }));
 
 // Mock the publish strategies. Keep `getPublishStrategy` mockable per-test,
@@ -61,28 +61,28 @@ vi.mock('./publish/strategies/index.js', async (importOriginal) => {
 });
 
 vi.mock('../agent-runtime.js', () => ({
-  getGitHookService: vi.fn(() => ({
+  getGitHookService: vi.fn(function () { return {
     hasActiveBranch: vi.fn().mockReturnValue(false),
     clearBranchTracking: vi.fn(),
-  })),
+  }; }),
 }));
 
 vi.mock('../../logging/index.js', () => ({
   log: {
-    forApp: vi.fn(() => ({
+    forApp: vi.fn(function () { return {
       info: vi.fn(),
       warn: vi.fn(),
       error: vi.fn()
-    })),
+    }; }),
     error: vi.fn()
   },
   Logger: {
-    create: vi.fn(() => ({
+    create: vi.fn(function () { return {
       info: vi.fn(),
       warn: vi.fn(),
       error: vi.fn(),
       debug: vi.fn()
-    }))
+    }; })
   }
 }));
 
@@ -274,7 +274,7 @@ describe('Publish Route Authorization', () => {
 
     it('should check permission before any app operations', async () => {
       // Ensure permission check happens first, even if repo throws
-      mockFindById.mockImplementation(() => {
+      mockFindById.mockImplementation(function () {
         throw new Error('Should not reach here');
       });
 

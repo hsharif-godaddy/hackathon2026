@@ -11,7 +11,7 @@ import { renderWithProviders } from '@/tests/test-utils'
 import ColorSchemeToolRenderer from './ColorSchemeToolRenderer'
 
 vi.mock('@/hooks/useSwitchboard', () => ({
-  useSwitchboard: vi.fn((flag: string) => {
+  useSwitchboard: vi.fn(function (flag: string) {
     if (flag === 'airo-builder-theme-selection-chat') {
       return { data: true, isLoading: false, error: null }
     }

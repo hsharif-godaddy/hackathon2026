@@ -27,7 +27,7 @@ const { mockAuthenticateCustomer, mockAiroMgmtClient, mockLogger } = vi.hoisted(
 
 vi.mock('@/lib/mgmt-airo', function mockMgmtAiroModule() {
   return {
-    AiroMgmtClient: vi.fn().mockImplementation(() => mockAiroMgmtClient),
+    AiroMgmtClient: vi.fn().mockImplementation(function () { return mockAiroMgmtClient; }),
     AIRO_OWNER_PRODUCTS: { AIRO_APP_BUILDER: 'airo-app-builder' }
   };
 });

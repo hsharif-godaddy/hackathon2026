@@ -18,7 +18,7 @@ vi.mock('@/stores/useServerPollingStore', () => ({
 }));
 
 vi.mock('@/utils/instrumentation', () => ({
-  generateClickEID: vi.fn((id) => id),
+  generateClickEID: vi.fn(function (id) { return id; }),
 }));
 
 describe('MediaSlotsGrid', () => {

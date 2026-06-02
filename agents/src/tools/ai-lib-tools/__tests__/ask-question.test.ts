@@ -2,12 +2,12 @@ import { describe, it, expect, vi } from 'vitest'
 
 vi.mock('../../../logging/index.js', () => ({
   Logger: {
-    create: vi.fn(() => ({
+    create: vi.fn(function () { return {
       info: vi.fn(),
       error: vi.fn(),
       warn: vi.fn(),
       debug: vi.fn()
-    }))
+    }; })
   }
 }))
 

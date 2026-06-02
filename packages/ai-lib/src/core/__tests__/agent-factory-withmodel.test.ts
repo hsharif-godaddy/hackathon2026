@@ -17,8 +17,8 @@ vi.mock('ai', async importOriginal => {
 })
 
 vi.mock('../model-override-context.js', () => ({
-  getActiveModelOverride: vi.fn(() => null),
-  runWithModelOverride: vi.fn((override: string, fn: () => unknown) => fn()),
+  getActiveModelOverride: vi.fn(function () { return null; }),
+  runWithModelOverride: vi.fn(function (override: string, fn: () => unknown) { return fn(); }),
 }))
 
 vi.mock('../../providers/unified-provider.js', async importOriginal => {
@@ -40,11 +40,11 @@ function createLanguageModelStub(id: string): LanguageModel {
 
 function createMockSkillToolProvider(overrides: Partial<SkillToolProvider> = {}): SkillToolProvider {
   return {
-    getAllTools: vi.fn(() => ({})),
-    getSkillToolNames: vi.fn(() => []),
-    getActiveToolNames: vi.fn(() => []),
+    getAllTools: vi.fn(function () { return {}; }),
+    getSkillToolNames: vi.fn(function () { return []; }),
+    getActiveToolNames: vi.fn(function () { return []; }),
     updateSkillUsage: vi.fn(),
-    cleanupInactiveSkills: vi.fn(() => []),
+    cleanupInactiveSkills: vi.fn(function () { return []; }),
     ...overrides
   }
 }
@@ -139,7 +139,7 @@ describe('AgentWrapper withModel', function withModelSuite() {
 
   it('passes skillToolProvider to the new instance', async function skillProviderForwarded() {
     const skillProvider = createMockSkillToolProvider({
-      getSkillToolNames: vi.fn(() => ['skill__x__tool'])
+      getSkillToolNames: vi.fn(function () { return ['skill__x__tool']; })
     })
     const originalModel = createLanguageModelStub('orig')
     const nextModel = createLanguageModelStub('next')

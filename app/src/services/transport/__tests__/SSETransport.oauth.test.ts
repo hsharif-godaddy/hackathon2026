@@ -11,7 +11,7 @@ import type { ChatTransportCallbacks } from '../types'
 // in node env for fetch semantics; keep that separation rather than converting.
 
 vi.mock('@/lib/agent-fetch', () => ({
-  agentFetch: vi.fn((url: string, init: any) => fetch(url, init)),
+  agentFetch: vi.fn(function (url: string, init: any) { return fetch(url, init); }),
   getAgentToken: vi.fn().mockResolvedValue('token_123'),
   clearAgentTokenCache: vi.fn(),
 }))
@@ -19,11 +19,11 @@ vi.mock('@/lib/agent-fetch', () => ({
 let eventListeners: Record<string, Array<(e: MessageEvent) => void>> = {}
 
 vi.mock('eventsource', () => ({
-  EventSource: vi.fn().mockImplementation(() => {
+  EventSource: vi.fn().mockImplementation(function () {
     const instance = {
       readyState: 1,
       close: vi.fn(),
-      addEventListener: vi.fn().mockImplementation((type: string, handler: (e: MessageEvent) => void) => {
+      addEventListener: vi.fn().mockImplementation(function (type: string, handler: (e: MessageEvent) => void) {
         eventListeners[type] ||= []
         eventListeners[type].push(handler)
       }),

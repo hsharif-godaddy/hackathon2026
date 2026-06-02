@@ -16,7 +16,7 @@ vi.mock('../../database/repositories/TodoListRepository.js', () => {
     initializeSchema: vi.fn()
   }
   return {
-    TodoListRepository: vi.fn(() => mockRepo),
+    TodoListRepository: vi.fn(function () { return mockRepo; }),
     __mockRepo: mockRepo
   }
 })

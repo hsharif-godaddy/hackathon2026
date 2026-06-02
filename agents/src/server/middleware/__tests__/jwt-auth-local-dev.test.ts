@@ -5,7 +5,7 @@ const { authMock } = vi.hoisted(function createMocks() {
   return {
     authMock: {
       getType: vi.fn(),
-      getSiteId: vi.fn(() => 'local-site-id'),
+      getSiteId: vi.fn(function () { return 'local-site-id'; }),
     },
   };
 });
@@ -23,7 +23,7 @@ vi.mock('../../../lib/jwks-config.js', () => ({
 vi.mock('../../../services/features.js', () => ({
   auth: authMock,
   AuthType: { JWT: 'jwt', MOCK: 'mock' },
-  getFeatures: vi.fn(() => ({})),
+  getFeatures: vi.fn(function () { return {}; }),
 }));
 
 vi.mock('../../../logging/index.js', () => ({

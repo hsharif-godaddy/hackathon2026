@@ -9,7 +9,7 @@ const mockLogger = {
 };
 vi.mock('../../../../logging/index.js', () => ({
   logger: mockLogger,
-  Logger: { create: vi.fn(() => mockLogger) },
+  Logger: { create: vi.fn(function () { return mockLogger; }) },
 }));
 
 // Mock MySQLUtils
@@ -22,7 +22,7 @@ const mockUpdateRow = vi.fn();
 const mockDeleteRow = vi.fn();
 
 vi.mock('../../../../utils/mysql-utils.js', () => ({
-  MySQLUtils: vi.fn().mockImplementation(() => ({
+  MySQLUtils: vi.fn().mockImplementation(function () { return {
     loadCredentialsFromApp: mockLoadCredentialsFromApp,
     listTables: mockListTables,
     getTableSchema: mockGetTableSchema,
@@ -30,8 +30,8 @@ vi.mock('../../../../utils/mysql-utils.js', () => ({
     insertRow: mockInsertRow,
     updateRow: mockUpdateRow,
     deleteRow: mockDeleteRow,
-  })),
-  isSystemTable: vi.fn((name: string) => name === '__drizzle_migrations'),
+  }; }),
+  isSystemTable: vi.fn(function (name: string) { return name === '__drizzle_migrations'; }),
 }));
 
 const mockCredentials = {

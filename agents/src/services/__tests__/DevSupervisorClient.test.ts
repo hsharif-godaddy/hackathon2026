@@ -230,7 +230,7 @@ describe('DevSupervisorClient', () => {
 
       // Mock two separate requests: start and status
       let requestCount = 0;
-      vi.mocked(http.request).mockImplementation((options: any, callback: any) => {
+      vi.mocked(http.request).mockImplementation(function (options: any, callback: any) {
         requestCount++;
         if (requestCount === 1) {
           // First call is for start
@@ -461,7 +461,7 @@ function createMockStreamRequest(
     const mockResponse = {
       statusCode,
       headers,
-      on: vi.fn((event: string, callback: (...args: any[]) => void) => {
+      on: vi.fn(function (event: string, callback: (...args: any[]) => void) {
         if (event === 'data') dataCallbacks.push(callback);
         else if (event === 'end') endCallbacks.push(callback);
         else if (event === 'error') { /* stored but unused */ }
@@ -494,7 +494,7 @@ function createMockRequest(statusCode: number, responseData: any) {
   const mockRequest = {
     write: vi.fn(),
     end: vi.fn(),
-    on: vi.fn((event: string, callback: (...args: any[]) => void) => {
+    on: vi.fn(function (event: string, callback: (...args: any[]) => void) {
       if (event === 'error') {
         // Store error callback for later use if needed
       }
@@ -505,7 +505,7 @@ function createMockRequest(statusCode: number, responseData: any) {
   setTimeout(() => {
     const mockResponse = {
       statusCode,
-      on: vi.fn((event: string, callback: (...args: any[]) => void) => {
+      on: vi.fn(function (event: string, callback: (...args: any[]) => void) {
         if (event === 'data') {
           callback(JSON.stringify(responseData));
         } else if (event === 'end') {

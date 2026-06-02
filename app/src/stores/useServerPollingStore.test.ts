@@ -223,7 +223,7 @@ describe('waitForViteReady', () => {
       );
       // Wake-up never resolves; the AbortController inside triggerWakeup
       // aborts it after WAKEUP_TIMEOUT_MS.
-      fetchSpy.mockImplementationOnce((_url, init) => {
+      fetchSpy.mockImplementationOnce(function (_url, init) {
         return new Promise((_resolve, reject) => {
           const signal = (init as RequestInit | undefined)?.signal;
           signal?.addEventListener('abort', () => {

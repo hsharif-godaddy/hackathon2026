@@ -268,17 +268,26 @@ export async function flushPromises() {
  * Create a spy on console methods for testing logging
  */
 export function createConsoleSpy() {
-  const spy = {
-    log: vi.spyOn(console, 'log').mockImplementation(() => {}),
-    warn: vi.spyOn(console, 'warn').mockImplementation(() => {}),
-    error: vi.spyOn(console, 'error').mockImplementation(() => {}),
+  // Manual save/restore rather than vi.spyOn — v4's spyOn returns the same
+  // handle when called on an already-spied accessor, so mockRestore() may
+  // leave the spy attached. Direct assignment makes restore() deterministic.
+  const orig = { log: console.log, warn: console.warn, error: console.error }
+  const log = vi.fn()
+  const warn = vi.fn()
+  const error = vi.fn()
+  console.log = log
+  console.warn = warn
+  console.error = error
+  return {
+    log,
+    warn,
+    error,
     restore: () => {
-      spy.log.mockRestore()
-      spy.warn.mockRestore()
-      spy.error.mockRestore()
-    }
+      console.log = orig.log
+      console.warn = orig.warn
+      console.error = orig.error
+    },
   }
-  return spy
 }
 
 /**

@@ -26,7 +26,7 @@ vi.mock('../../logging/index.js', () => ({
 }))
 
 vi.mock('ai', () => ({
-  wrapLanguageModel: vi.fn((opts: any) => opts.model),
+  wrapLanguageModel: vi.fn(function (opts: any) { return opts.model; }),
 }))
 
 vi.mock('@ai-sdk/devtools', () => ({

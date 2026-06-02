@@ -32,29 +32,29 @@ const {
 
 // Mock app-ownership middleware
 vi.mock('../../middleware/app-ownership.js', () => ({
-  validateAppOwnership: vi.fn((_req: any, _res: any, next: any) => next()),
+  validateAppOwnership: vi.fn(function (_req: any, _res: any, next: any) { return next(); }),
 }));
 
 // Mock repositories
 vi.mock('../../../database/repositories/AppRepository.js', () => ({
-  AppRepository: vi.fn().mockImplementation(() => ({
+  AppRepository: vi.fn().mockImplementation(function () { return {
     findById: mockFindById,
-  })),
+  }; }),
 }));
 
 vi.mock('../../../database/repositories/DbImportJobRepository.js', () => ({
-  DbImportJobRepository: vi.fn().mockImplementation(() => ({
+  DbImportJobRepository: vi.fn().mockImplementation(function () { return {
     findActiveByAppId: mockFindActiveByAppId,
     findById: mockDbImportFindById,
     listByAppId: mockListByAppId,
-  })),
+  }; }),
 }));
 
 // Mock DatabaseImportService
 vi.mock('../../../services/DatabaseImportService.js', () => ({
-  DatabaseImportService: vi.fn().mockImplementation(() => ({
+  DatabaseImportService: vi.fn().mockImplementation(function () { return {
     startImport: mockStartImport,
-  })),
+  }; }),
 }));
 
 vi.mock('node:fs/promises', () => ({

@@ -85,8 +85,7 @@ describe('util/routes', () => {
         'https://example.com/missing': 404,
         'https://example.com/boom': 500,
       };
-      mockFetch.mockImplementation((url: string) =>
-        Promise.resolve(makeFetchResponse(statusByUrl[url] ?? 200)),
+      mockFetch.mockImplementation(function (url: string) { return Promise.resolve(makeFetchResponse(statusByUrl[url] ?? 200)); },
       );
       const page = makePage({
         evaluate: vi.fn().mockResolvedValue(['/redir', '/missing', '/boom']),
@@ -106,7 +105,7 @@ describe('util/routes', () => {
     });
 
     it('marks routes unreachable when the fetch rejects', async () => {
-      mockFetch.mockImplementation((url: string) => {
+      mockFetch.mockImplementation(function (url: string) {
         if (url.endsWith('/broken')) {
           return Promise.reject(new Error('DNS failure'));
         }
@@ -129,7 +128,7 @@ describe('util/routes', () => {
     });
 
     it('marks routes unreachable on timeout', async () => {
-      mockFetch.mockImplementation((_url: string, opts: RequestInit) => {
+      mockFetch.mockImplementation(function (_url: string, opts: RequestInit) {
         return new Promise((_resolve, reject) => {
           opts.signal?.addEventListener('abort', () => {
             const err = new Error('This operation was aborted');
@@ -192,7 +191,7 @@ describe('util/routes', () => {
 
     it('fires all HTTP checks concurrently', async () => {
       const callOrder: string[] = [];
-      mockFetch.mockImplementation(async (url: string) => {
+      mockFetch.mockImplementation(async function (url: string) {
         callOrder.push(`start:${url}`);
         await new Promise((r) => setTimeout(r, 10));
         callOrder.push(`end:${url}`);

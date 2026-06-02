@@ -142,7 +142,7 @@ describe('sendPendingAutoSendMessage', () => {
   })
 
   it('does not throw when markInitialPromptSent throws on the success path', async () => {
-    const markInitialPromptSent = vi.fn(() => {
+    const markInitialPromptSent = vi.fn(function () {
       throw new Error('storage blocked')
     })
 
@@ -152,7 +152,7 @@ describe('sendPendingAutoSendMessage', () => {
   })
 
   it('logs develop-page.auto-send.finally-failed when markInitialPromptSent throws', async () => {
-    const markInitialPromptSent = vi.fn(() => {
+    const markInitialPromptSent = vi.fn(function () {
       throw new Error('storage blocked')
     })
 
@@ -169,7 +169,7 @@ describe('sendPendingAutoSendMessage', () => {
 
   it('emits both auto-send.failed and auto-send.finally-failed (with originalError) when send and markInitialPromptSent both throw', async () => {
     const send = vi.fn().mockRejectedValue(new Error('socket closed'))
-    const markInitialPromptSent = vi.fn(() => {
+    const markInitialPromptSent = vi.fn(function () {
       throw new Error('storage blocked')
     })
 
@@ -192,7 +192,7 @@ describe('sendPendingAutoSendMessage', () => {
   })
 
   it('logs auto-send.on-settled-failed and still releases the lock when onSettled throws', async () => {
-    const onSettled = vi.fn(() => {
+    const onSettled = vi.fn(function () {
       throw new Error('refs blocked')
     })
     const markInitialPromptSent = vi.fn()
@@ -213,10 +213,10 @@ describe('sendPendingAutoSendMessage', () => {
 
   it('calls onSettled before markInitialPromptSent so refs clear even if the lock-release throws', async () => {
     const callOrder: string[] = []
-    const onSettled = vi.fn(() => {
+    const onSettled = vi.fn(function () {
       callOrder.push('onSettled')
     })
-    const markInitialPromptSent = vi.fn(() => {
+    const markInitialPromptSent = vi.fn(function () {
       callOrder.push('markInitialPromptSent')
       throw new Error('storage blocked')
     })

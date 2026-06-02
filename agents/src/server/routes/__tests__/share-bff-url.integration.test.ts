@@ -741,7 +741,7 @@ describe('share validate (GET /api/share/validate/:token)', () => {
   });
 
   it('returns 500 reason: internal_error when DB throws', async () => {
-    mockShareTokenRepo.findByToken.mockImplementation(() => {
+    mockShareTokenRepo.findByToken.mockImplementation(function () {
       throw new Error('SQLITE_BUSY');
     });
 

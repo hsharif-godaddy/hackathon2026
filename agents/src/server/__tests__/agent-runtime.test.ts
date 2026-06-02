@@ -41,11 +41,11 @@ vi.mock('../../logging/index.js', () => ({
 }))
 
 vi.mock('@airo/ai-transport', () => ({
-  ConversationEventChannel: vi.fn().mockImplementation(() => ({
+  ConversationEventChannel: vi.fn().mockImplementation(function () { return {
     cleanup: vi.fn().mockReturnValue(0),
     publish: vi.fn(),
     getEventsSince: vi.fn(),
-  })),
+  }; }),
 }))
 
 vi.mock('@airo/ai-lib', () => ({

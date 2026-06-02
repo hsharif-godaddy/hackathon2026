@@ -13,8 +13,7 @@ vi.mock('../../../services/FileUploadService.js', () => ({
   fileUploadService: {
     listUploadedFiles: vi.fn(),
     getAppUploadsDir: vi.fn().mockReturnValue('/tmp/uploads/test-app'),
-    getFilePath: vi.fn((_appId: string, uploadId: string, filename: string) =>
-      `/tmp/uploads/test-app/${uploadId}/${filename}`
+    getFilePath: vi.fn(function (_appId: string, uploadId: string, filename: string) { return `/tmp/uploads/test-app/${uploadId}/${filename}`; }
     ),
   },
 }));

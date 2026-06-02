@@ -46,8 +46,8 @@ vi.mock('@/lib/credit-adapter/adapt-budget-to-grants', () => ({
 
 function createGrantController(): GrantContextController {
   return {
-    emitGrantContext: vi.fn(() => true),
-    onGrantRefreshRequested: vi.fn(() => vi.fn()),
+    emitGrantContext: vi.fn(function () { return true; }),
+    onGrantRefreshRequested: vi.fn(function () { return vi.fn(); }),
   }
 }
 
@@ -55,7 +55,7 @@ function createBudgetController(): { controller: BudgetUpdateController; cleanup
   const cleanup = vi.fn()
   return {
     controller: {
-      onBudgetUpdate: vi.fn(() => cleanup),
+      onBudgetUpdate: vi.fn(function () { return cleanup; }),
     },
     cleanup,
   }

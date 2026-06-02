@@ -143,7 +143,7 @@ const mockDevelopPageStore = {
   isMobile: false,
   toggleExpandedPlan: vi.fn(),
   setIsVersionHistoryOpen: vi.fn(),
-  getPublishState: vi.fn(() => ({
+  getPublishState: vi.fn(function () { return {
     isPublishing: false,
     publishError: false,
     buildErrorDetails: null,
@@ -165,7 +165,7 @@ const mockDevelopPageStore = {
     launchVideoResult: null,
     featureSelections: null,
     marketingSelections: null,
-  })),
+  }; }),
 };
 const mockChatTabs = {
   activeChatTab: ChatTab.CHAT,
@@ -253,9 +253,9 @@ vi.mock('@/components/providers/AuthProvider', () => ({
 }));
 
 vi.mock('@/utils/instrumentation', () => ({
-  logAiroHQEvent: vi.fn(() => vi.fn()),
-  logImpressionEvent: vi.fn(() => vi.fn()),
-  logClickEvent: vi.fn(() => vi.fn()),
+  logAiroHQEvent: vi.fn(function () { return vi.fn(); }),
+  logImpressionEvent: vi.fn(function () { return vi.fn(); }),
+  logClickEvent: vi.fn(function () { return vi.fn(); }),
 }));
 
 vi.mock('@/utils/postMessage', () => ({
@@ -300,11 +300,10 @@ describe('ChatPane', () => {
     mockSiteData.agentUrl = 'http://localhost:4000';
 
     // Mock fetch for ventureId
-    global.fetch = vi.fn(() =>
-      Promise.resolve({
+    global.fetch = vi.fn(function () { return Promise.resolve({
         ok: true,
         json: () => Promise.resolve({ ventureId: 'venture-123' }),
-      } as Response)
+      } as Response); }
     );
   });
 
@@ -970,7 +969,7 @@ describe('ChatPane', () => {
     const UPLOAD_URL = 'http://localhost:4000/files/upload';
 
     function makeFetch({ uploadOk = true, uploadError = '', emptyFiles = false, fileCount = 1 } = {}) {
-      return vi.fn((url: string) => {
+      return vi.fn(function (url: string) {
         if (url.endsWith('/api/venture')) {
           return Promise.resolve({ ok: true, json: () => Promise.resolve({ ventureId: 'v-123' }) } as Response);
         }
@@ -1088,7 +1087,7 @@ describe('ChatPane', () => {
       // Simulates a misbehaving gateway returning HTML for a 500 instead of JSON.
       // The inner json() reject must NOT surface as a SyntaxError to the user;
       // the default `Upload failed (500)` message should be shown.
-      global.fetch = vi.fn((url: string) => {
+      global.fetch = vi.fn(function (url: string) {
         if (url.endsWith('/api/venture')) {
           return Promise.resolve({ ok: true, json: () => Promise.resolve({ ventureId: 'v-123' }) } as Response);
         }
@@ -1115,7 +1114,7 @@ describe('ChatPane', () => {
     it('should show the localized error when the server returns a non-JSON success body', async function nonJsonSuccessBody() {
       // Simulates a 200 OK with HTML/garbage body. The raw SyntaxError must be
       // suppressed in favor of the localized upload-failed key.
-      global.fetch = vi.fn((url: string) => {
+      global.fetch = vi.fn(function (url: string) {
         if (url.endsWith('/api/venture')) {
           return Promise.resolve({ ok: true, json: () => Promise.resolve({ ventureId: 'v-123' }) } as Response);
         }
@@ -1154,7 +1153,7 @@ describe('ChatPane', () => {
     });
 
     it('should show the timeout error message when the upload is aborted', async function uploadTimeout() {
-      global.fetch = vi.fn((url: string) => {
+      global.fetch = vi.fn(function (url: string) {
         if (url.endsWith('/api/venture')) {
           return Promise.resolve({ ok: true, json: () => Promise.resolve({ ventureId: 'v-123' }) } as Response);
         }
@@ -1197,7 +1196,7 @@ describe('ChatPane', () => {
       // time), the second batch would see selectedAssets.length === 0 and add all 5,
       // exceeding the cap. The ref-based read exercises the post-await fresh state.
       let callIdx = 0
-      global.fetch = vi.fn((url: string) => {
+      global.fetch = vi.fn(function (url: string) {
         if (url.endsWith('/api/venture')) {
           return Promise.resolve({ ok: true, json: () => Promise.resolve({ ventureId: 'v-123' }) } as Response)
         }

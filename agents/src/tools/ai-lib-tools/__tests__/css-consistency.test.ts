@@ -12,9 +12,9 @@ vi.mock('../../../database/connection.js', () => ({
 }))
 
 vi.mock('../../../database/repositories/AppRepository.js', () => ({
-  AppRepository: vi.fn(() => ({
+  AppRepository: vi.fn(function () { return {
     findById: vi.fn()
-  }))
+  }; })
 }))
 
 vi.mock('../../../logging/index.js', () => ({
@@ -23,20 +23,20 @@ vi.mock('../../../logging/index.js', () => ({
     warn: vi.fn(),
     error: vi.fn(),
     debug: vi.fn(),
-    withContext: vi.fn(() => ({
+    withContext: vi.fn(function () { return {
       info: vi.fn(),
       warn: vi.fn(),
       error: vi.fn(),
       debug: vi.fn()
-    }))
+    }; })
   },
   Logger: {
-    create: vi.fn(() => ({
+    create: vi.fn(function () { return {
       info: vi.fn(),
       warn: vi.fn(),
       error: vi.fn(),
       debug: vi.fn()
-    }))
+    }; })
   }
 }))
 

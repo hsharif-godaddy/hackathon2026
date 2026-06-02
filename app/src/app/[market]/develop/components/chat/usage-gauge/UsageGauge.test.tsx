@@ -15,18 +15,18 @@ const mockOpenUpgradeModal = vi.fn();
 const mockOpenCreditsModal = vi.fn();
 
 vi.mock('@/hooks/useSubscription', () => ({
-  useSubscription: vi.fn(() => ({
+  useSubscription: vi.fn(function () { return {
     data: {
       id: 'sub-123',
       plan: SubscriptionPlan.Free,
       builderEntitlementId: 'ent-123',
     },
     isLoading: false,
-  })),
+  }; }),
 }));
 
 vi.mock('@/hooks/useSubscriptionWithPolling', () => ({
-  useSubscriptionWithPolling: vi.fn(() => ({
+  useSubscriptionWithPolling: vi.fn(function () { return {
     subscription: {
       id: 'sub-123',
       customerId: 'cust-123',
@@ -45,11 +45,11 @@ vi.mock('@/hooks/useSubscriptionWithPolling', () => ({
     builderEntitlementId: 'entitlement-123',
     isPurchaseDisabled: false,
     entitlementPollingTimedOut: false,
-  })),
+  }; }),
 }));
 
 vi.mock('@/hooks/useCreditGrants', () => ({
-  useCreditGrants: vi.fn(() => ({
+  useCreditGrants: vi.fn(function () { return {
     data: [
       {
         id: 'grant-1',
@@ -68,7 +68,7 @@ vi.mock('@/hooks/useCreditGrants', () => ({
     isError: false,
     error: null,
     refetch: vi.fn(),
-  })),
+  }; }),
 }));
 
 vi.mock('@/stores/useDevelopPageStore', () => ({
@@ -82,16 +82,16 @@ vi.mock('@/stores/useDevelopPageStore', () => ({
 }));
 
 vi.mock('@/hooks/useSwitchboard', () => ({
-  useSwitchboard: vi.fn(() => (true)),
+  useSwitchboard: vi.fn(function () { return true; }),
 }));
 
 vi.mock('@/lib/logging', () => ({
   shipAnalyticsLog: vi.fn(),
 }));
 
-const mockLogImpressionEvent = vi.fn(() => vi.fn());
+const mockLogImpressionEvent = vi.fn(function () { return vi.fn(); });
 vi.mock('@/utils/instrumentation', () => ({
-  generateClickEID: vi.fn((eid: string) => `appbuilder.${eid}.click`),
+  generateClickEID: vi.fn(function (eid: string) { return `appbuilder.${eid}.click`; }),
   logImpressionEvent: (...args: unknown[]) => mockLogImpressionEvent(...args),
 }));
 
@@ -117,7 +117,7 @@ describe('UsageGauge', function usageGaugeTests() {
       const { useSwitchboard } = await import('@/hooks/useSwitchboard');
 
       // Budget service OFF for grants-mode tests
-      vi.mocked(useSwitchboard).mockImplementation((flag: string) => {
+      vi.mocked(useSwitchboard).mockImplementation(function (flag: string) {
         if (flag === 'app-builder-budget-service') return false;
         return true;
       });

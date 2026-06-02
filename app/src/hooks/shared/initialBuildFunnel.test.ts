@@ -5,8 +5,8 @@ vi.mock('@/lib/logging', () => ({
 }))
 
 vi.mock('@/utils/instrumentation', () => ({
-  logImpressionEvent: vi.fn(() => vi.fn()),
-  logActionEvent: vi.fn(() => vi.fn()),
+  logImpressionEvent: vi.fn(function () { return vi.fn(); }),
+  logActionEvent: vi.fn(function () { return vi.fn(); }),
 }))
 
 import { shipAnalyticsLog } from '@/lib/logging'

@@ -4,14 +4,14 @@ import request from 'supertest';
 
 // Mock dependencies before imports
 vi.mock('../../../database/index.js', () => ({
-  AppRepository: vi.fn().mockImplementation(() => ({
+  AppRepository: vi.fn().mockImplementation(function () { return {
     findById: vi.fn().mockReturnValue({ id: 'test-app', path: '/tmp/test-app' }),
     registerOrUpdateApp: vi.fn(),
-  })),
+  }; }),
 }));
 
 vi.mock('../../middleware/app-ownership.js', () => ({
-  validateAppOwnership: vi.fn((_req: any, _res: any, next: any) => next()),
+  validateAppOwnership: vi.fn(function (_req: any, _res: any, next: any) { return next(); }),
 }));
 
 vi.mock('../../../tools/ast-image-editor.js', () => ({
@@ -29,9 +29,9 @@ vi.mock('../../../services/MediaManifestService.js', () => ({
 vi.mock('../../../logging/index.js', () => {
   const instance = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
   return {
-    log: { forApp: vi.fn(() => instance), error: vi.fn() },
+    log: { forApp: vi.fn(function () { return instance; }), error: vi.fn() },
     logger: instance,
-    Logger: { create: vi.fn(() => instance) },
+    Logger: { create: vi.fn(function () { return instance; }) },
   };
 });
 

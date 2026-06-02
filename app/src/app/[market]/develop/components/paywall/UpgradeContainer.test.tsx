@@ -13,18 +13,18 @@ import { renderWithProviders } from '@/tests/test-utils';
 import { SubscriptionPlan } from '@/types/credits';
 
 vi.mock('@/hooks/useSwitchboard', () => ({
-  useSwitchboard: vi.fn(() => (false)),
+  useSwitchboard: vi.fn(function () { return false; }),
 }));
 
 vi.mock('@/hooks/useSubscription', () => ({
-  useSubscription: vi.fn(() => ({
+  useSubscription: vi.fn(function () { return {
     data: { id: 'sub-123', builderEntitlementId: 'ent-123' },
     subscriptions: [],
     isLoading: false,
     isError: false,
     error: null,
     refetch: vi.fn(),
-  })),
+  }; }),
 }));
 
 vi.mock('./HigherPlansUpgradeContainer', () => ({
@@ -62,15 +62,15 @@ vi.mock('@/utils/focus', () => ({
 }));
 
 vi.mock('@/hooks/useHivemind', () => ({
-  useIsInCohort: vi.fn(() => false),
+  useIsInCohort: vi.fn(function () { return false; }),
 }));
 
 vi.mock('@/utils/instrumentation', () => ({
-  logImpressionEvent: vi.fn(() => vi.fn()),
+  logImpressionEvent: vi.fn(function () { return vi.fn(); }),
 }));
 
 vi.mock('@/lib/logging', () => ({
-  shipAnalyticsLog: vi.fn(() => vi.fn()),
+  shipAnalyticsLog: vi.fn(function () { return vi.fn(); }),
 }));
 
 import { shipAnalyticsLog } from '@/lib/logging';

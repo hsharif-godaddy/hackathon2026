@@ -12,7 +12,7 @@ vi.mock('@/lib/analytics/es-client', () => ({
 }));
 
 vi.mock('@/lib/date-utils', () => ({
-    computeUseBefore: vi.fn(() => '2026-05-04T16:00:00Z'),
+    computeUseBefore: vi.fn(function () { return '2026-05-04T16:00:00Z'; }),
 }));
 
 import type { AuthUser } from '../api-auth';

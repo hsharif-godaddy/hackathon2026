@@ -28,7 +28,7 @@ const {
     goto: vi.fn().mockResolvedValue(undefined),
     waitForSelector: vi.fn().mockResolvedValue(undefined),
     content: vi.fn().mockResolvedValue('<html><body>app</body></html>'),
-    screenshot: vi.fn().mockImplementation(async () => {
+    screenshot: vi.fn().mockImplementation(async function () {
       screenshotCalledAt.value = callOrder.length;
       callOrder.push('screenshot');
       return Buffer.from('PNGDATA');
@@ -58,7 +58,7 @@ const {
       perRoute: [],
       errors: [],
     }),
-    mockDismissCookieConsent: vi.fn().mockImplementation(async () => {
+    mockDismissCookieConsent: vi.fn().mockImplementation(async function () {
       cookieClickedAt.value = callOrder.length;
       callOrder.push('cookie');
     }),
@@ -222,7 +222,7 @@ describe('SiteCapture', () => {
     'keeps the homepage page open during captureRoutes, then closes it',
     async () => {
       let pageOpenAtCaptureRoutes = false;
-      mockCaptureRoutes.mockImplementationOnce(async () => {
+      mockCaptureRoutes.mockImplementationOnce(async function () {
         pageOpenAtCaptureRoutes = !mockPage.close.mock.calls.length;
         return {
           previewUrl: PREVIEW_URL,

@@ -18,33 +18,33 @@ vi.mock('@/lib/logging', () => ({
 }));
 
 vi.mock('@/hooks/useSubscriptionWithPolling', () => ({
-  useSubscriptionWithPolling: vi.fn(() => ({
+  useSubscriptionWithPolling: vi.fn(function () { return {
     subscription: { id: 'sub-123', builderEntitlementId: 'entitlement-123' },
     builderEntitlementId: 'entitlement-123',
     isLoading: false,
     isError: false,
     isPurchaseDisabled: false,
     entitlementPollingTimedOut: false,
-  })),
+  }; }),
 }));
 
 vi.mock('@/hooks/useCreditGrants', () => ({
-  useCreditGrants: vi.fn(() => ({
+  useCreditGrants: vi.fn(function () { return {
     data: [{ id: 'grant-1' }, { id: 'grant-2' }],
     isFetching: false,
     isLoading: false,
     isError: false,
     error: null,
     refetch: vi.fn(),
-  })),
+  }; }),
 }));
 
 vi.mock('@/hooks/useCreditPurchase', () => ({
-  useIsCreditPolling: vi.fn(() => false),
-  useCreditPurchase: vi.fn(() => ({
+  useIsCreditPolling: vi.fn(function () { return false; }),
+  useCreditPurchase: vi.fn(function () { return {
     handlePurchaseSuccess: vi.fn(),
     invalidateQueries: vi.fn(),
-  })),
+  }; }),
 }));
 
 vi.mock('./CreditsUpgradeContainer', () => ({

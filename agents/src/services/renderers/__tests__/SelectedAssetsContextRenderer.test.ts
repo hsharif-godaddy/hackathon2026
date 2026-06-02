@@ -34,7 +34,7 @@ describe('SelectedAssetsContextRenderer', () => {
     renderer = new SelectedAssetsContextRenderer()
     vi.clearAllMocks()
     // Default: resizeForVision is a pass-through (image already within limits)
-    mockedResizeForVision.mockImplementation(async (buf, mime) => ({ buffer: buf, mimeType: mime }))
+    mockedResizeForVision.mockImplementation(async function (buf, mime) { return { buffer: buf, mimeType: mime }; })
   })
 
   describe('canHandle', () => {

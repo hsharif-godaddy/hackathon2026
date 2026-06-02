@@ -32,13 +32,13 @@ vi.mock('@/components/providers/AuthProvider', () => ({
 }));
 vi.mock('@/stores/useSitesStore', () => ({
   useSites: () => mockSites,
-  useSitesStore: vi.fn(() => ({ fetchSite: vi.fn() })),
+  useSitesStore: vi.fn(function () { return { fetchSite: vi.fn() }; }),
 }));
 vi.mock('@/stores/useDevelopPageStore', () => ({
   useDevelopPageStore: (selector: any) => selector(mockDevelopPageStore),
 }));
 vi.mock('@/utils/instrumentation', () => ({
-  generateClickEID: vi.fn((id) => id),
+  generateClickEID: vi.fn(function (id) { return id; }),
 }));
 vi.mock('@/components/layout/AppItem', () => ({
   default: ({ site }: any) => <div data-testid="app-item">{site.name}</div>,

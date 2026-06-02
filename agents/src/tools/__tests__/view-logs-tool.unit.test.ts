@@ -31,7 +31,7 @@ describe('ViewLogsTool Unit Tests', () => {
       getLogSummary: vi.fn(),
       formatLogSummary: vi.fn()
     };
-    vi.mocked(DevSupervisorLogClient).mockImplementation(() => mockLogClient);
+    vi.mocked(DevSupervisorLogClient).mockImplementation(function () { return mockLogClient; });
 
     // Mock DevSupervisorClientFactory.getAppInfo to return app info with socketPath
     vi.mocked(DevSupervisorClientFactory.getAppInfo).mockReturnValue({
@@ -244,7 +244,7 @@ describe('ViewLogsTool Unit Tests', () => {
 
   describe('Error Handling', () => {
     it('should handle initialization errors', async () => {
-      vi.mocked(DevSupervisorClientFactory.getAppInfo).mockImplementation(() => {
+      vi.mocked(DevSupervisorClientFactory.getAppInfo).mockImplementation(function () {
         throw new Error('Initialization failed');
       });
 
@@ -394,7 +394,7 @@ describe('ViewLogsTool Unit Tests', () => {
           publishSupervisorPath: '/tmp/publish-supervisor.sock'
         })
       };
-      vi.mocked(AppRepository).mockImplementation(() => mockAppRepository);
+      vi.mocked(AppRepository).mockImplementation(function () { return mockAppRepository; });
 
       // Re-create tool so it picks up the mocked AppRepository
       viewLogsTool = new ViewLogsTool();

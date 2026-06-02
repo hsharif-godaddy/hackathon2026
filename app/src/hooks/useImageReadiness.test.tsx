@@ -531,7 +531,7 @@ describe('useImageReadiness', function useImageReadinessTests() {
     it('should re-trigger fresh status check when retry is called from error state', async function retryRetriggers() {
       mockServerReady = false;
       let now = Date.now();
-      const nowSpy = vi.spyOn(Date, 'now').mockImplementation(() => now);
+      const nowSpy = vi.spyOn(Date, 'now').mockImplementation(function () { return now; });
 
       (appFetch as any)
         .mockResolvedValueOnce(mockImageStatusResponse('stale'))
@@ -686,7 +686,7 @@ describe('useImageReadiness', function useImageReadinessTests() {
     // pre-change gave-up test: server polling starts and isReady flips true.
     it('should fall through to server wait once the 90s reload budget is exhausted', async function reloadingBudgetExhausted() {
       let now = Date.now();
-      const nowSpy = vi.spyOn(Date, 'now').mockImplementation(() => now);
+      const nowSpy = vi.spyOn(Date, 'now').mockImplementation(function () { return now; });
 
       (appFetch as any)
         .mockResolvedValueOnce(mockImageStatusResponse('reloading'))
@@ -735,7 +735,7 @@ describe('useImageReadiness', function useImageReadinessTests() {
   describe('#reload 90s timeout', function reloadTimeoutTests() {
     it('should fall through to server wait after 90s reload timeout', async function reloadTimeout() {
       let now = Date.now();
-      const nowSpy = vi.spyOn(Date, 'now').mockImplementation(() => now);
+      const nowSpy = vi.spyOn(Date, 'now').mockImplementation(function () { return now; });
 
       (appFetch as any)
         .mockResolvedValueOnce(mockImageStatusResponse('stale'))
@@ -882,7 +882,7 @@ describe('useImageReadiness', function useImageReadinessTests() {
     it('should show error after 3-minute server health timeout', async function serverTimeout() {
       mockServerReady = false;
       let now = Date.now();
-      const nowSpy = vi.spyOn(Date, 'now').mockImplementation(() => now);
+      const nowSpy = vi.spyOn(Date, 'now').mockImplementation(function () { return now; });
 
       (appFetch as any)
         .mockResolvedValueOnce(mockImageStatusResponse('stale'))

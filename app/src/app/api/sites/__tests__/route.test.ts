@@ -46,7 +46,7 @@ vi.mock('@/lib/customer-auth', () => ({
       return handler(request, mockAuthContext);
     };
   },
-  customerHasAccount: vi.fn(() => true),
+  customerHasAccount: vi.fn(function () { return true; }),
   createCustomerAuthError: vi.fn()
 }));
 

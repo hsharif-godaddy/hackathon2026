@@ -42,12 +42,12 @@ vi.mock('@/lib/logging', () => ({
 }));
 
 vi.mock('@/utils/instrumentation', () => ({
-  logImpressionEvent: vi.fn(() => vi.fn()),
+  logImpressionEvent: vi.fn(function () { return vi.fn(); }),
 }));
 
 
 vi.mock('@/hooks/useSwitchboard', () => ({
-  useSwitchboard: vi.fn(() => false),
+  useSwitchboard: vi.fn(function () { return false; }),
 }));
 
 vi.mock('./PaywallLoadingModal', async () => {

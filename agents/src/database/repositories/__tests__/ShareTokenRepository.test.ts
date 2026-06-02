@@ -155,7 +155,7 @@ describe('ShareTokenRepository', () => {
     });
 
     it('should throw error when database insert fails', () => {
-      mockStatement.run.mockImplementation(() => {
+      mockStatement.run.mockImplementation(function () {
         throw new Error('SQLITE_CONSTRAINT: UNIQUE constraint failed');
       });
 
@@ -172,7 +172,7 @@ describe('ShareTokenRepository', () => {
       mockStatement.run.mockReturnValueOnce({ changes: 1 });
 
       // Second call fails with collision
-      mockStatement.run.mockImplementationOnce(() => {
+      mockStatement.run.mockImplementationOnce(function () {
         throw new Error('SQLITE_CONSTRAINT: UNIQUE constraint failed: share_tokens.token');
       });
 
@@ -321,7 +321,7 @@ describe('ShareTokenRepository', () => {
     });
 
     it('should not throw error when marking fails', () => {
-      mockStatement.run.mockImplementation(() => {
+      mockStatement.run.mockImplementation(function () {
         throw new Error('Database error');
       });
 
@@ -365,7 +365,7 @@ describe('ShareTokenRepository', () => {
     });
 
     it('should throw error when database delete fails', () => {
-      mockStatement.run.mockImplementation(() => {
+      mockStatement.run.mockImplementation(function () {
         throw new Error('Database error');
       });
 
@@ -408,7 +408,7 @@ describe('ShareTokenRepository', () => {
     });
 
     it('should throw error when database delete fails', () => {
-      mockStatement.run.mockImplementation(() => {
+      mockStatement.run.mockImplementation(function () {
         throw new Error('Database error');
       });
 

@@ -219,7 +219,7 @@ describe('useAppArchiveRestore', function useAppArchiveRestoreTests() {
       );
     });
 
-    it('should log warning when archive-status poll fails while in needsRestore state', async function pollErrorInNeedsRestore() {
+    it('should log warning when archive-status poll fails while in needsRestore state', { timeout: 10000 }, async function pollErrorInNeedsRestore() {
       (appFetch as any)
         .mockResolvedValueOnce(mockArchiveStatusResponse(true, true))
         .mockResolvedValue(mockErrorResponse(500, 'Server error'));
@@ -243,9 +243,9 @@ describe('useAppArchiveRestore', function useAppArchiveRestoreTests() {
       // Machine must stay in needsRestore — poll errors are not actionable
       expect(result.current.isArchivedForRestore).toBe(true);
       expect(result.current.archiveRestoreFailed).toBe(false);
-    }, { timeout: 10000 });
+    });
 
-    it('should log warning and exit needsRestore when backend retracts canRestore', async function pollRetractionInNeedsRestore() {
+    it('should log warning and exit needsRestore when backend retracts canRestore', { timeout: 10000 }, async function pollRetractionInNeedsRestore() {
       // First poll lands the user in needsRestore. Subsequent polls return
       // canRestore=false (compliance hold / admin action) — hook logs and exits
       // the restore screen via STATUS_NOT_ARCHIVED rather than leaving user stuck.
@@ -278,7 +278,7 @@ describe('useAppArchiveRestore', function useAppArchiveRestoreTests() {
         expect(result.current.isArchivedForRestore).toBe(false);
       });
       expect(result.current.archiveRestoreFailed).toBe(false);
-    }, { timeout: 10000 });
+    });
 
     it('should call archive-status with correct endpoint', async function correctEndpoint() {
       (appFetch as any).mockResolvedValueOnce(mockArchiveStatusResponse(false));
@@ -293,7 +293,7 @@ describe('useAppArchiveRestore', function useAppArchiveRestoreTests() {
       });
     });
 
-    it('should poll archive-status during active restore while job is in progress', async function pollsArchiveDuringRestore() {
+    it('should poll archive-status during active restore while job is in progress', { timeout: 10000 }, async function pollsArchiveDuringRestore() {
       const fetchSpy = vi.fn(appFetch as any);
       (appFetch as any).mockImplementation(fetchSpy);
 
@@ -322,7 +322,7 @@ describe('useAppArchiveRestore', function useAppArchiveRestoreTests() {
         );
         expect(archiveStatusCalls.length).toBeGreaterThanOrEqual(2);
       }, { timeout: 10000 });
-    }, { timeout: 10000 });
+    });
   });
 
   describe('#auto-restore', function autoRestoreTests() {
@@ -530,7 +530,7 @@ describe('useAppArchiveRestore', function useAppArchiveRestoreTests() {
       // queryClient.resetQueries which triggers an archive-status refetch
       // concurrently with the archive-restore POST — the call order is not
       // guaranteed, so positional mocks would race.
-      (appFetch as any).mockImplementation((url: string) => {
+      (appFetch as any).mockImplementation(function (url: string) {
         if (url.includes('/archive-restore')) {
           return Promise.reject(new AuthDismissedError());
         }
@@ -653,7 +653,7 @@ describe('useAppArchiveRestore', function useAppArchiveRestoreTests() {
 
   describe('#no job polling', function noJobPollingTests() {
     it('should not call GET /api/jobs after restore', async function doesNotPollJobs() {
-      (appFetch as any).mockImplementation((url: string, init?: { method?: string }) => {
+      (appFetch as any).mockImplementation(function (url: string, init?: { method?: string }) {
         if (url.includes('/archive-status')) {
           return Promise.resolve(mockArchiveStatusResponse(true));
         }
@@ -785,7 +785,7 @@ describe('useAppArchiveRestore', function useAppArchiveRestoreTests() {
 
     it('should complete when archive-status flips to restored (mgmt job row is not used)', async function archiveStatusDrivesCompletion() {
       let archiveCalls = 0;
-      (appFetch as any).mockImplementation((url: string, init?: { method?: string }) => {
+      (appFetch as any).mockImplementation(function (url: string, init?: { method?: string }) {
         if (url.includes('/archive-status')) {
           archiveCalls += 1;
           if (archiveCalls <= 1) {
@@ -842,7 +842,7 @@ describe('useAppArchiveRestore', function useAppArchiveRestoreTests() {
     });
 
     it('should reset error state on manual retry', async function resetOnRetry() {
-      (appFetch as any).mockImplementation((url: string, init?: { method?: string }) => {
+      (appFetch as any).mockImplementation(function (url: string, init?: { method?: string }) {
         if (url.includes('/archive-status')) {
           return Promise.resolve(mockArchiveStatusResponse(true));
         }
@@ -861,7 +861,7 @@ describe('useAppArchiveRestore', function useAppArchiveRestoreTests() {
         expect(result.current.archiveRestoreFailed).toBe(true);
       });
 
-      (appFetch as any).mockImplementation((url: string, init?: { method?: string }) => {
+      (appFetch as any).mockImplementation(function (url: string, init?: { method?: string }) {
         if (url.includes('/archive-status')) {
           return Promise.resolve(mockArchiveStatusResponse(true));
         }

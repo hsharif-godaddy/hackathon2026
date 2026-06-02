@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 // Mock ai-lib/budget before importing the module under test
 vi.mock('@airo/ai-lib/budget', () => ({
-  BudgetServiceClient: vi.fn().mockImplementation((config: any) => {
+  BudgetServiceClient: vi.fn().mockImplementation(function (config: any) {
     if (!config.baseUrl) {
       throw new Error('Invalid config')
     }

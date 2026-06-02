@@ -57,7 +57,7 @@ describe('StreamTimingTracker', () => {
   describe('recordChunk()', () => {
     it('tracks maxChunkGapMs across multiple chunks', () => {
       let now = 1000
-      dateNowSpy = vi.spyOn(Date, 'now').mockImplementation(() => now)
+      dateNowSpy = vi.spyOn(Date, 'now').mockImplementation(function () { return now; })
       const deps = makeDeps()
       const tracker = new StreamTimingTracker(deps)
 
@@ -77,7 +77,7 @@ describe('StreamTimingTracker', () => {
         process.env.SOCKET_DIAGNOSTICS = 'true'
         let now = 1000
         dateNowSpy = vi.spyOn(Date, 'now')
-          .mockImplementation(() => now)
+          .mockImplementation(function () { return now; })
         const deps = makeDeps()
         const tracker = new StreamTimingTracker(deps)
         const overThreshold =
@@ -105,7 +105,7 @@ describe('StreamTimingTracker', () => {
       () => {
         let now = 1000
         dateNowSpy = vi.spyOn(Date, 'now')
-          .mockImplementation(() => now)
+          .mockImplementation(function () { return now; })
         const deps = makeDeps()
         const tracker = new StreamTimingTracker(deps)
         const overThreshold =
@@ -126,7 +126,7 @@ describe('StreamTimingTracker', () => {
       () => {
         let now = 1000
         dateNowSpy = vi.spyOn(Date, 'now')
-          .mockImplementation(() => now)
+          .mockImplementation(function () { return now; })
         const deps = makeDeps()
         const tracker = new StreamTimingTracker(deps)
         const overThreshold =
@@ -200,7 +200,7 @@ describe('StreamTimingTracker', () => {
   describe('recordTextChunk()', () => {
     it('first call sets timeToFirstTextChunkMs', () => {
       let now = 1000
-      dateNowSpy = vi.spyOn(Date, 'now').mockImplementation(() => now)
+      dateNowSpy = vi.spyOn(Date, 'now').mockImplementation(function () { return now; })
       const deps = makeDeps()
       const tracker = new StreamTimingTracker(deps)
 
@@ -212,7 +212,7 @@ describe('StreamTimingTracker', () => {
 
     it('only records the first call', () => {
       let now = 1000
-      dateNowSpy = vi.spyOn(Date, 'now').mockImplementation(() => now)
+      dateNowSpy = vi.spyOn(Date, 'now').mockImplementation(function () { return now; })
       const deps = makeDeps()
       const tracker = new StreamTimingTracker(deps)
 
@@ -226,7 +226,7 @@ describe('StreamTimingTracker', () => {
 
     it('defaults to null when never called', () => {
       let now = 1000
-      dateNowSpy = vi.spyOn(Date, 'now').mockImplementation(() => now)
+      dateNowSpy = vi.spyOn(Date, 'now').mockImplementation(function () { return now; })
       const deps = makeDeps()
       const tracker = new StreamTimingTracker(deps)
 
@@ -238,7 +238,7 @@ describe('StreamTimingTracker', () => {
 
     it('records timeToFirstTextChunkMs when text follows non-text chunks', () => {
       let now = 1000
-      dateNowSpy = vi.spyOn(Date, 'now').mockImplementation(() => now)
+      dateNowSpy = vi.spyOn(Date, 'now').mockImplementation(function () { return now; })
       const deps = makeDeps()
       const tracker = new StreamTimingTracker(deps)
 
@@ -255,7 +255,7 @@ describe('StreamTimingTracker', () => {
       'recordTimeout includes timeToFirstTextChunkMs in payload',
       () => {
         let now = 1000
-        dateNowSpy = vi.spyOn(Date, 'now').mockImplementation(() => now)
+        dateNowSpy = vi.spyOn(Date, 'now').mockImplementation(function () { return now; })
         const deps = makeDeps()
         const tracker = new StreamTimingTracker(deps)
 
@@ -278,7 +278,7 @@ describe('StreamTimingTracker', () => {
   describe('finalize()', () => {
     it('returns correct StreamTimingData after chunks', () => {
       let now = 1000
-      dateNowSpy = vi.spyOn(Date, 'now').mockImplementation(() => now)
+      dateNowSpy = vi.spyOn(Date, 'now').mockImplementation(function () { return now; })
       const deps = makeDeps()
       const tracker = new StreamTimingTracker(deps)
 
@@ -296,7 +296,7 @@ describe('StreamTimingTracker', () => {
 
     it('streamDurationMs reflects elapsed time', () => {
       let now = 5000
-      dateNowSpy = vi.spyOn(Date, 'now').mockImplementation(() => now)
+      dateNowSpy = vi.spyOn(Date, 'now').mockImplementation(function () { return now; })
       const deps = makeDeps()
       const tracker = new StreamTimingTracker(deps)
 
@@ -311,7 +311,7 @@ describe('StreamTimingTracker', () => {
       'chunksRead and streamElapsedMs return current values',
       () => {
         let now = 2000
-        dateNowSpy = vi.spyOn(Date, 'now').mockImplementation(() => now)
+        dateNowSpy = vi.spyOn(Date, 'now').mockImplementation(function () { return now; })
         const deps = makeDeps()
         const tracker = new StreamTimingTracker(deps)
 
@@ -336,7 +336,7 @@ describe('StreamTimingTracker', () => {
       () => {
         let now = 1000
         dateNowSpy = vi.spyOn(Date, 'now')
-          .mockImplementation(() => now)
+          .mockImplementation(function () { return now; })
         const deps = makeDeps()
         const tracker = new StreamTimingTracker(deps)
 
@@ -358,7 +358,7 @@ describe('StreamTimingTracker', () => {
       () => {
         let now = 1000
         dateNowSpy = vi.spyOn(Date, 'now')
-          .mockImplementation(() => now)
+          .mockImplementation(function () { return now; })
         const deps = makeDeps()
         const tracker = new StreamTimingTracker(deps)
 
@@ -378,7 +378,7 @@ describe('StreamTimingTracker', () => {
       () => {
         let now = 1000
         dateNowSpy = vi.spyOn(Date, 'now')
-          .mockImplementation(() => now)
+          .mockImplementation(function () { return now; })
         const deps = makeDeps()
         const tracker = new StreamTimingTracker(deps)
 
@@ -399,7 +399,7 @@ describe('StreamTimingTracker', () => {
       () => {
         let now = 1000
         dateNowSpy = vi.spyOn(Date, 'now')
-          .mockImplementation(() => now)
+          .mockImplementation(function () { return now; })
         const deps = makeDeps()
         const tracker = new StreamTimingTracker(deps)
 
@@ -429,7 +429,7 @@ describe('StreamTimingTracker', () => {
       () => {
         let now = 1000
         dateNowSpy = vi.spyOn(Date, 'now')
-          .mockImplementation(() => now)
+          .mockImplementation(function () { return now; })
         const deps = makeDeps()
         const tracker = new StreamTimingTracker(deps)
 

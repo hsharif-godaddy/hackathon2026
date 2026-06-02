@@ -31,7 +31,7 @@ vi.mock('@/lib/logging', () => ({
 }));
 
 vi.mock('@/utils/instrumentation', () => ({
-  logClickEvent: vi.fn(() => vi.fn()),
+  logClickEvent: vi.fn(function () { return vi.fn(); }),
   generateClickEID: (id: string) => id,
 }));
 
@@ -127,10 +127,9 @@ describe('InvocationFeedbackContext', function contextTests() {
     const onSubmitFailed = vi.fn();
     let resolveSubmit: ((value: { ok: boolean }) => void) | undefined;
     mockSubmitFeedback.mockImplementation(
-      () =>
-        new Promise((resolve) => {
+      function () { return new Promise((resolve) => {
           resolveSubmit = resolve;
-        })
+        }); }
     );
 
     function OverlappingPersistProbe() {

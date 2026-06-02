@@ -6,7 +6,7 @@ const { socketHandlers, mockSocket } = vi.hoisted(() => {
   const mockSocket = {
     emit: vi.fn(),
     on: vi.fn(
-      (event: string, handler: (data: unknown) => void) => {
+      function (event: string, handler: (data: unknown) => void) {
         socketHandlers[event] = handler;
       },
     ),
@@ -20,7 +20,7 @@ const { socketHandlers, mockSocket } = vi.hoisted(() => {
 });
 
 vi.mock('socket.io-client', () => ({
-  io: vi.fn(() => mockSocket),
+  io: vi.fn(function () { return mockSocket; }),
 }));
 
 import { AABClient } from '../aab-client.js';

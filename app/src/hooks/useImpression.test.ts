@@ -5,7 +5,7 @@ import { renderHookWithProviders } from '@/tests/test-utils';
 import { useImpression } from './useImpression';
 
 const mockLogImpressionInner = vi.hoisted(() => vi.fn());
-const mockLogImpressionEvent = vi.hoisted(() => vi.fn(() => mockLogImpressionInner));
+const mockLogImpressionEvent = vi.hoisted(() => vi.fn(function () { return mockLogImpressionInner; }));
 
 vi.mock('@/utils/instrumentation', () => ({
   logImpressionEvent: mockLogImpressionEvent,

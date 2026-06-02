@@ -92,7 +92,7 @@ describe('ColorSwatchGroup', () => {
     });
 
     it('does not invoke getOverflowAriaLabel when nothing is truncated', () => {
-      const getOverflowAriaLabel = vi.fn((count: number) => `${count} more`);
+      const getOverflowAriaLabel = vi.fn(function (count: number) { return `${count} more`; });
       render(
         <ColorSwatchGroup swatches={[RED, BLUE]} getOverflowAriaLabel={getOverflowAriaLabel} />,
       );

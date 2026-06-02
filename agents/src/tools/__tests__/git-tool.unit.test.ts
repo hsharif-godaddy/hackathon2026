@@ -10,7 +10,7 @@ import { GitTool } from '../git-tool.js';
 
 // Mock dependencies
 vi.mock('../../utils/git.js', () => ({
-  GitUtils: vi.fn().mockImplementation(() => ({
+  GitUtils: vi.fn().mockImplementation(function () { return {
     isGitRepository: vi.fn().mockResolvedValue(true),
     getStatus: vi.fn().mockResolvedValue({
       branch: 'main',
@@ -33,27 +33,27 @@ vi.mock('../../utils/git.js', () => ({
     commit: vi.fn().mockResolvedValue({ success: true, stdout: '', stderr: '' }),
     reset: vi.fn().mockResolvedValue({ success: true, stdout: '', stderr: '' }),
     getCommitHistory: vi.fn().mockResolvedValue([])
-  }))
+  }; })
 }));
 
 vi.mock('../../database/repositories/GitRemoteConfigRepository.js', () => ({
-  GitRemoteConfigRepository: vi.fn().mockImplementation(() => ({
+  GitRemoteConfigRepository: vi.fn().mockImplementation(function () { return {
     findByAppAndRemote: vi.fn(),
     update: vi.fn()
-  }))
+  }; })
 }));
 
 vi.mock('../../database/repositories/AppRepository.js', () => ({
-  AppRepository: vi.fn().mockImplementation(() => ({
+  AppRepository: vi.fn().mockImplementation(function () { return {
     findById: vi.fn()
-  }))
+  }; })
 }));
 
 vi.mock('../../services/GitRemoteTokenManager.js', () => ({
-  GitRemoteTokenManager: vi.fn().mockImplementation(() => ({
+  GitRemoteTokenManager: vi.fn().mockImplementation(function () { return {
     configureGitCredentials: vi.fn().mockResolvedValue(undefined),
     cleanupGitCredentials: vi.fn().mockResolvedValue(undefined)
-  }))
+  }; })
 }));
 
 vi.mock('../../logging/index.js', () => ({

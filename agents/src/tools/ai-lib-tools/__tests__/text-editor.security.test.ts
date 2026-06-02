@@ -21,17 +21,17 @@ const { mockFindById, mockFiles } = vi.hoisted(() => ({
 }));
 
 vi.mock('../../../database/repositories/AppRepository.js', () => ({
-  AppRepository: vi.fn(() => ({
+  AppRepository: vi.fn(function () { return {
     findById: mockFindById,
-  })),
+  }; }),
 }));
 
 vi.mock('../../../workspace/index.js', () => ({
-  createForWorkspace: vi.fn(() => ({
+  createForWorkspace: vi.fn(function () { return {
     workspaceId: 'test-app',
     variant: 'preview',
     files: mockFiles,
-  })),
+  }; }),
 }));
 
 vi.mock('../../text-editor-workspace.js', () => ({

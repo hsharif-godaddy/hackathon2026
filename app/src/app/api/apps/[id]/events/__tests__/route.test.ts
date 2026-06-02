@@ -40,7 +40,7 @@ vi.mock('@/lib/mgmt-airo', async () => {
   const actual = await vi.importActual<typeof import('@/lib/mgmt-airo')>('@/lib/mgmt-airo');
   return {
     ...actual,
-    AiroMgmtClient: vi.fn().mockImplementation(() => mockAiroMgmtClient),
+    AiroMgmtClient: vi.fn().mockImplementation(function () { return mockAiroMgmtClient; }),
   };
 });
 
@@ -52,7 +52,7 @@ vi.mock('@/lib/customer-auth', async () => {
   const actual = await vi.importActual('@/lib/customer-auth');
   return {
     ...actual,
-    withCustomerAuth: vi.fn((handler) => {
+    withCustomerAuth: vi.fn(function (handler) {
       return async (request: NextRequest, ...args: unknown[]) => {
         const authContext = await mockAuthenticateCustomer(request);
 
@@ -66,10 +66,10 @@ vi.mock('@/lib/customer-auth', async () => {
         return handler(request, authContext, ...args);
       };
     }),
-    customerHasAccount: vi.fn((user) => {
+    customerHasAccount: vi.fn(function (user) {
       return !!user.accountId;
     }),
-    createCustomerAuthError: vi.fn((message: string, status: number) => {
+    createCustomerAuthError: vi.fn(function (message: string, status: number) {
       return new Response(
         JSON.stringify({ error: message }),
         { status, headers: { 'Content-Type': 'application/json' } },

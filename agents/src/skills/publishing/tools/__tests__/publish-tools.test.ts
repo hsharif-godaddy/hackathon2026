@@ -27,16 +27,16 @@ vi.mock('../../../../tools/publish-client-tool.js', () => ({
 }))
 
 vi.mock('../../../../tools/memory-tool.js', () => ({
-  MemoryTool: vi.fn().mockImplementation(() => ({
+  MemoryTool: vi.fn().mockImplementation(function () { return {
     readMemory: vi.fn(),
     setMemory: vi.fn(),
-  })),
+  }; }),
 }))
 
 vi.mock('../../../../database/repositories/AppRepository.js', () => ({
-  AppRepository: vi.fn().mockImplementation(() => ({
+  AppRepository: vi.fn().mockImplementation(function () { return {
     findById: vi.fn(),
-  })),
+  }; }),
 }))
 
 vi.mock('../../../../utils/domain-validation.js', () => ({
@@ -290,7 +290,7 @@ describe('publishing skill publish-tools', () => {
       })
 
       it('should suggest connecting purchased domain when purchased but not yet connected', async () => {
-        mockClientActionService.executeAction.mockImplementation(async ({ action }: { action: string }) => {
+        mockClientActionService.executeAction.mockImplementation(async function ({ action }: { action: string }) {
           if (action === 'getSiteData') return { success: true, result: { domains: [] } }
           return { success: true }
         })
@@ -359,7 +359,7 @@ describe('publishing skill publish-tools', () => {
       })
 
       it('should fall back to suggest when attachDomain returns success: false', async () => {
-        mockClientActionService.executeAction.mockImplementation(async ({ action }: { action: string }) => {
+        mockClientActionService.executeAction.mockImplementation(async function ({ action }: { action: string }) {
           if (action === 'getSiteData') return { success: true, result: { domains: [] } }
           if (action === 'attachDomain') return { success: false, error: 'attach rejected' }
           return { success: false }
@@ -377,7 +377,7 @@ describe('publishing skill publish-tools', () => {
       })
 
       it('should fall back to suggest when attachDomain throws', async () => {
-        mockClientActionService.executeAction.mockImplementation(async ({ action }: { action: string }) => {
+        mockClientActionService.executeAction.mockImplementation(async function ({ action }: { action: string }) {
           if (action === 'getSiteData') return { success: true, result: { domains: [] } }
           if (action === 'attachDomain') throw new Error('network error')
           return { success: false }
@@ -394,7 +394,7 @@ describe('publishing skill publish-tools', () => {
       })
 
       it('should succeed even when memory update after auto-attach throws', async () => {
-        mockClientActionService.executeAction.mockImplementation(async ({ action }: { action: string }) => {
+        mockClientActionService.executeAction.mockImplementation(async function ({ action }: { action: string }) {
           if (action === 'getSiteData') return { success: true, result: { domains: [] } }
           if (action === 'attachDomain') return { success: true }
           return { success: false }

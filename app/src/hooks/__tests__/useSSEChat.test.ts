@@ -195,11 +195,11 @@ let lastTransport: MockTransport
 
 vi.mock('@/services/transport/SSETransport', () => {
   return {
-    SSETransport: vi.fn().mockImplementation(() => {
+    SSETransport: vi.fn().mockImplementation(function () {
       const instance: MockTransport = {
         callbacks: null,
         state: 'disconnected' as string,
-        on: vi.fn((cbs: MockCallbacks) => {
+        on: vi.fn(function (cbs: MockCallbacks) {
           instance.callbacks = cbs
         }),
         connect: vi.fn(),
@@ -231,7 +231,7 @@ vi.mock('@/config/dynamic-api', () => ({
 vi.mock('@/lib/agent-fetch', () => ({
   getAgentToken: vi.fn().mockResolvedValue('test-token'),
   clearAgentTokenCache: vi.fn(),
-  agentFetch: vi.fn((url: string, init: any) => {
+  agentFetch: vi.fn(function (url: string, init: any) {
     const { siteId: _siteId, ...rest } = init ?? {}
     return fetch(url, rest)
   }),
@@ -279,7 +279,7 @@ const mockFlushStoreUpdateBufferImmediate = vi.fn()
 
 vi.mock('@/services/websocket/storeUpdateBuffer', () => ({
   bufferTextChunk: (...args: unknown[]) => mockBufferTextChunk(...args),
-  bufferStoreUpdate: vi.fn((fn: () => void) => {
+  bufferStoreUpdate: vi.fn(function (fn: () => void) {
     mockBufferStoreUpdate(fn)
     fn()
   }),
@@ -363,18 +363,18 @@ describe('useSSEChat', () => {
     mockSetIsLoading.mockClear()
     mockStartNewStream.mockClear()
     mockLoadAndPersistHistory.mockClear()
-    mockClearActiveStream.mockClear().mockImplementation(() => {
+    mockClearActiveStream.mockClear().mockImplementation(function () {
       storeState.activeStream = null
     })
     mockClearConnectionRetry.mockClear()
     mockClearStreamForRetry.mockClear()
-    mockSetHistoryLoadRequested.mockClear().mockImplementation((requested: boolean) => {
+    mockSetHistoryLoadRequested.mockClear().mockImplementation(function (requested: boolean) {
       storeState.historyLoadRequested = requested
     })
-    mockSetHistoryLoadingComplete.mockClear().mockImplementation((complete: boolean) => {
+    mockSetHistoryLoadingComplete.mockClear().mockImplementation(function (complete: boolean) {
       storeState.historyLoadingComplete = complete
     })
-    mockSetHistoryPagination.mockClear().mockImplementation((pagination: { hasMore: boolean; nextCursor: string | null }) => {
+    mockSetHistoryPagination.mockClear().mockImplementation(function (pagination: { hasMore: boolean; nextCursor: string | null }) {
       storeState.historyHasMore = pagination.hasMore
       storeState.historyNextCursor = pagination.nextCursor
     })

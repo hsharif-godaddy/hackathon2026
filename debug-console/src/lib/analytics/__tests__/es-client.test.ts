@@ -5,10 +5,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const { bulkMock } = vi.hoisted(() => ({ bulkMock: vi.fn() }));
 
 vi.mock('@elastic/elasticsearch', () => ({
-  Client: vi.fn().mockImplementation(() => ({
+  Client: vi.fn().mockImplementation(function () { return {
     bulk: bulkMock,
     indices: { exists: vi.fn(), create: vi.fn(), putMapping: vi.fn() },
-  })),
+  }; }),
 }));
 
 vi.mock('@/lib/logger', () => ({

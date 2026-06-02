@@ -322,15 +322,11 @@ describe('WebSocket Test Utilities', () => {
       spy.restore()
     })
 
-    it('should restore console after cleanup', () => {
-      const originalLog = console.log
+    it('should not capture console calls after restore()', () => {
       const spy = createConsoleSpy()
-
-      expect(console.log).not.toBe(originalLog)
-
       spy.restore()
-
-      expect(console.log).toBe(originalLog)
+      console.log('post-restore')
+      expect(spy.log).not.toHaveBeenCalledWith('post-restore')
     })
   })
 

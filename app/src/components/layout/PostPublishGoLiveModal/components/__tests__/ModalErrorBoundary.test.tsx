@@ -33,7 +33,7 @@ describe('ModalErrorBoundary', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     // Suppress console.error for these tests
-    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(function () {});
   });
 
   it('should render children when no error', () => {

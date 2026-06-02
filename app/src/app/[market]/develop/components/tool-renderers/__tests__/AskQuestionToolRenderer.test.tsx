@@ -21,7 +21,7 @@ vi.mock('@/hooks/useTranslations', () => ({
   useTranslations: () => (key: string) => key,
 }))
 const { mockLogAiroHQEvent } = vi.hoisted(() => ({
-  mockLogAiroHQEvent: vi.fn(() => () => {}),
+  mockLogAiroHQEvent: vi.fn(function () { return () => {}; }),
 }))
 vi.mock('@/utils/instrumentation', () => ({
   logAiroHQEvent: mockLogAiroHQEvent,

@@ -52,11 +52,11 @@ describe('AppRepository publishedUrl', () => {
     vi.mocked(getDatabase).mockReturnValue(mockDb);
 
     const { GitUtils } = await import('../../../utils/git.js');
-    vi.mocked(GitUtils).mockImplementation(() => ({
+    vi.mocked(GitUtils).mockImplementation(function () { return ({
       initRepository: vi.fn().mockResolvedValue({ success: true }),
       configureUser: vi.fn().mockResolvedValue(undefined),
       createInitialCommit: vi.fn().mockResolvedValue({ success: true }),
-    }) as any);
+    }) as any; });
 
     const { DevSupervisorClientFactory } = await import('../../../utils/dev-supervisor-client-factory.js');
     vi.mocked(DevSupervisorClientFactory).createForApp = vi.fn().mockReturnValue(null);
@@ -69,13 +69,12 @@ describe('AppRepository publishedUrl', () => {
     });
 
     const { getErrorMessage } = await import('../../../utils/error.js');
-    vi.mocked(getErrorMessage).mockImplementation((e: any) =>
-      e instanceof Error ? e.message : String(e)
+    vi.mocked(getErrorMessage).mockImplementation(function (e: any) { return e instanceof Error ? e.message : String(e); }
     );
 
     vi.mocked(existsSync).mockReturnValue(true);
     vi.mocked(rmSync).mockReturnValue(undefined);
-    vi.mocked(path.join).mockImplementation((...args) => args.join('/'));
+    vi.mocked(path.join).mockImplementation(function (...args) { return args.join('/'); });
 
     appRepository = new AppRepository();
   });

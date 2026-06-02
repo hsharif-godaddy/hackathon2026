@@ -86,7 +86,7 @@ describe('APMSubscriber', () => {
     apmAgent = new MockAPMAgent()
     activeSpans = new Map()
     transaction = new MockAPMTransaction()
-    getActiveTransaction = vi.fn((socketId: string) => transaction)
+    getActiveTransaction = vi.fn(function (socketId: string) { return transaction; })
     subscriber = new APMSubscriber(apmAgent, activeSpans, getActiveTransaction, 'socket-123')
   })
 

@@ -10,9 +10,9 @@ import type { Request, Response } from 'express';
 
 // Mock customer-app dependencies that aren't available in agents workspace.
 vi.mock('date-fns', () => ({
-	parseISO: vi.fn((str: string) => new Date(str)),
-	isValid: vi.fn((d: Date) => !isNaN(d.getTime())),
-	addMinutes: vi.fn((d: Date, m: number) => new Date(d.getTime() + m * 60000)),
+	parseISO: vi.fn(function (str: string) { return new Date(str); }),
+	isValid: vi.fn(function (d: Date) { return !isNaN(d.getTime()); }),
+	addMinutes: vi.fn(function (d: Date, m: number) { return new Date(d.getTime() + m * 60000); }),
 	format: vi.fn(),
 	parse: vi.fn(),
 	isAfter: vi.fn(),
@@ -25,9 +25,9 @@ vi.mock('date-fns', () => ({
 }));
 
 vi.mock('date-fns-tz', () => ({
-	fromZonedTime: vi.fn((dateTimeStr: string) => new Date(dateTimeStr)),
-	toZonedTime: vi.fn((date: Date) => date),
-	formatInTimeZone: vi.fn((date: Date, _tz: string, fmt: string) => {
+	fromZonedTime: vi.fn(function (dateTimeStr: string) { return new Date(dateTimeStr); }),
+	toZonedTime: vi.fn(function (date: Date) { return date; }),
+	formatInTimeZone: vi.fn(function (date: Date, _tz: string, fmt: string) {
 		if (fmt === 'HH:mm') {
 			const h = date.getUTCHours().toString().padStart(2, '0');
 			const m = date.getUTCMinutes().toString().padStart(2, '0');
@@ -41,11 +41,11 @@ vi.mock('date-fns-tz', () => ({
 }));
 
 vi.mock('drizzle-orm', () => ({
-	and: vi.fn((...args: any[]) => args),
-	gte: vi.fn((field: string, val: any) => ({ op: 'gte', field, val })),
-	lte: vi.fn((field: string, val: any) => ({ op: 'lte', field, val })),
-	ne: vi.fn((field: string, val: any) => ({ op: 'ne', field, val })),
-	desc: vi.fn((field: string) => ({ op: 'desc', field })),
+	and: vi.fn(function (...args: any[]) { return args; }),
+	gte: vi.fn(function (field: string, val: any) { return { op: 'gte', field, val }; }),
+	lte: vi.fn(function (field: string, val: any) { return { op: 'lte', field, val }; }),
+	ne: vi.fn(function (field: string, val: any) { return { op: 'ne', field, val }; }),
+	desc: vi.fn(function (field: string) { return { op: 'desc', field }; }),
 	eq: vi.fn(),
 }));
 
@@ -85,27 +85,27 @@ vi.mock('../../../../lib/appointments', () => ({
 			{ label: '60 minutes', duration: 60, amount: 5000, skuId: 'sku-default' },
 		],
 	}),
-	generateAppointmentId: vi.fn(() => 'apt-test-123'),
-	calculateEndTime: vi.fn((date) => new Date(date.getTime() + 60 * 60 * 1000)),
-	getAvailableSlots: vi.fn(() => [
+	generateAppointmentId: vi.fn(function () { return 'apt-test-123'; }),
+	calculateEndTime: vi.fn(function (date) { return new Date(date.getTime() + 60 * 60 * 1000); }),
+	getAvailableSlots: vi.fn(function () { return [
 		{ time: '09:00', available: true },
 		{ time: '10:00', available: true },
-	]),
-	parseTimeSlot: vi.fn((time, date) => {
+	]; }),
+	parseTimeSlot: vi.fn(function (time, date) {
 		const [hours, minutes] = time.split(':');
 		const result = new Date(date);
 		result.setHours(parseInt(hours), parseInt(minutes), 0, 0);
 		return result;
 	}),
-	parseTimeSlotUTC: vi.fn((time, dateStr) => {
+	parseTimeSlotUTC: vi.fn(function (time, dateStr) {
 		const [hours, minutes] = time.split(':');
 		const result = new Date(`${dateStr}T${hours}:${minutes}:00Z`);
 		return result;
 	}),
-	isPastDate: vi.fn(() => false),
-	isPastTimeSlot: vi.fn(() => false),
+	isPastDate: vi.fn(function () { return false; }),
+	isPastTimeSlot: vi.fn(function () { return false; }),
 	AppointmentInputSchema: {
-		safeParse: vi.fn((data) => ({
+		safeParse: vi.fn(function (data) { return {
 			success: true,
 			data: {
 				customerName: data.customerName,
@@ -117,7 +117,7 @@ vi.mock('../../../../lib/appointments', () => ({
 				requiresPayment: data.requiresPayment || false,
 				amount: data.amount,
 			},
-		})),
+		}; }),
 	},
 }));
 
@@ -128,7 +128,7 @@ vi.mock('../../../utils/payment-provider-factory', () => {
 	};
 
 	return {
-		getPaymentProvider: vi.fn(() => mockProvider),
+		getPaymentProvider: vi.fn(function () { return mockProvider; }),
 		isPaymentProviderConfigured: vi.fn(),
 		__mockProvider: mockProvider, // Export for test access
 	};
@@ -154,13 +154,13 @@ describe('Appointment Payment Integration', () => {
 
 	beforeEach(() => {
 		jsonSpy = vi.fn();
-		statusSpy = vi.fn(() => ({ json: jsonSpy }));
+		statusSpy = vi.fn(function () { return { json: jsonSpy }; });
 
 		mockReq = {
 			body: {},
 			query: {},
 			protocol: 'http',
-			get: vi.fn(() => 'localhost:3000'),
+			get: vi.fn(function () { return 'localhost:3000'; }),
 		};
 
 		mockRes = {
@@ -255,7 +255,7 @@ describe('Appointment Payment Integration', () => {
 	describe('POST /api/appointments - Paid Appointments', () => {
 		beforeEach(() => {
 			// Mock transaction to actually call the callback so payment logic runs
-			vi.mocked(db.transaction).mockImplementation(async (callback: any) => {
+			vi.mocked(db.transaction).mockImplementation(async function (callback: any) {
 				const mockTx = {
 					select: vi.fn().mockReturnValue({
 						from: vi.fn().mockReturnValue({
@@ -360,7 +360,7 @@ describe('Appointment Payment Integration', () => {
 		it('returns 400 when payment provider constructor throws PaymentProviderError', async () => {
 			// Simulate provider initialization failure (e.g., missing VITE_GODADDY_STORE_ID)
 			vi.mocked(paymentFactory.isPaymentProviderConfigured).mockReturnValue(true);
-			vi.mocked(paymentFactory.getPaymentProvider).mockImplementation(() => {
+			vi.mocked(paymentFactory.getPaymentProvider).mockImplementation(function () {
 				throw new PaymentProviderError(
 					'VITE_GODADDY_STORE_ID environment variable is required',
 					PaymentProviderErrorCode.PROVIDER_NOT_CONFIGURED
@@ -390,7 +390,7 @@ describe('Appointment Payment Integration', () => {
 		it('returns 500 when payment provider constructor throws plain Error', async () => {
 			// Simulate programming error in provider initialization
 			vi.mocked(paymentFactory.isPaymentProviderConfigured).mockReturnValue(true);
-			vi.mocked(paymentFactory.getPaymentProvider).mockImplementation(() => {
+			vi.mocked(paymentFactory.getPaymentProvider).mockImplementation(function () {
 				throw new Error('Unexpected programming error');
 			});
 
@@ -495,7 +495,7 @@ describe('Appointment Payment Integration', () => {
 			const mockDelete = vi.fn().mockResolvedValue(undefined);
 
 			// Track the insert call on the transaction mock (STEP 1)
-			vi.mocked(db.transaction).mockImplementation(async (callback: any) => {
+			vi.mocked(db.transaction).mockImplementation(async function (callback: any) {
 				mockTxInsert = vi.fn().mockReturnValue({
 					values: vi.fn().mockResolvedValue(undefined),
 				});
@@ -598,7 +598,7 @@ describe('Appointment Payment Integration', () => {
 				],
 			});
 
-			vi.mocked(db.transaction).mockImplementation(async (callback: any) => {
+			vi.mocked(db.transaction).mockImplementation(async function (callback: any) {
 				const mockTx = {
 					select: vi.fn().mockReturnValue({
 						from: vi.fn().mockReturnValue({
@@ -715,7 +715,7 @@ describe('Appointment Payment Integration', () => {
 				insert: vi.fn().mockReturnThis(),
 				values: vi.fn().mockResolvedValue(undefined),
 			};
-			vi.mocked(db.transaction).mockImplementation(async (callback) => {
+			vi.mocked(db.transaction).mockImplementation(async function (callback) {
 				return callback(mockTx as any);
 			});
 

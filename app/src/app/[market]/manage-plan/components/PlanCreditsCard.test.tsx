@@ -23,7 +23,7 @@ vi.mock('@/hooks/useTranslations', () => ({
 }));
 
 vi.mock('@/utils/instrumentation', () => ({
-  generateClickEID: vi.fn((event: string) => `appbuilder.${event}.click`),
+  generateClickEID: vi.fn(function (event: string) { return `appbuilder.${event}.click`; }),
 }));
 
 vi.mock('@/utils/getRootDomain', () => ({

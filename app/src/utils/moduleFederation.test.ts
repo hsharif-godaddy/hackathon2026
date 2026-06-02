@@ -12,7 +12,7 @@ import {
 
 // Mock getRootDomain
 vi.mock('./getRootDomain', () => ({
-  getRootDomain: vi.fn(() => 'godaddy.com'),
+  getRootDomain: vi.fn(function () { return 'godaddy.com'; }),
 }));
 
 import { getRootDomain } from './getRootDomain';
@@ -26,14 +26,14 @@ describe('moduleFederation utilities', () => {
 
     // Mock localStorage
     global.localStorage = {
-      getItem: vi.fn((key: string) => mockLocalStorage[key] || null),
-      setItem: vi.fn((key: string, value: string) => {
+      getItem: vi.fn(function (key: string) { return mockLocalStorage[key] || null; }),
+      setItem: vi.fn(function (key: string, value: string) {
         mockLocalStorage[key] = value;
       }),
-      removeItem: vi.fn((key: string) => {
+      removeItem: vi.fn(function (key: string) {
         delete mockLocalStorage[key];
       }),
-      clear: vi.fn(() => {
+      clear: vi.fn(function () {
         mockLocalStorage = {};
       }),
       length: 0,

@@ -14,10 +14,10 @@ const {
 }));
 
 vi.mock('@/lib/control-plane', () => ({
-  getControlPlaneAdapter: vi.fn(() => ({ getSite: mockGetSite })),
+  getControlPlaneAdapter: vi.fn(function () { return { getSite: mockGetSite }; }),
 }));
 vi.mock('@/lib/dkim/dkim-service', () => ({
-  DkimService: vi.fn(() => ({ deactivate: mockDeactivate })),
+  DkimService: vi.fn(function () { return { deactivate: mockDeactivate }; }),
 }));
 vi.mock('@/lib/request-context', () => ({ logger: mockLogger }));
 vi.mock('@/lib/switchboard/server', () => ({
@@ -29,7 +29,7 @@ vi.mock('@/lib/customer-auth', async () => {
   const actual = await vi.importActual<typeof import('@/lib/customer-auth')>('@/lib/customer-auth');
   return {
     ...actual,
-    withCustomerAuth: vi.fn((handler: any, options?: unknown) => {
+    withCustomerAuth: vi.fn(function (handler: any, options?: unknown) {
       capturedAuthOptions.set('POST', options);
       return (req: NextRequest, ...args: any[]) =>
         handler(req, { isAuthenticated: true, jwt: 'test-jwt', user: { shopperId: 'sh1', customerId: 'c1' } }, ...args);

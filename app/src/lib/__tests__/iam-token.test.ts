@@ -4,10 +4,10 @@ const mockGetToken = vi.fn();
 const mockOnce = vi.fn();
 
 vi.mock('gd-auth-client', () => ({
-  IamTokenClient: vi.fn().mockImplementation(() => ({
+  IamTokenClient: vi.fn().mockImplementation(function () { return {
     getToken: mockGetToken,
     once: mockOnce,
-  })),
+  }; }),
 }));
 
 vi.mock('@/lib/gasket-config', () => ({

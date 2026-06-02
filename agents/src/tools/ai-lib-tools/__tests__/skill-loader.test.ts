@@ -39,17 +39,17 @@ vi.mock('../../skill-tool-manager.js', () => ({
 }));
 
 vi.mock('../../skill-loader-tool.js', () => ({
-  SkillLoaderTool: vi.fn().mockImplementation(() => ({
+  SkillLoaderTool: vi.fn().mockImplementation(function () { return {
     loadSkill: mockLoadSkill,
     listSkills: mockListSkills,
     installTemplates: mockInstallTemplates
-  }))
+  }; })
 }));
 
 vi.mock('../../../database/repositories/AppRepository.js', () => ({
-  AppRepository: vi.fn().mockImplementation(() => ({
+  AppRepository: vi.fn().mockImplementation(function () { return {
     findById: mockFindById
-  }))
+  }; })
 }));
 
 // Import after mocks

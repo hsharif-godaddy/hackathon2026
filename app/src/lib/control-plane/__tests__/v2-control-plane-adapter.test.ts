@@ -39,7 +39,7 @@ vi.mock('@/lib/request-context', () => ({
  * Mock jwt-utils to return test customer ID
  */
 vi.mock('@/lib/utils/jwt-utils', () => ({
-  extractCustomerId: vi.fn(() => 'customer-123')
+  extractCustomerId: vi.fn(function () { return 'customer-123'; })
 }));
 
 /**
@@ -55,16 +55,16 @@ vi.mock('../../../../gasket.ts', () => ({
  */
 vi.mock('@/stores/useSubscriptionCacheStore', () => ({
   useSubscriptionCacheStore: {
-    getState: vi.fn(() => ({
+    getState: vi.fn(function () { return {
       customerId: null,
       lastRefresh: null,
       CACHE_TTL: 300000,
-      getAppLocation: vi.fn(() => null),
+      getAppLocation: vi.fn(function () { return null; }),
       initialize: vi.fn(),
       refresh: vi.fn(),
       invalidate: vi.fn(),
       removeAppFromCache: vi.fn()
-    }))
+    }; })
   }
 }));
 
@@ -90,8 +90,9 @@ describe('V2ControlPlaneAdapter', () => {
 
   beforeEach(async () => {
     adapter = new V2ControlPlaneAdapter();
-    mockFetch.mockClear();
-    vi.clearAllMocks();
+    // vitest 4: reset (not just clear) so per-test mockResolvedValueOnce
+    // queues don't leak — restoreAllMocks no longer wipes vi.fn() impls.
+    vi.resetAllMocks();
     mockGasketConfig.airoAppDomain = 'test-airoapp.ai';
 
     // Clear subscription cache between tests to prevent interference

@@ -17,7 +17,7 @@ const APP_ID = 'app-eslint-test';
 
 function setupExec(handler: (cmd: string) => { exitCode: number; stdout?: string; stderr?: string }) {
   mocks.createForWorkspace.mockReturnValue({ tasks: { runCommandSync: mocks.runCommandSync } });
-  mocks.runCommandSync.mockImplementation(async (args: { command: string }) => {
+  mocks.runCommandSync.mockImplementation(async function (args: { command: string }) {
     const res = handler(args.command);
     return { ...res, timedOut: false, taskId: 'mock', executionTimeMs: 0 };
   });

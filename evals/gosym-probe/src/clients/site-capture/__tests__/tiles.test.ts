@@ -44,7 +44,7 @@ function makePage(overrides: {
 
   return {
     setViewportSize: vi.fn().mockResolvedValue(undefined),
-    evaluate: vi.fn().mockImplementation(async () => {
+    evaluate: vi.fn().mockImplementation(async function () {
       if (evaluateResults) {
         return evaluateResults[evaluateCallIndex++];
       }
@@ -52,11 +52,11 @@ function makePage(overrides: {
     }),
     waitForTimeout: vi.fn().mockResolvedValue(undefined),
     screenshot: vi.fn().mockImplementation(screenshotFn),
-    waitForFunction: vi.fn().mockImplementation(async () => {
+    waitForFunction: vi.fn().mockImplementation(async function () {
       const err = wffErrors[waitForFunctionCallIndex++];
       if (err !== undefined) throw err;
     }),
-    waitForLoadState: vi.fn().mockImplementation(async () => {
+    waitForLoadState: vi.fn().mockImplementation(async function () {
       if (waitForLoadStateError !== undefined) throw waitForLoadStateError;
     }),
   };
@@ -177,7 +177,7 @@ describe('util/tiles', () => {
       });
       // Override evaluate to throw on the second tile's scrollTo call
       // (calls per tile: scrollTo, readMetrics = 2 calls per tile)
-      page.evaluate = vi.fn().mockImplementation(async () => {
+      page.evaluate = vi.fn().mockImplementation(async function () {
         evaluateCallCount++;
         // settle loop + reset scroll = several calls; then 2 per tile in captureTiles
         // Just throw on the 3rd captureTiles-level evaluate (tile 1 scrollTo)
@@ -217,7 +217,7 @@ describe('util/tiles', () => {
     });
 
     it('warns on waitForFunction non-Error rejections', async () => {
-      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(function () {});
       const page = makePage({ waitForFunctionError: 'string-rejection' });
 
       await settleForScreenshot(page as never);
@@ -237,7 +237,7 @@ describe('util/tiles', () => {
     });
 
     it('warns on waitForLoadState non-Error rejections', async () => {
-      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(function () {});
       const page = makePage({ waitForLoadStateError: 42 });
 
       await settleForScreenshot(page as never);

@@ -7,9 +7,9 @@ vi.mock('../../../workspace/index.js', () => ({
 }))
 
 vi.mock('../../../database/repositories/AppRepository.js', () => ({
-  AppRepository: vi.fn().mockImplementation(() => ({
+  AppRepository: vi.fn().mockImplementation(function () { return {
     findById: vi.fn().mockReturnValue({ path: '/app' }),
-  })),
+  }; }),
 }))
 
 vi.mock('@airo/ai-lib', () => ({

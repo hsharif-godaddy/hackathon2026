@@ -65,12 +65,12 @@ const mockFileTreeState = {
   files: {},
   loading: {},
   errors: {},
-  loadFilesFromCacheOrFetch: vi.fn(() => Promise.resolve())
+  loadFilesFromCacheOrFetch: vi.fn(function () { return Promise.resolve(); })
 };
 
 vi.mock('@/stores/useFileTreeStore', () => {
   const store = Object.assign(
-    vi.fn((selector: any) => selector(mockFileTreeState)),
+    vi.fn(function (selector: any) { return selector(mockFileTreeState); }),
     { getState: () => mockFileTreeState }
   );
   return { useFileTreeStore: store };

@@ -18,9 +18,9 @@ const {
 }));
 
 vi.mock('../../../memory/adapters/index.js', () => ({
-  getKvMemoryStore: vi.fn(() => ({
+  getKvMemoryStore: vi.fn(function () { return {
     get: mockMemoryGet,
-  })),
+  }; }),
 }));
 
 // Mock validateAppOwnership as passthrough
@@ -94,7 +94,7 @@ describe('Brand Data Route', () => {
       };
 
       // Set up memory.get to return values based on key
-      mockMemoryGet.mockImplementation((_scope: unknown, key: string) => {
+      mockMemoryGet.mockImplementation(function (_scope: unknown, key: string) {
         const map: Record<string, unknown> = {
           'brand.colors.palette': palette,
           'brand.typography': typography,
@@ -127,7 +127,7 @@ describe('Brand Data Route', () => {
     it('should fall back to parsed markdown when no structured identity data exists', async () => {
       const palette = { primary: '#111', secondary: '#222' };
 
-      mockMemoryGet.mockImplementation((_scope: unknown, key: string) => {
+      mockMemoryGet.mockImplementation(function (_scope: unknown, key: string) {
         const map: Record<string, unknown> = {
           'brand.colors.palette': palette,
           'design.brand-personality': '## Personality\nBold and creative',
@@ -182,7 +182,7 @@ describe('Brand Data Route', () => {
       const palette = { primary: '#ABC', secondary: '#DEF' };
 
       // Only palette exists, nothing else
-      mockMemoryGet.mockImplementation((_scope: unknown, key: string) => {
+      mockMemoryGet.mockImplementation(function (_scope: unknown, key: string) {
         if (key === 'brand.colors.palette') {
           return Promise.resolve(memoryResult(palette));
         }
@@ -213,7 +213,7 @@ describe('Brand Data Route', () => {
     it('should wrap non-empty toneMatrix in { contexts } and omit when undefined', async () => {
       // Identity with empty toneMatrix array
       const identityEmpty = { toneMatrix: [] };
-      mockMemoryGet.mockImplementation((_scope: unknown, key: string) => {
+      mockMemoryGet.mockImplementation(function (_scope: unknown, key: string) {
         if (key === 'brand.identity') return Promise.resolve({ success: true, exists: true, value: identityEmpty });
         return Promise.resolve(noResult);
       });
@@ -223,7 +223,7 @@ describe('Brand Data Route', () => {
       expect(resEmpty.body.toneMatrix).toEqual({ contexts: [] });
 
       const identityNo = { personality: { description: 'Bold' } };
-      mockMemoryGet.mockImplementation((_scope: unknown, key: string) => {
+      mockMemoryGet.mockImplementation(function (_scope: unknown, key: string) {
         if (key === 'brand.identity') return Promise.resolve({ success: true, exists: true, value: identityNo });
         return Promise.resolve(noResult);
       });
@@ -236,7 +236,7 @@ describe('Brand Data Route', () => {
     it('should prefer brandName from brand.identity when present', async () => {
       const identity = { brandName: 'Memory Brand Name' };
 
-      mockMemoryGet.mockImplementation((_scope: unknown, key: string) => {
+      mockMemoryGet.mockImplementation(function (_scope: unknown, key: string) {
         if (key === 'brand.identity') return Promise.resolve(memoryResult(identity));
         return Promise.resolve(noResult);
       });
@@ -250,7 +250,7 @@ describe('Brand Data Route', () => {
     it('should default to Your Brand when brand.identity has no brandName', async () => {
       const identity = { personality: { description: 'Bold' } };
 
-      mockMemoryGet.mockImplementation((_scope: unknown, key: string) => {
+      mockMemoryGet.mockImplementation(function (_scope: unknown, key: string) {
         if (key === 'brand.identity') return Promise.resolve(memoryResult(identity));
         return Promise.resolve(noResult);
       });

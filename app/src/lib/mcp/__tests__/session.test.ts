@@ -67,7 +67,8 @@ describe('runWithMcpSession', () => {
   })
 
   afterEach(() => {
-    vi.restoreAllMocks()
+    // vitest 4: clearMocks doesn't drain mockResolvedValueOnce queues.
+    vi.resetAllMocks()
   })
 
   const baseOptions = {

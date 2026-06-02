@@ -28,7 +28,7 @@ const mockIO = {
 
 // Mock the Socket.IO Server constructor
 vi.mock('socket.io', () => ({
-  Server: vi.fn().mockImplementation(() => mockIO)
+  Server: vi.fn().mockImplementation(function () { return mockIO; })
 }))
 
 // Mock @signals/otel-sdk to capture createTraceContext calls for testing
@@ -92,7 +92,7 @@ async function setupServerWithConnection(
 ): Promise<{ server: WebSocketServer; messageHandler: (data: any) => Promise<void> }> {
   let connectionHandler: ((socket: any) => Promise<void>) | null = null
 
-  mockIO.on.mockImplementation((event: string, handler: any) => {
+  mockIO.on.mockImplementation(function (event: string, handler: any) {
     if (event === 'connection') {
       connectionHandler = handler
     }
@@ -240,7 +240,7 @@ describe('WebSocketServer - Error Handling', () => {
       vi.clearAllMocks()
 
       let connectionHandler: any
-      mockIO.on.mockImplementation((event: string, handler: any) => {
+      mockIO.on.mockImplementation(function (event: string, handler: any) {
         if (event === 'connection') {
           connectionHandler = handler
         }
@@ -343,7 +343,7 @@ describe('WebSocketServer - Error Handling', () => {
       vi.clearAllMocks()
 
       let connectionHandler: any
-      mockIO.on.mockImplementation((event: string, handler: any) => {
+      mockIO.on.mockImplementation(function (event: string, handler: any) {
         if (event === 'connection') {
           connectionHandler = handler
         }
@@ -394,7 +394,7 @@ describe('WebSocketServer - Error Handling', () => {
       vi.clearAllMocks()
 
       let connectionHandler: any
-      mockIO.on.mockImplementation((event: string, handler: any) => {
+      mockIO.on.mockImplementation(function (event: string, handler: any) {
         if (event === 'connection') {
           connectionHandler = handler
         }
@@ -446,7 +446,7 @@ describe('WebSocketServer - Error Handling', () => {
       vi.clearAllMocks()
 
       let connectionHandler: any
-      mockIO.on.mockImplementation((event: string, handler: any) => {
+      mockIO.on.mockImplementation(function (event: string, handler: any) {
         if (event === 'connection') {
           connectionHandler = handler
         }
@@ -490,7 +490,7 @@ describe('WebSocketServer - Error Handling', () => {
       vi.clearAllMocks()
 
       let connectionHandler: any
-      mockIO.on.mockImplementation((event: string, handler: any) => {
+      mockIO.on.mockImplementation(function (event: string, handler: any) {
         if (event === 'connection') {
           connectionHandler = handler
         }
@@ -537,7 +537,7 @@ describe('WebSocketServer - Error Handling', () => {
       vi.clearAllMocks()
 
       let connectionHandler: any
-      mockIO.on.mockImplementation((event: string, handler: any) => {
+      mockIO.on.mockImplementation(function (event: string, handler: any) {
         if (event === 'connection') {
           connectionHandler = handler
         }
@@ -612,7 +612,7 @@ describe('WebSocketServer - Error Handling', () => {
       vi.clearAllMocks()
 
       let connectionHandler: any
-      mockIO.on.mockImplementation((event: string, handler: any) => {
+      mockIO.on.mockImplementation(function (event: string, handler: any) {
         if (event === 'connection') {
           connectionHandler = handler
         }
@@ -859,7 +859,7 @@ describe('WebSocketServer - Error Handling', () => {
       mockAgent.streamGenerate.mockResolvedValueOnce(mockStreamResult)
 
       // Spy on console.error to verify fallback behavior
-      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(function () {})
 
       const chatMessage = {
         message: 'Test message',
@@ -935,7 +935,7 @@ describe('WebSocketServer - Error Handling', () => {
 
       mockAgent.streamGenerate.mockResolvedValueOnce(mockStreamResult)
 
-      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(function () {})
 
       const chatMessage = {
         message: 'Test content length error',
@@ -985,10 +985,10 @@ describe('WebSocketServer - Error Handling', () => {
       // First read succeeds, then simulate cancellation
       mockReader.read
         .mockResolvedValueOnce({ done: false, value: { part: { type: 'text-delta', text: 'Started' } } })
-        .mockImplementation(() => new Promise((_, reject) => {
+        .mockImplementation(function () { return new Promise((_, reject) => {
           // Simulate async operation that gets cancelled
           setTimeout(() => reject(new Error('Operation cancelled')), 10)
-        }))
+        }); })
 
       const mockBaseStream = {
         getReader: vi.fn().mockReturnValue(mockReader)
@@ -1058,7 +1058,7 @@ describe('WebSocketServer - Error Handling', () => {
 
       mockAgent.streamGenerate.mockResolvedValueOnce(mockStreamResult)
 
-      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(function () {})
 
       const chatMessage = {
         message: 'Test cleanup',
@@ -1403,7 +1403,7 @@ describe('WebSocketServer - Error Handling', () => {
 
       // Capture connection handler
       let connectionHandler: any
-      mockIO.on.mockImplementation((event: string, handler: any) => {
+      mockIO.on.mockImplementation(function (event: string, handler: any) {
         if (event === 'connection') {
           connectionHandler = handler
         }
@@ -1419,7 +1419,7 @@ describe('WebSocketServer - Error Handling', () => {
       // Set up the same state on new server
       const eventChannel2 = (testServer2 as any).eventChannel
       const stateManager2 = (testServer2 as any).stateManager
-      const getEventsSinceSpy = vi.spyOn(eventChannel2, 'getEventsSince').mockImplementation((_: string, lastSequence: number) => {
+      const getEventsSinceSpy = vi.spyOn(eventChannel2, 'getEventsSince').mockImplementation(function (_: string, lastSequence: number) {
         // Manual recovery (page refresh) replays all events from -1
         return lastSequence === -1 ? missedEvents : []
       })
@@ -1502,7 +1502,7 @@ describe('WebSocketServer - Error Handling', () => {
       let disconnectHandler: any
       const mockSocketWithDisconnect = {
         ...mockSocket,
-        on: vi.fn((event: string, handler: any) => {
+        on: vi.fn(function (event: string, handler: any) {
           if (event === 'disconnect') {
             disconnectHandler = handler
           }
@@ -1510,7 +1510,7 @@ describe('WebSocketServer - Error Handling', () => {
       }
 
       let connectionHandler: any
-      mockIO.on.mockImplementation((event: string, handler: any) => {
+      mockIO.on.mockImplementation(function (event: string, handler: any) {
         if (event === 'connection') {
           connectionHandler = handler
         }
@@ -1602,7 +1602,7 @@ describe('WebSocketServer - Error Handling', () => {
       ]
 
       let connectionHandler: any
-      mockIO.on.mockImplementation((event: string, handler: any) => {
+      mockIO.on.mockImplementation(function (event: string, handler: any) {
         if (event === 'connection') {
           connectionHandler = handler
         }
@@ -2036,17 +2036,17 @@ describe('WebSocketServer - Error Handling', () => {
 
       const mockSocketA = {
         id: 'socket-A',
-        emit: vi.fn((_event: string, data: any) => socketAEvents.push({ event: _event, data })),
+        emit: vi.fn(function (_event: string, data: any) { return socketAEvents.push({ event: _event, data }); }),
         connected: true
       }
       const mockSocketB = {
         id: 'socket-B',
-        emit: vi.fn((_event: string, data: any) => socketBEvents.push({ event: _event, data })),
+        emit: vi.fn(function (_event: string, data: any) { return socketBEvents.push({ event: _event, data }); }),
         connected: true
       }
       const mockSocketC = {
         id: 'socket-C',
-        emit: vi.fn((_event: string, data: any) => socketCEvents.push({ event: _event, data })),
+        emit: vi.fn(function (_event: string, data: any) { return socketCEvents.push({ event: _event, data }); }),
         connected: true
       }
 
@@ -2165,7 +2165,7 @@ describe('WebSocketServer - Error Handling', () => {
         })
       }
 
-      mockAgent.streamGenerate = vi.fn().mockImplementation((_prompt, options) => {
+      mockAgent.streamGenerate = vi.fn().mockImplementation(function (_prompt, options) {
         capturedExecutionContext = options?.executionContext
         return Promise.resolve(mockStreamResult)
       })
@@ -2217,7 +2217,7 @@ describe('WebSocketServer - Error Handling', () => {
         })
       }
 
-      mockAgent.streamGenerate = vi.fn().mockImplementation((_prompt, options) => {
+      mockAgent.streamGenerate = vi.fn().mockImplementation(function (_prompt, options) {
         executionContexts.push(options?.executionContext)
         return Promise.resolve(mockStreamResult)
       })
@@ -2268,7 +2268,7 @@ describe('WebSocketServer - Error Handling', () => {
         })
       }
 
-      mockAgent.streamGenerate = vi.fn().mockImplementation((_prompt, options) => {
+      mockAgent.streamGenerate = vi.fn().mockImplementation(function (_prompt, options) {
         capturedExecutionContext = options?.executionContext
         return Promise.resolve(mockStreamResult)
       })
@@ -2311,7 +2311,7 @@ describe('WebSocketServer - Error Handling', () => {
         })
       }
 
-      mockAgent.streamGenerate = vi.fn().mockImplementation((_prompt, options) => {
+      mockAgent.streamGenerate = vi.fn().mockImplementation(function (_prompt, options) {
         capturedExecutionContext = options?.executionContext
         return Promise.resolve(mockStreamResult)
       })
@@ -2409,7 +2409,7 @@ describe('connect-then-auth support', () => {
   it('server_config includes supportsConnectThenAuth: true', async () => {
     let connectionHandler: ((socket: any) => Promise<void>) | null = null
 
-    mockIO.on.mockImplementation((event: string, handler: any) => {
+    mockIO.on.mockImplementation(function (event: string, handler: any) {
       if (event === 'connection') {
         connectionHandler = handler
       }
@@ -2439,7 +2439,7 @@ describe('connect-then-auth support', () => {
   it('completeConnectionSetup is idempotent', async () => {
     let connectionHandler: ((socket: any) => Promise<void>) | null = null
 
-    mockIO.on.mockImplementation((event: string, handler: any) => {
+    mockIO.on.mockImplementation(function (event: string, handler: any) {
       if (event === 'connection') {
         connectionHandler = handler
       }
@@ -2467,7 +2467,7 @@ describe('connect-then-auth support', () => {
   it('pendingAuth socket skips immediate connection setup', async () => {
     let connectionHandler: ((socket: any) => Promise<void>) | null = null
 
-    mockIO.on.mockImplementation((event: string, handler: any) => {
+    mockIO.on.mockImplementation(function (event: string, handler: any) {
       if (event === 'connection') {
         connectionHandler = handler
       }
@@ -2518,7 +2518,7 @@ describe('connect-then-auth support', () => {
   it('server_config is emitted once even when completeConnectionSetup is called for pendingAuth sockets', async () => {
     let connectionHandler: ((socket: any) => Promise<void>) | null = null
 
-    mockIO.on.mockImplementation((event: string, handler: any) => {
+    mockIO.on.mockImplementation(function (event: string, handler: any) {
       if (event === 'connection') {
         connectionHandler = handler
       }
@@ -2570,7 +2570,7 @@ describe('connect-then-auth support', () => {
   it('cleanupToolSpans removes activeObservabilityToolSpans for disconnected socket', async () => {
     let connectionHandler: ((socket: any) => Promise<void>) | null = null
 
-    mockIO.on.mockImplementation((event: string, handler: any) => {
+    mockIO.on.mockImplementation(function (event: string, handler: any) {
       if (event === 'connection') {
         connectionHandler = handler
       }
@@ -2611,7 +2611,7 @@ describe('connect-then-auth support', () => {
 
     let connectionHandler: ((socket: any) => Promise<void>) | null = null
 
-    mockIO.on.mockImplementation((event: string, handler: any) => {
+    mockIO.on.mockImplementation(function (event: string, handler: any) {
       if (event === 'connection') {
         connectionHandler = handler
       }
@@ -2765,7 +2765,7 @@ describe('WebSocketServer - Abort Signal Handling', () => {
 
     const stateManager = (server as any).stateManager
 
-    mockReader.read.mockImplementation(() => {
+    mockReader.read.mockImplementation(function () {
       readCount++
       if (readCount === 1) {
         return Promise.resolve({
@@ -2850,7 +2850,7 @@ describe('WebSocketServer - Abort Signal Handling', () => {
     // Stream returns cleanly after abort — simulates AI SDK honoring the signal
     // at a yield point and returning rather than throwing AbortError.
     let resolveStream: (() => void) | null = null
-    mockAgent.streamGenerate = vi.fn().mockImplementation((_prompt: string) => {
+    mockAgent.streamGenerate = vi.fn().mockImplementation(function (_prompt: string) {
       return Promise.resolve({
         baseStream: null,
         textStream: (async function* () {
@@ -2909,7 +2909,7 @@ describe('WebSocketServer - Abort Signal Handling', () => {
 
     // Stream that checks signal and returns without yielding or throwing —
     // the most minimal clean-return case.
-    mockAgent.streamGenerate = vi.fn().mockImplementation((_prompt: string, options: any) => {
+    mockAgent.streamGenerate = vi.fn().mockImplementation(function (_prompt: string, options: any) {
       return Promise.resolve({
         baseStream: null,
         // eslint-disable-next-line require-yield
@@ -2979,7 +2979,7 @@ describe('WebSocketServer - Abort Signal Handling', () => {
     // Only reject for 'complete' type — let other events through
     const originalPublish = (server as any).publishToEventChannel.bind(server)
     const publishSpy = vi.spyOn(server as any, 'publishToEventChannel')
-      .mockImplementation(async (socketId: string, type: string, ...rest: any[]) => {
+      .mockImplementation(async function (socketId: string, type: string, ...rest: any[]) {
         if (type === 'complete') {
           throw new Error('Channel destroyed')
         }
@@ -3114,7 +3114,7 @@ describe('WebSocketServer - Stop Generation', () => {
     })
 
     // Abortable stream that blocks until abort signal fires
-    mockAgent.streamGenerate = vi.fn().mockImplementation((_prompt: string, options: any) => {
+    mockAgent.streamGenerate = vi.fn().mockImplementation(function (_prompt: string, options: any) {
       return Promise.resolve({
         baseStream: {
           getReader: () => ({
@@ -3429,7 +3429,7 @@ describe('WebSocketServer - messageMiddleware', function middlewareTests() {
   })
 
   it('should invoke messageMiddleware for chat_message events', async function invokesMiddleware() {
-    const middleware = vi.fn(async (_socketId: string, _context: any, _execute: () => Promise<void>) => {
+    const middleware = vi.fn(async function (_socketId: string, _context: any, _execute: () => Promise<void>) {
       // Don't call execute — just verify middleware is invoked with correct args
     })
 
@@ -3452,7 +3452,7 @@ describe('WebSocketServer - messageMiddleware', function middlewareTests() {
 
   it('should pass context to messageMiddleware from chat_message data', async function passesContext() {
     let capturedContext: any = null
-    const middleware = vi.fn(async (_socketId: string, context: any, _execute: () => Promise<void>) => {
+    const middleware = vi.fn(async function (_socketId: string, context: any, _execute: () => Promise<void>) {
       capturedContext = context
     })
 
@@ -3469,7 +3469,7 @@ describe('WebSocketServer - messageMiddleware', function middlewareTests() {
   })
 
   it('should register both chat and chat_message handlers on connection', async function registersBoth() {
-    mockIO.on.mockImplementation((event: string, handler: any) => {
+    mockIO.on.mockImplementation(function (event: string, handler: any) {
       if (event === 'connection') handler(mockSocket)
     })
 
@@ -3525,7 +3525,7 @@ describe('WebSocketServer - /agent command handling', function agentCommandTests
 
   it('routes hyphenated manual agent overrides and strips the command from the prompt', async () => {
     const routerMessages: string[] = []
-    const agentRouter = vi.fn((_socketId: string, data: any) => {
+    const agentRouter = vi.fn(function (_socketId: string, data: any) {
       routerMessages.push(data.message)
       return data.message.startsWith('/agent initial-v2') ? 'initial-v2' : undefined
     })
@@ -3676,14 +3676,14 @@ describe('WebSocketServer - postStreamValidator continuation', () => {
 
     const continueConversation = vi.fn().mockResolvedValue('validation-msg-1')
     const postStreamValidator = vi.fn()
-      .mockImplementationOnce(async ({ emitValidationStart }) => {
+      .mockImplementationOnce(async function ({ emitValidationStart }) {
         await emitValidationStart?.()
         return {
           continuationPrompt: 'fix the exact same error',
           message: 'exact validation error'
         }
       })
-      .mockImplementationOnce(async ({ emitValidationStart }) => {
+      .mockImplementationOnce(async function ({ emitValidationStart }) {
         await emitValidationStart?.()
         return undefined
       })
@@ -3734,11 +3734,11 @@ describe('WebSocketServer - postStreamValidator continuation', () => {
 
     const continueConversation = vi.fn().mockRejectedValue(new Error('database unavailable'))
     const postStreamValidator = vi.fn()
-      .mockImplementationOnce(async ({ emitValidationStart }) => {
+      .mockImplementationOnce(async function ({ emitValidationStart }) {
         await emitValidationStart?.()
         return { continuationPrompt: 'fix despite persistence failure' }
       })
-      .mockImplementationOnce(async ({ emitValidationStart }) => {
+      .mockImplementationOnce(async function ({ emitValidationStart }) {
         await emitValidationStart?.()
         return undefined
       })
@@ -3778,7 +3778,7 @@ describe('WebSocketServer - postStreamValidator continuation', () => {
       .mockResolvedValueOnce(mockSingleShotStream('first'))
 
     const postStreamValidator = vi.fn()
-      .mockImplementationOnce(async ({ emitValidationStart }) => {
+      .mockImplementationOnce(async function ({ emitValidationStart }) {
         await emitValidationStart?.()
         throw new Error('validator exploded')
       })
@@ -3812,7 +3812,7 @@ describe('WebSocketServer - postStreamValidator continuation', () => {
       .mockResolvedValueOnce(mockSingleShotStream('first'))
 
     const postStreamValidator = vi.fn()
-      .mockImplementationOnce(async ({ emitValidationStart }) => {
+      .mockImplementationOnce(async function ({ emitValidationStart }) {
         await emitValidationStart?.()
         return undefined
       })
@@ -3829,7 +3829,7 @@ describe('WebSocketServer - postStreamValidator continuation', () => {
 
     const eventChannel = (server as any).eventChannel
     const publish = eventChannel.publish.bind(eventChannel)
-    vi.spyOn(eventChannel, 'publish').mockImplementation(async (conversationId: string, event: any) => {
+    vi.spyOn(eventChannel, 'publish').mockImplementation(async function (conversationId: string, event: any) {
       if (event.type === 'validation_message' && event.data?.metadata?.validationStatus === 'running') {
         throw new Error('validation start publish failed')
       }
@@ -3850,7 +3850,7 @@ describe('WebSocketServer - postStreamValidator continuation', () => {
       .mockResolvedValueOnce(mockSingleShotStream('first'))
 
     const postStreamValidator = vi.fn()
-      .mockImplementationOnce(async ({ emitValidationStart }) => {
+      .mockImplementationOnce(async function ({ emitValidationStart }) {
         await emitValidationStart?.()
         return { skipped: true, reason: 'exhausted', message: 'Validation gave up.' }
       })
@@ -3885,7 +3885,7 @@ describe('WebSocketServer - postStreamValidator continuation', () => {
       .mockResolvedValueOnce(mockSingleShotStream('first'))
 
     const postStreamValidator = vi.fn()
-      .mockImplementationOnce(async ({ emitValidationStart }) => {
+      .mockImplementationOnce(async function ({ emitValidationStart }) {
         await emitValidationStart?.()
         return { skipped: true, reason: 'future_case' }
       })
@@ -4072,7 +4072,7 @@ describe('WebSocketServer - load_history streamCompleted handling', () => {
     httpServer = new HTTPServer()
 
     let connectionHandler: ((socket: any) => Promise<void>) | null = null
-    mockIO.on.mockImplementation((event: string, handler: any) => {
+    mockIO.on.mockImplementation(function (event: string, handler: any) {
       if (event === 'connection') connectionHandler = handler
     })
 

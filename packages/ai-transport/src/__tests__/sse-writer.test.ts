@@ -44,7 +44,7 @@ describe('createSSEWriter — identity encoding', () => {
     const res = makeMockRes()
     const warn = vi.fn()
     const writer = createSSEWriter(makeReq(), res, { logger: { warn } })
-    res.write = vi.fn(() => { throw new Error('socket hang up') })
+    res.write = vi.fn(function () { throw new Error('socket hang up') })
 
     expect(() => writer.write('event: x\n\n')).not.toThrow()
     expect(warn).toHaveBeenCalledWith('sse.writer.write_failed', expect.objectContaining({
@@ -169,7 +169,7 @@ describe('createSSEWriter — compressed encoding (gzip)', () => {
     const warn = vi.fn()
     const writer = createSSEWriter(makeReq('gzip'), res, { logger: { warn } })
     const stream = res._src as zlib.Gzip
-    stream.write = vi.fn(() => { throw new Error('ERR_STREAM_DESTROYED') }) as any
+    stream.write = vi.fn(function () { throw new Error('ERR_STREAM_DESTROYED') }) as any
 
     expect(() => writer.write('event: x\n\n')).not.toThrow()
     expect(warn).toHaveBeenCalledWith('sse.writer.write_failed', expect.objectContaining({
@@ -229,7 +229,7 @@ describe('createSSEWriter — compressed encoding (br)', () => {
     const warn = vi.fn()
     const writer = createSSEWriter(makeReq('br'), res, { logger: { warn } })
     const stream = res._src as zlib.BrotliCompress
-    stream.write = vi.fn(() => { throw new Error('ERR_STREAM_DESTROYED') }) as any
+    stream.write = vi.fn(function () { throw new Error('ERR_STREAM_DESTROYED') }) as any
 
     expect(() => writer.write('event: x\n\n')).not.toThrow()
     expect(warn).toHaveBeenCalledWith('sse.writer.write_failed', expect.objectContaining({

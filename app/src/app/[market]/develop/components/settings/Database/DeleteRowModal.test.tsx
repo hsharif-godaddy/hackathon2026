@@ -9,11 +9,11 @@ import { screen, waitFor } from '@testing-library/react';
 import { renderWithProviders } from '@/tests/test-utils';
 
 // Mock ResizeObserver
-global.ResizeObserver = vi.fn().mockImplementation(() => ({
+global.ResizeObserver = vi.fn().mockImplementation(function () { return {
   observe: vi.fn(),
   unobserve: vi.fn(),
   disconnect: vi.fn(),
-}));
+}; });
 
 // Mock @ux/modal to avoid Disrupt rendering issues in test environment
 vi.mock('@ux/modal', () => ({

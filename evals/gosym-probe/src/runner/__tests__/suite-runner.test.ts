@@ -8,9 +8,9 @@ vi.mock('../simulation.js', async (importOriginal) => {
   const original = await importOriginal<typeof import('../simulation.js')>();
   return {
     ...original,
-    Simulation: vi.fn().mockImplementation(() => ({
+    Simulation: vi.fn().mockImplementation(function () { return {
       run: mockSimulationRun,
-    })),
+    }; }),
   };
 });
 
@@ -324,13 +324,13 @@ describe('SuiteRunner', () => {
   it('trialConcurrency: 1 serializes trials', async () => {
     const order: string[] = [];
     mockSimulationRun
-      .mockImplementationOnce(async () => {
+      .mockImplementationOnce(async function () {
         order.push('start:0');
         await Promise.resolve();
         order.push('end:0');
         return makeTranscript();
       })
-      .mockImplementationOnce(async () => {
+      .mockImplementationOnce(async function () {
         order.push('start:1');
         return makeTranscript();
       });
@@ -355,7 +355,7 @@ describe('SuiteRunner', () => {
 
     // Factory creates a distinct client per call
     const createdClients: AgentClient[] = [];
-    const clientFactory = vi.fn().mockImplementation(async () => {
+    const clientFactory = vi.fn().mockImplementation(async function () {
       const client: AgentClient = {
         configure: vi.fn(),
         send: vi.fn(),
@@ -367,7 +367,7 @@ describe('SuiteRunner', () => {
     });
 
     mockSimulationRun
-      .mockImplementationOnce(() => {
+      .mockImplementationOnce(function () {
         order.push('start:0');
         return new Promise<Transcript>((r) =>
           resolvers.push(() => {
@@ -376,7 +376,7 @@ describe('SuiteRunner', () => {
           }),
         );
       })
-      .mockImplementationOnce(() => {
+      .mockImplementationOnce(function () {
         order.push('start:1');
         return new Promise<Transcript>((r) =>
           resolvers.push(() => {
@@ -422,7 +422,7 @@ describe('SuiteRunner', () => {
       let maxInFlight = 0;
       let inFlight = 0;
 
-      mockSimulationRun.mockImplementation(async () => {
+      mockSimulationRun.mockImplementation(async function () {
         inFlight++;
         maxInFlight = Math.max(maxInFlight, inFlight);
         await Promise.resolve();
@@ -459,7 +459,7 @@ describe('SuiteRunner', () => {
     let inFlight = 0;
     let maxInFlight = 0;
 
-    mockSimulationRun.mockImplementation(async () => {
+    mockSimulationRun.mockImplementation(async function () {
       inFlight++;
       maxInFlight = Math.max(maxInFlight, inFlight);
       await Promise.resolve();
@@ -590,10 +590,9 @@ describe('SuiteRunner — onTrialEvaluated callback', () => {
     // Each call parks in a deferred promise; resolvers are collected for
     // manual control in the test.
     mockSimulationRun.mockImplementation(
-      () =>
-        new Promise<Transcript>((resolve) => {
+      function () { return new Promise<Transcript>((resolve) => {
           resolvers.push(resolve);
-        }),
+        }); },
     );
 
     const runPromise = new SuiteRunner({
@@ -1002,15 +1001,15 @@ describe('SuiteRunner — suiteMode: parallel', () => {
     const order: string[] = [];
     const resolvers: (() => void)[] = [];
 
-    const clientFactory = vi.fn().mockImplementation(async () => ({
+    const clientFactory = vi.fn().mockImplementation(async function () { return {
       configure: vi.fn(),
       send: vi.fn(),
       onMessage: vi.fn(),
       disconnect: vi.fn(),
-    }));
+    }; });
 
     mockSimulationRun
-      .mockImplementationOnce(() => {
+      .mockImplementationOnce(function () {
         order.push('start:s0');
         return new Promise<Transcript>((resolve) =>
           resolvers.push(() => {
@@ -1019,7 +1018,7 @@ describe('SuiteRunner — suiteMode: parallel', () => {
           }),
         );
       })
-      .mockImplementationOnce(() => {
+      .mockImplementationOnce(function () {
         order.push('start:s1');
         return new Promise<Transcript>((resolve) =>
           resolvers.push(() => {
@@ -1056,7 +1055,7 @@ describe('SuiteRunner — suiteMode: parallel', () => {
     let inFlight = 0;
     let maxInFlight = 0;
 
-    mockSimulationRun.mockImplementation(async () => {
+    mockSimulationRun.mockImplementation(async function () {
       inFlight++;
       maxInFlight = Math.max(maxInFlight, inFlight);
       await Promise.resolve();
@@ -1088,13 +1087,13 @@ describe('SuiteRunner — suiteMode: parallel', () => {
     const order: string[] = [];
 
     mockSimulationRun
-      .mockImplementationOnce(async () => {
+      .mockImplementationOnce(async function () {
         order.push('start:s0');
         await Promise.resolve();
         order.push('end:s0');
         return makeTranscript('s0');
       })
-      .mockImplementationOnce(() => {
+      .mockImplementationOnce(function () {
         order.push('start:s1');
         return makeTranscript('s1');
       });
@@ -1210,7 +1209,7 @@ describe('SuiteRunner -- beforeTrial lifecycle', () => {
     async () => {
       const order: string[] = [];
       mockSimulationRun.mockImplementation(
-        async (i: number) => {
+        async function (i: number) {
           order.push(`sim:${i}`);
           return makeTranscript('test', i);
         },
@@ -1223,7 +1222,7 @@ describe('SuiteRunner -- beforeTrial lifecycle', () => {
             makePassResult('e'),
           ),
         ],
-        beforeTrial: vi.fn((_client, i) => {
+        beforeTrial: vi.fn(function (_client, i) {
           order.push(`beforeTrial:${i}`);
         }),
       });
@@ -1249,8 +1248,7 @@ describe('SuiteRunner -- beforeTrial lifecycle', () => {
       ' that implement it',
     async () => {
       mockSimulationRun.mockImplementation(
-        async (i: number) =>
-          makeTranscript('test', i),
+        async function (i: number) { return makeTranscript('test', i); },
       );
       const hookClient = vi.fn();
       const evaluator = {
@@ -1284,8 +1282,7 @@ describe('SuiteRunner -- beforeTrial lifecycle', () => {
     'calls evaluator.unhookTrial after evaluation',
     async () => {
       mockSimulationRun.mockImplementation(
-        async (i: number) =>
-          makeTranscript('test', i),
+        async function (i: number) { return makeTranscript('test', i); },
       );
       const unhookTrial = vi.fn();
       const evaluator = {
@@ -1422,7 +1419,7 @@ describe('SuiteRunner — no-stacking invariant', () => {
     let inFlight = 0;
     let maxInFlight = 0;
 
-    mockSimulationRun.mockImplementation(async () => {
+    mockSimulationRun.mockImplementation(async function () {
       inFlight++;
       maxInFlight = Math.max(maxInFlight, inFlight);
       await Promise.resolve();
@@ -1449,7 +1446,7 @@ describe('SuiteRunner — no-stacking invariant', () => {
     let inFlight = 0;
     let maxInFlight = 0;
 
-    mockSimulationRun.mockImplementation(async () => {
+    mockSimulationRun.mockImplementation(async function () {
       inFlight++;
       maxInFlight = Math.max(maxInFlight, inFlight);
       await Promise.resolve();
@@ -1476,7 +1473,7 @@ describe('SuiteRunner — no-stacking invariant', () => {
     let inFlight = 0;
     let maxInFlight = 0;
 
-    mockSimulationRun.mockImplementation(async () => {
+    mockSimulationRun.mockImplementation(async function () {
       inFlight++;
       maxInFlight = Math.max(maxInFlight, inFlight);
       await Promise.resolve();
@@ -1534,7 +1531,7 @@ describe('first-turn inactivity retry', () => {
 
   it('retries on InactivityTimeoutError up to maxFirstTurnRetries', async () => {
     const { InactivityTimeoutError } = await import('../simulation.js');
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(function () {});
 
     mockSimulationRun
       .mockRejectedValueOnce(new InactivityTimeoutError(600_000))
@@ -1582,7 +1579,7 @@ describe('first-turn inactivity retry', () => {
 
   it('fails permanently after exhausting retries', async () => {
     const { InactivityTimeoutError } = await import('../simulation.js');
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(function () {});
 
     mockSimulationRun.mockRejectedValue(
       new InactivityTimeoutError(600_000),
@@ -1614,7 +1611,7 @@ describe('first-turn inactivity retry', () => {
   });
 
   it('does not retry on non-inactivity errors', async () => {
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(function () {});
 
     mockSimulationRun.mockRejectedValue(
       new Error('some other failure'),
@@ -1642,7 +1639,7 @@ describe('first-turn inactivity retry', () => {
 
   it('creates a fresh AgentClient for each retry attempt', async () => {
     const { InactivityTimeoutError } = await import('../simulation.js');
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(function () {});
 
     mockSimulationRun
       .mockRejectedValueOnce(new InactivityTimeoutError(600_000))
@@ -1650,7 +1647,7 @@ describe('first-turn inactivity retry', () => {
       .mockResolvedValue(makeTranscript());
 
     const clients: Array<ReturnType<typeof vi.fn>> = [];
-    const makeAgentClientSpy = vi.fn(async () => {
+    const makeAgentClientSpy = vi.fn(async function () {
       const client = {
         configure: vi.fn(),
         send: vi.fn(),
@@ -1683,7 +1680,7 @@ describe('first-turn inactivity retry', () => {
 
   it('calls unhookTrial between retry attempts to release evaluator state', async () => {
     const { InactivityTimeoutError } = await import('../simulation.js');
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(function () {});
 
     mockSimulationRun
       .mockRejectedValueOnce(new InactivityTimeoutError(600_000))
@@ -1734,7 +1731,7 @@ describe('rate limit (429) retry', () => {
   }
 
   it('retries on RateLimitError and succeeds on next attempt', async () => {
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(function () {});
     const rateLimitErr = await makeRateLimitError();
 
     mockSimulationRun
@@ -1768,7 +1765,7 @@ describe('rate limit (429) retry', () => {
   });
 
   it('exhausts MAX_RATE_LIMIT_RETRIES and throws', async () => {
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(function () {});
     const rateLimitErr = await makeRateLimitError();
 
     mockSimulationRun.mockRejectedValue(rateLimitErr);
@@ -1801,7 +1798,7 @@ describe('rate limit (429) retry', () => {
 
   it('uses independent budgets for inactivity and rate limit retries', async () => {
     const { InactivityTimeoutError } = await import('../simulation.js');
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(function () {});
     const rateLimitErr = await makeRateLimitError();
 
     mockSimulationRun
@@ -1832,7 +1829,7 @@ describe('rate limit (429) retry', () => {
   });
 
   it('respects Retry-After header from server', async () => {
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(function () {});
     const { RateLimitError } = await import('openai');
     const errWithHeader = new RateLimitError(
       429,
@@ -1868,7 +1865,7 @@ describe('rate limit (429) retry', () => {
     ['non-numeric', 'abc', 30_000],
     ['empty string', '', 30_000],
   ])('falls back to default when Retry-After is %s', async (_label, headerValue, expectedMs) => {
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(function () {});
     const { RateLimitError } = await import('openai');
     const headers = headerValue === ''
       ? new Headers({ 'retry-after': '' })
@@ -1898,7 +1895,7 @@ describe('rate limit (429) retry', () => {
   });
 
   it('caps Retry-After at 300s to prevent absurd waits', async () => {
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(function () {});
     const { RateLimitError } = await import('openai');
     const err = new RateLimitError(
       429,
@@ -2034,7 +2031,7 @@ describe('SuiteRunner — tiered inactivity retry', () => {
 
   it('passes correct firstTurnInactivityMsOverride from schedule to each retry attempt', async () => {
     const { InactivityTimeoutError } = await import('../simulation.js');
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(function () {});
 
     mockSimulationRun
       .mockRejectedValueOnce(new InactivityTimeoutError(600_000))
@@ -2070,7 +2067,7 @@ describe('SuiteRunner — tiered inactivity retry', () => {
 
   it('falls back to firstTurnInactivityMs on all retries when no schedule is configured', async () => {
     const { InactivityTimeoutError } = await import('../simulation.js');
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(function () {});
 
     mockSimulationRun
       .mockRejectedValueOnce(new InactivityTimeoutError(600_000))
@@ -2114,21 +2111,21 @@ describe('SuiteRunner — writePartialTrial error handling', () => {
 
   it('writePartialTrial failure invokes onPartialWriteFailed and run completes', async () => {
     const { Simulation } = await import('../simulation.js');
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(function () {});
     const writeErr = new Error('ENOSPC: no space left');
     const writePartialTrial = vi.fn().mockRejectedValue(writeErr);
     const onPartialWriteFailed = vi.fn();
 
     // Override Simulation mock to invoke onConversationComplete during run
     (Simulation as unknown as ReturnType<typeof vi.fn>).mockImplementation(
-      (opts: { onConversationComplete?: (idx: number, t: Transcript) => Promise<void> }) => ({
+      function (opts: { onConversationComplete?: (idx: number, t: Transcript) => Promise<void> }) { return {
         run: async (trialIndex: number) => {
           if (opts.onConversationComplete) {
             await opts.onConversationComplete(trialIndex, makeTranscript());
           }
           return makeTranscript();
         },
-      }),
+      }; },
     );
 
     const scenario = makeScenario({ trials: 1 });
@@ -2154,9 +2151,9 @@ describe('SuiteRunner — writePartialTrial error handling', () => {
     );
 
     // Restore default mock behavior for subsequent tests
-    (Simulation as unknown as ReturnType<typeof vi.fn>).mockImplementation(() => ({
+    (Simulation as unknown as ReturnType<typeof vi.fn>).mockImplementation(function () { return {
       run: mockSimulationRun,
-    }));
+    }; });
     warnSpy.mockRestore();
   });
 });
@@ -2168,21 +2165,21 @@ describe('SuiteRunner — fan-out round-robin', () => {
   });
 
   afterEach(() => {
-    (Simulation as unknown as ReturnType<typeof vi.fn>).mockImplementation(() => ({
+    (Simulation as unknown as ReturnType<typeof vi.fn>).mockImplementation(function () { return {
       run: mockSimulationRun,
-    }));
+    }; });
   });
 
   it('builds queue in trial-ordinal order across 4 scenarios', async () => {
     const callOrder: Array<{ scenarioName: string; trialIndex: number }> = [];
 
     (Simulation as unknown as ReturnType<typeof vi.fn>).mockImplementation(
-      (opts: { scenario: Scenario }) => ({
+      function (opts: { scenario: Scenario }) { return {
         run: async (trialIndex: number): Promise<Transcript> => {
           callOrder.push({ scenarioName: opts.scenario.name, trialIndex });
           return makeTranscript(opts.scenario.name, trialIndex);
         },
-      }),
+      }; },
     );
 
     const scenarios = [
@@ -2217,7 +2214,7 @@ describe('SuiteRunner — fan-out round-robin', () => {
     let maxInFlight = 0;
 
     // Track via mockSimulationRun to avoid extra Promise ticks from Simulation constructor.
-    mockSimulationRun.mockImplementation(async () => {
+    mockSimulationRun.mockImplementation(async function () {
       inFlight++;
       maxInFlight = Math.max(maxInFlight, inFlight);
       await Promise.resolve();
@@ -2247,12 +2244,12 @@ describe('SuiteRunner — fan-out round-robin', () => {
     const callOrder: Array<{ scenarioName: string; trialIndex: number }> = [];
 
     (Simulation as unknown as ReturnType<typeof vi.fn>).mockImplementation(
-      (opts: { scenario: Scenario }) => ({
+      function (opts: { scenario: Scenario }) { return {
         run: async (trialIndex: number): Promise<Transcript> => {
           callOrder.push({ scenarioName: opts.scenario.name, trialIndex });
           return makeTranscript(opts.scenario.name, trialIndex);
         },
-      }),
+      }; },
     );
 
     const s0 = makeScenario({ name: 's0', trials: 5 });
@@ -2278,17 +2275,17 @@ describe('SuiteRunner — fan-out round-robin', () => {
   });
 
   it('partial failure — scenarios with completed trials produce results', async () => {
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(function () {});
 
     (Simulation as unknown as ReturnType<typeof vi.fn>).mockImplementation(
-      (opts: { scenario: Scenario }) => ({
+      function (opts: { scenario: Scenario }) { return {
         run: async (trialIndex: number): Promise<Transcript> => {
           if (opts.scenario.name === 's0' && trialIndex === 0) {
             throw new Error('trial failed');
           }
           return makeTranscript(opts.scenario.name, trialIndex);
         },
-      }),
+      }; },
     );
 
     const s0 = makeScenario({ name: 's0', trials: 2 });
@@ -2322,12 +2319,12 @@ describe('SuiteRunner — fan-out round-robin', () => {
     const callOrder: Array<{ scenarioName: string; trialIndex: number }> = [];
 
     (Simulation as unknown as ReturnType<typeof vi.fn>).mockImplementation(
-      (opts: { scenario: Scenario }) => ({
+      function (opts: { scenario: Scenario }) { return {
         run: async (trialIndex: number): Promise<Transcript> => {
           callOrder.push({ scenarioName: opts.scenario.name, trialIndex });
           return makeTranscript(opts.scenario.name, trialIndex);
         },
-      }),
+      }; },
     );
 
     const s0 = makeScenario({ name: 's0', trials: 5 });
@@ -2378,17 +2375,17 @@ describe('SuiteRunner — fan-out round-robin', () => {
   });
 
   it('completely failed scenario returns partial results without aborting', async () => {
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(function () {});
 
     (Simulation as unknown as ReturnType<typeof vi.fn>).mockImplementation(
-      (opts: { scenario: Scenario }) => ({
+      function (opts: { scenario: Scenario }) { return {
         run: async (trialIndex: number): Promise<Transcript> => {
           if (opts.scenario.name === 's0') {
             throw new Error('s0 always fails');
           }
           return makeTranscript(opts.scenario.name, trialIndex);
         },
-      }),
+      }; },
     );
 
     const s0 = makeScenario({ name: 's0', trials: 2 });
@@ -2412,10 +2409,10 @@ describe('SuiteRunner — fan-out round-robin', () => {
   });
 
   it('droppedTrials populated for partial failures alongside a completely failed scenario', async () => {
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(function () {});
 
     (Simulation as unknown as ReturnType<typeof vi.fn>).mockImplementation(
-      (opts: { scenario: Scenario }) => ({
+      function (opts: { scenario: Scenario }) { return {
         run: async (trialIndex: number): Promise<Transcript> => {
           if (opts.scenario.name === 's0') {
             throw new Error('s0 always fails');
@@ -2425,7 +2422,7 @@ describe('SuiteRunner — fan-out round-robin', () => {
           }
           return makeTranscript(opts.scenario.name, trialIndex);
         },
-      }),
+      }; },
     );
 
     const s0 = makeScenario({ name: 's0', trials: 2 });
@@ -2451,17 +2448,17 @@ describe('SuiteRunner — fan-out round-robin', () => {
   });
 
   it('droppedTrials is populated on partial failure', async () => {
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(function () {});
 
     (Simulation as unknown as ReturnType<typeof vi.fn>).mockImplementation(
-      (opts: { scenario: Scenario }) => ({
+      function (opts: { scenario: Scenario }) { return {
         run: async (trialIndex: number): Promise<Transcript> => {
           if (opts.scenario.name === 's0' && trialIndex === 0) {
             throw new Error('trial failed');
           }
           return makeTranscript(opts.scenario.name, trialIndex);
         },
-      }),
+      }; },
     );
 
     const s0 = makeScenario({ name: 's0', trials: 3 });
@@ -2486,19 +2483,19 @@ describe('SuiteRunner — fan-out round-robin', () => {
 
   it('retry-exhaustion in fan-out classifies the trial as droppedTrials', async () => {
     const { InactivityTimeoutError } = await import('../simulation.js');
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(function () {});
 
     // s0 trial 1 always throws InactivityTimeoutError (exhausts retries).
     // All other trials succeed.
     (Simulation as unknown as ReturnType<typeof vi.fn>).mockImplementation(
-      (opts: { scenario: Scenario }) => ({
+      function (opts: { scenario: Scenario }) { return {
         run: async (trialIndex: number): Promise<Transcript> => {
           if (opts.scenario.name === 's0' && trialIndex === 1) {
             throw new InactivityTimeoutError(600_000);
           }
           return makeTranscript(opts.scenario.name, trialIndex);
         },
-      }),
+      }; },
     );
 
     const s0 = makeScenario({ name: 's0', trials: 2 });
@@ -2543,9 +2540,9 @@ describe('SuiteRunner — trialLifecycle integration', () => {
   });
 
   afterEach(() => {
-    (Simulation as unknown as ReturnType<typeof vi.fn>).mockImplementation(() => ({
+    (Simulation as unknown as ReturnType<typeof vi.fn>).mockImplementation(function () { return {
       run: mockSimulationRun,
-    }));
+    }; });
   });
 
   it('calls runInScope with correct scenario name and trial index', async () => {
@@ -2595,7 +2592,7 @@ describe('SuiteRunner — trialLifecycle integration', () => {
       release: vi.fn(),
     };
 
-    mockSimulationRun.mockImplementation(async () => {
+    mockSimulationRun.mockImplementation(async function () {
       executionOrder.push('simulation-run');
       return makeTranscript();
     });
@@ -2668,17 +2665,17 @@ describe('SuiteRunner — trialLifecycle integration', () => {
     };
 
     (Simulation as unknown as ReturnType<typeof vi.fn>).mockImplementation(
-      (opts: { scenario: Scenario }) => ({
+      function (opts: { scenario: Scenario }) { return {
         run: async (trialIndex: number): Promise<Transcript> => {
           if (opts.scenario.name === 's0' && trialIndex === 0) {
             throw new Error('fan-out trial exploded');
           }
           return makeTranscript(opts.scenario.name, trialIndex);
         },
-      }),
+      }; },
     );
 
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(function () {});
 
     const s0 = makeScenario({ name: 's0', trials: 2 });
     const s1 = makeScenario({ name: 's1', trials: 1 });
@@ -2712,13 +2709,13 @@ describe('SuiteRunner — afterSimFailures annotation', () => {
     const throwingEvaluator: Evaluator = {
       name: 'throwing-eval',
       evaluate: vi.fn().mockResolvedValue(makePassResult('throwing-eval')),
-      afterSimulation: vi.fn().mockImplementation(() => {
+      afterSimulation: vi.fn().mockImplementation(function () {
         throw new Error('afterSim boom');
       }),
     };
     const scenario = makeScenario({ trials: 1, evaluators: [throwingEvaluator] });
 
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(function () {});
     const results = await new SuiteRunner({
       scenarios: [scenario],
       config: mockConfig,
@@ -2741,13 +2738,13 @@ describe('SuiteRunner — afterSimFailures annotation', () => {
     const throwingEvaluator: Evaluator = {
       name: 'throwing-eval',
       evaluate: vi.fn().mockResolvedValue(makePassResult('throwing-eval')),
-      afterSimulation: vi.fn().mockImplementation(() => {
+      afterSimulation: vi.fn().mockImplementation(function () {
         throw new Error('afterSim boom');
       }),
     };
     const scenario = makeScenario({ trials: 1, evaluators: [okEvaluator, throwingEvaluator] });
 
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(function () {});
     const results = await new SuiteRunner({
       scenarios: [scenario],
       config: mockConfig,
@@ -2772,7 +2769,7 @@ describe('SuiteRunner — afterSimFailures annotation', () => {
     const flakyEvaluator: Evaluator = {
       name: 'flaky-eval',
       evaluate: vi.fn().mockResolvedValue(makePassResult('flaky-eval')),
-      afterSimulation: vi.fn().mockImplementation(() => {
+      afterSimulation: vi.fn().mockImplementation(function () {
         callCount++;
         if (callCount === 1) {
           throw new Error('first attempt fails');
@@ -2789,7 +2786,7 @@ describe('SuiteRunner — afterSimFailures annotation', () => {
 
     const afterSimFailures = new Set<string>();
 
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(function () {});
 
     // Attempt 1: afterSimulation throws, entry added
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

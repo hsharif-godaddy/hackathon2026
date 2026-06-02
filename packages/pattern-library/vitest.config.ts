@@ -18,6 +18,8 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     css: true,
+    // vitest 4 no longer clears vi.fn() call history on restoreAllMocks.
+    clearMocks: true,
     // `@godaddy/antares` and its `@bento/*` dependencies ship plain `.css`
     // side-effect imports alongside their JS chunks. Without inlining these
     // packages here, Vitest externalizes them and hands the `.css` specifiers

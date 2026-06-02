@@ -17,24 +17,24 @@ vi.mock('next/navigation', () => ({
   usePathname: () => '/',
 }));
 vi.mock('@/utils/instrumentation', () => ({
-  generateClickEID: vi.fn((id) => id),
-  logImpressionEvent: vi.fn(() => vi.fn()),
+  generateClickEID: vi.fn(function (id) { return id; }),
+  logImpressionEvent: vi.fn(function () { return vi.fn(); }),
 }));
 vi.mock('@/components/providers/AuthProvider', () => ({
   useAuthContext: () => mockAuthContext({ isAuthenticated: false }),
 }));
 vi.mock('@/stores/useSitesStore', () => ({
   useSites: () => ({ sites: [], isLoading: false }),
-  useSitesStore: vi.fn(() => ({ fetchSite: vi.fn() })),
+  useSitesStore: vi.fn(function () { return { fetchSite: vi.fn() }; }),
 }));
 vi.mock('@/stores/useDevelopPageStore', () => ({
   useDevelopPageStore: (selector: any) => {
     const state = {
       publishStates: {},
-      getPublishState: vi.fn(() => ({
+      getPublishState: vi.fn(function () { return {
         deploymentInProgressId: null,
         isPollingActive: false,
-      })),
+      }; }),
       activeChatTab: 'chat',
       activeSettingsSection: 'domain',
       chatTabsInitializedForPathname: null,

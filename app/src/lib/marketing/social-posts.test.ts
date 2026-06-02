@@ -5,12 +5,12 @@ import { fetchSocialPostsFromAgents } from './social-posts';
 
 // Mock dependencies
 vi.mock('@/lib/jwt-service', () => ({
-  getJWTService: vi.fn(() => ({
+  getJWTService: vi.fn(function () { return {
     createToken: vi.fn().mockResolvedValue({
       token: 'mock-jwt-token',
       expires: new Date('2026-01-01').toISOString(),
     }),
-  })),
+  }; }),
 }));
 
 vi.mock('@/lib/request-context', () => ({
@@ -22,7 +22,7 @@ vi.mock('@/lib/request-context', () => ({
 }));
 
 vi.mock('@/lib/errors', () => ({
-  getErrorMessage: vi.fn((error) => error instanceof Error ? error.message : String(error)),
+  getErrorMessage: vi.fn(function (error) { return error instanceof Error ? error.message : String(error); }),
 }));
 
 describe('social-posts', () => {

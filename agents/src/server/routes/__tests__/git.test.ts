@@ -26,15 +26,15 @@ const mocks = vi.hoisted(() => {
 });
 
 vi.mock('../../../database/repositories/AppRepository.js', () => ({
-  AppRepository: vi.fn().mockImplementation(() => ({
+  AppRepository: vi.fn().mockImplementation(function () { return {
     findById: mocks.findById,
-  })),
+  }; }),
 }));
 
 vi.mock('../../../database/repositories/ConversationRepository.js', () => ({
-  ConversationRepository: vi.fn().mockImplementation(() => ({
+  ConversationRepository: vi.fn().mockImplementation(function () { return {
     getLatestForApp: mocks.getLatestForApp,
-  })),
+  }; }),
 }));
 
 vi.mock('../../../memory/adapters/index.js', () => ({
@@ -44,7 +44,7 @@ vi.mock('../../../memory/adapters/index.js', () => ({
 }));
 
 vi.mock('../../../utils/git.js', () => ({
-  GitUtils: vi.fn().mockImplementation(() => ({
+  GitUtils: vi.fn().mockImplementation(function () { return {
     getCurrentBranch: mocks.getCurrentBranch,
     getStatus: mocks.getStatus,
     hasRemote: mocks.hasRemote,
@@ -56,13 +56,13 @@ vi.mock('../../../utils/git.js', () => ({
     getStashDiff: mocks.getStashDiff,
     getBranchTip: mocks.getBranchTip,
     getCommitFileStats: mocks.getCommitFileStats,
-  })),
+  }; }),
 }));
 
 vi.mock('../../../tools/git-tool.js', () => ({
-  GitTool: vi.fn().mockImplementation(() => ({
+  GitTool: vi.fn().mockImplementation(function () { return {
     executeGitOperation: mocks.executeGitOperation,
-  })),
+  }; }),
 }));
 
 vi.mock('../../../utils/dev-supervisor-client-factory.js', () => ({
@@ -72,7 +72,7 @@ vi.mock('../../../utils/dev-supervisor-client-factory.js', () => ({
 }));
 
 vi.mock('../../../workspace/index.js', () => ({
-  createForWorkspace: vi.fn(() => ({ tasks: {} })),
+  createForWorkspace: vi.fn(function () { return { tasks: {} }; }),
 }));
 
 vi.mock('../../../logging/index.js', async (importOriginal) => {
@@ -88,7 +88,7 @@ vi.mock('../../../logging/index.js', async (importOriginal) => {
 });
 
 vi.mock('../../middleware/app-ownership.js', () => ({
-  validateAppOwnership: vi.fn((_req, _res, next) => next()),
+  validateAppOwnership: vi.fn(function (_req, _res, next) { return next(); }),
 }));
 
 import gitRouter from '../git.js';
@@ -385,7 +385,7 @@ describe('git routes', function gitRouteTests() {
         hasChanges: true,
         stashHash: 'stash-after-fail',
       });
-      mocks.executeGitOperation.mockImplementation(async (_path: unknown, opts: any) => {
+      mocks.executeGitOperation.mockImplementation(async function (_path: unknown, opts: any) {
         if (opts?.operation === 'restore') return { success: false, error: 'restore-failed' };
         return { success: true };
       });
@@ -406,7 +406,7 @@ describe('git routes', function gitRouteTests() {
         hasChanges: true,
         stashHash: 'stash-pre-checkout',
       });
-      mocks.executeGitOperation.mockImplementation(async (_path: unknown, opts: any) => {
+      mocks.executeGitOperation.mockImplementation(async function (_path: unknown, opts: any) {
         if (opts?.operation === 'checkout') return { success: false, error: 'checkout-failed' };
         return { success: true };
       });
@@ -661,7 +661,7 @@ describe('git routes', function gitRouteTests() {
     beforeEach(function configureCheckoutMocks() {
       // Default: every git op the route invokes succeeds. Tests override
       // individual ones (e.g. getCommitFileStats) to exercise specific paths.
-      mocks.executeGitOperation.mockImplementation(async (_path, opts) => {
+      mocks.executeGitOperation.mockImplementation(async function (_path, opts) {
         if (opts?.operation === 'branch') return { success: true, currentBranch: 'main' };
         if (opts?.operation === 'status') return { success: true, status: { isClean: true, stagedFiles: 0, modifiedFiles: 0, untrackedFiles: 0 } };
         return { success: true };

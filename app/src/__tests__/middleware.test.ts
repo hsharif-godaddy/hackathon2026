@@ -17,16 +17,16 @@ vi.mock('next/server', async () => {
     ...actual,
     NextResponse: {
       ...actual.NextResponse,
-      rewrite: vi.fn((url: URL) => ({
+      rewrite: vi.fn(function (url: URL) { return {
         type: 'rewrite',
         url: url.pathname,
         headers: new Headers(),
-      })),
-      redirect: vi.fn((url: string | URL, status?: number) => ({
+      }; }),
+      redirect: vi.fn(function (url: string | URL, status?: number) { return {
         type: 'redirect',
         url: typeof url === 'string' ? url : url.toString(),
         status,
-      })),
+      }; }),
     },
   };
 });

@@ -15,13 +15,13 @@ const mockShowThanksBanner = vi.fn();
 const mockSubmitFeedback = vi.fn();
 
 vi.mock('@/hooks/useSwitchboard', () => ({
-  useSwitchboard: vi.fn(() => true),
-  getSwitchboardFlag: vi.fn(() => true),
+  useSwitchboard: vi.fn(function () { return true; }),
+  getSwitchboardFlag: vi.fn(function () { return true; }),
 }));
 
 vi.mock('@/utils/instrumentation', () => ({
-  generateClickEID: vi.fn((id: string) => id),
-  logClickEvent: vi.fn(() => vi.fn()),
+  generateClickEID: vi.fn(function (id: string) { return id; }),
+  logClickEvent: vi.fn(function () { return vi.fn(); }),
 }));
 
 vi.mock('@/hooks/websocket/useWebSocketHelpers', () => ({

@@ -12,7 +12,7 @@ const mockMemoryStore = {
 // IMPORTANT: Mocks must be set up BEFORE importing the route module
 // because the route calls getKvMemoryStore() at module load time
 vi.mock('../../../memory/adapters/index.js', () => ({
-  getKvMemoryStore: vi.fn(() => mockMemoryStore),
+  getKvMemoryStore: vi.fn(function () { return mockMemoryStore; }),
 }));
 
 vi.mock('../../middleware/app-ownership.js');
@@ -29,7 +29,7 @@ describe('GET /apps/:id/conversation-brand-id', () => {
     app.use(express.json());
 
     // Mock validateAppOwnership middleware
-    vi.mocked(validateAppOwnership).mockImplementation((req, _res, next) => {
+    vi.mocked(validateAppOwnership).mockImplementation(function (req, _res, next) {
       (req as AuthenticatedRequest).agentContext = {
         customerId: 'test-customer-id',
         siteId: 'test-app-id',

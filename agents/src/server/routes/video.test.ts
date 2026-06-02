@@ -20,9 +20,9 @@ const mockUnlink = vi.fn();
 const mockCreateReadStream = vi.fn();
 
 vi.mock('../../database/repositories/AppRepository.js', () => ({
-  AppRepository: vi.fn().mockImplementation(() => ({
+  AppRepository: vi.fn().mockImplementation(function () { return {
     findById: mockFindById
-  }))
+  }; })
 }));
 
 const mockLogger = () => ({
@@ -40,7 +40,7 @@ vi.mock('../../logging/index.js', () => ({
     error: vi.fn(),
   },
   logger: mockLogger(),
-  errorToLogError: vi.fn((e: Error) => ({ message: e.message })),
+  errorToLogError: vi.fn(function (e: Error) { return { message: e.message }; }),
 }));
 
 vi.mock('node:fs/promises', () => ({
@@ -58,11 +58,11 @@ vi.mock('../../tools/video-generation-tool.js', () => ({
 }));
 
 vi.mock('../ai-lib-websocket-server.js', () => ({
-  getSocketIO: vi.fn(() => null)
+  getSocketIO: vi.fn(function () { return null; })
 }));
 
 vi.mock('../agent-runtime.js', () => ({
-  getEventChannel: vi.fn(() => null),
+  getEventChannel: vi.fn(function () { return null; }),
 }));
 
 vi.mock('../../services/features.js', () => ({
@@ -205,7 +205,7 @@ describe('video-routes', function videoTests() {
       mockAccess.mockResolvedValue(undefined);
 
       const stream = Object.assign(new EventEmitter(), {
-        pipe: vi.fn((dest: { destroy: () => void }) => {
+        pipe: vi.fn(function (dest: { destroy: () => void }) {
           process.nextTick(() => stream.emit('error', new Error('disk read failure')));
           return dest;
         }),

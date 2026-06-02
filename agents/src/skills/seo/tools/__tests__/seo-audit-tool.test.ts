@@ -1,13 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('../../../../database/repositories/AppRepository.js', () => ({
-  AppRepository: vi.fn().mockImplementation(() => ({
+  AppRepository: vi.fn().mockImplementation(function () { return {
     findById: vi.fn().mockReturnValue({
       id: 'test-app',
       path: '/tmp/app',
       publishedUrl: 'https://example.com',
     }),
-  })),
+  }; }),
 }));
 
 vi.mock('../../../../services/seo-audit.js', () => ({

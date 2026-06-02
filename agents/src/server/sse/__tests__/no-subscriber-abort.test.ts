@@ -17,23 +17,23 @@ vi.mock('../../../logging/index.js', async (importOriginal) => {
 vi.mock('@godaddy/agent-otel-sdk', async () => {
   const actual = await vi.importActual<Record<string, unknown>>('@godaddy/agent-otel-sdk')
   const otel = await vi.importActual<any>('@opentelemetry/api')
-  return { ...actual, createAgentContext: vi.fn(() => otel.context.active()) }
+  return { ...actual, createAgentContext: vi.fn(function () { return otel.context.active(); }) }
 })
 
 vi.mock('../../agent-runtime.js', () => ({
   registerActionService: vi.fn(),
   cleanupActionService: vi.fn(),
-  getActionService: vi.fn(() => null),
+  getActionService: vi.fn(function () { return null; }),
 }))
 
 vi.mock('../../message-lifecycle.js', () => ({
   runStartGitHook: vi.fn().mockResolvedValue(undefined),
-  startParallelAssessment: vi.fn(() => ({ awaitOutcome: vi.fn().mockResolvedValue(undefined) })),
+  startParallelAssessment: vi.fn(function () { return { awaitOutcome: vi.fn().mockResolvedValue(undefined) }; }),
   runMessageEndHooks: vi.fn().mockResolvedValue({ commitHash: null, usedFreeGrants: false }),
 }))
 
 vi.mock('../../../services/budget-service-instance.js', () => ({
-  getBudgetServiceClient: vi.fn(() => null),
+  getBudgetServiceClient: vi.fn(function () { return null; }),
 }))
 
 vi.mock('../../context-builders.js', () => ({

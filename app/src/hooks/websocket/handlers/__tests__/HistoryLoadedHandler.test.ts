@@ -334,7 +334,7 @@ describe('HistoryLoadedHandler', function packageTests() {
 
       // Machine in streaming state (placeholder was created)
       context.machine.getSnapshot.mockReturnValue({
-        matches: vi.fn((path: any) => {
+        matches: vi.fn(function (path: any) {
           if (typeof path === 'object' && path.stream?.streaming === 'receiving') return true
           return false
         })

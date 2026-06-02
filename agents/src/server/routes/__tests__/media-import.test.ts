@@ -9,7 +9,7 @@ vi.mock("../../../services/MediaManifestService.js", () => ({
 }));
 
 vi.mock("../../middleware/app-ownership.js", () => ({
-  validateAppOwnership: vi.fn((_req: any, _res: any, next: any) => next()),
+  validateAppOwnership: vi.fn(function (_req: any, _res: any, next: any) { return next(); }),
 }));
 
 vi.mock("../../../logging/index.js", () => ({
@@ -26,7 +26,7 @@ vi.mock("../../../services/ImageProcessingService.js", () => ({
 }));
 
 vi.mock("../../../database/repositories/AppRepository.js", () => ({
-  AppRepository: vi.fn().mockImplementation(() => ({})),
+  AppRepository: vi.fn().mockImplementation(function () { return {}; }),
 }));
 
 import { mediaManifestService } from "../../../services/MediaManifestService.js";

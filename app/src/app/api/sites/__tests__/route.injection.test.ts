@@ -22,10 +22,10 @@ const {
 }));
 
 vi.mock('@/lib/control-plane', () => ({
-  getControlPlaneAdapter: vi.fn(() => ({
+  getControlPlaneAdapter: vi.fn(function () { return {
     getSite: mockGetSite,
     listSites: mockListSites,
-  })),
+  }; }),
 }));
 vi.mock('@/lib/agent-fetch', () => ({ agentFetch: mockAgentFetch }));
 vi.mock('@/lib/switchboard/server', () => ({
@@ -38,7 +38,7 @@ vi.mock('@/lib/translations/server-intl', () => ({
 vi.mock('@/lib/customer-auth', () => ({
   withCustomerAuth: (handler: any) => async (request: NextRequest, ...args: any[]) =>
     handler(request, { isAuthenticated: true, jwt: 'test-jwt', user: {} }, ...args),
-  customerHasAccount: vi.fn(() => true),
+  customerHasAccount: vi.fn(function () { return true; }),
   createCustomerAuthError: vi.fn(),
 }));
 
@@ -126,7 +126,7 @@ describe('GET /api/sites (list) — preview_url airoShareToken injection', () =>
     // Promise.all schedules calls for SITE_A and SITE_B in parallel and the
     // observed call order isn't guaranteed, so route by URL rather than
     // queueing mockResolvedValueOnce.
-    mockAgentFetch.mockImplementation(async (url: string) => {
+    mockAgentFetch.mockImplementation(async function (url: string) {
       if (url.includes(SITE_A.id)) {
         return { ok: false, status: 500, text: async () => 'err' };
       }

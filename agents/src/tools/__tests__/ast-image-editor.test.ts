@@ -9,9 +9,9 @@ const hoistedFs = { existsSync, mkdirSync, readFileSync, writeFileSync };
 const hoistedPath = { join, dirname };
 
 vi.mock('../../workspace/index.js', () => ({
-  createForWorkspace: vi.fn(() => {
+  createForWorkspace: vi.fn(function () {
     const files = {
-      view: vi.fn(async ({ path: filePath }: { path: string }) => {
+      view: vi.fn(async function ({ path: filePath }: { path: string }) {
         const fullPath = hoistedPath.join(appPath, filePath);
         if (!hoistedFs.existsSync(fullPath)) {
           throw new Error(`ENOENT: file not found: ${filePath}`);
@@ -19,7 +19,7 @@ vi.mock('../../workspace/index.js', () => ({
         const content = hoistedFs.readFileSync(fullPath, 'utf-8');
         return { content, encoding: 'utf-8', path: filePath, lines: content.split('\n').length, size: content.length, truncated: false };
       }),
-      write: vi.fn(async ({ path: filePath, content }: { path: string; content: string }) => {
+      write: vi.fn(async function ({ path: filePath, content }: { path: string; content: string }) {
         const fullPath = hoistedPath.join(appPath, filePath);
         hoistedFs.mkdirSync(hoistedPath.dirname(fullPath), { recursive: true });
         hoistedFs.writeFileSync(fullPath, content);
@@ -56,9 +56,9 @@ vi.mock('../../logging/events/index.js', () => ({
 }));
 
 vi.mock('../git-tool.js', () => ({
-  GitTool: vi.fn().mockImplementation(() => ({
+  GitTool: vi.fn().mockImplementation(function () { return {
     executeGitOperation: vi.fn().mockResolvedValue({ success: true }),
-  })),
+  }; }),
 }));
 
 import { ASTImageEditor } from '../ast-image-editor.js';

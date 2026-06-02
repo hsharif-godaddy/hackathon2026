@@ -20,18 +20,18 @@ vi.mock('@/lib/gasket-config');
 vi.mock('@/app/[market]/apps/components/TransferInitiateDialog', () => ({ default: () => null }));
 
 vi.mock('@/hooks/useSwitchboard', () => ({
-  useSwitchboard: vi.fn(() => (true)),
+  useSwitchboard: vi.fn(function () { return true; }),
 }));
 
 vi.mock('@/hooks/useSubscription', () => ({
-  useSubscription: vi.fn(() => ({
+  useSubscription: vi.fn(function () { return {
     data: undefined,
     subscriptions: [],
     isLoading: false,
     isError: false,
     error: null,
     refetch: vi.fn(),
-  })),
+  }; }),
 }));
 
 const mockRouterInstance = mockRouter();
@@ -45,11 +45,11 @@ vi.mock('@ux/modal', () => ({
   ),
 }));
 
-global.ResizeObserver = vi.fn().mockImplementation(() => ({
+global.ResizeObserver = vi.fn().mockImplementation(function () { return {
   observe: vi.fn(),
   unobserve: vi.fn(),
   disconnect: vi.fn(),
-}));
+}; });
 
 const mockWindowOpen = vi.fn();
 Object.defineProperty(window, 'open', {
@@ -294,7 +294,7 @@ describe('AppCard', () => {
 
   describe('handles menu item clicks', () => {
     it('should open preview URL with airoPreview param when preview header flag is on', async () => {
-      vi.mocked(useSwitchboard).mockImplementation((flag: string) => flag === 'appbuilder-preview-header');
+      vi.mocked(useSwitchboard).mockImplementation(function (flag: string) { return flag === 'appbuilder-preview-header'; });
 
       const { user } = renderWithProviders(<AppCard site={mockSite} />);
 
@@ -316,7 +316,7 @@ describe('AppCard', () => {
     });
 
     it('should open preview URL without airoPreview param when preview header flag is off', async () => {
-      vi.mocked(useSwitchboard).mockImplementation((flag: string) => {
+      vi.mocked(useSwitchboard).mockImplementation(function (flag: string) {
         if (flag === 'appbuilder-preview-header') {
           return false;
         }
@@ -601,7 +601,7 @@ describe('AppCard', () => {
     });
 
     it('should show deleting state while delete is in progress', async () => {
-      const deleteSite = vi.fn((): Promise<boolean> => new Promise(() => {}));
+      const deleteSite = vi.fn(function () { return new Promise(() => {}); });
       useSitesStore.setState({ deleteSite });
 
       const { user } = renderWithProviders(<AppCard site={mockSite} />);
@@ -637,7 +637,7 @@ describe('AppCard', () => {
 
   describe('hides transfer UI when flag is disabled', () => {
     it('should not show transfer menu item when flag is off', async function hideTransferItem() {
-      vi.mocked(useSwitchboard).mockImplementation((flag: string) => {
+      vi.mocked(useSwitchboard).mockImplementation(function (flag: string) {
         if (flag === 'appbuilder-transfer-ownership') {
           return false;
         }
@@ -657,14 +657,14 @@ describe('AppCard', () => {
     });
 
     it('should not show transfer pending tag when flag is off', async function hidePendingTag() {
-      vi.mocked(useSwitchboard).mockImplementation((flag: string) => {
+      vi.mocked(useSwitchboard).mockImplementation(function (flag: string) {
         if (flag === 'appbuilder-transfer-ownership') {
           return false;
         }
         return true;
       });
 
-      vi.mocked(appFetch).mockImplementation(async (url: string) => {
+      vi.mocked(appFetch).mockImplementation(async function (url: string) {
         if (typeof url === 'string' && url.includes('/transfer')) {
           return {
             ok: true,
@@ -715,7 +715,7 @@ describe('AppCard', () => {
 
   describe('transfer menu states', () => {
     it('should show transfer menu item when no active transfer', async function showTransferItem() {
-      vi.mocked(appFetch).mockImplementation(async (url: string) => {
+      vi.mocked(appFetch).mockImplementation(async function (url: string) {
         if (typeof url === 'string' && url.includes('/transfer')) {
           return { ok: false, status: 404, json: async () => ({}) } as Response;
         }
@@ -740,7 +740,7 @@ describe('AppCard', () => {
     });
 
     it('should show copy code and cancel transfer when active transfer exists', async function showCopyCancel() {
-      vi.mocked(appFetch).mockImplementation(async (url: string) => {
+      vi.mocked(appFetch).mockImplementation(async function (url: string) {
         if (typeof url === 'string' && url.includes('/transfer')) {
           return {
             ok: true,
@@ -762,7 +762,7 @@ describe('AppCard', () => {
     });
 
     it('should show transfer pending tag when transfer is active', async function showPendingTag() {
-      vi.mocked(appFetch).mockImplementation(async (url: string) => {
+      vi.mocked(appFetch).mockImplementation(async function (url: string) {
         if (typeof url === 'string' && url.includes('/transfer')) {
           return {
             ok: true,
@@ -784,7 +784,7 @@ describe('AppCard', () => {
     });
 
     it('should show cancel transfer confirmation when cancel is clicked', async function showCancelConfirm() {
-      vi.mocked(appFetch).mockImplementation(async (url: string) => {
+      vi.mocked(appFetch).mockImplementation(async function (url: string) {
         if (typeof url === 'string' && url.includes('/transfer')) {
           return {
             ok: true,
@@ -807,7 +807,7 @@ describe('AppCard', () => {
     });
 
     it('should fire cancel_success EID when cancel succeeds', async function cancelSuccess() {
-      vi.mocked(appFetch).mockImplementation(async (url: string, options?: RequestInit) => {
+      vi.mocked(appFetch).mockImplementation(async function (url: string, options?: RequestInit) {
         if (typeof url === 'string' && url.includes('/transfer/cancel') && options?.method === 'POST') {
           return { ok: true, status: 200, json: async () => ({}) } as Response;
         }
@@ -837,7 +837,7 @@ describe('AppCard', () => {
     });
 
     it('should fire cancel_error EID when cancel API fails', async function cancelError() {
-      vi.mocked(appFetch).mockImplementation(async (url: string, options?: RequestInit) => {
+      vi.mocked(appFetch).mockImplementation(async function (url: string, options?: RequestInit) {
         if (typeof url === 'string' && url.includes('/transfer/cancel') && options?.method === 'POST') {
           return { ok: false, status: 500, json: async () => ({ error: 'Server error' }) } as Response;
         }
@@ -866,7 +866,7 @@ describe('AppCard', () => {
     });
 
     it('should fire cancel_error EID when cancel throws', async function cancelThrows() {
-      vi.mocked(appFetch).mockImplementation(async (url: string, options?: RequestInit) => {
+      vi.mocked(appFetch).mockImplementation(async function (url: string, options?: RequestInit) {
         if (typeof url === 'string' && url.includes('/transfer/cancel') && options?.method === 'POST') {
           throw new Error('Network error');
         }
@@ -897,7 +897,7 @@ describe('AppCard', () => {
 
   describe('transfer validation flow', () => {
     function mockTransferValidation(canTransfer: boolean, gdCommerce: boolean) {
-      vi.mocked(appFetch).mockImplementation(async (url: string) => {
+      vi.mocked(appFetch).mockImplementation(async function (url: string) {
         if (typeof url === 'string' && url.includes('/transfer/validate')) {
           return { ok: true, json: async () => ({ canTransfer, gdCommerce }) } as Response;
         }
@@ -1027,7 +1027,7 @@ describe('AppCard', () => {
     });
 
     it('should show error message when validate endpoint fails', async function validateFails() {
-      vi.mocked(appFetch).mockImplementation(async (url: string) => {
+      vi.mocked(appFetch).mockImplementation(async function (url: string) {
         if (typeof url === 'string' && url.includes('/transfer/validate')) {
           return { ok: false, status: 500, json: async () => ({}) } as Response;
         }

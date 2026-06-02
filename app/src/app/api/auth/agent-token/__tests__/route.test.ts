@@ -58,7 +58,7 @@ vi.mock('@/lib/control-plane', function mockControlPlaneModule() {
  */
 vi.mock('@/lib/mgmt-airo', function mockMgmtAiroModule() {
   return {
-    AiroMgmtClient: vi.fn().mockImplementation(() => mockMgmtClient),
+    AiroMgmtClient: vi.fn().mockImplementation(function () { return mockMgmtClient; }),
     AIRO_OWNER_PRODUCTS: { AIRO_APP_BUILDER: 'AiroAppBuilder', PAAS_NODEJS: 'PaaSNodeJS' },
     ATTRIBUTE_KEYS: { BMS_MIGRATION: 'bms-migration', FREE_PLAN: 'free-plan' }
   };
@@ -577,8 +577,7 @@ describe('agent-token', function packageTests() {
 
         mockControlPlaneAdapter.appExists.mockResolvedValue(true);
         // Only enable useTestBudget and canPurchaseDomain, NOT budget service
-        mockCheckSwitchboardFlag.mockImplementation((flag: string) =>
-          Promise.resolve(flag === 'appbuilder-test-budget' || flag === 'appbuilder-domain-purchase')
+        mockCheckSwitchboardFlag.mockImplementation(function (flag: string) { return Promise.resolve(flag === 'appbuilder-test-budget' || flag === 'appbuilder-domain-purchase'); }
         );
 
         const request = createMockRequest({ siteId: MOCK_SITE_ID });
@@ -601,8 +600,7 @@ describe('agent-token', function packageTests() {
         });
 
         mockControlPlaneAdapter.appExists.mockResolvedValue(true);
-        mockCheckSwitchboardFlag.mockImplementation((flag: string) =>
-          Promise.resolve(flag === 'app-builder-budget-service' || flag === 'app-builder-bms-existing')
+        mockCheckSwitchboardFlag.mockImplementation(function (flag: string) { return Promise.resolve(flag === 'app-builder-budget-service' || flag === 'app-builder-bms-existing'); }
         );
         mockControlPlaneAdapter.getSite.mockResolvedValue({ subscription_id: 'sub-123' });
         mockMgmtClient.getSubscription.mockResolvedValue({
@@ -632,8 +630,7 @@ describe('agent-token', function packageTests() {
 
         mockControlPlaneAdapter.appExists.mockResolvedValue(true);
         // Only bmsExistingEnabled is true, budgetServiceEnabled is false
-        mockCheckSwitchboardFlag.mockImplementation((flag: string) =>
-          Promise.resolve(flag === 'app-builder-bms-existing')
+        mockCheckSwitchboardFlag.mockImplementation(function (flag: string) { return Promise.resolve(flag === 'app-builder-bms-existing'); }
         );
         mockControlPlaneAdapter.getSite.mockResolvedValue({ subscription_id: 'sub-123' });
         // Existing user with migration complete
@@ -664,8 +661,7 @@ describe('agent-token', function packageTests() {
         });
 
         mockControlPlaneAdapter.appExists.mockResolvedValue(true);
-        mockCheckSwitchboardFlag.mockImplementation((flag: string) =>
-          Promise.resolve(flag === 'app-builder-budget-service' || flag === 'app-builder-bms-existing')
+        mockCheckSwitchboardFlag.mockImplementation(function (flag: string) { return Promise.resolve(flag === 'app-builder-budget-service' || flag === 'app-builder-bms-existing'); }
         );
         mockControlPlaneAdapter.getSite.mockRejectedValue(new Error('control plane error'));
 
@@ -686,8 +682,7 @@ describe('agent-token', function packageTests() {
         });
 
         mockControlPlaneAdapter.appExists.mockResolvedValue(true);
-        mockCheckSwitchboardFlag.mockImplementation((flag: string) =>
-          Promise.resolve(flag === 'app-builder-budget-service' || flag === 'app-builder-bms-existing')
+        mockCheckSwitchboardFlag.mockImplementation(function (flag: string) { return Promise.resolve(flag === 'app-builder-budget-service' || flag === 'app-builder-bms-existing'); }
         );
 
         // First request: populate the site validation cache with a successful getSite
@@ -720,8 +715,7 @@ describe('agent-token', function packageTests() {
         });
 
         mockControlPlaneAdapter.appExists.mockResolvedValue(true);
-        mockCheckSwitchboardFlag.mockImplementation((flag: string) =>
-          Promise.resolve(flag === 'app-builder-budget-service' || flag === 'app-builder-bms-existing')
+        mockCheckSwitchboardFlag.mockImplementation(function (flag: string) { return Promise.resolve(flag === 'app-builder-budget-service' || flag === 'app-builder-bms-existing'); }
         );
         mockControlPlaneAdapter.getSite.mockResolvedValue({});
 
@@ -742,8 +736,7 @@ describe('agent-token', function packageTests() {
         });
 
         mockControlPlaneAdapter.appExists.mockResolvedValue(true);
-        mockCheckSwitchboardFlag.mockImplementation((flag: string) =>
-          Promise.resolve(flag === 'app-builder-budget-service' || flag === 'app-builder-bms-existing')
+        mockCheckSwitchboardFlag.mockImplementation(function (flag: string) { return Promise.resolve(flag === 'app-builder-budget-service' || flag === 'app-builder-bms-existing'); }
         );
         mockControlPlaneAdapter.getSite.mockResolvedValue({ subscription_id: 'sub-123' });
         // Subscription has migration attribute but no bmsBudgetId — migration not complete
@@ -770,8 +763,7 @@ describe('agent-token', function packageTests() {
         });
 
         mockControlPlaneAdapter.appExists.mockResolvedValue(true);
-        mockCheckSwitchboardFlag.mockImplementation((flag: string) =>
-          Promise.resolve(flag === 'app-builder-budget-service' || flag === 'app-builder-bms-existing')
+        mockCheckSwitchboardFlag.mockImplementation(function (flag: string) { return Promise.resolve(flag === 'app-builder-budget-service' || flag === 'app-builder-bms-existing'); }
         );
         mockControlPlaneAdapter.getSite.mockResolvedValue({ subscription_id: 'sub-123' });
         mockMgmtClient.getSubscription.mockRejectedValue(new Error('mgmt-airo down'));
@@ -794,8 +786,7 @@ describe('agent-token', function packageTests() {
         });
 
         mockControlPlaneAdapter.appExists.mockResolvedValue(true);
-        mockCheckSwitchboardFlag.mockImplementation((flag: string) =>
-          Promise.resolve(flag === 'app-builder-budget-service' || flag === 'app-builder-bms-existing')
+        mockCheckSwitchboardFlag.mockImplementation(function (flag: string) { return Promise.resolve(flag === 'app-builder-budget-service' || flag === 'app-builder-bms-existing'); }
         );
         mockControlPlaneAdapter.getSite.mockResolvedValue({ subscription_id: 'sub-123' });
         mockMgmtClient.getSubscription.mockResolvedValue({
@@ -822,8 +813,7 @@ describe('agent-token', function packageTests() {
 
         mockControlPlaneAdapter.appExists.mockResolvedValue(true);
         // Only app-builder-budget-service is enabled, not app-builder-bms-existing
-        mockCheckSwitchboardFlag.mockImplementation((flag: string) =>
-          Promise.resolve(flag === 'app-builder-budget-service')
+        mockCheckSwitchboardFlag.mockImplementation(function (flag: string) { return Promise.resolve(flag === 'app-builder-budget-service'); }
         );
         mockControlPlaneAdapter.getSite.mockResolvedValue({ subscription_id: 'sub-123' });
         // EXISTING user (has migration attribute) but bmsExistingEnabled is false
@@ -851,8 +841,7 @@ describe('agent-token', function packageTests() {
 
         mockControlPlaneAdapter.appExists.mockResolvedValue(true);
         // Only app-builder-bms-existing is enabled, not app-builder-budget-service
-        mockCheckSwitchboardFlag.mockImplementation((flag: string) =>
-          Promise.resolve(flag === 'app-builder-bms-existing')
+        mockCheckSwitchboardFlag.mockImplementation(function (flag: string) { return Promise.resolve(flag === 'app-builder-bms-existing'); }
         );
         mockControlPlaneAdapter.getSite.mockResolvedValue({ subscription_id: 'sub-123' });
         // NEW user (no migration attribute) but budgetServiceEnabled is false
@@ -883,8 +872,7 @@ describe('agent-token', function packageTests() {
       });
 
       it('should set modelSelectorEnabled when switchboard returns true', async function modelSelectorEnabled() {
-        mockCheckSwitchboardFlag.mockImplementation((flag: string) =>
-          Promise.resolve(flag === 'appbuilder-model-selector')
+        mockCheckSwitchboardFlag.mockImplementation(function (flag: string) { return Promise.resolve(flag === 'appbuilder-model-selector'); }
         );
 
         const request = createMockRequest({ siteId: MOCK_SITE_ID });
@@ -1013,8 +1001,7 @@ describe('agent-token', function packageTests() {
       });
 
       it('should set costAttributionDryRun when switchboard returns true', async function costAttributionDryRunEnabled() {
-        mockCheckSwitchboardFlag.mockImplementation((flag: string) =>
-          Promise.resolve(flag === 'appbuilder-cost-attribution-dry-run')
+        mockCheckSwitchboardFlag.mockImplementation(function (flag: string) { return Promise.resolve(flag === 'appbuilder-cost-attribution-dry-run'); }
         );
 
         const request = createMockRequest({ siteId: MOCK_SITE_ID });
@@ -1252,8 +1239,7 @@ describe('agent-token', function packageTests() {
           jwt: 'user-jwt-token'
         });
         mockControlPlaneAdapter.appExists.mockResolvedValue(true);
-        mockCheckSwitchboardFlag.mockImplementation((flag: string) =>
-          Promise.resolve(flag === 'app-builder-budget-service' || flag === 'app-builder-bms-existing')
+        mockCheckSwitchboardFlag.mockImplementation(function (flag: string) { return Promise.resolve(flag === 'app-builder-budget-service' || flag === 'app-builder-bms-existing'); }
         );
         mockControlPlaneAdapter.getSite.mockResolvedValue({ subscription_id: 'sub-123' });
         mockMgmtClient.getSubscription.mockResolvedValue({
@@ -1269,8 +1255,7 @@ describe('agent-token', function packageTests() {
           jwt: 'user-jwt-token'
         });
         mockControlPlaneAdapter.appExists.mockResolvedValue(true);
-        mockCheckSwitchboardFlag.mockImplementation((flag: string) =>
-          Promise.resolve(flag === 'app-builder-budget-service' || flag === 'app-builder-bms-existing')
+        mockCheckSwitchboardFlag.mockImplementation(function (flag: string) { return Promise.resolve(flag === 'app-builder-budget-service' || flag === 'app-builder-bms-existing'); }
         );
         mockControlPlaneAdapter.getSite.mockResolvedValue({ subscription_id: 'sub-123' });
         mockMgmtClient.getSubscription.mockResolvedValue({

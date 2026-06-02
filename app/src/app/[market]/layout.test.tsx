@@ -10,7 +10,7 @@ mockHeaders.entries = vi.fn(Map.prototype.entries.bind(mockHeaders));
 mockHeaders.forEach = vi.fn(Map.prototype.forEach.bind(mockHeaders));
 
 vi.mock('next/headers', () => ({
-  headers: vi.fn(async () => mockHeaders),
+  headers: vi.fn(async function () { return mockHeaders; }),
 }));
 
 vi.mock('@/styles/globals.scss', () => ({}));

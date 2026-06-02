@@ -9,8 +9,8 @@ import { act, fireEvent, screen, waitFor } from '@testing-library/react'
 import { renderWithProviders } from '@/tests/test-utils'
 import AppGenerationFeedbackBanner from './AppGenerationFeedbackBanner'
 
-const mockLogImpression = vi.fn(() => vi.fn())
-const mockLogClick = vi.fn(() => vi.fn())
+const mockLogImpression = vi.fn(function () { return vi.fn(); })
+const mockLogClick = vi.fn(function () { return vi.fn(); })
 const mockShipAnalyticsLog = vi.fn()
 
 vi.mock('@/utils/instrumentation', () => ({

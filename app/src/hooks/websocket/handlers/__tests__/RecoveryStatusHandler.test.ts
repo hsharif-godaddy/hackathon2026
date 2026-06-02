@@ -60,7 +60,7 @@ describe('RecoveryStatusHandler', () => {
       setStreamingState,
       setIsLoading,
     })
-    mockStore.setState.mockImplementation(() => undefined)
+    mockStore.setState.mockImplementation(function () { return undefined; })
 
     const data: WebSocketMessage = {
       type: 'recovery_status',
@@ -111,7 +111,7 @@ describe('RecoveryStatusHandler', () => {
       setStreamingState,
       setIsLoading,
     })
-    mockStore.setState.mockImplementation(() => undefined)
+    mockStore.setState.mockImplementation(function () { return undefined; })
 
     const data: WebSocketMessage = {
       type: 'recovery_status',
@@ -168,7 +168,7 @@ describe('RecoveryStatusHandler', () => {
       setStreamingState: vi.fn(),
       setIsLoading: vi.fn(),
     })
-    mockStore.setState.mockImplementation(() => undefined)
+    mockStore.setState.mockImplementation(function () { return undefined; })
 
     const data: WebSocketMessage = {
       type: 'recovery_status',
@@ -238,7 +238,7 @@ describe('RecoveryStatusHandler', () => {
 
     const controllerMock = {
       isInReplayMode: vi.fn().mockReturnValue(false),
-      startReplayDeduplication: vi.fn(() => {
+      startReplayDeduplication: vi.fn(function () {
         order.push('dedup')
       }),
       clearReplayDeduplication: vi.fn(),
@@ -264,7 +264,7 @@ describe('RecoveryStatusHandler', () => {
       setStreamingState: vi.fn(),
       setIsLoading: vi.fn(),
     })
-    mockStore.setState.mockImplementation(() => undefined)
+    mockStore.setState.mockImplementation(function () { return undefined; })
 
     const data: WebSocketMessage = {
       type: 'recovery_status',

@@ -283,7 +283,7 @@ describe('normalizeEvalResult', () => {
   });
 
   it('does not warn for a fully valid result', () => {
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(function () {});
     normalizeEvalResult(makeResult());
     expect(warnSpy).not.toHaveBeenCalled();
     warnSpy.mockRestore();
@@ -296,7 +296,7 @@ describe('normalizeEvalResult — console.warn on fallback', () => {
   });
 
   it('warns when verdict is invalid', () => {
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(function () {});
     normalizeEvalResult(
       makeResult({ verdict: 'yes' as unknown as EvalResult['verdict'] }),
     );
@@ -307,7 +307,7 @@ describe('normalizeEvalResult — console.warn on fallback', () => {
   });
 
   it('warns when evaluator name is empty', () => {
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(function () {});
     normalizeEvalResult(makeResult({ evaluator: '' }));
     expect(warnSpy).toHaveBeenCalledWith(
       expect.stringContaining('evaluator'),
@@ -316,7 +316,7 @@ describe('normalizeEvalResult — console.warn on fallback', () => {
   });
 
   it('warns when evaluator name is null', () => {
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(function () {});
     normalizeEvalResult(
       makeResult({ evaluator: null as unknown as string }),
     );

@@ -1,20 +1,20 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('../ai-lib-tools/drivers/getty-media-driver.js', () => ({
-  GettyMediaDriver: vi.fn().mockImplementation(() => ({
+  GettyMediaDriver: vi.fn().mockImplementation(function () { return {
     search: vi.fn(),
-  })),
+  }; }),
 }));
 
 vi.mock('../ai-lib-tools/drivers/image-search-service-driver.js', () => ({
-  ImageSearchServiceDriver: vi.fn().mockImplementation(() => ({
+  ImageSearchServiceDriver: vi.fn().mockImplementation(function () { return {
     search: vi.fn(),
-  })),
+  }; }),
 }));
 
 vi.mock('../../logging/index.js', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
-  Logger: { create: vi.fn(() => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() })) },
+  Logger: { create: vi.fn(function () { return { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }; }) },
 }));
 
 vi.mock('../../logging/events/index.js', () => ({

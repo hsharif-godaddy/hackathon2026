@@ -18,7 +18,7 @@ vi.mock('@/lib/gd-auth-service', () => ({
 
 vi.mock('@/lib/features', () => ({
   isFeatureEnabled: {
-    mockLogin: vi.fn(() => false)
+    mockLogin: vi.fn(function () { return false; })
   }
 }));
 
@@ -35,15 +35,15 @@ vi.mock('@/lib/request-context', async (importOriginal) => {
     ...actual,
     logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
     RequestContextService: {
-      run: vi.fn((_ctx: unknown, fn: () => unknown) => fn())
+      run: vi.fn(function (_ctx: unknown, fn: () => unknown) { return fn(); })
     }
   };
 });
 
 vi.mock('@/lib/apm-context', () => ({
-  startApmTransaction: vi.fn(() => null),
+  startApmTransaction: vi.fn(function () { return null; }),
   addApmContext: vi.fn(),
-  extractAppIdFromPath: vi.fn(() => null),
+  extractAppIdFromPath: vi.fn(function () { return null; }),
   setApmAppId: vi.fn(),
   setApmCustomerId: vi.fn(),
   setApmJobId: vi.fn(),

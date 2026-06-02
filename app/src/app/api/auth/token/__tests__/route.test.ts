@@ -47,7 +47,7 @@ vi.mock('@/lib/customer-auth', async () => {
   const actual = await vi.importActual('@/lib/customer-auth');
   return {
     ...actual,
-    withCustomerAuth: vi.fn((handler) => {
+    withCustomerAuth: vi.fn(function (handler) {
       return async (request: NextRequest, ...args: any[]) => {
         const authContext = await mockAuthenticateCustomer(request);
         if (!authContext.isAuthenticated) {
@@ -59,8 +59,8 @@ vi.mock('@/lib/customer-auth', async () => {
         return handler(request, authContext, ...args);
       };
     }),
-    customerHasAccount: vi.fn((user) => !!user.accountId),
-    createCustomerAuthError: vi.fn((message, status) => {
+    customerHasAccount: vi.fn(function (user) { return !!user.accountId; }),
+    createCustomerAuthError: vi.fn(function (message, status) {
       return new Response(JSON.stringify({ error: message }), {
         status,
         headers: { 'Content-Type': 'application/json' },

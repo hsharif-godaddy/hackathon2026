@@ -7,8 +7,8 @@ import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, screen, waitFor } from '@testing-library/react';
 
-const mockLogImpressionEvent = vi.fn((_eid: string) => vi.fn());
-const mockLogClickEvent = vi.fn((_eid: string, _customProperties?: Record<string, unknown>) => vi.fn());
+const mockLogImpressionEvent = vi.fn(function (_eid: string) { return vi.fn(); });
+const mockLogClickEvent = vi.fn(function (_eid: string, _customProperties?: Record<string, unknown>) { return vi.fn(); });
 const mockShipAnalyticsLog = vi.fn();
 
 vi.mock('@ux/modal', () => ({
@@ -85,12 +85,12 @@ vi.mock('@/hooks/useTranslations', () => ({
 }));
 
 const mockUseGasketData = vi.hoisted(() =>
-  vi.fn(() => ({
+  vi.fn(function () { return {
     switchboard: {
       'aab_recommended_plan_uppdcx': { cohortId: 'control' },
       'airo-app-builder-chat-gauge': { cohortId: 'control' },
     },
-  })),
+  }; }),
 );
 
 vi.mock('@/hooks/useGasketData', () => ({
@@ -103,7 +103,7 @@ vi.mock('@/hooks/useGasketData', () => ({
 // this file expect is actually exercised), but force the fanout-via-lambda
 // flag OFF so the legacy Slack/companion-hub branch is exercised.
 vi.mock('@/hooks/useSwitchboard', () => ({
-  useSwitchboard: vi.fn((flag: string) => flag !== 'appbuilder-fanout-via-lambda'),
+  useSwitchboard: vi.fn(function (flag: string) { return flag !== 'appbuilder-fanout-via-lambda'; }),
 }));
 
 vi.mock('react-intl', async (importOriginal) => {
@@ -123,30 +123,27 @@ vi.mock('@/components/providers/AuthProvider', () => ({
 // Default: no app id and no site in store → storeToS3 gets app_publish_flag false and
 // publish_url null. Lake "published" assertions need overrides (see storeToS3LakePublishedSite).
 const feedbackSitesStoreApi = vi.hoisted(() => ({
-  getSite: vi.fn((_id: string) => undefined as unknown),
+  getSite: vi.fn(function (_id: string) { return undefined as unknown; }),
 }));
 
 const feedbackSiteStoreApi = vi.hoisted(() => ({
-  getSite: vi.fn((_id: string) => null as unknown),
+  getSite: vi.fn(function (_id: string) { return null as unknown; }),
 }));
 
 vi.mock('@/stores/useDevelopPageStore', () => ({
-  useDevelopPageStore: vi.fn((selector: (s: any) => unknown) =>
-    selector({ currentAppId: null })),
+  useDevelopPageStore: vi.fn(function (selector: (s: any) => unknown) { return selector({ currentAppId: null }); }),
 }));
 
 vi.mock('@/stores/useSitesStore', () => ({
   useSitesStore: Object.assign(
-    vi.fn((selector: (s: typeof feedbackSitesStoreApi) => unknown) =>
-      selector(feedbackSitesStoreApi)),
+    vi.fn(function (selector: (s: typeof feedbackSitesStoreApi) => unknown) { return selector(feedbackSitesStoreApi); }),
     { getState: () => feedbackSitesStoreApi },
   ),
 }));
 
 vi.mock('@/stores/useSiteStore', () => ({
   useSiteStore: Object.assign(
-    vi.fn((selector: (s: typeof feedbackSiteStoreApi) => unknown) =>
-      selector(feedbackSiteStoreApi)),
+    vi.fn(function (selector: (s: typeof feedbackSiteStoreApi) => unknown) { return selector(feedbackSiteStoreApi); }),
     { getState: () => feedbackSiteStoreApi },
   ),
 }));
@@ -156,13 +153,13 @@ vi.mock('@/lib/request-context', () => ({
 }));
 
 vi.mock('@/utils/is-local-dev', () => ({
-  isLocalDev: vi.fn(() => true),
+  isLocalDev: vi.fn(function () { return true; }),
 }));
 
 vi.mock('./utils', () => ({
-  getAppIdFromUrl: vi.fn(() => null),
-  getBaseUrl: vi.fn(() => 'https://example.com/'),
-  getFullStorySessionUrl: vi.fn(() => Promise.resolve(null)),
+  getAppIdFromUrl: vi.fn(function () { return null; }),
+  getBaseUrl: vi.fn(function () { return 'https://example.com/'; }),
+  getFullStorySessionUrl: vi.fn(function () { return Promise.resolve(null); }),
   FEEDBACK_ID: 'airo#app-builder',
   SUPPORT_FEEDBACK_ID: 'airo#app-builder-support',
   BUG_REPORT_FEEDBACK_ID: 'airo#app-builder-bug',
@@ -192,15 +189,15 @@ vi.mock('./utils', () => ({
 }));
 
 vi.mock('@/lib/slack-webhook', () => ({
-  formatSlackBlockMessage: vi.fn(() => ({})),
+  formatSlackBlockMessage: vi.fn(function () { return {}; }),
 }));
 
 vi.mock('@/utils/credits', () => ({
-  getEffectiveCreditsSpent: vi.fn((spent, max) => Math.min(spent || 0, max || 0)),
+  getEffectiveCreditsSpent: vi.fn(function (spent, max) { return Math.min(spent || 0, max || 0); }),
 }));
 
 vi.mock('./submitFeedback', () => ({
-  fetchDiagnosticContext: vi.fn(() => Promise.resolve({
+  fetchDiagnosticContext: vi.fn(function () { return Promise.resolve({
     currentAppId: null,
     previewUrl: undefined,
     publishedUrl: undefined,
@@ -213,17 +210,17 @@ vi.mock('./submitFeedback', () => ({
     availableCredits: null,
     isInternalUser: false,
     isImpersonating: false,
-  })),
-  sendFeedbackToSlack: vi.fn(() => Promise.resolve()),
-  saveToCompanionHub: vi.fn(() => Promise.resolve()),
+  }); }),
+  sendFeedbackToSlack: vi.fn(function () { return Promise.resolve(); }),
+  saveToCompanionHub: vi.fn(function () { return Promise.resolve(); }),
   storeToS3: vi.fn(),
-  openCrmCaseForIssue: vi.fn(() => Promise.resolve({})),
+  openCrmCaseForIssue: vi.fn(function () { return Promise.resolve({}); }),
 }));
 
 vi.mock('./slackBuilders', () => ({
-  buildSupportRequestBlocks: vi.fn(() => ({ title: 'test' })),
-  buildBugReportBlocks: vi.fn(() => ({ title: 'test' })),
-  buildFeedbackBlocks: vi.fn(() => ({ title: 'test' })),
+  buildSupportRequestBlocks: vi.fn(function () { return { title: 'test' }; }),
+  buildBugReportBlocks: vi.fn(function () { return { title: 'test' }; }),
+  buildFeedbackBlocks: vi.fn(function () { return { title: 'test' }; }),
 }));
 
 import { buildExperimentsLineFromSwitchboard } from '@/components/feedback/experimentsLine';
@@ -258,7 +255,7 @@ function mockAuth(authType: string | undefined, shopperId = '12345678') {
     configLoading: false,
     configError: null,
     getUserEmail: vi.fn(),
-    getUserInfo: vi.fn(() => ({ customerId: 'cust-123', shopperId, accountName: '', email: '' })),
+    getUserInfo: vi.fn(function () { return { customerId: 'cust-123', shopperId, accountName: '', email: '' }; }),
     handleSignIn: vi.fn(),
     handleSignOut: vi.fn(),
     authType: 'jwt',
@@ -280,16 +277,15 @@ describe('Feedback', function feedbackTests() {
         [EXPERIMENT_IDS.chatGauge]: { cohortId: 'control' },
       },
     });
-    global.fetch = vi.fn(() => Promise.resolve({
+    global.fetch = vi.fn(function () { return Promise.resolve({
       ok: true,
       json: async () => ({ success: true }),
-    } as Response));
-    vi.mocked(useDevelopPageStore).mockImplementation((selector) =>
-      selector({ currentAppId: null } as any));
+    } as Response); });
+    vi.mocked(useDevelopPageStore).mockImplementation(function (selector) { return selector({ currentAppId: null } as any); });
     feedbackSitesStoreApi.getSite.mockReset();
-    feedbackSitesStoreApi.getSite.mockImplementation(() => undefined);
+    feedbackSitesStoreApi.getSite.mockImplementation(function () { return undefined; });
     feedbackSiteStoreApi.getSite.mockReset();
-    feedbackSiteStoreApi.getSite.mockImplementation(() => null);
+    feedbackSiteStoreApi.getSite.mockImplementation(function () { return null; });
     vi.mocked(getAppIdFromUrl).mockReturnValue(null);
     document.getElementById('feedback-modal-portal')?.remove();
   });
@@ -915,16 +911,14 @@ describe('Feedback', function feedbackTests() {
     });
 
     it('should pass lake enrichment fields to storeToS3 when site is published', async function storeToS3LakePublishedSite() {
-      vi.mocked(useDevelopPageStore).mockImplementation((selector) =>
-        selector({ currentAppId: 'app-published' } as any));
-      feedbackSiteStoreApi.getSite.mockImplementation((id: string) =>
-        id === 'app-published'
+      vi.mocked(useDevelopPageStore).mockImplementation(function (selector) { return selector({ currentAppId: 'app-published' } as any); });
+      feedbackSiteStoreApi.getSite.mockImplementation(function (id: string) { return id === 'app-published'
           ? ({
               published_url: 'https://customer.example/',
               variantsWithLifecycle: [{ variant: 'publish', status: 'active' }],
             } as any)
-          : null);
-      feedbackSitesStoreApi.getSite.mockImplementation(() => undefined);
+          : null; });
+      feedbackSitesStoreApi.getSite.mockImplementation(function () { return undefined; });
       mockAuth('basic');
       renderWithProviders(<Feedback {...defaultProps} />);
       await navigateToFeedback();
@@ -942,17 +936,15 @@ describe('Feedback', function feedbackTests() {
     });
 
     it('should use URL app id for site lookup and storeToS3 when currentAppId is absent', async function storeToS3EffectiveAppIdFromUrl() {
-      vi.mocked(useDevelopPageStore).mockImplementation((selector) =>
-        selector({ currentAppId: null } as any));
+      vi.mocked(useDevelopPageStore).mockImplementation(function (selector) { return selector({ currentAppId: null } as any); });
       vi.mocked(getAppIdFromUrl).mockReturnValue('app-from-url');
-      feedbackSiteStoreApi.getSite.mockImplementation(() => null);
-      feedbackSitesStoreApi.getSite.mockImplementation((id: string) =>
-        id === 'app-from-url'
+      feedbackSiteStoreApi.getSite.mockImplementation(function () { return null; });
+      feedbackSitesStoreApi.getSite.mockImplementation(function (id: string) { return id === 'app-from-url'
           ? ({
               published_url: 'https://from-url.example/',
               variantsWithLifecycle: [{ variant: 'publish', status: 'active' }],
             } as any)
-          : undefined);
+          : undefined; });
       mockAuth('basic');
       renderWithProviders(<Feedback {...defaultProps} />);
       await navigateToFeedback();
@@ -968,10 +960,9 @@ describe('Feedback', function feedbackTests() {
     });
 
     it('should pass null app_publish_flag when app id resolves but site is missing', async function storeToS3UnknownPublishState() {
-      vi.mocked(useDevelopPageStore).mockImplementation((selector) =>
-        selector({ currentAppId: 'not-in-store' } as any));
-      feedbackSiteStoreApi.getSite.mockImplementation(() => null);
-      feedbackSitesStoreApi.getSite.mockImplementation(() => undefined);
+      vi.mocked(useDevelopPageStore).mockImplementation(function (selector) { return selector({ currentAppId: 'not-in-store' } as any); });
+      feedbackSiteStoreApi.getSite.mockImplementation(function () { return null; });
+      feedbackSitesStoreApi.getSite.mockImplementation(function () { return undefined; });
       mockAuth('basic');
       renderWithProviders(<Feedback {...defaultProps} />);
       await navigateToFeedback();
@@ -987,13 +978,11 @@ describe('Feedback', function feedbackTests() {
     });
 
     it('should not set lake publish fields from published_url alone when lifecycle omits publish', async function storeToS3UrlOnlyWithoutLifecycle() {
-      vi.mocked(useDevelopPageStore).mockImplementation((selector) =>
-        selector({ currentAppId: 'app-url-only' } as any));
-      feedbackSiteStoreApi.getSite.mockImplementation(() => null);
-      feedbackSitesStoreApi.getSite.mockImplementation((id: string) =>
-        id === 'app-url-only'
+      vi.mocked(useDevelopPageStore).mockImplementation(function (selector) { return selector({ currentAppId: 'app-url-only' } as any); });
+      feedbackSiteStoreApi.getSite.mockImplementation(function () { return null; });
+      feedbackSitesStoreApi.getSite.mockImplementation(function (id: string) { return id === 'app-url-only'
           ? ({ published_url: 'https://customer.example/live/' } as any)
-          : undefined);
+          : undefined; });
       mockAuth('basic');
       renderWithProviders(<Feedback {...defaultProps} />);
       await navigateToFeedback();

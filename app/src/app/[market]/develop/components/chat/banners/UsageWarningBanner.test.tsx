@@ -12,20 +12,20 @@ import { WarningLevel } from '@/types/usage';
 import UsageWarningBanner from './UsageWarningBanner';
 
 vi.mock('@/hooks/useUsage', () => ({
-  useUsage: vi.fn(() => ({
+  useUsage: vi.fn(function () { return {
     isWarningBannerActive: true,
     percentage: 92,
     warningLevel: 'warning',
     isLoading: false,
-  })),
+  }; }),
 }));
 
 vi.mock('@/hooks/useSwitchboard', () => ({
-  useSwitchboard: vi.fn(() => (false)),
+  useSwitchboard: vi.fn(function () { return false; }),
 }));
 
-const mockLogImpressionEvent = vi.fn((_eid: string) => vi.fn());
-const mockLogClickEvent = vi.fn((_eid: string) => vi.fn());
+const mockLogImpressionEvent = vi.fn(function (_eid: string) { return vi.fn(); });
+const mockLogClickEvent = vi.fn(function (_eid: string) { return vi.fn(); });
 
 vi.mock('@/utils/instrumentation', () => ({
   logImpressionEvent: (eid: string) => mockLogImpressionEvent(eid),

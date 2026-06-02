@@ -75,7 +75,7 @@ describe('AppRepository', () => {
     };
 
     // Set up default mock returns
-    mockStatement.get.mockImplementation((id?: any) => {
+    mockStatement.get.mockImplementation(function (id?: any) {
       if (id === mockAppId || id === 'test-app-123') {
         return {
           id: mockAppId,
@@ -113,7 +113,7 @@ describe('AppRepository', () => {
       configureUser: vi.fn().mockResolvedValue(undefined),
       createInitialCommit: vi.fn().mockResolvedValue({ success: true }),
     };
-    vi.mocked(GitUtils).mockImplementation(() => mockGitUtils);
+    vi.mocked(GitUtils).mockImplementation(function () { return mockGitUtils; });
 
     // Mock logger
     const { Logger } = await import('../../../logging/index.js');
@@ -128,13 +128,12 @@ describe('AppRepository', () => {
 
     // Mock error utility
     const { getErrorMessage } = await import('../../../utils/error.js');
-    vi.mocked(getErrorMessage).mockImplementation((error: any) =>
-      error instanceof Error ? error.message : String(error)
+    vi.mocked(getErrorMessage).mockImplementation(function (error: any) { return error instanceof Error ? error.message : String(error); }
     );
 
     // Mock path functions
-    vi.mocked(path.join).mockImplementation((...args) => args.join('/'));
-    vi.mocked(path.resolve).mockImplementation((...args) => '/' + args.join('/'));
+    vi.mocked(path.join).mockImplementation(function (...args) { return args.join('/'); });
+    vi.mocked(path.resolve).mockImplementation(function (...args) { return '/' + args.join('/'); });
     vi.mocked(path.dirname).mockReturnValue('/parent');
     vi.mocked(path.isAbsolute).mockReturnValue(false);
     vi.mocked(path.relative).mockReturnValue('relative/path');
@@ -322,7 +321,7 @@ describe('AppRepository', () => {
           run: vi.fn(),
         };
 
-        mockDb.prepare.mockImplementation((sql: string) => {
+        mockDb.prepare.mockImplementation(function (sql: string) {
           if (sql.includes('SELECT')) {
             return mockGetStatement;
           }
@@ -423,7 +422,7 @@ describe('AppRepository', () => {
           run: vi.fn(),
         };
 
-        mockDb.prepare.mockImplementation((sql: string) => {
+        mockDb.prepare.mockImplementation(function (sql: string) {
           if (sql.includes('SELECT')) {
             return mockGetStatement;
           }
@@ -485,7 +484,7 @@ describe('AppRepository', () => {
         run: vi.fn().mockReturnValue({ changes: 1 }),
       };
 
-      mockDb.prepare.mockImplementation((sql: string) => {
+      mockDb.prepare.mockImplementation(function (sql: string) {
         if (sql.includes('INSERT')) {
           return mockInsertStatement;
         }
@@ -536,7 +535,7 @@ describe('AppRepository', () => {
         run: vi.fn(),
       };
 
-      mockDb.prepare.mockImplementation((sql: string) => {
+      mockDb.prepare.mockImplementation(function (sql: string) {
         if (sql.includes('UPDATE')) {
           return mockUpdateStatement;
         }
@@ -639,7 +638,7 @@ describe('AppRepository', () => {
         run: vi.fn().mockReturnValue({ changes: 1 }),
       };
 
-      mockDb.prepare.mockImplementation((sql: string) => {
+      mockDb.prepare.mockImplementation(function (sql: string) {
         if (sql.includes('INSERT')) {
           return mockInsertStatement;
         }
@@ -937,7 +936,7 @@ describe('AppRepository', () => {
         run: vi.fn().mockReturnValue({ changes: 1 }),
       };
 
-      mockDb.prepare.mockImplementation((sql: string) => {
+      mockDb.prepare.mockImplementation(function (sql: string) {
         if (sql.includes('DELETE')) {
           return mockDeleteStatement;
         }
@@ -1058,7 +1057,7 @@ describe('AppRepository', () => {
         run: vi.fn(),
       };
 
-      mockDb.prepare.mockImplementation((sql: string) => {
+      mockDb.prepare.mockImplementation(function (sql: string) {
         if (sql.includes('UPDATE')) {
           return mockUpdateStatement;
         }
@@ -1115,7 +1114,7 @@ describe('AppRepository', () => {
   describe('Error Handling', () => {
     it('should handle database connection errors', async () => {
       const { getDatabase } = await import('../../connection.js');
-      vi.mocked(getDatabase).mockImplementation(() => {
+      vi.mocked(getDatabase).mockImplementation(function () {
         throw new Error('Database connection failed');
       });
 

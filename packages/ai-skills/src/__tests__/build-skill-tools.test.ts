@@ -304,7 +304,7 @@ describe('registerSkillTools', () => {
 
     it('should timeout execution if it takes too long', async () => {
       const slowExecuteFn = vi.fn().mockImplementation(
-        () => new Promise(resolve => setTimeout(() => resolve('slow result'), 200))
+        function () { return new Promise(resolve => setTimeout(() => resolve('slow result'), 200)); }
       )
 
       const toolDef: SkillToolDefinition = {

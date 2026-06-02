@@ -121,7 +121,7 @@ describe('useGasketConfig', () => {
 
   it('should cancel loading on unmount', async () => {
     vi.mocked(getGasketConfig).mockImplementation(
-      () => new Promise((resolve) => setTimeout(resolve, 1000))
+      function () { return new Promise((resolve) => setTimeout(resolve, 1000)); }
     );
 
     const { result, unmount } = renderHook(() => useGasketConfig());
@@ -136,7 +136,7 @@ describe('useGasketConfig', () => {
 
   it('should set loading state correctly', async () => {
     vi.mocked(getGasketConfig).mockImplementation(
-      () => new Promise((resolve) => setTimeout(() => resolve(gasketConfig), 10))
+      function () { return new Promise((resolve) => setTimeout(() => resolve(gasketConfig), 10)); }
     );
 
     const { result } = renderHook(() => useGasketConfig());

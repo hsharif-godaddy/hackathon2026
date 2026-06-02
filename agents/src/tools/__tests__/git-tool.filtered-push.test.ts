@@ -2,14 +2,14 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
 
 vi.mock("../../database/repositories/GitRemoteConfigRepository.js", () => ({
-  GitRemoteConfigRepository: vi.fn().mockImplementation(() => ({
+  GitRemoteConfigRepository: vi.fn().mockImplementation(function () { return {
     findByAppAndRemote: vi.fn().mockReturnValue({
       id: "config-1",
       repoUrl: "https://github.com/user/repo.git",
       syncEnabled: true,
     }),
     update: vi.fn(),
-  })),
+  }; }),
 }));
 
 // Create mock functions that we can track
@@ -27,7 +27,7 @@ const mockGetRemoteUrl = vi.fn();
 const mockSetRemoteUrl = vi.fn();
 
 vi.mock("../../utils/git.js", () => ({
-  GitUtils: vi.fn().mockImplementation(() => ({
+  GitUtils: vi.fn().mockImplementation(function () { return {
     getCurrentBranch: mockGetCurrentBranch,
     isGitRepository: mockIsGitRepository,
     hasRemote: mockHasRemote,
@@ -41,14 +41,14 @@ vi.mock("../../utils/git.js", () => ({
     commitTree: mockCommitTree,
     push: mockPush,
     reset: mockReset,
-  })),
+  }; }),
 }));
 
 vi.mock("../../services/GitRemoteTokenManager.js", () => ({
-  GitRemoteTokenManager: vi.fn().mockImplementation(() => ({
+  GitRemoteTokenManager: vi.fn().mockImplementation(function () { return {
     configureGitCredentials: vi.fn().mockResolvedValue(undefined),
     cleanupGitCredentials: vi.fn().mockResolvedValue(undefined),
-  })),
+  }; }),
 }));
 
 vi.mock("../../config/app-download.js", () => ({

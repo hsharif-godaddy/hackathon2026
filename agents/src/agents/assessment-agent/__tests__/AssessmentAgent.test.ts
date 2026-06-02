@@ -86,7 +86,7 @@ describe('AssessmentAgent', () => {
     })
 
     mocks.llmMetadataContextRun.mockImplementation(
-      async (_metadata: unknown, fn: () => Promise<unknown>) => fn()
+      async function (_metadata: unknown, fn: () => Promise<unknown>) { return fn(); }
     )
 
     mockEmbeddingInitialize.mockResolvedValue(undefined)

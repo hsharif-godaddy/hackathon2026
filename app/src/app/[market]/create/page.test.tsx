@@ -68,7 +68,7 @@ describe('CreatePage', () => {
       isAuthenticated: false,
       isLoading: false,
     })
-    ;(useAuthUIStore as any).mockImplementation((selector: any) => {
+    ;(useAuthUIStore as any).mockImplementation(function (selector: any) {
       const store = {
         openSsoLogin: mockOpenSsoLogin,
         setRedirectUrl: mockSetRedirectUrl,
@@ -100,7 +100,7 @@ describe('CreatePage', () => {
   })
 
   it('calls createSiteAndRedirect with correct params', async () => {
-    mockSearchParams.get.mockImplementation((key: string) => {
+    mockSearchParams.get.mockImplementation(function (key: string) {
       if (key === 'initialPrompt') return 'test prompt'
       return null
     })
@@ -120,13 +120,13 @@ describe('CreatePage', () => {
   })
 
   it('triggers SSO when API returns 401', async () => {
-    mockSearchParams.get.mockImplementation((key: string) => {
+    mockSearchParams.get.mockImplementation(function (key: string) {
       if (key === 'initialPrompt') return 'test prompt'
       return null
     })
     let onAuthRequiredCallback: any
 
-    ;(createSiteAndRedirect as any).mockImplementation((options: any) => {
+    ;(createSiteAndRedirect as any).mockImplementation(function (options: any) {
       onAuthRequiredCallback = options.onAuthRequired
     })
 
@@ -144,7 +144,7 @@ describe('CreatePage', () => {
   })
 
   it('passes templateId to createSiteAndRedirect when template param is present', async () => {
-    mockSearchParams.get.mockImplementation((key: string) => {
+    mockSearchParams.get.mockImplementation(function (key: string) {
       if (key === 'initialPrompt') return 'test prompt'
       if (key === 'template') return 'logo-designer'
       return null
@@ -165,7 +165,7 @@ describe('CreatePage', () => {
   })
 
   it('treats template=default as no template', async () => {
-    mockSearchParams.get.mockImplementation((key: string) => {
+    mockSearchParams.get.mockImplementation(function (key: string) {
       if (key === 'initialPrompt') return 'test prompt'
       if (key === 'template') return 'default'
       return null
@@ -186,7 +186,7 @@ describe('CreatePage', () => {
   })
 
   it('ignores invalid template param', async () => {
-    mockSearchParams.get.mockImplementation((key: string) => {
+    mockSearchParams.get.mockImplementation(function (key: string) {
       if (key === 'initialPrompt') return 'test prompt'
       if (key === 'template') return 'not-a-real-template'
       return null
@@ -207,14 +207,14 @@ describe('CreatePage', () => {
   })
 
   it('preserves template param in redirect URL on auth required', async () => {
-    mockSearchParams.get.mockImplementation((key: string) => {
+    mockSearchParams.get.mockImplementation(function (key: string) {
       if (key === 'initialPrompt') return 'test prompt'
       if (key === 'template') return 'logo-designer'
       return null
     })
     let onAuthRequiredCallback: any
 
-    ;(createSiteAndRedirect as any).mockImplementation((options: any) => {
+    ;(createSiteAndRedirect as any).mockImplementation(function (options: any) {
       onAuthRequiredCallback = options.onAuthRequired
     })
 
@@ -235,14 +235,14 @@ describe('CreatePage', () => {
   })
 
   it('preserves itc param in redirect URL on auth required', async () => {
-    mockSearchParams.get.mockImplementation((key: string) => {
+    mockSearchParams.get.mockImplementation(function (key: string) {
       if (key === 'initialPrompt') return 'test prompt'
       if (key === 'itc') return 'build_for_free'
       return null
     })
     let onAuthRequiredCallback: any
 
-    ;(createSiteAndRedirect as any).mockImplementation((options: any) => {
+    ;(createSiteAndRedirect as any).mockImplementation(function (options: any) {
       onAuthRequiredCallback = options.onAuthRequired
     })
 
@@ -266,7 +266,7 @@ describe('CreatePage', () => {
     mockSearchParams.get.mockReturnValue('test prompt')
 
     // Mock SSO close reason as 'dismiss'
-    ;(useAuthUIStore as any).mockImplementation((selector: any) => {
+    ;(useAuthUIStore as any).mockImplementation(function (selector: any) {
       const store = {
         openSsoLogin: mockOpenSsoLogin,
         setRedirectUrl: mockSetRedirectUrl,
@@ -288,7 +288,7 @@ describe('CreatePage', () => {
     mockSearchParams.get.mockReturnValue('test prompt')
     let onErrorCallback: any
 
-    ;(createSiteAndRedirect as any).mockImplementation((options: any) => {
+    ;(createSiteAndRedirect as any).mockImplementation(function (options: any) {
       onErrorCallback = options.onError
     })
 

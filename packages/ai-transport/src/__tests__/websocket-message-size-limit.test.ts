@@ -13,7 +13,7 @@ vi.mock('@airo/ai-lib', () => ({
   // inferProviderFromModelName (used by createAgentInvocation) now
   // delegates to getModelProvider; mock it so the ai-lib boundary
   // resolves without bringing in the real normalization module.
-  getModelProvider: vi.fn(() => 'anthropic'),
+  getModelProvider: vi.fn(function () { return 'anthropic'; }),
 }));
 
 const mockSocket: Record<string, any> = {
@@ -36,7 +36,7 @@ const mockIO = {
 };
 
 vi.mock('socket.io', () => ({
-  Server: vi.fn().mockImplementation(() => mockIO),
+  Server: vi.fn().mockImplementation(function () { return mockIO; }),
 }));
 
 const mockAgent: AgentWrapper = {
@@ -55,7 +55,7 @@ async function setupServerWithConnection(
 ): Promise<{ server: WebSocketServer; messageHandler: (data: any) => Promise<void> }> {
   let connectionHandler: ((socket: any) => Promise<void>) | null = null;
 
-  mockIO.on.mockImplementation((event: string, handler: any) => {
+  mockIO.on.mockImplementation(function (event: string, handler: any) {
     if (event === 'connection') {
       connectionHandler = handler;
     }

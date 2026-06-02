@@ -13,13 +13,13 @@ vi.mock('../../workspace/index.js', () => ({
 
 // Mock AppRepository
 vi.mock('../../database/repositories/AppRepository.js', () => ({
-  AppRepository: vi.fn().mockImplementation(() => ({
+  AppRepository: vi.fn().mockImplementation(function () { return {
     findById: vi.fn().mockReturnValue({
       id: 'test-app-123',
       previewUrl: 'https://test-app.preview.airo.dev',
       path: '/tmp/apps/test-app-123'
     })
-  }))
+  }; })
 }))
 
 describe('qr-code-tool', function packageTests() {
@@ -90,9 +90,9 @@ describe('qr-code-tool', function packageTests() {
     })
 
     it('should fail gracefully when app not found', async function generateNotFound() {
-      vi.mocked(AppRepository).mockImplementationOnce(() => ({
+      vi.mocked(AppRepository).mockImplementationOnce(function () { return {
         findById: vi.fn().mockReturnValue(null)
-      } as any))
+      } as any; })
 
       const result = await generateQRCode({
         appId: 'nonexistent-app',

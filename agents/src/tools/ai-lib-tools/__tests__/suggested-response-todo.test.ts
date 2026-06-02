@@ -6,26 +6,26 @@ const { mockGetListById } = vi.hoisted(() => ({
 
 vi.mock('../../../logging/index.js', () => ({
   Logger: {
-    create: vi.fn(() => ({
+    create: vi.fn(function () { return {
       info: vi.fn(),
       error: vi.fn(),
       warn: vi.fn(),
       debug: vi.fn()
-    }))
+    }; })
   }
 }))
 
 vi.mock('../../../database/repositories/AppRepository.js', () => ({
-  AppRepository: vi.fn(() => ({
+  AppRepository: vi.fn(function () { return {
     findById: vi.fn().mockResolvedValue(null)
-  }))
+  }; })
 }))
 
 vi.mock('../../../database/repositories/TodoListRepository.js', () => ({
-  TodoListRepository: vi.fn(() => ({
+  TodoListRepository: vi.fn(function () { return {
     getListById: mockGetListById,
     initializeSchema: vi.fn()
-  }))
+  }; })
 }))
 
 import { suggestedResponseAITool } from '../suggested-response.js'

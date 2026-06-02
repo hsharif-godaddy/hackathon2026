@@ -102,7 +102,7 @@ describe('agent-fetch', function packageTests() {
       const mockExpires = new Date(Date.now() + 12 * 60 * 60 * 1000);
 
       // Mock token endpoint
-      vi.mocked(fetch).mockImplementation(async (url) => {
+      vi.mocked(fetch).mockImplementation(async function (url) {
         if (typeof url === 'string' && url.includes('agent-token')) {
           // Add delay to simulate slow token request
           await new Promise(resolve => setTimeout(resolve, 100));
@@ -145,7 +145,7 @@ describe('agent-fetch', function packageTests() {
       const mockToken2 = 'token-site-2';
       const mockExpires = new Date(Date.now() + 12 * 60 * 60 * 1000);
 
-      vi.mocked(fetch).mockImplementation(async (url, options) => {
+      vi.mocked(fetch).mockImplementation(async function (url, options) {
         if (typeof url === 'string' && url.includes('agent-token')) {
           const body = JSON.parse(options?.body as string);
           const token = body.siteId === 'site-1' ? mockToken1 : mockToken2;

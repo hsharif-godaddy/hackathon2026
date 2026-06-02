@@ -11,15 +11,15 @@ const mockFindById = vi.hoisted(() => vi.fn());
 
 // Mock other dependencies
 vi.mock('../../../database/repositories/AppRepository.js', () => ({
-  AppRepository: vi.fn().mockImplementation(() => ({
+  AppRepository: vi.fn().mockImplementation(function () { return {
     findById: mockFindById,
-  })),
+  }; }),
 }));
 
 vi.mock('../../../database/repositories/GitRemoteConfigRepository.js', () => ({
-  GitRemoteConfigRepository: vi.fn().mockImplementation(() => ({
+  GitRemoteConfigRepository: vi.fn().mockImplementation(function () { return {
     findByAppId: vi.fn(),
-  })),
+  }; }),
 }));
 
 vi.mock('../../../utils/dev-supervisor-client-factory.js', () => ({
@@ -29,15 +29,15 @@ vi.mock('../../../utils/dev-supervisor-client-factory.js', () => ({
 }));
 
 vi.mock('../../../workspace/index.js', () => ({
-  createForWorkspace: vi.fn(() => ({ tasks: {} })),
+  createForWorkspace: vi.fn(function () { return { tasks: {} }; }),
 }));
 
 vi.mock('../../middleware/app-ownership.js', () => ({
-  validateAppOwnership: vi.fn((_req, _res, next) => next()),
+  validateAppOwnership: vi.fn(function (_req, _res, next) { return next(); }),
 }));
 
 vi.mock('../../middleware/git-import-validation.js', () => ({
-  validateGitSync: vi.fn((_req, _res, next) => next()),
+  validateGitSync: vi.fn(function (_req, _res, next) { return next(); }),
 }));
 
 vi.mock('../../../tools/git-tool.js', () => ({
@@ -45,7 +45,7 @@ vi.mock('../../../tools/git-tool.js', () => ({
 }));
 
 vi.mock('../../../utils/error.js', () => ({
-  getErrorMessage: vi.fn((err: unknown) => err instanceof Error ? err.message : String(err)),
+  getErrorMessage: vi.fn(function (err: unknown) { return err instanceof Error ? err.message : String(err); }),
 }));
 
 vi.mock('../../../services/GitOpsService.js', () => ({
@@ -144,7 +144,7 @@ describe('git-remote routes', function gitRemoteTests() {
 
       describe('/git/push capability check', function pushCapabilityTests() {
         it('should allow request when CODE_SYNC_GIT_PUSH capability is enabled', async function pushAllowed() {
-          vi.mocked(isCapabilityEnabled).mockImplementation((cap) => cap === 'CODE_SYNC_GIT_PUSH');
+          vi.mocked(isCapabilityEnabled).mockImplementation(function (cap) { return cap === 'CODE_SYNC_GIT_PUSH'; });
 
           const response = await request(app)
             .post('/apps/test-id/git/push')
@@ -167,7 +167,7 @@ describe('git-remote routes', function gitRemoteTests() {
         });
 
         it('should not allow push when only CODE_SYNC_GIT_PULL is enabled', async function pushWithOnlyPull() {
-          vi.mocked(isCapabilityEnabled).mockImplementation((cap) => cap === 'CODE_SYNC_GIT_PULL');
+          vi.mocked(isCapabilityEnabled).mockImplementation(function (cap) { return cap === 'CODE_SYNC_GIT_PULL'; });
 
           const response = await request(app)
             .post('/apps/test-id/git/push')
@@ -180,7 +180,7 @@ describe('git-remote routes', function gitRemoteTests() {
 
       describe('/git/pull capability check', function pullCapabilityTests() {
         it('should allow request when CODE_SYNC_GIT_PULL capability is enabled', async function pullAllowed() {
-          vi.mocked(isCapabilityEnabled).mockImplementation((cap) => cap === 'CODE_SYNC_GIT_PULL');
+          vi.mocked(isCapabilityEnabled).mockImplementation(function (cap) { return cap === 'CODE_SYNC_GIT_PULL'; });
 
           const response = await request(app)
             .post('/apps/test-id/git/pull')
@@ -203,7 +203,7 @@ describe('git-remote routes', function gitRemoteTests() {
         });
 
         it('should not allow pull when only CODE_SYNC_GIT_PUSH is enabled', async function pullWithOnlyPush() {
-          vi.mocked(isCapabilityEnabled).mockImplementation((cap) => cap === 'CODE_SYNC_GIT_PUSH');
+          vi.mocked(isCapabilityEnabled).mockImplementation(function (cap) { return cap === 'CODE_SYNC_GIT_PUSH'; });
 
           const response = await request(app)
             .post('/apps/test-id/git/pull')
@@ -216,7 +216,7 @@ describe('git-remote routes', function gitRemoteTests() {
 
       describe('/git/remote/status capability check', function statusCapabilityTests() {
         it('should allow request when CODE_SYNC_GIT_PUSH is enabled', async function statusWithPush() {
-          vi.mocked(isCapabilityEnabled).mockImplementation((cap) => cap === 'CODE_SYNC_GIT_PUSH');
+          vi.mocked(isCapabilityEnabled).mockImplementation(function (cap) { return cap === 'CODE_SYNC_GIT_PUSH'; });
 
           const response = await request(app)
             .get('/apps/test-id/git/remote/status');
@@ -225,7 +225,7 @@ describe('git-remote routes', function gitRemoteTests() {
         });
 
         it('should allow request when CODE_SYNC_GIT_PULL is enabled', async function statusWithPull() {
-          vi.mocked(isCapabilityEnabled).mockImplementation((cap) => cap === 'CODE_SYNC_GIT_PULL');
+          vi.mocked(isCapabilityEnabled).mockImplementation(function (cap) { return cap === 'CODE_SYNC_GIT_PULL'; });
 
           const response = await request(app)
             .get('/apps/test-id/git/remote/status');
@@ -256,7 +256,7 @@ describe('git-remote routes', function gitRemoteTests() {
 
       describe('/git/remote/configure capability check', function configureCapabilityTests() {
         it('should allow request when CODE_SYNC_GIT_PUSH is enabled', async function configureWithPush() {
-          vi.mocked(isCapabilityEnabled).mockImplementation((cap) => cap === 'CODE_SYNC_GIT_PUSH');
+          vi.mocked(isCapabilityEnabled).mockImplementation(function (cap) { return cap === 'CODE_SYNC_GIT_PUSH'; });
 
           const response = await request(app)
             .post('/apps/test-id/git/remote/configure')
@@ -266,7 +266,7 @@ describe('git-remote routes', function gitRemoteTests() {
         });
 
         it('should allow request when CODE_SYNC_GIT_PULL is enabled', async function configureWithPull() {
-          vi.mocked(isCapabilityEnabled).mockImplementation((cap) => cap === 'CODE_SYNC_GIT_PULL');
+          vi.mocked(isCapabilityEnabled).mockImplementation(function (cap) { return cap === 'CODE_SYNC_GIT_PULL'; });
 
           const response = await request(app)
             .post('/apps/test-id/git/remote/configure')
@@ -296,7 +296,7 @@ describe('git-remote routes', function gitRemoteTests() {
       });
 
       it('should fall back to capability checks when feature flag is false', async function fallbackToCapability() {
-        vi.mocked(isCapabilityEnabled).mockImplementation((cap) => cap === 'CODE_SYNC_GIT_PUSH');
+        vi.mocked(isCapabilityEnabled).mockImplementation(function (cap) { return cap === 'CODE_SYNC_GIT_PUSH'; });
 
         const response = await request(app)
           .post('/apps/test-id/git/push')

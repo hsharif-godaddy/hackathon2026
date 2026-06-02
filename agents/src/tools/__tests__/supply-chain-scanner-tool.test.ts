@@ -18,7 +18,7 @@ const APP_ID = 'app-supply-chain-test';
 
 function setupExec(handler: (cmd: string) => ReturnType<typeof makeRunCommandResult>) {
   mocks.createForWorkspace.mockReturnValue({ tasks: { runCommandSync: mocks.runCommandSync } });
-  mocks.runCommandSync.mockImplementation(async (args: { command: string }) => handler(args.command));
+  mocks.runCommandSync.mockImplementation(async function (args: { command: string }) { return handler(args.command); });
 }
 
 /** Convenience: the lockfile-lint command emits violations via stderr in v4. */

@@ -28,7 +28,7 @@ vi.mock('@/utils/image', () => ({
 vi.mock('@/utils/instrumentation', () => {
   const fired = vi.fn()
   return {
-    logImpressionEvent: vi.fn(() => fired),
+    logImpressionEvent: vi.fn(function () { return fired; }),
     __fired: fired,
   }
 })
@@ -45,7 +45,7 @@ describe('SetVentureLogoToolRenderer', () => {
     vi.clearAllMocks()
     vi.mocked(useIsEmbedded).mockReturnValue(true)
     vi.mocked(getParentOrigin).mockReturnValue('https://dashboard.godaddy.com')
-    vi.mocked(fetchAsDataUrl).mockImplementation(async (url: string) => `data:image/png;base64,${url}`)
+    vi.mocked(fetchAsDataUrl).mockImplementation(async function (url: string) { return `data:image/png;base64,${url}`; })
   })
 
   it('returns null when not embedded', () => {
@@ -253,7 +253,7 @@ describe('SetVentureLogoToolRenderer', () => {
   })
 
   it('drops the variant whose fetchAsDataUrl rejects but still fires the other and reports done', async () => {
-    vi.mocked(fetchAsDataUrl).mockImplementation(async (url: string) => {
+    vi.mocked(fetchAsDataUrl).mockImplementation(async function (url: string) {
       if (url === 'https://cdn/s.png') throw new Error('fetch failed')
       return `data:image/png;base64,${url}`
     })

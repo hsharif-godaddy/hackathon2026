@@ -13,11 +13,11 @@ vi.mock('@/lib/file-agent', () => ({
 }))
 
 vi.mock('@/utils/image-compression', () => ({
-  compressImageFiles: vi.fn(async (files: File[]) => files),
+  compressImageFiles: vi.fn(async function (files: File[]) { return files; }),
 }))
 
 vi.mock('@/utils/instrumentation', () => ({
-  logImpressionEvent: vi.fn(() => vi.fn()),
+  logImpressionEvent: vi.fn(function () { return vi.fn(); }),
 }))
 
 vi.mock('@/lib/request-context', () => ({
@@ -71,7 +71,7 @@ describe('uploadChatFiles', () => {
       new File(['x'], `f${i}.jpg`, { type: 'image/jpeg' })
     )
     let batchIndex = 0
-    vi.mocked(global.fetch).mockImplementation(async () => {
+    vi.mocked(global.fetch).mockImplementation(async function () {
       batchIndex += 1
       const isFirst = batchIndex === 1
       const uploaded = (isFirst ? files.slice(0, 5) : files.slice(5)).map((f, j) => ({
@@ -102,7 +102,7 @@ describe('uploadChatFiles', () => {
       new File(['x'], `f${i}.jpg`, { type: 'image/jpeg' })
     )
     let batchIndex = 0
-    vi.mocked(global.fetch).mockImplementation(async () => {
+    vi.mocked(global.fetch).mockImplementation(async function () {
       batchIndex += 1
       if (batchIndex === 1) {
         const uploaded = files.slice(0, 5).map((f, j) => ({

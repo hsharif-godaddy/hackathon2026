@@ -15,17 +15,17 @@ const { mockGetLastMessageTimestamp, mockGetStats, mockValidateAll } = vi.hoiste
 }));
 
 vi.mock('../../../memory/adapters/index.js', () => ({
-  getConversationTokenStore: vi.fn(() => ({
+  getConversationTokenStore: vi.fn(function () { return {
     getLastMessageTimestamp: mockGetLastMessageTimestamp,
-  })),
+  }; }),
 }));
 
 vi.mock('../../../registry/index.js', () => ({
   AgentRegistry: {
-    getInstance: vi.fn(() => ({
+    getInstance: vi.fn(function () { return {
       getStats: mockGetStats,
       validateAll: mockValidateAll,
-    })),
+    }; }),
   },
 }));
 

@@ -17,12 +17,12 @@ vi.mock('../../services/DevSupervisorClient.js', () => ({
 
 vi.mock('../../logging/index.js', () => ({
   Logger: {
-    create: vi.fn(() => ({
+    create: vi.fn(function () { return {
       info: vi.fn(),
       warn: vi.fn(),
       error: vi.fn(),
       debug: vi.fn()
-    }))
+    }; })
   }
 }));
 
@@ -38,7 +38,7 @@ vi.mock('../../logging/events/index.js', () => ({
 }));
 
 vi.mock('../../utils/error.js', () => ({
-  getErrorMessage: vi.fn((err: any) => {
+  getErrorMessage: vi.fn(function (err: any) {
     if (err instanceof Error) return err.message;
     if (typeof err === 'string') return err;
     return String(err);

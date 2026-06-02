@@ -150,10 +150,9 @@ describe('GET /api/bms/spend', () => {
             bmsBudgetId: BUDGET_ID,
         });
         getBudgetMock.mockResolvedValue(makeBudget());
-        getReportsAggregateMock.mockImplementation(({ label }: { label?: string }) =>
-            label
+        getReportsAggregateMock.mockImplementation(function ({ label }: { label?: string }) { return label
                 ? Promise.resolve(aggregateResponse(7, 14))
-                : Promise.resolve(aggregateResponse(45, 75)) // 30-day rollup
+                : Promise.resolve(aggregateResponse(45, 75)); } // 30-day rollup
         );
 
         const res = await GET(makeRequest(`subscriptionId=${SUBSCRIPTION_ID}`));
@@ -196,10 +195,9 @@ describe('GET /api/bms/spend', () => {
     it('drops zero-spend categories from the breakdown', async () => {
         getSubscriptionMock.mockResolvedValue({ id: SUBSCRIPTION_ID, bmsBudgetId: BUDGET_ID });
         getBudgetMock.mockResolvedValue(makeBudget());
-        getReportsAggregateMock.mockImplementation(({ label }: { label?: string }) =>
-            label === ALL_REPORT_LABELS[0]
+        getReportsAggregateMock.mockImplementation(function ({ label }: { label?: string }) { return label === ALL_REPORT_LABELS[0]
                 ? Promise.resolve(aggregateResponse(5, 7))
-                : Promise.resolve(aggregateResponse(0, 0))
+                : Promise.resolve(aggregateResponse(0, 0)); }
         );
 
         const res = await GET(makeRequest(`subscriptionId=${SUBSCRIPTION_ID}`));

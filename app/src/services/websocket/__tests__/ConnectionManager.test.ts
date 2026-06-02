@@ -44,7 +44,7 @@ class MockSocket {
 
   connect = vi.fn()
   disconnect = vi.fn()
-  removeAllListeners = vi.fn(() => {
+  removeAllListeners = vi.fn(function () {
     this.handlers.clear()
   })
 
@@ -80,7 +80,7 @@ describe('ConnectionManager', () => {
     const getConfigForSite = vi.fn().mockResolvedValue({ baseUrl: 'http://localhost:4000' })
     let socketCounter = 0
     const sockets: MockSocket[] = []
-    const createSocket = vi.fn().mockImplementation(() => {
+    const createSocket = vi.fn().mockImplementation(function () {
       const socket = new MockSocket(`socket-${socketCounter++}`)
       sockets.push(socket)
       return socket
@@ -231,7 +231,7 @@ describe('ConnectionManager', () => {
     const nextTokenHold = new Promise<void>((resolve) => {
       releaseNextToken = resolve
     })
-    const fetchAgentToken = vi.fn().mockImplementation((siteId: string) => {
+    const fetchAgentToken = vi.fn().mockImplementation(function (siteId: string) {
       if (siteId === 'app-next') {
         return nextTokenHold.then(() => 'token-for-next')
       }

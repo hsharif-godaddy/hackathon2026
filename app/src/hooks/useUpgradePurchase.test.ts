@@ -142,7 +142,7 @@ describe('useUpgradePurchase', function useUpgradePurchaseTests() {
     it('checks correct condition for upgrade without prior downgrade', async function upgradeConditionNoPriorDowngrade() {
       let capturedCondition: ((data: unknown) => boolean) | undefined;
 
-      vi.mocked(waitForQueryUpdate).mockImplementation(async (_queryClient, _queryKey, condition) => {
+      vi.mocked(waitForQueryUpdate).mockImplementation(async function (_queryClient, _queryKey, condition) {
         capturedCondition = condition as (data: unknown) => boolean;
         return true;
       });
@@ -177,7 +177,7 @@ describe('useUpgradePurchase', function useUpgradePurchaseTests() {
     it('checks correct condition for upgrade with prior downgrade scheduled', async function upgradeConditionWithPriorDowngrade() {
       let capturedCondition: ((data: unknown) => boolean) | undefined;
 
-      vi.mocked(waitForQueryUpdate).mockImplementation(async (_queryClient, _queryKey, condition) => {
+      vi.mocked(waitForQueryUpdate).mockImplementation(async function (_queryClient, _queryKey, condition) {
         capturedCondition = condition as (data: unknown) => boolean;
         return true;
       });
@@ -211,7 +211,7 @@ describe('useUpgradePurchase', function useUpgradePurchaseTests() {
     it('checks correct condition for downgrade', async function downgradeCondition() {
       let capturedCondition: ((data: unknown) => boolean) | undefined;
 
-      vi.mocked(waitForQueryUpdate).mockImplementation(async (_queryClient, _queryKey, condition) => {
+      vi.mocked(waitForQueryUpdate).mockImplementation(async function (_queryClient, _queryKey, condition) {
         capturedCondition = condition as (data: unknown) => boolean;
         return true;
       });
@@ -254,7 +254,7 @@ describe('useUpgradePurchase', function useUpgradePurchaseTests() {
         resolveWait = () => resolve(true);
       });
 
-      vi.mocked(waitForQueryUpdate).mockImplementation(() => waitPromise);
+      vi.mocked(waitForQueryUpdate).mockImplementation(function () { return waitPromise; });
 
       const { result } = renderHookWithProviders(() => useUpgradePurchase());
 
@@ -463,7 +463,7 @@ describe('useUpgradePurchase', function useUpgradePurchaseTests() {
     it('polls until creditsMax increases (unified check for BMS and legacy)', async function unifiedCreditsMaxPolling() {
       let capturedCondition: ((data: unknown) => boolean) | undefined;
 
-      vi.mocked(waitForQueryUpdate).mockImplementation(async (_queryClient, queryKey, condition) => {
+      vi.mocked(waitForQueryUpdate).mockImplementation(async function (_queryClient, queryKey, condition) {
         // Only capture the grant polling condition (not subscription)
         if (Array.isArray(queryKey) && queryKey[0] === 'credit-grants') {
           capturedCondition = condition as (data: unknown) => boolean;
@@ -514,7 +514,7 @@ describe('useUpgradePurchase', function useUpgradePurchaseTests() {
     it('returns false when current creditsMax is null (malformed API response)', async function nullCreditsMaxInPolling() {
       let capturedCondition: ((data: unknown) => boolean) | undefined;
 
-      vi.mocked(waitForQueryUpdate).mockImplementation(async (_queryClient, queryKey, condition) => {
+      vi.mocked(waitForQueryUpdate).mockImplementation(async function (_queryClient, queryKey, condition) {
         if (Array.isArray(queryKey) && queryKey[0] === 'credit-grants') {
           capturedCondition = condition as (data: unknown) => boolean;
         }

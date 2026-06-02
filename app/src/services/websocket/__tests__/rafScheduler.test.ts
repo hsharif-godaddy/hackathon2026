@@ -154,7 +154,7 @@ describe('createRAFScheduler', () => {
 
   it('recovers from flush errors and retries', async () => {
     let callCount = 0
-    const errorFlush = vi.fn(() => {
+    const errorFlush = vi.fn(function () {
       callCount++
       if (callCount === 1) {
         throw new Error('flush failed')

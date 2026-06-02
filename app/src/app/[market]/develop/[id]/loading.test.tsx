@@ -12,7 +12,7 @@ import Loading from './loading';
 
 vi.mock('@/utils/instrumentation', () => mockInstrumentation());
 
-const mockUseBreakpoints = vi.fn(() => mockBreakpoints());
+const mockUseBreakpoints = vi.fn(function () { return mockBreakpoints(); });
 vi.mock('@/hooks/useBreakpoints', () => ({
   useBreakpoints: () => mockUseBreakpoints(),
 }));

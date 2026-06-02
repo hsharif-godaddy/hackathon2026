@@ -16,9 +16,9 @@ import {
 
 // Mock the assessment agent
 vi.mock('../../agents/assessment-agent/index.js', () => ({
-  getAssessmentAgent: vi.fn(() => ({
+  getAssessmentAgent: vi.fn(function () { return {
     classify: vi.fn(),
-  })),
+  }; }),
   AssessmentTaskType: {
     General: 'general',
     Fix: 'fix',
@@ -78,7 +78,7 @@ describe('executeAssessment', () => {
 
     it('does not await the assessment promise', async () => {
       let resolvePromise: (value: any) => void
-      const mockClassify = vi.fn().mockImplementation(() => {
+      const mockClassify = vi.fn().mockImplementation(function () {
         return new Promise((resolve) => {
           resolvePromise = resolve
         })
@@ -151,7 +151,7 @@ describe('executeAssessment', () => {
     })
 
     it('awaits the assessment before returning', async () => {
-      const mockClassify = vi.fn().mockImplementation(() => {
+      const mockClassify = vi.fn().mockImplementation(function () {
         return new Promise((resolve) => {
           setTimeout(() => resolve({
             result: { taskType: 'fix', confidence: 90 },

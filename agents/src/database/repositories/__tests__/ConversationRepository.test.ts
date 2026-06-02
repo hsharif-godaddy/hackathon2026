@@ -24,7 +24,7 @@ vi.mock('../../../logging/index.js', () => ({
 
 let idCounter = 0
 vi.mock('nanoid', () => ({
-  nanoid: vi.fn().mockImplementation(() => `test-msg-${++idCounter}`)
+  nanoid: vi.fn().mockImplementation(function () { return `test-msg-${++idCounter}`; })
 }))
 
 describe('ConversationRepository - Single Conversation Per App', () => {

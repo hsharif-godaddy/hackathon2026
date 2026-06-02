@@ -32,7 +32,7 @@ describe('JourneyTracker', function trackerTests() {
       shouldAdvanceTime: false,
       toFake: ['setTimeout', 'clearTimeout', 'Date'],
     });
-    vi.spyOn(performance, 'now').mockImplementation(() => nowValue);
+    vi.spyOn(performance, 'now').mockImplementation(function () { return nowValue; });
   });
 
   afterEach(function teardown() {
@@ -348,7 +348,7 @@ describe('JourneyTracker', function trackerTests() {
 
   describe('#error resilience', function resilienceTests() {
     it('should not throw when FullStory is not initialized', function noThrowFS() {
-      mockFullStory.mockImplementation(() => { throw new Error('not initialized'); });
+      mockFullStory.mockImplementation(function () { throw new Error('not initialized'); });
       JourneyTracker.start({});
       expect(() => JourneyTracker.current()!.trackPromptStarted('p1', 'test')).not.toThrow();
       expect(() => JourneyTracker.current()!.trackMilestone('test')).not.toThrow();

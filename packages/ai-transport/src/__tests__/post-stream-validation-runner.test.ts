@@ -12,7 +12,7 @@ function makeLogger() {
 
 function makePublishCapture() {
   const calls: Array<{ content: string; data: ValidationMessageEventData }> = []
-  const publish = vi.fn(async (content: string, data: ValidationMessageEventData) => {
+  const publish = vi.fn(async function (content: string, data: ValidationMessageEventData) {
     calls.push({ content, data })
     return true
   })
@@ -26,7 +26,7 @@ const baseParams = () => ({
   toolCalls: [{ toolName: 'write_file' }],
   abortSignal: new AbortController().signal,
   iteration: 0,
-  emitChunk: vi.fn(async () => {}),
+  emitChunk: vi.fn(async function () {}),
   logger: makeLogger(),
 })
 
@@ -51,7 +51,7 @@ describe('runPostStreamValidation', () => {
 
   it('emits running + failed and persists when validator returns continuation', async () => {
     const { publish, calls } = makePublishCapture()
-    const persist = vi.fn(async () => 'persisted-msg-123')
+    const persist = vi.fn(async function () { return 'persisted-msg-123'; })
     const validator: PostStreamValidatorFn = async ({ emitValidationStart }) => {
       await emitValidationStart?.()
       return { continuationPrompt: 'fix the type error', message: 'tsc reported 1 error' }
@@ -189,7 +189,7 @@ describe('runPostStreamValidation', () => {
 
   it('suppresses continuation side effects when abort fires between validator return and post-processing', async () => {
     const { publish, calls } = makePublishCapture()
-    const persist = vi.fn(async () => 'id')
+    const persist = vi.fn(async function () { return 'id'; })
     const controller = new AbortController()
     const validator: PostStreamValidatorFn = async ({ emitValidationStart }) => {
       await emitValidationStart?.()
@@ -212,12 +212,12 @@ describe('runPostStreamValidation', () => {
   })
 
   it('returns the continuation even when the failed-status publish rejects after persist', async () => {
-    const persist = vi.fn(async () => 'persisted-id')
+    const persist = vi.fn(async function () { return 'persisted-id'; })
     const logger = makeLogger()
     // emitValidationStart succeeds; the follow-up 'failed' publish throws.
     const publish = vi.fn()
-      .mockImplementationOnce(async () => true)
-      .mockImplementationOnce(async () => { throw new Error('channel dropped') })
+      .mockImplementationOnce(async function () { return true; })
+      .mockImplementationOnce(async function () { throw new Error('channel dropped') })
 
     const validator: PostStreamValidatorFn = async ({ emitValidationStart }) => {
       await emitValidationStart?.()
@@ -242,7 +242,7 @@ describe('runPostStreamValidation', () => {
   it('swallows persistence errors and still emits failed status without messageId', async () => {
     const { publish, calls } = makePublishCapture()
     const logger = makeLogger()
-    const persist = vi.fn(async () => { throw new Error('db down') })
+    const persist = vi.fn(async function () { throw new Error('db down') })
     const validator: PostStreamValidatorFn = async ({ emitValidationStart }) => {
       await emitValidationStart?.()
       return { continuationPrompt: 'retry', message: 'retry plz' }

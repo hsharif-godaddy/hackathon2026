@@ -35,7 +35,7 @@ describe('POST /api/subscriptions/[id]/acknowledge', () => {
     };
 
     const { AiroMgmtClient } = await import('@/lib/mgmt-airo');
-    vi.mocked(AiroMgmtClient as any).mockImplementation(() => mockClient);
+    vi.mocked(AiroMgmtClient as any).mockImplementation(function () { return mockClient; });
 
     const routeModule = await import('./route');
     POST = routeModule.POST;

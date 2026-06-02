@@ -21,7 +21,7 @@ describe('buildChatSignalsTraceContext', function suite() {
     vi.clearAllMocks()
     logger.warn.mockReset()
     vi.mocked(getSignalsContext).mockReturnValue({})
-    vi.mocked(createTraceContext).mockImplementation(() => otelContext.active())
+    vi.mocked(createTraceContext).mockImplementation(function () { return otelContext.active(); })
   })
 
   it('merges JWT customerId visitorId and maps trafficSessionId to sessionId', function jwtMerge() {
@@ -66,7 +66,7 @@ describe('buildChatSignalsTraceContext', function suite() {
   })
 
   it('falls back to active context when getSignalsContext throws', function getCtxFail() {
-    vi.mocked(getSignalsContext).mockImplementation(() => {
+    vi.mocked(getSignalsContext).mockImplementation(function () {
       throw new Error('signals boom')
     })
 
@@ -86,7 +86,7 @@ describe('buildChatSignalsTraceContext', function suite() {
   })
 
   it('falls back to otelContext.active when createTraceContext throws', function createCtxFail() {
-    vi.mocked(createTraceContext).mockImplementation(() => {
+    vi.mocked(createTraceContext).mockImplementation(function () {
       throw new Error('trace boom')
     })
 

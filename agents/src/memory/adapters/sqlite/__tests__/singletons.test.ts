@@ -1,14 +1,14 @@
 import { describe, it, expect, vi } from 'vitest';
 
 vi.mock('../../../../database/connection.js', () => ({
-  getDatabase: vi.fn(() => ({
-    prepare: vi.fn(() => ({
+  getDatabase: vi.fn(function () { return {
+    prepare: vi.fn(function () { return {
       run: vi.fn(),
       get: vi.fn(),
-      all: vi.fn(() => []),
-    })),
+      all: vi.fn(function () { return []; }),
+    }; }),
     exec: vi.fn(),
-  })),
+  }; }),
 }));
 
 vi.mock('../../../../logging/index.js', () => ({

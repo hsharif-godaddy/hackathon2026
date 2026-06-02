@@ -146,7 +146,7 @@ describe('appFetch handle401', () => {
     const { appFetch } = await import('@/lib/gasket-config');
     const { useAuthUIStore } = await import('@/stores/useAuthUIStore');
 
-    const fetchMock = vi.fn().mockImplementation((url: string) => {
+    const fetchMock = vi.fn().mockImplementation(function (url: string) {
       // Original request 401s. Probe is at level 3 and returns HBI authReason.
       if (typeof url === 'string' && url.includes('/api/auth/validate')) {
         if (url.includes('level=3')) return Promise.resolve(response401({ authReason: 2 }));
@@ -171,7 +171,7 @@ describe('appFetch handle401', () => {
     const { appFetch } = await import('@/lib/gasket-config');
     const { useAuthUIStore } = await import('@/stores/useAuthUIStore');
 
-    const fetchMock = vi.fn().mockImplementation((url: string) => {
+    const fetchMock = vi.fn().mockImplementation(function (url: string) {
       if (typeof url === 'string' && url.includes('/api/auth/validate')) {
         // Probe and verify both succeed. Probe will only be called once thanks
         // to single-flight; verify runs once after SSO success.
@@ -181,7 +181,7 @@ describe('appFetch handle401', () => {
     });
     // Replace probe/verify path explicitly to avoid sequencing surprises
     let callCount = 0;
-    fetchMock.mockImplementation((url: string) => {
+    fetchMock.mockImplementation(function (url: string) {
       const isValidate = typeof url === 'string' && url.includes('/api/auth/validate');
       callCount += 1;
       if (!isValidate && callCount <= 3) return Promise.resolve(response401());           // 3 original requests 401

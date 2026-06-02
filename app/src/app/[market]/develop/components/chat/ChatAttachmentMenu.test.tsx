@@ -10,8 +10,8 @@ import { renderWithProviders } from '@/tests/test-utils';
 import ChatAttachmentMenu from './ChatAttachmentMenu';
 
 vi.mock('@/utils/instrumentation', () => ({
-  logClickEvent: vi.fn(() => vi.fn()),
-  logImpressionEvent: vi.fn(() => vi.fn()),
+  logClickEvent: vi.fn(function () { return vi.fn(); }),
+  logImpressionEvent: vi.fn(function () { return vi.fn(); }),
 }));
 
 vi.mock('@/lib/logging', () => ({
@@ -34,7 +34,7 @@ vi.mock('@/lib/file-agent', () => ({
   })
 }))
 
-const mockCompressImageFiles = vi.fn(async (files: File[]) => files)
+const mockCompressImageFiles = vi.fn(async function (files: File[]) { return files; })
 vi.mock('@/utils/image-compression', () => ({
   compressImageFiles: (...args: unknown[]) => mockCompressImageFiles(...args as [File[]]),
 }));
@@ -65,7 +65,7 @@ describe('ChatAttachmentMenu', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
-    mockCompressImageFiles.mockImplementation(async (files: File[]) => files);
+    mockCompressImageFiles.mockImplementation(async function (files: File[]) { return files; });
 
     // Mock navigator.mediaDevices.getDisplayMedia
     Object.defineProperty(navigator, 'mediaDevices', {
@@ -248,10 +248,9 @@ describe('ChatAttachmentMenu', () => {
       } as unknown as MediaStreamTrack],
     };
 
-    mockGetDisplayMedia.mockImplementation(() =>
-      new Promise((resolve) => {
+    mockGetDisplayMedia.mockImplementation(function () { return new Promise((resolve) => {
         setTimeout(() => resolve(mockStream), 100);
-      })
+      }); }
     );
 
     const { user } = renderWithProviders(<ChatAttachmentMenu {...defaultProps} />);

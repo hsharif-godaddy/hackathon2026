@@ -55,7 +55,7 @@ describe('airoAppDomainForHost', () => {
 
   beforeEach(() => {
     // global vitest setup mocks console.warn — re-spy so we can assert on it
-    consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(function () {});
   });
 
   afterEach(() => {

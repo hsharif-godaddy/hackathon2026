@@ -34,8 +34,8 @@ const { lifecycleMock, messagesMock } = vi.hoisted(() => ({
 }));
 
 vi.mock('../../../memory/adapters/index.js', () => ({
-  getConversationLifecycleStore: vi.fn(() => lifecycleMock),
-  getMessageStore: vi.fn(() => messagesMock),
+  getConversationLifecycleStore: vi.fn(function () { return lifecycleMock; }),
+  getMessageStore: vi.fn(function () { return messagesMock; }),
 }));
 
 vi.mock('../../middleware/app-ownership.js', () => ({

@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildExperimentsLineFromSwitchboard, useExperimentsLine } from '@/components/feedback/experimentsLine';
 import { renderHookWithProviders } from '@/tests/test-utils';
 
-const mockUseGasketData = vi.hoisted(() => vi.fn(() => ({ switchboard: {} as Record<string, unknown> })));
+const mockUseGasketData = vi.hoisted(() => vi.fn(function () { return { switchboard: {} as Record<string, unknown> }; }));
 
 vi.mock('@/hooks/useGasketData', () => ({
   useGasketData: () => mockUseGasketData(),

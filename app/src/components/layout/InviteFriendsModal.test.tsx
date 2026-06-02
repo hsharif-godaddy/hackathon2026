@@ -9,11 +9,11 @@ import { screen } from '@testing-library/react';
 import { renderWithProviders } from '@/tests/test-utils';
 
 // Mock ResizeObserver for UX Modal
-global.ResizeObserver = vi.fn().mockImplementation(() => ({
+global.ResizeObserver = vi.fn().mockImplementation(function () { return {
   observe: vi.fn(),
   unobserve: vi.fn(),
   disconnect: vi.fn(),
-}));
+}; });
 
 // Mock @ux/modal to avoid Disrupt rendering issues in test environment
 vi.mock('@ux/modal', () => ({
@@ -28,7 +28,7 @@ vi.mock('@ux/modal', () => ({
 }));
 
 vi.mock('@/utils/instrumentation', () => ({
-  generateClickEID: vi.fn((id) => id),
+  generateClickEID: vi.fn(function (id) { return id; }),
 }));
 
 import InviteFriendsModal from './InviteFriendsModal';

@@ -5,7 +5,7 @@ import type { DkimStatusResponse } from '../types';
 
 const mockGetDkimStatus = vi.hoisted(() => vi.fn());
 vi.mock('../mail-flow-client', () => ({
-  MailFlowClient: vi.fn(() => ({ getDkimStatus: mockGetDkimStatus })),
+  MailFlowClient: vi.fn(function () { return { getDkimStatus: mockGetDkimStatus }; }),
 }));
 
 const validStatus: DkimStatusResponse = {

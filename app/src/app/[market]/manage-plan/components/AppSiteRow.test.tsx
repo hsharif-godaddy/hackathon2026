@@ -14,8 +14,8 @@ vi.mock('@/hooks/useTranslations', () => ({
 }));
 
 vi.mock('@/utils/instrumentation', () => ({
-  generateClickEID: vi.fn((event: string) => `appbuilder.${event}.click`),
-  logClickEvent: vi.fn(() => vi.fn()),
+  generateClickEID: vi.fn(function (event: string) { return `appbuilder.${event}.click`; }),
+  logClickEvent: vi.fn(function () { return vi.fn(); }),
 }));
 
 const { mockAppThumbnail } = vi.hoisted(() => ({

@@ -46,7 +46,7 @@ vi.mock('../../services/FileUploadService.js', () => {
 
   return {
     fileUploadService: mockService,
-    FileUploadService: vi.fn(() => mockService)
+    FileUploadService: vi.fn(function () { return mockService; })
   };
 });
 
@@ -55,9 +55,9 @@ vi.mock('../../services/FileUploadService.js', () => {
 // share the mock fn between the factory and individual tests.
 const { appRepoFindByIdMock } = vi.hoisted(() => ({ appRepoFindByIdMock: vi.fn() }));
 vi.mock('../../database/repositories/AppRepository.js', () => ({
-  AppRepository: vi.fn(() => ({
+  AppRepository: vi.fn(function () { return {
     findById: appRepoFindByIdMock
-  }))
+  }; })
 }));
 
 // Mock file URL signer for signed URL tests
@@ -532,7 +532,7 @@ describe('Files Router - Path Traversal Security', () => {
         expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
       });
       vi.mocked(fileUploadService.getFilePath).mockImplementation(
-        (_appId: string, uploadId: string, filename: string) => `${uploadsRoot}/${uploadId}/${filename}`
+        function (_appId: string, uploadId: string, filename: string) { return `${uploadsRoot}/${uploadId}/${filename}`; }
       );
 
       return request(app)

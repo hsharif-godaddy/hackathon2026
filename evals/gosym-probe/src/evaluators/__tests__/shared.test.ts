@@ -112,7 +112,8 @@ describe('clamp01', () => {
 });
 
 describe('readSnapshotHtml', () => {
-  afterEach(() => vi.restoreAllMocks());
+  // vitest 4: resetAllMocks (not restoreAllMocks) — see catalog notes.
+  afterEach(() => vi.resetAllMocks());
 
   it('returns empty string when snapshot is undefined', async () => {
     const result = await readSnapshotHtml(undefined);
@@ -146,7 +147,7 @@ describe('readSnapshotHtml', () => {
     const enoent = Object.assign(new Error('ENOENT: no such file'), { code: 'ENOENT' });
     vi.mocked(readFile).mockRejectedValue(enoent);
 
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(function () {});
 
     const snapshot: DOMSnapshot = {
       url: 'http://localhost',

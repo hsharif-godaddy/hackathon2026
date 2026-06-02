@@ -72,8 +72,8 @@ const mockAuthContext = {
 const mockS3Send = vi.fn();
 
 vi.mock('@aws-sdk/client-s3', () => ({
-  S3Client: vi.fn(() => ({ send: mockS3Send })),
-  PutObjectCommand: vi.fn((args) => args),
+  S3Client: vi.fn(function () { return { send: mockS3Send }; }),
+  PutObjectCommand: vi.fn(function (args) { return args; }),
 }));
 
 vi.mock('@/lib/request-context', () => ({
@@ -152,7 +152,7 @@ describe('/api/feedback/s3-store', function s3StoreTests() {
     });
 
     it('should return 500 with distinct error when S3Client init failed', async function clientInitFailed() {
-      vi.mocked(S3Client).mockImplementationOnce(() => { throw new Error('Invalid region'); });
+      vi.mocked(S3Client).mockImplementationOnce(function () { throw new Error('Invalid region'); });
       const { POST } = await import('./route');
 
       const response = await POST(createRequest({ app_id: 'app-123', feedback_text: 'hello', consent_flag: true, rating: 7 }));

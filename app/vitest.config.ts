@@ -126,15 +126,12 @@ export default defineConfig({
     ],
     // Use forks pool to isolate memory per test file (prevents OOM)
     pool: 'forks',
-    poolOptions: {
-      forks: {
-        minForks: 1,
-        maxForks: optimalForks, // Dynamically set based on CPU cores
-        isolate: true, // Each test file runs in fresh process
-      },
-    },
+    maxWorkers: optimalForks, // Dynamically set based on CPU cores
+    isolate: true, // Each test file runs in fresh process
     // Limit concurrent tests within each file
     maxConcurrency: 5,
+    // vitest 4 no longer clears vi.fn() call history on restoreAllMocks.
+    clearMocks: true,
     // Inline workspace packages so Vitest resolves subpath exports correctly.
     // @airo-ux/pattern-library is included so its (linked/overridden) dist reuses the
     // app's single React instance via vite's module graph. @ux/* is also

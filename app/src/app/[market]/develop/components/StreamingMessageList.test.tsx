@@ -75,7 +75,7 @@ vi.mock('@airo-ux/pattern-library/chat/thinker', () => ({
 }));
 
 // Module-level so individual tests can control return value (true = socket connected/sent).
-const mockLoadHistory = vi.fn(() => true);
+const mockLoadHistory = vi.fn(function () { return true; });
 
 vi.mock('@/contexts/WebSocketContext', () => ({
   useWebSocketContext: () => ({
@@ -143,8 +143,8 @@ const mockStreamingStore = {
   historyNextCursor: null as string | null,
   historyLoadingMore: false,
   // Mutating setters so timer-triggered store writes are reflected on the next render.
-  setHistoryLoadingMore: vi.fn((value: boolean) => { mockStreamingStore.historyLoadingMore = value }),
-  setHistoryLoadingComplete: vi.fn((value: boolean) => { mockStreamingStore.historyLoadingComplete = value }),
+  setHistoryLoadingMore: vi.fn(function (value: boolean) { mockStreamingStore.historyLoadingMore = value }),
+  setHistoryLoadingComplete: vi.fn(function (value: boolean) { mockStreamingStore.historyLoadingComplete = value }),
   activeStream: null,
 };
 
@@ -206,8 +206,8 @@ describe('StreamingMessageList', function packageTests() {
     mockWebSocketConnected = true;
     mockDevelopPageStore.loadingPhase = 'ready';
     // Re-wire mutating setters after clearAllMocks resets them to no-ops.
-    mockStreamingStore.setHistoryLoadingMore.mockImplementation((v: boolean) => { mockStreamingStore.historyLoadingMore = v });
-    mockStreamingStore.setHistoryLoadingComplete.mockImplementation((v: boolean) => { mockStreamingStore.historyLoadingComplete = v });
+    mockStreamingStore.setHistoryLoadingMore.mockImplementation(function (v: boolean) { mockStreamingStore.historyLoadingMore = v });
+    mockStreamingStore.setHistoryLoadingComplete.mockImplementation(function (v: boolean) { mockStreamingStore.historyLoadingComplete = v });
     mockLoadHistory.mockReturnValue(true);
     mockSelectCommit.mockResolvedValue({ previewRoute: null });
     mockSetSelectedCommitHash.mockReset();

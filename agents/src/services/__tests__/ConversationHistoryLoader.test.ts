@@ -5,7 +5,7 @@ import conversationFixture from './fixtures/conversation-messages.json';
 
 // Mock token counter to provide deterministic token counts
 vi.mock('../../utils/token-counter.js', () => ({
-  countTokens: vi.fn().mockImplementation((text: string) => {
+  countTokens: vi.fn().mockImplementation(function (text: string) {
     // Simulate ~4 chars per token for deterministic testing
     const tokenCount = Math.ceil(text.length / 4);
     return Promise.resolve({ tokenCount, provider: 'anthropic', normalizedModelName: 'claude-sonnet-4-6' });
@@ -27,8 +27,8 @@ describe('ConversationHistoryLoader', () => {
       getMessageById: vi.fn().mockResolvedValue(null),
     } as unknown as MessageStore;
     mockSummaryStore = {
-      findLatestForApp: vi.fn().mockImplementation(async () => latestSummary),
-      findById: vi.fn().mockImplementation(async (id: string) => summaryByIdStore.get(id) ?? null),
+      findLatestForApp: vi.fn().mockImplementation(async function () { return latestSummary; }),
+      findById: vi.fn().mockImplementation(async function (id: string) { return summaryByIdStore.get(id) ?? null; }),
     } as unknown as SummaryStore;
 
     loader = new ConversationHistoryLoader(mockMessageStore, undefined, mockSummaryStore);

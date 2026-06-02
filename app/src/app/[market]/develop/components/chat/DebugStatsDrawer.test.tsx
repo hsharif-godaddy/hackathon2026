@@ -13,12 +13,11 @@ vi.mock('@/hooks/useSwitchboard', () => ({
   useSwitchboard: vi.fn(),
 }))
 
-const mockUseWebSocketState = vi.fn((): { connected: boolean; status: string } => ({ connected: true, status: 'idle' }))
-const mockUseStreamingState = vi.fn((): string => 'idle')
-const mockUseStreamingConversationStore = vi.fn((selector: (s: Record<string, unknown>) => unknown) =>
-  selector({
+const mockUseWebSocketState = vi.fn(function () { return { connected: true, status: 'idle' }; })
+const mockUseStreamingState = vi.fn(function () { return 'idle'; })
+const mockUseStreamingConversationStore = vi.fn(function (selector: (s: Record<string, unknown>) => unknown) { return selector({
     retryState: { isRetrying: false, retryCount: 0 },
-  })
+  }); }
 )
 
 vi.mock('@/stores/useStreamingConversationStore', () => ({
@@ -115,8 +114,7 @@ describe('DebugStats UI', () => {
   })
 
   it('shows WS transport badge when SSE flag is off', () => {
-    vi.mocked(useSwitchboard).mockImplementation((flag: string) =>
-      flag === 'app-builder-sse-transport' ? false : true
+    vi.mocked(useSwitchboard).mockImplementation(function (flag: string) { return flag === 'app-builder-sse-transport' ? false : true; }
     )
     render(<Mount />)
     fireEvent.click(screen.getByTestId('debug-stats-toggle'))
@@ -149,8 +147,7 @@ describe('DebugStats UI', () => {
 
   it('shows retry badge with count', () => {
     vi.mocked(useSwitchboard).mockReturnValue(true)
-    mockUseStreamingConversationStore.mockImplementation((selector: (s: Record<string, unknown>) => unknown) =>
-      selector({ retryState: { isRetrying: true, retryCount: 3 } })
+    mockUseStreamingConversationStore.mockImplementation(function (selector: (s: Record<string, unknown>) => unknown) { return selector({ retryState: { isRetrying: true, retryCount: 3 } }); }
     )
     render(<Mount />)
     fireEvent.click(screen.getByTestId('debug-stats-toggle'))

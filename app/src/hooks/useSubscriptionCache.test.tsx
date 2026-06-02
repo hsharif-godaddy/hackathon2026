@@ -20,7 +20,7 @@ const mockStore = {
 };
 
 vi.mock('@/stores/useSubscriptionCacheStore', () => ({
-  useSubscriptionCacheStore: vi.fn((selector) => {
+  useSubscriptionCacheStore: vi.fn(function (selector) {
     if (typeof selector === 'function') {
       return selector({
         initialize: mockInitialize,

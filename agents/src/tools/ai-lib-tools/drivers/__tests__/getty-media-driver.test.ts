@@ -24,7 +24,7 @@ describe('GettyMediaDriver filter expansion', () => {
     driver = new GettyMediaDriver();
 
     // Override the get method
-    fetchSpy = vi.fn().mockImplementation(async (_endpoint: string, _params: URLSearchParams) => {
+    fetchSpy = vi.fn().mockImplementation(async function (_endpoint: string, _params: URLSearchParams) {
       return {
         ok: true,
         json: async () => ({
@@ -100,7 +100,7 @@ describe('GettyMediaDriver filter expansion', () => {
   });
 
   it('should not pass image-only filters for video search', async () => {
-    fetchSpy.mockImplementation(async () => ({
+    fetchSpy.mockImplementation(async function () { return {
       ok: true,
       json: async () => ({
         result_count: 1,
@@ -115,7 +115,7 @@ describe('GettyMediaDriver filter expansion', () => {
         }]
       }),
       text: async () => ''
-    }));
+    }; });
 
     // Also mock uploadVideo to avoid secondary call
     (driver as any).uploadVideo = vi.fn().mockResolvedValue('https://example.com/video.mp4');

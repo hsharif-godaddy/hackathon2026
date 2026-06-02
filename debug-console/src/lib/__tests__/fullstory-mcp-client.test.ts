@@ -73,11 +73,11 @@ describe('callFullstoryMcpTool', () => {
     const config = { url: 'https://api.fullstory.test/mcp/fullstory', authHeader: 'Basic key' };
 
     it('parses plain application/json JSON-RPC responses', async () => {
-        const fakeFetch = vi.fn(async () => new Response(JSON.stringify({
+        const fakeFetch = vi.fn(async function () { return new Response(JSON.stringify({
             jsonrpc: '2.0',
             id: 1,
             result: { content: [{ type: 'text', text: '{"ok":true}' }] },
-        }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+        }), { status: 200, headers: { 'Content-Type': 'application/json' } }); });
 
         const result = await callFullstoryMcpTool<{ ok: boolean }>(config, 'noop', {}, { fetchImpl: fakeFetch });
         expect(result).toEqual({ ok: true });
@@ -86,21 +86,21 @@ describe('callFullstoryMcpTool', () => {
 
     it('parses text/event-stream responses with a single data: frame', async () => {
         const sseBody = 'event: message\ndata: {"jsonrpc":"2.0","id":2,"result":{"content":[{"type":"text","text":"{\\"ok\\":1}"}]}}\n\n';
-        const fakeFetch = vi.fn(async () => new Response(sseBody, {
+        const fakeFetch = vi.fn(async function () { return new Response(sseBody, {
             status: 200,
             headers: { 'Content-Type': 'text/event-stream' },
-        }));
+        }); });
 
         const result = await callFullstoryMcpTool<{ ok: number }>(config, 'noop', {}, { fetchImpl: fakeFetch });
         expect(result).toEqual({ ok: 1 });
     });
 
     it('raises FullstoryMcpError when the server returns a JSON-RPC error', async () => {
-        const fakeFetch = vi.fn(async () => new Response(JSON.stringify({
+        const fakeFetch = vi.fn(async function () { return new Response(JSON.stringify({
             jsonrpc: '2.0',
             id: 3,
             error: { code: -32601, message: 'method not found' },
-        }), { status: 200 }));
+        }), { status: 200 }); });
 
         await expect(callFullstoryMcpTool(config, 'noop', {}, { fetchImpl: fakeFetch }))
             .rejects.toThrow(FullstoryMcpError);
@@ -108,13 +108,13 @@ describe('callFullstoryMcpTool', () => {
 
     it('raises FullstoryMcpError with preview when the JSON-RPC frame is malformed', async () => {
         const truncated = '{"jsonrpc":"2.0","id":4,"result":{"content":[{"type":"text","text":"{';
-        const fakeFetch = vi.fn(async () => new Response(truncated, { status: 200 }));
+        const fakeFetch = vi.fn(async function () { return new Response(truncated, { status: 200 }); });
         await expect(callFullstoryMcpTool(config, 'noop', {}, { fetchImpl: fakeFetch }))
             .rejects.toThrow(/MCP transport returned malformed JSON-RPC.*preview=/);
     });
 
     it('raises FullstoryMcpError on HTTP failure', async () => {
-        const fakeFetch = vi.fn(async () => new Response('nope', { status: 403 }));
+        const fakeFetch = vi.fn(async function () { return new Response('nope', { status: 403 }); });
         await expect(callFullstoryMcpTool(config, 'noop', {}, { fetchImpl: fakeFetch }))
             .rejects.toThrow(/MCP HTTP 403/);
     });

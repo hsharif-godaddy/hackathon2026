@@ -18,8 +18,8 @@ vi.mock('ai', async (importOriginal) => {
   return {
     ...actual,
     ToolLoopAgent: vi.fn(),
-    stepCountIs: vi.fn((value: number) => ({ type: 'step_count', value })),
-    hasToolCall: vi.fn((name: string) => ({ type: 'has_tool_call', value: name })),
+    stepCountIs: vi.fn(function (value: number) { return { type: 'step_count', value }; }),
+    hasToolCall: vi.fn(function (name: string) { return { type: 'has_tool_call', value: name }; }),
   };
 });
 
@@ -38,7 +38,7 @@ describe('streamGenerate response-promise leak guard', () => {
   beforeEach(async () => {
     mockAgent = { stream: vi.fn(), generate: vi.fn() };
     const { ToolLoopAgent } = await import('ai');
-    (ToolLoopAgent as any).mockImplementation(() => mockAgent);
+    (ToolLoopAgent as any).mockImplementation(function () { return mockAgent; });
 
     const config: AgentConfig = {
       name: 'leak-test',

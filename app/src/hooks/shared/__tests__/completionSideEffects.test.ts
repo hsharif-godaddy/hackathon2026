@@ -98,8 +98,7 @@ describe("completionSideEffects", () => {
       });
 
       it("should fire for a different appId even when the first has already been sent", () => {
-        mockSafeGetItem.mockImplementation((key: string) =>
-          key === STORAGE_KEY ? "true" : null,
+        mockSafeGetItem.mockImplementation(function (key: string) { return key === STORAGE_KEY ? "true" : null; },
         );
         const otherAppId = "app-999";
 

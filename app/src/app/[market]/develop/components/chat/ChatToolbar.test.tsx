@@ -37,10 +37,10 @@ const mockDevelopStore = {
   setIsAssetManagerOpen: vi.fn(),
   handleViewModeChange: vi.fn(),
   handleMobileModeChange: vi.fn(),
-  getPublishState: vi.fn(() => ({
+  getPublishState: vi.fn(function () { return {
     deploymentInProgressId: null,
     isPollingActive: false,
-  })),
+  }; }),
   publishStates: { 'app-123': { isPublishing: false } } as Record<string, { isPublishing: boolean }>,
 };
 const mockChatTabs = {
@@ -79,8 +79,8 @@ vi.mock('@/hooks/useGitHistory', () => ({
   useGitHistoryQuery: () => ({ isFetching: false }),
 }));
 vi.mock('@/utils/instrumentation', () => ({
-  generateClickEID: vi.fn((id) => id),
-  logClickEvent: vi.fn(() => vi.fn()),
+  generateClickEID: vi.fn(function (id) { return id; }),
+  logClickEvent: vi.fn(function () { return vi.fn(); }),
 }));
 vi.mock('@/app/[market]/develop/components/chat/AssetManagerModal', () => ({
   default: () => <div data-testid="asset-manager-modal">AssetManagerModal</div>,

@@ -48,7 +48,7 @@ describe('useHomepageBounceTracking', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     nowValue = 1000;
-    vi.spyOn(performance, 'now').mockImplementation(() => nowValue);
+    vi.spyOn(performance, 'now').mockImplementation(function () { return nowValue; });
     setScrollGeometry({ scrollY: 0, innerHeight: 800, scrollHeight: 2000 });
   });
 

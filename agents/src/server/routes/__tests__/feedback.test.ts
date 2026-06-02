@@ -9,19 +9,19 @@ import type { AuthenticatedRequest } from '../../middleware/jwt-auth.js';
 // attribution at packages/ai-lib/src/budget/cost-attribution/__tests__/emit-cost-attribution-result.test.ts.
 vi.mock('@godaddy/agent-otel-sdk', () => ({
   emitUserFeedback: vi.fn(),
-  createAgentContext: vi.fn(() => ({ __marker: 'agent-ctx' })),
+  createAgentContext: vi.fn(function () { return { __marker: 'agent-ctx' }; }),
 }));
 vi.mock('@godaddy/agent-observability-events', () => ({
   // Return an EventObject-shaped value so the route-level `eventData` arg to
   // emitUserFeedback is recognizable; internals of the helper are exercised
   // by the package's own tests.
-  createUserFeedback: vi.fn((opts: Record<string, unknown>) => ({
+  createUserFeedback: vi.fn(function (opts: Record<string, unknown>) { return {
     schemaId: 'urn:shared:ai:event:/agent/user-feedback/v1',
     data: opts,
-  })),
+  }; }),
 }));
 vi.mock('@signals/otel-sdk', () => ({
-  createTraceContext: vi.fn(() => ({ __marker: 'trace-ctx' })),
+  createTraceContext: vi.fn(function () { return { __marker: 'trace-ctx' }; }),
 }));
 
 // Partially mock @opentelemetry/api so we can observe whether the route seeds
@@ -32,7 +32,7 @@ vi.mock('@opentelemetry/api', async () => {
     ...actual,
     trace: {
       ...actual.trace,
-      setSpanContext: vi.fn((ctx, _spanCtx) => ctx),
+      setSpanContext: vi.fn(function (ctx, _spanCtx) { return ctx; }),
     },
   };
 });

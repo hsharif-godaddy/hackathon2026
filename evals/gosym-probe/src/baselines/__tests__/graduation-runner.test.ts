@@ -6,9 +6,9 @@ const { mockSuiteRunnerRun } = vi.hoisted(() => ({
 }));
 
 vi.mock('../../runner/suite-runner.js', () => ({
-  SuiteRunner: vi.fn().mockImplementation(() => ({
+  SuiteRunner: vi.fn().mockImplementation(function () { return {
     run: mockSuiteRunnerRun,
-  })),
+  }; }),
 }));
 
 import { GraduationRunner, isDeferredResult } from '../graduation-runner.js';

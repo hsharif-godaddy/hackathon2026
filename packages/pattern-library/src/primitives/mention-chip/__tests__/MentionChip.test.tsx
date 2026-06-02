@@ -262,7 +262,7 @@ describe('MentionChip', () => {
       // If a consumer's onClick preventDefaults, the chip should treat
       // that as "the consumer handled it" and skip onActivate.
       const onActivate = vi.fn();
-      const onClick = vi.fn((e) => e.preventDefault());
+      const onClick = vi.fn(function (e) { return e.preventDefault(); });
       const user = userEvent.setup();
       render(<MentionChip label="Button" onActivate={onActivate} onClick={onClick} />);
       await user.click(screen.getByRole('button', { name: /button/i }));

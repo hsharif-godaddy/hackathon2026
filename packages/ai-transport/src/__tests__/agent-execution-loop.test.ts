@@ -15,24 +15,24 @@ import {
 
 function baseCallbacks(overrides: Partial<AgentExecutionLoopCallbacks> = {}): AgentExecutionLoopCallbacks {
   return {
-    getAgent: vi.fn((_name: string) => ({ dummy: true })),
-    streamAgentTurn: vi.fn(async () => {}),
-    getAutoContinuation: vi.fn(() => null),
-    getHandoffDetails: vi.fn(() => null),
-    onHandoff: vi.fn(async () => {}),
-    isAborted: vi.fn(() => false),
+    getAgent: vi.fn(function (_name: string) { return { dummy: true }; }),
+    streamAgentTurn: vi.fn(async function () {}),
+    getAutoContinuation: vi.fn(function () { return null; }),
+    getHandoffDetails: vi.fn(function () { return null; }),
+    onHandoff: vi.fn(async function () {}),
+    isAborted: vi.fn(function () { return false; }),
     ...overrides,
   }
 }
 
 describe('executeAgentLoop', () => {
   it('throws AgentNotFoundError when initial agent cannot be resolved', async () => {
-    const cb = baseCallbacks({ getAgent: vi.fn(() => undefined) })
+    const cb = baseCallbacks({ getAgent: vi.fn(function () { return undefined; }) })
     await expect(executeAgentLoop('missing', 'hello', cb)).rejects.toBeInstanceOf(AgentNotFoundError)
   })
 
   it('hides agent name in error message but preserves it on the instance', async () => {
-    const cb = baseCallbacks({ getAgent: vi.fn(() => undefined) })
+    const cb = baseCallbacks({ getAgent: vi.fn(function () { return undefined; }) })
     try {
       await executeAgentLoop('secret-agent', 'hello', cb)
       expect.fail('should have thrown')
@@ -51,7 +51,7 @@ describe('executeAgentLoop', () => {
   })
 
   it('returns aborted when isAborted returns true at loop top (before first stream)', async () => {
-    const cb = baseCallbacks({ isAborted: vi.fn(() => true) })
+    const cb = baseCallbacks({ isAborted: vi.fn(function () { return true; }) })
     const result = await executeAgentLoop('a1', 'msg', cb)
     expect(result).toEqual({ finalAgentName: 'a1', iterations: 0, termination: 'aborted' })
     expect(cb.streamAgentTurn).not.toHaveBeenCalled()
@@ -60,8 +60,8 @@ describe('executeAgentLoop', () => {
   it('returns aborted when isAborted flips true after streamAgentTurn', async () => {
     let streamed = false
     const cb = baseCallbacks({
-      streamAgentTurn: vi.fn(async () => { streamed = true }),
-      isAborted: vi.fn(() => streamed),
+      streamAgentTurn: vi.fn(async function () { streamed = true }),
+      isAborted: vi.fn(function () { return streamed; }),
     })
     const result = await executeAgentLoop('a1', 'msg', cb)
     expect(result.termination).toBe('aborted')
@@ -73,8 +73,8 @@ describe('executeAgentLoop', () => {
   it('returns aborted when isAborted flips true during postStreamValidate', async () => {
     let aborted = false
     const cb = baseCallbacks({
-      postStreamValidate: vi.fn(async () => { aborted = true }),
-      isAborted: vi.fn(() => aborted),
+      postStreamValidate: vi.fn(async function () { aborted = true }),
+      isAborted: vi.fn(function () { return aborted; }),
     })
     const result = await executeAgentLoop('a1', 'msg', cb)
     expect(result.termination).toBe('aborted')
@@ -89,12 +89,12 @@ describe('executeAgentLoop', () => {
     // the auto-continuation path.
     let continued = false
     const cb = baseCallbacks({
-      getAutoContinuation: vi.fn(() => {
+      getAutoContinuation: vi.fn(function () {
         if (continued) return null
         continued = true
         return { prompt: 'auto' }
       }),
-      isAborted: vi.fn(() => continued),
+      isAborted: vi.fn(function () { return continued; }),
     })
     const result = await executeAgentLoop('a1', 'msg', cb)
     expect(result.termination).toBe('aborted')
@@ -114,10 +114,10 @@ describe('executeAgentLoop', () => {
     // continuation prompt. The `secondStream` assertions pin that behavior;
     // bounded `calls <= 2` keeps the loop at 3 iterations so we can also
     // assert the terminal state without running to MAX_HANDOFFS.
-    const getAutoContinuation = vi.fn(() => calls === 1 ? { prompt: 'continue please' } : null)
-    const getHandoffDetails = vi.fn(() => calls <= 2 ? ({ newAgentName: 'other', handoffPrompt: 'hand off' }) : null)
+    const getAutoContinuation = vi.fn(function () { return calls === 1 ? { prompt: 'continue please' } : null; })
+    const getHandoffDetails = vi.fn(function () { return calls <= 2 ? ({ newAgentName: 'other', handoffPrompt: 'hand off' }) : null; })
     const cb = baseCallbacks({
-      streamAgentTurn: vi.fn(async () => { calls++ }),
+      streamAgentTurn: vi.fn(async function () { calls++ }),
       getAutoContinuation,
       getHandoffDetails,
     })
@@ -147,8 +147,8 @@ describe('executeAgentLoop', () => {
   it('invokes onHandoff and swaps agent + message', async () => {
     let handoffFired = false
     const cb = baseCallbacks({
-      getAgent: vi.fn((name) => ({ name })),
-      getHandoffDetails: vi.fn(() => handoffFired ? null : (handoffFired = true, { newAgentName: 'b', handoffPrompt: 'go' })),
+      getAgent: vi.fn(function (name) { return { name }; }),
+      getHandoffDetails: vi.fn(function () { return handoffFired ? null : (handoffFired = true, { newAgentName: 'b', handoffPrompt: 'go' }); }),
     })
     const result = await executeAgentLoop('a', 'hi', cb)
     expect(result.finalAgentName).toBe('b')
@@ -167,12 +167,12 @@ describe('executeAgentLoop', () => {
     // must receive 'b' (the new agent name), not 'a' captured by closure.
     let handoffFired = false
     const cb = baseCallbacks({
-      getHandoffDetails: vi.fn(() => {
+      getHandoffDetails: vi.fn(function () {
         if (handoffFired) return null
         handoffFired = true
         return { newAgentName: 'b', handoffPrompt: 'go' }
       }),
-      postStreamValidate: vi.fn(async () => {}),
+      postStreamValidate: vi.fn(async function () {}),
     })
     await executeAgentLoop('a', 'hi', cb)
     const validatorCalls = (cb.postStreamValidate as any).mock.calls
@@ -189,12 +189,12 @@ describe('executeAgentLoop', () => {
     // the silent revert to 'a'.
     let handoffFired = false
     const cb = baseCallbacks({
-      getHandoffDetails: vi.fn(() => {
+      getHandoffDetails: vi.fn(function () {
         if (handoffFired) return null
         handoffFired = true
         return { newAgentName: 'b', handoffPrompt: 'go' }
       }),
-      isAborted: vi.fn(() => handoffFired),
+      isAborted: vi.fn(function () { return handoffFired; }),
     })
     const result = await executeAgentLoop('a', 'hi', cb)
     expect(result.termination).toBe('aborted')
@@ -206,8 +206,8 @@ describe('executeAgentLoop', () => {
     const agents: Record<string, unknown> = { a: { id: 'a' } }
     let handoffFired = false
     const cb = baseCallbacks({
-      getAgent: vi.fn((name) => agents[name]),
-      getHandoffDetails: vi.fn(() => {
+      getAgent: vi.fn(function (name) { return agents[name]; }),
+      getHandoffDetails: vi.fn(function () {
         if (handoffFired) return null
         handoffFired = true
         return { newAgentName: 'b', handoffPrompt: 'go' }
@@ -226,7 +226,7 @@ describe('executeAgentLoop', () => {
   it('propagates rejection from streamAgentTurn and skips subsequent callbacks', async () => {
     const err = new Error('stream crashed')
     const cb = baseCallbacks({
-      streamAgentTurn: vi.fn(async () => { throw err }),
+      streamAgentTurn: vi.fn(async function () { throw err }),
     })
     await expect(executeAgentLoop('a', 'msg', cb)).rejects.toBe(err)
     expect(cb.getAutoContinuation).not.toHaveBeenCalled()
@@ -236,8 +236,8 @@ describe('executeAgentLoop', () => {
   it('passes iteration index 0 initially and increments on handoff / auto-continue', async () => {
     let fired = 0
     const cb = baseCallbacks({
-      getAutoContinuation: vi.fn(() => fired === 1 ? (fired++, { prompt: 'auto' }) : null),
-      getHandoffDetails: vi.fn(() => fired === 0 ? (fired++, { newAgentName: 'b', handoffPrompt: 'go' }) : null),
+      getAutoContinuation: vi.fn(function () { return fired === 1 ? (fired++, { prompt: 'auto' }) : null; }),
+      getHandoffDetails: vi.fn(function () { return fired === 0 ? (fired++, { newAgentName: 'b', handoffPrompt: 'go' }) : null; }),
     })
     const result = await executeAgentLoop('a', 'm', cb)
     expect(result.iterations).toBe(3)
@@ -248,7 +248,7 @@ describe('executeAgentLoop', () => {
   it('exports MAX_HANDOFFS matching the internal cap', async () => {
     expect(MAX_HANDOFFS).toBe(10)
     const cb = baseCallbacks({
-      getHandoffDetails: vi.fn(() => ({ newAgentName: 'next', handoffPrompt: 'continue' })),
+      getHandoffDetails: vi.fn(function () { return { newAgentName: 'next', handoffPrompt: 'continue' }; }),
     })
     const result = await executeAgentLoop('a', 'm', cb)
     expect(result.iterations).toBe(MAX_HANDOFFS)
@@ -262,21 +262,21 @@ describe('executeAgentLoop', () => {
     const handoffError = new Error('DB write failed')
     let fired = false
     const cb = baseCallbacks({
-      getHandoffDetails: vi.fn(() => fired ? null : ((fired = true), { newAgentName: 'b', handoffPrompt: 'go' })),
-      onHandoff: vi.fn(async () => { throw handoffError }),
+      getHandoffDetails: vi.fn(function () { return fired ? null : ((fired = true), { newAgentName: 'b', handoffPrompt: 'go' }); }),
+      onHandoff: vi.fn(async function () { throw handoffError }),
     })
     await expect(executeAgentLoop('a', 'hi', cb)).rejects.toBe(handoffError)
   })
 
   it('propagates rejection from postStreamValidate', async () => {
     const err = new Error('validator crashed')
-    const cb = baseCallbacks({ postStreamValidate: vi.fn(async () => { throw err }) })
+    const cb = baseCallbacks({ postStreamValidate: vi.fn(async function () { throw err }) })
     await expect(executeAgentLoop('a', 'msg', cb)).rejects.toBe(err)
   })
 
   it('returns max_handoffs after 10 iterations without running an 11th turn', async () => {
     const cb = baseCallbacks({
-      getHandoffDetails: vi.fn(() => ({ newAgentName: 'next', handoffPrompt: 'continue' })),
+      getHandoffDetails: vi.fn(function () { return { newAgentName: 'next', handoffPrompt: 'continue' }; }),
     })
     const result = await executeAgentLoop('a', 'm', cb)
     expect(result.termination).toBe('max_handoffs')
@@ -319,7 +319,7 @@ describe('executeAgentLoop observability', () => {
   })
 
   it('does not propagate emitHandoff failures to the caller', async () => {
-    vi.mocked(emitHandoff).mockImplementation(() => { throw new Error('telemetry down') })
+    vi.mocked(emitHandoff).mockImplementation(function () { throw new Error('telemetry down') })
     const cb = baseCallbacks({
       getHandoffDetails: vi.fn()
         .mockReturnValueOnce({ newAgentName: 'marketing', handoffPrompt: 'p' })
@@ -334,7 +334,7 @@ describe('executeAgentLoop observability', () => {
   })
 
   it('routes swallowed emitHandoff failures to onTelemetryError with agent + error context', async () => {
-    vi.mocked(emitHandoff).mockImplementation(() => { throw new Error('telemetry down') })
+    vi.mocked(emitHandoff).mockImplementation(function () { throw new Error('telemetry down') })
     const onTelemetryError = vi.fn()
     const cb = baseCallbacks({
       getHandoffDetails: vi.fn()
@@ -357,8 +357,8 @@ describe('executeAgentLoop observability', () => {
   })
 
   it('does not propagate onTelemetryError throws (additive, never fatal)', async () => {
-    vi.mocked(emitHandoff).mockImplementation(() => { throw new Error('telemetry down') })
-    const onTelemetryError = vi.fn(() => { throw new Error('logger broken') })
+    vi.mocked(emitHandoff).mockImplementation(function () { throw new Error('telemetry down') })
+    const onTelemetryError = vi.fn(function () { throw new Error('logger broken') })
     const cb = baseCallbacks({
       getHandoffDetails: vi.fn()
         .mockReturnValueOnce({ newAgentName: 'marketing', handoffPrompt: 'p' })
