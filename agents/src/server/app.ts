@@ -210,6 +210,7 @@ import { getModelOverride } from '../utils/model-selection.js';
 import { getActiveModelOverride } from '@airo/ai-lib';
 import { closeDatabase, getDatabase } from '../database/index.js';
 import { AppRepository } from '../database/repositories/AppRepository.js';
+import { resolveAppBaseUrl } from '../utils/share-token.js';
 
 const app: Express = express();
 const port = process.env.PORT || 4000;
@@ -255,7 +256,10 @@ function getOrCreateSSEExecutionService(): MessageExecutionService | null {
         getAppContextFields: (id: string) => {
           const app = sseAppRepo.findById(id)
           if (!app) return undefined
-          const { path, previewUrl, customerId, subscriptionId } = app
+          const { path, customerId, subscriptionId } = app
+          const previewUrl = app.previewUrl
+            ? resolveAppBaseUrl(app.previewUrl, id)
+            : app.previewUrl
           return { path, previewUrl, customerId, subscriptionId }
         },
       }),

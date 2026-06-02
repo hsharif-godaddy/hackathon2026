@@ -71,6 +71,7 @@ import {
   getMessageStore,
 } from '../memory/adapters/index.js'
 import { workspaceScopeFromAppId } from '../memory/interfaces/scope.js'
+import { resolveAppBaseUrl } from '../utils/share-token.js'
 import { fileUploadService } from '../services/FileUploadService.js'
 import { logger, log } from '../logging/index.js'
 import { jwtAuthMiddleware, buildAgentContext, type AgentContext } from './middleware/jwt-auth.js'
@@ -634,11 +635,11 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
                 agentsAppContext.metadata.useAtlasCrawler = true
               }
 
-              // Resolve app base URL once for tools like httpCheck
-              if (!agentsAppContext.metadata.appBaseUrl) {
-                if (app.previewUrl) {
-                  agentsAppContext.metadata.appBaseUrl = app.previewUrl
-                }
+              // Resolve app base URL once for tools like httpCheck.
+              // Appends the active share token so the dev-supervisor proxy
+              // allows requests without requiring a browser cookie.
+              if (!agentsAppContext.metadata.appBaseUrl && app.previewUrl) {
+                agentsAppContext.metadata.appBaseUrl = resolveAppBaseUrl(app.previewUrl, appId)
               }
 
               if (agentContext?.googleReviewsEnabled) {
