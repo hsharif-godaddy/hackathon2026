@@ -3,6 +3,7 @@ title: "Everything New in Airo AI Builder: May 2026 | Full Changelog"
 description: "May 2026 changelog for Airo AI Builder: Quick Edit without credits, mobile editing, Getty Images search, SEO optimization, logo generation, calendar sync, 12 new brand kits, and more."
 pubDate: 2026-05-29
 category: "Product Update"
+heroImage: "/images/product-update-may-2026-hero.png"
 ---
 
 ## TL;DR
@@ -26,6 +27,8 @@ Hover over any element to see a toolbar with Quick Edit options. Change text, ad
 
 For bigger changes, use the Reference button to send that element to chat and let the AI handle complex edits.
 
+![Quick Edit inline editing](/blog/images/product-update-may-2026-quick-edit.png)
+
 ---
 
 ## Mobile Editing
@@ -33,6 +36,8 @@ For bigger changes, use the Reference button to send that element to chat and le
 Quick Edit now works on mobile. A wand button in the chat toolbar toggles inline edit mode. Tap any element to open its toolbar, which repositions automatically to stay visible at screen edges.
 
 No extra clicks required. Tap, edit, done.
+
+![Mobile inline editing](/blog/images/product-update-may-2026-mobile-editing.png)
 
 ---
 
@@ -42,6 +47,8 @@ Right after Airo AI Builder finishes your initial site, you can give a quick thu
 
 Simple feedback, better results over time.
 
+![Thumbs up and down feedback](/blog/images/product-update-may-2026-feedback.png)
+
 ---
 
 ## Getty Images in Search
@@ -49,6 +56,8 @@ Simple feedback, better results over time.
 Image search now includes Getty Images alongside existing sources. When you open the image picker, the search bar auto-populates based on your content and returns relevant Getty results immediately.
 
 Use View More to expand past the default three results. Professional, licensed visuals without leaving the builder.
+
+![Getty image search](/blog/images/product-update-may-2026-getty-images.png)
 
 ---
 
@@ -68,6 +77,8 @@ Logo generation is now a dedicated starting point in Airo AI Builder. Generate l
 
 Your logo feeds into the rest of your site's brand system automatically.
 
+![Logo generation](/blog/images/product-update-may-2026-logo-generation.png)
+
 ---
 
 ## Connect Your Calendar
@@ -84,11 +95,15 @@ Twelve new brand kits are now available, designed to elevate any site with cohes
 
 From bold and energetic to minimal and professional, there's a kit for every brand personality.
 
+![12 new brand kits](/blog/images/product-update-may-2026-brand-kits.png)
+
 ---
 
 ## Never Miss a Clarifying Question
 
 When the agent needs more information during your initial build, the overlay now tells you to check the chat instead of showing generic tips. You'll know exactly when your input is needed.
+
+![Build overlay clarifying question](/blog/images/product-update-may-2026-clarifying-question.png)
 
 ---
 
@@ -145,6 +160,8 @@ The new restore flow shows your version history with color swatches beside hex v
 ## Bug Fixes and Stability
 
 Squashed a batch of bugs, faster media loading, and more stable connections overall. A smoother, less glitchy experience.
+
+![Bug fixes and stability](/blog/images/product-update-may-2026-bug-fixes.png)
 
 ---
 
