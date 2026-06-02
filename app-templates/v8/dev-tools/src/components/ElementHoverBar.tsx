@@ -26,6 +26,7 @@ import BoldButton from "./BoldButton";
 import ItalicButton from "./ItalicButton";
 import TextColorButton from "./TextColorButton";
 import TextSizeStepperButton from "./TextSizeStepperButton";
+import FontFamilyButton from "./FontFamilyButton";
 import { nextOpenMenu, type HoverBarMenuId } from "../utils/popover-coordinator";
 
 
@@ -563,6 +564,7 @@ export default function ElementHoverBar({
           <ItalicButton selectedElement={targetEl} />
           <TextColorButton selectedElement={targetEl} {...menuController("color")} />
           <TextSizeStepperButton selectedElement={targetEl} {...menuController("size")} />
+          <FontFamilyButton selectedElement={targetEl} {...menuController("font")} />
           {isTextBlockElement(element) && (
             <TextAlignButton selectedElement={targetEl} {...menuController("align")} />
           )}

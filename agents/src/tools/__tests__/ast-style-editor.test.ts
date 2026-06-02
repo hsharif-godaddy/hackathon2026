@@ -1457,6 +1457,232 @@ export default function Page() {
     });
   });
 
+  describe('Font Family (Inline Styles)', () => {
+    it('should apply fontFamily as inline style on a paragraph', async () => {
+      const request = {
+        selector: 'p.text-base',
+        property: 'fontFamily',
+        value: 'Georgia, serif',
+        newClassName: 'text-base mt-4',
+        elementInfo: {
+          tagName: 'p',
+          className: 'text-base text-yellow-600 mt-4',
+          id: '',
+          textContent: 'This is a sample paragraph for testing.',
+          selector: 'p.text-base',
+          dataId: '',
+          devContext: {
+            fileName: '/src/frontend/pages/index.page.tsx',
+            componentName: 'HomePage',
+            lineNumber: 7
+          },
+          rect: { top: 100, left: 50, width: 200, height: 20 },
+          computedStyles: {}
+        }
+      };
+
+      const result = await astEditor.editElementStyle(testAppPath, request, TEST_APP_ID);
+      expect(result.success).toBe(true);
+
+      const updatedFile = await readFile(testFilePath, 'utf-8');
+      expect(updatedFile).toContain('fontFamily');
+      expect(updatedFile).toContain('Georgia, serif');
+    });
+
+    it('should strip Tailwind font-sans class when applying fontFamily', async () => {
+      const component = `import React from 'react';
+
+export default function Page() {
+  return (
+    <div>
+      <p className="font-sans text-base mt-4">Hello world</p>
+    </div>
+  );
+}`;
+      await writeFile(testFilePath, component);
+
+      const request = {
+        selector: 'p.font-sans',
+        property: 'fontFamily',
+        value: "'Times New Roman', Times, serif",
+        newClassName: 'text-base mt-4',
+        elementInfo: {
+          tagName: 'p',
+          className: 'font-sans text-base mt-4',
+          id: '',
+          textContent: 'Hello world',
+          selector: 'p.font-sans',
+          dataId: '',
+          devContext: {
+            fileName: '/src/frontend/pages/index.page.tsx',
+            componentName: 'Page',
+            lineNumber: 6
+          },
+          rect: { top: 0, left: 0, width: 100, height: 20 },
+          computedStyles: {}
+        }
+      };
+
+      const result = await astEditor.editElementStyle(testAppPath, request, TEST_APP_ID);
+      expect(result.success).toBe(true);
+
+      const updatedFile = await readFile(testFilePath, 'utf-8');
+      expect(updatedFile).not.toContain('font-sans');
+      expect(updatedFile).toContain('fontFamily');
+      expect(updatedFile).toContain("'Times New Roman', Times, serif");
+    });
+
+    it('should override --font-heading CSS variable on heading elements', async () => {
+      const component = `import React from 'react';
+
+export default function Page() {
+  return (
+    <div>
+      <h1 className="text-3xl font-bold">Welcome</h1>
+    </div>
+  );
+}`;
+      await writeFile(testFilePath, component);
+
+      const request = {
+        selector: 'h1.text-3xl',
+        property: 'fontFamily',
+        value: 'Georgia, serif',
+        newClassName: 'text-3xl font-bold',
+        elementInfo: {
+          tagName: 'h1',
+          className: 'text-3xl font-bold',
+          id: '',
+          textContent: 'Welcome',
+          selector: 'h1.text-3xl',
+          dataId: '',
+          devContext: {
+            fileName: '/src/frontend/pages/index.page.tsx',
+            componentName: 'Page',
+            lineNumber: 6
+          },
+          rect: { top: 0, left: 0, width: 200, height: 40 },
+          computedStyles: {}
+        }
+      };
+
+      const result = await astEditor.editElementStyle(testAppPath, request, TEST_APP_ID);
+      expect(result.success).toBe(true);
+
+      const updatedFile = await readFile(testFilePath, 'utf-8');
+      expect(updatedFile).toContain('fontFamily');
+      expect(updatedFile).toContain('Georgia, serif');
+      // Should also set --font-heading CSS variable to override !important rule
+      expect(updatedFile).toContain('--font-heading');
+      // Should wrap in `as React.CSSProperties` for type safety
+      expect(updatedFile).toContain('as React.CSSProperties');
+    });
+
+    it('should preserve template literal style values when adding fontFamily', async () => {
+      const component = `import React from 'react';
+
+export default function Page() {
+  return (
+    <div>
+      <h2 className="text-3xl font-bold" style={{ color: \`hsl(var(--primary))\` }}>Styled</h2>
+    </div>
+  );
+}`;
+      await writeFile(testFilePath, component);
+
+      const request = {
+        selector: 'h2.text-3xl',
+        property: 'fontFamily',
+        value: 'Georgia, serif',
+        newClassName: 'text-3xl font-bold',
+        elementInfo: {
+          tagName: 'h2',
+          className: 'text-3xl font-bold',
+          id: '',
+          textContent: 'Styled',
+          selector: 'h2.text-3xl',
+          dataId: '',
+          devContext: {
+            fileName: '/src/frontend/pages/index.page.tsx',
+            componentName: 'Page',
+            lineNumber: 6
+          },
+          rect: { top: 0, left: 0, width: 200, height: 40 },
+          computedStyles: {}
+        }
+      };
+
+      const result = await astEditor.editElementStyle(testAppPath, request, TEST_APP_ID);
+      expect(result.success).toBe(true);
+
+      const updatedFile = await readFile(testFilePath, 'utf-8');
+      // Original template literal style must be preserved
+      expect(updatedFile).toContain('hsl(var(--primary))');
+      // New fontFamily added
+      expect(updatedFile).toContain('fontFamily');
+      expect(updatedFile).toContain('Georgia, serif');
+      // Heading override
+      expect(updatedFile).toContain('--font-heading');
+    });
+
+    it('should preserve existing styles on second heading font edit (TSAsExpression unwrap)', async () => {
+      const component = `import React from 'react';
+
+export default function Page() {
+  return (
+    <div>
+      <h1 className="text-3xl font-bold" style={{ color: \`hsl(var(--primary))\` }}>Title</h1>
+    </div>
+  );
+}`;
+      await writeFile(testFilePath, component);
+
+      const makeRequest = (fontValue: string) => ({
+        selector: 'h1.text-3xl',
+        property: 'fontFamily',
+        value: fontValue,
+        newClassName: 'text-3xl font-bold',
+        elementInfo: {
+          tagName: 'h1',
+          className: 'text-3xl font-bold',
+          id: '',
+          textContent: 'Title',
+          selector: 'h1.text-3xl',
+          dataId: '',
+          devContext: {
+            fileName: '/src/frontend/pages/index.page.tsx',
+            componentName: 'Page',
+            lineNumber: 6
+          },
+          rect: { top: 0, left: 0, width: 200, height: 40 },
+          computedStyles: {}
+        }
+      });
+
+      // First edit — adds fontFamily + --font-heading, wraps in `as React.CSSProperties`
+      const result1 = await astEditor.editElementStyle(testAppPath, makeRequest('Georgia, serif'), TEST_APP_ID);
+      expect(result1.success).toBe(true);
+
+      const afterFirst = await readFile(testFilePath, 'utf-8');
+      expect(afterFirst).toContain('as React.CSSProperties');
+      expect(afterFirst).toContain('hsl(var(--primary))');
+
+      // Second edit — changes font; must NOT drop the template-literal color
+      const result2 = await astEditor.editElementStyle(testAppPath, makeRequest('Arial, sans-serif'), TEST_APP_ID);
+      expect(result2.success).toBe(true);
+
+      const afterSecond = await readFile(testFilePath, 'utf-8');
+      // Original template literal preserved
+      expect(afterSecond).toContain('hsl(var(--primary))');
+      // Font updated to new value
+      expect(afterSecond).toContain('Arial, sans-serif');
+      // Old font value replaced
+      expect(afterSecond).not.toContain('Georgia, serif');
+      // Still type-safe
+      expect(afterSecond).toContain('as React.CSSProperties');
+    });
+  });
+
   describe('List Style Type (Tailwind Classes)', () => {
     it('should add list-disc and [&>*]:list-item when listStyleType is disc', async () => {
       const component = `import React from 'react';

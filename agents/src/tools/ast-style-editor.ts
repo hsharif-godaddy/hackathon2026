@@ -235,6 +235,19 @@ export class ASTStyleEditor extends ASTEditorBase {
     return 'REMOVED';
   }
 
+  /** Get the tag name from a JSXOpeningElement (e.g. "h1", "p"). */
+  private getOpeningElementTagName(openingElement: t.JSXOpeningElement): string | null {
+    if (this.t.isJSXIdentifier(openingElement.name)) {
+      return openingElement.name.name;
+    }
+    // Handle member expressions like motion.h1
+    if (this.t.isJSXMemberExpression(openingElement.name) &&
+        this.t.isJSXIdentifier(openingElement.name.property)) {
+      return openingElement.name.property.name;
+    }
+    return null;
+  }
+
   /**
    * Apply inline styles to JSX element for properties that use them
    */
@@ -244,8 +257,8 @@ export class ASTStyleEditor extends ASTEditorBase {
     value: string,
     newStyle?: string
   ): void {
-    // Only apply inline styles for color properties; fontWeight/fontStyle use className
-    if (!newStyle && !['color', 'backgroundColor'].includes(property)) {
+    // Only apply inline styles for color and font-family properties; fontWeight/fontStyle use className
+    if (!newStyle && !['color', 'backgroundColor', 'fontFamily'].includes(property)) {
       return;
     }
 
@@ -254,43 +267,41 @@ export class ASTStyleEditor extends ASTEditorBase {
       (attr: any) => this.t.isJSXAttribute(attr) && attr.name.name === 'style'
     ) as t.JSXAttribute | undefined;
 
-    // Parse existing styles or create new object
-    const styleProperties: Record<string, string> = {};
+    // Determine properties to set
+    const propsToSet: Array<{ key: string; value: string }> = [];
 
-    if (styleAttr && this.t.isJSXExpressionContainer(styleAttr.value)) {
-      const expr = styleAttr.value.expression;
-      if (this.t.isObjectExpression(expr)) {
-        // Parse existing style object
-        expr.properties.forEach((prop: any) => {
-          if (this.t.isObjectProperty(prop) &&
-              (this.t.isStringLiteral(prop.key) || this.t.isIdentifier(prop.key)) &&
-              this.t.isStringLiteral(prop.value)) {
-            const key = this.t.isStringLiteral(prop.key) ? prop.key.value : prop.key.name;
-            styleProperties[key] = prop.value.value;
-          }
-        });
-      }
-    }
-
-    // Parse the full newStyle string if provided
     if (newStyle) {
       const parsedStyles = this.parseInlineStyles(newStyle);
-      // Merge parsed styles into styleProperties
-      Object.assign(styleProperties, parsedStyles);
+      for (const [k, v] of Object.entries(parsedStyles)) {
+        propsToSet.push({ key: k, value: v });
+      }
       logger.debug('Applied inline styles to element', {
         component: 'ASTStyleEditor',
         styleProperties: Object.keys(parsedStyles)
       });
     } else {
-      // Fallback: apply single property
       const cssPropertyMap: Record<string, string> = {
         'color': 'color',
         'backgroundColor': 'backgroundColor',
+        'fontFamily': 'fontFamily',
       };
 
       const reactProperty = cssPropertyMap[property];
       if (reactProperty) {
-        styleProperties[reactProperty] = value;
+        propsToSet.push({ key: reactProperty, value: value });
+
+        // For fontFamily on heading elements, also override the --font-heading
+        // CSS custom property. The template's globals.css applies
+        // `font-family: var(--font-heading) !important` on h1-h6, which beats
+        // a plain inline fontFamily. Overriding the variable on the element
+        // makes the !important rule resolve to our value.
+        if (property === 'fontFamily') {
+          const tagName = this.getOpeningElementTagName(openingElement);
+          if (tagName && /^h[1-6]$/i.test(tagName)) {
+            propsToSet.push({ key: '--font-heading', value: value });
+          }
+        }
+
         logger.debug('Applied inline style property to element', {
           component: 'ASTStyleEditor',
           property: reactProperty,
@@ -299,18 +310,82 @@ export class ASTStyleEditor extends ASTEditorBase {
       }
     }
 
-    // Create new style object expression
-    const styleObjectProperties = Object.entries(styleProperties).map(([key, val]) =>
-      this.t.objectProperty(this.t.identifier(key), this.t.stringLiteral(val))
-    );
+    if (propsToSet.length === 0) return;
 
-    const newStyleExpr = this.t.objectExpression(styleObjectProperties);
+    // If there's an existing style object, mutate it in-place to preserve
+    // non-string-literal values (template literals, expressions, spreads).
+    if (styleAttr && this.t.isJSXExpressionContainer(styleAttr.value)) {
+      const expr = styleAttr.value.expression;
+
+      // Unwrap TSAsExpression (e.g. from a prior edit that added `as React.CSSProperties`)
+      let inner: t.ObjectExpression | null = null;
+      let alreadyWrapped = false;
+      if (this.t.isObjectExpression(expr)) {
+        inner = expr;
+      } else if (this.t.isTSAsExpression(expr) && this.t.isObjectExpression(expr.expression)) {
+        inner = expr.expression;
+        alreadyWrapped = true;
+      }
+
+      if (inner) {
+        const hasCustomProperty = propsToSet.some(p => p.key.startsWith('--'));
+
+        for (const { key, value: val } of propsToSet) {
+          // Find existing property with matching key
+          const existingIdx = inner.properties.findIndex((prop: any) => {
+            if (!this.t.isObjectProperty(prop)) return false;
+            if (this.t.isIdentifier(prop.key)) return prop.key.name === key;
+            if (this.t.isStringLiteral(prop.key)) return prop.key.value === key;
+            return false;
+          });
+
+          const keyNode = key.startsWith('--') ? this.t.stringLiteral(key) : this.t.identifier(key);
+          const newProp = this.t.objectProperty(keyNode, this.t.stringLiteral(val));
+
+          if (existingIdx >= 0) {
+            inner.properties[existingIdx] = newProp;
+          } else {
+            inner.properties.push(newProp);
+          }
+        }
+
+        // If we added a CSS custom property (--*), wrap in `as React.CSSProperties`
+        // to keep the file type-safe. Only wrap if not already wrapped.
+        if (hasCustomProperty && !alreadyWrapped) {
+          styleAttr.value = this.t.jsxExpressionContainer(
+            this.t.tsAsExpression(
+              inner,
+              this.t.tsTypeReference(
+                this.t.tsQualifiedName(this.t.identifier('React'), this.t.identifier('CSSProperties'))
+              )
+            )
+          );
+        }
+        return;
+      }
+    }
+
+    // No existing style object (or not an object expression) — create fresh
+    const styleObjectProperties = propsToSet.map(({ key, value: val }) => {
+      const keyNode = key.startsWith('--') ? this.t.stringLiteral(key) : this.t.identifier(key);
+      return this.t.objectProperty(keyNode, this.t.stringLiteral(val));
+    });
+
+    const hasCustomProperty = propsToSet.some(p => p.key.startsWith('--'));
+    const newStyleObj = this.t.objectExpression(styleObjectProperties);
+    // Wrap with `as React.CSSProperties` when custom properties are present
+    const newStyleExpr = hasCustomProperty
+      ? this.t.tsAsExpression(
+          newStyleObj,
+          this.t.tsTypeReference(
+            this.t.tsQualifiedName(this.t.identifier('React'), this.t.identifier('CSSProperties'))
+          )
+        )
+      : newStyleObj;
 
     if (styleAttr) {
-      // Update existing style attribute
       styleAttr.value = this.t.jsxExpressionContainer(newStyleExpr);
     } else {
-      // Create new style attribute
       const newStyleAttr = this.t.jsxAttribute(
         this.t.jsxIdentifier('style'),
         this.t.jsxExpressionContainer(newStyleExpr)
@@ -362,7 +437,8 @@ export class ASTStyleEditor extends ASTEditorBase {
       'padding-left': 'paddingLeft',
       'padding-right': 'paddingRight',
       'text-align': 'textAlign',
-      'line-height': 'lineHeight'
+      'line-height': 'lineHeight',
+      'font-family': 'fontFamily'
     };
 
     return propertyMap[cssProperty] || cssProperty;
@@ -462,6 +538,18 @@ export class ASTStyleEditor extends ASTEditorBase {
           filtered.push('[&>*]:list-item');
         }
         return filtered.join(' ');
+      }
+
+      case 'fontFamily': {
+        // Remove existing Tailwind font-family classes (font-sans, font-serif, font-mono)
+        // including variant-prefixed forms like "sm:font-sans" or "hover:font-serif"
+        const fontFamilyTargets = new Set(['font-sans', 'font-serif', 'font-mono']);
+        const filteredFont = classes.filter(c => {
+          const base = c.split(':').pop() || '';
+          return !fontFamilyTargets.has(base);
+        });
+        // We use inline styles for font-family, so don't add Tailwind classes
+        return filteredFont.join(' ');
       }
 
       case 'color': {
