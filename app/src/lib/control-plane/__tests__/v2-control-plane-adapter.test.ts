@@ -3,13 +3,13 @@
  */
 /**
  * V2 Control Plane Adapter Tests
- * 
+ *
  * Tests the V2 adapter implementation for mgmt-airo + mgmt-hosting integration.
- * 
+ *
  * ⚠️ SETUP REQUIRED:
  * Run: npm install -D vitest @vitest/ui
  * Then: npm test
- * 
+ *
  * See: app/TESTING-SETUP.md for complete setup instructions
  */
 
@@ -108,19 +108,19 @@ describe('V2ControlPlaneAdapter', () => {
     it('should use existing subscription when ALWAYS_NEW_SUBSCRIPTION is false', async () => {
       // Set environment variable
       process.env.ALWAYS_NEW_SUBSCRIPTION = 'false';
-      
+
       // Mock getActiveSubscription (existing subscription)
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: async () => [{ id: 'existing-sub-123', status: 'active' }]
       });
-      
+
       // Mock getSystems
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: async () => [{ systemId: 'sys-456', subscriptionId: 'existing-sub-123' }]
       });
-      
+
       // Mock createApp response
       mockFetch.mockResolvedValueOnce({
         ok: true,
@@ -152,7 +152,7 @@ describe('V2ControlPlaneAdapter', () => {
           })
         })
       );
-      
+
       // Clean up
       delete process.env.ALWAYS_NEW_SUBSCRIPTION;
     });
@@ -305,7 +305,7 @@ describe('V2ControlPlaneAdapter', () => {
     it('should force new subscription when ALWAYS_NEW_SUBSCRIPTION is true', async () => {
       // Set environment variable
       process.env.ALWAYS_NEW_SUBSCRIPTION = 'true';
-      
+
       // Note: getActiveSubscription is NOT called when ALWAYS_NEW_SUBSCRIPTION=true
       // So we only mock the signup response
       mockFetch.mockResolvedValueOnce({
@@ -338,7 +338,7 @@ describe('V2ControlPlaneAdapter', () => {
           })
         })
       );
-      
+
       // Clean up
       delete process.env.ALWAYS_NEW_SUBSCRIPTION;
     });
@@ -346,7 +346,7 @@ describe('V2ControlPlaneAdapter', () => {
     it('should use specific subscription when AIRO_SUBSCRIPTION_ID is set', async () => {
       // Set environment variables
       process.env.AIRO_SUBSCRIPTION_ID = 'target-sub-456';
-      
+
       // Mock getSubscriptions (find target subscription)
       mockFetch.mockResolvedValueOnce({
         ok: true,
@@ -356,13 +356,13 @@ describe('V2ControlPlaneAdapter', () => {
           { id: 'another-sub-789', status: 'active' }
         ]
       });
-      
+
       // Mock getSystems for target subscription
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: async () => [{ systemId: 'sys-target', subscriptionId: 'target-sub-456' }]
       });
-      
+
       // Mock createApp response
       mockFetch.mockResolvedValueOnce({
         ok: true,
@@ -393,7 +393,7 @@ describe('V2ControlPlaneAdapter', () => {
           })
         })
       );
-      
+
       // Clean up
       delete process.env.AIRO_SUBSCRIPTION_ID;
     });
@@ -401,7 +401,7 @@ describe('V2ControlPlaneAdapter', () => {
     it('should fallback to active subscription when AIRO_SUBSCRIPTION_ID not found', async () => {
       // Set environment variable to non-existent subscription
       process.env.AIRO_SUBSCRIPTION_ID = 'non-existent-sub';
-      
+
       // Mock getSubscriptions (target subscription not found)
       mockFetch.mockResolvedValueOnce({
         ok: true,
@@ -410,19 +410,19 @@ describe('V2ControlPlaneAdapter', () => {
           { id: 'another-sub-456', status: 'active' }
         ]
       });
-      
+
       // Mock getActiveSubscription (fallback)
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: async () => [{ id: 'active-sub-789', status: 'active' }]
       });
-      
+
       // Mock getSystems for active subscription
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: async () => [{ systemId: 'sys-active', subscriptionId: 'active-sub-789' }]
       });
-      
+
       // Mock createApp response
       mockFetch.mockResolvedValueOnce({
         ok: true,
@@ -449,7 +449,7 @@ describe('V2ControlPlaneAdapter', () => {
           method: 'POST'
         })
       );
-      
+
       // Clean up
       delete process.env.AIRO_SUBSCRIPTION_ID;
     });
@@ -460,7 +460,7 @@ describe('V2ControlPlaneAdapter', () => {
         ok: true,
         json: async () => []
       });
-      
+
       // Mock signup response
       mockFetch.mockResolvedValueOnce({
         ok: true,
@@ -509,7 +509,7 @@ describe('V2ControlPlaneAdapter', () => {
         ok: true,
         json: async () => []
       });
-      
+
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: async () => ({ statusJobId: MOCK_JOB_ID })
@@ -530,14 +530,14 @@ describe('V2ControlPlaneAdapter', () => {
         ok: true,
         json: async () => []
       });
-      
+
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: async () => ({ statusJobId: MOCK_JOB_ID })
       });
 
       const longPrompt = 'Create a very long prompt that exceeds fifty characters and should be truncated';
-      
+
       const result = await adapter.createSite({
         accountId: MOCK_ACCOUNT_ID,
         prompt: longPrompt,
@@ -554,7 +554,7 @@ describe('V2ControlPlaneAdapter', () => {
         ok: true,
         json: async () => []
       });
-      
+
       // Mock signup error with retries (3 attempts)
       const errorResponse = {
         ok: false,
@@ -563,7 +563,7 @@ describe('V2ControlPlaneAdapter', () => {
         url: 'https://mgmt.test.com/api/airo/v1/signup',
         text: async () => 'Invalid payload'
       } as Response;
-      
+
       mockFetch
         .mockResolvedValueOnce(errorResponse)
         .mockResolvedValueOnce(errorResponse)
@@ -1241,7 +1241,7 @@ describe('V2ControlPlaneAdapter', () => {
           status: 'active',
           systemId: MOCK_SYSTEM_ID,
           subscriptionId: 'sub-123',
-          variables: { 
+          variables: {
             title: 'My App',
             initialPrompt: 'Test prompt'
           },
@@ -1255,7 +1255,7 @@ describe('V2ControlPlaneAdapter', () => {
       // Debug: Check how many calls were actually made
       console.log('Mock calls made:', mockFetch.mock.calls.length);
       console.log('Site result:', site);
-      
+
       expect(site).not.toBeNull();
       expect(site?.id).toBe(MOCK_APP_ID);
       expect(site?.name).toBe('My App');
@@ -1366,7 +1366,7 @@ describe('V2ControlPlaneAdapter', () => {
         ok: true,
         json: async () => ({})
       });
-      
+
       // Mock final getApp (to fetch updated app)
       mockFetch.mockResolvedValueOnce({
         ok: true,
@@ -1395,11 +1395,11 @@ describe('V2ControlPlaneAdapter', () => {
       expect(result?.name).toBe('TaskMaster Pro');
 
       // Verify PATCH was called with correct variables
-      const patchCall = mockFetch.mock.calls.find(call => 
+      const patchCall = mockFetch.mock.calls.find(call =>
         call[1]?.method === 'PATCH'
       );
       expect(patchCall).toBeDefined();
-      
+
       const patchPayload = JSON.parse(patchCall![1].body);
       expect(patchPayload.variables).toEqual({
         title: 'TaskMaster Pro',
@@ -1479,7 +1479,7 @@ describe('V2ControlPlaneAdapter', () => {
         ok: true,
         json: async () => ({})
       });
-      
+
       mockFetch.mockResolvedValueOnce({ // getApp after PATCH
         ok: true,
         json: async () => ({
@@ -1501,7 +1501,7 @@ describe('V2ControlPlaneAdapter', () => {
         MOCK_JWT
       );
 
-      const patchCall = mockFetch.mock.calls.find(call => 
+      const patchCall = mockFetch.mock.calls.find(call =>
         call[1]?.method === 'PATCH'
       );
       const patchPayload = JSON.parse(patchCall![1].body);
@@ -1549,7 +1549,7 @@ describe('V2ControlPlaneAdapter', () => {
       });
 
       const result = await adapter.deleteSite(
-        MOCK_APP_ID, 
+        MOCK_APP_ID,
         MOCK_JWT,
         MOCK_SYSTEM_ID,
         'sub-123'
@@ -1558,13 +1558,13 @@ describe('V2ControlPlaneAdapter', () => {
       expect(result.success).toBe(true);
 
       // Verify DELETE was called with correct URL
-      const deleteCall = mockFetch.mock.calls.find(call => 
+      const deleteCall = mockFetch.mock.calls.find(call =>
         call[1]?.method === 'DELETE'
       );
       expect(deleteCall).toBeDefined();
       expect(deleteCall![0]).toContain(`/subscriptions/sub-123/systems/${MOCK_SYSTEM_ID}/apps/${MOCK_APP_ID}`);
     });
-    
+
     it.skip('should delete app by looking up systemId and subscriptionId', async () => {
       // TODO: Fix mock sequence - deleteSite returns success:false, needs investigation
       // Mock findAppMetadata search
@@ -1631,7 +1631,7 @@ describe('V2ControlPlaneAdapter', () => {
       expect(result.success).toBe(true);
 
       // Verify DELETE was called with correct URL
-      const deleteCall = mockFetch.mock.calls.find(call => 
+      const deleteCall = mockFetch.mock.calls.find(call =>
         call[1]?.method === 'DELETE'
       );
       expect(deleteCall).toBeDefined();
@@ -1966,7 +1966,7 @@ describe('V2ControlPlaneAdapter', () => {
 
         const site = await adapter.getSite(MOCK_JOB_ID, MOCK_JWT);
         expect(site?.status).toBe(expectedStatus);
-        
+
         mockFetch.mockClear();
       }
     });

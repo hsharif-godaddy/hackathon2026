@@ -22,6 +22,7 @@ import (
 
 	"github.com/airo-ai-builder/dev-supervisor/internal/allocconfig"
 	"github.com/airo-ai-builder/dev-supervisor/internal/config"
+	"github.com/airo-ai-builder/dev-supervisor/internal/email/signing"
 	"github.com/airo-ai-builder/dev-supervisor/internal/logs"
 	"github.com/airo-ai-builder/dev-supervisor/internal/middleware"
 	"github.com/airo-ai-builder/dev-supervisor/internal/process"
@@ -115,6 +116,7 @@ type Server struct {
 	smtpProxy              *smtpproxy.Proxy
 	emailGateway           *emailhttp.Gateway
 	httpProxy              *httpproxy.HTTPProxy
+	jwsSigner              *signing.Signer       // nil when JWS_PRIVATE_KEY_PATH is unset; consumed by SMTP+HTTP email paths and the /airo/jws-debug handler
 	statusPage             *httpproxy.StatusPage // publish-only fallback HTML; nil otherwise
 	startTime              time.Time
 	config                 *Config
@@ -164,6 +166,46 @@ func NewServer() *Server {
 		config.GetProcessLoggingToStdout(),
 	) // Default: enable structured output, configurable via env
 
+	// Build SMTP proxy and HTTP email gateway up front so we can install
+	// the JWS signer on both before either is started. Both consume the
+	// same *signing.Signer (one cell key per dev-supervisor process); a
+	// nil signer (local dev / no key mounted) leaves the call sites in
+	// pass-through mode and emails forward unsigned.
+	smtpProxy := smtpproxy.New()
+	emailGateway := emailhttp.New()
+
+	signer, err := signing.Load()
+	allocDir := os.Getenv("NOMAD_ALLOC_DIR")
+	if allocDir == "" {
+		allocDir = "/alloc"
+	}
+	signingStatusPath := allocDir + "/jws-signing-status.json"
+
+	switch {
+	case err != nil:
+		slog.Error("jws.signing.load_failed", "error", err)
+		if wErr := os.WriteFile(signingStatusPath, fmt.Appendf(nil,
+			`{"loaded":false,"error":%q}`+"\n", err.Error(),
+		), 0600); wErr != nil {
+			slog.Warn("jws.signing.status_write_failed", "path", signingStatusPath, "error", wErr)
+		}
+	case signer != nil:
+		slog.Info("jws.signing.enabled",
+			"key_id", signer.KeyID(),
+			"cell", signer.CellID(),
+		)
+		smtpProxy.SetSigner(signer.SignMessage)
+		emailGateway.SetSigner(signer.SignMessage)
+		// Success status written by signing.Load() itself
+	default:
+		slog.Info("jws.signing.disabled", "reason", "no JWS_PRIVATE_KEY_PATH configured")
+		if wErr := os.WriteFile(signingStatusPath, []byte(
+			`{"loaded":false,"error":"JWS_PRIVATE_KEY_PATH not set (signing disabled)"}`+"\n",
+		), 0600); wErr != nil {
+			slog.Warn("jws.signing.status_write_failed", "path", signingStatusPath, "error", wErr)
+		}
+	}
+
 	s := &Server{
 		router:                 mux.NewRouter(),
 		logMgr:                 logMgr,
@@ -171,8 +213,9 @@ func NewServer() *Server {
 		procMgr:                procMgr,
 		cmdExec:                NewCommandExecutor(pid1Mgr),
 		envMgr:                 NewEnvironmentManager(),
-		smtpProxy:              smtpproxy.New(),
-		emailGateway:           emailhttp.New(),
+		smtpProxy:              smtpProxy,
+		emailGateway:           emailGateway,
+		jwsSigner:              signer,
 		startTime:              time.Now(),
 		processLogging:         true,                               // Default: enable child process logging
 		processLoggingToStdout: config.GetProcessLoggingToStdout(), // Default: enable structured output, configurable via env
@@ -327,6 +370,8 @@ func (s *Server) StartWithConfig(cfg *Config) error {
 		if _, err := os.Stat(sandbox.BinaryPath()); err != nil {
 			return fmt.Errorf("sandbox enabled but binary not found at %s: %w", sandbox.BinaryPath(), err)
 		}
+	}
+	if cfg.SandboxEnabled {
 		variant := sandbox.DetectProcessVariant()
 		slog.Info("sandbox.enabled",
 			"binary", sandbox.BinaryPath(),
@@ -411,6 +456,12 @@ func (s *Server) startHTTPProxyIfEnabled() error {
 		StatusPage: s.statusPage,
 	}
 	s.httpProxy = httpproxy.NewHTTPProxy(proxyConfig)
+
+	// Wire the JWS signer into the http proxy BEFORE Start() so the
+	// /airo/jws-debug handler captures the right signer at mux
+	// registration time. nil signer is fine — the debug handler
+	// surfaces signing_enabled=false rather than crashing.
+	s.httpProxy.SetSigner(s.jwsSigner)
 
 	// Enable start-on-request if configured
 	if s.config.StartOnRequestEnabled {

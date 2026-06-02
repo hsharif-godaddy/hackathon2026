@@ -157,6 +157,17 @@ type SendResponse struct {
 	Error     string `json:"error,omitempty"`
 }
 
+// SignFunc signs the outbound message body and injects the JWS-bearing
+// relay-trust headers (X-GD-DKIM-SIGN / X-GD-DKIM-PUB-KEY) before
+// forwarding. When set on a Gateway, the signature matches
+// signing.Signer.SignMessage so a *signing.Signer's method value plugs
+// in directly.
+//
+// A nil SignFunc disables signing — the gateway forwards unsigned. The
+// production wiring in cmd/dev-supervisor leaves it unset when no key
+// material is mounted (local dev / Mailpit).
+type SignFunc func(body []byte, siteID, from string) []byte
+
 // Gateway is the HTTP server lifecycle wrapper. One per dev-supervisor
 // process.
 type Gateway struct {
@@ -164,6 +175,7 @@ type Gateway struct {
 	destinationAddr string
 	identityFn      func() (email.Identity, error)
 	forward         func(destAddr, envelopeFrom string, rcpts []string, body []byte) error
+	signFn          SignFunc
 	now             func() time.Time
 
 	// verboseErrors controls whether customer-facing error responses (400
@@ -242,6 +254,18 @@ func NewForTesting(
 		now:             now,
 		verboseErrors:   verboseErrors,
 	}
+}
+
+// SetSigner installs the JWS signing function. Must be called before
+// Start — the handler reads the function under the gateway lock per
+// request, so changes after Start take effect on subsequent requests
+// without restart, but production wiring sets this once at startup.
+//
+// Pass nil to disable signing.
+func (g *Gateway) SetSigner(fn SignFunc) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.signFn = fn
 }
 
 // Start binds the listener and serves HTTP until Stop is called.
@@ -468,6 +492,28 @@ func (g *Gateway) handleSend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// JWS sign for relay trust. The body_hash claim covers the message
+	// as it leaves buildMessage (tracking headers included, signing
+	// headers not yet injected) — the relay strips X-GD-DKIM-* before
+	// hashing, so the relay's reconstruction matches what we signed
+	// over. A nil signFn or signing failure forwards unsigned.
+	g.mu.Lock()
+	signFn := g.signFn
+	g.mu.Unlock()
+	headersInjected := false
+	if signFn != nil {
+		bodyBefore := len(body)
+		body = signFn(body, id.AppID, envelopeFrom)
+		headersInjected = len(body) > bodyBefore
+		slog.Info("email_gateway.jws_sign.applied",
+			"app_id", id.AppID,
+			"from", envelopeFrom,
+			"body_size_before", bodyBefore,
+			"body_size_after", len(body),
+			"headers_injected", headersInjected,
+		)
+	}
+
 	if err := g.forward(g.destinationAddr, envelopeFrom, rcpts, body); err != nil {
 		// slog always carries the verbose error — operators with log
 		// access see everything regardless of NODE_ENV.
@@ -489,12 +535,14 @@ func (g *Gateway) handleSend(w http.ResponseWriter, r *http.Request) {
 
 	slog.Info("email_gateway.send.ok",
 		"message_id", prepared.MessageID,
-		"from", prepared.From,
 		"from_source", fromSource,
 		"to_count", len(prepared.To),
 		"cc_count", len(prepared.CC),
 		"bcc_count", len(prepared.BCC),
 		"attachment_count", len(prepared.Attachments),
+		"body_size", len(body),
+		"signing_applied", headersInjected,
+		"destination", g.destinationAddr,
 		"app_id", id.AppID,
 	)
 	writeJSON(w, http.StatusOK, SendResponse{Success: true, MessageID: prepared.MessageID})

@@ -19,6 +19,7 @@ import (
 	"github.com/rs/cors"
 
 	"github.com/airo-ai-builder/dev-supervisor/internal/auth"
+	"github.com/airo-ai-builder/dev-supervisor/internal/email/signing"
 	"github.com/airo-ai-builder/dev-supervisor/internal/middleware"
 )
 
@@ -42,6 +43,27 @@ type HTTPProxy struct {
 	startTime             time.Time
 	procMgr               ProcessController
 	startOnRequestEnabled bool
+	// signer is the JWS Signer used by /airo/jws-debug to produce a
+	// dry-run signing preview. nil when JWS_PRIVATE_KEY_PATH is unset
+	// — the debug handler then surfaces "signing disabled" so the
+	// operator can tell the difference between "feature off" and
+	// "keys missing." Wired by SetSigner from main.go after Load().
+	signer *signing.Signer
+}
+
+// SetSigner installs the JWS signer the /airo/jws-debug endpoint
+// uses to produce a dry-run signing preview. nil signer is allowed
+// (matches the SignMessage no-op contract) — the debug endpoint
+// will surface signing_enabled=false in that case so operators can
+// tell key-not-loaded apart from feature-flag-off.
+//
+// Must be called before Start(); the registered handler captures the
+// HTTPProxy receiver and reads p.signer at request time. Wiring after
+// Start would race with handler registration on the mux.
+func (p *HTTPProxy) SetSigner(s *signing.Signer) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.signer = s
 }
 
 // Start initializes and starts the HTTP proxy server.
@@ -123,6 +145,25 @@ func (p *HTTPProxy) Start() error {
 	// Add auth-check endpoint (behind JWT middleware - NOT excluded)
 	// Used by builder to verify cookie was stored after auth bootstrap
 	mux.HandleFunc("/airo/auth-check", handlerWithName("auth-check", handleAuthCheck))
+
+	// Email test-send proxy. Inert by default — returns 404 when
+	// DEV_SUPERVISOR_SIGN_DEBUG_ENABLED != "true" so a misconfigured
+	// alloc never exposes the proxy path. Forwards the request body
+	// verbatim to the existing http://localhost:2525/api/email/send
+	// gateway (the same handler customer apps call via nodemailer).
+	// The response includes the upstream send result PLUS a flag
+	// telling the caller whether JWS signing was active when the
+	// gateway processed the message — read from the wired-in signer
+	// at request time. Used to confirm signing fires end-to-end on a
+	// cell where the customer-domain attach flow can't be exercised.
+	//
+	// Behind JWT middleware (not in JWT_EXCLUDED_PATHS). The BFF wraps
+	// this behind switchboard `appbuilder-jws-signing-debug` for
+	// operator-facing flag control.
+	//
+	// See airo-app-builder/docs/jws-email-signing.md §8 for the full
+	// debug-API spec and gate ladder.
+	mux.HandleFunc("/airo/email/test-send", handlerWithName("email-test-send", p.handleEmailTestSend))
 
 	// Add media slot handlers - use app directory for manifest (not static root)
 	// The manifest is written to the app root by the agents service, not to the build output

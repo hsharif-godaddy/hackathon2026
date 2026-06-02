@@ -106,7 +106,7 @@ export const GET = withCustomerAuth(async (
         fqdn,
       });
       return NextResponse.json(
-        { code: DomainApiErrorCode.DOMAIN_ERROR_NOT_FOUND, error: 'No domain job found for the specified domain' },
+        { code: DomainApiErrorCode.DOMAIN_ERROR_NOT_FOUND, error: 'No domain job found for the specified domain.' },
         { status: 404 }
       );
     }

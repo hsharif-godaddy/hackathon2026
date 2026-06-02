@@ -876,5 +876,5 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
         isDisconnecting={modifyDomainsMutation.isPending}
       />
     </SettingsSection>
-  ); 
+  );
 }

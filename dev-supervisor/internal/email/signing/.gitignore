@@ -1,0 +1,4 @@
+# Test fixtures are generated at test time by the testkeys subpackage
+# (see testkeys/testkeys.go). Real RSA keys must NEVER be committed —
+# they trip GitHub Push Protection and any other secret scanner.
+testdata/

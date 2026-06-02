@@ -10,7 +10,6 @@ import (
 	"maps"
 	"net"
 	"net/mail"
-	"sort"
 	"strings"
 	"sync"
 
@@ -21,6 +20,17 @@ import (
 	"github.com/airo-ai-builder/dev-supervisor/internal/email"
 )
 
+// SignFunc signs the outbound message and injects the JWS-bearing
+// relay-trust headers (X-GD-DKIM-SIGN / X-GD-DKIM-PUB-KEY) into body
+// before it is forwarded. When set on a Proxy, the signature
+// matches signing.Signer.SignMessage so a *signing.Signer's method
+// value plugs in directly.
+//
+// A nil SignFunc disables signing — the proxy forwards unsigned. The
+// production wiring in cmd/dev-supervisor leaves it unset when no key
+// material is mounted (local dev / Mailpit).
+type SignFunc func(body []byte, siteID, from string) []byte
+
 // Proxy is an SMTP proxy that injects custom headers into emails and enforces
 // the platform sender-identity policy on both envelope and header From.
 // It listens on localhost and forwards to a configured destination SMTP server.
@@ -29,6 +39,7 @@ type Proxy struct {
 	destinationAddr string
 	customHeaders   map[string]string
 	identityFn      func() (email.Identity, error)
+	signFn          SignFunc
 	server          *smtp.Server
 	listener        net.Listener
 	mu              sync.Mutex
@@ -103,6 +114,18 @@ func (p *Proxy) LoadHeaders() {
 	slog.Info("loaded SMTP custom headers", "count", len(p.customHeaders))
 }
 
+// SetSigner installs the JWS signing function. Must be called before
+// Start — the active backend snapshots the function by reference, so
+// post-Start changes don't reach in-flight or future sessions until
+// the proxy is stopped and restarted.
+//
+// Pass nil to disable signing.
+func (p *Proxy) SetSigner(fn SignFunc) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.signFn = fn
+}
+
 // GetHeaders returns a copy of the custom headers for testing/inspection.
 func (p *Proxy) GetHeaders() map[string]string {
 	p.mu.Lock()
@@ -129,6 +152,7 @@ func (p *Proxy) Start() error {
 		destinationAddr: p.destinationAddr,
 		customHeaders:   headersCopy,
 		identityFn:      p.identityFn,
+		signFn:          p.signFn,
 	}
 
 	p.server = smtp.NewServer(backend)
@@ -197,6 +221,7 @@ type proxyBackend struct {
 	destinationAddr string
 	customHeaders   map[string]string
 	identityFn      func() (email.Identity, error)
+	signFn          SignFunc
 }
 
 // NewSession is called by go-smtp once per inbound connection. It
@@ -313,6 +338,16 @@ func (s *proxySession) Data(r io.Reader) error {
 	enforced := enforceMessageFrom(data, s.identity)
 
 	modifiedData := injectHeaders(enforced, s.backend.customHeaders)
+
+	// JWS sign for relay trust. The signer's body_hash claim covers
+	// modifiedData (post-tracking-headers, pre-signing-headers), which
+	// is what the relay reconstructs after stripping X-GD-DKIM-* before
+	// applying RFC DKIM. A nil signFn or signing failure forwards the
+	// message unsigned — the relay will reject if its policy demands a
+	// signature, but availability beats a transient signing bug.
+	if s.backend.signFn != nil {
+		modifiedData = s.backend.signFn(modifiedData, s.identity.AppID, s.from)
+	}
 
 	if err := email.ForwardSMTP(s.backend.destinationAddr, s.from, s.to, modifiedData); err != nil {
 		return err
@@ -544,67 +579,9 @@ func isFromHeaderLine(line []byte) bool {
 	return bytes.EqualFold(bytes.TrimRight(name, " \t"), []byte("From"))
 }
 
-// injectHeaders appends the platform's tracking headers to data at the
-// bottom of the existing header block, immediately before the
-// header/body separator. Every other byte — original header order,
-// header-name casing, folded continuation lines, body bytes — passes
-// through verbatim.
-//
-// Round-tripping through mail.ReadMessage / msg.Header (the obvious-
-// looking implementation, and what this function used to do) would:
-// randomize order via map iteration, canonicalize header-name casing
-// (Message-ID → Message-Id, MIME-Version → Mime-Version), and unfold
-// folded continuation lines. Those transformations invalidate inbound
-// DKIM signatures on relayed mail, scramble the Received: chain, and
-// undo the byte-preservation that rewriteFromHeader exists to maintain.
-//
-// Iteration over the headers map is via a sorted key list so the
-// injected lines appear in deterministic order regardless of map
-// randomization in the caller.
+// injectHeaders is a thin wrapper around email.InjectHeaders kept here
+// so the SMTP proxy's call sites stay readable. The shared package
+// owns the algorithm (also used by the JWS signing path).
 func injectHeaders(data []byte, headers map[string]string) []byte {
-	if len(headers) == 0 {
-		return data
-	}
-
-	keys := make([]string, 0, len(headers))
-	for k := range headers {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-
-	var out bytes.Buffer
-	r := bufio.NewReader(bytes.NewReader(data))
-	injected := false
-	inHeaders := true
-	for {
-		line, readErr := r.ReadBytes('\n')
-
-		// Inject right before the header/body separator so the new
-		// headers appear at the bottom of the header block.
-		if inHeaders && isBlankLine(line) {
-			for _, k := range keys {
-				fmt.Fprintf(&out, "%s: %s\r\n", k, headers[k])
-			}
-			injected = true
-			inHeaders = false
-		}
-
-		out.Write(line)
-
-		if readErr != nil {
-			break
-		}
-	}
-
-	// Tolerate header-only inputs with no body separator: append the
-	// tracking headers at the end and synthesize a blank line. Mirrors
-	// rewriteFromHeader's tolerance for ill-formed inputs.
-	if !injected {
-		for _, k := range keys {
-			fmt.Fprintf(&out, "%s: %s\r\n", k, headers[k])
-		}
-		out.WriteString("\r\n")
-	}
-
-	return out.Bytes()
+	return email.InjectHeaders(data, headers)
 }

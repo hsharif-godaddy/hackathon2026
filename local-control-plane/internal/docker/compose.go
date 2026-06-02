@@ -62,6 +62,8 @@ func generatePreviewService(app *store.App, basePath string) string {
 		fmt.Sprintf("%s/private:/private", assetsPath),
 		fmt.Sprintf("%s:/tmp", tmpPath),
 	}
+	volumes = appendJWSKeyMount(volumes)
+
 	volumeLines := formatVolumeLines(volumes)
 
 	ports := []string{
@@ -126,6 +128,7 @@ func generatePublishService(app *store.App, basePath string) string {
 		fmt.Sprintf("%s/private:/private", assetsPath),
 		fmt.Sprintf("%s:/tmp", tmpPath),
 	}
+	volumes = appendJWSKeyMount(volumes)
 	volumeLines := formatVolumeLines(volumes)
 
 	var ports []string
@@ -268,6 +271,10 @@ func generatePreviewEnvironment(app *store.App) map[string]string {
 		// containers, so the skip just leaves preview without any 127.0.0.1:25
 		// listener, breaking nodemailer-style customer code. Opt back in.
 		"DEV_SUPERVISOR_ENABLE_SMTP_FOR_PREVIEW": "true",
+		"JWS_PRIVATE_KEY_PATH":                   jwsKeyPathOrEmpty("key.pem"),
+		"JWS_CERT_PATH":                          jwsKeyPathOrEmpty("cert.pem"),
+		"JWS_KEY_ID_PATH":                        jwsKeyPathOrEmpty("key_id"),
+		"CELL_ID":                                getEnvOrDefault("CELL_ID", "local"),
 	}
 
 	if authType == "mock" || authType == "none" {
@@ -319,6 +326,10 @@ func generatePublishEnvironment(app *store.App) map[string]string {
 		"AIRO_DEFAULT_SENDER_DOMAIN": getEnvOrDefault(
 			"AIRO_DEFAULT_SENDER_DOMAIN", "test-airoapp.ai",
 		),
+		"JWS_PRIVATE_KEY_PATH": jwsKeyPathOrEmpty("key.pem"),
+		"JWS_CERT_PATH":        jwsKeyPathOrEmpty("cert.pem"),
+		"JWS_KEY_ID_PATH":      jwsKeyPathOrEmpty("key_id"),
+		"CELL_ID":              getEnvOrDefault("CELL_ID", "local"),
 	}
 
 	// Publish often serves built static assets, but AAB source archives can still
@@ -462,4 +473,19 @@ func resolveAuthType() string {
 		return strings.ToLower(strings.TrimSpace(v))
 	}
 	return "jwt"
+}
+
+func jwsKeyPathOrEmpty(filename string) string {
+	if os.Getenv("JWS_LOCAL_KEY_DIR") == "" {
+		return ""
+	}
+	return "/alloc/jws/" + filename
+}
+
+func appendJWSKeyMount(volumes []string) []string {
+	hostKeyDir := os.Getenv("JWS_LOCAL_KEY_DIR")
+	if hostKeyDir == "" {
+		return volumes
+	}
+	return append(volumes, fmt.Sprintf("%s:/alloc/jws:ro", hostKeyDir))
 }

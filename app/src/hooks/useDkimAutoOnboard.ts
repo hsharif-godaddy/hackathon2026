@@ -62,7 +62,7 @@ export function useDkimAutoOnboard({ appId, domain, ownership, enabled }: UseDki
       (err: unknown) => {
         // Surface the failure — silent catch made flaky upstream invisible.
         // Console-level (not logger) because this runs in the browser.
-         
+
         console.warn('dkim.auto-onboard.failed', {
           appId,
           domain,
