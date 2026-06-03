@@ -853,6 +853,22 @@ describe('useStreamingConversationStore', function packageTests() {
       expect(assistantMsg?.connectionLost).toBe(true);
     });
 
+    it('should set connectionLost when finishReason is incomplete', function connectionLostIncomplete() {
+      const store = useStreamingConversationStore.getState();
+
+      act(() => {
+        store.setCurrentAppId('app-1');
+        store.startNewStream('Build a todo app');
+      });
+
+      act(() => {
+        useStreamingConversationStore.getState().finalizeStream({ finishReason: 'incomplete' });
+      });
+
+      const assistantMsg = useStreamingConversationStore.getState().messages.find(m => m.role === 'assistant');
+      expect(assistantMsg?.connectionLost).toBe(true);
+    });
+
     it('should not set connectionLost when finishReason is not aborted', function noConnectionLost() {
       const store = useStreamingConversationStore.getState();
 

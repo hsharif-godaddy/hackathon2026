@@ -3,6 +3,7 @@ import {
   StreamPartProcessor,
   StreamTimingTracker,
   ChunkTimeoutGuard,
+  decideChunkTimeoutFinalization,
   executeAgentLoop,
   buildChatSignalsTraceContext,
   createAgentInvocation,
@@ -17,6 +18,7 @@ import {
   trackTurnSnapshotEvent,
   runPreflightTools,
   analyzeStreamError,
+  isNetworkError,
   classifyStreamBudgetError,
   isToolValidationError,
   assembleMessages,
@@ -1034,6 +1036,59 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
       throw new Error(`Stream chunk timeout after ${this.chunkTimeoutMs!}ms`)
     }
 
+    // Set by handleChunkTimeout()/handlePrematureClose() when the stall is
+    // soft-committable (content already arrived, or a terminal finish frame was
+    // seen). Non-null signals the finalization block below to SKIP
+    // getFinalResult() — which is backed by the now-dead socket and would never
+    // resolve — and finalize the turn with this finishReason instead.
+    let chunkTimeoutFinishReason: 'stop' | 'incomplete' | null = null
+    // Set by handlePrematureClose() so the Langfuse span is recorded as an
+    // error (the upstream connection DID fail) even though the wire-facing
+    // finishReason is the soft 'incomplete'. Unlike chunk_timeout (which aborts
+    // the signal and lands on endAborted), a premature close leaves the signal
+    // un-aborted, so without this it would mis-record as endSuccess.
+    let prematureCloseError: unknown = undefined
+
+    // On chunk_timeout: soft-commit (sets chunkTimeoutFinishReason, caller
+    // breaks the loop) when content/finish is present; otherwise fail fast via
+    // throwChunkTimeoutError (preserving today's behaviour).
+    const handleChunkTimeout = (): void => {
+      const outcome = decideChunkTimeoutFinalization({
+        isFinished: processor.isFinished(),
+        hasContent: processor.getAccumulatedContent().length > 0,
+      })
+      if (outcome.kind === 'finalize') {
+        chunkTimeoutFinishReason = outcome.finishReason
+        logger.warn('sse.stream.chunk_timeout.soft_commit', {
+          appId, conversationId, agentName, finishReason: outcome.finishReason,
+        })
+        return
+      }
+      throwChunkTimeoutError()
+    }
+
+    // On a premature upstream close (undici `terminated`, socket reset, body
+    // timeout — anything isNetworkError matches) where content already arrived,
+    // soft-commit it via the same seam as chunk_timeout instead of surfacing a
+    // hard "connection dropped" error. This is the flag-independent counterpart
+    // to handleChunkTimeout: it fires whether or not the gap-timer is enabled.
+    // Returns true if soft-committed (caller stops reading); false → caller
+    // rethrows (not a network close, or no content to commit → fail fast).
+    const handlePrematureClose = (err: unknown): boolean => {
+      if (!isNetworkError(err)) return false
+      const outcome = decideChunkTimeoutFinalization({
+        isFinished: processor.isFinished(),
+        hasContent: processor.getAccumulatedContent().length > 0,
+      })
+      if (outcome.kind !== 'finalize') return false
+      chunkTimeoutFinishReason = outcome.finishReason
+      prematureCloseError = err
+      logger.warn('sse.stream.premature_close.soft_commit', {
+        appId, conversationId, agentName, finishReason: outcome.finishReason, ...errorFields(err),
+      })
+      return true
+    }
+
     type StreamResult = Awaited<ReturnType<typeof agent.streamGenerate>>
     const retryAfterToolValidation = async (validationMessage: string): Promise<StreamResult> => {
       logger.error('sse.tool.validation.failure', { appId, message: validationMessage })
@@ -1183,14 +1238,18 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
         try {
           while (true) {
             if (abortSignal.aborted) {
-              if (abortSignal.reason === 'chunk_timeout') throwChunkTimeoutError()
+              if (abortSignal.reason === 'chunk_timeout') { handleChunkTimeout(); break }
               break
             }
             let readResult: ReadableStreamReadResult<any>
             try {
               readResult = await reader.read()
             } catch (readError) {
-              if (abortSignal.reason === 'chunk_timeout') throwChunkTimeoutError()
+              if (abortSignal.reason === 'chunk_timeout') { handleChunkTimeout(); break }
+              // Soft-commit a premature upstream close before the retryable
+              // fallback — the socket is dead, so the textStream fallback below
+              // would only fail again.
+              if (handlePrematureClose(readError)) break
 
               const classification = classifyError(readError)
               if (!classification.retryable) throw readError
@@ -1233,7 +1292,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
         try {
           for await (const chunk of streamResult.textStream) {
             if (abortSignal.aborted) {
-              if (abortSignal.reason === 'chunk_timeout') throwChunkTimeoutError()
+              if (abortSignal.reason === 'chunk_timeout') { handleChunkTimeout(); break }
               break
             }
             tracker.recordChunk()
@@ -1242,8 +1301,8 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
             await flushPendingWork()
           }
         } catch (textStreamError) {
-          if (abortSignal.reason === 'chunk_timeout') throwChunkTimeoutError()
-          throw textStreamError
+          if (abortSignal.reason === 'chunk_timeout') { handleChunkTimeout() }
+          else if (!handlePrematureClose(textStreamError)) throw textStreamError
         } finally {
           await flushPendingWork()
         }
@@ -1256,21 +1315,43 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
       let finishReason = 'complete'
       let finalResult: any
       let finalResultError: unknown
-      try {
-        finalResult = await streamResult.getFinalResult()
-        finishReason = finalResult?.finishReason ?? 'complete'
-      } catch (err) {
-        // Preserve the legacy warn log + continue returning a result to the
-        // caller, but do NOT let this fall through to invocation.endSuccess()
-        // below — without usage and with no final result, the span would
-        // misleadingly show a successful turn in Langfuse. Capture the error
-        // and mark finishReason so the branch below ends the span as a
-        // failure via invocation.endError. WS doesn't wrap getFinalResult at
-        // all (its outer catch handles it); SSE keeps the wrap for callers
-        // that inspect finishReason but surfaces the failure to telemetry.
-        logger.warn('sse.execution.getFinalResult.failed', { appId, conversationId, ...errorFields(err) })
-        finalResultError = err
-        finishReason = 'result_fetch_failed'
+      if (chunkTimeoutFinishReason !== null) {
+        // Soft-commit: the socket is dead, so getFinalResult() would block on
+        // promises that never settle. Finalize from the captured finish frame
+        // (if any) instead. No usage is captured on the 'incomplete' path —
+        // the turn is effectively unbilled, matching today's terminated turn.
+        finishReason = chunkTimeoutFinishReason
+        const captured = processor.getFinishResult()
+        finalResult = captured
+          ? { finishReason: captured.finishReason, totalUsage: captured.totalUsage }
+          : { finishReason }
+      } else {
+        try {
+          finalResult = await streamResult.getFinalResult()
+          finishReason = finalResult?.finishReason ?? 'complete'
+        } catch (err) {
+          // Preserve the legacy warn log + continue returning a result to the
+          // caller, but do NOT let this fall through to invocation.endSuccess()
+          // below — without usage and with no final result, the span would
+          // misleadingly show a successful turn in Langfuse. Capture the error
+          // and mark finishReason so the branch below ends the span as a
+          // failure via invocation.endError. WS doesn't wrap getFinalResult at
+          // all (its outer catch handles it); SSE keeps the wrap for callers
+          // that inspect finishReason but surfaces the failure to telemetry.
+          finalResultError = err
+          if (isNetworkError(err) && processor.getAccumulatedContent().length > 0) {
+            // Premature close while fetching the final result, but content
+            // already streamed: soft-commit it. The Langfuse span is still
+            // recorded as endError below (it WAS an upstream failure), while
+            // the wire-facing finishReason carried in the return is
+            // 'incomplete' → client renders the gentle soft advisory.
+            logger.warn('sse.execution.getFinalResult.premature_close', { appId, conversationId, ...errorFields(err) })
+            finishReason = 'incomplete'
+          } else {
+            logger.warn('sse.execution.getFinalResult.failed', { appId, conversationId, ...errorFields(err) })
+            finishReason = 'result_fetch_failed'
+          }
+        }
       }
 
       const finalMetadata: ResponseMetadata = await invocation.awaitMetadata(streamResult.response)
@@ -1288,9 +1369,16 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
       const responseType: 'llm_reply' | 'tool_call' = accumulatedContent ? 'llm_reply' : 'tool_call'
 
       if (abortSignal.aborted) {
+        // chunk_timeout soft-commit also lands here (the signal is aborted):
+        // the Langfuse span is honestly recorded as aborted, while the
+        // wire-facing finishReason ('incomplete'/'stop') is carried via the
+        // returned value and published as a `complete` event by the outer flow.
         invocation.endAborted({ outputText: accumulatedContent, responseType })
       } else if (finalResultError !== undefined) {
         invocation.endError(finalResultError, { finishReason })
+      } else if (prematureCloseError !== undefined) {
+        // Premature close caught mid-stream: honest error span, soft wire reason.
+        invocation.endError(prematureCloseError, { finishReason })
       } else {
         const usageToTrack = finalResult?.totalUsage ?? finalResult?.usage
         // Per-LLM-call token observability (cost/cache logs + APM), shared with
@@ -1874,7 +1962,16 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
         : await runWithOverride()
 
       const finalAgentName = loopResult.finalAgentName
-      const loopAborted = loopResult.termination === 'aborted' || abortController.signal.aborted
+      // A chunk_timeout soft-commit aborts the controller but is NOT a turn
+      // abort: it produced content (or saw a finish frame) and should finalize
+      // as a normal completion carrying its own finishReason ('incomplete' or
+      // 'stop'), not 'aborted'. Keep end-hooks/budget on the non-aborted path.
+      const chunkTimeoutSoftCommit =
+        abortController.signal.reason === 'chunk_timeout'
+        && (lastTurnResult?.finishReason === 'incomplete' || lastTurnResult?.finishReason === 'stop')
+      const loopAborted =
+        (loopResult.termination === 'aborted' || abortController.signal.aborted)
+        && !chunkTimeoutSoftCommit
       const finishReason = loopAborted ? 'aborted' : (lastTurnResult?.finishReason ?? 'complete')
 
       if (loopResult.termination === 'max_handoffs') {

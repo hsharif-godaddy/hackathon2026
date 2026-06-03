@@ -375,6 +375,30 @@ describe('StreamingIntegratedResponse', function streamingIntegratedResponseTest
       expect(screen.queryByText('terminated')).not.toBeInTheDocument();
     });
 
+    it('suppresses the connection-dropped banner when content already arrived', function terminatedWithContent() {
+      renderWithProviders(
+        <StreamingIntegratedResponse
+          message={upstreamErrorMessage('UPSTREAM_ERROR', {
+            error: 'terminated',
+            segments: [
+              {
+                id: 'seg-text-1',
+                type: 'text',
+                content: 'Here is your answer.',
+                timestamp: new Date(),
+              },
+            ],
+          })}
+          streamingState="idle"
+        />
+      );
+
+      // Content renders…
+      expect(screen.getByText('Here is your answer.')).toBeInTheDocument();
+      // …but the alarming banner does NOT.
+      expect(screen.queryByText('builder_connection_dropped_title')).not.toBeInTheDocument();
+    });
+
     it('shows generic error for other unclassified upstream errors', function genericUpstreamError() {
       renderWithProviders(
         <StreamingIntegratedResponse

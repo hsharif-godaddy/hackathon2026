@@ -78,6 +78,7 @@ export class StreamPartProcessor {
   }
 
   private stepHasToolCall = false
+  private finishResult: { finishReason: string; totalUsage?: unknown } | undefined
 
   constructor(private callbacks: PartProcessorCallbacks) {}
 
@@ -172,6 +173,23 @@ export class StreamPartProcessor {
         break
       }
 
+      case 'finish': {
+        // The AI SDK emits this ONCE at the end of the whole response with
+        // the terminal finishReason + aggregated usage. (Per-step ends arrive
+        // as 'finish-step', which we deliberately do NOT treat as terminal —
+        // otherwise isFinished() would latch true after the first tool step
+        // and misclassify a later-step stall as a genuine completion.)
+        // Captured so the chunk-timeout finalization path can tell a genuine
+        // completion (frame seen) from a soft-commit (content only).
+        const finishReason = (part.finishReason as string | undefined) ?? 'stop'
+        const totalUsage = part.totalUsage ?? part.usage
+        this.finishResult = {
+          finishReason,
+          ...(totalUsage !== undefined && { totalUsage }),
+        }
+        break
+      }
+
       case 'error': {
         // Use extractToolError (same helper as tool-error) so structured
         // payloads like { message: 'budget exceeded', statusCode: 429 } keep
@@ -188,6 +206,25 @@ export class StreamPartProcessor {
 
   getToolCall(toolCallId: string): Readonly<ToolCallRecord> | undefined {
     return this.state.toolCalls.get(toolCallId)
+  }
+
+  /** True once a terminal `finish` part has been processed. (`finish-step`
+   * is deliberately excluded — it fires after every tool step, not at the end
+   * of the whole response.) */
+  isFinished(): boolean {
+    return this.finishResult !== undefined
+  }
+
+  /** The captured finishReason + usage from the terminal `finish` frame, or
+   * undefined if no `finish` part has been seen yet. */
+  getFinishResult(): Readonly<{ finishReason: string; totalUsage?: unknown }> | undefined {
+    return this.finishResult
+  }
+
+  /** The accumulated text content. Cheaper than `getState().accumulatedContent`
+   * when only the text is needed — `getState()` clones the tool-call maps. */
+  getAccumulatedContent(): string {
+    return this.state.accumulatedContent
   }
 
   get currentStep(): number {

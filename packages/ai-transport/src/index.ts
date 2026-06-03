@@ -123,6 +123,8 @@ export type { StreamTimingData, StreamTimingDeps } from './stream-timing-tracker
 // Chunk timeout guard (shared by WS + SSE transports)
 export { ChunkTimeoutGuard, DEFAULT_CHUNK_TIMEOUT_MS, CHUNK_GAP_WARNING_THRESHOLDS_MS } from './chunk-timeout-guard.js'
 export type { ChunkTimeoutDeps } from './chunk-timeout-guard.js'
+export { decideChunkTimeoutFinalization } from './chunk-timeout-finalization.js'
+export type { ChunkTimeoutOutcome } from './chunk-timeout-finalization.js'
 
 // Skill output redaction (shared by WS + SSE transports before emitting tool-result)
 export { redactSkillOutput } from './redact-skill-output.js'

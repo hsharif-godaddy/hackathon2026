@@ -688,6 +688,257 @@ describe('MessageExecutionService', () => {
       }
     })
 
+    it('soft-commits accumulated content on chunk-timeout (complete:incomplete, no error)', async () => {
+      const previous = process.env.AI_CHUNK_TIMEOUT_MS
+      try {
+        process.env.AI_CHUNK_TIMEOUT_MS = '5'
+        deps = createMockDeps()
+        deps.getAgent.mockReturnValue({
+          streamGenerate: vi.fn().mockImplementation(function (_m: string, opts: { abortSignal: AbortSignal }) {
+            return {
+              textStream: (async function* () {})(),
+              baseStream: new ReadableStream({
+                start(controller) {
+                  // Deliver content, then go silent so the guard fires.
+                  controller.enqueue({ part: { type: 'text-delta', text: 'partial answer' } })
+                  opts.abortSignal.addEventListener('abort', () => {
+                    controller.error(new Error(String(opts.abortSignal.reason ?? 'aborted')))
+                  }, { once: true })
+                },
+              }),
+              // Backed by the dead socket — never resolves; must NOT be awaited.
+              getFinalResult: vi.fn().mockImplementation(() => new Promise(() => {})),
+            }
+          }),
+          getName: vi.fn().mockReturnValue('AI Developer'),
+        })
+        service = new MessageExecutionService(deps as any)
+
+        await service.execute(DEFAULT_PARAMS)
+
+        expect(deps.eventChannel.publish).not.toHaveBeenCalledWith(
+          'conv_1',
+          expect.objectContaining({ type: 'error' }),
+        )
+        expect(deps.eventChannel.publish).toHaveBeenCalledWith(
+          'conv_1',
+          expect.objectContaining({
+            type: 'complete',
+            data: expect.objectContaining({ finishReason: 'incomplete' }),
+          }),
+        )
+      } finally {
+        if (previous === undefined) delete process.env.AI_CHUNK_TIMEOUT_MS
+        else process.env.AI_CHUNK_TIMEOUT_MS = previous
+      }
+    })
+
+    it('soft-commits as stop when a finish frame was seen before the stall', async () => {
+      const previous = process.env.AI_CHUNK_TIMEOUT_MS
+      try {
+        process.env.AI_CHUNK_TIMEOUT_MS = '5'
+        deps = createMockDeps()
+        deps.getAgent.mockReturnValue({
+          streamGenerate: vi.fn().mockImplementation(function (_m: string, opts: { abortSignal: AbortSignal }) {
+            return {
+              textStream: (async function* () {})(),
+              baseStream: new ReadableStream({
+                start(controller) {
+                  controller.enqueue({ part: { type: 'text-delta', text: 'full answer' } })
+                  controller.enqueue({ part: { type: 'finish', finishReason: 'stop', totalUsage: { inputTokens: 7, outputTokens: 3 } } })
+                  // Frame seen, but socket goes silent — guard fires.
+                  opts.abortSignal.addEventListener('abort', () => {
+                    controller.error(new Error(String(opts.abortSignal.reason ?? 'aborted')))
+                  }, { once: true })
+                },
+              }),
+              getFinalResult: vi.fn().mockImplementation(() => new Promise(() => {})),
+            }
+          }),
+          getName: vi.fn().mockReturnValue('AI Developer'),
+        })
+        service = new MessageExecutionService(deps as any)
+
+        await service.execute(DEFAULT_PARAMS)
+
+        expect(deps.eventChannel.publish).not.toHaveBeenCalledWith(
+          'conv_1',
+          expect.objectContaining({ type: 'error' }),
+        )
+        expect(deps.eventChannel.publish).toHaveBeenCalledWith(
+          'conv_1',
+          expect.objectContaining({
+            type: 'complete',
+            data: expect.objectContaining({ finishReason: 'stop' }),
+          }),
+        )
+      } finally {
+        if (previous === undefined) delete process.env.AI_CHUNK_TIMEOUT_MS
+        else process.env.AI_CHUNK_TIMEOUT_MS = previous
+      }
+    })
+
+    // Premature upstream close (undici `terminated`) — flag-independent: these
+    // do NOT set AI_CHUNK_TIMEOUT_MS, so the gap-timer never arms. The soft
+    // commit must come from isNetworkError handling in the stream/getFinalResult
+    // catches, not the guard.
+    const makeTerminatedError = (): Error => {
+      const error = new Error('terminated')
+      error.name = 'TypeError'
+      Object.defineProperty(error, 'cause', {
+        value: { code: 'UND_ERR_SOCKET', message: 'other side closed' },
+      })
+      return error
+    }
+
+    it('soft-commits accumulated content on premature close (complete:incomplete, no error, getFinalResult skipped)', async () => {
+      deps = createMockDeps()
+      const getFinalResult = vi.fn().mockImplementation(() => new Promise(() => {}))
+      deps.getAgent.mockReturnValue({
+        streamGenerate: vi.fn().mockReturnValue({
+          // No baseStream → SSE iterates textStream directly. It yields content,
+          // then the upstream drops (terminated) — not an abort.
+          textStream: (async function* () {
+            yield 'partial answer'
+            throw makeTerminatedError()
+          })(),
+          getFinalResult,
+        }),
+        getName: vi.fn().mockReturnValue('AI Developer'),
+      })
+      service = new MessageExecutionService(deps as any)
+
+      await service.execute(DEFAULT_PARAMS)
+
+      expect(deps.eventChannel.publish).not.toHaveBeenCalledWith(
+        'conv_1',
+        expect.objectContaining({ type: 'error' }),
+      )
+      expect(deps.eventChannel.publish).toHaveBeenCalledWith(
+        'conv_1',
+        expect.objectContaining({
+          type: 'complete',
+          data: expect.objectContaining({ finishReason: 'incomplete' }),
+        }),
+      )
+      // Dead socket: getFinalResult would hang — the soft-commit path must skip it.
+      expect(getFinalResult).not.toHaveBeenCalled()
+      // Honest span: the upstream DID fail, so the invocation ends as an error
+      // even though the wire-facing finishReason is the soft 'incomplete'.
+      expect(mockInvocationEnd).toHaveBeenCalledWith(
+        expect.objectContaining({ success: false, finishReason: 'incomplete' }),
+      )
+    })
+
+    it('soft-commits on a premature close via the baseStream reader path (complete:incomplete, honest error span)', async () => {
+      deps = createMockDeps()
+      const getFinalResult = vi.fn().mockImplementation(() => new Promise(() => {}))
+      deps.getAgent.mockReturnValue({
+        streamGenerate: vi.fn().mockReturnValue({
+          textStream: (async function* () {})(),
+          // baseStream delivers content, then the reader errors (terminated) —
+          // exercises the reader.read() catch → handlePrematureClose path. The
+          // chunk must be delivered on a separate pull from the error;
+          // controller.error() resets the queue, so enqueue+error in one tick
+          // would discard the content (and miss the soft-commit path).
+          baseStream: (() => {
+            let sentContent = false
+            return new ReadableStream({
+              pull(controller) {
+                if (!sentContent) {
+                  sentContent = true
+                  controller.enqueue({ part: { type: 'text-delta', text: 'partial answer' } })
+                } else {
+                  controller.error(makeTerminatedError())
+                }
+              },
+            })
+          })(),
+          getFinalResult,
+        }),
+        getName: vi.fn().mockReturnValue('AI Developer'),
+      })
+      service = new MessageExecutionService(deps as any)
+
+      await service.execute(DEFAULT_PARAMS)
+
+      expect(deps.eventChannel.publish).not.toHaveBeenCalledWith(
+        'conv_1',
+        expect.objectContaining({ type: 'error' }),
+      )
+      expect(deps.eventChannel.publish).toHaveBeenCalledWith(
+        'conv_1',
+        expect.objectContaining({
+          type: 'complete',
+          data: expect.objectContaining({ finishReason: 'incomplete' }),
+        }),
+      )
+      expect(getFinalResult).not.toHaveBeenCalled()
+      expect(mockInvocationEnd).toHaveBeenCalledWith(
+        expect.objectContaining({ success: false, finishReason: 'incomplete' }),
+      )
+    })
+
+    it('soft-commits when getFinalResult throws a network error after content (complete:incomplete, honest error span)', async () => {
+      deps = createMockDeps()
+      deps.getAgent.mockReturnValue({
+        streamGenerate: vi.fn().mockResolvedValue({
+          textStream: (async function* () {})(),
+          // Stream completes cleanly with content, but getFinalResult hits the
+          // upstream close — exercises the getFinalResult catch network-error branch.
+          baseStream: makeReadableStream([{ type: 'text-delta', text: 'partial answer' }]),
+          getFinalResult: vi.fn().mockRejectedValue(makeTerminatedError()),
+        }),
+        getName: vi.fn().mockReturnValue('AI Developer'),
+      })
+      service = new MessageExecutionService(deps as any)
+
+      await service.execute(DEFAULT_PARAMS)
+
+      expect(deps.eventChannel.publish).toHaveBeenCalledWith(
+        'conv_1',
+        expect.objectContaining({
+          type: 'complete',
+          data: expect.objectContaining({ finishReason: 'incomplete' }),
+        }),
+      )
+      // Honest error span (getFinalResult failed) behind the soft 'incomplete' wire reason.
+      expect(mockInvocationEnd).toHaveBeenCalledWith(
+        expect.objectContaining({ success: false, finishReason: 'incomplete' }),
+      )
+    })
+
+    it('fails fast (error terminal) on a premature close with no content', async () => {
+      deps = createMockDeps()
+      const getFinalResult = vi.fn()
+      deps.getAgent.mockReturnValue({
+        streamGenerate: vi.fn().mockReturnValue({
+          // Upstream drops before any content arrives.
+          // eslint-disable-next-line require-yield
+          textStream: (async function* () {
+            throw makeTerminatedError()
+          })(),
+          getFinalResult,
+        }),
+        getName: vi.fn().mockReturnValue('AI Developer'),
+      })
+      service = new MessageExecutionService(deps as any)
+
+      await service.execute(DEFAULT_PARAMS)
+
+      expect(deps.eventChannel.publish).not.toHaveBeenCalledWith(
+        'conv_1',
+        expect.objectContaining({
+          type: 'complete',
+          data: expect.objectContaining({ finishReason: 'incomplete' }),
+        }),
+      )
+      expect(deps.eventChannel.publish).toHaveBeenCalledWith(
+        'conv_1',
+        expect.objectContaining({ type: 'complete', data: expect.objectContaining({ finishReason: 'error' }) }),
+      )
+    })
+
     it('does not count streamGenerate connection time against chunk timeout', async () => {
       const previous = process.env.AI_CHUNK_TIMEOUT_MS
       try {

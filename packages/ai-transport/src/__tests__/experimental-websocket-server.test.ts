@@ -4058,6 +4058,442 @@ describe('Mid-Stream Budget Exceeded Grant Advancement', () => {
   })
 })
 
+describe('chunk_timeout finalization', () => {
+  let httpServer: HTTPServer
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    httpServer = new HTTPServer()
+  })
+
+  afterEach(() => {
+    httpServer.close()
+  })
+
+  it('content present → complete with finishReason incomplete, no error event', async () => {
+    const mockPersistence = createMockPersistence({
+      startConversation: vi.fn().mockResolvedValue('conv-ct-content'),
+      startAgentTurn: vi.fn().mockResolvedValue('msg-ct-content'),
+    })
+
+    // Stream yields a text chunk, then stalls until abort('chunk_timeout') fires
+    mockAgent.streamGenerate = vi.fn().mockImplementation(function (_prompt: string, options: any) {
+      return Promise.resolve({
+        baseStream: null,
+        textStream: (async function* () {
+          yield 'partial response text'
+          // Stall until abort fires — then reject with AbortError (same as real AI SDK)
+          await new Promise((_, reject) => {
+            options?.abortSignal?.addEventListener('abort', () => {
+              const error = new Error('The operation was aborted')
+              error.name = 'AbortError'
+              reject(error)
+            })
+          })
+        })(),
+        getFinalResult: vi.fn().mockResolvedValue({
+          usage: { inputTokens: 10, outputTokens: 5 },
+          toolCalls: [],
+          finishReason: 'stop',
+        }),
+      })
+    })
+
+    const { server, messageHandler } = await setupServerWithConnection(httpServer, {
+      agents: mockAgents,
+      defaultAgent: 'test-agent',
+      messagePersistence: mockPersistence,
+    })
+
+    const stateManager = (server as any).stateManager
+
+    const messagePromise = messageHandler({
+      message: 'Test message',
+      agentId: 'test-agent',
+      context: { metadata: { appId: 'test-app' } },
+    })
+
+    // Allow the text chunk to be yielded and accumulated
+    await new Promise(resolve => setTimeout(resolve, 50))
+
+    // Fire chunk_timeout abort (simulating ChunkTimeoutGuard)
+    const controller = stateManager.getAbortController(mockSocket.id)
+    expect(controller).not.toBeNull()
+    controller!.abort('chunk_timeout')
+
+    await messagePromise
+
+    const allEmits = mockSocket.emit.mock.calls
+
+    const completeEvents = allEmits.filter(
+      (call: any[]) => call[0] === 'message' && call[1]?.type === 'complete'
+    )
+    const errorEvents = allEmits.filter(
+      (call: any[]) => call[0] === 'message' && call[1]?.type === 'error'
+    )
+
+    expect(completeEvents).toHaveLength(1)
+    expect(completeEvents[0][1].data.finishReason).toBe('incomplete')
+    expect(errorEvents).toHaveLength(0)
+
+    server.close()
+  })
+
+  it('no content → error terminal (fail fast), not a false complete:incomplete', async () => {
+    const mockPersistence = createMockPersistence({
+      startConversation: vi.fn().mockResolvedValue('conv-ct-empty'),
+      startAgentTurn: vi.fn().mockResolvedValue('msg-ct-empty'),
+    })
+
+    // Stream yields nothing, stalls until abort('chunk_timeout') fires
+    mockAgent.streamGenerate = vi.fn().mockImplementation(function (_prompt: string, options: any) {
+      return Promise.resolve({
+        baseStream: null,
+        // eslint-disable-next-line require-yield
+        textStream: (async function* () {
+          await new Promise((_, reject) => {
+            options?.abortSignal?.addEventListener('abort', () => {
+              const error = new Error('The operation was aborted')
+              error.name = 'AbortError'
+              reject(error)
+            })
+          })
+        })(),
+        getFinalResult: vi.fn().mockResolvedValue({
+          usage: { inputTokens: 0, outputTokens: 0 },
+          toolCalls: [],
+          finishReason: 'stop',
+        }),
+      })
+    })
+
+    const { server, messageHandler } = await setupServerWithConnection(httpServer, {
+      agents: mockAgents,
+      defaultAgent: 'test-agent',
+      messagePersistence: mockPersistence,
+    })
+
+    const stateManager = (server as any).stateManager
+
+    const messagePromise = messageHandler({
+      message: 'Test message',
+      agentId: 'test-agent',
+      context: { metadata: { appId: 'test-app' } },
+    })
+
+    // Allow the stream to start and stall
+    await new Promise(resolve => setTimeout(resolve, 50))
+
+    // Fire chunk_timeout abort (simulating ChunkTimeoutGuard)
+    const controller = stateManager.getAbortController(mockSocket.id)
+    expect(controller).not.toBeNull()
+    controller!.abort('chunk_timeout')
+
+    await messagePromise
+
+    const allEmits = mockSocket.emit.mock.calls
+
+    const errorEvents = allEmits.filter(
+      (call: any[]) => call[0] === 'message' && call[1]?.type === 'error'
+    )
+    const completeEvents = allEmits.filter(
+      (call: any[]) => call[0] === 'message' && call[1]?.type === 'complete'
+    )
+
+    expect(errorEvents.length).toBeGreaterThan(0)
+    // Must not produce a false soft-complete for an empty turn
+    const incompleteCompletes = completeEvents.filter(
+      (call: any[]) => call[1]?.data?.finishReason === 'incomplete'
+    )
+    expect(incompleteCompletes).toHaveLength(0)
+
+    server.close()
+  })
+
+  it('fails fast with an error terminal on no-content chunk_timeout via the baseStream reader path', async () => {
+    const mockPersistence = createMockPersistence({
+      startConversation: vi.fn().mockResolvedValue('conv-ct-base-empty'),
+      startAgentTurn: vi.fn().mockResolvedValue('msg-ct-base-empty'),
+    })
+
+    // baseStream reader yields nothing and blocks until abort('chunk_timeout') fires,
+    // then rejects with AbortError — exercising the postStreamError catch-block
+    // fail-fast carve-out (if isChunkTimeout && !hasContent).
+    mockAgent.streamGenerate = vi.fn().mockImplementation(function (_prompt: string, options: any) {
+      return Promise.resolve({
+        baseStream: {
+          getReader: () => ({
+            read: () => new Promise((_, reject) => {
+              options?.abortSignal?.addEventListener('abort', () => {
+                const error = new Error('The operation was aborted')
+                error.name = 'AbortError'
+                reject(error)
+              })
+            }),
+            cancel: vi.fn(),
+            releaseLock: vi.fn(),
+          }),
+          cancel: vi.fn(),
+        },
+         
+        textStream: (async function* () {})(),
+        getFinalResult: vi.fn().mockResolvedValue({
+          usage: { inputTokens: 0, outputTokens: 0 },
+          toolCalls: [],
+          finishReason: 'stop',
+        }),
+      })
+    })
+
+    const { server, messageHandler } = await setupServerWithConnection(httpServer, {
+      agents: mockAgents,
+      defaultAgent: 'test-agent',
+      messagePersistence: mockPersistence,
+    })
+
+    const stateManager = (server as any).stateManager
+
+    const messagePromise = messageHandler({
+      message: 'Test message',
+      agentId: 'test-agent',
+      context: { metadata: { appId: 'test-app' } },
+    })
+
+    // Allow the baseStream reader loop to start and stall waiting for data
+    await new Promise(resolve => setTimeout(resolve, 50))
+
+    // Fire chunk_timeout abort (simulating ChunkTimeoutGuard)
+    const controller = stateManager.getAbortController(mockSocket.id)
+    expect(controller).not.toBeNull()
+    controller!.abort('chunk_timeout')
+
+    await messagePromise
+
+    const allEmits = mockSocket.emit.mock.calls
+
+    const errorEvents = allEmits.filter(
+      (call: any[]) => call[0] === 'message' && call[1]?.type === 'error'
+    )
+    const completeEvents = allEmits.filter(
+      (call: any[]) => call[0] === 'message' && call[1]?.type === 'complete'
+    )
+
+    // The postStreamError catch-block fail-fast must publish an error terminal
+    expect(errorEvents.length).toBeGreaterThan(0)
+    // Must not produce a false soft-complete for an empty turn
+    const incompleteCompletes = completeEvents.filter(
+      (call: any[]) => call[1]?.data?.finishReason === 'incomplete'
+    )
+    expect(incompleteCompletes).toHaveLength(0)
+
+    server.close()
+  })
+})
+
+describe('premature close (network) finalization', () => {
+  let httpServer: HTTPServer
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    httpServer = new HTTPServer()
+  })
+
+  afterEach(() => {
+    httpServer.close()
+  })
+
+  // Build a `TypeError: terminated` (undici idle-close shape) — isNetworkError matches it.
+  const makeTerminatedError = (): Error => {
+    const error = new Error('terminated')
+    error.name = 'TypeError'
+    Object.defineProperty(error, 'cause', {
+      value: { code: 'UND_ERR_SOCKET', message: 'other side closed' },
+    })
+    return error
+  }
+
+  it('content present, no flag/abort → complete with finishReason incomplete, no error, getFinalResult skipped', async () => {
+    const mockPersistence = createMockPersistence({
+      startConversation: vi.fn().mockResolvedValue('conv-pc-content'),
+      startAgentTurn: vi.fn().mockResolvedValue('msg-pc-content'),
+    })
+
+    // textStream yields content, then the upstream drops (terminated) — NOT an
+    // abort. getFinalResult must never be called (dead socket would hang).
+    const getFinalResult = vi.fn()
+    mockAgent.streamGenerate = vi.fn().mockResolvedValueOnce({
+      baseStream: null,
+      textStream: (async function* () {
+        yield 'partial response text'
+        throw makeTerminatedError()
+      })(),
+      getFinalResult,
+    })
+
+    const { server, messageHandler } = await setupServerWithConnection(httpServer, {
+      agents: mockAgents,
+      defaultAgent: 'test-agent',
+      messagePersistence: mockPersistence,
+    })
+
+    await messageHandler({
+      message: 'Test message',
+      agentId: 'test-agent',
+      context: { metadata: { appId: 'test-app' } },
+    })
+
+    const allEmits = mockSocket.emit.mock.calls
+    const completeEvents = allEmits.filter(
+      (call: any[]) => call[0] === 'message' && call[1]?.type === 'complete'
+    )
+    const errorEvents = allEmits.filter(
+      (call: any[]) => call[0] === 'message' && call[1]?.type === 'error'
+    )
+
+    expect(completeEvents).toHaveLength(1)
+    expect(completeEvents[0][1].data.finishReason).toBe('incomplete')
+    expect(errorEvents).toHaveLength(0)
+    expect(getFinalResult).not.toHaveBeenCalled()
+
+    server.close()
+  })
+
+  it('no content → error terminal (fail fast), not a false complete:incomplete', async () => {
+    const mockPersistence = createMockPersistence({
+      startConversation: vi.fn().mockResolvedValue('conv-pc-empty'),
+      startAgentTurn: vi.fn().mockResolvedValue('msg-pc-empty'),
+    })
+
+    // Upstream drops before any content — must fall through to the hard error path.
+    const getFinalResult = vi.fn()
+    mockAgent.streamGenerate = vi.fn().mockResolvedValueOnce({
+      baseStream: null,
+      // eslint-disable-next-line require-yield
+      textStream: (async function* () {
+        throw makeTerminatedError()
+      })(),
+      getFinalResult,
+    })
+
+    const { server, messageHandler } = await setupServerWithConnection(httpServer, {
+      agents: mockAgents,
+      defaultAgent: 'test-agent',
+      messagePersistence: mockPersistence,
+    })
+
+    await messageHandler({
+      message: 'Test message',
+      agentId: 'test-agent',
+      context: { metadata: { appId: 'test-app' } },
+    })
+
+    const allEmits = mockSocket.emit.mock.calls
+    const errorEvents = allEmits.filter(
+      (call: any[]) => call[0] === 'message' && call[1]?.type === 'error'
+    )
+    const completeEvents = allEmits.filter(
+      (call: any[]) => call[0] === 'message' && call[1]?.type === 'complete'
+    )
+
+    expect(errorEvents.length).toBeGreaterThan(0)
+    const incompleteCompletes = completeEvents.filter(
+      (call: any[]) => call[1]?.data?.finishReason === 'incomplete'
+    )
+    expect(incompleteCompletes).toHaveLength(0)
+    expect(getFinalResult).not.toHaveBeenCalled()
+
+    server.close()
+  })
+
+  it('does not leak the soft-commit reason into the next turn on a reused socket', async () => {
+    const mockPersistence = createMockPersistence({
+      startConversation: vi.fn().mockResolvedValue('conv-pc-reuse'),
+      startAgentTurn: vi.fn().mockResolvedValue('msg-pc-reuse'),
+    })
+
+    mockAgent.streamGenerate = vi.fn()
+      // Turn 1: content then premature close → soft-commit 'incomplete'.
+      .mockResolvedValueOnce({
+        baseStream: null,
+        textStream: (async function* () {
+          yield 'partial response text'
+          throw makeTerminatedError()
+        })(),
+        getFinalResult: vi.fn(),
+      })
+      // Turn 2 (same socket): a clean stream that completes normally.
+      .mockResolvedValueOnce({
+        baseStream: null,
+        textStream: (async function* () { yield 'clean answer' })(),
+        getFinalResult: vi.fn().mockResolvedValue({ usage: { inputTokens: 5, outputTokens: 3 }, toolCalls: [] }),
+      })
+
+    const { server, messageHandler } = await setupServerWithConnection(httpServer, {
+      agents: mockAgents,
+      defaultAgent: 'test-agent',
+      messagePersistence: mockPersistence,
+    })
+
+    await messageHandler({ message: 'first', agentId: 'test-agent', context: { metadata: { appId: 'test-app' } } })
+    await messageHandler({ message: 'second', agentId: 'test-agent', context: { metadata: { appId: 'test-app' } } })
+
+    const completeEvents = mockSocket.emit.mock.calls.filter(
+      (call: any[]) => call[0] === 'message' && call[1]?.type === 'complete'
+    )
+
+    // Turn 1 soft-committed; turn 2 must NOT inherit the stale 'incomplete'.
+    expect(completeEvents).toHaveLength(2)
+    expect(completeEvents[0][1].data.finishReason).toBe('incomplete')
+    expect(completeEvents[1][1].data.finishReason).not.toBe('incomplete')
+
+    server.close()
+  })
+
+  it('does not auto-continue or hand off after a premature-close soft-commit (turn is terminal)', async () => {
+    const mockPersistence = createMockPersistence({
+      startConversation: vi.fn().mockResolvedValue('conv-pc-guard'),
+      startAgentTurn: vi.fn().mockResolvedValue('msg-pc-guard'),
+    })
+
+    // Content + premature close. streamGenerate is mocked only ONCE — if the
+    // guards failed and the loop continued, the 2nd call would return undefined
+    // and throw, so "called exactly once" is the assertion that pins terminality.
+    mockAgent.streamGenerate = vi.fn().mockResolvedValueOnce({
+      baseStream: null,
+      textStream: (async function* () {
+        yield 'partial response text'
+        throw makeTerminatedError()
+      })(),
+      getFinalResult: vi.fn(),
+    })
+
+    // A validator that WOULD request continuation — the postStreamValidate
+    // guard must bail before invoking it, so it is never called.
+    const postStreamValidator = vi.fn().mockResolvedValue({ continuationPrompt: 'should not fire' })
+
+    const { server, messageHandler } = await setupServerWithConnection(httpServer, {
+      agents: mockAgents,
+      defaultAgent: 'test-agent',
+      messagePersistence: mockPersistence,
+      postStreamValidator,
+    } as any)
+
+    await messageHandler({ message: 'go', agentId: 'test-agent', context: { metadata: { appId: 'test-app' } } })
+
+    // Guard held: no continuation turn, validator never consulted.
+    expect(mockAgent.streamGenerate).toHaveBeenCalledTimes(1)
+    expect(postStreamValidator).not.toHaveBeenCalled()
+
+    const completeEvents = mockSocket.emit.mock.calls.filter(
+      (call: any[]) => call[0] === 'message' && call[1]?.type === 'complete'
+    )
+    expect(completeEvents).toHaveLength(1)
+    expect(completeEvents[0][1].data.finishReason).toBe('incomplete')
+
+    server.close()
+  })
+})
+
 describe('WebSocketServer - load_history streamCompleted handling', () => {
   let httpServer: HTTPServer
   let server: WebSocketServer

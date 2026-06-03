@@ -446,3 +446,55 @@ describe('StreamPartProcessor', () => {
     })
   })
 })
+
+describe('finish part capture', () => {
+  function noopCallbacks(): PartProcessorCallbacks {
+    return {
+      onTextDelta: () => {},
+      onToolStart: () => {},
+      onToolInputDelta: () => {},
+      onToolInputParseFailure: () => {},
+      onToolCall: () => {},
+      onToolResult: () => {},
+      onToolError: () => {},
+      onStepStart: () => {},
+      onError: () => {},
+    }
+  }
+
+  it('is not finished before any finish part', () => {
+    const p = new StreamPartProcessor(noopCallbacks())
+    expect(p.isFinished()).toBe(false)
+    expect(p.getFinishResult()).toBeUndefined()
+  })
+
+  it('captures finishReason and totalUsage from a finish part', () => {
+    const p = new StreamPartProcessor(noopCallbacks())
+    p.processPart({ type: 'text-delta', text: 'hi' })
+    p.processPart({
+      type: 'finish',
+      finishReason: 'stop',
+      totalUsage: { inputTokens: 10, outputTokens: 5 },
+    })
+    expect(p.isFinished()).toBe(true)
+    expect(p.getFinishResult()).toEqual({
+      finishReason: 'stop',
+      totalUsage: { inputTokens: 10, outputTokens: 5 },
+    })
+  })
+
+  it('does not treat finish-step as terminal (per-step end, not whole-response end)', () => {
+    const p = new StreamPartProcessor(noopCallbacks())
+    p.processPart({ type: 'finish-step', finishReason: 'tool-calls' })
+    expect(p.isFinished()).toBe(false)
+    expect(p.getFinishResult()).toBeUndefined()
+  })
+
+  it('prefers the last terminal finish frame', () => {
+    const p = new StreamPartProcessor(noopCallbacks())
+    p.processPart({ type: 'finish', finishReason: 'tool-calls' })
+    p.processPart({ type: 'finish', finishReason: 'stop' })
+    expect(p.isFinished()).toBe(true)
+    expect(p.getFinishResult()?.finishReason).toBe('stop')
+  })
+})

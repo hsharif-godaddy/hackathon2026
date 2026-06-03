@@ -50,6 +50,7 @@ import {
   type StreamTimingData,
 } from './stream-timing-tracker.js'
 import { ChunkTimeoutGuard } from './chunk-timeout-guard.js'
+import { decideChunkTimeoutFinalization } from './chunk-timeout-finalization.js'
 import { runPostStreamValidation, turnEndedWithStopAfterTool, type ValidationMessageEventData } from './post-stream-validation-runner.js'
 import { invokeBudgetRecoveryCallback, buildContinuationPrompt, MAX_BUDGET_RETRIES } from './budget-recovery.js'
 import { parseAgentCommand } from './agent-command-parser.js'
@@ -440,6 +441,18 @@ export class WebSocketServer {
    * Key: socketId, Value: ExecutionStep[]
    */
   private pendingExecutionSteps: Map<string, ExecutionStep[]> = new Map()
+
+  /**
+   * Soft-commit finishReason for a premature upstream close (undici
+   * `terminated`, socket reset, body timeout). Set in streamAgentResponse's
+   * postStreamError catch when content already streamed; consumed in
+   * completeConversation to publish 'incomplete'/'stop' instead of a hard
+   * error. Mirrors pendingExecutionSteps' lifecycle (set in stream, read at
+   * completion, cleaned up on disconnect). Unlike chunk_timeout this never
+   * aborts the signal, so the value must travel out-of-band rather than via
+   * abortSignal.reason. Key: socketId.
+   */
+  private pendingSoftCommitReason: Map<string, 'incomplete' | 'stop'> = new Map()
 
   /**
    * Event channel for pub/sub event delivery
@@ -1224,6 +1237,11 @@ export class WebSocketServer {
     // Clean up pending execution steps (cost attribution)
     this.pendingExecutionSteps.delete(socketId)
     this.pendingExecutionSteps.delete(effectiveId)
+
+    // Clean up any unconsumed premature-close soft-commit reason (normally
+    // consumed in completeConversation; this guards the throw-before-complete path)
+    this.pendingSoftCommitReason.delete(socketId)
+    this.pendingSoftCommitReason.delete(effectiveId)
 
     // Delegate state cleanup to state manager (handles timeouts, abort controller, migrations, etc.)
     await this.stateManager.cleanup(socketId)
@@ -2167,6 +2185,10 @@ export class WebSocketServer {
           }
         },
         postStreamValidate: async (name) => {
+          // A premature-close soft-commit ends the turn: don't validate or
+          // continue it (mirrors how chunk_timeout's abort short-circuits the
+          // loop before this callback). Honours the no-auto-retry decision.
+          if (this.pendingSoftCommitReason.has(socketId)) return
           // `postStreamConv?.context` can be undefined when the conversation was
           // cleaned up between stream end and here (disconnect / abort race).
           // Fall back to processedContext so the validator and the subsequent
@@ -2244,6 +2266,9 @@ export class WebSocketServer {
           }
         },
         getAutoContinuation: () => {
+          // Premature-close soft-commit ends the turn — never auto-continue
+          // (even if a tool set __autoContinue before the connection dropped).
+          if (this.pendingSoftCommitReason.has(socketId)) return null
           const conv = this.getConversation(socketId)
           const continuationContext = (conv?.context ?? processedContext) as Record<string, unknown> | undefined
           const meta = continuationContext?.metadata as Record<string, unknown> | undefined
@@ -2275,7 +2300,12 @@ export class WebSocketServer {
           }
           return null
         },
-        getHandoffDetails: (currentAgent) => this.getHandoffDetails(socketId, currentAgent),
+        getHandoffDetails: (currentAgent) => {
+          // Premature-close soft-commit ends the turn — don't follow a handoff
+          // even if one completed just before the connection dropped.
+          if (this.pendingSoftCommitReason.has(socketId)) return null
+          return this.getHandoffDetails(socketId, currentAgent)
+        },
         onHandoff: async (oldAgent, newAgent) => {
           this.logger.info('handoff.detect', { socketId, fromAgent: oldAgent, toAgent: newAgent })
           const currentAppId = extractAppIdFromMessageContext(data.context)
@@ -2375,9 +2405,26 @@ export class WebSocketServer {
       //   - Pre-completion hooks (git commits)
       //   - Complete event publication (with finishReason if aborted)
       const completionStateData = this.stateManager.getStateData(socketId)
-      const finishReason = abortSignal.aborted
-        ? (completionStateData?.userStopped ? 'user_stopped' : 'aborted')
+      const chunkTimeoutAbort = abortSignal.aborted && abortSignal.reason === 'chunk_timeout'
+      const chunkTimeoutContent = this.getConversation(socketId)?.accumulatedContent ?? ''
+      // isFinished:false — the StreamPartProcessor is scoped inside
+      // streamAgentResponse and not visible here, so WS never emits 'stop';
+      // a terminal-finish-then-stall is reported as 'incomplete' (see
+      // decideChunkTimeoutFinalization JSDoc). Acceptable: the GoCode stall
+      // mode has no terminal finish frame anyway.
+      const chunkTimeoutOutcome = chunkTimeoutAbort
+        ? decideChunkTimeoutFinalization({ isFinished: false, hasContent: chunkTimeoutContent.length > 0 })
         : undefined
+      const abortFinishReason = completionStateData?.userStopped ? 'user_stopped' : 'aborted'
+      // Premature-close soft-commit (streamAgentResponse set this when the
+      // upstream dropped mid/post-stream with content present). Consume it
+      // here so it can't leak into a later turn on a reused socket.
+      const softCommitReason = this.pendingSoftCommitReason.get(socketId)
+      this.pendingSoftCommitReason.delete(socketId)
+      const finishReason = chunkTimeoutOutcome?.kind === 'finalize'
+        ? chunkTimeoutOutcome.finishReason
+        : softCommitReason
+          ?? (abortSignal.aborted ? abortFinishReason : undefined)
       const budgetServiceEnabled = (processedContext as { metadata?: { budgetServiceEnabled?: boolean } })?.metadata?.budgetServiceEnabled
       await this.completeConversation(socketId, agentName, startTime, processedContext, finishReason, budgetSessionWasFree, budgetServiceEnabled)
 
@@ -3501,6 +3548,19 @@ Please try again with corrected formatting.`
           step: currentStep,
         })
 
+        // No-content chunk_timeout is NOT soft-committable: nothing to commit,
+        // so fail fast onto the normal error path (error terminal +
+        // classifyTurnError) instead of finalizing as a false completion. The
+        // fail rule lives in decideChunkTimeoutFinalization (single source).
+        const failFastChunkTimeout = streamAbortSignal.reason === 'chunk_timeout'
+          && decideChunkTimeoutFinalization({ isFinished: false, hasContent: fullContent.length > 0 }).kind === 'fail'
+        if (failFastChunkTimeout) {
+          this.logger.warn('stream.chunk_timeout.fail_fast', { socketId: socket.id, agentName, step: currentStep })
+          const noContentError = new Error('chunk_timeout with no content: aborting turn without soft-commit')
+          noContentError.name = 'AbortError'
+          throw noContentError
+        }
+
         const toolResultsForSpan = conversationAfterStream?.pendingToolCalls
         const hasToolResultsForSpan = toolResultsForSpan && toolResultsForSpan.size > 0
 
@@ -3797,6 +3857,19 @@ Please try again with corrected formatting.`
       // Uses the signal captured at the top of the try block — immune to
       // cleanupConversation removing the state manager entry during async abort.
       if (abortSignal?.aborted) {
+        // No-content chunk_timeout is NOT soft-committable: nothing to commit,
+        // so fail fast onto the normal error path (error terminal +
+        // classifyTurnError) instead of finalizing as a false completion. The
+        // fail rule lives in decideChunkTimeoutFinalization (single source).
+        const hasContent = (this.getConversation(socket.id)?.accumulatedContent ?? '').length > 0
+        const failFastChunkTimeout = abortSignal.reason === 'chunk_timeout'
+          && decideChunkTimeoutFinalization({ isFinished: false, hasContent }).kind === 'fail'
+        if (failFastChunkTimeout) {
+          this.logger.warn('stream.chunk_timeout.fail_fast', { socketId: socket.id, agentName, step: currentStep })
+          invocation.endError(postStreamError)
+          throw postStreamError
+        }
+
         invocation.endError(postStreamError)
         this.logger.info('stream.aborted', {
           socketId: socket.id,
@@ -3810,6 +3883,33 @@ Please try again with corrected formatting.`
         // would create a duplicate with inconsistent totalSteps.
         // Return any steps captured before abort for cost attribution
         return { steps: executionSteps }
+      }
+
+      // Premature upstream close (undici `terminated`, socket reset, body
+      // timeout) that did NOT abort the signal — GoCode dropped the connection
+      // rather than us cancelling. If content already streamed, soft-commit it
+      // (finishReason 'incomplete') so the client shows the gentle "may be
+      // incomplete" advisory instead of a hard "connection dropped" error.
+      // This is the flag-independent counterpart to the chunk_timeout
+      // soft-commit above: it fires whether or not the gap-timer is enabled.
+      // No content → fall through to the normal error path (preserving today's
+      // behaviour). BudgetExceededError is not a network error, so it falls
+      // through to the budget branch below.
+      if (isNetworkError(postStreamError)) {
+        const content = this.getConversation(socket.id)?.accumulatedContent ?? ''
+        const outcome = decideChunkTimeoutFinalization({ isFinished: false, hasContent: content.length > 0 })
+        if (outcome.kind === 'finalize') {
+          this.logger.warn('stream.premature_close.soft_commit', {
+            socketId: socket.id, agentName, step: currentStep, finishReason: outcome.finishReason,
+          })
+          // Honest error span (the upstream DID fail); the soft wire-facing
+          // finishReason travels to completeConversation via pendingSoftCommitReason.
+          invocation.endError(postStreamError, { finishReason: outcome.finishReason })
+          this.pendingSoftCommitReason.set(socket.id, outcome.finishReason)
+          // Mirror the abort path: don't publish complete here — the handoff
+          // loop in handleChatMessageInternal publishes it after we return.
+          return { steps: executionSteps }
+        }
       }
 
       // Mid-stream budget exceeded: attempt grant advancement and retry.

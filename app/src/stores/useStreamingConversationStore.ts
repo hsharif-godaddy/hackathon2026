@@ -1180,8 +1180,13 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
 
     // Detect output token limit: LLM hit maxOutputTokens (text truncation or incomplete tools)
     const outputTokenLimitReached = metadata?.finishReason === 'length'
-    // Detect connection lost: stream aborted due to disconnect grace period timeout or server shutdown
-    const connectionLost = metadata?.finishReason === 'aborted' || metadata?.finishReason === 'server_shutdown'
+    // Detect connection lost: stream aborted due to disconnect grace period timeout or server shutdown.
+    // 'incomplete' = server soft-committed a chunk-timeout stall: content
+    // arrived but no terminal frame. Reuse the connectionLost advisory
+    // ("response may be incomplete — send a follow-up"), not the red error.
+    const connectionLost = metadata?.finishReason === 'aborted'
+      || metadata?.finishReason === 'server_shutdown'
+      || metadata?.finishReason === 'incomplete'
     // Detect user-initiated stop
     const userStopped = metadata?.finishReason === 'user_stopped'
 
