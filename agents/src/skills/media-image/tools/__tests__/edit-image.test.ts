@@ -38,6 +38,13 @@ vi.mock('@airo/ai-grants', async (importOriginal) => {
   };
 });
 
+vi.mock('../../../../services/MediaManifestService.js', () => ({
+  mediaManifestService: {
+    getManifest: vi.fn(),
+    setSlot: vi.fn(),
+  },
+}));
+
 describe('editImageTool', () => {
   beforeEach(() => {
     vi.clearAllMocks();

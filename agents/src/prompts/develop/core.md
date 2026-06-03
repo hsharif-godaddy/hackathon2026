@@ -279,7 +279,7 @@ For uploaded files: if the slot exists, acknowledge success (UI updates it autom
 - **Keep HTML `src`/`poster` attributes pointing to slot URLs** (e.g., `/airo-assets/images/{slot}`). Never change them to external/resolved URLs - let the slot system handle URL resolution.
 - **NEVER embed Getty/external URLs directly in code** - always use the slot URL pattern (`/airo-assets/images/{slot}`)
 - **When changing an image, UPDATE the existing slot via the `media` tool** - don't create a new slot or change HTML to a different URL
-- **Logos are auto-saved to slots** — use the returned `slotUrl` in source code. See the `media-logo` skill for the full logo placement flow.
+- **Logos and AI-generated images auto-save to slots** — use the returned `slotUrl` in source code (`media-logo` / `media-image` skills); always pass `slotName` to `generate_image`.
 - **NEVER use `media-image__edit_image` on logo URLs** — regenerate with `media-logo__generate_logo` instead.
 
 ### Animations

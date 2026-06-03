@@ -4,6 +4,7 @@ import { grantSessionManager } from '@airo/ai-grants';
 import type { SkillToolDefinition } from '@airo/ai-skills';
 import { imagegenService } from '../../../services/ImagegenService.js';
 import { appRepository } from '../../../database/repositories/index.js';
+import { mediaManifestService, type MediaSlot } from '../../../services/MediaManifestService.js';
 
 // Keep in sync with editImageTool.config.validate which uses isAllowedLogoUrl() to block logo editing
 const LOGO_PATH_PATTERN = /genai-assistant\/.*logo/i;
@@ -36,6 +37,11 @@ const GenerateImageInputSchema = z.object({
     .max(4)
     .default(1)
     .describe('How many images (1-4)'),
+  slotName: z
+    .string()
+    .min(1)
+    .regex(/^[a-z0-9][a-z0-9/_-]*[a-z0-9]$/i, 'Slot name must be a valid path (alphanumeric, slashes, hyphens, underscores)')
+    .describe('Media slot path for these images. When replacing an existing image, use the EXACT existing slot path (e.g. "pages/home/hero"). For new placements, use standard naming (e.g. "pages/about/featured-1"). Look at the source code to find the current slot path from /airo-assets/images/ URLs.'),
 });
 
 const EditImageInputSchema = z.object({
@@ -53,7 +59,7 @@ type EditImageInput = z.infer<typeof EditImageInputSchema>;
 export const generateImageTool: SkillToolDefinition = {
   name: 'generate_image',
   description:
-    'Generate AI images from a description.',
+    'Generate AI images from a description. Always provide slotName to register in the Media Panel. When replacing existing media, use the exact existing slot path.',
 
   parameters: GenerateImageInputSchema,
 
@@ -102,11 +108,107 @@ export const generateImageTool: SkillToolDefinition = {
       orientation: input.orientation,
     });
 
-    // 4. Return structured result
+    // 4. Register generated images in the media manifest so they appear in the Media Panel.
+    let normalizedSlot = input.slotName.trim().replace(/^\/+|\/+$/g, '');
+    let manifestWriteSuccess = false;
+    if (appId && normalizedSlot) {
+      try {
+        const existingManifest = await mediaManifestService.getManifest(appId);
+        if (existingManifest.success && existingManifest.manifest) {
+          const manifestSlots = Object.keys(existingManifest.manifest);
+          if (!manifestSlots.includes(normalizedSlot)) {
+            const match = manifestSlots.find((s) => {
+              if (s === normalizedSlot) return true;
+              return s.endsWith('/' + normalizedSlot);
+            });
+            if (match) {
+              logger.info('skills.media-image.tools.generate_image.slot_resolved', {
+                appId,
+                requested: normalizedSlot,
+                resolved: match,
+              });
+              normalizedSlot = match;
+            }
+          }
+        }
+
+        const imageUrls = result.images.map((image) => image.url);
+        const primaryUrl = imageUrls[0];
+        if (primaryUrl) {
+          const now = new Date().toISOString();
+          const existingSlot = existingManifest.manifest?.[normalizedSlot];
+          const previousAiUrls = existingSlot?.aiGeneratedUrls || [];
+          const mergedAiUrls = [
+            ...imageUrls,
+            ...previousAiUrls.filter((url) => !imageUrls.includes(url)),
+          ].slice(0, 20);
+          const otherNewUrls = imageUrls.slice(1);
+          const mergedAlternatives = [
+            ...otherNewUrls,
+            ...(existingSlot?.alternatives || []).filter(
+              (url) => url !== primaryUrl && !imageUrls.includes(url)
+            ),
+          ];
+          if (
+            existingSlot?.currentUrl &&
+            existingSlot.currentUrl !== primaryUrl &&
+            !mergedAlternatives.includes(existingSlot.currentUrl) &&
+            !imageUrls.includes(existingSlot.currentUrl)
+          ) {
+            mergedAlternatives.unshift(existingSlot.currentUrl);
+          }
+
+          const slotEntry: MediaSlot = {
+            ...existingSlot,
+            mediaType: 'generated',
+            currentUrl: primaryUrl,
+            searchQuery: input.prompt,
+            alternatives: mergedAlternatives,
+            aiGeneratedUrls: mergedAiUrls,
+            userModified: true,
+            createdAt: existingSlot?.createdAt || now,
+            lastUpdated: now,
+          };
+
+          const manifestResult = await mediaManifestService.setSlot(appId, normalizedSlot, slotEntry, true);
+          if (manifestResult.success) {
+            manifestWriteSuccess = true;
+            logger.info('skills.media-image.tools.generate_image.manifest_updated', {
+              appId,
+              slotName: normalizedSlot,
+              imageCount: imageUrls.length,
+            });
+          } else {
+            logger.error('skills.media-image.tools.generate_image.manifest_update_failed', {
+              appId,
+              slotName: normalizedSlot,
+              error: manifestResult.error,
+            });
+          }
+        }
+      } catch (err) {
+        logger.error('skills.media-image.tools.generate_image.manifest_write_error', {
+          appId,
+          slotName: normalizedSlot,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+
+    // 5. Return structured result
+    const slotSaveNote = !manifestWriteSuccess
+      ? ' Slot save failed — the image will not appear in the Media Panel until retried. Tell the user and offer to retry.'
+      : '';
+
     return {
+      ...(slotSaveNote
+        ? { text: `Generated ${result.images.length} image(s).${slotSaveNote}` }
+        : {}),
       structuredContent: {
         images: result.images,
         sessionId: result.sessionId,
+        slotUrl: manifestWriteSuccess ? `/airo-assets/images/${normalizedSlot}` : undefined,
+        slotSaveFailed: !manifestWriteSuccess,
       },
     };
   },

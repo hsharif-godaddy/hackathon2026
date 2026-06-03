@@ -79,6 +79,7 @@ export function invalidateMediaManifestIfNeeded(appId: string): void {
     lastMsg.toolCalls?.some((tc) =>
       tc.name === 'media' ||
       tc.name.startsWith('media__') ||
+      tc.name.startsWith('media-image__') ||
       tc.name.startsWith('media-video__') ||
       tc.name.startsWith('media-logo__')
     )

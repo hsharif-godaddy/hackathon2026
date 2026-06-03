@@ -38,6 +38,15 @@ vi.mock('@airo/ai-grants', async (importOriginal) => {
   };
 });
 
+const mockGetManifest = vi.fn();
+const mockSetSlot = vi.fn();
+vi.mock('../../../../services/MediaManifestService.js', () => ({
+  mediaManifestService: {
+    getManifest: mockGetManifest,
+    setSlot: mockSetSlot,
+  },
+}));
+
 describe('generateImageTool', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -58,6 +67,12 @@ describe('generateImageTool', () => {
         { id: 'img-2', url: 'https://cdn/img2.png' },
       ],
     });
+
+    mockGetManifest.mockResolvedValue({
+      success: true,
+      manifest: { 'pages/home/hero': { mediaType: 'image', currentUrl: '/old.jpg', alternatives: ['/alt.jpg'] } },
+    });
+    mockSetSlot.mockResolvedValue({ success: true });
   });
 
   it('should call imagegenService with mapped params', async () => {
@@ -73,6 +88,7 @@ describe('generateImageTool', () => {
         prompt: 'A professional business team',
         orientation: 'landscape',
         imageCount: 2,
+        slotName: 'pages/home/hero',
       },
       context
     );
@@ -101,6 +117,7 @@ describe('generateImageTool', () => {
         prompt: 'A sunset',
         orientation: 'landscape',
         imageCount: 2,
+        slotName: 'pages/home/hero',
       },
       context
     );
@@ -112,6 +129,8 @@ describe('generateImageTool', () => {
           { id: 'img-1', url: 'https://cdn/img1.png' },
           { id: 'img-2', url: 'https://cdn/img2.png' },
         ],
+        slotUrl: '/airo-assets/images/pages/home/hero',
+        slotSaveFailed: false,
       },
     });
   });
@@ -131,6 +150,7 @@ describe('generateImageTool', () => {
         prompt: 'Test',
         orientation: 'landscape',
         imageCount: 1,
+        slotName: 'pages/home/hero',
       },
       context
     );
@@ -156,6 +176,7 @@ describe('generateImageTool', () => {
         prompt: 'Test',
         orientation: 'landscape',
         imageCount: 1,
+        slotName: 'pages/home/hero',
       },
       context
     );
@@ -182,9 +203,133 @@ describe('generateImageTool', () => {
           prompt: 'Test',
           orientation: 'landscape',
           imageCount: 1,
+          slotName: 'pages/home/hero',
         },
         context
       )
     ).rejects.toThrow('Imagegen API error (image.generate): 500 Internal Server Error');
+  });
+
+  describe('manifest write', () => {
+    it('should save generated images to manifest as generated slot', async () => {
+      const { generateImageTool } = await import('../index.js');
+
+      const context = { socketId: 'socket-1', metadata: { appId: 'app-123' } };
+
+      await generateImageTool.execute(
+        {
+          prompt: 'A sunset',
+          orientation: 'landscape',
+          imageCount: 2,
+          slotName: 'pages/home/hero',
+        },
+        context
+      );
+
+      expect(mockSetSlot).toHaveBeenCalledWith(
+        'app-123',
+        'pages/home/hero',
+        expect.objectContaining({
+          mediaType: 'generated',
+          currentUrl: 'https://cdn/img1.png',
+          searchQuery: 'A sunset',
+          alternatives: ['/old.jpg', 'https://cdn/img2.png', '/alt.jpg'],
+          aiGeneratedUrls: ['https://cdn/img1.png', 'https://cdn/img2.png'],
+          userModified: true,
+        }),
+        true
+      );
+    });
+
+    it('should resolve slot via exact full-segment suffix match', async () => {
+      mockGetManifest.mockResolvedValue({
+        success: true,
+        manifest: {
+          'pages/home/hero': { mediaType: 'image', currentUrl: '/old.jpg', alternatives: [] },
+        },
+      });
+
+      const { generateImageTool } = await import('../index.js');
+      const context = { socketId: 'socket-1', metadata: { appId: 'app-123' } };
+
+      await generateImageTool.execute(
+        {
+          prompt: 'Test',
+          orientation: 'landscape',
+          imageCount: 1,
+          slotName: 'home/hero',
+        },
+        context
+      );
+
+      expect(mockSetSlot).toHaveBeenCalledWith('app-123', 'pages/home/hero', expect.any(Object), true);
+    });
+
+    it('should omit slotUrl when manifest write fails', async () => {
+      mockSetSlot.mockResolvedValue({ success: false, error: 'disk full' });
+
+      const { generateImageTool } = await import('../index.js');
+      const context = { socketId: 'socket-1', metadata: { appId: 'app-123' } };
+
+      const result = await generateImageTool.execute(
+        {
+          prompt: 'Test',
+          orientation: 'landscape',
+          imageCount: 1,
+          slotName: 'pages/home/hero',
+        },
+        context
+      );
+
+      expect(result).toEqual({
+        text: 'Generated 2 image(s). Slot save failed — the image will not appear in the Media Panel until retried. Tell the user and offer to retry.',
+        structuredContent: {
+          sessionId: 'sess-img-123',
+          images: [
+            { id: 'img-1', url: 'https://cdn/img1.png' },
+            { id: 'img-2', url: 'https://cdn/img2.png' },
+          ],
+          slotUrl: undefined,
+          slotSaveFailed: true,
+        },
+      });
+    });
+
+    it('should cap aiGeneratedUrls at 20 entries', async () => {
+      const existingUrls = Array.from({ length: 25 }, (_, i) => `https://cdn/old-${i}.png`);
+      mockGetManifest.mockResolvedValue({
+        success: true,
+        manifest: {
+          'pages/home/hero': {
+            mediaType: 'generated',
+            currentUrl: existingUrls[0],
+            alternatives: [],
+            aiGeneratedUrls: existingUrls,
+          },
+        },
+      });
+
+      mockGenerateImages.mockResolvedValue({
+        sessionId: 'sess-img-123',
+        images: [{ id: 'img-1', url: 'https://cdn/new.png' }],
+      });
+
+      const { generateImageTool } = await import('../index.js');
+      const context = { socketId: 'socket-1', metadata: { appId: 'app-123' } };
+
+      await generateImageTool.execute(
+        {
+          prompt: 'New image',
+          orientation: 'landscape',
+          imageCount: 1,
+          slotName: 'pages/home/hero',
+        },
+        context
+      );
+
+      const slotArg = mockSetSlot.mock.calls[0][2];
+      expect(slotArg.aiGeneratedUrls).toHaveLength(20);
+      expect(slotArg.aiGeneratedUrls[0]).toBe('https://cdn/new.png');
+    });
   });
 });

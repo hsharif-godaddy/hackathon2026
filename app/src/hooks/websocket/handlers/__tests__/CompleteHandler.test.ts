@@ -268,7 +268,7 @@ describe('CompleteHandler', () => {
     })
   })
 
-  it('does not invalidate media manifest for media-image__ tool calls (no manifest writes)', async () => {
+  it('invalidates media manifest for media-image__ tool calls (writes to manifest)', async () => {
     mockStore.getState.mockReturnValue({
       connectionRetry: { isRetrying: false },
       clearConnectionRetry: vi.fn(),
@@ -282,7 +282,9 @@ describe('CompleteHandler', () => {
       createMockMessageContext()
     )
 
-    expect(mockInvalidateQueries).not.toHaveBeenCalled()
+    expect(mockInvalidateQueries).toHaveBeenCalledWith({
+      queryKey: ['mediaManifest', 'app-123'],
+    })
   })
 
   it('invalidates media manifest for media-video__ tool calls (writes to manifest)', async () => {

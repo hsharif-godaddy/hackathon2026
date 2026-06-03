@@ -8,6 +8,7 @@ import MediaModal from '@/app/[market]/develop/components/tool-renderers/MediaMo
 import ToolHeader from '@/app/[market]/develop/components/tool-renderers/ToolHeader'
 import { logger } from '@/lib/request-context'
 import { useToolDetailsModal } from '@/stores/useToolDetailsModalStore'
+import { postMessageToIframe } from '@/utils/postMessage'
 
 interface ImageResult {
   url: string
@@ -36,6 +37,7 @@ export default function ImageGeneratorToolRenderer({
 
   // Parse result - expects the MCP response format
   const images: ImageResult[] = []
+  let slotPath: string | undefined
 
   // Parse input to get the generation prompt
   let generationPrompt = 'Image'
@@ -63,6 +65,11 @@ export default function ImageGeneratorToolRenderer({
       }
 
       if (resultObj) {
+        const slotUrl = resultObj.structuredContent?.slotUrl as string | undefined
+        if (slotUrl) {
+          slotPath = slotUrl.replace(/^\/airo-assets\/images\//, '')
+        }
+
         // Handle structuredContent.images from generate_image
         if (resultObj.structuredContent?.images && Array.isArray(resultObj.structuredContent.images)) {
           resultObj.structuredContent.images.forEach((img: any) => {
@@ -115,6 +122,20 @@ export default function ImageGeneratorToolRenderer({
   const imageCount = images.length
   const hasImages = imageCount > 0
   const hasDetails = hasImages
+
+  const hasNotifiedRef = useRef(false)
+  useEffect(() => {
+    if (toolStatus === 'completed' && hasImages && slotPath && !hasNotifiedRef.current) {
+      hasNotifiedRef.current = true
+      const iframe = document.getElementById('preview-iframe') as HTMLIFrameElement
+      if (iframe) {
+        postMessageToIframe(iframe, {
+          type: 'RELOAD_MEDIA_SLOT',
+          slotPath,
+        })
+      }
+    }
+  }, [toolStatus, hasImages, slotPath])
 
   const handleImageClick = (index: number) => {
     setSelectedImageIndex(index)
