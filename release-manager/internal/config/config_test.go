@@ -727,6 +727,51 @@ func TestActiveRunWorkflowsActualConfig(t *testing.T) {
 	}
 }
 
+// TestValidateStagesAdvisoryActualConfig guards that the validate stages stay
+// advisory (non-blocking) and the deploy stages stay blocking — so a flaky
+// e2e/sim-eval doesn't hard-fail a release, while a deploy/build failure still
+// does. Test-phase validate failures are surfaced for the reviewer at the prod
+// gate; prod-phase validate failures are surfaced too but (prod already being
+// live) do not withhold cutting the GitHub release tag. Mirrors the original
+// GHA advisory design.
+func TestValidateStagesAdvisoryActualConfig(t *testing.T) {
+	cfg, err := Load("../../release-manager.yml")
+	if err != nil {
+		t.Skipf("skipping actual config test: %v", err)
+	}
+
+	advisory := map[string]bool{}
+	for _, env := range cfg.Pipeline.Environments {
+		for _, s := range env.Stages {
+			advisory[s.ID] = s.Advisory
+		}
+	}
+
+	advisoryStages := []string{
+		// test phase
+		"e2e-test", "regression-test", "health-check-test", "simulation-eval-test",
+		// prod phase
+		"e2e-prod", "regression-prod", "health-check-prod",
+	}
+	for _, id := range advisoryStages {
+		if !advisory[id] {
+			t.Errorf("validate stage %q must be advisory (non-blocking)", id)
+		}
+	}
+
+	blockingStages := []string{
+		// test phase
+		"deploy-app", "build-images",
+		// prod phase
+		"promote-images", "promote-app", "upsert-reload-preprov",
+	}
+	for _, id := range blockingStages {
+		if advisory[id] {
+			t.Errorf("deploy stage %q must be blocking, not advisory", id)
+		}
+	}
+}
+
 func TestLoadActualConfig(t *testing.T) {
 	cfg, err := Load("../../release-manager.yml")
 	if err != nil {

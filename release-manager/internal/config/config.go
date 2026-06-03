@@ -64,21 +64,28 @@ type EnvironmentConfig struct {
 }
 
 type Stage struct {
-	ID              string            `yaml:"id"`
-	Name            string            `yaml:"name"`
-	Group           string            `yaml:"group"`
-	Type            string            `yaml:"type"`
-	Repo            string            `yaml:"repo"`
-	Workflow        string            `yaml:"workflow"`
-	Ref             string            `yaml:"ref"`
-	ActiveRunCheck  *bool             `yaml:"active_run_check"`
-	ActiveRunFilter string            `yaml:"active_run_filter"`
-	Inputs          map[string]string `yaml:"inputs"`
-	Outputs         map[string]Output `yaml:"outputs"`
-	Matrix          []MatrixEntry     `yaml:"matrix"`
-	Items           []string          `yaml:"items"`
-	URL             string            `yaml:"url"`
-	ExpectVersion   string            `yaml:"expect_version"`
+	ID              string `yaml:"id"`
+	Name            string `yaml:"name"`
+	Group           string `yaml:"group"`
+	Type            string `yaml:"type"`
+	Repo            string `yaml:"repo"`
+	Workflow        string `yaml:"workflow"`
+	Ref             string `yaml:"ref"`
+	ActiveRunCheck  *bool  `yaml:"active_run_check"`
+	ActiveRunFilter string `yaml:"active_run_filter"`
+	// Advisory marks a stage whose failure must NOT block the pipeline: it is
+	// recorded and surfaced (in Slack + the approval summary) but the phase
+	// still proceeds, and a sibling stage's failure does not cancel it. Used
+	// for the test-phase validate stages (e2e / regression / sim-eval /
+	// health-check) so a reviewer decides at the prod gate rather than the run
+	// hard-failing — matching the GHA design where those were advisory.
+	Advisory      bool              `yaml:"advisory"`
+	Inputs        map[string]string `yaml:"inputs"`
+	Outputs       map[string]Output `yaml:"outputs"`
+	Matrix        []MatrixEntry     `yaml:"matrix"`
+	Items         []string          `yaml:"items"`
+	URL           string            `yaml:"url"`
+	ExpectVersion string            `yaml:"expect_version"`
 }
 
 type Output struct {

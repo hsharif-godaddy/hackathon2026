@@ -221,6 +221,17 @@ func (p *Pipeline) SetValue(key, value string) {
 	p.values[key] = value
 }
 
+// StageAdvisory reports whether the stage at idx is advisory (its failure must
+// not block the pipeline). Out-of-range indices are treated as non-advisory.
+func (p *Pipeline) StageAdvisory(idx int) bool {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	if idx < 0 || idx >= len(p.stages) {
+		return false
+	}
+	return p.stages[idx].Stage.Advisory
+}
+
 // BuildStages creates StageRun entries for all stages in an environment.
 func (p *Pipeline) BuildStages(envName string) error {
 	env, ok := p.Config.Pipeline.Environments[envName]

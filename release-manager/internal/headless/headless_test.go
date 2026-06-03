@@ -84,6 +84,29 @@ func TestOrchestrateSuccess(t *testing.T) {
 	}
 }
 
+func TestOrchestrateAdvisoryFailureDoesNotBlock(t *testing.T) {
+	cfg := &config.Config{
+		Pipeline: config.PipelineConfig{
+			Environments: map[string]*config.EnvironmentConfig{
+				"test": {Stages: []config.Stage{
+					{ID: "e2e", Name: "E2E", Group: "validate", Advisory: true, Repo: "o/r", Workflow: "e2e.yml"},
+				}},
+			},
+		},
+	}
+	r := &run{p: pipeline.New(cfg, &fakeRunner{conclusion: "failure"}, false, "main", nil), start: time.Now()}
+	if err := r.p.BuildStages("test"); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.orchestrate(context.Background(), r.p.StageGroups("test")); err != nil {
+		t.Fatalf("an advisory stage failure must NOT fail the phase, got: %v", err)
+	}
+	// …but it's still recorded as failed so the reviewer sees it.
+	if r.p.Stages()[0].State != pipeline.StateFailed {
+		t.Errorf("advisory stage state = %v, want failed (surfaced for the reviewer)", r.p.Stages()[0].State)
+	}
+}
+
 func TestOrchestrateFailurePropagates(t *testing.T) {
 	r := newRun(&fakeRunner{conclusion: "failure"})
 	if err := r.p.BuildStages("test"); err != nil {

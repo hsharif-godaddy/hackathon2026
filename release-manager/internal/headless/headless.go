@@ -229,10 +229,14 @@ func (r *run) runRollback(ctx context.Context, opts Options) error {
 // Notifier dedups identical content, so a tick with no change is a cheap no-op.
 const slackRefreshInterval = 15 * time.Second
 
-// orchestrate runs each group's stages in parallel, waiting for the whole group
-// before advancing. A stage error aborts immediately (errgroup cancels its
-// siblings' context) and propagates — the equivalent of the TUI halting the
-// pipeline, minus the interactive retry prompt.
+// orchestrate runs each group's stages in parallel and waits for the WHOLE
+// group before advancing — every stage runs to completion (no fail-fast
+// cancellation), so one stage's failure never cancels its siblings. After the
+// group settles, the phase fails only if a BLOCKING (non-advisory) stage
+// failed; advisory stages (the test-phase e2e / regression / sim-eval /
+// health-check) are recorded and surfaced but do not block — a reviewer
+// decides at the prod gate. This matches the GHA design where those validate
+// jobs were advisory.
 //
 // While a group runs, a ticker refreshes Slack every slackRefreshInterval so
 // the single message tracks progress live (each stage's RunURL is set within
@@ -241,10 +245,21 @@ const slackRefreshInterval = 15 * time.Second
 // would leave the message stuck on "all pending, no run links" until it ended.
 func (r *run) orchestrate(ctx context.Context, groups [][]int) error {
 	for _, group := range groups {
-		eg, gctx := errgroup.WithContext(ctx)
+		// Plain errgroup (no WithContext): Wait() still blocks for all
+		// goroutines, but a non-nil return does NOT cancel the others — so
+		// siblings always finish and we keep their real results. Advisory
+		// stage failures are swallowed here (RunStage already records the
+		// failed state for rendering); only blocking failures propagate.
+		var eg errgroup.Group
 		for _, idx := range group {
 			idx := idx
-			eg.Go(func() error { return r.p.RunStage(gctx, idx) })
+			eg.Go(func() error {
+				err := r.p.RunStage(ctx, idx)
+				if err != nil && r.p.StageAdvisory(idx) {
+					return nil // advisory: non-blocking
+				}
+				return err
+			})
 		}
 
 		stop := make(chan struct{})

@@ -26,11 +26,16 @@ All release logic — stage ordering/parallelism, dispatch + wait, log-output pa
 ## Approve prod
 
 1. Open the run in **Actions → Release Pipeline**.
-2. Read the **`test-phase`** job summary (per-stage results table) and the Slack thread.
+2. Read the **`test-phase`** job summary (per-stage results table) and the Slack thread — including any **advisory** failures (see below).
 3. On **`approve-prod`** → **Review deployments** → select `release-prod-approval` → **Approve and deploy** (or **Reject**).
 4. Reviewers are configured in **Settings → Environments → `release-prod-approval`** (isolated from the `prod` Environment, so direct `promote-artifact.yml` runs are not gated).
 
-If a test stage fails, the binary flips the Slack message to FAILED and the test-phase job exits non-zero — `approve-prod` never runs. Fix forward and re-trigger.
+**Blocking vs advisory.** The validate stages — **E2E, Regression, Health Check** (plus **Simulation Evaluation** in the test phase) — are *advisory* in both phases: a failure shows ❌ in Slack + the approval summary, each stage runs to completion independently (a failure in one no longer cancels its siblings), and the failure does not hard-stop the phase. What "advisory" buys you differs by phase:
+
+- **Test phase:** a failed validate stage still lets the pipeline **pause at the gate** for you to judge (a flaky e2e/sim-eval shouldn't hard-fail a release).
+- **Prod phase:** prod is already live (images + app promoted) by the time these run, so a failed validate stage is surfaced but the **GitHub release tag is still cut**. The failure signals the live deploy needs a look — it doesn't withhold the release.
+
+The hard blockers are the deploy stages: **`Deploy App to Test`** / **`Build Container Images`** in test (if either fails there's no artifact/images to promote, so the test phase fails and `approve-prod` never runs) and **`Promote Images`** / **`Promote App`** / **`Upsert + Reload Pre-Prov`** in prod (a failed promote means prod didn't actually update, so no release is cut). Fix forward and re-trigger.
 
 ## Roll back
 

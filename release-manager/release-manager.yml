@@ -79,6 +79,7 @@ pipeline:
         - id: e2e-test
           name: E2E Tests
           group: validate
+          advisory: true # surfaced for the reviewer; does not block the prod gate
           repo: gdcorp-partners/airo-app-builder
           workflow: playwright-e2e.yml
           active_run_check: false
@@ -90,6 +91,7 @@ pipeline:
         - id: regression-test
           name: Regression Tests
           group: validate
+          advisory: true # surfaced for the reviewer; does not block the prod gate
           repo: gdcorp-partners/airo-app-builder
           workflow: playwright-e2e.yml
           active_run_check: false
@@ -101,6 +103,7 @@ pipeline:
         - id: health-check-test
           name: Health Check (Test)
           group: validate
+          advisory: true # surfaced for the reviewer; does not block the prod gate
           type: health-check
           url: 'https://airo-builder.test-godaddy.com/api/health'
           expect_version: '{{commit}}'
@@ -118,10 +121,14 @@ pipeline:
             - 'Verify that you can add a credit pack'
             - 'Verify any new features in the release notes are working'
 
-        # --- Simulation evaluation gate — fails test stage (blocking prod) if score < 70 (0-100 scale) ---
+        # --- Simulation evaluation — advisory: a sub-threshold (<70) score is
+        # surfaced in Slack + the approval summary but does NOT block; the
+        # reviewer decides at the prod gate. (fail-on-threshold still makes the
+        # underlying run go red so its result is unambiguous.)
         - id: simulation-eval-test
           name: Simulation Evaluation
           group: validate
+          advisory: true
           repo: gdcorp-partners/airo-app-builder
           workflow: simulation_evaluation.yml
           active_run_check: false
@@ -182,10 +189,15 @@ pipeline:
             appTemplateName: default
             batchConcurrency: '5'
 
-        # --- E2E + regression + manual checklist run in parallel ---
+        # --- E2E + regression + manual checklist run in parallel. These are
+        # advisory: prod is already live by this point (images promoted, app
+        # promoted), so a failing prod smoke test is surfaced in Slack but does
+        # NOT block — the GitHub release tag is still cut. Failure withholds
+        # nothing operationally; it just signals the live deploy needs a look. ---
         - id: e2e-prod
           name: E2E Tests (Prod)
           group: validate-prod
+          advisory: true # prod already live; failure does not withhold the release tag
           repo: gdcorp-partners/airo-app-builder
           workflow: playwright-e2e.yml
           active_run_check: false
@@ -197,6 +209,7 @@ pipeline:
         - id: regression-prod
           name: Regression Tests (Prod)
           group: validate-prod
+          advisory: true # prod already live; failure does not withhold the release tag
           repo: gdcorp-partners/airo-app-builder
           workflow: playwright-e2e.yml
           active_run_check: false
@@ -208,6 +221,7 @@ pipeline:
         - id: health-check-prod
           name: Health Check (Prod)
           group: validate-prod
+          advisory: true # prod already live; failure does not withhold the release tag
           type: health-check
           url: 'https://airo-builder.godaddy.com/api/health'
           expect_version: '{{commit}}'
