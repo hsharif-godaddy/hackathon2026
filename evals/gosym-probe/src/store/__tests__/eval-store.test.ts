@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { Config } from '../../../config/environments/types.js';
 import type { DOMSnapshot } from '../../clients/dom-capture.js';
 import type { EvalResult } from '../../evaluators/evaluator.js';
@@ -2140,6 +2140,10 @@ describe('EvalStore', () => {
       mockMkdir.mockRejectedValueOnce(
         Object.assign(new Error('exists'), { code: 'EEXIST' }),
       );
+      // owner.json indicates a live process (current PID, recent timestamp)
+      mockReadFile.mockResolvedValueOnce(
+        JSON.stringify({ pid: process.pid, createdAt: new Date().toISOString() }),
+      );
 
       await expect(
         store.acquireRunLock(`${FIXED_COMPACT}_run-001`),
@@ -2199,6 +2203,246 @@ describe('EvalStore', () => {
         rmError,
       );
       consoleErrorSpy.mockRestore();
+    });
+
+    describe('stale-PID detection', () => {
+      const originalKill = process.kill;
+      let mockKill: ReturnType<typeof vi.fn>;
+
+      beforeEach(() => {
+        mockKill = vi.fn().mockReturnValue(true);
+        process.kill = mockKill as unknown as typeof process.kill;
+        vi.spyOn(console, 'warn').mockImplementation(() => {});
+      });
+
+      afterEach(() => {
+        process.kill = originalKill;
+        vi.restoreAllMocks();
+      });
+
+      it('removes stale lock when owner PID is dead and retries successfully', async () => {
+        const store = new EvalStore();
+        // First mkdir: EEXIST (lock exists)
+        mockMkdir.mockRejectedValueOnce(
+          Object.assign(new Error('exists'), { code: 'EEXIST' }),
+        );
+        // readFile returns dead PID's owner.json
+        mockReadFile.mockResolvedValueOnce(
+          JSON.stringify({ pid: 99999, createdAt: '2026-01-01T00:00:00Z' }),
+        );
+        // process.kill throws ESRCH (process not found)
+        mockKill.mockImplementation(() => {
+          throw Object.assign(new Error('No such process'), { code: 'ESRCH' });
+        });
+        // rm succeeds (stale lock removed)
+        mockRm.mockResolvedValueOnce(undefined);
+        // Retry mkdir succeeds
+        mockMkdir.mockResolvedValueOnce(undefined);
+
+        const release = await store.acquireRunLock(`${FIXED_COMPACT}_run-001`);
+
+        expect(console.warn).toHaveBeenCalledWith(
+          expect.stringContaining('Removing stale'),
+        );
+        expect(mockRm).toHaveBeenCalled();
+        expect(typeof release).toBe('function');
+      });
+
+      it('throws when owner PID is alive', async () => {
+        const store = new EvalStore();
+        mockMkdir.mockRejectedValueOnce(
+          Object.assign(new Error('exists'), { code: 'EEXIST' }),
+        );
+        mockReadFile.mockResolvedValueOnce(
+          JSON.stringify({ pid: process.pid, createdAt: new Date().toISOString() }),
+        );
+        // process.kill returns without error (process is alive)
+        mockKill.mockImplementation(() => true);
+
+        await expect(
+          store.acquireRunLock(`${FIXED_COMPACT}_run-001`),
+        ).rejects.toThrow('Cannot acquire run');
+      });
+
+      it('treats EPERM on kill as alive (process exists, no permission)', async () => {
+        const store = new EvalStore();
+        mockMkdir.mockRejectedValueOnce(
+          Object.assign(new Error('exists'), { code: 'EEXIST' }),
+        );
+        mockReadFile.mockResolvedValueOnce(
+          JSON.stringify({ pid: 1, createdAt: new Date().toISOString() }),
+        );
+        mockKill.mockImplementation(() => {
+          throw Object.assign(new Error('Operation not permitted'), { code: 'EPERM' });
+        });
+
+        await expect(
+          store.acquireRunLock(`${FIXED_COMPACT}_run-001`),
+        ).rejects.toThrow('Cannot acquire run');
+      });
+
+      it('treats missing owner.json as stale', async () => {
+        const store = new EvalStore();
+        mockMkdir.mockRejectedValueOnce(
+          Object.assign(new Error('exists'), { code: 'EEXIST' }),
+        );
+        // readFile throws ENOENT
+        mockReadFile.mockRejectedValueOnce(
+          Object.assign(new Error('not found'), { code: 'ENOENT' }),
+        );
+        mockRm.mockResolvedValueOnce(undefined);
+        mockMkdir.mockResolvedValueOnce(undefined);
+
+        const release = await store.acquireRunLock(`${FIXED_COMPACT}_run-001`);
+        expect(typeof release).toBe('function');
+      });
+
+      it('treats malformed owner.json as stale', async () => {
+        const store = new EvalStore();
+        mockMkdir.mockRejectedValueOnce(
+          Object.assign(new Error('exists'), { code: 'EEXIST' }),
+        );
+        mockReadFile.mockResolvedValueOnce('not valid json {{{');
+        mockRm.mockResolvedValueOnce(undefined);
+        mockMkdir.mockResolvedValueOnce(undefined);
+
+        const release = await store.acquireRunLock(`${FIXED_COMPACT}_run-001`);
+        expect(typeof release).toBe('function');
+      });
+
+      it('treats owner.json with non-numeric pid as stale', async () => {
+        const store = new EvalStore();
+        mockMkdir.mockRejectedValueOnce(
+          Object.assign(new Error('exists'), { code: 'EEXIST' }),
+        );
+        mockReadFile.mockResolvedValueOnce(
+          JSON.stringify({ pid: 'not-a-number', createdAt: '2026-01-01T00:00:00Z' }),
+        );
+        mockRm.mockResolvedValueOnce(undefined);
+        mockMkdir.mockResolvedValueOnce(undefined);
+
+        const release = await store.acquireRunLock(`${FIXED_COMPACT}_run-001`);
+        expect(typeof release).toBe('function');
+      });
+
+      it('treats owner.json with pid <= 0 as stale', async () => {
+        const store = new EvalStore();
+        mockMkdir.mockRejectedValueOnce(
+          Object.assign(new Error('exists'), { code: 'EEXIST' }),
+        );
+        mockReadFile.mockResolvedValueOnce(
+          JSON.stringify({ pid: 0, createdAt: '2026-01-01T00:00:00Z' }),
+        );
+        mockRm.mockResolvedValueOnce(undefined);
+        mockMkdir.mockResolvedValueOnce(undefined);
+
+        const release = await store.acquireRunLock(`${FIXED_COMPACT}_run-001`);
+        expect(typeof release).toBe('function');
+      });
+
+      it('treats unexpected kill error as alive (conservative)', async () => {
+        const store = new EvalStore();
+        mockMkdir.mockRejectedValueOnce(
+          Object.assign(new Error('exists'), { code: 'EEXIST' }),
+        );
+        mockReadFile.mockResolvedValueOnce(
+          JSON.stringify({ pid: 12345, createdAt: new Date().toISOString() }),
+        );
+        mockKill.mockImplementation(() => {
+          throw Object.assign(new Error('unexpected'), { code: 'EINVAL' });
+        });
+
+        await expect(
+          store.acquireRunLock(`${FIXED_COMPACT}_run-001`),
+        ).rejects.toThrow('Cannot acquire run');
+      });
+
+      it('treats transient I/O error on owner.json as live (not stale)', async () => {
+        const store = new EvalStore();
+        mockMkdir.mockRejectedValueOnce(
+          Object.assign(new Error('exists'), { code: 'EEXIST' }),
+        );
+        // readFile throws EACCES (permission denied) — transient, not stale
+        mockReadFile.mockRejectedValueOnce(
+          Object.assign(new Error('permission denied'), { code: 'EACCES' }),
+        );
+
+        await expect(
+          store.acquireRunLock(`${FIXED_COMPACT}_run-001`),
+        ).rejects.toThrow('Cannot acquire run');
+        expect(console.warn).toHaveBeenCalledWith(
+          expect.stringContaining('cannot read owner.json'),
+          expect.objectContaining({ code: 'EACCES' }),
+        );
+      });
+
+      it('treats lock exceeding max age as stale regardless of PID liveness', async () => {
+        const store = new EvalStore();
+        mockMkdir.mockRejectedValueOnce(
+          Object.assign(new Error('exists'), { code: 'EEXIST' }),
+        );
+        // owner.json with a live PID but old createdAt (>2h ago)
+        const oldTimestamp = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString();
+        mockReadFile.mockResolvedValueOnce(
+          JSON.stringify({ pid: process.pid, createdAt: oldTimestamp }),
+        );
+        // process.kill would indicate alive, but max-age should short-circuit
+        mockKill.mockImplementation(() => true);
+        mockRm.mockResolvedValueOnce(undefined);
+        mockMkdir.mockResolvedValueOnce(undefined);
+
+        const release = await store.acquireRunLock(`${FIXED_COMPACT}_run-001`);
+        expect(typeof release).toBe('function');
+        expect(console.warn).toHaveBeenCalledWith(
+          expect.stringContaining('lock exceeds max age'),
+          expect.objectContaining({ pid: process.pid }),
+        );
+      });
+
+      it('throws descriptive error on race condition (retry mkdir EEXIST)', async () => {
+        const store = new EvalStore();
+        // First mkdir: EEXIST
+        mockMkdir.mockRejectedValueOnce(
+          Object.assign(new Error('exists'), { code: 'EEXIST' }),
+        );
+        mockReadFile.mockResolvedValueOnce(
+          JSON.stringify({ pid: 99999, createdAt: '2026-01-01T00:00:00Z' }),
+        );
+        mockKill.mockImplementation(() => {
+          throw Object.assign(new Error('No such process'), { code: 'ESRCH' });
+        });
+        mockRm.mockResolvedValueOnce(undefined);
+        // Retry mkdir also EEXIST (another process won the race)
+        mockMkdir.mockRejectedValueOnce(
+          Object.assign(new Error('exists'), { code: 'EEXIST' }),
+        );
+
+        await expect(
+          store.acquireRunLock(`${FIXED_COMPACT}_run-001`),
+        ).rejects.toThrow('race condition');
+      });
+
+      it('returned release() works after stale lock recovery', async () => {
+        const store = new EvalStore();
+        mockMkdir.mockRejectedValueOnce(
+          Object.assign(new Error('exists'), { code: 'EEXIST' }),
+        );
+        mockReadFile.mockResolvedValueOnce(
+          JSON.stringify({ pid: 99999, createdAt: '2026-01-01T00:00:00Z' }),
+        );
+        mockKill.mockImplementation(() => {
+          throw Object.assign(new Error('No such process'), { code: 'ESRCH' });
+        });
+        mockRm.mockResolvedValueOnce(undefined);
+        mockMkdir.mockResolvedValueOnce(undefined);
+
+        const release = await store.acquireRunLock(`${FIXED_COMPACT}_run-001`);
+        mockRm.mockResolvedValueOnce(undefined);
+        await release();
+
+        // rm called twice: once for stale removal, once for release
+        expect(mockRm).toHaveBeenCalledTimes(2);
+      });
     });
   });
 

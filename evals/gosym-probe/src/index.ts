@@ -48,6 +48,7 @@ import type {
   StabilityLevel,
 } from './scenarios/types.js';
 import { formatRegressionFailureMessage } from './reporters/regression-message.js';
+import { registerLock, unregisterLock } from './util/lock-registry.js';
 
 function makeProgressCallback(
   reporter: ProgressReporter | null,
@@ -257,6 +258,7 @@ async function main(): Promise<void> {
     const releaseGradLockFn = async (): Promise<void> => {
       await gradResumeState?.releaseLock();
     };
+    if (gradResumeState) registerLock(releaseGradLockFn);
 
     try {
       const gradCompletedOffset = gradResumeState
@@ -294,7 +296,11 @@ async function main(): Promise<void> {
         gocode: narrativeGocodeClient,
       });
 
-      const suiteResult: GraduationSuiteRunResult = await suiteRunner.run(gradRunId).finally(releaseGradLockFn);
+      // Double-release (finally + catch) is safe: removeLockDir swallows ENOENT
+      const suiteResult: GraduationSuiteRunResult = await suiteRunner.run(gradRunId).finally(async () => {
+        unregisterLock(releaseGradLockFn);
+        await releaseGradLockFn();
+      });
       suiteReporter?.finish();
 
       if (suiteResult.errors.length > 0) {
@@ -347,6 +353,8 @@ async function main(): Promise<void> {
       const anyUnsaved = allResults.some((r) => !r.baselineSaved);
       process.exit(anyUnsaved || degradedGradScenarios.length > 0 ? 1 : 0);
     } catch (err) {
+      // Safe duplicate: removeLockDir is idempotent (swallows ENOENT)
+      unregisterLock(releaseGradLockFn);
       await releaseGradLockFn();
       throw err;
     }
@@ -464,6 +472,7 @@ async function main(): Promise<void> {
   const releaseLock = async (): Promise<void> => {
     await evalResumeState?.releaseLock();
   };
+  if (evalResumeState) registerLock(releaseLock);
 
   console.log(`Starting eval run: ${runId}`);
   if (values.resume) {
@@ -654,6 +663,7 @@ async function main(): Promise<void> {
     }
   } finally {
     await Promise.all(pendingWrites);
+    unregisterLock(releaseLock);
     await releaseLock();
   }
 }

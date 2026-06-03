@@ -60,6 +60,67 @@ async function removeLockDir(
   }
 }
 
+function isPidAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === 'ESRCH') return false;
+    // EPERM means process exists but we lack permission — treat as alive
+    if (code === 'EPERM') return true;
+    // Unexpected error — treat as alive (conservative)
+    console.warn('isPidAlive: unexpected error, assuming process is alive', { pid, code });
+    return true;
+  }
+}
+
+const STALE_LOCK_MAX_AGE_MS = 2 * 60 * 60 * 1000; // 2 hours
+
+async function isLockStale(lockDir: string): Promise<boolean> {
+  let raw: string;
+  try {
+    raw = await readFile(join(lockDir, 'owner.json'), 'utf-8');
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === 'ENOENT') {
+      // owner.json missing — legitimately stale (or lock dir just created)
+      return true;
+    }
+    // Transient I/O error (EACCES, EMFILE, EIO, etc.) — not safe to assume stale
+    console.warn('isLockStale: cannot read owner.json, treating lock as live', { lockDir, code });
+    return false;
+  }
+
+  let owner: Record<string, unknown>;
+  try {
+    owner = JSON.parse(raw) as Record<string, unknown>;
+  } catch {
+    // Malformed JSON — defensibly stale
+    return true;
+  }
+
+  const pid = owner.pid;
+  if (typeof pid !== 'number' || !Number.isFinite(pid) || pid <= 0) {
+    return true;
+  }
+
+  // If the lock is older than the max age, treat as stale regardless of PID liveness
+  // (handles PID reuse on long-lived CI runners / container restarts)
+  const createdAt = owner.createdAt;
+  if (typeof createdAt === 'string') {
+    const lockAge = Date.now() - new Date(createdAt).getTime();
+    if (lockAge > STALE_LOCK_MAX_AGE_MS) {
+      console.warn('isLockStale: lock exceeds max age, treating as stale', {
+        lockDir, pid, ageMinutes: Math.round(lockAge / 60_000),
+      });
+      return true;
+    }
+  }
+
+  return !isPidAlive(pid);
+}
+
 export interface RunOptions {
   trialsOverride?: number;
   concurrencyOverride?: number;
@@ -919,12 +980,31 @@ export class EvalStore {
       await mkdir(lockDir, { recursive: false });
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code === 'EEXIST') {
-        throw new Error(
-          `Cannot acquire ${label} lock at ${lockDir}; another gosym-probe ` +
-          `process may be writing this run.`,
+        const stale = await isLockStale(lockDir);
+        if (!stale) {
+          throw new Error(
+            `Cannot acquire ${label} lock at ${lockDir}; another gosym-probe ` +
+            `process may be writing this run.`,
+          );
+        }
+        console.warn(
+          `Removing stale ${label} lock at ${lockDir} (owner process is dead).`,
         );
+        await removeLockDir(lockDir, label);
+        try {
+          await mkdir(lockDir, { recursive: false });
+        } catch (retryErr) {
+          if ((retryErr as NodeJS.ErrnoException).code === 'EEXIST') {
+            throw new Error(
+              `Cannot acquire ${label} lock at ${lockDir}; another gosym-probe ` +
+              `process acquired it first (race condition after stale lock removal).`,
+            );
+          }
+          throw retryErr;
+        }
+      } else {
+        throw err;
       }
-      throw err;
     }
 
     try {
