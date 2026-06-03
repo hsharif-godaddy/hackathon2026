@@ -198,7 +198,7 @@ jobs:
         <skills_isolation>
         Trigger: diff touches agents/src/skills/**, agents/src/prompts/**,
         skill-loader-tool.ts, skill-tool-manager.ts, agents/src/agents/**.
-        See agents/src/skills/README.md.
+        See agents/src/skills/README.md and agents/src/skills/SKILL-CREATOR-GUIDE.md.
 
         Skills are self-contained — add/remove/rename edits live only
         in the skill's dir. Frontmatter is the ONLY channel into the
@@ -212,7 +212,7 @@ jobs:
         - Prose deterministic triggers ("if user says X load Y"); put
           such matches in a frontmatter field as pre-filter.
         - Per-skill gating like `if (skillName === 'commerce')`.
-        - Rename/remove leaving shared code on the old name.
+        - Rename/remove leaving old name in shared code or other skill.md files.
         - Unjustified shared-prompt growth; "not picked enough" is
           not valid.
 
@@ -227,6 +227,24 @@ jobs:
           differentiate or merge.
         - [Suggestion]: whenToUse/intents fire on same phrases as
           another — flag ambiguity. Compare across all skills.
+
+        Pattern choice (skill add/restructure):
+        - [Important]: Category dir added but sub-skills do not have independent
+          tools, enablementId flags, or template install steps — apply the
+          "remove the router" test: if whenToUse/intents on sub-skills route
+          correctly without the category entry point, the category adds no value.
+          Supporting signal: no shared prerequisite or data dependency between
+          category and sub-skills — see "Adversary example" in
+          SKILL-CREATOR-GUIDE.md for the full media/ vs commerce/ analysis.
+        - [Suggestion]: Flat skill.md exceeds ~300 lines and all
+          sub-topics share the same tools, templates, and feature flag —
+          split into Pattern 2 sections (templates/sections/NN-slug.md)
+          rather than a single growing file.
+        - [Important]: Pattern 2 sub-topic needs its own TypeScript tools or a
+          separate template install step — escalate to Pattern 3.
+        - [Important]: Pattern 3 used where Pattern 1 suffices — user intent
+          already disambiguates at the first hop via frontmatter; extra load
+          round-trip with no benefit.
 
         Do NOT flag: pre-existing refs in unmodified files; self-refs;
         tests/fixtures; names in frontmatter/templates.
