@@ -12,6 +12,8 @@ No traffic. No customers. Just silence.
 
 That's one of the most common problems for small businesses online: being live and being found are two different things. Most website builders only solve the first one. The Airo AI Builder SEO Skill solves both.
 
+<iframe width="100%" style="aspect-ratio: 16/9;" src="https://www.youtube.com/embed/G5yb1WSPK8g" title="How to Optimize SEO Automatically with Airo AI Builder | No Code SEO Tool" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
+
 ---
 
 ## What Is the Airo AI Builder SEO Skill?
