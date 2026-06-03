@@ -170,7 +170,8 @@ type Model struct {
 	preflightResults       []preflight.CheckResult
 	preflightFixQueue      []preflight.CheckWithFixer
 	preflightFixIndex      int
-	preflightFixStatus     string // "Fixing: <name>..."
+	preflightFixStatus     string           // "Fixing: <name>..."
+	preflightFixErrors     map[string]error // keyed by check name; survives the verify→dashboard transition so a failed fix is visible on the next dashboard render
 	preflightViewport      viewport.Model
 	preflightAutoFollow    bool
 	preflightExpandPassing bool // 'v' on the dashboard expands passing checks
@@ -330,6 +331,7 @@ func NewModel(cfg *config.Config, projectRoot string, openCleanPicker, cleanAllA
 		cleanRunning:           cleanAllAtStartup,
 		cleanOnly:              cleanOnly,
 		preflightRunner:        buildPreflightRunner(projectRoot),
+		preflightFixErrors:     make(map[string]error),
 		preflightViewport:      newSoftWrapViewport(80, 24),
 		preflightAutoFollow:    true,
 		devSettingsPreset:      "free-trial",

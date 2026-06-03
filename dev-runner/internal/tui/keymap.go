@@ -33,7 +33,7 @@ func NewRunningKeyMap() RunningKeyMap {
 		Proc1:      key.NewBinding(key.WithKeys("1"), key.WithHelp("1", "proc 1")),
 		Proc2:      key.NewBinding(key.WithKeys("2"), key.WithHelp("2", "proc 2")),
 		Proc3:      key.NewBinding(key.WithKeys("3"), key.WithHelp("3", "proc 3")),
-		Mouse:      key.NewBinding(key.WithKeys("m"), key.WithHelp("m", "mouse(on)")),
+		Mouse:      key.NewBinding(key.WithKeys("m"), key.WithHelp("m", "mouse:tui")),
 		Follow:     key.NewBinding(key.WithKeys("F"), key.WithHelp("F", "follow(on)")),
 		Search:     key.NewBinding(key.WithKeys("/"), key.WithHelp("/", "search")),
 		NextMatch:  key.NewBinding(key.WithKeys("n"), key.WithHelp("n", "next match")),
@@ -86,6 +86,7 @@ type PreflightDashboardKeyMap struct {
 	Skip   key.Binding
 	Expand key.Binding
 	Clean  key.Binding
+	Mouse  key.Binding
 	Quit   key.Binding
 }
 
@@ -95,12 +96,13 @@ func NewPreflightDashboardKeyMap() PreflightDashboardKeyMap {
 		Skip:   key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "skip")),
 		Expand: key.NewBinding(key.WithKeys("v"), key.WithHelp("v", "toggle passing")),
 		Clean:  key.NewBinding(key.WithKeys("c"), key.WithHelp("c", "clean")),
+		Mouse:  key.NewBinding(key.WithKeys("m"), key.WithHelp("m", "mouse:tui")),
 		Quit:   key.NewBinding(key.WithKeys("q"), key.WithHelp("q", "quit")),
 	}
 }
 
 func (k PreflightDashboardKeyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.Fix, k.Skip, k.Expand, k.Clean, k.Quit}
+	return []key.Binding{k.Fix, k.Skip, k.Expand, k.Clean, k.Mouse, k.Quit}
 }
 
 func (k PreflightDashboardKeyMap) FullHelp() [][]key.Binding {

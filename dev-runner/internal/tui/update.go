@@ -196,6 +196,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case preflightFixDoneMsg:
 		if msg.Err != nil {
 			m.preflightFixStatus = fmt.Sprintf("Fix failed: %v", msg.Err)
+			// Stash by check name so the dashboard can surface it next render
+			// (preflightFixStatus is overwritten by the next fixer's "Fixing: ..."
+			// line and is gone by the time we reach PhasePreflightDashboard).
+			m.preflightFixErrors[msg.FixerName] = msg.Err
+		} else {
+			delete(m.preflightFixErrors, msg.FixerName)
 		}
 		// Always advance to avoid retrying the same fixer in a loop
 		// (e.g., SSO device flow repeatedly opening browser tabs).
@@ -220,6 +226,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case preflightVerifyDoneMsg:
 		// Replace all results with fresh check results
 		m.preflightResults = msg.Results
+
+		// Drop fix errors for any check that no longer fails — Pass means
+		// the issue is resolved; Warn/Skip mean the fix accomplished what
+		// it could and the original failure context is no longer
+		// meaningful. Only retain errors for checks that are still failing.
+		for _, r := range m.preflightResults {
+			if r.Status != preflight.StatusFail {
+				delete(m.preflightFixErrors, r.Name)
+			}
+		}
 
 		if preflight.HasIssues(m.preflightResults) {
 			// Still has failures or warnings — pause for review
@@ -447,7 +463,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.MouseClickMsg:
 		if !m.clickHint {
 			m.clickHint = true
-			cmds = append(cmds, tea.Tick(3*time.Second, func(_ time.Time) tea.Msg {
+			cmds = append(cmds, tea.Tick(2500*time.Millisecond, func(_ time.Time) tea.Msg {
 				return clickHintMsg{}
 			}))
 		}
@@ -594,6 +610,9 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 			m.cleanPickerReturnPhase = PhasePreflightDashboard
 			m.phase = PhasePreflightCleanPicker
 			return m.initCleanPicker()
+		case key.Matches(msg, m.preflightKeys.Mouse):
+			m.mouseEnabled = !m.mouseEnabled
+			return nil
 		case key.Matches(msg, m.preflightKeys.Quit):
 			m.quitting = true
 			return tea.Quit
@@ -606,10 +625,24 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 			m.quitting = true
 			return tea.Quit
 		}
+		// Intercept 'm' before the huh form sees it so users can release
+		// mouse capture mid-selection — same as the dashboard and clean
+		// phases.
+		if key.Matches(msg, m.preflightKeys.Mouse) {
+			m.mouseEnabled = !m.mouseEnabled
+			return nil
+		}
 		return m.updateFixSelector(msg)
 	}
 
 	if m.phase == PhasePreflightCleaning {
+		// 'm' toggles mouse capture in any state — including mid-clean — so
+		// the user can prepare to copy any errors that surface when cleaning
+		// finishes.
+		if key.Matches(msg, m.preflightKeys.Mouse) {
+			m.mouseEnabled = !m.mouseEnabled
+			return nil
+		}
 		// While cleaning is in flight, swallow keys so the user can't
 		// abandon mid-removal. Once cleaning finishes with an error,
 		// renderCleaning shows the failure and waits for the user:
@@ -644,6 +677,13 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		if key.Matches(msg, m.preflightKeys.Quit) {
 			m.quitting = true
 			return tea.Quit
+		}
+		// Intercept 'm' before the huh form sees it, so it can't be confused
+		// with a printable character inside any text input field that ships
+		// with the picker in the future.
+		if key.Matches(msg, m.preflightKeys.Mouse) {
+			m.mouseEnabled = !m.mouseEnabled
+			return nil
 		}
 		return m.updateCleanPicker(msg)
 	}

@@ -76,6 +76,13 @@ func (m *Model) updateFixSelector(msg tea.Msg) tea.Cmd {
 		}
 		m.preflightFixQueue = queue
 		m.preflightFixIndex = 0
+		// Clear stale errors for the checks we are retrying so the dashboard
+		// won't show last run's failure during this fix pass; entries for
+		// checks not being retried are intentionally kept and pruned later
+		// only if those checks pass on verify.
+		for _, cwf := range queue {
+			delete(m.preflightFixErrors, cwf.Check.Name())
+		}
 		m.phase = PhasePreflightFixing
 		return tea.Batch(m.runNextFixer(), m.spinner.Tick)
 	case huh.StateAborted:
@@ -97,6 +104,12 @@ func (m Model) renderPreflightSelectFixes() string {
 	b.WriteString("\n")
 	if m.fixSelectorForm != nil {
 		b.WriteString(m.fixSelectorForm.View())
+	}
+	b.WriteString("\n")
+	b.WriteString(preflightFooterStyle.Render(mouseToggleHelp(m.mouseEnabled)))
+	if m.clickHint {
+		b.WriteString("\n")
+		b.WriteString(clickHintMessage())
 	}
 	return b.String()
 }

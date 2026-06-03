@@ -332,18 +332,32 @@ func (m Model) renderStatusLeft() string {
 	return strings.Join(parts, "")
 }
 
+// clickHintMessage is the transient help text that surfaces when the user
+// clicks while the TUI has the mouse. Styled as an unobtrusive dim-italic
+// note (no bold, no background fill) so a focus-click doesn't get a banner
+// that reads like an alert. Centralized so the running, preflight, and
+// clean views render the same string.
+func clickHintMessage() string {
+	return lipgloss.NewStyle().Foreground(lipgloss.Color("244")).Italic(true).
+		Render("To select text: press 'm' (hands mouse to terminal), or hold your terminal's bypass modifier — Fn in Terminal.app, Option in iTerm2 (default)")
+}
+
+// mouseLabel returns the help-line label describing who currently owns
+// mouse events: the TUI (we capture; scroll wheel works) or the terminal
+// (we don't capture; native text selection works).
+func mouseLabel(enabled bool) string {
+	if enabled {
+		return "mouse:tui"
+	}
+	return "mouse:term"
+}
+
 func (m Model) renderStatusRight() string {
 	if m.clickHint {
-		barBg := lipgloss.Color("236")
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("229")).Background(barBg).Bold(true).
-			Render("To select text: hold Shift or Option, or press 'm' to disable mouse mode")
+		return clickHintMessage()
 	}
 
-	mouseLabel := "mouse(on)"
-	if !m.mouseEnabled {
-		mouseLabel = "mouse(off)"
-	}
-	m.keys.Mouse.SetHelp("m", mouseLabel)
+	m.keys.Mouse.SetHelp("m", mouseLabel(m.mouseEnabled))
 
 	pane := m.activePanePtr()
 	followLabel := "follow(on)"

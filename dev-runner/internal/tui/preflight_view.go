@@ -56,6 +56,8 @@ func (m Model) renderPreflightDashboard() string {
 
 	b.WriteString(m.renderCheckResults())
 
+	m.preflightKeys.Mouse.SetHelp("m", mouseLabel(m.mouseEnabled))
+
 	b.WriteString("\n")
 	fixable := m.preflightRunner.FixableChecks(m.preflightResults)
 	if len(fixable) > 0 {
@@ -63,9 +65,13 @@ func (m Model) renderPreflightDashboard() string {
 			fmt.Sprintf("%d item(s) can be auto-fixed. ", len(fixable)) + m.help.View(m.preflightKeys)))
 	} else if failCount > 0 {
 		b.WriteString(preflightFooterStyle.Render(
-			"No auto-fixes available. Install missing tools and run again. Press q to quit."))
+			"No auto-fixes available. Install missing tools and run again. " + m.help.View(m.preflightKeys)))
 	} else if warnCount > 0 {
 		b.WriteString(preflightFooterStyle.Render(m.help.View(m.preflightKeys)))
+	}
+	if m.clickHint {
+		b.WriteString("\n")
+		b.WriteString(clickHintMessage())
 	}
 
 	return b.String()
@@ -154,6 +160,32 @@ func (m Model) renderCheckResults() string {
 			if (r.Status == preflight.StatusFail || r.Status == preflight.StatusWarn) && r.InstallHint != "" && !r.FixAvailable {
 				for _, hint := range strings.Split(r.InstallHint, "\n") {
 					fmt.Fprintf(&b, "      %s\n", dim.Italic(true).Render(hint))
+				}
+			}
+
+			if r.Status == preflight.StatusFail || r.Status == preflight.StatusWarn {
+				if err, ok := m.preflightFixErrors[r.Name]; ok && err != nil {
+					msg := strings.TrimRight(err.Error(), "\n")
+					if msg == "" {
+						msg = "(no error message)"
+					}
+					lines := strings.Split(msg, "\n")
+					const maxFixErrorLines = 6
+					truncated := false
+					if len(lines) > maxFixErrorLines {
+						lines = lines[:maxFixErrorLines]
+						truncated = true
+					}
+					for i, line := range lines {
+						prefix := "        "
+						if i == 0 {
+							prefix = "      " + preflightFailStyle.Render("↳ last fix failed: ")
+						}
+						fmt.Fprintf(&b, "%s%s\n", prefix, dim.Italic(true).Render(line))
+					}
+					if truncated {
+						fmt.Fprintf(&b, "        %s\n", dim.Italic(true).Render("(…truncated)"))
+					}
 				}
 			}
 		}

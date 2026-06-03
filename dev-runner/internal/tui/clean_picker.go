@@ -256,6 +256,12 @@ func (m Model) renderCleanPicker() string {
 	if m.cleanPickerForm != nil {
 		b.WriteString(m.cleanPickerForm.View())
 	}
+	b.WriteString("\n")
+	b.WriteString(preflightFooterStyle.Render(mouseToggleHelp(m.mouseEnabled)))
+	if m.clickHint {
+		b.WriteString("\n")
+		b.WriteString(clickHintMessage())
+	}
 	return b.String()
 }
 
@@ -277,6 +283,10 @@ func (m Model) renderCleaning() string {
 	dim := lipgloss.NewStyle().Foreground(lipgloss.Color("244"))
 	if m.cleanRunning {
 		b.WriteString(dim.Render(m.spinner.View() + " Cleaning… (node_modules can take a moment)"))
+		if m.clickHint {
+			b.WriteString("\n\n")
+			b.WriteString(clickHintMessage())
+		}
 		return b.String()
 	}
 	if m.cleanErr != nil {
@@ -290,7 +300,18 @@ func (m Model) renderCleaning() string {
 		if m.cleanOnly {
 			hint = "Press Enter to exit, q to quit."
 		}
-		b.WriteString(preflightFooterStyle.Render(hint))
+		b.WriteString(preflightFooterStyle.Render(hint + "  •  " + mouseToggleHelp(m.mouseEnabled)))
+	} else {
+		b.WriteString("\n\n")
+		b.WriteString(preflightFooterStyle.Render(mouseToggleHelp(m.mouseEnabled)))
+	}
+	if m.clickHint {
+		b.WriteString("\n")
+		b.WriteString(clickHintMessage())
 	}
 	return b.String()
+}
+
+func mouseToggleHelp(mouseEnabled bool) string {
+	return "m: " + mouseLabel(mouseEnabled)
 }
