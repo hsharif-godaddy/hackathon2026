@@ -1,0 +1,116 @@
+---
+evaluatorId: "airo-intent-resolution-status"
+name: intent_resolution_status
+description: "Ragas AgentGoalAccuracyWithoutReference-style online evaluator: infer the user's goal and achieved end state from the workflow, then score goal resolution on a 0-100 scale."
+
+type: llm
+scoreType: NUMERIC
+scoreName: intent_resolution_status
+
+scoreConfig:
+  min: 0
+  max: 100
+
+llmConfig:
+  model: gpt-5-mini
+  temperature: 0
+  maxTokens: 1000
+
+criteriaSchema:
+  type: object
+  properties: {}
+  additionalProperties: false
+
+steps:
+  - id: infer_goal_outcome
+    template: |
+      Given an agentic workflow comprised of Human, AI and Tools, identify:
+      - user_goal: the task or objective the user wants to achieve.
+      - end_state: the final outcome or result of the workflow.
+
+      Example:
+      Workflow:
+      Human: Hey, book a table at the nearest best Chinese restaurant for 8:00pm
+      AI: Sure, let me find the best options for you.
+      Tools:
+      restaurant_search: {'cuisine': 'Chinese', 'time': '8:00pm'}
+      ToolOutput: Found a few options: 1. Golden Dragon, 2. Jade Palace
+      AI: I found some great options: Golden Dragon and Jade Palace. Which one would you prefer?
+      Human: Let's go with Golden Dragon.
+      AI: Great choice! I'll book a table for 8:00pm at Golden Dragon.
+      Tools:
+      restaurant_book: {'name': 'Golden Dragon', 'time': '8:00pm'}
+      ToolOutput: Table booked at Golden Dragon for 8:00pm.
+      AI: Your table at Golden Dragon is booked for 8:00pm. Enjoy your meal!
+      Human: thanks
+
+      Example output:
+      {
+        "user_goal": "Book a table at the nearest best Chinese restaurant for 8:00pm.",
+        "end_state": "A table is successfully booked at Golden Dragon (Chinese restaurant) for 8:00pm."
+      }
+
+      Workflow:
+      {{workflow}}
+    output:
+      kind: json
+      schema:
+        type: object
+        required: [user_goal, end_state]
+        properties:
+          user_goal:
+            type: string
+          end_state:
+            type: string
+        additionalProperties: false
+
+  - id: compare_outcome
+    template: |
+      Given the user goal and achieved outcome for this trace, score how well the achieved outcome satisfies the user goal on a 0-100 scale.
+
+      Scoring rubric:
+      - 90-100: Goal fully satisfied; outcome matches intent with no meaningful gaps.
+      - 70-89: Largely satisfied; minor omissions or acceptable equivalents.
+      - 50-69: Partially satisfied; meaningful progress but important parts missing.
+      - 25-49: Poor alignment; agent misunderstood or delivered the wrong outcome.
+      - 0-24: Failed; goal not met or outcome contradicts the user goal.
+
+      Example:
+      User goal:
+      Book a table at the nearest best Chinese restaurant for 8:00pm.
+
+      Achieved outcome:
+      A table is successfully booked at Jade Palace (Chinese restaurant) for 8:00pm.
+
+      Example output:
+      {
+        "score": 95,
+        "summary": "The achieved outcome satisfies the user goal; a Chinese restaurant table was booked for 8:00pm."
+      }
+
+      User goal:
+      {{steps.infer_goal_outcome.user_goal}}
+
+      Achieved outcome:
+      {{steps.infer_goal_outcome.end_state}}
+    output:
+      kind: score
+      schema:
+        type: object
+        required: [score, summary]
+        properties:
+          score:
+            type: number
+            minimum: 0
+            maximum: 100
+          summary:
+            type: string
+        additionalProperties: false
+
+onlineConfig:
+  enabled: true
+  version: v1
+  scope: trace
+  target:
+    langfuseProjectIds:
+      - REPLACE_LANGFUSE_PROJECT_ID

@@ -40,13 +40,13 @@ jobs:
           LANGFUSE_PROJECT_ID: ${{ inputs.langfuse-project-id }}
         run: |
           sed -i "s/REPLACE_LANGFUSE_PROJECT_ID/${LANGFUSE_PROJECT_ID}/g" \
-            evals/goarena/evaluators/online/build-success.yaml
+            evals/goarena/evaluators/online/*.yaml
           echo "--- Verifying injection ---"
-          grep -A1 "langfuseProjectIds" evals/goarena/evaluators/online/build-success.yaml
+          grep -A1 "langfuseProjectIds" evals/goarena/evaluators/online/*.yaml
 
       - name: Load Online Evaluators
         id: load-evaluators
-        uses: gdcorp-dna/synthia/actions/load-evaluators@4bd3f2bc00967b67385483ac97b5b7cdfcd51de1 # main
+        uses: gdcorp-dna/synthia/actions/load-evaluators@main
         with:
           config-path: evals/goarena/evaluators/online
           synthia-env: ${{ inputs.synthia-env }}
