@@ -34,12 +34,15 @@ vi.mock('../../../../tools/skill-loader-tool.js', () => ({
 
 const mockListAccounts = vi.fn();
 const mockActivateAccount = vi.fn();
+vi.mock('../../../_shared/reamaze-client.js', () => ({
+  listAccounts: (...args: unknown[]) => mockListAccounts(...args),
+  activateAccount: (...args: unknown[]) => mockActivateAccount(...args),
+}));
+
 const mockListEmbeddables = vi.fn();
 const mockCreateEmbeddable = vi.fn();
 const mockUpdateEmbeddable = vi.fn();
 vi.mock('../reamaze.js', () => ({
-  listAccounts: (...args: unknown[]) => mockListAccounts(...args),
-  activateAccount: (...args: unknown[]) => mockActivateAccount(...args),
   listEmbeddables: (...args: unknown[]) => mockListEmbeddables(...args),
   createEmbeddable: (...args: unknown[]) => mockCreateEmbeddable(...args),
   updateEmbeddable: (...args: unknown[]) => mockUpdateEmbeddable(...args),

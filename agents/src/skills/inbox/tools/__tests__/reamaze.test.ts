@@ -7,8 +7,10 @@ vi.mock('../../../../logging/index.js', () => ({
 const mockExecuteAction = vi.fn();
 const mockClient = { executeAction: mockExecuteAction } as any;
 
-const { listEmbeddables, createEmbeddable, updateEmbeddable, listAccounts, activateAccount } =
+const { listEmbeddables, createEmbeddable, updateEmbeddable } =
   await import('../reamaze.js');
+const { listAccounts, activateAccount } =
+  await import('../../../_shared/reamaze-client.js');
 
 describe('reamaze client', () => {
   beforeEach(() => {
