@@ -4,7 +4,7 @@
 import '@testing-library/jest-dom'
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { fireEvent, screen, waitFor } from '@testing-library/react'
+import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 
 import { ViewMode } from '@/app/[market]/develop/components/types'
 import type { ColorSchemePaletteOption } from '@/app/[market]/develop/components/utils/findLatestColorSchemeSuggest'
@@ -1031,6 +1031,62 @@ describe('InputActionsPanel', () => {
 
       // Should remain collapsed (falling edge doesn't expand)
       expect(chevronButton.getAttribute('aria-expanded')).toBe('false')
+    })
+  })
+
+  describe('plan modal', () => {
+    const mockTodoList = {
+      id: 'list-1',
+      appId: 'test-app-id',
+      name: 'Build Website',
+      items: [
+        { id: 'item-1', listId: 'list-1', title: 'Create homepage', completed: true },
+        { id: 'item-2', listId: 'list-1', title: 'Add contact page', completed: false, description: 'Contact form and map' },
+      ],
+    }
+
+    beforeEach(() => {
+      vi.mocked(TodoListStore.useCurrentList).mockReturnValue(mockTodoList)
+      vi.mocked(TodoListStore.useViewState).mockReturnValue(null)
+      vi.mocked(StreamingStore.useMessages).mockReturnValue([
+        { id: 'msg-1', role: 'user', content: 'test', timestamp: new Date() },
+      ])
+      vi.mocked(useLatestNBAsModule.useLatestNBAs).mockReturnValue(null)
+    })
+
+    it('executes an uncompleted plan item from the progress modal and closes it', async function modalPlanItemClick() {
+      const mockSendMessage = vi.fn()
+      vi.mocked(ChatContext.useSendUserMessage).mockReturnValue(mockSendMessage)
+
+      const { user } = renderWithProviders(<InputActionsPanel />)
+
+      await user.click(screen.getByRole('button', { name: 'builder_todo_view_plan' }))
+
+      const dialog = screen.getByRole('dialog')
+      expect(dialog).toBeInTheDocument()
+
+      await user.click(within(dialog).getByRole('button', { name: /Add contact page/i }))
+
+      expect(mockSendMessage).toHaveBeenCalledWith(
+        'Add contact page',
+        expect.objectContaining({
+          isActionRequest: true,
+          customContext: expect.objectContaining({ type: 'plan_item', source: 'plan-item' }),
+        }),
+      )
+      await waitFor(() => {
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+      })
+    })
+
+    it('does not render completed plan items as buttons in the modal', async function modalCompletedReadOnly() {
+      renderWithProviders(<InputActionsPanel />)
+
+      await fireEvent.click(screen.getByRole('button', { name: 'builder_todo_view_plan' }))
+
+      const dialog = screen.getByRole('dialog')
+      expect(within(dialog).queryByRole('button', { name: /Create homepage/i })).not.toBeInTheDocument()
+      expect(within(dialog).getByText('Create homepage')).toBeInTheDocument()
     })
   })
 })

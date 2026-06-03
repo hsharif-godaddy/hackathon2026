@@ -318,6 +318,11 @@ function InputActionsPanelLegacy({ shouldCollapse: _shouldCollapse }: { shouldCo
     })
   }
 
+  function handleModalPlanItemClick(item: TodoItem) {
+    handlePlanItemClick(item)
+    setIsModalOpen(false)
+  }
+
   // ── Mode C: Agent working ────────────────────────────────────────────────
   if (isProcessing) {
     return (
@@ -382,6 +387,8 @@ function InputActionsPanelLegacy({ shouldCollapse: _shouldCollapse }: { shouldCo
           onClose={() => setIsModalOpen(false)}
           list={currentList}
           t={t}
+          onItemClick={handleModalPlanItemClick}
+          disabled={isProcessing}
         />
       </>
     )
@@ -542,6 +549,8 @@ function InputActionsPanelLegacy({ shouldCollapse: _shouldCollapse }: { shouldCo
         onClose={() => setIsModalOpen(false)}
         list={currentList}
         t={t}
+        onItemClick={handleModalPlanItemClick}
+        disabled={isProcessing}
       />
     </>
   )
@@ -794,11 +803,15 @@ function TodoListModal({
   onClose,
   list,
   t,
+  onItemClick,
+  disabled = false,
 }: {
   isOpen: boolean
   onClose: () => void
   list: TodoList | null
   t: (key: string, values?: Record<string, unknown>, fallback?: string) => string
+  onItemClick?: (item: TodoItem) => void
+  disabled?: boolean
 }) {
   const dialogRef = useRef<HTMLDivElement>(null)
 
@@ -909,11 +922,8 @@ function TodoListModal({
               <div className="flex-1 overflow-y-auto px-3 py-2">
                 {items.length > 0 ? (
                   <div className="space-y-1.5">
-                    {items.map((item, index) => (
-                      <div
-                        key={item.id}
-                        className="bg-intents-ux-boxLowContrast-backgroundColor rounded-lg p-1.5"
-                      >
+                    {items.map((item, index) => {
+                      const rowContent = (
                         <div className="flex items-start gap-1.5">
                           <span
                             className={`flex-shrink-0 size-3 rounded text-xs font-medium flex items-center justify-center ${
@@ -941,8 +951,34 @@ function TodoListModal({
                             )}
                           </div>
                         </div>
-                      </div>
-                    ))}
+                      )
+
+                      if (!item.completed && onItemClick) {
+                        return (
+                          <button
+                            key={item.id}
+                            type="button"
+                            disabled={disabled}
+                            className="w-full bg-intents-ux-boxLowContrast-backgroundColor rounded-lg p-1.5 text-left transition-colors hover:bg-intents-ux-box-backgroundColor disabled:opacity-50 disabled:cursor-not-allowed"
+                            onClick={() => {
+                              onItemClick(item)
+                              onClose()
+                            }}
+                          >
+                            {rowContent}
+                          </button>
+                        )
+                      }
+
+                      return (
+                        <div
+                          key={item.id}
+                          className="bg-intents-ux-boxLowContrast-backgroundColor rounded-lg p-1.5"
+                        >
+                          {rowContent}
+                        </div>
+                      )
+                    })}
                   </div>
                 ) : (
                   <div className="text-center text-muted-foreground py-4">
@@ -1336,6 +1372,14 @@ function InputActionsPanelThemeSelection({
     [isProcessing, sendUserMessage]
   )
 
+  const handleModalPlanItemClick = useCallback(
+    (item: TodoItem) => {
+      handlePlanItemClickCallback(item)
+      setIsModalOpen(false)
+    },
+    [handlePlanItemClickCallback]
+  )
+
   useEffect(() => {
     if (isProcessing || isModalOpen || showColor || isAskQuestionActive) return
 
@@ -1470,6 +1514,8 @@ function InputActionsPanelThemeSelection({
           onClose={() => setIsModalOpen(false)}
           list={currentList}
           t={t}
+          onItemClick={handleModalPlanItemClick}
+          disabled={isProcessing}
         />
       </>
     )
@@ -1661,12 +1707,12 @@ function InputActionsPanelThemeSelection({
         onClose={() => setIsModalOpen(false)}
         list={currentList}
         t={t}
+        onItemClick={handleModalPlanItemClick}
+        disabled={isProcessing}
       />
     </>
   )
 }
-
-// ── Sub-components ────────────────────────────────────────────────────────────
 
 export default function InputActionsPanel({
   activeColorSchemeSuggest = null,
