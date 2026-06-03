@@ -168,6 +168,7 @@ export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) 
                   className={`px-2 !rounded-r-none ${SEGMENTED_INACTIVE_TRANSPARENT}`}
                 />
                 <ButtonGroup.Item
+                  id="tour-select-mode-button"
                   value={ViewMode.EDIT}
                   icon={<InlineEditIcon className="size-2.5" />}
                   label={t('builder_preview_button_edit')}

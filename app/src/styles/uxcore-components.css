@@ -5,7 +5,7 @@
 @import "@ux/card/styles";
 @import "@ux/checkbox/styles";
 @import "@ux/chip/styles";
-@import "@ux/coachmark/styles";
+@import "@airo-ux/pattern-library/_vendor/coachmark/styles";
 @import "@ux/collapsible/styles";
 @import "@ux/date-input/styles";
 @import "@ux/disrupt/styles";
@@ -29,3 +29,4 @@
 @import "@ux/toggle-button/styles";
 @import "@ux/tooltip/styles";
 @import "@ux/tooltip-legacy/styles";
+

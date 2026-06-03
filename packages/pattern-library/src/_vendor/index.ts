@@ -2,4 +2,5 @@
 // explicit subpath (`@airo-ux/pattern-library/_vendor/<name>`) — this barrel
 // exists for convenience inside the repo and is not the recommended
 // import path for consumers.
+export * from './coachmark';
 export * from './segmented-controller';

@@ -10,6 +10,7 @@ export default function DevelopmentMode() {
   const [isEditModeActive, setIsEditModeActive] = useState(false); // off by default, parent enables via EDIT_MODE_ENABLED message
   const [isMultiSelectActive, setIsMultiSelectActive] = useState(false); // off by default, parent enables via MULTI_SELECT_ENABLED message
   const [, setTranslationsLoaded] = useState(0); // counter that always changes to force re-render
+  const hasSentFirstInteractionRef = useRef(false);
 
   const { hoveredElement, toolbarMode, setToolbarMode, handleBarMouseEnter, handleBarMouseLeave } = useEditMode(isEditModeActive, isMultiSelectActive)
   const [quickEditActive, setQuickEditActive] = useState(false)
@@ -21,6 +22,40 @@ export default function DevelopmentMode() {
   }
 
   const effectiveElement = quickEditActive ? frozenElementRef.current : hoveredElement
+
+  useEffect(() => {
+    if (!isEditModeActive) return
+    if (hasSentFirstInteractionRef.current) return
+
+    const notifyFirstInteraction = () => {
+      if (hasSentFirstInteractionRef.current) return
+
+      hasSentFirstInteractionRef.current = true
+      try {
+        safePostMessage(window.parent, { type: 'IFRAME_FIRST_INTERACTION' })
+      } catch (error) {
+        console.error('[DevTools] Failed to post IFRAME_FIRST_INTERACTION', error)
+      }
+      document.removeEventListener('pointerdown', handleFirstPointerdown, true)
+      document.removeEventListener('scroll', notifyFirstInteraction, true)
+    }
+
+    const handleFirstPointerdown = (event: PointerEvent) => {
+      const target = event.target as HTMLElement | null
+      if (!target) return
+      if (target.closest('[data-airo-dev-tools]') || target.closest('[data-dev-tools]') || target.closest('.edit-mode-hover-bar')) {
+        return
+      }
+      notifyFirstInteraction()
+    }
+
+    document.addEventListener('pointerdown', handleFirstPointerdown, true)
+    document.addEventListener('scroll', notifyFirstInteraction, true)
+    return () => {
+      document.removeEventListener('pointerdown', handleFirstPointerdown, true)
+      document.removeEventListener('scroll', notifyFirstInteraction, true)
+    }
+  }, [isEditModeActive])
 
   // Visual context capture for AI assistance
   useEffect(() => {

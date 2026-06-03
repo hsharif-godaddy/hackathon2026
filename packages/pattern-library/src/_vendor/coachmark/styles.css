@@ -1,0 +1,22 @@
+@import '@ux/popover/styles';
+@import '@ux/button/styles';
+@import '@ux/disrupt/styles';
+@import '@ux/disrupt/spotlight/styles';
+@import '@ux/box/styles';
+@import '@ux/text/styles';
+
+.ux-coachmark:where([data-version='UXCORE_VERSION_PLACEHOLDER']) {
+  & .ux-coachmark-actions {
+    width: 100%;
+  }
+}
+
+.ux-coachmark--compact {
+  & .ux-text-lockup--title.ux-text-size0 {
+    font-size: var(--uxText--fontSize-1);
+  }
+
+  & .ux-text-lockup--body.ux-text-size0 {
+    font-size: var(--uxText--fontSize-1);
+  }
+}

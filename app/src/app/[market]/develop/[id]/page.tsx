@@ -18,6 +18,7 @@ import { CdsEsmPreload } from '@/app/[market]/develop/components/paywall/CdsEsmP
 import PreviewPane, { type PublishSnapshotRequestDetail } from '@/app/[market]/develop/components/preview/PreviewPane'
 import ResizableDivider from '@/app/[market]/develop/components/ResizableDivider'
 import { SettingsLoadingState } from '@/app/[market]/develop/components/settings/components/SettingsLoadingState'
+import { PostBuildEditNudge } from '@/app/[market]/develop/components/tour/PostBuildEditNudge'
 import { ChatTab, IframeMessageType, MobileMode, SettingsSection, ViewMode } from '@/app/[market]/develop/components/types'
 import { extractNewPageRoute, handlePreviewRefresh, navigatePreviewToRoute, requestPreviewScreenshot, useAppIdFromParams } from '@/app/[market]/develop/components/utils'
 import { clearExpiredWidgetStates } from '@/app/[market]/develop/components/widgets'
@@ -52,6 +53,7 @@ import { useGitHistoryQuery } from '@/hooks/useGitHistory'
 import { useHivemind } from '@/hooks/useHivemind'
 import { useImageReadiness } from '@/hooks/useImageReadiness'
 import { usePaywallDeeplinkWithStore } from '@/hooks/usePaywallDeeplinkWithStore'
+import { usePostBuildEditNudge } from '@/hooks/usePostBuildEditNudge'
 import { prefetchSubscription } from '@/hooks/useSubscription'
 import { useIsRenewalPolling } from '@/hooks/useSubscriptionRenewal'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
@@ -273,6 +275,7 @@ function DevelopPageContent() {
   const addAiEditContext = useAddAiEditContext()
   const isMultiElementSelect = useSwitchboard('appbuilder-multi-element-select')
   const isIntroTourEnabled = useSwitchboard('appbuilder-intro-tour')
+  const isPostBuildEditNudgeEnabled = useSwitchboard('appbuilder-post-build-edit-nudge')
   const autoSendInitialMessage = useAutoSendInitialMessage()
   const ws = useChatTransport({ enabled: imageReadiness.isReady })
   const isLoading = useIsLoading()
@@ -366,6 +369,15 @@ function DevelopPageContent() {
   const publishLimitData = publishLimitModalState?.publishLimitData;
   const setShowPublishLimitModal = useDevelopPageStore((state) => state.setShowPublishLimitModal);
   const setShowPaywallModal = useDevelopPageStore((state) => state.setShowPaywallModal);
+
+  const { showNudge, dismiss } = usePostBuildEditNudge({
+    viewMode,
+    showBuildingOverlay: init.ui.showPreviewLoader,
+    isStreaming,
+    isLoading,
+    isMobile,
+    featureFlagEnabled: Boolean(isPostBuildEditNudgeEnabled),
+  })
 
   usePaywallDeeplinkWithStore({ enabled: loadingPhase === 'ready' });
   useCreditsDeeplinkWithStore({ enabled: loadingPhase === 'ready' });
@@ -1884,6 +1896,7 @@ function DevelopPageContent() {
           show={showIntroTour}
           onClose={() => setShowIntroTour(false)}
         />
+        <PostBuildEditNudge show={showNudge} onClose={dismiss} />
 
         <Growl />
 
